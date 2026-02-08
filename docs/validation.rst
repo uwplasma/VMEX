@@ -44,6 +44,41 @@ The tests in ``tests/`` cover:
 - Constraint-force pipeline pieces (``tcon`` scaling + ``alias`` bandpass operator).
 - an early end-to-end regression that a Gauss-Newton residual solver decreases a VMEC-style residual objective on ``input.circular_tokamak`` (this is *not* yet a full VMEC2000 equilibrium-parity solve).
 
+README parity snapshot (pipeline, solver-free)
+----------------------------------------------
+
+The repository README contains a compact, 4-case parity snapshot table intended
+to show the current “where are we” status at a glance. That table is generated
+by evaluating selected fixed-boundary pipeline quantities on *reference wout
+states* and comparing to the same quantities stored in the reference
+``wout_*.nc``.
+
+Reproduce the README table locally::
+
+  python examples/validation/pipeline_parity_summary.py
+
+Metrics and conventions used by that script:
+
+- Array-valued quantities (``sqrtg``, ``bsup*``, ``bsub*``, ``abs(B)``, ``bsq``)
+  are compared on the VMEC angle grid using a relative RMS error:
+
+  .. math::
+
+     \mathrm{relRMS}(x,y) = \frac{\sqrt{\langle (x-y)^2 \rangle}}{\max(\epsilon, \sqrt{\langle y^2 \rangle})}.
+
+- Scalar quantities (``fsqr/fsqz/fsql``) are compared with a VMEC-style relative
+  error:
+
+  .. math::
+
+     \mathrm{relErr}(x,y) = \frac{|x-y|}{\max(\epsilon, |y|)}.
+
+Important scope note:
+
+- This snapshot is intentionally **solver-free**. It helps localize kernel and
+  convention mismatches without mixing in nonlinear iteration behavior. Solver
+  iteration parity and VMEC-quality convergence are tracked separately.
+
 Step-10 parity status (fsqr/fsqz/fsql)
 --------------------------------------------------
 
