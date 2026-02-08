@@ -96,6 +96,30 @@ Interpretation:
 - Axisymmetric cases are essentially at floating-point parity for geometry, `bsup*`, and `abs(B)`.
 - Remaining known gap: 3D `bsub*` and the resulting step-10 scalars on some `nfp>1` cases (e.g. `li383_low_res`).
 
+## End-to-End Solve Snapshot (Input -> Solve -> Compare)
+
+The table above is solver-free. It demonstrates that many **kernel conventions** match VMEC on *reference states*,
+but it does not imply that `vmec_jax` already produces the same converged equilibrium `wout_*.nc` starting from
+only `input.*`.
+
+This table runs a short fixed-boundary solve and compares a few end-to-end outputs against bundled VMEC references.
+Reproduce via:
+
+```bash
+python examples/validation/end_to_end_solve_parity_summary.py --max-iter 2
+```
+
+| Case | input | ns | mpol | ntor | nfp | solver | max_iter | ftol | fsq_total(ref) | fsq_total(new) | rmnc relRMS | zmns relRMS |
+|---|---|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|
+| circular_tokamak | `input.circular_tokamak` | 17 | 8 | 0 | 1 | vmecpp_iter | 2 | 1.00e-10 | 2.14e-20 | 7.50e-02 | 1.39e-02 | 1.19e-02 |
+| shaped_tokamak_pressure | `input.shaped_tokamak_pressure` | 51 | 12 | 0 | 1 | vmecpp_iter | 2 | 1.00e-10 | 1.08e-20 | 3.70e-01 | 1.11e-02 | 3.07e-02 |
+| vmecpp_solovev | `input.vmecpp_solovev` | 11 | 6 | 0 | 1 | vmecpp_iter | 2 | 1.00e-10 | 1.70e-10 | 1.29e-01 | 1.92e-03 | 6.66e-03 |
+| li383_low_res | `input.li383_low_res` | 16 | 4 | 3 | 3 | vmecpp_iter | 2 | 1.00e-10 | 1.06e-06 | 3.40e+07 | 5.43e-02 | 8.45e-02 |
+
+Interpretation:
+- Full end-to-end fixed-boundary parity is **not yet achieved**. The solver iteration and convergence behavior is still being aligned with VMEC++/VMEC2000.
+- `vmec_jax` currently writes *minimal* `wout_*.nc` outputs for solver runs; Nyquist outputs (`gmnc`, `bsup*`, `bsub*`, `bmnc`) are not fully populated yet.
+
 ## Remaining Parity Assertions
 
 - VMEC-quality fixed-boundary convergence (iteration history parity, stopping criteria, and edge-force triggers).
