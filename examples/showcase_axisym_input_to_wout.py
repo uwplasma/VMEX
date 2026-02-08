@@ -26,6 +26,21 @@ def _import_matplotlib():
     return plt
 
 
+def _maybe_bmag_from_wout_physical(wout, *, theta: np.ndarray, phi: np.ndarray, s_index: int) -> np.ndarray | None:
+    # vmec_jax currently writes minimal wouts for solver outputs. Those wouts may
+    # not include Nyquist `bmnc/bmns` yet, so fall back to state-based evaluation.
+    try:
+        bmnc = np.asarray(getattr(wout, "bmnc", None))
+    except Exception:
+        bmnc = None
+    if bmnc is None or bmnc.size == 0 or not np.any(bmnc):
+        return None
+
+    from vmec_jax.plotting import bmag_from_wout_physical
+
+    return np.asarray(bmag_from_wout_physical(wout, theta=theta, phi=phi, s_index=int(s_index)))
+
+
 def _write_plots(*, outdir: Path, run: vj.FixedBoundaryRun, wout_new, wout_ref, indata) -> None:
     plt = _import_matplotlib()
 
@@ -60,15 +75,23 @@ def _write_plots(*, outdir: Path, run: vj.FixedBoundaryRun, wout_new, wout_ref, 
     fig.savefig(outdir / "surfaces_nested_phi0.png", dpi=180)
     plt.close(fig)
 
-    # 2) |B| on LCFS from state reconstruction.
-    st_new = vj.state_from_wout(wout_new)
-    B_new = vj.bmag_from_state_physical(st_new, run.static, indata=indata, theta=theta, phi=phi, s_index=s_index_lcfs)
+    # 2) |B| on LCFS.
+    #
+    # For reference VMEC wouts, prefer Nyquist `bmnc/bmns` evaluation (matches vmecPlot2).
+    # For solver-produced minimal wouts, fall back to state-based evaluation if Nyquist
+    # coefficients are not written yet.
+    B_new = _maybe_bmag_from_wout_physical(wout_new, theta=theta, phi=phi, s_index=s_index_lcfs)
+    if B_new is None:
+        st_new = vj.state_from_wout(wout_new)
+        B_new = vj.bmag_from_state_physical(
+            st_new, run.static, indata=indata, theta=theta, phi=phi, s_index=s_index_lcfs
+        )
+
     B_ref = None
     if wout_ref is not None:
-        st_ref = vj.state_from_wout(wout_ref)
-        B_ref = vj.bmag_from_state_physical(
-            st_ref, run.static, indata=indata, theta=theta, phi=phi, s_index=s_index_lcfs
-        )
+        from vmec_jax.plotting import bmag_from_wout_physical
+
+        B_ref = np.asarray(bmag_from_wout_physical(wout_ref, theta=theta, phi=phi, s_index=s_index_lcfs))
 
     fig, ax = plt.subplots(1, 2 if B_ref is not None else 1, figsize=(10, 4), constrained_layout=True)
     ax = np.atleast_1d(ax)
@@ -89,7 +112,10 @@ def _write_plots(*, outdir: Path, run: vj.FixedBoundaryRun, wout_new, wout_ref, 
     th3 = vj.closed_theta_grid(120)
     ph3 = np.linspace(0.0, 2.0 * np.pi, 120, endpoint=False)
     Rlcfs, Zlcfs = vj.surface_rz_from_wout_physical(wout_new, theta=th3, phi=ph3, s_index=s_index_lcfs, nyq=False)
-    Blcfs = vj.bmag_from_state_physical(st_new, run.static, indata=indata, theta=th3, phi=ph3, s_index=s_index_lcfs)
+    Blcfs = _maybe_bmag_from_wout_physical(wout_new, theta=th3, phi=ph3, s_index=s_index_lcfs)
+    if Blcfs is None:
+        st_new = vj.state_from_wout(wout_new)
+        Blcfs = vj.bmag_from_state_physical(st_new, run.static, indata=indata, theta=th3, phi=ph3, s_index=s_index_lcfs)
     X = Rlcfs * np.cos(ph3[None, :])
     Y = Rlcfs * np.sin(ph3[None, :])
     fig = plt.figure(figsize=(6, 5), constrained_layout=True)
