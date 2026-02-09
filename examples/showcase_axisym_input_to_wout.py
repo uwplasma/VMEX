@@ -8,7 +8,9 @@ light on flags.
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
+import tempfile
 
 import numpy as np
 
@@ -17,6 +19,12 @@ import vmec_jax.api as vj
 
 def _import_matplotlib():
     try:
+        # Ensure Matplotlib's cache/config lives in a writable directory (CI, sandboxed
+        # environments, and some HPC setups may have a non-writable $HOME).
+        mpl_cache = Path(tempfile.gettempdir()) / "vmec_jax_mplconfig"
+        mpl_cache.mkdir(parents=True, exist_ok=True)
+        os.environ.setdefault("MPLCONFIGDIR", str(mpl_cache))
+
         import matplotlib as mpl
 
         mpl.use("Agg", force=True)
@@ -141,19 +149,18 @@ def _write_plots(*, outdir: Path, run: vj.FixedBoundaryRun, wout_new, wout_ref, 
     plt.close(fig)
 
     # 4) Residual / objective trace (when available).
+    res = getattr(run, "result", None)
     w_hist = None
     stage_offsets = None
-    try:
-        w_hist = np.asarray(getattr(getattr(run, "result", None), "w_history", None))
-    except Exception:
-        w_hist = None
-    try:
-        diag = getattr(getattr(run, "result", None), "diagnostics", {}) or {}
-        stage_offsets = np.asarray(diag.get("multigrid_stage_offsets", None)) if isinstance(diag, dict) else None
-    except Exception:
-        stage_offsets = None
+    if res is not None:
+        wh = getattr(res, "w_history", None)
+        if wh is not None:
+            w_hist = np.asarray(wh, dtype=float)
+        diag = getattr(res, "diagnostics", {}) or {}
+        if isinstance(diag, dict) and diag.get("multigrid_stage_offsets", None) is not None:
+            stage_offsets = np.asarray(diag["multigrid_stage_offsets"], dtype=int)
 
-    if w_hist is not None and w_hist.size:
+    if w_hist is not None and w_hist.size > 0:
         fig, ax = plt.subplots(1, 1, figsize=(8, 3.5), constrained_layout=True)
         x = np.arange(w_hist.size, dtype=float)
         ax.semilogy(x, np.maximum(w_hist, 1e-300), lw=1.6, label="vmec_jax (solver metric)")
@@ -186,7 +193,7 @@ def main() -> None:
         default="vmec2000_iter",
         choices=["vmec2000_iter", "vmec_gn", "gd", "lbfgs"],
     )
-    p.add_argument("--max-iter", type=int, default=60)
+    p.add_argument("--max-iter", type=int, default=120)
     p.add_argument(
         "--use-input-niter",
         default=True,
