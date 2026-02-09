@@ -124,8 +124,33 @@ def _boundary_cross_section_areas(static: VMECStatic, boundary: BoundaryCoeffs) 
     return np.asarray(areas)
 
 
+def _vmec_lflip_from_boundary(static: VMECStatic, boundary: BoundaryCoeffs) -> bool | None:
+    """Return VMEC's initial lflip decision from boundary (or None if undecidable).
+
+    VMEC's `readin.f` sets:
+
+        lflip = (rtest*ztest < 0)
+
+    with:
+      - rtest = sum of m=1 `RBC` terms over n,
+      - ztest = sum of m=1 `ZBS` terms over n.
+
+    When either is (near) zero, the sign is numerically ambiguous; in that case
+    we return None and let callers fall back to a more geometric heuristic.
+    """
+    m = np.asarray(static.modes.m, dtype=int)
+    if not np.any(m == 1):
+        return None
+    mask = m == 1
+    rtest = float(np.sum(np.asarray(boundary.R_cos, dtype=float)[mask]))
+    ztest = float(np.sum(np.asarray(boundary.Z_sin, dtype=float)[mask]))
+    if rtest == 0.0 or ztest == 0.0:
+        return None
+    return (rtest * ztest) < 0.0
+
+
 def _flip_boundary_theta(static: VMECStatic, boundary: BoundaryCoeffs) -> BoundaryCoeffs:
-    """Flip theta -> -theta for boundary coefficients (m>0), matching VMEC."""
+    """VMEC `flip_theta`: apply θ -> π - θ to helical boundary coefficients."""
     m = np.asarray(static.modes.m)
     n = np.asarray(static.modes.n)
     key_to_k = {(int(mm), int(nn)): k for k, (mm, nn) in enumerate(zip(m, n))}
@@ -141,15 +166,22 @@ def _flip_boundary_theta(static: VMECStatic, boundary: BoundaryCoeffs) -> Bounda
     Z_sin_new = Z_sin.copy()
 
     for k, (mm, nn) in enumerate(zip(m, n)):
-        if int(mm) == 0:
+        m_i = int(mm)
+        n_i = int(nn)
+        if m_i == 0:
             continue
-        k2 = key_to_k.get((int(mm), int(-nn)))
+        k2 = key_to_k.get((m_i, -n_i))
         if k2 is None:
             continue
-        R_cos_new[k] = R_cos[k2]
-        R_sin_new[k] = -R_sin[k2]
-        Z_cos_new[k] = Z_cos[k2]
-        Z_sin_new[k] = -Z_sin[k2]
+        # For the helical basis:
+        #   cos(m(π-θ) - nζ) = (-1)^m cos(mθ + nζ) = (-1)^m cos(mθ - (-n)ζ)
+        #   sin(m(π-θ) - nζ) = (-1)^(m+1) sin(mθ + nζ) = (-1)^(m+1) sin(mθ - (-n)ζ)
+        fac_cos = -1.0 if (m_i % 2 == 1) else 1.0  # (-1)^m
+        fac_sin = -fac_cos  # (-1)^(m+1)
+        R_cos_new[k] = fac_cos * R_cos[k2]
+        R_sin_new[k] = fac_sin * R_sin[k2]
+        Z_cos_new[k] = fac_cos * Z_cos[k2]
+        Z_sin_new[k] = fac_sin * Z_sin[k2]
 
     return BoundaryCoeffs(R_cos=R_cos_new, R_sin=R_sin_new, Z_cos=Z_cos_new, Z_sin=Z_sin_new)
 
@@ -220,8 +252,7 @@ def _blend_axis_m0(
         k = int(k_candidates[0])
         blend = s
         new_R = (1.0 - blend) * raxis_cc[n] + blend * Rcos_b[0, k]
-        # Z uses sin(-n zeta) for m=0, so Zsin coefficients are -zaxis_cs.
-        new_Z = (1.0 - blend) * (-zaxis_cs[n]) + blend * Zsin_b[0, k]
+        new_Z = (1.0 - blend) * zaxis_cs[n] + blend * Zsin_b[0, k]
         if has_jax():
             Rcos = Rcos.at[:, k].set(new_R)
             Zsin = Zsin.at[:, k].set(new_Z)
@@ -301,7 +332,7 @@ def _recompute_axis_from_boundary(
             continue
         k = int(k_candidates[0])
         Rcos_mid[k] = (1.0 - s_mid) * raxis_cc[n] + s_mid * Rcos_mid[k]
-        Zsin_mid[k] = (1.0 - s_mid) * (-zaxis_cs[n]) + s_mid * Zsin_mid[k]
+        Zsin_mid[k] = (1.0 - s_mid) * zaxis_cs[n] + s_mid * Zsin_mid[k]
 
     R_half_red = np.asarray(
         vmec_realspace_synthesis(
@@ -493,7 +524,10 @@ def initial_guess_from_boundary(
 
     boundary_use = boundary
     areas = _boundary_cross_section_areas(static, boundary_use)
-    if np.median(areas) < 0.0:
+    lflip = _vmec_lflip_from_boundary(static, boundary_use)
+    if lflip is None:
+        lflip = bool(np.median(areas) < 0.0)
+    if bool(lflip):
         boundary_use = _flip_boundary_theta(static, boundary_use)
     boundary_use = _apply_m1_constraint(static, boundary_use)
 
@@ -564,15 +598,8 @@ def initial_guess_from_boundary(
                 zaxis_cs=zaxis_cs,
             )
 
-            # If axis coefficients are supplied via legacy shorthand keys
-            # (RAXIS/ZAXIS), default to recompute unless explicitly disabled.
-            # This default is more robust on stellarator cases.
-            legacy_axis_names = (indata.get("RAXIS", None) is not None) or (indata.get("ZAXIS", None) is not None)
-            lrecompute_default = bool(legacy_axis_names)
-
-            # If the user explicitly requests it, or if legacy axis naming is
-            # used and LRECOMPUTE is unspecified, re-run axis recompute.
-            if axis_from_indata and bool(indata.get_bool("LRECOMPUTE", lrecompute_default)):
+            # VMEC only recomputes the axis when explicitly requested.
+            if axis_from_indata and bool(indata.get_bool("LRECOMPUTE", False)):
                 signgs_guess = 1 if np.median(areas) >= 0.0 else -1
                 new_raxis_cc = np.asarray(raxis_cc)
                 new_zaxis_cs = np.asarray(zaxis_cs)
