@@ -1093,6 +1093,21 @@ class _WoutLikeVmecForces:
     pres: Any  # (ns,)  (half mesh, VMEC internal units mu0*Pa)
 
 
+def _s_half_from_full_mesh_s(s):
+    s = jnp.asarray(s)
+    if int(s.shape[0]) < 2:
+        return s
+    return jnp.concatenate([s[:1], 0.5 * (s[1:] + s[:-1])], axis=0)
+
+
+def _pressure_half_mesh_from_indata(*, indata, s_full):
+    from .profiles import eval_profiles
+
+    s_half = _s_half_from_full_mesh_s(s_full)
+    prof = eval_profiles(indata, s_half)
+    return jnp.asarray(prof.get("pressure", jnp.zeros_like(s_half)))
+
+
 def solve_fixed_boundary_lbfgs_vmec_residual(
     state0: VMECState,
     static,
@@ -1162,7 +1177,6 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
 
     from .energy import flux_profiles_from_indata
     from .field import half_mesh_avg_from_full_mesh
-    from .profiles import eval_profiles
     from .static import build_static
     from .vmec_forces import vmec_forces_rz_from_wout, vmec_residual_internal_from_kernels
     from .vmec_residue import (
@@ -1181,8 +1195,7 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
     if phips.shape[0] >= 1:
         phips = phips.at[0].set(0.0)
 
-    prof = eval_profiles(indata, s)
-    pres = jnp.asarray(prof.get("pressure", jnp.zeros_like(s)))
+    pres = _pressure_half_mesh_from_indata(indata=indata, s_full=s)
 
     wout_like = _WoutLikeVmecForces(
         nfp=int(static.cfg.nfp),
@@ -1628,7 +1641,6 @@ def solve_fixed_boundary_gn_vmec_residual(
 
     from .energy import flux_profiles_from_indata
     from .field import half_mesh_avg_from_full_mesh
-    from .profiles import eval_profiles
     from .static import build_static
     from .vmec_forces import vmec_forces_rz_from_wout, vmec_residual_internal_from_kernels
     from .vmec_residue import (
@@ -1652,8 +1664,7 @@ def solve_fixed_boundary_gn_vmec_residual(
     if phips.shape[0] >= 1:
         phips = phips.at[0].set(0.0)
 
-    prof = eval_profiles(indata, s)
-    pres = jnp.asarray(prof.get("pressure", jnp.zeros_like(s)))
+    pres = _pressure_half_mesh_from_indata(indata=indata, s_full=s)
 
     wout_like = _WoutLikeVmecForces(
         nfp=int(static.cfg.nfp),
@@ -2045,7 +2056,6 @@ def solve_fixed_boundary_residual_iter(
     from .energy import flux_profiles_from_indata
     from .field import half_mesh_avg_from_full_mesh
     from .energy import magnetic_wb_from_state
-    from .profiles import eval_profiles
     from .static import build_static
     from .vmec_forces import vmec_forces_rz_from_wout, vmec_residual_internal_from_kernels
     from .vmec_residue import (
@@ -2113,8 +2123,7 @@ def solve_fixed_boundary_residual_iter(
     if phips.shape[0] >= 1:
         phips = phips.at[0].set(0.0)
 
-    prof = eval_profiles(indata, s)
-    pres = jnp.asarray(prof.get("pressure", jnp.zeros_like(s)))
+    pres = _pressure_half_mesh_from_indata(indata=indata, s_full=s)
 
     wout_like = _WoutLikeVmecForces(
         nfp=int(static.cfg.nfp),
@@ -3563,7 +3572,6 @@ def first_step_diagnostics(
 
     from .energy import flux_profiles_from_indata
     from .field import half_mesh_avg_from_full_mesh
-    from .profiles import eval_profiles
     from .static import build_static
     from .vmec_forces import vmec_forces_rz_from_wout, vmec_residual_internal_from_kernels
     from .vmec_residue import (
@@ -3593,8 +3601,7 @@ def first_step_diagnostics(
     phips = jnp.asarray(flux.phips)
     if phips.shape[0] >= 1:
         phips = phips.at[0].set(0.0)
-    prof = eval_profiles(indata, s)
-    pres = jnp.asarray(prof.get("pressure", jnp.zeros_like(s)))
+    pres = _pressure_half_mesh_from_indata(indata=indata, s_full=s)
 
     wout_like = _WoutLikeVmecForces(
         nfp=int(cfg.nfp),
