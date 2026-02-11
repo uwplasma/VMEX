@@ -291,6 +291,65 @@ def _maybe_dump_gc(*, frzl, static, iter_idx: int, label: str) -> None:
     )
 
 
+def _maybe_dump_xc(
+    *,
+    state: VMECState,
+    vRcc,
+    vRss,
+    vZsc,
+    vZcs,
+    vLsc,
+    vLcs,
+    static,
+    iter_idx: int,
+) -> None:
+    env = os.getenv("VMEC_JAX_DUMP_XC", "")
+    if not env or env == "0":
+        return
+    iters = _parse_iter_list(os.getenv("VMEC_JAX_DUMP_ITER", ""))
+    if iters is not None and int(iter_idx) not in iters:
+        return
+    outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
+    outdir.mkdir(parents=True, exist_ok=True)
+    ns_val = int(static.cfg.ns)
+    path = outdir / f"xc_ns{ns_val}_iter{int(iter_idx)}.npz"
+    from .diagnostics import vmec_internal_mn_from_state, vmec_xc_from_mn_blocks, _vmec_basis_norm
+
+    blocks = vmec_internal_mn_from_state(state, static, apply_basis_norm=False)
+    basis_scale = _vmec_basis_norm(mpol=int(static.cfg.mpol), ntor=int(static.cfg.ntor))
+    blocks = {k: v * basis_scale[None, :, :] for k, v in blocks.items()}
+    xc = vmec_xc_from_mn_blocks(
+        rcc=blocks["rcc"],
+        rss=blocks["rss"],
+        zsc=blocks["zsc"],
+        zcs=blocks["zcs"],
+        lsc=blocks["lsc"],
+        lcs=blocks["lcs"],
+        cfg=static.cfg,
+    )
+    basis_scale_v = np.ones_like(basis_scale)
+    xcdot = vmec_xc_from_mn_blocks(
+        rcc=np.asarray(vRcc) * basis_scale_v[None, :, :],
+        rss=np.asarray(vRss) * basis_scale_v[None, :, :],
+        zsc=np.asarray(vZsc) * basis_scale_v[None, :, :],
+        zcs=np.asarray(vZcs) * basis_scale_v[None, :, :],
+        lsc=np.asarray(vLsc) * basis_scale_v[None, :, :],
+        lcs=np.asarray(vLcs) * basis_scale_v[None, :, :],
+        cfg=static.cfg,
+    )
+    np.savez(
+        path,
+        xc=np.asarray(xc),
+        xcdot=np.asarray(xcdot),
+        v=np.asarray(xcdot),
+        ns=int(static.cfg.ns),
+        mpol=int(static.cfg.mpol),
+        ntor=int(static.cfg.ntor),
+        lthreed=bool(static.cfg.lthreed),
+        lasym=bool(static.cfg.lasym),
+    )
+
+
 def _mode00_index(modes) -> Optional[int]:
     m = np.asarray(modes.m)
     n = np.asarray(modes.n)
@@ -2322,7 +2381,7 @@ def solve_fixed_boundary_residual_iter(
 
     idx00 = _mode00_index(static.modes)
     m_modes = jnp.asarray(static.modes.m)
-    lambda_axis_mask = jnp.asarray((m_modes == 0) | (m_modes == 1)).astype(jnp.asarray(state0.Rcos).dtype)
+    lambda_axis_mask = jnp.zeros_like(m_modes, dtype=jnp.asarray(state0.Rcos).dtype)
 
     # Boundary + axis recompute helpers (for VMEC-style bad-Jacobian reset).
     boundary_for_axis = boundary_from_indata(indata, static.modes) if indata is not None else None
@@ -2344,8 +2403,8 @@ def solve_fixed_boundary_residual_iter(
         Lsin = jnp.asarray(st.Lsin)
         if int(Lcos.shape[0]) < 2:
             return st
-        Lcos = Lcos.at[0, :].set(Lcos[1, :] * lambda_axis_mask)
-        Lsin = Lsin.at[0, :].set(Lsin[1, :] * lambda_axis_mask)
+        Lcos = Lcos.at[0, :].set(Lcos[0, :] * lambda_axis_mask)
+        Lsin = Lsin.at[0, :].set(Lsin[0, :] * lambda_axis_mask)
         Lcos, Lsin = _enforce_lambda_gauge(Lcos, Lsin, idx00=idx00)
         return VMECState(
             layout=st.layout,
@@ -2766,6 +2825,12 @@ def solve_fixed_boundary_residual_iter(
     def _mn_sin_to_signed_physical(sc, cs):
         sc = jnp.asarray(sc) / scalxc_mn
         cs = jnp.asarray(cs) / scalxc_mn if cs is not None else None
+        return _mn_sin_to_signed(sc, cs)
+
+    def _mn_sin_to_signed_physical_lambda(sc, cs):
+        """Lambda updates use VMEC's scalxc-weighted coefficients directly."""
+        sc = jnp.asarray(sc)
+        cs = jnp.asarray(cs) if cs is not None else None
         return _mn_sin_to_signed(sc, cs)
 
     def _rz_norm(state: VMECState) -> Any:
@@ -3199,7 +3264,7 @@ def solve_fixed_boundary_residual_iter(
             dt_probe = min(1e-2, 0.1 * float(time_step))
             dR_dir = dt_probe * _mn_cos_to_signed_physical(frcc_u, frss_u)
             dZ_dir = dt_probe * _mn_sin_to_signed_physical(fzsc_u, fzcs_u)
-            dL_dir = dt_probe * _mn_sin_to_signed_physical(flsc_u, flcs_u)
+            dL_dir = dt_probe * _mn_sin_to_signed_physical_lambda(flsc_u, flcs_u)
 
             def _trial(sign: float) -> float:
                 st_try = VMECState(
@@ -3516,7 +3581,7 @@ def solve_fixed_boundary_residual_iter(
 
             dR = dt_eff * _mn_cos_to_signed_physical(vRcc, vRss)
             dZ = dt_eff * _mn_sin_to_signed_physical(vZsc, vZcs)
-            dL = dt_eff * _mn_sin_to_signed_physical(vLsc, vLcs)
+            dL = dt_eff * _mn_sin_to_signed_physical_lambda(vLsc, vLcs)
             state_try = VMECState(
                 layout=state.layout,
                 Rcos=jnp.asarray(state.Rcos) + dR,
@@ -3844,6 +3909,17 @@ def solve_fixed_boundary_residual_iter(
             w_try_history.append(float("nan"))
             w_try_ratio_history.append(float("nan"))
             restart_path_history.append("non_strict")
+        _maybe_dump_xc(
+            state=state,
+            vRcc=vRcc,
+            vRss=vRss,
+            vZsc=vZsc,
+            vZcs=vZcs,
+            vLsc=vLsc,
+            vLcs=vLcs,
+            static=static,
+            iter_idx=int(iter2),
+        )
         dt_eff_history.append(float(dt_eff))
         update_rms_history.append(float(update_rms))
         if verbose:

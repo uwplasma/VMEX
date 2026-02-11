@@ -13,6 +13,7 @@ It runs:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
@@ -70,6 +71,7 @@ _RE_STAGE = re.compile(
     r"^\s*NS\s*=\s*(\d+)\s+NO\.\s+FOURIER\s+MODES\s*=\s*(\d+)\s+FTOLV\s*=\s*([0-9.Ee+-]+)\s+NITER\s*=\s*(\d+)"
 )
 _RE_ROW = re.compile(r"^\s*(\d+)\s+([0-9.DdEe+-]+)\s+([0-9.DdEe+-]+)\s+([0-9.DdEe+-]+)\s+")
+_RE_XC = re.compile(r"xc_.*_ns(\d+)_iter(\d+)\.dat$")
 
 
 def _parse_vmec2000_stdout(text: str) -> list[Vmec2000PrintedStage]:
@@ -174,6 +176,111 @@ def _parse_vmec2000_threed1(path: Path) -> list[Vmec2000Threed1Stage]:
 
     _flush()
     return stages
+
+
+def _parse_vmec_xc_dump(path: Path) -> tuple[np.ndarray, np.ndarray]:
+    """Parse VMEC2000 xc/xcdot dump (text) -> (xc, v)."""
+    xc_vals: list[float] = []
+    v_vals: list[float] = []
+    for line in path.read_text().splitlines():
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("neqs=") or line.startswith("columns:"):
+            continue
+        toks = line.split()
+        if len(toks) < 3:
+            continue
+        try:
+            _i = int(toks[0])
+        except ValueError:
+            continue
+        xc_vals.append(float(toks[1].replace("D", "E").replace("d", "E")))
+        v_vals.append(float(toks[2].replace("D", "E").replace("d", "E")))
+    return np.asarray(xc_vals, dtype=float), np.asarray(v_vals, dtype=float)
+
+
+def _collect_vmec_xc_dumps(path: Path) -> dict[tuple[int, int], tuple[np.ndarray, np.ndarray]]:
+    out: dict[tuple[int, int], tuple[np.ndarray, np.ndarray]] = {}
+    if not path.exists():
+        return out
+    for p in sorted(path.glob("xc_*_iter*.dat")):
+        m = _RE_XC.search(p.name)
+        if not m:
+            continue
+        ns = int(m.group(1))
+        it = int(m.group(2))
+        out[(ns, it)] = _parse_vmec_xc_dump(p)
+    return out
+
+
+def _collect_jax_xc_dumps(path: Path) -> dict[tuple[int, int], tuple[np.ndarray, np.ndarray]]:
+    out: dict[tuple[int, int], tuple[np.ndarray, np.ndarray]] = {}
+    if not path.exists():
+        return out
+    for p in sorted(path.glob("xc_ns*_iter*.npz")):
+        m = re.search(r"xc_ns(\d+)_iter(\d+)\.npz$", p.name)
+        if not m:
+            continue
+        ns = int(m.group(1))
+        it = int(m.group(2))
+        data = np.load(p)
+        if "v" in data:
+            v = np.asarray(data["v"])
+        elif "xcdot" in data:
+            v = np.asarray(data["xcdot"])
+        else:
+            raise KeyError(f"Missing v/xcdot in {p}")
+        out[(ns, it)] = (np.asarray(data["xc"]), v)
+    return out
+
+
+def _compare_vectors(
+    *,
+    label: str,
+    vmec_vec: np.ndarray,
+    jax_vec: np.ndarray,
+    rtol: float,
+    atol: float,
+) -> tuple[bool, str, int]:
+    if vmec_vec.shape != jax_vec.shape:
+        return False, f"{label}: shape mismatch vmec={vmec_vec.shape} jax={jax_vec.shape}", -1
+    diff = np.abs(vmec_vec - jax_vec)
+    if diff.size == 0:
+        return True, f"{label}: empty", -1
+    i = int(np.argmax(diff))
+    max_abs = float(diff[i])
+    denom = max(float(atol), float(abs(vmec_vec[i])))
+    max_rel = max_abs / denom if denom != 0.0 else float("inf")
+    ok = max_abs <= max(float(atol), float(rtol) * abs(vmec_vec[i]))
+    msg = f"{label}: max_abs={max_abs:.3e} max_rel={max_rel:.3e} idx={i}"
+    return ok, msg, i
+
+
+def _decode_xc_index(idx: int, *, ns: int, mpol: int, ntor: int, lthreed: bool) -> str:
+    """Decode xc/xcdot flat index into (component, m, n, js) info."""
+    ns = int(ns)
+    mpol = int(mpol)
+    ntor = int(ntor)
+    ntmax = 2 if bool(lthreed) else 1
+    nrange = ntor + 1
+    mnsize = mpol * nrange
+    mns = ns * mnsize
+    if mns <= 0:
+        return "idx decode unavailable (mns=0)"
+    ntype = idx // mns
+    if ntype >= 3 * ntmax:
+        return f"idx={idx} out of range for mns={mns} ntmax={ntmax}"
+    offset = idx - ntype * mns
+    mn = offset // ns
+    js = offset - mn * ns
+    m = mn // nrange
+    n = mn - m * nrange
+    if ntmax == 1:
+        comps = ("rcc", "zsc", "lsc")
+    else:
+        comps = ("rcc", "zsc", "lsc", "rss", "zcs", "lcs")
+    comp = comps[ntype] if 0 <= ntype < len(comps) else f"ntype={ntype}"
+    return f"{comp}: m={m} n={n} js={js + 1} (ns={ns})"
 
 
 def _rel_rms(x: np.ndarray, y: np.ndarray, *, eps: float = 1e-16) -> float:
@@ -401,6 +508,10 @@ def main() -> None:
         workdir = Path(td)
         input_local = workdir / input_path.name
         shutil.copy2(input_path, input_local)
+        vmec_dump_dir = workdir / "vmec_dumps"
+        jax_dump_dir = workdir / "jax_dumps"
+        vmec_dump_dir.mkdir(parents=True, exist_ok=True)
+        jax_dump_dir.mkdir(parents=True, exist_ok=True)
 
         # Force per-iteration printout cadence by patching `NSTEP`.
         indata_text = input_local.read_text()
@@ -425,7 +536,11 @@ def main() -> None:
 
         input_local.write_text(_patch_indata(indata_text, updates=updates))
         cmd = [str(vmec2000_exe), input_local.name]
-        proc = subprocess.run(cmd, cwd=workdir, capture_output=True, text=True, check=False)
+        vmec_env = os.environ.copy()
+        vmec_env["VMEC_DUMP_XC"] = "1"
+        vmec_env["VMEC_DUMP_DIR"] = str(vmec_dump_dir)
+        vmec_env.pop("VMEC_DUMP_XC_ITER", None)
+        proc = subprocess.run(cmd, cwd=workdir, capture_output=True, text=True, check=False, env=vmec_env)
         stdout = proc.stdout + "\n" + proc.stderr
 
         stages = _parse_vmec2000_stdout(stdout)
@@ -452,18 +567,32 @@ def main() -> None:
         wout = read_wout(wout_path) if wout_path.exists() else None
 
         # --- Run vmec_jax with VMEC-style multigrid staging ---
-        run = vj.run_fixed_boundary(
-            input_path,
-            solver="vmec2000_iter",
-            max_iter=int(args.max_iter),
-            multigrid_use_input_niter=bool(args.use_input_niter),
-            verbose=False,
-            ns_override=int(args.single_ns) if args.single_ns is not None else None,
-        )
+        jax_env_backup = os.environ.copy()
+        os.environ["VMEC_JAX_DUMP_XC"] = "1"
+        os.environ["VMEC_JAX_DUMP_DIR"] = str(jax_dump_dir)
+        os.environ.pop("VMEC_JAX_DUMP_ITER", None)
+        try:
+            run = vj.run_fixed_boundary(
+                input_path,
+                solver="vmec2000_iter",
+                max_iter=int(args.max_iter),
+                multigrid_use_input_niter=bool(args.use_input_niter),
+                verbose=False,
+                ns_override=int(args.single_ns) if args.single_ns is not None else None,
+            )
+        finally:
+            os.environ.clear()
+            os.environ.update(jax_env_backup)
+
+        vmec_xc = _collect_vmec_xc_dumps(vmec_dump_dir)
+        jax_xc = _collect_jax_xc_dumps(jax_dump_dir)
 
     # --- Report ---
     use_threed1 = bool(threed1_stages)
     vmec_stages = threed1_stages if use_threed1 else stages
+    vmec_ns = np.asarray([int(st.ns) for st in vmec_stages], dtype=int)
+    vmec_niter = np.asarray([int(st.niter) for st in vmec_stages], dtype=int)
+    vmec_offsets = np.concatenate([[0], np.cumsum(vmec_niter[:-1])]).astype(int) if vmec_niter.size else np.zeros((0,), dtype=int)
 
     print()
     print("VMEC2000 stages:")
@@ -521,10 +650,6 @@ def main() -> None:
 
     # Stage transition parity (ns + offsets).
     if offsets.size and ns_stages.size:
-        vmec_ns = np.asarray([int(st.ns) for st in vmec_stages], dtype=int)
-        vmec_niter = np.asarray([int(st.niter) for st in vmec_stages], dtype=int)
-        vmec_offsets = np.concatenate([[0], np.cumsum(vmec_niter[:-1])]).astype(int) if vmec_niter.size else np.zeros((0,), dtype=int)
-
         ns_ok = bool(vmec_ns.size == ns_stages.size) and bool(np.all(vmec_ns == ns_stages[: vmec_ns.size]))
         off_ok = bool(vmec_offsets.size == offsets.size) and bool(np.all(vmec_offsets == offsets[: vmec_offsets.size]))
         if not ns_ok or not off_ok:
@@ -621,6 +746,76 @@ def main() -> None:
             else:
                 where = ""
             print(f"  {name:>6s}: {max_abs:>11.3e} / {max_rel:>11.3e}  {where}")
+
+    if vmec_xc or jax_xc:
+        print()
+        print("xc/v parity (VMEC2000 dumps vs vmec_jax dumps):")
+        vmec_global: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        jax_global: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        for (ns_val, it_val), data in vmec_xc.items():
+            matches = np.where(vmec_ns == int(ns_val))[0]
+            if matches.size == 0:
+                continue
+            stage_idx = int(matches[0])
+            global_it = int(vmec_offsets[stage_idx]) + int(it_val)
+            if global_it not in vmec_global:
+                vmec_global[global_it] = data
+        for (ns_val, it_val), data in jax_xc.items():
+            matches = np.where(vmec_ns == int(ns_val))[0]
+            if matches.size == 0:
+                continue
+            stage_idx = int(matches[0])
+            global_it = int(vmec_offsets[stage_idx]) + int(it_val)
+            if global_it not in jax_global:
+                jax_global[global_it] = data
+        common = sorted(set(vmec_global.keys()) & set(jax_global.keys()))
+        if not common:
+            print("  No overlapping xc dump iterations found.")
+        for it in common:
+            vm_xc, vm_v = vmec_global[it]
+            jx_xc, jx_v = jax_global[it]
+            ok_xc, msg_xc, idx_xc = _compare_vectors(
+                label="xc",
+                vmec_vec=vm_xc,
+                jax_vec=jx_xc,
+                rtol=float(args.rtol),
+                atol=float(args.atol),
+            )
+            ok_v, msg_v, idx_v = _compare_vectors(
+                label="v",
+                vmec_vec=vm_v,
+                jax_vec=jx_v,
+                rtol=float(args.rtol),
+                atol=float(args.atol),
+            )
+            print(f"  iter {it:03d}: {msg_xc}; {msg_v}")
+            if not ok_xc or not ok_v:
+                try:
+                    cfg = run.cfg
+                    dec_xc = _decode_xc_index(
+                        int(idx_xc),
+                        ns=int(cfg.ns),
+                        mpol=int(cfg.mpol),
+                        ntor=int(cfg.ntor),
+                        lthreed=bool(cfg.lthreed),
+                    )
+                except Exception:
+                    dec_xc = "idx decode unavailable"
+                try:
+                    cfg = run.cfg
+                    dec_v = _decode_xc_index(
+                        int(idx_v),
+                        ns=int(cfg.ns),
+                        mpol=int(cfg.mpol),
+                        ntor=int(cfg.ntor),
+                        lthreed=bool(cfg.lthreed),
+                    )
+                except Exception:
+                    dec_v = "idx decode unavailable"
+                print(f"    xc decode: {dec_xc}")
+                print(f"    v decode: {dec_v}")
+            if bool(args.fail_fast) and (not ok_xc or not ok_v):
+                raise SystemExit(2)
 
     if wout is not None:
         rmnc_err = _rel_rms(np.asarray(run.state.Rcos), np.asarray(wout.rmnc))

@@ -99,47 +99,47 @@ def _write_plots(
     fig, ax = plt.subplots(1, 2 if B_ref is not None else 1, figsize=(10, 4), constrained_layout=True)
     ax = np.atleast_1d(ax)
     zeta2d, theta2d = np.meshgrid(zeta_b, theta_b)
-    vmin = float(np.min(B_new if B_ref is None else np.minimum(B_new, B_ref)))
-    vmax = float(np.max(B_new if B_ref is None else np.maximum(B_new, B_ref)))
-    im_new = ax[-1].contourf(zeta2d, theta2d, B_new, levels=20, vmin=vmin, vmax=vmax)
+    im_new = ax[-1].contourf(zeta2d, theta2d, B_new, levels=20)
     ax[-1].set_title("vmec_jax |B| (LCFS)")
     if B_ref is not None:
-        im_ref = ax[0].contourf(zeta2d, theta2d, B_ref, levels=20, vmin=vmin, vmax=vmax)
+        im_ref = ax[0].contourf(zeta2d, theta2d, B_ref, levels=20)
         ax[0].set_title("VMEC2000 |B| (LCFS)")
+    iota_new = float(np.asarray(wout_new.iotaf)[s_index_lcfs]) if hasattr(wout_new, "iotaf") else 0.0
     for a in ax:
         a.set_xlabel("zeta")
         a.set_ylabel("theta")
+        if iota_new > 0:
+            a.plot([0, zeta_b.max()], [0, zeta_b.max() * iota_new], "k")
+        else:
+            a.plot([0, zeta_b.max()], [-zeta_b.max() * iota_new, 0], "k")
+        a.set_xlim([0, 2 * np.pi])
+        a.set_ylim([0, 2 * np.pi])
     if B_ref is not None:
         fig.colorbar(im_ref, ax=ax[0], shrink=0.85, pad=0.02)
     fig.colorbar(im_new, ax=ax[-1], shrink=0.85, pad=0.02)
     fig.savefig(outdir / "bmag_lcfs.png", dpi=180)
     plt.close(fig)
 
-    # 3) 3D LCFS surface colored by |B| (new wout).
-    th3 = vj.closed_theta_grid(80)
-    ph3 = np.linspace(0.0, 2.0 * np.pi, 80, endpoint=False)
-    Rlcfs, Zlcfs = vj.surface_rz_from_wout_physical(wout_new, theta=th3, phi=ph3, s_index=s_index_lcfs, nyq=False)
-    Blcfs = _maybe_bmag_from_wout_physical(wout_new, theta=th3, phi=ph3, s_index=s_index_lcfs)
-    if Blcfs is None:
-        st_new = vj.state_from_wout(wout_new)
-        Blcfs = vj.bmag_from_state_physical(st_new, run.static, indata=indata, theta=th3, phi=ph3, s_index=s_index_lcfs)
+    # 3) 3D LCFS surface colored by |B| (new wout, vmecPlot2 defaults).
+    th3, ph3, Rlcfs, Zlcfs, Blcfs = vj.vmecplot2_lcfs_3d_grid(wout_new, s_index=s_index_lcfs)
     X = Rlcfs * np.cos(ph3[None, :])
     Y = Rlcfs * np.sin(ph3[None, :])
-    fig = plt.figure(figsize=(6, 5), constrained_layout=True)
+    B_rescaled = (Blcfs - Blcfs.min()) / max(float(np.ptp(Blcfs)), 1e-12)
+    fig = plt.figure(figsize=(6, 5))
+    fig.patch.set_facecolor("white")
     ax3 = fig.add_subplot(111, projection="3d")
     ax3.plot_surface(
         X,
         Y,
         Zlcfs,
-        facecolors=plt.cm.viridis((Blcfs - Blcfs.min()) / max(float(np.ptp(Blcfs)), 1e-12)),
+        facecolors=plt.cm.jet(B_rescaled),
         rstride=1,
         cstride=1,
-        linewidth=0,
         antialiased=False,
-        shade=False,
+        shade=True,
     )
-    vj.fix_matplotlib_3d(ax3)
-    ax3.set_title("LCFS 3D colored by |B| (vmec_jax)")
+    ax3.auto_scale_xyz([X.min(), X.max()], [X.min(), X.max()], [X.min(), X.max()])
+    fig.tight_layout()
     fig.savefig(outdir / "lcfs_3d_bmag.png", dpi=180)
     plt.close(fig)
 
@@ -264,7 +264,8 @@ def main() -> None:
             verbose=bool(args.verbose),
         )
         out_wout_path = outdir / f"wout_{case}_vmec_jax.nc"
-        wout_new = vj.write_wout_from_fixed_boundary_run(out_wout_path, run, include_fsq=True)
+        vj.write_wout_from_fixed_boundary_run(out_wout_path, run, include_fsq=True)
+        wout_new = vj.load_wout(out_wout_path)
 
         wout_ref = vj.load_wout(ref_wout_path) if ref_wout_path.exists() else None
         print(f"[vmec_jax] wrote wout: {out_wout_path}")
