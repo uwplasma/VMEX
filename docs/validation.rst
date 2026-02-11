@@ -110,7 +110,7 @@ faithful to the legacy script.
 
 Current observed mismatches (circular_tokamak, 5-iter snapshot):
 
-- ``bmnc`` and LCFS :math:`|B|` plots differ at the ~5e-2 relative level.
+- ``bmnc`` and LCFS :math:`\\lvert B \\rvert` plots differ at the ~5e-2 relative level.
 - ``buco``/``bvco`` are within a few percent; **``jcuru``/``jcurv`` scaling is now
   corrected** (remaining differences are tied to earlier-force parity).
 - ``bsupv`` parity now matches VMEC2000 after aligning lambda scaling in the
