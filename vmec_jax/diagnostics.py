@@ -120,3 +120,164 @@ def slice_excluding_axis(a: Any, axis_dim: int = 0) -> np.ndarray:
     slc = [slice(None)] * x.ndim
     slc[axis_dim] = slice(1, None)
     return x[tuple(slc)]
+
+
+def _vmec_basis_norm(*, mpol: int, ntor: int) -> np.ndarray:
+    """Return 1/(mscale*nscale) factors for VMEC's internal Fourier basis."""
+    mpol = int(mpol)
+    ntor = int(ntor)
+    # Match VMEC `fixaray` scaling: mscale(1:) = nscale(1:) = sqrt(2).
+    mscale = np.ones((mpol,), dtype=float)
+    nscale = np.ones((ntor + 1,), dtype=float)
+    if mpol > 1:
+        mscale[1:] = np.sqrt(2.0)
+    if ntor > 0:
+        nscale[1:] = np.sqrt(2.0)
+    return 1.0 / (mscale[:, None] * nscale[None, :])
+
+
+def _signed_to_mn_cos(coeffs: Any, *, modes, mpol: int, ntor: int) -> tuple[np.ndarray, np.ndarray]:
+    """Convert signed (m,n) cos coefficients to (rcc, rss) in VMEC (m,n>=0) storage."""
+    coeffs = _as_array(coeffs)
+    ns, ncoeff = coeffs.shape
+    nrange = int(ntor) + 1
+    idx_pos = -np.ones((mpol, nrange), dtype=int)
+    idx_neg = -np.ones((mpol, nrange), dtype=int)
+    m_arr = np.asarray(modes.m, dtype=int)
+    n_arr = np.asarray(modes.n, dtype=int)
+    for k in range(ncoeff):
+        m_k = int(m_arr[k])
+        n_k = int(n_arr[k])
+        if n_k >= 0:
+            idx_pos[m_k, n_k] = k
+        else:
+            idx_neg[m_k, -n_k] = k
+    rcc = np.zeros((ns, mpol, nrange), dtype=coeffs.dtype)
+    rss = np.zeros_like(rcc)
+    for m_i in range(mpol):
+        for n_i in range(nrange):
+            kp = idx_pos[m_i, n_i]
+            if kp < 0:
+                continue
+            pos = coeffs[:, kp]
+            kn = idx_neg[m_i, n_i]
+            neg = coeffs[:, kn] if kn >= 0 else 0.0
+            rcc[:, m_i, n_i] = pos + neg
+            if n_i == 0:
+                rss[:, m_i, n_i] = 0.0
+            else:
+                rss[:, m_i, n_i] = pos - neg
+    return rcc, rss
+
+
+def _signed_to_mn_sin(coeffs: Any, *, modes, mpol: int, ntor: int) -> tuple[np.ndarray, np.ndarray]:
+    """Convert signed (m,n) sin coefficients to (zsc, zcs) in VMEC (m,n>=0) storage."""
+    coeffs = _as_array(coeffs)
+    ns, ncoeff = coeffs.shape
+    nrange = int(ntor) + 1
+    idx_pos = -np.ones((mpol, nrange), dtype=int)
+    idx_neg = -np.ones((mpol, nrange), dtype=int)
+    m_arr = np.asarray(modes.m, dtype=int)
+    n_arr = np.asarray(modes.n, dtype=int)
+    for k in range(ncoeff):
+        m_k = int(m_arr[k])
+        n_k = int(n_arr[k])
+        if n_k >= 0:
+            idx_pos[m_k, n_k] = k
+        else:
+            idx_neg[m_k, -n_k] = k
+    zsc = np.zeros((ns, mpol, nrange), dtype=coeffs.dtype)
+    zcs = np.zeros_like(zsc)
+    for m_i in range(mpol):
+        for n_i in range(nrange):
+            kp = idx_pos[m_i, n_i]
+            if kp < 0:
+                continue
+            pos = coeffs[:, kp]
+            kn = idx_neg[m_i, n_i]
+            neg = coeffs[:, kn] if kn >= 0 else 0.0
+            zsc[:, m_i, n_i] = pos + neg
+            if n_i == 0:
+                zcs[:, m_i, n_i] = 0.0
+            else:
+                zcs[:, m_i, n_i] = neg - pos
+    return zsc, zcs
+
+
+def vmec_internal_mn_from_state(state: Any, static: Any, *, apply_basis_norm: bool = True) -> dict[str, np.ndarray]:
+    """Return VMEC (m,n>=0) coefficient blocks from a signed-coefficient state.
+
+    The returned arrays are in VMEC's internal basis (mscale/nscale removed)
+    when ``apply_basis_norm`` is True.
+    """
+    cfg = static.cfg
+    if bool(getattr(cfg, "lasym", False)):
+        raise NotImplementedError("lasym coefficient decomposition not implemented yet")
+    mpol = int(cfg.mpol)
+    ntor = int(cfg.ntor)
+    basis_norm = _vmec_basis_norm(mpol=mpol, ntor=ntor)
+
+    rcc, rss = _signed_to_mn_cos(state.Rcos, modes=static.modes, mpol=mpol, ntor=ntor)
+    zsc, zcs = _signed_to_mn_sin(state.Zsin, modes=static.modes, mpol=mpol, ntor=ntor)
+    lsc, lcs = _signed_to_mn_sin(state.Lsin, modes=static.modes, mpol=mpol, ntor=ntor)
+
+    if apply_basis_norm:
+        rcc = rcc * basis_norm[None, :, :]
+        rss = rss * basis_norm[None, :, :]
+        zsc = zsc * basis_norm[None, :, :]
+        zcs = zcs * basis_norm[None, :, :]
+        lsc = lsc * basis_norm[None, :, :]
+        lcs = lcs * basis_norm[None, :, :]
+
+    return {
+        "rcc": np.asarray(rcc),
+        "rss": np.asarray(rss),
+        "zsc": np.asarray(zsc),
+        "zcs": np.asarray(zcs),
+        "lsc": np.asarray(lsc),
+        "lcs": np.asarray(lcs),
+    }
+
+
+def vmec_xc_from_mn_blocks(
+    *,
+    rcc: Any,
+    rss: Any,
+    zsc: Any,
+    zcs: Any,
+    lsc: Any,
+    lcs: Any,
+    cfg: Any,
+) -> np.ndarray:
+    """Pack VMEC (m,n>=0) coefficient blocks into the 1D xc vector."""
+    if bool(getattr(cfg, "lasym", False)):
+        raise NotImplementedError("lasym xc packing not implemented yet")
+    mpol = int(cfg.mpol)
+    ntor = int(cfg.ntor)
+    lthreed = bool(getattr(cfg, "lthreed", True))
+    ntmax = 2 if lthreed else 1
+    rcc = _as_array(rcc)
+    ns = int(rcc.shape[0])
+    nrange = int(ntor) + 1
+    mnsize = mpol * nrange
+    mns = ns * mnsize
+
+    def _flat(a: Any) -> np.ndarray:
+        a = _as_array(a)
+        if a.size == 0:
+            return np.zeros((mns,), dtype=float)
+        # VMEC serial order (after Parallel2Serial4X) packs with radial index
+        # (js) fastest: idx = js + ns*mn (Fortran 1-based).
+        return a.reshape((ns, mnsize)).T.reshape(-1)
+
+    xc = np.zeros((3 * ntmax * mns,), dtype=rcc.dtype)
+    # ntype=1 (cos-cos / sin-cos)
+    xc[0 * mns : 1 * mns] = _flat(rcc)
+    xc[1 * mns : 2 * mns] = _flat(zsc)
+    xc[2 * mns : 3 * mns] = _flat(lsc)
+    if ntmax > 1:
+        off = 3 * mns
+        xc[off + 0 * mns : off + 1 * mns] = _flat(rss)
+        xc[off + 1 * mns : off + 2 * mns] = _flat(zcs)
+        xc[off + 2 * mns : off + 3 * mns] = _flat(lcs)
+    return xc
