@@ -388,6 +388,23 @@ def vmecplot2_surface_grid(
     return theta, zeta, np.asarray(R), np.asarray(Z)
 
 
+def vmecplot2_lcfs_3d_grid(
+    wout,
+    *,
+    s_index: int,
+    ntheta: int = 80,
+    nzeta: int | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Return (theta, phi, R, Z, |B|) grids matching vmecPlot2.py 3D defaults."""
+    if nzeta is None:
+        nzeta = int(150 * int(wout.nfp))
+    theta = np.linspace(0.0, 2.0 * np.pi, int(ntheta))
+    phi = np.linspace(0.0, 2.0 * np.pi, int(nzeta))
+    R, Z = surface_rz_from_wout_physical(wout, theta=theta, phi=phi, s_index=int(s_index), nyq=False)
+    B = bmag_from_wout_physical(wout, theta=theta, phi=phi, s_index=int(s_index))
+    return theta, phi, np.asarray(R), np.asarray(Z), np.asarray(B)
+
+
 def axis_rz_from_wout(wout, *, zeta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Axis curve from wout Fourier coefficients."""
     zeta = np.asarray(zeta)

@@ -52,7 +52,7 @@ references::
 ParaView export (VTK)
 ---------------------
 
-Export a surface B-field (including ``Bx``, ``By``, ``Bz``, and ``|B|``) and a
+Export a surface B-field (including ``Bx``, ``By``, ``Bz``, and ``Bmag``) and a
 field-line trace for ParaView (requires ``netCDF4``)::
 
   python examples/visualization/vtk_field_and_fieldlines.py examples/data/input.li383_low_res --hi-res --outdir vtk_out
