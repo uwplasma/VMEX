@@ -1731,14 +1731,26 @@ def main() -> None:
         rmnc_err = _rel_rms(np.asarray(run.state.Rcos), np.asarray(wout.rmnc))
         zmns_err = _rel_rms(np.asarray(run.state.Zsin), np.asarray(wout.zmns))
         fsq_ref = float(wout.fsqr + wout.fsqz + wout.fsql)
-        fsqr_new, fsqz_new, fsql_new = vj.residual_scalars_from_state(
-            state=run.state,
-            static=run.static,
-            indata=run.indata,
-            signgs=int(run.signgs),
-            use_vmec_synthesis=True,
-        )
-        fsq_new = float(fsqr_new + fsqz_new + fsql_new)
+        fsq_new = None
+        res = getattr(run, "result", None)
+        if res is not None:
+            fsqr_hist = getattr(res, "fsqr2_history", None)
+            fsqz_hist = getattr(res, "fsqz2_history", None)
+            fsql_hist = getattr(res, "fsql2_history", None)
+            if fsqr_hist is not None and fsqz_hist is not None and fsql_hist is not None:
+                try:
+                    fsq_new = float(np.asarray(fsqr_hist)[-1] + np.asarray(fsqz_hist)[-1] + np.asarray(fsql_hist)[-1])
+                except Exception:
+                    fsq_new = None
+        if fsq_new is None:
+            fsqr_new, fsqz_new, fsql_new = vj.residual_scalars_from_state(
+                state=run.state,
+                static=run.static,
+                indata=run.indata,
+                signgs=int(run.signgs),
+                use_vmec_synthesis=True,
+            )
+            fsq_new = float(fsqr_new + fsqz_new + fsql_new)
         print()
         print("End-state comparison vs VMEC2000 wout:")
         print(f"  fsq_total: vmec={fsq_ref:.3e}  jax={fsq_new:.3e}")
