@@ -29,6 +29,7 @@ For pure-performance runs (no VMEC2000 control logic), pass ``use_scan=True`` to
 and eliminates most Python control-flow + host/device syncs.
 Alternatively, use solver ``vmec2000_iter_fast`` (alias ``vmec2000_scan``), which
 enables scan mode automatically.
+You can also set ``VMEC_JAX_USE_SCAN=1`` to force scan mode for VMEC-style runs.
 
 Important:
 
