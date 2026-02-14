@@ -25,6 +25,7 @@ from jax import tree_util
 
 from ._compat import jnp, has_jax
 from .vmec_tomnsp import TomnspsRZL, VmecTrigTables
+from .vmec_parity import _mn_index_maps, _signed_to_mn_cos, _signed_to_mn_sin
 
 
 _WINT_CACHE: dict[tuple[int, int], jnp.ndarray] = {}
@@ -279,72 +280,11 @@ def vmec_rz_norm_from_state(
     that storage convention by masking out n<0 modes from vmec_jax's signed mode
     table.
     """
-    mpol = int(static.cfg.mpol)
-    ntor = int(static.cfg.ntor)
-    nrange = ntor + 1
-    ncoeff = int(jnp.asarray(state.Rcos).shape[1])
+    mpol, _ntor, idx_pos, idx_neg = _mn_index_maps(static.modes)
+    nrange = int(idx_pos.shape[1]) if mpol > 0 else 0
 
-    m = jnp.asarray(static.modes.m)
-    n = jnp.asarray(static.modes.n)
-    idx_pos = -jnp.ones((mpol, nrange), dtype=jnp.int32)
-    idx_neg = -jnp.ones((mpol, nrange), dtype=jnp.int32)
-    for k in range(ncoeff):
-        m_k = int(m[k])
-        n_k = int(n[k])
-        if n_k >= 0:
-            idx_pos = idx_pos.at[m_k, n_k].set(k)
-        else:
-            idx_neg = idx_neg.at[m_k, -n_k].set(k)
-
-    def _signed_cos_to_mn(a):
-        a = jnp.asarray(a)
-        rcc = jnp.zeros((a.shape[0], mpol, nrange), dtype=a.dtype)
-        rss = jnp.zeros_like(rcc)
-        for m_i in range(mpol):
-            for n_i in range(nrange):
-                kp = int(idx_pos[m_i, n_i])
-                if kp < 0:
-                    continue
-                pos = a[:, kp]
-                kn = int(idx_neg[m_i, n_i])
-                if kn >= 0:
-                    neg = a[:, kn]
-                else:
-                    neg = jnp.zeros_like(pos)
-                rcc = rcc.at[:, m_i, n_i].set(pos + neg)
-                rss_val = pos - neg
-                if n_i == 0 or m_i == 0:
-                    rss_val = jnp.zeros_like(pos)
-                rss = rss.at[:, m_i, n_i].set(rss_val)
-        return rcc, rss
-
-    def _signed_sin_to_mn(a):
-        a = jnp.asarray(a)
-        sc = jnp.zeros((a.shape[0], mpol, nrange), dtype=a.dtype)
-        cs = jnp.zeros_like(sc)
-        for m_i in range(mpol):
-            for n_i in range(nrange):
-                kp = int(idx_pos[m_i, n_i])
-                if kp < 0:
-                    continue
-                pos = a[:, kp]
-                kn = int(idx_neg[m_i, n_i])
-                if kn >= 0:
-                    neg = a[:, kn]
-                else:
-                    neg = jnp.zeros_like(pos)
-                sc_val = pos + neg
-                cs_val = neg - pos
-                if n_i == 0:
-                    cs_val = jnp.zeros_like(pos)
-                elif m_i == 0:
-                    sc_val = jnp.zeros_like(pos)
-                sc = sc.at[:, m_i, n_i].set(sc_val)
-                cs = cs.at[:, m_i, n_i].set(cs_val)
-        return sc, cs
-
-    rcc, rss = _signed_cos_to_mn(state.Rcos)
-    zsc, zcs = _signed_sin_to_mn(state.Zsin)
+    rcc, rss = _signed_to_mn_cos(state.Rcos, idx_pos, idx_neg)
+    zsc, zcs = _signed_to_mn_sin(state.Zsin, idx_pos, idx_neg)
 
     if bool(getattr(static.cfg, "lthreed", True)) and bool(getattr(static.cfg, "lconm1", True)) and mpol > 1:
         rss_m1 = rss[:, 1, :]
@@ -397,8 +337,8 @@ def vmec_rz_norm_from_state(
         rz_norm = rz_norm + jnp.sum(rss[sl] * rss[sl]) + jnp.sum(zcs[sl] * zcs[sl])
 
     if bool(getattr(static.cfg, "lasym", False)):
-        rsc, rcs = _signed_sin_to_mn(state.Rsin)
-        zcc, zss = _signed_cos_to_mn(state.Zcos)
+        rsc, rcs = _signed_to_mn_sin(state.Rsin, idx_pos, idx_neg)
+        zcc, zss = _signed_to_mn_cos(state.Zcos, idx_pos, idx_neg)
         if bool(apply_scalxc):
             if s is None:
                 s = jnp.asarray(static.s)
@@ -427,72 +367,11 @@ def vmec_rz_decompose_signed(
 
     This mirrors the mapping used inside `vmec_rz_norm_from_state`.
     """
-    mpol = int(static.cfg.mpol)
-    ntor = int(static.cfg.ntor)
-    nrange = ntor + 1
-    ncoeff = int(jnp.asarray(state.Rcos).shape[1])
+    mpol, _ntor, idx_pos, idx_neg = _mn_index_maps(static.modes)
+    nrange = int(idx_pos.shape[1]) if mpol > 0 else 0
 
-    m = jnp.asarray(static.modes.m)
-    n = jnp.asarray(static.modes.n)
-    idx_pos = -jnp.ones((mpol, nrange), dtype=jnp.int32)
-    idx_neg = -jnp.ones((mpol, nrange), dtype=jnp.int32)
-    for k in range(ncoeff):
-        m_k = int(m[k])
-        n_k = int(n[k])
-        if n_k >= 0:
-            idx_pos = idx_pos.at[m_k, n_k].set(k)
-        else:
-            idx_neg = idx_neg.at[m_k, -n_k].set(k)
-
-    def _signed_cos_to_mn(a):
-        a = jnp.asarray(a)
-        rcc = jnp.zeros((a.shape[0], mpol, nrange), dtype=a.dtype)
-        rss = jnp.zeros_like(rcc)
-        for m_i in range(mpol):
-            for n_i in range(nrange):
-                kp = int(idx_pos[m_i, n_i])
-                if kp < 0:
-                    continue
-                pos = a[:, kp]
-                kn = int(idx_neg[m_i, n_i])
-                if kn >= 0:
-                    neg = a[:, kn]
-                else:
-                    neg = jnp.zeros_like(pos)
-                rcc = rcc.at[:, m_i, n_i].set(pos + neg)
-                rss_val = pos - neg
-                if n_i == 0 or m_i == 0:
-                    rss_val = jnp.zeros_like(pos)
-                rss = rss.at[:, m_i, n_i].set(rss_val)
-        return rcc, rss
-
-    def _signed_sin_to_mn(a):
-        a = jnp.asarray(a)
-        sc = jnp.zeros((a.shape[0], mpol, nrange), dtype=a.dtype)
-        cs = jnp.zeros_like(sc)
-        for m_i in range(mpol):
-            for n_i in range(nrange):
-                kp = int(idx_pos[m_i, n_i])
-                if kp < 0:
-                    continue
-                pos = a[:, kp]
-                kn = int(idx_neg[m_i, n_i])
-                if kn >= 0:
-                    neg = a[:, kn]
-                else:
-                    neg = jnp.zeros_like(pos)
-                sc_val = pos + neg
-                cs_val = neg - pos
-                if n_i == 0:
-                    cs_val = jnp.zeros_like(pos)
-                elif m_i == 0:
-                    sc_val = jnp.zeros_like(pos)
-                sc = sc.at[:, m_i, n_i].set(sc_val)
-                cs = cs.at[:, m_i, n_i].set(cs_val)
-        return sc, cs
-
-    rcc, rss = _signed_cos_to_mn(state.Rcos)
-    zsc, zcs = _signed_sin_to_mn(state.Zsin)
+    rcc, rss = _signed_to_mn_cos(state.Rcos, idx_pos, idx_neg)
+    zsc, zcs = _signed_to_mn_sin(state.Zsin, idx_pos, idx_neg)
 
     if bool(getattr(static.cfg, "lthreed", True)) and bool(getattr(static.cfg, "lconm1", True)) and mpol > 1:
         rss_m1 = rss[:, 1, :]
