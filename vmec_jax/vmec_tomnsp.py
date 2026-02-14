@@ -489,26 +489,41 @@ def tomnsps_rzl(
     arcon = jnp.stack([arcon_even, arcon_odd], axis=0)
     azcon = jnp.stack([azcon_even, azcon_odd], axis=0)
 
-    def _theta_einsum(arr, mat):
-        return jnp.einsum("psik,im->psmk", arr, mat)
+    def _theta_einsum_stack(arr, mat):
+        return jnp.einsum("apsik,im->apsmk", arr, mat)
+
+    stack_cosmui = jnp.stack([armn, crmn, azmn, czmn, arcon, azcon, clmn], axis=0)
+    stack_sinmumi = jnp.stack([brmn, bzmn, blmn], axis=0)
+
+    cosmui_out = _theta_einsum_stack(stack_cosmui, cosmui)
+    sinmui_out = _theta_einsum_stack(stack_cosmui, sinmui)
+    sinmumi_out = _theta_einsum_stack(stack_sinmumi, sinmumi)
+    cosmumi_out = _theta_einsum_stack(stack_sinmumi, cosmumi)
+
+    armn_cos, crmn_cos, azmn_cos, czmn_cos, arcon_cos, azcon_cos, clmn_cos = cosmui_out
+    armn_sin, crmn_sin, azmn_sin, czmn_sin, arcon_sin, azcon_sin, clmn_sin = sinmui_out
+    brmn_sin, bzmn_sin, blmn_sin = sinmumi_out
+    brmn_cos, bzmn_cos, blmn_cos = cosmumi_out
+
+    xmpq1 = xmpq1[None, ...]
 
     # R:
-    w1 = _theta_einsum(armn, cosmui) + _theta_einsum(brmn, sinmumi) + xmpq1 * _theta_einsum(arcon, cosmui)
-    w2 = -_theta_einsum(crmn, cosmui)
-    w3 = _theta_einsum(armn, sinmui) + _theta_einsum(brmn, cosmumi) + xmpq1 * _theta_einsum(arcon, sinmui)
-    w4 = -_theta_einsum(crmn, sinmui)
+    w1 = armn_cos + brmn_sin + xmpq1 * arcon_cos
+    w2 = -crmn_cos
+    w3 = armn_sin + brmn_cos + xmpq1 * arcon_sin
+    w4 = -crmn_sin
 
     # Z:
-    w7 = _theta_einsum(azmn, sinmui) + _theta_einsum(bzmn, cosmumi) + xmpq1 * _theta_einsum(azcon, sinmui)
-    w8 = -_theta_einsum(czmn, sinmui)
-    w5 = _theta_einsum(azmn, cosmui) + _theta_einsum(bzmn, sinmumi) + xmpq1 * _theta_einsum(azcon, cosmui)
-    w6 = -_theta_einsum(czmn, cosmui)
+    w7 = azmn_sin + bzmn_cos + xmpq1 * azcon_sin
+    w8 = -czmn_sin
+    w5 = azmn_cos + bzmn_sin + xmpq1 * azcon_cos
+    w6 = -czmn_cos
 
     # Lambda:
-    w11 = _theta_einsum(blmn, cosmumi)
-    w12 = -_theta_einsum(clmn, sinmui)
-    w9 = _theta_einsum(blmn, sinmumi)
-    w10 = -_theta_einsum(clmn, cosmui)
+    w11 = blmn_cos
+    w12 = -clmn_sin
+    w9 = blmn_sin
+    w10 = -clmn_cos
 
     w1_e, w1_o = w1[0], w1[1]
     w2_e, w2_o = w2[0], w2[1]
@@ -714,12 +729,27 @@ def tomnspa_rzl(
     arcon = jnp.stack([arcon_even, arcon_odd], axis=0)
     azcon = jnp.stack([azcon_even, azcon_odd], axis=0)
 
-    def _theta_einsum(arr, mat):
-        return jnp.einsum("psik,im->psmk", arr, mat)
+    def _theta_einsum_stack(arr, mat):
+        return jnp.einsum("apsik,im->apsmk", arr, mat)
 
-    w3 = _theta_einsum(armn, sinmui) + _theta_einsum(brmn, cosmumi) + xmpq1 * _theta_einsum(arcon, sinmui)
-    w5 = _theta_einsum(azmn, cosmui) + _theta_einsum(bzmn, sinmumi) + xmpq1 * _theta_einsum(azcon, cosmui)
-    w9 = _theta_einsum(blmn, sinmumi)
+    stack_cosmui = jnp.stack([armn, crmn, azmn, czmn, arcon, azcon, clmn], axis=0)
+    stack_sinmumi = jnp.stack([brmn, bzmn, blmn], axis=0)
+
+    cosmui_out = _theta_einsum_stack(stack_cosmui, cosmui)
+    sinmui_out = _theta_einsum_stack(stack_cosmui, sinmui)
+    sinmumi_out = _theta_einsum_stack(stack_sinmumi, sinmumi)
+    cosmumi_out = _theta_einsum_stack(stack_sinmumi, cosmumi)
+
+    armn_cos, crmn_cos, azmn_cos, czmn_cos, arcon_cos, azcon_cos, clmn_cos = cosmui_out
+    armn_sin, crmn_sin, azmn_sin, czmn_sin, arcon_sin, azcon_sin, clmn_sin = sinmui_out
+    brmn_sin, bzmn_sin, blmn_sin = sinmumi_out
+    brmn_cos, bzmn_cos, blmn_cos = cosmumi_out
+
+    xmpq1 = xmpq1[None, ...]
+
+    w3 = armn_sin + brmn_cos + xmpq1 * arcon_sin
+    w5 = azmn_cos + bzmn_sin + xmpq1 * azcon_cos
+    w9 = blmn_sin
 
     # 3D-only:
     #   work1(1/2): frcs (sinnv/cosnvn)
@@ -728,15 +758,15 @@ def tomnspa_rzl(
     #   work1(7/8): fzss (sinnv/cosnvn)
     #   work1(10): flcc sinnvn
     #   work1(11/12): flss (sinnv/cosnvn)
-    w1 = _theta_einsum(armn, cosmui) + _theta_einsum(brmn, sinmumi) + xmpq1 * _theta_einsum(arcon, cosmui)
-    w2 = -_theta_einsum(crmn, cosmui)
-    w4 = -_theta_einsum(crmn, sinmui)
-    w6 = -_theta_einsum(czmn, cosmui)
-    w7 = _theta_einsum(azmn, sinmui) + _theta_einsum(bzmn, cosmumi) + xmpq1 * _theta_einsum(azcon, sinmui)
-    w8 = -_theta_einsum(czmn, sinmui)
-    w10 = -_theta_einsum(clmn, cosmui)
-    w11 = _theta_einsum(blmn, cosmumi)
-    w12 = -_theta_einsum(clmn, sinmui)
+    w1 = armn_cos + brmn_sin + xmpq1 * arcon_cos
+    w2 = -crmn_cos
+    w4 = -crmn_sin
+    w6 = -czmn_cos
+    w7 = azmn_sin + bzmn_cos + xmpq1 * azcon_sin
+    w8 = -czmn_sin
+    w10 = -clmn_cos
+    w11 = blmn_cos
+    w12 = -clmn_sin
 
     w1_e, w1_o = w1[0], w1[1]
     w2_e, w2_o = w2[0], w2[1]
