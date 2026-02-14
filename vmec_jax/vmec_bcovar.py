@@ -31,9 +31,8 @@ from .field import TWOPI
 from .field import lamscale_from_phips
 from .field import chips_from_wout_chipf
 from .vmec_jacobian import VmecHalfMeshJacobian, jacobian_half_mesh_from_parity
-from .fourier import build_helical_basis, eval_fourier, eval_fourier_dtheta, eval_fourier_dzeta_phys
+from .fourier import eval_fourier, eval_fourier_dtheta, eval_fourier_dzeta_phys
 from .grids import AngleGrid
-from .modes import ModeTable
 from .vmec_parity import (
     ParityRZL,
     internal_odd_from_physical_vmec_jlam,
@@ -43,6 +42,7 @@ from .vmec_parity import (
 )
 from .vmec_realspace import vmec_realspace_synthesis, vmec_realspace_synthesis_dtheta, vmec_realspace_synthesis_dzeta_phys
 from .vmec_tomnsp import VmecTrigTables, vmec_trig_tables
+from .nyquist import nyquist_basis_from_wout
 
 
 @tree_util.register_pytree_node_class
@@ -717,7 +717,6 @@ def vmec_bcovar_half_mesh_from_wout(
     basis_nyq = None
     if bool(use_wout_bsup):
         # Replace with wout-stored Nyquist bsup (reference parity path).
-        modes_nyq = ModeTable(m=wout.xm_nyq, n=(wout.xn_nyq // wout.nfp))
         # Nyquist `wout` field coefficients (`bsup*`, `bsub*`, `bm*`) follow the
         # output transform conventions from `wrout` and are most consistent with
         # direct Fourier evaluation on the active angular grid.
@@ -725,7 +724,7 @@ def vmec_bcovar_half_mesh_from_wout(
         # Using VMEC synthesis tables for these reference fields introduces a
         # small but systematic mismatch in the parity path for nfp>1 cases.
         grid = AngleGrid(theta=static.grid.theta, zeta=static.grid.zeta, nfp=wout.nfp)
-        basis_nyq = build_helical_basis(modes_nyq, grid)
+        basis_nyq = nyquist_basis_from_wout(wout=wout, grid=grid)
         bsupu = jnp.asarray(eval_fourier(wout.bsupumnc, wout.bsupumns, basis_nyq))
         bsupv = jnp.asarray(eval_fourier(wout.bsupvmnc, wout.bsupvmns, basis_nyq))
 
@@ -754,18 +753,16 @@ def vmec_bcovar_half_mesh_from_wout(
     lu0_force = (lamscale * jnp.asarray(parity.Lt_even)) + phip_internal[:, None, None]
 
     if bool(use_wout_bsub_for_lambda):
-        modes_nyq = ModeTable(m=wout.xm_nyq, n=(wout.xn_nyq // wout.nfp))
         grid = AngleGrid(theta=static.grid.theta, zeta=static.grid.zeta, nfp=wout.nfp)
-        basis_nyq = build_helical_basis(modes_nyq, grid)
+        basis_nyq = nyquist_basis_from_wout(wout=wout, grid=grid)
         bsubu_lambda = jnp.asarray(eval_fourier(wout.bsubumnc, wout.bsubumns, basis_nyq))
         bsubv_lambda = jnp.asarray(eval_fourier(wout.bsubvmnc, wout.bsubvmns, basis_nyq))
 
     b2 = bsupu * bsubu + bsupv * bsubv
     if bool(use_wout_bmag_for_bsq):
         if basis_nyq is None:
-            modes_nyq = ModeTable(m=wout.xm_nyq, n=(wout.xn_nyq // wout.nfp))
             grid = AngleGrid(theta=static.grid.theta, zeta=static.grid.zeta, nfp=wout.nfp)
-            basis_nyq = build_helical_basis(modes_nyq, grid)
+            basis_nyq = nyquist_basis_from_wout(wout=wout, grid=grid)
         bmag_ref = jnp.asarray(eval_fourier(wout.bmnc, wout.bmns, basis_nyq))
         b2 = bmag_ref * bmag_ref
     pres_h = jnp.asarray(wout.pres if pres is None else pres)[:, None, None]
