@@ -22,12 +22,13 @@ from typing import Any
 
 import numpy as np
 
+from jax import tree_util
+
 from ._compat import jnp
 from .fourier import project_to_modes
-from .fourier import build_helical_basis, eval_fourier, eval_fourier_dtheta, eval_fourier_dzeta_phys
+from .fourier import eval_fourier, eval_fourier_dtheta, eval_fourier_dzeta_phys
 from .field import lamscale_from_phips
 from .grids import AngleGrid
-from .modes import ModeTable
 from .vmec_bcovar import vmec_bcovar_half_mesh_from_wout
 from .vmec_constraints import (
     alias_gcon,
@@ -38,7 +39,13 @@ from .vmec_constraints import (
     tcon_from_tcon0_heuristic,
 )
 from .vmec_tomnsp import TomnspsRZL, VmecTrigTables, tomnsps_rzl, tomnspa_rzl, vmec_angle_grid, vmec_trig_tables
-from .vmec_parity import internal_odd_from_physical_vmec_m1, split_rzl_even_odd_m
+from .nyquist import nyquist_basis_from_wout
+from .vmec_parity import (
+    internal_odd_from_physical_vmec_jlam,
+    internal_odd_from_physical_vmec_m1,
+    split_rzl_even_odd_m,
+    vmec_m1_internal_to_physical_signed,
+)
 from .vmec_realspace import (
     vmec_realspace_synthesis,
     vmec_realspace_synthesis_dtheta,
@@ -46,6 +53,7 @@ from .vmec_realspace import (
 )
 
 
+@tree_util.register_pytree_node_class
 @dataclass(frozen=True)
 class VmecRZForceKernels:
     """Force kernels on the full angular grid, split by m-parity."""
@@ -91,6 +99,42 @@ class VmecRZForceKernels:
 
     # Optional diagnostic (set by constraint pipeline).
     tcon: Any | None = None  # (ns,)
+
+    def tree_flatten(self):
+        children = (
+            self.armn_e,
+            self.armn_o,
+            self.brmn_e,
+            self.brmn_o,
+            self.crmn_e,
+            self.crmn_o,
+            self.azmn_e,
+            self.azmn_o,
+            self.bzmn_e,
+            self.bzmn_o,
+            self.czmn_e,
+            self.czmn_o,
+            self.bc,
+            self.arcon_e,
+            self.arcon_o,
+            self.azcon_e,
+            self.azcon_o,
+            self.gcon,
+            self.pr1_even,
+            self.pr1_odd,
+            self.pz1_even,
+            self.pz1_odd,
+            self.pru_even,
+            self.pru_odd,
+            self.pzu_even,
+            self.pzu_odd,
+            self.tcon,
+        )
+        return children, None
+
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children)
 
 
 @dataclass(frozen=True)
@@ -234,13 +278,43 @@ def _constraint_kernels_from_state(
     mask_m1 = jnp.asarray(m_modes == 1, dtype=dtype)
     mask_odd_rest = jnp.asarray((m_modes % 2 == 1) & (m_modes != 1), dtype=dtype)
 
-    rcon_even = eval_fourier(state.Rcos * xmpq1 * mask_even, state.Rsin * xmpq1 * mask_even, static.basis)
-    zcon_even = eval_fourier(state.Zcos * xmpq1 * mask_even, state.Zsin * xmpq1 * mask_even, static.basis)
+    rcon_even = eval_fourier(
+        state.Rcos * xmpq1 * mask_even,
+        state.Rsin * xmpq1 * mask_even,
+        static.basis,
+        coeffs_internal=True,
+    )
+    zcon_even = eval_fourier(
+        state.Zcos * xmpq1 * mask_even,
+        state.Zsin * xmpq1 * mask_even,
+        static.basis,
+        coeffs_internal=True,
+    )
 
-    rcon_odd_m1 = eval_fourier(state.Rcos * xmpq1 * mask_m1, state.Rsin * xmpq1 * mask_m1, static.basis)
-    rcon_odd_rest = eval_fourier(state.Rcos * xmpq1 * mask_odd_rest, state.Rsin * xmpq1 * mask_odd_rest, static.basis)
-    zcon_odd_m1 = eval_fourier(state.Zcos * xmpq1 * mask_m1, state.Zsin * xmpq1 * mask_m1, static.basis)
-    zcon_odd_rest = eval_fourier(state.Zcos * xmpq1 * mask_odd_rest, state.Zsin * xmpq1 * mask_odd_rest, static.basis)
+    rcon_odd_m1 = eval_fourier(
+        state.Rcos * xmpq1 * mask_m1,
+        state.Rsin * xmpq1 * mask_m1,
+        static.basis,
+        coeffs_internal=True,
+    )
+    rcon_odd_rest = eval_fourier(
+        state.Rcos * xmpq1 * mask_odd_rest,
+        state.Rsin * xmpq1 * mask_odd_rest,
+        static.basis,
+        coeffs_internal=True,
+    )
+    zcon_odd_m1 = eval_fourier(
+        state.Zcos * xmpq1 * mask_m1,
+        state.Zsin * xmpq1 * mask_m1,
+        static.basis,
+        coeffs_internal=True,
+    )
+    zcon_odd_rest = eval_fourier(
+        state.Zcos * xmpq1 * mask_odd_rest,
+        state.Zsin * xmpq1 * mask_odd_rest,
+        static.basis,
+        coeffs_internal=True,
+    )
 
     rcon_odd_int = internal_odd_from_physical_vmec_m1(odd_m1_phys=rcon_odd_m1, odd_mge2_phys=rcon_odd_rest, s=s)
     zcon_odd_int = internal_odd_from_physical_vmec_m1(odd_m1_phys=zcon_odd_m1, odd_mge2_phys=zcon_odd_rest, s=s)
@@ -540,23 +614,26 @@ def vmec_forces_rz_from_wout(
         trig=trig,
     )
 
-    # VMEC `totzsps` converts the m=1 (rss,zcs) internal pair to physical
-    # coefficients prior to real-space synthesis when `lconm1` is enabled.
-    rsin_geom = jnp.asarray(state.Rsin)
-    zcos_geom = jnp.asarray(state.Zcos)
-    if bool(getattr(static.cfg, "lthreed", True)) and bool(getattr(static.cfg, "lconm1", True)) and int(getattr(static.cfg, "mpol", 0)) > 1:
-        m_modes_pair = np.asarray(static.modes.m, dtype=int)
-        mask_m1_pair = jnp.asarray(m_modes_pair == 1, dtype=rsin_geom.dtype)[None, :]
-        rss_old = rsin_geom
-        rsin_geom = jnp.where(mask_m1_pair != 0, rss_old + zcos_geom, rss_old)
-        zcos_geom = jnp.where(mask_m1_pair != 0, rss_old - zcos_geom, zcos_geom)
-    state_geom = SimpleNamespace(
+    # VMEC stores internal coefficients; undo the m=1 internal constraint for
+    # R/Z before real-space synthesis.
+    Rcos_int, Zsin_int, Rsin_int, Zcos_int = vmec_m1_internal_to_physical_signed(
         Rcos=state.Rcos,
-        Rsin=rsin_geom,
-        Zcos=zcos_geom,
         Zsin=state.Zsin,
-        Lcos=state.Lcos,
-        Lsin=state.Lsin,
+        Rsin=state.Rsin,
+        Zcos=state.Zcos,
+        modes=static.modes,
+        lthreed=bool(getattr(static.cfg, "lthreed", True)),
+        lasym=bool(getattr(static.cfg, "lasym", False)),
+        lconm1=bool(getattr(static.cfg, "lconm1", True)),
+    )
+
+    state_geom = SimpleNamespace(
+        Rcos=jnp.asarray(Rcos_int),
+        Rsin=jnp.asarray(Rsin_int),
+        Zcos=jnp.asarray(Zcos_int),
+        Zsin=jnp.asarray(Zsin_int),
+        Lcos=jnp.asarray(state.Lcos),
+        Lsin=jnp.asarray(state.Lsin),
     )
 
     # Real-space parity fields for R/Z and angular derivatives.
@@ -566,6 +643,7 @@ def vmec_forces_rz_from_wout(
     dtype = jnp.asarray(state.Rcos).dtype
     mask_m1 = jnp.asarray(m_modes == 1, dtype=dtype)
     mask_odd_rest = jnp.asarray((m_modes % 2 == 1) & (m_modes != 1), dtype=dtype)
+    mask_odd = jnp.asarray((m_modes % 2) == 1, dtype=dtype)
     mask_even = jnp.asarray((m_modes % 2) == 0, dtype=dtype)
 
     if use_vmec_synthesis:
@@ -588,6 +666,9 @@ def vmec_forces_rz_from_wout(
                 coeff_sin=coeff_sin * mask,
                 modes=static.modes,
                 trig=trig,
+                coeffs_internal=True,
+                apply_scalxc=True,
+                s=s,
             )
 
         def _eval_pair_dtheta(coeff_cos, coeff_sin, mask):
@@ -596,6 +677,9 @@ def vmec_forces_rz_from_wout(
                 coeff_sin=coeff_sin * mask,
                 modes=static.modes,
                 trig=trig,
+                coeffs_internal=True,
+                apply_scalxc=True,
+                s=s,
             )
 
         def _eval_pair_dzeta(coeff_cos, coeff_sin, mask):
@@ -604,12 +688,34 @@ def vmec_forces_rz_from_wout(
                 coeff_sin=coeff_sin * mask,
                 modes=static.modes,
                 trig=trig,
+                coeffs_internal=True,
+                apply_scalxc=True,
+                s=s,
             )
 
-        def _odd_internal_vmec(*, coeff_cos, coeff_sin, eval_fn):
+        def _odd_internal_vmec(*, coeff_cos, coeff_sin, eval_fn, odd_is_internal: bool):
             phys_m1 = eval_fn(coeff_cos, coeff_sin, mask_m1)
             phys_rest = eval_fn(coeff_cos, coeff_sin, mask_odd_rest)
+            if odd_is_internal:
+                out = phys_m1 + phys_rest
+                if out.shape[0] >= 2:
+                    out = out.at[0].set(phys_m1[1])
+                return out
             return internal_odd_from_physical_vmec_m1(
+                odd_m1_phys=phys_m1,
+                odd_mge2_phys=phys_rest,
+                s=s,
+            )
+
+        def _odd_internal_vmec_lambda(*, coeff_cos, coeff_sin, eval_fn, odd_is_internal: bool):
+            phys_m1 = eval_fn(coeff_cos, coeff_sin, mask_m1)
+            phys_rest = eval_fn(coeff_cos, coeff_sin, mask_odd_rest)
+            if odd_is_internal:
+                out = phys_m1 + phys_rest
+                if out.shape[0] >= 2:
+                    out = out.at[0].set(phys_m1[1])
+                return out
+            return internal_odd_from_physical_vmec_jlam(
                 odd_m1_phys=phys_m1,
                 odd_mge2_phys=phys_rest,
                 s=s,
@@ -622,31 +728,52 @@ def vmec_forces_rz_from_wout(
         prv_0 = _eval_pair_dzeta(state_geom.Rcos, state_geom.Rsin, mask_even)
         pzv_0 = _eval_pair_dzeta(state_geom.Zcos, state_geom.Zsin, mask_even)
 
-        pr1_1 = _odd_internal_vmec(coeff_cos=state_geom.Rcos, coeff_sin=state_geom.Rsin, eval_fn=_eval_pair)
-        pz1_1 = _odd_internal_vmec(coeff_cos=state_geom.Zcos, coeff_sin=state_geom.Zsin, eval_fn=_eval_pair)
-        pru_1 = _odd_internal_vmec(coeff_cos=state_geom.Rcos, coeff_sin=state_geom.Rsin, eval_fn=_eval_pair_dtheta)
-        pzu_1 = _odd_internal_vmec(coeff_cos=state_geom.Zcos, coeff_sin=state_geom.Zsin, eval_fn=_eval_pair_dtheta)
-        prv_1 = _odd_internal_vmec(coeff_cos=state_geom.Rcos, coeff_sin=state_geom.Rsin, eval_fn=_eval_pair_dzeta)
-        pzv_1 = _odd_internal_vmec(coeff_cos=state_geom.Zcos, coeff_sin=state_geom.Zsin, eval_fn=_eval_pair_dzeta)
+        odd_is_internal = True
+        pr1_1 = _odd_internal_vmec(coeff_cos=state_geom.Rcos, coeff_sin=state_geom.Rsin, eval_fn=_eval_pair, odd_is_internal=odd_is_internal)
+        pz1_1 = _odd_internal_vmec(coeff_cos=state_geom.Zcos, coeff_sin=state_geom.Zsin, eval_fn=_eval_pair, odd_is_internal=odd_is_internal)
+        pru_1 = _odd_internal_vmec(coeff_cos=state_geom.Rcos, coeff_sin=state_geom.Rsin, eval_fn=_eval_pair_dtheta, odd_is_internal=odd_is_internal)
+        pzu_1 = _odd_internal_vmec(coeff_cos=state_geom.Zcos, coeff_sin=state_geom.Zsin, eval_fn=_eval_pair_dtheta, odd_is_internal=odd_is_internal)
+        prv_1 = _odd_internal_vmec(coeff_cos=state_geom.Rcos, coeff_sin=state_geom.Rsin, eval_fn=_eval_pair_dzeta, odd_is_internal=odd_is_internal)
+        pzv_1 = _odd_internal_vmec(coeff_cos=state_geom.Zcos, coeff_sin=state_geom.Zsin, eval_fn=_eval_pair_dzeta, odd_is_internal=odd_is_internal)
 
-        Lu1 = _odd_internal_vmec(coeff_cos=state_geom.Lcos, coeff_sin=state_geom.Lsin, eval_fn=_eval_pair_dtheta)
-        Lv1 = _odd_internal_vmec(coeff_cos=state_geom.Lcos, coeff_sin=state_geom.Lsin, eval_fn=_eval_pair_dzeta)
+        Lu1 = _odd_internal_vmec_lambda(coeff_cos=state_geom.Lcos, coeff_sin=state_geom.Lsin, eval_fn=_eval_pair_dtheta, odd_is_internal=odd_is_internal)
+        Lv1 = _odd_internal_vmec_lambda(coeff_cos=state_geom.Lcos, coeff_sin=state_geom.Lsin, eval_fn=_eval_pair_dzeta, odd_is_internal=odd_is_internal)
     else:
         parity = split_rzl_even_odd_m(state, static.basis, static.modes.m)
 
-        def _odd_internal_vmec(*, coeff_cos, coeff_sin, eval_fn):
-            phys_m1 = eval_fn(coeff_cos * mask_m1, coeff_sin * mask_m1, static.basis)
-            phys_rest = eval_fn(coeff_cos * mask_odd_rest, coeff_sin * mask_odd_rest, static.basis)
+        def _odd_internal_vmec(*, coeff_cos, coeff_sin, eval_fn, odd_is_internal: bool):
+            phys_m1 = eval_fn(coeff_cos * mask_m1, coeff_sin * mask_m1, static.basis, coeffs_internal=True)
+            phys_rest = eval_fn(coeff_cos * mask_odd_rest, coeff_sin * mask_odd_rest, static.basis, coeffs_internal=True)
+            if odd_is_internal:
+                out = phys_m1 + phys_rest
+                if out.shape[0] >= 2:
+                    out = out.at[0].set(phys_m1[1])
+                return out
             return internal_odd_from_physical_vmec_m1(odd_m1_phys=phys_m1, odd_mge2_phys=phys_rest, s=s)
 
-        pr1_1 = _odd_internal_vmec(coeff_cos=state_geom.Rcos, coeff_sin=state_geom.Rsin, eval_fn=eval_fourier)
-        pz1_1 = _odd_internal_vmec(coeff_cos=state_geom.Zcos, coeff_sin=state_geom.Zsin, eval_fn=eval_fourier)
-        pru_1 = _odd_internal_vmec(coeff_cos=state_geom.Rcos, coeff_sin=state_geom.Rsin, eval_fn=eval_fourier_dtheta)
-        pzu_1 = _odd_internal_vmec(coeff_cos=state_geom.Zcos, coeff_sin=state_geom.Zsin, eval_fn=eval_fourier_dtheta)
-        prv_1 = _odd_internal_vmec(coeff_cos=state_geom.Rcos, coeff_sin=state_geom.Rsin, eval_fn=eval_fourier_dzeta_phys)
-        pzv_1 = _odd_internal_vmec(coeff_cos=state_geom.Zcos, coeff_sin=state_geom.Zsin, eval_fn=eval_fourier_dzeta_phys)
-        Lu1 = _odd_internal_vmec(coeff_cos=state_geom.Lcos, coeff_sin=state_geom.Lsin, eval_fn=eval_fourier_dtheta)
-        Lv1 = _odd_internal_vmec(coeff_cos=state_geom.Lcos, coeff_sin=state_geom.Lsin, eval_fn=eval_fourier_dzeta_phys)
+        def _odd_internal_vmec_lambda(*, coeff_cos, coeff_sin, eval_fn, odd_is_internal: bool):
+            phys_m1 = eval_fn(coeff_cos * mask_m1, coeff_sin * mask_m1, static.basis, coeffs_internal=True)
+            phys_rest = eval_fn(coeff_cos * mask_odd_rest, coeff_sin * mask_odd_rest, static.basis, coeffs_internal=True)
+            if odd_is_internal:
+                out = phys_m1 + phys_rest
+                if out.shape[0] >= 2:
+                    out = out.at[0].set(phys_m1[1])
+                return out
+            return internal_odd_from_physical_vmec_jlam(
+                odd_m1_phys=phys_m1,
+                odd_mge2_phys=phys_rest,
+                s=s,
+            )
+
+        odd_is_internal = False
+        pr1_1 = _odd_internal_vmec(coeff_cos=state_geom.Rcos, coeff_sin=state_geom.Rsin, eval_fn=eval_fourier, odd_is_internal=odd_is_internal)
+        pz1_1 = _odd_internal_vmec(coeff_cos=state_geom.Zcos, coeff_sin=state_geom.Zsin, eval_fn=eval_fourier, odd_is_internal=odd_is_internal)
+        pru_1 = _odd_internal_vmec(coeff_cos=state_geom.Rcos, coeff_sin=state_geom.Rsin, eval_fn=eval_fourier_dtheta, odd_is_internal=odd_is_internal)
+        pzu_1 = _odd_internal_vmec(coeff_cos=state_geom.Zcos, coeff_sin=state_geom.Zsin, eval_fn=eval_fourier_dtheta, odd_is_internal=odd_is_internal)
+        prv_1 = _odd_internal_vmec(coeff_cos=state_geom.Rcos, coeff_sin=state_geom.Rsin, eval_fn=eval_fourier_dzeta_phys, odd_is_internal=odd_is_internal)
+        pzv_1 = _odd_internal_vmec(coeff_cos=state_geom.Zcos, coeff_sin=state_geom.Zsin, eval_fn=eval_fourier_dzeta_phys, odd_is_internal=odd_is_internal)
+        Lu1 = _odd_internal_vmec_lambda(coeff_cos=state_geom.Lcos, coeff_sin=state_geom.Lsin, eval_fn=eval_fourier_dtheta, odd_is_internal=odd_is_internal)
+        Lv1 = _odd_internal_vmec_lambda(coeff_cos=state_geom.Lcos, coeff_sin=state_geom.Lsin, eval_fn=eval_fourier_dzeta_phys, odd_is_internal=odd_is_internal)
 
         pr1_0 = jnp.asarray(parity.R_even)
         pz1_0 = jnp.asarray(parity.Z_even)
@@ -859,12 +986,22 @@ def vmec_forces_rz_from_wout_reference_fields(
     dtype = jnp.asarray(state.Rcos).dtype
     mask_m1 = jnp.asarray(m_modes == 1, dtype=dtype)
     mask_odd_rest = jnp.asarray((m_modes % 2 == 1) & (m_modes != 1), dtype=dtype)
+    mask_odd = jnp.asarray((m_modes % 2) == 1, dtype=dtype)
     mask_even = jnp.asarray((m_modes % 2) == 0, dtype=dtype)
 
     def _odd_internal_vmec(*, coeff_cos, coeff_sin, eval_fn):
-        phys_m1 = eval_fn(coeff_cos * mask_m1, coeff_sin * mask_m1, static.basis)
-        phys_rest = eval_fn(coeff_cos * mask_odd_rest, coeff_sin * mask_odd_rest, static.basis)
+        phys_m1 = eval_fn(coeff_cos * mask_m1, coeff_sin * mask_m1, static.basis, coeffs_internal=True)
+        phys_rest = eval_fn(coeff_cos * mask_odd_rest, coeff_sin * mask_odd_rest, static.basis, coeffs_internal=True)
         return internal_odd_from_physical_vmec_m1(odd_m1_phys=phys_m1, odd_mge2_phys=phys_rest, s=s)
+
+    def _odd_internal_vmec_lambda(*, coeff_cos, coeff_sin, eval_fn):
+        phys_m1 = eval_fn(coeff_cos * mask_m1, coeff_sin * mask_m1, static.basis, coeffs_internal=True)
+        phys_rest = eval_fn(coeff_cos * mask_odd_rest, coeff_sin * mask_odd_rest, static.basis, coeffs_internal=True)
+        return internal_odd_from_physical_vmec_jlam(
+            odd_m1_phys=phys_m1,
+            odd_mge2_phys=phys_rest,
+            s=s,
+        )
 
     R1 = _odd_internal_vmec(coeff_cos=state.Rcos, coeff_sin=state.Rsin, eval_fn=eval_fourier)
     Z1 = _odd_internal_vmec(coeff_cos=state.Zcos, coeff_sin=state.Zsin, eval_fn=eval_fourier)
@@ -872,8 +1009,8 @@ def vmec_forces_rz_from_wout_reference_fields(
     Zu1 = _odd_internal_vmec(coeff_cos=state.Zcos, coeff_sin=state.Zsin, eval_fn=eval_fourier_dtheta)
     Rv1 = _odd_internal_vmec(coeff_cos=state.Rcos, coeff_sin=state.Rsin, eval_fn=eval_fourier_dzeta_phys)
     Zv1 = _odd_internal_vmec(coeff_cos=state.Zcos, coeff_sin=state.Zsin, eval_fn=eval_fourier_dzeta_phys)
-    Lu1 = _odd_internal_vmec(coeff_cos=state.Lcos, coeff_sin=state.Lsin, eval_fn=eval_fourier_dtheta)
-    Lv1 = _odd_internal_vmec(coeff_cos=state.Lcos, coeff_sin=state.Lsin, eval_fn=eval_fourier_dzeta_phys)
+    Lu1 = _odd_internal_vmec_lambda(coeff_cos=state.Lcos, coeff_sin=state.Lsin, eval_fn=eval_fourier_dtheta)
+    Lv1 = _odd_internal_vmec_lambda(coeff_cos=state.Lcos, coeff_sin=state.Lsin, eval_fn=eval_fourier_dzeta_phys)
 
     pr1_0, pr1_1 = jnp.asarray(parity.R_even), jnp.asarray(R1)
     pz1_0, pz1_1 = jnp.asarray(parity.Z_even), jnp.asarray(Z1)
@@ -899,8 +1036,7 @@ def vmec_forces_rz_from_wout_reference_fields(
 
     # Evaluate stored wout Nyquist fields on our angular grid.
     grid = AngleGrid(theta=np.asarray(static.grid.theta), zeta=np.asarray(static.grid.zeta), nfp=int(wout.nfp))
-    modes_nyq = ModeTable(m=wout.xm_nyq, n=(wout.xn_nyq // wout.nfp))
-    basis_nyq = build_helical_basis(modes_nyq, grid)
+    basis_nyq = nyquist_basis_from_wout(wout=wout, grid=grid)
 
     sqrtg = jnp.asarray(eval_fourier(wout.gmnc, wout.gmns, basis_nyq))
     bsupu = jnp.asarray(eval_fourier(wout.bsupumnc, wout.bsupumns, basis_nyq))
