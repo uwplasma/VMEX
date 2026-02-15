@@ -285,6 +285,46 @@ def _signed_to_mn_sin(coeffs, idx_pos, idx_neg):
     return sc, cs
 
 
+def _signed_to_mn_cos_cached(coeffs, *, maps: SignedModeMaps):
+    """Cached version of _signed_to_mn_cos using prebuilt masks."""
+    coeffs = jnp.asarray(coeffs)
+    if maps.mpol == 0 or maps.nrange == 0:
+        z = jnp.zeros((int(coeffs.shape[0]), maps.mpol, maps.nrange), dtype=coeffs.dtype)
+        return z, z
+    idx_pos_safe = jnp.asarray(maps.idx_pos_safe, dtype=jnp.int32)
+    idx_neg_safe = jnp.asarray(maps.idx_neg_safe, dtype=jnp.int32)
+    mask_pos = jnp.asarray(maps.mask_pos, dtype=coeffs.dtype)
+    mask_neg = jnp.asarray(maps.mask_neg, dtype=coeffs.dtype)
+    pos = coeffs[:, idx_pos_safe] * mask_pos
+    neg = coeffs[:, idx_neg_safe] * mask_neg
+    rcc = pos + neg
+    rss = pos - neg
+    zero_mask = jnp.asarray(maps.zero_mask)
+    rss = jnp.where(zero_mask[None, :, :], jnp.zeros_like(rss), rss)
+    return rcc, rss
+
+
+def _signed_to_mn_sin_cached(coeffs, *, maps: SignedModeMaps):
+    """Cached version of _signed_to_mn_sin using prebuilt masks."""
+    coeffs = jnp.asarray(coeffs)
+    if maps.mpol == 0 or maps.nrange == 0:
+        z = jnp.zeros((int(coeffs.shape[0]), maps.mpol, maps.nrange), dtype=coeffs.dtype)
+        return z, z
+    idx_pos_safe = jnp.asarray(maps.idx_pos_safe, dtype=jnp.int32)
+    idx_neg_safe = jnp.asarray(maps.idx_neg_safe, dtype=jnp.int32)
+    mask_pos = jnp.asarray(maps.mask_pos, dtype=coeffs.dtype)
+    mask_neg = jnp.asarray(maps.mask_neg, dtype=coeffs.dtype)
+    pos = coeffs[:, idx_pos_safe] * mask_pos
+    neg = coeffs[:, idx_neg_safe] * mask_neg
+    sc = pos + neg
+    cs = neg - pos
+    n0 = jnp.asarray(maps.n0_mask)
+    m0 = jnp.asarray(maps.m0_mask)
+    cs = jnp.where(n0[None, :, :], jnp.zeros_like(cs), cs)
+    sc = jnp.where(m0[None, :, :] & (~n0[None, :, :]), jnp.zeros_like(sc), sc)
+    return sc, cs
+
+
 def _mn_cos_to_signed(rcc, rss, idx_pos, idx_neg, ncoeff: int):
     rcc = jnp.asarray(rcc)
     rss = jnp.asarray(rss)
@@ -355,6 +395,67 @@ def _mn_sin_to_signed(sc, cs, idx_pos, idx_neg, ncoeff: int):
 
     pos_flat = pos.reshape(ns, -1) * mask_pos_flat.astype(sc.dtype)[None, :]
     neg_flat = neg.reshape(ns, -1) * mask_neg_flat.astype(sc.dtype)[None, :]
+
+    out = out.at[:, idx_pos_safe].add(pos_flat)
+    out = out.at[:, idx_neg_safe].add(neg_flat)
+    return out
+
+
+def _mn_cos_to_signed_cached(rcc, rss, *, maps: SignedModeMaps, ncoeff: int):
+    """Cached version of _mn_cos_to_signed using prebuilt masks."""
+    rcc = jnp.asarray(rcc)
+    rss = jnp.asarray(rss)
+    ns = int(rcc.shape[0])
+    out = jnp.zeros((ns, ncoeff), dtype=rcc.dtype)
+    if ncoeff == 0:
+        return out
+    m0 = jnp.asarray(maps.m0_mask)
+    n0 = jnp.asarray(maps.n0_mask)
+    pos = 0.5 * (rcc + rss)
+    pos = jnp.where((m0 | n0)[None, :, :], rcc, pos)
+    neg = 0.5 * (rcc - rss)
+
+    idx_pos_safe = jnp.asarray(maps.idx_pos_safe_flat, dtype=jnp.int32)
+    idx_neg_safe = jnp.asarray(maps.idx_neg_safe_flat, dtype=jnp.int32)
+    mask_pos = jnp.asarray(maps.mask_pos_flat, dtype=rcc.dtype)
+    mask_neg = jnp.asarray(maps.mask_neg_flat, dtype=rcc.dtype)
+
+    pos_flat = pos.reshape(ns, -1) * mask_pos[None, :]
+    neg_flat = neg.reshape(ns, -1) * mask_neg[None, :]
+
+    out = out.at[:, idx_pos_safe].add(pos_flat)
+    out = out.at[:, idx_neg_safe].add(neg_flat)
+    return out
+
+
+def _mn_sin_to_signed_cached(sc, cs, *, maps: SignedModeMaps, ncoeff: int):
+    """Cached version of _mn_sin_to_signed using prebuilt masks."""
+    sc = jnp.asarray(sc)
+    cs = jnp.asarray(cs)
+    ns = int(sc.shape[0])
+    out = jnp.zeros((ns, ncoeff), dtype=sc.dtype)
+    if ncoeff == 0:
+        return out
+    m0 = jnp.asarray(maps.m0_mask)
+    n0 = jnp.asarray(maps.n0_mask)
+
+    pos = 0.5 * (sc - cs)
+    pos = jnp.where(n0[None, :, :], sc, pos)
+
+    mask_neg = jnp.asarray(maps.mask_neg)
+    mask_no_neg = (~mask_neg) & (~n0)
+    pos = jnp.where(mask_no_neg[None, :, :] & m0[None, :, :], -cs, pos)
+    pos = jnp.where(mask_no_neg[None, :, :] & (~m0[None, :, :]), sc, pos)
+
+    neg = 0.5 * (sc + cs)
+
+    idx_pos_safe = jnp.asarray(maps.idx_pos_safe_flat, dtype=jnp.int32)
+    idx_neg_safe = jnp.asarray(maps.idx_neg_safe_flat, dtype=jnp.int32)
+    mask_pos = jnp.asarray(maps.mask_pos_flat, dtype=sc.dtype)
+    mask_neg_flat = jnp.asarray(maps.mask_neg_flat, dtype=sc.dtype)
+
+    pos_flat = pos.reshape(ns, -1) * mask_pos[None, :]
+    neg_flat = neg.reshape(ns, -1) * mask_neg_flat[None, :]
 
     out = out.at[:, idx_pos_safe].add(pos_flat)
     out = out.at[:, idx_neg_safe].add(neg_flat)
@@ -470,6 +571,87 @@ def vmec_m1_physical_to_internal_signed(
 
     return Rcos_out, Zsin_out, Rsin_out, Zcos_out
 _MN_INDEX_CACHE: dict[tuple, tuple[int, int, np.ndarray, np.ndarray]] = {}
+_MN_SIGNED_MAP_CACHE: dict[tuple, "SignedModeMaps"] = {}
+
+
+@dataclass(frozen=True)
+class SignedModeMaps:
+    """Precomputed index/mask maps for signed <-> (m,n>=0) conversions."""
+
+    mpol: int
+    nrange: int
+    idx_pos: np.ndarray
+    idx_neg: np.ndarray
+    idx_pos_safe: np.ndarray
+    idx_neg_safe: np.ndarray
+    mask_pos: np.ndarray
+    mask_neg: np.ndarray
+    idx_pos_flat: np.ndarray
+    idx_neg_flat: np.ndarray
+    idx_pos_safe_flat: np.ndarray
+    idx_neg_safe_flat: np.ndarray
+    mask_pos_flat: np.ndarray
+    mask_neg_flat: np.ndarray
+    zero_mask: np.ndarray
+    m0_mask: np.ndarray
+    n0_mask: np.ndarray
+
+
+def _build_signed_maps(idx_pos: np.ndarray, idx_neg: np.ndarray) -> SignedModeMaps:
+    """Build cached masks/safe indices for signed<->(m,n>=0) maps."""
+    idx_pos = np.asarray(idx_pos, dtype=np.int32)
+    idx_neg = np.asarray(idx_neg, dtype=np.int32)
+    mpol, nrange = idx_pos.shape
+
+    mask_pos = idx_pos >= 0
+    mask_neg = idx_neg >= 0
+    idx_pos_safe = np.where(mask_pos, idx_pos, 0).astype(np.int32)
+    idx_neg_safe = np.where(mask_neg, idx_neg, 0).astype(np.int32)
+
+    idx_pos_flat = idx_pos.reshape(-1)
+    idx_neg_flat = idx_neg.reshape(-1)
+    mask_pos_flat = idx_pos_flat >= 0
+    mask_neg_flat = idx_neg_flat >= 0
+    idx_pos_safe_flat = np.where(mask_pos_flat, idx_pos_flat, 0).astype(np.int32)
+    idx_neg_safe_flat = np.where(mask_neg_flat, idx_neg_flat, 0).astype(np.int32)
+
+    m = np.arange(mpol, dtype=np.int32)[:, None]
+    n = np.arange(nrange, dtype=np.int32)[None, :]
+    zero_mask = (m == 0) | (n == 0)
+    m0_mask = m == 0
+    n0_mask = n == 0
+
+    return SignedModeMaps(
+        mpol=mpol,
+        nrange=nrange,
+        idx_pos=idx_pos,
+        idx_neg=idx_neg,
+        idx_pos_safe=idx_pos_safe,
+        idx_neg_safe=idx_neg_safe,
+        mask_pos=mask_pos,
+        mask_neg=mask_neg,
+        idx_pos_flat=idx_pos_flat,
+        idx_neg_flat=idx_neg_flat,
+        idx_pos_safe_flat=idx_pos_safe_flat,
+        idx_neg_safe_flat=idx_neg_safe_flat,
+        mask_pos_flat=mask_pos_flat,
+        mask_neg_flat=mask_neg_flat,
+        zero_mask=zero_mask,
+        m0_mask=m0_mask,
+        n0_mask=n0_mask,
+    )
+
+
+def signed_maps_from_modes(modes) -> SignedModeMaps:
+    """Cached SignedModeMaps keyed by ModeTable."""
+    key = _mn_index_cache_key(modes)
+    cached = _MN_SIGNED_MAP_CACHE.get(key)
+    if cached is not None:
+        return cached
+    _mpol, _ntor, idx_pos, idx_neg = _mn_index_maps(modes)
+    maps = _build_signed_maps(idx_pos, idx_neg)
+    _MN_SIGNED_MAP_CACHE[key] = maps
+    return maps
 
 
 def _mn_index_cache_key(modes) -> tuple:

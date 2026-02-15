@@ -3564,32 +3564,35 @@ def solve_fixed_boundary_residual_iter(
     m0_mask = np.asarray(getattr(static, "m_is_m0", None) if getattr(static, "m_is_m0", None) is not None else (np.asarray(static.modes.m) == 0))
     m0 = jnp.asarray((np.arange(mpol)[:, None] == 0))
     n0 = jnp.asarray((np.arange(nrange)[None, :] == 0))
-    from .vmec_parity import _mn_cos_to_signed as _mn_cos_to_signed_block
-    from .vmec_parity import _mn_sin_to_signed as _mn_sin_to_signed_block
+    from .vmec_parity import _build_signed_maps
+    from .vmec_parity import _mn_cos_to_signed_cached as _mn_cos_to_signed_block
+    from .vmec_parity import _mn_sin_to_signed_cached as _mn_sin_to_signed_block
+
+    signed_maps = _build_signed_maps(idx_pos, idx_neg)
 
     def _mn_cos_to_signed(cc, ss):
         cc = jnp.asarray(cc)
         ss = jnp.asarray(ss) if ss is not None else jnp.zeros_like(cc)
-        return _mn_cos_to_signed_block(cc, ss, idx_pos, idx_neg, ncoeff=ncoeff)
+        return _mn_cos_to_signed_block(cc, ss, maps=signed_maps, ncoeff=ncoeff)
 
     def _mn_sin_to_signed(sc, cs):
         sc = jnp.asarray(sc)
         cs = jnp.asarray(cs) if cs is not None else jnp.zeros_like(sc)
-        return _mn_sin_to_signed_block(sc, cs, idx_pos, idx_neg, ncoeff=ncoeff)
+        return _mn_sin_to_signed_block(sc, cs, maps=signed_maps, ncoeff=ncoeff)
 
     if has_jax():
         def _mn_sin_to_signed_batch(sc, cs):
             sc = jnp.asarray(sc)
             cs = jnp.asarray(cs) if cs is not None else jnp.zeros_like(sc)
             return jax.vmap(
-                lambda sc_i, cs_i: _mn_sin_to_signed_block(sc_i, cs_i, idx_pos, idx_neg, ncoeff=ncoeff)
+                lambda sc_i, cs_i: _mn_sin_to_signed_block(sc_i, cs_i, maps=signed_maps, ncoeff=ncoeff)
             )(sc, cs)
     else:
         def _mn_sin_to_signed_batch(sc, cs):
             sc = jnp.asarray(sc)
             cs = jnp.asarray(cs) if cs is not None else jnp.zeros_like(sc)
             out = [
-                _mn_sin_to_signed_block(sc[i], cs[i], idx_pos, idx_neg, ncoeff=ncoeff)
+                _mn_sin_to_signed_block(sc[i], cs[i], maps=signed_maps, ncoeff=ncoeff)
                 for i in range(int(sc.shape[0]))
             ]
             return jnp.stack(out, axis=0)
