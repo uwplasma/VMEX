@@ -97,6 +97,13 @@ Multigrid staging now uses the vectorized signed↔(m,n) conversion helpers from
 ``vmec_parity`` instead of Python loops. This trims host-side overhead during
 grid transitions, which shows up prominently in short profiling traces.
 
+Multigrid interpolation caches
+------------------------------
+
+Radial interpolation now caches the ``(j1,j2,xint)`` weights and ``scalxc``
+profiles for reuse across multigrid stages. This reduces host-side setup costs
+when multiple grids are visited in a single solve.
+
 Precomputed (m,n)→signed maps
 -----------------------------
 
