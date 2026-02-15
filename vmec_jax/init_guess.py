@@ -782,15 +782,29 @@ def initial_guess_from_boundary(
 
 
     # VMEC internal scaling: divide coefficients by mscale*nscale.
-    trig = vmec_trig_tables(
-        ntheta=cfg.ntheta,
-        nzeta=cfg.nzeta,
-        nfp=cfg.nfp,
-        mmax=cfg.mpol - 1,
-        nmax=cfg.ntor,
-        lasym=cfg.lasym,
-        dtype=dtype,
-    )
+    trig = getattr(static, "trig_vmec", None)
+    if trig is None:
+        trig = vmec_trig_tables(
+            ntheta=cfg.ntheta,
+            nzeta=cfg.nzeta,
+            nfp=cfg.nfp,
+            mmax=cfg.mpol - 1,
+            nmax=cfg.ntor,
+            lasym=cfg.lasym,
+            dtype=dtype,
+        )
+    else:
+        # Ensure cached trig tables match the requested resolution.
+        if (int(trig.ntheta1) != int(cfg.ntheta)) or (int(trig.cosnv.shape[0]) != int(cfg.nzeta)):
+            trig = vmec_trig_tables(
+                ntheta=cfg.ntheta,
+                nzeta=cfg.nzeta,
+                nfp=cfg.nfp,
+                mmax=cfg.mpol - 1,
+                nmax=cfg.ntor,
+                lasym=cfg.lasym,
+                dtype=dtype,
+            )
     m_idx = jnp.asarray(static.modes.m, dtype=jnp.int32)
     n_idx = jnp.asarray(static.modes.n, dtype=jnp.int32)
     n1 = jnp.abs(n_idx)

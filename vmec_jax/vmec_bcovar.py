@@ -174,10 +174,8 @@ def _half_mesh_from_even_odd(even, odd_int, *, s):
         return even
 
     pshalf = _pshalf_from_s(s)[:, None, None]
-    out = jnp.zeros_like(even)
-    out = out.at[1:].set(0.5 * (even[1:] + even[:-1] + pshalf[1:] * (odd_int[1:] + odd_int[:-1])))
-    out = out.at[0].set(out[1])
-    return out
+    inner = 0.5 * (even[1:] + even[:-1] + pshalf[1:] * (odd_int[1:] + odd_int[:-1]))
+    return jnp.concatenate([inner[:1], inner], axis=0)
 
 
 def _metric_even_odd(*, a0, a1, b0, b1, s):

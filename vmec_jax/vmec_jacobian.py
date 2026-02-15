@@ -128,92 +128,56 @@ def jacobian_half_mesh_from_parity(
     psqrts = jnp.sqrt(jnp.maximum(s, 0.0))[:, None, None]
     pshalf = _pshalf_from_s(s)[:, None, None]
 
-    # Allocate outputs on the half-mesh indexing convention: index js corresponds
-    # to the interval (js-1, js) for js>=1, with js=0 copied from js=1.
-    shape = pr1_even.shape
-    ru12 = jnp.zeros(shape, dtype=pr1_even.dtype)
-    zu12 = jnp.zeros(shape, dtype=pr1_even.dtype)
-    rs = jnp.zeros(shape, dtype=pr1_even.dtype)
-    zs = jnp.zeros(shape, dtype=pr1_even.dtype)
-    r12 = jnp.zeros(shape, dtype=pr1_even.dtype)
-    tau = jnp.zeros(shape, dtype=pr1_even.dtype)
-
     # Slices for js>=1.
     sl = slice(1, ns)
     sm1 = slice(0, ns - 1)
 
-    ru12 = ru12.at[sl].set(
-        0.5
-        * (
-            pru_even[sl]
-            + pru_even[sm1]
-            + pshalf[sl] * (pru_odd[sl] + pru_odd[sm1])
-        )
+    ru12_inner = 0.5 * (
+        pru_even[sl]
+        + pru_even[sm1]
+        + pshalf[sl] * (pru_odd[sl] + pru_odd[sm1])
     )
-    zs = zs.at[sl].set(
-        ohs
-        * (
-            (pz1_even[sl] - pz1_even[sm1])
-            + pshalf[sl] * (pz1_odd[sl] - pz1_odd[sm1])
-        )
+    zs_inner = ohs * (
+        (pz1_even[sl] - pz1_even[sm1]) + pshalf[sl] * (pz1_odd[sl] - pz1_odd[sm1])
     )
-    tau = tau.at[sl].set(
-        ru12[sl] * zs[sl]
-        + dshalfds
-        * (
-            pru_odd[sl] * pz1_odd[sl]
-            + pru_odd[sm1] * pz1_odd[sm1]
-            + _safe_divide(
-                pru_even[sl] * pz1_odd[sl] + pru_even[sm1] * pz1_odd[sm1],
-                pshalf[sl],
-            )
+    tau_inner = ru12_inner * zs_inner + dshalfds * (
+        pru_odd[sl] * pz1_odd[sl]
+        + pru_odd[sm1] * pz1_odd[sm1]
+        + _safe_divide(
+            pru_even[sl] * pz1_odd[sl] + pru_even[sm1] * pz1_odd[sm1],
+            pshalf[sl],
         )
     )
 
-    zu12 = zu12.at[sl].set(
-        0.5
-        * (
-            pzu_even[sl]
-            + pzu_even[sm1]
-            + pshalf[sl] * (pzu_odd[sl] + pzu_odd[sm1])
-        )
+    zu12_inner = 0.5 * (
+        pzu_even[sl]
+        + pzu_even[sm1]
+        + pshalf[sl] * (pzu_odd[sl] + pzu_odd[sm1])
     )
-    rs = rs.at[sl].set(
-        ohs
-        * (
-            (pr1_even[sl] - pr1_even[sm1])
-            + pshalf[sl] * (pr1_odd[sl] - pr1_odd[sm1])
-        )
+    rs_inner = ohs * (
+        (pr1_even[sl] - pr1_even[sm1]) + pshalf[sl] * (pr1_odd[sl] - pr1_odd[sm1])
     )
-    r12 = r12.at[sl].set(
-        0.5
-        * (
-            pr1_even[sl]
-            + pr1_even[sm1]
-            + pshalf[sl] * (pr1_odd[sl] + pr1_odd[sm1])
-        )
+    r12_inner = 0.5 * (
+        pr1_even[sl]
+        + pr1_even[sm1]
+        + pshalf[sl] * (pr1_odd[sl] + pr1_odd[sm1])
     )
-    tau = tau.at[sl].set(
-        tau[sl]
-        - rs[sl] * zu12[sl]
-        - dshalfds
-        * (
-            pzu_odd[sl] * pr1_odd[sl]
-            + pzu_odd[sm1] * pr1_odd[sm1]
-            + _safe_divide(
-                pzu_even[sl] * pr1_odd[sl] + pzu_even[sm1] * pr1_odd[sm1],
-                pshalf[sl],
-            )
+    tau_inner = tau_inner - rs_inner * zu12_inner - dshalfds * (
+        pzu_odd[sl] * pr1_odd[sl]
+        + pzu_odd[sm1] * pr1_odd[sm1]
+        + _safe_divide(
+            pzu_even[sl] * pr1_odd[sl] + pzu_even[sm1] * pr1_odd[sm1],
+            pshalf[sl],
         )
     )
 
     # VMEC copies js=1 to js=0 for tau/r12 in the serial routine.
-    ru12 = ru12.at[0].set(ru12[1])
-    zu12 = zu12.at[0].set(zu12[1])
-    rs = rs.at[0].set(rs[1])
-    zs = zs.at[0].set(zs[1])
-    r12 = r12.at[0].set(r12[1])
-    tau = tau.at[0].set(tau[1])
+    ru12 = jnp.concatenate([ru12_inner[:1], ru12_inner], axis=0)
+    zu12 = jnp.concatenate([zu12_inner[:1], zu12_inner], axis=0)
+    rs = jnp.concatenate([rs_inner[:1], rs_inner], axis=0)
+    zs = jnp.concatenate([zs_inner[:1], zs_inner], axis=0)
+    r12 = jnp.concatenate([r12_inner[:1], r12_inner], axis=0)
+    tau = jnp.concatenate([tau_inner[:1], tau_inner], axis=0)
 
     sqrtg = r12 * tau
     # Avoid NaNs on axis.

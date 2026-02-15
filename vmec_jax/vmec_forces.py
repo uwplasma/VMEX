@@ -213,7 +213,7 @@ def _with_axis_zero(a):
     a = jnp.asarray(a)
     if a.shape[0] == 0:
         return a
-    return a.at[0].set(jnp.zeros_like(a[0]))
+    return jnp.concatenate([jnp.zeros_like(a[:1]), a[1:]], axis=0)
 
 
 def _avg_forward_half_to_int(a):
@@ -221,10 +221,9 @@ def _avg_forward_half_to_int(a):
     a = jnp.asarray(a)
     if a.shape[0] < 2:
         return a
-    out = a
-    out = out.at[:-1].set(0.5 * (a[:-1] + a[1:]))
-    out = out.at[-1].set(0.5 * a[-1])
-    return out
+    body = 0.5 * (a[:-1] + a[1:])
+    tail = 0.5 * a[-1:]
+    return jnp.concatenate([body, tail], axis=0)
 
 
 def _sum_forward_half(a):
@@ -232,9 +231,9 @@ def _sum_forward_half(a):
     a = jnp.asarray(a)
     if a.shape[0] < 2:
         return a
-    out = a
-    out = out.at[:-1].set(a[:-1] + a[1:])
-    return out
+    body = a[:-1] + a[1:]
+    tail = a[-1:]
+    return jnp.concatenate([body, tail], axis=0)
 
 
 def _diff_forward_half(a, b):
@@ -243,10 +242,9 @@ def _diff_forward_half(a, b):
     b = jnp.asarray(b)
     if a.shape[0] < 2:
         return a
-    out = a
-    out = out.at[:-1].set(a[1:] - a[:-1] + 0.5 * (b[:-1] + b[1:]))
-    out = out.at[-1].set(-a[-1] + 0.5 * b[-1])
-    return out
+    body = a[1:] - a[:-1] + 0.5 * (b[:-1] + b[1:])
+    tail = -a[-1:] + 0.5 * b[-1:]
+    return jnp.concatenate([body, tail], axis=0)
 
 
 def _constraint_kernels_from_state(
