@@ -217,22 +217,26 @@ def interp_vmec_state(
                 idx_neg[int(mk), int(-nk)] = int(k)
 
         basis_norm = jnp.ones((mpol, nrange), dtype=jnp.asarray(state_old.Rcos).dtype)
-        from .vmec_parity import _mn_cos_to_signed as _mn_cos_to_signed_block
-        from .vmec_parity import _mn_sin_to_signed as _mn_sin_to_signed_block
-        from .vmec_parity import _signed_to_mn_cos as _signed_to_mn_cos_block
-        from .vmec_parity import _signed_to_mn_sin as _signed_to_mn_sin_block
+        from .vmec_parity import (
+            _build_signed_maps,
+            _mn_cos_to_signed_cached as _mn_cos_to_signed_cached,
+            _mn_sin_to_signed_cached as _mn_sin_to_signed_cached,
+            _signed_to_mn_cos_cached as _signed_to_mn_cos_cached,
+            _signed_to_mn_sin_cached as _signed_to_mn_sin_cached,
+        )
+        signed_maps = _build_signed_maps(idx_pos, idx_neg)
 
         def _signed_to_mn_cos(coeffs: Any):
-            return _signed_to_mn_cos_block(jnp.asarray(coeffs), idx_pos, idx_neg)
+            return _signed_to_mn_cos_cached(jnp.asarray(coeffs), maps=signed_maps)
 
         def _signed_to_mn_sin(coeffs: Any):
-            return _signed_to_mn_sin_block(jnp.asarray(coeffs), idx_pos, idx_neg)
+            return _signed_to_mn_sin_cached(jnp.asarray(coeffs), maps=signed_maps)
 
         def _mn_cos_to_signed(rcc, rss):
-            return _mn_cos_to_signed_block(jnp.asarray(rcc), jnp.asarray(rss), idx_pos, idx_neg, ncoeff=K)
+            return _mn_cos_to_signed_cached(jnp.asarray(rcc), jnp.asarray(rss), maps=signed_maps, ncoeff=K)
 
         def _mn_sin_to_signed(zsc, zcs):
-            return _mn_sin_to_signed_block(jnp.asarray(zsc), jnp.asarray(zcs), idx_pos, idx_neg, ncoeff=K)
+            return _mn_sin_to_signed_cached(jnp.asarray(zsc), jnp.asarray(zcs), maps=signed_maps, ncoeff=K)
 
         m_flat = jnp.repeat(jnp.arange(mpol, dtype=jnp.int32), nrange)
 
