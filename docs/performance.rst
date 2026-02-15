@@ -127,6 +127,8 @@ Scatter-free boundary/axis enforcement
 The fixed-boundary/axis enforcement step now uses concatenation instead of
 scatter updates for the edge and axis rows. This trims scatter-heavy kernels in
 the scan loop without changing the VMEC constraints.
+Axis m=0 masks are now reused from ``VMECStatic`` to avoid per-iteration mask
+construction.
 
 Lambda gauge masking
 --------------------
