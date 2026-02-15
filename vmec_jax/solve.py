@@ -742,6 +742,8 @@ def _enforce_lambda_gauge(Lcos, Lsin, *, idx00: Optional[int]):
 
 
 def _axis_m0_mask(static, *, dtype):
+    if getattr(static, "m_is_m0", None) is not None:
+        return jnp.asarray(static.m_is_m0, dtype=dtype)
     m = jnp.asarray(static.modes.m)
     return (m == 0).astype(dtype)
 

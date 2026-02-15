@@ -71,6 +71,7 @@ Axis/edge enforcement now uses concatenation instead of scatter updates to keep 
 Initial-guess axis blending updates all m=0 columns in one vectorized step to reduce startup overhead.
 Mode scaling factors (1/(mscale*nscale)) are cached in `VMECStatic` to avoid repeated table gathers in the initial guess.
 Lambda gauge enforcement uses a boolean mask instead of scatter updates in the iteration loop.
+Axis m=0 masks are reused from `VMECStatic` to avoid per-iteration reconstruction.
 
 ## Snapshot figures
 
