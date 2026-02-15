@@ -288,47 +288,43 @@ def _blend_axis_m0_full(
     zaxis_cs,
 ):
     """Blend m=0 modes between axis and boundary (profil3d convention)."""
-    m0_mask = static.modes.m == 0
+    m0_idx = getattr(static, "m0_n_index", None)
+    if m0_idx is None:
+        m0_mask = static.modes.m == 0
+        m0_idx = -np.ones((static.cfg.ntor + 1,), dtype=int)
+        for k, (m_k, n_k) in enumerate(zip(static.modes.m, static.modes.n)):
+            if m_k == 0 and n_k >= 0 and n_k < m0_idx.shape[0]:
+                m0_idx[int(n_k)] = int(k)
+    m0_idx = np.asarray(m0_idx, dtype=int)
+    valid = m0_idx >= 0
+    if not np.any(valid):
+        return Rcos, Rsin, Zcos, Zsin
+    k_idx = jnp.asarray(m0_idx[valid], dtype=jnp.int32)
     blend = s
-    for n in range(static.cfg.ntor + 1):
-        k_candidates = jnp.where(m0_mask & (static.modes.n == n))[0]
-        if k_candidates.size == 0:
-            continue
-        k = int(k_candidates[0])
 
-        # Axis conventions mapped to vmec_jax helical storage:
-        # - VMEC's internal `rcs/zcs` carry a minus sign from `raxis_cs/zaxis_cs`
-        #   in `profil3d`, but vmec_jax stores helical sin-phase coefficients
-        #   (sin(mθ-nζ)); for m=0 this introduces another minus sign.
-        # - Net mapping in signed/helical storage:
-        #     Rcos(m=0,n) <- +raxis_cc
-        #     Rsin(m=0,n) <- +raxis_cs
-        #     Zcos(m=0,n) <- +zaxis_cc
-        #     Zsin(m=0,n) <- +zaxis_cs
-        ax_Rcos = raxis_cc[n]
-        ax_Rsin = raxis_cs[n]
-        ax_Zcos = zaxis_cc[n]
-        ax_Zsin = zaxis_cs[n]
+    # Axis conventions mapped to vmec_jax helical storage:
+    # - VMEC's internal `rcs/zcs` carry a minus sign from `raxis_cs/zaxis_cs`
+    #   in `profil3d`, but vmec_jax stores helical sin-phase coefficients
+    #   (sin(mθ-nζ)); for m=0 this introduces another minus sign.
+    # - Net mapping in signed/helical storage:
+    #     Rcos(m=0,n) <- +raxis_cc
+    #     Rsin(m=0,n) <- +raxis_cs
+    #     Zcos(m=0,n) <- +zaxis_cc
+    #     Zsin(m=0,n) <- +zaxis_cs
+    ax_Rcos = jnp.asarray(raxis_cc)[valid]
+    ax_Rsin = jnp.asarray(raxis_cs)[valid]
+    ax_Zcos = jnp.asarray(zaxis_cc)[valid]
+    ax_Zsin = jnp.asarray(zaxis_cs)[valid]
 
-        new_Rcos = (1.0 - blend) * ax_Rcos + blend * Rcos_b[0, k]
-        new_Rsin = (1.0 - blend) * ax_Rsin + blend * Rsin_b[0, k]
-        new_Zcos = (1.0 - blend) * ax_Zcos + blend * Zcos_b[0, k]
-        new_Zsin = (1.0 - blend) * ax_Zsin + blend * Zsin_b[0, k]
+    new_Rcos = (1.0 - blend)[:, None] * ax_Rcos[None, :] + blend[:, None] * Rcos_b[0, k_idx][None, :]
+    new_Rsin = (1.0 - blend)[:, None] * ax_Rsin[None, :] + blend[:, None] * Rsin_b[0, k_idx][None, :]
+    new_Zcos = (1.0 - blend)[:, None] * ax_Zcos[None, :] + blend[:, None] * Zcos_b[0, k_idx][None, :]
+    new_Zsin = (1.0 - blend)[:, None] * ax_Zsin[None, :] + blend[:, None] * Zsin_b[0, k_idx][None, :]
 
-        if has_jax():
-            Rcos = Rcos.at[:, k].set(new_Rcos)
-            Rsin = Rsin.at[:, k].set(new_Rsin)
-            Zcos = Zcos.at[:, k].set(new_Zcos)
-            Zsin = Zsin.at[:, k].set(new_Zsin)
-        else:
-            Rcos = jnp.array(Rcos)
-            Rsin = jnp.array(Rsin)
-            Zcos = jnp.array(Zcos)
-            Zsin = jnp.array(Zsin)
-            Rcos[:, k] = new_Rcos
-            Rsin[:, k] = new_Rsin
-            Zcos[:, k] = new_Zcos
-            Zsin[:, k] = new_Zsin
+    Rcos = jnp.asarray(Rcos).at[:, k_idx].set(new_Rcos)
+    Rsin = jnp.asarray(Rsin).at[:, k_idx].set(new_Rsin)
+    Zcos = jnp.asarray(Zcos).at[:, k_idx].set(new_Zcos)
+    Zsin = jnp.asarray(Zsin).at[:, k_idx].set(new_Zsin)
     return Rcos, Rsin, Zcos, Zsin
 
 
