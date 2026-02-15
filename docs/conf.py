@@ -40,6 +40,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 autosummary_generate = True
 autosectionlabel_prefix_document = True
 todo_include_todos = False
+autodoc_mock_imports = ["jax", "jaxlib"]
 
 
 # -- Options for HTML output ----------------------------------------------------

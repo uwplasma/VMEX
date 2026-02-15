@@ -4240,13 +4240,30 @@ def solve_fixed_boundary_residual_iter(
         except Exception:
             return
 
+    def _maybe_dump_checkpoint(*, iter_idx: int, fsq: float, fsq0: float, res0: float, res1: float) -> None:
+        if os.getenv("VMEC_JAX_DUMP_CHECKPOINT", "") in ("", "0"):
+            return
+        dump_dir = os.getenv("VMEC_JAX_DUMP_DIR", "")
+        if not dump_dir:
+            return
+        try:
+            path = Path(dump_dir) / "checkpoint.log"
+            with path.open("a", encoding="utf-8") as f:
+                f.write(
+                    f"iter={iter_idx} fsq={fsq:.6e} fsq0={fsq0:.6e} res0={res0:.6e} res1={res1:.6e}\n"
+                )
+        except Exception:
+            return
+
     last_iter2 = 0
     for it in range(max_iter):
         iter2 = it + 1 + int(iter_offset)
         last_iter2 = iter2
         converged = False
+        skip_time_control = False
         while True:
             iter_since_restart = iter2 - iter1
+            fsq_prev_before = fsq_prev
             pre_restart_reason = "none"
             time_step_report = float(time_step)
             if vmec2000_control:
@@ -4665,6 +4682,8 @@ def solve_fixed_boundary_residual_iter(
                     jac = getattr(getattr(k, "bc", None), "jac", None)
                 except Exception:
                     jac = None
+                if bool(vmec2000_control) and (not bool(need_bcovar_update)):
+                    jac = None
                 if jac is None:
                     jac = vmec_half_mesh_jacobian_from_state(
                         state=state,
@@ -4681,10 +4700,23 @@ def solve_fixed_boundary_residual_iter(
                     tau_use = tau[1:] if tau.shape[0] > 1 else tau
                     min_tau = float(np.min(tau_use))
                     max_tau = float(np.max(tau_use))
-                    bad_jacobian = (min_tau * max_tau) < 0.0
+                    tau_scale = max(abs(min_tau), abs(max_tau))
+                    tau_tol = max(1.0e-12, 1.0e-3 * tau_scale)
+                    bad_jacobian = (min_tau < -tau_tol) and (max_tau > tau_tol)
                     min_tau_history.append(min_tau)
                     max_tau_history.append(max_tau)
                     bad_jacobian_history.append(int(bad_jacobian))
+                    if bad_jacobian and os.getenv("VMEC_JAX_DUMP_BADJAC", "") not in ("", "0"):
+                        dump_dir = os.getenv("VMEC_JAX_DUMP_DIR", "")
+                        if dump_dir:
+                            try:
+                                path = Path(dump_dir) / "bad_jacobian.log"
+                                with path.open("a", encoding="utf-8") as f:
+                                    f.write(
+                                        f"iter={iter2} min_tau={min_tau:.6e} max_tau={max_tau:.6e}\n"
+                                    )
+                            except Exception:
+                                pass
                 else:
                     min_tau_history.append(float("nan"))
                     max_tau_history.append(float("nan"))
@@ -4695,7 +4727,7 @@ def solve_fixed_boundary_residual_iter(
                 bad_jacobian_history.append(0)
 
             # VMEC-style time-step control: VMEC2000's `TimeStepControl` + `restart_iter`.
-            if bool(vmec2000_control):
+            if bool(vmec2000_control) and (not skip_time_control):
                 fsq0 = fsqr_f + fsqz_f + fsql_f  # physical
                 # VMEC's TimeStepControl uses the *previous* preconditioned
                 # residual (fsq) which is updated at the end of evolve.f.
@@ -4704,10 +4736,12 @@ def solve_fixed_boundary_residual_iter(
                     res0 = fsq
                     res1 = fsq0
                     state_checkpoint = state
+                    _maybe_dump_checkpoint(iter_idx=int(iter2), fsq=float(fsq), fsq0=float(fsq0), res0=float(res0), res1=float(res1))
                 res0 = min(res0, fsq)
                 res1 = min(res1, fsq0)
-                if (fsq <= res0) and (fsq0 <= res1):
+                if (fsq <= res0) and (fsq0 <= res1) and (not bad_jacobian):
                     state_checkpoint = state
+                    _maybe_dump_checkpoint(iter_idx=int(iter2), fsq=float(fsq), fsq0=float(fsq0), res0=float(res0), res1=float(res1))
                 if (not bad_jacobian) and ((iter2 - iter1) > 10) and (
                     (fsq > vmec2000_fact * max(res0, 1e-30)) or (fsq0 > vmec2000_fact * max(res1, 1e-30))
                 ):
@@ -4732,7 +4766,7 @@ def solve_fixed_boundary_residual_iter(
                     bad_resets += 1
                     iter1 = iter2
                     bad_growth_streak = 0
-                    fsq_prev = fsq1
+                    fsq_prev = fsq_prev_before
                     inv_tau = [0.15 / time_step] * k_ndamp
                     step_status = "restart_time_control"
                     restart_reason = "time_control"
@@ -4755,6 +4789,7 @@ def solve_fixed_boundary_residual_iter(
                     grad_rms_history.append(float(np.sqrt(max(fsqr_f + fsqz_f + fsql_f, 0.0))))
                     _pop_iteration_histories()
                     prev_rz_fsq = prev_rz_fsq_before
+                    skip_time_control = True
                     continue
     
             # --- time-step control trackers + optional restart triggers ---
@@ -4844,9 +4879,9 @@ def solve_fixed_boundary_residual_iter(
                 bad_resets += 1
                 iter1 = iter2
                 bad_growth_streak = 0
-                fsq_prev = fsq1
+                fsq_prev = fsq_prev_before
                 inv_tau = [0.15 / time_step] * k_ndamp
-                if bool(vmec2000_control):
+                if not bool(vmec2000_control):
                     vmec2000_cache_valid = False
                     cache_precond_diag = None
                     cache_tcon = None
@@ -4913,6 +4948,7 @@ def solve_fixed_boundary_residual_iter(
                 )
                 _pop_iteration_histories()
                 prev_rz_fsq = prev_rz_fsq_before
+                skip_time_control = True
                 continue
     
             break
@@ -5204,7 +5240,7 @@ def solve_fixed_boundary_residual_iter(
                             time_step = max(scale * float(step_size), 1e-12)
                         bad_resets += 1
                         iter1 = iter2
-                        fsq_prev = fsq1
+                        fsq_prev = fsq_prev_before
                         inv_tau = [0.15 / time_step] * k_ndamp
                         update_rms = 0.0
                         if bool(vmec2000_control):
@@ -5251,10 +5287,10 @@ def solve_fixed_boundary_residual_iter(
                         time_step = max(scale * float(step_size), 1e-12)
                     bad_resets += 1
                     iter1 = iter2
-                    fsq_prev = fsq1
+                    fsq_prev = fsq_prev_before
                     inv_tau = [0.15 / time_step] * k_ndamp
                     update_rms = 0.0
-                    if bool(vmec2000_control):
+                    if not bool(vmec2000_control):
                         vmec2000_cache_valid = False
                         cache_precond_diag = None
                         cache_tcon = None
@@ -5416,6 +5452,7 @@ def solve_fixed_boundary_residual_iter(
         bad_growth_streak_history.append(int(bad_growth_streak))
         iter1_history.append(int(iter1))
         grad_rms_history.append(float(np.sqrt(max(fsqr_f + fsqz_f + fsql_f, 0.0))))
+        skip_time_control = False
 
     diag: Dict[str, Any] = {
         "ftol": ftol,
