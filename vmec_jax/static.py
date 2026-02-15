@@ -47,6 +47,7 @@ class VMECStatic:
     m_is_m1: np.ndarray | None = None
     m_is_odd_rest: np.ndarray | None = None
     lambda_axis_copy_mask: np.ndarray | None = None
+    m0_n_index: np.ndarray | None = None
 
 
 def build_static(cfg: VMECConfig, *, grid: AngleGrid | None = None) -> VMECStatic:
@@ -155,6 +156,15 @@ def build_static(cfg: VMECConfig, *, grid: AngleGrid | None = None) -> VMECStati
     m_is_m0 = m_np == 0
     m_is_m1 = m_np == 1
     m_is_odd_rest = (m_np % 2 == 1) & (m_np != 1)
+    m0_n_index = None
+    try:
+        nrange = int(cfg.ntor) + 1
+        m0_n_index = -np.ones((nrange,), dtype=int)
+        for k, (m_k, n_k) in enumerate(zip(m_np, n_np)):
+            if m_k == 0 and n_k >= 0 and n_k < nrange:
+                m0_n_index[int(n_k)] = int(k)
+    except Exception:
+        m0_n_index = None
     lambda_axis_copy_mask = (m_np == 0) & (n_np > 0)
     return VMECStatic(
         cfg=cfg,
@@ -173,4 +183,5 @@ def build_static(cfg: VMECConfig, *, grid: AngleGrid | None = None) -> VMECStati
         m_is_m1=m_is_m1,
         m_is_odd_rest=m_is_odd_rest,
         lambda_axis_copy_mask=lambda_axis_copy_mask,
+        m0_n_index=m0_n_index,
     )

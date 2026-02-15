@@ -128,6 +128,13 @@ The fixed-boundary/axis enforcement step now uses concatenation instead of
 scatter updates for the edge and axis rows. This trims scatter-heavy kernels in
 the scan loop without changing the VMEC constraints.
 
+Vectorized axis blending
+------------------------
+
+Initial-guess axis blending now updates all ``m=0`` Fourier columns in one
+vectorized scatter instead of looping over toroidal modes. This reduces
+index-heavy overhead during startup.
+
 Avoid Python objects in jitted functions
 ----------------------------------------
 
