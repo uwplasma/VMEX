@@ -135,6 +135,13 @@ Initial-guess axis blending now updates all ``m=0`` Fourier columns in one
 vectorized scatter instead of looping over toroidal modes. This reduces
 index-heavy overhead during startup.
 
+Cached mode scaling
+-------------------
+
+``VMECStatic`` now caches the per-mode internal scaling factors
+``1/(mscale*nscale)`` so initial-guess construction avoids repeated gathers
+from the trig tables.
+
 Avoid Python objects in jitted functions
 ----------------------------------------
 

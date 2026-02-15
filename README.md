@@ -69,6 +69,7 @@ The fixed-boundary update also precomputes dense (m,n)->signed maps per solve to
 Scan mode batches the Z/L sin-block conversions into one matmul-based mapping to reduce kernel count.
 Axis/edge enforcement now uses concatenation instead of scatter updates to keep the scan loop lighter.
 Initial-guess axis blending updates all m=0 columns in one vectorized step to reduce startup overhead.
+Mode scaling factors (1/(mscale*nscale)) are cached in `VMECStatic` to avoid repeated table gathers in the initial guess.
 
 ## Snapshot figures
 
