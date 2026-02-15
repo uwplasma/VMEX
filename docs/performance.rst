@@ -41,8 +41,8 @@ Important:
 Recent profiling snapshot (QA, 3 iterations on CPU)
 ---------------------------------------------------
 
-- Default loop: ~0.56s total wall time (includes setup).
-- Scan loop: ~0.18s total wall time (~3x faster for this short run).
+- Default loop: ~0.26s total wall time (post-warmup).
+- Scan loop: ~0.083s total wall time (~3x faster for this short run).
 
 Longer runs benefit more because Python control-flow overhead scales with the
 iteration count in the non-scan path.
