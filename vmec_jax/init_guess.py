@@ -801,12 +801,15 @@ def initial_guess_from_boundary(
                 lasym=cfg.lasym,
                 dtype=dtype,
             )
-    m_idx = jnp.asarray(static.modes.m, dtype=jnp.int32)
-    n_idx = jnp.asarray(static.modes.n, dtype=jnp.int32)
-    n1 = jnp.abs(n_idx)
-    mscale = jnp.asarray(trig.mscale, dtype=dtype)
-    nscale = jnp.asarray(trig.nscale, dtype=dtype)
-    mode_scale = (1.0 / (mscale[m_idx] * nscale[n1])).astype(dtype)  # internal scale
+    if getattr(static, "mode_scale_internal", None) is not None:
+        mode_scale = jnp.asarray(static.mode_scale_internal, dtype=dtype)
+    else:
+        m_idx = jnp.asarray(static.modes.m, dtype=jnp.int32)
+        n_idx = jnp.asarray(static.modes.n, dtype=jnp.int32)
+        n1 = jnp.abs(n_idx)
+        mscale = jnp.asarray(trig.mscale, dtype=dtype)
+        nscale = jnp.asarray(trig.nscale, dtype=dtype)
+        mode_scale = (1.0 / (mscale[m_idx] * nscale[n1])).astype(dtype)  # internal scale
 
     # Base: broadcast boundary vectors to (ns,K) in internal convention.
     Rcos_b = (jnp.asarray(boundary_use.R_cos, dtype=dtype) * mode_scale)[None, :]

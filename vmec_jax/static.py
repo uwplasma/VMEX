@@ -48,6 +48,7 @@ class VMECStatic:
     m_is_odd_rest: np.ndarray | None = None
     lambda_axis_copy_mask: np.ndarray | None = None
     m0_n_index: np.ndarray | None = None
+    mode_scale_internal: any | None = None
 
 
 def build_static(cfg: VMECConfig, *, grid: AngleGrid | None = None) -> VMECStatic:
@@ -184,4 +185,5 @@ def build_static(cfg: VMECConfig, *, grid: AngleGrid | None = None) -> VMECStati
         m_is_odd_rest=m_is_odd_rest,
         lambda_axis_copy_mask=lambda_axis_copy_mask,
         m0_n_index=m0_n_index,
+        mode_scale_internal=None if trig_vmec is None else (1.0 / (jnp.asarray(trig_vmec.mscale)[m_np] * jnp.asarray(trig_vmec.nscale)[np.abs(n_np)])).astype(jnp.asarray(s).dtype),
     )
