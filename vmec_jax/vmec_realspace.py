@@ -288,6 +288,121 @@ def vmec_realspace_synthesis(
     return f
 
 
+def vmec_realspace_synthesis_multi(
+    *,
+    coeff_cos: Any,
+    coeff_sin: Any,
+    modes: ModeTable,
+    trig: VmecTrigTables,
+    coeffs_internal: bool = False,
+    apply_scalxc: bool = False,
+    s: Any | None = None,
+    derivs: tuple[str, ...] = ("base", "dtheta", "dzeta"),
+    use_stacked_dot: bool = True,
+) -> tuple[Any, ...]:
+    """Synthesize multiple real-space fields (base/derivatives) in one batched call."""
+    coeff_cos = jnp.asarray(coeff_cos)
+    coeff_sin = jnp.asarray(coeff_sin)
+    m_np = np.asarray(modes.m)
+    m = jnp.asarray(m_np).astype(jnp.int32)
+    n = jnp.asarray(modes.n).astype(jnp.int32)
+
+    if coeff_cos.ndim < 2 or coeff_sin.ndim < 2:
+        raise ValueError("Expected coeff arrays with shape (..., ns, K)")
+    if coeff_cos.shape != coeff_sin.shape:
+        raise ValueError("coeff_cos and coeff_sin must have the same shape")
+    if coeff_cos.shape[-1] != m.shape[0]:
+        raise ValueError("Mode count mismatch between coefficients and modes")
+
+    if not bool(coeffs_internal):
+        scale = _vmec_mode_scaling(m=m, n=n, trig=trig).astype(coeff_cos.dtype)
+        scale_shape = (1,) * (coeff_cos.ndim - 1) + (m.shape[0],)
+        coeff_cos = coeff_cos * scale.reshape(scale_shape)
+        coeff_sin = coeff_sin * scale.reshape(scale_shape)
+
+    if bool(apply_scalxc):
+        ns = int(coeff_cos.shape[-2])
+        if s is None:
+            if ns < 2:
+                s = jnp.asarray([0.0], dtype=coeff_cos.dtype)
+            else:
+                s = jnp.linspace(0.0, 1.0, ns, dtype=coeff_cos.dtype)
+        mpol = int(np.max(m_np)) + 1
+        scalxc = vmec_scalxc_from_s(s=jnp.asarray(s), mpol=mpol).astype(coeff_cos.dtype)
+        scalxc_mn = scalxc[:, m]
+        scalxc_shape = (1,) * (coeff_cos.ndim - 2) + scalxc_mn.shape
+        coeff_cos = coeff_cos * scalxc_mn.reshape(scalxc_shape)
+        coeff_sin = coeff_sin * scalxc_mn.reshape(scalxc_shape)
+
+    if not bool(use_stacked_dot):
+        out = []
+        for deriv in derivs:
+            if deriv == "base":
+                out.append(
+                    vmec_realspace_synthesis(
+                        coeff_cos=coeff_cos,
+                        coeff_sin=coeff_sin,
+                        modes=modes,
+                        trig=trig,
+                        coeffs_internal=True,
+                        apply_scalxc=False,
+                        s=s,
+                        use_stacked_dot=False,
+                    )
+                )
+            elif deriv == "dtheta":
+                out.append(
+                    vmec_realspace_synthesis_dtheta(
+                        coeff_cos=coeff_cos,
+                        coeff_sin=coeff_sin,
+                        modes=modes,
+                        trig=trig,
+                        coeffs_internal=True,
+                        apply_scalxc=False,
+                        s=s,
+                        use_stacked_dot=False,
+                    )
+                )
+            elif deriv == "dzeta":
+                out.append(
+                    vmec_realspace_synthesis_dzeta_phys(
+                        coeff_cos=coeff_cos,
+                        coeff_sin=coeff_sin,
+                        modes=modes,
+                        trig=trig,
+                        coeffs_internal=True,
+                        apply_scalxc=False,
+                        s=s,
+                        use_stacked_dot=False,
+                    )
+                )
+            else:
+                raise ValueError(f"Unknown deriv={deriv!r}")
+        return tuple(out)
+
+    coeff = jnp.concatenate([coeff_cos, coeff_sin], axis=-1)
+    phases = []
+    for deriv in derivs:
+        if deriv == "base":
+            phase = _phase_stack_from_trig(modes, trig, "phase_stack")
+            if phase is None:
+                phase = _vmec_phase_tables_stacked_cached(modes=modes, trig=trig, cache=True)
+        elif deriv == "dtheta":
+            phase = _phase_stack_from_trig(modes, trig, "phase_dtheta_stack")
+            if phase is None:
+                phase = _vmec_phase_tables_dtheta_stacked_cached(modes=modes, trig=trig, cache=True)
+        elif deriv == "dzeta":
+            phase = _phase_stack_from_trig(modes, trig, "phase_dzeta_stack")
+            if phase is None:
+                phase = _vmec_phase_tables_dzeta_stacked_cached(modes=modes, trig=trig, cache=True)
+        else:
+            raise ValueError(f"Unknown deriv={deriv!r}")
+        phases.append(phase)
+    phase_all = jnp.stack(phases, axis=0)
+    f_all = jnp.einsum("...k,tkij->t...ij", coeff, phase_all)
+    return tuple(f_all[i] for i in range(len(derivs)))
+
+
 def vmec_realspace_analysis(
     *,
     f: Any,

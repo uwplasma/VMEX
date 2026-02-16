@@ -142,6 +142,14 @@ components (and separately for lambda) so the solver does fewer tridi solves per
 iteration. This reduces kernel count and Python overhead while preserving the
 VMEC update math.
 
+Batched VMEC real-space synthesis
+---------------------------------
+
+The VMEC-grid synthesis path now batches base + derivative (dtheta/dzeta)
+evaluations into a single stacked ``einsum`` call. This reduces kernel count in
+the pre-iteration setup (especially the bcovar/realspace pipeline) while
+preserving the original algebra and parity outputs.
+
 Vectorized multigrid conversion
 -------------------------------
 
