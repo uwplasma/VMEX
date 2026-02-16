@@ -48,6 +48,7 @@ if _FAST:
     tags.add("fast")
     # In fast mode build only the landing page to keep CI under minutes.
     include_patterns = ["index.rst"]
+    suppress_warnings = ["toc.not_readable", "toc.excluded"]
 
 autosummary_generate = not _FAST
 autosummary_imported_members = False
