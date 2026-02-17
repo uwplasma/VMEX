@@ -3177,11 +3177,34 @@ def main() -> None:
                         raise SystemExit(2)
 
     if wout is not None:
+        from vmec_jax.modes import vmec_mode_table
+        from vmec_jax.vmec_parity import vmec_m1_internal_to_physical_signed
         from vmec_jax.wout import state_from_wout
 
         wout_state = state_from_wout(wout)
-        rmnc_err = _rel_rms(np.asarray(run.state.Rcos), np.asarray(wout_state.Rcos))
-        zmns_err = _rel_rms(np.asarray(run.state.Zsin), np.asarray(wout_state.Zsin))
+        rmnc_err_internal = _rel_rms(np.asarray(run.state.Rcos), np.asarray(wout_state.Rcos))
+        zmns_err_internal = _rel_rms(np.asarray(run.state.Zsin), np.asarray(wout_state.Zsin))
+
+        modes = vmec_mode_table(int(wout.mpol), int(wout.ntor))
+        m_arr = np.asarray(modes.m, dtype=int)
+        n_arr = np.asarray(modes.n, dtype=int)
+        sqrt2 = np.sqrt(2.0)
+        mscale = np.where(m_arr == 0, 1.0, sqrt2)
+        nscale = np.where(np.abs(n_arr) == 0, 1.0, sqrt2)
+        mode_scale = (mscale * nscale)[None, :]
+        lconm1 = bool(getattr(run.static.cfg, "lconm1", True))
+        Rcos_phys, Zsin_phys, _Rsin_phys, _Zcos_phys = vmec_m1_internal_to_physical_signed(
+            Rcos=np.asarray(run.state.Rcos),
+            Zsin=np.asarray(run.state.Zsin),
+            Rsin=np.asarray(run.state.Rsin),
+            Zcos=np.asarray(run.state.Zcos),
+            modes=modes,
+            lthreed=bool(int(wout.ntor) > 0),
+            lasym=bool(getattr(wout, "lasym", False)),
+            lconm1=lconm1,
+        )
+        rmnc_err_phys = _rel_rms(np.asarray(Rcos_phys) * mode_scale, np.asarray(wout.rmnc))
+        zmns_err_phys = _rel_rms(np.asarray(Zsin_phys) * mode_scale, np.asarray(wout.zmns))
         fsq_ref = float(wout.fsqr + wout.fsqz + wout.fsql)
         fsq_new = None
         res = getattr(run, "result", None)
@@ -3206,7 +3229,8 @@ def main() -> None:
         print()
         print("End-state comparison vs VMEC2000 wout:")
         print(f"  fsq_total: vmec={fsq_ref:.3e}  jax={fsq_new:.3e}")
-        print(f"  rmnc relRMS={rmnc_err:.3e}  zmns relRMS={zmns_err:.3e}")
+        print(f"  rmnc relRMS (physical)={rmnc_err_phys:.3e}  zmns relRMS (physical)={zmns_err_phys:.3e}")
+        print(f"  rmnc relRMS (internal)={rmnc_err_internal:.3e}  zmns relRMS (internal)={zmns_err_internal:.3e}")
 
     if bool(args.fail_fast) and first_mismatch is not None:
         raise SystemExit(2)
