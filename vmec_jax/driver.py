@@ -246,13 +246,14 @@ def save_npz(path: str | Path, **arrays) -> Path:
 
 
 _STEP_SIZE_SENTINEL = object()
+_MAX_ITER_SENTINEL = object()
 
 
 def run_fixed_boundary(
     input_path: str | Path,
     *,
     solver: str = "vmec2000_iter",
-    max_iter: int = 10,
+    max_iter: int | object = _MAX_ITER_SENTINEL,
     step_size: float | object = _STEP_SIZE_SENTINEL,
     history_size: int = 10,
     # vmec_gn tuning (Gauss-Newton on VMEC residual vector)
@@ -276,6 +277,7 @@ def run_fixed_boundary(
     restart_solver_state: dict | None = None,
 ):
     t_start = time.perf_counter()
+    max_iter_overridden = max_iter is not _MAX_ITER_SENTINEL
 
     def _maybe_enable_compilation_cache() -> None:
         if os.getenv("VMEC_JAX_DISABLE_COMPILATION_CACHE", "") not in ("", "0"):
@@ -417,6 +419,19 @@ def run_fixed_boundary(
     multigrid_use_input_niter = bool(multigrid_use_input_niter)
     if multigrid is None:
         multigrid = solver_lower == "vmec2000_iter"
+    if max_iter is _MAX_ITER_SENTINEL:
+        if solver_lower == "vmec2000_iter":
+            if multigrid and multigrid_use_input_niter:
+                niter_list = _as_list(indata.get("NITER_ARRAY", None))
+                if niter_list:
+                    max_iter = int(sum(int(v) for v in niter_list))
+                else:
+                    max_iter = int(indata.get_int("NITER", 10))
+            else:
+                max_iter = int(indata.get_int("NITER", 10))
+        else:
+            max_iter = 10
+    max_iter = int(max_iter)
     if restart_state_eff is not None:
         multigrid = False
     if restart_solver_state is not None:
@@ -455,7 +470,7 @@ def run_fixed_boundary(
         if niter_list:
             niter_sum = int(sum(int(v) for v in niter_list))
             niter_default = int(indata.get_int("NITER", max_iter))
-            if int(max_iter) == niter_default:
+            if (not max_iter_overridden) and int(max_iter) == niter_default:
                 max_iter = niter_sum
 
     # Precompute boundary coefficients without triggering JAX initialization.
