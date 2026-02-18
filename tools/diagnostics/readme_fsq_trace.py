@@ -1,4 +1,4 @@
-"""Generate README fsq_total traces for axisymmetric and QH cases."""
+"""Generate README fsq_total traces for axisymmetric and stellarator cases."""
 
 from __future__ import annotations
 
@@ -14,10 +14,10 @@ import numpy as np  # noqa: E402
 
 from vmec_jax.config import load_config
 from vmec_jax.driver import run_fixed_boundary
-from vmec_jax.vmec2000_exec import find_vmec2000_exec, run_xvmec2000
+from vmec_jax.vmec2000_exec import _patch_indata, find_vmec2000_exec, run_xvmec2000
 
 
-def _collect_vmec2000_trace(input_path: Path, *, niter: int, workdir: Path):
+def _collect_vmec2000_trace(input_path: Path, *, niter: int, ftol: float, workdir: Path):
     exe = find_vmec2000_exec()
     if exe is None:
         raise SystemExit("xvmec2000 executable not found")
@@ -32,6 +32,8 @@ def _collect_vmec2000_trace(input_path: Path, *, niter: int, workdir: Path):
             "NSTEP": "1",
             "NS_ARRAY": f"{int(cfg.ns)}",
             "NITER_ARRAY": f"{niter}",
+            "FTOL": f"{float(ftol):.3e}",
+            "FTOL_ARRAY": f"{float(ftol):.3e}",
         },
         keep_workdir=True,
     )
@@ -42,15 +44,27 @@ def _collect_vmec2000_trace(input_path: Path, *, niter: int, workdir: Path):
     return np.asarray(fsq), float(vmec.runtime_s)
 
 
-def _collect_vmec_jax_trace(input_path: Path, *, niter: int):
+def _collect_vmec_jax_trace(input_path: Path, *, niter: int, ftol: float, workdir: Path):
+    patched = _patch_indata(
+        input_path.read_text(),
+        updates={
+            "NITER": str(niter),
+            "NSTEP": "1",
+            "FTOL": f"{float(ftol):.3e}",
+            "FTOL_ARRAY": f"{float(ftol):.3e}",
+        },
+    )
+    tmp_input = workdir / f"input_patched_{input_path.name}"
+    tmp_input.write_text(patched)
     t0 = time.perf_counter()
     res = run_fixed_boundary(
-        str(input_path),
+        str(tmp_input),
         solver="vmec2000_iter",
         max_iter=int(niter),
         multigrid=False,
         multigrid_use_input_niter=False,
         verbose=False,
+        performance_mode=False,
     )
     runtime = time.perf_counter() - t0
     fsq = np.asarray(res.result.fsqr2_history) + np.asarray(res.result.fsqz2_history) + np.asarray(
@@ -69,7 +83,7 @@ def _plot_panel(ax, *, fsq_vmec, fsq_jax, title: str, t_vmec: float, t_jax: floa
     ax.set_ylabel("fsq_total")
     ax.set_title(title)
     ax.grid(alpha=0.3)
-    txt = f"VMEC2000: {t_vmec:.2f}s\\nvmec_jax: {t_jax:.2f}s"
+    txt = f"VMEC2000: {t_vmec:.2f}s\nvmec_jax: {t_jax:.2f}s"
     ax.text(
         0.98,
         0.95,
@@ -90,33 +104,50 @@ def main() -> None:
         default=str(Path(__file__).resolve().parents[2] / "examples/data/input.shaped_tokamak_pressure"),
     )
     p.add_argument(
+        "--stellarator-input",
+        type=str,
+        default=str(Path(__file__).resolve().parents[2] / "examples/data/input.n3are_R7.75B5.7_lowres"),
+    )
+    p.add_argument(
         "--qh-input",
         type=str,
-        default=str(Path(__file__).resolve().parents[2] / "examples/data/input.nfp4_QH_warm_start"),
+        default="",
+        help="Deprecated alias for --stellarator-input.",
     )
     p.add_argument(
         "--outdir",
         type=str,
         default=str(Path(__file__).resolve().parents[2] / "docs/_static/figures"),
     )
-    p.add_argument("--niter", type=int, default=100)
+    p.add_argument("--niter", type=int, default=250)
+    p.add_argument("--ftol", type=float, default=1e-14)
     args = p.parse_args()
 
     axisym_input = Path(args.axisym_input).expanduser().resolve()
-    qh_input = Path(args.qh_input).expanduser().resolve()
+    stellarator_input = Path(args.stellarator_input).expanduser().resolve()
+    if args.qh_input:
+        stellarator_input = Path(args.qh_input).expanduser().resolve()
     outdir = Path(args.outdir).expanduser().resolve()
     outdir.mkdir(parents=True, exist_ok=True)
 
     axisym_work = outdir / "readme_axisym_vmec2000_trace"
-    qh_work = outdir / "readme_qh_vmec2000_trace"
+    st_work = outdir / "readme_stellarator_vmec2000_trace"
     axisym_work.mkdir(parents=True, exist_ok=True)
-    qh_work.mkdir(parents=True, exist_ok=True)
+    st_work.mkdir(parents=True, exist_ok=True)
 
-    fsq_vmec_a, t_vmec_a = _collect_vmec2000_trace(axisym_input, niter=int(args.niter), workdir=axisym_work)
-    fsq_jax_a, t_jax_a = _collect_vmec_jax_trace(axisym_input, niter=int(args.niter))
+    fsq_vmec_a, t_vmec_a = _collect_vmec2000_trace(
+        axisym_input, niter=int(args.niter), ftol=float(args.ftol), workdir=axisym_work
+    )
+    fsq_jax_a, t_jax_a = _collect_vmec_jax_trace(
+        axisym_input, niter=int(args.niter), ftol=float(args.ftol), workdir=axisym_work
+    )
 
-    fsq_vmec_q, t_vmec_q = _collect_vmec2000_trace(qh_input, niter=int(args.niter), workdir=qh_work)
-    fsq_jax_q, t_jax_q = _collect_vmec_jax_trace(qh_input, niter=int(args.niter))
+    fsq_vmec_s, t_vmec_s = _collect_vmec2000_trace(
+        stellarator_input, niter=int(args.niter), ftol=float(args.ftol), workdir=st_work
+    )
+    fsq_jax_s, t_jax_s = _collect_vmec_jax_trace(
+        stellarator_input, niter=int(args.niter), ftol=float(args.ftol), workdir=st_work
+    )
 
     fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.2))
     _plot_panel(
@@ -129,11 +160,11 @@ def main() -> None:
     )
     _plot_panel(
         axes[1],
-        fsq_vmec=fsq_vmec_q,
-        fsq_jax=fsq_jax_q,
-        title=f"QH fsq_total trace ({int(args.niter)} iters)",
-        t_vmec=t_vmec_q,
-        t_jax=t_jax_q,
+        fsq_vmec=fsq_vmec_s,
+        fsq_jax=fsq_jax_s,
+        title=f"Stellarator fsq_total trace ({int(args.niter)} iters)",
+        t_vmec=t_vmec_s,
+        t_jax=t_jax_s,
     )
     axes[0].legend(frameon=False)
     axes[1].legend(frameon=False)

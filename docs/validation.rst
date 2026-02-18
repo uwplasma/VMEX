@@ -183,6 +183,27 @@ Full-grid parity snapshot (VMEC2000 exec comparator, `--use-input-niter`, `max_i
      - ``0.272 / 5.130``
      - 3D fixed boundary
 
+VMEC++ bad-progress restart check (QA_lowres)
+---------------------------------------------
+
+Using ``input.LandremanPaul2021_QA_lowres`` with multigrid enabled, we compared
+the fine-grid (last stage) **iteration 1** ``fsq_total`` with and without the
+VMEC++ bad-progress restart flag:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 24 24
+
+   * - Run
+     - fine-grid iter-1 fsq_total
+     - Notes
+   * - baseline (vmecpp_restart=False)
+     - ``2.412e-04``
+     - stage offsets [0, 189, 893]
+   * - vmecpp_restart=True
+     - ``2.412e-04``
+     - no change at iter-1; VMEC++ trigger occurs later in the stage
+
 Scope and known gaps
 --------------------
 

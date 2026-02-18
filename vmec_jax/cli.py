@@ -168,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
             multigrid_use_input_niter=bool(args.use_input_niter),
             verbose=not bool(args.quiet),
             jit_forces=jit_forces,
+            performance_mode=False,
         )
         if profile_dir and not profile_window:
             try:
