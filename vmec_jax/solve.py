@@ -4058,6 +4058,12 @@ def solve_fixed_boundary_residual_iter(
         nstep_screen = int(indata.get_int("NSTEP", 1)) if indata is not None else 1
         if nstep_screen < 1:
             nstep_screen = 1
+        print_in_scan = bool(verbose) and bool(vmec2000_control) and bool(verbose_vmec2000_table)
+        if print_in_scan:
+            try:
+                from jax import debug as _jax_debug
+            except Exception:
+                print_in_scan = False
         if resume_state is not None:
             try:
                 iter_offset = int(resume_state.get("iter_offset", iter_offset))
@@ -4398,6 +4404,21 @@ def solve_fixed_boundary_residual_iter(
                 return carry.r00_prev, carry.z00_prev, carry.w_mhd_prev
 
             r00_j, z00_j, w_mhd = jax.lax.cond(sample_vmec, _compute_scalars, _reuse_scalars, operand=None)
+            if print_in_scan:
+                def _do_print(_):
+                    _jax_debug.print(
+                        "{i:5d}{fsqr:10.2E}{fsqz:10.2E}{fsql:10.2E}{r00:11.3E}{dt:10.2E}{w:12.4E}",
+                        i=iter2,
+                        fsqr=fsqr,
+                        fsqz=fsqz,
+                        fsql=fsql,
+                        r00=r00_j,
+                        dt=time_step_report,
+                        w=w_mhd,
+                    )
+                    return 0
+
+                _ = jax.lax.cond(sample_vmec, _do_print, lambda _: 0, operand=None)
 
             def _refresh_cache(_):
                 if constraint_tcon0 is None or float(constraint_tcon0) == 0.0:
@@ -4802,7 +4823,7 @@ def solve_fixed_boundary_residual_iter(
         zero_m1_hist_np = np.asarray(zero_m1_hist)[accepted_mask]
         include_edge_hist_np = np.asarray(include_edge_hist)[accepted_mask]
 
-        if verbose and bool(vmec2000_control) and bool(verbose_vmec2000_table):
+        if (not print_in_scan) and verbose and bool(vmec2000_control) and bool(verbose_vmec2000_table):
             fsqr_full = np.asarray(fsqr_hist)
             fsqz_full = np.asarray(fsqz_hist)
             fsql_full = np.asarray(fsql_hist)
