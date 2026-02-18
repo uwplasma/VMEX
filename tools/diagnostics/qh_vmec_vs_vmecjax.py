@@ -114,8 +114,8 @@ def _plot_3d_surface(ax, *, R, Z, B, phi, title: str):
 
 
 def _plot_iota(ax, *, s_vmec, iota_vmec, s_jax, iota_jax, label_jax: str):
-    ax.plot(s_vmec, iota_vmec, lw=2.8, linestyle="--", label="VMEC2000", zorder=2)
-    ax.plot(s_jax, iota_jax, lw=2.8, linestyle="-", label=label_jax, zorder=1)
+    ax.plot(s_vmec, iota_vmec, lw=3.6, linestyle="--", label="VMEC2000", zorder=2)
+    ax.plot(s_jax, iota_jax, lw=3.6, linestyle="-", label=label_jax, zorder=1)
     ax.set_xlabel("s")
     ax.set_ylabel("iota")
     ax.set_title("iota profile")
