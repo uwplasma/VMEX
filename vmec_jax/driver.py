@@ -422,6 +422,22 @@ def run_fixed_boundary(
             nfp=int(cfg.nfp),
             lasym=bool(cfg.lasym),
         )
+    def _as_list(value):
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return value
+        if isinstance(value, tuple):
+            return list(value)
+        try:
+            if isinstance(value, np.ndarray):
+                return list(value.tolist())
+        except Exception:
+            pass
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            return [value]
+        return None
+
     multigrid_use_input_niter = bool(multigrid_use_input_niter)
     if multigrid is None:
         multigrid = solver_lower == "vmec2000_iter"
@@ -443,22 +459,6 @@ def run_fixed_boundary(
     if restart_solver_state is not None:
         multigrid = False
     multigrid = bool(multigrid) and (ns_override is None)
-
-    def _as_list(value):
-        if value is None:
-            return None
-        if isinstance(value, list):
-            return value
-        if isinstance(value, tuple):
-            return list(value)
-        try:
-            if isinstance(value, np.ndarray):
-                return list(value.tolist())
-        except Exception:
-            pass
-        if isinstance(value, (int, float, np.integer, np.floating)):
-            return [value]
-        return None
 
     # Build the initial state on either the final grid (single-grid solvers and
     # use_initial_guess) or on the first multigrid stage for VMEC-style solves.

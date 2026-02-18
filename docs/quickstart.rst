@@ -68,14 +68,6 @@ references::
 
   python tools/diagnostics/external_vmec_driver_compare.py --case circular_tokamak
 
-ParaView export (VTK)
----------------------
-
-Export a surface B-field (including ``Bx``, ``By``, ``Bz``, and ``Bmag``) and a
-field-line trace for ParaView (requires ``netCDF4``)::
-
-  python examples/research/visualization/vtk_field_and_fieldlines.py examples/data/input.li383_low_res --hi-res --outdir vtk_out
-
 A minimal API sketch (recommended)
 ----------------------------------
 
