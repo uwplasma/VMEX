@@ -201,9 +201,13 @@ def precondn_diag_axd1_from_bcovar(
     pfactor = -4.0 * float(trig.r0scale) ** 2
 
     # Angular integration weights (wint) on the VMEC internal grid.
-    w_theta = jnp.asarray(trig.cosmui3[:, 0]) / jnp.asarray(trig.mscale[0])
-    wint = w_theta[:, None] * jnp.ones((int(trig.cosnv.shape[0]),), dtype=w_theta.dtype)[None, :]
-    wint3 = wint[None, :, :]
+    wint3 = getattr(trig, "wint3_precond", None)
+    if wint3 is None:
+        w_theta = jnp.asarray(trig.cosmui3[:, 0]) / jnp.asarray(trig.mscale[0])
+        wint = w_theta[:, None] * jnp.ones((int(trig.cosnv.shape[0]),), dtype=w_theta.dtype)[None, :]
+        wint3 = wint[None, :, :]
+    else:
+        wint3 = jnp.asarray(wint3, dtype=jnp.asarray(trig.cosmu).dtype)
 
     bsq = jnp.asarray(bsq)
     r12 = jnp.asarray(r12)
