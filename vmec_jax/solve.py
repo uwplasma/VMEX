@@ -3068,6 +3068,7 @@ def solve_fixed_boundary_residual_iter(
     )
     axis_reset_done = bool(resume_state is not None)
     lmove_axis = True if indata is None else bool(indata.get_bool("LMOVE_AXIS", True))
+    force_axis_reset = False if indata is None else bool(indata.get_bool("LFREEB", False))
 
     def _apply_vmec_lambda_axis_rules(st: VMECState) -> VMECState:
         """Enforce VMEC lambda gauge without mutating stored axis coefficients.
@@ -3093,7 +3094,13 @@ def solve_fixed_boundary_residual_iter(
 
     axis_reset_coeffs = None
 
-    def _reset_axis_from_boundary(st: VMECState, *, k_guess=None, full_reset: bool = False) -> VMECState:
+    def _reset_axis_from_boundary(
+        st: VMECState,
+        *,
+        k_guess=None,
+        full_reset: bool = False,
+        refine_axis_guess: bool = True,
+    ) -> VMECState:
         nonlocal axis_reset_coeffs
         if boundary_for_axis is None:
             return st
@@ -3147,7 +3154,7 @@ def solve_fixed_boundary_residual_iter(
 
         # One refinement pass on the VMEC state-based axis estimate stabilizes
         # non-axis starts where the first guess is still too far off.
-        if used_state_guess:
+        if used_state_guess and bool(refine_axis_guess):
             try:
                 st_tmp = _state_from_axis_coeffs(
                     raxis_cc,
@@ -3495,6 +3502,99 @@ def solve_fixed_boundary_residual_iter(
         sp[1] = sm[2] if ns >= 2 else 0.0
         return sm, sp
 
+    def _maybe_dump_jacobian_terms(*, k, iter_idx: int) -> None:
+        env = os.getenv("VMEC_JAX_DUMP_JACOBIAN_TERMS", "").strip()
+        if not env or env in ("0", "false", "no", "False"):
+            return
+        dump_iter = os.getenv("VMEC_JAX_DUMP_ITER", "").strip()
+        if dump_iter:
+            try:
+                if int(dump_iter) != int(iter_idx):
+                    return
+            except Exception:
+                pass
+        outdir = os.getenv("VMEC_JAX_DUMP_DIR", "").strip() or "."
+        outpath = Path(outdir).expanduser().resolve()
+        outpath.mkdir(parents=True, exist_ok=True)
+        fname = outpath / f"jacobian_terms_iter{int(iter_idx)}.dat"
+
+        pr1_even = np.asarray(getattr(k, "pr1_even"))
+        pr1_odd = np.asarray(getattr(k, "pr1_odd"))
+        pz1_even = np.asarray(getattr(k, "pz1_even"))
+        pz1_odd = np.asarray(getattr(k, "pz1_odd"))
+        pru_even = np.asarray(getattr(k, "pru_even"))
+        pru_odd = np.asarray(getattr(k, "pru_odd"))
+        pzu_even = np.asarray(getattr(k, "pzu_even"))
+        pzu_odd = np.asarray(getattr(k, "pzu_odd"))
+
+        ns, ntheta3, nzeta = pr1_even.shape
+        pshalf = _pshalf_from_s(np.asarray(s))
+        if pshalf.shape[0] != ns:
+            pshalf = np.resize(pshalf, (ns,))
+        hs = float(np.asarray(s[1] - s[0])) if ns > 1 else 1.0
+        ohs = 1.0 / hs if hs != 0.0 else 0.0
+        dphids = 0.25
+
+        with fname.open("w", encoding="utf-8") as f:
+            f.write("# jacobian term dump\n")
+            f.write(f"ns={ns}\n")
+            f.write(f"ntheta3={ntheta3}\n")
+            f.write(f"nzeta={nzeta}\n")
+            f.write("columns: js lt lz pshalf\n")
+            f.write(" pru_e pru_o pru_e_m1 pru_o_m1\n")
+            f.write(" pz1_e pz1_o pz1_e_m1 pz1_o_m1\n")
+            f.write(" pzu_e pzu_o pzu_e_m1 pzu_o_m1\n")
+            f.write(" pr1_e pr1_o pr1_e_m1 pr1_o_m1\n")
+            f.write(" ru12 pzs pzu12 prs pr12 ptau\n")
+            for lt in range(ntheta3):
+                for lz in range(nzeta):
+                    for j in range(1, ns):
+                        jm1 = j - 1
+                        psh = pshalf[j]
+                        psh_safe = psh if psh != 0.0 else 1.0
+                        pru_e = pru_even[j, lt, lz]
+                        pru_o = pru_odd[j, lt, lz]
+                        pru_e_m1 = pru_even[jm1, lt, lz]
+                        pru_o_m1 = pru_odd[jm1, lt, lz]
+                        pz1_e = pz1_even[j, lt, lz]
+                        pz1_o = pz1_odd[j, lt, lz]
+                        pz1_e_m1 = pz1_even[jm1, lt, lz]
+                        pz1_o_m1 = pz1_odd[jm1, lt, lz]
+                        pzu_e = pzu_even[j, lt, lz]
+                        pzu_o = pzu_odd[j, lt, lz]
+                        pzu_e_m1 = pzu_even[jm1, lt, lz]
+                        pzu_o_m1 = pzu_odd[jm1, lt, lz]
+                        pr1_e = pr1_even[j, lt, lz]
+                        pr1_o = pr1_odd[j, lt, lz]
+                        pr1_e_m1 = pr1_even[jm1, lt, lz]
+                        pr1_o_m1 = pr1_odd[jm1, lt, lz]
+
+                        ru12 = 0.5 * (pru_e + pru_e_m1 + psh * (pru_o + pru_o_m1))
+                        pzs = ohs * ((pz1_e - pz1_e_m1) + psh * (pz1_o - pz1_o_m1))
+                        ptau = ru12 * pzs + dphids * (
+                            pru_o * pz1_o
+                            + pru_o_m1 * pz1_o_m1
+                            + (pru_e * pz1_o + pru_e_m1 * pz1_o_m1) / psh_safe
+                        )
+                        pzu12 = 0.5 * (pzu_e + pzu_e_m1 + psh * (pzu_o + pzu_o_m1))
+                        prs = ohs * ((pr1_e - pr1_e_m1) + psh * (pr1_o - pr1_o_m1))
+                        pr12 = 0.5 * (pr1_e + pr1_e_m1 + psh * (pr1_o + pr1_o_m1))
+                        ptau = ptau - prs * pzu12 - dphids * (
+                            pzu_o * pr1_o
+                            + pzu_o_m1 * pr1_o_m1
+                            + (pzu_e * pr1_o + pzu_e_m1 * pr1_o_m1) / psh_safe
+                        )
+
+                        f.write(
+                            f"{j+1:6d}{lt+1:6d}{lz+1:6d}"
+                            f"{psh:24.16E}"
+                            f"{pru_e:24.16E}{pru_o:24.16E}{pru_e_m1:24.16E}{pru_o_m1:24.16E}"
+                            f"{pz1_e:24.16E}{pz1_o:24.16E}{pz1_e_m1:24.16E}{pz1_o_m1:24.16E}"
+                            f"{pzu_e:24.16E}{pzu_o:24.16E}{pzu_e_m1:24.16E}{pzu_o_m1:24.16E}"
+                            f"{pr1_e:24.16E}{pr1_o:24.16E}{pr1_e_m1:24.16E}{pr1_o_m1:24.16E}"
+                            f"{ru12:24.16E}{pzs:24.16E}{pzu12:24.16E}{prs:24.16E}{pr12:24.16E}{ptau:24.16E}\n"
+                        )
+
     def _lambda_preconditioner(bc, *, return_faclam: bool = False, return_debug: bool = False):
         from .preconditioner_1d_jax import lambda_preconditioner_cached
 
@@ -3550,6 +3650,7 @@ def solve_fixed_boundary_residual_iter(
             _maybe_dump_bsube(bc=k.bc, static=static, iter_idx=int(iter_idx))
             _maybe_dump_bsube_terms(bc=k.bc, static=static, iter_idx=int(iter_idx))
             _maybe_dump_lulv(bc=k.bc, static=static, iter_idx=int(iter_idx), state=state, trig=trig)
+            _maybe_dump_jacobian_terms(k=k, iter_idx=int(iter_idx))
         if iter_idx is not None:
             _maybe_dump_force_kernels(k=k, static=static, iter_idx=int(iter_idx), label="raw")
         mask_pack = None
@@ -4155,64 +4256,25 @@ def solve_fixed_boundary_residual_iter(
                     f"{float(r00):11.3E}{float(delt0r):10.2E}{float(w_mhd):12.4E}",
                     flush=True,
                 )
+
+        def _fmt_axis_coeff_local(val: float) -> str:
+            s = f"{float(val):.16g}"
+            if "e" in s:
+                s = s.replace("e", "E")
+            return s
+
+        def _print_axis_guess_local(raxis_cc, zaxis_cs) -> None:
+            try:
+                r_line = "      RAXIS_CC =    " + "   ".join(_fmt_axis_coeff_local(v) for v in np.ravel(raxis_cc))
+                z_line = "      ZAXIS_CS =    " + "   ".join(_fmt_axis_coeff_local(v) for v in np.ravel(zaxis_cs))
+                print("  ---- Improved AXIS Guess ----", flush=True)
+                print(r_line, flush=True)
+                print(z_line, flush=True)
+                print("  -----------------------------", flush=True)
+            except Exception:
+                pass
         dtype = jnp.asarray(state_init.Rcos).dtype
 
-        axis_state_spec = (
-            jax.ShapeDtypeStruct(state_init.Rcos.shape, dtype),
-            jax.ShapeDtypeStruct(state_init.Rsin.shape, dtype),
-            jax.ShapeDtypeStruct(state_init.Zcos.shape, dtype),
-            jax.ShapeDtypeStruct(state_init.Zsin.shape, dtype),
-            jax.ShapeDtypeStruct(state_init.Lcos.shape, dtype),
-            jax.ShapeDtypeStruct(state_init.Lsin.shape, dtype),
-        )
-
-        def _axis_reset_callback(
-            pr1_even,
-            pr1_odd,
-            pz1_even,
-            pz1_odd,
-            pru_even,
-            pru_odd,
-            pzu_even,
-            pzu_odd,
-            bad_jacobian_flag,
-        ):
-            from types import SimpleNamespace
-            k_guess = SimpleNamespace(
-                pr1_even=np.asarray(pr1_even),
-                pr1_odd=np.asarray(pr1_odd),
-                pz1_even=np.asarray(pz1_even),
-                pz1_odd=np.asarray(pz1_odd),
-                pru_even=np.asarray(pru_even),
-                pru_odd=np.asarray(pru_odd),
-                pzu_even=np.asarray(pzu_even),
-                pzu_odd=np.asarray(pzu_odd),
-            )
-            st_template = VMECState(
-                layout=state_init.layout,
-                Rcos=np.asarray(state_init.Rcos),
-                Rsin=np.asarray(state_init.Rsin),
-                Zcos=np.asarray(state_init.Zcos),
-                Zsin=np.asarray(state_init.Zsin),
-                Lcos=np.asarray(state_init.Lcos),
-                Lsin=np.asarray(state_init.Lsin),
-            )
-            st_new = _reset_axis_from_boundary(st_template, k_guess=k_guess, full_reset=True)
-            if bool(verbose) and bool(vmec2000_control) and bool(verbose_vmec2000_table):
-                if bool(bad_jacobian_flag):
-                    print(" INITIAL JACOBIAN CHANGED SIGN!", flush=True)
-                print(" TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS", flush=True)
-                if axis_reset_coeffs is not None:
-                    raxis_cc, _raxis_cs, _zaxis_cc, zaxis_cs = axis_reset_coeffs
-                    _print_axis_guess(raxis_cc, zaxis_cs)
-            return (
-                np.asarray(st_new.Rcos),
-                np.asarray(st_new.Rsin),
-                np.asarray(st_new.Zcos),
-                np.asarray(st_new.Zsin),
-                np.asarray(st_new.Lcos),
-                np.asarray(st_new.Lsin),
-            )
         time_step0 = jnp.asarray(float(step_size), dtype=dtype)
         flip_sign0 = jnp.asarray(float(initial_flip_sign), dtype=dtype)
         k_ndamp = 10
@@ -4362,6 +4424,38 @@ def solve_fixed_boundary_residual_iter(
             constraint_tcon_active=constraint_active_false,
             iter_idx=None,
         )
+        bad_jacobian0 = False
+        if axis_reset_enabled:
+            try:
+                tau0 = jnp.asarray(k0.bc.jac.tau)
+                tau0_use = tau0[1:] if int(tau0.shape[0]) > 1 else tau0
+                bad_jacobian0 = bool(np.asarray((jnp.min(tau0_use) < 0.0) & (jnp.max(tau0_use) > 0.0)))
+            except Exception:
+                bad_jacobian0 = False
+        if axis_reset_enabled and (bad_jacobian0 or bool(force_axis_reset)):
+            if bool(verbose) and bool(vmec2000_control) and bool(verbose_vmec2000_table):
+                print(" INITIAL JACOBIAN CHANGED SIGN!", flush=True)
+                print(" TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS", flush=True)
+            state_init = _reset_axis_from_boundary(state_init, k_guess=k0, full_reset=True, refine_axis_guess=False)
+            if bool(verbose) and bool(vmec2000_control) and bool(verbose_vmec2000_table):
+                if axis_reset_coeffs is not None:
+                    raxis_cc, _raxis_cs, _zaxis_cc, zaxis_cs = axis_reset_coeffs
+                    _print_axis_guess_local(raxis_cc, zaxis_cs)
+            ijacob0 = jnp.asarray(1, dtype=jnp.int32)
+            state_checkpoint0 = state_init
+            axis_reset_enabled = False
+            k0, frzl0, gcr2_0, gcz2_0, gcl2_0, rz_scale0, l_scale0, norms0 = _compute_forces_scan(
+                state_init,
+                include_edge=False,
+                zero_m1=jnp.asarray(1.0, dtype=dtype),
+                constraint_precond_diag=zero_precond_diag,
+                constraint_tcon=zero_tcon,
+                constraint_precond_active=constraint_active_false,
+                constraint_tcon_active=constraint_active_false,
+                iter_idx=None,
+            )
+        # Axis reset handled before scan; avoid per-iteration callbacks.
+        axis_reset_enabled = False
         cache_valid0 = jnp.asarray(False)
         if constraint_tcon0 is None or float(constraint_tcon0) == 0.0:
             cache_precond_diag0 = zero_precond_diag
@@ -4748,62 +4842,7 @@ def solve_fixed_boundary_residual_iter(
                 min_tau = jnp.min(tau_use)
                 max_tau = jnp.max(tau_use)
                 bad_jacobian = (min_tau < 0.0) & (max_tau > 0.0)
-                if axis_reset_enabled:
-                    def _probe_badjac(_):
-                        jac_probe = vmec_half_mesh_jacobian_from_state(
-                            state=carry_adv.state,
-                            modes=static.modes,
-                            trig=trig,
-                            s=s,
-                            lconm1=bool(getattr(static.cfg, "lconm1", True)),
-                            lthreed=bool(getattr(static.cfg, "lthreed", True)),
-                            mask_even=getattr(static, "m_is_even", None),
-                            mask_odd=getattr(static, "m_is_odd", None),
-                        )
-                        tau_p = jnp.asarray(jac_probe.tau)
-                        tau_p_use = tau_p[1:] if int(tau_p.shape[0]) > 1 else tau_p
-                        return (jnp.min(tau_p_use) < 0.0) & (jnp.max(tau_p_use) > 0.0)
-                    bad_jacobian = jax.lax.cond(iter2 == 1, _probe_badjac, lambda _: bad_jacobian, operand=None)
-                huge_initial_forces = (~jnp.isfinite(fsq0)) | (fsq0 > 1.0e2)
-                axis_reset_trigger = (
-                    jnp.asarray(axis_reset_enabled)
-                    & (iter2 == 1)
-                    & (bad_jacobian | huge_initial_forces)
-                )
-                state_tuple_current = (
-                    carry_adv.state.Rcos,
-                    carry_adv.state.Rsin,
-                    carry_adv.state.Zcos,
-                    carry_adv.state.Zsin,
-                    carry_adv.state.Lcos,
-                    carry_adv.state.Lsin,
-                )
-
-                def _axis_reset_state(_):
-                    return jax.pure_callback(
-                        _axis_reset_callback,
-                        axis_state_spec,
-                        k.pr1_even,
-                        k.pr1_odd,
-                        k.pz1_even,
-                        k.pz1_odd,
-                        k.pru_even,
-                        k.pru_odd,
-                        k.pzu_even,
-                        k.pzu_odd,
-                        bad_jacobian,
-                    )
-
-                state_tuple_reset = jax.lax.cond(axis_reset_trigger, _axis_reset_state, lambda _: state_tuple_current, operand=None)
-                state_axis = VMECState(
-                    layout=carry_adv.state.layout,
-                    Rcos=state_tuple_reset[0],
-                    Rsin=state_tuple_reset[1],
-                    Zcos=state_tuple_reset[2],
-                    Zsin=state_tuple_reset[3],
-                    Lcos=state_tuple_reset[4],
-                    Lsin=state_tuple_reset[5],
-                )
+                # Axis reset handled before entering the scan loop.
 
                 fsq = carry_adv.fsq_prev
                 init_mask = (iter2 == carry_adv.iter1) | (carry_adv.res0 < 0.0) | (carry_adv.res1 < 0.0)
@@ -4830,14 +4869,10 @@ def solve_fixed_boundary_residual_iter(
                         (iter2 - carry_adv.iter1) > (k_preconditioner_update_interval // 2)
                     ) & (iter2 > 2 * k_preconditioner_update_interval) & ((fsqr + fsqz) > 1.0e-2)
                 restart_vmecpp = use_restart_triggers & vmecpp_bad_progress
-                restart_badjac = restart_badjac | axis_reset_trigger
                 stage_spike = jnp.asarray(False)
                 if stage_prev_fsq_j is not None:
                     stage_spike = (iter2 == 1) & (fsq0 > (stage_prev_fsq_j * stage_transition_factor))
                 do_restart = restart_time | restart_badjac | restart_vmecpp
-                state_checkpoint = jax.tree_util.tree_map(
-                    lambda a, b: jnp.where(axis_reset_trigger, a, b), state_axis, state_checkpoint
-                )
 
                 def _restart_updates(_):
                     time_step = jnp.where(
@@ -6526,12 +6561,12 @@ def solve_fixed_boundary_residual_iter(
             ):
                 fsq_curr = fsqr_f + fsqz_f + fsql_f
                 huge_initial_forces = (not np.isfinite(fsq_curr)) or (fsq_curr > 1.0e2)
-                if bad_jacobian or huge_initial_forces:
+                if bad_jacobian or huge_initial_forces or bool(force_axis_reset):
                     if verbose and bool(vmec2000_control) and bool(verbose_vmec2000_table):
-                        if bad_jacobian:
+                        if bad_jacobian or bool(force_axis_reset):
                             print(" INITIAL JACOBIAN CHANGED SIGN!", flush=True)
                         print(" TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS", flush=True)
-                    state = _reset_axis_from_boundary(state, k_guess=k, full_reset=True)
+                    state = _reset_axis_from_boundary(state, k_guess=k, full_reset=True, refine_axis_guess=False)
                     if verbose and bool(vmec2000_control) and bool(verbose_vmec2000_table):
                         if axis_reset_coeffs is not None:
                             raxis_cc, _raxis_cs, _zaxis_cc, zaxis_cs = axis_reset_coeffs
@@ -6543,7 +6578,7 @@ def solve_fixed_boundary_residual_iter(
                     vZcs = jnp.zeros_like(vRcc)
                     vLsc = jnp.zeros_like(vRcc)
                     vLcs = jnp.zeros_like(vRcc)
-                    time_step = max(restart_badjac_factor * float(step_size), 1e-12)
+                    time_step = float(time_step)
                     ijacob = 1
                     axis_reset_done = True
                     iter1 = iter2
