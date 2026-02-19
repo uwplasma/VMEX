@@ -30,7 +30,6 @@ import numpy as np
 
 from ._compat import jnp, tree_util, has_jax
 from .grids import AngleGrid
-from ._compat import has_jax
 
 
 @dataclass(frozen=True)
@@ -69,6 +68,9 @@ class VmecTrigTables:
     sinnv: Any
     cosnvn: Any
     sinnvn: Any
+
+    # Precomputed angular weights for the 1D preconditioner (wint3).
+    wint3_precond: Any | None = None
 
     # Cached theta slices (ntheta2, mmax+1) to reduce per-call slicing cost.
     cosmui_nt2: Any | None = None
@@ -235,6 +237,11 @@ def vmec_trig_tables(
     cosnvn = cosnv * (n[None, :] * float(nfp))
     sinnvn = -sinnv * (n[None, :] * float(nfp))
 
+    # Preconditioner angular weights (wint3) on the VMEC internal grid.
+    w_theta = cosmui3[:, 0] / float(mscale[0])
+    wint = w_theta[:, None] * np.ones((nzeta,), dtype=float)[None, :]
+    wint3_precond = wint[None, :, :]
+
     # Convert to backend arrays.
     tables = VmecTrigTables(
         ntheta1=ntheta1,
@@ -263,6 +270,7 @@ def vmec_trig_tables(
         sinnv=jnp.asarray(sinnv, dtype=dtype),
         cosnvn=jnp.asarray(cosnvn, dtype=dtype),
         sinnvn=jnp.asarray(sinnvn, dtype=dtype),
+        wint3_precond=jnp.asarray(wint3_precond, dtype=dtype),
     )
     if cache:
         _TRIG_CACHE[cache_key] = tables
@@ -444,6 +452,7 @@ def _zeta_contract(arr, mat):
         precision=lax.Precision.HIGHEST,
     )
     return out2.reshape((p, s, m, mat.shape[1]))
+
 
 
 def _theta_transform_fft(arr, *, mpol: int, dnorm: float, mscale, want_sin: bool):
@@ -742,6 +751,7 @@ def tomnsps_rzl(
 
     stack_cosmui = jnp.stack([armn, crmn, azmn, czmn, arcon, azcon, clmn], axis=0)
     stack_sinmumi = jnp.stack([brmn, bzmn, blmn], axis=0)
+    stack_all = jnp.concatenate([stack_cosmui, stack_sinmumi], axis=0)
 
     use_fft = bool(_TOMNSPS_FFT) and (not bool(lasym)) and has_jax()
     use_fft_fused = True
@@ -773,10 +783,20 @@ def tomnsps_rzl(
         sinmumi_out = -sin_coeff * m
         cosmumi_out = cos_coeff * m
     else:
-        cosmui_out = _theta_einsum_stack(stack_cosmui, cosmui)
-        sinmui_out = _theta_einsum_stack(stack_cosmui, sinmui)
-        sinmumi_out = _theta_einsum_stack(stack_sinmumi, sinmumi)
-        cosmumi_out = _theta_einsum_stack(stack_sinmumi, cosmumi)
+        # DFT path: use a single cos/sin basis transform for both stacks,
+        # then apply m-derivative scaling for the sinmumi/cosmumi blocks.
+        cos_all = _theta_einsum_stack(stack_all, cosmui)
+        sin_all = _theta_einsum_stack(stack_all, sinmui)
+        n_cos = int(stack_cosmui.shape[0])
+        cosmui_out = cos_all[:n_cos]
+        sinmui_out = sin_all[:n_cos]
+        cos_sinmumi = cos_all[n_cos:]
+        sin_sinmumi = sin_all[n_cos:]
+        m = jnp.arange(int(mpol), dtype=cos_sinmumi.dtype)
+        mshape = (1,) * (cos_sinmumi.ndim - 2) + (int(mpol), 1)
+        m = m.reshape(mshape)
+        sinmumi_out = -sin_sinmumi * m
+        cosmumi_out = cos_sinmumi * m
 
     armn_cos, crmn_cos, azmn_cos, czmn_cos, arcon_cos, azcon_cos, clmn_cos = cosmui_out
     armn_sin, crmn_sin, azmn_sin, czmn_sin, arcon_sin, azcon_sin, clmn_sin = sinmui_out
@@ -910,26 +930,31 @@ def tomnsps_rzl(
                 fzcs = None
                 flcs = None
     else:
-        w_cosnv = jnp.stack([w1, w7, w11], axis=0)
-        out_cosnv = _zeta_contract(w_cosnv, cosnv)
-        frcc, fzsc, flsc = out_cosnv[0], out_cosnv[1], out_cosnv[2]
-
         if lthreed:
-            w_sinnvn = jnp.stack([w2, w8, w12], axis=0)
-            out_sinnvn = _zeta_contract(w_sinnvn, sinnvn)
+            n = jnp.arange(ntor + 1, dtype=jnp.asarray(w1).dtype)
+            nfac = (n * float(nfp)).reshape((1, 1, 1, int(ntor) + 1))
+
+            w_cos_stack = jnp.stack([w1, w7, w11, w4, w6, w10], axis=0)
+            out_cos = _zeta_contract(w_cos_stack, cosnv)
+            frcc, fzsc, flsc = out_cos[0], out_cos[1], out_cos[2]
+            out_cosnvn = out_cos[3:] * nfac
+
+            w_sin_stack = jnp.stack([w2, w8, w12, w3, w5, w9], axis=0)
+            out_sin = _zeta_contract(w_sin_stack, sinnv)
+            out_sinnvn = -out_sin[:3] * nfac
+            out_sinnv = out_sin[3:]
+
             frcc = frcc + out_sinnvn[0]
             fzsc = fzsc + out_sinnvn[1]
             flsc = flsc + out_sinnvn[2]
-
-            w_sinnv = jnp.stack([w3, w5, w9], axis=0)
-            w_cosnvn = jnp.stack([w4, w6, w10], axis=0)
-            out_sinnv = _zeta_contract(w_sinnv, sinnv)
-            out_cosnvn = _zeta_contract(w_cosnvn, cosnvn)
 
             frss = out_sinnv[0] + out_cosnvn[0]
             fzcs = out_sinnv[1] + out_cosnvn[1]
             flcs = out_sinnv[2] + out_cosnvn[2]
         else:
+            w_cosnv = jnp.stack([w1, w7, w11], axis=0)
+            out_cosnv = _zeta_contract(w_cosnv, cosnv)
+            frcc, fzsc, flsc = out_cosnv[0], out_cosnv[1], out_cosnv[2]
             frss = None
             fzcs = None
             flcs = None
