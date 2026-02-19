@@ -2503,6 +2503,7 @@ def solve_fixed_boundary_gn_vmec_residual(
     apply_lforbal = bool(indata.get_bool("LFORBAL", False)) if indata is not None else False
     apply_lforbal = bool(indata.get_bool("LFORBAL", False)) if indata is not None else False
     apply_lforbal = bool(indata.get_bool("LFORBAL", False)) if indata is not None else False
+    apply_lforbal = bool(indata.get_bool("LFORBAL", False)) if indata is not None else False
 
     signgs = int(signgs)
     idx00 = _mode00_index(static.modes)
@@ -3319,6 +3320,7 @@ def solve_fixed_boundary_residual_iter(
     constraint_tcon0: float | None = None
     if bool(include_constraint_force):
         constraint_tcon0 = float(indata.get_float("TCON0", 1.0))
+    apply_lforbal = bool(indata.get_bool("LFORBAL", False)) if indata is not None else False
 
     static_key = (
         int(static.cfg.mpol),
@@ -4080,6 +4082,8 @@ def solve_fixed_boundary_residual_iter(
         if nstep_screen < 1:
             nstep_screen = 1
         scan_print_env = os.getenv("VMEC_JAX_SCAN_PRINT", "").strip().lower()
+        scan_print_mode = os.getenv("VMEC_JAX_SCAN_PRINT_MODE", "debug_print").strip().lower()
+        scan_print_ordered = os.getenv("VMEC_JAX_SCAN_PRINT_ORDERED", "0").strip().lower() not in ("", "0", "false", "no")
         print_in_scan = (
             bool(verbose)
             and bool(vmec2000_control)
@@ -4091,6 +4095,14 @@ def solve_fixed_boundary_residual_iter(
                 from jax import debug as _jax_debug
             except Exception:
                 print_in_scan = False
+        if scan_print_mode not in ("debug_print", "debug_callback", "io_callback"):
+            scan_print_mode = "debug_print"
+        if scan_print_mode == "io_callback":
+            try:
+                from jax.experimental import io_callback as _io_callback
+            except Exception:
+                scan_print_mode = "debug_print"
+                _io_callback = None  # type: ignore[assignment]
         if resume_state is not None:
             try:
                 iter_offset = int(resume_state.get("iter_offset", iter_offset))
@@ -4478,16 +4490,59 @@ def solve_fixed_boundary_residual_iter(
                 r00_j, z00_j, w_mhd = jax.lax.cond(sample_vmec, _compute_scalars, _reuse_scalars, operand=None)
                 if print_in_scan:
                     def _do_print(_):
-                        _jax_debug.print(
-                            "{i:5d}{fsqr:10.2E}{fsqz:10.2E}{fsql:10.2E}{r00:11.3E}{dt:10.2E}{w:12.4E}",
-                            i=iter2,
-                            fsqr=fsqr,
-                            fsqz=fsqz,
-                            fsql=fsql,
-                            r00=r00_j,
-                            dt=time_step_report,
-                            w=w_mhd,
-                        )
+                        if scan_print_mode == "debug_print":
+                            _jax_debug.print(
+                                "{i:5d}{fsqr:10.2E}{fsqz:10.2E}{fsql:10.2E}{r00:11.3E}{dt:10.2E}{w:12.4E}",
+                                i=iter2,
+                                fsqr=fsqr,
+                                fsqz=fsqz,
+                                fsql=fsql,
+                                r00=r00_j,
+                                dt=time_step_report,
+                                w=w_mhd,
+                                ordered=bool(scan_print_ordered),
+                            )
+                        elif scan_print_mode == "debug_callback":
+                            def _cb(i, fsqr_v, fsqz_v, fsql_v, r00_v, dt_v, w_v):
+                                print(
+                                    f"{int(i):5d}"
+                                    f"{float(fsqr_v):10.2E}{float(fsqz_v):10.2E}{float(fsql_v):10.2E}"
+                                    f"{float(r00_v):11.3E}{float(dt_v):10.2E}{float(w_v):12.4E}",
+                                    flush=True,
+                                )
+                                return None
+                            _jax_debug.callback(
+                                _cb,
+                                iter2,
+                                fsqr,
+                                fsqz,
+                                fsql,
+                                r00_j,
+                                time_step_report,
+                                w_mhd,
+                                ordered=bool(scan_print_ordered),
+                            )
+                        else:
+                            def _cb_io(i, fsqr_v, fsqz_v, fsql_v, r00_v, dt_v, w_v):
+                                print(
+                                    f"{int(i):5d}"
+                                    f"{float(fsqr_v):10.2E}{float(fsqz_v):10.2E}{float(fsql_v):10.2E}"
+                                    f"{float(r00_v):11.3E}{float(dt_v):10.2E}{float(w_v):12.4E}",
+                                    flush=True,
+                                )
+                                return ()
+                            _io_callback(  # type: ignore[misc]
+                                _cb_io,
+                                None,
+                                iter2,
+                                fsqr,
+                                fsqz,
+                                fsql,
+                                r00_j,
+                                time_step_report,
+                                w_mhd,
+                                ordered=bool(scan_print_ordered),
+                            )
                         return 0
 
                     _ = jax.lax.cond(sample_vmec, _do_print, lambda _: 0, operand=None)
