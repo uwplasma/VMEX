@@ -2082,6 +2082,8 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
     if bool(include_constraint_force):
         # VMEC2000 default is `TCON0=1` (readin.f).
         constraint_tcon0 = float(indata.get_float("TCON0", 1.0))
+    apply_lforbal = bool(indata.get_bool("LFORBAL", False)) if indata is not None else False
+    apply_lforbal = bool(indata.get_bool("LFORBAL", False)) if indata is not None else False
     mask_pack = getattr(static, "tomnsps_masks", None)
 
     def _fsq2_terms_and_jacmin(state: VMECState, zero_m1_zforce: Any):
@@ -2100,7 +2102,7 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
             cfg_nzeta=int(static.cfg.nzeta),
             wout=wout_like,
             trig=trig,
-            apply_lforbal=False,
+            apply_lforbal=apply_lforbal,
             include_edge=False,
             masks=mask_pack,
         )
@@ -2179,7 +2181,7 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
                 cfg_nzeta=int(static.cfg.nzeta),
                 wout=wout_like,
                 trig=trig,
-                apply_lforbal=False,
+                apply_lforbal=apply_lforbal,
                 include_edge=False,
                 masks=mask_pack,
             )
@@ -2498,6 +2500,9 @@ def solve_fixed_boundary_gn_vmec_residual(
     constraint_tcon0: float | None = None
     if bool(include_constraint_force):
         constraint_tcon0 = float(indata.get_float("TCON0", 1.0))
+    apply_lforbal = bool(indata.get_bool("LFORBAL", False)) if indata is not None else False
+    apply_lforbal = bool(indata.get_bool("LFORBAL", False)) if indata is not None else False
+    apply_lforbal = bool(indata.get_bool("LFORBAL", False)) if indata is not None else False
 
     signgs = int(signgs)
     idx00 = _mode00_index(static.modes)
@@ -2610,7 +2615,7 @@ def solve_fixed_boundary_gn_vmec_residual(
             cfg_nzeta=int(static.cfg.nzeta),
             wout=wout_like,
             trig=trig,
-            apply_lforbal=False,
+            apply_lforbal=apply_lforbal,
             include_edge=False,
             masks=mask_pack,
         )
@@ -3546,7 +3551,7 @@ def solve_fixed_boundary_residual_iter(
             cfg_nzeta=int(static.cfg.nzeta),
             wout=wout_like,
             trig=trig,
-            apply_lforbal=False,
+            apply_lforbal=apply_lforbal,
             include_edge=bool(include_edge),
             masks=mask_pack,
         )
@@ -3559,7 +3564,7 @@ def solve_fixed_boundary_residual_iter(
                         cfg_nzeta=int(static.cfg.nzeta),
                         wout=wout_like,
                         trig=trig,
-                        apply_lforbal=False,
+                        apply_lforbal=apply_lforbal,
                         include_edge=bool(include_edge),
                         masks=mask_pack,
                     )
@@ -3690,7 +3695,7 @@ def solve_fixed_boundary_residual_iter(
                     cfg_nzeta=int(static.cfg.nzeta),
                     wout=wout_like,
                     trig=trig,
-                    apply_lforbal=False,
+                    apply_lforbal=apply_lforbal,
                     include_edge=False,
                     masks=mask_pack_hlo,
                 )
@@ -7491,7 +7496,7 @@ def first_step_diagnostics(
             cfg_nzeta=int(cfg.nzeta),
             wout=wout_like,
             trig=trig,
-            apply_lforbal=False,
+            apply_lforbal=apply_lforbal,
             include_edge=False,
             masks=mask_pack,
         )

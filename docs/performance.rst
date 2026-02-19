@@ -72,9 +72,30 @@ The core contractions are done with batched ``dot_general`` calls so XLA can
 lower them into GEMM kernels. This follows the VMEC++ basis approach (see
 References [5-6]) while keeping VMEC2000 parity.
 
+Recent updates to the DFT path:
+
+- **Stacked theta contractions**: multiple force kernels are concatenated into
+  a single cosine and sine projection per iteration, reducing the number of
+  ``dot_general`` launches.
+- **Derivative-factor fusion**: the :math:`n\,\mathrm{NFP}` factor for
+  ``cosnvn/sinnvn`` is applied *after* the zeta contraction, so the same
+  ``cosnv/sinnv`` basis can be reused for derivative blocks.
+- **Stacked zeta contractions**: cosine- and sine-basis transforms for the
+  derivative and non-derivative blocks are grouped to reduce kernel dispatches.
+
 An FFT-based path remains available for experiments:
 
 - ``VMEC_JAX_TOMNSPS_FFT=1`` enables the FFT implementation (not default).
+
+Preconditioner weight caching
+-----------------------------
+
+The 1D radial preconditioner uses angular weights
+:math:`w_i=\mathrm{cosmui3}_{i,0}/\mathrm{mscale}_0` on the VMEC internal grid.
+These weights are now cached in the trig table as ``wint3_precond`` and reused
+whenever the preconditioner diagonal is refreshed. This avoids rebuilding the
+same weight tensor in every refresh call and keeps the preconditioner refresh
+path purely algebraic in ``bsq``, ``r12``, ``sqrtg``, ``ru12``, and ``zu12``.
 
 Boundary decomposition cache + JAX-friendly initial guess
 ---------------------------------------------------------

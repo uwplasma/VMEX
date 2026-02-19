@@ -59,6 +59,45 @@ terms, include the field-period multiplier :math:`n\,\mathrm{NFP}`:
 arrays exactly match VMEC2000. See References [4-6] for the original VMEC2000
 tables and the VMEC++ DFT/basis discussion.
 
+Two-stage DFT for ``tomnsps``
+-----------------------------
+
+VMEC's ``tomnsps`` uses a **separable real basis** in :math:`\theta` and
+:math:`\zeta`. For a real-space kernel :math:`F(\theta_i,\zeta_k)` defined on the
+VMEC grid, the weighted theta projection is
+
+.. math::
+
+   \tilde F^{(c)}_{m}(\zeta_k) = \sum_{i=0}^{n_{\theta2}-1} F(\theta_i,\zeta_k)\,\mathrm{cosmui}_{i,m},
+
+.. math::
+
+   \tilde F^{(s)}_{m}(\zeta_k) = \sum_{i=0}^{n_{\theta2}-1} F(\theta_i,\zeta_k)\,\mathrm{sinmui}_{i,m}.
+
+The zeta projection then yields the Fourier coefficients
+
+.. math::
+
+   F^{cc}_{m,n} = \sum_{k=0}^{n_\zeta-1} \tilde F^{(c)}_{m}(\zeta_k)\,\mathrm{cosnv}_{k,n},
+
+.. math::
+
+   F^{ss}_{m,n} = \sum_{k=0}^{n_\zeta-1} \tilde F^{(s)}_{m}(\zeta_k)\,\mathrm{sinnv}_{k,n}.
+
+Derivative terms in VMEC use the scaled tables
+:math:`\mathrm{cosnvn}_{k,n}=(n\,\mathrm{NFP})\,\mathrm{cosnv}_{k,n}` and
+:math:`\mathrm{sinnvn}_{k,n}=-(n\,\mathrm{NFP})\,\mathrm{sinnv}_{k,n}`. In
+``vmec_jax`` we therefore compute the same base transforms and apply the
+analytic factor :math:`n\,\mathrm{NFP}` after the zeta contraction for the
+derivative blocks. This reduces the number of dot-product contractions while
+preserving VMEC2000 parity exactly.
+
+Implementation detail: the theta contractions for multiple force kernels are
+**stacked** into a single batched ``dot_general`` call (GEMM), and the zeta
+contractions are likewise stacked by basis type (cosine vs sine). This follows
+the separable product identities (see Eqs. 5.55–5.56 in the VMEC++ numerics
+notes) while keeping the VMEC2000 normalization and parity masks intact.
+
 Ideal MHD equilibrium
 ---------------------
 

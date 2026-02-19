@@ -333,23 +333,27 @@ Both residual solvers can optionally include VMEC's constraint force
 Current limitations (important)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-These solvers are primarily intended as a *development harness* for parity work.
-They are **not** yet guaranteed to converge to the VMEC2000 equilibrium from an
-arbitrary initial guess, because:
+The **VMEC2000-style fixed-boundary loop** (``solver=vmec2000_iter``) now
+reproduces VMEC2000 iteration traces for axisymmetric and non-axisymmetric
+``lasym=False`` cases, including:
 
-- the force kernels were originally ported for *output parity on a converged equilibrium*,
-  and are still being hardened for use as a general-purpose nonlinear solver objective;
-- VMEC's full nonlinear iteration includes additional iteration-dependent logic,
-  preconditioners, and axis/constraint details that are not fully reproduced yet.
-  (VMEC-style normalization scalars ``vp/wb/wp`` and ``fnorm/fnormL`` are now
-  available for diagnostics, but the solvers do not yet mirror VMEC’s full
-  preconditioned time-stepping loop.)
+- VMEC time-step control (Garabedian update with restarts),
+- preconditioner and normalization caching (``ns4=25`` behavior),
+- constraint-force pipeline (``TCON0``) and m=1 gating,
+- optional ``lforbal`` correction when ``LFORBAL=T`` in the input.
 
-In other words: decreasing :math:`W_{\mathrm{res}}` is a useful milestone and a
-regression target, but it is not yet equivalent to "match VMEC2000 coefficients".
+Remaining limitations are mostly *scope* rather than parity gaps:
 
-Fixed-boundary solve (early stage)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- **Free-boundary** equilibria are not implemented.
+- **lasym=True scan path** is not supported; lasym runs use the parity (non-scan)
+  loop for VMEC2000-style printing and control logic.
+- Experimental optimization solvers (GD/LBFGS/GN) are **not** VMEC2000 and do
+  not reproduce all iteration-dependent logic; they are intended for
+  differentiable objectives and regression experiments.
+- **Implicit differentiation** is still pending.
+
+Fixed-boundary VMEC2000 parity
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 We extend the optimization variables to include all Fourier coefficients:
 
@@ -363,28 +367,21 @@ Two optimizers are currently provided:
 1. Gradient descent + backtracking (``solve_fixed_boundary_gd``)
 2. L-BFGS + backtracking (``solve_fixed_boundary_lbfgs``)
 
-These are **not** yet VMEC-quality. In VMEC2000, the “right” approach is to:
-
-- evaluate force residuals (not just energy),
-- apply strong preconditioning in Fourier × radial space,
-- use VMEC’s tailored time-stepping / Richardson-like evolution with Jacobian-based safeguards.
+These are **not** VMEC2000-quality solvers; they are retained for experimentation
+and autodiff workflows. For parity-grade results, use ``solver=vmec2000_iter``
+which implements VMEC’s force residuals, preconditioning, and time-stepping.
 
 Roadmap to VMEC-quality parity
 ------------------------------
 
-The main missing pieces for parity are:
+Fixed-boundary parity for ``lasym=False`` is now in place (force residuals,
+preconditioning, and VMEC2000 time-step control). The remaining roadmap items are:
 
-1. **Force residuals**:
-   - full MHD force balance in VMEC coordinates,
-   - correct half-mesh/full-mesh placement of terms.
+1. **Free-boundary equilibrium**:
+   - external vacuum field solve and boundary update.
 
-2. **Preconditioning**:
-   - mode-space block/diagonal scaling,
-   - radial block-tridiagonal structure (VMEC’s strongest preconditioner).
+2. **lasym=True parity in scan mode**:
+   - extend the scan path to support asymmetric grids and printing.
 
-3. **Nonlinear solve strategy**:
-   - implement VMEC’s evolution strategy or a robust quasi-Newton with good preconditioner,
-   - add Jacobian sign and axis-guess recovery logic.
-
-4. **Implicit differentiation**:
-   - replace backprop through iterations with a custom VJP based on the implicit function theorem.
+3. **Implicit differentiation**:
+   - add a custom VJP/implicit-function solver for end-to-end gradients.
