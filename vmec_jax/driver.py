@@ -301,7 +301,17 @@ def run_fixed_boundary(
             import jax
             from jax.experimental.compilation_cache import compilation_cache
 
-            Path(cache_dir).mkdir(parents=True, exist_ok=True)
+            cache_path = Path(cache_dir)
+            try:
+                cache_path.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                # Fall back to /tmp when the home cache is not writable.
+                try:
+                    cache_path = Path("/tmp/vmec_jax/jax_compilation_cache")
+                    cache_path.mkdir(parents=True, exist_ok=True)
+                except Exception:
+                    return
+            cache_dir = str(cache_path)
             compilation_cache.set_cache_dir(cache_dir)
             try:
                 jax.config.update("jax_enable_compilation_cache", True)
@@ -528,14 +538,15 @@ def run_fixed_boundary(
             signgs = -1
     if solver_lower in ("vmec2000_iter", "vmec2000_scan", "vmec2000_iter_fast"):
         force_jit_env = os.getenv("VMEC_JAX_VMEC2000_FORCE_JIT", "").strip().lower()
-        if force_jit_env in ("", "0", "false", "no"):
-            if isinstance(jit_forces, str):
-                if jit_forces.strip().lower() == "auto":
-                    jit_forces = False
-                else:
-                    jit_forces = False
-            elif bool(jit_forces):
-                jit_forces = False
+        force_nojit_env = os.getenv("VMEC_JAX_VMEC2000_FORCE_NOJIT", "").strip().lower()
+        if force_jit_env not in ("", "0", "false", "no"):
+            jit_forces = True
+        elif force_nojit_env not in ("", "0", "false", "no"):
+            jit_forces = False
+        elif isinstance(jit_forces, str):
+            # default to JIT for vmec2000 unless explicitly disabled
+            if jit_forces.strip().lower() == "auto":
+                jit_forces = True
 
     gamma = indata.get_float("GAMMA", 0.0)
     static = None
@@ -958,6 +969,10 @@ def run_fixed_boundary(
                     # If probe fails, fall back to the safe (non-scan) path.
                     scan_mode = False
             jit_forces_eff = _resolve_jit_forces(jit_forces, static_i, int(niter_i))
+            if scan_mode and solver == "vmec2000_iter":
+                scan_jit_env = os.getenv("VMEC_JAX_SCAN_JIT_FORCES")
+                if scan_jit_env is None or scan_jit_env.strip().lower() in ("", "0", "false", "no"):
+                    jit_forces_eff = False
             jit_precompile_eff = False
             if bool(jit_forces_eff) and (not bool(scan_mode)):
                 if jit_precompile is None:
