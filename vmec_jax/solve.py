@@ -15,6 +15,7 @@ implementation uses gradient descent with a simple backtracking line search.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import time
 import hashlib
 import os
 from pathlib import Path
@@ -6386,6 +6387,16 @@ def solve_fixed_boundary_residual_iter(
     perfetto_env = os.getenv("VMEC_JAX_PROFILE_PERFETTO", "1")
     profile_perfetto = perfetto_env.strip().lower() not in ("", "0", "false", "no")
 
+    timing_env = os.getenv("VMEC_JAX_TIMING", "").strip().lower()
+    timing_enabled = timing_env not in ("", "0", "false", "no")
+    timing_stats = {
+        "compute_forces": 0.0,
+        "preconditioner": 0.0,
+        "update": 0.0,
+        "precond_refresh": 0.0,
+        "iterations": 0,
+    }
+
     w_history = []
     fsqr2_history = []
     fsqz2_history = []
@@ -7074,6 +7085,7 @@ def solve_fixed_boundary_residual_iter(
                     except Exception:
                         profile_active = False
 
+            t_compute_start = time.perf_counter() if timing_enabled else None
             k, frzl, gcr2, gcz2, gcl2, rz_scale, l_scale, norms_current = _compute_forces_iter(
                 state,
                 include_edge=bool(include_edge),
@@ -7085,6 +7097,13 @@ def solve_fixed_boundary_residual_iter(
                 iter_idx=_iter_idx_for_dump(iter2),
                 iter2=iter2,
             )
+            if timing_enabled:
+                try:
+                    if has_jax():
+                        jax.block_until_ready(gcr2)
+                except Exception:
+                    pass
+                timing_stats["compute_forces"] += time.perf_counter() - float(t_compute_start)
             norms_used = cache_norms if (bool(vmec2000_control) and bool(vmec2000_cache_valid) and (not bool(need_bcovar_update))) else norms_current
             fsqr = norms_used.r1 * norms_used.fnorm * gcr2
             fsqz = norms_used.r1 * norms_used.fnorm * gcz2
@@ -7217,6 +7236,7 @@ def solve_fixed_boundary_residual_iter(
                 break
     
             # Precondition forces.
+            t_precond_start = time.perf_counter() if timing_enabled else None
             frzl_lam_pre = None
             if bool(vmec2000_control) and bool(cfg.lthreed):
                 from .preconditioner_1d_jax import rz_preconditioner_apply, rz_preconditioner_matrices
@@ -7225,6 +7245,7 @@ def solve_fixed_boundary_residual_iter(
                 need_lamcal = os.getenv("VMEC_JAX_DUMP_LAMCAL", "") not in ("", "0")
                 need_prec_refresh = (not bool(vmec2000_cache_valid)) or (cache_prec_lam_prec is None) or (cache_prec_rz_mats is None) or (cache_prec_rz_jmax is None) or bool(need_bcovar_update)
                 if need_prec_refresh:
+                    t_prec_refresh_start = time.perf_counter() if timing_enabled else None
                     if need_lamcal:
                         if need_lam_prec:
                             lam_prec, faclam_dump, lam_debug = _lambda_preconditioner(
@@ -7246,6 +7267,13 @@ def solve_fixed_boundary_residual_iter(
                     cache_prec_lam_debug = lam_debug
                     cache_prec_rz_mats = mats
                     cache_prec_rz_jmax = int(jmax)
+                    if timing_enabled and t_prec_refresh_start is not None:
+                        try:
+                            if has_jax():
+                                jax.block_until_ready(lam_prec)
+                        except Exception:
+                            pass
+                        timing_stats["precond_refresh"] += time.perf_counter() - float(t_prec_refresh_start)
                 else:
                     lam_prec = cache_prec_lam_prec
                     mats = cache_prec_rz_mats
@@ -7282,6 +7310,7 @@ def solve_fixed_boundary_residual_iter(
                     or bool(need_bcovar_update)
                 )
                 if need_prec_refresh:
+                    t_prec_refresh_start = time.perf_counter() if timing_enabled else None
                     if need_lamcal:
                         if need_lam_prec:
                             lam_prec, faclam_dump, lam_debug = _lambda_preconditioner(
@@ -7303,6 +7332,13 @@ def solve_fixed_boundary_residual_iter(
                     cache_prec_lam_debug = lam_debug
                     cache_prec_rz_mats = mats
                     cache_prec_rz_jmax = int(jmax)
+                    if timing_enabled and t_prec_refresh_start is not None:
+                        try:
+                            if has_jax():
+                                jax.block_until_ready(lam_prec)
+                        except Exception:
+                            pass
+                        timing_stats["precond_refresh"] += time.perf_counter() - float(t_prec_refresh_start)
                 else:
                     lam_prec = cache_prec_lam_prec
                     mats = cache_prec_rz_mats
@@ -7376,6 +7412,13 @@ def solve_fixed_boundary_residual_iter(
             fzcs_u = (fzcs if fzcs is not None else jnp.zeros_like(fzsc_u)) * w_mode_mn[None, :, :]
             flsc_u = flsc * w_mode_mn[None, :, :]
             flcs_u = (flcs if flcs is not None else jnp.zeros_like(flsc_u)) * w_mode_mn[None, :, :]
+            if timing_enabled:
+                try:
+                    if has_jax():
+                        jax.block_until_ready(flsc_u)
+                except Exception:
+                    pass
+                timing_stats["preconditioner"] += time.perf_counter() - float(t_precond_start)
     
             # VMEC's lambda coefficients can be expressed in multiple scaling
             # conventions (e.g. restart vs. `wout` vs. internal). Allow parity drivers
@@ -8002,6 +8045,7 @@ def solve_fixed_boundary_residual_iter(
         b1 = 1.0 - dtau
         fac = 1.0 / (1.0 + dtau)
 
+        t_update_start = time.perf_counter() if timing_enabled else None
         if bool(strict_update):
             # Strict update semantics: one preconditioned momentum update per
             # iteration in (m, n>=0) storage, no line-search accept/reject.
@@ -8091,47 +8135,52 @@ def solve_fixed_boundary_residual_iter(
                 idx00=idx00,
             )
             state_try = _apply_vmec_lambda_axis_rules(state_try)
-            _, _, gcr2_t, gcz2_t, gcl2_t, _, _, norms_t = _compute_forces_iter(
-                state_try,
-                include_edge=include_edge,
-                zero_m1=zero_m1,
-                constraint_precond_diag=constraint_precond_diag,
-                constraint_tcon=constraint_tcon_override,
-                constraint_precond_active=constraint_precond_active,
-                constraint_tcon_active=constraint_tcon_active,
-                iter2=iter2,
-            )
-            fsqr_t, fsqz_t, fsql_t = _fsq_from_norms(
-                norms_t,
-                gcr2_in=gcr2_t,
-                gcz2_in=gcz2_t,
-                gcl2_in=gcl2_t,
-            )
-            w_try = float(np.asarray(fsqr_t + fsqz_t + fsql_t))
-            w_try_ratio = w_try / max(w_curr, 1e-30) if np.isfinite(w_try) else float("inf")
+            need_trial_eval = bool(backtracking) or bool(reference_mode) or bool(use_direct_fallback)
             probe_bad_jacobian = False
-            if bool(reference_mode) and (float(np.asarray(zero_m1)) > 0.5):
-                _, _, gcr2_probe, gcz2_probe, gcl2_probe, _, _, norms_probe = _compute_forces_iter(
+            if need_trial_eval:
+                _, _, gcr2_t, gcz2_t, gcl2_t, _, _, norms_t = _compute_forces_iter(
                     state_try,
                     include_edge=include_edge,
-                    zero_m1=jnp.asarray(0.0, dtype=zero_m1.dtype),
+                    zero_m1=zero_m1,
                     constraint_precond_diag=constraint_precond_diag,
                     constraint_tcon=constraint_tcon_override,
                     constraint_precond_active=constraint_precond_active,
                     constraint_tcon_active=constraint_tcon_active,
                     iter2=iter2,
                 )
-                fsqr_probe, fsqz_probe, fsql_probe = _fsq_from_norms(
-                    norms_probe,
-                    gcr2_in=gcr2_probe,
-                    gcz2_in=gcz2_probe,
-                    gcl2_in=gcl2_probe,
+                fsqr_t, fsqz_t, fsql_t = _fsq_from_norms(
+                    norms_t,
+                    gcr2_in=gcr2_t,
+                    gcz2_in=gcz2_t,
+                    gcl2_in=gcl2_t,
                 )
-                w_probe = float(np.asarray(fsqr_probe + fsqz_probe + fsql_probe))
-                if (not np.isfinite(w_probe)) or (w_probe > 1.0e2 * max(w_curr, 1e-30)):
-                    probe_bad_jacobian = True
-                    w_try = float("inf")
-                    w_try_ratio = float("inf")
+                w_try = float(np.asarray(fsqr_t + fsqz_t + fsql_t))
+                w_try_ratio = w_try / max(w_curr, 1e-30) if np.isfinite(w_try) else float("inf")
+                if bool(reference_mode) and (float(np.asarray(zero_m1)) > 0.5):
+                    _, _, gcr2_probe, gcz2_probe, gcl2_probe, _, _, norms_probe = _compute_forces_iter(
+                        state_try,
+                        include_edge=include_edge,
+                        zero_m1=jnp.asarray(0.0, dtype=zero_m1.dtype),
+                        constraint_precond_diag=constraint_precond_diag,
+                        constraint_tcon=constraint_tcon_override,
+                        constraint_precond_active=constraint_precond_active,
+                        constraint_tcon_active=constraint_tcon_active,
+                        iter2=iter2,
+                    )
+                    fsqr_probe, fsqz_probe, fsql_probe = _fsq_from_norms(
+                        norms_probe,
+                        gcr2_in=gcr2_probe,
+                        gcz2_in=gcz2_probe,
+                        gcl2_in=gcl2_probe,
+                    )
+                    w_probe = float(np.asarray(fsqr_probe + fsqz_probe + fsql_probe))
+                    if (not np.isfinite(w_probe)) or (w_probe > 1.0e2 * max(w_curr, 1e-30)):
+                        probe_bad_jacobian = True
+                        w_try = float("inf")
+                        w_try_ratio = float("inf")
+            else:
+                w_try = w_curr
+                w_try_ratio = 1.0
 
             # The reference iteration is typically stable under its restart
             # triggers, but our parity-path preconditioners are still evolving.
@@ -8384,6 +8433,14 @@ def solve_fixed_boundary_residual_iter(
                         cache_prec_lam_prec = None
                         cache_prec_faclam = None
                         cache_prec_lam_debug = None
+            if timing_enabled and t_update_start is not None:
+                try:
+                    if has_jax():
+                        jax.block_until_ready(state.Rcos)
+                except Exception:
+                    pass
+                timing_stats["update"] += time.perf_counter() - float(t_update_start)
+            timing_stats["iterations"] += 1
             step_history.append(float(dt_eff))
             w_curr_history.append(float(w_curr))
             w_try_history.append(float(w_try))
@@ -8491,6 +8548,7 @@ def solve_fixed_boundary_residual_iter(
                 dt_eff = float(step_size * step_factor)
                 update_rms = 0.0
                 step_status = "rejected"
+            timing_stats["iterations"] += 1
             step_history.append(dt_eff)
             restart_reason = "none"
             w_curr_history.append(float(w_curr))
@@ -8600,6 +8658,34 @@ def solve_fixed_boundary_residual_iter(
         "gcz2_p_history": np.asarray(gcz2_p_history, dtype=float),
         "gcl2_p_history": np.asarray(gcl2_p_history, dtype=float),
     }
+    if timing_enabled:
+        iters = max(int(timing_stats["iterations"]), 1)
+        timing_report = {
+            "iterations": int(timing_stats["iterations"]),
+            "compute_forces_s": float(timing_stats["compute_forces"]),
+            "preconditioner_s": float(timing_stats["preconditioner"]),
+            "precond_refresh_s": float(timing_stats["precond_refresh"]),
+            "update_s": float(timing_stats["update"]),
+            "compute_forces_per_iter_s": float(timing_stats["compute_forces"]) / iters,
+            "preconditioner_per_iter_s": float(timing_stats["preconditioner"]) / iters,
+            "update_per_iter_s": float(timing_stats["update"]) / iters,
+        }
+        diag["timing"] = timing_report
+        try:
+            print(
+                "[vmec_jax timing] "
+                f"iters={timing_report['iterations']} "
+                f"compute_forces={timing_report['compute_forces_s']:.3e}s "
+                f"precond={timing_report['preconditioner_s']:.3e}s "
+                f"precond_refresh={timing_report['precond_refresh_s']:.3e}s "
+                f"update={timing_report['update_s']:.3e}s "
+                f"(per-iter: {timing_report['compute_forces_per_iter_s']:.3e}, "
+                f"{timing_report['preconditioner_per_iter_s']:.3e}, "
+                f"{timing_report['update_per_iter_s']:.3e})",
+                flush=True,
+            )
+        except Exception:
+            pass
     diag["resume_state"] = {
         "time_step": float(time_step),
         "inv_tau": list(inv_tau),
