@@ -145,51 +145,20 @@ The in-repo showcase plots now use the same VMECPlot2-style grids (theta/zeta
 resolution and toroidal angle conventions) so figure-to-figure comparisons are
 faithful to the legacy script.
 
-Current observed mismatches (updated parity status):
+Current parity status (high-level)
+---------------------------------
 
-- **Single-grid axisym parity** (`--single-ns 13`) matches VMEC2000 at machine
-  precision for the first **10 iterations** on the axisymmetric benchmark
-  suite (``circular_tokamak``, ``shaped_tokamak_pressure``, ``solovev``).
-- **Non-axisymmetric kernel parity** remains the top gap: ``bsub*`` and
-  ``abs(B)`` comparisons for 3D reference states are still off by O(1).
-- **Full-grid QA/QH traces** now match VMEC2000 at `rtol=1e-4`,
-  `atol=1e-12` for 100-iteration runs.
-- **Scan (jax.lax.scan) VMEC2000 control path** can diverge on large-`ns`
-  inputs (e.g., ``input.QI_nfp2``). For parity runs, the default is now the
-  non-scan loop; enable scan explicitly with ``--fast`` when you only care
-  about speed.
-- ``betapol``/``betator`` now match to tight tolerance on converged QA/QI runs.
-- ``jdotb``, ``bsubsmns``, and Mercier terms (``DMerc``/``DGeod``) still show
-  case-dependent drift away from VMEC2000, even when comparing away from the
-  axis (skip first 6 radial points).
-- Force-iteration traces (``fsqr/fsqz/fsql``) and global convergence behavior
-  are much closer than some derived post-processing diagnostics.
+- For the bundled axisymmetric fixed-boundary suite, per-iteration scalar
+  residuals and end-state ``wout`` outputs match VMEC2000 tightly on reduced
+  grids used by CI.
+- For cancellation-limited post-processing diagnostics (notably ``jdotb`` and
+  Mercier terms), interpretation depends strongly on whether the underlying
+  physical signal is expected to be small. For currentless / vacuum-like cases,
+  relative comparisons of ``jdotb`` can be misleading.
 
-QI/QA ``wout`` parity snapshot (converged, skip first 6 radial points,
-``rtol=1e-4``, ``atol=1e-12``):
-
-.. list-table::
-   :header-rows: 1
-   :widths: 18 10 16 16 16 16
-
-   * - Case
-     - NS
-     - betapol max_rel
-     - betator max_rel
-     - DMerc max_rel
-     - jdotb max_rel
-   * - ``input.QI_nfp2``
-     - 31
-     - ``1.482e-06``
-     - ``2.053e-06``
-     - ``1.238e-02``
-     - ``4.112e+01``
-   * - ``input.LandremanPaul2021_QA_lowres``
-     - 50
-     - ``0.000e+00``
-     - ``0.000e+00``
-     - ``5.886e-02``
-     - ``2.310e+00``
+See :doc:`jxbforce_mercier` for a detailed explanation of the VMEC2000
+conventions used in ``jxbforce.f`` / ``mercier.f`` and for profile comparisons
+between VMEC2000 and ``vmec_jax``.
 
 Axis reset and bad-Jacobian parity notes
 ----------------------------------------
