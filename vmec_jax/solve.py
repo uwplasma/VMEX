@@ -283,6 +283,10 @@ def _maybe_dump_force_kernels(*, k, static, iter_idx: int, label: str = "raw") -
         pru_odd=_arr(getattr(k, "pru_odd", None)),
         pzu_even=_arr(getattr(k, "pzu_even", None)),
         pzu_odd=_arr(getattr(k, "pzu_odd", None)),
+        prv_even=_arr(getattr(k, "prv_even", None)),
+        prv_odd=_arr(getattr(k, "prv_odd", None)),
+        pzv_even=_arr(getattr(k, "pzv_even", None)),
+        pzv_odd=_arr(getattr(k, "pzv_odd", None)),
         ns=int(static.cfg.ns),
         ntheta=int(static.cfg.ntheta),
         nzeta=int(static.cfg.nzeta),
@@ -729,9 +733,98 @@ def _maybe_dump_bsube_terms(*, bc, static, iter_idx: int) -> None:
                     f.write(
                         f"{js + 1:6d}{lt + 1:6d}{lz + 1:6d}"
                         f"{lvv_sh[js, lt, lz]:24.16e}{lu0[js, lt, lz]:24.16e}{lu1[js, lt, lz]:24.16e}"
-                        f"{phip[js]:24.16e}{bsubu_tmp[js, lt, lz]:24.16e}{bsubv_pre[js, lt, lz]:24.16e}\n"
-                    )
+                    f"{phip[js]:24.16e}{bsubu_tmp[js, lt, lz]:24.16e}{bsubv_pre[js, lt, lz]:24.16e}\n"
+                )
 
+
+def _maybe_dump_bsubs(*, bc, state, static, trig, iter_idx: int, kernels=None) -> None:
+    env = os.getenv("VMEC_JAX_DUMP_BSUBS", "")
+    if not env or env == "0":
+        return
+    iters = _parse_iter_list(os.getenv("VMEC_JAX_DUMP_ITER", ""))
+    if iters is not None and int(iter_idx) not in iters:
+        return
+    outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
+    outdir.mkdir(parents=True, exist_ok=True)
+    ns = int(static.cfg.ns)
+    path = outdir / f"bsubs_ns{ns}_iter{int(iter_idx)}.npz"
+
+    from .wout import _compute_bsubs_half_mesh
+
+    s = np.asarray(static.s, dtype=float)
+    bsupu = np.asarray(bc.bsupu)
+    bsupv = np.asarray(bc.bsupv)
+    bsubu = np.asarray(bc.bsubu)
+    bsubv = np.asarray(bc.bsubv)
+    sqrtg = np.asarray(bc.jac.sqrtg)
+
+    geom_terms = {}
+    if kernels is not None:
+        for name in (
+            "pr1_even",
+            "pr1_odd",
+            "pz1_even",
+            "pz1_odd",
+            "pru_even",
+            "pru_odd",
+            "pzu_even",
+            "pzu_odd",
+            "prv_even",
+            "prv_odd",
+            "pzv_even",
+            "pzv_odd",
+        ):
+            if hasattr(kernels, name):
+                geom_terms[name] = np.asarray(getattr(kernels, name), dtype=float)
+
+    bsubs_half = _compute_bsubs_half_mesh(
+        state=state,
+        geom_modes=static.modes,
+        s=s,
+        lconm1=bool(getattr(static.cfg, "lconm1", True)),
+        lthreed=bool(static.cfg.ntor > 0),
+        lasym=bool(static.cfg.lasym),
+        bsupu=bsupu,
+        bsupv=bsupv,
+        trig=trig,
+        geom=geom_terms,
+        jac_half=bc.jac,
+    )
+    bsubs_full = np.asarray(bsubs_half, dtype=float).copy()
+    if ns > 2:
+        bsubs_full[1:-1] = 0.5 * (bsubs_full[1:-1] + bsubs_full[2:])
+    if ns > 0:
+        bsubs_full[0] = 0.0
+        bsubs_full[-1] = 0.0
+
+    # JXBFORCE-style full-mesh bsupu/bsupv averages (for comparison with jxbout).
+    bsupu1 = np.zeros_like(bsupu)
+    bsupv1 = np.zeros_like(bsupv)
+    if ns > 1:
+        sqrtg_half = 0.5 * (sqrtg[1:] + sqrtg[:-1])
+        denom = np.where(sqrtg_half != 0.0, sqrtg_half, 1.0)
+        if ns > 2:
+            # VMEC jxbforce: bsupu1(js) = 0.5*(bsupu(js)*gsqrt(js) + bsupu(js+1)*gsqrt(js+1)) / sqrtg_half
+            bsupu1[1:-1] = 0.5 * (bsupu[1:-1] * sqrtg[1:-1] + bsupu[2:] * sqrtg[2:]) / denom[1:]
+            bsupv1[1:-1] = 0.5 * (bsupv[1:-1] * sqrtg[1:-1] + bsupv[2:] * sqrtg[2:]) / denom[1:]
+        bsupu1[0] = 0.0
+        bsupu1[-1] = 0.0
+        bsupv1[0] = 0.0
+        bsupv1[-1] = 0.0
+
+    np.savez(
+        path,
+        bsubs_half=np.asarray(bsubs_half, dtype=float),
+        bsubs_full=np.asarray(bsubs_full, dtype=float),
+        bsupu=np.asarray(bsupu, dtype=float),
+        bsupv=np.asarray(bsupv, dtype=float),
+        bsupu1=np.asarray(bsupu1, dtype=float),
+        bsupv1=np.asarray(bsupv1, dtype=float),
+        bsubu=np.asarray(bsubu, dtype=float),
+        bsubv=np.asarray(bsubv, dtype=float),
+        sqrtg=np.asarray(sqrtg, dtype=float),
+        s=np.asarray(s, dtype=float),
+    )
 
 def _maybe_dump_lulv(
     *,
@@ -3860,6 +3953,10 @@ def solve_fixed_boundary_residual_iter(
         pru_odd = np.asarray(getattr(k, "pru_odd"))
         pzu_even = np.asarray(getattr(k, "pzu_even"))
         pzu_odd = np.asarray(getattr(k, "pzu_odd"))
+        prv_even = np.asarray(getattr(k, "prv_even"))
+        prv_odd = np.asarray(getattr(k, "prv_odd"))
+        pzv_even = np.asarray(getattr(k, "pzv_even"))
+        pzv_odd = np.asarray(getattr(k, "pzv_odd"))
 
         ns, ntheta3, nzeta = pr1_even.shape
         pshalf = _pshalf_from_s(np.asarray(s))
@@ -3879,7 +3976,10 @@ def solve_fixed_boundary_residual_iter(
             f.write(" pz1_e pz1_o pz1_e_m1 pz1_o_m1\n")
             f.write(" pzu_e pzu_o pzu_e_m1 pzu_o_m1\n")
             f.write(" pr1_e pr1_o pr1_e_m1 pr1_o_m1\n")
+            f.write(" prv_e prv_o prv_e_m1 prv_o_m1\n")
+            f.write(" pzv_e pzv_o pzv_e_m1 pzv_o_m1\n")
             f.write(" ru12 pzs pzu12 prs pr12 ptau\n")
+            f.write(" rv12 zv12\n")
             for lt in range(ntheta3):
                 for lz in range(nzeta):
                     for j in range(1, ns):
@@ -3902,6 +4002,14 @@ def solve_fixed_boundary_residual_iter(
                         pr1_o = pr1_odd[j, lt, lz]
                         pr1_e_m1 = pr1_even[jm1, lt, lz]
                         pr1_o_m1 = pr1_odd[jm1, lt, lz]
+                        prv_e = prv_even[j, lt, lz]
+                        prv_o = prv_odd[j, lt, lz]
+                        prv_e_m1 = prv_even[jm1, lt, lz]
+                        prv_o_m1 = prv_odd[jm1, lt, lz]
+                        pzv_e = pzv_even[j, lt, lz]
+                        pzv_o = pzv_odd[j, lt, lz]
+                        pzv_e_m1 = pzv_even[jm1, lt, lz]
+                        pzv_o_m1 = pzv_odd[jm1, lt, lz]
 
                         ru12 = 0.5 * (pru_e + pru_e_m1 + psh * (pru_o + pru_o_m1))
                         pzs = ohs * ((pz1_e - pz1_e_m1) + psh * (pz1_o - pz1_o_m1))
@@ -3918,6 +4026,8 @@ def solve_fixed_boundary_residual_iter(
                             + pzu_o_m1 * pr1_o_m1
                             + (pzu_e * pr1_o + pzu_e_m1 * pr1_o_m1) / psh_safe
                         )
+                        rv12 = 0.5 * (prv_e + prv_e_m1 + psh * (prv_o + prv_o_m1))
+                        zv12 = 0.5 * (pzv_e + pzv_e_m1 + psh * (pzv_o + pzv_o_m1))
 
                         f.write(
                             f"{j+1:6d}{lt+1:6d}{lz+1:6d}"
@@ -3926,7 +4036,10 @@ def solve_fixed_boundary_residual_iter(
                             f"{pz1_e:24.16E}{pz1_o:24.16E}{pz1_e_m1:24.16E}{pz1_o_m1:24.16E}"
                             f"{pzu_e:24.16E}{pzu_o:24.16E}{pzu_e_m1:24.16E}{pzu_o_m1:24.16E}"
                             f"{pr1_e:24.16E}{pr1_o:24.16E}{pr1_e_m1:24.16E}{pr1_o_m1:24.16E}"
-                            f"{ru12:24.16E}{pzs:24.16E}{pzu12:24.16E}{prs:24.16E}{pr12:24.16E}{ptau:24.16E}\n"
+                            f"{prv_e:24.16E}{prv_o:24.16E}{prv_e_m1:24.16E}{prv_o_m1:24.16E}"
+                            f"{pzv_e:24.16E}{pzv_o:24.16E}{pzv_e_m1:24.16E}{pzv_o_m1:24.16E}"
+                            f"{ru12:24.16E}{pzs:24.16E}{pzu12:24.16E}{prs:24.16E}{pr12:24.16E}{ptau:24.16E}"
+                            f"{rv12:24.16E}{zv12:24.16E}\n"
                         )
 
     def _maybe_dump_ptau(
@@ -4021,6 +4134,14 @@ def solve_fixed_boundary_residual_iter(
         if iter_idx is not None:
             _maybe_dump_bsube(bc=k.bc, static=static, iter_idx=int(iter_idx))
             _maybe_dump_bsube_terms(bc=k.bc, static=static, iter_idx=int(iter_idx))
+            _maybe_dump_bsubs(
+                bc=k.bc,
+                state=state,
+                static=static,
+                trig=trig,
+                iter_idx=int(iter_idx),
+                kernels=k,
+            )
             _maybe_dump_lulv(bc=k.bc, static=static, iter_idx=int(iter_idx), state=state, trig=trig)
             _maybe_dump_jacobian_terms(k=k, iter_idx=int(iter_idx))
             _maybe_dump_precond_inputs(bc=k.bc, trig=trig, static=static, iter_idx=int(iter_idx))
@@ -7127,6 +7248,7 @@ def solve_fixed_boundary_residual_iter(
     k_ndamp = 10
     inv_tau = [0.15 / time_step] * k_ndamp
     fsq_prev = 1.0
+    fsq0_prev = 1.0
     vRcc = jnp.zeros((int(state.Rcos.shape[0]), mpol, nrange), dtype=jnp.asarray(state.Rcos).dtype)
     vRss = jnp.zeros_like(vRcc)
     vZsc = jnp.zeros_like(vRcc)
@@ -7382,6 +7504,7 @@ def solve_fixed_boundary_residual_iter(
         time_step = float(resume_state.get("time_step", time_step))
         inv_tau = list(resume_state.get("inv_tau", inv_tau))
         fsq_prev = float(resume_state.get("fsq_prev", fsq_prev))
+        fsq0_prev = float(resume_state.get("fsq0_prev", fsq0_prev))
         flip_sign = float(resume_state.get("flip_sign", flip_sign))
         iter1 = int(resume_state.get("iter1", iter1))
         ijacob = int(resume_state.get("ijacob", ijacob))
@@ -7755,6 +7878,7 @@ def solve_fixed_boundary_residual_iter(
         while True:
             iter_since_restart = iter2 - iter1
             fsq_prev_before = fsq_prev
+            fsq0_prev_before = fsq0_prev
             pre_restart_reason = "none"
             if time_step_report_hold is None:
                 time_step_report_hold = float(time_step)
@@ -7868,10 +7992,11 @@ def solve_fixed_boundary_residual_iter(
             fsqr_f = float(np.asarray(fsqr))
             fsqz_f = float(np.asarray(fsqz))
             fsql_f = float(np.asarray(fsql))
+            fsq0_curr = fsqr_f + fsqz_f + fsql_f
             prev_rz_fsq_before = prev_rz_fsq
             prev_rz_fsq = fsqr_f + fsqz_f
-    
-            w_history.append(fsqr_f + fsqz_f + fsql_f)
+
+            w_history.append(fsq0_curr)
             fsqr2_history.append(fsqr_f)
             fsqz2_history.append(fsqz_f)
             fsql2_history.append(fsql_f)
@@ -8424,13 +8549,19 @@ def solve_fixed_boundary_residual_iter(
 
             # VMEC-style time-step control: VMEC2000's `TimeStepControl` + `restart_iter`.
             if bool(vmec2000_control) and (not skip_time_control):
-                fsq0 = fsqr_f + fsqz_f + fsql_f  # physical
+                fsq0 = fsq0_curr  # physical residual on current state
                 # VMEC's TimeStepControl uses the *previous* preconditioned
                 # residual (fsq) which is updated at the end of evolve.f.
                 # VMEC's TimeStepControl uses `fsq` from the *previous* evolve
                 # step (initialized to 1.0). It does not switch to fsq1 when
                 # iter2 == iter1 (restart window).
                 fsq = fsq_prev
+                irst_tc = 1
+                if bool(bad_jacobian) and (iter2 > iter1):
+                    # VMEC's irst=2 path: use previous physical residual when
+                    # the Jacobian changes sign.
+                    irst_tc = 2
+                    fsq0 = fsq0_prev
                 if (iter2 == iter1) or (res0 < 0.0) or (res1 < 0.0):
                     res0 = fsq
                     res1 = fsq0
@@ -8444,7 +8575,7 @@ def solve_fixed_boundary_residual_iter(
                         res0=float(res0),
                         res1=float(res1),
                         time_step=float(time_step),
-                        irst=1,
+                        irst=int(irst_tc),
                     )
                     _maybe_dump_checkpoint(iter_idx=int(iter2), fsq=float(fsq), fsq0=float(fsq0), res0=float(res0), res1=float(res1))
                 res0 = min(res0, fsq)
@@ -8458,9 +8589,9 @@ def solve_fixed_boundary_residual_iter(
                     res0=float(res0),
                     res1=float(res1),
                     time_step=float(time_step),
-                    irst=1,
+                    irst=int(irst_tc),
                 )
-                if (fsq <= res0) and (fsq0 <= res1) and (not bad_jacobian):
+                if (fsq <= res0) and (fsq0 <= res1) and (irst_tc == 1):
                     _dump_time_control_trace(
                         stage="checkpoint",
                         iter2=int(iter2),
@@ -8470,13 +8601,15 @@ def solve_fixed_boundary_residual_iter(
                         res0=float(res0),
                         res1=float(res1),
                         time_step=float(time_step),
-                        irst=1,
+                        irst=int(irst_tc),
                     )
                     state_checkpoint = state
                     _maybe_dump_checkpoint(iter_idx=int(iter2), fsq=float(fsq), fsq0=float(fsq0), res0=float(res0), res1=float(res1))
-                if (not bad_jacobian) and ((iter2 - iter1) > 10) and (
+                if (irst_tc == 1) and ((iter2 - iter1) > 10) and (
                     (fsq > vmec2000_fact * max(res0, 1e-30)) or (fsq0 > vmec2000_fact * max(res1, 1e-30))
                 ):
+                    irst_tc = 3
+                if irst_tc != 1:
                     _maybe_dump_time_control(
                         iter_idx=int(iter2),
                         fsq=float(fsq),
@@ -8485,7 +8618,7 @@ def solve_fixed_boundary_residual_iter(
                         res1=float(res1),
                         time_step=float(time_step),
                     )
-                    pre_restart_reason = "time_control"
+                    pre_restart_reason = "bad_jacobian" if irst_tc == 2 else "time_control"
                     state = state_checkpoint
                     vRcc = jnp.zeros_like(vRcc)
                     vRss = jnp.zeros_like(vRss)
@@ -8504,14 +8637,24 @@ def solve_fixed_boundary_residual_iter(
                         res0=float(res0),
                         res1=float(res1),
                         time_step=time_step_prev,
-                        irst=3,
+                        irst=int(irst_tc),
                     )
-                    # VMEC2000 `restart_iter`: irst=3 (time-control) scales dt by 1/1.03.
-                    time_step = max(time_step / restart_badprog_factor, 1e-12)
+                    # VMEC2000 `restart_iter`: irst=2 (bad-jac) -> dt*0.9,
+                    # irst=3 (time-control) -> dt/1.03.
+                    if irst_tc == 2:
+                        time_step = max(restart_badjac_factor * time_step, 1e-12)
+                        ijacob += 1
+                        step_status = "restart_bad_jacobian"
+                        restart_reason = "bad_jacobian"
+                    else:
+                        time_step = max(time_step / restart_badprog_factor, 1e-12)
+                        step_status = "restart_time_control"
+                        restart_reason = "time_control"
                     bad_resets += 1
                     iter1 = iter2
                     bad_growth_streak = 0
                     fsq_prev = fsq_prev_before
+                    fsq0_prev = fsq0_prev_before
                     inv_tau = [0.15 / time_step] * k_ndamp
                     vmec2000_cache_valid = False
                     cache_precond_diag = None
@@ -8527,15 +8670,13 @@ def solve_fixed_boundary_residual_iter(
                     cache_prec_faclam = None
                     cache_prec_lam_debug = None
                     force_bcovar_update = True
-                    step_status = "restart_time_control"
-                    restart_reason = "time_control"
                     step_history.append(0.0)
                     dt_eff_history.append(0.0)
                     update_rms_history.append(0.0)
                     w_curr_history.append(float(fsqr_f + fsqz_f + fsql_f))
                     w_try_history.append(float("nan"))
                     w_try_ratio_history.append(float("nan"))
-                    restart_path_history.append("vmec2000_time_control")
+                    restart_path_history.append("vmec2000_bad_jacobian" if irst_tc == 2 else "vmec2000_time_control")
                     step_status_history.append(step_status)
                     restart_reason_history.append(restart_reason)
                     pre_restart_reason_history.append(pre_restart_reason)
@@ -8671,6 +8812,7 @@ def solve_fixed_boundary_residual_iter(
                 iter1 = iter2
                 bad_growth_streak = 0
                 fsq_prev = fsq_prev_before
+                fsq0_prev = fsq0_prev_before
                 inv_tau = [0.15 / time_step] * k_ndamp
                 if not bool(vmec2000_control):
                     vmec2000_cache_valid = False
@@ -8764,6 +8906,7 @@ def solve_fixed_boundary_residual_iter(
             invtau_num = 0.0 if fsq1 == 0.0 else min(abs(np.log(fsq1 / fsq_prev)), 0.15)
             inv_tau = inv_tau[1:] + [invtau_num / time_step]
         fsq_prev = fsq1
+        fsq0_prev = fsq0_curr
 
         otav = float(np.sum(inv_tau)) / float(k_ndamp)
         dtau = time_step * otav / 2.0
@@ -9095,6 +9238,7 @@ def solve_fixed_boundary_residual_iter(
                         bad_resets += 1
                         iter1 = iter2
                         fsq_prev = fsq_prev_before
+                        fsq0_prev = fsq0_prev_before
                         inv_tau = [0.15 / time_step] * k_ndamp
                         update_rms = 0.0
                         if bool(vmec2000_control):
@@ -9142,6 +9286,7 @@ def solve_fixed_boundary_residual_iter(
                     bad_resets += 1
                     iter1 = iter2
                     fsq_prev = fsq_prev_before
+                    fsq0_prev = fsq0_prev_before
                     inv_tau = [0.15 / time_step] * k_ndamp
                     update_rms = 0.0
                     if not bool(vmec2000_control):
@@ -9415,6 +9560,7 @@ def solve_fixed_boundary_residual_iter(
         "time_step": float(time_step),
         "inv_tau": list(inv_tau),
         "fsq_prev": float(fsq_prev),
+        "fsq0_prev": float(fsq0_prev),
         "flip_sign": float(flip_sign),
         "iter1": int(iter1),
         "iter_offset": int(last_iter2),

@@ -30,6 +30,9 @@ import math
 import vmec_jax.api as vj
 from vmec_jax.solve import SolveVmecResidualResult
 from vmec_jax.wout import read_wout
+from vmec_jax.vmec_tomnsp import vmec_trig_tables
+from vmec_jax.vmec_forces import vmec_forces_rz_from_wout
+from vmec_jax.wout import _compute_bsubs_half_mesh
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,8 @@ _RE_XC = re.compile(r"xc_.*_ns(\d+)_iter(\d+)\.dat$")
 _RE_XC_INIT = re.compile(r"xc_init(?:_([A-Za-z0-9]+))?_ns(\d+)\.dat$")
 _RE_BSUBE = re.compile(r"bsube_(?:ns(\d+)_)?iter(\d+)\.dat$")
 _RE_BSUBE_TERMS = re.compile(r"bsube_terms_(?:ns(\d+)_)?iter(\d+)\.dat$")
+_RE_BSUBS = re.compile(r"bsubs_(?:ns(\d+)_)?iter(\d+)\.npz$")
+_RE_BSUBS_VMEC = re.compile(r"bsubs_iter(\d+)\.dat$")
 _RE_JACOBIAN_TERMS = re.compile(r"jacobian_terms_iter(\d+)\.dat$")
 _RE_LULV = re.compile(r"lulv_(?:ns(\d+)_)?iter(\d+)\.(?:dat|npz)$")
 _RE_GC = re.compile(r"gc_(raw|precond)_?(?:ns(\d+)_)?iter(\d+)\.dat$")
@@ -760,6 +765,10 @@ def _collect_jax_force_kernels(path: Path) -> dict[tuple[int | None, int], dict[
             "pzu_odd": _get("pzu_odd"),
             "pr1_even": _get("pr1_even"),
             "pr1_odd": _get("pr1_odd"),
+            "prv_even": _get("prv_even"),
+            "prv_odd": _get("prv_odd"),
+            "pzv_even": _get("pzv_even"),
+            "pzv_odd": _get("pzv_odd"),
         }
     return out
 
@@ -1111,6 +1120,92 @@ def _parse_bsube_terms_dump(path: Path) -> tuple[dict[str, np.ndarray], int]:
     )
 
 
+def _parse_bsubs_dump(path: Path) -> dict[str, np.ndarray]:
+    data = np.load(path)
+    out = {
+        "bsubs_half": np.asarray(data["bsubs_half"]),
+        "bsubs_full": np.asarray(data["bsubs_full"]),
+        "bsupu": np.asarray(data["bsupu"]),
+        "bsupv": np.asarray(data["bsupv"]),
+        "bsupu1": np.asarray(data["bsupu1"]),
+        "bsupv1": np.asarray(data["bsupv1"]),
+        "bsubu": np.asarray(data["bsubu"]),
+        "bsubv": np.asarray(data["bsubv"]),
+        "sqrtg": np.asarray(data["sqrtg"]),
+    }
+    if "bsubu_jxbout" in data:
+        out["bsubu_jxbout"] = np.asarray(data["bsubu_jxbout"])
+    if "bsubv_jxbout" in data:
+        out["bsubv_jxbout"] = np.asarray(data["bsubv_jxbout"])
+    if "bsubu_raw" in data:
+        out["bsubu_raw"] = np.asarray(data["bsubu_raw"])
+    if "bsubv_raw" in data:
+        out["bsubv_raw"] = np.asarray(data["bsubv_raw"])
+    if "s" in data:
+        out["s"] = np.asarray(data["s"])
+    return out
+
+
+def _parse_vmec_bsubs_dump(path: Path) -> tuple[np.ndarray, int]:
+    ns = ntheta = nzeta = None
+    rows: list[tuple[int, int, int, float]] = []
+    for line in path.read_text().splitlines():
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("ns="):
+            ns = int(line.split("=", 1)[-1].strip())
+            continue
+        if line.startswith("ntheta3="):
+            ntheta = int(line.split("=", 1)[-1].strip())
+            continue
+        if line.startswith("nzeta="):
+            nzeta = int(line.split("=", 1)[-1].strip())
+            continue
+        if line.startswith("columns:"):
+            continue
+        toks = line.split()
+        if len(toks) < 4:
+            continue
+        try:
+            js = int(toks[0]) - 1
+            lt = int(toks[1]) - 1
+            lz = int(toks[2]) - 1
+        except ValueError:
+            continue
+        val = float(toks[3].replace("D", "E").replace("d", "E"))
+        rows.append((js, lt, lz, val))
+    if ns is None or ntheta is None or nzeta is None:
+        raise ValueError(f"Missing header fields in {path}")
+    bsubs = np.zeros((ns, ntheta, nzeta), dtype=float)
+    for js, lt, lz, val in rows:
+        bsubs[js, lt, lz] = val
+    return bsubs, int(ns)
+
+
+def _read_jxbout(path: Path) -> dict[str, np.ndarray] | None:
+    if not path.exists():
+        return None
+    try:
+        import netCDF4 as nc  # type: ignore
+    except Exception:
+        try:
+            from scipy.io import netcdf  # type: ignore
+        except Exception:
+            return None
+        with netcdf.netcdf_file(path, "r", mmap=False) as ds:
+            out = {}
+            for name in ("bsupu", "bsupv", "bsubu", "bsubv", "bsubs", "sqrt_g__bdotk"):
+                if name in ds.variables:
+                    out[name] = np.asarray(ds.variables[name][:])
+            return out
+    with nc.Dataset(path) as ds:
+        out = {}
+        for name in ("bsupu", "bsupv", "bsubu", "bsubv", "bsubs", "sqrt_g__bdotk"):
+            if name in ds.variables:
+                out[name] = np.asarray(ds.variables[name][:])
+        return out
+
+
 def _parse_lulv_vmec_dump(path: Path) -> dict[str, np.ndarray]:
     ns = ntheta = nzeta = None
     rows: list[tuple[int, int, int, float, float, float, float]] = []
@@ -1220,11 +1315,272 @@ def _collect_bsube_dumps(path: Path) -> dict[tuple[int | None, int], tuple[np.nd
     return out
 
 
+def _collect_bsubs_dumps(path: Path) -> dict[tuple[int | None, int], dict[str, np.ndarray]]:
+    out: dict[tuple[int | None, int], dict[str, np.ndarray]] = {}
+    if not path.exists():
+        return out
+    for p in sorted(path.glob("bsubs*_iter*.npz")):
+        m = _RE_BSUBS.search(p.name)
+        if not m:
+            continue
+        ns_val, it = _parse_ns_iter(m, ns_group=1, iter_group=2)
+        out[(ns_val, it)] = _parse_bsubs_dump(p)
+    return out
+
+
+def _collect_vmec_bsubs_dumps(path: Path) -> dict[tuple[int | None, int], np.ndarray]:
+    out: dict[tuple[int | None, int], np.ndarray] = {}
+    if not path.exists():
+        return out
+    for p in sorted(path.glob("bsubs_iter*.dat")):
+        m = _RE_BSUBS_VMEC.search(p.name)
+        if not m:
+            continue
+        it = int(m.group(1))
+        bsubs, ns_val = _parse_vmec_bsubs_dump(p)
+        out[(ns_val, it)] = bsubs
+    return out
+
+
+def _dump_bsubs_final(run: vj.FixedBoundaryRun, outdir: Path) -> None:
+    """Compute and dump bsubs from the final vmec_jax state for jxbout parity."""
+    if run is None or run.state is None or run.static is None:
+        return
+    outdir.mkdir(parents=True, exist_ok=True)
+    state = run.state
+    static = run.static
+    indata = run.indata
+    ns = int(static.cfg.ns)
+    iter_idx = int(run.result.n_iter) if run.result is not None else 0
+
+    class _WoutLike:
+        __slots__ = (
+            "nfp",
+            "mpol",
+            "ntor",
+            "lasym",
+            "signgs",
+            "icurv",
+            "ncurr",
+            "lcurrent",
+            "flux_is_internal",
+        )
+
+        def __init__(
+            self,
+            *,
+            nfp: int,
+            mpol: int,
+            ntor: int,
+            lasym: bool,
+            signgs: int,
+            icurv,
+            ncurr: int,
+            lcurrent: bool,
+            flux_is_internal: bool,
+        ):
+            self.nfp = int(nfp)
+            self.mpol = int(mpol)
+            self.ntor = int(ntor)
+            self.lasym = bool(lasym)
+            self.signgs = int(signgs)
+            self.icurv = icurv
+            self.ncurr = int(ncurr)
+            self.lcurrent = bool(lcurrent)
+            self.flux_is_internal = bool(flux_is_internal)
+
+    from vmec_jax.solve import _icurv_full_mesh_from_indata
+
+    icurv = _icurv_full_mesh_from_indata(indata=indata, s_full=np.asarray(static.s), signgs=int(run.signgs))
+    ncurr = int(indata.get_int("NCURR", 0))
+    lcurrent = bool(indata.get_bool("LCURRENT", True))
+
+    wout_like = _WoutLike(
+        nfp=int(static.cfg.nfp),
+        mpol=int(static.cfg.mpol),
+        ntor=int(static.cfg.ntor),
+        lasym=bool(static.cfg.lasym),
+        signgs=int(run.signgs),
+        icurv=icurv,
+        ncurr=ncurr,
+        lcurrent=lcurrent,
+        flux_is_internal=True,
+    )
+
+    from vmec_jax.modes import nyquist_mode_table_from_grid
+
+    nyq_modes = nyquist_mode_table_from_grid(
+        mpol=int(static.cfg.mpol),
+        ntor=int(static.cfg.ntor),
+        ntheta=int(static.cfg.ntheta),
+        nzeta=int(static.cfg.nzeta),
+    )
+    mmax_trig = int(np.max(np.asarray(nyq_modes.m))) if nyq_modes.m.size else max(int(static.cfg.mpol) - 1, 0)
+    nmax_trig = int(np.max(np.abs(np.asarray(nyq_modes.n)))) if nyq_modes.n.size else max(int(static.cfg.ntor), 0)
+
+    trig = vmec_trig_tables(
+        ntheta=int(static.cfg.ntheta),
+        nzeta=int(static.cfg.nzeta),
+        nfp=int(static.cfg.nfp),
+        mmax=mmax_trig,
+        nmax=nmax_trig,
+        lasym=bool(static.cfg.lasym),
+        dtype=np.asarray(state.Rcos).dtype,
+    )
+
+    k = vmec_forces_rz_from_wout(
+        state=state,
+        static=static,
+        wout=wout_like,
+        indata=indata,
+        use_wout_bsup=False,
+        use_vmec_synthesis=True,
+        trig=trig,
+    )
+    bc = k.bc
+    s = np.asarray(static.s, dtype=float)
+    bsupu = np.asarray(bc.bsupu)
+    bsupv = np.asarray(bc.bsupv)
+    bsubu = np.asarray(bc.bsubu)
+    bsubv = np.asarray(bc.bsubv)
+    bsubu_raw = bsubu.copy()
+    bsubv_raw = bsubv.copy()
+    sqrtg = np.asarray(bc.jac.sqrtg)
+
+    bsubs_half = _compute_bsubs_half_mesh(
+        state=state,
+        geom_modes=static.modes,
+        s=s,
+        lconm1=bool(getattr(static.cfg, "lconm1", True)),
+        lthreed=bool(static.cfg.ntor > 0),
+        lasym=bool(static.cfg.lasym),
+        bsupu=bsupu,
+        bsupv=bsupv,
+        trig=trig,
+        geom={
+            "pr1_odd": np.asarray(k.pr1_odd),
+            "pz1_odd": np.asarray(k.pz1_odd),
+            "prv_even": np.asarray(k.prv_even),
+            "prv_odd": np.asarray(k.prv_odd),
+            "pzv_even": np.asarray(k.pzv_even),
+            "pzv_odd": np.asarray(k.pzv_odd),
+        },
+        jac_half=bc.jac,
+    )
+    bsubs_full = np.asarray(bsubs_half, dtype=float).copy()
+    if ns > 2:
+        bsubs_full[1:-1] = 0.5 * (bsubs_full[1:-1] + bsubs_full[2:])
+    if ns > 0:
+        bsubs_full[0] = 0.0
+        bsubs_full[-1] = 0.0
+
+    bsupu1 = np.zeros_like(bsupu)
+    bsupv1 = np.zeros_like(bsupv)
+    if ns > 1:
+        sqrtg_half = 0.5 * (sqrtg[1:] + sqrtg[:-1])
+        denom = np.where(sqrtg_half != 0.0, sqrtg_half, 1.0)
+        if ns > 2:
+            # VMEC jxbforce averages js with js+1.
+            bsupu1[1:-1] = 0.5 * (bsupu[1:-1] * sqrtg[1:-1] + bsupu[2:] * sqrtg[2:]) / denom[1:]
+            bsupv1[1:-1] = 0.5 * (bsupv[1:-1] * sqrtg[1:-1] + bsupv[2:] * sqrtg[2:]) / denom[1:]
+        bsupu1[0] = 0.0
+        bsupu1[-1] = 0.0
+        bsupv1[0] = 0.0
+        bsupv1[-1] = 0.0
+
+    # Apply VMEC jxbforce-style bsubv equilibration and low-pass filter so
+    # the diagnostic dump can be compared directly to jxbout outputs.
+    from vmec_jax.fourier import build_helical_basis
+    from vmec_jax.vmec_tomnsp import vmec_angle_grid
+    from vmec_jax.wout import (
+        _apply_bsubv_equif_correction,
+        _bsubuv_parity_from_coeffs,
+        _filter_bsubuv_jxbforce_parity_loop,
+        _pshalf_from_s,
+        _vmec_wrout_nyquist_cos_coeffs,
+    )
+
+    iequi = int(indata.get_int("IEQUI", 0))
+    if iequi == 1 and getattr(bc, "bsubv_preblend", None) is not None:
+        bsubv = _apply_bsubv_equif_correction(
+            bsubv=bsubv,
+            bsubv_e=np.asarray(bc.bsubv_preblend),
+            trig=trig,
+        )
+    if not bool(static.cfg.lasym):
+        # Reuse the Nyquist mode table to match VMEC jxbforce output.
+        grid_nyq = vmec_angle_grid(
+            ntheta=int(static.cfg.ntheta),
+            nzeta=int(static.cfg.nzeta),
+            nfp=int(static.cfg.nfp),
+            lasym=bool(static.cfg.lasym),
+        )
+        basis_nyq = build_helical_basis(nyq_modes, grid_nyq, cache=True)
+        bsubumnc = _vmec_wrout_nyquist_cos_coeffs(
+            f=bsubu, modes=nyq_modes, trig=trig
+        )
+        bsubvmnc = _vmec_wrout_nyquist_cos_coeffs(
+            f=bsubv, modes=nyq_modes, trig=trig
+        )
+        z2 = np.zeros_like(bsubumnc)
+        bsubu_even, bsubu_odd, bsubv_even, bsubv_odd = _bsubuv_parity_from_coeffs(
+            bsubumnc=bsubumnc,
+            bsubumns=z2,
+            bsubvmnc=bsubvmnc,
+            bsubvmns=z2,
+            modes=nyq_modes,
+            basis=basis_nyq,
+        )
+        # Convert internal odd component to the stored (physical) odd component
+        # expected by jxbforce before the parity filter.
+        pshalf = _pshalf_from_s(np.asarray(s, dtype=float))[:, None, None]
+        if pshalf.shape[0] > 1:
+            pshalf[0] = pshalf[1]
+        bsubu_odd = bsubu_odd * pshalf
+        bsubv_odd = bsubv_odd * pshalf
+        bsubu, bsubv = _filter_bsubuv_jxbforce_parity_loop(
+            bsubu_even=bsubu_even,
+            bsubu_odd=bsubu_odd,
+            bsubv_even=bsubv_even,
+            bsubv_odd=bsubv_odd,
+            trig=trig,
+            mmax_force=max(int(static.cfg.mpol) - 1, 0),
+            nmax_force=int(static.cfg.ntor),
+            s=s,
+        )
+
+    bsubu_jxbout = np.asarray(bsubu, dtype=float).copy()
+    bsubv_jxbout = np.asarray(bsubv, dtype=float).copy()
+    if ns > 0:
+        # VMEC jxbout only fills js=2..ns1; surface ns remains zero.
+        bsubu_jxbout[-1] = 0.0
+        bsubv_jxbout[-1] = 0.0
+
+    np.savez(
+        outdir / f"bsubs_ns{ns}_iter{int(iter_idx)}.npz",
+        bsubs_half=np.asarray(bsubs_half, dtype=float),
+        bsubs_full=np.asarray(bsubs_full, dtype=float),
+        bsupu=np.asarray(bsupu, dtype=float),
+        bsupv=np.asarray(bsupv, dtype=float),
+        bsupu1=np.asarray(bsupu1, dtype=float),
+        bsupv1=np.asarray(bsupv1, dtype=float),
+        bsubu=np.asarray(bsubu, dtype=float),
+        bsubv=np.asarray(bsubv, dtype=float),
+        bsubu_jxbout=bsubu_jxbout,
+        bsubv_jxbout=bsubv_jxbout,
+        bsubu_raw=np.asarray(bsubu_raw, dtype=float),
+        bsubv_raw=np.asarray(bsubv_raw, dtype=float),
+        sqrtg=np.asarray(sqrtg, dtype=float),
+        s=np.asarray(s, dtype=float),
+    )
+
+
 def _parse_jacobian_terms_dump(path: Path) -> dict[str, np.ndarray]:
     ns = ntheta = nzeta = None
     lines = path.read_text().splitlines()
-    ru12 = zs = zu12 = rs = r12 = tau = None
+    ru12 = zs = zu12 = rs = r12 = tau = rv12 = zv12 = None
     pru_e = pru_o = pz1_e = pz1_o = pzu_e = pzu_o = pr1_e = pr1_o = None
+    prv_e = prv_o = pzv_e = pzv_o = None
     pshalf = None
     for line in lines:
         if not line or line[0] == "#":
@@ -1241,7 +1597,7 @@ def _parse_jacobian_terms_dump(path: Path) -> dict[str, np.ndarray]:
         if line.startswith(("ns=", "ntheta", "nzeta", "columns")):
             continue
         parts = line.split()
-        if len(parts) < 3 + 23:
+        if len(parts) < 3 + 33:
             continue
         if ns is None or ntheta is None or nzeta is None:
             continue
@@ -1252,6 +1608,8 @@ def _parse_jacobian_terms_dump(path: Path) -> dict[str, np.ndarray]:
             rs = np.zeros_like(ru12)
             r12 = np.zeros_like(ru12)
             tau = np.zeros_like(ru12)
+            rv12 = np.zeros_like(ru12)
+            zv12 = np.zeros_like(ru12)
             pru_e = np.zeros_like(ru12)
             pru_o = np.zeros_like(ru12)
             pz1_e = np.zeros_like(ru12)
@@ -1260,6 +1618,10 @@ def _parse_jacobian_terms_dump(path: Path) -> dict[str, np.ndarray]:
             pzu_o = np.zeros_like(ru12)
             pr1_e = np.zeros_like(ru12)
             pr1_o = np.zeros_like(ru12)
+            prv_e = np.zeros_like(ru12)
+            prv_o = np.zeros_like(ru12)
+            pzv_e = np.zeros_like(ru12)
+            pzv_o = np.zeros_like(ru12)
             pshalf = np.zeros_like(ru12)
         js = int(parts[0]) - 1
         lt = int(parts[1]) - 1
@@ -1270,7 +1632,9 @@ def _parse_jacobian_terms_dump(path: Path) -> dict[str, np.ndarray]:
         # pz1_e pz1_o pz1_e_m1 pz1_o_m1
         # pzu_e pzu_o pzu_e_m1 pzu_o_m1
         # pr1_e pr1_o pr1_e_m1 pr1_o_m1
-        # ru12 pzs pzu12 prs pr12 ptau
+        # prv_e prv_o prv_e_m1 prv_o_m1
+        # pzv_e pzv_o pzv_e_m1 pzv_o_m1
+        # ru12 pzs pzu12 prs pr12 ptau rv12 zv12
         base = 3
         pshalf[js, lt, lz] = float(parts[base + 0])
         pru_e[js, lt, lz] = float(parts[base + 1])
@@ -1281,13 +1645,19 @@ def _parse_jacobian_terms_dump(path: Path) -> dict[str, np.ndarray]:
         pzu_o[js, lt, lz] = float(parts[base + 10])
         pr1_e[js, lt, lz] = float(parts[base + 13])
         pr1_o[js, lt, lz] = float(parts[base + 14])
-        base2 = base + 1 + 4 + 4 + 4 + 4
+        prv_e[js, lt, lz] = float(parts[base + 17])
+        prv_o[js, lt, lz] = float(parts[base + 18])
+        pzv_e[js, lt, lz] = float(parts[base + 21])
+        pzv_o[js, lt, lz] = float(parts[base + 22])
+        base2 = base + 1 + 4 + 4 + 4 + 4 + 4 + 4
         ru12[js, lt, lz] = float(parts[base2 + 0])
         zs[js, lt, lz] = float(parts[base2 + 1])
         zu12[js, lt, lz] = float(parts[base2 + 2])
         rs[js, lt, lz] = float(parts[base2 + 3])
         r12[js, lt, lz] = float(parts[base2 + 4])
         tau[js, lt, lz] = float(parts[base2 + 5])
+        rv12[js, lt, lz] = float(parts[base2 + 6])
+        zv12[js, lt, lz] = float(parts[base2 + 7])
     if ns is None or ntheta is None or nzeta is None:
         raise ValueError(f"Missing header fields in {path}")
     if ru12 is None:
@@ -1297,6 +1667,8 @@ def _parse_jacobian_terms_dump(path: Path) -> dict[str, np.ndarray]:
         rs = np.zeros_like(ru12)
         r12 = np.zeros_like(ru12)
         tau = np.zeros_like(ru12)
+        rv12 = np.zeros_like(ru12)
+        zv12 = np.zeros_like(ru12)
         pru_e = np.zeros_like(ru12)
         pru_o = np.zeros_like(ru12)
         pz1_e = np.zeros_like(ru12)
@@ -1305,6 +1677,10 @@ def _parse_jacobian_terms_dump(path: Path) -> dict[str, np.ndarray]:
         pzu_o = np.zeros_like(ru12)
         pr1_e = np.zeros_like(ru12)
         pr1_o = np.zeros_like(ru12)
+        prv_e = np.zeros_like(ru12)
+        prv_o = np.zeros_like(ru12)
+        pzv_e = np.zeros_like(ru12)
+        pzv_o = np.zeros_like(ru12)
         pshalf = np.zeros_like(ru12)
     return {
         "pshalf": pshalf,
@@ -1316,12 +1692,18 @@ def _parse_jacobian_terms_dump(path: Path) -> dict[str, np.ndarray]:
         "pzu_o": pzu_o,
         "pr1_e": pr1_e,
         "pr1_o": pr1_o,
+        "prv_e": prv_e,
+        "prv_o": prv_o,
+        "pzv_e": pzv_e,
+        "pzv_o": pzv_o,
         "ru12": ru12,
         "zs": zs,
         "zu12": zu12,
         "rs": rs,
         "r12": r12,
         "tau": tau,
+        "rv12": rv12,
+        "zv12": zv12,
     }
 
 
@@ -1765,6 +2147,18 @@ def main() -> None:
         help="Absolute tolerance for fail-fast mismatch detection.",
     )
     p.add_argument(
+        "--radial-skip",
+        type=int,
+        default=2,
+        help="Number of leading radial points to skip in end-state wout radial parity checks.",
+    )
+    p.add_argument(
+        "--radial-drop-edge",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Also drop the last radial point in end-state wout radial parity checks.",
+    )
+    p.add_argument(
         "--fail-fast",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -1915,6 +2309,7 @@ def main() -> None:
                 vmec_env["VMEC_DUMP_BSUBE_TERMS"] = "1"
                 vmec_env["VMEC_DUMP_BSUP"] = "1"
                 vmec_env["VMEC_DUMP_BSUBH"] = "1"
+                vmec_env["VMEC_DUMP_BSUBS"] = "1"
                 vmec_env["VMEC_DUMP_JACOBIAN_TERMS"] = "1"
                 vmec_env["VMEC_DUMP_LULV"] = "1"
                 vmec_env["VMEC_DUMP_LAMCAL"] = "1"
@@ -1975,6 +2370,8 @@ def main() -> None:
         wout_name = "wout_" + input_path.name.split("input.", 1)[-1] + ".nc"
         wout_path = workdir / wout_name
         wout = read_wout(wout_path) if wout_path.exists() else None
+        jxbout_path = workdir / f"jxbout_{suffix}.nc"
+        vmec_jxbout = _read_jxbout(jxbout_path)
 
         # --- Run vmec_jax with VMEC-style multigrid staging ---
         # Some VMEC2000 builds remove the input file from the workdir.
@@ -1994,6 +2391,7 @@ def main() -> None:
                     os.environ["VMEC_JAX_DUMP_XC_INIT"] = "1"
                     os.environ["VMEC_JAX_DUMP_BSUBE"] = "1"
                     os.environ["VMEC_JAX_DUMP_BSUBE_TERMS"] = "1"
+                    os.environ["VMEC_JAX_DUMP_BSUBS"] = "1"
                     os.environ["VMEC_JAX_DUMP_LULV"] = "1"
                     os.environ["VMEC_JAX_DUMP_LAMCAL"] = "1"
                     os.environ["VMEC_JAX_DUMP_TOMNSPS"] = "1"
@@ -2016,8 +2414,10 @@ def main() -> None:
             if args.vmec_nstep is not None:
                 os.environ["VMEC_JAX_NSTEP_OVERRIDE"] = str(int(args.vmec_nstep))
             try:
-                use_scan = False if args.dump_level != "none" else True
-                performance_mode = False if args.dump_level != "none" else True
+                # Parity runs should use the non-scan path to match VMEC2000.
+                # The scan path is performance-focused and can diverge for large ns.
+                use_scan = False
+                performance_mode = False
                 return vj.run_fixed_boundary(
                     jax_input_path,
                     solver="vmec2000_iter",
@@ -2079,6 +2479,17 @@ def main() -> None:
 
         print(f"Runtime (wall): vmec2000={vmec_time_s:.3f}s  vmec_jax={jax_time_s:.3f}s")
 
+        # Ensure we have a final-state bsubs dump for jxbout parity, even if
+        # per-iteration dumps were filtered out.
+        try:
+            if use_split:
+                final_dump_dir = jax_dump_dir2 if run2 is not None else jax_dump_dir1
+            else:
+                final_dump_dir = jax_dump_dir
+            _dump_bsubs_final(run, final_dump_dir)
+        except Exception:
+            pass
+
         vmec_xc = _collect_vmec_xc_dumps(vmec_dump_dir)
         dump_offset = int(np.asarray(run1.result.w_history).size) if (use_split and run1 is not None and run1.result is not None) else int(split_iter)
         dump_overwrite = True
@@ -2108,6 +2519,7 @@ def main() -> None:
             jax_xc_init = _collect_jax_xc_init_dumps(jax_dump_dir_active)
         vmec_bsube = _collect_bsube_dumps(vmec_dump_dir)
         vmec_bsube_terms = _collect_bsube_terms_dumps(vmec_dump_dir)
+        vmec_bsubs = _collect_vmec_bsubs_dumps(vmec_dump_dir)
         vmec_jacobian_terms = _collect_jacobian_terms_dumps(vmec_dump_dir)
         if use_split and run2 is not None:
             jax_bsube = _merge_dump_dicts(
@@ -2122,9 +2534,16 @@ def main() -> None:
                 offset=dump_offset,
                 overwrite=dump_overwrite,
             )
+            jax_bsubs = _merge_dump_dicts(
+                _collect_bsubs_dumps(jax_dump_dir1),
+                _collect_bsubs_dumps(jax_dump_dir2),
+                offset=dump_offset,
+                overwrite=dump_overwrite,
+            )
         else:
             jax_bsube = _collect_bsube_dumps(jax_dump_dir_active)
             jax_bsube_terms = _collect_bsube_terms_dumps(jax_dump_dir_active)
+            jax_bsubs = _collect_bsubs_dumps(jax_dump_dir_active)
         vmec_lulv = _collect_lulv_vmec_dumps(vmec_dump_dir)
         if use_split and run2 is not None:
             jax_lulv = _merge_dump_dicts(
@@ -2380,7 +2799,7 @@ def main() -> None:
                         vmec_fsqr1 = float(dump_vals.get("fsqr1", vmec_fsqr1))
                         vmec_fsqz1 = float(dump_vals.get("fsqz1", vmec_fsqz1))
                         vmec_fsql1 = float(dump_vals.get("fsql1", vmec_fsql1))
-                if vmec_time_control:
+                if vmec_time_control and not math.isfinite(vmec_delt0r):
                     iter2 = off + int(row.it)
                     if iter2 in vmec_time_control:
                         vmec_delt0r = float(vmec_time_control[iter2])
@@ -2729,6 +3148,108 @@ def main() -> None:
                     if max_abs > tol:
                         raise SystemExit(2)
 
+    if "vmec_bsubs" in locals() and vmec_bsubs and "jax_bsubs" in locals() and jax_bsubs:
+        print()
+        print("bsubs parity (VMEC2000 bsubs dump vs vmec_jax bsubs):")
+        common = sorted(vmec_bsubs.keys(), key=lambda k: (k[0] is None, k[0] or -1, k[1]))
+        if not common:
+            print("  No overlapping bsubs dump iterations found.")
+        for ns_val, it in common:
+            vm_bsubs = np.asarray(vmec_bsubs[(ns_val, it)])
+            candidates: list[tuple[float, float, int | None, int, str]] = []
+            for it_jx in (it, it - 1, it + 1):
+                if it_jx <= 0:
+                    continue
+                ns_jx, jx_data = _resolve_other(jax_bsubs, ns=ns_val, it=it_jx)
+                if jx_data is None:
+                    continue
+                jx_raw = jx_data.get("bsubs_half")
+                if jx_raw is None:
+                    continue
+                vm_cmp = vm_bsubs
+                jx_cmp = np.asarray(jx_raw)
+                # Drop axis + first two points (VMEC near-axis artifacts).
+                if vm_cmp.shape[0] > 2:
+                    vm_cmp = vm_cmp[2:]
+                if jx_cmp.shape[0] > 2:
+                    jx_cmp = jx_cmp[2:]
+                if vm_cmp.shape != jx_cmp.shape:
+                    min_shape = tuple(min(a, b) for a, b in zip(vm_cmp.shape, jx_cmp.shape))
+                    vm_cmp = vm_cmp[tuple(slice(0, n) for n in min_shape)]
+                    jx_cmp = jx_cmp[tuple(slice(0, n) for n in min_shape)]
+                max_abs, max_rel, _ = _max_abs_rel_err(vm_cmp.ravel(), jx_cmp.ravel())
+                iter_note = "" if it_jx == it else f" (jax iter {it_jx})"
+                candidates.append((max_abs, max_rel, ns_jx, it_jx, iter_note))
+            if not candidates:
+                continue
+            max_abs, max_rel, ns_jx, _it_jx, iter_note = min(candidates, key=lambda x: x[0])
+            ns_print = ns_val if ns_val is not None else ns_jx
+            ns_tag = f"ns={ns_print} " if ns_print is not None else ""
+            print(f"  {ns_tag}iter {it:03d}{iter_note}: bsubs max_abs={max_abs:.3e} max_rel={max_rel:.3e}")
+            if bool(args.fail_fast) and first_mismatch is None:
+                tol = max(float(args.atol), float(args.rtol) * float(np.nanmax(np.abs(vm_bsubs))))
+                if max_abs > tol:
+                    raise SystemExit(2)
+
+    if "vmec_jxbout" in locals() and vmec_jxbout and "jax_bsubs" in locals() and jax_bsubs:
+        print()
+        print("bsubs parity (VMEC2000 jxbout vs vmec_jax bsubs):")
+        key = max(jax_bsubs.keys(), key=lambda k: (k[0] is None, k[0] or -1, k[1]))
+        jx = jax_bsubs[key]
+        bsubs_full = jx.get("bsubs_full")
+        if bsubs_full is None:
+            bsubs_full = jx.get("bsubs_half")
+        bsubs_full = np.asarray(bsubs_full)
+        # jxbout stores arrays as (ntheta, nzeta, ns)
+        bsubs_jx = np.transpose(bsubs_full, (1, 2, 0))
+        vm_bsubs = vmec_jxbout.get("bsubs")
+        if vm_bsubs is None:
+            print("  VMEC jxbout missing bsubs array.")
+        elif vm_bsubs.shape != bsubs_jx.shape:
+            print(f"  Shape mismatch: vmec={vm_bsubs.shape} jax={bsubs_jx.shape}")
+        else:
+            max_abs, max_rel, _ = _max_abs_rel_err(vm_bsubs.ravel(), bsubs_jx.ravel())
+            print(f"  bsubs max_abs={max_abs:.3e} max_rel={max_rel:.3e} (iter={key[1]})")
+            if bool(args.fail_fast) and first_mismatch is None:
+                tol = max(float(args.atol), float(args.rtol) * float(np.nanmax(np.abs(vm_bsubs))))
+                if max_abs > tol:
+                    raise SystemExit(2)
+
+        vm_bsupu = vmec_jxbout.get("bsupu")
+        vm_bsupv = vmec_jxbout.get("bsupv")
+        if vm_bsupu is not None and vm_bsupv is not None:
+            bsupu1 = np.asarray(jx.get("bsupu1"))
+            bsupv1 = np.asarray(jx.get("bsupv1"))
+            bsupu_jx = np.transpose(bsupu1, (1, 2, 0))
+            bsupv_jx = np.transpose(bsupv1, (1, 2, 0))
+            if vm_bsupu.shape == bsupu_jx.shape:
+                max_abs_u, max_rel_u, _ = _max_abs_rel_err(vm_bsupu.ravel(), bsupu_jx.ravel())
+                max_abs_v, max_rel_v, _ = _max_abs_rel_err(vm_bsupv.ravel(), bsupv_jx.ravel())
+                print(f"  bsupu max_abs={max_abs_u:.3e} max_rel={max_rel_u:.3e}")
+                print(f"  bsupv max_abs={max_abs_v:.3e} max_rel={max_rel_v:.3e}")
+
+        vm_bsubu = vmec_jxbout.get("bsubu")
+        vm_bsubv = vmec_jxbout.get("bsubv")
+        if vm_bsubu is not None and vm_bsubv is not None:
+            bsubu_jx = np.asarray(jx.get("bsubu_jxbout", jx.get("bsubu")))
+            bsubv_jx = np.asarray(jx.get("bsubv_jxbout", jx.get("bsubv")))
+            if bsubu_jx is not None and bsubv_jx is not None:
+                bsubu_jx = np.transpose(bsubu_jx, (1, 2, 0))
+                bsubv_jx = np.transpose(bsubv_jx, (1, 2, 0))
+                if vm_bsubu.shape == bsubu_jx.shape:
+                    max_abs_u, max_rel_u, _ = _max_abs_rel_err(vm_bsubu.ravel(), bsubu_jx.ravel())
+                    max_abs_v, max_rel_v, _ = _max_abs_rel_err(vm_bsubv.ravel(), bsubv_jx.ravel())
+                    print(f"  bsubu max_abs={max_abs_u:.3e} max_rel={max_rel_u:.3e}")
+                    print(f"  bsubv max_abs={max_abs_v:.3e} max_rel={max_rel_v:.3e}")
+                else:
+                    print(f"  bsubu/bsubv shape mismatch: vmec={vm_bsubu.shape} jax={bsubu_jx.shape}")
+
+        vm_bdotk = vmec_jxbout.get("sqrt_g__bdotk")
+        if vm_bdotk is not None:
+            # Compare to bdotk reconstructed from jxbforce parity dump if present.
+            # Our bdotk is stored in the jdotb debug npz; skip if not available.
+            pass
+
     if "vmec_jacobian_terms" in locals() and vmec_jacobian_terms and "jax_kernels" in locals() and jax_kernels:
         print()
         print("jacobian parity (even/odd inputs + ru12/zs/zu12/rs/r12/tau):")
@@ -2752,6 +3273,10 @@ def main() -> None:
                 ("pzu_o", "pzu_odd"),
                 ("pr1_e", "pr1_even"),
                 ("pr1_o", "pr1_odd"),
+                ("prv_e", "prv_even"),
+                ("prv_o", "prv_odd"),
+                ("pzv_e", "pzv_even"),
+                ("pzv_o", "pzv_odd"),
             ):
                 vm_arr = np.asarray(vm.get(name))
                 jx_arr = np.asarray(jx_data.get(jx_name))
@@ -3441,6 +3966,101 @@ def main() -> None:
         print(f"  fsq_total: vmec={fsq_ref:.3e}  jax={fsq_new:.3e}")
         print(f"  rmnc relRMS (physical)={rmnc_err_phys:.3e}  zmns relRMS (physical)={zmns_err_phys:.3e}")
         print(f"  rmnc relRMS (internal)={rmnc_err_internal:.3e}  zmns relRMS (internal)={zmns_err_internal:.3e}")
+
+        from vmec_jax.wout import wout_minimal_from_fixed_boundary
+
+        fsqr = fsqz = fsql = None
+        fsqt = None
+        converged = None
+        if res is not None:
+            converged = getattr(res, "diagnostics", {}).get("converged", None)
+            fsqr_hist = getattr(res, "fsqr2_history", None)
+            fsqz_hist = getattr(res, "fsqz2_history", None)
+            fsql_hist = getattr(res, "fsql2_history", None)
+            if fsqr_hist is not None and fsqz_hist is not None:
+                fsqr_hist = np.asarray(fsqr_hist, dtype=float)
+                fsqz_hist = np.asarray(fsqz_hist, dtype=float)
+                fsqt_hist = fsqr_hist + fsqz_hist
+                nstore = 100
+                niter = int(fsqt_hist.size)
+                stride = int(niter // nstore) + 1 if niter > 0 else 1
+                fsqt = np.zeros((nstore,), dtype=float)
+                count = 0
+                for iter2 in range(1, niter + 1):
+                    if iter2 % stride != 0:
+                        continue
+                    fsqt[count] = float(fsqt_hist[iter2 - 1])
+                    count += 1
+                    if count >= nstore:
+                        break
+            if fsqr_hist is not None and fsqz_hist is not None and fsql_hist is not None:
+                try:
+                    fsqr = float(np.asarray(fsqr_hist)[-1])
+                    fsqz = float(np.asarray(fsqz_hist)[-1])
+                    fsql = float(np.asarray(fsql_hist)[-1])
+                except Exception:
+                    fsqr = fsqz = fsql = None
+        if fsqr is None or fsqz is None or fsql is None:
+            fsqr, fsqz, fsql = vj.residual_scalars_from_state(
+                state=run.state,
+                static=run.static,
+                indata=run.indata,
+                signgs=int(run.signgs),
+                use_vmec_synthesis=True,
+            )
+
+        wout_jax = wout_minimal_from_fixed_boundary(
+            path=Path(workdir) / "_wout_compare.nc",
+            state=run.state,
+            static=run.static,
+            indata=run.indata,
+            signgs=int(run.signgs),
+            fsqr=float(fsqr),
+            fsqz=float(fsqz),
+            fsql=float(fsql),
+            fsqt=fsqt,
+            converged=converged,
+        )
+
+        radial_skip = max(int(args.radial_skip), 0)
+        radial_drop_edge = bool(args.radial_drop_edge)
+
+        def _radial_trim(arr: np.ndarray) -> np.ndarray:
+            out = arr
+            if arr.ndim == 1:
+                out = arr[radial_skip:]
+            elif arr.ndim >= 2:
+                out = arr[radial_skip:, ...]
+            if radial_drop_edge and out.shape[0] > 0:
+                out = out[:-1, ...]
+            return out
+
+        edge_note = " + edge" if radial_drop_edge else ""
+        print(f"  wout parity (skip first {radial_skip} radial points{edge_note}):")
+        for name in ("jdotb", "DMerc", "Dgeod"):
+            vm_arr = _radial_trim(np.asarray(getattr(wout, name)))
+            jx_arr = _radial_trim(np.asarray(getattr(wout_jax, name)))
+            if vm_arr.shape != jx_arr.shape:
+                min_shape = tuple(min(a, b) for a, b in zip(vm_arr.shape, jx_arr.shape))
+                vm_arr = vm_arr[tuple(slice(0, n) for n in min_shape)]
+                jx_arr = jx_arr[tuple(slice(0, n) for n in min_shape)]
+            max_abs, max_rel, _ = _max_abs_rel_err(vm_arr.ravel(), jx_arr.ravel())
+            print(f"    {name}: max_abs={max_abs:.3e} max_rel={max_rel:.3e}")
+
+        vm_bsubsmns = _radial_trim(np.asarray(getattr(wout, "bsubsmns")))
+        jx_bsubsmns = _radial_trim(np.asarray(getattr(wout_jax, "bsubsmns")))
+        if vm_bsubsmns.size and jx_bsubsmns.size:
+            if vm_bsubsmns.shape != jx_bsubsmns.shape:
+                min_shape = tuple(min(a, b) for a, b in zip(vm_bsubsmns.shape, jx_bsubsmns.shape))
+                vm_bsubsmns = vm_bsubsmns[tuple(slice(0, n) for n in min_shape)]
+                jx_bsubsmns = jx_bsubsmns[tuple(slice(0, n) for n in min_shape)]
+            max_abs, max_rel, _ = _max_abs_rel_err(vm_bsubsmns.ravel(), jx_bsubsmns.ravel())
+            print(f"    bsubsmns: max_abs={max_abs:.3e} max_rel={max_rel:.3e}")
+
+        if hasattr(wout, "betapol") and hasattr(wout_jax, "betapol"):
+            print(f"    betapol: vmec={float(wout.betapol):.6e} jax={float(wout_jax.betapol):.6e}")
+        if hasattr(wout, "betator") and hasattr(wout_jax, "betator"):
+            print(f"    betator: vmec={float(wout.betator):.6e} jax={float(wout_jax.betator):.6e}")
 
     if bool(args.fail_fast) and first_mismatch is not None:
         raise SystemExit(2)
