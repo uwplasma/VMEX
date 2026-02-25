@@ -5440,9 +5440,9 @@ def solve_fixed_boundary_residual_iter(
                 def _compute_scalars(_):
                     r00_j = jnp.asarray(k.pr1_even)[0, 0, 0]
                     z00_j = jnp.asarray(0.0, dtype=r00_j.dtype)
-                    norms_w = vmec_force_norms_from_bcovar_dynamic(bc=k.bc, trig=trig, s=s, signgs=signgs)
-                    wb_val = jnp.asarray(norms_w.wb)
-                    wp_val = jnp.asarray(norms_w.wp)
+                    # `norms_current` already reflects the current bcovar state.
+                    wb_val = jnp.asarray(norms_current.wb)
+                    wp_val = jnp.asarray(norms_current.wp)
                     w_mhd = (wb_val + wp_val / (gamma - 1.0)) * jnp.asarray(float(TWOPI * TWOPI), dtype=wb_val.dtype)
                     return r00_j, z00_j, w_mhd
 
@@ -8046,12 +8046,11 @@ def solve_fixed_boundary_residual_iter(
                             z00_j = jnp.sum(jnp.asarray(state.Zcos)[0, m0_mask])
                         else:
                             z00_j = jnp.asarray(0.0, dtype=jnp.asarray(r00_j).dtype)
-                # `norms_used` may be cached (VMEC2000 `ns4=25` behavior). VMEC's
-                # printed WMHD uses the *current* wb/wp from `funct3d`, not cached
-                # norm scalars. Recompute wb/wp from the current bcovar state here.
-                norms_w = vmec_force_norms_from_bcovar_dynamic(bc=k.bc, trig=trig, s=s, signgs=signgs)
-                wb_j = jnp.asarray(norms_w.wb)
-                wp_j = jnp.asarray(norms_w.wp)
+                # `norms_used` may be cached (VMEC2000 `ns4=25` behavior), but
+                # `norms_current` already reflects the current bcovar state and
+                # therefore matches VMEC's printed wb/wp without recomputing.
+                wb_j = jnp.asarray(norms_current.wb)
+                wp_j = jnp.asarray(norms_current.wp)
                 r00_val, z00_val, wb_val, wp_val = _device_get_floats(r00_j, z00_j, wb_j, wp_j)
                 if bool(vmec2000_control):
                     # Match VMEC's printed precision (E11.3) for parity checks.
