@@ -22,6 +22,7 @@ vmec-jax documentation
       vmec_wiki_primer
       algorithms
       validation
+      jxbforce_mercier
       performance
       code_structure
       contributing
