@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 
 from ._compat import jnp
-from .energy import flux_profiles_from_indata
+from .energy import FluxProfiles, flux_profiles_from_indata
 from .field import lamscale_from_phips
 from .modes import vmec_mode_table, nyquist_mode_table_from_grid
 from .profiles import eval_profiles
@@ -161,6 +161,8 @@ def booz_xform_inputs_from_state(
     signgs: int,
     use_nyq_from_grid: bool = True,
     trig: VmecTrigTables | None = None,
+    flux: FluxProfiles | None = None,
+    profiles_half: dict | None = None,
 ) -> BoozXformInputs:
     """Construct booz_xform_jax inputs from a VMEC state using JAX kernels."""
     cfg = static.cfg
@@ -201,8 +203,11 @@ def booz_xform_inputs_from_state(
     lmns_full = jnp.asarray(state.Lsin) * mode_scale
 
     s_full = jnp.asarray(static.s)
-    flux = flux_profiles_from_indata(indata, s_full, signgs=signgs)
-    lamscale = lamscale_from_phips(flux.phips, s_full)
+    if flux is None:
+        flux = flux_profiles_from_indata(indata, s_full, signgs=signgs)
+    lamscale = getattr(flux, "lamscale", None)
+    if lamscale is None:
+        lamscale = lamscale_from_phips(flux.phips, s_full)
 
     lmns_wout = _lambda_wout_from_full_jax(
         lam_full=lmns_full,
@@ -229,7 +234,7 @@ def booz_xform_inputs_from_state(
 
     # iota on half mesh (with axis entry set to 0)
     s_half = jnp.concatenate([s_full[:1], 0.5 * (s_full[1:] + s_full[:-1])], axis=0)
-    prof = eval_profiles(indata, s_half)
+    prof = profiles_half if profiles_half is not None else eval_profiles(indata, s_half)
     iotas = jnp.asarray(prof.get("iota", jnp.zeros_like(s_half)))
     iotas = iotas.at[0].set(0.0)
     iota_half = iotas[1:]
