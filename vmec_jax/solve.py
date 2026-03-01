@@ -2398,7 +2398,7 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
 
     boundary = boundary_from_indata(indata, static.modes)
     r00 = float(np.asarray(boundary.R_cos)[int(idx00)]) if int(idx00) >= 0 else float(np.asarray(boundary.R_cos)[0])
-    gamma = float(indata.get_float("GAMMA", 5.0 / 3.0))
+    gamma = float(indata.get_float("GAMMA", 0.0))
     lrfp = bool(indata.get_bool("LRFP", False))
     chips = _half_mesh_from_full_mesh(chipf_wout) if lrfp else None
     mass = _mass_half_mesh_from_indata(
@@ -2904,7 +2904,7 @@ def solve_fixed_boundary_gn_vmec_residual(
 
     boundary = boundary_from_indata(indata, static.modes)
     r00 = float(np.asarray(boundary.R_cos)[int(idx00)]) if int(idx00) >= 0 else float(np.asarray(boundary.R_cos)[0])
-    gamma = float(indata.get_float("GAMMA", 5.0 / 3.0))
+    gamma = float(indata.get_float("GAMMA", 0.0))
     lrfp = bool(indata.get_bool("LRFP", False))
     chips = _half_mesh_from_full_mesh(chipf_wout) if lrfp else None
     mass = _mass_half_mesh_from_indata(
@@ -3746,7 +3746,7 @@ def solve_fixed_boundary_residual_iter(
 
     boundary = boundary_from_indata(indata, static.modes)
     r00 = float(np.asarray(boundary.R_cos)[int(idx00)]) if int(idx00) >= 0 else float(np.asarray(boundary.R_cos)[0])
-    gamma = float(indata.get_float("GAMMA", 5.0 / 3.0))
+    gamma = float(indata.get_float("GAMMA", 0.0))
     lrfp = bool(indata.get_bool("LRFP", False))
     chips = _half_mesh_from_full_mesh(chipf_wout) if lrfp else None
     mass = _mass_half_mesh_from_indata(
@@ -10916,7 +10916,7 @@ def first_step_diagnostics(
     boundary = boundary_from_indata(indata, static_vmec.modes)
     idx00 = _mode00_index(static_vmec.modes)
     r00 = float(np.asarray(boundary.R_cos)[int(idx00)]) if int(idx00) >= 0 else float(np.asarray(boundary.R_cos)[0])
-    gamma = float(indata.get_float("GAMMA", 5.0 / 3.0))
+    gamma = float(indata.get_float("GAMMA", 0.0))
     lrfp = bool(indata.get_bool("LRFP", False))
     chips = _half_mesh_from_full_mesh(chipf_wout) if lrfp else None
     mass = _mass_half_mesh_from_indata(
