@@ -4465,7 +4465,7 @@ def wout_minimal_from_fixed_boundary(
     boundary = boundary_from_indata(indata, main_modes)
     idx00 = np.where((np.asarray(main_modes.m) == 0) & (np.asarray(main_modes.n) == 0))[0]
     r00 = float(boundary.R_cos[int(idx00[0])]) if idx00.size else float(np.asarray(boundary.R_cos)[0])
-    gamma = float(indata.get_float("GAMMA", 5.0 / 3.0))
+    gamma = float(indata.get_float("GAMMA", 0.0))
     lrfp = bool(indata.get_bool("LRFP", False))
     vnorm = phips
     if lrfp:
