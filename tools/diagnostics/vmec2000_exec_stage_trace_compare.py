@@ -4730,26 +4730,27 @@ def main() -> None:
             return out
 
         edge_note = " + edge" if radial_drop_edge else ""
-        print(f"  wout parity (skip first {radial_skip} radial points{edge_note}):")
-        for name in ("jdotb", "DMerc", "Dgeod"):
-            vm_arr = _radial_trim(np.asarray(getattr(wout, name)))
-            jx_arr = _radial_trim(np.asarray(getattr(wout_jax, name)))
+        def _align_trimmed(vm_arr: np.ndarray, jx_arr: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
             if vm_arr.shape != jx_arr.shape:
                 min_shape = tuple(min(a, b) for a, b in zip(vm_arr.shape, jx_arr.shape))
                 vm_arr = vm_arr[tuple(slice(0, n) for n in min_shape)]
                 jx_arr = jx_arr[tuple(slice(0, n) for n in min_shape)]
+            return vm_arr, jx_arr
+
+        def _print_wout_metric(name: str) -> None:
+            if not hasattr(wout, name) or not hasattr(wout_jax, name):
+                return
+            vm_arr = _radial_trim(np.asarray(getattr(wout, name)))
+            jx_arr = _radial_trim(np.asarray(getattr(wout_jax, name)))
+            vm_arr, jx_arr = _align_trimmed(vm_arr, jx_arr)
+            if vm_arr.size == 0 or jx_arr.size == 0:
+                return
             max_abs, max_rel, _ = _max_abs_rel_err(vm_arr.ravel(), jx_arr.ravel())
             print(f"    {name}: max_abs={max_abs:.3e} max_rel={max_rel:.3e}")
 
-        vm_bsubsmns = _radial_trim(np.asarray(getattr(wout, "bsubsmns")))
-        jx_bsubsmns = _radial_trim(np.asarray(getattr(wout_jax, "bsubsmns")))
-        if vm_bsubsmns.size and jx_bsubsmns.size:
-            if vm_bsubsmns.shape != jx_bsubsmns.shape:
-                min_shape = tuple(min(a, b) for a, b in zip(vm_bsubsmns.shape, jx_bsubsmns.shape))
-                vm_bsubsmns = vm_bsubsmns[tuple(slice(0, n) for n in min_shape)]
-                jx_bsubsmns = jx_bsubsmns[tuple(slice(0, n) for n in min_shape)]
-            max_abs, max_rel, _ = _max_abs_rel_err(vm_bsubsmns.ravel(), jx_bsubsmns.ravel())
-            print(f"    bsubsmns: max_abs={max_abs:.3e} max_rel={max_rel:.3e}")
+        print(f"  wout parity (skip first {radial_skip} radial points{edge_note}):")
+        for name in ("jdotb", "DMerc", "Dgeod", "bsubsmns", "bsubsmnc", "bmnc", "bmns"):
+            _print_wout_metric(name)
 
         if hasattr(wout, "betapol") and hasattr(wout_jax, "betapol"):
             print(f"    betapol: vmec={float(wout.betapol):.6e} jax={float(wout_jax.betapol):.6e}")
