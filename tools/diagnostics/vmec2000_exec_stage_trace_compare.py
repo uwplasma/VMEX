@@ -2327,6 +2327,29 @@ def _max_abs_rel_err(vmec_vals: np.ndarray, jax_vals: np.ndarray, *, eps: float 
     return max_abs, max_rel, i
 
 
+def _focus_rel_stats(
+    ref_vals: np.ndarray,
+    test_vals: np.ndarray,
+    *,
+    focus_abs: float,
+    eps: float = 1e-30,
+) -> tuple[float, float, float, int, int] | None:
+    ref = np.asarray(ref_vals, dtype=float)
+    test = np.asarray(test_vals, dtype=float)
+    mask = np.isfinite(ref) & np.isfinite(test) & (np.abs(ref) > float(focus_abs))
+    total = int(ref.size)
+    n = int(np.count_nonzero(mask))
+    if n <= 0:
+        return None
+    diff = np.abs(test[mask] - ref[mask])
+    ref_abs = np.maximum(np.abs(ref[mask]), float(eps))
+    rel = diff / ref_abs
+    max_abs = float(np.max(diff))
+    max_rel = float(np.max(rel))
+    rms_rel = float(np.sqrt(np.mean(rel * rel)))
+    return max_abs, max_rel, rms_rel, n, total
+
+
 def _decode_tomnsps_index(idx: int, shape: tuple[int, int, int]) -> str:
     ns, mpol1p1, ntorp1 = shape
     if idx < 0 or ns <= 0 or mpol1p1 <= 0 or ntorp1 <= 0:
@@ -3613,6 +3636,22 @@ def main() -> None:
                 f"  {ns_tag}iter {it:03d}: bsubu max_abs={max_abs_u:.3e} max_rel={max_rel_u:.3e};"
                 f" bsubv max_abs={max_abs_v:.3e} max_rel={max_rel_v:.3e}"
             )
+            focus_u = _focus_rel_stats(vm_bsubu, jx_bsubu, focus_abs=1e-3)
+            focus_v = _focus_rel_stats(vm_bsubv, jx_bsubv, focus_abs=1e-3)
+            if focus_u is not None:
+                _fmax_abs_u, fmax_rel_u, frms_rel_u, fn_u, ftotal_u = focus_u
+                print(
+                    "    bsubu focus |ref|>1e-3:"
+                    f" max_rel={fmax_rel_u:.3e} rms_rel={frms_rel_u:.3e}"
+                    f" n={fn_u}/{ftotal_u}"
+                )
+            if focus_v is not None:
+                _fmax_abs_v, fmax_rel_v, frms_rel_v, fn_v, ftotal_v = focus_v
+                print(
+                    "    bsubv focus |ref|>1e-3:"
+                    f" max_rel={fmax_rel_v:.3e} rms_rel={frms_rel_v:.3e}"
+                    f" n={fn_v}/{ftotal_v}"
+                )
             if bool(args.fail_fast) and first_mismatch is None:
                 tol_u = max(float(args.atol), float(args.rtol) * float(np.nanmax(np.abs(vm_bsubu[mask_u])))) if np.any(mask_u) else float("inf")
                 tol_v = max(float(args.atol), float(args.rtol) * float(np.nanmax(np.abs(vm_bsubv[mask_v])))) if np.any(mask_v) else float("inf")
@@ -3659,6 +3698,22 @@ def main() -> None:
                 f"  bsubu max_abs={max_abs_u:.3e} max_rel={max_rel_u:.3e};"
                 f" bsubv max_abs={max_abs_v:.3e} max_rel={max_rel_v:.3e}"
             )
+            focus_u = _focus_rel_stats(vm_bsubu, jx_bsubu, focus_abs=1e-3)
+            focus_v = _focus_rel_stats(vm_bsubv, jx_bsubv, focus_abs=1e-3)
+            if focus_u is not None:
+                _fmax_abs_u, fmax_rel_u, frms_rel_u, fn_u, ftotal_u = focus_u
+                print(
+                    "  bsubu focus |ref|>1e-3:"
+                    f" max_rel={fmax_rel_u:.3e} rms_rel={frms_rel_u:.3e}"
+                    f" n={fn_u}/{ftotal_u}"
+                )
+            if focus_v is not None:
+                _fmax_abs_v, fmax_rel_v, frms_rel_v, fn_v, ftotal_v = focus_v
+                print(
+                    "  bsubv focus |ref|>1e-3:"
+                    f" max_rel={fmax_rel_v:.3e} rms_rel={frms_rel_v:.3e}"
+                    f" n={fn_v}/{ftotal_v}"
+                )
 
     if "vmec_bsube_terms" in locals() and (vmec_bsube_terms or jax_bsube_terms):
         print()

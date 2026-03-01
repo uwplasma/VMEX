@@ -1576,6 +1576,10 @@ def _filter_bsubuv_jxbforce_lasym_loop(
     mmax_force: int,
     nmax_force: int,
     s: np.ndarray | None = None,
+    bsubu_even: np.ndarray | None = None,
+    bsubu_odd: np.ndarray | None = None,
+    bsubv_even: np.ndarray | None = None,
+    bsubv_odd: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Loop-accurate LASYM low-pass filter for bsubu/bsubv (jxbforce + fext_fft).
 
@@ -1590,6 +1594,24 @@ def _filter_bsubuv_jxbforce_lasym_loop(
     bsubv = np.asarray(bsubv, dtype=acc_dtype)
     if bsubu.shape != bsubv.shape:
         raise ValueError("bsubu/bsubv shape mismatch")
+    have_parity_channels = (
+        (bsubu_even is not None)
+        and (bsubu_odd is not None)
+        and (bsubv_even is not None)
+        and (bsubv_odd is not None)
+    )
+    if have_parity_channels:
+        bsubu_even = np.asarray(bsubu_even, dtype=acc_dtype)
+        bsubu_odd = np.asarray(bsubu_odd, dtype=acc_dtype)
+        bsubv_even = np.asarray(bsubv_even, dtype=acc_dtype)
+        bsubv_odd = np.asarray(bsubv_odd, dtype=acc_dtype)
+        if (
+            bsubu_even.shape != bsubu.shape
+            or bsubu_odd.shape != bsubu.shape
+            or bsubv_even.shape != bsubu.shape
+            or bsubv_odd.shape != bsubu.shape
+        ):
+            raise ValueError("LASYM bsub parity channel shape mismatch")
 
     ns, ntheta, nzeta = bsubu.shape
     nt2 = int(trig.ntheta2)
@@ -1636,13 +1658,23 @@ def _filter_bsubuv_jxbforce_lasym_loop(
         bu = np.asarray(bsubu[js, :nt3, :], dtype=acc_dtype).T  # (nzeta, ntheta3)
         bv = np.asarray(bsubv[js, :nt3, :], dtype=acc_dtype).T
 
-        # VMEC iequi=1 path stores odd channel as shalf*bsub*_e, and jxbforce
-        # immediately divides by shalf. Net effect: both parity channels start
-        # from the same full-grid field.
-        if pshalf is not None and pshalf[js] != 0.0:
-            _ = pshalf[js]
-        bu_ch = np.stack([bu, bu], axis=-1)  # (nzeta, ntheta3, 2)
-        bv_ch = np.stack([bv, bv], axis=-1)
+        if have_parity_channels:
+            bu0 = np.asarray(bsubu_even[js, :nt3, :], dtype=acc_dtype).T
+            bv0 = np.asarray(bsubv_even[js, :nt3, :], dtype=acc_dtype).T
+            if pshalf is not None:
+                sh = acc_dtype(pshalf[js]) if pshalf[js] != 0.0 else acc_dtype(1.0)
+            else:
+                sh = acc_dtype(1.0)
+            # VMEC stores odd channel as shalf*bsub*_odd before the immediate
+            # in-loop divide by shalf in jxbforce.
+            bu1 = np.asarray(bsubu_odd[js, :nt3, :], dtype=acc_dtype).T * sh
+            bv1 = np.asarray(bsubv_odd[js, :nt3, :], dtype=acc_dtype).T * sh
+            bu_ch = np.stack([bu0, bu1], axis=-1)
+            bv_ch = np.stack([bv0, bv1], axis=-1)
+        else:
+            # Fallback path when only full bsub fields are available.
+            bu_ch = np.stack([bu, bu], axis=-1)  # (nzeta, ntheta3, 2)
+            bv_ch = np.stack([bv, bv], axis=-1)
 
         bu_s = np.zeros((nzeta, nt2, 2), dtype=acc_dtype)
         bu_a = np.zeros((nzeta, nt2, 2), dtype=acc_dtype)
@@ -2365,6 +2397,10 @@ def _compute_mercier(
     sqrtg: np.ndarray,
     bsubu: np.ndarray,
     bsubv: np.ndarray,
+    bsubu_parity_even: np.ndarray | None = None,
+    bsubu_parity_odd: np.ndarray | None = None,
+    bsubv_parity_even: np.ndarray | None = None,
+    bsubv_parity_odd: np.ndarray | None = None,
     bsupu: np.ndarray,
     bsupv: np.ndarray,
     trig,
@@ -2492,6 +2528,12 @@ def _compute_mercier(
         # Match jxbforce LASYM preprocessing: low-pass filter bsubu/bsubv on the
         # reduced grid then extend back to full theta before Mercier assembly.
         if os.getenv("VMEC_JAX_MERCIER_LASYM_FILTER", "1") not in ("", "0"):
+            use_parity_channels = os.getenv("VMEC_JAX_LASYM_FILTER_USE_PARITY_CHANNELS", "0") not in (
+                "",
+                "0",
+                "false",
+                "no",
+            )
             bsubu, bsubv = _filter_bsubuv_jxbforce_lasym_loop(
                 bsubu=np.asarray(bsubu, dtype=float),
                 bsubv=np.asarray(bsubv, dtype=float),
@@ -2499,6 +2541,18 @@ def _compute_mercier(
                 mmax_force=max(int(mmax_force), 0),
                 nmax_force=max(int(nmax_force), 0),
                 s=np.asarray(s, dtype=float),
+                bsubu_even=None
+                if (not use_parity_channels) or (bsubu_parity_even is None)
+                else np.asarray(bsubu_parity_even, dtype=float),
+                bsubu_odd=None
+                if (not use_parity_channels) or (bsubu_parity_odd is None)
+                else np.asarray(bsubu_parity_odd, dtype=float),
+                bsubv_even=None
+                if (not use_parity_channels) or (bsubv_parity_even is None)
+                else np.asarray(bsubv_parity_even, dtype=float),
+                bsubv_odd=None
+                if (not use_parity_channels) or (bsubv_parity_odd is None)
+                else np.asarray(bsubv_parity_odd, dtype=float),
             )
 
     # Parity-decomposed geometry (totzsps convention): X = X_even + sqrt(s)*X_odd.
@@ -4904,6 +4958,16 @@ def wout_minimal_from_fixed_boundary(
         if (not skip_bsub_filter) and (
             os.getenv("VMEC_JAX_WROUT_LASYM_FILTER", "1") not in ("", "0")
         ):
+            use_parity_channels = os.getenv("VMEC_JAX_LASYM_FILTER_USE_PARITY_CHANNELS", "0") not in (
+                "",
+                "0",
+                "false",
+                "no",
+            )
+            bsubu_even_filter = getattr(bc, "bsubu_parity_even", None) if use_parity_channels else None
+            bsubu_odd_filter = getattr(bc, "bsubu_parity_odd", None) if use_parity_channels else None
+            bsubv_even_filter = getattr(bc, "bsubv_parity_even", None) if use_parity_channels else None
+            bsubv_odd_filter = getattr(bc, "bsubv_parity_odd", None) if use_parity_channels else None
             bsubu_out, bsubv_out = _filter_bsubuv_jxbforce_lasym_loop(
                 bsubu=np.asarray(bsubu_out, dtype=float),
                 bsubv=np.asarray(bsubv_out, dtype=float),
@@ -4911,6 +4975,10 @@ def wout_minimal_from_fixed_boundary(
                 mmax_force=max(int(mpol) - 1, 0),
                 nmax_force=int(ntor),
                 s=np.asarray(s, dtype=float),
+                bsubu_even=None if bsubu_even_filter is None else np.asarray(bsubu_even_filter, dtype=float),
+                bsubu_odd=None if bsubu_odd_filter is None else np.asarray(bsubu_odd_filter, dtype=float),
+                bsubv_even=None if bsubv_even_filter is None else np.asarray(bsubv_even_filter, dtype=float),
+                bsubv_odd=None if bsubv_odd_filter is None else np.asarray(bsubv_odd_filter, dtype=float),
             )
             bsubu_diag = np.asarray(bsubu_out, dtype=float)
             bsubv_diag = np.asarray(bsubv_out, dtype=float)
@@ -5394,6 +5462,26 @@ def wout_minimal_from_fixed_boundary(
                 sqrtg=np.asarray(bc.jac.sqrtg, dtype=float),
                 bsubu=bsubu_merc,
                 bsubv=bsubv_merc,
+                bsubu_parity_even=(
+                    None
+                    if getattr(bc, "bsubu_parity_even", None) is None
+                    else np.asarray(getattr(bc, "bsubu_parity_even"), dtype=float)
+                ),
+                bsubu_parity_odd=(
+                    None
+                    if getattr(bc, "bsubu_parity_odd", None) is None
+                    else np.asarray(getattr(bc, "bsubu_parity_odd"), dtype=float)
+                ),
+                bsubv_parity_even=(
+                    None
+                    if getattr(bc, "bsubv_parity_even", None) is None
+                    else np.asarray(getattr(bc, "bsubv_parity_even"), dtype=float)
+                ),
+                bsubv_parity_odd=(
+                    None
+                    if getattr(bc, "bsubv_parity_odd", None) is None
+                    else np.asarray(getattr(bc, "bsubv_parity_odd"), dtype=float)
+                ),
                 bsupu=np.asarray(bsupu_bss, dtype=float),
                 bsupv=np.asarray(bsupv_bss, dtype=float),
                 trig=trig,
