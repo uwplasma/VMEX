@@ -1045,6 +1045,12 @@ def _maybe_dump_xc(
     vZcs,
     vLsc,
     vLcs,
+    vRsc=None,
+    vRcs=None,
+    vZcc=None,
+    vZss=None,
+    vLcc=None,
+    vLss=None,
     static,
     iter_idx: int,
 ) -> None:
@@ -1088,7 +1094,20 @@ def _maybe_dump_xc(
         lsc=np.asarray(vLsc),
         lcs=np.asarray(vLcs),
     )
-    # Asymmetric force channels are optional in dumps; default to zeros.
+    # Include asymmetric channels when present so LASYM xc/v dumps match VMEC's
+    # internal stacking and do not report false zero-components.
+    if vRsc is not None:
+        xcdot_kwargs["rsc"] = np.asarray(vRsc)
+    if vRcs is not None:
+        xcdot_kwargs["rcs"] = np.asarray(vRcs)
+    if vZcc is not None:
+        xcdot_kwargs["zcc"] = np.asarray(vZcc)
+    if vZss is not None:
+        xcdot_kwargs["zss"] = np.asarray(vZss)
+    if vLcc is not None:
+        xcdot_kwargs["lcc"] = np.asarray(vLcc)
+    if vLss is not None:
+        xcdot_kwargs["lss"] = np.asarray(vLss)
     xcdot = vmec_xc_from_mn_blocks(cfg=static.cfg, **xcdot_kwargs)
     np.savez(
         path,
@@ -7768,6 +7787,12 @@ def solve_fixed_boundary_residual_iter(
                     "vZcs": np.asarray(carry_final.vZcs),
                     "vLsc": np.asarray(carry_final.vLsc),
                     "vLcs": np.asarray(carry_final.vLcs),
+                    "vRsc": np.asarray(carry_final.vRsc),
+                    "vRcs": np.asarray(carry_final.vRcs),
+                    "vZcc": np.asarray(carry_final.vZcc),
+                    "vZss": np.asarray(carry_final.vZss),
+                    "vLcc": np.asarray(carry_final.vLcc),
+                    "vLss": np.asarray(carry_final.vLss),
                     "cache_precond_diag": carry_final.cache_precond_diag,
                     "cache_tcon": carry_final.cache_tcon,
                     "cache_norms": carry_final.cache_norms,
@@ -9987,6 +10012,12 @@ def solve_fixed_boundary_residual_iter(
                     vZcs=vZcs_before,
                     vLsc=vLsc_before,
                     vLcs=vLcs_before,
+                    vRsc=vRsc_before,
+                    vRcs=vRcs_before,
+                    vZcc=vZcc_before,
+                    vZss=vZss_before,
+                    vLcc=vLcc_before,
+                    vLss=vLss_before,
                     static=static,
                     iter_idx=int(iter2),
                 )
@@ -10638,6 +10669,12 @@ def solve_fixed_boundary_residual_iter(
             vZcs=vZcs,
             vLsc=vLsc,
             vLcs=vLcs,
+            vRsc=vRsc,
+            vRcs=vRcs,
+            vZcc=vZcc,
+            vZss=vZss,
+            vLcc=vLcc,
+            vLss=vLss,
             static=static,
             iter_idx=int(iter2),
         )
