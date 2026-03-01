@@ -1015,9 +1015,16 @@ def run_fixed_boundary(
             cfg_i = replace(cfg, ns=int(ns_i))
             static_i = build_static(cfg_i, grid=grid)
             scan_mode = bool(use_scan)
+            if bool(cfg.lasym):
+                # LASYM scan parity is still being finalized; default to the
+                # VMEC2000-style non-scan control path unless explicitly forced.
+                lasym_scan_env = os.getenv("VMEC_JAX_LASYM_USE_SCAN", "0").strip().lower()
+                if lasym_scan_env in ("", "0", "false", "no"):
+                    scan_mode = False
             # Optional scan-parity guard: probe a few iterations and disable scan
             # if it diverges from the non-scan VMEC2000 path.
-            scan_guard_env = os.getenv("VMEC_JAX_SCAN_PARITY_GUARD", "0").strip().lower()
+            scan_guard_default = "0"
+            scan_guard_env = os.getenv("VMEC_JAX_SCAN_PARITY_GUARD", scan_guard_default).strip().lower()
             scan_guard_enabled = scan_guard_env not in ("", "0", "false", "no")
             if scan_mode and scan_guard_enabled and int(niter_i) >= 3:
                 probe_iters = min(10, int(niter_i))
@@ -1093,9 +1100,14 @@ def run_fixed_boundary(
                                 "[vmec_jax] scan parity guard: disabling scan for this stage (probe mismatch)",
                                 flush=True,
                             )
-                except Exception:
+                except Exception as exc:
                     # If probe fails, fall back to the safe (non-scan) path.
                     scan_mode = False
+                    if bool(verbose):
+                        print(
+                            f"[vmec_jax] scan parity guard probe failed ({type(exc).__name__}); using non-scan for this stage.",
+                            flush=True,
+                        )
             jit_forces_base = _resolve_jit_forces(jit_forces, static_i, int(niter_i))
             jit_forces_eff = jit_forces_base
             if scan_mode and solver == "vmec2000_iter":
