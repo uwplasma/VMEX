@@ -2821,7 +2821,12 @@ def main() -> None:
         # Read the VMEC2000 wout for end-state comparison when present.
         wout_name = "wout_" + input_path.name.split("input.", 1)[-1] + ".nc"
         wout_path = workdir / wout_name
-        wout = read_wout(wout_path) if wout_path.exists() else None
+        wout = None
+        if wout_path.exists():
+            try:
+                wout = read_wout(wout_path)
+            except Exception as exc:
+                print(f"[warn] failed to read VMEC2000 wout {wout_path}: {exc}")
         jxbout_path = workdir / f"jxbout_{suffix}.nc"
         vmec_jxbout = _read_jxbout(jxbout_path)
 
