@@ -4907,6 +4907,30 @@ def wout_minimal_from_fixed_boundary(
     bsubv_out = np.asarray(bc.bsubv).copy()
     bsubu_raw = bsubu_out.copy()
     bsubv_raw = bsubv_out.copy()
+    if os.getenv("VMEC_JAX_DUMP_BSUB_SOURCES", "") not in ("", "0"):
+        tag = os.getenv("VMEC_JAX_DUMP_TAG", "").strip()
+        outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
+        outdir.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "bsubu": np.asarray(getattr(bc, "bsubu"), dtype=float),
+            "bsubv": np.asarray(getattr(bc, "bsubv"), dtype=float),
+        }
+        for key in (
+            "bsubu_e",
+            "bsubv_e",
+            "bsubu_e_scaled",
+            "bsubv_e_scaled",
+            "bsubu_preblend",
+            "bsubv_preblend",
+            "bsubu_parity_even",
+            "bsubu_parity_odd",
+            "bsubv_parity_even",
+            "bsubv_parity_odd",
+        ):
+            val = getattr(bc, key, None)
+            if val is not None:
+                payload[key] = np.asarray(val, dtype=float)
+        np.savez(outdir / f"bsub_sources{('_' + tag) if tag else ''}.npz", **payload)
 
     # VMEC wrout.f uses the *raw* bsubu/bsubv for Fourier output (bsubumnc/etc).
     # JXBFORCE-style diagnostics (jdotb/Mercier) use the equilibrated + filtered
@@ -5254,7 +5278,9 @@ def wout_minimal_from_fixed_boundary(
                 bsubu_odd = np.asarray(bc.bsubu_parity_odd, dtype=float)
                 bsubv_even = np.asarray(bc.bsubv_parity_even, dtype=float)
                 bsubv_odd = np.asarray(bc.bsubv_parity_odd, dtype=float)
-                odd_needs_shalf = True
+                # bcovar parity channels are already in the physical odd
+                # normalization used by the jxbforce parity filter path.
+                odd_needs_shalf = False
             else:
                 # VMEC2000 `bcovar` with `iequi=1` (fileout/wrout path) returns
                 # parity channels for `bsub{u,v}` as:
@@ -5331,6 +5357,20 @@ def wout_minimal_from_fixed_boundary(
                     pshalf[0] = pshalf[1]
                 bsubu_odd = np.asarray(bsubu_odd, dtype=float) * pshalf
                 bsubv_odd = np.asarray(bsubv_odd, dtype=float) * pshalf
+            if os.getenv("VMEC_JAX_DUMP_BSUB_PARITY_INPUTS", "") not in ("", "0"):
+                tag = os.getenv("VMEC_JAX_DUMP_TAG", "").strip()
+                outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
+                outdir.mkdir(parents=True, exist_ok=True)
+                np.savez(
+                    outdir / f"bsub_parity_inputs{('_' + tag) if tag else ''}.npz",
+                    bsubu_diag=np.asarray(bsubu_diag, dtype=float),
+                    bsubv_diag=np.asarray(bsubv_diag, dtype=float),
+                    bsubu_even=np.asarray(bsubu_even, dtype=float),
+                    bsubu_odd=np.asarray(bsubu_odd, dtype=float),
+                    bsubv_even=np.asarray(bsubv_even, dtype=float),
+                    bsubv_odd=np.asarray(bsubv_odd, dtype=float),
+                    odd_needs_shalf=np.asarray(bool(odd_needs_shalf), dtype=np.int32),
+                )
             bsubu_diag, bsubv_diag = _filter_bsubuv_jxbforce_parity(
                 bsubu_even=np.asarray(bsubu_even, dtype=float),
                 bsubu_odd=np.asarray(bsubu_odd, dtype=float),
