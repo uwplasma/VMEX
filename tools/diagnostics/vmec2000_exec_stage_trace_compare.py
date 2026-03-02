@@ -2274,6 +2274,21 @@ def _format_kernel_index(idx: int, *, shape: tuple[int, int, int, int]) -> str:
     return f"js={js+1} lt={lt+1} lz={lz+1} mpar={mpar}"
 
 
+def _radial_keep_mask_flat(*, size: int, ns: int, radial_skip: int, radial_drop_edge: bool) -> np.ndarray:
+    """Flat-vector mask that keeps only selected radial indices (js-fast layout)."""
+    size = int(size)
+    ns = int(ns)
+    if size <= 0:
+        return np.zeros((0,), dtype=bool)
+    if ns <= 0:
+        return np.ones((size,), dtype=bool)
+    js = np.arange(size, dtype=np.int64) % ns
+    keep = js >= max(int(radial_skip), 0)
+    if bool(radial_drop_edge):
+        keep = keep & (js < (ns - 1))
+    return keep
+
+
 def _decode_xc_index(idx: int, *, ns: int, mpol: int, ntor: int, lthreed: bool, lasym: bool = False) -> str:
     """Decode xc/xcdot flat index into (component, m, n, js) info."""
     ns = int(ns)
@@ -3487,8 +3502,8 @@ def main() -> None:
     if vmec_xc or jax_xc:
         print()
         print("xc/v parity (VMEC2000 dumps vs vmec_jax dumps):")
-        vmec_global: dict[int, tuple[np.ndarray, np.ndarray]] = {}
-        jax_global: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        vmec_global: dict[int, tuple[int, int, np.ndarray, np.ndarray]] = {}
+        jax_global: dict[int, tuple[int, int, np.ndarray, np.ndarray]] = {}
         for (ns_val, it_val), data in vmec_xc.items():
             matches = np.where(vmec_ns == int(ns_val))[0]
             if matches.size == 0:
@@ -3496,7 +3511,8 @@ def main() -> None:
             stage_idx = int(matches[0])
             global_it = int(vmec_offsets[stage_idx]) + int(it_val)
             if global_it not in vmec_global:
-                vmec_global[global_it] = data
+                vm_xc, vm_v = data
+                vmec_global[global_it] = (int(ns_val), int(it_val), vm_xc, vm_v)
         for (ns_val, it_val), data in jax_xc.items():
             matches = np.where(vmec_ns == int(ns_val))[0]
             if matches.size == 0:
@@ -3504,34 +3520,54 @@ def main() -> None:
             stage_idx = int(matches[0])
             global_it = int(vmec_offsets[stage_idx]) + int(it_val)
             if global_it not in jax_global:
-                jax_global[global_it] = data
+                jx_xc, jx_v = data
+                jax_global[global_it] = (int(ns_val), int(it_val), jx_xc, jx_v)
         common = sorted(set(vmec_global.keys()) & set(jax_global.keys()))
         if not common:
             print("  No overlapping xc dump iterations found.")
         for it in common:
-            vm_xc, vm_v = vmec_global[it]
-            jx_xc, jx_v = jax_global[it]
+            vm_ns, vm_it, vm_xc, vm_v = vmec_global[it]
+            jx_ns, jx_it, jx_xc, jx_v = jax_global[it]
+            ns_decode = int(vm_ns if vm_ns is not None else jx_ns)
+            keep_xc = _radial_keep_mask_flat(
+                size=int(vm_xc.size),
+                ns=int(ns_decode),
+                radial_skip=int(args.radial_skip),
+                radial_drop_edge=bool(args.radial_drop_edge),
+            )
+            keep_v = _radial_keep_mask_flat(
+                size=int(vm_v.size),
+                ns=int(ns_decode),
+                radial_skip=int(args.radial_skip),
+                radial_drop_edge=bool(args.radial_drop_edge),
+            )
+            vm_xc_cmp = vm_xc[keep_xc] if keep_xc.size == vm_xc.size else vm_xc
+            jx_xc_cmp = jx_xc[keep_xc] if keep_xc.size == jx_xc.size else jx_xc
+            vm_v_cmp = vm_v[keep_v] if keep_v.size == vm_v.size else vm_v
+            jx_v_cmp = jx_v[keep_v] if keep_v.size == jx_v.size else jx_v
             ok_xc, msg_xc, idx_xc = _compare_vectors(
                 label="xc",
-                vmec_vec=vm_xc,
-                jax_vec=jx_xc,
+                vmec_vec=vm_xc_cmp,
+                jax_vec=jx_xc_cmp,
                 rtol=float(args.rtol),
                 atol=float(args.atol),
             )
             ok_v, msg_v, idx_v = _compare_vectors(
                 label="v",
-                vmec_vec=vm_v,
-                jax_vec=jx_v,
+                vmec_vec=vm_v_cmp,
+                jax_vec=jx_v_cmp,
                 rtol=float(args.rtol),
                 atol=float(args.atol),
             )
-            print(f"  iter {it:03d}: {msg_xc}; {msg_v}")
+            print(f"  iter {it:03d} (ns={vm_ns}, vmec_it={vm_it}, jax_it={jx_it}): {msg_xc}; {msg_v}")
             if not ok_xc or not ok_v:
+                idx_xc_raw = int(np.flatnonzero(keep_xc)[int(idx_xc)]) if (idx_xc is not None and int(idx_xc) >= 0 and keep_xc.size == vm_xc.size and int(idx_xc) < int(np.count_nonzero(keep_xc))) else int(idx_xc)
+                idx_v_raw = int(np.flatnonzero(keep_v)[int(idx_v)]) if (idx_v is not None and int(idx_v) >= 0 and keep_v.size == vm_v.size and int(idx_v) < int(np.count_nonzero(keep_v))) else int(idx_v)
                 try:
                     cfg = run.cfg
                     dec_xc = _decode_xc_index(
-                        int(idx_xc),
-                        ns=int(cfg.ns),
+                        int(idx_xc_raw),
+                        ns=int(ns_decode),
                         mpol=int(cfg.mpol),
                         ntor=int(cfg.ntor),
                         lthreed=bool(cfg.lthreed),
@@ -3542,8 +3578,8 @@ def main() -> None:
                 try:
                     cfg = run.cfg
                     dec_v = _decode_xc_index(
-                        int(idx_v),
-                        ns=int(cfg.ns),
+                        int(idx_v_raw),
+                        ns=int(ns_decode),
                         mpol=int(cfg.mpol),
                         ntor=int(cfg.ntor),
                         lthreed=bool(cfg.lthreed),
@@ -3553,8 +3589,8 @@ def main() -> None:
                     dec_v = "idx decode unavailable"
                 print(f"    xc decode: {dec_xc}")
                 print(f"    v decode: {dec_v}")
-                if idx_xc is not None and int(idx_xc) >= 0 and int(idx_xc) < vm_xc.size and int(idx_xc) < jx_xc.size:
-                    iv = int(idx_xc)
+                if idx_xc is not None and int(idx_xc_raw) >= 0 and int(idx_xc_raw) < vm_xc.size and int(idx_xc_raw) < jx_xc.size:
+                    iv = int(idx_xc_raw)
                     v_vm = float(vm_xc[iv])
                     v_jx = float(jx_xc[iv])
                     dv = abs(v_vm - v_jx)
@@ -3562,8 +3598,8 @@ def main() -> None:
                     print(
                         f"    xc values: vmec={v_vm:.16e} jax={v_jx:.16e} abs={dv:.3e} rel={rv:.3e}"
                     )
-                if idx_v is not None and int(idx_v) >= 0 and int(idx_v) < vm_v.size and int(idx_v) < jx_v.size:
-                    iv = int(idx_v)
+                if idx_v is not None and int(idx_v_raw) >= 0 and int(idx_v_raw) < vm_v.size and int(idx_v_raw) < jx_v.size:
+                    iv = int(idx_v_raw)
                     v_vm = float(vm_v[iv])
                     v_jx = float(jx_v[iv])
                     dv = abs(v_vm - v_jx)
