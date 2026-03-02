@@ -5247,116 +5247,16 @@ def wout_minimal_from_fixed_boundary(
                 s=np.asarray(s, dtype=float),
             )
         else:
-            # Build parity channels directly from VMEC internal geometry/Lambda
-            # fields to mirror jxbforce.f's (mparity) storage as closely as
-            # possible. Fall back to coefficient splitting when unavailable.
-            use_state_parity = os.getenv("VMEC_JAX_MERCIER_STATE_PARITY", "0") not in ("", "0")
-            if use_state_parity and hasattr(bc, "lu1_full") and hasattr(bc, "lv1_full"):
-                bsubu_even, bsubu_odd, bsubv_even, bsubv_odd = _bsubuv_parity_from_state(
-                    state=state,
-                    geom_modes=static.modes,
-                    trig=trig,
-                    s=np.asarray(s, dtype=float),
-                    lconm1=bool(getattr(cfg, "lconm1", True)),
-                    lthreed=bool(ntor > 0),
-                    lasym=bool(lasym),
-                    bsupu=np.asarray(bsupu_bss, dtype=float),
-                    bsupv=np.asarray(bsupv_bss, dtype=float),
-                    lu1_full=np.asarray(bc.lu1_full, dtype=float),
-                    lv1_full=np.asarray(bc.lv1_full, dtype=float),
-                    sqrtg=np.asarray(bc.jac.sqrtg, dtype=float),
-                )
-                odd_needs_shalf = True
-            elif (
-                os.getenv("VMEC_JAX_MERCIER_USE_BC_PARITY", "0") not in ("", "0")
-                and hasattr(bc, "bsubu_parity_even")
-                and hasattr(bc, "bsubu_parity_odd")
-                and hasattr(bc, "bsubv_parity_even")
-                and hasattr(bc, "bsubv_parity_odd")
-            ):
-                bsubu_even = np.asarray(bc.bsubu_parity_even, dtype=float)
-                bsubu_odd = np.asarray(bc.bsubu_parity_odd, dtype=float)
-                bsubv_even = np.asarray(bc.bsubv_parity_even, dtype=float)
-                bsubv_odd = np.asarray(bc.bsubv_parity_odd, dtype=float)
-                # bcovar parity channels are already in the physical odd
-                # normalization used by the jxbforce parity filter path.
-                odd_needs_shalf = False
-            else:
-                # VMEC2000 `bcovar` with `iequi=1` (fileout/wrout path) returns
-                # parity channels for `bsub{u,v}` as:
-                #   bsub*_odd = shalf(js) * bsub*_even
-                # and `jxbforce` immediately divides the odd channel by `shalf`
-                # before the low-pass FFT. This means the parity channels are
-                # not an even/odd-m decomposition of the physical field; they
-                # are a storage convention that `jxbforce` expects.
-                #
-                # Default to this VMEC behavior to match Mercier/jdotb
-                # diagnostics on finite-pressure equilibria.
-                if os.getenv("VMEC_JAX_MERCIER_ODD_FROM_RAW_EVEN", "1") not in ("", "0"):
-                    _psh = _pshalf_from_s(np.asarray(s, dtype=float))[:, None, None]
-                    if _psh.shape[0] > 1:
-                        _psh[0] = _psh[1]
-                    bsubu_even = np.asarray(bsubu_diag, dtype=float)
-                    bsubv_even = np.asarray(bsubv_diag, dtype=float)
-                    bsubu_odd = _psh * bsubu_even
-                    bsubv_odd = _psh * bsubv_even
-                    odd_needs_shalf = False
-                elif os.getenv("VMEC_JAX_MERCIER_BCOVAR_ODD", "0") not in ("", "0"):
-                    bsubu_even, bsubu_odd, bsubv_even, bsubv_odd = _bsubuv_parity_from_bcovar(
-                        bsubu_even=np.asarray(bsubu_diag, dtype=float),
-                        bsubv_even=np.asarray(bsubv_diag, dtype=float),
-                        s=np.asarray(s, dtype=float),
-                        iequi=int(iequi),
-                    )
-                    odd_needs_shalf = False
-                else:
-                    # Mercier/jxbforce operate on parity-separated bsubu/bsubv (m even/odd).
-                    # Preferred path: recover parity channels directly from the
-                    # current real-space bsubu/bsubv using the same jxbforce
-                    # Fourier conventions used in the low-pass filter.
-                    # Default to real-space parity recovery, which tracks VMEC
-                    # jxbforce parity channels more closely on finite-pressure
-                    # stellarator cases.
-                    use_realspace_parity = os.getenv("VMEC_JAX_MERCIER_REALSPACE_PARITY", "1") not in (
-                        "",
-                        "0",
-                    )
-                    if use_realspace_parity:
-                        bsubu_even, bsubu_odd, bsubv_even, bsubv_odd = _bsubuv_parity_from_realspace_jxbforce(
-                            bsubu=np.asarray(bsubu_diag, dtype=float),
-                            bsubv=np.asarray(bsubv_diag, dtype=float),
-                            trig=trig,
-                        )
-                        # This recovers the physical even/odd-m contributions
-                        # directly, so the odd channel already includes shalf.
-                        odd_needs_shalf = False
-                    else:
-                        bsubu_even, bsubu_odd, bsubv_even, bsubv_odd = _bsubuv_parity_from_coeffs(
-                            bsubumnc=bsubumnc,
-                            bsubumns=bsubumns,
-                            bsubvmnc=bsubvmnc,
-                            bsubvmns=bsubvmns,
-                            modes=nyq_modes,
-                            trig=trig,
-                        )
-                        # Coefficient split synthesizes physical contributions
-                        # on the reduced grid, so the odd channel includes shalf.
-                        odd_needs_shalf = False
-                    if os.getenv("VMEC_JAX_MERCIER_ODD_FROM_EVEN", "0") not in ("", "0"):
-                        bsubu_odd = np.asarray(bsubu_even, dtype=float)
-                        bsubv_odd = np.asarray(bsubv_even, dtype=float)
-                        odd_needs_shalf = True
-            # jxbforce expects odd parity channels in the stored/physical
-            # normalization (sqrt(s)-weighted) before the parity FFT filter.
-            if (
-                odd_needs_shalf
-                and os.getenv("VMEC_JAX_MERCIER_DISABLE_ODD_SCALE", "0") in ("", "0")
-            ):
-                pshalf = _pshalf_from_s(np.asarray(s, dtype=float))[:, None, None]
-                if pshalf.shape[0] > 1:
-                    pshalf[0] = pshalf[1]
-                bsubu_odd = np.asarray(bsubu_odd, dtype=float) * pshalf
-                bsubv_odd = np.asarray(bsubv_odd, dtype=float) * pshalf
+            # Match VMEC bcovar iequi=1 storage convention used by jxbforce:
+            # parity channel 0 is the half-mesh field and parity channel 1 is
+            # shalf*channel0 (before jxbforce divides odd by shalf).
+            _psh = _pshalf_from_s(np.asarray(s, dtype=float))[:, None, None]
+            if _psh.shape[0] > 1:
+                _psh[0] = _psh[1]
+            bsubu_even = np.asarray(bsubu_diag, dtype=float)
+            bsubv_even = np.asarray(bsubv_diag, dtype=float)
+            bsubu_odd = _psh * bsubu_even
+            bsubv_odd = _psh * bsubv_even
             if os.getenv("VMEC_JAX_DUMP_BSUB_PARITY_INPUTS", "") not in ("", "0"):
                 tag = os.getenv("VMEC_JAX_DUMP_TAG", "").strip()
                 outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
@@ -5369,7 +5269,7 @@ def wout_minimal_from_fixed_boundary(
                     bsubu_odd=np.asarray(bsubu_odd, dtype=float),
                     bsubv_even=np.asarray(bsubv_even, dtype=float),
                     bsubv_odd=np.asarray(bsubv_odd, dtype=float),
-                    odd_needs_shalf=np.asarray(bool(odd_needs_shalf), dtype=np.int32),
+                    odd_needs_shalf=np.asarray(False, dtype=np.int32),
                 )
             bsubu_diag, bsubv_diag = _filter_bsubuv_jxbforce_parity(
                 bsubu_even=np.asarray(bsubu_even, dtype=float),
@@ -5481,7 +5381,6 @@ def wout_minimal_from_fixed_boundary(
                 bsubv_merc = np.asarray(bsubv_phys, dtype=float)
             elif os.getenv("VMEC_JAX_MERCIER_USE_RAW_BSUBV", "") not in ("", "0"):
                 bsubv_merc = np.asarray(bsubv_raw, dtype=float)
-
             wint = _vmec_wint_from_trig(trig)
             if wout_timing_enabled:
                 t_beta = _time.perf_counter()
