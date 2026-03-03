@@ -820,11 +820,19 @@ def _maybe_dump_scalpot_jax(
         "mode": np.asarray(str(mode)),
         "rhs": np.asarray(rhs, dtype=float),
         "phi": np.asarray(phi, dtype=float),
+        "bexu_ext": np.asarray(sample.vac_ext.bu, dtype=float),
+        "bexv_ext": np.asarray(sample.vac_ext.bv, dtype=float),
+        "bexn_ext": np.asarray(-sample.vac_ext.bnormal, dtype=float),
+        "bnormal": np.asarray(sample.vac_ext.bnormal, dtype=float),
         "bu": np.asarray(vac.bu, dtype=float),
         "bv": np.asarray(vac.bv, dtype=float),
         "bsqvac": np.asarray(vac.bsqvac, dtype=float),
         "bnormal_unit": np.asarray(vac.bnormal_unit, dtype=float),
     }
+    ntheta, nzeta = rhs.shape
+    wint = np.full((ntheta, nzeta), 1.0 / float(max(1, ntheta * nzeta)), dtype=float)
+    out["wint_uniform"] = wint
+    out["bexni_uniform"] = np.asarray(-sample.vac_ext.bnormal, dtype=float) * wint * ((2.0 * np.pi) ** 2)
     if isinstance(cache, NestorVmecLikeCache):
         out["cache_kind"] = np.asarray("dense")
         out["matrix"] = np.asarray(cache.matrix, dtype=float)
@@ -977,7 +985,14 @@ def nestor_external_only_step(
     ntheta, nzeta = sample.R.shape
     selected_mode, mode_reason = _select_nestor_mode(ntheta=ntheta, nzeta=nzeta)
 
-    rhs = -np.asarray(sample.vac_ext.bnormal_unit, dtype=float)
+    rhs_mode = os.getenv("VMEC_JAX_FREEB_RHS_MODE", "bnormal_unit").strip().lower()
+    if rhs_mode in ("unit", "unit_normal", "bnormal_unit"):
+        rhs = -np.asarray(sample.vac_ext.bnormal_unit, dtype=float)
+        rhs_mode = "bnormal_unit"
+    else:
+        # VMEC scalpot source uses B·dS (non-unit normal) channels.
+        rhs = -np.asarray(sample.vac_ext.bnormal, dtype=float)
+        rhs_mode = "bnormal"
     ts = time.perf_counter()
     used_mode = selected_mode
     if mode_reason not in ("forced_fast", "forced_vmec_like", "auto_vmec_like"):
