@@ -12,14 +12,13 @@ import argparse
 import json
 import os
 from datetime import datetime
+import math
 from pathlib import Path
 import subprocess
 import sys
 import time
 import tomllib
 from typing import Any
-
-import numpy as np
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -231,7 +230,7 @@ def _evaluate_runtime_thresholds(case: dict[str, Any], runs: list[dict[str, Any]
             iter_report: dict[str, Any] = {"observed_runtime_s": iter_runtime}
             if "max_runtime_s" in rules:
                 lim = float(rules["max_runtime_s"])
-                ok = bool(np.isfinite(iter_runtime) and iter_runtime <= lim)
+                ok = bool(math.isfinite(iter_runtime) and iter_runtime <= lim)
                 iter_report["max_runtime_s"] = {"limit_s": lim, "observed_s": iter_runtime, "pass": ok}
                 if not ok:
                     iter_ok = False

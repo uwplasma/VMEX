@@ -113,20 +113,35 @@ def test_parse_bextern_dump_reads_axis_sections(tmp_path: Path) -> None:
                 "1  1.0D-03",
                 "2  2.0D-03",
                 "3  3.0D-03",
+                "[brad_coil]",
+                "1  9.0D-03",
+                "2  8.0D-03",
+                "3  7.0D-03",
                 "[bphi_axis]",
                 "1 -1.0D-04",
                 "2 -2.0D-04",
                 "3 -3.0D-04",
+                "[bphi_coil]",
+                "1 -9.0D-04",
+                "2 -8.0D-04",
+                "3 -7.0D-04",
                 "[bz_axis]",
                 "1  4.0D-05",
                 "2  5.0D-05",
                 "3  6.0D-05",
+                "[bz_coil]",
+                "1  4.0D-04",
+                "2  5.0D-04",
+                "3  6.0D-04",
             ]
         ),
         encoding="utf-8",
     )
 
     got = _parse_bextern_dump(p)
+    np.testing.assert_allclose(got["brad_coil"], np.array([9.0e-3, 8.0e-3, 7.0e-3]))
+    np.testing.assert_allclose(got["bphi_coil"], np.array([-9.0e-4, -8.0e-4, -7.0e-4]))
+    np.testing.assert_allclose(got["bz_coil"], np.array([4.0e-4, 5.0e-4, 6.0e-4]))
     np.testing.assert_allclose(got["brad_axis"], np.array([1.0e-3, 2.0e-3, 3.0e-3]))
     np.testing.assert_allclose(got["bphi_axis"], np.array([-1.0e-4, -2.0e-4, -3.0e-4]))
     np.testing.assert_allclose(got["bz_axis"], np.array([4.0e-5, 5.0e-5, 6.0e-5]))
