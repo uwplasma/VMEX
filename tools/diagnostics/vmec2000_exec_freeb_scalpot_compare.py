@@ -589,6 +589,21 @@ def main() -> int:
             "rel_scaled": rel_src_scaled,
             "scale_jax_to_vmec": a_src,
         }
+    if (vmec_fouri is not None) and ("gsource_kernel" in jax):
+        jsrc = np.asarray(jax["gsource_kernel"], dtype=float).reshape(-1)
+        vsrc = np.asarray(vmec_fouri["gsource"], dtype=float).reshape(-1)
+        n = min(vsrc.size, jsrc.size)
+        vm = vsrc[:n]
+        jj = jsrc[:n]
+        a_src, rel_src_scaled = _rel_scaled(vm, jj)
+        out["gsource_kernel"] = {
+            "size_vmec": int(vsrc.size),
+            "size_jax": int(jsrc.size),
+            "size_cmp": int(n),
+            "rel_raw": _rel(vm, jj),
+            "rel_scaled": rel_src_scaled,
+            "scale_jax_to_vmec": a_src,
+        }
 
     if "amatrix_mode" in jax:
         jax_a = np.asarray(jax["amatrix_mode"], dtype=float)
