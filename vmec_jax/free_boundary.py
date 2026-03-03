@@ -1295,7 +1295,7 @@ def _vmec_analytic_bvec_from_geometry(
     basis: dict[str, Any],
     bexni: np.ndarray,
 ) -> np.ndarray:
-    """Analytic-source bvec term from VMEC analyt.f (bvec part only)."""
+    """Analytic-source bvec term from VMEC ``analyt.f`` (bvec branch)."""
 
     mnpd = int(basis["mnpd"])
     lasym = bool(basis["lasym"])
@@ -1303,44 +1303,47 @@ def _vmec_analytic_bvec_from_geometry(
     nf = int(basis["nf"])
     onp = float(basis["onp"])
     cmns = np.asarray(basis["cmns"], dtype=float)
-    theta = np.asarray(basis["theta"], dtype=float)
-    zeta = np.asarray(basis["zeta"], dtype=float)
+    theta = np.asarray(basis["theta"], dtype=float).reshape(-1)
+    zeta = np.asarray(basis["zeta"], dtype=float).reshape(-1)
+    npts = int(theta.size)
     bex = np.asarray(bexni, dtype=float).reshape(-1)
+    if bex.size < npts:
+        bex = np.resize(bex, (npts,))
+    else:
+        bex = bex[:npts]
 
-    R = np.asarray(sample.R, dtype=float).reshape(-1)
-    Ru = np.asarray(sample.Ru, dtype=float).reshape(-1)
-    Rv = np.asarray(sample.Rv, dtype=float).reshape(-1)
-    Zu = np.asarray(sample.Zu, dtype=float).reshape(-1)
-    Zv = np.asarray(sample.Zv, dtype=float).reshape(-1)
+    R = np.asarray(sample.R, dtype=float).reshape(-1)[:npts]
+    Ru = np.asarray(sample.Ru, dtype=float).reshape(-1)[:npts]
+    Rv = np.asarray(sample.Rv, dtype=float).reshape(-1)[:npts]
+    Zu = np.asarray(sample.Zu, dtype=float).reshape(-1)[:npts]
+    Zv = np.asarray(sample.Zv, dtype=float).reshape(-1)[:npts]
 
-    guu = Ru * Ru + Zu * Zu
-    guv = (Ru * Rv + Zu * Zv) * onp * 2.0
-    gvv = (Rv * Rv + Zv * Zv + R * R) * (onp * onp)
+    tiny = 1.0e-32
 
-    adp = guu + guv + gvv
-    adm = guu - guv + gvv
-    cma = gvv - guu
-    sqrtc = 2.0 * np.sqrt(np.maximum(gvv, 1.0e-32))
-    sqrta = 2.0 * np.sqrt(np.maximum(guu, 1.0e-32))
-    sqad1 = np.sqrt(np.maximum(adp, 1.0e-32))
-    sqad2 = np.sqrt(np.maximum(adm, 1.0e-32))
+    def _safe_div(num: np.ndarray, den: np.ndarray) -> np.ndarray:
+        den_safe = np.where(np.abs(den) > tiny, den, np.copysign(tiny, den + tiny))
+        return num / den_safe
 
-    num_p = sqad1 * sqrtc + adp + cma
-    den_p = sqad1 * sqrta - adp + cma
-    num_m = sqad2 * sqrtc + adm + cma
-    den_m = sqad2 * sqrta - adm + cma
-    tlp = np.zeros_like(adp)
-    tlm = np.zeros_like(adm)
-    mask_p = np.abs(den_p) > 1.0e-32
-    mask_m = np.abs(den_m) > 1.0e-32
-    if np.any(mask_p):
-        tlp[mask_p] = (1.0 / sqad1[mask_p]) * np.log(np.maximum(num_p[mask_p] / den_p[mask_p], 1.0e-32))
-    if np.any(mask_m):
-        tlm[mask_m] = (1.0 / sqad2[mask_m]) * np.log(np.maximum(num_m[mask_m] / den_m[mask_m], 1.0e-32))
-    tlp1 = np.zeros_like(tlp)
-    tlm1 = np.zeros_like(tlm)
-    tlp2 = np.zeros_like(tlp)
-    tlm2 = np.zeros_like(tlm)
+    guu_b = Ru * Ru + Zu * Zu
+    guv_b = (Ru * Rv + Zu * Zv) * (2.0 * onp)
+    gvv_b = (Rv * Rv + Zv * Zv + R * R) * (onp * onp)
+
+    adp = guu_b + guv_b + gvv_b
+    adm = guu_b - guv_b + gvv_b
+    cma = gvv_b - guu_b
+    sqrtc = 2.0 * np.sqrt(np.maximum(gvv_b, tiny))
+    sqrta = 2.0 * np.sqrt(np.maximum(guu_b, tiny))
+    sqad1 = np.sqrt(np.maximum(adp, tiny))
+    sqad2 = np.sqrt(np.maximum(adm, tiny))
+
+    arg_p = _safe_div(sqad1 * sqrtc + adp + cma, sqad1 * sqrta - adp + cma)
+    arg_m = _safe_div(sqad2 * sqrtc + adm + cma, sqad2 * sqrta - adm + cma)
+    arg_p = np.where(arg_p > tiny, arg_p, tiny)
+    arg_m = np.where(arg_m > tiny, arg_m, tiny)
+    tlp = _safe_div(np.log(arg_p), sqad1)
+    tlm = _safe_div(np.log(arg_m), sqad2)
+    tlp_prev = np.zeros_like(tlp)
+    tlm_prev = np.zeros_like(tlm)
     tlpm = tlp + tlm
 
     bsin = np.zeros((mf + 1, 2 * nf + 1), dtype=float)
@@ -1387,12 +1390,19 @@ def _vmec_analytic_bvec_from_geometry(
         fl1 = fl1 + 1.0
         fl2 = 2.0 * fl1 - 1.0
         sign1 = -sign1
-        tlp2 = tlp1
-        tlm2 = tlm1
-        tlp1 = tlp
-        tlm1 = tlm
-        tlp = ((sqrtc + sign1 * sqrta) - fl2 * cma * tlp1 - fl * adm * tlp2) / np.maximum(adp * fl1, 1.0e-32)
-        tlm = ((sqrtc + sign1 * sqrta) - fl2 * cma * tlm1 - fl * adp * tlm2) / np.maximum(adm * fl1, 1.0e-32)
+
+        tlp_next = _safe_div(
+            (sqrtc + sign1 * sqrta) - fl2 * cma * tlp - fl * adm * tlp_prev,
+            adp * fl1,
+        )
+        tlm_next = _safe_div(
+            (sqrtc + sign1 * sqrta) - fl2 * cma * tlm - fl * adp * tlm_prev,
+            adm * fl1,
+        )
+        tlp_prev = tlp
+        tlm_prev = tlm
+        tlp = tlp_next
+        tlm = tlm_next
         tlpm = tlp + tlm
 
     out_s = np.zeros((mnpd,), dtype=float)
