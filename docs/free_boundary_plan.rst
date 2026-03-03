@@ -99,6 +99,12 @@ It runs VMEC2000 with ``VMEC_DUMP_SCALPOT=1`` and vmec-jax with
 - scalpot matrix (VMEC LU-space matrix vs vmec-jax projected dense operator),
 - vacuum boundary ``bsqvac`` channel.
 
+When VMEC2000 includes ``VMEC_DUMP_BEXTERN`` support, the comparator also
+reports upstream source-channel deltas:
+
+- ``bexu`` / ``bexv`` (covariant external tangential channels),
+- ``bexn`` / ``bexni`` (normal source channels used by ``scalpot``).
+
 Example benchmark (``input.cth_like_free_bdy``, iter 53 where vacuum turns on):
 
 - ``bvec rel_scaled``: ~``7.68e-01``
