@@ -209,6 +209,9 @@ def _parse_bextern_dump(path: Path) -> dict[str, Any]:
     brad = np.zeros((max(0, nuv3),), dtype=float)
     bphi = np.zeros((max(0, nuv3),), dtype=float)
     bz = np.zeros((max(0, nuv3),), dtype=float)
+    brad_coil = np.zeros((max(0, nuv3),), dtype=float)
+    bphi_coil = np.zeros((max(0, nuv3),), dtype=float)
+    bz_coil = np.zeros((max(0, nuv3),), dtype=float)
     brad_axis = np.zeros((max(0, nuv3),), dtype=float)
     bphi_axis = np.zeros((max(0, nuv3),), dtype=float)
     bz_axis = np.zeros((max(0, nuv3),), dtype=float)
@@ -260,6 +263,12 @@ def _parse_bextern_dump(path: Path) -> dict[str, Any]:
             bphi[idx] = val
         elif section == "bz" and 0 <= idx < bz.size:
             bz[idx] = val
+        elif section == "brad_coil" and 0 <= idx < brad_coil.size:
+            brad_coil[idx] = val
+        elif section == "bphi_coil" and 0 <= idx < bphi_coil.size:
+            bphi_coil[idx] = val
+        elif section == "bz_coil" and 0 <= idx < bz_coil.size:
+            bz_coil[idx] = val
         elif section == "brad_axis" and 0 <= idx < brad_axis.size:
             brad_axis[idx] = val
         elif section == "bphi_axis" and 0 <= idx < bphi_axis.size:
@@ -286,6 +295,9 @@ def _parse_bextern_dump(path: Path) -> dict[str, Any]:
         "brad": brad,
         "bphi": bphi,
         "bz": bz,
+        "brad_coil": brad_coil,
+        "bphi_coil": bphi_coil,
+        "bz_coil": bz_coil,
         "brad_axis": brad_axis,
         "bphi_axis": bphi_axis,
         "bz_axis": bz_axis,
@@ -1011,6 +1023,45 @@ def main() -> int:
                 "rel_raw": _rel(vza[:n], jza[:n]),
                 "rel_scaled": rel_za_scaled,
                 "scale_jax_to_vmec": a_za,
+            }
+        if "br_mgrid" in jax:
+            jbc = np.asarray(jax["br_mgrid"]).reshape(-1)
+            vbc = np.asarray(vmec_bex["brad_coil"]).reshape(-1)
+            n = min(vbc.size, jbc.size)
+            a_bc, rel_bc_scaled = _rel_scaled(vbc[:n], jbc[:n])
+            out["brad_coil"] = {
+                "size_vmec": int(vbc.size),
+                "size_jax": int(jbc.size),
+                "size_cmp": int(n),
+                "rel_raw": _rel(vbc[:n], jbc[:n]),
+                "rel_scaled": rel_bc_scaled,
+                "scale_jax_to_vmec": a_bc,
+            }
+        if "bp_mgrid" in jax:
+            jpc = np.asarray(jax["bp_mgrid"]).reshape(-1)
+            vpc = np.asarray(vmec_bex["bphi_coil"]).reshape(-1)
+            n = min(vpc.size, jpc.size)
+            a_pc, rel_pc_scaled = _rel_scaled(vpc[:n], jpc[:n])
+            out["bphi_coil"] = {
+                "size_vmec": int(vpc.size),
+                "size_jax": int(jpc.size),
+                "size_cmp": int(n),
+                "rel_raw": _rel(vpc[:n], jpc[:n]),
+                "rel_scaled": rel_pc_scaled,
+                "scale_jax_to_vmec": a_pc,
+            }
+        if "bz_mgrid" in jax:
+            jzc = np.asarray(jax["bz_mgrid"]).reshape(-1)
+            vzc = np.asarray(vmec_bex["bz_coil"]).reshape(-1)
+            n = min(vzc.size, jzc.size)
+            a_zc, rel_zc_scaled = _rel_scaled(vzc[:n], jzc[:n])
+            out["bz_coil"] = {
+                "size_vmec": int(vzc.size),
+                "size_jax": int(jzc.size),
+                "size_cmp": int(n),
+                "rel_raw": _rel(vzc[:n], jzc[:n]),
+                "rel_scaled": rel_zc_scaled,
+                "scale_jax_to_vmec": a_zc,
             }
 
     print(json.dumps(out, indent=2))
