@@ -160,6 +160,51 @@ def _parse_vacuum_dump(path: Path) -> dict[str, Any]:
     }
 
 
+def _parse_bextern_dump(path: Path) -> dict[str, Any]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    kv = _parse_keyvals(lines)
+    nuv3 = int(kv.get("nuv3", "0"))
+    section = ""
+    bexu = np.zeros((max(0, nuv3),), dtype=float)
+    bexv = np.zeros((max(0, nuv3),), dtype=float)
+    bexn = np.zeros((max(0, nuv3),), dtype=float)
+    bexni = np.zeros((max(0, nuv3),), dtype=float)
+    wint = np.zeros((max(0, nuv3),), dtype=float)
+    for ln in lines:
+        s = ln.strip()
+        if not s:
+            continue
+        if s.startswith("[") and s.endswith("]"):
+            section = s[1:-1].strip().lower()
+            continue
+        if s.startswith("#"):
+            continue
+        parts = s.split()
+        if len(parts) < 2:
+            continue
+        idx = int(parts[0]) - 1
+        val = float(parts[1].replace("D", "E"))
+        if section == "bexu" and 0 <= idx < bexu.size:
+            bexu[idx] = val
+        elif section == "bexv" and 0 <= idx < bexv.size:
+            bexv[idx] = val
+        elif section == "bexn" and 0 <= idx < bexn.size:
+            bexn[idx] = val
+        elif section == "bexni" and 0 <= idx < bexni.size:
+            bexni[idx] = val
+        elif section == "wint" and 0 <= idx < wint.size:
+            wint[idx] = val
+    return {
+        "iter2": int(kv.get("iter2", "-1")),
+        "nuv3": nuv3,
+        "bexu": bexu,
+        "bexv": bexv,
+        "bexn": bexn,
+        "bexni": bexni,
+        "wint": wint,
+    }
+
+
 def _rel(a: np.ndarray, b: np.ndarray) -> float:
     da = np.asarray(a, dtype=float)
     db = np.asarray(b, dtype=float)
@@ -238,6 +283,7 @@ def main() -> int:
     env_vmec.update(
         {
             "VMEC_DUMP_SCALPOT": "1",
+            "VMEC_DUMP_BEXTERN": "1",
             "VMEC_DUMP_ITER": str(int(args.iter)),
             "VMEC_DUMP_DIR": str(vmec_dump_dir),
         }
@@ -273,6 +319,7 @@ def main() -> int:
 
     vmec_scalpot_files = sorted(vmec_dump_dir.glob(f"scalpot_iter{int(args.iter)}_ivacskip*.dat"))
     vmec_vac_files = sorted(vmec_dump_dir.glob(f"vacuum_iter{int(args.iter)}_ivacskip*.dat"))
+    vmec_bextern_files = sorted(vmec_dump_dir.glob(f"bextern_iter{int(args.iter)}.dat"))
     jax_npz = jax_dump_dir / f"scalpot_jax_iter{int(args.iter)}.npz"
     if not vmec_scalpot_files:
         raise SystemExit(f"missing VMEC scalpot dump in {vmec_dump_dir}")
@@ -283,6 +330,7 @@ def main() -> int:
 
     vmec_scal = _parse_scalpot_dump(vmec_scalpot_files[0])
     vmec_vac = _parse_vacuum_dump(vmec_vac_files[0])
+    vmec_bex = _parse_bextern_dump(vmec_bextern_files[0]) if vmec_bextern_files else None
     jax = dict(np.load(jax_npz, allow_pickle=False))
 
     vmec_modes = None
@@ -299,6 +347,7 @@ def main() -> int:
         "workdir": str(workdir),
         "vmec_scalpot_dump": str(vmec_scalpot_files[0]),
         "vmec_vacuum_dump": str(vmec_vac_files[0]),
+        "vmec_bextern_dump": str(vmec_bextern_files[0]) if vmec_bextern_files else None,
         "jax_dump": str(jax_npz),
         "iter": int(args.iter),
         "mode_map_applied": bool(mode_map is not None),
@@ -373,6 +422,60 @@ def main() -> int:
             "rel_scaled": rel_bsq_scaled,
             "scale_jax_to_vmec": a_bsq,
         }
+
+    if vmec_bex is not None:
+        if "bexu_ext" in jax:
+            ju = np.asarray(jax["bexu_ext"]).reshape(-1)
+            vu = np.asarray(vmec_bex["bexu"]).reshape(-1)
+            n = min(vu.size, ju.size)
+            a_u, rel_u_scaled = _rel_scaled(vu[:n], ju[:n])
+            out["bexu"] = {
+                "size_vmec": int(vu.size),
+                "size_jax": int(ju.size),
+                "size_cmp": int(n),
+                "rel_raw": _rel(vu[:n], ju[:n]),
+                "rel_scaled": rel_u_scaled,
+                "scale_jax_to_vmec": a_u,
+            }
+        if "bexv_ext" in jax:
+            jv = np.asarray(jax["bexv_ext"]).reshape(-1)
+            vv = np.asarray(vmec_bex["bexv"]).reshape(-1)
+            n = min(vv.size, jv.size)
+            a_v, rel_v_scaled = _rel_scaled(vv[:n], jv[:n])
+            out["bexv"] = {
+                "size_vmec": int(vv.size),
+                "size_jax": int(jv.size),
+                "size_cmp": int(n),
+                "rel_raw": _rel(vv[:n], jv[:n]),
+                "rel_scaled": rel_v_scaled,
+                "scale_jax_to_vmec": a_v,
+            }
+        if "bexn_ext" in jax:
+            jn = np.asarray(jax["bexn_ext"]).reshape(-1)
+            vn = np.asarray(vmec_bex["bexn"]).reshape(-1)
+            n = min(vn.size, jn.size)
+            a_n, rel_n_scaled = _rel_scaled(vn[:n], jn[:n])
+            out["bexn"] = {
+                "size_vmec": int(vn.size),
+                "size_jax": int(jn.size),
+                "size_cmp": int(n),
+                "rel_raw": _rel(vn[:n], jn[:n]),
+                "rel_scaled": rel_n_scaled,
+                "scale_jax_to_vmec": a_n,
+            }
+        if "bexni_uniform" in jax:
+            jni = np.asarray(jax["bexni_uniform"]).reshape(-1)
+            vni = np.asarray(vmec_bex["bexni"]).reshape(-1)
+            n = min(vni.size, jni.size)
+            a_ni, rel_ni_scaled = _rel_scaled(vni[:n], jni[:n])
+            out["bexni"] = {
+                "size_vmec": int(vni.size),
+                "size_jax": int(jni.size),
+                "size_cmp": int(n),
+                "rel_raw": _rel(vni[:n], jni[:n]),
+                "rel_scaled": rel_ni_scaled,
+                "scale_jax_to_vmec": a_ni,
+            }
 
     print(json.dumps(out, indent=2))
     if args.json is not None:
