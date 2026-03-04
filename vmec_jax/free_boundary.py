@@ -1613,6 +1613,9 @@ def _vmec_nonsingular_gsource_from_bexni(
             else:
                 htemp = np.sqrt(1.0 / base)
                 delgr += htemp
+        # VMEC greenf.f: when nv==1, normalize the field-period sum by nvper.
+        if nv == 1 and nvper > 1:
+            delgr /= float(nvper)
         gstore += bex[ip] * delgr
 
     return np.asarray(gstore, dtype=float)
@@ -1901,6 +1904,11 @@ def _vmec_nonsingular_terms_from_bexni(
                 deriv = ftemp * htemp * (rcosuv * sxsave + rsinuv * sysave + dsave)
                 delgr += htemp
                 delgrp += deriv
+        # VMEC greenf.f: when nv==1, normalize both non-singular sums by nvper.
+        if nv == 1 and nvper > 1:
+            scale = 1.0 / float(nvper)
+            delgr *= scale
+            delgrp *= scale
         gstore += bex[ip] * delgr
 
         g1 = np.zeros((nu_fourp, nf + 1, ndim), dtype=float)
@@ -2641,6 +2649,18 @@ def _maybe_dump_scalpot_jax(
     np.savez_compressed(fpath, **out)
 
 
+def _freeb_use_greenf_source(ntor: int) -> bool:
+    """Resolve Green-function source assembly toggle for free-boundary mode."""
+
+    _ = int(ntor)  # kept for future topology-specific policy hooks
+    greenf_env = os.getenv("VMEC_JAX_FREEB_USE_GREENF_SOURCE")
+    if greenf_env is None:
+        # Default to VMEC-like Green-function non-singular source assembly in
+        # all topologies. Environment variable remains a diagnostic override.
+        return True
+    return greenf_env.strip().lower() not in ("", "0", "false", "no")
+
+
 def nestor_external_only_step(
     *,
     state: Any,
@@ -2806,19 +2826,7 @@ def nestor_external_only_step(
                     lasym=bool(getattr(static.cfg, "lasym", False)),
                     wint_vmec=np.asarray(wint_vmec, dtype=float),
                 )
-            greenf_env = os.getenv("VMEC_JAX_FREEB_USE_GREENF_SOURCE")
-            if greenf_env is None:
-                # VMEC axisymmetric free-boundary (`nf=0`) is better matched by
-                # the direct bexni source path, while non-axisymmetric cases
-                # generally need Green-function nonsingular source assembly.
-                use_greenf_source = int(getattr(static.cfg, "ntor", 0)) > 0
-            else:
-                use_greenf_source = greenf_env.strip().lower() not in (
-                    "",
-                    "0",
-                    "false",
-                    "no",
-                )
+            use_greenf_source = _freeb_use_greenf_source(int(getattr(static.cfg, "ntor", 0)))
             # Default to Fortran-equivalent matrix assembly from grpmn (fouri
             # path). Can be disabled via VMEC_JAX_FREEB_EXPERIMENTAL_FOURI_MATRIX=0
             # for diagnostics.
@@ -2829,6 +2837,8 @@ def nestor_external_only_step(
                 "no",
             )
             if use_greenf_source and (not reuse_step) and cache.mode_basis is not None:
+                nzeta_surf = int(np.asarray(sample.R).shape[1])
+                nvper_greenf = 64 if nzeta_surf == 1 else max(1, int(getattr(static.cfg, "nfp", 1)))
                 try:
                     if experimental_fouri_matrix:
                         gsource_vmec, grpmn_nonsing = _vmec_nonsingular_terms_from_bexni(
@@ -2836,7 +2846,7 @@ def nestor_external_only_step(
                             basis=cache.mode_basis,
                             bexni=np.asarray(gsource_bexni, dtype=float),
                             signgs=int(getattr(static, "signgs", -1)),
-                            nvper=max(1, int(getattr(static.cfg, "nfp", 1))),
+                            nvper=nvper_greenf,
                         )
                     else:
                         gsource_vmec = _vmec_nonsingular_gsource_from_bexni(
@@ -2844,7 +2854,7 @@ def nestor_external_only_step(
                             basis=cache.mode_basis,
                             bexni=np.asarray(gsource_bexni, dtype=float),
                             signgs=int(getattr(static, "signgs", -1)),
-                            nvper=max(1, int(getattr(static.cfg, "nfp", 1))),
+                            nvper=nvper_greenf,
                         )
                         grpmn_nonsing = None
                 except Exception:
