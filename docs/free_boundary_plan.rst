@@ -212,11 +212,14 @@ Key implementation updates that closed the matrix-side gap:
   using the same ``precal.f`` toroidal replication rule (``nvper=64`` when
   ``nv==1``). This removes the degenerate zero-field axis-current path in
   axisymmetric free-boundary runs and aligns ``brad_axis/bz_axis`` channels.
-- Axisymmetric free-boundary runs now default to direct ``bexni`` source
-  assembly (no Green-function nonsingular source override) unless explicitly
-  forced via ``VMEC_JAX_FREEB_USE_GREENF_SOURCE``. This improves
-  ``source_sym/bvec_nonsing_fouri/amatrix/potvac`` alignment for DIII-D cases
-  without requiring per-case environment tuning.
+- Free-boundary source assembly now defaults to VMEC-like Green-function
+  non-singular source in all topologies (axisymmetric and non-axisymmetric),
+  with ``VMEC_JAX_FREEB_USE_GREENF_SOURCE`` retained only as a diagnostic
+  override.
+- In Green-function source assembly, ``nv==1`` now applies the same
+  ``greenf.f`` normalization as VMEC2000 (divide accumulated ``delgr/delgrp``
+  by ``nvper``), removing the axisymmetric over-scaling branch and improving
+  ``source_sym/bvec_nonsing_fouri/amatrix/potvac`` parity for DIII-D runs.
 - VMEC2000-iter stage budgeting with ``NITER_ARRAY`` + capped ``max_iter`` now
   consumes iterations in coarse-to-fine order (VMEC-like), instead of
   prioritizing the finest stage. This restores early-iteration free-boundary
