@@ -12,6 +12,7 @@ from vmec_jax.free_boundary import (
     PreparedMGrid,
     _axis_current_field_vmec_filament,
     _build_vmec_mode_basis,
+    _freeb_use_greenf_source,
     _vmec_bvec_from_gsource,
     boundary_metric_from_rz,
     covariant_boundary_field_from_cylindrical,
@@ -763,6 +764,19 @@ def test_axis_current_vmec_filament_nonzero_for_nzeta1():
     )
     total_rms = float(np.sqrt(np.mean(br * br + bp * bp + bz * bz)))
     assert total_rms > 0.0
+
+
+def test_freeb_use_greenf_source_default_and_env_override(monkeypatch):
+    monkeypatch.delenv("VMEC_JAX_FREEB_USE_GREENF_SOURCE", raising=False)
+    assert _freeb_use_greenf_source(0) is True
+    assert _freeb_use_greenf_source(3) is True
+
+    monkeypatch.setenv("VMEC_JAX_FREEB_USE_GREENF_SOURCE", "0")
+    assert _freeb_use_greenf_source(0) is False
+    assert _freeb_use_greenf_source(3) is False
+
+    monkeypatch.setenv("VMEC_JAX_FREEB_USE_GREENF_SOURCE", "1")
+    assert _freeb_use_greenf_source(0) is True
 
 
 def test_boundary_vacuum_projection_toroidal_field():
