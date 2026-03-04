@@ -409,6 +409,55 @@ def _parse_fouri_dump(path: Path) -> dict[str, Any]:
     }
 
 
+def _select_vmec_amatrix_reference(
+    *,
+    vmec_scal: dict[str, Any],
+    vmec_dump_dir: Path,
+    iter_target: int,
+) -> tuple[np.ndarray, str, int | None]:
+    """Choose VMEC matrix reference for comparison.
+
+    For ``ivacskip>0`` scalpot dumps, ``amatrix_raw`` may contain the cached LU
+    factors (no freshly assembled raw matrix). In that case, load the latest
+    ``ivacskip=0`` dump (prefer ``source_cache_iter`` when available) so JAX raw
+    mode-matrix can be compared against VMEC's raw assembly.
+    """
+
+    vmec_a_raw = np.asarray(vmec_scal.get("amatrix_raw", np.zeros_like(vmec_scal["amatrix_lu"])), dtype=float)
+    vmec_a_lu = np.asarray(vmec_scal["amatrix_lu"], dtype=float)
+    ivacskip = int(vmec_scal.get("ivacskip", -1))
+    source_cache_iter = int(vmec_scal.get("source_cache_iter", -1))
+
+    if ivacskip == 0:
+        return vmec_a_raw, "raw", None
+
+    cand_iters: list[int] = []
+    if source_cache_iter >= 0:
+        cand_iters.append(source_cache_iter)
+
+    for p in vmec_dump_dir.glob("scalpot_iter*_ivacskip0.dat"):
+        m = re.search(r"scalpot_iter(\d+)_ivacskip0\\.dat$", p.name)
+        if m is None:
+            continue
+        it = int(m.group(1))
+        if it <= int(iter_target):
+            cand_iters.append(it)
+
+    if cand_iters:
+        chosen = max(cand_iters)
+        p = vmec_dump_dir / f"scalpot_iter{chosen}_ivacskip0.dat"
+        if p.exists():
+            try:
+                sc = _parse_scalpot_dump(p)
+                arr = np.asarray(sc.get("amatrix_raw", np.zeros_like(vmec_a_lu)), dtype=float)
+                if arr.size > 0 and np.any(np.abs(arr) > 0.0):
+                    return arr, "raw_reuse_from_ivacskip0", int(chosen)
+            except Exception:
+                pass
+
+    return vmec_a_lu, "lu_reuse", None
+
+
 def _rel(a: np.ndarray, b: np.ndarray) -> float:
     da = np.asarray(a, dtype=float)
     db = np.asarray(b, dtype=float)
@@ -892,9 +941,11 @@ def main() -> int:
                 else:
                     idx = mode_map
                 jax_a = jax_a[np.ix_(idx, idx)]
-        vmec_a_raw = np.asarray(vmec_scal.get("amatrix_raw", np.zeros_like(vmec_scal["amatrix_lu"])), dtype=float)
-        vmec_a_lu = np.asarray(vmec_scal["amatrix_lu"], dtype=float)
-        vmec_a = vmec_a_raw if np.any(np.abs(vmec_a_raw) > 0.0) else vmec_a_lu
+        vmec_a, vmec_kind, vmec_ref_iter = _select_vmec_amatrix_reference(
+            vmec_scal=vmec_scal,
+            vmec_dump_dir=vmec_dump_dir,
+            iter_target=int(args.iter),
+        )
         n = min(vmec_a.shape[0], jax_a.shape[0])
         vm = vmec_a[:n, :n]
         jj = jax_a[:n, :n]
@@ -906,7 +957,8 @@ def main() -> int:
             "rel_raw": _rel(vm.reshape(-1), jj.reshape(-1)),
             "rel_scaled": rel_mat_scaled,
             "scale_jax_to_vmec": a_mat,
-            "vmec_matrix_kind": "raw" if np.any(np.abs(vmec_a_raw) > 0.0) else "lu",
+            "vmec_matrix_kind": vmec_kind,
+            "vmec_matrix_ref_iter": vmec_ref_iter,
         }
 
     if "bsqvac" in jax:
