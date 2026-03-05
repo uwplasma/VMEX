@@ -166,6 +166,13 @@ reports upstream source-channel deltas:
 
 - ``bexu`` / ``bexv`` (covariant external tangential channels),
 - ``bexn`` / ``bexni`` (normal source channels used by ``scalpot``).
+- free-boundary edge-coupling channels from ``funct3d``/``forces``
+  (``pgcon``, ``rbsq``, ``bsqvac``, ``p1e/p1o``, ``pzu0/pru0``) plus an
+  inferred ``ohs`` check to flag multigrid stage misalignment in comparisons.
+
+The comparator now also caps VMEC ``NITER_ARRAY`` stages to the requested
+``--max-iter`` budget when multigrid is active, so VMEC and vmec-jax dumps are
+generated from the same stage window during short turn-on diagnostics.
 
 Updated benchmark snapshot (March 2026):
 
