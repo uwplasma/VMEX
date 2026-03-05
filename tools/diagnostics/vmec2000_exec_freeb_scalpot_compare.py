@@ -457,6 +457,52 @@ def _parse_fouri_dump(path: Path) -> dict[str, Any]:
     }
 
 
+def _parse_freeb_coupling_dump(path: Path) -> dict[str, Any]:
+    """Parse VMEC free-boundary coupling dump from funct3d."""
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    kv = _parse_keyvals(lines)
+    pgcon: list[float] = []
+    rbsq: list[float] = []
+    dbsq: list[float] = []
+    bsqvac: list[float] = []
+    p1e: list[float] = []
+    p1o: list[float] = []
+    pzu0: list[float] = []
+    pru0: list[float] = []
+    for ln in lines:
+        s = ln.strip()
+        if (not s) or s.startswith("#") or s.startswith("cols:"):
+            continue
+        parts = s.split()
+        if len(parts) < 9:
+            continue
+        try:
+            _ = int(parts[0])
+            pgcon.append(_parse_fortran_float(parts[1]))
+            rbsq.append(_parse_fortran_float(parts[2]))
+            dbsq.append(_parse_fortran_float(parts[3]))
+            bsqvac.append(_parse_fortran_float(parts[4]))
+            p1e.append(_parse_fortran_float(parts[5]))
+            p1o.append(_parse_fortran_float(parts[6]))
+            pzu0.append(_parse_fortran_float(parts[7]))
+            pru0.append(_parse_fortran_float(parts[8]))
+        except Exception:
+            continue
+    return {
+        "iter2": int(kv.get("iter2", "-1")),
+        "presf_ns": float(_parse_fortran_float(kv["presf_ns"])) if "presf_ns" in kv else None,
+        "pgcon": np.asarray(pgcon, dtype=float),
+        "rbsq": np.asarray(rbsq, dtype=float),
+        "dbsq": np.asarray(dbsq, dtype=float),
+        "bsqvac": np.asarray(bsqvac, dtype=float),
+        "p1e": np.asarray(p1e, dtype=float),
+        "p1o": np.asarray(p1o, dtype=float),
+        "pzu0": np.asarray(pzu0, dtype=float),
+        "pru0": np.asarray(pru0, dtype=float),
+    }
+
+
 def _select_vmec_amatrix_reference(
     *,
     vmec_scal: dict[str, Any],
@@ -549,6 +595,78 @@ def _copy_input_and_mgrid(input_path: Path, workdir: Path) -> Path:
     return dst
 
 
+def _append_indata_overrides(path: Path, lines: list[str]) -> None:
+    """Append override assignments before the terminating '/' of &INDATA."""
+
+    txt = path.read_text(encoding="utf-8")
+    m_start = re.search(r"&\s*INDATA", txt, flags=re.IGNORECASE)
+    if m_start is None:
+        return
+    m_end = re.search(r"\n\s*/\s*\n|\n\s*/\s*$", txt[m_start.end() :], flags=re.MULTILINE)
+    if m_end is None:
+        return
+    end_abs = m_start.end() + m_end.start()
+    insert = "".join(f"  {ln}\n" for ln in lines)
+    txt2 = txt[:end_abs] + ("\n" if not txt[:end_abs].endswith("\n") else "") + insert + txt[end_abs:]
+    path.write_text(txt2, encoding="utf-8")
+
+
+def _fmt_num(v: float) -> str:
+    fv = float(v)
+    if abs(fv) >= 1.0 and abs(fv - round(fv)) < 1.0e-12:
+        return str(int(round(fv)))
+    return f"{fv:.16e}"
+
+
+def _cap_multigrid_input_to_max_iter(path: Path, max_iter: int) -> None:
+    """Cap VMEC NS/NITER/FTOL arrays in-place so VMEC and JAX compare same staged budget."""
+
+    if max_iter <= 0:
+        return
+    from vmec_jax.namelist import read_indata
+
+    indata = read_indata(path)
+    ns_raw = indata.get("NS_ARRAY", None)
+    if not isinstance(ns_raw, list) or len(ns_raw) <= 1:
+        return
+    ns_arr = [int(v) for v in ns_raw]
+    niter_raw = indata.get("NITER_ARRAY", None)
+    if isinstance(niter_raw, list) and len(niter_raw) > 0:
+        nit_arr = [max(0, int(v)) for v in niter_raw[: len(ns_arr)]]
+    else:
+        niter_fallback = max(0, int(indata.get_int("NITER", 0)))
+        nit_arr = [niter_fallback for _ in ns_arr]
+    if len(nit_arr) < len(ns_arr):
+        nit_arr.extend([nit_arr[-1] if nit_arr else 0] * (len(ns_arr) - len(nit_arr)))
+
+    ftol_raw = indata.get("FTOL_ARRAY", None)
+    if isinstance(ftol_raw, list) and len(ftol_raw) > 0:
+        ft_arr = [float(v) for v in ftol_raw[: len(ns_arr)]]
+    else:
+        ftol_fallback = float(indata.get_float("FTOL", 1.0e-30))
+        ft_arr = [ftol_fallback for _ in ns_arr]
+    if len(ft_arr) < len(ns_arr):
+        ft_arr.extend([ft_arr[-1] if ft_arr else 1.0e-30] * (len(ns_arr) - len(ft_arr)))
+
+    rem = int(max_iter)
+    nit_cap: list[int] = []
+    for i, nit_v in enumerate(nit_arr):
+        if rem <= 0:
+            nit_cap.append(1)
+            continue
+        nk = min(int(nit_v), rem)
+        nk_i = int(max(1, nk))
+        nit_cap.append(nk_i)
+        rem -= int(max(0, nk))
+
+    lines = [
+        f"NS_ARRAY = {' '.join(str(v) for v in ns_arr)},",
+        f"NITER_ARRAY = {' '.join(str(v) for v in nit_cap)},",
+        f"FTOL_ARRAY = {' '.join(_fmt_num(v) for v in ft_arr)},",
+    ]
+    _append_indata_overrides(path, lines)
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input", type=Path, required=True)
@@ -585,6 +703,12 @@ def main() -> int:
     vmec_dump_dir.mkdir(parents=True, exist_ok=True)
     jax_dump_dir.mkdir(parents=True, exist_ok=True)
     run_input = _copy_input_and_mgrid(input_path, workdir)
+    if args.multigrid == "auto":
+        use_multigrid = _infer_multigrid_from_input(run_input)
+    else:
+        use_multigrid = args.multigrid == "on"
+    if bool(use_multigrid) and int(args.max_iter) > 0:
+        _cap_multigrid_input_to_max_iter(run_input, int(args.max_iter))
 
     # Run VMEC2000
     env_vmec_base = os.environ.copy()
@@ -593,6 +717,7 @@ def main() -> int:
             "VMEC_DUMP_SCALPOT": "1",
             "VMEC_DUMP_BEXTERN": "1",
             "VMEC_DUMP_FOURI": "1",
+            "VMEC_DUMP_FREEB_COUPLING": "1",
             "VMEC_DUMP_DIR": str(vmec_dump_dir),
         }
     )
@@ -628,13 +753,9 @@ def main() -> int:
     # Run vmec_jax
     from vmec_jax.driver import run_fixed_boundary
 
-    if args.multigrid == "auto":
-        use_multigrid = _infer_multigrid_from_input(run_input)
-    else:
-        use_multigrid = args.multigrid == "on"
-
     old_env = os.environ.copy()
     os.environ["VMEC_JAX_DUMP_SCALPOT"] = "1"
+    os.environ["VMEC_JAX_DUMP_FREEB_COUPLING"] = "1"
     # Dump all free-boundary iterations so comparator can robustly select the
     # nearest available JAX iteration when VMEC/JAX restart bookkeeping causes
     # off-by-one or sparse dump alignment at a requested iteration.
@@ -658,7 +779,9 @@ def main() -> int:
     vmec_vac_files = sorted(vmec_dump_dir.glob(f"vacuum_iter{int(args.iter)}_ivacskip*.dat"))
     vmec_bextern_files = sorted(vmec_dump_dir.glob(f"bextern_iter{int(args.iter)}.dat"))
     vmec_fouri_files = sorted(vmec_dump_dir.glob(f"fouri_iter{int(args.iter)}.dat"))
+    vmec_coupling_files = sorted(vmec_dump_dir.glob(f"freeb_coupling_iter{int(args.iter)}.dat"))
     jax_npz = jax_dump_dir / f"scalpot_jax_iter{int(args.iter)}.npz"
+    jax_coupling_npz = jax_dump_dir / f"freeb_coupling_iter{int(args.iter)}.npz"
     if not vmec_scalpot_files:
         raise SystemExit(f"missing VMEC scalpot dump in {vmec_dump_dir}")
     if not vmec_vac_files:
@@ -681,7 +804,9 @@ def main() -> int:
     vmec_vac = _parse_vacuum_dump(vmec_vac_files[0])
     vmec_bex = _parse_bextern_dump(vmec_bextern_files[0]) if vmec_bextern_files else None
     vmec_fouri = _parse_fouri_dump(vmec_fouri_files[0]) if vmec_fouri_files else None
+    vmec_coupling = _parse_freeb_coupling_dump(vmec_coupling_files[0]) if vmec_coupling_files else None
     jax = dict(np.load(jax_npz, allow_pickle=False))
+    jax_coupling = dict(np.load(jax_coupling_npz, allow_pickle=False)) if jax_coupling_npz.exists() else None
 
     vmec_modes = None
     jax_modes = None
@@ -699,7 +824,9 @@ def main() -> int:
         "vmec_vacuum_dump": str(vmec_vac_files[0]),
         "vmec_bextern_dump": str(vmec_bextern_files[0]) if vmec_bextern_files else None,
         "vmec_fouri_dump": str(vmec_fouri_files[0]) if vmec_fouri_files else None,
+        "vmec_freeb_coupling_dump": str(vmec_coupling_files[0]) if vmec_coupling_files else None,
         "jax_dump": str(jax_npz),
+        "jax_freeb_coupling_dump": str(jax_coupling_npz) if jax_coupling_npz.exists() else None,
         "iter": int(args.iter),
         "jax_iter_used": int(jax_iter_used),
         "jax_multigrid": bool(use_multigrid),
@@ -1347,6 +1474,61 @@ def main() -> int:
                 "rel_scaled": rel_zc_scaled,
                 "scale_jax_to_vmec": a_zc,
             }
+
+    if vmec_coupling is not None and jax_coupling is not None:
+        field_pairs = (
+            ("pgcon", "gcon_edge"),
+            ("rbsq", "rbsq_edge"),
+            ("bsqvac", "bsqvac_edge"),
+            ("p1e", "pr1_even_edge"),
+            ("p1o", "pr1_odd_edge"),
+            ("pzu0", "pzu0_edge"),
+            ("pru0", "pru0_edge"),
+        )
+        for vname, jname in field_pairs:
+            if vname not in vmec_coupling or jname not in jax_coupling:
+                continue
+            vv = np.asarray(vmec_coupling[vname], dtype=float).reshape(-1)
+            jj = np.asarray(jax_coupling[jname], dtype=float).reshape(-1)
+            n = min(vv.size, jj.size)
+            if n <= 0:
+                continue
+            a_t, rel_t_scaled = _rel_scaled(vv[:n], jj[:n])
+            out[f"freeb_coupling_{vname}"] = {
+                "size_vmec": int(vv.size),
+                "size_jax": int(jj.size),
+                "size_cmp": int(n),
+                "rel_raw": _rel(vv[:n], jj[:n]),
+                "rel_scaled": rel_t_scaled,
+                "scale_jax_to_vmec": a_t,
+            }
+        try:
+            v_pg = np.asarray(vmec_coupling.get("pgcon", np.zeros((0,), dtype=float)), dtype=float).reshape(-1)
+            v_r = np.asarray(vmec_coupling.get("rbsq", np.zeros((0,), dtype=float)), dtype=float).reshape(-1)
+            v_p1e = np.asarray(vmec_coupling.get("p1e", np.zeros((0,), dtype=float)), dtype=float).reshape(-1)
+            v_p1o = np.asarray(vmec_coupling.get("p1o", np.zeros((0,), dtype=float)), dtype=float).reshape(-1)
+            j_pg = np.asarray(jax_coupling.get("gcon_edge", np.zeros((0,), dtype=float)), dtype=float).reshape(-1)
+            j_r = np.asarray(jax_coupling.get("rbsq_edge", np.zeros((0,), dtype=float)), dtype=float).reshape(-1)
+            j_p1e = np.asarray(jax_coupling.get("pr1_even_edge", np.zeros((0,), dtype=float)), dtype=float).reshape(-1)
+            j_p1o = np.asarray(jax_coupling.get("pr1_odd_edge", np.zeros((0,), dtype=float)), dtype=float).reshape(-1)
+            vn = min(v_pg.size, v_r.size, v_p1e.size, v_p1o.size)
+            jn = min(j_pg.size, j_r.size, j_p1e.size, j_p1o.size)
+            if vn > 0 and jn > 0:
+                v_denom = v_pg[:vn] * (v_p1e[:vn] + v_p1o[:vn])
+                j_denom = j_pg[:jn] * (j_p1e[:jn] + j_p1o[:jn])
+                v_mask = np.abs(v_denom) > 1.0e-14
+                j_mask = np.abs(j_denom) > 1.0e-14
+                if np.any(v_mask) and np.any(j_mask):
+                    v_ohs = np.median(v_r[:vn][v_mask] / v_denom[v_mask])
+                    j_ohs = np.median(j_r[:jn][j_mask] / j_denom[j_mask])
+                    out["freeb_coupling_ohs"] = {
+                        "vmec": float(v_ohs),
+                        "jax": float(j_ohs),
+                        "ratio_jax_to_vmec": float(j_ohs / v_ohs) if abs(v_ohs) > 0.0 else None,
+                        "stage_mismatch_suspected": bool(abs(v_ohs) > 0.0 and abs(j_ohs / v_ohs - 1.0) > 0.1),
+                    }
+        except Exception:
+            pass
 
     print(json.dumps(out, indent=2))
     if args.json is not None:
