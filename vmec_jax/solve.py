@@ -3621,6 +3621,17 @@ def solve_fixed_boundary_residual_iter(
 
         return tuple(float(v) for v in jax.device_get(vals))
 
+    def _scalar_history_array(vals) -> np.ndarray:
+        """Materialize deferred scalar histories in one batch."""
+
+        if not vals:
+            return np.zeros((0,), dtype=float)
+        try:
+            vals = jax.device_get(tuple(vals))
+        except Exception:
+            pass
+        return np.asarray(vals, dtype=float)
+
     max_iter = int(max_iter)
     precompile_only = bool(precompile_only)
     if max_iter < 1 and not precompile_only:
@@ -10410,45 +10421,31 @@ def solve_fixed_boundary_residual_iter(
                     static=static,
                     iter_idx=int(iter2),
                 )
-            (
-                fsqr1_f,
-                fsqz1_f,
-                fsql1_f,
-                rz_norm_f,
-                f_norm1_f,
-                gcr2_p_f,
-                gcz2_p_f,
-                gcl2_p_f,
-            ) = _device_get_floats(
-                fsqr1,
-                fsqz1,
-                fsql1,
-                rz_norm,
-                f_norm1,
-                gcr2_p,
-                gcz2_p,
-                gcl2_p,
-            )
             # Extremely small late-iteration channels can occasionally surface
             # as NaN/Inf through mixed 0*Inf paths in XLA. VMEC treats these
             # as effectively zero for the preconditioned residual diagnostics.
-            if not np.isfinite(fsqr1_f):
-                fsqr1_f = 0.0
-            if not np.isfinite(fsqz1_f):
-                fsqz1_f = 0.0
-            if not np.isfinite(fsql1_f):
-                fsql1_f = 0.0
-            fsq1 = fsqr1_f + fsqz1_f + fsql1_f
+            fsqr1_safe = jnp.where(jnp.isfinite(fsqr1), fsqr1, jnp.asarray(0.0, dtype=jnp.asarray(fsqr1).dtype))
+            fsqz1_safe = jnp.where(jnp.isfinite(fsqz1), fsqz1, jnp.asarray(0.0, dtype=jnp.asarray(fsqz1).dtype))
+            fsql1_safe = jnp.where(jnp.isfinite(fsql1), fsql1, jnp.asarray(0.0, dtype=jnp.asarray(fsql1).dtype))
+            fsq1 = float(jax.device_get(fsqr1_safe + fsqz1_safe + fsql1_safe))
+            precond_diag_host: tuple[float, float, float] | None = None
+
+            def _precond_diag_floats() -> tuple[float, float, float]:
+                nonlocal precond_diag_host
+                if precond_diag_host is None:
+                    precond_diag_host = _device_get_floats(fsqr1_safe, fsqz1_safe, fsql1_safe)
+                return precond_diag_host
+
             if track_history:
-                rz_norm_history.append(rz_norm_f)
-                f_norm1_history.append(f_norm1_f)
-                gcr2_p_history.append(gcr2_p_f)
-                gcz2_p_history.append(gcz2_p_f)
-                gcl2_p_history.append(gcl2_p_f)
+                rz_norm_history.append(rz_norm)
+                f_norm1_history.append(f_norm1)
+                gcr2_p_history.append(gcr2_p)
+                gcz2_p_history.append(gcz2_p)
+                gcl2_p_history.append(gcl2_p)
                 fsq1_history.append(fsq1)
-                fsqr1_history.append(fsqr1_f)
-                fsqz1_history.append(fsqz1_f)
-                fsql1_history.append(fsql1_f)
+                fsqr1_history.append(fsqr1_safe)
+                fsqz1_history.append(fsqz1_safe)
+                fsql1_history.append(fsql1_safe)
 
             if converged_physical:
                 if track_history:
@@ -10486,6 +10483,7 @@ def solve_fixed_boundary_residual_iter(
                         flush=True,
                     )
                 if bool(vmec2000_control) and bool(verbose_vmec2000_table):
+                    fsqr1_f, fsqz1_f, fsql1_f = _precond_diag_floats()
                     _print_vmec2000_iter_row(
                         iter_idx=int(iter2),
                         fsqr=fsqr_f,
@@ -11028,6 +11026,7 @@ def solve_fixed_boundary_residual_iter(
                         # VMEC does not print rejected restart steps.
                         pass
                     else:
+                        fsqr1_f, fsqz1_f, fsql1_f = _precond_diag_floats()
                         print(
                             f"[solve_fixed_boundary_residual_iter] iter={it:03d} "
                             f"dt_eff=0.000e+00 update_rms=0.000e+00 "
@@ -11160,26 +11159,35 @@ def solve_fixed_boundary_residual_iter(
             vLcc = fac * (b1 * vLcc + force_scale * (flip_sign * jnp.asarray(flcc_u)))
             vLss = fac * (b1 * vLss + force_scale * (flip_sign * jnp.asarray(flss_u)))
 
-            update_rms = float(
-                np.asarray(
-                    jnp.sqrt(
-                        jnp.mean(
-                            (dt_eff * vRcc) ** 2
-                            + (dt_eff * vRss) ** 2
-                            + (dt_eff * vRsc) ** 2
-                            + (dt_eff * vRcs) ** 2
-                            + (dt_eff * vZsc) ** 2
-                            + (dt_eff * vZcs) ** 2
-                            + (dt_eff * vZcc) ** 2
-                            + (dt_eff * vZss) ** 2
-                            + (dt_eff * vLsc) ** 2
-                            + (dt_eff * vLcs) ** 2
-                            + (dt_eff * vLcc) ** 2
-                            + (dt_eff * vLss) ** 2
-                        )
-                    )
+            update_rms_j = jnp.sqrt(
+                jnp.mean(
+                    (dt_eff * vRcc) ** 2
+                    + (dt_eff * vRss) ** 2
+                    + (dt_eff * vRsc) ** 2
+                    + (dt_eff * vRcs) ** 2
+                    + (dt_eff * vZsc) ** 2
+                    + (dt_eff * vZcs) ** 2
+                    + (dt_eff * vZcc) ** 2
+                    + (dt_eff * vZss) ** 2
+                    + (dt_eff * vLsc) ** 2
+                    + (dt_eff * vLcs) ** 2
+                    + (dt_eff * vLcc) ** 2
+                    + (dt_eff * vLss) ** 2
                 )
             )
+
+            update_rms_host: float | None = None
+
+            def _update_rms_float() -> float:
+                nonlocal update_rms_host
+                if update_rms_host is None:
+                    update_rms_host = float(np.asarray(update_rms_j))
+                return update_rms_host
+
+            if bool(limit_update_rms):
+                update_rms = _update_rms_float()
+            else:
+                update_rms = None
             if bool(limit_update_rms) and np.isfinite(update_rms) and (update_rms > max_update_rms):
                 scl = max_update_rms / max(update_rms, 1e-30)
                 vRcc = vRcc * scl
@@ -11194,26 +11202,24 @@ def solve_fixed_boundary_residual_iter(
                 vLcs = vLcs * scl
                 vLcc = vLcc * scl
                 vLss = vLss * scl
-                update_rms = float(
-                    np.asarray(
-                        jnp.sqrt(
-                            jnp.mean(
-                                (dt_eff * vRcc) ** 2
-                                + (dt_eff * vRss) ** 2
-                                + (dt_eff * vRsc) ** 2
-                                + (dt_eff * vRcs) ** 2
-                                + (dt_eff * vZsc) ** 2
-                                + (dt_eff * vZcs) ** 2
-                                + (dt_eff * vZcc) ** 2
-                                + (dt_eff * vZss) ** 2
-                                + (dt_eff * vLsc) ** 2
-                                + (dt_eff * vLcs) ** 2
-                                + (dt_eff * vLcc) ** 2
-                                + (dt_eff * vLss) ** 2
-                            )
-                        )
+                update_rms_j = jnp.sqrt(
+                    jnp.mean(
+                        (dt_eff * vRcc) ** 2
+                        + (dt_eff * vRss) ** 2
+                        + (dt_eff * vRsc) ** 2
+                        + (dt_eff * vRcs) ** 2
+                        + (dt_eff * vZsc) ** 2
+                        + (dt_eff * vZcs) ** 2
+                        + (dt_eff * vZcc) ** 2
+                        + (dt_eff * vZss) ** 2
+                        + (dt_eff * vLsc) ** 2
+                        + (dt_eff * vLcs) ** 2
+                        + (dt_eff * vLcc) ** 2
+                        + (dt_eff * vLss) ** 2
                     )
                 )
+                update_rms_host = float(np.asarray(update_rms_j))
+                update_rms = update_rms_host
 
             dR = dt_eff * _mn_cos_to_signed_physical(vRcc, vRss)
             dZ = dt_eff * _mn_sin_to_signed_physical(vZsc, vZcs)
@@ -11794,10 +11800,11 @@ def solve_fixed_boundary_residual_iter(
         )
         if track_history:
             dt_eff_history.append(float(dt_eff))
-            update_rms_history.append(float(update_rms))
+            update_rms_history.append(update_rms_j if bool(strict_update) else float(update_rms))
         if verbose:
             if bool(vmec2000_control) and bool(verbose_vmec2000_table):
                 if _should_print_vmec2000(int(iter2), int(max_iter)):
+                    fsqr1_f, fsqz1_f, fsql1_f = _precond_diag_floats()
                     _print_vmec2000_iter_row(
                         iter_idx=int(iter2),
                         fsqr=fsqr_f,
@@ -11812,9 +11819,11 @@ def solve_fixed_boundary_residual_iter(
                         z00=float(z00_last),
                     )
             else:
+                fsqr1_f, fsqz1_f, fsql1_f = _precond_diag_floats()
+                update_rms_print = _update_rms_float() if bool(strict_update) else float(update_rms)
                 print(
                     f"[solve_fixed_boundary_residual_iter] iter={it:03d} "
-                    f"dt_eff={dt_eff:.3e} update_rms={update_rms:.3e} "
+                    f"dt_eff={dt_eff:.3e} update_rms={update_rms_print:.3e} "
                     f"fsqr1={fsqr1_f:.3e} fsqz1={fsqz1_f:.3e} fsql1={fsql1_f:.3e} "
                     f"step_status={step_status}",
                     flush=True,
@@ -11881,7 +11890,7 @@ def solve_fixed_boundary_residual_iter(
         "include_edge_history": np.asarray(include_edge_history, dtype=int),
         "zero_m1_history": np.asarray(zero_m1_history, dtype=int),
         "dt_eff_history": np.asarray(dt_eff_history, dtype=float),
-        "update_rms_history": np.asarray(update_rms_history, dtype=float),
+        "update_rms_history": _scalar_history_array(update_rms_history),
         "w_curr_history": np.asarray(w_curr_history, dtype=float),
         "w_try_history": np.asarray(w_try_history, dtype=float),
         "w_try_ratio_history": np.asarray(w_try_ratio_history, dtype=float),
@@ -11894,15 +11903,15 @@ def solve_fixed_boundary_residual_iter(
         "wb_history": np.asarray(wb_history, dtype=float),
         "wp_history": np.asarray(wp_history, dtype=float),
         "w_vmec_history": np.asarray(w_vmec_history, dtype=float),
-        "fsq1_history": np.asarray(fsq1_history, dtype=float),
-        "fsqr1_history": np.asarray(fsqr1_history, dtype=float),
-        "fsqz1_history": np.asarray(fsqz1_history, dtype=float),
-        "fsql1_history": np.asarray(fsql1_history, dtype=float),
-        "rz_norm_history": np.asarray(rz_norm_history, dtype=float),
-        "f_norm1_history": np.asarray(f_norm1_history, dtype=float),
-        "gcr2_p_history": np.asarray(gcr2_p_history, dtype=float),
-        "gcz2_p_history": np.asarray(gcz2_p_history, dtype=float),
-        "gcl2_p_history": np.asarray(gcl2_p_history, dtype=float),
+        "fsq1_history": _scalar_history_array(fsq1_history),
+        "fsqr1_history": _scalar_history_array(fsqr1_history),
+        "fsqz1_history": _scalar_history_array(fsqz1_history),
+        "fsql1_history": _scalar_history_array(fsql1_history),
+        "rz_norm_history": _scalar_history_array(rz_norm_history),
+        "f_norm1_history": _scalar_history_array(f_norm1_history),
+        "gcr2_p_history": _scalar_history_array(gcr2_p_history),
+        "gcz2_p_history": _scalar_history_array(gcz2_p_history),
+        "gcl2_p_history": _scalar_history_array(gcl2_p_history),
         "free_boundary": {
             "enabled": bool(free_boundary_enabled),
             "nvacskip": int(freeb_nvacskip),

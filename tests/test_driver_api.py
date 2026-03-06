@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import vmec_jax.driver as driver_module
@@ -107,3 +108,37 @@ def test_dynamic_scan_probe_settings_env_override(monkeypatch):
     assert pre_iters == 4
     assert timed_probe is True
     assert backend == "gpu"
+
+
+def test_vmec2000_iter_histories_materialize_numeric_arrays():
+    root = Path(__file__).resolve().parents[1]
+    input_path = root / "examples/data/input.circular_tokamak"
+    grid = vmec_angle_grid(ntheta=10, nzeta=1, nfp=1, lasym=False)
+
+    run = run_fixed_boundary(
+        input_path,
+        max_iter=2,
+        verbose=False,
+        performance_mode=False,
+        multigrid=False,
+        grid=grid,
+    )
+    diag = run.result.diagnostics
+
+    for key in (
+        "update_rms_history",
+        "fsq1_history",
+        "fsqr1_history",
+        "fsqz1_history",
+        "fsql1_history",
+        "rz_norm_history",
+        "f_norm1_history",
+        "gcr2_p_history",
+        "gcz2_p_history",
+        "gcl2_p_history",
+    ):
+        arr = np.asarray(diag[key])
+        assert arr.ndim == 1
+        assert arr.dtype.kind == "f"
+
+    assert diag["update_rms_history"].shape == diag["dt_eff_history"].shape
