@@ -8391,6 +8391,7 @@ def solve_fixed_boundary_residual_iter(
             dtype = jnp.asarray(state0.Rcos).dtype
             time_step_j = jnp.asarray(float(step_size), dtype=dtype)
             flip_sign_j = jnp.asarray(float(initial_flip_sign), dtype=dtype)
+            ftol_j = jnp.asarray(float(ftol), dtype=dtype)
 
             include_edge_scan = False
             _compute_forces_scan = _compute_forces if jit_forces else _compute_forces_impl
@@ -8410,113 +8411,152 @@ def solve_fixed_boundary_residual_iter(
                 bool(jit_forces),
             )
 
-            def _scan_step(state, it):
+            def _scan_step(carry, it):
+                state, converged, converged_iter, last_fsqr, last_fsqz, last_fsql = carry
                 it = jnp.asarray(it, dtype=jnp.int32)
-                iter_since_restart = it + 1
-                zero_m1 = jnp.where(iter_since_restart < 2, jnp.asarray(1.0, dtype=dtype), jnp.asarray(0.0, dtype=dtype))
+                def _hold_step(_):
+                    return carry, (last_fsqr, last_fsqz, last_fsql)
 
-                k, frzl, fsqr, fsqz, fsql, rz_scale, l_scale, _norms = _compute_forces_scan(
-                    state,
-                    include_edge=include_edge_scan,
-                    zero_m1=zero_m1,
-                    iter_idx=None,
-                )
+                def _advance_step(_):
+                    iter_since_restart = it + 1
+                    zero_m1 = jnp.where(
+                        iter_since_restart < 2, jnp.asarray(1.0, dtype=dtype), jnp.asarray(0.0, dtype=dtype)
+                    )
 
-                frss_in = (frzl.frss if frzl.frss is not None else jnp.zeros_like(frzl.frcc)) * rz_scale[:, None, None]
-                fzcs_in = (frzl.fzcs if frzl.fzcs is not None else jnp.zeros_like(frzl.fzsc)) * rz_scale[:, None, None]
-                frcc, frss, fzsc, fzcs = _apply_radial_tridi_batched(
-                    [
-                        frzl.frcc * rz_scale[:, None, None],
-                        frss_in,
-                        frzl.fzsc * rz_scale[:, None, None],
-                        fzcs_in,
-                    ],
-                    precond_radial_alpha,
-                )
-                flcs_in = (frzl.flcs if frzl.flcs is not None else jnp.zeros_like(frzl.flsc)) * l_scale[:, None, None]
-                flsc, flcs = _apply_radial_tridi_batched(
-                    [
-                        frzl.flsc * l_scale[:, None, None],
-                        flcs_in,
-                    ],
-                    precond_lambda_alpha,
-                )
+                    _k, frzl, fsqr, fsqz, fsql, rz_scale, l_scale, _norms = _compute_forces_scan(
+                        state,
+                        include_edge=include_edge_scan,
+                        zero_m1=zero_m1,
+                        iter_idx=None,
+                    )
 
-                frzl_pre = TomnspsRZL(
-                    frcc=frcc,
-                    frss=frss,
-                    fzsc=fzsc,
-                    fzcs=fzcs,
-                    flsc=flsc,
-                    flcs=flcs,
-                    frsc=getattr(frzl, "frsc", None),
-                    frcs=getattr(frzl, "frcs", None),
-                    fzcc=getattr(frzl, "fzcc", None),
-                    fzss=getattr(frzl, "fzss", None),
-                    flcc=getattr(frzl, "flcc", None),
-                    flss=getattr(frzl, "flss", None),
-                )
+                    frss_in = (frzl.frss if frzl.frss is not None else jnp.zeros_like(frzl.frcc)) * rz_scale[:, None, None]
+                    fzcs_in = (frzl.fzcs if frzl.fzcs is not None else jnp.zeros_like(frzl.fzsc)) * rz_scale[:, None, None]
+                    frcc, frss, fzsc, fzcs = _apply_radial_tridi_batched(
+                        [
+                            frzl.frcc * rz_scale[:, None, None],
+                            frss_in,
+                            frzl.fzsc * rz_scale[:, None, None],
+                            fzcs_in,
+                        ],
+                        precond_radial_alpha,
+                    )
+                    flcs_in = (frzl.flcs if frzl.flcs is not None else jnp.zeros_like(frzl.flsc)) * l_scale[:, None, None]
+                    flsc, flcs = _apply_radial_tridi_batched(
+                        [
+                            frzl.flsc * l_scale[:, None, None],
+                            flcs_in,
+                        ],
+                        precond_lambda_alpha,
+                    )
 
-                frcc_u = frcc * w_mode_mn[None, :, :]
-                frss_u = frss * w_mode_mn[None, :, :]
-                fzsc_u = fzsc * w_mode_mn[None, :, :]
-                fzcs_u = fzcs * w_mode_mn[None, :, :]
-                flsc_u = flsc * w_mode_mn[None, :, :]
-                flcs_u = flcs * w_mode_mn[None, :, :]
-                frsc_u = (jnp.asarray(getattr(frzl, "frsc", None)) if getattr(frzl, "frsc", None) is not None else jnp.zeros_like(frcc_u)) * w_mode_mn[None, :, :]
-                frcs_u = (jnp.asarray(getattr(frzl, "frcs", None)) if getattr(frzl, "frcs", None) is not None else jnp.zeros_like(frcc_u)) * w_mode_mn[None, :, :]
-                fzcc_u = (jnp.asarray(getattr(frzl, "fzcc", None)) if getattr(frzl, "fzcc", None) is not None else jnp.zeros_like(fzsc_u)) * w_mode_mn[None, :, :]
-                fzss_u = (jnp.asarray(getattr(frzl, "fzss", None)) if getattr(frzl, "fzss", None) is not None else jnp.zeros_like(fzsc_u)) * w_mode_mn[None, :, :]
-                flcc_u = (jnp.asarray(getattr(frzl, "flcc", None)) if getattr(frzl, "flcc", None) is not None else jnp.zeros_like(flsc_u)) * w_mode_mn[None, :, :]
-                flss_u = (jnp.asarray(getattr(frzl, "flss", None)) if getattr(frzl, "flss", None) is not None else jnp.zeros_like(flsc_u)) * w_mode_mn[None, :, :]
+                    frcc_u = frcc * w_mode_mn[None, :, :]
+                    frss_u = frss * w_mode_mn[None, :, :]
+                    fzsc_u = fzsc * w_mode_mn[None, :, :]
+                    fzcs_u = fzcs * w_mode_mn[None, :, :]
+                    flsc_u = flsc * w_mode_mn[None, :, :]
+                    flcs_u = flcs * w_mode_mn[None, :, :]
+                    frsc_u = (
+                        jnp.asarray(getattr(frzl, "frsc", None))
+                        if getattr(frzl, "frsc", None) is not None
+                        else jnp.zeros_like(frcc_u)
+                    ) * w_mode_mn[None, :, :]
+                    frcs_u = (
+                        jnp.asarray(getattr(frzl, "frcs", None))
+                        if getattr(frzl, "frcs", None) is not None
+                        else jnp.zeros_like(frcc_u)
+                    ) * w_mode_mn[None, :, :]
+                    fzcc_u = (
+                        jnp.asarray(getattr(frzl, "fzcc", None))
+                        if getattr(frzl, "fzcc", None) is not None
+                        else jnp.zeros_like(fzsc_u)
+                    ) * w_mode_mn[None, :, :]
+                    fzss_u = (
+                        jnp.asarray(getattr(frzl, "fzss", None))
+                        if getattr(frzl, "fzss", None) is not None
+                        else jnp.zeros_like(fzsc_u)
+                    ) * w_mode_mn[None, :, :]
+                    flcc_u = (
+                        jnp.asarray(getattr(frzl, "flcc", None))
+                        if getattr(frzl, "flcc", None) is not None
+                        else jnp.zeros_like(flsc_u)
+                    ) * w_mode_mn[None, :, :]
+                    flss_u = (
+                        jnp.asarray(getattr(frzl, "flss", None))
+                        if getattr(frzl, "flss", None) is not None
+                        else jnp.zeros_like(flsc_u)
+                    ) * w_mode_mn[None, :, :]
 
-                if lambda_update_scale != 1.0:
-                    flsc_u = flsc_u * lambda_update_scale_j
-                    flcs_u = flcs_u * lambda_update_scale_j
-                    flcc_u = flcc_u * lambda_update_scale_j
-                    flss_u = flss_u * lambda_update_scale_j
+                    if lambda_update_scale != 1.0:
+                        flsc_u = flsc_u * lambda_update_scale_j
+                        flcs_u = flcs_u * lambda_update_scale_j
+                        flcc_u = flcc_u * lambda_update_scale_j
+                        flss_u = flss_u * lambda_update_scale_j
 
-                dR = (time_step_j * flip_sign_j) * _mn_cos_to_signed_physical(frcc_u, frss_u)
-                sin_updates = _mn_sin_to_signed_batch(
-                    jnp.stack([fzsc_u, flsc_u], axis=0),
-                    jnp.stack([fzcs_u, flcs_u], axis=0),
-                )
-                dZ = (time_step_j * flip_sign_j) * sin_updates[0]
-                dL = (time_step_j * flip_sign_j) * sin_updates[1]
-                dR_sin = (time_step_j * flip_sign_j) * _mn_sin_to_signed_physical(frsc_u, frcs_u)
-                dZ_cos = (time_step_j * flip_sign_j) * _mn_cos_to_signed_physical(fzcc_u, fzss_u)
-                dL_cos = (time_step_j * flip_sign_j) * _mn_cos_to_signed_physical_lambda(flcc_u, flss_u)
-                if not bool(cfg.lasym):
-                    dR_sin = jnp.zeros_like(dR_sin)
-                    dZ_cos = jnp.zeros_like(dZ_cos)
-                    dL_cos = jnp.zeros_like(dL_cos)
+                    dR = (time_step_j * flip_sign_j) * _mn_cos_to_signed_physical(frcc_u, frss_u)
+                    sin_updates = _mn_sin_to_signed_batch(
+                        jnp.stack([fzsc_u, flsc_u], axis=0),
+                        jnp.stack([fzcs_u, flcs_u], axis=0),
+                    )
+                    dZ = (time_step_j * flip_sign_j) * sin_updates[0]
+                    dL = (time_step_j * flip_sign_j) * sin_updates[1]
+                    dR_sin = (time_step_j * flip_sign_j) * _mn_sin_to_signed_physical(frsc_u, frcs_u)
+                    dZ_cos = (time_step_j * flip_sign_j) * _mn_cos_to_signed_physical(fzcc_u, fzss_u)
+                    dL_cos = (time_step_j * flip_sign_j) * _mn_cos_to_signed_physical_lambda(flcc_u, flss_u)
+                    if not bool(cfg.lasym):
+                        dR_sin = jnp.zeros_like(dR_sin)
+                        dZ_cos = jnp.zeros_like(dZ_cos)
+                        dL_cos = jnp.zeros_like(dL_cos)
 
-                state_new = VMECState(
-                    layout=state.layout,
-                    Rcos=jnp.asarray(state.Rcos) + dR,
-                    Rsin=jnp.asarray(state.Rsin) + dR_sin,
-                    Zcos=jnp.asarray(state.Zcos) + dZ_cos,
-                    Zsin=jnp.asarray(state.Zsin) + dZ,
-                    Lcos=jnp.asarray(state.Lcos) + dL_cos,
-                    Lsin=jnp.asarray(state.Lsin) + dL,
-                )
-                state_new = _enforce_fixed_boundary_and_axis(
-                    state_new,
-                    static,
-                    edge_Rcos=edge_Rcos,
-                    edge_Rsin=edge_Rsin,
-                    edge_Zcos=edge_Zcos,
-                    edge_Zsin=edge_Zsin,
-                    enforce_edge=not bool(free_boundary_enabled),
-                    enforce_lambda_axis=True,
-                    idx00=idx00,
-                )
-                state_new = _apply_vmec_lambda_axis_rules(state_new)
+                    state_new = VMECState(
+                        layout=state.layout,
+                        Rcos=jnp.asarray(state.Rcos) + dR,
+                        Rsin=jnp.asarray(state.Rsin) + dR_sin,
+                        Zcos=jnp.asarray(state.Zcos) + dZ_cos,
+                        Zsin=jnp.asarray(state.Zsin) + dZ,
+                        Lcos=jnp.asarray(state.Lcos) + dL_cos,
+                        Lsin=jnp.asarray(state.Lsin) + dL,
+                    )
+                    state_new = _enforce_fixed_boundary_and_axis(
+                        state_new,
+                        static,
+                        edge_Rcos=edge_Rcos,
+                        edge_Rsin=edge_Rsin,
+                        edge_Zcos=edge_Zcos,
+                        edge_Zsin=edge_Zsin,
+                        enforce_edge=not bool(free_boundary_enabled),
+                        enforce_lambda_axis=True,
+                        idx00=idx00,
+                    )
+                    state_new = _apply_vmec_lambda_axis_rules(state_new)
+                    conv_now = (fsqr <= ftol_j) & (fsqz <= ftol_j) & (fsql <= ftol_j)
+                    conv_iter_new = jnp.where(
+                        (converged_iter < 0) & conv_now,
+                        it + jnp.asarray(1, dtype=jnp.int32),
+                        converged_iter,
+                    )
+                    carry_new = (
+                        state_new,
+                        converged | conv_now,
+                        conv_iter_new,
+                        fsqr,
+                        fsqz,
+                        fsql,
+                    )
+                    return carry_new, (fsqr, fsqz, fsql)
 
-                return state_new, (fsqr, fsqz, fsql)
+                return jax.lax.cond(converged, _hold_step, _advance_step, operand=None)
 
             def _run_scan(state_init):
-                return jax.lax.scan(_scan_step, state_init, jnp.arange(max_iter, dtype=jnp.int32))
+                carry0 = (
+                    state_init,
+                    jnp.asarray(False),
+                    jnp.asarray(-1, dtype=jnp.int32),
+                    jnp.asarray(jnp.inf, dtype=dtype),
+                    jnp.asarray(jnp.inf, dtype=dtype),
+                    jnp.asarray(jnp.inf, dtype=dtype),
+                )
+                return jax.lax.scan(_scan_step, carry0, jnp.arange(max_iter, dtype=jnp.int32))
 
             cached_run = _SCAN_RUNNER_CACHE.get(scan_cache_key)
             if cached_run is None:
@@ -8525,19 +8565,28 @@ def solve_fixed_boundary_residual_iter(
             else:
                 _run_scan = cached_run
 
-            state_final, hist = _run_scan(state)
+            carry_final, hist = _run_scan(state)
+            state_final, converged_final, converged_iter_final, _, _, _ = carry_final
             fsqr_hist, fsqz_hist, fsql_hist = hist
             w_hist = fsqr_hist + fsqz_hist + fsql_hist
+            converged_host = bool(np.asarray(converged_final))
+            converged_iter_host = int(np.asarray(converged_iter_final)) if converged_host else -1
+            n_iter_host = int(converged_iter_host) if converged_host else int(max_iter)
             res_scan_fast = SolveVmecResidualResult(
                 state=state_final,
-                n_iter=int(max_iter),
+                n_iter=n_iter_host,
                 w_history=np.asarray(w_hist),
                 fsqr2_history=np.asarray(fsqr_hist),
                 fsqz2_history=np.asarray(fsqz_hist),
                 fsql2_history=np.asarray(fsql_hist),
                 grad_rms_history=np.asarray([], dtype=float),
                 step_history=np.asarray([], dtype=float),
-                diagnostics={"use_scan": True},
+                diagnostics={
+                    "use_scan": True,
+                    "accelerated_scan": True,
+                    "converged": converged_host,
+                    "converged_iter": converged_iter_host,
+                },
             )
             return _attach_freeb_diag(res_scan_fast)
 

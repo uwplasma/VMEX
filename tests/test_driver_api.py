@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import vmec_jax.cli as cli_module
 import vmec_jax.driver as driver_module
 from vmec_jax.driver import (
     example_paths,
@@ -108,6 +109,42 @@ def test_dynamic_scan_probe_settings_env_override(monkeypatch):
     assert pre_iters == 4
     assert timed_probe is True
     assert backend == "gpu"
+
+
+def test_normalize_solver_mode():
+    assert driver_module._normalize_solver_mode(solver_mode=None, performance_mode=True) == "default"
+    assert driver_module._normalize_solver_mode(solver_mode=None, performance_mode=False) == "parity"
+    assert driver_module._normalize_solver_mode(solver_mode="accelerated", performance_mode=False) == "accelerated"
+    assert driver_module._normalize_solver_mode(solver_mode="fast", performance_mode=False) == "default"
+    with pytest.raises(ValueError):
+        driver_module._normalize_solver_mode(solver_mode="unknown-mode", performance_mode=True)
+
+
+def test_cli_solver_mode_conflicts_with_fast_flags():
+    with pytest.raises(SystemExit):
+        cli_module.main(["examples/data/input.circular_tokamak", "--solver-mode", "accelerated", "--fast"])
+
+
+def test_run_fixed_boundary_accelerated_mode_uses_scan():
+    root = Path(__file__).resolve().parents[1]
+    input_path = root / "examples/data/input.circular_tokamak"
+    grid = vmec_angle_grid(ntheta=10, nzeta=1, nfp=1, lasym=False)
+
+    run = run_fixed_boundary(
+        input_path,
+        max_iter=6,
+        verbose=False,
+        multigrid=False,
+        grid=grid,
+        solver_mode="accelerated",
+    )
+    diag = run.result.diagnostics
+    assert diag["solver_mode"] == "accelerated"
+    assert diag["accelerated_mode"] is True
+    assert diag["use_scan"] is True
+    assert diag["accelerated_scan"] is True
+    assert np.isfinite(np.asarray(run.result.w_history)).all()
+    assert "converged" in diag
 
 
 def test_vmec2000_iter_histories_materialize_numeric_arrays():

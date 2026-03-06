@@ -817,3 +817,25 @@ Legend:
   - specific workstreams for device-resident control flow, continuation,
     preconditioner redesign, free-boundary acceleration, and gradient scaling,
   - benchmark and CI gates plus an expanded example matrix.
+- Began Phase 0/1/2 implementation on `codex/nonparity-performance`:
+  - added explicit `solver_mode` support to the CLI and Python API with
+    `default`, `parity`, and `accelerated` policies,
+  - added `tools/diagnostics/benchmark_accelerated_mode.py` to compare
+    baseline vs accelerated mode on runtime, memory, `fsq_total`,
+    convergence, and bundled-reference `wout` quality,
+  - the first accelerated-mode implementation uses the masked VMEC-control
+    scan path for fixed-boundary cases while skipping parity-oriented scan
+    probes and scan-corrector overhead,
+  - free-boundary accelerated mode currently reuses the robust baseline path.
+- Initial CPU benchmark findings from `benchmark_accelerated_mode.py`:
+  - `input.up_down_asymmetric_tokamak`: about `4.1x` warm speedup and `~0.68x`
+    peak memory ratio vs the current default path, with the same final
+    `fsq_total`,
+  - `input.circular_tokamak`: converges cleanly with good final `wout`
+    similarity (`~9.8e-6` max relRMS), but is not faster yet,
+  - `input.LandremanPaul2021_QA_lowres`: approximately neutral,
+  - the current `lasym=True` fixed-boundary quality gap on
+    `input.up_down_asymmetric_tokamak` is shared by both the default and
+    accelerated scan paths, so it is not introduced by the new mode,
+  - free-boundary accelerated mode is currently a bookkeeping alias, not yet a
+    faster controller.

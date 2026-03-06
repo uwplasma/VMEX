@@ -76,6 +76,8 @@ vmec_jax examples/data/input.circular_tokamak
 
 Default CLI runs use the scan-based fast loop.
 Pass `--parity` to use the VMEC2000 parity loop (time-step control + restarts).
+Pass `--solver-mode accelerated` to try the experimental non-parity
+performance track.
 
 Run tests:
 
@@ -97,8 +99,12 @@ python examples/optimization/implicit_target_iota_volume.py --case circular_toka
 - LASYM fixed-boundary stages now use a timed scan/non-scan probe on CPU and a short parity-only probe on accelerators, so the default GPU path keeps the scan fast path without paying the full non-scan timing cost.
 - Quiet accelerator scan runs now use backend-aware larger chunks, capped to the remaining iterations, to reduce host/device launch overhead without changing solver parity.
 - Use `--parity` or `performance_mode=False` to force the conservative parity path.
+- Use `--solver-mode accelerated` to force the experimental accelerated
+  fixed-boundary path, which skips parity-oriented scan probes and is judged by
+  final residual/output quality rather than iteration-trace parity.
 - The current GPU path is fastest when the solve can stay on the scan fast path. Many of the slow GPU benchmark rows are parity-path solves, especially free-boundary cases, where VMEC2000-style restart logic, Jacobian checks, and cadence control still run as a host-controlled loop around many short float64 kernels.
 - That means the GPU often sees too little work per launch to amortize host/device overhead, while the CPU benefits from lower launch latency and efficient float64 execution on these moderate-size grids. This is an implementation limit of the current parity path, not a claim that the underlying physics is inherently CPU-only.
+- The accelerated-mode comparison harness lives at `tools/diagnostics/benchmark_accelerated_mode.py`.
 - Details and profiling guidance live in `docs/performance.rst`.
 - Parity methodology and current status live in `docs/validation.rst`.
 - The cross-case parity matrix (fixed/free boundary, axisym/non-axisym, `lasym=False/True`)

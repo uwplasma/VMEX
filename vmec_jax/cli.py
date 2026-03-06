@@ -55,6 +55,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--output", type=str, default=None, help="Explicit wout_*.nc path.")
     p.add_argument("--max-iter", type=int, default=None, help="Total iteration budget (default: input NITER).")
     p.add_argument("--solver", type=str, default="vmec2000_iter", help="Solver to use (default: vmec2000_iter).")
+    p.add_argument(
+        "--solver-mode",
+        type=str,
+        default=None,
+        help="Solver policy: default|parity|accelerated (default: current default path).",
+    )
     p.add_argument("--step-size", type=float, default=None, help="Time step (DELT). Defaults to input DELT.")
     p.add_argument("--history-size", type=int, default=10, help="History size (LBFGS-style solvers).")
     p.add_argument("--multigrid", action="store_true", help="Enable multigrid staging.")
@@ -138,12 +144,18 @@ def main(argv: list[str] | None = None) -> int:
     if bool(args.parity) and bool(args.fast):
         parser.error("--parity and --fast are mutually exclusive")
         return 2
+    if args.solver_mode is not None and (bool(args.parity) or bool(args.fast)):
+        parser.error("--solver-mode cannot be combined with --parity/--fast")
+        return 2
     # Default to the fast scan loop; use --parity to force the reference path.
     performance_mode = True
     if bool(args.parity):
         performance_mode = False
     if bool(args.fast):
         performance_mode = True
+    solver_mode = args.solver_mode
+    if solver_mode is None:
+        solver_mode = "default" if bool(performance_mode) else "parity"
     if args.vmecpp_restart is None:
         vmecpp_restart = False
     else:
@@ -185,6 +197,7 @@ def main(argv: list[str] | None = None) -> int:
             multigrid_use_input_niter=bool(args.use_input_niter),
             verbose=not bool(args.quiet),
             jit_forces=jit_forces,
+            solver_mode=str(solver_mode),
             performance_mode=bool(performance_mode),
             vmecpp_restart=bool(vmecpp_restart),
         )

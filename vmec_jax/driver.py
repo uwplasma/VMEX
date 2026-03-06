@@ -89,6 +89,26 @@ def _dynamic_scan_probe_settings(niter_i: int) -> tuple[int, bool, str]:
     return pre_iters, timed_probe, backend
 
 
+_VALID_SOLVER_MODES = frozenset(("default", "parity", "accelerated"))
+
+
+def _normalize_solver_mode(*, solver_mode: str | None, performance_mode: bool) -> str:
+    if solver_mode is None:
+        return "default" if bool(performance_mode) else "parity"
+    mode = str(solver_mode).strip().lower()
+    aliases = {
+        "fast": "default",
+        "safe": "parity",
+        "reference": "parity",
+        "perf": "accelerated",
+    }
+    mode = aliases.get(mode, mode)
+    if mode not in _VALID_SOLVER_MODES:
+        valid = ", ".join(sorted(_VALID_SOLVER_MODES))
+        raise ValueError(f"Unknown solver_mode {solver_mode!r}. Expected one of: {valid}.")
+    return mode
+
+
 def residual_scalars_from_state(
     *,
     state,
@@ -392,6 +412,7 @@ def run_fixed_boundary(
     input_path: str | Path,
     *,
     solver: str = "vmec2000_iter",
+    solver_mode: str | None = None,
     max_iter: int | object = _MAX_ITER_SENTINEL,
     step_size: float | object = _STEP_SIZE_SENTINEL,
     history_size: int = 10,
@@ -549,6 +570,12 @@ def run_fixed_boundary(
         If True, force the fast scan-based iteration path (no VMEC2000 control
         logic). This delivers order-of-magnitude speedups but does not preserve
         per-iteration VMEC2000 parity.
+    solver_mode:
+        Optional explicit solver policy. Supported values:
+        ``"default"`` (current parity-guarded fast path),
+        ``"parity"`` (strict VMEC2000-style control path), and
+        ``"accelerated"`` (experimental non-parity path that prioritizes
+        final residual/quality and device residency).
     """
     # Default to 64-bit for VMEC parity; users can opt out via JAX_ENABLE_X64=0.
     try:
@@ -558,6 +585,10 @@ def run_fixed_boundary(
     except Exception:
         pass
     _maybe_enable_compilation_cache()
+    solver_mode_eff = _normalize_solver_mode(solver_mode=solver_mode, performance_mode=bool(performance_mode))
+    accelerated_mode = solver_mode_eff == "accelerated"
+    performance_mode = solver_mode_eff != "parity"
+
     cfg, indata = load_config(str(input_path))
     restart_state_eff = restart_state
     restart_wout = None
@@ -1076,6 +1107,8 @@ def run_fixed_boundary(
             cfg_i = replace(cfg, ns=int(ns_i))
             static_i = _build_static_cfg(cfg_i)
             scan_mode = bool(use_scan)
+            if accelerated_mode:
+                scan_mode = not bool(cfg_i.lfreeb)
             if bool(cfg.lasym):
                 # For LASYM fixed-boundary stages, allow scan as a candidate in
                 # the default fast path and let the automatic selector decide
@@ -1090,7 +1123,7 @@ def run_fixed_boundary(
             scan_guard_default = "0"
             scan_guard_env = os.getenv("VMEC_JAX_SCAN_PARITY_GUARD", scan_guard_default).strip().lower()
             scan_guard_enabled = scan_guard_env not in ("", "0", "false", "no")
-            if scan_mode and scan_guard_enabled and int(niter_i) >= 3:
+            if (not accelerated_mode) and scan_mode and scan_guard_enabled and int(niter_i) >= 3:
                 probe_iters = min(10, int(niter_i))
                 try:
                     guard_rtol = float(os.getenv("VMEC_JAX_SCAN_GUARD_RTOL", "1e-3"))
@@ -1282,6 +1315,8 @@ def run_fixed_boundary(
             dynamic_scan_env = os.getenv("VMEC_JAX_DYNAMIC_SCAN", dynamic_scan_default).strip().lower()
             dynamic_scan = dynamic_scan_env not in ("", "0", "false", "no")
             if (
+                (not accelerated_mode)
+                and
                 dynamic_scan
                 and bool(performance_mode)
                 and bool(scan_mode)
@@ -1457,7 +1492,7 @@ def run_fixed_boundary(
                 )
             # Auto-fast fallback: if scan hits a bad-Jacobian path, rerun the stage
             # in the parity-safe non-scan mode.
-            if bool(performance_mode) and bool(scan_mode):
+            if (not accelerated_mode) and bool(performance_mode) and bool(scan_mode):
                 try:
                     if bool(res_i.diagnostics.get("vmec2000_scan", False)) and bool(res_i.diagnostics.get("abort_scan", False)):
                         if bool(verbose):
@@ -1519,6 +1554,9 @@ def run_fixed_boundary(
             return np.concatenate(parts, axis=0) if parts else np.zeros((0,), dtype=float)
 
         diag = dict(stage_results[-1].diagnostics)
+        diag["solver_mode"] = str(solver_mode_eff)
+        diag["accelerated_mode"] = bool(accelerated_mode)
+        diag["accelerated_scan"] = bool(accelerated_mode) and bool(diag.get("use_scan", False))
         diag["multigrid_ns_stages"] = np.asarray(ns_stages, dtype=int)
         diag["multigrid_niter_stages"] = np.asarray(niter_stages, dtype=int)
         diag["multigrid_ftol_stages"] = np.asarray(ftol_stages, dtype=float)
@@ -1584,6 +1622,8 @@ def run_fixed_boundary(
             use_scan_any = any(bool(r.diagnostics.get("vmec2000_scan", False)) for r in stage_results)
         except Exception:
             use_scan_any = False
+        if accelerated_mode and scan_wout_corrector is None:
+            scan_wout_corrector = False
         if scan_wout_corrector is None:
             scan_wout_env = os.getenv("VMEC_JAX_SCAN_WOUT_CORRECTOR", "0").strip().lower()
             scan_wout_corrector = scan_wout_env not in ("", "0", "false", "no")

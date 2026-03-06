@@ -80,6 +80,53 @@ Controls:
 
 Debug dump env vars are incompatible with scan mode.
 
+Experimental accelerated mode
+-----------------------------
+
+``vmec-jax`` now exposes an explicit experimental solver policy for the
+non-parity performance track:
+
+- Python API: ``run_fixed_boundary(..., solver_mode="accelerated")``
+- CLI: ``vmec_jax input.name --solver-mode accelerated``
+
+Current behavior of this first slice:
+
+- fixed-boundary stages force the masked VMEC-control scan path and skip the
+  parity-oriented scan-selection probes,
+- free-boundary cases currently stay on the existing robust path; accelerated
+  free-boundary control is not implemented yet,
+- the mode is intended to reduce control overhead while preserving final
+  residual quality, not to reproduce the VMEC2000 iteration trace.
+
+Use the dedicated comparison harness to evaluate it against the current default
+solver policy:
+
+.. code-block:: bash
+
+  python tools/diagnostics/benchmark_accelerated_mode.py \
+    --baseline-mode default \
+    --candidate-mode accelerated \
+    --kind fixed \
+    --jax-platforms cpu
+
+The harness reports:
+
+- cold and warm runtime,
+- peak process memory,
+- final ``fsq_total``,
+- convergence flags,
+- reference-``wout`` relRMS metrics when bundled references are available.
+
+Early March 2026 smoke results on the local CPU host:
+
+- ``input.up_down_asymmetric_tokamak``: about ``4.1x`` warm speedup with the
+  same final ``fsq_total`` as the current default path,
+- ``input.circular_tokamak``: converged cleanly with good final quality, but
+  no speedup yet,
+- ``input.LandremanPaul2021_QA_lowres``: essentially neutral,
+- free-boundary accelerated mode is currently a control-path alias for the
+  robust baseline, not a new fast free-boundary controller.
+
 If you want an automatic parity probe when using scan, set::
 
   export VMEC_JAX_SCAN_PARITY_GUARD=1
