@@ -705,3 +705,39 @@ Legend:
     `input.up_down_asymmetric_tokamak` from about `57.8s` to about `7.5s`,
     but the current scan parity guard disables that fast path, so the default
     remains conservative until the LASYM scan parity evidence is tightened.
+- Enabled automatic LASYM fast-path probing in performance mode without
+  hardcoded case IDs:
+  - LASYM fixed-boundary starts now infer the axis in performance mode,
+  - the warmed dynamic selector compares full scan/non-scan residual traces
+    before taking the fast path,
+  - `input.up_down_asymmetric_tokamak` now defaults to scan at about `6.7s`
+    instead of the earlier ~`57.8s`,
+  - `input.basic_non_stellsym_pressure` now also defaults to scan,
+  - `input.LandremanSenguptaPlunk_section5p3_low_res` still falls back
+    conservatively because the warmed probe detects real drift.
+- Re-ran the bundled-example benchmark matrix for the README refresh:
+  - local CPU + VMEC2000 summary:
+    `outputs/example_runtime_memory_matrix_cpu_20260306/summary.json`,
+  - GPU all-example summary from the `office` benchmark clone:
+    `outputs/example_runtime_memory_matrix_gpu_20260306_summary.json`,
+  - corrected GPU free-boundary rerun summary:
+    `outputs/example_runtime_memory_matrix_gpu_freeb_20260306_rerun_summary.json`.
+- Updated the README runtime/memory figure and appended a full bundled-example
+  benchmark table:
+  - figure:
+    `docs/_static/figures/readme_runtime_compare.png`,
+  - generated markdown table artifact:
+    `outputs/readme_runtime_table_20260306.md`.
+- Current benchmark snapshot from the refreshed matrix:
+  - local CPU `lasym=True` fixed-boundary:
+    `input.up_down_asymmetric_tokamak` ~`6.72s` / ~`0.89 GiB`,
+    `input.basic_non_stellsym_pressure` ~`29.73s` / ~`3.22 GiB`,
+    `input.LandremanSenguptaPlunk_section5p3_low_res` ~`46.77s` / ~`4.07 GiB`,
+  - local CPU free-boundary:
+    `input.DIII-D_lasym_false` ~`428.24s` / ~`7.36 GiB`,
+    `input.cth_like_free_bdy` ~`41.83s` / ~`1.64 GiB`,
+    `input.cth_like_free_bdy_lasym_small` ~`37.59s` / ~`1.47 GiB`,
+  - GPU host (`office`, dual RTX A4000):
+    `input.DIII-D_lasym_false` ~`1602.31s` / ~`6.23 GiB`,
+    `input.n3are_R7.75B5.7_lowres` ~`710.51s` / ~`6.16 GiB`,
+    `input.basic_non_stellsym_pressure` ~`223.36s` / ~`3.90 GiB`.

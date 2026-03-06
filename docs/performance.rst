@@ -222,46 +222,49 @@ For repeatable runtime/memory sweeps across the bundled inputs, use:
 
 Recent artifacts from this tool:
 
-- ``outputs/example_runtime_memory_matrix_20260306_080658/summary.json``:
-  all bundled fixed-boundary examples.
-- ``outputs/example_runtime_memory_matrix_20260306_083756/summary.json``:
-  bundled free-boundary examples.
+- ``outputs/example_runtime_memory_matrix_cpu_20260306/summary.json``:
+  all bundled examples on the local CPU, including VMEC2000 reference timings.
+- ``outputs/example_runtime_memory_matrix_gpu_20260306_summary.json``:
+  all bundled examples on the ``office`` GPU host (CUDA JAX).
+- ``outputs/example_runtime_memory_matrix_gpu_freeb_20260306_rerun_summary.json``:
+  corrected GPU rerun for the bundled free-boundary cases after staging local
+  ``mgrid`` files in the benchmark clone.
 
 Current snapshot highlights:
 
-- Fixed-boundary outliers are currently dominated by large or ``lasym=True``
-  default runs:
+- Fixed-boundary ``lasym=True`` improved materially after the automatic
+  performance-mode axis inference + warmed scan probe:
 
-  - ``input.up_down_asymmetric_tokamak``:
-    about ``57.8s`` / ``5.05 GiB`` versus VMEC2000 about ``0.80s``.
-  - ``input.n3are_R7.75B5.7_lowres``:
-    about ``158.1s`` / ``6.97 GiB`` versus VMEC2000 about ``9.44s``.
-  - ``input.LandremanSenguptaPlunk_section5p3_low_res``:
-    about ``45.8s`` / ``4.02 GiB`` versus VMEC2000 about ``0.68s``.
+  - ``input.up_down_asymmetric_tokamak`` now runs in about ``6.7s`` /
+    ``0.89 GiB`` on the local CPU versus VMEC2000 about ``0.74s``.
+  - ``input.basic_non_stellsym_pressure`` runs in about ``29.7s`` /
+    ``3.22 GiB`` on the local CPU versus VMEC2000 about ``2.02s``.
+  - ``input.LandremanSenguptaPlunk_section5p3_low_res`` remains a heavy
+    fallback case at about ``46.8s`` / ``4.07 GiB`` versus VMEC2000
+    about ``0.69s``.
 
-- Bundled free-boundary examples remain the heaviest default-path cases:
+- Bundled free-boundary cases remain the dominant default-path outliers:
 
   - ``input.DIII-D_lasym_false``:
-    about ``402.0s`` / ``7.98 GiB`` versus VMEC2000 about ``13.9s``.
+    about ``428.2s`` / ``7.36 GiB`` on the local CPU,
+    about ``1602.3s`` / ``6.23 GiB`` on the GPU host,
+    versus VMEC2000 about ``14.4s``.
   - ``input.cth_like_free_bdy``:
-    about ``40.4s`` / ``1.76 GiB`` versus VMEC2000 about ``2.47s``.
+    about ``41.8s`` / ``1.64 GiB`` on the local CPU,
+    about ``155.8s`` / ``2.30 GiB`` on the GPU host,
+    versus VMEC2000 about ``2.48s``.
   - ``input.cth_like_free_bdy_lasym_small``:
-    about ``36.9s`` / ``1.54 GiB`` versus VMEC2000 about ``0.62s``.
+    about ``37.6s`` / ``1.47 GiB`` on the local CPU,
+    about ``103.5s`` / ``1.97 GiB`` on the GPU host,
+    versus VMEC2000 about ``0.63s``.
 
-- The recent free-boundary force-kernel JIT fix materially improved the worst
-  bundled free-boundary ``lasym=True`` case:
+- The current GPU path is not yet a universal speedup:
 
-  - direct ``run_fixed_boundary("examples/data/input.cth_like_free_bdy_lasym_small")``
-    dropped from about ``71.5s`` to about ``37.8s`` on the same local machine.
-
-- Fixed-boundary ``lasym=True`` still has a large performance opportunity behind
-  the conservative default policy:
-
-  - with ``VMEC_JAX_LASYM_USE_SCAN=1``, ``input.up_down_asymmetric_tokamak``
-    drops from about ``57.8s`` to about ``7.5s``,
-  - but ``VMEC_JAX_SCAN_PARITY_GUARD=1`` currently disables that fast path, so
-    the default remains on the slower non-scan route pending tighter parity
-    evidence.
+  - ``input.n3are_R7.75B5.7_lowres`` is about ``160.1s`` on the local CPU but
+    about ``710.5s`` on the GPU host.
+  - ``input.LandremanPaul2021_QA_lowres`` and
+    ``input.LandremanPaul2021_QA_lowres1`` are already faster than VMEC2000 on
+    the local CPU, but slower on the current GPU stack.
 
 Experimental tridiagonal solver (scan only)
 -------------------------------------------
