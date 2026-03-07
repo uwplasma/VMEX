@@ -143,6 +143,10 @@ def test_run_fixed_boundary_accelerated_mode_uses_scan():
     assert diag["accelerated_mode"] is True
     assert diag["use_scan"] is True
     assert diag["accelerated_scan"] is True
+    assert diag["light_history"] is True
+    assert diag["resume_state_mode"] == "minimal"
+    assert "vRcc" not in diag["resume_state"]
+    assert "cache_precond_diag" not in diag["resume_state"]
     assert np.isfinite(np.asarray(run.result.w_history)).all()
     assert "converged" in diag
 

@@ -839,3 +839,25 @@ Legend:
     accelerated scan paths, so it is not introduced by the new mode,
   - free-boundary accelerated mode is currently a bookkeeping alias, not yet a
     faster controller.
+- Continued Phase 2 accelerated-mode controller work:
+  - re-probed the fully non-VMEC raw scan path directly on representative
+    fixed-boundary cases (`input.circular_tokamak`,
+    `input.LandremanPaul2021_QA_lowres`,
+    `input.up_down_asymmetric_tokamak`),
+  - current result: the raw scan path is substantially faster but not yet
+    acceptable as a default accelerated controller because it can diverge
+    badly in `fsq_total` and final `wout` quality,
+  - kept the masked VMEC-control scan as the accelerated fixed-boundary
+    controller for now and moved the next optimization step to bookkeeping
+    reduction instead of changing nonlinear semantics.
+- Reduced accelerated-mode result bookkeeping:
+  - `solve_fixed_boundary_residual_iter()` now accepts explicit
+    `light_history` and `resume_state_mode` controls instead of relying only on
+    env vars,
+  - accelerated runs now default to `light_history=True` and a
+    `resume_state_mode="minimal"` payload, which drops the large parity-era
+    momentum and preconditioner caches from the returned diagnostics while
+    preserving the scalar continuation state needed for staged/continued runs,
+  - added regression coverage so accelerated scan results expose
+    `light_history=True`, `resume_state_mode="minimal"`, and remain restartable
+    from the compact resume payload.

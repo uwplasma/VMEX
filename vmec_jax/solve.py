@@ -3606,6 +3606,8 @@ def solve_fixed_boundary_residual_iter(
     precompile_only: bool = False,
     resume_state: dict | None = None,
     scan_minimal_default: bool | None = None,
+    light_history: bool | None = None,
+    resume_state_mode: str | None = None,
 ) -> SolveVmecResidualResult:
     """VMEC-style fixed-point update loop using preconditioned force residuals."""
     if not has_jax():
@@ -3653,8 +3655,24 @@ def solve_fixed_boundary_residual_iter(
     badjac_use_state = badjac_mode == "state"
     dump_ptau_state_env = os.getenv("VMEC_JAX_DUMP_PTAU_STATE", "0").strip().lower()
     dump_ptau_state = dump_ptau_state_env not in ("", "0", "false", "no")
-    light_hist_env = os.getenv("VMEC_JAX_LIGHT_HISTORY", "0").strip().lower()
-    light_history = light_hist_env not in ("", "0", "false", "no")
+    if light_history is None:
+        light_hist_env = os.getenv("VMEC_JAX_LIGHT_HISTORY", "0").strip().lower()
+        light_history = light_hist_env not in ("", "0", "false", "no")
+    else:
+        light_history = bool(light_history)
+    if resume_state_mode is None:
+        resume_state_mode = os.getenv("VMEC_JAX_RESUME_STATE_MODE", "full")
+    resume_state_mode = str(resume_state_mode).strip().lower() or "full"
+    resume_state_aliases = {
+        "compact": "minimal",
+        "light": "minimal",
+        "off": "none",
+    }
+    resume_state_mode = resume_state_aliases.get(resume_state_mode, resume_state_mode)
+    if resume_state_mode not in ("full", "minimal", "none"):
+        raise ValueError(
+            "resume_state_mode must be one of {'full', 'minimal', 'none'}"
+        )
     badjac_state_probe_env = os.getenv("VMEC_JAX_BADJAC_STATE_PROBE", "0").strip().lower()
     badjac_state_probe = badjac_state_probe_env not in ("", "0", "false", "no")
     ptau_tol_env = os.getenv("VMEC_JAX_PTAU_TOL", "").strip()
@@ -3774,6 +3792,14 @@ def solve_fixed_boundary_residual_iter(
         # Force full histories when parity dumps are enabled.
         light_history = False
     track_history = not light_history
+
+    def _pack_resume_state(base: dict[str, Any], heavy: dict[str, Any] | None = None):
+        if resume_state_mode == "none":
+            return None
+        rec = dict(base)
+        if resume_state_mode == "full" and heavy:
+            rec.update(heavy)
+        return rec
 
     from .energy import flux_profiles_from_indata
     from .energy import magnetic_wb_from_state
@@ -8152,6 +8178,55 @@ def solve_fixed_boundary_residual_iter(
             freeb_ivacskip_full = np.zeros((0,), dtype=int)
             freeb_ivac_full = np.zeros((0,), dtype=int)
 
+        resume_state_scan_base = {
+            "time_step": float(np.asarray(carry_final.time_step)),
+            "inv_tau": np.asarray(carry_final.inv_tau),
+            "fsq_prev": float(np.asarray(carry_final.fsq_prev)),
+            "fsq0_prev": float(np.asarray(carry_final.fsq0_prev)),
+            "flip_sign": float(np.asarray(carry_final.flip_sign)),
+            "iter1": int(np.asarray(carry_final.iter1)),
+            "iter_offset": int(resume_iter_offset),
+            "res0": float(np.asarray(carry_final.res0)),
+            "res1": float(np.asarray(carry_final.res1)),
+            "prev_rz_fsq": float(np.asarray(carry_final.fsqr_prev_phys + carry_final.fsqz_prev_phys)),
+            "vmec2000_cache_valid": bool(np.asarray(carry_final.cache_valid)),
+            "ijacob": int(np.asarray(carry_final.ijacob)),
+            "bad_resets": int(np.asarray(carry_final.bad_resets)),
+            "bad_growth_streak": int(np.asarray(carry_final.bad_growth)),
+            "fsqz_prev": float(np.asarray(carry_final.fsqz_prev)),
+            "r00_prev": float(np.asarray(carry_final.r00_prev)),
+            "z00_prev": float(np.asarray(carry_final.z00_prev)),
+            "w_mhd_prev": float(np.asarray(carry_final.w_mhd_prev)),
+            "force_bcovar_update": bool(np.asarray(carry_final.force_bcovar_update)),
+            "freeb_ivac": int(freeb_ivac_final),
+            "freeb_ivacskip": int(freeb_ivacskip_final),
+            "freeb_nvacskip": int(freeb_nvacskip),
+            "freeb_nvskip0": int(freeb_nvskip0),
+        }
+        resume_state_scan_heavy = {
+            "state_checkpoint": carry_final.state_checkpoint,
+            "vRcc": np.asarray(carry_final.vRcc),
+            "vRss": np.asarray(carry_final.vRss),
+            "vZsc": np.asarray(carry_final.vZsc),
+            "vZcs": np.asarray(carry_final.vZcs),
+            "vLsc": np.asarray(carry_final.vLsc),
+            "vLcs": np.asarray(carry_final.vLcs),
+            "vRsc": np.asarray(carry_final.vRsc),
+            "vRcs": np.asarray(carry_final.vRcs),
+            "vZcc": np.asarray(carry_final.vZcc),
+            "vZss": np.asarray(carry_final.vZss),
+            "vLcc": np.asarray(carry_final.vLcc),
+            "vLss": np.asarray(carry_final.vLss),
+            "cache_precond_diag": carry_final.cache_precond_diag,
+            "cache_tcon": carry_final.cache_tcon,
+            "cache_norms": carry_final.cache_norms,
+            "cache_rz_scale": carry_final.cache_rz_scale,
+            "cache_l_scale": carry_final.cache_l_scale,
+            "cache_rz_norm": np.asarray(carry_final.cache_rz_norm),
+            "cache_f_norm1": np.asarray(carry_final.cache_f_norm1),
+            "cache_prec_rz_mats": carry_final.cache_prec_rz_mats,
+            "cache_prec_lam_prec": np.asarray(carry_final.cache_prec_lam_prec),
+        }
         res_scan = SolveVmecResidualResult(
             state=carry_final.state,
             n_iter=int(w_hist.shape[0]),
@@ -8166,6 +8241,7 @@ def solve_fixed_boundary_residual_iter(
                 "vmec2000_scan": True,
                 "light_history": bool(scan_light),
                 "scan_minimal": bool(scan_minimal),
+                "resume_state_mode": str(resume_state_mode),
                 "badjac_use_state": bool(badjac_use_state),
                 "badjac_mode": badjac_mode,
                 "fsqr_full": fsqr_full_diag,
@@ -8215,55 +8291,7 @@ def solve_fixed_boundary_residual_iter(
                 "freeb_ivac_full": freeb_ivac_full,
                 "freeb_ivacskip_full": freeb_ivacskip_full,
                 "freeb_full_update_full": (freeb_ivacskip_full == 0).astype(int),
-                "resume_state": {
-                    "state_checkpoint": carry_final.state_checkpoint,
-                    "time_step": float(np.asarray(carry_final.time_step)),
-                    "inv_tau": np.asarray(carry_final.inv_tau),
-                    "fsq_prev": float(np.asarray(carry_final.fsq_prev)),
-                    "fsq0_prev": float(np.asarray(carry_final.fsq0_prev)),
-                    "flip_sign": float(np.asarray(carry_final.flip_sign)),
-                    "iter1": int(np.asarray(carry_final.iter1)),
-                    "iter_offset": int(resume_iter_offset),
-                    "res0": float(np.asarray(carry_final.res0)),
-                    "res1": float(np.asarray(carry_final.res1)),
-                    "prev_rz_fsq": float(
-                        np.asarray(carry_final.fsqr_prev_phys + carry_final.fsqz_prev_phys)
-                    ),
-                    "vmec2000_cache_valid": bool(np.asarray(carry_final.cache_valid)),
-                    "ijacob": int(np.asarray(carry_final.ijacob)),
-                    "bad_resets": int(np.asarray(carry_final.bad_resets)),
-                    "bad_growth_streak": int(np.asarray(carry_final.bad_growth)),
-                    "fsqz_prev": float(np.asarray(carry_final.fsqz_prev)),
-                    "vRcc": np.asarray(carry_final.vRcc),
-                    "vRss": np.asarray(carry_final.vRss),
-                    "vZsc": np.asarray(carry_final.vZsc),
-                    "vZcs": np.asarray(carry_final.vZcs),
-                    "vLsc": np.asarray(carry_final.vLsc),
-                    "vLcs": np.asarray(carry_final.vLcs),
-                    "vRsc": np.asarray(carry_final.vRsc),
-                    "vRcs": np.asarray(carry_final.vRcs),
-                    "vZcc": np.asarray(carry_final.vZcc),
-                    "vZss": np.asarray(carry_final.vZss),
-                    "vLcc": np.asarray(carry_final.vLcc),
-                    "vLss": np.asarray(carry_final.vLss),
-                    "cache_precond_diag": carry_final.cache_precond_diag,
-                    "cache_tcon": carry_final.cache_tcon,
-                    "cache_norms": carry_final.cache_norms,
-                    "cache_rz_scale": carry_final.cache_rz_scale,
-                    "cache_l_scale": carry_final.cache_l_scale,
-                    "cache_rz_norm": np.asarray(carry_final.cache_rz_norm),
-                    "cache_f_norm1": np.asarray(carry_final.cache_f_norm1),
-                    "cache_prec_rz_mats": carry_final.cache_prec_rz_mats,
-                    "cache_prec_lam_prec": np.asarray(carry_final.cache_prec_lam_prec),
-                    "r00_prev": float(np.asarray(carry_final.r00_prev)),
-                    "z00_prev": float(np.asarray(carry_final.z00_prev)),
-                    "w_mhd_prev": float(np.asarray(carry_final.w_mhd_prev)),
-                    "force_bcovar_update": bool(np.asarray(carry_final.force_bcovar_update)),
-                    "freeb_ivac": int(freeb_ivac_final),
-                    "freeb_ivacskip": int(freeb_ivacskip_final),
-                    "freeb_nvacskip": int(freeb_nvacskip),
-                    "freeb_nvskip0": int(freeb_nvskip0),
-                },
+                "resume_state": _pack_resume_state(resume_state_scan_base, resume_state_scan_heavy),
             },
         )
         return _attach_freeb_diag(res_scan)
@@ -11921,6 +11949,7 @@ def solve_fixed_boundary_residual_iter(
         "badjac_use_state": bool(badjac_use_state),
         "badjac_mode": badjac_mode,
         "light_history": bool(light_history),
+        "resume_state_mode": str(resume_state_mode),
         "ijacob": int(ijacob),
         "bad_resets": int(bad_resets),
         "iter1_final": int(iter1),
@@ -12006,7 +12035,7 @@ def solve_fixed_boundary_residual_iter(
             )
         except Exception:
             pass
-    diag["resume_state"] = {
+    resume_state_base = {
         "time_step": float(time_step),
         "inv_tau": list(inv_tau),
         "fsq_prev": float(fsq_prev),
@@ -12021,6 +12050,20 @@ def solve_fixed_boundary_residual_iter(
         "prev_rz_fsq": float(prev_rz_fsq),
         "bad_growth_streak": int(bad_growth_streak),
         "huge_force_restart_count": int(huge_force_restart_count),
+        "vmec2000_cache_valid": bool(vmec2000_cache_valid),
+        "freeb_ivac": int(freeb_ivac),
+        "freeb_ivacskip": int(freeb_ivacskip),
+        "freeb_nvacskip": int(freeb_nvacskip),
+        "freeb_nvskip0": int(freeb_nvskip0),
+        "freeb_model": str(freeb_last_model),
+        "freeb_nestor_update_count": (
+            0 if freeb_nestor_runtime is None else int(getattr(freeb_nestor_runtime, "update_count", 0))
+        ),
+        "freeb_nestor_reuse_count": (
+            0 if freeb_nestor_runtime is None else int(getattr(freeb_nestor_runtime, "reuse_count", 0))
+        ),
+    }
+    resume_state_heavy = {
         "vRcc": np.asarray(vRcc),
         "vRss": np.asarray(vRss),
         "vZsc": np.asarray(vZsc),
@@ -12034,7 +12077,6 @@ def solve_fixed_boundary_residual_iter(
         "vLcc": np.asarray(vLcc),
         "vLss": np.asarray(vLss),
         "state_checkpoint": state_checkpoint,
-        "vmec2000_cache_valid": bool(vmec2000_cache_valid),
         "cache_precond_diag": cache_precond_diag,
         "cache_tcon": cache_tcon,
         "cache_norms": cache_norms,
@@ -12049,18 +12091,8 @@ def solve_fixed_boundary_residual_iter(
         "cache_prec_lam_debug": cache_prec_lam_debug,
         "cache_constraint_rcon0": cache_constraint_rcon0,
         "cache_constraint_zcon0": cache_constraint_zcon0,
-        "freeb_ivac": int(freeb_ivac),
-        "freeb_ivacskip": int(freeb_ivacskip),
-        "freeb_nvacskip": int(freeb_nvacskip),
-        "freeb_nvskip0": int(freeb_nvskip0),
-        "freeb_model": str(freeb_last_model),
-        "freeb_nestor_update_count": (
-            0 if freeb_nestor_runtime is None else int(getattr(freeb_nestor_runtime, "update_count", 0))
-        ),
-        "freeb_nestor_reuse_count": (
-            0 if freeb_nestor_runtime is None else int(getattr(freeb_nestor_runtime, "reuse_count", 0))
-        ),
     }
+    diag["resume_state"] = _pack_resume_state(resume_state_base, resume_state_heavy)
     return _attach_freeb_diag(
         SolveVmecResidualResult(
             state=state,

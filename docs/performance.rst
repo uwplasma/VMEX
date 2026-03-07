@@ -93,6 +93,9 @@ Current behavior of this first slice:
 
 - fixed-boundary stages force the masked VMEC-control scan path and skip the
   parity-oriented scan-selection probes,
+- accelerated runs now request compact histories and a minimal resume payload
+  by default, so the result object does not carry the full parity-era
+  momentum/preconditioner cache unless the caller explicitly asks for it,
 - free-boundary cases currently stay on the existing robust path; accelerated
   free-boundary control is not implemented yet,
 - the mode is intended to reduce control overhead while preserving final
@@ -126,6 +129,15 @@ Early March 2026 smoke results on the local CPU host:
 - ``input.LandremanPaul2021_QA_lowres``: essentially neutral,
 - free-boundary accelerated mode is currently a control-path alias for the
   robust baseline, not a new fast free-boundary controller.
+
+Additional controller finding from March 2026:
+
+- the existing fully non-VMEC scan path was re-probed as a possible next
+  accelerated controller, but it is not yet robust enough to become the
+  default accelerated path: on representative fixed-boundary cases it is much
+  faster, but it can diverge badly in ``fsq_total`` and final ``wout`` quality.
+  The current accelerated mode therefore stays on the masked VMEC-control scan
+  until a more stable device-resident controller is in place.
 
 If you want an automatic parity probe when using scan, set::
 
