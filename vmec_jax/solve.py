@@ -8609,7 +8609,6 @@ def solve_fixed_boundary_residual_iter(
                         zero_m1=zero_m1,
                         iter_idx=None,
                     )
-
                     frss_in = (frzl.frss if frzl.frss is not None else jnp.zeros_like(frzl.frcc)) * rz_scale[:, None, None]
                     fzcs_in = (frzl.fzcs if frzl.fzcs is not None else jnp.zeros_like(frzl.fzsc)) * rz_scale[:, None, None]
                     frcc, frss, fzsc, fzcs = _apply_radial_tridi_batched(

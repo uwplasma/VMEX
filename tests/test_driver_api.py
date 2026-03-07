@@ -153,6 +153,33 @@ def test_run_fixed_boundary_accelerated_mode_uses_scan():
     assert "converged" in diag
 
 
+def test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid():
+    root = Path(__file__).resolve().parents[1]
+    input_path = root / "examples/data/input.LandremanSenguptaPlunk_section5p3_low_res"
+
+    run_acc = run_fixed_boundary(
+        input_path,
+        max_iter=1,
+        verbose=False,
+        solver_mode="accelerated",
+    )
+    run_parity = run_fixed_boundary(
+        input_path,
+        max_iter=1,
+        verbose=False,
+        solver_mode="parity",
+    )
+
+    diag_acc = run_acc.result.diagnostics
+    diag_parity = run_parity.result.diagnostics
+
+    assert diag_acc["multigrid_user_provided"] is False
+    assert diag_acc["accelerated_single_grid_default"] is True
+    assert np.asarray(diag_acc["multigrid_ns_stages"]).tolist() == [int(run_acc.cfg.ns)]
+    assert diag_parity["accelerated_single_grid_default"] is False
+    assert np.asarray(diag_parity["multigrid_ns_stages"]).tolist() == [11, 25]
+
+
 def test_vmec2000_iter_histories_materialize_numeric_arrays():
     root = Path(__file__).resolve().parents[1]
     input_path = root / "examples/data/input.circular_tokamak"

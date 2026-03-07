@@ -93,6 +93,10 @@ Current behavior of this first slice:
 
 - fixed-boundary stages force the masked VMEC-control scan path and skip the
   parity-oriented scan-selection probes,
+- when the caller does not explicitly request multigrid, accelerated
+  fixed-boundary runs now default to a single final-grid stage. This avoids
+  per-stage interpolation and recompilation overhead that was dominating the
+  heavy bundled fixed-boundary cases,
 - accelerated fixed-boundary stages may stop on a scalar total-residual target
   derived directly from the input ``ftol`` budget:
   ``fsq_total_target = ftol * 3`` for the three VMEC residual channels
@@ -146,6 +150,21 @@ Early March 2026 smoke results on the local CPU host:
   current ftol-derived total target,
 - free-boundary accelerated mode is currently a control-path alias for the
   robust baseline, not a new fast free-boundary controller.
+
+Serial fixed-boundary follow-up measurements from
+``outputs/accelerated_fixed_boundary_singlegrid_serial_20260307/summary.json``
+show why the single-grid default is now the accelerated fixed-boundary policy:
+
+- ``input.LandremanSenguptaPlunk_section5p3_low_res``:
+  ``0.241s`` single-grid vs ``0.284s`` explicit multigrid, with both runs
+  converged and final ``fsq_total`` at ``~1e-13`` to ``1e-14``,
+- ``input.LandremanPaul2021_QA_lowres``:
+  ``6.15s`` single-grid vs ``16.50s`` explicit multigrid, with both runs
+  reaching very small final residuals (``~4.0e-12`` and ``~5.6e-13``),
+- ``input.n3are_R7.75B5.7_lowres``:
+  ``1.37s`` single-grid with final ``fsq_total ~1.1e-4`` on the same serial
+  workflow, keeping the accelerated route on the final grid instead of paying
+  the old staged control overhead by default.
 
 Additional controller finding from March 2026:
 

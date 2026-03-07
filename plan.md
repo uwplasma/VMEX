@@ -907,3 +907,20 @@ Legend:
     `input.up_down_asymmetric_tokamak` remained about `3.15x` faster than the
     current default path in
     `outputs/accelerated_mode_threshold_cleanup_smoke/summary.json`.
+- Switched accelerated fixed-boundary default staging to single-grid when the
+  caller does not explicitly request multigrid:
+  - reverted the abandoned raw-scan adaptive-`dt` experiment,
+  - `run_fixed_boundary(..., solver_mode="accelerated")` now defaults to the
+    final grid for fixed-boundary cases, while parity mode and explicit
+    `multigrid=True` keep the staged VMEC-style path,
+  - added regression coverage so accelerated fixed-boundary defaults expose
+    `accelerated_single_grid_default=True` and parity runs still report the
+    staged `NS_ARRAY`,
+  - serial CPU measurements are recorded in
+    `outputs/accelerated_fixed_boundary_singlegrid_serial_20260307/summary.json`:
+    - `input.LandremanSenguptaPlunk_section5p3_low_res`:
+      `0.241s` single-grid vs `0.284s` explicit multigrid,
+    - `input.LandremanPaul2021_QA_lowres`:
+      `6.15s` single-grid vs `16.50s` explicit multigrid,
+    - `input.n3are_R7.75B5.7_lowres`:
+      `1.37s` single-grid with final `fsq_total ~1.1e-4`.

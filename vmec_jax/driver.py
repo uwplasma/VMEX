@@ -676,8 +676,16 @@ def run_fixed_boundary(
         return None
 
     multigrid_use_input_niter = bool(multigrid_use_input_niter)
+    multigrid_user_provided = multigrid is not None
+    accelerated_single_grid_default = False
     if multigrid is None:
         multigrid = solver_lower == "vmec2000_iter"
+        if accelerated_mode and (not bool(cfg.lfreeb)):
+            # In accelerated fixed-boundary mode, direct final-grid solves avoid
+            # per-stage interpolation/recompilation overhead and have been more
+            # efficient across the heavy bundled cases tested so far.
+            multigrid = False
+            accelerated_single_grid_default = True
     if max_iter is _MAX_ITER_SENTINEL:
         if solver_lower in ("vmec2000_iter", "vmec2000_scan", "vmec2000_iter_fast"):
             niter_list = _as_list(indata.get("NITER_ARRAY", None))
@@ -1576,6 +1584,8 @@ def run_fixed_boundary(
         diag["solver_mode"] = str(solver_mode_eff)
         diag["accelerated_mode"] = bool(accelerated_mode)
         diag["accelerated_scan"] = bool(accelerated_mode) and bool(diag.get("use_scan", False))
+        diag["multigrid_user_provided"] = bool(multigrid_user_provided)
+        diag["accelerated_single_grid_default"] = bool(accelerated_single_grid_default)
         diag["multigrid_ns_stages"] = np.asarray(ns_stages, dtype=int)
         diag["multigrid_niter_stages"] = np.asarray(niter_stages, dtype=int)
         diag["multigrid_ftol_stages"] = np.asarray(ftol_stages, dtype=float)
