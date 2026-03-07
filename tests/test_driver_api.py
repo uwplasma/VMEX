@@ -145,6 +145,8 @@ def test_run_fixed_boundary_accelerated_mode_uses_scan():
     assert diag["accelerated_scan"] is True
     assert diag["light_history"] is True
     assert diag["resume_state_mode"] == "minimal"
+    assert diag["fsq_total_target"] is not None
+    assert float(diag["fsq_total_target"]) >= 1.0e-10
     assert "vRcc" not in diag["resume_state"]
     assert "cache_precond_diag" not in diag["resume_state"]
     assert np.isfinite(np.asarray(run.result.w_history)).all()

@@ -3608,6 +3608,7 @@ def solve_fixed_boundary_residual_iter(
     scan_minimal_default: bool | None = None,
     light_history: bool | None = None,
     resume_state_mode: str | None = None,
+    fsq_total_target: float | None = None,
 ) -> SolveVmecResidualResult:
     """VMEC-style fixed-point update loop using preconditioned force residuals."""
     if not has_jax():
@@ -3645,6 +3646,7 @@ def solve_fixed_boundary_residual_iter(
         raise ValueError("step_size must be positive")
 
     signgs = int(signgs)
+    fsq_total_target = None if fsq_total_target is None else max(0.0, float(fsq_total_target))
     lambda_update_scale = float(lambda_update_scale)
     enforce_vmec_lambda_axis = bool(enforce_vmec_lambda_axis)
     vmec2000_control = bool(vmec2000_control)
@@ -3746,6 +3748,12 @@ def solve_fixed_boundary_residual_iter(
     stage_transition_scale = float(stage_transition_scale)
     if stage_transition_factor <= 0.0 or stage_transition_scale <= 0.0:
         stage_prev_fsq = None
+
+    def _converged_residuals_host(*, fsqr: float, fsqz: float, fsql: float) -> bool:
+        strict = (fsqr <= ftol) and (fsqz <= ftol) and (fsql <= ftol)
+        if fsq_total_target is None:
+            return strict
+        return strict or ((fsqr + fsqz + fsql) <= fsq_total_target)
 
     if use_scan and vmec2000_control and auto_flip_force:
         auto_flip_force = False
@@ -5726,6 +5734,16 @@ def solve_fixed_boundary_residual_iter(
 
         time_step0 = jnp.asarray(float(step_size), dtype=dtype)
         flip_sign0 = jnp.asarray(float(initial_flip_sign), dtype=dtype)
+        fsq_total_target_j = None
+        if fsq_total_target is not None:
+            fsq_total_target_j = jnp.asarray(float(fsq_total_target), dtype=dtype)
+
+        def _converged_residuals_scan(fsqr, fsqz, fsql):
+            strict = (fsqr <= ftol_j) & (fsqz <= ftol_j) & (fsql <= ftol_j)
+            if fsq_total_target_j is None:
+                return strict
+            return strict | ((fsqr + fsqz + fsql) <= fsq_total_target_j)
+
         k_ndamp = 10
         inv_tau0 = jnp.full((k_ndamp,), jnp.asarray(0.15, dtype=dtype) / time_step0)
         fsq_prev0 = jnp.asarray(1.0, dtype=dtype)
@@ -6263,7 +6281,7 @@ def solve_fixed_boundary_residual_iter(
                             )
                             return 0
                         _ = jax.lax.cond(iter2 == scan_debug_iter, _dbg_state, lambda _: 0, operand=None)
-                conv_now = (fsqr <= ftol_j) & (fsqz <= ftol_j) & (fsql <= ftol_j)
+                conv_now = _converged_residuals_scan(fsqr, fsqz, fsql)
                 # Scalars for VMEC-style screen output (sampled on NSTEP cadence + convergence).
                 sample_vmec = (
                     (iter2 <= 1) | (iter2 >= int(max_iter)) | ((iter2 % nstep_screen) == 0) | conv_now
@@ -7784,7 +7802,11 @@ def solve_fixed_boundary_residual_iter(
                     _badjac_ptau_h,
                     _badjac_state_h,
                 ) = hist_np
-            conv_mask = (fsqr_h <= float(ftol)) & (fsqz_h <= float(ftol)) & (fsql_h <= float(ftol))
+            conv_mask = (
+                (fsqr_h <= float(ftol)) & (fsqz_h <= float(ftol)) & (fsql_h <= float(ftol))
+            )
+            if fsq_total_target is not None:
+                conv_mask = conv_mask | ((fsqr_h + fsqz_h + fsql_h) <= float(fsq_total_target))
             conv_idx = int(np.argmax(conv_mask)) if bool(np.any(conv_mask)) else None
             n_iter_local = int(fsqr_h.shape[0])
             for i in range(n_iter_local):
@@ -8027,7 +8049,11 @@ def solve_fixed_boundary_residual_iter(
             accepted_mask = np.ones_like(fsqr_full, dtype=bool)
         else:
             accepted_mask = np.asarray(accepted).astype(bool)
-        conv_mask = (fsqr_full <= float(ftol)) & (fsqz_full <= float(ftol)) & (fsql_full <= float(ftol))
+        conv_mask = (
+            (fsqr_full <= float(ftol)) & (fsqz_full <= float(ftol)) & (fsql_full <= float(ftol))
+        )
+        if fsq_total_target is not None:
+            conv_mask = conv_mask | ((fsqr_full + fsqz_full + fsql_full) <= float(fsq_total_target))
         if bool(np.any(conv_mask)):
             conv_idx = int(np.argmax(conv_mask)) + 1
             conv_idx_print = conv_idx
@@ -8242,6 +8268,7 @@ def solve_fixed_boundary_residual_iter(
                 "light_history": bool(scan_light),
                 "scan_minimal": bool(scan_minimal),
                 "resume_state_mode": str(resume_state_mode),
+                "fsq_total_target": fsq_total_target,
                 "badjac_use_state": bool(badjac_use_state),
                 "badjac_mode": badjac_mode,
                 "fsqr_full": fsqr_full_diag,
@@ -8420,6 +8447,15 @@ def solve_fixed_boundary_residual_iter(
             time_step_j = jnp.asarray(float(step_size), dtype=dtype)
             flip_sign_j = jnp.asarray(float(initial_flip_sign), dtype=dtype)
             ftol_j = jnp.asarray(float(ftol), dtype=dtype)
+            fsq_total_target_j = None
+            if fsq_total_target is not None:
+                fsq_total_target_j = jnp.asarray(float(fsq_total_target), dtype=dtype)
+
+            def _converged_residuals_scan_fast(fsqr, fsqz, fsql):
+                strict = (fsqr <= ftol_j) & (fsqz <= ftol_j) & (fsql <= ftol_j)
+                if fsq_total_target_j is None:
+                    return strict
+                return strict | ((fsqr + fsqz + fsql) <= fsq_total_target_j)
 
             include_edge_scan = False
             _compute_forces_scan = _compute_forces if jit_forces else _compute_forces_impl
@@ -8557,7 +8593,7 @@ def solve_fixed_boundary_residual_iter(
                         idx00=idx00,
                     )
                     state_new = _apply_vmec_lambda_axis_rules(state_new)
-                    conv_now = (fsqr <= ftol_j) & (fsqz <= ftol_j) & (fsql <= ftol_j)
+                    conv_now = _converged_residuals_scan_fast(fsqr, fsqz, fsql)
                     conv_iter_new = jnp.where(
                         (converged_iter < 0) & conv_now,
                         it + jnp.asarray(1, dtype=jnp.int32),
@@ -8612,6 +8648,7 @@ def solve_fixed_boundary_residual_iter(
                 diagnostics={
                     "use_scan": True,
                     "accelerated_scan": True,
+                    "fsq_total_target": fsq_total_target,
                     "converged": converged_host,
                     "converged_iter": converged_iter_host,
                 },
@@ -10026,7 +10063,7 @@ def solve_fixed_boundary_residual_iter(
             # Defer convergence exit until after preconditioned diagnostics are
             # computed for this iteration, so fsqr1/fsqz1/fsql1 histories and
             # VMEC-style tables remain length-aligned.
-            converged_physical = (fsqr_f <= ftol) and (fsqz_f <= ftol) and (fsql_f <= ftol)
+            converged_physical = _converged_residuals_host(fsqr=fsqr_f, fsqz=fsqz_f, fsql=fsql_f)
 
             # Precondition forces.
             t_precond_start = time.perf_counter() if timing_enabled else None
@@ -10556,7 +10593,8 @@ def solve_fixed_boundary_residual_iter(
                 if verbose and not (bool(vmec2000_control) and bool(verbose_vmec2000_table)):
                     print(
                         f"[solve_fixed_boundary_residual_iter] converged: "
-                        f"fsqr={fsqr_f:.3e} fsqz={fsqz_f:.3e} fsql={fsql_f:.3e} <= ftol={ftol:.3e}",
+                        f"fsqr={fsqr_f:.3e} fsqz={fsqz_f:.3e} fsql={fsql_f:.3e} "
+                        f"target={float(fsq_total_target) if fsq_total_target is not None else float(ftol):.3e}",
                         flush=True,
                     )
                 if bool(vmec2000_control) and bool(verbose_vmec2000_table):
@@ -11950,6 +11988,7 @@ def solve_fixed_boundary_residual_iter(
         "badjac_mode": badjac_mode,
         "light_history": bool(light_history),
         "resume_state_mode": str(resume_state_mode),
+        "fsq_total_target": fsq_total_target,
         "ijacob": int(ijacob),
         "bad_resets": int(bad_resets),
         "iter1_final": int(iter1),

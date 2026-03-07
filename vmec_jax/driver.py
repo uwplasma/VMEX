@@ -1280,6 +1280,7 @@ def run_fixed_boundary(
             stage_prev_fsq = prev_stage_fsq if bool(stage_transition_heuristic) else None
             stage_light_history = True if accelerated_mode else None
             stage_resume_state_mode = "minimal" if accelerated_mode else None
+            stage_fsq_total_target = max(float(ftol_i), 1.0e-10) if accelerated_mode else None
             solve_kwargs = dict(
                 indata=indata,
                 signgs=signgs,
@@ -1314,6 +1315,7 @@ def run_fixed_boundary(
                 scan_minimal_default=scan_minimal_default,
                 light_history=stage_light_history,
                 resume_state_mode=stage_resume_state_mode,
+                fsq_total_target=stage_fsq_total_target,
             )
             dynamic_scan_default = "1" if bool(cfg.lasym) else "0"
             dynamic_scan_env = os.getenv("VMEC_JAX_DYNAMIC_SCAN", dynamic_scan_default).strip().lower()
@@ -1671,6 +1673,7 @@ def run_fixed_boundary(
                     scan_minimal_default=scan_minimal_default,
                     light_history=True if accelerated_mode else None,
                     resume_state_mode="minimal" if accelerated_mode else None,
+                    fsq_total_target=max(ftol_corr, 1.0e-10) if accelerated_mode else None,
                 )
                 res_corr = solve_fixed_boundary_residual_iter(
                     res.state,
