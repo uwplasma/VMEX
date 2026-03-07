@@ -1522,6 +1522,71 @@ def _grad_rms_state(grad: VMECState) -> float:
     return float(np.sqrt(np.mean(g)))
 
 
+def _dtype_eps(dtype: Any) -> float:
+    return float(np.finfo(np.dtype(dtype)).eps)
+
+
+def _dtype_tiny(dtype: Any) -> float:
+    return float(np.finfo(np.dtype(dtype)).tiny)
+
+
+def _resolve_grad_tol(
+    grad_tol: float | None,
+    *,
+    grad_rms0: float,
+    dtype: Any,
+) -> float:
+    if grad_tol is not None:
+        grad_tol = float(grad_tol)
+        if grad_tol < 0.0:
+            raise ValueError("grad_tol must be >= 0")
+        return grad_tol
+    scale = max(abs(float(grad_rms0)), _dtype_tiny(dtype))
+    return float(np.sqrt(_dtype_eps(dtype)) * scale)
+
+
+def _resolve_lbfgs_curvature_tol(s_vec: Any, y_vec: Any) -> float:
+    s_np = np.asarray(s_vec)
+    y_np = np.asarray(y_vec)
+    dtype = np.result_type(s_np.dtype, y_np.dtype)
+    scale = float(np.linalg.norm(np.ravel(s_np)) * np.linalg.norm(np.ravel(y_np)))
+    return float(_dtype_eps(dtype) * scale)
+
+
+def _resolve_cg_tol(
+    cg_tol: float | None,
+    *,
+    current_obj: float,
+    initial_obj: float,
+    target_obj: float,
+    dtype: Any,
+) -> float:
+    if cg_tol is not None:
+        cg_tol = float(cg_tol)
+        if cg_tol <= 0.0:
+            raise ValueError("cg_tol must be > 0")
+        return cg_tol
+    tiny = _dtype_tiny(dtype)
+    denom = max(abs(float(initial_obj)), abs(float(target_obj)), tiny)
+    ratio = max(abs(float(current_obj)), tiny) / denom
+    eta = ratio / (1.0 + ratio)
+    return float(max(eta, np.sqrt(_dtype_eps(dtype))))
+
+
+def _resolve_lm_damping(
+    damping: float | None,
+    *,
+    curvature_scale: float,
+    dtype: Any,
+) -> float:
+    if damping is not None:
+        damping = float(damping)
+        if damping < 0.0:
+            raise ValueError("damping must be nonnegative")
+        return damping
+    return float(np.sqrt(_dtype_eps(dtype)) * max(abs(float(curvature_scale)), _dtype_tiny(dtype)))
+
+
 def _update_state_gd(state: VMECState, grad: VMECState, *, step: float, scale_rz: float, scale_l: float) -> VMECState:
     step = jnp.asarray(step, dtype=jnp.asarray(state.Rcos).dtype)
     scale_rz = jnp.asarray(scale_rz, dtype=step.dtype)
@@ -1742,7 +1807,7 @@ def solve_lambda_gd(
     sqrtg: Any | None = None,
     max_iter: int = 50,
     step_size: float = 0.05,
-    grad_tol: float = 1e-10,
+    grad_tol: float | None = None,
     max_backtracks: int = 16,
     bt_factor: float = 0.5,
     jit_grad: bool = False,
@@ -1855,6 +1920,7 @@ def solve_lambda_gd(
     wb_history = [float(np.asarray(wb0))]
     grad_rms_history = []
     step_history = []
+    grad_tol_eff: float | None = None
 
     for it in range(max_iter):
         # Optional mode-diagonal preconditioning for the lambda subproblem.
@@ -1872,11 +1938,13 @@ def solve_lambda_gd(
 
         grad_rms = float(np.sqrt(np.mean(np.asarray(gcos_p) ** 2 + np.asarray(gsin_p) ** 2)))
         grad_rms_history.append(grad_rms)
+        if grad_tol_eff is None:
+            grad_tol_eff = _resolve_grad_tol(grad_tol, grad_rms0=grad_rms, dtype=np.asarray(Lcos).dtype)
 
         if verbose:
             print(f"[solve_lambda_gd] iter={it:03d} wb={wb_history[-1]:.8e} grad_rms={grad_rms:.3e}")
 
-        if grad_rms < grad_tol:
+        if grad_rms < float(grad_tol_eff):
             break
 
         step = float(step_size)
@@ -1913,7 +1981,10 @@ def solve_lambda_gd(
         Lcos=Lcos,
         Lsin=Lsin,
     )
-    diag: Dict[str, Any] = {"idx00": idx00}
+    diag: Dict[str, Any] = {
+        "idx00": idx00,
+        "grad_tol": None if grad_tol_eff is None else float(grad_tol_eff),
+    }
     return SolveLambdaResult(
         state=st,
         n_iter=len(wb_history) - 1,
@@ -1943,7 +2014,7 @@ def solve_fixed_boundary_gd(
     step_size: float = 5e-3,
     scale_rz: float = 1.0,
     scale_l: float = 1.0,
-    grad_tol: float = 1e-10,
+    grad_tol: float | None = None,
     max_backtracks: int = 16,
     bt_factor: float = 0.5,
     jit_grad: bool = False,
@@ -2059,6 +2130,8 @@ def solve_fixed_boundary_gd(
         idx00=idx00,
     )
 
+    grad_tol_eff: float | None = None
+
     if differentiable:
         wb_history = []
         wp_history = []
@@ -2133,11 +2206,13 @@ def solve_fixed_boundary_gd(
             )
             grad_rms = _grad_rms_state(grad0m)
             grad_rms_history.append(grad_rms)
+            if grad_tol_eff is None:
+                grad_tol_eff = _resolve_grad_tol(grad_tol, grad_rms0=grad_rms, dtype=np.asarray(state.Rcos).dtype)
 
             if verbose:
                 print(f"[solve_fixed_boundary_gd] iter={it:03d} w={w_history[-1]:.8e} grad_rms={grad_rms:.3e}")
 
-            if grad_rms < grad_tol:
+            if grad_rms < float(grad_tol_eff):
                 break
 
             step = float(step_size)
@@ -2197,6 +2272,7 @@ def solve_fixed_boundary_gd(
         "preconditioner": str(preconditioner),
         "precond_exponent": float(precond_exponent),
         "precond_radial_alpha": float(precond_radial_alpha),
+        "grad_tol": None if grad_tol_eff is None else float(grad_tol_eff),
     }
     if differentiable:
         return SolveFixedBoundaryResult(
@@ -2238,7 +2314,7 @@ def solve_fixed_boundary_lbfgs(
     history_size: int = 10,
     max_iter: int = 40,
     step_size: float = 1.0,
-    grad_tol: float = 1e-10,
+    grad_tol: float | None = None,
     max_backtracks: int = 12,
     bt_factor: float = 0.5,
     jit_grad: bool = False,
@@ -2412,15 +2488,18 @@ def solve_fixed_boundary_lbfgs(
     y_hist: list[Any] = []
 
     step0 = float(step_size)
+    grad_tol_eff: float | None = None
 
     for it in range(max_iter):
         grad_rms = _grad_rms_state(grad)
         grad_rms_history.append(grad_rms)
+        if grad_tol_eff is None:
+            grad_tol_eff = _resolve_grad_tol(grad_tol, grad_rms0=grad_rms, dtype=np.asarray(state.Rcos).dtype)
 
         if verbose:
             print(f"[solve_fixed_boundary_lbfgs] iter={it:03d} w={w_history[-1]:.8e} grad_rms={grad_rms:.3e}")
 
-        if grad_rms < grad_tol:
+        if grad_rms < float(grad_tol_eff):
             break
 
         p_flat = _lbfgs_direction(g_flat, s_hist, y_hist)
@@ -2487,7 +2566,7 @@ def solve_fixed_boundary_lbfgs(
         s_k = x - x_old
         y_k = g_flat_new - g_old
         ys = float(np.asarray(jnp.dot(y_k, s_k)))
-        if np.isfinite(ys) and ys > 1e-14:
+        if np.isfinite(ys) and ys > _resolve_lbfgs_curvature_tol(s_k, y_k):
             s_hist.append(s_k)
             y_hist.append(y_k)
             if len(s_hist) > history_size:
@@ -2506,6 +2585,7 @@ def solve_fixed_boundary_lbfgs(
         "preconditioner": str(preconditioner),
         "precond_exponent": float(precond_exponent),
         "precond_radial_alpha": float(precond_radial_alpha),
+        "grad_tol": None if grad_tol_eff is None else float(grad_tol_eff),
     }
     return SolveFixedBoundaryResult(
         state=state,
@@ -2630,7 +2710,7 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
     step_size: float = 1.0,
     scale_rz: float = 1.0,
     scale_l: float = 1.0,
-    grad_tol: float = 1e-10,
+    grad_tol: float | None = None,
     max_backtracks: int = 12,
     bt_factor: float = 0.5,
     jit_grad: bool = False,
@@ -2750,6 +2830,7 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
             dtype=jnp.asarray(state0.Rcos).dtype,
         )
     objective_scale_f = float(objective_scale) if objective_scale is not None else None
+    ftol_target = max(0.0, float(indata.get_float("FTOL", 0.0)))
 
     constraint_tcon0: float | None = None
     if bool(include_constraint_force):
@@ -2926,6 +3007,8 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
     y_hist: list[Any] = []
 
     step0 = float(step_size)
+    grad_tol_eff: float | None = None
+    zero_m1_fsqz_target = float(ftol_target)
 
     def _lbfgs_direction(g_flat, s_hist, y_hist):
         if not s_hist:
@@ -2957,11 +3040,13 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
     for it in range(max_iter):
         grad_rms = _grad_rms_state(grad)
         grad_rms_history.append(grad_rms)
+        if grad_tol_eff is None:
+            grad_tol_eff = _resolve_grad_tol(grad_tol, grad_rms0=grad_rms, dtype=np.asarray(state.Rcos).dtype)
 
         if verbose:
             print(f"[solve_fixed_boundary_lbfgs_vmec_residual] iter={it:03d} w={w_history[-1]:.8e} grad_rms={grad_rms:.3e}")
 
-        if grad_rms < grad_tol:
+        if grad_rms < float(grad_tol_eff):
             break
 
         p_flat = _lbfgs_direction(g_flat, s_hist, y_hist)
@@ -2981,7 +3066,10 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
         x_old = x
         g_old = g_flat
 
-        zero_m1 = jnp.asarray(1.0 if (it < 2) or (fsqz2_history[-1] < 1e-6) else 0.0, dtype=jnp.asarray(state.Rcos).dtype)
+        zero_m1 = jnp.asarray(
+            1.0 if ((len(step_history) == 0) or (fsqz2_history[-1] < zero_m1_fsqz_target)) else 0.0,
+            dtype=jnp.asarray(state.Rcos).dtype,
+        )
         for bt in range(max_backtracks + 1):
             if bt > 0:
                 step *= bt_factor
@@ -3056,7 +3144,7 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
         s_k = x - x_old
         y_k = g_flat_new - g_old
         ys = float(np.asarray(jnp.dot(y_k, s_k)))
-        if np.isfinite(ys) and ys > 1e-14:
+        if np.isfinite(ys) and ys > _resolve_lbfgs_curvature_tol(s_k, y_k):
             s_hist.append(s_k)
             y_hist.append(y_k)
             if len(s_hist) > history_size:
@@ -3081,6 +3169,8 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
         "preconditioner": str(preconditioner),
         "precond_exponent": float(precond_exponent),
         "precond_radial_alpha": float(precond_radial_alpha),
+        "grad_tol": None if grad_tol_eff is None else float(grad_tol_eff),
+        "zero_m1_fsqz_thresh": float(zero_m1_fsqz_target),
     }
     res_final = SolveVmecResidualResult(
         state=state,
@@ -3107,15 +3197,15 @@ def solve_fixed_boundary_gn_vmec_residual(
     include_constraint_force: bool = True,
     apply_m1_constraints: bool = True,
     objective_scale: float | None = None,
-    damping: float = 1e-3,
+    damping: float | None = None,
     damping_increase: float = 10.0,
     damping_decrease: float = 0.5,
-    max_damping: float = 1e6,
+    max_damping: float | None = None,
     max_retries: int = 6,
-    zero_m1_iters: int = 50,
-    zero_m1_fsqz_thresh: float = 1e-6,
+    zero_m1_iters: int | None = None,
+    zero_m1_fsqz_thresh: float | None = None,
     max_iter: int = 20,
-    cg_tol: float = 1e-6,
+    cg_tol: float | None = None,
     cg_maxiter: int = 80,
     step_size: float = 1.0,
     max_backtracks: int = 12,
@@ -3138,25 +3228,22 @@ def solve_fixed_boundary_gn_vmec_residual(
     """
     if not has_jax():
         raise ImportError("solve_fixed_boundary_gn_vmec_residual requires JAX (jax + jaxlib)")
-    if damping < 0.0:
-        raise ValueError("damping must be nonnegative")
     damping_increase = float(damping_increase)
     damping_decrease = float(damping_decrease)
-    max_damping = float(max_damping)
     max_retries = int(max_retries)
     if damping_increase <= 1.0:
         raise ValueError("damping_increase must be > 1")
     if not (0.0 < damping_decrease <= 1.0):
         raise ValueError("damping_decrease must be in (0, 1]")
-    if max_damping <= 0.0:
+    max_damping_eff = float("inf") if max_damping is None else float(max_damping)
+    if max_damping_eff <= 0.0:
         raise ValueError("max_damping must be positive")
     if max_retries < 0:
         raise ValueError("max_retries must be >= 0")
-    zero_m1_iters = int(zero_m1_iters)
-    zero_m1_fsqz_thresh = float(zero_m1_fsqz_thresh)
-    if zero_m1_iters < 0:
+    zero_m1_iters_eff = 0 if zero_m1_iters is None else int(zero_m1_iters)
+    if zero_m1_iters_eff < 0:
         raise ValueError("zero_m1_iters must be >= 0")
-    if zero_m1_fsqz_thresh < 0.0:
+    if zero_m1_fsqz_thresh is not None and float(zero_m1_fsqz_thresh) < 0.0:
         raise ValueError("zero_m1_fsqz_thresh must be >= 0")
     w_rz = float(w_rz)
     w_l = float(w_l)
@@ -3181,6 +3268,10 @@ def solve_fixed_boundary_gn_vmec_residual(
 
     signgs = int(signgs)
     idx00 = _mode00_index(static.modes)
+    ftol_target = max(0.0, float(indata.get_float("FTOL", 0.0)))
+    zero_m1_fsqz_thresh_eff = (
+        float(ftol_target) if zero_m1_fsqz_thresh is None else float(zero_m1_fsqz_thresh)
+    )
 
     from .energy import flux_profiles_from_indata
     from .static import build_static
@@ -3420,10 +3511,11 @@ def solve_fixed_boundary_gn_vmec_residual(
     grad_rms_history = []
     step_history = []
 
-    damping_it = float(damping)
     for it in range(int(max_iter)):
+        zero_m1_active = (len(step_history) < int(zero_m1_iters_eff)) or (len(step_history) == 0)
+        zero_m1_active = zero_m1_active or (fsqz2_history[-1] < float(zero_m1_fsqz_thresh_eff))
         zero_m1 = jnp.asarray(
-            1.0 if (it < zero_m1_iters) or (fsqz2_history[-1] < zero_m1_fsqz_thresh) else 0.0,
+            1.0 if zero_m1_active else 0.0,
             dtype=jnp.asarray(state.Rcos).dtype,
         )
         r, pullback = jax.vjp(_residual_vec_jit, state, zero_m1)
@@ -3433,6 +3525,26 @@ def solve_fixed_boundary_gn_vmec_residual(
         grad_rms_history.append(_grad_rms_state(g_state))
 
         b_flat = -pack_state(g_state)
+        dtype_state = np.asarray(state.Rcos).dtype
+        current_w = float(w_history[-1])
+        cg_tol_it = _resolve_cg_tol(
+            cg_tol,
+            current_obj=current_w,
+            initial_obj=float(w_history[0]),
+            target_obj=float(ftol_target),
+            dtype=dtype_state,
+        )
+        g_norm_sq = float(np.asarray(jnp.dot(b_flat, b_flat)))
+        if np.isfinite(g_norm_sq) and g_norm_sq > _dtype_tiny(dtype_state):
+            zero_tangent = jnp.zeros_like(zero_m1)
+            jg = jax.jvp(_residual_vec_jit, (state, zero_m1), (g_state, zero_tangent))[1]
+            jt_jg = pullback(jg)[0]
+            jt_jg = _project_step(jt_jg)
+            curvature_num = float(np.asarray(jnp.dot(pack_state(g_state), pack_state(jt_jg))))
+            curvature_scale = max(0.0, curvature_num / max(g_norm_sq, _dtype_tiny(dtype_state)))
+        else:
+            curvature_scale = 0.0
+        damping_it = _resolve_lm_damping(damping, curvature_scale=curvature_scale, dtype=dtype_state)
 
         accepted = False
         step = float(step_size)
@@ -3460,7 +3572,7 @@ def solve_fixed_boundary_gn_vmec_residual(
                     )
                 return pack_state(jt_jv)
 
-            dx_flat, _info = cg(_matvec, b_flat, tol=float(cg_tol), maxiter=int(cg_maxiter))
+            dx_flat, _info = cg(_matvec, b_flat, tol=float(cg_tol_it), maxiter=int(cg_maxiter))
             dx_state = unpack_state(dx_flat, state.layout)
             dx_state = _project_step(dx_state)
 
@@ -3495,10 +3607,10 @@ def solve_fixed_boundary_gn_vmec_residual(
                 damping_it = max(damping_it * damping_decrease, 0.0)
                 break
 
-            if retry >= max_retries or damping_it >= max_damping:
+            if retry >= max_retries or damping_it >= max_damping_eff:
                 break
             # Increase damping and try again from the same state.
-            damping_it = min(max_damping, damping_it * damping_increase)
+            damping_it = min(max_damping_eff, damping_it * damping_increase)
             retry += 1
 
         if not accepted:
@@ -3536,7 +3648,7 @@ def solve_fixed_boundary_gn_vmec_residual(
         if verbose:
             print(
                 f"[solve_fixed_boundary_gn_vmec_residual] iter={it:03d} w={w_history[-1]:.8e} "
-                f"step={step:.3e} accepted={accepted} damping={damping_it:.3e} retries={retry}"
+                f"step={step:.3e} accepted={accepted} damping={damping_it:.3e} cg_tol={cg_tol_it:.3e} retries={retry}"
             )
 
         if not accepted:
@@ -3549,9 +3661,13 @@ def solve_fixed_boundary_gn_vmec_residual(
         "w_l": float(w_l),
         "objective_scale": float(scale_f),
         "apply_m1_constraints": bool(apply_m1_constraints),
-        "damping": float(damping),
-        "cg_tol": float(cg_tol),
+        "damping": None if damping is None else float(damping),
+        "damping_mode": "adaptive" if damping is None else "fixed",
+        "cg_tol": None if cg_tol is None else float(cg_tol),
+        "cg_tol_mode": "adaptive" if cg_tol is None else "fixed",
         "cg_maxiter": int(cg_maxiter),
+        "zero_m1_iters": None if zero_m1_iters is None else int(zero_m1_iters),
+        "zero_m1_fsqz_thresh": float(zero_m1_fsqz_thresh_eff),
     }
     return SolveVmecResidualResult(
         state=state,

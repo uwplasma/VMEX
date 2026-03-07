@@ -882,3 +882,28 @@ Legend:
   - `input.cth_like_free_bdy` smoke (`max_iter=20`) is effectively unchanged,
     confirming the new target does not perturb the current free-boundary
     accelerated alias on the existing smoke case.
+- Removed fixed literal convergence thresholds from the experimental solver
+  stack:
+  - `solve_lambda_gd()`, `solve_fixed_boundary_gd()`, and
+    `solve_fixed_boundary_lbfgs()` now derive their default `grad_tol`
+    from the initial gradient scale and machine precision instead of using a
+    hardcoded absolute cutoff,
+  - `solve_fixed_boundary_lbfgs_vmec_residual()` now derives its
+    startup/converged `m=1` residual release threshold from the input
+    `FTOL` and uses a scale-aware L-BFGS curvature acceptance test rather than
+    a fixed secant threshold,
+  - `solve_fixed_boundary_gn_vmec_residual()` now defaults to adaptive
+    damping and adaptive CG tolerances derived from local curvature,
+    residual progress, and `FTOL`, with no default fixed `damping`,
+    `cg_tol`, or `zero_m1_fsqz_thresh`,
+  - implicit differentiation wrappers no longer inject a fixed
+    `grad_tol=1e-10`; when callers omit `grad_tol`, the wrappers use the
+    solver-resolved adaptive tolerance.
+- Revalidated after the threshold cleanup:
+  - `pytest -q` passed (`152 passed, 12 skipped`),
+  - fast Sphinx build passed,
+  - accelerated fixed-boundary smoke stayed at the same order of performance:
+    `input.circular_tokamak` remained approximately neutral and
+    `input.up_down_asymmetric_tokamak` remained about `3.15x` faster than the
+    current default path in
+    `outputs/accelerated_mode_threshold_cleanup_smoke/summary.json`.

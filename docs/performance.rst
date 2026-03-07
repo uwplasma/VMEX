@@ -98,6 +98,17 @@ Current behavior of this first slice:
   ``fsq_total_target = ftol * 3`` for the three VMEC residual channels
   (``fsqr``, ``fsqz``, ``fsql``). Parity mode keeps the original
   per-component convergence rule unchanged,
+- the experimental solver controls no longer rely on fixed absolute
+  convergence thresholds. By default:
+
+  - gradient-based stopping derives ``grad_tol`` from the initial gradient
+    scale and machine precision,
+  - the Gauss-Newton path derives its CG tolerance from the current residual
+    progress against the same ``ftol`` budget,
+  - the Gauss-Newton damping seed is derived from the local normal-equation
+    curvature scale instead of a fixed literal damping floor,
+  - residual-objective ``m=1`` release thresholds now default to ``ftol``
+    instead of hardcoded residual cutoffs,
 - accelerated runs now request compact histories and a minimal resume payload
   by default, so the result object does not carry the full parity-era
   momentum/preconditioner cache unless the caller explicitly asks for it,
