@@ -90,6 +90,7 @@ def _dynamic_scan_probe_settings(niter_i: int) -> tuple[int, bool, str]:
 
 
 _VALID_SOLVER_MODES = frozenset(("default", "parity", "accelerated"))
+_FSQ_COMPONENT_NAMES = ("fsqr", "fsqz", "fsql")
 
 
 def _normalize_solver_mode(*, solver_mode: str | None, performance_mode: bool) -> str:
@@ -107,6 +108,16 @@ def _normalize_solver_mode(*, solver_mode: str | None, performance_mode: bool) -
         valid = ", ".join(sorted(_VALID_SOLVER_MODES))
         raise ValueError(f"Unknown solver_mode {solver_mode!r}. Expected one of: {valid}.")
     return mode
+
+
+def _accelerated_fsq_total_target_from_ftol(ftol: float) -> float:
+    """Collapse per-component FTOL into an equivalent total-residual target.
+
+    The accelerated path still treats the input FTOL as the user truth. The
+    total objective is `fsqr + fsqz + fsql`, so the corresponding scalar target
+    is the same per-channel budget summed across the active residual channels.
+    """
+    return max(0.0, float(ftol)) * float(len(_FSQ_COMPONENT_NAMES))
 
 
 def residual_scalars_from_state(
@@ -1280,7 +1291,9 @@ def run_fixed_boundary(
             stage_prev_fsq = prev_stage_fsq if bool(stage_transition_heuristic) else None
             stage_light_history = True if accelerated_mode else None
             stage_resume_state_mode = "minimal" if accelerated_mode else None
-            stage_fsq_total_target = max(float(ftol_i), 1.0e-10) if accelerated_mode else None
+            stage_fsq_total_target = (
+                _accelerated_fsq_total_target_from_ftol(float(ftol_i)) if accelerated_mode else None
+            )
             solve_kwargs = dict(
                 indata=indata,
                 signgs=signgs,
@@ -1673,7 +1686,9 @@ def run_fixed_boundary(
                     scan_minimal_default=scan_minimal_default,
                     light_history=True if accelerated_mode else None,
                     resume_state_mode="minimal" if accelerated_mode else None,
-                    fsq_total_target=max(ftol_corr, 1.0e-10) if accelerated_mode else None,
+                    fsq_total_target=(
+                        _accelerated_fsq_total_target_from_ftol(float(ftol_corr)) if accelerated_mode else None
+                    ),
                 )
                 res_corr = solve_fixed_boundary_residual_iter(
                     res.state,

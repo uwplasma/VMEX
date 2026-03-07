@@ -93,10 +93,11 @@ Current behavior of this first slice:
 
 - fixed-boundary stages force the masked VMEC-control scan path and skip the
   parity-oriented scan-selection probes,
-- accelerated fixed-boundary stages now stop on a total-residual target
-  ``fsq_total <= max(ftol, 1e-10)`` instead of always chasing the stricter
-  VMEC per-component floor, while parity mode keeps the original convergence
-  rule,
+- accelerated fixed-boundary stages may stop on a scalar total-residual target
+  derived directly from the input ``ftol`` budget:
+  ``fsq_total_target = ftol * 3`` for the three VMEC residual channels
+  (``fsqr``, ``fsqz``, ``fsql``). Parity mode keeps the original
+  per-component convergence rule unchanged,
 - accelerated runs now request compact histories and a minimal resume payload
   by default, so the result object does not carry the full parity-era
   momentum/preconditioner cache unless the caller explicitly asks for it,
@@ -126,13 +127,12 @@ The harness reports:
 
 Early March 2026 smoke results on the local CPU host:
 
-- ``input.up_down_asymmetric_tokamak``: about ``5.0x`` warm speedup with
-  accelerated convergence at ``fsq_total ~ 1e-10`` and a materially smaller
-  memory footprint than the current default path,
-- ``input.circular_tokamak``: approximately neutral in runtime, but now exits
-  cleanly at ``fsq_total ~ 1e-10`` with ``~8.1e-4`` reference-``wout`` relRMS,
-- ``input.LandremanPaul2021_QA_lowres``: about ``1.6x`` warm speedup while
-  still converging at ``fsq_total ~ 1e-10``,
+- ``input.up_down_asymmetric_tokamak``: about ``4.1x`` warm speedup with a
+  materially smaller memory footprint than the current default path,
+- ``input.circular_tokamak``: approximately neutral in runtime, with good
+  final quality (``~1.2e-5`` reference-``wout`` relRMS),
+- ``input.LandremanPaul2021_QA_lowres``: approximately neutral with the
+  current ftol-derived total target,
 - free-boundary accelerated mode is currently a control-path alias for the
   robust baseline, not a new fast free-boundary controller.
 

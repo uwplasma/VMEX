@@ -865,18 +865,20 @@ Legend:
   - `solve_fixed_boundary_residual_iter()` now accepts an explicit
     `fsq_total_target`,
   - accelerated fixed-boundary stages use
-    `fsq_total_target = max(ftol, 1e-10)` while parity mode continues to use
-    the original VMEC-style per-component `ftol` convergence,
+    a scalar target derived directly from the same input tolerance budget,
+    `fsq_total_target = 3 * ftol` for the three VMEC residual channels,
+    while parity mode continues to use the original VMEC-style per-component
+    `ftol` convergence,
   - this keeps the non-parity contract aligned with the accelerated plan:
-    small final `fsq_total` without requiring the exact parity stopping point.
+    use `ftol` as the main user truth without introducing an absolute
+    solver-side tolerance floor.
 - Updated accelerated CPU smoke results after the total-residual target patch:
-  - `input.LandremanPaul2021_QA_lowres`: about `1.56x` warm speedup with
-    `fsq_total ~ 9.8e-11`,
-  - `input.circular_tokamak`: about runtime-neutral, but now converges at
-    `fsq_total ~ 9.2e-11` with `~8.1e-4` reference-`wout` relRMS,
-  - `input.up_down_asymmetric_tokamak`: about `4.97x` warm speedup with
-    `fsq_total ~ 1.0e-10` and `~0.65x` memory ratio vs the current default
-    path,
+  - `input.LandremanPaul2021_QA_lowres`: approximately neutral with the
+    current ftol-derived target,
+  - `input.circular_tokamak`: approximately runtime-neutral with
+    `~1.2e-5` reference-`wout` relRMS,
+  - `input.up_down_asymmetric_tokamak`: about `4.11x` warm speedup with
+    `~0.64x` memory ratio vs the current default path,
   - `input.cth_like_free_bdy` smoke (`max_iter=20`) is effectively unchanged,
     confirming the new target does not perturb the current free-boundary
-    accelerated alias when the residual floor is not reached.
+    accelerated alias on the existing smoke case.
