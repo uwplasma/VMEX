@@ -42,6 +42,38 @@ def _parse_jit_forces(value: str):
     raise ValueError(f"Invalid --jit-forces value: {value}")
 
 
+def _as_list(value):
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, (int, float)):
+        return [value]
+    try:
+        return list(value)
+    except Exception:
+        return None
+
+
+def _default_cli_solver_policy(indata) -> tuple[str, bool]:
+    """Choose the default CLI solver policy from the input structure.
+
+    Fixed-boundary runs default to the accelerated controller, except for the
+    hard staged class with ``NS_ARRAY`` but no ``NITER_ARRAY``. Those inputs
+    stay on the conservative parity path until the staged accelerated finisher
+    closes that remaining gap robustly.
+    """
+    if bool(indata.get_bool("LFREEB", False)):
+        return "default", True
+    ns_array = _as_list(indata.get("NS_ARRAY", None))
+    niter_array = _as_list(indata.get("NITER_ARRAY", None))
+    if (ns_array is not None) and (len(ns_array) > 1) and (niter_array is None):
+        return "parity", False
+    return "accelerated", True
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="vmec_jax",
@@ -147,15 +179,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.solver_mode is not None and (bool(args.parity) or bool(args.fast)):
         parser.error("--solver-mode cannot be combined with --parity/--fast")
         return 2
-    # Default to the fast scan loop; use --parity to force the reference path.
-    performance_mode = True
-    if bool(args.parity):
-        performance_mode = False
-    if bool(args.fast):
-        performance_mode = True
     solver_mode = args.solver_mode
-    if solver_mode is None:
-        solver_mode = "default" if bool(performance_mode) else "parity"
+    if solver_mode is None and (not bool(args.parity)) and (not bool(args.fast)):
+        solver_mode, performance_mode = _default_cli_solver_policy(indata)
+    else:
+        # Preserve explicit CLI override semantics:
+        # - default to the fast scan loop,
+        # - use --parity to force the reference path.
+        performance_mode = True
+        if bool(args.parity):
+            performance_mode = False
+        if bool(args.fast):
+            performance_mode = True
+        if solver_mode is None:
+            solver_mode = "default" if bool(performance_mode) else "parity"
     if args.vmecpp_restart is None:
         vmecpp_restart = False
     else:

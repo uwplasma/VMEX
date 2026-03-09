@@ -1003,3 +1003,10 @@ Legend:
       converge,
     - a full end-to-end CLI accelerated `n3are` run still exceeded acceptable
       multi-minute runtime and was stopped without convergence.
+- Updated the CLI default policy for shipping:
+  - simple fixed-boundary inputs now default to `solver_mode="accelerated"`
+    on the CLI,
+  - the remaining hard staged class with `NS_ARRAY` but no `NITER_ARRAY`
+    defaults to `solver_mode="parity"` on the CLI until the staged
+    accelerated finisher closes that gap robustly,
+  - this policy is input-structure based, not case-name based.

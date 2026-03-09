@@ -153,6 +153,52 @@ def test_cli_passes_cli_fixed_boundary_mode(monkeypatch, tmp_path):
     assert captured["cli_fixed_boundary_mode"] is True
 
 
+def test_cli_defaults_to_accelerated_on_simple_fixed_boundary(monkeypatch, tmp_path):
+    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
+    captured = {}
+
+    def _fake_run_fixed_boundary(input_path_arg, **kwargs):
+        captured["input_path"] = str(input_path_arg)
+        captured.update(kwargs)
+
+        class _Run:
+            state = type("S", (), {"Rcos": np.asarray([0.0])})()
+            result = None
+
+        return _Run()
+
+    monkeypatch.setattr(cli_module, "run_fixed_boundary", _fake_run_fixed_boundary)
+    monkeypatch.setattr(cli_module, "write_wout_from_fixed_boundary_run", lambda *args, **kwargs: None)
+
+    rc = cli_module.main([str(input_path), "--output", str(tmp_path / "wout_test.nc"), "--quiet"])
+    assert rc == 0
+    assert captured["solver_mode"] == "accelerated"
+    assert captured["performance_mode"] is True
+
+
+def test_cli_defaults_to_parity_on_staged_fixed_boundary_without_niter_array(monkeypatch, tmp_path):
+    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.n3are_R7.75B5.7_lowres"
+    captured = {}
+
+    def _fake_run_fixed_boundary(input_path_arg, **kwargs):
+        captured["input_path"] = str(input_path_arg)
+        captured.update(kwargs)
+
+        class _Run:
+            state = type("S", (), {"Rcos": np.asarray([0.0])})()
+            result = None
+
+        return _Run()
+
+    monkeypatch.setattr(cli_module, "run_fixed_boundary", _fake_run_fixed_boundary)
+    monkeypatch.setattr(cli_module, "write_wout_from_fixed_boundary_run", lambda *args, **kwargs: None)
+
+    rc = cli_module.main([str(input_path), "--output", str(tmp_path / "wout_test.nc"), "--quiet"])
+    assert rc == 0
+    assert captured["solver_mode"] == "parity"
+    assert captured["performance_mode"] is False
+
+
 def test_run_fixed_boundary_accelerated_mode_uses_scan():
     root = Path(__file__).resolve().parents[1]
     input_path = root / "examples/data/input.circular_tokamak"
