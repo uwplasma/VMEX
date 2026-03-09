@@ -38,7 +38,9 @@ What this branch adds
 - compact accelerated histories and resume payloads,
 - a bundled accelerated-mode benchmark harness,
 - an accelerated fixed-boundary controller that now defaults to a single
-  final-grid solve unless the caller explicitly requests multigrid.
+  final-grid solve unless the caller explicitly requests multigrid,
+- a CLI-only fixed-boundary follow-up policy for staged inputs without
+  ``NITER_ARRAY``: budgeted warm-start multigrid plus short parity polish.
 
 Representative fixed-boundary reassessment
 ------------------------------------------
@@ -46,6 +48,7 @@ Representative fixed-boundary reassessment
 The latest serial CPU reassessment artifact is:
 
 - ``outputs/accelerated_fixed_boundary_reassessment_20260309/summary.json``
+- ``outputs/accelerated_cli_fixed_boundary_reassessment_20260309/summary.json``
 
 Key results from that artifact:
 
@@ -57,10 +60,13 @@ Key results from that artifact:
   ``8.10s`` accelerated explicit multigrid,
 - ``input.n3are_R7.75B5.7_lowres``:
   ``1.25s`` accelerated single-grid with final
-  ``fsq_total ~ 1.1e-4`` in the same serial workflow.
+  ``fsq_total ~ 1.1e-4`` in the plain accelerated API path, versus
+  ``16.4s`` / ``fsq_total ~ 6.8e-6`` for the new CLI-only staged follow-up.
 
 These numbers justify the current fixed-boundary accelerated default:
-avoid staged VMEC-style multigrid unless the user explicitly asks for it.
+avoid staged VMEC-style multigrid unless the user explicitly asks for it in the
+API, but allow the CLI to use a more robust staged fallback on difficult inputs
+that lack explicit stage budgets.
 
 Merge checklist
 ---------------

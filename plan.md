@@ -1,6 +1,6 @@
 # VMEC-JAX Master Plan and New-Agent Handoff (Living Document)
 
-Last updated: 2026-03-06
+Last updated: 2026-03-09
 Primary owner: `vmec_jax` contributors
 Canonical repo: `<repo-root>`
 
@@ -947,3 +947,28 @@ Legend:
       `8.18s` default vs `7.31s` accelerated single-grid,
     - `input.n3are_R7.75B5.7_lowres`:
       `1.25s` accelerated single-grid with final `fsq_total ~1.1e-4`.
+- Added a CLI-only accelerated fixed-boundary fallback for staged inputs that
+  have `NS_ARRAY` but no `NITER_ARRAY`:
+  - the executable now derives a reduced total warm-start budget from the
+    coarsest-to-finest `ns` ratio,
+  - that budget is distributed across the stages by the squared number of new
+    radial degrees of freedom introduced at each stage,
+  - after the warm-start stages, the CLI applies a short parity polish on the
+    final grid when the accelerated pass is still not strictly converged,
+  - this policy is intentionally scoped to the non-differentiable CLI path;
+    the Python API keeps the existing accelerated single-grid behavior.
+- Local serial reassessment for the new CLI policy is recorded in
+  `outputs/accelerated_cli_fixed_boundary_reassessment_20260309/summary.json`:
+  - `input.LandremanSenguptaPlunk_section5p3_low_res`:
+    unchanged in practice at ~`0.151s`, `fsq_total ~3.0e-14`,
+  - `input.LandremanPaul2021_QA_lowres`:
+    unchanged in practice at ~`7.12s`, `fsq_total ~3.0e-13`,
+  - `input.n3are_R7.75B5.7_lowres`:
+    `1.26s` plain accelerated API path vs `16.42s` CLI budgeted-multigrid +
+    parity-polish path, with final `fsq_total` reduced from
+    ~`1.12e-4` to ~`6.81e-6`.
+- Revalidated after the CLI accelerated-controller change:
+  - `pytest -q` passed (`157 passed, 12 skipped`),
+  - fast Sphinx build passed,
+  - direct CLI smoke on `input.n3are_R7.75B5.7_lowres` completed and wrote
+    `wout_n3are_cli_accel.nc` successfully.

@@ -226,8 +226,23 @@ is recorded in
 `outputs/accelerated_fixed_boundary_reassessment_20260309/summary.json`.
 These rows are the right table to use when reviewing this branch for merge.
 
+The CLI-only fixed-boundary follow-up policy is also recorded in
+`outputs/accelerated_cli_fixed_boundary_reassessment_20260309/summary.json`.
+That policy keeps the API behavior unchanged, but when the executable sees a
+staged fixed-boundary input with `NS_ARRAY` and no `NITER_ARRAY`, it now uses a
+budgeted warm-start multigrid plus a short parity polish instead of a blind
+final-grid-only run.
+
 | Example | Same-machine default runtime | Accelerated runtime | Speedup | Accelerated explicit multigrid | Accelerated final `fsq_total` | Note |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | LandremanSenguptaPlunk_section5p3_low_res | 45.48s | 0.20s | 229.58x | 0.23s | 3.00e-14 | Accelerated single-grid converges and is much faster than both the current default path and accelerated explicit multigrid. |
 | LandremanPaul2021_QA_lowres | 8.18s | 7.31s | 1.12x | 8.10s | 2.98e-13 | Accelerated single-grid now uses the full staged iteration budget (`2600`) and converges. |
 | n3are_R7.75B5.7_lowres | - | 1.25s | - | - | 1.12e-4 | Accelerated single-grid stays on the final grid and reaches a small residual in the serial reassessment workflow. |
+
+CLI-only fixed-boundary accelerated follow-up:
+
+| Example | Warm API accelerated | Warm CLI accelerated | Delta | Warm CLI final `fsq_total` | Note |
+| --- | ---: | ---: | ---: | ---: | --- |
+| LandremanSenguptaPlunk_section5p3_low_res | 0.150s | 0.151s | 1.01x | 3.00e-14 | CLI policy stays on the same fast single-grid route. |
+| LandremanPaul2021_QA_lowres | 7.33s | 7.12s | 0.97x | 2.98e-13 | CLI policy leaves the converged single-grid route unchanged. |
+| n3are_R7.75B5.7_lowres | 1.26s | 16.42s | 13.05x slower | 6.81e-6 | CLI policy switches to a budgeted multigrid warm start plus parity polish, reducing `fsq_total` by about `16.5x` on this hard staged input. |

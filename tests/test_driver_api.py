@@ -122,9 +122,35 @@ def test_normalize_solver_mode():
         driver_module._normalize_solver_mode(solver_mode="unknown-mode", performance_mode=True)
 
 
+def test_accelerated_cli_budgeted_stage_iters():
+    total = driver_module._accelerated_cli_budgeted_total_iters(total_budget=5000, ns_stages=[16, 49, 100])
+    assert total == 800
+    assert driver_module._accelerated_cli_budgeted_stage_iters(total_budget=total, ns_stages=[16, 49, 100]) == [52, 221, 527]
+
+
 def test_cli_solver_mode_conflicts_with_fast_flags():
     with pytest.raises(SystemExit):
         cli_module.main(["examples/data/input.circular_tokamak", "--solver-mode", "accelerated", "--fast"])
+
+
+def test_cli_passes_cli_fixed_boundary_mode(monkeypatch, tmp_path):
+    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
+    captured = {}
+
+    def _fake_run_fixed_boundary(input_path_arg, **kwargs):
+        captured["input_path"] = str(input_path_arg)
+        captured.update(kwargs)
+        class _Run:
+            state = type("S", (), {"Rcos": np.asarray([0.0])})()
+            result = None
+        return _Run()
+
+    monkeypatch.setattr(cli_module, "run_fixed_boundary", _fake_run_fixed_boundary)
+    monkeypatch.setattr(cli_module, "write_wout_from_fixed_boundary_run", lambda *args, **kwargs: None)
+
+    rc = cli_module.main([str(input_path), "--output", str(tmp_path / "wout_test.nc"), "--quiet"])
+    assert rc == 0
+    assert captured["cli_fixed_boundary_mode"] is True
 
 
 def test_run_fixed_boundary_accelerated_mode_uses_scan():
@@ -153,6 +179,60 @@ def test_run_fixed_boundary_accelerated_mode_uses_scan():
     assert "cache_precond_diag" not in diag["resume_state"]
     assert np.isfinite(np.asarray(run.result.w_history)).all()
     assert "converged" in diag
+
+
+def test_run_fixed_boundary_cli_budgeted_multigrid_path(monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+    input_path = root / "examples/data/input.n3are_R7.75B5.7_lowres"
+    calls = []
+
+    def _fake_solver(state, static, **kwargs):
+        calls.append(
+            {
+                "ns": int(static.cfg.ns),
+                "max_iter": int(kwargs["max_iter"]),
+                "use_scan": bool(kwargs["use_scan"]),
+                "ftol": float(kwargs["ftol"]),
+            }
+        )
+        return SolveVmecResidualResult(
+            state=state,
+            n_iter=max(0, int(kwargs["max_iter"]) - 1),
+            w_history=np.asarray([max(1.0e-12, 1.0 / max(1, int(static.cfg.ns)))], dtype=float),
+            fsqr2_history=np.asarray([1.0], dtype=float),
+            fsqz2_history=np.asarray([0.0], dtype=float),
+            fsql2_history=np.asarray([0.0], dtype=float),
+            grad_rms_history=np.asarray([], dtype=float),
+            step_history=np.asarray([], dtype=float),
+            diagnostics={
+                "use_scan": bool(kwargs["use_scan"]),
+                "resume_state": {},
+                "light_history": True,
+                "resume_state_mode": "minimal",
+                "converged": False,
+            },
+        )
+
+    monkeypatch.setattr(solve_module, "solve_fixed_boundary_residual_iter", _fake_solver)
+
+    run = run_fixed_boundary(
+        input_path,
+        solver="vmec2000_iter",
+        solver_mode="accelerated",
+        verbose=False,
+        cli_fixed_boundary_mode=True,
+    )
+
+    assert [call["ns"] for call in calls] == [16, 49, 100, 100]
+    assert [call["max_iter"] for call in calls] == [52, 221, 527, 527]
+    assert [call["use_scan"] for call in calls] == [True, True, True, False]
+    diag = run.result.diagnostics
+    assert diag["cli_fixed_boundary_mode"] is True
+    assert diag["cli_accelerated_fixed_policy"] == "budgeted_multigrid"
+    assert np.asarray(diag["cli_accelerated_stage_ns"]).tolist() == [16, 49, 100]
+    assert np.asarray(diag["cli_accelerated_stage_niter"]).tolist() == [52, 221, 527]
+    assert diag["cli_accelerated_polish"] is True
+    assert diag["solver_mode"] == "accelerated"
 
 
 def test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid():

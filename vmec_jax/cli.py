@@ -200,6 +200,7 @@ def main(argv: list[str] | None = None) -> int:
             solver_mode=str(solver_mode),
             performance_mode=bool(performance_mode),
             vmecpp_restart=bool(vmecpp_restart),
+            cli_fixed_boundary_mode=True,
         )
         if max_iter_arg is not None:
             run_kwargs["max_iter"] = int(max_iter_arg)

@@ -116,6 +116,12 @@ Current behavior of this first slice:
 - accelerated runs now request compact histories and a minimal resume payload
   by default, so the result object does not carry the full parity-era
   momentum/preconditioner cache unless the caller explicitly asks for it,
+- the CLI executable now has an extra fixed-boundary-only policy layer on top
+  of accelerated mode: for staged inputs that provide ``NS_ARRAY`` but not
+  ``NITER_ARRAY``, the executable derives a reduced warm-start multigrid budget
+  from the coarsest-to-finest ``ns`` ratio, distributes that budget by the
+  newly introduced radial degrees of freedom, and then optionally applies a
+  short parity polish on the final grid,
 - free-boundary cases currently stay on the existing robust path; accelerated
   free-boundary control is not implemented yet,
 - the mode is intended to reduce control overhead while preserving final
@@ -168,6 +174,28 @@ show why the single-grid default is now the accelerated fixed-boundary policy:
   ``1.25s`` accelerated single-grid with final ``fsq_total ~1.1e-4`` on the serial
   workflow, keeping the accelerated route on the final grid instead of paying
   the old staged control overhead by default.
+
+CLI-only fixed-boundary follow-up measurements from
+``outputs/accelerated_cli_fixed_boundary_reassessment_20260309/summary.json``
+show where the executable now diverges from the plain Python accelerated path:
+
+- ``input.LandremanSenguptaPlunk_section5p3_low_res``:
+  unchanged in practice (`~0.151s`, `fsq_total ~3.0e-14`),
+- ``input.LandremanPaul2021_QA_lowres``:
+  unchanged in practice (`~7.12s`, `fsq_total ~3.0e-13`),
+- ``input.n3are_R7.75B5.7_lowres``:
+  the executable now uses a budgeted multigrid warm start plus parity polish,
+  moving from `~1.26s` / `fsq_total ~1.1e-4` on the plain accelerated API path
+  to `~16.4s` / `fsq_total ~6.8e-6` on the CLI path.
+
+That CLI-specific controller is intentionally scoped:
+
+- it does not change the differentiable Python API behavior,
+- it only activates on fixed-boundary accelerated CLI runs,
+- it currently targets robustness on staged inputs with no explicit
+  ``NITER_ARRAY``,
+- it improves difficult cases such as ``n3are`` materially, but it does not
+  yet force strict ``FTOL`` convergence on every staged input.
 
 Additional controller finding from March 2026:
 

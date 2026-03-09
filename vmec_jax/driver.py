@@ -120,6 +120,68 @@ def _accelerated_fsq_total_target_from_ftol(ftol: float) -> float:
     return max(0.0, float(ftol)) * float(len(_FSQ_COMPONENT_NAMES))
 
 
+def _allocate_integer_budget(*, total: int, weights: list[int]) -> list[int]:
+    total = max(0, int(total))
+    if total <= 0:
+        return [0] * len(weights)
+    if not weights:
+        return []
+    weights_eff = [max(0, int(w)) for w in weights]
+    if sum(weights_eff) <= 0:
+        out = [0] * len(weights_eff)
+        out[-1] = total
+        return out
+    raw = [float(total) * float(w) / float(sum(weights_eff)) for w in weights_eff]
+    out = [int(v) for v in raw]
+    remaining = int(total - sum(out))
+    if remaining > 0:
+        order = sorted(range(len(raw)), key=lambda idx: (raw[idx] - float(out[idx])), reverse=True)
+        for idx in order[:remaining]:
+            out[idx] += 1
+    elif remaining < 0:
+        order = sorted(range(len(raw)), key=lambda idx: (raw[idx] - float(out[idx])))
+        for idx in order[: abs(remaining)]:
+            if out[idx] > 0:
+                out[idx] -= 1
+    return out
+
+
+def _accelerated_cli_budgeted_total_iters(*, total_budget: int, ns_stages: list[int]) -> int:
+    """Reduce oversized parity-era budgets for CLI accelerated warm starts.
+
+    When an input provides multiple NS stages but no explicit NITER_ARRAY, the
+    VMEC-style NITER value is typically sized for a conservative final-grid
+    iteration. For the CLI-only accelerated path, use a radial-work-equivalent
+    total budget scaled by the coarsest-to-finest NS ratio.
+    """
+    total_budget = max(1, int(total_budget))
+    if not ns_stages:
+        return total_budget
+    ns0 = max(1, int(ns_stages[0]))
+    nsf = max(ns0, int(ns_stages[-1]))
+    return max(1, int(round(float(total_budget) * float(ns0) / float(nsf))))
+
+
+def _accelerated_cli_budgeted_stage_iters(*, total_budget: int, ns_stages: list[int]) -> list[int]:
+    """Distribute a reduced CLI accelerated budget across multigrid stages.
+
+    Use the number of newly introduced radial degrees of freedom per stage as
+    the structural signal. Squaring that increment biases the budget toward the
+    fine stages where most of the unresolved detail enters.
+    """
+    if not ns_stages:
+        return [max(1, int(total_budget))]
+    ns_int = [max(1, int(v)) for v in ns_stages]
+    increments = [ns_int[0]]
+    for prev_ns, curr_ns in zip(ns_int[:-1], ns_int[1:]):
+        increments.append(max(1, int(curr_ns - prev_ns)))
+    weights = [int(v) * int(v) for v in increments]
+    out = _allocate_integer_budget(total=max(1, int(total_budget)), weights=weights)
+    if out:
+        out[-1] = max(1, int(out[-1]))
+    return out
+
+
 def residual_scalars_from_state(
     *,
     state,
@@ -452,6 +514,7 @@ def run_fixed_boundary(
     restart_state: any | None = None,
     restart_wout_path: str | Path | None = None,
     restart_solver_state: dict | None = None,
+    cli_fixed_boundary_mode: bool = False,
 ):
     t_start = time.perf_counter()
     max_iter_overridden = max_iter is not _MAX_ITER_SENTINEL
@@ -569,6 +632,9 @@ def run_fixed_boundary(
         (``diagnostics["resume_state"]``). When supplied with ``solver="vmec2000_iter"``,
         the time-step/momentum/preconditioner cache is resumed. This disables multigrid
         staging.
+    cli_fixed_boundary_mode:
+        Internal CLI-only flag for non-differentiable fixed-boundary policy
+        overrides. Library callers should leave this as False.
     vmec_project:
         If True (default), re-project the initial guess through the VMEC
         internal grid/weights before returning or solving.
@@ -675,12 +741,147 @@ def run_fixed_boundary(
             return [value]
         return None
 
+    ns_list_input = _as_list(indata.get("NS_ARRAY", None))
+    niter_list_input = _as_list(indata.get("NITER_ARRAY", None))
+    cli_budgeted_multigrid_requested = (
+        bool(cli_fixed_boundary_mode)
+        and bool(accelerated_mode)
+        and (solver_lower in ("vmec2000_iter", "vmec2000_scan", "vmec2000_iter_fast"))
+        and (not bool(cfg.lfreeb))
+        and (restart_state_eff is None)
+        and (restart_solver_state is None)
+        and (multigrid is None)
+        and (ns_list_input is not None)
+        and (len(ns_list_input) > 1)
+        and (niter_list_input is None)
+    )
+
+    def _run_cli_accelerated_budgeted_multigrid(
+        *,
+        ns_stage_list: list[int],
+        total_budget: int,
+    ):
+        stage_budgets = _accelerated_cli_budgeted_stage_iters(total_budget=int(total_budget), ns_stages=ns_stage_list)
+        stage_runs: list[FixedBoundaryRun] = []
+        stage_state = None
+        stage_static_prev = None
+        for ns_i, niter_i in zip(ns_stage_list, stage_budgets):
+            if stage_state is not None and int(stage_static_prev.cfg.ns) != int(ns_i):
+                stage_state = interp_vmec_state(
+                    stage_state,
+                    m=stage_static_prev.modes.m,
+                    n=stage_static_prev.modes.n,
+                    lthreed=bool(stage_static_prev.cfg.lthreed),
+                    lconm1=bool(getattr(stage_static_prev.cfg, "lconm1", True)),
+                    ns_new=int(ns_i),
+                )
+            kwargs = dict(
+                solver="vmec2000_iter",
+                solver_mode="accelerated",
+                max_iter=int(niter_i),
+                step_size=step_size,
+                history_size=int(history_size),
+                gn_damping=gn_damping,
+                gn_cg_tol=gn_cg_tol,
+                gn_cg_maxiter=int(gn_cg_maxiter),
+                use_initial_guess=False,
+                vmec_project=bool(vmec_project),
+                use_restart_triggers=use_restart_triggers,
+                vmecpp_restart=bool(vmecpp_restart),
+                use_direct_fallback=use_direct_fallback,
+                multigrid=False,
+                multigrid_use_input_niter=False,
+                verbose=bool(verbose),
+                jit_forces=jit_forces,
+                jit_precompile=jit_precompile,
+                use_scan=bool(use_scan),
+                performance_mode=True,
+                scan_wout_corrector=scan_wout_corrector,
+                stage_transition_heuristic=stage_transition_heuristic,
+                stage_transition_factor=float(stage_transition_factor),
+                stage_transition_scale=float(stage_transition_scale),
+                grid=grid,
+                cli_fixed_boundary_mode=False,
+            )
+            if stage_state is None:
+                kwargs["ns_override"] = int(ns_i)
+            else:
+                kwargs["restart_state"] = stage_state
+            stage_run = run_fixed_boundary(input_path, **kwargs)
+            stage_runs.append(stage_run)
+            stage_state = stage_run.state
+            stage_static_prev = stage_run.static
+
+        final_run = stage_runs[-1]
+        polish_run = None
+        polish_budget = max(1, int(stage_budgets[-1])) if stage_budgets else 0
+        final_fsq = float(np.asarray(final_run.result.w_history)[-1]) if final_run.result is not None else float("inf")
+        if (final_run.result is not None) and (not bool(final_run.result.diagnostics.get("converged", False))) and polish_budget > 0:
+            polish_kwargs = dict(
+                solver="vmec2000_iter",
+                solver_mode="parity",
+                max_iter=int(polish_budget),
+                step_size=step_size,
+                history_size=int(history_size),
+                gn_damping=gn_damping,
+                gn_cg_tol=gn_cg_tol,
+                gn_cg_maxiter=int(gn_cg_maxiter),
+                use_initial_guess=False,
+                vmec_project=bool(vmec_project),
+                use_restart_triggers=use_restart_triggers,
+                vmecpp_restart=bool(vmecpp_restart),
+                use_direct_fallback=use_direct_fallback,
+                multigrid=False,
+                multigrid_use_input_niter=False,
+                verbose=bool(verbose),
+                jit_forces=jit_forces,
+                jit_precompile=jit_precompile,
+                use_scan=False,
+                performance_mode=False,
+                scan_wout_corrector=scan_wout_corrector,
+                stage_transition_heuristic=stage_transition_heuristic,
+                stage_transition_factor=float(stage_transition_factor),
+                stage_transition_scale=float(stage_transition_scale),
+                grid=grid,
+                restart_state=final_run.state,
+                cli_fixed_boundary_mode=False,
+            )
+            polish_run = run_fixed_boundary(input_path, **polish_kwargs)
+            polish_fsq = float(np.asarray(polish_run.result.w_history)[-1]) if polish_run.result is not None else float("inf")
+            if np.isfinite(polish_fsq) and ((not np.isfinite(final_fsq)) or (polish_fsq <= final_fsq)):
+                final_run = polish_run
+                final_fsq = polish_fsq
+
+        if final_run.result is not None:
+            diag = dict(final_run.result.diagnostics)
+            diag["solver_mode"] = str(solver_mode_eff)
+            diag["accelerated_mode"] = True
+            diag["cli_fixed_boundary_mode"] = True
+            diag["cli_accelerated_fixed_policy"] = "budgeted_multigrid"
+            diag["cli_accelerated_stage_ns"] = np.asarray(ns_stage_list, dtype=int)
+            diag["cli_accelerated_stage_niter"] = np.asarray(stage_budgets, dtype=int)
+            diag["cli_accelerated_stage_fsq"] = np.asarray(
+                [float(np.asarray(stage_run.result.w_history)[-1]) for stage_run in stage_runs],
+                dtype=float,
+            )
+            diag["cli_accelerated_budget_total"] = int(total_budget)
+            diag["cli_accelerated_polish"] = polish_run is not None
+            diag["cli_accelerated_polish_budget"] = int(polish_budget)
+            diag["cli_accelerated_polish_mode"] = "parity" if polish_run is not None else ""
+            diag["multigrid_ns_stages"] = np.asarray(ns_stage_list, dtype=int)
+            diag["multigrid_niter_stages"] = np.asarray(stage_budgets, dtype=int)
+            diag["accelerated_single_grid_default"] = False
+            final_run = replace(final_run, result=replace(final_run.result, diagnostics=diag))
+        return final_run
+
     multigrid_use_input_niter = bool(multigrid_use_input_niter)
     multigrid_user_provided = multigrid is not None
     accelerated_single_grid_default = False
     if multigrid is None:
         multigrid = solver_lower == "vmec2000_iter"
-        if accelerated_mode and (not bool(cfg.lfreeb)):
+        if bool(cli_budgeted_multigrid_requested):
+            multigrid = True
+        elif accelerated_mode and (not bool(cfg.lfreeb)):
             # In accelerated fixed-boundary mode, direct final-grid solves avoid
             # per-stage interpolation/recompilation overhead and have been more
             # efficient across the heavy bundled cases tested so far.
@@ -727,19 +928,21 @@ def run_fixed_boundary(
     # use_initial_guess) or on the first multigrid stage for VMEC-style solves.
     ns_stages = [int(cfg.ns)]
     if multigrid:
-        ns_array = indata.get("NS_ARRAY", None)
-        ns_list = _as_list(ns_array)
-        if ns_list:
-            ns_stages = [int(v) for v in ns_list]
+        if ns_list_input:
+            ns_stages = [int(v) for v in ns_list_input]
 
     # When NITER_ARRAY is present, treat it as the authoritative total unless
     # the caller explicitly overrides max_iter.
-    niter_list = _as_list(indata.get("NITER_ARRAY", None))
+    niter_list = niter_list_input
     if niter_list:
         niter_sum = int(sum(int(v) for v in niter_list))
         niter_default = int(indata.get_int("NITER", max_iter))
         if (not max_iter_overridden) and int(max_iter) == niter_default:
             max_iter = niter_sum
+
+    if bool(cli_budgeted_multigrid_requested):
+        budget_total = _accelerated_cli_budgeted_total_iters(total_budget=int(max_iter), ns_stages=ns_stages)
+        return _run_cli_accelerated_budgeted_multigrid(ns_stage_list=list(ns_stages), total_budget=int(budget_total))
 
     # Precompute boundary coefficients without triggering JAX initialization.
     boundary_coeffs = None
