@@ -924,3 +924,11 @@ Legend:
       `6.15s` single-grid vs `16.50s` explicit multigrid,
     - `input.n3are_R7.75B5.7_lowres`:
       `1.37s` single-grid with final `fsq_total ~1.1e-4`.
+- Added a dedicated merge-readiness page for the accelerated branch:
+  - `docs/accelerated_merge_readiness.rst` now separates
+    "mergeable as experimental" from "ready to become default",
+  - the review checklist is explicit about what must still remain behind the
+    opt-in `solver_mode="accelerated"` API,
+  - recommended PR scope is now clear:
+    merge the accelerated fixed-boundary feature set as experimental,
+    while keeping the parity/default controller as the ordinary path.

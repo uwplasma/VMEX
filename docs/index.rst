@@ -27,6 +27,7 @@ vmec-jax documentation
       free_boundary_plan
       performance
       aggressive_performance_plan
+      accelerated_merge_readiness
       code_structure
       contributing
       references
