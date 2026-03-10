@@ -76,8 +76,12 @@ def _collect_records(
         cpu = cpu_results.get(case_id, {}).get("cpu")
         gpu = gpu_results.get(case_id, {}).get("gpu")
         vmec_rt = None if vmec is None else float(vmec.get("runtime_s", vmec.get("time_real_s", np.nan)))
-        cpu_rt = None if cpu is None else float(cpu.get("runtime_s", cpu.get("time_real_s", np.nan)))
-        gpu_rt = None if gpu is None else float(gpu.get("runtime_s", gpu.get("time_real_s", np.nan)))
+        cpu_rt = None if cpu is None else float(
+            cpu.get("runtime_warm_s", cpu.get("runtime_s", cpu.get("time_real_s", np.nan)))
+        )
+        gpu_rt = None if gpu is None else float(
+            gpu.get("runtime_warm_s", gpu.get("runtime_s", gpu.get("time_real_s", np.nan)))
+        )
         vmec_mem = _mem_bytes(vmec)
         cpu_mem = _mem_bytes(cpu)
         gpu_mem = _mem_bytes(gpu)
@@ -107,6 +111,14 @@ def _ratio(value: float | int | None, baseline: float | int | None) -> float | N
     if float(baseline) <= 0.0:
         return None
     return float(value) / float(baseline)
+
+
+def _speedup(value: float | int | None, baseline: float | int | None) -> float | None:
+    if value is None or baseline is None:
+        return None
+    if float(value) <= 0.0:
+        return None
+    return float(baseline) / float(value)
 
 
 def _write_markdown_table(rows: list[dict[str, Any]], outpath: Path) -> None:
@@ -140,55 +152,70 @@ def _write_markdown_table(rows: list[dict[str, Any]], outpath: Path) -> None:
     outpath.write_text("\n".join(lines) + "\n")
 
 
-def _draw_ratio_panel(ax, *, rows: list[dict[str, Any]], value_key: str, base_key: str, title: str, xlabel: str) -> None:
+def _draw_speedup_panel(
+    ax,
+    *,
+    rows: list[dict[str, Any]],
+    value_key: str,
+    base_key: str,
+    title: str,
+    color: str,
+) -> None:
     labels = [row["id"] for row in rows]
-    cpu_ratio = np.array([_ratio(row[value_key.format(runner="cpu")], row[base_key]) or np.nan for row in rows], dtype=float)
-    gpu_ratio = np.array([_ratio(row[value_key.format(runner="gpu")], row[base_key]) or np.nan for row in rows], dtype=float)
+    speedup = np.array([_speedup(row[value_key], row[base_key]) or np.nan for row in rows], dtype=float)
     y = np.arange(len(rows), dtype=float)
 
-    ax.barh(y + 0.18, cpu_ratio, height=0.34, color="#1f77b4", label="vmec_jax CPU")
-    ax.barh(y - 0.18, gpu_ratio, height=0.34, color="#ff7f0e", label="vmec_jax GPU")
+    ax.barh(y, speedup, height=0.64, color=color)
     ax.axvline(1.0, color="black", linewidth=1.0, linestyle="--", alpha=0.7)
     ax.set_xscale("log")
     ax.set_yticks(y)
     ax.set_yticklabels(labels, fontsize=8)
     ax.invert_yaxis()
     ax.set_title(title)
-    ax.set_xlabel(xlabel)
+    ax.set_xlabel("speedup (>1 is faster)")
     ax.grid(axis="x", alpha=0.25, which="both")
 
 
-def _write_figure(rows: list[dict[str, Any]], outpath: Path) -> None:
+def _write_figure(rows: list[dict[str, Any]], outpath: Path, *, figure_kind: str) -> None:
+    if figure_kind == "fixed":
+        rows = [row for row in rows if not bool(row["lfreeb"])]
+    elif figure_kind == "freeb":
+        rows = [row for row in rows if bool(row["lfreeb"])]
+    if not rows:
+        raise ValueError(f"No rows available for figure_kind={figure_kind!r}.")
     sortable = []
     for row in rows:
-        runtime_ratio = max(
-            _ratio(row["cpu_runtime_s"], row["vmec_runtime_s"]) or 0.0,
-            _ratio(row["gpu_runtime_s"], row["vmec_runtime_s"]) or 0.0,
+        runtime_speedup = max(
+            _speedup(row["cpu_runtime_s"], row["vmec_runtime_s"]) or 0.0,
+            _speedup(row["gpu_runtime_s"], row["vmec_runtime_s"]) or 0.0,
         )
-        sortable.append((runtime_ratio, row["id"], row))
-    ordered_rows = [row for _, _, row in sorted(sortable, key=lambda item: (item[0], item[1]))]
+        sortable.append((runtime_speedup, row["id"], row))
+    ordered_rows = [row for _, _, row in sorted(sortable, key=lambda item: (-item[0], item[1]))]
 
-    fig, axes = plt.subplots(1, 2, figsize=(13.6, max(8.4, 0.36 * len(ordered_rows) + 1.4)), sharey=True)
-    _draw_ratio_panel(
+    fig, axes = plt.subplots(1, 2, figsize=(13.6, max(8.0, 0.34 * len(ordered_rows) + 1.2)), sharey=True)
+    _draw_speedup_panel(
         axes[0],
         rows=ordered_rows,
-        value_key="{runner}_runtime_s",
+        value_key="cpu_runtime_s",
         base_key="vmec_runtime_s",
-        title="Runtime Ratio vs VMEC2000",
-        xlabel="ratio (log scale)",
+        title="CPU Speedup vs VMEC2000",
+        color="#1f77b4",
     )
-    _draw_ratio_panel(
+    _draw_speedup_panel(
         axes[1],
         rows=ordered_rows,
-        value_key="{runner}_mem_bytes",
-        base_key="vmec_mem_bytes",
-        title="Memory Ratio vs VMEC2000",
-        xlabel="ratio (log scale)",
+        value_key="gpu_runtime_s",
+        base_key="vmec_runtime_s",
+        title="GPU Speedup vs VMEC2000",
+        color="#ff7f0e",
     )
-    handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.015), ncol=2, frameon=False)
-    fig.suptitle("Bundled Example Benchmarks: vmec_jax vs VMEC2000", y=0.985)
-    fig.tight_layout(rect=(0.0, 0.05, 1.0, 0.95))
+    title = {
+        "all": "Bundled Example Speedup: vmec_jax vs VMEC2000",
+        "fixed": "Bundled Fixed-Boundary Speedup: optimized vmec_jax CLI vs VMEC2000",
+        "freeb": "Bundled Free-Boundary Speedup: vmec_jax vs VMEC2000",
+    }[figure_kind]
+    fig.suptitle(title, y=0.985)
+    fig.tight_layout(rect=(0.0, 0.02, 1.0, 0.95))
     fig.savefig(outpath, dpi=220)
     plt.close(fig)
 
@@ -219,6 +246,12 @@ def main() -> None:
         type=Path,
         default=REPO_ROOT / "outputs" / "readme_runtime_table.md",
     )
+    p.add_argument(
+        "--figure-kind",
+        choices=("all", "fixed", "freeb"),
+        default="fixed",
+        help="Subset used in the README figure. The markdown table always keeps all rows.",
+    )
     args = p.parse_args()
 
     cpu_summaries = [_load_summary(path.expanduser().resolve()) for path in args.cpu_summary]
@@ -231,7 +264,7 @@ def main() -> None:
     table_out.parent.mkdir(parents=True, exist_ok=True)
 
     fig_out = outdir / "readme_runtime_compare.png"
-    _write_figure(rows, fig_out)
+    _write_figure(rows, fig_out, figure_kind=str(args.figure_kind))
     _write_markdown_table(rows, table_out)
     print(f"figure={fig_out}")
     print(f"table={table_out}")
