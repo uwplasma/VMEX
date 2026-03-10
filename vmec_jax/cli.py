@@ -63,7 +63,10 @@ def _default_cli_solver_policy(indata) -> tuple[str, bool]:
     Fixed-boundary runs default to the accelerated controller, except for the
     hard staged class with ``NS_ARRAY`` but no ``NITER_ARRAY``. Those inputs
     stay on the conservative parity path until the staged accelerated finisher
-    closes that remaining gap robustly.
+    closes that remaining gap robustly. Staged inputs that do provide
+    ``NITER_ARRAY`` now stay on the accelerated path by default: the CLI will
+    try the fast final-grid route first, then escalate through the staged input
+    schedule and a strict parity finisher only if needed.
     """
     if bool(indata.get_bool("LFREEB", False)):
         return "default", True

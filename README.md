@@ -74,10 +74,20 @@ CLI (VMEC2000-style executable):
 vmec_jax examples/data/input.circular_tokamak
 ```
 
-Default CLI runs use the scan-based fast loop.
-Pass `--parity` to use the VMEC2000 parity loop (time-step control + restarts).
-Pass `--solver-mode accelerated` to try the experimental non-parity
-performance track.
+For fixed-boundary inputs, the default CLI path now uses the optimized
+controller: it tries the fast final-grid scan route first, then escalates to
+staged continuation and strict parity finishing only when the input structure
+and residual history require it. Pass `--parity` to force the conservative
+VMEC2000 loop. Pass `--solver-mode accelerated` to request the optimized track
+explicitly.
+
+Python driver comparison (reference track vs optimized CLI-style track):
+
+```bash
+python examples/fixed_boundary_driver_tracks.py \
+  examples/data/input.circular_tokamak \
+  --quiet --json
+```
 
 Run tests:
 
@@ -106,10 +116,17 @@ python examples/optimization/implicit_target_iota_volume.py --case circular_toka
   final-grid stage unless the caller explicitly requests `multigrid=True`. When
   staged inputs provide `NITER_ARRAY`, the accelerated single-grid path now
   carries the total staged iteration budget forward instead of silently falling
-  back to `NITER`.
+  back to `NITER`, and the CLI can automatically retry that staged schedule if
+  the first final-grid solve misses the target.
+- The optimized CLI controller is therefore layered:
+  fast final-grid accelerated attempt first, then input-driven staged follow-up
+  for explicit `NS_ARRAY` / `NITER_ARRAY`, then strict parity finish blocks
+  only if the staged route still has not closed.
 - The current GPU path is fastest when the solve can stay on the scan fast path. Many of the slow GPU benchmark rows are parity-path solves, especially free-boundary cases, where VMEC2000-style restart logic, Jacobian checks, and cadence control still run as a host-controlled loop around many short float64 kernels.
 - That means the GPU often sees too little work per launch to amortize host/device overhead, while the CPU benefits from lower launch latency and efficient float64 execution on these moderate-size grids. This is an implementation limit of the current parity path, not a claim that the underlying physics is inherently CPU-only.
 - The accelerated-mode comparison harness lives at `tools/diagnostics/benchmark_accelerated_mode.py`.
+- The parity-vs-optimized Python driver example lives at
+  `examples/fixed_boundary_driver_tracks.py`.
 - Details and profiling guidance live in `docs/performance.rst`.
 - Merge scope and review criteria for the accelerated branch live in
   `docs/accelerated_merge_readiness.rst`.
@@ -224,14 +241,8 @@ and a reference CUDA host (dual RTX A4000 GPUs). Exact results vary by machine.
 Serial warm-run reassessment for the current `solver_mode="accelerated"` branch
 is recorded in
 `outputs/accelerated_fixed_boundary_reassessment_20260309/summary.json`.
-These rows are the right table to use when reviewing this branch for merge.
-
-The CLI-only fixed-boundary follow-up policy is also recorded in
-`outputs/accelerated_cli_fixed_boundary_reassessment_20260309/summary.json`.
-That policy keeps the API behavior unchanged, but when the executable sees a
-staged fixed-boundary input with `NS_ARRAY` and no `NITER_ARRAY`, it now uses a
-budgeted warm-start multigrid plus a short parity polish instead of a blind
-final-grid-only run.
+These rows are still the right baseline table to use when reviewing the branch
+for merge.
 
 | Example | Same-machine default runtime | Accelerated runtime | Speedup | Accelerated explicit multigrid | Accelerated final `fsq_total` | Note |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
@@ -239,10 +250,16 @@ final-grid-only run.
 | LandremanPaul2021_QA_lowres | 8.18s | 7.31s | 1.12x | 8.10s | 2.98e-13 | Accelerated single-grid now uses the full staged iteration budget (`2600`) and converges. |
 | n3are_R7.75B5.7_lowres | - | 1.25s | - | - | 1.12e-4 | Accelerated single-grid stays on the final grid and reaches a small residual in the serial reassessment workflow. |
 
-CLI-only fixed-boundary accelerated follow-up:
+The CLI controller is now slightly richer than the reassessment artifact above:
 
-| Example | Warm API accelerated | Warm CLI accelerated | Delta | Warm CLI final `fsq_total` | Note |
-| --- | ---: | ---: | ---: | ---: | --- |
-| LandremanSenguptaPlunk_section5p3_low_res | 0.150s | 0.151s | 1.01x | 3.00e-14 | CLI policy stays on the same fast single-grid route. |
-| LandremanPaul2021_QA_lowres | 7.33s | 7.12s | 0.97x | 2.98e-13 | CLI policy leaves the converged single-grid route unchanged. |
-| n3are_R7.75B5.7_lowres | 1.26s | 16.42s | 13.05x slower | 6.81e-6 | CLI policy switches to a budgeted multigrid warm start plus parity polish, reducing `fsq_total` by about `16.5x` on this hard staged input. |
+- simple fixed-boundary inputs stay on the same fast single-grid optimized path,
+- staged fixed-boundary inputs with explicit `NITER_ARRAY` try that same fast
+  path first, then replay the staged schedule from the input if the fast solve
+  misses the target,
+- staged fixed-boundary inputs without explicit `NITER_ARRAY` still default to
+  the conservative parity path unless the user explicitly requests the
+  optimized controller.
+
+On the local branch, the new Python driver example already shows the intended
+easy-case behavior on `input.circular_tokamak`: parity `28.863s` vs optimized
+CLI-style `3.445s`, both converged at `fsq_total ~ 2e-14`.

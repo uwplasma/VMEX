@@ -39,8 +39,15 @@ What this branch adds
 - a bundled accelerated-mode benchmark harness,
 - an accelerated fixed-boundary controller that now defaults to a single
   final-grid solve unless the caller explicitly requests multigrid,
-- a CLI-only fixed-boundary follow-up policy for staged inputs without
-  ``NITER_ARRAY``: budgeted warm-start multigrid plus short parity polish.
+- a CLI-only fixed-boundary follow-up stack:
+
+  - explicit staged inputs (``NS_ARRAY`` + ``NITER_ARRAY``) can replay their
+    input-defined schedule after a missed single-grid fast pass,
+  - staged inputs without ``NITER_ARRAY`` still have the reduced-budget
+    multigrid fallback when accelerated mode is explicitly requested,
+  - strict parity finish blocks continue from state only,
+- a bundled Python example that compares the parity and optimized CLI-style
+  driver tracks directly.
 
 Representative fixed-boundary reassessment
 ------------------------------------------
@@ -48,8 +55,8 @@ Representative fixed-boundary reassessment
 The latest serial CPU reassessment artifact is:
 
 - ``outputs/accelerated_fixed_boundary_reassessment_20260309/summary.json``
-- ``outputs/accelerated_cli_fixed_boundary_reassessment_20260309/summary.json``
-- ``outputs/accelerated_cli_fixed_boundary_hybrid_20260309/summary.json``
+- ``examples/fixed_boundary_driver_tracks.py`` for live parity-vs-optimized
+  comparisons on the current branch
 
 Key results from that artifact:
 
@@ -60,26 +67,23 @@ Key results from that artifact:
   ``8.18s`` current default vs ``7.31s`` accelerated single-grid and
   ``8.10s`` accelerated explicit multigrid,
 - ``input.n3are_R7.75B5.7_lowres``:
-  ``1.25s`` accelerated single-grid with final
-  ``fsq_total ~ 1.1e-4`` in the plain accelerated API path, versus
-  ``16.4s`` / ``fsq_total ~ 6.8e-6`` for the new CLI-only staged follow-up.
+  ``1.25s`` accelerated single-grid with final ``fsq_total ~ 1.1e-4`` in the
+  plain accelerated API path before the newer CLI staged-followup controller.
 
-Latest staged-hybrid follow-up:
+Current CLI behavior is better captured as policy than as one stale table:
 
-- the staged CLI accelerated controller now uses accelerated coarse stages,
-  a strict parity final stage with the full user ``NITER`` budget, and a
-  state-only strict finisher that keeps the best continuation block,
-- on ``input.n3are_R7.75B5.7_lowres`` that moved the best measured residual to
-  ``fsq_total ~ 1.61e-6``,
-- the same artifact confirms the easy accelerated CLI cases remain closed:
-  ``LandremanSenguptaPlunk_section5p3_low_res`` at ``~3.0e-14``,
-  ``LandremanPaul2021_QA_lowres`` at ``~3.0e-13``,
-  and ``li383_low_res`` at ``~1.24e-14``.
+- easy fixed-boundary inputs remain on the fast single-grid route,
+- explicit staged inputs now retry the input-defined stage schedule before the
+  strict finisher starts,
+- the bundled driver example already confirms the intended easy-case behavior
+  on ``input.circular_tokamak``:
+  parity ``28.863s`` vs optimized CLI-style ``3.445s``, both converged at
+  ``fsq_total ~ 2e-14``.
 
 These numbers justify the current fixed-boundary accelerated default:
 avoid staged VMEC-style multigrid unless the user explicitly asks for it in the
 API, but allow the CLI to use a more robust staged fallback on difficult inputs
-that lack explicit stage budgets.
+when the fast single-grid route misses.
 
 The bundled ``n3are`` example now includes an explicit
 ``NITER_ARRAY = 1000 1000 5000``. The conservative staged CLI fallback remains
@@ -101,7 +105,7 @@ true:
 - no user-set environment variable is required for accelerated fixed-boundary
   correctness on the benchmarked bundled cases,
 - the remaining staged hard-case limitation is explicitly documented if the
-  branch is merged before ``n3are``-class inputs can be driven to ``FTOL``.
+  branch is merged before every staged hard case is demonstrated at ``FTOL``.
 
 Recommended reviewer checklist
 ------------------------------

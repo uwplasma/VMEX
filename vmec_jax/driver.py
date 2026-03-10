@@ -750,6 +750,7 @@ def run_fixed_boundary(
 
     ns_list_input = _as_list(indata.get("NS_ARRAY", None))
     niter_list_input = _as_list(indata.get("NITER_ARRAY", None))
+    ftol_list_input = _as_list(indata.get("FTOL_ARRAY", None))
     cli_budgeted_multigrid_requested = (
         bool(cli_fixed_boundary_mode)
         and bool(accelerated_mode)
@@ -861,6 +862,86 @@ def run_fixed_boundary(
             enabled=bool(cli_fixed_boundary_finish_enabled),
         )
 
+    def _run_cli_explicit_staged_followup(
+        *,
+        ns_stage_list: list[int],
+        niter_stage_list: list[int],
+        ftol_stage_list: list[float],
+    ) -> FixedBoundaryRun:
+        stage_runs: list[FixedBoundaryRun] = []
+        stage_state = None
+        stage_static_prev = None
+        stage_modes: list[str] = []
+        for idx, (ns_i, niter_i, ftol_i) in enumerate(zip(ns_stage_list, niter_stage_list, ftol_stage_list)):
+            if int(niter_i) <= 0:
+                continue
+            is_final_stage = idx == (len(ns_stage_list) - 1)
+            stage_mode_i = "parity" if bool(is_final_stage) else "accelerated"
+            if stage_state is not None and int(stage_static_prev.cfg.ns) != int(ns_i):
+                stage_state = interp_vmec_state(
+                    stage_state,
+                    m=stage_static_prev.modes.m,
+                    n=stage_static_prev.modes.n,
+                    lthreed=bool(stage_static_prev.cfg.lthreed),
+                    lconm1=bool(getattr(stage_static_prev.cfg, "lconm1", True)),
+                    ns_new=int(ns_i),
+                )
+            kwargs = dict(
+                solver="vmec2000_iter",
+                solver_mode=stage_mode_i,
+                max_iter=int(niter_i),
+                step_size=step_size,
+                history_size=int(history_size),
+                gn_damping=gn_damping,
+                gn_cg_tol=gn_cg_tol,
+                gn_cg_maxiter=int(gn_cg_maxiter),
+                use_initial_guess=False,
+                vmec_project=bool(vmec_project),
+                use_restart_triggers=use_restart_triggers,
+                vmecpp_restart=bool(vmecpp_restart),
+                use_direct_fallback=use_direct_fallback,
+                multigrid=False,
+                multigrid_use_input_niter=False,
+                verbose=bool(verbose),
+                jit_forces=jit_forces,
+                jit_precompile=jit_precompile,
+                use_scan=False if bool(is_final_stage) else bool(use_scan),
+                performance_mode=False if bool(is_final_stage) else True,
+                scan_wout_corrector=scan_wout_corrector,
+                stage_transition_heuristic=stage_transition_heuristic,
+                stage_transition_factor=float(stage_transition_factor),
+                stage_transition_scale=float(stage_transition_scale),
+                grid=grid,
+                cli_fixed_boundary_mode=False,
+            )
+            if stage_state is None:
+                kwargs["ns_override"] = int(ns_i)
+            else:
+                kwargs["restart_state"] = stage_state
+            stage_run = run_fixed_boundary(input_path, **kwargs)
+            stage_runs.append(stage_run)
+            stage_modes.append(str(stage_mode_i))
+            stage_state = stage_run.state
+            stage_static_prev = stage_run.static
+
+        final_run = stage_runs[-1]
+        if final_run.result is None:
+            return final_run
+        diag = dict(final_run.result.diagnostics)
+        diag["solver_mode"] = str(solver_mode_eff)
+        diag["accelerated_mode"] = True
+        diag["cli_fixed_boundary_mode"] = True
+        diag["cli_staged_followup_policy"] = "input_multigrid"
+        diag["cli_staged_followup_stage_ns"] = np.asarray(ns_stage_list, dtype=int)
+        diag["cli_staged_followup_stage_niter"] = np.asarray(niter_stage_list, dtype=int)
+        diag["cli_staged_followup_stage_modes"] = np.asarray(stage_modes, dtype=object)
+        diag["cli_staged_followup_stage_fsq"] = np.asarray(
+            [float(np.asarray(stage_run.result.w_history)[-1]) for stage_run in stage_runs],
+            dtype=float,
+        )
+        final_run = replace(final_run, result=replace(final_run.result, diagnostics=diag))
+        return final_run
+
     def _maybe_finish_cli_fixed_boundary_run(
         run_in: FixedBoundaryRun,
         *,
@@ -900,11 +981,18 @@ def run_fixed_boundary(
 
         best_run = run_in
         best_fsq = float(np.asarray(run_in.result.w_history)[-1])
+        staged_input = (ns_list_input is not None) and (len(ns_list_input) > 1)
         attempt_budgets: list[int] = []
         attempt_fsq: list[float] = []
         attempt_converged: list[bool] = []
         attempt_modes: list[str] = []
         fallback_used = False
+        staged_followup_used = False
+        staged_followup_policy = ""
+        staged_followup_ns = np.zeros((0,), dtype=int)
+        staged_followup_niter = np.zeros((0,), dtype=int)
+        staged_followup_modes = np.asarray([], dtype=object)
+        staged_followup_fsq = np.zeros((0,), dtype=float)
 
         def _resolve_finish_jit_forces(static_i: VMECStatic, niter_i: int) -> bool:
             if isinstance(jit_forces, str):
@@ -972,6 +1060,38 @@ def run_fixed_boundary(
             )
             return replace(best_run, state=res_i.state, result=res_i)
 
+        if staged_input and bool(accelerated_mode) and str(initial_policy) == "single_grid":
+            explicit_niter_stages = (
+                [int(v) for v in niter_list_input]
+                if (niter_list_input is not None) and (len(niter_list_input) == len(ns_list_input))
+                else None
+            )
+            explicit_ftol_stages = (
+                [float(v) for v in ftol_list_input]
+                if (ftol_list_input is not None) and (len(ftol_list_input) == len(ns_list_input))
+                else [float(indata.get_float("FTOL", 1.0e-13))] * len(ns_list_input)
+            )
+            if explicit_niter_stages is not None:
+                staged_followup = _run_cli_explicit_staged_followup(
+                    ns_stage_list=[int(v) for v in ns_list_input],
+                    niter_stage_list=explicit_niter_stages,
+                    ftol_stage_list=explicit_ftol_stages,
+                )
+                staged_followup_used = True
+                staged_followup_policy = "input_multigrid"
+                staged_diag = dict(staged_followup.result.diagnostics)
+                staged_followup_ns = np.asarray(staged_diag.get("cli_staged_followup_stage_ns", []), dtype=int)
+                staged_followup_niter = np.asarray(staged_diag.get("cli_staged_followup_stage_niter", []), dtype=int)
+                staged_followup_modes = np.asarray(staged_diag.get("cli_staged_followup_stage_modes", []), dtype=object)
+                staged_followup_fsq = np.asarray(staged_diag.get("cli_staged_followup_stage_fsq", []), dtype=float)
+                staged_fsq_val = float(np.asarray(staged_followup.result.w_history)[-1])
+                staged_conv = bool(staged_followup.result.diagnostics.get("converged", False)) or (
+                    staged_fsq_val <= float(target_fsq)
+                )
+                if staged_conv or (staged_fsq_val < float(best_fsq)):
+                    best_run = staged_followup
+                    best_fsq = float(staged_fsq_val)
+
         max_fallback_budget = int(2 * base_total_budget)
         improvement_floor = np.finfo(float).eps * max(1.0, abs(float(best_fsq)), abs(float(target_fsq)))
         if not (bool(best_run.result.diagnostics.get("converged", False)) or float(best_fsq) <= float(target_fsq)):
@@ -1005,7 +1125,6 @@ def run_fixed_boundary(
                     break
                 budget_i = int(next_budget)
 
-        staged_input = (ns_list_input is not None) and (len(ns_list_input) > 1)
         if staged_input and not (
             bool(best_run.result.diagnostics.get("converged", False)) or float(best_fsq) <= float(target_fsq)
         ) and bool(accelerated_mode):
@@ -1058,6 +1177,12 @@ def run_fixed_boundary(
         diag["cli_fixed_boundary_finish_converged"] = np.asarray(attempt_converged, dtype=bool)
         diag["cli_fixed_boundary_finish_modes"] = np.asarray(attempt_modes)
         diag["cli_fixed_boundary_full_parity_fallback"] = bool(fallback_used)
+        diag["cli_fixed_boundary_staged_followup_used"] = bool(staged_followup_used)
+        diag["cli_fixed_boundary_staged_followup_policy"] = str(staged_followup_policy)
+        diag["cli_fixed_boundary_staged_followup_ns"] = staged_followup_ns
+        diag["cli_fixed_boundary_staged_followup_niter"] = staged_followup_niter
+        diag["cli_fixed_boundary_staged_followup_modes"] = staged_followup_modes
+        diag["cli_fixed_boundary_staged_followup_fsq"] = staged_followup_fsq
         best_run = replace(best_run, result=replace(best_run.result, diagnostics=diag))
         return best_run
 

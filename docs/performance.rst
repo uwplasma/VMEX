@@ -117,11 +117,20 @@ Current behavior of this first slice:
   by default, so the result object does not carry the full parity-era
   momentum/preconditioner cache unless the caller explicitly asks for it,
 - the CLI executable now has an extra fixed-boundary-only policy layer on top
-  of accelerated mode: for staged inputs that provide ``NS_ARRAY`` but not
-  ``NITER_ARRAY``, the executable derives a reduced warm-start multigrid budget
-  from the coarsest-to-finest ``ns`` ratio, distributes that budget by the
-  newly introduced radial degrees of freedom, and then optionally applies a
-  short parity polish on the final grid,
+  of accelerated mode:
+
+  - the first attempt is the same fast final-grid solve used by the optimized
+    Python API path,
+  - if a staged input provides explicit ``NS_ARRAY`` / ``NITER_ARRAY`` and the
+    fast final-grid attempt misses the target, the CLI replays that staged
+    schedule automatically (accelerated coarse stages, strict parity final
+    stage),
+  - if the input is staged but does not provide ``NITER_ARRAY`` and the user
+    explicitly forces accelerated mode, the CLI falls back to a reduced
+    warm-start multigrid budget derived from the coarsest-to-finest ``ns``
+    ratio,
+  - strict parity finish blocks then continue from state only, without reusing
+    the parity-era nonlinear-controller caches,
 - free-boundary cases currently stay on the existing robust path; accelerated
   free-boundary control is not implemented yet,
 - the mode is intended to reduce control overhead while preserving final
@@ -175,55 +184,33 @@ show why the single-grid default is now the accelerated fixed-boundary policy:
   workflow, keeping the accelerated route on the final grid instead of paying
   the old staged control overhead by default.
 
-CLI-only fixed-boundary follow-up measurements from
-``outputs/accelerated_cli_fixed_boundary_reassessment_20260309/summary.json``
-show where the executable now diverges from the plain Python accelerated path:
+The fixed-boundary CLI path is now best understood as a controller stack,
+not a single algorithm:
 
-- ``input.LandremanSenguptaPlunk_section5p3_low_res``:
-  unchanged in practice (`~0.151s`, `fsq_total ~3.0e-14`),
-- ``input.LandremanPaul2021_QA_lowres``:
-  unchanged in practice (`~7.12s`, `fsq_total ~3.0e-13`),
-- ``input.n3are_R7.75B5.7_lowres``:
-  the executable now uses a budgeted multigrid warm start plus parity polish,
-  moving from `~1.26s` / `fsq_total ~1.1e-4` on the plain accelerated API path
-  to `~16.4s` / `fsq_total ~6.8e-6` on the CLI path.
+- easy inputs stay on the fast final-grid optimized path,
+- staged inputs can automatically escalate into their input-defined stage
+  schedule before paying the cost of parity finish blocks,
+- only the genuinely hard cases should reach the final strict continuation
+  phase.
 
-That CLI-specific controller is intentionally scoped:
+For an up-to-date side-by-side comparison on your machine, use the bundled
+driver example:
 
-- it does not change the differentiable Python API behavior,
-- it only activates on fixed-boundary accelerated CLI runs,
-- it currently targets robustness on staged inputs with no explicit
-  ``NITER_ARRAY``,
-- it improves difficult cases such as ``n3are`` materially, but it does not
-  yet force strict ``FTOL`` convergence on every staged input.
+.. code-block:: bash
 
-The bundled ``n3are`` input now carries an explicit staged budget
-(``NITER_ARRAY = 1000 1000 5000``). The conservative CLI fallback policy still
-applies generically to fixed-boundary staged inputs that provide ``NS_ARRAY``
-without ``NITER_ARRAY``, but ``n3are`` is no longer the repository example for
-that input class.
+  python examples/fixed_boundary_driver_tracks.py \
+    examples/data/input.circular_tokamak \
+    --quiet --json
 
-The next hybrid follow-up in
-``outputs/accelerated_cli_fixed_boundary_hybrid_20260309/summary.json``
-tightened that staged controller further:
+On the current branch, that example produced the following local CPU smoke
+result for ``input.circular_tokamak``:
 
-- the budgeted multigrid warm start now keeps the accelerated coarse stages but
-  gives the final stage the full user ``NITER`` budget while running it in the
-  strict parity controller,
-- the CLI strict finisher now continues from state only, not from cached
-  nonlinear-controller history, and keeps the best continuation state when a
-  later block regresses,
-- on ``input.n3are_R7.75B5.7_lowres`` this pushes the best measured residual to
-  ``fsq_total ~1.61e-6`` from the same general staged workflow,
-- the same artifact confirms the easy fixed-boundary cases remain closed under
-  the accelerated CLI path:
-  ``LandremanSenguptaPlunk_section5p3_low_res`` at ``~3.0e-14``,
-  ``LandremanPaul2021_QA_lowres`` at ``~3.0e-13``,
-  and ``li383_low_res`` at ``~1.24e-14``.
+- parity track: ``28.863s`` with ``fsq_total ~2.04e-14``,
+- optimized CLI-style track: ``3.445s`` with ``fsq_total ~2.85e-14``.
 
-That still leaves one honest limitation on this branch: the staged hybrid
-controller improves the ``n3are`` stress case substantially, but it still does
-not drive it all the way to the requested ``FTOL`` on the measured run.
+That example uses the same public Python driver entry point as library users,
+but it enables ``cli_fixed_boundary_mode=True`` on the optimized path so the
+controller matches the executable behavior exactly.
 
 Additional controller finding from March 2026:
 

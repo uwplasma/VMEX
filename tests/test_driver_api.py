@@ -40,6 +40,28 @@ def _write_staged_no_niter_input(tmp_path: Path) -> Path:
     return input_path
 
 
+def _write_staged_with_niter_input(tmp_path: Path) -> Path:
+    input_path = tmp_path / "input.staged_with_niter"
+    input_path.write_text(
+        "&INDATA\n"
+        "  LFREEB = F\n"
+        "  NFP = 1\n"
+        "  MPOL = 5\n"
+        "  NTOR = 0\n"
+        "  NS = 13\n"
+        "  NITER = 100\n"
+        "  FTOL = 1e-14\n"
+        "  NS_ARRAY = 5 9 13\n"
+        "  NITER_ARRAY = 10 20 40\n"
+        "  FTOL_ARRAY = 1e-14 1e-14 1e-14\n"
+        "  PHIEDGE = 1.0\n"
+        "  RBC(0,0) = 1.0\n"
+        "  ZBS(1,0) = 0.1\n"
+        "/\n"
+    )
+    return input_path
+
+
 def test_example_paths_and_load_example():
     pytest.importorskip("netCDF4")
 
@@ -176,6 +198,29 @@ def test_cli_passes_cli_fixed_boundary_mode(monkeypatch, tmp_path):
 
 def test_cli_defaults_to_accelerated_on_simple_fixed_boundary(monkeypatch, tmp_path):
     input_path = Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
+    captured = {}
+
+    def _fake_run_fixed_boundary(input_path_arg, **kwargs):
+        captured["input_path"] = str(input_path_arg)
+        captured.update(kwargs)
+
+        class _Run:
+            state = type("S", (), {"Rcos": np.asarray([0.0])})()
+            result = None
+
+        return _Run()
+
+    monkeypatch.setattr(cli_module, "run_fixed_boundary", _fake_run_fixed_boundary)
+    monkeypatch.setattr(cli_module, "write_wout_from_fixed_boundary_run", lambda *args, **kwargs: None)
+
+    rc = cli_module.main([str(input_path), "--output", str(tmp_path / "wout_test.nc"), "--quiet"])
+    assert rc == 0
+    assert captured["solver_mode"] == "accelerated"
+    assert captured["performance_mode"] is True
+
+
+def test_cli_defaults_to_accelerated_on_staged_fixed_boundary_with_niter_array(monkeypatch, tmp_path):
+    input_path = _write_staged_with_niter_input(tmp_path)
     captured = {}
 
     def _fake_run_fixed_boundary(input_path_arg, **kwargs):
@@ -405,6 +450,70 @@ def test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid():
     assert np.asarray(diag_acc["multigrid_ns_stages"]).tolist() == [int(run_acc.cfg.ns)]
     assert diag_parity["accelerated_single_grid_default"] is False
     assert np.asarray(diag_parity["multigrid_ns_stages"]).tolist() == [11, 25]
+
+
+def test_run_fixed_boundary_cli_explicit_staged_followup_after_single_grid_miss(monkeypatch, tmp_path):
+    input_path = _write_staged_with_niter_input(tmp_path)
+    calls = []
+    fsq_values = [1.0e-4, 1.0e-2, 1.0e-4, 2.0e-14]
+    converged_flags = [False, False, False, True]
+
+    def _fake_solver(state, static, **kwargs):
+        idx = len(calls)
+        calls.append(
+            {
+                "ns": int(static.cfg.ns),
+                "max_iter": int(kwargs["max_iter"]),
+                "use_scan": bool(kwargs["use_scan"]),
+            }
+        )
+        fsq = float(fsq_values[idx])
+        return SolveVmecResidualResult(
+            state=state,
+            n_iter=max(0, int(kwargs["max_iter"]) - 1),
+            w_history=np.asarray([fsq], dtype=float),
+            fsqr2_history=np.asarray([fsq], dtype=float),
+            fsqz2_history=np.asarray([0.0], dtype=float),
+            fsql2_history=np.asarray([0.0], dtype=float),
+            grad_rms_history=np.asarray([], dtype=float),
+            step_history=np.asarray([], dtype=float),
+            diagnostics={
+                "use_scan": bool(kwargs["use_scan"]),
+                "resume_state": {},
+                "light_history": True,
+                "resume_state_mode": "minimal",
+                "converged": bool(converged_flags[idx]),
+            },
+        )
+
+    monkeypatch.setattr(solve_module, "solve_fixed_boundary_residual_iter", _fake_solver)
+    monkeypatch.setattr(driver_module, "solve_fixed_boundary_residual_iter", _fake_solver)
+
+    run = run_fixed_boundary(
+        input_path,
+        solver="vmec2000_iter",
+        solver_mode="accelerated",
+        verbose=False,
+        cli_fixed_boundary_mode=True,
+    )
+
+    assert [call["ns"] for call in calls] == [13, 5, 9, 13]
+    assert [call["max_iter"] for call in calls] == [70, 10, 20, 40]
+    assert [call["use_scan"] for call in calls] == [True, True, True, False]
+    diag = run.result.diagnostics
+    assert diag["cli_fixed_boundary_mode"] is True
+    assert diag["cli_fixed_boundary_initial_policy"] == "single_grid"
+    assert diag["cli_fixed_boundary_staged_followup_used"] is True
+    assert diag["cli_fixed_boundary_staged_followup_policy"] == "input_multigrid"
+    assert np.asarray(diag["cli_fixed_boundary_staged_followup_ns"]).tolist() == [5, 9, 13]
+    assert np.asarray(diag["cli_fixed_boundary_staged_followup_niter"]).tolist() == [10, 20, 40]
+    assert np.asarray(diag["cli_fixed_boundary_staged_followup_modes"]).tolist() == [
+        "accelerated",
+        "accelerated",
+        "parity",
+    ]
+    assert np.asarray(diag["cli_fixed_boundary_finish_budgets"]).tolist() == []
+    assert diag["converged"] is True
 
 
 def test_vmec2000_iter_histories_materialize_numeric_arrays():

@@ -1041,3 +1041,12 @@ Legend:
     `NITER_ARRAY` remains in place, but that policy is now exercised by tests
     using a synthetic staged fixed-boundary input rather than the bundled
     `n3are` file.
+- Fixed-boundary CLI controller update:
+  - accelerated CLI runs now keep the fast single-grid attempt as the first
+    move,
+  - if a staged input carries explicit `NS_ARRAY` and `NITER_ARRAY` and the
+    first fast solve misses the target, the executable now replays that staged
+    schedule automatically before starting strict parity finish blocks,
+  - added `examples/fixed_boundary_driver_tracks.py` so users can compare the
+    parity track and the optimized CLI-style track from Python on their own
+    CPU/GPU machine.
