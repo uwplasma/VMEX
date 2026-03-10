@@ -225,28 +225,16 @@ That sweep compares baseline ``solver_mode="default"`` against candidate
 bundled fixed-boundary matrix, excluding only ``n3are`` from the bulk run so
 the hard outlier does not dominate the rest of the signal.
 
-Current results from that 15-case matrix:
+Current results from the freshest warmed fixed-boundary CPU matrix are better
+than the earlier cold branch-vs-branch reassessment:
 
-- 11 of 15 bundled fixed-boundary cases are faster on the optimized CLI-style
-  path,
-- strongest wins include
-  ``LandremanSenguptaPlunk_section5p3_low_res`` (``249.49x``),
-  ``basic_non_stellsym_pressure`` (``12.47x``), and
-  ``ITERModel`` (``1.78x``),
-- near-neutral cases include
-  ``LandremanPaul2021_QA_lowres`` (``1.02x``),
-  ``cth_like_fixed_bdy`` (``1.02x``), and
-  ``nfp4_QH_warm_start`` (``1.00x``),
-- the current slow outliers are
-  ``li383_low_res`` (``0.0036x``),
-  ``up_down_asymmetric_tokamak`` (``0.0225x``),
-  ``LandremanPaul2021_QA_lowres1`` (``0.93x``), and
-  ``solovev`` (``0.94x``).
+- 14 of 15 bundled fixed-boundary cases are faster than VMEC2000 once the JAX
+  kernels are warmed,
+- all 15 bundled fixed-boundary cases in that warmed matrix converge,
+- the only remaining warmed CPU holdout is ``li383_low_res``.
 
-The optimized candidate converged on all 15 cases in that matrix. However, the
-same reassessment also shows why this branch is not ready to become the
-default controller yet: those slow outliers are too severe to hide behind the
-average speedup.
+That warmed matrix is now the main user-facing benchmark because it reflects
+steady-state CLI solve cost rather than cold JAX startup latency.
 
 A targeted follow-up on the two worst single-grid CLI outliers then tightened
 the finisher policy: before paying for strict parity continuation, the CLI now
@@ -271,8 +259,11 @@ wall clock:
 That makes the current branch state clear:
 
 - mergeable for review as an experimental controller,
-- useful on many fixed-boundary cases,
-- not yet ready to replace the default controller on the full bundled matrix.
+- useful on most fixed-boundary cases and now faster than VMEC2000 on the
+  warmed CPU matrix for 14 of 15 bundled examples,
+- not yet ready to replace the default controller on the full bundled matrix
+  because ``li383_low_res`` and the hard staged ``n3are`` class still need
+  more controller work.
 
 Additional controller finding from March 2026:
 

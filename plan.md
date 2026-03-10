@@ -1080,3 +1080,17 @@ Legend:
   - `input.up_down_asymmetric_tokamak` improved from about `43.74s` to about
     `0.55s`, now about `2.11x` faster than the branch baseline while still
     converging to `fsq_total ~3.00e-14`.
+- 2026-03-10 README benchmark refresh:
+  - regenerated the top README benchmark figure as a warmed fixed-boundary
+    optimized-CLI speedup plot against VMEC2000,
+  - refreshed `tools/diagnostics/readme_runtime_compare.py` so it can render a
+    CPU-only speedup panel when no GPU summary is available,
+  - current warmed CPU matrix:
+    `outputs/fixed_runtime_vmec2000_accel_cpu_warm_20260310/summary.json`,
+  - 14 of 15 bundled fixed-boundary cases are faster than VMEC2000 once JAX is
+    warmed and all 15 converge,
+  - `input.li383_low_res` remains the sole warmed CPU holdout,
+  - remote GPU benchmarking on `office` requires
+    `CUDA_VISIBLE_DEVICES=0` plus
+    `XLA_PYTHON_CLIENT_PREALLOCATE=false` to avoid preallocation OOM during the
+    bundled matrix run.

@@ -123,7 +123,7 @@ def _speedup(value: float | int | None, baseline: float | int | None) -> float |
 
 def _write_markdown_table(rows: list[dict[str, Any]], outpath: Path) -> None:
     header = [
-        "| Example | Boundary | Topology | LASYM | VMEC2000 runtime | VMEC2000 memory | vmec_jax CPU runtime | vmec_jax CPU memory | vmec_jax GPU runtime | vmec_jax GPU memory |",
+        "| Example | Boundary | Topology | LASYM | VMEC2000 runtime | VMEC2000 memory | vmec_jax CPU runtime (warmed) | vmec_jax CPU memory | vmec_jax GPU runtime (warmed) | vmec_jax GPU memory |",
         "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     lines = list(header)
@@ -183,16 +183,20 @@ def _write_figure(rows: list[dict[str, Any]], outpath: Path, *, figure_kind: str
         rows = [row for row in rows if bool(row["lfreeb"])]
     if not rows:
         raise ValueError(f"No rows available for figure_kind={figure_kind!r}.")
+    include_gpu = any(row["gpu_runtime_s"] is not None for row in rows)
     sortable = []
     for row in rows:
         runtime_speedup = max(
             _speedup(row["cpu_runtime_s"], row["vmec_runtime_s"]) or 0.0,
-            _speedup(row["gpu_runtime_s"], row["vmec_runtime_s"]) or 0.0,
+            _speedup(row["gpu_runtime_s"], row["vmec_runtime_s"]) or 0.0 if include_gpu else 0.0,
         )
         sortable.append((runtime_speedup, row["id"], row))
     ordered_rows = [row for _, _, row in sorted(sortable, key=lambda item: (-item[0], item[1]))]
 
-    fig, axes = plt.subplots(1, 2, figsize=(13.6, max(8.0, 0.34 * len(ordered_rows) + 1.2)), sharey=True)
+    ncols = 2 if include_gpu else 1
+    fig, axes = plt.subplots(1, ncols, figsize=(13.6, max(8.0, 0.34 * len(ordered_rows) + 1.2)), sharey=True)
+    if not isinstance(axes, np.ndarray):
+        axes = np.asarray([axes], dtype=object)
     _draw_speedup_panel(
         axes[0],
         rows=ordered_rows,
@@ -201,14 +205,15 @@ def _write_figure(rows: list[dict[str, Any]], outpath: Path, *, figure_kind: str
         title="CPU Speedup vs VMEC2000",
         color="#1f77b4",
     )
-    _draw_speedup_panel(
-        axes[1],
-        rows=ordered_rows,
-        value_key="gpu_runtime_s",
-        base_key="vmec_runtime_s",
-        title="GPU Speedup vs VMEC2000",
-        color="#ff7f0e",
-    )
+    if include_gpu:
+        _draw_speedup_panel(
+            axes[1],
+            rows=ordered_rows,
+            value_key="gpu_runtime_s",
+            base_key="vmec_runtime_s",
+            title="GPU Speedup vs VMEC2000",
+            color="#ff7f0e",
+        )
     title = {
         "all": "Bundled Example Speedup: vmec_jax vs VMEC2000",
         "fixed": "Bundled Fixed-Boundary Speedup: optimized vmec_jax CLI vs VMEC2000",
@@ -232,8 +237,8 @@ def main() -> None:
     p.add_argument(
         "--gpu-summary",
         type=Path,
-        nargs="+",
-        required=True,
+        nargs="*",
+        default=[],
         help="One or more summary JSON files from GPU vmec_jax runs. Later files override earlier case rows.",
     )
     p.add_argument(

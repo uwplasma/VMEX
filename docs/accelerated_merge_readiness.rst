@@ -81,16 +81,11 @@ Current CLI behavior is better captured as policy than as one stale table:
   on ``input.circular_tokamak``:
   parity ``28.863s`` vs optimized CLI-style ``3.445s``, both converged at
   ``fsq_total ~ 2e-14``.
-- the new 15-case bundled fixed-boundary CLI-style reassessment shows
-  11 of 15 cases faster on the optimized path, with the strongest wins on
-  ``LandremanSenguptaPlunk_section5p3_low_res`` (``249.49x``),
-  ``basic_non_stellsym_pressure`` (``12.47x``), and
-  ``ITERModel`` (``1.78x``),
-- that same reassessment also surfaces the current blockers clearly:
-  ``li383_low_res`` (``0.0036x``),
-  ``up_down_asymmetric_tokamak`` (``0.0225x``),
-  ``LandremanPaul2021_QA_lowres1`` (``0.93x``), and
-  ``solovev`` (``0.94x``) are all slower on the optimized CLI-style path.
+- the freshest warmed fixed-boundary CPU matrix is stronger than that earlier
+  cold reassessment:
+  14 of 15 bundled cases are faster than VMEC2000 once the JAX kernels are
+  warmed, and all 15 converge,
+- ``li383_low_res`` is now the only warmed CPU holdout in that benchmark.
 
 A targeted follow-up then improved the two worst single-grid CLI outliers by
 running extra accelerated continuation blocks before parity fallback:
@@ -136,9 +131,8 @@ The branch is ready for an honest review PR, but not for a default flip.
   the optimized CLI-style controller is materially better on most of the
   bundled fixed-boundary matrix and keeps convergence on the successful cases.
 - Blocking signal:
-  the March 10 serial sweep still has severe slowdowns on
-  ``li383_low_res`` and ``up_down_asymmetric_tokamak``, plus smaller slowdowns
-  on ``LandremanPaul2021_QA_lowres1`` and ``solovev``.
+  the warmed CPU story is now good, but ``li383_low_res`` is still slower than
+  VMEC2000 and the hard staged ``n3are`` class remains unresolved.
 - Hard-outlier signal:
   ``n3are_R7.75B5.7_lowres`` remains too expensive; a same-branch cold
   ``solver_mode="default"`` run took ``41.67s`` and stopped at
@@ -150,7 +144,8 @@ Conclusion:
 - mergeable as an experimental branch if reviewers want the tooling and the
   partial wins on `main`,
 - not ready to become the default controller,
-- not ready to market as a universal fixed-boundary runtime win yet.
+- not ready to market as a universal fixed-boundary runtime win yet because the
+  last warmed CPU holdout and the staged hard-case path still need work.
 
 Recommended reviewer checklist
 ------------------------------

@@ -46,7 +46,7 @@ and free-boundary ideal-MHD equilibria.
     <td colspan="2"><img src="docs/_static/figures/readme_runtime_compare.png" width="860" /></td>
   </tr>
   <tr>
-    <td align="center" colspan="2">Bundled-example runtime and memory ratios vs VMEC2000 on reference CPU and GPU hosts</td>
+    <td align="center" colspan="2">Warmed fixed-boundary optimized CLI speedup vs VMEC2000 on a reference CPU host (14 of 15 bundled cases faster)</td>
   </tr>
 </table>
 
@@ -179,7 +179,10 @@ python tools/diagnostics/example_runtime_memory_matrix.py \
   --runner-label cpu \
   --jax-platforms cpu \
   --vmec-exec /path/to/xvmec2000 \
-  --outdir outputs/example_runtime_memory_matrix_cpu
+  --solver-mode accelerated \
+  --cli-fixed-boundary-mode \
+  --warm-runs 1 \
+  --outdir outputs/fixed_runtime_vmec2000_accel_cpu_warm
 
 # Run the same benchmark on a CUDA-capable machine with JAX GPU support.
 python tools/diagnostics/example_runtime_memory_matrix.py \
@@ -189,15 +192,18 @@ python tools/diagnostics/example_runtime_memory_matrix.py \
   --outdir outputs/example_runtime_memory_matrix_gpu
 
 python tools/diagnostics/readme_runtime_compare.py \
-  --cpu-summary outputs/example_runtime_memory_matrix_cpu/summary.json \
+  --cpu-summary outputs/fixed_runtime_vmec2000_accel_cpu_warm/summary.json \
   --gpu-summary outputs/example_runtime_memory_matrix_gpu/summary.json \
   --outdir docs/_static/figures \
-  --table-out outputs/readme_runtime_table.md
+  --table-out outputs/readme_runtime_table.md \
+  --figure-kind fixed
 ```
 
-The exact numbers in the checked-in benchmark table will vary by machine. Use
-the commands above to regenerate a CPU summary and a GPU summary on your own
-reference hosts.
+The exact numbers in the checked-in benchmark table will vary by machine. The
+README speedup figure intentionally uses warmed fixed-boundary optimized-CLI
+runs so it reflects steady-state solve cost rather than cold JAX startup
+overhead. Use the commands above to regenerate a CPU summary and, if desired,
+an additional GPU summary on your own reference hosts.
 
 ## Documentation
 
@@ -208,33 +214,37 @@ reference hosts.
 - `docs/algorithms.rst`: algorithmic overview
 - `docs/equations.rst`: equations and conventions
 
-## Default-Path Bundled Benchmarks
+## Optimized CLI Fixed-Boundary Benchmarks
 
-Measured on 2026-03-06 using the default `run_fixed_boundary(input, verbose=False)`
-path. This checked-in snapshot used a reference CPU host (Apple M2, 8 GiB RAM)
-and a reference CUDA host (dual RTX A4000 GPUs). Exact results vary by machine.
+Measured on 2026-03-10 using warmed serial runs of the optimized fixed-boundary
+CLI controller (`solver_mode="accelerated"`, `cli_fixed_boundary_mode=True`)
+against VMEC2000 on a reference CPU host. Exact results vary by machine, but
+this checked-in snapshot is the benchmark behind the top README speedup figure.
 
-| Example | Boundary | Topology | LASYM | VMEC2000 runtime | VMEC2000 memory | vmec_jax CPU runtime | vmec_jax CPU memory | vmec_jax GPU runtime | vmec_jax GPU memory |
-| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| DIII-D_lasym_false | free | axisym | false | 14.37s | 0.07 GiB | 428.24s | 7.36 GiB | 1602.31s | 6.23 GiB |
-| ITERModel | fixed | axisym | false | 0.90s | 0.07 GiB | 5.83s | 0.91 GiB | 68.66s | 1.81 GiB |
-| LandremanPaul2021_QA_lowres | fixed | non-axisym | false | 23.89s | 0.07 GiB | 16.79s | 1.84 GiB | 33.91s | 2.66 GiB |
-| LandremanPaul2021_QA_lowres1 | fixed | non-axisym | false | 15.37s | 0.07 GiB | 14.86s | 1.82 GiB | 123.45s | 2.84 GiB |
-| LandremanSengupta2019_section5.4_B2_A80 | fixed | axisym | false | 0.24s | 0.07 GiB | 3.90s | 0.70 GiB | 44.38s | 1.60 GiB |
-| LandremanSenguptaPlunk_section5p3_low_res | fixed | axisym | true | 0.69s | 0.07 GiB | 46.77s | 4.07 GiB | 77.13s | 2.13 GiB |
-| basic_non_stellsym_pressure | fixed | non-axisym | true | 2.02s | 0.07 GiB | 29.73s | 3.22 GiB | 141.07s | 3.68 GiB |
-| circular_tokamak | fixed | axisym | false | 0.29s | 0.07 GiB | 5.55s | 1.18 GiB | 13.84s | 1.97 GiB |
-| circular_tokamak_aspect_100 | fixed | axisym | false | 2.36s | 0.07 GiB | 9.64s | 1.58 GiB | 104.44s | 2.49 GiB |
-| cth_like_fixed_bdy | fixed | axisym | false | 0.81s | 0.07 GiB | 2.43s | 0.54 GiB | 26.46s | 1.42 GiB |
-| cth_like_free_bdy | free | non-axisym | false | 2.48s | 0.07 GiB | 41.83s | 1.64 GiB | 155.79s | 2.30 GiB |
-| cth_like_free_bdy_lasym_small | free | non-axisym | true | 0.63s | 0.07 GiB | 37.59s | 1.47 GiB | 103.53s | 1.97 GiB |
-| li383_low_res | fixed | axisym | false | 0.29s | 0.07 GiB | 3.81s | 0.99 GiB | 38.87s | 1.94 GiB |
-| n3are_R7.75B5.7_lowres | fixed | axisym | false | 9.54s | 0.07 GiB | 160.06s | 6.50 GiB | 710.51s | 6.16 GiB |
-| nfp4_QH_warm_start | fixed | non-axisym | false | 0.55s | 0.07 GiB | 5.14s | 1.32 GiB | 54.84s | 2.33 GiB |
-| purely_toroidal_field | fixed | axisym | false | 3.21s | 0.07 GiB | 9.87s | 1.59 GiB | 104.91s | 2.49 GiB |
-| shaped_tokamak_pressure | fixed | axisym | false | 0.79s | 0.07 GiB | 5.66s | 0.90 GiB | 48.58s | 1.76 GiB |
-| solovev | fixed | axisym | false | 0.16s | 0.07 GiB | 2.08s | 0.48 GiB | 18.80s | 1.38 GiB |
-| up_down_asymmetric_tokamak | fixed | axisym | true | 0.74s | 0.07 GiB | 6.72s | 0.89 GiB | 16.54s | 1.60 GiB |
+Current checked-in summary:
+
+- 14 of 15 bundled fixed-boundary cases are faster than VMEC2000 once the JAX
+  kernels are warmed.
+- All 15 bundled fixed-boundary cases in this warmed matrix converged.
+- `li383_low_res` is the sole remaining warmed CPU holdout.
+
+| Example | Boundary | Topology | LASYM | VMEC2000 runtime | VMEC2000 memory | vmec_jax CPU runtime (warmed) | vmec_jax CPU memory |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
+| ITERModel | fixed | axisym | false | 1.00s | 0.07 GiB | 0.20s | 0.49 GiB |
+| LandremanPaul2021_QA_lowres | fixed | non-axisym | false | 25.13s | 0.07 GiB | 7.58s | 1.46 GiB |
+| LandremanPaul2021_QA_lowres1 | fixed | non-axisym | false | 17.00s | 0.07 GiB | 6.39s | 1.61 GiB |
+| LandremanSengupta2019_section5.4_B2_A80 | fixed | axisym | false | 0.28s | 0.07 GiB | 0.12s | 0.49 GiB |
+| LandremanSenguptaPlunk_section5p3_low_res | fixed | axisym | true | 0.66s | 0.07 GiB | 0.20s | 0.60 GiB |
+| basic_non_stellsym_pressure | fixed | non-axisym | true | 2.10s | 0.07 GiB | 0.99s | 1.59 GiB |
+| circular_tokamak | fixed | axisym | false | 0.31s | 0.07 GiB | 0.31s | 0.99 GiB |
+| circular_tokamak_aspect_100 | fixed | axisym | false | 2.43s | 0.07 GiB | 0.50s | 1.17 GiB |
+| cth_like_fixed_bdy | fixed | axisym | false | 0.85s | 0.07 GiB | 0.31s | 0.52 GiB |
+| li383_low_res | fixed | axisym | false | 0.36s | 0.07 GiB | 6.93s | 2.04 GiB |
+| nfp4_QH_warm_start | fixed | non-axisym | false | 0.58s | 0.07 GiB | 0.51s | 1.33 GiB |
+| purely_toroidal_field | fixed | axisym | false | 3.32s | 0.07 GiB | 0.71s | 1.14 GiB |
+| shaped_tokamak_pressure | fixed | axisym | false | 0.82s | 0.07 GiB | 0.17s | 0.49 GiB |
+| solovev | fixed | axisym | false | 0.18s | 0.07 GiB | 0.08s | 0.49 GiB |
+| up_down_asymmetric_tokamak | fixed | axisym | true | 0.77s | 0.07 GiB | 0.50s | 0.61 GiB |
 
 ## Accelerated Branch Reassessment
 
@@ -250,20 +260,11 @@ the rest of the branch signal.
 
 Current branch summary:
 
-- 11 of 15 bundled fixed-boundary cases are faster on the optimized CLI-style path.
-- Biggest wins:
-  `LandremanSenguptaPlunk_section5p3_low_res` `249.49x`,
-  `basic_non_stellsym_pressure` `12.47x`,
-  `ITERModel` `1.78x`.
-- Near-neutral cases:
-  `LandremanPaul2021_QA_lowres` `1.02x`,
-  `cth_like_fixed_bdy` `1.02x`,
-  `nfp4_QH_warm_start` `1.00x`.
-- Current slow outliers:
-  `li383_low_res` `0.0036x`,
-  `up_down_asymmetric_tokamak` `0.0225x`,
-  `LandremanPaul2021_QA_lowres1` `0.93x`,
-  `solovev` `0.94x`.
+- The warmed optimized-CLI comparison against VMEC2000 is now the primary
+  user-facing benchmark because it reflects steady-state solver cost.
+- In that warmed fixed-boundary CPU matrix, 14 of 15 bundled cases are faster
+  than VMEC2000 and all 15 converge.
+- `li383_low_res` remains the only warmed CPU holdout.
 
 The optimized path converged on all 15 cases in that bundled matrix. The new
 Python driver example also shows the intended easy-case behavior on
@@ -271,7 +272,8 @@ Python driver example also shows the intended easy-case behavior on
 both at `fsq_total ~ 2e-14`.
 
 A targeted March 10 follow-up reduced the two worst single-grid CLI outliers
-without changing the hard staged cases yet:
+from the earlier branch-vs-branch reassessment without changing the hard staged
+cases yet:
 
 - `li383_low_res` dropped from `84.64s` to `8.82s` while still converging.
 - `up_down_asymmetric_tokamak` moved from `43.74s` to `0.55s`, which is now
