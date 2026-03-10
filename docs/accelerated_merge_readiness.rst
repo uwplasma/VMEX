@@ -49,6 +49,7 @@ The latest serial CPU reassessment artifact is:
 
 - ``outputs/accelerated_fixed_boundary_reassessment_20260309/summary.json``
 - ``outputs/accelerated_cli_fixed_boundary_reassessment_20260309/summary.json``
+- ``outputs/accelerated_cli_fixed_boundary_hybrid_20260309/summary.json``
 
 Key results from that artifact:
 
@@ -62,6 +63,18 @@ Key results from that artifact:
   ``1.25s`` accelerated single-grid with final
   ``fsq_total ~ 1.1e-4`` in the plain accelerated API path, versus
   ``16.4s`` / ``fsq_total ~ 6.8e-6`` for the new CLI-only staged follow-up.
+
+Latest staged-hybrid follow-up:
+
+- the staged CLI accelerated controller now uses accelerated coarse stages,
+  a strict parity final stage with the full user ``NITER`` budget, and a
+  state-only strict finisher that keeps the best continuation block,
+- on ``input.n3are_R7.75B5.7_lowres`` that moved the best measured residual to
+  ``fsq_total ~ 1.61e-6``,
+- the same artifact confirms the easy accelerated CLI cases remain closed:
+  ``LandremanSenguptaPlunk_section5p3_low_res`` at ``~3.0e-14``,
+  ``LandremanPaul2021_QA_lowres`` at ``~3.0e-13``,
+  and ``li383_low_res`` at ``~1.24e-14``.
 
 These numbers justify the current fixed-boundary accelerated default:
 avoid staged VMEC-style multigrid unless the user explicitly asks for it in the
@@ -81,7 +94,9 @@ true:
 - the branch includes at least one benchmark artifact demonstrating the
   accelerated fixed-boundary controller is useful on representative cases,
 - no user-set environment variable is required for accelerated fixed-boundary
-  correctness on the benchmarked bundled cases.
+  correctness on the benchmarked bundled cases,
+- the remaining staged hard-case limitation is explicitly documented if the
+  branch is merged before ``n3are``-class inputs can be driven to ``FTOL``.
 
 Recommended reviewer checklist
 ------------------------------

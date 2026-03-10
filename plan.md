@@ -1010,3 +1010,25 @@ Legend:
     defaults to `solver_mode="parity"` on the CLI until the staged
     accelerated finisher closes that gap robustly,
   - this policy is input-structure based, not case-name based.
+- Follow-up staged-hybrid fixed-boundary work on `codex/nonparity-performance`:
+  - CLI fixed-boundary finish attempts are no longer limited to accelerated
+    mode; strict parity CLI runs now also get the same state-only finish
+    controller when they miss the target on the first pass,
+  - those finish attempts now restart from the equilibrium state only, not from
+    cached nonlinear-controller history, because the state-only continuation was
+    materially more robust on the hard staged cases,
+  - the accelerated staged warm-start path now keeps accelerated coarse stages
+    but runs the final stage in strict parity with the full user `NITER`
+    budget, instead of starving the fine stage with the reduced warm-start
+    budget,
+  - the new artifact
+    `outputs/accelerated_cli_fixed_boundary_hybrid_20260309/summary.json`
+    records the latest measured status:
+    - `input.LandremanSenguptaPlunk_section5p3_low_res` closes at
+      `fsq_total ~3.0e-14`,
+    - `input.LandremanPaul2021_QA_lowres` closes at
+      `fsq_total ~3.0e-13`,
+    - `input.li383_low_res` closes at `fsq_total ~1.24e-14`,
+    - `input.n3are_R7.75B5.7_lowres` improves to a best measured
+      `fsq_total ~1.61e-6` under the staged hybrid controller, but still does
+      not reach `FTOL`.

@@ -764,7 +764,6 @@ def run_fixed_boundary(
     )
     cli_fixed_boundary_finish_enabled = (
         bool(cli_fixed_boundary_mode)
-        and bool(accelerated_mode)
         and (solver_lower == "vmec2000_iter")
         and (not bool(cfg.lfreeb))
     )
@@ -772,13 +771,22 @@ def run_fixed_boundary(
     def _run_cli_accelerated_budgeted_multigrid(
         *,
         ns_stage_list: list[int],
-        total_budget: int,
+        warm_start_budget: int,
+        final_stage_budget: int,
     ):
-        stage_budgets = _accelerated_cli_budgeted_stage_iters(total_budget=int(total_budget), ns_stages=ns_stage_list)
+        stage_budgets = _accelerated_cli_budgeted_stage_iters(
+            total_budget=int(warm_start_budget),
+            ns_stages=ns_stage_list,
+        )
+        if stage_budgets:
+            stage_budgets[-1] = max(int(stage_budgets[-1]), int(final_stage_budget))
         stage_runs: list[FixedBoundaryRun] = []
         stage_state = None
         stage_static_prev = None
-        for ns_i, niter_i in zip(ns_stage_list, stage_budgets):
+        stage_modes: list[str] = []
+        for idx, (ns_i, niter_i) in enumerate(zip(ns_stage_list, stage_budgets)):
+            is_final_stage = idx == (len(ns_stage_list) - 1)
+            stage_mode_i = "parity" if bool(is_final_stage) else "accelerated"
             if stage_state is not None and int(stage_static_prev.cfg.ns) != int(ns_i):
                 stage_state = interp_vmec_state(
                     stage_state,
@@ -790,7 +798,7 @@ def run_fixed_boundary(
                 )
             kwargs = dict(
                 solver="vmec2000_iter",
-                solver_mode="accelerated",
+                solver_mode=stage_mode_i,
                 max_iter=int(niter_i),
                 step_size=step_size,
                 history_size=int(history_size),
@@ -807,8 +815,8 @@ def run_fixed_boundary(
                 verbose=bool(verbose),
                 jit_forces=jit_forces,
                 jit_precompile=jit_precompile,
-                use_scan=bool(use_scan),
-                performance_mode=True,
+                use_scan=False if bool(is_final_stage) else bool(use_scan),
+                performance_mode=False if bool(is_final_stage) else True,
                 scan_wout_corrector=scan_wout_corrector,
                 stage_transition_heuristic=stage_transition_heuristic,
                 stage_transition_factor=float(stage_transition_factor),
@@ -822,6 +830,7 @@ def run_fixed_boundary(
                 kwargs["restart_state"] = stage_state
             stage_run = run_fixed_boundary(input_path, **kwargs)
             stage_runs.append(stage_run)
+            stage_modes.append(str(stage_mode_i))
             stage_state = stage_run.state
             stage_static_prev = stage_run.static
 
@@ -835,11 +844,13 @@ def run_fixed_boundary(
         diag["cli_accelerated_fixed_policy"] = "budgeted_multigrid"
         diag["cli_accelerated_stage_ns"] = np.asarray(ns_stage_list, dtype=int)
         diag["cli_accelerated_stage_niter"] = np.asarray(stage_budgets, dtype=int)
+        diag["cli_accelerated_stage_modes"] = np.asarray(stage_modes, dtype=object)
         diag["cli_accelerated_stage_fsq"] = np.asarray(
             [float(np.asarray(stage_run.result.w_history)[-1]) for stage_run in stage_runs],
             dtype=float,
         )
-        diag["cli_accelerated_budget_total"] = int(total_budget)
+        diag["cli_accelerated_budget_total"] = int(warm_start_budget)
+        diag["cli_accelerated_final_stage_budget"] = int(final_stage_budget)
         diag["multigrid_ns_stages"] = np.asarray(ns_stage_list, dtype=int)
         diag["multigrid_niter_stages"] = np.asarray(stage_budgets, dtype=int)
         diag["accelerated_single_grid_default"] = False
@@ -862,7 +873,7 @@ def run_fixed_boundary(
             return run_in
         base_diag = dict(run_in.result.diagnostics)
         base_diag["solver_mode"] = str(solver_mode_eff)
-        base_diag["accelerated_mode"] = True
+        base_diag["accelerated_mode"] = bool(accelerated_mode)
         base_diag["cli_fixed_boundary_mode"] = True
         base_diag["cli_fixed_boundary_initial_policy"] = str(initial_policy)
         target_fsq = _accelerated_fsq_total_target_from_ftol(float(indata.get_float("FTOL", 1.0e-13)))
@@ -871,6 +882,7 @@ def run_fixed_boundary(
             base_diag["cli_fixed_boundary_finish_budgets"] = np.zeros((0,), dtype=int)
             base_diag["cli_fixed_boundary_finish_fsq"] = np.zeros((0,), dtype=float)
             base_diag["cli_fixed_boundary_finish_converged"] = np.zeros((0,), dtype=bool)
+            base_diag["cli_fixed_boundary_finish_modes"] = np.asarray([], dtype=object)
             base_diag["cli_fixed_boundary_full_parity_fallback"] = False
             return replace(run_in, result=replace(run_in.result, diagnostics=base_diag))
         run_in_fsq = float(np.asarray(run_in.result.w_history)[-1])
@@ -880,6 +892,7 @@ def run_fixed_boundary(
             base_diag["cli_fixed_boundary_finish_budgets"] = np.zeros((0,), dtype=int)
             base_diag["cli_fixed_boundary_finish_fsq"] = np.zeros((0,), dtype=float)
             base_diag["cli_fixed_boundary_finish_converged"] = np.zeros((0,), dtype=bool)
+            base_diag["cli_fixed_boundary_finish_modes"] = np.asarray([], dtype=object)
             base_diag["cli_fixed_boundary_full_parity_fallback"] = False
             return replace(run_in, result=replace(run_in.result, diagnostics=base_diag))
 
@@ -892,34 +905,6 @@ def run_fixed_boundary(
         attempt_converged: list[bool] = []
         attempt_modes: list[str] = []
         fallback_used = False
-
-        def _resume_state_for_finish(run_i: FixedBoundaryRun):
-            resume_state_i = run_i.result.diagnostics.get("resume_state", None)
-            if resume_state_i is None:
-                return None
-            try:
-                resume_state_i = dict(resume_state_i)
-            except Exception:
-                return None
-            if "cache_norms" not in resume_state_i:
-                resume_state_i["vmec2000_cache_valid"] = False
-                for key in (
-                    "cache_precond_diag",
-                    "cache_tcon",
-                    "cache_norms",
-                    "cache_rz_scale",
-                    "cache_l_scale",
-                    "cache_rz_norm",
-                    "cache_f_norm1",
-                    "cache_prec_rz_mats",
-                    "cache_prec_lam_prec",
-                    "cache_prec_faclam",
-                    "cache_prec_lam_debug",
-                    "cache_constraint_rcon0",
-                    "cache_constraint_zcon0",
-                ):
-                    resume_state_i.pop(key, None)
-            return resume_state_i
 
         def _resolve_finish_jit_forces(static_i: VMECStatic, niter_i: int) -> bool:
             if isinstance(jit_forces, str):
@@ -937,7 +922,6 @@ def run_fixed_boundary(
             return bool(jit_forces)
 
         def _run_finish_attempt(*, budget_i: int, mode_i: str, use_scan_i: bool, performance_mode_i: bool):
-            resume_state_i = _resume_state_for_finish(best_run)
             static_i = best_run.static
             scan_minimal_default_i = True if (bool(performance_mode_i) and (not bool(verbose))) else None
             if step_size is _STEP_SIZE_SENTINEL or step_size is None:
@@ -971,7 +955,10 @@ def run_fixed_boundary(
                 stage_transition_factor=float(stage_transition_factor),
                 stage_transition_scale=float(stage_transition_scale),
                 use_direct_fallback=use_direct_fallback,
-                resume_state=deepcopy(resume_state_i),
+                # CLI finish attempts deliberately restart from the current
+                # equilibrium state only. Reusing the nonlinear controller
+                # caches was materially less robust on the hard staged inputs.
+                resume_state=None,
                 verbose=False,
                 verbose_vmec2000_table=False,
                 jit_precompile=False,
@@ -986,8 +973,11 @@ def run_fixed_boundary(
             return replace(best_run, state=res_i.state, result=res_i)
 
         max_fallback_budget = int(2 * base_total_budget)
+        improvement_floor = np.finfo(float).eps * max(1.0, abs(float(best_fsq)), abs(float(target_fsq)))
         if not (bool(best_run.result.diagnostics.get("converged", False)) or float(best_fsq) <= float(target_fsq)):
-            for budget_i in (int(base_total_budget), int(2 * base_total_budget)):
+            budget_i = int(base_total_budget)
+            while int(budget_i) >= 1:
+                prev_best_fsq = float(best_fsq)
                 trial = _run_finish_attempt(
                     budget_i=budget_i,
                     mode_i="parity",
@@ -1002,16 +992,23 @@ def run_fixed_boundary(
                 attempt_fsq.append(float(trial_fsq))
                 attempt_converged.append(bool(trial_conv))
                 attempt_modes.append("parity")
-                if trial_conv or float(trial_fsq) < float(best_fsq):
+                improved = trial_conv or (float(trial_fsq) < float(prev_best_fsq - improvement_floor))
+                if improved:
                     best_run = trial
                     best_fsq = float(trial_fsq)
                 if trial_conv:
                     break
+                if improved:
+                    continue
+                next_budget = max(1, int(np.ceil(float(budget_i) / 2.0)))
+                if int(next_budget) == int(budget_i):
+                    break
+                budget_i = int(next_budget)
 
         staged_input = (ns_list_input is not None) and (len(ns_list_input) > 1)
         if staged_input and not (
             bool(best_run.result.diagnostics.get("converged", False)) or float(best_fsq) <= float(target_fsq)
-        ):
+        ) and bool(accelerated_mode):
             fallback_used = True
             fallback = run_fixed_boundary(
                 input_path,
@@ -1050,7 +1047,7 @@ def run_fixed_boundary(
         diag = dict(base_diag)
         diag.update(best_run.result.diagnostics)
         diag["solver_mode"] = str(solver_mode_eff)
-        diag["accelerated_mode"] = True
+        diag["accelerated_mode"] = bool(accelerated_mode)
         diag["cli_fixed_boundary_mode"] = True
         diag["cli_fixed_boundary_initial_policy"] = str(initial_policy)
         if float(best_fsq) <= float(target_fsq):
@@ -1132,7 +1129,11 @@ def run_fixed_boundary(
 
     if bool(cli_budgeted_multigrid_requested):
         budget_total = _accelerated_cli_budgeted_total_iters(total_budget=int(max_iter), ns_stages=ns_stages)
-        return _run_cli_accelerated_budgeted_multigrid(ns_stage_list=list(ns_stages), total_budget=int(budget_total))
+        return _run_cli_accelerated_budgeted_multigrid(
+            ns_stage_list=list(ns_stages),
+            warm_start_budget=int(budget_total),
+            final_stage_budget=int(max_iter),
+        )
 
     # Precompute boundary coefficients without triggering JAX initialization.
     boundary_coeffs = None
@@ -2189,8 +2190,9 @@ def run_fixed_boundary(
         profiles=prof,
         signgs=signgs,
     )
+    cli_initial_policy = "multigrid" if bool(multigrid) and (len(ns_stages) > 1) else "single_grid"
     return _maybe_finish_cli_fixed_boundary_run(
         run_out,
-        initial_policy="single_grid",
+        initial_policy=cli_initial_policy,
         enabled=bool(cli_fixed_boundary_finish_enabled),
     )

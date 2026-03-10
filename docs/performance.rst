@@ -197,6 +197,28 @@ That CLI-specific controller is intentionally scoped:
 - it improves difficult cases such as ``n3are`` materially, but it does not
   yet force strict ``FTOL`` convergence on every staged input.
 
+The next hybrid follow-up in
+``outputs/accelerated_cli_fixed_boundary_hybrid_20260309/summary.json``
+tightened that staged controller further:
+
+- the budgeted multigrid warm start now keeps the accelerated coarse stages but
+  gives the final stage the full user ``NITER`` budget while running it in the
+  strict parity controller,
+- the CLI strict finisher now continues from state only, not from cached
+  nonlinear-controller history, and keeps the best continuation state when a
+  later block regresses,
+- on ``input.n3are_R7.75B5.7_lowres`` this pushes the best measured residual to
+  ``fsq_total ~1.61e-6`` from the same general staged workflow,
+- the same artifact confirms the easy fixed-boundary cases remain closed under
+  the accelerated CLI path:
+  ``LandremanSenguptaPlunk_section5p3_low_res`` at ``~3.0e-14``,
+  ``LandremanPaul2021_QA_lowres`` at ``~3.0e-13``,
+  and ``li383_low_res`` at ``~1.24e-14``.
+
+That still leaves one honest limitation on this branch: the staged hybrid
+controller improves the ``n3are`` stress case substantially, but it still does
+not drive it all the way to the requested ``FTOL`` on the measured run.
+
 Additional controller finding from March 2026:
 
 - the existing fully non-VMEC scan path was re-probed as a possible next
