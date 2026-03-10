@@ -92,6 +92,14 @@ Current CLI behavior is better captured as policy than as one stale table:
   ``LandremanPaul2021_QA_lowres1`` (``0.93x``), and
   ``solovev`` (``0.94x``) are all slower on the optimized CLI-style path.
 
+A targeted follow-up then improved the two worst single-grid CLI outliers by
+running extra accelerated continuation blocks before parity fallback:
+
+- ``li383_low_res`` improved from about ``84.64s`` to about ``8.82s`` while
+  still converging,
+- ``up_down_asymmetric_tokamak`` improved from about ``43.74s`` to about
+  ``0.55s`` and is now about ``2.11x`` faster than the branch baseline.
+
 These numbers justify the current controller split on the branch:
 keep the optimized fixed-boundary logic available for explicit testing and
 review, but do not promote it to the repo-wide default until the slow outliers

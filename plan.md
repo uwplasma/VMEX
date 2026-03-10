@@ -1068,3 +1068,15 @@ Legend:
     a same-branch cold `solver_mode="default"` run took `41.67s` and stopped at
     `fsq_total ~ 6.90e-2`, while the optimized CLI-style run exceeded 15
     minutes without finishing the cold reassessment solve.
+- 2026-03-10 targeted single-grid CLI finisher improvement:
+  - CLI fixed-boundary single-grid finish blocks now try accelerated
+    continuation before strict parity fallback,
+  - added regression coverage for the new finish ordering in
+    `tests/test_driver_api.py`,
+  - targeted outlier artifact:
+    `outputs/accelerated_cli_fixed_boundary_outliers_20260310/summary.json`,
+  - `input.li383_low_res` improved from about `84.64s` to about `8.82s` while
+    still converging to `fsq_total ~1.24e-14`,
+  - `input.up_down_asymmetric_tokamak` improved from about `43.74s` to about
+    `0.55s`, now about `2.11x` faster than the branch baseline while still
+    converging to `fsq_total ~3.00e-14`.

@@ -248,6 +248,18 @@ same reassessment also shows why this branch is not ready to become the
 default controller yet: those slow outliers are too severe to hide behind the
 average speedup.
 
+A targeted follow-up on the two worst single-grid CLI outliers then tightened
+the finisher policy: before paying for strict parity continuation, the CLI now
+tries additional accelerated scan blocks from the current equilibrium state.
+That preserves convergence but removes most of the wasted runtime on the easy
+single-grid cases that simply need more fast iterations:
+
+- ``li383_low_res`` dropped from about ``84.64s`` to about ``8.82s`` while
+  still converging to ``fsq_total ~1.24e-14``,
+- ``up_down_asymmetric_tokamak`` dropped from about ``43.74s`` to about
+  ``0.55s``, which makes the optimized CLI path about ``2.11x`` faster than
+  the branch baseline while still converging to ``fsq_total ~3.00e-14``.
+
 ``n3are_R7.75B5.7_lowres`` was measured separately because it dominates the
 wall clock:
 

@@ -1011,11 +1011,14 @@ def run_fixed_boundary(
 
         def _run_finish_attempt(*, budget_i: int, mode_i: str, use_scan_i: bool, performance_mode_i: bool):
             static_i = best_run.static
+            mode_i_l = str(mode_i).strip().lower()
             scan_minimal_default_i = True if (bool(performance_mode_i) and (not bool(verbose))) else None
             if step_size is _STEP_SIZE_SENTINEL or step_size is None:
                 step_size_finish = float(indata.get_float("DELT", 5e-3))
             else:
                 step_size_finish = float(step_size)
+            finish_fsq_total_target = float(target_fsq) if mode_i_l == "accelerated" else None
+            finish_resume_state_mode = "minimal" if mode_i_l == "accelerated" else "full"
             res_i = solve_fixed_boundary_residual_iter(
                 best_run.state,
                 static_i,
@@ -1054,8 +1057,8 @@ def run_fixed_boundary(
                 use_scan=bool(use_scan_i),
                 scan_minimal_default=scan_minimal_default_i,
                 light_history=True,
-                resume_state_mode="full",
-                fsq_total_target=None,
+                resume_state_mode=finish_resume_state_mode,
+                fsq_total_target=finish_fsq_total_target,
                 jit_forces=_resolve_finish_jit_forces(static_i, int(budget_i)),
             )
             return replace(best_run, state=res_i.state, result=res_i)
@@ -1094,6 +1097,37 @@ def run_fixed_boundary(
 
         max_fallback_budget = int(2 * base_total_budget)
         improvement_floor = np.finfo(float).eps * max(1.0, abs(float(best_fsq)), abs(float(target_fsq)))
+        if (
+            bool(accelerated_mode)
+            and str(initial_policy) == "single_grid"
+            and (not bool(staged_followup_used))
+            and not (bool(best_run.result.diagnostics.get("converged", False)) or float(best_fsq) <= float(target_fsq))
+        ):
+            accel_budget_i = int(base_total_budget)
+            accel_budget_used = 0
+            while int(accel_budget_i) >= 1 and int(accel_budget_used) < int(max_fallback_budget):
+                prev_best_fsq = float(best_fsq)
+                trial = _run_finish_attempt(
+                    budget_i=accel_budget_i,
+                    mode_i="accelerated",
+                    use_scan_i=True,
+                    performance_mode_i=True,
+                )
+                trial_fsq = float(np.asarray(trial.result.w_history)[-1])
+                trial_conv = bool(trial.result.diagnostics.get("converged", False)) or (
+                    float(trial_fsq) <= float(target_fsq)
+                )
+                attempt_budgets.append(int(accel_budget_i))
+                attempt_fsq.append(float(trial_fsq))
+                attempt_converged.append(bool(trial_conv))
+                attempt_modes.append("accelerated")
+                accel_budget_used += int(accel_budget_i)
+                improved = trial_conv or (float(trial_fsq) < float(prev_best_fsq - improvement_floor))
+                if improved:
+                    best_run = trial
+                    best_fsq = float(trial_fsq)
+                if trial_conv or (not improved):
+                    break
         if not (bool(best_run.result.diagnostics.get("converged", False)) or float(best_fsq) <= float(target_fsq)):
             budget_i = int(base_total_budget)
             while int(budget_i) >= 1:

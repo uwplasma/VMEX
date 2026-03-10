@@ -62,6 +62,27 @@ def _write_staged_with_niter_input(tmp_path: Path) -> Path:
     return input_path
 
 
+def _write_single_stage_input(tmp_path: Path) -> Path:
+    input_path = tmp_path / "input.single_stage"
+    input_path.write_text(
+        "&INDATA\n"
+        "  LFREEB = F\n"
+        "  NFP = 1\n"
+        "  MPOL = 5\n"
+        "  NTOR = 0\n"
+        "  NS = 13\n"
+        "  NITER = 100\n"
+        "  FTOL = 1e-14\n"
+        "  NS_ARRAY = 13\n"
+        "  FTOL_ARRAY = 1e-14\n"
+        "  PHIEDGE = 1.0\n"
+        "  RBC(0,0) = 1.0\n"
+        "  ZBS(1,0) = 0.1\n"
+        "/\n"
+    )
+    return input_path
+
+
 def test_example_paths_and_load_example():
     pytest.importorskip("netCDF4")
 
@@ -423,6 +444,70 @@ def test_run_fixed_boundary_cli_parity_finisher_uses_state_only_blocks(monkeypat
     assert diag["cli_fixed_boundary_full_parity_fallback"] is False
     assert diag["converged"] is True
     assert diag["marker"] == 8
+
+
+def test_run_fixed_boundary_cli_single_grid_uses_accelerated_finish_first(monkeypatch, tmp_path):
+    input_path = _write_single_stage_input(tmp_path)
+    calls = []
+    fsq_values = [1.0e-4, 1.0e-8, 2.0e-14]
+
+    def _fake_solver(state, static, **kwargs):
+        idx = len(calls)
+        calls.append(
+            {
+                "ns": int(static.cfg.ns),
+                "max_iter": int(kwargs["max_iter"]),
+                "use_scan": bool(kwargs["use_scan"]),
+                "resume_state_mode": str(kwargs.get("resume_state_mode", "")),
+                "fsq_total_target": kwargs.get("fsq_total_target", None),
+            }
+        )
+        fsq = float(fsq_values[idx])
+        converged = bool(fsq <= 3.0e-14)
+        return SolveVmecResidualResult(
+            state=state,
+            n_iter=max(0, int(kwargs["max_iter"]) - 1),
+            w_history=np.asarray([fsq], dtype=float),
+            fsqr2_history=np.asarray([fsq], dtype=float),
+            fsqz2_history=np.asarray([0.0], dtype=float),
+            fsql2_history=np.asarray([0.0], dtype=float),
+            grad_rms_history=np.asarray([], dtype=float),
+            step_history=np.asarray([], dtype=float),
+            diagnostics={
+                "use_scan": bool(kwargs["use_scan"]),
+                "resume_state": {"cache_norms": np.asarray([1.0])},
+                "light_history": True,
+                "resume_state_mode": str(kwargs.get("resume_state_mode", "")),
+                "converged": converged,
+            },
+        )
+
+    monkeypatch.setattr(solve_module, "solve_fixed_boundary_residual_iter", _fake_solver)
+    monkeypatch.setattr(driver_module, "solve_fixed_boundary_residual_iter", _fake_solver)
+
+    run = run_fixed_boundary(
+        input_path,
+        solver="vmec2000_iter",
+        solver_mode="accelerated",
+        verbose=False,
+        cli_fixed_boundary_mode=True,
+    )
+
+    assert [call["ns"] for call in calls] == [13, 13, 13]
+    assert [call["max_iter"] for call in calls] == [100, 100, 100]
+    assert [call["use_scan"] for call in calls] == [True, True, True]
+    assert [call["resume_state_mode"] for call in calls] == ["minimal", "minimal", "minimal"]
+    assert calls[0]["fsq_total_target"] is not None
+    assert calls[1]["fsq_total_target"] is not None
+    assert calls[2]["fsq_total_target"] is not None
+    diag = run.result.diagnostics
+    assert diag["cli_fixed_boundary_mode"] is True
+    assert diag["cli_fixed_boundary_initial_policy"] == "single_grid"
+    assert np.asarray(diag["cli_fixed_boundary_finish_budgets"]).tolist() == [100, 100]
+    assert np.asarray(diag["cli_fixed_boundary_finish_modes"]).tolist() == ["accelerated", "accelerated"]
+    assert np.asarray(diag["cli_fixed_boundary_finish_converged"]).tolist() == [False, True]
+    assert diag["cli_fixed_boundary_full_parity_fallback"] is False
+    assert diag["converged"] is True
 
 
 def test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid():

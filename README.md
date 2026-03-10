@@ -270,6 +270,13 @@ Python driver example also shows the intended easy-case behavior on
 `input.circular_tokamak`: parity `28.863s` vs optimized CLI-style `3.445s`,
 both at `fsq_total ~ 2e-14`.
 
+A targeted March 10 follow-up reduced the two worst single-grid CLI outliers
+without changing the hard staged cases yet:
+
+- `li383_low_res` dropped from `84.64s` to `8.82s` while still converging.
+- `up_down_asymmetric_tokamak` moved from `43.74s` to `0.55s`, which is now
+  `2.11x` faster than the branch baseline while still converging.
+
 `n3are_R7.75B5.7_lowres` remains the honest hard outlier on this branch. A
 same-branch cold `solver_mode="default"` run took `41.67s` and stopped at
 `fsq_total ~ 6.90e-2` (not converged), while the optimized CLI-style path ran
