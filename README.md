@@ -231,50 +231,45 @@ GPU summary on your own reference hosts.
 - `docs/algorithms.rst`: algorithmic overview
 - `docs/equations.rst`: equations and conventions
 
-## Optimized CLI Fixed-Boundary Benchmarks
+## Optimized CLI Fixed-Boundary Reassessment
 
-Measured on 2026-03-10 using warmed serial runs of the optimized fixed-boundary
+Measured on 2026-03-11 using warmed serial runs of the optimized fixed-boundary
 CLI controller (`solver_mode="accelerated"`, `cli_fixed_boundary_mode=True`)
-against VMEC2000 on a reference CPU host. Exact results vary by machine, but
-this checked-in snapshot is the benchmark behind the top README runtime figure.
+against the current branch baseline (`solver_mode="default"`). The full
+artifact is checked in at
+`outputs/accelerated_cli_fixed_boundary_full_20260311/summary.json`.
 
 Current checked-in summary:
 
-- 16 of 16 bundled fixed-boundary cases are faster than VMEC2000 once the JAX
-  kernels are warmed.
-- All 16 bundled fixed-boundary cases in this warmed matrix converged.
-- The bundled fixed-boundary set now uses the shipped QA/QH reactor-scale
-  reference inputs in place of the retired internal stress cases.
+- All 16 bundled fixed-boundary cases in the warmed matrix converged on both
+  the baseline and optimized paths.
+- The optimized controller is faster on 8 of 16 cases, roughly neutral on 2 of
+  16, and slower on 6 of 16.
+- The strongest wins are still on easy axisymmetric cases such as
+  `LandremanSenguptaPlunk_section5p3_low_res` and
+  `up_down_asymmetric_tokamak`.
+- The main slowdowns are the non-axisymmetric QA/QH reactor-scale cases and
+  `basic_non_stellsym_pressure`.
 
-| Example | Boundary | Topology | LASYM | VMEC2000 runtime | VMEC2000 memory | vmec_jax CPU runtime (warmed) | vmec_jax CPU memory |
-| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
-| ITERModel | fixed | axisym | false | 1.01s | 0.07 GiB | 0.19s | 0.49 GiB |
-| LandremanPaul2021_QA_lowres | fixed | non-axisym | false | 26.30s | 0.07 GiB | 8.49s | 1.47 GiB |
-| LandremanPaul2021_QA_lowres1 | fixed | non-axisym | false | 19.41s | 0.07 GiB | 9.89s | 1.60 GiB |
-| LandremanPaul2021_QA_reactorScale_lowres | fixed | non-axisym | false | 43.20s | 0.07 GiB | 21.15s | 1.51 GiB |
-| LandremanPaul2021_QH_reactorScale_lowres | fixed | non-axisym | false | 43.84s | 0.07 GiB | 25.33s | 1.46 GiB |
-| LandremanSengupta2019_section5.4_B2_A80 | fixed | axisym | false | 0.26s | 0.07 GiB | 0.09s | 0.49 GiB |
-| LandremanSenguptaPlunk_section5p3_low_res | fixed | axisym | true | 0.63s | 0.07 GiB | 0.27s | 0.64 GiB |
-| basic_non_stellsym_pressure | fixed | non-axisym | true | 2.01s | 0.07 GiB | 0.94s | 1.58 GiB |
-| circular_tokamak | fixed | axisym | false | 0.31s | 0.07 GiB | 0.30s | 0.99 GiB |
-| circular_tokamak_aspect_100 | fixed | axisym | false | 2.46s | 0.07 GiB | 0.54s | 1.16 GiB |
-| cth_like_fixed_bdy | fixed | axisym | false | 0.82s | 0.07 GiB | 0.30s | 0.53 GiB |
-| nfp4_QH_warm_start | fixed | non-axisym | false | 0.56s | 0.07 GiB | 0.47s | 1.32 GiB |
-| purely_toroidal_field | fixed | axisym | false | 3.26s | 0.07 GiB | 0.66s | 1.14 GiB |
-| shaped_tokamak_pressure | fixed | axisym | false | 0.79s | 0.07 GiB | 0.17s | 0.49 GiB |
-| solovev | fixed | axisym | false | 0.16s | 0.07 GiB | 0.06s | 0.48 GiB |
-| up_down_asymmetric_tokamak | fixed | axisym | true | 0.78s | 0.07 GiB | 0.45s | 0.60 GiB |
+Representative warmed CPU baseline-vs-optimized points:
+
+| Example | Baseline runtime | Optimized runtime | Runtime ratio |
+| --- | ---: | ---: | ---: |
+| ITERModel | 0.36s | 0.21s | 1.77x faster |
+| LandremanPaul2021_QA_lowres | 8.61s | 61.33s | 0.14x |
+| LandremanPaul2021_QA_reactorScale_lowres | 11.26s | 120.65s | 0.09x |
+| LandremanSenguptaPlunk_section5p3_low_res | 48.63s | 0.21s | 233.41x faster |
+| shaped_tokamak_pressure | 0.34s | 0.18s | 1.85x faster |
+| up_down_asymmetric_tokamak | 1.03s | 0.45s | 2.26x faster |
 
 ## Accelerated Branch Reassessment
 
-The optimized fixed-boundary CLI track is now best summarized by two results:
+The optimized fixed-boundary CLI track is currently best understood as an
+experimental controller:
 
-- on the reference CPU benchmark host, the warmed optimized CLI controller is
-  faster than VMEC2000 on all 16 bundled fixed-boundary examples and every
-  case converges;
-- on a same-host CPU/GPU comparison, both backends converge on all 16 bundled
-  fixed-boundary examples, with the GPU already winning on the heavier 3D
-  cases while the CPU remains better on the smallest axisymmetric solves.
+- it keeps convergence on the bundled fixed-boundary matrix,
+- it produces major wins on several easy cases,
+- but the full warmed bundle does not support making it the default yet.
 
 The bundled Python driver example shows the intended user flow on
 `input.circular_tokamak`: parity `28.863s` vs optimized CLI-style `3.445s`,
@@ -286,16 +281,7 @@ python examples/fixed_boundary_driver_tracks.py \
   --quiet --json
 ```
 
-Same-host CPU/GPU result on the updated 16-case fixed-boundary bundle:
-
-- GPU faster: `LandremanPaul2021_QA_lowres`,
-  `LandremanPaul2021_QA_lowres1`,
-  `LandremanPaul2021_QA_reactorScale_lowres`,
-  `LandremanPaul2021_QH_reactorScale_lowres`,
-  `cth_like_fixed_bdy`
-- CPU faster: the remaining 11 smaller or more launch-latency-dominated cases
-
-That is why the top README benchmark stays CPU-vs-VMEC2000: it is the current
-all-case comparison. On GPU-capable workstations the optimized track already
-helps on the larger non-axisymmetric cases, but automatic backend selection is
-still the next step before GPU becomes the universal default.
+Same-host CPU/GPU comparison remains mixed. The GPU already helps on several
+heavier 3D cases, but the branch is not yet in a state where one accelerated
+policy is uniformly better across the shipped fixed-boundary set. That is why
+the branch should still be reviewed as experimental rather than default-ready.

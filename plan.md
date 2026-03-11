@@ -1185,3 +1185,18 @@ Legend:
     the repaired QA-lowres accelerated comparison panels.
   - full regression suite after these fixes:
     `166 passed, 12 skipped`.
+- 2026-03-11 full fixed-boundary bundled reassessment:
+  - full local validation remains green:
+    `pytest -q` -> `166 passed, 12 skipped`,
+    `SPHINX_FAST=1 ... sphinx -W ...` -> passed,
+  - full warmed fixed-boundary bundled matrix is recorded in
+    `outputs/accelerated_cli_fixed_boundary_full_20260311/summary.json`,
+  - both the current default path and the optimized CLI-style candidate
+    converged on all 16 bundled fixed-boundary cases,
+  - however the optimized controller is only faster on 8 of 16 cases, roughly
+    neutral on 2, and slower on 6,
+  - the largest regressions are still the non-axisymmetric QA/QH-style cases
+    and `basic_non_stellsym_pressure`,
+  - conclusion from the full bundle is now explicit:
+    branch remains useful and reviewable as experimental, but it is not ready
+    to become the default fixed-boundary controller on `main`.

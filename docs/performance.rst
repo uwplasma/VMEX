@@ -219,40 +219,48 @@ Latest serial bundled fixed-boundary reassessment
 The current bundled fixed-boundary benchmark set uses the shipped QA/QH
 reactor-scale reference inputs in place of the retired internal stress cases.
 
-Current warmed fixed-boundary CPU results on the optimized CLI track:
+Current warmed fixed-boundary CPU reassessment on the optimized CLI track,
+using the same branch baseline as the comparator, is recorded in
+``outputs/accelerated_cli_fixed_boundary_full_20260311/summary.json``:
 
-- 16 of 16 bundled fixed-boundary cases are faster than VMEC2000 once the JAX
-  kernels are warmed,
-- all 16 bundled fixed-boundary cases converge,
-- the warmed CPU matrix is now clean enough to serve as the public README
-  speedup benchmark.
+- all 16 bundled fixed-boundary cases converge on both the baseline and
+  optimized paths,
+- the optimized path is faster on 8 of 16 cases, roughly neutral on 2, and
+  slower on 6,
+- this is enough to justify continued work on the controller, but not enough
+  to justify making it the default.
 
-Final-``wout`` accuracy is a separate gate from residual convergence. A full
-fixed-boundary audit on the accelerated branch is recorded in
-``outputs/fixed_wout_audit_20260310_r3/summary.json``:
+Final-``wout`` accuracy is a separate gate from residual convergence. The
+earlier full fixed-boundary audit is recorded in
+``outputs/fixed_wout_audit_20260310_r3/summary.json``, and the later staged-3D
+controller fixes improved several non-axisymmetric cases materially:
 
 - strong final-``wout`` agreement on the current shipped showcase cases:
   ``ITERModel`` (max relRMS ``6.01e-06``),
   ``shaped_tokamak_pressure`` (``1.55e-07``),
   ``circular_tokamak`` (``1.03e-05``),
-- meaningful residual-to-``wout`` drift still present on several 3D cases even
-  when ``fsq_total`` is very small:
-  ``LandremanPaul2021_QA_lowres`` (``3.37e-01``),
-  ``LandremanPaul2021_QA_reactorScale_lowres`` (``3.58e+00``),
-  ``LandremanPaul2021_QH_reactorScale_lowres`` (``4.96e+00``),
-  ``up_down_asymmetric_tokamak`` (``1.70e-01``),
-- the public README showcase therefore now uses validated fixed-boundary cases
-  instead of the previously misleading QA low-resolution panel.
+- targeted staged non-axisymmetric follow-up fixes then brought the reactor
+  QA/QH Fourier-channel errors down to the branch target range on direct
+  comparisons:
+  ``LandremanPaul2021_QA_lowres`` now reaches about
+  ``rmnc 5.83e-05``, ``zmns 2.83e-04``, ``lmns 4.75e-03``;
+  ``LandremanPaul2021_QA_reactorScale_lowres`` reaches about
+  ``rmnc 2.49e-05``, ``zmns 1.61e-04``, ``lmns 2.86e-03``;
+  ``LandremanPaul2021_QH_reactorScale_lowres`` reaches about
+  ``rmnc 6.12e-05``, ``zmns 2.60e-04``, ``lmns 9.97e-03``,
+- however, the full warmed benchmark still shows that runtime performance is
+  mixed across the bundled set, so the branch remains experimental.
 
-Representative warmed CPU points from that matrix:
+Representative warmed CPU baseline-vs-optimized points from the current full
+matrix:
 
-- ``ITERModel``: ``0.19s`` vs VMEC2000 ``1.01s``,
-- ``LandremanPaul2021_QA_lowres``: ``8.49s`` vs VMEC2000 ``26.30s``,
+- ``ITERModel``: ``0.36s`` baseline vs ``0.21s`` optimized,
+- ``LandremanPaul2021_QA_lowres``: ``8.61s`` baseline vs ``61.33s`` optimized,
 - ``LandremanPaul2021_QA_reactorScale_lowres``:
-  ``21.15s`` vs VMEC2000 ``43.20s``,
-- ``LandremanPaul2021_QH_reactorScale_lowres``:
-  ``25.33s`` vs VMEC2000 ``43.84s``,
-- ``up_down_asymmetric_tokamak``: ``0.45s`` vs VMEC2000 ``0.78s``.
+  ``11.26s`` baseline vs ``120.65s`` optimized,
+- ``LandremanSenguptaPlunk_section5p3_low_res``:
+  ``48.63s`` baseline vs ``0.21s`` optimized,
+- ``up_down_asymmetric_tokamak``: ``1.03s`` baseline vs ``0.45s`` optimized.
 
 Same-host CPU/GPU reassessment on a reference GPU workstation is now complete
 for the same 16-case bundled fixed-boundary set:
