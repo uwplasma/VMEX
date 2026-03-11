@@ -86,11 +86,15 @@ def _write_single_stage_input(tmp_path: Path) -> Path:
 def test_example_paths_and_load_example():
     pytest.importorskip("netCDF4")
 
-    input_path, wout_path = example_paths("n3are_R7.75B5.7_lowres", root=Path(__file__).resolve().parents[1])
+    input_path, wout_path = example_paths(
+        "LandremanPaul2021_QH_reactorScale_lowres", root=Path(__file__).resolve().parents[1]
+    )
     assert input_path.exists()
     assert wout_path is not None and wout_path.exists()
 
-    ex = load_example("n3are_R7.75B5.7_lowres", root=Path(__file__).resolve().parents[1], with_wout=True)
+    ex = load_example(
+        "LandremanPaul2021_QH_reactorScale_lowres", root=Path(__file__).resolve().parents[1], with_wout=True
+    )
     assert ex.cfg.ns > 0
     assert ex.wout is not None
     assert ex.state is not None

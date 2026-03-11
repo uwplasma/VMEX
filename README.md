@@ -6,41 +6,41 @@ and free-boundary ideal-MHD equilibria.
 <table>
   <tr>
     <td><img src="docs/_static/figures/axisym_compare_cross_sections.png" width="420" /></td>
-    <td><img src="docs/_static/figures/n3are_compare_cross_sections.png" width="420" /></td>
+    <td><img src="docs/_static/figures/qh_reactor_compare_cross_sections.png" width="420" /></td>
   </tr>
   <tr>
     <td align="center">Axisymmetric: cross-section (VMEC2000 vs vmec_jax)</td>
-    <td align="center">Stellarator (n3are): cross-section (VMEC2000 vs vmec_jax)</td>
+    <td align="center">Stellarator (QH reactor-scale): cross-section (VMEC2000 vs vmec_jax)</td>
   </tr>
   <tr>
     <td><img src="docs/_static/figures/axisym_compare_3d.png" width="420" /></td>
-    <td><img src="docs/_static/figures/n3are_compare_3d.png" width="420" /></td>
+    <td><img src="docs/_static/figures/qh_reactor_compare_3d.png" width="420" /></td>
   </tr>
   <tr>
     <td align="center">Axisymmetric: 3D LCFS (VMEC2000 vs vmec_jax)</td>
-    <td align="center">Stellarator (n3are): 3D LCFS (VMEC2000 vs vmec_jax)</td>
+    <td align="center">Stellarator (QH reactor-scale): 3D LCFS (VMEC2000 vs vmec_jax)</td>
   </tr>
   <tr>
     <td><img src="docs/_static/figures/axisym_compare_bmag_surface.png" width="420" /></td>
-    <td><img src="docs/_static/figures/n3are_compare_bmag_surface.png" width="420" /></td>
+    <td><img src="docs/_static/figures/qh_reactor_compare_bmag_surface.png" width="420" /></td>
   </tr>
   <tr>
     <td align="center">Axisymmetric: |B| on LCFS (VMEC2000 vs vmec_jax)</td>
-    <td align="center">Stellarator (n3are): |B| on LCFS (VMEC2000 vs vmec_jax)</td>
+    <td align="center">Stellarator (QH reactor-scale): |B| on LCFS (VMEC2000 vs vmec_jax)</td>
   </tr>
   <tr>
     <td><img src="docs/_static/figures/axisym_compare_iota.png" width="420" /></td>
-    <td><img src="docs/_static/figures/n3are_compare_iota.png" width="420" /></td>
+    <td><img src="docs/_static/figures/qh_reactor_compare_iota.png" width="420" /></td>
   </tr>
   <tr>
     <td align="center">Axisymmetric: iota (VMEC2000 vs vmec_jax)</td>
-    <td align="center">Stellarator (n3are): iota (VMEC2000 vs vmec_jax)</td>
+    <td align="center">Stellarator (QH reactor-scale): iota (VMEC2000 vs vmec_jax)</td>
   </tr>
   <tr>
     <td colspan="2"><img src="docs/_static/figures/readme_fsq_trace.png" width="860" /></td>
   </tr>
   <tr>
-    <td align="center" colspan="2">fsq_total trace (VMEC2000 vs vmec_jax) for axisymmetric + n3are cases</td>
+    <td align="center" colspan="2">fsq_total trace (VMEC2000 vs vmec_jax) for axisymmetric + QH reactor-scale cases</td>
   </tr>
   <tr>
     <td colspan="2"><img src="docs/_static/figures/readme_runtime_compare.png" width="860" /></td>
@@ -165,14 +165,14 @@ export VMEC_JAX_SCAN_MINIMAL=0  # keep full scan diagnostics even when quiet
 
 ## Reproduce figures
 
-Recreate the axisym + n3are VMEC2000 vs vmec_jax panels shown above (single-plane cross-sections, |B| on LCFS, iota overlays, plus the fsq_total trace):
+Recreate the axisymmetric + QH reactor-scale VMEC2000 vs vmec_jax panels shown above (single-plane cross-sections, |B| on LCFS, iota overlays, plus the fsq_total trace):
 
 ```bash
 python tools/diagnostics/qh_vmec_vs_vmecjax.py   --input examples/data/input.shaped_tokamak_pressure   --wout-ref examples/data/wout_shaped_tokamak_pressure_reference.nc   --use-wout-state --jax-title vmec_jax   --phi 0.0 --n-surfaces 31   --prefix axisym --outdir docs/_static/figures
 
-python tools/diagnostics/qh_vmec_vs_vmecjax.py   --input examples/data/input.n3are_R7.75B5.7_lowres   --wout-ref examples/data/wout_n3are_R7.75B5.7_lowres.nc   --use-wout-state --jax-title vmec_jax   --phi 0.0 --n-surfaces 31   --prefix n3are --outdir docs/_static/figures
+python tools/diagnostics/qh_vmec_vs_vmecjax.py   --input examples/data/input.LandremanPaul2021_QH_reactorScale_lowres   --wout-ref examples/data/wout_LandremanPaul2021_QH_reactorScale_lowres_reference.nc   --use-wout-state --jax-title vmec_jax   --phi 0.0 --n-surfaces 31   --prefix qh_reactor --outdir docs/_static/figures
 
-python tools/diagnostics/readme_fsq_trace.py   --axisym-input examples/data/input.shaped_tokamak_pressure   --stellarator-input examples/data/input.n3are_R7.75B5.7_lowres   --niter 250 --ftol 1e-14   --outdir docs/_static/figures
+python tools/diagnostics/readme_fsq_trace.py   --axisym-input examples/data/input.shaped_tokamak_pressure   --stellarator-input examples/data/input.LandremanPaul2021_QH_reactorScale_lowres   --niter 250 --ftol 1e-14   --outdir docs/_static/figures
 
 python tools/diagnostics/example_runtime_memory_matrix.py \
   --backend both \

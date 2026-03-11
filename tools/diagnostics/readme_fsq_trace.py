@@ -106,7 +106,7 @@ def main() -> None:
     p.add_argument(
         "--stellarator-input",
         type=str,
-        default=str(Path(__file__).resolve().parents[2] / "examples/data/input.n3are_R7.75B5.7_lowres"),
+        default=str(Path(__file__).resolve().parents[2] / "examples/data/input.LandremanPaul2021_QH_reactorScale_lowres"),
     )
     p.add_argument(
         "--qh-input",

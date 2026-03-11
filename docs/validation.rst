@@ -19,8 +19,8 @@ The repository includes a small set of low-resolution cases under
 
 - 3D stellarator-symmetric fixed-boundary cases:
 
-  - ``input.li383_low_res`` + ``wout_li383_low_res_reference.nc``
-  - ``input.n3are_R7.75B5.7_lowres`` + ``wout_n3are_R7.75B5.7_lowres.nc``
+  - ``input.LandremanPaul2021_QA_reactorScale_lowres`` + ``wout_LandremanPaul2021_QA_reactorScale_lowres_reference.nc``
+  - ``input.LandremanPaul2021_QH_reactorScale_lowres`` + ``wout_LandremanPaul2021_QH_reactorScale_lowres_reference.nc``
 
 Additional files may be present for future parity work; the automated test suite
 is intentionally kept small to keep runtime reasonable.
@@ -85,11 +85,12 @@ Performance guardrails are also available in the same manifest using
 ``max_runtime_s``, ``max_total_runtime_s``, and
 ``runtime_thresholds_s_by_iter``.
 
-- Pipeline parity snapshot (solver-free)::
+  - Pipeline parity snapshot (solver-free)::
 
     python tools/diagnostics/pipeline_parity_summary.py \
       --cases circular_tokamak shaped_tokamak_pressure solovev \
-      n3are_R7.75B5.7_lowres LandremanPaul2021_QA_lowres li383_low_res
+      LandremanPaul2021_QA_lowres LandremanPaul2021_QA_reactorScale_lowres \
+      LandremanPaul2021_QH_reactorScale_lowres
 
 - Scalar residual parity (solver-free, reference states)::
 
