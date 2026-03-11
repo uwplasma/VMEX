@@ -68,6 +68,11 @@ def _scan_chunk_settings(
             chunk_size = max(1, int(chunk_size_env))
         except Exception:
             chunk_size = max(1, int(nstep_screen))
+    elif (backend == "cpu") and (not bool(need_print)):
+        # Quiet CPU scan runs do not need host-side chunk boundaries for
+        # printing, so use one remaining-iteration chunk and avoid the Python
+        # chunk loop overhead entirely.
+        chunk_size = max(1, int(max_iter_scan))
     elif (backend != "cpu") and (not bool(need_print)):
         # Quiet accelerator runs benefit from much larger chunks because the
         # host chunk loop otherwise pays repeated device sync/launch overhead.
@@ -75,7 +80,7 @@ def _scan_chunk_settings(
         chunk_size = max(1, max(int(nstep_screen), min(int(max_iter_scan), int(accel_chunk_target))))
     else:
         chunk_size = max(1, int(nstep_screen))
-    cap_to_remaining = (backend != "cpu") and (not bool(need_print))
+    cap_to_remaining = (not bool(need_print))
     return chunk_size, cap_to_remaining
 
 

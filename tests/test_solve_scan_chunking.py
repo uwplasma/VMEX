@@ -14,8 +14,8 @@ def test_scan_chunk_settings_cpu_default(monkeypatch):
         lthreed=False,
     )
 
-    assert chunk_size == 200
-    assert cap_to_remaining is False
+    assert chunk_size == 783
+    assert cap_to_remaining is True
 
 
 def test_scan_chunk_settings_accelerator_default(monkeypatch):

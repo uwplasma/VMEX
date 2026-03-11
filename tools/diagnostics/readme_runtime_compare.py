@@ -196,26 +196,23 @@ def _write_runtime_figure(rows: list[dict[str, Any]], outpath: Path, *, figure_k
     )
     labels = [row["id"] for row in rows]
     y = np.arange(len(rows), dtype=float)
-    height = 0.23
+    height = 0.28
     fig, ax = plt.subplots(1, 1, figsize=(14.5, max(8.0, 0.42 * len(rows) + 1.6)))
     vmec = np.array([row["vmec_runtime_s"] if row["vmec_runtime_s"] is not None else np.nan for row in rows], dtype=float)
     cpu = np.array([row["cpu_runtime_s"] if row["cpu_runtime_s"] is not None else np.nan for row in rows], dtype=float)
-    gpu = np.array([row["gpu_runtime_s"] if row["gpu_runtime_s"] is not None else np.nan for row in rows], dtype=float)
-    ax.barh(y - height, vmec, height=height, color="#4c4c4c", label="VMEC2000")
-    ax.barh(y, cpu, height=height, color="#1f77b4", label="vmec_jax CPU")
-    if np.any(np.isfinite(gpu)):
-        ax.barh(y + height, gpu, height=height, color="#ff7f0e", label="vmec_jax GPU")
+    ax.barh(y - (height / 2.0), vmec, height=height, color="#4B5563", label="VMEC2000")
+    ax.barh(y + (height / 2.0), cpu, height=height, color="#0F766E", label="vmec_jax CPU")
     ax.set_xscale("log")
     ax.set_yticks(y)
     ax.set_yticklabels(labels, fontsize=8)
     ax.invert_yaxis()
     ax.set_xlabel("runtime (seconds, log scale)")
-    ax.grid(axis="x", alpha=0.25, which="both")
-    ax.legend(frameon=False, ncol=3, loc="upper right")
+    ax.grid(axis="x", alpha=0.18, which="both")
+    ax.legend(frameon=False, ncol=2, loc="upper right")
     title = {
-        "all": "Bundled Example Runtime: VMEC2000 vs vmec_jax CPU/GPU",
-        "fixed": "Bundled Fixed-Boundary Runtime: VMEC2000 vs vmec_jax CPU/GPU",
-        "freeb": "Bundled Free-Boundary Runtime: VMEC2000 vs vmec_jax CPU/GPU",
+        "all": "Bundled Example Runtime: VMEC2000 vs vmec_jax CPU",
+        "fixed": "Bundled Fixed-Boundary Runtime: VMEC2000 vs vmec_jax CPU",
+        "freeb": "Bundled Free-Boundary Runtime: VMEC2000 vs vmec_jax CPU",
     }[figure_kind]
     ax.set_title(title)
     fig.tight_layout()
