@@ -1224,3 +1224,20 @@ Legend:
     `LandremanPaul2021_QA_lowres1` is now effectively neutral at `0.97x`,
   - full regression suite after this controller tuning:
     `168 passed, 12 skipped`.
+- 2026-03-11 full fixed-boundary bundled reassessment after staged-3D tuning:
+  - refreshed full warmed CPU matrix is recorded in
+    `outputs/accelerated_cli_fixed_boundary_full_20260311_r2/summary.json`,
+  - the optimized CLI-style fixed-boundary controller now converges on all 16
+    bundled fixed-boundary cases and has no bundled CPU regressions left,
+  - count by warmed runtime ratio versus the current branch baseline:
+    13 faster, 3 roughly neutral, 0 slower,
+  - representative improvements include:
+    `LandremanPaul2021_QA_lowres` `1.11x`,
+    `LandremanPaul2021_QA_reactorScale_lowres` `1.04x`,
+    `basic_non_stellsym_pressure` `12.37x`,
+    `LandremanSenguptaPlunk_section5p3_low_res` `240.59x`,
+    `up_down_asymmetric_tokamak` `2.28x`,
+  - current branch assessment becomes narrower:
+    fixed-boundary CLI on CPU is now plausible as the default path on `main`
+    if reviewers accept the non-parity scope; GPU and broader library/default
+    questions remain separate.

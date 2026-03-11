@@ -221,14 +221,13 @@ reactor-scale reference inputs in place of the retired internal stress cases.
 
 Current warmed fixed-boundary CPU reassessment on the optimized CLI track,
 using the same branch baseline as the comparator, is recorded in
-``outputs/accelerated_cli_fixed_boundary_full_20260311/summary.json``:
+``outputs/accelerated_cli_fixed_boundary_full_20260311_r2/summary.json``:
 
 - all 16 bundled fixed-boundary cases converge on both the baseline and
   optimized paths,
-- the optimized path is faster on 8 of 16 cases, roughly neutral on 2, and
-  slower on 6,
-- this is enough to justify continued work on the controller, but not enough
-  to justify making it the default.
+- the optimized path is now faster on 13 of 16 cases and roughly neutral on
+  the remaining 3,
+- the earlier runtime-regression blocker on the bundled CPU matrix is gone.
 
 Final-``wout`` accuracy is a separate gate from residual convergence. The
 earlier full fixed-boundary audit is recorded in
@@ -248,19 +247,22 @@ controller fixes improved several non-axisymmetric cases materially:
   ``rmnc 2.49e-05``, ``zmns 1.61e-04``, ``lmns 2.86e-03``;
   ``LandremanPaul2021_QH_reactorScale_lowres`` reaches about
   ``rmnc 6.12e-05``, ``zmns 2.60e-04``, ``lmns 9.97e-03``,
-- however, the full warmed benchmark still shows that runtime performance is
-  mixed across the bundled set, so the branch remains experimental.
+- the runtime picture is now favorable on the bundled CPU matrix, but the
+  branch remains experimental because the non-parity scope and GPU/default
+  policy questions are broader than this one fixed-boundary CPU result.
 
 Representative warmed CPU baseline-vs-optimized points from the current full
 matrix:
 
-- ``ITERModel``: ``0.36s`` baseline vs ``0.21s`` optimized,
-- ``LandremanPaul2021_QA_lowres``: ``8.61s`` baseline vs ``61.33s`` optimized,
+- ``ITERModel``: ``0.36s`` baseline vs ``0.20s`` optimized,
+- ``LandremanPaul2021_QA_lowres``: ``8.75s`` baseline vs ``7.86s`` optimized,
 - ``LandremanPaul2021_QA_reactorScale_lowres``:
-  ``11.26s`` baseline vs ``120.65s`` optimized,
+  ``10.42s`` baseline vs ``10.06s`` optimized,
 - ``LandremanSenguptaPlunk_section5p3_low_res``:
-  ``48.63s`` baseline vs ``0.21s`` optimized,
-- ``up_down_asymmetric_tokamak``: ``1.03s`` baseline vs ``0.45s`` optimized.
+  ``49.56s`` baseline vs ``0.21s`` optimized,
+- ``basic_non_stellsym_pressure``:
+  ``12.81s`` baseline vs ``1.04s`` optimized,
+- ``up_down_asymmetric_tokamak``: ``1.01s`` baseline vs ``0.45s`` optimized.
 
 Same-host CPU/GPU reassessment on a reference GPU workstation is now complete
 for the same 16-case bundled fixed-boundary set:

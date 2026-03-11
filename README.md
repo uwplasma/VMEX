@@ -235,32 +235,29 @@ GPU summary on your own reference hosts.
 
 Measured on 2026-03-11 using warmed serial runs of the optimized fixed-boundary
 CLI controller (`solver_mode="accelerated"`, `cli_fixed_boundary_mode=True`)
-against the current branch baseline (`solver_mode="default"`). The full
+against the current branch baseline (`solver_mode="default"`). The latest full
 artifact is checked in at
-`outputs/accelerated_cli_fixed_boundary_full_20260311/summary.json`.
+`outputs/accelerated_cli_fixed_boundary_full_20260311_r2/summary.json`.
 
 Current checked-in summary:
 
-- All 16 bundled fixed-boundary cases in the warmed matrix converged on both
+- All 16 bundled fixed-boundary cases in the warmed matrix converge on both
   the baseline and optimized paths.
-- The optimized controller is faster on 8 of 16 cases, roughly neutral on 2 of
-  16, and slower on 6 of 16.
-- The strongest wins are still on easy axisymmetric cases such as
-  `LandremanSenguptaPlunk_section5p3_low_res` and
-  `up_down_asymmetric_tokamak`.
-- The main slowdowns are the non-axisymmetric QA/QH reactor-scale cases and
-  `basic_non_stellsym_pressure`.
+- The optimized controller is now faster on 13 of 16 cases and neutral on the
+  remaining 3. There are no runtime regressions left in the bundled CPU sweep.
+- The largest wins are `LandremanSenguptaPlunk_section5p3_low_res`,
+  `basic_non_stellsym_pressure`, and `up_down_asymmetric_tokamak`.
 
 Representative warmed CPU baseline-vs-optimized points:
 
 | Example | Baseline runtime | Optimized runtime | Runtime ratio |
 | --- | ---: | ---: | ---: |
-| ITERModel | 0.36s | 0.21s | 1.77x faster |
-| LandremanPaul2021_QA_lowres | 8.61s | 61.33s | 0.14x |
-| LandremanPaul2021_QA_reactorScale_lowres | 11.26s | 120.65s | 0.09x |
-| LandremanSenguptaPlunk_section5p3_low_res | 48.63s | 0.21s | 233.41x faster |
-| shaped_tokamak_pressure | 0.34s | 0.18s | 1.85x faster |
-| up_down_asymmetric_tokamak | 1.03s | 0.45s | 2.26x faster |
+| ITERModel | 0.36s | 0.20s | 1.75x faster |
+| LandremanPaul2021_QA_lowres | 8.75s | 7.86s | 1.11x faster |
+| LandremanPaul2021_QA_reactorScale_lowres | 10.42s | 10.06s | 1.04x faster |
+| LandremanSenguptaPlunk_section5p3_low_res | 49.56s | 0.21s | 240.59x faster |
+| basic_non_stellsym_pressure | 12.81s | 1.04s | 12.37x faster |
+| up_down_asymmetric_tokamak | 1.01s | 0.45s | 2.28x faster |
 
 ## Accelerated Branch Reassessment
 
@@ -268,8 +265,10 @@ The optimized fixed-boundary CLI track is currently best understood as an
 experimental controller:
 
 - it keeps convergence on the bundled fixed-boundary matrix,
-- it produces major wins on several easy cases,
-- but the full warmed bundle does not support making it the default yet.
+- it now removes the runtime-regression blocker on the bundled fixed-boundary
+  CPU matrix,
+- but it is still not a general replacement for the parity/default paths in
+  every workflow.
 
 The bundled Python driver example shows the intended user flow on
 `input.circular_tokamak`: parity `28.863s` vs optimized CLI-style `3.445s`,

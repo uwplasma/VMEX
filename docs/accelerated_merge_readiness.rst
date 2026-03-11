@@ -61,13 +61,13 @@ The current fixed-boundary review set is:
 
 Key current results:
 
-- the full warmed fixed-boundary reassessment on 2026-03-11 shows the
+- the latest warmed fixed-boundary reassessment on 2026-03-11 shows the
   optimized CLI path converging on all 16 bundled cases,
-- that same matrix shows 8 cases faster than the current branch baseline,
-  2 roughly neutral, and 6 slower,
+- that same matrix now shows 13 cases faster than the current branch baseline
+  and 3 roughly neutral, with no bundled CPU regressions left,
 - targeted non-axisymmetric fixes materially improved final ``wout`` quality on
-  the QA/QH reactor-scale cases, but the full bundled benchmark still does not
-  justify a default flip.
+  the QA/QH reactor-scale cases, while also removing the earlier runtime
+  regressions on the bundled CPU sweep.
 
 Current CLI behavior is better captured as policy than as one stale table:
 
@@ -78,12 +78,12 @@ Current CLI behavior is better captured as policy than as one stale table:
   on ``input.circular_tokamak``:
   parity ``28.863s`` vs optimized CLI-style ``3.445s``, both converged at
   ``fsq_total ~ 2e-14``.
-- the freshest full warmed fixed-boundary CPU matrix is mixed rather than
-  uniformly positive:
-  all 16 cases converge, but only 8 of 16 improve on the current default path,
+- the freshest full warmed fixed-boundary CPU matrix is now favorable:
+  all 16 cases converge, 13 of 16 improve on the current default path, and the
+  remaining 3 are effectively neutral,
 - same-host CPU/GPU benchmarking still confirms the GPU path can help on the
-  larger 3D bundled cases, but backend choice still matters and does not fix
-  the baseline-vs-accelerated regressions on the full bundle.
+  larger 3D bundled cases, but backend choice still matters and remains a
+  separate question from the fixed-boundary CPU controller decision.
 
 These numbers justify the current controller split on the branch:
 keep the optimized fixed-boundary logic available for explicit testing and
@@ -110,23 +110,24 @@ true:
 Current PR summary
 ------------------
 
-The branch is ready for an honest review PR, but not for a default flip.
+The branch is ready for an honest review PR.
 
 - Positive signal:
-  the optimized CLI-style controller has real wins, keeps convergence on the
-  bundled fixed-boundary matrix, and the targeted staged-3D fixes improved the
-  reactor-scale QA/QH final-state agreement materially.
-- Blocking signal:
-  the full bundled warmed CPU matrix is still mixed, with 6 clear regressions
-  versus the current default path, so the controller is not yet broadly better
-  enough to replace the existing default.
+  the optimized CLI-style controller now keeps convergence and removes the
+  runtime-regression blocker on the full bundled fixed-boundary CPU matrix.
+- Remaining caution:
+  final-state quality versus VMEC2000 is still a separate topic from the
+  runtime comparison, and GPU/default-library policy should not be flipped just
+  because the fixed-boundary CPU CLI story improved.
 
 Conclusion:
 
 - mergeable as an experimental branch if reviewers want the tooling and the
   fixed-boundary wins on ``main``,
-- not ready to become the default fixed-boundary controller on ``main``,
-- not ready to market as a broad bundled-matrix runtime win.
+- plausible to promote as the default **CLI fixed-boundary CPU** controller on
+  ``main`` if reviewers accept the non-parity scope,
+- not yet ready to become the universal default across GPU and non-CLI
+  workflows.
 
 Recommended reviewer checklist
 ------------------------------
