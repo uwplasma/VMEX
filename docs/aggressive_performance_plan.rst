@@ -54,9 +54,10 @@ The current code already shows where the time goes:
 The March 2026 benchmark snapshot in :doc:`performance` shows the current
 outliers:
 
-- fixed-boundary ``input.n3are_R7.75B5.7_lowres`` is still very expensive on
-  both CPU and GPU,
-- fixed-boundary ``lasym=True`` cases are improved but still expensive,
+- fixed-boundary heavy 3D reactor-scale cases are now the main useful GPU wins,
+  but small axisymmetric cases still favor CPU,
+- fixed-boundary ``lasym=True`` cases are improved but still not consistently
+  GPU-favorable,
 - free-boundary ``input.DIII-D_lasym_false`` is the dominant runtime and memory
   outlier on both CPU and GPU,
 - the GPU is still slower than the CPU for several moderate-size cases because
@@ -452,7 +453,7 @@ The first sprint on this branch should do only the highest-value work:
    - ``input.circular_tokamak``,
    - ``input.up_down_asymmetric_tokamak``,
    - ``input.LandremanPaul2021_QA_lowres``,
-   - ``input.n3are_R7.75B5.7_lowres``,
+   - ``input.LandremanPaul2021_QA_reactorScale_lowres``,
    - ``input.cth_like_free_bdy``,
    - ``input.cth_like_free_bdy_lasym_small``,
    - ``input.DIII-D_lasym_false``.

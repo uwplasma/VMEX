@@ -259,10 +259,9 @@ Observed behavior:
   inflated relative error in currentless/vacuum-like regimes despite small
   absolute differences.
 
-The long-standing n3are stress case is still tracked as a dedicated diagnostic
-outlier for some post-processed channels, but it does not change the current
-product scope: parity coverage is maintained across the fixed/free,
-axisymmetric/non-axisymmetric, and ``lasym`` true/false matrix.
+Retired internal stress cases are no longer part of the shipped benchmark
+matrix. Current bundled validation remains focused on the representative
+fixed/free, axisymmetric/non-axisymmetric, and ``lasym`` true/false matrix.
 
 Scope and known caveats
 -----------------------

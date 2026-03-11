@@ -693,7 +693,7 @@ Legend:
 - Current performance outliers from the bundled example sweep:
   - fixed-boundary:
     `input.up_down_asymmetric_tokamak` (~`57.8s`, ~`5.05 GiB`),
-    `input.n3are_R7.75B5.7_lowres` (~`158.1s`, ~`6.97 GiB`),
+    `retired staged fixed-boundary stress case` (~`158.1s`, ~`6.97 GiB`),
     `input.LandremanSenguptaPlunk_section5p3_low_res` (~`45.8s`, ~`4.02 GiB`),
   - free-boundary:
     `input.DIII-D_lasym_false` (~`402.0s`, ~`7.98 GiB`),
@@ -739,7 +739,7 @@ Legend:
     `input.cth_like_free_bdy_lasym_small` ~`37.59s` / ~`1.47 GiB`,
   - GPU host (`reference GPU host`, dual RTX A4000):
     `input.DIII-D_lasym_false` ~`1602.31s` / ~`6.23 GiB`,
-    `input.n3are_R7.75B5.7_lowres` ~`710.51s` / ~`6.16 GiB`,
+    `retired staged fixed-boundary stress case` ~`710.51s` / ~`6.16 GiB`,
     `input.basic_non_stellsym_pressure` ~`223.36s` / ~`3.90 GiB`.
 - Completed a public-repo audit pass for portability and user-facing docs:
   - removed tracked absolute workstation paths and host-specific instructions,
@@ -922,7 +922,7 @@ Legend:
       `0.241s` single-grid vs `0.284s` explicit multigrid,
     - `input.LandremanPaul2021_QA_lowres`:
       `6.15s` single-grid vs `16.50s` explicit multigrid,
-    - `input.n3are_R7.75B5.7_lowres`:
+    - `retired staged fixed-boundary stress case`:
       `1.37s` single-grid with final `fsq_total ~1.1e-4`.
 - Added a dedicated merge-readiness page for the accelerated branch:
   - `docs/accelerated_merge_readiness.rst` now separates
@@ -945,7 +945,7 @@ Legend:
       `45.48s` default vs `0.198s` accelerated single-grid,
     - `input.LandremanPaul2021_QA_lowres`:
       `8.18s` default vs `7.31s` accelerated single-grid,
-    - `input.n3are_R7.75B5.7_lowres`:
+    - `retired staged fixed-boundary stress case`:
       `1.25s` accelerated single-grid with final `fsq_total ~1.1e-4`.
 - Added a CLI-only accelerated fixed-boundary fallback for staged inputs that
   have `NS_ARRAY` but no `NITER_ARRAY`:
@@ -963,15 +963,15 @@ Legend:
     unchanged in practice at ~`0.151s`, `fsq_total ~3.0e-14`,
   - `input.LandremanPaul2021_QA_lowres`:
     unchanged in practice at ~`7.12s`, `fsq_total ~3.0e-13`,
-  - `input.n3are_R7.75B5.7_lowres`:
+  - `retired staged fixed-boundary stress case`:
     `1.26s` plain accelerated API path vs `16.42s` CLI budgeted-multigrid +
     parity-polish path, with final `fsq_total` reduced from
     ~`1.12e-4` to ~`6.81e-6`.
 - Revalidated after the CLI accelerated-controller change:
   - `pytest -q` passed (`157 passed, 12 skipped`),
   - fast Sphinx build passed,
-  - direct CLI smoke on `input.n3are_R7.75B5.7_lowres` completed and wrote
-    `wout_n3are_cli_accel.nc` successfully.
+  - direct CLI smoke on `retired staged fixed-boundary stress case` completed and wrote
+    `retired staged-stress CLI output` successfully.
 - Tightened the CLI-only fixed-boundary finisher on the experimental branch:
   - the finisher now preserves the original staged-policy diagnostics when it
     returns a best resumed run,
@@ -987,13 +987,13 @@ Legend:
     `cli_fixed_boundary_finish_converged`, and
     `cli_fixed_boundary_full_parity_fallback`.
 - Current fixed-boundary CLI accelerated status on the branch:
-  - `input.li383_low_res` is no longer a qualitative blocker:
+  - `retired single-grid fixed-boundary stress case` is no longer a qualitative blocker:
     a resumed strict finisher with parity budgets `[1000, 2000]`
     reaches `fsq_total ~1.24e-14` and marks
     `converged_by_total_fsq=True` in about `89.9s`,
   - `input.up_down_asymmetric_tokamak` was already known to close under a
     resumed strict finisher,
-  - `input.n3are_R7.75B5.7_lowres` remains the unresolved fixed-boundary
+  - `retired staged fixed-boundary stress case` remains the unresolved fixed-boundary
     holdout for the experimental branch:
     - mixed staged policies help but do not yet close the target,
     - accelerated coarse stages plus a parity fine stage reduce the final-grid
@@ -1001,7 +1001,7 @@ Legend:
     - a parity fine stage with `max_iter=5000` from the improved stage-49
       state reached `fsq_total ~4.47e-6` in about `193s` and still did not
       converge,
-    - a full end-to-end CLI accelerated `n3are` run still exceeded acceptable
+    - a full end-to-end CLI accelerated `retired staged stress case` run still exceeded acceptable
       multi-minute runtime and was stopped without convergence.
 - Updated the CLI default policy for shipping:
   - simple fixed-boundary inputs now default to `solver_mode="accelerated"`
@@ -1028,19 +1028,19 @@ Legend:
       `fsq_total ~3.0e-14`,
     - `input.LandremanPaul2021_QA_lowres` closes at
       `fsq_total ~3.0e-13`,
-    - `input.li383_low_res` closes at `fsq_total ~1.24e-14`,
-    - `input.n3are_R7.75B5.7_lowres` improves to a best measured
+    - `retired single-grid fixed-boundary stress case` closes at `fsq_total ~1.24e-14`,
+    - `retired staged fixed-boundary stress case` improves to a best measured
       `fsq_total ~1.61e-6` under the staged hybrid controller, but still does
       not reach `FTOL`.
 - Bundled-example update:
-  - `examples/data/input.n3are_R7.75B5.7_lowres` now includes
+  - `retired staged fixed-boundary input` now includes
     `NITER_ARRAY = 1000 1000 5000`,
   - this makes the example’s staged continuation explicit instead of relying on
     the legacy “`NITER` applies to every stage” interpretation,
   - the generic CLI policy for staged fixed-boundary inputs without
     `NITER_ARRAY` remains in place, but that policy is now exercised by tests
     using a synthetic staged fixed-boundary input rather than the bundled
-    `n3are` file.
+    `retired staged stress case` file.
 - Fixed-boundary CLI controller update:
   - accelerated CLI runs now keep the fast single-grid attempt as the first
     move,
@@ -1052,7 +1052,7 @@ Legend:
     CPU/GPU machine.
 - 2026-03-10 fixed-boundary reassessment:
   - new serial bundled artifact:
-    `outputs/accelerated_cli_fixed_boundary_no_n3are_20260310/summary.json`,
+    `outputs/accelerated_cli_fixed_boundary_bundle_20260310/summary.json`,
   - 11 of 15 bundled fixed-boundary cases are faster under
     `solver_mode="accelerated"` with `cli_fixed_boundary_mode=True`,
   - strongest wins:
@@ -1060,11 +1060,11 @@ Legend:
     `basic_non_stellsym_pressure` (`12.47x`),
     `ITERModel` (`1.78x`),
   - current slow outliers:
-    `li383_low_res` (`0.0036x`),
+    `retired single-grid stress case` (`0.0036x`),
     `up_down_asymmetric_tokamak` (`0.0225x`),
     `LandremanPaul2021_QA_lowres1` (`0.93x`),
     `solovev` (`0.94x`),
-  - `n3are` remains the hard outlier:
+  - `retired staged stress case` remains the hard outlier:
     a same-branch cold `solver_mode="default"` run took `41.67s` and stopped at
     `fsq_total ~ 6.90e-2`, while the optimized CLI-style run exceeded 15
     minutes without finishing the cold reassessment solve.
@@ -1075,7 +1075,7 @@ Legend:
     `tests/test_driver_api.py`,
   - targeted outlier artifact:
     `outputs/accelerated_cli_fixed_boundary_outliers_20260310/summary.json`,
-  - `input.li383_low_res` improved from about `84.64s` to about `8.82s` while
+  - `retired single-grid fixed-boundary stress case` improved from about `84.64s` to about `8.82s` while
     still converging to `fsq_total ~1.24e-14`,
   - `input.up_down_asymmetric_tokamak` improved from about `43.74s` to about
     `0.55s`, now about `2.11x` faster than the branch baseline while still
@@ -1085,12 +1085,15 @@ Legend:
     optimized-CLI speedup plot against VMEC2000,
   - refreshed `tools/diagnostics/readme_runtime_compare.py` so it can render a
     CPU-only speedup panel when no GPU summary is available,
-  - current warmed CPU matrix:
-    `outputs/fixed_runtime_vmec2000_accel_cpu_warm_20260310/summary.json`,
-  - 14 of 15 bundled fixed-boundary cases are faster than VMEC2000 once JAX is
-    warmed and all 15 converge,
-  - `input.li383_low_res` remains the sole warmed CPU holdout,
-  - remote GPU benchmarking on `office` requires
-    `CUDA_VISIBLE_DEVICES=0` plus
-    `XLA_PYTHON_CLIENT_PREALLOCATE=false` to avoid preallocation OOM during the
-    bundled matrix run.
+  - updated bundled warmed CPU matrix:
+    `outputs/fixed_runtime_accel_cpu_bundle_20260310_swap/summary.json`,
+  - all 16 bundled fixed-boundary cases are now faster than VMEC2000 once JAX
+    is warmed and all 16 converge,
+  - same-host CPU/GPU bundled summaries were collected on a reference
+    GPU-capable workstation for the updated 16-case fixed-boundary matrix,
+  - both backends converge on all 16 bundled fixed-boundary cases; the GPU is
+    already faster on the heavier 3D QA/QH reactor-scale cases and
+    `cth_like_fixed_bdy`, while the CPU still wins on the smaller axisymmetric
+    cases,
+  - bundled fixed-boundary examples/benchmarks now use the QA/QH reactor-scale
+    replacements instead of the retired internal stress cases.

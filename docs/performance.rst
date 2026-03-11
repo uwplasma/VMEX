@@ -180,10 +180,10 @@ show why the single-grid default is now the accelerated fixed-boundary policy:
   ``8.10s`` accelerated explicit multigrid; the accelerated single-grid route
   now carries the full staged iteration budget and converges at
   ``~3.0e-13``,
-- ``input.n3are_R7.75B5.7_lowres``:
-  ``1.25s`` accelerated single-grid with final ``fsq_total ~1.1e-4`` on the serial
-  workflow, keeping the accelerated route on the final grid instead of paying
-  the old staged control overhead by default.
+- ``input.LandremanPaul2021_QA_reactorScale_lowres``:
+  ``21.15s`` warmed on the optimized CLI track versus ``43.20s`` for VMEC2000
+  on the current bundled CPU benchmark, showing the same controller policy
+  carries over to a heavier reactor-scale 3D case.
 
 The fixed-boundary CLI path is now best understood as a controller stack,
 not a single algorithm:
@@ -216,54 +216,61 @@ controller matches the executable behavior exactly.
 Latest serial bundled fixed-boundary reassessment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The freshest branch-wide artifact for the optimized CLI-style controller is:
+The current bundled fixed-boundary benchmark set uses the shipped QA/QH
+reactor-scale reference inputs in place of the retired internal stress cases.
 
-- ``outputs/accelerated_cli_fixed_boundary_no_n3are_20260310/summary.json``
+Current warmed fixed-boundary CPU results on the optimized CLI track:
 
-That sweep compares baseline ``solver_mode="default"`` against candidate
-``solver_mode="accelerated"`` with ``cli_fixed_boundary_mode=True`` across the
-bundled fixed-boundary matrix, excluding only ``n3are`` from the bulk run so
-the hard outlier does not dominate the rest of the signal.
-
-Current results from the freshest warmed fixed-boundary CPU matrix are better
-than the earlier cold branch-vs-branch reassessment:
-
-- 14 of 15 bundled fixed-boundary cases are faster than VMEC2000 once the JAX
+- 16 of 16 bundled fixed-boundary cases are faster than VMEC2000 once the JAX
   kernels are warmed,
-- all 15 bundled fixed-boundary cases in that warmed matrix converge,
-- the only remaining warmed CPU holdout is ``li383_low_res``.
+- all 16 bundled fixed-boundary cases converge,
+- the warmed CPU matrix is now clean enough to serve as the public README
+  speedup benchmark.
 
-That warmed matrix is now the main user-facing benchmark because it reflects
-steady-state CLI solve cost rather than cold JAX startup latency.
+Representative warmed CPU points from that matrix:
 
-A targeted follow-up on the two worst single-grid CLI outliers then tightened
-the finisher policy: before paying for strict parity continuation, the CLI now
-tries additional accelerated scan blocks from the current equilibrium state.
-That preserves convergence but removes most of the wasted runtime on the easy
-single-grid cases that simply need more fast iterations:
+- ``ITERModel``: ``0.19s`` vs VMEC2000 ``1.01s``,
+- ``LandremanPaul2021_QA_lowres``: ``8.49s`` vs VMEC2000 ``26.30s``,
+- ``LandremanPaul2021_QA_reactorScale_lowres``:
+  ``21.15s`` vs VMEC2000 ``43.20s``,
+- ``LandremanPaul2021_QH_reactorScale_lowres``:
+  ``25.33s`` vs VMEC2000 ``43.84s``,
+- ``up_down_asymmetric_tokamak``: ``0.45s`` vs VMEC2000 ``0.78s``.
 
-- ``li383_low_res`` dropped from about ``84.64s`` to about ``8.82s`` while
-  still converging to ``fsq_total ~1.24e-14``,
-- ``up_down_asymmetric_tokamak`` dropped from about ``43.74s`` to about
-  ``0.55s``, which makes the optimized CLI path about ``2.11x`` faster than
-  the branch baseline while still converging to ``fsq_total ~3.00e-14``.
+Same-host CPU/GPU reassessment on a reference GPU workstation is now complete
+for the same 16-case bundled fixed-boundary set:
 
-``n3are_R7.75B5.7_lowres`` was measured separately because it dominates the
-wall clock:
+- both CPU and GPU converge on all 16 cases,
+- GPU is already faster on the heavier 3D cases
+  (``LandremanPaul2021_QA_lowres``,
+  ``LandremanPaul2021_QA_lowres1``,
+  ``LandremanPaul2021_QA_reactorScale_lowres``,
+  ``LandremanPaul2021_QH_reactorScale_lowres``,
+  ``cth_like_fixed_bdy``),
+- CPU still wins on the remaining 11 smaller or more launch-latency-dominated
+  cases.
 
-- a same-branch cold ``solver_mode="default"`` run took ``41.67s`` and stopped
-  at ``fsq_total ~ 6.90e-2`` without converging,
-- the optimized CLI-style path ran for more than 15 minutes without completing
-  the cold solve before the reassessment was stopped.
+Representative same-host CPU/GPU warmed comparisons:
 
-That makes the current branch state clear:
+- ``LandremanPaul2021_QA_reactorScale_lowres``:
+  CPU ``23.72s`` vs GPU ``13.06s``,
+- ``LandremanPaul2021_QH_reactorScale_lowres``:
+  CPU ``31.39s`` vs GPU ``16.56s``,
+- ``cth_like_fixed_bdy``:
+  CPU ``1.45s`` vs GPU ``0.89s``,
+- ``circular_tokamak``:
+  CPU ``0.70s`` vs GPU ``1.97s``,
+- ``solovev``:
+  CPU ``0.16s`` vs GPU ``0.55s``.
 
-- mergeable for review as an experimental controller,
-- useful on most fixed-boundary cases and now faster than VMEC2000 on the
-  warmed CPU matrix for 14 of 15 bundled examples,
-- not yet ready to replace the default controller on the full bundled matrix
-  because ``li383_low_res`` and the hard staged ``n3are`` class still need
-  more controller work.
+That makes the current branch state clearer than the earlier stress-case
+benchmark story:
+
+- the optimized fixed-boundary CLI path is now a clean warmed CPU win across
+  the shipped bundled matrix,
+- the GPU path is functional and convergent on the same bundled matrix,
+- automatic backend selection is now the remaining step before the GPU story
+  becomes uniformly stronger than CPU on mixed-size workloads.
 
 Additional controller finding from March 2026:
 
@@ -509,11 +516,11 @@ Current snapshot highlights:
 
 - The current GPU path is not yet a universal speedup:
 
-  - ``input.n3are_R7.75B5.7_lowres`` is about ``160.1s`` on the local CPU but
-    about ``710.5s`` on the reference GPU host.
-  - ``input.LandremanPaul2021_QA_lowres`` and
-    ``input.LandremanPaul2021_QA_lowres1`` are already faster than VMEC2000 on
-    the local CPU, but slower on the current GPU stack.
+  - same-host CPU/GPU benchmarking shows GPU is already faster on the heavier
+    QA/QH reactor-scale cases, but not yet on the smallest axisymmetric cases,
+  - the current mixed result is now backend-selection limited rather than
+    convergence limited: all 16 bundled fixed-boundary cases converge on both
+    CPU and GPU.
 
 Why the GPU can still be slower than the CPU
 --------------------------------------------

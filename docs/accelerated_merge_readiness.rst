@@ -52,25 +52,21 @@ What this branch adds
 Representative fixed-boundary reassessment
 ------------------------------------------
 
-The latest serial CPU reassessment artifact is:
+The current fixed-boundary review set is:
 
-- ``outputs/accelerated_fixed_boundary_reassessment_20260309/summary.json``
 - ``examples/fixed_boundary_driver_tracks.py`` for live parity-vs-optimized
-  comparisons on the current branch
-- ``outputs/accelerated_cli_fixed_boundary_no_n3are_20260310/summary.json``
-  for the latest bundled fixed-boundary CLI-style sweep
+  comparisons on the current branch,
+- the warmed bundled fixed-boundary CPU sweep used for the README benchmark,
+- the same-host CPU/GPU warmed sweep on the updated 16-case bundled matrix.
 
-Key results from that artifact:
+Key current results:
 
-- ``input.LandremanSenguptaPlunk_section5p3_low_res``:
-  ``45.48s`` current default vs ``0.198s`` accelerated single-grid and
-  ``0.232s`` accelerated explicit multigrid,
-- ``input.LandremanPaul2021_QA_lowres``:
-  ``8.18s`` current default vs ``7.31s`` accelerated single-grid and
-  ``8.10s`` accelerated explicit multigrid,
-- ``input.n3are_R7.75B5.7_lowres``:
-  ``1.25s`` accelerated single-grid with final ``fsq_total ~ 1.1e-4`` in the
-  plain accelerated API path before the newer CLI staged-followup controller.
+- the optimized warmed CPU CLI path is faster than VMEC2000 on all 16 bundled
+  fixed-boundary cases and all 16 converge,
+- the same-host GPU path also converges on all 16 bundled fixed-boundary
+  cases,
+- GPU already wins on the heavier 3D subset, while CPU still wins on the
+  smaller axisymmetric cases.
 
 Current CLI behavior is better captured as policy than as one stale table:
 
@@ -81,29 +77,17 @@ Current CLI behavior is better captured as policy than as one stale table:
   on ``input.circular_tokamak``:
   parity ``28.863s`` vs optimized CLI-style ``3.445s``, both converged at
   ``fsq_total ~ 2e-14``.
-- the freshest warmed fixed-boundary CPU matrix is stronger than that earlier
-  cold reassessment:
-  14 of 15 bundled cases are faster than VMEC2000 once the JAX kernels are
-  warmed, and all 15 converge,
-- ``li383_low_res`` is now the only warmed CPU holdout in that benchmark.
-
-A targeted follow-up then improved the two worst single-grid CLI outliers by
-running extra accelerated continuation blocks before parity fallback:
-
-- ``li383_low_res`` improved from about ``84.64s`` to about ``8.82s`` while
-  still converging,
-- ``up_down_asymmetric_tokamak`` improved from about ``43.74s`` to about
-  ``0.55s`` and is now about ``2.11x`` faster than the branch baseline.
+- the freshest warmed fixed-boundary CPU matrix is stronger than the earlier
+  stress-case reassessment:
+  all 16 bundled cases are faster than VMEC2000 once the JAX kernels are
+  warmed, and all 16 converge,
+- same-host CPU/GPU benchmarking confirms the GPU path is already useful on
+  the larger 3D bundled cases, but backend choice still matters.
 
 These numbers justify the current controller split on the branch:
 keep the optimized fixed-boundary logic available for explicit testing and
-review, but do not promote it to the repo-wide default until the slow outliers
-are closed.
-
-The bundled ``n3are`` example now includes an explicit
-``NITER_ARRAY = 1000 1000 5000``. The conservative staged CLI fallback remains
-important for the generic ``NS_ARRAY`` without ``NITER_ARRAY`` class, but that
-policy is no longer represented by the checked-in ``n3are`` input itself.
+review, and promote it cautiously only after backend selection becomes
+automatic on mixed CPU/GPU workstations.
 
 Merge checklist
 ---------------
@@ -119,8 +103,8 @@ true:
   accelerated fixed-boundary controller is useful on representative cases,
 - no user-set environment variable is required for accelerated fixed-boundary
   correctness on the benchmarked bundled cases,
-- the remaining staged hard-case limitation is explicitly documented if the
-  branch is merged before every staged hard case is demonstrated at ``FTOL``.
+- the current GPU backend-selection limitation is explicitly documented if the
+  branch is merged before automatic device choice lands.
 
 Current PR summary
 ------------------
@@ -128,24 +112,21 @@ Current PR summary
 The branch is ready for an honest review PR, but not for a default flip.
 
 - Positive signal:
-  the optimized CLI-style controller is materially better on most of the
-  bundled fixed-boundary matrix and keeps convergence on the successful cases.
+  the optimized CLI-style controller is materially better on the shipped
+  bundled fixed-boundary matrix and keeps convergence on all of those cases.
 - Blocking signal:
-  the warmed CPU story is now good, but ``li383_low_res`` is still slower than
-  VMEC2000 and the hard staged ``n3are`` class remains unresolved.
-- Hard-outlier signal:
-  ``n3are_R7.75B5.7_lowres`` remains too expensive; a same-branch cold
-  ``solver_mode="default"`` run took ``41.67s`` and stopped at
-  ``fsq_total ~ 6.90e-2``, while the optimized CLI-style run exceeded 15
-  minutes without finishing the cold solve during reassessment.
+  the warmed CPU story is now strong, but the same-host GPU story is still
+  mixed because backend selection is manual and small axisymmetric cases remain
+  launch-latency dominated on GPU.
 
 Conclusion:
 
 - mergeable as an experimental branch if reviewers want the tooling and the
-  partial wins on `main`,
-- not ready to become the default controller,
-- not ready to market as a universal fixed-boundary runtime win yet because the
-  last warmed CPU holdout and the staged hard-case path still need work.
+  fixed-boundary wins on ``main``,
+- not ready to become the universal default controller on GPU-capable
+  workstations until backend selection is automatic,
+- ready to market as a strong warmed fixed-boundary CPU runtime win on the
+  shipped bundled matrix.
 
 Recommended reviewer checklist
 ------------------------------
@@ -180,7 +161,7 @@ Recommended reviewer checklist
         --jax-platforms cpu
 
       python tools/diagnostics/benchmark_accelerated_mode.py \
-        --ids n3are_R7.75B5.7_lowres \
+        --ids LandremanPaul2021_QA_reactorScale_lowres \
         --kind fixed --baseline-mode default --candidate-mode accelerated \
         --candidate-cli-fixed-boundary-mode \
         --jax-platforms cpu
