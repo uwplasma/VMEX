@@ -1118,6 +1118,7 @@ def run_fixed_boundary(
             and bool(staged_input)
             and (explicit_niter_stages is not None)
             and bool(cfg.lthreed)
+            and (not bool(deferred_staged_current_driven_3d_cli))
         )
         if bool(run_in.result.diagnostics.get("converged", False)) and (not bool(require_staged_followup)):
             base_diag["cli_fixed_boundary_finish_budgets"] = np.zeros((0,), dtype=int)
@@ -1228,7 +1229,14 @@ def run_fixed_boundary(
                 if (ftol_list_input is not None) and (len(ftol_list_input) == len(ns_list_input))
                 else [float(indata.get_float("FTOL", 1.0e-13))] * len(ns_list_input)
             )
-            if explicit_niter_stages is not None:
+            missed_target = not (
+                bool(best_run.result.diagnostics.get("converged", False))
+                or (float(best_fsq) <= float(target_fsq))
+            )
+            should_run_staged_followup = bool(explicit_niter_stages is not None) and (
+                bool(require_staged_followup) or bool(missed_target)
+            )
+            if should_run_staged_followup:
                 staged_followup = _run_cli_explicit_staged_followup(
                     ns_stage_list=[int(v) for v in ns_list_input],
                     niter_stage_list=explicit_niter_stages,
@@ -1377,9 +1385,24 @@ def run_fixed_boundary(
     multigrid_use_input_niter = bool(multigrid_use_input_niter)
     multigrid_user_provided = multigrid is not None
     accelerated_single_grid_default = False
+    current_driven_3d_cli = (
+        bool(cli_fixed_boundary_mode)
+        and bool(accelerated_mode)
+        and (not bool(cfg.lfreeb))
+        and bool(cfg.lthreed)
+        and (ns_list_input is not None)
+        and (len(ns_list_input) > 1)
+        and (niter_list_input is not None)
+        and (len(niter_list_input) == len(ns_list_input))
+        and (int(indata.get_int("NCURR", 0)) != 0)
+    )
+    direct_staged_current_driven_3d_cli = bool(current_driven_3d_cli) and (len(ns_list_input) == 2)
+    deferred_staged_current_driven_3d_cli = bool(current_driven_3d_cli) and (len(ns_list_input) > 2)
     if multigrid is None:
         multigrid = solver_lower == "vmec2000_iter"
         if bool(cli_budgeted_multigrid_requested):
+            multigrid = True
+        elif bool(direct_staged_current_driven_3d_cli):
             multigrid = True
         elif accelerated_mode and (not bool(cfg.lfreeb)):
             # In accelerated fixed-boundary mode, direct final-grid solves avoid

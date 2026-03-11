@@ -1200,3 +1200,27 @@ Legend:
   - conclusion from the full bundle is now explicit:
     branch remains useful and reviewable as experimental, but it is not ready
     to become the default fixed-boundary controller on `main`.
+- 2026-03-11 targeted work on the 6 regressing bundled fixed-boundary cases:
+  - localized the regression pattern to staged, current-driven 3D CLI
+    fixed-boundary inputs:
+    the optimized controller was paying for a single-grid accelerated warm
+    start and/or an over-eager explicit staged replay,
+  - tightened the policy in `vmec_jax/driver.py` so staged current-driven 3D
+    inputs now split by stage count:
+    two-stage inputs go straight to the explicit staged path,
+    three-or-more-stage inputs try the fast single-grid path first and only
+    replay the explicit stage schedule if that first solve misses the target,
+  - added driver regressions in `tests/test_driver_api.py` covering both:
+    deferred staged replay on three-stage current-driven 3D inputs and direct
+    multigrid on two-stage current-driven 3D inputs,
+  - targeted subset benchmark is recorded in
+    `outputs/accelerated_cli_fixed_boundary_regressions_20260311_r3/summary.json`,
+  - subset outcome after the patch:
+    `LandremanPaul2021_QA_lowres` improved from `0.14x` to `1.02x`,
+    `LandremanPaul2021_QA_reactorScale_lowres` improved from `0.09x` to `1.08x`,
+    `LandremanPaul2021_QH_reactorScale_lowres` improved from `0.12x` to `1.00x`,
+    `basic_non_stellsym_pressure` improved from `0.19x` to `12.11x`,
+    `solovev` moved from `0.97x` to `0.99x`,
+    `LandremanPaul2021_QA_lowres1` is now effectively neutral at `0.97x`,
+  - full regression suite after this controller tuning:
+    `168 passed, 12 skipped`.

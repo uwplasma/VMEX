@@ -85,6 +85,54 @@ def _write_staged_with_niter_nonaxis_input(tmp_path: Path) -> Path:
     return input_path
 
 
+def _write_staged_with_niter_nonaxis_current_input(tmp_path: Path) -> Path:
+    input_path = tmp_path / "input.staged_with_niter_nonaxis_current"
+    input_path.write_text(
+        "&INDATA\n"
+        "  LFREEB = F\n"
+        "  LASYM = F\n"
+        "  NFP = 2\n"
+        "  MPOL = 5\n"
+        "  NTOR = 1\n"
+        "  NCURR = 1\n"
+        "  NS = 13\n"
+        "  NITER = 100\n"
+        "  FTOL = 1e-14\n"
+        "  NS_ARRAY = 5 9 13\n"
+        "  NITER_ARRAY = 10 20 40\n"
+        "  FTOL_ARRAY = 1e-14 1e-14 1e-14\n"
+        "  PHIEDGE = 1.0\n"
+        "  RBC(0,0) = 1.0\n"
+        "  ZBS(1,0) = 0.1\n"
+        "/\n"
+    )
+    return input_path
+
+
+def _write_two_stage_nonaxis_current_input(tmp_path: Path) -> Path:
+    input_path = tmp_path / "input.two_stage_nonaxis_current"
+    input_path.write_text(
+        "&INDATA\n"
+        "  LFREEB = F\n"
+        "  LASYM = F\n"
+        "  NFP = 2\n"
+        "  MPOL = 5\n"
+        "  NTOR = 1\n"
+        "  NCURR = 1\n"
+        "  NS = 13\n"
+        "  NITER = 100\n"
+        "  FTOL = 1e-14\n"
+        "  NS_ARRAY = 5 13\n"
+        "  NITER_ARRAY = 10 40\n"
+        "  FTOL_ARRAY = 1e-14 1e-14\n"
+        "  PHIEDGE = 1.0\n"
+        "  RBC(0,0) = 1.0\n"
+        "  ZBS(1,0) = 0.1\n"
+        "/\n"
+    )
+    return input_path
+
+
 def _write_single_stage_input(tmp_path: Path) -> Path:
     input_path = tmp_path / "input.single_stage"
     input_path.write_text(
@@ -711,6 +759,109 @@ def test_run_fixed_boundary_cli_explicit_staged_followup_runs_for_converged_nona
         "accelerated",
         "parity",
     ]
+
+
+def test_run_fixed_boundary_cli_current_driven_nonaxis_uses_direct_multigrid(monkeypatch, tmp_path):
+    input_path = _write_staged_with_niter_nonaxis_current_input(tmp_path)
+    calls = []
+    fsq_values = [1.0e-14]
+    converged_flags = [True]
+
+    def _fake_solver(state, static, **kwargs):
+        idx = len(calls)
+        calls.append(
+            {
+                "ns": int(static.cfg.ns),
+                "max_iter": int(kwargs["max_iter"]),
+                "use_scan": bool(kwargs["use_scan"]),
+            }
+        )
+        fsq = float(fsq_values[idx])
+        return SolveVmecResidualResult(
+            state=state,
+            n_iter=max(0, int(kwargs["max_iter"]) - 1),
+            w_history=np.asarray([fsq], dtype=float),
+            fsqr2_history=np.asarray([fsq], dtype=float),
+            fsqz2_history=np.asarray([0.0], dtype=float),
+            fsql2_history=np.asarray([0.0], dtype=float),
+            grad_rms_history=np.asarray([], dtype=float),
+            step_history=np.asarray([], dtype=float),
+            diagnostics={
+                "use_scan": bool(kwargs["use_scan"]),
+                "resume_state": {},
+                "light_history": True,
+                "resume_state_mode": "minimal",
+                "converged": bool(converged_flags[idx]),
+            },
+        )
+
+    monkeypatch.setattr(solve_module, "solve_fixed_boundary_residual_iter", _fake_solver)
+    monkeypatch.setattr(driver_module, "solve_fixed_boundary_residual_iter", _fake_solver)
+
+    run = run_fixed_boundary(
+        input_path,
+        solver="vmec2000_iter",
+        solver_mode="accelerated",
+        verbose=False,
+        cli_fixed_boundary_mode=True,
+    )
+
+    assert [call["ns"] for call in calls] == [13]
+    assert [call["max_iter"] for call in calls] == [70]
+    diag = run.result.diagnostics
+    assert diag["cli_fixed_boundary_initial_policy"] == "single_grid"
+    assert "cli_fixed_boundary_staged_followup_used" not in diag
+
+
+def test_run_fixed_boundary_cli_two_stage_current_driven_nonaxis_uses_multigrid(monkeypatch, tmp_path):
+    input_path = _write_two_stage_nonaxis_current_input(tmp_path)
+    calls = []
+    fsq_values = [1.0e-8, 1.0e-14]
+    converged_flags = [False, True]
+
+    def _fake_solver(state, static, **kwargs):
+        idx = len(calls)
+        calls.append(
+            {
+                "ns": int(static.cfg.ns),
+                "max_iter": int(kwargs["max_iter"]),
+                "use_scan": bool(kwargs["use_scan"]),
+            }
+        )
+        fsq = float(fsq_values[idx])
+        return SolveVmecResidualResult(
+            state=state,
+            n_iter=max(0, int(kwargs["max_iter"]) - 1),
+            w_history=np.asarray([fsq], dtype=float),
+            fsqr2_history=np.asarray([fsq], dtype=float),
+            fsqz2_history=np.asarray([0.0], dtype=float),
+            fsql2_history=np.asarray([0.0], dtype=float),
+            grad_rms_history=np.asarray([], dtype=float),
+            step_history=np.asarray([], dtype=float),
+            diagnostics={
+                "use_scan": bool(kwargs["use_scan"]),
+                "resume_state": {},
+                "light_history": True,
+                "resume_state_mode": "minimal",
+                "converged": bool(converged_flags[idx]),
+            },
+        )
+
+    monkeypatch.setattr(solve_module, "solve_fixed_boundary_residual_iter", _fake_solver)
+    monkeypatch.setattr(driver_module, "solve_fixed_boundary_residual_iter", _fake_solver)
+
+    run = run_fixed_boundary(
+        input_path,
+        solver="vmec2000_iter",
+        solver_mode="accelerated",
+        verbose=False,
+        cli_fixed_boundary_mode=True,
+    )
+
+    assert [call["ns"] for call in calls] == [5, 13]
+    assert [call["max_iter"] for call in calls] == [10, 40]
+    diag = run.result.diagnostics
+    assert diag["cli_fixed_boundary_initial_policy"] == "multigrid"
 
 
 def test_vmec2000_iter_histories_materialize_numeric_arrays():
