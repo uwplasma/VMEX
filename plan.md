@@ -1097,3 +1097,14 @@ Legend:
     cases,
   - bundled fixed-boundary examples/benchmarks now use the QA/QH reactor-scale
     replacements instead of the retired internal stress cases.
+  - refreshed the top README comparison panels to use an axisymmetric case plus
+    `LandremanPaul2021_QA_lowres` on the optimized fixed-boundary controller,
+    with a bundled `wout_LandremanPaul2021_QA_lowres_reference.nc` added for
+    self-contained reproduction,
+  - regenerated the README `fsq_total` trace on the optimized controller for
+    the axisymmetric + QA cases,
+  - replaced the top README speedup chart with a runtime chart showing
+    VMEC2000, `vmec_jax` CPU, and `vmec_jax` GPU together,
+  - same-host CPU/GPU benchmarking on the updated 16-case fixed-boundary
+    bundle now shows GPU wins on 5 heavier 3D cases and CPU wins on the
+    remaining 11 smaller or more launch-latency-dominated cases.

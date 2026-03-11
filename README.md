@@ -6,47 +6,47 @@ and free-boundary ideal-MHD equilibria.
 <table>
   <tr>
     <td><img src="docs/_static/figures/axisym_compare_cross_sections.png" width="420" /></td>
-    <td><img src="docs/_static/figures/qh_reactor_compare_cross_sections.png" width="420" /></td>
+    <td><img src="docs/_static/figures/qa_compare_cross_sections.png" width="420" /></td>
   </tr>
   <tr>
-    <td align="center">Axisymmetric: cross-section (VMEC2000 vs vmec_jax)</td>
-    <td align="center">Stellarator (QH reactor-scale): cross-section (VMEC2000 vs vmec_jax)</td>
+    <td align="center">Axisymmetric: optimized fixed-boundary cross-section (VMEC2000 vs vmec_jax)</td>
+    <td align="center">LandremanPaul QA: optimized fixed-boundary cross-section (VMEC2000 vs vmec_jax)</td>
   </tr>
   <tr>
     <td><img src="docs/_static/figures/axisym_compare_3d.png" width="420" /></td>
-    <td><img src="docs/_static/figures/qh_reactor_compare_3d.png" width="420" /></td>
+    <td><img src="docs/_static/figures/qa_compare_3d.png" width="420" /></td>
   </tr>
   <tr>
-    <td align="center">Axisymmetric: 3D LCFS (VMEC2000 vs vmec_jax)</td>
-    <td align="center">Stellarator (QH reactor-scale): 3D LCFS (VMEC2000 vs vmec_jax)</td>
+    <td align="center">Axisymmetric: optimized fixed-boundary 3D LCFS (VMEC2000 vs vmec_jax)</td>
+    <td align="center">LandremanPaul QA: optimized fixed-boundary 3D LCFS (VMEC2000 vs vmec_jax)</td>
   </tr>
   <tr>
     <td><img src="docs/_static/figures/axisym_compare_bmag_surface.png" width="420" /></td>
-    <td><img src="docs/_static/figures/qh_reactor_compare_bmag_surface.png" width="420" /></td>
+    <td><img src="docs/_static/figures/qa_compare_bmag_surface.png" width="420" /></td>
   </tr>
   <tr>
-    <td align="center">Axisymmetric: |B| on LCFS (VMEC2000 vs vmec_jax)</td>
-    <td align="center">Stellarator (QH reactor-scale): |B| on LCFS (VMEC2000 vs vmec_jax)</td>
+    <td align="center">Axisymmetric: optimized fixed-boundary |B| on LCFS (VMEC2000 vs vmec_jax)</td>
+    <td align="center">LandremanPaul QA: optimized fixed-boundary |B| on LCFS (VMEC2000 vs vmec_jax)</td>
   </tr>
   <tr>
     <td><img src="docs/_static/figures/axisym_compare_iota.png" width="420" /></td>
-    <td><img src="docs/_static/figures/qh_reactor_compare_iota.png" width="420" /></td>
+    <td><img src="docs/_static/figures/qa_compare_iota.png" width="420" /></td>
   </tr>
   <tr>
-    <td align="center">Axisymmetric: iota (VMEC2000 vs vmec_jax)</td>
-    <td align="center">Stellarator (QH reactor-scale): iota (VMEC2000 vs vmec_jax)</td>
+    <td align="center">Axisymmetric: optimized fixed-boundary iota (VMEC2000 vs vmec_jax)</td>
+    <td align="center">LandremanPaul QA: optimized fixed-boundary iota (VMEC2000 vs vmec_jax)</td>
   </tr>
   <tr>
     <td colspan="2"><img src="docs/_static/figures/readme_fsq_trace.png" width="860" /></td>
   </tr>
   <tr>
-    <td align="center" colspan="2">fsq_total trace (VMEC2000 vs vmec_jax) for axisymmetric + QH reactor-scale cases</td>
+    <td align="center" colspan="2">Optimized fixed-boundary fsq_total trace (VMEC2000 vs vmec_jax) for axisymmetric + LandremanPaul QA cases</td>
   </tr>
   <tr>
     <td colspan="2"><img src="docs/_static/figures/readme_runtime_compare.png" width="860" /></td>
   </tr>
   <tr>
-    <td align="center" colspan="2">Warmed fixed-boundary optimized CLI speedup vs VMEC2000 on a reference CPU host (14 of 15 bundled cases faster)</td>
+    <td align="center" colspan="2">Bundled fixed-boundary runtime comparison: VMEC2000 + vmec_jax CPU on a reference CPU host, vmec_jax GPU on a reference GPU workstation</td>
   </tr>
 </table>
 
@@ -165,14 +165,30 @@ export VMEC_JAX_SCAN_MINIMAL=0  # keep full scan diagnostics even when quiet
 
 ## Reproduce figures
 
-Recreate the axisymmetric + QH reactor-scale VMEC2000 vs vmec_jax panels shown above (single-plane cross-sections, |B| on LCFS, iota overlays, plus the fsq_total trace):
+Recreate the axisymmetric + LandremanPaul QA VMEC2000 vs vmec_jax optimized panels shown above (single-plane cross-sections, |B| on LCFS, iota overlays, plus the fsq_total trace):
 
 ```bash
-python tools/diagnostics/qh_vmec_vs_vmecjax.py   --input examples/data/input.shaped_tokamak_pressure   --wout-ref examples/data/wout_shaped_tokamak_pressure_reference.nc   --use-wout-state --jax-title vmec_jax   --phi 0.0 --n-surfaces 31   --prefix axisym --outdir docs/_static/figures
+python tools/diagnostics/qh_vmec_vs_vmecjax.py \
+  --input examples/data/input.shaped_tokamak_pressure \
+  --wout-ref examples/data/wout_shaped_tokamak_pressure_reference.nc \
+  --solve --solver vmec2000_iter --solver-mode accelerated \
+  --cli-fixed-boundary-mode --jax-title "vmec_jax optimized" \
+  --phi 0.0 --n-surfaces 31 \
+  --prefix axisym --outdir docs/_static/figures
 
-python tools/diagnostics/qh_vmec_vs_vmecjax.py   --input examples/data/input.LandremanPaul2021_QH_reactorScale_lowres   --wout-ref examples/data/wout_LandremanPaul2021_QH_reactorScale_lowres_reference.nc   --use-wout-state --jax-title vmec_jax   --phi 0.0 --n-surfaces 31   --prefix qh_reactor --outdir docs/_static/figures
+python tools/diagnostics/qh_vmec_vs_vmecjax.py \
+  --input examples/data/input.LandremanPaul2021_QA_lowres \
+  --wout-ref examples/data/wout_LandremanPaul2021_QA_lowres_reference.nc \
+  --solve --solver vmec2000_iter --solver-mode accelerated \
+  --cli-fixed-boundary-mode --jax-title "vmec_jax optimized" \
+  --phi 0.0 --n-surfaces 31 \
+  --prefix qa --outdir docs/_static/figures
 
-python tools/diagnostics/readme_fsq_trace.py   --axisym-input examples/data/input.shaped_tokamak_pressure   --stellarator-input examples/data/input.LandremanPaul2021_QH_reactorScale_lowres   --niter 250 --ftol 1e-14   --outdir docs/_static/figures
+python tools/diagnostics/readme_fsq_trace.py \
+  --axisym-input examples/data/input.shaped_tokamak_pressure \
+  --stellarator-input examples/data/input.LandremanPaul2021_QA_lowres \
+  --niter 250 --ftol 1e-14 --solver-mode accelerated \
+  --outdir docs/_static/figures
 
 python tools/diagnostics/example_runtime_memory_matrix.py \
   --backend both \
@@ -196,14 +212,15 @@ python tools/diagnostics/readme_runtime_compare.py \
   --gpu-summary outputs/example_runtime_memory_matrix_gpu/summary.json \
   --outdir docs/_static/figures \
   --table-out outputs/readme_runtime_table.md \
-  --figure-kind fixed
+  --figure-kind fixed \
+  --plot-mode runtime
 ```
 
 The exact numbers in the checked-in benchmark table will vary by machine. The
-README speedup figure intentionally uses warmed fixed-boundary optimized-CLI
+README runtime figure intentionally uses warmed fixed-boundary optimized-CLI
 runs so it reflects steady-state solve cost rather than cold JAX startup
-overhead. Use the commands above to regenerate a CPU summary and, if desired,
-an additional GPU summary on your own reference hosts.
+overhead. Use the commands above to regenerate a CPU summary and an additional
+GPU summary on your own reference hosts.
 
 ## Documentation
 
@@ -219,7 +236,7 @@ an additional GPU summary on your own reference hosts.
 Measured on 2026-03-10 using warmed serial runs of the optimized fixed-boundary
 CLI controller (`solver_mode="accelerated"`, `cli_fixed_boundary_mode=True`)
 against VMEC2000 on a reference CPU host. Exact results vary by machine, but
-this checked-in snapshot is the benchmark behind the top README speedup figure.
+this checked-in snapshot is the benchmark behind the top README runtime figure.
 
 Current checked-in summary:
 

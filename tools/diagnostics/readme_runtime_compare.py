@@ -176,6 +176,53 @@ def _draw_speedup_panel(
     ax.grid(axis="x", alpha=0.25, which="both")
 
 
+def _write_runtime_figure(rows: list[dict[str, Any]], outpath: Path, *, figure_kind: str) -> None:
+    if figure_kind == "fixed":
+        rows = [row for row in rows if not bool(row["lfreeb"])]
+    elif figure_kind == "freeb":
+        rows = [row for row in rows if bool(row["lfreeb"])]
+    if not rows:
+        raise ValueError(f"No rows available for figure_kind={figure_kind!r}.")
+    rows = sorted(
+        rows,
+        key=lambda row: (
+            -max(
+                row["vmec_runtime_s"] or 0.0,
+                row["cpu_runtime_s"] or 0.0,
+                row["gpu_runtime_s"] or 0.0,
+            ),
+            row["id"],
+        ),
+    )
+    labels = [row["id"] for row in rows]
+    y = np.arange(len(rows), dtype=float)
+    height = 0.23
+    fig, ax = plt.subplots(1, 1, figsize=(14.5, max(8.0, 0.42 * len(rows) + 1.6)))
+    vmec = np.array([row["vmec_runtime_s"] if row["vmec_runtime_s"] is not None else np.nan for row in rows], dtype=float)
+    cpu = np.array([row["cpu_runtime_s"] if row["cpu_runtime_s"] is not None else np.nan for row in rows], dtype=float)
+    gpu = np.array([row["gpu_runtime_s"] if row["gpu_runtime_s"] is not None else np.nan for row in rows], dtype=float)
+    ax.barh(y - height, vmec, height=height, color="#4c4c4c", label="VMEC2000")
+    ax.barh(y, cpu, height=height, color="#1f77b4", label="vmec_jax CPU")
+    if np.any(np.isfinite(gpu)):
+        ax.barh(y + height, gpu, height=height, color="#ff7f0e", label="vmec_jax GPU")
+    ax.set_xscale("log")
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=8)
+    ax.invert_yaxis()
+    ax.set_xlabel("runtime (seconds, log scale)")
+    ax.grid(axis="x", alpha=0.25, which="both")
+    ax.legend(frameon=False, ncol=3, loc="upper right")
+    title = {
+        "all": "Bundled Example Runtime: VMEC2000 vs vmec_jax CPU/GPU",
+        "fixed": "Bundled Fixed-Boundary Runtime: VMEC2000 vs vmec_jax CPU/GPU",
+        "freeb": "Bundled Free-Boundary Runtime: VMEC2000 vs vmec_jax CPU/GPU",
+    }[figure_kind]
+    ax.set_title(title)
+    fig.tight_layout()
+    fig.savefig(outpath, dpi=220)
+    plt.close(fig)
+
+
 def _write_figure(rows: list[dict[str, Any]], outpath: Path, *, figure_kind: str) -> None:
     if figure_kind == "fixed":
         rows = [row for row in rows if not bool(row["lfreeb"])]
@@ -257,6 +304,12 @@ def main() -> None:
         default="fixed",
         help="Subset used in the README figure. The markdown table always keeps all rows.",
     )
+    p.add_argument(
+        "--plot-mode",
+        choices=("runtime", "speedup"),
+        default="runtime",
+        help="Figure style for the README plot.",
+    )
     args = p.parse_args()
 
     cpu_summaries = [_load_summary(path.expanduser().resolve()) for path in args.cpu_summary]
@@ -269,7 +322,10 @@ def main() -> None:
     table_out.parent.mkdir(parents=True, exist_ok=True)
 
     fig_out = outdir / "readme_runtime_compare.png"
-    _write_figure(rows, fig_out, figure_kind=str(args.figure_kind))
+    if str(args.plot_mode) == "speedup":
+        _write_figure(rows, fig_out, figure_kind=str(args.figure_kind))
+    else:
+        _write_runtime_figure(rows, fig_out, figure_kind=str(args.figure_kind))
     _write_markdown_table(rows, table_out)
     print(f"figure={fig_out}")
     print(f"table={table_out}")
