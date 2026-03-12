@@ -1402,9 +1402,7 @@ def run_fixed_boundary(
         and (len(niter_list_input) == len(ns_list_input))
         and (int(indata.get_int("NCURR", 0)) != 0)
     )
-    direct_staged_current_driven_3d_cli = bool(current_driven_3d_cli) and (
-        bool(cfg.lasym) or (len(ns_list_input) == 2)
-    )
+    direct_staged_current_driven_3d_cli = bool(current_driven_3d_cli)
     deferred_staged_current_driven_3d_cli = bool(current_driven_3d_cli) and (
         not bool(direct_staged_current_driven_3d_cli)
     )
@@ -1905,6 +1903,12 @@ def run_fixed_boundary(
                     scan_mode = False
                 elif lasym_scan_env not in ("", "auto"):
                     scan_mode = True
+            if bool(accelerated_mode) and bool(current_driven_3d_cli) and (not bool(cfg.lasym)):
+                # Current-driven non-axisymmetric fixed-boundary cases are much
+                # more sensitive in lambda than in force-balance geometry. Keep
+                # the accelerated controller and lightweight histories, but use
+                # the conservative non-scan residual path for this class.
+                scan_mode = False
             # Optional scan-parity guard: probe a few iterations and disable scan
             # if it diverges from the non-scan VMEC2000 path.
             scan_guard_default = "0"

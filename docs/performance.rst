@@ -274,6 +274,19 @@ controller fixes improved several non-axisymmetric cases materially:
 - the remaining bundled 3D quality gap is therefore much narrower and now
   mostly a lambda-field accuracy question rather than a broad geometry or
   force-balance mismatch,
+- a final targeted controller split closed most of that remaining gap:
+  ``lasym=False`` current-driven 3D CLI runs now go straight to staged
+  multigrid on the conservative non-scan residual path, while ``lasym=True``
+  keeps the lighter mixed-stage controller,
+- with that split, the latest targeted audit reached:
+  ``LandremanPaul2021_QA_lowres`` about ``4.20e-03`` max relRMS at
+  about ``100.6s`` warmed runtime,
+  ``LandremanPaul2021_QA_reactorScale_lowres`` about ``6.42e-04`` at
+  about ``125.1s``,
+  ``LandremanPaul2021_QH_reactorScale_lowres`` about ``6.00e-05`` at
+  about ``180.2s``,
+  and ``basic_non_stellsym_pressure`` about ``3.46e-02`` at
+  about ``19.2s``,
 - a follow-on experiment that added a final-grid parity polish to the
   staged 3D accelerated path was rejected because it raised runtime
   substantially without improving those benchmarked quality numbers.

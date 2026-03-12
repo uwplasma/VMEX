@@ -790,8 +790,8 @@ def test_run_fixed_boundary_cli_explicit_staged_followup_runs_for_converged_nona
 def test_run_fixed_boundary_cli_current_driven_nonaxis_uses_direct_multigrid(monkeypatch, tmp_path):
     input_path = _write_staged_with_niter_nonaxis_current_input(tmp_path)
     calls = []
-    fsq_values = [1.0e-14]
-    converged_flags = [True]
+    fsq_values = [1.0e-8, 1.0e-10, 1.0e-14]
+    converged_flags = [False, False, True]
 
     def _fake_solver(state, static, **kwargs):
         idx = len(calls)
@@ -832,11 +832,16 @@ def test_run_fixed_boundary_cli_current_driven_nonaxis_uses_direct_multigrid(mon
         cli_fixed_boundary_mode=True,
     )
 
-    assert [call["ns"] for call in calls] == [13]
-    assert [call["max_iter"] for call in calls] == [70]
+    assert [call["ns"] for call in calls] == [5, 9, 13]
+    assert [call["max_iter"] for call in calls] == [10, 20, 40]
+    assert [call["use_scan"] for call in calls] == [False, False, False]
     diag = run.result.diagnostics
-    assert diag["cli_fixed_boundary_initial_policy"] == "single_grid"
-    assert "cli_fixed_boundary_staged_followup_used" not in diag
+    assert diag["cli_fixed_boundary_initial_policy"] == "multigrid"
+    assert np.asarray(diag["multigrid_stage_modes"]).tolist() == [
+        "accelerated",
+        "accelerated",
+        "accelerated",
+    ]
 
 
 def test_run_fixed_boundary_cli_two_stage_current_driven_nonaxis_uses_multigrid(monkeypatch, tmp_path):

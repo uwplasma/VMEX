@@ -1283,3 +1283,22 @@ Legend:
   - the same targeted audit kept all four cases converged while preserving
     runtime gains versus baseline, with `basic_non_stellsym_pressure`
     improving from `~23.69s` baseline to `~19.36s` optimized.
+- 2026-03-12 current-driven 3D controller split for final non-axisymmetric gaps:
+  - audited the remaining lambda-dominated mismatch on the non-axisymmetric
+    fixed-boundary current-driven bundle and rejected two intermediate ideas:
+    a reduced staged follow-up for deferred 3-stage runs, and a blanket
+    non-scan policy for all current-driven 3D accelerated runs,
+  - kept the useful part of that audit: `lasym=False` current-driven 3D CLI
+    runs now go straight to staged multigrid on the conservative non-scan
+    residual path, while `lasym=True` keeps the lighter mixed-stage controller,
+  - targeted audit in
+    `outputs/nonaxis_quality_subset_20260312_r5/summary.json` now shows:
+    `LandremanPaul2021_QA_lowres` `~4.20e-03`,
+    `LandremanPaul2021_QA_reactorScale_lowres` `~6.42e-04`,
+    `LandremanPaul2021_QH_reactorScale_lowres` `~6.00e-05`,
+  - separate validation on
+    `outputs/basic_nonaxis_lasym_true_20260312_final/summary.json` keeps
+    `basic_non_stellsym_pressure` at `~3.46e-02` with a runtime win
+    (`~25.06s -> 19.21s`),
+  - full regression suite on the final split-controller head:
+    `170 passed, 12 skipped`.
