@@ -1447,6 +1447,79 @@ def _vmec_precal_tan_tables(*, nu: int, nv: int, nvper: int) -> tuple[np.ndarray
     return np.asarray(tanu, dtype=float), np.asarray(tanv, dtype=float)
 
 
+def _ensure_vmec_nonsingular_kernel_tables(*, basis: dict[str, Any], nv: int, nvper: int) -> dict[str, np.ndarray]:
+    """Cache VMEC nonsingular Green-function helper tables on the mode basis."""
+
+    nv = max(1, int(nv))
+    nvper = max(1, int(nvper))
+    cache = basis.get("_nonsingular_kernel_tables")
+    if (
+        isinstance(cache, dict)
+        and int(cache.get("nv", -1)) == nv
+        and int(cache.get("nvper", -1)) == nvper
+    ):
+        return cache
+
+    nu = int(basis["nu_full"])
+    mf = int(basis["mf"])
+    nf = int(basis["nf"])
+    onp = float(basis["onp"])
+    nuv_full = int(basis["nuv_full"])
+
+    tanu, tanv = _vmec_precal_tan_tables(nu=nu, nv=nv, nvper=nvper)
+
+    alv = 2.0 * np.pi / float(max(1, nv))
+    alvp = onp * alv
+    kv = np.arange(nv, dtype=np.int64)
+    cos_v = np.cos(alvp * kv)
+    sin_v = np.sin(alvp * kv)
+    cosuv = np.broadcast_to(cos_v[None, :], (nu, nv)).reshape(-1)
+    sinuv = np.broadcast_to(sin_v[None, :], (nu, nv)).reshape(-1)
+
+    alp_per = 2.0 * np.pi / float(max(1, nvper))
+    cosper = np.cos(alp_per * np.arange(nvper, dtype=float))
+    sinper = np.sin(alp_per * np.arange(nvper, dtype=float))
+
+    cosv_tab = np.zeros((nf + 1, nv), dtype=float)
+    sinv_tab = np.zeros((nf + 1, nv), dtype=float)
+    kv_idx = np.arange(nv, dtype=float)
+    for n in range(0, nf + 1):
+        dn1 = alv * float(n)
+        cosv_tab[n, :] = np.cos(dn1 * kv_idx)
+        sinv_tab[n, :] = np.sin(dn1 * kv_idx)
+
+    alu = 2.0 * np.pi / float(max(1, nu))
+    nu_fourp = int(nu // 2 + 1)
+    cosui = np.zeros((mf + 1, nu_fourp), dtype=float)
+    sinui = np.zeros((mf + 1, nu_fourp), dtype=float)
+    ku_idx = np.arange(nu_fourp, dtype=float)
+    for m in range(0, mf + 1):
+        c = np.cos(alu * float(m) * ku_idx)
+        s = np.sin(alu * float(m) * ku_idx)
+        cosui[m, :] = c * alu * alv * 2.0
+        sinui[m, :] = s * alu * alv * 2.0
+        cosui[m, 0] *= 0.5
+        cosui[m, -1] *= 0.5
+
+    cache = {
+        "nv": np.asarray(nv, dtype=np.int64),
+        "nvper": np.asarray(nvper, dtype=np.int64),
+        "idx_all": np.arange(nuv_full, dtype=np.int64),
+        "tanu": np.asarray(tanu, dtype=float),
+        "tanv": np.asarray(tanv, dtype=float),
+        "cosuv": np.asarray(cosuv, dtype=float),
+        "sinuv": np.asarray(sinuv, dtype=float),
+        "cosper": np.asarray(cosper, dtype=float),
+        "sinper": np.asarray(sinper, dtype=float),
+        "cosv_tab": np.asarray(cosv_tab, dtype=float),
+        "sinv_tab": np.asarray(sinv_tab, dtype=float),
+        "cosui": np.asarray(cosui, dtype=float),
+        "sinui": np.asarray(sinui, dtype=float),
+    }
+    basis["_nonsingular_kernel_tables"] = cache
+    return cache
+
+
 def _vmec_nonsingular_gsource_from_bexni(
     *,
     sample: ExternalBoundarySample,
@@ -1582,22 +1655,16 @@ def _vmec_nonsingular_gsource_from_bexni(
     avv = (snv * Rv + 0.5 * (snr * (rvv - R) + snz * zvv)) * onp2
     rzb2 = R * R + Z * Z
 
-    alv = 2.0 * np.pi / float(max(1, nv))
-    alvp = onp * alv
-    kv = np.arange(nv, dtype=np.int64)
-    cos_v = np.cos(alvp * kv)
-    sin_v = np.sin(alvp * kv)
-    cosuv = np.broadcast_to(cos_v[None, :], (nu, nv)).reshape(-1)
-    sinuv = np.broadcast_to(sin_v[None, :], (nu, nv)).reshape(-1)
+    tables = _ensure_vmec_nonsingular_kernel_tables(basis=basis, nv=nv, nvper=nvper)
+    idx_all = np.asarray(tables["idx_all"], dtype=np.int64)
+    tanu = np.asarray(tables["tanu"], dtype=float)
+    tanv = np.asarray(tables["tanv"], dtype=float)
+    cosuv = np.asarray(tables["cosuv"], dtype=float)
+    sinuv = np.asarray(tables["sinuv"], dtype=float)
+    cosper = np.asarray(tables["cosper"], dtype=float)
+    sinper = np.asarray(tables["sinper"], dtype=float)
     rcosuv = R * cosuv
     rsinuv = R * sinuv
-
-    tanu, tanv = _vmec_precal_tan_tables(nu=nu, nv=nv, nvper=nvper)
-
-    # Field-period rotation factors.
-    alp_per = 2.0 * np.pi / float(max(1, nvper))
-    cosper = np.cos(alp_per * np.arange(nvper, dtype=float))
-    sinper = np.sin(alp_per * np.arange(nvper, dtype=float))
 
     bex = np.asarray(bexni, dtype=float).reshape(-1)
     if bex.size < nuv3:
@@ -1606,7 +1673,6 @@ def _vmec_nonsingular_gsource_from_bexni(
         bex = bex[:nuv3]
 
     gstore = np.zeros((nuv_full,), dtype=float)
-    idx_all = np.arange(nuv_full, dtype=np.int64)
     for ip in range(nuv3):
         xip = rcosuv[ip]
         yip = rsinuv[ip]
@@ -1838,21 +1904,20 @@ def _vmec_nonsingular_terms_from_bexni(
     avv = (snv * Rv + 0.5 * (snr * (rvv - R) + snz * zvv)) * (onp * onp)
     rzb2 = R * R + Z * Z
 
-    alv = 2.0 * np.pi / float(max(1, nv))
-    alvp = onp * alv
-    kv = np.arange(nv, dtype=np.int64)
-    cos_v = np.cos(alvp * kv)
-    sin_v = np.sin(alvp * kv)
-    cosuv = np.broadcast_to(cos_v[None, :], (nu, nv)).reshape(-1)
-    sinuv = np.broadcast_to(sin_v[None, :], (nu, nv)).reshape(-1)
+    tables = _ensure_vmec_nonsingular_kernel_tables(basis=basis, nv=nv, nvper=nvper)
+    idx_all = np.asarray(tables["idx_all"], dtype=np.int64)
+    tanu = np.asarray(tables["tanu"], dtype=float)
+    tanv = np.asarray(tables["tanv"], dtype=float)
+    cosuv = np.asarray(tables["cosuv"], dtype=float)
+    sinuv = np.asarray(tables["sinuv"], dtype=float)
+    cosper = np.asarray(tables["cosper"], dtype=float)
+    sinper = np.asarray(tables["sinper"], dtype=float)
+    cosv_tab = np.asarray(tables["cosv_tab"], dtype=float)
+    sinv_tab = np.asarray(tables["sinv_tab"], dtype=float)
+    cosui = np.asarray(tables["cosui"], dtype=float)
+    sinui = np.asarray(tables["sinui"], dtype=float)
     rcosuv = R * cosuv
     rsinuv = R * sinuv
-
-    tanu, tanv = _vmec_precal_tan_tables(nu=nu, nv=nv, nvper=nvper)
-
-    alp_per = 2.0 * np.pi / float(max(1, nvper))
-    cosper = np.cos(alp_per * np.arange(nvper, dtype=float))
-    sinper = np.sin(alp_per * np.arange(nvper, dtype=float))
 
     bex = np.asarray(bexni, dtype=float).reshape(-1)
     if bex.size < nuv3:
@@ -1860,36 +1925,12 @@ def _vmec_nonsingular_terms_from_bexni(
     else:
         bex = bex[:nuv3]
 
-    cosv_tab = np.zeros((nf + 1, nv), dtype=float)
-    sinv_tab = np.zeros((nf + 1, nv), dtype=float)
-    for n in range(0, nf + 1):
-        dn1 = alv * float(n)
-        kv_idx = np.arange(nv, dtype=float)
-        cosv_tab[n, :] = np.cos(dn1 * kv_idx)
-        sinv_tab[n, :] = np.sin(dn1 * kv_idx)
-    alu = 2.0 * np.pi / float(max(1, nu))
-    # VMEC fourp always loops over KU=1..nu2 with nu2 = nu/2 + 1
-    # (read_indata.f), independent of LASYM. `nu` is the full precal poloidal
-    # grid (`nu_full` here), while `ntheta3` may be larger (e.g. LASYM=T).
-    nu_fourp = int(nu // 2 + 1)
-    cosui = np.zeros((mf + 1, nu_fourp), dtype=float)
-    sinui = np.zeros((mf + 1, nu_fourp), dtype=float)
-    for m in range(0, mf + 1):
-        ku_idx = np.arange(nu_fourp, dtype=float)
-        c = np.cos(alu * float(m) * ku_idx)
-        s = np.sin(alu * float(m) * ku_idx)
-        cosui[m, :] = c * alu * alv * 2.0
-        sinui[m, :] = s * alu * alv * 2.0
-        cosui[m, 0] *= 0.5
-        cosui[m, -1] *= 0.5
-
     imirr_full = np.asarray(basis["imirr_full"], dtype=np.int64)
     grpmn_nonsing = np.zeros((mnpd2, nuv3), dtype=float)
     mf1 = mf + 1
     ndim = 2 if lasym else 1
 
     gstore = np.zeros((nuv_full,), dtype=float)
-    idx_all = np.arange(nuv_full, dtype=np.int64)
     for ip in range(nuv3):
         xip = rcosuv[ip]
         yip = rsinuv[ip]

@@ -81,6 +81,11 @@ Current CLI behavior is better captured as policy than as one stale table:
 - the freshest full warmed fixed-boundary CPU matrix is now favorable:
   all 16 cases converge, 13 of 16 improve on the current default path, and the
   remaining 3 are effectively neutral,
+- the public README-facing VMEC2000 comparison is intentionally stricter:
+  the refreshed warmed CPU artifact in
+  ``outputs/readme_fixed_runtime_vmec2000_accel_cpu_20260312/summary.json``
+  keeps all 13 shipped ``lasym=False`` fixed-boundary cases converged, but it
+  still shows VMEC2000 ahead on most of the heavier non-axisymmetric cases,
 - same-host CPU/GPU benchmarking still confirms the GPU path can help on the
   larger 3D bundled cases, but backend choice still matters and remains a
   separate question from the fixed-boundary CPU controller decision.
@@ -206,6 +211,10 @@ The remaining gates are broader than this PR:
 - full final-``wout`` accuracy matrix against VMEC2000 at the accelerated-mode
   target,
 - accelerated free-boundary redesign and validation,
+- free-boundary runtime work is now making measurable progress
+  (for example, ``cth_like_free_bdy`` warmed CPU is about ``11.25s`` after the
+  latest boundary-synthesis and nonsingular-kernel-table caching pass), but it
+  is still not ready to be marketed as a finished accelerated path,
 - gradient checks on representative accelerated fixed-boundary and
   free-boundary workflows,
 - policy hardening for unseen inputs beyond the current representative set.

@@ -200,16 +200,8 @@ python tools/diagnostics/example_runtime_memory_matrix.py \
   --warm-runs 1 \
   --outdir outputs/fixed_runtime_vmec2000_accel_cpu_warm
 
-# Run the same benchmark on a CUDA-capable machine with JAX GPU support.
-python tools/diagnostics/example_runtime_memory_matrix.py \
-  --backend vmec_jax \
-  --runner-label gpu \
-  --jax-platforms cuda,cpu \
-  --outdir outputs/example_runtime_memory_matrix_gpu
-
 python tools/diagnostics/readme_runtime_compare.py \
   --cpu-summary outputs/fixed_runtime_vmec2000_accel_cpu_warm/summary.json \
-  --gpu-summary outputs/example_runtime_memory_matrix_gpu/summary.json \
   --outdir docs/_static/figures \
   --table-out outputs/readme_runtime_table.md \
   --figure-kind fixed \
@@ -219,8 +211,9 @@ python tools/diagnostics/readme_runtime_compare.py \
 The exact numbers in the checked-in benchmark table will vary by machine. The
 README runtime figure intentionally uses warmed fixed-boundary optimized-CLI
 runs so it reflects steady-state solve cost rather than cold JAX startup
-overhead. Use the commands above to regenerate a CPU summary and an additional
-GPU summary on your own reference hosts.
+overhead. The top-level README plot is CPU-only on this branch because the GPU
+path is still under active optimization and is not yet a broadly faster default
+story.
 
 ## Documentation
 
@@ -231,38 +224,37 @@ GPU summary on your own reference hosts.
 - `docs/algorithms.rst`: algorithmic overview
 - `docs/equations.rst`: equations and conventions
 
-## Optimized CLI Fixed-Boundary Reassessment
+## Bundled Runtime Snapshot
 
-Measured on 2026-03-11 using warmed serial runs of the optimized fixed-boundary
+Measured on 2026-03-12 using warmed serial runs of the optimized fixed-boundary
 CLI controller (`solver_mode="accelerated"`, `cli_fixed_boundary_mode=True`)
-against the current branch baseline (`solver_mode="default"`). The latest full
-artifact is checked in at
-`outputs/accelerated_cli_fixed_boundary_full_20260311_r2/summary.json`.
+against VMEC2000 on the same CPU host. The artifact behind the current README
+runtime plot is checked in at
+`outputs/readme_fixed_runtime_vmec2000_accel_cpu_20260312/summary.json`.
 
 Current checked-in summary:
 
-- All 16 bundled fixed-boundary cases in the warmed matrix converge on both
-  the baseline and optimized paths.
-- The optimized controller is now faster on 13 of 16 cases and neutral on the
-  remaining 3. There are no runtime regressions left in the bundled CPU sweep.
-- On the latest warmed rerun of the bundled ``lasym=False`` fixed-boundary
-  subset, the optimized controller is faster on all 13 cases.
-- The largest wins are `LandremanSenguptaPlunk_section5p3_low_res`,
-  `up_down_asymmetric_tokamak`, and `ITERModel`.
-- After the latest strict-`FTOL` and 3D LASYM quality pass,
-  `basic_non_stellsym_pressure` was rerun separately and is now effectively
-  runtime-neutral (`~22.24s` baseline vs `~22.31s` optimized) while matching
-  baseline-level quality instead of slightly degrading it.
+- all 13 bundled `lasym=False` fixed-boundary cases in the warmed matrix
+  converge on both VMEC2000 and `vmec_jax`,
+- the optimized branch is much faster than the older `vmec_jax` controller on
+  this same bundled set, but it is still slower than VMEC2000 on most of the
+  heavier non-axisymmetric QA/QH-style cases,
+- the current CPU wins against VMEC2000 are the small/cheap cases
+  `circular_tokamak_aspect_100` and `solovev`,
+- the free-boundary work on this branch is still in profiling/optimization
+  mode: on the representative `cth_like_free_bdy` case, the latest boundary
+  synthesis + nonsingular-kernel-table caching pass reduced the warmed
+  `vmec_jax` CPU runtime to about `11.25s` while keeping convergence.
 
-Representative warmed CPU baseline-vs-optimized points:
+Representative warmed CPU VMEC2000-vs-`vmec_jax` points:
 
-| Example | Baseline runtime | Optimized runtime | Runtime ratio |
-| --- | ---: | ---: | ---: |
-| ITERModel | 0.36s | 0.20s | 1.75x faster |
-| LandremanPaul2021_QA_lowres | 8.75s | 7.86s | 1.11x faster |
-| LandremanPaul2021_QA_reactorScale_lowres | 10.42s | 10.06s | 1.04x faster |
-| LandremanSenguptaPlunk_section5p3_low_res | 49.56s | 0.21s | 240.59x faster |
-| up_down_asymmetric_tokamak | 1.01s | 0.45s | 2.28x faster |
+| Example | VMEC2000 runtime | vmec_jax CPU runtime | Relative result |
+| --- | ---: | ---: | --- |
+| solovev | 0.17s | 0.08s | `vmec_jax` faster |
+| circular_tokamak_aspect_100 | 2.41s | 0.55s | `vmec_jax` faster |
+| LandremanPaul2021_QA_lowres | 24.06s | 31.16s | close, VMEC2000 faster |
+| LandremanPaul2021_QA_reactorScale_lowres | 36.72s | 40.75s | close, VMEC2000 faster |
+| LandremanPaul2021_QH_reactorScale_lowres | 43.24s | 47.59s | close, VMEC2000 faster |
 
 ## Accelerated Branch Reassessment
 

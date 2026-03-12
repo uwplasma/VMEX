@@ -122,33 +122,40 @@ def _speedup(value: float | int | None, baseline: float | int | None) -> float |
 
 
 def _write_markdown_table(rows: list[dict[str, Any]], outpath: Path) -> None:
-    header = [
-        "| Example | Boundary | Topology | LASYM | VMEC2000 runtime | VMEC2000 memory | vmec_jax CPU runtime (warmed) | vmec_jax CPU memory | vmec_jax GPU runtime (warmed) | vmec_jax GPU memory |",
-        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
-    ]
+    include_gpu = any(row["gpu_runtime_s"] is not None or row["gpu_mem_bytes"] is not None for row in rows)
+    if include_gpu:
+        header = [
+            "| Example | Boundary | Topology | LASYM | VMEC2000 runtime | VMEC2000 memory | vmec_jax CPU runtime (warmed) | vmec_jax CPU memory | vmec_jax GPU runtime (warmed) | vmec_jax GPU memory |",
+            "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    else:
+        header = [
+            "| Example | Boundary | Topology | LASYM | VMEC2000 runtime | VMEC2000 memory | vmec_jax CPU runtime (warmed) | vmec_jax CPU memory |",
+            "| --- | --- | --- | --- | ---: | ---: | ---: | ---: |",
+        ]
     lines = list(header)
     for row in rows:
         boundary = "free" if row["lfreeb"] else "fixed"
         topology = "axisym" if row["axisymmetric"] else "non-axisym"
         lasym = "true" if row["lasym"] else "false"
-        lines.append(
-            "| "
-            + " | ".join(
+        cols = [
+            row["id"],
+            boundary,
+            topology,
+            lasym,
+            _format_seconds(row["vmec_runtime_s"]),
+            _format_gib(row["vmec_mem_bytes"]),
+            _format_seconds(row["cpu_runtime_s"]),
+            _format_gib(row["cpu_mem_bytes"]),
+        ]
+        if include_gpu:
+            cols.extend(
                 [
-                    row["id"],
-                    boundary,
-                    topology,
-                    lasym,
-                    _format_seconds(row["vmec_runtime_s"]),
-                    _format_gib(row["vmec_mem_bytes"]),
-                    _format_seconds(row["cpu_runtime_s"]),
-                    _format_gib(row["cpu_mem_bytes"]),
                     _format_seconds(row["gpu_runtime_s"]),
                     _format_gib(row["gpu_mem_bytes"]),
                 ]
             )
-            + " |"
-        )
+        lines.append("| " + " | ".join(cols) + " |")
     outpath.write_text("\n".join(lines) + "\n")
 
 
@@ -210,9 +217,9 @@ def _write_runtime_figure(rows: list[dict[str, Any]], outpath: Path, *, figure_k
     ax.grid(axis="x", alpha=0.18, which="both")
     ax.legend(frameon=False, ncol=2, loc="upper right")
     title = {
-        "all": "Bundled Example Runtime: VMEC2000 vs vmec_jax CPU",
-        "fixed": "Bundled Fixed-Boundary Runtime: VMEC2000 vs vmec_jax CPU",
-        "freeb": "Bundled Free-Boundary Runtime: VMEC2000 vs vmec_jax CPU",
+        "all": "Bundled Example Runtime: VMEC2000 vs vmec_jax CPU (warmed)",
+        "fixed": "Bundled Fixed-Boundary Runtime: VMEC2000 vs vmec_jax CPU (warmed)",
+        "freeb": "Bundled Free-Boundary Runtime: VMEC2000 vs vmec_jax CPU (warmed)",
     }[figure_kind]
     ax.set_title(title)
     fig.tight_layout()

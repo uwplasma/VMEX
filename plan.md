@@ -1340,3 +1340,23 @@ Legend:
     to about `58.21s` while keeping the direct NESTOR regression tests green,
   - full regression suite on the final split-controller head:
     `170 passed, 12 skipped`.
+- 2026-03-12 README/runtime refresh and free-boundary nonsingular-kernel caching:
+  - refreshed the README-facing fixed-boundary VMEC2000 comparison on the
+    current branch in
+    `outputs/readme_fixed_runtime_vmec2000_accel_cpu_20260312/summary.json`
+    and regenerated `docs/_static/figures/readme_runtime_compare.png`,
+  - refreshed the top README QA + axisymmetric comparison panels and the
+    `fsq_total` trace on the optimized branch path,
+  - updated `tools/diagnostics/readme_runtime_compare.py` so CPU-only README
+    runs no longer emit empty GPU columns in the generated markdown table,
+  - profiled the remaining `lasym=False` free-boundary hotspot and found that
+    `_vmec_nonsingular_terms_from_bexni` /
+    `_vmec_nonsingular_gsource_from_bexni` were rebuilding basis-only helper
+    tables on every call,
+  - cached those helper tables on the free-boundary basis in
+    `vmec_jax/free_boundary.py`, cutting the representative
+    `input.cth_like_free_bdy` cProfile total further from about `58.21s` to
+    about `32.67s`,
+  - direct warmed CPU benchmark for that same case is now recorded in
+    `outputs/freeb_cth_runtime_20260312/summary.json` at about `11.25s`
+    versus VMEC2000 `1.78s`, with convergence preserved.

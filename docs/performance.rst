@@ -316,8 +316,28 @@ controller fixes improved several non-axisymmetric cases materially:
   ``38.56s`` optimized), ``LandremanPaul2021_QH_reactorScale_lowres``
   (``60.10s`` vs ``46.33s``), ``ITERModel`` (``12.73s`` vs ``5.00s``), and
   ``cth_like_fixed_bdy`` (``4.71s`` vs ``0.97s``),
+- the README-facing VMEC2000 comparison was then rerun separately on the same
+  host in
+  ``outputs/readme_fixed_runtime_vmec2000_accel_cpu_20260312/summary.json``:
+  all 13 bundled ``lasym=False`` fixed-boundary cases converged, but the
+  optimized branch is still faster than VMEC2000 on only the smallest shipped
+  cases (``solovev`` and ``circular_tokamak_aspect_100``). The reactor-scale
+  QA/QH cases are now close enough to compare honestly on one plot, but they
+  still run somewhat slower than VMEC2000 on CPU,
 - carrying the same “reduce host-controlled overhead” approach into
   ``lasym=False`` free-boundary showed the next safe win: batching the
+  boundary real-space syntheses in
+  ``vmec_jax/free_boundary.py:_sample_external_boundary_arrays`` cut the
+  representative ``input.cth_like_free_bdy`` cProfile total from about
+  ``60.41s`` to about ``58.21s`` while keeping the NESTOR reuse tests green,
+- the next free-boundary profile then showed that
+  ``_vmec_nonsingular_terms_from_bexni`` and
+  ``_vmec_nonsingular_gsource_from_bexni`` were still rebuilding basis-only
+  helper tables on every call; caching those tables on the free-boundary basis
+  cut the same representative cProfile total further to about ``32.67s`` and
+  brought the direct warmed CPU benchmark for ``cth_like_free_bdy`` to about
+  ``11.25s`` in ``outputs/freeb_cth_runtime_20260312/summary.json`` while
+  preserving convergence.
   boundary ``R/Z`` synthesis and first-derivative synthesis in
   ``_sample_external_boundary_arrays`` cut the representative
   ``input.cth_like_free_bdy`` profile from about ``60.41s`` total wall time to
