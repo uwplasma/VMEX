@@ -8181,11 +8181,14 @@ def solve_fixed_boundary_residual_iter(
             accepted_mask = np.ones_like(fsqr_full, dtype=bool)
         else:
             accepted_mask = np.asarray(accepted).astype(bool)
-        conv_mask = (
+        strict_mask = (
             (fsqr_full <= float(ftol)) & (fsqz_full <= float(ftol)) & (fsql_full <= float(ftol))
         )
+        conv_mask = strict_mask.copy()
+        total_mask = np.zeros_like(conv_mask, dtype=bool)
         if fsq_total_target is not None:
-            conv_mask = conv_mask | ((fsqr_full + fsqz_full + fsql_full) <= float(fsq_total_target))
+            total_mask = (fsqr_full + fsqz_full + fsql_full) <= float(fsq_total_target)
+            conv_mask = conv_mask | total_mask
         if bool(np.any(conv_mask)):
             conv_idx = int(np.argmax(conv_mask)) + 1
             conv_idx_print = conv_idx
@@ -8202,6 +8205,21 @@ def solve_fixed_boundary_residual_iter(
         fsqz_hist_np = fsqz_full[accepted_idx]
         fsql_hist_np = fsql_full[accepted_idx]
         w_hist = fsqr_hist_np + fsqz_hist_np + fsql_hist_np
+        if fsqr_hist_np.size > 0:
+            final_fsqr = float(fsqr_hist_np[-1])
+            final_fsqz = float(fsqz_hist_np[-1])
+            final_fsql = float(fsql_hist_np[-1])
+        elif fsqr_full.size > 0:
+            final_idx = min(max(int(conv_idx) - 1, 0), int(fsqr_full.size) - 1)
+            final_fsqr = float(fsqr_full[final_idx])
+            final_fsqz = float(fsqz_full[final_idx])
+            final_fsql = float(fsql_full[final_idx])
+        else:
+            final_fsqr = float("inf")
+            final_fsqz = float("inf")
+            final_fsql = float("inf")
+        converged_strict = bool((final_fsqr <= float(ftol)) and (final_fsqz <= float(ftol)) and (final_fsql <= float(ftol)))
+        converged_total = bool((final_fsqr + final_fsqz + final_fsql) <= float(fsq_total_target)) if fsq_total_target is not None else False
 
         if scan_minimal or scan_light:
             fsqr1_hist_np = np.zeros((0,), dtype=float)
@@ -8397,6 +8415,8 @@ def solve_fixed_boundary_residual_iter(
             diagnostics={
                 "use_scan": True,
                 "vmec2000_scan": True,
+                "ftol": float(ftol),
+                "requested_ftol": float(ftol),
                 "light_history": bool(scan_light),
                 "scan_minimal": bool(scan_minimal),
                 "resume_state_mode": str(resume_state_mode),
@@ -8409,6 +8429,11 @@ def solve_fixed_boundary_residual_iter(
                 "accepted_mask": np.asarray(accepted_mask),
                 "converged_iter": int(conv_idx),
                 "converged": bool(np.any(conv_mask)),
+                "converged_strict": bool(converged_strict),
+                "converged_by_total_fsq": bool(converged_total),
+                "final_fsqr": float(final_fsqr),
+                "final_fsqz": float(final_fsqz),
+                "final_fsql": float(final_fsql),
                 "ijacob": int(np.asarray(carry_final.ijacob)),
                 "fsqr1_history": fsqr1_hist_np,
                 "fsqz1_history": fsqz1_hist_np,
@@ -12105,6 +12130,7 @@ def solve_fixed_boundary_residual_iter(
 
     diag: Dict[str, Any] = {
         "ftol": ftol,
+        "requested_ftol": float(ftol),
         "gamma": gamma,
         "step_size": float(step_size),
         "precond_radial_alpha": float(precond_radial_alpha),
@@ -12115,6 +12141,13 @@ def solve_fixed_boundary_residual_iter(
         "use_direct_fallback": bool(use_direct_fallback),
         "max_update_rms": float(max_update_rms),
         "converged": bool(converged),
+        "converged_strict": bool((fsqr_f <= ftol) and (fsqz_f <= ftol) and (fsql_f <= ftol)),
+        "converged_by_total_fsq": bool(
+            (fsq_total_target is not None) and ((fsqr_f + fsqz_f + fsql_f) <= float(fsq_total_target))
+        ),
+        "final_fsqr": float(fsqr_f),
+        "final_fsqz": float(fsqz_f),
+        "final_fsql": float(fsql_f),
         "badjac_use_state": bool(badjac_use_state),
         "badjac_mode": badjac_mode,
         "light_history": bool(light_history),

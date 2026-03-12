@@ -1300,5 +1300,16 @@ Legend:
     `outputs/basic_nonaxis_lasym_true_20260312_final/summary.json` keeps
     `basic_non_stellsym_pressure` at `~3.46e-02` with a runtime win
     (`~25.06s -> 19.21s`),
+  - accelerated fixed-boundary return semantics now treat per-channel final
+    `FTOL` as the acceptance truth, while keeping `fsq_total = fsqr + fsqz +
+    fsql` as an internal early-stop only for accelerated blocks,
+  - direct validation on the new head confirms strict requested-`FTOL`
+    convergence on representative accelerated CLI fixed-boundary cases:
+    `LandremanPaul2021_QA_lowres` (`~7.40e-14`, `~3.21e-14`, `~9.99e-14`
+    against requested `1e-13`),
+    `LandremanPaul2021_QA_reactorScale_lowres`
+    (`~1.47e-15`, `~6.93e-16`, `~8.14e-16` against requested `1e-15`),
+    and `basic_non_stellsym_pressure`
+    (`~9.81e-11`, `~5.46e-11`, `~1.31e-12` against requested `1e-10`),
   - full regression suite on the final split-controller head:
     `170 passed, 12 skipped`.

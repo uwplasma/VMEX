@@ -192,6 +192,9 @@ The branch should **not** make accelerated mode the default controller yet.
 
 The remaining gates are broader than this PR:
 
+- exact per-channel final-stage ``FTOL`` is now enforced on the accelerated
+  fixed-boundary return path, but that still needs to be revalidated on the
+  full bundled fixed-boundary matrix after any further controller changes,
 - full bundled example runtime and memory matrix on CPU and GPU,
 - full final-``wout`` accuracy matrix against VMEC2000 at the accelerated-mode
   target,

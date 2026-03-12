@@ -97,11 +97,13 @@ Current behavior of this first slice:
   fixed-boundary runs now default to a single final-grid stage. This avoids
   per-stage interpolation and recompilation overhead that was dominating the
   heavy bundled fixed-boundary cases,
-- accelerated fixed-boundary stages may stop on a scalar total-residual target
-  derived directly from the input ``ftol`` budget:
+- accelerated fixed-boundary stages still use a scalar total-residual target
+  derived from the input ``ftol`` budget as a cheap *in-block* early-stop:
   ``fsq_total_target = ftol * 3`` for the three VMEC residual channels
-  (``fsqr``, ``fsqz``, ``fsql``). Parity mode keeps the original
-  per-component convergence rule unchanged,
+  (``fsqr``, ``fsqz``, ``fsql``). However, the returned accelerated
+  fixed-boundary run now accepts convergence only when the final-stage
+  per-channel rule is satisfied, matching the requested ``FTOL`` literally on
+  ``fsqr``, ``fsqz``, and ``fsql``,
 - the experimental solver controls no longer rely on fixed absolute
   convergence thresholds. By default:
 

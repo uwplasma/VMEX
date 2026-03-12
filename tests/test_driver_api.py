@@ -636,6 +636,71 @@ def test_run_fixed_boundary_cli_single_grid_uses_accelerated_finish_first(monkey
     assert diag["converged"] is True
 
 
+def test_run_fixed_boundary_cli_single_grid_requires_strict_ftol(monkeypatch, tmp_path):
+    input_path = _write_single_stage_input(tmp_path)
+    calls = []
+    residuals = [
+        (2.50e-14, 2.0e-16, 2.0e-16),
+        (1.40e-14, 4.0e-15, 4.0e-15),
+        (8.00e-15, 7.0e-15, 6.0e-15),
+    ]
+
+    def _fake_solver(state, static, **kwargs):
+        idx = len(calls)
+        fsqr, fsqz, fsql = residuals[idx]
+        calls.append(
+            {
+                "ns": int(static.cfg.ns),
+                "max_iter": int(kwargs["max_iter"]),
+                "use_scan": bool(kwargs["use_scan"]),
+                "resume_state_mode": str(kwargs.get("resume_state_mode", "")),
+            }
+        )
+        w = float(fsqr + fsqz + fsql)
+        return SolveVmecResidualResult(
+            state=state,
+            n_iter=max(0, int(kwargs["max_iter"]) - 1),
+            w_history=np.asarray([w], dtype=float),
+            fsqr2_history=np.asarray([fsqr], dtype=float),
+            fsqz2_history=np.asarray([fsqz], dtype=float),
+            fsql2_history=np.asarray([fsql], dtype=float),
+            grad_rms_history=np.asarray([], dtype=float),
+            step_history=np.asarray([], dtype=float),
+            diagnostics={
+                "use_scan": bool(kwargs["use_scan"]),
+                "resume_state": {"cache_norms": np.asarray([1.0])},
+                "light_history": True,
+                "resume_state_mode": str(kwargs.get("resume_state_mode", "")),
+                "ftol": 1.0e-14,
+                "converged": bool(w <= 3.0e-14),
+            },
+        )
+
+    monkeypatch.setattr(solve_module, "solve_fixed_boundary_residual_iter", _fake_solver)
+    monkeypatch.setattr(driver_module, "solve_fixed_boundary_residual_iter", _fake_solver)
+
+    run = run_fixed_boundary(
+        input_path,
+        solver="vmec2000_iter",
+        solver_mode="accelerated",
+        verbose=False,
+        cli_fixed_boundary_mode=True,
+    )
+
+    assert [call["ns"] for call in calls] == [13, 13, 13]
+    assert [call["max_iter"] for call in calls] == [100, 100, 100]
+    assert [call["use_scan"] for call in calls] == [True, True, True]
+    diag = run.result.diagnostics
+    assert np.asarray(diag["cli_fixed_boundary_finish_budgets"]).tolist() == [100, 100]
+    assert np.asarray(diag["cli_fixed_boundary_finish_modes"]).tolist() == ["accelerated", "accelerated"]
+    assert np.asarray(diag["cli_fixed_boundary_finish_converged"]).tolist() == [False, True]
+    assert diag["converged"] is True
+    assert diag["converged_strict"] is True
+    assert float(diag["final_fsqr"]) <= 1.0e-14
+    assert float(diag["final_fsqz"]) <= 1.0e-14
+    assert float(diag["final_fsql"]) <= 1.0e-14
+
+
 def test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid():
     root = Path(__file__).resolve().parents[1]
     input_path = root / "examples/data/input.LandremanSenguptaPlunk_section5p3_low_res"

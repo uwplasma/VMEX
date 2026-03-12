@@ -125,6 +125,100 @@ def _accelerated_fsq_total_target_from_ftol(ftol: float) -> float:
     return max(0.0, float(ftol)) * float(len(_FSQ_COMPONENT_NAMES))
 
 
+def _requested_final_ftol(*, indata, ftol_list_input) -> float:
+    ftol_list = _as_float_list(ftol_list_input)
+    if ftol_list:
+        return max(0.0, float(ftol_list[-1]))
+    return max(0.0, float(indata.get_float("FTOL", 1.0e-13)))
+
+
+def _as_float_list(value) -> list[float] | None:
+    if value is None:
+        return None
+    try:
+        return [float(v) for v in value]
+    except Exception:
+        return None
+
+
+def _result_final_residuals(result) -> tuple[float, float, float] | None:
+    if result is None:
+        return None
+    diag = getattr(result, "diagnostics", {}) or {}
+    explicit = (
+        diag.get("final_fsqr", None),
+        diag.get("final_fsqz", None),
+        diag.get("final_fsql", None),
+    )
+    if all(val is not None for val in explicit):
+        try:
+            return tuple(float(val) for val in explicit)
+        except Exception:
+            pass
+    try:
+        fsqr = np.asarray(getattr(result, "fsqr2_history"))
+        fsqz = np.asarray(getattr(result, "fsqz2_history"))
+        fsql = np.asarray(getattr(result, "fsql2_history"))
+        if fsqr.size > 0 and fsqz.size > 0 and fsql.size > 0:
+            return (
+                float(fsqr.reshape(-1)[-1]),
+                float(fsqz.reshape(-1)[-1]),
+                float(fsql.reshape(-1)[-1]),
+            )
+    except Exception:
+        pass
+    try:
+        fsqr = np.asarray(diag.get("fsqr_full", []))
+        fsqz = np.asarray(diag.get("fsqz_full", []))
+        fsql = np.asarray(diag.get("fsql_full", []))
+        if fsqr.size > 0 and fsqz.size > 0 and fsql.size > 0:
+            return (
+                float(fsqr.reshape(-1)[-1]),
+                float(fsqz.reshape(-1)[-1]),
+                float(fsql.reshape(-1)[-1]),
+            )
+    except Exception:
+        pass
+    return None
+
+
+def _result_final_fsq(result) -> float:
+    if result is None:
+        return float("inf")
+    try:
+        w_hist = np.asarray(getattr(result, "w_history"))
+        if w_hist.size > 0:
+            return float(w_hist.reshape(-1)[-1])
+    except Exception:
+        pass
+    residuals = _result_final_residuals(result)
+    if residuals is not None:
+        return float(sum(residuals))
+    return float("inf")
+
+
+def _result_meets_requested_ftol(result, *, ftol: float) -> bool:
+    if result is None:
+        return False
+    diag = getattr(result, "diagnostics", {}) or {}
+    strict = diag.get("converged_strict", None)
+    if strict is not None:
+        return bool(strict)
+    if ("ftol" not in diag) and ("requested_ftol" not in diag):
+        return bool(diag.get("converged", False))
+    residuals = _result_final_residuals(result)
+    if residuals is None:
+        return False
+    target = max(0.0, float(ftol))
+    return all(float(val) <= target for val in residuals)
+
+
+def _result_hits_total_target(result, *, fsq_total_target: float | None) -> bool:
+    if result is None or fsq_total_target is None:
+        return False
+    return bool(_result_final_fsq(result) <= max(0.0, float(fsq_total_target)))
+
+
 def _allocate_integer_budget(*, total: int, weights: list[int]) -> list[int]:
     total = max(0, int(total))
     if total <= 0:
@@ -1104,7 +1198,9 @@ def run_fixed_boundary(
         base_diag["accelerated_mode"] = bool(accelerated_mode)
         base_diag["cli_fixed_boundary_mode"] = True
         base_diag["cli_fixed_boundary_initial_policy"] = str(initial_policy)
-        target_fsq = _accelerated_fsq_total_target_from_ftol(float(indata.get_float("FTOL", 1.0e-13)))
+        requested_ftol = _requested_final_ftol(indata=indata, ftol_list_input=ftol_list_input)
+        target_fsq = _accelerated_fsq_total_target_from_ftol(float(requested_ftol))
+        base_diag["requested_ftol"] = float(requested_ftol)
         base_diag["fsq_total_target"] = float(target_fsq)
         staged_input = (ns_list_input is not None) and (len(ns_list_input) > 1)
         explicit_niter_stages = (
@@ -1120,8 +1216,11 @@ def run_fixed_boundary(
             and bool(cfg.lthreed)
             and (not bool(deferred_staged_current_driven_3d_cli))
         )
+        run_in_strict = _result_meets_requested_ftol(run_in.result, ftol=float(requested_ftol))
+        run_in_total = _result_hits_total_target(run_in.result, fsq_total_target=float(target_fsq))
         if (
             bool(run_in.result.diagnostics.get("converged", False))
+            and bool(run_in_strict)
             and (not bool(require_staged_followup))
         ):
             base_diag["cli_fixed_boundary_finish_budgets"] = np.zeros((0,), dtype=int)
@@ -1129,14 +1228,17 @@ def run_fixed_boundary(
             base_diag["cli_fixed_boundary_finish_converged"] = np.zeros((0,), dtype=bool)
             base_diag["cli_fixed_boundary_finish_modes"] = np.asarray([], dtype=object)
             base_diag["cli_fixed_boundary_full_parity_fallback"] = False
+            base_diag["converged"] = True
+            base_diag["converged_strict"] = True
+            base_diag["converged_by_total_fsq"] = bool(run_in_total)
             return replace(run_in, result=replace(run_in.result, diagnostics=base_diag))
-        run_in_fsq = float(np.asarray(run_in.result.w_history)[-1])
         if (
-            (run_in_fsq <= float(target_fsq))
+            bool(run_in_strict)
             and (not bool(require_staged_followup))
         ):
             base_diag["converged"] = True
-            base_diag["converged_by_total_fsq"] = True
+            base_diag["converged_strict"] = True
+            base_diag["converged_by_total_fsq"] = bool(run_in_total)
             base_diag["cli_fixed_boundary_finish_budgets"] = np.zeros((0,), dtype=int)
             base_diag["cli_fixed_boundary_finish_fsq"] = np.zeros((0,), dtype=float)
             base_diag["cli_fixed_boundary_finish_converged"] = np.zeros((0,), dtype=bool)
@@ -1147,7 +1249,7 @@ def run_fixed_boundary(
         base_total_budget = max(1, int(max_iter))
 
         best_run = run_in
-        best_fsq = float(np.asarray(run_in.result.w_history)[-1])
+        best_fsq = float(_result_final_fsq(run_in.result))
         attempt_budgets: list[int] = []
         attempt_fsq: list[float] = []
         attempt_converged: list[bool] = []
@@ -1235,10 +1337,7 @@ def run_fixed_boundary(
                 if (ftol_list_input is not None) and (len(ftol_list_input) == len(ns_list_input))
                 else [float(indata.get_float("FTOL", 1.0e-13))] * len(ns_list_input)
             )
-            missed_target = not (
-                bool(best_run.result.diagnostics.get("converged", False))
-                or (float(best_fsq) <= float(target_fsq))
-            )
+            missed_target = not bool(_result_meets_requested_ftol(best_run.result, ftol=float(requested_ftol)))
             should_run_staged_followup = bool(explicit_niter_stages is not None) and (
                 bool(require_staged_followup) or bool(missed_target)
             )
@@ -1255,10 +1354,8 @@ def run_fixed_boundary(
                 staged_followup_niter = np.asarray(staged_diag.get("cli_staged_followup_stage_niter", []), dtype=int)
                 staged_followup_modes = np.asarray(staged_diag.get("cli_staged_followup_stage_modes", []), dtype=object)
                 staged_followup_fsq = np.asarray(staged_diag.get("cli_staged_followup_stage_fsq", []), dtype=float)
-                staged_fsq_val = float(np.asarray(staged_followup.result.w_history)[-1])
-                staged_conv = bool(staged_followup.result.diagnostics.get("converged", False)) or (
-                    staged_fsq_val <= float(target_fsq)
-                )
+                staged_fsq_val = float(_result_final_fsq(staged_followup.result))
+                staged_conv = bool(_result_meets_requested_ftol(staged_followup.result, ftol=float(requested_ftol)))
                 if staged_conv or (staged_fsq_val < float(best_fsq)):
                     best_run = staged_followup
                     best_fsq = float(staged_fsq_val)
@@ -1269,7 +1366,7 @@ def run_fixed_boundary(
             bool(accelerated_mode)
             and str(initial_policy) == "single_grid"
             and (not bool(staged_followup_used))
-            and not (bool(best_run.result.diagnostics.get("converged", False)) or float(best_fsq) <= float(target_fsq))
+            and not bool(_result_meets_requested_ftol(best_run.result, ftol=float(requested_ftol)))
         ):
             accel_budget_i = int(base_total_budget)
             accel_budget_used = 0
@@ -1281,10 +1378,8 @@ def run_fixed_boundary(
                     use_scan_i=True,
                     performance_mode_i=True,
                 )
-                trial_fsq = float(np.asarray(trial.result.w_history)[-1])
-                trial_conv = bool(trial.result.diagnostics.get("converged", False)) or (
-                    float(trial_fsq) <= float(target_fsq)
-                )
+                trial_fsq = float(_result_final_fsq(trial.result))
+                trial_conv = bool(_result_meets_requested_ftol(trial.result, ftol=float(requested_ftol)))
                 attempt_budgets.append(int(accel_budget_i))
                 attempt_fsq.append(float(trial_fsq))
                 attempt_converged.append(bool(trial_conv))
@@ -1296,7 +1391,7 @@ def run_fixed_boundary(
                     best_fsq = float(trial_fsq)
                 if trial_conv or (not improved):
                     break
-        if not (bool(best_run.result.diagnostics.get("converged", False)) or float(best_fsq) <= float(target_fsq)):
+        if not bool(_result_meets_requested_ftol(best_run.result, ftol=float(requested_ftol))):
             budget_i = int(base_total_budget)
             while int(budget_i) >= 1:
                 prev_best_fsq = float(best_fsq)
@@ -1306,10 +1401,8 @@ def run_fixed_boundary(
                     use_scan_i=False,
                     performance_mode_i=False,
                 )
-                trial_fsq = float(np.asarray(trial.result.w_history)[-1])
-                trial_conv = bool(trial.result.diagnostics.get("converged", False)) or (
-                    float(trial_fsq) <= float(target_fsq)
-                )
+                trial_fsq = float(_result_final_fsq(trial.result))
+                trial_conv = bool(_result_meets_requested_ftol(trial.result, ftol=float(requested_ftol)))
                 attempt_budgets.append(int(budget_i))
                 attempt_fsq.append(float(trial_fsq))
                 attempt_converged.append(bool(trial_conv))
@@ -1328,7 +1421,7 @@ def run_fixed_boundary(
                 budget_i = int(next_budget)
 
         if staged_input and not (
-            bool(best_run.result.diagnostics.get("converged", False)) or float(best_fsq) <= float(target_fsq)
+            bool(_result_meets_requested_ftol(best_run.result, ftol=float(requested_ftol)))
         ) and bool(accelerated_mode):
             fallback_used = True
             fallback = run_fixed_boundary(
@@ -1360,8 +1453,9 @@ def run_fixed_boundary(
                 grid=grid,
                 cli_fixed_boundary_mode=False,
             )
-            fallback_fsq = float(np.asarray(fallback.result.w_history)[-1])
-            if bool(fallback.result.diagnostics.get("converged", False)) or fallback_fsq < best_fsq:
+            fallback_fsq = float(_result_final_fsq(fallback.result))
+            fallback_conv = bool(_result_meets_requested_ftol(fallback.result, ftol=float(requested_ftol)))
+            if fallback_conv or fallback_fsq < best_fsq:
                 best_run = fallback
                 best_fsq = float(fallback_fsq)
 
@@ -1371,9 +1465,17 @@ def run_fixed_boundary(
         diag["accelerated_mode"] = bool(accelerated_mode)
         diag["cli_fixed_boundary_mode"] = True
         diag["cli_fixed_boundary_initial_policy"] = str(initial_policy)
-        if float(best_fsq) <= float(target_fsq):
-            diag["converged"] = True
-            diag["converged_by_total_fsq"] = True
+        final_residuals = _result_final_residuals(best_run.result)
+        strict_converged = bool(_result_meets_requested_ftol(best_run.result, ftol=float(requested_ftol)))
+        total_converged = bool(_result_hits_total_target(best_run.result, fsq_total_target=float(target_fsq)))
+        diag["requested_ftol"] = float(requested_ftol)
+        if final_residuals is not None:
+            diag["final_fsqr"] = float(final_residuals[0])
+            diag["final_fsqz"] = float(final_residuals[1])
+            diag["final_fsql"] = float(final_residuals[2])
+        diag["converged"] = bool(strict_converged)
+        diag["converged_strict"] = bool(strict_converged)
+        diag["converged_by_total_fsq"] = bool(total_converged)
         diag["cli_fixed_boundary_finish_budgets"] = np.asarray(attempt_budgets, dtype=int)
         diag["cli_fixed_boundary_finish_fsq"] = np.asarray(attempt_fsq, dtype=float)
         diag["cli_fixed_boundary_finish_converged"] = np.asarray(attempt_converged, dtype=bool)
@@ -2495,6 +2597,34 @@ def run_fixed_boundary(
                 )
             except Exception:
                 pass
+        final_requested_ftol = _requested_final_ftol(indata=indata, ftol_list_input=ftol_list_input)
+        final_target_fsq = _accelerated_fsq_total_target_from_ftol(float(final_requested_ftol))
+        final_residuals = _result_final_residuals(res)
+        final_diag = dict(res.diagnostics)
+        final_diag["requested_ftol"] = float(final_requested_ftol)
+        final_diag["fsq_total_target"] = (
+            final_target_fsq if (final_diag.get("fsq_total_target", None) is not None or bool(accelerated_mode)) else None
+        )
+        if final_residuals is not None:
+            final_diag["final_fsqr"] = float(final_residuals[0])
+            final_diag["final_fsqz"] = float(final_residuals[1])
+            final_diag["final_fsql"] = float(final_residuals[2])
+        final_diag["converged_strict"] = bool(_result_meets_requested_ftol(res, ftol=float(final_requested_ftol)))
+        final_diag["converged_by_total_fsq"] = bool(
+            _result_hits_total_target(res, fsq_total_target=float(final_target_fsq))
+        )
+        final_diag["converged"] = bool(final_diag["converged_strict"])
+        res = SolveVmecResidualResult(
+            state=res.state,
+            n_iter=int(res.n_iter),
+            w_history=np.asarray(res.w_history),
+            fsqr2_history=np.asarray(res.fsqr2_history),
+            fsqz2_history=np.asarray(res.fsqz2_history),
+            fsql2_history=np.asarray(res.fsql2_history),
+            grad_rms_history=np.asarray(res.grad_rms_history),
+            step_history=np.asarray(res.step_history),
+            diagnostics=final_diag,
+        )
         static = _build_static_cfg(cfg)
         if verbose and solver == "vmec2000_iter":
             converged = bool(res.diagnostics.get("converged", False))
