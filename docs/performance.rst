@@ -259,10 +259,21 @@ controller fixes improved several non-axisymmetric cases materially:
   ``LandremanPaul2021_QA_reactorScale_lowres``, and from ``4.61e+00`` to
   ``2.22e-02`` on ``LandremanPaul2021_QH_reactorScale_lowres`` in
   ``outputs/fixed_wout_3d_audit_20260311_r1/summary.json``,
-- the remaining notable 3D quality gap in the bundled audit is now the
-  ``lasym=True`` current-driven case ``basic_non_stellsym_pressure``
-  (max relRMS about ``4.29e-01``), plus residual lambda-channel drift on the
-  QA/QH cases,
+- the next narrowed audit then focused on the staged current-driven 3D
+  continuation policy itself:
+  for 3-stage ``lasym=True`` current-driven runs, direct multigrid now keeps
+  the entry/final stages on the conservative controller and accelerates only
+  the interior stage,
+- that change materially reduced the remaining non-axisymmetric lambda drift
+  while preserving the runtime gains:
+  ``basic_non_stellsym_pressure`` improved from about ``3.46e-01`` to
+  ``3.46e-02`` max relRMS while still running faster than baseline
+  (about ``23.69s`` baseline vs ``19.36s`` optimized in the targeted audit),
+  and the QA/QH reactor-scale cases held at about ``3.14e-02`` and
+  ``2.22e-02`` with large runtime wins,
+- the remaining bundled 3D quality gap is therefore much narrower and now
+  mostly a lambda-field accuracy question rather than a broad geometry or
+  force-balance mismatch,
 - a follow-on experiment that added a final-grid parity polish to the
   staged 3D accelerated path was rejected because it raised runtime
   substantially without improving those benchmarked quality numbers.

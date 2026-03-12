@@ -121,8 +121,12 @@ The branch is ready for an honest review PR.
   because the fixed-boundary CPU CLI story improved.
   The latest useful quality fix was in ``wout`` export for ``lasym=False`` 3D
   cases, which removed symmetry-forbidden ``rmns/zmnc`` output and cut the
-  bundled QA/QH quality metric by about an order of magnitude; the remaining
-  quality gap is now much narrower and more localized.
+  bundled QA/QH quality metric by about an order of magnitude. A follow-up
+  staged-controller fix for 3-stage ``lasym=True`` current-driven runs then
+  reduced ``basic_non_stellsym_pressure`` from about ``3.46e-01`` to
+  ``3.46e-02`` max relRMS while keeping a runtime win over baseline. The
+  remaining quality gap is now much narrower and more localized, with the
+  residual error concentrated in lambda channels on the hard 3D cases.
 
 Conclusion:
 

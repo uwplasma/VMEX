@@ -1402,8 +1402,12 @@ def run_fixed_boundary(
         and (len(niter_list_input) == len(ns_list_input))
         and (int(indata.get_int("NCURR", 0)) != 0)
     )
-    direct_staged_current_driven_3d_cli = bool(current_driven_3d_cli) and (len(ns_list_input) == 2)
-    deferred_staged_current_driven_3d_cli = bool(current_driven_3d_cli) and (len(ns_list_input) > 2)
+    direct_staged_current_driven_3d_cli = bool(current_driven_3d_cli) and (
+        bool(cfg.lasym) or (len(ns_list_input) == 2)
+    )
+    deferred_staged_current_driven_3d_cli = bool(current_driven_3d_cli) and (
+        not bool(direct_staged_current_driven_3d_cli)
+    )
     if multigrid is None:
         multigrid = solver_lower == "vmec2000_iter"
         if bool(cli_budgeted_multigrid_requested):
@@ -1848,11 +1852,26 @@ def run_fixed_boundary(
         precompile_stages = env_precompile_stages.strip().lower() not in ("", "0", "false", "no")
 
         prev_stage_fsq = None
+        stage_mode_history: list[str] = []
         ftol_last = None
         step_size_last = None
         for i, (ns_i, niter_i, ftol_i) in enumerate(zip(ns_stages, niter_stages, ftol_stages)):
             if int(niter_i) <= 0:
                 continue
+            stage_accelerated_mode = bool(accelerated_mode)
+            if (
+                bool(stage_accelerated_mode)
+                and bool(direct_staged_current_driven_3d_cli)
+                and bool(cfg.lasym)
+                and int(nstep) >= 3
+                and (int(i) == 0 or int(i) == int(nstep - 1))
+            ):
+                # For LASYM current-driven 3D staged runs, the entry/final
+                # continuation stages determine the lambda branch. Keep those
+                # stages on the conservative controller and accelerate only the
+                # interior continuation stage(s).
+                stage_accelerated_mode = False
+            stage_mode_history.append("accelerated" if bool(stage_accelerated_mode) else "parity")
             if verbose:
                 print(
                     f"  NS = {int(ns_i):4d} NO. FOURIER MODES = {nmodes_header:4d} "
@@ -1874,8 +1893,8 @@ def run_fixed_boundary(
 
             cfg_i = replace(cfg, ns=int(ns_i))
             static_i = _build_static_cfg(cfg_i)
-            scan_mode = bool(use_scan)
-            if accelerated_mode:
+            scan_mode = bool(use_scan) if bool(stage_accelerated_mode) else False
+            if stage_accelerated_mode:
                 scan_mode = not bool(cfg_i.lfreeb)
             if bool(cfg.lasym):
                 # For LASYM fixed-boundary stages, allow scan as a candidate in
@@ -2046,10 +2065,10 @@ def run_fixed_boundary(
             stage_offsets.append(sum(int(np.asarray(r.w_history).size) for r in stage_results))
             vmec2000_ctrl = True
             stage_prev_fsq = prev_stage_fsq if bool(stage_transition_heuristic) else None
-            stage_light_history = True if accelerated_mode else None
-            stage_resume_state_mode = "minimal" if accelerated_mode else None
+            stage_light_history = True if stage_accelerated_mode else None
+            stage_resume_state_mode = "minimal" if stage_accelerated_mode else None
             stage_fsq_total_target = (
-                _accelerated_fsq_total_target_from_ftol(float(ftol_i)) if accelerated_mode else None
+                _accelerated_fsq_total_target_from_ftol(float(ftol_i)) if stage_accelerated_mode else None
             )
             solve_kwargs = dict(
                 indata=indata,
@@ -2339,6 +2358,7 @@ def run_fixed_boundary(
         diag["multigrid_niter_stages"] = np.asarray(niter_stages, dtype=int)
         diag["multigrid_ftol_stages"] = np.asarray(ftol_stages, dtype=float)
         diag["multigrid_stage_offsets"] = np.asarray(stage_offsets, dtype=int)
+        diag["multigrid_stage_modes"] = np.asarray(stage_mode_history, dtype=object)
 
         # Concatenate the common history keys that are useful for parity debugging.
         for k in (

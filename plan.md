@@ -1266,3 +1266,20 @@ Legend:
     the benchmarked final-`wout` metrics,
   - full regression suite after the `wout` fix:
     `169 passed, 12 skipped`.
+- 2026-03-12 staged 3D continuation audit for remaining non-axisymmetric gaps:
+  - validated that the remaining bundled 3D quality gap was no longer a broad
+    geometry mismatch but a staged lambda-continuation issue, concentrated in
+    `basic_non_stellsym_pressure` and residual `lmns` drift on the QA/QH cases,
+  - updated `vmec_jax/driver.py` so 3-stage `lasym=True`, current-driven,
+    non-axisymmetric accelerated multigrid runs keep the entry and final stages
+    on the conservative controller and accelerate only the interior stage,
+  - added driver coverage in `tests/test_driver_api.py` for that policy,
+  - targeted audit in
+    `outputs/nonaxis_quality_subset_20260312_r2/summary.json` now shows:
+    `LandremanPaul2021_QA_lowres` `~4.19e-02`,
+    `LandremanPaul2021_QA_reactorScale_lowres` `~3.14e-02`,
+    `LandremanPaul2021_QH_reactorScale_lowres` `~2.22e-02`,
+    `basic_non_stellsym_pressure` `~3.46e-02`,
+  - the same targeted audit kept all four cases converged while preserving
+    runtime gains versus baseline, with `basic_non_stellsym_pressure`
+    improving from `~23.69s` baseline to `~19.36s` optimized.
