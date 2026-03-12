@@ -1281,6 +1281,13 @@ def run_fixed_boundary(
             static_i = best_run.static
             mode_i_l = str(mode_i).strip().lower()
             scan_minimal_default_i = True if (bool(performance_mode_i) and (not bool(verbose))) else None
+            host_update_assembly_i = (
+                bool(cli_fixed_boundary_mode)
+                and mode_i_l == "accelerated"
+                and (not bool(static_i.cfg.lasym))
+                and (not bool(static_i.cfg.lfreeb))
+                and (_default_backend_name() == "cpu")
+            )
             if step_size is _STEP_SIZE_SENTINEL or step_size is None:
                 step_size_finish = float(indata.get_float("DELT", 5e-3))
             else:
@@ -1327,6 +1334,7 @@ def run_fixed_boundary(
                 light_history=True,
                 resume_state_mode=finish_resume_state_mode,
                 fsq_total_target=finish_fsq_total_target,
+                host_update_assembly=host_update_assembly_i,
                 jit_forces=_resolve_finish_jit_forces(static_i, int(budget_i)),
             )
             return replace(best_run, state=res_i.state, result=res_i)
@@ -2176,6 +2184,13 @@ def run_fixed_boundary(
             stage_fsq_total_target = (
                 _accelerated_fsq_total_target_from_ftol(float(ftol_i)) if stage_accelerated_mode else None
             )
+            stage_host_update_assembly = (
+                bool(cli_fixed_boundary_mode)
+                and bool(stage_accelerated_mode)
+                and (not bool(cfg_i.lasym))
+                and (not bool(cfg_i.lfreeb))
+                and (_default_backend_name() == "cpu")
+            )
             solve_kwargs = dict(
                 indata=indata,
                 signgs=signgs,
@@ -2211,6 +2226,7 @@ def run_fixed_boundary(
                 light_history=stage_light_history,
                 resume_state_mode=stage_resume_state_mode,
                 fsq_total_target=stage_fsq_total_target,
+                host_update_assembly=stage_host_update_assembly,
             )
             dynamic_scan_default = "1" if bool(cfg.lasym) else "0"
             dynamic_scan_env = os.getenv("VMEC_JAX_DYNAMIC_SCAN", dynamic_scan_default).strip().lower()

@@ -8,6 +8,8 @@ import pytest
 import vmec_jax.cli as cli_module
 import vmec_jax.driver as driver_module
 import vmec_jax.solve as solve_module
+from vmec_jax.boundary import boundary_from_indata
+from vmec_jax.config import load_config
 from vmec_jax.driver import (
     example_paths,
     load_example,
@@ -15,7 +17,10 @@ from vmec_jax.driver import (
     save_npz,
     wout_from_fixed_boundary_run,
 )
+from vmec_jax.init_guess import initial_guess_from_boundary
 from vmec_jax.solve import SolveVmecResidualResult
+from vmec_jax.static import build_static
+from vmec_jax.solve import solve_fixed_boundary_residual_iter
 from vmec_jax.vmec_tomnsp import vmec_angle_grid
 
 
@@ -246,6 +251,62 @@ def test_run_fixed_boundary_returns_current_driven_flux_profiles():
     assert np.max(np.abs(iota[1:])) > 0.0
     np.testing.assert_allclose(chipf, chipf_wout_internal, rtol=1e-10, atol=1e-12)
     np.testing.assert_allclose(iota, np.asarray(wout.iotas, dtype=float), rtol=1e-10, atol=1e-12)
+
+
+def test_host_update_assembly_matches_jax_update_path():
+    root = Path(__file__).resolve().parents[1]
+    input_path = root / "examples/data/input.LandremanPaul2021_QA_lowres"
+    cfg, indata = load_config(str(input_path))
+    grid = vmec_angle_grid(ntheta=10, nzeta=8, nfp=cfg.nfp, lasym=False)
+    static = build_static(cfg, grid=grid)
+    boundary = boundary_from_indata(indata, static.modes)
+    state0 = initial_guess_from_boundary(static, boundary, indata, vmec_project=False)
+
+    common = dict(
+        indata=indata,
+        signgs=-1,
+        ftol=float(indata.get_float("FTOL", 1.0e-13)),
+        max_iter=1,
+        step_size=float(indata.get_float("DELT", 5e-3)),
+        include_constraint_force=True,
+        apply_m1_constraints=True,
+        precond_radial_alpha=0.5,
+        precond_lambda_alpha=0.5,
+        mode_diag_exponent=0.0,
+        auto_flip_force=False,
+        divide_by_scalxc_for_update=False,
+        lambda_update_scale=1.0,
+        enforce_vmec_lambda_axis=True,
+        vmec2000_control=True,
+        strict_update=True,
+        backtracking=False,
+        reference_mode=False,
+        use_restart_triggers=True,
+        vmecpp_restart=False,
+        use_direct_fallback=False,
+        verbose=False,
+        verbose_vmec2000_table=False,
+        jit_forces=False,
+        use_scan=False,
+    )
+
+    res_jax = solve_fixed_boundary_residual_iter(
+        state0,
+        static,
+        host_update_assembly=False,
+        **common,
+    )
+    res_host = solve_fixed_boundary_residual_iter(
+        state0,
+        static,
+        host_update_assembly=True,
+        **common,
+    )
+
+    np.testing.assert_allclose(np.asarray(res_host.state.Rcos), np.asarray(res_jax.state.Rcos), rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(np.asarray(res_host.state.Zsin), np.asarray(res_jax.state.Zsin), rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(np.asarray(res_host.state.Lsin), np.asarray(res_jax.state.Lsin), rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(np.asarray(res_host.w_history), np.asarray(res_jax.w_history), rtol=1e-12, atol=1e-12)
 
 
 def test_lasym_performance_mode_infers_axis_for_fast_path():

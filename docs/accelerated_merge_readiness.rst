@@ -127,7 +127,12 @@ The branch is ready for an honest review PR.
   branch-specific ``basic_non_stellsym_pressure`` regression was removed by
   keeping ``lasym=True`` current-driven 3D staged runs fully on the
   conservative controller, which restores baseline-level quality there
-  (about ``2.98e-02`` max relRMS) at roughly neutral runtime.
+  (about ``2.98e-02`` max relRMS) at roughly neutral runtime. A subsequent
+  CPU-only profiling pass also trimmed controller overhead on the optimized
+  ``lasym=False`` path by moving ``ptau`` sign-change checks and signed-update
+  assembly off the repeated JAX host-control path; the targeted QA-lowres
+  reassessment improved from a branch-local ``38.64s`` optimized runtime to
+  ``31.17s`` while keeping the same ``~4.20e-03`` final-quality metric.
 
 Conclusion:
 

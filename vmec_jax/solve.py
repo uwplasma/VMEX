@@ -3737,6 +3737,7 @@ def solve_fixed_boundary_residual_iter(
     light_history: bool | None = None,
     resume_state_mode: str | None = None,
     fsq_total_target: float | None = None,
+    host_update_assembly: bool = False,
 ) -> SolveVmecResidualResult:
     """VMEC-style fixed-point update loop using preconditioned force residuals."""
     if not has_jax():
@@ -3772,6 +3773,7 @@ def solve_fixed_boundary_residual_iter(
     step_size = float(step_size)
     if step_size <= 0.0:
         raise ValueError("step_size must be positive")
+    host_update_assembly = bool(host_update_assembly) and (not bool(use_scan)) and (jax.default_backend() == "cpu")
 
     signgs = int(signgs)
     fsq_total_target = None if fsq_total_target is None else max(0.0, float(fsq_total_target))
@@ -4525,17 +4527,66 @@ def solve_fixed_boundary_residual_iter(
         p = jnp.concatenate([sh[:1], sh], axis=0)
         return jnp.sqrt(jnp.maximum(p, jnp.asarray(0.0, dtype=dtype)))
 
-    def _ptau_minmax_from_k(k) -> tuple[Any | None, Any | None]:
-        """Compute VMEC `ptau` min/max (jacobian_par) for sign-change detection."""
+    def _ptau_minmax_from_k_host(k) -> tuple[Any | None, Any | None]:
+        """Compute VMEC `ptau` min/max on the host for controller decisions."""
         try:
-            pru_even = jnp.asarray(getattr(k, "pru_even"))
-            pru_odd = jnp.asarray(getattr(k, "pru_odd"))
-            pzu_even = jnp.asarray(getattr(k, "pzu_even"))
-            pzu_odd = jnp.asarray(getattr(k, "pzu_odd"))
-            pr1_even = jnp.asarray(getattr(k, "pr1_even"))
-            pr1_odd = jnp.asarray(getattr(k, "pr1_odd"))
-            pz1_even = jnp.asarray(getattr(k, "pz1_even"))
-            pz1_odd = jnp.asarray(getattr(k, "pz1_odd"))
+            pru_even = np.asarray(getattr(k, "pru_even"))
+            pru_odd = np.asarray(getattr(k, "pru_odd"))
+            pzu_even = np.asarray(getattr(k, "pzu_even"))
+            pzu_odd = np.asarray(getattr(k, "pzu_odd"))
+            pr1_even = np.asarray(getattr(k, "pr1_even"))
+            pr1_odd = np.asarray(getattr(k, "pr1_odd"))
+            pz1_even = np.asarray(getattr(k, "pz1_even"))
+            pz1_odd = np.asarray(getattr(k, "pz1_odd"))
+        except Exception:
+            return None, None
+
+        try:
+            ns = int(pru_even.shape[0])
+            if ns < 2:
+                return None, None
+            pshalf = _pshalf_from_s(s)
+            if int(pshalf.shape[0]) != ns:
+                pshalf = np.resize(pshalf, (ns,))
+            hs = float(s[1] - s[0]) if int(np.asarray(s).shape[0]) > 1 else 1.0
+            ohs = 0.0 if hs == 0.0 else 1.0 / hs
+            dphids = 0.25
+
+            psh = pshalf[1:, None, None]
+            psh_safe = np.where(psh != 0.0, psh, 1.0)
+
+            pru_e = pru_even[1:]
+            pru_o = pru_odd[1:]
+            pru_e_m1 = pru_even[:-1]
+            pru_o_m1 = pru_odd[:-1]
+            pz1_e = pz1_even[1:]
+            pz1_o = pz1_odd[1:]
+            pz1_e_m1 = pz1_even[:-1]
+            pz1_o_m1 = pz1_odd[:-1]
+            pzu_e = pzu_even[1:]
+            pzu_o = pzu_odd[1:]
+            pzu_e_m1 = pzu_even[:-1]
+            pzu_o_m1 = pzu_odd[:-1]
+            pr1_e = pr1_even[1:]
+            pr1_o = pr1_odd[1:]
+            pr1_e_m1 = pr1_even[:-1]
+            pr1_o_m1 = pr1_odd[:-1]
+
+            ru12 = 0.5 * (pru_e + pru_e_m1 + psh * (pru_o + pru_o_m1))
+            pzs = ohs * ((pz1_e - pz1_e_m1) + psh * (pz1_o - pz1_o_m1))
+            ptau = ru12 * pzs + dphids * (
+                pru_o * pz1_o
+                + pru_o_m1 * pz1_o_m1
+                + (pru_e * pz1_o + pru_e_m1 * pz1_o_m1) / psh_safe
+            )
+            pzu12 = 0.5 * (pzu_e + pzu_e_m1 + psh * (pzu_o + pzu_o_m1))
+            prs = ohs * ((pr1_e - pr1_e_m1) + psh * (pr1_o - pr1_o_m1))
+            ptau = ptau - prs * pzu12 - dphids * (
+                pzu_o * pr1_o
+                + pzu_o_m1 * pr1_o_m1
+                + (pzu_e * pr1_o + pzu_e_m1 * pr1_o_m1) / psh_safe
+            )
+            return float(np.min(ptau)), float(np.max(ptau))
         except Exception:
             return None, None
 
@@ -4607,58 +4658,7 @@ def solve_fixed_boundary_residual_iter(
     def _ptau_minmax(k):
         if has_jax():
             return _ptau_minmax_from_k_jax(k)
-        return _ptau_minmax_from_k(k)
-        try:
-            ns = int(jnp.asarray(pru_even).shape[0])
-            if ns < 2:
-                return None, None
-            pshalf = _pshalf_from_s_jax(s, dtype=pru_even.dtype)
-            if int(pshalf.shape[0]) != ns:
-                pshalf = jnp.resize(pshalf, (ns,))
-            hs = jnp.asarray(s[1] - s[0]) if int(jnp.asarray(s).shape[0]) > 1 else jnp.asarray(1.0, dtype=pru_even.dtype)
-            ohs = jnp.where(hs != 0.0, 1.0 / hs, jnp.asarray(0.0, dtype=pru_even.dtype))
-            dphids = jnp.asarray(0.25, dtype=pru_even.dtype)
-
-            psh = pshalf[1:]
-            psh = psh[:, None, None]
-            psh_safe = jnp.where(psh != 0.0, psh, jnp.asarray(1.0, dtype=pru_even.dtype))
-
-            pru_e = pru_even[1:]
-            pru_o = pru_odd[1:]
-            pru_e_m1 = pru_even[:-1]
-            pru_o_m1 = pru_odd[:-1]
-            pz1_e = pz1_even[1:]
-            pz1_o = pz1_odd[1:]
-            pz1_e_m1 = pz1_even[:-1]
-            pz1_o_m1 = pz1_odd[:-1]
-            pzu_e = pzu_even[1:]
-            pzu_o = pzu_odd[1:]
-            pzu_e_m1 = pzu_even[:-1]
-            pzu_o_m1 = pzu_odd[:-1]
-            pr1_e = pr1_even[1:]
-            pr1_o = pr1_odd[1:]
-            pr1_e_m1 = pr1_even[:-1]
-            pr1_o_m1 = pr1_odd[:-1]
-
-            ru12 = 0.5 * (pru_e + pru_e_m1 + psh * (pru_o + pru_o_m1))
-            pzs = ohs * ((pz1_e - pz1_e_m1) + psh * (pz1_o - pz1_o_m1))
-            ptau = ru12 * pzs + dphids * (
-                pru_o * pz1_o
-                + pru_o_m1 * pz1_o_m1
-                + (pru_e * pz1_o + pru_e_m1 * pz1_o_m1) / psh_safe
-            )
-            pzu12 = 0.5 * (pzu_e + pzu_e_m1 + psh * (pzu_o + pzu_o_m1))
-            prs = ohs * ((pr1_e - pr1_e_m1) + psh * (pr1_o - pr1_o_m1))
-            ptau = ptau - prs * pzu12 - dphids * (
-                pzu_o * pr1_o
-                + pzu_o_m1 * pr1_o_m1
-                + (pzu_e * pr1_o + pzu_e_m1 * pr1_o_m1) / psh_safe
-            )
-            ptau_min = jnp.min(ptau)
-            ptau_max = jnp.max(ptau)
-            return ptau_min, ptau_max
-        except Exception:
-            return None, None
+        return _ptau_minmax_from_k_host(k)
 
     def _sm_sp_from_s(s_arr):
         s_arr = np.asarray(s_arr, dtype=float)
@@ -5409,11 +5409,15 @@ def solve_fixed_boundary_residual_iter(
     from .vmec_parity import _mn_sin_to_signed_cached as _mn_sin_to_signed_block
 
     def _mn_cos_to_signed(cc, ss):
+        if host_update_assembly:
+            return _mn_cos_to_signed_host(cc, ss)
         cc = jnp.asarray(cc)
         ss = jnp.asarray(ss) if ss is not None else jnp.zeros_like(cc)
         return _mn_cos_to_signed_block(cc, ss, maps=signed_maps, ncoeff=ncoeff)
 
     def _mn_sin_to_signed(sc, cs):
+        if host_update_assembly:
+            return _mn_sin_to_signed_host(sc, cs)
         sc = jnp.asarray(sc)
         cs = jnp.asarray(cs) if cs is not None else jnp.zeros_like(sc)
         return _mn_sin_to_signed_block(sc, cs, maps=signed_maps, ncoeff=ncoeff)
@@ -5460,27 +5464,92 @@ def solve_fixed_boundary_residual_iter(
     scalxc_mn = vmec_scalxc_from_s(s=s, mpol=int(static.cfg.mpol)).astype(jnp.asarray(state0.Rcos).dtype)[:, :, None]
     if not bool(divide_by_scalxc_for_update):
         scalxc_mn = jnp.ones_like(scalxc_mn)
+    scalxc_mn_np = np.asarray(scalxc_mn, dtype=float)
+
+    def _mn_cos_to_signed_host(cc, ss):
+        cc_np = np.asarray(cc, dtype=float)
+        ss_np = np.zeros_like(cc_np) if ss is None else np.asarray(ss, dtype=float)
+        ns = int(cc_np.shape[0])
+        out = np.zeros((ns, ncoeff), dtype=cc_np.dtype)
+        if ncoeff == 0:
+            return jnp.asarray(out)
+        m0_mask = np.asarray(signed_maps.m0_mask, dtype=bool)
+        n0_mask = np.asarray(signed_maps.n0_mask, dtype=bool)
+        pos = 0.5 * (cc_np + ss_np)
+        pos = np.where((m0_mask | n0_mask)[None, :, :], cc_np, pos)
+        neg = 0.5 * (cc_np - ss_np)
+        mask_pos = np.asarray(signed_maps.mask_pos_flat, dtype=cc_np.dtype)
+        mask_neg = np.asarray(signed_maps.mask_neg_flat, dtype=cc_np.dtype)
+        idx_all = np.concatenate([idx_pos_safe_np, idx_neg_safe_np], axis=0)
+        vals_all = np.concatenate(
+            [pos.reshape(ns, -1) * mask_pos[None, :], neg.reshape(ns, -1) * mask_neg[None, :]],
+            axis=1,
+        )
+        np.add.at(out, (np.arange(ns)[:, None], idx_all[None, :]), vals_all)
+        return jnp.asarray(out)
+
+    def _mn_sin_to_signed_host(sc, cs):
+        sc_np = np.asarray(sc, dtype=float)
+        cs_np = np.zeros_like(sc_np) if cs is None else np.asarray(cs, dtype=float)
+        ns = int(sc_np.shape[0])
+        out = np.zeros((ns, ncoeff), dtype=sc_np.dtype)
+        if ncoeff == 0:
+            return jnp.asarray(out)
+        m0_mask = np.asarray(signed_maps.m0_mask, dtype=bool)
+        n0_mask = np.asarray(signed_maps.n0_mask, dtype=bool)
+        mask_neg = np.asarray(signed_maps.mask_neg, dtype=bool)
+        pos = 0.5 * (sc_np - cs_np)
+        pos = np.where(n0_mask[None, :, :], sc_np, pos)
+        mask_no_neg = (~mask_neg) & (~n0_mask)
+        pos = np.where(mask_no_neg[None, :, :] & m0_mask[None, :, :], -cs_np, pos)
+        pos = np.where(mask_no_neg[None, :, :] & (~m0_mask[None, :, :]), sc_np, pos)
+        neg = 0.5 * (sc_np + cs_np)
+        mask_pos = np.asarray(signed_maps.mask_pos_flat, dtype=sc_np.dtype)
+        mask_neg_flat = np.asarray(signed_maps.mask_neg_flat, dtype=sc_np.dtype)
+        idx_all = np.concatenate([idx_pos_safe_np, idx_neg_safe_np], axis=0)
+        vals_all = np.concatenate(
+            [pos.reshape(ns, -1) * mask_pos[None, :], neg.reshape(ns, -1) * mask_neg_flat[None, :]],
+            axis=1,
+        )
+        np.add.at(out, (np.arange(ns)[:, None], idx_all[None, :]), vals_all)
+        return jnp.asarray(out)
 
     def _mn_cos_to_signed_physical(cc, ss):
-        cc = jnp.asarray(cc) / scalxc_mn
-        ss = jnp.asarray(ss) / scalxc_mn if ss is not None else None
+        if host_update_assembly:
+            cc = np.asarray(cc, dtype=float) / scalxc_mn_np
+            ss = np.asarray(ss, dtype=float) / scalxc_mn_np if ss is not None else None
+        else:
+            cc = jnp.asarray(cc) / scalxc_mn
+            ss = jnp.asarray(ss) / scalxc_mn if ss is not None else None
         return _mn_cos_to_signed(cc, ss)
 
     def _mn_sin_to_signed_physical(sc, cs):
-        sc = jnp.asarray(sc) / scalxc_mn
-        cs = jnp.asarray(cs) / scalxc_mn if cs is not None else None
+        if host_update_assembly:
+            sc = np.asarray(sc, dtype=float) / scalxc_mn_np
+            cs = np.asarray(cs, dtype=float) / scalxc_mn_np if cs is not None else None
+        else:
+            sc = jnp.asarray(sc) / scalxc_mn
+            cs = jnp.asarray(cs) / scalxc_mn if cs is not None else None
         return _mn_sin_to_signed(sc, cs)
 
     def _mn_sin_to_signed_physical_lambda(sc, cs):
         """Map lambda updates onto signed physical coefficients (VMEC scalxc)."""
-        sc = jnp.asarray(sc) / scalxc_mn
-        cs = jnp.asarray(cs) / scalxc_mn if cs is not None else None
+        if host_update_assembly:
+            sc = np.asarray(sc, dtype=float) / scalxc_mn_np
+            cs = np.asarray(cs, dtype=float) / scalxc_mn_np if cs is not None else None
+        else:
+            sc = jnp.asarray(sc) / scalxc_mn
+            cs = jnp.asarray(cs) / scalxc_mn if cs is not None else None
         return _mn_sin_to_signed(sc, cs)
 
     def _mn_cos_to_signed_physical_lambda(cc, ss):
         """Map asymmetric lambda updates onto signed physical coefficients (VMEC scalxc)."""
-        cc = jnp.asarray(cc) / scalxc_mn
-        ss = jnp.asarray(ss) / scalxc_mn if ss is not None else None
+        if host_update_assembly:
+            cc = np.asarray(cc, dtype=float) / scalxc_mn_np
+            ss = np.asarray(ss, dtype=float) / scalxc_mn_np if ss is not None else None
+        else:
+            cc = jnp.asarray(cc) / scalxc_mn
+            ss = jnp.asarray(ss) / scalxc_mn if ss is not None else None
         return _mn_cos_to_signed(cc, ss)
 
     def _mn_sin_to_signed_physical_batch(sc, cs):
@@ -6057,7 +6126,7 @@ def solve_fixed_boundary_residual_iter(
         if axis_reset_enabled:
             axis_reset_debug = os.getenv("VMEC_JAX_AXIS_RESET_DEBUG", "").strip().lower() not in ("", "0", "false", "no")
             try:
-                ptau_min0, ptau_max0 = _ptau_minmax(k0)
+                ptau_min0, ptau_max0 = _ptau_minmax_from_k_host(k0)
             except Exception:
                 ptau_min0, ptau_max0 = None, None
             bad_jacobian_ptau = None
@@ -9679,7 +9748,7 @@ def solve_fixed_boundary_residual_iter(
                 iter_idx=None,
                 iter2=1,
             )
-            ptau_min0, ptau_max0 = _ptau_minmax(k0)
+            ptau_min0, ptau_max0 = _ptau_minmax_from_k_host(k0)
             bad_jacobian_ptau = None
             if (ptau_min0 is not None) and (ptau_max0 is not None):
                 min_tau_ptau = float(np.asarray(ptau_min0))
@@ -10774,7 +10843,7 @@ def solve_fixed_boundary_residual_iter(
             # Jacobian sign-change check (VMEC jacobian.f sets irst=2).
             bad_jacobian = False
             if bool(reference_mode) or bool(vmec2000_control):
-                ptau_min, ptau_max = _ptau_minmax(k)
+                ptau_min, ptau_max = _ptau_minmax_from_k_host(k)
                 min_tau_ptau = max_tau_ptau = None
                 bad_jacobian_ptau = None
                 if ptau_min is not None and ptau_max is not None:

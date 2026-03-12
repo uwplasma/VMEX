@@ -1316,5 +1316,18 @@ Legend:
     (`~1.47e-15`, `~6.93e-16`, `~8.14e-16` against requested `1e-15`),
     and `basic_non_stellsym_pressure`
     (`~9.81e-11`, `~5.46e-11`, `~1.31e-12` against requested `1e-10`),
+  - profiling then showed the next dominant CPU cost was controller-side JAX
+    overhead rather than the fixed-boundary force kernels themselves: the
+    `ptau` sign-change helper was moved to a host NumPy implementation for the
+    non-scan controller, and accelerated `lasym=False` CPU CLI runs now also
+    use host-side signed Fourier update assembly,
+  - targeted reassessment in
+    `outputs/host_updates_benchmark_20260312/summary.json` then improved
+    `LandremanPaul2021_QA_lowres` from a branch-local
+    `~34.83s -> 38.64s` baseline-vs-optimized result to
+    `~34.83s -> 31.17s`, while keeping `~4.20e-03` max relRMS against the
+    bundled VMEC2000 reference; `basic_non_stellsym_pressure` held its
+    baseline-level `~2.98e-02` quality and remained slightly faster
+    (`~9.12s -> 8.95s`),
   - full regression suite on the final split-controller head:
     `170 passed, 12 skipped`.

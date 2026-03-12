@@ -294,6 +294,19 @@ controller fixes improved several non-axisymmetric cases materially:
   relRMS, matching the current baseline quality instead of worsening it, with
   essentially neutral warmed runtime (about ``22.24s`` baseline vs ``22.31s``
   optimized),
+- a subsequent CPU-focused profiling pass showed that the next avoidable cost
+  was not force balance itself but controller-side JAX overhead:
+  moving ``ptau`` sign-change detection to a host NumPy implementation removed
+  it from the hot list, and a follow-on host update-assembly path for
+  accelerated ``lasym=False`` CPU CLI solves moved the next hotspot out of the
+  repeated signed-mode conversion path. On the targeted reassessment artifact
+  ``outputs/host_updates_benchmark_20260312/summary.json``,
+  ``LandremanPaul2021_QA_lowres`` improved from about ``34.83s`` baseline vs
+  ``38.64s`` optimized before the host update path to about ``34.83s`` baseline
+  vs ``31.17s`` optimized after it, while keeping about ``4.20e-03`` max
+  relRMS against the VMEC2000 reference. The sensitive
+  ``basic_non_stellsym_pressure`` case also held baseline-level quality and
+  remained slightly faster (about ``9.12s`` baseline vs ``8.95s`` optimized),
 - a follow-on experiment that added a final-grid parity polish to the
   staged 3D accelerated path was rejected because it raised runtime
   substantially without improving those benchmarked quality numbers.
