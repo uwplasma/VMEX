@@ -1512,3 +1512,21 @@ Legend:
   - this leaves the next optimization ceiling where the profiler already
     pointed: compiled `bcovar`/update kernels for fixed-boundary 3D and the
     remaining free-boundary update/preconditioner block.
+- 2026-03-13 `lasym=False` update-path cleanup:
+  - removed wasted asymmetric signed-coefficient conversions from several
+    fixed/free-boundary update paths in `solve.py`; for `lasym=False` runs we
+    now skip the `Rsin/Zcos/Lcos` conversion work entirely instead of computing
+    those updates and zeroing them afterward,
+  - reran the full local validation gates successfully on the new head:
+    `pytest -q` completed (`186 passed, 12 skipped`) and the fast Sphinx build
+    passed,
+  - representative warmed runtime checks on the same host moved in the right
+    direction for the intended symmetric workloads:
+    `input.cth_like_free_bdy` about `3.07s -> 2.91s`,
+    `input.LandremanPaul2021_QA_reactorScale_lowres` stayed in the same
+    `~11.2s` range,
+    and the `lasym=True` smoke
+    `input.basic_non_stellsym_pressure` remained stable at about `1.06s`,
+  - this keeps the optimization targeted: better `lasym=False` throughput
+    without changing the asymmetric path that still needs accuracy-first
+    handling.

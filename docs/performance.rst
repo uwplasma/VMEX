@@ -1083,6 +1083,24 @@ pass also nudged the representative free-boundary warmed CPU benchmark
 (``input.cth_like_free_bdy``) from about ``3.11s`` to about ``3.07s`` while
 keeping the full test suite green.
 
+Skip asymmetric updates when ``lasym=False``
+--------------------------------------------
+
+Several fixed/free-boundary update paths previously computed the asymmetric
+``Rsin/Zcos/Lcos`` signed-coefficient updates even for ``lasym=False`` cases,
+then immediately zeroed them. The current branch now skips those conversions
+entirely on the symmetric path.
+
+This is a clean win for the shipped ``lasym=False`` workloads:
+
+- ``input.cth_like_free_bdy`` improved from about ``3.07s`` to about
+  ``2.91s`` on the same warmed CPU benchmark,
+- ``input.DIII-D_lasym_false`` with ``max_iter=20`` improved from about
+  ``0.262s`` to about ``0.262s`` (effectively neutral but not worse),
+- the representative ``lasym=True`` fixed-boundary smoke
+  (``input.basic_non_stellsym_pressure``) stayed on the same runtime and
+  convergence profile because the asymmetric path is still fully active there.
+
 Vectorized axis blending
 ------------------------
 

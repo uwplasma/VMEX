@@ -7511,13 +7511,14 @@ def solve_fixed_boundary_residual_iter(
                     dR = time_step_post * _mn_cos_to_signed_physical(vRcc, vRss)
                     dZ = time_step_post * _mn_sin_to_signed_physical(vZsc, vZcs)
                     dL = time_step_post * _mn_sin_to_signed_physical_lambda(vLsc, vLcs)
-                    dR_sin = time_step_post * _mn_sin_to_signed_physical(vRsc, vRcs)
-                    dZ_cos = time_step_post * _mn_cos_to_signed_physical(vZcc, vZss)
-                    dL_cos = time_step_post * _mn_cos_to_signed_physical_lambda(vLcc, vLss)
-                    if not bool(cfg.lasym):
-                        dR_sin = jnp.zeros_like(dR_sin)
-                        dZ_cos = jnp.zeros_like(dZ_cos)
-                        dL_cos = jnp.zeros_like(dL_cos)
+                    if bool(cfg.lasym):
+                        dR_sin = time_step_post * _mn_sin_to_signed_physical(vRsc, vRcs)
+                        dZ_cos = time_step_post * _mn_cos_to_signed_physical(vZcc, vZss)
+                        dL_cos = time_step_post * _mn_cos_to_signed_physical_lambda(vLcc, vLss)
+                    else:
+                        dR_sin = jnp.zeros_like(dR)
+                        dZ_cos = jnp.zeros_like(dR)
+                        dL_cos = jnp.zeros_like(dR)
                     state_new = VMECState(
                         layout=state_post.layout,
                         Rcos=jnp.asarray(state_post.Rcos) + dR,
@@ -8863,13 +8864,14 @@ def solve_fixed_boundary_residual_iter(
                     )
                     dZ = (time_step_j * flip_sign_j) * sin_updates[0]
                     dL = (time_step_j * flip_sign_j) * sin_updates[1]
-                    dR_sin = (time_step_j * flip_sign_j) * _mn_sin_to_signed_physical(frsc_u, frcs_u)
-                    dZ_cos = (time_step_j * flip_sign_j) * _mn_cos_to_signed_physical(fzcc_u, fzss_u)
-                    dL_cos = (time_step_j * flip_sign_j) * _mn_cos_to_signed_physical_lambda(flcc_u, flss_u)
-                    if not bool(cfg.lasym):
-                        dR_sin = jnp.zeros_like(dR_sin)
-                        dZ_cos = jnp.zeros_like(dZ_cos)
-                        dL_cos = jnp.zeros_like(dL_cos)
+                    if bool(cfg.lasym):
+                        dR_sin = (time_step_j * flip_sign_j) * _mn_sin_to_signed_physical(frsc_u, frcs_u)
+                        dZ_cos = (time_step_j * flip_sign_j) * _mn_cos_to_signed_physical(fzcc_u, fzss_u)
+                        dL_cos = (time_step_j * flip_sign_j) * _mn_cos_to_signed_physical_lambda(flcc_u, flss_u)
+                    else:
+                        dR_sin = jnp.zeros_like(dR)
+                        dZ_cos = jnp.zeros_like(dR)
+                        dL_cos = jnp.zeros_like(dR)
 
                     state_new = VMECState(
                         layout=state.layout,
@@ -10724,13 +10726,14 @@ def solve_fixed_boundary_residual_iter(
                 dR_dir = dt_probe * _mn_cos_to_signed_physical(frcc_u, frss_u)
                 dZ_dir = dt_probe * _mn_sin_to_signed_physical(fzsc_u, fzcs_u)
                 dL_dir = dt_probe * _mn_sin_to_signed_physical_lambda(flsc_u, flcs_u)
-                dR_sin_dir = dt_probe * _mn_sin_to_signed_physical(frsc_u, frcs_u)
-                dZ_cos_dir = dt_probe * _mn_cos_to_signed_physical(fzcc_u, fzss_u)
-                dL_cos_dir = dt_probe * _mn_cos_to_signed_physical_lambda(flcc_u, flss_u)
-                if not bool(cfg.lasym):
-                    dR_sin_dir = jnp.zeros_like(dR_sin_dir)
-                    dZ_cos_dir = jnp.zeros_like(dZ_cos_dir)
-                    dL_cos_dir = jnp.zeros_like(dL_cos_dir)
+                if bool(cfg.lasym):
+                    dR_sin_dir = dt_probe * _mn_sin_to_signed_physical(frsc_u, frcs_u)
+                    dZ_cos_dir = dt_probe * _mn_cos_to_signed_physical(fzcc_u, fzss_u)
+                    dL_cos_dir = dt_probe * _mn_cos_to_signed_physical_lambda(flcc_u, flss_u)
+                else:
+                    dR_sin_dir = jnp.zeros_like(dR_dir)
+                    dZ_cos_dir = jnp.zeros_like(dR_dir)
+                    dL_cos_dir = jnp.zeros_like(dR_dir)
 
                 def _trial(sign: float) -> float:
                     st_try = VMECState(
@@ -11635,13 +11638,14 @@ def solve_fixed_boundary_residual_iter(
             dR = dt_eff * _mn_cos_to_signed_physical(vRcc, vRss)
             dZ = dt_eff * _mn_sin_to_signed_physical(vZsc, vZcs)
             dL = dt_eff * _mn_sin_to_signed_physical_lambda(vLsc, vLcs)
-            dR_sin = dt_eff * _mn_sin_to_signed_physical(vRsc, vRcs)
-            dZ_cos = dt_eff * _mn_cos_to_signed_physical(vZcc, vZss)
-            dL_cos = dt_eff * _mn_cos_to_signed_physical_lambda(vLcc, vLss)
-            if not bool(cfg.lasym):
-                dR_sin = jnp.zeros_like(dR_sin)
-                dZ_cos = jnp.zeros_like(dZ_cos)
-                dL_cos = jnp.zeros_like(dL_cos)
+            if bool(cfg.lasym):
+                dR_sin = dt_eff * _mn_sin_to_signed_physical(vRsc, vRcs)
+                dZ_cos = dt_eff * _mn_cos_to_signed_physical(vZcc, vZss)
+                dL_cos = dt_eff * _mn_cos_to_signed_physical_lambda(vLcc, vLss)
+            else:
+                dR_sin = jnp.zeros_like(dR)
+                dZ_cos = jnp.zeros_like(dR)
+                dL_cos = jnp.zeros_like(dR)
             state_try = VMECState(
                 layout=state.layout,
                 Rcos=jnp.asarray(state.Rcos) + dR,
@@ -11813,13 +11817,14 @@ def solve_fixed_boundary_residual_iter(
                     dR_dir = dt_direct * _mn_cos_to_signed(flip_sign * frcc_u, flip_sign * frss_u)
                     dZ_dir = dt_direct * _mn_sin_to_signed(flip_sign * fzsc_u, flip_sign * fzcs_u)
                     dL_dir = dt_direct * _mn_sin_to_signed(flip_sign * flsc_u, flip_sign * flcs_u)
-                    dR_sin_dir = dt_direct * _mn_sin_to_signed(flip_sign * frsc_u, flip_sign * frcs_u)
-                    dZ_cos_dir = dt_direct * _mn_cos_to_signed(flip_sign * fzcc_u, flip_sign * fzss_u)
-                    dL_cos_dir = dt_direct * _mn_cos_to_signed(flip_sign * flcc_u, flip_sign * flss_u)
-                    if not bool(cfg.lasym):
-                        dR_sin_dir = jnp.zeros_like(dR_sin_dir)
-                        dZ_cos_dir = jnp.zeros_like(dZ_cos_dir)
-                        dL_cos_dir = jnp.zeros_like(dL_cos_dir)
+                    if bool(cfg.lasym):
+                        dR_sin_dir = dt_direct * _mn_sin_to_signed(flip_sign * frsc_u, flip_sign * frcs_u)
+                        dZ_cos_dir = dt_direct * _mn_cos_to_signed(flip_sign * fzcc_u, flip_sign * fzss_u)
+                        dL_cos_dir = dt_direct * _mn_cos_to_signed(flip_sign * flcc_u, flip_sign * flss_u)
+                    else:
+                        dR_sin_dir = jnp.zeros_like(dR_dir)
+                        dZ_cos_dir = jnp.zeros_like(dR_dir)
+                        dL_cos_dir = jnp.zeros_like(dR_dir)
                     state_dir = VMECState(
                         layout=state.layout,
                         Rcos=jnp.asarray(state.Rcos) + dR_dir,
@@ -12043,13 +12048,14 @@ def solve_fixed_boundary_residual_iter(
                 dR_try = dt_try * _mn_cos_to_signed(vRcc_try, vRss_try)
                 dZ_try = dt_try * _mn_sin_to_signed(vZsc_try, vZcs_try)
                 dL_try = dt_try * _mn_sin_to_signed(vLsc_try, vLcs_try)
-                dR_sin_try = dt_try * _mn_sin_to_signed(vRsc_try, vRcs_try)
-                dZ_cos_try = dt_try * _mn_cos_to_signed(vZcc_try, vZss_try)
-                dL_cos_try = dt_try * _mn_cos_to_signed(vLcc_try, vLss_try)
-                if not bool(cfg.lasym):
-                    dR_sin_try = jnp.zeros_like(dR_sin_try)
-                    dZ_cos_try = jnp.zeros_like(dZ_cos_try)
-                    dL_cos_try = jnp.zeros_like(dL_cos_try)
+                if bool(cfg.lasym):
+                    dR_sin_try = dt_try * _mn_sin_to_signed(vRsc_try, vRcs_try)
+                    dZ_cos_try = dt_try * _mn_cos_to_signed(vZcc_try, vZss_try)
+                    dL_cos_try = dt_try * _mn_cos_to_signed(vLcc_try, vLss_try)
+                else:
+                    dR_sin_try = jnp.zeros_like(dR_try)
+                    dZ_cos_try = jnp.zeros_like(dR_try)
+                    dL_cos_try = jnp.zeros_like(dR_try)
 
                 state_try = VMECState(
                     layout=state.layout,
