@@ -935,6 +935,7 @@ def run_fixed_boundary(
         pass
     _maybe_enable_compilation_cache()
     cfg, indata = load_config(str(input_path))
+    solver_mode_explicit = solver_mode is not None
     if solver_mode is None and bool(performance_mode):
         solver_mode, performance_mode = default_non_autodiff_solver_policy(indata)
     solver_mode_eff = _normalize_solver_mode(solver_mode=solver_mode, performance_mode=bool(performance_mode))
@@ -942,8 +943,10 @@ def run_fixed_boundary(
     performance_mode = solver_mode_eff != "parity"
     cli_fixed_boundary_mode = bool(cli_fixed_boundary_mode) or (
         bool(_auto_cli_fixed_boundary_mode)
+        and (not bool(solver_mode_explicit))
         and (not bool(cfg.lfreeb))
         and bool(performance_mode)
+        and (grid is None)
         and str(solver).strip().lower() == "vmec2000_iter"
     )
     restart_state_eff = restart_state
@@ -1304,6 +1307,29 @@ def run_fixed_boundary(
         staged_followup_modes = np.asarray([], dtype=object)
         staged_followup_fsq = np.zeros((0,), dtype=float)
 
+        def _sanitize_minimal_resume_state(resume_state):
+            if not isinstance(resume_state, dict):
+                return resume_state
+            time_step = resume_state.get("time_step", None)
+            if time_step is None:
+                return resume_state
+            try:
+                time_step_f = float(time_step)
+            except Exception:
+                return resume_state
+            out = {
+                "time_step": float(time_step_f),
+                "inv_tau": list(resume_state.get("inv_tau", [0.15 / max(abs(time_step_f), 1.0e-16)] * 10)),
+                "iter_offset": int(resume_state.get("iter_offset", 0)),
+                "vmec2000_cache_valid": bool(resume_state.get("vmec2000_cache_valid", False)),
+            }
+            if "flip_sign" in resume_state:
+                try:
+                    out["flip_sign"] = float(resume_state["flip_sign"])
+                except Exception:
+                    pass
+            return out
+
         def _resolve_finish_jit_forces(static_i: VMECStatic, niter_i: int) -> bool:
             if isinstance(jit_forces, str):
                 if jit_forces.strip().lower() != "auto":
@@ -1536,6 +1562,11 @@ def run_fixed_boundary(
         diag["cli_fixed_boundary_staged_followup_niter"] = staged_followup_niter
         diag["cli_fixed_boundary_staged_followup_modes"] = staged_followup_modes
         diag["cli_fixed_boundary_staged_followup_fsq"] = staged_followup_fsq
+        diag["multigrid_user_provided"] = bool(multigrid_user_provided)
+        diag["accelerated_single_grid_default"] = bool(accelerated_single_grid_default)
+        if bool(accelerated_mode):
+            diag["resume_state_mode"] = "minimal"
+            diag["resume_state"] = _sanitize_minimal_resume_state(diag.get("resume_state"))
         best_run = replace(best_run, result=replace(best_run.result, diagnostics=diag))
         return best_run
 
