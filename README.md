@@ -46,7 +46,7 @@ and free-boundary ideal-MHD equilibria.
     <td colspan="2"><img src="docs/_static/figures/readme_runtime_compare.png" width="860" /></td>
   </tr>
   <tr>
-    <td align="center" colspan="2">Bundled fixed-boundary runtime comparison: VMEC2000 vs vmec_jax CPU on a reference CPU host</td>
+    <td align="center" colspan="2">Bundled fixed/free runtime comparison: VMEC2000 vs vmec_jax CPU on a reference CPU host</td>
   </tr>
 </table>
 
@@ -200,11 +200,22 @@ python tools/diagnostics/example_runtime_memory_matrix.py \
   --warm-runs 1 \
   --outdir outputs/fixed_runtime_vmec2000_accel_cpu_warm
 
+python tools/diagnostics/example_runtime_memory_matrix.py \
+  --kind freeb \
+  --backend both \
+  --include-external-diiid \
+  --runner-label cpu \
+  --jax-platforms cpu \
+  --vmec-exec /path/to/xvmec2000 \
+  --warm-runs 1 \
+  --outdir outputs/free_runtime_vmec2000_cpu_warm
+
 python tools/diagnostics/readme_runtime_compare.py \
   --cpu-summary outputs/fixed_runtime_vmec2000_accel_cpu_warm/summary.json \
+               outputs/free_runtime_vmec2000_cpu_warm/summary.json \
   --outdir docs/_static/figures \
   --table-out outputs/readme_runtime_table.md \
-  --figure-kind fixed \
+  --figure-kind all \
   --plot-mode runtime
 ```
 
@@ -226,37 +237,40 @@ story.
 
 ## Bundled Runtime Snapshot
 
-Measured on 2026-03-12 using warmed serial runs of the optimized fixed-boundary
-CLI controller (`solver_mode="accelerated"`, `cli_fixed_boundary_mode=True`)
-against VMEC2000 on the same CPU host. The artifact behind the current README
-runtime plot is checked in at
-`outputs/readme_fixed_runtime_vmec2000_accel_cpu_20260312/summary.json`.
+Measured on 2026-03-12 using warmed serial runs on the same CPU host. The top
+runtime plot now combines:
+
+- fixed-boundary optimized CLI runs from
+  `outputs/readiness_fixed_all_20260312/summary.json`
+- free-boundary default-path runs from
+  `outputs/readiness_freeb_all_20260312/summary.json`
 
 Current checked-in summary:
 
-- all 13 bundled `lasym=False` fixed-boundary cases in the warmed matrix
-  converge on both VMEC2000 and `vmec_jax`,
-- the optimized branch is much faster than the older `vmec_jax` controller on
-  this same bundled set, but it is still slower than VMEC2000 on most of the
-  heavier non-axisymmetric QA/QH-style cases,
-- the current CPU wins against VMEC2000 are the small/cheap cases
-  `circular_tokamak_aspect_100` and `solovev`,
-- the free-boundary work on this branch is still in profiling/optimization
-  mode: on the representative `cth_like_free_bdy` case, the latest boundary
-  synthesis + nonsingular-kernel-table caching pass, followed by a batched
-  second-derivative synthesis pass and a cached NumPy host-synthesis path,
-  reduced the warmed `vmec_jax` CPU runtime to about `9.86s` while keeping
-  convergence.
+- 21 total cases were exercised across fixed/free, axisymmetric /
+  non-axisymmetric, and `lasym=False/True`,
+- 20 of 21 completed with `converged=True`,
+- the only shipped holdout is `cth_like_free_bdy_lasym_small`
+  (free-boundary, non-axisymmetric, `lasym=True`), which still exits at its
+  input `NITER_ARRAY = 220` limit without converging on the current default
+  path,
+- `vmec_jax` is faster than VMEC2000 on only 2 of the 21 CPU rows in this
+  full matrix: `solovev` and `circular_tokamak_aspect_100`,
+- the free-boundary DIII-D rows are still much slower than VMEC2000 on CPU
+  (about `4.5x` to `9.4x` slower),
+- the representative `cth_like_free_bdy` free-boundary case is improving on
+  this branch and now runs in about `9.86s` warmed on CPU, but that is still
+  well behind VMEC2000's `1.73s`.
 
 Representative warmed CPU VMEC2000-vs-`vmec_jax` points:
 
 | Example | VMEC2000 runtime | vmec_jax CPU runtime | Relative result |
 | --- | ---: | ---: | --- |
 | solovev | 0.17s | 0.08s | `vmec_jax` faster |
-| circular_tokamak_aspect_100 | 2.41s | 0.55s | `vmec_jax` faster |
-| LandremanPaul2021_QA_lowres | 24.06s | 31.16s | close, VMEC2000 faster |
-| LandremanPaul2021_QA_reactorScale_lowres | 36.72s | 40.75s | close, VMEC2000 faster |
-| LandremanPaul2021_QH_reactorScale_lowres | 43.24s | 47.59s | close, VMEC2000 faster |
+| circular_tokamak_aspect_100 | 2.37s | 0.54s | `vmec_jax` faster |
+| LandremanPaul2021_QA_lowres | 23.78s | 29.58s | close, VMEC2000 faster |
+| DIII-D_lasym_false | 18.57s | 173.82s | VMEC2000 much faster |
+| cth_like_free_bdy | 1.74s | 10.09s | VMEC2000 faster |
 
 ## Accelerated Branch Reassessment
 
@@ -279,7 +293,8 @@ python examples/fixed_boundary_driver_tracks.py \
   --quiet --json
 ```
 
-Same-host CPU/GPU comparison remains mixed. The GPU already helps on several
-heavier 3D cases, but the branch is not yet in a state where one accelerated
-policy is uniformly better across the shipped fixed-boundary set. That is why
-the branch should still be reviewed as experimental rather than default-ready.
+Same-host CPU/GPU comparison remains mixed. More importantly, the full
+fixed/free CPU readiness sweep still says this branch should be reviewed as
+experimental rather than default-ready: one shipped free-boundary `lasym=True`
+case still does not converge, and the full 21-case CPU matrix remains mostly
+slower than VMEC2000.

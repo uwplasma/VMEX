@@ -353,6 +353,31 @@ controller fixes improved several non-axisymmetric cases materially:
   with ``_sample_external_boundary_arrays`` down to about ``5.78s``, and the
   warmed CPU benchmark improved further to about ``9.86s`` in
   ``outputs/freeb_cth_runtime_20260312_r4/summary.json``.
+
+Full same-host readiness sweep
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+After the targeted free-boundary optimizations, the branch was rerun on the
+full shipped example matrix plus the external DIII-D axisymmetric
+free-boundary references:
+
+- fixed-boundary optimized CLI matrix:
+  ``outputs/readiness_fixed_all_20260312/summary.json``
+- free-boundary default-path matrix:
+  ``outputs/readiness_freeb_all_20260312/summary.json``
+
+Current state:
+
+- fixed-boundary: all 16 rows converged on the optimized branch path,
+- free-boundary: 4 of 5 rows converged; the current holdout is
+  ``cth_like_free_bdy_lasym_small``,
+- only 2 of the 21 CPU rows are currently faster than VMEC2000 on the same
+  host,
+- the free-boundary DIII-D rows remain the main runtime blockers, at about
+  ``4.5x`` to ``9.4x`` slower than VMEC2000 on CPU.
+
+So the branch is useful for continued optimization work, but the default-mode
+question is not yet resolved in its favor.
   boundary ``R/Z`` synthesis and first-derivative synthesis in
   ``_sample_external_boundary_arrays`` cut the representative
   ``input.cth_like_free_bdy`` profile from about ``60.41s`` total wall time to

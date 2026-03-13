@@ -95,6 +95,30 @@ keep the optimized fixed-boundary logic available for explicit testing and
 review, and promote it cautiously only after backend selection becomes
 automatic on mixed CPU/GPU workstations.
 
+Latest full fixed/free readiness rerun
+--------------------------------------
+
+The latest same-host readiness sweep broadens the scope beyond the earlier
+fixed-boundary-only CPU matrix:
+
+- fixed-boundary optimized CLI: ``outputs/readiness_fixed_all_20260312/summary.json``
+- free-boundary default path: ``outputs/readiness_freeb_all_20260312/summary.json``
+
+Current result:
+
+- 21 total rows across fixed/free, axisymmetric/non-axisymmetric, and
+  ``lasym=False/True``,
+- 20 of 21 end with ``converged=True``,
+- the shipped holdout is ``cth_like_free_bdy_lasym_small`` on the default
+  free-boundary path,
+- only 2 of the 21 CPU rows are faster than VMEC2000 on the same host
+  (``solovev`` and ``circular_tokamak_aspect_100``),
+- the free-boundary DIII-D rows are still far slower than VMEC2000 on CPU.
+
+That means the honest merge recommendation stays the same: this branch is
+useful and reviewable, but it is **not** ready to replace the current default
+mode on ``main``.
+
 Merge checklist
 ---------------
 

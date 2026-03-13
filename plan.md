@@ -1385,3 +1385,18 @@ Legend:
     about `5.78s`,
   - direct warmed CPU benchmark for that case improved again to about `9.86s`
     in `outputs/freeb_cth_runtime_20260312_r4/summary.json`.
+- 2026-03-12 full fixed/free readiness sweep on the experimental branch:
+  - reran the full fixed-boundary bundled matrix against VMEC2000 on the same
+    CPU host in `outputs/readiness_fixed_all_20260312/summary.json`,
+  - fixed-boundary result: all 16 rows converged, but only 2 of the rows
+    (`solovev` and `circular_tokamak_aspect_100`) are faster than VMEC2000 on
+    that same host,
+  - reran the free-boundary matrix with external DIII-D coverage in
+    `outputs/readiness_freeb_all_20260312/summary.json`,
+  - free-boundary result: 4 of 5 rows converged; the remaining shipped
+    holdout is `cth_like_free_bdy_lasym_small`,
+  - the free-boundary DIII-D rows remain far slower than VMEC2000 on CPU
+    (about `4.5x` to `9.4x` slower),
+  - conclusion from the full readiness sweep:
+    branch is still useful and improving, but it is not ready to become the
+    default mode on `main`.
