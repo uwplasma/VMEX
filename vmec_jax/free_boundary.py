@@ -239,6 +239,8 @@ class NestorVmecLikeCache:
     rhs_scale: np.ndarray
     mode_basis: Any | None = None
     mode_matrix: np.ndarray | None = None
+    matrix_lu: Any | None = None
+    mode_matrix_lu: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -269,6 +271,27 @@ class NestorSolveResult:
     solve_time_s: float
     sample_time_s: float
     model: str = "spectral_poisson_external_only"
+
+
+def _dense_lu_factor(matrix: np.ndarray) -> Any | None:
+    try:
+        from scipy.linalg import lu_factor  # type: ignore
+
+        return lu_factor(np.asarray(matrix, dtype=float))
+    except Exception:
+        return None
+
+
+def _dense_lu_solve(lu_fac: Any | None, matrix: np.ndarray, rhs: np.ndarray) -> np.ndarray:
+    rhs_arr = np.asarray(rhs, dtype=float)
+    if lu_fac is not None:
+        try:
+            from scipy.linalg import lu_solve  # type: ignore
+
+            return np.asarray(lu_solve(lu_fac, rhs_arr), dtype=float)
+        except Exception:
+            pass
+    return np.asarray(np.linalg.solve(np.asarray(matrix, dtype=float), rhs_arr), dtype=float)
 
 
 @dataclass(frozen=True)
@@ -843,6 +866,12 @@ def _sample_external_boundary_arrays(
     extcur_eff = tuple(extcur) if extcur is not None else tuple(getattr(static, "free_boundary_extcur", ()) or ())
 
     sample_nzeta = 1 if (not bool(getattr(static.cfg, "lthreed", True))) else int(static.cfg.nzeta)
+    dump_scalpot_enabled = os.getenv("VMEC_JAX_DUMP_SCALPOT", "").strip().lower() not in (
+        "",
+        "0",
+        "false",
+        "no",
+    )
     trig = getattr(static, "trig_vmec", None)
     if trig is None or int(sample_nzeta) != int(static.cfg.nzeta):
         trig = _freeb_boundary_trig(cfg=static.cfg, nzeta=int(sample_nzeta))
@@ -1004,8 +1033,9 @@ def _sample_external_boundary_arrays(
             )
             axis_r = np.asarray(parity_even[0, 0, 0, :], dtype=float)
             axis_z = np.asarray(parity_even[1, 0, 0, :], dtype=float)
-            axis_r_parity = np.asarray(axis_r, dtype=float)
-            axis_z_parity = np.asarray(axis_z, dtype=float)
+            if dump_scalpot_enabled:
+                axis_r_parity = np.asarray(axis_r, dtype=float)
+                axis_z_parity = np.asarray(axis_z, dtype=float)
             axis_ready = True
         except Exception:
             axis_ready = False
@@ -1030,24 +1060,27 @@ def _sample_external_boundary_arrays(
                 coeffs_internal=True,
             )[0, 0, :]
         )
-    axis_r_full = np.asarray(
-        vmec_realspace_synthesis(
-            coeff_cos=np.asarray(Rcos_phys)[:1, :],
-            coeff_sin=np.asarray(Rsin_phys)[:1, :],
-            modes=static.modes,
-            trig=trig,
-            coeffs_internal=True,
-        )[0, 0, :]
-    )
-    axis_z_full = np.asarray(
-        vmec_realspace_synthesis(
-            coeff_cos=np.asarray(Zcos_phys)[:1, :],
-            coeff_sin=np.asarray(Zsin_phys)[:1, :],
-            modes=static.modes,
-            trig=trig,
-            coeffs_internal=True,
-        )[0, 0, :]
-    )
+    axis_r_full = None
+    axis_z_full = None
+    if dump_scalpot_enabled:
+        axis_r_full = np.asarray(
+            vmec_realspace_synthesis(
+                coeff_cos=np.asarray(Rcos_phys)[:1, :],
+                coeff_sin=np.asarray(Rsin_phys)[:1, :],
+                modes=static.modes,
+                trig=trig,
+                coeffs_internal=True,
+            )[0, 0, :]
+        )
+        axis_z_full = np.asarray(
+            vmec_realspace_synthesis(
+                coeff_cos=np.asarray(Zcos_phys)[:1, :],
+                coeff_sin=np.asarray(Zsin_phys)[:1, :],
+                modes=static.modes,
+                trig=trig,
+                coeffs_internal=True,
+            )[0, 0, :]
+        )
     axis_field_mode = os.getenv("VMEC_JAX_FREEB_AXIS_FIELD_MODE", "vmec_filament").strip().lower()
     if axis_field_mode in ("simple", "legacy"):
         br_axis, bp_axis, bz_axis = _axis_current_field_simple(
@@ -1413,12 +1446,14 @@ def _build_vmec_like_cache(
         rhs_scale=rhs_scale,
         mode_basis=mode_basis,
         mode_matrix=mode_matrix,
+        matrix_lu=_dense_lu_factor(matrix),
+        mode_matrix_lu=_dense_lu_factor(mode_matrix),
     )
 
 
 def _solve_vmec_like_dense(rhs: np.ndarray, cache: NestorVmecLikeCache) -> np.ndarray:
     rhs_flat = np.asarray(rhs, dtype=float).reshape(-1) * np.asarray(cache.rhs_scale, dtype=float)
-    phi_flat = np.linalg.solve(np.asarray(cache.matrix, dtype=float), rhs_flat)
+    phi_flat = _dense_lu_solve(cache.matrix_lu, np.asarray(cache.matrix, dtype=float), rhs_flat)
     phi = phi_flat.reshape(int(cache.ntheta), int(cache.nzeta))
     phi = phi - float(np.mean(phi))
     return phi
@@ -2378,7 +2413,7 @@ def _solve_vmec_like_mode_from_gsource(
         raise ValueError("missing_mode_cache")
 
     rhs_eff = np.asarray(rhs_mode, dtype=float) if rhs_mode is not None else _vmec_bvec_from_gsource(gsource=gsource, basis=basis)
-    potvac = np.linalg.solve(np.asarray(amod, dtype=float), np.asarray(rhs_eff, dtype=float))
+    potvac = _dense_lu_solve(cache.mode_matrix_lu, np.asarray(amod, dtype=float), np.asarray(rhs_eff, dtype=float))
 
     sin_phase = np.asarray(basis["sin_phase"], dtype=float)
     cos_phase = np.asarray(basis["cos_phase"], dtype=float)
@@ -3050,6 +3085,7 @@ def nestor_external_only_step(
                             cache = replace(
                                 cache,
                                 mode_matrix=np.asarray(amatrix_mode_from_grpmn, dtype=float),
+                                mode_matrix_lu=_dense_lu_factor(np.asarray(amatrix_mode_from_grpmn, dtype=float)),
                             )
                             matrix_override_applied = True
                         except Exception:

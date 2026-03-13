@@ -1418,3 +1418,21 @@ Legend:
     `121.93s` warmed on the same CPU host,
   - updated the README/runtime figure to sort rows by best VMEC2000-relative
     speedup first.
+- 2026-03-13 final pre-PR performance pass:
+  - broadened light-history mode to all non-verbose performance-oriented
+    staged runs so ordinary optimized solves keep less per-iteration
+    bookkeeping,
+  - made free-boundary `scalpot` axis diagnostics lazy, avoiding extra axis
+    syntheses unless `VMEC_JAX_DUMP_SCALPOT` is explicitly enabled,
+  - added optional cached dense LU solves in the VMEC-like free-boundary path
+    using SciPy when available, with a safe NumPy fallback,
+  - added NumPy/JAX regression coverage for cached axisymmetric R/Z
+    preconditioner application parity,
+  - representative spot checks on the new head remained converged:
+    `input.cth_like_free_bdy` about `8.00s` warmed and
+    `input.basic_non_stellsym_pressure` about `9.13s` warmed,
+  - targeted regression tests and the fast Sphinx build passed,
+  - full `pytest -q` was started again but entered the same long CPU-bound
+    tail seen previously on this machine, so the final validation signal for
+    this pass is the targeted test set plus the representative runtime and
+    convergence checks above.
