@@ -21,6 +21,7 @@ from .config import VMECConfig
 
 _MGRID_FIELD_CACHE: dict[str, MGridData] = {}
 _FREEB_HOST_PHASE_CACHE: dict[tuple[int, int, tuple[str, ...]], np.ndarray] = {}
+_FREEB_TRIG_CACHE: dict[tuple[int, int, int, int, int, bool], Any] = {}
 
 
 def _freeb_host_phase_stack(*, modes: Any, trig: Any, derivs: tuple[str, ...]) -> np.ndarray:
@@ -72,6 +73,34 @@ def _freeb_host_phase_stack(*, modes: Any, trig: Any, derivs: tuple[str, ...]) -
     phase_all = np.stack(phase_blocks, axis=0)
     _FREEB_HOST_PHASE_CACHE[key] = phase_all
     return phase_all
+
+
+def _freeb_boundary_trig(*, cfg: VMECConfig, nzeta: int) -> Any:
+    """Return cached trig tables for free-boundary boundary sampling."""
+
+    from .vmec_tomnsp import vmec_trig_tables
+
+    key = (
+        int(cfg.ntheta),
+        int(nzeta),
+        int(cfg.nfp),
+        int(cfg.mpol) - 1,
+        int(cfg.ntor),
+        bool(cfg.lasym),
+    )
+    cached = _FREEB_TRIG_CACHE.get(key)
+    if cached is not None:
+        return cached
+    trig = vmec_trig_tables(
+        ntheta=int(cfg.ntheta),
+        nzeta=int(nzeta),
+        nfp=int(cfg.nfp),
+        mmax=int(cfg.mpol) - 1,
+        nmax=int(cfg.ntor),
+        lasym=bool(cfg.lasym),
+    )
+    _FREEB_TRIG_CACHE[key] = trig
+    return trig
 
 
 def _vmec_realspace_synthesis_multi_host(
@@ -797,8 +826,6 @@ def _sample_external_boundary_arrays(
     from .vmec_realspace import (
         vmec_realspace_synthesis,
     )
-    from .vmec_tomnsp import vmec_trig_tables
-
     meta = getattr(static, "mgrid_metadata", None)
     if meta is None:
         raise ValueError("missing_mgrid_metadata")
@@ -815,16 +842,10 @@ def _sample_external_boundary_arrays(
         _MGRID_FIELD_CACHE[mgrid_path] = mgrid
     extcur_eff = tuple(extcur) if extcur is not None else tuple(getattr(static, "free_boundary_extcur", ()) or ())
 
+    sample_nzeta = 1 if (not bool(getattr(static.cfg, "lthreed", True))) else int(static.cfg.nzeta)
     trig = getattr(static, "trig_vmec", None)
-    if trig is None:
-        trig = vmec_trig_tables(
-            ntheta=int(static.cfg.ntheta),
-            nzeta=int(static.cfg.nzeta),
-            nfp=int(static.cfg.nfp),
-            mmax=int(static.cfg.mpol) - 1,
-            nmax=int(static.cfg.ntor),
-            lasym=bool(static.cfg.lasym),
-        )
+    if trig is None or int(sample_nzeta) != int(static.cfg.nzeta):
+        trig = _freeb_boundary_trig(cfg=static.cfg, nzeta=int(sample_nzeta))
 
     # Apply VMEC m=1 internal->physical conversion before free-boundary
     # sampling. This matches the convert_sym/convert_asym path feeding NESTOR.

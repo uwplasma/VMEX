@@ -373,6 +373,34 @@ def test_normalize_solver_mode():
         driver_module._normalize_solver_mode(solver_mode="unknown-mode", performance_mode=True)
 
 
+def test_default_non_autodiff_solver_policy_matches_fixed_boundary_defaults(tmp_path):
+    simple_input = Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
+    _cfg_simple, indata_simple = load_config(simple_input)
+    assert driver_module.default_non_autodiff_solver_policy(indata_simple) == ("accelerated", True)
+
+    staged_input = _write_staged_no_niter_input(tmp_path)
+    _cfg_staged, indata_staged = load_config(staged_input)
+    assert driver_module.default_non_autodiff_solver_policy(indata_staged) == ("parity", False)
+
+
+def test_default_non_autodiff_solver_policy_keeps_free_boundary_on_robust_path():
+    freeb_input = Path(__file__).resolve().parents[1] / "examples/data/input.cth_like_free_bdy"
+    _cfg_freeb, indata_freeb = load_config(freeb_input)
+    assert driver_module.default_non_autodiff_solver_policy(indata_freeb) == ("default", True)
+
+
+def test_python_default_fixed_boundary_uses_optimized_controller(tmp_path):
+    input_path = _write_staged_with_niter_input(tmp_path)
+    run = run_fixed_boundary(
+        input_path,
+        solver="vmec2000_iter",
+        max_iter=1,
+        multigrid=False,
+        verbose=False,
+    )
+    assert bool(run.result.diagnostics.get("cli_fixed_boundary_mode", False)) is True
+
+
 def test_accelerated_cli_budgeted_stage_iters():
     total = driver_module._accelerated_cli_budgeted_total_iters(total_budget=5000, ns_stages=[16, 49, 100])
     assert total == 2000

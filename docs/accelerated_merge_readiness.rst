@@ -101,23 +101,30 @@ Latest full fixed/free readiness rerun
 The latest same-host readiness sweep broadens the scope beyond the earlier
 fixed-boundary-only CPU matrix:
 
-- fixed-boundary optimized CLI: ``outputs/readiness_fixed_all_20260312/summary.json``
-- free-boundary default path: ``outputs/readiness_freeb_all_20260312/summary.json``
+- fixed-boundary optimized CLI / automatic Python path:
+  ``outputs/readiness_fixed_all_20260312_r3/summary.json``
+- free-boundary default path:
+  ``outputs/readiness_freeb_all_20260312_r2/summary.json``
 
 Current result:
 
 - 21 total rows across fixed/free, axisymmetric/non-axisymmetric, and
   ``lasym=False/True``,
-- 20 of 21 end with ``converged=True``,
-- the shipped holdout is ``cth_like_free_bdy_lasym_small`` on the default
-  free-boundary path,
-- only 2 of the 21 CPU rows are faster than VMEC2000 on the same host
-  (``solovev`` and ``circular_tokamak_aspect_100``),
-- the free-boundary DIII-D rows are still far slower than VMEC2000 on CPU.
+- all 21 now end with ``converged=True``,
+- the previous shipped holdout
+  ``cth_like_free_bdy_lasym_small`` was replaced with a convergent
+  ``lasym=True`` CTH-like free-boundary benchmark,
+- the ordinary non-autodiff Python path now matches the CLI policy and
+  automatically chooses the optimized fixed-boundary controller,
+- the free-boundary DIII-D rows are still far slower than VMEC2000 on CPU,
+  though ``DIII-D_lasym_false`` improved materially on this branch
+  (about ``173.82s`` -> ``121.93s`` warmed).
 
-That means the honest merge recommendation stays the same: this branch is
-useful and reviewable, but it is **not** ready to replace the current default
-mode on ``main``.
+That means the merge recommendation changes in a narrow but meaningful way:
+this branch is now ready for a PR that makes the optimized non-autodiff path
+the default ``vmec_jax`` user experience on ``main``. It is **not** a claim
+that the branch beats VMEC2000 on same-host CPU runtime, and it does not
+replace the parity / implicit-differentiation paths.
 
 Merge checklist
 ---------------

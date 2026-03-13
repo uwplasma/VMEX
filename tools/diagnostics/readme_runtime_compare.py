@@ -193,11 +193,7 @@ def _write_runtime_figure(rows: list[dict[str, Any]], outpath: Path, *, figure_k
     rows = sorted(
         rows,
         key=lambda row: (
-            -max(
-                row["vmec_runtime_s"] or 0.0,
-                row["cpu_runtime_s"] or 0.0,
-                row["gpu_runtime_s"] or 0.0,
-            ),
+            -(_speedup(row["cpu_runtime_s"], row["vmec_runtime_s"]) or 0.0),
             row["id"],
         ),
     )

@@ -1400,3 +1400,21 @@ Legend:
   - conclusion from the full readiness sweep:
     branch is still useful and improving, but it is not ready to become the
     default mode on `main`.
+- 2026-03-12 free-boundary convergence closure and automatic Python policy:
+  - confirmed the shipped `input.cth_like_free_bdy_lasym_small` example did
+    not converge in VMEC2000 either, so replaced it with a convergent
+    `lasym=True` CTH-like free-boundary fixture built from the stable bundled
+    `cth_like_free_bdy` case and a small asymmetric perturbation,
+  - ordinary Python `run_fixed_boundary(...)` now uses the same automatic
+    non-autodiff solver policy as the CLI,
+  - axisymmetric free-boundary boundary sampling now collapses to `nv=1`
+    host-side synthesis, and CPU host update assembly is enabled for
+    performance-mode non-scan `lasym=False` runs,
+  - reran the full fixed/free readiness matrix on the latest branch heads:
+    `outputs/readiness_fixed_all_20260312_r3/summary.json` and
+    `outputs/readiness_freeb_all_20260312_r2/summary.json`,
+  - latest readiness result: all 21 shipped rows converge,
+  - `input.DIII-D_lasym_false` improved from about `173.82s` warmed to about
+    `121.93s` warmed on the same CPU host,
+  - updated the README/runtime figure to sort rows by best VMEC2000-relative
+    speedup first.

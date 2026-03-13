@@ -7,7 +7,11 @@ import os
 import sys
 from pathlib import Path
 
-from .driver import run_fixed_boundary, write_wout_from_fixed_boundary_run
+from .driver import (
+    default_non_autodiff_solver_policy,
+    run_fixed_boundary,
+    write_wout_from_fixed_boundary_run,
+)
 from .namelist import read_indata
 
 
@@ -40,41 +44,6 @@ def _parse_jit_forces(value: str):
     if val in ("0", "false", "no", "off"):
         return False
     raise ValueError(f"Invalid --jit-forces value: {value}")
-
-
-def _as_list(value):
-    if value is None:
-        return None
-    if isinstance(value, list):
-        return value
-    if isinstance(value, tuple):
-        return list(value)
-    if isinstance(value, (int, float)):
-        return [value]
-    try:
-        return list(value)
-    except Exception:
-        return None
-
-
-def _default_cli_solver_policy(indata) -> tuple[str, bool]:
-    """Choose the default CLI solver policy from the input structure.
-
-    Fixed-boundary runs default to the accelerated controller, except for the
-    hard staged class with ``NS_ARRAY`` but no ``NITER_ARRAY``. Those inputs
-    stay on the conservative parity path until the staged accelerated finisher
-    closes that remaining gap robustly. Staged inputs that do provide
-    ``NITER_ARRAY`` now stay on the accelerated path by default: the CLI will
-    try the fast final-grid route first, then escalate through the staged input
-    schedule and a strict parity finisher only if needed.
-    """
-    if bool(indata.get_bool("LFREEB", False)):
-        return "default", True
-    ns_array = _as_list(indata.get("NS_ARRAY", None))
-    niter_array = _as_list(indata.get("NITER_ARRAY", None))
-    if (ns_array is not None) and (len(ns_array) > 1) and (niter_array is None):
-        return "parity", False
-    return "accelerated", True
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -184,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     solver_mode = args.solver_mode
     if solver_mode is None and (not bool(args.parity)) and (not bool(args.fast)):
-        solver_mode, performance_mode = _default_cli_solver_policy(indata)
+        solver_mode, performance_mode = default_non_autodiff_solver_policy(indata)
     else:
         # Preserve explicit CLI override semantics:
         # - default to the fast scan loop,

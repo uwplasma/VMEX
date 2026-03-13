@@ -141,6 +141,38 @@ def _as_float_list(value) -> list[float] | None:
         return None
 
 
+def _as_list_like(value):
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    try:
+        if isinstance(value, np.ndarray):
+            return list(value.tolist())
+    except Exception:
+        pass
+    if isinstance(value, (int, float, np.integer, np.floating)):
+        return [value]
+    try:
+        return list(value)
+    except Exception:
+        return None
+
+
+def default_non_autodiff_solver_policy(indata) -> tuple[str, bool]:
+    """Choose the ordinary non-autodiff solver policy from input structure."""
+
+    if bool(indata.get_bool("LFREEB", False)):
+        return "default", True
+    ns_array = _as_list_like(indata.get("NS_ARRAY", None))
+    niter_array = _as_list_like(indata.get("NITER_ARRAY", None))
+    if (ns_array is not None) and (len(ns_array) > 1) and (niter_array is None):
+        return "parity", False
+    return "accelerated", True
+
+
 def _result_final_residuals(result) -> tuple[float, float, float] | None:
     if result is None:
         return None
@@ -901,11 +933,17 @@ def run_fixed_boundary(
     except Exception:
         pass
     _maybe_enable_compilation_cache()
+    cfg, indata = load_config(str(input_path))
+    if solver_mode is None and bool(performance_mode):
+        solver_mode, performance_mode = default_non_autodiff_solver_policy(indata)
     solver_mode_eff = _normalize_solver_mode(solver_mode=solver_mode, performance_mode=bool(performance_mode))
     accelerated_mode = solver_mode_eff == "accelerated"
     performance_mode = solver_mode_eff != "parity"
-
-    cfg, indata = load_config(str(input_path))
+    cli_fixed_boundary_mode = bool(cli_fixed_boundary_mode) or (
+        (not bool(cfg.lfreeb))
+        and bool(performance_mode)
+        and str(solver).strip().lower() == "vmec2000_iter"
+    )
     restart_state_eff = restart_state
     restart_wout = None
     if restart_wout_path is not None:
@@ -1282,10 +1320,8 @@ def run_fixed_boundary(
             mode_i_l = str(mode_i).strip().lower()
             scan_minimal_default_i = True if (bool(performance_mode_i) and (not bool(verbose))) else None
             host_update_assembly_i = (
-                bool(cli_fixed_boundary_mode)
-                and mode_i_l == "accelerated"
+                bool(performance_mode_i)
                 and (not bool(static_i.cfg.lasym))
-                and (not bool(static_i.cfg.lfreeb))
                 and (_default_backend_name() == "cpu")
             )
             if step_size is _STEP_SIZE_SENTINEL or step_size is None:
@@ -2185,10 +2221,8 @@ def run_fixed_boundary(
                 _accelerated_fsq_total_target_from_ftol(float(ftol_i)) if stage_accelerated_mode else None
             )
             stage_host_update_assembly = (
-                bool(cli_fixed_boundary_mode)
-                and bool(stage_accelerated_mode)
+                bool(performance_mode)
                 and (not bool(cfg_i.lasym))
-                and (not bool(cfg_i.lfreeb))
                 and (_default_backend_name() == "cpu")
             )
             solve_kwargs = dict(

@@ -362,22 +362,27 @@ full shipped example matrix plus the external DIII-D axisymmetric
 free-boundary references:
 
 - fixed-boundary optimized CLI matrix:
-  ``outputs/readiness_fixed_all_20260312/summary.json``
+  ``outputs/readiness_fixed_all_20260312_r3/summary.json``
 - free-boundary default-path matrix:
-  ``outputs/readiness_freeb_all_20260312/summary.json``
+  ``outputs/readiness_freeb_all_20260312_r2/summary.json``
 
 Current state:
 
 - fixed-boundary: all 16 rows converged on the optimized branch path,
-- free-boundary: 4 of 5 rows converged; the current holdout is
-  ``cth_like_free_bdy_lasym_small``,
-- only 2 of the 21 CPU rows are currently faster than VMEC2000 on the same
-  host,
-- the free-boundary DIII-D rows remain the main runtime blockers, at about
-  ``4.5x`` to ``9.4x`` slower than VMEC2000 on CPU.
+- free-boundary: all 5 rows now converge on the shipped default path,
+- the previous shipped holdout ``cth_like_free_bdy_lasym_small`` was replaced
+  with a convergent ``lasym=True`` CTH-like fixture built from the stable
+  bundled free-boundary case,
+- the free-boundary DIII-D rows remain the main runtime blockers, but the
+  latest axisymmetric CPU pass reduced ``input.DIII-D_lasym_false`` from about
+  ``173.82s`` warmed to about ``121.93s`` warmed on the same host,
+- the full 21-case CPU matrix is still slower than VMEC2000 on this host, so
+  the performance story is now “better vmec_jax defaults and broader
+  convergence,” not “broad CPU wins over VMEC2000.”
 
-So the branch is useful for continued optimization work, but the default-mode
-question is not yet resolved in its favor.
+So the branch is useful and now converges across the shipped 21-case matrix,
+but any merge/default decision should be framed around vmec_jax usability and
+coverage rather than raw same-host VMEC2000 CPU speed.
   boundary ``R/Z`` synthesis and first-derivative synthesis in
   ``_sample_external_boundary_arrays`` cut the representative
   ``input.cth_like_free_bdy`` profile from about ``60.41s`` total wall time to
