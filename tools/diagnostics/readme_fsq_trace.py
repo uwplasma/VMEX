@@ -216,8 +216,39 @@ def _plot_panel(
     title: str,
     jax_label: str,
 ):
-    ax.plot(it_vmec, fsq_vmec, lw=2.6, linestyle="--", marker="o", ms=3.0, label="VMEC2000", zorder=2)
-    ax.plot(it_jax, fsq_jax, lw=2.6, linestyle="-", marker="o", ms=3.0, label=jax_label, zorder=1)
+    # Many cases have very similar traces; use distinct markers and draw VMEC2000
+    # on top with hollow markers so both curves remain visible even when they overlap.
+    mark_vmec = max(1, int(max(it_vmec.size, 1) // 35))
+    mark_jax = max(1, int(max(it_jax.size, 1) // 45))
+    ax.plot(
+        it_jax,
+        fsq_jax,
+        lw=2.6,
+        linestyle="-",
+        color="#ff7f0e",
+        marker="o",
+        ms=2.6,
+        markevery=mark_jax,
+        alpha=0.95,
+        label=jax_label,
+        zorder=1,
+    )
+    ax.plot(
+        it_vmec,
+        fsq_vmec,
+        lw=2.6,
+        linestyle="--",
+        color="#1f77b4",
+        marker="s",
+        ms=3.6,
+        markevery=mark_vmec,
+        mfc="none",
+        mec="#1f77b4",
+        mew=1.1,
+        alpha=0.95,
+        label="VMEC2000",
+        zorder=2,
+    )
     ax.set_yscale("log")
     ax.set_xlabel("iteration")
     ax.set_ylabel("fsq_total")
@@ -256,6 +287,11 @@ def main() -> None:
         default=str(Path(__file__).resolve().parents[2] / "outputs" / "readme_fsq_trace_single_grid_work"),
         help="Scratch directory for VMEC2000/vmec_jax run artifacts (wouts, threed1, logs).",
     )
+    p.add_argument(
+        "--reuse-workdir",
+        action="store_true",
+        help="Reuse existing traces under --workdir (skip rerunning solvers).",
+    )
     p.add_argument("--ns", type=int, default=151)
     p.add_argument("--niter", type=int, default=5000)
     p.add_argument("--ftol", type=float, default=1e-14)
@@ -273,26 +309,52 @@ def main() -> None:
 
     axisym_work = workdir / "ITERModel"
     st_work = workdir / "LandremanPaul2021_QA_lowres"
-    shutil.rmtree(axisym_work, ignore_errors=True)
-    shutil.rmtree(st_work, ignore_errors=True)
+    if not bool(args.reuse_workdir):
+        shutil.rmtree(axisym_work, ignore_errors=True)
+        shutil.rmtree(st_work, ignore_errors=True)
     axisym_work.mkdir(parents=True, exist_ok=True)
     st_work.mkdir(parents=True, exist_ok=True)
 
-    it_vmec_a, fsq_vmec_a, t_vmec_a, wout_vmec_a = _collect_vmec2000_trace(
-        axisym_input, ns=int(args.ns), niter=int(args.niter), ftol=float(args.ftol), workdir=axisym_work
-    )
-    it_jax_a, fsq_jax_a, t_jax_a, wout_jax_a = _collect_vmec_jax_trace(
-        axisym_input, ns=int(args.ns), niter=int(args.niter), ftol=float(args.ftol), workdir=axisym_work
-    )
-    mismatch_a = _trace_mismatch(it_vmec_a, fsq_vmec_a, it_jax_a, fsq_jax_a)
+    if bool(args.reuse_workdir):
+        a_vmec = np.load(axisym_work / "trace_ITERModel_VMEC2000.npz")
+        a_jax = np.load(axisym_work / "trace_ITERModel_vmec_jax.npz")
+        it_vmec_a, fsq_vmec_a = a_vmec["it"], a_vmec["fsq_total"]
+        it_jax_a, fsq_jax_a = a_jax["it"], a_jax["fsq_total"]
+        mismatch_a = _trace_mismatch(it_vmec_a, fsq_vmec_a, it_jax_a, fsq_jax_a)
+        wout_vmec_a = json.loads((workdir / "readme_fsq_trace_single_grid_wout_audit.json").read_text())["ITERModel"][
+            "VMEC2000"
+        ]
+        wout_jax_a = json.loads((workdir / "readme_fsq_trace_single_grid_wout_audit.json").read_text())["ITERModel"][
+            "vmec_jax"
+        ]
 
-    it_vmec_s, fsq_vmec_s, t_vmec_s, wout_vmec_s = _collect_vmec2000_trace(
-        stellarator_input, ns=int(args.ns), niter=int(args.niter), ftol=float(args.ftol), workdir=st_work
-    )
-    it_jax_s, fsq_jax_s, t_jax_s, wout_jax_s = _collect_vmec_jax_trace(
-        stellarator_input, ns=int(args.ns), niter=int(args.niter), ftol=float(args.ftol), workdir=st_work
-    )
-    mismatch_s = _trace_mismatch(it_vmec_s, fsq_vmec_s, it_jax_s, fsq_jax_s)
+        s_vmec = np.load(st_work / "trace_LandremanPaul2021_QA_lowres_VMEC2000.npz")
+        s_jax = np.load(st_work / "trace_LandremanPaul2021_QA_lowres_vmec_jax.npz")
+        it_vmec_s, fsq_vmec_s = s_vmec["it"], s_vmec["fsq_total"]
+        it_jax_s, fsq_jax_s = s_jax["it"], s_jax["fsq_total"]
+        mismatch_s = _trace_mismatch(it_vmec_s, fsq_vmec_s, it_jax_s, fsq_jax_s)
+        wout_vmec_s = json.loads((workdir / "readme_fsq_trace_single_grid_wout_audit.json").read_text())[
+            "LandremanPaul2021_QA_lowres"
+        ]["VMEC2000"]
+        wout_jax_s = json.loads((workdir / "readme_fsq_trace_single_grid_wout_audit.json").read_text())[
+            "LandremanPaul2021_QA_lowres"
+        ]["vmec_jax"]
+    else:
+        it_vmec_a, fsq_vmec_a, _, wout_vmec_a = _collect_vmec2000_trace(
+            axisym_input, ns=int(args.ns), niter=int(args.niter), ftol=float(args.ftol), workdir=axisym_work
+        )
+        it_jax_a, fsq_jax_a, _, wout_jax_a = _collect_vmec_jax_trace(
+            axisym_input, ns=int(args.ns), niter=int(args.niter), ftol=float(args.ftol), workdir=axisym_work
+        )
+        mismatch_a = _trace_mismatch(it_vmec_a, fsq_vmec_a, it_jax_a, fsq_jax_a)
+
+        it_vmec_s, fsq_vmec_s, _, wout_vmec_s = _collect_vmec2000_trace(
+            stellarator_input, ns=int(args.ns), niter=int(args.niter), ftol=float(args.ftol), workdir=st_work
+        )
+        it_jax_s, fsq_jax_s, _, wout_jax_s = _collect_vmec_jax_trace(
+            stellarator_input, ns=int(args.ns), niter=int(args.niter), ftol=float(args.ftol), workdir=st_work
+        )
+        mismatch_s = _trace_mismatch(it_vmec_s, fsq_vmec_s, it_jax_s, fsq_jax_s)
 
     fig, axes = plt.subplots(1, 2, figsize=(12.5, 4.2))
     _plot_panel(
