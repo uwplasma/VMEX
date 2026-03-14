@@ -140,7 +140,9 @@ def _parse_vmec_table_trace(stdout: str) -> tuple[np.ndarray, np.ndarray]:
             continue
         if not in_table:
             continue
-        toks = line.split()
+        toks = [tok.strip() for tok in line.split()]
+        # VMEC++ legacy mode uses `|` separators in the table.
+        toks = [tok for tok in toks if tok and tok != "|"]
         if len(toks) < 4 or (not toks[0].isdigit()):
             # End when VMEC prints post-table messages.
             if toks and toks[0].upper() in {"TRY", "EXECUTION", "FILE", "TOTAL", "TIME"}:
