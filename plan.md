@@ -1530,3 +1530,34 @@ Legend:
   - this keeps the optimization targeted: better `lasym=False` throughput
     without changing the asymmetric path that still needs accuracy-first
     handling.
+- 2026-03-13 final readiness + artifact refresh:
+  - reran the full local validation gates successfully on the clean head:
+    `pytest -q` completed (`186 passed, 12 skipped`) and the fast Sphinx build
+    passed,
+  - regenerated the fresh fixed-boundary VMEC2000-vs-optimized CPU runtime
+    matrix in `outputs/fixed_runtime_vmec2000_accel_cpu_warm_20260313/summary.json`,
+    covering all 16 bundled fixed-boundary examples on the optimized
+    non-autodiff path,
+  - regenerated the fresh free-boundary VMEC2000-vs-default CPU runtime matrix
+    in `outputs/free_runtime_vmec2000_cpu_warm_20260313/summary.json`,
+    covering the 5 shipped free-boundary rows including the external DIII-D
+    references,
+  - reran the fixed-boundary readiness / quality matrix on the same head in
+    `outputs/readiness_fixed_all_20260313/summary.json`; all 16 bundled
+    fixed-boundary cases converged, the optimized path was faster on 13,
+    effectively neutral on 1, and slower on 2 while still satisfying the
+    requested final-stage `FTOL`,
+  - confirmed that the experimental accelerated flag is still not the right
+    free-boundary default path: `outputs/readiness_freeb_all_20260313/summary.json`
+    shows that free-boundary acceleration remains a separate follow-on effort,
+    so the branch continues to present the robust default free-boundary path
+    publicly,
+  - regenerated the top README/docs figures on the same head:
+    `axisym_compare_*`, `qa_compare_*`, `readme_fsq_trace.png`, and
+    `docs/_static/figures/readme_runtime_compare.png`,
+  - refreshed `README.md`, `docs/performance.rst`, and
+    `docs/accelerated_merge_readiness.rst` so the PR now states the final
+    branch scope clearly:
+    optimized non-autodiff fixed-boundary becomes the default user path on
+    `main`, while free-boundary stays on the current robust controller and the
+    parity / implicit-differentiation routes remain available.

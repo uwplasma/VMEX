@@ -397,23 +397,29 @@ Full same-host readiness sweep
 
 After the targeted free-boundary optimizations, the branch was rerun on the
 full shipped example matrix plus the external DIII-D axisymmetric
-free-boundary references:
+free-boundary references. The freshest final-head artifacts are:
 
-- fixed-boundary optimized CLI matrix:
-  ``outputs/readiness_fixed_all_20260312_r3/summary.json``
-- free-boundary default-path matrix:
-  ``outputs/readiness_freeb_all_20260312_r2/summary.json``
+- fixed-boundary optimized CLI / automatic Python readiness matrix:
+  ``outputs/readiness_fixed_all_20260313/summary.json``
+- fixed-boundary VMEC2000-vs-optimized warmed runtime matrix:
+  ``outputs/fixed_runtime_vmec2000_accel_cpu_warm_20260313/summary.json``
+- free-boundary VMEC2000-vs-default warmed runtime matrix:
+  ``outputs/free_runtime_vmec2000_cpu_warm_20260313/summary.json``
 
 Current state:
 
 - fixed-boundary: all 16 rows converged on the optimized branch path,
+- fixed-boundary accelerated/default comparison: faster on 13 rows, roughly
+  neutral on 1, slower on 2, with all 16 satisfying the requested final-stage
+  ``FTOL``,
 - free-boundary: all 5 rows now converge on the shipped default path,
 - the previous shipped holdout ``cth_like_free_bdy_lasym_small`` was replaced
   with a convergent ``lasym=True`` CTH-like fixture built from the stable
   bundled free-boundary case,
 - the free-boundary DIII-D rows remain the main runtime blockers, but the
   latest axisymmetric CPU pass reduced ``input.DIII-D_lasym_false`` from about
-  ``173.82s`` warmed to about ``121.93s`` warmed on the same host,
+  ``173.82s`` warmed earlier in the branch to about ``113.78s`` warmed in the
+  final runtime matrix on the same host,
 - the full 21-case CPU matrix is still slower than VMEC2000 on this host, so
   the performance story is now “better vmec_jax defaults and broader
   convergence,” not “broad CPU wins over VMEC2000.”
@@ -432,15 +438,31 @@ coverage rather than raw same-host VMEC2000 CPU speed.
 Representative warmed CPU baseline-vs-optimized points from the current full
 matrix:
 
-- ``ITERModel``: ``0.36s`` baseline vs ``0.20s`` optimized,
-- ``LandremanPaul2021_QA_lowres``: ``8.75s`` baseline vs ``7.86s`` optimized,
+- ``ITERModel``: ``8.86s`` baseline vs ``4.48s`` optimized,
+- ``LandremanPaul2021_QA_lowres``:
+  ``29.65s`` baseline vs ``35.02s`` optimized, with
+  ``quality_max_rel_rms ~ 4.20e-03``,
 - ``LandremanPaul2021_QA_reactorScale_lowres``:
-  ``10.42s`` baseline vs ``10.06s`` optimized,
+  ``47.17s`` baseline vs ``45.52s`` optimized, with
+  ``quality_max_rel_rms ~ 6.42e-04``,
+- ``LandremanPaul2021_QH_reactorScale_lowres``:
+  ``53.28s`` baseline vs ``53.05s`` optimized, with
+  ``quality_max_rel_rms ~ 6.00e-05``,
 - ``LandremanSenguptaPlunk_section5p3_low_res``:
-  ``49.56s`` baseline vs ``0.21s`` optimized,
-- ``basic_non_stellsym_pressure``:
-  ``12.81s`` baseline vs ``1.04s`` optimized,
-- ``up_down_asymmetric_tokamak``: ``1.01s`` baseline vs ``0.45s`` optimized.
+  ``15.86s`` baseline vs ``7.48s`` optimized,
+- ``up_down_asymmetric_tokamak``:
+  ``24.58s`` baseline vs ``2.97s`` optimized.
+
+Representative warmed CPU VMEC2000-vs-``vmec_jax`` points from the final
+public runtime matrix:
+
+- ``solovev``: VMEC2000 ``0.61s`` vs ``vmec_jax`` ``0.09s``,
+- ``circular_tokamak_aspect_100``: ``2.99s`` vs ``0.59s``,
+- ``cth_like_fixed_bdy``: ``1.34s`` vs ``1.04s``,
+- ``LandremanPaul2021_QA_reactorScale_lowres``: ``39.27s`` vs ``44.48s``,
+- ``LandremanPaul2021_QH_reactorScale_lowres``: ``46.34s`` vs ``53.93s``,
+- ``DIII-D_lasym_false``: ``19.80s`` vs ``113.78s``,
+- ``cth_like_free_bdy``: ``1.79s`` vs ``6.96s``.
 
 Same-host CPU/GPU reassessment on a reference GPU workstation is now complete
 for the same 16-case bundled fixed-boundary set:

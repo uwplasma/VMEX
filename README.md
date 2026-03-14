@@ -241,43 +241,48 @@ story.
 
 ## Bundled Runtime Snapshot
 
-Measured on 2026-03-12 using warmed serial runs on the same CPU host. The top
+Measured on 2026-03-13 using warmed serial runs on the same CPU host. The top
 runtime plot now combines:
 
-- fixed-boundary optimized CLI runs from
-  `outputs/readiness_fixed_all_20260312_r3/summary.json`
-- free-boundary default-path runs from
-  `outputs/readiness_freeb_all_20260312_r2/summary.json`
+- fixed-boundary VMEC2000-vs-optimized-controller runs from
+  `outputs/fixed_runtime_vmec2000_accel_cpu_warm_20260313/summary.json`
+- free-boundary VMEC2000-vs-default-path runs from
+  `outputs/free_runtime_vmec2000_cpu_warm_20260313/summary.json`
 
 Current checked-in summary:
 
-- 21 total cases were exercised across fixed/free, axisymmetric /
+- 21 total shipped rows were exercised across fixed/free, axisymmetric /
   non-axisymmetric, and `lasym=False/True`,
-- all 21 completed with `converged=True`,
-- the bundled `cth_like_free_bdy_lasym_small` example was replaced with a
-  convergent `lasym=True` free-boundary CTH-like fixture so the shipped matrix
-  no longer has a free-boundary holdout,
-- ordinary CLI and Python `run_fixed_boundary(...)` calls now choose the fast
-  optimized fixed-boundary controller automatically when autodiff is not in
-  play,
-- the runtime plot is sorted by best VMEC2000-relative CPU speedup first
-  (closest-to-VMEC2000 rows at the top),
-- the free-boundary DIII-D rows are still much slower than VMEC2000 on CPU
-  even after the latest optimization pass, but `DIII-D_lasym_false` improved
-  materially on this branch from about `173.82s` to about `121.93s` warmed.
-- the representative `cth_like_free_bdy` free-boundary case is improving on
-  this branch and now runs in about `7.69s` warmed on CPU, but that is still
-  well behind VMEC2000's `1.71s`.
+- all 21 `vmec_jax` rows completed with `converged=True`,
+- ordinary CLI and non-autodiff Python fixed-boundary calls now choose the
+  optimized controller automatically,
+- the fixed-boundary readiness rerun on this same head
+  (`outputs/readiness_fixed_all_20260313/summary.json`) shows the optimized
+  path converging on all 16 bundled fixed-boundary cases, faster on 13,
+  effectively neutral on 1, and slower on 2 while still meeting the requested
+  final-stage `FTOL`,
+- the free-boundary runtime plot intentionally uses the robust default path,
+  not the experimental accelerated flag, because free-boundary acceleration is
+  still a separate follow-on problem,
+- the runtime plot is sorted by best VMEC2000-relative CPU speedup first,
+- on this host, `vmec_jax` CPU is faster than VMEC2000 on 4 of the 21 shipped
+  rows (`solovev`, `circular_tokamak_aspect_100`, `cth_like_fixed_bdy`,
+  `nfp4_QH_warm_start`) and close on the reactor-scale QA/QH fixed-boundary
+  cases,
+- the free-boundary DIII-D rows are still the dominant same-host CPU gap, but
+  `DIII-D_lasym_false` is down to about `113.78s` warmed on this branch from
+  the earlier `~174s` range, and `cth_like_free_bdy` is down to about `6.96s`
+  warmed while staying converged.
 
 Representative warmed CPU VMEC2000-vs-`vmec_jax` points:
 
 | Example | VMEC2000 runtime | vmec_jax CPU runtime | Relative result |
 | --- | ---: | ---: | --- |
-| LandremanPaul2021_QH_reactorScale_lowres | 41.90s | 44.83s | close, VMEC2000 faster |
-| LandremanPaul2021_QA_reactorScale_lowres | 36.80s | 44.71s | close, VMEC2000 faster |
-| LandremanPaul2021_QA_lowres | 24.91s | 33.05s | close, VMEC2000 faster |
-| cth_like_free_bdy_lasym_small | 3.44s | 12.81s | converged, VMEC2000 faster |
-| DIII-D_lasym_false | 18.30s | 121.93s | converged, VMEC2000 faster |
+| LandremanPaul2021_QH_reactorScale_lowres | 46.34s | 53.93s | close, VMEC2000 faster |
+| LandremanPaul2021_QA_reactorScale_lowres | 39.27s | 44.48s | close, VMEC2000 faster |
+| LandremanPaul2021_QA_lowres | 27.69s | 37.34s | converged, VMEC2000 faster |
+| cth_like_free_bdy | 1.79s | 6.96s | converged, VMEC2000 faster |
+| DIII-D_lasym_false | 19.80s | 113.78s | converged, VMEC2000 faster |
 
 ## Accelerated Branch Reassessment
 
@@ -301,8 +306,7 @@ python examples/fixed_boundary_driver_tracks.py \
   --quiet --json
 ```
 
-Same-host CPU/GPU comparison remains mixed. The current branch is ready for a
-PR that makes this optimized non-autodiff path the default `vmec_jax`
-experience on `main`, but not for claims that it is broadly faster than
-VMEC2000 on CPU or that it replaces the parity / implicit-differentiation
-paths.
+The current branch is ready for a PR that makes this optimized non-autodiff
+fixed-boundary path the default `vmec_jax` experience on `main`, while leaving
+free-boundary on the current robust controller and leaving parity /
+implicit-differentiation paths available when that is the priority.

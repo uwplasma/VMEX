@@ -15,19 +15,23 @@ The important distinction is:
 Current recommendation
 ----------------------
 
-Current recommendation: **merge as experimental, do not make default**.
+Current recommendation: **merge and make the optimized non-autodiff
+fixed-boundary path the default**.
 
 Rationale:
 
 - the public API split is explicit:
   ``run_fixed_boundary(..., solver_mode="accelerated")`` and
   ``vmec_jax input.name --solver-mode accelerated``,
-- the parity/default path remains available and unchanged for ordinary users,
+- the ordinary non-autodiff fixed-boundary CLI/Python path now auto-selects
+  the optimized controller, while explicit parity/autodiff workflows still
+  keep their conservative route,
 - local validation is green on the branch,
-- representative fixed-boundary benchmarks now show clear wins from the
-  accelerated controller's new single-grid default,
-- accelerated free-boundary is still intentionally conservative and is not yet
-  a new fast controller, so the branch does not overclaim readiness.
+- the latest fixed-boundary readiness rerun shows all 16 bundled cases
+  converged with the optimized controller faster on 13, effectively neutral on
+  1, and slower on 2,
+- free-boundary remains on the current robust controller by default, which is
+  the right scope boundary for this PR.
 
 What this branch adds
 ---------------------
@@ -82,10 +86,11 @@ Current CLI behavior is better captured as policy than as one stale table:
   all 16 cases converge, 13 of 16 improve on the current default path, and the
   remaining 3 are effectively neutral,
 - the public README-facing VMEC2000 comparison is intentionally stricter:
-  the refreshed warmed CPU artifact in
-  ``outputs/readme_fixed_runtime_vmec2000_accel_cpu_20260312/summary.json``
-  keeps all 13 shipped ``lasym=False`` fixed-boundary cases converged, but it
-  still shows VMEC2000 ahead on most of the heavier non-axisymmetric cases,
+  the refreshed warmed CPU artifacts in
+  ``outputs/fixed_runtime_vmec2000_accel_cpu_warm_20260313/summary.json`` and
+  ``outputs/free_runtime_vmec2000_cpu_warm_20260313/summary.json`` keep all 21
+  shipped rows converged, but they still show VMEC2000 ahead on most of the
+  heavier non-axisymmetric and free-boundary cases,
 - same-host CPU/GPU benchmarking still confirms the GPU path can help on the
   larger 3D bundled cases, but backend choice still matters and remains a
   separate question from the fixed-boundary CPU controller decision.
@@ -102,15 +107,15 @@ The latest same-host readiness sweep broadens the scope beyond the earlier
 fixed-boundary-only CPU matrix:
 
 - fixed-boundary optimized CLI / automatic Python path:
-  ``outputs/readiness_fixed_all_20260312_r3/summary.json``
-- free-boundary default path:
-  ``outputs/readiness_freeb_all_20260312_r2/summary.json``
+  ``outputs/readiness_fixed_all_20260313/summary.json``
+- free-boundary runtime/convergence matrix on the robust default path:
+  ``outputs/free_runtime_vmec2000_cpu_warm_20260313/summary.json``
 
 Current result:
 
-- 21 total rows across fixed/free, axisymmetric/non-axisymmetric, and
+- 21 total shipped rows across fixed/free, axisymmetric/non-axisymmetric, and
   ``lasym=False/True``,
-- all 21 now end with ``converged=True``,
+- all 21 ``vmec_jax`` rows now end with ``converged=True``,
 - the previous shipped holdout
   ``cth_like_free_bdy_lasym_small`` was replaced with a convergent
   ``lasym=True`` CTH-like free-boundary benchmark,
@@ -118,13 +123,14 @@ Current result:
   automatically chooses the optimized fixed-boundary controller,
 - the free-boundary DIII-D rows are still far slower than VMEC2000 on CPU,
   though ``DIII-D_lasym_false`` improved materially on this branch
-  (about ``173.82s`` -> ``121.93s`` warmed).
+  (now about ``113.78s`` warmed in the fresh runtime matrix).
 
 That means the merge recommendation changes in a narrow but meaningful way:
-this branch is now ready for a PR that makes the optimized non-autodiff path
-the default ``vmec_jax`` user experience on ``main``. It is **not** a claim
-that the branch beats VMEC2000 on same-host CPU runtime, and it does not
-replace the parity / implicit-differentiation paths.
+this branch is now ready for a PR that makes the optimized non-autodiff
+fixed-boundary path the default ``vmec_jax`` user experience on ``main``. It
+is **not** a claim that the branch beats VMEC2000 on same-host CPU runtime,
+and it does not replace the parity / implicit-differentiation paths or the
+current robust free-boundary controller.
 
 Merge checklist
 ---------------
@@ -149,8 +155,9 @@ Current PR summary
 The branch is ready for an honest review PR.
 
 - Positive signal:
-  the optimized CLI-style controller now keeps convergence and removes the
-  runtime-regression blocker on the full bundled fixed-boundary CPU matrix.
+  the optimized CLI-style fixed-boundary controller now keeps convergence and
+  removes the runtime-regression blocker on the full bundled fixed-boundary CPU
+  matrix.
 - Remaining caution:
   final-state quality versus VMEC2000 is still a separate topic from the
   runtime comparison, and GPU/default-library policy should not be flipped just
@@ -180,12 +187,12 @@ The branch is ready for an honest review PR.
 
 Conclusion:
 
-- mergeable as an experimental branch if reviewers want the tooling and the
-  fixed-boundary wins on ``main``,
-- plausible to promote as the default **CLI fixed-boundary CPU** controller on
-  ``main`` if reviewers accept the non-parity scope,
-- not yet ready to become the universal default across GPU and non-CLI
-  workflows.
+- ready to merge with the optimized non-autodiff fixed-boundary path as the
+  default on ``main``,
+- parity, implicit-differentiation, and free-boundary workflows should keep
+  their current explicit or robust routes,
+- not yet ready to become the universal default across GPU and all solver
+  modes.
 
 Recommended reviewer checklist
 ------------------------------
