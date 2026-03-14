@@ -77,6 +77,8 @@ docs/api/generated/
 docs/_static/figures/readme_*_vmec2000_trace/
 docs/_static/figures/readme_*_wout_audit.json
 examples/outputs/
+examples_single_grid/data/wout_*.nc
+!examples_single_grid/data/wout_*_reference.nc
 outputs/
 tmp/
 
