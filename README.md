@@ -3,56 +3,59 @@
 End-to-end differentiable JAX implementation of **VMEC2000** for fixed-boundary
 and free-boundary ideal-MHD equilibria.
 
+## Showcase (single-grid)
+
+All figures below use the same **single-grid** run settings: `NS_ARRAY=151`, `NITER_ARRAY=5000`, `FTOL_ARRAY=1e-14`, `NSTEP=500`.
+
 <table>
   <tr>
     <td><img src="docs/_static/figures/axisym_compare_cross_sections.png" width="420" /></td>
     <td><img src="docs/_static/figures/qa_compare_cross_sections.png" width="420" /></td>
   </tr>
   <tr>
-    <td align="center">Axisymmetric: single-grid fixed-boundary cross-section (VMEC2000 vs vmec_jax)</td>
-    <td align="center">LandremanPaul2021_QA_lowres: single-grid fixed-boundary cross-section (VMEC2000 vs vmec_jax)</td>
-  </tr>
-  <tr>
-    <td><img src="docs/_static/figures/axisym_compare_3d.png" width="420" /></td>
-    <td><img src="docs/_static/figures/qa_compare_3d.png" width="420" /></td>
-  </tr>
-  <tr>
-    <td align="center">Axisymmetric: single-grid fixed-boundary 3D LCFS (VMEC2000 vs vmec_jax)</td>
-    <td align="center">LandremanPaul2021_QA_lowres: single-grid fixed-boundary 3D LCFS (VMEC2000 vs vmec_jax)</td>
-  </tr>
-  <tr>
-    <td><img src="docs/_static/figures/axisym_compare_bmag_surface.png" width="420" /></td>
-    <td><img src="docs/_static/figures/qa_compare_bmag_surface.png" width="420" /></td>
-  </tr>
-  <tr>
-    <td align="center">Axisymmetric: single-grid fixed-boundary |B| on LCFS (VMEC2000 vs vmec_jax)</td>
-    <td align="center">LandremanPaul2021_QA_lowres: single-grid fixed-boundary |B| on LCFS (VMEC2000 vs vmec_jax)</td>
+    <td align="center"><code>ITERModel</code> cross-section (VMEC2000 vs vmec_jax)</td>
+    <td align="center"><code>LandremanPaul2021_QA_lowres</code> cross-section (VMEC2000 vs vmec_jax)</td>
   </tr>
   <tr>
     <td><img src="docs/_static/figures/axisym_compare_iota.png" width="420" /></td>
     <td><img src="docs/_static/figures/qa_compare_iota.png" width="420" /></td>
   </tr>
   <tr>
-    <td align="center">Axisymmetric: single-grid fixed-boundary iota (VMEC2000 vs vmec_jax vs VMEC++)</td>
-    <td align="center">LandremanPaul2021_QA_lowres: single-grid fixed-boundary iota (VMEC2000 vs vmec_jax vs VMEC++)</td>
-  </tr>
-  <tr>
-    <td colspan="2"><img src="docs/_static/figures/readme_fsq_trace_single_grid.png" width="860" /></td>
-  </tr>
-  <tr>
-    <td align="center" colspan="2">Single-grid fixed-boundary fsq_total trace (VMEC2000 vs vmec_jax vs VMEC++) for ITERModel + LandremanPaul2021_QA_lowres. Run settings: NS_ARRAY=151, NITER_ARRAY=5000, FTOL_ARRAY=1e-14, NSTEP=500. vmec_jax was run as <code>vmec_jax &lt;inputfile&gt;</code> (no flags); NSTEP was set to 1 in a temporary copy only to record the per-iteration trace.</td>
-  </tr>
-  <tr>
-    <td colspan="2"><img src="docs/_static/figures/readme_runtime_compare.png" width="860" /></td>
-  </tr>
-  <tr>
-    <td align="center" colspan="2">
-      Single-grid bundled runtime comparison (log scale): VMEC2000 (blue) vs vmec_jax (orange, warmed) vs VMEC++ (green).<br/>
-      VMEC++ unsupported inputs in this benchmark (<code>lasym=True</code>): <code>LandremanSenguptaPlunk_section5p3_low_res</code>, <code>basic_non_stellsym_pressure</code>, <code>cth_like_free_bdy_lasym_small</code>, <code>up_down_asymmetric_tokamak</code>.<br/>
-      VMEC++ failed to converge (non-zero exit) on these <code>lasym=False</code> cases under the same single-grid settings: <code>DIII-D_lasym_false</code>, <code>LandremanPaul2021_QA_reactorScale_lowres</code>, <code>LandremanPaul2021_QH_reactorScale_lowres</code>, <code>LandremanSengupta2019_section5.4_B2_A80</code>, <code>cth_like_fixed_bdy</code>.
-    </td>
+    <td align="center"><code>ITERModel</code> iota (VMEC2000 vs vmec_jax vs VMEC++)</td>
+    <td align="center"><code>LandremanPaul2021_QA_lowres</code> iota (VMEC2000 vs vmec_jax vs VMEC++)</td>
   </tr>
 </table>
+
+<p align="center">
+  <img src="docs/_static/figures/readme_fsq_trace_single_grid.png" width="860" />
+</p>
+
+<p align="center">
+  <img src="docs/_static/figures/readme_runtime_compare.png" width="860" />
+</p>
+
+<details>
+  <summary>More visuals (single-grid)</summary>
+  <br/>
+  <table>
+    <tr>
+      <td><img src="docs/_static/figures/axisym_compare_3d.png" width="420" /></td>
+      <td><img src="docs/_static/figures/qa_compare_3d.png" width="420" /></td>
+    </tr>
+    <tr>
+      <td align="center"><code>ITERModel</code> 3D LCFS (VMEC2000 vs vmec_jax)</td>
+      <td align="center"><code>LandremanPaul2021_QA_lowres</code> 3D LCFS (VMEC2000 vs vmec_jax)</td>
+    </tr>
+    <tr>
+      <td><img src="docs/_static/figures/axisym_compare_bmag_surface.png" width="420" /></td>
+      <td><img src="docs/_static/figures/qa_compare_bmag_surface.png" width="420" /></td>
+    </tr>
+    <tr>
+      <td align="center"><code>ITERModel</code> |B| on LCFS (VMEC2000 vs vmec_jax)</td>
+      <td align="center"><code>LandremanPaul2021_QA_lowres</code> |B| on LCFS (VMEC2000 vs vmec_jax)</td>
+    </tr>
+  </table>
+</details>
 
 ## What it is
 
@@ -109,54 +112,44 @@ python examples/optimization/implicit_target_iota_volume.py --case circular_toka
 
 ## Performance vs parity
 
-- Default runs enable the scan-based fast loop (`performance_mode=True`) with a parity guard.
-- LASYM fixed-boundary stages now use a timed scan/non-scan probe on CPU and a short parity-only probe on accelerators, so the default GPU path keeps the scan fast path without paying the full non-scan timing cost.
-- Quiet accelerator scan runs now use backend-aware larger chunks, capped to the remaining iterations, to reduce host/device launch overhead without changing solver parity.
-- Use `--parity` or `performance_mode=False` to force the conservative parity path.
-- Use `--solver-mode accelerated` to force the optimized fixed-boundary path
-  explicitly, which skips parity-oriented scan probes and is judged by final
-  residual/output quality rather than iteration-trace parity.
-- Accelerated fixed-boundary solves default to a single
-  final-grid stage unless the caller explicitly requests `multigrid=True`. When
-  staged inputs provide `NITER_ARRAY`, the accelerated single-grid path now
-  carries the total staged iteration budget forward instead of silently falling
-  back to `NITER`, and the CLI can automatically retry that staged schedule if
-  the first final-grid solve misses the target.
-- The optimized CLI controller is therefore layered:
-  fast final-grid accelerated attempt first, then input-driven staged follow-up
-  for explicit `NS_ARRAY` / `NITER_ARRAY`, then strict parity finish blocks
-  only if the staged route still has not closed.
-- On the optimized non-autodiff path, non-verbose runs now keep lighter
-  iteration histories by default, and ordinary free-boundary runs avoid extra
-  `scalpot` axis-diagnostic synthesis unless dump env vars are explicitly
-  enabled.
-- The current GPU path is fastest when the solve can stay on the scan fast path. Many of the slow GPU benchmark rows are parity-path solves, especially free-boundary cases, where VMEC2000-style restart logic, Jacobian checks, and cadence control still run as a host-controlled loop around many short float64 kernels.
-- That means the GPU often sees too little work per launch to amortize host/device overhead, while the CPU benefits from lower launch latency and efficient float64 execution on these moderate-size grids. This is an implementation limit of the current parity path, not a claim that the underlying physics is inherently CPU-only.
-- The accelerated-mode comparison harness lives at `tools/diagnostics/benchmark_accelerated_mode.py`.
-- The parity-vs-optimized Python driver example lives at
-  `examples/fixed_boundary_driver_tracks.py`.
-- Details and profiling guidance live in `docs/performance.rst`.
-- Implementation notes and merge rationale for the optimized controller live in
-  `docs/accelerated_merge_readiness.rst`.
-- Parity methodology and current status live in `docs/validation.rst`.
-- The cross-case parity matrix (fixed/free boundary, axisym/non-axisym, `lasym=False/True`)
-  is maintained in `tools/diagnostics/parity_manifest.toml` and executed with
-  `tools/diagnostics/parity_sweep_manifest.py`.
+- Default runs aim for VMEC2000-compatible behavior while selecting the fastest stable path for the input.
+- Use `--parity` (or `performance_mode=False` in Python) to force the conservative VMEC2000 loop.
+- Use `--solver-mode accelerated` to force the optimized fixed-boundary controller explicitly.
 
-### Live NSTEP printing
+Details, profiling guidance, and parity methodology:
 
-By default, the VMEC2000-style iteration loop (scan or non-scan) prints every
-`NSTEP` iterations using JAX's debug callback (differentiable). This keeps the
-output VMEC-like while avoiding explicit host/device syncs in Python.
+- `docs/performance.rst`
+- `docs/validation.rst`
+- `tools/diagnostics/parity_manifest.toml` + `tools/diagnostics/parity_sweep_manifest.py`
+
+## VMEC++ notes
+
+The runtime plot includes VMEC++ (green) for context. Some inputs are not supported or do not converge under the same single-grid settings.
+
+VMEC++ unsupported inputs in this benchmark (`lasym=True`):
+
+- `LandremanSenguptaPlunk_section5p3_low_res`
+- `basic_non_stellsym_pressure`
+- `cth_like_free_bdy_lasym_small`
+- `up_down_asymmetric_tokamak`
+
+VMEC++ failed to converge (non-zero exit) on these `lasym=False` cases under the same single-grid settings:
+
+- `DIII-D_lasym_false`
+- `LandremanPaul2021_QA_reactorScale_lowres`
+- `LandremanPaul2021_QH_reactorScale_lowres`
+- `LandremanSengupta2019_section5.4_B2_A80`
+- `cth_like_fixed_bdy`
+
+## CLI output and `NSTEP`
+
+The VMEC-style iteration loop prints every `NSTEP` iterations. Larger `NSTEP` means fewer print callbacks and faster runs.
 
 To disable live printing, set:
 
 ```bash
 export VMEC_JAX_SCAN_PRINT=0
 ```
-
-If you want minimal overhead, increase `NSTEP` in your input file. Larger
-`NSTEP` means fewer host callbacks and faster runs.
 
 Quiet runs (`--quiet` or `verbose=False`) default the scan path to a minimal
 history mode (only `fsqr/fsqz/fsql` and `w_history` are kept) to reduce
