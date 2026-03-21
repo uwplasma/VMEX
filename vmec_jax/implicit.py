@@ -25,16 +25,23 @@ import numpy as np
 
 from ._compat import has_jax, jax, jnp
 from .field import TWOPI, b2_from_bsup, bsup_from_geom, bsup_from_sqrtg_lambda
+from .energy import flux_profiles_from_indata
 from .fourier import eval_fourier_dtheta, eval_fourier_dzeta_phys
 from .geom import eval_geom
 from .grids import angle_steps
 from .solve import (
+    _WoutLikeVmecForces,
     _enforce_fixed_boundary_and_axis,
+    _half_mesh_from_full_mesh,
+    _icurv_full_mesh_from_indata,
+    _mass_half_mesh_from_indata,
     _enforce_lambda_gauge,
     _mask_grad_for_constraints,
     _mode00_index,
+    _pressure_half_mesh_from_indata,
     solve_fixed_boundary_gd,
     solve_fixed_boundary_lbfgs,
+    solve_fixed_boundary_residual_iter,
     solve_lambda_gd,
 )
 from .state import VMECState, pack_state, unpack_state
@@ -381,7 +388,24 @@ def solve_fixed_boundary_state_implicit(
         return pack_state(g)
 
     def _solve(phipf, chipf, pressure, lamscale, *, edge_Rcos, edge_Rsin, edge_Zcos, edge_Zsin):
-        if solver == "gd":
+        def _is_traced(x):
+            return isinstance(x, jax.core.Tracer)
+
+        traced = (
+            _is_traced(phipf)
+            or _is_traced(chipf)
+            or _is_traced(pressure)
+            or _is_traced(lamscale)
+            or _is_traced(edge_Rcos)
+            or _is_traced(edge_Rsin)
+            or _is_traced(edge_Zcos)
+            or _is_traced(edge_Zsin)
+        )
+        solver_use = solver
+        if traced and solver_use != "gd":
+            solver_use = "gd"
+
+        if solver_use == "gd":
             res = solve_fixed_boundary_gd(
                 state0_c,
                 static,
@@ -404,6 +428,8 @@ def solve_fixed_boundary_state_implicit(
                 preconditioner=str(preconditioner),
                 precond_exponent=float(precond_exponent),
                 precond_radial_alpha=float(precond_radial_alpha),
+                differentiable=traced,
+                jit_grad=traced,
                 verbose=False,
             )
         else:
@@ -612,6 +638,300 @@ def solve_fixed_boundary_state_implicit(
         jnp.asarray(chipf),
         jnp.asarray(pressure),
         jnp.asarray(lamscale),
+        jnp.asarray(edge_Rcos_use),
+        jnp.asarray(edge_Rsin_use),
+        jnp.asarray(edge_Zcos_use),
+        jnp.asarray(edge_Zsin_use),
+    )
+
+
+def solve_fixed_boundary_state_implicit_vmec_residual(
+    state0: VMECState,
+    static,
+    *,
+    indata,
+    signgs: int,
+    max_iter: int = 50,
+    step_size: float = 1.0,
+    ftol: float | None = None,
+    implicit: ImplicitFixedBoundaryOptions | None = None,
+    edge_Rcos: Any | None = None,
+    edge_Rsin: Any | None = None,
+    edge_Zcos: Any | None = None,
+    edge_Zsin: Any | None = None,
+):
+    """Implicitly differentiate a VMEC residual fixed-point solve.
+
+    The forward solve uses ``solve_fixed_boundary_residual_iter`` with the
+    VMEC2000-style control path. The backward pass differentiates the VMEC
+    residual vector itself rather than an auxiliary energy objective.
+    """
+    if not has_jax():
+        raise ImportError("solve_fixed_boundary_state_implicit_vmec_residual requires JAX (jax + jaxlib)")
+
+    implicit = implicit or ImplicitFixedBoundaryOptions()
+    state0_c = _stop_gradient_tree(state0)
+    idx00 = _mode00_index(static.modes)
+    signgs_i = int(signgs)
+
+    edge_Rcos_use = jnp.asarray(edge_Rcos) if edge_Rcos is not None else jnp.asarray(state0_c.Rcos)[-1, :]
+    edge_Rsin_use = jnp.asarray(edge_Rsin) if edge_Rsin is not None else jnp.asarray(state0_c.Rsin)[-1, :]
+    edge_Zcos_use = jnp.asarray(edge_Zcos) if edge_Zcos is not None else jnp.asarray(state0_c.Zcos)[-1, :]
+    edge_Zsin_use = jnp.asarray(edge_Zsin) if edge_Zsin is not None else jnp.asarray(state0_c.Zsin)[-1, :]
+
+    from .boundary import boundary_from_indata
+    from .vmec_forces import vmec_forces_rz_from_wout, vmec_residual_internal_from_kernels
+    from .vmec_residue import (
+        vmec_apply_m1_constraints,
+        vmec_apply_scalxc_to_tomnsps,
+        vmec_force_norms_from_bcovar_dynamic,
+        vmec_zero_m1_zforce,
+    )
+    from .vmec_tomnsp import TomnspsRZL, vmec_trig_tables
+
+    s = jnp.asarray(static.s)
+    flux = flux_profiles_from_indata(indata, s, signgs=signgs_i)
+    phips = jnp.asarray(flux.phips)
+    if phips.shape[0] >= 1:
+        phips = phips.at[0].set(0.0)
+    chipf_wout = jnp.asarray(flux.chipf)
+
+    boundary = boundary_from_indata(indata, static.modes)
+    r00 = float(np.asarray(boundary.R_cos)[int(idx00)]) if int(idx00) >= 0 else float(np.asarray(boundary.R_cos)[0])
+    gamma = float(indata.get_float("GAMMA", 0.0))
+    lrfp = bool(indata.get_bool("LRFP", False))
+    chips = _half_mesh_from_full_mesh(chipf_wout) if lrfp else None
+    mass = _mass_half_mesh_from_indata(
+        indata=indata,
+        s_full=s,
+        phips=phips,
+        r00=r00,
+        gamma=gamma,
+        lrfp=lrfp,
+        chips=chips,
+    )
+    pres = _pressure_half_mesh_from_indata(indata=indata, s_full=s)
+    ncurr = int(indata.get_int("NCURR", 0))
+    icurv = _icurv_full_mesh_from_indata(indata=indata, s_full=s, signgs=signgs_i)
+    wout_like = _WoutLikeVmecForces(
+        nfp=int(static.cfg.nfp),
+        mpol=int(static.cfg.mpol),
+        ntor=int(static.cfg.ntor),
+        lasym=bool(static.cfg.lasym),
+        signgs=signgs_i,
+        phipf=jnp.asarray(flux.phipf),
+        phips=phips,
+        chipf=chipf_wout,
+        pres=pres,
+        mass=mass,
+        gamma=gamma,
+        ncurr=ncurr,
+        lcurrent=True,
+        icurv=icurv,
+    )
+    trig = getattr(static, "trig_vmec", None)
+    if trig is None:
+        trig = vmec_trig_tables(
+            ntheta=int(static.cfg.ntheta),
+            nzeta=int(static.cfg.nzeta),
+            nfp=int(wout_like.nfp),
+            mmax=int(wout_like.mpol) - 1,
+            nmax=int(wout_like.ntor),
+            lasym=bool(wout_like.lasym),
+            dtype=jnp.asarray(state0.Rcos).dtype,
+        )
+    apply_lforbal = bool(indata.get_bool("LFORBAL", False))
+    mask_pack = getattr(static, "tomnsps_masks", None)
+
+    def _enforce_state(st, eRcos, eRsin, eZcos, eZsin):
+        return _enforce_fixed_boundary_and_axis(
+            st,
+            static,
+            edge_Rcos=eRcos,
+            edge_Rsin=eRsin,
+            edge_Zcos=eZcos,
+            edge_Zsin=eZsin,
+            enforce_lambda_axis=True,
+            idx00=idx00,
+        )
+
+    def _project_state(st):
+        return _mask_grad_for_constraints(st, static, idx00=idx00, mask_lambda_axis=True)
+
+    def _zero_edge_rz(a):
+        a = jnp.asarray(a)
+        if a.shape[0] < 2:
+            return a
+        return a.at[-1].set(jnp.zeros_like(a[-1]))
+
+    def _residual_vec(state, zero_m1_zforce, eRcos, eRsin, eZcos, eZsin):
+        state = _enforce_state(state, eRcos, eRsin, eZcos, eZsin)
+        k = vmec_forces_rz_from_wout(
+            state=state,
+            static=static,
+            wout=wout_like,
+            indata=None,
+            constraint_tcon0=float(indata.get_float("TCON0", 1.0)),
+            use_vmec_synthesis=True,
+            trig=trig,
+        )
+        frzl = vmec_residual_internal_from_kernels(
+            k,
+            cfg_ntheta=int(static.cfg.ntheta),
+            cfg_nzeta=int(static.cfg.nzeta),
+            wout=wout_like,
+            trig=trig,
+            apply_lforbal=apply_lforbal,
+            include_edge=False,
+            masks=mask_pack,
+        )
+        frzl = vmec_apply_m1_constraints(frzl=frzl, lconm1=bool(getattr(static.cfg, "lconm1", True)))
+        frzl = vmec_zero_m1_zforce(frzl=frzl, enabled=zero_m1_zforce)
+        frzl = vmec_apply_scalxc_to_tomnsps(frzl=frzl, s=s)
+        frzl = TomnspsRZL(
+            frcc=_zero_edge_rz(frzl.frcc),
+            frss=_zero_edge_rz(frzl.frss) if frzl.frss is not None else None,
+            fzsc=_zero_edge_rz(frzl.fzsc),
+            fzcs=_zero_edge_rz(frzl.fzcs) if frzl.fzcs is not None else None,
+            flsc=frzl.flsc,
+            flcs=frzl.flcs,
+            frsc=_zero_edge_rz(getattr(frzl, "frsc", None)) if getattr(frzl, "frsc", None) is not None else None,
+            frcs=_zero_edge_rz(getattr(frzl, "frcs", None)) if getattr(frzl, "frcs", None) is not None else None,
+            fzcc=_zero_edge_rz(getattr(frzl, "fzcc", None)) if getattr(frzl, "fzcc", None) is not None else None,
+            fzss=_zero_edge_rz(getattr(frzl, "fzss", None)) if getattr(frzl, "fzss", None) is not None else None,
+            flcc=getattr(frzl, "flcc", None),
+            flss=getattr(frzl, "flss", None),
+        )
+        norms = vmec_force_norms_from_bcovar_dynamic(bc=k.bc, trig=trig, s=s, signgs=signgs_i)
+        scale_rz = jnp.sqrt(norms.r1 * norms.fnorm)
+        scale_l = jnp.sqrt(norms.fnormL)
+        parts = [scale_rz * frzl.frcc, scale_rz * frzl.fzsc, scale_l * frzl.flsc]
+        if frzl.frss is not None:
+            parts.append(scale_rz * frzl.frss)
+        if frzl.fzcs is not None:
+            parts.append(scale_rz * frzl.fzcs)
+        if frzl.flcs is not None:
+            parts.append(scale_l * frzl.flcs)
+        for name in ["frsc", "fzcc", "flcc", "frcs", "fzss", "flss"]:
+            arr = getattr(frzl, name, None)
+            if arr is not None:
+                parts.append((scale_l if name.startswith("fl") else scale_rz) * arr)
+        return jnp.concatenate([jnp.ravel(jnp.asarray(p)) for p in parts], axis=0)
+
+    def _solve_host(eRcos, eRsin, eZcos, eZsin):
+        eRcos_np = np.asarray(eRcos)
+        eRsin_np = np.asarray(eRsin)
+        eZcos_np = np.asarray(eZcos)
+        eZsin_np = np.asarray(eZsin)
+        state_init = VMECState(
+            layout=state0_c.layout,
+            Rcos=np.asarray(state0_c.Rcos),
+            Rsin=np.asarray(state0_c.Rsin),
+            Zcos=np.asarray(state0_c.Zcos),
+            Zsin=np.asarray(state0_c.Zsin),
+            Lcos=np.asarray(state0_c.Lcos),
+            Lsin=np.asarray(state0_c.Lsin),
+        )
+        state_init = _enforce_state(state_init, eRcos_np, eRsin_np, eZcos_np, eZsin_np)
+        res = solve_fixed_boundary_residual_iter(
+            state_init,
+            static,
+            indata=indata,
+            signgs=signgs_i,
+            ftol=ftol,
+            max_iter=int(max_iter),
+            step_size=float(step_size),
+            vmec2000_control=True,
+            reference_mode=True,
+            backtracking=True,
+            limit_dt_from_force=True,
+            limit_update_rms=True,
+            verbose=False,
+            verbose_vmec2000_table=False,
+            jit_forces="auto",
+            use_scan=False,
+        )
+        fsqz_hist = np.asarray(getattr(res, "fsqz2_history", []), dtype=float)
+        zero_m1 = 1.0 if (int(getattr(res, "n_iter", 0)) < 2 or (fsqz_hist.size > 0 and float(fsqz_hist[-1]) < 1.0e-6)) else 0.0
+        return np.asarray(pack_state(res.state)), np.asarray(zero_m1, dtype=np.asarray(state0_c.Rcos).dtype)
+
+    def _is_traced(*xs):
+        return any(isinstance(x, jax.core.Tracer) for x in xs)
+
+    def _solve(eRcos, eRsin, eZcos, eZsin):
+        traced = _is_traced(eRcos, eRsin, eZcos, eZsin)
+        if traced:
+            out_shape = (
+                jax.ShapeDtypeStruct((int(state0_c.layout.size),), jnp.asarray(state0_c.Rcos).dtype),
+                jax.ShapeDtypeStruct((), jnp.asarray(state0_c.Rcos).dtype),
+            )
+            x_flat, zero_m1 = jax.pure_callback(_solve_host, out_shape, eRcos, eRsin, eZcos, eZsin)
+            return unpack_state(x_flat, state0_c.layout), zero_m1
+        x_flat, zero_m1 = _solve_host(eRcos, eRsin, eZcos, eZsin)
+        return unpack_state(jnp.asarray(x_flat), state0_c.layout), jnp.asarray(zero_m1)
+
+    if not _is_traced(edge_Rcos_use, edge_Rsin_use, edge_Zcos_use, edge_Zsin_use):
+        x_flat, _zero_m1 = _solve_host(edge_Rcos_use, edge_Rsin_use, edge_Zcos_use, edge_Zsin_use)
+        return unpack_state(jnp.asarray(x_flat), state0_c.layout)
+
+    @jax.custom_vjp
+    def _solve_cust(eRcos, eRsin, eZcos, eZsin):
+        return _solve(eRcos, eRsin, eZcos, eZsin)[0]
+
+    def fwd(eRcos, eRsin, eZcos, eZsin):
+        st, zero_m1 = _solve(eRcos, eRsin, eZcos, eZsin)
+        return st, (
+            _stop_gradient_tree(st),
+            jnp.asarray(zero_m1),
+            jnp.asarray(eRcos),
+            jnp.asarray(eRsin),
+            jnp.asarray(eZcos),
+            jnp.asarray(eZsin),
+        )
+
+    def bwd(residual, ct_state):
+        st_star, zero_m1_star, eRcos_star, eRsin_star, eZcos_star, eZsin_star = residual
+        ct_state_full = ct_state
+        ct_state = _project_state(ct_state)
+        b = pack_state(ct_state)
+
+        def Hvp(u_flat):
+            u_state = _project_state(unpack_state(u_flat, st_star.layout))
+            jv = jax.jvp(
+                lambda st: _residual_vec(st, zero_m1_star, eRcos_star, eRsin_star, eZcos_star, eZsin_star),
+                (st_star,),
+                (u_state,),
+            )[1]
+            _, vjp_fun = jax.vjp(
+                lambda st: _residual_vec(st, zero_m1_star, eRcos_star, eRsin_star, eZcos_star, eZsin_star),
+                st_star,
+            )
+            jt_jv = vjp_fun(jv)[0]
+            jt_jv = _project_state(jt_jv)
+            return pack_state(jt_jv) + jnp.asarray(float(implicit.damping), dtype=jnp.asarray(jv).dtype) * u_flat
+
+        u = _cg_solve(Hvp, b, tol=float(implicit.cg_tol), max_iter=int(implicit.cg_max_iter))
+        u_state = _project_state(unpack_state(u, st_star.layout))
+        lam = jax.jvp(
+            lambda st: _residual_vec(st, zero_m1_star, eRcos_star, eRsin_star, eZcos_star, eZsin_star),
+            (st_star,),
+            (u_state,),
+        )[1]
+
+        def F_params(eRcos, eRsin, eZcos, eZsin):
+            return _residual_vec(st_star, zero_m1_star, eRcos, eRsin, eZcos, eZsin)
+
+        _, vjp_fun = jax.vjp(F_params, eRcos_star, eRsin_star, eZcos_star, eZsin_star)
+        dRcos, dRsin, dZcos, dZsin = vjp_fun(lam)
+
+        dRcos = dRcos + jnp.asarray(ct_state_full.Rcos)[-1, :]
+        dRsin = dRsin + jnp.asarray(ct_state_full.Rsin)[-1, :]
+        dZcos = dZcos + jnp.asarray(ct_state_full.Zcos)[-1, :]
+        dZsin = dZsin + jnp.asarray(ct_state_full.Zsin)[-1, :]
+        return (-dRcos, -dRsin, -dZcos, -dZsin)
+
+    _solve_cust.defvjp(fwd, bwd)
+    return _solve_cust(
         jnp.asarray(edge_Rcos_use),
         jnp.asarray(edge_Rsin_use),
         jnp.asarray(edge_Zcos_use),

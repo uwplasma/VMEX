@@ -165,11 +165,12 @@ def _vmec_lflip_from_boundary(static: VMECStatic, boundary: BoundaryCoeffs) -> b
 
 def _vmec_lflip_from_boundary_jax(static: VMECStatic, boundary: BoundaryCoeffs):
     m_np = np.asarray(static.modes.m, dtype=int)
-    if not np.any(m_np == 1):
+    idx = np.nonzero(m_np == 1)[0]
+    if idx.size == 0:
         return jnp.asarray(False)
-    mask = jnp.asarray(m_np == 1)
-    rtest = jnp.sum(jnp.asarray(boundary.R_cos)[mask])
-    ztest = jnp.sum(jnp.asarray(boundary.Z_sin)[mask])
+    idx = jnp.asarray(idx, dtype=jnp.int32)
+    rtest = jnp.sum(jnp.take(jnp.asarray(boundary.R_cos), idx))
+    ztest = jnp.sum(jnp.take(jnp.asarray(boundary.Z_sin), idx))
     is_ambig = jnp.logical_or(rtest == 0.0, ztest == 0.0)
     return jnp.where(is_ambig, False, rtest * ztest < 0.0)
 
