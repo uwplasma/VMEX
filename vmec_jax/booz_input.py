@@ -19,6 +19,46 @@ from .vmec_realspace import vmec_realspace_analysis
 from .vmec_tomnsp import vmec_trig_tables
 
 
+def _equilibrium_flux_profiles(
+    *,
+    state,
+    static,
+    indata,
+    signgs: int,
+    flux: FluxProfiles | None,
+    profiles_half: dict | None,
+):
+    """Build Boozer inputs from equilibrium-consistent profiles when needed."""
+    if flux is not None and profiles_half is not None:
+        return flux, profiles_half
+
+    s_full = np.asarray(static.s)
+    if int(s_full.shape[0]) < 2:
+        s_half = s_full
+    else:
+        s_half = np.concatenate([s_full[:1], 0.5 * (s_full[1:] + s_full[:-1])], axis=0)
+
+    flux_local = flux if flux is not None else flux_profiles_from_indata(indata, s_full, signgs=signgs)
+    prof_local = profiles_half if profiles_half is not None else eval_profiles(indata, s_half)
+    pressure_local = prof_local.get("pressure", np.zeros_like(s_half))
+
+    if int(indata.get_int("NCURR", 0)) != 1:
+        return flux_local, prof_local
+
+    from .driver import _final_flux_profiles_from_state
+
+    flux_out, prof_out = _final_flux_profiles_from_state(
+        indata=indata,
+        static_in=static,
+        state=state,
+        signgs=int(signgs),
+        flux_local=flux_local,
+        prof_local=prof_local,
+        pressure_local=pressure_local,
+    )
+    return flux_out, prof_out
+
+
 @dataclass(frozen=True)
 class BoozXformInputs:
     rmnc: Any
@@ -36,6 +76,66 @@ class BoozXformInputs:
     bmns: Any | None = None
     bsubumns: Any | None = None
     bsubvmns: Any | None = None
+
+    def tree_flatten(self):
+        children = (
+            self.rmnc,
+            self.zmns,
+            self.lmns,
+            self.bmnc,
+            self.bsubumnc,
+            self.bsubvmnc,
+            self.iota,
+            self.xm,
+            self.xn,
+            self.xm_nyq,
+            self.xn_nyq,
+            self.bmns,
+            self.bsubumns,
+            self.bsubvmns,
+        )
+        aux = int(self.nfp)
+        return children, aux
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        (
+            rmnc,
+            zmns,
+            lmns,
+            bmnc,
+            bsubumnc,
+            bsubvmnc,
+            iota,
+            xm,
+            xn,
+            xm_nyq,
+            xn_nyq,
+            bmns,
+            bsubumns,
+            bsubvmns,
+        ) = children
+        return cls(
+            rmnc=rmnc,
+            zmns=zmns,
+            lmns=lmns,
+            bmnc=bmnc,
+            bsubumnc=bsubumnc,
+            bsubvmnc=bsubvmnc,
+            iota=iota,
+            xm=xm,
+            xn=xn,
+            xm_nyq=xm_nyq,
+            xn_nyq=xn_nyq,
+            nfp=int(aux),
+            bmns=bmns,
+            bsubumns=bsubumns,
+            bsubvmns=bsubvmns,
+        )
+
+
+if jax is not None:
+    jax.tree_util.register_pytree_node_class(BoozXformInputs)
 
 
 def _mode_scale(m: Any, n: Any) -> Any:
@@ -224,8 +324,14 @@ def booz_xform_inputs_from_state(
     lmns_full = jnp.asarray(state.Lsin) * mode_scale
 
     s_full = jnp.asarray(static.s)
-    if flux is None:
-        flux = flux_profiles_from_indata(indata, s_full, signgs=signgs)
+    flux, prof = _equilibrium_flux_profiles(
+        state=state,
+        static=static,
+        indata=indata,
+        signgs=signgs,
+        flux=flux,
+        profiles_half=profiles_half,
+    )
     lamscale = getattr(flux, "lamscale", None)
     if lamscale is None:
         lamscale = lamscale_from_phips(flux.phips, s_full)
@@ -255,7 +361,6 @@ def booz_xform_inputs_from_state(
 
     # iota on half mesh (with axis entry set to 0)
     s_half = jnp.concatenate([s_full[:1], 0.5 * (s_full[1:] + s_full[:-1])], axis=0)
-    prof = profiles_half if profiles_half is not None else eval_profiles(indata, s_half)
     iotas = jnp.asarray(prof.get("iota", jnp.zeros_like(s_half)))
     iotas = iotas.at[0].set(0.0)
     iota_half = iotas[1:]
