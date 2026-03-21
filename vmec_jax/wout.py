@@ -4008,6 +4008,10 @@ class WoutData:
     nfp: int
     lasym: bool
     signgs: int
+    mnmax: int
+    mpol_nyq: int
+    ntor_nyq: int
+    mnmax_nyq: int
 
     # main mode table
     xm: np.ndarray
@@ -4166,6 +4170,22 @@ def read_wout(path: str | Path) -> WoutData:
         xn = np.asarray(np.ma.filled(xn_raw, 0.0), dtype=int)
         xm_nyq = np.asarray(np.ma.filled(xm_nyq_raw, 0.0), dtype=int)
         xn_nyq = np.asarray(np.ma.filled(xn_nyq_raw, 0.0), dtype=int)
+        mnmax = int(_nc_scalar(ds.variables.get("mnmax", xm.size)[:], xm.size, as_int=True)) if "mnmax" in ds.variables else int(xm.size)
+        mnmax_nyq = (
+            int(_nc_scalar(ds.variables.get("mnmax_nyq", xm_nyq.size)[:], xm_nyq.size, as_int=True))
+            if "mnmax_nyq" in ds.variables
+            else int(xm_nyq.size)
+        )
+        mpol_nyq = (
+            int(_nc_scalar(ds.variables.get("mpol_nyq", np.max(xm_nyq) if xm_nyq.size else 0)[:], np.max(xm_nyq) if xm_nyq.size else 0, as_int=True))
+            if "mpol_nyq" in ds.variables
+            else int(np.max(xm_nyq)) if xm_nyq.size else 0
+        )
+        ntor_nyq = (
+            int(_nc_scalar(ds.variables.get("ntor_nyq", np.max(np.abs(xn_nyq // nfp)) if xn_nyq.size else 0)[:], np.max(np.abs(xn_nyq // nfp)) if xn_nyq.size else 0, as_int=True))
+            if "ntor_nyq" in ds.variables
+            else int(np.max(np.abs(xn_nyq // nfp))) if xn_nyq.size else 0
+        )
 
         rmnc = np.asarray(ds.variables["rmnc"][:])
         rmns = np.asarray(ds.variables.get("rmns", np.zeros_like(rmnc))[:])
@@ -4288,6 +4308,10 @@ def read_wout(path: str | Path) -> WoutData:
         nfp=nfp,
         lasym=lasym,
         signgs=signgs,
+        mnmax=mnmax,
+        mpol_nyq=mpol_nyq,
+        ntor_nyq=ntor_nyq,
+        mnmax_nyq=mnmax_nyq,
         xm=xm,
         xn=xn,
         xm_nyq=xm_nyq,
@@ -4441,6 +4465,14 @@ def write_wout(path: str | Path, wout: WoutData, *, overwrite: bool = False) -> 
         _var_i("nfp", (), np.asarray(int(wout.nfp)))
         _var_i("signgs", (), np.asarray(int(wout.signgs)))
         _var_i("lasym__logical__", (), np.asarray(int(bool(wout.lasym))))
+        _var_i("mnmax", (), np.asarray(int(getattr(wout, "mnmax", mnmax))))
+        _var_i("mpol_nyq", (), np.asarray(int(getattr(wout, "mpol_nyq", np.max(np.asarray(wout.xm_nyq)) if mnmax_nyq > 0 else 0))))
+        _var_i(
+            "ntor_nyq",
+            (),
+            np.asarray(int(getattr(wout, "ntor_nyq", np.max(np.abs(np.asarray(wout.xn_nyq) // int(wout.nfp))) if mnmax_nyq > 0 else 0))),
+        )
+        _var_i("mnmax_nyq", (), np.asarray(int(getattr(wout, "mnmax_nyq", mnmax_nyq))))
 
         _var_f("wb", (), np.asarray(float(wout.wb)))
         _var_f("volume_p", (), np.asarray(float(wout.volume_p)))
@@ -4738,6 +4770,15 @@ def wout_minimal_from_fixed_boundary(
             mass=np.asarray(mass, dtype=float),
             gamma=float(gamma),
         )
+        trig_ncurr = vmec_trig_tables(
+            ntheta=int(cfg.ntheta),
+            nzeta=int(cfg.nzeta),
+            nfp=int(static.cfg.nfp),
+            mmax=int(np.max(np.asarray(static.modes.m))),
+            nmax=int(np.max(np.abs(np.asarray(static.modes.n)))),
+            lasym=bool(static.cfg.lasym),
+            dtype=np.asarray(state.Rcos).dtype,
+        )
 
         bc_pre = vmec_bcovar_half_mesh_from_wout(
             state=state,
@@ -4745,14 +4786,14 @@ def wout_minimal_from_fixed_boundary(
             wout=wout_like_pre,
             pres=pres,
             use_vmec_synthesis=True,
-            trig=trig,
+            trig=trig_ncurr,
         )
 
         sqrtg = np.asarray(bc_pre.jac.sqrtg)
         overg = np.zeros_like(sqrtg)
         np.divide(1.0, sqrtg, out=overg, where=(sqrtg != 0.0))
         pwint = np.asarray(
-            vmec_pwint_from_trig(trig, ns=int(overg.shape[0]), nzeta=int(overg.shape[2])),
+            vmec_pwint_from_trig(trig_ncurr, ns=int(overg.shape[0]), nzeta=int(overg.shape[2])),
             dtype=overg.dtype,
         )
         guu = np.asarray(bc_pre.guu)
@@ -4906,7 +4947,7 @@ def wout_minimal_from_fixed_boundary(
             use_wout_bsub_for_lambda=False,
             use_wout_bmag_for_bsq=False,
             use_vmec_synthesis=True,
-            trig=trig,
+            trig=None,
         )
         if has_jax():
             try:
@@ -4923,7 +4964,7 @@ def wout_minimal_from_fixed_boundary(
             indata=indata_wout,
             use_wout_bsup=False,
             use_vmec_synthesis=wout_force_vmec_synth,
-            trig=trig,
+            trig=None,
         )
         if has_jax():
             try:
@@ -5807,6 +5848,10 @@ def wout_minimal_from_fixed_boundary(
         nfp=nfp,
         lasym=lasym,
         signgs=int(signgs),
+        mnmax=int(main_modes.K),
+        mpol_nyq=int(np.max(nyq_modes.m)) if int(nyq_modes.K) > 0 else 0,
+        ntor_nyq=int(np.max(np.abs(nyq_modes.n))) if int(nyq_modes.K) > 0 else 0,
+        mnmax_nyq=int(nyq_modes.K),
         xm=np.asarray(main_modes.m, dtype=int),
         xn=np.asarray(main_modes.n * nfp, dtype=int),
         xm_nyq=np.asarray(nyq_modes.m, dtype=int),
