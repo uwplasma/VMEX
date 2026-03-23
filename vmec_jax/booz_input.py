@@ -225,10 +225,11 @@ def _filter_bsubuv_jxbforce_parity_jax(
         c1e, c2e = _forward(f_even)
         c1o, c2o = _forward(f_odd)
         scale = pshalf[:, None, None]
-        c1o = c1o.at[:, odd_m, :].set(c1o[:, odd_m, :] / scale)
-        c2o = c2o.at[:, odd_m, :].set(c2o[:, odd_m, :] / scale)
-        c1 = c1e.at[:, odd_m, :].set(c1o[:, odd_m, :])
-        c2 = c2e.at[:, odd_m, :].set(c2o[:, odd_m, :])
+        odd_mask = odd_m[None, :, None]
+        c1o = jnp.where(odd_mask, c1o / scale, c1o)
+        c2o = jnp.where(odd_mask, c2o / scale, c2o)
+        c1 = jnp.where(odd_mask, c1o, c1e)
+        c2 = jnp.where(odd_mask, c2o, c2e)
         return _inverse(c1, c2)
 
     return _filter_field(bsubu_even_red, bsubu_odd_red), _filter_field(bsubv_even_red, bsubv_odd_red)
