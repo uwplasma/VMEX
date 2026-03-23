@@ -13,7 +13,7 @@ from typing import Any, Dict
 
 import numpy as np
 
-from ._compat import has_jax, jax
+from ._compat import has_jax, jax, jnp
 from .modes import vmec_mode_table
 from .modes import nyquist_mode_table, nyquist_mode_table_from_grid
 from .namelist import InData
@@ -3949,6 +3949,21 @@ def _vmec_jxbforce_sin_coeffs(
 
 def _chipf_from_chips(chips: np.ndarray) -> np.ndarray:
     """VMEC add_fluxes: build half-mesh chipf from chips on full mesh."""
+    is_traced = bool(has_jax()) and (
+        isinstance(chips, jax.core.Tracer) or isinstance(chips, jax.Array)
+    )
+    if is_traced:
+        chips = jnp.asarray(chips, dtype=jnp.float64)
+        ns = int(chips.shape[0])
+        if ns <= 1:
+            return chips
+        chipf = jnp.zeros((ns,), dtype=chips.dtype)
+        chipf = chipf.at[0].set((1.5 * chips[1] - 0.5 * chips[2]) if ns >= 3 else chips[1])
+        if ns > 2:
+            chipf = chipf.at[1:-1].set(0.5 * (chips[1:-1] + chips[2:]))
+        chipf = chipf.at[-1].set(1.5 * chips[-1] - 0.5 * chips[-2])
+        return chipf
+
     chips = np.asarray(chips, dtype=float)
     ns = int(chips.shape[0])
     if ns <= 1:
