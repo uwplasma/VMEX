@@ -12,12 +12,13 @@ where the integral is over the *full torus*.
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass
 from typing import Any, Dict, Tuple
 
 import numpy as np
 
-from ._compat import jnp
+from ._compat import jax, jnp
 from .field import TWOPI, b2_from_bsup, bsup_from_geom, full_mesh_from_half_mesh_avg, lamscale_from_phips
 from .geom import eval_geom
 from .grids import angle_steps
@@ -69,6 +70,47 @@ def _poly_no_const_deriv(coeffs_1based, x):
     for k in range(int(c.shape[0]) - 1, -1, -1):
         y = y * x + c[k]
     return y
+
+
+@functools.lru_cache(maxsize=64)
+def _make_torflux_jit(aphi_tuple: tuple, lrfp: bool, indata_id: int):
+    """Cache JIT'd torflux/torflux_deriv functions per unique (aphi, lrfp) key.
+
+    ``indata_id`` is the Python id() of the InData object so that different
+    indata instances (which may have different iota profiles) produce separate
+    cache entries when lrfp=True.  For lrfp=False the iota profile is not
+    used, so the id is ignored (any int works).
+    """
+    aphi_arr = jnp.asarray(aphi_tuple)
+
+    # We cannot close over `indata` directly (not hashable), so the RFP branch
+    # retrieves it via a lookup dictionary populated at call time.
+    # For lrfp=False we only need aphi.
+    if not lrfp:
+        def _torflux_deriv_inner(x):
+            return _poly_no_const_deriv(aphi_arr, x)
+
+        def _torflux_inner(x):
+            x = jnp.asarray(x)
+            if x.ndim == 0:
+                x = x[None]
+            h = jnp.asarray(1e-2, dtype=x.dtype) * x
+            grid = jnp.arange(101, dtype=x.dtype)[None, :]
+            xi = h[:, None] * grid
+            vals = _torflux_deriv_inner(xi)
+            trap = jnp.sum(vals, axis=1) - 0.5 * (vals[:, 0] + vals[:, -1])
+            return h * trap
+
+        return jax.jit(_torflux_deriv_inner), jax.jit(_torflux_inner)
+
+    # lrfp=True: cannot easily cache because eval_profiles depends on indata.
+    # Return None to signal the caller should use the non-cached path.
+    return None, None
+
+
+# Registry: indata_id -> indata, for lrfp torflux_deriv calls.
+# This avoids keeping a strong reference inside the lru_cache.
+_indata_registry: dict = {}
 
 
 def _iotaf_from_iotas(iotas, *, lrfp: bool) -> Any:
@@ -139,35 +181,43 @@ def flux_profiles_from_indata(indata: InData, s, *, signgs: int) -> FluxProfiles
 
     lrfp = bool(indata.get_bool("LRFP", False))
 
-    def _torflux_deriv(x):
-        if lrfp:
-            # For RFP, torflux_deriv = polflux_deriv / piota, and polflux_deriv = 1.
+    # Use cached JIT'd functions when possible (non-RFP path).
+    aphi_tuple = tuple(float(x) for x in aphi)
+    indata_id = id(indata)
+    cached_deriv, cached_torflux = _make_torflux_jit(aphi_tuple, lrfp, indata_id)
+
+    if cached_deriv is not None:
+        # Non-RFP: use cached JIT'd functions (no new compilation per multigrid level).
+        _torflux_deriv = cached_deriv
+        _torflux = cached_torflux
+
+        def _polflux_deriv(x):
+            tf = _torflux(x)
+            tf = jnp.minimum(tf, jnp.asarray(1.0, dtype=tf.dtype))
+            prof = eval_profiles(indata, tf)
+            iota_tf = prof.get("iota", jnp.zeros_like(tf))
+            return iota_tf * _torflux_deriv(x)
+    else:
+        # RFP path: cannot cache (eval_profiles depends on non-hashable indata).
+        def _torflux_deriv(x):
             prof = eval_profiles(indata, x)
             iota_x = prof.get("iota", jnp.zeros_like(x))
             iota_x = jnp.where(iota_x != 0, iota_x, jnp.asarray(float("inf"), dtype=iota_x.dtype))
             return 1.0 / iota_x
-        return _poly_no_const_deriv(aphi_arr, x)
 
-    def _torflux(x):
-        # VMEC integrates torflux_deriv with a fixed 101-point trapezoid.
-        x = jnp.asarray(x)
-        if x.ndim == 0:
-            x = x[None]
-        h = jnp.asarray(1e-2, dtype=x.dtype) * x
-        grid = jnp.arange(101, dtype=x.dtype)[None, :]
-        xi = h[:, None] * grid
-        vals = _torflux_deriv(xi)
-        trap = jnp.sum(vals, axis=1) - 0.5 * (vals[:, 0] + vals[:, -1])
-        return h * trap
+        def _torflux(x):
+            x = jnp.asarray(x)
+            if x.ndim == 0:
+                x = x[None]
+            h = jnp.asarray(1e-2, dtype=x.dtype) * x
+            grid = jnp.arange(101, dtype=x.dtype)[None, :]
+            xi = h[:, None] * grid
+            vals = _torflux_deriv(xi)
+            trap = jnp.sum(vals, axis=1) - 0.5 * (vals[:, 0] + vals[:, -1])
+            return h * trap
 
-    def _polflux_deriv(x):
-        if lrfp:
+        def _polflux_deriv(x):
             return jnp.ones_like(x)
-        tf = _torflux(x)
-        tf = jnp.minimum(tf, jnp.asarray(1.0, dtype=tf.dtype))
-        prof = eval_profiles(indata, tf)
-        iota_tf = prof.get("iota", jnp.zeros_like(tf))
-        return iota_tf * _torflux_deriv(x)
 
     # VMEC: torflux_edge = signgs*phiedge/(2π) normalized by torflux(1).
     torflux_edge = jnp.asarray(signgs, dtype=s.dtype) * jnp.asarray(phiedge, dtype=s.dtype) / jnp.asarray(TWOPI, dtype=s.dtype)
