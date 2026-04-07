@@ -232,3 +232,5 @@ examples_single_grid/data/*.nc
 /threed1.*
 /wout_*.nc
 /input.*_[0-9][0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9]
+
+.claude
