@@ -779,6 +779,40 @@ def _vmec_scale_m1_factors_from_mats(mats: dict[str, Any]) -> tuple[Any, Any]:
     return fac_r, fac_z
 
 
+def _vmec_scale_m1_factors_from_mats_np(mats: dict) -> tuple[np.ndarray, np.ndarray]:
+    """NumPy version of _vmec_scale_m1_factors_from_mats (no JAX dispatch)."""
+    ard = mats.get("ard_parity")
+    brd = mats.get("brd_parity")
+    azd = mats.get("azd_parity")
+    bzd = mats.get("bzd_parity")
+    if ard is not None and brd is not None and azd is not None and bzd is not None:
+        ard_arr = np.asarray(ard)
+        brd_arr = np.asarray(brd)
+        azd_arr = np.asarray(azd)
+        bzd_arr = np.asarray(bzd)
+        if (
+            ard_arr.ndim == 2
+            and brd_arr.shape == ard_arr.shape
+            and azd_arr.shape == ard_arr.shape
+            and bzd_arr.shape == ard_arr.shape
+            and ard_arr.shape[1] > 1
+        ):
+            sr = ard_arr[:, 1] + brd_arr[:, 1]
+            sz = azd_arr[:, 1] + bzd_arr[:, 1]
+            denom = sr + sz
+            fac_r = np.where(denom != 0.0, sr / np.where(denom != 0.0, denom, 1.0), 1.0)
+            fac_z = np.where(denom != 0.0, sz / np.where(denom != 0.0, denom, 1.0), 1.0)
+            return fac_r, fac_z
+    dr = np.asarray(mats["dr"])
+    dz = np.asarray(mats["dz"])
+    sr = -dr[:, 1, 0]
+    sz = -dz[:, 1, 0]
+    denom = sr + sz
+    fac_r = np.where(denom != 0.0, sr / np.where(denom != 0.0, denom, 1.0), 1.0)
+    fac_z = np.where(denom != 0.0, sz / np.where(denom != 0.0, denom, 1.0), 1.0)
+    return fac_r, fac_z
+
+
 def _can_reassemble_precond_mats(mats: Any) -> bool:
     if not isinstance(mats, dict):
         return False
@@ -1532,6 +1566,37 @@ def _scale_mode_slice(arr, *, mode_idx: int, scale):
     return _replace_mode_slice(arr, mode_idx=mode_idx, replacement=scaled)
 
 
+def _zero_coeff_column_np(arr, *, idx: int) -> np.ndarray:
+    """NumPy in-place version of _zero_coeff_column (no jnp.concatenate)."""
+    arr = np.array(np.asarray(arr))
+    ncols = int(arr.shape[1])
+    if 0 <= idx < ncols:
+        arr[:, idx] = 0.0
+    return arr
+
+
+def _replace_mode_slice_np(arr, *, mode_idx: int, replacement):
+    """NumPy in-place version of _replace_mode_slice."""
+    if arr is None:
+        return None
+    arr = np.array(np.asarray(arr))
+    nmodes = int(arr.shape[1])
+    if 0 <= mode_idx < nmodes:
+        arr[:, mode_idx, :] = np.asarray(replacement)
+    return arr
+
+
+def _scale_mode_slice_np(arr, *, mode_idx: int, scale):
+    """NumPy in-place version of _scale_mode_slice."""
+    if arr is None:
+        return None
+    arr = np.array(np.asarray(arr))
+    nmodes = int(arr.shape[1])
+    if 0 <= mode_idx < nmodes:
+        arr[:, mode_idx, :] *= np.asarray(scale)[:, None]
+    return arr
+
+
 def _enforce_field_rows(arr, *, axis_mask=None, edge_row=None, zero_axis: bool = False):
     """Apply axis/edge row constraints with at most one concatenation."""
     arr = jnp.asarray(arr)
@@ -1684,14 +1749,15 @@ def _enforce_fixed_boundary_and_axis_np(
         Lcos[:, int(idx00)] = 0.0
         Lsin[:, int(idx00)] = 0.0
 
+    # Return NumPy VMECState — JAX JIT converts at call site, avoiding 6 eager dispatches.
     return VMECState(
         layout=state.layout,
-        Rcos=jnp.asarray(Rcos),
-        Rsin=jnp.asarray(Rsin),
-        Zcos=jnp.asarray(Zcos),
-        Zsin=jnp.asarray(Zsin),
-        Lcos=jnp.asarray(Lcos),
-        Lsin=jnp.asarray(Lsin),
+        Rcos=Rcos,
+        Rsin=Rsin,
+        Zcos=Zcos,
+        Zsin=Zsin,
+        Lcos=Lcos,
+        Lsin=Lsin,
     )
 
 
@@ -4325,6 +4391,24 @@ def solve_fixed_boundary_residual_iter(
         """
         if not enforce_vmec_lambda_axis:
             return st
+        if host_update_assembly:
+            # NumPy in-place: avoid 4 JAX concatenate dispatches per iter.
+            Lcos = np.array(np.asarray(st.Lcos))
+            Lsin = np.array(np.asarray(st.Lsin))
+            if idx00 is not None:
+                ncols = Lcos.shape[1]
+                if 0 <= int(idx00) < ncols:
+                    Lcos[:, int(idx00)] = 0.0
+                    Lsin[:, int(idx00)] = 0.0
+            return VMECState(
+                layout=st.layout,
+                Rcos=st.Rcos,
+                Rsin=st.Rsin,
+                Zcos=st.Zcos,
+                Zsin=st.Zsin,
+                Lcos=Lcos,
+                Lsin=Lsin,
+            )
         Lcos = jnp.asarray(st.Lcos)
         Lsin = jnp.asarray(st.Lsin)
         Lcos, Lsin = _enforce_lambda_gauge(Lcos, Lsin, idx00=idx00)
@@ -4760,64 +4844,102 @@ def solve_fixed_boundary_residual_iter(
         p = jnp.concatenate([sh[:1], sh], axis=0)
         return jnp.sqrt(jnp.maximum(p, jnp.asarray(0.0, dtype=dtype)))
 
+    # Precompute pshalf and ohs for the JIT-accelerated ptau check.
+    # These are fixed for the lifetime of this NS-stage closure.
+    _ptau_s_np = np.asarray(s)
+    _ptau_hs = float(_ptau_s_np[1] - _ptau_s_np[0]) if int(_ptau_s_np.shape[0]) > 1 else 1.0
+    _ptau_ohs_scalar = 0.0 if _ptau_hs == 0.0 else 1.0 / _ptau_hs
+    _ptau_pshalf_np = _pshalf_from_s(s)
+    if has_jax():
+        _ptau_pshalf_jax = jnp.asarray(_ptau_pshalf_np, dtype=jnp.float64)
+        _ptau_ohs_jax = jnp.asarray(_ptau_ohs_scalar, dtype=jnp.float64)
+
+        @jax.jit
+        def _ptau_compute_jit(pru_even, pru_odd, pzu_even, pzu_odd,
+                              pr1_even, pr1_odd, pz1_even, pz1_odd):
+            """JIT-compiled ptau computation — avoids 8 large array materializations/iter."""
+            pshalf = _ptau_pshalf_jax.astype(pru_even.dtype)
+            ohs = _ptau_ohs_jax.astype(pru_even.dtype)
+            dphids = jnp.asarray(0.25, dtype=pru_even.dtype)
+            psh = pshalf[1:][:, None, None]
+            psh_safe = jnp.where(psh != 0.0, psh, jnp.ones_like(psh))
+            ru12 = 0.5 * (pru_even[1:] + pru_even[:-1] + psh * (pru_odd[1:] + pru_odd[:-1]))
+            pzs = ohs * ((pz1_even[1:] - pz1_even[:-1]) + psh * (pz1_odd[1:] - pz1_odd[:-1]))
+            ptau = ru12 * pzs + dphids * (
+                pru_odd[1:] * pz1_odd[1:]
+                + pru_odd[:-1] * pz1_odd[:-1]
+                + (pru_even[1:] * pz1_odd[1:] + pru_even[:-1] * pz1_odd[:-1]) / psh_safe
+            )
+            pzu12 = 0.5 * (pzu_even[1:] + pzu_even[:-1] + psh * (pzu_odd[1:] + pzu_odd[:-1]))
+            prs = ohs * ((pr1_even[1:] - pr1_even[:-1]) + psh * (pr1_odd[1:] - pr1_odd[:-1]))
+            ptau = ptau - prs * pzu12 - dphids * (
+                pzu_odd[1:] * pr1_odd[1:]
+                + pzu_odd[:-1] * pr1_odd[:-1]
+                + (pzu_even[1:] * pr1_odd[1:] + pzu_even[:-1] * pr1_odd[:-1]) / psh_safe
+            )
+            return jnp.min(ptau), jnp.max(ptau)
+    else:
+        _ptau_compute_jit = None
+
     def _ptau_minmax_from_k_host(k) -> tuple[Any | None, Any | None]:
         """Compute VMEC `ptau` min/max on the host for controller decisions."""
         try:
-            pru_even = np.asarray(getattr(k, "pru_even"))
-            pru_odd = np.asarray(getattr(k, "pru_odd"))
-            pzu_even = np.asarray(getattr(k, "pzu_even"))
-            pzu_odd = np.asarray(getattr(k, "pzu_odd"))
-            pr1_even = np.asarray(getattr(k, "pr1_even"))
-            pr1_odd = np.asarray(getattr(k, "pr1_odd"))
-            pz1_even = np.asarray(getattr(k, "pz1_even"))
-            pz1_odd = np.asarray(getattr(k, "pz1_odd"))
+            pru_even = getattr(k, "pru_even")
+            pru_odd = getattr(k, "pru_odd")
+            pzu_even = getattr(k, "pzu_even")
+            pzu_odd = getattr(k, "pzu_odd")
+            pr1_even = getattr(k, "pr1_even")
+            pr1_odd = getattr(k, "pr1_odd")
+            pz1_even = getattr(k, "pz1_even")
+            pz1_odd = getattr(k, "pz1_odd")
         except Exception:
             return None, None
 
         try:
-            ns = int(pru_even.shape[0])
+            if _ptau_compute_jit is not None:
+                # JIT path: stay in JAX, only 2 scalar _value calls total.
+                # .shape[0] on a JAX array returns a concrete int — no dispatch.
+                ns = int(pru_even.shape[0]) if hasattr(pru_even, "shape") else 0
+                if ns < 2:
+                    return None, None
+                ptau_min_j, ptau_max_j = _ptau_compute_jit(
+                    pru_even, pru_odd, pzu_even, pzu_odd,
+                    pr1_even, pr1_odd, pz1_even, pz1_odd,
+                )
+                return float(ptau_min_j), float(ptau_max_j)
+
+            # NumPy fallback (no JAX).
+            pru_even_np = np.asarray(pru_even)
+            pru_odd_np = np.asarray(pru_odd)
+            pzu_even_np = np.asarray(pzu_even)
+            pzu_odd_np = np.asarray(pzu_odd)
+            pr1_even_np = np.asarray(pr1_even)
+            pr1_odd_np = np.asarray(pr1_odd)
+            pz1_even_np = np.asarray(pz1_even)
+            pz1_odd_np = np.asarray(pz1_odd)
+            ns = int(pru_even_np.shape[0])
             if ns < 2:
                 return None, None
-            pshalf = _pshalf_from_s(s)
+            pshalf = _ptau_pshalf_np
             if int(pshalf.shape[0]) != ns:
                 pshalf = np.resize(pshalf, (ns,))
-            hs = float(s[1] - s[0]) if int(np.asarray(s).shape[0]) > 1 else 1.0
-            ohs = 0.0 if hs == 0.0 else 1.0 / hs
+            ohs = _ptau_ohs_scalar
             dphids = 0.25
-
             psh = pshalf[1:, None, None]
             psh_safe = np.where(psh != 0.0, psh, 1.0)
-
-            pru_e = pru_even[1:]
-            pru_o = pru_odd[1:]
-            pru_e_m1 = pru_even[:-1]
-            pru_o_m1 = pru_odd[:-1]
-            pz1_e = pz1_even[1:]
-            pz1_o = pz1_odd[1:]
-            pz1_e_m1 = pz1_even[:-1]
-            pz1_o_m1 = pz1_odd[:-1]
-            pzu_e = pzu_even[1:]
-            pzu_o = pzu_odd[1:]
-            pzu_e_m1 = pzu_even[:-1]
-            pzu_o_m1 = pzu_odd[:-1]
-            pr1_e = pr1_even[1:]
-            pr1_o = pr1_odd[1:]
-            pr1_e_m1 = pr1_even[:-1]
-            pr1_o_m1 = pr1_odd[:-1]
-
-            ru12 = 0.5 * (pru_e + pru_e_m1 + psh * (pru_o + pru_o_m1))
-            pzs = ohs * ((pz1_e - pz1_e_m1) + psh * (pz1_o - pz1_o_m1))
+            ru12 = 0.5 * (pru_even_np[1:] + pru_even_np[:-1] + psh * (pru_odd_np[1:] + pru_odd_np[:-1]))
+            pzs = ohs * ((pz1_even_np[1:] - pz1_even_np[:-1]) + psh * (pz1_odd_np[1:] - pz1_odd_np[:-1]))
             ptau = ru12 * pzs + dphids * (
-                pru_o * pz1_o
-                + pru_o_m1 * pz1_o_m1
-                + (pru_e * pz1_o + pru_e_m1 * pz1_o_m1) / psh_safe
+                pru_odd_np[1:] * pz1_odd_np[1:]
+                + pru_odd_np[:-1] * pz1_odd_np[:-1]
+                + (pru_even_np[1:] * pz1_odd_np[1:] + pru_even_np[:-1] * pz1_odd_np[:-1]) / psh_safe
             )
-            pzu12 = 0.5 * (pzu_e + pzu_e_m1 + psh * (pzu_o + pzu_o_m1))
-            prs = ohs * ((pr1_e - pr1_e_m1) + psh * (pr1_o - pr1_o_m1))
+            pzu12 = 0.5 * (pzu_even_np[1:] + pzu_even_np[:-1] + psh * (pzu_odd_np[1:] + pzu_odd_np[:-1]))
+            prs = ohs * ((pr1_even_np[1:] - pr1_even_np[:-1]) + psh * (pr1_odd_np[1:] - pr1_odd_np[:-1]))
             ptau = ptau - prs * pzu12 - dphids * (
-                pzu_o * pr1_o
-                + pzu_o_m1 * pr1_o_m1
-                + (pzu_e * pr1_o + pzu_e_m1 * pr1_o_m1) / psh_safe
+                pzu_odd_np[1:] * pr1_odd_np[1:]
+                + pzu_odd_np[:-1] * pr1_odd_np[:-1]
+                + (pzu_even_np[1:] * pr1_odd_np[1:] + pzu_even_np[:-1] * pr1_odd_np[:-1]) / psh_safe
             )
             return float(np.min(ptau)), float(np.max(ptau))
         except Exception:
@@ -5605,6 +5727,23 @@ def solve_fixed_boundary_residual_iter(
     mask_neg_flat_np = np.asarray(signed_maps.mask_neg_flat)
     idx_pos_safe_np = np.asarray(signed_maps.idx_pos_safe_flat, dtype=np.int32)
     idx_neg_safe_np = np.asarray(signed_maps.idx_neg_safe_flat, dtype=np.int32)
+    # Precompute projection matrix for _mn_*_to_signed_host: replaces np.add.at
+    # with DGEMM (vals_all @ _proj_mn_signed), 9× faster per call.
+    _idx_all_np = np.concatenate([idx_pos_safe_np, idx_neg_safe_np], axis=0)
+    _m0_mask_np = np.asarray(signed_maps.m0_mask, dtype=bool)
+    _n0_mask_np = np.asarray(signed_maps.n0_mask, dtype=bool)
+    _mask_neg_bool_np = np.asarray(signed_maps.mask_neg, dtype=bool)
+    _mask_pos_flat_f64 = np.asarray(signed_maps.mask_pos_flat, dtype=np.float64)
+    _mask_neg_flat_f64 = np.asarray(signed_maps.mask_neg_flat, dtype=np.float64)
+    if ncoeff > 0:
+        _n_flat_mn = len(_idx_all_np)
+        _proj_mn_signed = np.zeros((_n_flat_mn, ncoeff), dtype=np.float64)
+        for _j in range(_n_flat_mn):
+            _ix = int(_idx_all_np[_j])
+            if 0 <= _ix < ncoeff:
+                _proj_mn_signed[_j, _ix] = 1.0
+    else:
+        _proj_mn_signed = None
 
     if getattr(static, "mn_idx_m", None) is not None:
         m_idx = jnp.asarray(np.asarray(static.mn_idx_m, dtype=np.int32))
@@ -5703,49 +5842,36 @@ def solve_fixed_boundary_residual_iter(
         cc_np = np.asarray(cc, dtype=float)
         ss_np = np.zeros_like(cc_np) if ss is None else np.asarray(ss, dtype=float)
         ns = int(cc_np.shape[0])
-        out = np.zeros((ns, ncoeff), dtype=cc_np.dtype)
         if ncoeff == 0:
-            return jnp.asarray(out)
-        m0_mask = np.asarray(signed_maps.m0_mask, dtype=bool)
-        n0_mask = np.asarray(signed_maps.n0_mask, dtype=bool)
+            return np.zeros((ns, ncoeff), dtype=cc_np.dtype)
         pos = 0.5 * (cc_np + ss_np)
-        pos = np.where((m0_mask | n0_mask)[None, :, :], cc_np, pos)
+        pos = np.where((_m0_mask_np | _n0_mask_np)[None, :, :], cc_np, pos)
         neg = 0.5 * (cc_np - ss_np)
-        mask_pos = np.asarray(signed_maps.mask_pos_flat, dtype=cc_np.dtype)
-        mask_neg = np.asarray(signed_maps.mask_neg_flat, dtype=cc_np.dtype)
-        idx_all = np.concatenate([idx_pos_safe_np, idx_neg_safe_np], axis=0)
         vals_all = np.concatenate(
-            [pos.reshape(ns, -1) * mask_pos[None, :], neg.reshape(ns, -1) * mask_neg[None, :]],
+            [pos.reshape(ns, -1) * _mask_pos_flat_f64[None, :],
+             neg.reshape(ns, -1) * _mask_neg_flat_f64[None, :]],
             axis=1,
         )
-        np.add.at(out, (np.arange(ns)[:, None], idx_all[None, :]), vals_all)
-        return jnp.asarray(out)
+        return vals_all @ _proj_mn_signed  # DGEMM: 9× faster than np.add.at
 
     def _mn_sin_to_signed_host(sc, cs):
         sc_np = np.asarray(sc, dtype=float)
         cs_np = np.zeros_like(sc_np) if cs is None else np.asarray(cs, dtype=float)
         ns = int(sc_np.shape[0])
-        out = np.zeros((ns, ncoeff), dtype=sc_np.dtype)
         if ncoeff == 0:
-            return jnp.asarray(out)
-        m0_mask = np.asarray(signed_maps.m0_mask, dtype=bool)
-        n0_mask = np.asarray(signed_maps.n0_mask, dtype=bool)
-        mask_neg = np.asarray(signed_maps.mask_neg, dtype=bool)
+            return np.zeros((ns, ncoeff), dtype=sc_np.dtype)
+        mask_no_neg = (~_mask_neg_bool_np) & (~_n0_mask_np)
         pos = 0.5 * (sc_np - cs_np)
-        pos = np.where(n0_mask[None, :, :], sc_np, pos)
-        mask_no_neg = (~mask_neg) & (~n0_mask)
-        pos = np.where(mask_no_neg[None, :, :] & m0_mask[None, :, :], -cs_np, pos)
-        pos = np.where(mask_no_neg[None, :, :] & (~m0_mask[None, :, :]), sc_np, pos)
+        pos = np.where(_n0_mask_np[None, :, :], sc_np, pos)
+        pos = np.where(mask_no_neg[None, :, :] & _m0_mask_np[None, :, :], -cs_np, pos)
+        pos = np.where(mask_no_neg[None, :, :] & (~_m0_mask_np[None, :, :]), sc_np, pos)
         neg = 0.5 * (sc_np + cs_np)
-        mask_pos = np.asarray(signed_maps.mask_pos_flat, dtype=sc_np.dtype)
-        mask_neg_flat = np.asarray(signed_maps.mask_neg_flat, dtype=sc_np.dtype)
-        idx_all = np.concatenate([idx_pos_safe_np, idx_neg_safe_np], axis=0)
         vals_all = np.concatenate(
-            [pos.reshape(ns, -1) * mask_pos[None, :], neg.reshape(ns, -1) * mask_neg_flat[None, :]],
+            [pos.reshape(ns, -1) * _mask_pos_flat_f64[None, :],
+             neg.reshape(ns, -1) * _mask_neg_flat_f64[None, :]],
             axis=1,
         )
-        np.add.at(out, (np.arange(ns)[:, None], idx_all[None, :]), vals_all)
-        return jnp.asarray(out)
+        return vals_all @ _proj_mn_signed  # DGEMM: 9× faster than np.add.at
 
     def _mn_cos_to_signed_physical(cc, ss):
         if host_update_assembly:
@@ -9702,31 +9828,54 @@ def solve_fixed_boundary_residual_iter(
         """Apply VMEC `scale_m1_par` factors before the radial preconditioner solve."""
         if (not bool(getattr(cfg, "lconm1", True))) or (int(cfg.mpol) <= 1):
             return frzl_in
-        fac_r_np, fac_z_np = _vmec_scale_m1_factors_from_mats(mats)
-        if fac_r_np.size == 0:
-            return frzl_in
-        fac_r = jnp.asarray(fac_r_np, dtype=jnp.asarray(frzl_in.frcc).dtype)
-        fac_z = jnp.asarray(fac_z_np, dtype=jnp.asarray(frzl_in.fzsc).dtype)
+        if host_update_assembly:
+            # NumPy path: avoid ~30 JAX eager dispatches (_vmec_scale_m1 + _scale_mode_slice×4).
+            fac_r_arr, fac_z_arr = _vmec_scale_m1_factors_from_mats_np(mats)
+            if fac_r_arr.size == 0:
+                return frzl_in
+        else:
+            fac_r_jax, fac_z_jax = _vmec_scale_m1_factors_from_mats(mats)
+            if fac_r_jax.size == 0:
+                return frzl_in
 
-        ns_full = int(jnp.asarray(frzl_in.frcc).shape[0])
-        nsolve = min(ns_full, int(fac_r.shape[0]))
-        ones_r = jnp.ones((max(ns_full - nsolve, 0),), dtype=jnp.asarray(frzl_in.frcc).dtype)
-        ones_z = jnp.ones((max(ns_full - nsolve, 0),), dtype=jnp.asarray(frzl_in.fzsc).dtype)
-        fac_r_full = (
-            fac_r[:nsolve]
-            if nsolve == ns_full
-            else jnp.concatenate([fac_r[:nsolve], ones_r], axis=0)
-        )
-        fac_z_full = (
-            fac_z[:nsolve]
-            if nsolve == ns_full
-            else jnp.concatenate([fac_z[:nsolve], ones_z], axis=0)
-        )
-
-        frss = _scale_mode_slice(frzl_in.frss, mode_idx=1, scale=fac_r_full)
-        fzcs = _scale_mode_slice(frzl_in.fzcs, mode_idx=1, scale=fac_z_full)
-        frsc = _scale_mode_slice(getattr(frzl_in, "frsc", None), mode_idx=1, scale=fac_r_full)
-        fzcc = _scale_mode_slice(getattr(frzl_in, "fzcc", None), mode_idx=1, scale=fac_z_full)
+        if host_update_assembly:
+            ns_full = int(np.asarray(frzl_in.frcc).shape[0])
+            nsolve = min(ns_full, int(fac_r_arr.shape[0]))
+            if nsolve == ns_full:
+                fac_r_full = fac_r_arr[:nsolve]
+                fac_z_full = fac_z_arr[:nsolve]
+            else:
+                ones = np.ones((ns_full - nsolve,), dtype=fac_r_arr.dtype)
+                fac_r_full = np.concatenate([fac_r_arr[:nsolve], ones])
+                fac_z_full = np.concatenate([fac_z_arr[:nsolve], ones])
+            _frss = _scale_mode_slice_np(frzl_in.frss, mode_idx=1, scale=fac_r_full)
+            _fzcs = _scale_mode_slice_np(frzl_in.fzcs, mode_idx=1, scale=fac_z_full)
+            _frsc = _scale_mode_slice_np(getattr(frzl_in, "frsc", None), mode_idx=1, scale=fac_r_full)
+            _fzcc = _scale_mode_slice_np(getattr(frzl_in, "fzcc", None), mode_idx=1, scale=fac_z_full)
+            # Convert back to JAX for the downstream JIT-compiled preconditioner.
+            frss = jnp.asarray(_frss) if _frss is not None else None
+            fzcs = jnp.asarray(_fzcs) if _fzcs is not None else None
+            frsc = jnp.asarray(_frsc) if _frsc is not None else None
+            fzcc = jnp.asarray(_fzcc) if _fzcc is not None else None
+        else:
+            fac_r = jnp.asarray(fac_r_jax, dtype=jnp.asarray(frzl_in.frcc).dtype)
+            fac_z = jnp.asarray(fac_z_jax, dtype=jnp.asarray(frzl_in.fzsc).dtype)
+            ns_full = int(jnp.asarray(frzl_in.frcc).shape[0])
+            nsolve = min(ns_full, int(fac_r.shape[0]))
+            ones_r = jnp.ones((max(ns_full - nsolve, 0),), dtype=jnp.asarray(frzl_in.frcc).dtype)
+            ones_z = jnp.ones((max(ns_full - nsolve, 0),), dtype=jnp.asarray(frzl_in.fzsc).dtype)
+            fac_r_full = (
+                fac_r[:nsolve] if nsolve == ns_full
+                else jnp.concatenate([fac_r[:nsolve], ones_r], axis=0)
+            )
+            fac_z_full = (
+                fac_z[:nsolve] if nsolve == ns_full
+                else jnp.concatenate([fac_z[:nsolve], ones_z], axis=0)
+            )
+            frss = _scale_mode_slice(frzl_in.frss, mode_idx=1, scale=fac_r_full)
+            fzcs = _scale_mode_slice(frzl_in.fzcs, mode_idx=1, scale=fac_z_full)
+            frsc = _scale_mode_slice(getattr(frzl_in, "frsc", None), mode_idx=1, scale=fac_r_full)
+            fzcc = _scale_mode_slice(getattr(frzl_in, "fzcc", None), mode_idx=1, scale=fac_z_full)
 
         return TomnspsRZL(
             frcc=frzl_in.frcc,
@@ -11922,18 +12071,36 @@ def solve_fixed_boundary_residual_iter(
                 dZ_cos = dt_eff * _mn_cos_to_signed_physical(vZcc, vZss)
                 dL_cos = dt_eff * _mn_cos_to_signed_physical_lambda(vLcc, vLss)
             else:
-                dR_sin = jnp.zeros_like(dR)
-                dZ_cos = jnp.zeros_like(dR)
-                dL_cos = jnp.zeros_like(dR)
-            state_try = VMECState(
-                layout=state.layout,
-                Rcos=jnp.asarray(state.Rcos) + dR,
-                Rsin=jnp.asarray(state.Rsin) + dR_sin,
-                Zcos=jnp.asarray(state.Zcos) + dZ_cos,
-                Zsin=jnp.asarray(state.Zsin) + dZ,
-                Lcos=jnp.asarray(state.Lcos) + dL_cos,
-                Lsin=jnp.asarray(state.Lsin) + dL,
-            )
+                if host_update_assembly:
+                    dR_sin = np.zeros_like(np.asarray(dR))
+                    dZ_cos = np.zeros_like(np.asarray(dR))
+                    dL_cos = np.zeros_like(np.asarray(dR))
+                else:
+                    dR_sin = jnp.zeros_like(dR)
+                    dZ_cos = jnp.zeros_like(dR)
+                    dL_cos = jnp.zeros_like(dR)
+            if host_update_assembly:
+                # All dR/dZ/dL/dR_sin/dZ_cos/dL_cos are NumPy here;
+                # keep state arrays as NumPy — JAX JIT converts at call site.
+                state_try = VMECState(
+                    layout=state.layout,
+                    Rcos=np.asarray(state.Rcos) + np.asarray(dR),
+                    Rsin=np.asarray(state.Rsin) + np.asarray(dR_sin),
+                    Zcos=np.asarray(state.Zcos) + np.asarray(dZ_cos),
+                    Zsin=np.asarray(state.Zsin) + np.asarray(dZ),
+                    Lcos=np.asarray(state.Lcos) + np.asarray(dL_cos),
+                    Lsin=np.asarray(state.Lsin) + np.asarray(dL),
+                )
+            else:
+                state_try = VMECState(
+                    layout=state.layout,
+                    Rcos=jnp.asarray(state.Rcos) + dR,
+                    Rsin=jnp.asarray(state.Rsin) + dR_sin,
+                    Zcos=jnp.asarray(state.Zcos) + dZ_cos,
+                    Zsin=jnp.asarray(state.Zsin) + dZ,
+                    Lcos=jnp.asarray(state.Lcos) + dL_cos,
+                    Lsin=jnp.asarray(state.Lsin) + dL,
+                )
             if host_update_assembly:
                 state_try = _enforce_fixed_boundary_and_axis_np(
                     state_try,
