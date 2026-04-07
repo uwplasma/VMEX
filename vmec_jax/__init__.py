@@ -8,6 +8,14 @@ import os as _os
 # can still override via the environment.
 _os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 
+# Enable JAX persistent XLA compilation cache.  Kernels compiled for a given
+# problem shape are stored on disk and reused across process invocations,
+# eliminating the ~9 s cold-compilation cost on warm runs.
+import jax as _jax
+_jax_cache_dir = _os.path.expanduser("~/.cache/vmec_jax/jax_compile_cache")
+_os.makedirs(_jax_cache_dir, exist_ok=True)
+_jax.config.update("jax_compilation_cache_dir", _jax_cache_dir)
+
 from . import api
 from .namelist import read_indata, InData
 from .config import FreeBoundaryConfig, VMECConfig, load_config
