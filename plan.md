@@ -2168,15 +2168,16 @@ Legend:
   `pip install --upgrade 'jax[cuda12]'` to install the CUDA 12 plugin + PJRT.
 
 **GPU benchmark results** (RTX A4000, input.nfp3_QI_fixed_resolution_final,
-NS=[31→151], 5539 NS=151 iters, ftol=1e-13, warm run after XLA compilation):
-| Run | Wall time | Notes |
-|-----|-----------|-------|
-| xvmec2000 (CPU reference) | **483.20s** | Fortran reference |
-| vmec_jax GPU (all Phase 2 fixes) | **106.27s** | **4.5× faster than xvmec2000** |
-| vmec_jax CPU (office, pending) | TBD | Will measure with JAX_PLATFORM_NAME=cpu |
+NS=[31→151], ftol=1e-13, warm run after XLA compilation):
+| Run | Wall time | NS=151 iters | Notes |
+|-----|-----------|-------------|-------|
+| xvmec2000 (Fortran reference) | **483.20s** | 5539 | MPI, 1 proc |
+| vmec_jax CPU (JAX_PLATFORM_NAME=cpu) | **198.32s** | 5628 | 2.4× vs xvmec2000 |
+| vmec_jax GPU (all Phase 2 fixes) | **106.27s** | 5539 | **4.5× vs xvmec2000, 1.9× vs CPU** |
 
-- WMHD=3.0935E-02, converged to fsq≤1e-13 — numerically consistent with xvmec2000.
-- **4.5× GPU speedup** achieved vs xvmec2000 reference on the same hardware cluster.
+- WMHD=3.0935E-02, JACOBIAN RESETS=6 — numerically consistent across all three.
+- **4.5× GPU speedup** achieved vs xvmec2000 on the same hardware cluster.
+- **1.9× GPU speedup** vs the already-optimized vmec_jax CPU path.
 
 **Remaining GPU items**:
 - Split `_ScanCarry` hot/cold to further reduce per-iter memory traffic (potential 2× more)
