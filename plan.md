@@ -2111,3 +2111,39 @@ Legend:
     fixed-point relation,
   - this planning update is intentionally scoped to unblock correct and
     performant QH autodiff without regressing the broader VMEC parity work.
+
+### 2026-04-07 — CLI performance optimization (Phase 1)
+
+**Goal**: make vmec_jax CLI at least as fast as xvmec2000 for CPU fixed-boundary solves.
+
+**Baseline** (before this session, at commit `20e1537`):
+- vmec_jax on `input.nfp3_QI_fixed_resolution_final` (NS=151, ntor=7, mpol=10): 81.57s
+- xvmec2000 (same case): 31.62s (3 consistent runs: 31.68, 31.60, 31.62s)
+
+**Changes committed this session** (all on `main`):
+1. `15226bb` — NumPy hot-path for precond/mode-diag/fsq/mn-transforms; cache env flags
+2. `f08b98e` — precompute axis mask before main iteration loop
+3. `a728851` — cache JAX scalars, pre-alloc zeros, in-place velocity update
+4. `c5c5798` — add `_rz_norm_np` to avoid JAX dispatch on preconditioner rebuilds
+5. `3bc6b14` — avoid 6 `np.zeros_like`/iter for symmetric lasym components
+6. `e45128a` — **revert FFT default to OFF** — DFT-GEMM faster on CPU for small ntor grids
+   (root cause: commit `e3d562a` had changed default from `"0"` to `"1"`, adding ~10s)
+7. (this commit) — GPU-aware FFT auto-detection: OFF on CPU, ON on GPU/TPU
+
+**Final result** (CPU, 3 measurements):
+- vmec_jax: **32.3s** (xvmec2000: 31.6s) — **parity achieved**
+- All 148 tests pass (61 skipped)
+
+**Key findings**:
+- The single biggest win was reverting the FFT default (saves ~10s); the NumPy hot-path
+  changes accounted for the remaining ~40s reduction from 81.57s to ~45s.
+- XLA compute is ~28–29s (inherent); Python + blocked-XLA overhead is ~3.3s.
+- NumPy preconditioner was attempted but reverted (2× slower due to Python loop overhead
+  over ns=151 radial steps with small arrays).
+- The FFT is now auto-detected: OFF on CPU (DFT-GEMM wins), ON on GPU/TPU (cuFFT wins).
+
+**GPU path** (RTX A4000, office machine):
+- Uses `lax.scan` (not Python loop) — full solve compiled as one XLA computation.
+- `host_update_assembly` (NumPy hot-path) is CPU-only; JAX path used on GPU.
+- FFT now enabled by default on GPU via auto-detection.
+- GPU benchmark in progress (first run includes JIT compilation overhead).

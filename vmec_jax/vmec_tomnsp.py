@@ -382,10 +382,31 @@ class TomnspsRZL:
 _MPARITY_CACHE: dict[tuple[int, str], jnp.ndarray] = {}
 _JNP_EINSUM = jnp.einsum
 _DETERMINISTIC_REDUCE = bool(int(os.environ.get("VMEC_JAX_DETERMINISTIC_REDUCE", "0")))
-# FFT path for stellarator-symmetric cases. Disabled by default on CPU: benchmarks show
-# the DFT-GEMM path is faster for typical CPU problem sizes (small ntor/mpol grids).
-# Enable with VMEC_JAX_TOMNSPS_FFT=1 (recommended for GPU or very large ntor grids).
-_TOMNSPS_FFT = os.environ.get("VMEC_JAX_TOMNSPS_FFT", "0").strip().lower() not in ("0", "false", "no")
+# FFT path for stellarator-symmetric cases.
+# Default: auto-detect — ON for GPU/TPU (cuFFT is fast), OFF for CPU (DFT-GEMM wins
+# for typical small ntor grids). Override with VMEC_JAX_TOMNSPS_FFT=0/1.
+_TOMNSPS_FFT_ENV: str = os.environ.get("VMEC_JAX_TOMNSPS_FFT", "").strip().lower()
+_TOMNSPS_FFT_CACHE: list[bool] = []  # populated on first call
+
+
+def _get_tomnsps_fft() -> bool:
+    """Return whether to use the FFT synthesis path (lazy, cached after first call)."""
+    if _TOMNSPS_FFT_CACHE:
+        return _TOMNSPS_FFT_CACHE[0]
+    if _TOMNSPS_FFT_ENV in ("1", "true", "yes"):
+        result = True
+    elif _TOMNSPS_FFT_ENV in ("0", "false", "no"):
+        result = False
+    else:
+        # Auto: GPU/TPU → FFT (cuFFT / XLA FFT is fast);  CPU → DFT-GEMM.
+        try:
+            import jax as _jax
+
+            result = _jax.default_backend() not in ("cpu",)
+        except Exception:
+            result = False
+    _TOMNSPS_FFT_CACHE.append(result)
+    return result
 _TOMNSPS_THETA_FUSED = os.environ.get("VMEC_JAX_TOMNSPS_THETA_FUSED", "1").strip().lower() not in (
     "",
     "0",
@@ -790,7 +811,7 @@ def tomnsps_rzl(
     stack_sinmumi = jnp.stack([brmn, bzmn, blmn], axis=0)
     stack_all = jnp.concatenate([stack_cosmui, stack_sinmumi], axis=0)
 
-    use_fft = bool(_TOMNSPS_FFT) and (not bool(lasym)) and has_jax()
+    use_fft = _get_tomnsps_fft() and (not bool(lasym)) and has_jax()
     use_fft_fused = True
     if use_fft:
         env_fused = os.getenv("VMEC_JAX_TOMNSPS_FFT_FUSED", "1").strip().lower()
@@ -909,7 +930,7 @@ def tomnsps_rzl(
     lthreed = bool(ntor > 0)
 
     # Zeta integration. Result arrays are (ns, mpol, ntor+1).
-    use_fft_zeta = bool(_TOMNSPS_FFT) and has_jax()
+    use_fft_zeta = _get_tomnsps_fft() and has_jax()
     if use_fft_zeta:
         env_fused = os.getenv("VMEC_JAX_TOMNSPS_FFT_FUSED", "1").strip().lower()
         use_fft_fused = env_fused not in ("", "0", "false", "no")
