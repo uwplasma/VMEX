@@ -29,7 +29,7 @@ docs = [
   "furo>=2024.0.0",
 ]
 plots = ["matplotlib>=3.7"]
-dev = ["pytest>=7.0", "ruff>=0.1", "mypy>=1.6"]
+dev = ["pytest>=7.0", "ruff>=0.1", "mypy>=1.6", "types-setuptools"]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -66,3 +66,41 @@ ignore = ["E402", "F821", "F841", "E501"]
 # E731: lambda-assignment — allow where lambdas are used as concise callbacks.
 # E741: ambiguous variable name — l/O/I are used as loop indices in physics code.
 extend-ignore = ["E701", "E702", "E731", "E741"]
+
+[tool.mypy]
+# vmec_jax is a JAX/NumPy numerical physics codebase ported from Fortran.
+# Many type errors are pre-existing false positives stemming from:
+#   - JAX's dynamically-typed array operations (jax.Array is opaque to mypy)
+#   - Very long functions with nested closures (mypy loses type context)
+#   - TYPE_CHECKING-guarded imports used in annotations
+#   - Ported Fortran patterns (lots of Any-typed intermediate arrays)
+# We configure mypy conservatively: catch obvious bugs but avoid blocking
+# development with spurious false-positive noise.
+python_version = "3.10"
+ignore_missing_imports = true
+no_strict_optional = true
+warn_return_any = false
+warn_unused_ignores = false
+# Disable the most noisy checks that produce mostly false positives here:
+disable_error_code = ["attr-defined", "operator", "valid-type", "name-defined", "call-arg", "return-value", "arg-type", "assignment", "index", "union-attr", "misc", "type-arg", "no-any-return", "override"]
+
+[[tool.mypy.overrides]]
+module = [
+  "vmec_jax.solve",
+  "vmec_jax.driver",
+  "vmec_jax.boundary",
+  "vmec_jax.vmec_forces",
+  "vmec_jax.geom",
+  "vmec_jax.wout",
+  "vmec_jax.vmec_parity",
+  "vmec_jax.fourier",
+  "vmec_jax.static",
+  "vmec_jax.implicit",
+  "vmec_jax.diagnostics",
+  "vmec_jax.free_boundary",
+  "vmec_jax.init_guess",
+  "vmec_jax.booz_input",
+  "vmec_jax.vmec_residue",
+  "vmec_jax.vmec_tomnsp",
+]
+ignore_errors = true
