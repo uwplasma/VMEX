@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from vmec_jax.driver import run_fixed_boundary
-from vmec_jax.vmec2000_exec import find_vmec2000_exec, flatten_threed1, run_xvmec2000
+from vmec_jax.vmec2000_exec import find_vmec2000_exec, run_xvmec2000
 from vmec_jax.wout import read_wout, wout_minimal_from_fixed_boundary
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

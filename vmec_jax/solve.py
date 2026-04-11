@@ -3046,7 +3046,6 @@ def solve_fixed_boundary_lbfgs_vmec_residual(
     signgs = int(signgs)
 
     from .energy import flux_profiles_from_indata
-    from .static import build_static
     from .vmec_forces import vmec_forces_rz_from_wout, vmec_residual_internal_from_kernels
     from .vmec_residue import (
         vmec_force_norms_from_bcovar_dynamic,
@@ -3567,7 +3566,6 @@ def solve_fixed_boundary_gn_vmec_residual(
     )
 
     from .energy import flux_profiles_from_indata
-    from .static import build_static
     from .vmec_forces import vmec_forces_rz_from_wout, vmec_residual_internal_from_kernels
     from .vmec_residue import (
         vmec_apply_m1_constraints,
@@ -3576,7 +3574,7 @@ def solve_fixed_boundary_gn_vmec_residual(
         vmec_scalxc_from_s,
         vmec_zero_m1_zforce,
     )
-    from .vmec_tomnsp import TomnspsRZL, vmec_angle_grid, vmec_trig_tables
+    from .vmec_tomnsp import TomnspsRZL, vmec_trig_tables
 
     try:
         from jax.scipy.sparse.linalg import cg  # type: ignore
@@ -4247,11 +4245,9 @@ def solve_fixed_boundary_residual_iter(
         return rec
 
     from .energy import flux_profiles_from_indata
-    from .energy import magnetic_wb_from_state
     from .static import build_static
     from .boundary import boundary_from_indata
     from .init_guess import (
-        _boundary_cross_section_areas,
         _recompute_axis_from_boundary,
         _recompute_axis_from_state_vmec,
         _read_axis_coeffs,
@@ -10776,7 +10772,7 @@ def solve_fixed_boundary_residual_iter(
             )
             force_bcovar_update = False
             bcovar_update_history.append(int(bool(need_bcovar_update)))
-    
+
             use_cached_precond = bool(vmec2000_control) and bool(vmec2000_cache_valid) and (not bool(need_bcovar_update))
             constraint_precond_diag = (
                 cache_precond_diag if (use_cached_precond and cache_precond_diag is not None) else zero_precond_diag
@@ -10980,7 +10976,7 @@ def solve_fixed_boundary_residual_iter(
                     cache_tcon = jnp.zeros((int(s.shape[0]),), dtype=jnp.asarray(state.Rcos).dtype)
                 else:
                     from .vmec_constraints import precondn_diag_axd1_from_bcovar
-    
+
                     ard1, azd1 = precondn_diag_axd1_from_bcovar(
                         trig=trig,
                         s=s,
@@ -11135,11 +11131,10 @@ def solve_fixed_boundary_residual_iter(
             frzl_lam_pre = None
             if bool(vmec2000_control) and bool(cfg.lthreed):
                 from .preconditioner_1d_jax import (
-                    rz_preconditioner_apply,
                     rz_preconditioner_matrices,
                     rz_preconditioner_matrices_reassemble,
                 )
-    
+
                 need_lam_prec = _env_dump_lam not in ("", "0")
                 need_lamcal = _env_dump_lamcal not in ("", "0")
                 need_prec_reassemble = (
@@ -11275,7 +11270,6 @@ def solve_fixed_boundary_residual_iter(
                         flss = jnp.asarray(frzl_rz.flss) * jnp.asarray(lam_prec)
             elif not bool(cfg.lthreed):
                 from .preconditioner_1d_jax import (
-                    rz_preconditioner_apply,
                     rz_preconditioner_matrices,
                     rz_preconditioner_matrices_reassemble,
                 )
@@ -11466,7 +11460,7 @@ def solve_fixed_boundary_residual_iter(
                     if getattr(frzl, "flss", None) is not None
                     else jnp.zeros_like(flsc)
                 )
-    
+
             frzl_pre = TomnspsRZL(
                 frcc=frcc,
                 frss=frss,
@@ -11490,7 +11484,7 @@ def solve_fixed_boundary_residual_iter(
                     delta_s=delta_s,
                 )
             _maybe_dump_gc(frzl=frzl_pre, static=static, iter_idx=int(iter2), label="precond")
-    
+
             # Mode-diagonal preconditioning in (m, n>=0) storage.
             if host_update_assembly:
                 # NumPy path: avoids 36 JAX dispatches (expand_dims + broadcast + mul per array).
@@ -11529,7 +11523,7 @@ def solve_fixed_boundary_residual_iter(
                 except Exception:
                     pass
                 timing_stats["preconditioner"] += time.perf_counter() - float(t_precond_start)
-    
+
             # VMEC's lambda coefficients can be expressed in multiple scaling
             # conventions (e.g. restart vs. `wout` vs. internal). Allow parity drivers
             # to apply a constant scale to the lambda residual channel before mapping
@@ -11539,7 +11533,7 @@ def solve_fixed_boundary_residual_iter(
                 flcs_u = flcs_u * lambda_update_scale_j
                 flcc_u = flcc_u * lambda_update_scale_j
                 flss_u = flss_u * lambda_update_scale_j
-    
+
             if auto_flip_force and it == 0:
                 # Choose force direction by a tiny trial step on the VMEC residual
                 # (fsqr+fsqz+fsql), not magnetic energy. Energy monotonicity is not a
@@ -11588,7 +11582,7 @@ def solve_fixed_boundary_residual_iter(
                         gcl2_in=gcl2_t,
                     )
                     return float(np.asarray(fsqr_t + fsqz_t + fsql_t))
-    
+
                 w_pos = _trial(+1.0)
                 w_neg = _trial(-1.0)
                 if np.isfinite(w_neg) and np.isfinite(w_pos) and (w_neg < w_pos):
@@ -11598,7 +11592,7 @@ def solve_fixed_boundary_residual_iter(
                             "[solve_fixed_boundary_residual_iter] flipping force sign "
                             f"(w_curr={w_curr:.3e} w_pos={w_pos:.3e} w_neg={w_neg:.3e})"
                         )
-    
+
             # Damping for the fixed-point update.
             if host_update_assembly:
                 # NumPy path: avoids 6+ JAX dispatches for sum-of-squares.
@@ -12124,7 +12118,7 @@ def solve_fixed_boundary_residual_iter(
                     prev_rz_fsq = prev_rz_fsq_before
                     skip_time_control = True
                     continue
-    
+
             # --- time-step control trackers + optional restart triggers ---
             fsq = fsqr_f + fsqz_f + fsql_f
             fsq_res = fsq if bool(reference_mode) else fsq1
@@ -12141,7 +12135,7 @@ def solve_fixed_boundary_residual_iter(
                     res0 = fsq_res
                 res0_old = res0
                 res0 = min(res0, fsq_res)
-    
+
             # Store a "good" checkpoint once residual has improved for many
             # iterations since the last restart marker.
             if (not bool(vmec2000_control)) and (fsq1 <= res0_old) and ((iter2 - iter1) > 10):
@@ -12158,7 +12152,7 @@ def solve_fixed_boundary_residual_iter(
                 if prev_stage_fsq_val is not None and np.isfinite(prev_stage_fsq_val):
                     if fsq > (prev_stage_fsq_val * stage_transition_factor):
                         pre_restart_reason = "stage_transition"
-    
+
             huge_initial_forces = False
             if iter2 == 1 and lmove_axis:
                 fsq_init = float(fsq)
@@ -12175,7 +12169,7 @@ def solve_fixed_boundary_residual_iter(
                     and (iter2 > 2 * k_preconditioner_update_interval)
                     and ((fsqr_f + fsqz_f) > 1.0e-2)
                 )
-    
+
             if bool(reference_mode):
                 # Conservative restart logic used in the reference-mode trace.
                 if bad_jacobian and (fsq > 1.0e1):
@@ -12207,7 +12201,7 @@ def solve_fixed_boundary_residual_iter(
                     and (fsq1 > 0.95 * max(fsq_prev, 1e-30))
                 ):
                     pre_restart_reason = "bad_progress"
-    
+
             if use_restart_triggers and pre_restart_reason != "none":
                 state_before_restart = state
                 vRcc_before = vRcc
@@ -12348,7 +12342,7 @@ def solve_fixed_boundary_residual_iter(
                 prev_rz_fsq = prev_rz_fsq_before
                 skip_time_control = True
                 continue
-    
+
             break
         if profile_started and (profile_start_iter is not None) and (iter2 == profile_start_iter):
             if has_jax():

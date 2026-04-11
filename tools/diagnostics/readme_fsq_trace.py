@@ -444,7 +444,7 @@ def main() -> None:
         fsq_jax=fsq_jax_a,
         it_vmecpp=it_pp_a,
         fsq_vmecpp=fsq_pp_a,
-        title=f"ITERModel fsq_total trace (single-grid)",
+        title="ITERModel fsq_total trace (single-grid)",
         jax_label=str(args.jax_label),
     )
     _plot_panel(

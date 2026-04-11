@@ -40,3 +40,29 @@ markers = [
   "vmec2000: integration tests requiring a local VMEC2000 build (+ mpi4py/netCDF4)",
   "full: tests that require large netCDF assets (run tools/fetch_assets.py)",
 ]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# E402: module-level import not at top-of-file.  This codebase uses deferred
+#        imports inside functions deliberately to avoid triggering JAX/GPU
+#        initialisation at import time.  Silencing E402 globally is intentional.
+# F821: undefined name in annotation.  Ruff occasionally reports false positives
+#        inside very long functions (closures over outer-scope locals) and for
+#        TYPE_CHECKING-only imports used in annotations.  Silence globally and
+#        rely on mypy for real undefined-name checks.
+# F841: local variable is assigned to but never used.  Many VMEC routines assign
+#        intermediate diagnostics for debugging that are not always consumed by
+#        the caller.  mypy --warn-unused-variables or a per-symbol noqa is a
+#        better gate here.
+# E501: line too long.  Handled by the line-length setting above; long lines in
+#        generated / ported Fortran-style code are acceptable.
+ignore = ["E402", "F821", "F841", "E501"]
+
+# Allow single-statement blocks on the same line as the colon (E701) and
+# semicolons as statement separators (E702) in tightly coupled numerical kernels.
+# These are common in ported Fortran code and do not impair readability.
+# E731: lambda-assignment — allow where lambdas are used as concise callbacks.
+# E741: ambiguous variable name — l/O/I are used as loop indices in physics code.
+extend-ignore = ["E701", "E702", "E731", "E741"]

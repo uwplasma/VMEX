@@ -16,10 +16,9 @@ import functools
 from dataclasses import dataclass
 from typing import Any, Dict, Tuple
 
-import numpy as np
 
 from ._compat import jax, jnp
-from .field import TWOPI, b2_from_bsup, bsup_from_geom, full_mesh_from_half_mesh_avg, lamscale_from_phips
+from .field import TWOPI, b2_from_bsup, bsup_from_geom, lamscale_from_phips
 from .geom import eval_geom
 from .grids import angle_steps
 from .namelist import InData

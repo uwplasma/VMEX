@@ -847,6 +847,11 @@ def test_run_fixed_boundary_cli_single_grid_requires_strict_ftol(monkeypatch, tm
 
 
 def test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid():
+    # When solver_mode is explicitly set to "accelerated" (not via CLI auto-
+    # detection), the accelerated path uses the single-grid shortcut regardless
+    # of whether NS_ARRAY/NITER_ARRAY are present.  The user_explicitly_staged_cli
+    # path only activates in the CLI auto-detection code path (no explicit
+    # solver_mode arg).
     root = Path(__file__).resolve().parents[1]
     input_path = root / "examples/data/input.LandremanSenguptaPlunk_section5p3_low_res"
 
@@ -873,11 +878,14 @@ def test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid():
     assert np.asarray(diag_parity["multigrid_ns_stages"]).tolist() == [11, 25]
 
 
-def test_run_fixed_boundary_cli_explicit_staged_followup_after_single_grid_miss(monkeypatch, tmp_path):
+def test_run_fixed_boundary_cli_user_explicitly_staged_uses_direct_multigrid(monkeypatch, tmp_path):
+    # When CLI mode detects both NS_ARRAY and NITER_ARRAY with multiple stages,
+    # the user_explicitly_staged_cli path skips the single-grid shortcut and
+    # runs the NS stages directly (matching xvmec2000 behavior).
     input_path = _write_staged_with_niter_input(tmp_path)
     calls = []
-    fsq_values = [1.0e-4, 1.0e-2, 1.0e-4, 2.0e-14]
-    converged_flags = [False, False, False, True]
+    fsq_values = [1.0e-4, 1.0e-2, 1.0e-14]
+    converged_flags = [False, False, True]
 
     def _fake_solver(state, static, **kwargs):
         idx = len(calls)
@@ -918,31 +926,26 @@ def test_run_fixed_boundary_cli_explicit_staged_followup_after_single_grid_miss(
         cli_fixed_boundary_mode=True,
     )
 
-    assert [call["ns"] for call in calls] == [13, 5, 9, 13]
-    assert [call["max_iter"] for call in calls] == [70, 10, 20, 40]
-    # All stages now use accelerated (scan) mode; parity fallback is only used as last resort.
-    assert [call["use_scan"] for call in calls] == [True, True, True, True]
+    # Direct multi-stage [5, 9, 13] — no single-grid first attempt.
+    assert [call["ns"] for call in calls] == [5, 9, 13]
+    assert [call["max_iter"] for call in calls] == [10, 20, 40]
+    assert [call["use_scan"] for call in calls] == [True, True, True]
     diag = run.result.diagnostics
     assert diag["cli_fixed_boundary_mode"] is True
-    assert diag["cli_fixed_boundary_initial_policy"] == "single_grid"
-    assert diag["cli_fixed_boundary_staged_followup_used"] is True
-    assert diag["cli_fixed_boundary_staged_followup_policy"] == "input_multigrid"
-    assert np.asarray(diag["cli_fixed_boundary_staged_followup_ns"]).tolist() == [5, 9, 13]
-    assert np.asarray(diag["cli_fixed_boundary_staged_followup_niter"]).tolist() == [10, 20, 40]
-    assert np.asarray(diag["cli_fixed_boundary_staged_followup_modes"]).tolist() == [
-        "accelerated",
-        "accelerated",
-        "accelerated",
-    ]
-    assert np.asarray(diag["cli_fixed_boundary_finish_budgets"]).tolist() == []
+    assert diag["cli_fixed_boundary_initial_policy"] == "multigrid"
+    # No staged followup — the initial run was already multigrid.
+    assert diag.get("cli_fixed_boundary_staged_followup_used", False) is False
     assert diag["converged"] is True
 
 
 def test_run_fixed_boundary_cli_explicit_staged_followup_runs_for_converged_nonaxis_single_grid(monkeypatch, tmp_path):
+    # 3D non-current-driven case (NTOR=1, NCURR=0) with explicit NS_ARRAY+NITER_ARRAY:
+    # user_explicitly_staged_cli triggers direct multi-stage execution, matching
+    # xvmec2000 behavior (no single-grid first attempt).
     input_path = _write_staged_with_niter_nonaxis_input(tmp_path)
     calls = []
-    fsq_values = [2.0e-14, 1.0e-5, 1.0e-8, 1.0e-14]
-    converged_flags = [True, False, False, True]
+    fsq_values = [1.0e-5, 1.0e-8, 1.0e-14]
+    converged_flags = [False, False, True]
 
     def _fake_solver(state, static, **kwargs):
         idx = len(calls)
@@ -983,19 +986,14 @@ def test_run_fixed_boundary_cli_explicit_staged_followup_runs_for_converged_nona
         cli_fixed_boundary_mode=True,
     )
 
-    assert [call["ns"] for call in calls] == [13, 5, 9, 13]
-    assert [call["max_iter"] for call in calls] == [70, 10, 20, 40]
+    # Direct multi-stage [5, 9, 13] — no single-grid first attempt.
+    assert [call["ns"] for call in calls] == [5, 9, 13]
+    assert [call["max_iter"] for call in calls] == [10, 20, 40]
     diag = run.result.diagnostics
-    assert diag["cli_fixed_boundary_initial_policy"] == "single_grid"
-    assert diag["cli_fixed_boundary_staged_followup_used"] is True
-    assert diag["cli_fixed_boundary_staged_followup_policy"] == "input_multigrid"
-    assert np.asarray(diag["cli_fixed_boundary_staged_followup_ns"]).tolist() == [5, 9, 13]
-    assert np.asarray(diag["cli_fixed_boundary_staged_followup_niter"]).tolist() == [10, 20, 40]
-    assert np.asarray(diag["cli_fixed_boundary_staged_followup_modes"]).tolist() == [
-        "parity",
-        "accelerated",
-        "accelerated",
-    ]
+    assert diag["cli_fixed_boundary_initial_policy"] == "multigrid"
+    # No staged followup needed — initial path was already multigrid.
+    assert diag.get("cli_fixed_boundary_staged_followup_used", False) is False
+    assert diag["converged"] is True
 
 
 def test_run_fixed_boundary_cli_current_driven_nonaxis_uses_direct_multigrid(monkeypatch, tmp_path):
