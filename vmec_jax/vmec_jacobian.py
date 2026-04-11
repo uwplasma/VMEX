@@ -25,7 +25,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
 
 from ._compat import jnp, tree_util
 from .vmec_realspace import vmec_realspace_synthesis, vmec_realspace_synthesis_dtheta

@@ -26,7 +26,6 @@ where ``overg = 1 / (signgs * sqrtg)`` following VMEC's `bcovar` convention.
 
 from __future__ import annotations
 
-from typing import Any
 
 import numpy as np
 

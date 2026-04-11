@@ -14,7 +14,6 @@ compatible with the rest of the JAX pipeline.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 
 import os
 import numpy as np
@@ -26,7 +25,7 @@ from .boundary import (
     boundary_undo_vmec_m1_constraint,
 )
 from .grids import make_angle_grid
-from .fourier import build_helical_basis, eval_fourier, eval_fourier_dtheta
+from .fourier import build_helical_basis, eval_fourier
 from .namelist import InData
 from .state import StateLayout, VMECState
 from .static import VMECStatic

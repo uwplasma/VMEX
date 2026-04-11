@@ -31,7 +31,7 @@ from ._compat import jnp, jit, has_jax
 from .coords import eval_coords
 from .state import VMECState
 from .vmec_parity import vmec_m1_internal_to_physical_signed
-from .fourier import HelicalBasis, eval_fourier, eval_fourier_dtheta, eval_fourier_dzeta_phys
+from .fourier import HelicalBasis, eval_fourier
 from .radial import d_ds_coeffs
 
 

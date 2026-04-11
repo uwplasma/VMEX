@@ -9,13 +9,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 
 from ._compat import has_jax, jax, jnp
 from .modes import vmec_mode_table
-from .modes import nyquist_mode_table, nyquist_mode_table_from_grid
+from .modes import nyquist_mode_table_from_grid
 from .namelist import InData
 from .state import StateLayout, VMECState
 from .fourier import eval_fourier
@@ -566,7 +566,6 @@ def _compute_bsubs_half_mesh(
     from .vmec_realspace import (
         vmec_realspace_synthesis,
         vmec_realspace_synthesis_dtheta,
-        vmec_realspace_synthesis_dzeta_phys,
     )
 
     m = np.asarray(geom_modes.m, dtype=int)
@@ -1012,7 +1011,6 @@ def _bsubuv_parity_from_state(
     from .vmec_realspace import (
         vmec_realspace_synthesis,
         vmec_realspace_synthesis_dtheta,
-        vmec_realspace_synthesis_dzeta_phys,
     )
     from .vmec_jacobian import _apply_vmec_axis_rules
 
@@ -2871,7 +2869,6 @@ def _compute_mercier(
     from .vmec_realspace import (
         vmec_realspace_synthesis,
         vmec_realspace_synthesis_dtheta,
-        vmec_realspace_synthesis_dzeta_phys,
     )
 
     m = np.asarray(geom_modes.m)
@@ -4804,7 +4801,6 @@ def wout_minimal_from_fixed_boundary(
     """
     from .energy import flux_profiles_from_indata
     from .profiles import eval_profiles
-    from .field import full_mesh_from_half_mesh_avg
     from .integrals import cumrect_s_halfmesh
     from .vmec_tomnsp import vmec_trig_tables
     from .vmec_bcovar import vmec_bcovar_half_mesh_from_wout

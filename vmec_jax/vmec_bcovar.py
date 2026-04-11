@@ -42,13 +42,9 @@ from .vmec_parity import (
     vmec_m1_internal_to_physical_signed,
 )
 from .vmec_realspace import (
-    vmec_realspace_synthesis,
-    vmec_realspace_synthesis_dtheta,
-    vmec_realspace_synthesis_dzeta_phys,
     vmec_realspace_synthesis_multi,
 )
 from .vmec_tomnsp import VmecTrigTables, vmec_trig_tables
-from .vmec_residue import vmec_pwint_from_trig
 from .nyquist import nyquist_basis_from_wout
 
 

@@ -43,7 +43,6 @@ from .solve import (
     _half_mesh_from_full_mesh,
     _icurv_full_mesh_from_indata,
     _mass_half_mesh_from_indata,
-    _enforce_lambda_gauge,
     _mask_grad_for_constraints,
     _mode00_index,
     _pressure_half_mesh_from_indata,
