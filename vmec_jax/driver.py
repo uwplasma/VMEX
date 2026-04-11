@@ -24,7 +24,6 @@ from .free_boundary import (
     prepare_mgrid_for_config,
     validate_free_boundary_config,
 )
-from .geom import eval_geom
 from .init_guess import initial_guess_from_boundary
 from .multigrid import interp_vmec_state
 from .profiles import eval_profiles
@@ -1066,6 +1065,24 @@ def run_fixed_boundary(
         and (len(ns_list_input) > 1)
         and (niter_list_input is None)
     )
+    # When the user explicitly provides both NS_ARRAY and NITER_ARRAY with multiple
+    # stages, respect the staged sequence to match xvmec2000 behavior.  The
+    # accelerated_single_grid_default shortcut (run directly on the final NS grid)
+    # can diverge from the staged equilibrium for some axisymmetric or
+    # non-current-driven cases (e.g. purely_toroidal_field).
+    user_explicitly_staged_cli = (
+        bool(cli_fixed_boundary_mode)
+        and bool(accelerated_mode)
+        and (solver_lower in ("vmec2000_iter", "vmec2000_scan", "vmec2000_iter_fast"))
+        and (not bool(cfg.lfreeb))
+        and (restart_state_eff is None)
+        and (restart_solver_state is None)
+        and (multigrid is None)
+        and (ns_list_input is not None)
+        and (len(ns_list_input) > 1)
+        and (niter_list_input is not None)
+        and (len(niter_list_input) == len(ns_list_input))
+    )
     cli_fixed_boundary_finish_enabled = (
         bool(cli_fixed_boundary_mode)
         and (solver_lower == "vmec2000_iter")
@@ -1627,10 +1644,14 @@ def run_fixed_boundary(
             multigrid = True
         elif bool(direct_staged_current_driven_3d_cli):
             multigrid = True
+        elif bool(user_explicitly_staged_cli):
+            # Explicit NS_ARRAY + NITER_ARRAY: follow the staged sequence to
+            # match xvmec2000 behavior instead of collapsing to a single grid.
+            multigrid = True
         elif accelerated_mode and (not bool(cfg.lfreeb)):
-            # In accelerated fixed-boundary mode, direct final-grid solves avoid
-            # per-stage interpolation/recompilation overhead and have been more
-            # efficient across the heavy bundled cases tested so far.
+            # In accelerated fixed-boundary mode with no explicit stage sequence,
+            # direct final-grid solves avoid per-stage interpolation/recompilation
+            # overhead and have been more efficient across the tested cases.
             multigrid = False
             accelerated_single_grid_default = True
     if max_iter is _MAX_ITER_SENTINEL:
