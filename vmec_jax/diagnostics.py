@@ -10,7 +10,7 @@ without pulling in plotting libraries.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional, Sequence, Tuple
+from typing import Any, Iterable, Sequence, Tuple
 
 import numpy as np
 

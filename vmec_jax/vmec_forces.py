@@ -35,9 +35,7 @@ from .vmec_bcovar import vmec_bcovar_half_mesh_from_wout
 from .vmec_constraints import (
     alias_gcon,
     precondn_diag_axd1_from_bcovar,
-    tcon_from_bcovar_precondn_diag,
     tcon_from_cached_precondn_diag,
-    tcon_from_precondn_axisym,
     tcon_from_tcon0_heuristic,
 )
 from .vmec_tomnsp import (
@@ -46,7 +44,6 @@ from .vmec_tomnsp import (
     VmecTrigTables,
     tomnsps_rzl,
     tomnspa_rzl,
-    vmec_angle_grid,
     vmec_trig_tables,
 )
 from .nyquist import nyquist_basis_from_wout
@@ -55,12 +52,6 @@ from .vmec_parity import (
     internal_odd_from_physical_vmec_m1,
     split_rzl_even_odd_m,
     vmec_m1_internal_to_physical_signed,
-)
-from .vmec_realspace import (
-    vmec_realspace_synthesis,
-    vmec_realspace_synthesis_dtheta,
-    vmec_realspace_synthesis_dzeta_phys,
-    vmec_realspace_synthesis_multi,
 )
 
 
