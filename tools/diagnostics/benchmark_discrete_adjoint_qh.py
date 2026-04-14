@@ -26,10 +26,13 @@ if str(REPO_ROOT) not in sys.path:
 from vmec_jax._compat import enable_x64, has_jax, jax, jnp
 from vmec_jax.boundary import boundary_from_indata
 from vmec_jax.config import load_config
+from vmec_jax.discrete_adjoint import build_residual_checkpoint_tape
 from vmec_jax.field import signgs_from_sqrtg
 from vmec_jax.geom import eval_geom
 from vmec_jax.implicit import solve_fixed_boundary_state_implicit_vmec_residual
 from vmec_jax.init_guess import initial_guess_from_boundary
+from vmec_jax.solve import solve_fixed_boundary_residual_iter
+from vmec_jax.state import pack_state
 from vmec_jax.wout import equilibrium_aspect_ratio_from_state
 
 
@@ -111,6 +114,47 @@ def main() -> None:
     lambda_fd_s = time.perf_counter() - t0
     lambda_fd = (lambda_p - lambda_m) / (2.0 * float(args.eps))
 
+    common_kwargs = dict(
+        indata=indata,
+        signgs=signgs,
+        ftol=float(indata.get_float("FTOL", 1e-14)),
+        step_size=float(indata.get_float("DELT", 1.0)),
+        vmec2000_control=True,
+        reference_mode=False,
+        backtracking=True,
+        limit_dt_from_force=True,
+        limit_update_rms=True,
+        verbose=False,
+        verbose_vmec2000_table=False,
+        jit_forces="auto",
+        use_scan=False,
+    )
+    t0 = time.perf_counter()
+    direct = solve_fixed_boundary_residual_iter(
+        state_guess,
+        static,
+        max_iter=int(args.max_iter),
+        light_history=False,
+        resume_state_mode="full",
+        **common_kwargs,
+    )
+    direct_s = time.perf_counter() - t0
+    t0 = time.perf_counter()
+    tape = build_residual_checkpoint_tape(
+        state_guess,
+        static,
+        max_iter=int(args.max_iter),
+        solver_kwargs=common_kwargs,
+        indata=indata,
+        signgs=signgs,
+        ftol=float(indata.get_float("FTOL", 1e-14)),
+        step_size=float(indata.get_float("DELT", 1.0)),
+    )
+    tape_s = time.perf_counter() - t0
+    final_state_diff = float(
+        np.max(np.abs(np.asarray(pack_state(direct.state)) - np.asarray(tape.packed_states[-1])))
+    ) if tape.packed_states.shape[0] else float("nan")
+
     out = {
         "input": str(REPO_ROOT / args.input),
         "max_iter": int(args.max_iter),
@@ -132,6 +176,13 @@ def main() -> None:
             "rel_err": abs(lambda_ad - lambda_fd) / max(1.0e-14, abs(lambda_fd)),
             "grad_time_s": lambda_ad_s,
             "fd_time_s": lambda_fd_s,
+        },
+        "replay": {
+            "direct_runtime_s": direct_s,
+            "checkpoint_tape_runtime_s": tape_s,
+            "checkpoint_count": int(tape.packed_states.shape[0]),
+            "trace_len": int(tape.trace.iter2.shape[0]),
+            "final_state_linf": final_state_diff,
         },
     }
     print(json.dumps(out, indent=2, sort_keys=True))
