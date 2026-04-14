@@ -565,3 +565,10 @@ Stop or reduce scope if:
     `solve_fixed_boundary_residual_iter(...)` (`int(jmax)`, `_device_get_floats`,
     VMEC-style scalar histories / diagnostics) that need to be separated from
     the traced solve path more systematically.
+  - Added `checkpoint_tape_state_jvp_columns(...)`, which reuses a single
+    per-step linearization and propagates multiple packed-state tangents
+    through the same replay tape with `vmap(...)` instead of retracing the
+    same step map column by column.
+  - Locked a new exact-QH slow regression showing the batched helper matches
+    stacked single-column `checkpoint_tape_state_jvp(...)` results on the same
+    2-step replay tape.
