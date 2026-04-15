@@ -4096,7 +4096,7 @@ def solve_fixed_boundary_residual_iter(
     light_history: bool | None = None,
     resume_state_mode: str | None = None,
     fsq_total_target: float | None = None,
-    host_update_assembly: bool = False,
+    host_update_assembly: bool | None = None,
     adjoint_trace: bool = False,
 ) -> SolveVmecResidualResult:
     """VMEC-style fixed-point update loop using preconditioned force residuals."""
@@ -4135,13 +4135,17 @@ def solve_fixed_boundary_residual_iter(
         raise ValueError("step_size must be positive")
     # Auto-enable host_update_assembly (NumPy-path) for non-scan CPU solves.
     # This avoids the _mn_sin_to_signed JAX-eager overhead (~2s for circular_tokamak).
-    # The caller can still force host_update_assembly=False to opt out.
+    # When host_update_assembly is explicitly True/False, respect that choice.
     _auto_host = (
         (not bool(use_scan))
         and (jax.default_backend() == "cpu")
         and (not _tree_has_tracer(state0))
     )
-    host_update_assembly = (bool(host_update_assembly) or _auto_host) and (not bool(use_scan)) and (jax.default_backend() == "cpu")
+    if host_update_assembly is None:
+        host_update_assembly = _auto_host
+    else:
+        host_update_assembly = bool(host_update_assembly)
+    host_update_assembly = host_update_assembly and (not bool(use_scan)) and (jax.default_backend() == "cpu")
     adjoint_trace = bool(adjoint_trace)
 
     signgs = int(signgs)
