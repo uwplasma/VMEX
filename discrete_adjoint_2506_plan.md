@@ -698,3 +698,36 @@ Stop or reduce scope if:
     - `x0a`: solve about `7.95 s`, jac about `4.29 s`
     - `x0b`: solve about `5.61 s`, jac about `2.64 s`
     - `x1`: solve about `5.64 s`, jac about `3.48 s`
+  - Profiled the current pushed exact path again with `cProfile` on the exact QH
+    start point after the callback/runtime fixes:
+    - warm forward solve and warm discrete-adjoint primal solve are both still
+      dominated by the full-inner force loop, not by replay:
+      about `8.9 s` total, with about `7.1 s` inside
+      `compute_forces_numpy(...)`.
+    - the biggest force-kernel pieces are still
+      `vmec_forces_rz_from_wout(...)` and
+      `vmec_bcovar_half_mesh_from_wout(...)`.
+  - Broke the warm exact Jacobian into its three stages and found:
+    - initial-state columns are negligible (`~4e-4 s`);
+    - replay-column transport dominates (`~2.63 s`);
+    - residual-side tangent propagation is negligible (`~8e-3 s`);
+    - final host materialization is negligible.
+  - Reduced one remaining replay-cache overhead by changing
+    `_stacked_trace_signature(...)` to read leaf `shape`/`dtype` directly
+    instead of materializing every stacked leaf with `np.asarray(...)`.
+    This cuts the Jacobian-side `np.asarray` calls from about `152` down to
+    about `6` on the warm exact QH probe.
+  - Fixed the `host_update_assembly` control path in
+    `solve_fixed_boundary_residual_iter(...)` so `host_update_assembly=False`
+    now really disables the NumPy auto-host path instead of being overridden by
+    `_auto_host`. Default behavior is unchanged when the argument is omitted.
+  - Used that explicit override to compare the exact QH warm primal solve on
+    the true NumPy-host path versus the true warmed JAX force path:
+    - NumPy-host path: about `5.56 s`, `786` iterations,
+      `fsqz_last ≈ 2.24e-14`
+    - JAX force path: about `8.10 s`, `786` iterations,
+      `fsqz_last ≈ 2.24e-14`
+  - Conclusion from that audit:
+    on this exact QH CPU path, the NumPy-host force loop is still faster than
+    the warmed JAX force kernels, so the current production default should stay
+    on the NumPy-host path unless later kernel work changes that result.
