@@ -789,3 +789,26 @@ Stop or reduce scope if:
     - `max_iter=50`: about `1.15e-3`
   - Added a slow regression locking the dynamic replay primal consistency on a
     20-step QH tape.
+  - New traced moving-axis audit:
+    the real remaining mismatch was not the frozen-axis replay path alone.
+    `initial_guess_from_boundary(..., vmec_project=True)` was still taking a
+    traced zero-axis fallback, so the differentiated moving-axis initial-state
+    map did not match the primal callback. That is now fixed with a
+    JAX-compatible `_recompute_axis_from_state_vmec_jax(...)` path in
+    `vmec_jax/init_guess.py`.
+  - After that axis fix, the moving-axis initial-state derivative on the exact
+    QH start point matches central FD to machine precision again.
+  - The production tangent transport now linearizes each dynamic replay step at
+    the stored primal carry for that step, instead of linearizing the whole
+    multi-step scan around a numerically drifting replayed trajectory.
+    This preserves the solver-control carry sensitivity (`inv_tau`, `fsq_prev`,
+    momentum history) while avoiding the long-horizon basepoint drift that was
+    still contaminating the full-inner Jacobian.
+  - Current wrapper-facing QH audits after those fixes:
+    - exact start point, moving-axis, `max_iter=1`: production Jacobian now
+      matches FD tightly;
+    - exact start point, moving-axis, `max_iter=20`: relative column error is
+      now about `2.25e-3`, down from the earlier `3.45e-2`.
+  - The lean dynamic-only tape path is no longer exact enough to serve as the
+    production tangent transport after the stepwise replay upgrade, so the
+    production simsopt wrapper is back on full step traces for correctness.
