@@ -101,6 +101,7 @@ class ResidualCheckpointTape:
     step_traces: tuple[dict[str, Any], ...]
     stacked_step_traces: Any | None = None
     step_trace_static_flags: dict[str, Any] | None = None
+    dynamic_initial_carry: Any | None = None
 
 
 def _empty_trace() -> ResidualIterationTrace:
@@ -341,6 +342,7 @@ def build_residual_checkpoint_tape_direct(
     step_size: float = 1.0,
     light_history: bool = True,
     store_trace: bool = False,
+    store_full_step_traces: bool = True,
     solver_kwargs: dict[str, Any] | None = None,
 ) -> ResidualCheckpointTape:
     """Build a replay tape from one direct residual solve with adjoint tracing."""
@@ -366,8 +368,27 @@ def build_residual_checkpoint_tape_direct(
     trace = residual_iteration_trace_from_result(result) if store_trace else _empty_trace()
     stacked_step_traces = None
     step_trace_static_flags = None
+    dynamic_initial_carry = None
     if step_traces:
         stacked_step_traces, step_trace_static_flags = _stack_replay_step_traces(step_traces)
+        tentative_tape = ResidualCheckpointTape(
+            final_packed_state=final_packed_state,
+            packed_states=np.zeros((0, int(state0.layout.size)), dtype=float),
+            trace=trace,
+            resume_states=(),
+            step_traces=step_traces,
+            stacked_step_traces=stacked_step_traces,
+            step_trace_static_flags=step_trace_static_flags,
+        )
+        if _dynamic_replay_supported(tape=tentative_tape, rebuild_preconditioner=True):
+            dynamic_stacked, dynamic_static_flags, dynamic_initial_carry = _build_dynamic_replay_payload(
+                step_traces,
+                step_trace_static_flags,
+            )
+            if not store_full_step_traces:
+                step_traces = ()
+                stacked_step_traces = dynamic_stacked
+                step_trace_static_flags = dynamic_static_flags
     return ResidualCheckpointTape(
         final_packed_state=final_packed_state,
         packed_states=np.zeros((0, int(state0.layout.size)), dtype=float),
@@ -376,6 +397,7 @@ def build_residual_checkpoint_tape_direct(
         step_traces=step_traces,
         stacked_step_traces=stacked_step_traces,
         step_trace_static_flags=step_trace_static_flags,
+        dynamic_initial_carry=dynamic_initial_carry,
     )
 
 
@@ -587,6 +609,43 @@ def _stack_replay_step_traces(step_traces: tuple[dict[str, Any], ...]):
     return stacked, static_flags
 
 
+def _replay_values_equal(a, b) -> bool:
+    if a is b:
+        return True
+    if isinstance(a, np.ndarray) or isinstance(b, np.ndarray):
+        return np.array_equal(np.asarray(a), np.asarray(b))
+    try:
+        return np.array_equal(np.asarray(a), np.asarray(b))
+    except Exception:
+        return a == b
+
+
+def _build_dynamic_replay_payload(step_traces: tuple[dict[str, Any], ...], static_flags: dict[str, Any]):
+    from ._compat import jax
+
+    dynamic_static_flags = dict(static_flags)
+    dynamic_static_flags["layout"] = step_traces[0]["state_pre"].layout
+    constant_candidates = (
+        "wout_like",
+        "trig",
+        "w_mode_mn",
+        "lambda_update_scale",
+        "max_coeff_delta_rms_pre",
+        "max_update_rms_pre",
+    )
+    varying_keys = ["time_step", "flip_sign", "reset_inv_tau", "zero_m1"]
+    for key in constant_candidates:
+        first = step_traces[0][key]
+        if all(_replay_values_equal(trace[key], first) for trace in step_traces[1:]):
+            dynamic_static_flags[key] = first
+        else:
+            varying_keys.append(key)
+    filtered = tuple({key: trace[key] for key in varying_keys} for trace in step_traces)
+    stacked = jax.tree_util.tree_map(lambda *xs: np.stack([np.asarray(x) for x in xs], axis=0), *filtered)
+    initial_carry = _dynamic_replay_initial_carry(step_traces[0])
+    return stacked, dynamic_static_flags, initial_carry
+
+
 def _stacked_trace_signature(stacked) -> tuple[tuple[tuple[int, ...], str], ...]:
     from ._compat import jax
 
@@ -751,12 +810,33 @@ def _packed_dynamic_replay_step_from_carry(
     preconditioner_jmax_override,
 ):
     packed_state, inv_tau, fsq_prev, vRcc_before, vRss_before, vRsc_before, vRcs_before, vZsc_before, vZcs_before, vZcc_before, vZss_before, vLsc_before, vLcs_before, vLcc_before, vLss_before = carry
-    state_pre = unpack_state(packed_state, trace["state_pre"].layout)
+    layout = static_flags.get("layout", trace["state_pre"].layout if isinstance(trace, dict) and "state_pre" in trace else None)
+    if layout is None:
+        raise ValueError("dynamic replay requires a stored VMEC layout")
+    state_pre = unpack_state(packed_state, layout)
+    wout_like = trace["wout_like"] if isinstance(trace, dict) and "wout_like" in trace else static_flags["wout_like"]
+    trig = trace["trig"] if isinstance(trace, dict) and "trig" in trace else static_flags["trig"]
+    w_mode_mn = trace["w_mode_mn"] if isinstance(trace, dict) and "w_mode_mn" in trace else static_flags["w_mode_mn"]
+    lambda_update_scale = (
+        trace["lambda_update_scale"]
+        if isinstance(trace, dict) and "lambda_update_scale" in trace
+        else static_flags["lambda_update_scale"]
+    )
+    max_coeff_delta_rms_pre = (
+        trace["max_coeff_delta_rms_pre"]
+        if isinstance(trace, dict) and "max_coeff_delta_rms_pre" in trace
+        else static_flags["max_coeff_delta_rms_pre"]
+    )
+    max_update_rms_pre = (
+        trace["max_update_rms_pre"]
+        if isinstance(trace, dict) and "max_update_rms_pre" in trace
+        else static_flags["max_update_rms_pre"]
+    )
     residual_out = raw_force_residual_from_state(
         state_pre,
         static,
-        wout_like=trace["wout_like"],
-        trig=trace["trig"],
+        wout_like=wout_like,
+        trig=trig,
         apply_lforbal=static_flags["apply_lforbal"],
         include_edge_residual=static_flags["include_edge_residual"],
         apply_m1_constraints=static_flags["apply_m1_constraints"],
@@ -765,10 +845,10 @@ def _packed_dynamic_replay_step_from_carry(
     preconditioner_out = state_dependent_preconditioner_from_forces(
         k=residual_out["k"],
         static=static,
-        trig=trace["trig"],
+        trig=trig,
         dtype=jnp.asarray(packed_state).dtype,
         jmax_override=preconditioner_jmax_override,
-        w_mode_mn=trace["w_mode_mn"],
+        w_mode_mn=w_mode_mn,
     )
     force_out = preconditioned_force_channels_from_raw_forces(
         frzl=residual_out["frzl"],
@@ -777,7 +857,7 @@ def _packed_dynamic_replay_step_from_carry(
         cfg=static.cfg,
         lam_prec=preconditioner_out["lam_prec"],
         w_mode_mn=preconditioner_out["w_mode_mn"],
-        lambda_update_scale=trace["lambda_update_scale"],
+        lambda_update_scale=lambda_update_scale,
     )
     fsq1 = _dynamic_fsq1_from_force_channels(
         state_pre=state_pre,
@@ -801,7 +881,7 @@ def _packed_dynamic_replay_step_from_carry(
     if bool(static_flags["limit_dt_from_force"]):
         dt_eff = _dynamic_safe_dt_from_force_arrays(
             dt_nominal=time_step,
-            max_coeff_delta_rms=trace["max_coeff_delta_rms_pre"],
+            max_coeff_delta_rms=max_coeff_delta_rms_pre,
             frcc=force_out["frcc_u"],
             frss=force_out["frss_u"],
             fzsc=force_out["fzsc_u"],
@@ -849,7 +929,7 @@ def _packed_dynamic_replay_step_from_carry(
         fzss_u=force_out["fzss_u"],
         flcc_u=force_out["flcc_u"],
         flss_u=force_out["flss_u"],
-        max_update_rms=trace["max_update_rms_pre"],
+        max_update_rms=max_update_rms_pre,
         limit_update_rms=static_flags["limit_update_rms"],
         divide_by_scalxc_for_update=static_flags["divide_by_scalxc_for_update"],
     )
@@ -968,7 +1048,7 @@ def checkpoint_tape_state_jvp_columns(
     rebuild_preconditioner: bool = False,
 ):
     """Push multiple packed-state tangents forward through the extracted step tape."""
-    if not tape.step_traces:
+    if not tape.step_traces and tape.dynamic_initial_carry is None:
         return jnp.asarray(initial_tangents)
 
     from ._compat import jax
@@ -976,10 +1056,31 @@ def checkpoint_tape_state_jvp_columns(
     tangents = jnp.asarray(initial_tangents)
     stacked = tape.stacked_step_traces
     static_flags = tape.step_trace_static_flags
-    if stacked is None or static_flags is None:
-        stacked, static_flags = _stack_replay_step_traces(tape.step_traces)
-    if _dynamic_replay_supported(tape=tape, rebuild_preconditioner=rebuild_preconditioner):
+    if tape.step_traces and _dynamic_replay_supported(tape=tape, rebuild_preconditioner=rebuild_preconditioner):
         carry0 = _dynamic_replay_initial_carry(tape.step_traces[0])
+        zeros_like = lambda arr: jnp.zeros((tangents.shape[0],) + jnp.asarray(arr).shape, dtype=jnp.asarray(arr).dtype)
+        carry_tangents = (tangents,) + tuple(zeros_like(arr) for arr in carry0[1:])
+        for trace in tape.step_traces:
+            carry_base = _dynamic_replay_initial_carry(trace)
+
+            def _step(carry):
+                return _packed_dynamic_replay_step_from_carry(
+                    carry,
+                    trace,
+                    static=static,
+                    static_flags=trace if static_flags is None else static_flags,
+                    preconditioner_jmax_override=(
+                        int(trace["precond_jmax"])
+                        if static_flags is None or static_flags.get("precond_jmax") is None
+                        else int(static_flags["precond_jmax"])
+                    ),
+                )
+
+            _, linear_step = jax.linearize(_step, carry_base)
+            carry_tangents = jax.vmap(linear_step)(carry_tangents)
+        return carry_tangents[0]
+    if tape.dynamic_initial_carry is not None and stacked is not None and static_flags is not None and rebuild_preconditioner:
+        carry0 = tape.dynamic_initial_carry
         zeros_like = lambda arr: jnp.zeros((tangents.shape[0],) + jnp.asarray(arr).shape, dtype=jnp.asarray(arr).dtype)
         carry_tangents0 = (
             tangents,
@@ -1010,6 +1111,9 @@ def checkpoint_tape_state_jvp_columns(
         _, linear_step = jax.linearize(_run, carry0)
         carry_tangents_final = jax.vmap(linear_step)(carry_tangents0)
         return carry_tangents_final[0]
+
+    if stacked is None or static_flags is None:
+        stacked, static_flags = _stack_replay_step_traces(tape.step_traces)
     if rebuild_preconditioner and static_flags["precond_jmax"] is None:
         for trace in tape.step_traces:
             x0 = jnp.asarray(pack_state(trace["state_pre"]))

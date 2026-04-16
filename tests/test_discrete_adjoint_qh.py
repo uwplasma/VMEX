@@ -134,6 +134,50 @@ def test_qh_projected_initial_guess_boundary_derivative_matches_fd_with_frozen_a
     assert grad_ad == pytest.approx(grad_fd, rel=1.0e-6, abs=1.0e-8)
 
 
+def test_qh_projected_initial_guess_boundary_derivative_matches_fd_moving_axis(load_case_qh_warm_start):
+    pytest.importorskip("jax")
+    _require_slow()
+
+    from vmec_jax._compat import enable_x64, jax, jnp
+    from vmec_jax.boundary import BoundaryCoeffs
+    from vmec_jax.init_guess import initial_guess_from_boundary
+
+    enable_x64(True)
+
+    _cfg, indata, static, boundary, _state0 = load_case_qh_warm_start
+    k_rc01 = _mode_index(static.modes, 0, 1)
+    alpha0 = float(np.asarray(boundary.R_cos, dtype=float)[k_rc01])
+
+    def _rcos_mid(alpha):
+        boundary_alpha = BoundaryCoeffs(
+            R_cos=jnp.asarray(boundary.R_cos).at[k_rc01].set(alpha),
+            R_sin=jnp.asarray(boundary.R_sin),
+            Z_cos=jnp.asarray(boundary.Z_cos),
+            Z_sin=jnp.asarray(boundary.Z_sin),
+        )
+        state = initial_guess_from_boundary(
+            static,
+            boundary_alpha,
+            indata,
+            vmec_project=True,
+        )
+        return state.Rcos[5, k_rc01]
+
+    eps = 1.0e-5
+    grad_ad = float(np.asarray(jax.grad(_rcos_mid)(alpha0)))
+    grad_fd = float(
+        (
+            np.asarray(_rcos_mid(alpha0 + eps))
+            - np.asarray(_rcos_mid(alpha0 - eps))
+        )
+        / (2.0 * eps)
+    )
+
+    assert np.isfinite(grad_ad)
+    assert np.isfinite(grad_fd)
+    assert grad_ad == pytest.approx(grad_fd, rel=1.0e-6, abs=1.0e-8)
+
+
 def test_residual_iteration_trace_extracts_qh_history(load_case_qh_warm_start):
     pytest.importorskip("jax")
 
@@ -372,6 +416,90 @@ def test_residual_checkpoint_tape_direct_matches_two_step_qh(load_case_qh_warm_s
         abs=1.0e-12,
     )
     assert len(direct_tape.step_traces) == len(replay_tape.step_traces)
+
+
+def test_residual_checkpoint_tape_direct_dynamic_only_matches_two_step_qh(load_case_qh_warm_start):
+    pytest.importorskip("jax")
+    _require_slow()
+
+    from vmec_jax._compat import jnp
+    from vmec_jax.discrete_adjoint import (
+        build_residual_checkpoint_tape_direct,
+        checkpoint_tape_state_jvp_columns,
+    )
+    from vmec_jax.field import signgs_from_sqrtg
+    from vmec_jax.geom import eval_geom
+    from vmec_jax.init_guess import initial_guess_from_boundary
+
+    _cfg, indata, static, boundary, _state0 = load_case_qh_warm_start
+    state_guess = initial_guess_from_boundary(static, boundary, indata, vmec_project=True)
+    signgs = int(signgs_from_sqrtg(np.asarray(eval_geom(state_guess, static).sqrtg), axis_index=1))
+    common_kwargs = dict(
+        indata=indata,
+        signgs=signgs,
+        ftol=float(indata.get_float("FTOL", 1e-14)),
+        step_size=float(indata.get_float("DELT", 1.0)),
+        vmec2000_control=True,
+        reference_mode=False,
+        backtracking=True,
+        limit_dt_from_force=True,
+        limit_update_rms=True,
+        verbose=False,
+        verbose_vmec2000_table=False,
+        jit_forces="auto",
+        use_scan=False,
+        light_history=True,
+        resume_state_mode="full",
+    )
+
+    direct_full = build_residual_checkpoint_tape_direct(
+        state_guess,
+        static,
+        max_iter=2,
+        solver_kwargs=common_kwargs,
+        indata=indata,
+        signgs=signgs,
+        ftol=float(indata.get_float("FTOL", 1e-14)),
+        step_size=float(indata.get_float("DELT", 1.0)),
+        light_history=True,
+        store_trace=False,
+    )
+    direct_lean = build_residual_checkpoint_tape_direct(
+        state_guess,
+        static,
+        max_iter=2,
+        solver_kwargs=common_kwargs,
+        indata=indata,
+        signgs=signgs,
+        ftol=float(indata.get_float("FTOL", 1e-14)),
+        step_size=float(indata.get_float("DELT", 1.0)),
+        light_history=True,
+        store_trace=False,
+        store_full_step_traces=False,
+    )
+
+    assert np.asarray(direct_lean.final_packed_state) == pytest.approx(
+        np.asarray(direct_full.final_packed_state),
+        rel=0.0,
+        abs=1.0e-12,
+    )
+    assert direct_lean.step_traces == ()
+    assert direct_lean.dynamic_initial_carry is not None
+
+    tangent = jnp.asarray(np.eye(int(direct_full.final_packed_state.size), dtype=float)[:1])
+    full_jvp = checkpoint_tape_state_jvp_columns(
+        tape=direct_full,
+        static=static,
+        initial_tangents=tangent,
+        rebuild_preconditioner=True,
+    )
+    lean_jvp = checkpoint_tape_state_jvp_columns(
+        tape=direct_lean,
+        static=static,
+        initial_tangents=tangent,
+        rebuild_preconditioner=True,
+    )
+    np.testing.assert_allclose(np.asarray(lean_jvp), np.asarray(full_jvp), rtol=5.0e-2, atol=1.0e-4)
 
 
 def test_residual_checkpoint_tape_matches_direct_two_step_qh(load_case_qh_warm_start):
