@@ -36,9 +36,19 @@ def require_slow() -> None:
 
 _ASSET_SENTINEL = _ROOT / "examples" / "data" / "wout_circular_tokamak_reference.nc"
 
+# Bundled wout files that are always present in the repo (VMEC2000 ground truth).
+_BUNDLED_WOUT_SENTINEL = _ROOT / "examples" / "data" / "wout_circular_tokamak.nc"
+
 
 def _assets_available() -> bool:
-    return _ASSET_SENTINEL.exists()
+    """Return True if full-test reference assets are available.
+
+    Accepts either the large downloaded reference NC (wout_*_reference.nc) OR the
+    always-bundled VMEC2000 ground-truth files (wout_*.nc).  This allows ``RUN_FULL=1``
+    to exercise the comprehensive parity tests even without downloading the extra
+    reference assets.
+    """
+    return _ASSET_SENTINEL.exists() or _BUNDLED_WOUT_SENTINEL.exists()
 
 
 def pytest_collection_modifyitems(config, items):
