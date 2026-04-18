@@ -1105,3 +1105,20 @@ Stop or reduce scope if:
           current QH exact runs;
         - the remaining work is to reduce forward/replay memory retention so
           the better optimizer can run longer without exhausting the machine.
+    - exact replay/runtime follow-up on 2026-04-18:
+      - after the concrete exact Gauss-Newton path started moving, the next
+        simsopt-side profile showed that vmec_jax was still paying for too many
+        exact residual solves in backtracking;
+      - with residual reuse and line-search scale reuse added on the consumer
+        side, the vmec_jax exact backend now supports:
+        - `max_mode=2`, `nfev=2`: estimated total objective `0.0620440`;
+        - `max_mode=2`, `nfev=3`: estimated total objective `0.0603123`;
+      - the early objective quality now beats the classic user-supplied
+        `max_mode=2`, `nfev=3` reference (`~0.102316`), which strongly suggests
+        the vmec_jax exact derivatives and replay transport are no longer the
+        quality bottleneck for this regime;
+      - the live remaining problem is pure resource behavior:
+        - `max_mode=2`, `nfev=3` still reaches about `22.47 GB` RSS and about
+          `59.04 GB` peak footprint;
+        - so the next vmec_jax-side target remains executable/array retention
+          on repeated nearby exact solves, not another derivative rewrite.
