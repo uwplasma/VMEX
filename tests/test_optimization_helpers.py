@@ -7,6 +7,7 @@ from vmec_jax.optimization import (
     apply_boundary_params,
     boundary_param_names,
     boundary_param_specs,
+    gauss_newton_least_squares,
     surface_indices_from_s,
 )
 
@@ -49,3 +50,27 @@ def test_surface_indices_from_s():
     indices, selected = surface_indices_from_s(s_half, [0.28, 3])
     assert indices == [1, 2]
     np.testing.assert_allclose(selected, np.array([0.3, 0.5]))
+
+
+def test_gauss_newton_least_squares_solves_linear_problem():
+    def residual(x):
+        x = np.asarray(x, dtype=float)
+        return np.array([x[0] - 1.0, 2.0 * x[1] - 2.0], dtype=float)
+
+    def jacobian(_x):
+        return np.array([[1.0, 0.0], [0.0, 2.0]], dtype=float)
+
+    result = gauss_newton_least_squares(
+        residual,
+        jacobian,
+        np.array([0.0, 0.0], dtype=float),
+        max_nfev=5,
+        ftol=1e-12,
+        gtol=1e-12,
+        xtol=1e-12,
+        verbose=0,
+    )
+
+    np.testing.assert_allclose(result["x"], np.array([1.0, 1.0]), atol=1e-12, rtol=0.0)
+    assert result["success"]
+    assert result["objective"] <= 1e-20
