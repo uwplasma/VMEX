@@ -114,6 +114,7 @@ from .optimization import (
     apply_boundary_params,
     boundary_param_names,
     boundary_param_specs,
+    gauss_newton_least_squares,
     parse_surface_list,
     prepare_fixed_boundary_context,
     surface_indices_from_s,
@@ -168,6 +169,11 @@ from .solve import (
     solve_lambda_gd,
 )
 from .residuals import ForceResiduals, force_residuals_from_state
+from .quasisymmetry import (
+    quasisymmetry_diagnostics_from_state,
+    quasisymmetry_ratio_residual_from_state,
+    quasisymmetry_ratio_residual_from_wout,
+)
 from .visualization import export_vtk_surface_and_fieldline
 
 __all__ = [
@@ -270,6 +276,7 @@ __all__ = [
     "apply_boundary_params",
     "boundary_param_names",
     "boundary_param_specs",
+    "gauss_newton_least_squares",
     "parse_surface_list",
     "prepare_fixed_boundary_context",
     "surface_indices_from_s",
@@ -333,5 +340,8 @@ __all__ = [
     "solve_fixed_boundary_residual_iter",
     "ForceResiduals",
     "force_residuals_from_state",
+    "quasisymmetry_diagnostics_from_state",
+    "quasisymmetry_ratio_residual_from_state",
+    "quasisymmetry_ratio_residual_from_wout",
     "export_vtk_surface_and_fieldline",
 ]

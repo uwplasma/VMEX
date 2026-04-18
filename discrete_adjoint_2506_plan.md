@@ -1159,3 +1159,33 @@ Stop or reduce scope if:
         - replay/exact derivative quality is still not the bottleneck;
         - the remaining problem is long-run forward-path retention after the
           good optimizer step is already found.
+    - standalone exact-QH API follow-up on 2026-04-18:
+      - audited the vmec_jax optimization examples and confirmed that the
+        existing explicit/implicit target-iota tutorials are still useful
+        comparisons, but they do not showcase the recovered exact QH route
+        used by the simsopt wrapper;
+      - added a reusable vmec_jax-side quasisymmetry diagnostic layer:
+        - `vmec_jax.quasisymmetry_diagnostics_from_state(...)`
+        - `vmec_jax.quasisymmetry_ratio_residual_from_state(...)`
+        - `vmec_jax.quasisymmetry_ratio_residual_from_wout(...)`
+      - added a reusable concrete outer helper:
+        - `vmec_jax.gauss_newton_least_squares(...)`
+      - added a standalone example:
+        - `examples/optimization/qh_fixed_resolution_exact.py`
+        - mirrors the fixed-resolution QH setup but uses vmec_jax-only exact
+          residual solves, direct tapes, replay JVP columns, and forward-only
+          trial residuals;
+      - updated the older explicit/implicit comparison example docstrings to
+        point users at `qh_fixed_resolution_exact.py` for the recovered exact
+        route rather than presenting the comparison examples as the primary
+        stellarator-optimization path;
+      - tests:
+        - `tests/test_optimization_helpers.py` now covers the new concrete
+          Gauss-Newton helper on a linear least-squares problem;
+        - `tests/test_quasisymmetry.py` validates the new vmec_jax-side QS API
+          on the bundled QH fixture (`RUN_SLOW=1`);
+      - smoke status:
+        - the standalone example enters the expensive exact path as intended,
+          but a full benchmark pass was not kept in this turn because the
+          remaining blocker is still long-run runtime/memory rather than API
+          correctness.
