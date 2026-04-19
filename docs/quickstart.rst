@@ -1,6 +1,10 @@
 Quickstart
 ==========
 
+Install directly from PyPI::
+
+  pip install vmec-jax
+
 Run the minimal showcase (recommended)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -16,7 +20,12 @@ and VMEC2000-style per-iteration **screen** output (FSQR/FSQZ/FSQL, RAX, DELT, W
 
   python -m venv .venv
   source .venv/bin/activate
+  python -m pip install -e .
   python examples/showcase_axisym_input_to_wout.py --suite
+
+If you want a release-style non-editable install instead::
+
+  python -m pip install .
 
 Run the test suite::
 

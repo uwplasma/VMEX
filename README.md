@@ -1,5 +1,11 @@
 # vmec-jax
 
+Install from PyPI:
+
+```bash
+pip install vmec-jax
+```
+
 End-to-end differentiable JAX implementation of **VMEC2000** for fixed-boundary
 and free-boundary ideal-MHD equilibria.
 
@@ -68,13 +74,25 @@ All figures below use the same **single-grid** run settings: `NS_ARRAY=151`, `NI
 
 ## Quickstart
 
-Install (editable) and run the showcase:
+Install directly from PyPI:
+
+```bash
+pip install vmec-jax
+```
+
+Install and run the showcase:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
 python examples/showcase_axisym_input_to_wout.py --suite
+```
+
+If you want a release-style non-editable install instead, use:
+
+```bash
+python -m pip install .
 ```
 
 If you want the bundled reference outputs and mgrid files, fetch the assets once:
@@ -205,4 +223,3 @@ host/device traffic. You can override this with:
 ```bash
 export VMEC_JAX_SCAN_MINIMAL=0  # keep full scan diagnostics even when quiet
 ```
-
