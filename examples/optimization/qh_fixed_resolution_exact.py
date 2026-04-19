@@ -266,6 +266,11 @@ def main() -> None:
         verbose=1,
     )
 
+    # Release scan-runner and preconditioner JIT caches after the expensive GN
+    # loop to reduce peak memory before final reporting.
+    vj.clear_replay_scan_caches()
+    vj.clear_preconditioner_jit_caches()
+
     # Try to reuse the cached exact state for the final display.  The last
     # accepted GN step will have stored the final x in _exact_cache.  If the
     # cache key matches we skip the extra forward solve entirely; otherwise we
