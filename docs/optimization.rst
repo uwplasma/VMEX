@@ -349,10 +349,36 @@ The main entry point for differentiable fixed-boundary optimisation.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Factory returning a ``residuals_from_state(VMECState) → jnp.ndarray`` callable
-configured for quasi-helical (or quasi-axisymmetric) symmetry optimisation.
+configured for quasi-helical symmetry.  Combines one aspect-ratio residual with
+per-surface QS residuals.
 
 Parameters: ``static``, ``indata``, ``helicity_m``, ``helicity_n``,
 ``target_aspect``, ``surfaces``, ``aspect_weight``, ``qs_weight``.
+
+:func:`make_qs_residuals_fn`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+General quasisymmetry residuals factory supporting QA (``helicity_n=0``),
+QH, and optional mean-iota targets.  Preferred for new workflows.
+
+Parameters: ``static``, ``indata``, ``helicity_m``, ``helicity_n``,
+``target_aspect``, ``target_iota``, ``surfaces``,
+``aspect_weight``, ``iota_weight``, ``qs_weight``.
+
+:func:`create_x_scale`
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Build per-DOF exponential spectral scaling weights for use with
+:meth:`FixedBoundaryExactOptimizer.run`.
+
+.. math::
+
+   w_i = \exp(-\alpha \cdot \max(|m_i|, |n_i|)) \;/\; \exp(-\alpha)
+
+The lowest non-trivial mode level (``max(|m|,|n|)=1``) has weight 1; higher
+modes are progressively down-weighted.  Use ``alpha=0`` for uniform weights.
+
+Parameters: ``specs``, ``alpha`` (default 1.0).
 
 :func:`gauss_newton_least_squares`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -387,6 +413,7 @@ Source files
      - Role
    * - ``vmec_jax/optimization.py``
      - :class:`FixedBoundaryExactOptimizer`, :func:`make_qh_residuals_fn`,
+       :func:`make_qs_residuals_fn`, :func:`create_x_scale`,
        :func:`gauss_newton_least_squares`, boundary DOF helpers.
    * - ``vmec_jax/discrete_adjoint.py``
      - Checkpoint tape build (``build_residual_checkpoint_tape_direct``),
@@ -396,9 +423,12 @@ Source files
    * - ``vmec_jax/plotting.py``
      - ``plot_qh_optimization`` and helper plotting functions.
    * - ``vmec_jax/wout.py``
-     - ``equilibrium_aspect_ratio_from_state``, wout writing.
+     - ``equilibrium_aspect_ratio_from_state``,
+       ``equilibrium_iota_profiles_from_state``, wout writing.
    * - ``examples/optimization/qh_fixed_resolution_jax.py``
-     - SIMSOPT-style workflow script (no argparse, variables at top).
+     - QH SIMSOPT-style workflow script (no argparse, variables at top).
+   * - ``examples/optimization/qa_fixed_resolution_jax_ess.py``
+     - QA workflow with ESS toggle (aspect + mean iota + QA objectives).
    * - ``examples/optimization/plot_qh_optimization_results.py``
      - Standalone plotting helper (regenerates figures from saved wout+JSON).
    * - ``examples/optimization/target_iota_aspect_volume.py``
@@ -417,6 +447,34 @@ Running the QH example
 
 Increase ``MAX_MODE`` at the top of ``qh_fixed_resolution_jax.py`` for richer
 boundary parameterisation; increase ``MAX_NFEV`` for more optimisation budget.
+
+QA optimisation with exponential spectral scaling (ESS)
+--------------------------------------------------------
+
+``examples/optimization/qa_fixed_resolution_jax_ess.py`` demonstrates
+quasi-axisymmetric optimisation of an nfp=2 configuration with three objectives:
+
+* **Aspect ratio** target
+* **Mean rotational transform** (iota) target ``= 0.41``
+* **QA quasisymmetry** residuals (``helicity_m=1, helicity_n=0``)
+
+A top-level toggle ``USE_ESS = True/False`` enables exponential spectral scaling
+via :func:`create_x_scale`.  With ESS, boundary DOFs at mode number
+``max(|m|, |n|) = k`` are pre-scaled by ``exp(-α·k) / exp(-α)`` (``α=1``
+default), so the Gauss-Newton step naturally prefers coarse-scale shape changes
+over fine-scale ones.  This often improves convergence on inputs with many
+high-mode DOFs.
+
+.. code-block:: bash
+
+   # Run with ESS (results saved to results/qa_opt/ess/)
+   python examples/optimization/qa_fixed_resolution_jax_ess.py
+
+   # Edit USE_ESS = False at the top to compare without scaling
+   # (results saved to results/qa_opt/no_ess/)
+
+The script starts from ``examples/data/input.nfp2_QA`` (nfp=2, ``NS=31``,
+``FTOL=1e-12``) and uses ``max_mode=3`` (48 DOFs).
 
 GPU acceleration
 -----------------
