@@ -937,7 +937,7 @@ class FixedBoundaryExactOptimizer:
             use_restart_triggers=True,
             verbose=False,
             verbose_vmec2000_table=False,
-            jit_forces=True,
+            jit_forces="auto",
             use_scan=False,
             light_history=True,
             resume_state_mode="full",
@@ -981,6 +981,23 @@ class FixedBoundaryExactOptimizer:
             lasym=bool(self._static.cfg.lasym),
             apply_m1_constraint=False,
         )
+
+    def _base_params_vector(self) -> np.ndarray:
+        """Return the reference free coefficients aligned with ``self._specs``."""
+        boundary = self._boundary_input if self._boundary_input is not None else self._boundary
+        base = np.empty(len(self._specs), dtype=float)
+        for idx, spec in enumerate(self._specs):
+            if spec.kind == "rc":
+                base[idx] = float(boundary.R_cos[spec.index])
+            elif spec.kind == "rs":
+                base[idx] = float(boundary.R_sin[spec.index])
+            elif spec.kind == "zc":
+                base[idx] = float(boundary.Z_cos[spec.index])
+            elif spec.kind == "zs":
+                base[idx] = float(boundary.Z_sin[spec.index])
+            else:  # pragma: no cover - guarded by boundary_param_specs
+                raise ValueError(f"Unknown boundary parameter kind '{spec.kind}'")
+        return base
 
     def _solve_forward(self, params, *, trial: bool = False):
         """Run a forward equilibrium solve."""
@@ -1365,14 +1382,15 @@ class FixedBoundaryExactOptimizer:
 
             scale = np.ones_like(params0_arr) if x_scale is None else np.asarray(x_scale, dtype=float)
             scale[scale == 0.0] = 1.0
-            y0 = params0_arr / scale
+            base_params = self._base_params_vector()
+            y0 = (params0_arr + base_params) / scale
 
             def _residuals_y(y):
-                x = np.asarray(y, dtype=float) * scale
+                x = np.asarray(y, dtype=float) * scale - base_params
                 return np.asarray(self.residual_fun(x), dtype=float)
 
             def _jacobian_y(y):
-                x = np.asarray(y, dtype=float) * scale
+                x = np.asarray(y, dtype=float) * scale - base_params
                 return np.asarray(self._jacobian_fun_tracked(x), dtype=float) * scale[None, :]
 
             scipy_result = _scipy_least_squares(
@@ -1386,7 +1404,7 @@ class FixedBoundaryExactOptimizer:
                 xtol=xtol,
                 verbose=2 if int(verbose) > 0 else 0,
             )
-            x_result = np.asarray(scipy_result.x, dtype=float) * scale
+            x_result = np.asarray(scipy_result.x, dtype=float) * scale - base_params
             result = {
                 "x": x_result,
                 "cost": float(scipy_result.cost),
