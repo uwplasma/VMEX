@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 """Quasi-axisymmetric optimization with vmec_jax.
 
-The script is intentionally compact: the user edits top-level variables,
-constructs an objective list, and chooses the optimizer.  To add another target,
-append an ``ObjectiveTerm`` to ``OBJECTIVES``.
+The script follows the SIMSOPT example workflow: edit parameters at the top,
+build the objective function explicitly, set up the VMEC problem, run the
+optimizer, then save and plot.  There is no argparse and no ``main()`` wrapper.
 """
 
 from pathlib import Path
@@ -15,28 +15,50 @@ try:
         FixedBoundaryQSConfig,
         ObjectiveTerm,  # noqa: F401 - shown in the commented custom-objective example.
         aspect_objective,
+        build_qs_stage,
+        combine_stage_histories,
+        load_qs_input,
         mean_iota_objective,
+        print_final_summary,
+        print_problem_summary,
         quasisymmetry_objective,
-        run_qs_optimization,
+        run_qs_stage,
+        save_final_outputs,
+        save_stage_artifacts,
+        stage_budget,
+        stage_mode_sequence,
+        stage_params_from_previous,
     )
 except ModuleNotFoundError:
     from examples.optimization.fixed_boundary_qs_common import (
         FixedBoundaryQSConfig,
         ObjectiveTerm,  # noqa: F401 - shown in the commented custom-objective example.
         aspect_objective,
+        build_qs_stage,
+        combine_stage_histories,
+        load_qs_input,
         mean_iota_objective,
+        print_final_summary,
+        print_problem_summary,
         quasisymmetry_objective,
-        run_qs_optimization,
+        run_qs_stage,
+        save_final_outputs,
+        save_stage_artifacts,
+        stage_budget,
+        stage_mode_sequence,
+        stage_params_from_previous,
     )
 
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
+# ── User parameters ──────────────────────────────────────────────────────────
 INPUT_FILE = DATA_DIR / "input.nfp2_QA"
+
 VMEC_MPOL = 5
 VMEC_NTOR = 5
-
 MAX_MODE = 1
+
 MAX_NFEV = 15
 CONTINUATION_NFEV = 10
 USE_MODE_CONTINUATION = True
@@ -55,7 +77,6 @@ TRIAL_MAX_ITER = 300
 TRIAL_FTOL = 1.0e-10
 SOLVER_DEVICE = None
 
-# QA uses helicity N=0 and includes a target-iota residual.
 HELICITY_M = 1
 HELICITY_N = 0
 SURFACES = np.arange(0.0, 1.01, 0.1)
@@ -70,11 +91,13 @@ USE_ESS = False
 ALPHA = 2.5
 
 if MAX_MODE >= 2:
-    # The higher-mode QA direct problem is sensitive to the lower-mode seed.
+    # The higher-mode QA problem is sensitive to the lower-mode seed.
     CONTINUATION_NFEV = max(CONTINUATION_NFEV, 25)
 
 OUTPUT_DIR = Path(f"results/qa_opt/{'ess' if USE_ESS else 'no_ess'}")
 
+
+# ── Objective function ───────────────────────────────────────────────────────
 OBJECTIVES = [
     aspect_objective(TARGET_ASPECT, ASPECT_WEIGHT),
     mean_iota_objective(TARGET_IOTA, IOTA_WEIGHT),
@@ -84,11 +107,12 @@ OBJECTIVES = [
         surfaces=SURFACES,
         weight=QS_WEIGHT,
     ),
-    # Example custom scalar objective:
     # ObjectiveTerm("custom", lambda ctx, state: your_metric(ctx, state), target=0.0, weight=1.0),
 ]
 
-CONFIG = FixedBoundaryQSConfig(
+
+# ── Problem setup ────────────────────────────────────────────────────────────
+RUN = FixedBoundaryQSConfig(
     input_file=INPUT_FILE,
     output_dir=OUTPUT_DIR,
     vmec_mpol=VMEC_MPOL,
@@ -115,6 +139,51 @@ CONFIG = FixedBoundaryQSConfig(
     label=f"QA opt (max_mode={MAX_MODE}, {'ESS' if USE_ESS else 'no ESS'})",
 )
 
+cfg, indata = load_qs_input(INPUT_FILE, vmec_mpol=VMEC_MPOL, vmec_ntor=VMEC_NTOR)
+stage_modes = stage_mode_sequence(RUN)
 
-if __name__ == "__main__":
-    run_qs_optimization(CONFIG, OBJECTIVES)
+
+# ── Optimization ─────────────────────────────────────────────────────────────
+stage_records = []
+params_stage = None
+prev_specs = None
+
+for stage_mode in stage_modes:
+    stage = build_qs_stage(RUN, cfg, indata, stage_mode, OBJECTIVES)
+    params0 = stage_params_from_previous(stage, params_stage=params_stage, prev_specs=prev_specs)
+    nfev = stage_budget(RUN, stage_mode)
+
+    if stage_mode == MAX_MODE:
+        print_problem_summary(RUN, OBJECTIVES, stage, params0)
+    else:
+        print(f"Stage {stage_mode} -> {stage_mode + 1} continuation seed (budget={nfev}) ...")
+
+    result = run_qs_stage(
+        RUN,
+        stage,
+        params0,
+        nfev=nfev,
+        verbose=1 if stage_mode == MAX_MODE else 0,
+    )
+    save_stage_artifacts(
+        RUN,
+        OUTPUT_DIR / f"stage_{stage_mode:02d}",
+        stage.optimizer,
+        params0,
+        result["x"],
+        result,
+    )
+    stage_records.append((stage_mode, stage, params0, result))
+    prev_specs = stage.ctx.specs
+    params_stage = result["x"]
+
+
+# ── Output ───────────────────────────────────────────────────────────────────
+final_stage = stage_records[-1][1]
+final_result = stage_records[-1][3]
+combined_history = combine_stage_histories(RUN, stage_modes, stage_records)
+if combined_history is not None:
+    final_result["_history_dump"] = combined_history
+
+print_final_summary(RUN, final_result)
+save_final_outputs(RUN, stage_records, final_stage, final_result)

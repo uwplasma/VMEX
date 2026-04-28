@@ -1,19 +1,26 @@
 from __future__ import annotations
 
-import importlib
+from pathlib import Path
 
 
-def test_fixed_boundary_qs_examples_import_without_running() -> None:
-    modules = [
-        "examples.optimization.qh_fixed_resolution_jax",
-        "examples.optimization.qa_fixed_resolution_jax_ess",
-        "examples.optimization.qp_fixed_resolution_jax_ess",
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_fixed_boundary_qs_examples_are_standalone_workflows() -> None:
+    scripts = [
+        ROOT / "examples" / "optimization" / "qh_fixed_resolution_jax.py",
+        ROOT / "examples" / "optimization" / "qa_fixed_resolution_jax_ess.py",
+        ROOT / "examples" / "optimization" / "qp_fixed_resolution_jax_ess.py",
     ]
-    for name in modules:
-        module = importlib.import_module(name)
-        assert module.CONFIG.max_mode == module.MAX_MODE
-        assert module.CONFIG.max_nfev == module.MAX_NFEV
-        assert len(module.OBJECTIVES) >= 2
+    for script in scripts:
+        text = script.read_text()
+        assert 'if __name__ == "__main__"' not in text
+        assert "run_qs_optimization(" not in text
+        assert "OBJECTIVES = [" in text
+        assert "cfg, indata = load_qs_input" in text
+        assert "for stage_mode in stage_modes:" in text
+        assert "run_qs_stage(" in text
+        assert "save_final_outputs(" in text
 
 
 def test_custom_objective_term_residual_shape() -> None:
