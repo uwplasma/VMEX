@@ -37,6 +37,9 @@ from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_
 enable_x64(True)
 
 
+StageRecord = tuple[int, "_StageBundle", np.ndarray, dict]
+
+
 @dataclass(frozen=True)
 class StageContext:
     """Objects needed by objective callbacks for one mode-continuation stage."""
@@ -216,64 +219,45 @@ def run_qs_optimization(
     config: FixedBoundaryQSConfig,
     objectives: Sequence[ObjectiveTerm],
 ) -> dict:
-    """Run a fixed-boundary exact optimization from a compact objective list."""
+    """Run a fixed-boundary exact optimization from a compact objective list.
+
+    This convenience wrapper is kept for tests and internal automation.  The
+    user-facing examples intentionally call the smaller functions below in a
+    linear SIMSOPT-style workflow so the setup and optimization steps are
+    visible in the script.
+    """
 
     if not objectives:
         raise ValueError("At least one objective term is required.")
 
-    print(f"Loading {config.input_file.name} ...")
-    cfg, indata = vj.load_config(str(config.input_file))
-    indata = rebuild_indata_with_resolution(
-        indata,
-        mpol=int(config.vmec_mpol),
-        ntor=int(config.vmec_ntor),
+    cfg, indata = load_qs_input(
+        config.input_file,
+        vmec_mpol=config.vmec_mpol,
+        vmec_ntor=config.vmec_ntor,
     )
-    cfg = config_from_indata(indata)
-
-    stage_modes = (
-        list(range(1, int(config.max_mode) + 1))
-        if (
-            bool(config.use_mode_continuation)
-            and int(config.max_mode) > 1
-            and int(config.continuation_nfev) > 0
-        )
-        else [int(config.max_mode)]
-    )
-
-    stage_records = []
+    stage_modes = stage_mode_sequence(config)
+    stage_records: list[StageRecord] = []
     params_stage = None
     prev_specs = None
 
     for stage_mode in stage_modes:
-        stage = _build_stage(config, cfg, indata, stage_mode, objectives)
-        params0 = (
-            np.zeros(len(stage.ctx.specs), dtype=float)
-            if params_stage is None
-            else vj.lift_boundary_params(prev_specs, params_stage, stage.ctx.specs)
-        )
-        nfev = int(config.max_nfev) if stage_mode == int(config.max_mode) else int(config.continuation_nfev)
+        stage = build_qs_stage(config, cfg, indata, stage_mode, objectives)
+        params0 = stage_params_from_previous(stage, params_stage=params_stage, prev_specs=prev_specs)
+        nfev = stage_budget(config, stage_mode)
 
         if stage_mode == int(config.max_mode):
-            _print_problem_summary(config, objectives, stage, params0)
+            print_problem_summary(config, objectives, stage, params0)
         else:
             print(f"Stage {stage_mode} -> {stage_mode + 1} continuation seed (budget={nfev}) ...")
 
-        result = stage.optimizer.run(
+        result = run_qs_stage(
+            config,
+            stage,
             params0,
-            method=config.method,
-            max_nfev=nfev,
-            ftol=config.ftol,
-            gtol=config.gtol,
-            xtol=config.xtol,
-            x_scale=stage.x_scale,
+            nfev=nfev,
             verbose=1 if stage_mode == int(config.max_mode) else 0,
-            iota_fn=stage.iota_fn,
-            target_iota=config.target_iota,
-            target_aspect=config.target_aspect,
-            scipy_tr_solver=config.scipy_tr_solver,
-            scipy_lsmr_maxiter=config.scipy_lsmr_maxiter,
         )
-        _save_stage_artifacts(
+        save_stage_artifacts(
             config,
             config.output_dir / f"stage_{stage_mode:02d}",
             stage.optimizer,
@@ -287,16 +271,47 @@ def run_qs_optimization(
 
     final_mode, final_stage, _final_params0, final_result = stage_records[-1]
     del final_mode
-    history = _combined_history(config, stage_modes, stage_records)
+    history = combine_stage_histories(config, stage_modes, stage_records)
     if history is not None:
         final_result["_history_dump"] = history
 
-    _print_final_summary(config, final_result)
-    _save_final_outputs(config, stage_records, final_stage, final_result)
+    print_final_summary(config, final_result)
+    save_final_outputs(config, stage_records, final_stage, final_result)
     return final_result
 
 
-def _build_stage(
+def load_qs_input(input_file: Path, *, vmec_mpol: int, vmec_ntor: int):
+    """Load a VMEC input and rebuild it at the requested fixed resolution."""
+
+    print(f"Loading {Path(input_file).name} ...")
+    cfg, indata = vj.load_config(str(input_file))
+    indata = rebuild_indata_with_resolution(
+        indata,
+        mpol=int(vmec_mpol),
+        ntor=int(vmec_ntor),
+    )
+    return config_from_indata(indata), indata
+
+
+def stage_mode_sequence(config: FixedBoundaryQSConfig) -> list[int]:
+    """Return the mode-continuation sequence for the requested run controls."""
+
+    if (
+        bool(config.use_mode_continuation)
+        and int(config.max_mode) > 1
+        and int(config.continuation_nfev) > 0
+    ):
+        return list(range(1, int(config.max_mode) + 1))
+    return [int(config.max_mode)]
+
+
+def stage_budget(config: FixedBoundaryQSConfig, stage_mode: int) -> int:
+    """Outer residual/Jacobian budget for one stage."""
+
+    return int(config.max_nfev) if int(stage_mode) == int(config.max_mode) else int(config.continuation_nfev)
+
+
+def build_qs_stage(
     config: FixedBoundaryQSConfig,
     cfg,
     indata,
@@ -374,6 +389,48 @@ def _build_stage(
     )
 
 
+def stage_params_from_previous(
+    stage: _StageBundle,
+    *,
+    params_stage: np.ndarray | None,
+    prev_specs: Sequence[vj.BoundaryParamSpec] | None,
+) -> np.ndarray:
+    """Initial parameter vector for a continuation stage."""
+
+    if params_stage is None:
+        return np.zeros(len(stage.ctx.specs), dtype=float)
+    if prev_specs is None:
+        raise ValueError("prev_specs is required when params_stage is provided.")
+    return np.asarray(vj.lift_boundary_params(prev_specs, params_stage, stage.ctx.specs), dtype=float)
+
+
+def run_qs_stage(
+    config: FixedBoundaryQSConfig,
+    stage: _StageBundle,
+    params0: np.ndarray,
+    *,
+    nfev: int,
+    verbose: int,
+) -> dict:
+    """Run one fixed-boundary optimization stage."""
+
+    return stage.optimizer.run(
+        params0,
+        method=config.method,
+        max_nfev=int(nfev),
+        ftol=config.ftol,
+        gtol=config.gtol,
+        xtol=config.xtol,
+        x_scale=stage.x_scale,
+        verbose=int(verbose),
+        iota_fn=stage.iota_fn,
+        target_iota=config.target_iota,
+        target_aspect=config.target_aspect,
+        scipy_tr_solver=config.scipy_tr_solver,
+        scipy_lsmr_maxiter=config.scipy_lsmr_maxiter,
+    )
+
+
 def _as_vector(value):
     arr = jnp.asarray(value, dtype=jnp.float64)
     return arr.reshape((1,)) if int(arr.ndim) == 0 else jnp.ravel(arr)
@@ -383,7 +440,7 @@ def _tracks_iota(objectives: Sequence[ObjectiveTerm], config: FixedBoundaryQSCon
     return config.target_iota is not None or any(term.track_iota for term in objectives)
 
 
-def _print_problem_summary(config, objectives, stage: _StageBundle, params0) -> None:
+def print_problem_summary(config, objectives, stage: _StageBundle, params0) -> None:
     print(f"Parameter space ({len(stage.ctx.specs)} DOFs): {vj.boundary_param_names(stage.ctx.specs)}")
     print("Objectives:")
     for term in objectives:
@@ -403,7 +460,7 @@ def _print_problem_summary(config, objectives, stage: _StageBundle, params0) -> 
     )
 
 
-def _print_final_summary(config: FixedBoundaryQSConfig, result: dict) -> None:
+def print_final_summary(config: FixedBoundaryQSConfig, result: dict) -> None:
     hist = result.get("_history_dump", {})
     print(f"\nTermination: {result['message']}")
     print(f"Aspect ratio (final):          {float(hist.get('aspect_final', float('nan'))):.6f}")
@@ -418,7 +475,7 @@ def _print_final_summary(config: FixedBoundaryQSConfig, result: dict) -> None:
         print(f"Objective reduction:           {100.0 * (1.0 - float(objf) / float(obj0)):.1f}%")
 
 
-def _save_stage_artifacts(
+def save_stage_artifacts(
     config: FixedBoundaryQSConfig,
     stage_dir: Path,
     opt,
@@ -446,7 +503,7 @@ def _save_stage_artifacts(
         _remove_stale(stage_dir / "wout_final_rerun.nc")
 
 
-def _save_final_outputs(
+def save_final_outputs(
     config: FixedBoundaryQSConfig,
     stage_records,
     final_stage: _StageBundle,
@@ -497,7 +554,7 @@ def _save_final_outputs(
         print(f"Done. Results saved to {config.output_dir}/")
 
 
-def _combined_history(config: FixedBoundaryQSConfig, stage_modes, stage_records) -> dict | None:
+def combine_stage_histories(config: FixedBoundaryQSConfig, stage_modes, stage_records) -> dict | None:
     if len(stage_records) <= 1:
         return None
 

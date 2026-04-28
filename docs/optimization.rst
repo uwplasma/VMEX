@@ -101,7 +101,8 @@ Quasi-helical symmetry example
 The ``examples/optimization/qh_fixed_resolution_jax.py`` script replicates the
 SIMSOPT QH fixed-resolution benchmark entirely within ``vmec_jax``.  It has no
 argparse — all parameters are top-level variables, and the objective is built
-explicitly as a small list:
+explicitly as a small list.  After the objective definition, the script shows
+the same setup and solve flow that SIMSOPT users expect:
 
 .. code-block:: python
 
@@ -128,8 +129,22 @@ explicitly as a small list:
        # ObjectiveTerm("custom", lambda ctx, state: your_metric(ctx, state), target=0.0, weight=0.1),
    ]
 
-   CONFIG = FixedBoundaryQSConfig(...)
-   run_qs_optimization(CONFIG, OBJECTIVES)
+   RUN = FixedBoundaryQSConfig(...)
+   cfg, indata = load_qs_input(INPUT_FILE, vmec_mpol=VMEC_MPOL, vmec_ntor=VMEC_NTOR)
+   stage_modes = stage_mode_sequence(RUN)
+
+   stage_records = []
+   params_stage = None
+   prev_specs = None
+   for stage_mode in stage_modes:
+       stage = build_qs_stage(RUN, cfg, indata, stage_mode, OBJECTIVES)
+       params0 = stage_params_from_previous(stage, params_stage=params_stage, prev_specs=prev_specs)
+       result = run_qs_stage(RUN, stage, params0, nfev=stage_budget(RUN, stage_mode), verbose=1)
+       stage_records.append((stage_mode, stage, params0, result))
+       prev_specs = stage.ctx.specs
+       params_stage = result["x"]
+
+   save_final_outputs(RUN, stage_records, stage_records[-1][1], stage_records[-1][3])
 
 ``ObjectiveTerm`` callbacks receive ``(ctx, state)`` and may return a scalar or
 vector.  The least-squares residual is ``weight * (value - target)``, so adding
@@ -746,8 +761,8 @@ Source files
    * - ``examples/optimization/qp_fixed_resolution_jax_ess.py``
      - QP workflow with helicity ``M=0`` quasisymmetry and iota lower bound.
    * - ``examples/optimization/fixed_boundary_qs_common.py``
-     - Shared teaching helper for objective-list construction, continuation,
-       output writing, and plotting in the QA/QH/QP scripts.
+     - Shared mechanics for objective terms, stage construction, continuation,
+       output writing, and plotting while keeping the QA/QH/QP scripts linear.
    * - ``examples/optimization/qi_fixed_resolution_jax_ess.py``
      - QI workflow using a QP preseed plus ``booz_xform_jax`` and the smooth
        Boozer-space QI objective.
