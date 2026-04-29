@@ -101,6 +101,13 @@ warm runtimes competitive with or faster than VMEC2000 on CPU:
   ``VMEC_JAX_GPU_PREALLOCATE=1`` before import to keep JAX's preallocation
   default.
 
+**12. Fused accelerator update step**
+  The exact optimizer's strict fixed-boundary accepted-point solve uses a
+  cached JIT helper for the velocity/state update on non-CPU backends.  This
+  removes many small eager GPU dispatches per VMEC iteration while leaving the
+  CPU host-update path unchanged.  Set ``VMEC_JAX_JIT_STRICT_UPDATE=0`` only
+  for diagnostics.
+
 Exact optimizer profiling
 -------------------------
 
@@ -335,6 +342,17 @@ Dynamic replay payload stacking is backend-aware: GPU uses on-device JAX stacks
 to avoid unnecessary host materialization, while CPU keeps the lower-overhead
 NumPy stack path.  This avoids the CPU replay regression seen with unconditional
 device stacking.
+
+The next accepted-point GPU fix fuses the strict fixed-boundary velocity/state
+update into one cached JIT helper for accelerator backends.  On ``office`` for
+the same QH ``max_mode=2`` perturbed dense-Jacobian profile
+(``inner_max_iter=80``, ``trial_max_iter=40``), two new accepted-point
+callbacks dropped from roughly ``20--22 s`` to ``16.5 s``.  The measured
+solver-update component dropped from about ``2.6 s`` per accepted point to
+about ``0.22 s`` per accepted point; tape replay is now again the largest
+remaining GPU term.  Explicit replay column chunks of 8 or 12 were much slower
+on this 24-DOF case because they segmented the replay into multiple GPU
+launch/compile groups; full-column replay remained best.
 
 Fixed-boundary GPU diagnostics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
