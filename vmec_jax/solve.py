@@ -34,6 +34,102 @@ from .state import VMECState, pack_state, unpack_state
 
 _SCAN_RUNNER_CACHE: dict[tuple, Any] = {}
 _COMPUTE_FORCES_CACHE: dict[tuple, Any] = {}
+_STRICT_UPDATE_STEP_JIT_CACHE: dict[tuple, Any] = {}
+
+
+def _strict_update_step_jit(static, *, limit_update_rms: bool, divide_by_scalxc_for_update: bool):
+    """Return a cached fused strict-update step for accelerator exact solves."""
+    if not has_jax():
+        return None
+    cfg = static.cfg
+    key = (
+        id(static),
+        int(getattr(cfg, "ns", 0)),
+        int(getattr(cfg, "mpol", 0)),
+        int(getattr(cfg, "ntor", 0)),
+        bool(getattr(cfg, "lasym", False)),
+        bool(limit_update_rms),
+        bool(divide_by_scalxc_for_update),
+    )
+    cached = _STRICT_UPDATE_STEP_JIT_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    from .discrete_adjoint import strict_update_accepted_step
+
+    def _step(
+        state_pre,
+        dt_eff,
+        b1,
+        fac,
+        force_scale,
+        flip_sign,
+        vRcc_before,
+        vRss_before,
+        vZsc_before,
+        vZcs_before,
+        vLsc_before,
+        vLcs_before,
+        vRsc_before,
+        vRcs_before,
+        vZcc_before,
+        vZss_before,
+        vLcc_before,
+        vLss_before,
+        frcc_u,
+        frss_u,
+        fzsc_u,
+        fzcs_u,
+        flsc_u,
+        flcs_u,
+        frsc_u,
+        frcs_u,
+        fzcc_u,
+        fzss_u,
+        flcc_u,
+        flss_u,
+        max_update_rms,
+    ):
+        return strict_update_accepted_step(
+            state_pre,
+            static,
+            dt_eff=dt_eff,
+            b1=b1,
+            fac=fac,
+            force_scale=force_scale,
+            flip_sign=flip_sign,
+            vRcc_before=vRcc_before,
+            vRss_before=vRss_before,
+            vZsc_before=vZsc_before,
+            vZcs_before=vZcs_before,
+            vLsc_before=vLsc_before,
+            vLcs_before=vLcs_before,
+            vRsc_before=vRsc_before,
+            vRcs_before=vRcs_before,
+            vZcc_before=vZcc_before,
+            vZss_before=vZss_before,
+            vLcc_before=vLcc_before,
+            vLss_before=vLss_before,
+            frcc_u=frcc_u,
+            frss_u=frss_u,
+            fzsc_u=fzsc_u,
+            fzcs_u=fzcs_u,
+            flsc_u=flsc_u,
+            flcs_u=flcs_u,
+            frsc_u=frsc_u,
+            frcs_u=frcs_u,
+            fzcc_u=fzcc_u,
+            fzss_u=fzss_u,
+            flcc_u=flcc_u,
+            flss_u=flss_u,
+            max_update_rms=max_update_rms,
+            limit_update_rms=bool(limit_update_rms),
+            divide_by_scalxc_for_update=bool(divide_by_scalxc_for_update),
+        )
+
+    compiled = jax.jit(_step)
+    _STRICT_UPDATE_STEP_JIT_CACHE[key] = compiled
+    return compiled
 
 
 if has_jax():
@@ -12706,7 +12802,81 @@ def solve_fixed_boundary_residual_iter(
                 or bool(backtracking)
                 or (bool(adjoint_trace) and adjoint_trace_mode == "full")
             )
-            if host_update_assembly:
+            need_trial_eval = bool(backtracking) or bool(reference_mode) or bool(use_direct_fallback)
+            jit_strict_update_env = os.getenv("VMEC_JAX_JIT_STRICT_UPDATE", "auto").strip().lower()
+            jit_strict_update_enabled = jit_strict_update_env not in ("", "0", "false", "no", "off")
+            if jit_strict_update_env == "auto":
+                jit_strict_update_enabled = _scan_backend_name() != "cpu"
+            use_jit_strict_update_step = (
+                bool(jit_strict_update_enabled)
+                and (not bool(host_update_assembly))
+                and (not bool(free_boundary_enabled))
+                and (not bool(limit_dt_from_force))
+                and (not bool(limit_update_rms))
+                and (not bool(need_trial_eval))
+                and (not _tree_has_tracer(state))
+            )
+            if use_jit_strict_update_step:
+                step_fn = _strict_update_step_jit(
+                    static,
+                    limit_update_rms=False,
+                    divide_by_scalxc_for_update=bool(divide_by_scalxc_for_update),
+                )
+                step_out = step_fn(
+                    state,
+                    dt_eff,
+                    b1,
+                    fac,
+                    force_scale,
+                    flip_sign,
+                    vRcc,
+                    vRss,
+                    vZsc,
+                    vZcs,
+                    vLsc,
+                    vLcs,
+                    vRsc,
+                    vRcs,
+                    vZcc,
+                    vZss,
+                    vLcc,
+                    vLss,
+                    frcc_u,
+                    frss_u,
+                    fzsc_u,
+                    fzcs_u,
+                    flsc_u,
+                    flcs_u,
+                    frsc_u,
+                    frcs_u,
+                    fzcc_u,
+                    fzss_u,
+                    flcc_u,
+                    flss_u,
+                    max_update_rms,
+                )
+                state_try = step_out["state_post"]
+                vRcc = step_out["vRcc_after"]
+                vRss = step_out["vRss_after"]
+                vZsc = step_out["vZsc_after"]
+                vZcs = step_out["vZcs_after"]
+                vLsc = step_out["vLsc_after"]
+                vLcs = step_out["vLcs_after"]
+                vRsc = step_out["vRsc_after"]
+                vRcs = step_out["vRcs_after"]
+                vZcc = step_out["vZcc_after"]
+                vZss = step_out["vZss_after"]
+                vLcc = step_out["vLcc_after"]
+                vLss = step_out["vLss_after"]
+                update_rms_j = (
+                    step_out["update_rms_postclip"]
+                    if need_update_rms
+                    else jnp.asarray(0.0, dtype=jnp.asarray(vRcc).dtype)
+                )
+                update_rms = None
+                update_rms_preclip = None
+                scl = 1.0
+            elif host_update_assembly:
                 # Stack all 12 velocity/force arrays → single NumPy fused op.
                 # Eliminates 12 JAX dispatches (~0.20ms) + update_rms JAX (~0.26ms).
                 # Velocities are kept as NumPy views; downstream NumPy-aware paths
@@ -12772,122 +12942,122 @@ def solve_fixed_boundary_residual_iter(
                 else:
                     update_rms_j = jnp.asarray(0.0, dtype=jnp.asarray(vRcc).dtype)
 
-            update_rms_host: float | None = None
+            if not use_jit_strict_update_step:
+                update_rms_host: float | None = None
 
-            def _update_rms_float() -> float:
-                nonlocal update_rms_host
-                if update_rms_host is None:
-                    update_rms_host = float(np.asarray(update_rms_j))
-                return update_rms_host
+                def _update_rms_float() -> float:
+                    nonlocal update_rms_host
+                    if update_rms_host is None:
+                        update_rms_host = float(np.asarray(update_rms_j))
+                    return update_rms_host
 
-            if bool(limit_update_rms) or bool(backtracking) or (
-                bool(adjoint_trace) and adjoint_trace_mode == "full"
-            ):
-                update_rms = _update_rms_float()
-            else:
-                update_rms = None
-            update_rms_preclip = update_rms
-            if bool(limit_update_rms) and np.isfinite(update_rms) and (update_rms > max_update_rms):
-                scl = max_update_rms / max(update_rms, 1e-30)
-                vRcc = vRcc * scl
-                vRss = vRss * scl
-                vRsc = vRsc * scl
-                vRcs = vRcs * scl
-                vZsc = vZsc * scl
-                vZcs = vZcs * scl
-                vZcc = vZcc * scl
-                vZss = vZss * scl
-                vLsc = vLsc * scl
-                vLcs = vLcs * scl
-                vLcc = vLcc * scl
-                vLss = vLss * scl
-                update_rms_j = jnp.sqrt(
-                    jnp.mean(
-                        (dt_eff * vRcc) ** 2
-                        + (dt_eff * vRss) ** 2
-                        + (dt_eff * vRsc) ** 2
-                        + (dt_eff * vRcs) ** 2
-                        + (dt_eff * vZsc) ** 2
-                        + (dt_eff * vZcs) ** 2
-                        + (dt_eff * vZcc) ** 2
-                        + (dt_eff * vZss) ** 2
-                        + (dt_eff * vLsc) ** 2
-                        + (dt_eff * vLcs) ** 2
-                        + (dt_eff * vLcc) ** 2
-                        + (dt_eff * vLss) ** 2
-                    )
-                )
-                update_rms_host = float(np.asarray(update_rms_j))
-                update_rms = update_rms_host
-            else:
-                scl = 1.0
-
-            dR = dt_eff * _mn_cos_to_signed_physical(vRcc, vRss)
-            dZ = dt_eff * _mn_sin_to_signed_physical(vZsc, vZcs)
-            dL = dt_eff * _mn_sin_to_signed_physical_lambda(vLsc, vLcs)
-            if bool(cfg.lasym):
-                dR_sin = dt_eff * _mn_sin_to_signed_physical(vRsc, vRcs)
-                dZ_cos = dt_eff * _mn_cos_to_signed_physical(vZcc, vZss)
-                dL_cos = dt_eff * _mn_cos_to_signed_physical_lambda(vLcc, vLss)
-            else:
-                if host_update_assembly:
-                    # Use pre-allocated zero arrays (avoid 3 np.zeros_like allocs/iter).
-                    dR_sin = _zeros_dR_np
-                    dZ_cos = _zeros_dR_np
-                    dL_cos = _zeros_dR_np
+                if bool(limit_update_rms) or bool(backtracking) or (
+                    bool(adjoint_trace) and adjoint_trace_mode == "full"
+                ):
+                    update_rms = _update_rms_float()
                 else:
-                    dR_sin = jnp.zeros_like(dR)
-                    dZ_cos = jnp.zeros_like(dR)
-                    dL_cos = jnp.zeros_like(dR)
-            if host_update_assembly:
-                # All dR/dZ/dL/dR_sin/dZ_cos/dL_cos are NumPy here;
-                # keep state arrays as NumPy — JAX JIT converts at call site.
-                state_try = VMECState(
-                    layout=state.layout,
-                    Rcos=np.asarray(state.Rcos) + np.asarray(dR),
-                    Rsin=np.asarray(state.Rsin) + np.asarray(dR_sin),
-                    Zcos=np.asarray(state.Zcos) + np.asarray(dZ_cos),
-                    Zsin=np.asarray(state.Zsin) + np.asarray(dZ),
-                    Lcos=np.asarray(state.Lcos) + np.asarray(dL_cos),
-                    Lsin=np.asarray(state.Lsin) + np.asarray(dL),
-                )
-            else:
-                state_try = VMECState(
-                    layout=state.layout,
-                    Rcos=jnp.asarray(state.Rcos) + dR,
-                    Rsin=jnp.asarray(state.Rsin) + dR_sin,
-                    Zcos=jnp.asarray(state.Zcos) + dZ_cos,
-                    Zsin=jnp.asarray(state.Zsin) + dZ,
-                    Lcos=jnp.asarray(state.Lcos) + dL_cos,
-                    Lsin=jnp.asarray(state.Lsin) + dL,
-                )
-            if host_update_assembly:
-                state_try = _enforce_fixed_boundary_and_axis_np(
-                    state_try,
-                    static,
-                    edge_Rcos=edge_Rcos,
-                    edge_Rsin=edge_Rsin,
-                    edge_Zcos=edge_Zcos,
-                    edge_Zsin=edge_Zsin,
-                    enforce_edge=not bool(free_boundary_enabled),
-                    enforce_lambda_axis=True,
-                    idx00=idx00,
-                    precomputed_axis_mask=_precomputed_axis_mask_np,
-                )
-            else:
-                state_try = _enforce_fixed_boundary_and_axis(
-                    state_try,
-                    static,
-                    edge_Rcos=edge_Rcos,
-                    edge_Rsin=edge_Rsin,
-                    edge_Zcos=edge_Zcos,
-                    edge_Zsin=edge_Zsin,
-                    enforce_edge=not bool(free_boundary_enabled),
-                    enforce_lambda_axis=True,
-                    idx00=idx00,
-                )
-            state_try = _apply_vmec_lambda_axis_rules(state_try)
-            need_trial_eval = bool(backtracking) or bool(reference_mode) or bool(use_direct_fallback)
+                    update_rms = None
+                update_rms_preclip = update_rms
+                if bool(limit_update_rms) and np.isfinite(update_rms) and (update_rms > max_update_rms):
+                    scl = max_update_rms / max(update_rms, 1e-30)
+                    vRcc = vRcc * scl
+                    vRss = vRss * scl
+                    vRsc = vRsc * scl
+                    vRcs = vRcs * scl
+                    vZsc = vZsc * scl
+                    vZcs = vZcs * scl
+                    vZcc = vZcc * scl
+                    vZss = vZss * scl
+                    vLsc = vLsc * scl
+                    vLcs = vLcs * scl
+                    vLcc = vLcc * scl
+                    vLss = vLss * scl
+                    update_rms_j = jnp.sqrt(
+                        jnp.mean(
+                            (dt_eff * vRcc) ** 2
+                            + (dt_eff * vRss) ** 2
+                            + (dt_eff * vRsc) ** 2
+                            + (dt_eff * vRcs) ** 2
+                            + (dt_eff * vZsc) ** 2
+                            + (dt_eff * vZcs) ** 2
+                            + (dt_eff * vZcc) ** 2
+                            + (dt_eff * vZss) ** 2
+                            + (dt_eff * vLsc) ** 2
+                            + (dt_eff * vLcs) ** 2
+                            + (dt_eff * vLcc) ** 2
+                            + (dt_eff * vLss) ** 2
+                        )
+                    )
+                    update_rms_host = float(np.asarray(update_rms_j))
+                    update_rms = update_rms_host
+                else:
+                    scl = 1.0
+
+                dR = dt_eff * _mn_cos_to_signed_physical(vRcc, vRss)
+                dZ = dt_eff * _mn_sin_to_signed_physical(vZsc, vZcs)
+                dL = dt_eff * _mn_sin_to_signed_physical_lambda(vLsc, vLcs)
+                if bool(cfg.lasym):
+                    dR_sin = dt_eff * _mn_sin_to_signed_physical(vRsc, vRcs)
+                    dZ_cos = dt_eff * _mn_cos_to_signed_physical(vZcc, vZss)
+                    dL_cos = dt_eff * _mn_cos_to_signed_physical_lambda(vLcc, vLss)
+                else:
+                    if host_update_assembly:
+                        # Use pre-allocated zero arrays (avoid 3 np.zeros_like allocs/iter).
+                        dR_sin = _zeros_dR_np
+                        dZ_cos = _zeros_dR_np
+                        dL_cos = _zeros_dR_np
+                    else:
+                        dR_sin = jnp.zeros_like(dR)
+                        dZ_cos = jnp.zeros_like(dR)
+                        dL_cos = jnp.zeros_like(dR)
+                if host_update_assembly:
+                    # All dR/dZ/dL/dR_sin/dZ_cos/dL_cos are NumPy here;
+                    # keep state arrays as NumPy — JAX JIT converts at call site.
+                    state_try = VMECState(
+                        layout=state.layout,
+                        Rcos=np.asarray(state.Rcos) + np.asarray(dR),
+                        Rsin=np.asarray(state.Rsin) + np.asarray(dR_sin),
+                        Zcos=np.asarray(state.Zcos) + np.asarray(dZ_cos),
+                        Zsin=np.asarray(state.Zsin) + np.asarray(dZ),
+                        Lcos=np.asarray(state.Lcos) + np.asarray(dL_cos),
+                        Lsin=np.asarray(state.Lsin) + np.asarray(dL),
+                    )
+                else:
+                    state_try = VMECState(
+                        layout=state.layout,
+                        Rcos=jnp.asarray(state.Rcos) + dR,
+                        Rsin=jnp.asarray(state.Rsin) + dR_sin,
+                        Zcos=jnp.asarray(state.Zcos) + dZ_cos,
+                        Zsin=jnp.asarray(state.Zsin) + dZ,
+                        Lcos=jnp.asarray(state.Lcos) + dL_cos,
+                        Lsin=jnp.asarray(state.Lsin) + dL,
+                    )
+                if host_update_assembly:
+                    state_try = _enforce_fixed_boundary_and_axis_np(
+                        state_try,
+                        static,
+                        edge_Rcos=edge_Rcos,
+                        edge_Rsin=edge_Rsin,
+                        edge_Zcos=edge_Zcos,
+                        edge_Zsin=edge_Zsin,
+                        enforce_edge=not bool(free_boundary_enabled),
+                        enforce_lambda_axis=True,
+                        idx00=idx00,
+                        precomputed_axis_mask=_precomputed_axis_mask_np,
+                    )
+                else:
+                    state_try = _enforce_fixed_boundary_and_axis(
+                        state_try,
+                        static,
+                        edge_Rcos=edge_Rcos,
+                        edge_Rsin=edge_Rsin,
+                        edge_Zcos=edge_Zcos,
+                        edge_Zsin=edge_Zsin,
+                        enforce_edge=not bool(free_boundary_enabled),
+                        enforce_lambda_axis=True,
+                        idx00=idx00,
+                    )
+                state_try = _apply_vmec_lambda_axis_rules(state_try)
             probe_bad_jacobian = False
             if need_trial_eval:
                 _, _, gcr2_t, gcz2_t, gcl2_t, _, _, norms_t = _compute_forces_iter(
