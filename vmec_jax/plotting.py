@@ -9,6 +9,7 @@ matplotlib) can be layered on top.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import importlib
 import importlib.machinery
 from pathlib import Path
 import site
@@ -87,13 +88,26 @@ def prepare_matplotlib_3d() -> None:
     projections.
     """
 
+    def _register_projection() -> bool:
+        try:
+            axes3d = importlib.import_module("mpl_toolkits.mplot3d.axes3d")
+        except Exception:
+            return False
+        try:
+            from matplotlib.projections import register_projection
+
+            register_projection(axes3d.Axes3D)
+        except Exception:
+            pass
+        return True
+
     loaded = sys.modules.get("mpl_toolkits")
     loaded_file = str(getattr(loaded, "__file__", "")) if loaded is not None else ""
     loaded_paths = [str(path) for path in getattr(loaded, "__path__", [])] if loaded is not None else []
     loaded_from_system_dist = "/usr/lib/python3/dist-packages" in loaded_file or any(
         "/usr/lib/python3/dist-packages" in path for path in loaded_paths
     )
-    if loaded is not None and not loaded_from_system_dist:
+    if loaded is not None and not loaded_from_system_dist and _register_projection():
         return
 
     candidate_bases: list[str] = []
@@ -134,6 +148,7 @@ def prepare_matplotlib_3d() -> None:
     spec.submodule_search_locations = [str(toolkit_path)]
     module.__spec__ = spec
     sys.modules["mpl_toolkits"] = module
+    _register_projection()
 
 
 def _mode_table_from_wout(wout, *, nyq: bool, physical: bool = False) -> ModeTable:
