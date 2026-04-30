@@ -1447,18 +1447,25 @@ def main() -> None:
                     if "backend" not in record:
                         record["backend"] = backend_label
                     result = CaseResult(**record)
-                    results.append(result)
+                    if bool(result.success) and not bool(result.crashed):
+                        results.append(result)
+                        print(
+                            f"[{backend_label} {symmetry_label} {args.policy} {problem} mode={max_mode} ess={use_ess}] "
+                            f"skip existing success={result.success} crashed={result.crashed} "
+                            f"objective={result.objective_final}",
+                            flush=True,
+                        )
+                        continue
                     print(
                         f"[{backend_label} {symmetry_label} {args.policy} {problem} mode={max_mode} ess={use_ess}] "
-                        f"skip existing success={result.success} crashed={result.crashed} "
-                        f"objective={result.objective_final}",
+                        f"rerun failed existing success={result.success} crashed={result.crashed}",
                         flush=True,
                     )
-                    continue
+                    result_path.unlink()
                 if result_path.exists() and args.rerun:
                     result_path.unlink()
                 stale_traceback = output_dir / "traceback.txt"
-                if stale_traceback.exists() and args.rerun:
+                if stale_traceback.exists() and (args.rerun or not result_path.exists()):
                     stale_traceback.unlink()
                 proc = ctx.Process(
                     target=_worker,
