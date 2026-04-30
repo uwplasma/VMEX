@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import site
 import sys
 from types import ModuleType
 from types import SimpleNamespace
@@ -34,6 +35,17 @@ from vmec_jax.plotting import (
     zeta_grid,
     zeta_grid_field_period,
 )
+
+
+def _snapshot_mpl_toolkits_modules():
+    return {name: module for name, module in sys.modules.items() if name == "mpl_toolkits" or name.startswith("mpl_toolkits.")}
+
+
+def _restore_mpl_toolkits_modules(snapshot) -> None:
+    for name in list(sys.modules):
+        if name == "mpl_toolkits" or name.startswith("mpl_toolkits."):
+            del sys.modules[name]
+    sys.modules.update(snapshot)
 
 
 def _toy_wout(*, lasym: bool = False):
@@ -215,19 +227,57 @@ def test_fix_matplotlib_3d_sets_equal_radius_limits():
 
 
 def test_prepare_matplotlib_3d_replaces_mixed_system_toolkit(tmp_path, monkeypatch):
-    toolkit = tmp_path / "mpl_toolkits"
-    (toolkit / "mplot3d").mkdir(parents=True)
-    (toolkit / "mplot3d" / "axes3d.py").write_text("class Axes3D: pass\n")
+    snapshot = _snapshot_mpl_toolkits_modules()
+    try:
+        site_root = tmp_path / "site"
+        toolkit = site_root / "mpl_toolkits"
+        (toolkit / "mplot3d").mkdir(parents=True)
+        (toolkit / "__init__.py").write_text("")
+        (toolkit / "mplot3d" / "__init__.py").write_text("from .axes3d import Axes3D\n")
+        (toolkit / "mplot3d" / "axes3d.py").write_text("class Axes3D:\n    name = '3d'\n")
+        monkeypatch.setattr(site, "getusersitepackages", lambda: str(site_root))
+        monkeypatch.setattr(site, "getsitepackages", lambda: [])
 
-    system_toolkit = ModuleType("mpl_toolkits")
-    system_toolkit.__file__ = "/usr/lib/python3/dist-packages/mpl_toolkits/__init__.py"
-    system_toolkit.__path__ = ["/usr/lib/python3/dist-packages/mpl_toolkits"]
-    monkeypatch.setitem(sys.modules, "mpl_toolkits", system_toolkit)
-    monkeypatch.syspath_prepend(str(tmp_path))
+        system_toolkit = ModuleType("mpl_toolkits")
+        system_toolkit.__file__ = "/usr/lib/python3/dist-packages/mpl_toolkits/__init__.py"
+        system_toolkit.__path__ = ["/usr/lib/python3/dist-packages/mpl_toolkits"]
+        monkeypatch.setitem(sys.modules, "mpl_toolkits", system_toolkit)
 
-    prepare_matplotlib_3d()
+        prepare_matplotlib_3d()
 
-    prepared = sys.modules["mpl_toolkits"]
-    prepared_paths = list(prepared.__path__)
-    assert all("/usr/lib/python3/dist-packages" not in path for path in prepared_paths)
-    assert any((Path(path) / "mplot3d" / "axes3d.py").exists() for path in prepared_paths)
+        prepared = sys.modules["mpl_toolkits"]
+        prepared_paths = list(prepared.__path__)
+        assert all("/usr/lib/python3/dist-packages" not in path for path in prepared_paths)
+        assert any((Path(path) / "mplot3d" / "axes3d.py").exists() for path in prepared_paths)
+    finally:
+        _restore_mpl_toolkits_modules(snapshot)
+
+
+def test_prepare_matplotlib_3d_replaces_broken_user_toolkit(tmp_path, monkeypatch):
+    snapshot = _snapshot_mpl_toolkits_modules()
+    try:
+        broken = tmp_path / "broken" / "mpl_toolkits"
+        broken.mkdir(parents=True)
+        (broken / "__init__.py").write_text("")
+        good_site = tmp_path / "good_site"
+        toolkit = good_site / "mpl_toolkits"
+        (toolkit / "mplot3d").mkdir(parents=True)
+        (toolkit / "__init__.py").write_text("")
+        (toolkit / "mplot3d" / "__init__.py").write_text("from .axes3d import Axes3D\n")
+        (toolkit / "mplot3d" / "axes3d.py").write_text("class Axes3D:\n    name = '3d'\n")
+        monkeypatch.setattr(site, "getusersitepackages", lambda: str(good_site))
+        monkeypatch.setattr(site, "getsitepackages", lambda: [])
+
+        user_toolkit = ModuleType("mpl_toolkits")
+        user_toolkit.__file__ = str(broken / "__init__.py")
+        user_toolkit.__path__ = [str(broken)]
+        monkeypatch.setitem(sys.modules, "mpl_toolkits", user_toolkit)
+
+        prepare_matplotlib_3d()
+
+        prepared = sys.modules["mpl_toolkits"]
+        prepared_paths = list(prepared.__path__)
+        assert str(broken) not in prepared_paths
+        assert any((Path(path) / "mplot3d" / "axes3d.py").exists() for path in prepared_paths)
+    finally:
+        _restore_mpl_toolkits_modules(snapshot)
