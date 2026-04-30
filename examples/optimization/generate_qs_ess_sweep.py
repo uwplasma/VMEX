@@ -763,23 +763,40 @@ StageRecord = tuple[str, int, dict]
 def _merge_stage_histories(stage_results: list[StageRecord], *, problem_cfg: ProblemConfig) -> dict:
     combined_entries = []
     stage_boundaries = []
+    stage_modes = []
+    stage_labels = []
     wall_offset = 0.0
     nfev_total = 0
     njev_total = 0
     max_nfev_total = 0
     for idx, (stage_label, _mode, stage_result) in enumerate(stage_results):
         stage_hist = stage_result["_history_dump"]
+        start_index = len(combined_entries)
+        skip_first = idx != 0
         entries = stage_hist["history"] if idx == 0 else stage_hist["history"][1:]
         for entry in entries:
             entry_copy = dict(entry)
             entry_copy["wall_time_s"] = float(entry_copy["wall_time_s"]) + wall_offset
-            entry_copy["stage"] = stage_label
+            entry_copy["stage"] = entry_copy.get("stage", stage_label)
             combined_entries.append(entry_copy)
         wall_offset = combined_entries[-1]["wall_time_s"]
         nfev_total += int(stage_hist["nfev"])
         njev_total += int(stage_hist["njev"])
         max_nfev_total += int(stage_hist.get("max_nfev", stage_hist["nfev"]))
-        stage_boundaries.append(len(combined_entries) - 1)
+        source_boundaries = stage_hist.get("stage_boundaries")
+        if source_boundaries:
+            for boundary in source_boundaries:
+                adjusted = start_index + int(boundary) - (1 if skip_first else 0)
+                if start_index <= adjusted < len(combined_entries):
+                    stage_boundaries.append(adjusted)
+        else:
+            stage_boundaries.append(len(combined_entries) - 1)
+        if stage_hist.get("stage_modes") and stage_hist.get("stage_labels"):
+            stage_modes.extend(int(mode) for mode in stage_hist["stage_modes"])
+            stage_labels.extend(str(label) for label in stage_hist["stage_labels"])
+        else:
+            stage_modes.append(int(_mode))
+            stage_labels.append(str(stage_label))
 
     final_hist = stage_results[-1][2]["_history_dump"]
     first_hist = stage_results[0][2]["_history_dump"]
@@ -803,8 +820,8 @@ def _merge_stage_histories(stage_results: list[StageRecord], *, problem_cfg: Pro
         "history": combined_entries,
         "target_aspect": problem_cfg.target_aspect,
         "stage_boundaries": stage_boundaries,
-        "stage_modes": [int(mode) for _label, mode, _result in stage_results],
-        "stage_labels": [str(label) for label, _mode, _result in stage_results],
+        "stage_modes": stage_modes,
+        "stage_labels": stage_labels,
     }
     if problem_cfg.target_iota is not None:
         merged["target_iota"] = float(problem_cfg.target_iota)
@@ -815,6 +832,86 @@ def _merge_stage_histories(stage_results: list[StageRecord], *, problem_cfg: Pro
             merged["iota_initial"] = float(combined_entries[0]["iota"])
             merged["iota_final"] = float(combined_entries[-1]["iota"])
     return merged
+
+
+def _boundary_params_from_indata(
+    source_indata: InData,
+    *,
+    target_static,
+    target_boundary_input,
+    target_specs,
+) -> np.ndarray:
+    """Express ``source_indata`` boundary coefficients as params on target specs."""
+
+    source_boundary = vj.boundary_input_from_indata(source_indata, target_static.modes)
+    source_arrays = {
+        "rc": np.asarray(source_boundary.R_cos, dtype=float),
+        "rs": np.asarray(source_boundary.R_sin, dtype=float),
+        "zc": np.asarray(source_boundary.Z_cos, dtype=float),
+        "zs": np.asarray(source_boundary.Z_sin, dtype=float),
+    }
+    base_arrays = {
+        "rc": np.asarray(target_boundary_input.R_cos, dtype=float),
+        "rs": np.asarray(target_boundary_input.R_sin, dtype=float),
+        "zc": np.asarray(target_boundary_input.Z_cos, dtype=float),
+        "zs": np.asarray(target_boundary_input.Z_sin, dtype=float),
+    }
+    return np.asarray(
+        [
+            float(source_arrays[spec.kind][int(spec.index)] - base_arrays[spec.kind][int(spec.index)])
+            for spec in target_specs
+        ],
+        dtype=float,
+    )
+
+
+def _resume_from_previous_continuation_case(
+    *,
+    problem_cfg: ProblemConfig,
+    cfg,
+    indata,
+    output_dir: Path,
+    max_mode: int,
+    solver_device: str | None,
+) -> tuple[list[StageRecord], object, np.ndarray] | None:
+    """Load mode-(N-1) continuation output so mode-N can skip repeated stages."""
+
+    if int(max_mode) <= 1:
+        return None
+    previous_dir = output_dir.parent.parent / f"mode{int(max_mode) - 1}" / output_dir.name
+    case_path = previous_dir / "case_result.json"
+    history_path = previous_dir / "history.json"
+    input_path = previous_dir / "input.final"
+    if not (case_path.exists() and history_path.exists() and input_path.exists()):
+        return None
+    try:
+        previous_case = json.loads(case_path.read_text())
+        if bool(previous_case.get("crashed", False)):
+            return None
+        previous_history = json.loads(history_path.read_text())
+        _previous_cfg, previous_indata = vj.load_config(str(input_path))
+    except Exception:
+        return None
+
+    previous_specs, _previous_opt, _previous_iota_fn, previous_boundary_input = _build_stage(
+        problem_cfg,
+        cfg,
+        indata,
+        int(max_mode) - 1,
+        solver_device=solver_device,
+    )
+    previous_static = _previous_opt._static
+    params_stage = _boundary_params_from_indata(
+        previous_indata,
+        target_static=previous_static,
+        target_boundary_input=previous_boundary_input,
+        target_specs=previous_specs,
+    )
+    print(
+        f"  Reusing continuation seed from {previous_dir.relative_to(OUTPUT_ROOT)}",
+        flush=True,
+    )
+    return [(f"{problem_cfg.name.upper()} modes 1-{int(max_mode) - 1}", int(max_mode) - 1, {"_history_dump": previous_history})], previous_specs, params_stage
 
 
 def _save_case_outputs(output_dir: Path, opt, params_initial, params_final, result: dict) -> None:
@@ -954,6 +1051,30 @@ def _run_case(
     stage_results: list[StageRecord] = []
     params_stage = None
     prev_specs = None
+    use_mode_continuation_for_main = use_mode_continuation
+
+    # High-mode continuation cases can be very expensive if each max_mode=N row
+    # reruns stages 1..N from scratch.  When the matching mode-(N-1) row already
+    # exists, use its final input deck as the seed and append only the new stage.
+    # QI keeps its explicit QP pre-seed path below because the mode-N QP seed is
+    # part of the QI policy being benchmarked.
+    if (
+        use_mode_continuation
+        and int(max_mode) > 1
+        and problem_cfg.objective_kind != "qi"
+    ):
+        resume = _resume_from_previous_continuation_case(
+            problem_cfg=problem_cfg,
+            cfg=cfg,
+            indata=indata,
+            output_dir=output_dir,
+            max_mode=max_mode,
+            solver_device=solver_device,
+        )
+        if resume is not None:
+            resume_stage_results, prev_specs, params_stage = resume
+            stage_results.extend(resume_stage_results)
+            use_mode_continuation_for_main = False
 
     original_stage = None
     qp_seed_stage = None
@@ -990,7 +1111,9 @@ def _run_case(
         problem=problem,
         max_mode=max_mode,
         use_ess=use_ess,
-        use_mode_continuation=False if problem_cfg.objective_kind == "qi" and problem_cfg.qi_preseed_qp else use_mode_continuation,
+        use_mode_continuation=False
+        if problem_cfg.objective_kind == "qi" and problem_cfg.qi_preseed_qp
+        else use_mode_continuation_for_main,
         solver_device=solver_device,
         cfg=cfg,
         indata=indata,
