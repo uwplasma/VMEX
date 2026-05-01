@@ -25,8 +25,6 @@ REPO_ROOT = SCRIPT_DIR.parents[1]
 SWEEP_ROOT = SCRIPT_DIR / "results" / "qs_ess_sweep"
 FIGURE_DIR = REPO_ROOT / "docs" / "_static" / "figures"
 SUMMARY_CSV = FIGURE_DIR / "qs_ess_summary_all.csv"
-OUT_PNG = FIGURE_DIR / "readme_best_optimizations.png"
-OUT_PDF = FIGURE_DIR / "readme_best_optimizations.pdf"
 OUT_CSV = FIGURE_DIR / "readme_best_optimizations.csv"
 
 PROBLEMS = ("qa", "qh", "qp", "qi")
@@ -145,6 +143,24 @@ def _plot_lcfs(ax, wout, title: str) -> None:
         shrink=0.62,
         label="|B|",
     )
+
+
+def _preoptimization_wout_path(run: BestRun) -> Path:
+    """Return the deck state before any mode-1 optimization work.
+
+    Continuation case directories store ``wout_initial.nc`` for the final
+    continuation stage, not the original deck.  For README panels we want the
+    actual user-provided starting equilibrium before the first mode-1 solve.
+    """
+
+    original = run.output_dir / "wout_original.nc"
+    if original.exists():
+        return original
+    if run.policy == "continuation":
+        mode1 = run.output_dir.parent.parent / "mode1" / run.output_dir.name / "wout_initial.nc"
+        if mode1.exists():
+            return mode1
+    return run.output_dir / "wout_initial.nc"
 
 
 def _plot_history(ax, run: BestRun) -> None:
@@ -278,7 +294,7 @@ def _run_title(run: BestRun) -> str:
     )
 
 
-def _render_single_run(run: BestRun, out_png: Path, out_pdf: Path) -> None:
+def _render_single_run(run: BestRun, out_png: Path) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
@@ -291,35 +307,14 @@ def _render_single_run(run: BestRun, out_png: Path, out_pdf: Path) -> None:
     ax2 = fig.add_subplot(gs[0, 2])
     ax3 = fig.add_subplot(gs[0, 3])
 
-    wout_initial = read_wout(run.output_dir / "wout_initial.nc")
+    wout_initial = read_wout(_preoptimization_wout_path(run))
     wout_final = read_wout(run.output_dir / "wout_final.nc")
-    _plot_lcfs(ax0, wout_initial, "Initial LCFS")
+    _plot_lcfs(ax0, wout_initial, "Initial deck LCFS")
     _plot_lcfs(ax1, wout_final, "Final LCFS")
     _plot_history(ax2, run)
     _plot_boozer_bmag(ax3, run)
     fig.suptitle(_run_title(run), fontsize=13, x=0.01, y=1.02, ha="left")
     fig.savefig(out_png, dpi=220, bbox_inches="tight")
-    fig.savefig(out_pdf, bbox_inches="tight")
-    plt.close(fig)
-
-
-def _render_stacked_overview(runs: list[BestRun], image_paths: list[Path]) -> None:
-    import matplotlib
-
-    matplotlib.use("Agg")
-    from matplotlib import pyplot as plt
-    import matplotlib.image as mpimg
-
-    images = [mpimg.imread(path) for path in image_paths]
-    fig, axes = plt.subplots(len(images), 1, figsize=(18, 4.9 * len(images)))
-    axes = np.asarray(axes).ravel()
-    for ax, image, run in zip(axes, images, runs):
-        ax.imshow(image)
-        ax.axis("off")
-        ax.set_title(PROBLEM_TITLES[run.problem], loc="left", fontsize=12, pad=4)
-    fig.tight_layout()
-    fig.savefig(OUT_PNG, dpi=220, bbox_inches="tight")
-    fig.savefig(OUT_PDF, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -345,17 +340,10 @@ def main() -> None:
 
     runs = _best_runs()
     _write_readme_summary(runs)
-    image_paths: list[Path] = []
     for run in runs:
         out_png = FIGURE_DIR / f"readme_best_optimization_{run.problem}.png"
-        out_pdf = FIGURE_DIR / f"readme_best_optimization_{run.problem}.pdf"
-        _render_single_run(run, out_png, out_pdf)
-        image_paths.append(out_png)
+        _render_single_run(run, out_png)
         print(f"Wrote {out_png}")
-        print(f"Wrote {out_pdf}")
-    _render_stacked_overview(runs, image_paths)
-    print(f"Wrote {OUT_PNG}")
-    print(f"Wrote {OUT_PDF}")
     print(f"Wrote {OUT_CSV}")
 
 
