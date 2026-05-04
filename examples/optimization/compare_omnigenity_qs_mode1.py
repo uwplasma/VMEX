@@ -1,14 +1,15 @@
 #!/usr/bin/env python
-"""Compare a max-mode-1 QA optimization against omnigenity_optimization.
+"""Compare max-mode-1 QA/QH optimizations against omnigenity_optimization.
 
 This is a diagnostic script, not a polished gallery example.  It uses the same
 input, objectives, weights, targets, and ESS scale as
-``~/local/omnigenity_optimization/QA_fixed_resolution.py`` for the first
+``~/local/omnigenity_optimization/QA_fixed_resolution.py`` and
+``~/local/omnigenity_optimization/QH_fixed_resolution.py`` for a diagnostic
 ``max_mode=1`` stage, then writes enough data to audit objective values,
-trajectories, derivative consistency, and runtime hot spots.
+trajectories, derivative consistency, and runtime hot spots.  Edit
+``CASES_TO_RUN`` below to run only one case.
 
-Outputs are written under ``examples/optimization/results/`` and are ignored by
-git.
+Outputs are written under ``results/`` and are ignored by git.
 """
 
 from __future__ import annotations
