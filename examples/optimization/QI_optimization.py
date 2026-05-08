@@ -29,6 +29,8 @@ MIN_VMEC_MODE = 6
 USE_MODE_CONTINUATION = False
 MAX_NFEV = 50
 CONTINUATION_NFEV = 50
+QI_PREFINE = True
+QI_PREFINE_NFEV = 20
 STAGE_REPEATS = 1
 STAGE_MODES = [MAX_MODE] * STAGE_REPEATS if USE_MODE_CONTINUATION and MAX_MODE > 1 else [MAX_MODE]
 
@@ -53,7 +55,7 @@ MAX_ELONGATION = 8.0
 SURFACES = np.linspace(0.1, 1.0, 6)
 ASPECT_WEIGHT = 0.005
 IOTA_FLOOR_WEIGHT = 200.0**2
-QI_WEIGHT = 1.0
+QI_WEIGHT = 10.0
 MIRROR_WEIGHT = 10.0
 ELONGATION_WEIGHT = 10.0
 
@@ -82,11 +84,11 @@ ALPHA = 1.2
 MAKE_PLOTS = True
 
 
-vmec = vj.FixedBoundaryVMEC.from_input(
+preseed_vmec = vj.FixedBoundaryVMEC.from_input(
     INPUT_FILE,
     max_mode=MAX_MODE,
     min_vmec_mode=MIN_VMEC_MODE,
-    output_dir=OUTPUT_DIR,
+    output_dir=OUTPUT_DIR / "qi_preseed",
     project_input_boundary_to_max_mode=True,
 )
 
@@ -95,6 +97,15 @@ iota_floor = vj.AbsMeanIotaFloor(TARGET_ABS_IOTA_MIN)
 qi = vj.QuasiIsodynamicResidual(QI_OPTIONS)
 mirror = vj.MirrorRatio(threshold=MAX_MIRROR_RATIO, ntheta=96, nphi=96, surface_index=0)
 elongation = vj.MaxElongation(threshold=MAX_ELONGATION, ntheta=48, nphi=16)
+
+qi_only_problem = vj.LeastSquaresProblem.from_tuples(
+    [
+        # This stage intentionally optimizes only the legacy-ranked smooth QI
+        # residual.  The scalar constraints are imposed in the second solve so
+        # they do not pull the seed away from the branch-shuffle QI basin.
+        (qi.J, 0.0, QI_WEIGHT),
+    ]
+)
 problem = vj.LeastSquaresProblem.from_tuples(
     [
         (aspect.J, TARGET_ASPECT, ASPECT_WEIGHT),
@@ -111,6 +122,46 @@ problem = vj.LeastSquaresProblem.from_tuples(
         # DMerc is currently a wout diagnostic/parity gate; a differentiable
         # DMerc objective should be added in vmec_jax before uncommenting it.
     ]
+)
+
+active_input_file = INPUT_FILE
+if QI_PREFINE:
+    print("Running QI-only pre-refinement before applying scalar constraints ...")
+    preseed_result = vj.least_squares_solve(
+        preseed_vmec,
+        qi_only_problem,
+        stage_modes=STAGE_MODES,
+        max_nfev=QI_PREFINE_NFEV,
+        continuation_nfev=min(CONTINUATION_NFEV, QI_PREFINE_NFEV),
+        method=METHOD,
+        ftol=FTOL,
+        gtol=GTOL,
+        xtol=XTOL,
+        use_ess=USE_ESS,
+        ess_alpha=ALPHA,
+        label=f"QI-only pre-refinement (max_mode={MAX_MODE})",
+        use_mode_continuation=USE_MODE_CONTINUATION,
+        inner_max_iter=INNER_MAX_ITER,
+        inner_ftol=INNER_FTOL,
+        trial_max_iter=TRIAL_MAX_ITER,
+        trial_ftol=TRIAL_FTOL,
+        solver_device=SOLVER_DEVICE,
+        scipy_tr_solver=SCIPY_TR_SOLVER,
+        scipy_lsmr_maxiter=SCIPY_LSMR_MAXITER,
+    )
+    preseed_history = preseed_result.final_result["_history_dump"]
+    print(
+        "QI-only pre-refinement final objective: "
+        f"{preseed_history['objective_final']:.6e}"
+    )
+    active_input_file = OUTPUT_DIR / "qi_preseed" / "input.final"
+
+vmec = vj.FixedBoundaryVMEC.from_input(
+    active_input_file,
+    max_mode=MAX_MODE,
+    min_vmec_mode=MIN_VMEC_MODE,
+    output_dir=OUTPUT_DIR,
+    project_input_boundary_to_max_mode=True,
 )
 
 result = vj.least_squares_solve(
