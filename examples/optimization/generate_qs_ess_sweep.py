@@ -1223,7 +1223,7 @@ def _merge_stage_histories(stage_results: list[StageRecord], *, problem_cfg: Pro
     stage_modes = []
     stage_labels = []
     stage_profiles = []
-    profile_totals: dict[str, float] = {}
+    profile_totals: dict[str, dict[str, float | int]] = {}
     callback_events = []
     callback_summary: dict[str, dict[str, float | int]] = {}
     callback_trace_enabled = False
@@ -1243,8 +1243,13 @@ def _merge_stage_histories(stage_results: list[StageRecord], *, problem_cfg: Pro
                 }
             )
             for key, value in stage_profile.items():
-                if isinstance(value, (int, float)):
-                    profile_totals[str(key)] = profile_totals.get(str(key), 0.0) + float(value)
+                entry = profile_totals.setdefault(str(key), {"count": 0, "wall_time_s": 0.0})
+                if isinstance(value, dict):
+                    entry["count"] = int(entry["count"]) + int(value.get("count", 0))
+                    entry["wall_time_s"] = float(entry["wall_time_s"]) + float(value.get("wall_time_s", 0.0))
+                elif isinstance(value, (int, float)):
+                    entry["count"] = int(entry["count"]) + 1
+                    entry["wall_time_s"] = float(entry["wall_time_s"]) + float(value)
         stage_trace = stage_hist.get("callback_trace")
         if isinstance(stage_trace, dict):
             callback_trace_enabled = callback_trace_enabled or bool(stage_trace.get("enabled", False))
@@ -1323,7 +1328,16 @@ def _merge_stage_histories(stage_results: list[StageRecord], *, problem_cfg: Pro
             merged["iota_initial"] = float(combined_entries[0]["iota"])
             merged["iota_final"] = float(combined_entries[-1]["iota"])
     if profile_totals:
-        merged["profile"] = profile_totals
+        merged["profile"] = {
+            key: {
+                "count": int(value["count"]),
+                "wall_time_s": float(value["wall_time_s"]),
+                "mean_wall_time_s": float(value["wall_time_s"]) / int(value["count"])
+                if int(value["count"])
+                else 0.0,
+            }
+            for key, value in sorted(profile_totals.items())
+        }
         merged["stage_profiles"] = stage_profiles
     if callback_trace_enabled or callback_events:
         merged["callback_trace"] = {

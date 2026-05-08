@@ -99,7 +99,10 @@ def test_qs_sweep_history_merge_preserves_stage_profiles_and_traces() -> None:
                 "aspect_initial": 5.0,
                 "aspect_final": 5.1,
                 "max_nfev": 3,
-                "profile": {"exact_tape_build": wall, "trial_solve": 2.0 * wall},
+                "profile": {
+                    "exact_tape_build": {"count": 1, "wall_time_s": wall, "mean_wall_time_s": wall},
+                    "trial_solve": {"count": 2, "wall_time_s": 2.0 * wall, "mean_wall_time_s": wall},
+                },
                 "callback_trace": {
                     "enabled": True,
                     "events": [{"index": 0, "kind": "jacobian", "source": "exact_tape_replay", "wall_time_s": wall}],
@@ -116,7 +119,10 @@ def test_qs_sweep_history_merge_preserves_stage_profiles_and_traces() -> None:
         problem_cfg=PROBLEM_CONFIGS["qa"],
     )
 
-    assert merged["profile"]["exact_tape_build"] == 0.75
+    assert merged["profile"]["exact_tape_build"]["count"] == 2
+    assert merged["profile"]["exact_tape_build"]["wall_time_s"] == 0.75
+    assert merged["profile"]["trial_solve"]["count"] == 4
+    assert merged["profile"]["trial_solve"]["wall_time_s"] == 1.5
     assert len(merged["stage_profiles"]) == 2
     assert merged["callback_trace"]["summary"]["jacobian:exact_tape_replay"]["count"] == 2
     assert merged["callback_trace"]["summary"]["jacobian:exact_tape_replay"]["wall_time_s"] == 0.75
