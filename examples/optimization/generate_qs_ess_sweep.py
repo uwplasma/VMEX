@@ -1222,12 +1222,46 @@ def _merge_stage_histories(stage_results: list[StageRecord], *, problem_cfg: Pro
     stage_boundaries = []
     stage_modes = []
     stage_labels = []
+    stage_profiles = []
+    profile_totals: dict[str, float] = {}
+    callback_events = []
+    callback_summary: dict[str, dict[str, float | int]] = {}
+    callback_trace_enabled = False
     wall_offset = 0.0
     nfev_total = 0
     njev_total = 0
     max_nfev_total = 0
     for idx, (stage_label, _mode, stage_result) in enumerate(stage_results):
         stage_hist = stage_result["_history_dump"]
+        stage_profile = stage_hist.get("profile")
+        if isinstance(stage_profile, dict):
+            stage_profiles.append(
+                {
+                    "stage": str(stage_label),
+                    "mode": int(_mode),
+                    "profile": dict(stage_profile),
+                }
+            )
+            for key, value in stage_profile.items():
+                if isinstance(value, (int, float)):
+                    profile_totals[str(key)] = profile_totals.get(str(key), 0.0) + float(value)
+        stage_trace = stage_hist.get("callback_trace")
+        if isinstance(stage_trace, dict):
+            callback_trace_enabled = callback_trace_enabled or bool(stage_trace.get("enabled", False))
+            for event in stage_trace.get("events", []):
+                if not isinstance(event, dict):
+                    continue
+                event_copy = dict(event)
+                event_copy["index"] = len(callback_events)
+                event_copy["stage"] = str(stage_label)
+                event_copy["mode"] = int(_mode)
+                callback_events.append(event_copy)
+            for key, value in stage_trace.get("summary", {}).items():
+                if not isinstance(value, dict):
+                    continue
+                entry = callback_summary.setdefault(str(key), {"count": 0, "wall_time_s": 0.0})
+                entry["count"] = int(entry["count"]) + int(value.get("count", 0))
+                entry["wall_time_s"] = float(entry["wall_time_s"]) + float(value.get("wall_time_s", 0.0))
         start_index = len(combined_entries)
         skip_first = idx != 0
         entries = stage_hist["history"] if idx == 0 else stage_hist["history"][1:]
@@ -1288,6 +1322,15 @@ def _merge_stage_histories(stage_results: list[StageRecord], *, problem_cfg: Pro
         if "iota" in combined_entries[0] and "iota" in combined_entries[-1]:
             merged["iota_initial"] = float(combined_entries[0]["iota"])
             merged["iota_final"] = float(combined_entries[-1]["iota"])
+    if profile_totals:
+        merged["profile"] = profile_totals
+        merged["stage_profiles"] = stage_profiles
+    if callback_trace_enabled or callback_events:
+        merged["callback_trace"] = {
+            "enabled": bool(callback_trace_enabled),
+            "events": callback_events,
+            "summary": dict(sorted(callback_summary.items())),
+        }
     return merged
 
 
