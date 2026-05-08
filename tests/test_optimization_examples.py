@@ -78,6 +78,51 @@ def test_policy_matrix_plots_single_problem(tmp_path, monkeypatch) -> None:
     assert outpath.exists()
 
 
+def test_qs_sweep_history_merge_preserves_stage_profiles_and_traces() -> None:
+    from examples.optimization.generate_qs_ess_sweep import PROBLEM_CONFIGS, _merge_stage_histories
+
+    def stage_result(label: str, wall: float) -> dict:
+        return {
+            "_history_dump": {
+                "history": [
+                    {"wall_time_s": 0.0, "objective": 2.0, "qs_objective": 1.0, "aspect": 5.0},
+                    {"wall_time_s": wall, "objective": 1.0, "qs_objective": 0.5, "aspect": 5.1},
+                ],
+                "nfev": 2,
+                "njev": 1,
+                "success": True,
+                "message": label,
+                "objective_initial": 2.0,
+                "objective_final": 1.0,
+                "qs_initial": 1.0,
+                "qs_final": 0.5,
+                "aspect_initial": 5.0,
+                "aspect_final": 5.1,
+                "max_nfev": 3,
+                "profile": {"exact_tape_build": wall, "trial_solve": 2.0 * wall},
+                "callback_trace": {
+                    "enabled": True,
+                    "events": [{"index": 0, "kind": "jacobian", "source": "exact_tape_replay", "wall_time_s": wall}],
+                    "summary": {"jacobian:exact_tape_replay": {"count": 1, "wall_time_s": wall}},
+                },
+            }
+        }
+
+    merged = _merge_stage_histories(
+        [
+            ("stage 1", 1, stage_result("one", 0.25)),
+            ("stage 2", 2, stage_result("two", 0.5)),
+        ],
+        problem_cfg=PROBLEM_CONFIGS["qa"],
+    )
+
+    assert merged["profile"]["exact_tape_build"] == 0.75
+    assert len(merged["stage_profiles"]) == 2
+    assert merged["callback_trace"]["summary"]["jacobian:exact_tape_replay"]["count"] == 2
+    assert merged["callback_trace"]["summary"]["jacobian:exact_tape_replay"]["wall_time_s"] == 0.75
+    assert [event["stage"] for event in merged["callback_trace"]["events"]] == ["stage 1", "stage 2"]
+
+
 def test_finite_beta_examples_plot_explicitly_after_solve() -> None:
     scripts = [
         ROOT / "examples" / "optimization" / "qa_optimization_finite_beta.py",
