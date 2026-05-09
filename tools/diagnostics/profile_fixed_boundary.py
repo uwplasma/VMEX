@@ -230,6 +230,7 @@ def _print_run_summary(summary: dict[str, Any]) -> None:
         "multigrid_ns_stages",
         "multigrid_niter_stages",
         "multigrid_stage_modes",
+        "solver_device",
         "use_scan",
         "vmec2000_scan",
         "cli_fixed_boundary_finish_budgets",
