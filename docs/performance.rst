@@ -17,13 +17,16 @@ code:
 - **Warm run**: steady-state solve time after the kernels are in memory — the
   fair comparison against VMEC2000.
 
-Persistent XLA compilation caching is enabled by default for repeated starts.
-Compiled kernels are stored under
+Persistent XLA compilation caching is enabled automatically for
+accelerator-selected runs.  CPU cache use is opt-in because XLA:CPU persistent
+cache entries are native AOT executables and can emit host-feature mismatch
+errors on some JAX versions.  Compiled kernels are stored under
 ``~/.cache/vmec_jax/jax_cache/<machine-fingerprint>`` unless the user sets
 ``VMEC_JAX_COMPILATION_CACHE_DIR`` or upstream ``JAX_COMPILATION_CACHE_DIR``.
 The suffix includes host CPU details plus Python/JAX/JAXLIB versions to avoid
 reusing native XLA:CPU AOT executables compiled for an incompatible runtime.
-Set ``VMEC_JAX_COMPILATION_CACHE=0`` to disable the persistent cache.
+Set ``VMEC_JAX_COMPILATION_CACHE=1`` to opt in for CPU runs, or
+``VMEC_JAX_COMPILATION_CACHE=0`` to disable the persistent cache.
 
 VMEC2000 is a pre-compiled Fortran binary with no JIT overhead — it is always
 effectively "cold".  When benchmarking, compare ``vmec_jax`` warm runtime
@@ -1688,11 +1691,14 @@ Control this behavior with:
 Compilation cache
 -----------------
 
-JAX can persist compiled executables to disk. ``vmec_jax`` enables this by
-default because cold-start compilation dominates short fixed-boundary and
-optimization diagnostics, especially on GPU. By default, the cache directory is
-machine/CPU-feature/Python/JAX scoped so shared home directories do not reuse
-incompatible CPU AOT artifacts across different hosts or runtime versions. Use
+JAX can persist compiled executables to disk. ``vmec_jax`` enables this
+automatically for accelerator-selected runs because cold-start compilation
+dominates short fixed-boundary and optimization diagnostics, especially on GPU.
+CPU cache use is explicit opt-in with ``VMEC_JAX_COMPILATION_CACHE=1`` because
+XLA:CPU AOT cache hits can emit host-feature mismatch errors on some JAX
+versions.  By default, the cache directory is machine/CPU-feature/Python/JAX
+scoped so shared home directories do not reuse incompatible CPU AOT artifacts
+across different hosts or runtime versions. Use
 ``VMEC_JAX_COMPILATION_CACHE_DIR=/path/to/cache`` (or the upstream
 ``JAX_COMPILATION_CACHE_DIR``) to choose the cache location, or set
 ``VMEC_JAX_COMPILATION_CACHE=0`` to disable it.
@@ -1700,9 +1706,9 @@ incompatible CPU AOT artifacts across different hosts or runtime versions. Use
 If XLA prints a message such as ``Loading XLA:CPU AOT result`` followed by a
 target-machine feature mismatch, it means an existing persistent-cache entry was
 compiled for another CPU. Do not suppress that message blindly: clear the old
-cache directory or rerun once with ``VMEC_JAX_COMPILATION_CACHE=0``. New default
-``vmec_jax`` cache directories avoid this by including the machine, CPU feature
-signature, Python version, and JAX/JAXLIB versions in the path.
+cache directory or rerun once with ``VMEC_JAX_COMPILATION_CACHE=0``. Current
+``vmec_jax`` defaults avoid enabling the CPU persistent cache unless the user
+opts in explicitly or provides a cache directory.
 
 CLI profiling (pre-iteration overhead)
 --------------------------------------
