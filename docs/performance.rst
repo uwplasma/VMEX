@@ -437,6 +437,76 @@ The current practical policy is therefore:
 - do not promise first-process GPU speedups on small fixed-boundary cases until
   the scan-safe path is broadened and the GPU compile graph is reduced.
 
+Raw solver throughput vs public policy overhead
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The fixed-boundary profiler can now separate the requested raw solver path from
+the public CLI-style policy.  This matters because public defaults may add
+dynamic scan probes, staged follow-up, or finish attempts around the requested
+iteration budget.  To benchmark the raw accelerated scan path, use:
+
+.. code-block:: bash
+
+   JAX_ENABLE_X64=1 python tools/diagnostics/profile_fixed_boundary.py \
+     --input examples/data/input.nfp4_QH_warm_start \
+     --iters 20 \
+     --simple-profile \
+     --no-multigrid \
+     --no-auto-cli-policy \
+     --solver-mode accelerated \
+     --use-scan \
+     --solver-device gpu \
+     --json-out /tmp/vmec_jax_qh20_raw_gpu.json
+
+May 2026 raw-path diagnostics showed:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 16 16 16 16
+
+   * - Case
+     - Device
+     - Iterations
+     - Timing
+     - Notes
+   * - ``input.nfp4_QH_warm_start``
+     - local CPU, JAX 0.9.2
+     - 20
+     - ``4.43 s`` cold, ``0.31 s`` warm
+     - raw accelerated scan
+   * - ``input.nfp4_QH_warm_start``
+     - ``office`` GPU, JAX 0.6.2
+     - 20
+     - ``12.1 s`` cold, ``1.70 s`` warm
+     - old Python 3.10/JAX stack
+   * - ``input.nfp4_QH_warm_start``
+     - ``office`` CPU, JAX 0.6.2
+     - 100
+     - ``0.97 s`` warm
+     - same host as GPU
+   * - ``input.nfp4_QH_warm_start``
+     - ``office`` GPU, JAX 0.6.2
+     - 100
+     - ``1.77 s`` warm
+     - fixed overhead dominates
+   * - ``input.LandremanPaul2021_QA_lowres``
+     - ``office`` CPU/GPU, JAX 0.6.2
+     - 20
+     - ``1.29 s`` CPU, ``1.87 s`` GPU
+     - warmed raw path
+   * - ``input.nfp2_QI``
+     - ``office`` CPU/GPU, JAX 0.6.2
+     - 20
+     - ``0.99 s`` CPU, ``1.65 s`` GPU
+     - warmed raw path
+
+The conclusion is narrower than “GPU is slow”: raw force iterations are fast
+once warmed, but the available ``office`` stack still has high GPU fixed
+overhead and uses Python 3.10 / JAX 0.6.2.  The next GPU lane should use a
+Python 3.11+ environment with current JAX, then target the remaining
+compile/launch/replay overhead rather than changing physics tolerances or
+forcing CPU fallback.
+
 For high-mode runs, also profile the experimental reverse-adjoint scalar
 gradient callback:
 

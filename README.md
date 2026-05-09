@@ -223,7 +223,8 @@ PYTHONPATH=. python examples/optimization/render_readme_best_optimizations.py
 - Default runs select the fastest stable path for each input automatically.
 - Use `--parity` (or `performance_mode=False` in Python) to force the conservative VMEC2000 loop.
 - Use `--solver-mode accelerated` to force the optimized fixed-boundary controller.
-- For GPU benchmarking, compare both first-process and cache-warm timings; the first GPU process pays XLA compilation, while later processes reuse the persistent cache automatically.
+- For GPU benchmarking, separate raw solver throughput from public policy overhead. For example, use `tools/diagnostics/profile_fixed_boundary.py --no-auto-cli-policy --solver-mode accelerated --no-multigrid --use-scan --solver-device gpu`.
+- Compare both first-process and in-process warm timings. The first GPU process pays XLA/runtime setup; persistent cache effectiveness depends on the JAX version, backend, and machine features.
 
 Details, profiling guidance, and parity methodology:
 
