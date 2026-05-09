@@ -425,9 +425,10 @@ def test_lbfgs_adjoint_respects_scalar_evaluation_budget(monkeypatch):
     state = object()
     last_x = [np.array([0.0])]
 
-    def fake_minimize(fun, y0, *, jac, method, options):
+    def fake_minimize(fun, y0, *, jac, method, bounds, options):
         assert jac is True
         assert method == "L-BFGS-B"
+        assert bounds == [(-0.01, 0.01)]
         assert options["maxfun"] == 2
         fun(np.asarray(y0, dtype=float))
         fun(np.asarray([0.4], dtype=float))
