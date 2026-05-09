@@ -2713,6 +2713,7 @@ class FixedBoundaryExactOptimizer:
         target_aspect: float | None = None,
         scipy_tr_solver: str | None = "lsmr",
         scipy_lsmr_maxiter: int | None = None,
+        lbfgs_step_bound: float | None = 0.01,
         trace_callbacks: bool | None = None,
     ) -> dict:
         """Run exact least-squares optimisation.
@@ -2765,6 +2766,12 @@ class FixedBoundaryExactOptimizer:
             trust-region linear solve.  This is primarily useful for the
             matrix-free path, where every LSMR iteration costs one or more
             exact ``Jv``/``J.Tv`` products.
+        lbfgs_step_bound:
+            Optional half-width of the L-BFGS-B trust box in scaled parameter
+            space when ``method="lbfgs_adjoint"``. The scalar-adjoint path is
+            not a least-squares trust-region method; this bound prevents the
+            line search from probing extremely distorted boundaries. Set to
+            ``None`` or a non-positive value to run unbounded L-BFGS-B.
         trace_callbacks:
             When true, include a lightweight SciPy callback trace in the
             history dump.  This is intended for CPU/GPU profiling of repeated
@@ -2908,11 +2915,19 @@ class FixedBoundaryExactOptimizer:
                 return float(cost), grad_y
 
             try:
+                lbfgs_bounds = None
+                if lbfgs_step_bound is not None and float(lbfgs_step_bound) > 0.0:
+                    bound = float(lbfgs_step_bound)
+                    lbfgs_bounds = [
+                        (float(center) - bound, float(center) + bound)
+                        for center in np.asarray(y0, dtype=float)
+                    ]
                 minimize_result = _scipy_minimize(
                     _objective_and_gradient_y,
                     y0,
                     jac=True,
                     method="L-BFGS-B",
+                    bounds=lbfgs_bounds,
                     options={
                         "maxiter": int(max_nfev),
                         "maxfun": int(max_nfev),
@@ -3223,6 +3238,9 @@ class FixedBoundaryExactOptimizer:
             ),
             "scipy_lsmr_maxiter": (
                 None if scipy_lsmr_maxiter is None else int(scipy_lsmr_maxiter)
+            ),
+            "lbfgs_step_bound": (
+                None if lbfgs_step_bound is None else float(lbfgs_step_bound)
             ),
             "solver_device": self._solver_device_name or "default",
             "inner_max_iter": int(self._inner_max_iter),
