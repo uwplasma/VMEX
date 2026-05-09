@@ -271,7 +271,7 @@ PROBLEM_CONFIGS = {
     "qa": ProblemConfig(
         name="qa",
         input_file=DATA_DIR / "input.nfp2_QA_omnigenity",
-        method="scipy",  # Try also "gauss_newton", "scipy_matrix_free", or "lbfgs_adjoint".
+        method="scipy",  # Try also "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", or "scalar_trust".
         scipy_tr_solver="lsmr",  # For method="scipy": "lsmr" is memory-light; "exact" is dense.
         scipy_lsmr_maxiter=None,  # None lets SciPy choose; set an int to cap LSMR work per step.
         max_nfev=60,  # Outer least-squares budget for the final stage.
@@ -297,7 +297,7 @@ PROBLEM_CONFIGS = {
     "qh": ProblemConfig(
         name="qh",
         input_file=DATA_DIR / "input.nfp4_QH_warm_start",
-        method="scipy",  # Try also "gauss_newton", "scipy_matrix_free", or "lbfgs_adjoint".
+        method="scipy",  # Try also "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", or "scalar_trust".
         scipy_tr_solver="lsmr",  # For method="scipy": "lsmr" is memory-light; "exact" is dense.
         scipy_lsmr_maxiter=None,  # None lets SciPy choose; set an int to cap LSMR work per step.
         max_nfev=30,  # Outer least-squares budget for the final stage.
@@ -324,7 +324,7 @@ PROBLEM_CONFIGS = {
     "qp": ProblemConfig(
         name="qp",
         input_file=DATA_DIR / "input.nfp2_QI",
-        method="scipy",  # Try also "gauss_newton", "scipy_matrix_free", or "lbfgs_adjoint".
+        method="scipy",  # Try also "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", or "scalar_trust".
         scipy_tr_solver="lsmr",  # For method="scipy": "lsmr" is memory-light; "exact" is dense.
         scipy_lsmr_maxiter=None,  # None lets SciPy choose; set an int to cap LSMR work per step.
         max_nfev=40,  # Outer least-squares budget for the final stage.
@@ -352,7 +352,7 @@ PROBLEM_CONFIGS = {
     "qi": ProblemConfig(
         name="qi",
         input_file=DATA_DIR / "input.nfp2_QI",
-        method="scipy",  # Try also "gauss_newton", "scipy_matrix_free", or "lbfgs_adjoint".
+        method="scipy",  # Try also "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", or "scalar_trust".
         scipy_tr_solver="lsmr",  # For method="scipy": "lsmr" is memory-light; "exact" is dense.
         scipy_lsmr_maxiter=None,  # None lets SciPy choose; set an int to cap LSMR work per step.
         max_nfev=30,  # Outer least-squares budget for the final stage.

@@ -569,19 +569,24 @@ This path computes the gradient of ``0.5 * ||r||^2`` with one reverse replay
 through the VMEC tape instead of propagating one tangent column per boundary
 degree of freedom.  It is exposed through
 ``FixedBoundaryExactOptimizer.objective_and_gradient_fun`` and the opt-in
-``method="lbfgs_adjoint"`` optimizer.  It is currently a profiling/experimental
-lane, not the default QA/QH production path, because the current reverse
-products are comparable to, but not consistently faster than, the dense
-vectorized column replay for the present ``max_mode <= 3`` parameter counts.
+``method="lbfgs_adjoint"`` / ``method="scalar_trust"`` optimizers.  These are
+currently profiling/experimental lanes, not the default QA/QH production path,
+because the current reverse products are comparable to, but not consistently
+faster than, the dense vectorized column replay for the present
+``max_mode <= 3`` parameter counts.
 The ``lbfgs_adjoint`` wrapper now enforces a hard scalar-gradient callback
 budget because SciPy's internal L-BFGS-B line search can otherwise exceed the
 requested ``max_nfev``.  It also uses a conservative default trust box
 (``lbfgs_step_bound=0.01`` in scaled parameter space) because unbounded L-BFGS-B
-can probe extremely distorted boundaries on the first line search.  A May 2026
-QH ``max_mode=1`` diagnostic confirms the budget is respected, but the
-scalar-adjoint optimizer remains slower and less effective than dense exact
+can probe extremely distorted boundaries on the first line search.
+``scalar_trust`` uses the same scalar-adjoint gradient but accepts only
+monotone trust-region steps with a hard callback budget; this makes profiling
+predictable even when L-BFGS-B line searches are ineffective.  A May 2026 QH
+``max_mode=1`` diagnostic confirms the budget is respected, but the
+scalar-adjoint optimizers remain slower and less effective than dense exact
 least-squares on that small case.  The next useful step is therefore better
-line-search/scaling behavior, not switching the default least-squares path.
+matrix-free/scalar trust-region behavior, not switching the default
+least-squares path.
 
 The accepted-point exact path remains the discrete-adjoint tape path on both
 CPU and GPU.  The scan-differentiated exact path is intentionally not selected

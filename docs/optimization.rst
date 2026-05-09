@@ -102,7 +102,7 @@ the same setup-and-solve flow used by the QA/QP/QI examples:
    MAX_MODE = 3
    MIN_VMEC_MODE = 6
    MAX_NFEV = 30
-   METHOD = "scipy"            # also: "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint"
+   METHOD = "scipy"            # also: "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", "scalar_trust"
    SCIPY_TR_SOLVER = "lsmr"    # also: "exact" for small dense trust-region solves
    SOLVER_DEVICE = None        # set to "cpu" or "gpu" to force one backend
    HELICITY_M = 1
