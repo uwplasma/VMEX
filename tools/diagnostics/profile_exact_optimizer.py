@@ -49,11 +49,29 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--alpha", type=float, default=0.8)
     p.add_argument(
         "--method",
-        choices=("scipy", "scipy_matrix_free", "gauss_newton", "lbfgs_adjoint"),
+        choices=(
+            "scipy",
+            "scipy_matrix_free",
+            "gauss_newton",
+            "lbfgs_adjoint",
+            "scalar_trust",
+        ),
         default="scipy",
     )
     p.add_argument("--scipy-tr-solver", choices=("lsmr", "exact", "none"), default="lsmr")
     p.add_argument("--lsmr-maxiter", type=int, default=0)
+    p.add_argument(
+        "--lbfgs-step-bound",
+        type=float,
+        default=0.01,
+        help="Scaled-space half-width for method=lbfgs_adjoint.",
+    )
+    p.add_argument(
+        "--scalar-step-bound",
+        type=float,
+        default=0.01,
+        help="Initial/max scaled-space trust radius for method=scalar_trust.",
+    )
     p.add_argument("--trace-outdir", type=str, default="")
     p.add_argument("--json-out", type=str, default="")
     p.add_argument(
@@ -442,6 +460,8 @@ def main() -> int:
             target_aspect=target_aspect,
             scipy_tr_solver=tr_solver,
             scipy_lsmr_maxiter=None if args.lsmr_maxiter <= 0 else int(args.lsmr_maxiter),
+            lbfgs_step_bound=float(args.lbfgs_step_bound),
+            scalar_step_bound=float(args.scalar_step_bound),
             trace_callbacks=args.trace_callbacks,
         )
     finally:
