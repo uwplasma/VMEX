@@ -33,6 +33,15 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--no-jit-forces", action="store_true", help="Disable jit_forces")
     p.add_argument("--use-input-niter", action="store_true", help="Use NITER from input for staging")
     p.add_argument("--use-scan", action="store_true", help="Run the lax.scan iteration path")
+    p.add_argument(
+        "--solver-device",
+        choices=("auto", "default", "cpu", "gpu"),
+        default="auto",
+        help="JAX solver device override passed to run_fixed_boundary (default: auto).",
+    )
+    p.set_defaults(multigrid=None)
+    p.add_argument("--multigrid", dest="multigrid", action="store_true", help="Force multigrid staging.")
+    p.add_argument("--no-multigrid", dest="multigrid", action="store_false", help="Force a direct single-grid solve.")
     p.add_argument("--dump-hlo", action="store_true", help="Dump tomnsps_rzl HLO to the output directory")
     return p.parse_args()
 
@@ -140,6 +149,7 @@ def main() -> int:
     if args.jit_forces and args.no_jit_forces:
         raise SystemExit("Specify at most one of --jit-forces or --no-jit-forces.")
     jit_forces = True if args.jit_forces else False if args.no_jit_forces else True
+    solver_device = None if str(args.solver_device) == "auto" else str(args.solver_device)
 
     if bool(args.dump_hlo):
         _dump_tomnsps_hlo(str(args.input), outdir)
@@ -150,9 +160,11 @@ def main() -> int:
             solver="vmec2000_iter",
             max_iter=int(args.iters),
             multigrid_use_input_niter=bool(args.use_input_niter),
+            multigrid=args.multigrid,
             verbose=False,
             jit_forces=bool(jit_forces),
             use_scan=bool(args.use_scan),
+            solver_device=solver_device,
         )
         try:
             res = warm.result
@@ -179,9 +191,11 @@ def main() -> int:
             solver="vmec2000_iter",
             max_iter=int(args.iters),
             multigrid_use_input_niter=bool(args.use_input_niter),
+            multigrid=args.multigrid,
             verbose=False,
             jit_forces=bool(jit_forces),
             use_scan=bool(args.use_scan),
+            solver_device=solver_device,
         )
         res = run.result
         if res is not None and hasattr(res, "fsqr2_history"):
@@ -195,9 +209,11 @@ def main() -> int:
         solver="vmec2000_iter",
         max_iter=int(args.iters),
         multigrid_use_input_niter=bool(args.use_input_niter),
+        multigrid=args.multigrid,
         verbose=False,
         jit_forces=bool(jit_forces),
         use_scan=bool(args.use_scan),
+        solver_device=solver_device,
     )
     try:
         res = run.result
