@@ -252,6 +252,138 @@ def test_least_squares_problem_collects_problem_metadata() -> None:
     }
 
 
+def test_least_squares_solve_dispatches_regular_problem(monkeypatch, tmp_path) -> None:
+    import vmec_jax.optimization_workflow as workflow
+    from vmec_jax.optimization_workflow import AbsMeanIotaFloor, AspectRatio, LeastSquaresProblem, MeanIota
+
+    captured = {}
+
+    def fake_run_fixed_boundary_objective_optimization(**kwargs):
+        captured.update(kwargs)
+        return "regular-result"
+
+    monkeypatch.setattr(workflow, "run_fixed_boundary_objective_optimization", fake_run_fixed_boundary_objective_optimization)
+    vmec = SimpleNamespace(
+        cfg="cfg",
+        indata="indata",
+        max_mode=2,
+        output_dir=tmp_path,
+        include=("rc", "zs"),
+        fix=("rc00",),
+        project_input_boundary_to_max_mode=True,
+    )
+    problem = LeastSquaresProblem.from_tuples(
+        [
+            (AspectRatio().J, 6.0, 1.0),
+            (MeanIota().J, 0.42, 4.0),
+            (AbsMeanIotaFloor(0.41).J, 0.0, 9.0),
+        ]
+    )
+
+    result = workflow.least_squares_solve(
+        vmec,
+        problem,
+        stage_modes=[1, 2],
+        max_nfev=7,
+        continuation_nfev=3,
+        method="scipy",
+        use_ess=True,
+        ess_alpha=2.5,
+        solver_device="cpu",
+        save_stage_wouts=True,
+    )
+
+    assert result == "regular-result"
+    assert captured["cfg"] == "cfg"
+    assert captured["indata"] == "indata"
+    assert captured["stage_modes"] == [1, 2]
+    assert captured["max_mode"] == 2
+    assert captured["max_nfev"] == 7
+    assert captured["continuation_nfev"] == 3
+    assert captured["use_ess"] is True
+    assert captured["ess_alpha"] == 2.5
+    assert captured["target_aspect"] == 6.0
+    assert captured["target_iota"] == 0.42
+    assert captured["iota_abs_min"] == 0.41
+    assert captured["include"] == ("rc", "zs")
+    assert captured["fix"] == ("rc00",)
+    assert captured["solver_device"] == "cpu"
+    assert captured["save_stage_wouts"] is True
+
+
+def test_least_squares_solve_dispatches_qi_problem(monkeypatch, tmp_path) -> None:
+    import vmec_jax.optimization_workflow as workflow
+    from vmec_jax.optimization_workflow import LeastSquaresProblem, QuasiIsodynamicOptions, QuasiIsodynamicResidual
+
+    captured = {}
+
+    def fake_run_quasi_isodynamic_objective_optimization(**kwargs):
+        captured.update(kwargs)
+        return "qi-result"
+
+    monkeypatch.setattr(workflow, "run_quasi_isodynamic_objective_optimization", fake_run_quasi_isodynamic_objective_optimization)
+    qi_options = QuasiIsodynamicOptions(
+        surfaces=[0.25, 0.75],
+        mboz=8,
+        nboz=7,
+        nphi=21,
+        nalpha=11,
+        n_bounce=13,
+        softness=0.03,
+        width_weight=2.0,
+        phimin=0.1,
+    )
+    vmec = SimpleNamespace(
+        cfg="cfg",
+        indata="indata",
+        max_mode=3,
+        output_dir=tmp_path,
+        include=("rc", "zs", "rs", "zc"),
+        fix=("rc00",),
+        project_input_boundary_to_max_mode=False,
+    )
+    problem = LeastSquaresProblem.from_tuples([(QuasiIsodynamicResidual(qi_options).J, 0.0, 16.0)])
+
+    result = workflow.least_squares_solve(
+        vmec,
+        problem,
+        stage_modes=[1, 1, 2, 3],
+        max_nfev=9,
+        continuation_nfev=4,
+        use_mode_continuation=False,
+        inner_max_iter=0,
+        inner_ftol=0.0,
+        trial_max_iter=0,
+        trial_ftol=0.0,
+        solver_device="gpu",
+    )
+
+    assert result == "qi-result"
+    assert captured["cfg"] == "cfg"
+    assert captured["indata"] == "indata"
+    assert captured["stage_modes"] == [1, 1, 2, 3]
+    assert captured["max_mode"] == 3
+    assert captured["max_nfev"] == 9
+    assert captured["continuation_nfev"] == 4
+    assert captured["use_mode_continuation"] is False
+    assert captured["surfaces"] == [0.25, 0.75]
+    assert captured["mboz"] == 8
+    assert captured["nboz"] == 7
+    assert captured["nphi"] == 21
+    assert captured["nalpha"] == 11
+    assert captured["n_bounce"] == 13
+    assert captured["softness"] == 0.03
+    assert captured["width_weight"] == 2.0
+    assert captured["phimin"] == 0.1
+    assert captured["include"] == ("rc", "zs", "rs", "zc")
+    assert captured["project_input_boundary_to_max_mode"] is False
+    assert captured["inner_max_iter"] == 0
+    assert captured["inner_ftol"] == 0.0
+    assert captured["trial_max_iter"] == 0
+    assert captured["trial_ftol"] == 0.0
+    assert captured["solver_device"] == "gpu"
+
+
 def test_lgradb_tuple_stays_regular_state_objective() -> None:
     from vmec_jax.optimization_workflow import LeastSquaresProblem, LgradB
 
