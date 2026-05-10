@@ -324,3 +324,7 @@ Acceptance:
   environment parsing, and diagnostic-history convergence fallbacks. These
   target CPU/GPU runtime-policy control flow and convergence reporting without
   adding new heavy solve cases.
+- 2026-05-10: Re-ran the CI-equivalent fast coverage gate after the QI,
+  plotting-wrapper, and driver-policy test slices: `405 passed, 21 skipped,
+  85 deselected`, total coverage `61.65%`, runtime about `7:01`. Kept the CI
+  floor at 61%; there is not enough platform margin yet to raise it to 62%.
