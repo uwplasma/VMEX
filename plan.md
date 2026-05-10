@@ -316,3 +316,7 @@ Acceptance:
   policy helpers and QI objective factories. These cover QI residual weighting,
   Boozer surface slicing for mirror-ratio penalties, elongation penalties, and
   LgradB state-objective plumbing without executing VMEC or Boozer solves.
+- 2026-05-10: Added plotting API compatibility tests for the legacy
+  `plot_qh_optimization` wrapper and angle-label formatting. The examples use
+  the generic plotting helpers directly, while the wrapper remains protected for
+  downstream scripts that still call it.

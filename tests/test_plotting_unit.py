@@ -14,6 +14,7 @@ from vmec_jax.plotting import (
     _case_from_input_path,
     _default_example_outdir,
     _extent_from_grids,
+    _pi_label,
     axis_rz_from_wout,
     axis_rz_from_wout_physical,
     bmag_from_wout,
@@ -26,6 +27,7 @@ from vmec_jax.plotting import (
     plot_3d_boundary_comparison,
     plot_bmag_contours,
     plot_objective_history,
+    plot_qh_optimization,
     profiles_from_wout,
     select_zeta_slices,
     surface_data_from_wout,
@@ -111,6 +113,7 @@ def test_grids_slices_and_path_helpers():
     assert _case_from_input_path("/tmp/wout_test.nc") == "wout_test"
     assert _default_example_outdir("sub", "case", "/tmp/out") == Path("/tmp/out")
     assert _extent_from_grids(np.asarray([2.0]), np.asarray([3.0])) == (2.5, 3.5, 1.5, 2.5)
+    assert [_pi_label(v) for v in (0.0, np.pi / 2.0, np.pi, 3.0 * np.pi / 2.0)] == ["0", "π/2", "π", "3π/2"]
 
 
 def test_wout_surface_and_field_helpers_respect_lasym():
@@ -231,6 +234,50 @@ def test_public_optimization_plot_helpers_render_synthetic_outputs(tmp_path):
     assert boundary_path.stat().st_size > 0
     assert bmag_path.stat().st_size > 0
     assert history_plot_path.stat().st_size > 0
+
+
+def test_plot_qh_optimization_wrapper_dispatches_to_public_helpers(tmp_path, monkeypatch, capsys):
+    pytest.importorskip("matplotlib")
+    import matplotlib.pyplot as plt
+    import vmec_jax.plotting as plotting
+
+    history_path = tmp_path / "history.json"
+    history_path.write_text(json.dumps({"history": [{"objective": 1.0, "aspect": 5.0}], "label": "toy"}))
+    calls = []
+
+    def fake_boundary(wout_initial, wout_final, *, outdir):
+        calls.append(("boundary", Path(wout_initial), Path(wout_final), Path(outdir)))
+        return Path(outdir) / "boundary.png"
+
+    def fake_bmag(wout_initial, wout_final, *, outdir):
+        calls.append(("bmag", Path(wout_initial), Path(wout_final), Path(outdir)))
+        return Path(outdir) / "bmag.png"
+
+    def fake_history(path, *, outdir):
+        calls.append(("history", Path(path), Path(outdir)))
+        return Path(outdir) / "history.png"
+
+    monkeypatch.setattr(plotting, "plot_3d_boundary_comparison", fake_boundary)
+    monkeypatch.setattr(plotting, "plot_bmag_contours", fake_bmag)
+    monkeypatch.setattr(plotting, "plot_objective_history", fake_history)
+    monkeypatch.setattr(plotting, "prepare_matplotlib_3d", lambda: calls.append(("prepare",)))
+    monkeypatch.setattr(plt, "show", lambda: calls.append(("show",)))
+
+    outdir = tmp_path / "plots"
+    paths = plot_qh_optimization("wout_initial.nc", "wout_final.nc", history_path, outdir=outdir, show=True)
+
+    assert paths == {
+        "boundary_comparison": outdir / "boundary.png",
+        "bmag_surface": outdir / "bmag.png",
+        "objective_history": outdir / "history.png",
+    }
+    assert calls[:3] == [
+        ("boundary", Path("wout_initial.nc"), Path("wout_final.nc"), outdir),
+        ("bmag", Path("wout_initial.nc"), Path("wout_final.nc"), outdir),
+        ("history", history_path, outdir),
+    ]
+    assert calls[-2:] == [("prepare",), ("show",)]
+    assert "Saved" in capsys.readouterr().out
 
 
 def test_fix_matplotlib_3d_sets_equal_radius_limits():
