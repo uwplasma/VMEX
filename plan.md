@@ -299,3 +299,7 @@ Acceptance:
   scalar/list parsing, final-FTOL selection, integer budget allocation, residual
   convergence checks, and history-based final residual extraction. This targets
   CI-relevant control-flow branches without adding additional VMEC solves.
+- 2026-05-10: Added `least_squares_solve` dispatch tests for ordinary QS and QI
+  problems. These verify SIMSOPT-like objective tuple metadata and shared
+  `QuasiIsodynamicOptions` are routed to the correct low-level optimization
+  path without executing expensive optimization runs.
