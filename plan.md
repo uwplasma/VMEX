@@ -372,3 +372,7 @@ Acceptance:
   output paths, missing-input errors, invalid `--jit-forces`, and read failures.
   Verified with `python -m pytest tests/test_cli_helpers.py -q` (`11 passed`)
   and `ruff check tests/test_cli_helpers.py`.
+- 2026-05-10: Added residual diagnostic API guard coverage for missing-JAX,
+  singular `gamma=1`, and pressure-shape validation paths. Verified with
+  `python -m pytest tests/test_fast_physics_kernels.py -q` (`11 passed`) and
+  `ruff check tests/test_fast_physics_kernels.py`.
