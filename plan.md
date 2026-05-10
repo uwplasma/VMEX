@@ -169,9 +169,9 @@ Acceptance:
    (`qi_legacy_total`).
 3. [x] Run a small QI one-DOF noise/ranking audit with the source-level
    diagnostic.
-4. [ ] Wire state-synthesized even/odd geometry channels and the LASYM=True
-   derivative branch into the new AD-safe gpp, bsubs, bdotk, surface-integral,
-   and algebra kernels, then wrap the result as a `DMerc` objective.
+4. [ ] Compose the AD-safe state-synthesized geometry, gpp, bsubs, bdotk,
+   surface-integral, and algebra kernels into a state-level `DMerc` residual;
+   then add the LASYM=True derivative branch.
 5. [ ] Start the first refactor with a low-risk extraction from the largest
    modules after the new tests are green.
 
@@ -219,3 +219,7 @@ Acceptance:
   the VMEC half-mesh `rv12/zv12` toroidal derivative geometry from even/odd
   channels. Remaining DMerc wiring needs state synthesis of those channels and
   the LASYM=True derivative branch.
+- 2026-05-10: Added `mercier_realspace_geometry_channels_from_state`, a
+  source-level JAX synthesis helper for the VMEC even/odd R/Z geometry channels
+  used by Mercier. Remaining work is composing the state-level `DMerc` residual
+  and adding LASYM=True derivative reconstruction.
