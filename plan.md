@@ -263,3 +263,6 @@ Acceptance:
   geometry from state-level VMEC channels using fixed trapped-fraction
   quadrature. Added tests, docs, and example wiring. The next lane is parity
   against SIMSOPT RedlGeomVmec/RedlGeomBoozer on finite-beta equilibria.
+- 2026-05-10: Added an optional SIMSOPT parity test for the Redl algebra
+  itself, comparing `jdotB`, `L31`, and `L32` against
+  `simsopt.mhd.bootstrap.j_dot_B_Redl` when SIMSOPT is installed.
