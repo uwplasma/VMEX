@@ -354,3 +354,8 @@ Acceptance:
   entrypoint and `_compat` tests: `409 passed, 21 skipped, 85 deselected`, total
   coverage `62.91%`, runtime about `6:28`. Kept the CI floor at 62%; 63% still
   needs more margin before it is safe to enforce in CI.
+- 2026-05-10: Added synthetic optimization-helper coverage for max-mode
+  boundary extension, LASYM boundary coefficient families, fixed-boundary
+  context precomputation, no-op boundary truncation, and Gauss-Newton edge
+  exits. Verified with `python -m pytest tests/test_optimization_helpers.py -q`
+  (`48 passed, 1 skipped`) and `ruff check tests/test_optimization_helpers.py`.

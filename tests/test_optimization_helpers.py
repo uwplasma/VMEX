@@ -10,15 +10,18 @@ from vmec_jax.optimization import (
     BoundaryParamSpec,
     FixedBoundaryExactOptimizer,
     _indexed_boundary_maps_from_boundary,
+    _pressure_profile_for_static,
     apply_boundary_params,
     boundary_param_names,
     boundary_param_specs,
     create_x_scale,
+    extend_boundary_for_max_mode,
     gauss_newton_least_squares,
     lift_boundary_params,
     make_qh_residuals_fn,
     make_qs_residuals_fn,
     parse_surface_list,
+    prepare_fixed_boundary_context,
     rebuild_indata_with_resolution,
     smooth_min_abs_iota_residual,
     surface_indices_from_s,
@@ -72,6 +75,59 @@ def test_apply_boundary_params_rejects_unknown_kind():
 
     with pytest.raises(ValueError, match="Unknown boundary parameter kind"):
         apply_boundary_params(boundary, specs, jnp.asarray([1.0]))
+
+
+def test_boundary_param_specs_cover_lasym_families_and_axis_filter():
+    modes = ModeTable(
+        m=np.array([0, 1, 1, 2], dtype=int),
+        n=np.array([0, 0, 1, 2], dtype=int),
+    )
+    boundary = BoundaryCoeffs(
+        R_cos=np.array([1.0, 0.2, 0.3, 0.4]),
+        R_sin=np.array([0.0, 0.02, 0.03, 0.04]),
+        Z_cos=np.array([0.0, 0.05, 0.06, 0.07]),
+        Z_sin=np.array([0.0, 0.08, 0.09, 0.10]),
+    )
+
+    specs = boundary_param_specs(
+        boundary,
+        modes,
+        max_m=1,
+        max_n=1,
+        include=("rc", "rs", "zc", "zs"),
+        include_axis=True,
+        fix=("rc00", "rs10"),
+    )
+    names = boundary_param_names(specs)
+
+    assert "rc00" not in names
+    assert "rs10" not in names
+    assert "rc10" in names
+    assert "zc10" in names
+    assert "zs11" in names
+    assert all("2" not in name for name in names)
+
+
+def test_apply_boundary_params_updates_all_boundary_families():
+    boundary = BoundaryCoeffs(
+        R_cos=np.zeros(4),
+        R_sin=np.zeros(4),
+        Z_cos=np.zeros(4),
+        Z_sin=np.zeros(4),
+    )
+    specs = [
+        BoundaryParamSpec("rc10", "rc", 0, 1, 0),
+        BoundaryParamSpec("rs10", "rs", 1, 1, 0),
+        BoundaryParamSpec("zc10", "zc", 2, 1, 0),
+        BoundaryParamSpec("zs10", "zs", 3, 1, 0),
+    ]
+
+    updated = apply_boundary_params(boundary, specs, jnp.asarray([1.0, 2.0, 3.0, 4.0]))
+
+    np.testing.assert_allclose(np.asarray(updated.R_cos), [1.0, 0.0, 0.0, 0.0])
+    np.testing.assert_allclose(np.asarray(updated.R_sin), [0.0, 2.0, 0.0, 0.0])
+    np.testing.assert_allclose(np.asarray(updated.Z_cos), [0.0, 0.0, 3.0, 0.0])
+    np.testing.assert_allclose(np.asarray(updated.Z_sin), [0.0, 0.0, 0.0, 4.0])
 
 
 def test_surface_indices_from_s():
@@ -325,6 +381,128 @@ def test_truncate_indata_boundary_modes_projects_inactive_harmonics():
     assert projected.source_path == indata.source_path
 
 
+def test_truncate_indata_boundary_modes_none_returns_original():
+    indata = InData(
+        scalars={"NFP": 2},
+        indexed={"RBC": {(2, 0): 0.3}},
+        source_path="input.test",
+    )
+
+    assert truncate_indata_boundary_modes(indata, max_mode=None) is indata
+
+
+def test_extend_boundary_for_max_mode_noops_when_resolution_sufficient():
+    modes = vmec_mode_table(mpol=6, ntor=6)
+    static = SimpleNamespace(modes=modes)
+    boundary = BoundaryCoeffs(
+        R_cos=np.zeros(modes.K),
+        R_sin=np.zeros(modes.K),
+        Z_cos=np.zeros(modes.K),
+        Z_sin=np.zeros(modes.K),
+    )
+    indata = InData(scalars={"MPOL": 6, "NTOR": 6}, indexed={}, source_path=None)
+
+    out_indata, out_static, out_boundary = extend_boundary_for_max_mode(
+        indata,
+        static,
+        boundary,
+        max_mode=3,
+    )
+
+    assert out_indata is indata
+    assert out_static is static
+    assert out_boundary is boundary
+
+
+def test_extend_boundary_for_max_mode_rebuilds_resolution(monkeypatch):
+    import vmec_jax.boundary as boundary_module
+    import vmec_jax.config as config_module
+    import vmec_jax.static as static_module
+
+    modes = vmec_mode_table(mpol=2, ntor=1)
+    rebuilt_modes = vmec_mode_table(mpol=5, ntor=5)
+    static = SimpleNamespace(modes=modes)
+    boundary = BoundaryCoeffs(
+        R_cos=np.zeros(modes.K),
+        R_sin=np.zeros(modes.K),
+        Z_cos=np.zeros(modes.K),
+        Z_sin=np.zeros(modes.K),
+    )
+    rebuilt_boundary = BoundaryCoeffs(
+        R_cos=np.ones(rebuilt_modes.K),
+        R_sin=np.zeros(rebuilt_modes.K),
+        Z_cos=np.zeros(rebuilt_modes.K),
+        Z_sin=np.zeros(rebuilt_modes.K),
+    )
+    cfg = SimpleNamespace(name="rebuilt")
+
+    monkeypatch.setattr(config_module, "config_from_indata", lambda _indata: cfg)
+    monkeypatch.setattr(static_module, "build_static", lambda _cfg: SimpleNamespace(modes=rebuilt_modes))
+    monkeypatch.setattr(boundary_module, "boundary_from_indata", lambda _indata, _modes: rebuilt_boundary)
+
+    indata = InData(
+        scalars={"MPOL": 2, "NTOR": 1, "NFP": 2},
+        indexed={"RBC": {(0, 0): 1.0}},
+        source_path="input.lowres",
+    )
+
+    out_indata, out_static, out_boundary = extend_boundary_for_max_mode(
+        indata,
+        static,
+        boundary,
+        max_mode=3,
+    )
+
+    assert out_indata is not indata
+    assert out_indata.scalars["MPOL"] == 5
+    assert out_indata.scalars["NTOR"] == 5
+    assert indata.scalars["MPOL"] == 2
+    assert out_static.modes is rebuilt_modes
+    assert out_boundary is rebuilt_boundary
+
+
+def test_pressure_profile_for_static_defaults_to_zero(monkeypatch):
+    import vmec_jax.optimization as opt_module
+
+    static = SimpleNamespace(s=np.array([0.0, 0.5, 1.0]))
+    monkeypatch.setattr(opt_module, "eval_profiles", lambda _indata, _s: {})
+
+    pressure = _pressure_profile_for_static(SimpleNamespace(), static)
+
+    np.testing.assert_allclose(np.asarray(pressure), np.zeros(3))
+
+
+def test_prepare_fixed_boundary_context_uses_shared_precomputations(monkeypatch):
+    import vmec_jax.optimization as opt_module
+
+    state = SimpleNamespace(name="state")
+    static = SimpleNamespace(s=np.array([0.0, 0.5, 1.0]))
+    boundary = object()
+    indata = object()
+    flux = object()
+    booz_inputs = object()
+
+    monkeypatch.setattr(opt_module, "initial_guess_from_boundary", lambda *_args, **_kwargs: state)
+    monkeypatch.setattr(opt_module, "eval_geom", lambda *_args, **_kwargs: SimpleNamespace(sqrtg=np.ones((2, 2))))
+    monkeypatch.setattr(opt_module, "signgs_from_sqrtg", lambda *_args, **_kwargs: -1)
+    monkeypatch.setattr(opt_module, "flux_profiles_from_indata", lambda *_args, **_kwargs: flux)
+    monkeypatch.setattr(opt_module, "_pressure_profile_for_static", lambda *_args, **_kwargs: jnp.asarray([1.0, 2.0]))
+    monkeypatch.setattr(opt_module, "booz_xform_inputs_from_state", lambda **_kwargs: booz_inputs)
+
+    context = prepare_fixed_boundary_context(
+        static=static,
+        indata=indata,
+        boundary=boundary,
+        vmec_project=True,
+    )
+
+    assert context.st_guess is state
+    assert context.signgs == -1
+    assert context.flux is flux
+    np.testing.assert_allclose(np.asarray(context.pressure), [1.0, 2.0])
+    assert context.booz_inputs is booz_inputs
+
+
 def test_gauss_newton_least_squares_solves_linear_problem():
     def residual(x):
         x = np.asarray(x, dtype=float)
@@ -388,6 +566,75 @@ def test_gauss_newton_reports_line_search_failure():
     assert not result["success"]
     assert result["message"] == "line search failed to reduce the objective"
     assert result["cost"] == 0.5
+
+
+def test_gauss_newton_reports_lstsq_failure(monkeypatch):
+    def residual(_x):
+        return np.array([1.0], dtype=float)
+
+    def jacobian(_x):
+        return np.array([[1.0]], dtype=float)
+
+    def raise_linalg(*_args, **_kwargs):
+        raise np.linalg.LinAlgError("synthetic failure")
+
+    monkeypatch.setattr(np.linalg, "lstsq", raise_linalg)
+
+    result = gauss_newton_least_squares(
+        residual,
+        jacobian,
+        np.array([0.0], dtype=float),
+        max_nfev=3,
+        verbose=0,
+    )
+
+    assert not result["success"]
+    assert result["message"] == "linear least-squares solve failed"
+
+
+def test_gauss_newton_reports_nonfinite_step(monkeypatch):
+    def residual(_x):
+        return np.array([1.0], dtype=float)
+
+    def jacobian(_x):
+        return np.array([[1.0]], dtype=float)
+
+    monkeypatch.setattr(np.linalg, "lstsq", lambda *_args, **_kwargs: (np.array([np.nan]), None, None, None))
+
+    result = gauss_newton_least_squares(
+        residual,
+        jacobian,
+        np.array([0.0], dtype=float),
+        max_nfev=3,
+        verbose=0,
+    )
+
+    assert not result["success"]
+    assert result["message"] == "non-finite Gauss-Newton step encountered"
+
+
+def test_gauss_newton_reports_xtol_termination_for_zero_step(monkeypatch):
+    def residual(_x):
+        return np.array([1.0], dtype=float)
+
+    def jacobian(_x):
+        return np.array([[1.0]], dtype=float)
+
+    monkeypatch.setattr(np.linalg, "lstsq", lambda *_args, **_kwargs: (np.array([0.0]), None, None, None))
+
+    result = gauss_newton_least_squares(
+        residual,
+        jacobian,
+        np.array([0.0], dtype=float),
+        max_nfev=3,
+        gtol=0.0,
+        xtol=1.0e-12,
+        verbose=0,
+    )
+
+    assert result["success"]
+    assert result["message"] == "`xtol` termination condition is satisfied."
+    assert result["step_norm"] == 0.0
 
 
 def test_gauss_newton_post_jacobian_callback():
