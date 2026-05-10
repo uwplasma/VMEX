@@ -139,7 +139,7 @@ Acceptance:
 ## Milestone 7: Tests And Coverage
 
 - [ ] Raise required CI coverage from the current fast gate toward 95% in staged
-      steps: 60%, 65%, 75%, 85%, 95%.
+      steps: 61%, 65%, 75%, 85%, 95%.
 - [ ] Add targeted tests before coverage-only tests: physics gates first, branch
       logic second, I/O/schema third.
 - [ ] Keep required CI under 10 minutes by using small fixtures and nightly heavy
@@ -307,3 +307,8 @@ Acceptance:
   plotting helpers: 3-D LCFS comparison, LCFS `|B|` contour panels, and
   objective-history plots. This protects README/docs plot wrappers without
   adding real VMEC output fixtures.
+- 2026-05-10: Re-ran the CI-equivalent fast coverage gate after the driver,
+  workflow-dispatch, and plotting tests: `400 passed, 21 skipped, 85 deselected`,
+  total coverage `61.44%`, runtime about `6:57`. Raised the CI floor from 60%
+  to 61%; the next material coverage step is 65% and should still come from
+  targeted tests/refactors, not synthetic coverage padding.
