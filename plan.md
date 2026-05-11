@@ -484,3 +484,14 @@ Acceptance:
   about `7:06`. Raised the enforced py3.11 CI coverage floor conservatively
   from 62% to 63%; do not raise to 65% until GitHub's measured coverage has
   enough cross-platform margin.
+- 2026-05-11: Added fast VMEC constraint-helper coverage for `faccon` indexing,
+  heuristic `tcon` scaling, short-mesh preconditioner guards, fallback
+  preconditioner integration weights, and `alias_gcon` shape guards. Also
+  enabled the lasym `alias_gcon` loop-parity test; it now matches the explicit
+  VMEC-style reference loops to floating-point noise. Verified with
+  `python -m pytest tests/test_vmec_constraints_fast_helpers.py tests/test_vmec_alias_gcon.py -q`
+  (`7 passed`) and `ruff check tests/test_vmec_constraints_fast_helpers.py tests/test_vmec_alias_gcon.py`.
+  Re-ran the CI-equivalent fast coverage gate:
+  `474 passed, 20 skipped, 85 deselected`, total coverage `65.65%`, runtime
+  about `6:19`. Keep the enforced CI floor at 63% until GitHub py3.11 has
+  enough margin for a safe 64-65% bump.
