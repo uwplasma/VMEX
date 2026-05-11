@@ -61,6 +61,7 @@ DEFAULT_MAX_ELONGATION = 8.0
 DEFAULT_SURFACES = (0.1, 0.35, 0.6, 0.85)
 DEFAULT_PREFINE_SURFACES = (0.35, 0.65)
 SEED_FAMILY_ORDER = ("qi", "qp", "qh", "qa", "simple")
+PHIMIN_POLICIES = ("fixed", "well-phase")
 
 MAX_PREFINE_TOP_N = 5
 MAX_PREFINE_FAMILY_REPRESENTATIVES = len(SEED_FAMILY_ORDER)
@@ -237,6 +238,34 @@ def parse_seed_families(raw: str) -> tuple[str, ...]:
     return families
 
 
+def _unique_float_sequence(values: tuple[float, ...], *, atol: float = 1.0e-14) -> tuple[float, ...]:
+    unique: list[float] = []
+    for value in values:
+        value_f = float(value)
+        if not any(abs(value_f - existing) <= atol for existing in unique):
+            unique.append(value_f)
+    return tuple(unique)
+
+
+def _phimin_candidates_for_case(case: SeedCase, *, phimin: float, phimin_policy: str) -> tuple[float, ...]:
+    """Return QI well-phase candidates for a seed case.
+
+    The Goodman/omnigenity QI diagnostic uses either ``0`` or ``pi/nfp`` as the
+    first well maximum depending on the seed.  Auditing both phases catches
+    seeds that otherwise look artificially poor solely because the interval is
+    shifted by half a well.
+    """
+
+    if phimin_policy not in PHIMIN_POLICIES:
+        raise ValueError(f"phimin_policy must be one of {PHIMIN_POLICIES}, got {phimin_policy!r}")
+    if phimin_policy == "fixed":
+        return (float(phimin),)
+
+    indata = read_indata(case.input_path.expanduser().resolve())
+    cfg = config_from_indata(indata)
+    return _unique_float_sequence((0.0, float(np.pi) / float(cfg.nfp)))
+
+
 def _first_float(value: Any) -> float | None:
     if value is None:
         return None
@@ -411,6 +440,69 @@ def _sort_key(record: dict[str, Any]) -> tuple[float, float, float, str]:
     return (qi_score, float(failed), constraint_score, str(record.get("label", "")))
 
 
+def _compact_phimin_candidate_record(record: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "qi_phimin",
+        "qi_seed_score",
+        "qi_smooth_total",
+        "qi_legacy_total",
+        "qi_mirror_ratio_max",
+        "qi_max_elongation",
+        "aspect",
+        "mean_iota",
+        "constraint_score",
+        "failed_constraints",
+    )
+    return {key: record.get(key) for key in keys if key in record}
+
+
+def _select_best_phimin_record(
+    case: SeedCase,
+    *,
+    phimin_candidates: tuple[float, ...],
+    surfaces: tuple[float, ...],
+    targets: SuitabilityTargets,
+    nphi: int,
+    nalpha: int,
+    n_bounce: int,
+    nphi_out: int,
+    mboz: int,
+    nboz: int,
+    mirror_ntheta: int,
+    mirror_nphi: int,
+    elongation_ntheta: int,
+    elongation_nphi: int,
+    fail_on_error: bool,
+) -> dict[str, Any]:
+    candidates = [
+        evaluate_seed_case(
+            case,
+            surfaces=surfaces,
+            targets=targets,
+            nphi=nphi,
+            nalpha=nalpha,
+            n_bounce=n_bounce,
+            nphi_out=nphi_out,
+            mboz=mboz,
+            nboz=nboz,
+            phimin=phimin_candidate,
+            mirror_ntheta=mirror_ntheta,
+            mirror_nphi=mirror_nphi,
+            elongation_ntheta=elongation_ntheta,
+            elongation_nphi=elongation_nphi,
+            fail_on_error=fail_on_error,
+        )
+        for phimin_candidate in phimin_candidates
+    ]
+    for record in candidates:
+        record["qi_seed_score"] = _qi_seed_score(record)
+    selected = dict(min(candidates, key=_sort_key))
+    selected["selected_phimin"] = float(selected.get("qi_phimin", phimin_candidates[0]))
+    selected["phimin_candidates"] = [float(value) for value in phimin_candidates]
+    selected["phimin_candidate_metrics"] = [_compact_phimin_candidate_record(record) for record in candidates]
+    return selected
+
+
 def _with_ranks(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for record in records:
         record["qi_seed_score"] = _qi_seed_score(record)
@@ -510,12 +602,17 @@ def _prefine_probe_config_dict(config: QIPrefineProbeConfig) -> dict[str, Any]:
 
 def _prefine_run_command(record: dict[str, Any], config: QIPrefineProbeConfig, manifest_path: Path) -> str:
     case = f"{record['label']}:{record['family']}:{record['input']}:{record['wout']}"
+    selected_phimin = float(record.get("selected_phimin", config.phimin))
     command = [
         sys.executable,
         str(Path(__file__).relative_to(REPO_ROOT)),
         "--case",
         case,
         "--quick",
+        "--phimin-policy",
+        "fixed",
+        "--phimin",
+        str(selected_phimin),
         "--prefine-probes",
         "run",
         "--prefine-top-n",
@@ -534,6 +631,8 @@ def _prefine_run_command(record: dict[str, Any], config: QIPrefineProbeConfig, m
         str(config.min_vmec_mode),
         "--prefine-stage-modes",
         ",".join(str(mode) for mode in config.stage_modes),
+        "--prefine-phimin",
+        str(selected_phimin),
     ]
     return " ".join(shlex.quote(part) for part in command)
 
@@ -623,6 +722,7 @@ def build_qi_prefine_probe_manifest(
                 "qi_legacy_total": record.get("qi_legacy_total"),
                 "qi_mirror_ratio_max": record.get("qi_mirror_ratio_max"),
                 "qi_max_elongation": record.get("qi_max_elongation"),
+                "selected_phimin": record.get("selected_phimin"),
                 "constraint_score": record.get("constraint_score"),
                 "failed_constraints": record.get("failed_constraints", []),
             },
@@ -653,7 +753,7 @@ def build_qi_prefine_probe_manifest(
                 "nphi": int(config.nphi),
                 "nalpha": int(config.nalpha),
                 "n_bounce": int(config.n_bounce),
-                "phimin": float(config.phimin),
+                "phimin": float(record.get("selected_phimin", config.phimin)),
                 "weight": float(config.qi_weight),
             },
             "would_write": [
@@ -823,10 +923,18 @@ def build_seed_audit(
     elongation_ntheta: int,
     elongation_nphi: int,
     fail_on_error: bool = False,
+    phimin_policy: str = "fixed",
 ) -> dict[str, Any]:
-    records = [
-        evaluate_seed_case(
+    records = []
+    for case in cases:
+        phimin_candidates = _phimin_candidates_for_case(
             case,
+            phimin=phimin,
+            phimin_policy=phimin_policy,
+        )
+        record = _select_best_phimin_record(
+            case,
+            phimin_candidates=phimin_candidates,
             surfaces=surfaces,
             targets=targets,
             nphi=nphi,
@@ -835,15 +943,14 @@ def build_seed_audit(
             nphi_out=nphi_out,
             mboz=mboz,
             nboz=nboz,
-            phimin=phimin,
             mirror_ntheta=mirror_ntheta,
             mirror_nphi=mirror_nphi,
             elongation_ntheta=elongation_ntheta,
             elongation_nphi=elongation_nphi,
             fail_on_error=fail_on_error,
         )
-        for case in cases
-    ]
+        record["phimin_policy"] = phimin_policy
+        records.append(record)
     records = _with_ranks(records)
     return {
         "mode": "qi_seed_suitability_audit",
@@ -862,6 +969,7 @@ def build_seed_audit(
             "elongation_ntheta": int(elongation_ntheta),
             "elongation_nphi": int(elongation_nphi),
             "phimin": float(phimin),
+            "phimin_policy": phimin_policy,
         },
         "skipped_defaults": skipped_defaults or [],
         "cases": records,
@@ -895,6 +1003,8 @@ def _write_csv(records: list[dict[str, Any]], output: Path) -> None:
         "failed_constraints",
         "constraint_score",
         "qi_seed_score",
+        "phimin_policy",
+        "selected_phimin",
         "qi_smooth_rank",
         "qi_smooth_total",
         "qi_legacy_rank",
@@ -947,6 +1057,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--n-bounce", type=int, default=51)
     parser.add_argument("--nphi-out", type=int, default=401)
     parser.add_argument("--phimin", type=float, default=0.0)
+    parser.add_argument(
+        "--phimin-policy",
+        choices=PHIMIN_POLICIES,
+        default="well-phase",
+        help=(
+            "'fixed' audits only --phimin; 'well-phase' audits both 0 and pi/nfp "
+            "and ranks the better QI well phase for each seed."
+        ),
+    )
     parser.add_argument("--mirror-ntheta", type=int, default=96)
     parser.add_argument("--mirror-nphi", type=int, default=96)
     parser.add_argument("--elongation-ntheta", type=int, default=48)
@@ -1046,6 +1165,7 @@ def main(argv: list[str] | None = None) -> int:
         elongation_ntheta=elongation_ntheta,
         elongation_nphi=elongation_nphi,
         fail_on_error=args.fail_on_error,
+        phimin_policy=args.phimin_policy,
     )
 
     prefine_manifest = None

@@ -70,6 +70,105 @@ class ValidationLane:
     artifact_paths: list[str]
 
 
+@dataclass(frozen=True)
+class OptionalParityCommand:
+    command_id: str
+    backend: str
+    required_ci: bool
+    env: list[str]
+    command: str
+    bounded_by: list[str]
+    validates: list[str]
+
+
+def _optional_parity_commands() -> list[OptionalParityCommand]:
+    return [
+        OptionalParityCommand(
+            command_id="simsopt-qh-formula-smoke",
+            backend="SIMSOPT",
+            required_ci=False,
+            env=["RUN_SIMSOPT_VALIDATION=1"],
+            command=(
+                "RUN_SIMSOPT_VALIDATION=1 pytest -q "
+                "tests/test_simsopt_optional_validation.py::"
+                "test_qh_quasisymmetry_residual_matches_simsopt_wout_formula"
+            ),
+            bounded_by=[
+                "uses one bundled QH wout fixture",
+                "uses three radial surfaces and a 15x16 angular grid",
+                "skips unless RUN_SIMSOPT_VALIDATION=1 and SIMSOPT is importable",
+            ],
+            validates=[
+                "VMEC-only quasisymmetry residual formula matches SIMSOPT diagnostics",
+                "formula-level parity remains available without launching optimization",
+            ],
+        ),
+        OptionalParityCommand(
+            command_id="vmec2000-stage-trace-smoke",
+            backend="VMEC2000 executable",
+            required_ci=False,
+            env=["VMEC2000_EXEC=/path/to/xvmec2000", "VMEC2000_INTEGRATION=1"],
+            command=(
+                "VMEC2000_EXEC=/path/to/xvmec2000 VMEC2000_INTEGRATION=1 pytest -q "
+                "tests/test_vmec2000_exec_fast_validation.py::"
+                "test_fast_vmec2000_stage_trace_validation_cases"
+            ),
+            bounded_by=[
+                "uses two bundled fixed-boundary inputs",
+                "forces --single-ns 13 and --max-iter 2",
+                "uses lite VMEC2000 dump output and a 60s executable timeout per case",
+            ],
+            validates=[
+                "early-stage fsq trace parity against a local VMEC2000 executable",
+                "axisymmetric and lasym=True pressure inputs stay covered before broadening the manifest",
+            ],
+        ),
+        OptionalParityCommand(
+            command_id="vmec2000-cli-five-iter",
+            backend="VMEC2000 executable",
+            required_ci=False,
+            env=[
+                "VMEC2000_EXEC=/path/to/xvmec2000",
+                "VMEC2000_INTEGRATION=1",
+                "VMEC2000_CLI_NITER=5",
+            ],
+            command=(
+                "VMEC2000_EXEC=/path/to/xvmec2000 VMEC2000_INTEGRATION=1 "
+                "VMEC2000_CLI_NITER=5 pytest -q tests/test_cli_vmec2000_exec.py"
+            ),
+            bounded_by=[
+                "caps both VMEC2000 and vmec_jax CLI runs at five iterations",
+                "uses each input deck's current grid only, with multigrid disabled in vmec_jax",
+                "skips missing optional QA input instead of failing required CI",
+            ],
+            validates=[
+                "CLI parity wiring produces comparable wout geometry modes",
+                "VMEC2000 executable comparison remains available through the public command path",
+            ],
+        ),
+        OptionalParityCommand(
+            command_id="bundled-wout-two-case-smoke",
+            backend="bundled VMEC2000 wout fixtures",
+            required_ci=False,
+            env=["RUN_FULL=1"],
+            command=(
+                "RUN_FULL=1 pytest -q "
+                "tests/test_wout_comprehensive_parity.py::test_wout_comprehensive_parity[circular_tokamak] "
+                "tests/test_wout_comprehensive_parity.py::test_wout_comprehensive_parity[nfp4_QH_warm_start]"
+            ),
+            bounded_by=[
+                "runs two representative bundled wout fixtures only",
+                "requires no local VMEC2000 executable or SIMSOPT install",
+                "kept outside required CI because it launches full fixed-boundary solves",
+            ],
+            validates=[
+                "static VMEC2000 reference parity for simple axisymmetric and QH 3D cases",
+                "future external parity failures can be separated from solver/reference drift",
+            ],
+        ),
+    ]
+
+
 def _lanes() -> list[ValidationLane]:
     return [
         ValidationLane(
@@ -157,7 +256,11 @@ def _lanes() -> list[ValidationLane]:
             title="Optional SIMSOPT formula parity",
             required_ci=False,
             prerequisites=["SIMSOPT installed locally", "RUN_SIMSOPT_VALIDATION=1"],
-            command="RUN_SIMSOPT_VALIDATION=1 pytest -q tests/test_simsopt_optional_validation.py",
+            command=(
+                "RUN_SIMSOPT_VALIDATION=1 pytest -q "
+                "tests/test_simsopt_optional_validation.py::"
+                "test_qh_quasisymmetry_residual_matches_simsopt_wout_formula"
+            ),
             acceptance=[
                 "VMEC-only QS residuals match SIMSOPT diagnostics on the bundled QH wout.",
                 "The test skips instead of failing when SIMSOPT is unavailable.",
@@ -171,7 +274,8 @@ def _lanes() -> list[ValidationLane]:
             prerequisites=["local VMEC2000 executable", "VMEC2000_EXEC", "VMEC2000_INTEGRATION=1"],
             command=(
                 "VMEC2000_EXEC=/path/to/xvmec2000 VMEC2000_INTEGRATION=1 "
-                "pytest -q tests/test_vmec2000_exec_fast_validation.py"
+                "pytest -q tests/test_vmec2000_exec_fast_validation.py::"
+                "test_fast_vmec2000_stage_trace_validation_cases"
             ),
             acceptance=[
                 "Executable-backed parity checks pass on local VMEC2000 output.",
@@ -186,7 +290,9 @@ def build_plan(*, ci: dict[str, str] | None = None) -> dict[str, Any]:
     """Return a JSON-serializable optional validation plan."""
 
     lanes = _lanes()
+    optional_parity_commands = _optional_parity_commands()
     return {
+        "schema_version": 2,
         "mode": "optional_qi_seed_robustness_validation_plan",
         "required_ci_baseline": ci or LATEST_GREEN_CI,
         "required_ci_policy": {
@@ -196,6 +302,7 @@ def build_plan(*, ci: dict[str, str] | None = None) -> dict[str, Any]:
         },
         "family_representatives": QI_FAMILY_REPRESENTATIVES,
         "lanes": [asdict(lane) for lane in lanes],
+        "optional_parity_commands": [asdict(command) for command in optional_parity_commands],
         "next_parity_gates": [
             {
                 "gate": "QI solved-state fixture",
@@ -250,6 +357,14 @@ def render_markdown(plan: dict[str, Any]) -> str:
             [
                 f"- {lane['lane_id']}: {lane['title']} ({marker})",
                 f"  Command: `{lane['command']}`",
+            ]
+        )
+    lines.extend(["", "## Optional Parity Commands"])
+    for command in plan["optional_parity_commands"]:
+        lines.extend(
+            [
+                f"- {command['command_id']}: {command['backend']}",
+                f"  Command: `{command['command']}`",
             ]
         )
     lines.extend(["", "## Deferred Lanes"])
