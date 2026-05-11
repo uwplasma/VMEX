@@ -51,6 +51,17 @@ INNER_FTOL = 1.0e-9  # Accepted-point VMEC tolerance; 0 uses FTOL from the input
 TRIAL_MAX_ITER = 120  # Trial-point VMEC iterations; 0 follows the accepted/input budget.
 TRIAL_FTOL = 1.0e-9  # Trial-point VMEC tolerance; 0 follows the accepted/input tolerance.
 SOLVER_DEVICE = None  # None uses JAX default; set "cpu" or "gpu" to force one backend.
+USE_ESS = True  # Set False for an unscaled trust-region solve.
+ALPHA = 1.2  # ESS high-mode scaling strength.
+# Common alternatives:
+# METHOD = "gauss_newton"
+# METHOD = "lbfgs_adjoint"
+# USE_MODE_CONTINUATION = False
+# STAGE_MODES = [MAX_MODE]
+# USE_ESS = False
+
+# Output controls.
+MAKE_PLOTS = True
 
 # Scalar and field-quality targets.  The mirror/elongation terms are soft
 # upper-bound penalties; uncomment LgradB if needed for additional shaping.
@@ -87,49 +98,52 @@ QI_OPTIONS = vj.QuasiIsodynamicOptions(
     phimin=0.0,  # Set to np.pi / nfp if auditing a seed whose well starts there.
 )
 
-USE_ESS = True
-ALPHA = 1.2
-MAKE_PLOTS = True
-
 
 aspect = vj.AspectRatio()
 iota_floor = vj.AbsMeanIotaFloor(TARGET_ABS_IOTA_MIN)
 qi = vj.QuasiIsodynamicResidual(QI_OPTIONS)
-mirror = vj.MirrorRatio(threshold=MAX_MIRROR_RATIO, ntheta=96, nphi=96, surface_index=0)
-elongation = vj.MaxElongation(threshold=MAX_ELONGATION, ntheta=48, nphi=16)
+mirror = vj.MirrorRatio(
+    threshold=MAX_MIRROR_RATIO,
+    ntheta=96,
+    nphi=96,
+    surface_index=0,
+)
+elongation = vj.MaxElongation(
+    threshold=MAX_ELONGATION,
+    ntheta=48,
+    nphi=16,
+)
 
-qi_only_problem = vj.LeastSquaresProblem.from_tuples(
-    [
-        # This stage intentionally optimizes only the legacy-ranked smooth QI
-        # residual.  The scalar constraints are imposed in the second solve so
-        # they do not pull the seed away from the branch-shuffle QI basin.
-        (qi.J, 0.0, QI_WEIGHT),
-    ]
-)
-problem = vj.LeastSquaresProblem.from_tuples(
-    [
-        (aspect.J, TARGET_ASPECT, ASPECT_WEIGHT),
-        (iota_floor.J, 0.0, IOTA_FLOOR_WEIGHT),
-        (qi.J, 0.0, QI_WEIGHT),
-        (mirror.J, 0.0, MIRROR_WEIGHT),
-        (elongation.J, 0.0, ELONGATION_WEIGHT),
-        # Optional:
-        # (vj.LgradB(threshold=0.30, smooth_penalty=1.0e-3).J, 0.0, 0.001),
-        # (vj.MagneticWell(minimum=0.0).J, 0.0, 1.0),
-        # Finite-beta examples can also add:
-        # (vj.VolavgB().J, TARGET_VOLAVGB, VOLAVGB_WEIGHT),
-        # (vj.BetaTotal().J, TARGET_BETA, BETA_WEIGHT),
-        # (vj.DMerc(minimum=0.0, softness=1.0e-3).J, 0.0, DMERC_WEIGHT),
-        # (vj.JDotB(surfaces=(0.25, 0.50, 0.75)).J, 0.0, JDOTB_WEIGHT),
-        # (vj.BDotB(surfaces=(0.25, 0.50, 0.75)).J, TARGET_BDOTB, BDOTB_WEIGHT),
-        # (vj.BDotGradV(surfaces=(0.25, 0.50, 0.75)).J, TARGET_BDOTGRADV, BDOTGRADV_WEIGHT),
-        # (vj.ToroidalCurrent(surfaces=(0.25, 0.50, 0.75)).J, TARGET_TORCUR, TORCUR_WEIGHT),
-        # (vj.ToroidalCurrentGradient(surfaces=(0.25, 0.50, 0.75)).J, TARGET_TORCUR_PRIME, TORCUR_PRIME_WEIGHT),
-        # (vj.RedlBootstrapMismatch(helicity_n=0, ne_coeffs=NE_COEFFS, Te_coeffs=TE_COEFFS, surfaces=(0.25, 0.50, 0.75)).J, 0.0, BOOTSTRAP_WEIGHT),
-        # (vj.BVector(s_index=-1).J, TARGET_B_VECTOR, B_VECTOR_WEIGHT),
-        # (vj.JVector(surfaces=(0.25, 0.50, 0.75)).J, TARGET_J_VECTOR, J_VECTOR_WEIGHT),
-    ]
-)
+qi_only_objective_tuples = [
+    # This stage intentionally optimizes only the legacy-ranked smooth QI
+    # residual.  The scalar constraints are imposed in the second solve so
+    # they do not pull the seed away from the branch-shuffle QI basin.
+    (qi.J, 0.0, QI_WEIGHT),
+]
+objective_tuples = [
+    (aspect.J, TARGET_ASPECT, ASPECT_WEIGHT),
+    (iota_floor.J, 0.0, IOTA_FLOOR_WEIGHT),
+    (qi.J, 0.0, QI_WEIGHT),
+    (mirror.J, 0.0, MIRROR_WEIGHT),
+    (elongation.J, 0.0, ELONGATION_WEIGHT),
+    # Optional:
+    # (vj.LgradB(threshold=0.30, smooth_penalty=1.0e-3).J, 0.0, 0.001),
+    # (vj.MagneticWell(minimum=0.0).J, 0.0, 1.0),
+    # Finite-beta examples can also add:
+    # (vj.VolavgB().J, TARGET_VOLAVGB, VOLAVGB_WEIGHT),
+    # (vj.BetaTotal().J, TARGET_BETA, BETA_WEIGHT),
+    # (vj.DMerc(minimum=0.0, softness=1.0e-3).J, 0.0, DMERC_WEIGHT),
+    # (vj.JDotB(surfaces=(0.25, 0.50, 0.75)).J, 0.0, JDOTB_WEIGHT),
+    # (vj.BDotB(surfaces=(0.25, 0.50, 0.75)).J, TARGET_BDOTB, BDOTB_WEIGHT),
+    # (vj.BDotGradV(surfaces=(0.25, 0.50, 0.75)).J, TARGET_BDOTGRADV, BDOTGRADV_WEIGHT),
+    # (vj.ToroidalCurrent(surfaces=(0.25, 0.50, 0.75)).J, TARGET_TORCUR, TORCUR_WEIGHT),
+    # (vj.ToroidalCurrentGradient(surfaces=(0.25, 0.50, 0.75)).J, TARGET_TORCUR_PRIME, TORCUR_PRIME_WEIGHT),
+    # (vj.RedlBootstrapMismatch(helicity_n=0, ne_coeffs=NE_COEFFS, Te_coeffs=TE_COEFFS, surfaces=(0.25, 0.50, 0.75)).J, 0.0, BOOTSTRAP_WEIGHT),
+    # (vj.BVector(s_index=-1).J, TARGET_B_VECTOR, B_VECTOR_WEIGHT),
+    # (vj.JVector(surfaces=(0.25, 0.50, 0.75)).J, TARGET_J_VECTOR, J_VECTOR_WEIGHT),
+]
+qi_only_problem = vj.LeastSquaresProblem.from_tuples(qi_only_objective_tuples)
+problem = vj.LeastSquaresProblem.from_tuples(objective_tuples)
 
 active_input_file = INPUT_FILE
 if QI_PREFINE:
@@ -163,11 +177,9 @@ if QI_PREFINE:
         scipy_tr_solver=SCIPY_TR_SOLVER,
         scipy_lsmr_maxiter=SCIPY_LSMR_MAXITER,
     )
-    preseed_history = preseed_result.final_result["_history_dump"]
-    print(
-        "QI-only pre-refinement final objective: "
-        f"{preseed_history['objective_final']:.6e}"
-    )
+    preseed_final_result = preseed_result.final_result
+    preseed_history = preseed_final_result["_history_dump"]
+    print(f"QI-only pre-refinement final objective: {preseed_history['objective_final']:.6e}")
     active_input_file = OUTPUT_DIR / "qi_preseed" / "input.final"
 
 vmec = vj.FixedBoundaryVMEC.from_input(
@@ -201,7 +213,8 @@ result = vj.least_squares_solve(
     scipy_lsmr_maxiter=SCIPY_LSMR_MAXITER,
 )
 
-history = result.final_result["_history_dump"]
+final_result = result.final_result
+history = final_result["_history_dump"]
 objective_history = np.asarray([entry["objective"] for entry in history["history"]])
 print("\nFinal diagnostics from result.final_result['_history_dump']:")
 print(f"  aspect ratio:     {history['aspect_final']:.6g}")
