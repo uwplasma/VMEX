@@ -140,6 +140,9 @@ routed through the Boozer/QI problem path so they can share one Boozer
 transform.  QI tuple targets must be ``0.0``; encode thresholds and smoothing
 inside the objective object, for example ``QuasiIsodynamicOptions``,
 ``MirrorRatio(threshold=...)``, or ``MaxElongation(threshold=...)``.
+Use ``include_bounce_endpoints=True`` when you want the smooth QI residual to
+sample the same normalized bounce-level endpoints as the legacy Goodman-style
+branch-shuffle diagnostic.
 
 .. code-block:: python
 
@@ -150,6 +153,7 @@ inside the objective object, for example ``QuasiIsodynamicOptions``,
        nphi=151,
        nalpha=31,
        n_bounce=51,
+       include_bounce_endpoints=True,
        branch_width_weight=0.5,
        profile_weight=0.1,
        shuffle_profile_weight=1.0,
