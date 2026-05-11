@@ -538,6 +538,7 @@ def quasi_isodynamic_residual_from_boozer_modes(
     nphi: int = 151,
     nalpha: int = 31,
     n_bounce: int = 51,
+    include_bounce_endpoints: bool = False,
     softness: float = 2.0e-2,
     width_weight: float = 1.0,
     branch_width_weight: float = 0.5,
@@ -570,6 +571,11 @@ def quasi_isodynamic_residual_from_boozer_modes(
     nphi, nalpha, n_bounce:
         Sampling resolution along toroidal angle, field-line label, and
         normalized bounce level.
+    include_bounce_endpoints:
+        If true, include normalized bounce levels 0 and 1 in the smooth
+        level-set residuals, matching the legacy Goodman-style branch-shuffle
+        diagnostic.  The default keeps the historical smooth objective behavior
+        and samples only interior bounce levels.
     softness:
         Logistic smoothing width in normalized ``|B|`` units. Smaller values
         approach hard branch widths but increase stiffness.
@@ -658,7 +664,11 @@ def quasi_isodynamic_residual_from_boozer_modes(
     denom = jnp.maximum(bmax - bmin, jnp.asarray(jnp.finfo(dtype).tiny, dtype=dtype))
     bnorm = (bmag - bmin) / denom
 
-    levels = jnp.linspace(0.0, 1.0, n_bounce + 2, endpoint=True, dtype=dtype)[1:-1]
+    if bool(include_bounce_endpoints):
+        levels = jnp.linspace(0.0, 1.0, n_bounce, endpoint=True, dtype=dtype)
+    else:
+        levels = jnp.linspace(0.0, 1.0, n_bounce + 2, endpoint=True, dtype=dtype)[1:-1]
+    level_count = int(levels.shape[0])
     eps = jnp.maximum(jnp.asarray(float(softness), dtype=dtype), jnp.asarray(jnp.finfo(dtype).eps, dtype=dtype))
     occupancy = jax_sigmoid((levels[None, None, None, :] - bnorm[:, :, :, None]) / eps)
 
@@ -671,7 +681,7 @@ def quasi_isodynamic_residual_from_boozer_modes(
         * jnp.sqrt(weights_arr)[:, None, None]
         * jnp.asarray(float(width_weight), dtype=dtype)
     )
-    width_residuals1d = jnp.ravel(width_residuals3d) / jnp.sqrt(jnp.asarray(nalpha * n_bounce, dtype=dtype))
+    width_residuals1d = jnp.ravel(width_residuals3d) / jnp.sqrt(jnp.asarray(nalpha * level_count, dtype=dtype))
 
     branch_width_residuals1d = jnp.zeros((0,), dtype=dtype)
     branch_width_residuals3d = jnp.zeros((nsurf, nalpha, 0), dtype=dtype)
@@ -718,7 +728,7 @@ def quasi_isodynamic_residual_from_boozer_modes(
             * jnp.asarray(float(branch_width_weight), dtype=dtype)
         )
         branch_width_residuals1d = jnp.ravel(branch_width_residuals3d) / jnp.sqrt(
-            jnp.asarray(nalpha * n_bounce, dtype=dtype)
+            jnp.asarray(nalpha * level_count, dtype=dtype)
         )
 
     profile_mean = jnp.mean(bnorm, axis=2, keepdims=True)
@@ -803,7 +813,10 @@ def quasi_isodynamic_residual_from_boozer_modes(
 
         left_branch = jnp.maximum.accumulate(left_raw, axis=-1)
         right_branch = jnp.maximum.accumulate(right_raw, axis=-1)
-        shuffle_levels = jnp.linspace(0.0, 1.0, n_bounce + 2, endpoint=True, dtype=dtype)[1:-1]
+        if bool(include_bounce_endpoints):
+            shuffle_levels = jnp.linspace(0.0, 1.0, n_bounce, endpoint=True, dtype=dtype)
+        else:
+            shuffle_levels = jnp.linspace(0.0, 1.0, n_bounce + 2, endpoint=True, dtype=dtype)[1:-1]
         shuffle_eps = jnp.maximum(
             jnp.asarray(float(shuffle_profile_softness), dtype=dtype),
             jnp.asarray(jnp.finfo(dtype).eps, dtype=dtype),
@@ -847,7 +860,13 @@ def quasi_isodynamic_residual_from_boozer_modes(
         )
         left_full = jnp.maximum.accumulate(left_full, axis=-1)
         right_full = jnp.maximum.accumulate(right_full, axis=-1)
-        level_full = jnp.linspace(0.0, 1.0, n_bounce + 2, endpoint=True, dtype=dtype)
+        level_full = jnp.concatenate(
+            [
+                jnp.zeros((1,), dtype=dtype),
+                shuffle_levels,
+                jnp.ones((1,), dtype=dtype),
+            ]
+        )
         x_target = jnp.concatenate([-jnp.flip(left_full, axis=-1), right_full[:, :, 1:]], axis=-1)
         y_target = jnp.concatenate([jnp.flip(level_full, axis=0), level_full[1:]], axis=0)
         signed_phi = (offsets_float[None, None, :] - jnp.asarray(min_index[:, :, None], dtype=dtype)) * dphi
@@ -912,6 +931,7 @@ def quasi_isodynamic_residual_from_boozer_modes(
         "bmag": bmag,
         "bnorm": bnorm,
         "levels": levels,
+        "include_bounce_endpoints": bool(include_bounce_endpoints),
         "phi": phi,
         "alpha": alpha,
         "iota": iota_b,
@@ -931,6 +951,7 @@ def quasi_isodynamic_residual_from_boozer_output(
     nphi: int = 151,
     nalpha: int = 31,
     n_bounce: int = 51,
+    include_bounce_endpoints: bool = False,
     softness: float = 2.0e-2,
     width_weight: float = 1.0,
     branch_width_weight: float = 0.5,
@@ -956,6 +977,7 @@ def quasi_isodynamic_residual_from_boozer_output(
         nphi=nphi,
         nalpha=nalpha,
         n_bounce=n_bounce,
+        include_bounce_endpoints=include_bounce_endpoints,
         softness=softness,
         width_weight=width_weight,
         branch_width_weight=branch_width_weight,
@@ -984,6 +1006,7 @@ def quasi_isodynamic_residual_from_state(
     nphi: int = 151,
     nalpha: int = 31,
     n_bounce: int = 51,
+    include_bounce_endpoints: bool = False,
     softness: float = 2.0e-2,
     width_weight: float = 1.0,
     branch_width_weight: float = 0.5,
@@ -1061,6 +1084,7 @@ def quasi_isodynamic_residual_from_state(
         nphi=nphi,
         nalpha=nalpha,
         n_bounce=n_bounce,
+        include_bounce_endpoints=include_bounce_endpoints,
         softness=softness,
         width_weight=width_weight,
         branch_width_weight=branch_width_weight,

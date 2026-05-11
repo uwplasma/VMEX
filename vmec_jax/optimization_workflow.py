@@ -193,6 +193,7 @@ class QuasiIsodynamicOptions:
     nphi: int = 151
     nalpha: int = 31
     n_bounce: int = 51
+    include_bounce_endpoints: bool = False
     softness: float = 2.0e-2
     width_weight: float = 1.0
     branch_width_weight: float = 0.5
@@ -1398,6 +1399,7 @@ def build_quasi_isodynamic_objective_stage(
     nphi: int,
     nalpha: int,
     n_bounce: int,
+    include_bounce_endpoints: bool,
     softness: float,
     width_weight: float,
     branch_width_weight: float,
@@ -1498,6 +1500,7 @@ def build_quasi_isodynamic_objective_stage(
             nphi=int(nphi),
             nalpha=int(nalpha),
             n_bounce=int(n_bounce),
+            include_bounce_endpoints=bool(include_bounce_endpoints),
             softness=float(softness),
             width_weight=float(width_weight),
             branch_width_weight=float(branch_width_weight),
@@ -1523,9 +1526,11 @@ def build_quasi_isodynamic_objective_stage(
         return jnp.concatenate([*scalar_parts, *qi_parts])
 
     residuals_from_state._n_non_qs = len(scalar_objectives)
-    residuals_from_state._qs_total_from_state = lambda state, ctx=ctx: float(
-        sum(float(term.residual_and_total(ctx, state, field_eval(state))[1]) for term in qi_objectives)
-    )
+    def _qs_total_from_state(state, *, ctx=ctx):
+        field = field_eval(state)
+        return float(sum(float(term.residual_and_total(ctx, state, field)[1]) for term in qi_objectives))
+
+    residuals_from_state._qs_total_from_state = _qs_total_from_state
 
     optimizer = FixedBoundaryExactOptimizer(
         static,
@@ -1574,6 +1579,7 @@ def run_quasi_isodynamic_objective_optimization(
     nphi: int,
     nalpha: int,
     n_bounce: int,
+    include_bounce_endpoints: bool,
     softness: float,
     width_weight: float,
     branch_width_weight: float,
@@ -1620,6 +1626,7 @@ def run_quasi_isodynamic_objective_optimization(
             nphi=nphi,
             nalpha=nalpha,
             n_bounce=n_bounce,
+            include_bounce_endpoints=include_bounce_endpoints,
             softness=softness,
             width_weight=width_weight,
             branch_width_weight=branch_width_weight,
@@ -1814,6 +1821,7 @@ def least_squares_solve(
             nphi=qi_options.nphi,
             nalpha=qi_options.nalpha,
             n_bounce=qi_options.n_bounce,
+            include_bounce_endpoints=qi_options.include_bounce_endpoints,
             softness=qi_options.softness,
             width_weight=qi_options.width_weight,
             branch_width_weight=qi_options.branch_width_weight,

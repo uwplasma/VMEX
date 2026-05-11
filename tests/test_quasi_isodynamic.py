@@ -33,6 +33,40 @@ def test_qi_boozer_mode_residual_is_zero_for_alpha_independent_wells():
     assert np.asarray(out["residuals1d"]).shape == (2 * 9 * 7 + 33 * 9,)
 
 
+def test_qi_boozer_mode_residual_can_include_legacy_bounce_endpoints():
+    pytest.importorskip("jax")
+
+    from vmec_jax._compat import jnp
+    from vmec_jax.quasi_isodynamic import quasi_isodynamic_residual_from_boozer_modes
+
+    kwargs = dict(
+        bmnc_b=jnp.asarray([[1.0, 0.1]]),
+        xm_b=jnp.asarray([0, 0]),
+        xn_b=jnp.asarray([0, 1]),
+        iota_b=jnp.asarray([0.4]),
+        nfp=1,
+        nphi=33,
+        nalpha=9,
+        n_bounce=7,
+        shuffle_profile_weight=0.0,
+    )
+    default = quasi_isodynamic_residual_from_boozer_modes(**kwargs)
+    endpoint = quasi_isodynamic_residual_from_boozer_modes(**kwargs, include_bounce_endpoints=True)
+
+    assert float(np.asarray(default["levels"][0])) > 0.0
+    np.testing.assert_allclose(np.asarray(endpoint["levels"])[[0, -1]], [0.0, 1.0])
+    assert endpoint["include_bounce_endpoints"] is True
+    assert np.asarray(endpoint["width_residuals1d"]).shape == np.asarray(default["width_residuals1d"]).shape
+    assert np.isfinite(float(np.asarray(endpoint["total"])))
+
+    shuffled = quasi_isodynamic_residual_from_boozer_modes(
+        **{**kwargs, "shuffle_profile_weight": 1.0},
+        include_bounce_endpoints=True,
+    )
+    assert np.isfinite(float(np.asarray(shuffled["total"])))
+    assert np.asarray(shuffled["shuffle_profile_residuals1d"]).shape == (9 * 33,)
+
+
 def test_qi_boozer_mode_residual_rejects_single_helicity_phase_shift():
     pytest.importorskip("jax")
 
