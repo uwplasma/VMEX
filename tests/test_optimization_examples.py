@@ -577,6 +577,7 @@ def test_least_squares_solve_dispatches_qi_problem(monkeypatch, tmp_path) -> Non
         nphi=21,
         nalpha=11,
         n_bounce=13,
+        include_bounce_endpoints=True,
         softness=0.03,
         width_weight=2.0,
         phimin=0.1,
@@ -620,6 +621,7 @@ def test_least_squares_solve_dispatches_qi_problem(monkeypatch, tmp_path) -> Non
     assert captured["nphi"] == 21
     assert captured["nalpha"] == 11
     assert captured["n_bounce"] == 13
+    assert captured["include_bounce_endpoints"] is True
     assert captured["softness"] == 0.03
     assert captured["width_weight"] == 2.0
     assert captured["phimin"] == 0.1

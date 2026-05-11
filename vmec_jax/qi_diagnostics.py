@@ -42,6 +42,7 @@ class QIDiagnosticOptions:
     nphi: int = 151
     nalpha: int = 31
     n_bounce: int = 51
+    include_bounce_endpoints: bool = False
     softness: float = 2.0e-2
     width_weight: float = 1.0
     branch_width_weight: float = 0.5
@@ -196,6 +197,7 @@ def _base_record(
         "qi_nphi": int(options.nphi),
         "qi_nalpha": int(options.nalpha),
         "qi_n_bounce": int(options.n_bounce),
+        "qi_include_bounce_endpoints": bool(options.include_bounce_endpoints),
         "qi_legacy_nphi_out": None
         if options.legacy_nphi_out is None
         else int(options.legacy_nphi_out),
@@ -217,6 +219,7 @@ def _smooth_kwargs(options: QIDiagnosticOptions) -> dict[str, Any]:
         "nphi": int(options.nphi),
         "nalpha": int(options.nalpha),
         "n_bounce": int(options.n_bounce),
+        "include_bounce_endpoints": bool(options.include_bounce_endpoints),
         "softness": float(options.softness),
         "width_weight": float(options.width_weight),
         "branch_width_weight": float(options.branch_width_weight),
