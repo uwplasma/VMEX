@@ -84,6 +84,7 @@ QI_OPTIONS = vj.QuasiIsodynamicOptions(
     nphi=151,
     nalpha=31,
     n_bounce=51,
+    include_bounce_endpoints=True,  # Matches the legacy Goodman-style QI level sampling.
     softness=2.0e-2,
     width_weight=1.0,
     branch_width_weight=0.5,
