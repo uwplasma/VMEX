@@ -44,6 +44,17 @@ INNER_FTOL = 1.0e-9  # Accepted-point VMEC tolerance; 0 uses FTOL from the input
 TRIAL_MAX_ITER = 120  # Trial-point VMEC iterations; 0 follows the accepted/input budget.
 TRIAL_FTOL = 1.0e-9  # Trial-point VMEC tolerance; 0 follows the accepted/input tolerance.
 SOLVER_DEVICE = None  # None uses JAX default; set "cpu" or "gpu" to force one backend.
+USE_ESS = True  # Set False for an unscaled trust-region solve.
+ALPHA = 1.2  # ESS high-mode scaling strength.
+# Common alternatives:
+# METHOD = "gauss_newton"
+# METHOD = "lbfgs_adjoint"
+# USE_MODE_CONTINUATION = False
+# STAGE_MODES = [MAX_MODE]
+# USE_ESS = False
+
+# Output controls.
+MAKE_PLOTS = True
 
 # Physics targets and least-squares objective weights.  The iota term is a
 # differentiable lower bound on abs(mean_iota), not a target.
@@ -55,10 +66,6 @@ SURFACES = np.arange(0.0, 1.01, 0.1)
 ASPECT_WEIGHT = 1.0
 IOTA_FLOOR_WEIGHT = 40_000.0
 QS_WEIGHT = 1.0
-
-USE_ESS = True
-ALPHA = 1.2
-MAKE_PLOTS = True
 
 
 vmec = vj.FixedBoundaryVMEC.from_input(
@@ -75,28 +82,27 @@ qs = vj.QuasisymmetryRatioResidual(
     helicity_n=HELICITY_N,
     surfaces=SURFACES,
 )
-problem = vj.LeastSquaresProblem.from_tuples(
-    [
-        (aspect.J, TARGET_ASPECT, ASPECT_WEIGHT),
-        (iota_floor.J, 0.0, IOTA_FLOOR_WEIGHT),
-        (qs.J, 0.0, QS_WEIGHT),
-        # Optional:
-        # (vj.LgradB(threshold=0.30, smooth_penalty=1.0e-3).J, 0.0, 0.01),
-        # (vj.MagneticWell(minimum=0.0).J, 0.0, 1.0),
-        # Finite-beta examples can also add:
-        # (vj.VolavgB().J, TARGET_VOLAVGB, VOLAVGB_WEIGHT),
-        # (vj.BetaTotal().J, TARGET_BETA, BETA_WEIGHT),
-        # (vj.DMerc(minimum=0.0, softness=1.0e-3).J, 0.0, DMERC_WEIGHT),
-        # (vj.JDotB(surfaces=(0.25, 0.50, 0.75)).J, 0.0, JDOTB_WEIGHT),
-        # (vj.BDotB(surfaces=(0.25, 0.50, 0.75)).J, TARGET_BDOTB, BDOTB_WEIGHT),
-        # (vj.BDotGradV(surfaces=(0.25, 0.50, 0.75)).J, TARGET_BDOTGRADV, BDOTGRADV_WEIGHT),
-        # (vj.ToroidalCurrent(surfaces=(0.25, 0.50, 0.75)).J, TARGET_TORCUR, TORCUR_WEIGHT),
-        # (vj.ToroidalCurrentGradient(surfaces=(0.25, 0.50, 0.75)).J, TARGET_TORCUR_PRIME, TORCUR_PRIME_WEIGHT),
-        # (vj.RedlBootstrapMismatch(helicity_n=HELICITY_N, ne_coeffs=NE_COEFFS, Te_coeffs=TE_COEFFS, surfaces=(0.25, 0.50, 0.75)).J, 0.0, BOOTSTRAP_WEIGHT),
-        # (vj.BVector(s_index=-1).J, TARGET_B_VECTOR, B_VECTOR_WEIGHT),
-        # (vj.JVector(surfaces=(0.25, 0.50, 0.75)).J, TARGET_J_VECTOR, J_VECTOR_WEIGHT),
-    ]
-)
+objective_tuples = [
+    (aspect.J, TARGET_ASPECT, ASPECT_WEIGHT),
+    (iota_floor.J, 0.0, IOTA_FLOOR_WEIGHT),
+    (qs.J, 0.0, QS_WEIGHT),
+    # Optional:
+    # (vj.LgradB(threshold=0.30, smooth_penalty=1.0e-3).J, 0.0, 0.01),
+    # (vj.MagneticWell(minimum=0.0).J, 0.0, 1.0),
+    # Finite-beta examples can also add:
+    # (vj.VolavgB().J, TARGET_VOLAVGB, VOLAVGB_WEIGHT),
+    # (vj.BetaTotal().J, TARGET_BETA, BETA_WEIGHT),
+    # (vj.DMerc(minimum=0.0, softness=1.0e-3).J, 0.0, DMERC_WEIGHT),
+    # (vj.JDotB(surfaces=(0.25, 0.50, 0.75)).J, 0.0, JDOTB_WEIGHT),
+    # (vj.BDotB(surfaces=(0.25, 0.50, 0.75)).J, TARGET_BDOTB, BDOTB_WEIGHT),
+    # (vj.BDotGradV(surfaces=(0.25, 0.50, 0.75)).J, TARGET_BDOTGRADV, BDOTGRADV_WEIGHT),
+    # (vj.ToroidalCurrent(surfaces=(0.25, 0.50, 0.75)).J, TARGET_TORCUR, TORCUR_WEIGHT),
+    # (vj.ToroidalCurrentGradient(surfaces=(0.25, 0.50, 0.75)).J, TARGET_TORCUR_PRIME, TORCUR_PRIME_WEIGHT),
+    # (vj.RedlBootstrapMismatch(helicity_n=HELICITY_N, ne_coeffs=NE_COEFFS, Te_coeffs=TE_COEFFS, surfaces=(0.25, 0.50, 0.75)).J, 0.0, BOOTSTRAP_WEIGHT),
+    # (vj.BVector(s_index=-1).J, TARGET_B_VECTOR, B_VECTOR_WEIGHT),
+    # (vj.JVector(surfaces=(0.25, 0.50, 0.75)).J, TARGET_J_VECTOR, J_VECTOR_WEIGHT),
+]
+problem = vj.LeastSquaresProblem.from_tuples(objective_tuples)
 
 result = vj.least_squares_solve(
     vmec,
@@ -121,7 +127,8 @@ result = vj.least_squares_solve(
     scipy_lsmr_maxiter=SCIPY_LSMR_MAXITER,
 )
 
-history = result.final_result["_history_dump"]
+final_result = result.final_result
+history = final_result["_history_dump"]
 objective_history = np.asarray([entry["objective"] for entry in history["history"]])
 print("\nFinal diagnostics from result.final_result['_history_dump']:")
 print(f"  aspect ratio:     {history['aspect_final']:.6g}")
