@@ -151,6 +151,12 @@ def _local_default_cases() -> list[SeedCase]:
             DATA_DIR / "wout_nfp3_QI_fixed_resolution_final.nc",
         ),
         SeedCase(
+            "qi_stel_seed_3127",
+            "qi",
+            DATA_DIR / "input.QI_stel_seed_3127",
+            DATA_DIR / "wout_QI_stel_seed_3127.nc",
+        ),
+        SeedCase(
             "qh_nfp4_warm_start",
             "qh",
             DATA_DIR / "input.nfp4_QH_warm_start",

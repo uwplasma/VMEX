@@ -3394,43 +3394,66 @@ class FixedBoundaryExactOptimizer:
                 self._exact_cache.clear()
                 return jac
 
-            scipy_result = _scipy_least_squares(
-                _residuals_y,
-                y0,
-                jac=_jacobian_y,
-                method="trf",
-                # The exact-optimizer Jacobians are extremely tall
-                # (tens of thousands of residuals, tens of parameters).
-                # `lsmr` gives materially smaller direct-start trial steps on
-                # the QA/QH mode-3 cases than the default dense path, which
-                # avoids wasting minutes in hopeless VMEC trial solves.
-                tr_solver=scipy_tr_solver,
-                tr_options=(
-                    {"maxiter": int(scipy_lsmr_maxiter)}
-                    if scipy_lsmr_maxiter is not None and scipy_tr_solver == "lsmr"
-                    else None
-                ),
-                max_nfev=max_nfev,
-                ftol=ftol,
-                gtol=gtol,
-                xtol=xtol,
-                verbose=2 if int(verbose) > 0 else 0,
-            )
-            x_result = np.asarray(scipy_result.x, dtype=float) * scale - base_params
-            result = {
-                "x": x_result,
-                "cost": float(scipy_result.cost),
-                "objective": float(2.0 * scipy_result.cost),
-                "nfev": int(scipy_result.nfev),
-                "njev": 0 if scipy_result.njev is None else int(scipy_result.njev),
-                "nit": 0,
-                "success": bool(scipy_result.success),
-                "status": int(scipy_result.status),
-                "message": str(scipy_result.message),
-                "step_norm": 0.0,
-                "x_prev": None,
-                "cost_prev": None,
-            }
+            try:
+                scipy_result = _scipy_least_squares(
+                    _residuals_y,
+                    y0,
+                    jac=_jacobian_y,
+                    method="trf",
+                    # The exact-optimizer Jacobians are extremely tall
+                    # (tens of thousands of residuals, tens of parameters).
+                    # `lsmr` gives materially smaller direct-start trial steps on
+                    # the QA/QH mode-3 cases than the default dense path, which
+                    # avoids wasting minutes in hopeless VMEC trial solves.
+                    tr_solver=scipy_tr_solver,
+                    tr_options=(
+                        {"maxiter": int(scipy_lsmr_maxiter)}
+                        if scipy_lsmr_maxiter is not None and scipy_tr_solver == "lsmr"
+                        else None
+                    ),
+                    max_nfev=max_nfev,
+                    ftol=ftol,
+                    gtol=gtol,
+                    xtol=xtol,
+                    verbose=2 if int(verbose) > 0 else 0,
+                )
+                x_result = np.asarray(scipy_result.x, dtype=float) * scale - base_params
+                result = {
+                    "x": x_result,
+                    "cost": float(scipy_result.cost),
+                    "objective": float(2.0 * scipy_result.cost),
+                    "nfev": int(scipy_result.nfev),
+                    "njev": 0 if scipy_result.njev is None else int(scipy_result.njev),
+                    "nit": 0,
+                    "success": bool(scipy_result.success),
+                    "status": int(scipy_result.status),
+                    "message": str(scipy_result.message),
+                    "step_norm": 0.0,
+                    "x_prev": None,
+                    "cost_prev": None,
+                }
+            except Exception as exc:
+                best_exact_params = getattr(self, "_best_exact_params", None)
+                best_exact_cost = float(getattr(self, "_best_exact_cost", math.inf))
+                if best_exact_params is None or not np.isfinite(best_exact_cost):
+                    raise
+                x_result = np.asarray(best_exact_params, dtype=float).copy()
+                result = {
+                    "x": x_result,
+                    "cost": best_exact_cost,
+                    "objective": 2.0 * best_exact_cost,
+                    "nfev": max(1, len(getattr(self, "_history", []))),
+                    "njev": max(0, len(getattr(self, "_history", [])) - 1),
+                    "nit": 0,
+                    "success": False,
+                    "status": -1,
+                    "message": f"scipy least_squares failed; returning best exact accepted point: {exc}",
+                    "step_norm": float(np.linalg.norm(x_result - params0_arr)),
+                    "x_prev": None,
+                    "cost_prev": None,
+                    "_selected_best_exact_point": True,
+                    "_optimizer_exception": repr(exc),
+                }
         else:
             raise ValueError(f"Unknown optimization method '{method}'.")
         t_total = time.perf_counter() - t_start
@@ -3463,7 +3486,8 @@ class FixedBoundaryExactOptimizer:
         qs_total_final = float(entry_final["qs_objective"])
         aspect_final = float(entry_final["aspect"])
 
-        selected_best_exact = False
+        selected_best_exact = bool(result.pop("_selected_best_exact_point", False))
+        optimizer_exception = result.pop("_optimizer_exception", None)
         best_exact_params = getattr(self, "_best_exact_params", None)
         best_exact_residual = getattr(self, "_best_exact_residual", None)
         best_exact_cost = float(getattr(self, "_best_exact_cost", math.inf))
@@ -3550,6 +3574,8 @@ class FixedBoundaryExactOptimizer:
             "selected_best_exact_point": bool(selected_best_exact),
             "rejected_trial_exact_history_count": int(self._exact_history_rejected_count),
         }
+        if optimizer_exception is not None:
+            history_dump["optimizer_exception"] = str(optimizer_exception)
         if iota_fn is not None:
             history_dump["iota_initial"] = float(entry0["iota"])
             history_dump["iota_final"] = float(entry_final["iota"])

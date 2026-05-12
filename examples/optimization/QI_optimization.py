@@ -25,6 +25,8 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 # compares against the branch-equalized well, and a small profile term keeps
 # QH/QP-like false positives from ranking too favorably.
 INPUT_FILE = DATA_DIR / "input.nfp2_QI"
+# Alternative near-axis QI seed used by the seed-robustness audit:
+# INPUT_FILE = DATA_DIR / "input.QI_stel_seed_3127"
 OUTPUT_DIR = Path("results/qi_opt/ess")
 MAX_MODE = 3
 MIN_VMEC_MODE = 6
