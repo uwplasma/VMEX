@@ -1290,7 +1290,8 @@ def _plot_objective_history(history_path: Path, outdir: Path) -> Path:
     ax2.set_ylabel("Aspect ratio", fontsize=11)
     if ax3 is None:
         ax2.set_xlabel("Jacobian evaluation index", fontsize=11)
-    ax2.legend(fontsize=9)
+    if target_aspect is not None:
+        ax2.legend(fontsize=9)
     ax2.grid(True, alpha=0.3)
 
     # --- panel 3: mean iota ---

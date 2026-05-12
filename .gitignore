@@ -83,6 +83,9 @@ docs/_static/figures/readme_best_optimizations.*
 docs/_static/figures/qs_ess_*.png
 docs/_static/figures/qs_ess_*.pdf
 examples/outputs/
+examples/data/*_VMEC*.png
+examples/data/*_VMEC*.pdf
+examples/data/*_poloidal_plot.png
 examples/optimization/results/
 examples_single_grid/data/wout_*.nc
 !examples_single_grid/data/wout_*_reference.nc

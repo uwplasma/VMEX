@@ -165,6 +165,11 @@ and reports smooth QI, legacy QI, mirror ratio, elongation, aspect ratio, and
 mean iota.  Optional reference cases from ``omnigenity_optimization`` are used
 when ``OMNIGENITY_OPTIMIZATION_ROOT`` points to that checkout; missing optional
 cases are recorded as skipped rather than failing the audit.
+The bundled default set includes ``input.QI_stel_seed_3127`` when its matching
+``wout_QI_stel_seed_3127.nc`` fixture is present.  On 2026-05-12 this seed
+audited as a useful near-axis QI start: smooth/legacy QI were about
+``5.0e-2``/``5.0e-2`` before optimization, with mirror ratio already inside
+the target and aspect, iota, and elongation still requiring optimization.
 The smooth QI diagnostic includes normalized bounce endpoints by default so the
 ranked smooth metric samples the same level range as the legacy Goodman-style
 branch-shuffle diagnostic; pass ``--no-include-bounce-endpoints`` only for
@@ -223,6 +228,11 @@ accepted-point residual seen by the Jacobian path.  Any trial-accepted point
 that replays worse is counted in ``rejected_trial_exact_history_count`` rather
 than plotted as a monotone accepted step.  Non-finite exact residuals are
 discarded before they can become the selected final point.
+If SciPy later aborts on a non-finite trust-region linear algebra step after a
+finite exact point has already been accepted, the optimizer returns that best
+exact point with ``success=False`` and records ``optimizer_exception`` in
+``history.json``.  This preserves scientifically useful QI-prefine artifacts
+without hiding that the optimizer terminated abnormally.
 By default the audit uses ``--phimin-policy well-phase``: each seed is scored at
 both ``phimin=0`` and ``phimin=pi/nfp`` and the better QI well phase is used for
 ranking and prefine planning.  Use ``--phimin-policy fixed --phimin VALUE`` when
