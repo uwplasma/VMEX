@@ -104,11 +104,11 @@ def _write_plots(
     ax = np.atleast_1d(ax)
     zeta2d, theta2d = np.meshgrid(zeta_b, theta_b)
     b_levels = 20
-    im_new = ax[-1].contourf(zeta2d, theta2d, B_new, levels=b_levels)
+    im_new = ax[-1].contour(zeta2d, theta2d, B_new, levels=b_levels, cmap="viridis", linewidths=0.9)
     ax[-1].set_title("vmec_jax |B| (LCFS)")
     im_ref = None
     if B_ref is not None:
-        im_ref = ax[0].contourf(zeta2d, theta2d, B_ref, levels=b_levels)
+        im_ref = ax[0].contour(zeta2d, theta2d, B_ref, levels=b_levels, cmap="viridis", linewidths=0.9)
         ax[0].set_title("VMEC2000 |B| (LCFS)")
 
     def _fieldline(a, iota_val: float) -> None:
