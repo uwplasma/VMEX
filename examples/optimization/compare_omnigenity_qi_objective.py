@@ -71,6 +71,7 @@ QI_NBOZ = 10  # Increase with QI_MBOZ when checking final high-mode designs.
 QI_NPHI = 61  # Increase to 151+ for production comparisons.
 QI_NALPHA = 13  # Increase to 31+ for production comparisons.
 QI_N_BOUNCE = 21  # Increase to 51+ for production comparisons.
+QI_INCLUDE_BOUNCE_ENDPOINTS = True  # Match legacy Goodman-style level sampling.
 QI_SOFTNESS = 2.0e-2
 QI_BRANCH_WIDTH_SOFTNESS = 2.0e-2
 QI_SHUFFLE_PROFILE_SOFTNESS = 2.0e-2
@@ -238,6 +239,7 @@ def evaluate_vmec_jax() -> dict:
             nphi=QI_NPHI,
             nalpha=QI_NALPHA,
             n_bounce=QI_N_BOUNCE,
+            include_bounce_endpoints=QI_INCLUDE_BOUNCE_ENDPOINTS,
             softness=QI_SOFTNESS,
             width_weight=1.0,
             branch_width_weight=0.0,
@@ -299,6 +301,7 @@ def evaluate_vmec_jax() -> dict:
                     nphi=QI_NPHI,
                     nalpha=QI_NALPHA,
                     n_bounce=QI_N_BOUNCE,
+                    include_bounce_endpoints=QI_INCLUDE_BOUNCE_ENDPOINTS,
                     softness=QI_SOFTNESS,
                     width_weight=variant["width_weight"],
                     branch_width_weight=variant["branch_width_weight"],
@@ -528,6 +531,7 @@ def main() -> None:
             "nphi": QI_NPHI,
             "nalpha": QI_NALPHA,
             "n_bounce": QI_N_BOUNCE,
+            "include_bounce_endpoints": QI_INCLUDE_BOUNCE_ENDPOINTS,
             "softness": QI_SOFTNESS,
             "branch_width_softness": QI_BRANCH_WIDTH_SOFTNESS,
         },
