@@ -42,6 +42,12 @@ def test_parse_case_and_default_families_cover_seed_types():
     assert {"qi", "qh", "qa", "simple"}.issubset(families)
     if (mod.OMNIGENITY_ROOT / "wouts_QI/wout_nfp2_QI_fixed_resolution_final.nc").exists():
         assert "qp" in families
+    if (
+        (mod.DATA_DIR / "input.QI_stel_seed_3127").exists()
+        and (mod.DATA_DIR / "wout_QI_stel_seed_3127.nc").exists()
+    ):
+        labels = {case.label for case in default_cases}
+        assert "qi_stel_seed_3127" in labels
 
 
 def test_constraint_status_flags_seed_quality():

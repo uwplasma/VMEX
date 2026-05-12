@@ -279,3 +279,74 @@ def test_best_exact_point_is_saved_when_trial_accepted_final_replays_worse(monke
     np.testing.assert_allclose(final_wout[2], [1.0])
     assert final_wout[3] is result["_state_final"]
     assert final_wout[3].label == "exact-1.0"
+
+
+def test_scipy_exception_returns_best_exact_point(monkeypatch):
+    import scipy.optimize
+
+    opt = object.__new__(FixedBoundaryExactOptimizer)
+    opt._scan_exact_path = "tape"
+    opt._solver_device_name = None
+    opt._trial_residual_cache = {}
+    opt._exact_cache = {}
+    opt._exact_state_cache = {}
+    opt._exact_residual_cache = {}
+    opt._initial_tangent_cache = {}
+    opt._last_jacobian_key = [None]
+    opt._last_jacobian_residual = None
+    opt._static = SimpleNamespace(cfg=SimpleNamespace())
+    opt._indata = InData(scalars={}, indexed={}, source_path="synthetic")
+    opt._flux = object()
+    opt._signgs = 1
+    opt._inner_max_iter = 0
+    opt._inner_ftol = 0.0
+    opt._trial_max_iter = 0
+    opt._trial_ftol = 0.0
+    opt._post_jacobian_clear = lambda *args, **_kwargs: None
+    opt._base_params_vector = lambda: np.zeros(1, dtype=float)
+    opt._exact_cache_key = lambda x: tuple(np.asarray(x, dtype=float).round(12))
+    opt._aspect_target = 10.0
+    opt._aspect_weight = 1.0
+    opt._n_non_qs = 1
+    opt._n_qs = None
+    opt._has_residual_block_metadata = False
+    opt._qs_total_from_state_fn = None
+
+    def exact_residual(params):
+        value = float(np.asarray(params, dtype=float)[0])
+        return np.asarray([0.1 if np.isclose(value, 1.0) else 1.0], dtype=float)
+
+    def solve_exact(params, return_payload=False):
+        value = float(np.asarray(params, dtype=float)[0])
+        state = SimpleNamespace(label=f"exact-{value:.1f}", params=np.asarray(params, dtype=float).copy())
+        return (state, {}) if return_payload else state
+
+    def jacobian(params):
+        residual = exact_residual(params)
+        opt._last_jacobian_residual = residual.copy()
+        opt._remember_exact_residual(opt._last_jacobian_key[0], residual)
+        return np.asarray([[1.0]], dtype=float)
+
+    def fake_least_squares(residuals_y, y0, *, jac, **_kwargs):
+        residuals_y(np.asarray([1.0]))
+        jac(np.asarray([1.0]))
+        raise ValueError("array must not contain infs or NaNs")
+
+    opt.residual_fun = exact_residual
+    opt.forward_residual_fun = exact_residual
+    opt._evaluate_residuals_from_state = lambda state: exact_residual(state.params)
+    opt._solve_exact_with_tape = solve_exact
+    opt._solve_forward = lambda params, trial=True: solve_exact(params, return_payload=False)
+    opt.jacobian_fun = jacobian
+
+    monkeypatch.setattr(scipy.optimize, "least_squares", fake_least_squares)
+
+    result = opt.run(np.asarray([0.0]), method="scipy", max_nfev=3, verbose=0)
+
+    np.testing.assert_allclose(result["x"], [1.0])
+    assert result["success"] is False
+    assert result["status"] == -1
+    assert "scipy least_squares failed" in result["message"]
+    assert result["_state_final"].label == "exact-1.0"
+    assert result["_history_dump"]["selected_best_exact_point"] is True
+    assert "array must not contain infs or NaNs" in result["_history_dump"]["optimizer_exception"]
