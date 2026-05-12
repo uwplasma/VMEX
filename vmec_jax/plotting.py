@@ -1573,7 +1573,7 @@ def plot_wout(
         B_b = _eval_bmag(_irad, theta_b, zeta_b)
         zeta2d_b, theta2d_b = np.meshgrid(zeta_b, theta_b)
         ax = axes1[2, 1 + _col]
-        cf = ax.contourf(zeta2d_b, theta2d_b, B_b, 20)
+        cf = ax.contour(zeta2d_b, theta2d_b, B_b, 20, cmap="viridis", linewidths=0.8)
         ax.set_title(f"{_ttl}\n(1-based idx {_irad + 1})")
         ax.set_xlabel("ζ")
         ax.set_ylabel("θ")
