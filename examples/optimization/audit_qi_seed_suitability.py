@@ -112,6 +112,7 @@ class QIPrefineProbeConfig:
     nphi: int = 31
     nalpha: int = 7
     n_bounce: int = 9
+    include_bounce_endpoints: bool = True
     phimin: float = 0.0
     qi_weight: float = 1.0
     method: str = "scipy"
@@ -350,6 +351,7 @@ def evaluate_seed_case(
     mboz: int,
     nboz: int,
     phimin: float,
+    include_bounce_endpoints: bool,
     mirror_ntheta: int,
     mirror_nphi: int,
     elongation_ntheta: int,
@@ -378,6 +380,7 @@ def evaluate_seed_case(
         nphi=nphi,
         nalpha=nalpha,
         n_bounce=n_bounce,
+        include_bounce_endpoints=bool(include_bounce_endpoints),
         legacy_nphi_out=nphi_out,
         mirror_threshold=targets.max_mirror_ratio,
         mirror_ntheta=mirror_ntheta,
@@ -468,6 +471,7 @@ def _select_best_phimin_record(
     nphi_out: int,
     mboz: int,
     nboz: int,
+    include_bounce_endpoints: bool,
     mirror_ntheta: int,
     mirror_nphi: int,
     elongation_ntheta: int,
@@ -486,6 +490,7 @@ def _select_best_phimin_record(
             mboz=mboz,
             nboz=nboz,
             phimin=phimin_candidate,
+            include_bounce_endpoints=include_bounce_endpoints,
             mirror_ntheta=mirror_ntheta,
             mirror_nphi=mirror_nphi,
             elongation_ntheta=elongation_ntheta,
@@ -634,6 +639,8 @@ def _prefine_run_command(record: dict[str, Any], config: QIPrefineProbeConfig, m
         "--prefine-phimin",
         str(selected_phimin),
     ]
+    if not bool(config.include_bounce_endpoints):
+        command.append("--no-prefine-include-bounce-endpoints")
     return " ".join(shlex.quote(part) for part in command)
 
 
@@ -753,6 +760,7 @@ def build_qi_prefine_probe_manifest(
                 "nphi": int(config.nphi),
                 "nalpha": int(config.nalpha),
                 "n_bounce": int(config.n_bounce),
+                "include_bounce_endpoints": bool(config.include_bounce_endpoints),
                 "phimin": float(record.get("selected_phimin", config.phimin)),
                 "weight": float(config.qi_weight),
             },
@@ -818,6 +826,7 @@ def run_qi_prefine_probe(plan: dict[str, Any], *, workflow: Any | None = None) -
         nphi=int(qi_options_raw["nphi"]),
         nalpha=int(qi_options_raw["nalpha"]),
         n_bounce=int(qi_options_raw["n_bounce"]),
+        include_bounce_endpoints=bool(qi_options_raw.get("include_bounce_endpoints", False)),
         phimin=float(qi_options_raw["phimin"]),
     )
     qi = workflow.QuasiIsodynamicResidual(qi_options)
@@ -924,6 +933,7 @@ def build_seed_audit(
     elongation_nphi: int,
     fail_on_error: bool = False,
     phimin_policy: str = "fixed",
+    include_bounce_endpoints: bool = True,
 ) -> dict[str, Any]:
     records = []
     for case in cases:
@@ -943,6 +953,7 @@ def build_seed_audit(
             nphi_out=nphi_out,
             mboz=mboz,
             nboz=nboz,
+            include_bounce_endpoints=include_bounce_endpoints,
             mirror_ntheta=mirror_ntheta,
             mirror_nphi=mirror_nphi,
             elongation_ntheta=elongation_ntheta,
@@ -963,6 +974,7 @@ def build_seed_audit(
             "nphi": int(nphi),
             "nalpha": int(nalpha),
             "n_bounce": int(n_bounce),
+            "include_bounce_endpoints": bool(include_bounce_endpoints),
             "nphi_out": int(nphi_out),
             "mirror_ntheta": int(mirror_ntheta),
             "mirror_nphi": int(mirror_nphi),
@@ -1058,6 +1070,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--nphi-out", type=int, default=401)
     parser.add_argument("--phimin", type=float, default=0.0)
     parser.add_argument(
+        "--include-bounce-endpoints",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Include normalized bounce levels 0 and 1 in the smooth QI metric, "
+            "matching the legacy Goodman-style diagnostic."
+        ),
+    )
+    parser.add_argument(
         "--phimin-policy",
         choices=PHIMIN_POLICIES,
         default="well-phase",
@@ -1110,6 +1131,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prefine-nphi", type=int, default=31)
     parser.add_argument("--prefine-nalpha", type=int, default=7)
     parser.add_argument("--prefine-n-bounce", type=int, default=9)
+    parser.add_argument(
+        "--prefine-include-bounce-endpoints",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use legacy-style bounce endpoint levels in bounded QI prefine probes.",
+    )
     parser.add_argument("--prefine-phimin", type=float, default=0.0)
     parser.add_argument("--prefine-inner-max-iter", type=int, default=20)
     parser.add_argument("--prefine-trial-max-iter", type=int, default=20)
@@ -1160,6 +1187,7 @@ def main(argv: list[str] | None = None) -> int:
         mboz=args.mboz,
         nboz=args.nboz,
         phimin=args.phimin,
+        include_bounce_endpoints=args.include_bounce_endpoints,
         mirror_ntheta=mirror_ntheta,
         mirror_nphi=mirror_nphi,
         elongation_ntheta=elongation_ntheta,
@@ -1186,6 +1214,7 @@ def main(argv: list[str] | None = None) -> int:
             nphi=args.prefine_nphi,
             nalpha=args.prefine_nalpha,
             n_bounce=args.prefine_n_bounce,
+            include_bounce_endpoints=args.prefine_include_bounce_endpoints,
             phimin=args.prefine_phimin,
             inner_max_iter=args.prefine_inner_max_iter,
             trial_max_iter=args.prefine_trial_max_iter,
