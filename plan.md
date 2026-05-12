@@ -266,20 +266,24 @@ LASYM-Boozer parity, and release-checklist push:
   synthetic repeated-stage tests, a real boundary-projection stage test, and
   direct/zero-continuation budget tests that lock the no-continuation policy to
   a single target-mode stage.
-- Exact accepted-point history/output correctness: 97%. Best-exact selection is
+- Exact accepted-point history/output correctness: 98%. Best-exact selection is
   implemented and tested; accepted histories remain monotone in exact residuals,
   final saved inputs/wouts use the selected best exact state, and non-finite
-  exact residuals can no longer be recorded as the best accepted point.
+  exact residuals can no longer be recorded as the best accepted point. SciPy
+  failures after a finite exact point now return that best exact point with an
+  explicit abnormal-termination record instead of losing the run.
 - Differentiation architecture: 74%. Dense exact Jacobians, scalar reverse
   gradients, state tangents, and now an accepted-residual AD-vs-finite-difference
   gate are covered on small required-tier cases. Full QA/QH/QP/QI max_mode=1
   objective derivative gates and matrix-free/scalar-adjoint production paths
   remain open.
-- Seed-robust QI: 85%. The tier-2 and tier-3 probes are bounded and monotone,
+- Seed-robust QI: 88%. The tier-2 and tier-3 probes are bounded and monotone,
   constrained terms run end-to-end, and manifests now expose QI/engineering
   diagnostic deltas from final artifacts, including scalar-improved but
-  QI-worsened cases. Robust multi-seed convergence and polished Boozer contour
-  review remain open.
+  QI-worsened cases. A new bundled near-axis seed, `input.QI_stel_seed_3127`,
+  is part of the default audit and can be driven to low smooth/legacy QI by a
+  mode-2 QI-only prefine. The constrained cleanup that preserves QI while
+  repairing aspect, iota, mirror, and elongation remains open.
 - CPU/GPU performance: 82%. Backend-adaptive replay bucketing, scalar-gradient
   tangent reuse, detailed timing, and GPU-only preconditioner-output fusion are
   in place. Hot-path algebra and CPU/GPU fusion gating are now covered by
@@ -305,8 +309,8 @@ LASYM-Boozer parity, and release-checklist push:
 
 Release-critical average across the lanes requested in this push
 (continuation, exact accepted-point output, VMEC parity/physics gates, and
-docs/release hygiene): about 97%. Broader roadmap average across all open lanes:
-about 90%, because differentiation architecture, seed-robust QI, and
+docs/release hygiene): about 98%. Broader roadmap average across all open lanes:
+about 91%, because differentiation architecture, seed-robust QI, and
 larger-mode GPU replay remain real research-grade work rather than release
 hygiene.
 
@@ -849,3 +853,13 @@ Defer beyond the current cycle:
   tokamak max_mode=1 boundary test compares the dense discrete-adjoint Jacobian
   against central finite differences of `residual_fun`; the focused derivative
   trio passed in `73.74 s`.
+- 2026-05-12: Added the new near-axis QI seed
+  `examples/data/input.QI_stel_seed_3127` plus its solved wout to the default
+  seed audit. A direct mode-2 QI-only prefine from this seed reached low QI
+  diagnostics (smooth about `8.1e-4`, legacy about `4.4e-4`) before SciPy hit a
+  non-finite trust-region step; the exact optimizer now returns the best finite
+  exact point with `success=False` and records the optimizer exception. A
+  simultaneous constrained mode-2 run produced a more engineering-reasonable
+  state (aspect about `5.67`, elongation passing) but only legacy QI about
+  `1.5e-2` and a slightly high mirror ratio, so QI-preserving constrained
+  cleanup remains the next physics task.

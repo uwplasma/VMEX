@@ -1,0 +1,170 @@
+#!/usr/bin/env python
+"""QI seed-robustness probe from a near-axis stellarator seed.
+
+This script is intentionally explicit: the user chooses the seed, constructs
+objective tuples, runs the optimizer, then saves/prints/plots the result.
+"""
+
+from pathlib import Path
+import sys
+
+import numpy as np
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+import vmec_jax as vj
+from vmec_jax._compat import enable_x64
+
+
+enable_x64(True)
+
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+
+# Seed and optimizer settings.
+INPUT_FILE = DATA_DIR / "input.QI_stel_seed_3127"
+OUTPUT_DIR = Path("results/qi_seed_robustness/qi_stel_seed_3127/qionly_mode2")
+MAX_MODE = 2
+MIN_VMEC_MODE = 6
+MAX_NFEV = 10
+METHOD = "scalar_trust"  # Try "scipy" for faster but less fault-tolerant trust-region steps.
+FTOL = 1.0e-4
+GTOL = 1.0e-4
+XTOL = 1.0e-8
+INNER_MAX_ITER = 120
+INNER_FTOL = 1.0e-9
+TRIAL_MAX_ITER = 120
+TRIAL_FTOL = 1.0e-9
+SOLVER_DEVICE = None  # Set "cpu" or "gpu" to force one backend.
+USE_ESS = True
+ALPHA = 1.2
+MAKE_PLOTS = True
+
+# QI residual settings.  These are the low-mode settings used for the bounded
+# seed probe; increase mboz/nboz/nphi/nalpha/n_bounce for final publication runs.
+surfaces = np.linspace(0.1, 1.0, 6)
+qi_options = vj.QuasiIsodynamicOptions(
+    surfaces=surfaces,
+    mboz=18,
+    nboz=18,
+    nphi=151,
+    nalpha=31,
+    n_bounce=51,
+    include_bounce_endpoints=True,
+    softness=2.0e-2,
+    width_weight=1.0,
+    branch_width_weight=0.5,
+    branch_width_softness=2.0e-2,
+    profile_weight=0.1,
+    shuffle_profile_weight=1.0,
+    shuffle_profile_softness=2.0e-2,
+    phimin=0.0,
+)
+
+# Pure QI pre-refinement: this gets the new seed onto a precise QI branch.
+qi = vj.QuasiIsodynamicResidual(qi_options)
+objective_tuples = [
+    (qi.J, 0.0, 1.0),
+]
+
+# Optional engineering cleanup.  This is deliberately commented out because a
+# scalar weighted cleanup can destroy QI if imposed too early; use it as a
+# second run after inspecting the pure-QI result.
+# aspect = vj.AspectRatio()
+# iota_floor = vj.AbsMeanIotaFloor(0.41)
+# mirror = vj.MirrorRatio(threshold=0.21, ntheta=96, nphi=96, surface_index=0)
+# elongation = vj.MaxElongation(threshold=8.0, ntheta=48, nphi=16)
+# objective_tuples = [
+#     (aspect.J, 3.5, 0.005),
+#     (iota_floor.J, 0.0, 200.0**2),
+#     (qi.J, 0.0, 1.0),
+#     (mirror.J, 0.0, 10.0),
+#     (elongation.J, 0.0, 10.0),
+# ]
+
+problem = vj.LeastSquaresProblem.from_tuples(objective_tuples)
+vmec = vj.FixedBoundaryVMEC.from_input(
+    INPUT_FILE,
+    max_mode=MAX_MODE,
+    min_vmec_mode=MIN_VMEC_MODE,
+    output_dir=OUTPUT_DIR,
+    project_input_boundary_to_max_mode=True,
+)
+
+result = vj.least_squares_solve(
+    vmec,
+    problem,
+    stage_modes=[MAX_MODE],
+    max_nfev=MAX_NFEV,
+    continuation_nfev=0,
+    method=METHOD,
+    ftol=FTOL,
+    gtol=GTOL,
+    xtol=XTOL,
+    use_ess=USE_ESS,
+    ess_alpha=ALPHA,
+    label=f"QI seed robustness ({INPUT_FILE.name}, max_mode={MAX_MODE})",
+    inner_max_iter=INNER_MAX_ITER,
+    inner_ftol=INNER_FTOL,
+    trial_max_iter=TRIAL_MAX_ITER,
+    trial_ftol=TRIAL_FTOL,
+    solver_device=SOLVER_DEVICE,
+)
+
+history = result.history
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+paths = {
+    "initial_input": OUTPUT_DIR / "input.initial",
+    "final_input": OUTPUT_DIR / "input.final",
+    "initial_wout": OUTPUT_DIR / "wout_initial.nc",
+    "final_wout": OUTPUT_DIR / "wout_final.nc",
+    "history": OUTPUT_DIR / "history.json",
+}
+result.initial_optimizer.save_input(paths["initial_input"], result.initial_params)
+result.initial_optimizer.save_wout(
+    paths["initial_wout"],
+    result.initial_params,
+    state=result.initial_state,
+)
+result.final_optimizer.save_input(paths["final_input"], result.final_params)
+result.final_optimizer.save_wout(
+    paths["final_wout"],
+    result.final_params,
+    state=result.final_state,
+)
+result.final_optimizer.save_history(paths["history"], result.final_result)
+
+print("\nQI seed robustness result:")
+print(f"  optimizer success: {result.final_result['success']}")
+print(f"  optimizer message: {result.final_result['message']}")
+print(f"  initial objective: {history['objective_initial']:.6e}")
+print(f"  final objective:   {history['objective_final']:.6e}")
+print(f"  final aspect:      {history['aspect_final']:.6g}")
+if "iota_final" in history:
+    print(f"  final mean iota:   {history['iota_final']:.6g}")
+print(f"  wall time:         {result.timing_summary['total_wall_time_s']:.2f} s")
+print("\nSaved files:")
+for name, path in paths.items():
+    print(f"  {name}: {path}")
+
+if MAKE_PLOTS:
+    plot_paths = {
+        "boundary_comparison": vj.plot_3d_boundary_comparison(
+            paths["initial_wout"],
+            paths["final_wout"],
+            outdir=OUTPUT_DIR,
+        ),
+        "bmag_contours": vj.plot_bmag_contours(
+            paths["initial_wout"],
+            paths["final_wout"],
+            outdir=OUTPUT_DIR,
+        ),
+        "objective_history": vj.plot_objective_history(
+            paths["history"],
+            outdir=OUTPUT_DIR,
+        ),
+    }
+    print("\nPlot files:")
+    for name, path in plot_paths.items():
+        print(f"  {name}: {path}")

@@ -686,6 +686,20 @@ public-API QI lane from the parameter study:
 
    PYTHONPATH=. python examples/optimization/QI_optimization.py
 
+For a focused robustness probe from the bundled near-axis seed
+``input.QI_stel_seed_3127``, run the pure-QI mode-2 example:
+
+.. code-block:: bash
+
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/QI_seed_robustness.py
+
+That script intentionally starts with only the QI residual in the objective
+tuple list.  On the 2026-05-12 local CPU probe it drove the new seed from
+smooth/legacy QI of about ``5e-2``/``5e-2`` to order ``1e-3`` QI diagnostics.
+The commented aspect, iota-floor, mirror, and elongation tuples show the next
+cleanup problem explicitly; they should be applied as a separate reviewed stage
+because an overly aggressive scalar cleanup can destroy the low-QI branch.
+
 The study compared direct versus repeated-stage continuation, QP pre-seeding,
 aspect-ratio weights, mirror/elongation soft-wall weights, QI branch-width
 weights, the branch-shuffle profile residual, ``phimin`` well-interval choices,
@@ -980,6 +994,9 @@ Source files
      - QI workflow using ``booz_xform_jax``, a bundled omnigenity seed,
        and explicit mirror-ratio/elongation/``LgradB``
        objective blocks that users can extend in the script.
+   * - ``examples/optimization/QI_seed_robustness.py``
+     - Focused pure-QI seed-refinement workflow for
+       ``input.QI_stel_seed_3127`` with commented engineering cleanup terms.
    * - ``examples/optimization/compare_omnigenity_qi_objective.py``
      - Diagnostic QI objective comparison against the local
        ``omnigenity_optimization`` reference scripts, including ``phimin``
