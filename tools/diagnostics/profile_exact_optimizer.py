@@ -23,6 +23,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+ACCEPTED_REPLAY_PROFILE_NAMES = (
+    "jacobian_tape_replay",
+    "gradient_tape_replay",
+    "state_tangent_tape_replay",
+    "b_cartesian_tangent_tape_replay",
+    "linear_operator_tape_vjp",
+)
+TAPE_BUILD_PROFILE_NAMES = ("exact_tape_build",)
+RESIDUAL_TANGENT_PROFILE_NAMES = ("jacobian_residual_tangents",)
+
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser()
@@ -201,6 +211,30 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Fail/warn when observed in-process cache entries grow by more than this amount.",
+    )
+    p.add_argument(
+        "--budget-tape-build-wall-s",
+        type=float,
+        default=0.0,
+        help="Fail/warn when cumulative accepted-point exact tape build time exceeds this many seconds.",
+    )
+    p.add_argument(
+        "--budget-replay-wall-s",
+        type=float,
+        default=0.0,
+        help="Fail/warn when cumulative accepted-point tape replay time exceeds this many seconds.",
+    )
+    p.add_argument(
+        "--budget-residual-tangent-wall-s",
+        type=float,
+        default=0.0,
+        help="Fail/warn when dense residual-tangent projection time exceeds this many seconds.",
+    )
+    p.add_argument(
+        "--budget-accepted-replays",
+        type=int,
+        default=None,
+        help="Fail/warn when accepted-point replay profile counts exceed this total.",
     )
     p.add_argument(
         "--budget-action",
@@ -392,6 +426,14 @@ def _profile_delta(
     return out
 
 
+def _profile_wall_time(profile: dict[str, dict[str, float | int]], names: tuple[str, ...]) -> float:
+    return float(sum(float(profile.get(name, {}).get("wall_time_s", 0.0)) for name in names))
+
+
+def _profile_count(profile: dict[str, dict[str, float | int]], names: tuple[str, ...]) -> int:
+    return int(sum(int(profile.get(name, {}).get("count", 0)) for name in names))
+
+
 def _current_rss_bytes() -> int | None:
     try:
         import psutil  # type: ignore
@@ -429,6 +471,7 @@ def _current_rss_bytes() -> int | None:
 def _budget_limits(args: argparse.Namespace) -> dict[str, float | int | None]:
     cache_entries = args.budget_cache_entries
     cache_entry_growth = args.budget_cache_entry_growth
+    accepted_replays = args.budget_accepted_replays
     return {
         "total_wall_s": float(args.budget_total_wall_s) if float(args.budget_total_wall_s) > 0.0 else None,
         "repeat_wall_s": float(args.budget_repeat_wall_s) if float(args.budget_repeat_wall_s) > 0.0 else None,
@@ -437,6 +480,16 @@ def _budget_limits(args: argparse.Namespace) -> dict[str, float | int | None]:
         "cache_entry_growth": (
             cache_entry_growth if cache_entry_growth is not None and int(cache_entry_growth) >= 0 else None
         ),
+        "tape_build_wall_s": (
+            float(args.budget_tape_build_wall_s) if float(args.budget_tape_build_wall_s) > 0.0 else None
+        ),
+        "replay_wall_s": float(args.budget_replay_wall_s) if float(args.budget_replay_wall_s) > 0.0 else None,
+        "residual_tangent_wall_s": (
+            float(args.budget_residual_tangent_wall_s)
+            if float(args.budget_residual_tangent_wall_s) > 0.0
+            else None
+        ),
+        "accepted_replays": accepted_replays if accepted_replays is not None and int(accepted_replays) >= 0 else None,
     }
 
 
@@ -444,6 +497,7 @@ def _evaluate_budgets(
     *,
     args: argparse.Namespace,
     samples: list[dict[str, Any]],
+    profile: dict[str, dict[str, float | int]],
     total_wall_s: float,
     cache_growth: dict[str, Any],
     rss_before_bytes: int | None,
@@ -460,6 +514,10 @@ def _evaluate_budgets(
         "rss_growth_mb": rss_growth_mb,
         "cache_entries": int(cache_growth.get("total_entries_after", 0)),
         "cache_entry_growth": int(cache_growth.get("total_entries_delta", 0)),
+        "tape_build_wall_s": _profile_wall_time(profile, TAPE_BUILD_PROFILE_NAMES),
+        "replay_wall_s": _profile_wall_time(profile, ACCEPTED_REPLAY_PROFILE_NAMES),
+        "residual_tangent_wall_s": _profile_wall_time(profile, RESIDUAL_TANGENT_PROFILE_NAMES),
+        "accepted_replays": _profile_count(profile, ACCEPTED_REPLAY_PROFILE_NAMES),
     }
     exceeded: list[dict[str, float | int | str]] = []
 
@@ -474,6 +532,14 @@ def _evaluate_budgets(
     _check("rss_growth_mb", measurements["rss_growth_mb"], limits["rss_growth_mb"])
     _check("cache_entries", measurements["cache_entries"], limits["cache_entries"])
     _check("cache_entry_growth", measurements["cache_entry_growth"], limits["cache_entry_growth"])
+    _check("tape_build_wall_s", measurements["tape_build_wall_s"], limits["tape_build_wall_s"])
+    _check("replay_wall_s", measurements["replay_wall_s"], limits["replay_wall_s"])
+    _check(
+        "residual_tangent_wall_s",
+        measurements["residual_tangent_wall_s"],
+        limits["residual_tangent_wall_s"],
+    )
+    _check("accepted_replays", measurements["accepted_replays"], limits["accepted_replays"])
     return {
         "ok": not exceeded,
         "action": str(args.budget_action),
@@ -501,6 +567,7 @@ def _build_callback_payload(
     budget_status = _evaluate_budgets(
         args=args,
         samples=samples,
+        profile=profile,
         total_wall_s=total_wall_s,
         cache_growth=growth,
         rss_before_bytes=rss_before_bytes,
