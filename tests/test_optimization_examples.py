@@ -549,6 +549,156 @@ def test_workflow_objective_wrappers_dispatch_to_state_helpers(monkeypatch) -> N
     assert factory_term.total(ctx, "state") == 45.0
 
 
+def test_quasisymmetry_workflow_routing_jvp_and_vjp_match_finite_difference(monkeypatch) -> None:
+    pytest.importorskip("jax")
+
+    import jax
+
+    from vmec_jax._compat import enable_x64, jnp
+    import vmec_jax.optimization_workflow as workflow
+
+    enable_x64(True)
+
+    ctx = SimpleNamespace(
+        static="static",
+        indata="indata",
+        signgs=-1,
+        flux="flux",
+        pressure="pressure",
+    )
+
+    def fake_qs_residual_from_state(**kwargs):
+        assert kwargs["static"] == "static"
+        assert kwargs["indata"] == "indata"
+        assert kwargs["signgs"] == -1
+        assert kwargs["flux_local"] == "flux"
+        assert kwargs["pressure_local"] == "pressure"
+        assert kwargs["surfaces"] == [0.25, 0.75]
+        assert kwargs["helicity_m"] == 1
+        assert kwargs["helicity_n"] == -4
+        x = jnp.asarray(kwargs["state"], dtype=jnp.float64)
+        residuals = jnp.stack([x**2 + 0.5 * x, 2.0 * x - 0.25])
+        return {"residuals1d": residuals, "total": jnp.dot(residuals, residuals)}
+
+    monkeypatch.setattr(workflow, "quasisymmetry_ratio_residual_from_state", fake_qs_residual_from_state)
+
+    qs = workflow.QuasisymmetryRatioResidual(helicity_m=1, helicity_n=-4, surfaces=[0.25, 0.75])
+    problem = workflow.LeastSquaresProblem.from_tuples([(qs.J, 0.0, 9.0)])
+    combined = workflow.residuals_from_objectives(problem.objective_terms, ctx)
+
+    assert not problem.is_qi
+    assert problem.objective_terms[0].name == "qs"
+    assert problem.objective_terms[0].total is not None
+    assert combined._n_non_qs == 0
+
+    def routed_residuals(x):
+        return combined(jnp.asarray(x, dtype=jnp.float64))
+
+    x0 = jnp.asarray(1.2, dtype=jnp.float64)
+    direction = jnp.asarray(-0.4, dtype=jnp.float64)
+    eps = jnp.asarray(1.0e-5, dtype=jnp.float64)
+
+    residual0, jvp_ad = jax.jvp(routed_residuals, (x0,), (direction,))
+    jvp_fd = (routed_residuals(x0 + eps * direction) - routed_residuals(x0 - eps * direction)) / (2.0 * eps)
+
+    cotangent = jnp.asarray([0.3, -0.7], dtype=jnp.float64)
+    _, pullback = jax.vjp(routed_residuals, x0)
+    (vjp_ad,) = pullback(cotangent)
+    vjp_fd = (
+        jnp.vdot(cotangent, routed_residuals(x0 + eps))
+        - jnp.vdot(cotangent, routed_residuals(x0 - eps))
+    ) / (2.0 * eps)
+
+    raw_total = float(jnp.dot(residual0 / 3.0, residual0 / 3.0))
+    assert float(combined._qs_total_from_state(x0)) == pytest.approx(9.0 * raw_total)
+    np.testing.assert_allclose(np.asarray(jvp_ad), np.asarray(jvp_fd), rtol=2.0e-7, atol=1.0e-9)
+    np.testing.assert_allclose(np.asarray(vjp_ad), np.asarray(vjp_fd), rtol=2.0e-7, atol=1.0e-9)
+
+
+def test_qi_problem_shared_field_terms_jvp_and_vjp_match_finite_difference() -> None:
+    pytest.importorskip("jax")
+
+    import jax
+
+    from vmec_jax._compat import enable_x64, jnp
+    from vmec_jax.optimization_workflow import (
+        BoozerBTarget,
+        LeastSquaresProblem,
+        QuasiIsodynamicOptions,
+        QuasiIsodynamicResidual,
+    )
+
+    enable_x64(True)
+
+    qi_options = QuasiIsodynamicOptions(surfaces=[0.5])
+    boozer_target = BoozerBTarget(
+        target_bmnc=np.asarray([[1.0, 0.18, 0.07], [1.3, 0.08, 0.22]]),
+        target_bmns=np.asarray([[0.0, 0.02, -0.01], [0.0, -0.03, 0.04]]),
+        normalize=True,
+        qi_options=qi_options,
+    )
+    problem = LeastSquaresProblem.from_tuples(
+        [
+            (lambda _ctx, state: jnp.asarray(state, dtype=jnp.float64) ** 2, 0.25, 4.0),
+            (QuasiIsodynamicResidual(qi_options).J, 0.0, 9.0),
+            (boozer_target.J, 0.0, 16.0),
+        ]
+    )
+    ctx = SimpleNamespace(static=SimpleNamespace(cfg=SimpleNamespace(nfp=2)), indata=None, signgs=1)
+
+    assert problem.is_qi
+    assert len(problem.objective_terms) == 1
+    assert [term.name for term in problem.qi_objective_terms] == ["qi", "boozer_b_target"]
+    assert problem.qi_options is qi_options
+
+    def synthetic_field(x):
+        x = jnp.asarray(x, dtype=jnp.float64)
+        bmnc = jnp.stack(
+            [
+                jnp.stack([1.10 + 0.20 * x, 0.20 + 0.03 * x, 0.05 - 0.01 * x]),
+                jnp.stack([1.40 + 0.10 * x, 0.10 - 0.02 * x, 0.30 + 0.04 * x]),
+            ]
+        )
+        bmns = jnp.stack(
+            [
+                jnp.stack([0.0, 0.04 + 0.01 * x, -0.02 + 0.02 * x]),
+                jnp.stack([0.0, -0.01 + 0.03 * x, 0.05 - 0.02 * x]),
+            ]
+        )
+        qi_residuals = jnp.stack([0.40 + 0.10 * x, -0.20 + 0.05 * x])
+        return {
+            "residuals1d": qi_residuals,
+            "total": jnp.dot(qi_residuals, qi_residuals),
+            "booz": {"bmnc_b": bmnc, "bmns_b": bmns},
+        }
+
+    def routed_residuals(x):
+        x = jnp.asarray(x, dtype=jnp.float64)
+        field = synthetic_field(x)
+        scalar_parts = [term.residual(ctx, x) for term in problem.objective_terms]
+        qi_parts = [term.residual_and_total(ctx, x, field)[0] for term in problem.qi_objective_terms]
+        return jnp.concatenate([*scalar_parts, *qi_parts])
+
+    x0 = jnp.asarray(0.35, dtype=jnp.float64)
+    direction = jnp.asarray(0.6, dtype=jnp.float64)
+    eps = jnp.asarray(1.0e-5, dtype=jnp.float64)
+
+    residual0, jvp_ad = jax.jvp(routed_residuals, (x0,), (direction,))
+    jvp_fd = (routed_residuals(x0 + eps * direction) - routed_residuals(x0 - eps * direction)) / (2.0 * eps)
+
+    cotangent = jnp.linspace(-0.4, 0.5, int(residual0.size), dtype=jnp.float64)
+    _, pullback = jax.vjp(routed_residuals, x0)
+    (vjp_ad,) = pullback(cotangent)
+    vjp_fd = (
+        jnp.vdot(cotangent, routed_residuals(x0 + eps))
+        - jnp.vdot(cotangent, routed_residuals(x0 - eps))
+    ) / (2.0 * eps)
+
+    assert np.all(np.isfinite(np.asarray(residual0)))
+    np.testing.assert_allclose(np.asarray(jvp_ad), np.asarray(jvp_fd), rtol=1.0e-7, atol=1.0e-9)
+    np.testing.assert_allclose(np.asarray(vjp_ad), np.asarray(vjp_fd), rtol=1.0e-7, atol=1.0e-9)
+
+
 def test_qi_objective_factories_apply_weights_and_slice_shared_fields(monkeypatch) -> None:
     import vmec_jax.optimization_workflow as workflow
 
