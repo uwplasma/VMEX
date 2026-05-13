@@ -349,6 +349,8 @@ to keep the run informational:
      --perturb-scale 1e-4 --inner-max-iter 80 --trial-max-iter 40 \
      --solver-device cpu --vmec-timing \
      --budget-total-wall-s 45 --budget-repeat-wall-s 20 \
+     --budget-tape-build-wall-s 20 --budget-replay-wall-s 15 \
+     --budget-residual-tangent-wall-s 10 --budget-accepted-replays 3 \
      --budget-cache-entry-growth 12 --budget-rss-growth-mb 1024 \
      --json-out /tmp/qh_m2_cpu_callback_cache.json
 
@@ -357,13 +359,20 @@ to keep the run informational:
      --perturb-scale 1e-4 --inner-max-iter 80 --trial-max-iter 40 \
      --solver-device gpu --vmec-timing \
      --budget-total-wall-s 90 --budget-repeat-wall-s 45 \
+     --budget-tape-build-wall-s 45 --budget-replay-wall-s 30 \
+     --budget-residual-tangent-wall-s 20 --budget-accepted-replays 3 \
      --budget-cache-entry-growth 12 --budget-rss-growth-mb 4096 \
      --json-out /tmp/qh_m2_gpu_callback_cache.json
 
 Use ``--callback accepted`` when you only want the accepted-point residual/tape
 build without dense Jacobian replay.  Keep ``--clear-between-repeats`` off for
 cache-growth audits; enabling it intentionally drops optimizer/JIT caches
-between repeats and measures cold callback behavior instead.
+between repeats and measures cold callback behavior instead.  The
+``--budget-tape-build-wall-s``, ``--budget-replay-wall-s``,
+``--budget-residual-tangent-wall-s``, and ``--budget-accepted-replays`` limits
+are intended for regression guards around the accepted-point tape/replay lane:
+they catch extra tape replays or dense residual-tangent projection regressions
+even when total callback wall time is noisy.
 
 For the standalone sweep scripts, worker subprocesses also inherit the parent
 JAX backend by default.  Use ``JAX_PLATFORMS=cpu`` or
