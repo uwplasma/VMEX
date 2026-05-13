@@ -1,6 +1,6 @@
 # VMEC-JAX Research-Grade Roadmap
 
-Last updated: 2026-05-12
+Last updated: 2026-05-13
 Primary branch: `main`
 Baseline release: `v0.0.7`
 
@@ -37,9 +37,17 @@ acceptance criteria or evidence changes.
 - Exact-history correctness is now protected against relaxed trial-solve drift:
   final ``input.final`` and ``wout_final.nc`` use the best exact accepted point
   when the last trial-accepted point replays worse.
-- Required CI coverage is 66.98% locally on the Python 3.11 CI-equivalent
-  required suite, above the current 63% gate but still far below the long-term
-  95% goal.
+- Required CI coverage is 69.17% locally on the Python 3.11 CI-equivalent
+  required suite (`730 passed, 21 skipped, 85 deselected`, 8:54), above the
+  current 63% gate but still far below the long-term 95% goal.
+- Full non-VMEC2000 physics coverage with refreshed released assets reaches
+  72.35% locally (`74 passed, 4 skipped`, 27:21). This is still short of the
+  80% target and is too slow for per-commit required CI without splitting the
+  slow full cases.
+- QI diagnostics now have a low-resolution bundled solved-state gate on
+  `input.QI_stel_seed_3127`/`wout_QI_stel_seed_3127.nc`, covering the
+  `qi_diagnostics_from_state` record path without running a solve or
+  optimization sweep.
 - `solve.py`, `wout.py`, `free_boundary.py`, `driver.py`, and optimization
   modules are too large and need staged refactoring after parity gates are locked.
 
@@ -117,6 +125,11 @@ acceptance criteria or evidence changes.
       QI surfaces with smooth extrema/softplus smoothing, and diagnostics report
       per-surface mirror ratios so high-mirror candidates cannot be promoted as
       final QI designs.
+- [x] Add a required-tier low-resolution solved-state QI diagnostic gate using
+      the bundled `input.QI_stel_seed_3127` seed and solved wout. This protects
+      smooth/raw/legacy QI totals, mirror ratio, elongation, surface metadata,
+      and Boozer resolution fields through `qi_diagnostics_from_state` without
+      launching a solve.
 - [ ] Find a QI-preserving mirror cleanup schedule. The current near-axis seed
       result passes smooth/legacy/iota gates but has mirror ratio about `0.97`;
       direct mirror penalties reduce mirror but currently degrade the legacy QI
@@ -289,11 +302,13 @@ push:
   exact residuals can no longer be recorded as the best accepted point. SciPy
   failures after a finite exact point now return that best exact point with an
   explicit abnormal-termination record instead of losing the run.
-- Differentiation architecture: 74%. Dense exact Jacobians, scalar reverse
-  gradients, state tangents, and now an accepted-residual AD-vs-finite-difference
-  gate are covered on small required-tier cases. Full QA/QH/QP/QI max_mode=1
-  objective derivative gates and matrix-free/scalar-adjoint production paths
-  remain open.
+- Differentiation architecture: 87%. Dense exact Jacobians, scalar reverse
+  gradients, state tangents, accepted-residual AD-vs-finite-difference checks,
+  solve-free QS residual JVP/VJP checks, QS objective routing JVP/VJP checks,
+  QI shared-field objective JVP/VJP checks, optional Lineax solver seams, and
+  fixed-boundary implicit validation/zero-unconverged VJP behavior are covered
+  on small required-tier cases. Full QA/QH/QP/QI max_mode=1 objective derivative
+  gates and matrix-free/scalar-adjoint production paths remain open.
 - Seed-robust QI: 92%. The tier-2 and tier-3 probes are bounded and monotone,
   constrained terms run end-to-end, and manifests now expose QI/engineering
   diagnostic deltas from final artifacts, including scalar-improved but
@@ -311,34 +326,39 @@ push:
   returns the transposed Jacobian on device and blocks before host
   materialization, removing a hidden GPU host transpose/transfer cost. Larger
   mode replay and dense residual-tangent projection remain open.
-- VMEC parity and physics gates: 97%. Required-tier bundled gates now cover
+- VMEC parity and physics gates: 98%. Required-tier bundled gates now cover
   `chipf`, stored `B`, input flux/profile propagation, finite-beta
   `pres/presf`, VMEC `iotas -> iotaf` smoothing, surface-averaged current
   finite differences, aspect/geometry, Mercier/JXBFORCE profiles, and
   VMEC-to-Boozer input spectra, including asymmetric Boozer geometry-channel
   propagation for `lasym=True` plus exact LASYM lambda-channel parity into
-  Boozer input objects. Full fixed/free/LASYM/finite-beta
+  Boozer input objects. The manual full non-VMEC2000 physics tier was refreshed
+  locally against the released asset bundle and passed. Full fixed/free/LASYM/finite-beta
   converged-equilibrium parity is still open.
-- Refactor/API/examples: 92%. Examples are SIMSOPT-like and clearer, finite-beta
+- Refactor/API/examples: 94%. Examples are SIMSOPT-like and clearer, finite-beta
   examples expose structured stage/final summaries while preserving direct
   optimizer visibility and have focused adapter coverage. Objective tuple
   routing is now isolated behind a small assembly helper, reducing the next
-  refactor surface for additional objective types; large solver/wout/free-
-  boundary splits remain deferred behind parity gates.
-- Docs/release hygiene: 96%. Performance/discrete-adjoint/docs reflect the
+  refactor surface for additional objective types; new pure helper gates cover
+  driver/runtime, implicit, wout, solve, free-boundary, and VMEC-kernel seams,
+  including additional branch coverage for solve cadence/preconditioning,
+  implicit optional solvers, wout beta/aspect helpers, and driver serialization
+  utilities. Large solver/wout/free-boundary splits remain deferred behind
+  parity gates.
+- Docs/release hygiene: 97%. Performance/discrete-adjoint/docs reflect the
   current replay and finite-beta policies, diagnostics docs cover detailed
   preconditioner timing, and a command-level release checklist now ties local
   gates, tools/validation lint/compile checks, GitHub Actions, artifact hygiene,
   and optional research-grade checks together. Full local Sphinx and the
-  required coverage command are green; final seed-robust QI and GPU-production
-  artifacts remain open.
+  required coverage command are green; released reference assets are ignored so
+  local full-tier refreshes cannot accidentally bloat commits. Final
+  seed-robust QI and GPU-production artifacts remain open.
 
 Release-critical average across the lanes requested in this push
 (continuation, exact accepted-point output, VMEC parity/physics gates, and
-docs/release hygiene): about 98%. Broader roadmap average across all open lanes:
-about 93%, because differentiation architecture, seed-robust QI, and
-larger-mode GPU replay remain real research-grade work rather than release
-hygiene.
+docs/release hygiene): about 99%. Broader roadmap average across all open lanes:
+about 95%, because code coverage, seed-robust QI mirror cleanup, and larger-mode
+GPU replay remain real research-grade work rather than release hygiene.
 
 Acceptance:
 
@@ -369,7 +389,9 @@ Acceptance:
 ## Milestone 7: Tests And Coverage
 
 - [ ] Raise required CI coverage from the current fast gate toward 95% in staged
-      steps: 65%, 75%, 85%, 95%.
+      steps: 70%, 75%, 85%, 95%. The 80% line-coverage target is not reachable
+      from current tests alone: even the refreshed full non-VMEC2000 physics
+      tier measures 72.35% and takes 27:21 locally.
 - [ ] Add targeted tests before coverage-only tests: physics gates first, branch
       logic second, I/O/schema third.
 - [ ] Keep required CI under 10 minutes by using small fixtures and nightly heavy
@@ -432,10 +454,9 @@ Realistic next targets for this development cycle:
    branch tests in `vmec_bcovar`, `vmec_realspace`, `finite_beta`, `wout`, and
    `optimization_workflow`.  Do not raise the CI floor again until GitHub's
    measured coverage has clear margin above the target.
-2. Add real solved-state QI diagnostics using `qi_diagnostics_from_state` on a
-   small bundled or generated fixture, then compare smooth QI, legacy QI,
-   mirror ratio, elongation, and Boozer `|B|` contour quality at higher
-   resolution.
+2. Raise the solved-state QI diagnostic from the new low-resolution bundled
+   gate to reviewed higher-resolution evidence: smooth QI, legacy QI, mirror
+   ratio, elongation, iota, aspect ratio, and Boozer `|B|` contour quality.
 3. Continue GPU optimization only where profiling points to a concrete source
    change.  Current evidence says exact tape build is subsecond in bounded CPU
    cases; the bottleneck is replay/residual linearization/VJP in
@@ -942,3 +963,27 @@ Defer beyond the current cycle:
   cases. Verified focused command:
   `JAX_ENABLE_X64=1 python -m pytest tests/test_wout_profiles_currents_bundled_parity.py -q`
   (`9 passed`).
+- 2026-05-13: Added a lightweight bundled solved-state QI diagnostic gate in
+  `tests/test_qi_diagnostics.py` using
+  `input.QI_stel_seed_3127`/`wout_QI_stel_seed_3127.nc`. The test runs
+  `qi_diagnostics_from_state` on a tiny Boozer/QI grid and checks finite
+  smooth/raw/legacy QI totals, mirror ratio, elongation excess, surface
+  metadata, and Boozer resolution fields without launching a solve. Verified
+  focused command: `JAX_ENABLE_X64=1 pytest -q tests/test_qi_diagnostics.py`
+  (`4 passed`).
+- 2026-05-13: Spawned parallel coverage/differentiation workers and integrated
+  fast, solve-free gates for QS residual JVP/VJP, QS/QI objective routing
+  JVP/VJP, driver/runtime policy helpers, implicit packing/linear-solve helpers,
+  synthetic wout read/write/equif/iota helpers, solver/free-boundary helper
+  branches, VMEC-kernel helper branches, additional solve branch coverage,
+  and implicit/wout/driver branch coverage. Focused validation:
+  `JAX_ENABLE_X64=1 pytest -q tests/test_quasisymmetry.py tests/test_optimization_examples.py tests/test_qi_diagnostics.py tests/test_driver_policy_helpers.py tests/test_solve_runtime.py tests/test_wout_additional_helpers.py tests/test_implicit_helpers.py tests/test_solve_additional_helpers.py tests/test_free_boundary_additional_helpers.py tests/test_vmec_kernel_additional_helpers.py tests/test_solve_branch_coverage.py tests/test_implicit_wout_driver_branch_coverage.py`
+  (`137 passed, 1 skipped`). Required coverage now measures 69.17% on the full
+  required tier (`730 passed, 21 skipped, 85 deselected`, 8:54).
+- 2026-05-13: Refreshed released full-test reference assets locally with
+  `python tools/fetch_assets.py --force` and ran the full non-VMEC2000 physics
+  coverage tier:
+  `RUN_FULL=1 JAX_ENABLE_X64=1 pytest -q -m "full and not vmec2000" --cov=vmec_jax --cov-append --cov-report=xml --cov-report=term-missing:skip-covered`.
+  Result: `74 passed, 4 skipped`, 27:21, combined line coverage 72.35%. This is
+  useful nightly evidence but too slow and still too low for the requested 80%
+  per-commit gate without larger `solve.py`/`wout.py`/`implicit.py` refactors.
