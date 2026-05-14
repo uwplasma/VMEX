@@ -3027,7 +3027,6 @@ class FixedBoundaryExactOptimizer:
         self._remember_best_exact_point(params0_arr, res0, cost0)
 
         # ── outer least-squares loop ────────────────────────────────────────
-        t_start = time.perf_counter()
         method_key = str(method).strip().lower()
         if method_key == "gauss_newton":
             result = gauss_newton_least_squares(
@@ -3540,7 +3539,6 @@ class FixedBoundaryExactOptimizer:
                 }
         else:
             raise ValueError(f"Unknown optimization method '{method}'.")
-        t_total = time.perf_counter() - t_start
         self._post_jacobian_clear()
 
         # ── final evaluation ────────────────────────────────────────────────
@@ -3584,10 +3582,13 @@ class FixedBoundaryExactOptimizer:
                 else:
                     state_final = self._solve_forward(result["x"], trial=True)
 
+        final_wall_time_s = time.perf_counter() - self._wall_t0
+        if self._history:
+            final_wall_time_s = max(final_wall_time_s, float(self._history[-1].get("wall_time_s", 0.0)))
         entry_final = self._history_entry_from_state_or_residual(
             state_final,
             res_final,
-            wall_time_s=t_total,
+            wall_time_s=final_wall_time_s,
             cache_key=final_key,
         )
         cost_final = float(entry_final["cost"])
@@ -3626,10 +3627,13 @@ class FixedBoundaryExactOptimizer:
                         "Best exact accepted point was selected for final output, "
                         "but its exact state could not be reconstructed."
                     ) from exc
+            final_wall_time_s = time.perf_counter() - self._wall_t0
+            if self._history:
+                final_wall_time_s = max(final_wall_time_s, float(self._history[-1].get("wall_time_s", 0.0)))
             entry_final = self._history_entry_from_state_or_residual(
                 state_final,
                 res_final,
-                wall_time_s=t_total,
+                wall_time_s=final_wall_time_s,
                 cache_key=final_key,
             )
             cost_final = float(entry_final["cost"])
@@ -3664,7 +3668,7 @@ class FixedBoundaryExactOptimizer:
             "inner_ftol": float(self._inner_ftol),
             "trial_max_iter": int(self._trial_max_iter),
             "trial_ftol": float(self._trial_ftol),
-            "total_wall_time_s": t_total,
+            "total_wall_time_s": final_wall_time_s,
             "nfev": result["nfev"],
             "njev": result["njev"],
             "success": result["success"],
