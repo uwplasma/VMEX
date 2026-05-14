@@ -857,6 +857,46 @@ def test_run_matrix_free_history_best_exact_drives_final_fallback(monkeypatch) -
     assert result["_history_dump"]["selected_best_exact_point"] is True
 
 
+def test_run_final_history_wall_time_is_monotone_after_expensive_initial_solve(monkeypatch) -> None:
+    pytest.importorskip("scipy.optimize")
+    import scipy.optimize
+
+    monkeypatch.setattr("vmec_jax.wout.equilibrium_aspect_ratio_from_state", lambda **_kwargs: 7.0)
+
+    opt = _run_ready_optimizer_for_method_tests(np.asarray([0.25]))
+
+    def fake_least_squares(residuals, y0, *, jac, **kwargs):
+        np.testing.assert_allclose(residuals(y0), [0.25])
+        opt._history.append(
+            {
+                "wall_time_s": 42.0,
+                "cost": 0.125,
+                "objective": 0.25,
+                "qs_objective": 0.25,
+                "aspect": 7.0,
+            }
+        )
+        return SimpleNamespace(
+            x=np.asarray([0.0]),
+            cost=0.03125,
+            nfev=1,
+            njev=0,
+            success=True,
+            status=1,
+            message="ok",
+        )
+
+    monkeypatch.setattr(scipy.optimize, "least_squares", fake_least_squares)
+
+    result = opt.run(np.asarray([0.0]), method="scipy", max_nfev=1, verbose=0)
+    history = result["_history_dump"]["history"]
+    wall_times = [float(entry["wall_time_s"]) for entry in history]
+
+    assert wall_times == sorted(wall_times)
+    assert result["_history_dump"]["total_wall_time_s"] == pytest.approx(wall_times[-1])
+    assert wall_times[-1] >= 42.0
+
+
 def test_save_wrappers_write_wout_input_and_history(monkeypatch, tmp_path) -> None:
     opt = _run_ready_optimizer_for_method_tests()
     opt._static = SimpleNamespace(cfg="cfg")
