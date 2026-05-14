@@ -775,6 +775,11 @@ Two practical lessons from that study are now reflected in the example:
   has all-surface mirror ratio near ``0.97``; direct hard mirror penalties from
   that basin reduce mirror but destroy QI.  The open lane is therefore a
   QI-preserving mirror cleanup schedule that is robust across unrelated seeds.
+- ``QuasiIsodynamicResidualCeiling`` is the preferred cleanup guard when adding
+  mirror, elongation, or other engineering terms after a low-QI basin has been
+  found.  It adds a smooth penalty only when the shared QI residual exceeds a
+  configured ceiling, so cleanup terms can reduce shape metrics without silently
+  promoting a mirror-clean but non-QI field.
 - ``BoozerBTarget`` is available as a differentiable steering or homotopy term
   when a known reference Boozer ``|B|`` spectrum should guide a run toward a
   specific basin.  It is a steering objective, not a final acceptance

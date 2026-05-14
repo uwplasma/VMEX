@@ -72,6 +72,7 @@ def test_qi_example_uses_qi_problem_api() -> None:
     assert "run_quasi_isodynamic_objective_optimization(" not in text
     assert "QuasiIsodynamicOptions(" in text
     assert "QuasiIsodynamicResidual(QI_OPTIONS)" in text
+    assert "QuasiIsodynamicResidualCeiling(" in text
     assert "objective_tuples = [" in text
     assert "LeastSquaresProblem.from_tuples(" in text
     assert "problem = vj.LeastSquaresProblem.from_tuples(objective_tuples)" in text
@@ -365,11 +366,18 @@ def test_least_squares_problem_rejects_mixed_qi_options() -> None:
 
 
 def test_qi_field_objectives_raise_outside_qi_solve() -> None:
-    from vmec_jax.optimization_workflow import MaxElongation, MirrorRatio, QuasiIsodynamicOptions, QuasiIsodynamicResidual
+    from vmec_jax.optimization_workflow import (
+        MaxElongation,
+        MirrorRatio,
+        QuasiIsodynamicOptions,
+        QuasiIsodynamicResidual,
+        QuasiIsodynamicResidualCeiling,
+    )
 
     qi_options = QuasiIsodynamicOptions(surfaces=[0.5])
     objectives = [
         QuasiIsodynamicResidual(qi_options),
+        QuasiIsodynamicResidualCeiling(maximum=1.0e-2, qi_options=qi_options),
         MirrorRatio(threshold=1.2, qi_options=qi_options),
         MaxElongation(threshold=4.0, qi_options=qi_options),
     ]
@@ -734,6 +742,20 @@ def test_qi_objective_factories_apply_weights_and_slice_shared_fields(monkeypatc
     np.testing.assert_allclose(residual, [2.0, 4.0])
     assert total == 12.0
     assert field_term.qi_options is qi_options
+
+    ceiling_term = workflow.qi_residual_ceiling_objective(
+        maximum=0.5,
+        weight=4.0,
+        smooth_penalty=0.0,
+        qi_options=qi_options,
+    )
+    residual, total = ceiling_term.residual_and_total(ctx, "state", {"total": np.asarray(0.25)})
+    np.testing.assert_allclose(residual, [0.0])
+    assert total == 0.0
+    residual, total = ceiling_term.residual_and_total(ctx, "state", {"total": np.asarray(0.75)})
+    np.testing.assert_allclose(residual, [1.0])
+    assert total == 1.0
+    assert ceiling_term.qi_options is qi_options
 
     def fake_mirror_ratio_penalty_from_boozer_output(
         booz,
