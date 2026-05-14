@@ -16,9 +16,12 @@ from vmec_jax.wout import read_wout, state_from_wout
 
 
 CASES = (
-    ("qh", "input.nfp4_QH_warm_start", "wout_nfp4_QH_warm_start.nc"),
-    ("qa", "input.LandremanPaul2021_QA_lowres", "wout_LandremanPaul2021_QA_lowres.nc"),
-    ("qi", "input.nfp3_QI_fixed_resolution_final", "wout_nfp3_QI_fixed_resolution_final.nc"),
+    ("qh", "input.nfp4_QH_warm_start", "wout_nfp4_QH_warm_start.nc", 3.0e-3),
+    ("qa", "input.LandremanPaul2021_QA_lowres", "wout_LandremanPaul2021_QA_lowres.nc", 3.0e-3),
+    ("qi", "input.nfp3_QI_fixed_resolution_final", "wout_nfp3_QI_fixed_resolution_final.nc", 3.0e-3),
+    ("shaped_pressure", "input.shaped_tokamak_pressure", "wout_shaped_tokamak_pressure.nc", 3.0e-3),
+    ("li383", "input.li383_low_res", "wout_li383_low_res.nc", 5.0e-3),
+    ("basic_non_stellsym", "input.basic_non_stellsym_simsopt", "wout_basic_non_stellsym_simsopt.nc", 1.2e-2),
 )
 
 
@@ -48,13 +51,20 @@ def _relative_rms(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.sqrt(np.mean((np.asarray(a, dtype=float) - np.asarray(b, dtype=float)) ** 2)) / scale)
 
 
-@pytest.mark.parametrize(("case_name", "input_name", "wout_name"), CASES)
+@pytest.mark.parametrize(("case_name", "input_name", "wout_name", "max_rel_rms"), CASES)
 def test_bundled_wout_stored_bsup_cartesian_magnitude_matches_bmnc(
     case_name: str,
     input_name: str,
     wout_name: str,
+    max_rel_rms: float,
 ) -> None:
-    """Stored VMEC2000 ``bsup*`` fields should reconstruct the same ``|B|`` as ``bmnc``."""
+    """Stored VMEC2000 ``bsup*`` fields should reconstruct the same ``|B|`` as ``bmnc``.
+
+    This no-solve gate covers stellarator-symmetric, finite-beta, LI383, and
+    LASYM=true fixtures.  The LASYM/nonaxisymmetric fixture is intentionally
+    retained with its own tolerance because it exercises the sine magnetic
+    channels that are absent from stellarator-symmetric wouts.
+    """
     pytest.importorskip("jax")
     pytest.importorskip("netCDF4")
 
@@ -89,4 +99,4 @@ def test_bundled_wout_stored_bsup_cartesian_magnitude_matches_bmnc(
         assert np.all(bmag_ref[radial_index] > 0.0)
         rel_errors.append(_relative_rms(bmag_cart, bmag_ref[radial_index]))
 
-    assert max(rel_errors) < 3.0e-3, f"{case_name}: rel_errors={rel_errors}"
+    assert max(rel_errors) < max_rel_rms, f"{case_name}: rel_errors={rel_errors}"
