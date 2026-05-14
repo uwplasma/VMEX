@@ -90,6 +90,9 @@ SURFACES = np.linspace(0.1, 1.0, 6)
 ASPECT_WEIGHT = 0.25
 IOTA_FLOOR_WEIGHT = 200.0**2
 QI_WEIGHT = 10.0
+QI_CEILING_MAX = 2.0e-2
+QI_CEILING_WEIGHT = 100.0
+QI_CEILING_SMOOTH_PENALTY = 2.0e-3
 MIRROR_WEIGHT = 10.0
 ELONGATION_WEIGHT = 10.0
 MIRROR_SMOOTH_EXTREMA = 2.0e-2
@@ -133,6 +136,11 @@ QI_OPTIONS = vj.QuasiIsodynamicOptions(
 aspect = vj.AspectRatio()
 iota_floor = vj.AbsMeanIotaFloor(TARGET_ABS_IOTA_MIN)
 qi = vj.QuasiIsodynamicResidual(QI_OPTIONS)
+qi_ceiling = vj.QuasiIsodynamicResidualCeiling(
+    maximum=QI_CEILING_MAX,
+    smooth_penalty=QI_CEILING_SMOOTH_PENALTY,
+    qi_options=QI_OPTIONS,
+)
 mirror = vj.MirrorRatio(
     threshold=MAX_MIRROR_RATIO,
     ntheta=96,
@@ -158,6 +166,10 @@ objective_tuples = [
     (aspect.J, TARGET_ASPECT, ASPECT_WEIGHT),
     (iota_floor.J, 0.0, IOTA_FLOOR_WEIGHT),
     (qi.J, 0.0, QI_WEIGHT),
+    # Soft-wall QI guard: mirror/elongation cleanup may trade scalar objective
+    # against QI.  This term is inactive below QI_CEILING_MAX and grows once a
+    # trial leaves the accepted QI basin.
+    (qi_ceiling.J, 0.0, QI_CEILING_WEIGHT),
     # Mirror/shape cleanup.  Keep the QI/iota terms active so mirror does not
     # destroy QI.  The all-surface Boozer mirror target is stricter than the
     # legacy single-surface VMEC mirror diagnostic used in older scripts.
