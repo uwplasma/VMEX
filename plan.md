@@ -986,6 +986,14 @@ Defer beyond the current cycle:
   policy before the solve, keeps objective tuples visible, writes a
   Boozer-coordinate `|B|` line-contour plot, and promotes candidates only
   through independent smooth-QI, legacy-QI, iota, mirror, and elongation gates.
+  Local CPU probes after the change gave: `qi_stel_seed_3127` passed the
+  QI+iota gate in `90.6 s` (smooth QI `1.09e-3`, legacy QI `3.16e-4`,
+  `|iota|=0.897`, aspect `4.995`) but failed mirror (`0.958`); the
+  `nfp4_qh_warm_to_qi` case ran end-to-end in `181 s` and improved the total
+  objective by `86%`, but failed the QI gate (smooth/legacy QI
+  `5.18e-2`/`3.79e-2`). The remaining seed-robust QI physics task is therefore
+  not script plumbing; it is a better QH/QA/simple-seed homotopy or
+  Boozer-target steering policy that reaches the accepted QI basin.
 - 2026-05-12: Confirmed that the near-axis QI candidate fails the engineering
   mirror gate on every sampled surface (`0.94-0.97`, target `0.21`). Added
   all-surface/smoothed `MirrorRatio` support, per-surface mirror diagnostics,
