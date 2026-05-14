@@ -99,7 +99,12 @@ objective_tuples = [
 #     smooth_penalty=MIRROR_SMOOTH_PENALTY,
 # )
 # elongation = vj.MaxElongation(threshold=MAX_ELONGATION, ntheta=48, nphi=16)
-# objective_tuples += [(mirror.J, 0.0, MIRROR_WEIGHT), (elongation.J, 0.0, ELONGATION_WEIGHT)]
+# qi_ceiling = vj.QuasiIsodynamicResidualCeiling(maximum=2.0e-2, smooth_penalty=2.0e-3, qi_options=qi_options)
+# objective_tuples += [
+#     (qi_ceiling.J, 0.0, 100.0),
+#     (mirror.J, 0.0, MIRROR_WEIGHT),
+#     (elongation.J, 0.0, ELONGATION_WEIGHT),
+# ]
 
 problem = vj.LeastSquaresProblem.from_tuples(objective_tuples)
 vmec = vj.FixedBoundaryVMEC.from_input(

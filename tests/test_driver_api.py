@@ -641,11 +641,14 @@ def test_public_api_reexports_run_free_boundary():
 
 def test_public_api_reexports_qi_promotion_helpers():
     from vmec_jax.qi_diagnostics import QISeedSuitabilityTargets, qi_promotion_score
+    from vmec_jax.optimization_workflow import QuasiIsodynamicResidualCeiling
 
     assert api_module.QISeedSuitabilityTargets is QISeedSuitabilityTargets
     assert api_module.qi_promotion_score is qi_promotion_score
+    assert api_module.QuasiIsodynamicResidualCeiling is QuasiIsodynamicResidualCeiling
     assert vj.QISeedSuitabilityTargets is QISeedSuitabilityTargets
     assert vj.qi_promotion_score is qi_promotion_score
+    assert vj.QuasiIsodynamicResidualCeiling is QuasiIsodynamicResidualCeiling
 
 
 def test_python_default_fixed_boundary_uses_optimized_controller(tmp_path):

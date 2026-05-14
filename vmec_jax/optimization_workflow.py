@@ -515,6 +515,35 @@ class QuasiIsodynamicResidual:
         return quasi_isodynamic_field_objective(weight=residual_weight, qi_options=self.options)
 
 
+class QuasiIsodynamicResidualCeiling:
+    """Soft upper-bound objective for preserving a low-QI basin during cleanup."""
+
+    name = "qi_ceiling"
+    requires_qi_field = True
+
+    def __init__(
+        self,
+        *,
+        maximum: float,
+        smooth_penalty: float = 0.0,
+        qi_options: QuasiIsodynamicOptions | None = None,
+    ):
+        self.maximum = float(maximum)
+        self.smooth_penalty = float(smooth_penalty)
+        self.qi_options = qi_options
+
+    def J(self, _ctx: StageContext, _state):
+        raise RuntimeError("QuasiIsodynamicResidualCeiling must be evaluated inside a QI solve.")
+
+    def to_qi_term(self, residual_weight: float) -> QIObjectiveTerm:
+        return qi_residual_ceiling_objective(
+            maximum=self.maximum,
+            weight=residual_weight,
+            smooth_penalty=self.smooth_penalty,
+            qi_options=self.qi_options,
+        )
+
+
 class MirrorRatio:
     """Maximum mirror-ratio penalty object for QI solves."""
 
@@ -1148,6 +1177,32 @@ def quasi_isodynamic_field_objective(
         )
 
     return QIObjectiveTerm("qi", _evaluate, qi_options=qi_options)
+
+
+def _smooth_positive_part(value, *, softness: float):
+    value = jnp.asarray(value, dtype=jnp.float64)
+    softness = float(softness)
+    if softness <= 0.0:
+        return jnp.maximum(value, 0.0)
+    return softness * jnp.logaddexp(value / softness, 0.0)
+
+
+def qi_residual_ceiling_objective(
+    *,
+    maximum: float,
+    weight: float = 1.0,
+    smooth_penalty: float = 0.0,
+    qi_options: QuasiIsodynamicOptions | None = None,
+) -> QIObjectiveTerm:
+    """Soft-wall objective that penalizes QI residuals above ``maximum``."""
+
+    def _evaluate(_ctx: StageContext, _state, field: dict):
+        qi_total = jnp.asarray(field["total"], dtype=jnp.float64)
+        excess = _smooth_positive_part(qi_total - float(maximum), softness=float(smooth_penalty))
+        residual = jnp.ravel(excess) * float(weight)
+        return residual, jnp.sum(residual * residual)
+
+    return QIObjectiveTerm("qi_ceiling", _evaluate, qi_options=qi_options)
 
 
 def qi_mirror_ratio_objective(
@@ -2439,6 +2494,7 @@ __all__ = [
     "ObjectiveTerm",
     "QuasiIsodynamicOptions",
     "QuasiIsodynamicResidual",
+    "QuasiIsodynamicResidualCeiling",
     "QuasisymmetryRatioResidual",
     "QIObjectiveTerm",
     "RedlBootstrapMismatch",
@@ -2462,6 +2518,7 @@ __all__ = [
     "qi_boozer_b_target_objective",
     "qi_max_elongation_objective",
     "qi_mirror_ratio_objective",
+    "qi_residual_ceiling_objective",
     "quasi_isodynamic_field_objective",
     "quasisymmetry_objective",
     "rebuild_for_optimization_resolution",
