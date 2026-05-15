@@ -63,6 +63,11 @@ QI landscape diagnostics:
   Add `--execute --save-candidate-inputs` to run bounded VMEC/QI diagnostics,
   rank candidates by QI/legacy/mirror/elongation/iota/aspect gates, and emit
   top `input.candidate` files for later differentiable local refinement.
+- `qi_basin_promote.py --candidates results/diagnostics/qi_basin_survey/top_candidates.json`
+  consumes those top candidate inputs and applies bounded local refinement
+  policies: direct mode-3, repeated continuation, QI-then-augmented-Lagrangian
+  cleanup, and soft-wall cleanup.  By default it only writes a plan; add
+  `--execute` after reviewing the candidate matrix.
 
 Free-boundary manifest notes:
 
