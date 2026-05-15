@@ -580,16 +580,20 @@ class MirrorRatio:
         ntheta: int = 96,
         nphi: int = 96,
         surface_index: int | None = None,
+        phimin: float = 0.0,
         smooth_extrema: float = 0.0,
         smooth_penalty: float = 0.0,
+        normalize_surfaces: bool = True,
         qi_options: QuasiIsodynamicOptions | None = None,
     ):
         self.threshold = float(threshold)
         self.ntheta = int(ntheta)
         self.nphi = int(nphi)
         self.surface_index = None if surface_index is None else int(surface_index)
+        self.phimin = float(phimin)
         self.smooth_extrema = float(smooth_extrema)
         self.smooth_penalty = float(smooth_penalty)
+        self.normalize_surfaces = bool(normalize_surfaces)
         self.qi_options = qi_options
 
     def J(self, _ctx: StageContext, _state):
@@ -602,8 +606,10 @@ class MirrorRatio:
             ntheta=self.ntheta,
             nphi=self.nphi,
             surface_index=self.surface_index,
+            phimin=self.phimin,
             smooth_extrema=self.smooth_extrema,
             smooth_penalty=self.smooth_penalty,
+            normalize_surfaces=self.normalize_surfaces,
             qi_options=self.qi_options,
         )
 
@@ -1235,20 +1241,28 @@ def qi_mirror_ratio_objective(
     ntheta: int = 96,
     nphi: int = 96,
     surface_index: int | None = None,
+    phimin: float = 0.0,
     smooth_extrema: float = 0.0,
     smooth_penalty: float = 0.0,
+    normalize_surfaces: bool = True,
     qi_options: QuasiIsodynamicOptions | None = None,
 ) -> QIObjectiveTerm:
     """Mirror-ratio upper-bound objective evaluated from Boozer ``|B|`` modes."""
 
     def _evaluate(ctx: StageContext, _state, field: dict):
         mirror_booz = field["booz"] if surface_index is None else _slice_boozer_surfaces(field["booz"], int(surface_index))
+        weights = None
+        if bool(normalize_surfaces) and surface_index is None:
+            nsurf = int(jnp.asarray(mirror_booz["bmnc_b"]).shape[0])
+            weights = [1.0 / float(max(nsurf, 1))] * nsurf
         mirror = mirror_ratio_penalty_from_boozer_output(
             mirror_booz,
             nfp=int(ctx.static.cfg.nfp),
             threshold=float(threshold),
+            weights=weights,
             ntheta=int(ntheta),
             nphi=int(nphi),
+            phimin=float(phimin),
             smooth_extrema=float(smooth_extrema),
             smooth_penalty=float(smooth_penalty),
         )
