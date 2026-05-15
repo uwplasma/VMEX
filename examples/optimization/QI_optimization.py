@@ -375,6 +375,7 @@ def make_qi_problem(stage=None):
         # None means "all QI surfaces", matching QIDiagnosticOptions'
         # mirror-ratio gate.  Set an integer to optimize one surface only.
         surface_index=mirror_surface_index,
+        phimin=QI_OPTIONS.phimin,
         smooth_extrema=MIRROR_SMOOTH_EXTREMA,
         smooth_penalty=MIRROR_SMOOTH_PENALTY,
         qi_options=QI_OPTIONS,

@@ -477,6 +477,7 @@ def test_mirror_ratio_objective_records_all_surface_smoothing_options() -> None:
         ntheta=48,
         nphi=64,
         surface_index=None,
+        phimin=0.1,
         smooth_extrema=2.0e-2,
         smooth_penalty=1.0e-2,
         qi_options=qi_options,
@@ -484,8 +485,10 @@ def test_mirror_ratio_objective_records_all_surface_smoothing_options() -> None:
     term = mirror.to_qi_term(3.0)
 
     assert mirror.surface_index is None
+    assert mirror.phimin == pytest.approx(0.1)
     assert mirror.smooth_extrema == pytest.approx(2.0e-2)
     assert mirror.smooth_penalty == pytest.approx(1.0e-2)
+    assert mirror.normalize_surfaces is True
     assert term.name == "mirror_ratio"
     assert term.qi_options is qi_options
 
@@ -843,15 +846,19 @@ def test_qi_objective_factories_apply_weights_and_slice_shared_fields(monkeypatc
         *,
         nfp,
         threshold,
+        weights,
         ntheta,
         nphi,
+        phimin,
         smooth_extrema,
         smooth_penalty,
     ):
         assert nfp == 5
         assert threshold == 1.2
+        assert weights is None
         assert ntheta == 8
         assert nphi == 9
+        assert phimin == 0.1
         assert smooth_extrema == 0.0
         assert smooth_penalty == 0.0
         np.testing.assert_array_equal(booz["s_b"], [0.75])
@@ -866,6 +873,7 @@ def test_qi_objective_factories_apply_weights_and_slice_shared_fields(monkeypatc
         ntheta=8,
         nphi=9,
         surface_index=1,
+        phimin=0.1,
         qi_options=qi_options,
     )
     residual, total = mirror_term.residual_and_total(
@@ -884,6 +892,42 @@ def test_qi_objective_factories_apply_weights_and_slice_shared_fields(monkeypatc
     np.testing.assert_allclose(residual, [1.5])
     assert total == 2.25
     assert mirror_term.qi_options is qi_options
+
+    captured_weights = {}
+
+    def fake_all_surface_mirror_ratio_penalty_from_boozer_output(
+        booz,
+        *,
+        nfp,
+        threshold,
+        weights,
+        ntheta,
+        nphi,
+        phimin,
+        smooth_extrema,
+        smooth_penalty,
+    ):
+        del booz, nfp, threshold, ntheta, nphi, phimin, smooth_extrema, smooth_penalty
+        captured_weights["weights"] = weights
+        return {"residuals1d": np.asarray([0.5, 0.5]), "total": 0.5}
+
+    monkeypatch.setattr(
+        workflow,
+        "mirror_ratio_penalty_from_boozer_output",
+        fake_all_surface_mirror_ratio_penalty_from_boozer_output,
+    )
+    all_surface_term = workflow.qi_mirror_ratio_objective(
+        threshold=1.2,
+        weight=1.0,
+        surface_index=None,
+        normalize_surfaces=True,
+    )
+    all_surface_term.residual_and_total(
+        ctx,
+        "state",
+        {"booz": {"bmnc_b": np.zeros((2, 3))}},
+    )
+    np.testing.assert_allclose(captured_weights["weights"], [0.5, 0.5])
 
     def fake_max_elongation_penalty_from_state(*, state, static, threshold, ntheta, nphi):
         assert state == "state"
