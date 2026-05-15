@@ -50,6 +50,15 @@ Performance profiling:
   warning count, callback count, observed RSS peak, solve count,
   accepted-point replay count, and cache growth.
 
+QI landscape diagnostics:
+
+- `qi_landscape_scan.py --input results/qi_opt/ess/input.final --dofs rc11,zs11`
+  scans one or two boundary coefficient increments around an existing QI input
+  state, evaluates smooth QI residual, mirror ratio, LCFS elongation, aspect,
+  and mean iota, then writes JSON/CSV plus a line or contour-line plot.  The 2D
+  view uses `matplotlib.contour` lines rather than filled contours so adjacent
+  metric ridges remain visually comparable.
+
 Free-boundary manifest notes:
 
 - each free-boundary case can define quantitative pass/fail limits via

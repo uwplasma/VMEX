@@ -959,6 +959,31 @@ the seed first, optionally add a solved same-NFP QI target wout through
 accept the result only if both the numerical metrics and Boozer ``|B|``
 line-contour plot pass the QI gate.
 
+The following local landscape scan illustrates why the ``input.QI_stel_seed_3127``
+case is not yet a solved engineering example.  The seed starts with low mirror
+ratio, but poor elongation and low transform.  Nearby boundary moves in
+``rc01`` and ``zs01`` can keep the mirror low only in a narrow valley and do not
+fix the elongation/transform issue by themselves.  The plot is generated with
+contour lines, not filled contours, so the competing ridges are visible.
+
+.. image:: _static/figures/qi_seed3127_landscape_rc01_zs01.png
+   :alt: QI seed 3127 two degree-of-freedom landscape scan
+   :align: center
+   :width: 100%
+
+Recreate the scan with:
+
+.. code-block:: bash
+
+   PYTHONPATH=. JAX_PLATFORMS=cpu python tools/diagnostics/qi_landscape_scan.py \
+     --input examples/data/input.QI_stel_seed_3127 \
+     --output-dir results/diagnostics/qi_landscape_seed3127 \
+     --max-mode 3 --min-vmec-mode 6 --dofs rc01,zs01 --points 3 \
+     --span 0.03 --span2 0.03 --surfaces 0.35,0.65 \
+     --nphi 51 --nalpha 11 --n-bounce 15 \
+     --mirror-ntheta 32 --mirror-nphi 32 \
+     --elongation-ntheta 24 --elongation-nphi 8
+
 
 QI diagnostics and validation plan
 ----------------------------------
