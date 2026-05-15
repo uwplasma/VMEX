@@ -254,6 +254,30 @@ run
 legacy QI, mirror ratio, elongation, iota, and Boozer `|B|` line-contour
 diagnostics.
 
+The `input.QI_stel_seed_3127` robustness lane is still an active research
+case: the initial deck has low mirror ratio but poor elongation and low
+rotational transform, while local boundary moves that raise transform can
+quickly worsen mirror. The diagnostic below scans two boundary coefficients
+around the seed and shows the multi-objective landscape that the QI optimizer
+must navigate.
+
+<p align="center">
+  <img src="docs/_static/figures/qi_seed3127_landscape_rc01_zs01.png" width="980" />
+</p>
+
+Recreate that landscape plot:
+
+```bash
+PYTHONPATH=. JAX_PLATFORMS=cpu python tools/diagnostics/qi_landscape_scan.py \
+  --input examples/data/input.QI_stel_seed_3127 \
+  --output-dir results/diagnostics/qi_landscape_seed3127 \
+  --max-mode 3 --min-vmec-mode 6 --dofs rc01,zs01 --points 3 \
+  --span 0.03 --span2 0.03 --surfaces 0.35,0.65 \
+  --nphi 51 --nalpha 11 --n-bounce 15 \
+  --mirror-ntheta 32 --mirror-nphi 32 \
+  --elongation-ntheta 24 --elongation-nphi 8
+```
+
 Regenerate the README panels and the compact CSV used for the table:
 
 ```bash
