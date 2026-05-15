@@ -80,6 +80,43 @@ def default_promotion_policies(*, max_nfev: int = 4) -> tuple[PromotionPolicy, .
     nfev = max(1, int(max_nfev))
     return (
         PromotionPolicy(
+            "iota_seed_qi_cleanup",
+            "For candidates that already satisfy the iota floor: preserve iota while cleaning QI.",
+            (
+                StagePolicy(
+                    "qi_cleanup_with_iota_floor",
+                    method="scalar_trust",
+                    max_nfev=max(2, nfev),
+                    stage_modes=(3, 3),
+                    aspect_weight=0.05,
+                    iota_weight=25.0**2,
+                    qi_weight=300.0,
+                    qi_ceiling_weight=0.0,
+                    branch_width_weight=0.5,
+                    continue_if_qi_aspect_pass=True,
+                    scalar_step_bound=1.0e-2,
+                ),
+                StagePolicy(
+                    "qi_mirror_guard",
+                    method="scalar_trust",
+                    max_nfev=max(2, nfev),
+                    stage_modes=(3,),
+                    aspect_weight=0.05,
+                    iota_weight=25.0**2,
+                    qi_weight=300.0,
+                    mirror_threshold=0.35,
+                    promotion_mirror_threshold=0.35,
+                    mirror_weight=1.0,
+                    elongation_weight=0.5,
+                    qi_ceiling_weight=2500.0,
+                    qi_ceiling_max=5.0e-3,
+                    qi_ceiling_smooth_penalty=1.0e-3,
+                    branch_width_weight=0.5,
+                    scalar_step_bound=5.0e-3,
+                ),
+            ),
+        ),
+        PromotionPolicy(
             "guarded_iota_ramp",
             "QI-first refinement, then guarded scalar-trust iota ramp before engineering cleanup.",
             (
