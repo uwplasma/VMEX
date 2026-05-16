@@ -56,6 +56,7 @@ class StagePolicy:
     qi_weight: float = 10.0
     mirror_threshold: float = 0.21
     promotion_mirror_threshold: float | None = None
+    mirror_surface_index: int | None = None
     mirror_weight: float = 0.0
     elongation_weight: float = 0.0
     use_augmented_lagrangian: bool = False
@@ -244,6 +245,50 @@ def default_policies(*, max_nfev: int = 2) -> tuple[Policy, ...]:
             ),
         ),
         Policy(
+            "target_lcfs_mirror_balanced",
+            "Target only the LCFS mirror ratio while preserving the all-surface QI basin.",
+            (
+                StagePolicy(
+                    "target_lcfs_mirror_balanced",
+                    method="scipy_matrix_free",
+                    max_nfev=max_nfev,
+                    aspect_weight=0.25,
+                    iota_weight=50.0**2,
+                    qi_weight=500.0,
+                    mirror_threshold=0.35,
+                    promotion_mirror_threshold=0.50,
+                    mirror_surface_index=-1,
+                    mirror_weight=40.0,
+                    elongation_weight=2.0,
+                    qi_ceiling_weight=2500.0,
+                    qi_ceiling_max=6.0e-3,
+                    qi_ceiling_smooth_penalty=2.0e-3,
+                ),
+            ),
+        ),
+        Policy(
+            "target_lcfs_mirror_strong",
+            "Higher QI weight plus LCFS-only mirror cleanup to test a less stiff engineering constraint.",
+            (
+                StagePolicy(
+                    "target_lcfs_mirror_strong",
+                    method="scipy_matrix_free",
+                    max_nfev=max_nfev,
+                    aspect_weight=0.25,
+                    iota_weight=50.0**2,
+                    qi_weight=1000.0,
+                    mirror_threshold=0.35,
+                    promotion_mirror_threshold=0.50,
+                    mirror_surface_index=-1,
+                    mirror_weight=40.0,
+                    elongation_weight=2.0,
+                    qi_ceiling_weight=2500.0,
+                    qi_ceiling_max=6.0e-3,
+                    qi_ceiling_smooth_penalty=2.0e-3,
+                ),
+            ),
+        ),
+        Policy(
             "augmented_lagrangian_mirror",
             "Projected augmented-Lagrangian mirror/elongation constraints with a QI ceiling guard.",
             (
@@ -342,7 +387,7 @@ def _make_problem(vj: Any, resolution: ScanResolution, stage: StagePolicy):
             threshold=float(stage.mirror_threshold),
             ntheta=int(resolution.mirror_ntheta),
             nphi=int(resolution.mirror_nphi),
-            surface_index=None,
+            surface_index=stage.mirror_surface_index,
             phimin=0.0,
             smooth_extrema=2.0e-2,
             smooth_penalty=2.0e-2,

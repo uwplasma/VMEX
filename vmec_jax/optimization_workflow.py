@@ -2761,7 +2761,15 @@ def _remove_stale(path: Path) -> None:
 
 
 def _slice_boozer_surfaces(booz: dict, surface_index: int) -> dict:
+    bmnc = booz.get("bmnc_b")
+    if bmnc is None:
+        raise ValueError("Boozer output must include bmnc_b to slice surfaces.")
+    nsurf = int(jnp.asarray(bmnc).shape[0])
     index = int(surface_index)
+    if index < 0:
+        index += nsurf
+    if index < 0 or index >= nsurf:
+        raise ValueError(f"surface_index {surface_index} is outside the Boozer surface range 0..{nsurf - 1}.")
     out = dict(booz)
     for key in ("bmnc_b", "bmns_b", "iota_b", "s_b"):
         value = out.get(key)

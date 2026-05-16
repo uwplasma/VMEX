@@ -847,6 +847,8 @@ def test_qi_objective_factories_apply_weights_and_slice_shared_fields(monkeypatc
     assert total == 1.0
     assert ceiling_term.qi_options is qi_options
 
+    mirror_call_surfaces = []
+
     def fake_mirror_ratio_penalty_from_boozer_output(
         booz,
         *,
@@ -867,8 +869,7 @@ def test_qi_objective_factories_apply_weights_and_slice_shared_fields(monkeypatc
         assert phimin == 0.1
         assert smooth_extrema == 0.0
         assert smooth_penalty == 0.0
-        np.testing.assert_array_equal(booz["s_b"], [0.75])
-        np.testing.assert_array_equal(booz["iota_b"], [0.3])
+        mirror_call_surfaces.append((np.asarray(booz["s_b"]), np.asarray(booz["iota_b"])))
         assert booz["untouched"] == "kept"
         return {"residuals1d": np.asarray([0.5]), "total": 0.25}
 
@@ -898,6 +899,47 @@ def test_qi_objective_factories_apply_weights_and_slice_shared_fields(monkeypatc
     np.testing.assert_allclose(residual, [1.5])
     assert total == 2.25
     assert mirror_term.qi_options is qi_options
+    np.testing.assert_array_equal(mirror_call_surfaces[-1][0], [0.75])
+    np.testing.assert_array_equal(mirror_call_surfaces[-1][1], [0.3])
+
+    negative_surface_term = workflow.qi_mirror_ratio_objective(
+        threshold=1.2,
+        weight=3.0,
+        ntheta=8,
+        nphi=9,
+        surface_index=-1,
+        phimin=0.1,
+        qi_options=qi_options,
+    )
+    residual, total = negative_surface_term.residual_and_total(
+        ctx,
+        "state",
+        {
+            "booz": {
+                "bmnc_b": np.zeros((2, 3)),
+                "bmns_b": np.ones((2, 3)),
+                "iota_b": np.asarray([0.2, 0.4]),
+                "s_b": np.asarray([0.25, 1.0]),
+                "untouched": "kept",
+            }
+        },
+    )
+    np.testing.assert_allclose(residual, [1.5])
+    assert total == 2.25
+    np.testing.assert_array_equal(mirror_call_surfaces[-1][0], [1.0])
+    np.testing.assert_array_equal(mirror_call_surfaces[-1][1], [0.4])
+
+    out_of_bounds_surface_term = workflow.qi_mirror_ratio_objective(
+        threshold=1.2,
+        surface_index=-3,
+        qi_options=qi_options,
+    )
+    with pytest.raises(ValueError, match="outside the Boozer surface range"):
+        out_of_bounds_surface_term.residual_and_total(
+            ctx,
+            "state",
+            {"booz": {"bmnc_b": np.zeros((2, 3))}},
+        )
 
     captured_weights = {}
 
