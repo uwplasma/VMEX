@@ -4,6 +4,8 @@ from pathlib import Path
 
 from tools.diagnostics.parity_sweep_manifest import (
     DEFAULT_MANIFEST,
+    _build_freeb_scalpot_cmd,
+    _build_stage_trace_cmd,
     _evaluate_freeb_thresholds,
     _evaluate_runtime_thresholds,
     _parse_manifest,
@@ -201,3 +203,59 @@ def test_evaluate_runtime_thresholds_bad_iter_key_fails() -> None:
     ok, report = _evaluate_runtime_thresholds(case, runs)
     assert not ok
     assert report["by_iter"]["iter53"]["pass"] is False
+
+
+def test_stage_trace_command_contract_includes_accuracy_and_multigrid_overrides(tmp_path: Path) -> None:
+    """Validate optional VMEC2000 parity wiring without launching VMEC2000."""
+
+    case = {
+        "input": "examples/data/input.minimal_seed_nfp2",
+        "max_iter": 7,
+        "rtol": 1.0e-7,
+        "atol": 1.0e-10,
+        "dump_level": "lite",
+        "vmec_timeout": 12.5,
+        "use_input_niter": True,
+        "single_ns": 13,
+        "ns_array": [7, 13],
+        "niter_array": [30, 60],
+        "ftol_array": [1.0e-8, 1.0e-10],
+    }
+
+    cmd = _build_stage_trace_cmd(case, vmec_exec=Path("/opt/vmec/xvmec2000"), workdir=tmp_path / "stage")
+
+    assert Path(cmd[0]).name.startswith("python")
+    assert "--input" in cmd and cmd[cmd.index("--input") + 1] == case["input"]
+    assert "--vmec2000" in cmd and cmd[cmd.index("--vmec2000") + 1] == "/opt/vmec/xvmec2000"
+    assert "--max-iter" in cmd and cmd[cmd.index("--max-iter") + 1] == "7"
+    assert "--rtol" in cmd and cmd[cmd.index("--rtol") + 1] == "1e-07"
+    assert "--atol" in cmd and cmd[cmd.index("--atol") + 1] == "1e-10"
+    assert "--dump-level" in cmd and cmd[cmd.index("--dump-level") + 1] == "lite"
+    assert "--vmec-timeout" in cmd and cmd[cmd.index("--vmec-timeout") + 1] == "12.5"
+    assert "--workdir" in cmd and Path(cmd[cmd.index("--workdir") + 1]) == tmp_path / "stage"
+    assert "--use-input-niter" in cmd
+    assert "--single-ns" in cmd and cmd[cmd.index("--single-ns") + 1] == "13"
+    assert "--ns-array" in cmd and cmd[cmd.index("--ns-array") + 1] == "7,13"
+    assert "--niter-array" in cmd and cmd[cmd.index("--niter-array") + 1] == "30,60"
+    assert "--ftol-array" in cmd and cmd[cmd.index("--ftol-array") + 1] == "1e-08,1e-10"
+
+
+def test_free_boundary_scalpot_command_contract_is_iter_specific(tmp_path: Path) -> None:
+    """Guard free-boundary parity commands and JSON output naming."""
+
+    json_path = tmp_path / "summary_iter80.json"
+    cmd = _build_freeb_scalpot_cmd(
+        {"input": "examples/data/input.cth_like_free_bdy_small"},
+        vmec_exec=Path("/opt/vmec/xvmec2000"),
+        iter_idx=80,
+        max_iter=100,
+        workdir=tmp_path / "freeb",
+        json_path=json_path,
+    )
+
+    assert "--input" in cmd and cmd[cmd.index("--input") + 1] == "examples/data/input.cth_like_free_bdy_small"
+    assert "--vmec-exec" in cmd and cmd[cmd.index("--vmec-exec") + 1] == "/opt/vmec/xvmec2000"
+    assert "--iter" in cmd and cmd[cmd.index("--iter") + 1] == "80"
+    assert "--max-iter" in cmd and cmd[cmd.index("--max-iter") + 1] == "100"
+    assert "--workdir" in cmd and Path(cmd[cmd.index("--workdir") + 1]) == tmp_path / "freeb"
+    assert "--json" in cmd and Path(cmd[cmd.index("--json") + 1]) == json_path
