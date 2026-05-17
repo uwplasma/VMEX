@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
+import platform
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -164,6 +167,77 @@ def _write_markdown_table(rows: list[dict[str, Any]], outpath: Path) -> None:
     outpath.write_text("\n".join(lines) + "\n")
 
 
+def _export_row(row: dict[str, Any]) -> dict[str, Any]:
+    vmec_rt = row.get("vmec_runtime_s")
+    cpu_rt = row.get("cpu_runtime_s")
+    warm_rt = row.get("cpu_warm_runtime_s")
+    pp_rt = row.get("vmecpp_runtime_s")
+    return {
+        "case_id": row["id"],
+        "boundary": "free" if row["lfreeb"] else "fixed",
+        "axisymmetric": bool(row["axisymmetric"]),
+        "lasym": bool(row["lasym"]),
+        "vmec2000_runtime_s": vmec_rt,
+        "vmec_jax_cold_runtime_s": cpu_rt,
+        "vmec_jax_warm_runtime_s": warm_rt,
+        "vmecpp_runtime_s": pp_rt,
+        "vmec_jax_cold_speedup_vs_vmec2000": _speedup(cpu_rt, vmec_rt),
+        "vmec_jax_warm_speedup_vs_vmec2000": _speedup(warm_rt, vmec_rt),
+        "vmecpp_speedup_vs_vmec2000": _speedup(pp_rt, vmec_rt),
+        "vmec2000_memory_bytes": row.get("vmec_mem_bytes"),
+        "vmec_jax_memory_bytes": row.get("cpu_mem_bytes"),
+        "vmecpp_memory_bytes": row.get("vmecpp_mem_bytes"),
+    }
+
+
+def _write_csv(rows: list[dict[str, Any]], outpath: Path) -> None:
+    exported = [_export_row(row) for row in rows]
+    outpath.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = list(exported[0]) if exported else list(_export_row({
+        "id": "",
+        "lfreeb": False,
+        "axisymmetric": False,
+        "lasym": False,
+        "vmec_runtime_s": None,
+        "cpu_runtime_s": None,
+        "cpu_warm_runtime_s": None,
+        "vmecpp_runtime_s": None,
+        "vmec_mem_bytes": None,
+        "cpu_mem_bytes": None,
+        "vmecpp_mem_bytes": None,
+    }))
+    with outpath.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(exported)
+
+
+def _write_json(
+    rows: list[dict[str, Any]],
+    outpath: Path,
+    *,
+    cpu_summary_paths: list[Path],
+    gpu_summary_paths: list[Path],
+    figure_path: Path,
+    table_path: Path,
+) -> None:
+    outpath.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "metadata": {
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "host": platform.node(),
+            "platform": platform.platform(),
+            "python": platform.python_version(),
+            "cpu_summary_paths": [str(path) for path in cpu_summary_paths],
+            "gpu_summary_paths": [str(path) for path in gpu_summary_paths],
+            "figure_path": str(figure_path),
+            "table_path": str(table_path),
+        },
+        "records": [_export_row(row) for row in rows],
+    }
+    outpath.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
 def _draw_speedup_panel(
     ax,
     *,
@@ -318,6 +392,18 @@ def main() -> None:
         default=REPO_ROOT / "outputs" / "readme_runtime_table.md",
     )
     p.add_argument(
+        "--csv-out",
+        type=Path,
+        default=REPO_ROOT / "docs" / "_static" / "figures" / "readme_runtime_compare.csv",
+        help="CSV export for the figure rows.",
+    )
+    p.add_argument(
+        "--json-out",
+        type=Path,
+        default=REPO_ROOT / "docs" / "_static" / "figures" / "readme_runtime_compare.json",
+        help="JSON export with rows plus benchmark metadata.",
+    )
+    p.add_argument(
         "--figure-kind",
         choices=("all", "fixed", "freeb"),
         default="fixed",
@@ -346,8 +432,19 @@ def main() -> None:
     else:
         _write_runtime_figure(rows, fig_out, figure_kind=str(args.figure_kind))
     _write_markdown_table(rows, table_out)
+    _write_csv(rows, args.csv_out.expanduser().resolve())
+    _write_json(
+        rows,
+        args.json_out.expanduser().resolve(),
+        cpu_summary_paths=[path.expanduser().resolve() for path in args.cpu_summary],
+        gpu_summary_paths=[path.expanduser().resolve() for path in args.gpu_summary],
+        figure_path=fig_out,
+        table_path=table_out,
+    )
     print(f"figure={fig_out}")
     print(f"table={table_out}")
+    print(f"csv={args.csv_out.expanduser().resolve()}")
+    print(f"json={args.json_out.expanduser().resolve()}")
 
 
 if __name__ == "__main__":

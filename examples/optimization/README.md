@@ -145,6 +145,15 @@ remain available for custom inspection.
   `FixedBoundaryExactOptimizer` directly because each continuation stage builds custom
   finite-pressure/current residual closures; the helper only standardizes stage artifacts.
 
+`QI_optimization.py` is still larger than the QA/QH/QP examples because it
+contains robust-seed policies, independent promotion gates, and optional
+reference-family preconditioning.  The next low-risk source migration is to
+move its pure bookkeeping helpers (`_finite_or_inf`, `_finite_or_none`,
+`_diagnostic_float`, `_resolution_value`, and `_stage_value`) into reusable
+workflow utilities.  The optimization examples deliberately keep scientific
+defaults visible at the top of the script and keep physics terms in objective
+tuples rather than passing physics shortcut arguments into `least_squares_solve`.
+
 Run one case from the repository root:
 
 ```bash

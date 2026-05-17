@@ -203,6 +203,15 @@ All figures below use the same **single-grid** run settings: `NS_ARRAY=151`, `NI
 
 **Cold vs warm runtime**: the *cold* bar includes XLA JIT compilation on the first call (one-time cost per process); the *warm* bar is the steady-state solve time for subsequent calls in the same process. VMEC2000 has no compilation overhead, so it is always effectively cold. `vmec_jax` uses JAX's persistent compilation cache automatically for accelerator-selected runs under `~/.cache/vmec_jax/jax_cache/<machine-fingerprint>`. CPU cache use is opt-in with `VMEC_JAX_COMPILATION_CACHE=1` to avoid XLA:CPU AOT host-feature mismatch warnings on some JAX versions.
 
+The current fixed-boundary CPU matrix is intentionally shown as a reality
+check: warm `vmec_jax` beats VMEC2000 on 1 of 16 bundled fixed-boundary rows
+(`circular_tokamak_aspect_100`, 1.33x), while the median warm single-solve row
+is still about 4.4x slower than VMEC2000 on this host.  The exact-adjoint
+optimization path can still win at the workflow level because it avoids
+finite-difference VMEC subprocess columns, but single-solve CPU speed remains
+an open performance lane.  The plotted rows are exported in
+`docs/_static/figures/readme_runtime_compare.csv` and `.json`.
+
 ## Best Stellarator-Symmetric Optimizations
 
 The fixed-boundary optimization examples solve VMEC equilibria and differentiate

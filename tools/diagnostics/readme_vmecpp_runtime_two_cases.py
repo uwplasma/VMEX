@@ -21,17 +21,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import platform
 import shutil
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from vmec_jax.vmec2000_exec import find_vmec2000_exec, run_xvmec2000
+from vmec_jax.vmec2000_exec import _patch_indata, find_vmec2000_exec, run_xvmec2000
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -56,11 +59,39 @@ def _find_vmecpp_tools(vmecpp_root: Path | None) -> tuple[Path, Path]:
     )
 
 
-def _run_vmec_jax_cli(input_path: Path, *, workdir: Path, timeout_s: float) -> float:
+def _patched_input_text(input_path: Path, updates: dict[str, str]) -> str:
+    text = input_path.read_text()
+    if not updates:
+        return text
+    return _patch_indata(text, updates=updates)
+
+
+def _write_local_input(input_path: Path, *, workdir: Path, updates: dict[str, str]) -> Path:
     workdir.mkdir(parents=True, exist_ok=True)
+    local_input = workdir / input_path.name
+    local_input.write_text(_patched_input_text(input_path, updates))
+    return local_input
+
+
+def _runtime_updates(*, ns: int | None, niter: int | None, ftol: float | None, nstep: int | None) -> dict[str, str]:
+    updates: dict[str, str] = {}
+    if nstep is not None:
+        updates["NSTEP"] = str(int(nstep))
+    if ns is not None:
+        updates["NS_ARRAY"] = str(int(ns))
+    if niter is not None:
+        updates["NITER_ARRAY"] = str(int(niter))
+    if ftol is not None:
+        updates["FTOL_ARRAY"] = f"{float(ftol):.3e}"
+    return updates
+
+
+def _run_vmec_jax_cli(input_path: Path, *, workdir: Path, timeout_s: float, updates: dict[str, str]) -> float:
+    workdir.mkdir(parents=True, exist_ok=True)
+    local_input = _write_local_input(input_path, workdir=workdir, updates=updates)
     t0 = time.perf_counter()
     proc = subprocess.run(
-        ["vmec_jax", str(input_path)],
+        ["vmec_jax", str(local_input)],
         cwd=str(workdir),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
@@ -80,11 +111,11 @@ def _run_vmecpp_standalone(
     indata2json: Path,
     workdir: Path,
     timeout_s: float,
+    updates: dict[str, str],
 ) -> tuple[float, float, Path]:
     """Return (conversion_s, runtime_s, json_path)."""
     workdir.mkdir(parents=True, exist_ok=True)
-    local_input = workdir / indata_path.name
-    shutil.copy2(indata_path, local_input)
+    local_input = _write_local_input(indata_path, workdir=workdir, updates=updates)
 
     # indata2json writes <case>.json in cwd, where case is derived from input.<case>.
     t0 = time.perf_counter()
@@ -100,6 +131,30 @@ def _run_vmecpp_standalone(
     subprocess.run([str(vmecpp_standalone), str(json_path)], cwd=str(workdir), check=True, stdout=subprocess.DEVNULL, timeout=float(timeout_s))
     rt_s = time.perf_counter() - t1
     return float(conv_s), float(rt_s), json_path
+
+
+def _run_vmecpp_legacy_cli(
+    *,
+    indata_path: Path,
+    vmecpp_cli: Path,
+    workdir: Path,
+    timeout_s: float,
+    updates: dict[str, str],
+) -> tuple[float, float, Path]:
+    """Return (conversion_s, runtime_s, input_path) for `vmecpp --legacy`."""
+    local_input = _write_local_input(indata_path, workdir=workdir, updates=updates)
+    t0 = time.perf_counter()
+    proc = subprocess.run(
+        [str(vmecpp_cli), "--legacy", str(local_input)],
+        cwd=str(workdir),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=float(timeout_s),
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or f"vmecpp --legacy failed with code {proc.returncode}")
+    return 0.0, float(time.perf_counter() - t0), local_input
 
 
 def main() -> int:
@@ -129,13 +184,28 @@ def main() -> int:
     )
     p.add_argument("--timeout-s", type=float, default=3600.0)
     p.add_argument("--vmecpp-root", type=Path, default=None, help="Path to a vmecpp checkout (with build/).")
+    p.add_argument("--ns", type=int, default=None, help="Optional NS_ARRAY override for bounded local checks.")
+    p.add_argument("--niter", type=int, default=None, help="Optional NITER_ARRAY override for bounded local checks.")
+    p.add_argument("--ftol", type=float, default=None, help="Optional FTOL_ARRAY override for bounded local checks.")
+    p.add_argument("--nstep", type=int, default=None, help="Optional NSTEP override for bounded local checks.")
     args = p.parse_args()
 
     vmec_exec = find_vmec2000_exec(root=REPO_ROOT.parent)
     if vmec_exec is None:
         raise SystemExit("VMEC2000 executable not found. Set VMEC2000_EXEC or ensure STELLOPT/VMEC2000 is available.")
 
-    vmecpp_standalone, indata2json = _find_vmecpp_tools(args.vmecpp_root)
+    vmecpp_standalone: Path | None
+    indata2json: Path | None
+    vmecpp_cli: Path | None = None
+    try:
+        vmecpp_standalone, indata2json = _find_vmecpp_tools(args.vmecpp_root)
+    except FileNotFoundError:
+        cli = shutil.which("vmecpp")
+        if cli is None:
+            raise
+        vmecpp_standalone = None
+        indata2json = None
+        vmecpp_cli = Path(cli)
 
     inputs_dir = args.inputs_dir.expanduser().resolve()
     outdir = args.outdir.expanduser().resolve()
@@ -155,7 +225,8 @@ def main() -> int:
     if bool(args.reuse_workdir) and results_path.exists():
         results = json.loads(results_path.read_text())
     else:
-        results: dict[str, dict[str, float]] = {}
+        updates = _runtime_updates(ns=args.ns, niter=args.niter, ftol=args.ftol, nstep=args.nstep)
+        results: dict[str, dict[str, Any]] = {}
         for name, input_path in cases.items():
             case_work = workdir / name
             shutil.rmtree(case_work, ignore_errors=True)
@@ -167,27 +238,68 @@ def main() -> int:
                 exec_path=Path(vmec_exec),
                 workdir=case_work / "vmec2000",
                 timeout_s=float(args.timeout_s),
+                indata_updates=updates,
             )
             vmec_rt = float(vmec.runtime_s)
 
             # vmec_jax runtime (CLI; no flags)
-            jax_rt = _run_vmec_jax_cli(input_path, workdir=case_work / "vmec_jax", timeout_s=float(args.timeout_s))
-
-            # VMEC++ runtime (C++ standalone + converter)
-            conv_s, vmecpp_rt, _ = _run_vmecpp_standalone(
-                indata_path=input_path,
-                vmecpp_standalone=vmecpp_standalone,
-                indata2json=indata2json,
-                workdir=case_work / "vmecpp",
+            jax_rt = _run_vmec_jax_cli(
+                input_path,
+                workdir=case_work / "vmec_jax",
                 timeout_s=float(args.timeout_s),
+                updates=updates,
             )
+
+            conv_s: float | None
+            vmecpp_rt: float | None
+            vmecpp_error: str | None = None
+            try:
+                if vmecpp_standalone is not None and indata2json is not None:
+                    # VMEC++ runtime (C++ standalone + converter).
+                    conv_s, vmecpp_rt, _ = _run_vmecpp_standalone(
+                        indata_path=input_path,
+                        vmecpp_standalone=vmecpp_standalone,
+                        indata2json=indata2json,
+                        workdir=case_work / "vmecpp",
+                        timeout_s=float(args.timeout_s),
+                        updates=updates,
+                    )
+                else:
+                    assert vmecpp_cli is not None
+                    conv_s, vmecpp_rt, _ = _run_vmecpp_legacy_cli(
+                        indata_path=input_path,
+                        vmecpp_cli=vmecpp_cli,
+                        workdir=case_work / "vmecpp",
+                        timeout_s=float(args.timeout_s),
+                        updates=updates,
+                    )
+            except Exception as exc:
+                conv_s = None
+                vmecpp_rt = None
+                vmecpp_error = str(exc)
 
             results[name] = {
                 "vmec2000_runtime_s": vmec_rt,
                 "vmec_jax_runtime_s": jax_rt,
                 "vmecpp_runtime_s": vmecpp_rt,
                 "vmecpp_conversion_s": conv_s,
+                "vmecpp_ok": vmecpp_error is None,
+                "vmecpp_error": vmecpp_error,
             }
+
+        results["_metadata"] = {
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "host": platform.node(),
+            "platform": platform.platform(),
+            "inputs_dir": str(inputs_dir),
+            "timeout_s": float(args.timeout_s),
+            "updates": updates,
+            "vmec2000_exec": str(vmec_exec),
+            "vmecpp_mode": "standalone_json" if vmecpp_standalone is not None else "legacy_cli",
+            "vmecpp_standalone": None if vmecpp_standalone is None else str(vmecpp_standalone),
+            "vmecpp_cli": None if vmecpp_cli is None else str(vmecpp_cli),
+            "indata2json": None if indata2json is None else str(indata2json),
+        }
 
         # Write results JSON for reproducibility (under outputs/, ignored).
         results_path.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
@@ -196,7 +308,7 @@ def main() -> int:
     labels = list(cases.keys())
     vmec2000 = [results[k]["vmec2000_runtime_s"] for k in labels]
     vmec_jax = [results[k]["vmec_jax_runtime_s"] for k in labels]
-    vmecpp = [results[k]["vmecpp_runtime_s"] for k in labels]
+    vmecpp = [results[k]["vmecpp_runtime_s"] if results[k].get("vmecpp_runtime_s") is not None else float("nan") for k in labels]
 
     x = list(range(len(labels)))
     w = 0.25

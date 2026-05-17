@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -8,6 +9,38 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PRIMARY_OPTIMIZATION_SCRIPTS = (
+    ROOT / "examples" / "optimization" / "QA_optimization.py",
+    ROOT / "examples" / "optimization" / "QH_optimization.py",
+    ROOT / "examples" / "optimization" / "QP_optimization.py",
+    ROOT / "examples" / "optimization" / "QI_optimization.py",
+)
+FORBIDDEN_SOLVE_PHYSICS_KWARGS = {
+    "target_aspect",
+    "target_iota",
+    "iota_abs_min",
+    "qi_options",
+    "plot",
+    "print_outputs",
+}
+
+
+def _least_squares_solve_keyword_names(script: Path) -> list[set[str]]:
+    tree = ast.parse(script.read_text(), filename=str(script))
+    keyword_sets: list[set[str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        is_solve = (
+            isinstance(func, ast.Attribute)
+            and func.attr == "least_squares_solve"
+            or isinstance(func, ast.Name)
+            and func.id == "least_squares_solve"
+        )
+        if is_solve:
+            keyword_sets.append({kw.arg for kw in node.keywords if kw.arg is not None})
+    return keyword_sets
 
 
 def test_fixed_boundary_qs_examples_are_standalone_workflows() -> None:
@@ -88,6 +121,31 @@ def test_optimization_readme_and_docs_teach_visible_workflow_anatomy() -> None:
     assert "vj.plot_3d_boundary_comparison(" in readme
     assert "vj.plot_bmag_contours(" in readme
     assert "vj.plot_objective_history(" in readme
+
+
+def test_primary_examples_use_direct_plotting_apis_not_generic_helpers() -> None:
+    texts = [script.read_text() for script in PRIMARY_OPTIMIZATION_SCRIPTS]
+    combined = "\n".join(texts + [(ROOT / "examples" / "optimization" / "README.md").read_text()])
+
+    assert "plot_qh_optimization" not in combined
+    assert "plot_qs_optimization" not in combined
+    assert "plot_optimization_summary" not in combined
+
+    for text in texts:
+        assert "vj.plot_3d_boundary_comparison(" in text
+        assert "vj.plot_bmag_contours(" in text
+        assert "vj.plot_objective_history(" in text
+
+
+def test_primary_example_solve_calls_do_not_take_physics_shortcuts() -> None:
+    for script in PRIMARY_OPTIMIZATION_SCRIPTS:
+        solve_keyword_sets = _least_squares_solve_keyword_names(script)
+        assert solve_keyword_sets, f"{script.name} should call least_squares_solve"
+        for keywords in solve_keyword_sets:
+            assert not (keywords & FORBIDDEN_SOLVE_PHYSICS_KWARGS), script.name
+            assert {"max_nfev", "method", "solver_device"} <= keywords
+            assert "save_stage_inputs" in keywords
+            assert "save_stage_wouts" in keywords
 
 
 def test_qi_example_uses_qi_problem_api() -> None:
