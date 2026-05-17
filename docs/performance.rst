@@ -1128,38 +1128,41 @@ about ``1e-6`` relative error because current-driven iota still needs
 axis-gauge cotangent cleanup, while QH ``J.Tv`` matches to near roundoff.
 
 Current performance (representative benchmarks)
-------------------------------------------------
+-----------------------------------------------
 
-The following warm runtimes were measured on CPU (Apple M-series) for single
-fixed-boundary solves with the default settings (``NS_ARRAY=151``,
-``NITER_ARRAY=5000``, ``FTOL_ARRAY=1e-14``):
+The README-facing fixed-boundary CPU matrix is generated from
+``docs/_static/figures/readme_runtime_compare.csv`` and visualized in:
 
-.. list-table::
-   :header-rows: 1
-   :widths: 40 20 20
+.. image:: _static/figures/readme_runtime_compare.png
+   :width: 100%
+   :align: center
+   :alt: VMEC2000 versus vmec_jax fixed-boundary runtime comparison
 
-   * - Case
-     - vmec_jax warm
-     - VMEC2000
-   * - ``circular_tokamak``
-     - ≈ 1.2 s
-     - ≈ 1.5 s
-   * - ``shaped_tokamak_pressure``
-     - ≈ 1.8 s
-     - ≈ 2.0 s
-   * - ``LandremanPaul2021_QA_lowres``
-     - ≈ 7 s
-     - ≈ 8 s
-   * - ``nfp4_QH_warm_start``
-     - ≈ 5 s
-     - ≈ 6 s
-   * - ``LandremanPaul2021_QA_reactorScale_lowres``
-     - ≈ 21 s
-     - ≈ 43 s
+The current data should be read as a performance reality check, not as a broad
+single-solve speedup claim.  On the current local matrix, warm ``vmec_jax``
+beats VMEC2000 on 1 of 16 bundled fixed-boundary rows
+(``circular_tokamak_aspect_100``, about ``1.33x`` faster).  The median warm
+single-solve row is still about ``4.4x`` slower than VMEC2000 on this host.
+Cold runs are slower because they include XLA compilation and runtime setup.
 
-The accelerated single-grid path can give additional speedups for cases where
-the VMEC2000 multi-grid schedule is wasteful.  See the ``--solver-mode
-accelerated`` flag.
+This does not contradict the optimization motivation: the exact-adjoint
+optimization path can avoid the many finite-difference VMEC subprocess columns
+that SIMSOPT+VMEC2000 needs.  It does mean that single-solve CPU/GPU runtime
+remains an active performance lane before claiming broad VMEC2000 runtime wins.
+
+The figure rows and provenance are available as:
+
+- :download:`readme_runtime_compare.csv <_static/figures/readme_runtime_compare.csv>`
+- :download:`readme_runtime_compare.json <_static/figures/readme_runtime_compare.json>`
+
+Regenerate the current fixed-boundary plot after a runtime sweep with:
+
+.. code-block:: bash
+
+   python tools/diagnostics/readme_runtime_compare.py \
+     --cpu-summary outputs/runtime_cpu_current_full/summary.json \
+     --figure-kind fixed --plot-mode runtime \
+     --figure-out docs/_static/figures/readme_runtime_compare.png
 
 Profiling and diagnostics
 

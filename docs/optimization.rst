@@ -73,6 +73,19 @@ coefficients.  Use those inputs to test whether a QA/QH/QP/QI policy can build
 the target field structure from a common seed that does not already encode the
 target helicity.
 
+The bounded common-seed showcase runner maps those inputs to QI NFP=1/2/3,
+QA NFP=2, QH NFP=4, and QP NFP=2:
+
+.. code-block:: bash
+
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_minimal_seed_showcase.py \
+     --cases all --backend-label cpu --solver-device cpu --worker-jax-platforms cpu \
+     --policy continuation --max-mode 3 --ess on \
+     --max-nfev 30 --continuation-nfev 20 \
+     --inner-max-iter 120 --trial-max-iter 120 \
+     --inner-ftol 1e-9 --trial-ftol 1e-9 --case-timeout-s 1200
+   PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py
+
 For generated comparison artifacts, run QA/QH/QP/QI with the current QI
 default of no same-mode QP preseed, then run the focused QI matrix separately
 when preseed/no-preseed is the experiment:
