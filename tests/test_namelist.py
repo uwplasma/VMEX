@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from vmec_jax.namelist import InData, minimal_fixed_boundary_indata, read_indata, write_indata
 
 
@@ -93,3 +95,25 @@ def test_minimal_fixed_boundary_seed_roundtrips_three_boundary_coefficients(tmp_
     assert got.indexed["ZBS"] == {(0, 1): 0.19}
     assert "RBS" not in got.indexed
     assert "ZBC" not in got.indexed
+
+
+@pytest.mark.parametrize("nfp", [1, 2, 3, 4])
+def test_bundled_minimal_seed_inputs_match_factory_contract(nfp: int):
+    """Guard the common far-from-target optimization seeds used in docs/examples."""
+
+    root = Path(__file__).resolve().parents[1]
+    input_path = root / "examples" / "data" / f"input.minimal_seed_nfp{nfp}"
+
+    got = read_indata(input_path)
+    expected = minimal_fixed_boundary_indata(nfp=nfp)
+
+    assert got.scalars == expected.scalars
+    assert got.indexed == expected.indexed
+    assert got.get_bool("LFREEB") is False
+    assert got.get_bool("LASYM") is False
+    assert got.get_int("NFP") == nfp
+    assert got.get_int("MPOL") >= 5
+    assert got.get_int("NTOR") >= 5
+    assert set(got.indexed) == {"RBC", "ZBS"}
+    assert got.indexed["RBC"] == {(0, 0): 1.0, (0, 1): 0.2}
+    assert got.indexed["ZBS"] == {(0, 1): 0.2}

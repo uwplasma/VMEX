@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+
+import numpy as np
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_tool(name: str):
+    path = ROOT / "tools" / "diagnostics" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_readme_fsq_trace_parser_handles_vmec_and_vmecpp_tables():
+    mod = _load_tool("readme_fsq_trace")
+    stdout = """
+      ITER    FSQR      FSQZ      FSQL    RAX(v=0)
+        1 | 1.0D-01 | 2.0D-02 | 3.0D-03 | 0.0
+        2   4.0E-02   5.0E-03   6.0E-04   0.0
+     EXECUTION TERMINATED NORMALLY
+    """
+
+    it, fsq = mod._parse_vmec_table_trace(stdout)
+
+    np.testing.assert_array_equal(it, np.asarray([1, 2]))
+    np.testing.assert_allclose(fsq, np.asarray([0.123, 0.0456]))
+
+
+def test_runtime_compare_exports_vmec2000_vmec_jax_and_vmecpp_rows(tmp_path):
+    mod = _load_tool("readme_runtime_compare")
+    summary = {
+        "cases": [
+            {
+                "id": "case_a",
+                "lfreeb": False,
+                "lasym": False,
+                "axisymmetric": True,
+            }
+        ],
+        "results": [
+            {"case_id": "case_a", "backend": "vmec2000", "runtime_s": 4.0, "max_rss_bytes": 100},
+            {
+                "case_id": "case_a",
+                "backend": "vmec_jax",
+                "runtime_cold_s": 2.0,
+                "runtime_warm_s": 1.0,
+                "peak_footprint_bytes": 200,
+            },
+            {"case_id": "case_a", "backend": "vmecpp", "runtime_s": 0.5, "max_rss_bytes": 50},
+        ],
+    }
+    rows = mod._collect_records([summary])
+
+    assert len(rows) == 1
+    assert rows[0]["vmec_runtime_s"] == 4.0
+    assert rows[0]["cpu_runtime_s"] == 2.0
+    assert rows[0]["cpu_warm_runtime_s"] == 1.0
+    assert rows[0]["vmecpp_runtime_s"] == 0.5
+
+    csv_path = tmp_path / "runtime.csv"
+    json_path = tmp_path / "runtime.json"
+    table_path = tmp_path / "runtime.md"
+    figure_path = tmp_path / "runtime.png"
+    mod._write_csv(rows, csv_path)
+    mod._write_json(
+        rows,
+        json_path,
+        cpu_summary_paths=[Path("cpu_summary.json")],
+        gpu_summary_paths=[],
+        figure_path=figure_path,
+        table_path=table_path,
+    )
+
+    csv_text = csv_path.read_text()
+    assert "vmec_jax_cold_speedup_vs_vmec2000" in csv_text
+    assert "2.0" in csv_text
+    payload = json.loads(json_path.read_text())
+    record = payload["records"][0]
+    assert record["case_id"] == "case_a"
+    assert record["vmec_jax_cold_speedup_vs_vmec2000"] == 2.0
+    assert record["vmec_jax_warm_speedup_vs_vmec2000"] == 4.0
+    assert record["vmecpp_speedup_vs_vmec2000"] == 8.0
+
+
+def test_vmecpp_runtime_two_cases_runtime_updates():
+    mod = _load_tool("readme_vmecpp_runtime_two_cases")
+
+    assert mod._runtime_updates(ns=None, niter=None, ftol=None, nstep=None) == {}
+    assert mod._runtime_updates(ns=17, niter=25, ftol=1e-9, nstep=1) == {
+        "NSTEP": "1",
+        "NS_ARRAY": "17",
+        "NITER_ARRAY": "25",
+        "FTOL_ARRAY": "1.000e-09",
+    }
