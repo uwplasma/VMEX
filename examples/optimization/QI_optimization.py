@@ -51,6 +51,20 @@ def _finite_or_none(value):
         return None
     return out if np.isfinite(out) else None
 
+
+def _parse_float_sequence(value, *, name):
+    """Parse a comma/space separated sequence used by subprocess wrappers."""
+
+    if value in (None, ""):
+        return None
+    pieces = str(value).replace(",", " ").split()
+    if not pieces:
+        return None
+    try:
+        return tuple(float(piece) for piece in pieces)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a comma- or space-separated float list: {value!r}") from exc
+
 # Seed cases.  Pick one case by changing RUN_CASE or setting
 # VMEC_JAX_QI_RUN_CASE; add another dictionary entry, or set VMEC_JAX_QI_INPUT,
 # to use an external VMEC input deck.  The NFP is taken from the VMEC input
@@ -433,10 +447,17 @@ if _EXTERNAL_INPUT:
             "abs_iota_min": float(_external_base_case.get("target_abs_iota_min", 0.41)),
             "max_mirror_ratio": float(_external_base_case.get("mirror_threshold", 0.30)),
             "max_elongation": float(_external_base_case.get("max_elongation", 8.2)),
-            "smooth_qi_max": float(_external_base_case.get("qi_gate_smooth_max", 5.0e-3)),
+            "smooth_qi_max": float(_external_base_case.get("qi_gate_smooth_max", 2.0e-3)),
             "legacy_qi_max": float(_external_base_case.get("qi_gate_legacy_max", 2.0e-3)),
             "max_iter": int(os.environ.get("VMEC_JAX_QI_INNER_MAX_ITER", _reference_base.get("max_iter", 80))),
+            "prefer_qi_safe_candidates": True,
         }
+        _reference_lambdas = _parse_float_sequence(
+            os.environ.get("VMEC_JAX_QI_REFERENCE_LAMBDAS"),
+            name="VMEC_JAX_QI_REFERENCE_LAMBDAS",
+        )
+        if _reference_lambdas is not None:
+            _external_boundary_reference["lambdas"] = _reference_lambdas
     # External inputs use the far-seed robustness policy by default: first
     # establish a QI+iota basin, then add guarded engineering cleanup later.
     # If the user supplies VMEC_JAX_QI_REFERENCE_INPUT, the same deterministic
@@ -1261,6 +1282,17 @@ def run_boundary_reference_preconditioner(input_file, output_dir, config):
         raise RuntimeError("Boundary-reference preconditioner found no successful candidates.")
 
     candidate_pool = [record for record in successful if bool(record.get("qi_engineering_gate_passed"))] or successful
+    if bool(config.get("prefer_qi_safe_candidates", True)):
+        max_mirror_ratio = float(config.get("max_mirror_ratio", MAX_MIRROR_RATIO))
+        abs_iota_min = float(config.get("abs_iota_min", TARGET_ABS_IOTA_MIN))
+        safe_pool = [
+            record
+            for record in candidate_pool
+            if _finite_or_inf(record.get("qi_mirror_ratio_max")) <= max_mirror_ratio
+            and abs(float(record.get("mean_iota") or 0.0)) >= abs_iota_min
+        ]
+        if safe_pool:
+            candidate_pool = safe_pool
     if bool(config.get("prefer_non_endpoint", False)):
         non_endpoint = [record for record in candidate_pool if abs(float(record["lambda"]) - 1.0) > 1.0e-12]
         if non_endpoint:
