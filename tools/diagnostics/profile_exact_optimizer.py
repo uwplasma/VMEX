@@ -258,6 +258,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return _build_parser().parse_args(argv)
 
 
+def _normalize_callback_args(args: argparse.Namespace) -> argparse.Namespace:
+    """Apply legacy callback aliases after parsing."""
+    if args.gradient_only and not args.check_gradient:
+        args.callback = "gradient"
+    return args
+
+
 def _iota_mean_fn(vj, state, *, static, indata, signgs):
     chips, iotas, iotaf = vj.equilibrium_iota_profiles_from_state(
         state=state, static=static, indata=indata, signgs=signgs
@@ -622,9 +629,7 @@ def _clear_optimizer_point_caches(opt) -> None:
 
 
 def main() -> int:
-    args = _parse_args()
-    if args.gradient_only:
-        args.callback = "gradient"
+    args = _normalize_callback_args(_parse_args())
     if args.vmec_timing or args.vmec_timing_detail:
         os.environ["VMEC_JAX_TIMING"] = "1"
     if args.vmec_timing_detail:

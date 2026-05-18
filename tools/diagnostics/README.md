@@ -48,8 +48,9 @@ Performance profiling:
 - `compare_profile_reports.py cpu.json gpu.json --label cpu --label gpu`
   compares two or more profiler JSON reports without rerunning VMEC.  It emits
   text or JSON ratios for total runtime, compile/replay/cache time when present,
-  QI VMEC solve / first-call / warm-call timings when present, contamination
-  warning count, callback count, observed RSS peak, solve count,
+  QI VMEC solve / first-call / warm-call timings when present, accepted-point
+  tape build, initial tangent/VJP projection, residual tangent projection,
+  contamination warning count, callback count, observed RSS peak, solve count,
   accepted-point replay count, and cache growth.
 
 QI landscape diagnostics:
