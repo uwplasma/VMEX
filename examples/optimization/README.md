@@ -72,6 +72,11 @@ minimal mode such as `RBC(0,1)`/`ZBS(0,1)`, and let the active `max_mode`
 projection remove hints that are outside the current stage.  The current
 deterministic hint set is `RBC(1,0)`, `ZBS(1,0)`, `RBC(-1,1)`,
 `ZBS(-1,1)`, `RBC(1,1)`, and `ZBS(1,1)` in VMEC input-index convention.
+The QA and QP common-minimal rows also use an explicit optimization-time
+reference-family preseed: QA blends active low-order RBC/ZBS terms 25% toward
+`input.nfp2_QA_omnigenity`, and QP blends 25% toward `input.nfp2_QI`.  This is
+recorded in `showcase_case.json`; rows that lack that provenance predate the
+current seed-robustness policy.
 
 The bounded common-seed showcase is a stress test, not a best-result table.  It
 maps the minimal seeds to QI NFP=1/2/3, QA NFP=2, QH NFP=4, and QP NFP=2, then
@@ -89,6 +94,14 @@ PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_minimal_see
   --inner-ftol 1e-9 --trial-ftol 1e-9 --case-timeout-s 1200
 PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py
 ```
+
+Add `--rerun` for a fresh local reproduction.  Current QI showcase outputs
+should appear under `.../qi_nfp1/continuation/nfp1_qi`,
+`.../qi_nfp2/continuation/nfp2_qi`, and
+`.../qi_nfp3/continuation/qi_stel_seed_3127`; old QI rows under
+`.../continuation/qp_preseed/...` predate the staged dispatch.  Old QA/QP
+rows without `reference_preseed` metadata also predate the current
+reference-family preseed policy.
 
 ## Result Object Pattern
 
@@ -268,10 +281,18 @@ PYTHONPATH=. JAX_PLATFORMS=cpu python tools/diagnostics/qi_boundary_interpolatio
   --max-mirror-ratio 0.35 --max-elongation 8.0
 PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py \
   --backend-label cpu --solver-device cpu --policy continuation \
-  --problems qi --modes 1,2,3 --ess both --qi-qp-preseed both
+  --problems qi --modes 1,2,3 --ess both --qi-qp-preseed both --rerun
+PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py \
+  --backend-label cpu --solver-device cpu --policy direct \
+  --problems qi --modes 1,2,3 --ess both --qi-qp-preseed both --rerun
 PYTHONPATH=. python examples/optimization/render_qi_constrained_sweep.py
 PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
 ```
+
+The constrained-QI sweep is the compact bundled-seed matrix, not the staged
+far-seed runner.  If its summary still reports `target_aspect=5` for QI rows,
+rerun the two sweep commands above with the current target-10 policy before
+using the rendered matrix.
 
 For publication-quality QI validation, re-run the diagnostic with higher
 `QI_MBOZ`, `QI_NBOZ`, `QI_NPHI`, `QI_NALPHA`, and `QI_N_BOUNCE`, then check
@@ -309,7 +330,7 @@ Example:
 ```bash
 PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py \
   --backend-label cpu --solver-device cpu --policy continuation \
-  --problems qa,qh,qp,qi --modes 1,2,3 --ess both --qi-qp-preseed off
+  --problems qa,qh,qp,qi --modes 1,2,3 --ess both --qi-qp-preseed off --rerun
 PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
 ```
 

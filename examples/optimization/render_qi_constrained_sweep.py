@@ -457,6 +457,12 @@ def _write_best(rows: list[dict]) -> dict:
 
 def main() -> None:
     rows = _discover_qi_results()
+    if not rows:
+        raise FileNotFoundError(
+            "No current target-10 constrained QI rows found under "
+            f"{OUTPUT_ROOT}. Rerun generate_qs_ess_sweep.py for --problems qi "
+            "with the current objective policy before rendering."
+        )
     _write_summaries(rows)
     _plot_objective_panel(rows)
     best = _write_best(rows)
