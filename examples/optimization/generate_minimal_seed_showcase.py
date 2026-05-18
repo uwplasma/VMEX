@@ -78,6 +78,8 @@ class MinimalSeedCase:
     qi_jit_booz: bool | None = None
     qi_policy_case: str | None = None
     qi_reference_input: Path | None = None
+    reference_preseed_input: Path | None = None
+    reference_preseed_blend: float = 0.0
 
 
 SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
@@ -116,6 +118,8 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         problem="qa",
         nfp=2,
         input_file=DATA_DIR / "input.minimal_seed_nfp2",
+        reference_preseed_input=DATA_DIR / "input.nfp2_QA_omnigenity",
+        reference_preseed_blend=0.25,
     ),
     "qh_nfp4": MinimalSeedCase(
         name="qh_nfp4",
@@ -128,6 +132,8 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         problem="qp",
         nfp=2,
         input_file=DATA_DIR / "input.minimal_seed_nfp2",
+        reference_preseed_input=DATA_DIR / "input.nfp2_QI",
+        reference_preseed_blend=0.25,
     ),
 }
 
@@ -148,6 +154,7 @@ TARGET_HELICITY_SEED_MODE_TERMS = (
     ("RBC", (1, 1)),
     ("ZBS", (1, 1)),
 )
+REFERENCE_PRESEED_FAMILIES = ("RBC", "ZBS")
 
 
 @dataclass(frozen=True)
@@ -231,6 +238,64 @@ def _write_target_helicity_seeded_input(
     output_path = Path(output_dir) / "input.target_helicity_seed"
     write_indata(output_path, seeded)
     return output_path, tuple(inserted)
+
+
+def _write_reference_preseeded_input(
+    source_file: Path,
+    reference_file: Path | None,
+    output_dir: Path,
+    *,
+    max_mode: int,
+    blend: float,
+) -> tuple[Path, list[dict[str, Any]]]:
+    """Blend low-order active-space boundary modes toward a same-NFP reference family.
+
+    The raw minimal seed remains untouched.  This is an optimization-time
+    preconditioner for the zero-transform branch: a small blend toward a known
+    target family gives the iota residual a usable derivative before the local
+    exact optimizer starts.  Only RBC/ZBS coefficients inside the active
+    ``max_mode`` space are blended or inserted, and ``RBC(0,0)`` is left fixed.
+    """
+
+    if reference_file is None or float(blend) == 0.0:
+        return Path(source_file), []
+    source = read_indata(source_file)
+    reference = read_indata(reference_file)
+    if int(source.scalars.get("NFP", 0)) != int(reference.scalars.get("NFP", 0)):
+        raise ValueError(
+            f"Reference preseed NFP mismatch: {source_file} has NFP={source.scalars.get('NFP')}, "
+            f"{reference_file} has NFP={reference.scalars.get('NFP')}"
+        )
+    indexed = {name: dict(values) for name, values in source.indexed.items()}
+    changes: list[dict[str, Any]] = []
+    alpha = float(blend)
+    for family in REFERENCE_PRESEED_FAMILIES:
+        coeffs = indexed.setdefault(family, {})
+        for index, ref_value in sorted(reference.indexed.get(family, {}).items()):
+            n_i, m_i = (int(index[0]), int(index[1]))
+            if family == "RBC" and (n_i, m_i) == (0, 0):
+                continue
+            if max(abs(n_i), abs(m_i)) > int(max_mode):
+                continue
+            old_value = float(coeffs.get((n_i, m_i), 0.0))
+            new_value = old_value + alpha * (float(ref_value) - old_value)
+            coeffs[(n_i, m_i)] = new_value
+            if abs(new_value - old_value) > 0.0:
+                changes.append(
+                    {
+                        "family": family,
+                        "n": n_i,
+                        "m": m_i,
+                        "old": old_value,
+                        "reference": float(ref_value),
+                        "new": new_value,
+                    }
+                )
+
+    preseeded = InData(scalars=dict(source.scalars), indexed=indexed, source_path=str(source_file))
+    output_path = Path(output_dir) / "input.reference_preseed"
+    write_indata(output_path, preseeded)
+    return output_path, changes
 
 
 def _finite_float(value: Any) -> float | None:
@@ -372,18 +437,33 @@ def _write_showcase_metadata(
     seeded_input_file: Path | None = None,
     seed_terms: tuple[tuple[str, tuple[int, int], float], ...] = (),
     seed_amplitude: float = TARGET_HELICITY_SEED_AMPLITUDE,
+    reference_preseeded_input_file: Path | None = None,
+    reference_preseed_changes: list[dict[str, Any]] | None = None,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     case_metadata = asdict(case)
     case_metadata["input_file"] = str(case.input_file)
     if case.qi_reference_input is not None:
         case_metadata["qi_reference_input"] = str(case.qi_reference_input)
+    if case.reference_preseed_input is not None:
+        case_metadata["reference_preseed_input"] = str(case.reference_preseed_input)
     metadata = {
         "minimal_seed_case": case_metadata,
         "policy": str(policy),
         "max_mode": int(max_mode),
         "use_ess": bool(use_ess),
         "budget": asdict(budget),
+        "reference_preseed": {
+            "enabled": bool(case.reference_preseed_input is not None and float(case.reference_preseed_blend) != 0.0),
+            "blend": float(case.reference_preseed_blend),
+            "reference_input": None
+            if case.reference_preseed_input is None
+            else str(case.reference_preseed_input),
+            "preseeded_input_file": None
+            if reference_preseeded_input_file is None
+            else str(reference_preseeded_input_file),
+            "changes": list(reference_preseed_changes or []),
+        },
         "target_helicity_seed": {
             "enabled": bool(seed_terms),
             "amplitude": float(seed_amplitude),
@@ -562,11 +642,20 @@ def _worker_impl(
 ) -> None:
     case = SHOWCASE_CASES[case_name]
     budget = MinimalSeedBudget(**budget_dict)
+    reference_preseeded_input_file: Path | None = None
+    reference_preseed_changes: list[dict[str, Any]] = []
     seeded_input_file: Path | None = None
     seed_terms: tuple[tuple[str, tuple[int, int], float], ...] = ()
     try:
-        seeded_input_file, seed_terms = _write_target_helicity_seeded_input(
+        reference_preseeded_input_file, reference_preseed_changes = _write_reference_preseeded_input(
             case.input_file,
+            case.reference_preseed_input,
+            output_dir,
+            max_mode=int(max_mode),
+            blend=float(case.reference_preseed_blend),
+        )
+        seeded_input_file, seed_terms = _write_target_helicity_seeded_input(
+            reference_preseeded_input_file,
             output_dir,
             max_mode=int(max_mode),
             amplitude=float(target_helicity_seed_amplitude),
@@ -581,6 +670,8 @@ def _worker_impl(
             seeded_input_file=seeded_input_file,
             seed_terms=seed_terms,
             seed_amplitude=float(target_helicity_seed_amplitude),
+            reference_preseeded_input_file=reference_preseeded_input_file,
+            reference_preseed_changes=reference_preseed_changes,
         )
         result = _run_showcase_case(
             case,
@@ -693,7 +784,7 @@ def main() -> None:
     )
     use_ess = _bool_from_choice(args.ess)
     max_mode = int(args.max_mode)
-    output_root = Path(args.output_root)
+    output_root = Path(args.output_root).expanduser().resolve()
     output_root.mkdir(parents=True, exist_ok=True)
     ctx = mp.get_context("spawn")
 
@@ -808,6 +899,12 @@ def main() -> None:
                     seeded_input_file=seeded_input_file,
                     seed_terms=seed_terms,
                     seed_amplitude=float(args.target_helicity_seed_amplitude),
+                    reference_preseeded_input_file=(
+                        output_dir / "input.reference_preseed"
+                        if case.reference_preseed_input is not None
+                        else None
+                    ),
+                    reference_preseed_changes=[],
                 )
             result_path.write_text(json.dumps(asdict(result), indent=2))
 

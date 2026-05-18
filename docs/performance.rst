@@ -236,10 +236,10 @@ Compare the JSON reports before launching a full sweep or a long GPU run:
 
 The comparison summary exposes exact optimizer phases separately:
 ``exact_tape_build_s``, ``exact_tape_build_unattributed_s``,
-``initial_tangents_s``, ``residual_tangents_s``, ``trial_solve_s``, and
-``exact_solve_s``.  Use these fields before changing solver kernels: in recent
-GPU runs the dominant cost has been accepted-point tape/replay and tangent
-construction, not VMEC force assembly.
+``initial_tangents_s``, ``initial_projection_s``, ``residual_tangents_s``,
+``trial_solve_s``, and ``exact_solve_s``.  Use these fields before changing
+solver kernels: in recent GPU runs the dominant cost has been accepted-point
+tape/replay and tangent construction, not VMEC force assembly.
 
 QI Boozer/residual isolation:
 
@@ -1808,15 +1808,18 @@ in replay/tangent work: ``jacobian_tape_replay`` ``3.34 s``,
 next GPU and CPU target is therefore accepted-point tangent fusion/reuse, not
 ordinary force-kernel optimization.
 
-The first narrow tangent-reuse patch was applied to the scalar-gradient path:
-``objective_and_gradient_fun`` now projects reverse tape cotangents through the
-same cached affine initial-state tangent map used by dense exact Jacobians,
-instead of rebuilding an initial-state VJP for every scalar-gradient callback.
-On a local QA ``max_mode=1`` CPU smoke with three perturbed gradient callbacks,
-the same-branch warm callback dropped from about ``0.279 s`` to ``0.188 s``.
-This helps scalar-adjoint/L-BFGS-style methods; dense least-squares Jacobians
-are unchanged.  Cold callbacks still pay compilation, and a theta-flip branch
-change still needs a second tangent map.
+The 2026-05-18 scalar-gradient patch narrows the initial tangent/projection
+cost without changing the dense least-squares Jacobian path:
+``objective_and_gradient_fun`` now projects reverse tape cotangents through an
+initial-state VJP on tangent-cache misses, caches that VJP by the same
+shape/flip-branch key, and still reuses the dense tangent map when a previous
+Jacobian callback already built it.  On a local CPU QH ``max_mode=2`` bounded
+profile with two perturbed gradient callbacks
+(``inner_max_iter=40``, ``trial_max_iter=20``), total callback time dropped from
+``20.47 s`` to ``18.68 s``; the warm repeat dropped from ``0.69 s`` to
+``0.56 s``.  A bounded QH ``max_mode=1`` check with ``inner_max_iter=8``
+matched the dense reference gradient (``||g_adj - J.T r|| = 2.10e-12``,
+relative ``7.21e-14``).
 
 Additional controller finding from March 2026:
 

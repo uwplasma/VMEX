@@ -26,7 +26,7 @@ FIGURE_DIR = ROOT / "docs" / "_static" / "figures"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from generate_minimal_seed_showcase import DEFAULT_CASE_ORDER
+from generate_minimal_seed_showcase import DEFAULT_CASE_ORDER, SHOWCASE_CASES
 
 
 @dataclass(frozen=True)
@@ -49,6 +49,7 @@ class ShowcaseRecord:
     qi_legacy_total: float | None = None
     qi_mirror_ratio_max: float | None = None
     qi_max_elongation: float | None = None
+    stale_reason: str | None = None
 
 
 def _float_or_none(value) -> float | None:
@@ -75,6 +76,56 @@ def _metadata_for_result(result_path: Path) -> dict:
         return {}
 
 
+def _stale_reason_for_record(
+    *,
+    case_name: str,
+    metadata: dict,
+    case_meta: dict,
+    result: dict,
+    result_path: Path,
+) -> str | None:
+    """Return why a result does not match the current showcase contract."""
+
+    case = SHOWCASE_CASES.get(case_name)
+    if case is None:
+        return f"unknown minimal-seed case {case_name!r}"
+    if str(result.get("problem", "")) != case.problem:
+        return f"problem changed from {result.get('problem')!r} to {case.problem!r}"
+    preseed_meta = metadata.get("reference_preseed") or {}
+    expected_ref = case.reference_preseed_input
+    if expected_ref is not None and float(case.reference_preseed_blend) != 0.0:
+        recorded_ref = preseed_meta.get("reference_input")
+        if not _bool_value(preseed_meta.get("enabled")) or not recorded_ref:
+            return "record predates reference-family preseed provenance"
+        if Path(str(recorded_ref)).name != expected_ref.name:
+            return (
+                "reference-family preseed input changed from "
+                f"{recorded_ref!r} to {str(expected_ref)!r}"
+            )
+        recorded_blend = _float_or_none(preseed_meta.get("blend"))
+        if recorded_blend is None or not np.isclose(recorded_blend, float(case.reference_preseed_blend)):
+            return (
+                "reference-family preseed blend changed from "
+                f"{recorded_blend!r} to {case.reference_preseed_blend!r}"
+            )
+    if case.problem != "qi":
+        return None
+
+    expected_policy_case = case.qi_policy_case
+    if not expected_policy_case:
+        return None
+    path_parts = set(result_path.parent.parts)
+    recorded_policy_case = case_meta.get("qi_policy_case")
+    if recorded_policy_case != expected_policy_case and expected_policy_case not in path_parts:
+        return (
+            "QI record predates staged dispatch; expected "
+            f"{expected_policy_case!r} policy-case provenance"
+        )
+    if _bool_value(result.get("qi_qp_preseed")):
+        return "QI record used the old QP-preseed sweep path instead of qi_staged_runner"
+    return None
+
+
 def load_records(output_root: Path = RESULTS_ROOT) -> list[ShowcaseRecord]:
     """Load all minimal-seed case records under ``output_root``."""
 
@@ -88,6 +139,13 @@ def load_records(output_root: Path = RESULTS_ROOT) -> list[ShowcaseRecord]:
         case_meta = metadata.get("minimal_seed_case", {})
         case_name = str(case_meta.get("name") or result_path.parent.name)
         nfp = int(case_meta.get("nfp") or result.get("input_nfp") or 0)
+        stale_reason = _stale_reason_for_record(
+            case_name=case_name,
+            metadata=metadata,
+            case_meta=case_meta,
+            result=result,
+            result_path=result_path,
+        )
         records.append(
             ShowcaseRecord(
                 case_name=case_name,
@@ -106,12 +164,18 @@ def load_records(output_root: Path = RESULTS_ROOT) -> list[ShowcaseRecord]:
                 qi_legacy_total=_float_or_none(result.get("qi_legacy_total")),
                 qi_mirror_ratio_max=_float_or_none(result.get("qi_mirror_ratio_max")),
                 qi_max_elongation=_float_or_none(result.get("qi_max_elongation")),
+                stale_reason=stale_reason,
             )
         )
     return records
 
 
-def best_records(records: list[ShowcaseRecord], *, successful_only: bool = True) -> list[ShowcaseRecord]:
+def best_records(
+    records: list[ShowcaseRecord],
+    *,
+    successful_only: bool = True,
+    include_stale: bool = False,
+) -> list[ShowcaseRecord]:
     """Return one successful lowest-objective record per minimal-seed case."""
 
     selected: list[ShowcaseRecord] = []
@@ -120,6 +184,7 @@ def best_records(records: list[ShowcaseRecord], *, successful_only: bool = True)
             record
             for record in records
             if record.case_name == case_name
+            and (include_stale or record.stale_reason is None)
             and (
                 not successful_only
                 or (record.success and not record.crashed and record.objective_final is not None)
@@ -272,15 +337,33 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--output-root", type=Path, default=RESULTS_ROOT)
     parser.add_argument("--figure-dir", type=Path, default=FIGURE_DIR)
     parser.add_argument("--summary-only", action="store_true", help="Write CSV only; skip Matplotlib rendering.")
+    parser.add_argument(
+        "--include-stale",
+        action="store_true",
+        help="Include pre-dispatch or otherwise stale records instead of skipping them.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
-    all_records = best_records(load_records(args.output_root), successful_only=False)
+    loaded_records = load_records(args.output_root)
+    stale_records = [record for record in loaded_records if record.stale_reason is not None]
+    if not bool(args.include_stale):
+        for record in stale_records:
+            print(f"Skipping stale {record.case_name} record at {record.output_dir}: {record.stale_reason}")
+    all_records = best_records(
+        loaded_records,
+        successful_only=False,
+        include_stale=bool(args.include_stale),
+    )
     if not all_records:
         print(f"No minimal-seed showcase records found under {args.output_root}")
         return
+    present_cases = {record.case_name for record in all_records}
+    missing = [case_name for case_name in DEFAULT_CASE_ORDER if case_name not in present_cases]
+    if missing:
+        print("Missing current minimal-seed records: " + ", ".join(missing))
     summary_csv = Path(args.figure_dir) / "minimal_seed_showcase_summary.csv"
     write_summary_csv(all_records, summary_csv)
     print(f"Wrote {summary_csv}")
