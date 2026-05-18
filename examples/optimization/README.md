@@ -91,17 +91,23 @@ PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_minimal_see
   --policy continuation --max-mode 3 --ess on \
   --max-nfev 30 --continuation-nfev 20 \
   --inner-max-iter 120 --trial-max-iter 120 \
-  --inner-ftol 1e-9 --trial-ftol 1e-9 --case-timeout-s 1200
+  --inner-ftol 1e-9 --trial-ftol 1e-9 --case-timeout-s 1200 --rerun
 PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py
 ```
 
-Add `--rerun` for a fresh local reproduction.  Current QI showcase outputs
-should appear under `.../qi_nfp1/continuation/nfp1_qi`,
+Keep `--rerun` for a fresh local reproduction.  Without it, existing
+successful `showcase_case.json` rows are reused and can leave old outputs on
+disk; the renderer skips known-stale rows by default, and `--include-stale`
+should be reserved for debugging.  Current QI
+showcase outputs should appear under `.../qi_nfp1/continuation/nfp1_qi`,
 `.../qi_nfp2/continuation/nfp2_qi`, and
 `.../qi_nfp3/continuation/qi_stel_seed_3127`; old QI rows under
 `.../continuation/qp_preseed/...` predate the staged dispatch.  Old QA/QP
 rows without `reference_preseed` metadata also predate the current
 reference-family preseed policy.
+When a case hits `--case-timeout-s`, the runner terminates the worker process
+group, including solver or GPU descendant processes, before writing the timeout
+result.
 
 ## Result Object Pattern
 

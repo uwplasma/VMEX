@@ -23,6 +23,21 @@ import numpy as np
 SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parents[1]
 QI_SCRIPT = SCRIPT_DIR / "QI_optimization.py"
+DEFAULT_REFERENCE_LAMBDAS = (
+    0.994,
+    0.995,
+    0.996,
+    0.997,
+    0.998,
+    0.999,
+    1.0,
+    1.001,
+    1.002,
+    1.004,
+    1.006,
+    1.008,
+    1.010,
+)
 
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
@@ -54,6 +69,7 @@ class QIStagedCaseConfig:
     trial_max_iter: int | None = None
     trial_ftol: float | None = None
     ess_alpha: float | None = None
+    reference_lambdas: tuple[float, ...] | None = DEFAULT_REFERENCE_LAMBDAS
     make_plots: bool = True
     timeout_s: float | None = None
 
@@ -111,6 +127,10 @@ def _build_qi_staged_env(config: QIStagedCaseConfig) -> dict[str, str]:
     )
     if config.reference_input is not None:
         env["VMEC_JAX_QI_REFERENCE_INPUT"] = str(Path(config.reference_input).expanduser())
+        if config.reference_lambdas is not None:
+            env["VMEC_JAX_QI_REFERENCE_LAMBDAS"] = ",".join(
+                f"{float(value):.12g}" for value in config.reference_lambdas
+            )
     if config.solver_device is not None:
         env["VMEC_JAX_QI_SOLVER_DEVICE"] = str(config.solver_device)
     if config.worker_jax_platforms is not None:

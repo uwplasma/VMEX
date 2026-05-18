@@ -114,11 +114,14 @@ quasisymmetry sweep path:
      --policy continuation --max-mode 3 --ess on \
      --max-nfev 30 --continuation-nfev 20 \
      --inner-max-iter 120 --trial-max-iter 120 \
-     --inner-ftol 1e-9 --trial-ftol 1e-9 --case-timeout-s 1200
+     --inner-ftol 1e-9 --trial-ftol 1e-9 --case-timeout-s 1200 --rerun
    PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py
 
-For a clean reproduction, add ``--rerun`` to the generator.  The current QI
-dispatch writes staged-run outputs under ``.../qi_nfp1/continuation/nfp1_qi``,
+For a clean reproduction, keep ``--rerun`` on the generator.  Without it,
+existing successful ``showcase_case.json`` rows are reused, which can leave old
+rows on disk; the renderer skips known-stale rows by default and
+``--include-stale`` should be reserved for debugging.  The current QI dispatch
+writes staged-run outputs under ``.../qi_nfp1/continuation/nfp1_qi``,
 ``.../qi_nfp2/continuation/nfp2_qi``, and
 ``.../qi_nfp3/continuation/qi_stel_seed_3127``.  Any QI showcase rows under
 ``.../qi_nfp*/continuation/qp_preseed/...`` predate this dispatch and should
@@ -807,6 +810,9 @@ if a future config requests a larger replay budget, so high-mode/LASYM cases
 are bounded without silently switching to diagnostic budgets.  Add
 ``--diagnostic-budgets`` only for bounded quick-look GPU diagnostics, and use
 ``--case-timeout-s 0`` only for an unbounded local diagnostic run.
+Timed-out sweep workers are started in a private process group when supported;
+the parent terminates that group, including solver or GPU descendant processes,
+before writing the timeout result.
 
 To recreate one row, restrict ``--policy`` and ``--problems``.  For example,
 this reruns the current README-best QA row:

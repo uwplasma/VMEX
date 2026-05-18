@@ -240,6 +240,12 @@ The comparison summary exposes exact optimizer phases separately:
 ``trial_solve_s``, and ``exact_solve_s``.  Use these fields before changing
 solver kernels: in recent GPU runs the dominant cost has been accepted-point
 tape/replay and tangent construction, not VMEC force assembly.
+The same tool also prints an "Exact optimizer patch targets" section that
+ignores enclosing timers such as ``jacobian_total`` and
+``exact_solve_with_tape_total``.  Treat that row as the next concrete profiling
+target when a total timer is largest; it points at leaf-like accepted-point
+work such as ``*_tape_replay``, ``exact_tape_build_unattributed``,
+``*_initial_vjp``, or ``*_residual_tangents``.
 
 QI Boozer/residual isolation:
 
