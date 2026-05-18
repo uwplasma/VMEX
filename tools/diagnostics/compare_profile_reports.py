@@ -143,6 +143,34 @@ BOTTLENECK_METRICS = (
     ("cache_time_s", "cache bookkeeping"),
 )
 
+EXACT_OPTIMIZER_PATCH_TARGET_NAMES = {
+    "exact_tape_build_unattributed",
+    "jacobian_tape_replay",
+    "gradient_tape_replay",
+    "state_tangent_tape_replay",
+    "b_cartesian_tangent_tape_replay",
+    "linear_operator_tape_vjp",
+    "jacobian_initial_tangents",
+    "gradient_initial_vjp",
+    "linear_operator_initial_vjp",
+    "jacobian_residual_tangents",
+    "gradient_residual_vjp",
+    "exact_unpack_cache",
+    "exact_tape_solver_compute_forces",
+    "exact_tape_solver_preconditioner",
+    "exact_tape_solver_update",
+    "exact_tape_solver_update_state",
+}
+
+EXACT_OPTIMIZER_CONTAINER_PROFILE_NAMES = {
+    "exact_solve_with_tape_total",
+    "solve_forward_trial_total",
+    "solve_forward_exact_total",
+    "gradient_total",
+    "jacobian_total",
+    "linear_operator_total",
+}
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -580,6 +608,54 @@ def _top_profile(
     return rows[: max(0, int(limit))]
 
 
+def _exact_optimizer_patch_target(
+    profile: dict[str, dict[str, float | int]],
+    *,
+    total_runtime_s: float | None,
+) -> dict[str, Any] | None:
+    """Pick the largest actionable exact-optimizer leaf timer.
+
+    The optimizer profile contains enclosing timers such as
+    ``exact_solve_with_tape_total`` and ``jacobian_total``.  Those are useful
+    for accounting but too broad for selecting the next patch target.
+    """
+
+    candidates: list[dict[str, Any]] = []
+    for name, rec in profile.items():
+        name_s = str(name)
+        if name_s in EXACT_OPTIMIZER_CONTAINER_PROFILE_NAMES or name_s.endswith("_total"):
+            continue
+        if name_s == "exact_tape_build":
+            # Prefer exact_tape_build_unattributed when present; it is the
+            # actionable remainder after named nested tape phases are exposed.
+            if "exact_tape_build_unattributed" in profile:
+                continue
+        elif name_s not in EXACT_OPTIMIZER_PATCH_TARGET_NAMES:
+            continue
+        wall = float(rec.get("wall_time_s", 0.0))
+        if wall <= 0.0:
+            continue
+        candidates.append(
+            {
+                "name": name_s,
+                "count": int(rec.get("count", 0)),
+                "wall_time_s": wall,
+                "mean_wall_time_s": float(rec.get("mean_wall_time_s", 0.0)),
+            }
+        )
+
+    if not candidates:
+        return None
+
+    target = max(candidates, key=lambda row: float(row["wall_time_s"]))
+    total = _as_float(total_runtime_s)
+    target["share_of_total"] = (
+        float(target["wall_time_s"]) / total if total is not None and total > 0.0 else None
+    )
+    target["note"] = "largest non-container exact optimizer timer; use as next patch target"
+    return target
+
+
 def _bottleneck_hint(metrics: dict[str, Any]) -> dict[str, Any] | None:
     total = _as_float(metrics.get("total_runtime_s"))
     candidates: list[tuple[str, str, float]] = []
@@ -688,6 +764,10 @@ def summarize_payload(
         "metadata": metadata,
         "metrics": metrics,
         "bottleneck_hint": _bottleneck_hint(metrics),
+        "exact_optimizer_patch_target": _exact_optimizer_patch_target(
+            profile,
+            total_runtime_s=_as_float(metrics.get("total_runtime_s")),
+        ),
         "top_profile": _top_profile(profile, limit=top_profile),
     }
 
@@ -880,6 +960,25 @@ def format_text(comparison: dict[str, Any]) -> str:
     if hints:
         lines.extend(["", "Bottleneck hints:"])
         lines.extend(hints)
+    patch_targets = []
+    for report in reports:
+        target = report.get("exact_optimizer_patch_target")
+        if not isinstance(target, dict):
+            continue
+        wall = _as_float(target.get("wall_time_s"))
+        share = _as_float(target.get("share_of_total"))
+        count = _as_int(target.get("count"))
+        mean = _as_float(target.get("mean_wall_time_s"))
+        wall_text = "n/a" if wall is None else f"{wall:.3f}s"
+        share_text = "" if share is None else f", {100.0 * share:.1f}% of total"
+        count_text = "" if count is None else f", count={count}"
+        mean_text = "" if mean is None else f", mean={mean:.3f}s"
+        patch_targets.append(
+            f"  {report['label']}: {target.get('name')} ({wall_text}{share_text}{count_text}{mean_text})"
+        )
+    if patch_targets:
+        lines.extend(["", "Exact optimizer patch targets:"])
+        lines.extend(patch_targets)
     return "\n".join(lines)
 
 

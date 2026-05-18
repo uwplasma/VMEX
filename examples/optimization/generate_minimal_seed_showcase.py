@@ -469,7 +469,7 @@ def _write_showcase_metadata(
             "amplitude": float(seed_amplitude),
             "seeded_input_file": None if seeded_input_file is None else str(seeded_input_file),
             "terms": [
-                {"family": name, "m": int(index[0]), "n": int(index[1]), "value": float(value)}
+                {"family": name, "n": int(index[0]), "m": int(index[1]), "value": float(value)}
                 for name, index, value in seed_terms
             ],
         },
