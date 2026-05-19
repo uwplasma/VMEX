@@ -136,11 +136,19 @@ def _short_history_label(label: str) -> str:
 def _history_segments(case: QICase) -> list[dict[str, np.ndarray | str | Path]]:
     segments: list[dict[str, np.ndarray | str | Path]] = []
     offset_s = 0.0
+    seen_history_payloads: set[str] = set()
     for path in _history_paths(case):
         history = _load_json(path)
         entries = history.get("history", [])
         if not entries:
             raise RuntimeError(f"Missing history entries in {path}")
+        # Some curated QI outputs keep a root history.json as a provenance
+        # alias for a named stage directory.  Skip byte-equivalent histories so
+        # README/docs plots do not double-count the same accepted points.
+        history_payload = json.dumps(entries, sort_keys=True, separators=(",", ":"))
+        if history_payload in seen_history_payloads:
+            continue
+        seen_history_payloads.add(history_payload)
         raw_time = np.asarray([float(item.get("wall_time_s", 0.0)) for item in entries], dtype=float)
         values = np.asarray([max(_history_value(item), 1.0e-16) for item in entries], dtype=float)
         keep = np.isfinite(raw_time) & np.isfinite(values)
