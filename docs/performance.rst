@@ -1416,8 +1416,11 @@ controller matches the executable behavior exactly.
 Latest serial bundled fixed-boundary reassessment (April 2026)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The current bundled fixed-boundary benchmark set uses NS=151 single-grid
-inputs (``examples_single_grid/data/``) and compares
+Historical note: this April 2026 accelerated-branch snapshot is retained to
+explain why the optimized controller exists, but it is not the current public
+VMEC2000 comparison.  Use the README-facing CSV/JSON in the previous section
+for current release claims.  This snapshot used NS=151 single-grid inputs
+(``examples_single_grid/data/``) and compared
 ``solver_mode="accelerated"`` warm runtimes against VMEC2000.
 Results are in ``outputs/bench_accel_20260413/summary.json``.
 
@@ -1708,8 +1711,8 @@ matrix:
 - ``up_down_asymmetric_tokamak``:
   ``24.58s`` baseline vs ``2.97s`` optimized.
 
-Representative warmed CPU VMEC2000-vs-``vmec_jax`` points from the final
-public runtime matrix:
+Representative warmed CPU VMEC2000-vs-``vmec_jax`` points from that historical
+readiness matrix:
 
 - ``solovev``: VMEC2000 ``0.61s`` vs ``vmec_jax`` ``0.09s``,
 - ``circular_tokamak_aspect_100``: ``2.99s`` vs ``0.59s``,
