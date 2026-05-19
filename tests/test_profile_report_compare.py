@@ -251,8 +251,10 @@ def test_profile_summary_extracts_scan_solver_buckets() -> None:
         solver_device="cpu",
     )
     report["profile"]["trial_solver_scan_total"] = {"count": 1, "wall_time_s": 2.0}
+    report["profile"]["trial_solver_scan_setup"] = {"count": 1, "wall_time_s": 0.04}
     report["profile"]["trial_solver_scan_initial_compute_forces"] = {"count": 1, "wall_time_s": 0.05}
     report["profile"]["trial_solver_scan_axis_reset_compute_forces"] = {"count": 1, "wall_time_s": 0.06}
+    report["profile"]["trial_solver_scan_run_setup"] = {"count": 1, "wall_time_s": 0.09}
     report["profile"]["trial_solver_scan_preflight"] = {"count": 1, "wall_time_s": 0.07}
     report["profile"]["trial_solver_scan_device_run"] = {"count": 1, "wall_time_s": 2.5}
     report["profile"]["trial_solver_scan_device_dispatch"] = {"count": 1, "wall_time_s": 0.4}
@@ -264,8 +266,10 @@ def test_profile_summary_extracts_scan_solver_buckets() -> None:
     summary = compare_tool.summarize_payload(report, label="cpu")
 
     assert summary["metrics"]["trial_solver_scan_total_s"] == 2.0
+    assert summary["metrics"]["trial_solver_scan_setup_s"] == 0.04
     assert summary["metrics"]["trial_solver_scan_initial_compute_forces_s"] == 0.05
     assert summary["metrics"]["trial_solver_scan_axis_reset_compute_forces_s"] == 0.06
+    assert summary["metrics"]["trial_solver_scan_run_setup_s"] == 0.09
     assert summary["metrics"]["trial_solver_scan_preflight_s"] == 0.07
     assert summary["metrics"]["trial_solver_scan_device_run_s"] == 2.5
     assert summary["metrics"]["trial_solver_scan_device_dispatch_s"] == 0.4

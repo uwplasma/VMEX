@@ -646,6 +646,56 @@ def _clear_optimizer_point_caches(opt) -> None:
     opt._last_jacobian_residual = None
 
 
+def _install_profile_timing_supplements(opt) -> None:
+    """Record new solver timing buckets while preserving older optimizer builds."""
+
+    original = opt._profile_solver_timing
+    supplemental_keys = (
+        ("scan_setup_s", "scan_setup"),
+        ("scan_run_setup_s", "scan_run_setup"),
+    )
+
+    def _profile_solver_timing_with_supplements(
+        diagnostics,
+        *,
+        profile_prefix: str,
+        phase_wall_s: float,
+        unattributed_name: str | None,
+    ) -> float:
+        before_counts = {
+            f"{profile_prefix}_{suffix}": int(
+                getattr(opt, "_profile", {}).get(f"{profile_prefix}_{suffix}", {}).get("count", 0)
+            )
+            for _key, suffix in supplemental_keys
+        }
+        solver_total = original(
+            diagnostics,
+            profile_prefix=profile_prefix,
+            phase_wall_s=phase_wall_s,
+            unattributed_name=unattributed_name,
+        )
+        if not isinstance(diagnostics, dict):
+            return solver_total
+        timing = diagnostics.get("timing")
+        if not isinstance(timing, dict):
+            return solver_total
+        for key, suffix in supplemental_keys:
+            if key not in timing:
+                continue
+            profile_name = f"{profile_prefix}_{suffix}"
+            after_count = int(getattr(opt, "_profile", {}).get(profile_name, {}).get("count", 0))
+            if after_count != before_counts[profile_name]:
+                continue
+            try:
+                value = float(timing.get(key, 0.0))
+            except Exception:
+                continue
+            opt._profile_add(profile_name, value)
+        return solver_total
+
+    opt._profile_solver_timing = _profile_solver_timing_with_supplements
+
+
 def main() -> int:
     args = _normalize_callback_args(_parse_args())
     if args.vmec_timing or args.vmec_timing_detail:
@@ -719,6 +769,7 @@ def main() -> int:
         trial_ftol=args.trial_ftol,
         solver_device=args.solver_device,
     )
+    _install_profile_timing_supplements(opt)
     if args.trial_use_scan:
         opt._trial_solver_kwargs["use_scan"] = True
     params0 = np.zeros(len(specs))

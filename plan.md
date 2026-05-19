@@ -1,8 +1,8 @@
 # VMEC-JAX Research-Grade Roadmap
 
-Last updated: 2026-05-17
+Last updated: 2026-05-19
 Primary branch: `main`
-Baseline release: `v0.0.9`
+Baseline release: `v0.0.10`
 
 This is the living execution plan for making `vmec_jax` accurate, fast,
 differentiable, documented, and usable by external researchers. Update it when
@@ -341,13 +341,15 @@ Acceptance:
 
 ## Progress Snapshot
 
-Updated 2026-05-17 after the bundled profile/current wout parity gates, QI
+Updated 2026-05-19 after the bundled profile/current wout parity gates, QI
 selection hardening, exact-Jacobian host-materialization cleanup,
 continuation/exact-history hardening, LASYM-Boozer parity, release-checklist
 push, 85% coverage-gate push, optional SIMSOPT/VMEC2000 gate expansion, the
 converged-wout parity matrix/benchmark pass, QI diagnostic/objective branch
-hardening, the exact-output/API/release hygiene push, and the custom QI seed
-audit documentation/regression gate:
+hardening, the exact-output/API/release hygiene push, the custom QI seed audit
+documentation/regression gate, the v0.0.10 release, scan-runner cache reuse
+across boundary trials, detailed scan-timing diagnostics, and reference-state
+wout roundtrip diagnostics:
 
 - Continuation correctness: 100%. Source fix is implemented and covered by
   synthetic repeated-stage tests, a real boundary-projection stage test, and
@@ -1216,3 +1218,8 @@ Defer beyond the current cycle:
   documentation, CPU/GPU non-scan fixed-boundary production policy, explicit
   finish-budget caps, QI README/docs coverage for the NFP2 and seed-3127 cases,
   expanded bounded VMEC2000 parity gates, and release/docs hygiene.
+- 2026-05-19: Released `v0.0.10`, refreshed docs/release notes for the PyPI
+  artifact, added converged-wout mode-hotspot and reference-state roundtrip
+  diagnostics, exposed scan-trial timing subphases, and changed the VMEC2000
+  scan-runner cache to reuse compiled scan loops across perturbed fixed-boundary
+  trial points by carrying boundary edge rows dynamically.

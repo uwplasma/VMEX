@@ -61,7 +61,7 @@ After pushing, verify the newest workflow run on ``main``:
 
 .. code-block:: bash
 
-   gh run list --repo uwplasma/vmec_jax --branch main --limit 5
+   gh run list --repo uwplasma/vmec_jax --branch main --workflow CI --limit 5
    gh run view RUN_ID --repo uwplasma/vmec_jax --json status,conclusion,jobs
 
 The required release baseline is:

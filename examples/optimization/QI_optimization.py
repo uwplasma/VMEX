@@ -1547,6 +1547,16 @@ if MIRROR_RAMP_STAGES:
             method="scipy_matrix_free",
             use_mode_continuation=False,
         )
+        write_qi_stage_checkpoint(
+            baseline_output_dir,
+            stage_index=0,
+            stage_name="boundary_reference_baseline",
+            stage_modes=(MAX_MODE,),
+            stage_result=accepted_result,
+            diagnostics={},
+            promotion={"qi_cleanup_promoted": True, "baseline": True, "diagnostics_pending": True},
+            role="boundary_reference_baseline_pre_diagnostics",
+        )
         accepted_seed_diagnostics = qi_diagnostics_for_result(
             accepted_result,
             mirror_threshold=MAX_MIRROR_RATIO,
@@ -1580,6 +1590,16 @@ if MIRROR_RAMP_STAGES:
             use_mode_continuation=bool(stage.get("use_mode_continuation", USE_MODE_CONTINUATION)),
             scalar_step_bound=stage.get("scalar_step_bound"),
             lbfgs_step_bound=stage.get("lbfgs_step_bound"),
+        )
+        write_qi_stage_checkpoint(
+            stage_output_dir,
+            stage_index=stage_index,
+            stage_name=stage_name,
+            stage_modes=stage_modes_i,
+            stage_result=stage_result,
+            diagnostics={},
+            promotion={"diagnostics_pending": True},
+            role="mirror_ramp_pre_diagnostics",
         )
         stage_mirror_threshold = float(stage.get("mirror_threshold", MAX_MIRROR_RATIO))
         stage_promotion_mirror_threshold = float(
@@ -1703,6 +1723,16 @@ else:
         max_nfev=MAX_NFEV,
         label=f"QI optimization (max_mode={MAX_MODE}, {'ESS' if USE_ESS else 'no ESS'})",
         save_final_outputs=False,
+    )
+    write_qi_stage_checkpoint(
+        OUTPUT_DIR,
+        stage_index=1,
+        stage_name="qi_optimization",
+        stage_modes=STAGE_MODES,
+        stage_result=result,
+        diagnostics={},
+        promotion={"diagnostics_pending": True},
+        role="stage_pre_diagnostics",
     )
 
 if result is None:

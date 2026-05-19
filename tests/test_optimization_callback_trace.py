@@ -354,7 +354,9 @@ def test_exact_optimizer_profiles_scan_solver_timing_buckets() -> None:
             "timing": {
                 "iterations": 4,
                 "scan_total_s": 0.55,
+                "scan_setup_s": 0.01,
                 "scan_preflight_s": 0.05,
+                "scan_run_setup_s": 0.02,
                 "scan_device_run_s": 0.40,
                 "scan_device_dispatch_s": 0.04,
                 "scan_device_ready_s": 0.36,
@@ -369,7 +371,9 @@ def test_exact_optimizer_profiles_scan_solver_timing_buckets() -> None:
     profile = opt._profile_dump()
 
     assert profile["trial_solver_scan_total"]["wall_time_s"] == 0.55
+    assert profile["trial_solver_scan_setup"]["wall_time_s"] == 0.01
     assert profile["trial_solver_scan_preflight"]["wall_time_s"] == 0.05
+    assert profile["trial_solver_scan_run_setup"]["wall_time_s"] == 0.02
     assert profile["trial_solver_scan_device_run"]["wall_time_s"] == 0.40
     assert profile["trial_solver_scan_device_dispatch"]["wall_time_s"] == 0.04
     assert profile["trial_solver_scan_device_ready"]["wall_time_s"] == 0.36
