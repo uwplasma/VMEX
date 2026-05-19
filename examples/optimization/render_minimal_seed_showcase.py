@@ -255,28 +255,43 @@ def _history_stage_segments(history: list[dict]) -> list[list[dict]]:
 def objective_segments(record: ShowcaseRecord) -> list[tuple[np.ndarray, np.ndarray]]:
     """Return monotone best-so-far objective segments for one record."""
 
-    history_path = record.output_dir / "history.json"
-    if not history_path.exists():
-        return []
-    try:
-        data = json.loads(history_path.read_text())
-    except json.JSONDecodeError:
+    stage_history_paths = sorted(record.output_dir.glob("*/history.json"))
+    history_paths = stage_history_paths or [record.output_dir / "history.json"]
+    if not any(path.exists() for path in history_paths):
         return []
     segments: list[tuple[np.ndarray, np.ndarray]] = []
-    for segment in _history_stage_segments(list(data.get("history", []))):
-        if not segment:
+    seen_history_payloads: set[str] = set()
+    offset_min = 0.0
+    for history_path in history_paths:
+        if not history_path.exists():
             continue
-        wall_min = np.asarray([float(item.get("wall_time_s", 0.0)) / 60.0 for item in segment], dtype=float)
-        values = np.asarray(
-            [max(float(item.get("objective", item.get("cost", np.nan))), 1.0e-16) for item in segment],
-            dtype=float,
-        )
-        finite = np.isfinite(wall_min) & np.isfinite(values)
-        if not finite.any():
+        try:
+            data = json.loads(history_path.read_text())
+        except json.JSONDecodeError:
             continue
-        wall_min = wall_min[finite]
-        values = values[finite]
-        segments.append((wall_min, np.minimum.accumulate(values)))
+        history = list(data.get("history", []))
+        history_payload = json.dumps(history, sort_keys=True, separators=(",", ":"))
+        if history_payload in seen_history_payloads:
+            continue
+        seen_history_payloads.add(history_payload)
+        for segment in _history_stage_segments(history):
+            if not segment:
+                continue
+            wall_min = np.asarray([float(item.get("wall_time_s", 0.0)) / 60.0 for item in segment], dtype=float)
+            values = np.asarray(
+                [max(float(item.get("objective", item.get("cost", np.nan))), 1.0e-16) for item in segment],
+                dtype=float,
+            )
+            finite = np.isfinite(wall_min) & np.isfinite(values)
+            if not finite.any():
+                continue
+            wall_min = wall_min[finite]
+            values = values[finite]
+            if np.any(np.diff(wall_min) < 0.0):
+                wall_min = wall_min - float(np.nanmin(wall_min))
+            wall_min = wall_min + offset_min
+            segments.append((wall_min, np.minimum.accumulate(values)))
+            offset_min = float(wall_min[-1])
     return segments
 
 
