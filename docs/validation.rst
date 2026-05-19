@@ -575,9 +575,15 @@ bounded rerun found worst relRMS ``bsupumns=3.77e-3``, below the nightly
 nightly gap is the zero-pressure, axisymmetric
 ``up_down_asymmetric_tokamak`` case: a 2026-05-19 rerun still showed
 ``lmns=1.78e-2`` relRMS, ``bsupumns=1.05e-2`` relRMS, and ``bsubvmns``
-``diff_rms=5.72e-4`` against a near-zero ``ref_rms=4.10e-5``.  The next
-diagnostic should compare the converged lambda solve state against VMEC2000
-before ``wrout`` synthesis, especially the ``m=1,3,4`` LASYM lambda channels.
+``diff_rms=5.72e-4`` against a near-zero ``ref_rms=4.10e-5``.  The
+``reference_state_roundtrip_rel_rms`` split from the converged-wout benchmark
+isolates this into two blockers: ``lmns`` roundtrips from the VMEC2000 state at
+``8.04e-17`` relRMS, so the lambda gap is solved-state convergence, while
+``bsubvmns`` already differs at ``1.20e1`` relRMS in the reference-state
+roundtrip, so the sine covariant-channel gap is in ``wrout`` reconstruction or
+postprocessing.  The ``mode_hotspots`` diagnostic keeps the lambda work focused
+on the ``m=1,3,4`` LASYM channels and the near-zero ``bsubvmns`` comparison on
+absolute error.
 
 Optional SIMSOPT formula parity is similarly guarded and targeted:
 
