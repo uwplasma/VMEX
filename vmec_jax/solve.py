@@ -7319,8 +7319,10 @@ def solve_fixed_boundary_residual_iter(
         scan_timing_env = os.getenv("VMEC_JAX_TIMING", "").strip().lower()
         scan_timing_enabled = scan_timing_env not in ("", "0", "false", "no")
         scan_timing_stats = {
+            "scan_setup_s": 0.0,
             "scan_initial_compute_forces_s": 0.0,
             "scan_axis_reset_compute_forces_s": 0.0,
+            "scan_run_setup_s": 0.0,
             "scan_preflight_s": 0.0,
             "scan_device_run_s": 0.0,
             "scan_device_dispatch_s": 0.0,
@@ -7785,6 +7787,8 @@ def solve_fixed_boundary_residual_iter(
         else:
             jit_forces_scan = scan_jit_env.strip().lower() not in ("", "0", "false", "no")
         _compute_forces_scan = _compute_forces if jit_forces_scan else _compute_forces_impl
+        if scan_timing_enabled and scan_total_start is not None:
+            scan_timing_stats["scan_setup_s"] += time.perf_counter() - float(scan_total_start)
         t_scan_initial_force = time.perf_counter() if scan_timing_enabled else None
         with _maybe_trace("scan/compute_forces:init"):
             with _maybe_trace("scan/compute_forces:init"):
@@ -7929,6 +7933,7 @@ def solve_fixed_boundary_residual_iter(
                 )
         # Axis reset handled before scan; avoid per-iteration callbacks.
         axis_reset_enabled = False
+        scan_run_setup_start = time.perf_counter() if scan_timing_enabled else None
         cache_valid0 = jnp.asarray(False)
         if constraint_tcon0 is None or float(constraint_tcon0) == 0.0:
             cache_precond_diag0 = zero_precond_diag
@@ -9865,6 +9870,8 @@ def solve_fixed_boundary_residual_iter(
                     return True
             return False
 
+        if scan_timing_enabled and scan_run_setup_start is not None:
+            scan_timing_stats["scan_run_setup_s"] += time.perf_counter() - float(scan_run_setup_start)
         carry_init = carry0._replace(state=state_init, state_checkpoint=state_init)
         if chunked_print:
             hist_parts = []
