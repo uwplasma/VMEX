@@ -570,6 +570,7 @@ def _worker(
     use_ess: bool,
     budget_dict: dict,
     target_helicity_seed_amplitude: float,
+    reference_preseed_blend: float | None,
     case_timeout_s: float | None,
 ) -> None:
     output_dir = Path(output_dir_str)
@@ -596,6 +597,7 @@ def _worker(
                 use_ess,
                 budget_dict,
                 target_helicity_seed_amplitude,
+                reference_preseed_blend,
                 case_timeout_s,
             )
 
@@ -666,9 +668,12 @@ def _worker_impl(
     use_ess: bool,
     budget_dict: dict,
     target_helicity_seed_amplitude: float,
+    reference_preseed_blend: float | None,
     case_timeout_s: float | None,
 ) -> None:
     case = SHOWCASE_CASES[case_name]
+    if reference_preseed_blend is not None and case.reference_preseed_input is not None:
+        case = replace(case, reference_preseed_blend=float(reference_preseed_blend))
     budget = MinimalSeedBudget(**budget_dict)
     reference_preseeded_input_file: Path | None = None
     reference_preseed_changes: list[dict[str, Any]] = []
@@ -789,6 +794,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--trial-ftol", type=float, default=1e-9)
     parser.add_argument("--case-timeout-s", type=float, default=600.0)
     parser.add_argument(
+        "--reference-preseed-blend",
+        type=float,
+        default=None,
+        help="Override the same-NFP reference-preseed blend for cases that use one.",
+    )
+    parser.add_argument(
         "--target-helicity-seed-amplitude",
         type=float,
         default=TARGET_HELICITY_SEED_AMPLITUDE,
@@ -822,6 +833,9 @@ def main() -> None:
     results: list[sweep.CaseResult] = []
     for case_name in case_names:
         case = SHOWCASE_CASES[case_name]
+        reference_preseed_blend = None if args.reference_preseed_blend is None else float(args.reference_preseed_blend)
+        if reference_preseed_blend is not None and case.reference_preseed_input is not None:
+            case = replace(case, reference_preseed_blend=reference_preseed_blend)
         output_dir = _case_output_dir(
             output_root,
             case=case,
@@ -858,6 +872,7 @@ def main() -> None:
                     use_ess,
                     asdict(budget),
                     float(args.target_helicity_seed_amplitude),
+                    reference_preseed_blend,
                     case_timeout_s,
                 ),
             )
