@@ -87,8 +87,8 @@ pass `solver_device="cpu"` / `solver_device="gpu"` explicitly.
 Editable optimization examples live in `examples/optimization/`. Start with
 `examples/optimization/README.md` for workflow anatomy, then use
 `docs/optimization.rst` for the full method guide and
-`docs/optimization_sweep_results.rst` for generated sweep tables, figures, and
-reproduction commands.
+`docs/optimization_sweep_results.rst` for generated sweep tables, figures,
+minimal-seed stress coverage, QI robustness notes, and reproduction commands.
 
 The panels below show the current stellarator-symmetric examples used for the
 README: initial LCFS, final LCFS, objective history, and initial/final Boozer
@@ -119,36 +119,19 @@ tables live in the docs.
   <img src="docs/_static/figures/readme_best_optimization_qi.png" width="980" />
 </p>
 
-Recreate the four best-result panels:
-
-```bash
-PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa --modes 3 --ess on --rerun
-PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qh --modes 3 --ess on --rerun
-PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qp --modes 3 --ess off --rerun
-PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qi --modes 3 --ess on --qi-qp-preseed off --rerun
-PYTHONPATH=. python examples/optimization/render_readme_best_optimizations.py
-```
+Reproduction commands for these panels live in
+`docs/optimization_sweep_results.rst`.
 
 Seed-robust QI coverage is tracked separately below. Common minimal-seed
-stress tests live in the docs and are intentionally failure-revealing; inspect
-their generated `status`, `success`, `crashed`, and diagnostic columns before
-using them as promotion evidence.
+stress tests are documented in `docs/optimization.rst` and are intentionally
+failure-revealing.
 
 <p align="center">
   <img src="docs/_static/figures/readme_qi_optimization_cases.png" width="980" />
 </p>
 
-Recreate the QI coverage panel:
-
-```bash
-PYTHONPATH=. JAX_PLATFORMS=cpu VMEC_JAX_QI_RUN_CASE=nfp2_qi \
-  VMEC_JAX_QI_OUTPUT_DIR=results/qi_opt/ess/nfp2_qi \
-  python examples/optimization/QI_optimization.py
-PYTHONPATH=. JAX_PLATFORMS=cpu VMEC_JAX_QI_RUN_CASE=qi_stel_seed_3127 \
-  VMEC_JAX_QI_OUTPUT_DIR=results/qi_opt/ess/qi_stel_seed_3127_current_public_final \
-  python examples/optimization/QI_optimization.py
-PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
-```
+Reproduction commands for the QI coverage panel live in
+`docs/optimization_sweep_results.rst`.
 
 ## Performance, Validation, Release
 
@@ -156,7 +139,7 @@ PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
 - Validation and VMEC2000 parity status: `docs/validation.rst`
 - Testing and coverage strategy: `docs/testing_strategy.rst`
 - Release checklist and CI gates: `docs/release_checklist.rst`
-- Latest release: [`v0.0.10`](https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.10)
+- Latest published release: [`v0.0.10`](https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.10)
 
 ## CLI Reference
 
