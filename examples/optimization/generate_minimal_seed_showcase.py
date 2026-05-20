@@ -11,6 +11,7 @@ for each field period count:
 This script maps that seed family to the requested targets:
 
 - QI with NFP=1, 2, 3, and a finite-beta NFP=4 reference lane
+- an NFP=1 circular-torus QI stress lane
 - QA with NFP=2
 - QH with NFP=4
 - QP with NFP=2
@@ -26,7 +27,7 @@ Examples:
   # One quick representative case.
   python examples/optimization/generate_minimal_seed_showcase.py --cases qa_nfp2 --max-nfev 2 --continuation-nfev 2
 
-  # Full six-case README lane on CPU.
+  # Full minimal/circular README lane on CPU.
   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_minimal_seed_showcase.py \\
     --cases all --backend-label cpu --solver-device cpu --worker-jax-platforms cpu \\
     --policy continuation --max-mode 3 --ess on \\
@@ -95,7 +96,7 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         input_file=DATA_DIR / "input.minimal_seed_nfp1",
         qi_qp_preseed=False,
         qi_jit_booz=True,
-        qi_policy_case="nfp1_qi",
+        qi_policy_case="minimal_nfp1_qi",
         qi_reference_input=DATA_DIR / "input.nfp1_QI",
     ),
     "qi_nfp2": MinimalSeedCase(
@@ -105,7 +106,7 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         input_file=DATA_DIR / "input.minimal_seed_nfp2",
         qi_qp_preseed=False,
         qi_jit_booz=True,
-        qi_policy_case="nfp2_qi",
+        qi_policy_case="minimal_nfp2_qi",
         qi_reference_input=DATA_DIR / "input.nfp2_QI",
     ),
     "qi_nfp3": MinimalSeedCase(
@@ -115,7 +116,7 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         input_file=DATA_DIR / "input.minimal_seed_nfp3",
         qi_qp_preseed=False,
         qi_jit_booz=True,
-        qi_policy_case="qi_stel_seed_3127",
+        qi_policy_case="minimal_nfp3_qi",
         qi_reference_input=DATA_DIR / "input.nfp3_QI_fixed_resolution_final",
     ),
     "qi_nfp4": MinimalSeedCase(
@@ -125,8 +126,18 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         input_file=DATA_DIR / "input.minimal_seed_nfp4",
         qi_qp_preseed=False,
         qi_jit_booz=True,
-        qi_policy_case="nfp4_qi_finite_beta",
+        qi_policy_case="minimal_nfp4_qi",
         qi_reference_input=DATA_DIR / "input.nfp4_QI_finite_beta",
+    ),
+    "qi_circular_nfp1": MinimalSeedCase(
+        name="qi_circular_nfp1",
+        problem="qi",
+        nfp=1,
+        input_file=DATA_DIR / "input.circular_tokamak",
+        qi_qp_preseed=False,
+        qi_jit_booz=True,
+        qi_policy_case="circular_nfp1_qi",
+        qi_reference_input=DATA_DIR / "input.nfp1_QI",
     ),
     "qa_nfp2": MinimalSeedCase(
         name="qa_nfp2",
@@ -152,7 +163,16 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
     ),
 }
 
-DEFAULT_CASE_ORDER = ("qi_nfp1", "qi_nfp2", "qi_nfp3", "qi_nfp4", "qa_nfp2", "qh_nfp4", "qp_nfp2")
+DEFAULT_CASE_ORDER = (
+    "qi_circular_nfp1",
+    "qi_nfp1",
+    "qi_nfp2",
+    "qi_nfp3",
+    "qi_nfp4",
+    "qa_nfp2",
+    "qh_nfp4",
+    "qp_nfp2",
+)
 
 PHYSICS_IOTA_FLOOR = 0.35
 PHYSICS_QA_IOTA_TARGET = 0.42
@@ -595,7 +615,7 @@ def _worker(
 
     # Keep per-case logs even if the worker dies before writing case_result.json.
     # This is especially useful for JAX/XLA crashes, OOM kills, and timeout
-    # diagnostics in the full six-case production run.
+    # diagnostics in the full production run.
     stdout_path = output_dir / "worker_stdout.log"
     stderr_path = output_dir / "worker_stderr.log"
     with stdout_path.open("a", buffering=1) as stdout, stderr_path.open("a", buffering=1) as stderr:
