@@ -423,6 +423,15 @@ QI_CASES = {
     # },
 }
 
+# Public convenience alias: the reviewed NFP=3 robustness lane is the
+# ``input.QI_stel_seed_3127`` seed with same-NFP reference-family
+# preconditioning.  Keep the historical descriptive case name, but also expose a
+# symmetric ``nfp3_qi`` selector for README/docs workflows.
+QI_CASES["nfp3_qi"] = {
+    **QI_CASES["qi_stel_seed_3127"],
+    "case_goal": "NFP=3 far-seed QI robustness lane",
+}
+
 RUN_CASE_DEFAULT = "nfp2_qi"
 
 
