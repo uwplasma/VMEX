@@ -124,6 +124,92 @@ def test_qi_diagnostics_fail_on_error_raises_and_records_mirror_subset_error(mon
         )
 
 
+def test_qi_diagnostics_from_boozer_output_records_fast_error_and_resolution_edges(monkeypatch):
+    import vmec_jax.qi_diagnostics as qid
+
+    mirror_calls = []
+
+    def fail_smooth(*_args, **_kwargs):
+        raise RuntimeError("smooth unavailable")
+
+    def fake_mirror(booz_arg, **kwargs):
+        mirror_calls.append((booz_arg, kwargs))
+        return {"mirror_ratio": np.asarray([], dtype=float)}
+
+    monkeypatch.setattr(qid, "quasi_isodynamic_residual_from_boozer_output", fail_smooth)
+    monkeypatch.setattr(qid, "mirror_ratio_penalty_from_boozer_output", fake_mirror)
+
+    unnormalized = qid.qi_diagnostics_from_boozer_output(
+        {
+            "bmnc_b": np.asarray([[1.0, 0.1]], dtype=float),
+            "ixm_b": np.asarray([], dtype=float),
+            "ixn_b": np.asarray([0.0, 3.0], dtype=float),
+        },
+        nfp=2,
+        options=qid.QIDiagnosticOptions(include_legacy=False),
+    )
+
+    assert unnormalized["qi_nfp"] == 2
+    assert unnormalized["qi_mboz"] is None
+    assert unnormalized["qi_nboz"] == 3
+    assert unnormalized["qi_smooth_total"] is None
+    assert unnormalized["qi_smooth_error"] == "RuntimeError: smooth unavailable"
+    assert unnormalized["qi_mirror_ratio_by_surface"] == []
+    assert unnormalized["qi_mirror_ratio_max"] is None
+    assert unnormalized["qi_mirror_excess_max"] is None
+
+    missing_nfp = qid.qi_diagnostics_from_boozer_output(
+        {
+            "bmnc_b": np.asarray([[1.0, 0.1]], dtype=float),
+            "ixm_b": np.asarray([0.0, 2.0], dtype=float),
+            "ixn_b": np.asarray([0.0, 4.0], dtype=float),
+        },
+        options=qid.QIDiagnosticOptions(include_legacy=False),
+    )
+
+    assert missing_nfp["qi_nfp"] is None
+    assert missing_nfp["qi_mboz"] == 2
+    assert missing_nfp["qi_nboz"] == 4
+
+
+def test_qi_diagnostics_negative_surface_subset_preserves_mismatched_weights(monkeypatch):
+    import vmec_jax.qi_diagnostics as qid
+
+    calls = {}
+
+    def fake_smooth(*_args, **_kwargs):
+        return {"total": np.asarray(0.0)}
+
+    def fake_mirror(booz_arg, **kwargs):
+        calls["booz"] = booz_arg
+        calls["kwargs"] = kwargs
+        return {"mirror_ratio": np.asarray([0.19])}
+
+    monkeypatch.setattr(qid, "quasi_isodynamic_residual_from_boozer_output", fake_smooth)
+    monkeypatch.setattr(qid, "mirror_ratio_penalty_from_boozer_output", fake_mirror)
+
+    record = qid.qi_diagnostics_from_boozer_output(
+        {
+            "bmnc_b": np.asarray([[1.0, 0.1], [1.1, 0.2]], dtype=float),
+            "ixm_b": np.asarray([0.0, 1.0], dtype=float),
+            "ixn_b": np.asarray([0.0, 2.0], dtype=float),
+            "nfp_b": np.asarray([2]),
+        },
+        weights=[7.0],
+        options=qid.QIDiagnosticOptions(
+            include_legacy=False,
+            mirror_surface_index=-1,
+            mirror_threshold=0.21,
+        ),
+    )
+
+    np.testing.assert_allclose(calls["booz"]["bmnc_b"], [[1.1, 0.2]])
+    assert calls["kwargs"]["weights"] == [7.0]
+    assert record["qi_mirror_surface_index"] == -1
+    assert record["qi_mirror_ratio_max"] == pytest.approx(0.19)
+    assert record["qi_mirror_excess_max"] == 0.0
+
+
 def test_qi_diagnostics_from_state_wraps_existing_components_without_solves(monkeypatch):
     import vmec_jax.qi_diagnostics as qid
 
@@ -710,6 +796,43 @@ def test_qi_cleanup_candidate_can_require_engineering_gate():
     assert record["qi_seed_gate_passed"] is True
     assert record["qi_cleanup_promoted"] is False
     assert record["qi_cleanup_rejection_reasons"] == ["QI engineering gate failed (mirror)"]
+
+
+def test_qi_cleanup_candidate_reports_missing_mirror_inputs_without_rejecting_qi_core():
+    from vmec_jax.qi_diagnostics import QISeedSuitabilityTargets, qi_cleanup_candidate_promotable
+
+    targets = QISeedSuitabilityTargets(
+        smooth_qi_max=2.0e-3,
+        legacy_qi_max=1.0e-3,
+        target_aspect=5.0,
+        abs_iota_min=0.41,
+        mirror_ratio_max=None,
+        max_elongation=8.0,
+    )
+    seed_safe = {
+        "qi_smooth_total": 1.0e-3,
+        "qi_legacy_total": 5.0e-4,
+        "qi_max_elongation": 7.0,
+        "aspect": 5.1,
+        "mean_iota": -0.45,
+    }
+
+    missing_candidate = qi_cleanup_candidate_promotable(
+        seed_safe,
+        reference={"qi_mirror_ratio_max": 0.24},
+        targets=targets,
+    )
+    missing_reference = qi_cleanup_candidate_promotable(
+        {**seed_safe, "qi_mirror_ratio_max": 0.18},
+        reference={},
+        targets=targets,
+    )
+
+    assert missing_candidate["qi_seed_gate_passed"] is True
+    assert missing_candidate["qi_cleanup_candidate_mirror"] is None
+    assert missing_candidate["qi_cleanup_rejection_reasons"] == ["candidate mirror ratio is unavailable"]
+    assert missing_reference["qi_cleanup_reference_mirror"] is None
+    assert missing_reference["qi_cleanup_rejection_reasons"] == ["reference mirror ratio is unavailable"]
 
 
 def test_qi_seed_ranking_tracks_legacy_goodman_order_on_synthetic_modes():

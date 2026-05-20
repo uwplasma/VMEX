@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
+from vmec_jax.config import load_config
 from vmec_jax.plotting import (
     _best_so_far_stage_segments,
     _default_example_outdir,
@@ -15,6 +18,8 @@ from vmec_jax.plotting import (
     _mode_table_from_wout,
     _objective_iota_series,
     axis_rz_from_wout_physical,
+    bmag_from_state_physical,
+    bmag_from_state_vmec_realspace,
     bmag_from_wout_physical,
     bsub_from_wout,
     bsup_from_wout,
@@ -25,6 +30,30 @@ from vmec_jax.plotting import (
     surface_rz_from_wout_physical,
     vmecplot2_bmag_grid,
 )
+from vmec_jax.static import build_static
+from vmec_jax.wout import read_wout, state_from_wout
+
+
+def _data_dir() -> Path:
+    return Path(__file__).resolve().parents[1] / "examples" / "data"
+
+
+def _small_circular_state_static():
+    data_dir = _data_dir()
+    cfg, indata = load_config(data_dir / "input.circular_tokamak")
+    wout = read_wout(data_dir / "wout_circular_tokamak.nc")
+    cfg = replace(
+        cfg,
+        ns=int(wout.ns),
+        mpol=int(wout.mpol),
+        ntor=int(wout.ntor),
+        nfp=int(wout.nfp),
+        lasym=bool(wout.lasym),
+        lthreed=bool(int(wout.ntor) > 0),
+        ntheta=8,
+        nzeta=1,
+    )
+    return state_from_wout(wout), build_static(cfg), indata, wout
 
 
 def test_surface_rz_from_wout_respects_lasym_geometry_parity() -> None:
@@ -184,6 +213,77 @@ def test_vmecplot2_and_axis_fallback_defaults() -> None:
     np.testing.assert_allclose(Z_axis, [0.0, 0.0])
     assert _default_example_outdir("subdir", "case", None).parts[-4:] == ("examples", "outputs", "subdir", "case")
     assert _is_tracer(object()) is False
+
+
+def test_bmag_from_state_paths_require_flux_source_and_return_positive_fields() -> None:
+    pytest.importorskip("jax")
+    pytest.importorskip("netCDF4")
+    state, static, indata, wout = _small_circular_state_static()
+
+    theta = np.asarray(static.grid.theta, dtype=float)
+    phi = np.asarray(static.grid.zeta, dtype=float) / float(static.cfg.nfp)
+    s_index = int(wout.ns) - 1
+
+    with pytest.raises(ValueError, match="indata must be provided"):
+        bmag_from_state_physical(
+            state,
+            static,
+            theta=theta,
+            phi=phi,
+            s_index=s_index,
+            signgs=int(wout.signgs),
+        )
+    with pytest.raises(ValueError, match="indata must be provided"):
+        bmag_from_state_vmec_realspace(
+            state,
+            static,
+            s_index=s_index,
+            signgs=int(wout.signgs),
+        )
+
+    b_from_indata = bmag_from_state_physical(
+        state,
+        static,
+        indata,
+        theta=theta,
+        phi=phi,
+        s_index=s_index,
+        signgs=int(wout.signgs),
+    )
+    b_with_explicit_flux = bmag_from_state_physical(
+        state,
+        static,
+        theta=theta,
+        phi=phi,
+        s_index=s_index,
+        signgs=int(wout.signgs),
+        phipf=np.asarray(wout.phipf),
+        chipf=np.asarray(wout.chipf),
+        lamscale=float(getattr(wout, "lamscale", 1.0)),
+        flux_is_internal=True,
+        sqrtg_floor=1.0e-12,
+        bmag_floor=1.0e-30,
+    )
+    b_vmec_realspace = bmag_from_state_vmec_realspace(
+        state,
+        static,
+        s_index=s_index,
+        signgs=int(wout.signgs),
+        phipf=np.asarray(wout.phipf),
+        chipf=np.asarray(wout.chipf),
+        lamscale=float(getattr(wout, "lamscale", 1.0)),
+        flux_is_internal=True,
+        sqrtg_floor=1.0e-12,
+    )
+
+    assert b_from_indata.shape == (theta.size, phi.size)
+    assert b_with_explicit_flux.shape == b_from_indata.shape
+    assert b_vmec_realspace.ndim == 2
+    assert np.all(np.isfinite(b_from_indata))
+    assert np.all(np.isfinite(b_with_explicit_flux))
+    assert np.all(np.isfinite(b_vmec_realspace))
+    assert float(np.min(b_from_indata)) > 0.0
+    assert float(np.min(b_vmec_realspace)) > 0.0
 
 
 def test_plot_wrappers_default_outdir_without_rendering(monkeypatch, tmp_path) -> None:

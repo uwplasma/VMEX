@@ -1,0 +1,172 @@
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from vmec_jax._compat import enable_x64
+from vmec_jax.booz_input import booz_xform_inputs_from_state
+from vmec_jax.config import load_config
+from vmec_jax.finite_beta import magnetic_well_from_vp
+from vmec_jax.profiles import eval_profiles
+from vmec_jax.static import build_static
+from vmec_jax.wout import read_wout, state_from_wout
+
+
+def _data_dir() -> Path:
+    return Path(__file__).resolve().parents[1] / "examples" / "data"
+
+
+def _full_and_half_mesh(ns: int) -> tuple[np.ndarray, np.ndarray]:
+    s_full = np.linspace(0.0, 1.0, int(ns))
+    if int(ns) < 2:
+        return s_full, s_full
+    return s_full, np.concatenate([s_full[:1], 0.5 * (s_full[1:] + s_full[:-1])])
+
+
+@pytest.mark.parametrize(
+    ("case_name", "input_name", "wout_name"),
+    (
+        ("circular", "input.circular_tokamak", "wout_circular_tokamak.nc"),
+        ("finite_beta_axisym", "input.shaped_tokamak_pressure", "wout_shaped_tokamak_pressure.nc"),
+    ),
+)
+def test_small_wout_profile_jxbforce_mercier_and_finite_beta_gates(
+    case_name: str,
+    input_name: str,
+    wout_name: str,
+) -> None:
+    """Small bundled fixtures should satisfy coupled profile/B/J/Mercier gates."""
+    pytest.importorskip("netCDF4")
+
+    _cfg, indata = load_config(str(_data_dir() / input_name))
+    wout = read_wout(_data_dir() / wout_name)
+    s_full, s_half = _full_and_half_mesh(int(wout.ns))
+
+    profiles_full = eval_profiles(indata, s_full)
+    profiles_half = eval_profiles(indata, s_half)
+    np.testing.assert_allclose(
+        np.asarray(profiles_full["pressure"]),
+        np.asarray(wout.presf),
+        rtol=1.0e-13,
+        atol=1.0e-14,
+        err_msg=case_name,
+    )
+    np.testing.assert_allclose(
+        np.asarray(profiles_half["pressure"])[1:],
+        np.asarray(wout.pres)[1:],
+        rtol=1.0e-13,
+        atol=1.0e-14,
+        err_msg=case_name,
+    )
+    assert float(wout.pres[0]) == 0.0
+
+    dmerc_parts = (
+        np.asarray(wout.Dshear)
+        + np.asarray(wout.Dcurr)
+        + np.asarray(wout.Dwell)
+        + np.asarray(wout.Dgeod)
+    )
+    np.testing.assert_allclose(
+        np.asarray(wout.DMerc),
+        dmerc_parts,
+        rtol=0.0,
+        atol=0.0,
+        err_msg=case_name,
+    )
+
+    bdotgradv = np.zeros(int(wout.ns), dtype=float)
+    bdotgradv[1:-1] = (
+        float(wout.signgs)
+        * (np.asarray(wout.phips)[1:-1] + np.asarray(wout.phips)[2:])
+        / (np.asarray(wout.vp)[1:-1] + np.asarray(wout.vp)[2:])
+    )
+    bdotgradv[0] = 2.0 * bdotgradv[1] - bdotgradv[2]
+    bdotgradv[-1] = 2.0 * bdotgradv[-2] - bdotgradv[-3]
+    np.testing.assert_allclose(np.asarray(wout.bdotgradv), bdotgradv, rtol=1.0e-13, atol=1.0e-13)
+
+    for name in ("bmnc", "jdotb", "bdotb", "bdotgradv", "DMerc"):
+        values = np.asarray(getattr(wout, name), dtype=float)
+        assert np.all(np.isfinite(values)), f"{case_name}.{name}"
+        assert np.any(np.abs(values[1:-1]) > 0.0), f"{case_name}.{name}"
+
+    dvol = np.abs(np.asarray(wout.vp, dtype=float))[1:]
+    well_expected = (1.5 * dvol[0] - 0.5 * dvol[1] - (1.5 * dvol[-1] - 0.5 * dvol[-2])) / (
+        1.5 * dvol[0] - 0.5 * dvol[1]
+    )
+    np.testing.assert_allclose(
+        np.asarray(magnetic_well_from_vp(wout.vp)),
+        well_expected,
+        rtol=1.0e-13,
+        atol=1.0e-13,
+    )
+
+
+def test_circular_fixture_boozer_inputs_preserve_wout_spectral_conventions() -> None:
+    """Boozer input helpers should preserve fixture mode order and B spectra."""
+    pytest.importorskip("jax")
+    pytest.importorskip("netCDF4")
+    enable_x64(True)
+
+    cfg, indata = load_config(str(_data_dir() / "input.circular_tokamak"))
+    wout = read_wout(_data_dir() / "wout_circular_tokamak.nc")
+    cfg = replace(
+        cfg,
+        ns=int(wout.ns),
+        mpol=int(wout.mpol),
+        ntor=int(wout.ntor),
+        nfp=int(wout.nfp),
+        lasym=bool(wout.lasym),
+        lthreed=bool(int(wout.ntor) > 0),
+        ntheta=2 * int(wout.mpol) + 6,
+        nzeta=1 if int(wout.ntor) == 0 else 2 * int(wout.ntor) + 4,
+    )
+    static = build_static(cfg)
+
+    inputs = booz_xform_inputs_from_state(
+        state=state_from_wout(wout),
+        static=static,
+        indata=indata,
+        signgs=int(wout.signgs),
+        use_nyq_from_grid=False,
+    )
+
+    np.testing.assert_array_equal(np.asarray(inputs.xm), np.asarray(wout.xm))
+    np.testing.assert_array_equal(np.asarray(inputs.xn), np.asarray(wout.xn))
+    np.testing.assert_array_equal(np.asarray(inputs.xm_nyq), np.asarray(wout.xm_nyq))
+    np.testing.assert_array_equal(np.asarray(inputs.xn_nyq), np.asarray(wout.xn_nyq))
+    np.testing.assert_allclose(
+        np.asarray(inputs.iota),
+        np.asarray(wout.iotas)[1:],
+        rtol=5.0e-13,
+        atol=5.0e-13,
+    )
+    np.testing.assert_allclose(
+        np.asarray(inputs.lmns),
+        np.asarray(wout.lmns)[1:],
+        rtol=5.0e-13,
+        atol=5.0e-13,
+    )
+
+    assert inputs.rmns is None
+    assert inputs.zmnc is None
+    assert inputs.lmnc is None
+    assert inputs.bmns is None
+    assert inputs.bsubumns is None
+    assert inputs.bsubvmns is None
+
+    np.testing.assert_allclose(np.asarray(inputs.bmnc), np.asarray(wout.bmnc)[1:], rtol=3.0e-9, atol=5.0e-8)
+    np.testing.assert_allclose(
+        np.asarray(inputs.bsubumnc),
+        np.asarray(wout.bsubumnc)[1:],
+        rtol=5.0e-13,
+        atol=1.0e-13,
+    )
+    np.testing.assert_allclose(
+        np.asarray(inputs.bsubvmnc),
+        np.asarray(wout.bsubvmnc)[1:],
+        rtol=3.0e-5,
+        atol=1.0e-3,
+    )

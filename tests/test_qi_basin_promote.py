@@ -148,6 +148,80 @@ def test_should_continue_after_stage_allows_qi_preserve_failures_only() -> None:
     )
 
 
+def test_qi_example_stage_promotion_allows_guarded_iota_gain() -> None:
+    import examples.optimization.qi_optimization_support as support
+
+    support.configure(
+        {
+            "QI_GATE_SMOOTH_MAX": 2.0e-3,
+            "QI_GATE_LEGACY_MAX": 1.0e-3,
+        }
+    )
+    stage = {
+        "accept_if_iota_improves": True,
+        "iota_improvement_min": 0.05,
+        "qi_relax_for_iota": 2.0,
+    }
+    reference = {
+        "mean_iota": -0.42,
+        "qi_smooth_total": 1.0e-3,
+        "qi_legacy_total": 5.0e-4,
+    }
+    promotion = {
+        "mean_iota": -0.50,
+        "qi_smooth_total": 1.5e-3,
+        "qi_legacy_total": 7.0e-4,
+        "qi_cleanup_promoted": False,
+        "qi_cleanup_rejection_reasons": ["mirror ratio did not improve"],
+    }
+
+    out = support.stage_promotes_candidate(stage, promotion, reference)
+
+    assert out["qi_cleanup_promoted"] is True
+    assert out["qi_cleanup_rejection_reasons"] == []
+    assert "iota increased" in out["qi_iota_promotion_reason"]
+
+
+def test_qi_example_stage_promotion_reports_rank_and_engineering_regressions() -> None:
+    import examples.optimization.qi_optimization_support as support
+
+    support.configure(
+        {
+            "QI_GATE_SMOOTH_MAX": 2.0e-3,
+            "QI_GATE_LEGACY_MAX": 1.0e-3,
+        }
+    )
+    stage = {
+        "accept_if_rank_improves": True,
+        "accept_if_engineering_score_improves": True,
+        "mirror_improvement_min": 0.03,
+    }
+    reference = {
+        "qi_seed_gate_passed": True,
+        "qi_engineering_gate_passed": True,
+        "qi_rank_score": 1.0,
+        "qi_constraint_score": 1.0,
+        "qi_mirror_ratio_max": 0.20,
+    }
+    promotion = {
+        "qi_seed_gate_passed": True,
+        "qi_engineering_gate_passed": True,
+        "qi_rank_score": 1.2,
+        "qi_constraint_score": 1.0,
+        "qi_mirror_ratio_max": 0.19,
+        "qi_cleanup_promoted": True,
+        "qi_cleanup_rejection_reasons": [],
+    }
+
+    out = support.stage_promotes_candidate(stage, promotion, reference)
+
+    assert out["qi_cleanup_promoted"] is False
+    reasons = "\n".join(out["qi_cleanup_rejection_reasons"])
+    assert "rank score did not improve" in reasons
+    assert "engineering score did not improve" in reasons
+    assert "mirror ratio did not improve enough" in reasons
+
+
 def test_cli_requires_candidate_inputs(tmp_path: Path) -> None:
     candidates_file = tmp_path / "top_candidates.json"
     candidates_file.write_text(json.dumps([{"rank": 1, "label": "no-input"}]) + "\n")
