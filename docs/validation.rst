@@ -173,8 +173,10 @@ synthetic ranking consistency.  It is intentionally cheap enough for ordinary
 development.
 
 The current constrained-QI sweep artifacts document reviewed NFP=1, NFP=2, and
-seed-3127 lanes, while NFP=4 remains deferred stress/validation evidence rather
-than a completed robustness claim.  ``examples/optimization/QI_optimization.py``
+seed-3127 lanes under their case-specific aspect targets, while NFP=4 remains
+deferred stress/validation evidence rather than a completed robustness claim.
+These rows are not additional aspect-6 README best-row promotions.
+``examples/optimization/QI_optimization.py``
 is the bounded multi-seed entry point for extending this to other inputs: set
 ``RUN_CASE = "nfp2_qi"``, ``RUN_CASE = "qi_stel_seed_3127"``, or add a new
 ``QI_CASES`` entry in ``examples/optimization/qi_optimization_cases.py`` for

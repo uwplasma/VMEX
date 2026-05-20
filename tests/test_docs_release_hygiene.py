@@ -56,3 +56,19 @@ def test_optional_validation_plan_uses_live_ci_verification() -> None:
     assert "head SHA:" not in plan
     assert "verified green CI baseline" not in validation
     assert "Last recorded local CI-equivalent coverage baseline" not in testing_strategy
+
+
+def test_qi_case_specific_artifacts_are_not_documented_as_aspect6_promotions() -> None:
+    readme = (ROOT / "README.md").read_text()
+    optimization = (ROOT / "docs" / "optimization.rst").read_text()
+    sweep_results = (ROOT / "docs" / "optimization_sweep_results.rst").read_text()
+    validation = (ROOT / "docs" / "validation.rst").read_text()
+
+    for text in (readme, optimization, sweep_results, validation):
+        assert "case-specific" in text
+        assert "aspect-6 README" in text
+        assert "best-row promotion" in text
+
+    for text in (readme, optimization, sweep_results):
+        assert "NFP=1/2/3 have passing saved diagnostics" not in text
+        assert "passing QI lanes" not in text
