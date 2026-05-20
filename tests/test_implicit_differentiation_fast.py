@@ -480,3 +480,82 @@ def test_vmec_residual_boundary_jvp_chunked_tangent_path(monkeypatch):
 
     assert float(value) == pytest.approx(2.0 + 0.2 * 0.5)
     assert float(tangent) == pytest.approx(0.3)
+
+
+def test_dense_transpose_lstsq_host_matches_augmented_system_with_damping():
+    import vmec_jax.implicit as implicit
+
+    J = np.asarray(
+        [
+            [2.0, -1.0],
+            [0.5, 3.0],
+            [1.5, 0.25],
+        ]
+    )
+    b = np.asarray([1.0, -2.0])
+    damping = 0.4
+
+    lam = implicit._dense_transpose_lstsq_host(J, b, damping)
+    A = np.concatenate([J.T, np.sqrt(damping) * np.eye(J.shape[0])], axis=0)
+    rhs = np.concatenate([b, np.zeros(J.shape[0])], axis=0)
+    expected, *_ = np.linalg.lstsq(A, rhs, rcond=None)
+
+    assert lam.dtype == J.dtype
+    np.testing.assert_allclose(lam, expected, rtol=1.0e-12, atol=1.0e-12)
+
+
+def test_linear_map_jacobian_columns_chunks_exactly_and_rejects_bad_chunk():
+    pytest.importorskip("jax")
+
+    import vmec_jax.implicit as implicit
+    from vmec_jax._compat import enable_x64, jnp
+
+    enable_x64(True)
+    matrix = jnp.asarray(
+        [
+            [1.0, 2.0, -1.0, 0.5],
+            [0.0, -3.0, 4.0, 2.0],
+            [5.0, 0.25, 0.0, -2.0],
+        ]
+    )
+
+    def linear_map(x):
+        return matrix @ x
+
+    J = implicit._linear_map_jacobian_columns(
+        linear_map,
+        input_size=4,
+        output_size=3,
+        dtype=matrix.dtype,
+        chunk_size=2,
+    )
+
+    np.testing.assert_allclose(np.asarray(J), np.asarray(matrix), rtol=0.0, atol=0.0)
+    with pytest.raises(ValueError, match="chunk_size must be positive"):
+        implicit._linear_map_jacobian_columns(
+            linear_map,
+            input_size=4,
+            output_size=3,
+            dtype=matrix.dtype,
+            chunk_size=0,
+        )
+
+
+def test_zero_m1_zforce_flag_tracks_short_and_converged_histories():
+    import vmec_jax.implicit as implicit
+
+    short_run = implicit._zero_m1_zforce_flag_from_result(
+        SimpleNamespace(n_iter=1, fsqz2_history=[]),
+        float,
+    )
+    assert short_run == pytest.approx(1.0)
+    assert implicit._zero_m1_zforce_flag_from_result(
+        SimpleNamespace(n_iter=4, fsqz2_history=[2.0e-7]),
+        np.float32,
+    ).dtype == np.dtype(np.float32)
+    assert float(
+        implicit._zero_m1_zforce_flag_from_result(
+            SimpleNamespace(n_iter=4, fsqz2_history=[2.0e-4]),
+            float,
+        )
+    ) == pytest.approx(0.0)

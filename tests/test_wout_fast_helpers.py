@@ -11,12 +11,21 @@ import vmec_jax.wout as wout_module
 from vmec_jax.wout import (
     MU0,
     _bool_from_nc,
+    _bss_scalxc_undo_factor,
+    _bss_should_undo_scalxc,
     _chipf_from_chips,
+    _compute_aspectratio,
+    _compute_eqfor_beta,
+    _compute_eqfor_betaxis,
+    _compute_ctor_from_buco,
     _icurv_full_mesh_from_indata,
+    _jxbforce_nyquist_limits,
     _nc_scalar,
     _pshalf_from_s,
     _read_wout_scalar_metadata,
     _safe_divide,
+    _undo_bss_scalxc_if_enabled,
+    _vmec_wint_from_trig,
     _wout_phi_profile_from_variables,
     assert_main_modes_match_wout,
 )
@@ -50,6 +59,27 @@ def test_safe_divide_uses_unit_denominator_for_exact_zeros() -> None:
     np.testing.assert_allclose(_safe_divide(num, den), [2.0, 4.0, -3.0])
 
 
+def test_wint_nyquist_and_scalxc_helper_edges(monkeypatch) -> None:
+    trig = SimpleNamespace(cosmui3=np.asarray([[2.0], [4.0]]), mscale=np.asarray([2.0]), cosnv=np.zeros((5, 1)))
+    np.testing.assert_allclose(_vmec_wint_from_trig(trig), np.ones((2, 5)) * np.asarray([[1.0], [2.0]]))
+    assert _jxbforce_nyquist_limits(SimpleNamespace(ntheta2=4, cosnv=np.zeros((5, 1)))) == (3, 2)
+
+    with pytest.raises(ValueError, match="cosmui3"):
+        _vmec_wint_from_trig(SimpleNamespace(cosmui3=np.ones((2, 1, 1)), mscale=np.asarray([1.0]), cosnv=np.zeros((1, 1))))
+    with pytest.raises(ValueError, match="mscale"):
+        _vmec_wint_from_trig(SimpleNamespace(cosmui3=np.ones((2, 1)), mscale=np.asarray([]), cosnv=np.zeros((1, 1))))
+
+    s = np.asarray([0.0, 0.25, 1.0])
+    np.testing.assert_allclose(_bss_scalxc_undo_factor(s).ravel(), [0.5, 0.5, 1.0])
+    arr = np.ones((3, 1, 1))
+    monkeypatch.delenv("VMEC_JAX_BSS_UNDO_SCALXC", raising=False)
+    assert _bss_should_undo_scalxc() is False
+    assert _undo_bss_scalxc_if_enabled(s, arr)[0] is arr
+    monkeypatch.setenv("VMEC_JAX_BSS_UNDO_SCALXC", "1")
+    assert _bss_should_undo_scalxc() is True
+    np.testing.assert_allclose(_undo_bss_scalxc_if_enabled(s, arr)[0].ravel(), [0.5, 0.5, 1.0])
+
+
 def test_current_profile_full_mesh_uses_vmec_half_mesh_normalization() -> None:
     s_full = np.asarray([0.0, 0.25, 1.0])
     indata = InData(
@@ -72,6 +102,60 @@ def test_current_profile_full_mesh_uses_vmec_half_mesh_normalization() -> None:
 
     zero_edge = InData(scalars={"NCURR": 1, "CURTOR": 10.0, "AC": [0.0]}, indexed={})
     np.testing.assert_allclose(np.asarray(_icurv_full_mesh_from_indata(indata=zero_edge, s_full=s_full, signgs=1)), 0.0)
+
+
+def test_eqfor_beta_aspect_and_ctor_match_vmec_normalizations() -> None:
+    pres = np.asarray([0.0, 2.0, 4.0])
+    vp = np.asarray([0.0, 5.0, 6.0])
+    bsq = np.full((3, 2, 2), 20.0)
+    r12 = np.full((3, 2, 2), 2.0)
+    bsupv = np.full((3, 2, 2), 3.0)
+    sqrtg = np.ones((3, 2, 2))
+    wint = np.full((2, 2), 0.25)
+
+    betapol, betator, betatot, betaxis = _compute_eqfor_beta(
+        pres=pres,
+        vp=vp,
+        bsq=bsq,
+        r12=r12,
+        bsupv=bsupv,
+        sqrtg=sqrtg,
+        wint=wint,
+        signgs=1,
+    )
+
+    hs = 0.5
+    vnorm = (2.0 * np.pi) ** 2 * hs
+    sump = vnorm * (vp[1] * pres[1] + vp[2] * pres[2])
+    sumbtot = 2.0 * (vnorm * 40.0 - sump)
+    sumbtor = vnorm * 72.0
+    sumbpol = sumbtot - sumbtor
+    assert betapol == pytest.approx(2.0 * sump / sumbpol)
+    assert betator == pytest.approx(2.0 * sump / sumbtor)
+    assert betatot == pytest.approx(2.0 * sump / sumbtot)
+    assert betaxis == pytest.approx(1.5 * (2.0 / (20.0 / 5.0 - 2.0)) - 0.5 * (4.0 / (20.0 / 6.0 - 4.0)))
+    assert _compute_eqfor_betaxis(pres=pres[:2], vp=vp[:2], bsq=bsq[:2], sqrtg=sqrtg[:2], wint=wint, signgs=1) == 0.0
+
+    R = np.asarray([[[1.0, 1.0], [1.0, 1.0]], [[3.0, 3.0], [5.0, 5.0]]])
+    Zu = np.ones_like(R)
+    Aminor_p, Rmajor_p, aspect, volume_p, cross_area_p = _compute_aspectratio(R=R, Zu=Zu, wint=wint)
+    assert cross_area_p == pytest.approx(2.0 * np.pi * 4.0)
+    assert volume_p == pytest.approx(2.0 * np.pi * np.pi * 17.0)
+    assert Rmajor_p == pytest.approx(volume_p / (2.0 * np.pi * cross_area_p))
+    assert Aminor_p == pytest.approx(np.sqrt(cross_area_p / np.pi))
+    assert aspect == pytest.approx(Rmajor_p / Aminor_p)
+
+    with pytest.raises(ValueError, match="shape"):
+        _compute_aspectratio(R=R[0], Zu=Zu[0], wint=wint)
+    assert _compute_aspectratio(R=np.zeros_like(R), Zu=Zu, wint=wint)[:3] == (0.0, 0.0, 0.0)
+
+    fixed_bdy = InData(scalars={}, indexed={})
+    free_legacy = InData(scalars={"LFREEB": True, "ICTRL_PREC2D": 2}, indexed={})
+    free_exact = InData(scalars={"LFREEB": True, "ICTRL_PREC2D": 1, "LHESS_EXACT": True}, indexed={})
+    buco = np.asarray([1.0, 2.0, 4.0])
+    assert _compute_ctor_from_buco(buco=buco, signgs=-1, indata=fixed_bdy) == pytest.approx(-2.0 * np.pi * 5.0 / MU0)
+    assert _compute_ctor_from_buco(buco=buco, signgs=1, indata=free_legacy) == pytest.approx(2.0 * np.pi * 4.0 / MU0)
+    assert _compute_ctor_from_buco(buco=buco, signgs=1, indata=free_exact) == pytest.approx(2.0 * np.pi * 4.0 / MU0)
 
 
 def test_netcdf_scalar_helpers_handle_masked_and_fallback_values() -> None:
