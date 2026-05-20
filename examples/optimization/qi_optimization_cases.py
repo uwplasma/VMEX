@@ -7,6 +7,15 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DEFAULT_QI_TARGET_ASPECT = 6.0
+TARGET_HELICITY_SEED_AMPLITUDE = 1.0e-5
+TARGET_HELICITY_SEED_TERMS = (
+    ("RBC", (1, 0), TARGET_HELICITY_SEED_AMPLITUDE),
+    ("ZBS", (1, 0), TARGET_HELICITY_SEED_AMPLITUDE),
+    ("RBC", (-1, 1), TARGET_HELICITY_SEED_AMPLITUDE),
+    ("ZBS", (-1, 1), TARGET_HELICITY_SEED_AMPLITUDE),
+    ("RBC", (1, 1), TARGET_HELICITY_SEED_AMPLITUDE),
+    ("ZBS", (1, 1), TARGET_HELICITY_SEED_AMPLITUDE),
+)
 
 
 def _parse_float_sequence(value, *, name):
@@ -48,6 +57,7 @@ QI_CASES = {
         "elongation_weight": 10.0,
         "qi_ceiling_weight": 0.0,
         "shuffle_profile_nphi_out": None,
+        "target_helicity_seed_terms": TARGET_HELICITY_SEED_TERMS,
         "mirror_ramp_stages": (
             {
                 "name": "matrix_free_mirror030",
@@ -90,6 +100,7 @@ QI_CASES = {
         "elongation_weight": 10.0,
         "qi_ceiling_weight": 0.0,
         "shuffle_profile_nphi_out": None,
+        "target_helicity_seed_terms": TARGET_HELICITY_SEED_TERMS,
         # Guarded mirror-aware policy.  This matrix-free lane is the current
         # validated default: it obtains low smooth/legacy QI, nonzero transform,
         # and an all-surface mirror ratio below 0.30 from the bundled NFP=2 seed.
@@ -195,6 +206,7 @@ QI_CASES = {
         "al_elongation_penalty": 1.0,
         "qi_ceiling_weight": 0.0,
         "shuffle_profile_nphi_out": None,
+        "target_helicity_seed_terms": TARGET_HELICITY_SEED_TERMS,
         # Far seeds can still opt into the bounded basin prefilter above, but
         # the public seed-3127 lane now starts from the reference-family
         # preconditioner and only promotes cleanup stages that pass exact gates.
@@ -307,14 +319,7 @@ QI_CASES = {
         "elongation_weight": 1.0,
         "qi_ceiling_weight": 0.0,
         "shuffle_profile_nphi_out": None,
-        "target_helicity_seed_terms": (
-            ("RBC", (1, 0), 1.0e-5),
-            ("ZBS", (1, 0), 1.0e-5),
-            ("RBC", (-1, 1), 1.0e-5),
-            ("ZBS", (-1, 1), 1.0e-5),
-            ("RBC", (1, 1), 1.0e-5),
-            ("ZBS", (1, 1), 1.0e-5),
-        ),
+        "target_helicity_seed_terms": TARGET_HELICITY_SEED_TERMS,
         "mirror_ramp_stages": (
             {
                 "name": "finite_beta_qi_audit_refine",
@@ -363,6 +368,7 @@ QI_CASES = {
         "elongation_weight": 1.0,
         "qi_ceiling_weight": 0.0,
         "shuffle_profile_nphi_out": None,
+        "target_helicity_seed_terms": TARGET_HELICITY_SEED_TERMS,
         "optimization_qi_resolution": {"mboz": 5, "nboz": 5, "nphi": 31, "nalpha": 7, "n_bounce": 9},
         "audit_qi_resolution": {"mboz": 18, "nboz": 18, "nphi": 151, "nalpha": 31, "n_bounce": 51},
         "mirror_ramp_stages": (
@@ -427,6 +433,7 @@ QI_CASES = {
         "elongation_weight": 0.0,
         "qi_ceiling_weight": 0.0,
         "shuffle_profile_nphi_out": None,
+        "target_helicity_seed_terms": TARGET_HELICITY_SEED_TERMS,
         "mirror_ramp_stages": (
             {
                 "name": "qh_warm_qi_repeat112233",
@@ -510,6 +517,105 @@ QI_CASES["nfp3_qi"] = {
     **QI_CASES["qi_stel_seed_3127"],
     "case_goal": "NFP=3 far-seed QI robustness lane",
 }
+
+
+def _minimal_or_circular_qi_case(
+    *,
+    base_case: str,
+    case_goal: str,
+    input_file: Path,
+    output_dir: Path,
+    reference_input: Path,
+    max_mode: int,
+    min_vmec_mode: int,
+    reference_lambdas=(0.995, 1.0, 1.005),
+):
+    """Build a deterministic torus-like-seed QI case from a reviewed policy."""
+
+    base = QI_CASES[base_case]
+    boundary_reference = dict(base.get("boundary_reference_preconditioner", {}))
+    boundary_reference.update(
+        {
+            "enabled": True,
+            "reference_input": reference_input,
+            "lambdas": tuple(float(value) for value in reference_lambdas),
+            "keys": ("RBC", "ZBS", "RBS", "ZBC"),
+            "max_mode": int(max_mode),
+            "target_aspect": float(base.get("target_aspect", DEFAULT_QI_TARGET_ASPECT)),
+            "abs_iota_min": float(base.get("target_abs_iota_min", 0.41)),
+            "max_mirror_ratio": float(base.get("mirror_threshold", 0.35)),
+            "max_elongation": float(base.get("max_elongation", 8.2)),
+            "smooth_qi_max": float(base.get("qi_gate_smooth_max", 2.0e-3)),
+            "legacy_qi_max": float(base.get("qi_gate_legacy_max", 2.0e-3)),
+            "accept_as_baseline": True,
+        }
+    )
+    return {
+        **base,
+        "case_goal": case_goal,
+        "input_file": input_file,
+        "output_dir": output_dir,
+        "max_mode": int(max_mode),
+        "min_vmec_mode": int(min_vmec_mode),
+        "target_helicity_seed_terms": TARGET_HELICITY_SEED_TERMS,
+        "boundary_reference_preconditioner": boundary_reference,
+    }
+
+
+QI_CASES.update(
+    {
+        "minimal_nfp1_qi": _minimal_or_circular_qi_case(
+            base_case="nfp1_qi",
+            case_goal="NFP=1 common-minimal seed to QI with deterministic 1e-5 seeding",
+            input_file=DATA_DIR / "input.minimal_seed_nfp1",
+            output_dir=Path("results/qi_opt/ess/minimal_nfp1_to_qi_reference"),
+            reference_input=DATA_DIR / "input.nfp1_QI",
+            max_mode=3,
+            min_vmec_mode=6,
+            reference_lambdas=(0.99, 0.995, 1.0, 1.005, 1.01),
+        ),
+        "minimal_nfp2_qi": _minimal_or_circular_qi_case(
+            base_case="nfp2_qi",
+            case_goal="NFP=2 common-minimal seed to QI with deterministic 1e-5 seeding",
+            input_file=DATA_DIR / "input.minimal_seed_nfp2",
+            output_dir=Path("results/qi_opt/ess/minimal_nfp2_to_qi_reference"),
+            reference_input=DATA_DIR / "input.nfp2_QI",
+            max_mode=3,
+            min_vmec_mode=6,
+            reference_lambdas=(0.99, 0.995, 1.0, 1.005, 1.01),
+        ),
+        "minimal_nfp3_qi": _minimal_or_circular_qi_case(
+            base_case="qi_stel_seed_3127",
+            case_goal="NFP=3 common-minimal seed to QI with deterministic 1e-5 seeding",
+            input_file=DATA_DIR / "input.minimal_seed_nfp3",
+            output_dir=Path("results/qi_opt/ess/minimal_nfp3_to_qi_reference"),
+            reference_input=DATA_DIR / "input.nfp3_QI_fixed_resolution_final",
+            max_mode=4,
+            min_vmec_mode=6,
+            reference_lambdas=(0.99, 0.995, 1.0, 1.005, 1.008, 1.01),
+        ),
+        "minimal_nfp4_qi": _minimal_or_circular_qi_case(
+            base_case="nfp4_qi",
+            case_goal="NFP=4 common-minimal seed to finite-beta QI reference with deterministic 1e-5 seeding",
+            input_file=DATA_DIR / "input.minimal_seed_nfp4",
+            output_dir=Path("results/qi_opt/ess/minimal_nfp4_to_qi_reference"),
+            reference_input=DATA_DIR / "input.nfp4_QI_finite_beta",
+            max_mode=3,
+            min_vmec_mode=5,
+            reference_lambdas=(1.0,),
+        ),
+        "circular_nfp1_qi": _minimal_or_circular_qi_case(
+            base_case="nfp1_qi",
+            case_goal="NFP=1 circular torus seed to QI with deterministic 1e-5 seeding",
+            input_file=DATA_DIR / "input.circular_tokamak",
+            output_dir=Path("results/qi_opt/ess/circular_nfp1_to_qi_reference"),
+            reference_input=DATA_DIR / "input.nfp1_QI",
+            max_mode=3,
+            min_vmec_mode=6,
+            reference_lambdas=(0.99, 0.995, 1.0, 1.005, 1.01),
+        ),
+    }
+)
 
 RUN_CASE_DEFAULT = "nfp2_qi"
 
