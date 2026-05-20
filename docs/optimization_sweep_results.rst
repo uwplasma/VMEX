@@ -205,7 +205,10 @@ QI lanes without
 rerunning optimization jobs.  It reads the existing ``QI_optimization.py``
 outputs, records the final smooth QI metric, legacy QI metric, mirror ratio,
 elongation, iota, aspect, and CPU wall time, and draws initial and final
-Boozer ``|B|`` with line contours only.
+Boozer ``|B|`` with line contours only.  These are case-specific gate checks,
+not extra aspect-6 README best-row promotions: NFP=1/2 use target aspect 10,
+the seed-3127 NFP=3 lane uses target aspect 4, and the NFP=4 finite-beta row is
+deferred stress/verification evidence.
 
 To refresh the inputs used by this panel, run the source optimizations before
 rendering.  The NFP=3 case can be selected as ``nfp3_qi``; that is a
@@ -252,7 +255,7 @@ convenience alias for the ``input.QI_stel_seed_3127`` robustness lane.
      - ``9.999/10.0``
      - ``0.5369``
      - ``15.8``
-     - ``promoted``
+     - ``case-gated``
    * - ``examples/data/input.nfp2_QI``
      - ``results/qi_opt/ess/nfp2_qi``
      - ``1.17e-2``
@@ -263,7 +266,7 @@ convenience alias for the ``input.QI_stel_seed_3127`` robustness lane.
      - ``9.999/10.0``
      - ``-0.5043``
      - ``14.7``
-     - ``promoted``
+     - ``case-gated``
    * - ``examples/data/input.QI_stel_seed_3127``
      - ``results/qi_opt/ess/qi_stel_seed_3127_mirror_calibrated_20260516``
      - ``9.33e-2``
@@ -274,7 +277,7 @@ convenience alias for the ``input.QI_stel_seed_3127`` robustness lane.
      - ``3.541/4.0``
      - ``-1.0401``
      - ``4.6``
-     - ``promoted``
+     - ``case-gated``
    * - ``examples/data/input.nfp4_QI_finite_beta``
      - ``results/qi_opt/ess/nfp4_qi_finite_beta``
      - ``2.39e-2``
@@ -294,6 +297,9 @@ convenience alias for the ``input.QI_stel_seed_3127`` robustness lane.
 
 Source table:
 :download:`readme_qi_optimization_cases.csv <_static/figures/readme_qi_optimization_cases.csv>`.
+In that generated CSV, ``validation_status=promoted`` records the
+case-specific QI gate status from the renderer and should not be read as
+aspect-6 README best-row promotion evidence.
 
 Regenerate these lightweight artifacts with:
 
@@ -302,8 +308,8 @@ Regenerate these lightweight artifacts with:
    PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
 
 The staged objective panel concatenates every recorded history file used by
-the promoted result.  It plots the best-so-far value in each stage, normalized
-to that stage's first objective, with dashed separators marking
+the selected case-specific result.  It plots the best-so-far value in each
+stage, normalized to that stage's first objective, with dashed separators marking
 objective-definition or weight changes.  For the seed-3127 lane, the inset is
 a boundary-reference interpolation scan, not an optimizer trajectory.
 
