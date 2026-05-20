@@ -49,13 +49,13 @@ acceptance criteria or evidence changes.
   selected-best-exact-state save contract as the main QS workflow, so
   ``input.final`` and ``wout_final.nc`` cannot drift there either.
 - Required CI coverage is above the 85% gate. The May 20 required coverage
-  tier after the residual-history refactor passed locally (`1314 passed,
-  121 skipped`) in 9:36 with 87.314% coverage. The optional converged
+  tier after the coverage/performance wave passed locally (`1390 passed,
+  121 skipped`) in 7:36 with 87.767% coverage. The optional converged
   VMEC2000 parity gate passed locally with `VMEC2000_INTEGRATION=1` earlier
-  in the same validation push. Treat this as about 87% current required
+  in the same validation push. Treat this as about 88% current required
   coverage. The 90% and 95% gates are staged future ratchets; reaching 95%
   still requires large `solve.py` orchestration/refactor work (`solve.py`
-  alone has 2550 missing lines in the current coverage report).
+  alone has 2508 missing lines in the current coverage report).
 - VMEC2000 converged-wout parity now has a fast bundled matrix gate across
   fixed/free, axisymmetric/non-axisymmetric, LASYM, and single/multigrid
   representatives. The executable-backed end-state gate remains opt-in:
@@ -477,7 +477,7 @@ release, and the QI optimization driver split:
   `qi_optimization_support.py`. Large
   solver/wout/free-boundary splits remain deferred behind parity gates.
 - Docs/release hygiene: current release hygiene baseline is green at `7030eaf`
-  with local required coverage validated at 87.314%.
+  with local required coverage validated at 87.767%.
   Performance/discrete-adjoint/docs reflect the
   current replay and finite-beta policies, diagnostics docs cover detailed
   preconditioner timing, and a command-level release checklist now ties local
@@ -485,7 +485,7 @@ release, and the QI optimization driver split:
   and optional research-grade checks together. Read the Docs is configured to
   fail on Sphinx warnings, release docs use the 85% coverage gate, and package
   discovery is locked to the `vmec_jax` namespace. Full local Sphinx and the
-  required 85% coverage command is green at 87.314%; released reference assets
+  required 85% coverage command is green at 87.767%; released reference assets
   are ignored so local full-tier refreshes cannot accidentally bloat commits.
   The documented custom QI seed audit command was validated end-to-end on
   `input.QI_stel_seed_3127`; final seed-robust QI and GPU-production artifacts
@@ -494,7 +494,7 @@ release, and the QI optimization driver split:
 Release-critical lanes requested in this push (continuation, exact
 accepted-point output, VMEC parity/physics gates, and docs/release hygiene) are
 near closure, but the broader roadmap remains open. The 85% coverage gate is
-locked locally at about 87% current coverage; seed-robust QI mirror cleanup,
+locked locally at about 88% current coverage; seed-robust QI mirror cleanup,
 staged 90% and 95% coverage ratchets, and larger-mode GPU replay remain future
 work.
 
@@ -594,7 +594,7 @@ Realistic next targets for this development cycle:
 1. Keep the required CI coverage gate at 85% and preserve sub-ten-minute py3.11
    coverage runtime by pruning duplicate helper tests, splitting slow
    validation into optional tiers, or refactoring the largest modules so fewer
-   synthetic branch tests are required. Current required coverage is about 87%;
+   synthetic branch tests are required. Current required coverage is about 88%;
    the 90% and 95% gates are staged ratchets, not completed targets.
 2. Raise the solved-state QI diagnostic from the new low-resolution bundled
    gate to reviewed higher-resolution evidence: smooth QI, legacy QI, mirror
