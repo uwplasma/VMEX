@@ -189,9 +189,11 @@ The second audit command uses the far-seed QI gate convention from
 below ``5e-3``.
 
 The README/docs QI coverage figure is rendered from existing reviewed
-``QI_optimization.py`` outputs.  The NFP=1, NFP=2, and seed-3127 rows are
-passing QI lanes; the NFP=4 row is a finite-beta verification/stress artifact
-and must not be described as completed NFP=4 robustness:
+``QI_optimization.py`` outputs.  These rows are case-specific gate checks, not
+additional aspect-6 README best-row promotions: the NFP=1 and NFP=2 lanes use
+target aspect 10, the seed-3127 lane uses target aspect 4, and the NFP=4 row is
+a finite-beta verification/stress artifact that must not be described as
+completed NFP=4 robustness:
 
 .. list-table::
    :header-rows: 1
@@ -218,7 +220,7 @@ and must not be described as completed NFP=4 robustness:
      - ``9.999/10.0``
      - ``0.5369``
      - ``15.8``
-     - ``promoted``
+     - ``case-gated``
    * - ``examples/data/input.nfp2_QI``
      - ``results/qi_opt/ess/nfp2_qi``
      - ``1.17e-2``
@@ -229,7 +231,7 @@ and must not be described as completed NFP=4 robustness:
      - ``9.999/10.0``
      - ``-0.5043``
      - ``14.7``
-     - ``promoted``
+     - ``case-gated``
    * - ``examples/data/input.QI_stel_seed_3127``
      - ``results/qi_opt/ess/qi_stel_seed_3127_mirror_calibrated_20260516``
      - ``9.33e-2``
@@ -240,7 +242,7 @@ and must not be described as completed NFP=4 robustness:
      - ``3.541/4.0``
      - ``-1.0401``
      - ``4.6``
-     - ``promoted``
+     - ``case-gated``
    * - ``examples/data/input.nfp4_QI_finite_beta``
      - ``results/qi_opt/ess/nfp4_qi_finite_beta``
      - ``2.39e-2``
