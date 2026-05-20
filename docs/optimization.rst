@@ -194,9 +194,9 @@ below ``5e-3``.
 
 The bare ``VMEC_JAX_QI_RUN_CASE=...`` commands use the current aspect-6 public
 defaults.  The explicit target-aspect and output-dir overrides above reproduce
-the reviewed rows currently embedded in the README/docs figure.
+the reviewed rows currently embedded in the docs QI coverage figure.
 
-The README/docs QI coverage figure is rendered from existing reviewed
+The docs QI coverage figure is rendered from existing reviewed
 ``QI_optimization.py`` outputs.  These rows are case-specific gate checks, not
 additional aspect-6 README best-row promotions: the NFP=1 and NFP=2 lanes use
 target aspect 10, the seed-3127 lane uses target aspect 4, and the NFP=4 row is
@@ -839,10 +839,12 @@ the iota residual has a useful derivative.  Direct QA without ESS remains a
 weak policy for high direct-start modes; staged continuation is the default
 research-grade policy for QA.
 
-The large all-policy panels, atlases, and PDF snapshots are generated assets,
-not source files.  They are intentionally not tracked in git.  Recreate them
-from the sweep results with the commands below; the README keeps only the four
-compact best-result PNGs.
+The large all-policy panels, atlases, summary-table images, and PDF snapshots
+are generated assets.  Recreate them from the sweep results with the commands
+below.  The README keeps only the four compact best-result PNGs; full
+publication sweeps belong in :doc:`optimization_sweep_results` with reviewed
+objective-history panels, initial/final 3D and Boozer ``|B|`` line-contour
+atlases, and wall-time/status summaries copied into ``docs/_static/figures``.
 
 .. code-block:: bash
 
@@ -925,16 +927,19 @@ not use ``JAX_PLATFORMS=gpu``: some JAX versions interpret that as both CUDA
 and ROCm and fail if ROCm is not installed.
 
 The renderer writes these report artifacts under
-``examples/optimization/results/qs_ess_sweep``.  Copy only the small README
-figures into ``docs/_static/figures`` before committing.  Leave the large
-publication panels, state atlases, summary-table images, and PDFs as generated
-local artifacts or attach them to a GitHub release.
+``examples/optimization/results/qs_ess_sweep``.  For ordinary README updates,
+copy only the four compact best-row panels into ``docs/_static/figures``.  For
+a full-sweep docs publication, also copy the reviewed objective panels,
+initial/final state atlases, wall-time summary-table figures, PDF snapshots,
+and synchronized CSV/JSON summaries into ``docs/_static/figures`` and document
+them in :doc:`optimization_sweep_results`.
 
 Final equilibria for CPU/GPU continuation/direct cases are rendered separately
 so the 3D surfaces and boundary-field colorbars remain readable.  The
 ``|B|`` panels use line contours on the LCFS, not filled contours.  The
 renderer emits ``final_state_atlas_*.png/.pdf`` files locally for reports; they
-are excluded from git so a fresh clone stays lightweight.
+should be promoted to docs assets only after the full-sweep rows have been
+reviewed.
 
 
 Finite-beta stage-one examples
@@ -1180,10 +1185,10 @@ of the file, to one of the bundled cases:
    RUN_CASE = "nfp4_qi_finite_beta" # NFP=4 finite-beta stress fixture
    RUN_CASE = "nfp4_qh_warm_to_qi"  # NFP=4 diagnostic stress test, using the input NFP
 
-The README NFP=4 case is a case-gated common-minimal-seed result with a
+The docs NFP=4 QI coverage case is a case-gated common-minimal-seed result with a
 same-NFP reference-family preconditioner.  The finite-beta and QH-warm-start
 NFP=4 cases are stress fixtures; keep them out of promoted QI robustness tables
-unless their independent diagnostics are reviewed and the README renderer is
+unless their independent diagnostics are reviewed and the docs renderer is
 intentionally retargeted.
 
 For example, to run the bundled near-axis stellarator seed without editing the

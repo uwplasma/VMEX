@@ -306,7 +306,7 @@ The constrained-QI sweep is the compact bundled-seed matrix, not the staged
 far-seed runner.  If its summary reports a stale QI target aspect, rerun the
 two sweep commands above with the current target-6 policy before using the
 rendered matrix.
-Read the README/docs NFP=4 row as a minimal-seed same-NFP reference-family
+Read the docs NFP=4 QI coverage row as a minimal-seed same-NFP reference-family
 proposal with an exact audit, not as a long local descent.  The generated
 `docs/_static/figures/readme_qi_optimization_cases.csv` row should remain
 `case-gated`/`candidate`, with passing `qi_seed_gate_passed` and
@@ -340,9 +340,9 @@ promotion evidence.
 ## Sweep And Rendering Tools
 
 - `generate_qs_ess_sweep.py`: CPU/GPU QA/QH/QP/QI policy sweep over mode continuation, ESS, and maximum boundary mode.
-- `render_qs_ess_publication_panel.py`: render the large optimization atlas and summary tables from sweep outputs.
-- `render_readme_best_optimizations.py`: render the compact README figures and CSV table.
-- `render_qi_readme_cases.py`: render the NFP=1-4 QI README/docs coverage figure and CSV from existing `QI_optimization.py` outputs, using Boozer `|B|` line contours only.
+- `render_qs_ess_publication_panel.py`: render full-sweep docs assets from sweep outputs: objective histories over all stages, final-state 3D atlases, LCFS Boozer `|B|` line-contour atlases, and wall-time/status summary tables.
+- `render_readme_best_optimizations.py`: render only the compact README best-row figures and CSV table.
+- `render_qi_readme_cases.py`: render the NFP=1-4 QI docs coverage figure and CSV from existing `QI_optimization.py` outputs, using Boozer `|B|` line contours only.
 - `render_qi_constrained_sweep.py`: render QI-focused constrained-sweep diagnostics.
 
 Example:

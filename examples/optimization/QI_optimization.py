@@ -71,6 +71,28 @@ if _MAX_NFEV_ENV is not None:
         {**stage, "max_nfev": min(int(stage.get("max_nfev", MAX_NFEV)), MAX_NFEV)}
         for stage in MIRROR_RAMP_STAGES
     )
+_TARGET_HELICITY_SEED_AMP_ENV = os.environ.get("VMEC_JAX_QI_TARGET_HELICITY_SEED_AMPLITUDE")
+_TARGET_HELICITY_SEED_ENABLED_ENV = os.environ.get("VMEC_JAX_QI_USE_TARGET_HELICITY_SEED")
+TARGET_HELICITY_SEED_ENABLED = (
+    bool(CASE.get("target_helicity_seed_enabled", bool(CASE.get("target_helicity_seed_terms"))))
+    if _TARGET_HELICITY_SEED_ENABLED_ENV is None
+    else _TARGET_HELICITY_SEED_ENABLED_ENV.strip().lower() not in {"0", "false", "no", "off"}
+)
+TARGET_HELICITY_SEED_AMPLITUDE = float(
+    _TARGET_HELICITY_SEED_AMP_ENV
+    if _TARGET_HELICITY_SEED_AMP_ENV is not None
+    else CASE.get("target_helicity_seed_amplitude", qis.TARGET_HELICITY_SEED_AMPLITUDE)
+)
+TARGET_HELICITY_SEED_TERMS = (
+    qis.target_helicity_seed_terms(max_mode=MAX_MODE, amplitude=TARGET_HELICITY_SEED_AMPLITUDE)
+    if _TARGET_HELICITY_SEED_AMP_ENV is not None or not CASE.get("target_helicity_seed_terms")
+    else tuple(CASE.get("target_helicity_seed_terms", ()))
+)
+TARGET_HELICITY_SEED_CONFIG = {
+    "enabled": TARGET_HELICITY_SEED_ENABLED,
+    "terms": TARGET_HELICITY_SEED_TERMS,
+    "only_if_abs_below": float(CASE.get("target_helicity_seed_only_if_abs_below", 0.0)),
+}
 
 # Optimizer parameters.  These are optimization controls only; physics targets
 # stay in the objective tuples below, matching SIMSOPT's teaching workflow.
@@ -282,6 +304,7 @@ print(f"  QI opt grid:     mboz={QI_OPTIONS.mboz}, nboz={QI_OPTIONS.nboz}, nphi=
 print(f"  QI audit grid:   {AUDIT_QI_RESOLUTION or 'same as optimization'}")
 print(f"  JIT Boozer path: {QI_OPTIONS.jit_booz}")
 print(f"  Boozer target:   {BOOZER_TARGET_WOUT} (weight={BOOZER_TARGET_WEIGHT})")
+print(f"  helicity seed:   {TARGET_HELICITY_SEED_ENABLED} (amp={TARGET_HELICITY_SEED_AMPLITUDE:.1e}, terms={len(TARGET_HELICITY_SEED_TERMS)})")
 print(f"  boundary ref.:   {CASE.get('boundary_reference_preconditioner', {}).get('reference_input')} (enabled={CASE.get('boundary_reference_preconditioner', {}).get('enabled', False)})")
 print(f"  mirror target:   {MAX_MIRROR_RATIO} (surface={MIRROR_SURFACE_INDEX})")
 print(f"  mirror weight:   {MIRROR_WEIGHT}")
@@ -368,6 +391,11 @@ def solve_qi_stage(
 
 qis.configure(globals())
 active_input_file = INPUT_FILE
+active_input_file = qis.run_target_helicity_seed_preconditioner(
+    active_input_file,
+    OUTPUT_DIR,
+    TARGET_HELICITY_SEED_CONFIG,
+)
 BOUNDARY_REFERENCE_PRECONDITIONER = dict(CASE.get("boundary_reference_preconditioner", {}))
 active_input_file = qis.run_boundary_reference_preconditioner(active_input_file, OUTPUT_DIR, BOUNDARY_REFERENCE_PRECONDITIONER)
 active_input_file = qis.run_basin_prefilter(active_input_file, OUTPUT_DIR, dict(CASE.get("basin_prefilter", {})))

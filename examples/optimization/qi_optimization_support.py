@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 
 import vmec_jax as vj
+from vmec_jax.namelist import InData
 from tools.diagnostics.qi_basin_survey import (
     SurveyTargets,
     generate_basin_candidates,
@@ -64,6 +65,105 @@ def _parse_float_sequence(value, *, name):
         return tuple(float(piece) for piece in pieces)
     except ValueError as exc:
         raise ValueError(f"{name} must be a comma- or space-separated float list: {value!r}") from exc
+
+
+TARGET_HELICITY_SEED_AMPLITUDE = 1.0e-5
+TARGET_HELICITY_SEED_MODE_TERMS = (
+    ("RBC", (1, 0)),
+    ("ZBS", (1, 0)),
+    ("RBC", (-1, 1)),
+    ("ZBS", (-1, 1)),
+    ("RBC", (1, 1)),
+    ("ZBS", (1, 1)),
+)
+
+
+def target_helicity_seed_terms(*, max_mode, amplitude=TARGET_HELICITY_SEED_AMPLITUDE):
+    """Return deterministic low-order perturbations for circular/minimal seeds."""
+
+    if float(amplitude) == 0.0 or int(max_mode) < 1:
+        return ()
+    return tuple(
+        (name, index, float(amplitude))
+        for name, index in TARGET_HELICITY_SEED_MODE_TERMS
+        if max(abs(int(index[0])), abs(int(index[1]))) <= int(max_mode)
+    )
+
+
+def _normalise_seed_terms(config):
+    """Return target-helicity seed terms from case config or compact tuples."""
+
+    if not config:
+        return ()
+    if isinstance(config, dict):
+        if not bool(config.get("enabled", True)):
+            return ()
+        terms = config.get("terms")
+        if terms is None:
+            terms = target_helicity_seed_terms(
+                max_mode=int(config.get("max_mode", MAX_MODE)),
+                amplitude=float(config.get("amplitude", TARGET_HELICITY_SEED_AMPLITUDE)),
+            )
+    else:
+        terms = config
+    normalised = []
+    for name, index, value in terms:
+        normalised.append((str(name).upper(), (int(index[0]), int(index[1])), float(value)))
+    return tuple(normalised)
+
+
+def run_target_helicity_seed_preconditioner(input_file, output_dir, config):
+    """Insert deterministic 1e-5 target-helicity modes before local QI solves.
+
+    The source VMEC input is left untouched.  Existing nonzero coefficients are
+    preserved by default, so reviewed QI reference inputs are not perturbed while
+    circular/minimal seeds get a reproducible non-axisymmetric derivative seed.
+    """
+
+    config = dict(config or {}) if isinstance(config, dict) else {"terms": config}
+    terms = _normalise_seed_terms(config)
+    if not terms:
+        return Path(input_file)
+    source = vj.read_indata(input_file)
+    indexed = {name: dict(values) for name, values in source.indexed.items()}
+    threshold = float(config.get("only_if_abs_below", 0.0))
+    inserted = []
+    for name, index, value in terms:
+        coeffs = indexed.setdefault(name, {})
+        existing = coeffs.get(index)
+        try:
+            existing_abs = abs(float(existing)) if existing is not None else 0.0
+        except (TypeError, ValueError):
+            existing_abs = 0.0
+        if existing_abs <= threshold:
+            coeffs[index] = float(value)
+            inserted.append((name, index, float(value)))
+
+    seed_dir = Path(output_dir) / "target_helicity_seed"
+    seed_dir.mkdir(parents=True, exist_ok=True)
+    input_out = seed_dir / "input.target_helicity_seed"
+    seeded = InData(scalars=dict(source.scalars), indexed=indexed, source_path=str(input_file))
+    vj.write_indata(input_out, seeded)
+    metadata = {
+        "enabled": True,
+        "source_input": str(input_file),
+        "seeded_input": str(input_out),
+        "only_if_abs_below": threshold,
+        "terms": [
+            {"family": name, "n": int(index[0]), "m": int(index[1]), "value": float(value)}
+            for name, index, value in terms
+        ],
+        "inserted": [
+            {"family": name, "n": int(index[0]), "m": int(index[1]), "value": float(value)}
+            for name, index, value in inserted
+        ],
+    }
+    (seed_dir / "metadata.json").write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+    print("\nTarget-helicity seed preconditioner:")
+    print(f"  source:   {input_file}")
+    print(f"  inserted: {len(inserted)} / {len(terms)} terms")
+    print(f"  input:    {input_out}")
+    return input_out
 
 
 def _jsonable(value):
