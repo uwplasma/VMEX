@@ -54,6 +54,7 @@ from vmec_jax.solve import (
     _sm_sp_from_s_np,
     _update_state_gd,
     _should_print_vmec2000_row,
+    _vmec2000_scan_options_from_env,
     _vmec_force_flux_profiles,
     _vmec_scale_m1_factors_from_mats,
     _vmec2000_cadence_selected,
@@ -90,6 +91,99 @@ def _lambda_solver_static(*, ns: int = 2, k: int = 2):
         s=np.linspace(0.0, 1.0, ns),
         grid=SimpleNamespace(theta=np.asarray([0.0, np.pi]), zeta=np.asarray([0.0])),
     )
+
+
+def _scan_options(**overrides):
+    kwargs = dict(
+        verbose=True,
+        vmec2000_control=True,
+        verbose_vmec2000_table=True,
+        light_history=False,
+        scan_minimal_default=None,
+        dump_any=False,
+        fsq_total_target=None,
+        backend_name="cpu",
+        force_chunked_scan_run=False,
+        scan_print_env="1",
+        scan_print_mode_env="debug_callback",
+        scan_print_ordered_env="0",
+        scan_print_chunked_env="1",
+        scan_light_env="0",
+        scan_minimal_env="",
+        scan_core_env="",
+        scan_trace_env="0",
+        abort_scan_env="0",
+        scan_precompute_env="",
+        tridi_precompute_env="0",
+        scan_lax_env="",
+        tridi_solve_env="",
+        scan_restart_payload_env="",
+    )
+    kwargs.update(overrides)
+    return _vmec2000_scan_options_from_env(**kwargs)
+
+
+def test_vmec2000_scan_options_quiet_runs_default_to_minimal_history():
+    opts = _scan_options(verbose=False)
+
+    assert opts.scan_minimal
+    assert not opts.scan_light
+    assert not opts.scan_collect_scalars
+    assert not opts.scan_collect_print
+    assert not opts.print_in_scan
+    assert not opts.chunked_print
+    assert opts.scan_use_restart_payload
+
+
+def test_vmec2000_scan_options_dump_forces_full_history_and_print_chunking():
+    opts = _scan_options(
+        light_history=True,
+        scan_light_env="yes",
+        scan_minimal_env="1",
+        dump_any=True,
+        scan_print_ordered_env="true",
+        scan_print_mode_env="bogus",
+        scan_core_env="minimal",
+    )
+
+    assert not opts.scan_minimal
+    assert not opts.scan_light
+    assert opts.scan_collect_scalars
+    assert opts.scan_collect_print
+    assert opts.scan_print_ordered
+    assert opts.scan_print_mode == "debug_print"
+    assert opts.chunked_print
+    assert not opts.print_in_scan
+
+
+def test_vmec2000_scan_options_env_overrides_preconditioner_and_restart_flags():
+    opts = _scan_options(
+        backend_name="gpu",
+        scan_precompute_env="0",
+        tridi_precompute_env="1",
+        scan_lax_env="yes",
+        tridi_solve_env="",
+        scan_restart_payload_env="",
+        scan_trace_env="1",
+        abort_scan_env="true",
+        force_chunked_scan_run=True,
+    )
+
+    assert not opts.scan_use_precomputed
+    assert opts.scan_use_lax_tridi
+    assert not opts.scan_use_restart_payload
+    assert opts.scan_trace
+    assert opts.abort_scan_on_badjac
+    assert opts.chunked_print
+    assert not opts.print_in_scan
+
+
+def test_vmec2000_scan_options_restart_payload_explicit_env_wins():
+    disabled = _scan_options(backend_name="cpu", scan_restart_payload_env="false")
+    enabled = _scan_options(backend_name="gpu", scan_restart_payload_env="YES")
+
+    assert not disabled.scan_use_restart_payload
+    assert enabled.scan_use_restart_payload
 
 
 @pytest.mark.parametrize(

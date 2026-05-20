@@ -86,6 +86,27 @@ def test_axis_aliases_padding_and_truncation():
     np.testing.assert_allclose(_axis_array(axis["ZAXIS_CS"], 2, dtype=float), [4.0, 0.0, 0.0])
     assert _axis_array(None, 2, dtype=float) is None
 
+    explicit = _read_axis_coeffs(
+        InData(
+            scalars={
+                "RAXIS_CC": 1.5,
+                "RAXIS_CS": [0.25, 0.5],
+                "ZAXIS_CC": [0.75],
+                "ZAXIS_CS": 2.5,
+                "RAXIS": [99.0],
+                "ZAXIS": [99.0],
+            },
+            indexed={},
+        )
+    )
+    assert explicit == {
+        "RAXIS_CC": 1.5,
+        "RAXIS_CS": [0.25, 0.5],
+        "ZAXIS_CC": [0.75],
+        "ZAXIS_CS": 2.5,
+    }
+    np.testing.assert_allclose(_axis_array(explicit["RAXIS_CC"], 2, dtype=float), [1.5, 0.0, 0.0])
+
 
 def test_vmec_lflip_and_theta_flip_arrays_match_reference():
     cfg = VMECConfig(mpol=3, ntor=1, ns=4, nfp=1, lasym=True, lconm1=True, lthreed=True, ntheta=8, nzeta=4)
@@ -115,6 +136,33 @@ def test_vmec_lflip_and_theta_flip_arrays_match_reference():
 
     zero_z = BoundaryCoeffs(R_cos=boundary.R_cos, R_sin=boundary.R_sin, Z_cos=boundary.Z_cos, Z_sin=np.zeros(K))
     assert _vmec_lflip_from_boundary(static, zero_z) is None
+
+    same_sign = BoundaryCoeffs(
+        R_cos=np.abs(boundary.R_cos),
+        R_sin=boundary.R_sin,
+        Z_cos=boundary.Z_cos,
+        Z_sin=np.abs(boundary.Z_sin),
+    )
+    assert _vmec_lflip_from_boundary(static, same_sign) is False
+
+
+def test_lflip_without_m1_modes_and_theta_flip_missing_partner_are_noops():
+    cfg = VMECConfig(mpol=1, ntor=0, ns=3, nfp=1, lasym=False, lconm1=False, lthreed=False, ntheta=6, nzeta=1)
+    static = build_static(cfg)
+    K = static.modes.K
+    boundary = BoundaryCoeffs(
+        R_cos=np.arange(1, K + 1, dtype=float),
+        R_sin=np.arange(11, 11 + K, dtype=float),
+        Z_cos=np.arange(21, 21 + K, dtype=float),
+        Z_sin=np.arange(31, 31 + K, dtype=float),
+    )
+
+    assert _vmec_lflip_from_boundary(static, boundary) is None
+    flipped = _flip_boundary_theta(static, boundary)
+    np.testing.assert_allclose(flipped.R_cos, boundary.R_cos)
+    np.testing.assert_allclose(flipped.R_sin, boundary.R_sin)
+    np.testing.assert_allclose(flipped.Z_cos, boundary.Z_cos)
+    np.testing.assert_allclose(flipped.Z_sin, boundary.Z_sin)
 
 
 def test_blend_axis_m0_full_no_valid_m0_index_is_noop():
