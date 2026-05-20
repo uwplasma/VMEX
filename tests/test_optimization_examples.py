@@ -169,6 +169,7 @@ def test_qi_example_uses_qi_problem_api() -> None:
     assert "VMEC_JAX_QI_MAX_NFEV" in text
     assert "Unknown QI RUN_CASE" in cases_text
     assert '"nfp1_qi"' in cases_text
+    assert 'QI_CASES["nfp3_qi"]' in cases_text
     assert '"qi_stel_seed_3127"' in cases_text
     assert '"nfp4_qi_finite_beta"' in cases_text
     assert '"nfp4_qh_warm_to_qi"' in cases_text
@@ -322,6 +323,7 @@ def test_qi_nfp4_case_is_explicit_nonpassing_stress_fixture() -> None:
     assert "qi_case_expected_outcome_met" in text
     assert "expected_non_passing_stress" in text
     assert "NFP=4 QI" in docs
+    assert "nfp3_qi" in docs
     assert "nfp4_qi_finite_beta" in docs
     assert "finite-beta NFP=4 verification lane" in docs
     assert "non-passing stress fixture" in docs

@@ -1160,7 +1160,8 @@ of the file, to one of the bundled cases:
 
    RUN_CASE = "nfp1_qi"             # NFP=1 mirror-aware QI lane
    RUN_CASE = "nfp2_qi"             # default NFP=2 mirror-aware QI lane
-   RUN_CASE = "qi_stel_seed_3127"   # unrelated seed with reference-family preconditioner
+   RUN_CASE = "nfp3_qi"             # NFP=3 alias for qi_stel_seed_3127
+   RUN_CASE = "qi_stel_seed_3127"   # descriptive name for the NFP=3 far seed
    RUN_CASE = "nfp4_qi_finite_beta" # NFP=4 finite-beta QI verification lane
    RUN_CASE = "nfp4_qh_warm_to_qi"  # NFP=4 diagnostic stress test, using the input NFP
 
@@ -1177,7 +1178,7 @@ script:
    PYTHONPATH=. JAX_PLATFORMS=cpu VMEC_JAX_QI_RUN_CASE=nfp2_qi \
      VMEC_JAX_QI_OUTPUT_DIR=results/qi_opt/ess/nfp2_qi \
      python examples/optimization/QI_optimization.py
-   PYTHONPATH=. JAX_PLATFORMS=cpu VMEC_JAX_QI_RUN_CASE=qi_stel_seed_3127 \
+   PYTHONPATH=. JAX_PLATFORMS=cpu VMEC_JAX_QI_RUN_CASE=nfp3_qi \
      VMEC_JAX_QI_OUTPUT_DIR=results/qi_opt/ess/qi_stel_seed_3127_current_public_final \
      python examples/optimization/QI_optimization.py
    PYTHONPATH=. JAX_PLATFORMS=cpu VMEC_JAX_QI_RUN_CASE=nfp4_qi_finite_beta \
