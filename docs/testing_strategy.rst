@@ -20,16 +20,74 @@ Target State
 - Near-term coverage target: keep the required ``85%`` actual line coverage gate
   green with meaningful fast and bounded-physics tests while preserving
   sub-ten-minute coverage runtime.
-- Overall completion target: reach roughly ``90%`` validation-lane coverage by
-  ensuring each public workflow has a required fast guard or an explicit
-  full/optional parity lane with documented acceptance criteria.
-- Long-term required coverage: 95% line coverage for ``vmec_jax`` package
-  code.  The current Python 3.11 required coverage gate is ``85%``.
+- Next staged coverage target: raise the required Python 3.11 gate to ``90%``
+  only after a clean local CI-equivalent run demonstrates at least 90% package
+  coverage on the fast suite, the runtime remains acceptable, and the added
+  coverage comes from required tests rather than optional local dependencies.
+- Long-term required coverage: raise the required gate to ``95%`` after the
+  solver/driver refactors and physics-kernel seams below have their own focused
+  tests.  The current Python 3.11 required coverage gate is ``85%``.
 - Nightly/manual coverage: larger VMEC2000, GPU, and full-resolution physics
   checks run outside the required PR gate.
 - Repository checkout size: keep the tracked source tree small enough that a
   fresh clone and ``pip install .`` are not dominated by generated figures,
   optimization outputs, or bulky reference ``wout`` files.
+
+
+Testing Taxonomy
+----------------
+
+The suite uses marker- and command-level taxonomy rather than a single
+``pytest`` bucket.  New tests should be assigned to the cheapest bucket that
+proves the behavior under review.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 30 32 20
+
+   * - Bucket
+     - Selection
+     - Owns
+     - CI policy
+   * - Fast required
+     - Unmarked tests included by
+       ``-m "not full and not vmec2000 and not simsopt"``
+     - Pure kernels, parsing, small workflow assembly, CLI helpers,
+       differentiability checks, repository hygiene, and deterministic
+       low-cost physics guards.
+     - Required on Python 3.10, 3.11, and 3.12.  Python 3.11 also owns the
+       line-coverage gate.
+   * - Required bundled parity
+     - Explicit required test-file selections using bundled fixtures and no
+       external executables.
+     - VMEC2000 residual reconstruction, converged ``wout`` profile/current
+       invariants, parser compatibility, and bounded matrix physics gates.
+     - Required where runtime and fixture size are bounded.  Failures represent
+       real parity drift, not missing local tools.
+   * - Full physics
+     - ``full`` marker plus ``RUN_FULL=1`` after ``tools/fetch_assets.py``.
+     - Larger fixed/free-boundary references, multigrid cases, convergence-only
+       representatives, and broader parity matrices.
+     - Manual or scheduled/nightly unless a case is reduced enough to promote
+       into required bundled parity.
+   * - External VMEC2000
+     - ``vmec2000`` marker plus ``VMEC2000_EXEC`` and
+       ``VMEC2000_INTEGRATION=1``.
+     - Executable-backed convergence and final-equilibrium parity against a
+       local Fortran VMEC2000 build.
+     - Never required for ordinary PR CI because availability is
+       machine-specific.
+   * - External SIMSOPT
+     - ``simsopt`` marker plus ``RUN_SIMSOPT_VALIDATION=1`` and importable
+       SIMSOPT.
+     - Formula-level and workflow-level diagnostic parity against SIMSOPT.
+     - Optional release validation only.
+   * - Documentation and packaging
+     - Sphinx fast/full builds, wheel/sdist build, compileall, and source-tree
+       size audit.
+     - Warning-clean docs, installability, importability, and artifact hygiene.
+     - Required, but separate from line coverage so docs-only changes do not
+       distort package coverage.
 
 
 Testing Layers
@@ -416,6 +474,43 @@ Coverage Plan to 85%, 90%, and 95%
 Coverage should rise because core physics code is directly tested, not because
 tests execute long workflows incidentally.
 
+The required CI gate is staged deliberately:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 14 28 38 20
+
+   * - Stage
+     - Gate
+     - Required evidence before changing CI
+     - CI action
+   * - Current
+     - ``--cov-fail-under=85``
+     - Fast-suite coverage is green on Python 3.11 with ``.[plots]`` installed,
+       and required CI remains independent of VMEC2000, SIMSOPT, GPUs, and
+       large downloaded assets.
+     - Keep enforced.
+   * - 90%
+     - ``--cov-fail-under=90``
+     - A local CI-equivalent run reaches at least 90% actual package coverage,
+       keeps acceptable runtime, and the uncovered-line triage shows remaining
+       gaps are mostly full/optional physics lanes rather than untested public
+       fast workflows.
+     - Raise only in the Python 3.11 coverage job after that evidence is
+       recorded in release notes or a validation artifact.
+   * - 95%
+     - ``--cov-fail-under=95``
+     - Solver/driver seams have focused unit or bundled-parity tests, public
+       workflow APIs have fast guards, and optional-dependency coverage is not
+       needed to pass the gate.
+     - Raise after the 90% gate has stayed stable and the remaining uncovered
+       code is intentionally excluded or covered by targeted tests.
+
+Do not use optional local state as ratchet evidence.  A developer machine with
+SIMSOPT, VMEC2000, fetched large assets, or a GPU may produce useful appended
+coverage, but that coverage does not justify raising the required PR gate unless
+the same lines are covered by required fast or bundled-parity tests.
+
 1. Split monolithic solver sections into small internal functions only where it
    improves testability without changing numerical behavior.
 2. Add unit-level tests for every extracted physics kernel: geometry, Fourier
@@ -428,9 +523,9 @@ tests execute long workflows incidentally.
    coverage gates.  Coverage runs should not require downloading presentation
    artifacts.
 5. Raise ``--cov-fail-under`` in stages after the corresponding tests are
-   merged.  The current required fast-suite gate is ``85%``.  The next planned
-   ratchets are 90% and 95%, after solver/driver refactors reduce runtime and
-   add physics coverage.
+   merged and a clean local CI-equivalent coverage run proves the next gate is
+   feasible.  The planned ratchets are 90% and 95%, not intermediate increases
+   based only on incidental coverage movement.
 
 
 Repository Size Plan

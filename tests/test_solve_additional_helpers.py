@@ -61,6 +61,8 @@ from vmec_jax.solve import (
     _zero_coeff_column_np,
     first_step_diagnostics,
     solve_lambda_gd,
+    solve_fixed_boundary_gn_vmec_residual,
+    solve_fixed_boundary_lbfgs_vmec_residual,
 )
 from vmec_jax.vmec_tomnsp import TomnspsRZL
 from vmec_jax.state import StateLayout, VMECState
@@ -88,6 +90,64 @@ def _lambda_solver_static(*, ns: int = 2, k: int = 2):
         s=np.linspace(0.0, 1.0, ns),
         grid=SimpleNamespace(theta=np.asarray([0.0, np.pi]), zeta=np.asarray([0.0])),
     )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"w_rz": -1.0}, "w_rz and w_l"),
+        ({"w_l": -1.0}, "w_rz and w_l"),
+        ({"objective_scale": 0.0}, "objective_scale"),
+        ({"scale_rz": 0.0}, "scale_rz and scale_l"),
+        ({"scale_l": 0.0}, "scale_rz and scale_l"),
+        ({"history_size": 0}, "history_size"),
+        ({"max_iter": 0}, "max_iter"),
+        ({"max_backtracks": -1}, "max_backtracks"),
+        ({"bt_factor": 1.0}, "bt_factor"),
+    ],
+)
+def test_lbfgs_vmec_residual_rejects_invalid_solver_controls(kwargs, message):
+    state = _state_from_value(0.0)
+    with pytest.raises(ValueError, match=message):
+        solve_fixed_boundary_lbfgs_vmec_residual(
+            state,
+            SimpleNamespace(),
+            indata=SimpleNamespace(),
+            signgs=1,
+            verbose=False,
+            **kwargs,
+        )
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"damping_increase": 1.0}, "damping_increase"),
+        ({"damping_decrease": 0.0}, "damping_decrease"),
+        ({"damping_decrease": 1.1}, "damping_decrease"),
+        ({"max_damping": 0.0}, "max_damping"),
+        ({"max_retries": -1}, "max_retries"),
+        ({"zero_m1_iters": -1}, "zero_m1_iters"),
+        ({"zero_m1_fsqz_thresh": -1.0}, "zero_m1_fsqz_thresh"),
+        ({"w_rz": -1.0}, "w_rz and w_l"),
+        ({"w_l": -1.0}, "w_rz and w_l"),
+        ({"max_iter": 0}, "max_iter"),
+        ({"cg_maxiter": 0}, "cg_maxiter"),
+        ({"bt_factor": 1.0}, "bt_factor"),
+        ({"objective_scale": 0.0}, "objective_scale"),
+    ],
+)
+def test_gn_vmec_residual_rejects_invalid_solver_controls(kwargs, message):
+    state = _state_from_value(0.0)
+    with pytest.raises(ValueError, match=message):
+        solve_fixed_boundary_gn_vmec_residual(
+            state,
+            SimpleNamespace(),
+            indata=SimpleNamespace(),
+            signgs=1,
+            verbose=False,
+            **kwargs,
+        )
 
 
 def _lambda_solver_state(*, ns: int = 2, k: int = 2) -> VMECState:
