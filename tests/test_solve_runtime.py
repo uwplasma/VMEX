@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 import vmec_jax._solve_runtime as runtime
@@ -104,3 +105,38 @@ def test_hash_array_bytes_reports_opaque_unarrayable_values():
             raise TypeError("cannot materialize")
 
     assert runtime._hash_array_bytes(Unarrayable()) == "opaque:Unarrayable"
+
+
+def test_edge_signature_ignores_values_but_value_key_tracks_bytes():
+    a = np.asarray([1.0, 2.0], dtype=np.float64)
+    b = np.asarray([9.0, 8.0], dtype=np.float64)
+    c = np.asarray([1.0, 2.0], dtype=np.float32)
+
+    assert runtime._array_signature_key(a) == ((2,), "float64")
+    assert runtime._edge_signature_key(a) == runtime._edge_signature_key(b)
+    assert runtime._edge_signature_key(a) != runtime._edge_signature_key(c)
+    assert runtime._edge_value_key(a) != runtime._edge_value_key(b)
+    assert runtime._edge_value_key(a) != runtime._edge_value_key(c)
+
+
+def test_dump_iter_selection_parses_ranges_and_invalid_chunks():
+    assert runtime._parse_iter_list("") is None
+    assert runtime._parse_iter_list("bad, 5-3, 8") == {3, 4, 5, 8}
+    assert runtime._dump_env_enabled("false") is True
+    assert runtime._dump_env_enabled("0") is False
+    assert runtime._dump_iter_selected(iter_idx=4, iter_env="1,3-5") is True
+    assert runtime._dump_iter_selected(iter_idx=2, iter_env="1,3-5") is False
+    assert runtime._dump_iter_selected(iter_idx=99, iter_env="bad") is True
+
+
+def test_scan_backend_tree_and_scalar_history_helpers(monkeypatch):
+    monkeypatch.setattr(runtime, "has_jax", lambda: False)
+    assert runtime._scan_backend_name() == "cpu"
+    assert runtime._tree_has_tracer({"x": np.asarray([1.0])}) is False
+
+    monkeypatch.setattr(runtime, "has_jax", lambda: True)
+    monkeypatch.setattr(runtime.jax, "default_backend", lambda: " GPU ")
+    assert runtime._scan_backend_name() == "gpu"
+
+    np.testing.assert_allclose(runtime._scalar_history_array([]), np.zeros((0,)))
+    np.testing.assert_allclose(runtime._scalar_history_array([1, 2.5]), [1.0, 2.5])

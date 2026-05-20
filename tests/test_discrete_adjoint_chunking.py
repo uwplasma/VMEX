@@ -263,6 +263,15 @@ def test_replay_column_chunk_default_shape_guards(monkeypatch):
     assert da._replay_column_chunk_default(tape=_fake_tape(1), tangents=np.zeros((2, 1))) is None
 
 
+def test_replay_column_chunk_override_parses_policy_values():
+    assert da._replay_column_chunk_override(None) == (False, None)
+    assert da._replay_column_chunk_override("auto") == (False, None)
+    assert da._replay_column_chunk_override("bad") == (False, None)
+    assert da._replay_column_chunk_override("off") == (True, None)
+    assert da._replay_column_chunk_override("-3") == (True, None)
+    assert da._replay_column_chunk_override("3") == (True, 3)
+
+
 def test_residual_iteration_trace_guards_and_rejected_statuses():
     with pytest.raises(TypeError, match="diagnostics"):
         da.residual_iteration_trace_from_result(SimpleNamespace(diagnostics=None))
@@ -379,6 +388,52 @@ def test_direct_checkpoint_tape_records_build_leaf_timing(monkeypatch):
     assert tape.dynamic_base_carries_stacked == "base_carries"
     assert tape.stacked_step_traces == "stacked"
     assert tape.step_trace_static_flags == {"stacked": True}
+
+
+def test_direct_checkpoint_tape_reruns_full_trace_when_dynamic_trace_unsupported(monkeypatch):
+    trace_dynamic = _fake_dynamic_trace()
+    trace_full = _fake_supported_dynamic_trace(lambda_update_scale=0.75)
+    state = trace_dynamic["state_pre"]
+    calls = []
+
+    def fake_solve(state0, static, *, adjoint_trace, **kwargs):
+        assert state0 is state
+        assert static == "static"
+        assert adjoint_trace is True
+        calls.append(kwargs.get("adjoint_trace_mode"))
+        trace = trace_dynamic if len(calls) == 1 else trace_full
+        return SimpleNamespace(
+            state=state,
+            diagnostics={
+                "adjoint_step_trace": [trace],
+                "timing": {"iterations": len(calls)},
+            },
+        )
+
+    stack_calls = []
+
+    def fake_stack(step_traces):
+        stack_calls.append(step_traces)
+        return {"stacked": len(step_traces)}, {"precond_jmax": 1}
+
+    monkeypatch.setattr("vmec_jax.solve.solve_fixed_boundary_residual_iter", fake_solve)
+    monkeypatch.setattr(da, "_stack_replay_step_traces", fake_stack)
+
+    tape = da.build_residual_checkpoint_tape_direct(
+        state,
+        "static",
+        indata={},
+        signgs=1,
+        max_iter=2,
+        store_full_step_traces=False,
+    )
+
+    assert calls == ["dynamic", "full"]
+    assert tape.step_traces == (trace_full,)
+    assert tape.stacked_step_traces == {"stacked": 1}
+    assert tape.step_trace_static_flags == {"precond_jmax": 1}
+    assert stack_calls == [(trace_full,)]
+    assert tape.diagnostics["timing"]["iterations"] == 2
 
 
 def test_concat_residual_iteration_traces_empty_is_typed():

@@ -66,6 +66,144 @@ class _HostRestartDecision(NamedTuple):
     vmecpp_bad_progress: bool
 
 
+@dataclass(frozen=True)
+class _Vmec2000ScanOptions:
+    scan_print_env: str
+    scan_print_mode: str
+    scan_print_ordered: bool
+    scan_print_chunked: bool
+    scan_light: bool
+    scan_minimal: bool
+    scan_collect_scalars: bool
+    scan_collect_print: bool
+    scan_core: bool
+    scan_trace: bool
+    abort_scan_on_badjac: bool
+    scan_use_precomputed: bool
+    scan_use_lax_tridi: bool
+    scan_use_restart_payload: bool
+    print_in_scan: bool
+    chunked_print: bool
+
+
+def _vmec2000_scan_options_from_env(
+    *,
+    verbose: bool,
+    vmec2000_control: bool,
+    verbose_vmec2000_table: bool,
+    light_history: bool,
+    scan_minimal_default: bool | None,
+    dump_any: bool,
+    fsq_total_target: float | None,
+    backend_name: str,
+    force_chunked_scan_run: bool,
+    scan_print_env: str,
+    scan_print_mode_env: str,
+    scan_print_ordered_env: str,
+    scan_print_chunked_env: str,
+    scan_light_env: str,
+    scan_minimal_env: str,
+    scan_core_env: str,
+    scan_trace_env: str,
+    abort_scan_env: str,
+    scan_precompute_env: str,
+    tridi_precompute_env: str,
+    scan_lax_env: str,
+    tridi_solve_env: str,
+    scan_restart_payload_env: str,
+) -> _Vmec2000ScanOptions:
+    scan_print_env = str(scan_print_env).strip().lower()
+    scan_print_mode = str(scan_print_mode_env).strip().lower()
+    scan_print_ordered = _runtime_env_enabled(scan_print_ordered_env)
+    scan_print_chunked = _runtime_env_enabled(scan_print_chunked_env)
+    scan_light = _runtime_env_enabled(scan_light_env) or bool(light_history)
+    scan_minimal_env_l = str(scan_minimal_env).strip().lower()
+    if scan_minimal_env_l:
+        scan_minimal = _runtime_env_enabled(scan_minimal_env_l)
+    elif scan_minimal_default is not None:
+        scan_minimal = bool(scan_minimal_default)
+    else:
+        # Quiet runs default to the minimal scan history to reduce host traffic.
+        scan_minimal = not bool(verbose)
+    if dump_any:
+        scan_minimal = False
+        scan_light = False
+    scan_collect_scalars = not scan_minimal
+    scan_collect_print = (
+        bool(verbose) and bool(vmec2000_control) and bool(verbose_vmec2000_table) and scan_collect_scalars
+    )
+    scan_core = _default_scan_core(
+        scan_core_env=str(scan_core_env).strip().lower(),
+        scan_minimal=bool(scan_minimal),
+        fsq_total_target=fsq_total_target,
+    )
+    scan_trace = _runtime_env_enabled(scan_trace_env)
+    abort_scan_on_badjac = _runtime_env_enabled(abort_scan_env)
+
+    scan_precompute_env_l = str(scan_precompute_env).strip().lower()
+    if scan_precompute_env_l:
+        scan_use_precomputed = _runtime_env_enabled(scan_precompute_env_l)
+    else:
+        scan_use_precomputed = _runtime_env_enabled(tridi_precompute_env)
+    scan_lax_env_l = str(scan_lax_env).strip().lower()
+    if scan_lax_env_l:
+        scan_use_lax_tridi = _runtime_env_enabled(scan_lax_env_l)
+    else:
+        scan_use_lax_tridi = str(tridi_solve_env).strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "lax",
+            "force",
+        )
+
+    scan_restart_payload_env_l = str(scan_restart_payload_env).strip().lower()
+    if scan_restart_payload_env_l in ("1", "true", "yes"):
+        scan_use_restart_payload = True
+    elif scan_restart_payload_env_l in ("0", "false", "no"):
+        scan_use_restart_payload = False
+    else:
+        scan_use_restart_payload = str(backend_name).strip().lower() == "cpu"
+
+    print_in_scan = (
+        bool(verbose)
+        and bool(vmec2000_control)
+        and bool(verbose_vmec2000_table)
+        and _runtime_env_enabled(scan_print_env)
+    )
+    if scan_minimal:
+        print_in_scan = False
+    chunked_print = False
+    if print_in_scan and scan_print_chunked:
+        # Avoid host callbacks inside the scan: we'll print per chunk on host.
+        chunked_print = True
+        print_in_scan = False
+    if force_chunked_scan_run:
+        chunked_print = True
+        print_in_scan = False
+    if scan_print_mode not in ("debug_print", "debug_callback", "io_callback"):
+        scan_print_mode = "debug_print"
+
+    return _Vmec2000ScanOptions(
+        scan_print_env=scan_print_env,
+        scan_print_mode=scan_print_mode,
+        scan_print_ordered=bool(scan_print_ordered),
+        scan_print_chunked=bool(scan_print_chunked),
+        scan_light=bool(scan_light),
+        scan_minimal=bool(scan_minimal),
+        scan_collect_scalars=bool(scan_collect_scalars),
+        scan_collect_print=bool(scan_collect_print),
+        scan_core=bool(scan_core),
+        scan_trace=bool(scan_trace),
+        abort_scan_on_badjac=bool(abort_scan_on_badjac),
+        scan_use_precomputed=bool(scan_use_precomputed),
+        scan_use_lax_tridi=bool(scan_use_lax_tridi),
+        scan_use_restart_payload=bool(scan_use_restart_payload),
+        print_in_scan=bool(print_in_scan),
+        chunked_print=bool(chunked_print),
+    )
+
+
 def _zero_edge_rz_force_block(a, *, preserve_numpy: bool = True):
     """Zero the LCFS row in an R/Z force block, leaving lambda blocks untouched.
 
@@ -7373,80 +7511,50 @@ def solve_fixed_boundary_residual_iter(
         nstep_screen = int(indata.get_int("NSTEP", 1)) if indata is not None else 1
         if nstep_screen < 1:
             nstep_screen = 1
-        # Live scan printing is on by default. To keep compilation caching
-        # effective, we use chunked host-side printing unless explicitly
-        # disabled.
-        scan_print_env = os.getenv("VMEC_JAX_SCAN_PRINT", "1").strip().lower()
-        scan_print_mode = os.getenv("VMEC_JAX_SCAN_PRINT_MODE", "debug_callback").strip().lower()
-        scan_print_ordered = os.getenv("VMEC_JAX_SCAN_PRINT_ORDERED", "0").strip().lower() not in (
-            "",
-            "0",
-            "false",
-            "no",
-        )
-        scan_print_chunked_env = os.getenv("VMEC_JAX_SCAN_PRINT_CHUNKED", "1").strip().lower()
-        scan_print_chunked = scan_print_chunked_env not in ("", "0", "false", "no")
-        scan_light_env = os.getenv("VMEC_JAX_SCAN_LIGHT", "0").strip().lower()
-        scan_light = (scan_light_env not in ("", "0", "false", "no")) or bool(light_history)
-        scan_minimal_env = os.getenv("VMEC_JAX_SCAN_MINIMAL", "").strip().lower()
-        if scan_minimal_env:
-            scan_minimal = scan_minimal_env not in ("", "0", "false", "no")
-        elif scan_minimal_default is not None:
-            scan_minimal = bool(scan_minimal_default)
-        else:
-            # Quiet runs default to the minimal scan history to reduce host traffic.
-            scan_minimal = not bool(verbose)
-        if dump_any:
-            scan_minimal = False
-            scan_light = False
-        scan_collect_scalars = not scan_minimal
-        scan_collect_print = (
-            bool(verbose) and bool(vmec2000_control) and bool(verbose_vmec2000_table) and scan_collect_scalars
-        )
-        scan_core_env = os.getenv("VMEC_JAX_SCAN_CORE", "").strip().lower()
-        scan_core = _default_scan_core(
-            scan_core_env=scan_core_env,
-            scan_minimal=bool(scan_minimal),
+        scan_options = _vmec2000_scan_options_from_env(
+            verbose=bool(verbose),
+            vmec2000_control=bool(vmec2000_control),
+            verbose_vmec2000_table=bool(verbose_vmec2000_table),
+            light_history=bool(light_history),
+            scan_minimal_default=scan_minimal_default,
+            dump_any=bool(dump_any),
             fsq_total_target=fsq_total_target,
+            backend_name=_scan_backend_name(),
+            force_chunked_scan_run=bool(force_chunked_scan_run),
+            scan_print_env=os.getenv("VMEC_JAX_SCAN_PRINT", "1"),
+            scan_print_mode_env=os.getenv("VMEC_JAX_SCAN_PRINT_MODE", "debug_callback"),
+            scan_print_ordered_env=os.getenv("VMEC_JAX_SCAN_PRINT_ORDERED", "0"),
+            scan_print_chunked_env=os.getenv("VMEC_JAX_SCAN_PRINT_CHUNKED", "1"),
+            scan_light_env=os.getenv("VMEC_JAX_SCAN_LIGHT", "0"),
+            scan_minimal_env=os.getenv("VMEC_JAX_SCAN_MINIMAL", ""),
+            scan_core_env=os.getenv("VMEC_JAX_SCAN_CORE", ""),
+            scan_trace_env=os.getenv("VMEC_JAX_SCAN_TRACE", "0"),
+            abort_scan_env=os.getenv("VMEC_JAX_SCAN_ABORT_ON_BADJAC", "0"),
+            scan_precompute_env=os.getenv("VMEC_JAX_SCAN_PRECOND_PRECOMPUTE", ""),
+            tridi_precompute_env=os.getenv("VMEC_JAX_TRIDI_PRECOMPUTE", "0"),
+            scan_lax_env=os.getenv("VMEC_JAX_SCAN_PRECOND_LAXTRIDI", ""),
+            tridi_solve_env=os.getenv("VMEC_JAX_TRIDI_SOLVE", ""),
+            scan_restart_payload_env=os.getenv("VMEC_JAX_SCAN_RESTART_PAYLOAD", ""),
         )
-        scan_trace_env = os.getenv("VMEC_JAX_SCAN_TRACE", "0").strip().lower()
-        scan_trace = scan_trace_env not in ("", "0", "false", "no")
-        abort_scan_env = os.getenv("VMEC_JAX_SCAN_ABORT_ON_BADJAC", "0").strip().lower()
-        abort_scan_on_badjac = abort_scan_env not in ("", "0", "false", "no")
-        scan_precompute_env = os.getenv("VMEC_JAX_SCAN_PRECOND_PRECOMPUTE", "").strip().lower()
-        if scan_precompute_env:
-            scan_use_precomputed = scan_precompute_env not in ("", "0", "false", "no")
-        else:
-            scan_use_precomputed = os.getenv("VMEC_JAX_TRIDI_PRECOMPUTE", "0").strip().lower() not in (
-                "",
-                "0",
-                "false",
-                "no",
-            )
-        scan_lax_env = os.getenv("VMEC_JAX_SCAN_PRECOND_LAXTRIDI", "").strip().lower()
-        if scan_lax_env:
-            scan_use_lax_tridi = scan_lax_env not in ("", "0", "false", "no")
-        else:
-            scan_use_lax_tridi = os.getenv("VMEC_JAX_TRIDI_SOLVE", "").strip().lower() in (
-                "1",
-                "true",
-                "yes",
-                "lax",
-                "force",
-            )
+        scan_print_env = scan_options.scan_print_env
+        scan_print_mode = scan_options.scan_print_mode
+        scan_print_ordered = scan_options.scan_print_ordered
+        scan_light = scan_options.scan_light
+        scan_minimal = scan_options.scan_minimal
+        scan_collect_scalars = scan_options.scan_collect_scalars
+        scan_collect_print = scan_options.scan_collect_print
+        scan_core = scan_options.scan_core
+        scan_trace = scan_options.scan_trace
+        abort_scan_on_badjac = scan_options.abort_scan_on_badjac
+        scan_use_precomputed = scan_options.scan_use_precomputed
+        scan_use_lax_tridi = scan_options.scan_use_lax_tridi
         # On GPU/TPU, lax.cond executes BOTH branches unconditionally. The
         # restart payload (_restart_payload) re-runs the full vmec_bcovar +
         # force computation for the checkpoint state, doubling per-iteration
         # cost even when restarts are rare. On CPU, lax.cond branches are
         # selected at Python level (Python loop), so this overhead is avoided.
         # Default: use restart payload on CPU only; skip it on GPU/TPU.
-        _rp_env = os.getenv("VMEC_JAX_SCAN_RESTART_PAYLOAD", "").strip().lower()
-        if _rp_env in ("1", "true", "yes"):
-            scan_use_restart_payload = True
-        elif _rp_env in ("0", "false", "no"):
-            scan_use_restart_payload = False
-        else:
-            scan_use_restart_payload = _scan_backend_name() == "cpu"
+        scan_use_restart_payload = scan_options.scan_use_restart_payload
         dump_timecontrol_scan = os.getenv("VMEC_JAX_DUMP_TIMECONTROL", "") not in ("", "0")
         scan_timecontrol_callback = None
         if dump_timecontrol_scan:
@@ -7457,24 +7565,10 @@ def solve_fixed_boundary_residual_iter(
             except Exception:
                 dump_timecontrol_scan = False
                 scan_timecontrol_callback = None
-        print_in_scan = (
-            bool(verbose)
-            and bool(vmec2000_control)
-            and bool(verbose_vmec2000_table)
-            and scan_print_env not in ("", "0", "false", "no")
-        )
-        if scan_minimal:
-            print_in_scan = False
-        chunked_print = False
+        print_in_scan = scan_options.print_in_scan
+        chunked_print = scan_options.chunked_print
         _jax_debug = None
         _jax_debug_print = None
-        if print_in_scan and scan_print_chunked:
-            # Avoid host callbacks inside the scan: we'll print per chunk on host.
-            chunked_print = True
-            print_in_scan = False
-        if force_chunked_scan_run:
-            chunked_print = True
-            print_in_scan = False
         if print_in_scan:
             try:
                 from jax import debug as _jax_debug
@@ -7482,8 +7576,6 @@ def solve_fixed_boundary_residual_iter(
                 _jax_debug_print = _jax_debug.print
             except Exception:
                 print_in_scan = False
-        if scan_print_mode not in ("debug_print", "debug_callback", "io_callback"):
-            scan_print_mode = "debug_print"
         if scan_print_mode == "io_callback":
             try:
                 from jax.experimental import io_callback as _io_callback
