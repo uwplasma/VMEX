@@ -123,8 +123,10 @@ Reproduction commands for these panels live in
 `docs/optimization_sweep_results.rst`.
 
 QI multi-NFP coverage is rendered from existing reviewed `QI_optimization.py`
-artifacts. NFP=1/2/3 have passing saved diagnostics; NFP=4 is a finite-beta
-verification/stress lane, not a production robustness claim.
+artifacts. These are case-specific gate checks, not additional aspect-6 README
+best-row promotions: NFP=1/2 use target aspect 10, the seed-3127 NFP=3 lane
+uses target aspect 4, and NFP=4 is a finite-beta verification/stress lane
+rather than a production robustness claim.
 
 <p align="center">
   <img src="docs/_static/figures/readme_qi_optimization_cases.png" width="980" />
