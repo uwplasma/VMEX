@@ -243,6 +243,69 @@ def test_main_accepts_custom_case_with_bundled_qi_seed(monkeypatch, tmp_path):
     assert rows[0]["seed_suitability"] == "pass"
 
 
+def test_main_writes_prefine_manifest_for_custom_case_without_running_probe(monkeypatch, tmp_path):
+    mod = _load_module()
+    input_path = tmp_path / "input.custom"
+    wout_path = tmp_path / "wout_custom.nc"
+    input_path.write_text("&INDATA\n/")
+    wout_path.write_text("placeholder")
+    targets = mod.SuitabilityTargets()
+
+    def fake_evaluate(case, **_kwargs):
+        record = {
+            "label": case.label,
+            "family": case.family,
+            "input": str(case.input_path),
+            "wout": str(case.wout_path),
+            "aspect": mod.DEFAULT_TARGET_ASPECT,
+            "mean_iota": 0.45,
+            "qi_phimin": 0.0,
+            "qi_mirror_ratio_max": 0.18,
+            "qi_max_elongation": 7.0,
+            "qi_smooth_total": 1.0e-3,
+            "qi_legacy_total": 1.0e-3,
+        }
+        record.update(mod._constraint_status(record, targets))
+        return record
+
+    monkeypatch.setattr(mod, "evaluate_seed_case", fake_evaluate)
+    output = tmp_path / "summary.json"
+    manifest_path = tmp_path / "prefine_manifest.json"
+
+    rc = mod.main(
+        [
+            "--quick",
+            "--case",
+            f"custom case:qi:{input_path}:{wout_path}",
+            "--output",
+            str(output),
+            "--prefine-probes",
+            "plan",
+            "--prefine-manifest",
+            str(manifest_path),
+            "--prefine-output-dir",
+            str(tmp_path / "probes"),
+            "--no-prefine-family-representatives",
+        ]
+    )
+
+    report = json.loads(output.read_text())
+    manifest = json.loads(manifest_path.read_text())
+
+    assert rc == 0
+    assert report["prefine_probe_mode"] == "plan"
+    assert report["prefine_probe_manifest"] == str(manifest_path)
+    assert report["prefine_probe_summary"]["dry_run"] is True
+    assert manifest["dry_run"] is True
+    assert manifest["plans"][0]["label"] == "custom case"
+    assert manifest["plans"][0]["input"] == str(input_path)
+    assert manifest["plans"][0]["wout"] == str(wout_path)
+    assert manifest["plans"][0]["output_dir"].endswith("01_custom_case")
+    assert manifest["plans"][0]["status"] == "planned"
+    assert manifest["plans"][0]["selection_reasons"] == ["top_n"]
+    assert manifest["summary"]["recommendation"]["action"] == "review_manifest"
+
+
 def test_build_seed_audit_can_select_best_well_phase(monkeypatch):
     mod = _load_module()
     targets = mod.SuitabilityTargets(smooth_qi_max=None, legacy_qi_max=None)

@@ -47,11 +47,14 @@ acceptance criteria or evidence changes.
 - The duplicate finite-beta stage-one output path now has the same
   selected-best-exact-state save contract as the main QS workflow, so
   ``input.final`` and ``wout_final.nc`` cannot drift there either.
-- Required CI coverage is above the 85% gate. The May 17 release-candidate
-  local required non-full coverage tier passed (`1111 passed, 20 skipped, 97
-  deselected`) with 85.25% coverage in 10:22, the optional converged VMEC2000
-  parity gate passed locally with `VMEC2000_INTEGRATION=1`, and GitHub CI
-  passed on the validation commit.
+- Required CI coverage is above the 85% gate. The May 20 required non-full
+  coverage tier passed (`1236 passed, 20 skipped, 101 deselected`) in 10:02
+  with 86.04% coverage; appending the final same-turn solver/plotting helper
+  tests raised the local coverage database to 86.31%. The optional converged
+  VMEC2000 parity gate passed locally with `VMEC2000_INTEGRATION=1`, and
+  GitHub CI passed on the validation commit. The next coverage blocker is not
+  peripheral helpers: reaching 95% still requires about 2.9k additional covered
+  lines, dominated by `solve.py` orchestration/refactor seams.
 - VMEC2000 converged-wout parity now has a fast bundled matrix gate across
   fixed/free, axisymmetric/non-axisymmetric, LASYM, and single/multigrid
   representatives. The executable-backed end-state gate remains opt-in:
@@ -468,15 +471,15 @@ release, and the QI optimization driver split:
   mechanics live in `qi_optimization_cases.py` and
   `qi_optimization_support.py`. Large
   solver/wout/free-boundary splits remain deferred behind parity gates.
-- Docs/release hygiene: 99.6%. Performance/discrete-adjoint/docs reflect the
+- Docs/release hygiene: 99.7%. Performance/discrete-adjoint/docs reflect the
   current replay and finite-beta policies, diagnostics docs cover detailed
   preconditioner timing, and a command-level release checklist now ties local
   gates, tools/validation lint/compile checks, GitHub Actions, artifact hygiene,
   and optional research-grade checks together. Read the Docs is configured to
   fail on Sphinx warnings, release docs use the 85% coverage gate, and package
   discovery is locked to the `vmec_jax` namespace. Full local Sphinx and the
-  required 85% coverage command are green at 85.25%, and the `f5c6d27`
-  `main` CI run was green; released reference assets are ignored so local
+  required 85% coverage command are green at 86.04%, and the final appended
+  coverage database is 86.31%; released reference assets are ignored so local
   full-tier refreshes cannot accidentally bloat commits.
   The documented custom QI seed audit command was validated end-to-end on
   `input.QI_stel_seed_3127`; final seed-robust QI and GPU-production artifacts
@@ -529,7 +532,7 @@ Acceptance:
       logic second, I/O/schema third.
 - [ ] Keep required CI under 10 minutes by using small fixtures and nightly heavy
       matrices.
-- [ ] Document the testing strategy and explain which tests are smoke, unit,
+- [x] Document the testing strategy and explain which tests are smoke, unit,
       parity, physics, and performance gates.
 
 Acceptance:
