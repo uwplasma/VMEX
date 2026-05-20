@@ -2828,6 +2828,8 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    global ESS_OPTIONS, MODES, PROBLEMS
+
     args = _parse_args()
     output_root = Path(args.output_root)
     backend_label = str(args.backend_label)
@@ -2840,6 +2842,9 @@ def main() -> None:
         "on": (True,),
         "off": (False,),
     }[str(args.ess)]
+    PROBLEMS = problems
+    MODES = modes
+    ESS_OPTIONS = ess_options
     qi_qp_preseed_options = {
         "both": (True, False),
         "on": (True,),
