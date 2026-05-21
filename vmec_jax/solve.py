@@ -106,11 +106,27 @@ from .solve_residual_iter_geometry_helpers import (
     _mn_sin_to_signed_physical_batch as _geometry_mn_sin_to_signed_physical_batch,
     _rz_norm_np as _geometry_rz_norm_np,
 )
+from .solve_force_payload_helpers import (
+    ForceBlocks as _ForceBlocks,
+    normalize_force_blocks as _normalize_force_blocks,  # noqa: F401 - re-exported for internal tests/importers.
+    preconditioner_output_blocks_np as _preconditioner_output_blocks_np,
+    residual_force_payload_after_m1_scalxc as _residual_force_payload_after_m1_scalxc,
+    zero_edge_rz_force_block as _zero_edge_rz_force_block,  # noqa: F401 - re-exported for internal tests/importers.
+    zero_edge_rz_force_blocks as _zero_edge_rz_force_blocks,
+)
 from .solve_residual_objective_helpers import (
     assemble_residual_objective_terms as _assemble_residual_objective_terms,
     residual_objective_vector as _residual_objective_vector,
 )
 from .solve_scan_output import postprocess_vmec2000_scan_result, unpack_vmec2000_scan_histories
+from .solve_scan_payload_helpers import (
+    ScanStepFields as _ScanStepFields,
+    current_scan_payload as _current_scan_payload,
+    mask_scan_restart_force_payload as _mask_scan_restart_force_payload,  # noqa: F401 - re-exported for internal tests/importers.
+    restart_scan_payload as _restart_scan_payload,
+    select_scan_force_payload as _select_scan_force_payload,
+    select_scan_step_fields as _select_scan_step_fields,
+)
 from .solve_scan_planning_helpers import (
     apply_state_only_scan_options as _apply_state_only_scan_options,
     build_scan_timing_report as _build_scan_timing_report,
@@ -148,62 +164,6 @@ _Vmec2000TimeControlDecision = _residual_iter_policy.Vmec2000TimeControlDecision
 _m1_internal_to_physical_pair = _geometry_m1_internal_to_physical_pair
 _mn_sin_to_signed_physical_batch = _geometry_mn_sin_to_signed_physical_batch
 _rz_norm_np = _geometry_rz_norm_np
-
-
-class _ForceBlocks(NamedTuple):
-    frcc: Any
-    frss: Any
-    fzsc: Any
-    fzcs: Any
-    flsc: Any
-    flcs: Any
-    frsc: Any
-    frcs: Any
-    fzcc: Any
-    fzss: Any
-    flcc: Any
-    flss: Any
-
-
-def _zero_edge_rz_force_block(a, *, preserve_numpy: bool = True):
-    """Zero the LCFS row in an R/Z force block, leaving lambda blocks untouched.
-
-    VMEC excludes the outermost R/Z force row from residual metrics. This
-    helper centralizes that convention while preserving NumPy hot paths when
-    requested.
-    """
-    if a is None:
-        return None
-    if preserve_numpy and isinstance(a, np.ndarray):
-        if a.shape[0] < 2:
-            return a
-        out = a.copy()
-        out[-1] = np.zeros_like(a[-1])
-        return out
-    a = jnp.asarray(a)
-    if a.shape[0] < 2:
-        return a
-    return a.at[-1].set(jnp.zeros_like(a[-1]))
-
-
-def _zero_edge_rz_force_blocks(frzl, *, preserve_numpy: bool = True):
-    """Zero LCFS rows for every R/Z block in a ``TomnspsRZL`` container."""
-    from .vmec_tomnsp import TomnspsRZL
-
-    return TomnspsRZL(
-        frcc=_zero_edge_rz_force_block(frzl.frcc, preserve_numpy=preserve_numpy),
-        frss=_zero_edge_rz_force_block(frzl.frss, preserve_numpy=preserve_numpy),
-        fzsc=_zero_edge_rz_force_block(frzl.fzsc, preserve_numpy=preserve_numpy),
-        fzcs=_zero_edge_rz_force_block(frzl.fzcs, preserve_numpy=preserve_numpy),
-        flsc=frzl.flsc,
-        flcs=frzl.flcs,
-        frsc=_zero_edge_rz_force_block(getattr(frzl, "frsc", None), preserve_numpy=preserve_numpy),
-        frcs=_zero_edge_rz_force_block(getattr(frzl, "frcs", None), preserve_numpy=preserve_numpy),
-        fzcc=_zero_edge_rz_force_block(getattr(frzl, "fzcc", None), preserve_numpy=preserve_numpy),
-        fzss=_zero_edge_rz_force_block(getattr(frzl, "fzss", None), preserve_numpy=preserve_numpy),
-        flcc=getattr(frzl, "flcc", None),
-        flss=getattr(frzl, "flss", None),
-    )
 
 
 def _jit_cache_limit(env_name: str, default: int) -> int:
@@ -418,25 +378,6 @@ def _preconditioner_output_scaling_jit(*, apply_lambda_update_scale: bool):
         compiled,
         env_name="VMEC_JAX_PRECOND_OUTPUT_SCALE_CACHE_SIZE",
         default=4,
-    )
-
-
-def _preconditioner_output_blocks_np(*, frzl_rz, lam_prec) -> _ForceBlocks:
-    """Apply lambda preconditioner factors to host preconditioner outputs."""
-    lam = np.asarray(lam_prec)
-    return _ForceBlocks(
-        frcc=np.asarray(frzl_rz.frcc),
-        frss=None if frzl_rz.frss is None else np.asarray(frzl_rz.frss),
-        fzsc=np.asarray(frzl_rz.fzsc),
-        fzcs=None if frzl_rz.fzcs is None else np.asarray(frzl_rz.fzcs),
-        flsc=np.asarray(frzl_rz.flsc) * lam,
-        flcs=None if frzl_rz.flcs is None else np.asarray(frzl_rz.flcs) * lam,
-        frsc=None if getattr(frzl_rz, "frsc", None) is None else np.asarray(frzl_rz.frsc),
-        frcs=None if getattr(frzl_rz, "frcs", None) is None else np.asarray(frzl_rz.frcs),
-        fzcc=None if getattr(frzl_rz, "fzcc", None) is None else np.asarray(frzl_rz.fzcc),
-        fzss=None if getattr(frzl_rz, "fzss", None) is None else np.asarray(frzl_rz.fzss),
-        flcc=None if getattr(frzl_rz, "flcc", None) is None else np.asarray(frzl_rz.flcc) * lam,
-        flss=None if getattr(frzl_rz, "flss", None) is None else np.asarray(frzl_rz.flss) * lam,
     )
 
 
@@ -877,23 +818,6 @@ class _ScanCarry(NamedTuple):
     edge_Rsin: Any
     edge_Zcos: Any
     edge_Zsin: Any
-
-
-def _mask_scan_restart_force_payload(
-    *, force_blocks: tuple[Any, ...], cache_valid: Any, do_restart: Any
-) -> tuple[tuple[Any, ...], Any]:
-    """Zero current-state scan forces on restart when checkpoint forces are skipped.
-
-    The no-restart-payload scan path reuses current-state residual channels on
-    accelerator backends to avoid evaluating both lax.cond branches. If a
-    restart occurred, those residual channels must not advance the velocity
-    update; the next iteration recomputes forces from the checkpoint state.
-    """
-
-    no_restart = jnp.logical_not(do_restart)
-    masked_blocks = tuple(jnp.where(no_restart, block, jnp.zeros_like(block)) for block in force_blocks)
-    cache_valid_masked = jnp.where(no_restart, cache_valid, jnp.asarray(False))
-    return masked_blocks, cache_valid_masked
 
 
 def _free_boundary_iter_controls(iter2: int, iter1: int, nvacskip: int) -> tuple[int, int]:
@@ -4706,14 +4630,11 @@ def solve_fixed_boundary_residual_iter(
     )
     from .vmec_forces import vmec_forces_rz_from_wout, vmec_residual_internal_from_kernels
     from .vmec_residue import (
-        vmec_apply_m1_constraints,
-        vmec_apply_scalxc_to_tomnsps,
         vmec_force_norms_from_bcovar_dynamic,
         vmec_gcx2_from_tomnsps,
         vmec_gcx2_from_tomnsps_np,
         vmec_scalxc_from_s,
         vmec_wint_from_trig,
-        vmec_zero_m1_zforce,
     )
     from .vmec_jacobian import vmec_half_mesh_jacobian_from_state
     from .vmec_tomnsp import TomnspsRZL, vmec_angle_grid, vmec_trig_tables
@@ -5561,9 +5482,10 @@ def solve_fixed_boundary_residual_iter(
                 pass
         if iter_idx is not None:
             _maybe_dump_tomnsps(frzl=frzl, static=static, iter_idx=int(iter_idx), label="raw")
-        if bool(apply_m1_constraints):
-            frzl = vmec_apply_m1_constraints(frzl=frzl, lconm1=bool(getattr(static.cfg, "lconm1", True)))
-            if os.getenv("VMEC_JAX_SCAN_DEBUG_FORCE", "") not in ("", "0"):
+        scan_debug_force_enabled = os.getenv("VMEC_JAX_SCAN_DEBUG_FORCE", "") not in ("", "0")
+        if scan_debug_force_enabled:
+            if bool(apply_m1_constraints):
+                frzl = vmec_apply_m1_constraints(frzl=frzl, lconm1=bool(getattr(static.cfg, "lconm1", True)))
                 try:
                     from jax import debug as _jax_debug  # type: ignore
                 except Exception:
@@ -5580,8 +5502,7 @@ def solve_fixed_boundary_residual_iter(
                         fzsc=fzsc2_c,
                         fzcs=fzcs2_c,
                     )
-        frzl = vmec_zero_m1_zforce(frzl=frzl, enabled=zero_m1)
-        if os.getenv("VMEC_JAX_SCAN_DEBUG_FORCE", "") not in ("", "0"):
+            frzl = vmec_zero_m1_zforce(frzl=frzl, enabled=zero_m1)
             try:
                 from jax import debug as _jax_debug  # type: ignore
             except Exception:
@@ -5598,54 +5519,20 @@ def solve_fixed_boundary_residual_iter(
                     fzsc=fzsc2_z,
                     fzcs=fzcs2_z,
                 )
-        frzl = vmec_apply_scalxc_to_tomnsps(frzl=frzl, s=s)
-
-        # Materialize tomnsps blocks after scalxc to avoid XLA aliasing.
-        def _nan_guard(x):
-            # Fast path: NumPy arrays are already materialized; skip the JAX
-            # identity jnp.where which would convert _NpArray back to JAX arrays.
-            if isinstance(x, np.ndarray):
-                return x
-            x = jnp.asarray(x)
-            return jnp.where(jnp.isnan(x), x, x)
-
-        try:
-            from dataclasses import replace as _dc_replace
-
-            frzl = _dc_replace(
+            frzl = vmec_apply_scalxc_to_tomnsps(frzl=frzl, s=s)
+            frzl = _normalize_force_blocks(frzl)
+        else:
+            frzl = _residual_force_payload_after_m1_scalxc(
                 frzl,
-                frcc=_nan_guard(frzl.frcc),
-                frss=None if frzl.frss is None else _nan_guard(frzl.frss),
-                fzsc=_nan_guard(frzl.fzsc),
-                fzcs=None if frzl.fzcs is None else _nan_guard(frzl.fzcs),
-                flsc=_nan_guard(frzl.flsc),
-                flcs=None if frzl.flcs is None else _nan_guard(frzl.flcs),
-                frsc=None if getattr(frzl, "frsc", None) is None else _nan_guard(frzl.frsc),
-                frcs=None if getattr(frzl, "frcs", None) is None else _nan_guard(frzl.frcs),
-                fzcc=None if getattr(frzl, "fzcc", None) is None else _nan_guard(frzl.fzcc),
-                fzss=None if getattr(frzl, "fzss", None) is None else _nan_guard(frzl.fzss),
-                flcc=None if getattr(frzl, "flcc", None) is None else _nan_guard(frzl.flcc),
-                flss=None if getattr(frzl, "flss", None) is None else _nan_guard(frzl.flss),
-            )
-        except Exception:
-            frzl = TomnspsRZL(
-                frcc=_nan_guard(frzl.frcc),
-                frss=None if frzl.frss is None else _nan_guard(frzl.frss),
-                fzsc=_nan_guard(frzl.fzsc),
-                fzcs=None if frzl.fzcs is None else _nan_guard(frzl.fzcs),
-                flsc=_nan_guard(frzl.flsc),
-                flcs=None if frzl.flcs is None else _nan_guard(frzl.flcs),
-                frsc=None if getattr(frzl, "frsc", None) is None else _nan_guard(frzl.frsc),
-                frcs=None if getattr(frzl, "frcs", None) is None else _nan_guard(frzl.frcs),
-                fzcc=None if getattr(frzl, "fzcc", None) is None else _nan_guard(frzl.fzcc),
-                fzss=None if getattr(frzl, "fzss", None) is None else _nan_guard(frzl.fzss),
-                flcc=None if getattr(frzl, "flcc", None) is None else _nan_guard(frzl.flcc),
-                flss=None if getattr(frzl, "flss", None) is None else _nan_guard(frzl.flss),
+                s=s,
+                apply_m1_constraints=bool(apply_m1_constraints),
+                lconm1=bool(getattr(static.cfg, "lconm1", True)),
+                zero_m1=zero_m1,
             )
         z_force_dummy = jnp.sum(frzl.fzsc)
         if frzl.fzcs is not None:
             z_force_dummy = z_force_dummy + jnp.sum(frzl.fzcs)
-        if os.getenv("VMEC_JAX_SCAN_DEBUG_FORCE", "") not in ("", "0"):
+        if scan_debug_force_enabled:
             try:
                 from jax import debug as _jax_debug  # type: ignore
             except Exception:
@@ -7435,89 +7322,53 @@ def solve_fixed_boundary_residual_iter(
                     use_precomputed=bool(scan_use_precomputed),
                     use_lax_tridi=bool(scan_use_lax_tridi),
                 )
-                frcc = jnp.asarray(frzl_rz.frcc)
-                frss = frzl_rz.frss if frzl_rz.frss is not None else jnp.zeros_like(frcc)
-                fzsc = jnp.asarray(frzl_rz.fzsc)
-                fzcs = frzl_rz.fzcs if frzl_rz.fzcs is not None else jnp.zeros_like(fzsc)
-                flsc = jnp.asarray(frzl_rz.flsc) * jnp.asarray(cache_lam_prec)
-                flcs = None if frzl_rz.flcs is None else (jnp.asarray(frzl_rz.flcs) * jnp.asarray(cache_lam_prec))
-                frsc = jnp.zeros_like(frcc)
-                frcs = jnp.zeros_like(frcc)
-                fzcc = jnp.zeros_like(fzsc)
-                fzss = jnp.zeros_like(fzsc)
-                flcc = jnp.zeros_like(flsc)
-                flss = jnp.zeros_like(flsc)
-                if getattr(frzl_rz, "frsc", None) is not None:
-                    frsc = jnp.asarray(frzl_rz.frsc)
-                if getattr(frzl_rz, "frcs", None) is not None:
-                    frcs = jnp.asarray(frzl_rz.frcs)
-                if getattr(frzl_rz, "fzcc", None) is not None:
-                    fzcc = jnp.asarray(frzl_rz.fzcc)
-                if getattr(frzl_rz, "fzss", None) is not None:
-                    fzss = jnp.asarray(frzl_rz.fzss)
-                if getattr(frzl_rz, "flcc", None) is not None:
-                    flcc = jnp.asarray(frzl_rz.flcc) * jnp.asarray(cache_lam_prec)
-                if getattr(frzl_rz, "flss", None) is not None:
-                    flss = jnp.asarray(frzl_rz.flss) * jnp.asarray(cache_lam_prec)
-
-                frcc_u = frcc * w_mode_mn[None, :, :]
-                frss_u = frss * w_mode_mn[None, :, :]
-                fzsc_u = fzsc * w_mode_mn[None, :, :]
-                fzcs_u = fzcs * w_mode_mn[None, :, :]
-                flsc_u = flsc * w_mode_mn[None, :, :]
-                flcs_u = (flcs if flcs is not None else jnp.zeros_like(flsc_u)) * w_mode_mn[None, :, :]
-                frsc_u = frsc * w_mode_mn[None, :, :]
-                frcs_u = frcs * w_mode_mn[None, :, :]
-                fzcc_u = fzcc * w_mode_mn[None, :, :]
-                fzss_u = fzss * w_mode_mn[None, :, :]
-                flcc_u = flcc * w_mode_mn[None, :, :]
-                flss_u = flss * w_mode_mn[None, :, :]
-                if lambda_update_scale != 1.0:
-                    flsc_u = flsc_u * lambda_update_scale_j
-                    flcs_u = flcs_u * lambda_update_scale_j
-                    flcc_u = flcc_u * lambda_update_scale_j
-                    flss_u = flss_u * lambda_update_scale_j
-
-                gcr2_p, gcz2_p, gcl2_p = vmec_gcx2_from_tomnsps(
-                    frzl=TomnspsRZL(
-                        frcc=frcc,
-                        frss=frss,
-                        fzsc=fzsc,
-                        fzcs=fzcs,
-                        flsc=flsc,
-                        flcs=flcs,
-                        frsc=frsc,
-                        frcs=frcs,
-                        fzcc=fzcc,
-                        fzss=fzss,
-                        flcc=flcc,
-                        flss=flss,
-                    ),
-                    lconm1=bool(getattr(static.cfg, "lconm1", True)),
-                    apply_m1_constraints=False,
-                    include_edge=True,
-                    apply_scalxc=False,
-                    s=s,
-                )
                 rz_norm = jnp.where(cache_valid, cache_rz_norm, _rz_norm(carry_adv.state))
                 f_norm1 = jnp.where(
                     cache_valid,
                     cache_f_norm1,
                     jnp.where(rz_norm != 0.0, 1.0 / rz_norm, jnp.asarray(float("inf"), dtype=dtype)),
                 )
-                fsqr1 = gcr2_p * f_norm1
-                fsqz1 = gcz2_p * f_norm1
-                # VMEC excludes the axis surface (js=1) from fsql1 sums.
-                gcl2_full = jnp.sum(flsc[1:] * flsc[1:])
-                if flcs is not None:
-                    gcl2_full = gcl2_full + jnp.sum(flcs[1:] * flcs[1:])
-                if getattr(frzl, "flcc", None) is not None:
-                    flcc = jnp.asarray(frzl.flcc)
-                    gcl2_full = gcl2_full + jnp.sum(flcc[1:] * flcc[1:])
-                if getattr(frzl, "flss", None) is not None:
-                    flss = jnp.asarray(frzl.flss)
-                    gcl2_full = gcl2_full + jnp.sum(flss[1:] * flss[1:])
-                fsql1 = gcl2_full * delta_s
+                current_payload_pre = _current_scan_payload(
+                    frzl_rz=frzl_rz,
+                    cache_lam_prec=cache_lam_prec,
+                    w_mode_mn=w_mode_mn,
+                    lambda_update_scale_j=lambda_update_scale_j,
+                    apply_lambda_update_scale=(lambda_update_scale != 1.0),
+                    fsqr=fsqr,
+                    fsqz=fsqz,
+                    fsql=fsql,
+                    f_norm1=f_norm1,
+                    delta_s=delta_s,
+                    s=s,
+                    lconm1=bool(getattr(static.cfg, "lconm1", True)),
+                    cache_precond_diag=cache_precond_diag,
+                    cache_tcon=cache_tcon,
+                    cache_norms=cache_norms,
+                    cache_rz_scale=cache_rz_scale,
+                    cache_l_scale=cache_l_scale,
+                    cache_rz_norm=cache_rz_norm,
+                    cache_f_norm1=cache_f_norm1,
+                    cache_rz_mats=cache_rz_mats,
+                    cache_valid=cache_valid,
+                    lambda_fsq1_optional_source=frzl,
+                )
+                (
+                    frcc_u,
+                    frss_u,
+                    fzsc_u,
+                    fzcs_u,
+                    flsc_u,
+                    flcs_u,
+                    frsc_u,
+                    frcs_u,
+                    fzcc_u,
+                    fzss_u,
+                    flcc_u,
+                    flss_u,
+                ) = current_payload_pre.blocks
+                fsqr1 = current_payload_pre.fsqr1
+                fsqz1 = current_payload_pre.fsqz1
+                fsql1 = current_payload_pre.fsql1
                 fsq1 = fsqr1 + fsqz1 + fsql1
 
                 fsq0 = fsqr + fsqz + fsql
@@ -7954,263 +7805,70 @@ def solve_fixed_boundary_residual_iter(
                         use_precomputed=bool(scan_use_precomputed),
                         use_lax_tridi=bool(scan_use_lax_tridi),
                     )
-                    frcc_r = jnp.asarray(frzl_rz_r.frcc)
-                    frss_r = frzl_rz_r.frss if frzl_rz_r.frss is not None else jnp.zeros_like(frcc_r)
-                    fzsc_r = jnp.asarray(frzl_rz_r.fzsc)
-                    fzcs_r = frzl_rz_r.fzcs if frzl_rz_r.fzcs is not None else jnp.zeros_like(fzsc_r)
-                    flsc_r = jnp.asarray(frzl_rz_r.flsc) * jnp.asarray(cache_lam_prec_r)
-                    flcs_r = (
-                        None
-                        if frzl_rz_r.flcs is None
-                        else (jnp.asarray(frzl_rz_r.flcs) * jnp.asarray(cache_lam_prec_r))
-                    )
-                    frsc_r = jnp.zeros_like(frcc_r)
-                    frcs_r = jnp.zeros_like(frcc_r)
-                    fzcc_r = jnp.zeros_like(fzsc_r)
-                    fzss_r = jnp.zeros_like(fzsc_r)
-                    flcc_r = jnp.zeros_like(flsc_r)
-                    flss_r = jnp.zeros_like(flsc_r)
-                    if getattr(frzl_rz_r, "frsc", None) is not None:
-                        frsc_r = jnp.asarray(frzl_rz_r.frsc)
-                    if getattr(frzl_rz_r, "frcs", None) is not None:
-                        frcs_r = jnp.asarray(frzl_rz_r.frcs)
-                    if getattr(frzl_rz_r, "fzcc", None) is not None:
-                        fzcc_r = jnp.asarray(frzl_rz_r.fzcc)
-                    if getattr(frzl_rz_r, "fzss", None) is not None:
-                        fzss_r = jnp.asarray(frzl_rz_r.fzss)
-                    if getattr(frzl_rz_r, "flcc", None) is not None:
-                        flcc_r = jnp.asarray(frzl_rz_r.flcc) * jnp.asarray(cache_lam_prec_r)
-                    if getattr(frzl_rz_r, "flss", None) is not None:
-                        flss_r = jnp.asarray(frzl_rz_r.flss) * jnp.asarray(cache_lam_prec_r)
-
-                    frzl_pre_r = TomnspsRZL(
-                        frcc=frcc_r,
-                        frss=frss_r,
-                        fzsc=fzsc_r,
-                        fzcs=fzcs_r,
-                        flsc=flsc_r,
-                        flcs=flcs_r,
-                        frsc=frsc_r,
-                        frcs=frcs_r,
-                        fzcc=fzcc_r,
-                        fzss=fzss_r,
-                        flcc=flcc_r,
-                        flss=flss_r,
-                    )
-                    gcr2_p_r, gcz2_p_r, gcl2_p_r = vmec_gcx2_from_tomnsps(
-                        frzl=frzl_pre_r,
-                        lconm1=bool(getattr(static.cfg, "lconm1", True)),
-                        apply_m1_constraints=False,
-                        include_edge=True,
-                        apply_scalxc=False,
+                    return _restart_scan_payload(
+                        frzl_rz=frzl_rz_r,
+                        cache_lam_prec=cache_lam_prec_r,
+                        w_mode_mn=w_mode_mn,
+                        lambda_update_scale_j=lambda_update_scale_j,
+                        apply_lambda_update_scale=(lambda_update_scale != 1.0),
+                        fsqr=fsqr_r,
+                        fsqz=fsqz_r,
+                        fsql=fsql_r,
+                        f_norm1=f_norm1_r,
+                        delta_s=delta_s,
                         s=s,
-                    )
-                    fsqr1_r = gcr2_p_r * f_norm1_r
-                    fsqz1_r = gcz2_p_r * f_norm1_r
-                    gcl2_full_r = jnp.sum(flsc_r[1:] * flsc_r[1:])
-                    if flcs_r is not None:
-                        flcs_r_arr = jnp.asarray(flcs_r)
-                        gcl2_full_r = gcl2_full_r + jnp.sum(flcs_r_arr[1:] * flcs_r_arr[1:])
-                    if getattr(frzl_pre_r, "flcc", None) is not None:
-                        flcc_r = jnp.asarray(frzl_pre_r.flcc)
-                        gcl2_full_r = gcl2_full_r + jnp.sum(flcc_r[1:] * flcc_r[1:])
-                    if getattr(frzl_pre_r, "flss", None) is not None:
-                        flss_r = jnp.asarray(frzl_pre_r.flss)
-                        gcl2_full_r = gcl2_full_r + jnp.sum(flss_r[1:] * flss_r[1:])
-                    fsql1_r = gcl2_full_r * delta_s
-
-                    frcc_u_r = frcc_r * w_mode_mn[None, :, :]
-                    frss_u_r = frss_r * w_mode_mn[None, :, :]
-                    fzsc_u_r = fzsc_r * w_mode_mn[None, :, :]
-                    fzcs_u_r = fzcs_r * w_mode_mn[None, :, :]
-                    flsc_u_r = flsc_r * w_mode_mn[None, :, :]
-                    flcs_u_r = (flcs_r if flcs_r is not None else jnp.zeros_like(flsc_u_r)) * w_mode_mn[None, :, :]
-                    frsc_u_r = frsc_r * w_mode_mn[None, :, :]
-                    frcs_u_r = frcs_r * w_mode_mn[None, :, :]
-                    fzcc_u_r = fzcc_r * w_mode_mn[None, :, :]
-                    fzss_u_r = fzss_r * w_mode_mn[None, :, :]
-                    flcc_u_r = flcc_r * w_mode_mn[None, :, :]
-                    flss_u_r = flss_r * w_mode_mn[None, :, :]
-                    if lambda_update_scale != 1.0:
-                        flsc_u_r = flsc_u_r * lambda_update_scale_j
-                        flcs_u_r = flcs_u_r * lambda_update_scale_j
-                        flcc_u_r = flcc_u_r * lambda_update_scale_j
-                        flss_u_r = flss_u_r * lambda_update_scale_j
-
-                    return (
-                        frcc_u_r,
-                        frss_u_r,
-                        fzsc_u_r,
-                        fzcs_u_r,
-                        flsc_u_r,
-                        flcs_u_r,
-                        frsc_u_r,
-                        frcs_u_r,
-                        fzcc_u_r,
-                        fzss_u_r,
-                        flcc_u_r,
-                        flss_u_r,
-                        fsqr_r,
-                        fsqz_r,
-                        fsql_r,
-                        fsqr1_r,
-                        fsqz1_r,
-                        fsql1_r,
-                        cache_precond_diag_r,
-                        cache_tcon_r,
-                        cache_norms_r,
-                        cache_rz_scale_r,
-                        cache_l_scale_r,
-                        cache_rz_norm_r,
-                        cache_f_norm1_r,
-                        mats_r,
-                        cache_lam_prec_r,
-                        cache_valid_r,
+                        lconm1=bool(getattr(static.cfg, "lconm1", True)),
+                        cache_precond_diag=cache_precond_diag_r,
+                        cache_tcon=cache_tcon_r,
+                        cache_norms=cache_norms_r,
+                        cache_rz_scale=cache_rz_scale_r,
+                        cache_l_scale=cache_l_scale_r,
+                        cache_rz_norm=cache_rz_norm_r,
+                        cache_f_norm1=cache_f_norm1_r,
+                        cache_rz_mats=mats_r,
+                        cache_valid=cache_valid_r,
                     )
 
                 def _current_payload(_):
-                    return (
-                        frcc_u,
-                        frss_u,
-                        fzsc_u,
-                        fzcs_u,
-                        flsc_u,
-                        flcs_u,
-                        frsc_u,
-                        frcs_u,
-                        fzcc_u,
-                        fzss_u,
-                        flcc_u,
-                        flss_u,
-                        fsqr,
-                        fsqz,
-                        fsql,
-                        fsqr1,
-                        fsqz1,
-                        fsql1,
-                        cache_precond_diag,
-                        cache_tcon,
-                        cache_norms,
-                        cache_rz_scale,
-                        cache_l_scale,
-                        cache_rz_norm,
-                        cache_f_norm1,
-                        cache_rz_mats,
-                        cache_lam_prec,
-                        cache_valid,
-                    )
+                    return current_payload_pre
 
-                do_restart_payload = do_restart
-                if bool(scan_use_restart_payload):
-                    # CPU path (or explicit override): run lax.cond so that
-                    # when a restart occurs the forces are re-evaluated for the
-                    # checkpoint state before updating velocities. On CPU the
-                    # Python-loop only calls the selected branch, so this is free.
-                    (
-                        frcc_u_use,
-                        frss_u_use,
-                        fzsc_u_use,
-                        fzcs_u_use,
-                        flsc_u_use,
-                        flcs_u_use,
-                        frsc_u_use,
-                        frcs_u_use,
-                        fzcc_u_use,
-                        fzss_u_use,
-                        flcc_u_use,
-                        flss_u_use,
-                        fsqr_use,
-                        fsqz_use,
-                        fsql_use,
-                        fsqr1_use,
-                        fsqz1_use,
-                        fsql1_use,
-                        cache_precond_diag_use,
-                        cache_tcon_use,
-                        cache_norms_use,
-                        cache_rz_scale_use,
-                        cache_l_scale_use,
-                        cache_rz_norm_use,
-                        cache_f_norm1_use,
-                        cache_rz_mats_use,
-                        cache_lam_prec_use,
-                        cache_valid_use,
-                    ) = jax.lax.cond(do_restart_payload, _restart_payload, _current_payload, operand=None)
-                else:
-                    # GPU/TPU path: lax.cond executes BOTH branches on every
-                    # iteration, which doubles the vmec_bcovar cost. Instead,
-                    # always use the current-state forces, but zero them out
-                    # when a restart occurred. This is safe because velocities
-                    # are also zeroed on restart (_restart_updates), so the
-                    # velocity update v_new = inv_tau*0 + gamma*0 = 0 becomes
-                    # a no-op and the next iteration starts fresh from the
-                    # checkpoint state with force_bcovar_update=True.
-                    (
-                        frcc_u_use,
-                        frss_u_use,
-                        fzsc_u_use,
-                        fzcs_u_use,
-                        flsc_u_use,
-                        flcs_u_use,
-                        frsc_u_use,
-                        frcs_u_use,
-                        fzcc_u_use,
-                        fzss_u_use,
-                        flcc_u_use,
-                        flss_u_use,
-                        fsqr_use,
-                        fsqz_use,
-                        fsql_use,
-                        fsqr1_use,
-                        fsqz1_use,
-                        fsql1_use,
-                        cache_precond_diag_use,
-                        cache_tcon_use,
-                        cache_norms_use,
-                        cache_rz_scale_use,
-                        cache_l_scale_use,
-                        cache_rz_norm_use,
-                        cache_f_norm1_use,
-                        cache_rz_mats_use,
-                        cache_lam_prec_use,
-                        cache_valid_use,
-                    ) = _current_payload(None)
-                    # Zero out force arrays on restart so the velocity update
-                    # is a no-op (velocities are also zeroed in _restart_updates).
-                    (
-                        (
-                            frcc_u_use,
-                            frss_u_use,
-                            fzsc_u_use,
-                            fzcs_u_use,
-                            flsc_u_use,
-                            flcs_u_use,
-                            frsc_u_use,
-                            frcs_u_use,
-                            fzcc_u_use,
-                            fzss_u_use,
-                            flcc_u_use,
-                            flss_u_use,
-                        ),
-                        cache_valid_use,
-                    ) = _mask_scan_restart_force_payload(
-                        force_blocks=(
-                            frcc_u_use,
-                            frss_u_use,
-                            fzsc_u_use,
-                            fzcs_u_use,
-                            flsc_u_use,
-                            flcs_u_use,
-                            frsc_u_use,
-                            frcs_u_use,
-                            fzcc_u_use,
-                            fzss_u_use,
-                            flcc_u_use,
-                            flss_u_use,
-                        ),
-                        cache_valid=cache_valid_use,
-                        do_restart=do_restart,
-                    )
+                payload_use = _select_scan_force_payload(
+                    do_restart=do_restart,
+                    use_restart_payload=bool(scan_use_restart_payload),
+                    restart_payload_fn=_restart_payload,
+                    current_payload_fn=_current_payload,
+                    cond=jax.lax.cond,
+                )
+                (
+                    frcc_u_use,
+                    frss_u_use,
+                    fzsc_u_use,
+                    fzcs_u_use,
+                    flsc_u_use,
+                    flcs_u_use,
+                    frsc_u_use,
+                    frcs_u_use,
+                    fzcc_u_use,
+                    fzss_u_use,
+                    flcc_u_use,
+                    flss_u_use,
+                ) = payload_use.blocks
+                fsqr_use = payload_use.fsqr
+                fsqz_use = payload_use.fsqz
+                fsql_use = payload_use.fsql
+                fsqr1_use = payload_use.fsqr1
+                fsqz1_use = payload_use.fsqz1
+                fsql1_use = payload_use.fsql1
+                cache_precond_diag_use = payload_use.cache_precond_diag
+                cache_tcon_use = payload_use.cache_tcon
+                cache_norms_use = payload_use.cache_norms
+                cache_rz_scale_use = payload_use.cache_rz_scale
+                cache_l_scale_use = payload_use.cache_l_scale
+                cache_rz_norm_use = payload_use.cache_rz_norm
+                cache_f_norm1_use = payload_use.cache_f_norm1
+                cache_rz_mats_use = payload_use.cache_rz_mats
+                cache_lam_prec_use = payload_use.cache_lam_prec
+                cache_valid_use = payload_use.cache_valid
 
                 frcc_u = frcc_u_use
                 frss_u = frss_u_use
@@ -8291,81 +7949,67 @@ def solve_fixed_boundary_residual_iter(
                         idx00=idx00,
                     )
                     state_new = _apply_vmec_lambda_axis_rules(state_new)
-                    return (
-                        state_new,
-                        vRcc,
-                        vRss,
-                        vZsc,
-                        vZcs,
-                        vLsc,
-                        vLcs,
-                        vRsc,
-                        vRcs,
-                        vZcc,
-                        vZss,
-                        vLcc,
-                        vLss,
-                        inv_tau,
-                        fsq_prev,
+                    return _ScanStepFields(
+                        state=state_new,
+                        vRcc=vRcc,
+                        vRss=vRss,
+                        vZsc=vZsc,
+                        vZcs=vZcs,
+                        vLsc=vLsc,
+                        vLcs=vLcs,
+                        vRsc=vRsc,
+                        vRcs=vRcs,
+                        vZcc=vZcc,
+                        vZss=vZss,
+                        vLcc=vLcc,
+                        vLss=vLss,
+                        inv_tau=inv_tau,
+                        fsq_prev=fsq_prev,
                     )
 
                 def _reject_step(_):
-                    return (
-                        state_post,
-                        vRcc_post,
-                        vRss_post,
-                        vZsc_post,
-                        vZcs_post,
-                        vLsc_post,
-                        vLcs_post,
-                        vRsc_post,
-                        vRcs_post,
-                        vZcc_post,
-                        vZss_post,
-                        vLcc_post,
-                        vLss_post,
-                        inv_tau_post,
-                        fsq_prev_post,
+                    return _ScanStepFields(
+                        state=state_post,
+                        vRcc=vRcc_post,
+                        vRss=vRss_post,
+                        vZsc=vZsc_post,
+                        vZcs=vZcs_post,
+                        vLsc=vLsc_post,
+                        vLcs=vLcs_post,
+                        vRsc=vRsc_post,
+                        vRcs=vRcs_post,
+                        vZcc=vZcc_post,
+                        vZss=vZss_post,
+                        vLcc=vLcc_post,
+                        vLss=vLss_post,
+                        inv_tau=inv_tau_post,
+                        fsq_prev=fsq_prev_post,
                     )
 
-                if bool(vmec2000_control):
-                    # VMEC2000 restarts retry the same iteration immediately.
-                    # Use the restart payload but still accept the step.
-                    (
-                        state_new,
-                        vRcc_new,
-                        vRss_new,
-                        vZsc_new,
-                        vZcs_new,
-                        vLsc_new,
-                        vLcs_new,
-                        vRsc_new,
-                        vRcs_new,
-                        vZcc_new,
-                        vZss_new,
-                        vLcc_new,
-                        vLss_new,
-                        inv_tau_new,
-                        fsq_prev_new,
-                    ) = _accept_step(None)
-                else:
-                    (
-                        state_new,
-                        vRcc_new,
-                        vRss_new,
-                        vZsc_new,
-                        vZcs_new,
-                        vLsc_new,
-                        vLcs_new,
-                        vRsc_new,
-                        vRcs_new,
-                        vZcc_new,
-                        vZss_new,
-                        vLcc_new,
-                        vLss_new,
-                        inv_tau_new,
-                        fsq_prev_new,
-                    ) = jax.lax.cond(do_restart, _reject_step, _accept_step, operand=None)
+                step_fields = _select_scan_step_fields(
+                    vmec2000_control=bool(vmec2000_control),
+                    do_restart=do_restart,
+                    accept_step_fn=_accept_step,
+                    reject_step_fn=_reject_step,
+                    cond=jax.lax.cond,
+                )
+                (
+                    state_new,
+                    vRcc_new,
+                    vRss_new,
+                    vZsc_new,
+                    vZcs_new,
+                    vLsc_new,
+                    vLcs_new,
+                    vRsc_new,
+                    vRcs_new,
+                    vZcc_new,
+                    vZss_new,
+                    vLcc_new,
+                    vLss_new,
+                    inv_tau_new,
+                    fsq_prev_new,
+                ) = step_fields
                 fsq0_prev_new = fsq0_prev_post
 
                 fsqr_out = fsqr

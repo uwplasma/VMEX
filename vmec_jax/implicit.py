@@ -39,6 +39,10 @@ from .implicit_adjoint_helpers import (
     validate_active_adjoint_shapes,
     validate_full_adjoint_shapes,
 )
+from .implicit_residual_adjoint_helpers import (
+    lineax_bicgstab_solve as _lineax_bicgstab_solve_impl,
+    linear_map_jacobian_columns as _linear_map_jacobian_columns_impl,
+)
 
 try:
     import lineax as lx
@@ -253,28 +257,15 @@ def _lineax_bicgstab_solve(
     lineax materially improves the residual adjoint solve before depending on it
     more broadly.
     """
-    if lx is None:
-        return None, False, {}
-
-    b = jnp.asarray(b)
-    input_structure = jax.ShapeDtypeStruct(tuple(b.shape), b.dtype)
-    operator = lx.FunctionLinearOperator(matvec, input_structure)
-    options = {}
-    if x0 is not None:
-        options["y0"] = jnp.asarray(x0)
-    solution = lx.linear_solve(
-        operator,
+    return _lineax_bicgstab_solve_impl(
+        matvec,
         b,
-        solver=lx.BiCGStab(rtol=float(tol), atol=0.0, max_steps=int(max_iter)),
-        options=options,
-        throw=False,
+        x0=x0,
+        tol=tol,
+        max_iter=max_iter,
+        lineax_module=lx,
+        jax_module=jax,
     )
-    value = jnp.asarray(solution.value)
-    try:
-        success = bool(np.all(np.isfinite(np.asarray(jax.device_get(value)))))
-    except Exception:
-        success = False
-    return value, success, getattr(solution, "stats", {})
 
 
 def _linear_map_jacobian_columns(
@@ -291,19 +282,13 @@ def _linear_map_jacobian_columns(
     linearized map to blocks of basis directions instead of tracing a separate
     Jacobian transform for every column.
     """
-    if chunk_size <= 0:
-        raise ValueError(f"chunk_size must be positive, got {chunk_size}")
-
-    eye_idx = jnp.arange(int(input_size), dtype=jnp.int32)
-    chunks = []
-    for start in range(0, int(input_size), int(chunk_size)):
-        stop = min(start + int(chunk_size), int(input_size))
-        rows = jnp.arange(start, stop, dtype=jnp.int32)
-        basis = (rows[:, None] == eye_idx[None, :]).astype(dtype)
-        chunk = jax.vmap(linear_map)(basis).T
-        chunk = jnp.reshape(chunk, (int(output_size), stop - start))
-        chunks.append(chunk)
-    return jnp.concatenate(chunks, axis=1)
+    return _linear_map_jacobian_columns_impl(
+        linear_map,
+        input_size=input_size,
+        output_size=output_size,
+        dtype=dtype,
+        chunk_size=chunk_size,
+    )
 
 
 def _stellsym_feasible_indices_np(static, *, idx00: int | None, mask_lambda_axis: bool = True):
