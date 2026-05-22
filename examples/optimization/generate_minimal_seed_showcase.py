@@ -8,7 +8,9 @@ for each field period count:
 - ``RBC(0,1)``
 - ``ZBS(0,1)``
 
-This script maps that seed family to the requested targets:
+This script maps that seed family to the configured targets.  Publication
+claims should use the renderer output, which skips stale rows and may include
+only the subset of cases with current non-stale provenance:
 
 - QI with NFP=1, 2, 3, and a finite-beta NFP=4 reference lane
 - an NFP=1 circular-torus QI stress lane
