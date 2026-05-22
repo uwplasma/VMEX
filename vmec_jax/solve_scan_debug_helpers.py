@@ -51,6 +51,198 @@ def _print_vmec2000_row(
     return True
 
 
+def _emit_vmec2000_iter_row(
+    *,
+    iter_idx: int,
+    fsqr: float,
+    fsqz: float,
+    fsql: float,
+    delt0r: float,
+    r00: float,
+    w_mhd: float,
+    lasym: bool,
+    z00: float | None = None,
+    verbose: bool = True,
+    vmec2000_control: bool = True,
+    verbose_vmec2000_table: bool = True,
+    print_live: bool = True,
+    scan_print_mode: str = "debug_print",
+    scan_print_ordered: bool = False,
+    jax_debug: Any | None = None,
+    io_callback: Any | None = None,
+    print_row: Callable[..., Any] = _print_vmec2000_row,
+) -> bool:
+    """Emit one VMEC2000-style iteration row through the selected JAX-safe path."""
+
+    if not (bool(verbose) and bool(vmec2000_control) and bool(verbose_vmec2000_table)):
+        return False
+    if not bool(print_live):
+        return False
+
+    z_val = float("nan") if z00 is None else float(z00)
+    if jax_debug is None:
+        print_row(
+            iter_idx=iter_idx,
+            fsqr=fsqr,
+            fsqz=fsqz,
+            fsql=fsql,
+            delt0r=delt0r,
+            r00=r00,
+            w_mhd=w_mhd,
+            lasym=bool(lasym),
+            z00=z_val if lasym else z00,
+        )
+        return True
+
+    if bool(lasym):
+        if scan_print_mode == "debug_print":
+            jax_debug.print(
+                "{i:5d}{fsqr:10.2E}{fsqz:10.2E}{fsql:10.2E}{r00:11.3E}{z00:11.3E}{dt:10.2E}{w:12.4E}",
+                i=iter_idx,
+                fsqr=fsqr,
+                fsqz=fsqz,
+                fsql=fsql,
+                r00=r00,
+                z00=z_val,
+                dt=delt0r,
+                w=w_mhd,
+                ordered=bool(scan_print_ordered),
+            )
+            return True
+        if scan_print_mode == "debug_callback":
+
+            def _cb(i, fsqr_v, fsqz_v, fsql_v, r00_v, z00_v, dt_v, w_v):
+                print_row(
+                    iter_idx=int(i),
+                    fsqr=float(fsqr_v),
+                    fsqz=float(fsqz_v),
+                    fsql=float(fsql_v),
+                    delt0r=float(dt_v),
+                    r00=float(r00_v),
+                    w_mhd=float(w_v),
+                    lasym=True,
+                    z00=float(z00_v),
+                )
+                return None
+
+            jax_debug.callback(
+                _cb,
+                iter_idx,
+                fsqr,
+                fsqz,
+                fsql,
+                r00,
+                z_val,
+                delt0r,
+                w_mhd,
+                ordered=bool(scan_print_ordered),
+            )
+            return True
+
+        if io_callback is None:
+            return False
+
+        def _cb_io(i, fsqr_v, fsqz_v, fsql_v, r00_v, z00_v, dt_v, w_v):
+            print_row(
+                iter_idx=int(i),
+                fsqr=float(fsqr_v),
+                fsqz=float(fsqz_v),
+                fsql=float(fsql_v),
+                delt0r=float(dt_v),
+                r00=float(r00_v),
+                w_mhd=float(w_v),
+                lasym=True,
+                z00=float(z00_v),
+            )
+            return ()
+
+        io_callback(  # type: ignore[misc]
+            _cb_io,
+            None,
+            iter_idx,
+            fsqr,
+            fsqz,
+            fsql,
+            r00,
+            z_val,
+            delt0r,
+            w_mhd,
+            ordered=bool(scan_print_ordered),
+        )
+        return True
+
+    if scan_print_mode == "debug_print":
+        jax_debug.print(
+            "{i:5d}{fsqr:10.2E}{fsqz:10.2E}{fsql:10.2E}{r00:11.3E}{dt:10.2E}{w:12.4E}",
+            i=iter_idx,
+            fsqr=fsqr,
+            fsqz=fsqz,
+            fsql=fsql,
+            r00=r00,
+            dt=delt0r,
+            w=w_mhd,
+            ordered=bool(scan_print_ordered),
+        )
+        return True
+    if scan_print_mode == "debug_callback":
+
+        def _cb(i, fsqr_v, fsqz_v, fsql_v, r00_v, dt_v, w_v):
+            print_row(
+                iter_idx=int(i),
+                fsqr=float(fsqr_v),
+                fsqz=float(fsqz_v),
+                fsql=float(fsql_v),
+                delt0r=float(dt_v),
+                r00=float(r00_v),
+                w_mhd=float(w_v),
+                lasym=False,
+            )
+            return None
+
+        jax_debug.callback(
+            _cb,
+            iter_idx,
+            fsqr,
+            fsqz,
+            fsql,
+            r00,
+            delt0r,
+            w_mhd,
+            ordered=bool(scan_print_ordered),
+        )
+        return True
+
+    if io_callback is None:
+        return False
+
+    def _cb_io(i, fsqr_v, fsqz_v, fsql_v, r00_v, dt_v, w_v):
+        print_row(
+            iter_idx=int(i),
+            fsqr=float(fsqr_v),
+            fsqz=float(fsqz_v),
+            fsql=float(fsql_v),
+            delt0r=float(dt_v),
+            r00=float(r00_v),
+            w_mhd=float(w_v),
+            lasym=False,
+        )
+        return ()
+
+    io_callback(  # type: ignore[misc]
+        _cb_io,
+        None,
+        iter_idx,
+        fsqr,
+        fsqz,
+        fsql,
+        r00,
+        delt0r,
+        w_mhd,
+        ordered=bool(scan_print_ordered),
+    )
+    return True
+
+
 def _axis_guess_lines(raxis_cc: Any, zaxis_cs: Any) -> tuple[str, str, str, str]:
     r_line = "      RAXIS_CC =    " + "   ".join(_format_axis_coeff(v) for v in np.ravel(raxis_cc))
     z_line = "      ZAXIS_CS =    " + "   ".join(_format_axis_coeff(v) for v in np.ravel(zaxis_cs))
