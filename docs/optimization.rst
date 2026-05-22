@@ -1499,8 +1499,9 @@ Key implementation choices:
   on QH geometry and kills convergence.
 - **``VMEC_JAX_DYNAMIC_REPLAY_BUCKET``**: pads nearby solve trajectories so the
   same XLA scan executable is reused across Jacobian evaluations with slightly
-  different tape lengths.  The default is ``32``; larger values are profiling
-  controls, not a universal GPU speedup.
+  different tape lengths.  The default is backend-adaptive: ``32`` on CPU and
+  ``128`` on CUDA/ROCm/GPU backends. Larger values are profiling controls, not
+  a universal GPU speedup.
 - **Single-entry cache** (``_exact_cache``): stores the last tape by parameter
   hash.  Avoids rebuilding the tape when ``residual_fun`` then ``jacobian_fun``
   are called at the same ``x`` (which Gauss-Newton always does).
