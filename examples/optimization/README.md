@@ -320,9 +320,9 @@ rendered matrix.
 Read the docs NFP=4 QI coverage row as a minimal-seed same-NFP reference-family
 proposal with an exact audit, not as a long local descent.  The generated
 `docs/_static/figures/readme_qi_optimization_cases.csv` row should remain
-`case-gated`/`candidate`, with passing `qi_seed_gate_passed` and
-`qi_engineering_gate_passed`, empty `qi_gate_failures`, and short proposal
-history fields before the PNG panel is cited.
+`validation_status=case-gated` and `expected_gate_status=candidate`; passing
+gate fields do not make the row an aspect-6 README best row or a common-minimal
+completion.
 
 For publication-quality QI validation, re-run the diagnostic with higher
 `QI_MBOZ`, `QI_NBOZ`, `QI_NPHI`, `QI_NALPHA`, and `QI_N_BOUNCE`, then check
@@ -365,8 +365,9 @@ PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_swee
 PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
 ```
 
-Use `--modes 1,2,3,4` only for exploratory high-mode regeneration; the
-checked-in docs snapshots currently publish reviewed `max_mode=1..3` rows.
+Use `--modes 1,2,3,4` only for exploratory high-mode regeneration; checked-in
+docs snapshots currently contain partial/archived `max_mode<=3` rows, not a
+complete reviewed CPU/GPU matrix.
 
 ## Comparison And Diagnostic Scripts
 

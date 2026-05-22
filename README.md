@@ -126,7 +126,8 @@ PYTHONPATH=. python examples/optimization/render_readme_best_optimizations.py
 ```
 
 Additional checked-in optimization assets include case-specific, case-gated QI
-NFP 1/2/3/4 panel/CSV rows and the minimal-seed showcase panel/CSV. They are
+NFP 1/2/3/4 panel/CSV rows and the minimal-seed showcase objective/state panels
+plus CSV. They are
 documented in `docs/optimization_sweep_results.rst` as status artifacts, not as
 aspect-6 README best-row promotion or global seed-robustness evidence.
 
@@ -142,7 +143,7 @@ aspect-6 README best-row promotion or global seed-robustness evidence.
   run with `gh run list --repo uwplasma/vmec_jax --branch main --workflow CI
   --limit 5` before tagging.
 - Required fast coverage gate is now `95%`; the latest local CI-equivalent
-  run reached `95.07%` on this development batch.
+  run reached `95.02%` on this development batch.
 
 ## CLI Reference
 

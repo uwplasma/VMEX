@@ -781,11 +781,12 @@ optimization:
    PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/QI_optimization.py
 
 Those scripts write ``input.initial``, ``input.final``, ``wout_initial.nc``,
-``wout_final.nc``, ``history.json``, and per-case diagnostic plots.  Current
-published optimization numbers, wall times, objective histories, final 3-D
-surfaces, and LCFS :math:`|B|` contours come only from the generated sweep
-artifacts below.  This avoids drifting documentation when a one-off example is
-rerun with different local budgets.
+``wout_final.nc``, ``history.json``, and per-case diagnostic plots.  The README
+QA/QH/QP rows are selected from reviewed ``qs_ess_sweep`` outputs; the README QI
+row is selected from the standalone target-6 ``QI_optimization.py`` lane until
+the constrained-QI sweep has complete passing rows.  Current compact panels
+include the source-initial LCFS, final LCFS, objective history, and initial/final
+Boozer :math:`|B|` line contours.
 
 
 Full QA/QH/QP/QI policy sweep
@@ -950,12 +951,14 @@ and full publication panels when those cases are present.
    PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3 --ess both --qi-qp-preseed off --stellarator-asymmetric --rerun
    PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
 
-The published LASYM figures are partial 1200 second lanes rather than a
+The checked-in LASYM summary rows are partial 1200 second lanes rather than a
 complete matrix.  This is intentional: timeout and GPU-memory failures are
-useful performance data for the asymmetric exact/replay path.  The current
-frozen snapshot contains 23 CPU LASYM rows and 36 GPU LASYM rows.  The CPU
-subset has 11 successful rows, 8 crashed rows, and 4 budgeted stops; the GPU
-subset has 11 successful rows, no crashed rows, and 25 budgeted stops.
+useful performance data for the asymmetric exact/replay path.  LASYM
+figures/atlases must be regenerated before being described as published
+figures.  The current frozen snapshot contains 23 CPU LASYM rows and 36 GPU
+LASYM rows.  The CPU subset has 11 successful rows, 8 crashed rows, and 4
+budgeted stops; the GPU subset has 11 successful rows, no crashed rows, and 25
+budgeted stops.
 
 For NVIDIA-only JAX installations, ``JAX_PLATFORMS=cuda`` is also valid.  Do
 not use ``JAX_PLATFORMS=gpu``: some JAX versions interpret that as both CUDA
