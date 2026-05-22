@@ -148,6 +148,9 @@ on case-gated NFP 1, 2, 3, and 4 QI seed-robustness examples. The full
 provenance, case-specific targets, and table are in
 `docs/optimization_sweep_results.rst`; broad simple-seed robustness across all
 families remains an active validation lane rather than a completed guarantee.
+The current QI coverage panel uses the NFP=1 and NFP=2 QI seed decks, the NFP=3
+seed-3127 deck, and the NFP=4 common-minimal seed; it is therefore distinct from
+the common-minimal-seed stress matrix in the docs.
 The renderer now requires every initial LCFS and Boozer `|B|` panel to come from
 a WOUT whose boundary matches the row's source input, allowing VMEC's equivalent
 canonical phase convention, before any reference-family preconditioning or
