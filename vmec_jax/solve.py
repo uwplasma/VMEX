@@ -861,6 +861,48 @@ def _initial_axis_reset_decision(
     )
 
 
+def _write_axis_reset_dump(
+    *,
+    axis_dump_dir: str | os.PathLike[str] | None,
+    ns: int,
+    ntor: int,
+    used_state_guess: bool,
+    raxis_cc,
+    raxis_cs,
+    zaxis_cc,
+    zaxis_cs,
+) -> bool:
+    """Write optional magnetic-axis reset coefficients for diagnostics."""
+
+    if axis_dump_dir is None or str(axis_dump_dir).strip() == "":
+        return False
+    try:
+        p = Path(axis_dump_dir).expanduser().resolve()
+        ntor_i = int(ntor)
+        rcc = np.asarray(raxis_cc)
+        rcs = np.asarray(raxis_cs)
+        zcc = np.asarray(zaxis_cc)
+        zcs = np.asarray(zaxis_cs)
+        if min(rcc.size, rcs.size, zcc.size, zcs.size) < ntor_i + 1:
+            return False
+        p.mkdir(parents=True, exist_ok=True)
+        out = p / f"axis_reset_ns{int(ns)}.dat"
+        with out.open("w", encoding="utf-8") as f:
+            f.write(f"# used_state_guess={int(bool(used_state_guess))}\n")
+            f.write("n raxis_cc raxis_cs zaxis_cc zaxis_cs\n")
+            for n in range(ntor_i + 1):
+                f.write(
+                    f"{n:4d} "
+                    f"{float(rcc[n]): .16e} "
+                    f"{float(rcs[n]): .16e} "
+                    f"{float(zcc[n]): .16e} "
+                    f"{float(zcs[n]): .16e}\n"
+                )
+        return True
+    except Exception:
+        return False
+
+
 def _initialize_scan_resume_state(
     resume_state: dict | None,
     *,
@@ -5169,24 +5211,16 @@ def solve_fixed_boundary_residual_iter(
             )
 
         axis_dump_dir = os.environ.get("VMEC_JAX_DUMP_AXIS_DIR", "").strip()
-        if axis_dump_dir:
-            try:
-                p = Path(axis_dump_dir).expanduser().resolve()
-                p.mkdir(parents=True, exist_ok=True)
-                out = p / f"axis_reset_ns{int(static.cfg.ns)}.dat"
-                with out.open("w", encoding="utf-8") as f:
-                    f.write(f"# used_state_guess={int(used_state_guess)}\n")
-                    f.write("n raxis_cc raxis_cs zaxis_cc zaxis_cs\n")
-                    for n in range(int(static.cfg.ntor) + 1):
-                        f.write(
-                            f"{n:4d} "
-                            f"{float(raxis_cc[n]): .16e} "
-                            f"{float(raxis_cs[n]): .16e} "
-                            f"{float(zaxis_cc[n]): .16e} "
-                            f"{float(zaxis_cs[n]): .16e}\n"
-                        )
-            except Exception:
-                pass
+        _write_axis_reset_dump(
+            axis_dump_dir=axis_dump_dir,
+            ns=int(static.cfg.ns),
+            ntor=int(static.cfg.ntor),
+            used_state_guess=bool(used_state_guess),
+            raxis_cc=raxis_cc,
+            raxis_cs=raxis_cs,
+            zaxis_cc=zaxis_cc,
+            zaxis_cs=zaxis_cs,
+        )
 
         st_axis = _state_from_axis_coeffs(
             raxis_cc,
