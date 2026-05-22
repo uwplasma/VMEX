@@ -330,6 +330,84 @@ def test_lasym_replay_column_chunk_env_and_backend_branches(monkeypatch) -> None
     assert opt._lasym_replay_column_chunk(24) is None
 
 
+def test_projected_replay_residuals_env_and_backend_branches(monkeypatch) -> None:
+    import vmec_jax._compat as compat
+
+    opt = object.__new__(FixedBoundaryExactOptimizer)
+    opt._solver_device_name = "gpu"
+
+    monkeypatch.setenv("VMEC_JAX_OPT_PROJECTED_REPLAY_RESIDUALS", "0")
+    assert opt._projected_replay_residuals_enabled() is False
+    monkeypatch.setenv("VMEC_JAX_OPT_PROJECTED_REPLAY_RESIDUALS", "yes")
+    assert opt._projected_replay_residuals_enabled() is True
+    monkeypatch.delenv("VMEC_JAX_OPT_PROJECTED_REPLAY_RESIDUALS")
+
+    assert opt._projected_replay_residuals_enabled() is True
+
+    opt._solver_device_name = "cpu"
+    assert opt._projected_replay_residuals_enabled() is False
+
+    opt._solver_device_name = None
+    monkeypatch.setattr(compat, "jax", SimpleNamespace(default_backend=lambda: "cuda"))
+    assert opt._projected_replay_residuals_enabled() is True
+    monkeypatch.setattr(compat, "jax", SimpleNamespace(default_backend=lambda: "cpu"))
+    assert opt._projected_replay_residuals_enabled() is False
+    monkeypatch.setattr(
+        compat,
+        "jax",
+        SimpleNamespace(default_backend=lambda: (_ for _ in ()).throw(RuntimeError("backend probe failed"))),
+    )
+    assert opt._projected_replay_residuals_enabled() is False
+
+
+def test_projected_replay_jacobian_path_projects_without_intermediate_sync(monkeypatch) -> None:
+    import jax.numpy as jnp
+    import vmec_jax.discrete_adjoint as adjoint_module
+
+    state = _state_from_coeffs(r=1.0, rs=2.0, z=3.0, zs=4.0, l=5.0, ls=6.0)
+    tangents = jnp.asarray(
+        [
+            np.arange(state.layout.size, dtype=float) + 1.0,
+            np.arange(state.layout.size, dtype=float) + 10.0,
+        ],
+        dtype=jnp.float64,
+    )
+    opt = object.__new__(FixedBoundaryExactOptimizer)
+    opt._layout = state.layout
+    opt._static = SimpleNamespace(cfg=SimpleNamespace(lasym=False))
+    opt._profile = {}
+    opt._discrete_jacobian_helper_cache = {}
+    opt._solve_exact_with_tape_for_jvp = lambda _params: (
+        state,
+        {"tape": "tape", "axis_override": {"axis": "unused"}},
+    )
+    opt._initial_tangent_columns = lambda _params, _axis_override, *, profile_prefix: tangents
+    opt._lasym_replay_column_chunk = lambda _n_params: None
+    opt._residuals_fn = lambda state_arg: pack_state(state_arg)[:2]
+    remembered = {}
+    opt._remember_exact_residual = lambda key, residual: remembered.update({"residual": (key, residual)})
+    opt._remember_exact_jacobian = lambda key, jac, residual: remembered.update({"jacobian": (key, jac, residual)})
+    monkeypatch.setattr(
+        adjoint_module,
+        "checkpoint_tape_state_jvp_columns",
+        lambda **kwargs: kwargs["initial_tangents"],
+    )
+
+    jac = opt._jacobian_fun_projected_replay(
+        jnp.asarray([0.0, 0.0], dtype=jnp.float64),
+        b"exact-key",
+        t_total=opt_module.time.perf_counter(),
+    )
+
+    np.testing.assert_allclose(jac, [[1.0, 10.0], [2.0, 11.0]])
+    np.testing.assert_allclose(opt._last_jacobian_residual, np.asarray(pack_state(state)[:2]))
+    assert opt._last_jacobian_source == "exact_tape_projected_replay"
+    assert remembered["residual"][0] == b"exact-key"
+    assert remembered["jacobian"][0] == b"exact-key"
+    assert opt._profile["jacobian_projected_tape_replay_dispatch"]["count"] == 1
+    assert opt._profile["jacobian_projected_replay_residual_tangents"]["count"] == 1
+
+
 def test_cached_exact_residual_none_and_lasym_backend_probe_failure(monkeypatch) -> None:
     import vmec_jax._compat as compat
 
