@@ -1,0 +1,148 @@
+{
+  "label": "QI boundary-reference baseline (max_mode=4)",
+  "max_nfev": 1,
+  "ftol": 0.0001,
+  "gtol": 0.0001,
+  "xtol": 1e-08,
+  "method": "scipy_matrix_free",
+  "exact_path": "tape",
+  "scipy_tr_solver": "lsmr",
+  "scipy_lsmr_maxiter": null,
+  "lbfgs_step_bound": null,
+  "scalar_step_bound": null,
+  "solver_device": "default",
+  "inner_max_iter": 120,
+  "inner_ftol": 1e-09,
+  "trial_max_iter": 120,
+  "trial_ftol": 1e-09,
+  "total_wall_time_s": 81.68483610311523,
+  "nfev": 1,
+  "njev": 1,
+  "success": false,
+  "message": "The maximum number of function evaluations is exceeded.",
+  "objective_initial": 0.09328094778143428,
+  "objective_final": 0.09328094777835033,
+  "qs_initial": 0.040665023593143536,
+  "qs_final": 0.04066502359006219,
+  "aspect_initial": 3.5412367748465985,
+  "aspect_final": 3.5412367748465963,
+  "history": [
+    {
+      "wall_time_s": 0.0,
+      "cost": 0.04664047389071714,
+      "objective": 0.09328094778143428,
+      "qs_objective": 0.040665023593143536,
+      "aspect": 3.5412367748465985,
+      "iota": -1.040106695787868
+    },
+    {
+      "wall_time_s": 56.83079310692847,
+      "cost": 0.046640473889175166,
+      "objective": 0.09328094777835033,
+      "qs_objective": 0.04066502359006219,
+      "aspect": 3.5412367748465963,
+      "iota": -1.040106695792104
+    },
+    {
+      "wall_time_s": 81.68483610311523,
+      "cost": 0.046640473889175166,
+      "objective": 0.09328094777835033,
+      "qs_objective": 0.04066502359006219,
+      "aspect": 3.5412367748465963,
+      "iota": -1.040106695792104
+    }
+  ],
+  "profile": {
+    "exact_cache_hit": {
+      "count": 3,
+      "wall_time_s": 0.0,
+      "mean_wall_time_s": 0.0
+    },
+    "exact_residual_cache_hit": {
+      "count": 2,
+      "wall_time_s": 0.0,
+      "mean_wall_time_s": 0.0
+    },
+    "exact_solve_with_tape_total": {
+      "count": 1,
+      "wall_time_s": 2.661032573785633,
+      "mean_wall_time_s": 2.661032573785633
+    },
+    "exact_tape_build": {
+      "count": 1,
+      "wall_time_s": 2.5652482407167554,
+      "mean_wall_time_s": 2.5652482407167554
+    },
+    "exact_unpack_cache": {
+      "count": 1,
+      "wall_time_s": 0.0011252351105213165,
+      "mean_wall_time_s": 0.0011252351105213165
+    },
+    "initial_guess_exact": {
+      "count": 1,
+      "wall_time_s": 0.09464360820129514,
+      "mean_wall_time_s": 0.09464360820129514
+    },
+    "initial_guess_trial": {
+      "count": 1,
+      "wall_time_s": 0.08481890661641955,
+      "mean_wall_time_s": 0.08481890661641955
+    },
+    "linear_operator_initial_vjp": {
+      "count": 1,
+      "wall_time_s": 5.512795489281416,
+      "mean_wall_time_s": 5.512795489281416
+    },
+    "linear_operator_residual_vjp": {
+      "count": 1,
+      "wall_time_s": 13.015381913166493,
+      "mean_wall_time_s": 13.015381913166493
+    },
+    "linear_operator_rmatvec": {
+      "count": 1,
+      "wall_time_s": 24.75479701720178,
+      "mean_wall_time_s": 24.75479701720178
+    },
+    "linear_operator_setup": {
+      "count": 1,
+      "wall_time_s": 23.868749882094562,
+      "mean_wall_time_s": 23.868749882094562
+    },
+    "linear_operator_tape_vjp": {
+      "count": 1,
+      "wall_time_s": 6.1691070650704205,
+      "mean_wall_time_s": 6.1691070650704205
+    },
+    "linear_operator_total": {
+      "count": 1,
+      "wall_time_s": 26.530730799771845,
+      "mean_wall_time_s": 26.530730799771845
+    },
+    "residual_eval_exact": {
+      "count": 1,
+      "wall_time_s": 0.013941128738224506,
+      "mean_wall_time_s": 0.013941128738224506
+    },
+    "residual_eval_trial": {
+      "count": 1,
+      "wall_time_s": 0.013194507919251919,
+      "mean_wall_time_s": 0.013194507919251919
+    },
+    "solve_forward_trial": {
+      "count": 1,
+      "wall_time_s": 30.067369150929153,
+      "mean_wall_time_s": 30.067369150929153
+    },
+    "solve_forward_trial_total": {
+      "count": 1,
+      "wall_time_s": 30.152196371927857,
+      "mean_wall_time_s": 30.152196371927857
+    }
+  },
+  "selected_best_exact_point": false,
+  "rejected_trial_exact_history_count": 0,
+  "iota_initial": -1.040106695787868,
+  "iota_final": -1.040106695792104,
+  "target_aspect": 4.0,
+  "iota_abs_min": 0.41
+}
