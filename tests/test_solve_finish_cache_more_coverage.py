@@ -335,3 +335,112 @@ def test_vmec2000_state_only_scan_runner_cache_reports_miss_then_hit_and_replays
     assert second.diagnostics["timing"]["scan_runner_cache_miss_count"] == 0
     assert second.diagnostics["timing"]["scan_runner_cache_hit_count"] == 1
     assert len(solve._SCAN_RUNNER_CACHE) == 1
+
+
+def test_precompile_only_jit_precompile_exercises_force_cache_and_lower(monkeypatch) -> None:
+    pytest.importorskip("jax")
+    _quiet_solve_env(monkeypatch)
+    _install_scan_fakes(monkeypatch)
+    solve._COMPUTE_FORCES_CACHE.clear()
+    compiled = []
+
+    class FakeJit:
+        def __init__(self, fn):
+            self.fn = fn
+            self.lower_calls = []
+
+        def __call__(self, *args, **kwargs):
+            return self.fn(*args, **kwargs)
+
+        def lower(self, *args, **kwargs):
+            self.lower_calls.append((args, kwargs))
+            self.fn(*args, **kwargs)
+            return SimpleNamespace(compile=lambda: "compiled")
+
+    def fake_jit(fn, *args, **kwargs):
+        del args, kwargs
+        wrapped = FakeJit(fn)
+        compiled.append(wrapped)
+        return wrapped
+
+    monkeypatch.setattr(solve, "jit", fake_jit)
+
+    first = _run_precompile_only(_static(), jit_forces=True, jit_precompile=True)
+    second = _run_precompile_only(_static(), jit_forces=True, jit_precompile=True)
+
+    assert first.diagnostics == {"precompile_only": True}
+    assert second.diagnostics == {"precompile_only": True}
+    assert len(compiled) == 1
+    assert [len(obj.lower_calls) for obj in compiled] == [4]
+    assert len(solve._COMPUTE_FORCES_CACHE) == 1
+
+
+def test_precompile_only_jit_precompile_swallows_compile_failure(monkeypatch) -> None:
+    pytest.importorskip("jax")
+    _quiet_solve_env(monkeypatch)
+    _install_scan_fakes(monkeypatch)
+    solve._COMPUTE_FORCES_CACHE.clear()
+
+    class FailingJit:
+        def __init__(self, fn):
+            self.fn = fn
+
+        def __call__(self, *args, **kwargs):
+            return self.fn(*args, **kwargs)
+
+        def lower(self, *args, **kwargs):
+            del args, kwargs
+            raise RuntimeError("synthetic compile failure")
+
+    monkeypatch.setattr(solve, "jit", lambda fn, *args, **kwargs: FailingJit(fn))
+
+    result = _run_precompile_only(_static(), jit_forces=True, jit_precompile=True)
+
+    assert result.diagnostics == {"precompile_only": True}
+    assert len(solve._COMPUTE_FORCES_CACHE) == 1
+
+
+def test_accelerated_scan_runner_cache_reports_timing_hit_and_miss(monkeypatch) -> None:
+    pytest.importorskip("jax")
+    _quiet_solve_env(monkeypatch)
+    _install_scan_fakes(monkeypatch)
+    monkeypatch.setenv("VMEC_JAX_TIMING", "1")
+    monkeypatch.setattr(solve, "jit", lambda fn, *args, **kwargs: fn)
+    monkeypatch.setattr(solve.jax.lax, "cond", _python_cond)
+    monkeypatch.setattr(solve.jax.lax, "scan", _python_scan)
+    monkeypatch.setattr(solve.jax, "block_until_ready", lambda value: value)
+    solve._SCAN_RUNNER_CACHE.clear()
+
+    params = dict(
+        indata=_FakeInData(lmove_axis=False),
+        signgs=1,
+        max_iter=2,
+        step_size=0.1,
+        vmec2000_control=False,
+        strict_update=False,
+        backtracking=False,
+        use_scan=True,
+        auto_flip_force=False,
+        limit_dt_from_force=False,
+        limit_update_rms=False,
+        use_restart_triggers=False,
+        use_direct_fallback=False,
+        reference_mode=False,
+        jit_forces=False,
+        precond_radial_alpha=0.0,
+        precond_lambda_alpha=0.0,
+        verbose=False,
+        verbose_vmec2000_table=False,
+    )
+
+    first = solve.solve_fixed_boundary_residual_iter(_state(), _static(), **params)
+    second = solve.solve_fixed_boundary_residual_iter(_state(), _static(), **params)
+
+    assert first.diagnostics["accelerated_scan"] is True
+    assert first.diagnostics["scan_path"] == "accelerated"
+    assert second.diagnostics["accelerated_scan"] is True
+    assert first.diagnostics["timing"]["scan_runner_cache_miss_count"] == 1
+    assert first.diagnostics["timing"]["scan_runner_cache_hit_count"] == 0
+    assert second.diagnostics["timing"]["scan_runner_cache_miss_count"] == 0
+    assert second.diagnostics["timing"]["scan_runner_cache_hit_count"] == 1
+    assert len(solve._SCAN_RUNNER_CACHE) == 1

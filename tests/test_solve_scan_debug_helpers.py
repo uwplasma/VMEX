@@ -7,6 +7,7 @@ from vmec_jax.solve_diagnostics_io import _format_vmec2000_iter_row
 from vmec_jax.solve_scan_debug_helpers import (
     _append_timecontrol_scan_trace_row,
     _axis_guess_lines,
+    _emit_vmec2000_iter_row,
     _emit_scan_prints,
     _print_axis_guess,
     _print_vmec2000_row,
@@ -57,6 +58,156 @@ def test_print_vmec2000_row_respects_controls_and_formats_lasym(capsys):
             lasym=True,
         )
         + "\n"
+    )
+
+
+class _FakeJaxDebug:
+    def __init__(self):
+        self.print_calls = []
+        self.callback_calls = []
+
+    def print(self, fmt, **kwargs):
+        self.print_calls.append((fmt, kwargs))
+
+    def callback(self, callback, *args, **kwargs):
+        self.callback_calls.append((callback, args, kwargs))
+        callback(*args)
+
+
+def test_emit_vmec2000_iter_row_uses_plain_print_fallback_and_controls():
+    rows = []
+
+    assert not _emit_vmec2000_iter_row(
+        iter_idx=1,
+        fsqr=1.0,
+        fsqz=2.0,
+        fsql=3.0,
+        delt0r=0.1,
+        r00=1.2,
+        w_mhd=4.0,
+        lasym=False,
+        verbose=False,
+        print_row=lambda **kwargs: rows.append(kwargs),
+    )
+    assert rows == []
+
+    assert _emit_vmec2000_iter_row(
+        iter_idx=2,
+        fsqr=1.0,
+        fsqz=2.0,
+        fsql=3.0,
+        delt0r=0.1,
+        r00=1.2,
+        w_mhd=4.0,
+        lasym=True,
+        z00=None,
+        print_row=lambda **kwargs: rows.append(kwargs),
+    )
+    assert rows[0]["lasym"] is True
+    assert np.isnan(rows[0]["z00"])
+
+
+@pytest.mark.parametrize("lasym", [False, True])
+def test_emit_vmec2000_iter_row_uses_jax_debug_print(lasym):
+    debug = _FakeJaxDebug()
+
+    assert _emit_vmec2000_iter_row(
+        iter_idx=3,
+        fsqr=1.0,
+        fsqz=2.0,
+        fsql=3.0,
+        delt0r=0.1,
+        r00=1.2,
+        z00=0.25,
+        w_mhd=4.0,
+        lasym=lasym,
+        scan_print_mode="debug_print",
+        scan_print_ordered=True,
+        jax_debug=debug,
+    )
+    assert len(debug.print_calls) == 1
+    fmt, kwargs = debug.print_calls[0]
+    assert "z00" in fmt if lasym else "z00" not in fmt
+    assert kwargs["ordered"] is True
+    assert kwargs["i"] == 3
+
+
+@pytest.mark.parametrize("lasym", [False, True])
+def test_emit_vmec2000_iter_row_uses_jax_debug_callback(lasym):
+    debug = _FakeJaxDebug()
+    rows = []
+
+    assert _emit_vmec2000_iter_row(
+        iter_idx=4,
+        fsqr=1.0,
+        fsqz=2.0,
+        fsql=3.0,
+        delt0r=0.1,
+        r00=1.2,
+        z00=-0.25,
+        w_mhd=4.0,
+        lasym=lasym,
+        scan_print_mode="debug_callback",
+        scan_print_ordered=True,
+        jax_debug=debug,
+        print_row=lambda **kwargs: rows.append(kwargs),
+    )
+    assert len(debug.callback_calls) == 1
+    assert debug.callback_calls[0][2]["ordered"] is True
+    assert rows[0]["lasym"] is lasym
+    assert rows[0]["iter_idx"] == 4
+    if lasym:
+        assert rows[0]["z00"] == pytest.approx(-0.25)
+    else:
+        assert "z00" not in rows[0]
+
+
+@pytest.mark.parametrize("lasym", [False, True])
+def test_emit_vmec2000_iter_row_uses_io_callback(lasym):
+    debug = _FakeJaxDebug()
+    rows = []
+    io_calls = []
+
+    def fake_io_callback(callback, result_shape_dtypes, *args, **kwargs):
+        io_calls.append((result_shape_dtypes, args, kwargs))
+        return callback(*args)
+
+    assert _emit_vmec2000_iter_row(
+        iter_idx=5,
+        fsqr=1.0,
+        fsqz=2.0,
+        fsql=3.0,
+        delt0r=0.1,
+        r00=1.2,
+        z00=0.75,
+        w_mhd=4.0,
+        lasym=lasym,
+        scan_print_mode="io_callback",
+        jax_debug=debug,
+        io_callback=fake_io_callback,
+        print_row=lambda **kwargs: rows.append(kwargs),
+    )
+    assert len(io_calls) == 1
+    assert rows[0]["lasym"] is lasym
+    if lasym:
+        assert rows[0]["z00"] == pytest.approx(0.75)
+    else:
+        assert "z00" not in rows[0]
+
+
+def test_emit_vmec2000_iter_row_missing_io_callback_returns_false():
+    assert not _emit_vmec2000_iter_row(
+        iter_idx=6,
+        fsqr=1.0,
+        fsqz=2.0,
+        fsql=3.0,
+        delt0r=0.1,
+        r00=1.2,
+        w_mhd=4.0,
+        lasym=False,
+        scan_print_mode="io_callback",
+        jax_debug=_FakeJaxDebug(),
+        io_callback=None,
     )
 
 
