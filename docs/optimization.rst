@@ -133,14 +133,15 @@ not be treated as current staged-QI evidence.  Any QA/QP showcase rows without
 
 The saved CPU stress-test panel below is deliberately included as a
 failure-revealing artifact.  The renderer skips known-stale rows; in this
-checkout ``qi_nfp2``, ``qh_nfp4``, and ``qp_nfp2`` currently reach the active
-metadata and completion gates.  ``qp_nfp2`` is still a refinement target because
-its final quasisymmetry residual is larger than the promoted README examples.
-``qi_nfp1``, ``qi_nfp3``, and ``qa_nfp2`` remain non-promoted stress rows in the
-summary CSV.  Regenerate with the command above before changing those promotion
-claims.  Until the remaining rows pass, this is a compact regression target for
-the seed-robust optimization lane, not a publication-quality optimization
-result.
+checkout ``qh_nfp4`` and ``qp_nfp2`` currently reach the active metadata and
+completion gates.  ``qp_nfp2`` is still a refinement target because its final
+quasisymmetry residual is larger than the promoted README examples.
+``qi_circular_nfp1`` and ``qa_nfp2`` remain non-promoted stress rows in the
+summary CSV, and current non-stale ``qi_nfp1``/``qi_nfp2``/``qi_nfp3``/``qi_nfp4``
+minimal-seed outputs are missing.  Regenerate with the command above before
+changing those promotion claims.  Until the remaining rows pass, this is a
+compact regression target for the seed-robust optimization lane, not a
+publication-quality optimization result.
 
 .. image:: _static/figures/minimal_seed_showcase_objective_panel.png
    :width: 100%

@@ -83,11 +83,14 @@ recorded in `showcase_case.json`; rows that lack that provenance predate the
 current seed-robustness policy.
 
 The bounded common-seed showcase is a stress test, not a best-result table.  It
-maps the minimal seeds to QI NFP=1/2/3/4, QA NFP=2, QH NFP=4, and QP NFP=2, then
-renders the failure-revealing objective panel used by the docs.  The QI rows
-dispatch through `QI_optimization.py` via `qi_staged_runner.py`, so the common
-minimal seeds use the same staged/reference-family QI policy as the standalone
-QI example instead of the simpler quasisymmetry sweep path.
+maps the configured minimal seeds to QI NFP=1/2/3/4, QA NFP=2, QH NFP=4, and QP
+NFP=2, then renders the failure-revealing objective panel used by the docs.  The
+QI rows dispatch through `QI_optimization.py` via `qi_staged_runner.py`, so the
+common minimal seeds use the same staged/reference-family QI policy as the
+standalone QI example instead of the simpler quasisymmetry sweep path.  The
+checked-in panel is intentionally conservative: the renderer skips stale QI rows
+and only promotes rows with current provenance, so missing QI NFP rows indicate
+open validation work rather than successful hidden results.
 
 ```bash
 PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_minimal_seed_showcase.py \

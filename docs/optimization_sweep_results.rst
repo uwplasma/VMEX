@@ -265,9 +265,12 @@ The source table is also available as
 QI_optimization Input Coverage
 ------------------------------
 
-The dedicated QI docs renderer is a lightweight snapshot renderer for the
-reviewed NFP=1, 2, 3, and the NFP=4 minimal-seed QI lanes; it does not rerun
-optimization jobs.  It reads the existing ``QI_optimization.py`` outputs,
+The dedicated QI docs renderer is a lightweight snapshot renderer for
+case-gated QI lanes; it does not rerun optimization jobs.  The current rows are
+the NFP=1 and NFP=2 QI seed decks, the NFP=3 seed-3127 deck, and the NFP=4
+minimal-seed lane.  This figure is separate from the common-minimal-seed stress
+matrix, whose non-stale QI NFP=1/2/3/4 rows are not yet complete.  The renderer
+reads the existing ``QI_optimization.py`` outputs,
 records the final smooth QI metric, legacy QI metric, mirror ratio, elongation,
 iota, aspect, and CPU wall time, and draws initial and final Boozer ``|B|`` with
 line contours only after the initial WOUT boundary matches the paired input
