@@ -239,7 +239,7 @@ README initial state:
      - CPU min
      - Status
    * - ``examples/data/input.nfp1_QI``
-     - ``results/qi_opt/ess/nfp1_qi_direct_office_20260519``
+     - ``docs/_static/qi_readme_cases/nfp1``
      - ``1.56e-2``
      - ``1.48e-3``
      - ``7.75e-4``
@@ -250,7 +250,7 @@ README initial state:
      - ``15.8``
      - ``case-gated``
    * - ``examples/data/input.minimal_seed_nfp2_target_helicity``
-     - ``examples/optimization/results/minimal_seed_showcase_promote/cpu/cpu/qi_nfp2/continuation/minimal_nfp2_qi/mode3/ess``
+     - ``docs/_static/qi_readme_cases/nfp2_target_helicity``
      - ``1.61e-2``
      - ``1.52e-3``
      - ``5.25e-4``
@@ -261,7 +261,7 @@ README initial state:
      - ``28.7``
      - ``case-gated``
    * - ``examples/data/input.QI_stel_seed_3127``
-     - ``results/qi_opt/ess/qi_stel_seed_3127_mirror_calibrated_20260516``
+     - ``docs/_static/qi_readme_cases/nfp3_seed3127``
      - ``9.33e-2``
      - ``4.11e-3``
      - ``1.01e-3``
@@ -272,7 +272,7 @@ README initial state:
      - ``4.6``
      - ``case-gated``
    * - ``examples/data/input.minimal_seed_nfp4``
-     - ``results/qi_opt/ess/minimal_nfp4_to_qi_finite_beta_reference``
+     - ``docs/_static/qi_readme_cases/nfp4_minimal``
      - ``2.52e-2``
      - ``2.56e-3``
      - ``2.54e-4``
@@ -299,6 +299,12 @@ Regenerate the figure and CSV without launching new optimization jobs with:
 .. code-block:: bash
 
    PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
+
+The renderer is clean-clone reproducible: it reads the reviewed WOUT,
+diagnostics, preconditioner summaries, and raw per-stage ``history.json`` files
+from the tracked ``docs/_static/qi_readme_cases`` bundle.  The plotted history
+uses best-so-far stage normalization for readability; inspect those raw
+``history.json`` files when auditing non-monotone or stalled optimizer stages.
 
 The robustness probe is intentionally a QI+iota basin test, not a full
 engineering acceptance claim.  ``QI_optimization.py`` is now the single
