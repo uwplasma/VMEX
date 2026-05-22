@@ -65,11 +65,13 @@ Every published full-sweep result should provide these assets under
   ``publication_panel_full.png/.pdf`` and LASYM variants.
 
 The checked-in source tree currently contains the compact README panels, the
-QI case-coverage snapshot, the constrained-QI status panel, and CSV/JSON summary
-files.  ``qs_ess_summary_all.csv`` is a partial CPU/GPU snapshot with available
-``max_mode=1..3`` rows and no checked-in ``max_mode=4`` rows;
-``qi_constrained_summary.csv`` currently contains one CPU ``max_mode=3``
-continuation status row.  It does not currently contain the full
+QI case-coverage snapshot, the minimal-seed showcase objective/state panels, the
+constrained-QI status panel, and CSV/JSON summary files.
+``qs_ess_summary_all.csv`` is a heterogeneous partial/archive snapshot: current
+CPU README QA/QH/QP rows plus one failed/partial constrained-QI status row,
+older GPU/LASYM rows with incomplete target metadata, and no checked-in
+``max_mode=4`` rows.  ``qi_constrained_summary.csv`` currently contains one CPU
+``max_mode=3`` continuation status row.  It does not currently contain the full
 objective-history panels, initial/final state atlases, summary-table images, or
 publication-panel composites.
 Those assets must be regenerated or copied into ``docs/_static/figures`` before
@@ -533,11 +535,11 @@ and satisfy the physics gates are kept as valid stopped rows.
 
 The checked-in target-6 constrained-QI artifact is a transparent partial status
 snapshot, not the promoted QI result.  At the moment it contains the bounded
-partial continuation row that was stopped by the 1200 second checkpoint before
-full diagnostics were available.  The README best QI row therefore comes from
-the standalone ``QI_optimization.py`` target-6 lane until the full constrained
-CPU/GPU matrix is rerun and passes the same QI, mirror, elongation, iota, and
-aspect gates.
+partial continuation row annotated from ``stage_checkpoint.json`` before full
+QI diagnostics were available.  It is a status artifact and must not be
+promoted.  The README best QI row therefore comes from the standalone
+``QI_optimization.py`` target-6 lane until the full constrained CPU/GPU matrix
+is rerun and passes the same QI, mirror, elongation, iota, and aspect gates.
 
 .. image:: _static/figures/qi_constrained_objective_panel.png
    :width: 100%
