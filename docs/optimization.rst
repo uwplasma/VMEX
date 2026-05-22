@@ -192,9 +192,9 @@ then run the bounded robustness probe or select a ``RUN_CASE`` in
      VMEC_JAX_QI_TARGET_ASPECT=10 \
      VMEC_JAX_QI_OUTPUT_DIR=results/qi_opt/ess/nfp1_qi_direct_office_20260519 \
      python examples/optimization/QI_optimization.py
-   PYTHONPATH=. JAX_PLATFORMS=cpu VMEC_JAX_QI_RUN_CASE=nfp2_qi \
-     VMEC_JAX_QI_TARGET_ASPECT=10 \
-     VMEC_JAX_QI_OUTPUT_DIR=results/qi_opt/ess/nfp2_qi \
+   PYTHONPATH=. JAX_PLATFORMS=cpu VMEC_JAX_QI_RUN_CASE=minimal_nfp2_qi \
+     VMEC_JAX_QI_TARGET_ASPECT=6 \
+     VMEC_JAX_QI_OUTPUT_DIR=results/qi_opt/ess/minimal_nfp2_to_qi_reference \
      python examples/optimization/QI_optimization.py
    PYTHONPATH=. JAX_PLATFORMS=cpu VMEC_JAX_QI_RUN_CASE=nfp3_qi \
      VMEC_JAX_QI_TARGET_ASPECT=4 \
@@ -249,16 +249,16 @@ README initial state:
      - ``0.5369``
      - ``15.8``
      - ``case-gated``
-   * - ``examples/data/input.nfp2_QI``
-     - ``results/qi_opt/ess/nfp2_qi``
-     - ``1.17e-2``
-     - ``1.13e-3``
-     - ``3.09e-4``
-     - ``0.225/0.30``
-     - ``6.43/8.2``
-     - ``9.999/10.0``
-     - ``-0.5043``
-     - ``14.7``
+   * - ``examples/data/input.minimal_seed_nfp2_target_helicity``
+     - ``examples/optimization/results/minimal_seed_showcase_promote/cpu/cpu/qi_nfp2/continuation/minimal_nfp2_qi/mode3/ess``
+     - ``1.61e-2``
+     - ``1.52e-3``
+     - ``5.25e-4``
+     - ``0.240/0.30``
+     - ``6.51/8.2``
+     - ``6.006/6.0``
+     - ``-0.5994``
+     - ``28.7``
      - ``case-gated``
    * - ``examples/data/input.QI_stel_seed_3127``
      - ``results/qi_opt/ess/qi_stel_seed_3127_mirror_calibrated_20260516``
@@ -1239,8 +1239,8 @@ script:
    PYTHONPATH=. JAX_PLATFORMS=cpu VMEC_JAX_QI_RUN_CASE=nfp1_qi \
      VMEC_JAX_QI_OUTPUT_DIR=results/qi_opt/ess/nfp1_qi_direct_office_20260519 \
      python examples/optimization/QI_optimization.py
-   PYTHONPATH=. JAX_PLATFORMS=cpu VMEC_JAX_QI_RUN_CASE=nfp2_qi \
-     VMEC_JAX_QI_OUTPUT_DIR=results/qi_opt/ess/nfp2_qi \
+   PYTHONPATH=. JAX_PLATFORMS=cpu VMEC_JAX_QI_RUN_CASE=minimal_nfp2_qi \
+     VMEC_JAX_QI_OUTPUT_DIR=results/qi_opt/ess/minimal_nfp2_to_qi_reference \
      python examples/optimization/QI_optimization.py
    PYTHONPATH=. JAX_PLATFORMS=cpu VMEC_JAX_QI_RUN_CASE=nfp3_qi \
      VMEC_JAX_QI_OUTPUT_DIR=results/qi_opt/ess/qi_stel_seed_3127_mirror_calibrated_20260516 \

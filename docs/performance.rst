@@ -1196,14 +1196,17 @@ least-squares solver with ``method="scipy_matrix_free"``:
 
 This matrix-free trust-region lane is useful for profiling, memory-pressure
 fallbacks, and larger parameter-count cases, but it is not a global default
-because it is problem dependent.  Use ``method="auto"`` when you want vmec_jax
-to choose only explicitly profiled safe cases without changing the requested
-device.  The current automatic policy is conservative: it may select
-matrix-free LSMR for high-mode, stellarator-symmetric QA on CPU/default CPU,
-but keeps QH, LASYM cases, and explicit GPU runs on the dense SciPy path until
-case-specific matrix-free profiles show a benefit.  The trial residual path can
-be compared explicitly with ``profile_exact_optimizer.py --trial-scan
-auto|on|off``.
+because it is problem dependent.  Use ``method="auto"`` as an opt-in,
+device-preserving policy rather than as a promise of the fastest wall time for
+every case.  The current automatic policy may select matrix-free LSMR for
+high-mode, stellarator-symmetric QA on CPU/default CPU, where cold-process and
+memory-pressure profiles motivated the lane, but it keeps QH, LASYM cases, and
+explicit GPU runs on the dense SciPy path until case-specific matrix-free
+profiles show a benefit.  The retained benchmark table below is a useful
+counterexample: on that warm QA run, dense SciPy is still faster.  Validate the
+case you care about with the profiling commands before promoting production
+timings.  The trial residual path can be compared explicitly with
+``profile_exact_optimizer.py --trial-scan auto|on|off``.
 
 A 2026-05-20 matrix-free cleanup removed one redundant initialization AD pass:
 ``residual_linear_operator`` now obtains the frozen-axis initial-state
