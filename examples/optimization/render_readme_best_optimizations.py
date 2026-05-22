@@ -32,6 +32,8 @@ QI_CONSTRAINED_CSV = FIGURE_DIR / "qi_constrained_summary.csv"
 QI_CONSTRAINED_BEST_JSON = FIGURE_DIR / "qi_constrained_best.json"
 OUT_CSV = FIGURE_DIR / "readme_best_optimizations.csv"
 QI_DEFAULT_RESULT_DIR = REPO_ROOT / "results" / "qi_opt" / "ess" / "nfp2_qi_aspect6"
+README_CASES_ROOT = REPO_ROOT / "docs" / "_static" / "readme_best_cases"
+README_CASES_SUMMARY = README_CASES_ROOT / "summary.csv"
 
 PROBLEMS = ("qa", "qh", "qp", "qi")
 PROBLEM_TITLES = {
@@ -258,6 +260,42 @@ def _run_from_row(row: dict[str, str]) -> BestRun:
     )
 
 
+def _bundled_best_runs() -> list[BestRun]:
+    """Return the checked-in README result bundle when available.
+
+    Full optimization outputs are intentionally ignored by git.  The compact
+    README panel is therefore driven by a small reviewed artifact bundle so a
+    clean clone can regenerate the figures without re-running multi-minute
+    optimizations.
+    """
+
+    if not README_CASES_SUMMARY.exists():
+        return []
+    with README_CASES_SUMMARY.open(newline="") as f:
+        rows = list(csv.DictReader(f))
+    runs = [_run_from_row(row) for row in rows]
+    expected = set(PROBLEMS)
+    found = {run.problem for run in runs}
+    if found != expected:
+        missing = ", ".join(sorted(expected - found))
+        extra = ", ".join(sorted(found - expected))
+        raise RuntimeError(
+            f"{README_CASES_SUMMARY} must contain exactly {sorted(expected)}; "
+            f"missing=[{missing}], extra=[{extra}]"
+        )
+    for run in runs:
+        required = (
+            run.output_dir / "history.json",
+            run.output_dir / "wout_original.nc",
+            run.output_dir / "wout_final.nc",
+        )
+        missing = [path for path in required if not path.exists()]
+        if missing:
+            joined = ", ".join(_repo_relative_path(path) for path in missing)
+            raise FileNotFoundError(f"Incomplete README bundle for {run.problem}: {joined}")
+    return sorted(runs, key=lambda run: PROBLEMS.index(run.problem))
+
+
 def _qi_default_row_from_result_dir(result_dir: Path = QI_DEFAULT_RESULT_DIR) -> dict[str, str] | None:
     diagnostics_path = result_dir / "diagnostics.json"
     history_path = result_dir / "history.json"
@@ -295,6 +333,10 @@ def _qi_default_row_from_result_dir(result_dir: Path = QI_DEFAULT_RESULT_DIR) ->
 
 
 def _best_runs() -> list[BestRun]:
+    bundled = _bundled_best_runs()
+    if bundled:
+        return bundled
+
     rows = [
         row
         for row in _read_summary_rows()
