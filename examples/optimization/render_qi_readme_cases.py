@@ -62,34 +62,64 @@ CASES = (
         ),
     ),
     QICase(
-        label="NFP=2 bundled QI",
-        input_file=REPO_ROOT / "examples" / "data" / "input.nfp2_QI",
-        output_dir=REPO_ROOT / "results" / "qi_opt" / "ess" / "nfp2_qi",
-        initial_wout=REPO_ROOT / "results" / "qi_opt" / "ess" / "nfp2_qi" / "wout_initial.nc",
-        note="default mirror-aware QI lane",
+        label="NFP=2 minimal seed",
+        input_file=REPO_ROOT / "examples" / "data" / "input.minimal_seed_nfp2_target_helicity",
+        output_dir=REPO_ROOT
+        / "examples"
+        / "optimization"
+        / "results"
+        / "minimal_seed_showcase_promote"
+        / "cpu"
+        / "cpu"
+        / "qi_nfp2"
+        / "continuation"
+        / "minimal_nfp2_qi"
+        / "mode3"
+        / "ess",
+        initial_wout=REPO_ROOT
+        / "examples"
+        / "optimization"
+        / "results"
+        / "minimal_seed_showcase_promote"
+        / "cpu"
+        / "cpu"
+        / "qi_nfp2"
+        / "continuation"
+        / "minimal_nfp2_qi"
+        / "mode3"
+        / "ess"
+        / "wout_initial.nc",
+        note="aspect-6 minimal-seed mirror-aware QI lane",
         history_paths=(
             REPO_ROOT
+            / "examples"
+            / "optimization"
             / "results"
-            / "qi_opt"
+            / "minimal_seed_showcase_promote"
+            / "cpu"
+            / "cpu"
+            / "qi_nfp2"
+            / "continuation"
+            / "minimal_nfp2_qi"
+            / "mode3"
             / "ess"
-            / "nfp2_qi"
-            / "mirror_ramp_01_qi_basin"
-            / "history.json",
-            REPO_ROOT
-            / "results"
-            / "qi_opt"
-            / "ess"
-            / "nfp2_qi"
             / "mirror_ramp_01_matrix_free_mirror030"
             / "history.json",
-            REPO_ROOT
-            / "results"
-            / "qi_opt"
-            / "ess"
-            / "nfp2_qi"
-            / "mirror_ramp_02_lcfs_mirror_030"
-            / "history.json",
         ),
+        preconditioner_summary=REPO_ROOT
+        / "examples"
+        / "optimization"
+        / "results"
+        / "minimal_seed_showcase_promote"
+        / "cpu"
+        / "cpu"
+        / "qi_nfp2"
+        / "continuation"
+        / "minimal_nfp2_qi"
+        / "mode3"
+        / "ess"
+        / "boundary_reference_preconditioner"
+        / "summary.json",
     ),
     QICase(
         label="NFP=3 seed 3127",
