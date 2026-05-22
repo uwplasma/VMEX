@@ -4934,11 +4934,14 @@ def solve_fixed_boundary_residual_iter(
     )
     from .vmec_forces import vmec_forces_rz_from_wout, vmec_residual_internal_from_kernels
     from .vmec_residue import (
+        vmec_apply_m1_constraints,
+        vmec_apply_scalxc_to_tomnsps,
         vmec_force_norms_from_bcovar_dynamic,
         vmec_gcx2_from_tomnsps,
         vmec_gcx2_from_tomnsps_np,
         vmec_scalxc_from_s,
         vmec_wint_from_trig,
+        vmec_zero_m1_zforce,
     )
     from .vmec_jacobian import vmec_half_mesh_jacobian_from_state
     from .vmec_tomnsp import TomnspsRZL, vmec_angle_grid, vmec_trig_tables
