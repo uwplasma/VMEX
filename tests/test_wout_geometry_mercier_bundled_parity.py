@@ -70,6 +70,12 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _read_wout_or_skip(path: Path):
+    if not path.exists():
+        pytest.skip(f"optional bundled WOUT fixture is not available: {path}")
+    return read_wout(path)
+
+
 def _static_aligned_to_wout(cfg, wout):
     cfg = replace(
         cfg,
@@ -88,7 +94,7 @@ def test_bundled_wout_axis_metadata_matches_axis_fourier_modes(case_name: str, w
     """Axis metadata should stay identical to the m=0 axis Fourier coefficients."""
     pytest.importorskip("netCDF4")
 
-    wout = read_wout(_repo_root() / wout_rel)
+    wout = _read_wout_or_skip(_repo_root() / wout_rel)
     ntor = int(wout.ntor)
     nfp = int(wout.nfp)
 
@@ -118,7 +124,7 @@ def test_bundled_wout_vp_matches_jacobian_constant_mode(case_name: str, wout_rel
     """The VMEC volume derivative is signgs times the sqrt(g) m=n=0 mode."""
     pytest.importorskip("netCDF4")
 
-    wout = read_wout(_repo_root() / wout_rel)
+    wout = _read_wout_or_skip(_repo_root() / wout_rel)
     mask = (np.asarray(wout.xm_nyq, dtype=int) == 0) & (np.asarray(wout.xn_nyq, dtype=int) == 0)
     assert np.count_nonzero(mask) == 1, case_name
     mode_idx = int(np.flatnonzero(mask)[0])
