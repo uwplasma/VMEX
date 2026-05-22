@@ -478,3 +478,35 @@ def test_nonscan_non_strict_backtracking_accepts_momentum_update(monkeypatch) ->
     assert result.step_history.shape == (1,)
     assert result.diagnostics["step_status_history"][0] in {"momentum", "rejected"}
     assert result.diagnostics["restart_path_history"][0] == "non_strict"
+
+
+def test_nonscan_debug_force_path_runs_with_m1_and_zeroing(monkeypatch) -> None:
+    pytest.importorskip("jax")
+    _quiet_solve_env(monkeypatch)
+    _install_scan_fakes(monkeypatch)
+    monkeypatch.setenv("VMEC_JAX_SCAN_DEBUG_FORCE", "1")
+
+    result = solve.solve_fixed_boundary_residual_iter(
+        _state(),
+        _static(),
+        indata=_FakeInData(lmove_axis=False),
+        signgs=1,
+        max_iter=1,
+        step_size=0.1,
+        vmec2000_control=False,
+        strict_update=False,
+        backtracking=True,
+        use_scan=False,
+        auto_flip_force=False,
+        limit_dt_from_force=False,
+        limit_update_rms=False,
+        use_restart_triggers=False,
+        use_direct_fallback=False,
+        reference_mode=False,
+        jit_forces=False,
+        verbose=False,
+        verbose_vmec2000_table=False,
+    )
+
+    assert result.w_history.shape == (1,)
+    assert result.diagnostics["restart_path_history"][0] == "non_strict"
