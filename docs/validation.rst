@@ -61,7 +61,16 @@ Required CI includes a no-executable residual parity gate:
 
 .. code-block:: bash
 
-   JAX_ENABLE_X64=1 pytest -q tests/test_residue_getfsq_parity.py tests/test_wout_profiles_currents_bundled_parity.py tests/test_converged_wout_matrix_parity.py tests/test_vmec2000_exec_threed1.py
+   PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 pytest -q -p no:cacheprovider \
+     tests/test_residue_getfsq_parity.py \
+     tests/test_wout_profiles_currents_bundled_parity.py \
+     tests/test_physics_parity_helper_gates.py \
+     tests/test_vmec_parity_physics_fast_gates.py \
+     tests/test_wout_physics_gates.py \
+     tests/test_converged_wout_matrix_parity.py \
+     tests/test_wout_fixture_inventory.py \
+     tests/test_vmec2000_exec_threed1.py \
+     tests/test_parity_sweep_manifest_thresholds.py
 
 ``tests/test_residue_getfsq_parity.py`` reads small bundled VMEC2000 ``wout``
 files, reconstructs the solved state, recomputes the
@@ -93,9 +102,10 @@ Fourier channels.  It also asserts finite-pressure cases have nonzero stored
 pressure, positive pressure energy, and positive beta scalars, including the
 fetched single-grid ``lasym=True`` finite-beta reference.
 
-The full test tier runs ``vmec_jax`` end-to-end.  For promoted strict-parity
-cases it compares every standard ``wout`` field against the VMEC2000
-references.  Run with:
+The full test tier runs ``vmec_jax`` end-to-end.  Promoted strict-parity cases
+compare the standard ``wout`` field set against VMEC2000 references, while
+known-drift or convergence-only cases use explicitly documented finite-output
+and physics-gate checks instead of silent promotion.  Run with:
 
 .. code-block:: bash
 
@@ -127,7 +137,7 @@ category:
      - 5×10⁻⁵
      - 1×10⁻⁷
    * - Near-zero or cancellation-limited (buco, jcuru, jcurv, jdotb)
-     - 5×10⁻³
+     - 1×10⁻²
      - 1×10⁻⁸
    * - MHD stability coefficients (DMerc, Dshear, Dwell, Dcurr, Dgeod)
      - 1×10⁻³

@@ -21,7 +21,7 @@ Target State
 - Current coverage target: keep the required ``95%`` actual line coverage gate
   green with meaningful fast and bounded-physics tests while preserving
   acceptable coverage runtime.  The current Python 3.11 required coverage gate
-  is ``95%`` after the latest local CI-equivalent ratchet reached ``95.07%``.
+  is ``95%`` after the latest local CI-equivalent ratchet reached ``95.02%``.
 - Nightly/manual coverage: larger VMEC2000, GPU, and full-resolution physics
   checks run outside the required PR gate.
 - Repository checkout size: keep the tracked source tree small enough that a
@@ -60,7 +60,8 @@ proves the behavior under review.
      - Required where runtime and fixture size are bounded.  Failures represent
        real parity drift, not missing local tools.
    * - Full physics
-     - ``full`` marker plus ``RUN_FULL=1`` after ``tools/fetch_assets.py``.
+     - ``full`` marker plus ``RUN_FULL=1``; fetched-asset rows additionally
+       require ``tools/fetch_assets.py``.
      - Larger fixed/free-boundary references, multigrid cases, convergence-only
        representatives, and broader parity matrices.
      - Manual or scheduled/nightly unless a case is reduced enough to promote
@@ -111,8 +112,8 @@ generated artifacts.
        no-executable VMEC2000 parity fixtures.  CI should fail on real numerical
        drift without requiring local VMEC2000, SIMSOPT, GPUs, or large assets.
    * - Full physics validation
-     - ``python tools/fetch_assets.py`` then
-       ``RUN_FULL=1 JAX_ENABLE_X64=1 pytest -q -m "full and not vmec2000"``
+     - ``RUN_FULL=1 JAX_ENABLE_X64=1 pytest -q -m "full and not vmec2000"``;
+       run ``python tools/fetch_assets.py`` first for fetched-asset rows.
      - Manual or nightly validation for larger reference assets, multigrid
        cases, broad fixed/free-boundary parity, and expensive regression
        matrices that are too slow for every PR.
