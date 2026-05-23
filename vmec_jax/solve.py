@@ -228,7 +228,13 @@ def _jit_cache_put(cache: OrderedDict[tuple, Any], key: tuple, value, *, env_nam
     return value
 
 
-def _strict_update_step_jit(static, *, limit_update_rms: bool, divide_by_scalxc_for_update: bool):
+def _strict_update_step_jit(
+    static,
+    *,
+    limit_update_rms: bool,
+    need_update_rms: bool,
+    divide_by_scalxc_for_update: bool,
+):
     """Return a cached fused strict-update step for accelerator exact solves."""
     if not has_jax():
         return None
@@ -240,6 +246,7 @@ def _strict_update_step_jit(static, *, limit_update_rms: bool, divide_by_scalxc_
         int(getattr(cfg, "ntor", 0)),
         bool(getattr(cfg, "lasym", False)),
         bool(limit_update_rms),
+        bool(need_update_rms),
         bool(divide_by_scalxc_for_update),
     )
     cached = _jit_cache_get(_STRICT_UPDATE_STEP_JIT_CACHE, key)
@@ -315,6 +322,7 @@ def _strict_update_step_jit(static, *, limit_update_rms: bool, divide_by_scalxc_
             flss_u=flss_u,
             max_update_rms=max_update_rms,
             limit_update_rms=bool(limit_update_rms),
+            need_update_rms=bool(need_update_rms),
             divide_by_scalxc_for_update=bool(divide_by_scalxc_for_update),
         )
 
@@ -11846,6 +11854,7 @@ def solve_fixed_boundary_residual_iter(
                 step_fn = _strict_update_step_jit(
                     static,
                     limit_update_rms=False,
+                    need_update_rms=need_update_rms,
                     divide_by_scalxc_for_update=bool(divide_by_scalxc_for_update),
                 )
                 step_out = step_fn(
