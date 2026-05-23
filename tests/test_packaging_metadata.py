@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib.metadata import version as package_version
 from pathlib import Path
 import sys
 
@@ -20,3 +21,12 @@ def test_setuptools_discovery_only_packages_vmec_jax_namespace() -> None:
     assert package_find["include"] == ["vmec_jax*"]
     for pattern in ("tests*", "docs*", "examples*", "tools*", "validation*", "results*", "build*", "dist*"):
         assert pattern in package_find["exclude"]
+
+
+def test_package_exposes_installed_version() -> None:
+    import vmec_jax
+
+    data = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    assert vmec_jax.__version__ == data["project"]["version"]
+    if not Path(vmec_jax.__file__).resolve().is_relative_to(ROOT):
+        assert vmec_jax.__version__ == package_version("vmec-jax")
