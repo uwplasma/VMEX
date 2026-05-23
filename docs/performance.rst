@@ -351,6 +351,17 @@ The next GPU work should therefore target fixed-boundary force/update kernel
 launch and tape structure, while keeping Boozer JIT enabled for QI production
 runs.
 
+A bounded QH warm-start non-scan profile on 2026-05-23
+(``input.nfp4_QH_warm_start``, 20 iterations, ``--no-warmup``) measured
+``9.70 s`` total on local CPU and ``7.48 s`` total on ``office`` GPU.  The GPU
+was faster end-to-end in that cold profile, but the VMEC phase timers still
+showed slower accelerator micro-kernels: ``compute_forces`` was ``1.03 s`` on
+GPU versus ``0.094 s`` on CPU, and ``update`` was ``0.133 s`` on GPU versus
+``0.008 s`` on CPU.  This supports the current priority order: first make the
+GPU exact-callback replay path use the JVP-only/basepoint-carry policy when it
+passes the larger validation matrix, then target raw fixed-boundary GPU
+force/update fusion and launch-count reduction.
+
 For raw ``input.nfp2_QI`` follow-up profiling, keep the production-like scan
 measurement separate from phase attribution.  The scan path is best inspected
 with XProf traces because the force/preconditioner/update work is inside one
