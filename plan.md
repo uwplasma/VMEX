@@ -1,9 +1,9 @@
 # VMEC-JAX Research-Grade Roadmap
 
-Last updated: 2026-05-22
+Last updated: 2026-05-23
 Primary branch: `main`
-Baseline release: `v0.0.11`
-Latest known green `main` CI: `e90d1a2`
+Baseline release: `v0.0.12`
+Latest known green `main` CI: `afaa223`
 
 This is the living execution plan for making `vmec_jax` accurate, fast,
 differentiable, documented, and usable by external researchers. Update it when
@@ -48,13 +48,13 @@ acceptance criteria or evidence changes.
 - The duplicate finite-beta stage-one output path now has the same
   selected-best-exact-state save contract as the main QS workflow, so
   ``input.final`` and ``wout_final.nc`` cannot drift there either.
-- Required CI coverage is above the 90% gate. The May 22 required coverage
-  tier after the driver/solver refactor wave passed locally (`1924 passed,
-  20 skipped, 101 deselected`) in 7:20 with 93.18% coverage. The optional
-  converged VMEC2000 parity gate passed locally with `VMEC2000_INTEGRATION=1`
-  earlier in the validation push. The 95% gate remains staged; reaching it
-  still requires more `solve.py` orchestration/refactor work (`solve.py`
-  remains the dominant missing-line source).
+- Required CI coverage is now gated at 95%. The v0.0.12 release-candidate
+  fast suite passed locally with `2136 passed, 20 skipped, 107 deselected` in
+  8:03 and 95.06% coverage, then passed on GitHub Actions for Python
+  3.10/3.11/3.12 with the same 95% py3.11 gate. The optional converged
+  VMEC2000 parity gate remains opt-in with `VMEC2000_INTEGRATION=1`.
+  `solve.py` still dominates the missing-line surface, so future coverage
+  should come from physics-gated refactor seams rather than scaffolding.
 - VMEC2000 converged-wout parity now has a fast bundled matrix gate across
   fixed/free, axisymmetric/non-axisymmetric, LASYM, and single/multigrid
   representatives. The executable-backed end-state gate remains opt-in:

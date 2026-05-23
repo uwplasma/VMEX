@@ -1,8 +1,34 @@
 """vmec_jax: a JAX implementation of VMEC2000 for fixed and free-boundary equilibria."""
 
+from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
+from importlib.metadata import version as _package_version
 import os as _os
+from pathlib import Path as _Path
 
 from ._compat import _default_compilation_cache_dir as _default_jax_cache_dir
+
+
+def _source_tree_version() -> str | None:
+    pyproject = _Path(__file__).resolve().parents[1] / "pyproject.toml"
+    if not pyproject.exists():
+        return None
+    in_project = False
+    for raw_line in pyproject.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if line == "[project]":
+            in_project = True
+            continue
+        if in_project and line.startswith("["):
+            return None
+        if in_project and line.startswith("version"):
+            return line.split("=", 1)[1].strip().strip('"')
+    return None
+
+
+try:
+    __version__ = _source_tree_version() or _package_version("vmec-jax")
+except _PackageNotFoundError:  # pragma: no cover - source tree without installed metadata.
+    __version__ = "0+unknown"
 
 # Suppress noisy C++ warnings from XLA/PjRt backend (e.g. repeated
 # "Assume version compatibility. PjRt-IFRT does not track XLA executable
