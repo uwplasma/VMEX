@@ -1392,6 +1392,12 @@ CPU force helper post-processing out of residual JAX dispatch fragments, the
 same diagnostic run takes about ``20.6 s`` cold while preserving the final
 residual (``~5.6e-13``).
 
+A later pass moved ordinary, non-differentiated multigrid interpolation through
+the NumPy host path while keeping traced/autodiff interpolation on the JAX path.
+On the same diagnostic command this reduced the local cold time to about
+``20.1 s`` and preserved the final residual (``~5.6e-13``).  It also avoids
+unnecessary one-time JAX dispatch during the radial ``NS_ARRAY`` stage transfer.
+
 With an explicit CPU persistent cache
 (``VMEC_JAX_COMPILATION_CACHE=1`` and an isolated
 ``VMEC_JAX_COMPILATION_CACHE_DIR``), the second fresh-process run of the same
