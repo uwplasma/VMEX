@@ -27,6 +27,22 @@ _INTERP_CACHE: dict[tuple[int, int, str], tuple[Any, Any, Any]] = {}
 _SCALXC_CACHE: dict[tuple[int, bytes, str], Any] = {}
 
 
+def _contains_jax_tracer(value: Any) -> bool:
+    """Return True when *value* contains a JAX tracer."""
+    if not has_jax():
+        return False
+    try:
+        from jax import core, tree_util
+
+        return any(isinstance(leaf, core.Tracer) for leaf in tree_util.tree_leaves(value))
+    except Exception:
+        return False
+
+
+def _should_use_numpy_interp(value: Any) -> bool:
+    return bool(has_jax()) and not _contains_jax_tracer(value)
+
+
 def _cache_allowed() -> bool:
     if not has_jax():
         return True
@@ -91,6 +107,15 @@ def interp_vmec_radial_coeffs(
     This reproduces VMEC2000's `interp.f` convention described in the module
     docstring.
     """
+    if _should_use_numpy_interp((x_old, m)):
+        try:
+            from .vmec_numpy_forces import _numpy_module_patch
+
+            with _numpy_module_patch():
+                return interp_vmec_radial_coeffs(x_old, m=m, ns_new=ns_new)
+        except Exception:
+            pass
+
     x_old = jnp.asarray(x_old)
     ns_old, K = int(x_old.shape[0]), int(x_old.shape[1])
     ns_new = int(ns_new)
@@ -176,6 +201,22 @@ def interp_vmec_state(
     ns_new: int,
 ) -> VMECState:
     """Interpolate a VMECState to a new radial resolution (ns_new)."""
+    if _should_use_numpy_interp((state_old, m, n)):
+        try:
+            from .vmec_numpy_forces import _numpy_module_patch
+
+            with _numpy_module_patch():
+                return interp_vmec_state(
+                    state_old,
+                    m=m,
+                    n=n,
+                    lthreed=lthreed,
+                    lconm1=lconm1,
+                    ns_new=ns_new,
+                )
+        except Exception:
+            pass
+
     ns_new = int(ns_new)
     ns_old = int(state_old.layout.ns)
     K = int(state_old.layout.K)
