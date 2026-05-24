@@ -362,8 +362,14 @@ For a quick provider-only smoke, skip VMEC2000 explicitly:
    PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
      python tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py \
        --niter 1 \
+       --mgrid-nphi 4 \
        --skip-vmec2000 \
        --out results/freeb_coils_mgrid_vmec2000_smoke.json
+
+The diagnostic defaults ``NZETA`` to ``--mgrid-nphi`` so the generated
+``mgrid`` toroidal grid is compatible with VMEC's free-boundary loader. If you
+override ``--nzeta``, choose a value compatible with the generated grid
+(``kp``).
 
 If VMEC2000 aborts before writing ``wout_*.nc``, the JSON still records the
 workdir, stdout/stderr tails, ``threed1`` tail, and parsed iteration trace.

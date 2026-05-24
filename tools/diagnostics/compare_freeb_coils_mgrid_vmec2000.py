@@ -101,7 +101,12 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--ns", type=int, default=12)
     p.add_argument("--mpol", type=int, default=4)
     p.add_argument("--ntor", type=int, default=4)
-    p.add_argument("--nzeta", type=int, default=6)
+    p.add_argument(
+        "--nzeta",
+        type=int,
+        default=None,
+        help="VMEC NZETA. Defaults to --mgrid-nphi so generated mgrid kp is compatible.",
+    )
     p.add_argument("--nvacskip", type=int, default=None)
     p.add_argument("--mgrid-nr", type=int, default=12)
     p.add_argument("--mgrid-nz", type=int, default=12)
@@ -140,6 +145,11 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--jax-rtol", type=float, default=1.0e-12)
     p.add_argument("--jax-atol", type=float, default=1.0e-12)
     return p
+
+
+def _diagnostic_nzeta(args: argparse.Namespace) -> int:
+    """Return a VMEC NZETA compatible with the generated mgrid kp."""
+    return int(args.mgrid_nphi if args.nzeta is None else args.nzeta)
 
 
 def _jsonify(value: Any) -> Any:
@@ -517,6 +527,7 @@ def _vmec2000_wout_comparison(candidate_wout: Any, vmec2000_wout: Any, *, candid
 
 def _make_freeb_indata(base_indata: Any, *, mgrid_file: str, args: argparse.Namespace) -> Any:
     indata = deepcopy(base_indata)
+    nzeta = _diagnostic_nzeta(args)
     indata.scalars.update(
         {
             "LFREEB": True,
@@ -529,9 +540,9 @@ def _make_freeb_indata(base_indata: Any, *, mgrid_file: str, args: argparse.Name
             "FTOL": float(args.ftol),
             "MPOL": int(args.mpol),
             "NTOR": int(args.ntor),
-            "NZETA": int(args.nzeta),
+            "NZETA": int(nzeta),
             "NTHETA": 0,
-            "NVACSKIP": int(args.nvacskip) if args.nvacskip is not None else int(args.nzeta),
+            "NVACSKIP": int(args.nvacskip) if args.nvacskip is not None else int(nzeta),
             "PRES_SCALE": float(args.pressure_scale),
             "PMASS_TYPE": "power_series",
             "AM": [1.0, -1.0],
@@ -823,8 +834,8 @@ def _base_payload(args: argparse.Namespace, *, out: Path, workdir: Path) -> dict
             "ns": int(args.ns),
             "mpol": int(args.mpol),
             "ntor": int(args.ntor),
-            "nzeta": int(args.nzeta),
-            "nvacskip": int(args.nvacskip) if args.nvacskip is not None else int(args.nzeta),
+            "nzeta": int(_diagnostic_nzeta(args)),
+            "nvacskip": int(args.nvacskip) if args.nvacskip is not None else int(_diagnostic_nzeta(args)),
             "jit_forces": bool(args.jit_forces),
             "vmec2000_niter": None if args.vmec2000_niter is None else int(args.vmec2000_niter),
             "jax_rtol": float(args.jax_rtol),
@@ -884,6 +895,7 @@ def _dependency_skip(
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    nzeta = _diagnostic_nzeta(args)
     if args.strict:
         args.require_essos = True
         args.require_vmec2000 = True
@@ -897,6 +909,8 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--vmec2000-niter must be >= 1")
     if int(args.ns) < 3:
         raise SystemExit("--ns must be >= 3")
+    if int(args.mgrid_nphi) % int(nzeta) != 0 and int(nzeta) % int(args.mgrid_nphi) != 0:
+        raise SystemExit("--nzeta must be compatible with generated mgrid kp=--mgrid-nphi")
 
     out = args.out.expanduser().resolve()
     workdir = (args.workdir or (out.parent / f"{out.stem}_work")).expanduser().resolve()
