@@ -197,6 +197,45 @@ def test_active_direct_coil_provider_is_sensitive_in_finite_pressure_context(tmp
     assert _relative_rms_delta(base.vac_total.bsqvac, perturbed.vac_total.bsqvac) > 1.0e-3
 
 
+def test_direct_coil_reuse_refreshes_source_when_provider_changes(tmp_path: Path) -> None:
+    """Direct providers must not reuse stale VMEC source vectors across coil changes."""
+
+    enable_x64(True)
+    base_params = _circle_coil_params()
+    perturbed_params = _circle_coil_params(current=3.3e7)
+    input_path = _write_tiny_direct_freeb_input(tmp_path / "input.direct_provider_reuse_source")
+    run = _run_direct_initial_guess(input_path, base_params)
+
+    full, runtime = nestor_external_only_step(
+        state=run.state,
+        static=run.static,
+        ivac=1,
+        ivacskip=0,
+        iter_idx=1,
+        runtime=None,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=base_params,
+    )
+    reuse, _ = nestor_external_only_step(
+        state=run.state,
+        static=run.static,
+        ivac=2,
+        ivacskip=1,
+        iter_idx=2,
+        runtime=runtime,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=perturbed_params,
+    )
+
+    assert full.diagnostics is not None
+    assert reuse.diagnostics is not None
+    assert reuse.reused
+    assert reuse.diagnostics["provider_kind"] == "direct_coils"
+    assert reuse.diagnostics["source_reused"] is False
+    assert reuse.diagnostics["gsource_rms"] > full.diagnostics["gsource_rms"] * 1.05
+    assert _relative_rms_delta(full.vac_total.bsqvac, reuse.vac_total.bsqvac) > 1.0e-3
+
+
 def test_forced_activation_reports_direct_coil_nestor_diagnostics(tmp_path: Path) -> None:
     """Explicit activation should expose active direct-coil NESTOR diagnostics."""
 

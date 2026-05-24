@@ -3142,6 +3142,7 @@ def nestor_external_only_step(
     ntheta, nzeta = sample.R.shape
     selected_mode, mode_reason = _select_nestor_mode(ntheta=ntheta, nzeta=nzeta)
     provider_kind = "mgrid" if external_field_provider_kind is None else str(external_field_provider_kind).strip().lower()
+    provider_allows_source_reuse = provider_kind in ("", "mgrid", "legacy_mgrid")
 
     if ivacskip is not None:
         reuse_step = (int(ivacskip) != 0 and runtime is not None)
@@ -3153,7 +3154,8 @@ def nestor_external_only_step(
     wint_vmec = _vmec_boundary_wint(static=static, ntheta=int(ntheta), nzeta=int(nzeta))
     gsource_bexni = -np.asarray(sample.vac_ext.bnormal, dtype=float) * np.asarray(wint_vmec, dtype=float) * ((2.0 * np.pi) ** 2)
     gsource_vmec = np.asarray(gsource_bexni, dtype=float)
-    if reuse_step and runtime_gsource_cached is not None:
+    source_reused = bool(reuse_step and provider_allows_source_reuse and runtime_gsource_cached is not None)
+    if source_reused:
         gsource_vmec = np.asarray(runtime_gsource_cached, dtype=float)
     if rhs_mode in ("unit", "unit_normal", "bnormal_unit"):
         rhs = -np.asarray(sample.vac_ext.bnormal_unit, dtype=float)
@@ -3226,7 +3228,8 @@ def nestor_external_only_step(
                 "false",
                 "no",
             )
-            if use_greenf_source and (not reuse_step) and cache.mode_basis is not None:
+            refresh_source_on_reuse = bool(reuse_step and not provider_allows_source_reuse)
+            if use_greenf_source and ((not reuse_step) or refresh_source_on_reuse) and cache.mode_basis is not None:
                 nzeta_surf = int(np.asarray(sample.R).shape[1])
                 nvper_greenf = 64 if nzeta_surf == 1 else max(1, int(getattr(static.cfg, "nfp", 1)))
                 try:
@@ -3253,7 +3256,7 @@ def nestor_external_only_step(
             if dense_solve_mode in ("mode", "vmec_mode", "fouri_mode"):
                 rhs_mode_eff = None
                 if cache.mode_basis is not None:
-                    if reuse_step and runtime_bvec_nonsing_cached is not None:
+                    if reuse_step and provider_allows_source_reuse and runtime_bvec_nonsing_cached is not None:
                         bvec_mode_nonsing = np.asarray(runtime_bvec_nonsing_cached, dtype=float)
                     else:
                         bvec_mode_nonsing = _vmec_bvec_from_gsource(
@@ -3338,6 +3341,7 @@ def nestor_external_only_step(
     diagnostics: dict[str, float | str | bool] = {
         "provider_kind": provider_kind,
         "reused": bool(reuse_step),
+        "source_reused": bool(source_reused),
         "rhs_mode": str(rhs_mode),
         "mode": str(used_mode),
         "br_rms": _rms(sample.br),
@@ -3372,9 +3376,9 @@ def nestor_external_only_step(
     source_cache_iter = runtime_source_cache_iter
     if isinstance(cache, NestorVmecLikeCache) and (cache.mode_basis is not None):
         basis = cache.mode_basis
-        if (not reuse_step) or (gsource_cached is None):
+        if (not reuse_step) or (not provider_allows_source_reuse) or (gsource_cached is None):
             gsource_cached = np.asarray(gsource_vmec, dtype=float)
-        if (not reuse_step) or (source_sym_cached is None):
+        if (not reuse_step) or (not provider_allows_source_reuse) or (source_sym_cached is None):
             try:
                 source_sym_cached = _vmec_source_from_gsource(
                     gsource=np.asarray(gsource_cached, dtype=float),
@@ -3382,7 +3386,7 @@ def nestor_external_only_step(
                 )
             except Exception:
                 source_sym_cached = runtime_source_sym_cached
-        if (not reuse_step) or (bvec_nonsing_cached is None):
+        if (not reuse_step) or (not provider_allows_source_reuse) or (bvec_nonsing_cached is None):
             if bvec_mode_nonsing is not None:
                 bvec_nonsing_cached = np.asarray(bvec_mode_nonsing, dtype=float)
             else:
