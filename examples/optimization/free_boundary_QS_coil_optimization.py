@@ -42,11 +42,17 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from vmec_jax._compat import jnp
+from vmec_jax._compat import jax, jnp
 from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_run
 from vmec_jax.external_fields import CoilFieldParams, from_essos_coils
 from vmec_jax.external_fields.coils_jax import coil_current_norm, coil_lengths
 from vmec_jax.namelist import read_indata, write_indata
+from vmec_jax.robust_coils import (
+    CoilPerturbationSample,
+    aggregate_risk,
+    perturb_coil_params,
+    sample_coil_perturbations,
+)
 from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state
 
 
@@ -335,6 +341,21 @@ def objective_from_summary(
     return float(residual_weight) * residual + float(aspect_weight) * aspect_penalty + float(iota_weight) * iota_penalty
 
 
+def robust_risk_method(method: str) -> str:
+    if method == "smooth":
+        return "smooth_max"
+    return method
+
+
+def robust_sample_at(samples: CoilPerturbationSample, index: int) -> CoilPerturbationSample:
+    return CoilPerturbationSample(
+        current_factors=samples.current_factors[index],
+        displacement_xyz=samples.displacement_xyz[index],
+        toroidal_phase=samples.toroidal_phase[index],
+        centerline_dof_delta=samples.centerline_dof_delta[index],
+    )
+
+
 def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
     if args.provider == "essos":
         base_params, provider_metadata = load_essos_provider(
@@ -371,6 +392,37 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
 
     history: list[dict[str, Any]] = []
     best: dict[str, Any] | None = None
+    robust_samples: CoilPerturbationSample | None = None
+    robust_options: dict[str, Any] | None = None
+    if int(args.robust_samples) < 0:
+        raise ValueError("--robust-samples must be non-negative.")
+    if int(args.robust_samples) > 0:
+        if jax is None:  # pragma: no cover - JAX is a declared dependency in CI.
+            raise RuntimeError("JAX is required for --robust-samples.")
+        robust_samples = sample_coil_perturbations(
+            jax.random.PRNGKey(int(args.robust_seed)),
+            base_params,
+            int(args.robust_samples),
+            current_sigma=float(args.robust_current_sigma),
+            displacement_sigma=float(args.robust_displacement_sigma),
+            toroidal_phase_sigma=float(args.robust_toroidal_phase_sigma),
+            centerline_sigma=float(args.robust_centerline_sigma),
+            centerline_include_constant=bool(args.robust_centerline_include_constant),
+        )
+        robust_options = {
+            "samples": int(args.robust_samples),
+            "scenario_count_including_nominal": int(args.robust_samples) + 1,
+            "risk": str(args.robust_risk),
+            "aggregate_risk_method": robust_risk_method(str(args.robust_risk)),
+            "risk_std_weight": float(args.robust_std_weight),
+            "risk_temperature": float(args.robust_temperature),
+            "seed": int(args.robust_seed),
+            "current_sigma": float(args.robust_current_sigma),
+            "displacement_sigma": float(args.robust_displacement_sigma),
+            "toroidal_phase_sigma": float(args.robust_toroidal_phase_sigma),
+            "centerline_sigma": float(args.robust_centerline_sigma),
+            "centerline_include_constant": bool(args.robust_centerline_include_constant),
+        }
 
     def evaluate(x: np.ndarray) -> float:
         nonlocal best
@@ -382,6 +434,107 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
             current_step=float(args.current_step),
             dof_step=float(args.dof_step),
         )
+
+        if robust_samples is not None:
+            scenario_entries: list[dict[str, Any]] = []
+            scenario_objectives: list[float] = []
+            nominal_run: Any | None = None
+            for scenario_id in range(int(args.robust_samples) + 1):
+                scenario_name = "nominal" if scenario_id == 0 else f"perturbation_{scenario_id - 1}"
+                scenario_params = (
+                    params
+                    if scenario_id == 0
+                    else perturb_coil_params(params, robust_sample_at(robust_samples, scenario_id - 1))
+                )
+                try:
+                    run, wall_s = run_direct_free_boundary(
+                        input_path,
+                        scenario_params,
+                        vmec_max_iter=int(args.vmec_max_iter),
+                        activate_fsq=float(args.activate_fsq),
+                    )
+                    provisional = summarize_run(
+                        run,
+                        scenario_params,
+                        objective=np.nan,
+                        wall_s=wall_s,
+                        target_aspect=float(args.target_aspect),
+                        target_iota=float(args.target_iota),
+                    )
+                    scenario_objective = objective_from_summary(
+                        provisional,
+                        residual_weight=float(args.residual_weight),
+                        aspect_weight=float(args.aspect_weight),
+                        iota_weight=float(args.iota_weight),
+                    )
+                    provisional["objective"] = scenario_objective
+                    if scenario_id == 0:
+                        nominal_run = run
+                    scenario_entries.append(
+                        {
+                            "scenario": scenario_name,
+                            "perturbed": scenario_id > 0,
+                            "summary": provisional,
+                        }
+                    )
+                except Exception as exc:
+                    scenario_objective = float(args.failure_objective)
+                    scenario_entries.append(
+                        {
+                            "scenario": scenario_name,
+                            "perturbed": scenario_id > 0,
+                            "error": f"{type(exc).__name__}: {exc}",
+                            "summary": {"objective": scenario_objective},
+                        }
+                    )
+                    print(
+                        f"eval={eval_id:03d} scenario={scenario_name} failed with "
+                        f"{scenario_entries[-1]['error']}; returning {scenario_objective:.3e}",
+                        flush=True,
+                    )
+                scenario_objectives.append(float(scenario_objective))
+
+            objective = float(
+                np.asarray(
+                    aggregate_risk(
+                        jnp.asarray(scenario_objectives, dtype=float),
+                        robust_risk_method(str(args.robust_risk)),
+                        std_weight=float(args.robust_std_weight),
+                        temperature=float(args.robust_temperature),
+                    )
+                )
+            )
+            nominal_summary = dict(scenario_entries[0]["summary"])
+            nominal_summary.update(
+                {
+                    "objective": objective,
+                    "nominal_objective": float(scenario_objectives[0]),
+                    "scenario_objectives": scenario_objectives,
+                    "robust_samples": int(args.robust_samples),
+                    "robust_risk": str(args.robust_risk),
+                }
+            )
+            entry = {
+                "eval": eval_id,
+                "x": np.asarray(x, dtype=float).tolist(),
+                "variables": [{"kind": kind, "index": index} for kind, index in variables],
+                "summary": nominal_summary,
+                "scenarios": scenario_entries,
+            }
+            if best is None or objective < float(best["summary"]["objective"]):
+                best = entry
+                if nominal_run is not None:
+                    write_wout_from_fixed_boundary_run(outdir / "wout_best_direct_coil_phase1.nc", nominal_run, include_fsq=True)
+            print(
+                f"eval={eval_id:03d} objective={objective:.6e} "
+                f"nominal={scenario_objectives[0]:.6e} robust_samples={int(args.robust_samples)} "
+                f"risk={args.robust_risk} wall_s={sum(float(s['summary'].get('wall_s') or 0.0) for s in scenario_entries):.2f}",
+                flush=True,
+            )
+            history.append(entry)
+            write_json(outdir / "history.json", history)
+            return objective
+
         try:
             run, wall_s = run_direct_free_boundary(
                 input_path,
@@ -476,6 +629,8 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "history_json": outdir / "history.json",
         "best_wout": outdir / "wout_best_direct_coil_phase1.nc",
     }
+    if robust_options is not None:
+        summary["robust_objective"] = robust_options
     write_json(outdir / "summary.json", summary)
     print(f"Wrote {outdir / 'history.json'}")
     print(f"Wrote {outdir / 'summary.json'}")
@@ -513,6 +668,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--aspect-weight", type=float, default=1.0e-2)
     parser.add_argument("--iota-weight", type=float, default=1.0)
     parser.add_argument("--failure-objective", type=float, default=1.0e30)
+    parser.add_argument("--robust-samples", type=int, default=0, help="Number of perturbed coil scenarios to add to the nominal objective.")
+    parser.add_argument("--robust-risk", choices=("mean", "mean_plus_std", "smooth"), default="mean")
+    parser.add_argument("--robust-std-weight", type=float, default=1.0)
+    parser.add_argument("--robust-temperature", type=float, default=1.0e-3, help="Temperature for --robust-risk smooth.")
+    parser.add_argument("--robust-seed", type=int, default=20240524)
+    parser.add_argument("--robust-current-sigma", type=float, default=1.0e-2, help="Fractional current perturbation sigma.")
+    parser.add_argument("--robust-displacement-sigma", type=float, default=0.0, help="Rigid Cartesian displacement sigma.")
+    parser.add_argument("--robust-toroidal-phase-sigma", type=float, default=0.0, help="Toroidal phase rotation sigma in radians.")
+    parser.add_argument("--robust-centerline-sigma", type=float, default=0.0, help="Fourier centerline coefficient perturbation sigma.")
+    parser.add_argument("--robust-centerline-include-constant", action="store_true")
     return parser
 
 

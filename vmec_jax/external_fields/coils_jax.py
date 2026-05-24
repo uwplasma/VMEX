@@ -224,6 +224,28 @@ def expanded_coil_geometry(params: CoilFieldParams) -> tuple[Any, Any, Any, Any]
     return gamma, gamma_dash, gamma_dashdash, currents
 
 
+def build_coil_field_geometry(params: CoilFieldParams) -> tuple[Any, Any, Any]:
+    """Build symmetry-expanded direct-coil geometry for Biot-Savart sampling.
+
+    The returned tuple is ``(gamma, gamma_dash, currents)``.  It intentionally
+    omits ``gamma_dashdash`` so field-only callers and benchmarks can prebuild
+    just the geometry needed by Biot-Savart without changing the differentiable
+    ``CoilFieldParams -> field`` path.
+    """
+
+    base_dofs = jnp.asarray(params.base_curve_dofs)
+    base_gamma = fourier_curves_to_gamma(base_dofs, params.n_segments)
+    base_gamma_dash = compute_gamma_dash(base_dofs, params.n_segments)
+    gamma = _apply_symmetry_to_xyz_array(base_gamma, nfp=params.nfp, stellsym=params.stellsym)
+    gamma_dash = _apply_symmetry_to_xyz_array(base_gamma_dash, nfp=params.nfp, stellsym=params.stellsym)
+    currents = params.current_scale * apply_stellarator_symmetry_to_currents(
+        params.base_currents,
+        nfp=params.nfp,
+        stellsym=params.stellsym,
+    )
+    return gamma, gamma_dash, currents
+
+
 def _biot_savart_xyz_vectorized(
     points_xyz: Any,
     gamma: Any,
@@ -302,20 +324,59 @@ def _xyz_field_to_cylindrical(B_xyz: Any, phi: Any) -> tuple[Any, Any, Any]:
     return br, bphi, bz
 
 
-def sample_coil_field_cylindrical(params: CoilFieldParams, R: Any, Z: Any, phi: Any) -> tuple[Any, Any, Any]:
-    """Sample the direct-coil field at cylindrical coordinates."""
+def sample_coil_field_xyz_from_geometry(
+    geometry: tuple[Any, Any, Any],
+    points_xyz: Any,
+    *,
+    regularization_epsilon: float = 0.0,
+    chunk_size: int | None = None,
+) -> Any:
+    """Sample Cartesian direct-coil field from prebuilt coil geometry."""
 
-    gamma, gamma_dash, _gamma_dashdash, currents = expanded_coil_geometry(params)
-    points = _cylindrical_points_to_xyz(R, Z, phi)
-    field_xyz = biot_savart_xyz(
-        points,
+    gamma, gamma_dash, currents = geometry
+    return biot_savart_xyz(
+        points_xyz,
         gamma,
         gamma_dash,
         currents,
+        regularization_epsilon=regularization_epsilon,
+        chunk_size=chunk_size,
+    )
+
+
+def sample_coil_field_cylindrical_from_geometry(
+    geometry: tuple[Any, Any, Any],
+    R: Any,
+    Z: Any,
+    phi: Any,
+    *,
+    regularization_epsilon: float = 0.0,
+    chunk_size: int | None = None,
+) -> tuple[Any, Any, Any]:
+    """Sample cylindrical direct-coil field from prebuilt coil geometry."""
+
+    points = _cylindrical_points_to_xyz(R, Z, phi)
+    field_xyz = sample_coil_field_xyz_from_geometry(
+        geometry,
+        points,
+        regularization_epsilon=regularization_epsilon,
+        chunk_size=chunk_size,
+    )
+    return _xyz_field_to_cylindrical(field_xyz, phi)
+
+
+def sample_coil_field_cylindrical(params: CoilFieldParams, R: Any, Z: Any, phi: Any) -> tuple[Any, Any, Any]:
+    """Sample the direct-coil field at cylindrical coordinates."""
+
+    geometry = build_coil_field_geometry(params)
+    return sample_coil_field_cylindrical_from_geometry(
+        geometry,
+        R,
+        Z,
+        phi,
         regularization_epsilon=params.regularization_epsilon,
         chunk_size=params.chunk_size,
     )
-    return _xyz_field_to_cylindrical(field_xyz, phi)
 
 
 def coil_lengths(params: CoilFieldParams) -> Any:

@@ -791,37 +791,79 @@ branch.
 ```text
 WP0 Branch foundation and plan:                100%
 WP1 Provider base API:                         100%
-WP2 Pure JAX coil Biot-Savart:                 75%
+WP2 Pure JAX coil Biot-Savart:                 82%
 WP3 ESSOS adapter:                             80%
 WP4 JAX mgrid interpolation:                   85%
 WP5 Free-boundary provider hook:               86%
 WP6 Direct-coil forward example:               82%
 WP7 Vacuum adjoint scaffold:                  100%
-WP8 Gradient checks:                           84%
+WP8 Gradient checks:                           88%
 WP9 VMEC2000 diagnostics:                      42%
-WP10 Benchmarks/diagnostics:                   65%
-WP11 Coil-only QS optimization example:        35%
+WP10 Benchmarks/diagnostics:                   73%
+WP11 Coil-only QS optimization example:        45%
 WP12 Robust coil perturbations:               100%
-WP13 Documentation:                            75%
-WP14 CI policy:                                54%
-Overall branch completion:                     69%
+WP13 Documentation:                            78%
+WP14 CI policy:                                58%
+Overall branch completion:                     73%
 ```
 
 ## Immediate Next Steps
 
 1. Continue the VMEC2000 generated-mgrid WOUT comparator until the optional xfail can be bounded or promoted.
-2. Precompute/reuse direct-coil geometry in benchmarks and the free-boundary provider path without cutting gradients through coil dofs.
-3. Keep benchmark timings synchronized with queued JAX work before using GPU/CPU performance numbers for decisions.
-4. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
-5. Run CPU/GPU benchmark matrices and convert JSON summaries into documentation plots.
-6. Implement the production matrix-free/custom-linear-solve NESTOR adjoint beyond the dense toy scaffold.
-7. Re-check PR CI, including Codecov patch coverage, after each commit.
+2. Decide whether cached direct-coil geometry should be threaded into the free-boundary bridge after CPU/GPU benchmark evidence, without replacing the differentiable params-to-field API.
+3. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
+4. Run CPU/GPU benchmark matrices and convert JSON summaries into documentation plots.
+5. Implement the production matrix-free/custom-linear-solve NESTOR adjoint beyond the dense toy scaffold.
+6. Re-check PR CI, including Codecov patch coverage, after each commit.
 
 ## Need From User
 
 Nothing is required right now. The next implementation step can proceed locally. Later, maintainers should decide whether ESSOS mgrid export should be released before the `vmec_jax` example is promoted from research example to documented workflow.
 
 ## Work Log
+
+### 2026-05-24 Cached geometry and robust coil optimization example
+
+Steps taken:
+
+1. Added `build_coil_field_geometry(...)`,
+   `sample_coil_field_xyz_from_geometry(...)`, and
+   `sample_coil_field_cylindrical_from_geometry(...)` to split direct-coil
+   geometry construction from field sampling while preserving the original
+   `sample_coil_field_cylindrical(params, ...)` API.
+2. Added tests showing cached-geometry sampling equals the full sampler and
+   functional gradients through geometry construction match the original path.
+3. Extended `tools/benchmarks/bench_external_field_providers.py` with cached
+   direct-coil geometry cases and separate geometry-build timing.
+4. Added optional robust scenarios to
+   `examples/optimization/free_boundary_QS_coil_optimization.py`, using
+   `vmec_jax.robust_coils` perturbation samples and mean, mean-plus-std, or
+   smooth-max aggregation.
+5. Added bounded smoke coverage for the robust example path.
+
+Results obtained:
+
+1. `pytest -q tests/test_external_fields_coils_jax.py tests/test_external_fields_essos_adapter.py tests/test_free_boundary_qs_coil_optimization_smoke.py`
+   passed: 17 passed in 12.41 s.
+2. `python tools/benchmarks/bench_external_field_providers.py --points 16 --segments 32 --warm-repeats 2 --skip-essos --out results/bench_external_field_providers_cached_geometry_smoke_local.json`
+   passed. Synthetic direct-coil field-only timing changed from cold
+   `0.0808 s`, warm min `0.000028 s` to cached-geometry cold `0.0575 s`,
+   warm min `0.000024 s`.
+3. The robust example smoke with two perturbed scenarios passed in the worker
+   run and writes scenario-level objective histories.
+
+Best next steps:
+
+1. Run larger CPU/GPU provider benchmarks to decide whether cached geometry is
+   worth threading into the free-boundary provider bridge.
+2. Add a full-loop finite-difference gradient smoke for a coil-current-only
+   objective before promoting the phase-1 proxy toward Boozer/QS.
+3. Keep robust full-solve scenarios as Python-loop examples until the production
+   free-boundary path is batch-transformable.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-05-24 Accepted-state sensitivity gate, WOUT comparator, and synchronized benchmarks
 

@@ -231,16 +231,25 @@ def _bench_case(
     compile_error = None
     if has_jax() and jax is not None:
         try:
-            compiled_sample = jax.jit(lambda r, z, p: sample_external_field_cylindrical(provider_kind, None, params, r, z, p))
+            compiled_sample = jax.jit(
+                lambda trial_params, r, z, p: sample_external_field_cylindrical(
+                    provider_kind,
+                    None,
+                    trial_params,
+                    r,
+                    z,
+                    p,
+                )
+            )
             compile_available = True
         except Exception as exc:
             compile_error = repr(exc)
 
-    cold_s, cold_value = _time_once(eager_sample if compiled_sample is None else lambda: compiled_sample(R, Z, phi))
+    cold_s, cold_value = _time_once(eager_sample if compiled_sample is None else lambda: compiled_sample(params, R, Z, phi))
     warm_times: list[float] = []
     value = cold_value
     for _ in range(max(1, int(warm_repeats))):
-        dt, value = _time_once(eager_sample if compiled_sample is None else lambda: compiled_sample(R, Z, phi))
+        dt, value = _time_once(eager_sample if compiled_sample is None else lambda: compiled_sample(params, R, Z, phi))
         warm_times.append(dt)
 
     return {
@@ -251,6 +260,83 @@ def _bench_case(
         "compile_error": compile_error,
         "cold_or_compile_s": cold_s,
         "warm": _summarize_timings(warm_times),
+        "field": _field_stats(value),
+    }
+
+
+def _bench_cached_geometry_case(
+    *,
+    label: str,
+    params: Any,
+    R: np.ndarray,
+    Z: np.ndarray,
+    phi: np.ndarray,
+    warm_repeats: int,
+) -> dict[str, Any]:
+    from vmec_jax._compat import has_jax, jax
+    from vmec_jax.external_fields.coils_jax import build_coil_field_geometry, sample_coil_field_cylindrical_from_geometry
+
+    def eager_build() -> Any:
+        return build_coil_field_geometry(params)
+
+    compiled_build = None
+    compiled_sample = None
+    compile_available = False
+    compile_error = None
+    if has_jax() and jax is not None:
+        try:
+            compiled_build = jax.jit(build_coil_field_geometry)
+            compiled_sample = jax.jit(
+                lambda geometry, r, z, p: sample_coil_field_cylindrical_from_geometry(
+                    geometry,
+                    r,
+                    z,
+                    p,
+                    regularization_epsilon=params.regularization_epsilon,
+                    chunk_size=params.chunk_size,
+                )
+            )
+            compile_available = True
+        except Exception as exc:
+            compile_error = repr(exc)
+
+    cold_build_s, geometry = _time_once(eager_build if compiled_build is None else lambda: compiled_build(params))
+    build_warm_times: list[float] = []
+    for _ in range(max(1, int(warm_repeats))):
+        dt, geometry = _time_once(eager_build if compiled_build is None else lambda: compiled_build(params))
+        build_warm_times.append(dt)
+
+    def eager_sample() -> Any:
+        return sample_coil_field_cylindrical_from_geometry(
+            geometry,
+            R,
+            Z,
+            phi,
+            regularization_epsilon=params.regularization_epsilon,
+            chunk_size=params.chunk_size,
+        )
+
+    cold_field_s, cold_value = _time_once(
+        eager_sample if compiled_sample is None else lambda: compiled_sample(geometry, R, Z, phi)
+    )
+    field_warm_times: list[float] = []
+    value = cold_value
+    for _ in range(max(1, int(warm_repeats))):
+        dt, value = _time_once(eager_sample if compiled_sample is None else lambda: compiled_sample(geometry, R, Z, phi))
+        field_warm_times.append(dt)
+
+    return {
+        "label": label,
+        "status": "completed",
+        "provider_kind": "direct_coils_cached_geometry",
+        "compile_path": "jax.jit" if compile_available else "eager",
+        "compile_error": compile_error,
+        "cold_or_compile_s": cold_field_s,
+        "warm": _summarize_timings(field_warm_times),
+        "geometry_build": {
+            "cold_or_compile_s": cold_build_s,
+            "warm": _summarize_timings(build_warm_times),
+        },
         "field": _field_stats(value),
     }
 
@@ -293,9 +379,20 @@ def main(argv: list[str] | None = None) -> int:
             warm_repeats=int(args.warm_repeats),
         )
     )
+    payload["cases"].append(
+        _bench_cached_geometry_case(
+            label="synthetic_direct_coils_cached_geometry",
+            params=synthetic,
+            R=R,
+            Z=Z,
+            phi=phi,
+            warm_repeats=int(args.warm_repeats),
+        )
+    )
 
     if args.skip_essos:
         payload["cases"].append({"label": "essos_direct_coils", "status": "skipped", "reason": "requested"})
+        payload["cases"].append({"label": "essos_direct_coils_cached_geometry", "status": "skipped", "reason": "requested"})
     else:
         try:
             essos_params, metadata = _essos_params(args)
@@ -310,10 +407,28 @@ def main(argv: list[str] | None = None) -> int:
             )
             case["metadata"] = metadata
             payload["cases"].append(case)
+            cached_case = _bench_cached_geometry_case(
+                label="essos_direct_coils_cached_geometry",
+                params=essos_params,
+                R=R,
+                Z=Z,
+                phi=phi,
+                warm_repeats=int(args.warm_repeats),
+            )
+            cached_case["metadata"] = metadata
+            payload["cases"].append(cached_case)
         except Exception as exc:
             payload["cases"].append(
                 {
                     "label": "essos_direct_coils",
+                    "status": "skipped",
+                    "reason": "essos_fixture_unavailable",
+                    "error": repr(exc),
+                }
+            )
+            payload["cases"].append(
+                {
+                    "label": "essos_direct_coils_cached_geometry",
                     "status": "skipped",
                     "reason": "essos_fixture_unavailable",
                     "error": repr(exc),

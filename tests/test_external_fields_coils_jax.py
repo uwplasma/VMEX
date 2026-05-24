@@ -24,6 +24,7 @@ from vmec_jax.external_fields import (
     sample_coil_field_cylindrical,
     sample_external_field_cylindrical,
 )
+from vmec_jax.external_fields.coils_jax import build_coil_field_geometry, sample_coil_field_cylindrical_from_geometry
 
 
 def _circle_params(*, current: float = 3.0, radius: float = 1.2, n_segments: int = 256) -> CoilFieldParams:
@@ -87,6 +88,29 @@ def test_sample_coil_field_cylindrical_shapes_and_dispatch():
         np.testing.assert_allclose(actual, expected, rtol=1.0e-14, atol=1.0e-18)
 
 
+def test_cached_coil_geometry_sampling_matches_full_sampling():
+    enable_x64(True)
+    params = _circle_params(current=2.0, radius=1.0, n_segments=96)
+    params = replace(params, nfp=2, stellsym=True, regularization_epsilon=1.0e-9, chunk_size=2)
+    R = np.asarray([[0.2, 0.4], [0.3, 0.5]])
+    Z = np.asarray([[0.1, 0.2], [0.3, 0.4]])
+    phi = np.asarray([[0.0, 0.1], [0.2, 0.3]])
+
+    full = sample_coil_field_cylindrical(params, R, Z, phi)
+    geometry = build_coil_field_geometry(params)
+    cached = sample_coil_field_cylindrical_from_geometry(
+        geometry,
+        R,
+        Z,
+        phi,
+        regularization_epsilon=params.regularization_epsilon,
+        chunk_size=params.chunk_size,
+    )
+
+    for actual, expected in zip(cached, full, strict=True):
+        np.testing.assert_allclose(actual, expected, rtol=1.0e-14, atol=1.0e-18)
+
+
 def test_chunked_and_unchunked_biot_savart_match():
     enable_x64(True)
     params = _circle_params(current=2.0, radius=1.0, n_segments=64)
@@ -144,6 +168,38 @@ def test_fourier_coefficient_gradient_matches_finite_difference():
     fd = (scalar_for_xcos(x0 + eps) - scalar_for_xcos(x0 - eps)) / (2.0 * eps)
 
     np.testing.assert_allclose(exact, fd, rtol=2.0e-6, atol=1.0e-12)
+
+
+def test_cached_coil_geometry_sampling_preserves_functional_geometry_gradient():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax
+
+    enable_x64(True)
+    params = _circle_params(current=2.0, radius=1.0, n_segments=128)
+
+    def scalar_cached(dofs):
+        trial = params.with_arrays(base_curve_dofs=dofs)
+        geometry = build_coil_field_geometry(trial)
+        br, bphi, bz = sample_coil_field_cylindrical_from_geometry(
+            geometry,
+            0.35,
+            0.25,
+            0.4,
+            regularization_epsilon=trial.regularization_epsilon,
+            chunk_size=trial.chunk_size,
+        )
+        return 0.7 * br - 0.2 * bphi + 1.1 * bz
+
+    def scalar_full(dofs):
+        trial = params.with_arrays(base_curve_dofs=dofs)
+        br, bphi, bz = sample_coil_field_cylindrical(trial, 0.35, 0.25, 0.4)
+        return 0.7 * br - 0.2 * bphi + 1.1 * bz
+
+    cached_grad = jax.grad(scalar_cached)(params.base_curve_dofs)
+    full_grad = jax.grad(scalar_full)(params.base_curve_dofs)
+
+    np.testing.assert_allclose(cached_grad, full_grad, rtol=1.0e-12, atol=1.0e-18)
+    assert float(np.linalg.norm(np.asarray(cached_grad))) > 0.0
 
 
 def test_coordinate_derivative_matches_finite_difference():

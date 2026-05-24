@@ -160,8 +160,24 @@ free-boundary loop.
 Robust Coil Perturbations
 -------------------------
 
-``vmec_jax.robust_coils`` provides pure-JAX perturbation helpers for future
-robust coil objectives:
+The phase-1 direct-coil example can optionally evaluate a robust objective by
+adding perturbed coil scenarios to the nominal free-boundary solve:
+
+.. code-block:: bash
+
+   python examples/optimization/free_boundary_QS_coil_optimization.py \
+     --smoke \
+     --provider circle \
+     --robust-samples 2 \
+     --robust-risk mean_plus_std
+
+The default remains the deterministic nominal objective. When
+``--robust-samples`` is positive, the example samples common coil perturbations
+with ``vmec_jax.robust_coils`` and aggregates nominal plus perturbed scenario
+losses with ``mean``, ``mean_plus_std``, or ``smooth`` risk aggregation.
+
+``vmec_jax.robust_coils`` provides pure-JAX perturbation helpers for robust coil
+objectives:
 
 - multiplicative current perturbations,
 - rigid Cartesian displacements,
@@ -172,8 +188,8 @@ robust coil objectives:
 
 These functions operate on ``CoilFieldParams`` pytrees and do not require
 ESSOS. They can be used with ``jax.vmap`` for transformable objective pieces;
-full free-boundary solves still use a Python-loop fallback until the production
-solver path is fully JAX-transformable.
+the example intentionally uses a Python loop around full free-boundary solves
+until the production solver path is fully JAX-transformable.
 
 Benchmarks
 ----------
