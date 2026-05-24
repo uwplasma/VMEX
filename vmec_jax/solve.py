@@ -4862,6 +4862,9 @@ def solve_fixed_boundary_residual_iter(
     preconditioner_use_precomputed_tridi: bool | None = None,
     adjoint_trace: bool = False,
     adjoint_trace_mode: str = "full",
+    external_field_provider_kind: str | None = None,
+    external_field_provider_static: Any = None,
+    external_field_provider_params: Any = None,
     state_only: bool = False,
 ) -> SolveVmecResidualResult:
     """VMEC-style fixed-point update loop using preconditioned force residuals."""
@@ -5088,7 +5091,18 @@ def solve_fixed_boundary_residual_iter(
             return res
         diag_local = dict(res.diagnostics)
         if "free_boundary_external_field" not in diag_local:
-            if bool(freeb_sample_external):
+            if external_field_provider_kind is not None and str(external_field_provider_kind).strip().lower() not in (
+                "",
+                "mgrid",
+                "legacy_mgrid",
+            ):
+                diag_local["free_boundary_external_field"] = {
+                    "enabled": True,
+                    "available": False,
+                    "provider_kind": str(external_field_provider_kind),
+                    "reason": "direct_provider_runtime_path",
+                }
+            elif bool(freeb_sample_external):
                 diag_local["free_boundary_external_field"] = _sample_free_boundary_external_field(
                     state=res.state,
                     static=static,
@@ -10199,6 +10213,9 @@ def solve_fixed_boundary_residual_iter(
                             runtime=freeb_nestor_runtime,
                             extcur=tuple(getattr(static, "free_boundary_extcur", ()) or ()),
                             plascur=float(freeb_plascur),
+                            external_field_provider_kind=external_field_provider_kind,
+                            external_field_provider_static=external_field_provider_static,
+                            external_field_provider_params=external_field_provider_params,
                         )
                         freeb_last_model = str(getattr(nestor_res, "model", "spectral_poisson_external_only"))
                         freeb_reused = bool(getattr(nestor_res, "reused", False))

@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 import os
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 from .boundary import boundary_from_indata
@@ -1223,6 +1223,9 @@ def run_fixed_boundary(
     restart_solver_state: dict | None = None,
     cli_fixed_boundary_mode: bool = False,
     solver_device: str | None = None,
+    external_field_provider_kind: str | None = None,
+    external_field_provider_static: Any = None,
+    external_field_provider_params: Any = None,
     _auto_cli_fixed_boundary_mode: bool = True,
     _solver_device_context_active: bool = False,
 ):
@@ -2330,8 +2333,16 @@ def run_fixed_boundary(
 
     fb_strict_env = os.getenv("VMEC_JAX_FREEB_STRICT", "1").strip().lower()
     fb_strict = fb_strict_env not in ("", "0", "false", "no")
-    validate_free_boundary_config(cfg, strict=fb_strict)
-    prepared_fb = prepare_mgrid_for_config(cfg, load_fields=False, strict=fb_strict)
+    direct_external_provider = external_field_provider_kind is not None and str(external_field_provider_kind).strip().lower() not in (
+        "",
+        "mgrid",
+        "legacy_mgrid",
+    )
+    if not bool(direct_external_provider):
+        validate_free_boundary_config(cfg, strict=fb_strict)
+        prepared_fb = prepare_mgrid_for_config(cfg, load_fields=False, strict=fb_strict)
+    else:
+        prepared_fb = None
     fb_meta: MGridMetadata | None = None
     fb_extcur: tuple[float, ...] | None = None
     if isinstance(prepared_fb, PreparedMGrid):
@@ -2971,6 +2982,9 @@ def run_fixed_boundary(
                 fsq_total_target=stage_fsq_total_target,
                 host_update_assembly=stage_host_update_assembly,
                 preconditioner_use_precomputed_tridi=stage_preconditioner_use_precomputed_tridi,
+                external_field_provider_kind=external_field_provider_kind,
+                external_field_provider_static=external_field_provider_static,
+                external_field_provider_params=external_field_provider_params,
             )
             dynamic_scan_default = "1" if bool(cfg.lasym) else "0"
             dynamic_scan_env = os.getenv("VMEC_JAX_DYNAMIC_SCAN", dynamic_scan_default).strip().lower()

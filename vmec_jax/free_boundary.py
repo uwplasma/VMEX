@@ -1020,27 +1020,36 @@ def _sample_external_boundary_arrays(
     extcur: tuple[float, ...] | None = None,
     plascur: float = 0.0,
     axis_override: tuple[np.ndarray, np.ndarray] | None = None,
+    external_field_provider_kind: str | None = None,
+    external_field_provider_static: Any = None,
+    external_field_provider_params: Any = None,
 ) -> ExternalBoundarySample:
-    """Return full boundary arrays for external mgrid field sampling."""
+    """Return full boundary arrays for mgrid or direct-provider sampling."""
 
     from .vmec_parity import vmec_m1_internal_to_physical_signed_host
     from .vmec_realspace import (
         vmec_realspace_synthesis,
     )
+    provider_kind = "mgrid" if external_field_provider_kind is None else str(external_field_provider_kind).strip().lower()
+    use_mgrid_provider = provider_kind in ("", "mgrid", "legacy_mgrid")
     meta = getattr(static, "mgrid_metadata", None)
-    if meta is None:
-        raise ValueError("missing_mgrid_metadata")
-    mgrid_path = str(getattr(meta, "path", "")).strip()
-    if not mgrid_path:
-        raise ValueError("missing_mgrid_path")
+    mgrid = None
+    if use_mgrid_provider:
+        if meta is None:
+            raise ValueError("missing_mgrid_metadata")
+        mgrid_path = str(getattr(meta, "path", "")).strip()
+        if not mgrid_path:
+            raise ValueError("missing_mgrid_path")
 
-    mgrid = _MGRID_FIELD_CACHE.get(mgrid_path)
-    if mgrid is None:
-        loaded = load_mgrid(mgrid_path, load_fields=True)
-        if not isinstance(loaded, MGridData):  # pragma: no cover
-            raise TypeError("load_mgrid(load_fields=True) must return MGridData")
-        mgrid = loaded
-        _MGRID_FIELD_CACHE[mgrid_path] = mgrid
+        mgrid = _MGRID_FIELD_CACHE.get(mgrid_path)
+        if mgrid is None:
+            loaded = load_mgrid(mgrid_path, load_fields=True)
+            if not isinstance(loaded, MGridData):  # pragma: no cover
+                raise TypeError("load_mgrid(load_fields=True) must return MGridData")
+            mgrid = loaded
+            _MGRID_FIELD_CACHE[mgrid_path] = mgrid
+    else:
+        mgrid_path = f"provider:{provider_kind}"
     extcur_eff = tuple(extcur) if extcur is not None else tuple(getattr(static, "free_boundary_extcur", ()) or ())
 
     sample_nzeta = 1 if (not bool(getattr(static.cfg, "lthreed", True))) else int(static.cfg.nzeta)
@@ -1121,14 +1130,29 @@ def _sample_external_boundary_arrays(
     nzeta = int(R.shape[1])
     phi_grid = setup.phi_grid
 
-    br_mgrid, bp_mgrid, bz_mgrid = interpolate_mgrid_bfield(
-        mgrid,
-        r=R,
-        z=Z,
-        phi=phi_grid,
-        extcur=extcur_eff,
-        use_vmec_kv=True,
-    )
+    if use_mgrid_provider:
+        br_mgrid, bp_mgrid, bz_mgrid = interpolate_mgrid_bfield(
+            mgrid,
+            r=R,
+            z=Z,
+            phi=phi_grid,
+            extcur=extcur_eff,
+            use_vmec_kv=True,
+        )
+    else:
+        from .external_fields import sample_external_field_cylindrical
+
+        br_mgrid, bp_mgrid, bz_mgrid = sample_external_field_cylindrical(
+            provider_kind,
+            external_field_provider_static,
+            external_field_provider_params,
+            R,
+            Z,
+            phi_grid,
+        )
+        br_mgrid = np.asarray(br_mgrid, dtype=float)
+        bp_mgrid = np.asarray(bp_mgrid, dtype=float)
+        bz_mgrid = np.asarray(bz_mgrid, dtype=float)
     # VMEC funct3d sets:
     #   raxis_nestor(1:nzeta) = pr1(1:nzeta,1,0)
     #   zaxis_nestor(1:nzeta) = pz1(1:nzeta,1,0)
@@ -3028,6 +3052,9 @@ def nestor_external_only_step(
     extcur: tuple[float, ...] | None = None,
     plascur: float = 0.0,
     axis_override: tuple[np.ndarray, np.ndarray] | None = None,
+    external_field_provider_kind: str | None = None,
+    external_field_provider_static: Any = None,
+    external_field_provider_params: Any = None,
 ) -> tuple[NestorSolveResult, NestorRuntimeState]:
     """Simplified NESTOR-style update/reuse with ivacskip-compatible behavior.
 
@@ -3106,6 +3133,9 @@ def nestor_external_only_step(
         extcur=extcur,
         plascur=float(plascur),
         axis_override=axis_override,
+        external_field_provider_kind=external_field_provider_kind,
+        external_field_provider_static=external_field_provider_static,
+        external_field_provider_params=external_field_provider_params,
     )
     sample_time = max(0.0, time.perf_counter() - t0)
     ntheta, nzeta = sample.R.shape

@@ -789,30 +789,30 @@ WP1 Provider base API:                         100%
 WP2 Pure JAX coil Biot-Savart:                 75%
 WP3 ESSOS adapter:                             80%
 WP4 JAX mgrid interpolation:                   85%
-WP5 Free-boundary provider hook:               35%
-WP6 Direct-coil forward example:                0%
+WP5 Free-boundary provider hook:               65%
+WP6 Direct-coil forward example:               65%
 WP7 Vacuum adjoint scaffold:                  100%
 WP8 Gradient checks:                           50%
-WP9 VMEC2000 diagnostics:                       0%
+WP9 VMEC2000 diagnostics:                      10%
 WP10 Benchmarks:                                0%
 WP11 Coil-only QS optimization example:         0%
 WP12 Robust coil perturbations:                 0%
-WP13 Documentation:                             0%
-WP14 CI policy:                                 0%
-Overall branch completion:                     37%
+WP13 Documentation:                            10%
+WP14 CI policy:                                10%
+Overall branch completion:                     45%
 ```
 
 ## Immediate Next Steps
 
-1. Commit this plan file once reviewed locally.
-2. Implement `vmec_jax/external_fields/base.py` and minimal dispatch tests.
-3. Implement `vmec_jax/external_fields/coils_jax.py` with ESSOS-compatible Fourier curves and Biot-Savart.
-4. Add finite-difference gradient tests for current, Fourier coefficient, and coordinate derivatives.
-5. Add optional ESSOS parity test.
+1. Commit and push the ESSOS mgrid export branch, then open the ESSOS PR.
+2. Commit and push the `vmec_jax` direct-provider runtime hook and Landreman-Paul QA beta-scan example.
+3. Add the VMEC2000 comparison diagnostic using ESSOS-generated mgrid versus direct-coil sampling.
+4. Add the first coil-only QS optimization example, using only coil dofs/currents as optimization variables.
+5. Add docs page `docs/free_boundary_coil_optimization.rst` that clearly separates provider-level differentiability from full free-boundary adjoint phase-2 work.
 
 ## Need From User
 
-Nothing is required right now. The next implementation step can proceed locally. Later, it would help to know whether maintainers are willing to add ESSOS or `booz_xform_jax` as optional dependencies in `pyproject.toml`, but the initial implementation will avoid hard dependencies.
+Nothing is required right now. The next implementation step can proceed locally. Later, maintainers should decide whether ESSOS mgrid export should be released before the `vmec_jax` example is promoted from research example to documented workflow.
 
 ## Work Log
 
@@ -864,6 +864,34 @@ Best next steps:
 1. Commit the provider bridge.
 2. Refactor the state/static free-boundary sampler so it can call the provider bridge after constructing boundary geometry.
 3. Add a low-resolution direct-coil free-boundary forward example once the state/static hook is available.
+
+Need from user:
+
+Nothing now.
+
+### 2026-05-24 ESSOS mgrid export and LP-QA beta scan
+
+Steps taken:
+
+1. Created a clean ESSOS PR clone at `/Users/rogeriojorge/local/ESSOS_mgrid_pr` on branch `feature/mgrid-from-coils`, leaving the dirty `/Users/rogeriojorge/local/ESSOS` checkout untouched.
+2. Added ESSOS `essos.mgrid.MGrid` and `coils_to_mgrid(...)`, mirroring SIMSOPT's cylindrical grid layout and VMEC NetCDF variable names.
+3. Added `Coils.to_mgrid(...)` in ESSOS and tests for read/write roundtrip, ESSOS Landreman-Paul QA coil export, and SIMSOPT mgrid parity.
+4. Extended `vmec_jax` free-boundary runtime plumbing so Python callers can supply a non-mgrid external-field provider while the legacy mgrid/CLI path remains unchanged.
+5. Added `examples/free_boundary_essos_coils_beta_scan.py`, which loads ESSOS Landreman-Paul QA coils, writes an mgrid, runs a four-point nominal beta scan through the mgrid backend, and runs the same scan through the direct differentiable coil provider.
+
+Results obtained:
+
+1. ESSOS test command `pytest -q tests/test_mgrid.py` passed: 4 passed in 2.72 s, including SIMSOPT parity.
+2. `vmec_jax` compile command passed for the new example and modified solver/free-boundary modules.
+3. `vmec_jax` provider test command `pytest -q tests/test_external_fields_coils_jax.py tests/test_external_fields_essos_adapter.py tests/test_external_fields_mgrid_jax.py tests/test_free_boundary_vacuum_adjoint.py tests/test_free_boundary_coil_provider_forward.py` passed: 24 passed in 12.40 s.
+4. Smoke example command wrote `/tmp/vmec_jax_freeb_beta_smoke/summary.json` and four wout files for `beta=0` and `beta=1` with both `mgrid` and `direct` backends.
+
+Best next steps:
+
+1. Push the ESSOS mgrid branch and open a PR.
+2. Push the `vmec_jax` feature branch.
+3. Add VMEC2000 comparison diagnostics for the generated mgrid/direct-coil cases.
+4. Add the first coil-only QS optimization example.
 
 Need from user:
 
