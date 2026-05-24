@@ -35,6 +35,47 @@ free-boundary vacuum/NESTOR solve. Dense toy vacuum-adjoint tests are present
 now, but the full-solve adjoint is not claimed as publication-ready until
 finite-difference checks of complete solves pass.
 
+Adjoint Validation Roadmap
+--------------------------
+
+The exact-gradient lane is deliberately staged. The literature points to a
+discrete-adjoint implementation around the structured spectral operators and
+linear solves, not to reverse-mode differentiation through every nonlinear
+iteration. In NESTOR, the free-boundary vacuum contribution is a spectral
+integral-equation solve for a Neumann problem on a toroidal surface; this
+naturally maps to a JAX-native operator plus an implicit transpose solve. JAX's
+``custom_linear_solve`` is the relevant primitive for this layer because it
+defines reverse-mode derivatives by solving the transposed linear problem at
+the converged solution rather than taping the internals of the linear solver.
+This is also consistent with recent spectral-PDE adjoint work, where efficient
+adjoints are built from reusable operator graphs, fast transforms, and sparse
+or structured linear solves.
+
+The validation ladder is:
+
+1. Provider derivatives: direct Biot-Savart derivatives with respect to coil
+   current, Fourier curve coefficients, and evaluation coordinates.
+2. Toy implicit vacuum chain: direct coils feed a dense custom-linear-solve
+   vacuum problem, and gradients with respect to current and geometry are
+   checked against finite differences.
+3. Boundary projection: JAX vacuum-boundary projection derivatives with
+   respect to sampled cylindrical fields and boundary coefficients.
+4. Full direct-coil free-boundary solve: a low-resolution scalar objective,
+   first with one coil current and then with one Fourier coefficient, bounded
+   against finite differences of complete solves.
+5. Boozer/QS objective: the same complete-solve finite-difference checks after
+   Boozer/QS diagnostics are in the objective path.
+
+Only the first two rungs are implemented as fast tests today. The production
+NESTOR adjoint is therefore still a phase-2 deliverable. The intended design is
+to expose a JAX-native NESTOR operator ``A(q) phi = b(q, I, c)`` where ``q`` is
+the VMEC boundary state and ``I, c`` are coil currents and curve coefficients.
+The backward pass should solve ``A(q)^T lambda = dJ/dphi`` and then use JAX
+JVP/VJP rules for the operator assembly and Biot-Savart source terms. This
+keeps memory independent of the number of vacuum-solver iterations and keeps
+gradient cost approximately independent of the number of coil optimization
+parameters.
+
 Finite-pressure direct-coil support is currently a provider/coupling validation
 lane: active NESTOR diagnostics respond to coil-current changes and matched
 direct/generated-``mgrid`` samples agree within recorded precision/roundoff,
@@ -452,6 +493,8 @@ Current fast tests cover:
   so direct coils are not scored against stale pre-update source data;
 - robust-coil perturbation/risk aggregation utilities;
 - dense toy vacuum-adjoint tests.
+- direct-coil to implicit dense-vacuum-chain finite-difference checks for one
+  current scale and one Fourier geometry perturbation.
 
 The optional VMEC2000 generated-``mgrid`` comparison is present but xfailed for
 now. VMEC2000 reads the generated grid and advances the trace locally, but the
@@ -471,5 +514,27 @@ Next Implementation Steps
   trace discrepancy is bounded.
 - Replace the dense toy vacuum-adjoint scaffold with the production
   matrix-free/custom-linear-solve NESTOR operator.
+- Promote the toy direct-coil/vacuum-chain gradient checks to complete
+  low-resolution free-boundary finite-difference checks, then to Boozer/QS
+  gradient checks.
 - Run the benchmark matrix on CPU and GPU and turn the JSON summaries into
   documentation plots.
+
+Literature Anchors
+------------------
+
+- Merkel's NESTOR integral-equation formulation converts the toroidal Neumann
+  vacuum problem into Fourier-space linear equations with singular-kernel
+  regularization, which is the operator we eventually need to expose as a
+  differentiable JAX linear solve.
+- Antonsen, Paul, and Landreman's VMEC adjoint work demonstrates the expected
+  order-of-magnitude advantage of adjoints over direct finite differences for
+  stellarator equilibrium sensitivities, including objectives such as
+  quasisymmetry and magnetic well.
+- DESC's JAX-based quasisymmetry optimization demonstrates the practical value
+  of exact derivatives from a single equilibrium solution instead of a number
+  of equilibrium solves that scales with design-space dimension.
+- Recent automated adjoint work for spectral PDE solvers supports the same
+  implementation principle: differentiate the assembled operator graph and use
+  adjoint linear solves, rather than differentiating through each solver
+  iteration.

@@ -281,6 +281,9 @@ Implementation implications from sources reviewed:
 13. JAXopt implicit differentiation documentation is a useful reference for future nonlinear/free-boundary root-solve adjoints once the production vacuum operator is JAX-native. Source: https://jaxopt.github.io/dev/implicit_diff.html
 14. Lineax is a possible future dependency or design reference for operator-based JAX linear solves; keep phase 1 dependency-free unless the benefit becomes concrete. Source: https://arxiv.org/abs/2311.17283
 15. Robust optimization should support mean, mean-plus-std, and smooth tail-risk aggregators. CVaR has better mathematical behavior than VaR for scenario optimization, but finite-sample fragility should be documented. Source: https://sites.math.washington.edu/~rtr/papers/rtr179-CVaR1.pdf
+16. NESTOR's free-boundary vacuum field is an integral-equation Neumann solve on the plasma boundary. The correct exact-gradient path is therefore a JAX-native operator and transpose solve for that linear problem, not reverse-mode taping through legacy NumPy NESTOR internals.
+17. VMEC adjoint literature for stellarator optimization shows why complete-solve adjoints are needed before claiming scalable QS-gradient validation: finite-difference cost grows with the number of design variables, while one adjoint solve can recover the sensitivity of a scalar objective to many boundary/coil parameters.
+18. DESC's JAX equilibrium/optimization workflow is relevant as a validation target for API and derivative behavior: exact derivatives should be exposed through clean pytrees and objective functions, while finite differences remain promotion tests rather than the production gradient path.
 
 ## Proposed Package Layout
 
@@ -892,20 +895,20 @@ authoritative current plan snapshot for the free-boundary direct-coil branch.
 ```text
 WP0 Branch foundation and plan:                100%
 WP1 Provider base API:                         100%
-WP2 Pure JAX coil Biot-Savart:                 90%
+WP2 Pure JAX coil Biot-Savart:                 92%
 WP3 ESSOS adapter:                             84%
 WP4 JAX mgrid interpolation:                   85%
 WP5 Free-boundary provider hook:               91%
 WP6 Direct-coil forward example:               90%
 WP7 Vacuum adjoint scaffold:                  100%
-WP8 Gradient checks:                           92%
+WP8 Gradient checks:                           94%
 WP9 VMEC2000 diagnostics:                      86%
 WP10 Benchmarks/diagnostics:                   95%
 WP11 Coil-only QS optimization example:        82%
 WP12 Robust coil perturbations:               100%
-WP13 Documentation:                            93%
-WP14 CI policy:                                87%
-Overall branch completion:                     92%
+WP13 Documentation:                            95%
+WP14 CI policy:                                88%
+Overall branch completion:                     93%
 ```
 
 ## Immediate Next Steps

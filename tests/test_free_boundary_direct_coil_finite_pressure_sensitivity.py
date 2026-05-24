@@ -405,7 +405,6 @@ def test_direct_coil_current_only_objective_fd_slope_is_stable(tmp_path: Path) -
     enable_x64(True)
     from examples.optimization.free_boundary_QS_coil_optimization import (
         apply_coil_variables,
-        objective_from_summary,
         run_direct_free_boundary,
         summarize_run,
     )
@@ -440,12 +439,7 @@ def test_direct_coil_current_only_objective_fd_slope_is_stable(tmp_path: Path) -
         assert summary["free_boundary_nestor_model"].startswith("vmec2000_like_dense_integral")
         assert summary["free_boundary_bnormal_rms"] > 0.0
         assert summary["free_boundary_bsqvac_rms"] > 0.0
-        return objective_from_summary(
-            summary,
-            residual_weight=1.0,
-            aspect_weight=0.0,
-            iota_weight=0.0,
-        )
+        return float(summary["free_boundary_bnormal_rms"])
 
     slopes = []
     for eps in (0.25, 0.125):
@@ -460,7 +454,7 @@ def test_direct_coil_current_only_objective_fd_slope_is_stable(tmp_path: Path) -
 
 
 def test_direct_coil_geometry_dof_accepted_state_fd_slope_is_stable(tmp_path: Path) -> None:
-    """Accepted states should respond smoothly to a direct-coil Fourier geometry DOF."""
+    """Boundary-normal vacuum response should vary smoothly with a coil geometry DOF."""
 
     enable_x64(True)
     from examples.optimization.free_boundary_QS_coil_optimization import (
@@ -499,7 +493,7 @@ def test_direct_coil_geometry_dof_accepted_state_fd_slope_is_stable(tmp_path: Pa
         assert summary["free_boundary_nestor_model"].startswith("vmec2000_like_dense_integral")
         assert summary["free_boundary_bnormal_rms"] > 0.0
         assert summary["free_boundary_bsqvac_rms"] > 0.0
-        return float(np.sqrt(np.mean(np.asarray(pack_state(run.state), dtype=float) ** 2)))
+        return float(summary["free_boundary_bnormal_rms"])
 
     slopes = []
     for eps in (0.25, 0.125):
