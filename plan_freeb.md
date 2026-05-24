@@ -57,10 +57,11 @@ Results obtained:
 19. Geometry-DOF accepted-state finite-difference probe passed in the targeted finite-pressure direct-coil validation batch.
 20. LU-skip benchmark confirmed the default mode-space path reports `physical_lu=False`, `mode_lu=True`; an explicit physical-dense benchmark reports `physical_lu=True`, so the optimization remains guarded.
 21. Medium dense direct-coil benchmark (`sample_points=204`, `coils=8`, `segments=96`) improved after vectorization: final source assembly dropped from about `0.169 s` to `0.009 s`, final dense solve from about `0.172 s` to `0.013 s`, and warm solve time from about `0.568 s` to `0.242 s`.
+22. Larger dense direct-coil benchmark (`sample_points=2352`, `coils=8`, `segments=128`) now reports final dense solve about `0.480 s` instead of the earlier `15 s` class; final source assembly is about `0.362 s`, final sampling about `0.053 s`, and warm full solve about `1.32 s`.
 
 Best next steps:
 
-1. Target the remaining dense NESTOR finalization/recompute and preconditioner cost; source assembly has been reduced on medium grids but larger grids still need profiling.
+1. Target the remaining dense NESTOR Green-function accumulation, final recompute, and preconditioner cost; mode projection/source assembly has been reduced substantially on medium and larger grids.
 2. Run a direct-coil case that enters backtracking and confirm the new trial counters capture rejected NESTOR sampling cost in a full driver trace.
 3. Extend the full-loop finite-difference smoke from current-only proxy objective to a validated Boozer/QS promotion test when affordable.
 4. Either raise the VMEC2000 generated-mgrid diagnostic to a convergence-oriented multi-grid input or mark the current single-stage generated-mgrid case as optional underconverged external evidence.
@@ -76,9 +77,9 @@ Open-lane completion estimates:
 3. ESSOS/mgrid/VMEC2000 comparison lane: 84%.
 4. Full-loop gradient validation: 60%.
 5. Robust/optimization examples: 82%.
-6. Performance/benchmarking: 87%.
+6. Performance/benchmarking: 90%.
 7. Docs/release hygiene: 92%.
-8. Overall branch completion: 90%.
+8. Overall branch completion: 91%.
 
 ## Mission
 
