@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -14,6 +15,10 @@ from vmec_jax.vmec2000_exec import (
     threed1_fsq_total,
 )
 from tools.diagnostics.compare_freeb_coils_mgrid_vmec2000 import (
+    _base_payload,
+    _diagnostic_schedule,
+    _make_freeb_indata,
+    _parser,
     _vmec2000_underconverged_details,
 )
 
@@ -211,3 +216,88 @@ def test_freeb_generated_mgrid_no_wout_summary_marks_underconverged() -> None:
     assert details["physical_fsq_total_last"] == pytest.approx(0.004002)
     assert details["preconditioned_fsq_total_last"] == pytest.approx(2.996e-5)
     assert details["preconditioned_fsq_total_over_ftolv"] == pytest.approx(2996.0)
+
+
+def test_freeb_diagnostic_schedule_scalar_fallback_and_indata_arrays() -> None:
+    args = _parser().parse_args(["--ns", "9", "--niter", "7", "--ftol", "1e-6", "--mgrid-nphi", "4"])
+
+    assert _diagnostic_schedule(args) == ([9], [7], [1.0e-6])
+
+    indata = _make_freeb_indata(SimpleNamespace(scalars={}), mgrid_file="mgrid_test.nc", args=args)
+
+    assert indata.scalars["NS_ARRAY"] == [9]
+    assert indata.scalars["NITER_ARRAY"] == [7]
+    assert indata.scalars["FTOL_ARRAY"] == [1.0e-6]
+    assert indata.scalars["NITER"] == 7
+    assert indata.scalars["FTOL"] == pytest.approx(1.0e-6)
+    assert indata.scalars["NZETA"] == 4
+    assert indata.scalars["NVACSKIP"] == 4
+
+
+def test_freeb_diagnostic_schedule_accepts_shared_multigrid_arrays() -> None:
+    args = _parser().parse_args(
+        [
+            "--ns-array",
+            "5, 9, 13",
+            "--niter-array",
+            "20, 40, 60",
+            "--ftol-array",
+            "1e-6, 1e-8, 1e-10",
+            "--mgrid-nphi",
+            "6",
+        ]
+    )
+
+    assert _diagnostic_schedule(args) == ([5, 9, 13], [20, 40, 60], [1.0e-6, 1.0e-8, 1.0e-10])
+
+    indata = _make_freeb_indata(SimpleNamespace(scalars={}), mgrid_file="mgrid_test.nc", args=args)
+
+    assert indata.scalars["NS_ARRAY"] == [5, 9, 13]
+    assert indata.scalars["NITER_ARRAY"] == [20, 40, 60]
+    assert indata.scalars["FTOL_ARRAY"] == [1.0e-6, 1.0e-8, 1.0e-10]
+    assert indata.scalars["NITER"] == 60
+    assert indata.scalars["FTOL"] == pytest.approx(1.0e-10)
+
+
+def test_freeb_diagnostic_schedule_rejects_incomplete_or_unequal_arrays() -> None:
+    incomplete = _parser().parse_args(["--ns-array", "5,9"])
+    with pytest.raises(SystemExit, match="must be provided together"):
+        _diagnostic_schedule(incomplete)
+
+    unequal = _parser().parse_args(
+        [
+            "--ns-array",
+            "5,9",
+            "--niter-array",
+            "20",
+            "--ftol-array",
+            "1e-6,1e-8",
+        ]
+    )
+    with pytest.raises(SystemExit, match="must have equal lengths"):
+        _diagnostic_schedule(unequal)
+
+
+def test_freeb_diagnostic_payload_reports_resolved_multigrid_schedule(tmp_path: Path) -> None:
+    args = _parser().parse_args(
+        [
+            "--ns-array",
+            "5,9",
+            "--niter-array",
+            "20,40",
+            "--ftol-array",
+            "1e-6,1e-8",
+            "--mgrid-nphi",
+            "4",
+        ]
+    )
+
+    payload = _base_payload(args, out=tmp_path / "summary.json", workdir=tmp_path / "work")
+
+    assert payload["configuration"]["ns_array"] == [5, 9]
+    assert payload["configuration"]["niter_array"] == [20, 40]
+    assert payload["configuration"]["ftol_array"] == [1.0e-6, 1.0e-8]
+    assert payload["configuration"]["uses_multigrid_schedule"] is True
+    assert payload["configuration"]["ns"] == 9
+    assert payload["configuration"]["niter"] == 40
+    assert payload["configuration"]["ftol"] == pytest.approx(1.0e-8)

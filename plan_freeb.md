@@ -39,6 +39,7 @@ Steps taken:
 23. Exposed final accepted-state NESTOR recompute timing separately in solver diagnostics and direct-coil benchmark summaries so benchmarks no longer hide the correctness-critical final vacuum recompute inside broad finalize time.
 24. Added an explicit CPU free-boundary preconditioner policy that enables precomputed R/Z tridiagonal coefficients for non-scan performance-mode solves.
 25. Threaded a guarded lax-tridiagonal policy through the solver and discrete-adjoint replay metadata; the wrapper now only dispatches the pretransposed lax path when matching cached transposed matrices are present.
+26. Added shared multigrid schedule arguments (`--ns-array`, `--niter-array`, `--ftol-array`) to the generated-mgrid/direct-coil/VMEC2000 diagnostic so promotion runs no longer need mixed-iteration VMEC2000-only overrides.
 
 Results obtained:
 
@@ -68,16 +69,17 @@ Results obtained:
 24. Medium chunking benchmark (`sample_points=600`, `coils=8`, `segments=96`) improved from `IP_CHUNK=1` final source `0.062 s`, final solve `0.073 s`, warm solve `0.346 s` to default chunk final source `0.020 s`, final solve `0.031 s`, warm solve `0.266 s`.
 25. Larger dense chunking benchmark (`sample_points=2352`, `coils=8`, `segments=128`) improved final source from about `0.362 s` to `0.292 s`, final solve from about `0.480 s` to `0.407 s`, and warm solve from about `1.32 s` to `1.14 s`.
 26. Final recompute timing benchmark now reports `final_recompute_sample` and `final_recompute_solve`; the medium direct-coil case records about `0.012 s` final sampling and `0.027 s` final dense solve, matching the final accepted-state diagnostics.
-27. CPU free-boundary preconditioner policy tests pass: `tests/test_driver_api.py -k "tridi or free_boundary"` plus the preconditioner fast-helper file report 18 selected tests passing.
-28. Medium direct-coil dense benchmark with the guarded precomputed/lax policy reports warm solve about `0.244 s`, final recompute sampling about `0.0125 s`, final recompute dense solve about `0.0267 s`, and preconditioner apply about `0.030 s`.
-29. Fully forced `VMEC_JAX_TRIDI_PRECOMPUTE=1 VMEC_JAX_TRIDI_SOLVE=lax` benchmark now runs after the helper shape fix and reports preconditioner apply about `0.0095-0.010 s`, but broader solve-level shape coverage is still needed before using that path outside guarded cached-matrix cases.
+30. CPU free-boundary preconditioner policy tests pass: `tests/test_driver_api.py -k "tridi or free_boundary"` plus the preconditioner fast-helper file report 18 selected tests passing.
+31. Medium direct-coil dense benchmark with the guarded precomputed/lax policy reports warm solve about `0.244 s`, final recompute sampling about `0.0125 s`, final recompute dense solve about `0.0267 s`, and preconditioner apply about `0.030 s`.
+32. Fully forced `VMEC_JAX_TRIDI_PRECOMPUTE=1 VMEC_JAX_TRIDI_SOLVE=lax` benchmark now runs after the helper shape fix and reports preconditioner apply about `0.0095-0.010 s`, but broader solve-level shape coverage is still needed before using that path outside guarded cached-matrix cases.
+33. The new shared-schedule provider-only diagnostic smoke completed with `ns_array=[5, 7]`, `uses_multigrid_schedule=True`, `jax_direct_vs_mgrid_passed=True`, and only the expected `vmec2000_skipped` warning.
 
 Best next steps:
 
-1. Run a direct-coil case that enters backtracking and confirm the new trial counters capture rejected NESTOR sampling cost in a full driver trace.
-2. Expand solve-level coverage for the lax-tridiagonal preconditioner path and then decide whether the remaining fallback-to-precomputed cases can be eliminated safely.
-3. Extend the full-loop finite-difference smoke from current-only proxy objective to a validated Boozer/QS promotion test when affordable.
-4. Either raise the VMEC2000 generated-mgrid diagnostic to a convergence-oriented multi-grid input or mark the current single-stage generated-mgrid case as optional underconverged external evidence.
+1. Run a convergence-oriented generated-mgrid VMEC2000 diagnostic with the new shared multigrid schedule and promote only if VMEC2000 writes a WOUT.
+2. Run a direct-coil case that enters backtracking and confirm the new trial counters capture rejected NESTOR sampling cost in a full driver trace.
+3. Expand solve-level coverage for the lax-tridiagonal preconditioner path and then decide whether the remaining fallback-to-precomputed cases can be eliminated safely.
+4. Extend the full-loop finite-difference smoke from current-only proxy objective to a validated Boozer/QS promotion test when affordable.
 
 Need from user:
 
@@ -894,8 +896,8 @@ WP5 Free-boundary provider hook:               91%
 WP6 Direct-coil forward example:               90%
 WP7 Vacuum adjoint scaffold:                  100%
 WP8 Gradient checks:                           92%
-WP9 VMEC2000 diagnostics:                      84%
-WP10 Benchmarks/diagnostics:                   94%
+WP9 VMEC2000 diagnostics:                      86%
+WP10 Benchmarks/diagnostics:                   95%
 WP11 Coil-only QS optimization example:        82%
 WP12 Robust coil perturbations:               100%
 WP13 Documentation:                            93%
@@ -953,6 +955,34 @@ Next:
    performance subagent.
 2. Continue optional VMEC2000 and direct-coil/mgrid parity work after the
    latest PR CI fast-test matrix finishes.
+
+### 2026-05-24 Shared multigrid schedule for generated-mgrid diagnostics
+
+Steps taken:
+
+1. Added `--ns-array`, `--niter-array`, and `--ftol-array` to
+   `tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py`.
+2. Made the diagnostic use one resolved schedule for both the generated-mgrid
+   and direct-coil `vmec_jax` inputs.
+3. Kept `--vmec2000-niter` as an explicit mixed-schedule diagnostic override,
+   not a promotion path.
+
+Results:
+
+1. Parser/schedule tests passed in
+   `tests/test_vmec2000_exec_parser_more_coverage.py`.
+2. Provider-only multigrid smoke completed with `ns_array=[5, 7]`,
+   `uses_multigrid_schedule=True`, and `jax_direct_vs_mgrid_passed=True`.
+3. Documentation now shows the shared schedule in the VMEC2000 promotion
+   command and warns that `--vmec2000-niter` is diagnostic-only.
+
+Next:
+
+1. Run the generated-mgrid VMEC2000 leg with a real shared schedule and
+   `--require-vmec2000 --fail-on-vmec2000-mismatch`.
+2. If VMEC2000 still does not write WOUT, use the parsed trace to tune the
+   schedule or classify the generated-grid fixture as underconverged external
+   evidence.
 
 ### 2026-05-24 Cached geometry and robust coil optimization example
 

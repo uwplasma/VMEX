@@ -99,6 +99,9 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--niter", type=int, default=2)
     p.add_argument("--ftol", type=float, default=1.0e-8)
     p.add_argument("--ns", type=int, default=12)
+    p.add_argument("--ns-array", type=str, default=None, help="Comma-separated multigrid NS_ARRAY.")
+    p.add_argument("--niter-array", type=str, default=None, help="Comma-separated multigrid NITER_ARRAY.")
+    p.add_argument("--ftol-array", type=str, default=None, help="Comma-separated multigrid FTOL_ARRAY.")
     p.add_argument("--mpol", type=int, default=4)
     p.add_argument("--ntor", type=int, default=4)
     p.add_argument(
@@ -150,6 +153,57 @@ def _parser() -> argparse.ArgumentParser:
 def _diagnostic_nzeta(args: argparse.Namespace) -> int:
     """Return a VMEC NZETA compatible with the generated mgrid kp."""
     return int(args.mgrid_nphi if args.nzeta is None else args.nzeta)
+
+
+def _parse_int_array(text: str, *, name: str) -> list[int]:
+    values = [item.strip() for item in str(text).split(",") if item.strip()]
+    if not values:
+        raise SystemExit(f"--{name} must contain at least one integer")
+    try:
+        parsed = [int(value) for value in values]
+    except ValueError as exc:
+        raise SystemExit(f"--{name} must be a comma-separated integer list") from exc
+    if any(value < 1 for value in parsed):
+        raise SystemExit(f"--{name} values must be >= 1")
+    return parsed
+
+
+def _parse_float_array(text: str, *, name: str) -> list[float]:
+    values = [item.strip() for item in str(text).split(",") if item.strip()]
+    if not values:
+        raise SystemExit(f"--{name} must contain at least one float")
+    try:
+        parsed = [float(value) for value in values]
+    except ValueError as exc:
+        raise SystemExit(f"--{name} must be a comma-separated float list") from exc
+    if any(value <= 0.0 for value in parsed):
+        raise SystemExit(f"--{name} values must be > 0")
+    return parsed
+
+
+def _diagnostic_schedule(args: argparse.Namespace) -> tuple[list[int], list[int], list[float]]:
+    """Return the shared VMEC/JAX multigrid schedule for this diagnostic."""
+    arrays_requested = any(
+        value is not None for value in (args.ns_array, args.niter_array, args.ftol_array)
+    )
+    if not arrays_requested:
+        return [int(args.ns)], [int(args.niter)], [float(args.ftol)]
+    if args.ns_array is None or args.niter_array is None or args.ftol_array is None:
+        raise SystemExit("--ns-array, --niter-array, and --ftol-array must be provided together")
+    ns_array = _parse_int_array(args.ns_array, name="ns-array")
+    niter_array = _parse_int_array(args.niter_array, name="niter-array")
+    ftol_array = _parse_float_array(args.ftol_array, name="ftol-array")
+    lengths = {len(ns_array), len(niter_array), len(ftol_array)}
+    if len(lengths) != 1:
+        raise SystemExit("--ns-array, --niter-array, and --ftol-array must have equal lengths")
+    return ns_array, niter_array, ftol_array
+
+
+def _format_namelist_array(values: list[int] | list[float]) -> str:
+    return ", ".join(
+        f"{float(value):.16e}" if isinstance(value, float) else str(int(value))
+        for value in values
+    )
 
 
 def _jsonify(value: Any) -> Any:
@@ -528,16 +582,17 @@ def _vmec2000_wout_comparison(candidate_wout: Any, vmec2000_wout: Any, *, candid
 def _make_freeb_indata(base_indata: Any, *, mgrid_file: str, args: argparse.Namespace) -> Any:
     indata = deepcopy(base_indata)
     nzeta = _diagnostic_nzeta(args)
+    ns_array, niter_array, ftol_array = _diagnostic_schedule(args)
     indata.scalars.update(
         {
             "LFREEB": True,
             "MGRID_FILE": str(mgrid_file),
             "EXTCUR": [1.0],
-            "NS_ARRAY": [int(args.ns)],
-            "NITER_ARRAY": [int(args.niter)],
-            "FTOL_ARRAY": [float(args.ftol)],
-            "NITER": int(args.niter),
-            "FTOL": float(args.ftol),
+            "NS_ARRAY": [int(value) for value in ns_array],
+            "NITER_ARRAY": [int(value) for value in niter_array],
+            "FTOL_ARRAY": [float(value) for value in ftol_array],
+            "NITER": int(niter_array[-1]),
+            "FTOL": float(ftol_array[-1]),
             "MPOL": int(args.mpol),
             "NTOR": int(args.ntor),
             "NZETA": int(nzeta),
@@ -775,11 +830,13 @@ def _run_vmec2000_case(
         indata_updates = None
         if args.vmec2000_niter is not None:
             vmec2000_niter = int(args.vmec2000_niter)
+            ns_array, _, _ftol_array = _diagnostic_schedule(args)
+            niter_override = [vmec2000_niter] * len(ns_array)
             indata_updates = {
                 "NITER": str(vmec2000_niter),
-                "NITER_ARRAY": str(vmec2000_niter),
+                "NITER_ARRAY": _format_namelist_array(niter_override),
                 "FTOL": f"{float(args.ftol):.16e}",
-                "FTOL_ARRAY": f"{float(args.ftol):.16e}",
+                "FTOL_ARRAY": _format_namelist_array([float(args.ftol)] * len(ns_array)),
             }
         result = run_xvmec2000(
             mgrid_input,
@@ -819,6 +876,7 @@ def _run_vmec2000_case(
 
 
 def _base_payload(args: argparse.Namespace, *, out: Path, workdir: Path) -> dict[str, Any]:
+    ns_array, niter_array, ftol_array = _diagnostic_schedule(args)
     return {
         "status": "running",
         "script": Path(__file__).resolve(),
@@ -829,9 +887,13 @@ def _base_payload(args: argparse.Namespace, *, out: Path, workdir: Path) -> dict
         "base_input": args.input.expanduser().resolve(),
         "configuration": {
             "pressure_scale": float(args.pressure_scale),
-            "niter": int(args.niter),
-            "ftol": float(args.ftol),
-            "ns": int(args.ns),
+            "niter": int(niter_array[-1]),
+            "ftol": float(ftol_array[-1]),
+            "ns": int(ns_array[-1]),
+            "ns_array": [int(value) for value in ns_array],
+            "niter_array": [int(value) for value in niter_array],
+            "ftol_array": [float(value) for value in ftol_array],
+            "uses_multigrid_schedule": len(ns_array) > 1,
             "mpol": int(args.mpol),
             "ntor": int(args.ntor),
             "nzeta": int(_diagnostic_nzeta(args)),
@@ -907,6 +969,7 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--niter must be >= 1")
     if args.vmec2000_niter is not None and int(args.vmec2000_niter) < 1:
         raise SystemExit("--vmec2000-niter must be >= 1")
+    _diagnostic_schedule(args)
     if int(args.ns) < 3:
         raise SystemExit("--ns must be >= 3")
     if int(args.mgrid_nphi) % int(nzeta) != 0 and int(nzeta) % int(args.mgrid_nphi) != 0:

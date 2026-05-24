@@ -351,7 +351,10 @@ executable is available:
    PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
      python tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py \
        --out results/freeb_coils_mgrid_vmec2000.json \
-       --workdir results/freeb_coils_mgrid_vmec2000_work
+       --workdir results/freeb_coils_mgrid_vmec2000_work \
+       --ns-array 5,9,13 \
+       --niter-array 100,500,2000 \
+       --ftol-array 1e-8,1e-10,1e-12
 
 For a quick provider-only smoke, skip VMEC2000 explicitly:
 
@@ -376,6 +379,12 @@ workdir, stdout/stderr tails, ``threed1`` tail, and parsed iteration trace.
 That is the expected current behavior for the low-iteration LP-QA generated
 ``mgrid`` case; it is a parity gap to bound, not a direct-coil provider
 failure.
+
+The ``--ns-array``, ``--niter-array``, and ``--ftol-array`` options define a
+shared multigrid schedule used by both the ``vmec_jax`` generated-``mgrid`` and
+direct-coil runs. Use this shared schedule for promotion runs. The
+``--vmec2000-niter`` override is only for diagnostics because it intentionally
+changes the VMEC2000 schedule without changing the ``vmec_jax`` schedule.
 
 The stock-executable smoke needs only a local VMEC2000 binary. It verifies that
 the bundled asymmetric free-boundary deck reaches the vacuum solve:
