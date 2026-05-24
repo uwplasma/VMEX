@@ -297,3 +297,95 @@ def test_jax_boundary_projection_gradient_wrt_geometry_matches_finite_difference
     fd = (objective(eps) - objective(-eps)) / (2.0 * eps)
 
     np.testing.assert_allclose(exact, fd, rtol=5.0e-8, atol=1.0e-10)
+
+
+def _toy_coil_projected_vacuum_response(*, current_scale: float = 0.0, radius_shift: float = 0.0):
+    """Direct coils -> boundary projection -> implicit vacuum solve."""
+
+    from vmec_jax._compat import jnp
+
+    radius = 1.45 + 0.03 * radius_shift
+    dofs = jnp.zeros((1, 3, 3), dtype=float)
+    dofs = dofs.at[0, 0, 2].set(radius)
+    dofs = dofs.at[0, 1, 1].set(radius)
+    params = CoilFieldParams(
+        base_curve_dofs=dofs,
+        base_currents=jnp.asarray([2.5e7 * (1.0 + 0.02 * current_scale)], dtype=float),
+        n_segments=128,
+        regularization_epsilon=1.0e-9,
+    )
+    R = jnp.asarray([[0.78, 0.86], [0.92, 0.81]], dtype=float)
+    Z = jnp.asarray([[0.16, -0.13], [0.22, -0.19]], dtype=float)
+    phi = jnp.asarray([[0.05, 0.45], [0.9, 1.25]], dtype=float)
+    Ru = jnp.asarray([[0.03, -0.04], [0.02, 0.05]], dtype=float)
+    Zu = jnp.asarray([[0.22, 0.24], [0.21, 0.23]], dtype=float)
+    Rv = jnp.asarray([[0.04, 0.01], [-0.03, 0.05]], dtype=float)
+    Zv = jnp.asarray([[0.02, -0.03], [0.06, -0.01]], dtype=float)
+
+    br, bphi, bz = sample_coil_field_cylindrical(params, R, Z, phi)
+    vac = vacuum_boundary_fields_from_cylindrical_jax(
+        br=br,
+        bp=bphi,
+        bz=bz,
+        R=R,
+        Ru=Ru,
+        Zu=Zu,
+        Rv=Rv,
+        Zv=Zv,
+    )
+    weights = jnp.asarray([[0.4, -0.2], [0.7, -0.5]], dtype=float)
+    rhs = jnp.stack(
+        (
+            jnp.mean(vac["bsqvac"]),
+            jnp.mean(vac["bnormal_unit"] * weights),
+            jnp.mean((vac["bu"] - 0.3 * vac["bv"]) * weights),
+        )
+    )
+    A = jnp.asarray(
+        [
+            [2.8, 0.15, -0.08],
+            [0.2, 2.4, 0.25],
+            [-0.1, 0.3, 2.6],
+        ],
+        dtype=float,
+    )
+    x = dense_vacuum_solve_jax(A, rhs)
+    return 0.5 * jnp.vdot(x, x) + 0.05 * jnp.mean(vac["bnormal"] ** 2)
+
+
+def test_dense_vacuum_adjoint_chain_through_projection_wrt_current_matches_finite_difference():
+    """Validate the next rung in the coil-to-vacuum adjoint chain."""
+
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax
+
+    enable_x64(True)
+
+    exact = jax.grad(lambda scale: _toy_coil_projected_vacuum_response(current_scale=scale))(0.0)
+    eps = 1.0e-4
+    fd = (
+        _toy_coil_projected_vacuum_response(current_scale=eps)
+        - _toy_coil_projected_vacuum_response(current_scale=-eps)
+    ) / (2.0 * eps)
+
+    assert abs(float(exact)) > 1.0e-8
+    np.testing.assert_allclose(exact, fd, rtol=3.0e-6, atol=1.0e-10)
+
+
+def test_dense_vacuum_adjoint_chain_through_projection_wrt_geometry_matches_finite_difference():
+    """Validate projected vacuum sensitivity to one coil Fourier coefficient."""
+
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax
+
+    enable_x64(True)
+
+    exact = jax.grad(lambda shift: _toy_coil_projected_vacuum_response(radius_shift=shift))(0.0)
+    eps = 1.0e-4
+    fd = (
+        _toy_coil_projected_vacuum_response(radius_shift=eps)
+        - _toy_coil_projected_vacuum_response(radius_shift=-eps)
+    ) / (2.0 * eps)
+
+    assert abs(float(exact)) > 1.0e-8
+    np.testing.assert_allclose(exact, fd, rtol=3.0e-6, atol=1.0e-10)

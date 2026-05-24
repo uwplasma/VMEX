@@ -36,6 +36,7 @@ def _direct_solve_payload() -> dict:
                         "source_time_s": 0.018,
                         "linear_solve_time_s": 0.00006,
                         "provider_jit_sampler": True,
+                        "provider_coil_geometry_cached": True,
                         "provider_coil_count": 8,
                         "provider_segments_per_coil": 96,
                         "mode_matrix_lu_built": True,
@@ -68,6 +69,7 @@ def test_matrix_timing_snapshot_preserves_compact_nestor_details() -> None:
     assert nestor["final_diagnostics"]["phase_time_s"]["source"] == 0.018
     assert nestor["final_diagnostics"]["phase_time_s"]["linear_solve"] == 0.00006
     assert nestor["final_diagnostics"]["provider"]["jit_sampler"] is True
+    assert nestor["final_diagnostics"]["provider"]["geometry_cached"] is True
     assert nestor["final_diagnostics"]["provider"]["coil_count"] == 8
     assert nestor["final_diagnostics"]["provider"]["segments_per_coil"] == 96
     assert nestor["final_diagnostics"]["lu_built"]["mode_matrix"] is True

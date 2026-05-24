@@ -60,13 +60,16 @@ The validation ladder is:
    checked against finite differences.
 3. Boundary projection: JAX vacuum-boundary projection derivatives with
    respect to sampled cylindrical fields and boundary coefficients.
-4. Full direct-coil free-boundary solve: a low-resolution scalar objective,
+4. Projected implicit vacuum chain: direct coils feed the JAX boundary
+   projection and then a dense custom-linear-solve vacuum problem, with
+   current and geometry gradients checked against finite differences.
+5. Full direct-coil free-boundary solve: a low-resolution scalar objective,
    first with one coil current and then with one Fourier coefficient, bounded
    against finite differences of complete solves.
-5. Boozer/QS objective: the same complete-solve finite-difference checks after
+6. Boozer/QS objective: the same complete-solve finite-difference checks after
    Boozer/QS diagnostics are in the objective path.
 
-The first three rungs are implemented as fast tests today. The production
+The first four rungs are implemented as fast tests today. The production
 NESTOR adjoint is therefore still a phase-2 deliverable. The intended design is
 to expose a JAX-native NESTOR operator ``A(q) phi = b(q, I, c)`` where ``q`` is
 the VMEC boundary state and ``I, c`` are coil currents and curve coefficients.
@@ -505,6 +508,9 @@ Current fast tests cover:
 - JAX boundary-field projection value parity with the current NumPy
   implementation plus finite-difference checks with respect to both field
   samples and boundary geometry.
+- direct-coil to JAX boundary projection to implicit dense-vacuum-chain
+  finite-difference checks for one current scale and one Fourier geometry
+  perturbation.
 
 The optional VMEC2000 generated-``mgrid`` comparison is present but xfailed for
 now. VMEC2000 reads the generated grid and advances the trace locally, but the

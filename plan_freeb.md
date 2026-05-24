@@ -47,6 +47,7 @@ Steps taken:
 31. Added a JAX-transformable cylindrical-to-boundary vacuum-field projection helper and value/gradient parity tests against the existing NumPy projection.
 32. Exposed active/trial NESTOR sample/solve profile buckets for trial, forward-exact, and exact-tape solver summaries.
 33. Added compact nested NESTOR timing details to the free-boundary direct-coil benchmark matrix so direct-solve rows preserve the final recompute and last-sample breakdown without making provider/gradient rows noisy.
+34. Added direct-coil to JAX boundary-projection to dense implicit vacuum-solve finite-difference gradient tests for one coil current and one Fourier geometry perturbation.
 
 Results obtained:
 
@@ -85,6 +86,7 @@ Results obtained:
 36. Full Sphinx documentation built successfully after the latest exact-adjoint documentation update.
 37. Projection-gradient validation now checks the boundary projection chain with respect to cylindrical vacuum-field samples and boundary geometry, not only dense toy linear solves.
 38. Quick free-boundary direct-coil benchmark matrix completed with CPU provider, direct-solve, and gradient rows all `completed`; the direct-solve row now retains a nested NESTOR details block when diagnostics are emitted.
+39. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 12 passed in 6.43 s after adding projected-vacuum chain gradients.
 
 Best next steps:
 
@@ -914,7 +916,7 @@ WP4 JAX mgrid interpolation:                   85%
 WP5 Free-boundary provider hook:               91%
 WP6 Direct-coil forward example:               90%
 WP7 Vacuum adjoint scaffold:                  100%
-WP8 Gradient checks:                           96%
+WP8 Gradient checks:                           97%
 WP9 VMEC2000 diagnostics:                      86%
 WP10 Benchmarks/diagnostics:                   96%
 WP11 Coil-only QS optimization example:        82%
@@ -949,17 +951,19 @@ Steps taken:
 4. Added projection value parity and finite-difference gradient tests with respect to cylindrical vacuum-field samples and boundary geometry.
 5. Exposed accepted/trial NESTOR sample and solve timing buckets through solver profiling summaries and comparison reports.
 6. Added compact nested NESTOR timing summaries to the free-boundary direct-coil benchmark matrix for direct-solve rows only.
-7. Updated docs and this plan to keep the exact-adjoint claim precise: direct-coil fields, dense vacuum-solve scaffold, and projection gradients are validated; the full production NESTOR/QS solve adjoint remains phase 2.
+7. Added direct-coil to JAX boundary-projection to dense implicit vacuum-solve finite-difference gradient tests for one coil current and one Fourier geometry perturbation.
+8. Updated docs and this plan to keep the exact-adjoint claim precise: direct-coil fields, dense vacuum-solve scaffold, projection gradients, and a projected-vacuum chain are validated; the full production NESTOR/QS solve adjoint remains phase 2.
 
 Results obtained:
 
 1. `python -m pytest -q tests/test_discrete_adjoint_chunking.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`: 59 passed, 1 skipped in 13.56 s.
 2. `python -m pytest -q tests/test_discrete_adjoint_chunking.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_vacuum_adjoint.py`: 66 passed, 1 skipped in 15.86 s.
-3. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py tests/test_profile_report_compare.py`: 31 passed in 4.36 s.
-4. `python -m pytest -q tests/test_freeb_direct_coil_matrix_benchmark.py tests/test_profile_report_compare.py`: 24 passed in 0.05 s.
-5. `python -m ruff check vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_vacuum_adjoint.py tools/benchmarks/bench_freeb_direct_coil_matrix.py tests/test_freeb_direct_coil_matrix_benchmark.py`: passed.
-6. Full Sphinx documentation build passed.
-7. `python tools/benchmarks/bench_freeb_direct_coil_matrix.py --quick --timeout-s 120 --out tmp/bench_freeb_direct_coil_matrix_quick_after_nested/summary.json`: completed CPU provider, direct-solve, and gradient rows.
+3. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 12 passed in 6.43 s after the projected-vacuum chain addition.
+4. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py tests/test_profile_report_compare.py`: 31 passed in 4.36 s before the projected-vacuum chain addition.
+5. `python -m pytest -q tests/test_freeb_direct_coil_matrix_benchmark.py tests/test_profile_report_compare.py`: 24 passed in 0.05 s.
+6. `python -m ruff check vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_vacuum_adjoint.py tools/benchmarks/bench_freeb_direct_coil_matrix.py tests/test_freeb_direct_coil_matrix_benchmark.py`: passed.
+7. Full Sphinx documentation build passed.
+8. `python tools/benchmarks/bench_freeb_direct_coil_matrix.py --quick --timeout-s 120 --out tmp/bench_freeb_direct_coil_matrix_quick_after_nested/summary.json`: completed CPU provider, direct-solve, and gradient rows.
 
 Best next steps:
 

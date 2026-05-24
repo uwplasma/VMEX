@@ -121,7 +121,7 @@ def _compact_nestor_snapshot(case: dict[str, Any]) -> dict[str, Any] | None:
                 ("chunk_size", "provider_chunk_size"),
                 ("coil_count", "provider_coil_count"),
                 ("segments_per_coil", "provider_segments_per_coil"),
-                ("geometry_cached", "provider_geometry_cached"),
+                ("geometry_cached", "provider_coil_geometry_cached"),
             )
             if key in last_diag
         }
