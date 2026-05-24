@@ -788,18 +788,18 @@ WP0 Branch foundation and plan:                100%
 WP1 Provider base API:                         100%
 WP2 Pure JAX coil Biot-Savart:                 75%
 WP3 ESSOS adapter:                             80%
-WP4 JAX mgrid interpolation:                    0%
+WP4 JAX mgrid interpolation:                   85%
 WP5 Free-boundary provider hook:                0%
 WP6 Direct-coil forward example:                0%
 WP7 Vacuum adjoint scaffold:                    0%
-WP8 Gradient checks:                           25%
+WP8 Gradient checks:                           40%
 WP9 VMEC2000 diagnostics:                       0%
 WP10 Benchmarks:                                0%
 WP11 Coil-only QS optimization example:         0%
 WP12 Robust coil perturbations:                 0%
 WP13 Documentation:                             0%
 WP14 CI policy:                                 0%
-Overall branch completion:                     20%
+Overall branch completion:                     26%
 ```
 
 ## Immediate Next Steps
@@ -839,6 +839,37 @@ Best next steps:
 1. Implement provider base API.
 2. Implement pure JAX direct-coil provider and tests.
 3. Add optional ESSOS parity adapter.
+
+Need from user:
+
+Nothing now.
+
+### 2026-05-24 Provider slice 2
+
+Steps taken:
+
+1. Added `vmec_jax.external_fields.mgrid_jax`.
+2. Implemented `MGridFieldParams` as a pytree with differentiable field arrays and `extcur`.
+3. Implemented `interpolate_mgrid_bfield_jax` and `sample_mgrid_field_cylindrical`.
+4. Added mgrid dispatch support through `sample_external_field_cylindrical("mgrid", ...)`.
+5. Added synthetic affine-field tests comparing:
+   - exact affine values,
+   - legacy NumPy `interpolate_mgrid_bfield`,
+   - JAX mgrid dispatch,
+   - gradients with respect to `extcur`,
+   - gradients with respect to field values,
+   - coordinate derivatives away from grid-cell boundaries.
+
+Results obtained:
+
+1. `pytest -q tests/test_external_fields_mgrid_jax.py` passed: 4 passed in 3.22 s.
+2. `pytest -q tests/test_external_fields_coils_jax.py tests/test_external_fields_essos_adapter.py tests/test_external_fields_mgrid_jax.py` passed: 17 passed in 13.16 s.
+
+Best next steps:
+
+1. Commit provider slice 2.
+2. Add the dense vacuum adjoint scaffold and tests.
+3. Start the free-boundary provider hook after the adjoint scaffold is in place.
 
 Need from user:
 
