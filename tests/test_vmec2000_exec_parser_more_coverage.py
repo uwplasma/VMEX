@@ -298,6 +298,16 @@ def test_freeb_diagnostic_payload_reports_resolved_multigrid_schedule(tmp_path: 
     assert payload["configuration"]["niter_array"] == [20, 40]
     assert payload["configuration"]["ftol_array"] == [1.0e-6, 1.0e-8]
     assert payload["configuration"]["uses_multigrid_schedule"] is True
+    assert payload["configuration"]["mixed_vmec2000_schedule_non_promotable"] is False
     assert payload["configuration"]["ns"] == 9
     assert payload["configuration"]["niter"] == 40
     assert payload["configuration"]["ftol"] == pytest.approx(1.0e-8)
+
+
+def test_freeb_diagnostic_payload_marks_vmec2000_niter_override_non_promotable(tmp_path: Path) -> None:
+    args = _parser().parse_args(["--vmec2000-niter", "500"])
+
+    payload = _base_payload(args, out=tmp_path / "summary.json", workdir=tmp_path / "work")
+
+    assert payload["configuration"]["vmec2000_niter"] == 500
+    assert payload["configuration"]["mixed_vmec2000_schedule_non_promotable"] is True

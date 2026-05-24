@@ -40,6 +40,8 @@ Steps taken:
 24. Added an explicit CPU free-boundary preconditioner policy that enables precomputed R/Z tridiagonal coefficients for non-scan performance-mode solves.
 25. Threaded a guarded lax-tridiagonal policy through the solver and discrete-adjoint replay metadata; the wrapper now only dispatches the pretransposed lax path when matching cached transposed matrices are present.
 26. Added shared multigrid schedule arguments (`--ns-array`, `--niter-array`, `--ftol-array`) to the generated-mgrid/direct-coil/VMEC2000 diagnostic so promotion runs no longer need mixed-iteration VMEC2000-only overrides.
+27. Narrowed the CPU free-boundary tridiagonal policy to direct-coil provider runs only after CI caught a legacy `mgrid` free-boundary parity regression in `cth_like_free_bdy`.
+28. VMEC2000-only `--vmec2000-niter` overrides are now labeled as mixed-schedule/non-promotable in the diagnostic JSON.
 
 Results obtained:
 
@@ -73,10 +75,11 @@ Results obtained:
 31. Medium direct-coil dense benchmark with the guarded precomputed/lax policy reports warm solve about `0.244 s`, final recompute sampling about `0.0125 s`, final recompute dense solve about `0.0267 s`, and preconditioner apply about `0.030 s`.
 32. Fully forced `VMEC_JAX_TRIDI_PRECOMPUTE=1 VMEC_JAX_TRIDI_SOLVE=lax` benchmark now runs after the helper shape fix and reports preconditioner apply about `0.0095-0.010 s`, but broader solve-level shape coverage is still needed before using that path outside guarded cached-matrix cases.
 33. The new shared-schedule provider-only diagnostic smoke completed with `ns_array=[5, 7]`, `uses_multigrid_schedule=True`, `jax_direct_vs_mgrid_passed=True`, and only the expected `vmec2000_skipped` warning.
+34. Direct-provider benchmark after narrowing still reports warm solve about `0.249 s`; local legacy `cth_like_free_bdy` physics-smoke reproduction skipped because the optional mgrid asset is not present locally, so CI remains the authoritative check for that row.
 
 Best next steps:
 
-1. Run a convergence-oriented generated-mgrid VMEC2000 diagnostic with the new shared multigrid schedule and promote only if VMEC2000 writes a WOUT.
+1. Confirm CI physics smoke is green on the narrowed direct-provider-only tridiagonal policy.
 2. Run a direct-coil case that enters backtracking and confirm the new trial counters capture rejected NESTOR sampling cost in a full driver trace.
 3. Expand solve-level coverage for the lax-tridiagonal preconditioner path and then decide whether the remaining fallback-to-precomputed cases can be eliminated safely.
 4. Extend the full-loop finite-difference smoke from current-only proxy objective to a validated Boozer/QS promotion test when affordable.

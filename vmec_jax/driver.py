@@ -259,6 +259,7 @@ def _default_preconditioner_use_precomputed_tridi(
     backend: str,
     performance_mode: bool,
     use_scan: bool,
+    direct_external_provider: bool = False,
 ) -> bool | None:
     """Choose the R/Z preconditioner tridiagonal-solver policy for public runs.
 
@@ -277,7 +278,7 @@ def _default_preconditioner_use_precomputed_tridi(
         return None
     if bool(use_scan):
         return None
-    if backend_l == "cpu" and bool(getattr(cfg, "lfreeb", False)):
+    if backend_l == "cpu" and bool(getattr(cfg, "lfreeb", False)) and bool(direct_external_provider):
         return True
     if backend_l not in ("gpu", "cuda", "rocm", "tpu"):
         return None
@@ -298,6 +299,7 @@ def _default_preconditioner_use_lax_tridi(
     backend: str,
     performance_mode: bool,
     use_scan: bool,
+    direct_external_provider: bool = False,
 ) -> bool | None:
     """Choose the CPU R/Z preconditioner tridiagonal-solve primitive.
 
@@ -318,7 +320,7 @@ def _default_preconditioner_use_lax_tridi(
         return None
     if bool(use_scan):
         return None
-    if not bool(getattr(cfg, "lfreeb", False)):
+    if not bool(getattr(cfg, "lfreeb", False)) or not bool(direct_external_provider):
         return None
     return True
 
@@ -1960,12 +1962,14 @@ def run_fixed_boundary(
                 backend=policy_backend,
                 performance_mode=bool(performance_mode_i),
                 use_scan=bool(use_scan_i),
+                direct_external_provider=bool(direct_external_provider),
             )
             preconditioner_use_lax_tridi_i = _default_preconditioner_use_lax_tridi(
                 cfg=static_i.cfg,
                 backend=policy_backend,
                 performance_mode=bool(performance_mode_i),
                 use_scan=bool(use_scan_i),
+                direct_external_provider=bool(direct_external_provider),
             )
             if step_size is _STEP_SIZE_SENTINEL or step_size is None:
                 step_size_finish = float(indata.get_float("DELT", 5e-3))
@@ -3010,12 +3014,14 @@ def run_fixed_boundary(
                 backend=policy_backend,
                 performance_mode=bool(performance_mode),
                 use_scan=bool(scan_mode),
+                direct_external_provider=bool(direct_external_provider),
             )
             stage_preconditioner_use_lax_tridi = _default_preconditioner_use_lax_tridi(
                 cfg=cfg_i,
                 backend=policy_backend,
                 performance_mode=bool(performance_mode),
                 use_scan=bool(scan_mode),
+                direct_external_provider=bool(direct_external_provider),
             )
             solve_kwargs = dict(
                 indata=indata,

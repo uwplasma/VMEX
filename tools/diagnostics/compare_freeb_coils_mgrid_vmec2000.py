@@ -830,13 +830,13 @@ def _run_vmec2000_case(
         indata_updates = None
         if args.vmec2000_niter is not None:
             vmec2000_niter = int(args.vmec2000_niter)
-            ns_array, _, _ftol_array = _diagnostic_schedule(args)
+            ns_array, _, ftol_array = _diagnostic_schedule(args)
             niter_override = [vmec2000_niter] * len(ns_array)
             indata_updates = {
                 "NITER": str(vmec2000_niter),
                 "NITER_ARRAY": _format_namelist_array(niter_override),
-                "FTOL": f"{float(args.ftol):.16e}",
-                "FTOL_ARRAY": _format_namelist_array([float(args.ftol)] * len(ns_array)),
+                "FTOL": f"{float(ftol_array[-1]):.16e}",
+                "FTOL_ARRAY": _format_namelist_array(ftol_array),
             }
         result = run_xvmec2000(
             mgrid_input,
@@ -858,6 +858,10 @@ def _run_vmec2000_case(
 
     summary = _vmec2000_summary(result)
     summary["exec_path"] = exec_path
+    if args.vmec2000_niter is not None:
+        summary["mixed_schedule_non_promotable"] = True
+        summary["mixed_schedule_reason"] = "--vmec2000-niter overrides only the VMEC2000 NITER_ARRAY"
+        summary["vmec2000_niter_override"] = int(args.vmec2000_niter)
     wout_path = _vmec2000_wout_path(result)
     summary["wout_path"] = wout_path
     if not wout_path.exists():
@@ -900,6 +904,7 @@ def _base_payload(args: argparse.Namespace, *, out: Path, workdir: Path) -> dict
             "nvacskip": int(args.nvacskip) if args.nvacskip is not None else int(_diagnostic_nzeta(args)),
             "jit_forces": bool(args.jit_forces),
             "vmec2000_niter": None if args.vmec2000_niter is None else int(args.vmec2000_niter),
+            "mixed_vmec2000_schedule_non_promotable": args.vmec2000_niter is not None,
             "jax_rtol": float(args.jax_rtol),
             "jax_atol": float(args.jax_atol),
         },

@@ -677,7 +677,7 @@ def test_high_mode_non_lasym_gpu_uses_precomputed_tridi_default(monkeypatch):
     )
 
 
-def test_cpu_free_boundary_non_scan_uses_precomputed_tridi_default(monkeypatch):
+def test_cpu_direct_provider_free_boundary_non_scan_uses_tridi_policy(monkeypatch):
     input_path = Path(__file__).resolve().parents[1] / "examples/data/input.cth_like_free_bdy_lasym_small"
     cfg, _indata = load_config(input_path)
     monkeypatch.delenv("VMEC_JAX_TRIDI_PRECOMPUTE", raising=False)
@@ -689,6 +689,7 @@ def test_cpu_free_boundary_non_scan_uses_precomputed_tridi_default(monkeypatch):
             backend="cpu",
             performance_mode=True,
             use_scan=False,
+            direct_external_provider=True,
         )
         is True
     )
@@ -698,6 +699,7 @@ def test_cpu_free_boundary_non_scan_uses_precomputed_tridi_default(monkeypatch):
             backend="cpu",
             performance_mode=True,
             use_scan=False,
+            direct_external_provider=True,
         )
         is True
     )
@@ -707,6 +709,7 @@ def test_cpu_free_boundary_non_scan_uses_precomputed_tridi_default(monkeypatch):
             backend="gpu",
             performance_mode=True,
             use_scan=False,
+            direct_external_provider=True,
         )
         is None
     )
@@ -716,6 +719,7 @@ def test_cpu_free_boundary_non_scan_uses_precomputed_tridi_default(monkeypatch):
             backend="cpu",
             performance_mode=True,
             use_scan=True,
+            direct_external_provider=True,
         )
         is None
     )
@@ -726,6 +730,35 @@ def test_cpu_free_boundary_non_scan_uses_precomputed_tridi_default(monkeypatch):
             backend="cpu",
             performance_mode=True,
             use_scan=False,
+            direct_external_provider=True,
+        )
+        is None
+    )
+
+
+def test_cpu_mgrid_free_boundary_keeps_legacy_tridi_policy(monkeypatch):
+    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.cth_like_free_bdy_lasym_small"
+    cfg, _indata = load_config(input_path)
+    monkeypatch.delenv("VMEC_JAX_TRIDI_PRECOMPUTE", raising=False)
+    monkeypatch.delenv("VMEC_JAX_TRIDI_SOLVE", raising=False)
+
+    assert (
+        driver_module._default_preconditioner_use_precomputed_tridi(
+            cfg=cfg,
+            backend="cpu",
+            performance_mode=True,
+            use_scan=False,
+            direct_external_provider=False,
+        )
+        is None
+    )
+    assert (
+        driver_module._default_preconditioner_use_lax_tridi(
+            cfg=cfg,
+            backend="cpu",
+            performance_mode=True,
+            use_scan=False,
+            direct_external_provider=False,
         )
         is None
     )
@@ -819,7 +852,7 @@ def test_run_fixed_boundary_gpu_high_mode_non_lasym_passes_precomputed_tridi_pol
     assert captured["kwargs"]["preconditioner_use_precomputed_tridi"] is True
 
 
-def test_run_fixed_boundary_cpu_free_boundary_passes_precomputed_tridi_policy(monkeypatch):
+def test_run_fixed_boundary_cpu_mgrid_free_boundary_keeps_legacy_tridi_policy(monkeypatch):
     input_path = Path(__file__).resolve().parents[1] / "examples/data/input.cth_like_free_bdy_lasym_small"
     monkeypatch.delenv("VMEC_JAX_TRIDI_SOLVE", raising=False)
     monkeypatch.setattr(driver_module, "_default_backend_name", lambda: "cpu")
@@ -852,8 +885,8 @@ def test_run_fixed_boundary_cpu_free_boundary_passes_precomputed_tridi_policy(mo
         verbose=False,
     )
 
-    assert captured["kwargs"]["preconditioner_use_precomputed_tridi"] is True
-    assert captured["kwargs"]["preconditioner_use_lax_tridi"] is True
+    assert captured["kwargs"]["preconditioner_use_precomputed_tridi"] is None
+    assert captured["kwargs"]["preconditioner_use_lax_tridi"] is None
 
 
 def test_default_non_autodiff_solver_policy_keeps_free_boundary_on_robust_path():
