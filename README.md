@@ -101,7 +101,7 @@ export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
 PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
   python examples/free_boundary_essos_coils_beta_scan.py \
   --outdir results/free_boundary_essos_coils_beta_scan_readme \
-  --activate-fsq 1.0
+  --activate-fsq 1e99
 
 python tools/diagnostics/render_freeb_single_stage_readme.py \
   --summary results/free_boundary_essos_coils_beta_scan_readme/summary.json \

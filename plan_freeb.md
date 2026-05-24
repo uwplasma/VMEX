@@ -22,6 +22,8 @@ Steps taken:
 6. Benchmarks now report active NESTOR sample/solve timing summaries and cold-to-warm improvement.
 7. Trial/backtracking NESTOR calls are now recorded separately from accepted-update NESTOR calls.
 8. Cached direct-coil geometry can now use a host-forward JIT sampler, guarded by `VMEC_JAX_FREEB_JIT_COIL_SAMPLER`.
+9. Added `examples/free_boundary_essos_coils_forward.py` as the minimal ESSOS-direct-coil forward example that writes one input, WOUT, and JSON summary without generating an mgrid.
+10. Finite-pressure free-boundary examples now default to `--activate-fsq 1e99` so short smoke runs exercise active NESTOR coupling instead of silently staying in the inactive vacuum-stub cadence.
 
 Results obtained:
 
@@ -36,14 +38,17 @@ Results obtained:
 9. Field-only probe on a 32x32 grid with 4-fold stellarator symmetry: cached geometry sampling changed from about `0.45 s` regular cold / `9-10 ms` regular warm to `0.067 s` JIT cold / `4-6 ms` JIT warm.
 10. The tiny full-solve benchmark remains dominated by non-sampling work: JIT and non-JIT direct-coil solve smokes both report about `6.09 s` cold and `0.19 s` warm.
 11. Optional VMEC2000 generated-mgrid diagnostic was attempted with `NITER=1`, `50`, and `500`; VMEC2000 completed without WOUT in all cases, with `fsq_total_last` improving to about `5.4e-3` at 500 iterations but still reporting `Try increasing NITER`.
+12. `examples/free_boundary_essos_coils_forward.py --beta 1.0 --max-iter 20` wrote a direct-coil WOUT and active-NESTOR summary with `free_boundary_vacuum_stub=false`. The residual is still intentionally large, so this remains a forward coupling smoke rather than a converged finite-beta promotion case.
+13. Trial-counter regression now records nonzero `freeb_nestor_trial_sample_time_history` on a solver-level direct-coil path that enters trial scoring.
 
 Best next steps:
 
 1. Run a larger direct-coil boundary grid where field sampling is a material part of solve time and quantify the JIT sampler payoff.
 2. Run a direct-coil case that enters backtracking and confirm the new trial counters capture rejected NESTOR sampling cost.
-3. Target the remaining non-sampling warm-solve cost in preconditioner/update/force assembly after the sampler path is measured on larger grids.
-4. Extend the full-loop finite-difference smoke from current-only proxy objective to a validated Boozer/QS promotion test when affordable.
-5. Either raise the VMEC2000 generated-mgrid diagnostic to a convergence-oriented multi-grid input or mark the current single-stage generated-mgrid case as optional underconverged external evidence.
+3. Add a pure-`CoilFieldParams` forward example if PR reviewers want a dependency-light direct-coil WOUT example that does not require ESSOS assets.
+4. Target the remaining non-sampling warm-solve cost in preconditioner/update/force assembly after the sampler path is measured on larger grids.
+5. Extend the full-loop finite-difference smoke from current-only proxy objective to a validated Boozer/QS promotion test when affordable.
+6. Either raise the VMEC2000 generated-mgrid diagnostic to a convergence-oriented multi-grid input or mark the current single-stage generated-mgrid case as optional underconverged external evidence.
 
 Need from user:
 
@@ -52,13 +57,13 @@ Nothing now.
 Open-lane completion estimates:
 
 1. External provider architecture: 93%.
-2. Direct-coil finite-pressure forward lane: 88%.
+2. Direct-coil finite-pressure forward lane: 91%.
 3. ESSOS/mgrid/VMEC2000 comparison lane: 82%.
 4. Full-loop gradient validation: 55%.
-5. Robust/optimization examples: 76%.
+5. Robust/optimization examples: 78%.
 6. Performance/benchmarking: 75%.
-7. Docs/release hygiene: 88%.
-8. Overall branch completion: 83%.
+7. Docs/release hygiene: 90%.
+8. Overall branch completion: 84%.
 
 ## Mission
 

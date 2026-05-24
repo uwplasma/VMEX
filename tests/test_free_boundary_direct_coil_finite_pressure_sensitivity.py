@@ -296,6 +296,49 @@ def test_forced_activation_reports_direct_coil_nestor_diagnostics(tmp_path: Path
     assert np.count_nonzero(trial_failed) == 0
 
 
+def test_direct_coil_trial_nestor_timing_records_solver_trial_calls(tmp_path: Path) -> None:
+    """Solver-level trial scoring should record rejected NESTOR sample timings."""
+
+    enable_x64(True)
+    from vmec_jax.driver import run_free_boundary
+    from vmec_jax.solve import solve_fixed_boundary_residual_iter
+
+    params = _circle_coil_params(current=3.0e7)
+    input_path = _write_tiny_direct_freeb_input(tmp_path / "input.direct_trial_timing")
+    init = run_free_boundary(
+        input_path,
+        use_initial_guess=True,
+        verbose=False,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+    )
+    result = solve_fixed_boundary_residual_iter(
+        init.state,
+        init.static,
+        indata=init.indata,
+        signgs=init.signgs,
+        max_iter=4,
+        ftol=1.0e-8,
+        vmec2000_control=True,
+        auto_flip_force=False,
+        use_direct_fallback=True,
+        verbose=False,
+        verbose_vmec2000_table=False,
+        jit_forces=False,
+        use_scan=False,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+        free_boundary_activate_fsq=1.0e99,
+    )
+
+    trial_samples = np.asarray(result.diagnostics["freeb_nestor_trial_sample_time_history"], dtype=float)
+    trial_failed = np.asarray(result.diagnostics["freeb_nestor_trial_failed_history"], dtype=int)
+    assert trial_samples.size >= 1
+    assert trial_failed.shape == trial_samples.shape
+    assert np.all(trial_samples > 0.0)
+    assert np.count_nonzero(trial_failed) == 0
+
+
 def test_direct_coil_current_only_objective_fd_slope_is_stable(tmp_path: Path) -> None:
     """Central finite-difference slopes should be stable for a current-only direct-coil objective."""
 

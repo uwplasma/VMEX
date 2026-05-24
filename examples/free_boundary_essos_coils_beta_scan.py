@@ -18,7 +18,7 @@ Run from the repository root:
 
 Use smaller settings for a quick smoke run:
 
-    python examples/free_boundary_essos_coils_beta_scan.py --betas 0 1 --max-iter 2 --mgrid-nr 8 --mgrid-nz 8 --mgrid-nphi 4
+    python examples/free_boundary_essos_coils_beta_scan.py --betas 0 1 --max-iter 2 --mgrid-nr 8 --mgrid-nz 8 --mgrid-nphi 4 --activate-fsq 1e99
 """
 
 from __future__ import annotations
@@ -261,10 +261,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--activate-fsq",
         type=float,
-        default=1.0,
+        default=1.0e99,
         help=(
             "Free-boundary activation threshold for this finite-pressure research example. "
-            "Use 1e-3 for literal VMEC2000 cadence parity; the default forces early "
+            "Use 1e-3 for literal VMEC2000 cadence parity; the default forces immediate "
             "vacuum coupling so direct-coil and mgrid backends are exercised in short runs."
         ),
     )

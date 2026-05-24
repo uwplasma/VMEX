@@ -88,7 +88,7 @@ the JSON summary for this low-resolution smoke run. The scan records both the
 input ``PRES_SCALE`` and the output energy ratio ``100 W_p / W_B`` so future
 plots cannot accidentally validate only the vacuum case.
 
-The example uses ``--activate-fsq 1.0`` by default. This forces early
+The example uses ``--activate-fsq 1e99`` by default. This forces immediate
 VMEC2000-style NESTOR turn-on so the short run exercises active finite-pressure
 vacuum coupling instead of stopping in the inactive ``ivac=-1`` cadence. That
 is useful for provider validation. The residuals shown here are recomputed on
@@ -98,7 +98,7 @@ must be bounded against VMEC2000 before this becomes a promoted finite-beta
 single-stage optimization claim.
 
 Use ``--activate-fsq 1e-3`` when checking literal VMEC2000 activation cadence.
-Use a larger value, such as the default ``1.0`` or an explicit ``1e99``, only
+Use a larger value, such as the default ``1e99``, only
 when the goal is to force active coupling early in a deliberately short smoke.
 Those early-activation runs are provider/coupling diagnostics, not evidence
 that the accepted equilibrium is converged to the same state as a long
@@ -114,8 +114,23 @@ The committed numerical summary is stored in
 Reproduction
 ------------
 
-Run the beta scan from the repository root. Until the ESSOS ``to_mgrid`` PR is
-merged and released, put the ESSOS branch checkout on ``PYTHONPATH``.
+Run the minimal direct-coil forward example from the repository root.  This path
+loads ESSOS coils, converts them to ``CoilFieldParams``, solves one
+finite-pressure free-boundary equilibrium without writing an ``mgrid`` file, and
+writes ``wout_direct_coils.nc`` plus ``summary.json``.
+
+.. code-block:: bash
+
+   export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
+     python examples/free_boundary_essos_coils_forward.py \
+     --beta 1.0 \
+     --max-iter 20 \
+     --outdir results/free_boundary_essos_coils_forward
+
+Run the matched beta scan from the repository root. Until the ESSOS
+``to_mgrid`` PR is merged and released, put the ESSOS branch checkout on
+``PYTHONPATH``.
 
 .. code-block:: bash
 
@@ -123,7 +138,7 @@ merged and released, put the ESSOS branch checkout on ``PYTHONPATH``.
    PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
      python examples/free_boundary_essos_coils_beta_scan.py \
      --outdir results/free_boundary_essos_coils_beta_scan_readme \
-     --activate-fsq 1.0
+     --activate-fsq 1e99
 
 The ESSOS Landreman-Paul QA fixture has relatively weak currents for the short
 finite-pressure smoke. Use ``--coil-current-scale`` to run matched direct/mgrid

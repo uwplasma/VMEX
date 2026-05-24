@@ -656,7 +656,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ntor", type=int, default=None)
     parser.add_argument("--nzeta", type=int, default=None)
     parser.add_argument("--pressure-scale", type=float, default=0.0)
-    parser.add_argument("--activate-fsq", type=float, default=1.0)
+    parser.add_argument("--activate-fsq", type=float, default=1.0e99)
     parser.add_argument("--max-current-vars", type=int, default=1)
     parser.add_argument("--max-fourier-vars", type=int, default=1)
     parser.add_argument("--current-step", type=float, default=0.02)
