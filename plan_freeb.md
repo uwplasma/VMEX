@@ -791,15 +791,15 @@ WP3 ESSOS adapter:                             80%
 WP4 JAX mgrid interpolation:                   85%
 WP5 Free-boundary provider hook:                0%
 WP6 Direct-coil forward example:                0%
-WP7 Vacuum adjoint scaffold:                    0%
-WP8 Gradient checks:                           40%
+WP7 Vacuum adjoint scaffold:                  100%
+WP8 Gradient checks:                           50%
 WP9 VMEC2000 diagnostics:                       0%
 WP10 Benchmarks:                                0%
 WP11 Coil-only QS optimization example:         0%
 WP12 Robust coil perturbations:                 0%
 WP13 Documentation:                             0%
 WP14 CI policy:                                 0%
-Overall branch completion:                     26%
+Overall branch completion:                     33%
 ```
 
 ## Immediate Next Steps
@@ -839,6 +839,30 @@ Best next steps:
 1. Implement provider base API.
 2. Implement pure JAX direct-coil provider and tests.
 3. Add optional ESSOS parity adapter.
+
+Need from user:
+
+Nothing now.
+
+### 2026-05-24 Vacuum adjoint scaffold
+
+Steps taken:
+
+1. Added `vmec_jax/free_boundary_adjoint.py`.
+2. Implemented `dense_vacuum_solve_jax(A, b, symmetric=False)` with `jax.lax.custom_linear_solve`.
+3. Added `dense_vacuum_residual(A, x, b)` for diagnostics/tests.
+4. Added dense toy tests covering primal solve parity, VJP wrt RHS, finite-difference gradient wrt RHS parameter, finite-difference gradient wrt matrix parameter, and symmetric transpose-solve behavior.
+
+Results obtained:
+
+1. `pytest -q tests/test_free_boundary_vacuum_adjoint.py` passed: 5 passed in 1.29 s.
+2. `pytest -q tests/test_external_fields_coils_jax.py tests/test_external_fields_essos_adapter.py tests/test_external_fields_mgrid_jax.py tests/test_free_boundary_vacuum_adjoint.py` passed: 22 passed in 13.98 s.
+
+Best next steps:
+
+1. Commit the vacuum adjoint scaffold.
+2. Begin the free-boundary provider hook by adding an internal provider-sampling function that returns the existing `ExternalBoundarySample` shape.
+3. Keep the legacy mgrid call path unchanged until provider tests prove equivalent boundary samples.
 
 Need from user:
 
