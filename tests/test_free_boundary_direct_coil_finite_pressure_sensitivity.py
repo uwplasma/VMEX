@@ -261,6 +261,62 @@ def test_direct_coil_reuse_refreshes_source_when_provider_changes(tmp_path: Path
     assert _relative_rms_delta(full.vac_total.bsqvac, reuse.vac_total.bsqvac) > 1.0e-3
 
 
+def test_direct_coil_dense_nestor_output_is_independent_of_nonsingular_ip_chunk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dense direct-coil NESTOR output should not depend on the source-assembly chunk size."""
+
+    enable_x64(True)
+    params = _circle_coil_params()
+    input_path = _write_tiny_direct_freeb_input(tmp_path / "input.direct_provider_chunk_invariance")
+    run = _run_direct_initial_guess(input_path, params)
+
+    for key, value in {
+        "VMEC_JAX_FREEB_NESTOR_MODE": "dense",
+        "VMEC_JAX_FREEB_DENSE_SOLVE_MODE": "mode",
+        "VMEC_JAX_FREEB_USE_GREENF_SOURCE": "yes",
+        "VMEC_JAX_FREEB_EXPERIMENTAL_FOURI_MATRIX": "1",
+    }.items():
+        monkeypatch.setenv(key, value)
+
+    monkeypatch.setenv("VMEC_JAX_FREEB_NONSINGULAR_IP_CHUNK", "1")
+    scalar, _ = nestor_external_only_step(
+        state=run.state,
+        static=run.static,
+        ivac=1,
+        ivacskip=0,
+        iter_idx=1,
+        runtime=None,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+    )
+    monkeypatch.setenv("VMEC_JAX_FREEB_NONSINGULAR_IP_CHUNK", "5")
+    chunked, _ = nestor_external_only_step(
+        state=run.state,
+        static=run.static,
+        ivac=1,
+        ivacskip=0,
+        iter_idx=1,
+        runtime=None,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+    )
+
+    for result in (scalar, chunked):
+        assert result.model == "vmec2000_like_dense_integral"
+        assert result.diagnostics is not None
+        assert result.diagnostics["provider_kind"] == "direct_coils"
+        assert result.diagnostics["source_reused"] is False
+        assert np.isfinite(np.asarray(result.phi)).all()
+        assert np.isfinite(np.asarray(result.vac_total.bsqvac)).all()
+
+    np.testing.assert_allclose(chunked.phi, scalar.phi, rtol=1.0e-11, atol=1.0e-12)
+    np.testing.assert_allclose(chunked.vac_total.bsqvac, scalar.vac_total.bsqvac, rtol=1.0e-11, atol=1.0e-12)
+    for key in ("gsource_rms", "bvec_mode_nonsing_rms", "bvec_mode_rms"):
+        np.testing.assert_allclose(chunked.diagnostics[key], scalar.diagnostics[key], rtol=1.0e-11, atol=1.0e-12)
+
+
 def test_forced_activation_reports_direct_coil_nestor_diagnostics(tmp_path: Path) -> None:
     """Explicit activation should expose active direct-coil NESTOR diagnostics."""
 

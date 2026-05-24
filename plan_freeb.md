@@ -10,7 +10,7 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-24 after the direct-coil forward examples and benchmark diagnostics batch.
+Last updated: 2026-05-24 after the chunked dense-NESTOR Green-function performance batch.
 
 Steps taken:
 
@@ -33,6 +33,9 @@ Steps taken:
 17. Dense NESTOR diagnostics now break solve time into cache build, source assembly, bvec assembly, matrix assembly/factorization, linear solve, and vacuum-channel reconstruction.
 18. Default mode-space NESTOR cache construction now skips the unused physical-point LU factorization while preserving it for physical dense solves.
 19. Vectorized the hot `grpmn_nonsing` assembly over the `(ku, kv)` grid to remove Python loops in the default dense source path.
+20. Added chunked `ip`-block evaluation for the remaining nonsingular Green-function kernel, with `VMEC_JAX_FREEB_NONSINGULAR_IP_CHUNK` as a memory/performance knob.
+21. Tightened docs/example reproduction commands for optional ESSOS assets by documenting `ESSOS_INPUT_DIR`, and clarified that direct/generated-`mgrid` agreement is within recorded precision/roundoff rather than exact symbolic equality.
+22. Added a chunk-size invariance regression for the nonsingular source/matrix terms.
 
 Results obtained:
 
@@ -58,10 +61,13 @@ Results obtained:
 20. LU-skip benchmark confirmed the default mode-space path reports `physical_lu=False`, `mode_lu=True`; an explicit physical-dense benchmark reports `physical_lu=True`, so the optimization remains guarded.
 21. Medium dense direct-coil benchmark (`sample_points=204`, `coils=8`, `segments=96`) improved after vectorization: final source assembly dropped from about `0.169 s` to `0.009 s`, final dense solve from about `0.172 s` to `0.013 s`, and warm solve time from about `0.568 s` to `0.242 s`.
 22. Larger dense direct-coil benchmark (`sample_points=2352`, `coils=8`, `segments=128`) now reports final dense solve about `0.480 s` instead of the earlier `15 s` class; final source assembly is about `0.362 s`, final sampling about `0.053 s`, and warm full solve about `1.32 s`.
+23. Focused chunking regression passed: 4 passed in 5.47 s; direct-coil finite-pressure/provider/example tests passed: 12 passed, 1 skipped in 17.66 s.
+24. Medium chunking benchmark (`sample_points=600`, `coils=8`, `segments=96`) improved from `IP_CHUNK=1` final source `0.062 s`, final solve `0.073 s`, warm solve `0.346 s` to default chunk final source `0.020 s`, final solve `0.031 s`, warm solve `0.266 s`.
+25. Larger dense chunking benchmark (`sample_points=2352`, `coils=8`, `segments=128`) improved final source from about `0.362 s` to `0.292 s`, final solve from about `0.480 s` to `0.407 s`, and warm solve from about `1.32 s` to `1.14 s`.
 
 Best next steps:
 
-1. Target the remaining dense NESTOR Green-function accumulation, final recompute, and preconditioner cost; mode projection/source assembly has been reduced substantially on medium and larger grids.
+1. Target final recompute visibility and reuse safety: accepted-state recompute is correctness-critical, but benchmarks should report it separately so the total NESTOR cost is explicit.
 2. Run a direct-coil case that enters backtracking and confirm the new trial counters capture rejected NESTOR sampling cost in a full driver trace.
 3. Extend the full-loop finite-difference smoke from current-only proxy objective to a validated Boozer/QS promotion test when affordable.
 4. Either raise the VMEC2000 generated-mgrid diagnostic to a convergence-oriented multi-grid input or mark the current single-stage generated-mgrid case as optional underconverged external evidence.
@@ -70,7 +76,8 @@ Need from user:
 
 Nothing now.
 
-Open-lane completion estimates:
+Historical open-lane completion estimates from the 2026-05-24 release-status
+batch, superseded by the authoritative Progress Tracker below:
 
 1. External provider architecture: 93%.
 2. Direct-coil finite-pressure forward lane: 93%.
@@ -322,6 +329,10 @@ Use explicit pytrees. Prefer `jax.tree_util.register_dataclass` or a minimal cus
 
 ## Work Packages
 
+The WP status lines in this section are historical acceptance-checklist
+snapshots from early planning. They are retained for provenance and superseded
+by the authoritative Progress Tracker below.
+
 ### WP0: Branch Foundation and Plan
 
 Deliverables:
@@ -336,7 +347,7 @@ Acceptance:
 1. Branch exists locally.
 2. Plan captures architecture, literature, test matrix, and next steps.
 
-Status: 90%.
+Historical status: 90% (superseded by the Progress Tracker below).
 
 ### WP1: External-Field Provider Base
 
@@ -358,7 +369,7 @@ Acceptance:
 1. No ESSOS import from core provider package import.
 2. Provider params can pass through `jax.jit`, `jax.grad`, and `jax.tree_util.tree_flatten`.
 
-Status: 0%.
+Historical status: 0% (superseded by the Progress Tracker below).
 
 ### WP2: Pure JAX Coil Biot-Savart Provider
 
@@ -406,7 +417,7 @@ Acceptance:
 1. Pure JAX field sampling works under `jit`, `grad`, `jacfwd`, and `vmap`.
 2. Values match ESSOS on shared simple coils when ESSOS is installed.
 
-Status: 0%.
+Historical status: 0% (superseded by the Progress Tracker below).
 
 ### WP3: Optional ESSOS Adapter
 
@@ -429,7 +440,7 @@ Acceptance:
 1. `import vmec_jax.external_fields` works without ESSOS installed.
 2. ESSOS parity test passes locally when ESSOS is available.
 
-Status: 0%.
+Historical status: 0% (superseded by the Progress Tracker below).
 
 ### WP4: JAX mgrid Interpolation
 
@@ -458,7 +469,7 @@ Acceptance:
 1. Existing mgrid path remains unchanged.
 2. New JAX mgrid backend is ready for differentiable compatibility tests.
 
-Status: 0%.
+Historical status: 0% (superseded by the Progress Tracker below).
 
 ### WP5: Free-Boundary Provider Hook
 
@@ -489,7 +500,7 @@ Acceptance:
 1. Direct-coil code path does not write an mgrid file.
 2. Mgrid compatibility backend remains VMEC2000 parity path.
 
-Status: 0%.
+Historical status: 0% (superseded by the Progress Tracker below).
 
 ### WP6: Direct-Coil Forward Example
 
@@ -508,7 +519,7 @@ Acceptance:
 1. Example runs locally without writing mgrid.
 2. If ESSOS is missing, example exits with clear instruction or uses a pure `CoilFieldParams` fallback.
 
-Status: 0%.
+Historical status: 0% (superseded by the Progress Tracker below).
 
 ### WP7: Vacuum Solve / Adjoint Scaffold
 
@@ -535,7 +546,7 @@ Acceptance:
 1. Unit tests prove the adjoint scaffold.
 2. Docs do not claim full production NESTOR differentiability yet.
 
-Status: 0%.
+Historical status: 0% (superseded by the Progress Tracker below).
 
 ### WP8: Gradient Check Suite
 
@@ -566,7 +577,7 @@ Acceptance:
 1. Default fast subset is deterministic and under CI budget.
 2. Optional tests are clearly marked.
 
-Status: 0%.
+Historical status: 0% (superseded by the Progress Tracker below).
 
 ### WP9: VMEC2000 Comparison Diagnostics
 
@@ -599,7 +610,7 @@ Acceptance:
 2. Mgrid `vmec_jax` vs VMEC2000 uses existing parity tolerances or documented looser free-boundary tolerances.
 3. Direct-coil vs mgrid reports convergence with mgrid resolution; exact low-resolution equality is not required.
 
-Status: 0%.
+Historical status: 0% (superseded by the Progress Tracker below).
 
 ### WP10: Benchmarks
 
@@ -637,11 +648,12 @@ Acceptance:
 1. Benchmarks are non-CI by default.
 2. GPU benchmark runs when JAX GPU backend is installed.
 
-Status: 60%. Lightweight provider, direct free-boundary solve, coil-gradient,
-and matrix-runner scripts are present. The matrix runner records CPU quick rows
-by default and writes a skipped GPU row when `--include-gpu` is requested
-without an available JAX GPU backend. Full ncoil/nsegment/grid production
-matrix and plots remain future work.
+Historical status from the WP checklist: 60%. Lightweight provider, direct
+free-boundary solve, coil-gradient, and matrix-runner scripts are present. The
+matrix runner records CPU quick rows by default and writes a skipped GPU row
+when `--include-gpu` is requested without an available JAX GPU backend. Full
+ncoil/nsegment/grid production matrix and plots remain future work. This WP
+status is superseded by the authoritative Progress Tracker below.
 
 ### WP11: Coil-Only Free-Boundary QS Optimization Example
 
@@ -693,7 +705,7 @@ Acceptance:
 3. Example prints clear physics and coil metrics.
 4. No surface coefficient optimization DOFs.
 
-Status: 0%.
+Historical status: 0% (superseded by the Progress Tracker below).
 
 ### WP12: Robust Coil Perturbation Utilities
 
@@ -728,7 +740,7 @@ Acceptance:
 2. `vmap` support when full objective path is transformable.
 3. Python-loop fallback documented when full free-boundary solver is not yet batch-transformable.
 
-Status: 0%.
+Historical status: 0% (superseded by the Progress Tracker below).
 
 ### WP13: Documentation
 
@@ -764,7 +776,7 @@ Acceptance:
 2. Docs make explicit what is fully differentiable now and what is planned.
 3. Examples and tests have reproducible commands.
 
-Status: 0%.
+Historical status: 0% (superseded by the Progress Tracker below).
 
 ### WP14: CI Policy
 
@@ -800,7 +812,7 @@ Acceptance:
 2. Optional VMEC2000 and full optimization gates skip cleanly.
 3. No generated outputs are committed except deliberately small fixtures.
 
-Status: 0%.
+Historical status: 0% (superseded by the Progress Tracker below).
 
 ## Implementation Order
 
@@ -861,28 +873,27 @@ Stretch acceptance:
 
 ## Progress Tracker
 
-The per-WP status lines above are the original acceptance checklist. The
-current branch state is summarized here and in the dated work log below; this
-tracker is the authoritative plan snapshot for the free-boundary direct-coil
-branch.
+The per-WP status lines above are historical acceptance-checklist snapshots.
+The dated work log records when evidence was gathered. The table below is the
+authoritative current plan snapshot for the free-boundary direct-coil branch.
 
 ```text
 WP0 Branch foundation and plan:                100%
 WP1 Provider base API:                         100%
-WP2 Pure JAX coil Biot-Savart:                 88%
-WP3 ESSOS adapter:                             80%
+WP2 Pure JAX coil Biot-Savart:                 90%
+WP3 ESSOS adapter:                             84%
 WP4 JAX mgrid interpolation:                   85%
-WP5 Free-boundary provider hook:               88%
-WP6 Direct-coil forward example:               82%
+WP5 Free-boundary provider hook:               91%
+WP6 Direct-coil forward example:               90%
 WP7 Vacuum adjoint scaffold:                  100%
-WP8 Gradient checks:                           91%
-WP9 VMEC2000 diagnostics:                      62%
-WP10 Benchmarks/diagnostics:                   78%
-WP11 Coil-only QS optimization example:        45%
+WP8 Gradient checks:                           92%
+WP9 VMEC2000 diagnostics:                      84%
+WP10 Benchmarks/diagnostics:                   93%
+WP11 Coil-only QS optimization example:        82%
 WP12 Robust coil perturbations:               100%
-WP13 Documentation:                            84%
-WP14 CI policy:                                64%
-Overall branch completion:                     78%
+WP13 Documentation:                            93%
+WP14 CI policy:                                86%
+Overall branch completion:                     92%
 ```
 
 ## Immediate Next Steps
@@ -1125,7 +1136,7 @@ Results obtained:
 
 1. Forced-active direct-coil smoke residual reporting now drops from the stale pre-update scale to the accepted-state recompute scale.
 2. The README beta-scan residual norm changed from about `7.25` to about `2.97` after accepted-state recompute.
-3. Direct-coil and generated-mgrid providers still agree to recorded precision for the low-resolution active smoke.
+3. Direct-coil and generated-mgrid providers still agree within recorded precision/roundoff for the low-resolution active smoke.
 4. Verification passed:
    - `pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_coil_provider_forward.py tests/test_free_boundary_essos_coil_parity.py::test_essos_direct_coil_free_boundary_matches_generated_mgrid_backend`: 6 passed, 1 skipped in 29.83 s.
    - `pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_coil_provider_forward.py tests/test_free_boundary_vacuum_adjoint.py`: 10 passed, 1 skipped in 15.51 s.
@@ -1160,7 +1171,7 @@ Results obtained:
 
 1. The isolated active NESTOR bridge is sensitive to direct-coil current: normal-field/source channels scale linearly with current and `bsqvac` scales quadratically.
 2. The active finite-pressure ESSOS beta scan now reports `ivac=3`, `nestor_model=vmec2000_like_dense_integral`, and `vacuum_stub=False`.
-3. Direct-coil and generated-mgrid providers still agree for the same active finite-pressure path to recorded precision in the low-resolution scan.
+3. Direct-coil and generated-mgrid providers still agree within recorded precision/roundoff for the same active finite-pressure path in the low-resolution scan.
 4. The active residual norm is still large (`~7.25`), so this remains provider/coupling validation, not a converged finite-beta optimization result.
 5. Tests passed:
    - `pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_coil_provider_forward.py tests/test_free_boundary_vacuum_adjoint.py`: 10 passed, 1 skipped in 16.13 s.

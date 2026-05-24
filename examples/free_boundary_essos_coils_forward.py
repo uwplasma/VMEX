@@ -12,6 +12,12 @@ This is the minimal direct-coil example for the free-boundary research branch:
 The production full-solve adjoint is still phase-2 work.  This example is a
 forward provider/coupling validation lane and does not use plasma-boundary
 coefficients as optimization variables.
+
+Run from the repository root:
+
+    export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+    export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
+    PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH python examples/free_boundary_essos_coils_forward.py --beta 1.0 --max-iter 20
 """
 
 from __future__ import annotations

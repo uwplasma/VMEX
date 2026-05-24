@@ -261,3 +261,37 @@ def test_nonsingular_source_identity_matches_full_terms_on_tiny_surface() -> Non
     assert np.isfinite(gsource_terms).all()
     assert np.isfinite(grpmn).all()
     assert np.isfinite(zero_grpmn).all()
+
+
+def test_nonsingular_terms_are_independent_of_ip_chunk(monkeypatch) -> None:
+    sample = _analytic_sample(ntheta=4, nzeta=3, field_scale=1.0)
+    basis = _build_vmec_mode_basis(
+        ntheta=sample.R.shape[0],
+        nzeta=sample.R.shape[1],
+        nfp=1,
+        mf=2,
+        nf=1,
+        lasym=True,
+        wint=np.full(sample.R.shape, 1.0 / float(sample.R.size)),
+    )
+    bexni = np.linspace(-0.15, 0.25, sample.R.size)
+
+    monkeypatch.setenv("VMEC_JAX_FREEB_NONSINGULAR_IP_CHUNK", "1")
+    gstore_one, grpmn_one = _vmec_nonsingular_terms_from_bexni(
+        sample=sample,
+        basis=basis,
+        bexni=bexni,
+        signgs=-1,
+        nvper=1,
+    )
+    monkeypatch.setenv("VMEC_JAX_FREEB_NONSINGULAR_IP_CHUNK", "3")
+    gstore_chunked, grpmn_chunked = _vmec_nonsingular_terms_from_bexni(
+        sample=sample,
+        basis=basis,
+        bexni=bexni,
+        signgs=-1,
+        nvper=1,
+    )
+
+    np.testing.assert_allclose(gstore_chunked, gstore_one, rtol=1.0e-12, atol=1.0e-12)
+    np.testing.assert_allclose(grpmn_chunked, grpmn_one, rtol=1.0e-12, atol=1.0e-12)

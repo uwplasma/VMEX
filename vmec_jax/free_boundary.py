@@ -2232,59 +2232,89 @@ def _vmec_nonsingular_terms_from_bexni(
     sinm_asym = np.asarray(cosui[: mf + 1, :], dtype=float) if lasym else None
     cosm_asym = np.asarray(sinui[: mf + 1, :], dtype=float) if lasym else None
 
+    try:
+        ip_chunk = int(os.getenv("VMEC_JAX_FREEB_NONSINGULAR_IP_CHUNK", "64"))
+    except Exception:
+        ip_chunk = 64
+    ip_chunk = max(1, min(int(ip_chunk), int(nuv3)))
+
     gstore = np.zeros((nuv_full,), dtype=float)
-    for ip in range(nuv3):
-        xip = rcosuv[ip]
-        yip = rsinuv[ip]
-        ivoff = nuv_full - ip
-        iskip = ip // nv
+    idx_all_b = idx_all[None, :]
+    rcosuv_b = rcosuv[None, :]
+    rsinuv_b = rsinuv[None, :]
+    z_b = Z[None, :]
+    for ip0 in range(0, nuv3, ip_chunk):
+        ip1 = min(nuv3, ip0 + ip_chunk)
+        ip_idx = np.arange(ip0, ip1, dtype=np.int64)
+        n_chunk = int(ip_idx.size)
+
+        xip = rcosuv[ip_idx]
+        yip = rsinuv[ip_idx]
+        ivoff = nuv_full - ip_idx
+        iskip = ip_idx // nv
         iuoff = nuv_full - nv * iskip
-        gsave = rzb2[ip] + rzb2 - 2.0 * Z[ip] * Z
-        dsave = drv[ip] + Z * snz[ip]
-        delgr = np.zeros((nuv_full,), dtype=float)
-        delgrp = np.zeros((nuv_full,), dtype=float)
+        gsave = rzb2[ip_idx, None] + rzb2[None, :] - 2.0 * Z[ip_idx, None] * z_b
+        dsave = drv[ip_idx, None] + z_b * snz[ip_idx, None]
+        delgr = np.zeros((n_chunk, nuv_full), dtype=float)
+        delgrp = np.zeros((n_chunk, nuv_full), dtype=float)
+
         for kp in range(nvper):
             xper = xip * cosper[kp] - yip * sinper[kp]
             yper = yip * cosper[kp] + xip * sinper[kp]
-            sxsave = (snr[ip] * xper - snv[ip] * yper) / R[ip]
-            sysave = (snr[ip] * yper + snv[ip] * xper) / R[ip]
-            base = gsave - 2.0 * (xper * rcosuv + yper * rsinuv)
+            sxsave = (snr[ip_idx] * xper - snv[ip_idx] * yper) / R[ip_idx]
+            sysave = (snr[ip_idx] * yper + snv[ip_idx] * xper) / R[ip_idx]
+            base = gsave - 2.0 * (xper[:, None] * rcosuv_b + yper[:, None] * rsinuv_b)
+            deriv_num = rcosuv_b * sxsave[:, None] + rsinuv_b * sysave[:, None] + dsave
+
             if kp == 0 or nv == 1:
-                tidx_u = idx_all + iuoff
+                tidx_u = idx_all_b + iuoff[:, None]
                 ivoff_k = ivoff + (2 * nu * kp if nv == 1 else 0)
-                tidx_v = idx_all + ivoff_k
-                ga1 = tanu[tidx_u] * (guu_b[ip] * tanu[tidx_u] + guv_b[ip] * tanv[tidx_v]) + gvv_b[ip] * tanv[tidx_v] * tanv[tidx_v]
-                ga2 = tanu[tidx_u] * (auu[ip] * tanu[tidx_u] + auv[ip] * tanv[tidx_v]) + avv[ip] * tanv[tidx_v] * tanv[tidx_v]
+                tidx_v = idx_all_b + ivoff_k[:, None]
+                tanu_use = tanu[tidx_u]
+                tanv_use = tanv[tidx_v]
+                ga1 = tanu_use * (
+                    guu_b[ip_idx, None] * tanu_use + guv_b[ip_idx, None] * tanv_use
+                ) + gvv_b[ip_idx, None] * tanv_use * tanv_use
+                ga2 = tanu_use * (
+                    auu[ip_idx, None] * tanu_use + auv[ip_idx, None] * tanv_use
+                ) + avv[ip_idx, None] * tanv_use * tanv_use
                 ga2 = ga2 / ga1
                 ga1s = 1.0 / np.sqrt(ga1)
-                mask = (idx_all != ip) if kp == 0 else np.ones_like(idx_all, dtype=bool)
-                if np.any(mask):
-                    base_m = base[mask]
-                    ftemp_m = 1.0 / base_m
-                    htemp_m = np.sqrt(ftemp_m)
-                    deriv_m = ftemp_m * htemp_m * (
-                        rcosuv[mask] * sxsave + rsinuv[mask] * sysave + dsave[mask]
-                    )
-                    delgr[mask] += htemp_m - ga1s[mask]
-                    delgrp[mask] += deriv_m - ga2[mask] * ga1s[mask]
+                if kp == 0:
+                    mask = np.ones((n_chunk, nuv_full), dtype=bool)
+                    mask[np.arange(n_chunk, dtype=np.int64), ip_idx] = False
+                else:
+                    mask = np.ones((n_chunk, nuv_full), dtype=bool)
+                safe_base = np.where(mask, base, 1.0)
+                ftemp = 1.0 / safe_base
+                htemp = np.sqrt(ftemp)
+                deriv = ftemp * htemp * deriv_num
+                delgr += np.where(mask, htemp - ga1s, 0.0)
+                delgrp += np.where(mask, deriv - ga2 * ga1s, 0.0)
             else:
                 ftemp = 1.0 / base
                 htemp = np.sqrt(ftemp)
-                deriv = ftemp * htemp * (rcosuv * sxsave + rsinuv * sysave + dsave)
+                deriv = ftemp * htemp * deriv_num
                 delgr += htemp
                 delgrp += deriv
+
         # VMEC greenf.f: when nv==1, normalize both non-singular sums by nvper.
         if nv == 1 and nvper > 1:
             scale = 1.0 / float(nvper)
             delgr *= scale
             delgrp *= scale
-        gstore += bex[ip] * delgr
 
-        del_iuv = delgrp[iuv_grid]
-        del_ref = delgrp[iref_grid]
+        # Keep the gstore accumulation order explicit for close parity with the
+        # scalar Fortran-style formulation while still vectorizing the expensive
+        # kernel construction above.
+        for loc, ip in enumerate(ip_idx):
+            gstore += bex[int(ip)] * delgr[loc]
+
+        del_iuv = delgrp[:, iuv_grid]
+        del_ref = delgrp[:, iref_grid]
         ka_grid = del_iuv - del_ref
-        g1_sym = ka_grid @ cosv_modes.T
-        g2_sym = ka_grid @ sinv_modes.T
+        g1_sym = np.einsum("cuv,fv->cuf", ka_grid, cosv_modes, optimize=True)
+        g2_sym = np.einsum("cuv,fv->cuf", ka_grid, sinv_modes, optimize=True)
 
         for isym in range(ndim):
             if isym == 0:
@@ -2295,18 +2325,20 @@ def _vmec_nonsingular_terms_from_bexni(
                 row_off = 0
             else:
                 ks_grid = del_iuv + del_ref
-                g1_use = ks_grid @ cosv_modes.T
-                g2_use = ks_grid @ sinv_modes.T
+                g1_use = np.einsum("cuv,fv->cuf", ks_grid, cosv_modes, optimize=True)
+                g2_use = np.einsum("cuv,fv->cuf", ks_grid, sinv_modes, optimize=True)
                 sinm_table = sinm_asym
                 cosm_table = cosm_asym
                 row_off = mnpd
 
-            gcos = sinm_table @ g1_use
-            gsin = cosm_table @ g2_use
-            total_plus = gcos + gsin
-            total_minus = gcos - gsin
-            grpmn_nonsing[row_off + idx_p_flat, ip] += total_plus.reshape(-1)
-            grpmn_nonsing[row_off + idx_m_flat[negative_n_flat], ip] += total_minus.reshape(-1)[negative_n_flat]
+            gcos = np.einsum("mu,cuf->cmf", sinm_table, g1_use, optimize=True)
+            gsin = np.einsum("mu,cuf->cmf", cosm_table, g2_use, optimize=True)
+            total_plus = (gcos + gsin).reshape(n_chunk, -1)
+            total_minus = (gcos - gsin).reshape(n_chunk, -1)
+            rows_plus = row_off + idx_p_flat
+            rows_minus = row_off + idx_m_flat[negative_n_flat]
+            grpmn_nonsing[np.ix_(rows_plus, ip_idx)] += total_plus.T
+            grpmn_nonsing[np.ix_(rows_minus, ip_idx)] += total_minus[:, negative_n_flat].T
 
     # Keep raw fourp accumulation scale; any legacy scale experiments are
     # handled upstream in diagnostics, not in the core assembly path.

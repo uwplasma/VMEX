@@ -18,11 +18,16 @@ full-loop finite-difference checks pass.
 
 Run a minimal smoke from the repository root:
 
-    python examples/optimization/free_boundary_QS_coil_optimization.py --smoke
+    python examples/optimization/free_boundary_QS_coil_optimization.py --smoke --provider circle
 
-If ESSOS assets are not available, the default ESSOS provider exits with code
-77 and a helpful message.  For a provider-only development smoke that does not
-need ESSOS, pass ``--provider circle``.
+For the optional ESSOS provider, set the ESSOS checkout and input directory:
+
+    export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+    export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
+    PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH python examples/optimization/free_boundary_QS_coil_optimization.py --smoke --provider essos
+
+If ESSOS assets are not available, the ESSOS provider exits with code 77 and a
+helpful message.
 """
 
 from __future__ import annotations

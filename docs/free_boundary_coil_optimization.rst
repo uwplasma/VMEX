@@ -37,8 +37,9 @@ finite-difference checks of complete solves pass.
 
 Finite-pressure direct-coil support is currently a provider/coupling validation
 lane: active NESTOR diagnostics respond to coil-current changes and matched
-direct/generated-``mgrid`` samples agree, but accepted-equilibrium sensitivity
-and high-beta convergence remain promotion gates.
+direct/generated-``mgrid`` samples agree within recorded precision/roundoff,
+but accepted-equilibrium sensitivity and high-beta convergence remain promotion
+gates.
 
 Current Status
 --------------
@@ -51,8 +52,8 @@ single-stage coil optimizer:
   free-boundary solves, including nonzero pressure profiles.
 - The finite-pressure evidence is a low-resolution active-coupling smoke:
   generated-``mgrid`` and direct-coil providers from the same ESSOS LP-QA coil
-  set agree in the recorded scalar diagnostics, and direct NESTOR samples
-  respond to coil-current changes.
+  set agree within recorded precision/roundoff in the recorded scalar
+  diagnostics, and direct NESTOR samples respond to coil-current changes.
 - The fast validation lane also includes tiny accepted-state
   finite-difference slope-stability checks for direct-coil current and one
   direct-coil Fourier geometry coefficient.
@@ -86,10 +87,11 @@ coil set is used two ways:
    :alt: Low-resolution direct-coil beta scan
    :width: 100%
 
-The scalar diagnostics from the two ``vmec_jax`` providers agree exactly in
-the JSON summary for this low-resolution smoke run. The scan records both the
-input ``PRES_SCALE`` and the output energy ratio ``100 W_p / W_B`` so future
-plots cannot accidentally validate only the vacuum case.
+The scalar diagnostics from the two ``vmec_jax`` providers agree within the
+recorded JSON precision/roundoff for this low-resolution smoke run. The scan
+records both the input ``PRES_SCALE`` and the output energy ratio
+``100 W_p / W_B`` so future plots cannot accidentally validate only the vacuum
+case.
 
 The example uses ``--activate-fsq 1e99`` by default. This forces immediate
 VMEC2000-style NESTOR turn-on so the short run exercises active finite-pressure
@@ -136,6 +138,7 @@ low-resolution finite-pressure free-boundary forward smoke without writing an
 .. code-block:: bash
 
    export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
    PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
      python examples/free_boundary_essos_coils_forward.py \
      --beta 1.0 \
@@ -149,6 +152,7 @@ Run the matched beta scan from the repository root. Until the ESSOS
 .. code-block:: bash
 
    export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
    PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
      python examples/free_boundary_essos_coils_beta_scan.py \
      --outdir results/free_boundary_essos_coils_beta_scan_readme \
@@ -161,6 +165,7 @@ sensitivity studies with stronger coils:
 .. code-block:: bash
 
    export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
    PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
      python examples/free_boundary_essos_coils_beta_scan.py \
      --outdir results/free_boundary_essos_coils_beta_scan_scaled \
@@ -216,6 +221,7 @@ For the ESSOS Landreman-Paul QA coils, put ESSOS on ``PYTHONPATH`` and use:
 .. code-block:: bash
 
    export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
    PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
      python examples/optimization/free_boundary_QS_coil_optimization.py \
      --smoke \
@@ -341,6 +347,7 @@ executable is available:
 .. code-block:: bash
 
    export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
    PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
      python tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py \
        --out results/freeb_coils_mgrid_vmec2000.json \
@@ -351,6 +358,7 @@ For a quick provider-only smoke, skip VMEC2000 explicitly:
 .. code-block:: bash
 
    export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
    PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
      python tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py \
        --niter 1 \
@@ -405,8 +413,9 @@ For one-off debugging of a specific iteration, run the comparator directly:
 
 The generated-``mgrid`` VMEC2000 comparison for the ESSOS LP-QA coil smoke is
 still non-promoted/xfailed. The current promoted signal for this branch is
-``vmec_jax`` direct-coil versus generated-``mgrid`` provider agreement plus the
-active NESTOR coupling sensitivity checks listed below.
+``vmec_jax`` direct-coil versus generated-``mgrid`` provider agreement within
+recorded precision/roundoff plus the active NESTOR coupling sensitivity checks
+listed below.
 
 Validation Status
 -----------------

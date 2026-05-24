@@ -87,18 +87,19 @@ coil Fourier dofs/currents -> direct Biot-Savart field -> free-boundary VMEC
 -> wout/proxy diagnostics -> coil-only objective update
 ```
 
-Current status: direct-coil finite-pressure support is a phase-1
-provider/coupling validation lane. Low-resolution ESSOS LP-QA finite-pressure
-smokes run through both generated-`mgrid` and direct-coil backends and match the
-recorded scalar diagnostics, including active NESTOR samples. Boozer/QS
-full-loop gradients remain phase-2 promotion work; this is not yet a promoted
-high-beta coil optimization result or a production full-solve adjoint.
+Current status: direct-coil finite-pressure support is a phase-1 coupling
+validation lane. Low-resolution ESSOS LP-QA finite-pressure smokes run through
+generated-`mgrid` and direct-coil backends and agree within recorded
+precision/roundoff for scalar diagnostics, including active NESTOR samples.
+Boozer/QS full-loop gradients remain phase-2 promotion work; this is not yet a
+promoted high-beta coil optimization result or a production full-solve adjoint.
 
 Run the low-resolution direct-coil/generated-`mgrid` scan from a developer
 checkout with the ESSOS mgrid branch on `PYTHONPATH`:
 
 ```bash
 export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
 PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
   python examples/free_boundary_essos_coils_beta_scan.py \
   --outdir results/free_boundary_essos_coils_beta_scan_readme \
@@ -190,9 +191,8 @@ aspect-ratio promotion table; full provenance and limitations are in the docs.
 
 ![QI optimization from NFP seeds](docs/_static/figures/readme_qi_optimization_cases.png)
 
-Reproduction commands, artifact-promotion rules, case-specific QI NFP coverage,
-and full sweep publication requirements are documented in
-`docs/optimization.rst` and `docs/optimization_sweep_results.rst`; those
+Reproduction commands, artifact-promotion rules, QI NFP coverage, and full
+sweep publication requirements are documented in `docs/optimization.rst`; these
 case-specific artifacts are not aspect-6 README best-row promotion evidence.
 
 ## Performance, Validation, Release

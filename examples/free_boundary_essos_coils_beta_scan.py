@@ -14,11 +14,15 @@ foundation rather than a publication claim for full-solve exact adjoints.
 
 Run from the repository root:
 
-    python examples/free_boundary_essos_coils_beta_scan.py
+    export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+    export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
+    PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH python examples/free_boundary_essos_coils_beta_scan.py
 
 Use smaller settings for a quick smoke run:
 
-    python examples/free_boundary_essos_coils_beta_scan.py --betas 0 1 --max-iter 2 --mgrid-nr 8 --mgrid-nz 8 --mgrid-nphi 4 --activate-fsq 1e99
+    export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+    export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
+    PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH python examples/free_boundary_essos_coils_beta_scan.py --betas 0 1 --max-iter 2 --mgrid-nr 8 --mgrid-nz 8 --mgrid-nphi 4 --activate-fsq 1e99
 """
 
 from __future__ import annotations
