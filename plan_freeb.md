@@ -50,6 +50,7 @@ Steps taken:
 34. Added direct-coil to JAX boundary-projection to dense implicit vacuum-solve finite-difference gradient tests for one coil current and one Fourier geometry perturbation.
 35. Added an optional VMEC2000 generated-mgrid trace-smoke gate below the full WOUT-parity xfail, and made the quick benchmark matrix exercise one active NESTOR update.
 36. Added a JAX-native dense mode-space vacuum-solve scaffold with grid-potential reconstruction and finite-difference gradient tests through a projected direct-coil chain.
+37. Split free-boundary external-boundary sampling diagnostics into setup, boundary-geometry synthesis, external-field sampling, axis-field sampling, projection, and total timing buckets.
 
 Results obtained:
 
@@ -92,6 +93,7 @@ Results obtained:
 40. Quick active-NESTOR benchmark matrix completed; synthetic direct-coil solve recorded one active update with cold active sampling about `0.499 s` and warm active sampling about `0.00484 s`.
 41. The optional VMEC2000 trace-smoke test skips cleanly without `VMEC2000_INTEGRATION=1`.
 42. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 18 passed in 6.54 s after adding the dense mode-space scaffold.
+43. Quick sample-breakdown benchmark completed; warm final direct-coil sample was about `0.00427 s`, with external-field sampling about `0.00385 s` and boundary/projection phases below one millisecond.
 
 Best next steps:
 
@@ -923,7 +925,7 @@ WP6 Direct-coil forward example:               90%
 WP7 Vacuum adjoint scaffold:                  100%
 WP8 Gradient checks:                           98%
 WP9 VMEC2000 diagnostics:                      86%
-WP10 Benchmarks/diagnostics:                   97%
+WP10 Benchmarks/diagnostics:                   98%
 WP11 Coil-only QS optimization example:        82%
 WP12 Robust coil perturbations:               100%
 WP13 Documentation:                            97%

@@ -32,6 +32,12 @@ def _direct_solve_payload() -> dict:
                         "sample_points": 600,
                         "sample_time_s": 0.012,
                         "solve_time_s": 0.027,
+                        "sample_setup_time_s": 0.001,
+                        "sample_boundary_geometry_time_s": 0.002,
+                        "sample_external_field_time_s": 0.003,
+                        "sample_axis_field_time_s": 0.004,
+                        "sample_projection_time_s": 0.005,
+                        "sample_total_time_s": 0.015,
                         "cache_build_time_s": 0.008,
                         "source_time_s": 0.018,
                         "linear_solve_time_s": 0.00006,
@@ -65,6 +71,9 @@ def test_matrix_timing_snapshot_preserves_compact_nestor_details() -> None:
     assert nestor["final_recompute"]["attempted"] is True
     assert nestor["final_recompute"]["sample_time_s"] == 0.012
     assert nestor["final_diagnostics"]["sample_points"] == 600
+    assert nestor["final_diagnostics"]["sample_phase_time_s"]["setup"] == 0.001
+    assert nestor["final_diagnostics"]["sample_phase_time_s"]["external_field"] == 0.003
+    assert nestor["final_diagnostics"]["sample_phase_time_s"]["total"] == 0.015
     assert nestor["final_diagnostics"]["phase_time_s"]["cache_build"] == 0.008
     assert nestor["final_diagnostics"]["phase_time_s"]["source"] == 0.018
     assert nestor["final_diagnostics"]["phase_time_s"]["linear_solve"] == 0.00006

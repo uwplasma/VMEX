@@ -114,6 +114,18 @@ def _compact_nestor_snapshot(case: dict[str, Any]) -> dict[str, Any] | None:
             )
             if key in last_diag
         }
+        sample_phase_time_s = {
+            label: last_diag[key]
+            for label, key in (
+                ("setup", "sample_setup_time_s"),
+                ("boundary_geometry", "sample_boundary_geometry_time_s"),
+                ("external_field", "sample_external_field_time_s"),
+                ("axis_field", "sample_axis_field_time_s"),
+                ("projection", "sample_projection_time_s"),
+                ("total", "sample_total_time_s"),
+            )
+            if key in last_diag
+        }
         provider = {
             label: last_diag[key]
             for label, key in (
@@ -140,6 +152,8 @@ def _compact_nestor_snapshot(case: dict[str, Any]) -> dict[str, Any] | None:
         }
         if phase_time_s:
             final_diagnostics["phase_time_s"] = phase_time_s
+        if sample_phase_time_s:
+            final_diagnostics["sample_phase_time_s"] = sample_phase_time_s
         if provider:
             final_diagnostics["provider"] = provider
         if lu_built:

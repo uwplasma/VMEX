@@ -243,6 +243,7 @@ class ExternalBoundarySample:
     zuu: np.ndarray | None = None
     zuv: np.ndarray | None = None
     zvv: np.ndarray | None = None
+    timing: dict[str, float] | None = None
 
 
 @dataclass(frozen=True)
@@ -1031,6 +1032,9 @@ def _sample_external_boundary_arrays(
     from .vmec_realspace import (
         vmec_realspace_synthesis,
     )
+    timing: dict[str, float] = {}
+    t_total = time.perf_counter()
+    t_phase = t_total
     provider_kind = "mgrid" if external_field_provider_kind is None else str(external_field_provider_kind).strip().lower()
     use_mgrid_provider = provider_kind in ("", "mgrid", "legacy_mgrid")
     meta = getattr(static, "mgrid_metadata", None)
@@ -1062,6 +1066,8 @@ def _sample_external_boundary_arrays(
     )
     setup = _freeb_boundary_sample_setup(static=static, sample_nzeta=int(sample_nzeta))
     trig = setup.trig
+    timing["setup_time_s"] = max(0.0, time.perf_counter() - t_phase)
+    t_phase = time.perf_counter()
 
     # Apply VMEC m=1 internal->physical conversion before free-boundary
     # sampling. This matches the convert_sym/convert_asym path feeding NESTOR.
@@ -1127,6 +1133,8 @@ def _sample_external_boundary_arrays(
     Zuu = np.asarray(second_all[1, 0, 0])
     Zuv = np.asarray(second_all[1, 1, 0])
     Zvv = np.asarray(second_all[1, 2, 0])
+    timing["boundary_geometry_time_s"] = max(0.0, time.perf_counter() - t_phase)
+    t_phase = time.perf_counter()
 
     nzeta = int(R.shape[1])
     phi_grid = setup.phi_grid
@@ -1154,6 +1162,8 @@ def _sample_external_boundary_arrays(
         br_mgrid = np.asarray(br_mgrid, dtype=float)
         bp_mgrid = np.asarray(bp_mgrid, dtype=float)
         bz_mgrid = np.asarray(bz_mgrid, dtype=float)
+    timing["external_field_time_s"] = max(0.0, time.perf_counter() - t_phase)
+    t_phase = time.perf_counter()
     # VMEC funct3d sets:
     #   raxis_nestor(1:nzeta) = pr1(1:nzeta,1,0)
     #   zaxis_nestor(1:nzeta) = pz1(1:nzeta,1,0)
@@ -1301,6 +1311,8 @@ def _sample_external_boundary_arrays(
                 nfp=int(static.cfg.nfp),
                 plascur=float(plascur),
             )
+    timing["axis_field_time_s"] = max(0.0, time.perf_counter() - t_phase)
+    t_phase = time.perf_counter()
     br = np.asarray(br_mgrid, dtype=float) + np.asarray(br_axis, dtype=float)
     bp = np.asarray(bp_mgrid, dtype=float) + np.asarray(bp_axis, dtype=float)
     bz = np.asarray(bz_mgrid, dtype=float) + np.asarray(bz_axis, dtype=float)
@@ -1314,6 +1326,8 @@ def _sample_external_boundary_arrays(
         Rv=Rv,
         Zv=Zv,
     )
+    timing["projection_time_s"] = max(0.0, time.perf_counter() - t_phase)
+    timing["total_time_s"] = max(0.0, time.perf_counter() - t_total)
     return ExternalBoundarySample(
         mgrid_path=mgrid_path,
         R=R,
@@ -1345,6 +1359,7 @@ def _sample_external_boundary_arrays(
         zuu=Zuu,
         zuv=Zuv,
         zvv=Zvv,
+        timing=timing,
     )
 
 
@@ -3468,6 +3483,12 @@ def nestor_external_only_step(
                 diagnostics["provider_coil_count"] = int(shape[0])
             if len(shape) >= 2:
                 diagnostics["provider_segments_per_coil"] = int(shape[1])
+    if isinstance(getattr(sample, "timing", None), dict):
+        for key, value in sample.timing.items():
+            try:
+                diagnostics[f"sample_{key}"] = float(value)
+            except Exception:
+                pass
     if bvec_mode is not None:
         diagnostics["bvec_mode_rms"] = _rms(bvec_mode)
     if bvec_mode_nonsing is not None:

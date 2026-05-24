@@ -173,6 +173,17 @@ def test_sample_external_boundary_arrays_cached_mgrid_axis_override_and_diagnost
     np.testing.assert_allclose(sample.axis_r, [1.0, 1.1])
     assert np.isfinite(sample.vac_ext.bsqvac).all()
     assert float(np.max(np.abs(sample.br_mgrid))) > 0.0
+    assert sample.timing is not None
+    for key in (
+        "setup_time_s",
+        "boundary_geometry_time_s",
+        "external_field_time_s",
+        "axis_field_time_s",
+        "projection_time_s",
+        "total_time_s",
+    ):
+        assert key in sample.timing
+        assert sample.timing[key] >= 0.0
 
     monkeypatch.setattr(freeb, "_sample_external_boundary_arrays", lambda **_kwargs: sample)
     diagnostics = sample_external_vacuum_diagnostics(state=state, static=static, plascur=0.2)
