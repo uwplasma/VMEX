@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 from copy import deepcopy
+from dataclasses import fields, is_dataclass
 import json
 import os
 from pathlib import Path
@@ -104,9 +105,46 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(_jsonify(data), indent=2, sort_keys=True, allow_nan=False) + "\n")
 
 
+def _block_until_ready(value: Any, *, _seen: set[int] | None = None, _depth: int = 0) -> Any:
+    """Synchronize queued JAX work reachable from a benchmark result."""
+
+    if _depth > 8:
+        return value
+    if _seen is None:
+        _seen = set()
+    if isinstance(value, (str, bytes, int, float, bool, Path, type(None))):
+        return value
+    value_id = id(value)
+    if value_id in _seen:
+        return value
+    _seen.add(value_id)
+
+    if hasattr(value, "block_until_ready"):
+        value.block_until_ready()
+        return value
+    if isinstance(value, dict):
+        for item in value.values():
+            _block_until_ready(item, _seen=_seen, _depth=_depth + 1)
+        return value
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            _block_until_ready(item, _seen=_seen, _depth=_depth + 1)
+        return value
+    if is_dataclass(value):
+        for field in fields(value):
+            try:
+                item = getattr(value, field.name)
+            except Exception:
+                continue
+            _block_until_ready(item, _seen=_seen, _depth=_depth + 1)
+        return value
+    return value
+
+
 def _time_once(fn: Callable[[], Any]) -> tuple[float, Any]:
     t0 = time.perf_counter()
     value = fn()
+    _block_until_ready(value)
     return float(time.perf_counter() - t0), value
 
 
@@ -164,6 +202,29 @@ def _free_boundary_summary(run: Any) -> dict[str, Any]:
         "freeb_nestor_sample_time_history",
     ):
         if isinstance(diag, dict) and key in diag:
+            out[key] = diag[key]
+    return out
+
+
+def _solver_timing_summary(run: Any) -> dict[str, Any]:
+    diag = getattr(run.result, "diagnostics", {}) if run.result is not None else {}
+    if not isinstance(diag, dict):
+        return {}
+    out: dict[str, Any] = {}
+    if isinstance(diag.get("timing"), dict):
+        out["timing"] = diag["timing"]
+    for key in (
+        "solve_total_s",
+        "compute_forces_first_s",
+        "compute_forces_total_s",
+        "scan_dispatch_s",
+        "scan_ready_s",
+        "freeb_nestor_solve_time_history",
+        "freeb_nestor_sample_time_history",
+        "freeb_nestor_reused_history",
+        "freeb_full_update_history",
+    ):
+        if key in diag:
             out[key] = diag[key]
     return out
 
@@ -322,6 +383,8 @@ def _bench_case(label: str, input_path: Path, params: Any, args: argparse.Namesp
         "input": input_path,
         "cold_or_compile_s": cold_s,
         "warm": _summarize_timings(warm_times),
+        "cold_solver_timing": _solver_timing_summary(cold_run),
+        "warm_solver_timing": _solver_timing_summary(warm_run),
         "fsq": _fsq_summary(warm_run),
         "free_boundary": _free_boundary_summary(warm_run),
     }

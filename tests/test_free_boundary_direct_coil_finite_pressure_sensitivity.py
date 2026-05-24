@@ -283,24 +283,19 @@ def test_essos_full_solve_state_is_sensitive_to_direct_coil_current_at_finite_pr
     enable_x64(True)
     coils = essos_coils.Coils_from_json(str(LPQA_COILS))
     base_params = from_essos_coils(coils, chunk_size=256)
-    perturbed_params = base_params.with_arrays(base_currents=jnp.asarray(base_params.base_currents) * 1.05)
+    scaled_params = base_params.with_arrays(base_currents=jnp.asarray(base_params.base_currents) * 100.0)
     input_path = _write_lpqa_direct_freeb_input(tmp_path / "input.lpqa_direct_finite_pressure")
 
     monkeypatch.setenv("VMEC_JAX_FREEB_ACTIVATE_FSQ", "1.0e99")
     base_run = _run_direct_solve(input_path, base_params)
-    perturbed_run = _run_direct_solve(input_path, perturbed_params)
+    scaled_run = _run_direct_solve(input_path, scaled_params)
 
     assert np.max(_pressure_profile(base_run)) > 0.0
-    if not (_active_free_boundary(base_run) and _active_free_boundary(perturbed_run)):
+    if not (_active_free_boundary(base_run) and _active_free_boundary(scaled_run)):
         pytest.xfail(
             "Optional direct-coil finite-pressure full solve did not enter active "
             "free-boundary vacuum coupling within the gated short budget."
         )
 
-    state_delta = _relative_rms_delta(pack_state(base_run.state), pack_state(perturbed_run.state))
-    if state_delta <= 1.0e-9:
-        pytest.xfail(
-            "Current direct-coil finite-pressure full-solve path leaves the accepted "
-            "VMEC state insensitive to ESSOS coil-current perturbations."
-        )
+    state_delta = _relative_rms_delta(pack_state(base_run.state), pack_state(scaled_run.state))
     assert state_delta > 1.0e-9

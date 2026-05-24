@@ -783,39 +783,95 @@ Stretch acceptance:
 
 ## Progress Tracker
 
+The per-WP status lines above are the original acceptance checklist. The
+current branch state is summarized here and in the dated work log below; this
+tracker is the authoritative plan snapshot for the free-boundary direct-coil
+branch.
+
 ```text
 WP0 Branch foundation and plan:                100%
 WP1 Provider base API:                         100%
 WP2 Pure JAX coil Biot-Savart:                 75%
 WP3 ESSOS adapter:                             80%
 WP4 JAX mgrid interpolation:                   85%
-WP5 Free-boundary provider hook:               84%
+WP5 Free-boundary provider hook:               86%
 WP6 Direct-coil forward example:               82%
 WP7 Vacuum adjoint scaffold:                  100%
-WP8 Gradient checks:                           82%
-WP9 VMEC2000 diagnostics:                      30%
-WP10 Benchmarks/diagnostics:                   55%
+WP8 Gradient checks:                           84%
+WP9 VMEC2000 diagnostics:                      42%
+WP10 Benchmarks/diagnostics:                   65%
 WP11 Coil-only QS optimization example:        35%
 WP12 Robust coil perturbations:               100%
-WP13 Documentation:                            70%
-WP14 CI policy:                                48%
-Overall branch completion:                     66%
+WP13 Documentation:                            75%
+WP14 CI policy:                                54%
+Overall branch completion:                     69%
 ```
 
 ## Immediate Next Steps
 
-1. Bound full-solve accepted-equilibrium sensitivity to direct-coil current/geometry changes and promote the optional xfail when finite differences are stable.
-2. Continue the VMEC2000 generated-mgrid comparison diagnostic until the optional xfail can be bounded or promoted.
-3. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
-4. Run CPU/GPU benchmark matrices and convert JSON summaries into documentation plots.
-5. Implement the production matrix-free/custom-linear-solve NESTOR adjoint beyond the dense toy scaffold.
-6. Re-check PR CI, including Codecov patch coverage, after each commit.
+1. Continue the VMEC2000 generated-mgrid WOUT comparator until the optional xfail can be bounded or promoted.
+2. Precompute/reuse direct-coil geometry in benchmarks and the free-boundary provider path without cutting gradients through coil dofs.
+3. Keep benchmark timings synchronized with queued JAX work before using GPU/CPU performance numbers for decisions.
+4. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
+5. Run CPU/GPU benchmark matrices and convert JSON summaries into documentation plots.
+6. Implement the production matrix-free/custom-linear-solve NESTOR adjoint beyond the dense toy scaffold.
+7. Re-check PR CI, including Codecov patch coverage, after each commit.
 
 ## Need From User
 
 Nothing is required right now. The next implementation step can proceed locally. Later, maintainers should decide whether ESSOS mgrid export should be released before the `vmec_jax` example is promoted from research example to documented workflow.
 
 ## Work Log
+
+### 2026-05-24 Accepted-state sensitivity gate, WOUT comparator, and synchronized benchmarks
+
+Steps taken:
+
+1. Added accepted-state vector summaries and reference deltas to
+   `tools/diagnostics/freeb_direct_provider_sensitivity.py`.
+2. Promoted the optional ESSOS finite-pressure accepted-state sensitivity gate
+   from an expected xfail to a bounded `100x` current-scale test. This remains
+   a sensitivity gate, not a convergence claim.
+3. Refactored the optional VMEC2000 generated-mgrid comparison to compare
+   converged WOUT-level quantities first instead of VMEC-JAX accepted final
+   residual components against the last printed VMEC2000 trace row.
+4. Added recursive `block_until_ready` synchronization and solver timing
+   snapshots to `tools/benchmarks/bench_freeb_direct_coil_solve.py`, so GPU
+   benchmark timings include queued JAX work.
+5. Updated README/docs with the matched `--coil-current-scale` beta-scan
+   command, robust-coil utilities, benchmark commands, and finite-pressure
+   direct-coil limitations.
+
+Results obtained:
+
+1. The direct-coil sensitivity diagnostic now reports accepted-state RMS and
+   max deltas from the current-scale reference. A `1x` versus `100x` LP-QA
+   smoke gives relative accepted-state RMS delta about `1.43e-8` in the
+   diagnostic script.
+2. The optional `RUN_FULL` ESSOS sensitivity gate passes at `100x` current
+   scale in the bounded local harness.
+3. The synchronized direct-coil solve benchmark smoke reports cold solve time
+   `6.270 s` and warm solve time `0.202 s` for the two-iteration synthetic CPU
+   case. The second iteration enters the active direct-coil NESTOR path and the
+   JSON includes internal solver timing histories.
+4. The optional VMEC2000 comparator is still marked xfail until generated-mgrid
+   VMEC2000 WOUT parity is bounded, but it now targets scientifically meaningful
+   end-state quantities instead of brittle trace rows.
+
+Best next steps:
+
+1. Add differentiable direct-coil geometry precompute/reuse helpers and use
+   them first in the field-provider benchmark, then in the free-boundary bridge
+   if gradients are preserved.
+2. Run the optional VMEC2000 generated-mgrid WOUT comparator with the ESSOS
+   mgrid PR on `PYTHONPATH` and tune thresholds only if the WOUT quantities show
+   bounded parity.
+3. Run synchronized CPU/GPU benchmark matrices before attempting provider-path
+   caching or device-resident NESTOR handoff.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-05-24 Direct-provider trial refresh, robust utilities, benchmarks, and phase-1 optimization scaffold
 

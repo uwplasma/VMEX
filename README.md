@@ -128,6 +128,17 @@ python tools/diagnostics/render_freeb_single_stage_readme.py \
   --outdir docs/_static/figures
 ```
 
+For matched sensitivity scans with stronger LP-QA coil fields, keep both
+backends on the same current multiplier:
+
+```bash
+PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr:$PYTHONPATH \
+  python examples/free_boundary_essos_coils_beta_scan.py \
+  --outdir results/free_boundary_essos_coils_beta_scan_scaled \
+  --coil-current-scale 100 \
+  --activate-fsq 1e99
+```
+
 What is fully in this branch: JAX-native coil-field sampling, ESSOS coil
 conversion, generated-mgrid compatibility, direct-coil free-boundary forward
 provider plumbing, provider-gradient tests, robust coil perturbation utilities,
@@ -145,6 +156,23 @@ python examples/optimization/free_boundary_QS_coil_optimization.py \
   --smoke --provider circle --max-evals 1 --max-iter 1 --vmec-max-iter 1 \
   --pressure-scale 100 --activate-fsq 1e99 \
   --outdir results/free_boundary_QS_coil_optimization_circle_smoke
+```
+
+Robust-coil helpers live in `vmec_jax.robust_coils`; they currently cover
+current, displacement, toroidal-phase, Fourier-centerline perturbations, and
+mean/std/smooth-tail risk aggregation for future robust objectives. Lightweight
+benchmark scripts are intentionally non-CI:
+
+```bash
+python tools/benchmarks/bench_external_field_providers.py \
+  --points 48 --segments 48 \
+  --out results/bench_external_field_providers.json
+python tools/benchmarks/bench_freeb_direct_coil_solve.py \
+  --max-iter 2 \
+  --out results/bench_freeb_direct_coil_solve.json
+python tools/benchmarks/bench_freeb_coil_gradient.py \
+  --points 24 --segments 48 --matrix-size 24 \
+  --out results/bench_freeb_coil_gradient.json
 ```
 
 ## Backend Selection

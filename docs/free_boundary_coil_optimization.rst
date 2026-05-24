@@ -31,6 +31,11 @@ free-boundary vacuum/NESTOR solve. Dense toy vacuum-adjoint tests are present
 now, but the full-solve adjoint is not claimed as publication-ready until
 finite-difference checks of complete solves pass.
 
+Finite-pressure direct-coil support is currently a provider/coupling validation
+lane: active NESTOR diagnostics respond to coil-current changes and matched
+direct/generated-``mgrid`` samples agree, but accepted-equilibrium sensitivity
+and high-beta convergence remain promotion gates.
+
 Low-Resolution Beta Scan
 ------------------------
 

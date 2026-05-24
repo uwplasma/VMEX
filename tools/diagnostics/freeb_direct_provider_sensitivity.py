@@ -321,6 +321,51 @@ def _numeric_delta(after: dict[str, Any], before: dict[str, Any]) -> dict[str, f
     return delta
 
 
+def _array_delta(after: Any, before: Any) -> dict[str, float] | None:
+    try:
+        after_arr = np.asarray(after, dtype=float).reshape(-1)
+        before_arr = np.asarray(before, dtype=float).reshape(-1)
+    except Exception:
+        return None
+    if after_arr.shape != before_arr.shape or after_arr.size == 0:
+        return None
+    diff = after_arr - before_arr
+    abs_rms = float(np.sqrt(np.mean(diff * diff)))
+    before_rms = float(np.sqrt(np.mean(before_arr * before_arr)))
+    rel_rms = abs_rms / max(before_rms, 1.0e-300)
+    max_abs = float(np.max(np.abs(diff)))
+    if not (np.isfinite(abs_rms) and np.isfinite(rel_rms) and np.isfinite(max_abs)):
+        return None
+    return {
+        "absolute_rms_delta": abs_rms,
+        "relative_rms_delta": rel_rms,
+        "max_abs_delta": max_abs,
+    }
+
+
+def _accepted_state_vector(run: Any) -> np.ndarray | None:
+    try:
+        from vmec_jax.state import pack_state
+
+        vec = np.asarray(pack_state(run.state), dtype=float).reshape(-1)
+    except Exception:
+        return None
+    if vec.size == 0 or not np.isfinite(vec).all():
+        return None
+    return vec
+
+
+def _accepted_state_summary(vec: np.ndarray | None) -> dict[str, Any]:
+    if vec is None:
+        return {"available": False}
+    return {
+        "available": True,
+        "size": int(vec.size),
+        "rms": _rms(vec),
+        "max_abs": _max(np.abs(vec)),
+    }
+
+
 def _equilibrium_summary(run: Any) -> dict[str, Any]:
     from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state
 
@@ -463,6 +508,7 @@ def _run_case(
     )
     wall_s = float(max(0.0, time.perf_counter() - t0))
     after = _sample_direct_external_summary(state=run.state, static=run.static, params=params)
+    state_vec = _accepted_state_vector(run)
 
     return {
         "label": str(spec["label"]),
@@ -474,10 +520,40 @@ def _run_case(
         "fsq": _fsq_summary(run),
         "equilibrium": _equilibrium_summary(run),
         "free_boundary_diagnostics": _free_boundary_diagnostics(run),
+        "accepted_state": _accepted_state_summary(state_vec),
+        "_accepted_state_vector": state_vec,
         "direct_external_field_before": before,
         "direct_external_field_after": after,
         "direct_external_field_delta": _numeric_delta(after, before),
     }
+
+
+def _annotate_accepted_state_deltas(payload: dict[str, Any]) -> None:
+    completed = [
+        run
+        for run in payload.get("runs", [])
+        if isinstance(run, dict) and run.get("status") == "completed" and run.get("_accepted_state_vector") is not None
+    ]
+    if not completed:
+        payload["accepted_state_reference"] = None
+        return
+
+    reference = min(completed, key=lambda run: abs(float(run.get("current_scale", 0.0)) - 1.0))
+    reference_vec = reference.get("_accepted_state_vector")
+    payload["accepted_state_reference"] = {
+        "label": reference.get("label"),
+        "current_scale": reference.get("current_scale"),
+    }
+
+    for run in payload.get("runs", []):
+        if not isinstance(run, dict):
+            continue
+        vec = run.get("_accepted_state_vector")
+        if vec is not None and reference_vec is not None:
+            delta = _array_delta(vec, reference_vec)
+            if delta is not None:
+                run["accepted_state_delta_from_reference"] = delta
+        run.pop("_accepted_state_vector", None)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -597,6 +673,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"[freeb-direct-provider] case failed {spec.get('label')}: {exc!r}", file=sys.stderr)
 
+    _annotate_accepted_state_deltas(payload)
     payload["status"] = "completed" if errors == 0 else "completed_with_errors"
     payload["error_count"] = int(errors)
     _write_json(out, payload)
