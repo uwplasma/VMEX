@@ -95,6 +95,93 @@ and ``summary.json`` in the output directory. Those runtime files are ignored
 by git; the committed figures and CSV are generated artifacts for documentation
 only.
 
+Phase-1 Coil-Only Optimization Smoke
+------------------------------------
+
+The initial single-stage optimization example is deliberately a smoke scaffold,
+not a promoted QS design. It optimizes only coil currents and selected coil
+Fourier coefficients. The VMEC plasma boundary coefficients are never included
+in the optimization vector; the plasma surface is recomputed by a direct-coil
+free-boundary solve at every objective evaluation.
+
+The default objective is a cheap proxy:
+
+- accepted-state VMEC residual,
+- aspect-ratio target,
+- mean-iota target.
+
+The example records ``history.json``, ``summary.json``, and the best ``wout``.
+It exits with code ``77`` when optional ESSOS assets are unavailable. For a
+dependency-light developer smoke, use the synthetic circular coil provider:
+
+.. code-block:: bash
+
+   python examples/optimization/free_boundary_QS_coil_optimization.py \
+     --smoke \
+     --provider circle \
+     --max-evals 1 \
+     --max-iter 1 \
+     --vmec-max-iter 1 \
+     --pressure-scale 100 \
+     --activate-fsq 1e99 \
+     --outdir results/free_boundary_QS_coil_optimization_circle_smoke
+
+For the ESSOS Landreman-Paul QA coils, put ESSOS on ``PYTHONPATH`` and use:
+
+.. code-block:: bash
+
+   PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr:$PYTHONPATH \
+     python examples/optimization/free_boundary_QS_coil_optimization.py \
+     --smoke \
+     --max-evals 3 \
+     --outdir results/free_boundary_QS_coil_optimization_essos_smoke
+
+The next promotion step is replacing the cheap proxy with a Boozer/QS objective
+and validating finite-difference gradients of the complete direct-coil
+free-boundary loop.
+
+Robust Coil Perturbations
+-------------------------
+
+``vmec_jax.robust_coils`` provides pure-JAX perturbation helpers for future
+robust coil objectives:
+
+- multiplicative current perturbations,
+- rigid Cartesian displacements,
+- toroidal phase rotations about the z axis,
+- additive Fourier-centerline perturbations,
+- risk aggregation with mean, mean-plus-standard-deviation, smooth maximum, and
+  smooth tail/CVaR-like penalties.
+
+These functions operate on ``CoilFieldParams`` pytrees and do not require
+ESSOS. They can be used with ``jax.vmap`` for transformable objective pieces;
+full free-boundary solves still use a Python-loop fallback until the production
+solver path is fully JAX-transformable.
+
+Benchmarks
+----------
+
+The branch includes lightweight, non-CI benchmark scripts:
+
+.. code-block:: bash
+
+   python tools/benchmarks/bench_external_field_providers.py \
+     --points 48 --segments 48 \
+     --out results/bench_external_field_providers.json
+
+   python tools/benchmarks/bench_freeb_direct_coil_solve.py \
+     --max-iter 2 \
+     --out results/bench_freeb_direct_coil_solve.json
+
+   python tools/benchmarks/bench_freeb_coil_gradient.py \
+     --points 24 --segments 48 --matrix-size 24 \
+     --out results/bench_freeb_coil_gradient.json
+
+Each benchmark writes JSON with backend/device information, cold/compile
+timing, warm timing, and the problem dimensions. Defaults are intentionally
+small and CPU-safe; GPU production benchmarks should raise the grid and segment
+counts explicitly.
+
 Validation Status
 -----------------
 
@@ -111,6 +198,9 @@ Current fast tests cover:
 - active direct-coil NESTOR-step sensitivity to coil-current changes, including
   the expected linear normal-field/source scaling and quadratic ``bsqvac``
   scaling;
+- direct-provider source refresh on reuse and trial-state vacuum-field refresh,
+  so direct coils are not scored against stale pre-update source data;
+- robust-coil perturbation/risk aggregation utilities;
 - dense toy vacuum-adjoint tests.
 
 The optional VMEC2000 generated-``mgrid`` comparison is present but xfailed for
@@ -122,15 +212,13 @@ the existing VMEC2000-parity ``mgrid`` fixtures.
 Next Implementation Steps
 -------------------------
 
-- Make active NESTOR/free-boundary vacuum coupling respond robustly to direct
-  coil parameters in finite-pressure accepted equilibria, not only in the
-  isolated active NESTOR step.
-- Add the first coil-only optimization example where the plasma boundary is
-  never an independent optimization variable, only after the accepted
-  equilibrium is demonstrably sensitive to coil parameters.
+- Bound active accepted-equilibrium sensitivity to direct coil parameters with
+  full-solve finite-difference checks, then promote the optional xfail.
+- Replace the phase-1 coil-only optimization proxy with a Boozer/QS objective
+  once the complete direct-coil free-boundary loop has validated gradients.
 - Promote the VMEC2000 generated-``mgrid`` comparison after the direct/mgrid
   trace discrepancy is bounded.
 - Replace the dense toy vacuum-adjoint scaffold with the production
   matrix-free/custom-linear-solve NESTOR operator.
-- Add benchmark plots for direct-coil sampling and free-boundary solve timing
-  on CPU and GPU.
+- Run the benchmark matrix on CPU and GPU and turn the JSON summaries into
+  documentation plots.

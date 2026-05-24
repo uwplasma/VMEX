@@ -16,12 +16,13 @@ The Biot-Savart normalization also matches ESSOS phase-1 behavior:
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from math import pi as _PI
 from typing import Any
 
 from vmec_jax._compat import jax, jnp, tree_util
 
 
-_TWO_PI = 2.0 * jnp.pi
+_TWO_PI = 2.0 * _PI
 
 
 @tree_util.register_pytree_node_class

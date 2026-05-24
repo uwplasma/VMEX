@@ -789,34 +789,78 @@ WP1 Provider base API:                         100%
 WP2 Pure JAX coil Biot-Savart:                 75%
 WP3 ESSOS adapter:                             80%
 WP4 JAX mgrid interpolation:                   85%
-WP5 Free-boundary provider hook:               78%
+WP5 Free-boundary provider hook:               84%
 WP6 Direct-coil forward example:               82%
 WP7 Vacuum adjoint scaffold:                  100%
-WP8 Gradient checks:                           78%
+WP8 Gradient checks:                           82%
 WP9 VMEC2000 diagnostics:                      30%
-WP10 Benchmarks/diagnostics:                   10%
-WP11 Coil-only QS optimization example:         5%
-WP12 Robust coil perturbations:                 0%
-WP13 Documentation:                            62%
-WP14 CI policy:                                42%
-Overall branch completion:                     58%
+WP10 Benchmarks/diagnostics:                   55%
+WP11 Coil-only QS optimization example:        35%
+WP12 Robust coil perturbations:               100%
+WP13 Documentation:                            70%
+WP14 CI policy:                                48%
+Overall branch completion:                     66%
 ```
 
 ## Immediate Next Steps
 
-1. Make active finite-pressure accepted equilibria respond robustly to direct-coil current/geometry changes, not only the isolated NESTOR step.
-2. Refresh NESTOR sampling for trial/accepted states so direct-provider updates are not measured against stale pre-trial boundary/source data.
-3. Add benchmark scripts for direct-coil field sampling, free-boundary solves, and provider gradients.
-4. Continue the VMEC2000 generated-mgrid comparison diagnostic until the optional xfail can be bounded or promoted.
-5. Add the first coil-only QS optimization example only after accepted-state direct-coil sensitivity is validated.
-6. Add robust coil perturbation utilities and deterministic tests.
-7. Re-check PR CI, including Codecov patch coverage, after each commit.
+1. Bound full-solve accepted-equilibrium sensitivity to direct-coil current/geometry changes and promote the optional xfail when finite differences are stable.
+2. Continue the VMEC2000 generated-mgrid comparison diagnostic until the optional xfail can be bounded or promoted.
+3. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
+4. Run CPU/GPU benchmark matrices and convert JSON summaries into documentation plots.
+5. Implement the production matrix-free/custom-linear-solve NESTOR adjoint beyond the dense toy scaffold.
+6. Re-check PR CI, including Codecov patch coverage, after each commit.
 
 ## Need From User
 
 Nothing is required right now. The next implementation step can proceed locally. Later, maintainers should decide whether ESSOS mgrid export should be released before the `vmec_jax` example is promoted from research example to documented workflow.
 
 ## Work Log
+
+### 2026-05-24 Direct-provider trial refresh, robust utilities, benchmarks, and phase-1 optimization scaffold
+
+Steps taken:
+
+1. Fixed direct-provider NESTOR reuse so non-mgrid providers refresh `gsource` and nonsingular mode vectors on reuse steps instead of using stale mgrid-style cached sources.
+2. Added non-mutating trial-state vacuum refresh for direct providers during sign probes, backtracking, and direct fallback scoring. Mgrid runs keep the committed VMEC ivac/ivacskip cadence.
+3. Added `vmec_jax.robust_coils` with deterministic current, displacement, toroidal-phase, and Fourier-centerline perturbations plus robust risk aggregation.
+4. Added `tests/test_robust_coil_perturbations.py`.
+5. Added lightweight benchmark scripts:
+   - `tools/benchmarks/bench_external_field_providers.py`,
+   - `tools/benchmarks/bench_freeb_direct_coil_solve.py`,
+   - `tools/benchmarks/bench_freeb_coil_gradient.py`.
+6. Added `examples/optimization/free_boundary_QS_coil_optimization.py`, a phase-1 coil-only direct-coil free-boundary optimization smoke that never optimizes plasma boundary coefficients.
+7. Documented the phase-1 optimization smoke, robust utilities, and benchmark commands in `docs/free_boundary_coil_optimization.rst` and added the new modules to the API autosummary.
+
+Results obtained:
+
+1. Direct-provider source-refresh regression passed:
+   - `pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`: 3 passed, 1 skipped in 6.65 s.
+2. Broader provider/free-boundary subset passed:
+   - `PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr:$PYTHONPATH pytest -q tests/test_external_fields_coils_jax.py tests/test_external_fields_essos_adapter.py tests/test_external_fields_mgrid_jax.py tests/test_free_boundary_vacuum_adjoint.py tests/test_free_boundary_coil_provider_forward.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_essos_coil_parity.py::test_essos_direct_coil_free_boundary_matches_generated_mgrid_backend`: 29 passed, 1 skipped in 42.21 s.
+3. Robust utilities passed:
+   - `pytest -q tests/test_robust_coil_perturbations.py`: 9 passed in 4.82 s.
+4. Benchmark smokes passed:
+   - external-field provider smoke wrote `results/bench_external_field_providers_smoke.json`, synthetic direct coil cold/compile `0.0725 s`, warm min `0.000038 s`;
+   - coil-gradient smoke wrote `results/bench_freeb_coil_gradient_smoke.json`, direct-coil value/grad cold/compile `0.172 s`, warm min `0.000042 s`;
+   - direct free-boundary solve smoke wrote `results/bench_freeb_direct_coil_solve_smoke.json`, synthetic solve cold `4.50 s`.
+5. Phase-1 coil-only smoke passed:
+   - objective `0.400854`,
+   - residual proxy `0.3926`,
+   - aspect `6.0827`,
+   - mean iota `0.4906`,
+   - outputs in `results/free_boundary_QS_coil_optimization_circle_smoke`.
+
+Best next steps:
+
+1. Run and bound the optional full-solve ESSOS accepted-state sensitivity test after the trial-refresh patch.
+2. Promote direct-coil finite-pressure accepted-equilibrium sensitivity only when finite differences show stable, non-stale response.
+3. Run the VMEC2000 optional comparison and keep it xfailed unless the generated-mgrid parity gap is bounded.
+4. Replace the phase-1 optimization proxy with Boozer/QS only after full-loop gradients are validated.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-05-24 Accepted-state active residual recompute
 

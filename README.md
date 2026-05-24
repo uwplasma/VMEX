@@ -130,12 +130,22 @@ python tools/diagnostics/render_freeb_single_stage_readme.py \
 
 What is fully in this branch: JAX-native coil-field sampling, ESSOS coil
 conversion, generated-mgrid compatibility, direct-coil free-boundary forward
-provider plumbing, provider-gradient tests, and dense toy vacuum-adjoint tests.
-What is not claimed yet: publication-level exact gradients through the full
-production free-boundary/NESTOR solve, or a coil-only optimization whose
-accepted equilibrium is demonstrably sensitive to coil parameters after active
-vacuum coupling. The implementation plan and validation status are tracked in
-`plan_freeb.md` and `docs/free_boundary_coil_optimization.rst`.
+provider plumbing, provider-gradient tests, robust coil perturbation utilities,
+benchmark scripts, a phase-1 coil-only optimization smoke, and dense toy
+vacuum-adjoint tests. What is not claimed yet: publication-level exact
+gradients through the full production free-boundary/NESTOR solve, or a
+promoted coil-only Boozer/QS optimization result. The implementation plan and
+validation status are tracked in `plan_freeb.md` and
+`docs/free_boundary_coil_optimization.rst`.
+
+Run the phase-1 coil-only smoke without ESSOS assets:
+
+```bash
+python examples/optimization/free_boundary_QS_coil_optimization.py \
+  --smoke --provider circle --max-evals 1 --max-iter 1 --vmec-max-iter 1 \
+  --pressure-scale 100 --activate-fsq 1e99 \
+  --outdir results/free_boundary_QS_coil_optimization_circle_smoke
+```
 
 ## Backend Selection
 

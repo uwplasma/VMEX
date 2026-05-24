@@ -1,0 +1,394 @@
+#!/usr/bin/env python3
+"""Small direct-coil free-boundary solve benchmark.
+
+The default case uses a synthetic circular coil and a tiny generated
+free-boundary input deck.  An optional ESSOS fixture case can be requested with
+``--include-essos``; it writes a skipped JSON case when ESSOS or the coil JSON is
+not available.
+"""
+
+from __future__ import annotations
+
+import argparse
+from copy import deepcopy
+import json
+import os
+from pathlib import Path
+import sys
+import time
+from typing import Any, Callable
+
+import numpy as np
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+DEFAULT_OUT = REPO_ROOT / "results" / "bench_freeb_direct_coil_solve.json"
+DEFAULT_WORKDIR = REPO_ROOT / "tmp" / "bench_freeb_direct_coil_solve"
+DEFAULT_INPUT = REPO_ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_reactorScale_lowres"
+ESSOS_COILS_NAME = "ESSOS_biot_savart_LandremanPaulQA.json"
+FINITE_PRESSURE_SCALE = 34.46233666638
+
+
+def _parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--out", type=Path, default=DEFAULT_OUT, help="JSON summary path.")
+    p.add_argument("--workdir", type=Path, default=DEFAULT_WORKDIR, help="Generated input/output directory.")
+    p.add_argument("--max-iter", type=int, default=2, help="Tiny synthetic solve iteration budget.")
+    p.add_argument("--warm-repeats", type=int, default=1, help="Warm solve repeats after the cold solve.")
+    p.add_argument("--jit-forces", action="store_true", help="Enable JIT force kernels. Off by default for bounded CPU runs.")
+    p.add_argument("--activate-fsq", type=float, default=1.0e99, help="Force active direct-coil NESTOR coupling early.")
+    p.add_argument("--include-essos", action="store_true", help="Also run an optional small ESSOS fixture case.")
+    p.add_argument("--coils-json", type=Path, default=None, help="Optional ESSOS coil JSON.")
+    p.add_argument("--input", type=Path, default=DEFAULT_INPUT, help="Base input for optional ESSOS case.")
+    p.add_argument("--essos-max-iter", type=int, default=1)
+    p.add_argument("--essos-ns", type=int, default=12)
+    p.add_argument("--essos-mpol", type=int, default=4)
+    p.add_argument("--essos-ntor", type=int, default=4)
+    p.add_argument("--essos-nzeta", type=int, default=6)
+    p.add_argument("--enable-x64", action=argparse.BooleanOptionalAction, default=True)
+    return p
+
+
+def _backend_info() -> dict[str, Any]:
+    from vmec_jax._compat import has_jax, jax, x64_enabled
+
+    info: dict[str, Any] = {"has_jax": bool(has_jax()), "x64_enabled": bool(x64_enabled())}
+    if jax is None:
+        info.update({"backend": "numpy", "devices": []})
+        return info
+    try:
+        devices = jax.devices()
+    except Exception as exc:
+        devices = []
+        info["devices_error"] = repr(exc)
+    info.update(
+        {
+            "backend": str(jax.default_backend()),
+            "devices": [str(device) for device in devices],
+            "platforms": sorted({str(getattr(device, "platform", "unknown")) for device in devices}),
+        }
+    )
+    return info
+
+
+def _jsonify(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _jsonify(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonify(v) for v in value]
+    if isinstance(value, np.ndarray):
+        return _jsonify(value.tolist())
+    if isinstance(value, np.generic):
+        return _jsonify(value.item())
+    if isinstance(value, (bool, int, str)) or value is None:
+        return value
+    if isinstance(value, float):
+        return value if np.isfinite(value) else None
+    try:
+        arr = np.asarray(value)
+        if arr.shape == ():
+            return _jsonify(arr.item())
+    except Exception:
+        pass
+    return str(value)
+
+
+def _write_json(path: Path, data: dict[str, Any]) -> None:
+    path = path.expanduser().resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(_jsonify(data), indent=2, sort_keys=True, allow_nan=False) + "\n")
+
+
+def _time_once(fn: Callable[[], Any]) -> tuple[float, Any]:
+    t0 = time.perf_counter()
+    value = fn()
+    return float(time.perf_counter() - t0), value
+
+
+def _summarize_timings(times: list[float]) -> dict[str, float | int | None]:
+    if not times:
+        return {"repeats": 0, "mean_s": None, "min_s": None, "max_s": None}
+    arr = np.asarray(times, dtype=float)
+    return {
+        "repeats": int(arr.size),
+        "mean_s": float(np.mean(arr)),
+        "min_s": float(np.min(arr)),
+        "max_s": float(np.max(arr)),
+    }
+
+
+def _last_float(value: Any) -> float | None:
+    try:
+        arr = np.asarray(value, dtype=float).reshape(-1)
+    except Exception:
+        return None
+    if arr.size == 0:
+        return None
+    val = float(arr[-1])
+    return val if np.isfinite(val) else None
+
+
+def _fsq_summary(run: Any) -> dict[str, Any]:
+    result = run.result
+    if result is None:
+        return {}
+    fsqr = _last_float(getattr(result, "fsqr2_history", None))
+    fsqz = _last_float(getattr(result, "fsqz2_history", None))
+    fsql = _last_float(getattr(result, "fsql2_history", None))
+    return {
+        "n_iter": int(getattr(result, "n_iter", -1)),
+        "fsqr": fsqr,
+        "fsqz": fsqz,
+        "fsql": fsql,
+        "fsq_sum": None if None in (fsqr, fsqz, fsql) else float(fsqr + fsqz + fsql),
+    }
+
+
+def _free_boundary_summary(run: Any) -> dict[str, Any]:
+    diag = getattr(run.result, "diagnostics", {}) if run.result is not None else {}
+    freeb = diag.get("free_boundary", {}) if isinstance(diag, dict) else {}
+    out: dict[str, Any] = {}
+    if isinstance(freeb, dict):
+        out["vacuum_stub"] = bool(freeb.get("vacuum_stub", True))
+        out["nestor_model"] = freeb.get("nestor_model")
+        out["last_provider_kind"] = (freeb.get("last_nestor_diagnostics") or {}).get("provider_kind")
+    for key in (
+        "freeb_full_update_history",
+        "freeb_nestor_reused_history",
+        "freeb_nestor_solve_time_history",
+        "freeb_nestor_sample_time_history",
+    ):
+        if isinstance(diag, dict) and key in diag:
+            out[key] = diag[key]
+    return out
+
+
+def _circle_coil_params() -> Any:
+    from vmec_jax._compat import jnp
+    from vmec_jax.external_fields import CoilFieldParams
+
+    dofs = jnp.zeros((1, 3, 3), dtype=float)
+    dofs = dofs.at[0, 0, 2].set(1.8)
+    dofs = dofs.at[0, 1, 1].set(1.8)
+    return CoilFieldParams(
+        base_curve_dofs=dofs,
+        base_currents=jnp.asarray([3.0e7], dtype=float),
+        n_segments=64,
+        nfp=1,
+        stellsym=False,
+    )
+
+
+def _write_tiny_direct_input(path: Path, *, max_iter: int) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        f"""
+&INDATA
+  LFREEB = T
+  MGRID_FILE = 'DIRECT_COILS'
+  EXTCUR = 1.0
+  LASYM = F
+  NFP = 1
+  MPOL = 4
+  NTOR = 0
+  NS = 7
+  NZETA = 2
+  NTHETA = 8
+  NS_ARRAY = 7
+  FTOL_ARRAY = 1.0E-8
+  NITER_ARRAY = {int(max_iter)}
+  NITER = {int(max_iter)}
+  FTOL = 1.0E-8
+  NSTEP = 20
+  NVACSKIP = 1
+  GAMMA = 0.0
+  PHIEDGE = 1.0
+  CURTOR = 0.0
+  SPRES_PED = 1.0
+  NCURR = 0
+  PRES_SCALE = 1.0E4
+  AM = 1.0 -1.0
+  AI = 0.4 0.0
+  AC = 0.0
+  RAXIS = 1.0
+  ZAXIS = 0.0
+  RBC(0,0) = 1.0  ZBS(0,0) = 0.0
+  RBC(0,1) = 0.25 ZBS(0,1) = 0.25
+  RBC(0,2) = 0.03 ZBS(0,2) = 0.00
+/
+""".lstrip()
+    )
+    return path
+
+
+def _candidate_essos_dirs() -> list[Path]:
+    candidates: list[Path] = []
+    if os.getenv("ESSOS_INPUT_DIR"):
+        candidates.append(Path(os.environ["ESSOS_INPUT_DIR"]).expanduser())
+    candidates.extend(
+        [
+            REPO_ROOT.parent / "ESSOS_mgrid_pr" / "examples" / "input_files",
+            REPO_ROOT.parent / "ESSOS" / "examples" / "input_files",
+            Path("/Users/rogeriojorge/local/ESSOS_mgrid_pr/examples/input_files"),
+            Path("/Users/rogeriojorge/local/ESSOS/examples/input_files"),
+        ]
+    )
+    return candidates
+
+
+def _find_essos_json(requested: Path | None) -> Path:
+    if requested is not None:
+        path = requested.expanduser().resolve()
+        if not path.exists():
+            raise FileNotFoundError(f"requested --coils-json does not exist: {path}")
+        return path
+    for directory in _candidate_essos_dirs():
+        path = directory / ESSOS_COILS_NAME
+        if path.exists():
+            return path
+    searched = "\n  ".join(str(path) for path in _candidate_essos_dirs())
+    raise FileNotFoundError(f"could not find {ESSOS_COILS_NAME}; searched:\n  {searched}")
+
+
+def _write_essos_input(path: Path, args: argparse.Namespace) -> tuple[Path, Any, dict[str, Any]]:
+    from essos.coils import Coils_from_json
+    from vmec_jax.external_fields import from_essos_coils
+    from vmec_jax.namelist import read_indata, write_indata
+
+    base_input = args.input.expanduser().resolve()
+    if not base_input.exists():
+        raise FileNotFoundError(f"base free-boundary input does not exist: {base_input}")
+    coils_json = _find_essos_json(args.coils_json)
+    coils = Coils_from_json(str(coils_json))
+    params = from_essos_coils(coils, chunk_size=128)
+
+    indata = deepcopy(read_indata(base_input))
+    indata.scalars.update(
+        {
+            "LFREEB": True,
+            "MGRID_FILE": "DIRECT_COILS",
+            "EXTCUR": [1.0],
+            "NS_ARRAY": [int(args.essos_ns)],
+            "NITER_ARRAY": [int(args.essos_max_iter)],
+            "FTOL_ARRAY": [1.0e-8],
+            "NITER": int(args.essos_max_iter),
+            "FTOL": 1.0e-8,
+            "MPOL": int(args.essos_mpol),
+            "NTOR": int(args.essos_ntor),
+            "NZETA": int(args.essos_nzeta),
+            "NTHETA": 0,
+            "NVACSKIP": max(1, int(args.essos_nzeta)),
+            "PRES_SCALE": FINITE_PRESSURE_SCALE,
+            "AM": [1.0, -1.0],
+        }
+    )
+    write_indata(path, indata)
+    return path, params, {"base_input": base_input, "coils_json": coils_json}
+
+
+def _run_direct_solve(input_path: Path, params: Any, args: argparse.Namespace) -> Any:
+    from vmec_jax.driver import run_free_boundary
+
+    return run_free_boundary(
+        input_path,
+        max_iter=int(args.max_iter),
+        multigrid=False,
+        verbose=False,
+        jit_forces=bool(args.jit_forces),
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+        free_boundary_activate_fsq=float(args.activate_fsq),
+    )
+
+
+def _bench_case(label: str, input_path: Path, params: Any, args: argparse.Namespace) -> dict[str, Any]:
+    def run_once() -> Any:
+        return _run_direct_solve(input_path, params, args)
+
+    cold_s, cold_run = _time_once(run_once)
+    warm_times: list[float] = []
+    warm_run = cold_run
+    for _ in range(max(0, int(args.warm_repeats))):
+        dt, warm_run = _time_once(run_once)
+        warm_times.append(dt)
+    return {
+        "label": label,
+        "status": "completed",
+        "input": input_path,
+        "cold_or_compile_s": cold_s,
+        "warm": _summarize_timings(warm_times),
+        "fsq": _fsq_summary(warm_run),
+        "free_boundary": _free_boundary_summary(warm_run),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    if int(args.max_iter) < 1:
+        raise SystemExit("--max-iter must be >= 1")
+
+    from vmec_jax._compat import enable_x64
+
+    enable_x64(bool(args.enable_x64))
+    workdir = args.workdir.expanduser().resolve()
+    workdir.mkdir(parents=True, exist_ok=True)
+
+    payload: dict[str, Any] = {
+        "status": "completed",
+        "script": str(Path(__file__).resolve()),
+        "backend": _backend_info(),
+        "parameters": {
+            "max_iter": int(args.max_iter),
+            "warm_repeats": int(args.warm_repeats),
+            "jit_forces": bool(args.jit_forces),
+            "activate_fsq": float(args.activate_fsq),
+        },
+        "cases": [],
+    }
+
+    synthetic_input = _write_tiny_direct_input(workdir / "input.bench_direct_coil_synthetic", max_iter=int(args.max_iter))
+    payload["cases"].append(_bench_case("synthetic_direct_coil_solve", synthetic_input, _circle_coil_params(), args))
+
+    if args.include_essos:
+        try:
+            essos_input, essos_params, metadata = _write_essos_input(workdir / "input.bench_direct_coil_essos", args)
+            essos_args = argparse.Namespace(**vars(args))
+            essos_args.max_iter = int(args.essos_max_iter)
+            case = _bench_case("essos_direct_coil_solve", essos_input, essos_params, essos_args)
+            case["metadata"] = metadata
+            payload["cases"].append(case)
+        except Exception as exc:
+            payload["cases"].append(
+                {
+                    "label": "essos_direct_coil_solve",
+                    "status": "skipped",
+                    "reason": "essos_or_free_boundary_fixture_unavailable",
+                    "error": repr(exc),
+                }
+            )
+    else:
+        payload["cases"].append({"label": "essos_direct_coil_solve", "status": "skipped", "reason": "not_requested"})
+
+    out = args.out.expanduser().resolve()
+    _write_json(out, payload)
+    print(f"[bench-freeb-direct-coil-solve] wrote {out}")
+    for case in payload["cases"]:
+        if case["status"] == "completed":
+            warm = case["warm"]
+            warm_min = "n/a" if warm["min_s"] is None else f"{warm['min_s']:.6f}s"
+            print(
+                f"[bench-freeb-direct-coil-solve] {case['label']}: "
+                f"cold_or_compile={case['cold_or_compile_s']:.6f}s warm_min={warm_min}"
+            )
+        else:
+            print(f"[bench-freeb-direct-coil-solve] {case['label']}: skipped ({case.get('reason', 'unknown')})")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
