@@ -691,6 +691,25 @@ def _format_sampler_diagnostics(case: dict[str, Any]) -> str:
         parts.append(f"final_sample={_format_seconds(diag.get('sample_time_s'))}")
     if diag.get("solve_time_s") is not None:
         parts.append(f"final_solve={_format_seconds(diag.get('solve_time_s'))}")
+    phase_keys = (
+        ("cache", "cache_build_time_s"),
+        ("source", "source_time_s"),
+        ("bvec", "bvec_time_s"),
+        ("matrix", "matrix_time_s"),
+        ("linear", "linear_solve_time_s"),
+        ("vac_channels", "vacuum_channels_time_s"),
+    )
+    phase_parts = [
+        f"{label}={_format_seconds(diag.get(key))}"
+        for label, key in phase_keys
+        if diag.get(key) not in (None, 0.0)
+    ]
+    if phase_parts:
+        parts.append("final_solve_breakdown[" + ",".join(phase_parts) + "]")
+    if diag.get("physical_matrix_lu_built") is not None:
+        parts.append(f"physical_lu={diag.get('physical_matrix_lu_built')}")
+    if diag.get("mode_matrix_lu_built") is not None:
+        parts.append(f"mode_lu={diag.get('mode_matrix_lu_built')}")
     if diag.get("provider_jit_sampler") is not None:
         parts.append(f"jit_sampler={diag.get('provider_jit_sampler')}")
     if diag.get("provider_chunk_size") is not None:

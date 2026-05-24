@@ -1556,6 +1556,7 @@ def _build_vmec_like_cache(
     nf: int,
     lasym: bool,
     wint_vmec: np.ndarray | None = None,
+    factor_physical_matrix: bool = True,
 ) -> NestorVmecLikeCache:
     """Build a dense boundary-integral-like operator on the VMEC angular grid.
 
@@ -1643,7 +1644,7 @@ def _build_vmec_like_cache(
         rhs_scale=rhs_scale,
         mode_basis=mode_basis,
         mode_matrix=mode_matrix,
-        matrix_lu=_dense_lu_factor(matrix),
+        matrix_lu=_dense_lu_factor(matrix) if bool(factor_physical_matrix) else None,
         mode_matrix_lu=_dense_lu_factor(mode_matrix),
     )
 
@@ -3188,6 +3189,12 @@ def nestor_external_only_step(
     amatrix_mode_pre = None
     amatrix_mode_from_grpmn = None
     matrix_override_applied = False
+    cache_build_time_s = 0.0
+    source_time_s = 0.0
+    bvec_time_s = 0.0
+    matrix_time_s = 0.0
+    linear_solve_time_s = 0.0
+    vacuum_channels_time_s = 0.0
 
     if _is_dense_mode(mode_for_step):
         alpha = _as_float_env("VMEC_JAX_FREEB_VMEC_LIKE_ALPHA", 1.0)
@@ -3204,6 +3211,7 @@ def nestor_external_only_step(
                 or int(cache.nzeta) != int(nzeta)
                 or not reuse_step
             ):
+                t_phase = time.perf_counter()
                 cache = _build_vmec_like_cache(
                     sample,
                     alpha=alpha,
@@ -3217,7 +3225,9 @@ def nestor_external_only_step(
                     nf=max(0, int(getattr(static.cfg, "ntor", 0))),
                     lasym=bool(getattr(static.cfg, "lasym", False)),
                     wint_vmec=np.asarray(wint_vmec, dtype=float),
+                    factor_physical_matrix=dense_solve_mode not in ("mode", "vmec_mode", "fouri_mode"),
                 )
+                cache_build_time_s += max(0.0, time.perf_counter() - t_phase)
             use_greenf_source = _freeb_use_greenf_source(int(getattr(static.cfg, "ntor", 0)))
             # Default to Fortran-equivalent matrix assembly from grpmn (fouri
             # path). Can be disabled via VMEC_JAX_FREEB_EXPERIMENTAL_FOURI_MATRIX=0
@@ -3233,6 +3243,7 @@ def nestor_external_only_step(
                 nzeta_surf = int(np.asarray(sample.R).shape[1])
                 nvper_greenf = 64 if nzeta_surf == 1 else max(1, int(getattr(static.cfg, "nfp", 1)))
                 try:
+                    t_phase = time.perf_counter()
                     if experimental_fouri_matrix:
                         gsource_vmec, grpmn_nonsing = _vmec_nonsingular_terms_from_bexni(
                             sample=sample,
@@ -3250,6 +3261,7 @@ def nestor_external_only_step(
                             nvper=nvper_greenf,
                         )
                         grpmn_nonsing = None
+                    source_time_s += max(0.0, time.perf_counter() - t_phase)
                 except Exception:
                     gsource_vmec = np.asarray(gsource_bexni, dtype=float)
                     grpmn_nonsing = None
@@ -3259,10 +3271,12 @@ def nestor_external_only_step(
                     if reuse_step and provider_allows_source_reuse and runtime_bvec_nonsing_cached is not None:
                         bvec_mode_nonsing = np.asarray(runtime_bvec_nonsing_cached, dtype=float)
                     else:
+                        t_phase = time.perf_counter()
                         bvec_mode_nonsing = _vmec_bvec_from_gsource(
                             gsource=np.asarray(gsource_vmec, dtype=float),
                             basis=cache.mode_basis,
                         )
+                        bvec_time_s += max(0.0, time.perf_counter() - t_phase)
                     rhs_mode_eff = np.asarray(bvec_mode_nonsing, dtype=float)
                     add_analytic = os.getenv("VMEC_JAX_FREEB_ADD_ANALYTIC_BVEC", "1").strip().lower() not in (
                         "",
@@ -3271,6 +3285,7 @@ def nestor_external_only_step(
                         "no",
                     )
                     if add_analytic:
+                        t_phase = time.perf_counter()
                         bvec_mode_analytic, grpmn_analytic = _vmec_analytic_terms_from_geometry(
                             sample=sample,
                             basis=cache.mode_basis,
@@ -3278,6 +3293,7 @@ def nestor_external_only_step(
                             signgs=int(getattr(static, "signgs", -1)),
                         )
                         rhs_mode_eff = rhs_mode_eff + np.asarray(bvec_mode_analytic, dtype=float)
+                        bvec_time_s += max(0.0, time.perf_counter() - t_phase)
                     if (not reuse_step) and experimental_fouri_matrix and (grpmn_nonsing is not None):
                         grpmn_total = np.asarray(grpmn_nonsing, dtype=float)
                         if grpmn_analytic is not None:
@@ -3286,6 +3302,7 @@ def nestor_external_only_step(
                             amatrix_mode_pre = (
                                 None if cache.mode_matrix is None else np.asarray(cache.mode_matrix, dtype=float)
                             )
+                            t_phase = time.perf_counter()
                             amatrix_mode_from_grpmn = _vmec_mode_matrix_from_grpmn(
                                 grpmn=grpmn_total,
                                 basis=cache.mode_basis,
@@ -3295,30 +3312,47 @@ def nestor_external_only_step(
                                 mode_matrix=np.asarray(amatrix_mode_from_grpmn, dtype=float),
                                 mode_matrix_lu=_dense_lu_factor(np.asarray(amatrix_mode_from_grpmn, dtype=float)),
                             )
+                            matrix_time_s += max(0.0, time.perf_counter() - t_phase)
                             matrix_override_applied = True
                         except Exception:
                             pass
+                t_phase = time.perf_counter()
                 phi, potvac, bvec_mode = _solve_vmec_like_mode_from_gsource(
                     cache=cache,
                     gsource=np.asarray(gsource_vmec, dtype=float),
                     rhs_mode=rhs_mode_eff,
                 )
+                linear_solve_time_s += max(0.0, time.perf_counter() - t_phase)
                 if cache.mode_basis is not None:
+                    t_phase = time.perf_counter()
                     vac_total = _vacuum_channels_from_sample_potvac(
                         sample=sample,
                         basis=cache.mode_basis,
                         potvac=np.asarray(potvac, dtype=float),
                     )
+                    vacuum_channels_time_s += max(0.0, time.perf_counter() - t_phase)
                 else:
+                    t_phase = time.perf_counter()
                     vac_total = _vacuum_channels_from_sample_phi(sample, phi)
+                    vacuum_channels_time_s += max(0.0, time.perf_counter() - t_phase)
             else:
+                t_phase = time.perf_counter()
                 phi = _solve_vmec_like_dense(rhs, cache)
+                linear_solve_time_s += max(0.0, time.perf_counter() - t_phase)
+                t_phase = time.perf_counter()
                 vac_total = _vacuum_channels_from_sample_phi(sample, phi)
+                vacuum_channels_time_s += max(0.0, time.perf_counter() - t_phase)
             used_mode = mode_for_step
         except Exception:
+            t_phase = time.perf_counter()
             cache = _build_poisson_cache(ntheta=ntheta, nzeta=nzeta)
+            cache_build_time_s += max(0.0, time.perf_counter() - t_phase)
+            t_phase = time.perf_counter()
             phi = _solve_periodic_poisson_fft(rhs, cache)
+            linear_solve_time_s += max(0.0, time.perf_counter() - t_phase)
+            t_phase = time.perf_counter()
             vac_total = _vacuum_channels_from_sample_phi(sample, phi)
+            vacuum_channels_time_s += max(0.0, time.perf_counter() - t_phase)
             used_mode = "spectral_poisson_external_only_fallback:dense_failed"
     else:
         if (
@@ -3326,9 +3360,15 @@ def nestor_external_only_step(
             or int(cache.ntheta) != int(ntheta)
             or int(cache.nzeta) != int(nzeta)
         ):
+            t_phase = time.perf_counter()
             cache = _build_poisson_cache(ntheta=ntheta, nzeta=nzeta)
+            cache_build_time_s += max(0.0, time.perf_counter() - t_phase)
+        t_phase = time.perf_counter()
         phi = _solve_periodic_poisson_fft(rhs, cache)
+        linear_solve_time_s += max(0.0, time.perf_counter() - t_phase)
+        t_phase = time.perf_counter()
         vac_total = _vacuum_channels_from_sample_phi(sample, phi)
+        vacuum_channels_time_s += max(0.0, time.perf_counter() - t_phase)
         used_mode = mode_for_step
 
     bsqvac = np.asarray(vac_total.bsqvac)
@@ -3346,6 +3386,12 @@ def nestor_external_only_step(
         "mode": str(used_mode),
         "sample_time_s": float(sample_time),
         "solve_time_s": float(solve_time),
+        "cache_build_time_s": float(cache_build_time_s),
+        "source_time_s": float(source_time_s),
+        "bvec_time_s": float(bvec_time_s),
+        "matrix_time_s": float(matrix_time_s),
+        "linear_solve_time_s": float(linear_solve_time_s),
+        "vacuum_channels_time_s": float(vacuum_channels_time_s),
         "sample_ntheta": int(ntheta),
         "sample_nzeta": int(nzeta),
         "sample_points": int(ntheta * nzeta),
@@ -3387,6 +3433,9 @@ def nestor_external_only_step(
         diagnostics["bvec_mode_nonsing_rms"] = _rms(bvec_mode_nonsing)
     if bvec_mode_analytic is not None:
         diagnostics["bvec_mode_analytic_rms"] = _rms(bvec_mode_analytic)
+    if isinstance(cache, NestorVmecLikeCache):
+        diagnostics["physical_matrix_lu_built"] = bool(cache.matrix_lu is not None)
+        diagnostics["mode_matrix_lu_built"] = bool(cache.mode_matrix_lu is not None)
 
     res = NestorSolveResult(
         vac_total=vac_total,

@@ -399,6 +399,60 @@ def test_direct_coil_current_only_objective_fd_slope_is_stable(tmp_path: Path) -
     np.testing.assert_allclose(slopes[0], slopes[1], rtol=5.0e-6, atol=1.0e-12)
 
 
+def test_direct_coil_geometry_dof_accepted_state_fd_slope_is_stable(tmp_path: Path) -> None:
+    """Accepted states should respond smoothly to a direct-coil Fourier geometry DOF."""
+
+    enable_x64(True)
+    from examples.optimization.free_boundary_QS_coil_optimization import (
+        apply_coil_variables,
+        run_direct_free_boundary,
+        summarize_run,
+    )
+
+    input_path = _write_tiny_direct_freeb_input(tmp_path / "input.direct_geometry_fd_slope")
+    base_params = _circle_coil_params(current=3.0e7)
+    variables = [("fourier_dof", (0, 0, 2))]
+
+    def objective(x: float) -> float:
+        params = apply_coil_variables(
+            base_params,
+            np.asarray([x], dtype=float),
+            variables=variables,
+            current_step=0.0,
+            dof_step=1.0e-2,
+        )
+        run, wall_s = run_direct_free_boundary(
+            input_path,
+            params,
+            vmec_max_iter=4,
+            activate_fsq=1.0e99,
+        )
+        summary = summarize_run(
+            run,
+            params,
+            objective=np.nan,
+            wall_s=wall_s,
+            target_aspect=6.0,
+            target_iota=0.4,
+        )
+        assert summary["free_boundary_vacuum_stub"] is False
+        assert summary["free_boundary_nestor_model"].startswith("vmec2000_like_dense_integral")
+        assert summary["free_boundary_bnormal_rms"] > 0.0
+        assert summary["free_boundary_bsqvac_rms"] > 0.0
+        return float(np.sqrt(np.mean(np.asarray(pack_state(run.state), dtype=float) ** 2)))
+
+    slopes = []
+    for eps in (0.25, 0.125):
+        forward = objective(eps)
+        backward = objective(-eps)
+        slopes.append((forward - backward) / (2.0 * eps))
+
+    slopes = np.asarray(slopes, dtype=float)
+    assert np.all(np.isfinite(slopes))
+    assert np.min(np.abs(slopes)) > 1.0e-7
+    np.testing.assert_allclose(slopes[0], slopes[1], rtol=1.0e-4, atol=1.0e-12)
+
+
 @pytest.mark.full
 def test_essos_full_solve_state_is_sensitive_to_direct_coil_current_at_finite_pressure(
     tmp_path: Path,

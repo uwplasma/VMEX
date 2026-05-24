@@ -29,6 +29,9 @@ Steps taken:
 13. Public docs now avoid overclaiming full free-boundary/NESTOR adjoints or converged high-beta direct-coil equilibria.
 14. Phase-1 coil-only optimization summaries now expose active free-boundary/NESTOR diagnostics, and the current-only finite-difference smoke asserts it is measuring active direct-coil coupling.
 15. Optional VMEC2000 generated-mgrid diagnostics now classify no-WOUT completions with structured underconverged metadata instead of leaving users to parse raw stdout tails.
+16. Added a fast accepted-state finite-difference slope-stability check for one direct-coil Fourier geometry coefficient.
+17. Dense NESTOR diagnostics now break solve time into cache build, source assembly, bvec assembly, matrix assembly/factorization, linear solve, and vacuum-channel reconstruction.
+18. Default mode-space NESTOR cache construction now skips the unused physical-point LU factorization while preserving it for physical dense solves.
 
 Results obtained:
 
@@ -50,6 +53,8 @@ Results obtained:
 16. Subagent larger spectral-mode benchmark with `sample_points=2352`, `coils=8`, `segments=128` found the JIT sampler reduced warm active sampling from `0.0588 s` to `0.0545 s` (about 7%), but total warm wall time remained about `0.35 s`; dense NESTOR mode remains the main performance bottleneck.
 17. Targeted active-coupling summary tests passed: 2 passed in 7.81 s.
 18. VMEC2000 parser/optional LASYM validation tests passed locally as 1 passed, 1 skipped in 0.40 s without `VMEC2000_INTEGRATION=1`.
+19. Geometry-DOF accepted-state finite-difference probe passed in the targeted finite-pressure direct-coil validation batch.
+20. LU-skip benchmark confirmed the default mode-space path reports `physical_lu=False`, `mode_lu=True`; an explicit physical-dense benchmark reports `physical_lu=True`, so the optimization remains guarded.
 
 Best next steps:
 
@@ -67,11 +72,11 @@ Open-lane completion estimates:
 1. External provider architecture: 93%.
 2. Direct-coil finite-pressure forward lane: 93%.
 3. ESSOS/mgrid/VMEC2000 comparison lane: 84%.
-4. Full-loop gradient validation: 57%.
+4. Full-loop gradient validation: 60%.
 5. Robust/optimization examples: 82%.
-6. Performance/benchmarking: 78%.
+6. Performance/benchmarking: 82%.
 7. Docs/release hygiene: 92%.
-8. Overall branch completion: 87%.
+8. Overall branch completion: 89%.
 
 ## Mission
 

@@ -53,6 +53,9 @@ single-stage coil optimizer:
   generated-``mgrid`` and direct-coil providers from the same ESSOS LP-QA coil
   set agree in the recorded scalar diagnostics, and direct NESTOR samples
   respond to coil-current changes.
+- The fast validation lane also includes tiny accepted-state
+  finite-difference slope-stability checks for direct-coil current and one
+  direct-coil Fourier geometry coefficient.
 - The active NESTOR sensitivity checks validate the provider/coupling layer:
   normal-field/source channels scale linearly with current changes and
   ``bsqvac`` scales quadratically. They do not yet validate a full accepted
@@ -436,7 +439,8 @@ Next Implementation Steps
 -------------------------
 
 - Bound active accepted-equilibrium sensitivity to direct coil parameters with
-  full-solve finite-difference checks, then promote the optional xfail.
+  realistic ESSOS/high-beta full-solve finite-difference checks, then promote
+  the optional xfail.
 - Replace the phase-1 coil-only optimization proxy with a Boozer/QS objective
   once the complete direct-coil free-boundary loop has validated gradients.
 - Promote the VMEC2000 generated-``mgrid`` comparison after the direct/mgrid
