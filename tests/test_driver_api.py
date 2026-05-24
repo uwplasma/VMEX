@@ -677,6 +677,76 @@ def test_high_mode_non_lasym_gpu_uses_precomputed_tridi_default(monkeypatch):
     )
 
 
+def test_cpu_free_boundary_non_scan_uses_precomputed_tridi_default(monkeypatch):
+    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.cth_like_free_bdy_lasym_small"
+    cfg, _indata = load_config(input_path)
+    monkeypatch.delenv("VMEC_JAX_TRIDI_PRECOMPUTE", raising=False)
+    monkeypatch.delenv("VMEC_JAX_TRIDI_SOLVE", raising=False)
+
+    assert (
+        driver_module._default_preconditioner_use_precomputed_tridi(
+            cfg=cfg,
+            backend="cpu",
+            performance_mode=True,
+            use_scan=False,
+        )
+        is True
+    )
+    assert (
+        driver_module._default_preconditioner_use_lax_tridi(
+            cfg=cfg,
+            backend="cpu",
+            performance_mode=True,
+            use_scan=False,
+        )
+        is None
+    )
+    assert (
+        driver_module._default_preconditioner_use_lax_tridi(
+            cfg=cfg,
+            backend="gpu",
+            performance_mode=True,
+            use_scan=False,
+        )
+        is None
+    )
+    assert (
+        driver_module._default_preconditioner_use_lax_tridi(
+            cfg=cfg,
+            backend="cpu",
+            performance_mode=True,
+            use_scan=True,
+        )
+        is None
+    )
+    monkeypatch.setenv("VMEC_JAX_TRIDI_SOLVE", "0")
+    assert (
+        driver_module._default_preconditioner_use_lax_tridi(
+            cfg=cfg,
+            backend="cpu",
+            performance_mode=True,
+            use_scan=False,
+        )
+        is None
+    )
+
+
+def test_cpu_fixed_boundary_keeps_lax_tridi_legacy_default(monkeypatch):
+    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.nfp4_QH_warm_start"
+    cfg, _indata = load_config(input_path)
+    monkeypatch.delenv("VMEC_JAX_TRIDI_SOLVE", raising=False)
+
+    assert (
+        driver_module._default_preconditioner_use_lax_tridi(
+            cfg=cfg,
+            backend="cpu",
+            performance_mode=True,
+            use_scan=False,
+        )
+        is None
+    )
+
+
 def test_run_fixed_boundary_gpu_lasym_passes_precomputed_tridi_policy(monkeypatch):
     input_path = Path(__file__).resolve().parents[1] / "examples/data/input.basic_non_stellsym_pressure"
     monkeypatch.delenv("VMEC_JAX_TRIDI_PRECOMPUTE", raising=False)
@@ -747,6 +817,43 @@ def test_run_fixed_boundary_gpu_high_mode_non_lasym_passes_precomputed_tridi_pol
     )
 
     assert captured["kwargs"]["preconditioner_use_precomputed_tridi"] is True
+
+
+def test_run_fixed_boundary_cpu_free_boundary_passes_precomputed_tridi_policy(monkeypatch):
+    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.cth_like_free_bdy_lasym_small"
+    monkeypatch.delenv("VMEC_JAX_TRIDI_SOLVE", raising=False)
+    monkeypatch.setattr(driver_module, "_default_backend_name", lambda: "cpu")
+    captured = {}
+
+    def _fake_solver(state, static, **kwargs):
+        captured["kwargs"] = dict(kwargs)
+        return SolveVmecResidualResult(
+            state=state,
+            n_iter=1,
+            w_history=np.asarray([1.0], dtype=float),
+            fsqr2_history=np.asarray([1.0], dtype=float),
+            fsqz2_history=np.asarray([0.0], dtype=float),
+            fsql2_history=np.asarray([0.0], dtype=float),
+            grad_rms_history=np.asarray([], dtype=float),
+            step_history=np.asarray([], dtype=float),
+            diagnostics={"converged": False, "use_scan": bool(kwargs["use_scan"])},
+        )
+
+    monkeypatch.setattr(solve_module, "solve_fixed_boundary_residual_iter", _fake_solver)
+    monkeypatch.setattr(driver_module, "solve_fixed_boundary_residual_iter", _fake_solver)
+
+    run_fixed_boundary(
+        input_path,
+        solver="vmec2000_iter",
+        solver_mode="accelerated",
+        max_iter=1,
+        multigrid=False,
+        use_scan=False,
+        verbose=False,
+    )
+
+    assert captured["kwargs"]["preconditioner_use_precomputed_tridi"] is True
+    assert captured["kwargs"]["preconditioner_use_lax_tridi"] is None
 
 
 def test_default_non_autodiff_solver_policy_keeps_free_boundary_on_robust_path():

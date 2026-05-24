@@ -273,11 +273,13 @@ def _default_preconditioner_use_precomputed_tridi(
     if os.getenv("VMEC_JAX_TRIDI_PRECOMPUTE") is not None:
         return None
     backend_l = str(backend).strip().lower()
-    if backend_l not in ("gpu", "cuda", "rocm", "tpu"):
-        return None
     if not bool(performance_mode):
         return None
     if bool(use_scan):
+        return None
+    if backend_l == "cpu" and bool(getattr(cfg, "lfreeb", False)):
+        return True
+    if backend_l not in ("gpu", "cuda", "rocm", "tpu"):
         return None
     if bool(getattr(cfg, "lasym", False)):
         return True
@@ -288,6 +290,27 @@ def _default_preconditioner_use_precomputed_tridi(
     except Exception:
         signed_mode_count = 0
     return True if signed_mode_count >= 32 else None
+
+
+def _default_preconditioner_use_lax_tridi(
+    *,
+    cfg,
+    backend: str,
+    performance_mode: bool,
+    use_scan: bool,
+) -> bool | None:
+    """Choose the CPU R/Z preconditioner tridiagonal-solve primitive.
+
+    ``None`` delegates to the lower-level environment default.  May 2026
+    profiling showed that XLA's batched ``lax.linalg.tridiagonal_solve`` can
+    lower CPU free-boundary preconditioner-apply cost, but the public policy
+    stays opt-in until the remaining batched-RHS shape case is covered by a
+    solve-level regression.  Keep scan/GPU and fixed-boundary runs on their
+    existing policies until they have separate profiling evidence.
+    """
+
+    _ = (cfg, backend, performance_mode, use_scan)
+    return None
 
 
 def _result_final_residuals(result) -> tuple[float, float, float] | None:
@@ -1928,6 +1951,12 @@ def run_fixed_boundary(
                 performance_mode=bool(performance_mode_i),
                 use_scan=bool(use_scan_i),
             )
+            preconditioner_use_lax_tridi_i = _default_preconditioner_use_lax_tridi(
+                cfg=static_i.cfg,
+                backend=policy_backend,
+                performance_mode=bool(performance_mode_i),
+                use_scan=bool(use_scan_i),
+            )
             if step_size is _STEP_SIZE_SENTINEL or step_size is None:
                 step_size_finish = float(indata.get_float("DELT", 5e-3))
             else:
@@ -1976,6 +2005,7 @@ def run_fixed_boundary(
                 fsq_total_target=finish_fsq_total_target,
                 host_update_assembly=host_update_assembly_i,
                 preconditioner_use_precomputed_tridi=preconditioner_use_precomputed_tridi_i,
+                preconditioner_use_lax_tridi=preconditioner_use_lax_tridi_i,
                 jit_forces=_resolve_finish_jit_forces(static_i, int(budget_i)),
             )
             return replace(best_run, state=res_i.state, result=res_i)
@@ -2971,6 +3001,12 @@ def run_fixed_boundary(
                 performance_mode=bool(performance_mode),
                 use_scan=bool(scan_mode),
             )
+            stage_preconditioner_use_lax_tridi = _default_preconditioner_use_lax_tridi(
+                cfg=cfg_i,
+                backend=policy_backend,
+                performance_mode=bool(performance_mode),
+                use_scan=bool(scan_mode),
+            )
             solve_kwargs = dict(
                 indata=indata,
                 signgs=signgs,
@@ -3008,6 +3044,7 @@ def run_fixed_boundary(
                 fsq_total_target=stage_fsq_total_target,
                 host_update_assembly=stage_host_update_assembly,
                 preconditioner_use_precomputed_tridi=stage_preconditioner_use_precomputed_tridi,
+                preconditioner_use_lax_tridi=stage_preconditioner_use_lax_tridi,
                 external_field_provider_kind=external_field_provider_kind,
                 external_field_provider_static=external_field_provider_static_eff,
                 external_field_provider_params=external_field_provider_params,

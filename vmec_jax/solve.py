@@ -4864,6 +4864,7 @@ def solve_fixed_boundary_residual_iter(
     fsq_total_target: float | None = None,
     host_update_assembly: bool | None = None,
     preconditioner_use_precomputed_tridi: bool | None = None,
+    preconditioner_use_lax_tridi: bool | None = None,
     adjoint_trace: bool = False,
     adjoint_trace_mode: str = "full",
     external_field_provider_kind: str | None = None,
@@ -6724,6 +6725,9 @@ def solve_fixed_boundary_residual_iter(
         tridi_precompute_env = os.getenv("VMEC_JAX_TRIDI_PRECOMPUTE", "0")
         if preconditioner_use_precomputed_tridi is not None:
             tridi_precompute_env = "1" if bool(preconditioner_use_precomputed_tridi) else "0"
+        tridi_solve_env = os.getenv("VMEC_JAX_TRIDI_SOLVE", "")
+        if preconditioner_use_lax_tridi is not None:
+            tridi_solve_env = "force" if bool(preconditioner_use_lax_tridi) else "0"
         scan_options = _vmec2000_scan_options_from_env(
             verbose=bool(verbose),
             vmec2000_control=bool(vmec2000_control),
@@ -6746,7 +6750,7 @@ def solve_fixed_boundary_residual_iter(
             scan_precompute_env=os.getenv("VMEC_JAX_SCAN_PRECOND_PRECOMPUTE", ""),
             tridi_precompute_env=tridi_precompute_env,
             scan_lax_env=os.getenv("VMEC_JAX_SCAN_PRECOND_LAXTRIDI", ""),
-            tridi_solve_env=os.getenv("VMEC_JAX_TRIDI_SOLVE", ""),
+            tridi_solve_env=tridi_solve_env,
             scan_restart_payload_env=os.getenv("VMEC_JAX_SCAN_RESTART_PAYLOAD", ""),
         )
         scan_options = _apply_state_only_scan_options(scan_options, state_only_scan=bool(state_only_scan))
@@ -10489,6 +10493,7 @@ def solve_fixed_boundary_residual_iter(
                         cfg=cfg,
                         jmax_override=precond_jmax_override,
                         use_precomputed=preconditioner_use_precomputed_tridi,
+                        use_lax_tridi=preconditioner_use_lax_tridi,
                     )
                     cache_prec_rz_mats = mats
                     cache_prec_rz_jmax = None if _tree_has_tracer(k) else int(jmax)
@@ -10659,6 +10664,7 @@ def solve_fixed_boundary_residual_iter(
                         cfg=cfg,
                         jmax_override=precond_jmax_override,
                         use_precomputed=preconditioner_use_precomputed_tridi,
+                        use_lax_tridi=preconditioner_use_lax_tridi,
                     )
                     cache_prec_lam_prec = lam_prec
                     cache_prec_faclam = faclam_dump
@@ -10705,10 +10711,11 @@ def solve_fixed_boundary_residual_iter(
                 frzl_rz = _rz_apply_jit_1(
                     frzl_in=frzl_rhs,
                     mats=mats,
-                    jmax=jmax,
-                    cfg=cfg,
-                    use_precomputed=preconditioner_use_precomputed_tridi,
-                )
+                        jmax=jmax,
+                        cfg=cfg,
+                        use_precomputed=preconditioner_use_precomputed_tridi,
+                        use_lax_tridi=preconditioner_use_lax_tridi,
+                    )
                 frzl_lam_pre = frzl_rz
                 if host_update_assembly:
                     # NumPy path: avoids ~15 JAX dispatches (jnp.asarray, zeros_like, mul).
@@ -10848,6 +10855,7 @@ def solve_fixed_boundary_residual_iter(
                         cfg=cfg,
                         jmax_override=precond_jmax_override,
                         use_precomputed=preconditioner_use_precomputed_tridi,
+                        use_lax_tridi=preconditioner_use_lax_tridi,
                     )
                     cache_prec_lam_prec = lam_prec
                     cache_prec_faclam = faclam_dump
@@ -10897,6 +10905,7 @@ def solve_fixed_boundary_residual_iter(
                     jmax=jmax,
                     cfg=cfg,
                     use_precomputed=preconditioner_use_precomputed_tridi,
+                    use_lax_tridi=preconditioner_use_lax_tridi,
                 )
                 frzl_lam_pre = frzl_rz
                 if host_update_assembly:
@@ -12048,6 +12057,9 @@ def solve_fixed_boundary_residual_iter(
                         None
                         if preconditioner_use_precomputed_tridi is None
                         else bool(preconditioner_use_precomputed_tridi)
+                    ),
+                    "preconditioner_use_lax_tridi": (
+                        None if preconditioner_use_lax_tridi is None else bool(preconditioner_use_lax_tridi)
                     ),
                     "inv_tau_before": _adjoint_trace_array(inv_tau),
                     "fsq_prev_before": float(fsq_prev_before),
