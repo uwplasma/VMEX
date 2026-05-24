@@ -370,23 +370,43 @@ def _runtime_info() -> dict[str, object]:
         return {"error": repr(exc)}
 
 
-def _env_flag_enabled(name: str) -> bool:
+def _env_flag_override(name: str) -> bool | None:
     flag = os.getenv(name, "").strip().lower()
-    return flag in ("1", "true", "yes", "on")
+    if flag in ("1", "true", "yes", "on"):
+        return True
+    if flag in ("0", "false", "no", "off"):
+        return False
+    return None
+
+
+def _gpu_like_solver_device(args: argparse.Namespace) -> bool:
+    solver_device = str(getattr(args, "solver_device", "auto") or "auto").strip().lower()
+    if solver_device in ("gpu", "cuda", "rocm", "tpu"):
+        return True
+    if solver_device not in ("auto", "default", ""):
+        return False
+    platform = os.getenv("JAX_PLATFORM_NAME", "").strip().lower()
+    return platform in ("gpu", "cuda", "rocm", "tpu")
 
 
 def _effective_jvp_only_exact_tape(args: argparse.Namespace) -> bool:
     value = getattr(args, "jvp_only_exact_tape", None)
     if value is not None:
         return bool(value)
-    return _env_flag_enabled("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE")
+    forced = _env_flag_override("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE")
+    if forced is not None:
+        return bool(forced)
+    return _gpu_like_solver_device(args)
 
 
 def _effective_jvp_only_basepoint_carries(args: argparse.Namespace) -> bool:
     value = getattr(args, "jvp_only_basepoint_carries", None)
     if value is not None:
         return bool(value)
-    return _env_flag_enabled("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES")
+    forced = _env_flag_override("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES")
+    if forced is not None:
+        return bool(forced)
+    return _gpu_like_solver_device(args)
 
 
 def _cache_len(value: Any) -> int:

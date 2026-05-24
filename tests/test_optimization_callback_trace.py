@@ -297,6 +297,25 @@ def test_exact_optimizer_profile_skips_initial_metrics_by_default() -> None:
     assert args.jvp_only_basepoint_carries is None
 
 
+def test_exact_optimizer_profile_gpu_auto_jvp_flags(monkeypatch) -> None:
+    monkeypatch.delenv("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE", raising=False)
+    monkeypatch.delenv("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES", raising=False)
+    monkeypatch.delenv("JAX_PLATFORM_NAME", raising=False)
+
+    gpu_args = exact_profile_tool._parse_args(["--solver-device", "gpu"])
+    assert exact_profile_tool._effective_jvp_only_exact_tape(gpu_args) is True
+    assert exact_profile_tool._effective_jvp_only_basepoint_carries(gpu_args) is True
+
+    cpu_args = exact_profile_tool._parse_args(["--solver-device", "cpu"])
+    assert exact_profile_tool._effective_jvp_only_exact_tape(cpu_args) is False
+    assert exact_profile_tool._effective_jvp_only_basepoint_carries(cpu_args) is False
+
+    monkeypatch.setenv("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE", "0")
+    monkeypatch.setenv("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES", "0")
+    assert exact_profile_tool._effective_jvp_only_exact_tape(gpu_args) is False
+    assert exact_profile_tool._effective_jvp_only_basepoint_carries(gpu_args) is False
+
+
 def test_exact_optimizer_profile_gradient_alias_preserves_check_gradient() -> None:
     gradient_only = exact_profile_tool._normalize_callback_args(
         exact_profile_tool._parse_args(["--gradient-only"])

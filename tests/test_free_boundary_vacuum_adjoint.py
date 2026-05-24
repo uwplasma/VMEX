@@ -5,12 +5,19 @@ import pytest
 
 from vmec_jax._compat import enable_x64
 from vmec_jax.external_fields import CoilFieldParams, sample_coil_field_cylindrical
-from vmec_jax.free_boundary import vacuum_boundary_fields_from_cylindrical
+from vmec_jax.free_boundary import (
+    _build_vmec_mode_basis,
+    _vmec_bvec_from_gsource,
+    _vmec_source_from_gsource,
+    vacuum_boundary_fields_from_cylindrical,
+)
 from vmec_jax.free_boundary_adjoint import (
     dense_mode_vacuum_solve_jax,
     dense_vacuum_residual,
     dense_vacuum_solve_jax,
+    mode_rhs_from_gsource_jax,
     vacuum_boundary_fields_from_cylindrical_jax,
+    vmec_source_from_gsource_jax,
 )
 
 
@@ -121,6 +128,81 @@ def test_dense_vacuum_symmetric_mode_uses_symmetric_transpose_solve():
     expected = jnp.linalg.solve(A, cotangent)
 
     np.testing.assert_allclose(grad_b, expected, rtol=1.0e-13, atol=1.0e-13)
+
+
+def _mode_basis_for_rhs_tests(*, lasym: bool = False):
+    ntheta, nzeta = 4, 5
+    wint = np.full((ntheta, nzeta), 1.0 / float(ntheta * nzeta))
+    return _build_vmec_mode_basis(
+        ntheta=ntheta,
+        nzeta=nzeta,
+        nfp=2,
+        mf=2,
+        nf=1,
+        lasym=lasym,
+        wint=wint,
+    )
+
+
+def _mode_rhs_from_basis(gsource, basis):
+    return mode_rhs_from_gsource_jax(
+        gsource,
+        sin_basis=basis["sinmni"],
+        cos_basis=basis["cosmni"],
+        xmpot=basis["xmpot"],
+        n_raw=basis["n_raw"],
+        onp=float(basis["onp"]),
+        lasym=bool(basis["lasym"]),
+        nuv3=int(basis["nuv3"]),
+        nuv_full=int(basis["nuv_full"]),
+        imirr=basis["imirr"],
+        imirr_full=basis["imirr_full"],
+    )
+
+
+@pytest.mark.parametrize("lasym", [False, True])
+def test_jax_vmec_source_and_mode_rhs_match_numpy_reference(lasym):
+    enable_x64(True)
+    basis = _mode_basis_for_rhs_tests(lasym=lasym)
+    gsource = np.linspace(-0.8, 1.3, int(basis["nuv_full"]), dtype=float)
+
+    actual_source = vmec_source_from_gsource_jax(
+        gsource,
+        onp=float(basis["onp"]),
+        lasym=bool(basis["lasym"]),
+        nuv3=int(basis["nuv3"]),
+        nuv_full=int(basis["nuv_full"]),
+        imirr=basis["imirr"],
+        imirr_full=basis["imirr_full"],
+    )
+    expected_source = np.asarray(_vmec_source_from_gsource(gsource=gsource, basis=basis))
+    np.testing.assert_allclose(actual_source, expected_source, rtol=1.0e-13, atol=1.0e-13)
+
+    actual_rhs = _mode_rhs_from_basis(gsource, basis)
+    expected_rhs = _vmec_bvec_from_gsource(gsource=gsource, basis=basis)
+    np.testing.assert_allclose(actual_rhs, expected_rhs, rtol=1.0e-13, atol=1.0e-13)
+
+
+@pytest.mark.parametrize("lasym", [False, True])
+def test_jax_vmec_mode_rhs_gradient_wrt_gsource_matches_finite_difference(lasym):
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+
+    enable_x64(True)
+    basis = _mode_basis_for_rhs_tests(lasym=lasym)
+    gsource = jnp.asarray(np.linspace(-0.8, 1.3, int(basis["nuv_full"]), dtype=float))
+    direction = jnp.asarray(np.cos(np.arange(int(basis["nuv_full"]), dtype=float)))
+    rhs0 = _mode_rhs_from_basis(gsource, basis)
+    weights = jnp.asarray(np.linspace(0.3, 1.1, int(rhs0.shape[0]), dtype=float))
+
+    def objective(scale):
+        rhs = _mode_rhs_from_basis(gsource + scale * direction, basis)
+        return jnp.vdot(weights, rhs)
+
+    exact = jax.grad(objective)(0.0)
+    eps = 1.0e-6
+    fd = (objective(eps) - objective(-eps)) / (2.0 * eps)
+    np.testing.assert_allclose(exact, fd, rtol=3.0e-9, atol=1.0e-11)
 
 
 def _mode_vacuum_inputs(*, lasym: bool = False):
@@ -523,8 +605,17 @@ def _toy_coil_projected_mode_vacuum_response(*, current_scale: float = 0.0, radi
         Rv=Rv,
         Zv=Zv,
     )
-    flat_bnormal = jnp.reshape(vac["bnormal"], (-1,))
-    rhs_mode = sin_basis.T @ flat_bnormal
+    rhs_mode = mode_rhs_from_gsource_jax(
+        vac["bnormal"],
+        sin_basis=sin_basis,
+        xmpot=jnp.asarray([0, 1, 1]),
+        n_raw=jnp.asarray([0, 0, 1]),
+        onp=1.0,
+        lasym=False,
+        imirr=jnp.asarray([1, 0, 3, 2]),
+        nuv3=4,
+        nuv_full=4,
+    )
     response = dense_mode_vacuum_solve_jax(mode_matrix, rhs_mode, sin_basis)
     weights = jnp.asarray([0.7, -0.2, 0.4, 0.1], dtype=float)
     return 0.5 * jnp.vdot(response["mode_coeffs"], response["mode_coeffs"]) + 0.1 * jnp.vdot(

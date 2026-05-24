@@ -63,10 +63,11 @@ The validation ladder is:
 4. Projected implicit vacuum chain: direct coils feed the JAX boundary
    projection and then a dense custom-linear-solve vacuum problem, with
    current and geometry gradients checked against finite differences.
-5. Mode-space vacuum chain: the same projected boundary data feeds a
-   JAX-native dense mode-space solve and reconstructs the boundary scalar
-   potential. This matches the interface shape of the VMEC-like NESTOR solve
-   while full Green-function source and matrix assembly are still host-side.
+5. Mode-space vacuum chain: the same projected boundary data feeds the
+   VMEC-style source symmetrization, mode-RHS projection, and a JAX-native
+   dense mode-space solve that reconstructs the boundary scalar potential.
+   This matches the interface shape of the VMEC-like NESTOR solve while full
+   Green-function matrix assembly is still host-side.
 6. Full direct-coil free-boundary solve: a low-resolution scalar objective,
    first with one coil current and then with one Fourier coefficient, bounded
    against finite differences of complete solves.
@@ -515,9 +516,12 @@ Current fast tests cover:
 - direct-coil to JAX boundary projection to implicit dense-vacuum-chain
   finite-difference checks for one current scale and one Fourier geometry
   perturbation.
+- VMEC-style source symmetrization and mode-RHS projection value parity with
+  the host implementation, plus finite-difference gradients with respect to
+  the source values.
 - dense mode-space vacuum solve and reconstruction tests, including
   stellarator-symmetric and LASYM-style basis blocks plus finite-difference
-  gradients through a direct-coil projected mode-space chain.
+  gradients through a direct-coil projected source/RHS/mode-space chain.
 
 The optional VMEC2000 generated-``mgrid`` comparison is present but xfailed for
 now. VMEC2000 reads the generated grid and advances the trace locally, but the

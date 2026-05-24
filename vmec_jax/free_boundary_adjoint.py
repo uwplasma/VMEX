@@ -68,6 +68,99 @@ def dense_vacuum_residual(A: Any, x: Any, b: Any) -> Any:
     return jnp.asarray(A) @ jnp.asarray(x) - jnp.asarray(b)
 
 
+def vmec_source_from_gsource_jax(
+    gsource: Any,
+    *,
+    onp: float,
+    lasym: bool,
+    nuv3: int | None = None,
+    nuv_full: int | None = None,
+    imirr: Any | None = None,
+    imirr_full: Any | None = None,
+) -> Any:
+    """JAX version of VMEC/NESTOR source symmetrization.
+
+    ``gsource`` is the weighted normal-field source used by the VMEC-like
+    NESTOR bridge.  For stellarator-symmetric solves VMEC anti-symmetrizes the
+    source with its mirror point before projecting onto sine modes.  For LASYM
+    solves it uses the source directly.  This helper is intentionally small and
+    side-effect free so the source-to-mode-RHS stage can be differentiated and
+    finite-difference checked independently of the current host NESTOR path.
+    """
+
+    gsrc = jnp.reshape(jnp.asarray(gsource), (-1,))
+    n_source = int(gsrc.shape[0])
+    n3 = int(nuv3) if nuv3 is not None else n_source
+    nfull = int(nuv_full) if nuv_full is not None else n3
+
+    if bool(lasym):
+        return float(onp) * gsrc[:n3]
+
+    if n_source >= nfull and imirr_full is not None:
+        mirror = jnp.asarray(imirr_full, dtype=jnp.int32)[:n3]
+        mirrored = gsrc[mirror]
+    elif imirr is not None:
+        mirror = jnp.asarray(imirr, dtype=jnp.int32)[:n3]
+        mirrored = gsrc[mirror]
+    else:
+        raise ValueError("non-LASYM source symmetrization requires imirr or imirr_full")
+    return 0.5 * float(onp) * (gsrc[:n3] - mirrored)
+
+
+def mode_rhs_from_gsource_jax(
+    gsource: Any,
+    *,
+    sin_basis: Any,
+    xmpot: Any,
+    n_raw: Any,
+    onp: float,
+    lasym: bool,
+    cos_basis: Any | None = None,
+    nuv3: int | None = None,
+    nuv_full: int | None = None,
+    imirr: Any | None = None,
+    imirr_full: Any | None = None,
+) -> Any:
+    """Project a VMEC/NESTOR grid source into mode-space RHS coefficients.
+
+    This mirrors the production ``_vmec_bvec_from_gsource`` contract with JAX
+    arrays.  It is a validation rung for the future production adjoint:
+    differentiable external fields can feed this source projection, then a
+    custom-linear-solve vacuum primitive, before the full NESTOR operator is
+    ported.
+    """
+
+    src = vmec_source_from_gsource_jax(
+        gsource,
+        onp=float(onp),
+        lasym=bool(lasym),
+        nuv3=nuv3,
+        nuv_full=nuv_full,
+        imirr=imirr,
+        imirr_full=imirr_full,
+    )
+    sin = jnp.asarray(sin_basis)
+    if sin.ndim != 2:
+        raise ValueError("sin_basis must be a 2D array")
+    bsin = sin.T @ src
+
+    xmpot_arr = jnp.asarray(xmpot)
+    n_raw_arr = jnp.asarray(n_raw)
+    skip_mask = jnp.logical_and(xmpot_arr == 0, n_raw_arr < 0)
+    bsin = jnp.where(skip_mask, 0.0, bsin)
+
+    if not bool(lasym):
+        return bsin
+    if cos_basis is None:
+        raise ValueError("cos_basis is required for LASYM mode RHS projection")
+    cos = jnp.asarray(cos_basis)
+    if cos.shape != sin.shape:
+        raise ValueError("cos_basis must match sin_basis shape")
+    bcos = cos.T @ src
+    bcos = jnp.where(skip_mask, 0.0, bcos)
+    return jnp.concatenate([bsin, bcos], axis=0)
+
+
 def dense_mode_vacuum_solve_jax(
     mode_matrix: Any,
     rhs_mode: Any,

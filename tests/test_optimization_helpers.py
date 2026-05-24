@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import jax.numpy as jnp
 import pytest
@@ -1634,6 +1635,56 @@ def test_fixed_boundary_optimizer_trial_scan_default_and_env_override(monkeypatc
 
     monkeypatch.setenv("VMEC_JAX_OPT_TRIAL_SCAN", "1")
     assert opt._use_scan_for_trial_solves() is True
+
+
+def test_fixed_boundary_optimizer_jvp_only_exact_tape_gpu_auto_and_overrides(monkeypatch):
+    opt = object.__new__(FixedBoundaryExactOptimizer)
+
+    monkeypatch.delenv("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE", raising=False)
+    monkeypatch.delenv("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES", raising=False)
+    opt._solver_device_name = "cpu"
+    assert opt._jvp_only_exact_tape_enabled() is False
+    assert opt._jvp_only_basepoint_carries_enabled() is False
+
+    opt._solver_device_name = "gpu"
+    assert opt._jvp_only_exact_tape_enabled() is True
+    assert opt._jvp_only_basepoint_carries_enabled() is True
+
+    monkeypatch.setenv("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE", "0")
+    assert opt._jvp_only_exact_tape_enabled() is False
+    monkeypatch.setenv("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE", "1")
+    assert opt._jvp_only_exact_tape_enabled() is True
+
+    monkeypatch.setenv("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES", "0")
+    assert opt._jvp_only_basepoint_carries_enabled() is False
+    monkeypatch.setenv("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES", "1")
+    assert opt._jvp_only_basepoint_carries_enabled() is True
+
+
+def test_solve_exact_with_tape_for_jvp_enables_gpu_basepoint_carries_temporarily(monkeypatch):
+    monkeypatch.delenv("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE", raising=False)
+    monkeypatch.delenv("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES", raising=False)
+
+    opt = object.__new__(FixedBoundaryExactOptimizer)
+    opt._solver_device_name = "gpu"
+    opt._profile = {}
+    solve_calls = []
+
+    def fake_solve(_params, *, return_payload=False, jvp_only=False):
+        solve_calls.append(
+            (
+                bool(return_payload),
+                bool(jvp_only),
+                os.environ.get("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES"),
+            )
+        )
+        return "state", {"tape": "jvp-tape", "axis_override": {}}
+
+    opt._solve_exact_with_tape = fake_solve
+    assert opt._solve_exact_with_tape_for_jvp(np.asarray([0.0]))[0] == "state"
+    assert solve_calls == [(True, True, "1")]
+    assert "VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES" not in os.environ
+    assert opt._profile["exact_tape_jvp_only_basepoint_carries_auto"]["count"] == 1
 
 
 def test_fixed_boundary_optimizer_exact_path_is_device_aware(monkeypatch):

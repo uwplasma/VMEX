@@ -50,12 +50,14 @@ Steps taken:
 34. Added direct-coil to JAX boundary-projection to dense implicit vacuum-solve finite-difference gradient tests for one coil current and one Fourier geometry perturbation.
 35. Added an optional VMEC2000 generated-mgrid trace-smoke gate below the full WOUT-parity xfail, and made the quick benchmark matrix exercise one active NESTOR update.
 36. Added a JAX-native dense mode-space vacuum-solve scaffold with grid-potential reconstruction and finite-difference gradient tests through a projected direct-coil chain.
-37. Split free-boundary external-boundary sampling diagnostics into setup, boundary-geometry synthesis, external-field sampling, axis-field sampling, projection, and total timing buckets.
-38. Added an explicit strict xfail marker for full coil-to-free-boundary-to-Boozer/QS exact-gradient validation, keeping phase-2 status visible in the test suite.
+37. Added JAX-native VMEC-style source symmetrization and mode-RHS projection parity/gradient tests, including a direct-coil projected source-to-mode chain.
+38. Split free-boundary external-boundary sampling diagnostics into setup, boundary-geometry synthesis, external-field sampling, axis-field sampling, projection, and total timing buckets.
+39. Added an explicit strict xfail marker for full coil-to-free-boundary-to-Boozer/QS exact-gradient validation, keeping phase-2 status visible in the test suite.
+40. Added a guarded GPU-only automatic JVP-exact-tape policy with basepoint carries for accepted-point exact Jacobian callbacks; CPU keeps the full tape default and explicit env overrides still win.
 
 Results obtained:
 
-1. `pytest -q -m "not full and not vmec2000 and not simsopt"`: 2245 passed, 26 skipped, 111 deselected, 1 xfailed in 5m02s after the source-assembly vectorization.
+1. `pytest -q -m "not full and not vmec2000 and not simsopt"`: 2282 passed, 26 skipped, 112 deselected, 2 xfailed in 5m03s after the source/RHS and GPU JVP exact-tape policy additions.
 2. Targeted direct-coil/docs tests after the final additions: 9 passed in 2.34 s.
 3. Full Sphinx build after docs hygiene changes succeeded in `/tmp/vmec_jax_freeb_docs_claim_hygiene`.
 4. Direct-coil/mgrid diagnostic smoke completed with expected `vmec2000_skipped` and `jax_direct_vs_mgrid_passed=True`.
@@ -93,7 +95,7 @@ Results obtained:
 39. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 12 passed in 6.43 s after adding projected-vacuum chain gradients.
 40. Quick active-NESTOR benchmark matrix completed; synthetic direct-coil solve recorded one active update with cold active sampling about `0.499 s` and warm active sampling about `0.00484 s`.
 41. The optional VMEC2000 trace-smoke test skips cleanly without `VMEC2000_INTEGRATION=1`.
-42. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 18 passed in 6.54 s after adding the dense mode-space scaffold.
+42. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 22 passed in 7.42 s after adding the JAX source/RHS projection rung.
 43. Quick sample-breakdown benchmark completed; warm final direct-coil sample was about `0.00427 s`, with external-field sampling about `0.00385 s` and boundary/projection phases below one millisecond.
 44. `python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py::test_full_free_boundary_qs_exact_gradient_validation_phase2_marker`: 1 xfailed in 0.04 s.
 
@@ -308,6 +310,9 @@ Implementation implications from sources reviewed:
 20. Free-boundary coil optimization literature reinforces that direct free-boundary solves are more expensive and fragile than fixed-boundary or quasi-free-boundary approximations. The implementation must therefore preserve cheap provider/mgrid validation gates and only promote direct-coil exact gradients after finite-difference checks on full solves. Source: https://www.sciencedirect.com/science/article/pii/S0021999122002091
 21. SPEC/SIMSOPT free-boundary optimization work motivates adding optional physics gates beyond VMEC residuals, including magnetic-surface quality and finite-beta behavior, because matching boundary coefficients alone does not prove robust nested-surface quality. Source: https://arxiv.org/abs/2111.15564
 22. Recent single-stage and stochastic single-stage coil optimization work supports adding robust coil perturbation objectives early, but not mixing robust objectives into the default validation path until deterministic single-stage gradients are validated. Sources: https://arxiv.org/abs/2406.07830 and https://arxiv.org/abs/2603.11699
+23. Merkel's NESTOR integral-equation formulation remains the mathematical reference for VMEC free-boundary vacuum coupling. A JAX-native production adjoint should first match the current VMEC-like source, mode-RHS, and matrix assembly before any full QS-gradient claim is promoted. Source: https://www.sciencedirect.com/science/article/pii/0021999186900550
+24. DESC exact-derivative equilibrium optimization is a useful precedent for the quality bar: provider-level derivatives are not enough; complete scalar objectives need end-to-end AD-vs-finite-difference gates before being used as production gradients. Source: https://arxiv.org/abs/2204.00078
+25. SIMSOPT quasisymmetry examples remain the fixed-boundary baseline for objective semantics and finite-difference comparison, but they do not validate direct-coil free-boundary exact gradients until the coil-to-equilibrium chain is included. Source: https://simsopt.readthedocs.io/v1.7.0/example_quasisymmetry.html
 
 ## Proposed Package Layout
 
@@ -941,7 +946,7 @@ Overall branch completion:                     95%
 2. Decide whether cached direct-coil geometry should be threaded into the free-boundary bridge after CPU/GPU benchmark evidence, without replacing the differentiable params-to-field API.
 3. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
 4. Run CPU/GPU benchmark matrices and convert JSON summaries into documentation plots.
-5. Implement the production matrix-free/custom-linear-solve NESTOR adjoint beyond the dense toy scaffold.
+5. Implement the production matrix-free/custom-linear-solve NESTOR adjoint beyond the dense toy/source/RHS/mode-space scaffold.
 6. Re-check PR CI, including Codecov patch coverage, after each commit.
 
 ## Need From User
@@ -965,13 +970,14 @@ Steps taken:
 9. Changed the quick benchmark matrix direct-solve row to `max_iter=2`, so it exercises active NESTOR sampling and solve buckets.
 10. Added a JAX-native dense mode-space vacuum-solve scaffold with stellarator-symmetric and LASYM-style potential reconstruction.
 11. Added finite-difference checks for the mode-space scaffold with respect to RHS, matrix entries, direct-coil current, and direct-coil Fourier geometry.
-12. Updated docs and this plan to keep the exact-adjoint claim precise: direct-coil fields, dense vacuum-solve scaffold, projection gradients, projected-vacuum chain, and dense mode-space solve are validated; the full production NESTOR/QS solve adjoint remains phase 2.
+12. Added JAX-native VMEC-style source symmetrization and mode-RHS projection helpers, with host-parity tests and finite-difference gradients with respect to source values.
+13. Updated docs and this plan to keep the exact-adjoint claim precise: direct-coil fields, dense vacuum-solve scaffold, projection gradients, VMEC source/RHS projection, projected-vacuum chain, and dense mode-space solve are validated; the full production NESTOR/QS solve adjoint remains phase 2.
 
 Results obtained:
 
 1. `python -m pytest -q tests/test_discrete_adjoint_chunking.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`: 59 passed, 1 skipped in 13.56 s.
 2. `python -m pytest -q tests/test_discrete_adjoint_chunking.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_vacuum_adjoint.py`: 66 passed, 1 skipped in 15.86 s.
-3. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 18 passed in 6.54 s after the dense mode-space scaffold addition.
+3. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 22 passed in 7.42 s after the dense mode-space scaffold and source/RHS projection additions.
 4. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py tests/test_profile_report_compare.py`: 31 passed in 4.36 s before the projected-vacuum chain addition.
 5. `python -m pytest -q tests/test_freeb_direct_coil_matrix_benchmark.py tests/test_profile_report_compare.py`: 24 passed in 0.05 s.
 6. `python -m pytest -q tests/test_optimization_callback_trace.py::test_exact_optimizer_profiles_free_boundary_buckets_without_generic_timing tests/test_freeb_direct_coil_matrix_benchmark.py tests/test_free_boundary_essos_coil_parity.py::test_vmec2000_generated_mgrid_trace_smoke_records_iteration_rows`: 4 passed, 1 skipped in 0.43 s.
@@ -979,13 +985,30 @@ Results obtained:
 8. Full Sphinx documentation build passed.
 9. `python tools/benchmarks/bench_freeb_direct_coil_matrix.py --quick --timeout-s 120 --out tmp/bench_freeb_direct_coil_matrix_quick_after_nested/summary.json`: completed CPU provider, direct-solve, and gradient rows.
 10. `python tools/benchmarks/bench_freeb_direct_coil_matrix.py --quick --timeout-s 120 --out tmp/bench_freeb_direct_coil_matrix_quick_active_nestor/summary.json`: completed CPU provider, direct-solve, and gradient rows; direct-solve recorded one active NESTOR update.
+11. `python -m pytest -q tests/test_optimization_helpers.py::test_fixed_boundary_optimizer_jvp_only_exact_tape_gpu_auto_and_overrides tests/test_optimization_helpers.py::test_solve_exact_with_tape_for_jvp_enables_gpu_basepoint_carries_temporarily tests/test_optimization_callback_trace.py::test_exact_optimizer_profile_gpu_auto_jvp_flags tests/test_free_boundary_vacuum_adjoint.py`: 25 passed in 7.37 s.
+12. `python tools/benchmarks/bench_freeb_direct_coil_matrix.py --quick --timeout-s 120 --out tmp/bench_freeb_direct_coil_matrix_quick_rhs/summary.json`: completed CPU provider, direct-solve, and gradient rows; warm direct solve was about `0.171 s`, active warm NESTOR sample about `0.0050 s`, and final sample-phase breakdown showed external-field sampling about `0.0046 s`.
+13. `python -m pytest -q -m "not full and not vmec2000 and not simsopt"`: 2282 passed, 26 skipped, 112 deselected, 2 xfailed in 303.49 s on the final worktree for this push.
 
 Best next steps:
 
 1. Poll PR CI and fix any remaining physics-smoke or patch-coverage failures.
 2. Add the first full-solve finite-difference validation gate that includes the JAX boundary projection and dense NESTOR primitive in one scalar objective.
 3. Continue VMEC2000 generated-mgrid parity work until the optional xfail can be bounded against converged WOUT data.
-4. Start the production NESTOR adjoint design by extracting a JAX-native mode-space operator and transpose solve behind `jax.lax.custom_linear_solve`.
+4. Start the production NESTOR adjoint design by extracting JAX-native Green-function/source matrix assembly and a transpose solve behind `jax.lax.custom_linear_solve`.
+
+Literature/design sidecar conclusion:
+
+1. Keep the dense source/RHS/mode-space scaffold as the promotion path: first match VMEC-like host source and mode-RHS values, then differentiate through those blocks, then port Green-function matrix assembly.
+2. Promote full direct-coil free-boundary gradients only after complete-solve AD-vs-central-finite-difference gates pass for one current and one Fourier curve coefficient on forced-active low-resolution cases.
+3. Add QS only after the complete-solve scalar gates pass; start with the JAX-native QS ratio residual before Boozer-transform claims.
+4. Do not claim publication-ready exact free-boundary coil adjoints, VMEC2000-bounded generated-mgrid parity, or Boozer/QS gradients until these promoted gates are green.
+
+Performance sidecar conclusion:
+
+1. Do not enable projected exact replay by default; previous profiling showed it was slower in the current implementation.
+2. Keep GPU trial scan disabled by default. The next GPU optimization should be a guarded GPU-only auto policy for JVP-only exact tapes with basepoint carries, because profiling showed accepted replay dispatch dominating cold GPU exact-Jacobian callbacks.
+3. Use `tools/diagnostics/profile_exact_optimizer.py --solver-device gpu --vmec-timing --sync-replay-timing` to prove the policy before changing default CPU behavior.
+4. Treat cached/chunked direct-coil sampling as secondary: the new sample-phase buckets show warm active NESTOR external-field sampling is currently milliseconds on tiny cases, whereas cold exact tape/replay remains the larger optimization bottleneck.
 
 Need from user:
 

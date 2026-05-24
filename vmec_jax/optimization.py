@@ -1661,6 +1661,31 @@ class FixedBoundaryExactOptimizer:
                 backend = "cpu"
         return backend not in ("gpu", "cuda", "tpu", "rocm")
 
+    def _exact_tape_backend_name(self) -> str:
+        """Return the backend name used for exact-tape optimization policy."""
+
+        backend = str(getattr(self, "_solver_device_name", None) or "").strip().lower()
+        if backend:
+            return backend
+        try:
+            from ._compat import jax as _jax
+
+            return str(_jax.default_backend()).strip().lower() if _jax is not None else "cpu"
+        except Exception:
+            return "cpu"
+
+    @staticmethod
+    def _env_bool_override(name: str) -> bool | None:
+        flag = os.getenv(name, "").strip().lower()
+        if flag in ("1", "true", "yes", "on"):
+            return True
+        if flag in ("0", "false", "no", "off"):
+            return False
+        return None
+
+    def _gpu_like_exact_tape_backend(self) -> bool:
+        return self._exact_tape_backend_name() in ("gpu", "cuda", "tpu", "rocm")
+
     def _solver_device_context(self):
         if self._solver_device_name is None:
             return nullcontext()
@@ -2564,12 +2589,33 @@ class FixedBoundaryExactOptimizer:
         except (TypeError, ValueError):
             accepts_jvp_only = True
         if accepts_jvp_only:
-            return solve(params, return_payload=True, jvp_only=True)
+            env_name = "VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES"
+            previous = os.environ.get(env_name)
+            use_basepoint_carries = self._jvp_only_basepoint_carries_enabled()
+            if previous is None and use_basepoint_carries:
+                os.environ[env_name] = "1"
+                self._profile_add("exact_tape_jvp_only_basepoint_carries_auto", 0.0)
+            try:
+                return solve(params, return_payload=True, jvp_only=True)
+            finally:
+                if previous is None and use_basepoint_carries:
+                    os.environ.pop(env_name, None)
         return solve(params, return_payload=True)
 
     def _jvp_only_exact_tape_enabled(self) -> bool:
-        flag = os.getenv("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE", "").strip().lower()
-        return flag in ("1", "true", "yes", "on")
+        forced = self._env_bool_override("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE")
+        if forced is not None:
+            return bool(forced)
+        enabled = self._gpu_like_exact_tape_backend()
+        if enabled:
+            self._profile_add("exact_tape_jvp_only_auto_gpu", 0.0)
+        return bool(enabled)
+
+    def _jvp_only_basepoint_carries_enabled(self) -> bool:
+        forced = self._env_bool_override("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES")
+        if forced is not None:
+            return bool(forced)
+        return self._gpu_like_exact_tape_backend()
 
     def _initial_tangent_columns(self, params, axis_override, *, profile_prefix: str):
         """Return cached packed initial-state tangents for boundary parameters."""
