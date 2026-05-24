@@ -20,6 +20,7 @@ Steps taken:
 4. Public README/docs/examples/tests/tools no longer embed maintainer-local absolute paths, enforced by a docs hygiene regression.
 5. The VMEC2000/direct-coil/mgrid diagnostic now fails hard for explicitly invalid user paths while keeping optional auto-discovery skips.
 6. Benchmarks now report active NESTOR sample/solve timing summaries and cold-to-warm improvement.
+7. Trial/backtracking NESTOR calls are now recorded separately from accepted-update NESTOR calls.
 
 Results obtained:
 
@@ -29,11 +30,13 @@ Results obtained:
 4. Direct-coil/mgrid diagnostic smoke completed with expected `vmec2000_skipped` and `jax_direct_vs_mgrid_passed=True`.
 5. Explicit bad `--coils-json` now exits nonzero and writes `status=failed`, `reason=explicit_essos_or_coils_path_invalid`.
 6. Tiny direct-coil solve benchmark reports active NESTOR sample timing improving from about `0.51 s` cold to `0.0048 s` warm.
+7. Trial timing smoke completed; the tiny synthetic path records zero trial calls, so its benchmarked direct-coil cost is accepted NESTOR sampling rather than hidden backtracking work.
+8. Targeted trial-timing tests passed: 3 passed in 8.03 s.
 
 Best next steps:
 
-1. Add timing counters for active NESTOR trial/backtracking calls, which are currently underreported compared with accepted updates.
-2. Prototype a jitted host-forward sampler for cached direct-coil geometry to reduce eager JAX dispatch and `np.asarray` synchronization.
+1. Prototype a jitted host-forward sampler for cached direct-coil geometry to reduce eager JAX dispatch and `np.asarray` synchronization.
+2. Run a direct-coil case that enters backtracking and confirm the new trial counters capture rejected NESTOR sampling cost.
 3. Extend the full-loop finite-difference smoke from current-only proxy objective to a validated Boozer/QS promotion test when affordable.
 4. Run the VMEC2000 integration diagnostic without `--skip-vmec2000` on the smallest case and archive the JSON result.
 
@@ -48,9 +51,9 @@ Open-lane completion estimates:
 3. ESSOS/mgrid/VMEC2000 comparison lane: 82%.
 4. Full-loop gradient validation: 55%.
 5. Robust/optimization examples: 76%.
-6. Performance/benchmarking: 69%.
+6. Performance/benchmarking: 72%.
 7. Docs/release hygiene: 88%.
-8. Overall branch completion: 81%.
+8. Overall branch completion: 82%.
 
 ## Mission
 

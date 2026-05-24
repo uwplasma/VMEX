@@ -227,6 +227,36 @@ def _active_nestor_timing_summary(diag: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _trial_nestor_timing_summary(diag: dict[str, Any]) -> dict[str, Any]:
+    sample = _as_1d_float_array(diag.get("freeb_nestor_trial_sample_time_history", []))
+    solve = _as_1d_float_array(diag.get("freeb_nestor_trial_solve_time_history", []))
+    reused = _as_1d_int_array(diag.get("freeb_nestor_trial_reused_history", []))
+    failed = _as_1d_int_array(diag.get("freeb_nestor_trial_failed_history", []))
+    size = max(int(sample.size), int(solve.size), int(reused.size), int(failed.size))
+    if size == 0:
+        return {
+            "recorded_calls": 0,
+            "failed_calls": 0,
+            "reused_calls": 0,
+            "sampled_calls": 0,
+            "sample_time_s": _summarize_seconds(np.zeros((0,), dtype=float)),
+            "solve_time_s": _summarize_seconds(np.zeros((0,), dtype=float)),
+        }
+
+    sample = _pad_1d(sample, size, value=0.0)
+    solve = _pad_1d(solve, size, value=0.0)
+    reused = _pad_1d(reused, size, value=0)
+    failed = _pad_1d(failed, size, value=0)
+    return {
+        "recorded_calls": size,
+        "failed_calls": int(np.count_nonzero(failed)),
+        "reused_calls": int(np.count_nonzero(reused)),
+        "sampled_calls": int(np.count_nonzero(sample > 0.0)),
+        "sample_time_s": _summarize_seconds(sample),
+        "solve_time_s": _summarize_seconds(solve),
+    }
+
+
 def _timing_improvement(cold_total_s: Any, warm_total_s: Any) -> dict[str, float | None]:
     try:
         cold = float(cold_total_s)
@@ -272,6 +302,24 @@ def _active_nestor_timing_improvement(
     return {
         "cold_active_steps": cold.get("active_steps") if isinstance(cold, dict) else None,
         "warm_active_steps": warm.get("active_steps") if isinstance(warm, dict) else None,
+        "sample_time_s": _timing_improvement(cold_sample.get("total_s"), warm_sample.get("total_s")),
+        "solve_time_s": _timing_improvement(cold_solve.get("total_s"), warm_solve.get("total_s")),
+    }
+
+
+def _trial_nestor_timing_improvement(
+    cold_solver_timing: dict[str, Any],
+    warm_solver_timing: dict[str, Any],
+) -> dict[str, Any]:
+    cold = cold_solver_timing.get("trial_nestor_timing_summary", {})
+    warm = warm_solver_timing.get("trial_nestor_timing_summary", {})
+    cold_sample = cold.get("sample_time_s", {}) if isinstance(cold, dict) else {}
+    warm_sample = warm.get("sample_time_s", {}) if isinstance(warm, dict) else {}
+    cold_solve = cold.get("solve_time_s", {}) if isinstance(cold, dict) else {}
+    warm_solve = warm.get("solve_time_s", {}) if isinstance(warm, dict) else {}
+    return {
+        "cold_recorded_calls": cold.get("recorded_calls") if isinstance(cold, dict) else None,
+        "warm_recorded_calls": warm.get("recorded_calls") if isinstance(warm, dict) else None,
         "sample_time_s": _timing_improvement(cold_sample.get("total_s"), warm_sample.get("total_s")),
         "solve_time_s": _timing_improvement(cold_solve.get("total_s"), warm_solve.get("total_s")),
     }
@@ -340,10 +388,15 @@ def _solver_timing_summary(run: Any) -> dict[str, Any]:
         "freeb_nestor_sample_time_history",
         "freeb_nestor_reused_history",
         "freeb_full_update_history",
+        "freeb_nestor_trial_solve_time_history",
+        "freeb_nestor_trial_sample_time_history",
+        "freeb_nestor_trial_reused_history",
+        "freeb_nestor_trial_failed_history",
     ):
         if key in diag:
             out[key] = diag[key]
     out["active_nestor_timing_summary"] = _active_nestor_timing_summary(diag)
+    out["trial_nestor_timing_summary"] = _trial_nestor_timing_summary(diag)
     return out
 
 
@@ -504,6 +557,7 @@ def _bench_case(label: str, input_path: Path, params: Any, args: argparse.Namesp
         "cold_solver_timing": cold_solver_timing,
         "warm_solver_timing": warm_solver_timing,
         "active_nestor_timing_improvement": _active_nestor_timing_improvement(cold_solver_timing, warm_solver_timing),
+        "trial_nestor_timing_improvement": _trial_nestor_timing_improvement(cold_solver_timing, warm_solver_timing),
         "fsq": _fsq_summary(warm_run),
         "free_boundary": _free_boundary_summary(warm_run),
     }
@@ -547,6 +601,30 @@ def _format_active_nestor_timing(case: dict[str, Any]) -> str:
         f" speedup={_format_speedup(sample.get('speedup'))}"
         " active_nestor_solve_total="
         f"{_format_seconds(solve.get('cold_total_s'))}->{_format_seconds(solve.get('warm_total_s'))}"
+    )
+
+
+def _format_trial_nestor_timing(case: dict[str, Any]) -> str:
+    improvement = case.get("trial_nestor_timing_improvement", {})
+    if not isinstance(improvement, dict):
+        return ""
+    try:
+        recorded_calls = int(improvement.get("cold_recorded_calls") or 0) + int(
+            improvement.get("warm_recorded_calls") or 0
+        )
+    except Exception:
+        recorded_calls = 0
+    if recorded_calls <= 0:
+        return ""
+    sample = improvement.get("sample_time_s", {})
+    if not isinstance(sample, dict):
+        return ""
+    return (
+        " trial_nestor_calls="
+        f"{improvement.get('cold_recorded_calls')}->{improvement.get('warm_recorded_calls')}"
+        " trial_nestor_sample_total="
+        f"{_format_seconds(sample.get('cold_total_s'))}->{_format_seconds(sample.get('warm_total_s'))}"
+        f" speedup={_format_speedup(sample.get('speedup'))}"
     )
 
 
@@ -608,6 +686,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"[bench-freeb-direct-coil-solve] {case['label']}: "
                 f"cold_or_compile={case['cold_or_compile_s']:.6f}s warm_min={warm_min}"
                 f"{_format_active_nestor_timing(case)}"
+                f"{_format_trial_nestor_timing(case)}"
             )
         else:
             print(f"[bench-freeb-direct-coil-solve] {case['label']}: skipped ({case.get('reason', 'unknown')})")

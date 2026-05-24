@@ -9429,6 +9429,10 @@ def solve_fixed_boundary_residual_iter(
     freeb_nestor_reused_history: list[int] = []
     freeb_nestor_solve_time_history: list[float] = []
     freeb_nestor_sample_time_history: list[float] = []
+    freeb_nestor_trial_reused_history: list[int] = []
+    freeb_nestor_trial_solve_time_history: list[float] = []
+    freeb_nestor_trial_sample_time_history: list[float] = []
+    freeb_nestor_trial_failed_history: list[int] = []
     dt_eff_history: list[float] = []
     update_rms_history: list[float] = []
     w_curr_history: list[float] = []
@@ -10299,6 +10303,10 @@ def solve_fixed_boundary_residual_iter(
                         external_field_provider_static=external_field_provider_static,
                         external_field_provider_params=external_field_provider_params,
                     )
+                    freeb_nestor_trial_reused_history.append(1 if bool(getattr(nestor_trial, "reused", False)) else 0)
+                    freeb_nestor_trial_solve_time_history.append(float(getattr(nestor_trial, "solve_time_s", 0.0)))
+                    freeb_nestor_trial_sample_time_history.append(float(getattr(nestor_trial, "sample_time_s", 0.0)))
+                    freeb_nestor_trial_failed_history.append(0)
                     bsqvac_edge_trial = np.asarray(nestor_trial.vac_total.bsqvac, dtype=float)
                     if (
                         bsqvac_edge_trial.ndim == 2
@@ -10308,6 +10316,10 @@ def solve_fixed_boundary_residual_iter(
                         bsqvac_edge_trial = np.repeat(bsqvac_edge_trial, int(static.cfg.nzeta), axis=1)
                     return bsqvac_edge_trial
                 except Exception:
+                    freeb_nestor_trial_reused_history.append(0)
+                    freeb_nestor_trial_solve_time_history.append(0.0)
+                    freeb_nestor_trial_sample_time_history.append(0.0)
+                    freeb_nestor_trial_failed_history.append(1)
                     if _env_freeb_raise not in ("", "0", "false", "no"):
                         raise
                     return freeb_bsqvac_half_current
@@ -13279,6 +13291,10 @@ def solve_fixed_boundary_residual_iter(
         "freeb_nestor_reused_history": np.asarray(freeb_nestor_reused_history, dtype=int),
         "freeb_nestor_solve_time_history": np.asarray(freeb_nestor_solve_time_history, dtype=float),
         "freeb_nestor_sample_time_history": np.asarray(freeb_nestor_sample_time_history, dtype=float),
+        "freeb_nestor_trial_reused_history": np.asarray(freeb_nestor_trial_reused_history, dtype=int),
+        "freeb_nestor_trial_solve_time_history": np.asarray(freeb_nestor_trial_solve_time_history, dtype=float),
+        "freeb_nestor_trial_sample_time_history": np.asarray(freeb_nestor_trial_sample_time_history, dtype=float),
+        "freeb_nestor_trial_failed_history": np.asarray(freeb_nestor_trial_failed_history, dtype=int),
     }
     if timing_enabled:
         if t_iteration_loop_start is not None and t_finalize_start is not None:

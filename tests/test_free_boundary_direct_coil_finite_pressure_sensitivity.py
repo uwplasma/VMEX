@@ -288,6 +288,12 @@ def test_forced_activation_reports_direct_coil_nestor_diagnostics(tmp_path: Path
     assert nestor_diag["provider_kind"] == "direct_coils"
     assert nestor_diag["bnormal_rms"] > 0.0
     assert nestor_diag["bsqvac_rms"] > 0.0
+    trial_samples = np.asarray(run.result.diagnostics["freeb_nestor_trial_sample_time_history"], dtype=float)
+    trial_failed = np.asarray(run.result.diagnostics["freeb_nestor_trial_failed_history"], dtype=int)
+    assert trial_samples.ndim == 1
+    assert trial_failed.shape == trial_samples.shape
+    assert np.all(trial_samples >= 0.0)
+    assert np.count_nonzero(trial_failed) == 0
 
 
 def test_direct_coil_current_only_objective_fd_slope_is_stable(tmp_path: Path) -> None:

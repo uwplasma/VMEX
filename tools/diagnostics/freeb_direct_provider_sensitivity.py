@@ -424,6 +424,10 @@ def _free_boundary_diagnostics(run: Any) -> dict[str, Any]:
         "freeb_nestor_reused_history",
         "freeb_nestor_solve_time_history",
         "freeb_nestor_sample_time_history",
+        "freeb_nestor_trial_reused_history",
+        "freeb_nestor_trial_solve_time_history",
+        "freeb_nestor_trial_sample_time_history",
+        "freeb_nestor_trial_failed_history",
     ]
     return {key: diagnostics[key] for key in keys if key in diagnostics}
 
