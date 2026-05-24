@@ -202,6 +202,25 @@ def test_aggregate_risk_methods_are_deterministic_shape_preserving_and_different
     assert np.all(np.isfinite(np.asarray(grad_value)))
 
 
+def test_smooth_max_risk_axis_gradient_matches_softmax_weights():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+
+    enable_x64(True)
+    values = jnp.asarray([[1.0, 2.0, 3.0], [0.5, 4.0, 6.0]], dtype=float)
+    row_weights = jnp.asarray([0.25, -0.75], dtype=float)
+    temperature = 0.7
+
+    def weighted_row_risk(x):
+        return jnp.dot(row_weights, aggregate_risk(x, "smooth_max", axis=1, temperature=temperature))
+
+    grad_value = jax.grad(weighted_row_risk)(values)
+    expected = row_weights[:, None] * jax.nn.softmax(values / temperature, axis=1)
+
+    np.testing.assert_allclose(grad_value, expected, rtol=1.0e-12, atol=1.0e-14)
+    assert np.all(np.isfinite(np.asarray(grad_value)))
+
+
 def test_aggregate_risk_rejects_unknown_method():
     with pytest.raises(ValueError, match="method must be one of"):
         aggregate_risk([1.0, 2.0], "unknown")

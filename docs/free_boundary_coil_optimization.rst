@@ -36,6 +36,32 @@ lane: active NESTOR diagnostics respond to coil-current changes and matched
 direct/generated-``mgrid`` samples agree, but accepted-equilibrium sensitivity
 and high-beta convergence remain promotion gates.
 
+Current Status
+--------------
+
+The current branch status is intentionally narrower than a production
+single-stage coil optimizer:
+
+- ``mgrid`` remains the VMEC2000-compatible parity backend.
+- Direct coils are supported as a JAX external-field provider for forward
+  free-boundary solves, including nonzero pressure profiles.
+- The finite-pressure evidence is a low-resolution active-coupling smoke:
+  generated-``mgrid`` and direct-coil providers from the same ESSOS LP-QA coil
+  set agree in the recorded scalar diagnostics, and direct NESTOR samples
+  respond to coil-current changes.
+- The active NESTOR sensitivity checks validate the provider/coupling layer:
+  normal-field/source channels scale linearly with current changes and
+  ``bsqvac`` scales quadratically. They do not yet validate a full accepted
+  equilibrium derivative.
+- The phase-1 optimization example is coil-only, but it still uses a cheap
+  VMEC residual/aspect/iota proxy. Boozer/QS objectives and production
+  full-solve adjoints are next-step work.
+
+In short: direct-coil finite-pressure plumbing is present and smoke-tested; a
+converged high-beta direct-coil design, publication-grade gradients through the
+full free-boundary/NESTOR solve, and VMEC2000-bounded generated-``mgrid`` trace
+parity are not claimed yet.
+
 Low-Resolution Beta Scan
 ------------------------
 
@@ -66,6 +92,13 @@ the accepted final state with a fresh active NESTOR sample, but this is still
 not a converged high-beta result: the active residual norm remains large and
 must be bounded against VMEC2000 before this becomes a promoted finite-beta
 single-stage optimization claim.
+
+Use ``--activate-fsq 1e-3`` when checking literal VMEC2000 activation cadence.
+Use a larger value, such as the default ``1.0`` or an explicit ``1e99``, only
+when the goal is to force active coupling early in a deliberately short smoke.
+Those early-activation runs are provider/coupling diagnostics, not evidence
+that the accepted equilibrium is converged to the same state as a long
+VMEC2000 run.
 
 .. image:: _static/figures/freeb_single_stage_provider_parity.png
    :alt: Direct-coil provider parity
@@ -168,13 +201,27 @@ adding perturbed coil scenarios to the nominal free-boundary solve:
    python examples/optimization/free_boundary_QS_coil_optimization.py \
      --smoke \
      --provider circle \
+     --max-evals 1 \
+     --max-iter 1 \
+     --vmec-max-iter 1 \
      --robust-samples 2 \
-     --robust-risk mean_plus_std
+     --robust-risk mean_plus_std \
+     --outdir results/free_boundary_QS_coil_optimization_circle_robust_smoke
 
 The default remains the deterministic nominal objective. When
 ``--robust-samples`` is positive, the example samples common coil perturbations
 with ``vmec_jax.robust_coils`` and aggregates nominal plus perturbed scenario
 losses with ``mean``, ``mean_plus_std``, or ``smooth`` risk aggregation.
+
+Each objective evaluation then runs one nominal direct-coil free-boundary solve
+plus one solve per perturbation sample. The resulting ``history.json`` contains
+per-scenario entries, while ``summary.json`` records the robust aggregation
+options under ``robust_objective``.
+
+For a finite-pressure robust smoke, add the same finite-pressure flags used by
+the deterministic smoke, for example ``--pressure-scale 100`` and
+``--activate-fsq 1e99``. Keep ``--max-evals`` and ``--robust-samples`` small
+because the solve count multiplies quickly.
 
 ``vmec_jax.robust_coils`` provides pure-JAX perturbation helpers for robust coil
 objectives:
@@ -194,13 +241,35 @@ until the production solver path is fully JAX-transformable.
 Benchmarks
 ----------
 
-The branch includes lightweight, non-CI benchmark scripts:
+The branch includes lightweight, non-CI benchmark scripts. The recommended
+first command is the matrix runner:
 
 .. code-block:: bash
 
    python tools/benchmarks/bench_freeb_direct_coil_matrix.py \
      --quick \
      --out results/bench_freeb_direct_coil_matrix/summary.json
+
+The matrix runner executes the provider, direct free-boundary solve, and
+coil-gradient scripts with small CPU-only defaults. It writes each child JSON
+into the output directory and records the child paths plus compact
+timing/status rows in ``summary.json``. GPU rows are opt-in:
+
+.. code-block:: bash
+
+   python tools/benchmarks/bench_freeb_direct_coil_matrix.py \
+     --quick \
+     --include-gpu \
+     --backend-note "local workstation smoke" \
+     --out results/bench_freeb_direct_coil_matrix_gpu/summary.json
+
+If no JAX GPU device is available, the matrix records a skipped GPU row rather
+than falling back silently to CPU. Use ``--no-quick`` only for a larger local
+benchmark budget.
+
+The child scripts are still useful when isolating one lane:
+
+.. code-block:: bash
 
    python tools/benchmarks/bench_external_field_providers.py \
      --points 48 --segments 48 \
@@ -219,22 +288,87 @@ timing, warm timing, and the problem dimensions. Defaults are intentionally
 small and CPU-safe; GPU production benchmarks should raise the grid and segment
 counts explicitly.
 
-The matrix runner is the quickest smoke command for the direct-coil benchmark
-lane. It runs the provider, direct free-boundary solve, and coil-gradient
-scripts with small CPU-only defaults, writes each child JSON into the output
-directory, and records their paths plus compact timing/status rows in
-``summary.json``. GPU rows are opt-in:
+Optional VMEC2000 Diagnostics
+-----------------------------
+
+The direct-coil provider is a ``vmec_jax`` research path; VMEC2000 itself reads
+external fields through ``mgrid`` files, not ``CoilFieldParams``. VMEC2000
+diagnostics therefore validate the generated-``mgrid``/free-boundary operator
+side of the branch, while direct-coil evidence comes from
+direct-versus-generated-``mgrid`` comparisons inside ``vmec_jax``.
+
+The standalone three-way diagnostic writes a JSON report for the current
+research case. It always compares ``vmec_jax`` generated-``mgrid`` against
+``vmec_jax`` direct coils, then attempts VMEC2000 generated-``mgrid`` if the
+executable is available:
 
 .. code-block:: bash
 
-   python tools/benchmarks/bench_freeb_direct_coil_matrix.py \
-     --quick \
-     --include-gpu \
-     --backend-note "local workstation smoke" \
-     --out results/bench_freeb_direct_coil_matrix_gpu/summary.json
+   PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr:$PYTHONPATH \
+     python tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py \
+       --out results/freeb_coils_mgrid_vmec2000.json \
+       --workdir results/freeb_coils_mgrid_vmec2000_work
 
-If no JAX GPU device is available, the matrix records a skipped GPU row rather
-than falling back silently to CPU.
+For a quick provider-only smoke, skip VMEC2000 explicitly:
+
+.. code-block:: bash
+
+   PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr:$PYTHONPATH \
+     python tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py \
+       --niter 1 \
+       --skip-vmec2000 \
+       --out results/freeb_coils_mgrid_vmec2000_smoke.json
+
+If VMEC2000 aborts before writing ``wout_*.nc``, the JSON still records the
+workdir, stdout/stderr tails, ``threed1`` tail, and parsed iteration trace.
+That is the expected current behavior for the low-iteration LP-QA generated
+``mgrid`` case; it is a parity gap to bound, not a direct-coil provider
+failure.
+
+The stock-executable smoke needs only a local VMEC2000 binary. It verifies that
+the bundled asymmetric free-boundary deck reaches the vacuum solve:
+
+.. code-block:: bash
+
+   export VMEC2000_EXEC=/path/to/xvmec2000
+   VMEC2000_INTEGRATION=1 \
+     pytest -q tests/test_vmec2000_exec_fast_validation.py::test_vmec2000_free_boundary_lasym_true_reaches_vacuum_solve
+
+The bounded ``freeb_scalpot`` manifest diagnostic requires an instrumented
+VMEC2000 executable that honors the ``VMEC_DUMP_*`` environment variables. It
+compares VMEC2000 scalpot/vacuum/bextern dumps with the dense ``vmec_jax``
+free-boundary path for a self-contained generated-``mgrid`` case:
+
+.. code-block:: bash
+
+   export VMEC2000_EXEC=/path/to/xvmec2000
+   VMEC2000_INTEGRATION=1 \
+     PYTHONPATH=. python tools/diagnostics/parity_sweep_manifest.py \
+       --ids freeb_nonaxis_lasym_true_cth_like_local \
+       --output-root results/parity/freeb_lasym_true \
+       --manifest tools/diagnostics/parity_manifest.toml \
+       --vmec-exec "$VMEC2000_EXEC"
+
+For one-off debugging of a specific iteration, run the comparator directly:
+
+.. code-block:: bash
+
+   export VMEC2000_EXEC=/path/to/xvmec2000
+   VMEC2000_INTEGRATION=1 \
+   VMEC_DUMP_GC=1 \
+   VMEC_DUMP_GC_STAGE=precond \
+     PYTHONPATH=. python tools/diagnostics/vmec2000_exec_freeb_scalpot_compare.py \
+       --input examples/data/input.cth_like_free_bdy_lasym_small \
+       --vmec-exec "$VMEC2000_EXEC" \
+       --iter 80 \
+       --max-iter 120 \
+       --workdir results/freeb_scalpot_cth_like_lasym \
+       --json results/freeb_scalpot_cth_like_lasym/summary.json
+
+The generated-``mgrid`` VMEC2000 comparison for the ESSOS LP-QA coil smoke is
+still non-promoted/xfailed. The current promoted signal for this branch is
+``vmec_jax`` direct-coil versus generated-``mgrid`` provider agreement plus the
+active NESTOR coupling sensitivity checks listed below.
 
 Validation Status
 -----------------

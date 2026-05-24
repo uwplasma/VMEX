@@ -24,6 +24,7 @@ from vmec_jax.external_fields import (
     length_penalty,
     sample_coil_field_cylindrical,
     sample_coil_field_cylindrical_from_geometry,
+    sample_coil_field_xyz_from_geometry,
     sample_external_field_cylindrical,
 )
 
@@ -83,9 +84,19 @@ def test_sample_coil_field_cylindrical_shapes_and_dispatch():
 
     direct = sample_coil_field_cylindrical(params, R, Z, phi)
     dispatch = sample_external_field_cylindrical("direct_coils", None, params, R, Z, phi)
+    cached_dispatch = sample_external_field_cylindrical(
+        "direct_coils",
+        {"coil_geometry": build_coil_field_geometry(params)},
+        params,
+        R,
+        Z,
+        phi,
+    )
 
     assert all(component.shape == R.shape for component in direct)
     for actual, expected in zip(dispatch, direct, strict=True):
+        np.testing.assert_allclose(actual, expected, rtol=1.0e-14, atol=1.0e-18)
+    for actual, expected in zip(cached_dispatch, direct, strict=True):
         np.testing.assert_allclose(actual, expected, rtol=1.0e-14, atol=1.0e-18)
 
 
@@ -112,6 +123,38 @@ def test_cached_coil_geometry_sampling_matches_full_sampling():
         np.testing.assert_allclose(actual, expected, rtol=1.0e-14, atol=1.0e-18)
 
 
+def test_cached_xyz_geometry_sampling_matches_direct_biot_savart_with_chunking():
+    enable_x64(True)
+    params = replace(
+        _circle_params(current=1.7, radius=0.9, n_segments=48),
+        nfp=2,
+        stellsym=True,
+        current_scale=1.25,
+        regularization_epsilon=1.0e-8,
+    )
+    geometry = build_coil_field_geometry(params)
+    points = np.asarray(
+        [
+            [[0.20, 0.10, 0.30], [0.35, -0.20, -0.10]],
+            [[-0.25, 0.15, 0.20], [0.10, 0.40, -0.25]],
+        ]
+    )
+
+    cached_chunked = sample_coil_field_xyz_from_geometry(
+        geometry,
+        points,
+        regularization_epsilon=params.regularization_epsilon,
+        chunk_size=3,
+    )
+    direct_unchunked = biot_savart_xyz(
+        points,
+        *geometry,
+        regularization_epsilon=params.regularization_epsilon,
+    )
+
+    np.testing.assert_allclose(cached_chunked, direct_unchunked, rtol=1.0e-14, atol=1.0e-18)
+
+
 def test_chunked_and_unchunked_biot_savart_match():
     enable_x64(True)
     params = _circle_params(current=2.0, radius=1.0, n_segments=64)
@@ -131,6 +174,39 @@ def test_chunked_and_unchunked_biot_savart_match():
     chunked = biot_savart_xyz(points, gamma, gamma_dash, params.base_currents, chunk_size=2)
 
     np.testing.assert_allclose(chunked, unchunked, rtol=1.0e-14, atol=1.0e-18)
+
+
+def test_chunked_cylindrical_sampling_preserves_current_gradient():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+
+    enable_x64(True)
+    dofs = jnp.zeros((2, 3, 3), dtype=float)
+    dofs = dofs.at[:, 0, 2].set(0.75)
+    dofs = dofs.at[:, 1, 1].set(0.75)
+    dofs = dofs.at[0, 0, 0].set(1.1)
+    dofs = dofs.at[1, 0, 0].set(-0.8)
+    params = CoilFieldParams(
+        base_curve_dofs=dofs,
+        base_currents=jnp.asarray([2.0, -1.5], dtype=float),
+        n_segments=40,
+        regularization_epsilon=1.0e-8,
+    )
+    R = jnp.asarray([[0.20, 0.35, 0.50], [0.40, 0.30, 0.25]], dtype=float)
+    Z = jnp.asarray([[0.15, -0.10, 0.25], [-0.20, 0.05, 0.30]], dtype=float)
+    phi = jnp.asarray([[0.0, 0.3, 0.6], [0.9, 1.2, 1.5]], dtype=float)
+    weights = jnp.asarray([[0.2, -0.4, 0.6], [-0.8, 1.0, -1.2]], dtype=float)
+
+    def weighted_bz(currents, chunk_size):
+        trial = replace(params.with_arrays(base_currents=currents), chunk_size=chunk_size)
+        return jnp.sum(weights * sample_coil_field_cylindrical(trial, R, Z, phi)[2])
+
+    currents = params.base_currents
+    unchunked_grad = jax.grad(lambda x: weighted_bz(x, None))(currents)
+    chunked_grad = jax.grad(lambda x: weighted_bz(x, 4))(currents)
+
+    np.testing.assert_allclose(chunked_grad, unchunked_grad, rtol=1.0e-12, atol=1.0e-18)
+    assert np.all(np.isfinite(np.asarray(chunked_grad)))
 
 
 def test_current_gradient_matches_analytic_linearity():

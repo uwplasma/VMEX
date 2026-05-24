@@ -2339,6 +2339,28 @@ def run_fixed_boundary(
         "mgrid",
         "legacy_mgrid",
     )
+    external_field_provider_static_eff = external_field_provider_static
+    provider_kind_eff = "" if external_field_provider_kind is None else str(external_field_provider_kind).strip().lower()
+    if (
+        direct_external_provider
+        and external_field_provider_static_eff is None
+        and provider_kind_eff in ("direct_coils", "coils", "coil")
+        and external_field_provider_params is not None
+        and os.getenv("VMEC_JAX_FREEB_DISABLE_COIL_GEOMETRY_CACHE", "").strip().lower()
+        not in ("1", "true", "yes", "on")
+    ):
+        try:
+            from .external_fields import build_coil_field_geometry
+
+            external_field_provider_static_eff = {
+                "coil_geometry": build_coil_field_geometry(external_field_provider_params),
+                "regularization_epsilon": getattr(external_field_provider_params, "regularization_epsilon", 0.0),
+                "chunk_size": getattr(external_field_provider_params, "chunk_size", None),
+            }
+        except Exception:
+            # Preserve the original uncached direct-provider path if a custom
+            # provider-like object is not compatible with the coil helper.
+            external_field_provider_static_eff = external_field_provider_static
     if not bool(direct_external_provider):
         validate_free_boundary_config(cfg, strict=fb_strict)
         prepared_fb = prepare_mgrid_for_config(cfg, load_fields=False, strict=fb_strict)
@@ -2984,7 +3006,7 @@ def run_fixed_boundary(
                 host_update_assembly=stage_host_update_assembly,
                 preconditioner_use_precomputed_tridi=stage_preconditioner_use_precomputed_tridi,
                 external_field_provider_kind=external_field_provider_kind,
-                external_field_provider_static=external_field_provider_static,
+                external_field_provider_static=external_field_provider_static_eff,
                 external_field_provider_params=external_field_provider_params,
                 free_boundary_activate_fsq=free_boundary_activate_fsq,
             )

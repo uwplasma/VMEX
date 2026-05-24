@@ -796,20 +796,20 @@ branch.
 ```text
 WP0 Branch foundation and plan:                100%
 WP1 Provider base API:                         100%
-WP2 Pure JAX coil Biot-Savart:                 82%
+WP2 Pure JAX coil Biot-Savart:                 88%
 WP3 ESSOS adapter:                             80%
 WP4 JAX mgrid interpolation:                   85%
-WP5 Free-boundary provider hook:               86%
+WP5 Free-boundary provider hook:               88%
 WP6 Direct-coil forward example:               82%
 WP7 Vacuum adjoint scaffold:                  100%
-WP8 Gradient checks:                           88%
-WP9 VMEC2000 diagnostics:                      42%
-WP10 Benchmarks/diagnostics:                   73%
+WP8 Gradient checks:                           91%
+WP9 VMEC2000 diagnostics:                      62%
+WP10 Benchmarks/diagnostics:                   78%
 WP11 Coil-only QS optimization example:        45%
 WP12 Robust coil perturbations:               100%
-WP13 Documentation:                            78%
-WP14 CI policy:                                58%
-Overall branch completion:                     73%
+WP13 Documentation:                            84%
+WP14 CI policy:                                64%
+Overall branch completion:                     78%
 ```
 
 ## Immediate Next Steps
@@ -865,6 +865,59 @@ Best next steps:
    objective before promoting the phase-1 proxy toward Boozer/QS.
 3. Keep robust full-solve scenarios as Python-loop examples until the production
    free-boundary path is batch-transformable.
+
+Need from user:
+
+Nothing now.
+
+### 2026-05-24 Cached direct-coil provider bridge, docs, and coverage tests
+
+Steps taken:
+
+1. Added provider-static support for prebuilt direct-coil geometry in
+   `sample_external_field_cylindrical(...)`.
+2. Added an automatic host-driver cache for `direct_coils` free-boundary runs:
+   `run_free_boundary(...)` now builds symmetry-expanded coil geometry once per
+   run/stage and passes it through the provider-static slot. The original
+   `CoilFieldParams -> field` API remains unchanged for differentiable
+   provider-level tests.
+3. Added fast tests for cached-provider dispatch, cached XYZ sampling with
+   chunking, chunked current-gradient parity, and smooth-max robust-risk
+   gradients.
+4. Shortened the README free-boundary coil section and moved detailed caveats,
+   robust smoke instructions, benchmark matrix guidance, and optional VMEC2000
+   diagnostics into the docs page.
+5. Added `tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py`, a
+   standalone optional diagnostic that writes JSON for the current three-way
+   path: `vmec_jax` generated-`mgrid`, `vmec_jax` direct coils, and VMEC2000
+   generated-`mgrid` when available.
+
+Results obtained:
+
+1. `pytest -q tests/test_external_fields_coils_jax.py tests/test_robust_coil_perturbations.py`
+   passed: 24 passed in 17.61 s.
+2. `VMEC_JAX_TIMING=1 python tools/benchmarks/bench_freeb_direct_coil_solve.py --max-iter 2 --warm-repeats 2 ...`
+   shows the active NESTOR direct-coil sample time improving from about
+   `0.98 s` to `0.51 s` on the cold sample, and from about `11.3 ms` to
+   `4.3 ms` warm. Total tiny-solve runtime improved modestly because
+   preconditioner/residual work dominates this short benchmark.
+3. `python -m sphinx -T -b html docs /tmp/vmec_jax_freeb_docs_after_cache`
+   passed.
+4. The standalone diagnostic smoke with `--skip-vmec2000` passes the
+   `vmec_jax` direct-coil versus generated-`mgrid` WOUT comparison. The
+   VMEC2000-enabled smoke currently records `vmec2000_status: no_wout` for the
+   low-iteration LP-QA generated-`mgrid` case, matching the known optional
+   parity gap while preserving debug tails and workdir paths in JSON.
+
+Best next steps:
+
+1. Run the same benchmark matrix on a GPU host and decide whether to add a
+   jitted geometry sampler cache for the free-boundary bridge.
+2. Continue VMEC2000 generated-mgrid diagnostic scripting so the optional xfail
+   emits actionable JSON outside pytest.
+3. Add full-loop finite-difference checks for coil-current-only objectives
+   before promoting the coil-only optimization example beyond phase-1 proxy
+   status.
 
 Need from user:
 

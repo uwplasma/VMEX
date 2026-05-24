@@ -1,0 +1,1037 @@
+#!/usr/bin/env python
+"""Compare free-boundary ESSOS coils through direct, mgrid, and VMEC2000 paths.
+
+This diagnostic is intentionally local/optional.  It prefers an ESSOS checkout
+with ``Coils.to_mgrid`` support, runs a low-resolution Landreman-Paul QA
+free-boundary case through:
+
+1. vmec_jax using an ESSOS-generated mgrid file,
+2. vmec_jax using the direct JAX coil provider,
+3. VMEC2000 using the same generated mgrid, when ``xvmec2000`` is available.
+
+The output is a JSON report.  Missing optional dependencies are recorded as
+skips unless ``--strict`` or the corresponding ``--require-*`` flag is used.
+
+Example:
+
+    python tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py \
+      --out results/freeb_coils_mgrid_vmec2000.json
+"""
+
+from __future__ import annotations
+
+import argparse
+from copy import deepcopy
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import time
+from typing import Any
+
+import numpy as np
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+DEFAULT_INPUT = REPO_ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_reactorScale_lowres"
+DEFAULT_OUT = REPO_ROOT / "results" / "freeb_coils_mgrid_vmec2000.json"
+DEFAULT_COILS_JSON_NAME = "ESSOS_biot_savart_LandremanPaulQA.json"
+DEFAULT_PRESSURE_SCALE = 34.46233666638
+TINY = 1.0e-300
+
+
+def _candidate_essos_roots() -> list[Path]:
+    candidates: list[Path] = []
+    if os.getenv("ESSOS_ROOT"):
+        candidates.append(Path(os.environ["ESSOS_ROOT"]).expanduser())
+    candidates.extend(
+        [
+            REPO_ROOT.parent / "ESSOS_mgrid_pr",
+            Path("/Users/rogeriojorge/local/ESSOS_mgrid_pr"),
+            REPO_ROOT.parent / "ESSOS",
+            Path("/Users/rogeriojorge/local/ESSOS"),
+        ]
+    )
+    return candidates
+
+
+def _candidate_essos_input_dirs(essos_root: Path | None = None) -> list[Path]:
+    candidates: list[Path] = []
+    if os.getenv("ESSOS_INPUT_DIR"):
+        candidates.append(Path(os.environ["ESSOS_INPUT_DIR"]).expanduser())
+    roots = [essos_root] if essos_root is not None else []
+    roots.extend(_candidate_essos_roots())
+    for root in roots:
+        if root is not None:
+            candidates.append(Path(root).expanduser() / "examples" / "input_files")
+    candidates.append(Path.cwd() / "examples" / "input_files")
+    return candidates
+
+
+def _find_default_coils_json(essos_root: Path | None = None) -> Path:
+    for directory in _candidate_essos_input_dirs(essos_root):
+        path = directory / DEFAULT_COILS_JSON_NAME
+        if path.exists():
+            return path.resolve()
+    searched = "\n  ".join(str(p) for p in _candidate_essos_input_dirs(essos_root))
+    raise FileNotFoundError(
+        f"Could not find {DEFAULT_COILS_JSON_NAME}. Set --coils-json or ESSOS_INPUT_DIR. Searched:\n  {searched}"
+    )
+
+
+def _parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--out", type=Path, default=DEFAULT_OUT, help="JSON output path.")
+    p.add_argument("--workdir", type=Path, default=None, help="Directory for generated inputs, mgrid, and WOUTs.")
+    p.add_argument("--input", type=Path, default=DEFAULT_INPUT, help="Base VMEC input deck.")
+    p.add_argument("--coils-json", type=Path, default=None, help="ESSOS coil JSON.")
+    p.add_argument(
+        "--essos-root",
+        type=Path,
+        default=None,
+        help="ESSOS checkout to put first on sys.path before importing essos.",
+    )
+    p.add_argument("--pressure-scale", type=float, default=DEFAULT_PRESSURE_SCALE)
+    p.add_argument("--niter", type=int, default=2)
+    p.add_argument("--ftol", type=float, default=1.0e-8)
+    p.add_argument("--ns", type=int, default=12)
+    p.add_argument("--mpol", type=int, default=4)
+    p.add_argument("--ntor", type=int, default=4)
+    p.add_argument("--nzeta", type=int, default=6)
+    p.add_argument("--nvacskip", type=int, default=None)
+    p.add_argument("--mgrid-nr", type=int, default=12)
+    p.add_argument("--mgrid-nz", type=int, default=12)
+    p.add_argument("--mgrid-nphi", type=int, default=6)
+    p.add_argument("--mgrid-rmin", type=float, default=5.0)
+    p.add_argument("--mgrid-rmax", type=float, default=15.0)
+    p.add_argument("--mgrid-zmin", type=float, default=-5.0)
+    p.add_argument("--mgrid-zmax", type=float, default=5.0)
+    p.add_argument("--direct-chunk-size", type=int, default=256)
+    p.add_argument("--regularization-epsilon", type=float, default=0.0)
+    p.add_argument("--jit-forces", action="store_true", help="Enable JIT force kernels for vmec_jax solves.")
+    p.add_argument("--skip-vmec2000", action="store_true", help="Do not try to run xvmec2000.")
+    p.add_argument("--vmec2000-exec", type=Path, default=None, help="Path to xvmec2000.")
+    p.add_argument(
+        "--vmec2000-niter",
+        type=int,
+        default=None,
+        help="Override VMEC2000 NITER/NITER_ARRAY only; vmec_jax still uses --niter.",
+    )
+    p.add_argument("--vmec2000-timeout", type=float, default=90.0)
+    p.add_argument("--require-essos", action="store_true", help="Exit nonzero if ESSOS or Coils.to_mgrid is unavailable.")
+    p.add_argument("--require-vmec2000", action="store_true", help="Exit nonzero if VMEC2000 is unavailable or no WOUT is produced.")
+    p.add_argument(
+        "--fail-on-jax-mismatch",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Exit nonzero when vmec_jax direct-coil and generated-mgrid WOUTs differ beyond tolerance.",
+    )
+    p.add_argument(
+        "--fail-on-vmec2000-mismatch",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Exit nonzero when VMEC2000 WOUT comparison limits are exceeded.",
+    )
+    p.add_argument("--strict", action="store_true", help="Require all optional paths and fail on all comparison mismatches.")
+    p.add_argument("--jax-rtol", type=float, default=1.0e-12)
+    p.add_argument("--jax-atol", type=float, default=1.0e-12)
+    return p
+
+
+def _jsonify(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _jsonify(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonify(v) for v in value]
+    if isinstance(value, np.ndarray):
+        return _jsonify(value.tolist())
+    if isinstance(value, np.generic):
+        return _jsonify(value.item())
+    if isinstance(value, (bool, str, int)) or value is None:
+        return value
+    if isinstance(value, float):
+        return value if np.isfinite(value) else None
+    try:
+        arr = np.asarray(value)
+        if arr.shape == ():
+            return _jsonify(arr.item())
+    except Exception:
+        pass
+    return str(value)
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path = path.expanduser().resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(_jsonify(payload), indent=2, sort_keys=True, allow_nan=False) + "\n")
+
+
+def _now_utc() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _tail_text(path: Path | None, *, lines: int) -> list[str]:
+    if path is None or not path.exists():
+        return []
+    return path.read_text(errors="replace").splitlines()[-int(lines) :]
+
+
+def _as_float_array(value: Any) -> np.ndarray:
+    return np.asarray(np.ma.filled(value, np.nan), dtype=float)
+
+
+def _safe_float(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    return out if np.isfinite(out) else None
+
+
+def _last_float(value: Any) -> float | None:
+    try:
+        arr = _as_float_array(value).reshape(-1)
+    except Exception:
+        return None
+    if arr.size == 0:
+        return None
+    return _safe_float(arr[-1])
+
+
+def _rms(value: Any) -> float | None:
+    try:
+        arr = _as_float_array(value)
+    except Exception:
+        return None
+    if arr.size == 0 or not np.isfinite(arr).all():
+        return None
+    return float(np.sqrt(np.mean(arr * arr)))
+
+
+def _fsq_summary_from_run(run: Any) -> dict[str, Any]:
+    result = getattr(run, "result", None)
+    if result is None:
+        return {"available": False}
+    fsqr = _last_float(getattr(result, "fsqr2_history", None))
+    fsqz = _last_float(getattr(result, "fsqz2_history", None))
+    fsql = _last_float(getattr(result, "fsql2_history", None))
+    fsq_sum = None if None in (fsqr, fsqz, fsql) else float(fsqr + fsqz + fsql)
+    fsq_norm = None if None in (fsqr, fsqz, fsql) else float(np.sqrt(fsqr * fsqr + fsqz * fsqz + fsql * fsql))
+    return {
+        "available": True,
+        "n_iter": int(getattr(result, "n_iter", -1)),
+        "fsqr": fsqr,
+        "fsqz": fsqz,
+        "fsql": fsql,
+        "fsq_sum": fsq_sum,
+        "fsq_norm": fsq_norm,
+        "w_final": _last_float(getattr(result, "w_history", None)),
+    }
+
+
+def _fsq_total_from_wout(wout: Any) -> float | None:
+    values = [_safe_float(getattr(wout, name, None)) for name in ("fsqr", "fsqz", "fsql")]
+    if any(value is None for value in values):
+        return None
+    return float(sum(value for value in values if value is not None))
+
+
+def _layout_summary(wout: Any) -> dict[str, Any]:
+    return {
+        "ns": int(wout.ns),
+        "mpol": int(wout.mpol),
+        "ntor": int(wout.ntor),
+        "nfp": int(wout.nfp),
+        "lasym": bool(wout.lasym),
+        "signgs": int(getattr(wout, "signgs", 0)),
+        "mnmax": int(getattr(wout, "mnmax", len(getattr(wout, "xm", [])))),
+        "mnmax_nyq": int(getattr(wout, "mnmax_nyq", len(getattr(wout, "xm_nyq", [])))),
+    }
+
+
+def _wout_summary(wout: Any) -> dict[str, Any]:
+    scalar_names = (
+        "aspect",
+        "Aminor_p",
+        "Rmajor_p",
+        "volume_p",
+        "wb",
+        "wp",
+        "betatotal",
+        "betapol",
+        "betator",
+        "betaxis",
+        "fsqr",
+        "fsqz",
+        "fsql",
+    )
+    iotas = _as_float_array(getattr(wout, "iotas", []))
+    iotaf = _as_float_array(getattr(wout, "iotaf", []))
+    return {
+        "path": getattr(wout, "path", None),
+        "layout": _layout_summary(wout),
+        "scalars": {name: _safe_float(getattr(wout, name, None)) for name in scalar_names},
+        "fsq_total": _fsq_total_from_wout(wout),
+        "iotas_mean_no_axis": _safe_float(np.mean(iotas[1:])) if iotas.size > 1 else _safe_float(np.mean(iotas)),
+        "iotaf_mean": _safe_float(np.mean(iotaf)) if iotaf.size else None,
+    }
+
+
+def _scalar_gap(got_wout: Any, ref_wout: Any, name: str, *, rtol: float | None = None, atol: float | None = None) -> dict[str, Any]:
+    if not (hasattr(got_wout, name) and hasattr(ref_wout, name)):
+        return {"available": False}
+    got = _safe_float(getattr(got_wout, name))
+    ref = _safe_float(getattr(ref_wout, name))
+    if got is None or ref is None:
+        return {"available": False, "got": got, "ref": ref}
+    abs_delta = abs(got - ref)
+    rel_delta = abs_delta / max(abs(ref), TINY)
+    out: dict[str, Any] = {
+        "available": True,
+        "got": got,
+        "ref": ref,
+        "abs_delta": abs_delta,
+        "rel_delta": rel_delta,
+    }
+    if rtol is not None and atol is not None:
+        out["within_tolerance"] = bool(np.allclose(got, ref, rtol=float(rtol), atol=float(atol), equal_nan=False))
+        out["rtol"] = float(rtol)
+        out["atol"] = float(atol)
+    return out
+
+
+def _array_gap(
+    got: Any,
+    ref: Any,
+    *,
+    radial_skip: int = 0,
+    mode_mask: np.ndarray | None = None,
+    rtol: float | None = None,
+    atol: float | None = None,
+) -> dict[str, Any]:
+    got_arr = _as_float_array(got)
+    ref_arr = _as_float_array(ref)
+    if got_arr.shape != ref_arr.shape:
+        return {
+            "shape_mismatch": True,
+            "got_shape": list(got_arr.shape),
+            "ref_shape": list(ref_arr.shape),
+            "within_tolerance": False if rtol is not None and atol is not None else None,
+        }
+    if radial_skip and got_arr.ndim >= 1:
+        got_arr = got_arr[int(radial_skip) :, ...]
+        ref_arr = ref_arr[int(radial_skip) :, ...]
+    if mode_mask is not None:
+        got_arr = got_arr[..., mode_mask]
+        ref_arr = ref_arr[..., mode_mask]
+    if got_arr.size == 0:
+        return {"size": 0, "within_tolerance": False if rtol is not None and atol is not None else None}
+    diff = got_arr - ref_arr
+    abs_rms = float(np.sqrt(np.mean(diff * diff)))
+    ref_rms = float(np.sqrt(np.mean(ref_arr * ref_arr)))
+    out: dict[str, Any] = {
+        "size": int(got_arr.size),
+        "shape": list(got_arr.shape),
+        "abs_rms_delta": abs_rms,
+        "rel_rms_delta": abs_rms / max(ref_rms, TINY),
+        "max_abs_delta": float(np.max(np.abs(diff))),
+    }
+    if rtol is not None and atol is not None:
+        out["within_tolerance"] = bool(np.allclose(got_arr, ref_arr, rtol=float(rtol), atol=float(atol), equal_nan=False))
+        out["rtol"] = float(rtol)
+        out["atol"] = float(atol)
+    return out
+
+
+def _same_layout(got_wout: Any, ref_wout: Any) -> bool:
+    got = _layout_summary(got_wout)
+    ref = _layout_summary(ref_wout)
+    if any(got[key] != ref[key] for key in ("ns", "mpol", "ntor", "nfp", "lasym")):
+        return False
+    try:
+        if not np.array_equal(np.asarray(got_wout.xm, dtype=int), np.asarray(ref_wout.xm, dtype=int)):
+            return False
+        if not np.array_equal(np.asarray(got_wout.xn, dtype=int), np.asarray(ref_wout.xn, dtype=int)):
+            return False
+    except Exception:
+        return False
+    return True
+
+
+def _low_order_mode_mask(wout: Any, *, max_m: int = 2, max_abs_n: int = 2) -> np.ndarray:
+    xm = np.asarray(wout.xm, dtype=int)
+    xn = np.asarray(wout.xn, dtype=int)
+    nfp = max(1, int(wout.nfp))
+    n = np.rint(xn / float(nfp)).astype(int)
+    return (np.abs(xm) <= max_m) & (np.abs(n) <= max_abs_n)
+
+
+def _jax_backend_comparison(got_wout: Any, ref_wout: Any, *, rtol: float, atol: float) -> dict[str, Any]:
+    scalar_names = ("aspect", "wb", "wp")
+    array_names = ("rmnc", "zmns", "lmns", "iotas", "iotaf")
+    report: dict[str, Any] = {
+        "candidate_backend": "vmec_jax_direct_coils",
+        "reference_backend": "vmec_jax_generated_mgrid",
+        "layout": {
+            "candidate": _layout_summary(got_wout),
+            "reference": _layout_summary(ref_wout),
+            "same": _same_layout(got_wout, ref_wout),
+        },
+        "scalars": {name: _scalar_gap(got_wout, ref_wout, name, rtol=rtol, atol=atol) for name in scalar_names},
+        "arrays": {
+            name: _array_gap(getattr(got_wout, name), getattr(ref_wout, name), rtol=rtol, atol=atol)
+            for name in array_names
+            if hasattr(got_wout, name) and hasattr(ref_wout, name)
+        },
+    }
+    checks = [bool(report["layout"]["same"])]
+    checks.extend(bool(values.get("within_tolerance")) for values in report["scalars"].values())
+    checks.extend(bool(values.get("within_tolerance")) for values in report["arrays"].values())
+    report["passed"] = bool(checks and all(checks))
+    return report
+
+
+def _same_sign_and_scale(got: float | None, ref: float | None, *, max_ratio: float) -> dict[str, Any]:
+    if got is None or ref is None:
+        return {"available": False, "got": got, "ref": ref, "passed": None}
+    tiny = 1.0e-14
+    if abs(got) <= tiny and abs(ref) <= tiny:
+        return {"available": True, "got": got, "ref": ref, "ratio": 1.0, "passed": True}
+    sign_ok = bool(got * ref >= 0.0)
+    ratio = max(abs(got), tiny) / max(abs(ref), tiny)
+    passed = bool(sign_ok and (1.0 / max_ratio) <= ratio <= max_ratio)
+    return {
+        "available": True,
+        "got": got,
+        "ref": ref,
+        "same_sign": sign_ok,
+        "ratio": ratio,
+        "max_ratio": float(max_ratio),
+        "passed": passed,
+    }
+
+
+def _relative_limit(gap: dict[str, Any], *, limit: float) -> dict[str, Any]:
+    value = gap.get("rel_delta", gap.get("rel_rms_delta"))
+    if value is None:
+        return {"available": False, "limit": float(limit), "passed": None}
+    return {"available": True, "value": float(value), "limit": float(limit), "passed": bool(float(value) <= float(limit))}
+
+
+def _vmec2000_wout_comparison(candidate_wout: Any, vmec2000_wout: Any, *, candidate_backend: str) -> dict[str, Any]:
+    scalar_names = (
+        "aspect",
+        "Aminor_p",
+        "Rmajor_p",
+        "volume_p",
+        "wb",
+        "wp",
+        "betatotal",
+        "betapol",
+        "betator",
+        "betaxis",
+        "fsqr",
+        "fsqz",
+        "fsql",
+    )
+    profile_names = (
+        "iotas",
+        "iotaf",
+        "pres",
+        "presf",
+        "vp",
+        "phipf",
+        "phips",
+        "chipf",
+        "buco",
+        "bvco",
+        "jcuru",
+        "jcurv",
+        "equif",
+    )
+    report: dict[str, Any] = {
+        "candidate_backend": candidate_backend,
+        "reference_backend": "vmec2000_generated_mgrid",
+        "layout": {
+            "candidate": _layout_summary(candidate_wout),
+            "reference": _layout_summary(vmec2000_wout),
+            "same": _same_layout(candidate_wout, vmec2000_wout),
+        },
+        "scalars": {name: _scalar_gap(candidate_wout, vmec2000_wout, name) for name in scalar_names},
+        "profiles": {},
+        "low_order_modes": {},
+        "limits": {},
+    }
+    for name in profile_names:
+        if hasattr(candidate_wout, name) and hasattr(vmec2000_wout, name):
+            report["profiles"][name] = _array_gap(getattr(candidate_wout, name), getattr(vmec2000_wout, name), radial_skip=1)
+
+    try:
+        low_order = _low_order_mode_mask(vmec2000_wout)
+        report["low_order_mode_count"] = int(np.count_nonzero(low_order))
+        for name in ("rmnc", "zmns", "lmns", "bmnc", "gmnc", "bsubumnc", "bsubvmnc", "bsupumnc", "bsupvmnc"):
+            if hasattr(candidate_wout, name) and hasattr(vmec2000_wout, name):
+                report["low_order_modes"][name] = _array_gap(
+                    getattr(candidate_wout, name),
+                    getattr(vmec2000_wout, name),
+                    radial_skip=1,
+                    mode_mask=low_order,
+                )
+    except Exception as exc:
+        report["low_order_modes_error"] = repr(exc)
+
+    report["limits"]["layout_same"] = {"passed": bool(report["layout"]["same"])}
+    report["limits"]["aspect_rel_delta"] = _relative_limit(report["scalars"].get("aspect", {}), limit=1.5e-1)
+    report["limits"]["wb_rel_delta"] = _relative_limit(report["scalars"].get("wb", {}), limit=2.5e-1)
+    report["limits"]["iotas_rel_rms_no_axis"] = _relative_limit(report["profiles"].get("iotas", {}), limit=3.5e-1)
+    report["limits"]["low_order_rmnc_rel_rms"] = _relative_limit(report["low_order_modes"].get("rmnc", {}), limit=4.0e-1)
+    report["limits"]["low_order_zmns_rel_rms"] = _relative_limit(report["low_order_modes"].get("zmns", {}), limit=4.0e-1)
+
+    for name in ("wp", "betatotal", "betapol", "betator", "betaxis"):
+        gap = report["scalars"].get(name, {})
+        report["limits"][f"{name}_same_sign_scale"] = _same_sign_and_scale(
+            gap.get("got"),
+            gap.get("ref"),
+            max_ratio=10.0,
+        )
+    report["limits"]["fsq_total_same_sign_scale"] = _same_sign_and_scale(
+        _fsq_total_from_wout(candidate_wout),
+        _fsq_total_from_wout(vmec2000_wout),
+        max_ratio=10.0,
+    )
+
+    limit_results = [
+        values.get("passed")
+        for values in report["limits"].values()
+        if isinstance(values, dict) and values.get("passed") is not None
+    ]
+    report["passed_current_limits"] = bool(limit_results and all(bool(value) for value in limit_results))
+    return report
+
+
+def _make_freeb_indata(base_indata: Any, *, mgrid_file: str, args: argparse.Namespace) -> Any:
+    indata = deepcopy(base_indata)
+    indata.scalars.update(
+        {
+            "LFREEB": True,
+            "MGRID_FILE": str(mgrid_file),
+            "EXTCUR": [1.0],
+            "NS_ARRAY": [int(args.ns)],
+            "NITER_ARRAY": [int(args.niter)],
+            "FTOL_ARRAY": [float(args.ftol)],
+            "NITER": int(args.niter),
+            "FTOL": float(args.ftol),
+            "MPOL": int(args.mpol),
+            "NTOR": int(args.ntor),
+            "NZETA": int(args.nzeta),
+            "NTHETA": 0,
+            "NVACSKIP": int(args.nvacskip) if args.nvacskip is not None else int(args.nzeta),
+            "PRES_SCALE": float(args.pressure_scale),
+            "PMASS_TYPE": "power_series",
+            "AM": [1.0, -1.0],
+        }
+    )
+    return indata
+
+
+def _load_essos(args: argparse.Namespace) -> tuple[Any, Path, Path | None, str]:
+    requested_root = args.essos_root.expanduser().resolve() if args.essos_root is not None else None
+    preferred_root = requested_root
+    if preferred_root is None:
+        for root in _candidate_essos_roots():
+            root = root.expanduser()
+            if (root / "essos").exists():
+                preferred_root = root.resolve()
+                break
+    if preferred_root is not None:
+        sys.path.insert(0, str(preferred_root))
+
+    try:
+        from essos.coils import Coils_from_json
+        import essos
+    except Exception as exc:
+        raise ImportError(
+            "Could not import ESSOS. Use --essos-root /path/to/ESSOS_mgrid_pr or set ESSOS_ROOT."
+        ) from exc
+
+    if args.coils_json is not None:
+        coils_json = args.coils_json.expanduser().resolve()
+        if not coils_json.exists():
+            raise FileNotFoundError(f"Requested --coils-json does not exist: {coils_json}")
+    else:
+        coils_json = _find_default_coils_json(preferred_root)
+
+    coils = Coils_from_json(str(coils_json))
+    if not hasattr(coils, "to_mgrid"):
+        module_path = getattr(essos, "__file__", "unknown")
+        raise RuntimeError(
+            "Imported ESSOS does not provide Coils.to_mgrid. Use ESSOS PR #33 or newer, for example "
+            f"--essos-root {REPO_ROOT.parent / 'ESSOS_mgrid_pr'}. Imported essos from {module_path}."
+        )
+    return coils, coils_json, preferred_root, str(getattr(essos, "__file__", "unknown"))
+
+
+def _write_generated_mgrid(coils: Any, path: Path, *, args: argparse.Namespace) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        path.unlink()
+    coils.to_mgrid(
+        path,
+        nr=int(args.mgrid_nr),
+        nz=int(args.mgrid_nz),
+        nphi=int(args.mgrid_nphi),
+        rmin=float(args.mgrid_rmin),
+        rmax=float(args.mgrid_rmax),
+        zmin=float(args.mgrid_zmin),
+        zmax=float(args.mgrid_zmax),
+        nfp=int(coils.nfp),
+    )
+
+
+def _run_vmec_jax_case(
+    *,
+    input_path: Path,
+    wout_path: Path,
+    direct_params: Any | None,
+    args: argparse.Namespace,
+) -> tuple[Any, Any, dict[str, Any]]:
+    from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_run
+    from vmec_jax.wout import read_wout
+
+    kwargs: dict[str, Any] = {}
+    if direct_params is not None:
+        kwargs.update(
+            {
+                "external_field_provider_kind": "direct_coils",
+                "external_field_provider_params": direct_params,
+            }
+        )
+    t0 = time.perf_counter()
+    run = run_free_boundary(
+        input_path,
+        solver="vmec2000_iter",
+        solver_mode="parity",
+        multigrid_use_input_niter=True,
+        verbose=False,
+        jit_forces=bool(args.jit_forces),
+        **kwargs,
+    )
+    runtime_s = float(time.perf_counter() - t0)
+    write_wout_from_fixed_boundary_run(wout_path, run)
+    wout = read_wout(wout_path)
+    return run, wout, {
+        "status": "completed",
+        "runtime_s": runtime_s,
+        "input_path": input_path,
+        "wout_path": wout_path,
+        "fsq": _fsq_summary_from_run(run),
+        "wout": _wout_summary(wout),
+    }
+
+
+def _vmec2000_wout_path(vmec2000_result: Any) -> Path:
+    case = vmec2000_result.input_path.name.removeprefix("input.")
+    return vmec2000_result.workdir / f"wout_{case}.nc"
+
+
+def _vmec2000_summary(vmec2000_result: Any) -> dict[str, Any]:
+    from vmec_jax.vmec2000_exec import flatten_threed1, threed1_fsq_total
+
+    rows = flatten_threed1(vmec2000_result.stages)
+    fsq_total = threed1_fsq_total(rows)
+    last_row = rows[-1] if rows else None
+    return {
+        "status": "completed",
+        "workdir": vmec2000_result.workdir,
+        "input_path": vmec2000_result.input_path,
+        "runtime_s": float(vmec2000_result.runtime_s),
+        "threed1_path": vmec2000_result.threed1_path,
+        "threed1_tail": _tail_text(vmec2000_result.threed1_path, lines=80),
+        "stdout_tail": vmec2000_result.stdout.splitlines()[-40:],
+        "stderr_tail": vmec2000_result.stderr.splitlines()[-40:],
+        "files": sorted(p.name for p in vmec2000_result.workdir.iterdir()),
+        "stage_count": len(vmec2000_result.stages),
+        "iteration_row_count": len(rows),
+        "fsq_total_last": _safe_float(fsq_total[-1]) if fsq_total.size else None,
+        "last_row": None
+        if last_row is None
+        else {
+            "it": int(last_row.it),
+            "fsqr": float(last_row.fsqr),
+            "fsqz": float(last_row.fsqz),
+            "fsql": float(last_row.fsql),
+            "fsqr1": float(last_row.fsqr1),
+            "fsqz1": float(last_row.fsqz1),
+            "fsql1": float(last_row.fsql1),
+            "delt0r": last_row.delt0r,
+            "r00": last_row.r00,
+            "w": last_row.w,
+        },
+        "stages": [
+            {
+                "ns": int(stage.ns),
+                "niter": int(stage.niter),
+                "ftolv": float(stage.ftolv),
+                "row_count": len(stage.rows),
+            }
+            for stage in vmec2000_result.stages
+        ],
+    }
+
+
+def _run_vmec2000_case(
+    *,
+    mgrid_input: Path,
+    mgrid_path: Path,
+    workdir: Path,
+    args: argparse.Namespace,
+) -> tuple[Any | None, Any | None, dict[str, Any]]:
+    from vmec_jax.vmec2000_exec import find_vmec2000_exec, run_xvmec2000
+    from vmec_jax.wout import read_wout
+
+    if args.skip_vmec2000:
+        return None, None, {
+            "status": "skipped",
+            "reason": "skip_vmec2000_requested",
+            "help": "Remove --skip-vmec2000 to run xvmec2000 when available.",
+        }
+
+    exec_path = args.vmec2000_exec.expanduser().resolve() if args.vmec2000_exec is not None else find_vmec2000_exec()
+    if exec_path is None or not exec_path.exists():
+        return None, None, {
+            "status": "skipped",
+            "reason": "vmec2000_exec_not_found",
+            "help": "Set --vmec2000-exec or VMEC2000_EXEC to a valid xvmec2000 executable.",
+        }
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(mgrid_path, workdir / mgrid_path.name)
+    try:
+        indata_updates = None
+        if args.vmec2000_niter is not None:
+            vmec2000_niter = int(args.vmec2000_niter)
+            indata_updates = {
+                "NITER": str(vmec2000_niter),
+                "NITER_ARRAY": str(vmec2000_niter),
+                "FTOL": f"{float(args.ftol):.16e}",
+                "FTOL_ARRAY": f"{float(args.ftol):.16e}",
+            }
+        result = run_xvmec2000(
+            mgrid_input,
+            exec_path=exec_path,
+            workdir=workdir,
+            timeout_s=float(args.vmec2000_timeout),
+            indata_updates=indata_updates,
+            keep_workdir=True,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return None, None, {
+            "status": "timeout",
+            "reason": "vmec2000_timeout",
+            "exec_path": exec_path,
+            "timeout_s": float(args.vmec2000_timeout),
+            "error": repr(exc),
+            "help": "Increase --vmec2000-timeout or reduce the diagnostic grid/iteration settings.",
+        }
+
+    summary = _vmec2000_summary(result)
+    summary["exec_path"] = exec_path
+    wout_path = _vmec2000_wout_path(result)
+    summary["wout_path"] = wout_path
+    if not wout_path.exists():
+        summary["status"] = "no_wout"
+        summary["reason"] = "vmec2000_completed_without_wout"
+        summary["help"] = "Inspect stdout_tail, stderr_tail, threed1_tail, and the VMEC2000 workdir files in this JSON."
+        return result, None, summary
+
+    wout = read_wout(wout_path)
+    summary["wout"] = _wout_summary(wout)
+    return result, wout, summary
+
+
+def _base_payload(args: argparse.Namespace, *, out: Path, workdir: Path) -> dict[str, Any]:
+    return {
+        "status": "running",
+        "script": Path(__file__).resolve(),
+        "repo_root": REPO_ROOT,
+        "started_at_utc": _now_utc(),
+        "out": out,
+        "workdir": workdir,
+        "base_input": args.input.expanduser().resolve(),
+        "configuration": {
+            "pressure_scale": float(args.pressure_scale),
+            "niter": int(args.niter),
+            "ftol": float(args.ftol),
+            "ns": int(args.ns),
+            "mpol": int(args.mpol),
+            "ntor": int(args.ntor),
+            "nzeta": int(args.nzeta),
+            "nvacskip": int(args.nvacskip) if args.nvacskip is not None else int(args.nzeta),
+            "jit_forces": bool(args.jit_forces),
+            "vmec2000_niter": None if args.vmec2000_niter is None else int(args.vmec2000_niter),
+            "jax_rtol": float(args.jax_rtol),
+            "jax_atol": float(args.jax_atol),
+        },
+        "mgrid_generation": {
+            "nr": int(args.mgrid_nr),
+            "nz": int(args.mgrid_nz),
+            "nphi": int(args.mgrid_nphi),
+            "rmin": float(args.mgrid_rmin),
+            "rmax": float(args.mgrid_rmax),
+            "zmin": float(args.mgrid_zmin),
+            "zmax": float(args.mgrid_zmax),
+        },
+        "dependencies": {},
+        "inputs": {},
+        "backends": {},
+        "comparisons": {},
+        "errors": [],
+        "warnings": [],
+    }
+
+
+def _finish_payload(payload: dict[str, Any], *, hard_errors: list[str], warnings: list[str]) -> None:
+    payload["finished_at_utc"] = _now_utc()
+    payload["hard_errors"] = hard_errors
+    payload["warnings"].extend(warnings)
+    if hard_errors:
+        payload["status"] = "failed"
+    elif warnings:
+        payload["status"] = "completed_with_warnings"
+    else:
+        payload["status"] = "completed"
+
+
+def _dependency_skip(
+    *,
+    payload: dict[str, Any],
+    out: Path,
+    reason: str,
+    error: str,
+    require: bool,
+) -> int:
+    payload["status"] = "skipped"
+    payload["reason"] = reason
+    payload["error"] = error
+    payload["help"] = (
+        "Use --essos-root /Users/rogeriojorge/local/ESSOS_mgrid_pr or set ESSOS_ROOT/ESSOS_INPUT_DIR. "
+        "The ESSOS checkout must provide Coils.to_mgrid."
+    )
+    payload["finished_at_utc"] = _now_utc()
+    _write_json(out, payload)
+    print(f"[compare-freeb-coils] skipped: {reason}: {error}", file=sys.stderr)
+    print(f"[compare-freeb-coils] wrote {out}", file=sys.stderr)
+    return 1 if require else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    if args.strict:
+        args.require_essos = True
+        args.require_vmec2000 = True
+        args.fail_on_jax_mismatch = True
+        args.fail_on_vmec2000_mismatch = True
+    if args.skip_vmec2000 and args.require_vmec2000:
+        raise SystemExit("--skip-vmec2000 conflicts with --require-vmec2000/--strict")
+    if int(args.niter) < 1:
+        raise SystemExit("--niter must be >= 1")
+    if args.vmec2000_niter is not None and int(args.vmec2000_niter) < 1:
+        raise SystemExit("--vmec2000-niter must be >= 1")
+    if int(args.ns) < 3:
+        raise SystemExit("--ns must be >= 3")
+
+    out = args.out.expanduser().resolve()
+    workdir = (args.workdir or (out.parent / f"{out.stem}_work")).expanduser().resolve()
+    payload = _base_payload(args, out=out, workdir=workdir)
+    hard_errors: list[str] = []
+    warnings: list[str] = []
+
+    try:
+        coils, coils_json, essos_root, essos_module = _load_essos(args)
+    except Exception as exc:
+        return _dependency_skip(
+            payload=payload,
+            out=out,
+            reason="essos_or_mgrid_unavailable",
+            error=repr(exc),
+            require=bool(args.require_essos),
+        )
+
+    try:
+        from vmec_jax._compat import enable_x64
+        from vmec_jax.external_fields import from_essos_coils
+        from vmec_jax.namelist import read_indata, write_indata
+
+        enable_x64(True)
+    except Exception as exc:
+        payload["errors"].append({"stage": "vmec_jax_import", "error": repr(exc)})
+        _finish_payload(payload, hard_errors=["vmec_jax_import_failed"], warnings=warnings)
+        _write_json(out, payload)
+        print(f"[compare-freeb-coils] failed importing vmec_jax helpers: {exc!r}", file=sys.stderr)
+        return 1
+
+    workdir.mkdir(parents=True, exist_ok=True)
+    base_input = args.input.expanduser().resolve()
+    if not base_input.exists():
+        payload["errors"].append({"stage": "input", "error": f"missing input deck: {base_input}"})
+        _finish_payload(payload, hard_errors=["input_missing"], warnings=warnings)
+        _write_json(out, payload)
+        return 1
+
+    mgrid_path = workdir / "mgrid_lpqa_from_essos.nc"
+    mgrid_input = workdir / "input.lpqa_mgrid"
+    direct_input = workdir / "input.lpqa_direct"
+    mgrid_wout_path = workdir / "wout_lpqa_mgrid_vmec_jax.nc"
+    direct_wout_path = workdir / "wout_lpqa_direct_vmec_jax.nc"
+
+    payload["dependencies"]["essos"] = {
+        "status": "available",
+        "root": essos_root,
+        "module": essos_module,
+        "coils_json": coils_json,
+        "has_to_mgrid": True,
+    }
+    payload["coils"] = {
+        "nfp": int(coils.nfp),
+        "stellsym": bool(coils.stellsym),
+        "n_segments": int(coils.n_segments),
+        "currents_scale": _safe_float(getattr(coils, "currents_scale", None)),
+        "n_base_currents": int(np.asarray(getattr(coils, "dofs_currents", [])).size),
+    }
+
+    print(f"[compare-freeb-coils] generating mgrid: {mgrid_path}")
+    try:
+        _write_generated_mgrid(coils, mgrid_path, args=args)
+        base_indata = read_indata(base_input)
+        write_indata(mgrid_input, _make_freeb_indata(base_indata, mgrid_file=mgrid_path.name, args=args))
+        write_indata(direct_input, _make_freeb_indata(base_indata, mgrid_file="DIRECT_COILS", args=args))
+        direct_params = from_essos_coils(
+            coils,
+            regularization_epsilon=float(args.regularization_epsilon),
+            chunk_size=int(args.direct_chunk_size) if int(args.direct_chunk_size) > 0 else None,
+        )
+    except Exception as exc:
+        payload["errors"].append({"stage": "setup", "error": repr(exc)})
+        _finish_payload(payload, hard_errors=["setup_failed"], warnings=warnings)
+        _write_json(out, payload)
+        print(f"[compare-freeb-coils] setup failed: {exc!r}", file=sys.stderr)
+        return 1
+
+    payload["inputs"] = {
+        "mgrid_file": mgrid_path,
+        "mgrid_file_size_bytes": mgrid_path.stat().st_size if mgrid_path.exists() else None,
+        "vmec_jax_mgrid_input": mgrid_input,
+        "vmec_jax_direct_input": direct_input,
+    }
+    payload["direct_provider"] = {
+        "n_base_coils": int(np.asarray(direct_params.base_currents).size),
+        "n_segments": int(direct_params.n_segments),
+        "nfp": int(direct_params.nfp),
+        "stellsym": bool(direct_params.stellsym),
+        "base_current_scale": float(direct_params.current_scale),
+        "chunk_size": None if direct_params.chunk_size is None else int(direct_params.chunk_size),
+        "regularization_epsilon": float(direct_params.regularization_epsilon),
+    }
+
+    try:
+        print("[compare-freeb-coils] running vmec_jax mgrid backend")
+        _run_mgrid, wout_mgrid, payload["backends"]["vmec_jax_mgrid"] = _run_vmec_jax_case(
+            input_path=mgrid_input,
+            wout_path=mgrid_wout_path,
+            direct_params=None,
+            args=args,
+        )
+        print("[compare-freeb-coils] running vmec_jax direct-coil backend")
+        _run_direct, wout_direct, payload["backends"]["vmec_jax_direct_coils"] = _run_vmec_jax_case(
+            input_path=direct_input,
+            wout_path=direct_wout_path,
+            direct_params=direct_params,
+            args=args,
+        )
+    except Exception as exc:
+        payload["errors"].append({"stage": "vmec_jax_run", "error": repr(exc)})
+        _finish_payload(payload, hard_errors=["vmec_jax_run_failed"], warnings=warnings)
+        _write_json(out, payload)
+        print(f"[compare-freeb-coils] vmec_jax run failed: {exc!r}", file=sys.stderr)
+        return 1
+
+    jax_comparison = _jax_backend_comparison(wout_direct, wout_mgrid, rtol=float(args.jax_rtol), atol=float(args.jax_atol))
+    payload["comparisons"]["vmec_jax_direct_vs_generated_mgrid"] = jax_comparison
+    if not bool(jax_comparison["passed"]):
+        message = "vmec_jax_direct_vs_generated_mgrid_mismatch"
+        warnings.append(message)
+        if bool(args.fail_on_jax_mismatch):
+            hard_errors.append(message)
+
+    vmec2000_workdir = workdir / "vmec2000_mgrid"
+    print("[compare-freeb-coils] checking VMEC2000 mgrid backend")
+    vmec2000_result = None
+    wout_vmec2000 = None
+    try:
+        vmec2000_result, wout_vmec2000, vmec2000_summary = _run_vmec2000_case(
+            mgrid_input=mgrid_input,
+            mgrid_path=mgrid_path,
+            workdir=vmec2000_workdir,
+            args=args,
+        )
+    except Exception as exc:
+        vmec2000_summary = {
+            "status": "error",
+            "reason": "vmec2000_run_failed",
+            "error": repr(exc),
+            "help": "Inspect the generated input and mgrid in the diagnostic workdir.",
+        }
+    payload["backends"]["vmec2000_generated_mgrid"] = vmec2000_summary
+
+    vmec_status = str(vmec2000_summary.get("status", "unknown"))
+    if vmec_status in ("skipped", "timeout", "no_wout", "error"):
+        warning = f"vmec2000_{vmec_status}"
+        warnings.append(warning)
+        if bool(args.require_vmec2000):
+            hard_errors.append(warning)
+
+    if wout_vmec2000 is not None:
+        comp_mgrid = _vmec2000_wout_comparison(wout_mgrid, wout_vmec2000, candidate_backend="vmec_jax_generated_mgrid")
+        comp_direct = _vmec2000_wout_comparison(wout_direct, wout_vmec2000, candidate_backend="vmec_jax_direct_coils")
+        payload["comparisons"]["vmec_jax_mgrid_vs_vmec2000_mgrid"] = comp_mgrid
+        payload["comparisons"]["vmec_jax_direct_vs_vmec2000_mgrid"] = comp_direct
+        if not bool(comp_mgrid["passed_current_limits"]):
+            warnings.append("vmec_jax_mgrid_vs_vmec2000_mgrid_limits_exceeded")
+            if bool(args.fail_on_vmec2000_mismatch):
+                hard_errors.append("vmec_jax_mgrid_vs_vmec2000_mgrid_limits_exceeded")
+        if not bool(comp_direct["passed_current_limits"]):
+            warnings.append("vmec_jax_direct_vs_vmec2000_mgrid_limits_exceeded")
+            if bool(args.fail_on_vmec2000_mismatch):
+                hard_errors.append("vmec_jax_direct_vs_vmec2000_mgrid_limits_exceeded")
+
+    payload["summary"] = {
+        "jax_direct_vs_mgrid_passed": bool(jax_comparison["passed"]),
+        "vmec2000_status": vmec_status,
+        "vmec2000_wout_available": wout_vmec2000 is not None,
+        "hard_error_count": len(hard_errors),
+        "warning_count": len(warnings),
+    }
+    if vmec2000_result is not None:
+        payload["summary"]["vmec2000_workdir"] = vmec2000_result.workdir
+
+    _finish_payload(payload, hard_errors=hard_errors, warnings=warnings)
+    _write_json(out, payload)
+    print(f"[compare-freeb-coils] wrote {out}")
+    if hard_errors:
+        print(f"[compare-freeb-coils] failed: {hard_errors}", file=sys.stderr)
+        return 1
+    if warnings:
+        print(f"[compare-freeb-coils] completed with warnings: {warnings}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

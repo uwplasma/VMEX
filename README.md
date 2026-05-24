@@ -77,45 +77,23 @@ vmec_jax input.cth_like_free_bdy_lasym_small
 
 The research branch `feature/freeb-essos-coil-single-stage` adds the first
 coil-aware free-boundary lane. The compatibility path still uses VMEC-style
-`mgrid` files, but the new path can sample the external field directly from
-differentiable JAX Biot-Savart coils. This is the architecture needed for a
-true single-stage loop:
+`mgrid` files; the new research path samples the external field directly from
+differentiable JAX Biot-Savart coils so coil currents and Fourier coefficients
+can be optimization variables:
 
 ```text
 coil Fourier dofs/currents -> direct Biot-Savart field -> free-boundary VMEC
 -> wout/Boozer/QS diagnostics -> coil-only objective update
 ```
 
-![Direct-coil free-boundary architecture](docs/_static/figures/freeb_single_stage_architecture.png)
+Current status: direct-coil finite-pressure support is a phase-1
+provider/coupling validation lane. Low-resolution ESSOS LP-QA finite-pressure
+smokes run through both generated-`mgrid` and direct-coil backends and match the
+recorded scalar diagnostics, including active NESTOR samples. This is not yet a
+promoted high-beta coil optimization result or a production full-solve adjoint.
 
-The current numerical smoke example uses ESSOS Landreman-Paul QA coils. It
-first writes an `mgrid` from the same coils, then runs the same four-point
-finite-pressure scan through both external-field backends: generated `mgrid`
-and direct JAX coils. The zero-pressure endpoint is included only as a
-reference. The finite-pressure points verify that pressure and energy channels
-are present, and that direct-coil and generated-`mgrid` provider samples produce
-identical recorded scalar diagnostics.
-
-This is not yet the promoted high-beta free-boundary optimization result:
-the example now forces early VMEC2000-style NESTOR turn-on for a short active
-finite-pressure smoke, but the residuals are not yet bounded tightly enough for
-publication-level single-stage claims. The important current result is that
-direct-coil and generated-`mgrid` backends agree for the same finite-pressure
-active-coupling path.
-
-| Backend | pressure scale | beta proxy `100Wp/WB` (%) | residual norm | aspect | mean iota | wall time (s) |
-|---|---:|---:|---:|---:|---:|---:|
-| direct coils | 11.487 | 4.600e-05 | 2.971e+00 | 5.8434 | 0.16253 | 2.62 |
-| generated mgrid | 11.487 | 4.600e-05 | 2.971e+00 | 5.8434 | 0.16253 | 1.98 |
-| direct coils | 34.462 | 1.380e-04 | 2.971e+00 | 5.8434 | 0.16253 | 2.61 |
-| generated mgrid | 34.462 | 1.380e-04 | 2.971e+00 | 5.8434 | 0.16253 | 1.96 |
-
-![Direct-coil beta scan](docs/_static/figures/freeb_single_stage_beta_scan.png)
-
-![Direct-coil provider parity](docs/_static/figures/freeb_single_stage_provider_parity.png)
-
-Reproduce the scan and plots from a developer checkout with the ESSOS mgrid
-branch on `PYTHONPATH`:
+Run the low-resolution direct-coil/generated-`mgrid` scan from a developer
+checkout with the ESSOS mgrid branch on `PYTHONPATH`:
 
 ```bash
 PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr:$PYTHONPATH \
@@ -128,52 +106,32 @@ python tools/diagnostics/render_freeb_single_stage_readme.py \
   --outdir docs/_static/figures
 ```
 
-For matched sensitivity scans with stronger LP-QA coil fields, keep both
-backends on the same current multiplier:
-
-```bash
-PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr:$PYTHONPATH \
-  python examples/free_boundary_essos_coils_beta_scan.py \
-  --outdir results/free_boundary_essos_coils_beta_scan_scaled \
-  --coil-current-scale 100 \
-  --activate-fsq 1e99
-```
-
-What is fully in this branch: JAX-native coil-field sampling, ESSOS coil
-conversion, generated-mgrid compatibility, direct-coil free-boundary forward
-provider plumbing, provider-gradient tests, robust coil perturbation utilities,
-benchmark scripts, a phase-1 coil-only optimization smoke, and dense toy
-vacuum-adjoint tests. What is not claimed yet: publication-level exact
-gradients through the full production free-boundary/NESTOR solve, or a
-promoted coil-only Boozer/QS optimization result. The implementation plan and
-validation status are tracked in `plan_freeb.md` and
-`docs/free_boundary_coil_optimization.rst`.
-
-Run the phase-1 coil-only smoke without ESSOS assets:
+Run the phase-1 coil-only smoke without ESSOS assets, optionally adding robust
+coil perturbation scenarios:
 
 ```bash
 python examples/optimization/free_boundary_QS_coil_optimization.py \
   --smoke --provider circle --max-evals 1 --max-iter 1 --vmec-max-iter 1 \
   --pressure-scale 100 --activate-fsq 1e99 \
   --outdir results/free_boundary_QS_coil_optimization_circle_smoke
+
+python examples/optimization/free_boundary_QS_coil_optimization.py \
+  --smoke --provider circle --max-evals 1 --max-iter 1 --vmec-max-iter 1 \
+  --robust-samples 2 --robust-risk mean_plus_std \
+  --outdir results/free_boundary_QS_coil_optimization_circle_robust_smoke
 ```
 
-Robust-coil helpers live in `vmec_jax.robust_coils`; they currently cover
-current, displacement, toroidal-phase, Fourier-centerline perturbations, and
-mean/std/smooth-tail risk aggregation for future robust objectives. Lightweight
-benchmark scripts are intentionally non-CI:
+Run the bounded benchmark matrix first; it fans out to the provider, direct
+free-boundary solve, and coil-gradient benchmark scripts:
 
 ```bash
-python tools/benchmarks/bench_external_field_providers.py \
-  --points 48 --segments 48 \
-  --out results/bench_external_field_providers.json
-python tools/benchmarks/bench_freeb_direct_coil_solve.py \
-  --max-iter 2 \
-  --out results/bench_freeb_direct_coil_solve.json
-python tools/benchmarks/bench_freeb_coil_gradient.py \
-  --points 24 --segments 48 --matrix-size 24 \
-  --out results/bench_freeb_coil_gradient.json
+python tools/benchmarks/bench_freeb_direct_coil_matrix.py \
+  --quick \
+  --out results/bench_freeb_direct_coil_matrix/summary.json
 ```
+
+Detailed caveats, stronger-current examples, optional VMEC2000 diagnostics, and
+individual benchmark commands are in `docs/free_boundary_coil_optimization.rst`.
 
 ## Backend Selection
 
