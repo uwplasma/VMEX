@@ -32,10 +32,11 @@ Steps taken:
 16. Added a fast accepted-state finite-difference slope-stability check for one direct-coil Fourier geometry coefficient.
 17. Dense NESTOR diagnostics now break solve time into cache build, source assembly, bvec assembly, matrix assembly/factorization, linear solve, and vacuum-channel reconstruction.
 18. Default mode-space NESTOR cache construction now skips the unused physical-point LU factorization while preserving it for physical dense solves.
+19. Vectorized the hot `grpmn_nonsing` assembly over the `(ku, kv)` grid to remove Python loops in the default dense source path.
 
 Results obtained:
 
-1. `pytest -q -m "not full and not vmec2000 and not simsopt"`: 2241 passed, 26 skipped, 111 deselected, 1 xfailed in 5m48s.
+1. `pytest -q -m "not full and not vmec2000 and not simsopt"`: 2245 passed, 26 skipped, 111 deselected, 1 xfailed in 5m02s after the source-assembly vectorization.
 2. Targeted direct-coil/docs tests after the final additions: 9 passed in 2.34 s.
 3. Full Sphinx build after docs hygiene changes succeeded in `/tmp/vmec_jax_freeb_docs_claim_hygiene`.
 4. Direct-coil/mgrid diagnostic smoke completed with expected `vmec2000_skipped` and `jax_direct_vs_mgrid_passed=True`.
@@ -55,10 +56,11 @@ Results obtained:
 18. VMEC2000 parser/optional LASYM validation tests passed locally as 1 passed, 1 skipped in 0.40 s without `VMEC2000_INTEGRATION=1`.
 19. Geometry-DOF accepted-state finite-difference probe passed in the targeted finite-pressure direct-coil validation batch.
 20. LU-skip benchmark confirmed the default mode-space path reports `physical_lu=False`, `mode_lu=True`; an explicit physical-dense benchmark reports `physical_lu=True`, so the optimization remains guarded.
+21. Medium dense direct-coil benchmark (`sample_points=204`, `coils=8`, `segments=96`) improved after vectorization: final source assembly dropped from about `0.169 s` to `0.009 s`, final dense solve from about `0.172 s` to `0.013 s`, and warm solve time from about `0.568 s` to `0.242 s`.
 
 Best next steps:
 
-1. Target dense NESTOR/preconditioner/finalization cost; sampler JIT helps field-only cases but is not the dominant full-solve cost.
+1. Target the remaining dense NESTOR finalization/recompute and preconditioner cost; source assembly has been reduced on medium grids but larger grids still need profiling.
 2. Run a direct-coil case that enters backtracking and confirm the new trial counters capture rejected NESTOR sampling cost in a full driver trace.
 3. Extend the full-loop finite-difference smoke from current-only proxy objective to a validated Boozer/QS promotion test when affordable.
 4. Either raise the VMEC2000 generated-mgrid diagnostic to a convergence-oriented multi-grid input or mark the current single-stage generated-mgrid case as optional underconverged external evidence.
@@ -74,9 +76,9 @@ Open-lane completion estimates:
 3. ESSOS/mgrid/VMEC2000 comparison lane: 84%.
 4. Full-loop gradient validation: 60%.
 5. Robust/optimization examples: 82%.
-6. Performance/benchmarking: 82%.
+6. Performance/benchmarking: 87%.
 7. Docs/release hygiene: 92%.
-8. Overall branch completion: 89%.
+8. Overall branch completion: 90%.
 
 ## Mission
 

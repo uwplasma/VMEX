@@ -2212,6 +2212,25 @@ def _vmec_nonsingular_terms_from_bexni(
     grpmn_nonsing = np.zeros((mnpd2, nuv3), dtype=float)
     mf1 = mf + 1
     ndim = 2 if lasym else 1
+    iuv_grid = (np.arange(int(nu_fourp), dtype=np.int64)[:, None] * int(nv)) + np.arange(int(nv), dtype=np.int64)[
+        None, :
+    ]
+    iuv_grid = np.asarray(iuv_grid, dtype=np.int64)
+    iref_grid = np.asarray(imirr_full[iuv_grid], dtype=np.int64)
+    cosv_modes = 0.5 * onp * np.asarray(cosv_tab[: nf + 1, :], dtype=float)
+    sinv_modes = 0.5 * onp * np.asarray(sinv_tab[: nf + 1, :], dtype=float)
+    m_idx = np.arange(mf + 1, dtype=np.int64)
+    n_idx = np.arange(nf + 1, dtype=np.int64)
+    idx_p_grid = m_idx[:, None] + (n_idx[None, :] + nf) * mf1
+    idx_m_grid = m_idx[:, None] + ((-n_idx[None, :]) + nf) * mf1
+    add_negative_n = (n_idx[None, :] != 0) & (m_idx[:, None] != 0)
+    idx_p_flat = idx_p_grid.reshape(-1)
+    idx_m_flat = idx_m_grid.reshape(-1)
+    negative_n_flat = np.asarray(add_negative_n.reshape(-1), dtype=bool)
+    sinm_sym = np.asarray(sinui[: mf + 1, :], dtype=float)
+    cosm_sym = -np.asarray(cosui[: mf + 1, :], dtype=float)
+    sinm_asym = np.asarray(cosui[: mf + 1, :], dtype=float) if lasym else None
+    cosm_asym = np.asarray(sinui[: mf + 1, :], dtype=float) if lasym else None
 
     gstore = np.zeros((nuv_full,), dtype=float)
     for ip in range(nuv3):
@@ -2261,43 +2280,33 @@ def _vmec_nonsingular_terms_from_bexni(
             delgrp *= scale
         gstore += bex[ip] * delgr
 
-        g1 = np.zeros((nu_fourp, nf + 1, ndim), dtype=float)
-        g2 = np.zeros((nu_fourp, nf + 1, ndim), dtype=float)
-        for n in range(0, nf + 1):
-            for kv_idx in range(nv):
-                cosn = 0.5 * onp * cosv_tab[n, kv_idx]
-                sinn = 0.5 * onp * sinv_tab[n, kv_idx]
-                iuv = kv_idx
-                for ku_idx in range(nu_fourp):
-                    iref = int(imirr_full[iuv])
-                    ka = delgrp[iuv] - delgrp[iref]
-                    g1[ku_idx, n, 0] += cosn * ka
-                    g2[ku_idx, n, 0] += sinn * ka
-                    if lasym:
-                        ks = delgrp[iuv] + delgrp[iref]
-                        g1[ku_idx, n, 1] += cosn * ks
-                        g2[ku_idx, n, 1] += sinn * ks
-                    iuv += nv
+        del_iuv = delgrp[iuv_grid]
+        del_ref = delgrp[iref_grid]
+        ka_grid = del_iuv - del_ref
+        g1_sym = ka_grid @ cosv_modes.T
+        g2_sym = ka_grid @ sinv_modes.T
 
-        for m in range(0, mf + 1):
-            for ku_idx in range(nu_fourp):
-                for isym in range(ndim):
-                    if isym == 0:
-                        cosm = -cosui[m, ku_idx]
-                        sinm = sinui[m, ku_idx]
-                        row_off = 0
-                    else:
-                        sinm = cosui[m, ku_idx]
-                        cosm = sinui[m, ku_idx]
-                        row_off = mnpd
-                    for n in range(0, nf + 1):
-                        gcos = g1[ku_idx, n, isym] * sinm
-                        gsin = g2[ku_idx, n, isym] * cosm
-                        idx_p = m + (n + nf) * mf1
-                        grpmn_nonsing[row_off + idx_p, ip] += gcos + gsin
-                        if n != 0 and m != 0:
-                            idx_m = m + ((-n) + nf) * mf1
-                            grpmn_nonsing[row_off + idx_m, ip] += gcos - gsin
+        for isym in range(ndim):
+            if isym == 0:
+                g1_use = g1_sym
+                g2_use = g2_sym
+                sinm_table = sinm_sym
+                cosm_table = cosm_sym
+                row_off = 0
+            else:
+                ks_grid = del_iuv + del_ref
+                g1_use = ks_grid @ cosv_modes.T
+                g2_use = ks_grid @ sinv_modes.T
+                sinm_table = sinm_asym
+                cosm_table = cosm_asym
+                row_off = mnpd
+
+            gcos = sinm_table @ g1_use
+            gsin = cosm_table @ g2_use
+            total_plus = gcos + gsin
+            total_minus = gcos - gsin
+            grpmn_nonsing[row_off + idx_p_flat, ip] += total_plus.reshape(-1)
+            grpmn_nonsing[row_off + idx_m_flat[negative_n_flat], ip] += total_minus.reshape(-1)[negative_n_flat]
 
     # Keep raw fourp accumulation scale; any legacy scale experiments are
     # handled upstream in diagnostics, not in the core assembly path.
