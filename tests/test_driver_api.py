@@ -699,7 +699,7 @@ def test_cpu_free_boundary_non_scan_uses_precomputed_tridi_default(monkeypatch):
             performance_mode=True,
             use_scan=False,
         )
-        is None
+        is True
     )
     assert (
         driver_module._default_preconditioner_use_lax_tridi(
@@ -853,7 +853,7 @@ def test_run_fixed_boundary_cpu_free_boundary_passes_precomputed_tridi_policy(mo
     )
 
     assert captured["kwargs"]["preconditioner_use_precomputed_tridi"] is True
-    assert captured["kwargs"]["preconditioner_use_lax_tridi"] is None
+    assert captured["kwargs"]["preconditioner_use_lax_tridi"] is True
 
 
 def test_default_non_autodiff_solver_policy_keeps_free_boundary_on_robust_path():

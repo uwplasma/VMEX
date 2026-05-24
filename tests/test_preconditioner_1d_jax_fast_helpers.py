@@ -274,6 +274,29 @@ def test_compute_assemble_reassemble_and_lax_tridi_branches():
     np.testing.assert_allclose(np.asarray(lax), np.asarray(direct), rtol=1e-6, atol=1e-6)
 
 
+def test_lax_pretransposed_tridi_handles_multi_rhs_batch_dims():
+    pytest.importorskip("jax")
+
+    from vmec_jax import preconditioner_1d_jax as p1d
+
+    shape = (5, 3, 2)
+    ar = np.full(shape, -0.05)
+    br = np.full(shape, -0.08)
+    dr = np.full(shape, 2.5)
+    rhs = (np.arange(np.prod(shape) * 2 * 3, dtype=float).reshape(shape + (2, 3)) + 1.0) / 100.0
+
+    cr, ir = p1d._tridi_precompute_coeffs(ar, dr, br)
+    dl_t, d_t, du_t = p1d._tridi_pretranspose_for_lax(ar, dr, br)
+
+    thomas = p1d._tridi_solve_batched_jmin0(ar, dr, br, rhs)
+    precomputed = p1d._tridi_solve_precomputed(br, cr, ir, rhs)
+    lax = p1d._tridi_solve_batched_jmin0_lax_pretransposed(dl_t, d_t, du_t, rhs)
+
+    assert np.asarray(lax).shape == rhs.shape
+    np.testing.assert_allclose(np.asarray(precomputed), np.asarray(thomas), rtol=1e-6, atol=1e-6)
+    np.testing.assert_allclose(np.asarray(lax), np.asarray(precomputed), rtol=1e-6, atol=1e-6)
+
+
 def test_rz_preconditioner_numpy_jax_precomputed_and_lax_agree():
     pytest.importorskip("jax")
 
@@ -307,6 +330,14 @@ def test_rz_preconditioner_numpy_jax_precomputed_and_lax_agree():
         use_precomputed=False,
         use_lax_tridi=True,
     )
+    lax_precomputed = rz_preconditioner_apply(
+        frzl_in=frzl,
+        mats=mats,
+        jmax=4,
+        cfg=cfg,
+        use_precomputed=True,
+        use_lax_tridi=True,
+    )
     numpy_out = rz_preconditioner_apply_numpy(
         frzl_in=frzl,
         mats=mats,
@@ -318,6 +349,7 @@ def test_rz_preconditioner_numpy_jax_precomputed_and_lax_agree():
     for attr in ("frcc", "frss", "fzsc", "fzcs", "frsc", "frcs", "fzcc", "fzss", "flsc", "flcs", "flcc", "flss"):
         expected = np.asarray(getattr(direct, attr))
         np.testing.assert_allclose(np.asarray(getattr(lax, attr)), expected, rtol=1e-6, atol=1e-6)
+        np.testing.assert_allclose(np.asarray(getattr(lax_precomputed, attr)), expected, rtol=1e-6, atol=1e-6)
         np.testing.assert_allclose(np.asarray(getattr(precomputed, attr)), expected, rtol=1e-3, atol=5e-4)
         numpy_value = np.asarray(getattr(numpy_out, attr))
         if attr.startswith(("fr", "fz")):

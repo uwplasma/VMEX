@@ -302,15 +302,25 @@ def _default_preconditioner_use_lax_tridi(
     """Choose the CPU R/Z preconditioner tridiagonal-solve primitive.
 
     ``None`` delegates to the lower-level environment default.  May 2026
-    profiling showed that XLA's batched ``lax.linalg.tridiagonal_solve`` can
-    lower CPU free-boundary preconditioner-apply cost, but the public policy
-    stays opt-in until the remaining batched-RHS shape case is covered by a
-    solve-level regression.  Keep scan/GPU and fixed-boundary runs on their
-    existing policies until they have separate profiling evidence.
+    profiling showed that XLA's batched ``lax.linalg.tridiagonal_solve`` lowers
+    CPU free-boundary preconditioner-apply cost once paired with the
+    precomputed coefficient policy above.  Keep scan/GPU and fixed-boundary
+    runs on their existing policies until they have separate profiling
+    evidence.
     """
 
-    _ = (cfg, backend, performance_mode, use_scan)
-    return None
+    if os.getenv("VMEC_JAX_TRIDI_SOLVE") is not None:
+        return None
+    backend_l = str(backend).strip().lower()
+    if backend_l != "cpu":
+        return None
+    if not bool(performance_mode):
+        return None
+    if bool(use_scan):
+        return None
+    if not bool(getattr(cfg, "lfreeb", False)):
+        return None
+    return True
 
 
 def _result_final_residuals(result) -> tuple[float, float, float] | None:

@@ -37,8 +37,8 @@ Steps taken:
 21. Tightened docs/example reproduction commands for optional ESSOS assets by documenting `ESSOS_INPUT_DIR`, and clarified that direct/generated-`mgrid` agreement is within recorded precision/roundoff rather than exact symbolic equality.
 22. Added a chunk-size invariance regression for the nonsingular source/matrix terms.
 23. Exposed final accepted-state NESTOR recompute timing separately in solver diagnostics and direct-coil benchmark summaries so benchmarks no longer hide the correctness-critical final vacuum recompute inside broad finalize time.
-24. Added an explicit CPU free-boundary preconditioner policy that enables precomputed R/Z tridiagonal coefficients for non-scan performance-mode solves while keeping the more aggressive lax-tridiagonal path opt-in pending a batched-RHS regression.
-25. Threaded the optional lax-tridiagonal policy through the solver and discrete-adjoint replay metadata so future opt-in benchmarking does not silently replay a different preconditioner path.
+24. Added an explicit CPU free-boundary preconditioner policy that enables precomputed R/Z tridiagonal coefficients for non-scan performance-mode solves.
+25. Threaded a guarded lax-tridiagonal policy through the solver and discrete-adjoint replay metadata; the wrapper now only dispatches the pretransposed lax path when matching cached transposed matrices are present.
 
 Results obtained:
 
@@ -68,14 +68,14 @@ Results obtained:
 24. Medium chunking benchmark (`sample_points=600`, `coils=8`, `segments=96`) improved from `IP_CHUNK=1` final source `0.062 s`, final solve `0.073 s`, warm solve `0.346 s` to default chunk final source `0.020 s`, final solve `0.031 s`, warm solve `0.266 s`.
 25. Larger dense chunking benchmark (`sample_points=2352`, `coils=8`, `segments=128`) improved final source from about `0.362 s` to `0.292 s`, final solve from about `0.480 s` to `0.407 s`, and warm solve from about `1.32 s` to `1.14 s`.
 26. Final recompute timing benchmark now reports `final_recompute_sample` and `final_recompute_solve`; the medium direct-coil case records about `0.012 s` final sampling and `0.027 s` final dense solve, matching the final accepted-state diagnostics.
-27. CPU free-boundary preconditioner policy tests pass: `tests/test_driver_api.py -k "tridi or free_boundary"` reports 14 passed, and the preconditioner helper parity test reports 1 passed.
-28. Medium direct-coil dense benchmark with the safe default precomputed policy reports warm solve about `0.253 s`, final recompute sampling about `0.012 s`, final recompute dense solve about `0.027 s`, and preconditioner apply about `0.042 s`.
-29. The attempted public default for `lax.linalg.tridiagonal_solve` exposed a shape bug in one batched-RHS free-boundary preconditioner case. The public default was not shipped; the opt-in plumbing remains and the shape fix is now the next preconditioner-performance target.
+27. CPU free-boundary preconditioner policy tests pass: `tests/test_driver_api.py -k "tridi or free_boundary"` plus the preconditioner fast-helper file report 18 selected tests passing.
+28. Medium direct-coil dense benchmark with the guarded precomputed/lax policy reports warm solve about `0.244 s`, final recompute sampling about `0.0125 s`, final recompute dense solve about `0.0267 s`, and preconditioner apply about `0.030 s`.
+29. Fully forced `VMEC_JAX_TRIDI_PRECOMPUTE=1 VMEC_JAX_TRIDI_SOLVE=lax` benchmark now runs after the helper shape fix and reports preconditioner apply about `0.0095-0.010 s`, but broader solve-level shape coverage is still needed before using that path outside guarded cached-matrix cases.
 
 Best next steps:
 
 1. Run a direct-coil case that enters backtracking and confirm the new trial counters capture rejected NESTOR sampling cost in a full driver trace.
-2. Fix and test the batched-RHS shape case in the opt-in lax-tridiagonal preconditioner path before considering it as a public CPU free-boundary default.
+2. Expand solve-level coverage for the lax-tridiagonal preconditioner path and then decide whether the remaining fallback-to-precomputed cases can be eliminated safely.
 3. Extend the full-loop finite-difference smoke from current-only proxy objective to a validated Boozer/QS promotion test when affordable.
 4. Either raise the VMEC2000 generated-mgrid diagnostic to a convergence-oriented multi-grid input or mark the current single-stage generated-mgrid case as optional underconverged external evidence.
 
@@ -924,9 +924,9 @@ Steps taken:
 
 1. Added a narrow CPU free-boundary default that uses precomputed R/Z
    tridiagonal coefficients for non-scan performance-mode solves.
-2. Added solver and discrete-adjoint plumbing for an optional
+2. Added solver and discrete-adjoint plumbing for a guarded
    lax-tridiagonal preconditioner policy, keeping replay metadata consistent
-   when this path is enabled manually.
+   when this path is enabled.
 3. Added driver tests that verify CPU free-boundary runs pass the safe
    precomputed policy while fixed-boundary CPU and scan runs keep legacy
    defaults.
@@ -934,22 +934,23 @@ Steps taken:
 Results:
 
 1. Syntax, lint, and diff whitespace checks passed for the edited files.
-2. `python -m pytest -q tests/test_driver_api.py -k "tridi or free_boundary"`
-   passed with 14 tests selected.
-3. `python -m pytest -q tests/test_preconditioner_1d_jax_fast_helpers.py::test_rz_preconditioner_numpy_jax_precomputed_and_lax_agree`
-   passed.
-4. The medium direct-coil dense benchmark with the safe policy reports warm
-   solve about `0.253 s`, final sample about `0.012 s`, and final dense solve
-   about `0.027 s`.
-5. An attempted default for the lax-tridiagonal path still fails on a
-   batched-RHS shape case in the direct free-boundary solve. That path remains
-   opt-in only until a solve-level regression covers the shape fix.
+2. `python -m pytest -q tests/test_driver_api.py -k "tridi or free_boundary" tests/test_preconditioner_1d_jax_fast_helpers.py`
+   passed with 18 selected tests.
+3. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_forced_activation_reports_direct_coil_nestor_diagnostics tests/test_free_boundary_coil_provider_forward.py::test_run_free_boundary_accepts_direct_coil_provider_without_mgrid_file`
+   passed with 2 tests selected.
+4. The medium direct-coil dense benchmark with the guarded public policy
+   reports warm solve about `0.244 s`, final sample about `0.0125 s`, and final
+   dense solve about `0.0267 s`.
+5. The fully forced lax-tridiagonal path now completes after a helper
+   multi-RHS shape fix and shows lower preconditioner-apply time, but this path
+   still needs broader solve-level coverage before removing guarded fallback
+   behavior.
 
 Next:
 
-1. Fix the lax-tridiagonal batched-RHS shape case or replace it with the
-   host-NumPy preconditioner apply path recommended by the performance
-   subagent.
+1. Continue solving the remaining lax-tridiagonal fallback cases or replace
+   them with the host-NumPy preconditioner apply path recommended by the
+   performance subagent.
 2. Continue optional VMEC2000 and direct-coil/mgrid parity work after the
    latest PR CI fast-test matrix finishes.
 
