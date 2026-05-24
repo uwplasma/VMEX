@@ -49,6 +49,7 @@ Steps taken:
 33. Added compact nested NESTOR timing details to the free-boundary direct-coil benchmark matrix so direct-solve rows preserve the final recompute and last-sample breakdown without making provider/gradient rows noisy.
 34. Added direct-coil to JAX boundary-projection to dense implicit vacuum-solve finite-difference gradient tests for one coil current and one Fourier geometry perturbation.
 35. Added an optional VMEC2000 generated-mgrid trace-smoke gate below the full WOUT-parity xfail, and made the quick benchmark matrix exercise one active NESTOR update.
+36. Added a JAX-native dense mode-space vacuum-solve scaffold with grid-potential reconstruction and finite-difference gradient tests through a projected direct-coil chain.
 
 Results obtained:
 
@@ -90,6 +91,7 @@ Results obtained:
 39. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 12 passed in 6.43 s after adding projected-vacuum chain gradients.
 40. Quick active-NESTOR benchmark matrix completed; synthetic direct-coil solve recorded one active update with cold active sampling about `0.499 s` and warm active sampling about `0.00484 s`.
 41. The optional VMEC2000 trace-smoke test skips cleanly without `VMEC2000_INTEGRATION=1`.
+42. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 18 passed in 6.54 s after adding the dense mode-space scaffold.
 
 Best next steps:
 
@@ -919,14 +921,14 @@ WP4 JAX mgrid interpolation:                   85%
 WP5 Free-boundary provider hook:               91%
 WP6 Direct-coil forward example:               90%
 WP7 Vacuum adjoint scaffold:                  100%
-WP8 Gradient checks:                           97%
+WP8 Gradient checks:                           98%
 WP9 VMEC2000 diagnostics:                      86%
 WP10 Benchmarks/diagnostics:                   97%
 WP11 Coil-only QS optimization example:        82%
 WP12 Robust coil perturbations:               100%
 WP13 Documentation:                            97%
 WP14 CI policy:                                90%
-Overall branch completion:                     94%
+Overall branch completion:                     95%
 ```
 
 ## Immediate Next Steps
@@ -957,13 +959,15 @@ Steps taken:
 7. Added direct-coil to JAX boundary-projection to dense implicit vacuum-solve finite-difference gradient tests for one coil current and one Fourier geometry perturbation.
 8. Added an optional VMEC2000 generated-mgrid trace-smoke gate that records VMEC2000 iteration rows without promoting full WOUT parity.
 9. Changed the quick benchmark matrix direct-solve row to `max_iter=2`, so it exercises active NESTOR sampling and solve buckets.
-10. Updated docs and this plan to keep the exact-adjoint claim precise: direct-coil fields, dense vacuum-solve scaffold, projection gradients, and a projected-vacuum chain are validated; the full production NESTOR/QS solve adjoint remains phase 2.
+10. Added a JAX-native dense mode-space vacuum-solve scaffold with stellarator-symmetric and LASYM-style potential reconstruction.
+11. Added finite-difference checks for the mode-space scaffold with respect to RHS, matrix entries, direct-coil current, and direct-coil Fourier geometry.
+12. Updated docs and this plan to keep the exact-adjoint claim precise: direct-coil fields, dense vacuum-solve scaffold, projection gradients, projected-vacuum chain, and dense mode-space solve are validated; the full production NESTOR/QS solve adjoint remains phase 2.
 
 Results obtained:
 
 1. `python -m pytest -q tests/test_discrete_adjoint_chunking.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`: 59 passed, 1 skipped in 13.56 s.
 2. `python -m pytest -q tests/test_discrete_adjoint_chunking.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_vacuum_adjoint.py`: 66 passed, 1 skipped in 15.86 s.
-3. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 12 passed in 6.43 s after the projected-vacuum chain addition.
+3. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 18 passed in 6.54 s after the dense mode-space scaffold addition.
 4. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py tests/test_profile_report_compare.py`: 31 passed in 4.36 s before the projected-vacuum chain addition.
 5. `python -m pytest -q tests/test_freeb_direct_coil_matrix_benchmark.py tests/test_profile_report_compare.py`: 24 passed in 0.05 s.
 6. `python -m pytest -q tests/test_optimization_callback_trace.py::test_exact_optimizer_profiles_free_boundary_buckets_without_generic_timing tests/test_freeb_direct_coil_matrix_benchmark.py tests/test_free_boundary_essos_coil_parity.py::test_vmec2000_generated_mgrid_trace_smoke_records_iteration_rows`: 4 passed, 1 skipped in 0.43 s.

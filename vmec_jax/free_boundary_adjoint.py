@@ -68,6 +68,66 @@ def dense_vacuum_residual(A: Any, x: Any, b: Any) -> Any:
     return jnp.asarray(A) @ jnp.asarray(x) - jnp.asarray(b)
 
 
+def dense_mode_vacuum_solve_jax(
+    mode_matrix: Any,
+    rhs_mode: Any,
+    sin_basis: Any,
+    cos_basis: Any | None = None,
+    *,
+    symmetric: bool = False,
+) -> dict[str, Any]:
+    """Solve a dense mode-space vacuum system and reconstruct a grid potential.
+
+    This is the next scaffold between the dense toy solve and the production
+    NESTOR path.  The current VMEC-like NESTOR implementation eventually builds
+    a dense mode-space matrix and right-hand side before reconstructing a
+    scalar potential on the boundary grid.  This helper makes that contract
+    JAX-transformable and differentiable while the full source/operator assembly
+    remains in the host implementation.
+
+    Parameters
+    ----------
+    mode_matrix:
+        Dense mode-space matrix ``A``.
+    rhs_mode:
+        Right-hand side vector ``b``.
+    sin_basis, cos_basis:
+        Flattened boundary-grid basis arrays with shape ``(npoints, nmodes)``.
+        For stellarator-symmetric mode vectors pass only ``sin_basis``.  For
+        LASYM-style doubled vectors pass both basis blocks; the first block of
+        ``mode_coeffs`` multiplies ``sin_basis`` and the second multiplies
+        ``cos_basis``.
+    symmetric:
+        Forwarded to :func:`dense_vacuum_solve_jax`.
+    """
+
+    A = jnp.asarray(mode_matrix)
+    rhs = jnp.asarray(rhs_mode)
+    sin = jnp.asarray(sin_basis)
+    if sin.ndim != 2:
+        raise ValueError("sin_basis must be a 2D array")
+    coeffs = dense_vacuum_solve_jax(A, rhs, symmetric=bool(symmetric))
+
+    if cos_basis is None:
+        if coeffs.shape[0] != sin.shape[1]:
+            raise ValueError("rhs/mode_matrix size must match sin_basis columns")
+        phi_flat = sin @ coeffs
+    else:
+        cos = jnp.asarray(cos_basis)
+        if cos.shape != sin.shape:
+            raise ValueError("cos_basis must match sin_basis shape")
+        nmodes = int(sin.shape[1])
+        if coeffs.shape[0] != 2 * nmodes:
+            raise ValueError("doubled rhs/mode_matrix size must be 2 * sin_basis columns")
+        phi_flat = sin @ coeffs[:nmodes] + cos @ coeffs[nmodes:]
+
+    return {
+        "mode_coeffs": coeffs,
+        "phi_flat": phi_flat,
+        "residual": dense_vacuum_residual(A, coeffs, rhs),
+    }
+
+
 def vacuum_boundary_fields_from_cylindrical_jax(
     *,
     br: Any,

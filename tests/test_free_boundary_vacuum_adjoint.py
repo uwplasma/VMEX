@@ -7,6 +7,7 @@ from vmec_jax._compat import enable_x64
 from vmec_jax.external_fields import CoilFieldParams, sample_coil_field_cylindrical
 from vmec_jax.free_boundary import vacuum_boundary_fields_from_cylindrical
 from vmec_jax.free_boundary_adjoint import (
+    dense_mode_vacuum_solve_jax,
     dense_vacuum_residual,
     dense_vacuum_solve_jax,
     vacuum_boundary_fields_from_cylindrical_jax,
@@ -120,6 +121,124 @@ def test_dense_vacuum_symmetric_mode_uses_symmetric_transpose_solve():
     expected = jnp.linalg.solve(A, cotangent)
 
     np.testing.assert_allclose(grad_b, expected, rtol=1.0e-13, atol=1.0e-13)
+
+
+def _mode_vacuum_inputs(*, lasym: bool = False):
+    from vmec_jax._compat import jnp
+
+    sin_basis = jnp.asarray(
+        [
+            [0.0, 0.2, -0.3],
+            [0.4, -0.1, 0.5],
+            [-0.2, 0.6, 0.1],
+            [0.7, 0.3, -0.4],
+        ],
+        dtype=float,
+    )
+    mode_matrix = jnp.asarray(
+        [
+            [3.0, 0.2, -0.1],
+            [0.4, 2.6, 0.3],
+            [-0.2, 0.1, 2.4],
+        ],
+        dtype=float,
+    )
+    rhs = jnp.asarray([0.5, -0.2, 0.4], dtype=float)
+    if not lasym:
+        return mode_matrix, rhs, sin_basis, None
+
+    cos_basis = jnp.asarray(
+        [
+            [0.5, -0.3, 0.1],
+            [-0.2, 0.4, -0.6],
+            [0.3, 0.2, 0.7],
+            [-0.1, -0.5, 0.2],
+        ],
+        dtype=float,
+    )
+    top = jnp.concatenate([mode_matrix + 0.8 * jnp.eye(3), 0.1 * jnp.eye(3)], axis=1)
+    bottom = jnp.concatenate([-0.05 * jnp.eye(3), mode_matrix + 1.1 * jnp.eye(3)], axis=1)
+    return jnp.concatenate([top, bottom], axis=0), jnp.concatenate([rhs, -0.3 * rhs]), sin_basis, cos_basis
+
+
+def test_dense_mode_vacuum_solve_reconstructs_grid_potential():
+    from vmec_jax._compat import jnp
+
+    enable_x64(True)
+    A, rhs, sin_basis, _cos_basis = _mode_vacuum_inputs()
+
+    actual = dense_mode_vacuum_solve_jax(A, rhs, sin_basis)
+    coeffs = jnp.linalg.solve(A, rhs)
+
+    np.testing.assert_allclose(actual["mode_coeffs"], coeffs, rtol=1.0e-14, atol=1.0e-14)
+    np.testing.assert_allclose(actual["phi_flat"], sin_basis @ coeffs, rtol=1.0e-14, atol=1.0e-14)
+    np.testing.assert_allclose(actual["residual"], np.zeros_like(np.asarray(rhs)), atol=1.0e-14)
+
+
+def test_dense_mode_vacuum_solve_reconstructs_lasym_grid_potential():
+    from vmec_jax._compat import jnp
+
+    enable_x64(True)
+    A, rhs, sin_basis, cos_basis = _mode_vacuum_inputs(lasym=True)
+
+    actual = dense_mode_vacuum_solve_jax(A, rhs, sin_basis, cos_basis)
+    coeffs = jnp.linalg.solve(A, rhs)
+    nmodes = sin_basis.shape[1]
+
+    np.testing.assert_allclose(actual["mode_coeffs"], coeffs, rtol=1.0e-14, atol=1.0e-14)
+    np.testing.assert_allclose(
+        actual["phi_flat"],
+        sin_basis @ coeffs[:nmodes] + cos_basis @ coeffs[nmodes:],
+        rtol=1.0e-14,
+        atol=1.0e-14,
+    )
+
+
+def test_dense_mode_vacuum_gradient_wrt_rhs_matches_finite_difference():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+
+    enable_x64(True)
+    A, rhs, sin_basis, _cos_basis = _mode_vacuum_inputs()
+    direction = jnp.asarray([0.2, -0.3, 0.1], dtype=float)
+    weights = jnp.asarray([0.7, -0.2, 0.4, 0.1], dtype=float)
+
+    def objective(scale):
+        response = dense_mode_vacuum_solve_jax(A, rhs + scale * direction, sin_basis)
+        return jnp.vdot(weights, response["phi_flat"])
+
+    exact = jax.grad(objective)(0.0)
+    eps = 1.0e-6
+    fd = (objective(eps) - objective(-eps)) / (2.0 * eps)
+
+    np.testing.assert_allclose(exact, fd, rtol=2.0e-9, atol=1.0e-11)
+
+
+def test_dense_mode_vacuum_gradient_wrt_matrix_matches_finite_difference():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+
+    enable_x64(True)
+    A, rhs, sin_basis, _cos_basis = _mode_vacuum_inputs()
+    dA = jnp.asarray(
+        [
+            [0.0, 0.1, -0.2],
+            [0.05, 0.0, 0.1],
+            [-0.1, 0.2, 0.0],
+        ],
+        dtype=float,
+    )
+    weights = jnp.asarray([0.7, -0.2, 0.4, 0.1], dtype=float)
+
+    def objective(scale):
+        response = dense_mode_vacuum_solve_jax(A + scale * dA, rhs, sin_basis)
+        return jnp.vdot(weights, response["phi_flat"])
+
+    exact = jax.grad(objective)(0.0)
+    eps = 1.0e-6
+    fd = (objective(eps) - objective(-eps)) / (2.0 * eps)
+
+    np.testing.assert_allclose(exact, fd, rtol=3.0e-9, atol=1.0e-11)
 
 
 def _toy_coil_vacuum_response(*, current_scale: float = 0.0, radius_shift: float = 0.0):
@@ -353,6 +472,67 @@ def _toy_coil_projected_vacuum_response(*, current_scale: float = 0.0, radius_sh
     return 0.5 * jnp.vdot(x, x) + 0.05 * jnp.mean(vac["bnormal"] ** 2)
 
 
+def _toy_coil_projected_mode_vacuum_response(*, current_scale: float = 0.0, radius_shift: float = 0.0):
+    """Direct coils -> projection -> mode-space vacuum solve."""
+
+    from vmec_jax._compat import jnp
+
+    radius = 1.45 + 0.03 * radius_shift
+    dofs = jnp.zeros((1, 3, 3), dtype=float)
+    dofs = dofs.at[0, 0, 2].set(radius)
+    dofs = dofs.at[0, 1, 1].set(radius)
+    params = CoilFieldParams(
+        base_curve_dofs=dofs,
+        base_currents=jnp.asarray([2.5e7 * (1.0 + 0.02 * current_scale)], dtype=float),
+        n_segments=128,
+        regularization_epsilon=1.0e-9,
+    )
+    R = jnp.asarray([[0.78, 0.86], [0.92, 0.81]], dtype=float)
+    Z = jnp.asarray([[0.16, -0.13], [0.22, -0.19]], dtype=float)
+    phi = jnp.asarray([[0.05, 0.45], [0.9, 1.25]], dtype=float)
+    Ru = jnp.asarray([[0.03, -0.04], [0.02, 0.05]], dtype=float)
+    Zu = jnp.asarray([[0.22, 0.24], [0.21, 0.23]], dtype=float)
+    Rv = jnp.asarray([[0.04, 0.01], [-0.03, 0.05]], dtype=float)
+    Zv = jnp.asarray([[0.02, -0.03], [0.06, -0.01]], dtype=float)
+    sin_basis = jnp.asarray(
+        [
+            [0.0, 0.2, -0.3],
+            [0.4, -0.1, 0.5],
+            [-0.2, 0.6, 0.1],
+            [0.7, 0.3, -0.4],
+        ],
+        dtype=float,
+    )
+    mode_matrix = jnp.asarray(
+        [
+            [3.1, 0.15, -0.08],
+            [0.2, 2.5, 0.25],
+            [-0.1, 0.3, 2.7],
+        ],
+        dtype=float,
+    )
+
+    br, bphi, bz = sample_coil_field_cylindrical(params, R, Z, phi)
+    vac = vacuum_boundary_fields_from_cylindrical_jax(
+        br=br,
+        bp=bphi,
+        bz=bz,
+        R=R,
+        Ru=Ru,
+        Zu=Zu,
+        Rv=Rv,
+        Zv=Zv,
+    )
+    flat_bnormal = jnp.reshape(vac["bnormal"], (-1,))
+    rhs_mode = sin_basis.T @ flat_bnormal
+    response = dense_mode_vacuum_solve_jax(mode_matrix, rhs_mode, sin_basis)
+    weights = jnp.asarray([0.7, -0.2, 0.4, 0.1], dtype=float)
+    return 0.5 * jnp.vdot(response["mode_coeffs"], response["mode_coeffs"]) + 0.1 * jnp.vdot(
+        weights,
+        response["phi_flat"],
+    )
+
+
 def test_dense_vacuum_adjoint_chain_through_projection_wrt_current_matches_finite_difference():
     """Validate the next rung in the coil-to-vacuum adjoint chain."""
 
@@ -389,3 +569,41 @@ def test_dense_vacuum_adjoint_chain_through_projection_wrt_geometry_matches_fini
 
     assert abs(float(exact)) > 1.0e-8
     np.testing.assert_allclose(exact, fd, rtol=3.0e-6, atol=1.0e-10)
+
+
+def test_dense_mode_vacuum_chain_through_projection_wrt_current_matches_finite_difference():
+    """Validate the mode-space scaffold in a direct-coil projected chain."""
+
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax
+
+    enable_x64(True)
+
+    exact = jax.grad(lambda scale: _toy_coil_projected_mode_vacuum_response(current_scale=scale))(0.0)
+    eps = 1.0e-4
+    fd = (
+        _toy_coil_projected_mode_vacuum_response(current_scale=eps)
+        - _toy_coil_projected_mode_vacuum_response(current_scale=-eps)
+    ) / (2.0 * eps)
+
+    assert abs(float(exact)) > 1.0e-8
+    np.testing.assert_allclose(exact, fd, rtol=4.0e-6, atol=1.0e-10)
+
+
+def test_dense_mode_vacuum_chain_through_projection_wrt_geometry_matches_finite_difference():
+    """Validate the mode-space scaffold for a coil Fourier perturbation."""
+
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax
+
+    enable_x64(True)
+
+    exact = jax.grad(lambda shift: _toy_coil_projected_mode_vacuum_response(radius_shift=shift))(0.0)
+    eps = 1.0e-4
+    fd = (
+        _toy_coil_projected_mode_vacuum_response(radius_shift=eps)
+        - _toy_coil_projected_mode_vacuum_response(radius_shift=-eps)
+    ) / (2.0 * eps)
+
+    assert abs(float(exact)) > 1.0e-8
+    np.testing.assert_allclose(exact, fd, rtol=4.0e-6, atol=1.0e-10)
