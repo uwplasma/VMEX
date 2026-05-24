@@ -850,11 +850,25 @@ Results obtained:
    - aspect `6.0827`,
    - mean iota `0.4906`,
    - outputs in `results/free_boundary_QS_coil_optimization_circle_smoke`.
+6. Optional full-solve ESSOS accepted-state sensitivity still xfails with the
+   default LP-QA current scale. Direct NESTOR/source diagnostics respond
+   correctly, but the accepted state barely moves because the fixture external
+   field is weak at this low resolution.
+7. Strong-current diagnostics show measurable accepted-state response only at
+   very large current multipliers for the short LP-QA smoke:
+   - 100x current changes the final aspect by only about `4e-7`;
+   - 10000x current changes the final aspect by about `3.7e-3`.
+8. Added `--coil-current-scale` to `examples/free_boundary_essos_coils_beta_scan.py`
+   so matched direct/mgrid finite-pressure sensitivity scans can use scaled
+   ESSOS coils while preserving the default fixture exactly.
 
 Best next steps:
 
-1. Run and bound the optional full-solve ESSOS accepted-state sensitivity test after the trial-refresh patch.
-2. Promote direct-coil finite-pressure accepted-equilibrium sensitivity only when finite differences show stable, non-stale response.
+1. Run matched direct/mgrid beta scans with explicit `--coil-current-scale` and
+   pick a physically meaningful finite-pressure sensitivity scale for the LP-QA
+   smoke.
+2. Promote direct-coil finite-pressure accepted-equilibrium sensitivity only
+   when finite differences show stable, non-stale response at that scale.
 3. Run the VMEC2000 optional comparison and keep it xfailed unless the generated-mgrid parity gap is bounded.
 4. Replace the phase-1 optimization proxy with Boozer/QS only after full-loop gradients are validated.
 

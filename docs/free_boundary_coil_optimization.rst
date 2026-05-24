@@ -82,6 +82,18 @@ merged and released, put the ESSOS branch checkout on ``PYTHONPATH``.
      --outdir results/free_boundary_essos_coils_beta_scan_readme \
      --activate-fsq 1.0
 
+The ESSOS Landreman-Paul QA fixture has relatively weak currents for the short
+finite-pressure smoke. Use ``--coil-current-scale`` to run matched direct/mgrid
+sensitivity studies with stronger coils:
+
+.. code-block:: bash
+
+   PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr:$PYTHONPATH \
+     python examples/free_boundary_essos_coils_beta_scan.py \
+     --outdir results/free_boundary_essos_coils_beta_scan_scaled \
+     --coil-current-scale 100 \
+     --activate-fsq 1e99
+
 Render the README/docs figures from the generated JSON summary:
 
 .. code-block:: bash

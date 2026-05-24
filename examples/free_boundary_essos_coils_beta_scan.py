@@ -251,6 +251,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mgrid-zmin", type=float, default=-5.0)
     parser.add_argument("--mgrid-zmax", type=float, default=5.0)
     parser.add_argument(
+        "--coil-current-scale",
+        type=float,
+        default=1.0,
+        help=(
+            "Multiply ESSOS coil currents before generating both the mgrid and "
+            "the direct-coil provider. The default preserves the fixture exactly; "
+            "larger values are useful for finite-pressure sensitivity probes."
+        ),
+    )
+    parser.add_argument(
         "--activate-fsq",
         type=float,
         default=1.0,
@@ -277,6 +287,8 @@ def main(argv: list[str] | None = None) -> int:
         raise AttributeError(
             "ESSOS Coils.to_mgrid is not available. Use the ESSOS PR branch that adds mgrid generation from coils."
         )
+    if float(args.coil_current_scale) != 1.0:
+        coils.currents_scale = float(coils.currents_scale) * float(args.coil_current_scale)
     direct_params = from_essos_coils(coils, chunk_size=256)
 
     outdir = args.outdir.resolve()
@@ -353,7 +365,17 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     summary_path = outdir / "summary.json"
-    summary_path.write_text(json.dumps({"coils_json": str(coils_json), "mgrid": str(mgrid_file), "runs": summaries}, indent=2))
+    summary_path.write_text(
+        json.dumps(
+            {
+                "coils_json": str(coils_json),
+                "mgrid": str(mgrid_file),
+                "coil_current_scale": float(args.coil_current_scale),
+                "runs": summaries,
+            },
+            indent=2,
+        )
+    )
     print(f"Wrote summary: {summary_path}")
     return 0
 
