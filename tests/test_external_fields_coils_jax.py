@@ -24,6 +24,7 @@ from vmec_jax.external_fields import (
     length_penalty,
     sample_coil_field_cylindrical,
     sample_coil_field_cylindrical_from_geometry,
+    sample_coil_field_cylindrical_from_geometry_jit,
     sample_coil_field_xyz_from_geometry,
     sample_external_field_cylindrical,
 )
@@ -120,6 +121,43 @@ def test_cached_coil_geometry_sampling_matches_full_sampling():
     )
 
     for actual, expected in zip(cached, full, strict=True):
+        np.testing.assert_allclose(actual, expected, rtol=1.0e-14, atol=1.0e-18)
+
+
+def test_jitted_cached_coil_geometry_sampling_matches_full_sampling():
+    pytest.importorskip("jax")
+    enable_x64(True)
+    params = _circle_params(current=2.0, radius=1.0, n_segments=96)
+    params = replace(params, nfp=2, stellsym=True, regularization_epsilon=1.0e-9)
+    R = np.asarray([[0.2, 0.4], [0.3, 0.5]])
+    Z = np.asarray([[0.1, 0.2], [0.3, 0.4]])
+    phi = np.asarray([[0.0, 0.1], [0.2, 0.3]])
+
+    full = sample_coil_field_cylindrical(params, R, Z, phi)
+    geometry = build_coil_field_geometry(params)
+    jitted = sample_coil_field_cylindrical_from_geometry_jit(
+        geometry,
+        R,
+        Z,
+        phi,
+        regularization_epsilon=params.regularization_epsilon,
+    )
+    dispatch = sample_external_field_cylindrical(
+        "direct_coils",
+        {
+            "coil_geometry": geometry,
+            "regularization_epsilon": params.regularization_epsilon,
+            "jit_sampler": True,
+        },
+        params,
+        R,
+        Z,
+        phi,
+    )
+
+    for actual, expected in zip(jitted, full, strict=True):
+        np.testing.assert_allclose(actual, expected, rtol=1.0e-14, atol=1.0e-18)
+    for actual, expected in zip(dispatch, full, strict=True):
         np.testing.assert_allclose(actual, expected, rtol=1.0e-14, atol=1.0e-18)
 
 

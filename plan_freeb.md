@@ -21,6 +21,7 @@ Steps taken:
 5. The VMEC2000/direct-coil/mgrid diagnostic now fails hard for explicitly invalid user paths while keeping optional auto-discovery skips.
 6. Benchmarks now report active NESTOR sample/solve timing summaries and cold-to-warm improvement.
 7. Trial/backtracking NESTOR calls are now recorded separately from accepted-update NESTOR calls.
+8. Cached direct-coil geometry can now use a host-forward JIT sampler, guarded by `VMEC_JAX_FREEB_JIT_COIL_SAMPLER`.
 
 Results obtained:
 
@@ -32,13 +33,16 @@ Results obtained:
 6. Tiny direct-coil solve benchmark reports active NESTOR sample timing improving from about `0.51 s` cold to `0.0048 s` warm.
 7. Trial timing smoke completed; the tiny synthetic path records zero trial calls, so its benchmarked direct-coil cost is accepted NESTOR sampling rather than hidden backtracking work.
 8. Targeted trial-timing tests passed: 3 passed in 8.03 s.
+9. Field-only probe on a 32x32 grid with 4-fold stellarator symmetry: cached geometry sampling changed from about `0.45 s` regular cold / `9-10 ms` regular warm to `0.067 s` JIT cold / `4-6 ms` JIT warm.
+10. The tiny full-solve benchmark remains dominated by non-sampling work: JIT and non-JIT direct-coil solve smokes both report about `6.09 s` cold and `0.19 s` warm.
 
 Best next steps:
 
-1. Prototype a jitted host-forward sampler for cached direct-coil geometry to reduce eager JAX dispatch and `np.asarray` synchronization.
+1. Run a larger direct-coil boundary grid where field sampling is a material part of solve time and quantify the JIT sampler payoff.
 2. Run a direct-coil case that enters backtracking and confirm the new trial counters capture rejected NESTOR sampling cost.
-3. Extend the full-loop finite-difference smoke from current-only proxy objective to a validated Boozer/QS promotion test when affordable.
-4. Run the VMEC2000 integration diagnostic without `--skip-vmec2000` on the smallest case and archive the JSON result.
+3. Target the remaining non-sampling warm-solve cost in preconditioner/update/force assembly after the sampler path is measured on larger grids.
+4. Extend the full-loop finite-difference smoke from current-only proxy objective to a validated Boozer/QS promotion test when affordable.
+5. Run the VMEC2000 integration diagnostic without `--skip-vmec2000` on the smallest case and archive the JSON result.
 
 Need from user:
 
@@ -51,9 +55,9 @@ Open-lane completion estimates:
 3. ESSOS/mgrid/VMEC2000 comparison lane: 82%.
 4. Full-loop gradient validation: 55%.
 5. Robust/optimization examples: 76%.
-6. Performance/benchmarking: 72%.
+6. Performance/benchmarking: 75%.
 7. Docs/release hygiene: 88%.
-8. Overall branch completion: 82%.
+8. Overall branch completion: 83%.
 
 ## Mission
 

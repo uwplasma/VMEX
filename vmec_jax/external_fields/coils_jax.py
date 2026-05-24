@@ -257,7 +257,8 @@ def _biot_savart_xyz_vectorized(
     original_shape = points.shape[:-1]
     flat = jnp.reshape(points, (-1, 3))
     r = flat[None, None, :, :] - gamma[:, :, None, :]
-    denom2 = jnp.sum(r * r, axis=-1) + float(regularization_epsilon) ** 2
+    eps = jnp.asarray(regularization_epsilon, dtype=points.dtype)
+    denom2 = jnp.sum(r * r, axis=-1) + eps * eps
     denom = denom2 ** 1.5
     dB = jnp.cross(gamma_dash[:, :, None, :], r, axis=-1) / denom[..., None]
     weighted = dB * jnp.asarray(currents)[:, None, None, None]
@@ -363,6 +364,58 @@ def sample_coil_field_cylindrical_from_geometry(
         chunk_size=chunk_size,
     )
     return _xyz_field_to_cylindrical(field_xyz, phi)
+
+
+if jax is not None:
+
+    @jax.jit
+    def _sample_coil_field_cylindrical_from_geometry_jit(gamma, gamma_dash, currents, R, Z, phi, regularization_epsilon):
+        points = _cylindrical_points_to_xyz(R, Z, phi)
+        field_xyz = biot_savart_xyz(
+            points,
+            gamma,
+            gamma_dash,
+            currents,
+            regularization_epsilon=regularization_epsilon,
+            chunk_size=None,
+        )
+        return _xyz_field_to_cylindrical(field_xyz, phi)
+
+
+def sample_coil_field_cylindrical_from_geometry_jit(
+    geometry: tuple[Any, Any, Any],
+    R: Any,
+    Z: Any,
+    phi: Any,
+    *,
+    regularization_epsilon: float = 0.0,
+) -> tuple[Any, Any, Any]:
+    """JIT-sample cylindrical field from prebuilt geometry.
+
+    This helper is intended for host-forward free-boundary solves and
+    benchmarks in which coil geometry is already cached and fixed.  Use the
+    non-JIT ``sample_coil_field_cylindrical`` path for transformed functions
+    that differentiate with respect to changing coil parameters.
+    """
+
+    if jax is None:  # pragma: no cover - dependency fallback.
+        return sample_coil_field_cylindrical_from_geometry(
+            geometry,
+            R,
+            Z,
+            phi,
+            regularization_epsilon=regularization_epsilon,
+        )
+    gamma, gamma_dash, currents = geometry
+    return _sample_coil_field_cylindrical_from_geometry_jit(
+        gamma,
+        gamma_dash,
+        currents,
+        R,
+        Z,
+        phi,
+        jnp.asarray(float(regularization_epsilon), dtype=jnp.asarray(gamma).dtype),
+    )
 
 
 def sample_coil_field_cylindrical(params: CoilFieldParams, R: Any, Z: Any, phi: Any) -> tuple[Any, Any, Any]:

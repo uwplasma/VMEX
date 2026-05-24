@@ -78,20 +78,34 @@ def sample_external_field_cylindrical(
     kind = str(provider_kind).lower()
     if kind in ("direct_coils", "coils", "coil"):
         if isinstance(provider_static, dict) and "coil_geometry" in provider_static:
-            from .coils_jax import sample_coil_field_cylindrical_from_geometry
+            from .coils_jax import (
+                sample_coil_field_cylindrical_from_geometry,
+                sample_coil_field_cylindrical_from_geometry_jit,
+            )
+
+            chunk_size = provider_static.get("chunk_size", getattr(provider_params, "chunk_size", None))
+            regularization_epsilon = float(
+                provider_static.get(
+                    "regularization_epsilon",
+                    getattr(provider_params, "regularization_epsilon", 0.0),
+                )
+            )
+            if bool(provider_static.get("jit_sampler", False)) and chunk_size is None:
+                return sample_coil_field_cylindrical_from_geometry_jit(
+                    provider_static["coil_geometry"],
+                    R,
+                    Z,
+                    phi,
+                    regularization_epsilon=regularization_epsilon,
+                )
 
             return sample_coil_field_cylindrical_from_geometry(
                 provider_static["coil_geometry"],
                 R,
                 Z,
                 phi,
-                regularization_epsilon=float(
-                    provider_static.get(
-                        "regularization_epsilon",
-                        getattr(provider_params, "regularization_epsilon", 0.0),
-                    )
-                ),
-                chunk_size=provider_static.get("chunk_size", getattr(provider_params, "chunk_size", None)),
+                regularization_epsilon=regularization_epsilon,
+                chunk_size=chunk_size,
             )
 
         from .coils_jax import sample_coil_field_cylindrical

@@ -2352,11 +2352,13 @@ def run_fixed_boundary(
         try:
             from .external_fields import build_coil_field_geometry
 
+            jit_sampler_env = os.getenv("VMEC_JAX_FREEB_JIT_COIL_SAMPLER", "1").strip().lower()
             external_field_provider_static_eff = {
                 "coil_geometry": build_coil_field_geometry(external_field_provider_params),
                 "regularization_epsilon": getattr(external_field_provider_params, "regularization_epsilon", 0.0),
                 "chunk_size": getattr(external_field_provider_params, "chunk_size", None),
                 "cache_scope": "host_forward_only",
+                "jit_sampler": jit_sampler_env not in ("", "0", "false", "no"),
             }
         except Exception:
             # Preserve the original uncached direct-provider path if a custom

@@ -23,6 +23,7 @@ from .coils_jax import (
     length_penalty,
     sample_coil_field_cylindrical,
     sample_coil_field_cylindrical_from_geometry,
+    sample_coil_field_cylindrical_from_geometry_jit,
     sample_coil_field_xyz_from_geometry,
 )
 from .essos_adapter import from_essos_coils
@@ -51,6 +52,7 @@ __all__ = [
     "length_penalty",
     "sample_coil_field_cylindrical",
     "sample_coil_field_cylindrical_from_geometry",
+    "sample_coil_field_cylindrical_from_geometry_jit",
     "sample_coil_field_xyz_from_geometry",
     "sample_external_field_cylindrical",
     "sample_mgrid_field_cylindrical",
