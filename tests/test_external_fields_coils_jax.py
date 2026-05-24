@@ -1,0 +1,238 @@
+from __future__ import annotations
+
+from dataclasses import replace
+
+import numpy as np
+import pytest
+
+from vmec_jax._compat import enable_x64
+from vmec_jax.external_fields import (
+    CoilFieldParams,
+    apply_stellarator_symmetry_to_currents,
+    apply_stellarator_symmetry_to_curves,
+    biot_savart_xyz,
+    coil_coil_distance_soft,
+    coil_current_norm,
+    coil_curvatures,
+    coil_lengths,
+    coil_plasma_distance_soft,
+    compute_gamma_dash,
+    compute_gamma_dashdash,
+    curvature_penalty,
+    fourier_curves_to_gamma,
+    length_penalty,
+    sample_coil_field_cylindrical,
+    sample_external_field_cylindrical,
+)
+
+
+def _circle_params(*, current: float = 3.0, radius: float = 1.2, n_segments: int = 256) -> CoilFieldParams:
+    from vmec_jax._compat import jnp
+
+    dofs = jnp.zeros((1, 3, 3), dtype=float)
+    dofs = dofs.at[0, 0, 2].set(radius)  # x = radius * cos(2*pi*t)
+    dofs = dofs.at[0, 1, 1].set(radius)  # y = radius * sin(2*pi*t)
+    currents = jnp.asarray([current], dtype=float)
+    return CoilFieldParams(
+        base_curve_dofs=dofs,
+        base_currents=currents,
+        n_segments=n_segments,
+        nfp=1,
+        stellsym=False,
+    )
+
+
+def test_fourier_circle_geometry_and_derivatives():
+    enable_x64(True)
+    params = _circle_params(radius=1.5, n_segments=8)
+
+    gamma = np.asarray(fourier_curves_to_gamma(params.base_curve_dofs, params.n_segments))
+    gamma_dash = np.asarray(compute_gamma_dash(params.base_curve_dofs, params.n_segments))
+    gamma_dashdash = np.asarray(compute_gamma_dashdash(params.base_curve_dofs, params.n_segments))
+
+    assert gamma.shape == (1, 8, 3)
+    np.testing.assert_allclose(gamma[0, 0], [1.5, 0.0, 0.0], atol=1.0e-14)
+    np.testing.assert_allclose(gamma[0, 2], [0.0, 1.5, 0.0], atol=1.0e-14)
+    np.testing.assert_allclose(gamma_dash[0, 0], [0.0, 2.0 * np.pi * 1.5, 0.0], atol=1.0e-14)
+    np.testing.assert_allclose(gamma_dashdash[0, 0], [-(2.0 * np.pi) ** 2 * 1.5, 0.0, 0.0], atol=1.0e-13)
+
+
+def test_circular_coil_on_axis_matches_analytic_biot_savart():
+    enable_x64(True)
+    params = _circle_params(current=5.0, radius=1.3, n_segments=64)
+    gamma = fourier_curves_to_gamma(params.base_curve_dofs, params.n_segments)
+    gamma_dash = compute_gamma_dash(params.base_curve_dofs, params.n_segments)
+    point = np.asarray([[0.0, 0.0, 0.7]])
+
+    field = np.asarray(biot_savart_xyz(point, gamma, gamma_dash, params.base_currents))
+    expected_bz = 1.0e-7 * 5.0 * 2.0 * np.pi * 1.3**2 / (1.3**2 + 0.7**2) ** 1.5
+
+    np.testing.assert_allclose(field[0, 0], 0.0, atol=1.0e-18)
+    np.testing.assert_allclose(field[0, 1], 0.0, atol=1.0e-18)
+    np.testing.assert_allclose(field[0, 2], expected_bz, rtol=1.0e-13, atol=1.0e-18)
+
+
+def test_sample_coil_field_cylindrical_shapes_and_dispatch():
+    enable_x64(True)
+    params = _circle_params(current=2.0, radius=1.0, n_segments=96)
+    R = np.asarray([[0.2, 0.4], [0.3, 0.5]])
+    Z = np.asarray([[0.1, 0.2], [0.3, 0.4]])
+    phi = np.asarray([[0.0, 0.1], [0.2, 0.3]])
+
+    direct = sample_coil_field_cylindrical(params, R, Z, phi)
+    dispatch = sample_external_field_cylindrical("direct_coils", None, params, R, Z, phi)
+
+    assert all(component.shape == R.shape for component in direct)
+    for actual, expected in zip(dispatch, direct, strict=True):
+        np.testing.assert_allclose(actual, expected, rtol=1.0e-14, atol=1.0e-18)
+
+
+def test_chunked_and_unchunked_biot_savart_match():
+    enable_x64(True)
+    params = _circle_params(current=2.0, radius=1.0, n_segments=64)
+    gamma = fourier_curves_to_gamma(params.base_curve_dofs, params.n_segments)
+    gamma_dash = compute_gamma_dash(params.base_curve_dofs, params.n_segments)
+    points = np.asarray(
+        [
+            [0.1, 0.2, 0.3],
+            [0.4, -0.1, 0.2],
+            [0.2, 0.3, -0.4],
+            [-0.3, 0.1, 0.2],
+            [0.1, -0.2, -0.3],
+        ]
+    )
+
+    unchunked = biot_savart_xyz(points, gamma, gamma_dash, params.base_currents)
+    chunked = biot_savart_xyz(points, gamma, gamma_dash, params.base_currents, chunk_size=2)
+
+    np.testing.assert_allclose(chunked, unchunked, rtol=1.0e-14, atol=1.0e-18)
+
+
+def test_current_gradient_matches_analytic_linearity():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+
+    enable_x64(True)
+    params = _circle_params(current=4.0, radius=1.1, n_segments=96)
+
+    def bz_for_current(current):
+        trial = params.with_arrays(base_currents=jnp.asarray([current]))
+        return sample_coil_field_cylindrical(trial, 0.2, 0.3, 0.4)[2]
+
+    value = bz_for_current(4.0)
+    grad_value = jax.grad(bz_for_current)(4.0)
+
+    np.testing.assert_allclose(grad_value, value / 4.0, rtol=1.0e-12, atol=1.0e-18)
+
+
+def test_fourier_coefficient_gradient_matches_finite_difference():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+
+    enable_x64(True)
+    params = _circle_params(current=2.0, radius=1.0, n_segments=128)
+
+    def scalar_for_xcos(xcos):
+        dofs = params.base_curve_dofs.at[0, 0, 2].set(xcos)
+        trial = params.with_arrays(base_curve_dofs=dofs)
+        br, bphi, bz = sample_coil_field_cylindrical(trial, 0.35, 0.25, 0.4)
+        return 0.7 * br - 0.2 * bphi + 1.1 * bz
+
+    x0 = jnp.asarray(1.0)
+    exact = jax.grad(scalar_for_xcos)(x0)
+    eps = 1.0e-5
+    fd = (scalar_for_xcos(x0 + eps) - scalar_for_xcos(x0 - eps)) / (2.0 * eps)
+
+    np.testing.assert_allclose(exact, fd, rtol=2.0e-6, atol=1.0e-12)
+
+
+def test_coordinate_derivative_matches_finite_difference():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+
+    enable_x64(True)
+    params = _circle_params(current=2.0, radius=1.0, n_segments=128)
+
+    def scalar_for_coords(coords):
+        R, Z, phi = coords
+        br, bphi, bz = sample_coil_field_cylindrical(params, R, Z, phi)
+        return 0.5 * br - 0.3 * bphi + 0.9 * bz
+
+    coords = jnp.asarray([0.35, 0.25, 0.4])
+    exact = jax.jacfwd(scalar_for_coords)(coords)
+    eps = 1.0e-5
+    fd_columns = []
+    for i in range(3):
+        step = np.zeros(3)
+        step[i] = eps
+        fd_columns.append((scalar_for_coords(coords + step) - scalar_for_coords(coords - step)) / (2.0 * eps))
+    fd = jnp.asarray(fd_columns)
+
+    np.testing.assert_allclose(exact, fd, rtol=2.0e-6, atol=1.0e-12)
+
+
+def test_symmetry_expansion_matches_essos_ordering_for_currents_and_shapes():
+    enable_x64(True)
+    params = _circle_params(current=3.0, radius=1.0, n_segments=8)
+    params = replace(params, nfp=2, stellsym=True)
+
+    curves = apply_stellarator_symmetry_to_curves(params.base_curve_dofs, nfp=params.nfp, stellsym=params.stellsym)
+    currents = apply_stellarator_symmetry_to_currents(params.base_currents, nfp=params.nfp, stellsym=params.stellsym)
+
+    assert curves.shape == (4, 3, 3)
+    np.testing.assert_allclose(currents, [3.0, -3.0, 3.0, -3.0], rtol=0.0, atol=0.0)
+
+
+def test_coil_engineering_metrics_are_finite_and_differentiable():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax
+
+    enable_x64(True)
+    params = _circle_params(current=2.0, radius=1.0, n_segments=96)
+    boundary = np.asarray(
+        [
+            [0.2, 0.0, 0.0],
+            [0.0, 0.2, 0.0],
+            [-0.2, 0.0, 0.0],
+            [0.0, -0.2, 0.0],
+        ]
+    )
+
+    lengths = np.asarray(coil_lengths(params))
+    curvatures = np.asarray(coil_curvatures(params))
+    plasma_distance = coil_plasma_distance_soft(params, boundary, alpha=10.0)
+
+    assert lengths.shape == (1,)
+    assert curvatures.shape == (1, params.n_segments)
+    np.testing.assert_allclose(lengths[0], 2.0 * np.pi, rtol=1.0e-13, atol=1.0e-13)
+    np.testing.assert_allclose(curvatures, 1.0, rtol=1.0e-12, atol=1.0e-12)
+    assert float(coil_current_norm(params)) == pytest.approx(2.0)
+    assert float(plasma_distance) > 0.0
+    assert np.isfinite(float(length_penalty(params, maximum=10.0)))
+    assert np.isfinite(float(curvature_penalty(params, maximum=2.0)))
+
+    def length_for_radius(radius):
+        trial = _circle_params(current=2.0, radius=radius, n_segments=64)
+        return coil_lengths(trial)[0]
+
+    np.testing.assert_allclose(jax.grad(length_for_radius)(1.0), 2.0 * np.pi, rtol=1.0e-12, atol=1.0e-12)
+
+
+def test_coil_coil_distance_soft_uses_distinct_coils_only():
+    from vmec_jax._compat import jnp
+
+    enable_x64(True)
+    dofs = jnp.zeros((2, 3, 3), dtype=float)
+    dofs = dofs.at[:, 0, 2].set(0.2)
+    dofs = dofs.at[:, 1, 1].set(0.2)
+    dofs = dofs.at[0, 0, 0].set(1.0)
+    dofs = dofs.at[1, 0, 0].set(-1.0)
+    params = CoilFieldParams(
+        base_curve_dofs=dofs,
+        base_currents=jnp.asarray([1.0, 1.0]),
+        n_segments=24,
+    )
+
+    distance = float(coil_coil_distance_soft(params, alpha=20.0))
+
+    assert 1.0 < distance < 2.0

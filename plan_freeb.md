@@ -784,22 +784,22 @@ Stretch acceptance:
 ## Progress Tracker
 
 ```text
-WP0 Branch foundation and plan:                 90%
-WP1 Provider base API:                           0%
-WP2 Pure JAX coil Biot-Savart:                  0%
-WP3 ESSOS adapter:                              0%
+WP0 Branch foundation and plan:                100%
+WP1 Provider base API:                         100%
+WP2 Pure JAX coil Biot-Savart:                 75%
+WP3 ESSOS adapter:                             80%
 WP4 JAX mgrid interpolation:                    0%
 WP5 Free-boundary provider hook:                0%
 WP6 Direct-coil forward example:                0%
 WP7 Vacuum adjoint scaffold:                    0%
-WP8 Gradient checks:                            0%
+WP8 Gradient checks:                           25%
 WP9 VMEC2000 diagnostics:                       0%
 WP10 Benchmarks:                                0%
 WP11 Coil-only QS optimization example:         0%
 WP12 Robust coil perturbations:                 0%
 WP13 Documentation:                             0%
 WP14 CI policy:                                 0%
-Overall branch completion:                      6%
+Overall branch completion:                     20%
 ```
 
 ## Immediate Next Steps
@@ -839,6 +839,34 @@ Best next steps:
 1. Implement provider base API.
 2. Implement pure JAX direct-coil provider and tests.
 3. Add optional ESSOS parity adapter.
+
+Need from user:
+
+Nothing now.
+
+### 2026-05-24 Provider slice 1
+
+Steps taken:
+
+1. Committed this roadmap as `2b50319 docs: add free-boundary coil optimization plan`.
+2. Added `vmec_jax.external_fields` package.
+3. Added the provider dispatch API in `external_fields/base.py`.
+4. Added pure JAX Fourier coil evaluation and Biot-Savart sampling in `external_fields/coils_jax.py`.
+5. Matched ESSOS Fourier convention and Biot-Savart scaling.
+6. Added symmetry expansion, chunked point evaluation, coil length, curvature, current norm, soft coil-plasma distance, soft coil-coil distance, and smooth length/curvature penalties.
+7. Added optional ESSOS adapter in `external_fields/essos_adapter.py`.
+8. Added tests for geometry, analytic on-axis Biot-Savart, provider dispatch, chunking, current gradients, Fourier coefficient gradients, coordinate derivatives, symmetry ordering, engineering metrics, and ESSOS parity.
+
+Results obtained:
+
+1. `pytest -q tests/test_external_fields_coils_jax.py tests/test_external_fields_essos_adapter.py` passed: 13 passed in 10.54 s.
+2. ESSOS was importable locally, so the optional ESSOS Biot-Savart parity test ran instead of skipping.
+
+Best next steps:
+
+1. Commit provider slice 1.
+2. Implement JAX mgrid interpolation and synthetic gradient tests.
+3. Start provider hook design in `free_boundary.py` while preserving the existing mgrid call path.
 
 Need from user:
 
