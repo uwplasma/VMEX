@@ -442,7 +442,9 @@ control-timing probe then localized that overhead to
 ``iteration_control_badjac_s``, the early bad-Jacobian state check. The default
 keeps the first-two-iteration VMEC safety probe; use
 ``VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS=0`` only as an explicit profiling
-knob while checking VMEC2000 parity.
+knob while checking VMEC2000 parity. On the tiny active direct-coil CUDA probe,
+that opt-in path reduced warm time from ``0.269 s`` to ``0.184 s`` and reduced
+the bad-Jacobian control bucket from ``77 ms`` to below ``1 ms``.
 
 The direct-solve child JSON includes active and trial NESTOR timing summaries:
 sample time, scalar-potential solve time, reuse counts, failed trial counts,
