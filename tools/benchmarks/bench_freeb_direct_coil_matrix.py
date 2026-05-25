@@ -84,9 +84,14 @@ def _gpu_platform_name(gpu_probe: dict[str, Any]) -> str:
     """Return the concrete JAX platform name for GPU child processes."""
 
     platforms = {str(item).lower() for item in gpu_probe.get("platforms", [])}
+    devices = [str(item).lower() for item in gpu_probe.get("devices", [])]
     if "cuda" in platforms:
         return "cuda"
+    if any("cuda" in item for item in devices):
+        return "cuda"
     if "rocm" in platforms:
+        return "rocm"
+    if any("rocm" in item for item in devices):
         return "rocm"
     return "gpu"
 

@@ -101,5 +101,6 @@ def test_matrix_timing_snapshot_skipped_case_is_not_noisy() -> None:
 
 def test_gpu_platform_name_prefers_concrete_jax_backend() -> None:
     assert matrix._gpu_platform_name({"platforms": ["cpu", "cuda"]}) == "cuda"
+    assert matrix._gpu_platform_name({"platforms": ["gpu"], "devices": ["cuda:0"]}) == "cuda"
     assert matrix._gpu_platform_name({"platforms": ["rocm"]}) == "rocm"
     assert matrix._gpu_platform_name({"platforms": ["gpu"]}) == "gpu"
