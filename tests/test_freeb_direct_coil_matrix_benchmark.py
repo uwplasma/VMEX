@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from tools.benchmarks import bench_freeb_direct_coil_matrix as matrix
 
 
@@ -127,6 +129,60 @@ def test_gpu_platform_name_prefers_concrete_jax_backend() -> None:
     assert matrix._gpu_platform_name({"platforms": ["gpu"], "devices": ["cuda:0"]}) == "cuda"
     assert matrix._gpu_platform_name({"platforms": ["rocm"]}) == "rocm"
     assert matrix._gpu_platform_name({"platforms": ["gpu"]}) == "gpu"
+
+
+def test_child_specs_can_add_badjac_probe0_direct_solve_rows(tmp_path) -> None:
+    specs = matrix._child_specs(quick=True, outdir=tmp_path, backend="gpu", include_badjac_probe0=True)
+
+    labels = [label for label, _, _, _ in specs]
+    assert labels == [
+        "provider",
+        "direct_solve",
+        "direct_solve_badjac_probe0",
+        "direct_solve_jit_forces",
+        "direct_solve_jit_forces_badjac_probe0",
+        "gradient",
+    ]
+    probe_rows = [(label, out, args, env) for label, out, args, env in specs if label.endswith("_badjac_probe0")]
+    assert {label for label, _, _, _ in probe_rows} == {
+        "direct_solve_badjac_probe0",
+        "direct_solve_jit_forces_badjac_probe0",
+    }
+    for label, out, args, env in probe_rows:
+        assert out.name.endswith("_gpu_badjac_probe0.json")
+        assert args[:4] == ["--max-iter", "2", "--warm-repeats", "1"]
+        assert env == matrix.BADJAC_PROBE0_ENV
+        assert matrix._script_for(label).name == "bench_freeb_direct_coil_solve.py"
+
+
+def test_run_child_applies_and_records_badjac_probe0_env(monkeypatch, tmp_path) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured.update(kwargs)
+        return SimpleNamespace(returncode=0, stdout="child ok\n", stderr="")
+
+    monkeypatch.setattr(matrix.subprocess, "run", fake_run)
+    monkeypatch.setattr(matrix, "_load_json", lambda path: {"status": "completed", "backend": "gpu", "cases": []})
+
+    row = matrix._run_child(
+        "direct_solve_jit_forces_badjac_probe0",
+        tmp_path / "out.json",
+        ["--max-iter", "2", "--jit-forces"],
+        backend="gpu",
+        timeout_s=1.0,
+        jax_platform="cuda",
+        env_overrides=matrix.BADJAC_PROBE0_ENV,
+    )
+
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert env["JAX_PLATFORMS"] == "cuda"
+    assert env["VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS"] == "0"
+    assert row["env_overrides"] == matrix.BADJAC_PROBE0_ENV
+    assert row["badjac_initial_state_probe_iters"] == "0"
+    assert row["status"] == "completed"
 
 
 def test_cpu_gpu_comparison_matches_completed_cases_and_reports_nestor_ratios() -> None:

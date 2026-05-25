@@ -21,6 +21,8 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT = REPO_ROOT / "results" / "bench_freeb_direct_coil_matrix" / "summary.json"
+BADJAC_PROBE0_ENV = {"VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS": "0"}
+ChildSpec = tuple[str, Path, list[str], dict[str, str]]
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -28,6 +30,14 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--out", type=Path, default=DEFAULT_OUT, help="Summary JSON path, or an output directory.")
     p.add_argument("--quick", action=argparse.BooleanOptionalAction, default=True, help="Use small CPU-safe defaults.")
     p.add_argument("--include-gpu", action="store_true", help="Also run GPU rows when a JAX GPU device is available.")
+    p.add_argument(
+        "--include-badjac-probe0",
+        action="store_true",
+        help=(
+            "Add direct-solve rows with VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS=0 so the "
+            "ptau-only bad-Jacobian control-path timing is captured in the summary JSON."
+        ),
+    )
     p.add_argument("--backend-note", default="", help="Optional note copied into the summary JSON.")
     p.add_argument("--timeout-s", type=float, default=240.0, help="Per-child benchmark timeout.")
     return p
@@ -473,60 +483,82 @@ def _cpu_gpu_comparison(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return comparisons
 
 
-def _child_specs(*, quick: bool, outdir: Path, backend: str) -> list[tuple[str, Path, list[str]]]:
+def _with_badjac_probe0_rows(specs: list[ChildSpec]) -> list[ChildSpec]:
+    rows: list[ChildSpec] = []
+    for label, out, args, env_overrides in specs:
+        rows.append((label, out, args, env_overrides))
+        if label not in {"direct_solve", "direct_solve_jit_forces"}:
+            continue
+        probe_label = f"{label}_badjac_probe0"
+        probe_out = out.with_name(f"{out.stem}_badjac_probe0{out.suffix}")
+        rows.append((probe_label, probe_out, list(args), {**env_overrides, **BADJAC_PROBE0_ENV}))
+    return rows
+
+
+def _child_specs(*, quick: bool, outdir: Path, backend: str, include_badjac_probe0: bool = False) -> list[ChildSpec]:
     suffix = f"_{backend}.json"
     if quick:
-        return [
+        specs: list[ChildSpec] = [
             (
                 "provider",
                 outdir / f"bench_external_field_providers{suffix}",
                 ["--points", "8", "--segments", "8", "--warm-repeats", "1", "--skip-essos"],
+                {},
             ),
             (
                 "direct_solve",
                 outdir / f"bench_freeb_direct_coil_solve{suffix}",
                 ["--max-iter", "2", "--warm-repeats", "1"],
+                {},
             ),
             (
                 "direct_solve_jit_forces",
                 outdir / f"bench_freeb_direct_coil_solve_jit_forces{suffix}",
                 ["--max-iter", "2", "--warm-repeats", "1", "--jit-forces"],
+                {},
             ),
             (
                 "gradient",
                 outdir / f"bench_freeb_coil_gradient{suffix}",
                 ["--points", "8", "--segments", "8", "--matrix-size", "8", "--warm-repeats", "1"],
+                {},
             ),
         ]
-    return [
+        return _with_badjac_probe0_rows(specs) if include_badjac_probe0 else specs
+    specs = [
         (
             "provider",
             outdir / f"bench_external_field_providers{suffix}",
             ["--points", "48", "--segments", "48", "--warm-repeats", "5", "--skip-essos"],
+            {},
         ),
         (
             "direct_solve",
             outdir / f"bench_freeb_direct_coil_solve{suffix}",
             ["--max-iter", "2", "--warm-repeats", "1"],
+            {},
         ),
         (
             "direct_solve_jit_forces",
             outdir / f"bench_freeb_direct_coil_solve_jit_forces{suffix}",
             ["--max-iter", "2", "--warm-repeats", "1", "--jit-forces"],
+            {},
         ),
         (
             "gradient",
             outdir / f"bench_freeb_coil_gradient{suffix}",
             ["--points", "24", "--segments", "48", "--matrix-size", "24", "--warm-repeats", "5"],
+            {},
         ),
     ]
+    return _with_badjac_probe0_rows(specs) if include_badjac_probe0 else specs
 
 
 def _script_for(label: str) -> Path:
+    if label.startswith("direct_solve"):
+        return REPO_ROOT / "tools" / "benchmarks" / "bench_freeb_direct_coil_solve.py"
     return {
         "provider": REPO_ROOT / "tools" / "benchmarks" / "bench_external_field_providers.py",
-        "direct_solve": REPO_ROOT / "tools" / "benchmarks" / "bench_freeb_direct_coil_solve.py",
-        "direct_solve_jit_forces": REPO_ROOT / "tools" / "benchmarks" / "bench_freeb_direct_coil_solve.py",
         "gradient": REPO_ROOT / "tools" / "benchmarks" / "bench_freeb_coil_gradient.py",
     }[label]
 
@@ -539,6 +571,7 @@ def _run_child(
     backend: str,
     timeout_s: float,
     jax_platform: str | None = None,
+    env_overrides: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{REPO_ROOT}{os.pathsep}{env.get('PYTHONPATH', '')}" if env.get("PYTHONPATH") else str(REPO_ROOT)
@@ -549,6 +582,8 @@ def _run_child(
         env["JAX_PLATFORMS"] = "cpu"
     elif backend == "gpu":
         env["JAX_PLATFORMS"] = str(jax_platform or "gpu")
+    overrides = dict(env_overrides or {})
+    env.update(overrides)
 
     cmd = [sys.executable, str(_script_for(label)), "--out", str(out), *args]
     t0 = time.perf_counter()
@@ -574,6 +609,8 @@ def _run_child(
             "output_json": out,
             "command": cmd,
             "jax_platform": env.get("JAX_PLATFORMS"),
+            "env_overrides": overrides,
+            "badjac_initial_state_probe_iters": env.get("VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS"),
             "stdout_tail": proc.stdout.strip().splitlines()[-8:],
             "stderr_tail": proc.stderr.strip().splitlines()[-8:],
             "child_status": None if payload is None else payload.get("status"),
@@ -592,6 +629,8 @@ def _run_child(
             "output_json": out,
             "command": cmd,
             "jax_platform": env.get("JAX_PLATFORMS"),
+            "env_overrides": overrides,
+            "badjac_initial_state_probe_iters": env.get("VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS"),
             "stdout_tail": (exc.stdout or "").strip().splitlines()[-8:] if isinstance(exc.stdout, str) else [],
             "stderr_tail": (exc.stderr or "").strip().splitlines()[-8:] if isinstance(exc.stderr, str) else [],
         }
@@ -605,13 +644,32 @@ def main(argv: list[str] | None = None) -> int:
 
     gpu_ok, gpu_probe = _gpu_available()
     rows: list[dict[str, Any]] = []
-    for label, out, child_args in _child_specs(quick=bool(args.quick), outdir=outdir, backend="cpu"):
-        rows.append(_run_child(label, out, child_args, backend="cpu", timeout_s=float(args.timeout_s)))
+    for label, out, child_args, child_env in _child_specs(
+        quick=bool(args.quick),
+        outdir=outdir,
+        backend="cpu",
+        include_badjac_probe0=bool(args.include_badjac_probe0),
+    ):
+        rows.append(
+            _run_child(
+                label,
+                out,
+                child_args,
+                backend="cpu",
+                timeout_s=float(args.timeout_s),
+                env_overrides=child_env,
+            )
+        )
 
     if args.include_gpu:
         if gpu_ok:
             gpu_platform = _gpu_platform_name(gpu_probe)
-            for label, out, child_args in _child_specs(quick=bool(args.quick), outdir=outdir, backend="gpu"):
+            for label, out, child_args, child_env in _child_specs(
+                quick=bool(args.quick),
+                outdir=outdir,
+                backend="gpu",
+                include_badjac_probe0=bool(args.include_badjac_probe0),
+            ):
                 rows.append(
                     _run_child(
                         label,
@@ -620,6 +678,7 @@ def main(argv: list[str] | None = None) -> int:
                         backend="gpu",
                         timeout_s=float(args.timeout_s),
                         jax_platform=gpu_platform,
+                        env_overrides=child_env,
                     )
                 )
         else:
@@ -640,6 +699,7 @@ def main(argv: list[str] | None = None) -> int:
         "script": str(Path(__file__).resolve()),
         "quick": bool(args.quick),
         "include_gpu": bool(args.include_gpu),
+        "include_badjac_probe0": bool(args.include_badjac_probe0),
         "backend_note": str(args.backend_note),
         "gpu_probe": gpu_probe,
         "output_dir": outdir,
