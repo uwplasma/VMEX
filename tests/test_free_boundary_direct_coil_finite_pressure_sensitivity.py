@@ -569,12 +569,177 @@ def test_jax_nestor_operator_complete_solve_fd_slopes_for_current_and_geometry(
         base_curve_dofs=jnp.asarray(base_params.base_curve_dofs).at[0, 0, 2].add(-1.0e-2 * eps)
     )
 
+    # This is still an outer solve finite-response guard.  The driver path
+    # materializes host NumPy state/diagnostics between iterations, so it should
+    # not be treated as full-loop AD validation.
     current_slope = (metric(current_forward) - metric(current_backward)) / (2.0 * eps)
     geometry_slope = (metric(geometry_forward) - metric(geometry_backward)) / (2.0 * eps)
 
     slopes = np.asarray([current_slope, geometry_slope], dtype=float)
     assert np.all(np.isfinite(slopes))
     assert np.min(np.abs(slopes)) > 1.0e-16
+
+
+def test_jax_nestor_operator_fixed_boundary_ad_matches_central_fd_for_coil_vars(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Validate the JAX operator chain on a fixed boundary from the tiny free-boundary case.
+
+    This promotes the gradient lane one rung beyond finite/nonzero solve
+    response without claiming differentiation through the VMEC iteration loop:
+    direct coils -> boundary projection -> VMEC/NESTOR source/matrix assembly
+    -> dense mode solve is checked against central FD while the plasma boundary
+    is held fixed.
+    """
+
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+    from vmec_jax.driver import run_free_boundary
+    from vmec_jax.external_fields import sample_coil_field_cylindrical
+    from vmec_jax.free_boundary import (
+        _build_vmec_mode_basis,
+        _ensure_vmec_nonsingular_kernel_tables,
+        _sample_external_boundary_arrays,
+        _vmec_boundary_wint,
+    )
+    from vmec_jax.free_boundary_adjoint import (
+        dense_vmec_nestor_mode_solve_jax,
+        vacuum_boundary_fields_from_cylindrical_jax,
+    )
+
+    enable_x64(True)
+    for key, value in {
+        "VMEC_JAX_FREEB_NESTOR_MODE": "dense",
+        "VMEC_JAX_FREEB_DENSE_SOLVE_MODE": "mode",
+        "VMEC_JAX_FREEB_USE_GREENF_SOURCE": "1",
+        "VMEC_JAX_FREEB_EXPERIMENTAL_FOURI_MATRIX": "1",
+        "VMEC_JAX_FREEB_ADD_ANALYTIC_BVEC": "1",
+        "VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR": "1",
+    }.items():
+        monkeypatch.setenv(key, value)
+
+    input_path = _write_tiny_direct_freeb_input(
+        tmp_path / "input.direct_jax_nestor_ad_fd",
+        lasym=False,
+        niter=2,
+        mpol=3,
+        ntheta=6,
+    )
+    base_params = _circle_coil_params(current=3.0e7, n_segments=64)
+    init = run_free_boundary(
+        input_path,
+        use_initial_guess=True,
+        verbose=False,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=base_params,
+    )
+    result, _runtime = nestor_external_only_step(
+        state=init.state,
+        static=init.static,
+        ivac=1,
+        ivacskip=0,
+        iter_idx=1,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=base_params,
+    )
+    assert result.diagnostics is not None
+    assert result.diagnostics["jax_nestor_operator_applied"] is True
+    assert result.diagnostics["jax_nestor_operator_reason"] == "applied"
+    assert result.diagnostics["bnormal_rms"] > 0.0
+
+    sample = _sample_external_boundary_arrays(
+        state=init.state,
+        static=init.static,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=base_params,
+    )
+    wint = _vmec_boundary_wint(static=init.static, ntheta=sample.R.shape[0], nzeta=sample.R.shape[1])
+    basis = _build_vmec_mode_basis(
+        ntheta=sample.R.shape[0],
+        nzeta=sample.R.shape[1],
+        nfp=int(init.static.cfg.nfp),
+        mf=int(init.static.cfg.mpol) + 1,
+        nf=int(init.static.cfg.ntor),
+        lasym=bool(init.static.cfg.lasym),
+        wint=wint,
+    )
+    nvper = 64 if int(sample.R.shape[1]) == 1 else max(1, int(init.static.cfg.nfp))
+    tables = _ensure_vmec_nonsingular_kernel_tables(basis=basis, nv=sample.R.shape[1], nvper=nvper)
+
+    R = jnp.asarray(sample.R)
+    Z = jnp.asarray(sample.Z)
+    phi = jnp.asarray(sample.phi)
+    Ru = jnp.asarray(sample.Ru)
+    Zu = jnp.asarray(sample.Zu)
+    Rv = jnp.asarray(sample.Rv)
+    Zv = jnp.asarray(sample.Zv)
+    ruu = jnp.asarray(sample.ruu)
+    ruv = jnp.asarray(sample.ruv)
+    rvv = jnp.asarray(sample.rvv)
+    zuu = jnp.asarray(sample.zuu)
+    zuv = jnp.asarray(sample.zuv)
+    zvv = jnp.asarray(sample.zvv)
+    wint_jax = jnp.asarray(wint)
+    base_dofs = jnp.asarray(base_params.base_curve_dofs)
+    base_currents = jnp.asarray(base_params.base_currents)
+
+    def params_for(current_scale, geometry_scale):
+        return base_params.with_arrays(
+            base_curve_dofs=base_dofs.at[0, 0, 2].add(1.0e-2 * geometry_scale),
+            base_currents=base_currents * (1.0 + 0.02 * current_scale),
+        )
+
+    def response(current_scale, geometry_scale):
+        params = params_for(current_scale, geometry_scale)
+        br, bp, bz = sample_coil_field_cylindrical(params, R, Z, phi)
+        vac = vacuum_boundary_fields_from_cylindrical_jax(
+            br=br,
+            bp=bp,
+            bz=bz,
+            R=R,
+            Ru=Ru,
+            Zu=Zu,
+            Rv=Rv,
+            Zv=Zv,
+        )
+        bexni = -vac["bnormal"] * wint_jax * ((2.0 * jnp.pi) ** 2)
+        out = dense_vmec_nestor_mode_solve_jax(
+            R=R,
+            Z=Z,
+            Ru=Ru,
+            Zu=Zu,
+            Rv=Rv,
+            Zv=Zv,
+            ruu=ruu,
+            ruv=ruv,
+            rvv=rvv,
+            zuu=zuu,
+            zuv=zuv,
+            zvv=zvv,
+            bexni=jnp.ravel(bexni),
+            basis=basis,
+            tables=tables,
+            signgs=int(init.signgs),
+            nvper=nvper,
+            include_analytic=True,
+        )
+        return 0.5 * jnp.vdot(out["mode_coeffs"], out["mode_coeffs"]) + 0.05 * jnp.vdot(
+            out["phi_flat"],
+            out["phi_flat"],
+        )
+
+    eps = 1.0e-4
+    exact_current = jax.grad(lambda scale: response(scale, 0.0))(0.0)
+    fd_current = (response(eps, 0.0) - response(-eps, 0.0)) / (2.0 * eps)
+    exact_geometry = jax.grad(lambda scale: response(0.0, scale))(0.0)
+    fd_geometry = (response(0.0, eps) - response(0.0, -eps)) / (2.0 * eps)
+
+    derivs = np.asarray([exact_current, fd_current, exact_geometry, fd_geometry], dtype=float)
+    assert np.all(np.isfinite(derivs))
+    assert np.min(np.abs(derivs)) > 1.0e-8
+    np.testing.assert_allclose(exact_current, fd_current, rtol=2.0e-6, atol=1.0e-8)
+    np.testing.assert_allclose(exact_geometry, fd_geometry, rtol=2.0e-6, atol=1.0e-8)
 
 
 @pytest.mark.full

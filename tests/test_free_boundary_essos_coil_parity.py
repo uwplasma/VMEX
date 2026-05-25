@@ -376,6 +376,7 @@ def _write_vmec2000_no_wout_report(path: Path, vmec2000) -> None:
         "status": "vmec2000_no_wout",
         "workdir": str(vmec2000.workdir),
         "input_path": str(vmec2000.input_path),
+        "returncode": int(getattr(vmec2000, "returncode", 0)),
         "runtime_s": float(vmec2000.runtime_s),
         "stdout_tail": vmec2000.stdout.splitlines()[-40:],
         "stderr_tail": vmec2000.stderr.splitlines()[-40:],
@@ -516,14 +517,6 @@ def test_vmec2000_generated_mgrid_trace_smoke_records_iteration_rows(tmp_path: P
 
 
 @pytest.mark.vmec2000
-@pytest.mark.xfail(
-    reason=(
-        "Generated ESSOS-mgrid VMEC2000 free-boundary WOUT parity is not bounded "
-        "yet; this optional gate captures the current gap while the direct-coil "
-        "provider path is being developed."
-    ),
-    strict=False,
-)
 def test_vmec2000_generated_mgrid_free_boundary_matches_vmec_jax_and_direct_coils(tmp_path: Path) -> None:
     """Optional three-way parity gate for generated-mgrid/free-boundary cases.
 
@@ -533,9 +526,9 @@ def test_vmec2000_generated_mgrid_free_boundary_matches_vmec_jax_and_direct_coil
     2. `vmec_jax` free-boundary from the same mgrid,
     3. `vmec_jax` free-boundary from direct ESSOS/JAX Biot-Savart coils,
 
-    all produce matching WOUT-level equilibrium quantities.  Per-iteration
-    VMEC2000 rows are treated as a printed trace only and are not used as the
-    source of truth for accepted final residual components.
+    all produce matching WOUT-level equilibrium quantities.  The only bounded
+    xfail is VMEC2000 not promoting the generated-mgrid run to a WOUT; if a
+    WOUT exists, the WOUT-level parity assertions are expected to pass.
     """
 
     if os.environ.get("VMEC2000_INTEGRATION", "0") != "1":
@@ -558,8 +551,12 @@ def test_vmec2000_generated_mgrid_free_boundary_matches_vmec_jax_and_direct_coil
     vmec2000 = run_xvmec2000(mgrid_input, exec_path=exe, workdir=tmp_path / "vmec2000", timeout_s=90, keep_workdir=True)
     wout_vmec2000_path = _vmec2000_wout_path(vmec2000)
     if not wout_vmec2000_path.exists():
-        _write_vmec2000_no_wout_report(tmp_path / "vmec2000_no_wout_report.json", vmec2000)
-    assert wout_vmec2000_path.exists(), f"VMEC2000 did not produce {wout_vmec2000_path.name}"
+        report_path = tmp_path / "vmec2000_no_wout_report.json"
+        _write_vmec2000_no_wout_report(report_path, vmec2000)
+        pytest.xfail(
+            "Generated ESSOS-mgrid VMEC2000 WOUT promotion blocker: "
+            f"VMEC2000 did not produce {wout_vmec2000_path.name}; report={report_path}"
+        )
     wout_vmec2000 = read_wout(wout_vmec2000_path)
 
     _write_wout_gap_report(
