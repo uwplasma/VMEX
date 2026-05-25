@@ -6701,6 +6701,70 @@ def solve_fixed_boundary_residual_iter(
                 ).compile()
         except Exception:
             pass
+        need_trial_eval_precompile = bool(backtracking) or bool(reference_mode) or bool(use_direct_fallback)
+        use_strict_update_precompile = (
+            bool(strict_update)
+            and bool(jit_strict_update_enabled)
+            and (not bool(host_update_assembly))
+            and (not bool(limit_dt_from_force))
+            and (not bool(limit_update_rms))
+            and (not bool(need_trial_eval_precompile))
+            and (not _tree_has_tracer(state0))
+        )
+        if use_strict_update_precompile:
+            try:
+                velocity_shape_pre = (int(jnp.asarray(state0.Rcos).shape[0]), int(static.cfg.mpol), int(static.cfg.ntor) + 1)
+                zero_update_pre = jnp.zeros(velocity_shape_pre, dtype=dtype_state)
+                need_update_rms_precompile = (
+                    bool(limit_update_rms)
+                    or bool(track_history)
+                    or bool(verbose)
+                    or bool(backtracking)
+                    or (bool(adjoint_trace) and adjoint_trace_mode == "full")
+                )
+                step_fn_pre = _strict_update_step_jit(
+                    static,
+                    limit_update_rms=False,
+                    need_update_rms=need_update_rms_precompile,
+                    divide_by_scalxc_for_update=bool(divide_by_scalxc_for_update),
+                    enforce_edge=not bool(free_boundary_enabled),
+                )
+                scalar_pre = jnp.asarray(1.0, dtype=dtype_state)
+                step_fn_pre.lower(
+                    state0,
+                    jnp.asarray(float(step_size), dtype=dtype_state),
+                    scalar_pre,
+                    scalar_pre,
+                    jnp.asarray(float(step_size), dtype=dtype_state),
+                    jnp.asarray(float(initial_flip_sign), dtype=dtype_state),
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    zero_update_pre,
+                    jnp.asarray(1.0e-3 if bool(reference_mode) else 5.0e-3, dtype=dtype_state),
+                ).compile()
+            except Exception:
+                pass
 
     if precompile_only:
         empty = np.zeros((0,), dtype=float)

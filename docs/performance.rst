@@ -3085,7 +3085,10 @@ same ``office`` CPU/CUDA matrix did not show a robust speedup
 (``--jit-forces`` CPU warm about ``0.060 s``, CUDA warm about ``0.224 s``).
 This narrows the next GPU target to reducing synchronization and dispatch in
 the accepted-point control/preconditioner path rather than optimizing
-Biot-Savart sampling or the final NESTOR solve.
+Biot-Savart sampling or the final NESTOR solve.  The ``jit_precompile`` path
+also warms the strict-update kernel when that path is active, so first-call
+precompile runs no longer warm only the force kernel and then pay a lazy
+accepted-update compile on the first iteration.
 
 Control flags:
 
@@ -3095,6 +3098,7 @@ Control flags:
   export VMEC_JAX_FREEB_SAMPLE_EXTERNAL=1     # default: on
   export VMEC_JAX_BADJAC_STATE_PROBE=0        # default: ptau-only bad-Jacobian check
   export VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS=2  # used only when state probe is enabled
+  export VMEC_JAX_JIT_PRECOMPILE=1            # optional: warm force/update kernels before iteration
 
 If profiling free-boundary solver-only cost, disable sampling diagnostics:
 

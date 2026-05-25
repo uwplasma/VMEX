@@ -10,7 +10,7 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-25 after dry-run optimization diagnostics, ESSOS adapter validation, VMEC2000 runtime-error classification, bounded AD-vs-FD NESTOR gradient checks, same-branch CPU/GPU benchmark-matrix reporting with non-JIT and JIT-force direct-solve rows, solve-loop timing capture for direct-coil benchmark rows, JIT-force defaults for direct-coil examples, accepted-boundary direct-coil replay AD-vs-FD promotion, free-boundary-aware fused strict-update support, a clarified complete-loop exact-adjoint promotion boundary, the first opt-in bad-Jacobian state-probe performance knob, a fused preconditioned-`fsq1` payload benchmark, and a tightened optional VMEC2000 generated-`mgrid` trace gate.
+Last updated: 2026-05-25 after dry-run optimization diagnostics, ESSOS adapter validation, VMEC2000 runtime-error classification, bounded AD-vs-FD NESTOR gradient checks, same-branch CPU/GPU benchmark-matrix reporting with non-JIT and JIT-force direct-solve rows, solve-loop timing capture for direct-coil benchmark rows, JIT-force defaults for direct-coil examples, accepted-boundary direct-coil replay AD-vs-FD promotion, free-boundary-aware fused strict-update support, a clarified complete-loop exact-adjoint promotion boundary, the first opt-in bad-Jacobian state-probe performance knob, a fused preconditioned-`fsq1` payload benchmark, a tightened optional VMEC2000 generated-`mgrid` trace gate, and strict-update precompile coverage.
 
 Steps taken:
 
@@ -1101,6 +1101,8 @@ Steps taken:
 3. Updated performance documentation to record that the fused `fsq1` payload is
    tested but did not produce a robust CUDA speedup in the tiny active
    direct-coil matrix.
+4. Added strict-update kernel warming to the `jit_precompile` path and a unit
+   regression that forces this path under `VMEC_JAX_JIT_STRICT_UPDATE=1`.
 
 Results obtained:
 
@@ -1113,6 +1115,9 @@ Results obtained:
 3. The result confirms that the large bad-Jacobian state-probe tax remains
    fixed, while the next material GPU target is accepted-point
    synchronization/dispatch across `fsq1`, preconditioner, and update control.
+4. The strict-update precompile smoke completed with
+   `VMEC_JAX_JIT_PRECOMPILE=1 VMEC_JAX_JIT_STRICT_UPDATE=1`; the tiny direct
+   coil solve reported warm time about `0.024 s`.
 
 Best next steps:
 

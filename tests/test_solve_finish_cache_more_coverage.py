@@ -400,6 +400,39 @@ def test_precompile_only_jit_precompile_swallows_compile_failure(monkeypatch) ->
     assert len(solve._COMPUTE_FORCES_CACHE) == 1
 
 
+def test_precompile_only_jit_precompile_warms_strict_update(monkeypatch) -> None:
+    pytest.importorskip("jax")
+    _quiet_solve_env(monkeypatch)
+    _install_scan_fakes(monkeypatch)
+    monkeypatch.setenv("VMEC_JAX_JIT_STRICT_UPDATE", "1")
+    lower_calls = []
+
+    class FakeJit:
+        def __init__(self, fn):
+            self.fn = fn
+
+        def __call__(self, *args, **kwargs):
+            return self.fn(*args, **kwargs)
+
+        def lower(self, *args, **kwargs):
+            self.fn(*args, **kwargs)
+            return SimpleNamespace(compile=lambda: "compiled")
+
+    class FakeStrictStep:
+        def lower(self, *args, **kwargs):
+            lower_calls.append((args, kwargs))
+            return SimpleNamespace(compile=lambda: "compiled")
+
+    monkeypatch.setattr(solve, "jit", lambda fn, *args, **kwargs: FakeJit(fn))
+    monkeypatch.setattr(solve, "_strict_update_step_jit", lambda *args, **kwargs: FakeStrictStep())
+
+    result = _run_precompile_only(_static(), jit_forces=True, jit_precompile=True, host_update_assembly=False)
+
+    assert result.diagnostics == {"precompile_only": True}
+    assert len(lower_calls) == 1
+    assert len(lower_calls[0][0]) == 31
+
+
 def test_accelerated_scan_runner_cache_reports_timing_hit_and_miss(monkeypatch) -> None:
     pytest.importorskip("jax")
     _quiet_solve_env(monkeypatch)
