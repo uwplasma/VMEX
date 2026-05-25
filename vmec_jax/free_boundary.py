@@ -3099,6 +3099,143 @@ def _freeb_use_greenf_source(ntor: int) -> bool:
     return greenf_env.strip().lower() not in ("", "0", "false", "no")
 
 
+def _env_truthy(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    return raw.strip().lower() not in ("", "0", "false", "no")
+
+
+def _jax_nestor_operator_guard(
+    *,
+    sample: ExternalBoundarySample,
+    basis: dict[str, Any] | None,
+) -> tuple[bool, str]:
+    """Return whether the experimental JAX VMEC/NESTOR operator can run safely.
+
+    The phase-1 JAX nonsingular Green operator expects the full VMEC angular
+    grid.  Current stellarator-symmetric production arrays are usually reduced
+    to the VMEC half grid, so those remain on the validated host bridge until
+    the full-grid reconstruction is ported to JAX.
+    """
+
+    if basis is None:
+        return False, "missing_mode_basis"
+    try:
+        from ._compat import has_jax, x64_enabled
+
+        if not has_jax():
+            return False, "jax_unavailable"
+        if not x64_enabled():
+            return False, "jax_x64_disabled"
+    except Exception:
+        return False, "jax_unavailable"
+    if not bool(basis.get("lasym", False)):
+        return False, "requires_lasym_full_grid"
+    if sample.R.ndim != 2:
+        return False, "sample_R_not_2d"
+    if int(sample.R.shape[0]) != int(basis.get("nu_full", sample.R.shape[0])):
+        return False, "requires_full_vmec_grid"
+    if int(sample.R.size) != int(basis.get("nuv_full", sample.R.size)):
+        return False, "requires_full_vmec_grid_points"
+    for name in ("Z", "Ru", "Zu", "Rv", "Zv"):
+        arr = np.asarray(getattr(sample, name), dtype=float)
+        if arr.shape != sample.R.shape:
+            return False, f"{name}_shape_mismatch"
+    for name in ("ruu", "ruv", "rvv", "zuu", "zuv", "zvv"):
+        arr = getattr(sample, name)
+        if arr is None:
+            return False, f"missing_{name}"
+        if np.asarray(arr).shape != sample.R.shape:
+            return False, f"{name}_shape_mismatch"
+    return True, "enabled"
+
+
+def _solve_vmec_like_mode_with_jax_nestor_operator(
+    *,
+    sample: ExternalBoundarySample,
+    basis: dict[str, Any],
+    bexni: np.ndarray,
+    signgs: int,
+    nvper: int,
+    include_analytic: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Run the experimental dense JAX VMEC/NESTOR mode operator.
+
+    Returns ``(phi, potvac, rhs_mode, mode_matrix, grpmn_total, gsource)``.
+    This is intentionally an opt-in validation path; default production solves
+    still use the host-validated bridge.
+    """
+
+    from .free_boundary_adjoint import dense_vmec_nestor_mode_solve_jax
+
+    tables = _ensure_vmec_nonsingular_kernel_tables(
+        basis=basis,
+        nv=int(np.asarray(sample.R).shape[1]),
+        nvper=max(1, int(nvper)),
+    )
+    out = dense_vmec_nestor_mode_solve_jax(
+        R=np.asarray(sample.R, dtype=float),
+        Z=np.asarray(sample.Z, dtype=float),
+        Ru=np.asarray(sample.Ru, dtype=float),
+        Zu=np.asarray(sample.Zu, dtype=float),
+        Rv=np.asarray(sample.Rv, dtype=float),
+        Zv=np.asarray(sample.Zv, dtype=float),
+        ruu=np.asarray(sample.ruu, dtype=float),
+        ruv=np.asarray(sample.ruv, dtype=float),
+        rvv=np.asarray(sample.rvv, dtype=float),
+        zuu=np.asarray(sample.zuu, dtype=float),
+        zuv=np.asarray(sample.zuv, dtype=float),
+        zvv=np.asarray(sample.zvv, dtype=float),
+        bexni=np.asarray(bexni, dtype=float),
+        basis=basis,
+        tables=tables,
+        signgs=int(signgs),
+        nvper=max(1, int(nvper)),
+        include_analytic=bool(include_analytic),
+    )
+    potvac = np.asarray(out["mode_coeffs"], dtype=float)
+    rhs_mode = np.asarray(out["rhs_mode"], dtype=float)
+    mode_matrix = np.asarray(out["mode_matrix"], dtype=float)
+    grpmn = np.asarray(out["grpmn"], dtype=float)
+    gsource_nonsing = np.asarray(out["gsource_nonsing"], dtype=float)
+    mnpd2 = int(basis["mnpd2"])
+    if mode_matrix.shape != (mnpd2, mnpd2):
+        raise ValueError("jax_nestor_mode_matrix_shape")
+    if rhs_mode.shape != (mnpd2,) or potvac.shape != (mnpd2,):
+        raise ValueError("jax_nestor_mode_vector_shape")
+    for name, arr in (
+        ("rhs_mode", rhs_mode),
+        ("mode_matrix", mode_matrix),
+        ("mode_coeffs", potvac),
+        ("grpmn", grpmn),
+        ("gsource_nonsing", gsource_nonsing),
+    ):
+        if not np.isfinite(arr).all():
+            raise ValueError(f"jax_nestor_nonfinite_{name}")
+    residual = mode_matrix @ potvac - rhs_mode
+    residual_tol = 1.0e-8 * (1.0 + float(np.linalg.norm(rhs_mode)))
+    if float(np.linalg.norm(residual)) > residual_tol:
+        raise ValueError("jax_nestor_linear_residual")
+    mnpd = int(basis["mnpd"])
+    sin_phase = np.asarray(basis["sin_phase"], dtype=float)
+    cos_phase = np.asarray(basis["cos_phase"], dtype=float)
+    if bool(basis["lasym"]) and potvac.size >= 2 * mnpd:
+        phi_flat = sin_phase @ potvac[:mnpd] + cos_phase @ potvac[mnpd : 2 * mnpd]
+    else:
+        phi_flat = sin_phase @ potvac[:mnpd]
+    phi = np.asarray(phi_flat, dtype=float).reshape(np.asarray(sample.R).shape)
+    phi = phi - float(np.mean(phi))
+    return (
+        phi,
+        potvac,
+        rhs_mode,
+        mode_matrix,
+        grpmn,
+        gsource_nonsing,
+    )
+
+
 def nestor_external_only_step(
     *,
     state: Any,
@@ -3245,6 +3382,9 @@ def nestor_external_only_step(
     amatrix_mode_pre = None
     amatrix_mode_from_grpmn = None
     matrix_override_applied = False
+    jax_nestor_operator_applied = False
+    jax_nestor_operator_reason = "disabled"
+    jax_nestor_operator_time_s = 0.0
     cache_build_time_s = 0.0
     source_time_s = 0.0
     bvec_time_s = 0.0
@@ -3323,6 +3463,7 @@ def nestor_external_only_step(
                     grpmn_nonsing = None
             if dense_solve_mode in ("mode", "vmec_mode", "fouri_mode"):
                 rhs_mode_eff = None
+                jax_operator_solved = False
                 if cache.mode_basis is not None:
                     if reuse_step and provider_allows_source_reuse and runtime_bvec_nonsing_cached is not None:
                         bvec_mode_nonsing = np.asarray(runtime_bvec_nonsing_cached, dtype=float)
@@ -3372,13 +3513,58 @@ def nestor_external_only_step(
                             matrix_override_applied = True
                         except Exception:
                             pass
-                t_phase = time.perf_counter()
-                phi, potvac, bvec_mode = _solve_vmec_like_mode_from_gsource(
-                    cache=cache,
-                    gsource=np.asarray(gsource_vmec, dtype=float),
-                    rhs_mode=rhs_mode_eff,
-                )
-                linear_solve_time_s += max(0.0, time.perf_counter() - t_phase)
+                    if _env_truthy("VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR", False):
+                        jax_nestor_operator_reason = "requested"
+                        if not (use_greenf_source and experimental_fouri_matrix):
+                            jax_nestor_operator_reason = "requires_greenf_fouri_matrix"
+                        elif reuse_step and provider_allows_source_reuse:
+                            jax_nestor_operator_reason = "skip_cached_reuse_step"
+                        else:
+                            ok, reason = _jax_nestor_operator_guard(sample=sample, basis=cache.mode_basis)
+                            jax_nestor_operator_reason = reason
+                            if ok:
+                                try:
+                                    t_phase = time.perf_counter()
+                                    (
+                                        phi,
+                                        potvac,
+                                        rhs_mode_eff,
+                                        amatrix_mode_from_grpmn,
+                                        grpmn_total,
+                                        gsource_vmec,
+                                    ) = _solve_vmec_like_mode_with_jax_nestor_operator(
+                                        sample=sample,
+                                        basis=cache.mode_basis,
+                                        bexni=np.asarray(gsource_bexni, dtype=float),
+                                        signgs=int(getattr(static, "signgs", -1)),
+                                        nvper=nvper_greenf,
+                                        include_analytic=add_analytic,
+                                    )
+                                    jax_nestor_operator_time_s += max(0.0, time.perf_counter() - t_phase)
+                                    bvec_mode = np.asarray(rhs_mode_eff, dtype=float)
+                                    amatrix_mode_pre = (
+                                        None if cache.mode_matrix is None else np.asarray(cache.mode_matrix, dtype=float)
+                                    )
+                                    cache = replace(
+                                        cache,
+                                        mode_matrix=np.asarray(amatrix_mode_from_grpmn, dtype=float),
+                                        mode_matrix_lu=_dense_lu_factor(np.asarray(amatrix_mode_from_grpmn, dtype=float)),
+                                    )
+                                    matrix_override_applied = True
+                                    jax_nestor_operator_applied = True
+                                    jax_nestor_operator_reason = "applied"
+                                    jax_operator_solved = True
+                                except Exception as exc:
+                                    detail = str(exc).strip() or type(exc).__name__
+                                    jax_nestor_operator_reason = f"failed:{detail}"
+                if not jax_operator_solved:
+                    t_phase = time.perf_counter()
+                    phi, potvac, bvec_mode = _solve_vmec_like_mode_from_gsource(
+                        cache=cache,
+                        gsource=np.asarray(gsource_vmec, dtype=float),
+                        rhs_mode=rhs_mode_eff,
+                    )
+                    linear_solve_time_s += max(0.0, time.perf_counter() - t_phase)
                 if cache.mode_basis is not None:
                     t_phase = time.perf_counter()
                     vac_total = _vacuum_channels_from_sample_potvac(
@@ -3448,6 +3634,10 @@ def nestor_external_only_step(
         "matrix_time_s": float(matrix_time_s),
         "linear_solve_time_s": float(linear_solve_time_s),
         "vacuum_channels_time_s": float(vacuum_channels_time_s),
+        "matrix_override_applied": bool(matrix_override_applied),
+        "jax_nestor_operator_applied": bool(jax_nestor_operator_applied),
+        "jax_nestor_operator_reason": str(jax_nestor_operator_reason),
+        "jax_nestor_operator_time_s": float(jax_nestor_operator_time_s),
         "sample_ntheta": int(ntheta),
         "sample_nzeta": int(nzeta),
         "sample_points": int(ntheta * nzeta),

@@ -219,6 +219,73 @@ def test_dense_mode_reuse_keeps_operator_and_cached_source_vectors(monkeypatch) 
     assert float(np.max(result_reuse.vac_total.bsqvac)) > 0.0
 
 
+def test_dense_mode_optional_jax_nestor_operator_matches_host_bridge(monkeypatch) -> None:
+    """The opt-in JAX VMEC/NESTOR operator should be a parity path, not a default change."""
+
+    static = _static(ntheta=3, nzeta=2, mpol=1, ntor=0, lasym=True)
+    sample_host = _analytic_sample(ntheta=3, nzeta=2, field_scale=1.0)
+    sample_jax = _analytic_sample(ntheta=3, nzeta=2, field_scale=1.0)
+    common_env = {
+        "VMEC_JAX_FREEB_NESTOR_MODE": "dense",
+        "VMEC_JAX_FREEB_DENSE_SOLVE_MODE": "mode",
+        "VMEC_JAX_FREEB_USE_GREENF_SOURCE": "yes",
+        "VMEC_JAX_FREEB_EXPERIMENTAL_FOURI_MATRIX": "1",
+        "VMEC_JAX_FREEB_ADD_ANALYTIC_BVEC": "1",
+    }
+    for key, value in common_env.items():
+        monkeypatch.setenv(key, value)
+
+    monkeypatch.setenv("VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR", "0")
+    monkeypatch.setattr(freeb, "_sample_external_boundary_arrays", lambda **_kwargs: sample_host)
+    host, _ = nestor_external_only_step(
+        state=object(),
+        static=static,
+        ivac=1,
+        iter_idx=30,
+    )
+
+    monkeypatch.setenv("VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR", "1")
+    monkeypatch.setattr(freeb, "_sample_external_boundary_arrays", lambda **_kwargs: sample_jax)
+    jax_result, _ = nestor_external_only_step(
+        state=object(),
+        static=static,
+        ivac=1,
+        iter_idx=31,
+    )
+
+    assert host.diagnostics is not None
+    assert jax_result.diagnostics is not None
+    assert host.diagnostics["jax_nestor_operator_applied"] is False
+    assert jax_result.diagnostics["jax_nestor_operator_applied"] is True
+    assert jax_result.diagnostics["jax_nestor_operator_reason"] == "applied"
+    assert float(jax_result.diagnostics["jax_nestor_operator_time_s"]) >= 0.0
+    np.testing.assert_allclose(jax_result.phi, host.phi, rtol=1.0e-9, atol=1.0e-10)
+    np.testing.assert_allclose(jax_result.vac_total.bsqvac, host.vac_total.bsqvac, rtol=1.0e-9, atol=1.0e-10)
+    for key in ("gsource_rms", "bvec_mode_rms", "bsqvac_rms"):
+        np.testing.assert_allclose(jax_result.diagnostics[key], host.diagnostics[key], rtol=1.0e-9, atol=1.0e-10)
+
+
+def test_dense_mode_optional_jax_nestor_operator_skips_reduced_symmetric_grid(monkeypatch) -> None:
+    """Reduced stellarator-symmetric grids stay on the host bridge until the JAX full-grid port lands."""
+
+    sample = _analytic_sample(ntheta=3, nzeta=2, field_scale=1.0)
+    basis = _build_vmec_mode_basis(
+        ntheta=sample.R.shape[0],
+        nzeta=sample.R.shape[1],
+        nfp=1,
+        mf=1,
+        nf=0,
+        lasym=False,
+        wint=np.full(sample.R.shape, 1.0 / float(sample.R.size)),
+    )
+    monkeypatch.setenv("VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR", "1")
+
+    ok, reason = freeb._jax_nestor_operator_guard(sample=sample, basis=basis)
+
+    assert ok is False
+    assert reason == "requires_lasym_full_grid"
+
+
 def test_nonsingular_source_identity_matches_full_terms_on_tiny_surface() -> None:
     sample = _analytic_sample(ntheta=2, nzeta=2, field_scale=1.0)
     basis = _build_vmec_mode_basis(

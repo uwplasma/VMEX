@@ -10,7 +10,7 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-25 after the JAX-native NESTOR analytic/singular operator validation batch.
+Last updated: 2026-05-25 after threading the combined JAX NESTOR operator into an opt-in free-boundary driver path.
 
 Steps taken:
 
@@ -61,6 +61,10 @@ Steps taken:
 45. Added JAX-native VMEC/NESTOR analytic/singular source/matrix assembly from `analyt.f`, using pre-sampled first and second boundary derivatives on the active VMEC angular grid.
 46. Added combined analytic+nonsingular mode-space solve gradient checks for source and boundary-geometry perturbations.
 47. Added `dense_vmec_nestor_mode_solve_jax`, a single combined JAX operator API for low-resolution NESTOR validation that assembles nonsingular and analytic/singular terms, projects to mode space, and solves with the custom-linear-solve dense mode primitive.
+48. Threaded the combined JAX VMEC/NESTOR mode operator into `nestor_external_only_step` behind `VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR=1`.
+49. Kept the new driver path guarded to full-grid-compatible cases; reduced stellarator-symmetric half-grid production solves still use the host-validated bridge.
+50. Added diagnostics for `jax_nestor_operator_applied`, `jax_nestor_operator_reason`, and `jax_nestor_operator_time_s`.
+51. Added a host-vs-JAX driver parity regression for a tiny LASYM full-grid case, including `phi`, `bsqvac`, and scalar diagnostic parity.
 
 Results obtained:
 
@@ -116,11 +120,22 @@ Results obtained:
 53. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 38 passed in 22.36 s after adding the combined NESTOR operator wrapper parity and gradient tests.
 54. Full fast CI coverage gate passed after the combined operator wrapper: `2298 passed, 26 skipped, 112 deselected, 2 xfailed` in 7m47s with total coverage `95.26%`.
 55. GPU QH mode-2 detail profile on `office` with explicit budget warnings showed tape build `5.46 s` and residual tangent projection `2.31 s` over two callbacks; detailed synchronization inflated replay timing, so performance decisions should use non-detail timing for wall comparisons and detail timing only for phase attribution.
+56. GitHub Actions for commit `0c4bdb2` completed successfully: docs, build, fast tests on Python 3.10/3.11/3.12, physics smoke, and parity-manifest smoke all passed.
+57. `python -m pytest -q tests/test_free_boundary_fast_physics_coverage.py::test_dense_mode_optional_jax_nestor_operator_matches_host_bridge`: 1 passed in 2.01 s after fixing production `phi` reconstruction to use unweighted `sin_phase`/`cos_phase` mode phases.
+58. Focused free-boundary validation after the opt-in driver hook passed: `45 passed in 24.40 s` for `test_free_boundary_fast_physics_coverage.py`, `test_free_boundary_vacuum_adjoint.py`, and the direct-coil finite-pressure chunk-invariance regression.
+59. `python -m ruff check vmec_jax/free_boundary.py tests/test_free_boundary_fast_physics_coverage.py`: passed.
+60. Hardened the opt-in JAX NESTOR driver guard with explicit JAX/x64, LASYM full-grid, input-shape, finite-output, and dense linear-residual checks.
+61. Added a reduced stellarator-symmetric guard regression so `LASYM=F` half-grid cases keep using the host-validated bridge until the JAX full-grid reconstruction is implemented.
+62. Focused validation after guard hardening passed: `46 passed in 24.02 s` for `test_free_boundary_fast_physics_coverage.py`, `test_free_boundary_vacuum_adjoint.py`, and the direct-coil finite-pressure chunk-invariance regression.
+63. Direct-coil complete-solve smoke and FD-slope checks passed: `4 passed in 10.83 s`.
+64. Quick CPU benchmark matrix completed: provider, direct-solve, and gradient rows all `completed`; direct-solve cold `5.86 s`, warm `0.161 s`, warm active NESTOR sample `0.00531 s`, final recompute sample `0.00484 s`, final recompute solve `0.00258 s`, and `final_recompute.failed=false`.
+65. Strict Sphinx build passed: `python -m sphinx -W -j auto -b html docs docs/_build/html`.
+66. Full fast CI coverage gate passed locally: `2300 passed, 26 skipped, 112 deselected, 2 xfailed` in 7m52s with total coverage `95.22%`.
 
 Best next steps:
 
-1. Add a forced-active low-resolution complete-solve finite-difference gate for one coil current and one Fourier coefficient using the new operator API when it can be safely threaded into the driver.
-2. Replace the host NESTOR assembly in an optional experimental driver path with the combined JAX operator and compare accepted-state diagnostics against the legacy path.
+1. Add a forced-active low-resolution complete-solve finite-difference gate for one coil current and one Fourier coefficient using the opt-in JAX operator path.
+2. Extend the JAX operator driver path to reconstruct the reduced stellarator-symmetric half grid in JAX, then compare against the current host bridge on default `LASYM=F` production cases.
 3. Profile and reduce cold exact tape build/solve and initial tangent construction on GPU; the latest comparison shows replay dispatch is not the only remaining blocker.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
 
@@ -945,26 +960,26 @@ WP1 Provider base API:                         100%
 WP2 Pure JAX coil Biot-Savart:                 92%
 WP3 ESSOS adapter:                             84%
 WP4 JAX mgrid interpolation:                   85%
-WP5 Free-boundary provider hook:               91%
+WP5 Free-boundary provider hook:               93%
 WP6 Direct-coil forward example:               90%
 WP7 Vacuum adjoint scaffold:                  100%
-WP8 Gradient checks:                           98%
+WP8 Gradient checks:                           99%
 WP9 VMEC2000 diagnostics:                      86%
 WP10 Benchmarks/diagnostics:                   98%
 WP11 Coil-only QS optimization example:        82%
 WP12 Robust coil perturbations:               100%
 WP13 Documentation:                            97%
 WP14 CI policy:                                90%
-Overall branch completion:                     95%
+Overall branch completion:                     96%
 ```
 
 ## Immediate Next Steps
 
-1. Continue the VMEC2000 generated-mgrid WOUT comparator until the optional xfail can be bounded or promoted.
-2. Decide whether cached direct-coil geometry should be threaded into the free-boundary bridge after CPU/GPU benchmark evidence, without replacing the differentiable params-to-field API.
-3. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
-4. Run CPU/GPU benchmark matrices and convert JSON summaries into documentation plots.
-5. Implement the production matrix-free/custom-linear-solve NESTOR adjoint beyond the dense toy/source/RHS/mode-space scaffold.
+1. Add a forced-active low-resolution complete-solve finite-difference gate for one coil current and one Fourier coefficient using `VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR=1`.
+2. Port the reduced stellarator-symmetric half-grid reconstruction into the JAX NESTOR operator so the optional path can validate default `LASYM=F` production cases.
+3. Continue the VMEC2000 generated-mgrid WOUT comparator until the optional xfail can be bounded or promoted.
+4. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
+5. Profile and reduce cold exact tape build/solve and initial tangent construction on GPU; convert benchmark JSON summaries into documentation plots.
 6. Re-check PR CI, including Codecov patch coverage, after each commit.
 
 ## Need From User

@@ -78,8 +78,11 @@ The validation ladder is:
 7. Boozer/QS objective: the same complete-solve finite-difference checks after
    Boozer/QS diagnostics are in the objective path.
 
-The first five rungs are implemented as fast tests today. The production
-NESTOR adjoint is therefore still a phase-2 deliverable. The intended design is
+The first five rungs are implemented as fast tests today. The combined JAX
+operator is also threaded into the free-boundary driver behind the opt-in
+``VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR=1`` diagnostic flag for full-grid/LASYM
+low-resolution validation. The production NESTOR adjoint is therefore still a
+phase-2 deliverable. The intended design is
 to expose a JAX-native NESTOR operator ``A(q) phi = b(q, I, c)`` where ``q`` is
 the VMEC boundary state and ``I, c`` are coil currents and curve coefficients.
 The backward pass should solve ``A(q)^T lambda = dJ/dphi`` and then use JAX
@@ -117,6 +120,10 @@ single-stage coil optimizer:
 - The phase-1 optimization example is coil-only, but it still uses a cheap
   VMEC residual/aspect/iota proxy. Boozer/QS objectives and production
   full-solve adjoints are next-step work.
+- The experimental JAX NESTOR driver path is opt-in and guarded. It requires a
+  full VMEC angular grid and falls back to the host-validated bridge for the
+  reduced stellarator-symmetric half-grid path used by default production
+  solves.
 
 In short: direct-coil finite-pressure plumbing is present and smoke-tested; a
 converged high-beta direct-coil design, publication-grade gradients through the
