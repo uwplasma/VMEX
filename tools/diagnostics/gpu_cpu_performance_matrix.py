@@ -116,18 +116,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     fixed.add_argument("--iters", type=int, default=20)
     fixed.add_argument(
+        "--use-input-niter",
+        action="store_true",
+        help="Use NITER/NITER_ARRAY from the input deck instead of the --iters budget.",
+    )
+    fixed.add_argument(
         "--solver-mode",
         choices=("auto", "default", "parity", "accelerated"),
         default="accelerated",
     )
     fixed.add_argument("--no-warmup", action="store_true", help="Skip the fixed-boundary warmup run.")
-    fixed.set_defaults(use_scan=False)
-    fixed.add_argument("--use-scan", dest="use_scan", action="store_true", help="Use the scan iteration path.")
+    fixed.set_defaults(use_scan=None)
+    fixed.add_argument("--use-scan", dest="use_scan", action="store_true", help="Force the scan iteration path.")
     fixed.add_argument(
         "--no-use-scan",
         dest="use_scan",
         action="store_false",
-        help="Use the non-scan fixed-boundary path (default; matches the current production auto policy).",
+        help="Force the non-scan fixed-boundary path.",
     )
     fixed.set_defaults(raw_solver_policy=True)
     fixed.add_argument(
@@ -363,8 +368,12 @@ def build_child_command(
             command.append("--simple-profile")
         if args.no_warmup:
             command.append("--no-warmup")
-        if args.use_scan:
+        if args.use_input_niter:
+            command.append("--use-input-niter")
+        if args.use_scan is True:
             command.append("--use-scan")
+        elif args.use_scan is False:
+            command.append("--no-use-scan")
         if args.raw_solver_policy:
             command.append("--no-auto-cli-policy")
         if args.single_grid:

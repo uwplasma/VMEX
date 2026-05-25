@@ -39,7 +39,8 @@ RUN_CASE, CASE = resolve_qi_case(RUN_CASE)
 # because it gives the current best mirror-aware QI result in this repository.
 # Users can change RUN_CASE/VMEC_JAX_QI_RUN_CASE, pass VMEC_JAX_QI_INPUT, or add
 # a QI_CASES entry in qi_optimization_cases.py for another VMEC input deck.
-INPUT_FILE = CASE["input_file"]
+RAW_INPUT_FILE = CASE["input_file"]
+INPUT_FILE = RAW_INPUT_FILE
 OUTPUT_DIR = CASE["output_dir"]
 EXPECTED_GATE_STATUS = str(CASE.get("expected_gate_status", "candidate"))
 EXPECTED_GATE_FAILURES = tuple(CASE.get("expected_gate_failures", ()))
@@ -47,9 +48,22 @@ STRESS_FIXTURE_NOTES = tuple(CASE.get("stress_fixture_notes", ()))
 KNOWN_BEST_NFP4_QUICK_AUDIT = dict(CASE.get("known_best_nfp4_quick_audit", {}))
 MAX_MODE = int(os.environ.get("VMEC_JAX_QI_MAX_MODE", CASE["max_mode"]))
 MIN_VMEC_MODE = int(os.environ.get("VMEC_JAX_QI_MIN_VMEC_MODE", CASE.get("min_vmec_mode", max(6, MAX_MODE + 3))))
-USE_SIMPLE_SEED = os.environ.get("VMEC_JAX_QI_USE_SIMPLE_SEED", "1").strip().lower() not in {"0", "false", "no", "off"}
+_USE_SIMPLE_SEED_ENV = os.environ.get("VMEC_JAX_QI_USE_SIMPLE_SEED")
+USE_SIMPLE_SEED = (
+    bool(CASE.get("use_simple_seed", False))
+    if _USE_SIMPLE_SEED_ENV is None
+    else _USE_SIMPLE_SEED_ENV.strip().lower() not in {"0", "false", "no", "off"}
+)
+SIMPLE_SEED_PERTURBATION = float(
+    os.environ.get("VMEC_JAX_QI_SIMPLE_SEED_PERTURBATION", CASE.get("simple_seed_perturbation", 1.0e-5))
+)
 INPUT_FILE = vj.prepare_simple_omnigenity_seed_input(
-    INPUT_FILE, OUTPUT_DIR, max_mode=MAX_MODE, min_vmec_mode=MIN_VMEC_MODE, enabled=USE_SIMPLE_SEED
+    RAW_INPUT_FILE,
+    OUTPUT_DIR,
+    max_mode=MAX_MODE,
+    min_vmec_mode=MIN_VMEC_MODE,
+    enabled=USE_SIMPLE_SEED,
+    perturbation=SIMPLE_SEED_PERTURBATION,
 )
 _USE_MODE_CONTINUATION_ENV = os.environ.get("VMEC_JAX_QI_USE_MODE_CONTINUATION")
 USE_MODE_CONTINUATION = (
@@ -308,11 +322,17 @@ problem = make_qi_problem()
 # objective_tuples.append((vj.MagneticWell(minimum=0.0).J, 0.0, 1.0))
 # objective_tuples.append((vj.DMerc(minimum=0.0, softness=1.0e-3).J, 0.0, DMERC_WEIGHT))
 
+print("\nAssembled least-squares problem:")
+print(f"  objectives: {', '.join(problem.objective_names)}")
+print(f"  scalar terms: {problem.scalar_objective_names}")
+print(f"  QI terms: {problem.qi_objective_names}")
+
 print("\nQI optimization policy:")
 print(f"  case:            {RUN_CASE}")
 print(f"  case goal:       {CASE.get('case_goal', 'custom QI candidate')}")
 print(f"  expected gates:  {EXPECTED_GATE_STATUS}")
 print(f"  input file:      {INPUT_FILE}")
+print(f"  raw input file:  {RAW_INPUT_FILE}")
 print(f"  output dir:      {OUTPUT_DIR}")
 print(f"  max_mode:        {MAX_MODE}")
 print(f"  min_vmec_mode:   {MIN_VMEC_MODE}")
@@ -357,17 +377,6 @@ if stages_without_guard:
         f"missing guard in {stages_without_guard}."
     )
 
-
-def make_vmec_for_stage(input_file, output_dir):
-    return vj.FixedBoundaryVMEC.from_input(
-        input_file,
-        max_mode=MAX_MODE,
-        min_vmec_mode=MIN_VMEC_MODE,
-        output_dir=output_dir,
-        project_input_boundary_to_max_mode=True,
-    )
-
-
 def solve_qi_stage(
     input_file,
     output_dir,
@@ -384,7 +393,13 @@ def solve_qi_stage(
 ):
     # Small stage helper: physics is still assembled explicitly in
     # make_qi_problem(); this only forwards solve controls for one stage.
-    vmec = make_vmec_for_stage(input_file, output_dir)
+    vmec = vj.FixedBoundaryVMEC.from_input(
+        input_file,
+        max_mode=MAX_MODE,
+        min_vmec_mode=MIN_VMEC_MODE,
+        output_dir=output_dir,
+        project_input_boundary_to_max_mode=True,
+    )
     return vj.least_squares_solve(
         vmec,
         stage_problem,
@@ -466,6 +481,7 @@ final_result = result.final_result
 history = result.history
 objective_history = result.objective_history
 timing = result.timing_summary
+result_summary = result.summary
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 saved_paths = {
     "initial_input": OUTPUT_DIR / "input.initial",
@@ -476,7 +492,7 @@ saved_paths = {
 }
 print("\nRunning the raw input deck once for initial comparison plots ...")
 raw_initial_run = qis.save_raw_seed_initial_artifacts(
-    INPUT_FILE,
+    RAW_INPUT_FILE,
     saved_paths["initial_input"],
     saved_paths["initial_wout"],
     ctx=QI_CONTEXT,
@@ -490,6 +506,7 @@ if promotion_log:
     saved_paths["mirror_ramp_promotion_log"] = promotion_log_path
 
 print("\nFinal diagnostics from result.history:")
+print(f"  stages:           {result_summary['stage_modes']}")
 print(f"  aspect ratio:     {history['aspect_final']:.6g}")
 print(f"  mean iota:        {history['iota_final']:.6g}")
 print(f"  QI objective:     {history['qs_final']:.6e}")

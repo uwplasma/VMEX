@@ -15,7 +15,7 @@ blocks, not as wrappers:
 | VMEC and stage setup | change input deck, active boundary modes, continuation, or device | top-level variables and `FixedBoundaryVMEC.from_input(...)` |
 | Objective assembly | add/remove physics terms or tune targets and weights | `objective_tuples = [...]` and `LeastSquaresProblem.from_tuples(...)` |
 | Solve controls | change optimizer method, tolerances, ESS, or saved stage artifacts | `least_squares_solve(...)` keyword arguments |
-| Outputs and plots | change filenames, add exports, or choose figures | `saved_paths`, `save_input`, `save_wout`, `save_history`, and `vj.plot_*` calls |
+| Outputs and plots | change filenames, add exports, or choose figures | `result` properties, `save_optimization_result`, direct `save_input`/`save_wout`/`save_history`, and `vj.plot_*` calls |
 
 `least_squares_solve` receives optimizer, continuation, device, and output
 controls only.  Scientific targets stay in the explicit objective tuple list
@@ -77,7 +77,12 @@ under the run directory.  That generated input keeps only `RBC(0,0)`,
 `RBC(0,1)`, and `ZBS(0,1)` from the selected seed deck, then fills active
 `RBC/ZBS` modes up to `max_mode` with deterministic `1e-5` perturbations so
 the Jacobian does not start on an exactly zero-transform branch.  The raw
-bundled input decks are not modified.  The lower-level QI staged policy also
+bundled input decks are not modified.  QP is more sensitive to the
+zero-transform basin from the common minimal seed, so `QP_optimization.py`
+keeps this hint explicit as `SIMPLE_SEED_PERTURBATION = 1e-2` and uses a
+repeated mode-2 continuation cleanup by default; users can set it back to
+`1e-5` or remove the `STAGE_MODES` override for direct high-mode experiments.
+The lower-level QI staged policy also
 has a mode-1 target-helicity preconditioner with the deterministic hint set
 `RBC(1,0)`, `ZBS(1,0)`, `RBC(-1,1)`, `ZBS(-1,1)`, `RBC(1,1)`, and `ZBS(1,1)`
 in VMEC input-index convention.
@@ -202,6 +207,9 @@ Set `SOLVER_DEVICE = "gpu"` inside the script, or run with
 Optimizer and output controls are also top-level variables, including
 `METHOD`, `SCIPY_TR_SOLVER`, `FTOL`, `GTOL`, `XTOL`, `INNER_MAX_ITER`,
 `TRIAL_MAX_ITER`, `SAVE_STAGE_INPUTS`, `SAVE_STAGE_WOUTS`, and `MAKE_PLOTS`.
+For common-minimal seed studies, also inspect `SIMPLE_SEED_PERTURBATION` and
+`STAGE_MODES`; these are ordinary script-level controls, not hidden solver
+settings.
 
 For reproducible comparison artifacts, use the sweep driver rather than a
 single edited script.  The current production sweep runs QI directly from its

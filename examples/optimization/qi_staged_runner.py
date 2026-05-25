@@ -90,6 +90,16 @@ def _finite_int(value: Any) -> int | None:
     return out
 
 
+def _first_finite_float(*values: Any) -> float | None:
+    """Return the first finite float, preserving valid zero values."""
+
+    for value in values:
+        out = _finite_float(value)
+        if out is not None:
+            return out
+    return None
+
+
 def _profile_wall_time(profile: dict[str, Any], name: str) -> float | None:
     """Return profile wall time from nested or legacy flattened records."""
 
@@ -192,7 +202,7 @@ def _history_metrics(history: dict[str, Any]) -> dict[str, Any]:
 
 def _diagnostic_metrics(diagnostics: dict[str, Any]) -> dict[str, Any]:
     return {
-        "qi_raw_total": _finite_float(diagnostics.get("qi_raw_total") or diagnostics.get("qi_smooth_total")),
+        "qi_raw_total": _first_finite_float(diagnostics.get("qi_raw_total"), diagnostics.get("qi_smooth_total")),
         "qi_legacy_total": _finite_float(diagnostics.get("qi_legacy_total")),
         "qi_mirror_ratio_max": _finite_float(diagnostics.get("qi_mirror_ratio_max")),
         "qi_mirror_ratio_target": _finite_float(diagnostics.get("qi_mirror_ratio_target")),
@@ -259,13 +269,16 @@ def _stage_checkpoint_record(output_dir: Path) -> dict[str, Any]:
 
     output_dir = Path(output_dir)
     root_checkpoint = output_dir / "stage_checkpoint.json"
-    if root_checkpoint.exists():
-        return _read_json(root_checkpoint)
-    candidates = sorted(
-        list(output_dir.glob("**/stage_checkpoint.json")) + list(output_dir.glob("**/qi_stage_checkpoint.json")),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
+    candidates = {
+        path
+        for path in (
+            [root_checkpoint]
+            + list(output_dir.glob("**/stage_checkpoint.json"))
+            + list(output_dir.glob("**/qi_stage_checkpoint.json"))
+        )
+        if path.exists()
+    }
+    candidates = sorted(candidates, key=lambda path: path.stat().st_mtime, reverse=True)
     for path in candidates:
         record = _read_json(path)
         if record:
@@ -285,13 +298,13 @@ def _stage_checkpoint_partial_metrics(output_dir: Path) -> dict[str, Any]:
     diagnostics = diagnostics if isinstance(diagnostics, dict) else {}
     return {
         "objective_final": _finite_float(history.get("objective_final")),
-        "qs_final": _finite_float(history.get("qs_final") or diagnostics.get("qi_smooth_total")),
-        "aspect_final": _finite_float(history.get("aspect_final") or diagnostics.get("aspect")),
-        "iota_final": _finite_float(history.get("iota_final") or diagnostics.get("mean_iota")),
+        "qs_final": _first_finite_float(history.get("qs_final"), diagnostics.get("qi_smooth_total")),
+        "aspect_final": _first_finite_float(history.get("aspect_final"), diagnostics.get("aspect")),
+        "iota_final": _first_finite_float(history.get("iota_final"), diagnostics.get("mean_iota")),
         "nfev": _finite_int(history.get("nfev")),
         "njev": _finite_int(history.get("njev")),
         "total_wall_time_s": _finite_float(history.get("total_wall_time_s")),
-        "qi_raw_total": _finite_float(diagnostics.get("qi_raw_total") or diagnostics.get("qi_smooth_total")),
+        "qi_raw_total": _first_finite_float(diagnostics.get("qi_raw_total"), diagnostics.get("qi_smooth_total")),
         "qi_legacy_total": _finite_float(diagnostics.get("qi_legacy_total")),
         "qi_mirror_ratio_max": _finite_float(diagnostics.get("qi_mirror_ratio_max")),
         "qi_mirror_ratio_target": _finite_float(diagnostics.get("qi_mirror_ratio_target")),
@@ -306,6 +319,17 @@ def _has_partial_metrics(metrics: dict[str, Any]) -> bool:
     return any(value is not None for value in metrics.values())
 
 
+def _merge_partial_metrics(*metric_sets: dict[str, Any]) -> dict[str, Any]:
+    """Merge partial metrics without letting missing later fields erase data."""
+
+    merged: dict[str, Any] = {}
+    for metrics in metric_sets:
+        for key, value in metrics.items():
+            if value is not None or key not in merged:
+                merged[key] = value
+    return merged
+
+
 def annotate_case_result_from_partial_artifacts(result: sweep.CaseResult, output_dir: Path) -> bool:
     """Fill missing QI fields from partial staged artifacts.
 
@@ -315,10 +339,10 @@ def annotate_case_result_from_partial_artifacts(result: sweep.CaseResult, output
     """
 
     changed = False
-    partial_metrics = {
-        **_boundary_reference_partial_metrics(Path(output_dir)),
-        **_stage_checkpoint_partial_metrics(Path(output_dir)),
-    }
+    partial_metrics = _merge_partial_metrics(
+        _boundary_reference_partial_metrics(Path(output_dir)),
+        _stage_checkpoint_partial_metrics(Path(output_dir)),
+    )
     for key, value in partial_metrics.items():
         if value is not None and getattr(result, key, None) is None:
             setattr(result, key, value)
@@ -388,7 +412,7 @@ def run_qi_staged_case(config: QIStagedCaseConfig) -> sweep.CaseResult:
     diagnostic_metrics = _diagnostic_metrics(diagnostics)
     stage_partial_metrics = _stage_checkpoint_partial_metrics(output_dir)
     boundary_partial_metrics = _boundary_reference_partial_metrics(output_dir)
-    partial_metrics = {**boundary_partial_metrics, **stage_partial_metrics}
+    partial_metrics = _merge_partial_metrics(boundary_partial_metrics, stage_partial_metrics)
     for key, value in partial_metrics.items():
         if value is None:
             continue
