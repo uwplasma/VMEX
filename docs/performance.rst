@@ -3073,10 +3073,12 @@ state-Jacobian probe as an explicit diagnostic/parity option.  Set
 ``VMEC_JAX_BADJAC_STATE_PROBE=1`` to enable the state probe, with
 ``VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS`` controlling how many initial
 iterations are probed.  On the ``office`` CPU/CUDA A/B for the tiny active
-direct-coil benchmark, the ptau-only path reduced CPU warm time from ``0.048 s``
-to ``0.044 s`` locally and reduced CUDA warm time from ``0.276 s`` to
-``0.181 s`` on ``office``.  The CUDA ``iteration_control_badjac_s`` bucket fell
-from ``0.077 s`` to below ``0.001 s``.
+direct-coil benchmark at commit ``79c65e1``, the default ptau-only
+``--jit-forces`` row reports CPU warm time about ``0.057 s`` and CUDA warm time
+about ``0.183 s``.  The CUDA ``iteration_control_badjac_s`` bucket is now below
+``0.001 s``.  The remaining CUDA tax in this tiny benchmark is mostly
+``iteration_control_fsq1_s`` and preconditioner/update dispatch, not the
+accepted-state NESTOR solve or direct-coil Biot-Savart sampling.
 
 Control flags:
 

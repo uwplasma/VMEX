@@ -229,6 +229,7 @@ Results obtained:
 136. The bad-Jacobian state-probe path is now configurable without changing default parity behavior. A local one-repeat CPU probe on the tiny active direct-coil benchmark reduced warm time from `0.048 s` to `0.044 s` and `iteration_control_badjac_s` from `0.0156 s` to `0.0092 s` with `VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS=0`.
 137. The same opt-in bad-Jacobian probe setting on `office` CUDA reduced warm time from `0.276 s` to `0.181 s`, `iteration_control_s` from `0.090 s` to `0.0127 s`, and `iteration_control_badjac_s` from `0.077 s` to `0.0006 s`.
 138. The non-scan residual path now matches the scan path bad-Jacobian policy: VMEC-style `ptau` sign checking is the default, and the expensive state-Jacobian probe only runs when `VMEC_JAX_BADJAC_STATE_PROBE=1`. A local JIT-force direct-coil benchmark reports warm time about `0.024 s` with `iteration_control_badjac_s≈3.8e-4 s`.
+139. Office CPU/CUDA matrix at commit `79c65e1` confirmed the promoted default: the `--jit-forces` direct-coil row reports CPU warm `0.057 s`, CUDA warm `0.183 s`, CUDA `iteration_control_badjac_s≈6.1e-4 s`, and CUDA force assembly is faster than CPU. The remaining GPU tax is `iteration_control_fsq1_s` plus preconditioner/update dispatch.
 
 Best next steps:
 
@@ -1075,7 +1076,7 @@ Overall branch completion:                   98.9%
 
 ## Immediate Next Steps
 
-1. Re-run the office CPU/CUDA direct-coil benchmark matrix after the default ptau-only bad-Jacobian policy patch, then update docs with the final warm GPU/CPU ratios.
+1. Target the remaining GPU direct-solve warm overhead in `iteration_control_fsq1_s` and preconditioner/update dispatch now that the bad-Jacobian state-probe tax is removed from the default path.
 2. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
 3. Continue the VMEC2000 generated-mgrid WOUT comparator until the optional xfail can be bounded or promoted.
 4. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
@@ -1110,14 +1111,16 @@ Results obtained:
    `1 passed in 8.52 s`.
 3. Local JIT-force direct-coil benchmark with solver timing enabled reported
    warm solve `0.024 s` and warm `iteration_control_badjac_s≈3.8e-4 s`.
-4. Local physics-smoke subset passed: `34 passed, 1 skipped in 49.28 s`.
-5. Strict Sphinx build passed after the documentation cleanup.
+4. Office CPU/CUDA matrix at commit `79c65e1` completed all rows. The
+   `--jit-forces` row reports CPU warm `0.057 s`, CUDA warm `0.183 s`, and
+   CUDA `iteration_control_badjac_s≈6.1e-4 s`.
+5. Local physics-smoke subset passed: `34 passed, 1 skipped in 49.28 s`.
+6. Strict Sphinx build passed after the documentation cleanup.
 
 Best next steps:
 
-1. Re-run the office CPU/CUDA benchmark matrix with this default ptau-only
-   policy and record the final matched ratios.
-2. Push the patch and verify the new PR CI run.
+1. Target CUDA `iteration_control_fsq1_s` and preconditioner/update dispatch.
+2. Verify the new PR CI run.
 3. Continue the phase-2 free-boundary full-loop adjoint and VMEC2000 WOUT
    promotion lanes without overclaiming them in docs.
 
@@ -1675,7 +1678,7 @@ Steps taken:
 
 Results obtained:
 
-1. The finite-pressure scan still shows exact recorded scalar parity between generated-mgrid and direct-coil provider plumbing.
+1. The finite-pressure scan still shows generated-mgrid and direct-coil provider scalar agreement within recorded JSON precision/roundoff.
 2. The finite-pressure test subset passed: `4 passed in 23.79 s`.
 3. The local docs build passed.
 4. A trial near actual `1%` beta proxy was too aggressive for this low-resolution smoke and produced large residuals.
@@ -1709,7 +1712,7 @@ Steps taken:
 
 Results obtained:
 
-1. The mgrid and direct-coil `vmec_jax` providers produced identical recorded scalar diagnostics in the low-resolution beta scan.
+1. The mgrid and direct-coil `vmec_jax` providers produced scalar agreement within recorded JSON precision/roundoff in the low-resolution beta scan.
 2. The first mgrid point includes cold-start overhead; subsequent direct/mgrid timings are about 1.26 s per case for this smoke setting.
 3. The documentation now separates implemented provider-level differentiability from the phase-2 production free-boundary/NESTOR adjoint.
 
