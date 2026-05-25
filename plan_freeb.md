@@ -10,7 +10,7 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-25 after dry-run optimization diagnostics, ESSOS adapter validation, VMEC2000 runtime-error classification, bounded AD-vs-FD NESTOR gradient checks, same-branch CPU/GPU benchmark-matrix reporting with non-JIT and JIT-force direct-solve rows, solve-loop timing capture for direct-coil benchmark rows, JIT-force defaults for direct-coil examples, an accepted-solve AD-vs-FD blocker xfail, free-boundary-aware fused strict-update support, and a clarified accepted-solve exact-adjoint promotion boundary.
+Last updated: 2026-05-25 after dry-run optimization diagnostics, ESSOS adapter validation, VMEC2000 runtime-error classification, bounded AD-vs-FD NESTOR gradient checks, same-branch CPU/GPU benchmark-matrix reporting with non-JIT and JIT-force direct-solve rows, solve-loop timing capture for direct-coil benchmark rows, JIT-force defaults for direct-coil examples, accepted-boundary direct-coil replay AD-vs-FD promotion, free-boundary-aware fused strict-update support, a clarified complete-loop exact-adjoint promotion boundary, and the first opt-in bad-Jacobian state-probe performance knob.
 
 Steps taken:
 
@@ -83,8 +83,10 @@ Steps taken:
 67. Added `opened_mgrid` to generated-`mgrid` VMEC2000 diagnostic summaries so parity evidence confirms the executable actually consumed the vacuum grid.
 68. Inspected STELLOPT's `vmec_params.f`, `vmec.f`, `runvmec.f`, `fileout.f`, `mgrid_mod.f`, and MAKEGRID writer to confirm the LPQA generated-grid VMEC2000 return code `2` is `more_iter_flag`, not a crash.
 69. Updated the generated-`mgrid` diagnostic to report this case as `more_iter_exit` with `classification=vmec2000_more_iter_exit`.
-70. Added the next accepted-solve AD-vs-FD promotion gate as a dynamic xfail: the tiny direct-coil accepted solve has a nonzero central-FD current slope, but `jax.grad(run_free_boundary)` currently reaches the vacuum-stub/no-accepted-NESTOR-diagnostics path before exposing a differentiable accepted-state metric.
-71. Rechecked the accepted-solve exact-adjoint promotion rung and tightened the xfail language: the blocker is not coil-field AD, boundary projection AD, dense JAX NESTOR AD, or finite-difference accepted-state response. The blocker is the final accepted-state NESTOR recompute being exposed only through host Python/NumPy diagnostics; the smallest next integration step is a JAX-visible accepted-state replay metric or a validated `custom_vjp` around that replay.
+70. Promoted the next accepted-output AD-vs-FD rung from xfail to a passing gate: the tiny direct-coil solve now freezes the accepted plasma boundary, replays the direct-coil normal-field metric through JAX, matches the host final diagnostic at scale zero, and checks current AD against central FD.
+71. Rechecked the exact-adjoint promotion boundary: the blocker is not coil-field AD, boundary projection AD, dense JAX NESTOR AD, accepted-boundary replay AD, or finite-difference accepted-state response. The remaining blocker is differentiating through the nonlinear `run_free_boundary` iteration loop instead of holding the accepted state fixed.
+72. Split residual-loop control timing into fsq1, bad-Jacobian, VMEC time-control, restart, evolve, and unattributed buckets. The two-iteration office direct-coil probe shows `iteration_control_badjac_s` now dominates warm CUDA control time.
+73. Added `VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS` as an opt-in performance knob. The default remains `2` to preserve the existing VMEC-style first-two-iteration state-Jacobian safety probe; setting it to `0` is only for profiling/parity experiments.
 
 Results obtained:
 
@@ -211,26 +213,28 @@ Results obtained:
 120. Phase-1 coil-only optimization dry-run and real-run summaries now include explicit `wp11_limitations`, so shared artifacts state that the example is still a residual/aspect/iota proxy and not a promoted Boozer/QS full-adjoint path.
 121. The benchmark matrix now enables `VMEC_JAX_TIMING=1` and `VMEC_JAX_TIMING_DETAIL=1` for direct-solve children and preserves compact cold/warm solver timing buckets for force evaluation, residual metrics, preconditioner, update, trace construction, and unattributed iteration-loop cost.
 122. VMEC2000 generated-grid diagnostics now treat a bare "Could not print backtrace" line as backtrace metadata rather than a runtime-error marker; actual Fortran runtime errors, segmentation faults, and signal failures remain fatal classifications.
-123. Added an expected-xfail accepted-solve AD-vs-FD promotion gate that first proves finite FD response through the full direct-coil `run_free_boundary` path, then documents that `jax.grad(run_free_boundary)` does not yet expose accepted NESTOR diagnostics as differentiable data.
+123. Promoted the accepted-output current-gradient gate by adding a JAX-visible direct-coil normal-field replay on the final accepted boundary; complete-loop `jax.grad(run_free_boundary)` remains phase-2.
 124. The benchmark matrix now runs both direct-solve rows: the non-JIT diagnostic row and the `--jit-forces` fast-path row, with identical timing capture.
 125. A local CPU quick matrix showed `--jit-forces` reducing the tiny warm direct solve from about `0.188 s` to `0.049 s`; the preconditioner bucket dropped from about `0.078 s` to `0.0004 s`, so the next office CPU/CUDA run should check whether this also fixes the GPU warm-solve gap.
 126. Office CPU/CUDA matrix with both direct-solve rows completed. The default non-JIT diagnostic row was CPU-favorable (`2.07 s` GPU versus `0.328 s` CPU warm), while the `--jit-forces` row reduced GPU warm time to `0.313 s` and CPU warm time to `0.101 s`. The force bucket fell on GPU from about `0.580 s` to `0.0078 s`; remaining GPU overhead is update and unattributed loop dispatch.
 127. Direct-coil forward and phase-1 optimization examples now default to `jit_forces=True`, with `--no-jit-forces` as an explicit debug/parity escape hatch.
-128. Targeted accepted-solve AD-vs-FD blocker gate reports the expected xfail: `pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current -rx` -> 1 xfailed in 11.92 s.
-129. Focused direct-coil finite-pressure suite after adding the promotion xfail: `pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -rx` -> 9 passed, 1 skipped, 1 xfailed in 38.37 s.
+128. Targeted accepted-boundary replay AD-vs-FD gate now passes: `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current -rx` -> 1 passed in 11.61 s.
+129. Focused direct-coil finite-pressure suite after the promotion: `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -rx` -> 10 passed, 1 skipped in 37.25 s.
 130. Strict Sphinx build passed after tightening the free-boundary coil-optimization status wording.
 131. The fused strict-update helper now accepts `enforce_edge=False`; GPU direct-coil free-boundary solves can use the same cached update step without accidentally pinning the LCFS.
 132. Targeted strict-update validation passed: `tests/test_solve_wave4_coverage.py` -> 22 passed, and `tests/test_discrete_adjoint_qh.py -k strict_update` -> 12 passed, 1 skipped.
 133. Office CPU/CUDA direct-coil benchmark after the free-boundary-aware strict update: CPU warm `0.098 s`, CUDA warm `0.255 s`; CUDA `update_state` fell to about `0.001 s`, leaving `iteration_control_s` as the dominant named control bucket (`0.089 s` CUDA versus `0.033 s` CPU).
 134. Residual-iteration timing now records `iteration_control_s` and propagates it through solver diagnostics, optimizer profiles, and the free-boundary direct-coil benchmark matrix.
+135. Residual-loop control split timing on `office` localized the remaining control overhead: CPU warm min `0.096 s`, CUDA warm min `0.313 s` with timing detail, CPU `iteration_control_badjac_s≈0.032 s`, and CUDA `iteration_control_badjac_s≈0.088 s`. CUDA `iteration_control_fsq1_s≈0.017 s`; update-state remains about one millisecond.
+136. The bad-Jacobian state-probe path is now configurable without changing default parity behavior. A local one-repeat CPU probe on the tiny active direct-coil benchmark reduced warm time from `0.0485 s` to `0.0442 s` and `iteration_control_badjac_s` from `0.0162 s` to `0.0088 s` with `VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS=0`; the next benchmark should repeat this default-vs-`0` comparison on CPU/CUDA office before deciding whether any direct-coil examples should opt into the faster ptau-only path.
 
 Best next steps:
 
-1. Promote the fixed-boundary direct-coil/NESTOR AD-vs-FD gate to accepted free-boundary solves once `jax.grad(run_free_boundary)` exposes accepted NESTOR state/metrics as differentiable data, or once the final accepted-state NESTOR replay is wrapped by a validated custom adjoint.
+1. Promote the accepted-boundary direct-coil replay gate to complete-loop free-boundary gradients once `jax.grad(run_free_boundary)` exposes accepted state/metrics as differentiable data, or once the accepted replay is wrapped by a validated custom adjoint.
 2. Keep `exact_path='scan'` as an explicit long-run GPU option only; the latest profile shows it warms faster but needs roughly 75 accepted callbacks to amortize the `~110 s` cold compile.
 3. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
-5. For GPU performance, keep JIT force kernels as the production default for direct-coil examples, use the free-boundary-aware fused strict-update path on non-CPU backends, then target the remaining `iteration_control_s` host-sync/control overhead.
+5. For GPU performance, keep JIT force kernels as the production default for direct-coil examples, use the free-boundary-aware fused strict-update path on non-CPU backends, and benchmark the opt-in `VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS=0` ptau-only path. Do not change the default until VMEC2000 parity and bad-Jacobian reset behavior are checked.
 6. Warm GPU QH mode-2 tape callbacks are still above the `1 s` production target; the next patch should reduce accepted replay/tangent dispatch or avoid rebuilding accepted tapes at nearby callbacks. Matrix-free is not yet the answer on GPU because repeated VJP/JVP replay is slower than dense materialization for the profiled case.
 
 Need from user:

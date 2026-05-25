@@ -2344,7 +2344,17 @@ solve itself remains millisecond-scale.  The residual runtime is now dominated
 by the ``iteration_control_s`` bucket, which covers host-side residual
 acceptance/time-control logic between preconditioning and the accepted update;
 the same ``office`` probe measured about ``0.089 s`` in that bucket on CUDA
-versus ``0.033 s`` on CPU.
+versus ``0.033 s`` on CPU.  The next split-timing pass showed that nearly all
+of this bucket is the early bad-Jacobian state probe
+(``iteration_control_badjac_s``): about ``0.088 s`` on CUDA and ``0.032 s`` on
+CPU for the two-iteration active direct-coil probe.  The default still preserves
+VMEC-style first-two-iteration state probing.  For performance experiments
+only, set ``VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS=0`` to quantify the
+ptau-only path before changing any production defaults.  A local one-repeat CPU
+probe on the tiny active direct-coil benchmark reduced warm time from
+``0.0485 s`` to ``0.0442 s`` and ``iteration_control_badjac_s`` from
+``0.0162 s`` to ``0.0088 s``; CUDA promotion still needs an ``office`` A/B
+run before this becomes more than an opt-in diagnostic knob.
 
 Control flags:
 
@@ -2352,6 +2362,7 @@ Control flags:
 
   export VMEC_JAX_FREEB_COUPLE_EDGE=1         # default: on
   export VMEC_JAX_FREEB_SAMPLE_EXTERNAL=1     # default: on
+  export VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS=2  # default: VMEC-style safety probe
 
 If profiling free-boundary solver-only cost, disable sampling diagnostics:
 

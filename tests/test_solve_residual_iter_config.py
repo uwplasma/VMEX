@@ -20,6 +20,7 @@ def test_bad_jacobian_mode_falls_back_to_ptau_and_clamps_relative_tolerance():
             "VMEC_JAX_BADJAC_MODE": "bogus",
             "VMEC_JAX_DUMP_PTAU_STATE": "yes",
             "VMEC_JAX_BADJAC_STATE_PROBE": "true",
+            "VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS": "-4",
             "VMEC_JAX_PTAU_TOL": "not-a-float",
             "VMEC_JAX_PTAU_TOL_REL": "-1.0",
         }
@@ -29,6 +30,7 @@ def test_bad_jacobian_mode_falls_back_to_ptau_and_clamps_relative_tolerance():
     assert cfg.use_state is False
     assert cfg.dump_ptau_state is True
     assert cfg.state_probe is True
+    assert cfg.initial_state_probe_iters == 0
     assert cfg.ptau_tol == 0.0
     assert cfg.ptau_tol_rel == 0.0
 
@@ -44,6 +46,7 @@ def test_bad_jacobian_state_mode_and_tolerance_policy():
 
     assert cfg.mode == "state"
     assert cfg.use_state is True
+    assert cfg.initial_state_probe_iters == 2
     assert cfg.ptau_tol == pytest.approx(-2.0e-4)
     assert cfg.ptau_tol_rel == pytest.approx(1.0e-3)
     assert bad_jacobian_tau_tolerance(ptau_tol=cfg.ptau_tol, ptau_tol_rel=cfg.ptau_tol_rel, tau_scale=0.5) == pytest.approx(
@@ -55,10 +58,23 @@ def test_bad_jacobian_state_mode_and_tolerance_policy():
 
 
 def test_bad_jacobian_invalid_relative_tolerance_falls_back_to_zero():
-    cfg = parse_bad_jacobian_config({"VMEC_JAX_PTAU_TOL": "2.5e-6", "VMEC_JAX_PTAU_TOL_REL": "not-a-float"})
+    cfg = parse_bad_jacobian_config(
+        {
+            "VMEC_JAX_PTAU_TOL": "2.5e-6",
+            "VMEC_JAX_PTAU_TOL_REL": "not-a-float",
+            "VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS": "not-an-int",
+        }
+    )
 
     assert cfg.ptau_tol == pytest.approx(2.5e-6)
     assert cfg.ptau_tol_rel == 0.0
+    assert cfg.initial_state_probe_iters == 2
+
+
+def test_bad_jacobian_initial_state_probe_can_be_disabled():
+    cfg = parse_bad_jacobian_config({"VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS": "0"})
+
+    assert cfg.initial_state_probe_iters == 0
 
 
 def test_heavy_dump_flags_disable_jit_and_force_full_history():

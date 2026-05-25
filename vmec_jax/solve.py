@@ -5359,6 +5359,7 @@ def solve_fixed_boundary_residual_iter(
     light_history = _resolve_light_history(light_history, env_value=os.getenv("VMEC_JAX_LIGHT_HISTORY", "0"))
     resume_state_mode = _normalize_resume_state_mode(resume_state_mode)
     badjac_state_probe = badjac_config.state_probe
+    badjac_initial_state_probe_iters = int(badjac_config.initial_state_probe_iters)
     ptau_tol = badjac_config.ptau_tol
     ptau_tol_rel = badjac_config.ptau_tol_rel
     reference_mode = opts.reference_mode
@@ -8028,7 +8029,11 @@ def solve_fixed_boundary_residual_iter(
                         tau_tol_ptau = jnp.asarray(abs(ptau_tol), dtype=dtype)
                         bad_jacobian_ptau = (min_tau_ptau < -tau_tol_ptau) & (max_tau_ptau > tau_tol_ptau)
                     ptau_valid = jnp.isfinite(min_tau_ptau) & jnp.isfinite(max_tau_ptau)
-                    state_probe = badjac_state_probe & (iter2 <= 2)
+                    state_probe = (
+                        badjac_state_probe
+                        & (jnp.asarray(badjac_initial_state_probe_iters, dtype=jnp.int32) > 0)
+                        & (iter2 <= jnp.asarray(badjac_initial_state_probe_iters, dtype=jnp.int32))
+                    )
                     need_state_jac = (
                         badjac_use_state | dump_ptau_state | state_probe | (~ptau_valid) | bad_jacobian_ptau
                     )
@@ -9422,6 +9427,8 @@ def solve_fixed_boundary_residual_iter(
                 "fsq_total_target": fsq_total_target,
                 "badjac_use_state": bool(badjac_use_state),
                 "badjac_mode": badjac_mode,
+                "badjac_state_probe": bool(badjac_state_probe),
+                "badjac_initial_state_probe_iters": int(badjac_initial_state_probe_iters),
                 "ijacob": int(np.asarray(carry_final.ijacob)),
                 "abort_scan": bool(np.asarray(carry_final.abort_scan)),
                 **scan_output.diagnostics,
@@ -11986,10 +11993,14 @@ def solve_fixed_boundary_residual_iter(
                         tau_tol = max(1.0e-12, 1.0e-3 * tau_scale)
                         bad_jacobian_ptau = (min_tau_ptau < -tau_tol) and (max_tau_ptau > tau_tol)
 
+                state_probe = (
+                    bool(badjac_initial_state_probe_iters > 0)
+                    and (int(iter2) <= int(badjac_initial_state_probe_iters))
+                )
                 need_state_jac = (
                     badjac_use_state
                     or dump_ptau_state
-                    or (iter2 <= 2)
+                    or state_probe
                     or (bad_jacobian_ptau is None)
                     or bool(bad_jacobian_ptau)
                 )
@@ -13845,6 +13856,8 @@ def solve_fixed_boundary_residual_iter(
         "final_residual_recomputed_on_accepted_state": bool(final_residual_recomputed),
         "badjac_use_state": bool(badjac_use_state),
         "badjac_mode": badjac_mode,
+        "badjac_state_probe": bool(badjac_state_probe),
+        "badjac_initial_state_probe_iters": int(badjac_initial_state_probe_iters),
         "light_history": bool(light_history),
         "resume_state_mode": str(resume_state_mode),
         "fsq_total_target": fsq_total_target,

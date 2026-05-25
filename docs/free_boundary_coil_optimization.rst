@@ -81,11 +81,11 @@ The validation ladder is:
 The first five AD-vs-FD rungs are implemented as fast tests today. Rung 6 is
 split deliberately: complete accepted direct-coil solves have fast
 finite-difference response guards for current and one Fourier geometry
-coefficient, but accepted-solve AD-vs-FD remains an expected-xfail promotion
-gate. The current blocker is that tracing ``run_free_boundary`` with
-``jax.grad`` does not yet expose accepted NESTOR diagnostics as differentiable
-data; the traced accepted solve can remain on the vacuum-stub/no-diagnostics
-path before a scalar metric is available for comparison with FD. The combined
+coefficient, and the accepted-state direct-coil normal-field metric now has a
+JAX replay gate whose current derivative matches central FD after freezing the
+accepted plasma boundary. The remaining phase-2 blocker is differentiating
+through the nonlinear ``run_free_boundary`` iteration loop itself, rather than
+through the final accepted-boundary replay. The combined
 JAX operator is also threaded into the free-boundary driver behind the opt-in
 ``VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR=1`` diagnostic flag for low-resolution
 validation. For stellarator-symmetric runs, the JAX path reconstructs the full
@@ -128,9 +128,10 @@ single-stage coil optimizer:
 - The fast validation lane also includes tiny accepted-state
   finite-difference slope-stability checks for direct-coil current and one
   direct-coil Fourier geometry coefficient.
-- Accepted-solve AD-vs-FD is not promoted yet: the current expected-xfail
-  guard confirms that the full ``run_free_boundary`` trace does not yet expose
-  accepted NESTOR diagnostics as differentiable data.
+- Accepted-boundary direct-coil replay is AD-vs-FD checked for one current
+  perturbation. This holds the accepted VMEC boundary fixed and validates the
+  JAX-visible final-output layer, not the full nonlinear iteration-loop
+  derivative.
 - The active NESTOR sensitivity checks validate the provider/coupling layer:
   normal-field/source channels scale linearly with current changes and
   ``bsqvac`` scales quadratically. They do not yet validate a full accepted
@@ -326,10 +327,12 @@ For the ESSOS Landreman-Paul QA coils, put ESSOS on ``PYTHONPATH`` and use:
      --max-evals 3 \
      --outdir results/free_boundary_QS_coil_optimization_essos_smoke
 
-The next promotion step is first making accepted-solve AD-vs-FD pass for a
-complete direct-coil free-boundary loop. Only after that should this example
-replace the cheap proxy with a Boozer/QS objective and validate the same
-complete-loop gradients through the QS diagnostic path.
+The next promotion step is making the complete direct-coil free-boundary loop
+differentiate through the accepted-state solve path, either by threading the
+accepted state through a JAX-visible replay or by wrapping the final replay in
+a validated custom adjoint. Only after that should this example replace the
+cheap proxy with a Boozer/QS objective and validate the same complete-loop
+gradients through the QS diagnostic path.
 
 Each accepted objective evaluation records a weighted objective-term breakdown
 for the residual, aspect-ratio, and mean-iota proxy terms. Robust runs keep the
@@ -434,7 +437,12 @@ The follow-up free-boundary-aware fused strict update then reduced the tiny
 CUDA warm solve further to about ``0.25 s`` by cutting the update-state bucket
 to about one millisecond. The remaining warm GPU overhead is dominated by
 host-side iteration-control dispatch between preconditioning and accepted
-updates, while final NESTOR sample/solve time is already small.
+updates, while final NESTOR sample/solve time is already small. A split
+control-timing probe then localized that overhead to
+``iteration_control_badjac_s``, the early bad-Jacobian state check. The default
+keeps the first-two-iteration VMEC safety probe; use
+``VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS=0`` only as an explicit profiling
+knob while checking VMEC2000 parity.
 
 The direct-solve child JSON includes active and trial NESTOR timing summaries:
 sample time, scalar-potential solve time, reuse counts, failed trial counts,
@@ -692,9 +700,9 @@ Next Implementation Steps
   trace discrepancy is bounded.
 - Replace the dense validation vacuum-adjoint primitive with the production
   matrix-free/custom-linear-solve NESTOR operator.
-- Promote the fixed-boundary direct-coil/NESTOR AD-vs-FD gate to the accepted
-  free-boundary solve loop once the host NumPy state bridge is removed or
-  wrapped by a validated custom adjoint, then add Boozer/QS gradient checks.
+- Promote the accepted-boundary replay gate to a complete-loop free-boundary
+  gradient once the host NumPy state bridge is removed or wrapped by a
+  validated custom adjoint, then add Boozer/QS gradient checks.
 - Run larger CPU/GPU benchmark matrices before making broad accelerator claims;
   keep the JSON summaries and documentation plots refreshed from those runs.
 

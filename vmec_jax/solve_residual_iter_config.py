@@ -36,6 +36,7 @@ class BadJacobianConfig(NamedTuple):
     use_state: bool
     dump_ptau_state: bool
     state_probe: bool
+    initial_state_probe_iters: int
     ptau_tol: float
     ptau_tol_rel: float
 
@@ -93,12 +94,19 @@ def parse_bad_jacobian_config(env: Mapping[str, str | None]) -> BadJacobianConfi
         ptau_tol_rel = 0.0
     if ptau_tol_rel < 0.0:
         ptau_tol_rel = 0.0
+    try:
+        initial_state_probe_iters = int(_env_value(env, "VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS", "2").strip() or 0)
+    except Exception:
+        initial_state_probe_iters = 2
+    if initial_state_probe_iters < 0:
+        initial_state_probe_iters = 0
 
     return BadJacobianConfig(
         mode=mode,
         use_state=mode == "state",
         dump_ptau_state=env_flag_enabled(_env_value(env, "VMEC_JAX_DUMP_PTAU_STATE", "0")),
         state_probe=env_flag_enabled(_env_value(env, "VMEC_JAX_BADJAC_STATE_PROBE", "0")),
+        initial_state_probe_iters=int(initial_state_probe_iters),
         ptau_tol=ptau_tol,
         ptau_tol_rel=ptau_tol_rel,
     )
