@@ -230,7 +230,7 @@ def run_forward(args: argparse.Namespace) -> dict[str, Any]:
             max_iter=int(args.max_iter),
             multigrid=False,
             verbose=bool(args.verbose),
-            jit_forces=False,
+            jit_forces=bool(args.jit_forces),
             external_field_provider_kind="direct_coils",
             external_field_provider_params=params,
             free_boundary_activate_fsq=float(args.activate_fsq),
@@ -247,6 +247,7 @@ def run_forward(args: argparse.Namespace) -> dict[str, Any]:
         wall_s=wall_s,
         dry_run=bool(args.dry_run),
     )
+    summary["jit_forces"] = bool(args.jit_forces)
     summary_path = outdir / "summary.json"
     summary_path.write_text(json.dumps(summary, indent=2, default=_json_default) + "\n")
     return summary
@@ -270,6 +271,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--regularization-epsilon", type=float, default=0.0)
     parser.add_argument("--chunk-size", type=int, default=None)
     parser.add_argument("--activate-fsq", type=float, default=1.0e99)
+    parser.add_argument(
+        "--jit-forces",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use JIT force kernels; --no-jit-forces is a parity/debug escape hatch.",
+    )
     parser.add_argument("--verbose", action="store_true")
     return parser
 

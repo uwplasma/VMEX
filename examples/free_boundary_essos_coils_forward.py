@@ -116,6 +116,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--activate-fsq", type=float, default=1.0e99)
     parser.add_argument("--coil-current-scale", type=float, default=1.0)
     parser.add_argument("--chunk-size", type=int, default=256)
+    parser.add_argument(
+        "--jit-forces",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use JIT force kernels; --no-jit-forces is a parity/debug escape hatch.",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -151,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         max_iter=int(args.max_iter),
         multigrid=False,
         verbose=False,
-        jit_forces=False,
+        jit_forces=bool(args.jit_forces),
         external_field_provider_kind="direct_coils",
         external_field_provider_params=params,
         free_boundary_activate_fsq=float(args.activate_fsq),
@@ -164,6 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     summary["input"] = input_path
     summary["coils_json"] = coils_json
     summary["coil_current_scale"] = float(args.coil_current_scale)
+    summary["jit_forces"] = bool(args.jit_forces)
     summary_path = outdir / "summary.json"
     summary_path.write_text(json.dumps(summary, indent=2, default=_json_default) + "\n")
 

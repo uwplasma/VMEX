@@ -178,6 +178,7 @@ def test_circle_dry_run_writes_configuration_without_solves(tmp_path, monkeypatc
     assert summary["provider"]["provider"] == "circle"
     assert summary["baseline_coils"]["n_base_coils"] == 1
     assert summary["vmec_config"]["vmec_max_iter"] == 1
+    assert summary["vmec_config"]["jit_forces"] is True
     assert [record["kind"] for record in summary["optimized_variables"]] == ["current", "fourier_dof"]
     assert summary["optimized_variables"][0]["parameterization"] == "multiplicative"
     assert summary["optimized_variables"][1]["parameterization"] == "additive"
@@ -207,13 +208,14 @@ def test_robust_circle_smoke_uses_bounded_perturbed_scenarios(tmp_path, monkeypa
         output_path.write_text("&INDATA\n/\n")
         return output_path
 
-    def fake_run_direct_free_boundary(input_path, params, *, vmec_max_iter, activate_fsq):
+    def fake_run_direct_free_boundary(input_path, params, *, vmec_max_iter, activate_fsq, jit_forces=True):
         calls.append(
             {
                 "input_path": input_path,
                 "current": float(np.asarray(params.base_currents)[0]),
                 "vmec_max_iter": vmec_max_iter,
                 "activate_fsq": activate_fsq,
+                "jit_forces": bool(jit_forces),
             }
         )
         return SimpleNamespace(), 0.01
@@ -265,6 +267,7 @@ def test_robust_circle_smoke_uses_bounded_perturbed_scenarios(tmp_path, monkeypa
 
     assert exit_code == 0
     assert len(calls) == 3
+    assert all(call["jit_forces"] is True for call in calls)
     assert calls[0]["current"] == pytest.approx(2.0)
     assert any(call["current"] != pytest.approx(2.0) for call in calls[1:])
 

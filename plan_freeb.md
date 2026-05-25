@@ -213,6 +213,8 @@ Results obtained:
 123. Added an expected-xfail accepted-solve AD-vs-FD promotion gate that first proves finite FD response through the full direct-coil `run_free_boundary` path, then documents that `jax.grad(run_free_boundary)` does not yet expose accepted NESTOR diagnostics as differentiable data.
 124. The benchmark matrix now runs both direct-solve rows: default force kernels and `--jit-forces`, with identical timing capture.
 125. A local CPU quick matrix showed `--jit-forces` reducing the tiny warm direct solve from about `0.188 s` to `0.049 s`; the preconditioner bucket dropped from about `0.078 s` to `0.0004 s`, so the next office CPU/CUDA run should check whether this also fixes the GPU warm-solve gap.
+126. Office CPU/CUDA matrix with both direct-solve rows completed. The default non-JIT diagnostic row was CPU-favorable (`2.07 s` GPU versus `0.328 s` CPU warm), while the `--jit-forces` row reduced GPU warm time to `0.313 s` and CPU warm time to `0.101 s`. The force bucket fell on GPU from about `0.580 s` to `0.0078 s`; remaining GPU overhead is update and unattributed loop dispatch.
+127. Direct-coil forward and phase-1 optimization examples now default to `jit_forces=True`, with `--no-jit-forces` as an explicit debug/parity escape hatch.
 126. Targeted accepted-solve AD-vs-FD blocker gate reports the expected xfail: `pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current -rx` -> 1 xfailed in 11.92 s.
 127. Focused direct-coil finite-pressure suite after adding the promotion xfail: `pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -rx` -> 9 passed, 1 skipped, 1 xfailed in 38.37 s.
 128. Strict Sphinx build passed after tightening the free-boundary coil-optimization status wording.
@@ -223,7 +225,7 @@ Best next steps:
 2. Keep `exact_path='scan'` as an explicit long-run GPU option only; the latest profile shows it warms faster but needs roughly 75 accepted callbacks to amortize the `~110 s` cold compile.
 3. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
-5. For GPU performance, rerun the office CPU/CUDA matrix with both default and `--jit-forces` direct-solve rows, then target the largest remaining warm GPU ratio among force evaluation, preconditioner, residual metrics, update, and unattributed loop cost.
+5. For GPU performance, keep JIT force kernels as the production default for direct-coil examples, then target the remaining warm GPU update and unattributed-loop dispatch overhead.
 6. Warm GPU QH mode-2 tape callbacks are still above the `1 s` production target; the next patch should reduce accepted replay/tangent dispatch or avoid rebuilding accepted tapes at nearby callbacks. Matrix-free is not yet the answer on GPU because repeated VJP/JVP replay is slower than dense materialization for the profiled case.
 
 Need from user:
@@ -1048,12 +1050,12 @@ WP2 Pure JAX coil Biot-Savart:                 92%
 WP3 ESSOS adapter:                             88%
 WP4 JAX mgrid interpolation:                   91%
 WP5 Free-boundary provider hook:               95%
-WP6 Direct-coil forward example:               90%
+WP6 Direct-coil forward example:               92%
 WP7 Vacuum adjoint scaffold:                  100%
 WP8 Gradient checks:                          100%
 WP9 VMEC2000 diagnostics:                      95%
 WP10 Benchmarks/diagnostics:                  100%
-WP11 Coil-only QS optimization example:        88%
+WP11 Coil-only QS optimization example:        89%
 WP12 Robust coil perturbations:               100%
 WP13 Documentation:                            99%
 WP14 CI policy:                                94%
@@ -1062,7 +1064,7 @@ Overall branch completion:                   98.5%
 
 ## Immediate Next Steps
 
-1. Rerun the office CPU/CUDA direct-coil matrix with solve-loop timing buckets and both default/`--jit-forces` direct-solve rows enabled.
+1. Target the remaining GPU direct-solve warm overhead in update and unattributed loop dispatch now that JIT force kernels remove the force bucket as the main CUDA tax.
 2. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
 3. Continue the VMEC2000 generated-mgrid WOUT comparator until the optional xfail can be bounded or promoted.
 4. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
@@ -1128,10 +1130,12 @@ Results obtained:
 7. `python tools/benchmarks/bench_freeb_direct_coil_matrix.py --quick --timeout-s 240 --out /tmp/freeb_matrix_jitforces_probe/summary.json` completed CPU provider, direct-solve, direct-solve-`--jit-forces`, and gradient rows.
 8. The local CPU JIT-forces row reduced warm direct-solve time from about `0.188 s` to `0.049 s`; force time was similar, but the preconditioner bucket fell from about `0.078 s` to `0.0004 s`.
 9. `python -m pytest -q tests/test_freeb_direct_coil_matrix_benchmark.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current -rx`: 5 passed, 1 xfailed.
+10. Office CPU/CUDA quick matrix with the new JIT row completed. GPU warm direct-solve time improved from `2.07 s` without force JIT to `0.313 s` with force JIT; CPU improved from `0.328 s` to `0.101 s`.
+11. Direct-coil examples now expose `--jit-forces/--no-jit-forces` and default to the fast path.
 
 Best next steps:
 
-1. Run the CPU/CUDA matrix on `office` with the new direct-solve buckets and the `--jit-forces` comparison row, then compare warm GPU ratios for force evaluation, preconditioner, residual metrics, update, and unattributed loop cost.
+1. Reduce the remaining GPU warm direct-solve overhead in update and unattributed loop dispatch; force evaluation is no longer the primary bottleneck when examples use the default JIT force path.
 2. Keep the VMEC2000 WOUT-promotion lane optional until generated-grid runs produce WOUTs instead of only trace rows.
 3. Continue full-loop free-boundary gradient promotion only after accepted-state quantities are fully threaded through the JAX/custom-adjoint path.
 

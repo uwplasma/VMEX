@@ -209,6 +209,10 @@ requiring ESSOS assets or an ``mgrid`` file.
      --max-iter 4 \
      --outdir results/free_boundary_direct_coils_forward
 
+The direct-coil examples default to JIT force kernels, matching the public
+``run_free_boundary`` fast path. Add ``--no-jit-forces`` only when debugging
+parity or compile behavior.
+
 Run the ESSOS direct-coil forward example from the repository root.  This path
 loads ESSOS coils, converts them to ``CoilFieldParams``, runs one
 low-resolution finite-pressure free-boundary forward validation run without writing an
@@ -421,6 +425,13 @@ while provider and gradient microbenchmarks have small enough kernel payloads
 that CUDA launch overhead dominates. GPU production work should therefore focus
 on larger batched/tangent workloads and accepted-point replay amortization, not
 on claiming a speedup from these tiny validation cases.
+
+The matrix keeps two direct-solve rows: the non-JIT diagnostic path and the
+default fast path with ``--jit-forces``. On the 2026-05-25 office CUDA probe,
+``--jit-forces`` reduced the tiny GPU warm direct solve from roughly ``2.07 s``
+to ``0.31 s`` by removing the force-evaluation bucket as the dominant cost.
+The remaining warm GPU overhead sits mostly in update and unattributed
+host/device dispatch, while final NESTOR sample/solve time is already small.
 
 The direct-solve child JSON includes active and trial NESTOR timing summaries:
 sample time, scalar-potential solve time, reuse counts, failed trial counts,

@@ -327,6 +327,7 @@ def run_direct_free_boundary(
     *,
     vmec_max_iter: int,
     activate_fsq: float,
+    jit_forces: bool = True,
 ) -> tuple[Any, float]:
     start = time.perf_counter()
     run = run_free_boundary(
@@ -334,7 +335,7 @@ def run_direct_free_boundary(
         max_iter=int(vmec_max_iter),
         multigrid=False,
         verbose=False,
-        jit_forces=False,
+        jit_forces=bool(jit_forces),
         external_field_provider_kind="direct_coils",
         external_field_provider_params=params,
         free_boundary_activate_fsq=float(activate_fsq),
@@ -547,6 +548,7 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "nzeta": int(args.nzeta),
         "pressure_scale": float(args.pressure_scale),
         "activate_fsq": float(args.activate_fsq),
+        "jit_forces": bool(args.jit_forces),
     }
     optimizer_config = {
         "method": "Powell",
@@ -641,6 +643,7 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
                         scenario_params,
                         vmec_max_iter=int(args.vmec_max_iter),
                         activate_fsq=float(args.activate_fsq),
+                        jit_forces=bool(args.jit_forces),
                     )
                     provisional = summarize_run(
                         run,
@@ -742,6 +745,7 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
                 params,
                 vmec_max_iter=int(args.vmec_max_iter),
                 activate_fsq=float(args.activate_fsq),
+                jit_forces=bool(args.jit_forces),
             )
             provisional = summarize_run(
                 run,
@@ -870,6 +874,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--nzeta", type=int, default=None)
     parser.add_argument("--pressure-scale", type=float, default=0.0)
     parser.add_argument("--activate-fsq", type=float, default=1.0e99)
+    parser.add_argument(
+        "--jit-forces",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use JIT force kernels; --no-jit-forces is a parity/debug escape hatch.",
+    )
     parser.add_argument("--max-current-vars", type=int, default=1)
     parser.add_argument("--max-fourier-vars", type=int, default=1)
     parser.add_argument("--current-step", type=float, default=0.02)
