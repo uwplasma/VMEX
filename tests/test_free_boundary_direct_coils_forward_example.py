@@ -110,7 +110,7 @@ def test_direct_coil_forward_example_wires_direct_provider_without_running_solve
     assert captured["input_path"] == tmp_path / "input.direct_coils"
     assert captured["kwargs"]["max_iter"] == 1
     assert captured["kwargs"]["multigrid"] is False
-    assert captured["kwargs"]["jit_forces"] is True
+    assert bool(captured["kwargs"]["jit_forces"]) is True
     assert captured["kwargs"]["external_field_provider_kind"] == "direct_coils"
     assert isinstance(captured["kwargs"]["external_field_provider_params"], CoilFieldParams)
     np.testing.assert_allclose(np.asarray(captured["kwargs"]["external_field_provider_params"].base_currents), [2.5])
