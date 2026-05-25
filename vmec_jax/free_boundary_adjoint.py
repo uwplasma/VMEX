@@ -985,3 +985,46 @@ def vacuum_boundary_fields_from_cylindrical_jax(
         "g_vv": g_vv,
         "det_guv": det,
     }
+
+
+def direct_coil_boundary_bnormal_rms_jax(
+    params: Any,
+    *,
+    R: Any,
+    Z: Any,
+    phi: Any,
+    Ru: Any,
+    Zu: Any,
+    Rv: Any,
+    Zv: Any,
+) -> Any:
+    """Replay the accepted-boundary direct-coil normal-field RMS in JAX.
+
+    This is the smallest differentiable accepted-output primitive needed by the
+    free-boundary coil-adjoint validation ladder.  It holds the VMEC boundary
+    geometry fixed, samples the direct Biot-Savart coil field on that accepted
+    boundary, projects it into VMEC/NESTOR boundary channels, and returns the
+    RMS of ``B_ext · dS``.  It does not differentiate through the nonlinear VMEC
+    iteration loop.
+    """
+
+    from .external_fields import sample_coil_field_cylindrical
+
+    br, bp, bz = sample_coil_field_cylindrical(
+        params,
+        jnp.asarray(R),
+        jnp.asarray(Z),
+        jnp.asarray(phi),
+    )
+    vac = vacuum_boundary_fields_from_cylindrical_jax(
+        br=br,
+        bp=bp,
+        bz=bz,
+        R=R,
+        Ru=Ru,
+        Zu=Zu,
+        Rv=Rv,
+        Zv=Zv,
+    )
+    bnormal = jnp.ravel(jnp.asarray(vac["bnormal"]))
+    return jnp.sqrt(jnp.mean(bnormal * bnormal))

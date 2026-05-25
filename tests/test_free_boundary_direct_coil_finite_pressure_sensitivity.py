@@ -584,18 +584,19 @@ def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Expected promotion gate for accepted-solve direct-coil AD-vs-FD.
+    """Accepted-boundary direct-coil replay AD matches central FD for current.
 
-    The fixed-boundary JAX NESTOR operator is differentiable, and the accepted
-    solve has finite FD response.  The current blocker is the full
-    ``run_free_boundary`` path: the final accepted-state NESTOR recompute is
-    materialized into host diagnostics, so under ``jax.grad`` there is no
-    differentiable accepted-state scalar to compare with finite differences.
+    This validates the first promoted accepted-output rung: run the nonlinear
+    VMEC free-boundary solve once, freeze its accepted plasma boundary, then
+    replay the final direct-coil NESTOR normal-field metric through a pure JAX
+    path.  It does not claim differentiation through the VMEC iteration loop.
     """
 
     pytest.importorskip("jax")
     from vmec_jax._compat import jax, jnp
     from vmec_jax.driver import run_free_boundary
+    from vmec_jax.free_boundary import _sample_external_boundary_arrays
+    from vmec_jax.free_boundary_adjoint import direct_coil_boundary_bnormal_rms_jax
 
     enable_x64(True)
     input_path = _write_tiny_direct_freeb_input(
@@ -614,54 +615,63 @@ def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current(
             base_currents=jnp.asarray(base_params.base_currents) * (1.0 + 0.02 * scale)
         )
 
+    run = run_free_boundary(
+        input_path,
+        max_iter=2,
+        multigrid=False,
+        verbose=False,
+        jit_forces=False,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=base_params,
+        free_boundary_activate_fsq=1.0e99,
+    )
+    freeb = run.result.diagnostics["free_boundary"]
+    assert freeb["vacuum_stub"] is False
+    assert freeb["final_nestor_recompute_failed"] is False
+    nestor = freeb["last_nestor_diagnostics"]
+    assert nestor["provider_kind"] == "direct_coils"
+    assert nestor["jax_nestor_operator_reason"] == "applied"
+    assert "bnormal_rms" in nestor
+
+    sample = _sample_external_boundary_arrays(
+        state=run.state,
+        static=run.static,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=base_params,
+    )
+    R = jnp.asarray(sample.R)
+    Z = jnp.asarray(sample.Z)
+    phi = jnp.asarray(sample.phi)
+    Ru = jnp.asarray(sample.Ru)
+    Zu = jnp.asarray(sample.Zu)
+    Rv = jnp.asarray(sample.Rv)
+    Zv = jnp.asarray(sample.Zv)
+
     def accepted_bnormal_metric(scale):
-        run = run_free_boundary(
-            input_path,
-            max_iter=2,
-            multigrid=False,
-            verbose=False,
-            jit_forces=False,
-            external_field_provider_kind="direct_coils",
-            external_field_provider_params=params_for(scale),
-            free_boundary_activate_fsq=1.0e99,
+        return direct_coil_boundary_bnormal_rms_jax(
+            params_for(scale),
+            R=R,
+            Z=Z,
+            phi=phi,
+            Ru=Ru,
+            Zu=Zu,
+            Rv=Rv,
+            Zv=Zv,
         )
-        freeb = run.result.diagnostics["free_boundary"]
-        assert freeb["vacuum_stub"] is False, (
-            "full-loop-ad-missing-accepted-nestor-diagnostics: traced accepted "
-            "solve stayed on the vacuum-stub path before exposing a differentiable metric"
-        )
-        assert freeb["final_nestor_recompute_failed"] is False, (
-            "full-loop-ad-missing-accepted-nestor-diagnostics: traced accepted "
-            "solve failed final NESTOR recompute before exposing a differentiable metric"
-        )
-        nestor = freeb["last_nestor_diagnostics"]
-        assert "bnormal_rms" in nestor, (
-            "full-loop-ad-missing-accepted-nestor-diagnostics: traced accepted "
-            "solve dropped last_nestor_diagnostics before exposing a differentiable metric"
-        )
-        assert nestor["provider_kind"] == "direct_coils"
-        assert nestor["jax_nestor_operator_reason"] == "applied"
-        return jnp.asarray(nestor["bnormal_rms"])
+
+    np.testing.assert_allclose(
+        accepted_bnormal_metric(0.0),
+        nestor["bnormal_rms"],
+        rtol=1.0e-12,
+        atol=1.0e-14,
+    )
 
     eps = 0.25
     fd_current = (accepted_bnormal_metric(eps) - accepted_bnormal_metric(-eps)) / (2.0 * eps)
     assert np.isfinite(np.asarray(fd_current, dtype=float))
     assert abs(float(np.asarray(fd_current))) > 1.0e-16
 
-    try:
-        exact_current = jax.grad(accepted_bnormal_metric)(0.0)
-    except AssertionError as exc:
-        if "full-loop-ad-missing-accepted-nestor-diagnostics" in str(exc):
-            pytest.xfail(
-                "accepted-solve AD-vs-FD is blocked at the host diagnostics boundary: "
-                "run_free_boundary recomputes accepted NESTOR diagnostics into a "
-                "Python/NumPy dictionary, so jax.grad cannot see a differentiable "
-                "accepted-state metric. Smallest promotion step: return the final "
-                "accepted NESTOR metric/state through a JAX-visible replay or wrap "
-                "that accepted replay in a validated custom_vjp."
-            )
-        raise
-
+    exact_current = jax.grad(accepted_bnormal_metric)(0.0)
     assert np.isfinite(np.asarray(exact_current, dtype=float))
     assert abs(float(np.asarray(exact_current))) > 1.0e-16
     np.testing.assert_allclose(exact_current, fd_current, rtol=1.0e-3, atol=1.0e-12)
