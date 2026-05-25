@@ -80,6 +80,17 @@ def _gpu_available() -> tuple[bool, dict[str, Any]]:
         return False, {"has_jax": None, "devices": [], "error": repr(exc)}
 
 
+def _gpu_platform_name(gpu_probe: dict[str, Any]) -> str:
+    """Return the concrete JAX platform name for GPU child processes."""
+
+    platforms = {str(item).lower() for item in gpu_probe.get("platforms", [])}
+    if "cuda" in platforms:
+        return "cuda"
+    if "rocm" in platforms:
+        return "rocm"
+    return "gpu"
+
+
 def _case_counts(payload: dict[str, Any] | None) -> dict[str, int]:
     counts = {"completed": 0, "skipped": 0, "failed": 0}
     if not payload:
@@ -256,13 +267,21 @@ def _script_for(label: str) -> Path:
     }[label]
 
 
-def _run_child(label: str, out: Path, args: list[str], *, backend: str, timeout_s: float) -> dict[str, Any]:
+def _run_child(
+    label: str,
+    out: Path,
+    args: list[str],
+    *,
+    backend: str,
+    timeout_s: float,
+    jax_platform: str | None = None,
+) -> dict[str, Any]:
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{REPO_ROOT}{os.pathsep}{env.get('PYTHONPATH', '')}" if env.get("PYTHONPATH") else str(REPO_ROOT)
     if backend == "cpu":
         env["JAX_PLATFORMS"] = "cpu"
     elif backend == "gpu":
-        env["JAX_PLATFORMS"] = "gpu"
+        env["JAX_PLATFORMS"] = str(jax_platform or "gpu")
 
     cmd = [sys.executable, str(_script_for(label)), "--out", str(out), *args]
     t0 = time.perf_counter()
@@ -287,6 +306,7 @@ def _run_child(label: str, out: Path, args: list[str], *, backend: str, timeout_
             "elapsed_s": elapsed_s,
             "output_json": out,
             "command": cmd,
+            "jax_platform": env.get("JAX_PLATFORMS"),
             "stdout_tail": proc.stdout.strip().splitlines()[-8:],
             "stderr_tail": proc.stderr.strip().splitlines()[-8:],
             "child_status": None if payload is None else payload.get("status"),
@@ -304,6 +324,7 @@ def _run_child(label: str, out: Path, args: list[str], *, backend: str, timeout_
             "timeout_s": float(timeout_s),
             "output_json": out,
             "command": cmd,
+            "jax_platform": env.get("JAX_PLATFORMS"),
             "stdout_tail": (exc.stdout or "").strip().splitlines()[-8:] if isinstance(exc.stdout, str) else [],
             "stderr_tail": (exc.stderr or "").strip().splitlines()[-8:] if isinstance(exc.stderr, str) else [],
         }
@@ -322,8 +343,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.include_gpu:
         if gpu_ok:
+            gpu_platform = _gpu_platform_name(gpu_probe)
             for label, out, child_args in _child_specs(quick=bool(args.quick), outdir=outdir, backend="gpu"):
-                rows.append(_run_child(label, out, child_args, backend="gpu", timeout_s=float(args.timeout_s)))
+                rows.append(
+                    _run_child(
+                        label,
+                        out,
+                        child_args,
+                        backend="gpu",
+                        timeout_s=float(args.timeout_s),
+                        jax_platform=gpu_platform,
+                    )
+                )
         else:
             rows.append(
                 {
