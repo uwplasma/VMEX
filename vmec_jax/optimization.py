@@ -1322,6 +1322,12 @@ class FixedBoundaryExactOptimizer:
         ``None`` / ``"auto"`` / ``"default"`` inherit JAX's active default
         device. Pass ``"cpu"`` or ``"gpu"`` to explicitly run callbacks under
         that device context.
+    exact_path:
+        Accepted-point differentiation path. ``None`` / ``"auto"`` keeps the
+        default tape path and honors ``VMEC_JAX_OPT_EXACT_PATH``. Pass
+        ``"tape"`` for the low-cold-cost discrete-adjoint tape path, or
+        ``"scan"`` for the high-compile-cost scan-differentiated path that can
+        be faster for long GPU runs after compilation is amortized.
 
     Example
     -------
@@ -1358,8 +1364,10 @@ class FixedBoundaryExactOptimizer:
         trial_max_iter: int | None = None,
         trial_ftol: float | None = None,
         solver_device: str | None = None,
+        exact_path: str | None = None,
     ) -> None:
         self._solver_device_name = self._resolve_solver_device(solver_device)
+        self._exact_path_request = self._resolve_exact_path_request(exact_path)
         self._inside_solver_device_context = False
         if self._solver_device_name is not None:
             static = self._move_to_solver_device(static)
@@ -1523,6 +1531,18 @@ class FixedBoundaryExactOptimizer:
             return None
         return name
 
+    def _resolve_exact_path_request(self, exact_path: str | None) -> str | None:
+        """Validate the optional accepted-point differentiation path request."""
+
+        if exact_path is None:
+            return None
+        name = str(exact_path).strip().lower().replace("-", "_")
+        if name in ("", "none", "auto", "default"):
+            return None
+        if name not in ("tape", "scan"):
+            raise ValueError("exact_path must be one of None, 'auto', 'tape', or 'scan'")
+        return name
+
     def _spec_max_mode(self) -> int:
         if not self._specs:
             return 0
@@ -1586,6 +1606,9 @@ class FixedBoundaryExactOptimizer:
         The environment override ``VMEC_JAX_OPT_EXACT_PATH={tape,scan}``
         remains available for profiling and parity studies.
         """
+        requested = getattr(self, "_exact_path_request", None)
+        if requested in ("scan", "tape"):
+            return str(requested)
         forced = os.getenv("VMEC_JAX_OPT_EXACT_PATH", "").strip().lower()
         if forced in ("scan", "tape"):
             return forced

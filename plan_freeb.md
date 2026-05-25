@@ -181,15 +181,19 @@ Results obtained:
 92. Replaced the strict-update JIT cache key's `id(static)` component with a structural VMEC static signature. This avoids compiling/cache-growing a new GPU update kernel for each otherwise-identical accepted exact callback while keeping the numerical update map unchanged.
 93. The structural strict-update cache key removed the second strict-update kernel cache miss in the office GPU profile and cut the warm update-state bucket from `0.132 s` to `0.049 s`. Total two-callback wall time remained noise/regression-limited (`18.05 s` vs `17.10 s`) because replay and accepted tape solve still dominate.
 94. Added a guarded accelerator fused preconditioner-apply/payload dispatch. It reduces the warm GPU callback from `2.84 s` to `2.54 s` in a two-callback profile and keeps strict-update cache growth at zero after the cold callback, but it increases cold compile/build cost. A four-callback run completed in `23.93 s` with warm callbacks `2.58-2.87 s`, so this is a modest long-optimization improvement, not a cold-run solution.
+95. Re-profiled the projected replay/residual path after the fused-preconditioner and cache-key changes. It remains slower on GPU (`17.46 s` cold, `4.52 s` warm) than the standard tape path, so it stays an explicit diagnostics-only option.
+96. Re-profiled the scan-differentiated exact path on GPU. It has prohibitive cold compile cost (`110.6 s`) but a faster warm callback (`1.27 s`) than the current tape path (`2.54 s` warm). This is a long-run amortization option, not a first-call default.
+97. Re-profiled the matrix-free linear-operator path on GPU. The current implementation is not production-competitive for this QH mode-2 callback (`82.2 s` cold, `5.47 s` warm), dominated by repeated `Jv`/`J^T v` replay dispatch.
+98. Exposed the accepted-point exact differentiation path as `FixedBoundaryExactOptimizer(..., exact_path={None,'auto','tape','scan'})` and threaded it through the objective-workflow helpers and profiling CLI. This gives long GPU runs a script-level way to opt into scan-exact without relying on hidden environment variables, while keeping the low-cold-cost tape path as default.
 
 Best next steps:
 
 1. Promote the opt-in complete-solve FD gate from finite/nonzero response to AD-vs-central-FD once the production full-solve adjoint is threaded through accepted-state quantities.
-2. Profile the accepted replay/tangent construction next; strict-update cache churn is fixed, and preconditioner/payload fusion only helps warm runs modestly.
+2. Keep `exact_path='scan'` as an explicit long-run GPU option only; the latest profile shows it warms faster but needs roughly many accepted callbacks to amortize the `~110 s` cold compile.
 3. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
 5. For GPU performance, prioritize accepted-point replay/tangent construction and compilation/dispatch amortization over tiny raw direct-solve offload; the current microbenchmarks show tiny solves are still CPU-favorable.
-6. Warm GPU QH mode-2 exact callbacks are still above the `1 s` production target; the next patch should reduce accepted replay/tangent dispatch or avoid rebuilding accepted tapes at nearby callbacks.
+6. Warm GPU QH mode-2 tape callbacks are still above the `1 s` production target; the next patch should reduce accepted replay/tangent dispatch or avoid rebuilding accepted tapes at nearby callbacks. Matrix-free is not yet the answer on GPU because repeated VJP/JVP replay is slower than dense materialization for the profiled case.
 
 Need from user:
 

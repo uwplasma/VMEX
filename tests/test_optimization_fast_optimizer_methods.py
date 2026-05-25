@@ -175,6 +175,30 @@ def test_fixed_boundary_exact_optimizer_init_preserves_gpu_trial_scan_policy(mon
     assert opt_forced_scan._trial_solver_kwargs["use_scan"] is True
     assert opt_forced_scan._exact_solver_kwargs["use_scan"] is False
 
+    opt_explicit_scan = FixedBoundaryExactOptimizer(
+        static,
+        indata,
+        boundary,
+        [BoundaryParamSpec("rc10", "rc", 0, 1, 0)],
+        residuals_fn,
+        inner_max_iter=7,
+        inner_ftol=2.0e-9,
+        solver_device="gpu",
+        exact_path="scan",
+    )
+    assert opt_explicit_scan._scan_exact_path == "scan"
+
+    with pytest.raises(ValueError, match="exact_path"):
+        FixedBoundaryExactOptimizer(
+            static,
+            indata,
+            boundary,
+            [BoundaryParamSpec("rc10", "rc", 0, 1, 0)],
+            residuals_fn,
+            solver_device="gpu",
+            exact_path="not-a-path",
+        )
+
 
 def test_auto_method_resolver_uses_matrix_free_only_for_profiled_qa_cpu_case(monkeypatch):
     opt = _run_ready_optimizer()

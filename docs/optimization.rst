@@ -1511,6 +1511,12 @@ Key implementation choices:
   different tape lengths.  The default is backend-adaptive: ``32`` on CPU and
   ``128`` on CUDA/ROCm/GPU backends. Larger values are profiling controls, not
   a universal GPU speedup.
+- **``exact_path``**: :class:`~vmec_jax.FixedBoundaryExactOptimizer` accepts
+  ``exact_path="tape"`` or ``exact_path="scan"``. The default tape path has the
+  lower cold-start cost and remains the production default. The scan path has a
+  much higher first compile on current CUDA profiles but can have lower warm
+  accepted-callback latency in long GPU studies, so use it only after profiling
+  enough accepted points to amortize that compile.
 - **Single-entry cache** (``_exact_cache``): stores the last tape by parameter
   hash.  Avoids rebuilding the tape when ``residual_fun`` then ``jacobian_fun``
   are called at the same ``x`` (which Gauss-Newton always does).
@@ -1765,6 +1771,9 @@ GPU-enabled JAX, leave JAX's default platform selection active or set
 ``JAX_PLATFORMS=cuda`` is also valid.  You can also pass
 ``solver_device="gpu"`` to the Python optimizer/driver interfaces.  If
 ``solver_device`` is unset, vmec_jax inherits JAX's active default backend.
+For long GPU optimizer runs, you may also set ``exact_path="scan"`` on the
+optimizer or workflow helper. This does not improve cold-start performance; it
+is an amortized option for runs with many accepted exact callbacks.
 
 For GPU runs, the dynamic replay bucket
 (``VMEC_JAX_DYNAMIC_REPLAY_BUCKET``) should be tuned only during profiling.

@@ -48,6 +48,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--trial-max-iter", type=int, default=300)
     p.add_argument("--trial-ftol", type=float, default=1e-10)
     p.add_argument("--solver-device", choices=("auto", "cpu", "gpu", "default"), default="auto")
+    p.add_argument(
+        "--exact-path",
+        choices=("auto", "tape", "scan"),
+        default="auto",
+        help=(
+            "Accepted-point differentiation path. 'tape' has lower cold cost; "
+            "'scan' has high compile cost but can be faster for long warm GPU runs."
+        ),
+    )
     p.add_argument("--mpol", type=int, default=5)
     p.add_argument("--ntor", type=int, default=5)
     p.add_argument(
@@ -365,6 +374,7 @@ def _runtime_info() -> dict[str, object]:
                 "VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES"
             ),
             "vmec_jax_opt_trial_scan": os.environ.get("VMEC_JAX_OPT_TRIAL_SCAN"),
+            "vmec_jax_opt_exact_path": os.environ.get("VMEC_JAX_OPT_EXACT_PATH"),
         }
     except Exception as exc:  # pragma: no cover - diagnostics only
         return {"error": repr(exc)}
@@ -747,6 +757,7 @@ def _build_callback_payload(
         "initial_metrics": bool(getattr(args, "initial_metrics", False)),
         "sync_replay_timing": bool(getattr(args, "sync_replay_timing", False)),
         "trial_scan": str(getattr(args, "trial_scan", "auto")),
+        "exact_path_requested": str(getattr(args, "exact_path", "auto")),
         "jvp_only_exact_tape": _effective_jvp_only_exact_tape(args),
         "jvp_only_basepoint_carries": _effective_jvp_only_basepoint_carries(args),
         "solver_device_requested": args.solver_device,
@@ -953,6 +964,7 @@ def main() -> int:
         trial_max_iter=args.trial_max_iter,
         trial_ftol=args.trial_ftol,
         solver_device=args.solver_device,
+        exact_path=args.exact_path,
     )
     _install_profile_timing_supplements(opt)
     if args.trial_scan == "on":
@@ -1237,6 +1249,7 @@ def main() -> int:
             "max_mode": int(args.max_mode),
             "dofs": len(specs),
             "method": args.method,
+            "exact_path_requested": args.exact_path,
             "solver_device_requested": args.solver_device,
             "solver_device_resolved": opt._solver_device_name or "default",
             "runtime": _runtime_info(),
