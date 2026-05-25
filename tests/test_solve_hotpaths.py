@@ -303,14 +303,14 @@ def test_preconditioner_output_scaling_gate_is_gpu_only_without_gpu(monkeypatch)
     cpu_res = solve_module.solve_fixed_boundary_residual_iter(state0, static, **solve_kwargs)
 
     calls = []
-    original_scaler = _preconditioner_output_scaling_jit
+    original_fused_apply_payload = solve_module._preconditioner_apply_payload_fused
 
-    def count_fused(*, apply_lambda_update_scale):
-        calls.append(bool(apply_lambda_update_scale))
-        return original_scaler(apply_lambda_update_scale=apply_lambda_update_scale)
+    def count_fused_apply_payload(**kwargs):
+        calls.append(bool(kwargs.get("apply_lambda_update_scale")))
+        return original_fused_apply_payload(**kwargs)
 
     monkeypatch.setattr(solve_module.jax, "default_backend", lambda: "gpu")
-    monkeypatch.setattr(solve_module, "_preconditioner_output_scaling_jit", count_fused)
+    monkeypatch.setattr(solve_module, "_preconditioner_apply_payload_fused", count_fused_apply_payload)
     gpu_res = solve_module.solve_fixed_boundary_residual_iter(state0, static, **solve_kwargs)
 
     assert calls == [True]
