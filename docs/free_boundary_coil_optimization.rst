@@ -444,7 +444,8 @@ executable is available:
        --workdir results/freeb_coils_mgrid_vmec2000_work \
        --ns-array 5,9,13 \
        --niter-array 100,500,2000 \
-       --ftol-array 1e-8,1e-10,1e-12
+       --ftol-array 1e-8,1e-10,1e-12 \
+       --activate-fsq 1e99
 
 For a quick provider-only validation run, skip VMEC2000 explicitly:
 
@@ -457,12 +458,24 @@ For a quick provider-only validation run, skip VMEC2000 explicitly:
        --niter 1 \
        --mgrid-nphi 4 \
        --skip-vmec2000 \
+       --activate-fsq 1e99 \
        --out results/freeb_coils_mgrid_vmec2000_smoke.json
 
 The diagnostic defaults ``NZETA`` to ``--mgrid-nphi`` so the generated
 ``mgrid`` toroidal grid is compatible with VMEC's free-boundary loader. If you
 override ``--nzeta``, choose a value compatible with the generated grid
-(``kp``).
+(``kp``). Use ``--activate-fsq 1e99`` for short parity diagnostics so
+``vmec_jax`` exercises the active NESTOR/free-boundary coupling immediately
+instead of proving only inactive-cadence bookkeeping. The JSON records
+``active_free_boundary`` for both the direct-coil and generated-``mgrid``
+``vmec_jax`` backends, plus compact NESTOR channel diagnostics such as
+``bnormal_rms``, ``gsource_rms``, ``bsqvac_rms``, and ``bsqvac_mean``. The
+default vmec_jax direct-versus-generated-``mgrid`` tolerance is ``1e-9``,
+which is tight enough to catch provider regressions while allowing roundoff
+differences after active vacuum coupling. When a generated ``mgrid`` has more
+toroidal planes than VMEC ``NZETA``, vmec_jax follows VMEC2000's
+``read_mgrid_nc`` reduction and samples file planes ``0, nskip, 2*nskip, ...``
+instead of taking the first ``NZETA`` planes.
 
 If VMEC2000 exits before writing ``wout_*.nc``, the JSON still records the
 workdir, return code, whether VMEC2000 opened the vacuum grid, stdout/stderr
@@ -494,6 +507,7 @@ they intentionally alter only the VMEC2000 input deck.
        --vmec2000-promotion-probes \
        --vmec2000-probe-ftols 1e-2,1e-3 \
        --vmec2000-probe-max-main-iterations 2,5 \
+       --activate-fsq 1e99 \
        --out results/freeb_coils_mgrid_vmec2000_with_probes.json
 
 The ``--ns-array``, ``--niter-array``, and ``--ftol-array`` options define a

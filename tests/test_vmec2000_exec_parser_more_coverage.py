@@ -19,6 +19,7 @@ from tools.diagnostics.compare_freeb_coils_mgrid_vmec2000 import (
     _base_payload,
     _classify_vmec2000_result_summary,
     _diagnostic_schedule,
+    _free_boundary_summary_from_run,
     _make_freeb_indata,
     _parser,
     _vmec2000_nonzero_status,
@@ -342,6 +343,55 @@ def test_vmec2000_summary_records_whether_mgrid_was_opened(tmp_path: Path) -> No
     assert summary["opened_mgrid"] is True
 
 
+def test_free_boundary_summary_from_run_keeps_nestor_channels_compact() -> None:
+    run = SimpleNamespace(
+        result=SimpleNamespace(
+            diagnostics={
+                "free_boundary": {
+                    "enabled": True,
+                    "couple_edge": True,
+                    "ivac": 3,
+                    "ivacskip": 0,
+                    "nvacskip": 4,
+                    "nestor_model": "vmec2000_like_dense_integral",
+                    "vacuum_stub": False,
+                    "final_nestor_recompute_attempted": True,
+                    "final_nestor_recompute_failed": False,
+                    "final_nestor_sample_time_s": 0.25,
+                    "final_nestor_solve_time_s": 0.5,
+                    "last_nestor_diagnostics": {
+                        "provider_kind": "direct_coils",
+                        "mode": "vmec2000_like_dense_integral",
+                        "rhs_mode": "bnormal_unit",
+                        "sample_points": 16,
+                        "bnormal_rms": 1.5,
+                        "gsource_rms": 2.5,
+                        "bsqvac_rms": 3.5,
+                        "bsqvac_mean": 4.5,
+                        "large_array": np.arange(5),
+                    },
+                },
+                "freeb_nestor_sample_time_history": np.asarray([0.0, 0.1, 0.2]),
+                "freeb_nestor_trial_failed_history": np.asarray([0, 1, 0]),
+            }
+        )
+    )
+
+    summary = _free_boundary_summary_from_run(run)
+
+    assert summary["available"] is True
+    assert summary["enabled"] is True
+    assert summary["vacuum_stub"] is False
+    assert summary["last_nestor_diagnostics"]["provider_kind"] == "direct_coils"
+    assert summary["last_nestor_diagnostics"]["bnormal_rms"] == pytest.approx(1.5)
+    assert summary["last_nestor_diagnostics"]["bsqvac_mean"] == pytest.approx(4.5)
+    assert "large_array" not in summary["last_nestor_diagnostics"]
+    assert summary["last_nestor_diagnostics"]["final_nestor_sample_time_s"] == pytest.approx(0.25)
+    assert summary["histories"]["freeb_nestor_sample_time_history"]["nonzero_size"] == 2
+    assert summary["histories"]["freeb_nestor_sample_time_history"]["sum"] == pytest.approx(0.3)
+    assert summary["histories"]["freeb_nestor_trial_failed_history"]["max"] == pytest.approx(1.0)
+
+
 def test_freeb_diagnostic_schedule_scalar_fallback_and_indata_arrays() -> None:
     args = _parser().parse_args(["--ns", "9", "--niter", "7", "--ftol", "1e-6", "--mgrid-nphi", "4"])
 
@@ -429,12 +479,14 @@ def test_freeb_diagnostic_payload_reports_resolved_multigrid_schedule(tmp_path: 
 
 
 def test_freeb_diagnostic_payload_marks_vmec2000_niter_override_non_promotable(tmp_path: Path) -> None:
-    args = _parser().parse_args(["--vmec2000-niter", "500"])
+    args = _parser().parse_args(["--vmec2000-niter", "500", "--activate-fsq", "1e99"])
 
     payload = _base_payload(args, out=tmp_path / "summary.json", workdir=tmp_path / "work")
 
     assert payload["configuration"]["vmec2000_niter"] == 500
     assert payload["configuration"]["mixed_vmec2000_schedule_non_promotable"] is True
+    assert payload["configuration"]["activate_fsq"] == pytest.approx(1.0e99)
+    assert payload["configuration"]["active_free_boundary_requested"] is True
 
 
 def test_vmec2000_promotion_probe_updates_are_bounded_vmec2000_only_patches() -> None:

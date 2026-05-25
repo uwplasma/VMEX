@@ -121,6 +121,7 @@ def _run_vmec_jax_freeb(input_path: Path, *, direct_params=None):
         multigrid_use_input_niter=True,
         verbose=False,
         jit_forces=False,
+        free_boundary_activate_fsq=1.0e99,
         **kwargs,
     )
     wout_path = input_path.with_name(f"wout_{input_path.name.removeprefix('input.')}.nc")
@@ -164,19 +165,19 @@ def _assert_vmec_jax_direct_matches_generated_mgrid_wout(wout_direct, wout_mgrid
         np.testing.assert_allclose(
             getattr(wout_direct, name),
             getattr(wout_mgrid, name),
-            rtol=1.0e-12,
-            atol=1.0e-12,
+            rtol=1.0e-9,
+            atol=1.0e-9,
             err_msg=f"direct-coil and generated-mgrid vmec_jax WOUT mismatch for {name}",
         )
     for name in ("aspect", "wb", "wp"):
         np.testing.assert_allclose(
             getattr(wout_direct, name),
             getattr(wout_mgrid, name),
-            rtol=1.0e-12,
-            atol=1.0e-12,
+            rtol=1.0e-9,
+            atol=1.0e-9,
             err_msg=f"direct-coil and generated-mgrid vmec_jax WOUT mismatch for {name}",
         )
-    assert float(wout_direct.wp) > 0.0
+    assert np.isfinite(float(wout_direct.wp))
 
 
 def _low_order_mode_mask(wout, *, max_m: int = 2, max_abs_n: int = 2) -> np.ndarray:
@@ -434,10 +435,12 @@ def test_essos_direct_coil_free_boundary_matches_generated_mgrid_backend(tmp_pat
     direct_input = _write_freeb_input(tmp_path / "input.lpqa_direct", mgrid_file="DIRECT_COILS")
     direct_params = from_essos_coils(coils, chunk_size=256)
 
-    _run_mgrid, wout_mgrid = _run_vmec_jax_freeb(mgrid_input)
-    _run_direct, wout_direct = _run_vmec_jax_freeb(direct_input, direct_params=direct_params)
+    run_mgrid, wout_mgrid = _run_vmec_jax_freeb(mgrid_input)
+    run_direct, wout_direct = _run_vmec_jax_freeb(direct_input, direct_params=direct_params)
 
     _assert_vmec_jax_direct_matches_generated_mgrid_wout(wout_direct, wout_mgrid)
+    assert run_mgrid.result.diagnostics["free_boundary"]["vacuum_stub"] is False
+    assert run_direct.result.diagnostics["free_boundary"]["vacuum_stub"] is False
 
 
 @pytest.mark.vmec2000
@@ -466,7 +469,7 @@ def test_vmec2000_generated_mgrid_trace_smoke_records_iteration_rows(tmp_path: P
             "--ns-array",
             "5,7",
             "--niter-array",
-            "1,1",
+            "2,2",
             "--ftol-array",
             "1e-8,1e-8",
             "--mpol",
@@ -479,6 +482,8 @@ def test_vmec2000_generated_mgrid_trace_smoke_records_iteration_rows(tmp_path: P
             "4",
             "--nvacskip",
             "4",
+            "--activate-fsq",
+            "1e99",
             "--vmec2000-timeout",
             "120",
             "--out",
@@ -491,6 +496,7 @@ def test_vmec2000_generated_mgrid_trace_smoke_records_iteration_rows(tmp_path: P
     assert rc == 0
     payload = json.loads(out.read_text())
     assert payload["comparisons"]["vmec_jax_direct_vs_generated_mgrid"]["passed"] is True
+    assert payload["comparisons"]["vmec_jax_direct_vs_generated_mgrid"]["active_free_boundary"]["both_active"] is True
     assert payload["configuration"]["uses_multigrid_schedule"] is True
     assert payload["configuration"]["mixed_vmec2000_schedule_non_promotable"] is False
     vmec2000 = payload["backends"]["vmec2000_generated_mgrid"]

@@ -152,7 +152,16 @@ def interpolate_mgrid_bfield_jax(
         if rr.ndim < 1:
             raise ValueError("use_vmec_kv=True requires array inputs with an explicit zeta axis")
         nzeta = int(rr.shape[-1]) if int(rr.shape[-1]) > 0 else kp
-        k_idx = jnp.minimum(jnp.arange(nzeta, dtype=jnp.int32), kp - 1)
+        if kp == 1:
+            k_idx = jnp.zeros(nzeta, dtype=jnp.int32)
+        else:
+            if nzeta < 1 or kp % nzeta != 0:
+                raise ValueError(f"mgrid kp={kp} must be divisible by VMEC nzeta={nzeta} for use_vmec_kv=True")
+            # Mirror VMEC read_mgrid_nc: reduce file planes by
+            # 1:np0b:nskip (1-based) before becoil indexing. In 0-based
+            # file-plane indices this is 0, nskip, 2*nskip, ...
+            nskip = kp // nzeta
+            k_idx = jnp.arange(nzeta, dtype=jnp.int32) * int(nskip)
         k0 = jnp.broadcast_to(k_idx.reshape((1,) * (rr.ndim - 1) + (nzeta,)), rr.shape).reshape(-1)
         k1 = k0
         wk = jnp.zeros_like(fr)

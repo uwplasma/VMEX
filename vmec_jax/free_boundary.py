@@ -493,11 +493,17 @@ def interpolate_mgrid_bfield(
         if rr.ndim < 1:
             raise ValueError("use_vmec_kv=True requires array inputs with an explicit zeta axis")
         nzeta = int(rr.shape[-1]) if int(rr.shape[-1]) > 0 else kp
-        # VMEC becoil.f uses kv = 1 + mod(i-1,nv), then clamps with
-        # kv = min(kv, np0b). In 0-based indexing this is simply
-        # kv = min(k, kp-1): no toroidal interpolation and no rescaling.
-        k_idx = np.arange(nzeta, dtype=np.int64)
-        k_idx = np.minimum(k_idx, kp - 1)
+        if kp == 1:
+            k_idx = np.zeros(nzeta, dtype=np.int64)
+        else:
+            if nzeta < 1 or kp % nzeta != 0:
+                raise ValueError(f"mgrid kp={kp} must be divisible by VMEC nzeta={nzeta} for use_vmec_kv=True")
+            # VMEC read_mgrid_nc first subsamples the file toroidal planes with
+            # 1-based slice 1:np0b:nskip where nskip=np0b/nv, then becoil.f
+            # indexes that reduced table without interpolation. In 0-based
+            # file-plane indices this is 0, nskip, 2*nskip, ...
+            nskip = kp // nzeta
+            k_idx = np.arange(nzeta, dtype=np.int64) * int(nskip)
         k0 = np.broadcast_to(k_idx.reshape((1,) * (rr.ndim - 1) + (nzeta,)), rr.shape).reshape(-1)
         k1 = k0
         wk = np.zeros_like(fr)

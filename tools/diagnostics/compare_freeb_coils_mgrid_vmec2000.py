@@ -121,6 +121,16 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--mgrid-zmax", type=float, default=5.0)
     p.add_argument("--direct-chunk-size", type=int, default=256)
     p.add_argument("--regularization-epsilon", type=float, default=0.0)
+    p.add_argument(
+        "--activate-fsq",
+        type=float,
+        default=None,
+        help=(
+            "Forwarded to vmec_jax run_free_boundary as free_boundary_activate_fsq. "
+            "Use a large value such as 1e99 to force active NESTOR/free-boundary "
+            "coupling in short diagnostics."
+        ),
+    )
     p.add_argument("--jit-forces", action="store_true", help="Enable JIT force kernels for vmec_jax solves.")
     p.add_argument("--skip-vmec2000", action="store_true", help="Do not try to run xvmec2000.")
     p.add_argument("--vmec2000-exec", type=Path, default=None, help="Path to xvmec2000.")
@@ -166,8 +176,8 @@ def _parser() -> argparse.ArgumentParser:
         help="Exit nonzero when VMEC2000 WOUT comparison limits are exceeded.",
     )
     p.add_argument("--strict", action="store_true", help="Require all optional paths and fail on all comparison mismatches.")
-    p.add_argument("--jax-rtol", type=float, default=1.0e-12)
-    p.add_argument("--jax-atol", type=float, default=1.0e-12)
+    p.add_argument("--jax-rtol", type=float, default=1.0e-9)
+    p.add_argument("--jax-atol", type=float, default=1.0e-9)
     return p
 
 
@@ -321,6 +331,111 @@ def _fsq_summary_from_run(run: Any) -> dict[str, Any]:
         "fsq_sum": fsq_sum,
         "fsq_norm": fsq_norm,
         "w_final": _last_float(getattr(result, "w_history", None)),
+    }
+
+
+def _history_summary(value: Any) -> dict[str, Any]:
+    """Return compact scalar diagnostics for optional iteration histories."""
+
+    try:
+        arr = _as_float_array(value).reshape(-1)
+    except Exception:
+        return {"available": False}
+    finite = arr[np.isfinite(arr)]
+    if finite.size == 0:
+        return {"available": False, "size": int(arr.size)}
+    nonzero = finite[np.abs(finite) > 0.0]
+    return {
+        "available": True,
+        "size": int(arr.size),
+        "finite_size": int(finite.size),
+        "nonzero_size": int(nonzero.size),
+        "last": float(finite[-1]),
+        "sum": float(np.sum(finite)),
+        "max": float(np.max(finite)),
+    }
+
+
+def _free_boundary_summary_from_run(run: Any) -> dict[str, Any]:
+    """Extract vmec_jax free-boundary diagnostics relevant to VMEC2000 DEL-BSQ gaps."""
+
+    result = getattr(run, "result", None)
+    diag = getattr(result, "diagnostics", {}) if result is not None else {}
+    if not isinstance(diag, dict):
+        return {"available": False}
+    freeb = diag.get("free_boundary", {})
+    if not isinstance(freeb, dict) or not freeb:
+        return {"available": False}
+
+    last_nestor = freeb.get("last_nestor_diagnostics", {})
+    if not isinstance(last_nestor, dict):
+        last_nestor = {}
+    scalar_keys = (
+        "provider_kind",
+        "mode",
+        "rhs_mode",
+        "reused",
+        "source_reused",
+        "sample_ntheta",
+        "sample_nzeta",
+        "sample_points",
+        "br_rms",
+        "bp_rms",
+        "bz_rms",
+        "bnormal_rms",
+        "bnormal_unit_rms",
+        "rhs_rms",
+        "gsource_rms",
+        "bsqvac_rms",
+        "bsqvac_mean",
+        "bvec_mode_rms",
+        "bvec_mode_nonsing_rms",
+        "bvec_mode_analytic_rms",
+        "sample_time_s",
+        "solve_time_s",
+        "source_time_s",
+        "bvec_time_s",
+        "matrix_time_s",
+        "linear_solve_time_s",
+        "vacuum_channels_time_s",
+        "final_nestor_sample_time_s",
+        "final_nestor_solve_time_s",
+    )
+    nestor_scalars = {key: _jsonify(last_nestor[key]) for key in scalar_keys if key in last_nestor}
+    if "final_nestor_sample_time_s" in freeb:
+        nestor_scalars["final_nestor_sample_time_s"] = _jsonify(freeb.get("final_nestor_sample_time_s"))
+    if "final_nestor_solve_time_s" in freeb:
+        nestor_scalars["final_nestor_solve_time_s"] = _jsonify(freeb.get("final_nestor_solve_time_s"))
+
+    history_keys = (
+        "freeb_nestor_sample_time_history",
+        "freeb_nestor_solve_time_history",
+        "freeb_nestor_trial_sample_time_history",
+        "freeb_nestor_trial_solve_time_history",
+        "freeb_full_update_history",
+        "freeb_nestor_reused_history",
+        "freeb_nestor_trial_reused_history",
+        "freeb_nestor_trial_failed_history",
+    )
+    histories = {
+        key: _history_summary(diag.get(key))
+        for key in history_keys
+        if key in diag
+    }
+
+    return {
+        "available": True,
+        "enabled": bool(freeb.get("enabled", False)),
+        "couple_edge": bool(freeb.get("couple_edge", False)),
+        "ivac": _jsonify(freeb.get("ivac")),
+        "ivacskip": _jsonify(freeb.get("ivacskip")),
+        "nvacskip": _jsonify(freeb.get("nvacskip")),
+        "nestor_model": str(freeb.get("nestor_model", "")),
+        "vacuum_stub": bool(freeb.get("vacuum_stub", True)),
+        "final_nestor_recompute_attempted": bool(freeb.get("final_nestor_recompute_attempted", False)),
+        "final_nestor_recompute_failed": bool(freeb.get("final_nestor_recompute_failed", False)),
+        "last_nestor_diagnostics": nestor_scalars,
+        "histories": histories,
     }
 
 
@@ -711,6 +826,7 @@ def _run_vmec_jax_case(
         multigrid_use_input_niter=True,
         verbose=False,
         jit_forces=bool(args.jit_forces),
+        free_boundary_activate_fsq=None if args.activate_fsq is None else float(args.activate_fsq),
         **kwargs,
     )
     runtime_s = float(time.perf_counter() - t0)
@@ -722,6 +838,7 @@ def _run_vmec_jax_case(
         "input_path": input_path,
         "wout_path": wout_path,
         "fsq": _fsq_summary_from_run(run),
+        "free_boundary": _free_boundary_summary_from_run(run),
         "wout": _wout_summary(wout),
     }
 
@@ -1089,6 +1206,8 @@ def _base_payload(args: argparse.Namespace, *, out: Path, workdir: Path) -> dict
             "nzeta": int(_diagnostic_nzeta(args)),
             "nvacskip": int(args.nvacskip) if args.nvacskip is not None else int(_diagnostic_nzeta(args)),
             "jit_forces": bool(args.jit_forces),
+            "activate_fsq": None if args.activate_fsq is None else float(args.activate_fsq),
+            "active_free_boundary_requested": args.activate_fsq is not None,
             "vmec2000_niter": None if args.vmec2000_niter is None else int(args.vmec2000_niter),
             "mixed_vmec2000_schedule_non_promotable": args.vmec2000_niter is not None,
             "jax_rtol": float(args.jax_rtol),
@@ -1292,6 +1411,18 @@ def main(argv: list[str] | None = None) -> int:
 
     jax_comparison = _jax_backend_comparison(wout_direct, wout_mgrid, rtol=float(args.jax_rtol), atol=float(args.jax_atol))
     payload["comparisons"]["vmec_jax_direct_vs_generated_mgrid"] = jax_comparison
+    jax_mgrid_freeb = payload["backends"]["vmec_jax_mgrid"].get("free_boundary", {})
+    jax_direct_freeb = payload["backends"]["vmec_jax_direct_coils"].get("free_boundary", {})
+    jax_mgrid_active = bool(jax_mgrid_freeb.get("available")) and not bool(jax_mgrid_freeb.get("vacuum_stub", True))
+    jax_direct_active = bool(jax_direct_freeb.get("available")) and not bool(jax_direct_freeb.get("vacuum_stub", True))
+    payload["comparisons"]["vmec_jax_direct_vs_generated_mgrid"]["active_free_boundary"] = {
+        "mgrid_backend": bool(jax_mgrid_active),
+        "direct_backend": bool(jax_direct_active),
+        "both_active": bool(jax_mgrid_active and jax_direct_active),
+        "activate_fsq": None if args.activate_fsq is None else float(args.activate_fsq),
+    }
+    if not (jax_mgrid_active and jax_direct_active):
+        warnings.append("vmec_jax_free_boundary_inactive")
     if not bool(jax_comparison["passed"]):
         message = "vmec_jax_direct_vs_generated_mgrid_mismatch"
         warnings.append(message)

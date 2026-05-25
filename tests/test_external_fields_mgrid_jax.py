@@ -127,6 +127,71 @@ def test_mgrid_jax_affine_values_match_exact_and_legacy_interpolator():
         np.testing.assert_allclose(got, want, rtol=2.0e-14, atol=1.0e-13)
 
 
+def test_mgrid_jax_vmec_kv_subsamples_file_planes_like_legacy_interpolator():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+
+    enable_x64(True)
+    kp = 8
+    br = np.zeros((1, kp, 2, 2), dtype=float)
+    bphi = np.zeros_like(br)
+    bz = np.zeros_like(br)
+    for k in range(kp):
+        br[0, k, :, :] = float(k)
+        bphi[0, k, :, :] = 10.0 * float(k)
+        bz[0, k, :, :] = -float(k)
+    r = np.full((2, 4), 0.5)
+    z = np.full((2, 4), 0.5)
+    phi = np.zeros((2, 4))
+
+    actual = interpolate_mgrid_bfield_jax(
+        jnp.asarray(br),
+        jnp.asarray(bphi),
+        jnp.asarray(bz),
+        extcur=jnp.asarray([1.0]),
+        r=jnp.asarray(r),
+        z=jnp.asarray(z),
+        phi=jnp.asarray(phi),
+        rmin=0.0,
+        rmax=1.0,
+        zmin=0.0,
+        zmax=1.0,
+        nfp=1,
+        use_vmec_kv=True,
+    )
+    legacy = interpolate_mgrid_bfield(
+        MGridData(
+            metadata=MGridMetadata(
+                path="synthetic",
+                ir=2,
+                jz=2,
+                kp=kp,
+                nfp=1,
+                nextcur=1,
+                rmin=0.0,
+                rmax=1.0,
+                zmin=0.0,
+                zmax=1.0,
+                mgrid_mode="S",
+                coil_groups=(),
+                raw_coil_cur=(),
+            ),
+            br=br,
+            bp=bphi,
+            bz=bz,
+        ),
+        r=r,
+        z=z,
+        phi=phi,
+        extcur=(1.0,),
+        use_vmec_kv=True,
+    )
+    expected = np.broadcast_to(np.asarray([0.0, 2.0, 4.0, 6.0])[None, :], r.shape)
+    np.testing.assert_allclose(np.asarray(actual[0]), expected, rtol=0.0, atol=1e-14)
+    for got, want in zip(actual, legacy, strict=True):
+        np.testing.assert_allclose(np.asarray(got), want, rtol=0.0, atol=1e-14)
+
+
 def test_mgrid_jax_gradient_wrt_extcur_matches_per_current_values():
     pytest.importorskip("jax")
     from vmec_jax._compat import jax, jnp
@@ -151,7 +216,7 @@ def test_mgrid_jax_gradient_wrt_extcur_matches_per_current_values():
 
 def test_mgrid_jax_gradient_wrt_field_value_matches_trilinear_weight():
     pytest.importorskip("jax")
-    from vmec_jax._compat import jax, jnp
+    from vmec_jax._compat import jax
 
     enable_x64(True)
     params, _coeffs = _affine_mgrid_params()

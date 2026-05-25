@@ -10,7 +10,7 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-25 after exposing the exact optimizer path, adding tape-vs-scan break-even diagnostics, and fixing the corresponding workflow-unit CI regression.
+Last updated: 2026-05-25 after active generated-`mgrid` diagnostics, VMEC2000 `DEL-BSQ` reporting, and VMEC-style mgrid plane subsampling fixes.
 
 Steps taken:
 
@@ -192,6 +192,9 @@ Results obtained:
 103. Re-ran the ESSOS generated-`mgrid` vs direct-coil vmec_jax parity gate with the ESSOS mgrid branch; it passed (`1 passed in 14.68 s`).
 104. Extended the VMEC2000 `threed1` parser and generated-`mgrid` diagnostic JSON to retain `BETA`, `<M>`, `DEL-BSQ`, and `FEDGE` from free-boundary iteration rows. A fresh local generated-`mgrid` trace confirms the current WOUT-promotion blocker is `DEL-BSQ≈1`, while vmec_jax direct-coil and generated-`mgrid` still agree.
 105. Added `delbsq_over_ftolv` to the VMEC2000 underconvergence summary so WOUT-promotion reports distinguish force residual progress from the free-boundary vacuum-boundary mismatch.
+106. Added compact vmec_jax free-boundary/NESTOR diagnostics to the generated-`mgrid` comparison JSON so direct and generated-`mgrid` runs record active-coupling status plus `bnormal_rms`, `gsource_rms`, `bsqvac_rms`, and `bsqvac_mean`.
+107. Added `--activate-fsq` to the generated-`mgrid` comparison tool and updated optional ESSOS/VMEC2000 gates to force active NESTOR coupling for short vmec_jax parity diagnostics.
+108. Fixed VMEC-style `mgrid` toroidal plane selection in both NumPy and JAX interpolators: when the file has `kp > nzeta`, vmec_jax now samples file planes `0, nskip, 2*nskip, ...`, matching VMEC2000 `read_mgrid_nc` instead of taking the first `nzeta` planes.
 
 Best next steps:
 
@@ -211,12 +214,12 @@ batch, superseded by the authoritative Progress Tracker below:
 
 1. External provider architecture: 93%.
 2. Direct-coil finite-pressure forward lane: 93%.
-3. ESSOS/mgrid/VMEC2000 comparison lane: 84%.
+3. ESSOS/mgrid/VMEC2000 comparison lane: 89%.
 4. Full-loop gradient validation: 77%.
 5. Robust/optimization examples: 82%.
 6. Performance/benchmarking: 90%.
-7. Docs/release hygiene: 92%.
-8. Overall branch completion: 94%.
+7. Docs/release hygiene: 94%.
+8. Overall branch completion: 96%.
 
 ## Mission
 
@@ -1021,18 +1024,18 @@ authoritative current plan snapshot for the free-boundary direct-coil branch.
 WP0 Branch foundation and plan:                100%
 WP1 Provider base API:                         100%
 WP2 Pure JAX coil Biot-Savart:                 92%
-WP3 ESSOS adapter:                             84%
-WP4 JAX mgrid interpolation:                   85%
+WP3 ESSOS adapter:                             86%
+WP4 JAX mgrid interpolation:                   90%
 WP5 Free-boundary provider hook:               95%
 WP6 Direct-coil forward example:               90%
 WP7 Vacuum adjoint scaffold:                  100%
 WP8 Gradient checks:                           99%
-WP9 VMEC2000 diagnostics:                      88%
+WP9 VMEC2000 diagnostics:                      91%
 WP10 Benchmarks/diagnostics:                  100%
 WP11 Coil-only QS optimization example:        83%
 WP12 Robust coil perturbations:               100%
-WP13 Documentation:                            97%
-WP14 CI policy:                                90%
+WP13 Documentation:                            98%
+WP14 CI policy:                                91%
 Overall branch completion:                     98%
 ```
 
