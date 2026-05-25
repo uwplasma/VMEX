@@ -13,8 +13,11 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+import time
 
 import numpy as np
+
+_PROCESS_START = time.perf_counter()
 
 # Match vmec_jax's import-time defaults before this diagnostics tool imports
 # JAX directly.  Otherwise persistent-cache hits can emit repeated harmless
@@ -49,7 +52,19 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--jit-forces", action="store_true", help="Enable jit_forces (default)")
     p.add_argument("--no-jit-forces", action="store_true", help="Disable jit_forces")
     p.add_argument("--use-input-niter", action="store_true", help="Use NITER from input for staging")
-    p.add_argument("--use-scan", action="store_true", help="Run the lax.scan iteration path")
+    p.set_defaults(use_scan=None)
+    p.add_argument(
+        "--use-scan",
+        dest="use_scan",
+        action="store_true",
+        help="Force the lax.scan iteration path.",
+    )
+    p.add_argument(
+        "--no-use-scan",
+        dest="use_scan",
+        action="store_false",
+        help="Force the Python/VMEC-control iteration path. By default the profiler follows production policy.",
+    )
     p.add_argument(
         "--solver-mode",
         choices=("auto", "default", "parity", "accelerated"),
@@ -91,6 +106,16 @@ def _parse_args() -> argparse.Namespace:
     p.set_defaults(multigrid=None)
     p.add_argument("--multigrid", dest="multigrid", action="store_true", help="Force multigrid staging.")
     p.add_argument("--no-multigrid", dest="multigrid", action="store_false", help="Force a direct single-grid solve.")
+    p.add_argument(
+        "--require-scan",
+        action="store_true",
+        help="Exit with an error if diagnostics show that the requested run did not use the scan path.",
+    )
+    p.add_argument(
+        "--require-no-scan",
+        action="store_true",
+        help="Exit with an error if diagnostics show that the requested run used the scan path.",
+    )
     p.add_argument("--dump-hlo", action="store_true", help="Dump tomnsps_rzl HLO to the output directory")
     return p.parse_args()
 
@@ -174,6 +199,8 @@ def _compact_diagnostics(diag: dict[str, Any]) -> dict[str, Any]:
         "accelerated_stage_effective_mode",
         "use_scan",
         "vmec2000_scan",
+        "scan_use_precomputed",
+        "scan_use_lax_tridi",
         "abort_scan",
         "requested_ftol",
         "fsq_total_target",
@@ -202,17 +229,29 @@ def _summarize_run(*, args: argparse.Namespace, run: Any, wall_time: float | Non
     fsqz_hist = np.asarray(getattr(res, "fsqz2_history", np.zeros((0,), dtype=float)), dtype=float)
     fsql_hist = np.asarray(getattr(res, "fsql2_history", np.zeros((0,), dtype=float)), dtype=float)
     try:
+        t_devices = time.perf_counter()
         devices = [str(d) for d in jax_module.devices()]
+        devices_wall_s = time.perf_counter() - t_devices
     except Exception:
         devices = []
+        devices_wall_s = None
     try:
         backend = str(jax_module.default_backend())
     except Exception:
         backend = "unknown"
+    timing_summary = _json_safe(diag.get("timing")) if isinstance(diag.get("timing"), dict) else None
+    phase_timing = dict(getattr(args, "phase_timing", {}) or {})
+    if devices_wall_s is not None and "jax_devices_s" not in phase_timing:
+        phase_timing["jax_devices_s"] = float(devices_wall_s)
+    if wall_time is not None:
+        phase_timing["run_wall_s"] = float(wall_time)
     summary = {
         "input": str(Path(args.input).expanduser()),
         "requested_iters": int(args.iters),
         "wall_time_sec": None if wall_time is None else float(wall_time),
+        "wall_time_s": None if wall_time is None else float(wall_time),
+        "timing": timing_summary,
+        "phase_timing": _json_safe(phase_timing),
         "jax_version": getattr(jax_module, "__version__", "unknown"),
         "jax_default_backend": backend,
         "jax_devices": devices,
@@ -221,7 +260,7 @@ def _summarize_run(*, args: argparse.Namespace, run: Any, wall_time: float | Non
             "solver_device": str(args.solver_device),
             "multigrid": args.multigrid,
             "use_input_niter": bool(args.use_input_niter),
-            "use_scan": bool(args.use_scan),
+            "use_scan": None if args.use_scan is None else bool(args.use_scan),
             "jit_forces": bool(effective_jit_forces),
             "no_jit_forces": bool(args.no_jit_forces),
             "auto_cli_policy": bool(args.auto_cli_policy),
@@ -238,6 +277,22 @@ def _summarize_run(*, args: argparse.Namespace, run: Any, wall_time: float | Non
         "diagnostics": _compact_diagnostics(diag),
     }
     return summary
+
+
+def _scan_requirement_error(args: argparse.Namespace, summary: dict[str, Any]) -> str | None:
+    if bool(getattr(args, "require_scan", False)) and bool(getattr(args, "require_no_scan", False)):
+        return "Specify at most one of --require-scan or --require-no-scan."
+    diagnostics = summary.get("diagnostics", {}) if isinstance(summary, dict) else {}
+    actual_scan = bool(
+        diagnostics.get("use_scan")
+        or diagnostics.get("vmec2000_scan")
+        or diagnostics.get("accelerated_scan")
+    )
+    if bool(getattr(args, "require_scan", False)) and not actual_scan:
+        return "Required scan path, but run diagnostics did not report scan execution."
+    if bool(getattr(args, "require_no_scan", False)) and actual_scan:
+        return "Required non-scan path, but run diagnostics reported scan execution."
+    return None
 
 
 def _print_run_summary(summary: dict[str, Any]) -> None:
@@ -263,6 +318,8 @@ def _print_run_summary(summary: dict[str, Any]) -> None:
         "solver_device",
         "use_scan",
         "vmec2000_scan",
+        "scan_use_precomputed",
+        "scan_use_lax_tridi",
         "cli_fixed_boundary_finish_budgets",
         "cli_fixed_boundary_full_parity_fallback",
     ):
@@ -275,18 +332,41 @@ def _print_run_summary(summary: dict[str, Any]) -> None:
         timing_bits = []
         for key in (
             "iterations",
+            "solve_total_s",
             "compute_forces_s",
+            "force_eval_all_s",
+            "force_eval_extra_s",
+            "compute_forces_main_s",
+            "compute_forces_auto_flip_s",
+            "compute_forces_trial_s",
+            "compute_forces_backtracking_s",
             "preconditioner_s",
             "precond_refresh_s",
             "precond_apply_s",
             "precond_mode_scale_s",
             "update_s",
             "update_state_s",
+            "scan_total_s",
+            "scan_setup_s",
+            "scan_run_setup_s",
+            "scan_preflight_s",
+            "scan_device_run_s",
+            "scan_device_dispatch_s",
+            "scan_device_ready_s",
+            "scan_host_materialize_s",
+            "scan_postprocess_s",
+            "scan_unattributed_s",
+            "scan_runner_cache_hit_count",
+            "scan_runner_cache_miss_count",
+            "scan_runner_cache_bypass_count",
+            "scan_cold_cache_miss_s",
+            "scan_cold_cache_miss_ready_s",
+            "scan_cache_build_wrapper_s",
         ):
             if key in timing:
                 value = timing[key]
                 if isinstance(value, (int, float)):
-                    if key == "iterations":
+                    if key == "iterations" or key.endswith("_count"):
                         timing_bits.append(f"{key}={int(value)}")
                     else:
                         timing_bits.append(f"{key}={float(value):.6g}")
@@ -384,14 +464,24 @@ def _dump_tomnsps_hlo(input_path: str, outdir: Path) -> None:
 
 def main() -> int:
     args = _parse_args()
+    phase_timing = {
+        "process_to_main_s": float(time.perf_counter() - _PROCESS_START),
+    }
     try:
         # Import vmec_jax first so its _compat module can set JAX/XLA import-time
         # defaults such as GPU demand allocation and the persistent cache dir.
-        import vmec_jax.api as vj
+        t_import = time.perf_counter()
+        from vmec_jax import driver as vj
         from vmec_jax._compat import jax
+        phase_timing["vmec_jax_import_s"] = float(time.perf_counter() - t_import)
 
         if jax is None:
             raise ImportError("vmec_jax imported without JAX support")
+        t_devices = time.perf_counter()
+        try:
+            _ = jax.devices()
+        finally:
+            phase_timing["jax_devices_pre_run_s"] = float(time.perf_counter() - t_devices)
     except Exception as exc:  # pragma: no cover
         raise SystemExit(f"JAX is required for profiling: {exc}") from exc
 
@@ -402,23 +492,25 @@ def main() -> int:
         raise SystemExit("Specify at most one of --jit-forces or --no-jit-forces.")
     jit_forces = _effective_jit_forces(args)
     args.effective_jit_forces = jit_forces
+    args.phase_timing = phase_timing
     solver_device = None if str(args.solver_device) == "auto" else str(args.solver_device)
     solver_mode = None if str(args.solver_mode) == "auto" else str(args.solver_mode)
 
     def _run_profile_once():
-        return vj.run_fixed_boundary(
-            args.input,
+        run_kwargs = dict(
             solver="vmec2000_iter",
             solver_mode=solver_mode,
-            max_iter=int(args.iters),
             multigrid_use_input_niter=bool(args.use_input_niter),
             multigrid=args.multigrid,
             verbose=False,
             jit_forces=bool(jit_forces),
-            use_scan=bool(args.use_scan),
+            use_scan=args.use_scan,
             solver_device=solver_device,
             _auto_cli_fixed_boundary_mode=bool(args.auto_cli_policy),
         )
+        if not bool(args.use_input_niter):
+            run_kwargs["max_iter"] = int(args.iters)
+        return vj.run_fixed_boundary(args.input, **run_kwargs)
 
     env_updates = {
         # The dynamic scan selector can execute multiple warm/probe solves around
@@ -455,8 +547,6 @@ def main() -> int:
 
         wall_time = None
         if use_simple:
-            import time
-
             t0 = time.perf_counter()
             run = _run_profile_once()
             res = run.result
@@ -466,6 +556,7 @@ def main() -> int:
             wall_time = float(t1 - t0)
             print(f"[profile_fixed_boundary] total wall time: {wall_time:.3f}s")
         else:
+            t0 = time.perf_counter()
             try:
                 run = _run_profile_once()
                 res = run.result
@@ -473,9 +564,13 @@ def main() -> int:
                     _ = float(np.asarray(res.fsqr2_history)[-1])
             finally:
                 jax.profiler.stop_trace()
+            wall_time = float(time.perf_counter() - t0)
             print(f"[profile_fixed_boundary] trace saved to {outdir}")
 
     summary = _summarize_run(args=args, run=run, wall_time=wall_time, jax_module=jax)
+    scan_error = _scan_requirement_error(args, summary)
+    if scan_error is not None:
+        raise SystemExit(scan_error)
     _print_run_summary(summary)
     if args.json_out:
         json_path = Path(args.json_out).expanduser().resolve()

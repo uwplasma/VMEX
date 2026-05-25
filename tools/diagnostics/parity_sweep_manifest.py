@@ -362,6 +362,10 @@ def main() -> int:
 
     selected_ids = [x.strip() for x in str(args.ids).split(",") if x.strip()]
     if selected_ids:
+        known_ids = {str(c["id"]) for c in cases}
+        missing_ids = [case_id for case_id in selected_ids if case_id not in known_ids]
+        if missing_ids:
+            raise SystemExit(f"unknown case id(s): {', '.join(missing_ids)}")
         picked = [c for c in cases if c["id"] in selected_ids]
     else:
         tier = str(args.tier).strip().lower()

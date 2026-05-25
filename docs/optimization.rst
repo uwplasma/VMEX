@@ -42,15 +42,16 @@ objective objects.  That separation is the main API hygiene rule: changing the
 science problem means editing the visible objective block; changing the
 optimizer means editing the solve-call keywords.
 
-Use the standalone scripts for editable single-case studies and the sweep
-driver for reproducible comparison tables:
+Use the standalone scripts for editable single-case studies.  The archived
+README/docs comparison rows are reproduced by the sweep drivers, which preserve
+the exact policy matrix and selected best-case provenance.
 
 .. list-table::
    :header-rows: 1
    :widths: 18 42 40
 
    * - Target
-     - Best current entry point
+     - Editable example
      - Notes
    * - QA
      - ``examples/optimization/QA_optimization.py``
@@ -591,6 +592,7 @@ the same setup-and-solve flow used by the QA/QP/QI examples:
    INPUT_FILE = DATA_DIR / "input.nfp4_QH_warm_start"
    MAX_MODE = 3
    MIN_VMEC_MODE = 6
+   SIMPLE_SEED_PERTURBATION = 1.0e-5
    MAX_NFEV = 30
    METHOD = "scipy"            # also: "auto", "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", "scalar_trust"
    SCIPY_TR_SOLVER = "lsmr"    # also: "exact" for small dense trust-region solves
@@ -790,6 +792,15 @@ row is selected from the standalone target-6 ``QI_optimization.py`` lane until
 the constrained-QI sweep has complete passing rows.  Current compact panels
 include the source-initial LCFS, final LCFS, objective history, and initial/final
 Boozer :math:`|B|` line contours.
+
+The common-minimal seed inputs are intentionally close to circular tori and can
+sit on a zero-transform branch.  The QA/QH examples use
+``SIMPLE_SEED_PERTURBATION = 1e-5`` as a tiny derivative seed.  The QP example
+uses ``1e-2`` and a visible ``STAGE_MODES = [1, 2, 2]`` override because the
+May 2026 bounded seed study showed that ``1e-5`` through ``1e-3`` remained on
+the zero-iota branch, while ``1e-2`` produced nonzero transform and a useful
+mode-2 QP minimum.  These are script-level optimization-policy choices: change
+them directly when studying direct high-mode starts or alternate seeds.
 
 
 Full QA/QH/QP/QI policy sweep
@@ -1234,6 +1245,14 @@ NFP=4 cases are stress fixtures; keep them out of promoted QI robustness tables
 unless their independent diagnostics are reviewed and the docs renderer is
 intentionally retargeted.
 
+``QI_optimization.py`` preserves the raw selected input as ``RAW_INPUT_FILE``.
+It only rewrites that input through the simple-seed preprocessor when the case
+sets ``use_simple_seed=True`` or when ``VMEC_JAX_QI_USE_SIMPLE_SEED`` is set to
+a truthy value.  This matters for reviewed seeds such as
+``input.QI_stel_seed_3127``: the default path should audit and optimize the
+actual seed rather than silently replacing it with a three-coefficient toy
+boundary.
+
 For example, to run the archived coverage lanes without editing the script,
 including the case-specific aspect-ratio and output-directory overrides used by
 the reviewed docs figure:
@@ -1618,7 +1637,9 @@ Parameters: ``static``, ``indata``, ``helicity_m``, ``helicity_n``,
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 General quasisymmetry residuals factory supporting QA (``helicity_n=0``),
-QH, and optional mean-iota targets.  Preferred for new workflows.
+QH, and optional mean-iota targets.  This is the lower-level/custom-workflow
+factory; the SIMSOPT-like example scripts should usually use objective tuples
+and ``least_squares_solve`` instead.
 
 Parameters: ``static``, ``indata``, ``helicity_m``, ``helicity_n``,
 ``target_aspect``, ``target_iota``, ``surfaces``,

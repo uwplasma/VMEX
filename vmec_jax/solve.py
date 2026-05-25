@@ -57,6 +57,7 @@ from .solve_residual_iter_runtime_helpers import (
     _format_residual_iter_timing_message,
     _maybe_dump_ptau as _runtime_maybe_dump_ptau,
     _maybe_print_nonscan_state_debug,
+    _scan_block_until_ready,
     _scan_device_run_ready as _runtime_scan_device_run_ready,
     _scan_print_uses_debug_callback,
     _scan_print_uses_debug_print,
@@ -171,6 +172,7 @@ from .solve_scan_planning_helpers import (
     resolve_scan_run_flags as _resolve_scan_run_flags,
     scan_chunk_settings as _resolve_scan_chunk_settings,
     scan_jit_forces_enabled as _scan_jit_forces_enabled,
+    scan_jit_preflight_enabled as _scan_jit_preflight_enabled,
     scan_timing_enabled as _scan_timing_enabled,
     validate_vmec2000_scan_guards as _validate_vmec2000_scan_guards,
 )
@@ -1306,7 +1308,19 @@ def _free_boundary_turnon_resets_iter1_immediately(*, lthreed: bool, lasym: bool
 def _zero_velocity_blocks_like(*blocks):
     """Return zeroed velocity blocks with each input block's shape and dtype."""
 
-    return tuple(jnp.zeros_like(block) for block in blocks)
+    out = []
+    for block in blocks:
+        if _tree_has_tracer(block):
+            out.append(jnp.zeros_like(block))
+            continue
+        try:
+            if jax is not None and isinstance(block, jax.Array):
+                out.append(jnp.zeros_like(block))
+                continue
+        except Exception:
+            pass
+        out.append(np.zeros_like(np.asarray(block)))
+    return tuple(out)
 
 
 def _scale_velocity_blocks(scale: float, *blocks):
@@ -4863,6 +4877,7 @@ def solve_fixed_boundary_residual_iter(
     adjoint_trace: bool = False,
     adjoint_trace_mode: str = "full",
     state_only: bool = False,
+    return_final_force_payload: bool = False,
 ) -> SolveVmecResidualResult:
     """VMEC-style fixed-point update loop using preconditioned force residuals."""
     _solve_wall_start = time.perf_counter()
@@ -4903,6 +4918,8 @@ def solve_fixed_boundary_residual_iter(
         use_scan=opts.use_scan,
         backend_name=jax.default_backend(),
         state_has_tracer=_tree_has_tracer(state0),
+        allow_accelerator=os.getenv("VMEC_JAX_HOST_UPDATE_ON_ACCELERATOR", "").strip().lower()
+        in ("1", "true", "yes", "on"),
     ).enabled
     adjoint_trace = bool(adjoint_trace)
     adjoint_trace_mode = _normalize_adjoint_trace_mode(adjoint_trace_mode)
@@ -5081,7 +5098,18 @@ def solve_fixed_boundary_residual_iter(
     jit_strict_update_env = os.getenv("VMEC_JAX_JIT_STRICT_UPDATE", "auto").strip().lower()
     jit_strict_update_enabled = jit_strict_update_env not in ("", "0", "false", "no", "off")
     if jit_strict_update_env == "auto":
-        jit_strict_update_enabled = _scan_backend_name() != "cpu"
+        backend_name = _scan_backend_name()
+        nrange = int(getattr(cfg, "ntor", 0)) + 1
+        if bool(getattr(cfg, "lasym", False)):
+            nrange = 2 * int(getattr(cfg, "ntor", 0)) + 1
+        update_work = int(getattr(cfg, "ns", 0)) * int(getattr(cfg, "mpol", 0)) * int(nrange)
+        try:
+            cpu_work_limit = int(os.getenv("VMEC_JAX_HOST_UPDATE_CPU_WORK_LIMIT", "1000"))
+        except Exception:
+            cpu_work_limit = 1000
+        jit_strict_update_enabled = (backend_name != "cpu") or (
+            backend_name == "cpu" and (not bool(host_update_assembly)) and update_work >= cpu_work_limit
+        )
 
     def _attach_freeb_diag(res: SolveVmecResidualResult) -> SolveVmecResidualResult:
         if not bool(free_boundary_enabled):
@@ -5324,59 +5352,116 @@ def solve_fixed_boundary_residual_iter(
         st_out = _merge_axis_reset_state(st=st, st_axis=st_axis, static=static, full_reset=full_reset)
         return _apply_vmec_lambda_axis_rules(st_out)
 
-    flux = flux_profiles_from_indata(indata, s, signgs=signgs)
-    chipf_wout = jnp.asarray(flux.chipf)
+    def _build_wout_like_profiles(s_profile):
+        flux_i = flux_profiles_from_indata(indata, s_profile, signgs=signgs)
+        chipf_wout_i = jnp.asarray(flux_i.chipf)
 
-    phips = jnp.asarray(flux.phips)
-    if phips.shape[0] >= 1:
-        phips = phips.at[0].set(0.0)
+        phips_i = jnp.asarray(flux_i.phips)
+        if phips_i.shape[0] >= 1:
+            phips_i = phips_i.at[0].set(0.0)
 
-    from .boundary import boundary_from_indata
+        from .boundary import boundary_from_indata
 
-    boundary = boundary_from_indata(indata, static.modes)
-    r00 = float(np.asarray(boundary.R_cos)[int(idx00)]) if int(idx00) >= 0 else float(np.asarray(boundary.R_cos)[0])
-    gamma = float(indata.get_float("GAMMA", 0.0))
-    lrfp = bool(indata.get_bool("LRFP", False))
-    chips = _half_mesh_from_full_mesh(chipf_wout) if lrfp else None
-    mass = _mass_half_mesh_from_indata(
-        indata=indata,
-        s_full=s,
-        phips=phips,
-        r00=r00,
-        gamma=gamma,
-        lrfp=lrfp,
-        chips=chips,
-    )
+        boundary_i = boundary_from_indata(indata, static.modes)
+        r00_i = (
+            float(np.asarray(boundary_i.R_cos)[int(idx00)])
+            if int(idx00) >= 0
+            else float(np.asarray(boundary_i.R_cos)[0])
+        )
+        gamma_i = float(indata.get_float("GAMMA", 0.0))
+        lrfp_i = bool(indata.get_bool("LRFP", False))
+        chips_i = _half_mesh_from_full_mesh(chipf_wout_i) if lrfp_i else None
+        mass_i = _mass_half_mesh_from_indata(
+            indata=indata,
+            s_full=s_profile,
+            phips=phips_i,
+            r00=r00_i,
+            gamma=gamma_i,
+            lrfp=lrfp_i,
+            chips=chips_i,
+        )
 
-    pres = _pressure_half_mesh_from_indata(indata=indata, s_full=s)
-    ncurr = int(indata.get_int("NCURR", 0))
-    icurv = _icurv_full_mesh_from_indata(indata=indata, s_full=s, signgs=signgs)
-    phipf_internal, chipf_internal, chips_eff = _vmec_force_flux_profiles(
-        phipf=jnp.asarray(flux.phipf),
-        chipf=chipf_wout,
-        signgs=signgs,
-        flux_is_internal=True,
-    )
+        pres_i = _pressure_half_mesh_from_indata(indata=indata, s_full=s_profile)
+        ncurr_i = int(indata.get_int("NCURR", 0))
+        icurv_i = _icurv_full_mesh_from_indata(indata=indata, s_full=s_profile, signgs=signgs)
+        phipf_internal_i, chipf_internal_i, chips_eff_i = _vmec_force_flux_profiles(
+            phipf=jnp.asarray(flux_i.phipf),
+            chipf=chipf_wout_i,
+            signgs=signgs,
+            flux_is_internal=True,
+        )
 
-    wout_like = _WoutLikeVmecForces(
-        nfp=int(static.cfg.nfp),
-        mpol=int(static.cfg.mpol),
-        ntor=int(static.cfg.ntor),
-        lasym=bool(static.cfg.lasym),
-        signgs=signgs,
-        phipf=jnp.asarray(flux.phipf),
-        phips=phips,
-        chipf=chipf_wout,
-        pres=pres,
-        mass=mass,
-        gamma=gamma,
-        ncurr=ncurr,
-        lcurrent=True,
-        icurv=icurv,
-        phipf_internal=phipf_internal,
-        chipf_internal=chipf_internal,
-        chips_eff=chips_eff,
-    )
+        wout_like_i = _WoutLikeVmecForces(
+            nfp=int(static.cfg.nfp),
+            mpol=int(static.cfg.mpol),
+            ntor=int(static.cfg.ntor),
+            lasym=bool(static.cfg.lasym),
+            signgs=signgs,
+            phipf=jnp.asarray(flux_i.phipf),
+            phips=phips_i,
+            chipf=chipf_wout_i,
+            pres=pres_i,
+            mass=mass_i,
+            gamma=gamma_i,
+            ncurr=ncurr_i,
+            lcurrent=True,
+            icurv=icurv_i,
+            phipf_internal=phipf_internal_i,
+            chipf_internal=chipf_internal_i,
+            chips_eff=chips_eff_i,
+        )
+        return (
+            flux_i,
+            chipf_wout_i,
+            phips_i,
+            mass_i,
+            pres_i,
+            ncurr_i,
+            icurv_i,
+            phipf_internal_i,
+            chipf_internal_i,
+            chips_eff_i,
+            wout_like_i,
+        )
+
+    _profile_numpy_patch = None
+    if bool(host_update_assembly) and has_jax() and (not _tree_has_tracer(state0)):
+        try:
+            from .vmec_numpy_forces import _numpy_module_patch as _profile_numpy_patch
+        except Exception:
+            _profile_numpy_patch = None
+    if _profile_numpy_patch is not None:
+        with _profile_numpy_patch():
+            from .vmec_numpy_forces import _wrap as _np_wrap
+
+            s_profile = _np_wrap(np.asarray(s))
+            (
+                flux,
+                chipf_wout,
+                phips,
+                mass,
+                pres,
+                ncurr,
+                icurv,
+                phipf_internal,
+                chipf_internal,
+                chips_eff,
+                wout_like,
+            ) = _build_wout_like_profiles(s_profile)
+    else:
+        (
+            flux,
+            chipf_wout,
+            phips,
+            mass,
+            pres,
+            ncurr,
+            icurv,
+            phipf_internal,
+            chipf_internal,
+            chips_eff,
+            wout_like,
+        ) = _build_wout_like_profiles(s)
 
     trig = getattr(static, "trig_vmec", None)
     if trig is None:
@@ -5536,13 +5621,16 @@ def solve_fixed_boundary_residual_iter(
 
     def _ptau_minmax_from_k_host(k) -> tuple[Any | None, Any | None]:
         """Compute VMEC `ptau` min/max on the host for controller decisions."""
+        # In the CPU non-scan hot path, do not call the JIT ptau helper:
+        # compiling that tiny kernel shows up as avoidable cold-start overhead.
+        use_host_np_ptau = bool(host_update_assembly) and (not _tree_has_tracer(k))
         return _scan_math_ptau_minmax_from_k_host(
             k,
             pshalf=_ptau_pshalf_np,
             ohs=_ptau_ohs_scalar,
-            compute_jit=_ptau_compute_jit,
-            pshalf_jax=_ptau_pshalf_jax if has_jax() else None,
-            ohs_jax=_ptau_ohs_jax if has_jax() else None,
+            compute_jit=None if use_host_np_ptau else _ptau_compute_jit,
+            pshalf_jax=None if use_host_np_ptau else (_ptau_pshalf_jax if has_jax() else None),
+            ohs_jax=None if use_host_np_ptau else (_ptau_ohs_jax if has_jax() else None),
         )
 
     def _ptau_minmax_from_k_jax(k):
@@ -5599,6 +5687,67 @@ def solve_fixed_boundary_residual_iter(
             return_faclam=return_faclam,
             return_debug=return_debug,
             r0scale=lam_r0scale,
+        )
+
+    def _rz_preconditioner_matrices_local(
+        *,
+        bc,
+        k,
+        jmax_override: int | None = None,
+        use_precomputed: bool | None = None,
+        use_lax_tridi: bool | None = None,
+    ):
+        from .preconditioner_1d_jax import rz_preconditioner_matrices
+
+        return rz_preconditioner_matrices(
+            bc=bc,
+            k=k,
+            trig=trig,
+            s=s,
+            cfg=cfg,
+            jmax_override=jmax_override,
+            use_precomputed=use_precomputed,
+            use_lax_tridi=use_lax_tridi,
+        )
+
+    _numpy_precond_max_iter_env = os.getenv("VMEC_JAX_NUMPY_PRECOND_MAX_ITER", "240").strip()
+    try:
+        _numpy_precond_max_iter = int(_numpy_precond_max_iter_env)
+    except Exception:
+        _numpy_precond_max_iter = 240
+    _use_numpy_preconditioner_apply = (
+        bool(host_update_assembly)
+        and int(_numpy_precond_max_iter) > 0
+        and int(max_iter) <= int(_numpy_precond_max_iter)
+    )
+
+    def _rz_preconditioner_apply_local(
+        *,
+        frzl_in,
+        mats,
+        jmax,
+        use_precomputed: bool | None = None,
+        use_lax_tridi: bool | None = None,
+    ):
+        if bool(_use_numpy_preconditioner_apply) and not _tree_has_tracer(frzl_in):
+            from .preconditioner_1d_jax import rz_preconditioner_apply_numpy
+
+            return rz_preconditioner_apply_numpy(
+                frzl_in=frzl_in,
+                mats=mats,
+                jmax=jmax,
+                cfg=cfg,
+                use_precomputed=use_precomputed,
+            )
+        from .preconditioner_1d_jax import rz_preconditioner_apply_jit
+
+        return rz_preconditioner_apply_jit(
+            frzl_in=frzl_in,
+            mats=mats,
+            jmax=jmax,
+            cfg=cfg,
+            use_precomputed=use_precomputed,
+            use_lax_tridi=use_lax_tridi,
         )
 
     def _rz_preconditioner(frzl_in: TomnspsRZL, bc, k):
@@ -5976,6 +6125,15 @@ def solve_fixed_boundary_residual_iter(
             from .vmec_numpy_forces import _to_numpy_recursive as _tonp, _wrap as _np_wrap
 
             trig = _tonp(trig)
+            try:
+                if getattr(trig, "phase_stack", None) is not None:
+                    trig = _dc.replace(
+                        trig,
+                        phase_stack_m=static.modes.m,
+                        phase_stack_n=static.modes.n,
+                    )
+            except Exception:
+                pass
             wout_like = _tonp(wout_like)
             # Build a replacement dict for static fields that benefit from
             # pre-conversion to _NpArray.  This eliminates JAX device→host
@@ -6075,7 +6233,7 @@ def solve_fixed_boundary_residual_iter(
                 )
             _compute_forces = cached
 
-    if bool(jit_forces) and bool(jit_precompile) and has_jax() and (jax is not None):
+    if bool(jit_forces) and bool(jit_precompile) and has_jax() and (jax is not None) and (_compute_forces_np is None):
         try:
             zero_m1_pre = jnp.asarray(1.0, dtype=dtype_state)
             for include_edge_flag in (False, True):
@@ -6423,7 +6581,7 @@ def solve_fixed_boundary_residual_iter(
             scalxc_mn_np = np.ones((int(np.asarray(s).shape[0]), int(static.cfg.mpol), 1), dtype=_state0_dtype)
         # Keep a JAX value available for scan/exact helper closures, but avoid
         # constructing it through eager JAX elementwise primitives on the host path.
-        scalxc_mn = jnp.asarray(scalxc_mn_np)
+        scalxc_mn = scalxc_mn_np
     else:
         scalxc_mn = vmec_scalxc_from_s(s=s, mpol=int(static.cfg.mpol)).astype(jnp.asarray(state0.Rcos).dtype)[
             :, :, None
@@ -6593,11 +6751,18 @@ def solve_fixed_boundary_residual_iter(
     # Cache JAX scalar constants used every iteration (avoids 7000+
     # jnp.asarray dispatches for zero_m1 and constraint_precond_active).
     if host_update_assembly and has_jax():
-        _jnp_state_dtype = jnp.asarray(state0.Rcos).dtype
-        _jnp_zero_m1_0 = jnp.asarray(0.0, dtype=_jnp_state_dtype)  # zero_m1_val=0
-        _jnp_zero_m1_1 = jnp.asarray(1.0, dtype=_jnp_state_dtype)  # zero_m1_val=1
-        _jnp_true_bool = jnp.asarray(True, dtype=bool)
-        _jnp_false_bool = jnp.asarray(False, dtype=bool)
+        if _tree_has_tracer(state0):
+            _jnp_state_dtype = jnp.asarray(state0.Rcos).dtype
+            _jnp_zero_m1_0 = jnp.asarray(0.0, dtype=_jnp_state_dtype)  # zero_m1_val=0
+            _jnp_zero_m1_1 = jnp.asarray(1.0, dtype=_jnp_state_dtype)  # zero_m1_val=1
+            _jnp_true_bool = jnp.asarray(True, dtype=bool)
+            _jnp_false_bool = jnp.asarray(False, dtype=bool)
+        else:
+            _jnp_state_dtype = np.asarray(state0.Rcos).dtype
+            _jnp_zero_m1_0 = np.asarray(0.0, dtype=_jnp_state_dtype)  # zero_m1_val=0
+            _jnp_zero_m1_1 = np.asarray(1.0, dtype=_jnp_state_dtype)  # zero_m1_val=1
+            _jnp_true_bool = np.asarray(True, dtype=bool)
+            _jnp_false_bool = np.asarray(False, dtype=bool)
     else:
         _jnp_state_dtype = None
         _jnp_zero_m1_0 = _jnp_zero_m1_1 = None
@@ -6610,11 +6775,19 @@ def solve_fixed_boundary_residual_iter(
         _zeros_coeff_np = np.zeros(_coeff_shape_np, dtype=_state0_dtype)
         # Shape for dR/dZ/dL arrays (ns, K) — used when lasym=False for zeros.
         _zeros_dR_np = np.zeros_like(np.asarray(state0.Rcos))
-    delta_s = (
-        jnp.asarray(s[1] - s[0], dtype=jnp.asarray(state0.Rcos).dtype)
-        if int(jnp.asarray(s).shape[0]) > 1
-        else jnp.asarray(1.0, dtype=jnp.asarray(state0.Rcos).dtype)
-    )
+    if bool(host_update_assembly) and (not _tree_has_tracer(s)) and (not _tree_has_tracer(state0.Rcos)):
+        s_np = np.asarray(s)
+        delta_s = (
+            np.asarray(s_np[1] - s_np[0], dtype=_state0_dtype)
+            if int(s_np.shape[0]) > 1
+            else np.asarray(1.0, dtype=_state0_dtype)
+        )
+    else:
+        delta_s = (
+            jnp.asarray(s[1] - s[0], dtype=jnp.asarray(state0.Rcos).dtype)
+            if int(jnp.asarray(s).shape[0]) > 1
+            else jnp.asarray(1.0, dtype=jnp.asarray(state0.Rcos).dtype)
+        )
 
     if bool(host_update_assembly):
         state = _enforce_fixed_boundary_and_axis_np(
@@ -6673,6 +6846,13 @@ def solve_fixed_boundary_residual_iter(
                 cache_status=cache_status,
             )
 
+        def _block_scan_value(value):
+            return _scan_block_until_ready(
+                value,
+                block_until_ready=jax.block_until_ready,
+                tree_map=jax.tree_util.tree_map,
+            )
+
         _validate_vmec2000_scan_guards(
             backtracking=bool(backtracking),
             limit_dt_from_force=bool(limit_dt_from_force),
@@ -6702,7 +6882,7 @@ def solve_fixed_boundary_residual_iter(
             indata_nstep=int(indata.get_int("NSTEP", 1)) if indata is not None else 1,
             override_env="",
         )
-        tridi_precompute_env = os.getenv("VMEC_JAX_TRIDI_PRECOMPUTE", "0")
+        tridi_precompute_env = os.getenv("VMEC_JAX_TRIDI_PRECOMPUTE", "")
         if preconditioner_use_precomputed_tridi is not None:
             tridi_precompute_env = "1" if bool(preconditioner_use_precomputed_tridi) else "0"
         scan_options = _vmec2000_scan_options_from_env(
@@ -7015,7 +7195,7 @@ def solve_fixed_boundary_residual_iter(
         if scan_timing_enabled and t_scan_initial_force is not None:
             try:
                 if has_jax():
-                    _scan_block_until_ready((gcr2_0, gcz2_0, gcl2_0))
+                    _block_scan_value((gcr2_0, gcz2_0, gcl2_0))
             except Exception:
                 pass
             scan_timing_stats["scan_initial_compute_forces_s"] += time.perf_counter() - float(
@@ -7148,7 +7328,7 @@ def solve_fixed_boundary_residual_iter(
             if scan_timing_enabled and t_scan_axis_force is not None:
                 try:
                     if has_jax():
-                        _scan_block_until_ready((gcr2_0, gcz2_0, gcl2_0))
+                        _block_scan_value((gcr2_0, gcz2_0, gcl2_0))
                 except Exception:
                     pass
                 scan_timing_stats["scan_axis_reset_compute_forces_s"] += time.perf_counter() - float(
@@ -7196,6 +7376,7 @@ def solve_fixed_boundary_residual_iter(
         # may be a tracer when the scan solve is differentiated.  For fixed
         # grids this value is purely shape-derived.
         jmax0 = max(int(jnp.asarray(s).shape[0]) - 1, 1)
+        cache_valid0 = jnp.asarray(True)
 
         if resume_state is not None:
             try:
@@ -7284,10 +7465,15 @@ def solve_fixed_boundary_residual_iter(
                 prev_rz_fsq = carry_adv.fsqr_prev_phys + carry_adv.fsqz_prev_phys
                 include_edge = (iter_since_restart < 50) & (prev_rz_fsq < jnp.asarray(1.0e-6, dtype=prev_rz_fsq.dtype))
 
+                precond_age = iter2 - carry_adv.iter1
+                need_periodic_precond_update = (
+                    (precond_age > 0)
+                    & ((precond_age % k_preconditioner_update_interval) == 0)
+                )
                 need_bcovar_update = (
                     (~carry_adv.cache_valid)
                     | carry_adv.force_bcovar_update
-                    | (((iter2 - carry_adv.iter1) % k_preconditioner_update_interval) == 0)
+                    | need_periodic_precond_update
                 )
                 use_cached_precond = carry_adv.cache_valid & (~need_bcovar_update)
                 constraint_precond_diag = _tree_select(
@@ -8502,6 +8688,12 @@ def solve_fixed_boundary_residual_iter(
             static_key=static_key,
             wout_key=wout_key,
             edge_signature_key=edge_signature_key,
+            tomnsps_policy_key=(
+                os.getenv("VMEC_JAX_TOMNSPS_FFT", "").strip().lower(),
+                os.getenv("VMEC_JAX_TOMNSPS_FFT_FUSED", "1").strip().lower(),
+                os.getenv("VMEC_JAX_TOMNSPS_THETA_FUSED", "1").strip().lower(),
+                os.getenv("VMEC_JAX_TOMNSPS_ZETA_FUSED", "1").strip().lower(),
+            ),
             max_iter_tail=int(max_iter_tail),
             preflight_iters=int(preflight_iters),
             iter_offset0=int(iter_offset0),
@@ -8512,6 +8704,8 @@ def solve_fixed_boundary_residual_iter(
             nstep_screen=int(nstep_screen),
             use_restart_triggers=bool(use_restart_triggers),
             vmecpp_restart=bool(vmecpp_restart),
+            scan_use_precomputed=bool(scan_use_precomputed),
+            scan_use_lax_tridi=bool(scan_use_lax_tridi),
             scan_use_restart_payload=bool(scan_use_restart_payload),
             stage_prev_fsq=stage_prev_fsq,
             stage_transition_factor=float(stage_transition_factor),
@@ -8603,15 +8797,27 @@ def solve_fixed_boundary_residual_iter(
                 need_print=bool(need_print),
                 lthreed=bool(cfg.lthreed),
             )
+            jit_preflight = _scan_jit_preflight_enabled(
+                env_value=os.getenv("VMEC_JAX_SCAN_JIT_PREFLIGHT"),
+                backend_name=_scan_backend_name(),
+                scan_differentiated=bool(scan_differentiated),
+            ) and (not bool(need_print))
             if preflight_iters > 0:
                 t_preflight = time.perf_counter() if scan_timing_enabled else None
                 if iter_offset_preflight is not None:
                     carry = carry._replace(iter_offset=jnp.asarray(iter_offset_preflight, dtype=jnp.int32))
-                try:
-                    with jax.disable_jit():
+                if jit_preflight:
+                    preflight_runner, _preflight_cache_status = _get_scan_runner(1)
+                    carry, hist_pre_seq = preflight_runner(carry, jnp.asarray([0], dtype=jnp.int32))
+                    if scan_timing_enabled and t_preflight is not None:
+                        carry, hist_pre_seq = _block_scan_value((carry, hist_pre_seq))
+                    hist_pre = jax.tree_util.tree_map(lambda a: a[0], hist_pre_seq)
+                else:
+                    try:
+                        with jax.disable_jit():
+                            carry, hist_pre = _scan_step(carry, jnp.asarray(0, dtype=jnp.int32))
+                    except Exception:
                         carry, hist_pre = _scan_step(carry, jnp.asarray(0, dtype=jnp.int32))
-                except Exception:
-                    carry, hist_pre = _scan_step(carry, jnp.asarray(0, dtype=jnp.int32))
                 if not state_only_scan:
                     fsq_min_global_j = jnp.minimum(
                         fsq_min_global_j,
@@ -8699,17 +8905,28 @@ def solve_fixed_boundary_residual_iter(
         else:
             runner, cache_status = _get_scan_runner(int(max_iter_tail) if int(max_iter_tail) > 0 else int(max_iter_scan))
             if preflight_iters > 0:
-                # Preflight the first iteration outside the jitted scan to avoid
-                # XLA aliasing issues in the initial tomnsps pass.
+                # Preflight the first iteration separately to avoid XLA aliasing
+                # issues in the initial tomnsps pass.  Accelerator runs may use
+                # a cached one-step runner to avoid a slow host-side force pass.
                 t_preflight = time.perf_counter() if scan_timing_enabled else None
                 carry_pre = carry_init
                 if iter_offset_preflight is not None:
                     carry_pre = carry_pre._replace(iter_offset=jnp.asarray(iter_offset_preflight, dtype=jnp.int32))
-                try:
-                    with jax.disable_jit():
+                jit_preflight = _scan_jit_preflight_enabled(
+                    env_value=os.getenv("VMEC_JAX_SCAN_JIT_PREFLIGHT"),
+                    backend_name=_scan_backend_name(),
+                    scan_differentiated=bool(scan_differentiated),
+                ) and (not bool(scan_collect_print))
+                if jit_preflight:
+                    preflight_runner, _preflight_cache_status = _get_scan_runner(1)
+                    carry_pre, hist_pre_seq = preflight_runner(carry_pre, jnp.asarray([0], dtype=jnp.int32))
+                    hist_pre = jax.tree_util.tree_map(lambda a: a[0], hist_pre_seq)
+                else:
+                    try:
+                        with jax.disable_jit():
+                            carry_pre, hist_pre = _scan_step(carry_pre, jnp.asarray(0, dtype=jnp.int32))
+                    except Exception:
                         carry_pre, hist_pre = _scan_step(carry_pre, jnp.asarray(0, dtype=jnp.int32))
-                except Exception:
-                    carry_pre, hist_pre = _scan_step(carry_pre, jnp.asarray(0, dtype=jnp.int32))
                 if (
                     scan_fallback_enabled_run
                     and int(scan_fallback_iters) > 0
@@ -8717,7 +8934,7 @@ def solve_fixed_boundary_residual_iter(
                 ):
                     carry_pre = carry_pre._replace(fallback_active=jnp.asarray(False))
                 if scan_timing_enabled and t_preflight is not None:
-                    carry_pre, hist_pre = _scan_block_until_ready((carry_pre, hist_pre))
+                    carry_pre, hist_pre = _block_scan_value((carry_pre, hist_pre))
                     scan_timing_stats["scan_preflight_s"] += time.perf_counter() - float(t_preflight)
                 if max_iter_tail > 0:
                     it_seq = jnp.arange(preflight_iters, int(max_iter_scan), dtype=jnp.int32)
@@ -8780,6 +8997,8 @@ def solve_fixed_boundary_residual_iter(
                 "requested_ftol": float(ftol),
                 "scan_minimal": bool(scan_minimal),
                 "light_history": bool(scan_light),
+                "scan_use_precomputed": bool(scan_use_precomputed),
+                "scan_use_lax_tridi": bool(scan_use_lax_tridi),
                 **({"timing": scan_timing_report} if scan_timing_report is not None else {}),
             }
             if not traced:
@@ -8856,6 +9075,8 @@ def solve_fixed_boundary_residual_iter(
                         "vmec2000_scan": True,
                         "scan_path": "vmec2000",
                         "traced_scan": True,
+                        "scan_use_precomputed": bool(scan_use_precomputed),
+                        "scan_use_lax_tridi": bool(scan_use_lax_tridi),
                         "resume_state": traced_resume_state,
                     },
                 )
@@ -8967,6 +9188,8 @@ def solve_fixed_boundary_residual_iter(
                 "requested_ftol": float(ftol),
                 "light_history": bool(scan_light),
                 "scan_minimal": bool(scan_minimal),
+                "scan_use_precomputed": bool(scan_use_precomputed),
+                "scan_use_lax_tridi": bool(scan_use_lax_tridi),
                 "resume_state_mode": str(resume_state_mode),
                 "fsq_total_target": fsq_total_target,
                 "badjac_use_state": bool(badjac_use_state),
@@ -9363,6 +9586,14 @@ def solve_fixed_boundary_residual_iter(
         "compute_forces_first": 0.0,
         "compute_forces_rest": 0.0,
         "compute_forces_calls": 0,
+        "compute_forces_main": 0.0,
+        "compute_forces_main_calls": 0,
+        "compute_forces_auto_flip": 0.0,
+        "compute_forces_auto_flip_calls": 0,
+        "compute_forces_trial": 0.0,
+        "compute_forces_trial_calls": 0,
+        "compute_forces_backtracking": 0.0,
+        "compute_forces_backtracking_calls": 0,
         "preconditioner": 0.0,
         "precond_apply": 0.0,
         "precond_mode_scale": 0.0,
@@ -9373,6 +9604,29 @@ def solve_fixed_boundary_residual_iter(
         "precond_refresh": 0.0,
         "iterations": 0,
     }
+
+    def _record_compute_force_timing(label: str, start: float | None, ready_value: Any) -> None:
+        if not bool(timing_enabled) or start is None:
+            return
+        try:
+            if has_jax():
+                jax.block_until_ready(ready_value)
+        except Exception:
+            pass
+        compute_dt = time.perf_counter() - float(start)
+        if label == "main":
+            timing_stats["compute_forces"] += compute_dt
+            if int(timing_stats["compute_forces_calls"]) == 0:
+                timing_stats["compute_forces_first"] += compute_dt
+            else:
+                timing_stats["compute_forces_rest"] += compute_dt
+            timing_stats["compute_forces_calls"] = int(timing_stats["compute_forces_calls"]) + 1
+        key = f"compute_forces_{label}"
+        calls_key = f"{key}_calls"
+        if key in timing_stats:
+            timing_stats[key] += compute_dt
+        if calls_key in timing_stats:
+            timing_stats[calls_key] = int(timing_stats[calls_key]) + 1
 
     w_history = []
     fsqr2_history = []
@@ -9434,18 +9688,24 @@ def solve_fixed_boundary_residual_iter(
     inv_tau = [0.15 / time_step] * k_ndamp
     fsq_prev = 1.0
     fsq0_prev = 1.0
-    vRcc = jnp.zeros((int(state.Rcos.shape[0]), mpol, nrange), dtype=jnp.asarray(state.Rcos).dtype)
-    vRss = jnp.zeros_like(vRcc)
-    vZsc = jnp.zeros_like(vRcc)
-    vZcs = jnp.zeros_like(vRcc)
-    vLsc = jnp.zeros_like(vRcc)
-    vLcs = jnp.zeros_like(vRcc)
-    vRsc = jnp.zeros_like(vRcc)
-    vRcs = jnp.zeros_like(vRcc)
-    vZcc = jnp.zeros_like(vRcc)
-    vZss = jnp.zeros_like(vRcc)
-    vLcc = jnp.zeros_like(vRcc)
-    vLss = jnp.zeros_like(vRcc)
+    velocity_shape = (int(state.Rcos.shape[0]), mpol, nrange)
+    if bool(host_update_assembly) and (not _tree_has_tracer(state.Rcos)):
+        vRcc = np.zeros(velocity_shape, dtype=np.asarray(state.Rcos).dtype)
+    else:
+        vRcc = jnp.zeros(velocity_shape, dtype=jnp.asarray(state.Rcos).dtype)
+    (
+        vRss,
+        vZsc,
+        vZcs,
+        vLsc,
+        vLcs,
+        vRsc,
+        vRcs,
+        vZcc,
+        vZss,
+        vLcc,
+        vLss,
+    ) = _zero_velocity_blocks_like(vRcc, vRcc, vRcc, vRcc, vRcc, vRcc, vRcc, vRcc, vRcc, vRcc, vRcc)
     flip_sign = float(initial_flip_sign)
     max_coeff_delta_rms = 1e-5
     max_update_rms = 5e-3
@@ -9631,12 +9891,13 @@ def solve_fixed_boundary_residual_iter(
         huge_force_restart_count = int(resume_state.get("huge_force_restart_count", huge_force_restart_count))
 
         if "vRcc" in resume_state:
-            vRcc = jnp.asarray(resume_state["vRcc"])
-            vRss = jnp.asarray(resume_state.get("vRss", vRss))
-            vZsc = jnp.asarray(resume_state.get("vZsc", vZsc))
-            vZcs = jnp.asarray(resume_state.get("vZcs", vZcs))
-            vLsc = jnp.asarray(resume_state.get("vLsc", vLsc))
-            vLcs = jnp.asarray(resume_state.get("vLcs", vLcs))
+            _as_velocity = np.asarray if bool(host_update_assembly) else jnp.asarray
+            vRcc = _as_velocity(resume_state["vRcc"])
+            vRss = _as_velocity(resume_state.get("vRss", vRss))
+            vZsc = _as_velocity(resume_state.get("vZsc", vZsc))
+            vZcs = _as_velocity(resume_state.get("vZcs", vZcs))
+            vLsc = _as_velocity(resume_state.get("vLsc", vLsc))
+            vLcs = _as_velocity(resume_state.get("vLcs", vLcs))
 
         state_checkpoint = resume_state.get("state_checkpoint", state)
         vmec2000_cache_valid = bool(resume_state.get("vmec2000_cache_valid", vmec2000_cache_valid))
@@ -10005,12 +10266,9 @@ def solve_fixed_boundary_residual_iter(
                 axis_reset_done = True
                 ijacob = 1
                 state_checkpoint = state
-                vRcc = jnp.zeros_like(vRcc)
-                vRss = jnp.zeros_like(vRcc)
-                vZsc = jnp.zeros_like(vRcc)
-                vZcs = jnp.zeros_like(vRcc)
-                vLsc = jnp.zeros_like(vRcc)
-                vLcs = jnp.zeros_like(vRcc)
+                vRcc, vRss, vZsc, vZcs, vLsc, vLcs = _zero_velocity_blocks_like(
+                    vRcc, vRss, vZsc, vZcs, vLsc, vLcs
+                )
                 res0 = -1.0
                 res1 = -1.0
                 prev_rz_fsq = 2.0
@@ -10306,18 +10564,7 @@ def solve_fixed_boundary_residual_iter(
                         cache_constraint_rcon0 = jnp.asarray(k.constraint_rcon0)
                         cache_constraint_zcon0 = jnp.asarray(k.constraint_zcon0)
             if timing_enabled:
-                try:
-                    if has_jax():
-                        jax.block_until_ready(gcr2)
-                except Exception:
-                    pass
-                compute_dt = time.perf_counter() - float(t_compute_start)
-                timing_stats["compute_forces"] += compute_dt
-                if int(timing_stats["compute_forces_calls"]) == 0:
-                    timing_stats["compute_forces_first"] += compute_dt
-                else:
-                    timing_stats["compute_forces_rest"] += compute_dt
-                timing_stats["compute_forces_calls"] = int(timing_stats["compute_forces_calls"]) + 1
+                _record_compute_force_timing("main", t_compute_start, gcr2)
             t_residual_metrics_start = time.perf_counter() if timing_enabled else None
             norms_used = (
                 cache_norms
@@ -10362,17 +10609,31 @@ def solve_fixed_boundary_residual_iter(
                 else:
                     from .vmec_constraints import precondn_diag_axd1_from_bcovar
 
-                    ard1, azd1 = precondn_diag_axd1_from_bcovar(
-                        trig=trig,
-                        s=s,
-                        bsq=k.bc.bsq,
-                        r12=k.bc.jac.r12,
-                        sqrtg=k.bc.jac.sqrtg,
-                        ru12=k.bc.jac.ru12,
-                        zu12=k.bc.jac.zu12,
-                    )
+                    if host_update_assembly and (not _tree_has_tracer(k)) and (not _tree_has_tracer(s)):
+                        from .vmec_numpy_forces import _numpy_module_patch as _hot_numpy_patch
+
+                        with _hot_numpy_patch():
+                            ard1, azd1 = precondn_diag_axd1_from_bcovar(
+                                trig=trig,
+                                s=s,
+                                bsq=k.bc.bsq,
+                                r12=k.bc.jac.r12,
+                                sqrtg=k.bc.jac.sqrtg,
+                                ru12=k.bc.jac.ru12,
+                                zu12=k.bc.jac.zu12,
+                            )
+                    else:
+                        ard1, azd1 = precondn_diag_axd1_from_bcovar(
+                            trig=trig,
+                            s=s,
+                            bsq=k.bc.bsq,
+                            r12=k.bc.jac.r12,
+                            sqrtg=k.bc.jac.sqrtg,
+                            ru12=k.bc.jac.ru12,
+                            zu12=k.bc.jac.zu12,
+                        )
                     cache_precond_diag = (ard1, azd1)
-                    cache_tcon = jnp.asarray(k.tcon)
+                    cache_tcon = np.asarray(k.tcon) if host_update_assembly else jnp.asarray(k.tcon)
                 cache_norms = norms_used
                 cache_rz_scale = rz_scale
                 cache_l_scale = l_scale
@@ -10388,15 +10649,10 @@ def solve_fixed_boundary_residual_iter(
                         jnp.asarray(float("inf"), dtype=jnp.asarray(cache_rz_norm).dtype),
                     )
                 if not bool(cfg.lasym):
-                    from .preconditioner_1d_jax import rz_preconditioner_matrices
-
                     cache_prec_lam_prec = _lambda_preconditioner(k.bc)
-                    mats, _jmin, jmax = rz_preconditioner_matrices(
+                    mats, _jmin, jmax = _rz_preconditioner_matrices_local(
                         bc=k.bc,
                         k=k,
-                        trig=trig,
-                        s=s,
-                        cfg=cfg,
                         jmax_override=precond_jmax_override,
                         use_precomputed=preconditioner_use_precomputed_tridi,
                     )
@@ -10413,18 +10669,20 @@ def solve_fixed_boundary_residual_iter(
                 # free-boundary turn-on solve, keeping the cached ns4 blocks
                 # intact across the same-iteration retry.
                 state = state_checkpoint
-                vRcc = jnp.zeros_like(vRcc)
-                vRss = jnp.zeros_like(vRss)
-                vZsc = jnp.zeros_like(vZsc)
-                vZcs = jnp.zeros_like(vZcs)
-                vLsc = jnp.zeros_like(vLsc)
-                vLcs = jnp.zeros_like(vLcs)
-                vRsc = jnp.zeros_like(vRsc)
-                vRcs = jnp.zeros_like(vRcs)
-                vZcc = jnp.zeros_like(vZcc)
-                vZss = jnp.zeros_like(vZss)
-                vLcc = jnp.zeros_like(vLcc)
-                vLss = jnp.zeros_like(vLss)
+                (
+                    vRcc,
+                    vRss,
+                    vZsc,
+                    vZcs,
+                    vLsc,
+                    vLcs,
+                    vRsc,
+                    vRcs,
+                    vZcc,
+                    vZss,
+                    vLcc,
+                    vLss,
+                ) = _zero_velocity_blocks_like(vRcc, vRss, vZsc, vZcs, vLsc, vLcs, vRsc, vRcs, vZcc, vZss, vLcc, vLss)
                 time_step_report_hold = float(time_step)
                 ijacob += 1
                 if _free_boundary_turnon_resets_iter1_immediately(
@@ -10454,28 +10712,42 @@ def solve_fixed_boundary_residual_iter(
             sample_vmec = bool(vmec2000_control) and _should_sample_vmec2000(int(iter2), int(max_iter))
             need_scalar = bool(sample_vmec) or (bool(verbose) and (not bool(vmec2000_control)))
             if need_scalar:
-                try:
-                    r00_j = jnp.asarray(k.pr1_even)[0, 0, 0]
-                    if bool(cfg.lasym):
-                        z00_j = jnp.asarray(k.pz1_even)[0, 0, 0]
-                    else:
-                        z00_j = jnp.asarray(0.0, dtype=jnp.asarray(r00_j).dtype)
-                except Exception:
-                    if not np.any(m0_mask):
-                        r00_j = jnp.asarray(float("nan"))
-                        z00_j = jnp.asarray(float("nan"))
-                    else:
-                        r00_j = jnp.sum(jnp.asarray(state.Rcos)[0, m0_mask])
+                if host_update_assembly and (not _tree_has_tracer(k)):
+                    try:
+                        r00_val = float(np.asarray(k.pr1_even)[0, 0, 0])
+                        z00_val = float(np.asarray(k.pz1_even)[0, 0, 0]) if bool(cfg.lasym) else 0.0
+                    except Exception:
+                        if not np.any(m0_mask):
+                            r00_val = float("nan")
+                            z00_val = float("nan")
+                        else:
+                            r00_val = float(np.sum(np.asarray(state.Rcos)[0, m0_mask]))
+                            z00_val = float(np.sum(np.asarray(state.Zcos)[0, m0_mask])) if bool(cfg.lasym) else 0.0
+                    wb_val = float(np.asarray(norms_current.wb))
+                    wp_val = float(np.asarray(norms_current.wp))
+                else:
+                    try:
+                        r00_j = jnp.asarray(k.pr1_even)[0, 0, 0]
                         if bool(cfg.lasym):
-                            z00_j = jnp.sum(jnp.asarray(state.Zcos)[0, m0_mask])
+                            z00_j = jnp.asarray(k.pz1_even)[0, 0, 0]
                         else:
                             z00_j = jnp.asarray(0.0, dtype=jnp.asarray(r00_j).dtype)
-                # `norms_used` may be cached (VMEC2000 `ns4=25` behavior), but
-                # `norms_current` already reflects the current bcovar state and
-                # therefore matches VMEC's printed wb/wp without recomputing.
-                wb_j = jnp.asarray(norms_current.wb)
-                wp_j = jnp.asarray(norms_current.wp)
-                r00_val, z00_val, wb_val, wp_val = _device_get_floats(r00_j, z00_j, wb_j, wp_j)
+                    except Exception:
+                        if not np.any(m0_mask):
+                            r00_j = jnp.asarray(float("nan"))
+                            z00_j = jnp.asarray(float("nan"))
+                        else:
+                            r00_j = jnp.sum(jnp.asarray(state.Rcos)[0, m0_mask])
+                            if bool(cfg.lasym):
+                                z00_j = jnp.sum(jnp.asarray(state.Zcos)[0, m0_mask])
+                            else:
+                                z00_j = jnp.asarray(0.0, dtype=jnp.asarray(r00_j).dtype)
+                    # `norms_used` may be cached (VMEC2000 `ns4=25` behavior), but
+                    # `norms_current` already reflects the current bcovar state and
+                    # therefore matches VMEC's printed wb/wp without recomputing.
+                    wb_j = jnp.asarray(norms_current.wb)
+                    wp_j = jnp.asarray(norms_current.wp)
+                    r00_val, z00_val, wb_val, wp_val = _device_get_floats(r00_j, z00_j, wb_j, wp_j)
                 if bool(vmec2000_control):
                     # Match VMEC's printed precision (E11.3) for parity checks.
                     r00_val = float(f"{float(r00_val):.3E}")
@@ -10561,12 +10833,9 @@ def solve_fixed_boundary_residual_iter(
                             lam_prec = _lambda_preconditioner(k.bc)
                             faclam_dump = None
                         lam_debug = None
-                    mats, _jmin, jmax = rz_preconditioner_matrices(
+                    mats, _jmin, jmax = _rz_preconditioner_matrices_local(
                         bc=k.bc,
                         k=k,
-                        trig=trig,
-                        s=s,
-                        cfg=cfg,
                         jmax_override=precond_jmax_override,
                         use_precomputed=preconditioner_use_precomputed_tridi,
                     )
@@ -10610,13 +10879,10 @@ def solve_fixed_boundary_residual_iter(
                     _maybe_dump_lamcal(lam_debug=lam_debug, static=static, iter_idx=int(iter2))
                 t_precond_apply_start = time.perf_counter() if timing_detail_enabled else None
                 frzl_rhs = _apply_vmec_scale_m1_precond_rhs(frzl, mats)
-                from .preconditioner_1d_jax import rz_preconditioner_apply_jit as _rz_apply_jit_1
-
-                frzl_rz = _rz_apply_jit_1(
+                frzl_rz = _rz_preconditioner_apply_local(
                     frzl_in=frzl_rhs,
                     mats=mats,
                     jmax=jmax,
-                    cfg=cfg,
                     use_precomputed=preconditioner_use_precomputed_tridi,
                 )
                 frzl_lam_pre = frzl_rz
@@ -10750,12 +11016,9 @@ def solve_fixed_boundary_residual_iter(
                             lam_prec = _lambda_preconditioner(k.bc)
                             faclam_dump = None
                         lam_debug = None
-                    mats, _jmin, jmax = rz_preconditioner_matrices(
+                    mats, _jmin, jmax = _rz_preconditioner_matrices_local(
                         bc=k.bc,
                         k=k,
-                        trig=trig,
-                        s=s,
-                        cfg=cfg,
                         jmax_override=precond_jmax_override,
                         use_precomputed=preconditioner_use_precomputed_tridi,
                     )
@@ -10799,13 +11062,10 @@ def solve_fixed_boundary_residual_iter(
                     _maybe_dump_lamcal(lam_debug=lam_debug, static=static, iter_idx=int(iter2))
                 t_precond_apply_start = time.perf_counter() if timing_detail_enabled else None
                 frzl_rhs = _apply_vmec_scale_m1_precond_rhs(frzl, mats) if bool(getattr(cfg, "lasym", False)) else frzl
-                from .preconditioner_1d_jax import rz_preconditioner_apply_jit as _rz_apply_jit_2
-
-                frzl_rz = _rz_apply_jit_2(
+                frzl_rz = _rz_preconditioner_apply_local(
                     frzl_in=frzl_rhs,
                     mats=mats,
                     jmax=jmax,
-                    cfg=cfg,
                     use_precomputed=preconditioner_use_precomputed_tridi,
                 )
                 frzl_lam_pre = frzl_rz
@@ -11058,6 +11318,7 @@ def solve_fixed_boundary_residual_iter(
                         Lcos=jnp.asarray(state.Lcos) + sign * dL_cos_dir,
                         Lsin=jnp.asarray(state.Lsin) + sign * dL_dir,
                     )
+                    t_auto_flip_force_start = time.perf_counter() if timing_detail_enabled else None
                     _, _, gcr2_t, gcz2_t, gcl2_t, _, _, norms_t = _compute_forces_iter(
                         st_try,
                         include_edge=True,
@@ -11069,6 +11330,7 @@ def solve_fixed_boundary_residual_iter(
                         constraint_tcon_active=constraint_tcon_active,
                         iter2=iter2,
                     )
+                    _record_compute_force_timing("auto_flip", t_auto_flip_force_start, gcr2_t)
                     fsqr_t, fsqz_t, fsql_t = _fsq_from_norms(
                         norms_t,
                         gcr2_in=gcr2_t,
@@ -11331,25 +11593,48 @@ def solve_fixed_boundary_residual_iter(
                     or bool(bad_jacobian_ptau)
                 )
                 if need_state_jac:
-                    jac_state = vmec_half_mesh_jacobian_from_state(
-                        state=state,
-                        modes=static.modes,
-                        trig=trig,
-                        s=s,
-                        lconm1=bool(getattr(static.cfg, "lconm1", True)),
-                        lthreed=bool(getattr(static.cfg, "lthreed", True)),
-                        mask_even=getattr(static, "m_is_even", None),
-                        mask_odd=getattr(static, "m_is_odd", None),
-                    )
-                    tau = jnp.asarray(jac_state.tau)
-                    if int(tau.size) > 0:
-                        tau_use = tau[1:] if int(tau.shape[0]) > 1 else tau
-                        tau_min = jnp.min(tau_use)
-                        tau_max = jnp.max(tau_use)
-                        min_tau_state, max_tau_state = _device_get_floats(tau_min, tau_max)
+                    if host_update_assembly and (not _tree_has_tracer(state)) and (not _tree_has_tracer(s)):
+                        from .vmec_numpy_forces import _numpy_module_patch as _hot_numpy_patch
+
+                        with _hot_numpy_patch():
+                            jac_state = vmec_half_mesh_jacobian_from_state(
+                                state=state,
+                                modes=static.modes,
+                                trig=trig,
+                                s=s,
+                                lconm1=bool(getattr(static.cfg, "lconm1", True)),
+                                lthreed=bool(getattr(static.cfg, "lthreed", True)),
+                                mask_even=getattr(static, "m_is_even", None),
+                                mask_odd=getattr(static, "m_is_odd", None),
+                            )
+                        tau = np.asarray(jac_state.tau)
+                        if int(tau.size) > 0:
+                            tau_use = tau[1:] if int(tau.shape[0]) > 1 else tau
+                            min_tau_state = float(np.min(tau_use))
+                            max_tau_state = float(np.max(tau_use))
+                        else:
+                            min_tau_state = float("nan")
+                            max_tau_state = float("nan")
                     else:
-                        min_tau_state = float("nan")
-                        max_tau_state = float("nan")
+                        jac_state = vmec_half_mesh_jacobian_from_state(
+                            state=state,
+                            modes=static.modes,
+                            trig=trig,
+                            s=s,
+                            lconm1=bool(getattr(static.cfg, "lconm1", True)),
+                            lthreed=bool(getattr(static.cfg, "lthreed", True)),
+                            mask_even=getattr(static, "m_is_even", None),
+                            mask_odd=getattr(static, "m_is_odd", None),
+                        )
+                        tau = jnp.asarray(jac_state.tau)
+                        if int(tau.size) > 0:
+                            tau_use = tau[1:] if int(tau.shape[0]) > 1 else tau
+                            tau_min = jnp.min(tau_use)
+                            tau_max = jnp.max(tau_use)
+                            min_tau_state, max_tau_state = _device_get_floats(tau_min, tau_max)
+                        else:
+                            min_tau_state = float("nan")
+                            max_tau_state = float("nan")
                     if np.isfinite(min_tau_state) and np.isfinite(max_tau_state):
                         if bool(vmec2000_control):
                             tau_tol = _bad_jacobian_tau_tolerance(
@@ -11439,12 +11724,9 @@ def solve_fixed_boundary_residual_iter(
                             raxis_cc, _raxis_cs, _zaxis_cc, zaxis_cs = axis_reset_coeffs
                             _print_axis_guess(raxis_cc, zaxis_cs)
                     state_checkpoint = state
-                    vRcc = jnp.zeros_like(vRcc)
-                    vRss = jnp.zeros_like(vRcc)
-                    vZsc = jnp.zeros_like(vRcc)
-                    vZcs = jnp.zeros_like(vRcc)
-                    vLsc = jnp.zeros_like(vRcc)
-                    vLcs = jnp.zeros_like(vRcc)
+                    vRcc, vRss, vZsc, vZcs, vLsc, vLcs = _zero_velocity_blocks_like(
+                        vRcc, vRss, vZsc, vZcs, vLsc, vLcs
+                    )
                     time_step = float(time_step)
                     ijacob = 1
                     axis_reset_done = True
@@ -12332,6 +12614,7 @@ def solve_fixed_boundary_residual_iter(
                 state_try = _apply_vmec_lambda_axis_rules(state_try)
             probe_bad_jacobian = False
             if need_trial_eval:
+                t_trial_force_start = time.perf_counter() if timing_detail_enabled else None
                 _, _, gcr2_t, gcz2_t, gcl2_t, _, _, norms_t = _compute_forces_iter(
                     state_try,
                     include_edge=include_edge,
@@ -12343,6 +12626,7 @@ def solve_fixed_boundary_residual_iter(
                     constraint_tcon_active=constraint_tcon_active,
                     iter2=iter2,
                 )
+                _record_compute_force_timing("trial", t_trial_force_start, gcr2_t)
                 fsqr_t, fsqz_t, fsql_t = _fsq_from_norms(
                     norms_t,
                     gcr2_in=gcr2_t,
@@ -12421,8 +12705,9 @@ def solve_fixed_boundary_residual_iter(
                             enforce_edge=not bool(free_boundary_enabled),
                             enforce_lambda_axis=True,
                             idx00=idx00,
-                        )
+                    )
                     state_try = _apply_vmec_lambda_axis_rules(state_try)
+                    t_trial_force_start = time.perf_counter() if timing_detail_enabled else None
                     _, _, gcr2_t, gcz2_t, gcl2_t, _, _, norms_t = _compute_forces_iter(
                         state_try,
                         include_edge=include_edge,
@@ -12434,6 +12719,7 @@ def solve_fixed_boundary_residual_iter(
                         constraint_tcon_active=constraint_tcon_active,
                         iter2=iter2,
                     )
+                    _record_compute_force_timing("trial", t_trial_force_start, gcr2_t)
                     fsqr_t, fsqz_t, fsql_t = _fsq_from_norms(
                         norms_t,
                         gcr2_in=gcr2_t,
@@ -12813,6 +13099,7 @@ def solve_fixed_boundary_residual_iter(
                     idx00=idx00,
                 )
                 state_try = _apply_vmec_lambda_axis_rules(state_try)
+                t_backtracking_force_start = time.perf_counter() if timing_detail_enabled else None
                 _, _, gcr2_t, gcz2_t, gcl2_t, _, _, norms_t = _compute_forces_iter(
                     state_try,
                     include_edge=include_edge,
@@ -12824,6 +13111,7 @@ def solve_fixed_boundary_residual_iter(
                     constraint_tcon_active=constraint_tcon_active,
                     iter2=iter2,
                 )
+                _record_compute_force_timing("backtracking", t_backtracking_force_start, gcr2_t)
                 fsqr_t, fsqz_t, fsql_t = _fsq_from_norms(
                     norms_t,
                     gcr2_in=gcr2_t,
@@ -13201,7 +13489,7 @@ def solve_fixed_boundary_residual_iter(
             }
         resume_state_payload = _pack_resume_state(resume_state_base, resume_state_heavy)
     diag["resume_state"] = resume_state_payload
-    return _attach_freeb_diag(
+    result = _attach_freeb_diag(
         SolveVmecResidualResult(
             state=state,
             n_iter=len(w_history) - 1,
@@ -13214,6 +13502,12 @@ def solve_fixed_boundary_residual_iter(
             diagnostics=diag,
         )
     )
+    if bool(return_final_force_payload) and bool(converged):
+        try:
+            object.__setattr__(result, "_final_force_payload", k)
+        except Exception:
+            pass
+    return result
 
 
 def first_step_diagnostics(
