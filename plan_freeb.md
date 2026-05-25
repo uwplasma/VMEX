@@ -10,7 +10,7 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-25 after dry-run optimization diagnostics, ESSOS adapter validation, VMEC2000 runtime-error classification, bounded AD-vs-FD NESTOR gradient checks, same-branch CPU/GPU benchmark-matrix reporting with non-JIT and JIT-force direct-solve rows, solve-loop timing capture for direct-coil benchmark rows, JIT-force defaults for direct-coil examples, an accepted-solve AD-vs-FD blocker xfail, and free-boundary-aware fused strict-update support.
+Last updated: 2026-05-25 after dry-run optimization diagnostics, ESSOS adapter validation, VMEC2000 runtime-error classification, bounded AD-vs-FD NESTOR gradient checks, same-branch CPU/GPU benchmark-matrix reporting with non-JIT and JIT-force direct-solve rows, solve-loop timing capture for direct-coil benchmark rows, JIT-force defaults for direct-coil examples, an accepted-solve AD-vs-FD blocker xfail, free-boundary-aware fused strict-update support, and a clarified accepted-solve exact-adjoint promotion boundary.
 
 Steps taken:
 
@@ -84,6 +84,7 @@ Steps taken:
 68. Inspected STELLOPT's `vmec_params.f`, `vmec.f`, `runvmec.f`, `fileout.f`, `mgrid_mod.f`, and MAKEGRID writer to confirm the LPQA generated-grid VMEC2000 return code `2` is `more_iter_flag`, not a crash.
 69. Updated the generated-`mgrid` diagnostic to report this case as `more_iter_exit` with `classification=vmec2000_more_iter_exit`.
 70. Added the next accepted-solve AD-vs-FD promotion gate as a dynamic xfail: the tiny direct-coil accepted solve has a nonzero central-FD current slope, but `jax.grad(run_free_boundary)` currently reaches the vacuum-stub/no-accepted-NESTOR-diagnostics path before exposing a differentiable accepted-state metric.
+71. Rechecked the accepted-solve exact-adjoint promotion rung and tightened the xfail language: the blocker is not coil-field AD, boundary projection AD, dense JAX NESTOR AD, or finite-difference accepted-state response. The blocker is the final accepted-state NESTOR recompute being exposed only through host Python/NumPy diagnostics; the smallest next integration step is a JAX-visible accepted-state replay metric or a validated `custom_vjp` around that replay.
 
 Results obtained:
 
@@ -225,7 +226,7 @@ Results obtained:
 
 Best next steps:
 
-1. Promote the fixed-boundary direct-coil/NESTOR AD-vs-FD gate to accepted free-boundary solves once `jax.grad(run_free_boundary)` exposes accepted NESTOR state/metrics as differentiable data or is wrapped by a validated custom adjoint.
+1. Promote the fixed-boundary direct-coil/NESTOR AD-vs-FD gate to accepted free-boundary solves once `jax.grad(run_free_boundary)` exposes accepted NESTOR state/metrics as differentiable data, or once the final accepted-state NESTOR replay is wrapped by a validated custom adjoint.
 2. Keep `exact_path='scan'` as an explicit long-run GPU option only; the latest profile shows it warms faster but needs roughly 75 accepted callbacks to amortize the `~110 s` cold compile.
 3. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.

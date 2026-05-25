@@ -588,9 +588,9 @@ def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current(
 
     The fixed-boundary JAX NESTOR operator is differentiable, and the accepted
     solve has finite FD response.  The current blocker is the full
-    ``run_free_boundary`` path: under ``jax.grad`` tracing the accepted NESTOR
-    diagnostics are dropped before a differentiable accepted-state scalar can
-    be compared with finite differences.
+    ``run_free_boundary`` path: the final accepted-state NESTOR recompute is
+    materialized into host diagnostics, so under ``jax.grad`` there is no
+    differentiable accepted-state scalar to compare with finite differences.
     """
 
     pytest.importorskip("jax")
@@ -653,8 +653,12 @@ def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current(
     except AssertionError as exc:
         if "full-loop-ad-missing-accepted-nestor-diagnostics" in str(exc):
             pytest.xfail(
-                "accepted-solve AD-vs-FD is blocked because jax.grad(run_free_boundary) "
-                "does not expose accepted NESTOR diagnostics as differentiable data"
+                "accepted-solve AD-vs-FD is blocked at the host diagnostics boundary: "
+                "run_free_boundary recomputes accepted NESTOR diagnostics into a "
+                "Python/NumPy dictionary, so jax.grad cannot see a differentiable "
+                "accepted-state metric. Smallest promotion step: return the final "
+                "accepted NESTOR metric/state through a JAX-visible replay or wrap "
+                "that accepted replay in a validated custom_vjp."
             )
         raise
 
