@@ -10,12 +10,25 @@ from vmec_jax.external_fields import from_essos_coils
 from vmec_jax.external_fields.coils_jax import biot_savart_xyz, expanded_coil_geometry
 
 
+def _duck_essos_coils(**overrides):
+    attrs = {
+        "dofs_curves": np.zeros((1, 3, 3)),
+        "dofs_currents": np.asarray([1.0]),
+        "currents_scale": 1.0,
+        "n_segments": 24,
+        "nfp": 1,
+        "stellsym": False,
+    }
+    attrs.update(overrides)
+    return SimpleNamespace(**attrs)
+
+
 def test_from_essos_coils_extracts_expected_attributes_from_duck_type():
     from vmec_jax._compat import jnp
 
     enable_x64(True)
     dofs = jnp.zeros((1, 3, 3), dtype=float).at[0, 0, 2].set(1.0).at[0, 1, 1].set(1.0)
-    coils = SimpleNamespace(
+    coils = _duck_essos_coils(
         dofs_curves=dofs,
         dofs_currents=jnp.asarray([2.0]),
         currents_scale=5.0,
@@ -39,6 +52,25 @@ def test_from_essos_coils_extracts_expected_attributes_from_duck_type():
 def test_from_essos_coils_reports_missing_attributes():
     with pytest.raises(ImportError, match="missing"):
         from_essos_coils(SimpleNamespace(dofs_curves=np.zeros((1, 3, 3))))
+
+
+@pytest.mark.parametrize(
+    ("overrides", "match"),
+    [
+        ({"dofs_curves": np.zeros((1, 2, 3))}, "dofs_curves"),
+        ({"dofs_curves": np.zeros((1, 3, 4))}, "dofs_curves"),
+        ({"dofs_currents": np.zeros((1, 1))}, "dofs_currents"),
+        ({"dofs_currents": np.zeros((2,))}, "length"),
+    ],
+)
+def test_from_essos_coils_rejects_invalid_dof_shapes(overrides, match):
+    with pytest.raises(ValueError, match=match):
+        from_essos_coils(_duck_essos_coils(**overrides))
+
+
+def test_from_essos_coils_rejects_nonpositive_chunk_size():
+    with pytest.raises(ValueError, match="chunk_size must be positive"):
+        from_essos_coils(_duck_essos_coils(), chunk_size=0)
 
 
 def test_essos_biot_savart_parity_when_essos_is_installed():
