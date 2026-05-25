@@ -295,6 +295,32 @@ def test_freeb_generated_mgrid_more_iter_returncode_with_trace_but_no_print_is_v
     assert reason == "vmec2000_more_iterations_required"
 
 
+def test_freeb_generated_mgrid_returncode_two_with_runtime_error_is_not_more_iter() -> None:
+    summary = {
+        "returncode": 2,
+        "last_row": {"it": 2, "fsqr1": 1.0e-6, "fsqz1": 2.0e-6, "fsql1": 3.0e-6},
+        "stages": [{"ns": 7, "niter": 2, "ftolv": 1.0e-8, "row_count": 2}],
+        "stdout_tail": [" Try increasing NITER"],
+        "stderr_tail": [
+            "At line 34 of file fileout.f",
+            "Fortran runtime error: Array bound mismatch for dimension 1 of array 'buffer' (0/28)",
+            "Error termination. Backtrace:",
+        ],
+        "threed1_tail": [],
+    }
+
+    details = _vmec2000_underconverged_details(summary)
+    status, reason, help_text = _vmec2000_nonzero_status(summary)
+
+    assert details["classification"] == "vmec2000_runtime_error"
+    assert details["runtime_error_detected"] is True
+    assert "Fortran runtime error" in "\n".join(details["runtime_error_tail"])
+    assert details["more_iter_returncode"] is True
+    assert status == "nonzero_exit"
+    assert reason == "vmec2000_runtime_error"
+    assert "runtime error" in help_text
+
+
 def test_freeb_generated_mgrid_nonzero_exit_is_not_labeled_underconverged() -> None:
     details = _vmec2000_underconverged_details(
         {

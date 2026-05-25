@@ -914,14 +914,30 @@ def _vmec2000_underconverged_details(summary: dict[str, Any]) -> dict[str, Any]:
     if all(value is not None for value in preconditioned_parts):
         preconditioned_fsq_total = float(sum(value for value in preconditioned_parts if value is not None))
 
-    tails = list(summary.get("stdout_tail") or []) + list(summary.get("threed1_tail") or [])
+    stderr_tail = list(summary.get("stderr_tail") or [])
+    tails = list(summary.get("stdout_tail") or []) + stderr_tail + list(summary.get("threed1_tail") or [])
     printed_try_increasing_niter = any("Try increasing NITER" in line for line in tails)
+    runtime_error_markers = (
+        "Fortran runtime error",
+        "Error termination",
+        "Could not print backtrace",
+        "Segmentation fault",
+        "SIGSEGV",
+        "SIGBUS",
+    )
+    runtime_error_lines = [
+        line
+        for line in stderr_tail
+        if any(marker in line for marker in runtime_error_markers)
+    ]
     returncode = int(summary.get("returncode") or 0)
     nonzero_returncode = returncode != 0
     more_iter_returncode = returncode == VMEC2000_MORE_ITER_RETURNCODE
     reached_niter = bool(niter is not None and last_it is not None and int(last_it) >= int(niter))
     classification = "unknown_no_wout"
-    if more_iter_returncode and (printed_try_increasing_niter or last_it is not None):
+    if runtime_error_lines:
+        classification = "vmec2000_runtime_error"
+    elif more_iter_returncode and (printed_try_increasing_niter or last_it is not None):
         classification = "vmec2000_more_iter_exit"
     elif nonzero_returncode:
         classification = "vmec2000_nonzero_exit"
@@ -935,6 +951,8 @@ def _vmec2000_underconverged_details(summary: dict[str, Any]) -> dict[str, Any]:
         "returncode": returncode,
         "nonzero_returncode": nonzero_returncode,
         "more_iter_returncode": more_iter_returncode,
+        "runtime_error_detected": bool(runtime_error_lines),
+        "runtime_error_tail": runtime_error_lines[-3:],
         "printed_try_increasing_niter": printed_try_increasing_niter,
         "reached_niter": reached_niter,
         "last_it": None if last_it is None else int(last_it),
@@ -968,6 +986,14 @@ def _vmec2000_nonzero_status(summary: dict[str, Any]) -> tuple[str, str, str]:
             "VMEC2000 exited with more_iter_flag=2 before producing a WOUT. "
             "Inspect underconverged, stdout_tail, threed1_tail, and rerun with a "
             "looser FTOL or larger NITER/MAX_MAIN_ITERATIONS for promotion evidence.",
+        )
+    if details["classification"] == "vmec2000_runtime_error":
+        return (
+            "nonzero_exit",
+            "vmec2000_runtime_error",
+            "VMEC2000 emitted a runtime error before producing a WOUT. Inspect "
+            "underconverged.runtime_error_tail, stderr_tail, threed1_tail, and "
+            "the generated input/mgrid in the VMEC2000 workdir.",
         )
     return (
         "nonzero_exit",

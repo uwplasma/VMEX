@@ -506,9 +506,10 @@ def test_vmec2000_generated_mgrid_trace_smoke_records_iteration_rows(tmp_path: P
         assert vmec2000["underconverged"]["classification"] in {
             "reached_niter_without_wout",
             "vmec2000_more_iter_exit",
+            "vmec2000_runtime_error",
             "vmec2000_nonzero_exit",
-            "no_iteration_rows",
-            "underconverged_or_unknown",
+            "vmec2000_requested_more_iterations",
+            "unknown_no_wout",
         }
     else:
         assert payload["summary"]["vmec2000_wout_available"] is True
