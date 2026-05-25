@@ -115,6 +115,7 @@ Results obtained:
 52. Focused `vmec_jax/free_boundary_adjoint.py` coverage is 98% after the analytic/singular port (`36 passed` under coverage in 28.36 s).
 53. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 38 passed in 22.36 s after adding the combined NESTOR operator wrapper parity and gradient tests.
 54. Full fast CI coverage gate passed after the combined operator wrapper: `2298 passed, 26 skipped, 112 deselected, 2 xfailed` in 7m47s with total coverage `95.26%`.
+55. GPU QH mode-2 detail profile on `office` with explicit budget warnings showed tape build `5.46 s` and residual tangent projection `2.31 s` over two callbacks; detailed synchronization inflated replay timing, so performance decisions should use non-detail timing for wall comparisons and detail timing only for phase attribution.
 
 Best next steps:
 
