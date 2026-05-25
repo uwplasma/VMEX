@@ -179,15 +179,17 @@ Results obtained:
 90. Office GPU QH mode-2 bounded exact-Jacobian profile after the NumPy cache-key patch completed in `17.10 s` for two callbacks (`14.33 s` cold, `2.77 s` warm). GPU warm force assembly is now faster than CPU (`0.079 s` vs `0.290 s`), but GPU warm preconditioner/update remains slower (`0.647 s`/`0.132 s` vs CPU `0.020 s`/`0.018 s`), so the remaining GPU target is dispatch/amortization in the accepted-update loop rather than field/force arithmetic.
 91. A forced broader GPU accepted-point tridiagonal-precompute profile (`VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE_MAX_DOFS=128`) regressed the two-callback wall time to `33.03 s`, with replay dispatch inflating to `19.54 s`. The existing guarded precompute threshold should remain conservative; this is not the right promotion lever for QH mode 2.
 92. Replaced the strict-update JIT cache key's `id(static)` component with a structural VMEC static signature. This avoids compiling/cache-growing a new GPU update kernel for each otherwise-identical accepted exact callback while keeping the numerical update map unchanged.
+93. The structural strict-update cache key removed the second strict-update kernel cache miss in the office GPU profile and cut the warm update-state bucket from `0.132 s` to `0.049 s`. Total two-callback wall time remained noise/regression-limited (`18.05 s` vs `17.10 s`) because replay and accepted tape solve still dominate.
+94. Added a guarded accelerator fused preconditioner-apply/payload dispatch. It reduces the warm GPU callback from `2.84 s` to `2.54 s` in a two-callback profile and keeps strict-update cache growth at zero after the cold callback, but it increases cold compile/build cost. A four-callback run completed in `23.93 s` with warm callbacks `2.58-2.87 s`, so this is a modest long-optimization improvement, not a cold-run solution.
 
 Best next steps:
 
 1. Promote the opt-in complete-solve FD gate from finite/nonzero response to AD-vs-central-FD once the production full-solve adjoint is threaded through accepted-state quantities.
-2. Rerun the GPU bounded exact-Jacobian profile after the structural strict-update cache key and verify `_STRICT_UPDATE_STEP_JIT_CACHE` no longer grows across identical callbacks.
+2. Profile the accepted replay/tangent construction next; strict-update cache churn is fixed, and preconditioner/payload fusion only helps warm runs modestly.
 3. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
 5. For GPU performance, prioritize accepted-point replay/tangent construction and compilation/dispatch amortization over tiny raw direct-solve offload; the current microbenchmarks show tiny solves are still CPU-favorable.
-6. If the structural strict-update cache key removes repeated update-kernel churn but warm GPU callbacks remain above `1 s`, the next patch should fuse accepted preconditioner output scaling with strict update to reduce per-iteration GPU launches.
+6. Warm GPU QH mode-2 exact callbacks are still above the `1 s` production target; the next patch should reduce accepted replay/tangent dispatch or avoid rebuilding accepted tapes at nearby callbacks.
 
 Need from user:
 
