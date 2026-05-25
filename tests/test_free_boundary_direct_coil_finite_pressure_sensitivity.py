@@ -49,7 +49,7 @@ LPQA_COILS = _find_lpqa_coils()
 pytestmark = pytest.mark.skipif(not has_jax(), reason="direct-coil finite-pressure sensitivity tests require JAX")
 
 
-def _circle_coil_params(*, current: float = 3.0e7, radius: float = 1.8) -> CoilFieldParams:
+def _circle_coil_params(*, current: float = 3.0e7, radius: float = 1.8, n_segments: int = 96) -> CoilFieldParams:
     from vmec_jax._compat import jnp
 
     dofs = jnp.zeros((1, 3, 3), dtype=float)
@@ -58,30 +58,38 @@ def _circle_coil_params(*, current: float = 3.0e7, radius: float = 1.8) -> CoilF
     return CoilFieldParams(
         base_curve_dofs=dofs,
         base_currents=jnp.asarray([current], dtype=float),
-        n_segments=96,
+        n_segments=int(n_segments),
         nfp=1,
         stellsym=False,
     )
 
 
-def _write_tiny_direct_freeb_input(path: Path) -> Path:
+def _write_tiny_direct_freeb_input(
+    path: Path,
+    *,
+    lasym: bool = False,
+    niter: int = 4,
+    mpol: int = 4,
+    ntheta: int = 8,
+) -> Path:
+    lasym_flag = "T" if bool(lasym) else "F"
     path.write_text(
-        """
+        f"""
 &INDATA
   LFREEB = T
   MGRID_FILE = 'DIRECT_COILS'
   EXTCUR = 1.0
-  LASYM = F
+  LASYM = {lasym_flag}
   NFP = 1
-  MPOL = 4
+  MPOL = {int(mpol)}
   NTOR = 0
   NS = 7
   NZETA = 2
-  NTHETA = 8
+  NTHETA = {int(ntheta)}
   NS_ARRAY = 7
   FTOL_ARRAY = 1.0E-8
-  NITER_ARRAY = 4
-  NITER = 4
+  NITER_ARRAY = {int(niter)}
+  NITER = {int(niter)}
   FTOL = 1.0E-8
   NSTEP = 20
   NVACSKIP = 1
@@ -505,6 +513,68 @@ def test_direct_coil_geometry_dof_accepted_state_fd_slope_is_stable(tmp_path: Pa
     assert np.all(np.isfinite(slopes))
     assert np.min(np.abs(slopes)) > 1.0e-7
     np.testing.assert_allclose(slopes[0], slopes[1], rtol=1.0e-4, atol=1.0e-12)
+
+
+def test_jax_nestor_operator_complete_solve_fd_slopes_for_current_and_geometry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opt-in JAX NESTOR complete solves should have finite FD response to coil variables."""
+
+    enable_x64(True)
+    from vmec_jax._compat import jnp
+    from vmec_jax.driver import run_free_boundary
+
+    input_path = _write_tiny_direct_freeb_input(
+        tmp_path / "input.direct_lasym_jax_nestor_fd",
+        lasym=True,
+        niter=2,
+        mpol=3,
+        ntheta=6,
+    )
+    base_params = _circle_coil_params(current=3.0e7, n_segments=64)
+    monkeypatch.setenv("VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR", "1")
+
+    def metric(params: CoilFieldParams) -> float:
+        run = run_free_boundary(
+            input_path,
+            max_iter=2,
+            multigrid=False,
+            verbose=False,
+            jit_forces=False,
+            external_field_provider_kind="direct_coils",
+            external_field_provider_params=params,
+            free_boundary_activate_fsq=1.0e99,
+        )
+        freeb = run.result.diagnostics["free_boundary"]
+        assert freeb["vacuum_stub"] is False
+        assert freeb["final_nestor_recompute_failed"] is False
+        nestor = freeb["last_nestor_diagnostics"]
+        assert nestor["jax_nestor_operator_applied"] is True
+        assert nestor["jax_nestor_operator_reason"] == "applied"
+        assert nestor["provider_kind"] == "direct_coils"
+        return float(nestor["bnormal_rms"])
+
+    eps = 0.25
+    current_forward = base_params.with_arrays(
+        base_currents=jnp.asarray(base_params.base_currents) * (1.0 + 0.02 * eps)
+    )
+    current_backward = base_params.with_arrays(
+        base_currents=jnp.asarray(base_params.base_currents) * (1.0 - 0.02 * eps)
+    )
+    geometry_forward = base_params.with_arrays(
+        base_curve_dofs=jnp.asarray(base_params.base_curve_dofs).at[0, 0, 2].add(1.0e-2 * eps)
+    )
+    geometry_backward = base_params.with_arrays(
+        base_curve_dofs=jnp.asarray(base_params.base_curve_dofs).at[0, 0, 2].add(-1.0e-2 * eps)
+    )
+
+    current_slope = (metric(current_forward) - metric(current_backward)) / (2.0 * eps)
+    geometry_slope = (metric(geometry_forward) - metric(geometry_backward)) / (2.0 * eps)
+
+    slopes = np.asarray([current_slope, geometry_slope], dtype=float)
+    assert np.all(np.isfinite(slopes))
+    assert np.min(np.abs(slopes)) > 1.0e-16
 
 
 @pytest.mark.full

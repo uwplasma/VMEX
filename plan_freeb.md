@@ -65,6 +65,7 @@ Steps taken:
 49. Kept the new driver path guarded to full-grid-compatible cases; reduced stellarator-symmetric half-grid production solves still use the host-validated bridge.
 50. Added diagnostics for `jax_nestor_operator_applied`, `jax_nestor_operator_reason`, and `jax_nestor_operator_time_s`.
 51. Added a host-vs-JAX driver parity regression for a tiny LASYM full-grid case, including `phi`, `bsqvac`, and scalar diagnostic parity.
+52. Added a forced-active LASYM direct-coil complete-solve finite-difference gate using `VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR=1`; it checks finite nonzero central-FD response for one coil current and one Fourier geometry coefficient.
 
 Results obtained:
 
@@ -131,11 +132,13 @@ Results obtained:
 64. Quick CPU benchmark matrix completed: provider, direct-solve, and gradient rows all `completed`; direct-solve cold `5.86 s`, warm `0.161 s`, warm active NESTOR sample `0.00531 s`, final recompute sample `0.00484 s`, final recompute solve `0.00258 s`, and `final_recompute.failed=false`.
 65. Strict Sphinx build passed: `python -m sphinx -W -j auto -b html docs docs/_build/html`.
 66. Full fast CI coverage gate passed locally: `2300 passed, 26 skipped, 112 deselected, 2 xfailed` in 7m52s with total coverage `95.22%`.
+67. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_nestor_operator_complete_solve_fd_slopes_for_current_and_geometry`: 1 passed in 23.24 s.
+68. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`: 8 passed, 1 skipped in 32.89 s after adding the opt-in JAX complete-solve FD gate.
 
 Best next steps:
 
-1. Add a forced-active low-resolution complete-solve finite-difference gate for one coil current and one Fourier coefficient using the opt-in JAX operator path.
-2. Extend the JAX operator driver path to reconstruct the reduced stellarator-symmetric half grid in JAX, then compare against the current host bridge on default `LASYM=F` production cases.
+1. Extend the JAX operator driver path to reconstruct the reduced stellarator-symmetric half grid in JAX, then compare against the current host bridge on default `LASYM=F` production cases.
+2. Promote the opt-in complete-solve FD gate from finite/nonzero response to AD-vs-central-FD once the production full-solve adjoint is threaded through accepted-state quantities.
 3. Profile and reduce cold exact tape build/solve and initial tangent construction on GPU; the latest comparison shows replay dispatch is not the only remaining blocker.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
 
@@ -975,11 +978,11 @@ Overall branch completion:                     96%
 
 ## Immediate Next Steps
 
-1. Add a forced-active low-resolution complete-solve finite-difference gate for one coil current and one Fourier coefficient using `VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR=1`.
-2. Port the reduced stellarator-symmetric half-grid reconstruction into the JAX NESTOR operator so the optional path can validate default `LASYM=F` production cases.
-3. Continue the VMEC2000 generated-mgrid WOUT comparator until the optional xfail can be bounded or promoted.
-4. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
-5. Profile and reduce cold exact tape build/solve and initial tangent construction on GPU; convert benchmark JSON summaries into documentation plots.
+1. Port the reduced stellarator-symmetric half-grid reconstruction into the JAX NESTOR operator so the optional path can validate default `LASYM=F` production cases.
+2. Continue the VMEC2000 generated-mgrid WOUT comparator until the optional xfail can be bounded or promoted.
+3. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
+4. Profile and reduce cold exact tape build/solve and initial tangent construction on GPU; convert benchmark JSON summaries into documentation plots.
+5. Promote the opt-in complete-solve FD gate from finite/nonzero response to AD-vs-central-FD once the production full-solve adjoint is threaded through accepted-state quantities.
 6. Re-check PR CI, including Codecov patch coverage, after each commit.
 
 ## Need From User
