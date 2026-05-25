@@ -20,6 +20,7 @@ from tools.diagnostics.compare_freeb_coils_mgrid_vmec2000 import (
     _diagnostic_schedule,
     _make_freeb_indata,
     _parser,
+    _vmec2000_nonzero_status,
     _vmec2000_underconverged_details,
     _vmec2000_summary,
 )
@@ -220,12 +221,65 @@ def test_freeb_generated_mgrid_no_wout_summary_marks_underconverged() -> None:
     assert details["classification"] == "reached_niter_without_wout"
     assert details["printed_try_increasing_niter"] is True
     assert details["reached_niter"] is True
+    assert details["more_iter_returncode"] is False
     assert details["last_it"] == 5000
     assert details["niter"] == 5000
     assert details["ftolv"] == pytest.approx(1.0e-8)
     assert details["physical_fsq_total_last"] == pytest.approx(0.004002)
     assert details["preconditioned_fsq_total_last"] == pytest.approx(2.996e-5)
     assert details["preconditioned_fsq_total_over_ftolv"] == pytest.approx(2996.0)
+
+
+def test_freeb_generated_mgrid_more_iter_returncode_is_vmec_status_not_crash() -> None:
+    summary = {
+        "returncode": 2,
+        "fsq_total_last": 0.00202,
+        "last_row": {
+            "it": 54,
+            "fsqr": 6.90e-4,
+            "fsqz": 6.25e-4,
+            "fsql": 7.05e-4,
+            "fsqr1": 1.56e-6,
+            "fsqz1": 1.89e-6,
+            "fsql1": 9.95e-5,
+            "delt0r": 0.687,
+            "w": 10071.0,
+        },
+        "stages": [{"ns": 5, "niter": 300, "ftolv": 1.0e-3, "row_count": 2}],
+        "stdout_tail": [" Try increasing NITER"],
+        "threed1_tail": [" PARVMEC aborting..."],
+    }
+
+    details = _vmec2000_underconverged_details(summary)
+    status, reason, help_text = _vmec2000_nonzero_status(summary)
+
+    assert details["classification"] == "vmec2000_more_iter_exit"
+    assert details["returncode"] == 2
+    assert details["nonzero_returncode"] is True
+    assert details["more_iter_returncode"] is True
+    assert details["printed_try_increasing_niter"] is True
+    assert status == "more_iter_exit"
+    assert reason == "vmec2000_more_iterations_required"
+    assert "more_iter_flag=2" in help_text
+
+
+def test_freeb_generated_mgrid_more_iter_returncode_with_trace_but_no_print_is_vmec_status() -> None:
+    summary = {
+        "returncode": 2,
+        "last_row": {"it": 54, "fsqr1": 1.0e-6, "fsqz1": 2.0e-6, "fsql1": 3.0e-6},
+        "stages": [{"ns": 5, "niter": 300, "ftolv": 1.0e-3, "row_count": 2}],
+        "stdout_tail": [],
+        "threed1_tail": [],
+    }
+
+    details = _vmec2000_underconverged_details(summary)
+    status, reason, _ = _vmec2000_nonzero_status(summary)
+
+    assert details["classification"] == "vmec2000_more_iter_exit"
+    assert details["printed_try_increasing_niter"] is False
+    assert details["last_it"] == 54
+    assert status == "more_iter_exit"
+    assert reason == "vmec2000_more_iterations_required"
 
 
 def test_freeb_generated_mgrid_nonzero_exit_is_not_labeled_underconverged() -> None:
@@ -253,6 +307,7 @@ def test_freeb_generated_mgrid_nonzero_exit_is_not_labeled_underconverged() -> N
     assert details["classification"] == "vmec2000_nonzero_exit"
     assert details["returncode"] == -11
     assert details["nonzero_returncode"] is True
+    assert details["more_iter_returncode"] is False
     assert details["reached_niter"] is False
     assert details["printed_try_increasing_niter"] is False
 

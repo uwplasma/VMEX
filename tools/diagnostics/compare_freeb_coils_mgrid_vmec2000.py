@@ -44,6 +44,7 @@ DEFAULT_OUT = REPO_ROOT / "results" / "freeb_coils_mgrid_vmec2000.json"
 DEFAULT_COILS_JSON_NAME = "ESSOS_biot_savart_LandremanPaulQA.json"
 DEFAULT_PRESSURE_SCALE = 34.46233666638
 TINY = 1.0e-300
+VMEC2000_MORE_ITER_RETURNCODE = 2
 
 
 def _candidate_essos_roots() -> list[Path]:
@@ -772,9 +773,12 @@ def _vmec2000_underconverged_details(summary: dict[str, Any]) -> dict[str, Any]:
     printed_try_increasing_niter = any("Try increasing NITER" in line for line in tails)
     returncode = int(summary.get("returncode") or 0)
     nonzero_returncode = returncode != 0
+    more_iter_returncode = returncode == VMEC2000_MORE_ITER_RETURNCODE
     reached_niter = bool(niter is not None and last_it is not None and int(last_it) >= int(niter))
     classification = "unknown_no_wout"
-    if nonzero_returncode:
+    if more_iter_returncode and (printed_try_increasing_niter or last_it is not None):
+        classification = "vmec2000_more_iter_exit"
+    elif nonzero_returncode:
         classification = "vmec2000_nonzero_exit"
     elif reached_niter and printed_try_increasing_niter:
         classification = "reached_niter_without_wout"
@@ -785,6 +789,7 @@ def _vmec2000_underconverged_details(summary: dict[str, Any]) -> dict[str, Any]:
         "classification": classification,
         "returncode": returncode,
         "nonzero_returncode": nonzero_returncode,
+        "more_iter_returncode": more_iter_returncode,
         "printed_try_increasing_niter": printed_try_increasing_niter,
         "reached_niter": reached_niter,
         "last_it": None if last_it is None else int(last_it),
@@ -798,6 +803,26 @@ def _vmec2000_underconverged_details(summary: dict[str, Any]) -> dict[str, Any]:
     if preconditioned_fsq_total is not None and ftolv not in (None, 0.0):
         details["preconditioned_fsq_total_over_ftolv"] = float(preconditioned_fsq_total / ftolv)
     return details
+
+
+def _vmec2000_nonzero_status(summary: dict[str, Any]) -> tuple[str, str, str]:
+    """Classify VMEC2000 nonzero exits without conflating VMEC flags with crashes."""
+
+    details = _vmec2000_underconverged_details(summary)
+    if details["classification"] == "vmec2000_more_iter_exit":
+        return (
+            "more_iter_exit",
+            "vmec2000_more_iterations_required",
+            "VMEC2000 exited with more_iter_flag=2 before producing a WOUT. "
+            "Inspect underconverged, stdout_tail, threed1_tail, and rerun with a "
+            "looser FTOL or larger NITER/MAX_MAIN_ITERATIONS for promotion evidence.",
+        )
+    return (
+        "nonzero_exit",
+        "vmec2000_returned_nonzero",
+        "VMEC2000 exited nonzero before producing a WOUT. Inspect returncode, "
+        "stdout_tail, stderr_tail, threed1_tail, and the workdir files.",
+    )
 
 
 def _run_vmec2000_case(
@@ -873,13 +898,11 @@ def _run_vmec2000_case(
     wout_path = _vmec2000_wout_path(result)
     summary["wout_path"] = wout_path
     if int(summary.get("returncode") or 0) != 0:
-        summary["status"] = "nonzero_exit"
-        summary["reason"] = "vmec2000_returned_nonzero"
+        status, reason, help_text = _vmec2000_nonzero_status(summary)
+        summary["status"] = status
+        summary["reason"] = reason
         summary["underconverged"] = _vmec2000_underconverged_details(summary)
-        summary["help"] = (
-            "VMEC2000 exited nonzero before producing a WOUT. Inspect returncode, "
-            "stdout_tail, stderr_tail, threed1_tail, and the workdir files."
-        )
+        summary["help"] = help_text
         return result, None, summary
     if not wout_path.exists():
         summary["status"] = "no_wout"
@@ -1150,7 +1173,7 @@ def main(argv: list[str] | None = None) -> int:
     payload["backends"]["vmec2000_generated_mgrid"] = vmec2000_summary
 
     vmec_status = str(vmec2000_summary.get("status", "unknown"))
-    if vmec_status in ("skipped", "timeout", "no_wout", "nonzero_exit", "error"):
+    if vmec_status in ("skipped", "timeout", "no_wout", "more_iter_exit", "nonzero_exit", "error"):
         warning = f"vmec2000_{vmec_status}"
         warnings.append(warning)
         if bool(args.require_vmec2000) or (

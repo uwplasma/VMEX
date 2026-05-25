@@ -78,9 +78,11 @@ Steps taken:
 62. Populated `docs/free_boundary_coil_optimization.rst` with the benchmark matrix, CSV provenance, GPU interpretation, and updated finite-pressure validation language.
 63. Added a release-hygiene regression that requires the free-boundary README/docs validation artifacts to remain present and avoids describing the bounded validation example as a scaffold.
 64. Threaded VMEC2000 subprocess return codes through `run_xvmec2000` and the generated-`mgrid` diagnostic.
-65. Reclassified generated-`mgrid` VMEC2000 failures with nonzero return codes as `nonzero_exit` instead of conflating them with ordinary no-WOUT underconvergence.
+65. Reclassified generated-`mgrid` VMEC2000 exits with structured return-code metadata, preserving true nonzero failures while separating VMEC's source-level `more_iter_flag=2`.
 66. Fixed `run_xvmec2000` to copy relative `MGRID_FILE` assets from the input deck directory into the executable workdir, preventing accidental fixed-boundary fallbacks in local optional diagnostics.
 67. Added `opened_mgrid` to generated-`mgrid` VMEC2000 diagnostic summaries so parity evidence confirms the executable actually consumed the vacuum grid.
+68. Inspected STELLOPT's `vmec_params.f`, `vmec.f`, `runvmec.f`, `fileout.f`, `mgrid_mod.f`, and MAKEGRID writer to confirm the LPQA generated-grid VMEC2000 return code `2` is `more_iter_flag`, not a crash.
+69. Updated the generated-`mgrid` diagnostic to report this case as `more_iter_exit` with `classification=vmec2000_more_iter_exit`.
 
 Results obtained:
 
@@ -167,9 +169,9 @@ Results obtained:
 80. Office GPU QH mode-2 exact-Jacobian profile completed within budget after the free-boundary work: callback walls were `15.12 s` cold and `3.21 s` warm; tape build averaged `3.61 s`, replay dispatch `2.49 s`, residual tangents `1.11 s`, and initial tangents `1.06 s`. The automatic GPU JVP-only/basepoint-carry policy was active.
 81. Documentation/hygiene checks passed after the README/docs plot refresh: `ruff`, targeted docs-release pytest, `git diff --check`, and strict Sphinx with `-W`.
 82. Focused free-boundary physics/adjoint gates passed after the docs refresh: `54 passed, 1 skipped in 47.55 s` across the dense vacuum-adjoint, fast free-boundary physics, and direct-coil finite-pressure sensitivity suites.
-83. Local loose generated-`mgrid` VMEC2000 probe now reports `vmec2000_status=nonzero_exit`, `returncode=2`, and `classification=vmec2000_nonzero_exit` rather than `no_wout`; the same run still shows `jax_direct_vs_mgrid_passed=True`.
+83. Local loose generated-`mgrid` VMEC2000 probe now reports `vmec2000_status=more_iter_exit`, `returncode=2`, and `classification=vmec2000_more_iter_exit` rather than conflating VMEC's "more iterations required" status with a crash; the same run still shows `jax_direct_vs_mgrid_passed=True`.
 84. Focused VMEC2000 parser/trace tests passed after adding return-code diagnostics: `15 passed, 1 skipped in 0.53 s`.
-85. After the relative-`mgrid` copy fix, local direct `run_xvmec2000` probes confirm VMEC2000 opens the generated grid and exits nonzero before WOUT for both zero-pressure and finite-pressure LPQA generated-grid runs. The gap is therefore generated-grid/VMEC2000 consumption, not finite-pressure-only behavior.
+85. After the relative-`mgrid` copy fix, local direct `run_xvmec2000` probes confirm VMEC2000 opens the generated grid and returns `more_iter_flag=2` before WOUT for both zero-pressure and finite-pressure LPQA generated-grid runs. The gap is therefore WOUT-promotion/convergence evidence, not finite-pressure-only behavior or a direct-coil provider failure.
 
 Best next steps:
 
