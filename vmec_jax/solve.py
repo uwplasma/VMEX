@@ -514,10 +514,11 @@ def _preconditioner_output_payload_jit(
         fsqr1_safe = jnp.where(jnp.isfinite(fsqr1), fsqr1, jnp.asarray(0.0, dtype=jnp.asarray(fsqr1).dtype))
         fsqz1_safe = jnp.where(jnp.isfinite(fsqz1), fsqz1, jnp.asarray(0.0, dtype=jnp.asarray(fsqz1).dtype))
         fsql1_safe = jnp.where(jnp.isfinite(fsql1), fsql1, jnp.asarray(0.0, dtype=jnp.asarray(fsql1).dtype))
+        fsq1_safe = fsqr1_safe + fsqz1_safe + fsql1_safe
         return (
             pre_blocks,
             update_blocks,
-            (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe),
+            (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe, fsq1_safe),
         )
 
     compiled = jax.jit(_payload)
@@ -685,10 +686,11 @@ def _preconditioner_apply_payload_jit(
         fsqr1_safe = jnp.where(jnp.isfinite(fsqr1), fsqr1, jnp.asarray(0.0, dtype=jnp.asarray(fsqr1).dtype))
         fsqz1_safe = jnp.where(jnp.isfinite(fsqz1), fsqz1, jnp.asarray(0.0, dtype=jnp.asarray(fsqz1).dtype))
         fsql1_safe = jnp.where(jnp.isfinite(fsql1), fsql1, jnp.asarray(0.0, dtype=jnp.asarray(fsql1).dtype))
+        fsq1_safe = fsqr1_safe + fsqz1_safe + fsql1_safe
         return (
             (frcc, frss, fzsc, fzcs, flsc_pre, flcs_pre, frsc, frcs, fzcc, fzss, flcc_pre, flss_pre),
             (frcc_u, frss_u, fzsc_u, fzcs_u, flsc_u, flcs_u, frsc_u, frcs_u, fzcc_u, fzss_u, flcc_u, flss_u),
-            (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe),
+            (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe, fsq1_safe),
         )
 
     @jit
@@ -11453,7 +11455,7 @@ def solve_fixed_boundary_residual_iter(
                             flcc_u,
                             flss_u,
                         ),
-                        (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe),
+                        (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe, fsq1_safe),
                     ) = _preconditioner_apply_payload_fused(
                         frzl_in=frzl_rhs,
                         mats=mats,
@@ -11534,7 +11536,7 @@ def solve_fixed_boundary_residual_iter(
                             flcc_u,
                             flss_u,
                         ),
-                        (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe),
+                        (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe, fsq1_safe),
                     ) = payload_outputs(frzl_rz, lam_prec, w_mode_mn, lambda_update_scale_j, f_norm1, delta_s, s)
                     fsqr1 = fsqr1_safe
                     fsqz1 = fsqz1_safe
@@ -11701,7 +11703,7 @@ def solve_fixed_boundary_residual_iter(
                             flcc_u,
                             flss_u,
                         ),
-                        (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe),
+                        (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe, fsq1_safe),
                     ) = _preconditioner_apply_payload_fused(
                         frzl_in=frzl_rhs,
                         mats=mats,
@@ -11782,7 +11784,7 @@ def solve_fixed_boundary_residual_iter(
                             flcc_u,
                             flss_u,
                         ),
-                        (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe),
+                        (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe, fsq1_safe),
                     ) = payload_outputs(frzl_rz, lam_prec, w_mode_mn, lambda_update_scale_j, f_norm1, delta_s, s)
                     fsqr1 = fsqr1_safe
                     fsqz1 = fsqz1_safe
@@ -12134,7 +12136,10 @@ def solve_fixed_boundary_residual_iter(
                         fsql1,
                         jnp.asarray(0.0, dtype=jnp.asarray(fsql1).dtype),
                     )
-                fsq1 = float(jax.device_get(fsqr1_safe + fsqz1_safe + fsql1_safe))
+                if preconditioner_fsq1_ready:
+                    fsq1 = float(jax.device_get(fsq1_safe))
+                else:
+                    fsq1 = float(jax.device_get(fsqr1_safe + fsqz1_safe + fsql1_safe))
             if timing_enabled and t_iteration_control_fsq1_start is not None:
                 timing_stats["iteration_control_fsq1"] += time.perf_counter() - float(t_iteration_control_fsq1_start)
             precond_diag_host: tuple[float, float, float] | None = None

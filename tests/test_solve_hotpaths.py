@@ -255,6 +255,7 @@ def test_preconditioner_output_payload_jit_matches_scaling_and_fsq1_reference():
     np.testing.assert_allclose(np.asarray(diag[3]), gcr2 * f_norm1)
     np.testing.assert_allclose(np.asarray(diag[4]), gcz2 * f_norm1)
     np.testing.assert_allclose(np.asarray(diag[5]), gcl2_full * delta_s)
+    np.testing.assert_allclose(np.asarray(diag[6]), gcr2 * f_norm1 + gcz2 * f_norm1 + gcl2_full * delta_s)
 
 
 def test_preconditioner_output_scaling_gate_is_gpu_only_without_gpu(monkeypatch):
