@@ -3113,10 +3113,9 @@ def _jax_nestor_operator_guard(
 ) -> tuple[bool, str]:
     """Return whether the experimental JAX VMEC/NESTOR operator can run safely.
 
-    The phase-1 JAX nonsingular Green operator expects the full VMEC angular
-    grid.  Current stellarator-symmetric production arrays are usually reduced
-    to the VMEC half grid, so those remain on the validated host bridge until
-    the full-grid reconstruction is ported to JAX.
+    The phase-1 JAX nonsingular Green operator reconstructs the full VMEC grid
+    internally for stellarator-symmetric reduced-grid samples.  This guard keeps
+    the opt-in path limited to shapes whose active-grid contract is explicit.
     """
 
     if basis is None:
@@ -3130,14 +3129,14 @@ def _jax_nestor_operator_guard(
             return False, "jax_x64_disabled"
     except Exception:
         return False, "jax_unavailable"
-    if not bool(basis.get("lasym", False)):
-        return False, "requires_lasym_full_grid"
     if sample.R.ndim != 2:
         return False, "sample_R_not_2d"
-    if int(sample.R.shape[0]) != int(basis.get("nu_full", sample.R.shape[0])):
-        return False, "requires_full_vmec_grid"
-    if int(sample.R.size) != int(basis.get("nuv_full", sample.R.size)):
-        return False, "requires_full_vmec_grid_points"
+    if int(sample.R.size) != int(basis.get("nuv3", sample.R.size)):
+        return False, "requires_active_vmec_grid_points"
+    if bool(basis.get("lasym", False)) and int(sample.R.size) != int(basis.get("nuv_full", sample.R.size)):
+        return False, "requires_lasym_full_vmec_grid_points"
+    if int(sample.R.shape[0]) > int(basis.get("nu_full", sample.R.shape[0])):
+        return False, "active_grid_exceeds_full_grid"
     for name in ("Z", "Ru", "Zu", "Rv", "Zv"):
         arr = np.asarray(getattr(sample, name), dtype=float)
         if arr.shape != sample.R.shape:

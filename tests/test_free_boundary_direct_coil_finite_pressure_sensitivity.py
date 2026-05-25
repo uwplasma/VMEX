@@ -526,8 +526,8 @@ def test_jax_nestor_operator_complete_solve_fd_slopes_for_current_and_geometry(
     from vmec_jax.driver import run_free_boundary
 
     input_path = _write_tiny_direct_freeb_input(
-        tmp_path / "input.direct_lasym_jax_nestor_fd",
-        lasym=True,
+        tmp_path / "input.direct_symmetric_jax_nestor_fd",
+        lasym=False,
         niter=2,
         mpol=3,
         ntheta=6,

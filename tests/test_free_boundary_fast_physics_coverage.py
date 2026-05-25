@@ -265,8 +265,8 @@ def test_dense_mode_optional_jax_nestor_operator_matches_host_bridge(monkeypatch
         np.testing.assert_allclose(jax_result.diagnostics[key], host.diagnostics[key], rtol=1.0e-9, atol=1.0e-10)
 
 
-def test_dense_mode_optional_jax_nestor_operator_skips_reduced_symmetric_grid(monkeypatch) -> None:
-    """Reduced stellarator-symmetric grids stay on the host bridge until the JAX full-grid port lands."""
+def test_dense_mode_optional_jax_nestor_operator_accepts_reduced_symmetric_grid(monkeypatch) -> None:
+    """Reduced stellarator-symmetric active grids are valid after JAX-side full-grid reconstruction."""
 
     sample = _analytic_sample(ntheta=3, nzeta=2, field_scale=1.0)
     basis = _build_vmec_mode_basis(
@@ -282,8 +282,8 @@ def test_dense_mode_optional_jax_nestor_operator_skips_reduced_symmetric_grid(mo
 
     ok, reason = freeb._jax_nestor_operator_guard(sample=sample, basis=basis)
 
-    assert ok is False
-    assert reason == "requires_lasym_full_grid"
+    assert ok is True
+    assert reason == "enabled"
 
 
 def test_nonsingular_source_identity_matches_full_terms_on_tiny_surface() -> None:

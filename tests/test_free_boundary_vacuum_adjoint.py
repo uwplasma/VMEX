@@ -182,10 +182,10 @@ def _mode_matrix_from_basis(grpmn, basis):
     )
 
 
-def _nonsingular_boundary_sample(*, radius_shift: float = 0.0):
-    basis = _mode_basis_for_rhs_tests(lasym=True)
-    ntheta = int(basis["nu_full"])
+def _nonsingular_boundary_sample(*, radius_shift: float = 0.0, lasym: bool = True):
+    basis = _mode_basis_for_rhs_tests(lasym=lasym)
     nzeta = 5
+    ntheta = int(basis["nuv3"]) // nzeta
     theta = np.asarray(basis["theta"], dtype=float).reshape(ntheta, nzeta)
     zeta = np.asarray(basis["zeta"], dtype=float).reshape(ntheta, nzeta)
     R = 1.25 + 0.04 * radius_shift + 0.05 * np.cos(theta) + 0.02 * np.cos(theta - zeta)
@@ -662,6 +662,58 @@ def test_dense_vmec_nestor_mode_solve_matches_manual_combined_operator():
     np.testing.assert_allclose(actual["mode_matrix"], matrix, rtol=1.0e-13, atol=1.0e-13)
     np.testing.assert_allclose(actual["mode_coeffs"], expected["mode_coeffs"], rtol=1.0e-13, atol=1.0e-13)
     np.testing.assert_allclose(actual["phi_flat"], expected["phi_flat"], rtol=1.0e-13, atol=1.0e-13)
+
+
+def test_dense_vmec_nestor_mode_solve_matches_host_reduced_symmetric_grid():
+    """Reduced stellarator-symmetric samples should match the host full-grid reconstruction path."""
+
+    enable_x64(True)
+    basis, sample = _nonsingular_boundary_sample(lasym=False)
+    bex = np.linspace(-0.11, 0.29, int(basis["nuv3"]), dtype=float)
+    tables = _ensure_vmec_nonsingular_kernel_tables(basis=basis, nv=sample.R.shape[1], nvper=2)
+
+    actual = dense_vmec_nestor_mode_solve_jax(
+        R=sample.R,
+        Z=sample.Z,
+        Ru=sample.Ru,
+        Zu=sample.Zu,
+        Rv=sample.Rv,
+        Zv=sample.Zv,
+        ruu=sample.ruu,
+        ruv=sample.ruv,
+        rvv=sample.rvv,
+        zuu=sample.zuu,
+        zuv=sample.zuv,
+        zvv=sample.zvv,
+        bexni=bex,
+        basis=basis,
+        tables=tables,
+        signgs=1,
+        nvper=2,
+    )
+    gsource_nonsing, grpmn_nonsing = _vmec_nonsingular_terms_from_bexni(
+        sample=sample,
+        basis=basis,
+        bexni=bex,
+        signgs=1,
+        nvper=2,
+    )
+    bvec_analytic, grpmn_analytic = _vmec_analytic_terms_from_geometry(
+        sample=sample,
+        basis=basis,
+        bexni=bex,
+        signgs=1,
+    )
+    rhs = _vmec_bvec_from_gsource(gsource=gsource_nonsing, basis=basis) + bvec_analytic
+    matrix = _vmec_mode_matrix_from_grpmn(grpmn=grpmn_nonsing + grpmn_analytic, basis=basis)
+    expected = dense_mode_vacuum_solve_jax(matrix, rhs, basis["sinmni"])
+
+    np.testing.assert_allclose(actual["gsource_nonsing"], gsource_nonsing, rtol=1.0e-12, atol=1.0e-12)
+    np.testing.assert_allclose(actual["grpmn"], grpmn_nonsing + grpmn_analytic, rtol=1.0e-12, atol=1.0e-12)
+    np.testing.assert_allclose(actual["rhs_mode"], rhs, rtol=1.0e-12, atol=1.0e-12)
+    np.testing.assert_allclose(actual["mode_matrix"], matrix, rtol=1.0e-12, atol=1.0e-12)
+    np.testing.assert_allclose(actual["mode_coeffs"], expected["mode_coeffs"], rtol=1.0e-12, atol=1.0e-12)
+    np.testing.assert_allclose(actual["phi_flat"], expected["phi_flat"], rtol=1.0e-12, atol=1.0e-12)
 
 
 def test_dense_vmec_nestor_mode_solve_gradients_match_finite_difference():

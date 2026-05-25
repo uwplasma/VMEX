@@ -718,6 +718,77 @@ def dense_mode_vacuum_solve_jax(
     }
 
 
+def _nonsingular_full_grid_from_active_jax(
+    *,
+    R: Any,
+    Z: Any,
+    Ru: Any,
+    Zu: Any,
+    Rv: Any,
+    Zv: Any,
+    ruu: Any,
+    ruv: Any,
+    rvv: Any,
+    zuu: Any,
+    zuv: Any,
+    zvv: Any,
+    basis: dict[str, Any],
+) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any, Any]:
+    """Return the full grid expected by VMEC's nonsingular Green block.
+
+    The host bridge expands stellarator-symmetric active-grid geometry before
+    calling the nonsingular Green-function assembly, but keeps the analytic
+    singular terms on the active grid. This helper mirrors that convention in
+    JAX for the combined low-resolution operator.
+    """
+
+    R2 = jnp.asarray(R)
+    Z2 = jnp.asarray(Z)
+    Ru2 = jnp.asarray(Ru)
+    Zu2 = jnp.asarray(Zu)
+    Rv2 = jnp.asarray(Rv)
+    Zv2 = jnp.asarray(Zv)
+    ruu2 = jnp.asarray(ruu)
+    ruv2 = jnp.asarray(ruv)
+    rvv2 = jnp.asarray(rvv)
+    zuu2 = jnp.asarray(zuu)
+    zuv2 = jnp.asarray(zuv)
+    zvv2 = jnp.asarray(zvv)
+    nu_full = int(basis["nu_full"])
+    ntheta3, nv = int(R2.shape[0]), int(R2.shape[1])
+    if bool(basis["lasym"]) or nu_full == ntheta3:
+        return R2, Z2, Ru2, Zu2, Rv2, Zv2, ruu2, ruv2, rvv2, zuu2, zuv2, zvv2
+
+    shape_full = (nu_full, nv)
+    zeros = jnp.zeros(shape_full, dtype=R2.dtype)
+    Rf = zeros.at[:ntheta3, :].set(R2)
+    Zf = zeros.at[:ntheta3, :].set(Z2)
+    Ruf = zeros.at[:ntheta3, :].set(Ru2)
+    Zuf = zeros.at[:ntheta3, :].set(Zu2)
+    Rvf = zeros.at[:ntheta3, :].set(Rv2)
+    Zvf = zeros.at[:ntheta3, :].set(Zv2)
+    ruuf = zeros.at[:ntheta3, :].set(ruu2)
+    ruvf = zeros.at[:ntheta3, :].set(ruv2)
+    rvvf = zeros.at[:ntheta3, :].set(rvv2)
+    zuuf = zeros.at[:ntheta3, :].set(zuu2)
+    zuvf = zeros.at[:ntheta3, :].set(zuv2)
+    zvvf = zeros.at[:ntheta3, :].set(zvv2)
+
+    kv_m = (nv - jnp.arange(nv, dtype=jnp.int32)) % max(1, nv)
+    for ku in range(1, max(1, ntheta3 - 1)):
+        km = (nu_full - ku) % max(1, nu_full)
+        if km < ntheta3:
+            continue
+        Rf = Rf.at[km, :].set(R2[ku, kv_m])
+        Zf = Zf.at[km, :].set(-Z2[ku, kv_m])
+        Ruf = Ruf.at[km, :].set(-Ru2[ku, kv_m])
+        Zuf = Zuf.at[km, :].set(Zu2[ku, kv_m])
+        Rvf = Rvf.at[km, :].set(-Rv2[ku, kv_m])
+        Zvf = Zvf.at[km, :].set(Zv2[ku, kv_m])
+
+    return Rf, Zf, Ruf, Zuf, Rvf, Zvf, ruuf, ruvf, rvvf, zuuf, zuvf, zvvf
+
+
 def dense_vmec_nestor_mode_solve_jax(
     *,
     R: Any,
@@ -750,7 +821,7 @@ def dense_vmec_nestor_mode_solve_jax(
     bridge with a matrix-free/custom-transpose implementation.
     """
 
-    gsource_nonsing, grpmn_nonsing = vmec_nonsingular_terms_from_bexni_jax(
+    full_grid = _nonsingular_full_grid_from_active_jax(
         R=R,
         Z=Z,
         Ru=Ru,
@@ -763,6 +834,21 @@ def dense_vmec_nestor_mode_solve_jax(
         zuu=zuu,
         zuv=zuv,
         zvv=zvv,
+        basis=basis,
+    )
+    gsource_nonsing, grpmn_nonsing = vmec_nonsingular_terms_from_bexni_jax(
+        R=full_grid[0],
+        Z=full_grid[1],
+        Ru=full_grid[2],
+        Zu=full_grid[3],
+        Rv=full_grid[4],
+        Zv=full_grid[5],
+        ruu=full_grid[6],
+        ruv=full_grid[7],
+        rvv=full_grid[8],
+        zuu=full_grid[9],
+        zuv=full_grid[10],
+        zvv=full_grid[11],
         bexni=bexni,
         basis=basis,
         tables=tables,

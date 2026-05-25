@@ -66,6 +66,8 @@ Steps taken:
 50. Added diagnostics for `jax_nestor_operator_applied`, `jax_nestor_operator_reason`, and `jax_nestor_operator_time_s`.
 51. Added a host-vs-JAX driver parity regression for a tiny LASYM full-grid case, including `phi`, `bsqvac`, and scalar diagnostic parity.
 52. Added a forced-active LASYM direct-coil complete-solve finite-difference gate using `VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR=1`; it checks finite nonzero central-FD response for one coil current and one Fourier geometry coefficient.
+53. Ported JAX-side full-grid reconstruction for stellarator-symmetric reduced active-grid samples in the combined dense VMEC/NESTOR operator. The nonsingular Green block receives the reconstructed full grid while the analytic/singular block stays on the active grid, matching the host bridge.
+54. Switched the opt-in complete-solve finite-difference gate to the default stellarator-symmetric path after the reduced-grid reconstruction landed.
 
 Results obtained:
 
@@ -134,12 +136,15 @@ Results obtained:
 66. Full fast CI coverage gate passed locally: `2300 passed, 26 skipped, 112 deselected, 2 xfailed` in 7m52s with total coverage `95.22%`.
 67. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_nestor_operator_complete_solve_fd_slopes_for_current_and_geometry`: 1 passed in 23.24 s.
 68. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`: 8 passed, 1 skipped in 32.89 s after adding the opt-in JAX complete-solve FD gate.
+69. Reduced-grid JAX operator parity checks passed: `2 passed in 3.00 s` for the reduced stellarator-symmetric host parity and guard tests.
+70. Default stellarator-symmetric opt-in complete-solve FD gate passed: `1 passed in 14.54 s`.
+71. Focused free-boundary/JAX-NESTOR suites passed after reduced-grid support: `54 passed, 1 skipped in 48.47 s`.
 
 Best next steps:
 
-1. Extend the JAX operator driver path to reconstruct the reduced stellarator-symmetric half grid in JAX, then compare against the current host bridge on default `LASYM=F` production cases.
-2. Promote the opt-in complete-solve FD gate from finite/nonzero response to AD-vs-central-FD once the production full-solve adjoint is threaded through accepted-state quantities.
-3. Profile and reduce cold exact tape build/solve and initial tangent construction on GPU; the latest comparison shows replay dispatch is not the only remaining blocker.
+1. Promote the opt-in complete-solve FD gate from finite/nonzero response to AD-vs-central-FD once the production full-solve adjoint is threaded through accepted-state quantities.
+2. Profile and reduce cold exact tape build/solve and initial tangent construction on GPU; the latest comparison shows replay dispatch is not the only remaining blocker.
+3. Compare the opt-in JAX NESTOR driver path against the host bridge on a small real direct-coil finite-pressure case, then decide whether it can become the validation default for low-resolution direct-coil cases.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
 
 Need from user:
@@ -963,7 +968,7 @@ WP1 Provider base API:                         100%
 WP2 Pure JAX coil Biot-Savart:                 92%
 WP3 ESSOS adapter:                             84%
 WP4 JAX mgrid interpolation:                   85%
-WP5 Free-boundary provider hook:               93%
+WP5 Free-boundary provider hook:               94%
 WP6 Direct-coil forward example:               90%
 WP7 Vacuum adjoint scaffold:                  100%
 WP8 Gradient checks:                           99%
@@ -978,7 +983,7 @@ Overall branch completion:                     96%
 
 ## Immediate Next Steps
 
-1. Port the reduced stellarator-symmetric half-grid reconstruction into the JAX NESTOR operator so the optional path can validate default `LASYM=F` production cases.
+1. Compare the opt-in JAX NESTOR driver path against the host bridge on a small real direct-coil finite-pressure case, then decide whether it can become the validation default for low-resolution direct-coil cases.
 2. Continue the VMEC2000 generated-mgrid WOUT comparator until the optional xfail can be bounded or promoted.
 3. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
 4. Profile and reduce cold exact tape build/solve and initial tangent construction on GPU; convert benchmark JSON summaries into documentation plots.
