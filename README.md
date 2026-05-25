@@ -127,7 +127,8 @@ python examples/optimization/free_boundary_QS_coil_optimization.py \
 ```
 
 Run the bounded benchmark matrix first; it fans out to the provider, direct
-free-boundary solve, and coil-gradient benchmark scripts:
+free-boundary solve with and without JIT force kernels, and coil-gradient
+benchmark scripts:
 
 ```bash
 python tools/benchmarks/bench_freeb_direct_coil_matrix.py \

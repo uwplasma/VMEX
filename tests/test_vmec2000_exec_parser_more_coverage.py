@@ -296,6 +296,26 @@ def test_freeb_generated_mgrid_more_iter_returncode_with_trace_but_no_print_is_v
     assert reason == "vmec2000_more_iterations_required"
 
 
+def test_freeb_generated_mgrid_more_iter_marker_without_row_is_vmec_status() -> None:
+    summary = {
+        "returncode": 2,
+        "last_row": {},
+        "stages": [{"ns": 5, "niter": 300, "ftolv": 1.0e-3, "row_count": 0}],
+        "stdout_tail": [],
+        "stderr_tail": [],
+        "threed1_tail": [" Try increasing NITER", " PARVMEC aborting..."],
+    }
+
+    details = _vmec2000_underconverged_details(summary)
+    status, reason, _ = _vmec2000_nonzero_status(summary)
+
+    assert details["classification"] == "vmec2000_more_iter_exit"
+    assert details["printed_try_increasing_niter"] is True
+    assert details["last_it"] is None
+    assert status == "more_iter_exit"
+    assert reason == "vmec2000_more_iterations_required"
+
+
 def test_freeb_generated_mgrid_more_iter_with_bare_backtrace_is_not_runtime_error() -> None:
     summary = {
         "returncode": 2,

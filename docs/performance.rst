@@ -2320,8 +2320,10 @@ For the lightweight direct-coil benchmark matrix, use the top-level
 ``cpu_gpu_comparison`` block in the summary JSON before drawing conclusions
 from wrapper wall time alone.  It reports matched CPU/GPU ratios for cold
 compile, warm minimum runtime, active NESTOR sample/solve time, and final
-accepted-state recompute buckets when the direct-solve row emitted those
-diagnostics.  A typical quick run is:
+accepted-state recompute buckets when the direct-solve rows emit those
+diagnostics.  The matrix keeps both the non-JIT diagnostic direct-solve row and
+the ``--jit-forces`` row used by the direct-coil example fast path.  A typical
+quick run is:
 
 .. code-block:: bash
 
@@ -2329,20 +2331,16 @@ diagnostics.  A typical quick run is:
     --quick --include-gpu --timeout-s 240 \
     --out results/bench_freeb_direct_coil_matrix/summary.json
 
-The current tiny direct-solve case is intentionally a launch/compile diagnostic,
-not a proof that the full free-boundary solve should run on GPU: recent
-CPU/CUDA summaries show the final NESTOR sample/solve buckets are millisecond
-scale while the whole tiny GPU solve remains slower than CPU.
-
-The 2026-05-25 same-branch ``office`` quick matrix showed the same pattern:
-the direct-solve cold/compile bucket was faster on CUDA than CPU
-(``6.77 s`` versus ``10.74 s``), but the warm tiny direct solve was slower
-(``2.48 s`` on CUDA versus ``0.325 s`` on CPU).  The final accepted-state
-NESTOR solve itself was not the bottleneck (CUDA ``0.0069 s`` versus CPU
-``0.0062 s``); the larger remaining cost is warm solve-loop dispatch and small
-kernel overhead outside the final recompute.  The next performance pass should
-therefore instrument residual/update/preconditioner dispatch in the warm
-direct-coil solve loop before optimizing the dense NESTOR linear solve.
+The current tiny direct-solve cases are intentionally launch/compile
+diagnostics, not proof that full free-boundary solves should run on GPU.  The
+2026-05-25 same-branch ``office`` quick matrix showed the non-JIT diagnostic
+row was still CPU-favorable (``2.07 s`` CUDA versus ``0.328 s`` CPU warm), while
+``--jit-forces`` reduced the tiny CUDA warm solve to ``0.313 s`` and CPU to
+``0.101 s``.  The force bucket fell on CUDA from about ``0.580 s`` to
+``0.0078 s``.  The final accepted-state NESTOR solve itself remains
+millisecond-scale, so the larger remaining GPU cost is update and unattributed
+warm solve-loop dispatch outside the final recompute rather than the dense
+NESTOR linear solve.
 
 Control flags:
 
