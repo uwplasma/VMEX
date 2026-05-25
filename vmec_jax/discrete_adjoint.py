@@ -2690,8 +2690,13 @@ def strict_update_accepted_step(
     limit_update_rms: bool = True,
     need_update_rms: bool = True,
     divide_by_scalxc_for_update: bool = False,
+    enforce_edge: bool = True,
 ):
-    """Compose the accepted strict-update velocity and state-advance blocks."""
+    """Compose the accepted strict-update velocity and state-advance blocks.
+
+    ``enforce_edge`` preserves the historical fixed-boundary default.  Free
+    boundary callers pass ``False`` so the fused update does not pin the LCFS.
+    """
     velocity_raw = strict_update_velocity_block(
         b1=b1,
         fac=fac,
@@ -2761,6 +2766,7 @@ def strict_update_accepted_step(
         edge_Zcos=jnp.asarray(state_pre.Zcos)[-1, :],
         edge_Zsin=jnp.asarray(state_pre.Zsin)[-1, :],
         divide_by_scalxc_for_update=divide_by_scalxc_for_update,
+        enforce_edge=enforce_edge,
     )
     return {
         "state_post": state_post,
@@ -2804,6 +2810,7 @@ def strict_update_velocity_state_advance(
     vLcc=None,
     vLss=None,
     divide_by_scalxc_for_update: bool = False,
+    enforce_edge: bool = True,
 ):
     """Apply the strict-update state-advance block from VMEC residual iteration.
 
@@ -2863,7 +2870,7 @@ def strict_update_velocity_state_advance(
         edge_Rsin=edge_Rsin,
         edge_Zcos=edge_Zcos,
         edge_Zsin=edge_Zsin,
-        enforce_edge=True,
+        enforce_edge=enforce_edge,
         enforce_lambda_axis=True,
         idx00=idx00,
     )

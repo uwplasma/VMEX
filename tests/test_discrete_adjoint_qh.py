@@ -1667,6 +1667,80 @@ def test_strict_update_velocity_state_advance_reconstructs_first_qh_step(load_ca
     )
 
 
+def test_strict_update_velocity_state_advance_can_leave_edge_free(load_case_qh_warm_start):
+    pytest.importorskip("jax")
+
+    from vmec_jax.discrete_adjoint import strict_update_velocity_state_advance
+    from vmec_jax.field import signgs_from_sqrtg
+    from vmec_jax.geom import eval_geom
+    from vmec_jax.init_guess import initial_guess_from_boundary
+    from vmec_jax.solve import solve_fixed_boundary_residual_iter
+
+    _cfg, indata, static, boundary, _state0 = load_case_qh_warm_start
+    state_guess = initial_guess_from_boundary(static, boundary, indata, vmec_project=True)
+    signgs = int(signgs_from_sqrtg(np.asarray(eval_geom(state_guess, static).sqrtg), axis_index=1))
+    result = solve_fixed_boundary_residual_iter(
+        state_guess,
+        static,
+        indata=indata,
+        signgs=signgs,
+        ftol=float(indata.get_float("FTOL", 1e-14)),
+        max_iter=1,
+        step_size=float(indata.get_float("DELT", 1.0)),
+        vmec2000_control=True,
+        reference_mode=False,
+        backtracking=True,
+        limit_dt_from_force=True,
+        limit_update_rms=True,
+        verbose=False,
+        verbose_vmec2000_table=False,
+        jit_forces="auto",
+        use_scan=False,
+        host_update_assembly=False,
+        light_history=False,
+        resume_state_mode="full",
+    )
+    resume = result.diagnostics["resume_state"]
+    vRcc_edge_kick = np.asarray(resume["vRcc"]).copy()
+    vRcc_edge_kick[-1, ...] += 1.0e-3
+
+    pinned = strict_update_velocity_state_advance(
+        state_guess,
+        static,
+        dt_eff=float(result.diagnostics["dt_eff_history"][0]),
+        vRcc=vRcc_edge_kick,
+        vRss=resume["vRss"],
+        vZsc=resume["vZsc"],
+        vZcs=resume["vZcs"],
+        vLsc=resume["vLsc"],
+        vLcs=resume["vLcs"],
+        edge_Rcos=np.asarray(state_guess.Rcos)[-1, :],
+        edge_Rsin=np.asarray(state_guess.Rsin)[-1, :],
+        edge_Zcos=np.asarray(state_guess.Zcos)[-1, :],
+        edge_Zsin=np.asarray(state_guess.Zsin)[-1, :],
+        enforce_edge=True,
+    )
+    free = strict_update_velocity_state_advance(
+        state_guess,
+        static,
+        dt_eff=float(result.diagnostics["dt_eff_history"][0]),
+        vRcc=vRcc_edge_kick,
+        vRss=resume["vRss"],
+        vZsc=resume["vZsc"],
+        vZcs=resume["vZcs"],
+        vLsc=resume["vLsc"],
+        vLcs=resume["vLcs"],
+        edge_Rcos=np.asarray(state_guess.Rcos)[-1, :],
+        edge_Rsin=np.asarray(state_guess.Rsin)[-1, :],
+        edge_Zcos=np.asarray(state_guess.Zcos)[-1, :],
+        edge_Zsin=np.asarray(state_guess.Zsin)[-1, :],
+        enforce_edge=False,
+    )
+
+    assert np.asarray(pinned.Rcos)[-1, :] == pytest.approx(np.asarray(state_guess.Rcos)[-1, :])
+    assert np.max(np.abs(np.asarray(free.Rcos)[-1, :] - np.asarray(state_guess.Rcos)[-1, :])) > 0.0
+
+
 def test_strict_update_velocity_block_reconstructs_first_qh_step(load_case_qh_warm_start):
     pytest.importorskip("jax")
 

@@ -10,7 +10,7 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-25 after dry-run optimization diagnostics, ESSOS adapter validation, VMEC2000 runtime-error classification, bounded AD-vs-FD NESTOR gradient checks, same-branch CPU/GPU benchmark-matrix reporting with non-JIT and JIT-force direct-solve rows, solve-loop timing capture for direct-coil benchmark rows, JIT-force defaults for direct-coil examples, and an accepted-solve AD-vs-FD blocker xfail.
+Last updated: 2026-05-25 after dry-run optimization diagnostics, ESSOS adapter validation, VMEC2000 runtime-error classification, bounded AD-vs-FD NESTOR gradient checks, same-branch CPU/GPU benchmark-matrix reporting with non-JIT and JIT-force direct-solve rows, solve-loop timing capture for direct-coil benchmark rows, JIT-force defaults for direct-coil examples, an accepted-solve AD-vs-FD blocker xfail, and free-boundary-aware fused strict-update support.
 
 Steps taken:
 
@@ -215,9 +215,11 @@ Results obtained:
 125. A local CPU quick matrix showed `--jit-forces` reducing the tiny warm direct solve from about `0.188 s` to `0.049 s`; the preconditioner bucket dropped from about `0.078 s` to `0.0004 s`, so the next office CPU/CUDA run should check whether this also fixes the GPU warm-solve gap.
 126. Office CPU/CUDA matrix with both direct-solve rows completed. The default non-JIT diagnostic row was CPU-favorable (`2.07 s` GPU versus `0.328 s` CPU warm), while the `--jit-forces` row reduced GPU warm time to `0.313 s` and CPU warm time to `0.101 s`. The force bucket fell on GPU from about `0.580 s` to `0.0078 s`; remaining GPU overhead is update and unattributed loop dispatch.
 127. Direct-coil forward and phase-1 optimization examples now default to `jit_forces=True`, with `--no-jit-forces` as an explicit debug/parity escape hatch.
-126. Targeted accepted-solve AD-vs-FD blocker gate reports the expected xfail: `pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current -rx` -> 1 xfailed in 11.92 s.
-127. Focused direct-coil finite-pressure suite after adding the promotion xfail: `pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -rx` -> 9 passed, 1 skipped, 1 xfailed in 38.37 s.
-128. Strict Sphinx build passed after tightening the free-boundary coil-optimization status wording.
+128. Targeted accepted-solve AD-vs-FD blocker gate reports the expected xfail: `pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current -rx` -> 1 xfailed in 11.92 s.
+129. Focused direct-coil finite-pressure suite after adding the promotion xfail: `pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -rx` -> 9 passed, 1 skipped, 1 xfailed in 38.37 s.
+130. Strict Sphinx build passed after tightening the free-boundary coil-optimization status wording.
+131. The fused strict-update helper now accepts `enforce_edge=False`; GPU direct-coil free-boundary solves can use the same cached update step without accidentally pinning the LCFS.
+132. Targeted strict-update validation passed: `tests/test_solve_wave4_coverage.py` -> 22 passed, and `tests/test_discrete_adjoint_qh.py -k strict_update` -> 12 passed, 1 skipped.
 
 Best next steps:
 
@@ -225,7 +227,7 @@ Best next steps:
 2. Keep `exact_path='scan'` as an explicit long-run GPU option only; the latest profile shows it warms faster but needs roughly 75 accepted callbacks to amortize the `~110 s` cold compile.
 3. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
-5. For GPU performance, keep JIT force kernels as the production default for direct-coil examples, then target the remaining warm GPU update and unattributed-loop dispatch overhead.
+5. For GPU performance, keep JIT force kernels as the production default for direct-coil examples, use the free-boundary-aware fused strict-update path on non-CPU backends, then target the remaining unattributed-loop dispatch overhead.
 6. Warm GPU QH mode-2 tape callbacks are still above the `1 s` production target; the next patch should reduce accepted replay/tangent dispatch or avoid rebuilding accepted tapes at nearby callbacks. Matrix-free is not yet the answer on GPU because repeated VJP/JVP replay is slower than dense materialization for the profiled case.
 
 Need from user:

@@ -135,11 +135,12 @@ read as a mixed result rather than a broad VMEC2000 speedup claim:
   ``VMEC_JAX_OPT_TRIAL_SCAN=0`` to force the non-scan path on any backend.
 
 **15. Fused accelerator update step**
-  The exact optimizer's strict fixed-boundary accepted-point solve uses a
-  cached JIT helper for the velocity/state update on non-CPU backends.  This
-  removes many small eager GPU dispatches per VMEC iteration while leaving the
-  CPU host-update path unchanged.  Set ``VMEC_JAX_JIT_STRICT_UPDATE=0`` only
-  for diagnostics.
+  The exact optimizer's strict accepted-point solve uses a cached JIT helper
+  for the velocity/state update on non-CPU backends.  The helper preserves the
+  historical fixed-boundary edge pinning and now also supports direct-coil
+  free-boundary solves by leaving the LCFS edge free.  This removes many small
+  eager GPU dispatches per VMEC iteration while leaving the CPU host-update
+  path unchanged.  Set ``VMEC_JAX_JIT_STRICT_UPDATE=0`` only for diagnostics.
 
 **16. Residual-derived accepted-point history**
   For standard QS residual factories, accepted-point Jacobian callbacks

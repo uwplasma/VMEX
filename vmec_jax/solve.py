@@ -265,6 +265,7 @@ def _strict_update_step_jit(
     limit_update_rms: bool,
     need_update_rms: bool,
     divide_by_scalxc_for_update: bool,
+    enforce_edge: bool = True,
 ):
     """Return a cached fused strict-update step for accelerator exact solves."""
     if not has_jax():
@@ -274,6 +275,7 @@ def _strict_update_step_jit(
         bool(limit_update_rms),
         bool(need_update_rms),
         bool(divide_by_scalxc_for_update),
+        bool(enforce_edge),
     )
     cached = _jit_cache_get(_STRICT_UPDATE_STEP_JIT_CACHE, key)
     if cached is not None:
@@ -350,6 +352,7 @@ def _strict_update_step_jit(
             limit_update_rms=bool(limit_update_rms),
             need_update_rms=bool(need_update_rms),
             divide_by_scalxc_for_update=bool(divide_by_scalxc_for_update),
+            enforce_edge=bool(enforce_edge),
         )
 
     compiled = jax.jit(_step)
@@ -12716,7 +12719,6 @@ def solve_fixed_boundary_residual_iter(
             use_jit_strict_update_step = (
                 bool(jit_strict_update_enabled)
                 and (not bool(host_update_assembly))
-                and (not bool(free_boundary_enabled))
                 and (not bool(limit_dt_from_force))
                 and (not bool(limit_update_rms))
                 and (not bool(need_trial_eval))
@@ -12728,6 +12730,7 @@ def solve_fixed_boundary_residual_iter(
                     limit_update_rms=False,
                     need_update_rms=need_update_rms,
                     divide_by_scalxc_for_update=bool(divide_by_scalxc_for_update),
+                    enforce_edge=not bool(free_boundary_enabled),
                 )
                 step_out = step_fn(
                     state,
