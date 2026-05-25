@@ -60,6 +60,32 @@ def test_boundary_specs_and_indexed_maps_skip_negative_m_modes() -> None:
     assert maps["ZBS"][(-1, 1)] == pytest.approx(0.4)
 
 
+def test_numpy_boundary_update_matches_differentiable_boundary_path() -> None:
+    owner = object.__new__(FixedBoundaryExactOptimizer)
+    owner._boundary_input = None
+    owner._boundary = BoundaryCoeffs(
+        R_cos=np.asarray([1.0, 0.2, 0.0]),
+        R_sin=np.asarray([0.0, 0.0, 0.0]),
+        Z_cos=np.asarray([0.0, 0.0, 0.0]),
+        Z_sin=np.asarray([0.0, 0.2, 0.0]),
+    )
+    owner._specs = [
+        opt_module.BoundaryParamSpec("rc0", "rc", 0, 0, 0),
+        opt_module.BoundaryParamSpec("rs1", "rs", 1, 1, 0),
+        opt_module.BoundaryParamSpec("zc2", "zc", 2, 1, -1),
+        opt_module.BoundaryParamSpec("zs1", "zs", 1, 1, 0),
+    ]
+
+    params = np.asarray([0.05, -0.01, 0.03, 0.02])
+    got = FixedBoundaryExactOptimizer._boundary_from_params_numpy(owner, params)
+    ref = FixedBoundaryExactOptimizer._boundary_from_params(owner, params)
+
+    np.testing.assert_allclose(got.R_cos, np.asarray(ref.R_cos), rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(got.R_sin, np.asarray(ref.R_sin), rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(got.Z_cos, np.asarray(ref.Z_cos), rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(got.Z_sin, np.asarray(ref.Z_sin), rtol=0.0, atol=0.0)
+
+
 def test_least_squares_problem_rejects_malformed_simsopt_tuples() -> None:
     from vmec_jax.optimization_workflow import LeastSquaresProblem
 

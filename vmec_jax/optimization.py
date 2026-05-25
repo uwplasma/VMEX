@@ -2246,6 +2246,45 @@ class FixedBoundaryExactOptimizer:
             apply_m1_constraint=False,
         )
 
+    def _boundary_from_params_numpy(self, params) -> BoundaryCoeffs:
+        """Host-side boundary update for cache keys and other non-AD logic.
+
+        The differentiable path uses :func:`apply_boundary_params` with JAX
+        arrays.  Cache-key construction only needs the discrete initial
+        theta-flip branch, so using NumPy here avoids eager XLA work before
+        every accepted-point tangent build.
+        """
+
+        base_boundary = self._boundary_input if self._boundary_input is not None else self._boundary
+        r_cos = np.asarray(base_boundary.R_cos, dtype=float).copy()
+        r_sin = np.asarray(base_boundary.R_sin, dtype=float).copy()
+        z_cos = np.asarray(base_boundary.Z_cos, dtype=float).copy()
+        z_sin = np.asarray(base_boundary.Z_sin, dtype=float).copy()
+        params_arr = np.asarray(params, dtype=float).reshape(-1)
+        for idx, spec in enumerate(self._specs):
+            value = float(params_arr[idx])
+            if spec.kind == "rc":
+                r_cos[spec.index] += value
+            elif spec.kind == "rs":
+                r_sin[spec.index] += value
+            elif spec.kind == "zc":
+                z_cos[spec.index] += value
+            elif spec.kind == "zs":
+                z_sin[spec.index] += value
+            else:
+                raise ValueError(f"Unknown boundary parameter kind '{spec.kind}'")
+        boundary = BoundaryCoeffs(R_cos=r_cos, R_sin=r_sin, Z_cos=z_cos, Z_sin=z_sin)
+        if self._boundary_input is None:
+            return boundary
+        from .boundary import boundary_from_input_convention
+
+        return boundary_from_input_convention(
+            boundary,
+            self._static.modes,
+            lasym=bool(self._static.cfg.lasym),
+            apply_m1_constraint=False,
+        )
+
     def _boundary_input_from_params(self, params) -> BoundaryCoeffs:
         """Boundary coefficients in VMEC input convention for ``params``."""
         from ._compat import jnp as _jnp
@@ -2268,7 +2307,10 @@ class FixedBoundaryExactOptimizer:
         from .init_guess import _vmec_lflip_from_boundary
 
         try:
-            boundary = self._boundary_from_params(np.asarray(params, dtype=float))
+            try:
+                boundary = self._boundary_from_params_numpy(np.asarray(params, dtype=float))
+            except Exception:
+                boundary = self._boundary_from_params(np.asarray(params, dtype=float))
             lflip = _vmec_lflip_from_boundary(self._static, boundary)
         except Exception:
             return None

@@ -175,6 +175,7 @@ Results obtained:
 86. Added optional VMEC2000 WOUT-promotion probes to `compare_freeb_coils_mgrid_vmec2000.py`. These record VMEC2000-only follow-up attempts (`LFULL3D1OUT`, loose `FTOL_ARRAY`, and bounded `MAX_MAIN_ITERATIONS`) under `promotion_probes` without changing default comparison scoring.
 87. The promotion-probe implementation passed ruff, `git diff --check`, focused parser diagnostics (`20 passed`), and strict Sphinx. A real local LPQA generated-grid probe with VMEC2000 recorded all probe attempts as `more_iter_exit` while keeping `jax_direct_vs_mgrid_passed=True`.
 88. Local CPU exact-callback profiling on QH mode 2 showed the input-deck `NITER` path costs `76.95 s` for two exact Jacobian callbacks (`46.95 s` cold, `30.00 s` warm), dominated by accepted replay dispatch (`47.43 s`) and exact tape solve/force assembly (`23.24 s`/`13.87 s`). A bounded `INNER_MAX_ITER=60` comparison reduced total callback time to `16.90 s`, confirming that long accepted solves plus replay dispatch are the current performance target.
+89. Removed eager JAX work from exact-optimizer initial-tangent cache-key construction by adding a NumPy boundary update for host-side lflip branch detection. The QH mode-2 bounded CPU profile improved from `16.90 s` to `16.26 s` for two exact Jacobian callbacks, and the `jacobian_initial_tangents_cache_key` timer dropped from `0.73 s` to below printed precision. JVP-only exact tape remained neutral on CPU (`16.66 s`), so it should stay a GPU/diagnostic policy.
 
 Best next steps:
 
@@ -1012,7 +1013,7 @@ WP7 Vacuum adjoint scaffold:                  100%
 WP8 Gradient checks:                           99%
 WP9 VMEC2000 diagnostics:                      88%
 WP10 Benchmarks/diagnostics:                  100%
-WP11 Coil-only QS optimization example:        82%
+WP11 Coil-only QS optimization example:        83%
 WP12 Robust coil perturbations:               100%
 WP13 Documentation:                            97%
 WP14 CI policy:                                90%
