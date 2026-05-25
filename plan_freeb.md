@@ -10,7 +10,7 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-25 after the JAX-native NESTOR matrix/operator validation and GPU exact-tape profiling batch.
+Last updated: 2026-05-25 after the JAX-native NESTOR analytic/singular operator validation batch.
 
 Steps taken:
 
@@ -58,6 +58,9 @@ Steps taken:
 42. Added a low-resolution JAX-native nonsingular Green-function source/matrix assembly helper that differentiates through geometry and external normal-field source inputs.
 43. Chained direct-coil/provider validation through JAX boundary projection, VMEC source/RHS projection, nonsingular Green assembly, mode-matrix assembly, and dense implicit mode-space solve.
 44. Ran GPU exact-Jacobian profiling on `office` to compare the new automatic GPU JVP-only/basepoint-carry policy against explicit full-tape replay.
+45. Added JAX-native VMEC/NESTOR analytic/singular source/matrix assembly from `analyt.f`, using pre-sampled first and second boundary derivatives on the active VMEC angular grid.
+46. Added combined analytic+nonsingular mode-space solve gradient checks for source and boundary-geometry perturbations.
+47. Added `dense_vmec_nestor_mode_solve_jax`, a single combined JAX operator API for low-resolution NESTOR validation that assembles nonsingular and analytic/singular terms, projects to mode space, and solves with the custom-linear-solve dense mode primitive.
 
 Results obtained:
 
@@ -108,12 +111,16 @@ Results obtained:
 48. The explicit full-tape GPU comparison was slightly slower overall (`14.97 s` total versus `14.74 s` auto) but had slightly lower replay dispatch (`3.54 s` versus `3.65 s` auto). The auto policy is still directionally useful, but the next performance target is cold tape build/solve and initial tangent construction rather than replay dispatch alone.
 49. Full fast CI coverage gate passed locally: `2290 passed, 26 skipped, 112 deselected, 2 xfailed` in 7m14s with total coverage `95.14%` and `--cov-fail-under=95` satisfied.
 50. Added explicit validation-error tests for the JAX NESTOR operator blocks; focused module coverage for `vmec_jax/free_boundary_adjoint.py` is now 99% (`31 passed` in the focused suite).
+51. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 36 passed in 20.15 s after adding analytic/singular parity and AD-vs-FD chain tests.
+52. Focused `vmec_jax/free_boundary_adjoint.py` coverage is 98% after the analytic/singular port (`36 passed` under coverage in 28.36 s).
+53. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py`: 38 passed in 22.36 s after adding the combined NESTOR operator wrapper parity and gradient tests.
+54. Full fast CI coverage gate passed after the combined operator wrapper: `2298 passed, 26 skipped, 112 deselected, 2 xfailed` in 7m47s with total coverage `95.26%`.
 
 Best next steps:
 
-1. Promote the JAX-native nonsingular Green assembly from low-resolution validation helper toward the production NESTOR operator by porting the singular/analytic terms and wrapping the mode solve in a custom transpose solve.
-2. Profile and reduce cold exact tape build/solve and initial tangent construction on GPU; the latest comparison shows replay dispatch is not the only remaining blocker.
-3. Extend the full-loop finite-difference smoke from current-only proxy objective to a validated Boozer/QS promotion test when affordable.
+1. Add a forced-active low-resolution complete-solve finite-difference gate for one coil current and one Fourier coefficient using the new operator API when it can be safely threaded into the driver.
+2. Replace the host NESTOR assembly in an optional experimental driver path with the combined JAX operator and compare accepted-state diagnostics against the legacy path.
+3. Profile and reduce cold exact tape build/solve and initial tangent construction on GPU; the latest comparison shows replay dispatch is not the only remaining blocker.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
 
 Need from user:
@@ -126,11 +133,11 @@ batch, superseded by the authoritative Progress Tracker below:
 1. External provider architecture: 93%.
 2. Direct-coil finite-pressure forward lane: 93%.
 3. ESSOS/mgrid/VMEC2000 comparison lane: 84%.
-4. Full-loop gradient validation: 68%.
+4. Full-loop gradient validation: 77%.
 5. Robust/optimization examples: 82%.
 6. Performance/benchmarking: 90%.
 7. Docs/release hygiene: 92%.
-8. Overall branch completion: 92%.
+8. Overall branch completion: 94%.
 
 ## Mission
 

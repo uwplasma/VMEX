@@ -8,6 +8,7 @@ from vmec_jax.external_fields import CoilFieldParams, sample_coil_field_cylindri
 from vmec_jax.free_boundary import (
     _build_vmec_mode_basis,
     _ensure_vmec_nonsingular_kernel_tables,
+    _vmec_analytic_terms_from_geometry,
     _vmec_bvec_from_gsource,
     _vmec_mode_matrix_from_grpmn,
     _vmec_nonsingular_terms_from_bexni,
@@ -18,11 +19,13 @@ from vmec_jax.free_boundary import (
 )
 from vmec_jax.free_boundary_adjoint import (
     dense_mode_vacuum_solve_jax,
+    dense_vmec_nestor_mode_solve_jax,
     dense_vacuum_residual,
     dense_vacuum_solve_jax,
     mode_matrix_from_grpmn_jax,
     mode_rhs_from_gsource_jax,
     vacuum_boundary_fields_from_cylindrical_jax,
+    vmec_analytic_terms_from_geometry_jax,
     vmec_nonsingular_terms_from_bexni_jax,
     vmec_source_from_gsource_jax,
 )
@@ -266,6 +269,25 @@ def _jax_nonsingular_terms(sample, basis, bexni):
     )
 
 
+def _jax_analytic_terms(sample, basis, bexni):
+    return vmec_analytic_terms_from_geometry_jax(
+        R=sample.R,
+        Ru=sample.Ru,
+        Rv=sample.Rv,
+        Zu=sample.Zu,
+        Zv=sample.Zv,
+        ruu=sample.ruu,
+        ruv=sample.ruv,
+        rvv=sample.rvv,
+        zuu=sample.zuu,
+        zuv=sample.zuv,
+        zvv=sample.zvv,
+        bexni=bexni,
+        basis=basis,
+        signgs=1,
+    )
+
+
 @pytest.mark.parametrize("lasym", [False, True])
 def test_jax_vmec_source_and_mode_rhs_match_numpy_reference(lasym):
     enable_x64(True)
@@ -464,6 +486,228 @@ def test_jax_vmec_nonsingular_green_solve_chain_gradients_match_finite_differenc
 
     np.testing.assert_allclose(exact_source, fd_source, rtol=7.0e-7, atol=1.0e-10)
     np.testing.assert_allclose(exact_geometry, fd_geometry, rtol=7.0e-7, atol=1.0e-10)
+
+
+@pytest.mark.parametrize("lasym", [False, True])
+def test_jax_vmec_analytic_terms_match_numpy_reference(lasym):
+    enable_x64(True)
+    basis, sample = _nonsingular_boundary_sample()
+    if not lasym:
+        basis = _mode_basis_for_rhs_tests(lasym=False)
+    bexni = np.linspace(-0.11, 0.29, int(basis["nuv3"]), dtype=float)
+
+    actual_bvec, actual_grpmn = _jax_analytic_terms(sample, basis, bexni)
+    expected_bvec, expected_grpmn = _vmec_analytic_terms_from_geometry(
+        sample=sample,
+        basis=basis,
+        bexni=bexni,
+        signgs=1,
+    )
+
+    np.testing.assert_allclose(actual_bvec, expected_bvec, rtol=4.0e-12, atol=4.0e-12)
+    np.testing.assert_allclose(actual_grpmn, expected_grpmn, rtol=4.0e-12, atol=4.0e-12)
+
+
+@pytest.mark.parametrize("lasym", [False, True])
+def test_jax_vmec_analytic_mode_solve_chain_gradients_match_finite_difference(lasym):
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+
+    enable_x64(True)
+    basis, sample = _nonsingular_boundary_sample()
+    if not lasym:
+        basis = _mode_basis_for_rhs_tests(lasym=False)
+    base_bex = jnp.asarray(np.linspace(-0.11, 0.29, int(basis["nuv3"]), dtype=float))
+    bex_direction = jnp.asarray(np.sin(0.17 + np.arange(int(basis["nuv3"]), dtype=float)))
+    phi_weights = jnp.asarray(np.cos(0.19 + np.arange(int(basis["nuv3"]), dtype=float)), dtype=float)
+
+    def response(source_scale, geometry_scale):
+        bvec, grpmn = vmec_analytic_terms_from_geometry_jax(
+            R=jnp.asarray(sample.R) + 0.02 * geometry_scale,
+            Ru=sample.Ru,
+            Rv=sample.Rv,
+            Zu=sample.Zu,
+            Zv=sample.Zv,
+            ruu=sample.ruu,
+            ruv=sample.ruv,
+            rvv=sample.rvv,
+            zuu=sample.zuu,
+            zuv=sample.zuv,
+            zvv=sample.zvv,
+            bexni=base_bex + source_scale * bex_direction,
+            basis=basis,
+            signgs=1,
+        )
+        matrix = _mode_matrix_from_basis(grpmn, basis)
+        out = dense_mode_vacuum_solve_jax(
+            matrix,
+            bvec,
+            basis["sinmni"],
+            basis["cosmni"] if lasym else None,
+        )
+        return 0.5 * jnp.vdot(out["mode_coeffs"], out["mode_coeffs"]) + 0.1 * jnp.vdot(
+            phi_weights,
+            out["phi_flat"],
+        )
+
+    exact_source = jax.grad(lambda scale: response(scale, 0.0))(0.0)
+    exact_geometry = jax.grad(lambda scale: response(0.0, scale))(0.0)
+    eps = 1.0e-6
+    fd_source = (response(eps, 0.0) - response(-eps, 0.0)) / (2.0 * eps)
+    fd_geometry = (response(0.0, eps) - response(0.0, -eps)) / (2.0 * eps)
+
+    np.testing.assert_allclose(exact_source, fd_source, rtol=2.0e-6, atol=1.0e-10)
+    np.testing.assert_allclose(exact_geometry, fd_geometry, rtol=2.0e-6, atol=1.0e-10)
+
+
+def test_jax_vmec_combined_analytic_nonsingular_solve_chain_gradients_match_finite_difference():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+
+    enable_x64(True)
+    basis, sample = _nonsingular_boundary_sample()
+    base_bex = jnp.asarray(np.linspace(-0.11, 0.29, int(basis["nuv3"]), dtype=float))
+    bex_direction = jnp.asarray(np.cos(0.23 + np.arange(int(basis["nuv3"]), dtype=float)))
+    phi_weights = jnp.asarray(np.sin(0.27 + np.arange(int(basis["nuv3"]), dtype=float)), dtype=float)
+    tables = _ensure_vmec_nonsingular_kernel_tables(basis=basis, nv=sample.R.shape[1], nvper=2)
+
+    def response(source_scale, geometry_scale):
+        R = jnp.asarray(sample.R) + 0.015 * geometry_scale
+        bex = base_bex + source_scale * bex_direction
+        gsource_nonsing, grpmn_nonsing = vmec_nonsingular_terms_from_bexni_jax(
+            R=R,
+            Z=sample.Z,
+            Ru=sample.Ru,
+            Zu=sample.Zu,
+            Rv=sample.Rv,
+            Zv=sample.Zv,
+            ruu=sample.ruu,
+            ruv=sample.ruv,
+            rvv=sample.rvv,
+            zuu=sample.zuu,
+            zuv=sample.zuv,
+            zvv=sample.zvv,
+            bexni=bex,
+            basis=basis,
+            tables=tables,
+            signgs=1,
+            nvper=2,
+        )
+        bvec_analytic, grpmn_analytic = vmec_analytic_terms_from_geometry_jax(
+            R=R,
+            Ru=sample.Ru,
+            Rv=sample.Rv,
+            Zu=sample.Zu,
+            Zv=sample.Zv,
+            ruu=sample.ruu,
+            ruv=sample.ruv,
+            rvv=sample.rvv,
+            zuu=sample.zuu,
+            zuv=sample.zuv,
+            zvv=sample.zvv,
+            bexni=bex,
+            basis=basis,
+            signgs=1,
+        )
+        rhs = _mode_rhs_from_basis(gsource_nonsing, basis) + bvec_analytic
+        matrix = _mode_matrix_from_basis(grpmn_nonsing + grpmn_analytic, basis)
+        out = dense_mode_vacuum_solve_jax(matrix, rhs, basis["sinmni"], basis["cosmni"])
+        return 0.5 * jnp.vdot(out["mode_coeffs"], out["mode_coeffs"]) + 0.1 * jnp.vdot(
+            phi_weights,
+            out["phi_flat"],
+        )
+
+    exact_source = jax.grad(lambda scale: response(scale, 0.0))(0.0)
+    exact_geometry = jax.grad(lambda scale: response(0.0, scale))(0.0)
+    eps = 1.0e-6
+    fd_source = (response(eps, 0.0) - response(-eps, 0.0)) / (2.0 * eps)
+    fd_geometry = (response(0.0, eps) - response(0.0, -eps)) / (2.0 * eps)
+
+    np.testing.assert_allclose(exact_source, fd_source, rtol=3.0e-6, atol=1.0e-10)
+    np.testing.assert_allclose(exact_geometry, fd_geometry, rtol=3.0e-6, atol=1.0e-10)
+
+
+def test_dense_vmec_nestor_mode_solve_matches_manual_combined_operator():
+    enable_x64(True)
+    basis, sample = _nonsingular_boundary_sample()
+    bex = np.linspace(-0.11, 0.29, int(basis["nuv3"]), dtype=float)
+    tables = _ensure_vmec_nonsingular_kernel_tables(basis=basis, nv=sample.R.shape[1], nvper=2)
+
+    actual = dense_vmec_nestor_mode_solve_jax(
+        R=sample.R,
+        Z=sample.Z,
+        Ru=sample.Ru,
+        Zu=sample.Zu,
+        Rv=sample.Rv,
+        Zv=sample.Zv,
+        ruu=sample.ruu,
+        ruv=sample.ruv,
+        rvv=sample.rvv,
+        zuu=sample.zuu,
+        zuv=sample.zuv,
+        zvv=sample.zvv,
+        bexni=bex,
+        basis=basis,
+        tables=tables,
+        signgs=1,
+        nvper=2,
+    )
+    gsource_nonsing, grpmn_nonsing = _jax_nonsingular_terms(sample, basis, bex)
+    bvec_analytic, grpmn_analytic = _jax_analytic_terms(sample, basis, bex)
+    rhs = _mode_rhs_from_basis(gsource_nonsing, basis) + bvec_analytic
+    matrix = _mode_matrix_from_basis(grpmn_nonsing + grpmn_analytic, basis)
+    expected = dense_mode_vacuum_solve_jax(matrix, rhs, basis["sinmni"], basis["cosmni"])
+
+    np.testing.assert_allclose(actual["rhs_mode"], rhs, rtol=1.0e-13, atol=1.0e-13)
+    np.testing.assert_allclose(actual["mode_matrix"], matrix, rtol=1.0e-13, atol=1.0e-13)
+    np.testing.assert_allclose(actual["mode_coeffs"], expected["mode_coeffs"], rtol=1.0e-13, atol=1.0e-13)
+    np.testing.assert_allclose(actual["phi_flat"], expected["phi_flat"], rtol=1.0e-13, atol=1.0e-13)
+
+
+def test_dense_vmec_nestor_mode_solve_gradients_match_finite_difference():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+
+    enable_x64(True)
+    basis, sample = _nonsingular_boundary_sample()
+    base_bex = jnp.asarray(np.linspace(-0.11, 0.29, int(basis["nuv3"]), dtype=float))
+    bex_direction = jnp.asarray(np.cos(0.23 + np.arange(int(basis["nuv3"]), dtype=float)))
+    phi_weights = jnp.asarray(np.sin(0.27 + np.arange(int(basis["nuv3"]), dtype=float)), dtype=float)
+    tables = _ensure_vmec_nonsingular_kernel_tables(basis=basis, nv=sample.R.shape[1], nvper=2)
+
+    def response(source_scale, geometry_scale):
+        out = dense_vmec_nestor_mode_solve_jax(
+            R=jnp.asarray(sample.R) + 0.015 * geometry_scale,
+            Z=sample.Z,
+            Ru=sample.Ru,
+            Zu=sample.Zu,
+            Rv=sample.Rv,
+            Zv=sample.Zv,
+            ruu=sample.ruu,
+            ruv=sample.ruv,
+            rvv=sample.rvv,
+            zuu=sample.zuu,
+            zuv=sample.zuv,
+            zvv=sample.zvv,
+            bexni=base_bex + source_scale * bex_direction,
+            basis=basis,
+            tables=tables,
+            signgs=1,
+            nvper=2,
+        )
+        return 0.5 * jnp.vdot(out["mode_coeffs"], out["mode_coeffs"]) + 0.1 * jnp.vdot(
+            phi_weights,
+            out["phi_flat"],
+        )
+
+    exact_source = jax.grad(lambda scale: response(scale, 0.0))(0.0)
+    exact_geometry = jax.grad(lambda scale: response(0.0, scale))(0.0)
+    eps = 1.0e-6
+    fd_source = (response(eps, 0.0) - response(-eps, 0.0)) / (2.0 * eps)
+    fd_geometry = (response(0.0, eps) - response(0.0, -eps)) / (2.0 * eps)
+
+    np.testing.assert_allclose(exact_source, fd_source, rtol=3.0e-6, atol=1.0e-10)
+    np.testing.assert_allclose(exact_geometry, fd_geometry, rtol=3.0e-6, atol=1.0e-10)
 
 
 def test_free_boundary_adjoint_operator_validation_errors_are_explicit():

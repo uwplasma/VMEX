@@ -63,13 +63,15 @@ The validation ladder is:
 4. Projected implicit vacuum chain: direct coils feed the JAX boundary
    projection and then a dense custom-linear-solve vacuum problem, with
    current and geometry gradients checked against finite differences.
-5. Mode-space NESTOR chain: the same projected boundary data feeds a
-   JAX-native VMEC-style source symmetrization, mode-RHS projection,
-   nonsingular Green-function source/matrix assembly, mode-matrix assembly, and
-   dense mode-space solve that reconstructs the boundary scalar potential.
-   This validates the differentiable operator blocks used by the VMEC-like
-   NESTOR solve on low-resolution grids. The production singular/analytic
-   assembly and high-resolution matrix-free operator are still phase-2 work.
+5. Mode-space NESTOR chain: the same projected boundary data feeds
+   ``dense_vmec_nestor_mode_solve_jax``, a JAX-native VMEC-style operator that
+   combines source symmetrization, mode-RHS projection, nonsingular
+   Green-function source/matrix assembly, analytic/singular ``analyt.f``
+   source/matrix assembly, mode-matrix assembly, and dense mode-space solve
+   that reconstructs the boundary scalar potential. This validates the
+   differentiable operator blocks used by the VMEC-like NESTOR solve on
+   low-resolution grids. The high-resolution matrix-free production operator
+   remains phase-2 work.
 6. Full direct-coil free-boundary solve: a low-resolution scalar objective,
    first with one coil current and then with one Fourier coefficient, bounded
    against finite differences of complete solves.
