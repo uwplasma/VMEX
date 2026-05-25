@@ -27,6 +27,10 @@ class Vmec2000Threed1Row:
     delt0r: float | None = None
     r00: float | None = None
     w: float | None = None
+    beta: float | None = None
+    avg_m: float | None = None
+    delbsq: float | None = None
+    fedge: float | None = None
 
 
 @dataclass(frozen=True)
@@ -116,6 +120,10 @@ def _parse_vmec2000_threed1(path: Path) -> list[Vmec2000Threed1Stage]:
             delt0r=_f(toks[7]) if len(toks) > 7 else None,
             r00=_f(toks[8]) if len(toks) > 8 else None,
             w=_f(toks[9]) if len(toks) > 9 else None,
+            beta=_f(toks[10]) if len(toks) > 10 else None,
+            avg_m=_f(toks[11]) if len(toks) > 11 else None,
+            delbsq=_f(toks[12]) if len(toks) > 12 else None,
+            fedge=_f(toks[13]) if len(toks) > 13 else None,
         )
         rows.append(r)
 

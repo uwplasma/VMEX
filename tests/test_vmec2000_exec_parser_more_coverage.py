@@ -37,9 +37,9 @@ def test_parse_vmec2000_threed1_ignores_noise_and_flushes_stage_at_eof(tmp_path:
                 "  1 9.9E+99 9.9E+99 9.9E+99 9.9E+99 9.9E+99 9.9E+99 9.9E+99",
                 "  NS =  5 NO. FOURIER MODES =  3 FTOLV =  2.5D-09 NITER =  11",
                 "header before table is ignored",
-                " ITER FSQR FSQZ FSQL fsqr1 fsqz1 fsql1 DELT0R R00 W",
+                " ITER FSQR FSQZ FSQL fsqr1 fsqz1 fsql1 DELT0R R00 W BETA <M> DEL-BSQ FEDGE",
                 " bad row is ignored",
-                "  1 1.0D-1 2.0D-1 3.0D-1 4.0D-1 5.0D-1 6.0D-1 7.0D-1 8.0D-1 9.0D-1",
+                "  1 1.0D-1 2.0D-1 3.0D-1 4.0D-1 5.0D-1 6.0D-1 7.0D-1 8.0D-1 9.0D-1 1.1D+0 1.2D+0 1.3D+0 1.4D+0",
                 "  2 1.0E-2 2.0E-2 3.0E-2 4.0E-2 5.0E-2 6.0E-2 7.0E-2",
                 " MHD Energy terminates this table",
                 "  3 9.9E+1 9.9E+1 9.9E+1 9.9E+1 9.9E+1 9.9E+1 9.9E+1",
@@ -60,8 +60,13 @@ def test_parse_vmec2000_threed1_ignores_noise_and_flushes_stage_at_eof(tmp_path:
     first, second, third = flatten_threed1(stages)
     assert first.r00 == pytest.approx(0.8)
     assert first.w == pytest.approx(0.9)
+    assert first.beta == pytest.approx(1.1)
+    assert first.avg_m == pytest.approx(1.2)
+    assert first.delbsq == pytest.approx(1.3)
+    assert first.fedge == pytest.approx(1.4)
     assert second.r00 is None
     assert second.w is None
+    assert second.delbsq is None
     assert third.delt0r == pytest.approx(0.1)
     np.testing.assert_allclose(threed1_fsq_total(flatten_threed1(stages)), [0.6, 0.06, 0.015])
 
@@ -246,6 +251,8 @@ def test_freeb_generated_mgrid_more_iter_returncode_is_vmec_status_not_crash() -
             "fsql1": 9.95e-5,
             "delt0r": 0.687,
             "w": 10071.0,
+            "delbsq": 1.0,
+            "fedge": 0.0,
         },
         "stages": [{"ns": 5, "niter": 300, "ftolv": 1.0e-3, "row_count": 2}],
         "stdout_tail": [" Try increasing NITER"],
@@ -260,6 +267,8 @@ def test_freeb_generated_mgrid_more_iter_returncode_is_vmec_status_not_crash() -
     assert details["nonzero_returncode"] is True
     assert details["more_iter_returncode"] is True
     assert details["printed_try_increasing_niter"] is True
+    assert details["delbsq_last"] == pytest.approx(1.0)
+    assert details["fedge_last"] == pytest.approx(0.0)
     assert status == "more_iter_exit"
     assert reason == "vmec2000_more_iterations_required"
     assert "more_iter_flag=2" in help_text

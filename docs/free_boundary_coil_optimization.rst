@@ -466,13 +466,15 @@ override ``--nzeta``, choose a value compatible with the generated grid
 
 If VMEC2000 exits before writing ``wout_*.nc``, the JSON still records the
 workdir, return code, whether VMEC2000 opened the vacuum grid, stdout/stderr
-tails, ``threed1`` tail, and parsed iteration trace. VMEC2000 return code ``2``
-is the source-level ``more_iter_flag`` and is reported as ``more_iter_exit``
-when the diagnostic also has a parsed iteration trace or an explicit request to
-increase ``NITER``. Other nonzero exits remain ``nonzero_exit`` so true
-generated-grid crashes stay visible in the promotion evidence. The current
-low-iteration LP-QA generated-``mgrid`` VMEC2000 leg is a ``more_iter_exit``
-WOUT-promotion gap, not a direct-coil provider failure.
+tails, ``threed1`` tail, and parsed iteration trace. The parser includes both
+the force rows and free-boundary convergence channels such as ``DEL-BSQ`` and
+``FEDGE``. VMEC2000 return code ``2`` is the source-level ``more_iter_flag``
+and is reported as ``more_iter_exit`` when the diagnostic also has a parsed
+iteration trace or an explicit request to increase ``NITER``. Other nonzero
+exits remain ``nonzero_exit`` so true generated-grid crashes stay visible in the
+promotion evidence. The current low-iteration LP-QA generated-``mgrid`` VMEC2000
+leg is a ``more_iter_exit`` WOUT-promotion gap, not a direct-coil provider
+failure: recent traces show small force rows but ``DEL-BSQ`` still near one.
 
 For local WOUT-promotion investigation, add ``--vmec2000-promotion-probes``.
 This optional mode leaves the default comparison untouched, then records

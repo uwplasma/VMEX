@@ -400,6 +400,10 @@ def _write_vmec2000_no_wout_report(path: Path, vmec2000) -> None:
                     "delt0r": stage.rows[-1].delt0r,
                     "r00": stage.rows[-1].r00,
                     "w": stage.rows[-1].w,
+                    "beta": stage.rows[-1].beta,
+                    "avg_m": stage.rows[-1].avg_m,
+                    "delbsq": stage.rows[-1].delbsq,
+                    "fedge": stage.rows[-1].fedge,
                 },
             }
             for stage in vmec2000.stages

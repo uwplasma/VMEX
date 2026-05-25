@@ -765,6 +765,10 @@ def _vmec2000_summary(vmec2000_result: Any) -> dict[str, Any]:
             "delt0r": last_row.delt0r,
             "r00": last_row.r00,
             "w": last_row.w,
+            "beta": last_row.beta,
+            "avg_m": last_row.avg_m,
+            "delbsq": last_row.delbsq,
+            "fedge": last_row.fedge,
         },
         "stages": [
             {
@@ -823,6 +827,10 @@ def _vmec2000_underconverged_details(summary: dict[str, Any]) -> dict[str, Any]:
         "preconditioned_fsq_total_last": preconditioned_fsq_total,
         "delt0r_last": _safe_float(last_row.get("delt0r")),
         "w_last": _safe_float(last_row.get("w")),
+        "beta_last": _safe_float(last_row.get("beta")),
+        "avg_m_last": _safe_float(last_row.get("avg_m")),
+        "delbsq_last": _safe_float(last_row.get("delbsq")),
+        "fedge_last": _safe_float(last_row.get("fedge")),
     }
     if preconditioned_fsq_total is not None and ftolv not in (None, 0.0):
         details["preconditioned_fsq_total_over_ftolv"] = float(preconditioned_fsq_total / ftolv)
