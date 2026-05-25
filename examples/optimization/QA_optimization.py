@@ -26,6 +26,7 @@ OUTPUT_DIR = Path("results/qa_opt/ess")
 MAX_MODE = 3
 MIN_VMEC_MODE = 6
 USE_SIMPLE_SEED = True  # Start from near-circular RBC(0,0), RBC(0,1), ZBS(0,1).
+SIMPLE_SEED_PERTURBATION = 1.0e-5  # Tiny nonzero active modes keep derivatives away from exactly zero.
 INPUT_FILE = SIMPLE_SEED_INPUT_FILE if USE_SIMPLE_SEED else WARM_START_INPUT_FILE
 INPUT_FILE = vj.prepare_simple_omnigenity_seed_input(
     INPUT_FILE,
@@ -33,6 +34,7 @@ INPUT_FILE = vj.prepare_simple_omnigenity_seed_input(
     max_mode=MAX_MODE,
     min_vmec_mode=MIN_VMEC_MODE,
     enabled=USE_SIMPLE_SEED,
+    perturbation=SIMPLE_SEED_PERTURBATION,
 )
 USE_MODE_CONTINUATION = not USE_SIMPLE_SEED
 MAX_NFEV = 60
@@ -123,6 +125,9 @@ objective_tuples = [
 ]
 problem = vj.LeastSquaresProblem.from_tuples(objective_tuples)
 
+print("\nAssembled least-squares problem:")
+print(f"  objectives: {', '.join(problem.objective_names)}")
+print(f"  scalar terms: {problem.scalar_objective_names}")
 
 # Optimization.
 # The solve call only receives optimizer, continuation, device, and output
@@ -159,10 +164,12 @@ result = vj.least_squares_solve(
 history = result.history
 objective_history = result.objective_history
 timing = result.timing_summary
+result_summary = result.summary
 
 saved_paths = vj.save_optimization_result(result, output_dir=OUTPUT_DIR)
 
 print("\nFinal diagnostics from result.history:")
+print(f"  stages:           {result_summary['stage_modes']}")
 print(f"  aspect ratio:     {history['aspect_final']:.6g}")
 print(f"  mean iota:        {history['iota_final']:.6g}")
 print(f"  QS objective:     {history['qs_final']:.6e}")

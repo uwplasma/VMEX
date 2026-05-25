@@ -1656,6 +1656,52 @@ def _bottleneck_hint(metrics: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _profile_has_jvp_only_exact_tape(profile: dict[str, Any]) -> bool:
+    for name in ("exact_solve_with_tape_jvp_only_total", "exact_tape_build_jvp_only"):
+        rec = profile.get(name)
+        if not isinstance(rec, dict):
+            continue
+        if int(rec.get("count", 0) or 0) > 0 or float(rec.get("wall_time_s", 0.0) or 0.0) > 0.0:
+            return True
+    return False
+
+
+def _effective_jvp_only_exact_tape_metadata(
+    payload: dict[str, Any],
+    *,
+    profile: dict[str, Any],
+    runtime: dict[str, Any],
+) -> Any:
+    if "jvp_only_exact_tape_effective" in payload:
+        return payload.get("jvp_only_exact_tape_effective")
+    if _profile_has_jvp_only_exact_tape(profile):
+        return True
+    if "jvp_only_exact_tape" in payload:
+        return payload.get("jvp_only_exact_tape")
+    return runtime.get("vmec_jax_opt_jvp_only_exact_tape")
+
+
+def _effective_jvp_only_basepoint_carries_metadata(
+    payload: dict[str, Any],
+    *,
+    profile: dict[str, Any],
+    runtime: dict[str, Any],
+) -> Any:
+    if "jvp_only_basepoint_carries_effective" in payload:
+        return payload.get("jvp_only_basepoint_carries_effective")
+    if payload.get("jvp_only_basepoint_carries") is True:
+        return True
+    env_value = runtime.get("vmec_jax_jvp_only_exact_tape_basepoint_carries")
+    if env_value not in (None, ""):
+        return env_value
+    backend = str(runtime.get("default_backend") or payload.get("jax_default_backend") or "").strip().lower()
+    if _profile_has_jvp_only_exact_tape(profile) and backend in ("gpu", "cuda", "rocm"):
+        return True
+    if "jvp_only_basepoint_carries" in payload:
+        return payload.get("jvp_only_basepoint_carries")
+    return env_value
+
+
 def summarize_payload(
     payload: dict[str, Any],
     *,
@@ -1729,10 +1775,15 @@ def summarize_payload(
         "jax_default_backend": payload.get("jax_default_backend") or runtime.get("default_backend"),
         "jax_version": payload.get("jax_version") or runtime.get("jax_version"),
         "active_gpu": payload.get("active_gpu") if "active_gpu" in payload else runtime.get("active_gpu"),
-        "jvp_only_exact_tape": (
-            payload.get("jvp_only_exact_tape")
-            if "jvp_only_exact_tape" in payload
-            else runtime.get("vmec_jax_opt_jvp_only_exact_tape")
+        "jvp_only_exact_tape": _effective_jvp_only_exact_tape_metadata(
+            payload,
+            profile=profile,
+            runtime=runtime,
+        ),
+        "jvp_only_basepoint_carries": _effective_jvp_only_basepoint_carries_metadata(
+            payload,
+            profile=profile,
+            runtime=runtime,
         ),
         "jit_booz": _get_path(payload, ("qi_resolution", "jit_booz")),
         "contamination_warnings": payload.get("contamination_warnings"),

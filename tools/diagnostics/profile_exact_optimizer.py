@@ -19,6 +19,8 @@ from typing import Any
 
 import numpy as np
 
+_PROCESS_START = time.perf_counter()
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -360,24 +362,143 @@ def _print_profile(profile: dict[str, dict]) -> None:
         print(f"{name:48s} {count:7d} {total:12.3f} {mean:12.3f}")
 
 
-def _runtime_info() -> dict[str, object]:
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return _json_safe(value.tolist())
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def _jax_runtime_info(jax_module: Any, *, phase_timing: dict[str, float] | None = None) -> dict[str, object]:
+    try:
+        backend = str(jax_module.default_backend())
+    except Exception:
+        backend = "unknown"
+    try:
+        t_devices = time.perf_counter()
+        devices = [str(device) for device in jax_module.devices()]
+        devices_wall_s = float(time.perf_counter() - t_devices)
+        if phase_timing is not None and "jax_devices_s" not in phase_timing:
+            phase_timing["jax_devices_s"] = devices_wall_s
+    except Exception:
+        devices = []
+        devices_wall_s = None
+    info: dict[str, object] = {
+        "jax_version": getattr(jax_module, "__version__", None),
+        "default_backend": backend,
+        "devices": devices,
+        "xla_python_client_preallocate": os.environ.get("XLA_PYTHON_CLIENT_PREALLOCATE"),
+        "vmec_jax_opt_jvp_only_exact_tape": os.environ.get("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE"),
+        "vmec_jax_jvp_only_exact_tape_basepoint_carries": os.environ.get(
+            "VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES"
+        ),
+        "vmec_jax_opt_trial_scan": os.environ.get("VMEC_JAX_OPT_TRIAL_SCAN"),
+        "vmec_jax_opt_exact_path": os.environ.get("VMEC_JAX_OPT_EXACT_PATH"),
+    }
+    if devices_wall_s is not None:
+        info["jax_devices_s"] = devices_wall_s
+    return info
+
+
+def _runtime_info(*, phase_timing: dict[str, float] | None = None) -> dict[str, object]:
     try:
         import jax
 
-        return {
-            "jax_version": getattr(jax, "__version__", None),
-            "default_backend": str(jax.default_backend()),
-            "devices": [str(device) for device in jax.devices()],
-            "xla_python_client_preallocate": os.environ.get("XLA_PYTHON_CLIENT_PREALLOCATE"),
-            "vmec_jax_opt_jvp_only_exact_tape": os.environ.get("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE"),
-            "vmec_jax_jvp_only_exact_tape_basepoint_carries": os.environ.get(
-                "VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES"
-            ),
-            "vmec_jax_opt_trial_scan": os.environ.get("VMEC_JAX_OPT_TRIAL_SCAN"),
-            "vmec_jax_opt_exact_path": os.environ.get("VMEC_JAX_OPT_EXACT_PATH"),
-        }
+        return _jax_runtime_info(jax, phase_timing=phase_timing)
     except Exception as exc:  # pragma: no cover - diagnostics only
         return {"error": repr(exc)}
+
+
+def _phase_timing_payload(
+    phase_timing: dict[str, float] | None,
+    *,
+    wall_time_s: float | None = None,
+) -> dict[str, Any]:
+    out = dict(phase_timing or {})
+    if wall_time_s is not None:
+        out["run_wall_s"] = float(wall_time_s)
+    return _json_safe(out)
+
+
+def _profile_timing_alias(profile: dict[str, dict[str, float | int]]) -> dict[str, float | int]:
+    timing: dict[str, float | int] = {}
+    for name, rec in sorted(profile.items()):
+        if not isinstance(rec, dict) or "wall_time_s" not in rec:
+            continue
+        try:
+            value = float(rec.get("wall_time_s", 0.0))
+        except Exception:
+            continue
+        timing[str(name)] = int(value) if str(name).endswith("_count") else value
+    return timing
+
+
+def _attach_common_timing_aliases(
+    payload: dict[str, Any],
+    *,
+    wall_time_s: float | None,
+    phase_timing: dict[str, float] | None,
+    profile: dict[str, dict[str, float | int]] | None = None,
+    timing: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if wall_time_s is None:
+        for key in ("total_wall_time_s", "wall_time_s", "runtime_s"):
+            try:
+                value = payload.get(key)
+                if value is not None:
+                    wall_time_s = float(value)
+                    break
+            except Exception:
+                continue
+    if wall_time_s is not None:
+        payload.setdefault("total_wall_time_s", float(wall_time_s))
+        payload["wall_time_s"] = float(wall_time_s)
+    payload["phase_timing"] = _phase_timing_payload(phase_timing, wall_time_s=wall_time_s)
+    if timing is None:
+        profile_source = profile if isinstance(profile, dict) else payload.get("profile")
+        timing = _profile_timing_alias(profile_source if isinstance(profile_source, dict) else {})
+    payload["timing"] = _json_safe(timing)
+    return payload
+
+
+def _history_payload_with_aliases(
+    history: dict[str, Any],
+    *,
+    phase_timing: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    payload = dict(history)
+    profile = payload.get("profile")
+    return _attach_common_timing_aliases(
+        payload,
+        wall_time_s=None,
+        phase_timing=phase_timing,
+        profile=profile if isinstance(profile, dict) else None,
+    )
+
+
+def _sum_timing_aliases(payloads: list[dict[str, Any]]) -> dict[str, float | int]:
+    out: dict[str, float | int] = {}
+    for payload in payloads:
+        timing = payload.get("timing")
+        if not isinstance(timing, dict):
+            continue
+        for key, value in timing.items():
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, int):
+                out[str(key)] = int(out.get(str(key), 0)) + int(value)
+            elif isinstance(value, float):
+                out[str(key)] = float(out.get(str(key), 0.0)) + float(value)
+    return out
 
 
 def _env_flag_override(name: str) -> bool | None:
@@ -387,6 +508,10 @@ def _env_flag_override(name: str) -> bool | None:
     if flag in ("0", "false", "no", "off"):
         return False
     return None
+
+
+def _env_flag_enabled(name: str) -> bool:
+    return bool(_env_flag_override(name))
 
 
 def _gpu_like_solver_device(args: argparse.Namespace) -> bool:
@@ -399,7 +524,7 @@ def _gpu_like_solver_device(args: argparse.Namespace) -> bool:
     return platform in ("gpu", "cuda", "rocm", "tpu")
 
 
-def _effective_jvp_only_exact_tape(args: argparse.Namespace) -> bool:
+def _requested_jvp_only_exact_tape(args: argparse.Namespace) -> bool:
     value = getattr(args, "jvp_only_exact_tape", None)
     if value is not None:
         return bool(value)
@@ -409,7 +534,7 @@ def _effective_jvp_only_exact_tape(args: argparse.Namespace) -> bool:
     return _gpu_like_solver_device(args)
 
 
-def _effective_jvp_only_basepoint_carries(args: argparse.Namespace) -> bool:
+def _requested_jvp_only_basepoint_carries(args: argparse.Namespace) -> bool:
     value = getattr(args, "jvp_only_basepoint_carries", None)
     if value is not None:
         return bool(value)
@@ -417,6 +542,44 @@ def _effective_jvp_only_basepoint_carries(args: argparse.Namespace) -> bool:
     if forced is not None:
         return bool(forced)
     return _gpu_like_solver_device(args)
+
+
+def _profile_has_jvp_only_exact_tape(profile: dict[str, dict[str, float | int]]) -> bool:
+    for name in ("exact_solve_with_tape_jvp_only_total", "exact_tape_build_jvp_only"):
+        rec = profile.get(name)
+        if not isinstance(rec, dict):
+            continue
+        if int(rec.get("count", 0) or 0) > 0 or float(rec.get("wall_time_s", 0.0) or 0.0) > 0.0:
+            return True
+    return False
+
+
+def _runtime_default_backend(runtime: dict[str, object] | None) -> str:
+    if not isinstance(runtime, dict):
+        return ""
+    return str(runtime.get("default_backend") or "").strip().lower()
+
+
+def _effective_jvp_only_exact_tape(
+    args: argparse.Namespace,
+    profile: dict[str, dict[str, float | int]],
+) -> bool:
+    return _profile_has_jvp_only_exact_tape(profile) or _requested_jvp_only_exact_tape(args)
+
+
+def _effective_jvp_only_basepoint_carries(
+    args: argparse.Namespace,
+    profile: dict[str, dict[str, float | int]],
+    runtime: dict[str, object] | None,
+) -> bool:
+    value = getattr(args, "jvp_only_basepoint_carries", None)
+    if value is not None:
+        return bool(value)
+    env_value = os.getenv("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES")
+    if env_value is not None and env_value.strip() != "":
+        return _env_flag_enabled("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES")
+    backend = _runtime_default_backend(runtime)
+    return _profile_has_jvp_only_exact_tape(profile) and backend in ("gpu", "cuda", "rocm")
 
 
 def _cache_len(value: Any) -> int:
@@ -732,6 +895,7 @@ def _build_callback_payload(
     rss_before_bytes: int | None,
     rss_after_bytes: int | None,
     total_wall_s: float,
+    phase_timing: dict[str, float] | None = None,
     runtime: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     growth = _cache_growth(cache_before, cache_after)
@@ -744,7 +908,7 @@ def _build_callback_payload(
         rss_before_bytes=rss_before_bytes,
         rss_after_bytes=rss_after_bytes,
     )
-    return {
+    payload = {
         "schema_version": 2,
         "report_kind": "exact_optimizer_callback_profile",
         "problem": args.problem,
@@ -758,8 +922,10 @@ def _build_callback_payload(
         "sync_replay_timing": bool(getattr(args, "sync_replay_timing", False)),
         "trial_scan": str(getattr(args, "trial_scan", "auto")),
         "exact_path_requested": str(getattr(args, "exact_path", "auto")),
-        "jvp_only_exact_tape": _effective_jvp_only_exact_tape(args),
-        "jvp_only_basepoint_carries": _effective_jvp_only_basepoint_carries(args),
+        "jvp_only_exact_tape_requested": _requested_jvp_only_exact_tape(args),
+        "jvp_only_basepoint_carries_requested": _requested_jvp_only_basepoint_carries(args),
+        "jvp_only_exact_tape": _effective_jvp_only_exact_tape(args, profile),
+        "jvp_only_basepoint_carries": _effective_jvp_only_basepoint_carries(args, profile, runtime),
         "solver_device_requested": args.solver_device,
         "solver_device_resolved": solver_device_resolved,
         "runtime": _runtime_info() if runtime is None else runtime,
@@ -776,6 +942,12 @@ def _build_callback_payload(
         },
         "budget_status": budget_status,
     }
+    return _attach_common_timing_aliases(
+        payload,
+        wall_time_s=float(total_wall_s),
+        phase_timing=phase_timing,
+        profile=profile,
+    )
 
 
 def _clear_optimizer_point_caches(opt) -> None:
@@ -882,6 +1054,9 @@ def _install_profile_timing_supplements(opt) -> None:
 
 def main() -> int:
     args = _normalize_callback_args(_parse_args())
+    phase_timing: dict[str, float] = {
+        "process_to_main_s": float(time.perf_counter() - _PROCESS_START),
+    }
     if args.vmec_timing or args.vmec_timing_detail:
         os.environ["VMEC_JAX_TIMING"] = "1"
     if args.vmec_timing_detail:
@@ -901,10 +1076,18 @@ def main() -> int:
     elif args.trial_scan == "off":
         os.environ["VMEC_JAX_OPT_TRIAL_SCAN"] = "0"
 
+    t_import = time.perf_counter()
     import vmec_jax as vj
-    from vmec_jax._compat import enable_x64
+    from vmec_jax._compat import enable_x64, jax
     from vmec_jax.config import config_from_indata
     from vmec_jax.optimization import rebuild_indata_with_resolution
+    phase_timing["vmec_jax_import_s"] = float(time.perf_counter() - t_import)
+    if jax is not None:
+        t_devices = time.perf_counter()
+        try:
+            _ = jax.devices()
+        finally:
+            phase_timing["jax_devices_pre_run_s"] = float(time.perf_counter() - t_devices)
 
     enable_x64(True)
 
@@ -984,7 +1167,7 @@ def main() -> int:
         f"inner=({args.inner_max_iter}, {args.inner_ftol:g}) "
         f"trial=({args.trial_max_iter}, {args.trial_ftol:g})"
     )
-    runtime_info = _runtime_info()
+    runtime_info = _runtime_info(phase_timing=phase_timing)
     print(f"Requested solver_device={args.solver_device} resolved={opt._solver_device_name or 'default'}")
     print(f"Runtime={json.dumps(runtime_info, sort_keys=True)}")
     if args.initial_metrics:
@@ -1080,6 +1263,7 @@ def main() -> int:
             rss_before_bytes=rss_before,
             rss_after_bytes=rss_after,
             total_wall_s=total_wall_s,
+            phase_timing=phase_timing,
             runtime=runtime_info,
         )
         effective_callback = callback_payload["callback"]
@@ -1110,7 +1294,7 @@ def main() -> int:
         if args.json_out:
             out = Path(args.json_out).expanduser().resolve()
             out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(json.dumps(callback_payload, indent=2), encoding="utf-8")
+            out.write_text(json.dumps(_json_safe(callback_payload), indent=2), encoding="utf-8")
             print(f"Wrote {out}")
         if budget_status["exceeded"] and budget_status["action"] == "fail":
             return 2
@@ -1142,6 +1326,7 @@ def main() -> int:
         return 0
 
     if args.gradient_only:
+        gradient_t0 = time.perf_counter()
         cost, grad = opt.objective_and_gradient_fun(params0)
         print(
             f"\nReverse-gradient callback: cost={cost:.6e} "
@@ -1158,22 +1343,27 @@ def main() -> int:
                 f"relative={rel_err:.6e}"
             )
         profile = opt._profile_dump()
+        gradient_wall_s = float(time.perf_counter() - gradient_t0)
         _print_profile(profile)
         if args.json_out:
             out = Path(args.json_out).expanduser().resolve()
             out.parent.mkdir(parents=True, exist_ok=True)
+            payload = _attach_common_timing_aliases(
+                {
+                    "problem": args.problem,
+                    "max_mode": int(args.max_mode),
+                    "dofs": len(specs),
+                    "cost": float(cost),
+                    "gradient_norm": float(np.linalg.norm(grad)),
+                    "profile": profile,
+                    "runtime": runtime_info,
+                },
+                wall_time_s=gradient_wall_s,
+                phase_timing=phase_timing,
+                profile=profile,
+            )
             out.write_text(
-                json.dumps(
-                    {
-                        "problem": args.problem,
-                        "max_mode": int(args.max_mode),
-                        "dofs": len(specs),
-                        "cost": float(cost),
-                        "gradient_norm": float(np.linalg.norm(grad)),
-                        "profile": profile,
-                    },
-                    indent=2,
-                ),
+                json.dumps(_json_safe(payload), indent=2),
                 encoding="utf-8",
             )
             print(f"Wrote {out}")
@@ -1219,8 +1409,9 @@ def main() -> int:
                 scalar_step_bound=float(args.scalar_step_bound),
                 trace_callbacks=args.trace_callbacks,
             )
-            hist_repeat = dict(result["_history_dump"])
+            hist_repeat = _history_payload_with_aliases(dict(result["_history_dump"]))
             hist_repeat["repeat"] = repeat
+            hist_repeat["runtime"] = runtime_info
             histories.append(hist_repeat)
     finally:
         if trace_out is not None:
@@ -1231,7 +1422,8 @@ def main() -> int:
 
     if result is None:  # pragma: no cover - defensive
         raise RuntimeError("optimizer run did not produce a result")
-    hist = result["_history_dump"]
+    hist = _history_payload_with_aliases(dict(result["_history_dump"]), phase_timing=phase_timing)
+    hist["runtime"] = runtime_info
     print(
         f"\nFinal objective={hist['objective_final']:.6e} qs={hist['qs_final']:.6e} "
         f"aspect={hist['aspect_final']:.6f} wall={hist['total_wall_time_s']:.3f}s "
@@ -1244,19 +1436,30 @@ def main() -> int:
     if args.json_out:
         out = Path(args.json_out).expanduser().resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
-        payload = hist if run_repeats == 1 else {
-            "problem": args.problem,
-            "max_mode": int(args.max_mode),
-            "dofs": len(specs),
-            "method": args.method,
-            "exact_path_requested": args.exact_path,
-            "solver_device_requested": args.solver_device,
-            "solver_device_resolved": opt._solver_device_name or "default",
-            "runtime": _runtime_info(),
-            "run_repeats": run_repeats,
-            "runs": histories,
-        }
-        out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        if run_repeats == 1:
+            payload = hist
+        else:
+            repeat_wall_s = float(
+                sum(float(run.get("wall_time_s", 0.0)) for run in histories if isinstance(run, dict))
+            )
+            payload = _attach_common_timing_aliases(
+                {
+                    "problem": args.problem,
+                    "max_mode": int(args.max_mode),
+                    "dofs": len(specs),
+                    "method": args.method,
+                    "exact_path_requested": args.exact_path,
+                    "solver_device_requested": args.solver_device,
+                    "solver_device_resolved": opt._solver_device_name or "default",
+                    "runtime": runtime_info,
+                    "run_repeats": run_repeats,
+                    "runs": histories,
+                },
+                wall_time_s=repeat_wall_s,
+                phase_timing=phase_timing,
+                timing=_sum_timing_aliases(histories),
+            )
+        out.write_text(json.dumps(_json_safe(payload), indent=2), encoding="utf-8")
         print(f"Wrote {out}")
 
     if args.device_memory_profile_out:

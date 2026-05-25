@@ -21,24 +21,16 @@ From PyPI:
 pip install vmec-jax
 ```
 
+PyPI and conda-forge can lag the repository tags. If you need an exact release,
+check the package-index version before installing or pinning it.
+
 The plain package includes plotting support (`matplotlib`) and the
 differentiable Boozer transform dependency (`booz_xform_jax`) used by the QI
 examples, so there is no separate plotting or QI extra to install.
 
-From conda-forge (the feedstock can lag PyPI by a release):
-
-```bash
-pixi add vmec-jax
-conda install --channel conda-forge vmec-jax
-```
-
-Developer install from source:
-
-```bash
-git clone https://github.com/uwplasma/vmec_jax
-cd vmec_jax
-pip install -e .
-```
+From conda-forge use `pixi add vmec-jax` or
+`conda install --channel conda-forge vmec-jax`. For development, clone the
+repository and run `pip install -e .`.
 
 ## Quick Start
 
@@ -96,8 +88,7 @@ Boozer/QS full-loop gradients remain optional/phase-2 promotion work.
 ![Direct-coil provider parity](docs/_static/figures/freeb_single_stage_provider_parity.png)<br>
 ![Direct-coil CPU/GPU benchmark matrix](docs/_static/figures/freeb_single_stage_benchmark_matrix.png)
 
-Run the low-resolution direct-coil/generated-`mgrid` scan from a developer
-checkout with the ESSOS mgrid branch on `PYTHONPATH`:
+Run the low-resolution direct-coil/generated-`mgrid` scan:
 
 ```bash
 export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
@@ -122,9 +113,7 @@ python examples/optimization/free_boundary_QS_coil_optimization.py \
   --outdir results/free_boundary_QS_coil_optimization_circle_smoke
 ```
 
-Run the bounded benchmark matrix first; it fans out to the provider, direct
-free-boundary solve with and without JIT force kernels, and coil-gradient
-benchmark scripts:
+Run the bounded provider/solve/gradient benchmark matrix:
 
 ```bash
 python tools/benchmarks/bench_freeb_direct_coil_matrix.py \
@@ -132,8 +121,8 @@ python tools/benchmarks/bench_freeb_direct_coil_matrix.py \
   --out results/bench_freeb_direct_coil_matrix/summary.json
 ```
 
-Detailed caveats, stronger-current examples, optional VMEC2000 diagnostics, and
-individual benchmark commands are in `docs/free_boundary_coil_optimization.rst`.
+Detailed caveats and optional VMEC2000 diagnostics are in
+`docs/free_boundary_coil_optimization.rst`.
 
 ## Backend Selection
 
@@ -159,11 +148,9 @@ Editable optimization examples live in `examples/optimization/`. Start with
 `docs/optimization_sweep_results.rst` for generated sweep tables/figures, and
 `docs/piecewise_omnigenous_plan.rst` for the pwO planning and acceptance gates.
 
-The README intentionally keeps only the compact best current
-stellarator-symmetric QA/QH/QP/QI rows. Extended policy discussion, LASYM
-panels, finite-beta examples, extended QI NFP provenance and limitations,
-minimal-seed status, failure modes, partial CPU/GPU sweep snapshots, and
-full-matrix artifact requirements live in the docs.
+The README keeps only compact best-current stellarator-symmetric QA/QH/QP/QI
+rows. Extended LASYM, finite-beta, QI provenance, minimal-seed, CPU/GPU sweep,
+and artifact-promotion details live in the docs.
 
 | Target | Backend | Policy | max_mode | ESS | Final J | QI legacy | Mirror | Aspect | Iota | Wall time |
 |---|---|---|---:|---|---:|---:|---:|---:|---:|---:|
@@ -182,10 +169,10 @@ README table is only the current compact promotion snapshot.
 
 ### QI from different NFP inputs
 
-The same `QI_optimization.py` workflow can be run from reviewed case-specific
-NFP 1, 2, 3, and 4 inputs by changing the input variables at the top of the
-script. The current NFP coverage panel is case-gated rather than a uniform
-aspect-ratio promotion table; full provenance and limitations are in the docs.
+The same `QI_optimization.py` workflow can be run from reviewed NFP 1, 2, 3,
+and 4 inputs by changing the input variables at the top of the script. The
+panel is case-gated rather than a uniform aspect-ratio promotion table; full
+provenance and limitations are in the docs.
 
 ![QI optimization from NFP seeds](docs/_static/figures/readme_qi_optimization_cases.png)
 
@@ -199,13 +186,12 @@ case-specific artifacts are not aspect-6 README best-row promotion evidence.
 - Validation and VMEC2000 parity status: `docs/validation.rst`
 - Testing and coverage strategy: `docs/testing_strategy.rst`
 - Release checklist and CI gates: `docs/release_checklist.rst`
-- Latest published release:
-  [`v0.0.13`](https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.13)
-- Release-candidate CI baseline: re-check the newest completed green `main`
-  run with `gh run list --repo uwplasma/vmec_jax --branch main --workflow CI
-  --limit 5` before tagging.
-- Required fast coverage gate is `95%`; record the current CI/local coverage
-  result from the release-candidate commit in the release notes.
+- Latest documented local rerun snapshot: `outputs/rerun_20260525_123334`.
+- Latest repository release tag:
+  [`v0.0.13`](https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.13).
+- Package indexes may lag tags; verify PyPI/conda-forge before advertising.
+- Re-check green `main` CI and record the required `95%` coverage gate before
+  tagging.
 
 ## CLI Reference
 
