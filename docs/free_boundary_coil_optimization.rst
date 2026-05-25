@@ -430,8 +430,11 @@ The matrix keeps two direct-solve rows: the non-JIT diagnostic path and the
 default fast path with ``--jit-forces``. On the 2026-05-25 office CUDA probe,
 ``--jit-forces`` reduced the tiny GPU warm direct solve from roughly ``2.07 s``
 to ``0.31 s`` by removing the force-evaluation bucket as the dominant cost.
-The remaining warm GPU overhead sits mostly in update and unattributed
-host/device dispatch, while final NESTOR sample/solve time is already small.
+The follow-up free-boundary-aware fused strict update then reduced the tiny
+CUDA warm solve further to about ``0.25 s`` by cutting the update-state bucket
+to about one millisecond. The remaining warm GPU overhead is dominated by
+host-side iteration-control dispatch between preconditioning and accepted
+updates, while final NESTOR sample/solve time is already small.
 
 The direct-solve child JSON includes active and trial NESTOR timing summaries:
 sample time, scalar-potential solve time, reuse counts, failed trial counts,

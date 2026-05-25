@@ -16,6 +16,11 @@ def test_residual_iter_timing_report_exposes_force_eval_aliases() -> None:
         "iteration_prepare": 0.1,
         "iteration_residual_metrics": 0.2,
         "iteration_control": 0.06,
+        "iteration_control_fsq1": 0.02,
+        "iteration_control_badjac": 0.01,
+        "iteration_control_vmec_time": 0.01,
+        "iteration_control_restart": 0.01,
+        "iteration_control_evolve": 0.005,
         "iteration_post_update": 0.05,
         "finalize": 0.03,
         "compute_forces": 0.4,
@@ -46,6 +51,8 @@ def test_residual_iter_timing_report_exposes_force_eval_aliases() -> None:
     assert report["force_eval_per_iter_s"] == pytest.approx(0.2)
     assert report["iteration_control_s"] == pytest.approx(0.06)
     assert report["iteration_control_per_iter_s"] == pytest.approx(0.03)
+    assert report["iteration_control_fsq1_s"] == pytest.approx(0.02)
+    assert report["iteration_control_unattributed_s"] == pytest.approx(0.005)
 
 
 def test_accelerated_scan_timing_is_opt_in_and_path_labeled(

@@ -327,6 +327,11 @@ def test_residual_iter_timing_report_and_message():
         "iteration_residual_metrics": 2.0,
         "preconditioner": 3.0,
         "iteration_control": 0.75,
+        "iteration_control_fsq1": 0.20,
+        "iteration_control_badjac": 0.10,
+        "iteration_control_vmec_time": 0.15,
+        "iteration_control_restart": 0.05,
+        "iteration_control_evolve": 0.20,
         "precond_refresh": 1.5,
         "update": 4.0,
         "update_state": 2.5,
@@ -349,6 +354,8 @@ def test_residual_iter_timing_report_and_message():
     assert report["setup_axis_reset_unattributed_s"] == 2.0
     assert report["iteration_control_s"] == 0.75
     assert report["iteration_control_per_iter_s"] == 0.1875
+    assert report["iteration_control_fsq1_s"] == 0.20
+    assert report["iteration_control_unattributed_s"] == pytest.approx(0.05)
     assert report["iteration_loop_unattributed_s"] == 0.25
     assert report["compute_forces_per_iter_s"] == 2.0
     assert report["precond_apply_per_iter_s"] == 0.3125
@@ -358,6 +365,7 @@ def test_residual_iter_timing_report_and_message():
     assert "compute_forces=8.000e+00s" in msg
     assert "precond_apply=1.250e+00s" in msg
     assert "control=7.500e-01s" in msg
+    assert "control_fsq1=2.000e-01s" in msg
 
 
 def test_build_resume_state_base_counts_optional_free_boundary_runtime():

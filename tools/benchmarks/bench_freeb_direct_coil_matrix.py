@@ -214,6 +214,12 @@ _SOLVER_TIMING_KEYS = (
     "compute_forces_calls",
     "preconditioner_s",
     "iteration_control_s",
+    "iteration_control_fsq1_s",
+    "iteration_control_badjac_s",
+    "iteration_control_vmec_time_s",
+    "iteration_control_restart_s",
+    "iteration_control_evolve_s",
+    "iteration_control_unattributed_s",
     "precond_apply_s",
     "precond_mode_scale_s",
     "precond_refresh_s",
@@ -314,6 +320,22 @@ def _case_metrics(case: dict[str, Any]) -> dict[str, Any]:
             _nested_value(solver, ("warm", "iteration_loop_unattributed_s"))
         ),
         "warm_iteration_control_s": _finite_float(_nested_value(solver, ("warm", "iteration_control_s"))),
+        "warm_iteration_control_fsq1_s": _finite_float(_nested_value(solver, ("warm", "iteration_control_fsq1_s"))),
+        "warm_iteration_control_badjac_s": _finite_float(
+            _nested_value(solver, ("warm", "iteration_control_badjac_s"))
+        ),
+        "warm_iteration_control_vmec_time_s": _finite_float(
+            _nested_value(solver, ("warm", "iteration_control_vmec_time_s"))
+        ),
+        "warm_iteration_control_restart_s": _finite_float(
+            _nested_value(solver, ("warm", "iteration_control_restart_s"))
+        ),
+        "warm_iteration_control_evolve_s": _finite_float(
+            _nested_value(solver, ("warm", "iteration_control_evolve_s"))
+        ),
+        "warm_iteration_control_unattributed_s": _finite_float(
+            _nested_value(solver, ("warm", "iteration_control_unattributed_s"))
+        ),
         "warm_compute_forces_s": _finite_float(_nested_value(solver, ("warm", "compute_forces_s"))),
         "warm_preconditioner_s": _finite_float(_nested_value(solver, ("warm", "preconditioner_s"))),
         "warm_update_s": _finite_float(_nested_value(solver, ("warm", "update_s"))),
@@ -395,6 +417,26 @@ def _cpu_gpu_comparison(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "warm_iteration_control": _ratio(
                         gpu_metrics.get("warm_iteration_control_s"),
                         cpu_metrics.get("warm_iteration_control_s"),
+                    ),
+                    "warm_iteration_control_fsq1": _ratio(
+                        gpu_metrics.get("warm_iteration_control_fsq1_s"),
+                        cpu_metrics.get("warm_iteration_control_fsq1_s"),
+                    ),
+                    "warm_iteration_control_badjac": _ratio(
+                        gpu_metrics.get("warm_iteration_control_badjac_s"),
+                        cpu_metrics.get("warm_iteration_control_badjac_s"),
+                    ),
+                    "warm_iteration_control_vmec_time": _ratio(
+                        gpu_metrics.get("warm_iteration_control_vmec_time_s"),
+                        cpu_metrics.get("warm_iteration_control_vmec_time_s"),
+                    ),
+                    "warm_iteration_control_restart": _ratio(
+                        gpu_metrics.get("warm_iteration_control_restart_s"),
+                        cpu_metrics.get("warm_iteration_control_restart_s"),
+                    ),
+                    "warm_iteration_control_evolve": _ratio(
+                        gpu_metrics.get("warm_iteration_control_evolve_s"),
+                        cpu_metrics.get("warm_iteration_control_evolve_s"),
                     ),
                     "warm_compute_forces": _ratio(
                         gpu_metrics.get("warm_compute_forces_s"),

@@ -486,6 +486,12 @@ def test_exact_optimizer_profiles_solver_outer_timing_without_double_counting() 
                 "iteration_residual_metrics_s": 0.09,
                 "preconditioner_s": 0.15,
                 "iteration_control_s": 0.02,
+                "iteration_control_fsq1_s": 0.01,
+                "iteration_control_badjac_s": 0.004,
+                "iteration_control_vmec_time_s": 0.003,
+                "iteration_control_restart_s": 0.002,
+                "iteration_control_evolve_s": 0.001,
+                "iteration_control_unattributed_s": 0.0,
                 "update_s": 0.10,
                 "iteration_post_update_s": 0.04,
                 "iteration_loop_unattributed_s": 0.04,
@@ -503,6 +509,7 @@ def test_exact_optimizer_profiles_solver_outer_timing_without_double_counting() 
     assert profile["exact_tape_solver_iteration_loop"]["wall_time_s"] == 0.70
     assert profile["exact_tape_solver_iteration_residual_metrics"]["wall_time_s"] == 0.09
     assert profile["exact_tape_solver_iteration_control"]["wall_time_s"] == 0.02
+    assert profile["exact_tape_solver_iteration_control_fsq1"]["wall_time_s"] == 0.01
     assert profile["exact_tape_solver_iteration_loop_unattributed"]["wall_time_s"] == 0.04
     assert profile["exact_tape_solver_finalize"]["wall_time_s"] == 0.05
     assert profile["solve_forward_exact_unattributed"]["wall_time_s"] == pytest.approx(0.05)
