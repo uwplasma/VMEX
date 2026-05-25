@@ -562,15 +562,15 @@ def _runtime_default_backend(runtime: dict[str, object] | None) -> str:
 
 def _effective_jvp_only_exact_tape(
     args: argparse.Namespace,
-    profile: dict[str, dict[str, float | int]],
+    profile: dict[str, dict[str, float | int]] | None = None,
 ) -> bool:
-    return _profile_has_jvp_only_exact_tape(profile) or _requested_jvp_only_exact_tape(args)
+    return _profile_has_jvp_only_exact_tape(profile or {}) or _requested_jvp_only_exact_tape(args)
 
 
 def _effective_jvp_only_basepoint_carries(
     args: argparse.Namespace,
-    profile: dict[str, dict[str, float | int]],
-    runtime: dict[str, object] | None,
+    profile: dict[str, dict[str, float | int]] | None = None,
+    runtime: dict[str, object] | None = None,
 ) -> bool:
     value = getattr(args, "jvp_only_basepoint_carries", None)
     if value is not None:
@@ -578,8 +578,10 @@ def _effective_jvp_only_basepoint_carries(
     env_value = os.getenv("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES")
     if env_value is not None and env_value.strip() != "":
         return _env_flag_enabled("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES")
+    if profile is None and runtime is None:
+        return _requested_jvp_only_basepoint_carries(args)
     backend = _runtime_default_backend(runtime)
-    return _profile_has_jvp_only_exact_tape(profile) and backend in ("gpu", "cuda", "rocm")
+    return _profile_has_jvp_only_exact_tape(profile or {}) and backend in ("gpu", "cuda", "rocm")
 
 
 def _cache_len(value: Any) -> int:
