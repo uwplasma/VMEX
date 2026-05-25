@@ -151,6 +151,8 @@ Results obtained:
     - cached/precompiled opt-in JAX NESTOR warm active solve in the driver: about `1.49 s`;
     - optional ESSOS fixture remains fast but did not force active NESTOR in the one-iteration smoke (`n_iter=0`, no active update).
 75. Conclusion from the benchmark: the compiled low-resolution JAX operator is correct and fast in isolation, but the current driver path still pays accepted-solve compilation/dispatch cost. It should remain opt-in for validation while the next performance rung moves compilation outside accepted-state timing or replaces the dense route with a matrix-free/custom-linear-solve operator.
+76. Bounded generated-`mgrid`/direct-coil LPQA diagnostic passed with VMEC2000 skipped: `jax_direct_vs_mgrid_passed=True`; direct and generated-`mgrid` WOUT arrays/scalars matched within the configured `1e-12` tolerance.
+77. Optional VMEC2000 short leg completed without WOUT (`vmec2000_status=no_wout`) while the vmec_jax direct/generated-`mgrid` comparison still passed. This keeps the VMEC2000 promotion lane open rather than overclaiming external WOUT parity.
 
 Best next steps:
 
