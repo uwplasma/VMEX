@@ -1775,6 +1775,31 @@ For long GPU optimizer runs, you may also set ``exact_path="scan"`` on the
 optimizer or workflow helper. This does not improve cold-start performance; it
 is an amortized option for runs with many accepted exact callbacks.
 
+Use the exact-path profiler and comparison helper before changing that setting
+for a production run:
+
+.. code-block:: bash
+
+   python tools/diagnostics/profile_exact_optimizer.py \
+     --case qh --max-mode 2 --max-nfev 2 --inner-max-iter 60 \
+     --solver-device gpu --exact-path tape \
+     --json-out results/profiles/qh_m2_tape_profile.json
+
+   python tools/diagnostics/profile_exact_optimizer.py \
+     --case qh --max-mode 2 --max-nfev 2 --inner-max-iter 60 \
+     --solver-device gpu --exact-path scan \
+     --json-out results/profiles/qh_m2_scan_profile.json
+
+   python tools/diagnostics/compare_exact_path_profiles.py \
+     --tape results/profiles/qh_m2_tape_profile.json \
+     --scan results/profiles/qh_m2_scan_profile.json \
+     --json-out results/profiles/qh_m2_exact_path_compare.json
+
+On the current QH mode-2 CUDA profile, the scan path had a much slower cold
+compile but a faster warm callback; the break-even point was about 75 accepted
+exact callbacks.  That is why ``exact_path="tape"`` remains the default and
+``exact_path="scan"`` is reserved for long, warm GPU campaigns.
+
 For GPU runs, the dynamic replay bucket
 (``VMEC_JAX_DYNAMIC_REPLAY_BUCKET``) should be tuned only during profiling.
 The default keeps padding modest.  Coarser buckets can reduce recompilation in

@@ -187,6 +187,7 @@ Results obtained:
 98. Exposed the accepted-point exact differentiation path as `FixedBoundaryExactOptimizer(..., exact_path={None,'auto','tape','scan'})` and threaded it through the objective-workflow helpers and profiling CLI. This gives long GPU runs a script-level way to opt into scan-exact without relying on hidden environment variables, while keeping the low-cold-cost tape path as default.
 99. Added `tools/diagnostics/compare_exact_path_profiles.py` to compute the cold/warm tape-vs-scan break-even from saved exact-callback profiles. For the current QH mode-2 GPU profile, scan-exact needs about 75 accepted callbacks to beat the tape path, so the default policy remains tape.
 100. Fixed the workflow-unit fake optimizer to accept and assert the newly threaded `exact_path` argument after GitHub Actions exposed the stale mock in the Python 3.10 fast-test lane.
+101. Documented the exact-path profiling workflow in `docs/optimization.rst`, including paired tape/scan profiler commands and the break-even comparison helper.
 
 Best next steps:
 
