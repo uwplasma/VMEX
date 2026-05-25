@@ -188,6 +188,8 @@ Results obtained:
 99. Added `tools/diagnostics/compare_exact_path_profiles.py` to compute the cold/warm tape-vs-scan break-even from saved exact-callback profiles. For the current QH mode-2 GPU profile, scan-exact needs about 75 accepted callbacks to beat the tape path, so the default policy remains tape.
 100. Fixed the workflow-unit fake optimizer to accept and assert the newly threaded `exact_path` argument after GitHub Actions exposed the stale mock in the Python 3.10 fast-test lane.
 101. Documented the exact-path profiling workflow in `docs/optimization.rst`, including paired tape/scan profiler commands and the break-even comparison helper.
+102. Re-ran the optional VMEC2000 generated-mgrid trace smoke with `/Users/rogeriojorge/local/ESSOS_mgrid_pr` on `PYTHONPATH`; the gate passed (`1 passed in 19.01 s`). The default local ESSOS checkout still skips cleanly because it does not yet expose `Coils.to_mgrid`.
+103. Re-ran the ESSOS generated-`mgrid` vs direct-coil vmec_jax parity gate with the ESSOS mgrid branch; it passed (`1 passed in 14.68 s`).
 
 Best next steps:
 
