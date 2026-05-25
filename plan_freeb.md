@@ -155,6 +155,7 @@ Results obtained:
 77. Optional VMEC2000 short leg completed without WOUT (`vmec2000_status=no_wout`) while the vmec_jax direct/generated-`mgrid` comparison still passed. This keeps the VMEC2000 promotion lane open rather than overclaiming external WOUT parity.
 78. Patched the direct-coil benchmark matrix to use concrete JAX GPU platform names (`cuda`/`rocm`) instead of the generic `gpu` alias, because the office JAX install reports devices as `cuda:*` while `JAX_PLATFORMS=gpu` tries unavailable ROCm first.
 79. Office quick CPU/GPU direct-coil benchmark matrix completed after the platform fix. CUDA provider and gradient microbenchmarks passed, but the tiny direct free-boundary solve remains slower on GPU (`warm_min≈2.24 s`) than CPU (`warm_min≈0.34 s`). The recorded final NESTOR sample/solve times are small (`sample≈0.0126 s`, `solve≈0.0062 s` on GPU), so the remaining GPU lane is launch/compile/replay overhead around the full solve rather than the final dense solve itself.
+80. Office GPU QH mode-2 exact-Jacobian profile completed within budget after the free-boundary work: callback walls were `15.12 s` cold and `3.21 s` warm; tape build averaged `3.61 s`, replay dispatch `2.49 s`, residual tangents `1.11 s`, and initial tangents `1.06 s`. The automatic GPU JVP-only/basepoint-carry policy was active.
 
 Best next steps:
 
@@ -163,6 +164,7 @@ Best next steps:
 3. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
 5. For GPU performance, prioritize accepted-point replay/tangent construction and compilation/dispatch amortization over tiny raw direct-solve offload; the current microbenchmarks show tiny solves are still CPU-favorable.
+6. Next GPU optimization target is still exact-tape build plus replay dispatch. The latest warm QH mode-2 Jacobian callback is `3.21 s`; the practical target for production sweeps is below `1 s` warm callback for this size.
 
 Need from user:
 
