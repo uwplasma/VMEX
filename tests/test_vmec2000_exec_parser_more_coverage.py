@@ -295,6 +295,32 @@ def test_freeb_generated_mgrid_more_iter_returncode_with_trace_but_no_print_is_v
     assert reason == "vmec2000_more_iterations_required"
 
 
+def test_freeb_generated_mgrid_more_iter_with_bare_backtrace_is_not_runtime_error() -> None:
+    summary = {
+        "returncode": 2,
+        "last_row": {"it": 2, "fsqr1": 1.0e-6, "fsqz1": 2.0e-6, "fsql1": 3.0e-6},
+        "stages": [{"ns": 7, "niter": 2, "ftolv": 1.0e-8, "row_count": 2}],
+        "stdout_tail": [" Try increasing NITER"],
+        "stderr_tail": [
+            "Could not print backtrace: executable file is not an executable",
+            "#0  0x107434947",
+            "#1  0x10743536f",
+        ],
+        "threed1_tail": [" Try increasing NITER", " PARVMEC aborting..."],
+    }
+
+    details = _vmec2000_underconverged_details(summary)
+    status, reason, _ = _vmec2000_nonzero_status(summary)
+
+    assert details["classification"] == "vmec2000_more_iter_exit"
+    assert details["runtime_error_detected"] is False
+    assert details["runtime_error_tail"] == []
+    assert details["backtrace_detected"] is True
+    assert "Could not print backtrace" in "\n".join(details["backtrace_tail"])
+    assert status == "more_iter_exit"
+    assert reason == "vmec2000_more_iterations_required"
+
+
 def test_freeb_generated_mgrid_returncode_two_with_runtime_error_is_not_more_iter() -> None:
     summary = {
         "returncode": 2,
@@ -315,6 +341,7 @@ def test_freeb_generated_mgrid_returncode_two_with_runtime_error_is_not_more_ite
     assert details["classification"] == "vmec2000_runtime_error"
     assert details["runtime_error_detected"] is True
     assert "Fortran runtime error" in "\n".join(details["runtime_error_tail"])
+    assert details["backtrace_detected"] is False
     assert details["more_iter_returncode"] is True
     assert status == "nonzero_exit"
     assert reason == "vmec2000_runtime_error"

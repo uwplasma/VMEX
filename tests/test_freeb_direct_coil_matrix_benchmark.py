@@ -16,6 +16,18 @@ def _direct_solve_payload() -> dict:
                     "trial_nestor_timing_summary": {"recorded_calls": 3},
                 },
                 "warm_solver_timing": {
+                    "timing": {
+                        "solve_total_s": 0.7,
+                        "iterations": 2,
+                        "iteration_loop_s": 0.6,
+                        "iteration_loop_unattributed_s": 0.1,
+                        "compute_forces_s": 0.2,
+                        "preconditioner_s": 0.15,
+                        "update_s": 0.05,
+                        "compute_forces_per_iter_s": 0.1,
+                        "preconditioner_per_iter_s": 0.075,
+                        "update_per_iter_s": 0.025,
+                    },
                     "active_nestor_timing_summary": {"active_steps": 1},
                     "trial_nestor_timing_summary": {"recorded_calls": 1},
                 },
@@ -82,6 +94,9 @@ def test_matrix_timing_snapshot_preserves_compact_nestor_details() -> None:
     assert nestor["final_diagnostics"]["provider"]["coil_count"] == 8
     assert nestor["final_diagnostics"]["provider"]["segments_per_coil"] == 96
     assert nestor["final_diagnostics"]["lu_built"]["mode_matrix"] is True
+    assert rows[0]["solver"]["warm"]["solve_total_s"] == 0.7
+    assert rows[0]["solver"]["warm"]["iteration_loop_unattributed_s"] == 0.1
+    assert rows[0]["solver"]["warm"]["compute_forces_per_iter_s"] == 0.1
 
 
 def test_matrix_timing_snapshot_keeps_provider_and_gradient_rows_compact() -> None:
@@ -114,6 +129,19 @@ def test_cpu_gpu_comparison_matches_completed_cases_and_reports_nestor_ratios() 
             "cold_or_compile_s": cold,
             "warm_min_s": warm_min,
             "warm_mean_s": warm_min * 2.0,
+            "solver": {
+                "warm": {
+                    "solve_total_s": warm_min + 1.0,
+                    "iteration_loop_s": warm_min + 0.5,
+                    "iteration_loop_unattributed_s": warm_min + 0.25,
+                    "compute_forces_s": warm_min + 0.1,
+                    "preconditioner_s": warm_min + 0.2,
+                    "update_s": warm_min + 0.3,
+                    "compute_forces_per_iter_s": warm_min + 0.01,
+                    "preconditioner_per_iter_s": warm_min + 0.02,
+                    "update_per_iter_s": warm_min + 0.03,
+                }
+            },
             "nestor": {
                 "active": {
                     "warm": {
@@ -169,10 +197,20 @@ def test_cpu_gpu_comparison_matches_completed_cases_and_reports_nestor_ratios() 
     assert comparison["case"] == "synthetic_direct_coil_solve"
     assert comparison["cpu"]["sample_points"] == 64
     assert comparison["gpu"]["provider"] == {"coil_count": 2}
+    assert comparison["cpu"]["warm_solver_total_s"] == 3.0
+    assert comparison["gpu"]["warm_solver_total_s"] == 1.5
+    assert comparison["cpu"]["warm_compute_forces_per_iter_s"] == 2.01
+    assert comparison["gpu"]["warm_compute_forces_per_iter_s"] == 0.51
     assert comparison["ratios_gpu_over_cpu"] == {
         "cold_or_compile": 0.5,
         "warm_min": 0.25,
         "warm_mean": 0.25,
+        "warm_solver_total": 0.5,
+        "warm_iteration_loop": 1.0 / 2.5,
+        "warm_iteration_loop_unattributed": 0.75 / 2.25,
+        "warm_compute_forces": 0.6 / 2.1,
+        "warm_preconditioner": 0.7 / 2.2,
+        "warm_update": 0.8 / 2.3,
         "active_nestor_warm_sample": 0.5,
         "active_nestor_warm_solve": 0.5,
         "final_recompute_sample": 0.5,

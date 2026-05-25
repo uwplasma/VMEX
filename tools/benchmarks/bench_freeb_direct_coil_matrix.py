@@ -201,6 +201,53 @@ def _compact_nestor_snapshot(case: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
+_SOLVER_TIMING_KEYS = (
+    "solve_total_s",
+    "iterations",
+    "iteration_loop_s",
+    "iteration_loop_unattributed_s",
+    "setup_total_s",
+    "setup_axis_reset_s",
+    "compute_forces_s",
+    "compute_forces_first_s",
+    "compute_forces_rest_s",
+    "compute_forces_calls",
+    "preconditioner_s",
+    "precond_apply_s",
+    "precond_mode_scale_s",
+    "precond_refresh_s",
+    "update_s",
+    "update_state_s",
+    "update_trace_build_s",
+    "update_trace_finalize_s",
+    "iteration_prepare_s",
+    "iteration_residual_metrics_s",
+    "iteration_post_update_s",
+    "finalize_s",
+    "compute_forces_per_iter_s",
+    "preconditioner_per_iter_s",
+    "update_per_iter_s",
+    "update_state_per_iter_s",
+    "update_trace_build_per_iter_s",
+    "update_trace_finalize_per_iter_s",
+)
+
+
+def _compact_solver_timing_snapshot(case: dict[str, Any]) -> dict[str, Any] | None:
+    """Return solve-loop timing buckets that explain warm direct-solve cost."""
+
+    out: dict[str, Any] = {}
+    for label, source_key in (("cold", "cold_solver_timing"), ("warm", "warm_solver_timing")):
+        source = case.get(source_key)
+        timing = source.get("timing") if isinstance(source, dict) else None
+        if not isinstance(timing, dict):
+            continue
+        compact = {key: timing[key] for key in _SOLVER_TIMING_KEYS if key in timing}
+        if compact:
+            out[label] = compact
+    return out or None
+
+
 def _timing_snapshot(payload: dict[str, Any] | None, *, include_nestor: bool = False) -> list[dict[str, Any]]:
     if not payload:
         return []
@@ -221,6 +268,9 @@ def _timing_snapshot(payload: dict[str, Any] | None, *, include_nestor: bool = F
             nestor = _compact_nestor_snapshot(case)
             if nestor:
                 row["nestor"] = nestor
+            solver = _compact_solver_timing_snapshot(case)
+            if solver:
+                row["solver"] = solver
         rows.append(row)
     return rows
 
@@ -252,10 +302,26 @@ def _nested_value(data: dict[str, Any], path: tuple[str, ...]) -> Any:
 
 def _case_metrics(case: dict[str, Any]) -> dict[str, Any]:
     nestor = case.get("nestor") if isinstance(case.get("nestor"), dict) else {}
+    solver = case.get("solver") if isinstance(case.get("solver"), dict) else {}
     return {
         "cold_or_compile_s": _finite_float(case.get("cold_or_compile_s")),
         "warm_min_s": _finite_float(case.get("warm_min_s")),
         "warm_mean_s": _finite_float(case.get("warm_mean_s")),
+        "warm_solver_total_s": _finite_float(_nested_value(solver, ("warm", "solve_total_s"))),
+        "warm_iteration_loop_s": _finite_float(_nested_value(solver, ("warm", "iteration_loop_s"))),
+        "warm_iteration_loop_unattributed_s": _finite_float(
+            _nested_value(solver, ("warm", "iteration_loop_unattributed_s"))
+        ),
+        "warm_compute_forces_s": _finite_float(_nested_value(solver, ("warm", "compute_forces_s"))),
+        "warm_preconditioner_s": _finite_float(_nested_value(solver, ("warm", "preconditioner_s"))),
+        "warm_update_s": _finite_float(_nested_value(solver, ("warm", "update_s"))),
+        "warm_compute_forces_per_iter_s": _finite_float(
+            _nested_value(solver, ("warm", "compute_forces_per_iter_s"))
+        ),
+        "warm_preconditioner_per_iter_s": _finite_float(
+            _nested_value(solver, ("warm", "preconditioner_per_iter_s"))
+        ),
+        "warm_update_per_iter_s": _finite_float(_nested_value(solver, ("warm", "update_per_iter_s"))),
         "active_nestor_warm_sample_s": _finite_float(
             _nested_value(nestor, ("active", "warm", "sample_time_s", "total_s"))
         ),
@@ -312,6 +378,27 @@ def _cpu_gpu_comparison(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     ),
                     "warm_min": _ratio(gpu_metrics.get("warm_min_s"), cpu_metrics.get("warm_min_s")),
                     "warm_mean": _ratio(gpu_metrics.get("warm_mean_s"), cpu_metrics.get("warm_mean_s")),
+                    "warm_solver_total": _ratio(
+                        gpu_metrics.get("warm_solver_total_s"),
+                        cpu_metrics.get("warm_solver_total_s"),
+                    ),
+                    "warm_iteration_loop": _ratio(
+                        gpu_metrics.get("warm_iteration_loop_s"),
+                        cpu_metrics.get("warm_iteration_loop_s"),
+                    ),
+                    "warm_iteration_loop_unattributed": _ratio(
+                        gpu_metrics.get("warm_iteration_loop_unattributed_s"),
+                        cpu_metrics.get("warm_iteration_loop_unattributed_s"),
+                    ),
+                    "warm_compute_forces": _ratio(
+                        gpu_metrics.get("warm_compute_forces_s"),
+                        cpu_metrics.get("warm_compute_forces_s"),
+                    ),
+                    "warm_preconditioner": _ratio(
+                        gpu_metrics.get("warm_preconditioner_s"),
+                        cpu_metrics.get("warm_preconditioner_s"),
+                    ),
+                    "warm_update": _ratio(gpu_metrics.get("warm_update_s"), cpu_metrics.get("warm_update_s")),
                     "active_nestor_warm_sample": _ratio(
                         gpu_metrics.get("active_nestor_warm_sample_s"),
                         cpu_metrics.get("active_nestor_warm_sample_s"),
@@ -396,6 +483,9 @@ def _run_child(
 ) -> dict[str, Any]:
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{REPO_ROOT}{os.pathsep}{env.get('PYTHONPATH', '')}" if env.get("PYTHONPATH") else str(REPO_ROOT)
+    if label == "direct_solve":
+        env.setdefault("VMEC_JAX_TIMING", "1")
+        env.setdefault("VMEC_JAX_TIMING_DETAIL", "1")
     if backend == "cpu":
         env["JAX_PLATFORMS"] = "cpu"
     elif backend == "gpu":

@@ -275,7 +275,8 @@ It exits with code ``77`` when optional ESSOS assets are unavailable. For a
 dependency-light setup check that does not run VMEC or the optimizer, use
 ``--dry-run``. This writes ``summary.json`` with the generated VMEC input path,
 selected coil variables, objective weights, robust-objective options, and
-baseline coil diagnostics:
+baseline coil diagnostics. The summary also carries a ``wp11_limitations`` list
+so dry-run artifacts remain self-describing when shared without this page:
 
 .. code-block:: bash
 
@@ -411,10 +412,14 @@ on claiming a speedup from these tiny validation cases.
 
 The direct-solve child JSON includes active and trial NESTOR timing summaries:
 sample time, scalar-potential solve time, reuse counts, failed trial counts,
-and the final recompute sampler/solver timings. These fields are the first
-place to inspect when a direct-coil free-boundary solve is slow, because they
-separate Biot-Savart sampling cost from the vacuum linear solve and from
-solver-trial replay overhead.
+and the final recompute sampler/solver timings. The matrix runner also enables
+``VMEC_JAX_TIMING=1`` and ``VMEC_JAX_TIMING_DETAIL=1`` for the direct-solve
+child and records compact cold/warm solve-loop buckets in ``summary.json``:
+force evaluation, preconditioner, update, trace construction, and unattributed
+iteration-loop cost. These fields are the first place to inspect when a
+direct-coil free-boundary solve is slow, because they separate Biot-Savart
+sampling, the vacuum linear solve, solver-trial replay overhead, and the higher
+VMEC residual/update loop.
 
 The child scripts are still useful when isolating one lane:
 

@@ -173,6 +173,8 @@ def test_circle_dry_run_writes_configuration_without_solves(tmp_path, monkeypatc
     assert summary["scope"] == "coil-only direct-coil free-boundary scaffold"
     assert summary["dry_run"] is True
     assert summary["plasma_boundary_optimized"] is False
+    assert any("Boozer/QS" in limitation for limitation in summary["wp11_limitations"])
+    assert any("full-loop" in limitation for limitation in summary["wp11_limitations"])
     assert summary["provider"]["provider"] == "circle"
     assert summary["baseline_coils"]["n_base_coils"] == 1
     assert summary["vmec_config"]["vmec_max_iter"] == 1

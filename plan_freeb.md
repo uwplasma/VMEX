@@ -10,7 +10,7 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-25 after dry-run optimization diagnostics, ESSOS adapter validation, VMEC2000 runtime-error classification, bounded AD-vs-FD NESTOR gradient checks, and same-branch CPU/GPU benchmark-matrix reporting.
+Last updated: 2026-05-25 after dry-run optimization diagnostics, ESSOS adapter validation, VMEC2000 runtime-error classification, bounded AD-vs-FD NESTOR gradient checks, same-branch CPU/GPU benchmark-matrix reporting, and solve-loop timing capture for direct-coil benchmark rows.
 
 Steps taken:
 
@@ -206,6 +206,9 @@ Results obtained:
 117. VMEC2000 generated-grid diagnostics now classify runtime-error exits separately from legitimate `more_iter` exits. The latest LPQA local probe opens the generated grid and prints rows, but VMEC2000 exits with a runtime error before WOUT; vmec_jax direct-coil and generated-`mgrid` paths still pass active parity.
 118. Added a bounded AD-vs-central-FD gate through the fixed-boundary JAX chain direct coils -> boundary projection -> VMEC/NESTOR source/matrix assembly -> dense mode solve for one coil current and one coil Fourier geometry coefficient.
 119. The latest office CPU/CUDA direct-coil quick matrix shows cold/compile is faster on CUDA (`6.77 s` versus CPU `10.74 s`) but warm tiny direct solve remains slower on CUDA (`2.48 s` versus CPU `0.325 s`). Final NESTOR solve time is not the bottleneck (`0.0069 s` CUDA versus `0.0062 s` CPU); the next performance target is warm solve-loop dispatch around residual/update/preconditioner work.
+120. Phase-1 coil-only optimization dry-run and real-run summaries now include explicit `wp11_limitations`, so shared artifacts state that the example is still a residual/aspect/iota proxy and not a promoted Boozer/QS full-adjoint path.
+121. The benchmark matrix now enables `VMEC_JAX_TIMING=1` and `VMEC_JAX_TIMING_DETAIL=1` for the direct-solve child and preserves compact cold/warm solver timing buckets for force evaluation, residual metrics, preconditioner, update, trace construction, and unattributed iteration-loop cost.
+122. VMEC2000 generated-grid diagnostics now treat a bare "Could not print backtrace" line as backtrace metadata rather than a runtime-error marker; actual Fortran runtime errors, segmentation faults, and signal failures remain fatal classifications.
 
 Best next steps:
 
@@ -213,7 +216,7 @@ Best next steps:
 2. Keep `exact_path='scan'` as an explicit long-run GPU option only; the latest profile shows it warms faster but needs roughly 75 accepted callbacks to amortize the `~110 s` cold compile.
 3. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
-5. For GPU performance, instrument the warm direct-coil solve loop outside final NESTOR recompute; current microbenchmarks show tiny solves are still CPU-favorable despite fast final dense solves.
+5. For GPU performance, rerun the office CPU/CUDA matrix with the new solve-loop buckets, then target the largest warm GPU ratio among preconditioner, residual metrics, update, and unattributed loop cost.
 6. Warm GPU QH mode-2 tape callbacks are still above the `1 s` production target; the next patch should reduce accepted replay/tangent dispatch or avoid rebuilding accepted tapes at nearby callbacks. Matrix-free is not yet the answer on GPU because repeated VJP/JVP replay is slower than dense materialization for the profiled case.
 
 Need from user:
@@ -1041,22 +1044,22 @@ WP5 Free-boundary provider hook:               95%
 WP6 Direct-coil forward example:               90%
 WP7 Vacuum adjoint scaffold:                  100%
 WP8 Gradient checks:                          100%
-WP9 VMEC2000 diagnostics:                      94%
+WP9 VMEC2000 diagnostics:                      95%
 WP10 Benchmarks/diagnostics:                  100%
-WP11 Coil-only QS optimization example:        87%
+WP11 Coil-only QS optimization example:        88%
 WP12 Robust coil perturbations:               100%
 WP13 Documentation:                            99%
-WP14 CI policy:                                93%
-Overall branch completion:                     98%
+WP14 CI policy:                                94%
+Overall branch completion:                   98.5%
 ```
 
 ## Immediate Next Steps
 
-1. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
-2. Continue the VMEC2000 generated-mgrid WOUT comparator until the optional xfail can be bounded or promoted.
-3. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
-4. Profile and reduce cold exact tape build/solve and initial tangent construction on GPU; convert benchmark JSON summaries into documentation plots.
-5. Promote the fixed-boundary direct-coil/NESTOR AD-vs-FD gate to the full accepted free-boundary solve loop once the production full-solve adjoint is threaded through accepted-state quantities.
+1. Rerun the office CPU/CUDA direct-coil matrix with solve-loop timing buckets enabled and identify the first GPU-specific warm-solve target beyond final NESTOR recompute.
+2. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
+3. Continue the VMEC2000 generated-mgrid WOUT comparator until the optional xfail can be bounded or promoted.
+4. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
+5. Profile and reduce cold exact tape build/solve and initial tangent construction on GPU; convert benchmark JSON summaries into documentation plots.
 6. Re-check PR CI, including Codecov patch coverage, after each commit.
 
 ## Need From User
@@ -1090,6 +1093,35 @@ Best next steps:
 1. Instrument the warm direct-coil solve loop around residual/update/preconditioner dispatch; do not spend the next performance pass on final dense NESTOR solve time.
 2. Promote fixed-boundary AD-vs-FD to accepted free-boundary solves only after the host NumPy state bridge is removed or covered by a validated custom adjoint.
 3. Keep VMEC2000 generated-grid WOUT parity optional until the local VMEC runtime-error/no-WOUT blocker is resolved.
+
+Need from user:
+
+Nothing now.
+
+### 2026-05-25 Direct-coil solve-loop timing and artifact limitations
+
+Steps taken:
+
+1. Added `wp11_limitations` to the phase-1 coil-only optimization example summaries so dry-run and real-run artifacts remain explicit about proxy-objective and full-adjoint limitations.
+2. Extended the direct-coil benchmark matrix to enable VMEC residual-loop timing for direct-solve child runs and retain compact cold/warm solver buckets in the parent summary.
+3. Added matched CPU/GPU ratio fields for warm solver total, residual loop, compute forces, preconditioner, update, and unattributed loop cost.
+4. Refined VMEC2000 return-code classification so a bare backtrace-printing diagnostic is metadata, not by itself a runtime-error blocker.
+5. Updated Sphinx docs to point users at the new solve-loop buckets when investigating slow direct-coil free-boundary solves.
+
+Results obtained:
+
+1. `python tools/benchmarks/bench_freeb_direct_coil_matrix.py --quick --timeout-s 240 --out /tmp/freeb_matrix_timing_probe/summary.json` completed CPU provider, direct-solve, and gradient rows.
+2. The local timing probe recorded a warm direct-coil solve of about `0.167 s`; the captured warm buckets were about `0.068 s` preconditioner, `0.035 s` residual metrics, `0.0068 s` force evaluation, and `0.026 s` unattributed loop cost.
+3. `python -m pytest -q tests/test_freeb_direct_coil_matrix_benchmark.py tests/test_free_boundary_qs_coil_optimization_smoke.py`: 11 passed, 1 xfailed.
+4. `python -m pytest -q tests/test_vmec2000_exec_parser_more_coverage.py tests/test_freeb_direct_coil_matrix_benchmark.py tests/test_free_boundary_qs_coil_optimization_smoke.py`: 34 passed, 1 xfailed.
+5. `python -m sphinx -W -q -b html docs docs/_build/html`: passed.
+6. `python -m ruff check` on changed benchmark, diagnostic, example, and test files: passed.
+
+Best next steps:
+
+1. Run the CPU/CUDA matrix on `office` with the new direct-solve buckets and compare warm GPU ratios for preconditioner, residual metrics, update, and unattributed loop cost.
+2. Keep the VMEC2000 WOUT-promotion lane optional until generated-grid runs produce WOUTs instead of only trace rows.
+3. Continue full-loop free-boundary gradient promotion only after accepted-state quantities are fully threaded through the JAX/custom-adjoint path.
 
 Need from user:
 

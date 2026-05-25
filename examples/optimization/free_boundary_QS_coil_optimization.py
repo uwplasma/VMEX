@@ -71,6 +71,12 @@ SKIP_EXIT_CODE = 77
 DEFAULT_INPUT = REPO_ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_reactorScale_lowres"
 DEFAULT_OUTDIR = REPO_ROOT / "results" / "free_boundary_QS_coil_optimization"
 DEFAULT_ESSOS_COIL_JSON = "ESSOS_biot_savart_LandremanPaulQA.json"
+WP11_LIMITATIONS = [
+    "Phase-1 objective is a VMEC residual/aspect/iota proxy, not a Boozer/QS objective.",
+    "Production full-loop direct-coil free-boundary adjoints are not promoted yet.",
+    "Robust runs multiply full free-boundary solves in a Python loop and are intended for small validation cases.",
+    "ESSOS and VMEC2000 generated-mgrid comparisons remain optional external-asset diagnostics.",
+]
 
 
 class SkipExample(RuntimeError):
@@ -589,6 +595,7 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
             "scope": "coil-only direct-coil free-boundary scaffold",
             "dry_run": True,
             "plasma_boundary_optimized": False,
+            "wp11_limitations": WP11_LIMITATIONS,
             "optimized_variables": variable_manifest,
             "objective_model": objective_model,
             "provider": provider_metadata,
@@ -807,6 +814,7 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "scope": "coil-only direct-coil free-boundary scaffold",
         "dry_run": False,
         "plasma_boundary_optimized": False,
+        "wp11_limitations": WP11_LIMITATIONS,
         "optimized_variables": variable_manifest,
         "objective_model": objective_model,
         "provider": provider_metadata,

@@ -920,15 +920,20 @@ def _vmec2000_underconverged_details(summary: dict[str, Any]) -> dict[str, Any]:
     runtime_error_markers = (
         "Fortran runtime error",
         "Error termination",
-        "Could not print backtrace",
         "Segmentation fault",
         "SIGSEGV",
         "SIGBUS",
     )
+    backtrace_markers = ("Could not print backtrace",)
     runtime_error_lines = [
         line
         for line in stderr_tail
         if any(marker in line for marker in runtime_error_markers)
+    ]
+    backtrace_lines = [
+        line
+        for line in stderr_tail
+        if any(marker in line for marker in backtrace_markers)
     ]
     returncode = int(summary.get("returncode") or 0)
     nonzero_returncode = returncode != 0
@@ -953,6 +958,8 @@ def _vmec2000_underconverged_details(summary: dict[str, Any]) -> dict[str, Any]:
         "more_iter_returncode": more_iter_returncode,
         "runtime_error_detected": bool(runtime_error_lines),
         "runtime_error_tail": runtime_error_lines[-3:],
+        "backtrace_detected": bool(backtrace_lines),
+        "backtrace_tail": backtrace_lines[-3:],
         "printed_try_increasing_niter": printed_try_increasing_niter,
         "reached_niter": reached_niter,
         "last_it": None if last_it is None else int(last_it),
