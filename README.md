@@ -87,13 +87,9 @@ coil Fourier dofs/currents -> direct Biot-Savart field -> free-boundary VMEC
 -> wout/proxy diagnostics -> coil-only objective update
 ```
 
-Current status: direct-coil finite-pressure support is a phase-1 coupling
-validation lane. Low-resolution ESSOS LP-QA finite-pressure validation runs
-through generated-`mgrid` and direct-coil backends agree within recorded
-precision/roundoff for scalar diagnostics, including active NESTOR samples.
-VMEC2000 generated-`mgrid` WOUT parity remains an optional diagnostic tier.
-Separate dump-to-dump checks require a local, instrumented executable. Boozer/QS
-full-loop gradients remain phase-2 promotion work.
+Current status: direct-coil finite-pressure coupling is validated at low
+resolution against generated-`mgrid` backends, while VMEC2000 WOUT promotion and
+Boozer/QS full-loop gradients remain optional/phase-2 promotion work.
 
 ![Direct-coil free-boundary architecture](docs/_static/figures/freeb_single_stage_architecture.png)<br>
 ![Finite-pressure beta scan](docs/_static/figures/freeb_single_stage_beta_scan.png)<br>
