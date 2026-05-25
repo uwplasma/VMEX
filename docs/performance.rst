@@ -2350,11 +2350,14 @@ of this bucket is the early bad-Jacobian state probe
 CPU for the two-iteration active direct-coil probe.  The default still preserves
 VMEC-style first-two-iteration state probing.  For performance experiments
 only, set ``VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS=0`` to quantify the
-ptau-only path before changing any production defaults.  A local one-repeat CPU
-probe on the tiny active direct-coil benchmark reduced warm time from
-``0.0485 s`` to ``0.0442 s`` and ``iteration_control_badjac_s`` from
-``0.0162 s`` to ``0.0088 s``; CUDA promotion still needs an ``office`` A/B
-run before this becomes more than an opt-in diagnostic knob.
+ptau-only path before changing any production defaults.  On the ``office``
+CPU/CUDA A/B for the tiny active direct-coil benchmark, this opt-in path
+reduced CPU warm time from ``0.048 s`` to ``0.044 s`` locally and reduced CUDA
+warm time from ``0.276 s`` to ``0.181 s`` on ``office``.  The CUDA
+``iteration_control_badjac_s`` bucket fell from ``0.077 s`` to below
+``0.001 s``.  Keep this as an opt-in diagnostic knob
+until VMEC2000 parity and bad-Jacobian reset behavior are checked without the
+first-two-iteration state probe.
 
 Control flags:
 
