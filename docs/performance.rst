@@ -12,8 +12,10 @@ Overview: cold vs warm runtime
 process compiles the iteration kernels; subsequent calls reuse the compiled
 code:
 
-- **Cold run**: includes XLA compilation (one-time cost per process). For
-  typical fixed-boundary cases on CPU this is 10–60 s.
+- **Cold run**: includes Python/JAX startup and XLA compilation (one-time cost
+  per process).  Depending on input size and whether the persistent cache is
+  warm, typical fixed-boundary CPU cases range from a few seconds to tens of
+  seconds.
 - **Warm run**: steady-state solve time after the kernels are in memory — the
   fair comparison against VMEC2000.
 
@@ -32,6 +34,110 @@ VMEC2000 is a pre-compiled Fortran binary with no JIT overhead — it is always
 effectively "cold".  When benchmarking, compare ``vmec_jax`` warm runtime
 against VMEC2000 runtime.
 
+2026-05-25 rerun snapshot
+-------------------------
+
+The current post-performance-lane audit was rerun under
+``outputs/rerun_20260525_123334``.  This snapshot is intentionally a
+measurement checkpoint, not a new broad speedup claim.
+
+Parity gates:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Matrix
+     - Cases
+     - Failures
+     - Coverage
+   * - ``parity_smoke``
+     - 6
+     - 0
+     - fixed/free boundary, axisymmetry/non-axisymmetry, LASYM false/true
+   * - ``parity_full``
+     - 1
+     - 0
+     - QH warm-start fixed-boundary stage trace against VMEC2000
+
+Representative profiler timings:
+
+``Wrapper time`` is the complete subprocess launch used by
+``gpu_cpu_performance_matrix.py``.  ``Profile time`` is the measured body of
+the diagnostic report.  For short fixed-boundary cases, the difference is
+mostly Python/JAX startup, import, and first-use compilation overhead.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Case
+     - Backend
+     - Wrapper time
+     - Profile time
+     - Main exposed cost
+   * - QH warm-start fixed-boundary
+     - CPU
+     - ``7.99 s``
+     - ``0.24 s``
+     - cold process/import/JIT dominates this short case
+   * - QH warm-start fixed-boundary
+     - GPU
+     - ``7.80 s``
+     - ``0.70 s``
+     - accelerator launch/JIT overhead dominates this short case
+   * - QH finite-beta fixed-boundary
+     - CPU
+     - ``14.53 s``
+     - ``3.16 s``
+     - finite-beta solve body
+   * - QH finite-beta fixed-boundary
+     - GPU
+     - ``14.97 s``
+     - ``3.52 s``
+     - finite-beta solve body plus launch overhead
+   * - LASYM pressure fixed-boundary
+     - CPU
+     - ``22.85 s``
+     - ``0.43 s``
+     - cold process/JIT dominates
+   * - LASYM pressure fixed-boundary
+     - GPU
+     - ``10.10 s``
+     - ``0.31 s``
+     - GPU is faster for this short LASYM profile
+   * - QH mode-2 exact dense Jacobian
+     - CPU
+     - ``13.78 s``
+     - ``9.64 s``
+     - replay/tangent construction
+   * - QH mode-2 exact dense Jacobian
+     - GPU
+     - ``15.20 s``
+     - ``11.36 s``
+     - JVP-only tape plus replay/tangent construction
+   * - QI Boozer/residual isolation
+     - CPU
+     - ``31.29 s``
+     - ``28.89 s``
+     - VMEC solve ``19.93 s`` plus first Boozer/QI call ``8.68 s``
+   * - QI Boozer/residual isolation
+     - GPU
+     - ``22.79 s``
+     - ``19.34 s``
+     - VMEC solve ``8.16 s`` plus first Boozer/QI call ``10.76 s``
+
+Low-hanging finding from the rerun: the GPU exact-callback profile was already
+using the JVP-only exact tape path, but the matrix summary reported
+``jvp_tape=False`` because it echoed only the requested CLI flag.  The profiler
+and report comparator now record requested and effective JVP/basepoint-carry
+metadata separately and infer effective behavior from the profile timers.  This
+was a reporting fix rather than a solver-path change.
+
+The exposed remaining bottlenecks are still:
+
+- exact dense-Jacobian accepted-point replay/tangent construction,
+- first-call Boozer/QI setup on GPU,
+- cold-process import/JIT cost for short CLI solves.
+
 Key performance decisions
 --------------------------
 
@@ -46,12 +152,18 @@ read as a mixed result rather than a broad VMEC2000 speedup claim:
   many cases the intermediate stages add overhead without improving convergence.
   Pass ``--parity`` to force the VMEC2000 continuation schedule.
 
-**2. Non-scan production fixed-boundary default**
-  Public fixed-boundary API/CLI runs now default to the VMEC-control non-scan
-  loop on CPU and GPU because converged May 2026 profiles were faster than the
-  scan loop.  The ``jax.lax.scan`` loop remains available for differentiable
-  paths and raw-throughput experiments; each scan chunk compiles to a single
-  XLA program and returns only scalar convergence diagnostics to the host.
+**2. Backend-aware fixed-boundary default**
+  Public CLI runs default to the VMEC-control non-scan loop on CPU because the
+  auto-selected ``accelerated`` CPU policy can lose the scan win once
+  VMEC-style progress printing and staged finish behavior are included.
+  Quiet API/profiler CPU runs may select scan automatically for high-work
+  decks, while low-mode CPU cases stay on the lower-latency host loop. Public
+  GPU/CUDA/ROCm fixed-boundary runs default to the ``jax.lax.scan`` loop
+  because the current May 2026 ``office`` profiles show materially better
+  warmed raw throughput on accelerator backends.  Each scan chunk compiles to a
+  single XLA program and returns only scalar convergence diagnostics to the
+  host.  Pass ``use_scan=False`` or profiler ``--no-use-scan`` to force the
+  VMEC-control loop.
 
 **3. Dynamic replay bucketing**
   ``VMEC_JAX_DYNAMIC_REPLAY_BUCKET`` pads nearby exact-adjoint tape lengths so
@@ -106,8 +218,9 @@ read as a mixed result rather than a broad VMEC2000 speedup claim:
 **11. On-disk XLA kernel cache**
   The persistent XLA compilation cache is enabled by default for repeated
   cold-process accelerator runs, including jobs that expose GPUs through
-  ``CUDA_VISIBLE_DEVICES`` or the ROCm equivalents before import. CPU cache use
-  remains opt-in to avoid XLA:CPU AOT host-feature mismatch warnings. Set
+  ``CUDA_VISIBLE_DEVICES`` or the ROCm equivalents before import, and public
+  calls that explicitly request ``solver_device="gpu"``. CPU cache use remains
+  opt-in to avoid XLA:CPU AOT host-feature mismatch warnings. Set
   ``VMEC_JAX_COMPILATION_CACHE=1`` to enable it for CPU runs,
   ``VMEC_JAX_COMPILATION_CACHE=0`` to disable it, or
   ``VMEC_JAX_COMPILATION_CACHE_DIR`` to choose the cache location.
@@ -128,11 +241,10 @@ read as a mixed result rather than a broad VMEC2000 speedup claim:
   it is not the GPU default.
 
 **14. Scan trial residuals**
-  Relaxed trial residual solves in optimization loops use the trace-compatible
-  scan forward path by default on CPU.  Cold GPU mode-2 trial profiles were
-  faster on the older non-scan path, so GPU trial residuals default to non-scan
-  unless ``VMEC_JAX_OPT_TRIAL_SCAN=1`` is set.  Set
-  ``VMEC_JAX_OPT_TRIAL_SCAN=0`` to force the non-scan path on any backend.
+  Relaxed trial residual solves in optimization loops use a backend-aware
+  policy: CPU stays on the VMEC-control non-scan path, while GPU/CUDA/ROCm/TPU
+  uses scan to reduce accelerator launch overhead.  Set
+  ``VMEC_JAX_OPT_TRIAL_SCAN=1`` or ``0`` for targeted diagnostics.
 
 **15. Fused accelerator update step**
   The exact optimizer's strict fixed-boundary accepted-point solve uses a
@@ -148,17 +260,40 @@ read as a mixed result rather than a broad VMEC2000 speedup claim:
   Jacobian callback.  The conservative state-backed path is still used for
   custom residuals and histories that request an explicit ``iota_fn``.
 
-**17. JVP-only exact tapes are experimental**
+**17. Device-resident exact-tape final state**
+  The direct discrete-adjoint tape keeps the accepted-point final packed state
+  as a JAX array until a public NumPy output boundary is reached.  This avoids
+  an unnecessary device-to-host transfer during exact Jacobian callbacks and is
+  especially relevant for GPU replay profiling.
+
+**18. Async initial-state projection**
+  The exact optimizer no longer blocks immediately after the JIT initial-state
+  projection.  The projected state is consumed by subsequent JAX solver work,
+  so synchronizing there only adds a host/device barrier on accelerator runs.
+  Set ``VMEC_JAX_OPT_SYNC_INITIAL_STATE=1`` for diagnostics that need to
+  attribute initial-state projection time independently.
+
+**19. Experimental accelerator host-update assembly**
+  The production non-scan GPU path is still limited by host/device scalar
+  synchronization in VMEC-style time-step control.  For lower-level diagnostics,
+  ``VMEC_JAX_HOST_UPDATE_ON_ACCELERATOR=1`` permits an explicitly requested
+  host-update assembly path on GPU/accelerator backends.  The public driver
+  diagnostic override ``VMEC_JAX_HOST_UPDATE_ASSEMBLY=1`` remains CPU/non-scan
+  only.  This path is not a production default because it moves more
+  intermediate data through the host and is case-dependent.
+
+**20. GPU JVP-only exact tapes with basepoint carries**
   ``VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE=1`` and the diagnostics flag
   ``--jvp-only-exact-tape`` omit reverse-mode base-carry storage from accepted
-  exact tapes when only JVP columns are needed.  This is intentionally off by
-  default.  A 2026-05-22 QH mode-2 exact-callback profile on ``office`` showed a
-  modest CPU total-time improvement but higher RSS, while the original GPU
-  JVP-only replay regressed sharply.  A guarded follow-up with
-  ``VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES=1`` restored the GPU replay
-  path to near-full-tape performance by preserving the dynamic basepoint carries
-  needed for the basepoint scan runner.  Treat both flags as profiling probes
-  until larger mode and optimizer-trajectory matrices confirm the tradeoff.
+  exact tapes when only JVP columns are needed.  As of the 2026-05-23 office GPU
+  profile, accelerator exact callbacks enable this path by default and preserve
+  ``VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES`` automatically unless the
+  user sets either environment variable explicitly.  CPU keeps the established
+  full-tape default.
+
+  The production policy is deliberately narrower than the diagnostic knobs:
+  JVP-only without basepoint carries is slower on GPU, and the forced scan exact
+  path is still a profiling/parity tool rather than a default.
 
   .. list-table:: QH mode-2 accepted Jacobian profile, ``office``, 2026-05-22
      :header-rows: 1
@@ -200,31 +335,312 @@ read as a mixed result rather than a broad VMEC2000 speedup claim:
        - 6.461 s
        - 922.2 MiB
 
-  A follow-up bounded QH mode-2 cold-Jacobian profile
-  (``inner_max_iter=60``, one perturbed callback, replay synchronization
-  enabled) showed that JVP-only plus basepoint carries can reduce one GPU replay
-  microcase, but the broader CPU/GPU matrix did not support making it a default:
-  the latest one-callback full-tape totals were ``16.6 s`` on CPU and ``16.0 s``
-  on GPU, while JVP-only plus basepoint carries measured ``19.5 s`` on CPU and
-  ``16.5 s`` on GPU.  The flags remain profiling-only until a larger mode/case
-  matrix shows a consistent end-to-end optimizer win.
+  A 2026-05-23 bounded QH mode-2 exact-Jacobian profile on ``office`` showed the
+  production GPU lane clearly: full tape measured ``44.1 s`` total, JVP-only
+  without carries measured ``44.7 s``, and JVP-only with basepoint carries
+  measured ``15.1 s``.  CPU still uses the full tape by default.
 
-**18. NumPy multigrid interpolation for ordinary stage transfers**
+**21. NumPy multigrid interpolation for ordinary stage transfers**
   Non-differentiated ``NS_ARRAY`` stage transfers now use the host NumPy path
   for radial VMEC interpolation, while traced/autodiff calls stay on the JAX
   implementation.  This avoids one-time XLA dispatch during ordinary
   multigrid startup without changing the interpolation convention or the final
   residual.
 
-**19. NumPy initialization fast path for ordinary CPU solves**
+**22. NumPy initialization fast path for ordinary CPU solves**
   Public CPU performance-mode fixed-boundary runs now build non-traced initial
   guesses under the same NumPy compatibility shim used by the CPU force loop.
   Differentiated/traced calls and explicit JAX/GPU paths still use the JAX
   implementation.  The pure-NumPy VMEC axis recompute scan is also vectorized.
-  On the finite-beta QH multigrid profile above this kept the converged
-  residual at ``5.6e-13`` while reducing local wall time to about ``21.5 s`` on
-  the development Mac; the next major CPU target remains force assembly
-  (``vmec_bcovar_half_mesh_from_wout`` / ``vmec_forces_rz_from_wout``).
+  The CPU update path is now workload-sensitive: low-mode non-scan solves keep
+  the host NumPy update path, while larger spectral/radial stages use the fused
+  strict-update JIT path.  On the local finite-beta QH multigrid profile this
+  reduced solve-only wall time from ``21.6 s`` to ``11.9 s`` while keeping the
+  converged residual at ``5.6e-13``.  Set
+  ``VMEC_JAX_HOST_UPDATE_CPU_WORK_LIMIT`` to tune the threshold.
+
+**23. Short CPU trial solves use NumPy preconditioner apply**
+  The non-scan CPU host-update path uses the pure-NumPy R/Z preconditioner
+  apply for short solves (default threshold ``VMEC_JAX_NUMPY_PRECOND_MAX_ITER=240``).
+  This avoids cold JAX preconditioner compilation in optimization trial/probe
+  solves.  Long converged CLI/API solves keep the compiled preconditioner
+  because it amortizes better over thousands of iterations.  Set
+  ``VMEC_JAX_NUMPY_PRECOND_MAX_ITER=0`` to disable this diagnostic policy.
+
+**24. Fixed-boundary startup avoids free-boundary imports**
+  Ordinary fixed-boundary CLI/API runs no longer import or validate the
+  free-boundary/NESTOR mgrid path.  Free-boundary inputs still validate and
+  prepare mgrids exactly when ``LFREEB`` is active.  This reduced
+  ``import vmec_jax.cli`` startup on the development Mac from about ``0.61 s``
+  to about ``0.36 s`` after the related public-API lazy import pass.
+
+**25. Accelerator scan preflight uses a one-step cached runner**
+  VMEC2000-style scan solves sometimes need a one-step preflight after an
+  initial axis reset.  On accelerator backends, running that step through the
+  host/non-JIT path can dominate short LASYM profiles even when the scan kernel
+  itself is fast.  Quiet GPU/CUDA/ROCm/TPU scan runs now use the same cached
+  one-step scan runner for preflight.  CPU and verbose/printing paths keep the
+  conservative host preflight.  Set ``VMEC_JAX_SCAN_JIT_PREFLIGHT=0`` or ``1``
+  to force either behavior during diagnostics.
+
+May 2026 policy validation snapshot
+-----------------------------------
+
+The detailed tables below combine the latest
+``outputs/rerun_20260525_123334`` matrix with earlier May 2026 targeted probes.
+Use the rerun snapshot above as the current end-to-end timing checkpoint; older
+rows are retained as profiling provenance when they isolate a particular code
+path.  The main conclusion is unchanged: fixed-boundary GPU scan throughput can
+be competitive on warmed/profiled stages, but full subprocess wall time and
+exact-optimizer callbacks still have large startup, tape/replay, and tangent
+construction costs.
+
+.. list-table:: CPU fixed-boundary policy check, local Mac, 2026-05-25
+   :header-rows: 1
+
+   * - Case
+     - Default warm
+     - Accelerated warm
+     - Warm speedup
+     - Final residual
+   * - ``input.nfp4_QH_warm_start``
+     - ``1.15 s``
+     - ``0.165 s``
+     - ``7.0x``
+     - ``1.11e-13``
+   * - ``input.nfp4_QH_finite_beta``
+     - ``11.80 s``
+     - ``10.62 s``
+     - ``1.1x``
+     - ``5.52e-13``
+
+The same finite-beta deck also passed the optional converged VMEC2000 external
+parity test against ``~/bin/xvmec2000`` on the same checkout
+(``1 passed`` in ``382 s``), so the CPU policy change did not trade accuracy
+for speed on this promoted reference.
+
+.. list-table:: GPU fixed-boundary profile, ``office`` RTX A4000, 2026-05-25
+   :header-rows: 1
+
+   * - Case
+     - Wall time
+     - Iterations
+     - Dominant exposed phase
+     - Final residual
+   * - ``input.nfp4_QH_warm_start``
+     - ``0.70 s``
+     - ``450``
+     - scan dispatch ``0.50 s``
+     - ``1.11e-13``
+   * - ``input.nfp4_QH_finite_beta``
+     - ``3.52 s``
+     - ``2020``
+     - scan dispatch ``3.31 s``
+     - ``5.51e-13``
+
+The finite-beta GPU run uses scan for the explicit-stage monitor chunks and
+precomputed tridiagonal coefficients.  This replaced the previous non-scan
+stage-monitor profile (``30.21 s`` wall time, dominated by ``12.81 s`` in the
+preconditioner) with a single cached scan runner hit and no scan-cache misses.
+The profiled solve body is approximately VMEC2000-class for the promoted
+finite-beta deck (``~/bin/xvmec2000`` measured ``3.32 s`` on the same input in
+the local external parity run), but the current subprocess wrapper still
+measured ``14.97 s`` because it includes startup/import/JIT.  Force-kernel
+tuning alone is no longer the first raw fixed-boundary GPU bottleneck for this
+case.
+
+.. list-table:: LASYM fixed-boundary scan preflight, ``input.basic_non_stellsym_pressure``, 20 iterations
+   :header-rows: 1
+
+   * - Policy
+     - Backend
+     - Wall time
+     - Scan total
+     - Preflight
+     - Device run
+     - Final residual
+   * - host preflight
+     - CPU
+     - ``0.323 s``
+     - ``0.199 s``
+     - ``0.156 s``
+     - ``0.0188 s``
+     - ``1.0575e-3``
+   * - host preflight
+     - ``office`` GPU
+     - ``1.116 s``
+     - ``0.945 s``
+     - ``0.805 s``
+     - ``0.0322 s``
+     - ``1.0575e-3``
+   * - cached one-step preflight
+     - ``office`` GPU
+     - ``0.285 s``
+     - ``0.164 s``
+     - ``0.0100 s``
+     - ``0.0360 s``
+     - ``1.0575e-3``
+
+This profile is intentionally a short, non-converged raw throughput probe.  It
+shows why the accelerator preflight path matters: the actual GPU scan kernel
+was already fast, but the old host preflight dominated the short LASYM run.
+The patched one-step preflight keeps the same residual and cuts the GPU wall
+time by about ``3.9x`` for this diagnostic.  The promoted converged QH decks
+remain stable under the same policy: ``input.nfp4_QH_warm_start`` measured
+``0.689 s`` with final residual ``1.11e-13``, and
+``input.nfp4_QH_finite_beta`` measured ``3.45 s`` with final residual
+``5.61e-13`` on ``office``.
+
+.. list-table:: QH mode-2 exact dense-Jacobian callback, latest rerun, 2026-05-25
+   :header-rows: 1
+
+   * - Backend
+     - Wall time
+     - Tape build
+     - Tape replay
+     - Initial tangents
+     - Residual tangents
+   * - CPU
+     - ``9.64 s``
+     - ``0.48 s``
+     - ``3.00 s``
+     - ``2.21 s``
+     - ``2.19 s``
+   * - ``office`` GPU
+     - ``11.36 s``
+     - ``3.89 s``
+     - ``3.38 s``
+     - ``1.40 s``
+     - ``2.42 s``
+
+This callback has the same Jacobian shape and norm on CPU/GPU
+(``44353 x 24``, norm ``5.705e2``), so the remaining gap is performance rather
+than a different solve.  The latest GPU run used the effective JVP-only exact
+tape path with basepoint carries.  The next optimizer-performance work should
+target accepted-point tape build/replay and tangent construction; forcing scan
+or projected replay for this mode-2 dense callback is not the production fix.
+Older same-point cache probes still show that repeated identical callbacks can
+return from cache in milliseconds, so the production cost is at new accepted
+optimizer points rather than redundant repeated evaluations.
+
+.. list-table:: QH mode-2 perturbed accepted-point dense-Jacobian matrix, 2026-05-25
+   :header-rows: 1
+
+   * - Backend
+     - Wall time
+     - Tape build
+     - Tape replay
+     - Initial tangents
+     - Residual tangents
+   * - CPU
+     - ``12.94 s``
+     - ``0.97 s``
+     - ``3.87 s``
+     - ``3.96 s``
+     - ``2.22 s``
+   * - ``office`` GPU
+     - ``12.79 s``
+     - ``4.99 s``
+     - ``3.99 s``
+     - ``1.30 s``
+     - ``2.25 s``
+
+The perturbed profile uses ``--perturb-scale 1e-4`` to mimic a new accepted
+optimizer point.  It has the same Jacobian shape and norm on CPU/GPU
+(``44353 x 24``, norm ``4.976e2``).  An earlier explicit
+``--solver-device gpu`` matrix took ``53.18 s`` because the optimizer wrapped
+every callback in a redundant ``jax.default_device`` context even though the
+process backend was already GPU.  The current policy treats explicit requests
+for the already-active backend as a no-op, removing that overhead while still
+preserving explicit CPU/GPU routing when the requested backend differs from the
+active process backend.
+
+.. list-table:: Mode-3 perturbed exact dense-Jacobian callbacks, 2026-05-25
+   :header-rows: 1
+
+   * - Case
+     - Backend
+     - Wall time
+     - Tape build
+     - Replay path
+     - Replay time
+     - Initial tangents
+     - Residual tangents
+   * - QH
+     - CPU
+     - ``11.46 s``
+     - ``0.79 s``
+     - standard
+     - ``4.29 s``
+     - ``2.39 s``
+     - ``2.14 s``
+   * - QH
+     - ``office`` GPU
+     - ``13.20 s``
+     - ``4.82 s``
+     - projected
+     - ``6.52 s``
+     - ``1.58 s``
+     - ``2.21 s``
+   * - QA
+     - CPU
+     - ``11.87 s``
+     - ``0.77 s``
+     - standard
+     - ``4.32 s``
+     - ``2.37 s``
+     - ``2.61 s``
+   * - QA
+     - ``office`` GPU
+     - ``13.12 s``
+     - ``4.36 s``
+     - projected
+     - ``7.00 s``
+     - ``1.48 s``
+     - ``2.70 s``
+
+The mode-3 callbacks have 48 boundary parameters.  GPU replay uses
+24-column chunks for this size and enables projected replay for
+stellarator-symmetric callbacks.  That policy is case-dependent: it keeps QH
+mode-3 near the best standard replay profile and removes the QA mode-3
+regression where standard replay measured about ``37.5 s`` total.
+
+.. list-table:: LASYM QH mode-2 perturbed exact dense-Jacobian callback, 2026-05-25
+   :header-rows: 1
+
+   * - Backend / policy
+     - Wall time
+     - Tape build
+     - Replay time
+     - Initial tangents
+     - Residual tangents
+   * - CPU standard
+     - ``13.87 s``
+     - ``0.84 s``
+     - ``7.07 s``
+     - ``2.40 s``
+     - ``2.70 s``
+   * - ``office`` GPU, 24-column chunks
+     - ``15.90 s``
+     - ``5.63 s``
+     - ``5.65 s``
+     - ``1.64 s``
+     - ``2.66 s``
+
+LASYM doubles the active boundary families, so the mode-2 callback also reaches
+48 columns.  It should not use the symmetric mode-3 projected-replay heuristic:
+the measured LASYM projected path took ``51.1 s`` total, while disabling
+projected replay and keeping 24-column chunks reduced it to ``15.9 s``.  A
+no-chunk LASYM GPU comparison took ``34.5 s`` total with ``24.5 s`` in replay,
+so chunking remains the right default for this tested LASYM matrix.  Explicit
+environment overrides are still available for profiling, but the production
+automatic policy is now:
+
+- GPU callbacks with at least 48 columns use 24-column replay chunks.
+- Projected replay is only auto-enabled for stellarator-symmetric callbacks
+  with at least 48 columns.
+- LASYM uses the conservative chunked standard replay path unless explicitly
+  overridden.
 
 CPU/GPU profiling playbook
 --------------------------
@@ -264,7 +680,7 @@ Raw fixed-boundary throughput:
      --no-multigrid \
      --no-auto-cli-policy \
      --solver-mode accelerated \
-     --use-scan \
+     --no-use-scan \
      --solver-device cpu \
      --json-out /tmp/vmec_jax_qh20_raw_cpu.json
 
@@ -275,9 +691,13 @@ Raw fixed-boundary throughput:
      --no-multigrid \
      --no-auto-cli-policy \
      --solver-mode accelerated \
-     --use-scan \
      --solver-device gpu \
      --json-out /tmp/vmec_jax_qh20_raw_gpu.json
+
+The profiler follows production scan policy when neither ``--use-scan`` nor
+``--no-use-scan`` is supplied.  Use ``--use-scan`` only to force scan on a CPU
+run or diagnostic comparison, and use ``--no-use-scan`` to force the
+Python/VMEC-control loop on GPU.
 
 Short exact-optimizer runs:
 
@@ -367,28 +787,28 @@ The next GPU work should therefore target fixed-boundary force/update kernel
 launch and tape structure, while keeping Boozer JIT enabled for QI production
 runs.
 
-A bounded QH warm-start non-scan profile on 2026-05-23
+A bounded QH warm-start forced non-scan profile on 2026-05-23
 (``input.nfp4_QH_warm_start``, 20 iterations, ``--no-warmup``) measured
 ``9.70 s`` total on local CPU and ``7.48 s`` total on ``office`` GPU.  The GPU
 was faster end-to-end in that cold profile, but the VMEC phase timers still
 showed slower accelerator micro-kernels: ``compute_forces`` was ``1.03 s`` on
 GPU versus ``0.094 s`` on CPU, and ``update`` was ``0.133 s`` on GPU versus
-``0.008 s`` on CPU.  This supports the current priority order: keep full-tape
-GPU exact callbacks as the production default while using JVP-only/basepoint
-carry as an explicit profiling probe, then target raw fixed-boundary GPU
-force/update fusion and launch-count reduction.
+``0.008 s`` on CPU.  This is retained as historical forced-path evidence.  The
+current policy is narrower: ordinary GPU fixed-boundary solves use the scan path
+by default, while exact accepted-point GPU Jacobians use the tape path with
+JVP-only/basepoint carries enabled by default.
 
 A follow-up ``LASYM=true`` finite-beta fixed-boundary profile on ``office``
-(``input.basic_non_stellsym_pressure``, 20 iterations, non-scan production
-path, no warmup) measured ``21.38 s`` profile time on CPU and ``26.15 s`` on
-GPU.  GPU force assembly was faster (``1.29 s`` versus ``2.31 s``), but GPU
+(``input.basic_non_stellsym_pressure``, 20 iterations, forced non-scan
+diagnostic path, no warmup) measured ``21.38 s`` profile time on CPU and
+``26.15 s`` on GPU.  GPU force assembly was faster (``1.29 s`` versus ``2.31 s``), but GPU
 preconditioner time was slower (``2.48 s`` versus ``1.09 s``), so the next raw
 GPU solve target for this lane is preconditioner/update launch structure rather
 than the force kernel alone.  Forcing the scan path was slower on both devices
 in the same case: ``35.76 s`` CPU and ``44.96 s`` GPU profile time.
 
 The next ``office`` pass isolated the preconditioner piece: enabling
-precomputed Thomas coefficients for the same raw LASYM GPU profile reduced
+precomputed Thomas coefficients for the same historical raw LASYM GPU profile reduced
 wrapper time from ``30.50 s`` to ``11.33 s`` and detailed preconditioner time
 from ``2.66 s`` to ``0.74 s``.  Short VMEC2000 trace parity was then checked for
 the LASYM finite-pressure case and the QH warm-start case.  The public
@@ -434,17 +854,22 @@ The same sidecar confirmed the trial-scan policy.  Forced scan trial solves
 spent ``6.76 s`` in the CPU scan block and ``11.68 s`` in the GPU scan block;
 the GPU device bucket was almost entirely dispatch/compile-like
 (``10.24 s`` dispatch, ``0.001 s`` ready).  Disabling scan reduced the trial
-profiles to ``4.46 s`` on CPU and ``6.76 s`` on GPU, so cold GPU trial
-callbacks should stay on the non-scan path unless a warm-cache sweep shows a
-different result.
+profiles to ``4.46 s`` on CPU and ``6.76 s`` on GPU.  Later QH ``max_mode=2``
+profiles refined that policy: local CPU non-scan was faster and more reliable
+than scan, while the patched ``office`` RTX A4000 GPU default used scan buckets
+and measured ``6.57 s`` total for two repeats (``6.35 s`` cold, ``0.22 s``
+warm) with the same finite residual norm.  Earlier patched non-scan GPU trial
+callbacks were slower.  Trial callbacks therefore default to non-scan on CPU
+and scan on GPU/CUDA/ROCm/TPU; use
+``VMEC_JAX_OPT_TRIAL_SCAN=1`` or ``0`` to force either path.
 
-For raw ``LASYM=true`` ``input.basic_non_stellsym_pressure`` non-scan solves
+For historical raw ``LASYM=true`` ``input.basic_non_stellsym_pressure`` non-scan solves
 (``20`` iterations, single-grid, no warmup, detailed timing), the same pass
 measured ``7.98 s`` on CPU and ``8.84 s`` on GPU.  Force assembly was comparable
 (``1.29 s`` CPU, ``1.27 s`` GPU), GPU update was faster (``0.14 s`` versus
 ``0.41 s``), and GPU preconditioner apply remained slower (``0.44 s`` versus
-``0.27 s``).  The raw LASYM target remains preconditioner/apply launch
-structure and residual wrapper overhead rather than force assembly alone.
+``0.27 s``).  The current scan-lifted profile above has moved that short-case
+target to preflight and scan-runner setup rather than force assembly alone.
 
 A larger QH mode-3 exact-Jacobian callback on ``office`` then showed that the
 projected-replay residual path was the wrong default for GPU.  With projected
@@ -537,7 +962,9 @@ separate CPU/GPU processes.
      --mode fixed-boundary \
      --backend auto \
      --input examples/data/input.nfp4_QH_warm_start \
-     --iters 20 \
+     --use-input-niter \
+     --public-cli-policy \
+     --allow-multigrid \
      --outdir outputs/performance_profiles/qh20_auto
 
    PYTHONPATH=. python tools/diagnostics/gpu_cpu_performance_matrix.py \
@@ -548,6 +975,12 @@ separate CPU/GPU processes.
      --method scipy_matrix_free --dynamic-replay-mode whole_scan \
      --vmec-timing \
      --outdir outputs/performance_profiles/qh_m2_cpu_gpu
+
+For fixed-boundary production-policy profiles, omit both ``--use-scan`` and
+``--no-use-scan`` so the child profiler follows backend-aware production scan
+selection.  Add ``--use-input-niter`` to use the input deck's full
+``NITER``/``NITER_ARRAY`` schedule instead of the wrapper's short ``--iters``
+budget.
 
 The wrapper delegates to ``profile_fixed_boundary.py`` or
 ``profile_exact_optimizer.py`` and writes one child JSON per backend plus a
@@ -633,31 +1066,29 @@ the discrete-adjoint tape path on both CPU and GPU by default.  May 2026
 are still useful for parity/profiling experiments but can be much slower than
 tape on production-like cold GPU callbacks.  Set
 ``VMEC_JAX_OPT_EXACT_PATH=tape`` or ``VMEC_JAX_OPT_EXACT_PATH=scan`` to force
-one accepted-point path for parity or profiling.  Relaxed trial residuals use
-the trace-compatible scan forward path by default on CPU.  The May 2026 bounded
-QH mode-2 matrix measured ``8.19 s`` for CPU scan trials versus ``7.23 s`` for
-CPU non-scan trials, but the GPU default-scan trial took ``15.58 s`` versus
-``8.43 s`` with scan disabled.  The production policy therefore keeps CPU on
-the scan-compatible path and defaults GPU/CUDA/ROCm trial residuals to non-scan.
-Set ``VMEC_JAX_OPT_TRIAL_SCAN=1`` or ``0`` to force either path for diagnostics.
+one accepted-point path for parity or profiling.  Relaxed trial residuals are
+backend-aware: CPU defaults to the VMEC-control non-scan loop, while
+GPU/CUDA/ROCm/TPU defaults to scan.  The May 2026 bounded QH mode-2 profiles
+measured local CPU non-scan trial callbacks at ``3.64 s`` total for two repeats
+with sane residuals; forced CPU scan was slower and produced less reliable
+finite-step diagnostics.  On ``office`` RTX A4000, the current patched GPU
+default used scan buckets and measured ``6.57 s`` total for two repeats
+(``6.35 s`` cold, ``0.22 s`` warm), beating the earlier patched non-scan GPU
+trial profile.  Set ``VMEC_JAX_OPT_TRIAL_SCAN=1`` or ``0`` to force either path
+for diagnostics.
 ``solver_device=None``, ``"auto"``, and ``"default"`` inherit JAX's active
 backend; pass ``solver_device="cpu"`` or ``"gpu"`` only when you want an explicit
 override.
 
-An experimental forward-only tape mode is available for profiling with
-``VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE=1``.  It omits reverse-replay base carries
-from accepted-point tapes used only for JVP column replay.  May 2026 profiling
-showed a modest CPU total-time improvement but higher RSS and replay cost, while
-the original GPU path regressed sharply.  Set
-``VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES=1`` as an additional opt-in to
-preserve enough dynamic basepoint state for the fast basepoint replay path on
-the profiled GPU case.  It is deliberately not a default because larger mode and
-full optimizer trajectory matrices still need review.  The diagnostics wrappers
-expose the pair as ``--jvp-only-exact-tape --jvp-only-basepoint-carries`` so
-CPU/GPU matrices can record the exact environment without hand-written shell
-exports.  The latest bounded matrix keeps this path experimental rather than a
-GPU default because it did not beat the full tape end-to-end on the tested
-mode-2 QH callback.
+The tape implementation is backend-aware.  CPU accepted-point Jacobians keep the
+full-tape default.  GPU/CUDA/ROCm accepted-point Jacobians default to JVP-only
+tapes while preserving basepoint carries so the fast basepoint replay path
+remains available.  ``VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE=0`` restores the full
+GPU tape, ``=1`` forces JVP-only on any backend, and
+``VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES=0`` disables the GPU carry
+default for profiling.  The diagnostics wrappers expose the pair as
+``--jvp-only-exact-tape --jvp-only-basepoint-carries`` so CPU/GPU matrices can
+record the exact environment without hand-written shell exports.
 
 Representative May 2026 callback timings after the backend-adaptive replay
 bucket, scalar-gradient tangent-cache, and GPU replay-chunk changes were:
@@ -1058,7 +1489,7 @@ derivatives are required.
 
 The accepted-point exact tape path now enables precomputed Thomas coefficients
 for small-DOF accelerator tapes only.  This is intentionally not applied to
-trial scan solves: the same switch made cold GPU trial scans slower.  On
+trial solves by default: the same switch made cold GPU trial scans slower.  On
 ``office`` with JAX 0.6.2 and one RTX A4000, two perturbed QA ``max_mode=1``
 dense Jacobian callbacks dropped from ``88.9 s`` total to ``72.6 s`` total,
 while the Jacobian Frobenius norms matched to about ``7.5e-11`` relative
@@ -1070,17 +1501,47 @@ this accepted-point optimization for diagnostics, ``=1`` to force it on a
 specific backend, or ``VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE_MAX_DOFS`` to adjust
 the automatic small-DOF threshold.
 
+The 2026-05-23 TensorBoard/Perfetto pass on ``office`` confirmed the current
+GPU exact policy.  A cold QH ``max_mode=2`` accepted Jacobian
+(``inner_max_iter=80``, ``trial_max_iter=30``, 24 DOFs) took about ``43.4 s``:
+``19.6 s`` in tape replay, ``10.1 s`` in tape build, and ``10.1 s`` in
+residual tangent projection, with about ``1.1 GiB`` RSS growth.  Repeating after
+the persistent cache was warm reduced the same callback to about ``15.6 s``
+(``5.7 s`` tape build, ``4.0 s`` replay, ``2.3 s`` residual tangents).  Forcing
+``VMEC_JAX_OPT_EXACT_PATH=scan`` on the same callback took about ``100.5 s``.
+This keeps the production optimizer on the tape exact path for GPU; scan exact
+is only a parity/profiling fallback.
+
+The ``office`` TensorBoard profiler may emit
+``Can't import tensorflow.python.profiler.trace`` when TensorFlow's Python hook
+is not installed.  That warning is non-fatal for these runs: the XPlane trace,
+Perfetto/trace JSON, and device-memory profile still write successfully.
+
 Fixed-boundary GPU diagnostics
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For fixed-boundary inputs, the GPU force kernels are fast, but the scan solver
-is not automatically the best end-to-end policy once the solve is required to
-converge to the VMEC input tolerance.  May 2026 ``office`` diagnostics on an
-NVIDIA RTX A4000 showed that the VMEC-control non-scan loop was faster than the
-scan loop for the representative QH, QA, QI, and LASYM fixed-boundary cases.
-The public auto-selected CPU/GPU policy therefore uses the non-scan loop for
-ordinary fixed-boundary production solves.  Explicit fast-mode requests still
-use scan so developers can compare or profile it directly.
+For fixed-boundary inputs, the GPU force kernels are fast, but the best solver
+policy depends on whether the workload is a raw fixed-boundary solve or an exact
+optimization callback.  A 2026-05-23 ``office`` RTX A4000 profile showed the raw
+fixed-boundary scan path is clearly faster for ``input.nfp4_QH_warm_start``:
+``500`` GPU iterations took about ``1.37 s`` with scan versus ``8.01 s`` with
+the non-scan VMEC-control loop.  Public auto-selected GPU/CUDA/ROCm
+fixed-boundary runs therefore default to scan; CPU remains non-scan by default,
+and users can still pass ``use_scan=False`` to force the VMEC-control loop.
+
+A deeper 2026-05-23 trace pass separated cold compilation/cache effects from
+warmed raw iteration throughput.  On ``office`` with JAX ``0.6.2`` and an RTX
+A4000, ``input.nfp4_QH_warm_start`` took about ``13.3 s`` in a first cold GPU
+scan process and ``13.6 s`` in a first cold GPU non-scan process.  After the
+persistent compilation cache was warm, a fresh scan process dropped to about
+``5.7 s``.  In one long-lived process, the warmed scan run took about ``1.4 s``
+whereas warmed non-scan took about ``8.5 s``.  For
+``input.nfp4_QH_finite_beta``, warmed scan took about ``2.7 s`` for the
+profiled iteration budget while warmed non-scan took about ``12.6 s``.  The
+non-scan finite-beta GPU phase timer showed force assembly was fast
+(``~2.5 ms`` per iteration) but preconditioner/update launch overhead dominated
+(``~10.4 ms`` per iteration in the preconditioner path), so production raw GPU
+runs should keep the scan default.
 
 A later 2026-05-23 ``office`` pass removed per-iteration host placeholder
 allocations from the accelerator R/Z preconditioner-apply wrapper.  On the
@@ -1099,7 +1560,16 @@ on the finite-beta final stage), so the next GPU target remains restructuring
 the radial tridiagonal preconditioner itself rather than the already-fast force
 assembly kernels.
 
-Converged QH public default, ``max_iter=500``:
+The 2026-05-24 follow-up batched the precomputed R/Z Thomas systems and then
+combined the ``m=0`` and ``m>0`` radial blocks through one padded scan.  On the
+same ``office`` GPU, the converged finite-beta scan profile measured ``31.6 s``
+cold, ``19.8 s`` for a cache-population fresh process, ``8.12 s`` for the next
+fresh process, and ``3.39 s`` when warmed in the same process.  The low-mode QH
+warm-start case measured ``5.24 s`` in a cache-warm fresh process and ``0.71 s``
+when warmed in the same process.  These numbers move the production GPU lane
+from raw kernel throughput to cache warmup and compile-shape stability.
+
+Earlier converged QH non-scan comparison, ``max_iter=500``:
 
 .. list-table::
    :header-rows: 1
@@ -1114,11 +1584,12 @@ Converged QH public default, ``max_iter=500``:
      - ``16.65 s``
      - ``1.11e-13``
    * - GPU
-     - accelerated, non-scan
+     - accelerated, forced non-scan
      - ``16.03 s``
      - ``1.11e-13``
 
-GPU scan/non-scan comparison, same host:
+Older GPU scan/non-scan comparison, same host, retained as a reminder that
+full-convergence policy changes must be re-profiled case by case:
 
 .. list-table::
    :header-rows: 1
@@ -1188,9 +1659,11 @@ below for historical context:
 The current practical policy is therefore:
 
 - use the non-scan VMEC-control loop for auto-selected production fixed-boundary
-  solves on CPU and GPU,
-- keep GPU scan available for explicit fast-mode experiments and profiler
-  comparisons,
+  solves on CPU,
+- use the scan-lifted loop for auto-selected production fixed-boundary solves
+  on GPU/CUDA/ROCm,
+- keep explicit ``--use-scan`` and ``--no-use-scan`` profiler controls
+  available for case-by-case comparisons,
 - keep the persistent cache enabled by default so repeated GPU processes are
   not dominated by recompilation,
 - expose ``--solver-device cpu`` / ``solver_device="cpu"`` for users who want
@@ -1206,7 +1679,10 @@ the public CLI-style policy.  This matters because public defaults may add
 dynamic scan probes, staged follow-up, or finish attempts around the requested
 iteration budget.  The profiler imports ``vmec_jax`` before importing JAX
 directly so GPU allocator defaults and the persistent compilation-cache policy
-match normal API/CLI runs.  To benchmark the raw accelerated scan path, use:
+match normal API/CLI runs.  If neither ``--use-scan`` nor ``--no-use-scan`` is
+provided, the profiler leaves ``use_scan=None`` and follows the same
+backend-aware production policy as ``run_fixed_boundary``.  To benchmark the raw
+accelerated scan path explicitly, use:
 
 .. code-block:: bash
 
@@ -1307,9 +1783,9 @@ both CPU and GPU.  April and May 2026 diagnostics showed that a naive cold scan
 exact Jacobian can be very slow, so scan remains an explicit
 ``VMEC_JAX_OPT_EXACT_PATH=scan`` diagnostic path rather than the GPU default.
 The production optimizer now avoids redundant residual-only exact executables,
-uses scan trial residuals, and reconstructs standard QS history metrics from
-cached accepted-point residuals instead of re-solving the accepted state after
-every Jacobian.  In a fresh May 2026 ``office`` RTX A4000 profile of QH
+uses backend-aware trial residuals, and reconstructs standard QS history
+metrics from cached accepted-point residuals instead of re-solving the accepted
+state after every Jacobian.  In a fresh May 2026 ``office`` RTX A4000 profile of QH
 ``max_mode=1`` with ``inner_max_iter=trial_max_iter=20``, forced scan took
 ``102.9 s`` for one dense Jacobian callback while forced tape took ``36.7 s``;
 the same local CPU-style QA ``max_mode=2`` tape callback was ``9.5 s``.  CPU
@@ -1441,6 +1917,32 @@ beats VMEC2000 on 1 of 16 bundled fixed-boundary rows
 single-solve row is still about ``4.4x`` slower than VMEC2000 on this host.
 Cold runs are slower because they include XLA compilation and runtime setup.
 
+A broader 2026-05-24 internal policy matrix compared the default fixed-boundary
+policy against the explicit ``accelerated`` policy on all 35 bundled
+fixed-boundary input decks.  On the local CPU host, 34 rows completed within the
+per-case timeout: 20 were faster with ``accelerated``, 14 were slower, the
+median warm speedup was ``1.17x``, and the geometric-mean warm speedup was
+``1.61x``.  This confirms that CPU policy remains case-dependent rather than a
+single global scan/default choice.  The largest CPU wins were low-latency or
+simple-seed rows such as ``solovev`` (``16.9x``),
+``up_down_asymmetric_tokamak`` (``15.3x``), ``cth_like_fixed_bdy``
+(``11.1x``), and ``nfp4_QH_warm_start`` (``7.17x``).  The largest CPU losses
+were high-work or tokamak rows such as ``LandremanPaul2021_QA_lowres``
+(``0.20x``), ``DSHAPE`` (``0.33x``), ``shaped_tokamak_pressure`` (``0.38x``),
+and ``purely_toroidal_field`` (``0.42x``).  ``NuhrenbergZille_1988_QHS`` timed
+out in both policies and remains a stress fixture rather than a promotion row.
+
+The same 2026-05-24 matrix on ``office`` with ``JAX_PLATFORMS=cuda,cpu`` showed
+the opposite policy conclusion for CUDA: 33 rows had valid warm speedups, 32 of
+those were faster with ``accelerated``, the median warm speedup was ``2.06x``,
+and the geometric-mean warm speedup was ``3.38x``.  Only
+``LandremanPaul2021_QA_lowres`` was slower (``0.33x``), and
+``NuhrenbergZille_1988_QHS`` again timed out.  Representative CUDA wins were
+``li383_low_res`` (``12.6x``), ``nfp1_QI`` (``11.9x``), minimal-seed NFP
+families (``~10-11x``), and ``nfp4_QH_warm_start`` (``10.3x``).  These numbers
+are the reason public accelerator fixed-boundary runs prefer the scan-backed
+accelerated path while CPU remains backend/case aware.
+
 This does not contradict the optimization motivation: the exact-adjoint
 optimization path can avoid the many finite-difference VMEC subprocess columns
 that SIMSOPT+VMEC2000 needs.  It does mean that single-solve CPU/GPU runtime
@@ -1465,20 +1967,162 @@ On the same diagnostic command this reduced the local cold time to about
 ``20.1 s`` and preserved the final residual (``~5.6e-13``).  It also avoids
 unnecessary one-time JAX dispatch during the radial ``NS_ARRAY`` stage transfer.
 
+The 2026-05-23 CPU pass made the VMEC-output writer use the fast bcovar path by
+default.  On the same local host, the cold full CLI time for
+``input.nfp4_QH_finite_beta`` dropped from about ``18.8-19.1 s`` to about
+``16.8 s`` while bundled wout parity tests continued to pass.  The corresponding
+``input.nfp4_QH_warm_start`` full CLI time dropped from about ``6.8 s`` to
+about ``4.6 s``.  Set ``VMEC_JAX_WOUT_FAST_BCOVAR=0`` only for legacy
+force-kernel output debugging.
+
+The 2026-05-24 CPU pass fixed two steady-state host-loop overheads: NumPy
+copies of the cached VMEC phase stack now keep the zero-cost phase-stack branch,
+and the ``scalxc[:, modes.m]`` table used by real-space synthesis is cached for
+static mode/surface grids.  The full public CLI compute time on the local Apple
+CPU host is now about ``12.2 s`` for ``input.nfp4_QH_finite_beta`` and about
+``1.8 s`` for ``input.nfp4_QH_warm_start``.  End-to-end shell time is still
+higher (about ``16.3 s`` and ``5.5 s`` respectively) because a cold process
+includes Python/JAX startup and the first netCDF4 import/write for WOUT output.
+
+An opt-in follow-up knob, ``VMEC_JAX_WOUT_REUSE_FINAL_BCOVAR=1``, lets WOUT
+assembly reuse the converged final force/bcovar payload already produced by the
+solve when that payload is available.  This is intended for profiling and cold
+CLI runtime experiments on converged runs; the default remains an independent
+fast-bcovar WOUT reconstruction so parity and diagnostics stay conservative.
+Another opt-in knob, ``VMEC_JAX_WOUT_IO_WARMUP=1``, starts the heavy netCDF4
+import in a background thread while the solve is running.  It is disabled by
+default because the May 2026 cold CPU measurements showed that the background
+import contended with the VMEC solve and was slightly slower overall.
+
+The same local CPU profiling pass also isolated solve-only cost with
+``profile_fixed_boundary.py`` and no wout write.  A 2026-05-25 policy check
+showed that host NumPy update assembly is still best for low-mode warm-start
+QH: ``input.nfp4_QH_warm_start`` converged in ``1.22 s`` solve-only with final
+residual ``1.1e-13``.  The larger finite-beta QH case is the opposite:
+the host-update path spent ``8.62 s`` in state update and took ``21.6 s`` wall
+time, while the workload-sensitive fused strict-update path spent only
+``0.33 s`` in state update and converged in ``11.9 s`` wall time with final
+residual ``5.5e-13``.  This is still slower than the local VMEC2000 finite-beta
+runtime, but it removes the largest pure-Python/host assembly term from the
+current CPU profile.
+A short CPU TensorBoard trace
+showed about ``440`` ``pjit`` cache misses and ``9`` backend compile/load events
+in the cold path, but the long-run steady bottleneck is now the compiled
+``vmec_forces_rz_from_wout`` / ``tomnsps_rzl`` transform stack.
+
 With an explicit CPU persistent cache
 (``VMEC_JAX_COMPILATION_CACHE=1`` and an isolated
-``VMEC_JAX_COMPILATION_CACHE_DIR``), the second fresh-process run of the same
-case drops to about ``12.7 s`` on this host.  This is useful for repeated local
-profiling, but CPU cache use remains opt-in because XLA:CPU cache entries are
+``VMEC_JAX_COMPILATION_CACHE_DIR``), repeated fresh-process CLI runs improve
+further, but CPU cache use remains opt-in because XLA:CPU cache entries are
 native AOT executables and can emit host-feature mismatch warnings if reused
 across incompatible machines or JAX/JAXLIB versions.
 
 The current bottleneck is therefore no longer the cubic current/pressure
-profile helper itself.  The remaining gap is dominated by many small
-XLA:CPU compile/dispatch fragments and host-side setup around the
-VMEC-control loop.  Future single-solve CPU work should target fewer JAX
-entry points per iteration and a less fragmented cold-start setup path before
-claiming VMEC2000-competitive finite-beta runtime.
+profile helper or the wout force recomputation.  The remaining gap is dominated
+by per-iteration force synthesis/residual transforms and the host VMEC-control
+loop.  Future single-solve CPU work should target fewer materializations in
+``vmec_forces_rz_from_wout``/``tomnsps_rzl`` and a less fragmented cold-start
+setup path before claiming VMEC2000-competitive finite-beta runtime.
+
+On the ``office`` RTX A4000 GPU, ordinary scan fixed-boundary solves now show a
+cleaner split between cold compilation and warmed throughput.  With the current
+Python 3/JAX stack, ``input.nfp4_QH_warm_start`` takes about ``27 s`` in a fully
+cold fresh process but ``0.71 s`` when warmed in the same process.  The heavier
+``input.nfp4_QH_finite_beta`` case takes about ``31.6 s`` cold and ``3.39 s``
+when warmed in the same process, with final total residual ``5.51e-13``.  This
+means the warmed GPU finite-beta solve is now VMEC2000-level for this case; the
+remaining GPU production issue is fresh-process compile/cache latency.
+
+Public GPU requests now enable the persistent compilation cache automatically
+even when the user selects the GPU through ``solver_device="gpu"`` instead of a
+JAX platform environment variable.  On ``office`` after the cache-policy fix,
+fresh-process QH warm-start runs measured ``16.0 s`` to populate and ``5.24 s``
+on the next process.  Fresh-process finite-beta runs measured ``19.8 s`` to
+populate and ``8.12 s`` on the next process.  These are still slower than
+same-process warmed solves, but they are a practical improvement for repeated
+CLI/API GPU jobs without user-side cache tuning.
+
+The exact-optimizer profile has a different bottleneck from single fixed-boundary
+solves.  A 2026-05-24 bounded ``max_mode=3`` two-evaluation profile on the
+minimal-seed QA/QH/QP examples measured:
+
+.. list-table:: Bounded exact-optimizer timing, 2026-05-24
+   :header-rows: 1
+
+   * - case
+     - backend
+     - warm profile time
+     - dominant measured term
+     - note
+   * - QA
+     - CPU
+     - ``7.79 s``
+     - ``5.53 s`` tape replay
+     - objective moved, iota stayed on the zero-transform branch
+   * - QA
+     - CUDA
+     - ``12.40 s`` same-process warm; ``31.7 s`` fresh after cache population
+     - ``4.39 s`` tape replay, ``6.49 s`` tape build
+     - persistent cache reduces but does not remove cold cost
+   * - QH
+     - CPU
+     - ``5.11 s``
+     - ``3.30 s`` tape replay
+     - no accepted movement in the two-evaluation diagnostic
+   * - QH
+     - CUDA
+     - ``9.47 s`` same-process warm; ``23.7 s`` fresh after cache population
+     - ``2.66 s`` tape replay, ``3.65 s`` tape build
+     - same-process warm is materially better than fresh-process warm
+   * - QP
+     - CPU
+     - ``21.10 s``
+     - ``14.48 s`` Jacobian total
+     - minimal seed stayed on the zero-transform branch
+   * - QP
+     - CUDA
+     - ``61.90 s``
+     - ``35.50 s`` Jacobian total, ``24.06 s`` trial solve
+     - not production-competitive yet
+   * - QI
+     - CPU
+     - ``43.25 s`` for one bounded matrix-free stage
+     - Boozer/QI objective setup and exact solve
+     - one-evaluation timing only, not a converged QI run
+   * - QI
+     - CUDA
+     - ``64.08 s`` for the same bounded stage
+     - Boozer/QI objective setup and exact solve
+     - GPU is still slower for this cold QI profile
+
+These optimization profiles point to the next performance target: accepted-point
+exact tape build/replay, tangent construction, and zero-transform branch
+avoidance in simple-seed QP/QI starts.  The fixed-boundary CUDA scan path is now
+often faster than the host loop, but full optimization does not become
+production-fast until exact callbacks and Boozer/QI objective setup are less
+cold-start dominated.
+
+The finite-beta CPU timing above was checked against the local VMEC2000
+executable ``~/bin/xvmec2000`` in a temporary directory.  The VMEC2000 run took
+about ``3.3 s``.  The full public ``vmec_jax`` CPU CLI path measured about
+``12.2 s`` before the workload-sensitive strict-update policy; the latest
+solve-only profile is ``11.9 s`` on the local CPU host, with the state-update
+term reduced from ``8.62 s`` to ``0.33 s``.  The resulting WOUT comparison remained in the expected
+converged-equilibrium parity band: representative relative RMS differences were
+``~1.8e-6`` for iota, ``~3.5e-6`` for ``rmnc``, ``~2.2e-5`` for ``zmns``,
+``~1.0e-5`` for ``bmnc``, and ``~1.7e-4`` for ``lmns`` after skipping the
+near-axis cells.
+
+A 2026-05-23 cold-process ``cProfile`` pass on a bounded finite-beta run showed
+the same split at shorter iteration budgets: package/JAX startup took about
+``1.9 s`` of a ``4.9 s`` profiled process, backend compile/load about ``0.9 s``,
+and the solver stage about ``2.4 s``.  The largest steady solver terms were
+``vmec_forces_rz_from_wout`` (``0.77 s``),
+``vmec_bcovar_half_mesh_from_wout`` (``0.47 s``), and ``tomnsps_rzl``
+(``0.19 s``).  That older bounded profile was low enough work that forcing
+``VMEC_JAX_HOST_UPDATE_ASSEMBLY=0`` was slower; the current production policy
+therefore uses the host path for low-work CPU stages and the fused strict-update
+path only above the ``VMEC_JAX_HOST_UPDATE_CPU_WORK_LIMIT`` threshold.
 
 The figure rows and provenance are available as:
 
@@ -1543,13 +2187,16 @@ Scan-mode iteration (fast path)
 -------------------------------
 
 The scan-based loop lifts the VMEC2000 iteration into ``jax.lax.scan`` to reduce
-Python overhead.  It is now an explicit fast/diagnostic path rather than the
-public default.  Public fixed-boundary defaults use the profiled VMEC-control
-non-scan policy unless scan is explicitly requested.  You can enable scan with:
+Python overhead.  Public fixed-boundary defaults are backend-aware: CPU uses the
+profiled VMEC-control non-scan loop, while GPU/CUDA/ROCm uses scan for ordinary
+raw fixed-boundary solves.  You can explicitly request scan with:
 
 - ``--fast`` on the CLI,
 - ``use_scan=True`` in ``run_fixed_boundary``,
 - or ``VMEC_JAX_USE_SCAN=1``.
+
+You can force the VMEC-control loop with ``use_scan=False`` or the diagnostics
+flag ``--no-use-scan``.
 
 **Important**: scan parity is case-dependent on difficult large-``ns`` stages.
 Use scan when profiling a case where the scan loop has been validated. You can
@@ -1592,7 +2239,7 @@ non-parity performance track:
 Current behavior of this first slice:
 
 - auto-selected public fixed-boundary API/CLI runs use the profiled non-scan
-  VMEC-control loop unless an explicit scan/fast request is made,
+  VMEC-control loop on CPU and the scan-lifted loop on GPU/CUDA/ROCm,
 - explicit ``solver_mode="accelerated"`` callers keep the historical scan
   default unless ``use_scan=False`` is supplied,
 - ordinary non-scan production runs skip the parity-oriented scan-selection
@@ -2151,6 +2798,72 @@ profile with two perturbed gradient callbacks
 matched the dense reference gradient (``||g_adj - J.T r|| = 2.10e-12``,
 relative ``7.21e-14``).
 
+The 2026-05-25 ``office`` GPU follow-up rechecked the current QH
+``max_mode=2`` exact-optimization hotspot with a deliberately short
+``inner_max_iter=10`` accepted solve.  The dense least-squares Jacobian still
+materializes a ``44353 x 24`` residual derivative, so the one-callback GPU
+profile is dominated by accepted-point tape construction and residual-tangent
+projection:
+
+.. list-table:: QH mode-2 GPU exact callback, ``office``, 2026-05-25
+   :header-rows: 1
+
+   * - Path
+     - Wall time
+     - Main profile terms
+   * - Dense Jacobian
+     - ``55.8 s``
+     - ``exact_tape_build=20.5 s``, ``jacobian_tape_replay=17.9 s``,
+       ``jacobian_residual_tangents=9.4 s``
+   * - Forced projected replay
+     - ``57.0 s``
+     - ``exact_tape_build=21.2 s``,
+       ``jacobian_fused_projected_replay_total=27.9 s``
+   * - Scalar adjoint, 4 optimizer callbacks, old backtracking
+     - ``69.2 s`` total
+     - no accepted improvement from the initial objective ``0.717``
+   * - Scalar adjoint, L-BFGS/fast backtracking, 4 callbacks
+     - ``72.9 s`` total
+     - objective ``0.717 -> 0.659``, no dense ``44353 x 24`` Jacobian
+   * - Scalar adjoint, L-BFGS/fast backtracking, 8 callbacks
+     - ``76.8 s`` total
+     - objective ``0.717 -> 0.627``; warm gradient callbacks drop to
+       ``6.3 s`` average
+   * - Scalar adjoint, default radius plus best-state finalization cache
+     - ``74.2 s`` total
+     - objective ``0.717 -> 0.615``; final exact tape rebuild avoided
+       (``exact_tape_build`` count ``4`` instead of ``5``)
+   * - Scalar adjoint, radius re-expansion after backtracked accepts
+     - ``75.3 s`` total
+     - objective ``0.717 -> 0.612`` in 8 callbacks; avoids the tiny-step
+       plateau after rejected probes while keeping the final-state cache
+   * - Scalar adjoint, opt-in cost-only trial filter
+     - ``86.7 s`` total
+     - objective ``0.717 -> 0.612`` with only 4 exact gradients, but
+       8 trial solves add ``17.6 s``; this remains diagnostic-only via
+       ``VMEC_JAX_OPT_SCALAR_COST_ONLY_TRIALS=1``
+   * - Matrix-free SciPy, ``lsmr_maxiter=2``, 4 residual callbacks
+     - ``167.1 s`` total
+     - objective ``0.717 -> 0.680``; repeated ``Jv``/``J.Tv`` products make
+       this slower than scalar adjoints for this microcase
+
+That test rules out both simple policies: “turn projected replay on for 24
+DOFs” is not faster for this residual layout, and SciPy's generic matrix-free
+trust-region path spends too much time in repeated linear-operator products at
+low LSMR budgets.  In this QH mode-2 GPU microcase, the scalar-adjoint path is
+the best measured lane because it avoids dense Jacobian materialization and now
+accepts monotone steps after aggressive backtracking.  Keeping the best exact
+scalar state also removes one final accepted-point solve for runs whose last
+probe is rejected.
+Backtracked accepts now re-expand the next trust radius to the previous rejected
+scale instead of permanently collapsing to the accepted microscopic step.  A
+cost-only trial filter was also tested, but it is not the default because this
+QH GPU case spends about ``2.2 s`` per trial solve and is slower overall despite
+halving exact-gradient builds.  It remains available for diagnostics with
+``VMEC_JAX_OPT_SCALAR_COST_ONLY_TRIALS=1``.  The path still needs problem-aware step
+proposal/globalization before it can replace dense SciPy least-squares for
+README-quality optimization results.
+
 Additional controller finding from March 2026:
 
 - the existing fully non-VMEC scan path was re-probed as a possible next
@@ -2251,6 +2964,13 @@ Recent updates to the DFT path:
   ``cosnv/sinnv`` basis can be reused for derivative blocks.
 - **Stacked zeta contractions**: cosine- and sine-basis transforms for the
   derivative and non-derivative blocks are grouped to reduce kernel dispatches.
+- **NumPy force path follows the same policy**: the host CPU force shim no
+  longer forces the FFT branch.  It uses the DFT/GEMM path by default and still
+  honors ``VMEC_JAX_TOMNSPS_FFT=0/1``.  On the finite-beta
+  ``input.nfp4_QH_finite_beta`` CPU diagnostic, this reduced a 200-iteration
+  force block from ``1.067 s`` to ``0.868 s`` while preserving the residual
+  trajectory, and the full 3000-budget direct solve completed in ``13.05 s``
+  with ``10.28 s`` in force assembly.
 
 An FFT-based path remains available for experiments:
 
@@ -2533,12 +3253,16 @@ The scan preconditioner can use XLA's fused tridiagonal solver with
 pretransposed coefficients (``dl/d/du``).  Current bounded profiles show this
 is the fastest measured CPU scan path, while GPU optimization-trial callbacks
 still prefer the older scan path.  The default therefore follows the backend:
-CPU uses fused scan, GPU keeps the older scan path while the exact-callback
-replay and launch-count lanes are still being optimized.  Keep the explicit env
-overrides for parity/perf bisection:
+CPU uses fused scan, GPU keeps the older scan path while using precomputed
+Thomas coefficients.  This GPU scan default was measured on ``office`` to reduce
+short scan device time by about 20-30% on the tested QA high-resolution and
+reactor-scale cases without changing the residual trajectory.  Keep the
+explicit env overrides for parity/perf bisection:
 
 - ``VMEC_JAX_SCAN_PRECOND_LAXTRIDI=0``: force the older Thomas scan path.
 - ``VMEC_JAX_SCAN_PRECOND_LAXTRIDI=1``: explicitly request the fused scan path.
+- ``VMEC_JAX_SCAN_PRECOND_PRECOMPUTE=0``: disable the GPU scan precomputed
+  Thomas-coefficient default.
 
 Boundary decomposition cache + JAX-friendly initial guess
 ---------------------------------------------------------
@@ -2675,7 +3399,9 @@ Recent traces show that the pre-iteration time is dominated by JIT
 compilation/cache misses (``pjit cache_miss`` + backend compile) rather than
 the nonlinear iteration itself. This is expected for short runs on CPU.
 For repeated CPU or GPU runs, the default compilation cache can significantly
-reduce this overhead once the cache is warm. Set
+reduce this overhead once the cache is warm. Explicit ``solver_device="gpu"``
+requests enable the same accelerator cache policy even when no JAX GPU
+environment variable was set before import. Set
 ``VMEC_JAX_COMPILATION_CACHE=0`` to disable it.
 
 Persistent compilation cache tuning

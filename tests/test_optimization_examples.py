@@ -63,13 +63,18 @@ def test_fixed_boundary_qs_examples_are_standalone_workflows() -> None:
         assert "objective_tuples = [" in text
         assert "LeastSquaresProblem.from_tuples(" in text
         assert "problem = vj.LeastSquaresProblem.from_tuples(objective_tuples)" in text
+        assert "Assembled least-squares problem" in text
+        assert "problem.objective_names" in text
+        assert "problem.scalar_objective_names" in text
         assert "least_squares_solve(" in text
         assert "problem =" in text
         assert "The solve call only receives optimizer, continuation, device, and output" in text
         assert "SAVE_STAGE_INPUTS = True" in text
         assert "SAVE_STAGE_WOUTS = False" in text
         assert "USE_SIMPLE_SEED = True" in text
+        assert "SIMPLE_SEED_PERTURBATION =" in text
         assert "prepare_simple_omnigenity_seed_input(" in text
+        assert "perturbation=SIMPLE_SEED_PERTURBATION" in text
         assert "input.minimal_seed_nfp" in text
         assert "save_stage_inputs=SAVE_STAGE_INPUTS" in text
         assert "save_stage_wouts=SAVE_STAGE_WOUTS" in text
@@ -82,6 +87,7 @@ def test_fixed_boundary_qs_examples_are_standalone_workflows() -> None:
         assert "history = result.history" in text
         assert "objective_history = result.objective_history" in text
         assert "timing = result.timing_summary" in text
+        assert "result_summary = result.summary" in text
         assert "saved_paths = vj.save_optimization_result(result, output_dir=OUTPUT_DIR)" in text
         assert "Files saved from result objects" in text
         assert "vj.load_wout(saved_paths.final_wout)" in text
@@ -92,6 +98,17 @@ def test_fixed_boundary_qs_examples_are_standalone_workflows() -> None:
         assert "Plotting is a normal post-processing block" in text
         assert "saved_paths.initial_wout" in text
         assert "saved_paths.history" in text
+
+
+def test_qp_example_documents_zero_transform_escape_policy() -> None:
+    text = (ROOT / "examples" / "optimization" / "QP_optimization.py").read_text()
+    readme = (ROOT / "examples" / "optimization" / "README.md").read_text()
+    docs = (ROOT / "docs" / "optimization.rst").read_text()
+
+    assert "SIMPLE_SEED_PERTURBATION = 1.0e-2" in text
+    assert "STAGE_MODES = [1, 2, 2]" in text
+    assert "zero-iota branch" in docs
+    assert "zero-transform basin" in readme
 
 
 def test_optimization_readme_and_docs_teach_visible_workflow_anatomy() -> None:
@@ -170,7 +187,10 @@ def test_qi_example_uses_qi_problem_api() -> None:
     assert "VMEC_JAX_QI_MAX_MODE" in text
     assert "VMEC_JAX_QI_MAX_NFEV" in text
     assert "VMEC_JAX_QI_USE_SIMPLE_SEED" in text
+    assert 'bool(CASE.get("use_simple_seed", False))' in text
     assert "prepare_simple_omnigenity_seed_input(" in text
+    assert "RAW_INPUT_FILE = CASE[\"input_file\"]" in text
+    assert "qis.save_raw_seed_initial_artifacts(\n    RAW_INPUT_FILE," in text
     assert "Unknown QI RUN_CASE" in cases_text
     assert '"nfp1_qi"' in cases_text
     assert 'QI_CASES["nfp3_qi"]' in cases_text
@@ -214,8 +234,13 @@ def test_qi_example_uses_qi_problem_api() -> None:
     assert "weighted_shuffle_profile_weight=QI_OPTIONS.weighted_shuffle_profile_weight" in combined
     assert "objective_tuples = [" in text
     assert "LeastSquaresProblem.from_tuples(" in text
+    assert "Assembled least-squares problem" in text
+    assert "problem.objective_names" in text
+    assert "problem.scalar_objective_names" in text
+    assert "problem.qi_objective_names" in text
     assert "def make_qi_problem(stage=None):" in text
     assert "problem = make_qi_problem()" in text
+    assert "def make_vmec_for_stage(" not in text
     assert "least_squares_solve(" in text
     assert "SAVE_STAGE_INPUTS = True" in text
     assert "SAVE_STAGE_WOUTS = False" in text
@@ -242,6 +267,7 @@ def test_qi_example_uses_qi_problem_api() -> None:
     assert "history = result.history" in text
     assert "objective_history = result.objective_history" in text
     assert "timing = result.timing_summary" in text
+    assert "result_summary = result.summary" in text
     assert "Running the raw input deck once for initial comparison plots" in text
     assert "result.final_params" in text
     assert "result.final_state" in text
@@ -569,6 +595,11 @@ def test_fixed_boundary_result_exposes_teaching_accessors() -> None:
             "njev": 3,
         },
     )
+    assert result.stage_results == (initial_record[3], final_record[3])
+    assert result.stage_optimizers == ("initial_optimizer", "final_optimizer")
+    assert len(result.stage_initial_params) == 2
+    np.testing.assert_allclose(result.stage_initial_params[0], [0.0, 1.0])
+    np.testing.assert_allclose(result.stage_initial_params[1], [2.0, 3.0])
     assert result.stage_timing_summaries == (
         {"total_wall_time_s": 0.5, "nfev": None, "njev": None, "nit": None, "mode": 1},
         {"total_wall_time_s": 12.5, "nfev": 7, "njev": 3, "nit": None, "mode": 2},
@@ -580,6 +611,15 @@ def test_fixed_boundary_result_exposes_teaching_accessors() -> None:
         "nit": None,
         "stages": result.stage_timing_summaries,
     }
+    assert result.summary == {
+        "stage_modes": (1, 2),
+        "objective_initial": None,
+        "objective_final": None,
+        "aspect_final": None,
+        "iota_final": None,
+        "field_objective_final": None,
+        "timing": result.timing_summary,
+    }
 
 
 def test_least_squares_problem_uses_simsopt_weight_semantics() -> None:
@@ -590,6 +630,17 @@ def test_least_squares_problem_uses_simsopt_weight_semantics() -> None:
 
     assert residual.shape == (1,)
     assert float(residual[0]) == 2.0
+    assert problem.scalar_objective_names == ("<lambda>",)
+    assert problem.qi_objective_names == ()
+    assert problem.objective_names == ("<lambda>",)
+    assert problem.objective_count == 1
+    assert problem.summary == {
+        "objective_count": 1,
+        "scalar_objectives": ("<lambda>",),
+        "qi_objectives": (),
+        "is_qi": False,
+        "metadata": {},
+    }
 
 
 def test_least_squares_problem_routes_qi_terms() -> None:
@@ -604,6 +655,9 @@ def test_least_squares_problem_routes_qi_terms() -> None:
     assert len(problem.qi_objective_terms) == 1
     assert problem.qi_objective_terms[0].name == "qi"
     assert problem.qi_options is qi_options
+    assert problem.scalar_objective_names == ()
+    assert problem.qi_objective_names == ("qi",)
+    assert problem.objective_names == ("qi",)
 
 
 def test_least_squares_problem_rejects_nonzero_qi_targets() -> None:
@@ -1474,7 +1528,11 @@ def test_public_api_reexports_example_optimization_contract() -> None:
 
     workflow_names = (
         "FixedBoundaryVMEC",
+        "FixedBoundaryOptimizationResult",
         "LeastSquaresProblem",
+        "BoundaryModeLimits",
+        "ObjectiveTerm",
+        "QIObjectiveTerm",
         "AspectRatio",
         "AugmentedLagrangianConstraint",
         "MeanIota",
@@ -1502,8 +1560,11 @@ def test_public_api_reexports_example_optimization_contract() -> None:
         "ToroidalCurrentGradient",
         "RedlBootstrapMismatch",
         "least_squares_solve",
+        "prepare_simple_omnigenity_seed_input",
+        "interpolate_indata_boundary",
         "qs_stage_modes",
         "repeated_stage_modes",
+        "save_optimization_result",
     )
     for name in workflow_names:
         assert getattr(api, name) is getattr(workflow, name)

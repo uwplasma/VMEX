@@ -7,6 +7,7 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DEFAULT_QI_TARGET_ASPECT = 6.0
+SEED3127_REVIEWED_TARGET_ASPECT = 4.0
 TARGET_HELICITY_SEED_AMPLITUDE = 1.0e-5
 TARGET_HELICITY_SEED_TERMS = (
     ("RBC", (1, 0), TARGET_HELICITY_SEED_AMPLITUDE),
@@ -126,16 +127,18 @@ QI_CASES = {
     "qi_stel_seed_3127": {
         "case_goal": "far-seed staged QI robustness lane with reference-family global preconditioning",
         "input_file": DATA_DIR / "input.QI_stel_seed_3127",
-        "output_dir": Path("results/qi_opt/ess/qi_stel_seed_3127_aspect6"),
+        "output_dir": Path("results/qi_opt/ess/qi_stel_seed_3127_aspect4"),
         "max_mode": 4,
         "min_vmec_mode": 6,
         "use_mode_continuation": False,
         "stage_repeats": 1,
         "max_nfev": 8,
-        # Keep the public QI lanes on the same aspect target as QA/QH/QP so
-        # README and docs panels compare like with like.  The staged
-        # reference-family preconditioner is responsible for basin capture.
-        "target_aspect": DEFAULT_QI_TARGET_ASPECT,
+        # The reviewed seed-3127 artifact is an archived aspect-4 robustness
+        # lane. Keep the catalog default aligned with that metadata so
+        # ``VMEC_JAX_QI_RUN_CASE=nfp3_qi`` is reproducible without hidden
+        # overrides; aspect-6 regeneration remains a diagnostic experiment until
+        # it passes the same QI/mirror/iota/aspect gates.
+        "target_aspect": SEED3127_REVIEWED_TARGET_ASPECT,
         "target_abs_iota_min": 0.41,
         "mirror_threshold": 0.35,
         "mirror_surface_index": None,
@@ -164,7 +167,7 @@ QI_CASES = {
             "keys": ("RBC", "ZBS", "RBS", "ZBC"),
             "max_mode": 4,
             "max_iter": 80,
-            "target_aspect": DEFAULT_QI_TARGET_ASPECT,
+            "target_aspect": SEED3127_REVIEWED_TARGET_ASPECT,
             "abs_iota_min": 0.41,
             "max_mirror_ratio": 0.35,
             "max_elongation": 8.0,
