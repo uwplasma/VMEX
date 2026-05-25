@@ -1873,6 +1873,7 @@ class FixedBoundaryExactOptimizer:
             ("compute_forces_rest_s", "compute_forces_rest"),
             ("iteration_residual_metrics_s", "iteration_residual_metrics"),
             ("preconditioner_s", "preconditioner"),
+            ("iteration_control_s", "iteration_control"),
             ("precond_refresh_s", "precond_refresh"),
             ("precond_apply_s", "preconditioner_apply"),
             ("precond_mode_scale_s", "preconditioner_mode_scale"),

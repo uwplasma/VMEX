@@ -9807,6 +9807,7 @@ def solve_fixed_boundary_residual_iter(
         "iteration_loop": 0.0,
         "iteration_prepare": 0.0,
         "iteration_residual_metrics": 0.0,
+        "iteration_control": 0.0,
         "iteration_post_update": 0.0,
         "iteration_loop_unattributed": 0.0,
         "finalize": 0.0,
@@ -11666,6 +11667,7 @@ def solve_fixed_boundary_residual_iter(
                 except Exception:
                     pass
                 timing_stats["preconditioner"] += time.perf_counter() - float(t_precond_start)
+            t_iteration_control_start = time.perf_counter() if timing_enabled else None
 
             # VMEC's lambda coefficients can be expressed in multiple scaling
             # conventions (e.g. restart vs. `wout` vs. internal). Allow parity drivers
@@ -11934,6 +11936,9 @@ def solve_fixed_boundary_residual_iter(
                         f"target={float(fsq_total_target) if fsq_total_target is not None else float(ftol):.3e}",
                         flush=True,
                     )
+                if timing_enabled and t_iteration_control_start is not None:
+                    timing_stats["iteration_control"] += time.perf_counter() - float(t_iteration_control_start)
+                    t_iteration_control_start = None
                 if bool(vmec2000_control) and bool(verbose_vmec2000_table):
                     fsqr1_f, fsqz1_f, fsql1_f = _precond_diag_floats()
                     _print_vmec2000_iter_row(
@@ -12577,6 +12582,9 @@ def solve_fixed_boundary_residual_iter(
             flss_val=flss_u,
         )
 
+        if timing_enabled and t_iteration_control_start is not None:
+            timing_stats["iteration_control"] += time.perf_counter() - float(t_iteration_control_start)
+            t_iteration_control_start = None
         t_update_start = time.perf_counter() if timing_enabled else None
         if bool(strict_update):
             # Strict update semantics: one preconditioned momentum update per

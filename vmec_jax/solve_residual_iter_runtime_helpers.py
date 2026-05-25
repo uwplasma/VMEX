@@ -288,6 +288,7 @@ def _residual_iter_timing_setup_scalars(timing_stats: dict[str, float]) -> tuple
         + float(timing_stats["compute_forces"])
         + float(timing_stats["iteration_residual_metrics"])
         + float(timing_stats["preconditioner"])
+        + float(timing_stats.get("iteration_control", 0.0))
         + float(timing_stats["update"])
         + float(timing_stats["iteration_post_update"])
     )
@@ -328,6 +329,7 @@ def _build_residual_iter_timing_report(
         "force_eval_calls": int(timing_stats["compute_forces_calls"]),
         "iteration_residual_metrics_s": float(timing_stats["iteration_residual_metrics"]),
         "preconditioner_s": float(timing_stats["preconditioner"]),
+        "iteration_control_s": float(timing_stats.get("iteration_control", 0.0)),
         "precond_refresh_s": float(timing_stats["precond_refresh"]),
         "update_s": float(timing_stats["update"]),
         "update_state_s": float(timing_stats["update_state"]),
@@ -342,6 +344,7 @@ def _build_residual_iter_timing_report(
         "force_eval_per_iter_s": float(timing_stats["compute_forces"]) / iters,
         "iteration_residual_metrics_per_iter_s": float(timing_stats["iteration_residual_metrics"]) / iters,
         "preconditioner_per_iter_s": float(timing_stats["preconditioner"]) / iters,
+        "iteration_control_per_iter_s": float(timing_stats.get("iteration_control", 0.0)) / iters,
         "update_per_iter_s": float(timing_stats["update"]) / iters,
         "update_state_per_iter_s": float(timing_stats["update_state"]) / iters,
         "update_trace_build_per_iter_s": float(timing_stats["update_trace_build"]) / iters,
@@ -371,6 +374,7 @@ def _format_residual_iter_timing_message(
         detail_text = (
             f"precond_apply={float(timing_report['precond_apply_s']):.3e}s "
             f"precond_mode={float(timing_report['precond_mode_scale_s']):.3e}s "
+            f"control={float(timing_report['iteration_control_s']):.3e}s "
         )
     return (
         "[vmec_jax timing] "

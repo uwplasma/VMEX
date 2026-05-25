@@ -220,6 +220,8 @@ Results obtained:
 130. Strict Sphinx build passed after tightening the free-boundary coil-optimization status wording.
 131. The fused strict-update helper now accepts `enforce_edge=False`; GPU direct-coil free-boundary solves can use the same cached update step without accidentally pinning the LCFS.
 132. Targeted strict-update validation passed: `tests/test_solve_wave4_coverage.py` -> 22 passed, and `tests/test_discrete_adjoint_qh.py -k strict_update` -> 12 passed, 1 skipped.
+133. Office CPU/CUDA direct-coil benchmark after the free-boundary-aware strict update: CPU warm `0.093 s`, CUDA warm `0.249 s`; CUDA `update_state` fell to about `0.001 s`, leaving `iteration_control_s` as the dominant named/non-kernel control bucket.
+134. Residual-iteration timing now records `iteration_control_s` and propagates it through solver diagnostics, optimizer profiles, and the free-boundary direct-coil benchmark matrix.
 
 Best next steps:
 
@@ -227,7 +229,7 @@ Best next steps:
 2. Keep `exact_path='scan'` as an explicit long-run GPU option only; the latest profile shows it warms faster but needs roughly 75 accepted callbacks to amortize the `~110 s` cold compile.
 3. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
-5. For GPU performance, keep JIT force kernels as the production default for direct-coil examples, use the free-boundary-aware fused strict-update path on non-CPU backends, then target the remaining unattributed-loop dispatch overhead.
+5. For GPU performance, keep JIT force kernels as the production default for direct-coil examples, use the free-boundary-aware fused strict-update path on non-CPU backends, then target the remaining `iteration_control_s` host-sync/control overhead.
 6. Warm GPU QH mode-2 tape callbacks are still above the `1 s` production target; the next patch should reduce accepted replay/tangent dispatch or avoid rebuilding accepted tapes at nearby callbacks. Matrix-free is not yet the answer on GPU because repeated VJP/JVP replay is slower than dense materialization for the profiled case.
 
 Need from user:

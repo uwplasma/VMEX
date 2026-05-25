@@ -21,6 +21,7 @@ def _direct_solve_payload() -> dict:
                         "iterations": 2,
                         "iteration_loop_s": 0.6,
                         "iteration_loop_unattributed_s": 0.1,
+                        "iteration_control_s": 0.04,
                         "compute_forces_s": 0.2,
                         "preconditioner_s": 0.15,
                         "update_s": 0.05,
@@ -96,6 +97,7 @@ def test_matrix_timing_snapshot_preserves_compact_nestor_details() -> None:
     assert nestor["final_diagnostics"]["lu_built"]["mode_matrix"] is True
     assert rows[0]["solver"]["warm"]["solve_total_s"] == 0.7
     assert rows[0]["solver"]["warm"]["iteration_loop_unattributed_s"] == 0.1
+    assert rows[0]["solver"]["warm"]["iteration_control_s"] == 0.04
     assert rows[0]["solver"]["warm"]["compute_forces_per_iter_s"] == 0.1
 
 
@@ -134,6 +136,7 @@ def test_cpu_gpu_comparison_matches_completed_cases_and_reports_nestor_ratios() 
                     "solve_total_s": warm_min + 1.0,
                     "iteration_loop_s": warm_min + 0.5,
                     "iteration_loop_unattributed_s": warm_min + 0.25,
+                    "iteration_control_s": warm_min + 0.15,
                     "compute_forces_s": warm_min + 0.1,
                     "preconditioner_s": warm_min + 0.2,
                     "update_s": warm_min + 0.3,
@@ -208,6 +211,7 @@ def test_cpu_gpu_comparison_matches_completed_cases_and_reports_nestor_ratios() 
         "warm_solver_total": 0.5,
         "warm_iteration_loop": 1.0 / 2.5,
         "warm_iteration_loop_unattributed": 0.75 / 2.25,
+        "warm_iteration_control": 0.65 / 2.15,
         "warm_compute_forces": 0.6 / 2.1,
         "warm_preconditioner": 0.7 / 2.2,
         "warm_update": 0.8 / 2.3,

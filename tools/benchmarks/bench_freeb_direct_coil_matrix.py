@@ -213,6 +213,7 @@ _SOLVER_TIMING_KEYS = (
     "compute_forces_rest_s",
     "compute_forces_calls",
     "preconditioner_s",
+    "iteration_control_s",
     "precond_apply_s",
     "precond_mode_scale_s",
     "precond_refresh_s",
@@ -312,6 +313,7 @@ def _case_metrics(case: dict[str, Any]) -> dict[str, Any]:
         "warm_iteration_loop_unattributed_s": _finite_float(
             _nested_value(solver, ("warm", "iteration_loop_unattributed_s"))
         ),
+        "warm_iteration_control_s": _finite_float(_nested_value(solver, ("warm", "iteration_control_s"))),
         "warm_compute_forces_s": _finite_float(_nested_value(solver, ("warm", "compute_forces_s"))),
         "warm_preconditioner_s": _finite_float(_nested_value(solver, ("warm", "preconditioner_s"))),
         "warm_update_s": _finite_float(_nested_value(solver, ("warm", "update_s"))),
@@ -389,6 +391,10 @@ def _cpu_gpu_comparison(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "warm_iteration_loop_unattributed": _ratio(
                         gpu_metrics.get("warm_iteration_loop_unattributed_s"),
                         cpu_metrics.get("warm_iteration_loop_unattributed_s"),
+                    ),
+                    "warm_iteration_control": _ratio(
+                        gpu_metrics.get("warm_iteration_control_s"),
+                        cpu_metrics.get("warm_iteration_control_s"),
                     ),
                     "warm_compute_forces": _ratio(
                         gpu_metrics.get("warm_compute_forces_s"),
