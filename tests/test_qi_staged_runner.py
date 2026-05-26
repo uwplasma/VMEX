@@ -21,7 +21,7 @@ def _load_runner():
     return module
 
 
-def test_qi_staged_runner_builds_external_input_environment(tmp_path: Path) -> None:
+def test_qi_staged_runner_builds_external_input_cli_and_environment(tmp_path: Path) -> None:
     runner = _load_runner()
     config = runner.QIStagedCaseConfig(
         name="qi_nfp2",
@@ -45,22 +45,25 @@ def test_qi_staged_runner_builds_external_input_environment(tmp_path: Path) -> N
     )
 
     env = runner._build_qi_staged_env(config)
+    args = runner._build_qi_staged_args(config)
+    joined = " ".join(str(item) for item in args)
 
-    assert env["VMEC_JAX_QI_INPUT"].endswith("input.minimal_seed_nfp2")
-    assert env["VMEC_JAX_QI_OUTPUT_DIR"] == str(tmp_path / "out")
-    assert env["VMEC_JAX_QI_RUN_CASE"] == "qi_nfp2"
-    assert env["VMEC_JAX_QI_POLICY_CASE"] == "nfp2_qi"
-    assert env["VMEC_JAX_QI_REFERENCE_INPUT"].endswith("input.nfp2_QI")
-    assert env["VMEC_JAX_QI_MAX_MODE"] == "3"
-    assert env["VMEC_JAX_QI_USE_MODE_CONTINUATION"] == "0"
-    assert env["VMEC_JAX_QI_USE_ESS"] == "0"
-    assert env["VMEC_JAX_QI_MAKE_PLOTS"] == "0"
-    assert env["VMEC_JAX_QI_MAX_NFEV"] == "5"
-    assert env["VMEC_JAX_QI_INNER_MAX_ITER"] == "21"
-    assert env["VMEC_JAX_QI_TRIAL_FTOL"] == "2e-08"
-    assert env["VMEC_JAX_QI_SOLVER_DEVICE"] == "gpu"
     assert env["JAX_PLATFORMS"] == "cuda"
-    lambdas = tuple(float(value) for value in env["VMEC_JAX_QI_REFERENCE_LAMBDAS"].split(","))
+    assert "--input-file" in args
+    assert joined.endswith("1.7")
+    assert str(ROOT / "examples" / "data" / "input.minimal_seed_nfp2") in args
+    assert str(tmp_path / "out") in args
+    assert "--max-mode" in args and "3" in args
+    assert "--no-use-mode-continuation" in args
+    assert "--no-use-ess" in args
+    assert "--no-make-plots" in args
+    assert "--max-nfev" in args and "5" in args
+    assert "--inner-max-iter" in args and "21" in args
+    assert "--trial-ftol" in args and "2e-08" in args
+    assert "--solver-device" in args and "gpu" in args
+    assert "--reference-input" in args
+    assert str(ROOT / "examples" / "data" / "input.nfp2_QI") in args
+    lambdas = tuple(float(value) for value in args[args.index("--reference-lambdas") + 1].split(","))
     assert lambdas[:3] == pytest.approx((0.994, 0.995, 0.996))
     assert lambdas[-1] == pytest.approx(1.010)
 
@@ -77,9 +80,9 @@ def test_qi_staged_runner_can_disable_reference_lambda_override(tmp_path: Path) 
         make_plots=False,
     )
 
-    env = runner._build_qi_staged_env(config)
+    args = runner._build_qi_staged_args(config)
 
-    assert "VMEC_JAX_QI_REFERENCE_LAMBDAS" not in env
+    assert "--reference-lambdas" not in args
 
 
 def test_qi_staged_runner_converts_artifacts_to_case_result(tmp_path: Path, monkeypatch) -> None:

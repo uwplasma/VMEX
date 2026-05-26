@@ -84,7 +84,7 @@ TARGET_ASPECT = 5.0
 TARGET_ABS_IOTA_MIN = 0.41
 MAX_MIRROR_RATIO = 0.30
 MIRROR_SURFACE_INDEX = None
-MAX_ELONGATION = 8.2
+MAX_ELONGATION = 10.0
 SURFACES = np.linspace(0.1, 1.0, 6)
 ASPECT_WEIGHT = 0.25
 IOTA_FLOOR_WEIGHT = 200.0**2
@@ -99,6 +99,9 @@ QI_GATE_LEGACY_MAX = 2.0e-3
 JIT_BOOZ = True
 OPT_QI_RESOLUTION = {"mboz": 18, "nboz": 18, "nphi": 151, "nalpha": 31, "n_bounce": 51}
 AUDIT_QI_RESOLUTION = dict(OPT_QI_RESOLUTION)
+
+
+vj.apply_qi_example_cli_overrides(globals())
 
 QI_OPTIONS = vj.QuasiIsodynamicOptions(
     surfaces=SURFACES,
@@ -217,6 +220,7 @@ mirror = vj.MirrorRatio(
     smooth_extrema=2.0e-2,
     smooth_penalty=2.0e-2,
     jit_booz=QI_OPTIONS.jit_booz,
+    qi_options=QI_OPTIONS,
 )
 elongation = vj.MaxElongation(
     threshold=MAX_ELONGATION,
