@@ -8,6 +8,7 @@ and checkpoint helpers used by that script and sweep drivers.
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -49,6 +50,7 @@ __all__ = [
     "TARGET_HELICITY_SEED_AMPLITUDE",
     "TARGET_HELICITY_SEED_MODE_TERMS",
     "QIOptimizationContext",
+    "apply_qi_example_cli_overrides",
     "basin_prefilter_score",
     "boundary_reference_preconditioner_score",
     "boundary_reference_record_is_qi_safe",
@@ -142,6 +144,99 @@ _CONTEXT_FIELDS = {
 }
 
 _DEFAULT_CONTEXT: QIOptimizationContext | None = None
+
+
+def _float_tuple(value: str) -> tuple[float, ...]:
+    text = str(value).strip()
+    if not text:
+        return ()
+    return tuple(float(part.strip()) for part in text.split(",") if part.strip())
+
+
+def apply_qi_example_cli_overrides(namespace: dict, argv: list[str] | None = None) -> argparse.Namespace:
+    """Apply optional command-line overrides to a QI example namespace.
+
+    The QI example remains editable by changing top-level variables.  Sweep
+    drivers can call the same script with explicit CLI overrides, avoiding the
+    older environment-variable control path.
+    """
+
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--input-file", type=Path)
+    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--max-mode", type=int)
+    parser.add_argument("--min-vmec-mode", type=int)
+    parser.add_argument("--max-nfev", type=int)
+    parser.add_argument("--continuation-nfev", type=int)
+    parser.add_argument("--inner-max-iter", type=int)
+    parser.add_argument("--inner-ftol", type=float)
+    parser.add_argument("--trial-max-iter", type=int)
+    parser.add_argument("--trial-ftol", type=float)
+    parser.add_argument("--solver-device", choices=("cpu", "gpu", "none", "default"))
+    parser.add_argument("--ess-alpha", type=float)
+    parser.add_argument("--use-ess", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--use-mode-continuation", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--use-simple-seed", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--use-target-helicity-seed", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--use-reference-family-seed", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--reference-input", type=Path)
+    parser.add_argument("--reference-lambdas", type=_float_tuple)
+    parser.add_argument("--stage-repeats", type=int)
+    parser.add_argument("--make-plots", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--jit-booz", action=argparse.BooleanOptionalAction)
+    parser.add_argument("--target-aspect", type=float)
+    parser.add_argument("--target-abs-iota-min", type=float)
+    parser.add_argument("--max-mirror-ratio", type=float)
+    parser.add_argument("--max-elongation", type=float)
+    args, _unknown = parser.parse_known_args(argv)
+
+    def set_if(name: str, value) -> None:
+        if value is not None:
+            namespace[name] = value
+
+    if args.input_file is not None:
+        namespace["INPUT_FILE"] = args.input_file.expanduser()
+    if args.output_dir is not None:
+        namespace["OUTPUT_DIR"] = args.output_dir.expanduser()
+    set_if("MAX_MODE", None if args.max_mode is None else int(args.max_mode))
+    namespace["MIN_VMEC_MODE"] = (
+        int(args.min_vmec_mode)
+        if args.min_vmec_mode is not None
+        else max(6, int(namespace["MAX_MODE"]) + 3)
+    )
+    set_if("MAX_NFEV", None if args.max_nfev is None else int(args.max_nfev))
+    set_if("CONTINUATION_NFEV", None if args.continuation_nfev is None else int(args.continuation_nfev))
+    set_if("INNER_MAX_ITER", None if args.inner_max_iter is None else int(args.inner_max_iter))
+    set_if("INNER_FTOL", None if args.inner_ftol is None else float(args.inner_ftol))
+    set_if("TRIAL_MAX_ITER", None if args.trial_max_iter is None else int(args.trial_max_iter))
+    set_if("TRIAL_FTOL", None if args.trial_ftol is None else float(args.trial_ftol))
+    if args.solver_device is not None:
+        namespace["SOLVER_DEVICE"] = None if args.solver_device in {"none", "default"} else str(args.solver_device)
+    set_if("ALPHA", None if args.ess_alpha is None else float(args.ess_alpha))
+    set_if("USE_ESS", args.use_ess)
+    set_if("USE_MODE_CONTINUATION", args.use_mode_continuation)
+    set_if("USE_SIMPLE_SEED", args.use_simple_seed)
+    set_if("USE_TARGET_HELICITY_SEED", args.use_target_helicity_seed)
+    if args.reference_input is not None:
+        namespace["REFERENCE_INPUT_FILE"] = args.reference_input.expanduser()
+        if args.use_reference_family_seed is None:
+            namespace["USE_REFERENCE_FAMILY_SEED"] = True
+    set_if("USE_REFERENCE_FAMILY_SEED", args.use_reference_family_seed)
+    set_if("REFERENCE_LAMBDAS", args.reference_lambdas)
+    set_if("STAGE_REPEATS", None if args.stage_repeats is None else int(args.stage_repeats))
+    set_if("MAKE_PLOTS", args.make_plots)
+    set_if("JIT_BOOZ", args.jit_booz)
+    set_if("TARGET_ASPECT", None if args.target_aspect is None else float(args.target_aspect))
+    set_if("TARGET_ABS_IOTA_MIN", None if args.target_abs_iota_min is None else float(args.target_abs_iota_min))
+    set_if("MAX_MIRROR_RATIO", None if args.max_mirror_ratio is None else float(args.max_mirror_ratio))
+    set_if("MAX_ELONGATION", None if args.max_elongation is None else float(args.max_elongation))
+    namespace["STAGE_MODES"] = vj.repeated_stage_modes(
+        max_mode=int(namespace["MAX_MODE"]),
+        use_mode_continuation=bool(namespace["USE_MODE_CONTINUATION"]),
+        continuation_nfev=int(namespace["CONTINUATION_NFEV"]),
+        repeats=int(namespace["STAGE_REPEATS"]),
+    )
+    return args
 
 
 def make_qi_optimization_context(

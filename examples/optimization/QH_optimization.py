@@ -22,7 +22,7 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 WARM_START_INPUT_FILE = DATA_DIR / "input.nfp4_QH_warm_start"
 SIMPLE_SEED_INPUT_FILE = DATA_DIR / "input.minimal_seed_nfp4"
 OUTPUT_DIR = Path("results/qh_opt/ess")
-MAX_MODE = 4
+MAX_MODE = 5
 MIN_VMEC_MODE = MAX_MODE+2
 USE_SIMPLE_SEED = True  # Start from near-circular RBC(0,0), RBC(0,1), ZBS(0,1).
 SIMPLE_SEED_PERTURBATION = 1.0e-5  # Tiny nonzero active modes keep derivatives away from exactly zero.
@@ -36,7 +36,7 @@ INPUT_FILE = vj.prepare_simple_omnigenity_seed_input(
     perturbation=SIMPLE_SEED_PERTURBATION,
 )
 USE_MODE_CONTINUATION = not USE_SIMPLE_SEED
-MAX_NFEV = 30
+MAX_NFEV = 60
 CONTINUATION_NFEV = 15
 STAGE_MODES = vj.qs_stage_modes(
     max_mode=MAX_MODE,

@@ -37,7 +37,7 @@ INPUT_FILE = vj.prepare_simple_omnigenity_seed_input(
     perturbation=SIMPLE_SEED_PERTURBATION,
 )
 USE_MODE_CONTINUATION = False
-MAX_NFEV = 30
+MAX_NFEV = 60
 CONTINUATION_NFEV = 15
 STAGE_MODES = vj.qs_stage_modes(
     max_mode=MAX_MODE,
@@ -45,8 +45,8 @@ STAGE_MODES = vj.qs_stage_modes(
     continuation_nfev=CONTINUATION_NFEV,
 )
 # QP is especially sensitive to direct high-mode starts from the common minimal
-# seed.  Keep a lower-mode continuation sequence enabled by default; the direct
-# ``STAGE_MODES=[MAX_MODE]`` path can produce enormous initial QP residuals.
+# seed.  If a direct solve stalls, set USE_MODE_CONTINUATION=True above to use
+# a lower-mode continuation sequence like the QA/QH examples.
 
 # Optimizer parameters.
 METHOD = "scipy"  # Try also "auto", "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", or "scalar_trust".
@@ -84,7 +84,7 @@ ASPECT_WEIGHT = 1.0
 IOTA_FLOOR_WEIGHT = 40_000.0
 QS_WEIGHT = 1.0
 MAX_MIRROR_RATIO = 0.30
-MAX_ELONGATION = 8.0
+MAX_ELONGATION = 10.0
 MIRROR_WEIGHT = 20.0
 ELONGATION_WEIGHT = 10.0
 MIRROR_SURFACES = np.linspace(0.1, 1.0, 6)

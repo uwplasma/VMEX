@@ -122,52 +122,69 @@ def _prepend_pythonpath(env: dict[str, str], *paths: Path) -> None:
     env["PYTHONPATH"] = os.pathsep.join(additions + ([current] if current else []))
 
 
-def _bool_env(value: bool) -> str:
-    return "1" if bool(value) else "0"
-
-
 def _build_qi_staged_env(config: QIStagedCaseConfig) -> dict[str, str]:
-    """Return environment variables for the QI standalone subprocess."""
+    """Return process environment for the QI standalone subprocess."""
 
     env = dict(os.environ)
     _prepend_pythonpath(env, ROOT, SCRIPT_DIR)
-    env.update(
-        {
-            "VMEC_JAX_QI_INPUT": str(Path(config.input_file).expanduser()),
-            "VMEC_JAX_QI_OUTPUT_DIR": str(Path(config.output_dir).expanduser()),
-            "VMEC_JAX_QI_LABEL": str(config.name),
-            "VMEC_JAX_QI_RUN_CASE": str(config.name),
-            "VMEC_JAX_QI_POLICY_CASE": str(config.policy_case),
-            "VMEC_JAX_QI_MAX_MODE": str(int(config.max_mode)),
-            "VMEC_JAX_QI_USE_MODE_CONTINUATION": _bool_env(str(config.policy) == "continuation"),
-            "VMEC_JAX_QI_USE_ESS": _bool_env(config.use_ess),
-            "VMEC_JAX_QI_MAKE_PLOTS": _bool_env(config.make_plots),
-        }
-    )
-    if config.reference_input is not None:
-        env["VMEC_JAX_QI_REFERENCE_INPUT"] = str(Path(config.reference_input).expanduser())
-        if config.reference_lambdas is not None:
-            env["VMEC_JAX_QI_REFERENCE_LAMBDAS"] = ",".join(
-                f"{float(value):.12g}" for value in config.reference_lambdas
-            )
-    if config.solver_device is not None:
-        env["VMEC_JAX_QI_SOLVER_DEVICE"] = str(config.solver_device)
     worker_jax_platforms = sweep._normalize_worker_jax_platforms(config.worker_jax_platforms)
     if worker_jax_platforms is not None:
         env["JAX_PLATFORMS"] = worker_jax_platforms
-    if config.max_nfev is not None:
-        env["VMEC_JAX_QI_MAX_NFEV"] = str(int(config.max_nfev))
-    if config.inner_max_iter is not None:
-        env["VMEC_JAX_QI_INNER_MAX_ITER"] = str(int(config.inner_max_iter))
-    if config.inner_ftol is not None:
-        env["VMEC_JAX_QI_INNER_FTOL"] = str(float(config.inner_ftol))
-    if config.trial_max_iter is not None:
-        env["VMEC_JAX_QI_TRIAL_MAX_ITER"] = str(int(config.trial_max_iter))
-    if config.trial_ftol is not None:
-        env["VMEC_JAX_QI_TRIAL_FTOL"] = str(float(config.trial_ftol))
-    if config.ess_alpha is not None:
-        env["VMEC_JAX_QI_ESS_ALPHA"] = str(float(config.ess_alpha))
     return env
+
+
+def _build_qi_staged_args(config: QIStagedCaseConfig) -> list[str]:
+    """Return explicit CLI overrides for ``QI_optimization.py``.
+
+    The QI example is intentionally editable by changing variables at the top.
+    Sweep drivers should still pass explicit command-line overrides so they do
+    not depend on stale environment-variable plumbing.
+    """
+
+    args = [
+        str(QI_SCRIPT),
+        "--input-file",
+        str(Path(config.input_file).expanduser()),
+        "--output-dir",
+        str(Path(config.output_dir).expanduser()),
+        "--max-mode",
+        str(int(config.max_mode)),
+        "--use-mode-continuation" if str(config.policy) == "continuation" else "--no-use-mode-continuation",
+        "--use-ess" if bool(config.use_ess) else "--no-use-ess",
+        "--make-plots" if bool(config.make_plots) else "--no-make-plots",
+    ]
+    if config.reference_input is not None:
+        args.extend(
+            [
+                "--use-reference-family-seed",
+                "--reference-input",
+                str(Path(config.reference_input).expanduser()),
+            ]
+        )
+        if config.reference_lambdas is not None:
+            args.extend(
+                [
+                    "--reference-lambdas",
+                    ",".join(f"{float(value):.12g}" for value in config.reference_lambdas),
+                ]
+            )
+    else:
+        args.append("--no-use-reference-family-seed")
+    if config.solver_device is not None:
+        args.extend(["--solver-device", str(config.solver_device)])
+    if config.max_nfev is not None:
+        args.extend(["--max-nfev", str(int(config.max_nfev))])
+    if config.inner_max_iter is not None:
+        args.extend(["--inner-max-iter", str(int(config.inner_max_iter))])
+    if config.inner_ftol is not None:
+        args.extend(["--inner-ftol", str(float(config.inner_ftol))])
+    if config.trial_max_iter is not None:
+        args.extend(["--trial-max-iter", str(int(config.trial_max_iter))])
+    if config.trial_ftol is not None:
+        args.extend(["--trial-ftol", str(float(config.trial_ftol))])
+    if config.ess_alpha is not None:
+        args.extend(["--ess-alpha", str(float(config.ess_alpha))])
+    return args
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -384,6 +401,7 @@ def run_qi_staged_case(config: QIStagedCaseConfig) -> sweep.CaseResult:
     stdout_path = output_dir / "qi_staged_stdout.log"
     stderr_path = output_dir / "qi_staged_stderr.log"
     env = _build_qi_staged_env(config)
+    cli_args = _build_qi_staged_args(config)
 
     start = time.perf_counter()
     returncode = 0
@@ -391,7 +409,7 @@ def run_qi_staged_case(config: QIStagedCaseConfig) -> sweep.CaseResult:
     try:
         with stdout_path.open("w") as stdout, stderr_path.open("w") as stderr:
             completed = subprocess.run(
-                [sys.executable, str(QI_SCRIPT)],
+                [sys.executable, *cli_args],
                 cwd=str(SCRIPT_DIR),
                 env=env,
                 stdout=stdout,

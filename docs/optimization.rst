@@ -873,7 +873,10 @@ are generated assets.  Recreate them from the sweep results with the commands
 below.  The README keeps only the compact best-result PNGs; full publication
 sweeps belong in :doc:`optimization_sweep_results` as local result trees or
 release assets.  Copy only compact, reviewed, documentation-critical artifacts
-into ``docs/_static/figures``.
+into ``docs/_static/figures``.  Keep checked-in PNG/JPEG figures compressed
+below the docs hygiene gate (currently 2 MiB each); larger atlases, PDFs, and
+full-sweep panels should stay in ignored result directories or release assets
+until they are explicitly reviewed and compacted.
 
 .. code-block:: bash
 

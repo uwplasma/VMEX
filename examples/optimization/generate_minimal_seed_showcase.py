@@ -14,9 +14,9 @@ only the subset of cases with current non-stale provenance:
 
 - QI with NFP=1, 2, 3, and a finite-beta NFP=4 reference lane
 - an NFP=1 circular-torus QI stress lane
-- QA with NFP=2
-- QH with NFP=4
-- QP with NFP=2
+- QA with NFP=2 and 3
+- QH with NFP=3 and 4
+- QP with NFP=1, 2, 3, and 4
 
 The implementation intentionally reuses ``generate_qs_ess_sweep.py`` so the
 showcase follows the same exact optimizer, diagnostics, and per-case output
@@ -149,11 +149,31 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         reference_preseed_input=DATA_DIR / "input.nfp2_QA_omnigenity",
         reference_preseed_blend=0.25,
     ),
+    "qa_nfp3": MinimalSeedCase(
+        name="qa_nfp3",
+        problem="qa",
+        nfp=3,
+        input_file=DATA_DIR / "input.minimal_seed_nfp3",
+    ),
+    "qh_nfp3": MinimalSeedCase(
+        name="qh_nfp3",
+        problem="qh",
+        nfp=3,
+        input_file=DATA_DIR / "input.minimal_seed_nfp3",
+    ),
     "qh_nfp4": MinimalSeedCase(
         name="qh_nfp4",
         problem="qh",
         nfp=4,
         input_file=DATA_DIR / "input.minimal_seed_nfp4",
+    ),
+    "qp_nfp1": MinimalSeedCase(
+        name="qp_nfp1",
+        problem="qp",
+        nfp=1,
+        input_file=DATA_DIR / "input.minimal_seed_nfp1",
+        reference_preseed_input=DATA_DIR / "input.nfp1_QI",
+        reference_preseed_blend=0.10,
     ),
     "qp_nfp2": MinimalSeedCase(
         name="qp_nfp2",
@@ -161,6 +181,22 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         nfp=2,
         input_file=DATA_DIR / "input.minimal_seed_nfp2",
         reference_preseed_input=DATA_DIR / "input.nfp2_QI",
+        reference_preseed_blend=0.10,
+    ),
+    "qp_nfp3": MinimalSeedCase(
+        name="qp_nfp3",
+        problem="qp",
+        nfp=3,
+        input_file=DATA_DIR / "input.minimal_seed_nfp3",
+        reference_preseed_input=DATA_DIR / "input.nfp3_QI_fixed_resolution_final",
+        reference_preseed_blend=0.10,
+    ),
+    "qp_nfp4": MinimalSeedCase(
+        name="qp_nfp4",
+        problem="qp",
+        nfp=4,
+        input_file=DATA_DIR / "input.minimal_seed_nfp4",
+        reference_preseed_input=DATA_DIR / "input.nfp4_QI_finite_beta",
         reference_preseed_blend=0.10,
     ),
 }
@@ -172,8 +208,13 @@ DEFAULT_CASE_ORDER = (
     "qi_nfp3",
     "qi_nfp4",
     "qa_nfp2",
+    "qa_nfp3",
+    "qh_nfp3",
     "qh_nfp4",
+    "qp_nfp1",
     "qp_nfp2",
+    "qp_nfp3",
+    "qp_nfp4",
 )
 
 PHYSICS_IOTA_FLOOR = 0.35
@@ -204,6 +245,7 @@ class MinimalSeedBudget:
     inner_ftol: float
     trial_max_iter: int
     trial_ftol: float
+    ess_alpha: float = 1.2
 
 
 def _parse_case_names(value: str) -> tuple[str, ...]:
@@ -427,6 +469,7 @@ def _problem_config_for_case(
         "inner_ftol": float(budget.inner_ftol),
         "trial_max_iter": int(budget.trial_max_iter),
         "trial_ftol": float(budget.trial_ftol),
+        "ess_alpha": float(budget.ess_alpha),
         "project_input_boundary_to_max_mode": True,
         "min_vmec_mode": min_vmec_mode,
     }
@@ -458,6 +501,7 @@ def _qp_preseed_config_for_qi_case(
         inner_ftol=float(budget.inner_ftol),
         trial_max_iter=int(budget.trial_max_iter),
         trial_ftol=float(budget.trial_ftol),
+        ess_alpha=float(budget.ess_alpha),
         project_input_boundary_to_max_mode=True,
         min_vmec_mode=min_vmec_mode,
     )
@@ -555,6 +599,7 @@ def _run_showcase_case(
                 inner_ftol=float(budget.inner_ftol),
                 trial_max_iter=int(budget.trial_max_iter),
                 trial_ftol=float(budget.trial_ftol),
+                ess_alpha=float(budget.ess_alpha),
                 make_plots=False,
                 timeout_s=qi_timeout_s,
             )
@@ -835,6 +880,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--inner-ftol", type=float, default=1e-9)
     parser.add_argument("--trial-max-iter", type=int, default=120)
     parser.add_argument("--trial-ftol", type=float, default=1e-9)
+    parser.add_argument("--ess-alpha", type=float, default=1.2, help="ESS high-mode scaling strength.")
     parser.add_argument("--case-timeout-s", type=float, default=1800.0)
     parser.add_argument(
         "--reference-preseed-blend",
@@ -864,6 +910,7 @@ def main() -> None:
         inner_ftol=float(args.inner_ftol),
         trial_max_iter=int(args.trial_max_iter),
         trial_ftol=float(args.trial_ftol),
+        ess_alpha=float(args.ess_alpha),
     )
     use_ess = _bool_from_choice(args.ess)
     max_mode = int(args.max_mode)

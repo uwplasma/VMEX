@@ -35,8 +35,13 @@ def test_minimal_seed_showcase_case_map_uses_three_coefficient_inputs() -> None:
         "qi_nfp3",
         "qi_nfp4",
         "qa_nfp2",
+        "qa_nfp3",
+        "qh_nfp3",
         "qh_nfp4",
+        "qp_nfp1",
         "qp_nfp2",
+        "qp_nfp3",
+        "qp_nfp4",
     )
     for case_name in generator.DEFAULT_CASE_ORDER:
         case = generator.SHOWCASE_CASES[case_name]

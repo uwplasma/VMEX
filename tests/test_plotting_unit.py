@@ -15,6 +15,7 @@ from vmec_jax.plotting import (
     _default_example_outdir,
     _extent_from_grids,
     _pi_label,
+    _selected_boozer_surface_label,
     axis_rz_from_wout,
     axis_rz_from_wout_physical,
     boozer_bmag_grid_from_state,
@@ -142,6 +143,9 @@ def test_grids_slices_and_path_helpers():
     assert _default_example_outdir("sub", "case", "/tmp/out") == Path("/tmp/out")
     assert _extent_from_grids(np.asarray([2.0]), np.asarray([3.0])) == (2.5, 3.5, 1.5, 2.5)
     assert [_pi_label(v) for v in (0.0, np.pi / 2.0, np.pi, 3.0 * np.pi / 2.0)] == ["0", "π/2", "π", "3π/2"]
+    assert _selected_boozer_surface_label((0.25, 0.5, 1.0), -2) == "mid radius"
+    assert _selected_boozer_surface_label((0.25, 0.5, 1.0), -1) == "plasma boundary"
+    assert _selected_boozer_surface_label((0.25,), 0) == "Boozer surface s=0.25"
 
 
 def test_wout_surface_and_field_helpers_respect_lasym():
@@ -345,11 +349,13 @@ def test_boozmn_plot_helpers_render_synthetic_boozer_output(tmp_path):
     assert spectrum.name == "toy_Boozer_lcfs_spectrum.png"
     for path in (bmag, families, spectrum):
         assert path.stat().st_size > 0
-    assert plotting._booz_surface_label(booz, 1, outer=False) == "Mid radius"
-    assert plotting._booz_surface_label(booz, 2, outer=True) == "Plasma boundary"
+    assert plotting._booz_surface_label(booz, 1, outer=False) == "mid radius"
+    assert plotting._booz_surface_label(booz, 2, outer=True) == "plasma boundary"
     source = inspect.getsource(plotting.plot_boozmn_bmag_contours)
-    assert r"$\phi_B$" in source
-    assert r"$\theta_B$" in source
+    assert "_BOOZER_PHI_LABEL" in source
+    assert "_BOOZER_THETA_LABEL" in source
+    assert r"$\phi_{B}$" == plotting._BOOZER_PHI_LABEL.split("angle ", 1)[1].removesuffix(" (rad)")
+    assert r"$\theta_{B}$" == plotting._BOOZER_THETA_LABEL.split("angle ", 1)[1].removesuffix(" (rad)")
 
 
 def test_boozer_lcfs_comparison_runs_booz_and_labels_boozer_axes(tmp_path, monkeypatch):
