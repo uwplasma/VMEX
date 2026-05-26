@@ -347,6 +347,76 @@ def summarize_run(run, wout_path: Path, *, backend: str, beta_percent: float, wa
     return summary
 
 
+def _summary_payload(
+    *,
+    coils_json: Path,
+    mgrid_file: Path,
+    args,
+    scale_summary: dict[str, float],
+    ns_array: list[int] | None,
+    niter_array: list[int] | None,
+    ftol_array: list[float] | None,
+    summaries: list[dict[str, Any]],
+    complete: bool,
+) -> dict[str, Any]:
+    """Build the beta-scan JSON payload.
+
+    The same payload is written after each completed case and again at normal
+    exit.  Long high-resolution pressure scans can therefore be interrupted
+    without losing metrics for already accepted beta points.
+    """
+
+    return {
+        "complete": bool(complete),
+        "coils_json": str(coils_json),
+        "mgrid": str(mgrid_file),
+        "coil_current_scale": float(args.coil_current_scale),
+        "phiedge_override": None if args.phiedge is None else float(args.phiedge),
+        "pressure_scale_for_one_percent_beta": float(args.pressure_scale_for_one_percent_beta),
+        "pressure_continuation": bool(args.pressure_continuation),
+        "pressure_continuation_max_fsq": float(args.pressure_continuation_max_fsq),
+        "direct_coil_source_reuse": not bool(args.disable_direct_coil_source_reuse),
+        "direct_coil_trial_resample": bool(args.direct_coil_trial_resample),
+        "direct_coil_limit_update_rms": bool(args.direct_coil_limit_update_rms),
+        "coil_plasma_scale_summary": scale_summary,
+        "ns_array": ns_array or [int(args.ns)],
+        "niter_array": niter_array or [int(args.max_iter)],
+        "ftol_array": ftol_array or [float(args.ftol)],
+        "runs": summaries,
+    }
+
+
+def _write_summary_checkpoint(
+    summary_path: Path,
+    *,
+    coils_json: Path,
+    mgrid_file: Path,
+    args,
+    scale_summary: dict[str, float],
+    ns_array: list[int] | None,
+    niter_array: list[int] | None,
+    ftol_array: list[float] | None,
+    summaries: list[dict[str, Any]],
+    complete: bool,
+) -> None:
+    summary_path.write_text(
+        json.dumps(
+            _summary_payload(
+                coils_json=coils_json,
+                mgrid_file=mgrid_file,
+                args=args,
+                scale_summary=scale_summary,
+                ns_array=ns_array,
+                niter_array=niter_array,
+                ftol_array=ftol_array,
+                summaries=summaries,
+                complete=complete,
+            ),
+            indent=2,
+        )
+    )
+
+
 def run_one_case(
     *,
     backend: str,
@@ -587,6 +657,7 @@ def main(argv: list[str] | None = None) -> int:
             flush=True,
         )
     summaries = []
+    summary_path = outdir / "summary.json"
     continuation_bases: dict[str, Any] = {}
     continuation_has_promoted_seed: dict[str, bool] = {}
     if args.pressure_continuation:
@@ -641,6 +712,18 @@ def main(argv: list[str] | None = None) -> int:
                 continuation_has_promoted_seed["mgrid"] = True
                 summary["pressure_continuation_promoted_seed"] = True
             summaries.append(summary)
+            _write_summary_checkpoint(
+                summary_path,
+                coils_json=coils_json,
+                mgrid_file=mgrid_file,
+                args=args,
+                scale_summary=scale_summary,
+                ns_array=ns_array,
+                niter_array=niter_array,
+                ftol_array=ftol_array,
+                summaries=summaries,
+                complete=False,
+            )
 
         if not args.skip_direct_runs:
             direct_base = continuation_bases.get("direct", base_indata)
@@ -689,29 +772,30 @@ def main(argv: list[str] | None = None) -> int:
                 continuation_has_promoted_seed["direct"] = True
                 summary["pressure_continuation_promoted_seed"] = True
             summaries.append(summary)
+            _write_summary_checkpoint(
+                summary_path,
+                coils_json=coils_json,
+                mgrid_file=mgrid_file,
+                args=args,
+                scale_summary=scale_summary,
+                ns_array=ns_array,
+                niter_array=niter_array,
+                ftol_array=ftol_array,
+                summaries=summaries,
+                complete=False,
+            )
 
-    summary_path = outdir / "summary.json"
-    summary_path.write_text(
-        json.dumps(
-            {
-                "coils_json": str(coils_json),
-                "mgrid": str(mgrid_file),
-                "coil_current_scale": float(args.coil_current_scale),
-                "phiedge_override": None if args.phiedge is None else float(args.phiedge),
-                "pressure_scale_for_one_percent_beta": float(args.pressure_scale_for_one_percent_beta),
-                "pressure_continuation": bool(args.pressure_continuation),
-                "pressure_continuation_max_fsq": float(args.pressure_continuation_max_fsq),
-                "direct_coil_source_reuse": not bool(args.disable_direct_coil_source_reuse),
-                "direct_coil_trial_resample": bool(args.direct_coil_trial_resample),
-                "direct_coil_limit_update_rms": bool(args.direct_coil_limit_update_rms),
-                "coil_plasma_scale_summary": scale_summary,
-                "ns_array": ns_array or [int(args.ns)],
-                "niter_array": niter_array or [int(args.max_iter)],
-                "ftol_array": ftol_array or [float(args.ftol)],
-                "runs": summaries,
-            },
-            indent=2,
-        )
+    _write_summary_checkpoint(
+        summary_path,
+        coils_json=coils_json,
+        mgrid_file=mgrid_file,
+        args=args,
+        scale_summary=scale_summary,
+        ns_array=ns_array,
+        niter_array=niter_array,
+        ftol_array=ftol_array,
+        summaries=summaries,
+        complete=True,
     )
     print(f"Wrote summary: {summary_path}")
     return 0
