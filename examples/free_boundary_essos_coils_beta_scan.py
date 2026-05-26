@@ -23,6 +23,13 @@ Use smaller settings for a quick smoke run:
     export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
     export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
     PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH python examples/free_boundary_essos_coils_beta_scan.py --betas 0 1 --max-iter 2 --mgrid-nr 8 --mgrid-nz 8 --mgrid-nphi 4 --activate-fsq 1e99
+
+The default ESSOS LP-QA coil JSON is unit-scale.  Use
+``examples/data/input.LandremanPaul2021_QA_lowres`` with unit-scale mgrid
+bounds, or pass ``--allow-scale-mismatch`` when deliberately testing a scaled
+plasma/coil pair.  High-resolution promotion runs should use staged radial
+continuation, for example ``--ns-array 16,31,51,101 --ftol-array
+1e-8,1e-10,1e-11,1e-12``.
 """
 
 from __future__ import annotations
@@ -46,13 +53,15 @@ from vmec_jax.external_fields import from_essos_coils
 from vmec_jax.namelist import read_indata, write_indata
 from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state, read_wout
 
-DEFAULT_INPUT = REPO_ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_reactorScale_lowres"
+DEFAULT_INPUT = REPO_ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lowres"
 DEFAULT_RESULTS = REPO_ROOT / "results" / "free_boundary_essos_coils_beta_scan"
-DEFAULT_NOMINAL_BETA_PERCENT = (0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0)
+DEFAULT_NOMINAL_BETA_PERCENT = (0.0, 1.0, 2.0)
 
-# This is a nominal pressure scale for the example scan.  The actual VMEC beta
-# should be read from the resulting wout files.
-PRESSURE_SCALE_FOR_ONE_PERCENT_BETA = 34.46233666638
+# Calibrated for the unit-scale ESSOS Landreman-Paul QA coil/input pair.  This
+# is a finite-pressure plumbing scale, not a claim that WOUT beta will be 1%.
+# The actual VMEC beta must always be read from WOUT.
+PRESSURE_SCALE_FOR_ONE_PERCENT_BETA = 1000.0
+DEFAULT_FREE_BOUNDARY_PHIEDGE = -0.025
 
 
 def _candidate_essos_input_dirs() -> list[Path]:
@@ -99,20 +108,31 @@ def make_free_boundary_indata(
     mpol: int,
     ntor: int,
     nzeta: int,
+    ns_array: list[int] | None = None,
+    niter_array: list[int] | None = None,
+    ftol_array: list[float] | None = None,
     pressure_scale_for_one_percent_beta: float = PRESSURE_SCALE_FOR_ONE_PERCENT_BETA,
     phiedge: float | None = None,
 ) -> Any:
     """Create a small free-boundary input deck for one nominal beta."""
 
     indata = deepcopy(base_indata)
+    ns_values = [int(ns)] if ns_array is None else [int(value) for value in ns_array]
+    niter_values = [int(niter)] if niter_array is None else [int(value) for value in niter_array]
+    ftol_values = [float(ftol)] if ftol_array is None else [float(value) for value in ftol_array]
+    if not (len(ns_values) == len(niter_values) == len(ftol_values)):
+        raise ValueError(
+            "ns_array, niter_array, and ftol_array must have the same length: "
+            f"{len(ns_values)}, {len(niter_values)}, {len(ftol_values)}"
+        )
     indata.scalars["LFREEB"] = True
     indata.scalars["MGRID_FILE"] = str(mgrid_file)
     indata.scalars["EXTCUR"] = [1.0]
-    indata.scalars["NS_ARRAY"] = [int(ns)]
-    indata.scalars["NITER_ARRAY"] = [int(niter)]
-    indata.scalars["FTOL_ARRAY"] = [float(ftol)]
-    indata.scalars["NITER"] = int(niter)
-    indata.scalars["FTOL"] = float(ftol)
+    indata.scalars["NS_ARRAY"] = ns_values
+    indata.scalars["NITER_ARRAY"] = niter_values
+    indata.scalars["FTOL_ARRAY"] = ftol_values
+    indata.scalars["NITER"] = int(niter_values[-1])
+    indata.scalars["FTOL"] = float(ftol_values[-1])
     indata.scalars["MPOL"] = int(mpol)
     indata.scalars["NTOR"] = int(ntor)
     indata.scalars["NZETA"] = int(nzeta)
@@ -126,6 +146,32 @@ def make_free_boundary_indata(
     if phiedge is not None:
         indata.scalars["PHIEDGE"] = float(phiedge)
     return indata
+
+
+def _parse_number_list(value: str | None, *, cast):
+    if value is None:
+        return None
+    items = [item.strip() for item in str(value).replace(",", " ").split() if item.strip()]
+    return [cast(item) for item in items]
+
+
+def _coil_plasma_scale_summary(coils, indata) -> dict[str, float]:
+    """Return simple geometry/field scales that catch mismatched fixtures."""
+
+    gamma = np.asarray(coils.gamma, dtype=float)
+    coil_r = np.sqrt(gamma[..., 0] ** 2 + gamma[..., 1] ** 2)
+    coeffs = indata.indexed.get("RBC", {})
+    r0 = float(coeffs.get((0, 0), coeffs.get((0, 0, 0), 0.0)) or 0.0)
+    r_modes = [abs(float(value)) for key, value in coeffs.items() if key != (0, 0)]
+    plasma_r_span = float(sum(r_modes)) if r_modes else 0.0
+    return {
+        "coil_r_min": float(np.nanmin(coil_r)),
+        "coil_r_max": float(np.nanmax(coil_r)),
+        "coil_r_mean": float(np.nanmean(coil_r)),
+        "plasma_r0": r0,
+        "plasma_r_span_estimate": plasma_r_span,
+        "coil_to_plasma_major_radius_ratio": float(np.nanmean(coil_r) / r0) if r0 else float("nan"),
+    }
 
 
 def summarize_run(run, wout_path: Path, *, backend: str, beta_percent: float, wall_s: float) -> dict[str, Any]:
@@ -205,6 +251,7 @@ def run_one_case(
     input_path: Path,
     output_dir: Path,
     beta_percent: float,
+    pressure_scale_for_one_percent_beta: float,
     max_iter: int,
     activate_fsq: float | None,
     direct_coil_params=None,
@@ -237,7 +284,9 @@ def run_one_case(
     wall_s = time.perf_counter() - t0
     wout_path = output_dir / f"wout_{backend}_beta_{float(beta_percent):.3f}.nc"
     write_wout_from_fixed_boundary_run(wout_path, run, include_fsq=True)
-    return summarize_run(run, wout_path, backend=backend, beta_percent=beta_percent, wall_s=wall_s)
+    summary = summarize_run(run, wout_path, backend=backend, beta_percent=beta_percent, wall_s=wall_s)
+    summary["pressure_scale"] = float(pressure_scale_for_one_percent_beta) * float(beta_percent)
+    return summary
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -249,15 +298,33 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-iter", type=int, default=20)
     parser.add_argument("--ftol", type=float, default=1.0e-8)
     parser.add_argument("--ns", type=int, default=12)
-    parser.add_argument("--mpol", type=int, default=4)
-    parser.add_argument("--ntor", type=int, default=4)
-    parser.add_argument("--mgrid-nr", type=int, default=16)
-    parser.add_argument("--mgrid-nz", type=int, default=16)
-    parser.add_argument("--mgrid-nphi", type=int, default=8)
-    parser.add_argument("--mgrid-rmin", type=float, default=5.0)
-    parser.add_argument("--mgrid-rmax", type=float, default=15.0)
-    parser.add_argument("--mgrid-zmin", type=float, default=-5.0)
-    parser.add_argument("--mgrid-zmax", type=float, default=5.0)
+    parser.add_argument(
+        "--ns-array",
+        type=str,
+        default=None,
+        help="Optional comma/space-separated multigrid NS_ARRAY, e.g. '16,31,51,101'.",
+    )
+    parser.add_argument(
+        "--niter-array",
+        type=str,
+        default=None,
+        help="Optional comma/space-separated NITER_ARRAY matching --ns-array.",
+    )
+    parser.add_argument(
+        "--ftol-array",
+        type=str,
+        default=None,
+        help="Optional comma/space-separated FTOL_ARRAY matching --ns-array.",
+    )
+    parser.add_argument("--mpol", type=int, default=5)
+    parser.add_argument("--ntor", type=int, default=5)
+    parser.add_argument("--mgrid-nr", type=int, default=32)
+    parser.add_argument("--mgrid-nz", type=int, default=32)
+    parser.add_argument("--mgrid-nphi", type=int, default=16)
+    parser.add_argument("--mgrid-rmin", type=float, default=0.1)
+    parser.add_argument("--mgrid-rmax", type=float, default=2.5)
+    parser.add_argument("--mgrid-zmin", type=float, default=-1.4)
+    parser.add_argument("--mgrid-zmax", type=float, default=1.4)
     parser.add_argument(
         "--pressure-scale-for-one-percent-beta",
         type=float,
@@ -271,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--phiedge",
         type=float,
-        default=None,
+        default=DEFAULT_FREE_BOUNDARY_PHIEDGE,
         help=(
             "Optional PHIEDGE override. This is useful when matching the VMEC "
             "toroidal-flux scale and sign to a direct-coil validation fixture."
@@ -299,7 +366,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--skip-mgrid-runs", action="store_true")
     parser.add_argument("--skip-direct-runs", action="store_true")
+    parser.add_argument(
+        "--allow-scale-mismatch",
+        action="store_true",
+        help="Disable the coil/plasma scale sanity warning for non-default research fixtures.",
+    )
     args = parser.parse_args(argv)
+    ns_array = _parse_number_list(args.ns_array, cast=int)
+    niter_array = _parse_number_list(args.niter_array, cast=int)
+    ftol_array = _parse_number_list(args.ftol_array, cast=float)
+    if ns_array is not None:
+        if niter_array is None:
+            niter_array = [int(args.max_iter)] * len(ns_array)
+        if ftol_array is None:
+            ftol_array = [float(args.ftol)] * len(ns_array)
 
     try:
         from essos.coils import Coils_from_json
@@ -310,7 +390,7 @@ def main(argv: list[str] | None = None) -> int:
 
     coils_json = args.coils_json or find_essos_landreman_paul_qa_coils()
     coils = Coils_from_json(str(coils_json))
-    if not hasattr(coils, "to_mgrid"):
+    if not args.skip_mgrid_runs and not hasattr(coils, "to_mgrid"):
         raise AttributeError(
             "ESSOS Coils.to_mgrid is not available. Use the ESSOS PR branch that adds mgrid generation from coils."
         )
@@ -321,20 +401,32 @@ def main(argv: list[str] | None = None) -> int:
     outdir = args.outdir.resolve()
     outdir.mkdir(parents=True, exist_ok=True)
     mgrid_file = outdir / "mgrid_landreman_paul_qa_from_essos.nc"
-    print(f"Writing mgrid from ESSOS coils: {mgrid_file}")
-    coils.to_mgrid(
-        mgrid_file,
-        nr=args.mgrid_nr,
-        nphi=args.mgrid_nphi,
-        nz=args.mgrid_nz,
-        rmin=args.mgrid_rmin,
-        rmax=args.mgrid_rmax,
-        zmin=args.mgrid_zmin,
-        zmax=args.mgrid_zmax,
-        nfp=int(coils.nfp),
-    )
+    if not args.skip_mgrid_runs:
+        print(f"Writing mgrid from ESSOS coils: {mgrid_file}")
+        coils.to_mgrid(
+            mgrid_file,
+            nr=args.mgrid_nr,
+            nphi=args.mgrid_nphi,
+            nz=args.mgrid_nz,
+            rmin=args.mgrid_rmin,
+            rmax=args.mgrid_rmax,
+            zmin=args.mgrid_zmin,
+            zmax=args.mgrid_zmax,
+            nfp=int(coils.nfp),
+        )
 
     base_indata = read_indata(args.input)
+    scale_summary = _coil_plasma_scale_summary(coils, base_indata)
+    ratio = scale_summary["coil_to_plasma_major_radius_ratio"]
+    if not args.allow_scale_mismatch and np.isfinite(ratio) and not (0.5 <= ratio <= 2.0):
+        print(
+            "WARNING: ESSOS coil/plasma scale mismatch. "
+            f"coil <R> / plasma RBC(0,0) = {ratio:.3g}. "
+            "The default ESSOS LP-QA coils are unit-scale; use "
+            "examples/data/input.LandremanPaul2021_QA_lowres or pass "
+            "--allow-scale-mismatch for deliberate research scans.",
+            flush=True,
+        )
     summaries = []
     for beta_percent in args.betas:
         beta_tag = f"{float(beta_percent):.3f}".replace(".", "p")
@@ -349,6 +441,9 @@ def main(argv: list[str] | None = None) -> int:
                 mpol=args.mpol,
                 ntor=args.ntor,
                 nzeta=args.mgrid_nphi,
+                ns_array=ns_array,
+                niter_array=niter_array,
+                ftol_array=ftol_array,
                 pressure_scale_for_one_percent_beta=args.pressure_scale_for_one_percent_beta,
                 phiedge=args.phiedge,
             )
@@ -361,6 +456,7 @@ def main(argv: list[str] | None = None) -> int:
                     input_path=input_mgrid,
                     output_dir=outdir,
                     beta_percent=beta_percent,
+                    pressure_scale_for_one_percent_beta=args.pressure_scale_for_one_percent_beta,
                     max_iter=args.max_iter,
                     activate_fsq=args.activate_fsq,
                 )
@@ -377,6 +473,9 @@ def main(argv: list[str] | None = None) -> int:
                 mpol=args.mpol,
                 ntor=args.ntor,
                 nzeta=args.mgrid_nphi,
+                ns_array=ns_array,
+                niter_array=niter_array,
+                ftol_array=ftol_array,
                 pressure_scale_for_one_percent_beta=args.pressure_scale_for_one_percent_beta,
                 phiedge=args.phiedge,
             )
@@ -389,6 +488,7 @@ def main(argv: list[str] | None = None) -> int:
                     input_path=input_direct,
                     output_dir=outdir,
                     beta_percent=beta_percent,
+                    pressure_scale_for_one_percent_beta=args.pressure_scale_for_one_percent_beta,
                     max_iter=args.max_iter,
                     activate_fsq=args.activate_fsq,
                     direct_coil_params=direct_params,
@@ -404,6 +504,10 @@ def main(argv: list[str] | None = None) -> int:
                 "coil_current_scale": float(args.coil_current_scale),
                 "phiedge_override": None if args.phiedge is None else float(args.phiedge),
                 "pressure_scale_for_one_percent_beta": float(args.pressure_scale_for_one_percent_beta),
+                "coil_plasma_scale_summary": scale_summary,
+                "ns_array": ns_array or [int(args.ns)],
+                "niter_array": niter_array or [int(args.max_iter)],
+                "ftol_array": ftol_array or [float(args.ftol)],
                 "runs": summaries,
             },
             indent=2,

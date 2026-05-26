@@ -13,6 +13,8 @@ from vmec_jax.namelist import read_indata, write_indata
 
 
 ROOT = Path(__file__).resolve().parents[1]
+LPQA_UNIT_INPUT = ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lowres"
+LPQA_UNIT_FREE_BOUNDARY_PHIEDGE = -0.025
 
 
 def _circle_coil_params() -> CoilFieldParams:
@@ -109,7 +111,7 @@ def test_run_free_boundary_accepts_direct_coil_provider_without_mgrid_file(tmp_p
     enable_x64(True)
     from vmec_jax.driver import run_free_boundary
 
-    indata = deepcopy(read_indata(ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_reactorScale_lowres"))
+    indata = deepcopy(read_indata(LPQA_UNIT_INPUT))
     indata.scalars.update(
         {
             "LFREEB": True,
@@ -120,6 +122,7 @@ def test_run_free_boundary_accepts_direct_coil_provider_without_mgrid_file(tmp_p
             "FTOL_ARRAY": [1.0e-8],
             "NITER": 1,
             "FTOL": 1.0e-8,
+            "PHIEDGE": LPQA_UNIT_FREE_BOUNDARY_PHIEDGE,
             "MPOL": 3,
             "NTOR": 2,
             "NZETA": 4,
@@ -154,7 +157,7 @@ def test_run_free_boundary_direct_coil_geometry_cache_matches_uncached_path(tmp_
     enable_x64(True)
     from vmec_jax.driver import run_free_boundary
 
-    indata = deepcopy(read_indata(ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_reactorScale_lowres"))
+    indata = deepcopy(read_indata(LPQA_UNIT_INPUT))
     indata.scalars.update(
         {
             "LFREEB": True,
@@ -165,6 +168,7 @@ def test_run_free_boundary_direct_coil_geometry_cache_matches_uncached_path(tmp_
             "FTOL_ARRAY": [1.0e-8],
             "NITER": 1,
             "FTOL": 1.0e-8,
+            "PHIEDGE": LPQA_UNIT_FREE_BOUNDARY_PHIEDGE,
             "MPOL": 3,
             "NTOR": 2,
             "NZETA": 4,

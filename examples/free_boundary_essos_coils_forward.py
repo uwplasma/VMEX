@@ -43,6 +43,7 @@ from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_
 
 from examples.free_boundary_essos_coils_beta_scan import (
     DEFAULT_INPUT,
+    DEFAULT_FREE_BOUNDARY_PHIEDGE,
     PRESSURE_SCALE_FOR_ONE_PERCENT_BETA,
     find_essos_landreman_paul_qa_coils,
     make_free_boundary_indata,
@@ -110,9 +111,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-iter", type=int, default=20)
     parser.add_argument("--ftol", type=float, default=1.0e-8)
     parser.add_argument("--ns", type=int, default=12)
-    parser.add_argument("--mpol", type=int, default=4)
-    parser.add_argument("--ntor", type=int, default=4)
-    parser.add_argument("--nzeta", type=int, default=8)
+    parser.add_argument("--mpol", type=int, default=5)
+    parser.add_argument("--ntor", type=int, default=5)
+    parser.add_argument("--nzeta", type=int, default=16)
+    parser.add_argument(
+        "--phiedge",
+        type=float,
+        default=DEFAULT_FREE_BOUNDARY_PHIEDGE,
+        help="PHIEDGE override matching the unit-scale ESSOS LP-QA coil/input fixture.",
+    )
     parser.add_argument("--activate-fsq", type=float, default=1.0e99)
     parser.add_argument("--coil-current-scale", type=float, default=1.0)
     parser.add_argument("--chunk-size", type=int, default=256)
@@ -147,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         mpol=int(args.mpol),
         ntor=int(args.ntor),
         nzeta=int(args.nzeta),
+        phiedge=float(args.phiedge),
     )
     input_path = outdir / "input.direct_coils"
     write_indata(input_path, indata)
