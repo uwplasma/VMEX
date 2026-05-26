@@ -96,6 +96,7 @@ Steps taken:
 80. Attempted a direct LP-QA `ns=16,51,101`, final `FTOL=1e-12` reviewer run with the safe Thomas path. It completed nominal beta `0.0` and `0.5` within the 30-minute budget, then was stopped during nominal beta `1.0`.
 81. Added incremental `summary.json` checkpointing to `examples/free_boundary_essos_coils_beta_scan.py` so interrupted high-resolution pressure-continuation scans preserve completed beta metrics.
 82. Added `--resume-existing` to the LP-QA beta-scan example. Existing `wout_{backend}_beta_*.nc` files are now reused as accepted pressure-continuation seeds when their residuals satisfy the promotion threshold, avoiding restarts of already converged high-resolution beta points.
+83. Promoted the accepted-boundary phase-2 gradient gate from current-only to current plus one coil Fourier geometry coefficient. The test still freezes the accepted plasma boundary, so it validates the JAX direct-coil/NESTOR replay path but not the full nonlinear VMEC iteration adjoint.
 65. Reclassified generated-`mgrid` VMEC2000 exits with structured return-code metadata, preserving true nonzero failures while separating VMEC's source-level `more_iter_flag=2`.
 66. Fixed `run_xvmec2000` to copy relative `MGRID_FILE` assets from the input deck directory into the executable workdir, preventing accidental fixed-boundary fallbacks in local optional diagnostics.
 67. Added `opened_mgrid` to generated-`mgrid` VMEC2000 diagnostic summaries so parity evidence confirms the executable actually consumed the vacuum grid.
@@ -132,6 +133,7 @@ Results obtained:
     The nominal beta `1.0` case did not complete within the 30-minute local budget, so `ns=101` direct high-beta is evidence but not yet a practical promotion lane.
 18. `pytest -q tests/test_free_boundary_essos_coils_forward_example.py` passed after adding beta-scan summary checkpoint coverage.
 19. Added focused resume-helper coverage for the LP-QA beta-scan example so interrupted strict-resolution scans can be resumed from persisted WOUT files.
+20. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current_and_geometry -rx` passed, validating accepted-boundary AD-vs-central-FD for both coil current and a Fourier geometry coefficient.
 16. Subagent larger spectral-mode benchmark with `sample_points=2352`, `coils=8`, `segments=128` found the JIT sampler reduced warm active sampling from `0.0588 s` to `0.0545 s` (about 7%), but total warm wall time remained about `0.35 s`; dense NESTOR mode remains the main performance bottleneck.
 17. Targeted active-coupling summary tests passed: 2 passed in 7.81 s.
 18. VMEC2000 parser/optional LASYM validation tests passed locally as 1 passed, 1 skipped in 0.40 s without `VMEC2000_INTEGRATION=1`.

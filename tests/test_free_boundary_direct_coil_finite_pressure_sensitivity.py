@@ -582,11 +582,11 @@ def test_jax_nestor_operator_complete_solve_fd_slopes_for_current_and_geometry(
     assert np.min(np.abs(slopes)) > 1.0e-16
 
 
-def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current(
+def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current_and_geometry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Accepted-boundary direct-coil replay AD matches central FD for current.
+    """Accepted-boundary direct-coil replay AD matches central FD for coil controls.
 
     This validates the first promoted accepted-output rung: run the nonlinear
     VMEC free-boundary solve once, freeze its accepted plasma boundary, then
@@ -609,12 +609,15 @@ def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current(
         ntheta=6,
     )
     base_params = _circle_coil_params(current=3.0e7, n_segments=64)
+    base_dofs = jnp.asarray(base_params.base_curve_dofs)
+    base_currents = jnp.asarray(base_params.base_currents)
     monkeypatch.setenv("VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR", "1")
     monkeypatch.setenv("VMEC_JAX_FREEB_JAX_NESTOR_JIT_OPERATOR", "0")
 
-    def params_for(scale):
+    def params_for(current_scale, geometry_scale):
         return base_params.with_arrays(
-            base_currents=jnp.asarray(base_params.base_currents) * (1.0 + 0.02 * scale)
+            base_curve_dofs=base_dofs.at[0, 0, 2].add(1.0e-2 * geometry_scale),
+            base_currents=base_currents * (1.0 + 0.02 * current_scale),
         )
 
     run = run_free_boundary(
@@ -660,9 +663,9 @@ def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current(
     bp_axis = jnp.asarray(sample.bp - sample_coils_only.bp)
     bz_axis = jnp.asarray(sample.bz - sample_coils_only.bz)
 
-    def accepted_bnormal_metric(scale):
+    def accepted_bnormal_metric(current_scale, geometry_scale):
         return direct_coil_boundary_bnormal_rms_jax(
-            params_for(scale),
+            params_for(current_scale, geometry_scale),
             R=R,
             Z=Z,
             phi=phi,
@@ -676,21 +679,30 @@ def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current(
         )
 
     np.testing.assert_allclose(
-        accepted_bnormal_metric(0.0),
+        accepted_bnormal_metric(0.0, 0.0),
         nestor["bnormal_rms"],
         rtol=1.0e-12,
         atol=1.0e-14,
     )
 
     eps = 0.25
-    fd_current = (accepted_bnormal_metric(eps) - accepted_bnormal_metric(-eps)) / (2.0 * eps)
+    fd_current = (accepted_bnormal_metric(eps, 0.0) - accepted_bnormal_metric(-eps, 0.0)) / (2.0 * eps)
     assert np.isfinite(np.asarray(fd_current, dtype=float))
     assert abs(float(np.asarray(fd_current))) > 1.0e-16
 
-    exact_current = jax.grad(accepted_bnormal_metric)(0.0)
+    exact_current = jax.grad(lambda scale: accepted_bnormal_metric(scale, 0.0))(0.0)
     assert np.isfinite(np.asarray(exact_current, dtype=float))
     assert abs(float(np.asarray(exact_current))) > 1.0e-16
     np.testing.assert_allclose(exact_current, fd_current, rtol=1.0e-3, atol=1.0e-12)
+
+    fd_geometry = (accepted_bnormal_metric(0.0, eps) - accepted_bnormal_metric(0.0, -eps)) / (2.0 * eps)
+    assert np.isfinite(np.asarray(fd_geometry, dtype=float))
+    assert abs(float(np.asarray(fd_geometry))) > 1.0e-16
+
+    exact_geometry = jax.grad(lambda scale: accepted_bnormal_metric(0.0, scale))(0.0)
+    assert np.isfinite(np.asarray(exact_geometry, dtype=float))
+    assert abs(float(np.asarray(exact_geometry))) > 1.0e-16
+    np.testing.assert_allclose(exact_geometry, fd_geometry, rtol=1.0e-3, atol=1.0e-12)
 
 
 def test_jax_nestor_operator_fixed_boundary_ad_matches_central_fd_for_coil_vars(
