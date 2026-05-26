@@ -135,7 +135,7 @@ PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
 
 The DIII-D high-resolution finite-beta reference scan is a promoted mgrid
 validation artifact for this branch: final `ns=101`, final `FTOL=1e-12`, and
-actual WOUT betas through about 1%. The ESSOS LP-QA stellarator high-beta
+actual WOUT betas through 2.18%. The ESSOS LP-QA stellarator high-beta
 promotion gate is still open: the corrected unit-scale coil/input pair
 converges in vacuum and low beta, but loses convergence before actual 1-2%
 beta. See `docs/free_boundary_coil_optimization.rst` for the external

@@ -130,7 +130,7 @@ single-stage coil optimizer:
 - The promoted high-resolution finite-beta reference evidence is currently the
   VMEC2000-compatible DIII-D ``mgrid`` benchmark, not the LP-QA direct-coil
   stellarator path: final ``ns=101``, final ``FTOL=1e-12``, and actual WOUT
-  beta through approximately 1%.
+  beta through 2.18%.
 - The ESSOS LP-QA stellarator high-beta promotion gate is still open. The
   corrected unit-scale coil/input pair converges in vacuum and low beta, but
   pressure scans lose convergence before actual 1--2% WOUT beta.
@@ -290,15 +290,16 @@ The current reviewer-facing high-resolution finite-beta evidence is the
 VMEC2000-compatible DIII-D ``mgrid`` benchmark. The figure is attached to the
 pull request/Gist rather than committed to git:
 
-- SVG: https://gist.githubusercontent.com/rogeriojorge/a49e7a21330fbc8ab99229d2b05de708/raw/39b549edd5b119c6fb8896ead61a102193d6b35b/pr18_diiid_freeb_beta_ns101_comparison.svg
-- Summary JSON: https://gist.githubusercontent.com/rogeriojorge/a49e7a21330fbc8ab99229d2b05de708/raw/ed02a51fa92c78f98a9080842c0e0b3af4457921/pr18_diiid_freeb_beta_ns101_summary.json
+- SVG: https://gist.githubusercontent.com/rogeriojorge/a49e7a21330fbc8ab99229d2b05de708/raw/pr18_diiid_freeb_beta_ns101_comparison.svg
+- Summary JSON: https://gist.githubusercontent.com/rogeriojorge/a49e7a21330fbc8ab99229d2b05de708/raw/pr18_diiid_freeb_beta_ns101_summary.json
 
 The plotted WOUTs use final ``ns=101`` and final ``FTOL=1e-12``. The actual
-WOUT beta values are 0.00%, 0.32%, 0.67%, and 1.01%; all final ``fsqr`` values
-are below ``1e-12``. The panels show iota profiles, beta-induced profile
-changes relative to vacuum, multi-surface cross sections, and LCFS ``|B|``
-contours. This is promoted as a free-boundary finite-beta mgrid validation
-artifact. It is not a direct-coil stellarator promotion artifact.
+WOUT beta values are 0.00%, 0.32%, 0.67%, 1.01%, 1.49%, and 2.18%; all final
+``fsqr`` values are below ``1e-12``. The panels show iota profiles,
+beta-induced profile changes relative to vacuum, multi-surface cross sections,
+and LCFS ``|B|`` contours. This is promoted as a free-boundary finite-beta
+``mgrid`` validation artifact. It is not a direct-coil stellarator promotion
+artifact.
 
 High-Resolution LP-QA Stellarator Gate
 --------------------------------------
