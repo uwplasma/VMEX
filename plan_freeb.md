@@ -10,7 +10,7 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-25 after dry-run optimization diagnostics, ESSOS adapter validation, VMEC2000 runtime-error classification, bounded AD-vs-FD NESTOR gradient checks, same-branch CPU/GPU benchmark-matrix reporting with non-JIT and JIT-force direct-solve rows, solve-loop timing capture for direct-coil benchmark rows, JIT-force defaults for direct-coil examples, accepted-boundary direct-coil replay AD-vs-FD promotion, free-boundary-aware fused strict-update support, a clarified complete-loop exact-adjoint promotion boundary, the first opt-in bad-Jacobian state-probe performance knob, a fused preconditioned-`fsq1` payload benchmark, a tightened optional VMEC2000 generated-`mgrid` trace gate, strict-update precompile coverage, and source-checkout reproduction fixes for ESSOS beta-scan/figure commands.
+Last updated: 2026-05-25 after dry-run optimization diagnostics, ESSOS adapter validation, VMEC2000 runtime-error classification, bounded AD-vs-FD NESTOR gradient checks, same-branch CPU/GPU benchmark-matrix reporting with non-JIT and JIT-force direct-solve rows, solve-loop timing capture for direct-coil benchmark rows, JIT-force defaults for direct-coil examples, accepted-boundary direct-coil replay AD-vs-FD promotion, free-boundary-aware fused strict-update support, a clarified complete-loop exact-adjoint promotion boundary, the first opt-in bad-Jacobian state-probe performance knob, a fused preconditioned-`fsq1` payload benchmark, a tightened optional VMEC2000 generated-`mgrid` trace gate, strict-update precompile coverage, source-checkout reproduction fixes for ESSOS beta-scan/figure commands, accepted-control payload batching, and the local 95% fast coverage gate.
 
 Steps taken:
 
@@ -233,15 +233,19 @@ Results obtained:
 138. The non-scan residual path now matches the scan path bad-Jacobian policy: VMEC-style `ptau` sign checking is the default, and the expensive state-Jacobian probe only runs when `VMEC_JAX_BADJAC_STATE_PROBE=1`. A local JIT-force direct-coil benchmark reports warm time about `0.024 s` with `iteration_control_badjac_s≈3.8e-4 s`.
 139. Office CPU/CUDA matrix at commit `79c65e1` confirmed the promoted default: the `--jit-forces` direct-coil row reports CPU warm `0.057 s`, CUDA warm `0.183 s`, CUDA `iteration_control_badjac_s≈6.1e-4 s`, and CUDA force assembly is faster than CPU. The remaining GPU tax is `iteration_control_fsq1_s` plus preconditioner/update dispatch.
 140. Source-checkout reproduction checks passed: both ESSOS free-boundary example scripts import cleanly with `--help`, the focused forward/optimization example tests report `9 passed, 1 xfailed`, and strict Sphinx builds the updated docs without warnings.
+141. Added an accepted-control payload batch for non-CPU, non-debug accepted rows. It computes `fsq1` and `ptau` min/max in one cached JIT payload and one host transfer while preserving CPU, debug, state-Jacobian, converged-row, and fallback semantics.
+142. Local CPU direct-coil benchmark after accepted-control batching reports cold/compile `1.34 s`, warm-min `0.0239 s`, active NESTOR sample `0.0520 s -> 0.00146 s`, final sample `5.8e-4 s`, and final solve `2.8e-3 s` on the tiny active case.
+143. The office CUDA recheck could not run because SSH to `office` timed out; this is an infrastructure block, not a local test or code failure. The last completed office matrix remains the 2026-05-25 JIT-force/default bad-Jacobian policy benchmark above.
+144. Added targeted coverage for real provider/physics/helper branches: mgrid pytree and VMEC-plane validation, direct-coil pytree/order-zero/error branches, JAX NESTOR operator guard/cache behavior, VMEC energy profile edge branches, multigrid cache fallbacks, source-version parsing, and CLI cleanup/error branches.
+145. Re-ran the full local fast gate with coverage: `2433 passed, 26 skipped, 112 deselected, 2 xfailed` in 8m43s, total coverage `95.00%`, satisfying `--cov-fail-under=95`.
 
 Best next steps:
 
-1. Promote the accepted-boundary direct-coil replay gate to complete-loop free-boundary gradients once `jax.grad(run_free_boundary)` exposes accepted state/metrics as differentiable data, or once the accepted replay is wrapped by a validated custom adjoint.
-2. Keep `exact_path='scan'` as an explicit long-run GPU option only; the latest profile shows it warms faster but needs roughly 75 accepted callbacks to amortize the `~110 s` cold compile.
+1. Wait for the restarted GitHub Actions matrix after the coverage/performance commits.
+2. If CI remains green, mark PR #17 ready for review.
 3. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
 4. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
-5. For GPU performance, keep JIT force kernels as the production default for direct-coil examples, use the free-boundary-aware fused strict-update path on non-CPU backends, and keep the state-Jacobian bad-Jacobian probe as an explicit parity/debug knob via `VMEC_JAX_BADJAC_STATE_PROBE=1`.
-6. Warm GPU QH mode-2 tape callbacks are still above the `1 s` production target; the next patch should reduce accepted replay/tangent dispatch or avoid rebuilding accepted tapes at nearby callbacks. Matrix-free is not yet the answer on GPU because repeated VJP/JVP replay is slower than dense materialization for the profiled case.
+5. Re-run the CUDA benchmark on `office` when SSH is reachable; no additional local blocker remains for PR readiness.
 
 Need from user:
 
@@ -1073,16 +1077,16 @@ WP10 Benchmarks/diagnostics:                  100%
 WP11 Coil-only QS optimization example:        89%
 WP12 Robust coil perturbations:               100%
 WP13 Documentation:                           100%
-WP14 CI policy:                                98%
-Overall branch completion:                   99.2%
+WP14 CI policy:                               100%
+Overall branch completion:                   99.6%
 ```
 
 ## Immediate Next Steps
 
-1. Target the remaining GPU direct-solve warm overhead in `iteration_control_fsq1_s` and preconditioner/update dispatch now that the bad-Jacobian state-probe tax is removed from the default path.
-2. Keep the opt-in JAX NESTOR driver path as validation-only until the accepted-solve compilation/dispatch cost is removed. The host bridge remains the production/default route.
-3. Continue the VMEC2000 generated-mgrid WOUT comparator until the optional xfail can be bounded or promoted.
-4. Replace the phase-1 coil-only optimization proxy with Boozer/QS residuals only after the direct-coil free-boundary loop has validated gradients.
+1. Wait for CI on the final pushed commits.
+2. Mark PR #17 ready when required checks are green.
+3. Re-run CUDA performance probes on `office` once SSH is reachable.
+4. Defer complete-loop free-boundary exact adjoints and full Boozer/QS coil-only optimization claims to the next phase after the accepted-state replay validation is replaced by a validated nonlinear-loop custom adjoint.
 5. Profile and reduce cold exact tape build/solve and initial tangent construction on GPU; convert benchmark JSON summaries into documentation plots.
 6. Re-check PR CI, including Codecov patch coverage, after each commit.
 

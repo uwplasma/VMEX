@@ -61,6 +61,57 @@ def test_fourier_circle_geometry_and_derivatives():
     np.testing.assert_allclose(gamma_dashdash[0, 0], [-(2.0 * np.pi) ** 2 * 1.5, 0.0, 0.0], atol=1.0e-13)
 
 
+def test_coil_params_are_pytree_leaves_and_order_zero_geometry_is_static():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp, tree_util
+
+    params = CoilFieldParams(
+        base_curve_dofs=jnp.asarray([[[1.0], [2.0], [3.0]]]),
+        base_currents=jnp.asarray([4.0]),
+        n_segments=5,
+        nfp=2,
+        stellsym=True,
+        current_scale=3.0,
+        regularization_epsilon=1.0e-6,
+        chunk_size=4,
+    )
+    children, treedef = tree_util.tree_flatten(params)
+    rebuilt = tree_util.tree_unflatten(treedef, children)
+
+    assert isinstance(rebuilt, CoilFieldParams)
+    assert rebuilt.n_segments == 5
+    assert rebuilt.nfp == 2
+    assert rebuilt.stellsym
+    assert rebuilt.current_scale == pytest.approx(3.0)
+    assert rebuilt.regularization_epsilon == pytest.approx(1.0e-6)
+    assert rebuilt.chunk_size == 4
+
+    gamma = np.asarray(fourier_curves_to_gamma(params.base_curve_dofs, params.n_segments))
+    gamma_dash = np.asarray(compute_gamma_dash(params.base_curve_dofs, params.n_segments))
+    gamma_dashdash = np.asarray(compute_gamma_dashdash(params.base_curve_dofs, params.n_segments))
+    np.testing.assert_allclose(gamma, np.broadcast_to([[[1.0, 2.0, 3.0]]], (1, 5, 3)))
+    np.testing.assert_allclose(gamma_dash, 0.0, rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(gamma_dashdash, 0.0, rtol=0.0, atol=0.0)
+
+    updated = params.with_arrays(base_currents=jnp.asarray([5.0]))
+    np.testing.assert_allclose(np.asarray(updated.base_currents), [5.0])
+    np.testing.assert_allclose(np.asarray(updated.base_curve_dofs), np.asarray(params.base_curve_dofs))
+
+
+def test_coil_fourier_geometry_rejects_invalid_dof_shapes():
+    bad = np.zeros((1, 2, 3))
+    with pytest.raises(ValueError, match=r"base_curve_dofs"):
+        fourier_curves_to_gamma(bad, 8)
+    with pytest.raises(ValueError, match=r"base_curve_dofs"):
+        compute_gamma_dash(bad, 8)
+    with pytest.raises(ValueError, match=r"base_curve_dofs"):
+        compute_gamma_dashdash(bad, 8)
+
+    even_bad = np.zeros((1, 3, 2))
+    with pytest.raises(ValueError, match=r"base_curve_dofs"):
+        fourier_curves_to_gamma(even_bad, 8)
+
+
 def test_circular_coil_on_axis_matches_analytic_biot_savart():
     enable_x64(True)
     params = _circle_params(current=5.0, radius=1.3, n_segments=64)

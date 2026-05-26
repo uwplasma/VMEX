@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import numpy as np
+from types import SimpleNamespace
 
 import vmec_jax.energy as energy_mod
 from vmec_jax.energy import (
+    FluxProfiles,
     _as_float_list,
+    _has_nonzero_profile_coeffs,
     _iotaf_from_iotas,
     _make_torflux_jit,
     _poly_no_const,
     _poly_no_const_deriv,
+    flux_profiles_from_indata_host_default,
     flux_profiles_from_indata,
     integrate_volume_density,
+    magnetic_wb_from_state,
 )
 from vmec_jax.namelist import InData
 
@@ -40,6 +45,7 @@ def test_polynomial_and_iotaf_edge_branches():
         np.asarray(_iotaf_from_iotas(np.asarray([0.0, 0.0, 0.0]), lrfp=True)),
         [0.0, 0.0, 0.0],
     )
+    assert _has_nonzero_profile_coeffs(object())
 
 
 def test_torflux_cache_and_flux_profiles_nonrfp_and_rfp():
@@ -81,6 +87,25 @@ def test_torflux_cache_and_flux_profiles_nonrfp_and_rfp():
     assert np.asarray(rfp_flux.phips)[0] == 0.0
 
 
+def test_flux_profiles_nondefault_aphi_without_iota_and_single_surface_branch():
+    s = np.asarray([1.0])
+    indata = InData(
+        scalars={
+            "PHIEDGE": 2.0,
+            "APHI": [1.0, 0.5],
+            "AI": [],
+        },
+        indexed={},
+    )
+
+    flux = flux_profiles_from_indata(indata, s, signgs=1)
+
+    assert np.asarray(flux.phipf).shape == (1,)
+    np.testing.assert_allclose(np.asarray(flux.chipf), [0.0], rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(np.asarray(flux.phips), [0.0], rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(np.asarray(flux.lamscale), 1.0, rtol=0.0, atol=0.0)
+
+
 def test_flux_profiles_default_torflux_skips_unneeded_profile_evaluation(monkeypatch):
     s = np.asarray([0.0, 0.25, 0.5, 1.0])
     current_driven = InData(
@@ -106,6 +131,78 @@ def test_flux_profiles_default_torflux_skips_unneeded_profile_evaluation(monkeyp
     np.testing.assert_allclose(np.asarray(flux.phipf), np.full_like(s, 1.0 / np.pi))
     np.testing.assert_allclose(np.asarray(flux.chipf), np.zeros_like(s))
     assert np.asarray(flux.phips)[0] == 0.0
+
+
+def test_flux_profiles_host_default_accepts_only_default_nonrfp_currentless_cases():
+    s = np.asarray([0.0, 0.5, 1.0])
+    base = InData(scalars={"PHIEDGE": 2.0, "APHI": [1.0], "AI": []}, indexed={})
+    flux = flux_profiles_from_indata_host_default(base, s, signgs=-1)
+    assert flux is not None
+    assert flux.signgs == -1
+    np.testing.assert_allclose(np.asarray(flux.phipf), np.full(3, -1.0 / np.pi))
+    np.testing.assert_allclose(np.asarray(flux.chipf), np.zeros(3))
+
+    single = flux_profiles_from_indata_host_default(base, np.asarray([0.0]), signgs=1)
+    assert single is not None
+    np.testing.assert_allclose(np.asarray(single.lamscale), 1.0, rtol=0.0, atol=0.0)
+
+    assert flux_profiles_from_indata_host_default(InData(scalars={"LRFP": True}, indexed={}), s, signgs=1) is None
+    assert flux_profiles_from_indata_host_default(InData(scalars={"APHI": [1.0, 0.1]}, indexed={}), s, signgs=1) is None
+    assert flux_profiles_from_indata_host_default(InData(scalars={"AI": [0.2]}, indexed={}), s, signgs=1) is None
+    assert flux_profiles_from_indata_host_default(base, np.zeros((2, 2)), signgs=1) is None
+
+
+def test_magnetic_wb_from_state_assembles_vmec_normalized_energy(monkeypatch):
+    sqrtg = np.ones((2, 3, 4))
+    static = SimpleNamespace(
+        s=np.asarray([0.0, 1.0]),
+        cfg=SimpleNamespace(nfp=2),
+        grid=SimpleNamespace(
+            theta=np.linspace(0.0, 2.0 * np.pi, 3, endpoint=False),
+            zeta=np.linspace(0.0, 2.0 * np.pi, 4, endpoint=False),
+        ),
+    )
+    geom = SimpleNamespace(sqrtg=sqrtg)
+
+    monkeypatch.setattr(energy_mod, "eval_geom", lambda _state, _static: geom)
+    monkeypatch.setattr(
+        energy_mod,
+        "flux_profiles_from_indata",
+        lambda _indata, s_grid, *, signgs: FluxProfiles(
+            phipf=np.ones_like(np.asarray(s_grid)),
+            chipf=np.zeros_like(np.asarray(s_grid)),
+            phips=np.asarray([0.0, 1.0]),
+            signgs=signgs,
+            lamscale=np.asarray(1.0),
+        ),
+    )
+
+    def fake_bsup_from_geom(geom_arg, *, phipf, chipf, nfp, signgs, lamscale):
+        assert geom_arg is geom
+        assert nfp == 2
+        assert signgs == 1
+        np.testing.assert_allclose(phipf, [1.0, 1.0])
+        np.testing.assert_allclose(chipf, [0.0, 0.0])
+        np.testing.assert_allclose(np.asarray(lamscale), 1.0)
+        return np.ones_like(sqrtg), 2.0 * np.ones_like(sqrtg)
+
+    monkeypatch.setattr(energy_mod, "bsup_from_geom", fake_bsup_from_geom)
+    monkeypatch.setattr(energy_mod, "b2_from_bsup", lambda _geom, bsupu, bsupv: bsupu**2 + bsupv**2)
+
+    wb, diag = magnetic_wb_from_state(object(), static, InData(scalars={}, indexed={}), signgs=1)
+
+    expected_E = integrate_volume_density(
+        0.5 * 5.0 * np.ones_like(sqrtg),
+        sqrtg,
+        static.s,
+        static.grid.theta,
+        static.grid.zeta,
+        nfp=2,
+        signgs=1,
+    )
+    np.testing.assert_allclose(np.asarray(diag["energy_total"]), np.asarray(expected_E))
+    np.testing.assert_allclose(np.asarray(wb), np.asarray(expected_E) / (4.0 * np.pi**2))
+    np.testing.assert_allclose(np.asarray(diag["lamscale"]), 1.0)
 
 
 def test_flux_profiles_default_torflux_uses_iota_profile_when_present(monkeypatch):

@@ -10,6 +10,7 @@ from vmec_jax.external_fields import (
     sample_external_field_cylindrical,
     sample_mgrid_field_cylindrical,
 )
+from vmec_jax.external_fields.base import broadcast_cylindrical_coordinates
 from vmec_jax.free_boundary import MGridData, MGridMetadata, interpolate_mgrid_bfield
 
 
@@ -127,6 +128,107 @@ def test_mgrid_jax_affine_values_match_exact_and_legacy_interpolator():
         np.testing.assert_allclose(got, want, rtol=2.0e-14, atol=1.0e-13)
 
 
+def test_mgrid_jax_params_are_pytree_leaves_and_with_arrays_preserves_metadata():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import tree_util
+
+    params, _coeffs = _affine_mgrid_params()
+
+    children, treedef = tree_util.tree_flatten(params)
+    rebuilt = tree_util.tree_unflatten(treedef, children)
+
+    assert isinstance(rebuilt, MGridFieldParams)
+    assert rebuilt.rmin == params.rmin
+    assert rebuilt.rmax == params.rmax
+    assert rebuilt.zmin == params.zmin
+    assert rebuilt.zmax == params.zmax
+    assert rebuilt.nfp == params.nfp
+    assert rebuilt.use_vmec_kv is params.use_vmec_kv
+    for got, want in zip(children, (params.br, params.bphi, params.bz, params.extcur), strict=True):
+        np.testing.assert_allclose(np.asarray(got), np.asarray(want), rtol=0.0, atol=0.0)
+
+    updated = params.with_arrays(extcur=np.asarray([2.0, -3.0]))
+    assert updated.rmin == params.rmin
+    np.testing.assert_allclose(np.asarray(updated.br), np.asarray(params.br), rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(np.asarray(updated.extcur), [2.0, -3.0], rtol=0.0, atol=0.0)
+
+
+def test_external_field_dispatch_rejects_unknown_provider_and_broadcasts_coordinates():
+    from vmec_jax._compat import jnp
+
+    R, Z, phi = broadcast_cylindrical_coordinates(1.0, jnp.asarray([0.0, 0.1]), 0.25)
+    assert R.shape == (2,)
+    np.testing.assert_allclose(np.asarray(R), [1.0, 1.0])
+    np.testing.assert_allclose(np.asarray(Z), [0.0, 0.1])
+    np.testing.assert_allclose(np.asarray(phi), [0.25, 0.25])
+
+    with pytest.raises(ValueError, match=r"Unknown external-field provider"):
+        sample_external_field_cylindrical("not-a-provider", None, None, R, Z, phi)
+
+
+def test_mgrid_jax_rejects_invalid_field_shapes_and_current_lengths():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+
+    params, _coeffs = _affine_mgrid_params()
+    with pytest.raises(ValueError, match=r"shape"):
+        interpolate_mgrid_bfield_jax(
+            jnp.zeros((2, 3, 4)),
+            params.bphi,
+            params.bz,
+            extcur=params.extcur,
+            r=1.1,
+            z=0.0,
+            phi=0.0,
+            rmin=params.rmin,
+            rmax=params.rmax,
+            zmin=params.zmin,
+            zmax=params.zmax,
+        )
+    with pytest.raises(ValueError, match=r"identical"):
+        interpolate_mgrid_bfield_jax(
+            params.br,
+            jnp.zeros((2, 5, 5, 4)),
+            params.bz,
+            extcur=params.extcur,
+            r=1.1,
+            z=0.0,
+            phi=0.0,
+            rmin=params.rmin,
+            rmax=params.rmax,
+            zmin=params.zmin,
+            zmax=params.zmax,
+        )
+    with pytest.raises(ValueError, match=r"extcur length"):
+        interpolate_mgrid_bfield_jax(
+            params.br,
+            params.bphi,
+            params.bz,
+            extcur=jnp.asarray([1.0]),
+            r=1.1,
+            z=0.0,
+            phi=0.0,
+            rmin=params.rmin,
+            rmax=params.rmax,
+            zmin=params.zmin,
+            zmax=params.zmax,
+        )
+    with pytest.raises(ValueError, match=r"too small"):
+        interpolate_mgrid_bfield_jax(
+            jnp.zeros((1, 1, 1, 2)),
+            jnp.zeros((1, 1, 1, 2)),
+            jnp.zeros((1, 1, 1, 2)),
+            extcur=jnp.asarray([1.0]),
+            r=0.5,
+            z=0.0,
+            phi=0.0,
+            rmin=0.0,
+            rmax=1.0,
+            zmin=0.0,
+            zmax=1.0,
+        )
+
+
 def test_mgrid_jax_vmec_kv_subsamples_file_planes_like_legacy_interpolator():
     pytest.importorskip("jax")
     from vmec_jax._compat import jnp
@@ -190,6 +292,63 @@ def test_mgrid_jax_vmec_kv_subsamples_file_planes_like_legacy_interpolator():
     np.testing.assert_allclose(np.asarray(actual[0]), expected, rtol=0.0, atol=1e-14)
     for got, want in zip(actual, legacy, strict=True):
         np.testing.assert_allclose(np.asarray(got), want, rtol=0.0, atol=1e-14)
+
+
+def test_mgrid_jax_vmec_kv_validation_and_single_plane_case():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+
+    fields = jnp.ones((1, 1, 2, 2))
+    actual = interpolate_mgrid_bfield_jax(
+        fields,
+        2.0 * fields,
+        -fields,
+        extcur=jnp.asarray([3.0]),
+        r=jnp.full((2, 3), 0.25),
+        z=jnp.full((2, 3), 0.75),
+        phi=jnp.zeros((2, 3)),
+        rmin=0.0,
+        rmax=1.0,
+        zmin=0.0,
+        zmax=1.0,
+        use_vmec_kv=True,
+    )
+    np.testing.assert_allclose(np.asarray(actual[0]), 3.0, rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(np.asarray(actual[1]), 6.0, rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(np.asarray(actual[2]), -3.0, rtol=0.0, atol=0.0)
+
+    with pytest.raises(ValueError, match=r"explicit zeta axis"):
+        interpolate_mgrid_bfield_jax(
+            fields,
+            fields,
+            fields,
+            extcur=jnp.asarray([1.0]),
+            r=0.25,
+            z=0.75,
+            phi=0.0,
+            rmin=0.0,
+            rmax=1.0,
+            zmin=0.0,
+            zmax=1.0,
+            use_vmec_kv=True,
+        )
+
+    bad = jnp.ones((1, 5, 2, 2))
+    with pytest.raises(ValueError, match=r"must be divisible"):
+        interpolate_mgrid_bfield_jax(
+            bad,
+            bad,
+            bad,
+            extcur=jnp.asarray([1.0]),
+            r=jnp.full((1, 3), 0.25),
+            z=jnp.full((1, 3), 0.75),
+            phi=jnp.zeros((1, 3)),
+            rmin=0.0,
+            rmax=1.0,
+            zmin=0.0,
+            zmax=1.0,
+            use_vmec_kv=True,
+        )
 
 
 def test_mgrid_jax_gradient_wrt_extcur_matches_per_current_values():

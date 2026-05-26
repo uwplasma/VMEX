@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from types import SimpleNamespace
 
 import vmec_jax.multigrid as multigrid
-from vmec_jax.multigrid import interp_vmec_radial_coeffs, interp_vmec_state
+from vmec_jax.multigrid import _cache_allowed, _contains_jax_tracer, _scalxc_vmec, interp_vmec_radial_coeffs, interp_vmec_state
 from vmec_jax.state import StateLayout, VMECState
 
 
@@ -124,6 +125,35 @@ def test_interp_vmec_radial_coeffs_matches_reference_when_cache_disabled(monkeyp
 
     out = np.asarray(interp_vmec_radial_coeffs(x_old, m=m, ns_new=ns_new))
     ref = _interp_ref(x_old, m=m, ns_new=ns_new)
+    np.testing.assert_allclose(out, ref, rtol=0.0, atol=1.0e-14)
+
+
+def test_multigrid_cache_helpers_cover_host_fallback_branches(monkeypatch):
+    import jax
+
+    monkeypatch.setattr(multigrid, "has_jax", lambda: False)
+    assert _contains_jax_tracer(np.asarray([1.0])) is False
+    assert _cache_allowed() is True
+
+    monkeypatch.setattr(multigrid, "has_jax", lambda: True)
+    monkeypatch.setattr(jax.core, "trace_ctx", SimpleNamespace(is_top_level=lambda: (_ for _ in ()).throw(RuntimeError("trace"))))
+    assert _cache_allowed() is False
+
+    out = np.asarray(_scalxc_vmec(ns=0, m=np.asarray([0, 1], dtype=np.int32), dtype=float))
+    assert out.shape == (0, 2)
+
+
+def test_interp_vmec_radial_coeffs_falls_back_when_cache_key_dtype_fails(monkeypatch):
+    x_old = np.arange(12.0).reshape(4, 3)
+    m = np.asarray([0, 1, 2], dtype=np.int32)
+    ref = _interp_ref(x_old, m=m, ns_new=6)
+
+    def raise_dtype(_dtype):
+        raise RuntimeError("dtype cache key unavailable")
+
+    monkeypatch.setattr(multigrid.np, "dtype", raise_dtype)
+    out = np.asarray(interp_vmec_radial_coeffs(x_old, m=m, ns_new=6))
+
     np.testing.assert_allclose(out, ref, rtol=0.0, atol=1.0e-14)
 
 

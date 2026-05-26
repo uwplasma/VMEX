@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import builtins
 import os
 import sys
 from pathlib import Path
@@ -23,6 +24,49 @@ def test_python_module_entrypoint_sets_warning_suppression_env(monkeypatch) -> N
     assert os.environ["ABSL_MIN_LOG_LEVEL"] == "2"
     assert os.environ["GLOG_minloglevel"] == "2"
     assert module.main is cli.main
+
+
+def test_source_tree_version_handles_missing_or_incomplete_project_table(monkeypatch) -> None:
+    import vmec_jax
+
+    class FakePyproject:
+        def __init__(self, *, exists: bool, text: str = ""):
+            self._exists = exists
+            self._text = text
+
+        def exists(self) -> bool:
+            return self._exists
+
+        def read_text(self, *, encoding: str) -> str:
+            assert encoding == "utf-8"
+            return self._text
+
+    class FakeRoot:
+        def __init__(self, pyproject: FakePyproject):
+            self.pyproject = pyproject
+
+        def __truediv__(self, name: str) -> FakePyproject:
+            assert name == "pyproject.toml"
+            return self.pyproject
+
+    class FakeModulePath:
+        def __init__(self, pyproject: FakePyproject):
+            self._root = FakeRoot(pyproject)
+
+        def resolve(self):
+            return self
+
+        @property
+        def parents(self):
+            return [object(), self._root]
+
+    for pyproject in (
+        FakePyproject(exists=False),
+        FakePyproject(exists=True, text="[project]\n[build-system]\nrequires = []\n"),
+        FakePyproject(exists=True, text="[project]\nname = 'vmec-jax'\n"),
+    ):
+        monkeypatch.setattr(vmec_jax, "_Path", lambda _filename, pyproject=pyproject: FakeModulePath(pyproject))
+        assert vmec_jax._source_tree_version() is None
 
 
 def test_cli_case_and_wout_path_conventions(tmp_path: Path) -> None:
@@ -64,6 +108,29 @@ def test_cli_wout_io_warmup_is_opt_in(monkeypatch) -> None:
     assert thread is not None
     thread.join(timeout=5)
     assert calls == ["netCDF4"]
+
+
+def test_cli_wout_io_warmup_swallows_import_failures(monkeypatch) -> None:
+    monkeypatch.setenv("VMEC_JAX_WOUT_IO_WARMUP", "1")
+
+    def fake_import_module(name: str):
+        assert name == "netCDF4"
+        raise RuntimeError("netCDF unavailable")
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+    thread = cli._start_wout_io_warmup()
+    assert thread is not None
+    thread.join(timeout=5)
+
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "threading":
+            raise RuntimeError("threading unavailable")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    assert cli._start_wout_io_warmup() is None
 
 
 def test_cli_plot_mode_dispatches_without_solver(monkeypatch, tmp_path: Path) -> None:
@@ -411,6 +478,27 @@ def test_cli_profile_cleanup_failures_are_best_effort(monkeypatch, tmp_path: Pat
     assert "stop_server" in calls
 
 
+def test_cli_wout_warmup_join_failure_is_best_effort(monkeypatch, tmp_path: Path) -> None:
+    input_path = tmp_path / "input.case"
+    input_path.write_text("&INDATA\n/\n")
+    indata = InData(scalars={}, indexed={})
+    calls = {}
+
+    class RaisingJoin:
+        def join(self):
+            calls["joined"] = True
+            raise RuntimeError("join failed")
+
+    monkeypatch.setattr(cli, "_start_wout_io_warmup", lambda: RaisingJoin())
+    monkeypatch.setattr(cli, "read_indata", lambda path: indata)
+    monkeypatch.setattr(cli, "default_non_autodiff_solver_policy", lambda _: ("default", True))
+    monkeypatch.setattr(cli, "run_fixed_boundary", lambda path, **kwargs: SimpleNamespace(state=SimpleNamespace(Rcos=0.0)))
+    monkeypatch.setattr(cli, "write_wout_from_fixed_boundary_run", lambda path, run, *, include_fsq: path.write_text("wout"))
+
+    assert cli.main([str(input_path)]) == 0
+    assert calls["joined"] is True
+
+
 def test_cli_errors_for_missing_input_invalid_jit_and_read_failure(monkeypatch, tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as missing_input:
         cli.main([str(tmp_path / "missing.input")])
@@ -440,3 +528,52 @@ def test_cli_rejects_conflicting_solver_flags(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as mode_conflict:
         cli.main([str(input_path), "--solver-mode", "default", "--fast"])
     assert mode_conflict.value.code == 2
+
+
+def test_cli_error_return_branches_when_parser_error_is_nonraising(monkeypatch, tmp_path: Path) -> None:
+    input_path = tmp_path / "input.case"
+    input_path.write_text("&INDATA\n/\n")
+    indata = InData(scalars={}, indexed={})
+    messages: list[str] = []
+
+    class NonRaisingParser:
+        def __init__(self, args):
+            self.args = args
+
+        def parse_args(self, _argv):
+            return self.args
+
+        def error(self, message: str) -> None:
+            messages.append(message)
+
+    def args_for(**overrides):
+        base = dict(
+            plot=None,
+            input=str(input_path),
+            outdir=None,
+            output=None,
+            max_iter=None,
+            use_input_niter=True,
+            jit_forces="auto",
+            parity=False,
+            fast=False,
+            solver_mode=None,
+            solver_device=None,
+            vmecpp_restart=None,
+            quiet=True,
+        )
+        base.update(overrides)
+        return SimpleNamespace(**base)
+
+    monkeypatch.setattr(cli, "_start_wout_io_warmup", lambda: None)
+    monkeypatch.setattr(cli, "read_indata", lambda path: indata)
+
+    for overrides, expected in (
+        ({"jit_forces": "bad"}, "Invalid --jit-forces"),
+        ({"parity": True, "fast": True}, "mutually exclusive"),
+        ({"solver_mode": "default", "fast": True}, "cannot be combined"),
+    ):
+        messages.clear()
+        monkeypatch.setattr(cli, "build_parser", lambda overrides=overrides: NonRaisingParser(args_for(**overrides)))
+        assert cli.main([]) == 2
+        assert expected in messages[-1]
