@@ -1171,6 +1171,35 @@ def test_least_squares_problem_rejects_bad_tuples_and_mismatched_qi_options() ->
         )
 
 
+def test_mirror_and_elongation_helpers_are_generic_unless_qi_field_is_requested() -> None:
+    import vmec_jax.optimization_workflow as workflow
+
+    options = workflow.QuasiIsodynamicOptions(surfaces=np.asarray([0.5]))
+
+    generic_mirror = workflow.MirrorRatio(threshold=0.3, surfaces=(0.5, 1.0))
+    generic_elongation = workflow.MaxElongation(threshold=5.0, qi_options=options)
+    shared_qi_mirror = workflow.MirrorRatio(threshold=0.3, qi_options=options)
+
+    assert generic_mirror.requires_qi_field is False
+    assert generic_elongation.requires_qi_field is False
+    assert shared_qi_mirror.requires_qi_field is True
+
+    generic_problem = workflow.LeastSquaresProblem.from_tuples(
+        [
+            (generic_mirror.J, 0.0, 1.0),
+            (generic_elongation.J, 0.0, 1.0),
+        ]
+    )
+    assert generic_problem.is_qi is False
+    assert generic_problem.qi_options is None
+    assert generic_problem.objective_names == ("mirror_ratio", "max_elongation")
+
+    qi_problem = workflow.LeastSquaresProblem.from_tuples([(shared_qi_mirror.J, 0.0, 1.0)])
+    assert qi_problem.is_qi is True
+    assert qi_problem.qi_options is options
+    assert qi_problem.qi_objective_names == ("mirror_ratio",)
+
+
 def test_qi_and_qs_object_wrappers_build_terms_without_solves(monkeypatch) -> None:
     import vmec_jax.optimization_workflow as workflow
 

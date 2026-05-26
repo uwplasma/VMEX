@@ -845,6 +845,27 @@ def _line_contour_levels(values: np.ndarray, *, count: int = 25) -> np.ndarray:
     return np.linspace(vmin, vmax, int(count))
 
 
+_BOOZER_PHI_LABEL = r"Boozer toroidal angle $\phi_{B}$ (rad)"
+_BOOZER_THETA_LABEL = r"Boozer poloidal angle $\theta_{B}$ (rad)"
+
+
+def _selected_boozer_surface_label(surfaces, surface_index: int) -> str:
+    surface_values = tuple(float(s) for s in surfaces)
+    if not surface_values:
+        return "Boozer surface"
+    selected = int(surface_index)
+    if selected < 0:
+        selected += len(surface_values)
+    if selected < 0 or selected >= len(surface_values):
+        return "Boozer surface"
+    value = surface_values[selected]
+    if np.isclose(value, 1.0):
+        return "plasma boundary"
+    if np.isclose(value, 0.5):
+        return "mid radius"
+    return f"Boozer surface s={value:g}"
+
+
 def write_axisym_overview(case: str, *, outdir: str | Path | None = None) -> Path:
     """Write a quick axisymmetric overview plot from bundled reference wout."""
     plt = _import_matplotlib()
@@ -1334,7 +1355,7 @@ def plot_boozer_bmag_contours_from_state(
     ntheta: int = 128,
     nphi: int = 256,
     phimin: float = 0.0,
-    title: str = "Boozer |B| contours",
+    title: str | None = None,
 ):
     """Write a Boozer-coordinate line-contour plot of ``|B|`` for QI review."""
 
@@ -1365,9 +1386,10 @@ def plot_boozer_bmag_contours_from_state(
     fig, ax = plt.subplots(1, 1, figsize=(8, 4.5))
     cs = ax.contour(phi2d, theta2d, bmag, levels=levels, cmap="viridis", linewidths=1.0)
     fig.colorbar(cs, ax=ax, label="|B| (T)")
-    ax.set_title(title)
-    ax.set_xlabel(r"Boozer toroidal angle $\phi_B$ (rad)")
-    ax.set_ylabel(r"Boozer poloidal angle $\theta_B$ (rad)")
+    surface_label = _selected_boozer_surface_label(surfaces, surface_index)
+    ax.set_title(title if title is not None else f"Boozer |B| contours: {surface_label}")
+    ax.set_xlabel(_BOOZER_PHI_LABEL)
+    ax.set_ylabel(_BOOZER_THETA_LABEL)
     ax.set_yticks([0, np.pi / 2, np.pi, 3 * np.pi / 2, 2 * np.pi])
     ax.set_yticklabels(["0", "π/2", "π", "3π/2", "2π"])
     ax.set_ylim(0, 2.0 * np.pi)
@@ -1435,8 +1457,8 @@ def _booz_bmag_grid(bx, *, js: int, ntheta: int = 128, nphi: int = 256) -> tuple
 
 def _booz_surface_label(bx, js: int, *, outer: bool = False) -> str:
     if outer:
-        return "Plasma boundary"
-    return "Mid radius"
+        return "plasma boundary"
+    return "mid radius"
 
 
 def plot_boozmn_bmag_contours(
@@ -1477,8 +1499,8 @@ def plot_boozmn_bmag_contours(
         cs = ax.contour(phi2d, theta2d, bmag, levels=levels, cmap="viridis", linewidths=1.0)
         fig.colorbar(cs, ax=ax, label="|B| (T)")
         ax.set_title(_booz_surface_label(bx, js, outer=is_outer))
-        ax.set_xlabel(r"Boozer toroidal angle $\phi_B$ (rad)")
-        ax.set_ylabel(r"Boozer poloidal angle $\theta_B$ (rad)")
+        ax.set_xlabel(_BOOZER_PHI_LABEL)
+        ax.set_ylabel(_BOOZER_THETA_LABEL)
         ax.set_yticks([0, np.pi / 2, np.pi, 3 * np.pi / 2, 2 * np.pi])
         ax.set_yticklabels(["0", "π/2", "π", "3π/2", "2π"])
         ax.set_ylim(0, 2.0 * np.pi)
@@ -1563,8 +1585,8 @@ def plot_boozer_lcfs_bmag_comparison(
         )
         fig.colorbar(cs, ax=ax, label="|B| (T)")
         ax.set_title(f"{title} in Boozer coordinates")
-        ax.set_xlabel(r"Boozer toroidal angle $\phi_B$ (rad)")
-        ax.set_ylabel(r"Boozer poloidal angle $\theta_B$ (rad)")
+        ax.set_xlabel(_BOOZER_PHI_LABEL)
+        ax.set_ylabel(_BOOZER_THETA_LABEL)
         ax.set_yticks([0, np.pi / 2, np.pi, 3 * np.pi / 2, 2 * np.pi])
         ax.set_yticklabels(["0", "π/2", "π", "3π/2", "2π"])
         ax.set_ylim(0, 2.0 * np.pi)
