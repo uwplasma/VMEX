@@ -114,11 +114,11 @@ vmec_jax input.cth_like_free_bdy_lasym_small
 
 ### Direct-Coil Free-Boundary Research Lane
 
-The `feature/freeb-essos-coil-single-stage` branch adds a JAX-native
-external-field provider so free-boundary solves can sample differentiable
-Biot-Savart coils directly, while the existing `mgrid` path remains the
-VMEC2000-compatibility backend. Phase-1 generated WOUTs, magnetic grids, and
-reviewer plots are kept out of git.
+The direct-coil free-boundary research lane adds a JAX-native external-field
+provider so free-boundary solves can sample differentiable Biot-Savart coils
+directly, while the existing `mgrid` path remains the VMEC2000-compatibility
+backend. Phase-1 generated WOUTs, magnetic grids, and reviewer plots are kept
+out of git.
 
 ```bash
 python examples/free_boundary_direct_coils_forward.py \
@@ -132,9 +132,9 @@ runs finite-pressure coil beta scans. Use `--resume-existing` to reuse completed
 
 The DIII-D reference scan reaches final `ns=101`, `FTOL=1e-12`, and actual
 WOUT betas through 2.18%. The LP-QA stellarator pressure-continuation lane now
-promotes strict direct differentiable-coil rows through actual WOUT beta 1.93%.
-Full nonlinear exact-adjoint gradients through the free-boundary iteration
-remain phase-2 work; see `docs/free_boundary_coil_optimization.rst` for plots,
+promotes strict direct-coil forward rows through actual WOUT beta 1.93%. Full
+nonlinear exact-adjoint gradients through the free-boundary iteration remain
+phase-2 work; see `docs/free_boundary_coil_optimization.rst` for plots,
 VMEC2000 comparisons, benchmarks, limitations, and the full-solve adjoint plan.
 
 ## Backend Selection

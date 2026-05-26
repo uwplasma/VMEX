@@ -53,6 +53,8 @@ _REPLAY_STEP_TRACE_KEYS = (
     "vLcc_before",
     "vLss_before",
     "max_update_rms_pre",
+    "freeb_bsqvac_half",
+    "freeb_pres_scale",
 )
 
 _REPLAY_STEP_TRACE_STATIC_KEYS = (
@@ -69,6 +71,7 @@ _DYNAMIC_REPLAY_SCALAR_TRACE_KEYS = (
     "lambda_update_scale",
     "max_coeff_delta_rms_pre",
     "max_update_rms_pre",
+    "freeb_pres_scale",
 )
 _CHECKPOINT_TAPE_SCAN_CACHE: OrderedDict[tuple[Any, ...], Any] = OrderedDict()
 _CHECKPOINT_TAPE_DYNAMIC_SCAN_CACHE: OrderedDict[tuple[Any, ...], Any] = OrderedDict()
@@ -906,6 +909,8 @@ def checkpoint_tape_state_vjp(
                 limit_update_rms=trace["limit_update_rms"],
                 need_update_rms=False,
                 divide_by_scalxc_for_update=trace["divide_by_scalxc_for_update"],
+                freeb_bsqvac_half=trace.get("freeb_bsqvac_half", None),
+                freeb_pres_scale=trace.get("freeb_pres_scale", None),
             )
             return pack_state(out["step"]["state_post"])
 
@@ -976,6 +981,8 @@ def checkpoint_tape_state_jvp(
                 limit_update_rms=trace["limit_update_rms"],
                 need_update_rms=False,
                 divide_by_scalxc_for_update=trace["divide_by_scalxc_for_update"],
+                freeb_bsqvac_half=trace.get("freeb_bsqvac_half", None),
+                freeb_pres_scale=trace.get("freeb_pres_scale", None),
             )
             return pack_state(out["step"]["state_post"])
 
@@ -1024,6 +1031,8 @@ def _packed_replay_step_from_trace(
             if preconditioner_use_lax_tridi is None
             else preconditioner_use_lax_tridi
         ),
+        freeb_bsqvac_half=trace.get("freeb_bsqvac_half", None),
+        freeb_pres_scale=trace.get("freeb_pres_scale", None),
         lambda_update_scale=trace["lambda_update_scale"],
         dt_eff=trace["dt_eff"],
         b1=trace["b1"],
@@ -1078,7 +1087,11 @@ def _static_flags_from_replay_step_traces(step_traces: tuple[dict[str, Any], ...
 def _stack_replay_step_traces(step_traces: tuple[dict[str, Any], ...]):
     from ._compat import jax
 
-    filtered = tuple({key: trace[key] for key in _REPLAY_STEP_TRACE_KEYS} for trace in step_traces)
+    optional_keys = {"freeb_bsqvac_half", "freeb_pres_scale"}
+    filtered = tuple(
+        {key: trace.get(key, None) if key in optional_keys else trace[key] for key in _REPLAY_STEP_TRACE_KEYS}
+        for trace in step_traces
+    )
     use_device_stack = _backend_is_accelerator(jax.default_backend())
     jax_array_type = getattr(jax, "Array", ())
 
@@ -1159,6 +1172,11 @@ def _build_dynamic_replay_payload(
         "zero_m1",
         *_DYNAMIC_REPLAY_SCALAR_TRACE_KEYS,
     ]
+    freeb_present = [trace.get("freeb_bsqvac_half", None) is not None for trace in step_traces]
+    if all(freeb_present):
+        varying_keys.append("freeb_bsqvac_half")
+    elif any(freeb_present):
+        raise ValueError("Dynamic replay requires freeb_bsqvac_half to be present on every active trace or none.")
     for key in constant_candidates:
         first = step_traces[0][key]
         if all(_replay_values_equal(trace[key], first) for trace in step_traces[1:]):
@@ -1228,6 +1246,9 @@ def _dynamic_replay_supported(
     if (not rebuild_preconditioner) or (not tape.step_traces):
         return False
     if tape.step_trace_static_flags is not None and tape.step_trace_static_flags.get("precond_jmax") is None:
+        return False
+    freeb_present = [trace.get("freeb_bsqvac_half", None) is not None for trace in tape.step_traces]
+    if any(freeb_present) and not all(freeb_present):
         return False
     return all(_dynamic_replay_trace_supported(trace) for trace in tape.step_traces)
 
@@ -1422,6 +1443,8 @@ def _packed_dynamic_replay_step_from_carry(
         include_edge_residual=static_flags["include_edge_residual"],
         apply_m1_constraints=static_flags["apply_m1_constraints"],
         zero_m1=trace["zero_m1"],
+        freeb_bsqvac_half=trace.get("freeb_bsqvac_half", None) if isinstance(trace, dict) else None,
+        freeb_pres_scale=trace.get("freeb_pres_scale", None) if isinstance(trace, dict) else static_flags.get("freeb_pres_scale", None),
     )
     tridi_policy = (
         _trace_preconditioner_use_precomputed_tridi(trace, static_flags)
@@ -2600,6 +2623,8 @@ def strict_update_one_step_from_state(
     preconditioner_jmax_override: int | None = None,
     preconditioner_use_precomputed_tridi: bool | None = None,
     preconditioner_use_lax_tridi: bool | None = None,
+    freeb_bsqvac_half=None,
+    freeb_pres_scale=None,
 ):
     """Compose the exact QH one-step map from state through accepted update."""
     residual_out = raw_force_residual_from_state(
@@ -2611,6 +2636,8 @@ def strict_update_one_step_from_state(
         include_edge_residual=include_edge_residual,
         apply_m1_constraints=apply_m1_constraints,
         zero_m1=zero_m1,
+        freeb_bsqvac_half=freeb_bsqvac_half,
+        freeb_pres_scale=freeb_pres_scale,
     )
     preconditioner_out = None
     if mats is None or jmax is None or lam_prec is None or w_mode_mn is None:
