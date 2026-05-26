@@ -409,10 +409,17 @@ The next promotion tests should use the same pressure-continuation schedule,
 increase the radial resolution to ``ns=101``, and continue exact full-solve
 AD-vs-central-FD validation through the nonlinear iteration loop. A strict
 direct-coil ``ns=16,51,101`` local continuation run has already converged the
-vacuum and nominal ``0.5`` beta labels at final ``FTOL=1e-12``; the latter has
-actual WOUT beta about ``0.724%`` and ``fsqr+fsqz+fsql=6.22e-12``. The
-``--resume-existing`` path exists so the nominal ``1.0`` and ``2.0`` beta
-points can continue from those persisted WOUTs instead of restarting the scan.
+vacuum, nominal ``0.5``, and nominal ``1.0`` beta labels at final
+``FTOL=1e-12``. The nominal ``0.5`` label has actual WOUT beta about
+``0.724%`` and ``fsqr+fsqz+fsql=6.22e-12``; the nominal ``1.0`` label has
+actual WOUT beta about ``1.508%`` and ``fsqr+fsqz+fsql=5.52e-12``. A refined
+intermediate nominal ``1.25`` label reaches actual WOUT beta about ``1.932%``
+with ``fsqr+fsqz+fsql=2.97e-12``. The nominal ``2.0`` label reaches actual WOUT
+beta about ``3.184%`` and residual sum ``3.75e-7`` from the same continuation
+sequence; that row is useful high-beta continuation evidence but not strict
+final-``FTOL=1e-12`` evidence. The ``--resume-existing`` path exists so
+intermediate nominal beta labels can continue from persisted WOUTs instead of
+restarting the scan.
 
 Direct-provider phase-2 diagnostics now record accepted NESTOR histories for
 ``bnormal``, ``gsource``, ``bsqvac``, and source reuse. A short LP-QA vacuum
