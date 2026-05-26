@@ -245,6 +245,7 @@ class MinimalSeedBudget:
     inner_ftol: float
     trial_max_iter: int
     trial_ftol: float
+    ess_alpha: float = 1.2
 
 
 def _parse_case_names(value: str) -> tuple[str, ...]:
@@ -468,6 +469,7 @@ def _problem_config_for_case(
         "inner_ftol": float(budget.inner_ftol),
         "trial_max_iter": int(budget.trial_max_iter),
         "trial_ftol": float(budget.trial_ftol),
+        "ess_alpha": float(budget.ess_alpha),
         "project_input_boundary_to_max_mode": True,
         "min_vmec_mode": min_vmec_mode,
     }
@@ -499,6 +501,7 @@ def _qp_preseed_config_for_qi_case(
         inner_ftol=float(budget.inner_ftol),
         trial_max_iter=int(budget.trial_max_iter),
         trial_ftol=float(budget.trial_ftol),
+        ess_alpha=float(budget.ess_alpha),
         project_input_boundary_to_max_mode=True,
         min_vmec_mode=min_vmec_mode,
     )
@@ -596,6 +599,7 @@ def _run_showcase_case(
                 inner_ftol=float(budget.inner_ftol),
                 trial_max_iter=int(budget.trial_max_iter),
                 trial_ftol=float(budget.trial_ftol),
+                ess_alpha=float(budget.ess_alpha),
                 make_plots=False,
                 timeout_s=qi_timeout_s,
             )
@@ -876,6 +880,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--inner-ftol", type=float, default=1e-9)
     parser.add_argument("--trial-max-iter", type=int, default=120)
     parser.add_argument("--trial-ftol", type=float, default=1e-9)
+    parser.add_argument("--ess-alpha", type=float, default=1.2, help="ESS high-mode scaling strength.")
     parser.add_argument("--case-timeout-s", type=float, default=1800.0)
     parser.add_argument(
         "--reference-preseed-blend",
@@ -905,6 +910,7 @@ def main() -> None:
         inner_ftol=float(args.inner_ftol),
         trial_max_iter=int(args.trial_max_iter),
         trial_ftol=float(args.trial_ftol),
+        ess_alpha=float(args.ess_alpha),
     )
     use_ess = _bool_from_choice(args.ess)
     max_mode = int(args.max_mode)
