@@ -356,6 +356,11 @@ Use `--modes 1,2,3,4` only for exploratory high-mode regeneration; checked-in
 docs snapshots currently contain partial/archived `max_mode<=3` rows, not a
 complete reviewed CPU/GPU matrix.
 
+Keep generated full-sweep atlases, PDFs, and bulky report panels in ignored
+result directories or release assets until reviewed.  Checked-in PNG/JPEG
+figures under `docs/_static/figures` are expected to stay compressed below
+2 MiB each.
+
 ## Comparison And Diagnostic Scripts
 
 - `compare_omnigenity_qi_objective.py`: compare VMEC-JAX QI metrics with the legacy omnigenity implementation.

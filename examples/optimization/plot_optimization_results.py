@@ -7,7 +7,8 @@ the QA/QH/QP/QI optimization examples and generates three figures in the output
 directory:
 
   - ``boundary_comparison.png``   3D LCFS coloured by |B| (initial vs final)
-  - ``bmag_surface.png``          |B| contour lines on LCFS (initial vs final)
+  - ``boozer_lcfs_bmag_comparison.png``
+                                  |B| contour lines on the LCFS in Boozer coordinates
   - ``objective_history.png``     Objective value and aspect ratio vs iteration
 
 Usage
@@ -65,7 +66,7 @@ def main() -> None:
             wout_final_path,
             outdir=outdir,
         ),
-        "bmag_contours": vj.plot_bmag_contours(
+        "boozer_lcfs_bmag_contours": vj.plot_boozer_lcfs_bmag_comparison(
             wout_init_path,
             wout_final_path,
             outdir=outdir,

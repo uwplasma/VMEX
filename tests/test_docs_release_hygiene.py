@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 from tools.diagnostics.parity_sweep_manifest import DEFAULT_MANIFEST, _parse_manifest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+MAX_TRACKED_DOC_FIGURE_BYTES = 2 * 1024 * 1024
 
 
 def test_root_readme_stays_concise_and_defers_extended_claims() -> None:
@@ -100,3 +102,45 @@ def test_qi_case_specific_artifacts_are_not_documented_as_aspect6_promotions() -
 
     assert ",promoted," not in qi_cases_csv
     assert ",case-gated," in qi_cases_csv
+
+
+def _tracked_files(*pathspecs: str) -> list[Path]:
+    result = subprocess.run(
+        ["git", "ls-files", "--", *pathspecs],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+    )
+    return [ROOT / line for line in result.stdout.splitlines()]
+
+
+def test_checked_in_docs_figures_stay_compact() -> None:
+    figures = _tracked_files(
+        "docs/_static/figures/*.png",
+        "docs/_static/figures/*.jpg",
+        "docs/_static/figures/*.jpeg",
+    )
+
+    oversized = [
+        f"{path.relative_to(ROOT)} ({path.stat().st_size} bytes)"
+        for path in figures
+        if path.stat().st_size > MAX_TRACKED_DOC_FIGURE_BYTES
+    ]
+
+    assert oversized == []
+
+
+def test_generated_docs_and_bulky_sweep_artifacts_are_not_tracked() -> None:
+    generated = _tracked_files(
+        "docs/_build",
+        "docs/api/generated",
+        "docs/_static/figures/readme_best_optimization_*.pdf",
+        "docs/_static/figures/qs_ess_*.png",
+        "docs/_static/figures/qs_ess_*.pdf",
+        "docs/_static/figures/**/wout_*.nc",
+        "docs/_static/readme_best_cases/**/wout_*.nc",
+        "docs/_static/qi_readme_cases/**/wout_*.nc",
+    )
+
+    assert generated == []

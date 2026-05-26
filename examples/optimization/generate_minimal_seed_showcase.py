@@ -14,9 +14,9 @@ only the subset of cases with current non-stale provenance:
 
 - QI with NFP=1, 2, 3, and a finite-beta NFP=4 reference lane
 - an NFP=1 circular-torus QI stress lane
-- QA with NFP=2
-- QH with NFP=4
-- QP with NFP=2
+- QA with NFP=2 and 3
+- QH with NFP=3 and 4
+- QP with NFP=2, 3, and 4
 
 The implementation intentionally reuses ``generate_qs_ess_sweep.py`` so the
 showcase follows the same exact optimizer, diagnostics, and per-case output
@@ -149,6 +149,18 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         reference_preseed_input=DATA_DIR / "input.nfp2_QA_omnigenity",
         reference_preseed_blend=0.25,
     ),
+    "qa_nfp3": MinimalSeedCase(
+        name="qa_nfp3",
+        problem="qa",
+        nfp=3,
+        input_file=DATA_DIR / "input.minimal_seed_nfp3",
+    ),
+    "qh_nfp3": MinimalSeedCase(
+        name="qh_nfp3",
+        problem="qh",
+        nfp=3,
+        input_file=DATA_DIR / "input.minimal_seed_nfp3",
+    ),
     "qh_nfp4": MinimalSeedCase(
         name="qh_nfp4",
         problem="qh",
@@ -163,6 +175,22 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         reference_preseed_input=DATA_DIR / "input.nfp2_QI",
         reference_preseed_blend=0.10,
     ),
+    "qp_nfp3": MinimalSeedCase(
+        name="qp_nfp3",
+        problem="qp",
+        nfp=3,
+        input_file=DATA_DIR / "input.minimal_seed_nfp3",
+        reference_preseed_input=DATA_DIR / "input.nfp3_QI_fixed_resolution_final",
+        reference_preseed_blend=0.10,
+    ),
+    "qp_nfp4": MinimalSeedCase(
+        name="qp_nfp4",
+        problem="qp",
+        nfp=4,
+        input_file=DATA_DIR / "input.minimal_seed_nfp4",
+        reference_preseed_input=DATA_DIR / "input.nfp4_QI_finite_beta",
+        reference_preseed_blend=0.10,
+    ),
 }
 
 DEFAULT_CASE_ORDER = (
@@ -172,8 +200,12 @@ DEFAULT_CASE_ORDER = (
     "qi_nfp3",
     "qi_nfp4",
     "qa_nfp2",
+    "qa_nfp3",
+    "qh_nfp3",
     "qh_nfp4",
     "qp_nfp2",
+    "qp_nfp3",
+    "qp_nfp4",
 )
 
 PHYSICS_IOTA_FLOOR = 0.35
