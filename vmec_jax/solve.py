@@ -148,6 +148,7 @@ from .solve_scan_payload_helpers import (
 )
 from .solve_scan_math_helpers import (
     _hold_step as _scan_math_hold_step,
+    _kernel_arrays_from_k as _scan_math_kernel_arrays_from_k,
     _no_restart_updates as _scan_math_no_restart_updates,
     _ptau_minmax_from_k_host as _scan_math_ptau_minmax_from_k_host,
     _ptau_minmax_from_k_jax as _scan_math_ptau_minmax_from_k_jax,
@@ -195,6 +196,7 @@ _STRICT_UPDATE_STEP_JIT_CACHE: OrderedDict[tuple, Any] = OrderedDict()
 _PRECOND_OUTPUT_SCALE_JIT_CACHE: OrderedDict[tuple, Any] = OrderedDict()
 _PRECOND_OUTPUT_PAYLOAD_JIT_CACHE: OrderedDict[tuple, Any] = OrderedDict()
 _PRECOND_APPLY_PAYLOAD_JIT_CACHE: OrderedDict[tuple, Any] = OrderedDict()
+_ACCEPTED_CONTROL_PAYLOAD_JIT_CACHE: OrderedDict[tuple, Any] = OrderedDict()
 
 
 _HostRestartDecision = _residual_iter_policy.HostRestartDecision
@@ -794,6 +796,60 @@ def _preconditioner_apply_payload_jit(
         _apply_payload,
         env_name="VMEC_JAX_PRECOND_APPLY_PAYLOAD_CACHE_SIZE",
         default=8,
+    )
+
+
+def _accepted_control_payload_jit():
+    """Return a cached JIT helper for accepted-step scalar control payloads.
+
+    The non-scan VMEC control loop needs host scalars for Python time-step,
+    restart, and Jacobian-sign decisions. On accelerators, pulling ``fsq1`` and
+    the ``ptau`` extrema in separate synchronizations leaves tiny kernels on the
+    critical path. This helper keeps those scalar reductions in one JAX payload
+    and lets the caller materialize the tuple with a single ``device_get``.
+    """
+
+    if not has_jax():
+        return None
+    key: tuple[Any, ...] = ()
+    cached = _jit_cache_get(_ACCEPTED_CONTROL_PAYLOAD_JIT_CACHE, key)
+    if cached is not None:
+        return cached
+
+    @jax.jit
+    def _payload(
+        fsq1_safe,
+        pru_even,
+        pru_odd,
+        pzu_even,
+        pzu_odd,
+        pr1_even,
+        pr1_odd,
+        pz1_even,
+        pz1_odd,
+        pshalf,
+        ohs,
+    ):
+        ptau_min, ptau_max = _ptau_compute_jit(
+            pru_even,
+            pru_odd,
+            pzu_even,
+            pzu_odd,
+            pr1_even,
+            pr1_odd,
+            pz1_even,
+            pz1_odd,
+            pshalf,
+            ohs,
+        )
+        return jnp.asarray(fsq1_safe), ptau_min, ptau_max
+
+    return _jit_cache_put(
+        _ACCEPTED_CONTROL_PAYLOAD_JIT_CACHE,
+        key,
+        _payload,
+        env_name="VMEC_JAX_ACCEPTED_CONTROL_PAYLOAD_CACHE_SIZE",
+        default=2,
     )
 
 
@@ -12085,6 +12141,7 @@ def solve_fixed_boundary_residual_iter(
                         )
 
             # Damping for the fixed-point update.
+            accepted_control_ptau_host: tuple[float, float] | None = None
             if preconditioner_fsq1_ready:
                 pass
             elif host_update_assembly:
@@ -12201,9 +12258,40 @@ def solve_fixed_boundary_residual_iter(
                         jnp.asarray(0.0, dtype=jnp.asarray(fsql1).dtype),
                     )
                 if preconditioner_fsq1_ready:
-                    fsq1 = float(jax.device_get(fsq1_safe))
+                    fsq1_j = fsq1_safe
                 else:
-                    fsq1 = float(jax.device_get(fsqr1_safe + fsqz1_safe + fsql1_safe))
+                    fsq1_j = fsqr1_safe + fsqz1_safe + fsql1_safe
+                use_control_payload = (
+                    (not bool(converged_physical))
+                    and (bool(reference_mode) or bool(vmec2000_control))
+                    and (not bool(badjac_use_state))
+                    and (not bool(dump_ptau_state))
+                    and os.getenv("VMEC_JAX_DUMP_PTAU", "") in ("", "0")
+                    and jax.default_backend() != "cpu"
+                )
+                control_payload_used = False
+                if use_control_payload:
+                    ptau_arrays = _scan_math_kernel_arrays_from_k(k)
+                    payload_fn = _accepted_control_payload_jit()
+                    if ptau_arrays is not None and payload_fn is not None:
+                        try:
+                            fsq1_payload, ptau_min_payload, ptau_max_payload = payload_fn(
+                                fsq1_j,
+                                *ptau_arrays,
+                                _ptau_pshalf_jax,
+                                _ptau_ohs_jax,
+                            )
+                            fsq1, min_tau_ptau_payload, max_tau_ptau_payload = _device_get_floats(
+                                fsq1_payload,
+                                ptau_min_payload,
+                                ptau_max_payload,
+                            )
+                            accepted_control_ptau_host = (min_tau_ptau_payload, max_tau_ptau_payload)
+                            control_payload_used = True
+                        except Exception:
+                            control_payload_used = False
+                if not control_payload_used:
+                    fsq1 = float(jax.device_get(fsq1_j))
             if timing_enabled and t_iteration_control_fsq1_start is not None:
                 timing_stats["iteration_control_fsq1"] += time.perf_counter() - float(t_iteration_control_fsq1_start)
             precond_diag_host: tuple[float, float, float] | None = None
@@ -12312,11 +12400,15 @@ def solve_fixed_boundary_residual_iter(
             t_iteration_control_badjac_start = time.perf_counter() if timing_enabled else None
             bad_jacobian = False
             if bool(reference_mode) or bool(vmec2000_control):
-                ptau_min, ptau_max = _ptau_minmax_from_k_host(k)
                 min_tau_ptau = max_tau_ptau = None
                 bad_jacobian_ptau = None
-                if ptau_min is not None and ptau_max is not None:
-                    min_tau_ptau, max_tau_ptau = _device_get_floats(ptau_min, ptau_max)
+                if accepted_control_ptau_host is not None:
+                    min_tau_ptau, max_tau_ptau = accepted_control_ptau_host
+                else:
+                    ptau_min, ptau_max = _ptau_minmax_from_k_host(k)
+                    if ptau_min is not None and ptau_max is not None:
+                        min_tau_ptau, max_tau_ptau = _device_get_floats(ptau_min, ptau_max)
+                if min_tau_ptau is not None and max_tau_ptau is not None:
                     if bool(vmec2000_control):
                         tau_tol = _bad_jacobian_tau_tolerance(
                             ptau_tol=ptau_tol,

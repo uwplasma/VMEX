@@ -10,6 +10,7 @@ from vmec_jax.boundary import boundary_from_indata
 from vmec_jax.config import load_config
 from vmec_jax.init_guess import initial_guess_from_boundary
 from vmec_jax.solve import (
+    _accepted_control_payload_jit,
     _enforce_field_rows,
     _enforce_fixed_boundary_and_axis,
     _preconditioner_output_payload_jit,
@@ -256,6 +257,62 @@ def test_preconditioner_output_payload_jit_matches_scaling_and_fsq1_reference():
     np.testing.assert_allclose(np.asarray(diag[4]), gcz2 * f_norm1)
     np.testing.assert_allclose(np.asarray(diag[5]), gcl2_full * delta_s)
     np.testing.assert_allclose(np.asarray(diag[6]), gcr2 * f_norm1 + gcz2 * f_norm1 + gcl2_full * delta_s)
+
+
+def test_accepted_control_payload_jit_batches_fsq1_and_ptau_reference():
+    pytest.importorskip("jax")
+
+    ns = 4
+    shape = (ns, 2, 2)
+    base = np.linspace(0.2, 1.1, np.prod(shape), dtype=float).reshape(shape)
+    pru_even = base + 0.1
+    pru_odd = base * 0.03
+    pzu_even = base + 0.2
+    pzu_odd = base * 0.05
+    pr1_even = base + 0.3
+    pr1_odd = base * 0.07
+    pz1_even = base + 0.4
+    pz1_odd = base * 0.09
+    pshalf = np.linspace(0.0, 1.0, ns)
+    ohs = np.asarray(3.0)
+    fsq1 = np.asarray(1.25)
+
+    payload = _accepted_control_payload_jit()
+    got_fsq1, got_min, got_max = payload(
+        fsq1,
+        pru_even,
+        pru_odd,
+        pzu_even,
+        pzu_odd,
+        pr1_even,
+        pr1_odd,
+        pz1_even,
+        pz1_odd,
+        pshalf,
+        ohs,
+    )
+
+    dphids = 0.25
+    psh = pshalf[1:, None, None]
+    psh_safe = np.where(psh != 0.0, psh, 1.0)
+    ru12 = 0.5 * (pru_even[1:] + pru_even[:-1] + psh * (pru_odd[1:] + pru_odd[:-1]))
+    pzs = ohs * ((pz1_even[1:] - pz1_even[:-1]) + psh * (pz1_odd[1:] - pz1_odd[:-1]))
+    ptau = ru12 * pzs + dphids * (
+        pru_odd[1:] * pz1_odd[1:]
+        + pru_odd[:-1] * pz1_odd[:-1]
+        + (pru_even[1:] * pz1_odd[1:] + pru_even[:-1] * pz1_odd[:-1]) / psh_safe
+    )
+    pzu12 = 0.5 * (pzu_even[1:] + pzu_even[:-1] + psh * (pzu_odd[1:] + pzu_odd[:-1]))
+    prs = ohs * ((pr1_even[1:] - pr1_even[:-1]) + psh * (pr1_odd[1:] - pr1_odd[:-1]))
+    ptau = ptau - prs * pzu12 - dphids * (
+        pzu_odd[1:] * pr1_odd[1:]
+        + pzu_odd[:-1] * pr1_odd[:-1]
+        + (pzu_even[1:] * pr1_odd[1:] + pzu_even[:-1] * pr1_odd[:-1]) / psh_safe
+    )
+
+    np.testing.assert_allclose(np.asarray(got_fsq1), fsq1)
+    np.testing.assert_allclose(np.asarray(got_min), np.min(ptau))
+    np.testing.assert_allclose(np.asarray(got_max), np.max(ptau))
 
 
 def test_preconditioner_output_scaling_gate_is_gpu_only_without_gpu(monkeypatch):
