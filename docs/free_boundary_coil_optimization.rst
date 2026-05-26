@@ -270,7 +270,11 @@ to run the direct-coil provider without generating a magnetic grid.
 
 Use staged radial continuation for high-resolution promotion attempts. Keep
 ``--pressure-continuation`` enabled so each pressure point starts from the
-previous accepted free-boundary LCFS:
+previous accepted free-boundary LCFS. Add ``--resume-existing`` when rerunning
+an interrupted high-resolution scan: existing ``wout_{backend}_beta_*.nc``
+files are skipped and, if their residuals satisfy
+``--pressure-continuation-max-fsq``, promoted as continuation seeds for the next
+pressure point.
 
 .. code-block:: bash
 
@@ -284,6 +288,7 @@ previous accepted free-boundary LCFS:
      --betas 0 1 2 \
      --pressure-scale-for-one-percent-beta 1000 \
      --pressure-continuation \
+     --resume-existing \
      --pressure-continuation-max-fsq 1e-6 \
      --ns-array 16,31,51,101 \
      --niter-array 1000,2000,4000,12000 \
@@ -402,7 +407,12 @@ Lessons from the earlier failed attempts:
 
 The next promotion tests should use the same pressure-continuation schedule,
 increase the radial resolution to ``ns=101``, and continue exact full-solve
-AD-vs-central-FD validation through the nonlinear iteration loop.
+AD-vs-central-FD validation through the nonlinear iteration loop. A strict
+direct-coil ``ns=16,51,101`` local continuation run has already converged the
+vacuum and nominal ``0.5`` beta labels at final ``FTOL=1e-12``; the latter has
+actual WOUT beta about ``0.724%`` and ``fsqr+fsqz+fsql=6.22e-12``. The
+``--resume-existing`` path exists so the nominal ``1.0`` and ``2.0`` beta
+points can continue from those persisted WOUTs instead of restarting the scan.
 
 Direct-provider phase-2 diagnostics now record accepted NESTOR histories for
 ``bnormal``, ``gsource``, ``bsqvac``, and source reuse. A short LP-QA vacuum
