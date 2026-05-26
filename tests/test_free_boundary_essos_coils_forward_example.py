@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -70,3 +71,62 @@ def test_beta_scan_pressure_continuation_helpers_convert_wout_boundary(tmp_path)
     bad_summary = {"fsqr": 1.0e-3, "fsqz": 0.0, "fsql": 0.0, "wout": str(wout_path)}
     assert module._summary_is_promotable_for_pressure_continuation(ok_summary, max_fsq=1.0e-6)
     assert not module._summary_is_promotable_for_pressure_continuation(bad_summary, max_fsq=1.0e-6)
+
+
+def test_beta_scan_summary_checkpoint_preserves_partial_runs(tmp_path):
+    module = _load_beta_scan_module()
+    args = SimpleNamespace(
+        coil_current_scale=1.0,
+        phiedge=-0.025,
+        pressure_scale_for_one_percent_beta=1000.0,
+        pressure_continuation=True,
+        pressure_continuation_max_fsq=1.0e-6,
+        disable_direct_coil_source_reuse=False,
+        direct_coil_trial_resample=False,
+        direct_coil_limit_update_rms=False,
+        ns=12,
+        max_iter=20,
+        ftol=1.0e-8,
+    )
+    summary_path = tmp_path / "summary.json"
+    runs = [
+        {
+            "backend": "direct",
+            "nominal_beta_percent": 0.0,
+            "fsqr": 1.0e-12,
+            "fsqz": 2.0e-12,
+            "fsql": 3.0e-12,
+        }
+    ]
+
+    module._write_summary_checkpoint(
+        summary_path,
+        coils_json=tmp_path / "coils.json",
+        mgrid_file=tmp_path / "mgrid.nc",
+        args=args,
+        scale_summary={"coil_r_mean": 1.0},
+        ns_array=[16, 101],
+        niter_array=[600, 3000],
+        ftol_array=[1.0e-8, 1.0e-12],
+        summaries=runs,
+        complete=False,
+    )
+    partial = json.loads(summary_path.read_text())
+    assert partial["complete"] is False
+    assert partial["runs"] == runs
+    assert partial["ns_array"] == [16, 101]
+
+    module._write_summary_checkpoint(
+        summary_path,
+        coils_json=tmp_path / "coils.json",
+        mgrid_file=tmp_path / "mgrid.nc",
+        args=args,
+        scale_summary={"coil_r_mean": 1.0},
+        ns_array=[16, 101],
+        niter_array=[600, 3000],
+        ftol_array=[1.0e-8, 1.0e-12],
+        summaries=runs,
+        complete=True,
+    )
+    complete = json.loads(summary_path.read_text())
+    assert complete["complete"] is True
