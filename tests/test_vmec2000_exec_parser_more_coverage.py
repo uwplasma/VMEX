@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tools.diagnostics.vmec2000_exec_stage_trace_compare import _parse_float_list_arg, _parse_int_list_arg
 from vmec_jax.vmec2000_exec import (
     _find_threed1_file,
     _infer_case_name,
@@ -13,6 +14,13 @@ from vmec_jax.vmec2000_exec import (
     flatten_threed1,
     threed1_fsq_total,
 )
+
+
+def test_stage_trace_compare_list_args_accept_spaces_and_commas() -> None:
+    assert _parse_int_list_arg("12 31,50") == [12, 31, 50]
+    assert _parse_int_list_arg("  ") is None
+    assert _parse_float_list_arg("1e-8 1e-10,1e-12") == [1.0e-8, 1.0e-10, 1.0e-12]
+    assert _parse_float_list_arg("") is None
 
 
 def test_parse_vmec2000_threed1_ignores_noise_and_flushes_stage_at_eof(tmp_path: Path) -> None:
