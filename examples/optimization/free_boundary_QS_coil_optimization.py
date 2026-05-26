@@ -68,9 +68,10 @@ from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_
 
 
 SKIP_EXIT_CODE = 77
-DEFAULT_INPUT = REPO_ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_reactorScale_lowres"
+DEFAULT_INPUT = REPO_ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lowres"
 DEFAULT_OUTDIR = REPO_ROOT / "results" / "free_boundary_QS_coil_optimization"
 DEFAULT_ESSOS_COIL_JSON = "ESSOS_biot_savart_LandremanPaulQA.json"
+DEFAULT_FREE_BOUNDARY_PHIEDGE = -0.025
 WP11_LIMITATIONS = [
     "Phase-1 objective is a VMEC residual/aspect/iota proxy, not a Boozer/QS objective.",
     "Production full-loop direct-coil free-boundary adjoints are not promoted yet.",
@@ -174,6 +175,7 @@ def make_free_boundary_indata(
     ntor: int,
     nzeta: int,
     pressure_scale: float,
+    phiedge: float,
 ) -> Path:
     indata = deepcopy(read_indata(input_path))
     indata.scalars.update(
@@ -186,6 +188,7 @@ def make_free_boundary_indata(
             "FTOL_ARRAY": [float(ftol)],
             "NITER": int(vmec_max_iter),
             "FTOL": float(ftol),
+            "PHIEDGE": float(phiedge),
             "MPOL": int(mpol),
             "NTOR": int(ntor),
             "NZETA": int(nzeta),
@@ -525,6 +528,7 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         ntor=int(args.ntor),
         nzeta=int(args.nzeta),
         pressure_scale=float(args.pressure_scale),
+        phiedge=float(args.phiedge),
     )
 
     objective_model = {
@@ -547,6 +551,7 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "ntor": int(args.ntor),
         "nzeta": int(args.nzeta),
         "pressure_scale": float(args.pressure_scale),
+        "phiedge": float(args.phiedge),
         "activate_fsq": float(args.activate_fsq),
         "jit_forces": bool(args.jit_forces),
     }
@@ -873,6 +878,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ntor", type=int, default=None)
     parser.add_argument("--nzeta", type=int, default=None)
     parser.add_argument("--pressure-scale", type=float, default=0.0)
+    parser.add_argument(
+        "--phiedge",
+        type=float,
+        default=DEFAULT_FREE_BOUNDARY_PHIEDGE,
+        help="PHIEDGE override matching the unit-scale ESSOS LP-QA coil/input fixture.",
+    )
     parser.add_argument("--activate-fsq", type=float, default=1.0e99)
     parser.add_argument(
         "--jit-forces",

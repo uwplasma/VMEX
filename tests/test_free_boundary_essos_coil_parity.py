@@ -15,8 +15,9 @@ from vmec_jax.wout import read_wout
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LPQA_INPUT = ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_reactorScale_lowres"
-FINITE_PRESSURE_SCALE = 34.46233666638
+LPQA_INPUT = ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lowres"
+FINITE_PRESSURE_SCALE = 1000.0
+FREE_BOUNDARY_PHIEDGE = -0.025
 LPQA_COIL_FILE = "ESSOS_biot_savart_LandremanPaulQA.json"
 
 
@@ -62,10 +63,10 @@ def _write_lpqa_mgrid(coils, path: Path) -> Path:
         nr=12,
         nz=12,
         nphi=6,
-        rmin=5.0,
-        rmax=15.0,
-        zmin=-5.0,
-        zmax=5.0,
+        rmin=0.1,
+        rmax=2.5,
+        zmin=-1.4,
+        zmax=1.4,
         nfp=int(coils.nfp),
     )
     return path
@@ -90,6 +91,7 @@ def _write_freeb_input(
             "FTOL_ARRAY": [float(ftol)],
             "NITER": int(niter),
             "FTOL": float(ftol),
+            "PHIEDGE": FREE_BOUNDARY_PHIEDGE,
             "MPOL": 4,
             "NTOR": 4,
             "NZETA": 6,

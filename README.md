@@ -112,7 +112,10 @@ python examples/free_boundary_direct_coils_forward.py \
   --outdir results/free_boundary_direct_coils_forward
 ```
 
-With ESSOS on `PYTHONPATH`, run the finite-pressure direct-coil beta scan:
+With ESSOS on `PYTHONPATH`, run the finite-pressure ESSOS-coil beta scan. The
+matched `mgrid` lane requires an ESSOS checkout with `Coils.to_mgrid`; add
+`--skip-mgrid-runs` to exercise only the differentiable direct-coil provider
+with released ESSOS:
 
 ```bash
 export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
@@ -120,18 +123,24 @@ export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
 PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
   python examples/free_boundary_essos_coils_beta_scan.py \
   --outdir results/free_boundary_essos_coils_beta_scan \
-  --skip-mgrid-runs \
-  --phiedge=-3.0e-2 \
-  --betas 0 0.00138889 0.00277778 \
-  --ns 101 \
-  --ftol 1e-12 \
-  --max-iter 3000 \
+  --input examples/data/input.LandremanPaul2021_QA_lowres \
+  --phiedge=-0.025 \
+  --betas 0 1 2 \
+  --pressure-scale-for-one-percent-beta 1000 \
+  --ns 31 \
+  --ftol 1e-8 \
+  --max-iter 1000 \
   --activate-fsq 1.0
 ```
 
-See `docs/free_boundary_coil_optimization.rst` for the provider architecture,
-VMEC2000 comparison commands, benchmark commands, current phase-1 limitations,
-and the phase-2 full-solve adjoint plan.
+The DIII-D high-resolution finite-beta reference scan is a promoted mgrid
+validation artifact for this branch: final `ns=101`, final `FTOL=1e-12`, and
+actual WOUT betas through about 1%. The ESSOS LP-QA stellarator high-beta
+promotion gate is still open: the corrected unit-scale coil/input pair
+converges in vacuum and low beta, but loses convergence before actual 1-2%
+beta. See `docs/free_boundary_coil_optimization.rst` for the external
+reviewer plots, provider architecture, VMEC2000 comparison commands, benchmark
+commands, current phase-1 limitations, and the phase-2 full-solve adjoint plan.
 
 ## Backend Selection
 

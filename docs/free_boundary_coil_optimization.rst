@@ -127,6 +127,13 @@ single-stage coil optimizer:
   generated-``mgrid`` and direct-coil providers from the same ESSOS LP-QA coil
   set agree within recorded precision/roundoff in the recorded scalar
   diagnostics, and direct NESTOR samples respond to coil-current changes.
+- The promoted high-resolution finite-beta reference evidence is currently the
+  VMEC2000-compatible DIII-D ``mgrid`` benchmark, not the LP-QA direct-coil
+  stellarator path: final ``ns=101``, final ``FTOL=1e-12``, and actual WOUT
+  beta through approximately 1%.
+- The ESSOS LP-QA stellarator high-beta promotion gate is still open. The
+  corrected unit-scale coil/input pair converges in vacuum and low beta, but
+  pressure scans lose convergence before actual 1--2% WOUT beta.
 - The fast validation lane also includes tiny accepted-state
   finite-difference slope-stability checks for direct-coil current and one
   direct-coil Fourier geometry coefficient.
@@ -146,15 +153,16 @@ single-stage coil optimizer:
   host bridge remains the default production path until complete-solve adjoints
   are promoted.
 
-In short: direct-coil finite-pressure plumbing is present and validation-tested; a
-converged high-beta direct-coil design, publication-grade gradients through the
-full free-boundary/NESTOR solve, and VMEC2000-bounded generated-``mgrid`` trace
-parity are not claimed yet.
+In short: direct-coil finite-pressure plumbing is present and validation-tested;
+high-resolution finite-beta ``mgrid`` validation exists for DIII-D; a converged
+high-beta stellarator direct-coil design, publication-grade gradients through
+the full free-boundary/NESTOR solve, and VMEC2000-bounded generated-``mgrid``
+trace parity are not claimed yet.
 
 Low-Resolution Beta Scan
 ------------------------
 
-The first diagnostic uses ESSOS Landreman-Paul QA coils and a four-point
+The first diagnostic uses unit-scale ESSOS Landreman-Paul QA coils and a
 pressure scan. The zero-pressure endpoint is retained as a reference, but the
 finite-pressure points are the meaningful provider-plumbing checks. The same
 coil set is used two ways:
@@ -169,6 +177,13 @@ recorded JSON precision/roundoff for this low-resolution validation run. The sca
 records both the input ``PRES_SCALE`` and the output energy ratio
 ``100 W_p / W_B`` so future plots cannot accidentally validate only the vacuum
 case.
+
+The default scan deliberately uses the unit-scale VMEC input
+``examples/data/input.LandremanPaul2021_QA_lowres``. Do not pair the default
+ESSOS LP-QA coils with the reactor-scale LP-QA input unless the coils are also
+scaled: the coil major radius is about 1.1 while the reactor-scale plasma has
+``RBC(0,0)`` about 10.1. That mismatch was the cause of the failed high-res
+LP-QA run in the initial PR diagnostic.
 
 The example uses ``--activate-fsq 1e99`` by default. This forces immediate
 VMEC2000-style NESTOR turn-on so the short run exercises active finite-pressure
@@ -226,7 +241,8 @@ low-resolution finite-pressure free-boundary forward validation run without writ
 
 Run the matched beta scan from the repository root. Until the ESSOS
 ``to_mgrid`` PR is merged and released, put the ESSOS branch checkout on
-``PYTHONPATH``.
+``PYTHONPATH``. If only released ESSOS is available, add ``--skip-mgrid-runs``
+to run the direct-coil provider without generating a magnetic grid.
 
 .. code-block:: bash
 
@@ -235,26 +251,16 @@ Run the matched beta scan from the repository root. Until the ESSOS
    PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
      python examples/free_boundary_essos_coils_beta_scan.py \
      --outdir results/free_boundary_essos_coils_beta_scan_readme \
-     --activate-fsq 1e99
+     --input examples/data/input.LandremanPaul2021_QA_lowres \
+     --phiedge=-0.025 \
+     --betas 0 1 2 \
+     --pressure-scale-for-one-percent-beta 1000 \
+     --ns 31 \
+     --mpol 5 \
+     --ntor 5 \
+     --activate-fsq 1.0
 
-The ESSOS Landreman-Paul QA fixture has relatively weak currents for the short
-finite-pressure validation run. Use ``--coil-current-scale`` to run matched direct/mgrid
-sensitivity studies with stronger coils:
-
-.. code-block:: bash
-
-   export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
-   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
-   PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
-     python examples/free_boundary_essos_coils_beta_scan.py \
-     --outdir results/free_boundary_essos_coils_beta_scan_scaled \
-     --coil-current-scale 100 \
-     --activate-fsq 1e99
-
-For an actual-WOUT-beta validation near 1%, calibrate ``PHIEDGE`` to the coil
-field scale and use the WOUT value ``100*wp/wb`` as the reported beta. The
-following direct-coil run reaches approximately 0.98% WOUT beta in the phase-1
-low-resolution validation case:
+Use staged radial continuation for high-resolution promotion attempts:
 
 .. code-block:: bash
 
@@ -262,15 +268,55 @@ low-resolution validation case:
    export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
    PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
      python examples/free_boundary_essos_coils_beta_scan.py \
-     --outdir results/free_boundary_essos_coils_beta_scan_actual_beta \
-     --skip-mgrid-runs \
-     --phiedge=-3.0e-2 \
-     --betas 0 0.00138889 0.00277778 \
-     --max-iter 140 \
+     --outdir results/free_boundary_essos_coils_beta_scan_highres_attempt \
+     --input examples/data/input.LandremanPaul2021_QA_lowres \
+     --phiedge=-0.025 \
+     --betas 0 1 2 \
+     --pressure-scale-for-one-percent-beta 1000 \
+     --ns-array 16,31,51,101 \
+     --niter-array 1000,2000,4000,12000 \
+     --ftol-array 1e-8,1e-10,1e-11,1e-12 \
+     --mpol 5 \
+     --ntor 5 \
      --activate-fsq 1.0
 
 The final beta must be read from ``summary.json`` or the WOUT file rather than
 from the nominal ``--betas`` labels.
+
+High-Resolution DIII-D Finite-Beta Benchmark
+--------------------------------------------
+
+The current reviewer-facing high-resolution finite-beta evidence is the
+VMEC2000-compatible DIII-D ``mgrid`` benchmark. The figure is attached to the
+pull request/Gist rather than committed to git:
+
+- SVG: https://gist.githubusercontent.com/rogeriojorge/a49e7a21330fbc8ab99229d2b05de708/raw/39b549edd5b119c6fb8896ead61a102193d6b35b/pr18_diiid_freeb_beta_ns101_comparison.svg
+- Summary JSON: https://gist.githubusercontent.com/rogeriojorge/a49e7a21330fbc8ab99229d2b05de708/raw/ed02a51fa92c78f98a9080842c0e0b3af4457921/pr18_diiid_freeb_beta_ns101_summary.json
+
+The plotted WOUTs use final ``ns=101`` and final ``FTOL=1e-12``. The actual
+WOUT beta values are 0.00%, 0.32%, 0.67%, and 1.01%; all final ``fsqr`` values
+are below ``1e-12``. The panels show iota profiles, beta-induced profile
+changes relative to vacuum, multi-surface cross sections, and LCFS ``|B|``
+contours. This is promoted as a free-boundary finite-beta mgrid validation
+artifact. It is not a direct-coil stellarator promotion artifact.
+
+High-Resolution LP-QA Stellarator Gate
+--------------------------------------
+
+The LP-QA stellarator promotion gate is currently unresolved. The corrected
+unit-scale input and coil pair converges in vacuum and low pressure in
+VMEC2000-generated-``mgrid`` tests. However:
+
+- pairing the default ESSOS coils with the reactor-scale LP-QA input is invalid
+  without coil scaling and caused the original high-resolution failure;
+- the native reactor-scale ``PHIEDGE`` has the wrong sign for the vacuum
+  subroutine, while a small hand-tuned flux magnitude destroys the scale;
+- the unit-scale corrected pair with ``PHIEDGE=-0.025`` converges at vacuum and
+  low pressure, but direct pressure jumps fail before actual 1--2% WOUT beta.
+
+The next promotion tests should use pressure continuation from accepted lower
+beta equilibria, staged radial continuation, and a calibrated stellarator coil
+set whose vacuum field and VMEC flux scale agree at the target beta.
 
 Generate the benchmark summary used by the README/docs figure renderer:
 

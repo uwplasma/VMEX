@@ -16,8 +16,9 @@ from vmec_jax.state import pack_state
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LPQA_INPUT = ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_reactorScale_lowres"
-FINITE_PRESSURE_SCALE = 34.46233666638
+LPQA_INPUT = ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lowres"
+FINITE_PRESSURE_SCALE = 1000.0
+FREE_BOUNDARY_PHIEDGE = -0.025
 LPQA_COIL_FILE = "ESSOS_biot_savart_LandremanPaulQA.json"
 
 
@@ -125,6 +126,7 @@ def _write_lpqa_direct_freeb_input(path: Path, *, niter: int = 3) -> Path:
             "FTOL_ARRAY": [1.0e-8],
             "NITER": int(niter),
             "FTOL": 1.0e-8,
+            "PHIEDGE": FREE_BOUNDARY_PHIEDGE,
             "MPOL": 4,
             "NTOR": 4,
             "NZETA": 6,
