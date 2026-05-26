@@ -256,6 +256,27 @@ sensitivity studies with stronger coils:
      --coil-current-scale 100 \
      --activate-fsq 1e99
 
+For an actual-WOUT-beta validation near 1%, calibrate ``PHIEDGE`` to the coil
+field scale and use the WOUT value ``100*wp/wb`` as the reported beta. The
+following direct-coil run reaches approximately 0.98% WOUT beta in the phase-1
+low-resolution validation case:
+
+.. code-block:: bash
+
+   export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
+   PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
+     python examples/free_boundary_essos_coils_beta_scan.py \
+     --outdir results/free_boundary_essos_coils_beta_scan_actual_beta \
+     --skip-mgrid-runs \
+     --phiedge=-3.0e-2 \
+     --betas 0 0.00138889 0.00277778 \
+     --max-iter 140 \
+     --activate-fsq 1.0
+
+The final beta must be read from ``summary.json`` or the WOUT file rather than
+from the nominal ``--betas`` labels.
+
 Generate the benchmark summary used by the README/docs figure renderer:
 
 .. code-block:: bash

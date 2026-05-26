@@ -99,6 +99,8 @@ def make_free_boundary_indata(
     mpol: int,
     ntor: int,
     nzeta: int,
+    pressure_scale_for_one_percent_beta: float = PRESSURE_SCALE_FOR_ONE_PERCENT_BETA,
+    phiedge: float | None = None,
 ) -> Any:
     """Create a small free-boundary input deck for one nominal beta."""
 
@@ -120,7 +122,9 @@ def make_free_boundary_indata(
     # p(s) = PRES_SCALE * (1 - s), so beta increases monotonically with the
     # requested nominal beta percentage.
     indata.scalars["AM"] = [1.0, -1.0]
-    indata.scalars["PRES_SCALE"] = float(PRESSURE_SCALE_FOR_ONE_PERCENT_BETA) * float(beta_percent)
+    indata.scalars["PRES_SCALE"] = float(pressure_scale_for_one_percent_beta) * float(beta_percent)
+    if phiedge is not None:
+        indata.scalars["PHIEDGE"] = float(phiedge)
     return indata
 
 
@@ -255,6 +259,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mgrid-zmin", type=float, default=-5.0)
     parser.add_argument("--mgrid-zmax", type=float, default=5.0)
     parser.add_argument(
+        "--pressure-scale-for-one-percent-beta",
+        type=float,
+        default=PRESSURE_SCALE_FOR_ONE_PERCENT_BETA,
+        help=(
+            "Scale factor multiplying each --betas value to form PRES_SCALE. "
+            "The actual beta must be read from WOUT; this option supports "
+            "calibrated finite-pressure validation scans."
+        ),
+    )
+    parser.add_argument(
+        "--phiedge",
+        type=float,
+        default=None,
+        help=(
+            "Optional PHIEDGE override. This is useful when matching the VMEC "
+            "toroidal-flux scale and sign to a direct-coil validation fixture."
+        ),
+    )
+    parser.add_argument(
         "--coil-current-scale",
         type=float,
         default=1.0,
@@ -326,6 +349,8 @@ def main(argv: list[str] | None = None) -> int:
                 mpol=args.mpol,
                 ntor=args.ntor,
                 nzeta=args.mgrid_nphi,
+                pressure_scale_for_one_percent_beta=args.pressure_scale_for_one_percent_beta,
+                phiedge=args.phiedge,
             )
             input_mgrid = outdir / f"input.lpqa_mgrid_beta_{beta_tag}"
             write_indata(input_mgrid, mgrid_indata)
@@ -352,6 +377,8 @@ def main(argv: list[str] | None = None) -> int:
                 mpol=args.mpol,
                 ntor=args.ntor,
                 nzeta=args.mgrid_nphi,
+                pressure_scale_for_one_percent_beta=args.pressure_scale_for_one_percent_beta,
+                phiedge=args.phiedge,
             )
             input_direct = outdir / f"input.lpqa_direct_beta_{beta_tag}"
             write_indata(input_direct, direct_indata)
@@ -375,6 +402,8 @@ def main(argv: list[str] | None = None) -> int:
                 "coils_json": str(coils_json),
                 "mgrid": str(mgrid_file),
                 "coil_current_scale": float(args.coil_current_scale),
+                "phiedge_override": None if args.phiedge is None else float(args.phiedge),
+                "pressure_scale_for_one_percent_beta": float(args.pressure_scale_for_one_percent_beta),
                 "runs": summaries,
             },
             indent=2,
