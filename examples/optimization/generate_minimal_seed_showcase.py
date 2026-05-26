@@ -16,7 +16,7 @@ only the subset of cases with current non-stale provenance:
 - an NFP=1 circular-torus QI stress lane
 - QA with NFP=2 and 3
 - QH with NFP=3 and 4
-- QP with NFP=2, 3, and 4
+- QP with NFP=1, 2, 3, and 4
 
 The implementation intentionally reuses ``generate_qs_ess_sweep.py`` so the
 showcase follows the same exact optimizer, diagnostics, and per-case output
@@ -167,6 +167,14 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         nfp=4,
         input_file=DATA_DIR / "input.minimal_seed_nfp4",
     ),
+    "qp_nfp1": MinimalSeedCase(
+        name="qp_nfp1",
+        problem="qp",
+        nfp=1,
+        input_file=DATA_DIR / "input.minimal_seed_nfp1",
+        reference_preseed_input=DATA_DIR / "input.nfp1_QI",
+        reference_preseed_blend=0.10,
+    ),
     "qp_nfp2": MinimalSeedCase(
         name="qp_nfp2",
         problem="qp",
@@ -203,6 +211,7 @@ DEFAULT_CASE_ORDER = (
     "qa_nfp3",
     "qh_nfp3",
     "qh_nfp4",
+    "qp_nfp1",
     "qp_nfp2",
     "qp_nfp3",
     "qp_nfp4",
