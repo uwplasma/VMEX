@@ -553,6 +553,7 @@ def _preconditioner_apply_payload_jit(
     apply_lambda_update_scale: bool,
     vmec2000_control: bool,
     lconm1: bool,
+    include_control_ptau: bool,
 ):
     """Return a cached fused GPU preconditioner-apply/payload kernel.
 
@@ -583,6 +584,7 @@ def _preconditioner_apply_payload_jit(
         bool(apply_lambda_update_scale),
         bool(vmec2000_control),
         bool(lconm1),
+        bool(include_control_ptau),
     )
     cached = _jit_cache_get(_PRECOND_APPLY_PAYLOAD_JIT_CACHE, key)
     if cached is not None:
@@ -616,6 +618,7 @@ def _preconditioner_apply_payload_jit(
         f_norm1,
         delta_s,
         s,
+        control_args,
     ):
         w = jnp.asarray(w_mode_mn)[None, :, :]
         lam_prec_j = jnp.asarray(lam_prec)
@@ -689,6 +692,37 @@ def _preconditioner_apply_payload_jit(
         fsqz1_safe = jnp.where(jnp.isfinite(fsqz1), fsqz1, jnp.asarray(0.0, dtype=jnp.asarray(fsqz1).dtype))
         fsql1_safe = jnp.where(jnp.isfinite(fsql1), fsql1, jnp.asarray(0.0, dtype=jnp.asarray(fsql1).dtype))
         fsq1_safe = fsqr1_safe + fsqz1_safe + fsql1_safe
+        if bool(include_control_ptau):
+            (
+                pru_even,
+                pru_odd,
+                pzu_even,
+                pzu_odd,
+                pr1_even,
+                pr1_odd,
+                pz1_even,
+                pz1_odd,
+                pshalf,
+                ohs,
+            ) = control_args
+            ptau_min, ptau_max = _ptau_compute_jit(
+                pru_even,
+                pru_odd,
+                pzu_even,
+                pzu_odd,
+                pr1_even,
+                pr1_odd,
+                pz1_even,
+                pz1_odd,
+                pshalf,
+                ohs,
+            )
+            return (
+                (frcc, frss, fzsc, fzcs, flsc_pre, flcs_pre, frsc, frcs, fzcc, fzss, flcc_pre, flss_pre),
+                (frcc_u, frss_u, fzsc_u, fzcs_u, flsc_u, flcs_u, frsc_u, frcs_u, fzcc_u, fzss_u, flcc_u, flss_u),
+                (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe, fsq1_safe),
+                (fsq1_safe, ptau_min, ptau_max),
+            )
         return (
             (frcc, frss, fzsc, fzcs, flsc_pre, flcs_pre, frsc, frcs, fzcc, fzss, flcc_pre, flss_pre),
             (frcc_u, frss_u, fzsc_u, fzcs_u, flsc_u, flcs_u, frsc_u, frcs_u, fzcc_u, fzss_u, flcc_u, flss_u),
@@ -731,6 +765,7 @@ def _preconditioner_apply_payload_jit(
         f_norm1,
         delta_s,
         s,
+        *control_args,
     ):
         frcc_rz, frss_rz, fzsc_rz, fzcs_rz, frsc_rz, frcs_rz, fzcc_rz, fzss_rz = (
             _rz_preconditioner_apply_arrays(
@@ -788,6 +823,7 @@ def _preconditioner_apply_payload_jit(
             f_norm1,
             delta_s,
             s,
+            control_args,
         )
 
     return _jit_cache_put(
@@ -870,6 +906,10 @@ def _preconditioner_apply_payload_fused(
     apply_lambda_update_scale: bool,
     vmec2000_control: bool,
     lconm1: bool,
+    include_control_ptau: bool = False,
+    control_ptau_arrays: tuple[Any, ...] | None = None,
+    control_ptau_pshalf: Any = None,
+    control_ptau_ohs: Any = None,
 ):
     """Apply R/Z preconditioning and build update/diagnostic payload in one dispatch."""
 
@@ -896,6 +936,11 @@ def _preconditioner_apply_payload_fused(
     has_flcs = frzl_in.flcs is not None
     has_flcc = getattr(frzl_in, "flcc", None) is not None
     has_flss = getattr(frzl_in, "flss", None) is not None
+    include_control_ptau = (
+        bool(include_control_ptau)
+        and control_ptau_arrays is not None
+        and len(tuple(control_ptau_arrays)) == 8
+    )
 
     has_lax_t = (
         ("dlr_t" in mats)
@@ -924,6 +969,7 @@ def _preconditioner_apply_payload_fused(
         apply_lambda_update_scale=bool(apply_lambda_update_scale),
         vmec2000_control=bool(vmec2000_control),
         lconm1=bool(lconm1),
+        include_control_ptau=bool(include_control_ptau),
     )
 
     frcc = frzl_in.frcc
@@ -952,7 +998,7 @@ def _preconditioner_apply_payload_fused(
     dz_t = mats.get("dz_t", az)
     duz_t = mats.get("duz_t", az)
 
-    return apply_payload(
+    args = (
         frcc,
         fzsc,
         frss,
@@ -988,6 +1034,14 @@ def _preconditioner_apply_payload_fused(
         delta_s,
         s,
     )
+    if bool(include_control_ptau):
+        args = (
+            *args,
+            *control_ptau_arrays,
+            control_ptau_pshalf,
+            control_ptau_ohs,
+        )
+    return apply_payload(*args)
 
 
 def _mode_weight_force_blocks_np(
@@ -5582,6 +5636,12 @@ def solve_fixed_boundary_residual_iter(
     # Free-boundary control + coupling path:
     # VMEC-style ivac/ivacskip cadence with edge bsqvac coupling.
     free_boundary_enabled = bool(getattr(cfg, "lfreeb", False))
+    free_boundary_provider_kind = (
+        ""
+        if external_field_provider_kind is None
+        else str(external_field_provider_kind).strip().lower()
+    )
+    direct_free_boundary_provider = free_boundary_provider_kind in ("direct_coils", "coils", "coil")
     freeb_nvacskip = max(1, int(getattr(cfg, "nvacskip", int(getattr(cfg, "nfp", 1)))))
     freeb_nvskip0 = max(1, freeb_nvacskip)
     freeb_couple_env = os.getenv("VMEC_JAX_FREEB_COUPLE_EDGE", "1").strip().lower()
@@ -6148,6 +6208,16 @@ def solve_fixed_boundary_residual_iter(
         if has_jax():
             return _ptau_minmax_from_k_jax(k)
         return _ptau_minmax_from_k_host(k)
+
+    def _accepted_control_ptau_arrays(k) -> tuple[Any, ...] | None:
+        arrays = _scan_math_kernel_arrays_from_k(k)
+        if arrays is None:
+            return None
+        try:
+            ns = int(getattr(arrays[0], "shape", (0,))[0])
+        except Exception:
+            return None
+        return arrays if ns >= 2 else None
 
     def _sm_sp_from_s(s_arr):
         return _sm_sp_from_s_np(s_arr)
@@ -11468,6 +11538,19 @@ def solve_fixed_boundary_residual_iter(
             # computed for this iteration, so fsqr1/fsqz1/fsql1 histories and
             # VMEC-style tables remain length-aligned.
             converged_physical = _converged_residuals_host(fsqr=fsqr_f, fsqz=fsqz_f, fsql=fsql_f)
+            accepted_control_ptau_payload: tuple[Any, Any, Any] | None = None
+            fuse_accepted_control_ptau = (
+                bool(free_boundary_enabled)
+                and bool(direct_free_boundary_provider)
+                and (not bool(converged_physical))
+                and (bool(reference_mode) or bool(vmec2000_control))
+                and (not bool(host_update_assembly))
+                and (not bool(badjac_use_state))
+                and (not bool(dump_ptau_state))
+                and os.getenv("VMEC_JAX_DUMP_PTAU", "") in ("", "0")
+                and jax.default_backend() != "cpu"
+            )
+            accepted_control_ptau_arrays = _accepted_control_ptau_arrays(k) if fuse_accepted_control_ptau else None
 
             # Precondition forces.
             if timing_enabled and t_residual_metrics_start is not None:
@@ -11589,6 +11672,36 @@ def solve_fixed_boundary_residual_iter(
                             1.0 / rz_norm,
                             jnp.asarray(float("inf"), dtype=rz_norm.dtype),
                         )
+                    _precond_payload = _preconditioner_apply_payload_fused(
+                        frzl_in=frzl_rhs,
+                        mats=mats,
+                        jmax=jmax,
+                        cfg=cfg,
+                        lam_prec=lam_prec,
+                        w_mode_mn=w_mode_mn,
+                        lambda_update_scale_j=lambda_update_scale_j,
+                        f_norm1=f_norm1,
+                        delta_s=delta_s,
+                        s=s,
+                        use_precomputed=preconditioner_use_precomputed_tridi,
+                        use_lax_tridi=preconditioner_use_lax_tridi,
+                        apply_lambda_update_scale=(lambda_update_scale != 1.0),
+                        vmec2000_control=bool(vmec2000_control),
+                        lconm1=bool(getattr(static.cfg, "lconm1", True)),
+                        include_control_ptau=accepted_control_ptau_arrays is not None,
+                        control_ptau_arrays=accepted_control_ptau_arrays,
+                        control_ptau_pshalf=_ptau_pshalf_jax,
+                        control_ptau_ohs=_ptau_ohs_jax,
+                    )
+                    if len(_precond_payload) == 4:
+                        (
+                            _precond_pre_blocks,
+                            _precond_update_blocks,
+                            _precond_diag,
+                            accepted_control_ptau_payload,
+                        ) = _precond_payload
+                    else:
+                        _precond_pre_blocks, _precond_update_blocks, _precond_diag = _precond_payload
                     (
                         (frcc, frss, fzsc, fzcs, flsc, flcs, frsc, frcs, fzcc, fzss, flcc, flss),
                         (
@@ -11606,23 +11719,7 @@ def solve_fixed_boundary_residual_iter(
                             flss_u,
                         ),
                         (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe, fsq1_safe),
-                    ) = _preconditioner_apply_payload_fused(
-                        frzl_in=frzl_rhs,
-                        mats=mats,
-                        jmax=jmax,
-                        cfg=cfg,
-                        lam_prec=lam_prec,
-                        w_mode_mn=w_mode_mn,
-                        lambda_update_scale_j=lambda_update_scale_j,
-                        f_norm1=f_norm1,
-                        delta_s=delta_s,
-                        s=s,
-                        use_precomputed=preconditioner_use_precomputed_tridi,
-                        use_lax_tridi=preconditioner_use_lax_tridi,
-                        apply_lambda_update_scale=(lambda_update_scale != 1.0),
-                        vmec2000_control=bool(vmec2000_control),
-                        lconm1=bool(getattr(static.cfg, "lconm1", True)),
-                    )
+                    ) = (_precond_pre_blocks, _precond_update_blocks, _precond_diag)
                     fsqr1 = fsqr1_safe
                     fsqz1 = fsqz1_safe
                     fsql1 = fsql1_safe
@@ -11837,6 +11934,36 @@ def solve_fixed_boundary_residual_iter(
                             1.0 / rz_norm,
                             jnp.asarray(float("inf"), dtype=rz_norm.dtype),
                         )
+                    _precond_payload = _preconditioner_apply_payload_fused(
+                        frzl_in=frzl_rhs,
+                        mats=mats,
+                        jmax=jmax,
+                        cfg=cfg,
+                        lam_prec=lam_prec,
+                        w_mode_mn=w_mode_mn,
+                        lambda_update_scale_j=lambda_update_scale_j,
+                        f_norm1=f_norm1,
+                        delta_s=delta_s,
+                        s=s,
+                        use_precomputed=preconditioner_use_precomputed_tridi,
+                        use_lax_tridi=preconditioner_use_lax_tridi,
+                        apply_lambda_update_scale=(lambda_update_scale != 1.0),
+                        vmec2000_control=bool(vmec2000_control),
+                        lconm1=bool(getattr(static.cfg, "lconm1", True)),
+                        include_control_ptau=accepted_control_ptau_arrays is not None,
+                        control_ptau_arrays=accepted_control_ptau_arrays,
+                        control_ptau_pshalf=_ptau_pshalf_jax,
+                        control_ptau_ohs=_ptau_ohs_jax,
+                    )
+                    if len(_precond_payload) == 4:
+                        (
+                            _precond_pre_blocks,
+                            _precond_update_blocks,
+                            _precond_diag,
+                            accepted_control_ptau_payload,
+                        ) = _precond_payload
+                    else:
+                        _precond_pre_blocks, _precond_update_blocks, _precond_diag = _precond_payload
                     (
                         (frcc, frss, fzsc, fzcs, flsc, flcs, frsc, frcs, fzcc, fzss, flcc, flss),
                         (
@@ -11854,23 +11981,7 @@ def solve_fixed_boundary_residual_iter(
                             flss_u,
                         ),
                         (gcr2_p, gcz2_p, gcl2_p, fsqr1_safe, fsqz1_safe, fsql1_safe, fsq1_safe),
-                    ) = _preconditioner_apply_payload_fused(
-                        frzl_in=frzl_rhs,
-                        mats=mats,
-                        jmax=jmax,
-                        cfg=cfg,
-                        lam_prec=lam_prec,
-                        w_mode_mn=w_mode_mn,
-                        lambda_update_scale_j=lambda_update_scale_j,
-                        f_norm1=f_norm1,
-                        delta_s=delta_s,
-                        s=s,
-                        use_precomputed=preconditioner_use_precomputed_tridi,
-                        use_lax_tridi=preconditioner_use_lax_tridi,
-                        apply_lambda_update_scale=(lambda_update_scale != 1.0),
-                        vmec2000_control=bool(vmec2000_control),
-                        lconm1=bool(getattr(static.cfg, "lconm1", True)),
-                    )
+                    ) = (_precond_pre_blocks, _precond_update_blocks, _precond_diag)
                     fsqr1 = fsqr1_safe
                     fsqz1 = fsqz1_safe
                     fsql1 = fsql1_safe
@@ -12300,7 +12411,19 @@ def solve_fixed_boundary_residual_iter(
                     and jax.default_backend() != "cpu"
                 )
                 control_payload_used = False
-                if use_control_payload:
+                if accepted_control_ptau_payload is not None:
+                    try:
+                        fsq1_payload, ptau_min_payload, ptau_max_payload = accepted_control_ptau_payload
+                        fsq1, min_tau_ptau_payload, max_tau_ptau_payload = _device_get_floats(
+                            fsq1_payload,
+                            ptau_min_payload,
+                            ptau_max_payload,
+                        )
+                        accepted_control_ptau_host = (min_tau_ptau_payload, max_tau_ptau_payload)
+                        control_payload_used = True
+                    except Exception:
+                        control_payload_used = False
+                if (not control_payload_used) and use_control_payload:
                     ptau_arrays = _scan_math_kernel_arrays_from_k(k)
                     payload_fn = _accepted_control_payload_jit()
                     if ptau_arrays is not None and payload_fn is not None:
@@ -13162,6 +13285,12 @@ def solve_fixed_boundary_residual_iter(
                     "vZss_before": _adjoint_trace_array(vZss),
                     "vLcc_before": _adjoint_trace_array(vLcc),
                     "vLss_before": _adjoint_trace_array(vLss),
+                    "freeb_bsqvac_half": (
+                        None
+                        if freeb_bsqvac_half_current is None
+                        else _adjoint_trace_array(freeb_bsqvac_half_current)
+                    ),
+                    "freeb_pres_scale": None if freeb_pres_scale is None else float(freeb_pres_scale),
                 }
                 if adjoint_trace_mode == "full":
                     trace_entry.update(

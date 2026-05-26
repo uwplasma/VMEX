@@ -1,6 +1,8 @@
 # Free-Boundary Coil-Aware Single-Stage Optimization Plan
 
-Branch: `feature/freeb-essos-coil-single-stage`
+PR head branch: `feature/freeb-essos-coil-single-stage`
+
+Local working branch: `refresh/freeb-slim`
 
 Repository clone: `/Users/rogeriojorge/local/vmec_jax_freeb`
 
@@ -10,10 +12,12 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-27 after merging latest `main` into the feature branch,
-rerendering reviewer WOUT panels for DIII-D and LP-QA finite-beta scans,
-attaching those figures to PR #18 outside git, and rerunning the local
-direct-coil benchmark matrix. Do not merge PR #18 yet.
+Last updated: 2026-05-27 after merging `origin/main` at `e3f56955` into the PR
+head, rerendering reviewer WOUT panels for DIII-D and LP-QA finite-beta scans,
+publishing those figures as external PR/Gist artifacts, and rerunning the local
+direct-coil benchmark matrix. A later `origin/main` commit (`2a5697b6`) was
+observed during docs hygiene and is intentionally not merged in this doc-only
+pass. Do not merge PR #18 yet.
 
 Steps taken:
 
@@ -150,6 +154,20 @@ Steps taken:
     two-iteration direct-coil warm solve remained slow (`~0.436 s`), so the
     remaining GPU performance lane is real solver/control/preconditioner
     dispatch overhead rather than only timing instrumentation overhead.
+87. Threaded accepted active free-boundary forcing through the discrete-adjoint
+    replay path by recording `freeb_bsqvac_half` and `freeb_pres_scale` in the
+    accepted-step trace and passing both into replayed raw residual assembly.
+88. Promoted the focused replay-forcing regression from an expected failure to
+    a passing gate.
+89. Fused the direct-coil accelerator accepted-control `ptau` reduction into the
+    existing preconditioner apply payload when the safe direct-provider
+    non-CPU/no-debug path is active, avoiding the separate
+    `_accepted_control_payload_jit` dispatch for that lane.
+90. Re-ran the office CPU/GPU quick benchmark matrix on PR head `7e14892d` with
+    the new timing-light row. GPU remains slower than CPU for tiny two-iteration
+    direct solves, but timing-light rows reduce the measured GPU/CPU warm ratio
+    from about `4.06x` to `2.76x`, confirming detailed timing synchronization
+    was only part of the gap.
 
 Results obtained:
 
@@ -164,8 +182,8 @@ Results obtained:
 7. `ruff check vmec_jax tests examples/free_boundary_essos_coils_beta_scan.py
    docs/conf.py` passed after the main merge.
 8. `ruff check tools/diagnostics/render_freeb_beta_wout_panels.py` passed.
-9. PR #18 CI on merge commit `bb93eb10` has docs/build/physics-smoke/manifest
-   jobs passing while fast-test jobs continue running.
+9. PR #18 CI on head `7e14892d` has docs/build/physics-smoke/manifest jobs
+   passing while fast-test jobs continue running.
 10. Local generated reviewer artifacts:
     `/tmp/freeb_publication_panels/diiid_mgrid_beta_ns101_panel.{svg,pdf,png}`,
     `/tmp/freeb_publication_panels/lpqa_direct_coil_beta_ns101_panel.{svg,pdf,png}`,
@@ -192,6 +210,17 @@ Results obtained:
 22. The resumed local strict direct LP-QA run completed nominal beta `1.0` at final `ns=101`, `FTOL=1e-12`: actual WOUT beta `1.508%`, `fsqr+fsqz+fsql=5.52e-12`, aspect `6.128`, mean iota `0.382`.
 23. The same strict LP-QA continuation completed nominal beta `2.0`, giving actual WOUT beta `3.184%`, aspect `6.176`, mean iota `0.347`, and `fsqr+fsqz+fsql=3.75e-7`. This is useful high-beta continuation evidence, but it is not strict `FTOL=1e-12` convergence. A refined intermediate scan from the strict nominal `1.0` WOUT is running to target an actual beta closer to `2%` with tighter residual.
 24. The refined LP-QA scan completed nominal beta `1.25` at final `ns=101`, `FTOL=1e-12`: actual WOUT beta `1.932%`, `fsqr+fsqz+fsql=2.97e-12`, aspect `6.168`, mean iota `0.355`. This is the current strict near-2% direct-coil stellarator promotion row.
+25. Post-replay/performance focused tests passed locally:
+    `tests/test_docs_release_hygiene.py`,
+    `tests/test_discrete_adjoint_wave6_coverage.py`,
+    `tests/test_freeb_direct_coil_matrix_benchmark.py`,
+    `tests/test_solve_hotpaths.py`,
+    direct-coil finite-pressure AD-vs-FD focused tests, and the full Sphinx
+    warning-as-error documentation build.
+26. Local quick CPU matrix after the fused payload patch completed; the
+    `direct_solve_jit_forces_timing_light` row reported warm time about
+    `0.026 s`, while the detailed-timing `direct_solve_jit_forces` row reported
+    about `0.042 s`.
 16. Subagent larger spectral-mode benchmark with `sample_points=2352`, `coils=8`, `segments=128` found the JIT sampler reduced warm active sampling from `0.0588 s` to `0.0545 s` (about 7%), but total warm wall time remained about `0.35 s`; dense NESTOR mode remains the main performance bottleneck.
 17. Targeted active-coupling summary tests passed: 2 passed in 7.81 s.
 18. VMEC2000 parser/optional LASYM validation tests passed locally as 1 passed, 1 skipped in 0.40 s without `VMEC2000_INTEGRATION=1`.
@@ -344,12 +373,14 @@ Results obtained:
 
 Best next steps:
 
-1. Commit and push the direct-provider diagnostic histories plus guarded direct update limiting after the focused tests/docs build pass.
-2. Pull the new PR #18 CI logs when checks complete; py3.10 failed on the previous pushed head and needs log triage after GitHub makes logs available.
-3. Add or strengthen parity coverage for the CPU `lax.tridiagonal_solve` R/Z preconditioner before re-enabling it as an automatic policy.
-4. Continue the JAX NESTOR complete-loop AD-vs-central-FD rung now that direct LP-QA forward convergence is unblocked.
-5. Increase LP-QA direct radial resolution to `ns=101` as a nonblocking reviewer-quality promotion run.
-6. Keep coverage above 95% as new operator code is promoted from validation scaffolds into production paths.
+1. Wait for the in-progress PR #18 fast-test jobs on head `7e14892d`; keep the
+   PR open and unmerged until maintainers approve the phase-1 scope and
+   phase-2 deferrals.
+2. If another main refresh is needed, handle it as a separate merge/update
+   because this pass is limited to docs/release hygiene.
+3. Keep complete-loop free-boundary exact adjoints, Boozer/QS coil-optimization
+   claims, and VMEC2000 generated-`mgrid` WOUT parity in phase 2 until their
+   promoted gates are green.
 
 Need from user:
 

@@ -1,7 +1,7 @@
 Free-Boundary Coil Optimization
 ===============================
 
-This page documents the research branch toward true single-stage
+This page documents the research lane toward true single-stage
 free-boundary optimization with differentiable coils. The existing VMEC-compatible
 ``mgrid`` path remains the parity backend. The new direct-coil path evaluates
 the external field from coil Fourier coefficients and currents in JAX, so the
@@ -21,16 +21,16 @@ The intended single-stage loop is:
       -> coil-only objective update
 
 Boozer/QS diagnostics are the intended promotion target for this lane, but the
-current branch keeps the single-stage optimization example on a cheap
+current implementation keeps the single-stage optimization example on a cheap
 VMEC-residual/aspect/iota proxy until complete full-loop gradient checks pass.
 
-Reviewer-facing validation plots for this branch are attached to the pull
-request rather than committed to the repository, so the slim source tree does
-not grow with generated images. Use the reproduction commands below to
+Reviewer-facing validation plots for this lane are published as external
+reviewer artifacts rather than committed to the repository, so the slim source
+tree does not grow with generated images. Use the reproduction commands below to
 regenerate the architecture, beta-scan, provider-parity, and benchmark figures
 from JSON summaries.
 
-Phase 1 in this branch includes JAX-native coil-field sampling, an ESSOS coil
+Phase 1 in this lane includes JAX-native coil-field sampling, an ESSOS coil
 adapter, generated-``mgrid`` compatibility, and forward free-boundary solves
 from direct coils. Phase 2 is the production custom adjoint through the full
 free-boundary vacuum/NESTOR solve. Dense toy vacuum-adjoint tests are present
@@ -118,7 +118,7 @@ remain phase-2 promotion gates.
 Current Status
 --------------
 
-The current branch status is intentionally narrower than a production
+The current lane status is intentionally narrower than a production
 single-stage coil optimizer:
 
 - ``mgrid`` remains the VMEC2000-compatible parity backend.
@@ -442,8 +442,8 @@ labels at final ``FTOL=1e-12``. The corresponding actual WOUT beta values are
 and residual sum ``3.75e-7`` from the same continuation sequence; that row is
 useful stress evidence but is not part of the strict promoted panel.
 
-The strict direct-coil LP-QA reviewer WOUT-panel is attached to PR #18 instead
-of committed to the repository:
+The strict direct-coil LP-QA reviewer WOUT-panel is published as an external
+reviewer artifact instead of committed to the repository:
 
 - WOUT-panel SVG: https://gist.githubusercontent.com/rogeriojorge/ad9e20e1728b5d9794217d86d577c24c/raw/lpqa_direct_coil_beta_ns101_panel.svg
 - WOUT-panel CSV: https://gist.githubusercontent.com/rogeriojorge/ad9e20e1728b5d9794217d86d577c24c/raw/lpqa_direct_coil_beta_ns101_panel_summary.csv
@@ -631,7 +631,7 @@ until the production solver path is fully JAX-transformable.
 Benchmarks
 ----------
 
-The branch includes lightweight, non-CI benchmark scripts. The recommended
+This lane includes lightweight, non-CI benchmark scripts. The recommended
 first command is the matrix runner:
 
 .. code-block:: bash
@@ -732,7 +732,7 @@ executable is available:
 
    export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
    export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
-   PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
+   PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
      python tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py \
        --out results/freeb_coils_mgrid_vmec2000.json \
        --workdir results/freeb_coils_mgrid_vmec2000_work \
@@ -747,7 +747,7 @@ For a quick provider-only validation run, skip VMEC2000 explicitly:
 
    export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
    export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
-   PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
+   PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
      python tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py \
        --niter 1 \
        --mgrid-nphi 4 \
@@ -795,7 +795,7 @@ they intentionally alter only the VMEC2000 input deck.
 
 .. code-block:: bash
 
-   PYTHONPATH=$ESSOS_ROOT:$PYTHONPATH \
+   PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
      python tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py \
        --vmec2000-exec /path/to/xvmec2000 \
        --vmec2000-promotion-probes \
