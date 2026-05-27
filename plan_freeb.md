@@ -423,6 +423,33 @@ Need from user:
 
 Nothing now.
 
+### 2026-05-27 Standard finite-beta profile/bootstrap slice
+
+Steps taken:
+
+1. Audited the finite-beta profile setup in `single_stage_optimization_finite_beta/main.py`, SIMSOPT `mhd.profiles`, SIMSOPT Redl bootstrap helpers, and the existing `vmec_jax.profiles`, `vmec_jax.redl_bootstrap`, and finite-beta examples.
+2. Added SIMSOPT-style JAX profile objects in `vmec_jax.profiles`: `ProfilePolynomial`, `ProfileScaled`, `ProfilePressure`, `standard_finite_beta_profiles`, `standard_pressure_profile`, `profile_to_power_series_coeffs`, `pressure_profile_to_vmec_am`, and `with_pressure_profile`.
+3. Updated finite-beta QA/QH/QI examples so VMEC pressure and Redl bootstrap-current coefficients come from the same standard finite-beta profile bundle.
+4. Updated ESSOS direct-coil/free-boundary beta-scan examples so the default pressure model is the standard density/temperature-derived pressure profile. The legacy `PRES_SCALE*(1-s)` pressure profile remains available as `--pressure-profile linear-scale`.
+5. Added profile and Redl differentiability tests, including optional SIMSOPT profile parity when SIMSOPT is installed.
+6. Updated README and docs to document the pressure-profile source of truth and bootstrap-current residual wiring.
+
+Results obtained:
+
+1. `python -m py_compile vmec_jax/profiles.py examples/free_boundary_essos_coils_beta_scan.py examples/free_boundary_essos_coils_forward.py examples/optimization/free_boundary_QS_coil_optimization.py examples/optimization/qa_optimization_finite_beta.py examples/optimization/qh_optimization_finite_beta.py examples/optimization/qi_optimization_finite_beta.py` passed.
+2. `python -m pytest -q tests/test_simsopt_style_profiles.py tests/test_redl_bootstrap_simsopt_parity.py -rx` passed: 6 passed, 1 skipped.
+3. `python examples/free_boundary_essos_coils_beta_scan.py --help` shows the new `--pressure-profile {standard,linear-scale}` option.
+
+Best next steps:
+
+1. Run focused docs and lint checks after this slice.
+2. Run a tiny direct-coil standard-pressure smoke when ESSOS assets are available.
+3. Add a higher-level finite-beta bootstrap-current optimization validation that turns on `BOOTSTRAP_WEIGHT` for a bounded QA/QH/QI case.
+
+Need from user:
+
+Nothing now.
+
 Historical open-lane completion estimates from the 2026-05-24 release-status
 batch, superseded by the authoritative Progress Tracker below:
 

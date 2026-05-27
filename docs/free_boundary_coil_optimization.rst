@@ -257,7 +257,7 @@ to run the direct-coil provider without generating a magnetic grid.
      --input examples/data/input.LandremanPaul2021_QA_lowres \
      --phiedge=-0.025 \
      --betas 0 1 2 \
-     --pressure-scale-for-one-percent-beta 1000 \
+     --pressure-profile standard \
      --pressure-continuation \
      --pressure-continuation-max-fsq 1e-6 \
      --ns-array 16,31 \
@@ -287,7 +287,7 @@ pressure point.
      --input examples/data/input.LandremanPaul2021_QA_lowres \
      --phiedge=-0.025 \
      --betas 0 1 2 \
-     --pressure-scale-for-one-percent-beta 1000 \
+     --pressure-profile standard \
      --pressure-continuation \
      --resume-existing \
      --pressure-continuation-max-fsq 1e-6 \
@@ -581,7 +581,8 @@ For a bounded validation run, use the synthetic circular coil provider:
      --max-evals 1 \
      --max-iter 1 \
      --vmec-max-iter 1 \
-     --pressure-scale 100 \
+     --pressure-profile standard \
+     --beta 1.0 \
      --activate-fsq 1e99 \
      --outdir results/free_boundary_QS_coil_optimization_circle_smoke
 
@@ -638,9 +639,11 @@ per-scenario entries, while ``summary.json`` records the robust aggregation
 options under ``robust_objective``.
 
 For a finite-pressure robust validation run, add the same finite-pressure flags
-used by the deterministic validation run, for example ``--pressure-scale 100`` and
-``--activate-fsq 1e99``. Keep ``--max-evals`` and ``--robust-samples`` small
-because the solve count multiplies quickly.
+used by the deterministic validation run, for example
+``--pressure-profile standard --beta 1.0`` and ``--activate-fsq 1e99``.  Use
+``--pressure-profile linear-scale --pressure-scale ...`` only for legacy
+plumbing probes. Keep ``--max-evals`` and ``--robust-samples`` small because
+the solve count multiplies quickly.
 
 ``vmec_jax.robust_coils`` provides pure-JAX perturbation helpers for robust coil
 objectives:

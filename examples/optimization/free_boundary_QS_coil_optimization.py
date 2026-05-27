@@ -58,6 +58,7 @@ from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_ru
 from vmec_jax.external_fields import CoilFieldParams, from_essos_coils
 from vmec_jax.external_fields.coils_jax import coil_current_norm, coil_lengths
 from vmec_jax.namelist import read_indata, write_indata
+from vmec_jax.profiles import pressure_profile_to_vmec_am, standard_finite_beta_profiles
 from vmec_jax.robust_coils import (
     CoilPerturbationSample,
     aggregate_risk,
@@ -174,6 +175,8 @@ def make_free_boundary_indata(
     mpol: int,
     ntor: int,
     nzeta: int,
+    beta_percent: float,
+    pressure_profile: str,
     pressure_scale: float,
     phiedge: float,
 ) -> Path:
@@ -194,10 +197,21 @@ def make_free_boundary_indata(
             "NZETA": int(nzeta),
             "NTHETA": 0,
             "NVACSKIP": max(1, int(nzeta)),
-            "PRES_SCALE": float(pressure_scale),
-            "AM": [1.0, -1.0],
         }
     )
+    pressure_profile = str(pressure_profile).strip().lower()
+    if pressure_profile == "standard":
+        profiles = standard_finite_beta_profiles(float(beta_percent))
+        am, pres_scale = pressure_profile_to_vmec_am(profiles.pressure_pa, pres_scale=1.0)
+        indata.scalars["PMASS_TYPE"] = "power_series"
+        indata.scalars["PRES_SCALE"] = pres_scale
+        indata.scalars["AM"] = am
+    elif pressure_profile in {"linear", "linear-scale", "legacy"}:
+        indata.scalars["PMASS_TYPE"] = "power_series"
+        indata.scalars["PRES_SCALE"] = float(pressure_scale)
+        indata.scalars["AM"] = [1.0, -1.0]
+    else:
+        raise ValueError("pressure_profile must be 'standard' or 'linear-scale'")
     write_indata(output_path, indata)
     return output_path
 
@@ -527,6 +541,8 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         mpol=int(args.mpol),
         ntor=int(args.ntor),
         nzeta=int(args.nzeta),
+        beta_percent=float(args.beta),
+        pressure_profile=str(args.pressure_profile),
         pressure_scale=float(args.pressure_scale),
         phiedge=float(args.phiedge),
     )
@@ -550,6 +566,8 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "mpol": int(args.mpol),
         "ntor": int(args.ntor),
         "nzeta": int(args.nzeta),
+        "beta_percent": float(args.beta),
+        "pressure_profile": str(args.pressure_profile),
         "pressure_scale": float(args.pressure_scale),
         "phiedge": float(args.phiedge),
         "activate_fsq": float(args.activate_fsq),
@@ -877,7 +895,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mpol", type=int, default=None)
     parser.add_argument("--ntor", type=int, default=None)
     parser.add_argument("--nzeta", type=int, default=None)
-    parser.add_argument("--pressure-scale", type=float, default=0.0)
+    parser.add_argument("--beta", type=float, default=0.0, help="Nominal beta percent for --pressure-profile standard.")
+    parser.add_argument(
+        "--pressure-profile",
+        choices=("standard", "linear-scale"),
+        default="standard",
+        help=(
+            "Pressure-profile model. 'standard' uses e*(ne*Te+ni*Ti) with "
+            "Landreman-style beta scaling. 'linear-scale' uses the legacy "
+            "PRES_SCALE*(1-s) profile."
+        ),
+    )
+    parser.add_argument("--pressure-scale", type=float, default=0.0, help="Legacy PRES_SCALE for --pressure-profile linear-scale.")
     parser.add_argument(
         "--phiedge",
         type=float,
