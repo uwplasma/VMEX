@@ -111,6 +111,28 @@ convergence flag, mismatch history path, final generated current input, final
 ``CURTOR``, and current-update norm.  The option is disabled by default because
 it adds one or more VMEC solves before each pressure point.
 
+Use the optional active direct-coil gate when changing this path:
+
+.. code-block:: bash
+
+   export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
+   RUN_FREEB_BOOTSTRAP_BETA_SCAN=1 \
+   PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
+     pytest -q \
+     tests/test_free_boundary_essos_coils_forward_example.py::test_beta_scan_bootstrap_current_direct_coil_active_smoke
+
+This gate is intentionally not a default CI test: it imports ESSOS assets and
+launches real free-boundary solves.  It checks that the finite-beta direct-coil
+scan uses active NESTOR coupling and persists bootstrap-current stage
+diagnostics.  It is not a convergence-promotion claim.  Promotion runs should
+also compare with and without the current preconditioner at the same resolution
+and verify that both the Redl mismatch and the final VMEC residual behave
+acceptably.  Very low-resolution or underconverged Picard updates can reduce
+the Redl mismatch while still making the next VMEC equilibrium residual worse,
+so damping and current-step budgets must be treated as numerical continuation
+controls rather than universal defaults.
+
 Literature Anchors
 ------------------
 
