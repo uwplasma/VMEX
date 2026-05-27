@@ -578,19 +578,21 @@ def _plot_history(ax, case: QICase) -> None:
     if _history_is_effectively_flat(segments) and case.preconditioner_summary is not None:
         _plot_reference_transition(ax, case)
         return
+    offset_iter = 0
     for idx, segment in enumerate(segments):
-        wall_min = np.asarray(segment["wall_time_s"], dtype=float) / 60.0
         objective = np.asarray(segment["objective"], dtype=float)
         best_so_far = _stage_normalized_best_so_far(objective)
+        iterations = np.arange(offset_iter, offset_iter + best_so_far.size, dtype=float)
+        offset_iter = int(iterations[-1])
         color = colors[idx % len(colors)]
         label = str(segment["label"])
-        ax.semilogy(wall_min, best_so_far, color=color, linewidth=1.35, marker="o", markersize=2.4, label=label)
-        ax.scatter(wall_min[-1], best_so_far[-1], s=16, color=color, zorder=3)
+        ax.semilogy(iterations, best_so_far, color=color, linewidth=1.35, marker="o", markersize=2.4, label=label)
+        ax.scatter(iterations[-1], best_so_far[-1], s=16, color=color, zorder=3)
         if idx > 0:
-            ax.axvline(wall_min[0], color="0.75", linewidth=0.7, linestyle="--", zorder=0)
+            ax.axvline(iterations[0], color="0.75", linewidth=0.7, linestyle="--", zorder=0)
     _plot_preconditioner_sweep(ax, case)
     ax.set_title("Best-so-far staged objective history", fontsize=8, pad=4)
-    ax.set_xlabel("Wall time (min)")
+    ax.set_xlabel("Optimization iteration")
     ax.set_ylabel("Best objective / stage start")
     ax.grid(True, alpha=0.22, linestyle=":")
     ax.legend(fontsize=4.8, frameon=False, loc="upper right", handlelength=1.1, labelspacing=0.25)
@@ -602,8 +604,7 @@ def _plot_reference_transition(ax, case: QICase) -> None:
     row = _selected_preconditioner_row(case)
     diagnostics = _load_json(case.output_dir / "diagnostics.json")
     segments = _history_segments(case)
-    wall_min = max(float(np.asarray(segment["wall_time_s"], dtype=float)[-1]) for segment in segments) / 60.0
-    x = np.asarray([0.0, max(wall_min, 1.0e-6)], dtype=float)
+    x = np.asarray([0.0, 1.0], dtype=float)
     smooth = np.asarray(
         [
             max(float(row["smooth_qi"]), 1.0e-16) if row and "smooth_qi" in row else np.nan,
@@ -636,7 +637,7 @@ def _plot_reference_transition(ax, case: QICase) -> None:
     ax.set_xticks(x)
     ax.set_xticklabels(("reference\nproposal", "final\naudit"), fontsize=5.6)
     ax.set_title("Reference-family proposal + audit gates", fontsize=8, pad=4)
-    ax.set_xlabel("Stage")
+    ax.set_xlabel("Optimization step")
     ax.set_ylabel("QI residual")
     ax2.set_ylabel("Mirror ratio", fontsize=7)
     ax.grid(True, alpha=0.22, linestyle=":")
@@ -767,7 +768,7 @@ def _render(records: list[dict[str, str | float]]) -> None:
     )
 
     row_count = len(CASES)
-    fig = plt.figure(figsize=(21.5, 4.45 * row_count + 0.8))
+    fig = plt.figure(figsize=(18.0, 3.7 * row_count + 0.6))
     gs = fig.add_gridspec(
         row_count,
         5,
@@ -808,7 +809,7 @@ def _render(records: list[dict[str, str | float]]) -> None:
             ha="left",
             va="bottom",
         )
-    fig.savefig(OUT_PNG, dpi=220, bbox_inches="tight")
+    fig.savefig(OUT_PNG, dpi=130, bbox_inches="tight")
     plt.close(fig)
 
 

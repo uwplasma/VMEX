@@ -150,11 +150,12 @@ legacy case names ``nfp1_qi``, ``nfp2_qi``, ``qi_stel_seed_3127``, and
 common-minimal staged-QI evidence.  Any QA/QP showcase rows without
 ``reference_preseed`` provenance also predate the current common-seed policy.
 
-The saved objective panel below is a compact status artifact for the current
-common-minimal QA/QH/QP mode-5 rows.  The table includes QA NFP=2/3, QH
-NFP=3/4, and QP NFP=2/3/4.  ``qp_nfp4`` is intentionally retained as a weak
-stress row because it terminates away from the aspect-5 target and has a large
-QP residual.  Current non-stale ``minimal_nfp1_qi``/``minimal_nfp2_qi``/
+The saved objective and state panels below are compact status artifacts for the
+current common-minimal QA/QH/QP mode-5 rows.  The companion CSV/table in
+:doc:`optimization_sweep_results` includes QA NFP=2/3, QH NFP=3/4, and QP
+NFP=2/3/4.  ``qp_nfp4`` is intentionally retained as a weak stress row because
+it terminates away from the aspect-5 target and has a large QP residual.
+Current non-stale ``minimal_nfp1_qi``/``minimal_nfp2_qi``/
 ``minimal_nfp3_qi``/``minimal_nfp4_qi`` outputs are still missing from the
 common-minimal summary; do not infer QI common-seed success from the separate
 case-gated QI coverage panel.
@@ -170,10 +171,9 @@ final LCFS, full best-so-far objective history, and initial/final Boozer
 ``|B|`` line contours.  Optimization-time target-helicity or reference-family
 preseeds are tracked separately in the CSV via ``stage_seed_kind`` and
 ``stage_seed_input`` so a later stage input cannot be mistaken for the raw
-initial seed.  The checked-in state panel is retained as a diagnostic status
-artifact and can lag the objective/CSV refresh; regenerate it from the same
-output root before using geometry panels as promotion evidence.  The current
-minimal-seed QI rows remain missing.
+initial seed.  Regenerate the state panel from the same result root before
+using geometry panels as promotion evidence.  The current minimal-seed QI rows
+remain missing.
 
 .. image:: _static/figures/minimal_seed_showcase_state_panel.png
    :width: 100%
