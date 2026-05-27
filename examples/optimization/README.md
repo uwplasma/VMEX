@@ -89,7 +89,8 @@ cleanup.
 The lower-level QI staged policy also
 has a mode-1 target-helicity preconditioner with the deterministic hint set
 `RBC(1,0)`, `ZBS(1,0)`, `RBC(-1,1)`, `ZBS(-1,1)`, `RBC(1,1)`, and `ZBS(1,1)`
-in VMEC input-index convention.
+in VMEC input-index convention.  The minimal-seed showcase uses a `1e-3`
+target-helicity hint by default; the raw seed files remain exactly minimal.
 The QA and QP common-minimal rows also use an explicit optimization-time
 reference-family preseed: QA blends active low-order RBC/ZBS terms 25% toward
 `input.nfp2_QA_omnigenity`, and QP blends 10% toward `input.nfp2_QI`.  This is
@@ -214,6 +215,11 @@ Optimizer and output controls are also top-level variables, including
 For common-minimal seed studies, also inspect `SIMPLE_SEED_PERTURBATION` and
 `STAGE_MODES`; these are ordinary script-level controls, not hidden solver
 settings.
+QI runs also expose `OPT_QI_RESOLUTION` at the top of `QI_optimization.py`.
+Production examples use the script defaults; sweep/debug subprocesses may pass
+`--qi-mboz`, `--qi-nboz`, `--qi-nphi`, `--qi-nalpha`, and `--qi-n-bounce` to
+lower Boozer/QI resolution for checkpoint or profiling probes without editing
+the script.
 
 For reproducible comparison artifacts, use the sweep driver rather than a
 single edited script.  The current production sweep runs QI directly from its

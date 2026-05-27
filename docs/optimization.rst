@@ -96,6 +96,8 @@ avoiding exactly-zero Jacobian columns in direct max-mode stress tests.  The
 lower-level staged QI policy also has a mode-1 target-helicity preconditioner
 with the deterministic hint set ``RBC(1,0)``, ``ZBS(1,0)``, ``RBC(-1,1)``,
 ``ZBS(-1,1)``, ``RBC(1,1)``, and ``ZBS(1,1)`` in VMEC input-index convention.
+The common-minimal showcase uses a ``1e-3`` target-helicity hint by default;
+the raw input decks remain unchanged.
 The QA and QP common-minimal rows additionally use an explicit
 optimization-time reference-family preseed without modifying the raw input
 decks: QA blends the active low-order RBC/ZBS space 25% toward
@@ -917,6 +919,13 @@ each completed stage.  If a later high-mode/QI stage times out, the final
 the last accepted objective, aspect, iota, QI, mirror, elongation, timing, and
 stage label.  These partial rows are useful diagnostics, but they are not
 promoted as README best rows unless their independent physics gates pass.
+Standalone QI subprocess runs also write the same root checkpoint plus
+per-stage ``qi_stage_checkpoint.json`` files immediately after each completed
+continuation stage, before final Boozer audits or later high-mode stages can
+time out.  For checkpoint/profiling probes, the QI example accepts
+``--qi-mboz``, ``--qi-nboz``, ``--qi-nphi``, ``--qi-nalpha``, and
+``--qi-n-bounce`` overrides; production scripts should usually leave the
+top-level ``OPT_QI_RESOLUTION`` defaults in place.
 
 To recreate one row, restrict ``--policy`` and ``--problems``.  For example,
 this reruns the checked-in archived README QA row:
