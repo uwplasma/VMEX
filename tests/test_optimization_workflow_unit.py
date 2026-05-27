@@ -1230,6 +1230,32 @@ def test_vmec_mirror_ratio_uses_vmec_field_without_boozer(monkeypatch) -> None:
         objective.to_objective_term(target=1.0, residual_weight=1.0)
 
 
+def test_vmec_mirror_ratio_accepts_boozer_style_sampling_aliases() -> None:
+    import vmec_jax.optimization_workflow as workflow
+
+    objective = workflow.VMECMirrorRatio(
+        threshold=0.3,
+        surfaces=(0.5, 1.0),
+        ntheta=96,
+        nphi=64,
+    )
+
+    assert objective.requires_qi_field is False
+    assert objective.requested_ntheta == 96
+    assert objective.requested_nzeta == 64
+
+    objective = workflow.VMECMirrorRatio(
+        threshold=0.3,
+        surfaces=(0.5, 1.0),
+        nzeta=32,
+    )
+    assert objective.requested_ntheta is None
+    assert objective.requested_nzeta == 32
+
+    with pytest.raises(ValueError, match="either nphi or nzeta"):
+        workflow.VMECMirrorRatio(threshold=0.3, nphi=16, nzeta=32)
+
+
 def test_mirror_ratio_objective_terms_cover_surface_selection_and_prepared_paths(monkeypatch) -> None:
     import vmec_jax.optimization_workflow as workflow
 
