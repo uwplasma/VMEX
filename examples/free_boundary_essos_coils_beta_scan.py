@@ -450,6 +450,18 @@ def _bootstrap_history_payload(result) -> list[dict[str, Any]]:
     return [asdict(item) for item in result.history]
 
 
+def _bootstrap_returned_current_payload(result) -> dict[str, Any]:
+    """Return the current profile that is actually handed to the beta scan."""
+
+    scalars = result.indata.scalars
+    return {
+        "pcurr_type": str(scalars.get("PCURR_TYPE", "")),
+        "curtor": None if scalars.get("CURTOR") is None else float(scalars.get("CURTOR")),
+        "ac_aux_s": [float(x) for x in np.asarray(scalars.get("AC_AUX_S", []), dtype=np.float64)],
+        "ac_aux_f": [float(x) for x in np.asarray(scalars.get("AC_AUX_F", []), dtype=np.float64)],
+    }
+
+
 def apply_bootstrap_current_fixed_point_preconditioner(
     indata,
     *,
@@ -582,6 +594,14 @@ def apply_bootstrap_current_fixed_point_preconditioner(
         )
         + "\n"
     )
+    last_history = None if not result.history else result.history[-1]
+    returned_current = _bootstrap_returned_current_payload(result)
+    if result.returned_best_evaluated:
+        returned_mismatch_norm = result.best_evaluated_mismatch_norm
+    elif result.converged and last_history is not None:
+        returned_mismatch_norm = float(last_history.mismatch_norm)
+    else:
+        returned_mismatch_norm = None
     summary.update(
         {
             "converged": bool(result.converged),
@@ -593,15 +613,24 @@ def apply_bootstrap_current_fixed_point_preconditioner(
             "final_input": str(final_input),
             "history_json": str(history_json),
             "initial_mismatch_norm": None if not result.history else float(result.history[0].mismatch_norm),
-            "final_mismatch_norm": None if not result.history else float(result.history[-1].mismatch_norm),
-            "final_current_update_norm": None if not result.history else float(result.history[-1].current_update_norm),
+            "last_evaluated_mismatch_norm": None if last_history is None else float(last_history.mismatch_norm),
+            "last_proposed_current_update_norm": (
+                None if last_history is None else float(last_history.current_update_norm)
+            ),
+            "last_proposed_curtor": None if last_history is None else float(last_history.curtor),
+            "returned_current": returned_current,
+            "returned_mismatch_norm": None if returned_mismatch_norm is None else float(returned_mismatch_norm),
+            # Backward-compatible aliases.  Prefer the explicit last_* and
+            # returned_* fields above in new analysis code.
+            "final_mismatch_norm": None if last_history is None else float(last_history.mismatch_norm),
+            "final_current_update_norm": None if last_history is None else float(last_history.current_update_norm),
             "final_effective_damping": (
                 None
-                if not result.history or result.history[-1].effective_damping is None
-                else float(result.history[-1].effective_damping)
+                if last_history is None or last_history.effective_damping is None
+                else float(last_history.effective_damping)
             ),
             "any_current_update_limited": any(bool(item.current_update_limited) for item in result.history),
-            "final_curtor": None if not result.history else float(result.history[-1].curtor),
+            "final_curtor": None if last_history is None else float(last_history.curtor),
         }
     )
     return result.indata, summary

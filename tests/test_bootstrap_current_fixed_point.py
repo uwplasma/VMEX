@@ -356,6 +356,58 @@ def test_bootstrap_current_fixed_point_limits_current_update_norm():
     assert result.history[0].max_current_update_norm == pytest.approx(0.2)
 
 
+def test_bootstrap_current_fixed_point_limits_cubic_spline_i_current_profile():
+    s = jnp.asarray([0.0, 0.5, 1.0], dtype=jnp.float64)
+    target_derivative = jnp.asarray([1.0, 2.0, 3.0], dtype=jnp.float64)
+    bdotb = jnp.ones_like(s)
+    dpsi_ds = 0.05
+    indata = InData(
+        scalars={
+            "PHIEDGE": 2.0 * np.pi * dpsi_ds,
+            "PCURR_TYPE": "cubic_spline_i",
+            "CURTOR": 0.0,
+            "NCURR": 1,
+            "AC": [1.0],
+            "AC_AUX_S": [0.0, 0.5, 1.0],
+            "AC_AUX_F": [0.0, 0.0, 0.0],
+        },
+        indexed={},
+    )
+
+    result = vj.bootstrap_current_fixed_point(
+        indata,
+        options=vj.BootstrapCurrentOptions(
+            helicity_n=1,
+            n_current=3,
+            pcurr_type="cubic_spline_i",
+            damping=1.0,
+            max_current_update_norm=0.2,
+            max_fixed_point_iter=1,
+        ),
+        solve_fn=lambda _current_indata: SimpleNamespace(signgs=1),
+        diagnostics_fn=lambda _run, _current_indata: {
+            "s": s,
+            "jdotB_redl": target_derivative / (2.0 * np.pi * dpsi_ds),
+            "bdotb": bdotb,
+            "dpds": jnp.zeros_like(s),
+            "dpsi_ds": dpsi_ds,
+            "signgs": 1,
+            "mismatch_norm": 1.0,
+        },
+    )
+
+    limited_derivative = 0.2 * target_derivative
+    expected_current = bc.integrate_current_derivative(s, limited_derivative)
+    np.testing.assert_allclose(result.indata.scalars["AC_AUX_F"], np.asarray(expected_current), rtol=1.0e-12)
+    assert result.indata.scalars["PCURR_TYPE"] == "cubic_spline_i"
+    assert result.indata.scalars["CURTOR"] == pytest.approx(float(expected_current[-1]))
+    assert result.history[0].current_update_limited is True
+    assert result.history[0].effective_damping == pytest.approx(0.2)
+    assert result.history[0].current_update_norm == pytest.approx(0.2)
+    assert result.history[0].unlimited_current_update_norm == pytest.approx(1.0)
+    assert result.history[0].max_current_update_norm == pytest.approx(0.2)
+
+
 def test_bootstrap_current_fixed_point_can_return_best_evaluated_profile_on_budget():
     s = jnp.asarray([0.0, 0.5, 1.0], dtype=jnp.float64)
     dpsi_ds = 0.05
