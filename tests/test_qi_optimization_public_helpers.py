@@ -122,8 +122,31 @@ def test_qi_helper_scalar_parsers_and_scores(tmp_path: Path) -> None:
     )
     assert score > 0.0
     assert qio.boundary_reference_preconditioner_score({"qi_rank_score": 1.0, "qi_constraint_score": 2.0}) > 100.0
-    assert qio.boundary_reference_record_is_qi_safe({"mirror": 0.2, "mean_iota": -0.5}, max_mirror_ratio=0.3, abs_iota_min=0.4)
-    assert not qio.boundary_reference_record_is_qi_safe({"mirror": 0.4, "mean_iota": -0.5}, max_mirror_ratio=0.3, abs_iota_min=0.4)
+    aspect_failed_score = qio.boundary_reference_preconditioner_score(
+        {"qi_rank_score": 1.0, "qi_constraint_score": 0.0, "aspect_relative_error": 0.4}
+    )
+    aspect_ok_score = qio.boundary_reference_preconditioner_score(
+        {"qi_rank_score": 1.0, "qi_constraint_score": 0.0, "aspect_relative_error": 0.02}
+    )
+    assert aspect_failed_score > aspect_ok_score
+    assert qio.boundary_reference_record_is_qi_safe(
+        {"mirror": 0.2, "mean_iota": -0.5, "aspect": 5.4},
+        max_mirror_ratio=0.3,
+        abs_iota_min=0.4,
+        target_aspect=5.0,
+    )
+    assert not qio.boundary_reference_record_is_qi_safe(
+        {"mirror": 0.4, "mean_iota": -0.5, "aspect": 5.4},
+        max_mirror_ratio=0.3,
+        abs_iota_min=0.4,
+        target_aspect=5.0,
+    )
+    assert not qio.boundary_reference_record_is_qi_safe(
+        {"mirror": 0.2, "mean_iota": -0.5, "aspect": 7.0},
+        max_mirror_ratio=0.3,
+        abs_iota_min=0.4,
+        target_aspect=5.0,
+    )
 
 
 def test_explicit_qi_context_overrides_legacy_globals(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
