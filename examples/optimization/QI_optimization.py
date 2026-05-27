@@ -31,7 +31,7 @@ INPUT_FILE = DATA_DIR / "input.nfp2_QI"
 # INPUT_FILE = DATA_DIR / "input.QI_stel_seed_3127"
 # INPUT_FILE = DATA_DIR / "input.minimal_seed_nfp4"
 OUTPUT_DIR = Path("results/qi_opt/ess/nfp2_qi")
-MAX_MODE = 3
+MAX_MODE = 5
 MIN_VMEC_MODE = max(6, MAX_MODE + 3)
 
 # Seed preparation. Leave all disabled to optimize directly from INPUT_FILE.
@@ -59,7 +59,7 @@ USE_ESS = True  # Set False for an unscaled trust-region solve.
 ALPHA = 1.2  # ESS high-mode scaling strength.
 USE_MODE_CONTINUATION = True
 CONTINUATION_NFEV = 0
-MAX_NFEV = 12
+MAX_NFEV = 60
 STAGE_REPEATS = 1
 STAGE_MODES = vj.repeated_stage_modes(
     max_mode=MAX_MODE,

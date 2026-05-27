@@ -45,11 +45,11 @@ ROW_SPECS = (
     ("qi", "direct"),
 )
 MODES_BY_POLICY = {
-    "continuation": (1, 2, 3, 4),
-    "direct": (1, 2, 3, 4),
+    "continuation": (1, 2, 3, 4, 5),
+    "direct": (1, 2, 3, 4, 5),
 }
 QI_INPUT_NFP = 2
-TARGET_ASPECT = 6.0
+TARGET_ASPECT = 5.0
 QI_TARGET_ASPECT = TARGET_ASPECT
 PROBLEM_TARGET_ASPECT = {
     "qa": TARGET_ASPECT,
