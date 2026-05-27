@@ -677,12 +677,6 @@ follows:
      - ``ok``
      - success
      - Current aspect-5, ``max_mode=5`` common-minimal completion gate pass.
-   * - ``qp_nfp4``
-     - QP
-     - 4
-     - ``ok``
-     - success
-     - Stress row only: it terminates away from aspect 5 with a large QP residual.
 
 Current non-stale common-minimal QI outputs for ``minimal_nfp1_qi``,
 ``minimal_nfp2_qi``, ``minimal_nfp3_qi``, and ``minimal_nfp4_qi`` are not
@@ -698,7 +692,7 @@ Regenerate the current aspect-5 common-minimal showcase with:
 .. code-block:: bash
 
    PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
-     --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
+     --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
      --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
      --policy continuation --max-mode 5 --ess on \
      --max-nfev 70 --continuation-nfev 20 \

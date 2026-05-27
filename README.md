@@ -150,7 +150,7 @@ Editable optimization examples live in `examples/optimization/`. Start with
 `docs/piecewise_omnigenous_plan.rst` for the pwO planning and acceptance gates.
 
 The current README snapshot uses compact figures, not a numeric table. The
-first panel shows QA NFP2/3, QH NFP3/4, and QP NFP2/3/4 common-minimal-seed
+first panel shows QA NFP2/3, QH NFP3/4, and QP NFP2/3 common-minimal-seed
 GPU runs with aspect target 5, continuation, ESS, and `max_mode=5`. The second
 panel documents the same minimal-seed policy for QI NFP1/2/3/4: source inputs
 are circular/minimal torus-like decks, and any reference-family step is an
@@ -165,7 +165,7 @@ Reproduce the common-minimal QA/QH/QP rows with:
 
 ```bash
 PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
-  --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4 --backend-label gpu \
+  --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3 --backend-label gpu \
   --solver-device gpu --worker-jax-platforms cuda --policy continuation --max-mode 5 --ess on \
   --max-nfev 70 --continuation-nfev 20 --inner-max-iter 550 --inner-ftol 1e-10 \
   --trial-max-iter 550 --trial-ftol 1e-10 \
