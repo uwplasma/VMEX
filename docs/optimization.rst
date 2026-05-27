@@ -925,16 +925,18 @@ are bounded without silently switching to diagnostic budgets.  Add
 Timed-out sweep workers are started in a private process group when supported;
 the parent terminates that group, including solver or GPU descendant processes,
 before writing the timeout result.
-The continuation runner also writes a bounded ``stage_checkpoint.json`` after
-each completed stage.  If a later high-mode/QI stage times out, the final
-``case_result.json`` is annotated from that checkpoint so the CSV still preserves
-the last accepted objective, aspect, iota, QI, mirror, elongation, timing, and
-stage label.  These partial rows are useful diagnostics, but they are not
-promoted as README best rows unless their independent physics gates pass.
-Standalone QI subprocess runs also write the same root checkpoint plus
-per-stage ``qi_stage_checkpoint.json`` files immediately after each completed
-continuation stage, before final Boozer audits or later high-mode stages can
-time out.  For checkpoint/profiling probes, the QI example accepts
+The continuation runner also writes bounded ``stage_checkpoint.json`` records:
+a pending checkpoint before a long QI stage, a pre-diagnostic checkpoint after
+the solve returns, and a promotion checkpoint after exact QI diagnostics.  The
+standalone QI runner materializes root-level ``input.initial`` and
+``input.final`` files for each completed stage before advancing, so the next
+stage always starts from the exact accepted point rather than an unreplayed
+trial or a nested continuation artifact.  If a later high-mode/QI stage times
+out, the final ``case_result.json`` is annotated from the latest checkpoint so
+the CSV still preserves the last accepted objective, aspect, iota, QI, mirror,
+elongation, timing, and stage label.  These partial rows are useful diagnostics,
+but they are not promoted as README best rows unless their independent physics
+gates pass.  For checkpoint/profiling probes, the QI example accepts
 ``--qi-mboz``, ``--qi-nboz``, ``--qi-nphi``, ``--qi-nalpha``, and
 ``--qi-n-bounce`` overrides; production scripts should usually leave the
 top-level ``OPT_QI_RESOLUTION`` defaults in place.

@@ -300,8 +300,18 @@ PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/audit_qi_seed_suitab
   --prefine-manifest results/qi_seed_audit/prefine_manifest.json \
   --prefine-output-dir results/qi_seed_audit/prefine_probes
 PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/QI_seed_robustness.py
-# Edit INPUT_FILE and OUTPUT_DIR at the top of QI_optimization.py, then run:
-PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/QI_optimization.py
+# Reproduce the NFP=1/2/3/4 QI rows from minimal seeds:
+for nfp in 1 2 3 4; do
+  PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/QI_optimization.py \
+    --input-file examples/data/input.minimal_seed_nfp${nfp} \
+    --output-dir results/qi_opt/ess/minimal_nfp${nfp}_qi \
+    --target-aspect 5 --target-abs-iota-min 0.41 \
+    --max-mode 5 --max-nfev 70 --continuation-nfev 20 \
+    --inner-max-iter 450 --inner-ftol 1e-9 \
+    --trial-max-iter 450 --trial-ftol 1e-9 \
+    --ess-alpha 1.2 --use-ess --use-mode-continuation \
+    --stage-mode-policy lower
+done
 PYTHONPATH=. JAX_PLATFORMS=cpu python tools/diagnostics/qi_boundary_interpolation_scan.py \
   --seed-input examples/data/input.QI_stel_seed_3127 \
   --reference-input examples/data/input.nfp3_QI_fixed_resolution_final \
@@ -322,9 +332,9 @@ PYTHONPATH=. python examples/optimization/render_qi_constrained_sweep.py
 PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
 ```
 
-To reproduce a specific reviewed NFP=1/2/3/4 QI row, edit the top-level
-`INPUT_FILE`, `OUTPUT_DIR`, and optional `REFERENCE_INPUT_FILE` values in
-`QI_optimization.py`, then run the command above.  The archived
+To reproduce one reviewed NFP=1/2/3/4 QI row, run the loop body above with a
+single `nfp` value or edit the top-level `INPUT_FILE`, `OUTPUT_DIR`, and
+optional `REFERENCE_INPUT_FILE` values in `QI_optimization.py`.  The archived
 `readme_qi_optimization_cases.png` panel is rendered from reviewed output
 bundles under `docs/_static/qi_readme_cases`.
 
