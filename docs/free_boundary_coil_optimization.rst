@@ -277,12 +277,20 @@ finite-beta equilibrium solve, add:
    --bootstrap-current-fixed-point \
    --bootstrap-helicity-n 0 \
    --bootstrap-max-fixed-point-iter 2 \
-   --bootstrap-n-current 32
+   --bootstrap-n-current 32 \
+   --bootstrap-damping 0.5 \
+   --bootstrap-max-current-update-norm 0.1 \
+   --bootstrap-return-best-evaluated-current
 
 This leaves the plasma boundary and coils unchanged during the preconditioner;
 only the VMEC current profile is updated from the Redl formula.  The scan
-summary records the per-case bootstrap-current history path and final
-``CURTOR`` so these runs are auditable.
+summary records the per-case bootstrap-current history path, final ``CURTOR``,
+effective damping, and current-step limiter status so these runs are auditable.
+Treat the limiter as a continuation control: a coarse low-resolution Redl
+update can reduce the Redl mismatch while still worsening the next VMEC
+residual if the current step is too large.  The best-evaluated-current option
+avoids handing the final beta solve a last proposed profile that has not yet
+been solved by the fixed-point loop.
 
 Use staged radial continuation for high-resolution promotion attempts. Keep
 ``--pressure-continuation`` enabled so each pressure point starts from the

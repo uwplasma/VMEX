@@ -141,16 +141,43 @@ Results obtained:
 11. `python -m sphinx -W -b html docs /tmp/vmec_jax_freeb_docs_bootstrap_gate`:
     passed after documenting the optional active direct-coil gate and the
     low-resolution promotion caveat.
+12. Added `BootstrapCurrentOptions.max_current_update_norm`, which caps the
+    normalized current-profile Picard update by reducing the effective damping
+    for that stage.  Per-iteration history now records effective damping,
+    whether the cap was active, the uncapped update norm, and the configured
+    cap.
+13. Added `BootstrapCurrentOptions.return_best_evaluated_on_max_iter`, which
+    lets bounded preconditioner runs return the already-solved current profile
+    with the smallest Redl mismatch if the Picard loop stops at its iteration
+    budget.  This avoids handing the final beta solve an unevaluated last
+    proposed current profile.
+14. The limiter and return policy are wired through
+    `examples/free_boundary_essos_coils_beta_scan.py` as
+    `--bootstrap-max-current-update-norm` and
+    `--bootstrap-return-best-evaluated-current`, and the JSON summaries record
+    the limiter/return-policy diagnostics.
+15. Focused validation after the limiter/return-policy slice:
+    `ruff` passed; targeted bootstrap/free-boundary tests were
+    `25 passed, 2 skipped`; the optional active ESSOS/direct-coil gate passed
+    in 12.52 s; Sphinx `-W` passed.
+16. A coarse `NS=8`, `max_iter=20` LP-QA comparison with both controls enabled
+    reduced the bad last-proposed residual by about `6.6x`
+    (`2.08e6 -> 3.14e5`) while preserving the Redl mismatch reduction
+    (`0.735 -> 0.497`).  It still does not beat the no-bootstrap residual
+    (`6.39e3`) at this coarse budget, so this remains a validated control
+    mechanism, not a promoted convergence accelerator.
 
 Best next steps:
 
-1. Add an explicit current-step trust/acceptance policy for bootstrap-current
-   beta-scan preconditioning, rather than relying only on Picard damping.
-2. Re-run the optional active gate and a small with/without-bootstrap comparison
-   after that policy lands.
+1. Commit/push the bootstrap-current trust limiter and best-evaluated return
+   policy.
+2. Recheck PR #18 CI after the push.
 3. Keep the current PR claims limited to implemented/validated functionality:
    direct-coil active coupling, persisted Redl-current diagnostics, and optional
    preconditioning, not guaranteed convergence acceleration.
+4. For a future promotion claim, run a converged-resolution LP-QA scan with
+   pressure continuation and the limiter enabled, then require both acceptable
+   final VMEC residuals and improved Redl mismatch.
 
 Need from user:
 
