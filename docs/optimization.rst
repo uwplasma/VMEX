@@ -123,7 +123,7 @@ the aspect-5, ``max_mode=5`` production matrix is promoted:
      --inner-max-iter 550 --inner-ftol 1e-10 \
      --trial-max-iter 550 --trial-ftol 1e-10 \
      --ess-alpha 1.2 --case-timeout-s 7200 --rerun
-   PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py
+   PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py --publication-matrix
 
 For a clean reproduction, keep ``--rerun`` on the generator.  Replace the three
 CUDA/GPU flags with ``cpu`` for a slower local CPU-only reproduction.  Without it,

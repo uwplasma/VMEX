@@ -118,7 +118,7 @@ PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_s
   --inner-max-iter 550 --inner-ftol 1e-10 \
   --trial-max-iter 550 --trial-ftol 1e-10 \
   --ess-alpha 1.2 --case-timeout-s 7200 --rerun
-PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py
+PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py --publication-matrix
 ```
 
 Use `cpu` for `JAX_PLATFORMS`, `--solver-device`, and `--worker-jax-platforms`

@@ -41,7 +41,7 @@ Examples:
     --ess-alpha 1.2 --case-timeout-s 7200 --rerun
 
   # Render completed cases.
-  python examples/optimization/render_minimal_seed_showcase.py
+  python examples/optimization/render_minimal_seed_showcase.py --publication-matrix
 """
 
 from __future__ import annotations
@@ -875,7 +875,7 @@ def _parse_args() -> argparse.Namespace:
         help="Use 'inherit', 'cpu', or 'cuda'. The user-facing alias 'gpu' maps to 'cuda'.",
     )
     parser.add_argument("--policy", choices=("continuation", "direct"), default="continuation")
-    parser.add_argument("--max-mode", type=int, default=3)
+    parser.add_argument("--max-mode", type=int, default=5)
     parser.add_argument("--ess", choices=("on", "off"), default="on")
     parser.add_argument("--max-nfev", type=int, default=8)
     parser.add_argument("--continuation-nfev", type=int, default=8)
