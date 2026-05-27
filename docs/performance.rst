@@ -3102,6 +3102,13 @@ in ``warm_solver_timing.timing`` or in the matrix ``cpu_gpu_comparison`` block
 before implementing the next setup cache; the split is intentionally
 measurement-only and does not change solver numerics.
 
+The first CUDA probe after adding that split reported a warm ``setup_total_s``
+of ``40.4 ms`` on the tiny direct-coil case.  The dominant setup sub-buckets
+were boundary/profile construction (``18.6 ms``), update constants
+(``12.3 ms``), and unattributed setup (``5.9 ms``).  Cold setup was dominated
+by compilation-adjacent boundary/profile and axis-reset work, so cold-start
+analysis should be kept separate from warm accepted-point optimization timing.
+
 Historical bundled example runtime/memory matrix (March 2026)
 -------------------------------------------------------------
 

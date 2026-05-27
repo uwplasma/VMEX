@@ -101,6 +101,12 @@ Steps taken:
     mode-index constants, and update constants.  A local timing probe confirmed
     the buckets are populated in real direct-coil solve JSON before changing
     solver behavior.
+66. Re-ran the CUDA direct-coil solve benchmark on `office` with the new setup
+    split.  Warm `setup_total_s` was `40.4 ms`; the largest named buckets were
+    boundary/profile construction (`18.6 ms`) and update constants (`12.3 ms`),
+    followed by unattributed setup (`5.9 ms`).  This makes the next real
+    performance patch a reusable per-stage setup/context cache rather than a
+    coil-sampling or NESTOR-solve change.
 
 ### 2026-05-27 Free-boundary beta-scan bootstrap-current preconditioner
 

@@ -402,7 +402,9 @@ for the free-boundary branch is setup/precompute reuse and scalar/control plus
 preconditioner dispatch amortization, not Biot-Savart sampling or the dense
 NESTOR solve.  The branch now has measurement-only setup sub-buckets in solver
 diagnostics and benchmark summaries so the next cache patch can target the
-dominant setup phase rather than the broad `setup_total_s` container.
+dominant setup phase rather than the broad `setup_total_s` container.  The
+first CUDA probe with that split measured warm setup at `40.4 ms`, dominated by
+boundary/profile construction and update constants.
 
 - Continuation correctness: 100%. Source fix is implemented and covered by
   synthetic repeated-stage tests, a real boundary-projection stage test, and
