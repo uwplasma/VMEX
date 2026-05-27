@@ -31,6 +31,7 @@ def test_qi_staged_runner_builds_external_input_cli_and_environment(tmp_path: Pa
         policy="direct",
         policy_case="nfp2_qi",
         reference_input=ROOT / "examples" / "data" / "input.nfp2_QI",
+        reference_accept_as_baseline=True,
         backend_label="gpu",
         solver_device="gpu",
         worker_jax_platforms="gpu",
@@ -85,6 +86,7 @@ def test_qi_staged_runner_builds_external_input_cli_and_environment(tmp_path: Pa
     assert "--qi-n-bounce" in args and "17" in args
     assert "--solver-device" in args and "gpu" in args
     assert "--reference-input" in args
+    assert "--accept-boundary-reference-baseline" in args
     assert str(ROOT / "examples" / "data" / "input.nfp2_QI") in args
     assert "--mirror-ramp-stages-json" in args
     stages_path = Path(args[args.index("--mirror-ramp-stages-json") + 1])
