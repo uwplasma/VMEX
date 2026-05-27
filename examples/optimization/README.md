@@ -99,19 +99,18 @@ current seed-robustness policy.
 
 The bounded common-seed showcase is a stress test, not a best-result table.  It
 maps the configured minimal seeds to QI NFP=1/2/3/4, QA NFP=2/3, QH NFP=3/4,
-and QP NFP=2/3/4 for the full common-minimal target matrix; `qp_nfp1` is also available
+and QP NFP=2/3 for the full common-minimal target matrix; `qp_nfp1` is also available
 as a stress row.  It then renders the failure-revealing objective panel used by the docs.  The
 QI rows dispatch through `QI_optimization.py` via `qi_staged_runner.py`, so the
 common minimal seeds use the same staged/reference-family QI policy as the
 standalone QI example instead of the simpler quasisymmetry sweep path.  The
 checked-in objective panel is intentionally conservative: it currently contains
-synced aspect-5, `max_mode=5` QA/QH/QP rows, keeps QP NFP=4 visible as a weak
-stress row, and does not fabricate missing common-minimal QI rows.  Missing QI
+synced aspect-5, `max_mode=5` QA/QH/QP rows and does not fabricate missing common-minimal QI rows.  Missing QI
 NFP rows indicate open validation work rather than successful hidden results.
 
 ```bash
 PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
-  --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
+  --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
   --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
   --policy continuation --max-mode 5 --ess on \
   --max-nfev 70 --continuation-nfev 20 \

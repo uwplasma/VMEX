@@ -32,7 +32,7 @@ Examples:
   # Full aspect-5 README/docs production lane.  Use the CUDA variant on
   # production GPU hosts; use cpu/cpu/cpu for a slower local reproduction.
   PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \\
-    --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \\
+    --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \\
     --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \\
     --policy continuation --max-mode 5 --ess on \\
     --max-nfev 70 --continuation-nfev 20 \\
@@ -195,14 +195,6 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         reference_preseed_input=DATA_DIR / "input.nfp3_QI_fixed_resolution_final",
         reference_preseed_blend=0.10,
     ),
-    "qp_nfp4": MinimalSeedCase(
-        name="qp_nfp4",
-        problem="qp",
-        nfp=4,
-        input_file=DATA_DIR / "input.minimal_seed_nfp4",
-        reference_preseed_input=DATA_DIR / "input.nfp4_QI_finite_beta",
-        reference_preseed_blend=0.10,
-    ),
 }
 
 DEFAULT_CASE_ORDER = (
@@ -218,7 +210,6 @@ DEFAULT_CASE_ORDER = (
     "qp_nfp1",
     "qp_nfp2",
     "qp_nfp3",
-    "qp_nfp4",
 )
 
 PHYSICS_IOTA_FLOOR = 0.35

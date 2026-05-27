@@ -42,7 +42,6 @@ PUBLICATION_CASE_ORDER = (
     "qh_nfp4",
     "qp_nfp2",
     "qp_nfp3",
-    "qp_nfp4",
     "qi_nfp1",
     "qi_nfp2",
     "qi_nfp3",

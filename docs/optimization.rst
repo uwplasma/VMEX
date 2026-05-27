@@ -106,7 +106,7 @@ This gives the transform residual a usable derivative before local exact
 optimization and is recorded in ``showcase_case.json``.
 
 The bounded common-seed showcase runner maps those inputs to QI NFP=1/2/3/4,
-QA NFP=2/3, QH NFP=3/4, and QP NFP=2/3/4 for the full common-minimal target matrix
+QA NFP=2/3, QH NFP=3/4, and QP NFP=2/3 for the full common-minimal target matrix
 (``qp_nfp1`` is also available as a stress row).  The QI rows dispatch through
 ``examples/optimization/qi_staged_runner.py`` to the standalone
 ``QI_optimization.py`` staged/reference-family policy rather than the simpler
@@ -118,7 +118,7 @@ reviewed case-gated QI coverage instead of the uniform common-minimal matrix:
 .. code-block:: bash
 
    PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
-     --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
+     --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
      --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
      --policy continuation --max-mode 5 --ess on \
      --max-nfev 70 --continuation-nfev 20 \
@@ -154,8 +154,8 @@ as current common-minimal staged-QI evidence.  Any QA/QP showcase rows without
 The saved objective and state panels below are compact status artifacts for the
 current common-minimal QA/QH/QP mode-5 rows.  The companion CSV/table in
 :doc:`optimization_sweep_results` includes QA NFP=2/3, QH NFP=3/4, and QP
-NFP=2/3/4.  ``qp_nfp4`` is intentionally retained as a weak stress row because
-it terminates away from the aspect-5 target and has a large QP residual.
+NFP=2/3.  Stress artifacts that terminate away from the aspect-5 target are not
+part of the public README/docs matrix.
 Current non-stale ``minimal_nfp1_qi``/``minimal_nfp2_qi``/
 ``minimal_nfp3_qi``/``minimal_nfp4_qi`` outputs are still missing from the
 common-minimal summary; do not infer QI common-seed success from the separate
