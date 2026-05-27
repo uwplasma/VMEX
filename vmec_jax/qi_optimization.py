@@ -1125,7 +1125,7 @@ def run_boundary_reference_preconditioner(input_file, output_dir, config, *, ctx
 
     candidate_pool = [record for record in successful if bool(record.get("qi_engineering_gate_passed"))] or successful
     target_aspect = float(config.get("target_aspect", _ctx(ctx, "target_aspect")))
-    aspect_relative_tolerance = float(config.get("aspect_relative_tolerance", 0.35))
+    aspect_relative_tolerance = float(config.get("aspect_relative_tolerance", 0.37))
     if bool(config.get("prefer_aspect_candidates", True)):
         aspect_pool = [
             record
