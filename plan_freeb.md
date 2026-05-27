@@ -242,6 +242,15 @@ Results obtained:
     no-bootstrap/bootstrap pair with `--resume-existing` so the strict
     `NS=51` (and later `NS=101`) comparison can accumulate evidence across
     bounded jobs instead of losing all metrics on timeout.
+29. Tested fusing VMEC m=1 RHS scaling into the fused GPU preconditioner
+    payload on `office`.  Two post-patch matrices
+    (`outputs/bench_freeb_direct_coil_matrix_post_m1_fused/summary.json` and
+    `outputs/bench_freeb_direct_coil_matrix_post_m1_fused_repeat/summary.json`)
+    did not improve the timing-light direct-coil row: GPU warm time stayed
+    around `0.20 s` and the preconditioner bucket stayed `~0.010-0.013 s`.
+    The experiment was reverted before promotion.  The next GPU target remains
+    batching accepted-control scalar materialization and residual metrics, not
+    m=1 RHS scaling.
 29. Added separate bootstrap-current VMEC schedule controls
     (`--bootstrap-ns-array`, `--bootstrap-niter-array`,
     `--bootstrap-ftol-array`) so the Redl current preconditioner can use a
