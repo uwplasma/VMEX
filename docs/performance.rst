@@ -3108,6 +3108,11 @@ were boundary/profile construction (``18.6 ms``), update constants
 (``12.3 ms``), and unattributed setup (``5.9 ms``).  Cold setup was dominated
 by compilation-adjacent boundary/profile and axis-reset work, so cold-start
 analysis should be kept separate from warm accepted-point optimization timing.
+Accelerator host-forward runs now use the existing NumPy row-enforcement setup
+path for the initial state when ``VMEC_JAX_HOST_SETUP_ENFORCE=auto``.  This
+avoids tiny eager device dispatches in setup without changing traced
+differentiable solves; set the variable to ``0`` to disable the policy or ``1``
+to force it in non-traced profiling runs.
 
 Historical bundled example runtime/memory matrix (March 2026)
 -------------------------------------------------------------

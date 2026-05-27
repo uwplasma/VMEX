@@ -3385,7 +3385,7 @@ def _enforce_fixed_boundary_and_axis_np(
     """NumPy version of _enforce_fixed_boundary_and_axis.
 
     Avoids 8 jnp.concatenate calls by using in-place NumPy row assignment.
-    Only safe to call from the non-scan CPU path (host_update_assembly=True).
+    Only safe to call from non-traced host-forward setup/update paths.
     Pass `precomputed_axis_mask` to avoid recomputing _axis_m0_mask every call.
     """
     Rcos = np.array(state.Rcos)
@@ -7250,6 +7250,23 @@ def solve_fixed_boundary_residual_iter(
         and int(static.cfg.mpol) > 1
     )
 
+    setup_host_enforce_env = os.getenv("VMEC_JAX_HOST_SETUP_ENFORCE", "auto").strip().lower()
+    state0_is_traced = _tree_has_tracer(state0)
+    if setup_host_enforce_env in ("", "0", "false", "no", "off"):
+        setup_host_enforce = False
+    elif setup_host_enforce_env in ("1", "true", "yes", "on", "force"):
+        setup_host_enforce = not bool(state0_is_traced)
+    else:
+        # On accelerator host-forward runs the initial row/gauge enforcement is
+        # setup work.  Using the NumPy row-assignment path avoids several tiny
+        # eager device dispatches without touching traced/differentiable solves.
+        setup_host_enforce = (
+            (not bool(host_update_assembly))
+            and (not bool(use_scan))
+            and (not bool(state0_is_traced))
+            and (_scan_backend_name() != "cpu")
+        )
+
     def _m1_internal_to_physical_pair(rss, zcs):
         """Convert VMEC internal m=1 (rss,zcs) pair to physical coefficients."""
         return _geometry_m1_internal_to_physical_pair(
@@ -7261,7 +7278,7 @@ def solve_fixed_boundary_residual_iter(
     _t_setup_update_constants = _setup_timer_start()
     _state0_dtype = (
         np.asarray(state0.Rcos).dtype
-        if bool(host_update_assembly) and (not _tree_has_tracer(state0.Rcos))
+        if (bool(host_update_assembly) or bool(setup_host_enforce)) and (not _tree_has_tracer(state0.Rcos))
         else jnp.asarray(state0.Rcos).dtype
     )
 
@@ -7447,7 +7464,7 @@ def solve_fixed_boundary_residual_iter(
         )
     # Precompute axis mask for _enforce_fixed_boundary_and_axis_np (avoids 7000+
     # _axis_m0_mask JAX dispatches per solve — saves ~0.5s real).
-    if bool(host_update_assembly):
+    if bool(host_update_assembly) or bool(setup_host_enforce):
         if getattr(static, "m_is_m0", None) is not None:
             _precomputed_axis_mask_np = np.asarray(static.m_is_m0, dtype=_state0_dtype)
         else:
@@ -7495,7 +7512,7 @@ def solve_fixed_boundary_residual_iter(
             else jnp.asarray(1.0, dtype=jnp.asarray(state0.Rcos).dtype)
         )
 
-    if bool(host_update_assembly):
+    if bool(host_update_assembly) or bool(setup_host_enforce):
         state = _enforce_fixed_boundary_and_axis_np(
             state0,
             static,

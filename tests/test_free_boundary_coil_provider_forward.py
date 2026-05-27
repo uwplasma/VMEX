@@ -213,3 +213,69 @@ def test_run_free_boundary_direct_coil_geometry_cache_matches_uncached_path(tmp_
         )
     for key in ("final_fsqr", "final_fsqz", "final_fsql"):
         assert cached.result.diagnostics[key] == pytest.approx(uncached.result.diagnostics[key], rel=1.0e-13, abs=1.0e-13)
+
+
+def test_run_free_boundary_host_setup_enforce_matches_default_path(tmp_path, monkeypatch):
+    enable_x64(True)
+    from vmec_jax.driver import run_free_boundary
+
+    indata = deepcopy(read_indata(LPQA_UNIT_INPUT))
+    indata.scalars.update(
+        {
+            "LFREEB": True,
+            "MGRID_FILE": "DIRECT_COILS",
+            "EXTCUR": [1.0],
+            "NS_ARRAY": [12],
+            "NITER_ARRAY": [1],
+            "FTOL_ARRAY": [1.0e-8],
+            "NITER": 1,
+            "FTOL": 1.0e-8,
+            "PHIEDGE": LPQA_UNIT_FREE_BOUNDARY_PHIEDGE,
+            "MPOL": 3,
+            "NTOR": 2,
+            "NZETA": 4,
+            "NTHETA": 0,
+            "NVACSKIP": 4,
+            "PRES_SCALE": 1.0,
+            "AM": [1.0, -1.0],
+        }
+    )
+    input_path = tmp_path / "input.direct_coil_host_setup"
+    write_indata(input_path, indata)
+    params = _circle_coil_params()
+
+    monkeypatch.setenv("VMEC_JAX_HOST_SETUP_ENFORCE", "0")
+    default = run_free_boundary(
+        input_path,
+        max_iter=1,
+        multigrid=False,
+        verbose=False,
+        jit_forces=False,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+    )
+    monkeypatch.setenv("VMEC_JAX_HOST_SETUP_ENFORCE", "1")
+    host_setup = run_free_boundary(
+        input_path,
+        max_iter=1,
+        multigrid=False,
+        verbose=False,
+        jit_forces=False,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+    )
+
+    for name in ("Rcos", "Zsin", "Rsin", "Zcos", "Lcos", "Lsin"):
+        np.testing.assert_allclose(
+            np.asarray(getattr(host_setup.state, name)),
+            np.asarray(getattr(default.state, name)),
+            rtol=1.0e-13,
+            atol=1.0e-13,
+            err_msg=f"host setup enforcement changed {name}",
+        )
+    for key in ("final_fsqr", "final_fsqz", "final_fsql"):
+        assert host_setup.result.diagnostics[key] == pytest.approx(
+            default.result.diagnostics[key],
+            rel=1.0e-13,
+            abs=1.0e-13,
+        )

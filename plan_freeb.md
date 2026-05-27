@@ -107,6 +107,11 @@ Steps taken:
     followed by unattributed setup (`5.9 ms`).  This makes the next real
     performance patch a reusable per-stage setup/context cache rather than a
     coil-sampling or NESTOR-solve change.
+67. Added a guarded host-forward setup enforcement policy for non-traced
+    accelerator solves.  `VMEC_JAX_HOST_SETUP_ENFORCE=auto` uses the existing
+    NumPy row-assignment path for the initial state on accelerator backends
+    only, preserving traced/differentiable solves and giving users an explicit
+    `0`/`1` override for profiling.
 
 ### 2026-05-27 Free-boundary beta-scan bootstrap-current preconditioner
 
