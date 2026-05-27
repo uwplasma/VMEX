@@ -24,11 +24,11 @@ Boozer/QS diagnostics are the intended promotion target for this lane, but the
 current implementation keeps the single-stage optimization example on a cheap
 VMEC-residual/aspect/iota proxy until complete full-loop gradient checks pass.
 
-Reviewer-facing validation plots for this lane are published as external
-reviewer artifacts rather than committed to the repository, so the slim source
-tree does not grow with generated images. Use the reproduction commands below to
-regenerate the architecture, beta-scan, provider-parity, and benchmark figures
-from JSON summaries.
+Reviewer-facing validation plots for this lane are committed only as compressed
+summary panels. Generated WOUTs, magnetic grids, PDFs, and full-resolution raw
+renderings stay out of git. Use the reproduction commands below to regenerate
+the architecture, beta-scan, provider-parity, and benchmark figures from JSON
+summaries.
 
 Phase 1 in this lane includes JAX-native coil-field sampling, an ESSOS coil
 adapter, generated-``mgrid`` compatibility, and forward free-boundary solves
@@ -305,8 +305,18 @@ High-Resolution DIII-D Finite-Beta Benchmark
 --------------------------------------------
 
 The current reviewer-facing high-resolution axisymmetric finite-beta evidence is
-the VMEC2000-compatible DIII-D ``mgrid`` benchmark. The figure is attached to
-the pull request/Gist rather than committed to git:
+the VMEC2000-compatible DIII-D ``mgrid`` benchmark.
+
+.. figure:: _static/figures/freeb_diiid_mgrid_beta_ns101_panel.png
+   :alt: DIII-D mgrid free-boundary finite-beta scan with iota profiles, cross sections, and LCFS magnetic-field contours.
+   :width: 100%
+
+   DIII-D ``mgrid`` free-boundary finite-beta scan at final ``ns=101`` and
+   ``FTOL=1e-12``. The compressed figure is committed for PR review; the
+   numerical summary is available as
+   :download:`CSV <_static/figures/freeb_diiid_mgrid_beta_ns101_panel_summary.csv>`.
+
+Full-resolution external artifacts remain available for review:
 
 - SVG: https://gist.githubusercontent.com/rogeriojorge/a49e7a21330fbc8ab99229d2b05de708/raw/pr18_diiid_freeb_beta_ns101_comparison.svg
 - Summary JSON: https://gist.githubusercontent.com/rogeriojorge/a49e7a21330fbc8ab99229d2b05de708/raw/pr18_diiid_freeb_beta_ns101_summary.json
@@ -442,8 +452,19 @@ labels at final ``FTOL=1e-12``. The corresponding actual WOUT beta values are
 and residual sum ``3.75e-7`` from the same continuation sequence; that row is
 useful stress evidence but is not part of the strict promoted panel.
 
-The strict direct-coil LP-QA reviewer WOUT-panel is published as an external
-reviewer artifact instead of committed to the repository:
+The strict direct-coil LP-QA reviewer WOUT-panel is committed as a compressed
+summary figure:
+
+.. figure:: _static/figures/freeb_lpqa_direct_coil_beta_ns101_panel.png
+   :alt: LP-QA direct-coil free-boundary finite-beta scan with iota profiles, cross sections, and LCFS magnetic-field contours.
+   :width: 100%
+
+   LP-QA direct-coil free-boundary finite-beta scan at final ``ns=101``. The
+   strict promoted rows reach actual WOUT beta through ``1.932%`` with residual
+   sums below ``6.3e-12``. The numerical summary is available as
+   :download:`CSV <_static/figures/freeb_lpqa_direct_coil_beta_ns101_panel_summary.csv>`.
+
+Full-resolution external artifacts remain available for review:
 
 - WOUT-panel SVG: https://gist.githubusercontent.com/rogeriojorge/ad9e20e1728b5d9794217d86d577c24c/raw/lpqa_direct_coil_beta_ns101_panel.svg
 - WOUT-panel CSV: https://gist.githubusercontent.com/rogeriojorge/ad9e20e1728b5d9794217d86d577c24c/raw/lpqa_direct_coil_beta_ns101_panel_summary.csv

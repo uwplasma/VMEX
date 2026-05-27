@@ -14,10 +14,11 @@ Date opened: 2026-05-24
 
 Last updated: 2026-05-27 after merging `origin/main` at `e3f56955` into the PR
 head, rerendering reviewer WOUT panels for DIII-D and LP-QA finite-beta scans,
-publishing those figures as external PR/Gist artifacts, and rerunning the local
-direct-coil benchmark matrix. A later `origin/main` commit (`2a5697b6`) was
-observed during docs hygiene and is intentionally not merged in this doc-only
-pass. Do not merge PR #18 yet.
+publishing full-resolution reviewer artifacts externally, committing only
+compressed README/docs summary panels plus CSV summaries, and rerunning the
+local direct-coil benchmark matrix. A later `origin/main` commit (`2a5697b6`)
+was observed during docs hygiene and is intentionally not merged in this
+doc-only pass. Do not merge PR #18 yet.
 
 Steps taken:
 
@@ -376,14 +377,19 @@ Results obtained:
 161. Ran a local ESSOS generated-mgrid LP-QA pressure-continuation scan with `ns_array=[16,31]`, `PHIEDGE=-0.025`, and nominal beta labels `0,0.5,1,2`. It promoted every stage and reached actual WOUT beta values `0.00%, 0.72%, 1.49%, 3.43%` with WOUT `fsqr+fsqz+fsql` from `1.0e-8` to `7.9e-7`.
 162. Direct-coil LP-QA was initially unresolved at high beta: the direct Biot-Savart field matched the generated-mgrid field at the initial boundary to about `1e-3` relative RMS, and the first NESTOR `bsqvac` matched to about `1e-3` relative RMS, but the exact direct-provider nonlinear free-boundary iteration lost convergence before the safe preconditioner policy and pressure-continuation repair.
 163. Updated README/docs to document pressure continuation, the promoted LP-QA generated-mgrid provenance result, and the remaining direct-coil phase-2 limitations without claiming a full nonlinear exact-adjoint path.
+164. Compressed the reviewer DIII-D and LP-QA `ns=101` WOUT panels to RGB PNGs for README/docs use only:
+    - DIII-D: 1800x967, 424 KiB.
+    - LP-QA: 1800x1451, 700 KiB.
+    Full-resolution SVG/PDF/PNG renders, WOUTs, and magnetic grids remain outside git.
+165. Embedded the compressed panels in the README direct-coil free-boundary section and in `docs/free_boundary_coil_optimization.rst`, with CSV downloads for the numerical summaries.
+166. Validated the compressed-panel docs update with docs-release hygiene tests, `git diff --check`, visual inspection, and a strict Sphinx warning-as-error build.
 
 Best next steps:
 
-1. Wait for the in-progress PR #18 fast-test jobs on head `7e14892d`; keep the
-   PR open and unmerged until maintainers approve the phase-1 scope and
-   phase-2 deferrals.
+1. Push the compressed-panel PR update and wait for PR #18 CI on the new head.
 2. If another main refresh is needed, handle it as a separate merge/update
-   because this pass is limited to docs/release hygiene.
+   because this pass is intentionally limited to docs/release hygiene and PR
+   evidence packaging.
 3. Keep complete-loop free-boundary exact adjoints, Boozer/QS coil-optimization
    claims, and VMEC2000 generated-`mgrid` WOUT parity in phase 2 until their
    promoted gates are green.
