@@ -192,18 +192,10 @@ case-gated QI panel shows the current reviewed NFP coverage.
 ![Common minimal-seed QA/QH/QP objective histories](docs/_static/figures/minimal_seed_showcase_objective_panel.png)
 ![QI optimization from NFP seeds](docs/_static/figures/readme_qi_optimization_cases.png)
 
-Reproduce the common-minimal QA/QH/QP rows with:
-
-```bash
-PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
-  --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4 --backend-label gpu \
-  --solver-device gpu --worker-jax-platforms cuda --policy continuation --max-mode 5 --ess on \
-  --max-nfev 60 --continuation-nfev 20 --inner-max-iter 550 --inner-ftol 1e-10 \
-  --trial-max-iter 550 --trial-ftol 1e-10 \
-  --ess-alpha 1.2 --case-timeout-s 7200 --rerun
-PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py --publication-matrix
-```
-Run individual editable examples with `python examples/optimization/QA_optimization.py`,
+Reproduce the matrix with `examples/optimization/generate_minimal_seed_showcase.py`
+and `examples/optimization/render_minimal_seed_showcase.py`; exact commands are
+in `docs/optimization_sweep_results.rst`. Run individual editable examples with
+`python examples/optimization/QA_optimization.py`,
 `QH_optimization.py`, `QP_optimization.py`, or `QI_optimization.py`. Full
 provenance and artifact rules are in `docs/optimization.rst` and
 `docs/optimization_sweep_results.rst`. Historical panels remain documented as
@@ -223,11 +215,5 @@ provenance and artifact rules are in `docs/optimization.rst` and
 
 ## CLI Reference
 
-```text
-vmec_jax input.*           run the equilibrium solver and write wout_*.nc
-vmec_jax --plot wout.nc    generate VMEC diagnostic plots from a WOUT file
-vmec_jax --booz wout.nc    run booz_xform_jax and write boozmn_*.nc
-vmec_jax --plot boozmn.nc  generate Boozer contour and spectrum plots
-vmec_jax --parity input.*  force the conservative VMEC2000-style loop
-vmec_jax --help            show the full option list
-```
+Use `vmec_jax input.*`, `vmec_jax --plot wout.nc`, `vmec_jax --booz wout.nc`,
+`vmec_jax --plot boozmn.nc`, `vmec_jax --parity input.*`, and `vmec_jax --help`.
