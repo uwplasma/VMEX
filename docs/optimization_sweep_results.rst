@@ -505,19 +505,22 @@ reviewed case-gated QI inputs and, for NFP=4, a minimal seed plus a same-NFP
 finite-beta QI reference-family basin-capture step; it is not the same artifact
 as the common-minimal showcase.
 
-Regenerate the current common-minimal showcase with:
+Regenerate the current aspect-5 common-minimal showcase with:
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_minimal_seed_showcase.py \
-     --cases all --backend-label cpu --solver-device cpu --worker-jax-platforms cpu \
-     --policy continuation --max-mode 3 --ess on \
-     --max-nfev 30 --continuation-nfev 20 \
-     --inner-max-iter 120 --trial-max-iter 120 \
-     --inner-ftol 1e-9 --trial-ftol 1e-9 --case-timeout-s 1800 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
+     --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
+     --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
+     --policy continuation --max-mode 5 --ess on \
+     --max-nfev 60 --continuation-nfev 20 \
+     --inner-max-iter 550 --inner-ftol 1e-10 \
+     --trial-max-iter 550 --trial-ftol 1e-10 \
+     --ess-alpha 1.2 --case-timeout-s 7200 --rerun
    PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py
 
-Keep ``--rerun`` for release reproduction.  Without it, successful
+Use ``cpu`` for the three CUDA/GPU flags for a slower local CPU-only
+reproduction.  Keep ``--rerun`` for release reproduction.  Without it, successful
 ``showcase_case.json`` rows may be reused from an older local run; the renderer
 skips known-stale rows by default and ``--include-stale`` should be used only
 for debugging.  The renderer writes both a compact objective-history panel and,
