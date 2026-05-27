@@ -218,6 +218,7 @@ def test_cpu_gpu_comparison_matches_completed_cases_and_reports_nestor_ratios() 
                     "solve_total_s": warm_min + 1.0,
                     "iteration_loop_s": warm_min + 0.5,
                     "iteration_loop_unattributed_s": warm_min + 0.25,
+                    "setup_total_s": warm_min + 0.5,
                     "iteration_control_s": warm_min + 0.15,
                     "iteration_control_fsq1_s": warm_min + 0.05,
                     "iteration_control_badjac_s": warm_min + 0.04,
@@ -226,7 +227,10 @@ def test_cpu_gpu_comparison_matches_completed_cases_and_reports_nestor_ratios() 
                     "iteration_control_evolve_s": warm_min + 0.01,
                     "compute_forces_s": warm_min + 0.1,
                     "preconditioner_s": warm_min + 0.2,
+                    "precond_apply_s": warm_min + 0.375,
                     "update_s": warm_min + 0.3,
+                    "iteration_residual_metrics_s": warm_min + 0.125,
+                    "finalize_s": warm_min + 0.25,
                     "compute_forces_per_iter_s": warm_min + 0.01,
                     "preconditioner_per_iter_s": warm_min + 0.02,
                     "update_per_iter_s": warm_min + 0.03,
@@ -291,6 +295,14 @@ def test_cpu_gpu_comparison_matches_completed_cases_and_reports_nestor_ratios() 
     assert comparison["gpu"]["warm_solver_total_s"] == 1.5
     assert comparison["cpu"]["warm_compute_forces_per_iter_s"] == 2.01
     assert comparison["gpu"]["warm_compute_forces_per_iter_s"] == 0.51
+    assert comparison["cpu"]["warm_setup_total_s"] == 2.5
+    assert comparison["gpu"]["warm_setup_total_s"] == 1.0
+    assert comparison["cpu"]["warm_iteration_residual_metrics_s"] == 2.125
+    assert comparison["gpu"]["warm_iteration_residual_metrics_s"] == 0.625
+    assert comparison["cpu"]["warm_finalize_s"] == 2.25
+    assert comparison["gpu"]["warm_finalize_s"] == 0.75
+    assert comparison["cpu"]["warm_precond_apply_s"] == 2.375
+    assert comparison["gpu"]["warm_precond_apply_s"] == 0.875
     assert comparison["ratios_gpu_over_cpu"] == {
         "cold_or_compile": 0.5,
         "warm_min": 0.25,
@@ -298,6 +310,7 @@ def test_cpu_gpu_comparison_matches_completed_cases_and_reports_nestor_ratios() 
         "warm_solver_total": 0.5,
         "warm_iteration_loop": 1.0 / 2.5,
         "warm_iteration_loop_unattributed": 0.75 / 2.25,
+        "warm_setup_total": 1.0 / 2.5,
         "warm_iteration_control": 0.65 / 2.15,
         "warm_iteration_control_fsq1": 0.55 / 2.05,
         "warm_iteration_control_badjac": 0.54 / 2.04,
@@ -306,7 +319,10 @@ def test_cpu_gpu_comparison_matches_completed_cases_and_reports_nestor_ratios() 
         "warm_iteration_control_evolve": 0.51 / 2.01,
         "warm_compute_forces": 0.6 / 2.1,
         "warm_preconditioner": 0.7 / 2.2,
+        "warm_precond_apply": 0.875 / 2.375,
         "warm_update": 0.8 / 2.3,
+        "warm_iteration_residual_metrics": 0.625 / 2.125,
+        "warm_finalize": 0.75 / 2.25,
         "active_nestor_warm_sample": 0.5,
         "active_nestor_warm_solve": 0.5,
         "final_recompute_sample": 0.5,

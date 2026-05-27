@@ -244,8 +244,84 @@ def test_beta_scan_bootstrap_current_preconditioner_updates_indata(monkeypatch, 
     assert summary["iterations"] == 1
     assert summary["max_current_update_norm"] == pytest.approx(0.3)
     assert summary["final_mismatch_norm"] == 0.5
+    assert summary["last_evaluated_mismatch_norm"] == 0.5
+    assert summary["returned_mismatch_norm"] == 0.5
+    assert summary["returned_current"]["curtor"] == 123.0
+    assert summary["returned_current"]["ac_aux_f"] == [2.0, 2.0]
     assert Path(summary["history_json"]).exists()
     assert Path(summary["final_input"]).exists()
+
+
+def test_beta_scan_bootstrap_current_summary_distinguishes_returned_best(monkeypatch, tmp_path):
+    module = _load_beta_scan_module()
+    base = module.read_indata(ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lowres")
+    base.scalars["PHIEDGE"] = -0.025
+    best = module.deepcopy(base)
+    best.scalars["CURTOR"] = 111.0
+    best.scalars["PCURR_TYPE"] = "cubic_spline_ip"
+    best.scalars["AC"] = [1.0]
+    best.scalars["AC_AUX_S"] = [0.0, 1.0]
+    best.scalars["AC_AUX_F"] = [1.0, 1.0]
+
+    def fake_fixed_point(*_args, **_kwargs):
+        return BootstrapCurrentResult(
+            indata=best,
+            history=(
+                BootstrapCurrentIteration(
+                    iteration=1,
+                    mismatch_norm=0.4,
+                    current_update_norm=0.2,
+                    curtor=111.0,
+                    ac_aux_s=(0.0, 1.0),
+                    ac_aux_f=(1.0, 1.0),
+                ),
+                BootstrapCurrentIteration(
+                    iteration=2,
+                    mismatch_norm=0.9,
+                    current_update_norm=0.7,
+                    curtor=222.0,
+                    ac_aux_s=(0.0, 1.0),
+                    ac_aux_f=(2.0, 2.0),
+                ),
+            ),
+            converged=False,
+            reason="max_fixed_point_iter",
+            returned_best_evaluated=True,
+            best_evaluated_iteration=1,
+            best_evaluated_mismatch_norm=0.4,
+        )
+
+    monkeypatch.setattr(module, "bootstrap_current_fixed_point", fake_fixed_point)
+    updated, summary = module.apply_bootstrap_current_fixed_point_preconditioner(
+        base,
+        backend="direct",
+        beta_percent=1.0,
+        output_dir=tmp_path,
+        label="case",
+        mgrid_file=tmp_path / "mgrid.nc",
+        pressure_profile="standard",
+        helicity_n=0,
+        surfaces=(0.2, 0.8),
+        n_current=5,
+        max_fixed_point_iter=2,
+        damping=0.5,
+        current_tol=1.0e-2,
+        mismatch_tol=1.0e-2,
+        vmec_max_iter=3,
+        activate_fsq=1.0e99,
+        return_best_evaluated_on_max_iter=True,
+    )
+
+    assert updated is best
+    assert summary["returned_best_evaluated"] is True
+    assert summary["best_evaluated_iteration"] == 1
+    assert summary["last_evaluated_mismatch_norm"] == 0.9
+    assert summary["last_proposed_current_update_norm"] == 0.7
+    assert summary["last_proposed_curtor"] == 222.0
+    assert summary["returned_mismatch_norm"] == 0.4
+    assert summary["returned_current"]["curtor"] == 111.0
+    assert summary["returned_current"]["ac_aux_f"] == [1.0, 1.0]
+    assert summary["final_mismatch_norm"] == 0.9
 
 
 def test_beta_scan_bootstrap_current_preconditioner_skip_and_validation(tmp_path):

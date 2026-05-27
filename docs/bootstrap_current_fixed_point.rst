@@ -29,6 +29,12 @@ Implemented now:
   and stop on current-update and Redl-mismatch tolerances.  It accepts injected
   solve/diagnostic callbacks for cheap tests and workflow experiments; the
   default path writes a temporary input deck and calls ``run_fixed_boundary``.
+- Bounded preconditioner runs can cap the normalized current-profile step with
+  ``max_current_update_norm``.  Per-iteration diagnostics record the effective
+  damping and whether the limiter fired.  If the Picard loop stops at its
+  iteration budget, ``return_best_evaluated_on_max_iter`` can return the
+  already-solved current profile with the smallest Redl mismatch instead of the
+  final unevaluated proposal.
 - Manufactured-profile tests cover the update formulas, sign convention,
   VMEC spline-current round trip, damping validation, autodiff through the pure
   current-update helpers, and callback-level fixed-point convergence.
@@ -283,16 +289,20 @@ Planned API
 
 ``BootstrapCurrentOptions``
    Frozen dataclass containing ``helicity_n``, optional Redl sample surfaces,
-   current-knot count, update policy, damping, Anderson depth placeholder,
+   current-knot count, update policy, damping, optional current-step trust
+   cap, optional best-evaluated return policy, Anderson depth placeholder,
    convergence tolerances, and current-profile type.
 
 ``BootstrapCurrentIteration``
    Frozen dataclass containing iteration number, residual norms, ``CURTOR``,
-   ``AC_AUX_S/F``, beta, aspect, mean iota, and VMEC force residual summary.
+   ``AC_AUX_S/F``, beta, aspect, mean iota, VMEC force residual summary,
+   effective damping, limiter status, uncapped update norm, and configured
+   update cap.
 
 ``BootstrapCurrentResult``
    Frozen dataclass containing the final ``InData``, fixed-point history,
-   convergence flag/reason, and the last solve/diagnostic payload.
+   convergence flag/reason, last solve/diagnostic payload, and best-evaluated
+   return metadata when that bounded-preconditioner policy is enabled.
 
 ``redl_current_derivative_update(...)``
    Pure JAX helper returning :math:`I'(s)` for ``low_beta`` and

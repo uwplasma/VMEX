@@ -256,7 +256,7 @@ to run the direct-coil provider without generating a magnetic grid.
      --outdir results/free_boundary_essos_coils_beta_scan_readme \
      --input examples/data/input.LandremanPaul2021_QA_lowres \
      --phiedge=-0.025 \
-     --betas 0 1 2 \
+     --betas 0 0.5 1.0 1.25 \
      --pressure-profile standard \
      --pressure-continuation \
      --pressure-continuation-max-fsq 1e-6 \
@@ -309,7 +309,7 @@ pressure point.
      --outdir results/free_boundary_essos_coils_beta_scan_highres_attempt \
      --input examples/data/input.LandremanPaul2021_QA_lowres \
      --phiedge=-0.025 \
-     --betas 0 1 2 \
+     --betas 0 0.5 1.0 1.25 \
      --pressure-profile standard \
      --pressure-continuation \
      --resume-existing \
@@ -321,8 +321,9 @@ pressure point.
      --ntor 5 \
      --activate-fsq 1.0
 
-The final beta must be read from ``summary.json`` or the WOUT file rather than
-from the nominal ``--betas`` labels.
+The ``--betas`` values are nominal pressure-scaling labels used to drive the
+scan.  The actual physical beta must be read from ``summary.json`` or the WOUT
+file after convergence.
 
 High-Resolution DIII-D Finite-Beta Benchmark
 --------------------------------------------

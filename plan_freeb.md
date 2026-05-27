@@ -12,12 +12,13 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-27 after adding and locally running the optional
-ESSOS/direct-coil active finite-beta beta-scan integration gate for the Redl
-bootstrap-current fixed-point preconditioner. PR #18 is green on GitHub Actions
-at commit `5e90d9b2` including Codecov; the optional gate is local/manual
-because it requires ESSOS assets and launches real free-boundary solves. Do not
-merge PR #18 yet.
+Last updated: 2026-05-27 after tightening bootstrap-current trust controls,
+best-evaluated current return-policy diagnostics, low-resolution with/without
+bootstrap direct-coil comparisons, and CPU/GPU benchmark metric reporting. PR
+#18 was green on GitHub Actions at commit `21999de7` including Codecov before
+this follow-up patch; the optional ESSOS/direct-coil bootstrap gate is
+local/manual because it requires ESSOS assets and launches real free-boundary
+solves. Do not merge PR #18 yet.
 
 Steps taken:
 
@@ -166,18 +167,49 @@ Results obtained:
     (`0.735 -> 0.497`).  It still does not beat the no-bootstrap residual
     (`6.39e3`) at this coarse budget, so this remains a validated control
     mechanism, not a promoted convergence accelerator.
+17. A follow-up `NS=8,16`, `MPOL=4`, `NTOR=4`, active-NESTOR LP-QA comparison
+    showed the same caveat at larger nominal pressure labels: bootstrap
+    improves Redl mismatch but still does not promote finite-pressure rows to
+    acceptable VMEC residuals at this coarse budget.  At nominal `0.5%` and
+    `1.0%`, bootstrap residual sums were `1.20e1` and `9.84e1`; no-bootstrap
+    residual sums were `1.98e0` and `1.47e0`.  Actual WOUT beta values were
+    nonphysical because the solves were underconverged, so these are diagnostic
+    only.
+18. A lower-pressure coarse scan with nominal labels `0,0.05,0.1` was mixed:
+    bootstrap improved residual at `0.05` (`2.22e0 -> 8.21e-2`) and Redl
+    mismatch, but worsened the `0.1` residual (`3.46e-2 -> 9.21e-1`).  This
+    confirms the preconditioner plumbing and limiter diagnostics work, but
+    promotion requires strict-resolution pressure continuation and residual
+    gates before claiming convergence acceleration.
+19. Fixed a public-options semantic gap: `pcurr_type="cubic_spline_i"` now
+    writes the damped/limited current profile instead of the raw proposed
+    profile when `max_current_update_norm` is active.
+20. Beta-scan JSON summaries now distinguish the last evaluated/proposed
+    bootstrap-current row from the current profile actually returned to the
+    final beta solve.  This prevents a rejected last proposal from being
+    reported as the accepted preconditioner output.
+21. CPU/GPU direct-coil matrix summaries now expose the solver buckets that
+    currently dominate the tiny GPU rows: setup, residual metrics, finalize,
+    and preconditioner-apply timing.  This keeps the next performance target
+    explicit instead of hiding it behind total warm time.
+22. Focused validation for the follow-up patch passed: `ruff`, diff whitespace
+    checks, targeted bootstrap/free-boundary/benchmark tests
+    (`34 passed, 1 skipped`), strict Sphinx `-W`, and the optional active
+    ESSOS/direct-coil bootstrap beta-scan smoke (`1 passed` in 12.38 s).
 
 Best next steps:
 
-1. Commit/push the bootstrap-current trust limiter and best-evaluated return
-   policy.
-2. Recheck PR #18 CI after the push.
-3. Keep the current PR claims limited to implemented/validated functionality:
+1. Keep the current PR claims limited to implemented/validated functionality:
    direct-coil active coupling, persisted Redl-current diagnostics, and optional
    preconditioning, not guaranteed convergence acceleration.
-4. For a future promotion claim, run a converged-resolution LP-QA scan with
+2. For a future promotion claim, run a converged-resolution LP-QA scan with
    pressure continuation and the limiter enabled, then require both acceptable
-   final VMEC residuals and improved Redl mismatch.
+   final VMEC residuals (`fsqr+fsqz+fsql <= 1e-6` as a minimum gate, preferably
+   near `1e-10` for reviewer figures) and improved Redl mismatch against the
+   same-resolution no-bootstrap run.
+3. Phase-2 adjoint next rung: promote a tiny complete-loop direct-coil AD-vs-FD
+   gate for one current and one Fourier coefficient, then extend to Boozer/QS
+   only after the nonlinear solve loop is differentiable or has a custom VJP.
 
 Need from user:
 

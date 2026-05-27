@@ -613,7 +613,7 @@ def bootstrap_current_fixed_point(
             current_indata,
             s=s,
             current_derivative=new_derivative,
-            current=new_current if options.pcurr_type == "cubic_spline_ip" else proposed_current,
+            current=new_current,
             signgs=signgs,
             pcurr_type=options.pcurr_type,
         )

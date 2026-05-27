@@ -337,6 +337,7 @@ def _case_metrics(case: dict[str, Any]) -> dict[str, Any]:
         "warm_iteration_loop_unattributed_s": _finite_float(
             _nested_value(solver, ("warm", "iteration_loop_unattributed_s"))
         ),
+        "warm_setup_total_s": _finite_float(_nested_value(solver, ("warm", "setup_total_s"))),
         "warm_iteration_control_s": _finite_float(_nested_value(solver, ("warm", "iteration_control_s"))),
         "warm_iteration_control_fsq1_s": _finite_float(_nested_value(solver, ("warm", "iteration_control_fsq1_s"))),
         "warm_iteration_control_badjac_s": _finite_float(
@@ -356,7 +357,12 @@ def _case_metrics(case: dict[str, Any]) -> dict[str, Any]:
         ),
         "warm_compute_forces_s": _finite_float(_nested_value(solver, ("warm", "compute_forces_s"))),
         "warm_preconditioner_s": _finite_float(_nested_value(solver, ("warm", "preconditioner_s"))),
+        "warm_precond_apply_s": _finite_float(_nested_value(solver, ("warm", "precond_apply_s"))),
         "warm_update_s": _finite_float(_nested_value(solver, ("warm", "update_s"))),
+        "warm_iteration_residual_metrics_s": _finite_float(
+            _nested_value(solver, ("warm", "iteration_residual_metrics_s"))
+        ),
+        "warm_finalize_s": _finite_float(_nested_value(solver, ("warm", "finalize_s"))),
         "warm_compute_forces_per_iter_s": _finite_float(
             _nested_value(solver, ("warm", "compute_forces_per_iter_s"))
         ),
@@ -432,6 +438,10 @@ def _cpu_gpu_comparison(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         gpu_metrics.get("warm_iteration_loop_unattributed_s"),
                         cpu_metrics.get("warm_iteration_loop_unattributed_s"),
                     ),
+                    "warm_setup_total": _ratio(
+                        gpu_metrics.get("warm_setup_total_s"),
+                        cpu_metrics.get("warm_setup_total_s"),
+                    ),
                     "warm_iteration_control": _ratio(
                         gpu_metrics.get("warm_iteration_control_s"),
                         cpu_metrics.get("warm_iteration_control_s"),
@@ -464,7 +474,19 @@ def _cpu_gpu_comparison(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         gpu_metrics.get("warm_preconditioner_s"),
                         cpu_metrics.get("warm_preconditioner_s"),
                     ),
+                    "warm_precond_apply": _ratio(
+                        gpu_metrics.get("warm_precond_apply_s"),
+                        cpu_metrics.get("warm_precond_apply_s"),
+                    ),
                     "warm_update": _ratio(gpu_metrics.get("warm_update_s"), cpu_metrics.get("warm_update_s")),
+                    "warm_iteration_residual_metrics": _ratio(
+                        gpu_metrics.get("warm_iteration_residual_metrics_s"),
+                        cpu_metrics.get("warm_iteration_residual_metrics_s"),
+                    ),
+                    "warm_finalize": _ratio(
+                        gpu_metrics.get("warm_finalize_s"),
+                        cpu_metrics.get("warm_finalize_s"),
+                    ),
                     "active_nestor_warm_sample": _ratio(
                         gpu_metrics.get("active_nestor_warm_sample_s"),
                         cpu_metrics.get("active_nestor_warm_sample_s"),
