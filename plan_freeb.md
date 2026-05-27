@@ -494,6 +494,11 @@ Results obtained:
    `wout_bootstrap_current_final.nc`, and `history.json`.  The bounded example
    did not converge in three fixed-point iterations, but the Redl mismatch
    decreased monotonically from `3.44e-1` to `2.996e-1`.
+5. Added `tests/test_bootstrap_current_fixed_point_integration_optional.py` as
+   a skipped-by-default finite-beta physics gate.  The default skip path and
+   ruff check passed.  A full local optional run was interrupted after it proved
+   too slow for an interactive check; it should remain nightly/manual unless
+   the VMEC budget is tightened.
 
 Best next steps:
 
