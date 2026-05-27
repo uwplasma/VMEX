@@ -8,7 +8,7 @@ Jacobian path, not finite differences.
 
 Usage
 -----
-Run with defaults (max_mode=1, max_nfev=10, ftol=gtol=xtol=1e-3)::
+Run with defaults (max_mode=1, max_nfev=20, ftol=gtol=xtol=1e-3)::
 
     python examples/optimization/qh_fixed_resolution_exact.py
 
@@ -16,7 +16,7 @@ Write wout files and objective history to a custom directory::
 
     python examples/optimization/qh_fixed_resolution_exact.py \\
         --output-dir results/qh_opt \\
-        --max-mode 1 --max-nfev 10
+        --max-mode 1 --max-nfev 20
 
 The script saves:
   - ``results/qh_opt/wout_initial.nc``   — equilibrium at the start point
@@ -41,8 +41,8 @@ def _parse_args():
     p = argparse.ArgumentParser(
         description="QH fixed-resolution exact discrete-adjoint optimization"
     )
-    p.add_argument("--max-nfev", type=int, default=10,
-                   help="Maximum number of function evaluations (default: 10)")
+    p.add_argument("--max-nfev", type=int, default=20,
+                   help="Maximum number of function evaluations (default: 20)")
     p.add_argument("--max-mode", type=int, default=1,
                    help="Maximum |m|,|n| mode numbers for boundary DOFs (default: 1)")
     p.add_argument("--ftol", type=float, default=1e-3,

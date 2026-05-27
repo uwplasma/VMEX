@@ -163,39 +163,30 @@ Editable optimization examples live in `examples/optimization/`. Start with
 `examples/optimization/README.md`, then use `docs/optimization.rst`,
 `docs/optimization_sweep_results.rst`, and `docs/piecewise_omnigenous_plan.rst`.
 
-The current README snapshot separates two evidence types. The QA/QH/QP rows
-below are synced common-minimal-seed GPU runs with aspect target 5,
-continuation, ESS, and `max_mode=5`. The QI rows are reviewed case-gated NFP
-coverage from the staged QI workflow; they are case-specific artifacts, not
-aspect-5 README best-row promotion evidence. Extended policy discussion, LASYM
-panels, finite-beta examples, failure modes, and artifact-promotion rules live
-in the docs.
+The current README snapshot uses compact figures, not a numeric table. The
+first panel shows QA NFP2/3, QH NFP3/4, and QP NFP2/3 common-minimal-seed
+GPU runs with aspect target 5, continuation, ESS, and `max_mode=5`. The second
+panel documents the same minimal-seed policy for QI NFP1/2/3/4: source inputs
+are circular/minimal torus-like decks, and any reference-family step is an
+explicit deterministic basin proposal rather than the user-facing initial
+condition. Full numeric tables, caveats, LASYM panels, and artifact-promotion
+rules live in the docs.
 
-| Target | NFP | Evidence | Backend | Policy | max_mode | ESS | Final J | QI legacy | Mirror | Aspect | Iota | Wall time |
-|---|---:|---|---|---|---:|---|---:|---:|---:|---:|---:|---:|
-| QA | 2 | common minimal seed | GPU | continuation | 5 | yes | 1.09e-04 |  |  | 5.000 | 0.4200 | 25.3 min |
-| QA | 3 | common minimal seed | GPU | continuation | 5 | yes | 4.21e-03 |  |  | 5.004 | 0.4201 | 17.3 min |
-| QH | 3 | common minimal seed | GPU | continuation | 5 | yes | 9.14e-04 |  |  | 5.000 | -1.0474 | 17.4 min |
-| QH | 4 | common minimal seed | GPU | continuation | 5 | yes | 2.08e-03 |  |  | 5.000 | -1.6951 | 24.6 min |
-| QP | 2 | common minimal seed | GPU | continuation | 5 | yes | 2.34e-02 |  |  | 5.001 | -0.4177 | 16.7 min |
-| QP | 3 | common minimal seed | GPU | continuation | 5 | yes | 9.80e-02 |  |  | 5.024 | -0.4144 | 14.7 min |
-| QP | 4 | stress row, not promoted | GPU | continuation | 5 | yes | 7.45e+00 |  |  | 6.614 | -0.9373 | 9.4 min |
-| QI | 1 | case-gated staged QI | CPU | staged | case | case | 1.56e-02 | 7.75e-04 | 0.242 | 9.999 | 0.5369 | 15.8 min |
-| QI | 2 | case-gated staged QI | CPU | staged | case | case | 1.61e-02 | 5.25e-04 | 0.240 | 6.006 | -0.5994 | 28.7 min |
-| QI | 3 | case-gated staged QI | CPU | staged | case | case | 9.33e-02 | 1.01e-03 | 0.304 | 3.541 | -1.0401 | 4.6 min |
-| QI | 4 | case-gated staged QI | CPU | staged | case | case | 2.52e-02 | 2.54e-04 | 0.287 | 6.011 | -1.2930 | 0.4 min |
-
-The QP NFP=4 row is intentionally visible as a current weak/stress row. The
-uniform aspect-5 QI common-minimal matrix remains an open promotion target; the
-case-gated QI panel shows the current reviewed NFP coverage.
-
-![Common minimal-seed QA/QH/QP objective histories](docs/_static/figures/minimal_seed_showcase_objective_panel.png)
+![Common minimal-seed QA/QH/QP states](docs/_static/figures/minimal_seed_showcase_state_panel.png)
 ![QI optimization from NFP seeds](docs/_static/figures/readme_qi_optimization_cases.png)
 
-Reproduce the matrix with `examples/optimization/generate_minimal_seed_showcase.py`
-and `examples/optimization/render_minimal_seed_showcase.py`; exact commands are
-in `docs/optimization_sweep_results.rst`. Run individual editable examples with
-`python examples/optimization/QA_optimization.py`,
+Reproduce the common-minimal QA/QH/QP rows with:
+
+```bash
+PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
+  --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3 --backend-label gpu \
+  --solver-device gpu --worker-jax-platforms cuda --policy continuation --max-mode 5 --ess on \
+  --max-nfev 70 --continuation-nfev 20 --inner-max-iter 550 --inner-ftol 1e-10 \
+  --trial-max-iter 550 --trial-ftol 1e-10 \
+  --ess-alpha 1.2 --case-timeout-s 7200 --rerun
+PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py --publication-matrix
+```
+Run individual editable examples with `python examples/optimization/QA_optimization.py`,
 `QH_optimization.py`, `QP_optimization.py`, or `QI_optimization.py`. Full
 provenance and artifact rules are in `docs/optimization.rst` and
 `docs/optimization_sweep_results.rst`. Historical panels remain documented as

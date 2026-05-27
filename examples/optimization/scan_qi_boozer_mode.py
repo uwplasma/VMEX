@@ -45,7 +45,7 @@ enable_x64(True)
 # User-editable controls
 # ---------------------------------------------------------------------------
 
-INPUT_FILE = Path("examples/data/input.nfp2_QI")
+INPUT_FILE = Path("examples/data/input.minimal_seed_nfp2")
 OUTPUT_DIR = Path("results/omnigenity_compare/qi_boozer_mode_scan")
 
 VMEC_MPOL = 6

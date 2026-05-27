@@ -21,7 +21,7 @@ TARGET_HELICITY_SEED_TERMS = (
     ("RBC", (1, 1), TARGET_HELICITY_SEED_AMPLITUDE),
     ("ZBS", (1, 1), TARGET_HELICITY_SEED_AMPLITUDE),
 )
-MINIMAL_QI_LOCAL_STAGE_MIN_NFEV = 8
+MINIMAL_QI_LOCAL_STAGE_MIN_NFEV = 18
 
 
 def _parse_float_sequence(value, *, name):
@@ -41,14 +41,14 @@ def _parse_float_sequence(value, *, name):
 QI_CASES = {
     "nfp1_qi": {
         "case_goal": "NFP=1 mirror-aware QI lane",
-        "input_file": DATA_DIR / "input.nfp1_QI",
-        "output_dir": Path("results/qi_opt/ess/nfp1_qi_aspect5"),
+        "input_file": DATA_DIR / "input.minimal_seed_nfp1",
+        "output_dir": Path("results/qi_opt/ess/minimal_nfp1_qi_aspect5"),
         "max_mode": 3,
         "min_vmec_mode": 6,
         "method": "scipy_matrix_free",
         "use_mode_continuation": True,
         "stage_repeats": 1,
-        "max_nfev": 10,
+        "max_nfev": 20,
         "target_aspect": DEFAULT_QI_TARGET_ASPECT,
         "target_abs_iota_min": 0.41,
         "max_elongation": 8.2,
@@ -67,7 +67,7 @@ QI_CASES = {
         "mirror_ramp_stages": (
             {
                 "name": "matrix_free_mirror030",
-                "max_nfev": 10,
+                "max_nfev": 20,
                 "stage_repeats": 1,
                 "method": "scipy_matrix_free",
                 "mirror_threshold": 0.21,
@@ -84,14 +84,14 @@ QI_CASES = {
     },
     "nfp2_qi": {
         "case_goal": "default NFP=2 mirror-aware QI lane",
-        "input_file": DATA_DIR / "input.nfp2_QI",
-        "output_dir": Path("results/qi_opt/ess/nfp2_qi_aspect5"),
+        "input_file": DATA_DIR / "input.minimal_seed_nfp2",
+        "output_dir": Path("results/qi_opt/ess/minimal_nfp2_qi_aspect5"),
         "max_mode": 3,
         "min_vmec_mode": 6,
         "method": "scipy_matrix_free",
         "use_mode_continuation": True,
         "stage_repeats": 1,
-        "max_nfev": 10,
+        "max_nfev": 20,
         "target_aspect": DEFAULT_QI_TARGET_ASPECT,
         "target_abs_iota_min": 0.41,
         "max_elongation": 8.2,
@@ -113,7 +113,7 @@ QI_CASES = {
         "mirror_ramp_stages": (
             {
                 "name": "matrix_free_mirror030",
-                "max_nfev": 10,
+                "max_nfev": 20,
                 "stage_repeats": 1,
                 "method": "scipy_matrix_free",
                 "mirror_threshold": 0.21,
@@ -136,7 +136,7 @@ QI_CASES = {
         "min_vmec_mode": 6,
         "use_mode_continuation": False,
         "stage_repeats": 1,
-        "max_nfev": 8,
+        "max_nfev": 18,
         # The public robustness lane now uses the same aspect target as the
         # QA/QH/QP examples. Older aspect-4 artifacts remain archival only.
         "target_aspect": SEED3127_REVIEWED_TARGET_ASPECT,
@@ -220,7 +220,7 @@ QI_CASES = {
         "mirror_ramp_stages": (
             {
                 "name": "prefiltered_mirror_qi_iota_cleanup",
-                "max_nfev": 8,
+                "max_nfev": 18,
                 "stage_repeats": 1,
                 "stage_modes": (3,),
                 "method": "scipy_matrix_free",
@@ -239,7 +239,7 @@ QI_CASES = {
             },
             {
                 "name": "nfirst_qi_ceiling_mirror_cleanup",
-                "max_nfev": 6,
+                "max_nfev": 16,
                 "stage_repeats": 1,
                 # First unlock toroidal structure at fixed low poloidal
                 # complexity, then unlock the full mode-4 boundary.  This is
@@ -277,7 +277,7 @@ QI_CASES = {
         "method": "scipy_matrix_free",
         "use_mode_continuation": True,
         "stage_repeats": 1,
-        "max_nfev": 1,
+        "max_nfev": 11,
         "inner_max_iter": DEFAULT_INNER_MAX_ITER,
         "inner_ftol": DEFAULT_INNER_FTOL,
         "trial_max_iter": DEFAULT_TRIAL_MAX_ITER,
@@ -328,7 +328,7 @@ QI_CASES = {
         "mirror_ramp_stages": (
             {
                 "name": "finite_beta_qi_audit_refine",
-                "max_nfev": 1,
+                "max_nfev": 11,
                 "stage_repeats": 1,
                 "method": "scipy_matrix_free",
                 "mirror_threshold": 0.35,
@@ -349,7 +349,7 @@ QI_CASES = {
         "method": "scipy_matrix_free",
         "use_mode_continuation": True,
         "stage_repeats": 1,
-        "max_nfev": 1,
+        "max_nfev": 11,
         "inner_max_iter": DEFAULT_INNER_MAX_ITER,
         "inner_ftol": DEFAULT_INNER_FTOL,
         "trial_max_iter": DEFAULT_TRIAL_MAX_ITER,
@@ -376,7 +376,7 @@ QI_CASES = {
         "mirror_ramp_stages": (
             {
                 "name": "finite_beta_qi_audit_refine",
-                "max_nfev": 1,
+                "max_nfev": 11,
                 "stage_repeats": 1,
                 "method": "scipy_matrix_free",
                 "mirror_threshold": 0.35,
@@ -415,7 +415,7 @@ QI_CASES = {
         "min_vmec_mode": 6,
         "use_mode_continuation": True,
         "stage_repeats": 3,
-        "max_nfev": 10,
+        "max_nfev": 20,
         "target_aspect": DEFAULT_QI_TARGET_ASPECT,
         "target_abs_iota_min": 0.41,
         "mirror_threshold": 0.21,
@@ -439,7 +439,7 @@ QI_CASES = {
         "mirror_ramp_stages": (
             {
                 "name": "qh_warm_qi_repeat112233",
-                "max_nfev": 4,
+                "max_nfev": 14,
                 "stage_repeats": 1,
                 "stage_modes": (1, 2, 3),
                 "method": "scipy_matrix_free",
@@ -457,7 +457,7 @@ QI_CASES = {
             },
             {
                 "name": "qh_warm_engineering_guard",
-                "max_nfev": 4,
+                "max_nfev": 14,
                 "stage_repeats": 1,
                 "stage_modes": (3,),
                 "method": "scalar_trust",
@@ -487,7 +487,7 @@ QI_CASES = {
     #     "min_vmec_mode": 6,
     #     "use_mode_continuation": True,
     #     "stage_repeats": 5,
-    #     "max_nfev": 12,
+    #     "max_nfev": 22,
     #     "target_aspect": DEFAULT_QI_TARGET_ASPECT,
     #     "target_abs_iota_min": 0.41,
     #     "mirror_threshold": 0.21,
@@ -510,16 +510,6 @@ QI_CASES = {
     #     "mirror_ramp_stages": (),
     # },
 }
-
-# Public convenience alias: the reviewed NFP=3 robustness lane is the
-# ``input.QI_stel_seed_3127`` seed with same-NFP reference-family
-# preconditioning.  Keep the historical descriptive case name, but also expose a
-# symmetric ``nfp3_qi`` selector for README/docs workflows.
-QI_CASES["nfp3_qi"] = {
-    **QI_CASES["qi_stel_seed_3127"],
-    "case_goal": "NFP=3 far-seed QI robustness lane",
-}
-
 
 def _minimal_or_circular_qi_case(
     *,
@@ -654,7 +644,28 @@ QI_CASES.update(
     }
 )
 
-RUN_CASE_DEFAULT = "nfp2_qi"
+# Public convenience aliases: ``nfp*_qi`` selectors now use the same
+# circular/minimal seed family as the README and QA/QH/QP examples.  The older
+# named far-seed/stress cases remain available explicitly for diagnostics, but
+# are not the default public QI optimization path.
+QI_CASES["nfp1_qi"] = {
+    **QI_CASES["minimal_nfp1_qi"],
+    "case_goal": "NFP=1 minimal-seed QI lane",
+}
+QI_CASES["nfp2_qi"] = {
+    **QI_CASES["minimal_nfp2_qi"],
+    "case_goal": "NFP=2 minimal-seed QI lane",
+}
+QI_CASES["nfp3_qi"] = {
+    **QI_CASES["minimal_nfp3_qi"],
+    "case_goal": "NFP=3 minimal-seed QI lane",
+}
+QI_CASES["nfp4_qi"] = {
+    **QI_CASES["minimal_nfp4_qi"],
+    "case_goal": "NFP=4 minimal-seed QI lane",
+}
+
+RUN_CASE_DEFAULT = "minimal_nfp2_qi"
 
 
 def resolve_qi_case(default_run_case: str | None = None):

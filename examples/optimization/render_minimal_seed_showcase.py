@@ -42,7 +42,6 @@ PUBLICATION_CASE_ORDER = (
     "qh_nfp4",
     "qp_nfp2",
     "qp_nfp3",
-    "qp_nfp4",
     "qi_nfp1",
     "qi_nfp2",
     "qi_nfp3",
@@ -358,7 +357,7 @@ def objective_segments(record: ShowcaseRecord) -> list[tuple[np.ndarray, np.ndar
         return []
     segments: list[tuple[np.ndarray, np.ndarray]] = []
     seen_history_payloads: set[str] = set()
-    offset_min = 0.0
+    offset_iter = 0
     for history_path in history_paths:
         if not history_path.exists():
             continue
@@ -374,21 +373,18 @@ def objective_segments(record: ShowcaseRecord) -> list[tuple[np.ndarray, np.ndar
         for segment in _history_stage_segments(history):
             if not segment:
                 continue
-            wall_min = np.asarray([float(item.get("wall_time_s", 0.0)) / 60.0 for item in segment], dtype=float)
+            iterations = np.arange(offset_iter, offset_iter + len(segment), dtype=float)
             values = np.asarray(
                 [max(float(item.get("objective", item.get("cost", np.nan))), 1.0e-16) for item in segment],
                 dtype=float,
             )
-            finite = np.isfinite(wall_min) & np.isfinite(values)
+            finite = np.isfinite(iterations) & np.isfinite(values)
             if not finite.any():
                 continue
-            wall_min = wall_min[finite]
+            iterations = iterations[finite]
             values = values[finite]
-            if np.any(np.diff(wall_min) < 0.0):
-                wall_min = wall_min - float(np.nanmin(wall_min))
-            wall_min = wall_min + offset_min
-            segments.append((wall_min, np.minimum.accumulate(values)))
-            offset_min = float(wall_min[-1])
+            segments.append((iterations, np.minimum.accumulate(values)))
+            offset_iter = int(iterations[-1])
     return segments
 
 
@@ -478,13 +474,13 @@ def render_objective_panel(records: list[ShowcaseRecord], out_png: Path) -> Path
         segments = objective_segments(record)
         if not segments:
             ax.text(0.5, 0.5, "history missing", ha="center", va="center", transform=ax.transAxes)
-        for wall_min, values in segments:
-            ax.semilogy(wall_min, values, color="#1f4e79", linewidth=1.8)
-            ax.scatter(wall_min[-1], values[-1], s=16, color="#d95f02", zorder=3)
+        for iterations, values in segments:
+            ax.semilogy(iterations, values, color="#1f4e79", linewidth=1.8)
+            ax.scatter(iterations[-1], values[-1], s=16, color="#d95f02", zorder=3)
         status = record_status(record)
         title = f"{record.case_name}: {record.policy}, m={record.max_mode}, {'ESS' if record.use_ess else 'no ESS'}, {status}"
         ax.set_title(title, fontsize=9)
-        ax.set_xlabel("Wall time (min)")
+        ax.set_xlabel("Optimization iteration")
         ax.set_ylabel("Best objective")
         ax.grid(True, alpha=0.25, linestyle=":")
     fig.suptitle("Common minimal-seed optimization histories", fontsize=13)
@@ -683,7 +679,7 @@ def render_state_panel(records: list[ShowcaseRecord], out_png: Path) -> Path | N
         return None
 
     nrows = len(candidates)
-    fig = plt.figure(figsize=(22.0, 4.4 * nrows), constrained_layout=True)
+    fig = plt.figure(figsize=(18.0, 3.55 * nrows), constrained_layout=True)
     gs = fig.add_gridspec(nrows, 5, width_ratios=(1.05, 1.05, 1.0, 1.05, 1.05))
     for row, (record, initial_wout, final_wout) in enumerate(candidates):
         ax0 = fig.add_subplot(gs[row, 0], projection="3d")
@@ -701,11 +697,11 @@ def render_state_panel(records: list[ShowcaseRecord], out_png: Path) -> Path | N
         segments = objective_segments(record)
         if not segments:
             ax2.text(0.5, 0.5, "history missing", ha="center", va="center", transform=ax2.transAxes)
-        for wall_min, values in segments:
-            ax2.semilogy(wall_min, values, color="#1f4e79", linewidth=1.8)
-            ax2.scatter(wall_min[-1], values[-1], s=16, color="#d95f02", zorder=3)
+        for iterations, values in segments:
+            ax2.semilogy(iterations, values, color="#1f4e79", linewidth=1.8)
+            ax2.scatter(iterations[-1], values[-1], s=16, color="#d95f02", zorder=3)
         ax2.set_title("Best objective history", fontsize=9)
-        ax2.set_xlabel("Wall time (min)")
+        ax2.set_xlabel("Optimization iteration")
         ax2.set_ylabel("Best objective")
         ax2.grid(True, alpha=0.25, linestyle=":")
         _plot_boozer_bmag(ax3, initial_wout, r"Initial $|B|$")
@@ -713,7 +709,7 @@ def render_state_panel(records: list[ShowcaseRecord], out_png: Path) -> Path | N
 
     fig.suptitle("Common minimal-seed initial/final optimization states", fontsize=13, x=0.01, y=1.01, ha="left")
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    _save_compact_png(fig, out_png, dpi=170)
+    _save_compact_png(fig, out_png, dpi=110)
     plt.close(fig)
     return out_png
 

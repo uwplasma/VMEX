@@ -2,7 +2,7 @@
 """Compare vmec_jax QI diagnostics against omnigenity_optimization.
 
 This is a diagnostic script, not a polished gallery example.  It evaluates the
-bundled NFP=2 QI seed with vmec_jax/booz_xform_jax.  Set
+public minimal NFP=2 QI seed with vmec_jax/booz_xform_jax.  Set
 ``RUN_REFERENCE_OMNIGENITY = True`` below to also evaluate the original
 ``qi_functions.py`` objectives on the same VMEC input when the local SIMSOPT and
 omnigenity_optimization checkout are available.
@@ -58,7 +58,7 @@ enable_x64(True)
 # ---------------------------------------------------------------------------
 
 OMNIGENITY_ROOT = Path("~/local/omnigenity_optimization").expanduser()
-INPUT_FILE = Path("examples/data/input.nfp2_QI")
+INPUT_FILE = Path("examples/data/input.minimal_seed_nfp2")
 OUTPUT_DIR = Path("results/omnigenity_compare/qi_objective")
 
 VMEC_MPOL = 6

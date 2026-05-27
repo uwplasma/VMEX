@@ -32,10 +32,10 @@ Examples:
   # Full aspect-5 README/docs production lane.  Use the CUDA variant on
   # production GPU hosts; use cpu/cpu/cpu for a slower local reproduction.
   PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \\
-    --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \\
+    --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \\
     --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \\
     --policy continuation --max-mode 5 --ess on \\
-    --max-nfev 60 --continuation-nfev 20 \\
+    --max-nfev 70 --continuation-nfev 20 \\
     --inner-max-iter 550 --inner-ftol 1e-10 \\
     --trial-max-iter 550 --trial-ftol 1e-10 \\
     --ess-alpha 1.2 --case-timeout-s 7200 --rerun
@@ -195,14 +195,6 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         reference_preseed_input=DATA_DIR / "input.nfp3_QI_fixed_resolution_final",
         reference_preseed_blend=0.10,
     ),
-    "qp_nfp4": MinimalSeedCase(
-        name="qp_nfp4",
-        problem="qp",
-        nfp=4,
-        input_file=DATA_DIR / "input.minimal_seed_nfp4",
-        reference_preseed_input=DATA_DIR / "input.nfp4_QI_finite_beta",
-        reference_preseed_blend=0.10,
-    ),
 }
 
 DEFAULT_CASE_ORDER = (
@@ -218,7 +210,6 @@ DEFAULT_CASE_ORDER = (
     "qp_nfp1",
     "qp_nfp2",
     "qp_nfp3",
-    "qp_nfp4",
 )
 
 PHYSICS_IOTA_FLOOR = 0.35
@@ -908,7 +899,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--policy", choices=("continuation", "direct"), default="continuation")
     parser.add_argument("--max-mode", type=int, default=5)
     parser.add_argument("--ess", choices=("on", "off"), default="on")
-    parser.add_argument("--max-nfev", type=int, default=8)
+    parser.add_argument("--max-nfev", type=int, default=18)
     parser.add_argument("--continuation-nfev", type=int, default=8)
     parser.add_argument("--inner-max-iter", type=int, default=120)
     parser.add_argument("--inner-ftol", type=float, default=1e-9)

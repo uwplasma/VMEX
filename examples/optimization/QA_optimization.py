@@ -37,8 +37,8 @@ INPUT_FILE = vj.prepare_simple_omnigenity_seed_input(
     perturbation=SIMPLE_SEED_PERTURBATION,
 )
 USE_MODE_CONTINUATION = not USE_SIMPLE_SEED
-MAX_NFEV = 60
-CONTINUATION_NFEV = 15
+MAX_NFEV = 70
+CONTINUATION_NFEV = 25
 STAGE_MODES = vj.qs_stage_modes(
     max_mode=MAX_MODE,
     use_mode_continuation=USE_MODE_CONTINUATION,

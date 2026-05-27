@@ -121,7 +121,7 @@ def test_qs_examples_expose_reviewed_mode5_budgets() -> None:
 
     for text in (qa, qh, qp):
         assert "MAX_MODE = 5" in text
-        assert "MAX_NFEV = 60" in text
+        assert "MAX_NFEV = 70" in text
         assert "ALPHA = 1.2" in text
         assert "TARGET_ASPECT = 5.0" in text
 
@@ -236,9 +236,9 @@ def test_qi_example_uses_qi_problem_api() -> None:
     assert "CASE =" not in text
     assert "QI_CONTEXT = vj.make_qi_optimization_context(" in text
     assert "ctx=QI_CONTEXT" in text
-    assert 'INPUT_FILE = DATA_DIR / "input.nfp2_QI"' in text
-    assert 'INPUT_FILE = DATA_DIR / "input.QI_stel_seed_3127"' in text
-    assert "USE_SIMPLE_SEED = False" in text
+    assert 'INPUT_FILE = DATA_DIR / "input.minimal_seed_nfp2"' in text
+    assert 'INPUT_FILE = DATA_DIR / "input.minimal_seed_nfp3"' in text
+    assert "USE_SIMPLE_SEED = True" in text
     assert "USE_TARGET_HELICITY_SEED = True" in text
     assert "USE_REFERENCE_FAMILY_SEED = False" in text
     assert "prepare_simple_omnigenity_seed_input(" in text
@@ -323,7 +323,7 @@ def test_qi_case_resolver_respects_editable_default_and_env(monkeypatch) -> None
 
     run_case, case = module.resolve_qi_case("nfp1_qi")
     assert run_case == "nfp1_qi"
-    assert case["input_file"].name == "input.nfp1_QI"
+    assert case["input_file"].name == "input.minimal_seed_nfp1"
 
     monkeypatch.setenv("VMEC_JAX_QI_RUN_CASE", "minimal_nfp2_qi")
     run_case, case = module.resolve_qi_case("nfp3_qi")

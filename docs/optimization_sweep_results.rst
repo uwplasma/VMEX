@@ -11,8 +11,8 @@ they are only partial snapshots:
 - QH: the bundled NFP=4 warm start, aspect ratio target 5, quasi-helical
   symmetry, and a smooth ``abs(mean_iota) >= 0.41`` lower bound.
 - QP: aspect ratio target 5, quasi-poloidal symmetry, and a smooth
-  ``abs(mean_iota) >= 0.41`` lower bound, using the same bundled NFP=2 seed as
-  the QI runs.
+  ``abs(mean_iota) >= 0.41`` lower bound, using the common minimal-seed
+  workflow in the README examples.
 - QI: aspect ratio target 5 in the full common-minimal regeneration target, a
   differentiable smooth Boozer-space quasi-isodynamic
   residual evaluated through ``booz_xform_jax``, maximum mirror-ratio penalty,
@@ -20,8 +20,8 @@ they are only partial snapshots:
   lower bound.  ``LgradB`` is available as an optional commented term in the
   example script but is not active by default.
   The historical compact best-row panel used the bundled ``input.nfp2_QI``
-  omnigenity seed; the active README NFP coverage panel uses case-specific inputs, including the
-  seeded ``input.minimal_seed_nfp2_target_helicity`` stress case.
+  omnigenity seed; the active public QI workflow now starts from minimal,
+  circular-torus-like inputs and keeps any reference-family proposal explicit.
   The production CLI can optionally use a same-mode QP preseed; the current
   best gated QI row starts the constrained QI refinement directly from the seed
   with ``--qi-qp-preseed off``.
@@ -31,21 +31,189 @@ Publication structure
 
 The split between README and docs is deliberate:
 
-- ``README.md`` shows the current reviewed NFP coverage compactly: the
-  aspect-5, ``max_mode=5`` common-minimal QA/QH/QP GPU table and objective
-  panel, plus the case-gated QI NFP=1/2/3/4 panel.  It intentionally labels QP
-  NFP=4 as a weak stress row and does not claim missing uniform aspect-5
-  common-minimal QI rows.
+- ``README.md`` shows the current reviewed NFP coverage compactly with figures
+  only: the aspect-5, ``max_mode=5`` common-minimal QA/QH/QP GPU state panel
+  plus the case-gated QI NFP=1/2/3/4 state panel.  Numeric rows live below.
+  The README does not claim missing uniform aspect-5 common-minimal QI rows.
 - This page is the intended publication home for complete sweeps.  A complete
   publication should represent every CPU/GPU, continuation/direct, ESS on/off,
   QI preseed/no-preseed, ``max_mode=1..5`` reviewed row through downloadable
   CSV/JSON summaries plus generated objective-history panels, initial/final
   state atlases, and wall-time summary tables.  Treat archived ``max_mode<=3``
   snapshots as historical until matching aspect-5 rows and figures are present.
-- Additional QI case coverage, including NFP=1/2/3/4 case-gated rows that use
-  case-specific aspect targets, belongs here rather than in the README best-row
-  section.  Those rows are distinct from the pending common-minimal-seed QI
-  regeneration matrix.
+- Additional QI case coverage belongs here rather than in the README.  Legacy
+  far-seed rows remain useful diagnostics, but public QI optimization entry
+  points now start from the minimal-seed NFP family.
+
+Current README NFP Snapshot
+---------------------------
+
+The README figures correspond to the rows below.  QA/QH/QP rows are current
+common-minimal-seed GPU runs with continuation, ESS, and ``max_mode=5``.  QI
+public entry points now use the same minimal-seed policy; historical rows that
+used older case-specific starts are retained below only as archived reviewed
+artifacts until refreshed minimal-seed QI artifacts are regenerated.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 7 5 16 9 10 7 7 9 8 8 8 8 9
+
+   * - Target
+     - NFP
+     - Evidence
+     - Backend
+     - Policy
+     - max_mode
+     - ESS
+     - Final J
+     - QI legacy
+     - Mirror
+     - Aspect
+     - Iota
+     - Wall time
+   * - QA
+     - 2
+     - common minimal seed
+     - GPU
+     - continuation
+     - 5
+     - yes
+     - 1.09e-04
+     -
+     -
+     - 5.000
+     - 0.4200
+     - 25.3 min
+   * - QA
+     - 3
+     - common minimal seed
+     - GPU
+     - continuation
+     - 5
+     - yes
+     - 4.21e-03
+     -
+     -
+     - 5.004
+     - 0.4201
+     - 17.3 min
+   * - QH
+     - 3
+     - common minimal seed
+     - GPU
+     - continuation
+     - 5
+     - yes
+     - 9.14e-04
+     -
+     -
+     - 5.000
+     - -1.0474
+     - 17.4 min
+   * - QH
+     - 4
+     - common minimal seed
+     - GPU
+     - continuation
+     - 5
+     - yes
+     - 2.08e-03
+     -
+     -
+     - 5.000
+     - -1.6951
+     - 24.6 min
+   * - QP
+     - 2
+     - common minimal seed
+     - GPU
+     - continuation
+     - 5
+     - yes
+     - 2.34e-02
+     -
+     -
+     - 5.001
+     - -0.4177
+     - 16.7 min
+   * - QP
+     - 3
+     - common minimal seed
+     - GPU
+     - continuation
+     - 5
+     - yes
+     - 9.80e-02
+     -
+     -
+     - 5.024
+     - -0.4144
+     - 14.7 min
+   * - QP
+     - 4
+     - stress row, not promoted
+     - GPU
+     - continuation
+     - 5
+     - yes
+     - 7.45e+00
+     -
+     -
+     - 6.614
+     - -0.9373
+     - 9.4 min
+   * - QI
+     - 1
+     - case-gated staged QI
+     - CPU
+     - staged
+     - case
+     - case
+     - 1.56e-02
+     - 7.75e-04
+     - 0.242
+     - 9.999
+     - 0.5369
+     - 15.8 min
+   * - QI
+     - 2
+     - case-gated staged QI
+     - CPU
+     - staged
+     - case
+     - case
+     - 1.61e-02
+     - 5.25e-04
+     - 0.240
+     - 6.006
+     - -0.5994
+     - 28.7 min
+   * - QI
+     - 3
+     - case-gated staged QI
+     - CPU
+     - staged
+     - case
+     - case
+     - 9.33e-02
+     - 1.01e-03
+     - 0.304
+     - 3.541
+     - -1.0401
+     - 4.6 min
+   * - QI
+     - 4
+     - case-gated staged QI
+     - CPU
+     - staged
+     - case
+     - case
+     - 2.52e-02
+     - 2.54e-04
+     - 0.287
+     - 6.011
+     - -1.2930
+     - 0.4 min
 
 Every published full-sweep result should provide these assets in the sweep
 output tree or as GitHub release assets.  Only compact, reviewed,
@@ -113,8 +281,8 @@ Run the CPU production sweep:
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
    PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
 
 These commands describe the complete regeneration target, not the contents of
@@ -122,11 +290,11 @@ the checked-in snapshot.  Do not cite a full ``max_mode>=4`` CPU/GPU matrix unti
 the corresponding CSV/JSON rows and publication figures are present under
 ``docs/_static/figures``.
 
-The historical compact README renderer filters QI rows against the same
+The historical compact figure renderer filters QI rows against the same
 aspect-5 target as QA/QH/QP.  The standalone ``QI_optimization.py``
 case-coverage lanes may still use case-specific aspect targets when mirror
 ratio or far-seed basin capture is the experiment; those rows are documented
-separately and are not mixed into the README best-row table.
+separately and are not mixed into the README figure snapshot.
 
 The constrained QI study has one extra axis: whether the QI solve starts from a
 same-mode QP preseed.  The production CLI default is ``--qi-qp-preseed off``;
@@ -134,8 +302,8 @@ regenerate the focused preseed/no-preseed matrix with:
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
    PYTHONPATH=. python examples/optimization/render_qi_constrained_sweep.py
 
 The checked-in constrained-QI snapshot is not that full matrix; it currently
@@ -191,8 +359,8 @@ Run the GPU production sweep on a machine with a working JAX GPU install:
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
    PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
 
 Render the historical compact best-row panels from the best stellarator-symmetric rows:
@@ -229,10 +397,10 @@ asymmetric modes with ``1e-7``, and writes separate outputs under the
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
    PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
 
 For NVIDIA-only JAX installations, ``JAX_PLATFORMS=cuda`` is also valid.  Do
@@ -245,7 +413,7 @@ Historical Compact Best Rows
 The four compact ``readme_best_optimization_*.png`` panels below are retained
 as historical aspect-6/mode-3 comparison artifacts.  The active README no
 longer uses them as the primary optimization evidence; it uses the refreshed
-common-minimal QA/QH/QP objective panel and the reviewed QI NFP case panel.
+common-minimal QA/QH/QP state panel and the reviewed QI NFP case panel.
 When replacing these historical panels, select rows from the reviewed matrix
 and filter against the common aspect-5 target.  The selected QI row should be
 chosen with the legacy branch diagnostic, mirror-ratio, elongation, iota, and
@@ -311,11 +479,11 @@ the final acceptance diagnostic.
 To refresh the exact rows used by this panel, run the source optimizations with
 the target-aspect and output-dir values below before rendering.  The explicit
 overrides reproduce the archived mixed-target figure rows; omit them only when
-regenerating the current uniform aspect-5 policy.  The NFP=3 case can be
-selected as ``nfp3_qi``; that is a convenience alias for the
-``input.QI_stel_seed_3127`` far-seed lane.  If the NFP=3 raw artifact is
-replaced during a refresh, the replacement must pass the renderer's boundary
-match before the panel is published.
+regenerating the current uniform aspect-5 policy.  The NFP=1/2/3/4 public
+selectors ``nfp*_qi`` are now aliases for the minimal-seed lanes.  Named
+far-seed cases such as ``qi_stel_seed_3127`` remain explicit diagnostics.  If
+any raw artifact is replaced during a refresh, the replacement must pass the
+renderer boundary match before the panel is published.
 
 .. code-block:: bash
 
@@ -445,7 +613,7 @@ Minimal-Seed Showcase Snapshot
 ------------------------------
 
 The minimal-seed showcase is a bounded stress/reproduction lane for the common
-three-coefficient input family, not a README best-row table.  The checked-in
+three-coefficient input family, not a README table.  The checked-in
 assets are:
 
 - :download:`minimal_seed_showcase_summary.csv <_static/figures/minimal_seed_showcase_summary.csv>`
@@ -509,12 +677,6 @@ follows:
      - ``ok``
      - success
      - Current aspect-5, ``max_mode=5`` common-minimal completion gate pass.
-   * - ``qp_nfp4``
-     - QP
-     - 4
-     - ``ok``
-     - success
-     - Stress row only: it terminates away from aspect 5 with a large QP residual.
 
 Current non-stale common-minimal QI outputs for ``minimal_nfp1_qi``,
 ``minimal_nfp2_qi``, ``minimal_nfp3_qi``, and ``minimal_nfp4_qi`` are not
@@ -530,10 +692,10 @@ Regenerate the current aspect-5 common-minimal showcase with:
 .. code-block:: bash
 
    PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
-     --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
+     --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
      --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
      --policy continuation --max-mode 5 --ess on \
-     --max-nfev 60 --continuation-nfev 20 \
+     --max-nfev 70 --continuation-nfev 20 \
      --inner-max-iter 550 --inner-ftol 1e-10 \
      --trial-max-iter 550 --trial-ftol 1e-10 \
      --ess-alpha 1.2 --case-timeout-s 7200 --rerun
@@ -555,8 +717,8 @@ reproduction.  Keep ``--rerun`` for release reproduction.  Without it, successfu
 ``showcase_case.json`` rows may be reused from an older local run; the renderer
 skips known-stale rows by default and ``--include-stale`` should be used only
 for debugging.  The renderer writes both a compact objective-history panel and,
-when the required WOUT artifacts are available, a state panel with actual
-first optimized LCFS, final LCFS, initial Boozer ``|B|`` line contours, final
+when the required WOUT artifacts are available, a state panel with the raw
+user-facing seed LCFS, final LCFS, initial Boozer ``|B|`` line contours, final
 Boozer ``|B|`` line contours, and the full best-so-far objective history.
 Rows without non-stale initial/final WOUT provenance are omitted from that
 state panel instead of being silently replaced by stale artifacts.
@@ -583,14 +745,13 @@ Constrained QI Matrix
 
 The constrained QI renderer can compare CPU and available GPU rows for
 ``max_mode = 1..5``, ESS on/off, continuation/direct, and QP-preseed on/off
-using the bundled NFP=2 ``input.nfp2_QI`` seed.  The checked-in constrained
-snapshot is partial: it contains one CPU continuation ``max_mode=3`` status row
-and no GPU, direct, or QP-preseed constrained-QI rows.  Rerun
-the commands above to populate the full CPU/GPU/direct/asymmetric matrix under
-the current objective policy.  For each requested ``max_mode``, the input
-boundary is projected onto ``max(abs(m), abs(n)) <= max_mode`` before the stage
-is built, so the ``max_mode=1`` rows zero the mode-2 coefficients present in the
-warm start.
+using the public NFP=2 minimal seed.  The checked-in constrained snapshot is
+partial: it contains one CPU continuation ``max_mode=3`` status row and no GPU,
+direct, or QP-preseed constrained-QI rows.  Rerun the commands above to
+populate the full CPU/GPU/direct/asymmetric matrix under the current objective
+policy.  For each requested ``max_mode``, deterministic target-helicity hints
+are added when needed and the input boundary is projected onto
+``max(abs(m), abs(n)) <= max_mode`` before the stage is built.
 The QI objective is intentionally not ranked by scalar objective alone: rows
 are also evaluated by the legacy branch-squash/stretch/shuffle diagnostic,
 raw smooth QI residual, maximum mirror ratio, maximum LCFS elongation,
