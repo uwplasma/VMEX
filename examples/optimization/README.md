@@ -98,26 +98,31 @@ recorded in `showcase_case.json`; rows that lack that provenance predate the
 current seed-robustness policy.
 
 The bounded common-seed showcase is a stress test, not a best-result table.  It
-maps the configured minimal seeds to QI NFP=1/2/3/4, QA NFP=2, QH NFP=4, and QP
-NFP=2, then renders the failure-revealing objective panel used by the docs.  The
+maps the configured minimal seeds to QI NFP=1/2/3/4, QA NFP=2/3, QH NFP=3/4,
+and QP NFP=2/3/4 for the README promotion matrix; `qp_nfp1` is also available
+as a stress row.  It then renders the failure-revealing objective panel used by the docs.  The
 QI rows dispatch through `QI_optimization.py` via `qi_staged_runner.py`, so the
 common minimal seeds use the same staged/reference-family QI policy as the
 standalone QI example instead of the simpler quasisymmetry sweep path.  The
 checked-in panel is intentionally conservative: the renderer skips stale QI rows
 and only promotes rows with current provenance, so missing QI NFP rows indicate
-open validation work rather than successful hidden results.
+open validation work rather than successful hidden results.  The current
+production pass targets aspect ratio 5 and `max_mode=5`.
 
 ```bash
-PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_minimal_seed_showcase.py \
-  --cases all --backend-label cpu --solver-device cpu --worker-jax-platforms cpu \
-  --policy continuation --max-mode 3 --ess on \
-  --max-nfev 30 --continuation-nfev 20 \
-  --inner-max-iter 120 --trial-max-iter 120 \
-  --inner-ftol 1e-9 --trial-ftol 1e-9 --case-timeout-s 1800 --rerun
+PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
+  --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
+  --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
+  --policy continuation --max-mode 5 --ess on \
+  --max-nfev 60 --continuation-nfev 20 \
+  --inner-max-iter 550 --inner-ftol 1e-10 \
+  --trial-max-iter 550 --trial-ftol 1e-10 \
+  --ess-alpha 1.2 --case-timeout-s 7200 --rerun
 PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py
 ```
 
-Keep `--rerun` for a fresh local reproduction.  Without it, existing
+Use `cpu` for `JAX_PLATFORMS`, `--solver-device`, and `--worker-jax-platforms`
+for a slower local CPU-only reproduction.  Keep `--rerun` for a fresh local reproduction.  Without it, existing
 successful `showcase_case.json` rows are reused and can leave old outputs on
 disk; the renderer skips known-stale rows by default, and `--include-stale`
 should be reserved for debugging.  Current common-minimal QI rows use policy

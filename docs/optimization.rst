@@ -106,23 +106,27 @@ This gives the transform residual a usable derivative before local exact
 optimization and is recorded in ``showcase_case.json``.
 
 The bounded common-seed showcase runner maps those inputs to QI NFP=1/2/3/4,
-QA NFP=2, QH NFP=4, and QP NFP=2.  The QI rows dispatch through
+QA NFP=2/3, QH NFP=3/4, and QP NFP=2/3/4 for the README promotion matrix
+(``qp_nfp1`` is also available as a stress row).  The QI rows dispatch through
 ``examples/optimization/qi_staged_runner.py`` to the standalone
 ``QI_optimization.py`` staged/reference-family policy rather than the simpler
-quasisymmetry sweep path.  Current checked-in artifacts do not yet contain
-non-stale common-minimal QI completions:
+quasisymmetry sweep path.  Current checked-in artifacts remain archived until
+the aspect-5, ``max_mode=5`` production matrix is promoted:
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_minimal_seed_showcase.py \
-     --cases all --backend-label cpu --solver-device cpu --worker-jax-platforms cpu \
-     --policy continuation --max-mode 3 --ess on \
-     --max-nfev 30 --continuation-nfev 20 \
-     --inner-max-iter 120 --trial-max-iter 120 \
-     --inner-ftol 1e-9 --trial-ftol 1e-9 --case-timeout-s 1800 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
+     --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
+     --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
+     --policy continuation --max-mode 5 --ess on \
+     --max-nfev 60 --continuation-nfev 20 \
+     --inner-max-iter 550 --inner-ftol 1e-10 \
+     --trial-max-iter 550 --trial-ftol 1e-10 \
+     --ess-alpha 1.2 --case-timeout-s 7200 --rerun
    PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py
 
-For a clean reproduction, keep ``--rerun`` on the generator.  Without it,
+For a clean reproduction, keep ``--rerun`` on the generator.  Replace the three
+CUDA/GPU flags with ``cpu`` for a slower local CPU-only reproduction.  Without it,
 existing successful ``showcase_case.json`` rows are reused, which can leave old
 rows on disk; the renderer skips known-stale rows by default and
 ``--include-stale`` should be reserved for debugging.  The current

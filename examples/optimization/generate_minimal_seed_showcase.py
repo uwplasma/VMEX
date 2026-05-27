@@ -29,13 +29,16 @@ Examples:
   # One quick representative case.
   python examples/optimization/generate_minimal_seed_showcase.py --cases qa_nfp2 --max-nfev 2 --continuation-nfev 2
 
-  # Full minimal/circular README lane on CPU.
-  PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_minimal_seed_showcase.py \\
-    --cases all --backend-label cpu --solver-device cpu --worker-jax-platforms cpu \\
-    --policy continuation --max-mode 3 --ess on \\
-    --max-nfev 30 --continuation-nfev 20 \\
-    --inner-max-iter 120 --trial-max-iter 120 \\
-    --inner-ftol 1e-9 --trial-ftol 1e-9 --case-timeout-s 1800 --rerun
+  # Full aspect-5 README/docs production lane.  Use the CUDA variant on
+  # production GPU hosts; use cpu/cpu/cpu for a slower local reproduction.
+  PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \\
+    --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \\
+    --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \\
+    --policy continuation --max-mode 5 --ess on \\
+    --max-nfev 60 --continuation-nfev 20 \\
+    --inner-max-iter 550 --inner-ftol 1e-10 \\
+    --trial-max-iter 550 --trial-ftol 1e-10 \\
+    --ess-alpha 1.2 --case-timeout-s 7200 --rerun
 
   # Render completed cases.
   python examples/optimization/render_minimal_seed_showcase.py
