@@ -112,6 +112,11 @@ Steps taken:
     NumPy row-assignment path for the initial state on accelerator backends
     only, preserving traced/differentiable solves and giving users an explicit
     `0`/`1` override for profiling.
+68. Measured the policy on `office` CUDA.  The tiny direct-coil warm solve
+    improved from `0.1804 s` to `0.1693 s`, and
+    `setup_update_constants_s` dropped from `12.3 ms` to `4.7 ms`.  The
+    remaining warm CUDA targets are boundary/profile setup, residual scalar
+    materialization, accepted-control `fsq1`, and preconditioner dispatch.
 
 ### 2026-05-27 Free-boundary beta-scan bootstrap-current preconditioner
 

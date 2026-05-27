@@ -3112,7 +3112,11 @@ Accelerator host-forward runs now use the existing NumPy row-enforcement setup
 path for the initial state when ``VMEC_JAX_HOST_SETUP_ENFORCE=auto``.  This
 avoids tiny eager device dispatches in setup without changing traced
 differentiable solves; set the variable to ``0`` to disable the policy or ``1``
-to force it in non-traced profiling runs.
+to force it in non-traced profiling runs.  On the follow-up office CUDA probe,
+warm time improved from ``0.180 s`` to ``0.169 s`` and
+``setup_update_constants_s`` dropped from ``12.3 ms`` to ``4.7 ms``.  The
+remaining warm GPU targets are boundary/profile setup, residual scalar
+materialization, accepted-control ``fsq1``, and preconditioner dispatch.
 
 Historical bundled example runtime/memory matrix (March 2026)
 -------------------------------------------------------------

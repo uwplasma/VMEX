@@ -406,7 +406,9 @@ dominant setup phase rather than the broad `setup_total_s` container.  The
 first CUDA probe with that split measured warm setup at `40.4 ms`, dominated by
 boundary/profile construction and update constants.  Accelerator host-forward
 setup now reuses the existing NumPy row-enforcement path for the initial state
-when not tracing, with an explicit `VMEC_JAX_HOST_SETUP_ENFORCE` override.
+when not tracing, with an explicit `VMEC_JAX_HOST_SETUP_ENFORCE` override; the
+first CUDA check improved the tiny direct-coil warm solve from `0.180 s` to
+`0.169 s`.
 
 - Continuation correctness: 100%. Source fix is implemented and covered by
   synthetic repeated-stage tests, a real boundary-projection stage test, and
