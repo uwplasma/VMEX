@@ -117,8 +117,8 @@ vmec_jax input.cth_like_free_bdy_lasym_small
 The direct-coil free-boundary research lane adds a JAX-native external-field
 provider so free-boundary solves can sample differentiable Biot-Savart coils
 directly, while the existing `mgrid` path remains the VMEC2000-compatibility
-backend. Phase-1 generated WOUTs, magnetic grids, and reviewer plots are kept
-out of git.
+backend. Generated WOUTs and magnetic grids stay out of git; only compressed
+summary panels are committed.
 
 ```bash
 python examples/free_boundary_direct_coils_forward.py \
@@ -136,6 +136,10 @@ promotes strict direct-coil forward rows through actual WOUT beta 1.93%. Full
 nonlinear exact-adjoint gradients through the free-boundary iteration remain
 phase-2 work; see `docs/free_boundary_coil_optimization.rst` for plots,
 VMEC2000 comparisons, benchmarks, limitations, and the full-solve adjoint plan.
+
+![DIII-D finite-beta mgrid free-boundary scan](docs/_static/figures/freeb_diiid_mgrid_beta_ns101_panel.png)
+
+![LP-QA direct-coil finite-beta free-boundary scan](docs/_static/figures/freeb_lpqa_direct_coil_beta_ns101_panel.png)
 
 ## Backend Selection
 
