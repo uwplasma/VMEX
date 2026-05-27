@@ -800,3 +800,70 @@ def test_run_qi_stage_policy_mirror_ramp_promotes_guarded_stage(
     assert calls[1]["stage_modes"] == [1]
     assert calls[2]["method"] == "lbfgs"
     assert (tmp_path / "mirror_ramp_02_polish" / "qi_stage_checkpoint.json").exists()
+
+
+def test_run_qi_stage_policy_keeps_baseline_when_cleanup_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure(tmp_path)
+    calls: list[SimpleNamespace] = []
+
+    def solve_qi_stage(_input_file, _output_dir, _problem, **kwargs):
+        result = SimpleNamespace(
+            label=str(kwargs["label"]),
+            history={"objective_final": len(calls) + 1.0},
+            final_result={},
+            final_state="state",
+            final_optimizer=SimpleNamespace(static="static", indata="indata", signgs=1),
+        )
+        calls.append(result)
+        return result
+
+    def fake_diagnostics(stage_result, **_kwargs):
+        if "baseline" in stage_result.label:
+            return {
+                "qi_rank_score": 1.0,
+                "qi_constraint_score": 0.1,
+                "qi_seed_gate_passed": True,
+                "qi_engineering_gate_passed": True,
+                "qi_mirror_ratio_max": 0.25,
+                "mean_iota": 0.45,
+                "qi_smooth_total": 8.0e-4,
+                "qi_legacy_total": 8.0e-4,
+            }
+        return {
+            "qi_rank_score": 10.0,
+            "qi_constraint_score": 5.0,
+            "qi_seed_gate_passed": False,
+            "qi_engineering_gate_passed": False,
+            "qi_mirror_ratio_max": 0.5,
+            "mean_iota": 0.40,
+            "qi_smooth_total": 2.0e-2,
+            "qi_legacy_total": 2.0e-2,
+        }
+
+    monkeypatch.setattr(qio, "qi_diagnostics_for_result", fake_diagnostics)
+    monkeypatch.setattr(
+        qio.vj,
+        "qi_cleanup_candidate_promotable",
+        lambda stage_diagnostics, **_kwargs: {
+            **stage_diagnostics,
+            "qi_cleanup_promoted": False,
+            "qi_cleanup_rejection_reasons": ["cleanup rejected"],
+        },
+    )
+
+    result, promotion_log = qio.run_qi_stage_policy(
+        "input.seed",
+        tmp_path,
+        solve_qi_stage=solve_qi_stage,
+        make_qi_problem=lambda stage=None: {"stage": stage},
+        boundary_reference_preconditioner={"enabled": True, "accept_as_baseline": True},
+        mirror_ramp_stages=[{"name": "bad_cleanup", "stage_modes": [5], "max_nfev": 2}],
+    )
+
+    assert "boundary-reference baseline" in result.label
+    assert len(calls) == 2
+    assert promotion_log[0]["promoted"] is False
+    assert promotion_log[0]["rejection_reasons"] == ["cleanup rejected"]
