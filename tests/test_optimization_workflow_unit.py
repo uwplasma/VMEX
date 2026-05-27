@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -166,6 +167,122 @@ def test_least_squares_tuple_weights_are_simsopt_style() -> None:
         LeastSquaresProblem.from_tuples([(residual_value, 0.0, -1.0)])
     with pytest.raises(ValueError, match="finite and non-negative"):
         LeastSquaresProblem.from_tuples([(residual_value, 0.0, np.inf)])
+
+
+def test_qi_workflow_writes_stage_checkpoint_after_completed_stage(monkeypatch, tmp_path: Path) -> None:
+    import vmec_jax.optimization_workflow as workflow
+
+    class FakeOptimizer:
+        def aspect_ratio(self, _params):
+            return 5.0
+
+        def quasisymmetry_objective(self, _params):
+            return 1.0e-2
+
+        def run(self, params0, **_kwargs):
+            assert np.asarray(params0).shape == (1,)
+            return {
+                "x": np.asarray([0.125]),
+                "message": "stage complete",
+                "success": True,
+                "nfev": 2,
+                "njev": 1,
+                "_history_dump": {
+                    "history": [
+                        {"objective": 4.0, "qs_objective": 3.0, "aspect": 5.2, "iota": 0.30, "wall_time_s": 0.0},
+                        {"objective": 1.0, "qs_objective": 0.5, "aspect": 5.0, "iota": 0.42, "wall_time_s": 3.0},
+                    ],
+                    "objective_initial": 4.0,
+                    "objective_final": 1.0,
+                    "qs_initial": 3.0,
+                    "qs_final": 0.5,
+                    "aspect_initial": 5.2,
+                    "aspect_final": 5.0,
+                    "iota_initial": 0.30,
+                    "iota_final": 0.42,
+                    "nfev": 2,
+                    "njev": 1,
+                    "total_wall_time_s": 3.0,
+                    "success": True,
+                    "message": "stage complete",
+                },
+            }
+
+        def save_input(self, path, _params):
+            Path(path).write_text("input\n")
+
+        def save_wout(self, path, _params, state=None):
+            Path(path).write_text(f"wout {state}\n")
+
+        def _indata_from_params(self, _params):
+            return "next-indata"
+
+    def fake_build_stage(*_args, **_kwargs):
+        return SimpleNamespace(
+            specs=[BoundaryParamSpec(name="rc01", kind="rc", index=0, m=0, n=1)],
+            optimizer=FakeOptimizer(),
+            ctx=SimpleNamespace(),
+        )
+
+    monkeypatch.setattr(workflow, "build_quasi_isodynamic_objective_stage", fake_build_stage)
+    monkeypatch.setattr(workflow, "config_from_indata", lambda _indata: "next-cfg")
+
+    result = workflow.run_quasi_isodynamic_objective_optimization(
+        cfg="cfg",
+        indata="indata",
+        scalar_objectives=[],
+        qi_objectives=[],
+        stage_modes=[1],
+        max_mode=1,
+        max_nfev=2,
+        continuation_nfev=0,
+        method="scipy_matrix_free",
+        ftol=1.0e-5,
+        gtol=1.0e-5,
+        xtol=1.0e-5,
+        use_ess=False,
+        ess_alpha=1.2,
+        output_dir=tmp_path,
+        label="QI checkpoint test",
+        use_mode_continuation=True,
+        surfaces=[0.5],
+        mboz=2,
+        nboz=2,
+        nphi=5,
+        nalpha=3,
+        n_bounce=3,
+        include_bounce_endpoints=True,
+        softness=0.02,
+        width_weight=1.0,
+        branch_width_weight=0.5,
+        branch_width_softness=0.02,
+        profile_weight=0.1,
+        shuffle_profile_weight=1.0,
+        shuffle_profile_softness=0.02,
+        aligned_profile_weight=0.0,
+        aligned_profile_softness=0.02,
+        aligned_profile_trap_level=0.65,
+        aligned_profile_trap_softness=0.05,
+        phimin=0.0,
+        save_stage_inputs=True,
+        save_stage_wouts=False,
+        save_final_outputs=False,
+    )
+
+    stage_dir = tmp_path / "stage_01_mode01_m01_n01"
+    checkpoint = json.loads((tmp_path / "stage_checkpoint.json").read_text())
+    stage_checkpoint = json.loads((stage_dir / "qi_stage_checkpoint.json").read_text())
+    stage_history = json.loads((stage_dir / "history.json").read_text())
+    stage_diagnostics = json.loads((stage_dir / "diagnostics.json").read_text())
+
+    assert result.stage_modes == [1]
+    assert checkpoint == stage_checkpoint
+    assert checkpoint["role"] == "mode_continuation"
+    assert checkpoint["completed_stage_modes"] == [1]
+    assert checkpoint["history"]["objective_final"] == 1.0
+    assert stage_history["iota_final"] == 0.42
+    assert stage_diagnostics["mean_iota"] == 0.42
+    assert checkpoint["input_path"] == str(stage_dir / "input.final")
 
 
 def test_simple_omnigenity_seed_indata_keeps_base_and_perturbs_active_modes() -> None:
