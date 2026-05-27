@@ -37,11 +37,16 @@ def test_qi_staged_runner_builds_external_input_cli_and_environment(tmp_path: Pa
         use_ess=False,
         stage_mode_policy="repeat",
         max_nfev=5,
+        continuation_nfev=4,
         inner_max_iter=21,
         inner_ftol=1.0e-8,
         trial_max_iter=22,
         trial_ftol=2.0e-8,
         ess_alpha=1.7,
+        target_aspect=5.0,
+        target_abs_iota_min=0.41,
+        max_mirror_ratio=0.3,
+        max_elongation=10.0,
         qi_mboz=10,
         qi_nboz=11,
         qi_nphi=61,
@@ -65,8 +70,13 @@ def test_qi_staged_runner_builds_external_input_cli_and_environment(tmp_path: Pa
     assert "--no-make-plots" in args
     assert "--stage-mode-policy" in args and "repeat" in args
     assert "--max-nfev" in args and "5" in args
+    assert "--continuation-nfev" in args and "4" in args
     assert "--inner-max-iter" in args and "21" in args
     assert "--trial-ftol" in args and "2e-08" in args
+    assert "--target-aspect" in args and "5.0" in args
+    assert "--target-abs-iota-min" in args and "0.41" in args
+    assert "--max-mirror-ratio" in args and "0.3" in args
+    assert "--max-elongation" in args and "10.0" in args
     assert "--qi-mboz" in args and "10" in args
     assert "--qi-nboz" in args and "11" in args
     assert "--qi-nphi" in args and "61" in args
@@ -76,8 +86,8 @@ def test_qi_staged_runner_builds_external_input_cli_and_environment(tmp_path: Pa
     assert "--reference-input" in args
     assert str(ROOT / "examples" / "data" / "input.nfp2_QI") in args
     lambdas = tuple(float(value) for value in args[args.index("--reference-lambdas") + 1].split(","))
-    assert lambdas[:3] == pytest.approx((0.994, 0.995, 0.996))
-    assert lambdas[-1] == pytest.approx(1.010)
+    assert lambdas[:4] == pytest.approx((0.0, 0.1, 0.25, 0.5))
+    assert lambdas[-1] == pytest.approx(1.005)
 
 
 def test_qi_staged_runner_can_disable_reference_lambda_override(tmp_path: Path) -> None:

@@ -24,19 +24,17 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = SCRIPT_DIR.parents[1]
 QI_SCRIPT = SCRIPT_DIR / "QI_optimization.py"
 DEFAULT_REFERENCE_LAMBDAS = (
-    0.994,
+    0.0,
+    0.1,
+    0.25,
+    0.5,
+    0.75,
+    0.9,
+    0.95,
+    0.975,
     0.995,
-    0.996,
-    0.997,
-    0.998,
-    0.999,
     1.0,
-    1.001,
-    1.002,
-    1.004,
-    1.006,
-    1.008,
-    1.010,
+    1.005,
 )
 
 if str(SCRIPT_DIR) not in sys.path:
@@ -65,11 +63,16 @@ class QIStagedCaseConfig:
     use_ess: bool = True
     stage_mode_policy: str = "lower"
     max_nfev: int | None = None
+    continuation_nfev: int | None = None
     inner_max_iter: int | None = None
     inner_ftol: float | None = None
     trial_max_iter: int | None = None
     trial_ftol: float | None = None
     ess_alpha: float | None = None
+    target_aspect: float | None = None
+    target_abs_iota_min: float | None = None
+    max_mirror_ratio: float | None = None
+    max_elongation: float | None = None
     qi_mboz: int | None = None
     qi_nboz: int | None = None
     qi_nphi: int | None = None
@@ -182,6 +185,8 @@ def _build_qi_staged_args(config: QIStagedCaseConfig) -> list[str]:
         args.extend(["--solver-device", str(config.solver_device)])
     if config.max_nfev is not None:
         args.extend(["--max-nfev", str(int(config.max_nfev))])
+    if config.continuation_nfev is not None:
+        args.extend(["--continuation-nfev", str(int(config.continuation_nfev))])
     if config.inner_max_iter is not None:
         args.extend(["--inner-max-iter", str(int(config.inner_max_iter))])
     if config.inner_ftol is not None:
@@ -192,6 +197,15 @@ def _build_qi_staged_args(config: QIStagedCaseConfig) -> list[str]:
         args.extend(["--trial-ftol", str(float(config.trial_ftol))])
     if config.ess_alpha is not None:
         args.extend(["--ess-alpha", str(float(config.ess_alpha))])
+    physics_args = {
+        "--target-aspect": config.target_aspect,
+        "--target-abs-iota-min": config.target_abs_iota_min,
+        "--max-mirror-ratio": config.max_mirror_ratio,
+        "--max-elongation": config.max_elongation,
+    }
+    for flag, value in physics_args.items():
+        if value is not None:
+            args.extend([flag, str(float(value))])
     qi_resolution_args = {
         "--qi-mboz": config.qi_mboz,
         "--qi-nboz": config.qi_nboz,

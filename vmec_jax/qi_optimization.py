@@ -979,6 +979,7 @@ def boundary_reference_preconditioner_score(
     *,
     mirror_selection_weight=0.01,
     constraint_weight=0.25,
+    aspect_selection_weight=25.0,
 ):
     """Rank reference-family candidates by gates first, then exact metrics."""
 
@@ -986,22 +987,38 @@ def boundary_reference_preconditioner_score(
     seed_penalty = 0.0 if bool(diagnostics.get("qi_seed_gate_passed")) else 20.0
     rank_score = _finite_or_inf(diagnostics.get("qi_rank_score"))
     constraint_score = _finite_or_inf(diagnostics.get("qi_constraint_score"))
-    mirror = _finite_or_inf(diagnostics.get("qi_mirror_ratio_max"))
+    mirror = _finite_or_none(diagnostics.get("qi_mirror_ratio_max"))
+    aspect_relative_error = _finite_or_none(diagnostics.get("aspect_relative_error"))
     return float(
         engineering_penalty
         + seed_penalty
         + rank_score
         + float(constraint_weight) * constraint_score
-        + float(mirror_selection_weight) * mirror
+        + float(mirror_selection_weight) * (0.0 if mirror is None else mirror)
+        + float(aspect_selection_weight) * (0.0 if aspect_relative_error is None else aspect_relative_error)
     )
 
 
-def boundary_reference_record_is_qi_safe(record, *, max_mirror_ratio, abs_iota_min):
+def boundary_reference_record_is_qi_safe(
+    record,
+    *,
+    max_mirror_ratio,
+    abs_iota_min,
+    target_aspect=None,
+    aspect_relative_tolerance=0.25,
+):
     """Return whether a preconditioner summary record satisfies safe gates."""
 
-    return _finite_or_inf(record.get("mirror")) <= float(max_mirror_ratio) and abs(
-        float(record.get("mean_iota") or 0.0)
-    ) >= float(abs_iota_min)
+    mirror_ok = _finite_or_inf(record.get("mirror")) <= float(max_mirror_ratio)
+    iota_ok = abs(float(record.get("mean_iota") or 0.0)) >= float(abs_iota_min)
+    if target_aspect is None:
+        aspect_ok = True
+    else:
+        aspect = _finite_or_inf(record.get("aspect"))
+        aspect_ok = abs(aspect - float(target_aspect)) / max(float(target_aspect), 1.0e-16) <= float(
+            aspect_relative_tolerance
+        )
+    return mirror_ok and iota_ok and aspect_ok
 
 
 def run_boundary_reference_preconditioner(input_file, output_dir, config, *, ctx: QIOptimizationContext | None = None):
@@ -1065,6 +1082,7 @@ def run_boundary_reference_preconditioner(input_file, output_dir, config, *, ctx
                 diagnostics,
                 mirror_selection_weight=float(config.get("mirror_selection_weight", 0.01)),
                 constraint_weight=float(config.get("constraint_selection_weight", 0.25)),
+                aspect_selection_weight=float(config.get("aspect_selection_weight", 25.0)),
             )
             record = {
                 "lambda": lam,
@@ -1108,6 +1126,8 @@ def run_boundary_reference_preconditioner(input_file, output_dir, config, *, ctx
     if bool(config.get("prefer_qi_safe_candidates", True)):
         max_mirror_ratio = float(config.get("max_mirror_ratio", _ctx(ctx, "max_mirror_ratio")))
         abs_iota_min = float(config.get("abs_iota_min", _ctx(ctx, "target_abs_iota_min")))
+        target_aspect = float(config.get("target_aspect", _ctx(ctx, "target_aspect")))
+        aspect_relative_tolerance = float(config.get("aspect_relative_tolerance", 0.25))
         safe_pool = [
             record
             for record in candidate_pool
@@ -1115,6 +1135,8 @@ def run_boundary_reference_preconditioner(input_file, output_dir, config, *, ctx
                 record,
                 max_mirror_ratio=max_mirror_ratio,
                 abs_iota_min=abs_iota_min,
+                target_aspect=target_aspect,
+                aspect_relative_tolerance=aspect_relative_tolerance,
             )
         ]
         if safe_pool:
