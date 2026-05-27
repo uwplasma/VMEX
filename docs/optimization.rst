@@ -507,11 +507,9 @@ branch-shuffle diagnostic.
        # shuffle_profile_nphi_out=501,
    )
    qi = vj.QuasiIsodynamicResidual(qi_options)
-   mirror = vj.MirrorRatio(
+   mirror = vj.VMECMirrorRatio(
        threshold=0.21,
        surfaces=qi_options.surfaces,
-       mboz=qi_options.mboz,
-       nboz=qi_options.nboz,
        ntheta=96,
        nphi=96,
        surface_index=None,       # all selected surfaces

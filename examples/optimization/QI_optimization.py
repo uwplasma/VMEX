@@ -208,19 +208,14 @@ qi_ceiling = vj.QuasiIsodynamicResidualCeiling(
     smooth_penalty=QI_CEILING_SMOOTH_PENALTY,
     qi_options=QI_OPTIONS,
 )
-mirror = vj.MirrorRatio(
+mirror = vj.VMECMirrorRatio(
     threshold=MAX_MIRROR_RATIO,
     surfaces=QI_OPTIONS.surfaces,
-    mboz=QI_OPTIONS.mboz,
-    nboz=QI_OPTIONS.nboz,
     ntheta=96,
     nphi=96,
     surface_index=MIRROR_SURFACE_INDEX,
-    phimin=QI_OPTIONS.phimin,
     smooth_extrema=2.0e-2,
     smooth_penalty=2.0e-2,
-    jit_booz=QI_OPTIONS.jit_booz,
-    qi_options=QI_OPTIONS,
 )
 elongation = vj.MaxElongation(
     threshold=MAX_ELONGATION,

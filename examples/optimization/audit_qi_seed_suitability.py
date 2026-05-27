@@ -1908,15 +1908,21 @@ def run_qi_prefine_probe(plan: dict[str, Any], *, workflow: Any | None = None) -
     qi_options_raw = plan["qi_options"]
     opt = plan["optimization"]
     requested_stage_modes = tuple(int(mode) for mode in opt["stage_modes"])
+    qi_surfaces = tuple(float(surface) for surface in qi_options_raw["surfaces"])
+    qi_mboz = int(qi_options_raw["mboz"])
+    qi_nboz = int(qi_options_raw["nboz"])
+    qi_phimin = float(qi_options_raw["phimin"])
+    qi_jit_booz = bool(qi_options_raw.get("jit_booz", True))
     qi_options = workflow.QuasiIsodynamicOptions(
-        surfaces=tuple(float(surface) for surface in qi_options_raw["surfaces"]),
-        mboz=int(qi_options_raw["mboz"]),
-        nboz=int(qi_options_raw["nboz"]),
+        surfaces=qi_surfaces,
+        mboz=qi_mboz,
+        nboz=qi_nboz,
         nphi=int(qi_options_raw["nphi"]),
         nalpha=int(qi_options_raw["nalpha"]),
         n_bounce=int(qi_options_raw["n_bounce"]),
         include_bounce_endpoints=bool(qi_options_raw.get("include_bounce_endpoints", False)),
-        phimin=float(qi_options_raw["phimin"]),
+        phimin=qi_phimin,
+        jit_booz=qi_jit_booz,
     )
     objective_tuples = []
     qi = workflow.QuasiIsodynamicResidual(qi_options)
@@ -1937,9 +1943,9 @@ def run_qi_prefine_probe(plan: dict[str, Any], *, workflow: Any | None = None) -
     if float(qi_options_raw.get("mirror_weight", 0.0)) > 0.0:
         mirror = workflow.MirrorRatio(
             threshold=float(qi_options_raw.get("mirror_threshold", DEFAULT_MAX_MIRROR_RATIO)),
-            surfaces=qi_options.surfaces,
-            mboz=qi_options.mboz,
-            nboz=qi_options.nboz,
+            surfaces=qi_surfaces,
+            mboz=qi_mboz,
+            nboz=qi_nboz,
             ntheta=int(qi_options_raw.get("mirror_ntheta", 32)),
             nphi=int(qi_options_raw.get("mirror_nphi", 32)),
             surface_index=(
@@ -1947,8 +1953,8 @@ def run_qi_prefine_probe(plan: dict[str, Any], *, workflow: Any | None = None) -
                 if qi_options_raw.get("mirror_surface_index", None) is None
                 else int(qi_options_raw.get("mirror_surface_index"))
             ),
-            phimin=qi_options.phimin,
-            jit_booz=qi_options.jit_booz,
+            phimin=qi_phimin,
+            jit_booz=qi_jit_booz,
         )
         objective_tuples.append((mirror.J, 0.0, float(qi_options_raw["mirror_weight"])))
     if float(qi_options_raw.get("elongation_weight", 0.0)) > 0.0:
