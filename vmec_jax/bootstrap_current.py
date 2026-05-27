@@ -143,6 +143,43 @@ def _current_derivative_from_indata(indata: InData, s: Any, pcurr_type: str) -> 
     return jnp.zeros_like(s, dtype=jnp.float64)
 
 
+def _current_grid_update_samples(*, options: BootstrapCurrentOptions, s: Any, jdotB_redl: Any, bdotb: Any, dpds: Any):
+    """Return Redl update channels on a current grid that spans ``[0, 1]``."""
+
+    s = _as_1d("s", s)
+    jdotB_redl = _as_1d("jdotB_redl", jdotB_redl)
+    bdotb = _as_1d("bdotb", bdotb)
+    dpds = _as_1d("dpds", dpds)
+    _validate_profile_shapes(s, ("jdotB_redl", jdotB_redl), ("bdotb", bdotb), ("dpds", dpds))
+    if int(options.n_current) < 2:
+        raise ValueError("n_current must be at least 2")
+
+    # Redl geometry should avoid exactly s=0 and s=1 for robustness, while
+    # VMEC's current spline should still cover the full normalized-flux domain.
+    left_needed = bool(float(np.asarray(s[0])) > 0.0)
+    right_needed = bool(float(np.asarray(s[-1])) < 1.0)
+    if left_needed:
+        s = jnp.concatenate([jnp.asarray([0.0], dtype=s.dtype), s])
+        jdotB_redl = jnp.concatenate([jdotB_redl[:1], jdotB_redl])
+        bdotb = jnp.concatenate([bdotb[:1], bdotb])
+        dpds = jnp.concatenate([dpds[:1], dpds])
+    if right_needed:
+        s = jnp.concatenate([s, jnp.asarray([1.0], dtype=s.dtype)])
+        jdotB_redl = jnp.concatenate([jdotB_redl, jdotB_redl[-1:]])
+        bdotb = jnp.concatenate([bdotb, bdotb[-1:]])
+        dpds = jnp.concatenate([dpds, dpds[-1:]])
+
+    if int(options.n_current) == int(s.shape[0]):
+        return {"s": s, "jdotB_redl": jdotB_redl, "bdotb": bdotb, "dpds": dpds}
+    grid = jnp.linspace(0.0, 1.0, int(options.n_current), dtype=s.dtype)
+    return {
+        "s": grid,
+        "jdotB_redl": jnp.interp(grid, s, jdotB_redl),
+        "bdotb": jnp.interp(grid, s, bdotb),
+        "dpds": jnp.interp(grid, s, dpds),
+    }
+
+
 def redl_current_rhs(*, jdotB_redl: Any, bdotb: Any, dpsi_ds: Any) -> Any:
     r"""Return the Redl source term for the VMEC current ODE.
 
@@ -503,16 +540,23 @@ def bootstrap_current_fixed_point(
         last_run = solve_fn(current_indata)
         diag = diagnostics_fn(last_run, current_indata)
         last_diag = dict(diag)
-        s = _as_1d("diagnostics['s']", diag["s"])
         signgs = int(diag.get("signgs", getattr(last_run, "signgs", 1)))
         dpsi_ds = diag.get("dpsi_ds", dpsi_ds_from_vmec_phiedge(current_indata.get_float("PHIEDGE", 1.0), signgs=signgs))
+        update_samples = _current_grid_update_samples(
+            options=options,
+            s=diag["s"],
+            jdotB_redl=diag["jdotB_redl"],
+            bdotb=diag["bdotb"],
+            dpds=diag["dpds"],
+        )
+        s = update_samples["s"]
         if options.policy == "integrating_factor":
             update = redl_current_integrating_factor_update(
                 s=s,
-                jdotB_redl=diag["jdotB_redl"],
-                bdotb=diag["bdotb"],
+                jdotB_redl=update_samples["jdotB_redl"],
+                bdotb=update_samples["bdotb"],
                 dpsi_ds=dpsi_ds,
-                dpds=diag["dpds"],
+                dpds=update_samples["dpds"],
             )
             proposed_derivative = update["current_derivative"]
             proposed_current = update["current"]
@@ -525,10 +569,10 @@ def bootstrap_current_fixed_point(
                 )
             proposed_derivative = redl_current_derivative_update(
                 s=s,
-                jdotB_redl=diag["jdotB_redl"],
-                bdotb=diag["bdotb"],
+                jdotB_redl=update_samples["jdotB_redl"],
+                bdotb=update_samples["bdotb"],
                 dpsi_ds=dpsi_ds,
-                dpds=diag.get("dpds"),
+                dpds=update_samples["dpds"],
                 previous_current=previous_current,
                 policy=options.policy,
             )

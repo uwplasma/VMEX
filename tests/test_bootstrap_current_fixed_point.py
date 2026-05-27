@@ -208,6 +208,7 @@ def test_bootstrap_current_fixed_point_runs_callback_loop_to_convergence():
         indata,
         options=vj.BootstrapCurrentOptions(
             helicity_n=1,
+            n_current=3,
             damping=1.0,
             current_tol=1.0e-12,
             mismatch_tol=1.0e-12,
@@ -226,6 +227,48 @@ def test_bootstrap_current_fixed_point_runs_callback_loop_to_convergence():
     assert result.indata.scalars["CURTOR"] == pytest.approx(1.0)
     assert result.history[-1].current_update_norm == pytest.approx(0.0, abs=1.0e-14)
     assert result.history[-1].aspect == pytest.approx(7.0)
+
+
+def test_bootstrap_current_fixed_point_extends_interior_redl_samples_to_full_current_grid():
+    s_redl = jnp.asarray([0.25, 0.5, 0.75], dtype=jnp.float64)
+    bdotb = jnp.ones_like(s_redl)
+    dpsi_ds = 0.02
+    target_derivative = 2.0 * jnp.ones_like(s_redl)
+    indata = InData(
+        scalars={
+            "PHIEDGE": 2.0 * np.pi * dpsi_ds,
+            "PCURR_TYPE": "cubic_spline_ip",
+            "CURTOR": 0.0,
+            "NCURR": 1,
+            "AC": [1.0],
+            "AC_AUX_S": [0.0, 1.0],
+            "AC_AUX_F": [0.0, 0.0],
+        },
+        indexed={},
+    )
+
+    result = vj.bootstrap_current_fixed_point(
+        indata,
+        options=vj.BootstrapCurrentOptions(
+            helicity_n=1,
+            n_current=5,
+            damping=1.0,
+            max_fixed_point_iter=1,
+        ),
+        solve_fn=lambda _current_indata: type("FakeRun", (), {"signgs": 1})(),
+        diagnostics_fn=lambda _run, _current_indata: {
+            "s": s_redl,
+            "jdotB_redl": target_derivative / (2.0 * np.pi * dpsi_ds),
+            "bdotb": bdotb,
+            "dpds": jnp.zeros_like(s_redl),
+            "dpsi_ds": dpsi_ds,
+            "signgs": 1,
+        },
+    )
+
+    np.testing.assert_allclose(result.indata.scalars["AC_AUX_S"], np.linspace(0.0, 1.0, 5))
+    np.testing.assert_allclose(result.indata.scalars["AC_AUX_F"], 2.0 * np.ones(5), rtol=1.0e-12)
+    assert result.indata.scalars["CURTOR"] == pytest.approx(2.0)
 
 
 def test_bootstrap_current_fixed_point_requires_redl_profiles_for_default_diagnostics():

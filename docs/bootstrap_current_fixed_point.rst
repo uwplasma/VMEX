@@ -41,6 +41,39 @@ Next implementation steps:
 - Add an implicit fixed-point derivative once the production solve loop is
   validated on finite-beta fixtures.
 
+Example
+-------
+
+The standalone example ``examples/bootstrap_current_fixed_point.py`` shows the
+intended user workflow:
+
+.. code-block:: bash
+
+   PYTHONPATH=. python examples/bootstrap_current_fixed_point.py
+
+It keeps all physics and solver controls at the top of the file: VMEC input,
+nominal beta, Redl helicity, Redl sample surfaces, current spline resolution,
+Picard damping, VMEC solve budget, and output paths.  The script writes:
+
+- ``results/bootstrap_current_fixed_point/input.bootstrap_current_final``
+- ``results/bootstrap_current_fixed_point/wout_bootstrap_current_final.nc``
+- ``results/bootstrap_current_fixed_point/history.json``
+
+For stellarator studies, change ``INPUT_PATH`` and ``HELICITY_N`` in the script
+and keep the same fixed-point call:
+
+.. code-block:: python
+
+   result = vj.bootstrap_current_fixed_point(
+       indata,
+       options=FIXED_POINT_OPTIONS,
+       ne_coeffs=profiles.ne_coeffs,
+       Te_coeffs=profiles.Te_coeffs,
+       Ti_coeffs=profiles.Ti_coeffs,
+       Zeff_coeffs=profiles.Zeff_coeffs,
+       run_kwargs=VMEC_RUN_KWARGS,
+   )
+
 Literature Anchors
 ------------------
 
