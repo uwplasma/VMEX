@@ -760,9 +760,11 @@ def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current_an
     np.testing.assert_allclose(exact_geometry, fd_geometry, rtol=1.0e-3, atol=1.0e-12)
 
 
+@pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])
 def test_jax_nestor_operator_fixed_boundary_ad_matches_central_fd_for_coil_vars(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    lasym: bool,
 ) -> None:
     """Validate the JAX operator chain on a fixed boundary from the tiny free-boundary case.
 
@@ -801,7 +803,7 @@ def test_jax_nestor_operator_fixed_boundary_ad_matches_central_fd_for_coil_vars(
 
     input_path = _write_tiny_direct_freeb_input(
         tmp_path / "input.direct_jax_nestor_ad_fd",
-        lasym=False,
+        lasym=lasym,
         niter=2,
         mpol=3,
         ntheta=6,

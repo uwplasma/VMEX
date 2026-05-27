@@ -80,14 +80,19 @@ The validation ladder is:
 7. Boozer/QS objective: the same complete-solve finite-difference checks after
    Boozer/QS diagnostics are in the objective path.
 
-The first five AD-vs-FD rungs are implemented as fast tests today. Rung 6 is
-split deliberately: complete accepted direct-coil solves have fast
-finite-difference response guards for current and one Fourier geometry
+The first five AD-vs-FD rungs are implemented as fast tests today, and the
+fixed-boundary dense mode-space NESTOR rung is promoted for both
+stellarator-symmetric and ``LASYM`` tiny direct-coil cases: one coil current and
+one Fourier geometry coefficient are checked against central finite differences
+through the chain direct coils -> boundary projection -> VMEC/NESTOR
+source/matrix assembly -> dense mode solve while the plasma boundary is held
+fixed. Rung 6 is split deliberately: complete accepted direct-coil solves have
+fast finite-difference response guards for current and one Fourier geometry
 coefficient, and the accepted-state direct-coil normal-field metric now has a
 JAX replay gate whose current derivative matches central FD after freezing the
 accepted plasma boundary. The remaining phase-2 blocker is differentiating
 through the nonlinear ``run_free_boundary`` iteration loop itself, rather than
-through the final accepted-boundary replay. The combined
+through the fixed-boundary or final accepted-boundary replay. The combined
 JAX operator is also threaded into the free-boundary driver behind the opt-in
 ``VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR=1`` diagnostic flag for low-resolution
 validation. For stellarator-symmetric runs, the JAX path reconstructs the full
@@ -999,10 +1004,11 @@ Current fast tests cover:
 - dense mode-space vacuum solve and reconstruction tests, including
   stellarator-symmetric and LASYM-style basis blocks plus finite-difference
   gradients through a direct-coil projected source/RHS/mode-space chain.
-- fixed-boundary AD-vs-central-finite-difference checks for one coil current
-  and one coil Fourier geometry coefficient through the JAX chain
-  direct coils -> boundary projection -> VMEC/NESTOR source/matrix assembly
-  -> dense mode solve.
+- fixed-boundary dense mode-space NESTOR AD-vs-central-finite-difference checks
+  for both stellarator-symmetric and ``LASYM`` tiny direct-coil cases, covering
+  one coil current and one coil Fourier geometry coefficient through the JAX
+  chain direct coils -> boundary projection -> VMEC/NESTOR source/matrix
+  assembly -> dense mode solve.
 - a guarded, opt-in low-resolution complete-solve finite-difference smoke for
   one coil current and one Fourier geometry coefficient; this checks finite
   nonzero outer-loop response, not a production AD-vs-finite-difference
