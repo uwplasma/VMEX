@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -166,6 +167,122 @@ def test_least_squares_tuple_weights_are_simsopt_style() -> None:
         LeastSquaresProblem.from_tuples([(residual_value, 0.0, -1.0)])
     with pytest.raises(ValueError, match="finite and non-negative"):
         LeastSquaresProblem.from_tuples([(residual_value, 0.0, np.inf)])
+
+
+def test_qi_workflow_writes_stage_checkpoint_after_completed_stage(monkeypatch, tmp_path: Path) -> None:
+    import vmec_jax.optimization_workflow as workflow
+
+    class FakeOptimizer:
+        def aspect_ratio(self, _params):
+            return 5.0
+
+        def quasisymmetry_objective(self, _params):
+            return 1.0e-2
+
+        def run(self, params0, **_kwargs):
+            assert np.asarray(params0).shape == (1,)
+            return {
+                "x": np.asarray([0.125]),
+                "message": "stage complete",
+                "success": True,
+                "nfev": 2,
+                "njev": 1,
+                "_history_dump": {
+                    "history": [
+                        {"objective": 4.0, "qs_objective": 3.0, "aspect": 5.2, "iota": 0.30, "wall_time_s": 0.0},
+                        {"objective": 1.0, "qs_objective": 0.5, "aspect": 5.0, "iota": 0.42, "wall_time_s": 3.0},
+                    ],
+                    "objective_initial": 4.0,
+                    "objective_final": 1.0,
+                    "qs_initial": 3.0,
+                    "qs_final": 0.5,
+                    "aspect_initial": 5.2,
+                    "aspect_final": 5.0,
+                    "iota_initial": 0.30,
+                    "iota_final": 0.42,
+                    "nfev": 2,
+                    "njev": 1,
+                    "total_wall_time_s": 3.0,
+                    "success": True,
+                    "message": "stage complete",
+                },
+            }
+
+        def save_input(self, path, _params):
+            Path(path).write_text("input\n")
+
+        def save_wout(self, path, _params, state=None):
+            Path(path).write_text(f"wout {state}\n")
+
+        def _indata_from_params(self, _params):
+            return "next-indata"
+
+    def fake_build_stage(*_args, **_kwargs):
+        return SimpleNamespace(
+            specs=[BoundaryParamSpec(name="rc01", kind="rc", index=0, m=0, n=1)],
+            optimizer=FakeOptimizer(),
+            ctx=SimpleNamespace(),
+        )
+
+    monkeypatch.setattr(workflow, "build_quasi_isodynamic_objective_stage", fake_build_stage)
+    monkeypatch.setattr(workflow, "config_from_indata", lambda _indata: "next-cfg")
+
+    result = workflow.run_quasi_isodynamic_objective_optimization(
+        cfg="cfg",
+        indata="indata",
+        scalar_objectives=[],
+        qi_objectives=[],
+        stage_modes=[1],
+        max_mode=1,
+        max_nfev=2,
+        continuation_nfev=0,
+        method="scipy_matrix_free",
+        ftol=1.0e-5,
+        gtol=1.0e-5,
+        xtol=1.0e-5,
+        use_ess=False,
+        ess_alpha=1.2,
+        output_dir=tmp_path,
+        label="QI checkpoint test",
+        use_mode_continuation=True,
+        surfaces=[0.5],
+        mboz=2,
+        nboz=2,
+        nphi=5,
+        nalpha=3,
+        n_bounce=3,
+        include_bounce_endpoints=True,
+        softness=0.02,
+        width_weight=1.0,
+        branch_width_weight=0.5,
+        branch_width_softness=0.02,
+        profile_weight=0.1,
+        shuffle_profile_weight=1.0,
+        shuffle_profile_softness=0.02,
+        aligned_profile_weight=0.0,
+        aligned_profile_softness=0.02,
+        aligned_profile_trap_level=0.65,
+        aligned_profile_trap_softness=0.05,
+        phimin=0.0,
+        save_stage_inputs=True,
+        save_stage_wouts=False,
+        save_final_outputs=False,
+    )
+
+    stage_dir = tmp_path / "stage_01_mode01_m01_n01"
+    checkpoint = json.loads((tmp_path / "stage_checkpoint.json").read_text())
+    stage_checkpoint = json.loads((stage_dir / "qi_stage_checkpoint.json").read_text())
+    stage_history = json.loads((stage_dir / "history.json").read_text())
+    stage_diagnostics = json.loads((stage_dir / "diagnostics.json").read_text())
+
+    assert result.stage_modes == [1]
+    assert checkpoint == stage_checkpoint
+    assert checkpoint["role"] == "mode_continuation"
+    assert checkpoint["completed_stage_modes"] == [1]
+    assert checkpoint["history"]["objective_final"] == 1.0
+    assert stage_history["iota_final"] == 0.42
+    assert stage_diagnostics["mean_iota"] == 0.42
+    assert checkpoint["input_path"] == str(stage_dir / "input.final")
 
 
 def test_simple_omnigenity_seed_indata_keeps_base_and_perturbs_active_modes() -> None:
@@ -1228,6 +1345,193 @@ def test_vmec_mirror_ratio_uses_vmec_field_without_boozer(monkeypatch) -> None:
     np.testing.assert_allclose(np.asarray(residual), np.asarray([0.4]), rtol=1e-12, atol=1e-12)
     assert calls == [2]
     assert objective.total(ctx, state=object()) == pytest.approx(0.16)
+    with pytest.raises(ValueError, match="target=0"):
+        objective.to_objective_term(target=1.0, residual_weight=1.0)
+
+
+def test_vmec_mirror_ratio_smooth_penalty_weights_multiple_surfaces(monkeypatch) -> None:
+    import vmec_jax.optimization_workflow as workflow
+
+    calls = []
+
+    def fake_b_cartesian_from_state(*args, **kwargs):
+        s_index = int(kwargs["s_index"])
+        calls.append(s_index)
+        bmag_by_surface = {
+            0: np.asarray([[1.0, 2.0], [1.5, 1.25]]),
+            2: np.asarray([[1.0, 4.0], [2.0, 3.0]]),
+        }
+        return np.stack(
+            [
+                bmag_by_surface[s_index],
+                np.zeros_like(bmag_by_surface[s_index]),
+                np.zeros_like(bmag_by_surface[s_index]),
+            ],
+            axis=-1,
+        )
+
+    monkeypatch.setattr(workflow, "b_cartesian_from_state", fake_b_cartesian_from_state)
+
+    ctx = SimpleNamespace(static=SimpleNamespace(s=np.asarray([0.0, 0.5, 1.0])), indata=object(), signgs=1)
+    objective = workflow.VMECMirrorRatio(
+        threshold=0.45,
+        surfaces=(0.0, 1.0),
+        smooth_penalty=0.1,
+        normalize_surfaces=True,
+    )
+
+    out = objective._evaluate_state(ctx, state=object())
+
+    expected_ratios = np.asarray([1.0 / 3.0, 3.0 / 5.0])
+    expected_penalty = 0.1 * np.logaddexp((expected_ratios - 0.45) / 0.1, 0.0)
+    expected_residuals = expected_penalty * np.sqrt(0.5)
+
+    assert calls == [0, 2]
+    np.testing.assert_allclose(np.asarray(out["mirror_ratio"]), expected_ratios, rtol=1.0e-12, atol=1.0e-12)
+    np.testing.assert_allclose(np.asarray(out["penalty"]), expected_penalty, rtol=1.0e-12, atol=1.0e-12)
+    np.testing.assert_allclose(np.asarray(out["residuals1d"]), expected_residuals, rtol=1.0e-12, atol=1.0e-12)
+    assert float(out["total"]) == pytest.approx(float(np.sum(expected_residuals**2)))
+
+
+def test_vmec_mirror_ratio_accepts_boozer_style_sampling_aliases() -> None:
+    import vmec_jax.optimization_workflow as workflow
+
+    objective = workflow.VMECMirrorRatio(
+        threshold=0.3,
+        surfaces=(0.5, 1.0),
+        ntheta=96,
+        nphi=64,
+    )
+
+    assert objective.requires_qi_field is False
+    assert objective.requested_ntheta == 96
+    assert objective.requested_nzeta == 64
+
+    objective = workflow.VMECMirrorRatio(
+        threshold=0.3,
+        surfaces=(0.5, 1.0),
+        nzeta=32,
+    )
+    assert objective.requested_ntheta is None
+    assert objective.requested_nzeta == 32
+
+    with pytest.raises(ValueError, match="either nphi or nzeta"):
+        workflow.VMECMirrorRatio(threshold=0.3, nphi=16, nzeta=32)
+
+
+def test_mirror_ratio_objective_terms_cover_surface_selection_and_prepared_paths(monkeypatch) -> None:
+    import vmec_jax.optimization_workflow as workflow
+
+    ctx = SimpleNamespace(
+        static=SimpleNamespace(cfg=SimpleNamespace(mpol=2, ntor=1, ntheta=8, nzeta=8, nfp=2, lasym=False)),
+        indata="indata",
+        signgs=-1,
+        flux="flux",
+        pressure="pressure",
+    )
+    calls: list[dict[str, object]] = []
+
+    def fake_penalty(**kwargs):
+        calls.append(kwargs)
+        return {
+            "residuals1d": np.asarray([0.25, 0.5]),
+            "total": 0.3125,
+            "mirror_ratio": np.asarray([0.35, 0.45]),
+        }
+
+    monkeypatch.setattr(workflow, "mirror_ratio_penalty_from_state", fake_penalty)
+    monkeypatch.setattr(
+        workflow.MirrorRatio,
+        "_prepare_boozer_constants",
+        lambda self, ctx_arg: ("constants", "grids"),
+    )
+
+    with pytest.raises(ValueError, match="surfaces"):
+        workflow.MirrorRatio(threshold=0.3, surfaces=())._selected_surfaces_and_weights()
+    with pytest.raises(IndexError, match="outside"):
+        workflow.MirrorRatio(threshold=0.3, surfaces=(0.25,), surface_index=3)._selected_surfaces_and_weights()
+
+    selected = workflow.MirrorRatio(threshold=0.3, surfaces=(0.25, 0.5), surface_index=-1)
+    assert selected._selected_surfaces_and_weights() == ((0.5,), None)
+    unnormalised = workflow.MirrorRatio(threshold=0.3, surfaces=(0.25, 0.5), normalize_surfaces=False)
+    assert unnormalised._selected_surfaces_and_weights() == ((0.25, 0.5), None)
+
+    objective = workflow.MirrorRatio(threshold=0.3, surfaces=(0.25, 0.5), mboz=6, nboz=7, jit_booz=False)
+    np.testing.assert_allclose(objective.J(ctx, "state"), [0.25, 0.5])
+    assert objective.total(ctx, "state") == pytest.approx(0.3125)
+    assert calls[-1]["surfaces"] == (0.25, 0.5)
+    assert calls[-1]["weights"] == [0.5, 0.5]
+    assert calls[-1]["mboz"] == 6
+    assert calls[-1]["nboz"] == 7
+    assert calls[-1]["jit_booz"] is False
+
+    qi_bound = workflow.MirrorRatio(
+        threshold=0.3,
+        qi_options=workflow.QuasiIsodynamicOptions(surfaces=(0.5,)),
+    )
+    with pytest.raises(RuntimeError, match="inside a QI solve"):
+        qi_bound.J(ctx, "state")
+    with pytest.raises(RuntimeError, match="inside a QI solve"):
+        qi_bound.total(ctx, "state")
+
+    with pytest.raises(ValueError, match="target=0"):
+        objective.to_objective_term(target=1.0, residual_weight=1.0)
+
+    prepared = objective.to_objective_term(target=0.0, residual_weight=2.0).bind(ctx)
+    np.testing.assert_allclose(prepared.residual(ctx, "state"), [0.5, 1.0])
+    assert prepared.total(ctx, "state") == pytest.approx(1.25)
+    assert calls[-1]["booz_constants"] == "constants"
+    assert calls[-1]["booz_grids"] == "grids"
+
+    constraint = objective.to_constraint_term().bind(ctx)
+    np.testing.assert_allclose(constraint.residual(ctx, "state"), [0.03535534, 0.10606602], rtol=1e-6)
+
+
+def test_vmec_mirror_ratio_surface_selection_errors_and_unnormalized_weights(monkeypatch) -> None:
+    import vmec_jax.optimization_workflow as workflow
+
+    ctx = SimpleNamespace(static=SimpleNamespace(s=np.asarray([0.0, 0.5, 1.0])), indata=object(), signgs=1)
+    objective = workflow.VMECMirrorRatio(threshold=0.2, surfaces=(0.0, 1.0), normalize_surfaces=False)
+
+    monkeypatch.setattr(
+        workflow,
+        "b_cartesian_from_state",
+        lambda *args, **kwargs: np.asarray([[[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]]),
+    )
+
+    indices, weights = objective._selected_surface_indices_and_weights(ctx)
+    assert indices == [0, 2]
+    np.testing.assert_allclose(np.asarray(weights), [1.0, 1.0])
+    np.testing.assert_allclose(np.asarray(objective.J(ctx, "state")), [1.0 / 3.0 - 0.2, 1.0 / 3.0 - 0.2])
+
+    with pytest.raises(ValueError, match="surfaces"):
+        workflow.VMECMirrorRatio(threshold=0.2, surfaces=())._selected_surface_indices_and_weights(ctx)
+    with pytest.raises(IndexError, match="outside"):
+        workflow.VMECMirrorRatio(threshold=0.2, surfaces=(0.5,), surface_index=-2)._selected_surface_indices_and_weights(ctx)
+
+
+def test_max_elongation_objective_term_and_constraint_paths(monkeypatch) -> None:
+    import vmec_jax.optimization_workflow as workflow
+
+    calls: list[dict[str, object]] = []
+
+    def fake_elongation(**kwargs):
+        calls.append(kwargs)
+        return {"residuals1d": np.asarray([0.2]), "total": 0.04, "max_elongation": 8.5}
+
+    monkeypatch.setattr(workflow, "max_elongation_penalty_from_state", fake_elongation)
+    ctx = SimpleNamespace(static="static")
+    objective = workflow.MaxElongation(threshold=8.0, ntheta=9, nphi=7, smooth_extrema=0.1, smooth_penalty=0.2)
+
+    np.testing.assert_allclose(objective.J(ctx, "state"), [0.2])
+    assert objective.total(ctx, "state") == pytest.approx(0.04)
+    assert calls[-1]["smooth_penalty"] == pytest.approx(0.2)
+    term = objective.to_objective_term(target=0.0, residual_weight=3.0)
+    np.testing.assert_allclose(term.residual(ctx, "state"), [0.6])
+    assert term.total(ctx, "state") == pytest.approx(0.36)
+    constraint = objective.to_constraint_term()
+    np.testing.assert_allclose(constraint.residual(ctx, "state"), [0.5])
+    assert calls[-1]["smooth_penalty"] == pytest.approx(0.0)
     with pytest.raises(ValueError, match="target=0"):
         objective.to_objective_term(target=1.0, residual_weight=1.0)
 

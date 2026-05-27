@@ -397,6 +397,39 @@ def test_checkpoint_scan_runner_factories_reuse_cached_runners(monkeypatch):
     da.clear_replay_scan_caches()
 
 
+def test_checkpoint_scan_runner_cache_keys_include_tridi_policies(monkeypatch):
+    monkeypatch.setenv("VMEC_JAX_SCAN_CACHE_LIMIT", "8")
+    da.clear_replay_scan_caches()
+    static = object()
+    trace = _fake_jax_replay_trace()
+    stacked, static_flags = da._stack_replay_step_traces((trace,))
+
+    base = da._checkpoint_tape_scan_runner(
+        static=static,
+        stacked=stacked,
+        static_flags=static_flags,
+        rebuild_preconditioner=False,
+    )
+    precomputed = da._checkpoint_tape_scan_runner(
+        static=static,
+        stacked=stacked,
+        static_flags={**static_flags, "preconditioner_use_precomputed_tridi": True},
+        rebuild_preconditioner=False,
+    )
+    lax_tridi = da._checkpoint_tape_scan_runner(
+        static=static,
+        stacked=stacked,
+        static_flags={**static_flags, "preconditioner_use_lax_tridi": True},
+        rebuild_preconditioner=False,
+    )
+
+    assert base is not precomputed
+    assert base is not lax_tridi
+    assert precomputed is not lax_tridi
+    assert len(da._CHECKPOINT_TAPE_SCAN_CACHE) == 3
+    da.clear_replay_scan_caches()
+
+
 def test_checkpoint_tape_dynamic_scan_runner_skips_inactive_trace_entries(monkeypatch):
     from vmec_jax._compat import jnp
 

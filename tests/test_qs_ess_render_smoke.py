@@ -408,6 +408,38 @@ def test_qs_ess_sweep_gpu_production_budgets_are_not_diagnostic_caps():
     assert diag_cfg.trial_max_iter == 40
 
 
+def test_qs_ess_sweep_cli_overrides_take_precedence_over_default_budgets():
+    sweep = _load_sweep_module()
+
+    override = sweep.CaseBudget(
+        max_nfev=17,
+        continuation_nfev=11,
+        inner_max_iter=71,
+        inner_ftol=2.0e-8,
+        trial_max_iter=53,
+        trial_ftol=3.0e-8,
+    )
+
+    cfg = sweep._effective_problem_config(
+        sweep.PROBLEM_CONFIGS["qh"],
+        backend="gpu",
+        policy="direct",
+        problem="qh",
+        max_mode=5,
+        use_ess=True,
+        cli_budget=override,
+        ess_alpha_override=2.5,
+    )
+
+    assert cfg.max_nfev == 17
+    assert cfg.continuation_nfev == 11
+    assert cfg.inner_max_iter == 71
+    assert cfg.inner_ftol == pytest.approx(2.0e-8)
+    assert cfg.trial_max_iter == 53
+    assert cfg.trial_ftol == pytest.approx(3.0e-8)
+    assert cfg.ess_alpha == pytest.approx(2.5)
+
+
 def test_problem_configs_follow_current_seed_and_priority_policy():
     sweep = _load_sweep_module()
 
@@ -452,7 +484,7 @@ def test_problem_configs_follow_current_seed_and_priority_policy():
     assert qi_cfg.qi_preseed_qi
 
 
-def test_continuation_stage_modes_follow_omnigenity_repeated_policy():
+def test_continuation_stage_modes_follow_omnigenity_repeated_policy(monkeypatch: pytest.MonkeyPatch):
     sweep = _load_sweep_module()
 
     assert sweep._stage_modes_for_problem(
@@ -465,6 +497,12 @@ def test_continuation_stage_modes_follow_omnigenity_repeated_policy():
         max_mode=2,
         use_mode_continuation=True,
     ) == [1, 1, 2, 2, 2]
+    assert sweep._stage_modes_for_problem(
+        sweep.PROBLEM_CONFIGS["qi"],
+        max_mode=3,
+        use_mode_continuation=True,
+    ) == [1, 1, 2, 2, 2, 3, 3, 3]
+    monkeypatch.setattr(sweep, "QI_STAGE_MODE_POLICY", "repeat")
     assert sweep._stage_modes_for_problem(
         sweep.PROBLEM_CONFIGS["qi"],
         max_mode=3,
@@ -1207,9 +1245,9 @@ def test_readme_renderer_filters_qi_rows_by_qi_target_aspect():
     renderer = _load_readme_renderer_module()
 
     current_qi = {
-        "target_aspect": "6.0",
+        "target_aspect": "5.0",
         "iota_abs_min": str(renderer.TARGET_ABS_IOTA_MIN),
-        "aspect_final": "6.0",
+        "aspect_final": "5.0",
     }
     legacy_qi = {
         "target_aspect": "10.0",
@@ -1229,8 +1267,8 @@ def test_readme_renderer_can_use_dedicated_qi_result_dir(tmp_path):
     (result_dir / "diagnostics.json").write_text(
         json.dumps(
             {
-                "target_aspect": 6.0,
-                "aspect": 6.01,
+                "target_aspect": 5.0,
+                "aspect": 5.01,
                 "mean_iota": -0.50,
                 "qi_raw_total": 1.1e-3,
                 "qi_legacy_total": 3.0e-4,
@@ -1249,7 +1287,7 @@ def test_readme_renderer_can_use_dedicated_qi_result_dir(tmp_path):
 
     assert row is not None
     assert row["policy"] == "qi_default"
-    assert float(row["target_aspect"]) == pytest.approx(6.0)
+    assert float(row["target_aspect"]) == pytest.approx(5.0)
     assert float(row["qi_legacy_total"]) == pytest.approx(3.0e-4)
 
 
