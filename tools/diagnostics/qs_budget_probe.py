@@ -123,13 +123,9 @@ def _objective_problem(problem: str, defaults: dict[str, Any]) -> vj.LeastSquare
     objective_tuples.append((qs.J, 0.0, float(defaults["qs_weight"])))
 
     if problem == "qp":
-        mirror = vj.MirrorRatio(
+        mirror = vj.VMECMirrorRatio(
             threshold=0.30,
             surfaces=np.linspace(0.1, 1.0, 6),
-            mboz=18,
-            nboz=18,
-            ntheta=96,
-            nphi=96,
             smooth_extrema=2.0e-2,
             smooth_penalty=2.0e-2,
         )
