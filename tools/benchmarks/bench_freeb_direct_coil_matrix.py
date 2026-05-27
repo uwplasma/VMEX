@@ -86,7 +86,18 @@ def _gpu_available() -> tuple[bool, dict[str, Any]]:
 
         if not has_jax() or jax is None:
             return False, {"has_jax": False, "devices": [], "reason": "jax_unavailable"}
-        devices = jax.devices()
+        devices = list(jax.devices())
+        # `jax.devices()` follows the current default platform. On hosts where
+        # users set `JAX_PLATFORMS=cpu,cuda`, it can report only CPU devices
+        # even though CUDA is importable. Probe concrete accelerator platforms
+        # explicitly so `--include-gpu` does not falsely skip GPU rows.
+        for platform in ("cuda", "rocm", "gpu"):
+            try:
+                for device in jax.devices(platform):
+                    if all(str(device) != str(existing) for existing in devices):
+                        devices.append(device)
+            except Exception:
+                continue
         info = {
             "has_jax": True,
             "default_backend": str(jax.default_backend()),
