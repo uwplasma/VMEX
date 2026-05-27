@@ -130,16 +130,27 @@ Results obtained:
 9. GitHub Actions for PR #18 on `5e90d9b2` are green: build/docs, fast tests
    on py3.10/py3.11/py3.12, physics smoke, parity manifest, and Codecov
    project/patch all passed.
+10. A low-resolution with/without-bootstrap direct-coil comparison was run at
+    `NS=8`, `MPOL=3`, `NTOR=3`, `max_iter=20`, and active NESTOR forcing.  The
+    bootstrap loop reduced Redl mismatch (`0.735 -> 0.500`) but the final VMEC
+    residual worsened for aggressive damping `0.5`; lower damping `0.1` reduced
+    the current update but was still not a promotion result.  Conclusion:
+    plumbing and mismatch feedback are working, but bootstrap-current promotion
+    requires damping/current-step acceptance controls and converged-resolution
+    evidence before it can be presented as a convergence accelerator.
+11. `python -m sphinx -W -b html docs /tmp/vmec_jax_freeb_docs_bootstrap_gate`:
+    passed after documenting the optional active direct-coil gate and the
+    low-resolution promotion caveat.
 
 Best next steps:
 
-1. Commit/push the optional active beta-scan gate.
-2. Run the optional gate again when the final PR head changes before merge.
-3. Next technical rung: compare a short LP-QA beta scan with and without the
-   bootstrap-current preconditioner at the same low resolution, then promote the
-   resulting response metrics only if both paths exercise active NESTOR and the
-   current-profile update improves Redl mismatch or finite-beta response
-   stability.
+1. Add an explicit current-step trust/acceptance policy for bootstrap-current
+   beta-scan preconditioning, rather than relying only on Picard damping.
+2. Re-run the optional active gate and a small with/without-bootstrap comparison
+   after that policy lands.
+3. Keep the current PR claims limited to implemented/validated functionality:
+   direct-coil active coupling, persisted Redl-current diagnostics, and optional
+   preconditioning, not guaranteed convergence acceleration.
 
 Need from user:
 
