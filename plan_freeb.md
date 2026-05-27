@@ -78,6 +78,7 @@ Steps taken:
 54. Switched the opt-in complete-solve finite-difference gate to the default stellarator-symmetric path after the reduced-grid reconstruction landed.
 55. Added a shape/content-keyed compiled-closure cache for the opt-in JAX VMEC/NESTOR operator. The closure bakes mode-basis and Green-function tables as static constants while keeping boundary geometry and external normal-field source arrays dynamic.
 56. Made the JAX analytic/singular operator JIT-compatible by keeping static VMEC coefficient/mode-index tables as host constants instead of tracer scalars.
+57. Added beta-scan case checkpoints for strict LP-QA bootstrap/no-bootstrap scans.  Each accepted radial-grid stage now writes a per-stage input, WOUT, metrics payload, and `case_checkpoints/{backend}_beta_*.json`, and `--resume-existing` can promote completed stage checkpoints into final case outputs without rerunning accepted stages.
 
 ### 2026-05-27 Free-boundary beta-scan bootstrap-current preconditioner
 

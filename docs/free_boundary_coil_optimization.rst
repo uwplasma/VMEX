@@ -306,7 +306,12 @@ previous accepted free-boundary LCFS. Add ``--resume-existing`` when rerunning
 an interrupted high-resolution scan: existing ``wout_{backend}_beta_*.nc``
 files are skipped and, if their residuals satisfy
 ``--pressure-continuation-max-fsq``, promoted as continuation seeds for the next
-pressure point.
+pressure point.  When ``--ns-array`` is supplied, the scan also writes
+``case_checkpoints/{backend}_beta_*.json`` plus per-stage inputs and WOUT files
+after every accepted radial-grid stage.  These stage checkpoints are independent
+of the root ``summary.json`` so a wall-time stop during a strict ``ns=51`` or
+``ns=101`` stage still leaves the last accepted lower-resolution metrics and
+restart seed available to ``--resume-existing``.
 
 .. code-block:: bash
 
