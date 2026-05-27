@@ -215,6 +215,7 @@ def apply_qi_example_cli_overrides(namespace: dict, argv: list[str] | None = Non
     parser.add_argument("--use-reference-family-seed", action=argparse.BooleanOptionalAction)
     parser.add_argument("--reference-input", type=Path)
     parser.add_argument("--reference-lambdas", type=_float_tuple)
+    parser.add_argument("--accept-boundary-reference-baseline", action=argparse.BooleanOptionalAction)
     parser.add_argument("--stage-repeats", type=int)
     parser.add_argument("--stage-mode-policy", choices=("lower", "repeat"))
     parser.add_argument("--make-plots", action=argparse.BooleanOptionalAction)
@@ -264,6 +265,7 @@ def apply_qi_example_cli_overrides(namespace: dict, argv: list[str] | None = Non
             namespace["USE_REFERENCE_FAMILY_SEED"] = True
     set_if("USE_REFERENCE_FAMILY_SEED", args.use_reference_family_seed)
     set_if("REFERENCE_LAMBDAS", args.reference_lambdas)
+    set_if("BOUNDARY_REFERENCE_ACCEPT_AS_BASELINE", args.accept_boundary_reference_baseline)
     set_if("STAGE_REPEATS", None if args.stage_repeats is None else int(args.stage_repeats))
     set_if("STAGE_MODE_POLICY", args.stage_mode_policy)
     set_if("MAKE_PLOTS", args.make_plots)

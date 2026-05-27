@@ -42,6 +42,7 @@ TARGET_HELICITY_SEED_AMPLITUDE = 1.0e-5
 USE_REFERENCE_FAMILY_SEED = False  # True scans a nearby reference-family basin first.
 REFERENCE_INPUT_FILE = DATA_DIR / "input.nfp2_QI"
 REFERENCE_LAMBDAS = (0.995, 1.0, 1.005)
+BOUNDARY_REFERENCE_ACCEPT_AS_BASELINE = False  # True keeps the reference candidate as a safe fallback.
 
 # Optimizer parameters.
 METHOD = "scipy_matrix_free"  # Try "scipy", "gauss_newton", "lbfgs_adjoint", or "scalar_trust".
@@ -350,7 +351,10 @@ result, promotion_log = vj.run_qi_stage_policy(
     OUTPUT_DIR,
     solve_qi_stage=solve_qi_stage,
     make_qi_problem=make_qi_problem,
-    boundary_reference_preconditioner={"enabled": False},
+    boundary_reference_preconditioner={
+        "enabled": USE_REFERENCE_FAMILY_SEED,
+        "accept_as_baseline": BOUNDARY_REFERENCE_ACCEPT_AS_BASELINE,
+    },
     mirror_ramp_stages=MIRROR_RAMP_STAGES,
     ctx=QI_CONTEXT,
 )

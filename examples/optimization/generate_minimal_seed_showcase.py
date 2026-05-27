@@ -602,6 +602,7 @@ def _run_showcase_case(
             _patch_qi_stage_budget(stage, budget=budget, max_mode=max_mode)
             for stage in qi_policy.get("mirror_ramp_stages", ())
         )
+        boundary_reference = qi_policy.get("boundary_reference_preconditioner", {})
         # Give the inner QI subprocess room to catch TimeoutExpired, harvest
         # partial artifacts, and let the outer worker write case_result.json.
         qi_timeout_s = None
@@ -616,6 +617,7 @@ def _run_showcase_case(
                 policy=str(policy),
                 policy_case=case.qi_policy_case or "qi_stel_seed_3127",
                 reference_input=case.qi_reference_input,
+                reference_accept_as_baseline=bool(boundary_reference.get("accept_as_baseline", False)),
                 backend_label=str(backend_label),
                 solver_device=solver_device,
                 worker_jax_platforms=worker_jax_platforms,

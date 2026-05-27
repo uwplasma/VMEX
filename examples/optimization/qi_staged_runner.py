@@ -57,6 +57,7 @@ class QIStagedCaseConfig:
     policy: str = "continuation"
     policy_case: str = "qi_stel_seed_3127"
     reference_input: Path | None = None
+    reference_accept_as_baseline: bool = False
     backend_label: str = "cpu"
     solver_device: str | None = None
     worker_jax_platforms: str | None = None
@@ -180,6 +181,11 @@ def _build_qi_staged_args(config: QIStagedCaseConfig) -> list[str]:
                     ",".join(f"{float(value):.12g}" for value in config.reference_lambdas),
                 ]
             )
+        args.append(
+            "--accept-boundary-reference-baseline"
+            if bool(config.reference_accept_as_baseline)
+            else "--no-accept-boundary-reference-baseline"
+        )
     else:
         args.append("--no-use-reference-family-seed")
     if config.solver_device is not None:

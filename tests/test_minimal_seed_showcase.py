@@ -236,6 +236,7 @@ def test_minimal_seed_showcase_dispatches_qi_to_staged_runner(tmp_path: Path, mo
     assert config.policy == "continuation"
     assert config.policy_case == "minimal_nfp2_qi"
     assert config.reference_input.name == "input.nfp2_QI"
+    assert config.reference_accept_as_baseline is True
     assert config.reference_lambdas[:4] == pytest.approx((0.0, 0.1, 0.25, 0.5))
     assert config.reference_lambdas[-1] == pytest.approx(1.005)
     assert config.max_nfev == 4
