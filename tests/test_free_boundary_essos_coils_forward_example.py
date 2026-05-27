@@ -6,6 +6,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
+
+from vmec_jax.bootstrap_current import BootstrapCurrentIteration, BootstrapCurrentResult
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = ROOT / "examples" / "free_boundary_essos_coils_forward.py"
@@ -166,3 +169,121 @@ def test_beta_scan_resume_existing_case_uses_wout_path(monkeypatch, tmp_path):
     )
     assert summary["wout"] == str(wout_path)
     assert summary["pressure_scale"] == 600.0
+
+
+def test_beta_scan_bootstrap_current_preconditioner_updates_indata(monkeypatch, tmp_path):
+    module = _load_beta_scan_module()
+    base = module.read_indata(ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lowres")
+    base.scalars["PHIEDGE"] = -0.025
+    base.scalars["MGRID_FILE"] = "mgrid_fixture.nc"
+
+    def fake_fixed_point(indata, *, options, solve_fn, ne_coeffs, Te_coeffs, Ti_coeffs, Zeff_coeffs):
+        assert options.helicity_n == 0
+        assert options.n_current == 5
+        assert np.asarray(ne_coeffs).size > 0
+        assert np.asarray(Te_coeffs).size > 0
+        # Exercise the solve callback enough to verify mgrid path rewriting.
+        run = solve_fn(indata)
+        assert Path(run.indata.scalars["MGRID_FILE"]).is_absolute()
+        updated = module.deepcopy(indata)
+        updated.scalars["CURTOR"] = 123.0
+        updated.scalars["PCURR_TYPE"] = "cubic_spline_ip"
+        updated.scalars["AC"] = [1.0]
+        updated.scalars["AC_AUX_S"] = [0.0, 1.0]
+        updated.scalars["AC_AUX_F"] = [2.0, 2.0]
+        return BootstrapCurrentResult(
+            indata=updated,
+            history=(
+                BootstrapCurrentIteration(
+                    iteration=1,
+                    mismatch_norm=0.5,
+                    current_update_norm=0.25,
+                    curtor=123.0,
+                    ac_aux_s=(0.0, 1.0),
+                    ac_aux_f=(2.0, 2.0),
+                ),
+            ),
+            converged=True,
+            reason="test",
+            last_run=run,
+            last_diagnostics={},
+        )
+
+    def fake_run_free_boundary(input_path, **kwargs):
+        assert kwargs["max_iter"] == 3
+        return SimpleNamespace(indata=module.read_indata(input_path), signgs=1)
+
+    monkeypatch.setattr(module, "bootstrap_current_fixed_point", fake_fixed_point)
+    monkeypatch.setattr(module, "run_free_boundary", fake_run_free_boundary)
+
+    updated, summary = module.apply_bootstrap_current_fixed_point_preconditioner(
+        base,
+        backend="mgrid",
+        beta_percent=1.0,
+        output_dir=tmp_path,
+        label="case",
+        mgrid_file=tmp_path / "mgrid_fixture.nc",
+        pressure_profile="standard",
+        helicity_n=0,
+        surfaces=(0.2, 0.8),
+        n_current=5,
+        max_fixed_point_iter=1,
+        damping=0.5,
+        current_tol=1.0e-2,
+        mismatch_tol=1.0e-2,
+        vmec_max_iter=3,
+        activate_fsq=1.0e99,
+    )
+
+    assert updated.scalars["CURTOR"] == 123.0
+    assert summary["enabled"] is True
+    assert summary["converged"] is True
+    assert summary["iterations"] == 1
+    assert summary["final_mismatch_norm"] == 0.5
+    assert Path(summary["history_json"]).exists()
+    assert Path(summary["final_input"]).exists()
+
+
+def test_beta_scan_bootstrap_current_preconditioner_skip_and_validation(tmp_path):
+    module = _load_beta_scan_module()
+    base = module.read_indata(ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lowres")
+    skipped, summary = module.apply_bootstrap_current_fixed_point_preconditioner(
+        base,
+        backend="direct",
+        beta_percent=0.0,
+        output_dir=tmp_path,
+        label="zero",
+        mgrid_file=tmp_path / "mgrid.nc",
+        pressure_profile="standard",
+        helicity_n=0,
+        surfaces=(0.2, 0.8),
+        n_current=4,
+        max_fixed_point_iter=1,
+        damping=0.5,
+        current_tol=1.0e-2,
+        mismatch_tol=1.0e-2,
+        vmec_max_iter=2,
+        activate_fsq=None,
+    )
+    assert skipped is base
+    assert summary["skipped"] == "zero_beta"
+
+    with pytest.raises(ValueError, match="pressure-profile standard"):
+        module.apply_bootstrap_current_fixed_point_preconditioner(
+            base,
+            backend="direct",
+            beta_percent=1.0,
+            output_dir=tmp_path,
+            label="bad",
+            mgrid_file=tmp_path / "mgrid.nc",
+            pressure_profile="linear-scale",
+            helicity_n=0,
+            surfaces=(0.2, 0.8),
+            n_current=4,
+            max_fixed_point_iter=1,
+            damping=0.5,
+            current_tol=1.0e-2,
+            mismatch_tol=1.0e-2,
+            vmec_max_iter=2,
+            activate_fsq=None,
+        )
