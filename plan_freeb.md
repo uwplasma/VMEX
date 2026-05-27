@@ -466,6 +466,47 @@ Need from user:
 
 Nothing now.
 
+### 2026-05-27 Bootstrap-current fixed-point example
+
+Steps taken:
+
+1. Fixed the driver current-grid policy so Redl diagnostic samples can exclude
+   the magnetic axis and edge while the VMEC `AC_AUX_S/F` current spline still
+   spans `s=0..1`.
+2. Added `examples/bootstrap_current_fixed_point.py`, an explicit user-facing
+   workflow with top-level physics controls, fixed-point controls, VMEC solver
+   controls, output paths, current-profile update call, final input/WOUT write,
+   JSON history write, and printed diagnostics.
+3. Added a static example test to keep the workflow visible and prevent the
+   example from collapsing into a hidden one-call wrapper.
+4. Ran the example locally on `input.shaped_tokamak_pressure` with a three-step
+   bounded Picard loop.
+
+Results obtained:
+
+1. `python -m pytest -q tests/test_bootstrap_current_fixed_point.py tests/test_bootstrap_current_example.py -rx`:
+   11 passed in 3.18 s.
+2. `python -m py_compile examples/bootstrap_current_fixed_point.py`: passed.
+3. `python -m ruff check vmec_jax/bootstrap_current.py examples/bootstrap_current_fixed_point.py tests/test_bootstrap_current_fixed_point.py tests/test_bootstrap_current_example.py`:
+   passed.
+4. `PYTHONPATH=. python examples/bootstrap_current_fixed_point.py`: passed in
+   about 13 s, wrote `results/bootstrap_current_fixed_point/input.bootstrap_current_final`,
+   `wout_bootstrap_current_final.nc`, and `history.json`.  The bounded example
+   did not converge in three fixed-point iterations, but the Redl mismatch
+   decreased monotonically from `3.44e-1` to `2.996e-1`.
+
+Best next steps:
+
+1. Add a small physics regression that asserts one or more bounded fixed-point
+   updates reduce the Redl mismatch on the finite-beta tokamak fixture.
+2. Add optional VMEC2000 replay of the final generated input.
+3. Extend the example into the free-boundary beta-scan lane once the fixed-
+   boundary current-profile iteration is validated.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-05-27 Bootstrap-current pure helper implementation
 
 Steps taken:
