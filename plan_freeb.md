@@ -12,13 +12,11 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-27 after merging `origin/main` at `e3f56955` into the PR
-head, rerendering reviewer WOUT panels for DIII-D and LP-QA finite-beta scans,
-publishing full-resolution reviewer artifacts externally, committing only
-compressed README/docs summary panels plus CSV summaries, and rerunning the
-local direct-coil benchmark matrix. A later `origin/main` commit (`2a5697b6`)
-was observed during docs hygiene and is intentionally not merged in this
-doc-only pass. Do not merge PR #18 yet.
+Last updated: 2026-05-27 after adding the Redl bootstrap-current profile update
+helpers, the first callback-driven VMEC/Redl fixed-point driver, and the
+pressure-summary CI unblocker on PR #18.  CI for commit `bc5a539a` has docs,
+build, physics smoke, and parity manifest green; the fast-test matrix is still
+running. Do not merge PR #18 yet.
 
 Steps taken:
 
@@ -418,6 +416,51 @@ Best next steps:
 3. Keep complete-loop free-boundary exact adjoints, Boozer/QS coil-optimization
    claims, and VMEC2000 generated-`mgrid` WOUT parity in phase 2 until their
    promoted gates are green.
+
+Need from user:
+
+Nothing now.
+
+### 2026-05-27 Bootstrap-current fixed-point driver
+
+Steps taken:
+
+1. Added `BootstrapCurrentResult`.
+2. Implemented `bootstrap_current_fixed_point(...)` as a callback-friendly
+   Picard driver:
+   VMEC solve callback -> Redl diagnostic callback -> integrating-factor or
+   derivative current update -> VMEC `AC_AUX_S/F` and `CURTOR` update.
+3. Added a default production diagnostic path that calls
+   `redl_bootstrap_mismatch_from_state`, uses `fsa_B2`, computes the physical
+   pressure derivative from Redl density/temperature coefficients, and records
+   optional aspect/iota/fsq diagnostics.
+4. Added a default production solve path that writes a temporary VMEC input
+   and calls `run_fixed_boundary`.
+5. Exported the driver through both `vmec_jax` and `vmec_jax.api`.
+6. Updated the bootstrap-current docs from plan-only language to current
+   implementation language.
+7. Added callback-level tests showing the driver applies a current profile,
+   reruns the solve callback with updated `AC_AUX_F`, records history, and
+   stops on current/mismatch tolerances.
+
+Results obtained:
+
+1. `python -m pytest -q tests/test_bootstrap_current_fixed_point.py -rx`:
+   9 passed in 2.63 s.
+2. `python -m ruff check vmec_jax/bootstrap_current.py vmec_jax/api.py vmec_jax/__init__.py tests/test_bootstrap_current_fixed_point.py`:
+   passed.
+3. PR #18 CI rerun for `bc5a539a`: docs/build/physics smoke/parity manifest
+   are green; fast tests are pending.
+
+Best next steps:
+
+1. Run Sphinx and the focused finite-beta/profile tests after this driver
+   patch.
+2. Add a finite-beta example lane that calls `bootstrap_current_fixed_point`
+   before a free-boundary beta scan and writes per-iteration JSON/CSV history.
+3. Add a bounded one-update physics gate showing Redl mismatch/current-profile
+   fixed-point progress on a small finite-beta fixture.
+4. Add optional VMEC2000 replay validation for the final generated input.
 
 Need from user:
 
