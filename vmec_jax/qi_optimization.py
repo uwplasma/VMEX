@@ -1096,6 +1096,7 @@ def run_boundary_reference_preconditioner(input_file, output_dir, config, *, ctx
                 "elongation": _finite_or_none(diagnostics.get("qi_max_elongation")),
                 "mean_iota": _finite_or_none(diagnostics.get("mean_iota")),
                 "aspect": _finite_or_none(diagnostics.get("aspect")),
+                "aspect_relative_error": _finite_or_none(diagnostics.get("aspect_relative_error")),
                 "qi_seed_gate_passed": bool(diagnostics.get("qi_seed_gate_passed")),
                 "qi_engineering_gate_passed": bool(diagnostics.get("qi_engineering_gate_passed")),
                 "failure_reasons": list(diagnostics.get("qi_failure_reasons", [])),
@@ -1123,11 +1124,20 @@ def run_boundary_reference_preconditioner(input_file, output_dir, config, *, ctx
         raise RuntimeError("Boundary-reference preconditioner found no successful candidates.")
 
     candidate_pool = [record for record in successful if bool(record.get("qi_engineering_gate_passed"))] or successful
+    target_aspect = float(config.get("target_aspect", _ctx(ctx, "target_aspect")))
+    aspect_relative_tolerance = float(config.get("aspect_relative_tolerance", 0.35))
+    if bool(config.get("prefer_aspect_candidates", True)):
+        aspect_pool = [
+            record
+            for record in candidate_pool
+            if _finite_or_inf(record.get("aspect_relative_error"))
+            <= aspect_relative_tolerance
+        ]
+        if aspect_pool:
+            candidate_pool = aspect_pool
     if bool(config.get("prefer_qi_safe_candidates", True)):
         max_mirror_ratio = float(config.get("max_mirror_ratio", _ctx(ctx, "max_mirror_ratio")))
         abs_iota_min = float(config.get("abs_iota_min", _ctx(ctx, "target_abs_iota_min")))
-        target_aspect = float(config.get("target_aspect", _ctx(ctx, "target_aspect")))
-        aspect_relative_tolerance = float(config.get("aspect_relative_tolerance", 0.25))
         safe_pool = [
             record
             for record in candidate_pool
