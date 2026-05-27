@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
+import json
 import math
 from pathlib import Path
 import sys
@@ -3159,6 +3160,15 @@ def run_quasi_isodynamic_objective_optimization(
             save_wouts=save_stage_wouts,
         )
         stage_records.append((int(stage_limits.mode), stage.optimizer, params0, result))
+        write_qi_workflow_stage_checkpoint(
+            output_dir=output_dir,
+            stage_dir=output_dir / f"stage_{stage_index:02d}_{describe_boundary_mode_limits(stage_limits)}",
+            stage_index=stage_index,
+            stage_limits=stage_limits,
+            result=result,
+            completed_stage_modes=[record[0] for record in stage_records],
+            requested_stage_modes=normalized_stage_modes,
+        )
         current_indata = stage.optimizer._indata_from_params(result["x"])
         current_cfg = config_from_indata(current_indata)
 
@@ -3441,6 +3451,71 @@ def save_qs_stage_artifacts(
         _remove_stale(stage_dir / "wout_final_rerun.nc")
 
 
+def write_qi_workflow_stage_checkpoint(
+    *,
+    output_dir: Path,
+    stage_dir: Path,
+    stage_index: int,
+    stage_limits,
+    result: dict,
+    completed_stage_modes,
+    requested_stage_modes,
+) -> Path:
+    """Write a resumable checkpoint after one QI continuation stage.
+
+    QI continuation stages can be expensive, especially when final Boozer
+    diagnostics are evaluated at publication resolution.  This lightweight
+    checkpoint is written immediately after a stage optimizer returns, before
+    any later stage or final diagnostics can time out.
+    """
+
+    output_dir = Path(output_dir)
+    stage_dir = Path(stage_dir)
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    limits = normalize_boundary_mode_limits(stage_limits)
+    history = dict(result.get("_history_dump", {}))
+    diagnostics = {
+        "partial": True,
+        "objective_final": history.get("objective_final"),
+        "qs_final": history.get("qs_final"),
+        "aspect": history.get("aspect_final"),
+        "mean_iota": history.get("iota_final"),
+        "nfev": history.get("nfev"),
+        "njev": history.get("njev"),
+        "total_wall_time_s": history.get("total_wall_time_s"),
+        "stage_checkpoint_source": "optimization_workflow",
+    }
+    checkpoint = {
+        "partial": True,
+        "role": "mode_continuation",
+        "stage": int(stage_index),
+        "name": describe_boundary_mode_limits(limits),
+        "stage_modes": [_stage_mode_checkpoint_descriptor(limits)],
+        "completed_stage_modes": [int(mode) for mode in completed_stage_modes],
+        "requested_stage_modes": [_stage_mode_checkpoint_descriptor(mode) for mode in requested_stage_modes],
+        "stage_output_dir": str(stage_dir),
+        "initial_input_path": str(stage_dir / "input.initial"),
+        "final_input_path": str(stage_dir / "input.final"),
+        "initial_wout_path": str(stage_dir / "wout_initial.nc"),
+        "final_wout_path": str(stage_dir / "wout_final.nc"),
+        "input_path": str(stage_dir / "input.final"),
+        "wout_path": str(stage_dir / "wout_final.nc"),
+        "history_path": str(stage_dir / "history.json"),
+        "diagnostics_path": str(stage_dir / "diagnostics.json"),
+        "history": history,
+        "diagnostics": diagnostics,
+    }
+    history_path = stage_dir / "history.json"
+    diagnostics_path = stage_dir / "diagnostics.json"
+    checkpoint_path = stage_dir / "qi_stage_checkpoint.json"
+    root_checkpoint_path = output_dir / "stage_checkpoint.json"
+    _write_json_atomic(history_path, history)
+    _write_json_atomic(diagnostics_path, diagnostics)
+    _write_json_atomic(checkpoint_path, checkpoint)
+    _write_json_atomic(root_checkpoint_path, checkpoint)
+    return checkpoint_path
+
+
 def save_qs_final_outputs(
     *,
     output_dir: Path,
@@ -3676,6 +3751,42 @@ def _remove_stale(path: Path) -> None:
         pass
 
 
+def _stage_mode_checkpoint_descriptor(stage_mode) -> dict[str, object]:
+    limits = normalize_boundary_mode_limits(stage_mode)
+    return {
+        "mode": int(limits.mode),
+        "max_m": None if limits.max_m is None else int(limits.max_m),
+        "max_n": None if limits.max_n is None else int(limits.max_n),
+        "label": limits.label,
+    }
+
+
+def _write_json_atomic(path: Path, payload: object) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w") as f:
+        json.dump(_json_safe(payload), f, indent=2, sort_keys=True)
+        f.write("\n")
+    tmp.replace(path)
+
+
+def _json_safe(value):
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, np.ndarray):
+        return [_json_safe(v) for v in value.tolist()]
+    if isinstance(value, (np.floating, np.integer)):
+        return value.item()
+    if isinstance(value, np.bool_):
+        return bool(value)
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 def _slice_boozer_surfaces(booz: dict, surface_index: int) -> dict:
     bmnc = booz.get("bmnc_b")
     if bmnc is None:
@@ -3765,6 +3876,7 @@ __all__ = [
     "save_optimization_result",
     "save_qs_final_outputs",
     "save_qs_stage_artifacts",
+    "write_qi_workflow_stage_checkpoint",
     "simple_omnigenity_seed_indata",
     "VolavgB",
 ]
