@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import replace
 import importlib.util
 from pathlib import Path
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pytest
@@ -112,6 +114,52 @@ def test_qp_example_documents_zero_transform_escape_policy() -> None:
     assert "zero-transform basin" in readme
 
 
+def test_qs_examples_expose_reviewed_mode5_budgets() -> None:
+    qa = (ROOT / "examples" / "optimization" / "QA_optimization.py").read_text()
+    qh = (ROOT / "examples" / "optimization" / "QH_optimization.py").read_text()
+    qp = (ROOT / "examples" / "optimization" / "QP_optimization.py").read_text()
+
+    for text in (qa, qh, qp):
+        assert "MAX_MODE = 5" in text
+        assert "MAX_NFEV = 60" in text
+        assert "ALPHA = 1.2" in text
+        assert "TARGET_ASPECT = 5.0" in text
+
+    assert "INNER_MAX_ITER = 120" in qa
+    assert "TRIAL_MAX_ITER = 120" in qa
+    assert "INNER_FTOL = 1.0e-9" in qa
+    assert "TRIAL_FTOL = 1.0e-9" in qa
+
+    assert "INNER_MAX_ITER = 180" in qh
+    assert "TRIAL_MAX_ITER = 180" in qh
+    assert "INNER_FTOL = 1.0e-9" in qh
+    assert "TRIAL_FTOL = 1.0e-9" in qh
+
+    assert "INNER_MAX_ITER = 180" in qp
+    assert "TRIAL_MAX_ITER = 60" in qp
+    assert "INNER_FTOL = 1.0e-9" in qp
+    assert "TRIAL_FTOL = 1.0e-8" in qp
+
+
+def test_qp_budget_probe_uses_vmec_space_engineering_terms() -> None:
+    from tools.diagnostics import qs_budget_probe
+
+    problem = qs_budget_probe._objective_problem(
+        "qp",
+        qs_budget_probe.PROBLEM_DEFAULTS["qp"],
+    )
+
+    assert problem.scalar_objective_names == (
+        "aspect",
+        "abs_iota_floor",
+        "qs",
+        "mirror_ratio",
+        "max_elongation",
+    )
+    assert problem.qi_objective_names == ()
+    assert problem.is_qi is False
+
+
 def test_optimization_readme_and_docs_teach_visible_workflow_anatomy() -> None:
     readme = (ROOT / "examples" / "optimization" / "README.md").read_text()
     docs = (ROOT / "docs" / "optimization.rst").read_text()
@@ -200,7 +248,7 @@ def test_qi_example_uses_qi_problem_api() -> None:
     assert "QuasiIsodynamicOptions(" in text
     assert "QuasiIsodynamicResidual(QI_OPTIONS)" in text
     assert "QuasiIsodynamicResidualCeiling(" in text
-    assert "MirrorRatio(" in text
+    assert "VMECMirrorRatio(" in text
     assert "MaxElongation(" in text
     assert "objective_tuples = [" in text
     assert "LeastSquaresProblem.from_tuples(" in text
@@ -301,7 +349,7 @@ def test_qi_example_keeps_mirror_cleanup_guarded_by_qi_ceiling() -> None:
     assert '"require_engineering_gate": True' in cases_text
     assert "qi_ceiling = vj.QuasiIsodynamicResidualCeiling(" in text
     assert "qi_options=QI_OPTIONS" in text
-    assert "mirror = vj.MirrorRatio(" in text
+    assert "mirror = vj.VMECMirrorRatio(" in text
     assert "surface_index=MIRROR_SURFACE_INDEX" in text
     assert "stage_promotes_candidate(" in support_text
     assert "require_engineering_gate=bool(stage.get(\"require_engineering_gate\", False))" in support_text
@@ -309,7 +357,9 @@ def test_qi_example_keeps_mirror_cleanup_guarded_by_qi_ceiling() -> None:
     assert "reference=reference_diagnostics" in support_text
     assert "objective_tuples.append((qi_ceiling.J, 0.0, QI_CEILING_WEIGHT))" in text
     assert "(mirror.J, 0.0, MIRROR_WEIGHT)" in text
-    assert text.index("qi_ceiling = vj.QuasiIsodynamicResidualCeiling(") < text.index("mirror = vj.MirrorRatio(")
+    assert text.index("qi_ceiling = vj.QuasiIsodynamicResidualCeiling(") < text.index(
+        "mirror = vj.VMECMirrorRatio("
+    )
     assert text.index("QI_CEILING_WEIGHT > 0.0") > text.index("objective_tuples = [")
 
 
@@ -376,11 +426,15 @@ def test_qs_sweep_reports_true_legacy_qi_metric() -> None:
 def test_qs_sweep_qi_mirror_defaults_to_all_surfaces() -> None:
     from examples.optimization import generate_qs_ess_sweep as sweep
 
+    text = (ROOT / "examples" / "optimization" / "generate_qs_ess_sweep.py").read_text()
+
     assert sweep.PROBLEM_CONFIGS["qi"].qi_mirror_surface_index is None
     assert sweep.PROBLEM_CONFIGS["qp"].qi_mirror_surface_index is None
     assert sweep.PROBLEM_CONFIGS["qi"].qi_ceiling_weight > 0.0
     assert sweep.PROBLEM_CONFIGS["qi"].qi_ceiling_max == pytest.approx(2.0e-3)
     assert "qi_ceiling_weight" in sweep.ProblemConfig.__dataclass_fields__
+    assert "qi_mirror_objective = vj.VMECMirrorRatio(" in text
+    assert "mirror = qi_mirror_objective._evaluate_state(qi_mirror_ctx, state)" in text
 
     booz = {
         "bmnc_b": np.arange(6.0).reshape(2, 3),
@@ -392,6 +446,115 @@ def test_qs_sweep_qi_mirror_defaults_to_all_surfaces() -> None:
     sliced = sweep._mirror_boozer_surfaces(booz, 1)
     np.testing.assert_allclose(sliced["bmnc_b"], booz["bmnc_b"][1:2])
     np.testing.assert_allclose(sliced["iota_b"], [0.5])
+
+
+def test_qs_sweep_qi_mirror_residuals_use_vmec_mirror_ratio(monkeypatch) -> None:
+    from examples.optimization import generate_qs_ess_sweep as sweep
+
+    fake_booz = ModuleType("booz_xform_jax")
+    fake_booz.prepare_booz_xform_constants = lambda **_kwargs: ("constants", "grids")
+    monkeypatch.setitem(sys.modules, "booz_xform_jax", fake_booz)
+
+    stage_indata = SimpleNamespace(get_bool=lambda *_args, **_kwargs: False)
+    stage_boundary = SimpleNamespace()
+    stage_boundary_input = SimpleNamespace()
+    stage_static = SimpleNamespace(
+        cfg=SimpleNamespace(mpol=2, ntor=1, ntheta=4, nzeta=4, nfp=2, lasym=False),
+        modes="modes",
+        s=np.asarray([0.0, 0.5, 1.0]),
+    )
+    mirror_calls = []
+
+    class FakeOptimizer:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+            self.residuals_from_state = args[4]
+
+    class FakeVMECMirrorRatio:
+        def __init__(self, **kwargs):
+            mirror_calls.append(("init", kwargs))
+
+        def _evaluate_state(self, ctx, state):
+            mirror_calls.append(("eval", ctx, state))
+            assert ctx.static is stage_static
+            assert ctx.indata is stage_indata
+            assert ctx.signgs == -1
+            assert state == "state"
+            return {
+                "residuals1d": sweep.jnp.asarray([0.2, 0.3], dtype=sweep.jnp.float64),
+                "total": sweep.jnp.asarray(0.13, dtype=sweep.jnp.float64),
+            }
+
+    def fail_boozer_mirror(*_args, **_kwargs):
+        raise AssertionError("QI sweep mirror residuals must not use the Boozer mirror penalty")
+
+    def fail_unexpected_quality_term(**_kwargs):
+        raise AssertionError("disabled QI engineering term should not be evaluated")
+
+    monkeypatch.setattr(sweep.vj, "build_static", lambda _cfg: stage_static)
+    monkeypatch.setattr(sweep.vj, "boundary_from_indata", lambda *_args, **_kwargs: stage_boundary)
+    monkeypatch.setattr(
+        sweep.vj,
+        "extend_boundary_for_max_mode",
+        lambda _indata, _static, _boundary, _max_mode: (stage_indata, stage_static, stage_boundary),
+    )
+    monkeypatch.setattr(sweep.vj, "boundary_input_from_indata", lambda *_args, **_kwargs: stage_boundary_input)
+    monkeypatch.setattr(sweep.vj, "boundary_param_specs", lambda *_args, **_kwargs: ["spec"])
+    monkeypatch.setattr(sweep.vj, "flux_profiles_from_indata", lambda *_args, **_kwargs: "flux")
+    monkeypatch.setattr(sweep.vj, "FixedBoundaryExactOptimizer", FakeOptimizer)
+    monkeypatch.setattr(sweep.vj, "VMECMirrorRatio", FakeVMECMirrorRatio)
+    monkeypatch.setattr(sweep, "initial_guess_from_boundary", lambda *_args, **_kwargs: "guess")
+    monkeypatch.setattr(sweep, "eval_geom", lambda *_args, **_kwargs: SimpleNamespace(sqrtg=np.ones((2, 2))))
+    monkeypatch.setattr(sweep, "signgs_from_sqrtg", lambda *_args, **_kwargs: -1)
+    monkeypatch.setattr(sweep, "equilibrium_aspect_ratio_from_state", lambda **_kwargs: 5.0)
+    monkeypatch.setattr(
+        sweep,
+        "quasi_isodynamic_residual_from_state",
+        lambda **_kwargs: {
+            "residuals1d": sweep.jnp.asarray([0.11], dtype=sweep.jnp.float64),
+            "total": sweep.jnp.asarray(0.0121, dtype=sweep.jnp.float64),
+        },
+    )
+    monkeypatch.setattr(sweep, "mirror_ratio_penalty_from_boozer_output", fail_boozer_mirror)
+    monkeypatch.setattr(sweep, "max_elongation_penalty_from_state", fail_unexpected_quality_term)
+    monkeypatch.setattr(sweep, "lgradb_penalty_from_state", fail_unexpected_quality_term)
+
+    problem_cfg = replace(
+        sweep.PROBLEM_CONFIGS["qi"],
+        target_aspect=5.0,
+        target_iota=None,
+        iota_abs_min=None,
+        surfaces=np.asarray([0.25, 0.75]),
+        qs_weight=2.0,
+        qi_mirror_weight=5.0,
+        qi_mirror_ntheta=13,
+        qi_mirror_nphi=17,
+        qi_ceiling_weight=0.0,
+        qi_elongation_weight=0.0,
+        qi_lgradb_weight=0.0,
+        project_input_boundary_to_max_mode=False,
+    )
+
+    _stage_specs, stage_opt, _iota_fn, _stage_boundary_input = sweep._build_stage(
+        problem_cfg,
+        cfg=object(),
+        indata0=stage_indata,
+        max_mode=2,
+        solver_device="cpu",
+    )
+
+    residuals = np.asarray(stage_opt.residuals_from_state("state"))
+
+    np.testing.assert_allclose(residuals, [0.0, 0.22, 1.0, 1.5], rtol=1.0e-12, atol=1.0e-12)
+    assert stage_opt.residuals_from_state._qs_total_from_state("state") == pytest.approx(3.2984)
+    assert mirror_calls[0][0] == "init"
+    assert mirror_calls[0][1]["threshold"] == pytest.approx(problem_cfg.qi_max_mirror_ratio)
+    assert mirror_calls[0][1]["surfaces"] is problem_cfg.surfaces
+    assert mirror_calls[0][1]["surface_index"] is None
+    assert mirror_calls[0][1]["ntheta"] == 13
+    assert mirror_calls[0][1]["nphi"] == 17
+    assert [call[0] for call in mirror_calls].count("eval") == 2
 
 
 def test_policy_matrix_plots_single_problem(tmp_path, monkeypatch) -> None:
@@ -1490,6 +1653,7 @@ def test_public_api_reexports_example_optimization_contract() -> None:
     import vmec_jax.optimization_workflow as workflow
     import vmec_jax.plotting as plotting
     import vmec_jax.qi_diagnostics as qi_diagnostics
+    import vmec_jax.qi_optimization as qi_optimization
     from vmec_jax import finite_beta
 
     workflow_names = (
@@ -1552,6 +1716,10 @@ def test_public_api_reexports_example_optimization_contract() -> None:
     ):
         assert getattr(api, name) is getattr(qi_diagnostics, name)
         assert getattr(vj, name) is getattr(qi_diagnostics, name)
+
+    for name in ("qi_stage_modes",):
+        assert getattr(api, name) is getattr(qi_optimization, name)
+        assert getattr(vj, name) is getattr(qi_optimization, name)
 
     for name in (
         "plot_3d_boundary_comparison",

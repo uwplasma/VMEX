@@ -185,7 +185,7 @@ remain available for custom inspection.
 - `QA_optimization.py`: recommended quasi-axisymmetric fixed-boundary optimization.
 - `QH_optimization.py`: recommended quasi-helical fixed-boundary optimization.
 - `QP_optimization.py`: quasi-poloidal fixed-boundary optimization from the NFP=2 QI seed.
-- `QI_optimization.py`: recommended quasi-isodynamic optimization with Boozer-space QI metrics, mirror-ratio and elongation penalties, repeated same-mode continuation, and ESS. Edit `INPUT_FILE`, `OUTPUT_DIR`, seed helpers, objective weights, and optimizer controls at the top of the script, then run it directly.
+- `QI_optimization.py`: recommended quasi-isodynamic optimization with Boozer-space QI metrics, mirror-ratio and elongation penalties, lower-mode continuation by default, and ESS. Edit `INPUT_FILE`, `OUTPUT_DIR`, seed helpers, objective weights, and optimizer controls at the top of the script, then run it directly. Set `STAGE_MODE_POLICY = "repeat"` only when the input is already in a good QI basin and same-mode cleanup is desired.
 - `qa_optimization_finite_beta.py`, `qh_optimization_finite_beta.py`, and `qi_optimization_finite_beta.py`:
   finite-beta stage-1 examples with pressure/current-profile terms. These intentionally use
   `FixedBoundaryExactOptimizer` directly because each continuation stage builds custom
@@ -285,17 +285,17 @@ PYTHONPATH=. JAX_PLATFORMS=cpu python tools/diagnostics/qi_boundary_interpolatio
   --reference-input examples/data/input.nfp3_QI_fixed_resolution_final \
   --out-root results/diagnostics/qi_seed3127_boundary_interpolation \
   --lambdas 0.99,0.995,1.0,1.005,1.008,1.01,1.012 \
-  --max-mode 4 --max-iter 80 --target-aspect 6.0 \
+  --max-mode 4 --max-iter 80 --target-aspect 5.0 \
   --surfaces 0.1,0.28,0.46,0.64,0.82,1.0 \
   --mboz 18 --nboz 18 --nphi 151 --nalpha 31 --n-bounce 51 \
   --smooth-qi-max 5e-3 --legacy-qi-max 2e-3 \
   --max-mirror-ratio 0.35 --max-elongation 8.0
 PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py \
   --backend-label cpu --solver-device cpu --policy continuation \
-  --problems qi --modes 1,2,3 --ess both --qi-qp-preseed both --rerun
+  --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --rerun
 PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py \
   --backend-label cpu --solver-device cpu --policy direct \
-  --problems qi --modes 1,2,3 --ess both --qi-qp-preseed both --rerun
+  --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --rerun
 PYTHONPATH=. python examples/optimization/render_qi_constrained_sweep.py
 PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
 ```
@@ -308,13 +308,13 @@ bundles under `docs/_static/qi_readme_cases`.
 
 The constrained-QI sweep is the compact bundled-seed matrix, not the staged
 far-seed runner.  If its summary reports a stale QI target aspect, rerun the
-two sweep commands above with the current target-6 policy before using the
+two sweep commands above with the current aspect-5 policy before using the
 rendered matrix.
 Read the docs NFP=4 QI coverage row as a minimal-seed same-NFP reference-family
 proposal with an exact audit, not as a long local descent.  The generated
 `docs/_static/figures/readme_qi_optimization_cases.csv` row should remain
 `validation_status=case-gated` and `expected_gate_status=candidate`; passing
-gate fields do not make the row an aspect-6 README best row or a common-minimal
+gate fields do not make the row an aspect-5 README best row or a common-minimal
 completion.
 
 For publication-quality QI validation, re-run the diagnostic with higher
@@ -352,13 +352,18 @@ Example:
 ```bash
 PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py \
   --backend-label cpu --solver-device cpu --policy continuation \
-  --problems qa,qh,qp,qi --modes 1,2,3 --ess both --qi-qp-preseed off --rerun
+  --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off \
+  --max-nfev 60 --continuation-nfev 15 \
+  --inner-max-iter 180 --inner-ftol 1e-9 \
+  --trial-max-iter 180 --trial-ftol 1e-9 --rerun
 PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
 ```
 
-Use `--modes 1,2,3,4` only for exploratory high-mode regeneration; checked-in
-docs snapshots currently contain partial/archived `max_mode<=3` rows, not a
-complete reviewed CPU/GPU matrix.
+The sweep driver accepts explicit budget overrides so tuning runs do not require
+editing source constants.  Start from the production-style values above, then
+raise `--inner-ftol` or lower `--inner-max-iter` / `--trial-max-iter` only after
+checking that final objective, aspect, iota, mirror, elongation, and WOUT
+diagnostics are unchanged.
 
 Keep generated full-sweep atlases, PDFs, and bulky report panels in ignored
 result directories or release assets until reviewed.  Checked-in PNG/JPEG

@@ -33,7 +33,7 @@ PROBLEM_DEFAULTS: dict[str, dict[str, Any]] = {
     "qa": {
         "warm_start": "input.nfp2_QA_omnigenity",
         "simple_seed": "input.minimal_seed_nfp2",
-        "max_mode": 5,
+        "max_mode": 4,
         "method": "scipy",
         "scipy_tr_solver": "exact",
         "target_aspect": 5.0,
@@ -47,7 +47,7 @@ PROBLEM_DEFAULTS: dict[str, dict[str, Any]] = {
     "qh": {
         "warm_start": "input.nfp4_QH_warm_start",
         "simple_seed": "input.minimal_seed_nfp4",
-        "max_mode": 5,
+        "max_mode": 4,
         "method": "scipy",
         "scipy_tr_solver": "lsmr",
         "target_aspect": 5.0,
@@ -72,6 +72,10 @@ PROBLEM_DEFAULTS: dict[str, dict[str, Any]] = {
         "iota_floor_weight": 40_000.0,
         "qs_weight": 1.0,
         "project_input_boundary_to_max_mode": True,
+        "max_mirror_ratio": 0.30,
+        "max_elongation": 10.0,
+        "mirror_weight": 20.0,
+        "elongation_weight": 10.0,
     },
 }
 
@@ -123,24 +127,25 @@ def _objective_problem(problem: str, defaults: dict[str, Any]) -> vj.LeastSquare
     objective_tuples.append((qs.J, 0.0, float(defaults["qs_weight"])))
 
     if problem == "qp":
-        mirror = vj.MirrorRatio(
-            threshold=0.30,
+        mirror = vj.VMECMirrorRatio(
+            threshold=float(defaults["max_mirror_ratio"]),
             surfaces=np.linspace(0.1, 1.0, 6),
-            mboz=18,
-            nboz=18,
-            ntheta=96,
-            nphi=96,
             smooth_extrema=2.0e-2,
             smooth_penalty=2.0e-2,
         )
         elongation = vj.MaxElongation(
-            threshold=10.0,
+            threshold=float(defaults["max_elongation"]),
             ntheta=48,
             nphi=16,
             smooth_extrema=2.0e-2,
             smooth_penalty=2.0e-2,
         )
-        objective_tuples.extend([(mirror.J, 0.0, 20.0), (elongation.J, 0.0, 10.0)])
+        objective_tuples.extend(
+            [
+                (mirror.J, 0.0, float(defaults["mirror_weight"])),
+                (elongation.J, 0.0, float(defaults["elongation_weight"])),
+            ]
+        )
 
     return vj.LeastSquaresProblem.from_tuples(objective_tuples)
 

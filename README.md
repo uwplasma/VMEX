@@ -131,11 +131,9 @@ runs finite-pressure coil beta scans. Use `--resume-existing` to reuse completed
 `wout_*_beta_*.nc` pressure-continuation seeds.
 
 The DIII-D reference scan reaches final `ns=101`, `FTOL=1e-12`, and actual
-WOUT betas through 2.18%. The LP-QA stellarator pressure-continuation lane now
-promotes strict direct-coil forward rows through actual WOUT beta 1.93%. Full
-nonlinear exact-adjoint gradients through the free-boundary iteration remain
-phase-2 work; see `docs/free_boundary_coil_optimization.rst` for plots,
-VMEC2000 comparisons, benchmarks, limitations, and the full-solve adjoint plan.
+WOUT betas through 2.18%; the LP-QA direct-coil lane promotes strict forward
+rows through actual WOUT beta 1.93%. Full nonlinear exact-adjoint gradients
+remain phase-2 work; see `docs/free_boundary_coil_optimization.rst`.
 
 ![DIII-D finite-beta mgrid free-boundary scan](docs/_static/figures/freeb_diiid_mgrid_beta_ns101_panel.png)
 
@@ -161,9 +159,12 @@ pass `solver_device="cpu"` / `solver_device="gpu"` explicitly.
 
 Editable optimization examples live in `examples/optimization/`. Start with
 `examples/optimization/README.md`, then use `docs/optimization.rst`,
-`docs/optimization_sweep_results.rst`, and
-`docs/piecewise_omnigenous_plan.rst` for the full method guide, sweep tables,
-pwO plan, LASYM panels, finite-beta cases, and QI provenance.
+`docs/optimization_sweep_results.rst`, and `docs/piecewise_omnigenous_plan.rst`.
+
+The table and figures below are an archived aspect-6, ``max_mode <= 3``
+snapshot while the aspect-5, ``max_mode <= 5`` matrix is being regenerated.
+Extended policy discussion, LASYM panels, finite-beta examples, QI provenance,
+failure modes, and full-matrix artifact requirements live in the docs.
 
 | Target | Backend | Policy | max_mode | ESS | Final J | QI legacy | Mirror | Aspect | Iota | Wall time |
 |---|---|---|---:|---|---:|---:|---:|---:|---:|---:|
@@ -172,8 +173,8 @@ pwO plan, LASYM panels, finite-beta cases, and QI provenance.
 | QP | CPU | continuation | 3 | no | 5.38e-02 |  |  | 6.015 | -0.6724 | 3.9 min |
 | QI | CPU | qi_default | 3 | yes | 1.37e-02 | 4.31e-04 | 0.272 | 6.002 | -0.5690 | 10.9 min |
 
-Metric definitions and policy details are in `docs/optimization.rst`; the
-README table is only the current compact promotion snapshot.
+Metric definitions are in `docs/optimization.rst`; do not treat this archived
+table as current aspect-5 promotion evidence.
 
 ![QA optimization](docs/_static/figures/readme_best_optimization_qa.png)
 ![QH optimization](docs/_static/figures/readme_best_optimization_qh.png)
@@ -189,8 +190,9 @@ provenance and limitations are in the docs.
 
 ![QI optimization from NFP seeds](docs/_static/figures/readme_qi_optimization_cases.png)
 
-Reproduction commands and full sweep rules are in `docs/optimization.rst` and
-`docs/optimization_sweep_results.rst`.
+Reproduction commands, artifact-promotion rules, and full sweep requirements are
+documented in `docs/optimization.rst` and `docs/optimization_sweep_results.rst`.
+Case-specific artifacts are not aspect-5 README promotion evidence.
 
 ## Performance, Validation, Release
 

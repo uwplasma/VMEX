@@ -7,7 +7,7 @@ This script regenerates a reviewer-facing benchmark matrix for the standalone
 
 - problems: QA, QH, QP, and QI
 - policies: continuation and direct-start mode expansion
-- max_mode: 1, 2, 3, 4 for continuation and direct start
+- max_mode: 1, 2, 3, 4, 5 for continuation and direct start
 - ESS: off and on
 - backends: encoded by ``--backend-label`` (for example ``cpu`` or ``gpu``)
 
@@ -53,6 +53,7 @@ import signal
 import sys
 import time
 import traceback
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -89,7 +90,7 @@ OUTPUT_ROOT = SCRIPT_DIR / "results" / "qs_ess_sweep"
 MIN_VMEC_MODE = 5
 VMEC_MPOL = MIN_VMEC_MODE
 VMEC_NTOR = MIN_VMEC_MODE
-MODES = (1, 2, 3, 4)
+MODES = (1, 2, 3, 4, 5)
 PROBLEMS = ("qa", "qh", "qp", "qi")
 ESS_OPTIONS = (False, True)
 
@@ -99,6 +100,7 @@ SOLVER_DEVICE: str | None = None  # None uses JAX default; set "cpu" or "gpu" to
 SKIP_EXISTING = True
 CASE_TIMEOUT_S: float | None = 1800.0
 ESS_ALPHA = 1.2  # Try 1.2 for gentle ESS or 2.5 for stronger high-mode scaling.
+QI_STAGE_MODE_POLICY = "lower"  # "lower" uses QA/QH/QP-style continuation; "repeat" preserves old QI cleanup.
 TARGET_ASPECT = 5.0
 QI_TARGET_ASPECT = TARGET_ASPECT
 TARGET_ABS_IOTA_MIN = 0.41
@@ -308,8 +310,8 @@ PROBLEM_CONFIGS = {
         method="scipy",  # Try also "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", or "scalar_trust".
         scipy_tr_solver="lsmr",  # For method="scipy": "lsmr" is memory-light; "exact" is dense.
         scipy_lsmr_maxiter=None,  # None lets SciPy choose; set an int to cap LSMR work per step.
-        max_nfev=30,  # Outer least-squares budget for the final stage.
-        continuation_nfev=30,  # Per-stage budget when mode continuation is enabled.
+        max_nfev=60,  # Outer least-squares budget for the final stage.
+        continuation_nfev=60,  # Per-stage budget when mode continuation is enabled.
         ftol=1e-4,  # Relative cost-reduction tolerance for the outer optimizer.
         gtol=1e-4,  # Gradient optimality tolerance for the outer optimizer.
         xtol=1e-4,  # Step-size tolerance for the outer optimizer.
@@ -335,8 +337,8 @@ PROBLEM_CONFIGS = {
         method="scipy",  # Try also "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", or "scalar_trust".
         scipy_tr_solver="lsmr",  # For method="scipy": "lsmr" is memory-light; "exact" is dense.
         scipy_lsmr_maxiter=None,  # None lets SciPy choose; set an int to cap LSMR work per step.
-        max_nfev=40,  # Outer least-squares budget for the final stage.
-        continuation_nfev=30,  # Per-stage budget when mode continuation is enabled.
+        max_nfev=60,  # Outer least-squares budget for the final stage.
+        continuation_nfev=60,  # Per-stage budget when mode continuation is enabled.
         ftol=1e-4,  # Relative cost-reduction tolerance for the outer optimizer.
         gtol=1e-4,  # Gradient optimality tolerance for the outer optimizer.
         xtol=1e-4,  # Step-size tolerance for the outer optimizer.
@@ -363,8 +365,8 @@ PROBLEM_CONFIGS = {
         method="scipy_matrix_free",  # Try also "scipy", "gauss_newton", "lbfgs_adjoint", or "scalar_trust".
         scipy_tr_solver="lsmr",  # For method="scipy": "lsmr" is memory-light; "exact" is dense.
         scipy_lsmr_maxiter=None,  # None lets SciPy choose; set an int to cap LSMR work per step.
-        max_nfev=10,  # Outer least-squares budget for the final stage.
-        continuation_nfev=10,  # Per-stage budget when mode continuation is enabled.
+        max_nfev=60,  # Outer least-squares budget for the final stage.
+        continuation_nfev=60,  # Per-stage budget when mode continuation is enabled.
         ftol=1e-4,  # Relative cost-reduction tolerance for the outer optimizer.
         gtol=1e-4,  # Gradient optimality tolerance for the outer optimizer.
         xtol=1e-4,  # Step-size tolerance for the outer optimizer.
@@ -771,6 +773,8 @@ def _effective_problem_config(
     max_mode: int,
     use_ess: bool,
     diagnostic_budgets: bool = DIAGNOSTIC_BUDGETS,
+    cli_budget: CaseBudget | None = None,
+    ess_alpha_override: float | None = None,
 ) -> ProblemConfig:
     updates = {}
     backend_key = "gpu" if str(backend).lower().startswith("gpu") else str(backend).lower()
@@ -850,6 +854,21 @@ def _effective_problem_config(
         updates["trial_max_iter"] = int(budget.trial_max_iter)
     if budget is not None and budget.trial_ftol is not None:
         updates["trial_ftol"] = float(budget.trial_ftol)
+    if cli_budget is not None:
+        if cli_budget.max_nfev is not None:
+            updates["max_nfev"] = int(cli_budget.max_nfev)
+        if cli_budget.continuation_nfev is not None:
+            updates["continuation_nfev"] = int(cli_budget.continuation_nfev)
+        if cli_budget.inner_max_iter is not None:
+            updates["inner_max_iter"] = int(cli_budget.inner_max_iter)
+        if cli_budget.inner_ftol is not None:
+            updates["inner_ftol"] = float(cli_budget.inner_ftol)
+        if cli_budget.trial_max_iter is not None:
+            updates["trial_max_iter"] = int(cli_budget.trial_max_iter)
+        if cli_budget.trial_ftol is not None:
+            updates["trial_ftol"] = float(cli_budget.trial_ftol)
+    if ess_alpha_override is not None:
+        updates["ess_alpha"] = float(ess_alpha_override)
     return replace(problem_cfg, **updates)
 
 
@@ -1186,7 +1205,13 @@ def _stage_modes_for_problem(
             modes.extend([mode] * (2 if mode == 1 else 3))
         return modes
     if problem_cfg.name == "qi":
-        return [max_mode] * 5
+        return vj.qi_stage_modes(
+            max_mode=max_mode,
+            use_mode_continuation=use_mode_continuation,
+            continuation_nfev=max(1, int(problem_cfg.continuation_nfev)),
+            repeats=5,
+            policy=QI_STAGE_MODE_POLICY,
+        )
     return list(range(1, max_mode + 1))
 
 
@@ -1360,6 +1385,14 @@ def _build_stage(problem_cfg: ProblemConfig, cfg, indata0, max_mode: int, *, sol
         return float(mean_iota_raw(state))
 
     track_iota = problem_cfg.target_iota is not None or problem_cfg.iota_abs_min is not None
+    qi_mirror_ctx = SimpleNamespace(static=stage_static, indata=stage_indata, signgs=stage_signgs)
+    qi_mirror_objective = vj.VMECMirrorRatio(
+        threshold=problem_cfg.qi_max_mirror_ratio,
+        surfaces=problem_cfg.surfaces,
+        surface_index=problem_cfg.qi_mirror_surface_index,
+        ntheta=problem_cfg.qi_mirror_ntheta,
+        nphi=problem_cfg.qi_mirror_nphi,
+    )
 
     def qi_field_quality_blocks(state, qi):
         blocks = [
@@ -1379,14 +1412,7 @@ def _build_stage(problem_cfg: ProblemConfig, cfg, indata0, max_mode: int, *, sol
             residual = jnp.ravel(excess) * float(problem_cfg.qi_ceiling_weight)
             blocks.append((residual, jnp.sum(residual * residual)))
         if float(problem_cfg.qi_mirror_weight) != 0.0:
-            mirror_booz = _mirror_boozer_surfaces(qi["booz"], problem_cfg.qi_mirror_surface_index)
-            mirror = mirror_ratio_penalty_from_boozer_output(
-                mirror_booz,
-                nfp=int(stage_static.cfg.nfp),
-                threshold=problem_cfg.qi_max_mirror_ratio,
-                ntheta=problem_cfg.qi_mirror_ntheta,
-                nphi=problem_cfg.qi_mirror_nphi,
-            )
+            mirror = qi_mirror_objective._evaluate_state(qi_mirror_ctx, state)
             blocks.append(
                 (
                     jnp.asarray(mirror["residuals1d"], dtype=jnp.float64) * problem_cfg.qi_mirror_weight,
@@ -2239,6 +2265,8 @@ def _run_case(
     stellarator_asymmetric: bool = STELLARATOR_ASYMMETRIC,
     qi_qp_preseed: bool | None = None,
     qi_jit_booz: bool | None = None,
+    cli_budget: CaseBudget | None = None,
+    ess_alpha_override: float | None = None,
 ) -> CaseResult:
     result_path = Path(output_dir) / "case_result.json" if result_path is None else Path(result_path)
     problem_cfg = _effective_problem_config(
@@ -2249,6 +2277,8 @@ def _run_case(
         max_mode=max_mode,
         use_ess=use_ess,
         diagnostic_budgets=diagnostic_budgets,
+        cli_budget=cli_budget,
+        ess_alpha_override=ess_alpha_override,
     )
     if problem_cfg.objective_kind == "qi" and qi_qp_preseed is not None:
         problem_cfg = replace(problem_cfg, qi_preseed_qp=bool(qi_qp_preseed))
@@ -2353,6 +2383,8 @@ def _run_case(
             max_mode=max_mode,
             use_ess=use_ess,
             diagnostic_budgets=diagnostic_budgets,
+            cli_budget=cli_budget,
+            ess_alpha_override=ess_alpha_override,
         )
         qp_stage_results, prev_specs, params_stage, qp_opt, qp_params0, qp_result = _run_problem_stages(
             problem_cfg=qp_cfg,
@@ -2521,6 +2553,8 @@ def _worker(
     stellarator_asymmetric: bool,
     qi_qp_preseed: bool | None,
     qi_jit_booz: bool | None,
+    cli_budget: CaseBudget | None = None,
+    ess_alpha_override: float | None = None,
 ):
     _start_worker_session()
     try:
@@ -2539,6 +2573,8 @@ def _worker(
             stellarator_asymmetric=stellarator_asymmetric,
             qi_qp_preseed=qi_qp_preseed,
             qi_jit_booz=qi_jit_booz,
+            cli_budget=cli_budget,
+            ess_alpha_override=ess_alpha_override,
         )
         _atomic_write_json(Path(result_path), asdict(case_result))
         stale_traceback = Path(output_dir) / "traceback.txt"
@@ -2985,6 +3021,43 @@ def _parse_args() -> argparse.Namespace:
             "sweeps use the full optimization budgets."
         ),
     )
+    parser.add_argument("--max-nfev", type=int, default=None, help="Override final-stage outer nfev budget.")
+    parser.add_argument(
+        "--continuation-nfev",
+        type=int,
+        default=None,
+        help="Override per-lower-stage continuation nfev budget.",
+    )
+    parser.add_argument(
+        "--inner-max-iter",
+        type=int,
+        default=None,
+        help="Override accepted-point VMEC iteration budget; 0 uses input-deck NITER.",
+    )
+    parser.add_argument(
+        "--inner-ftol",
+        type=float,
+        default=None,
+        help="Override accepted-point VMEC tolerance; 0 uses input-deck FTOL.",
+    )
+    parser.add_argument(
+        "--trial-max-iter",
+        type=int,
+        default=None,
+        help="Override trial-point VMEC iteration budget; 0 follows accepted/input budget.",
+    )
+    parser.add_argument(
+        "--trial-ftol",
+        type=float,
+        default=None,
+        help="Override trial-point VMEC tolerance; 0 follows accepted/input tolerance.",
+    )
+    parser.add_argument(
+        "--ess-alpha",
+        type=float,
+        default=None,
+        help="Override ESS alpha for all selected cases.",
+    )
     return parser.parse_args()
 
 
@@ -3021,6 +3094,16 @@ def main() -> None:
         worker_jax_platforms = _default_worker_jax_platforms(solver_device)
     else:
         worker_jax_platforms = _normalize_worker_jax_platforms(worker_jax_platforms_arg)
+    cli_budget = CaseBudget(
+        max_nfev=args.max_nfev,
+        continuation_nfev=args.continuation_nfev,
+        inner_max_iter=args.inner_max_iter,
+        inner_ftol=args.inner_ftol,
+        trial_max_iter=args.trial_max_iter,
+        trial_ftol=args.trial_ftol,
+    )
+    if all(getattr(cli_budget, field) is None for field in cli_budget.__dataclass_fields__):
+        cli_budget = None
 
     output_root.mkdir(parents=True, exist_ok=True)
     ctx = mp.get_context("spawn")
@@ -3096,6 +3179,8 @@ def main() -> None:
                             bool(args.stellarator_asymmetric),
                             qi_qp_preseed,
                             qi_jit_booz,
+                            cli_budget,
+                            args.ess_alpha,
                         ),
                     )
                     case_t0 = time.perf_counter()

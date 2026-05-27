@@ -25,6 +25,179 @@ def test_load_basin_prefilter_tools_reports_source_checkout_requirement(monkeypa
         qio._load_basin_prefilter_tools()
 
 
+def test_load_basin_prefilter_tools_imports_repo_helpers() -> None:
+    tools = qio._load_basin_prefilter_tools()
+
+    assert len(tools) == 5
+    assert tools[0].__name__ == "SurveyTargets"
+    assert callable(tools[-1])
+
+
+def test_qi_example_cli_overrides_update_namespace_and_stage_modes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    namespace = {
+        "MAX_MODE": 2,
+        "MIN_VMEC_MODE": 5,
+        "MAX_NFEV": 10,
+        "CONTINUATION_NFEV": 3,
+        "INNER_MAX_ITER": 100,
+        "INNER_FTOL": 1.0e-8,
+        "TRIAL_MAX_ITER": 80,
+        "TRIAL_FTOL": 1.0e-7,
+        "SOLVER_DEVICE": None,
+        "ALPHA": 1.0,
+        "USE_ESS": False,
+        "USE_MODE_CONTINUATION": True,
+        "USE_SIMPLE_SEED": False,
+        "USE_TARGET_HELICITY_SEED": True,
+        "USE_REFERENCE_FAMILY_SEED": False,
+        "REFERENCE_LAMBDAS": (0.0, 1.0),
+        "STAGE_MODE_POLICY": "lower",
+        "STAGE_REPEATS": 1,
+        "MAKE_PLOTS": False,
+        "JIT_BOOZ": False,
+        "TARGET_ASPECT": 6.0,
+        "TARGET_ABS_IOTA_MIN": 0.41,
+        "MAX_MIRROR_RATIO": 0.3,
+        "MAX_ELONGATION": 10.0,
+    }
+    captured = {}
+
+    def fake_qi_stage_modes(**kwargs):
+        captured.update(kwargs)
+        return ("stage", kwargs["max_mode"], kwargs["repeats"], kwargs["policy"])
+
+    monkeypatch.setattr(qio, "qi_stage_modes", fake_qi_stage_modes)
+
+    args = qio.apply_qi_example_cli_overrides(
+        namespace,
+        [
+            "--input-file",
+            str(tmp_path / "input.seed"),
+            "--output-dir",
+            str(tmp_path / "out"),
+            "--max-mode",
+            "5",
+            "--min-vmec-mode",
+            "9",
+            "--max-nfev",
+            "60",
+            "--continuation-nfev",
+            "11",
+            "--inner-max-iter",
+            "550",
+            "--inner-ftol",
+            "1e-10",
+            "--trial-max-iter",
+            "450",
+            "--trial-ftol",
+            "1e-9",
+            "--solver-device",
+            "gpu",
+            "--ess-alpha",
+            "1.2",
+            "--use-ess",
+            "--no-use-mode-continuation",
+            "--use-simple-seed",
+            "--no-use-target-helicity-seed",
+            "--reference-input",
+            str(tmp_path / "input.reference"),
+            "--reference-lambdas",
+            "0, 0.5,1",
+            "--stage-repeats",
+            "4",
+            "--stage-mode-policy",
+            "repeat",
+            "--make-plots",
+            "--jit-booz",
+            "--target-aspect",
+            "5",
+            "--target-abs-iota-min",
+            "0.45",
+            "--max-mirror-ratio",
+            "0.25",
+            "--max-elongation",
+            "9",
+        ],
+    )
+
+    assert args.max_mode == 5
+    assert namespace["INPUT_FILE"] == tmp_path / "input.seed"
+    assert namespace["OUTPUT_DIR"] == tmp_path / "out"
+    assert namespace["MIN_VMEC_MODE"] == 9
+    assert namespace["MAX_NFEV"] == 60
+    assert namespace["CONTINUATION_NFEV"] == 11
+    assert namespace["INNER_MAX_ITER"] == 550
+    assert namespace["INNER_FTOL"] == pytest.approx(1.0e-10)
+    assert namespace["TRIAL_MAX_ITER"] == 450
+    assert namespace["TRIAL_FTOL"] == pytest.approx(1.0e-9)
+    assert namespace["SOLVER_DEVICE"] == "gpu"
+    assert namespace["ALPHA"] == pytest.approx(1.2)
+    assert namespace["USE_ESS"] is True
+    assert namespace["USE_MODE_CONTINUATION"] is False
+    assert namespace["USE_SIMPLE_SEED"] is True
+    assert namespace["USE_TARGET_HELICITY_SEED"] is False
+    assert namespace["USE_REFERENCE_FAMILY_SEED"] is True
+    assert namespace["REFERENCE_INPUT_FILE"] == tmp_path / "input.reference"
+    assert namespace["REFERENCE_LAMBDAS"] == (0.0, 0.5, 1.0)
+    assert namespace["STAGE_REPEATS"] == 4
+    assert namespace["STAGE_MODE_POLICY"] == "repeat"
+    assert namespace["MAKE_PLOTS"] is True
+    assert namespace["JIT_BOOZ"] is True
+    assert namespace["TARGET_ASPECT"] == pytest.approx(5.0)
+    assert namespace["TARGET_ABS_IOTA_MIN"] == pytest.approx(0.45)
+    assert namespace["MAX_MIRROR_RATIO"] == pytest.approx(0.25)
+    assert namespace["MAX_ELONGATION"] == pytest.approx(9.0)
+    assert namespace["STAGE_MODES"] == ("stage", 5, 4, "repeat")
+    assert captured == {
+        "max_mode": 5,
+        "use_mode_continuation": False,
+        "continuation_nfev": 11,
+        "repeats": 4,
+        "policy": "repeat",
+    }
+
+
+def test_qi_example_cli_defaults_min_vmec_mode_and_accepts_default_solver(monkeypatch: pytest.MonkeyPatch) -> None:
+    namespace = {
+        "MAX_MODE": 4,
+        "CONTINUATION_NFEV": 0,
+        "USE_MODE_CONTINUATION": False,
+        "STAGE_MODE_POLICY": "lower",
+        "STAGE_REPEATS": 2,
+    }
+    monkeypatch.setattr(
+        qio,
+        "qi_stage_modes",
+        lambda **kwargs: (kwargs["max_mode"], kwargs["repeats"], kwargs["policy"]),
+    )
+
+    qio.apply_qi_example_cli_overrides(namespace, ["--solver-device", "default"])
+
+    assert namespace["MIN_VMEC_MODE"] == 7
+    assert namespace["SOLVER_DEVICE"] is None
+    assert namespace["STAGE_MODES"] == (4, 2, "lower")
+
+
+def test_qi_example_cli_real_stage_mode_policies() -> None:
+    base = {
+        "MAX_MODE": 3,
+        "CONTINUATION_NFEV": 2,
+        "USE_MODE_CONTINUATION": True,
+        "STAGE_REPEATS": 2,
+    }
+
+    lower = dict(base)
+    qio.apply_qi_example_cli_overrides(lower, ["--stage-mode-policy", "lower"])
+    assert lower["STAGE_MODES"] == [1, 1, 2, 2, 2, 3, 3, 3]
+
+    repeat = dict(base)
+    qio.apply_qi_example_cli_overrides(repeat, ["--stage-mode-policy", "repeat"])
+    assert repeat["STAGE_MODES"] == [3, 3]
+
+    with pytest.raises(SystemExit):
+        qio.apply_qi_example_cli_overrides(dict(base), ["--stage-mode-policy", "invalid"])
+
+
 def test_target_helicity_seed_terms_are_deterministic_and_disable_cleanly() -> None:
     expected_mode_1 = (
         ("RBC", (1, 0), 2.5e-5),
@@ -204,18 +377,24 @@ def test_stage_modes_for_uses_limits_explicit_modes_and_default_repetition(
     monkeypatch.setattr(qio, "STAGE_REPEATS", 3, raising=False)
     monkeypatch.setattr(qio.vj, "normalize_boundary_mode_limits", lambda mode: f"normalised:{mode}")
 
-    def repeated_stage_modes(*, max_mode, use_mode_continuation, continuation_nfev, repeats):
-        return [max_mode, use_mode_continuation, continuation_nfev, repeats]
+    def fake_qi_stage_modes(*, max_mode, use_mode_continuation, continuation_nfev, repeats, policy):
+        return [max_mode, use_mode_continuation, continuation_nfev, repeats, policy]
 
-    monkeypatch.setattr(qio.vj, "repeated_stage_modes", repeated_stage_modes)
+    monkeypatch.setattr(qio, "qi_stage_modes", fake_qi_stage_modes)
 
     assert qio.stage_modes_for({"stage_mode_limits": ("nfirst", (2, 3))}) == [
         "normalised:nfirst",
         "normalised:(2, 3)",
     ]
     assert qio.stage_modes_for({"stage_modes": (1, "2", 3)}) == [1, 2, 3]
-    assert qio.stage_modes_for({}) == [4, True, 2, 3]
-    assert qio.stage_modes_for({"stage_repeats": 5}) == [4, True, 2, 5]
+    assert qio.stage_modes_for({}) == [4, True, 2, 3, "lower"]
+    assert qio.stage_modes_for({"stage_repeats": 5, "stage_mode_policy": "repeat"}) == [
+        4,
+        True,
+        2,
+        5,
+        "repeat",
+    ]
 
 
 def test_promotion_scores_apply_gate_penalties_and_nonfinite_fallbacks() -> None:

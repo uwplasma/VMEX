@@ -31,7 +31,7 @@ INPUT_FILE = DATA_DIR / "input.nfp2_QI"
 # INPUT_FILE = DATA_DIR / "input.QI_stel_seed_3127"
 # INPUT_FILE = DATA_DIR / "input.minimal_seed_nfp4"
 OUTPUT_DIR = Path("results/qi_opt/ess/nfp2_qi")
-MAX_MODE = 3
+MAX_MODE = 5
 MIN_VMEC_MODE = max(6, MAX_MODE + 3)
 
 # Seed preparation. Leave all disabled to optimize directly from INPUT_FILE.
@@ -58,17 +58,20 @@ SOLVER_DEVICE = None  # None uses JAX default; set "cpu" or "gpu" to force one b
 USE_ESS = True  # Set False for an unscaled trust-region solve.
 ALPHA = 1.2  # ESS high-mode scaling strength.
 USE_MODE_CONTINUATION = True
-CONTINUATION_NFEV = 0
-MAX_NFEV = 12
-STAGE_REPEATS = 1
-STAGE_MODES = vj.repeated_stage_modes(
+CONTINUATION_NFEV = 10
+MAX_NFEV = 60
+STAGE_MODE_POLICY = "lower"  # "lower" stages 1..MAX_MODE; "repeat" repeats only MAX_MODE.
+STAGE_REPEATS = 3  # Used only for STAGE_MODE_POLICY="repeat".
+STAGE_MODES = vj.qi_stage_modes(
     max_mode=MAX_MODE,
     use_mode_continuation=USE_MODE_CONTINUATION,
     continuation_nfev=CONTINUATION_NFEV,
     repeats=STAGE_REPEATS,
+    policy=STAGE_MODE_POLICY,
 )
 # Common alternatives:
 # STAGE_MODES = [1, 1, 2, 2, 3, 3]
+# STAGE_MODE_POLICY = "repeat"
 # METHOD = "lbfgs_adjoint"
 # USE_REFERENCE_FAMILY_SEED = True
 # SOLVER_DEVICE = "gpu"
@@ -208,19 +211,14 @@ qi_ceiling = vj.QuasiIsodynamicResidualCeiling(
     smooth_penalty=QI_CEILING_SMOOTH_PENALTY,
     qi_options=QI_OPTIONS,
 )
-mirror = vj.MirrorRatio(
+mirror = vj.VMECMirrorRatio(
     threshold=MAX_MIRROR_RATIO,
     surfaces=QI_OPTIONS.surfaces,
-    mboz=QI_OPTIONS.mboz,
-    nboz=QI_OPTIONS.nboz,
     ntheta=96,
     nphi=96,
     surface_index=MIRROR_SURFACE_INDEX,
-    phimin=QI_OPTIONS.phimin,
     smooth_extrema=2.0e-2,
     smooth_penalty=2.0e-2,
-    jit_booz=QI_OPTIONS.jit_booz,
-    qi_options=QI_OPTIONS,
 )
 elongation = vj.MaxElongation(
     threshold=MAX_ELONGATION,

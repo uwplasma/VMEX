@@ -71,7 +71,6 @@ _DYNAMIC_REPLAY_SCALAR_TRACE_KEYS = (
     "lambda_update_scale",
     "max_coeff_delta_rms_pre",
     "max_update_rms_pre",
-    "freeb_pres_scale",
 )
 _CHECKPOINT_TAPE_SCAN_CACHE: OrderedDict[tuple[Any, ...], Any] = OrderedDict()
 _CHECKPOINT_TAPE_DYNAMIC_SCAN_CACHE: OrderedDict[tuple[Any, ...], Any] = OrderedDict()
@@ -323,7 +322,7 @@ def _trace_preconditioner_use_lax_tridi(
     trace: dict[str, Any],
     static_flags: dict[str, Any] | None = None,
 ) -> bool | None:
-    """Return the lax-tridiagonal policy recorded by the primal solve."""
+    """Return the lax tridiagonal-solver policy recorded by the primal solve."""
     if static_flags is not None and "preconditioner_use_lax_tridi" in static_flags:
         value = static_flags["preconditioner_use_lax_tridi"]
     else:
@@ -1079,7 +1078,7 @@ def _static_flags_from_replay_step_traces(step_traces: tuple[dict[str, Any], ...
     static_flags["preconditioner_use_precomputed_tridi"] = tridi_policy0
     lax_tridi_policy0 = step_traces[0].get("preconditioner_use_lax_tridi", None)
     if any(trace.get("preconditioner_use_lax_tridi", None) != lax_tridi_policy0 for trace in step_traces[1:]):
-        raise ValueError("Replay step trace lax-tridiagonal policy must be constant across scan replay.")
+        raise ValueError("Replay step trace lax tridiagonal policy must be constant across scan replay.")
     static_flags["preconditioner_use_lax_tridi"] = lax_tridi_policy0
     return static_flags
 
@@ -1087,9 +1086,26 @@ def _static_flags_from_replay_step_traces(step_traces: tuple[dict[str, Any], ...
 def _stack_replay_step_traces(step_traces: tuple[dict[str, Any], ...]):
     from ._compat import jax
 
-    optional_keys = {"freeb_bsqvac_half", "freeb_pres_scale"}
+    optional_keys = ("freeb_bsqvac_half", "freeb_pres_scale")
+    optional_present: dict[str, list[bool]] = {
+        key: [trace.get(key, None) is not None for trace in step_traces]
+        for key in optional_keys
+    }
+    active_optional_keys = set()
+    for key, present in optional_present.items():
+        if all(present):
+            active_optional_keys.add(key)
+        elif any(present):
+            raise ValueError(
+                f"Replay requires optional trace key {key} to be present "
+                "on every active trace or none."
+            )
     filtered = tuple(
-        {key: trace.get(key, None) if key in optional_keys else trace[key] for key in _REPLAY_STEP_TRACE_KEYS}
+        {
+            key: trace[key]
+            for key in _REPLAY_STEP_TRACE_KEYS
+            if key not in optional_keys or key in active_optional_keys
+        }
         for trace in step_traces
     )
     use_device_stack = _backend_is_accelerator(jax.default_backend())
@@ -1172,11 +1188,14 @@ def _build_dynamic_replay_payload(
         "zero_m1",
         *_DYNAMIC_REPLAY_SCALAR_TRACE_KEYS,
     ]
-    freeb_present = [trace.get("freeb_bsqvac_half", None) is not None for trace in step_traces]
-    if all(freeb_present):
-        varying_keys.append("freeb_bsqvac_half")
-    elif any(freeb_present):
-        raise ValueError("Dynamic replay requires freeb_bsqvac_half to be present on every active trace or none.")
+    for freeb_key in ("freeb_bsqvac_half", "freeb_pres_scale"):
+        freeb_present = [trace.get(freeb_key, None) is not None for trace in step_traces]
+        if all(freeb_present):
+            varying_keys.append(freeb_key)
+        elif any(freeb_present):
+            raise ValueError(
+                f"Dynamic replay requires {freeb_key} to be present on every active trace or none."
+            )
     for key in constant_candidates:
         first = step_traces[0][key]
         if all(_replay_values_equal(trace[key], first) for trace in step_traces[1:]):
@@ -1247,9 +1266,10 @@ def _dynamic_replay_supported(
         return False
     if tape.step_trace_static_flags is not None and tape.step_trace_static_flags.get("precond_jmax") is None:
         return False
-    freeb_present = [trace.get("freeb_bsqvac_half", None) is not None for trace in tape.step_traces]
-    if any(freeb_present) and not all(freeb_present):
-        return False
+    for freeb_key in ("freeb_bsqvac_half", "freeb_pres_scale"):
+        freeb_present = [trace.get(freeb_key, None) is not None for trace in tape.step_traces]
+        if any(freeb_present) and not all(freeb_present):
+            return False
     return all(_dynamic_replay_trace_supported(trace) for trace in tape.step_traces)
 
 

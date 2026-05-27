@@ -209,6 +209,28 @@ _mn_sin_to_signed_physical_batch = _geometry_mn_sin_to_signed_physical_batch
 _rz_norm_np = _geometry_rz_norm_np
 
 
+def _resolve_preconditioner_tridi_policies(
+    *, use_precomputed: bool | None
+) -> tuple[bool, bool]:
+    env_precomputed = os.getenv("VMEC_JAX_TRIDI_PRECOMPUTE", "0").strip().lower() not in (
+        "",
+        "0",
+        "false",
+        "no",
+    )
+    env_lax_tridi = os.getenv("VMEC_JAX_TRIDI_SOLVE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "lax",
+        "force",
+    )
+    return (
+        bool(env_precomputed) if use_precomputed is None else bool(use_precomputed),
+        bool(env_lax_tridi),
+    )
+
+
 def _jit_cache_limit(env_name: str, default: int) -> int:
     """Return a non-negative JIT-cache size limit from an environment variable."""
 
@@ -5473,6 +5495,12 @@ def solve_fixed_boundary_residual_iter(
     ).enabled
     adjoint_trace = bool(adjoint_trace)
     adjoint_trace_mode = _normalize_adjoint_trace_mode(adjoint_trace_mode)
+    (
+        preconditioner_use_precomputed_tridi_policy,
+        preconditioner_use_lax_tridi_policy,
+    ) = _resolve_preconditioner_tridi_policies(
+        use_precomputed=preconditioner_use_precomputed_tridi,
+    )
 
     def _adjoint_trace_array(value):
         return _materialize_adjoint_trace_array(value, mode=adjoint_trace_mode)
@@ -11412,8 +11440,8 @@ def solve_fixed_boundary_residual_iter(
                         bc=k.bc,
                         k=k,
                         jmax_override=precond_jmax_override,
-                        use_precomputed=preconditioner_use_precomputed_tridi,
-                        use_lax_tridi=preconditioner_use_lax_tridi,
+                        use_precomputed=preconditioner_use_precomputed_tridi_policy,
+                        use_lax_tridi=preconditioner_use_lax_tridi_policy,
                     )
                     cache_prec_rz_mats = mats
                     cache_prec_rz_jmax = None if _tree_has_tracer(k) else int(jmax)
@@ -11608,8 +11636,8 @@ def solve_fixed_boundary_residual_iter(
                         bc=k.bc,
                         k=k,
                         jmax_override=precond_jmax_override,
-                        use_precomputed=preconditioner_use_precomputed_tridi,
-                        use_lax_tridi=preconditioner_use_lax_tridi,
+                        use_precomputed=preconditioner_use_precomputed_tridi_policy,
+                        use_lax_tridi=preconditioner_use_lax_tridi_policy,
                     )
                     cache_prec_lam_prec = lam_prec
                     cache_prec_faclam = faclam_dump
@@ -11683,8 +11711,8 @@ def solve_fixed_boundary_residual_iter(
                         f_norm1=f_norm1,
                         delta_s=delta_s,
                         s=s,
-                        use_precomputed=preconditioner_use_precomputed_tridi,
-                        use_lax_tridi=preconditioner_use_lax_tridi,
+                        use_precomputed=preconditioner_use_precomputed_tridi_policy,
+                        use_lax_tridi=preconditioner_use_lax_tridi_policy,
                         apply_lambda_update_scale=(lambda_update_scale != 1.0),
                         vmec2000_control=bool(vmec2000_control),
                         lconm1=bool(getattr(static.cfg, "lconm1", True)),
@@ -11726,15 +11754,12 @@ def solve_fixed_boundary_residual_iter(
                     preconditioner_outputs_scaled = True
                     preconditioner_fsq1_ready = True
                 else:
-                    from .preconditioner_1d_jax import rz_preconditioner_apply_jit as _rz_apply_jit_1
-
-                    frzl_rz = _rz_apply_jit_1(
+                    frzl_rz = _rz_preconditioner_apply_local(
                         frzl_in=frzl_rhs,
                         mats=mats,
                         jmax=jmax,
-                        cfg=cfg,
-                        use_precomputed=preconditioner_use_precomputed_tridi,
-                        use_lax_tridi=preconditioner_use_lax_tridi,
+                        use_precomputed=preconditioner_use_precomputed_tridi_policy,
+                        use_lax_tridi=preconditioner_use_lax_tridi_policy,
                     )
                     frzl_lam_pre = frzl_rz
                 if (not use_apply_payload_fusion) and host_update_assembly:
@@ -11870,8 +11895,8 @@ def solve_fixed_boundary_residual_iter(
                         bc=k.bc,
                         k=k,
                         jmax_override=precond_jmax_override,
-                        use_precomputed=preconditioner_use_precomputed_tridi,
-                        use_lax_tridi=preconditioner_use_lax_tridi,
+                        use_precomputed=preconditioner_use_precomputed_tridi_policy,
+                        use_lax_tridi=preconditioner_use_lax_tridi_policy,
                     )
                     cache_prec_lam_prec = lam_prec
                     cache_prec_faclam = faclam_dump
@@ -11945,8 +11970,8 @@ def solve_fixed_boundary_residual_iter(
                         f_norm1=f_norm1,
                         delta_s=delta_s,
                         s=s,
-                        use_precomputed=preconditioner_use_precomputed_tridi,
-                        use_lax_tridi=preconditioner_use_lax_tridi,
+                        use_precomputed=preconditioner_use_precomputed_tridi_policy,
+                        use_lax_tridi=preconditioner_use_lax_tridi_policy,
                         apply_lambda_update_scale=(lambda_update_scale != 1.0),
                         vmec2000_control=bool(vmec2000_control),
                         lconm1=bool(getattr(static.cfg, "lconm1", True)),
@@ -11988,15 +12013,12 @@ def solve_fixed_boundary_residual_iter(
                     preconditioner_outputs_scaled = True
                     preconditioner_fsq1_ready = True
                 else:
-                    from .preconditioner_1d_jax import rz_preconditioner_apply_jit as _rz_apply_jit_2
-
-                    frzl_rz = _rz_apply_jit_2(
+                    frzl_rz = _rz_preconditioner_apply_local(
                         frzl_in=frzl_rhs,
                         mats=mats,
                         jmax=jmax,
-                        cfg=cfg,
-                        use_precomputed=preconditioner_use_precomputed_tridi,
-                        use_lax_tridi=preconditioner_use_lax_tridi,
+                        use_precomputed=preconditioner_use_precomputed_tridi_policy,
+                        use_lax_tridi=preconditioner_use_lax_tridi_policy,
                     )
                     frzl_lam_pre = frzl_rz
                 if (not use_apply_payload_fusion) and host_update_assembly:
@@ -13262,14 +13284,8 @@ def solve_fixed_boundary_residual_iter(
                     "trig": trig,
                     "w_mode_mn": _adjoint_trace_array(w_mode_mn),
                     "precond_jmax": int(jmax),
-                    "preconditioner_use_precomputed_tridi": (
-                        None
-                        if preconditioner_use_precomputed_tridi is None
-                        else bool(preconditioner_use_precomputed_tridi)
-                    ),
-                    "preconditioner_use_lax_tridi": (
-                        None if preconditioner_use_lax_tridi is None else bool(preconditioner_use_lax_tridi)
-                    ),
+                    "preconditioner_use_precomputed_tridi": bool(preconditioner_use_precomputed_tridi_policy),
+                    "preconditioner_use_lax_tridi": bool(preconditioner_use_lax_tridi_policy),
                     "inv_tau_before": _adjoint_trace_array(inv_tau),
                     "fsq_prev_before": float(fsq_prev_before),
                     "reset_inv_tau": bool(iter2 == iter1),
