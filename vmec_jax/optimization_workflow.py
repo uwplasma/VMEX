@@ -1126,6 +1126,9 @@ class VMECMirrorRatio:
         threshold: float,
         surfaces=(1.0,),
         surface_index: int | None = None,
+        ntheta: int | None = None,
+        nphi: int | None = None,
+        nzeta: int | None = None,
         smooth_extrema: float = 0.0,
         smooth_penalty: float = 0.0,
         normalize_surfaces: bool = True,
@@ -1138,6 +1141,16 @@ class VMECMirrorRatio:
         self.smooth_penalty = float(smooth_penalty)
         self.normalize_surfaces = bool(normalize_surfaces)
         self.bmag_floor = float(bmag_floor)
+        # Mirror ratio is evaluated directly on the solved VMEC angular grid.
+        # Accept the Boozer-style sampling keywords used by older optimization
+        # scripts so mirror/elongation objectives can be swapped without
+        # requiring Boozer options.  The actual resolution is controlled by the
+        # VMEC input deck (`ntheta`/`nzeta`) used for the solve.
+        self.requested_ntheta = None if ntheta is None else int(ntheta)
+        if nphi is not None and nzeta is not None and int(nphi) != int(nzeta):
+            raise ValueError("VMECMirrorRatio accepts either nphi or nzeta, not conflicting values.")
+        requested_nzeta = nzeta if nzeta is not None else nphi
+        self.requested_nzeta = None if requested_nzeta is None else int(requested_nzeta)
 
     @property
     def requires_qi_field(self) -> bool:
