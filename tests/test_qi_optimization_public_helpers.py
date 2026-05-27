@@ -556,6 +556,62 @@ def test_boundary_reference_preconditioner_selects_safe_non_endpoint(
     assert qio.run_boundary_reference_preconditioner("input.seed", tmp_path, {"enabled": False}) == Path("input.seed")
 
 
+def test_boundary_reference_preconditioner_prefers_aspect_pool_before_qi_rank(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure(tmp_path)
+    seed = InData(scalars={"NFP": 1}, indexed={})
+    reference = InData(scalars={"NFP": 1}, indexed={})
+    monkeypatch.setattr(qio.vj, "read_indata", lambda path: reference if "reference" in str(path) else seed)
+    monkeypatch.setattr(
+        qio.vj,
+        "interpolate_indata_boundary",
+        lambda seed, reference, lam, **kwargs: InData(scalars={"LAMBDA": lam}, indexed={}),
+    )
+    monkeypatch.setattr(qio.vj, "rebuild_for_optimization_resolution", lambda candidate, **kwargs: candidate)
+    monkeypatch.setattr(qio.vj, "write_indata", lambda path, indata: Path(path).write_text(str(indata.scalars.get("LAMBDA"))))
+    monkeypatch.setattr(qio.vj, "run_fixed_boundary", lambda input_out, **kwargs: SimpleNamespace(path=str(input_out)))
+    monkeypatch.setattr(qio.vj, "write_wout_from_fixed_boundary_run", lambda path, run: Path(path).write_text("wout"))
+
+    def fake_diagnostics(run, **kwargs):
+        lam = float(Path(run.path).read_text())
+        aspect = 5.6 if lam < 0.5 else 7.0
+        return {
+            "qi_smooth_total": 1.0,
+            "qi_legacy_total": 0.2 if lam < 0.5 else 0.001,
+            "qi_mirror_ratio_max": 0.2,
+            "qi_max_elongation": 4.0,
+            "mean_iota": 0.5,
+            "aspect": aspect,
+            "aspect_relative_error": abs(aspect - 5.0) / 5.0,
+            "qi_seed_gate_passed": False,
+            "qi_engineering_gate_passed": False,
+            "qi_failure_reasons": ["synthetic"],
+            "qi_rank_score": 100.0 if lam < 0.5 else 0.001,
+            "qi_constraint_score": 0.0,
+        }
+
+    monkeypatch.setattr(qio, "qi_diagnostics_for_run", fake_diagnostics)
+
+    selected = qio.run_boundary_reference_preconditioner(
+        "input.seed",
+        tmp_path,
+        {
+            "enabled": True,
+            "reference_input": "input.reference",
+            "lambdas": (0.25, 1.0),
+            "target_aspect": 5.0,
+            "aspect_relative_tolerance": 0.35,
+        },
+    )
+
+    assert "lambda_0p250" in str(selected)
+    summary = json.loads((tmp_path / "boundary_reference_preconditioner" / "summary.json").read_text())
+    selected_record = next(record for record in summary if record["selected"])
+    assert selected_record["aspect"] == pytest.approx(5.6)
+
+
 def test_run_qi_stage_policy_no_ramp_writes_pre_diagnostic_checkpoint(tmp_path: Path) -> None:
     _configure(tmp_path)
     calls: list[dict[str, object]] = []
