@@ -12,11 +12,11 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-27 after adding the Redl bootstrap-current profile update
-helpers, the first callback-driven VMEC/Redl fixed-point driver, and the
-pressure-summary CI unblocker on PR #18.  CI for commit `bc5a539a` has docs,
-build, physics smoke, and parity manifest green; the fast-test matrix is still
-running. Do not merge PR #18 yet.
+Last updated: 2026-05-27 after wiring the Redl bootstrap-current fixed-point
+preconditioner into the ESSOS free-boundary beta-scan example behind
+`--bootstrap-current-fixed-point`.  PR #18 was green at commit `d2d6693a`
+including Codecov; the new beta-scan preconditioner slice has local targeted
+tests/docs green and is ready to push for CI. Do not merge PR #18 yet.
 
 Steps taken:
 
@@ -76,6 +76,53 @@ Steps taken:
 54. Switched the opt-in complete-solve finite-difference gate to the default stellarator-symmetric path after the reduced-grid reconstruction landed.
 55. Added a shape/content-keyed compiled-closure cache for the opt-in JAX VMEC/NESTOR operator. The closure bakes mode-basis and Green-function tables as static constants while keeping boundary geometry and external normal-field source arrays dynamic.
 56. Made the JAX analytic/singular operator JIT-compatible by keeping static VMEC coefficient/mode-index tables as host constants instead of tracer scalars.
+
+### 2026-05-27 Free-boundary beta-scan bootstrap-current preconditioner
+
+Steps taken:
+
+1. Added `--bootstrap-current-fixed-point` to
+   `examples/free_boundary_essos_coils_beta_scan.py`.
+2. Added controls for Redl helicity, Redl sample surfaces, current-knot count,
+   fixed-point iteration budget, damping, current/mismatch tolerances, and VMEC
+   budget per bootstrap stage.
+3. Added `apply_bootstrap_current_fixed_point_preconditioner(...)`, which runs
+   the VMEC/Redl current-profile loop with the same backend as the final
+   free-boundary case:
+   generated `mgrid` for compatibility/parity runs, or direct JAX Biot-Savart
+   coils for the differentiable research path.
+4. The preconditioner writes per-case bootstrap-current inputs and
+   `*_bootstrap_history.json`, then inserts the updated current profile into
+   the final free-boundary input.
+5. The scan `summary.json` now records bootstrap-current settings and per-case
+   results: convergence flag, reason, iterations, initial/final mismatch,
+   current-update norm, final `CURTOR`, final current input, and history path.
+6. Added fast tests covering mgrid path rewriting, solve-callback wiring,
+   history output, zero-beta skip behavior, and pressure-profile validation.
+7. Updated docs to show how to enable the current preconditioner for LP-QA
+   finite-beta scans.
+
+Results obtained:
+
+1. `python -m ruff check examples/free_boundary_essos_coils_beta_scan.py tests/test_free_boundary_essos_coils_forward_example.py`:
+   passed.
+2. `python -m pytest -q tests/test_free_boundary_essos_coils_forward_example.py -rx`:
+   6 passed.
+3. `python -m py_compile examples/free_boundary_essos_coils_beta_scan.py`:
+   passed.
+
+Best next steps:
+
+1. Run Sphinx and the focused free-boundary/bootstrap-current test subset.
+2. Commit/push this beta-scan integration slice and recheck PR #18 CI.
+3. Run a short manual LP-QA direct-coil beta scan with
+   `--bootstrap-current-fixed-point --betas 0 1 --skip-mgrid-runs` when ESSOS
+   assets are available, then compare bootstrap-current versus no-bootstrap
+   beta response.
+
+Need from user:
+
+Nothing now.
 57. Preserved pytest compatibility by falling back to the eager JAX operator when the global test fixture has `jax_disable_jit=True`.
 58. Added driver diagnostics for `jax_nestor_operator_jitted` and `jax_nestor_operator_cache_hit`.
 59. Verified the feature branch is already up to date with `origin/main`.

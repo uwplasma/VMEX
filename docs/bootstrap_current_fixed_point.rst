@@ -35,8 +35,6 @@ Implemented now:
 
 Next implementation steps:
 
-- Add a finite-beta example that uses ``vj.bootstrap_current_fixed_point`` to
-  generate a self-consistent current profile before a free-boundary beta scan.
 - Add optional SIMSOPT/VMEC2000 validation gates for the generated final input.
 - Add an implicit fixed-point derivative once the production solve loop is
   validated on finite-beta fixtures.
@@ -83,6 +81,35 @@ checks that a bounded finite-beta tokamak Picard loop reduces the Redl mismatch:
      pytest -q tests/test_bootstrap_current_fixed_point_integration_optional.py
 
 This gate is not part of default CI because it launches multiple VMEC solves.
+
+Free-Boundary Beta Scans
+------------------------
+
+``examples/free_boundary_essos_coils_beta_scan.py`` can now run the same
+fixed-point preconditioner before each finite-beta free-boundary case:
+
+.. code-block:: bash
+
+   export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
+   PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
+     python examples/free_boundary_essos_coils_beta_scan.py \
+     --input examples/data/input.LandremanPaul2021_QA_lowres \
+     --pressure-profile standard \
+     --bootstrap-current-fixed-point \
+     --bootstrap-helicity-n 0 \
+     --bootstrap-surfaces "0.15 0.30 0.45 0.60 0.75 0.90" \
+     --bootstrap-n-current 32 \
+     --bootstrap-max-fixed-point-iter 2 \
+     --bootstrap-damping 0.5
+
+The beta-scan adapter runs the bootstrap-current solve with the same external
+field backend as the final free-boundary case: generated ``mgrid`` for legacy
+parity runs, or direct JAX Biot-Savart coils for the differentiable research
+path.  Per-case ``summary.json`` entries include the bootstrap-current
+convergence flag, mismatch history path, final generated current input, final
+``CURTOR``, and current-update norm.  The option is disabled by default because
+it adds one or more VMEC solves before each pressure point.
 
 Literature Anchors
 ------------------

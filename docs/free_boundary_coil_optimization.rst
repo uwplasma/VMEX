@@ -269,6 +269,21 @@ to run the direct-coil provider without generating a magnetic grid.
      --max-iter 1200 \
      --activate-fsq 1e99
 
+To include a self-consistent Redl bootstrap-current preconditioner before each
+finite-beta equilibrium solve, add:
+
+.. code-block:: bash
+
+   --bootstrap-current-fixed-point \
+   --bootstrap-helicity-n 0 \
+   --bootstrap-max-fixed-point-iter 2 \
+   --bootstrap-n-current 32
+
+This leaves the plasma boundary and coils unchanged during the preconditioner;
+only the VMEC current profile is updated from the Redl formula.  The scan
+summary records the per-case bootstrap-current history path and final
+``CURTOR`` so these runs are auditable.
+
 Use staged radial continuation for high-resolution promotion attempts. Keep
 ``--pressure-continuation`` enabled so each pressure point starts from the
 previous accepted free-boundary LCFS. Add ``--resume-existing`` when rerunning

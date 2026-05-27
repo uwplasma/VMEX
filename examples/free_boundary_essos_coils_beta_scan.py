@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 from copy import deepcopy
+from dataclasses import asdict
 import json
 from pathlib import Path
 import sys
@@ -57,6 +58,7 @@ from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_ru
 from vmec_jax.external_fields import from_essos_coils
 from vmec_jax.namelist import read_indata, write_indata
 from vmec_jax.profiles import pressure_profile_to_vmec_am, standard_finite_beta_profiles
+from vmec_jax.bootstrap_current import BootstrapCurrentOptions, bootstrap_current_fixed_point
 from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state, read_wout
 
 DEFAULT_INPUT = REPO_ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lowres"
@@ -68,6 +70,7 @@ DEFAULT_NOMINAL_BETA_PERCENT = (0.0, 1.0, 2.0)
 PRESSURE_SCALE_FOR_ONE_PERCENT_BETA = 1000.0
 DEFAULT_FREE_BOUNDARY_PHIEDGE = -0.025
 DEFAULT_PRESSURE_PROFILE = "standard"
+DEFAULT_BOOTSTRAP_CURRENT_SURFACES = (0.15, 0.30, 0.45, 0.60, 0.75, 0.90)
 
 
 def _candidate_essos_input_dirs() -> list[Path]:
@@ -169,6 +172,15 @@ def _parse_number_list(value: str | None, *, cast):
         return None
     items = [item.strip() for item in str(value).replace(",", " ").split() if item.strip()]
     return [cast(item) for item in items]
+
+
+def _parse_surfaces(value: str | None) -> tuple[float, ...]:
+    values = _parse_number_list(value, cast=float)
+    if values is None:
+        return DEFAULT_BOOTSTRAP_CURRENT_SURFACES
+    if not values:
+        raise ValueError("bootstrap surfaces cannot be empty")
+    return tuple(float(x) for x in values)
 
 
 def _coil_plasma_scale_summary(coils, indata) -> dict[str, float]:
@@ -432,6 +444,151 @@ def _vmec_pres_scale(pressure_scale_for_one_percent_beta: float, beta_percent: f
     return _nominal_pressure_scale(pressure_scale_for_one_percent_beta, beta_percent)
 
 
+def _bootstrap_history_payload(result) -> list[dict[str, Any]]:
+    """Return JSON-serializable bootstrap-current history entries."""
+
+    return [asdict(item) for item in result.history]
+
+
+def apply_bootstrap_current_fixed_point_preconditioner(
+    indata,
+    *,
+    backend: str,
+    beta_percent: float,
+    output_dir: Path,
+    label: str,
+    mgrid_file: Path,
+    pressure_profile: str,
+    helicity_n: int,
+    surfaces: tuple[float, ...],
+    n_current: int,
+    max_fixed_point_iter: int,
+    damping: float,
+    current_tol: float,
+    mismatch_tol: float,
+    vmec_max_iter: int,
+    activate_fsq: float | None,
+    direct_coil_params=None,
+    direct_coil_source_reuse: bool = True,
+    direct_coil_trial_resample: bool = False,
+    direct_coil_limit_update_rms: bool = False,
+) -> tuple[Any, dict[str, Any]]:
+    """Update a free-boundary input with a Redl self-consistent current profile.
+
+    This is a preconditioner for finite-beta free-boundary scans.  It is off by
+    default because it launches additional VMEC solves, but when enabled the
+    fixed-point loop uses the same mgrid/direct-coil backend as the final scan
+    case.
+    """
+
+    summary: dict[str, Any] = {
+        "enabled": True,
+        "backend": str(backend),
+        "beta_percent": float(beta_percent),
+        "helicity_n": int(helicity_n),
+        "surfaces": [float(x) for x in surfaces],
+        "n_current": int(n_current),
+        "max_fixed_point_iter": int(max_fixed_point_iter),
+        "damping": float(damping),
+        "current_tol": float(current_tol),
+        "mismatch_tol": float(mismatch_tol),
+        "vmec_max_iter": int(vmec_max_iter),
+    }
+    if float(beta_percent) <= 0.0:
+        summary["skipped"] = "zero_beta"
+        return indata, summary
+    if str(pressure_profile).strip().lower() != "standard":
+        raise ValueError("--bootstrap-current-fixed-point requires --pressure-profile standard")
+
+    stage_dir = output_dir / "bootstrap_current"
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    profiles = standard_finite_beta_profiles(float(beta_percent))
+    options = BootstrapCurrentOptions(
+        helicity_n=int(helicity_n),
+        surfaces=tuple(float(x) for x in surfaces),
+        n_current=int(n_current),
+        policy="integrating_factor",
+        damping=float(damping),
+        max_fixed_point_iter=int(max_fixed_point_iter),
+        current_tol=float(current_tol),
+        mismatch_tol=float(mismatch_tol),
+    )
+    counter = {"iteration": 0}
+
+    def solve_fn(current_indata):
+        counter["iteration"] += 1
+        solve_indata = deepcopy(current_indata)
+        if str(backend) == "mgrid":
+            configured_mgrid = Path(str(solve_indata.scalars.get("MGRID_FILE", "")))
+            if not configured_mgrid.is_absolute():
+                solve_indata.scalars["MGRID_FILE"] = str(mgrid_file.resolve())
+        stage_input = stage_dir / f"input.{label}_bootstrap_{counter['iteration']:02d}"
+        write_indata(stage_input, solve_indata)
+        kwargs = {
+            "max_iter": int(vmec_max_iter),
+            "multigrid": False,
+            "verbose": False,
+            "jit_forces": "auto",
+            "free_boundary_activate_fsq": activate_fsq,
+        }
+        if str(backend) == "direct":
+            kwargs.update(
+                {
+                    "external_field_provider_kind": "direct_coils",
+                    "external_field_provider_static": {
+                        "allow_source_reuse": bool(direct_coil_source_reuse),
+                        "resample_trial_bsqvac": bool(direct_coil_trial_resample),
+                    },
+                    "external_field_provider_params": direct_coil_params,
+                    "limit_update_rms": bool(direct_coil_limit_update_rms),
+                }
+            )
+        return run_free_boundary(stage_input, **kwargs)
+
+    result = bootstrap_current_fixed_point(
+        indata,
+        options=options,
+        solve_fn=solve_fn,
+        ne_coeffs=profiles.ne_coeffs,
+        Te_coeffs=profiles.Te_coeffs,
+        Ti_coeffs=profiles.Ti_coeffs,
+        Zeff_coeffs=profiles.Zeff_coeffs,
+    )
+    final_input = stage_dir / f"input.{label}_bootstrap_final_current"
+    history_json = stage_dir / f"{label}_bootstrap_history.json"
+    write_indata(final_input, result.indata)
+    history_payload = _bootstrap_history_payload(result)
+    history_json.write_text(
+        json.dumps(
+            {
+                "label": label,
+                "backend": str(backend),
+                "beta_percent": float(beta_percent),
+                "final_input": str(final_input),
+                "converged": bool(result.converged),
+                "reason": str(result.reason),
+                "history": history_payload,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    summary.update(
+        {
+            "converged": bool(result.converged),
+            "reason": str(result.reason),
+            "iterations": len(result.history),
+            "final_input": str(final_input),
+            "history_json": str(history_json),
+            "initial_mismatch_norm": None if not result.history else float(result.history[0].mismatch_norm),
+            "final_mismatch_norm": None if not result.history else float(result.history[-1].mismatch_norm),
+            "final_current_update_norm": None if not result.history else float(result.history[-1].current_update_norm),
+            "final_curtor": None if not result.history else float(result.history[-1].curtor),
+        }
+    )
+    return result.indata, summary
+
+
 def _summary_payload(
     *,
     coils_json: Path,
@@ -464,6 +621,15 @@ def _summary_payload(
         "direct_coil_source_reuse": not bool(args.disable_direct_coil_source_reuse),
         "direct_coil_trial_resample": bool(args.direct_coil_trial_resample),
         "direct_coil_limit_update_rms": bool(args.direct_coil_limit_update_rms),
+        "bootstrap_current_fixed_point": bool(getattr(args, "bootstrap_current_fixed_point", False)),
+        "bootstrap_helicity_n": int(getattr(args, "bootstrap_helicity_n", 0)),
+        "bootstrap_surfaces": [
+            float(x)
+            for x in _parse_surfaces(getattr(args, "bootstrap_surfaces", None))
+        ],
+        "bootstrap_n_current": int(getattr(args, "bootstrap_n_current", 32)),
+        "bootstrap_max_fixed_point_iter": int(getattr(args, "bootstrap_max_fixed_point_iter", 0)),
+        "bootstrap_damping": float(getattr(args, "bootstrap_damping", 0.5)),
         "coil_plasma_scale_summary": scale_summary,
         "ns_array": ns_array or [int(args.ns)],
         "niter_array": niter_array or [int(args.max_iter)],
@@ -726,6 +892,64 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--bootstrap-current-fixed-point",
+        action="store_true",
+        help=(
+            "Before each finite-beta free-boundary solve, run a bounded "
+            "VMEC/Redl fixed-point loop that updates the VMEC current profile "
+            "from the Redl bootstrap-current formula. This is off by default "
+            "because it adds extra VMEC solves."
+        ),
+    )
+    parser.add_argument(
+        "--bootstrap-helicity-n",
+        type=int,
+        default=0,
+        help="Redl bootstrap-current helicity_n. Use 0 for QA/tokamak-like cases.",
+    )
+    parser.add_argument(
+        "--bootstrap-surfaces",
+        type=str,
+        default=" ".join(str(x) for x in DEFAULT_BOOTSTRAP_CURRENT_SURFACES),
+        help="Comma/space-separated Redl sample surfaces, excluding axis and edge.",
+    )
+    parser.add_argument(
+        "--bootstrap-n-current",
+        type=int,
+        default=32,
+        help="Number of knots in the generated VMEC cubic_spline_ip current profile.",
+    )
+    parser.add_argument(
+        "--bootstrap-max-fixed-point-iter",
+        type=int,
+        default=2,
+        help="Maximum VMEC/Redl Picard iterations used by --bootstrap-current-fixed-point.",
+    )
+    parser.add_argument(
+        "--bootstrap-damping",
+        type=float,
+        default=0.5,
+        help="Damping applied to each bootstrap-current profile update.",
+    )
+    parser.add_argument(
+        "--bootstrap-current-tol",
+        type=float,
+        default=1.0e-2,
+        help="Current-profile update tolerance for the bootstrap fixed-point loop.",
+    )
+    parser.add_argument(
+        "--bootstrap-mismatch-tol",
+        type=float,
+        default=1.0e-2,
+        help="Redl mismatch tolerance for the bootstrap fixed-point loop.",
+    )
+    parser.add_argument(
+        "--bootstrap-vmec-max-iter",
+        type=int,
+        default=0,
+        help="VMEC max_iter per bootstrap fixed-point stage. Zero reuses --max-iter.",
+    )
+    parser.add_argument(
         "--allow-scale-mismatch",
         action="store_true",
         help="Disable the coil/plasma scale sanity warning for non-default research fixtures.",
@@ -739,6 +963,8 @@ def main(argv: list[str] | None = None) -> int:
             niter_array = [int(args.max_iter)] * len(ns_array)
         if ftol_array is None:
             ftol_array = [float(args.ftol)] * len(ns_array)
+    bootstrap_surfaces = _parse_surfaces(args.bootstrap_surfaces)
+    bootstrap_vmec_max_iter = int(args.bootstrap_vmec_max_iter) if int(args.bootstrap_vmec_max_iter) > 0 else int(args.max_iter)
 
     try:
         from essos.coils import Coils_from_json
@@ -821,6 +1047,7 @@ def main(argv: list[str] | None = None) -> int:
                 phiedge=args.phiedge,
             )
             input_mgrid = outdir / f"input.lpqa_mgrid_beta_{beta_tag}"
+            mgrid_bootstrap_summary = None
             summary = (
                 _resume_existing_case(
                     output_dir=outdir,
@@ -860,6 +1087,25 @@ def main(argv: list[str] | None = None) -> int:
                     complete=False,
                 )
             else:
+                if args.bootstrap_current_fixed_point:
+                    mgrid_indata, mgrid_bootstrap_summary = apply_bootstrap_current_fixed_point_preconditioner(
+                        mgrid_indata,
+                        backend="mgrid",
+                        beta_percent=beta_percent,
+                        output_dir=outdir,
+                        label=f"mgrid_beta_{beta_tag}",
+                        mgrid_file=mgrid_file,
+                        pressure_profile=args.pressure_profile,
+                        helicity_n=args.bootstrap_helicity_n,
+                        surfaces=bootstrap_surfaces,
+                        n_current=args.bootstrap_n_current,
+                        max_fixed_point_iter=args.bootstrap_max_fixed_point_iter,
+                        damping=args.bootstrap_damping,
+                        current_tol=args.bootstrap_current_tol,
+                        mismatch_tol=args.bootstrap_mismatch_tol,
+                        vmec_max_iter=bootstrap_vmec_max_iter,
+                        activate_fsq=args.activate_fsq,
+                    )
                 write_indata(input_mgrid, mgrid_indata)
                 print(f"Running mgrid beta={beta_percent:.3f}%: {input_mgrid}")
                 summary = run_one_case(
@@ -872,6 +1118,8 @@ def main(argv: list[str] | None = None) -> int:
                     max_iter=args.max_iter,
                     activate_fsq=args.activate_fsq,
                 )
+                if mgrid_bootstrap_summary is not None:
+                    summary["bootstrap_current"] = mgrid_bootstrap_summary
                 summary["pressure_continuation_seeded_from_previous"] = bool(
                     continuation_has_promoted_seed.get("mgrid", False)
                 )
@@ -918,6 +1166,7 @@ def main(argv: list[str] | None = None) -> int:
                 phiedge=args.phiedge,
             )
             input_direct = outdir / f"input.lpqa_direct_beta_{beta_tag}"
+            direct_bootstrap_summary = None
             summary = (
                 _resume_existing_case(
                     output_dir=outdir,
@@ -957,6 +1206,29 @@ def main(argv: list[str] | None = None) -> int:
                     complete=False,
                 )
             else:
+                if args.bootstrap_current_fixed_point:
+                    direct_indata, direct_bootstrap_summary = apply_bootstrap_current_fixed_point_preconditioner(
+                        direct_indata,
+                        backend="direct",
+                        beta_percent=beta_percent,
+                        output_dir=outdir,
+                        label=f"direct_beta_{beta_tag}",
+                        mgrid_file=mgrid_file,
+                        pressure_profile=args.pressure_profile,
+                        helicity_n=args.bootstrap_helicity_n,
+                        surfaces=bootstrap_surfaces,
+                        n_current=args.bootstrap_n_current,
+                        max_fixed_point_iter=args.bootstrap_max_fixed_point_iter,
+                        damping=args.bootstrap_damping,
+                        current_tol=args.bootstrap_current_tol,
+                        mismatch_tol=args.bootstrap_mismatch_tol,
+                        vmec_max_iter=bootstrap_vmec_max_iter,
+                        activate_fsq=args.activate_fsq,
+                        direct_coil_params=direct_params,
+                        direct_coil_source_reuse=not args.disable_direct_coil_source_reuse,
+                        direct_coil_trial_resample=args.direct_coil_trial_resample,
+                        direct_coil_limit_update_rms=args.direct_coil_limit_update_rms,
+                    )
                 write_indata(input_direct, direct_indata)
                 print(f"Running direct-coil beta={beta_percent:.3f}%: {input_direct}")
                 summary = run_one_case(
@@ -973,6 +1245,8 @@ def main(argv: list[str] | None = None) -> int:
                     direct_coil_trial_resample=args.direct_coil_trial_resample,
                     direct_coil_limit_update_rms=args.direct_coil_limit_update_rms,
                 )
+                if direct_bootstrap_summary is not None:
+                    summary["bootstrap_current"] = direct_bootstrap_summary
                 summary["pressure_continuation_seeded_from_previous"] = bool(
                     continuation_has_promoted_seed.get("direct", False)
                 )
