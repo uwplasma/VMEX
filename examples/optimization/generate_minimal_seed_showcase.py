@@ -16,7 +16,7 @@ only the subset of cases with current non-stale provenance:
 - an NFP=1 circular-torus QI stress lane
 - QA with NFP=2 and 3
 - QH with NFP=3 and 4
-- QP with NFP=1, 2, 3, and 4
+- QP with NFP=2 and 3
 
 The implementation intentionally reuses ``generate_qs_ess_sweep.py`` so the
 showcase follows the same exact optimizer, diagnostics, and per-case output
