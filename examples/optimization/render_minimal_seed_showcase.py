@@ -103,6 +103,28 @@ def _bool_value(value) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _case_filter(raw_cases: str) -> tuple[str, ...] | None:
+    """Parse a comma-separated case filter; ``all`` keeps the full matrix."""
+
+    if raw_cases.strip().lower() == "all":
+        return None
+    return tuple(case.strip() for case in raw_cases.split(",") if case.strip())
+
+
+def _filter_records_by_case(records: list[ShowcaseRecord], cases: tuple[str, ...] | None) -> list[ShowcaseRecord]:
+    if cases is None:
+        return records
+    requested = set(cases)
+    return [record for record in records if record.case_name in requested]
+
+
+def _filter_case_order(case_order: tuple[str, ...], cases: tuple[str, ...] | None) -> tuple[str, ...]:
+    if cases is None:
+        return case_order
+    requested = set(cases)
+    return tuple(case_name for case_name in case_order if case_name in requested)
+
+
 def _metadata_for_result(result_path: Path) -> dict:
     meta_path = result_path.parent / "showcase_case.json"
     if not meta_path.exists():
@@ -692,6 +714,12 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--output-root", type=Path, default=RESULTS_ROOT)
     parser.add_argument("--figure-dir", type=Path, default=FIGURE_DIR)
+    parser.add_argument("--cases", type=str, default="all", help="Comma-separated cases to render, or 'all'.")
+    parser.add_argument(
+        "--skip-missing",
+        action="store_true",
+        help="Do not print missing-case warnings; useful for bounded smoke renders.",
+    )
     parser.add_argument("--summary-only", action="store_true", help="Write CSV only; skip Matplotlib rendering.")
     parser.add_argument("--skip-state-panel", action="store_true", help="Skip initial/final geometry and Boozer panel.")
     parser.add_argument(
@@ -714,7 +742,8 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    loaded_records = load_records(args.output_root)
+    case_filter = _case_filter(str(args.cases))
+    loaded_records = _filter_records_by_case(load_records(args.output_root), case_filter)
     stale_records = [record for record in loaded_records if record.stale_reason is not None]
     if not bool(args.include_stale):
         for record in stale_records:
@@ -736,12 +765,13 @@ def main() -> None:
             include_stale=bool(args.include_stale),
         )
         expected_case_order = DEFAULT_CASE_ORDER
+    expected_case_order = _filter_case_order(expected_case_order, case_filter)
     if not all_records:
         print(f"No minimal-seed showcase records found under {args.output_root}")
         return
     present_cases = {record.case_name for record in all_records}
     missing = [case_name for case_name in expected_case_order if case_name not in present_cases]
-    if missing:
+    if missing and not bool(args.skip_missing):
         print("Missing current minimal-seed records: " + ", ".join(missing))
     summary_csv = Path(args.figure_dir) / "minimal_seed_showcase_summary.csv"
     write_summary_csv(all_records, summary_csv)

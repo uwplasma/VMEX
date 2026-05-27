@@ -226,6 +226,67 @@ def test_renderer_uses_boundary_reference_wout_from_pending_checkpoint(tmp_path:
     assert renderer._final_wout_for_record(record) == reference_wout
 
 
+def test_renderer_case_filter_and_skip_missing_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys) -> None:
+    renderer = _load_module("render_minimal_seed_showcase_case_filter", "render_minimal_seed_showcase.py")
+    output_root = tmp_path / "results"
+    output_dir = output_root / "gpu" / "qi_nfp1" / "continuation" / "minimal_nfp1_qi" / "mode5" / "ess"
+    output_dir.mkdir(parents=True)
+    (output_dir / "case_result.json").write_text(
+        json.dumps(
+            {
+                "problem": "qi",
+                "success": False,
+                "crashed": False,
+                "message": "partial QI stage checkpoint metrics recorded",
+                "policy": "continuation",
+                "max_mode": 5,
+                "use_ess": True,
+                "qi_legacy_total": 1.0e-2,
+                "qi_mirror_ratio_max": 0.25,
+            }
+        )
+    )
+    (output_dir / "showcase_case.json").write_text(
+        json.dumps(
+            {
+                "minimal_seed_case": {
+                    "name": "qi_nfp1",
+                    "nfp": 1,
+                    "qi_policy_case": "minimal_nfp1_qi",
+                },
+                "reference_preseed": {
+                    "enabled": True,
+                    "reference_input": "input.nfp1_QI",
+                    "blend": 0.95,
+                },
+            }
+        )
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "render_minimal_seed_showcase.py",
+            "--output-root",
+            str(output_root),
+            "--figure-dir",
+            str(tmp_path / "figures"),
+            "--cases",
+            "qi_nfp1",
+            "--skip-missing",
+            "--summary-only",
+        ],
+    )
+
+    renderer.main()
+
+    captured = capsys.readouterr()
+    assert "Missing current minimal-seed records" not in captured.out
+    summary = tmp_path / "figures" / "minimal_seed_showcase_summary.csv"
+    assert summary.exists()
+    assert "qi_nfp1" in summary.read_text()
+
+
 def test_minimal_seed_showcase_dispatches_qi_to_staged_runner(tmp_path: Path, monkeypatch) -> None:
     generator = _load_module("generate_minimal_seed_showcase_qi_staged", "generate_minimal_seed_showcase.py")
     budget = generator.MinimalSeedBudget(
