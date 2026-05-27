@@ -378,11 +378,15 @@ def test_qs_sweep_reports_true_legacy_qi_metric() -> None:
 def test_qs_sweep_qi_mirror_defaults_to_all_surfaces() -> None:
     from examples.optimization import generate_qs_ess_sweep as sweep
 
+    text = (ROOT / "examples" / "optimization" / "generate_qs_ess_sweep.py").read_text()
+
     assert sweep.PROBLEM_CONFIGS["qi"].qi_mirror_surface_index is None
     assert sweep.PROBLEM_CONFIGS["qp"].qi_mirror_surface_index is None
     assert sweep.PROBLEM_CONFIGS["qi"].qi_ceiling_weight > 0.0
     assert sweep.PROBLEM_CONFIGS["qi"].qi_ceiling_max == pytest.approx(2.0e-3)
     assert "qi_ceiling_weight" in sweep.ProblemConfig.__dataclass_fields__
+    assert "qi_mirror_objective = vj.VMECMirrorRatio(" in text
+    assert "mirror = qi_mirror_objective._evaluate_state(qi_mirror_ctx, state)" in text
 
     booz = {
         "bmnc_b": np.arange(6.0).reshape(2, 3),

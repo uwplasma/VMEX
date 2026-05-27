@@ -53,6 +53,7 @@ import signal
 import sys
 import time
 import traceback
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -1360,6 +1361,14 @@ def _build_stage(problem_cfg: ProblemConfig, cfg, indata0, max_mode: int, *, sol
         return float(mean_iota_raw(state))
 
     track_iota = problem_cfg.target_iota is not None or problem_cfg.iota_abs_min is not None
+    qi_mirror_ctx = SimpleNamespace(static=stage_static, indata=stage_indata, signgs=stage_signgs)
+    qi_mirror_objective = vj.VMECMirrorRatio(
+        threshold=problem_cfg.qi_max_mirror_ratio,
+        surfaces=problem_cfg.surfaces,
+        surface_index=problem_cfg.qi_mirror_surface_index,
+        ntheta=problem_cfg.qi_mirror_ntheta,
+        nphi=problem_cfg.qi_mirror_nphi,
+    )
 
     def qi_field_quality_blocks(state, qi):
         blocks = [
@@ -1379,14 +1388,7 @@ def _build_stage(problem_cfg: ProblemConfig, cfg, indata0, max_mode: int, *, sol
             residual = jnp.ravel(excess) * float(problem_cfg.qi_ceiling_weight)
             blocks.append((residual, jnp.sum(residual * residual)))
         if float(problem_cfg.qi_mirror_weight) != 0.0:
-            mirror_booz = _mirror_boozer_surfaces(qi["booz"], problem_cfg.qi_mirror_surface_index)
-            mirror = mirror_ratio_penalty_from_boozer_output(
-                mirror_booz,
-                nfp=int(stage_static.cfg.nfp),
-                threshold=problem_cfg.qi_max_mirror_ratio,
-                ntheta=problem_cfg.qi_mirror_ntheta,
-                nphi=problem_cfg.qi_mirror_nphi,
-            )
+            mirror = qi_mirror_objective._evaluate_state(qi_mirror_ctx, state)
             blocks.append(
                 (
                     jnp.asarray(mirror["residuals1d"], dtype=jnp.float64) * problem_cfg.qi_mirror_weight,
