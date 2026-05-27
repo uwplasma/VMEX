@@ -517,7 +517,7 @@ Regenerate the current aspect-5 common-minimal showcase with:
      --inner-max-iter 550 --inner-ftol 1e-10 \
      --trial-max-iter 550 --trial-ftol 1e-10 \
      --ess-alpha 1.2 --case-timeout-s 7200 --rerun
-   PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py
+   PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py --publication-matrix
 
 Use ``cpu`` for the three CUDA/GPU flags for a slower local CPU-only
 reproduction.  Keep ``--rerun`` for release reproduction.  Without it, successful

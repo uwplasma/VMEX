@@ -151,6 +151,15 @@ def test_minimal_seed_showcase_config_patch_is_bounded_and_non_mutating() -> Non
     assert case.qi_reference_input.name == "input.nfp3_QI_fixed_resolution_final"
 
 
+def test_minimal_seed_showcase_default_mode_matches_publication_matrix(monkeypatch) -> None:
+    generator = _load_module("generate_minimal_seed_showcase_defaults", "generate_minimal_seed_showcase.py")
+
+    monkeypatch.setattr(sys, "argv", ["generate_minimal_seed_showcase.py"])
+    args = generator._parse_args()
+
+    assert args.max_mode == 5
+
+
 def test_minimal_seed_showcase_dispatches_qi_to_staged_runner(tmp_path: Path, monkeypatch) -> None:
     generator = _load_module("generate_minimal_seed_showcase_qi_staged", "generate_minimal_seed_showcase.py")
     budget = generator.MinimalSeedBudget(
@@ -605,6 +614,9 @@ def test_minimal_seed_renderer_loads_records_and_returns_monotone_segments(tmp_p
     records = renderer.best_records(renderer.load_records(tmp_path))
     assert len(records) == 1
     assert records[0].case_name == "qa_nfp2"
+    promoted_candidate = replace(records[0], max_mode=5, policy="continuation", use_ess=True)
+    assert renderer.publication_records([promoted_candidate]) == [promoted_candidate]
+    assert renderer.publication_records([replace(promoted_candidate, max_mode=4)]) == []
     provenance = renderer.provenance_for_record(records[0])
     assert provenance.initial_kind == "raw_seed"
     assert provenance.initial_input.name == "input.minimal_seed_nfp2"
@@ -670,6 +682,7 @@ def test_minimal_seed_renderer_loads_records_and_returns_monotone_segments(tmp_p
     )
     all_records = renderer.best_records(renderer.load_records(tmp_path), successful_only=False)
     assert [record.case_name for record in all_records] == ["qa_nfp2", "qh_nfp4"]
+    assert renderer.publication_records(renderer.load_records(tmp_path)) == []
     failed_record = next(record for record in all_records if record.case_name == "qh_nfp4")
     assert renderer.record_status(failed_record) == "failed"
     partial_record = replace(failed_record, crashed=True, message="partial checkpoint metrics recorded")
