@@ -231,6 +231,17 @@ Results obtained:
     evidence for safe bootstrap plumbing and Redl-mismatch reduction at about
     `1%` actual beta, not yet a claim that the bootstrap preconditioner
     accelerates VMEC convergence.
+28. Monitored the stricter office no-bootstrap rerun at
+    `/home/rjorge/local/vmec_jax_freeb/outputs/lpqa_bootstrap_compare_current_head/no_bootstrap_actualbeta_ns51`.
+    The `NS=16,31,51`, `MPOL=5`, `NTOR=5`, actual-beta-calibrated run reached
+    the 1200 s timeout before writing a `summary.json`; it only emitted
+    `input.lpqa_direct_beta_0p000`.  This is a non-promotion result for the
+    strict bootstrap/no-bootstrap gate, not a physics failure.  The next
+    reviewer-safe step is to preserve stage-level checkpoints for every
+    accepted pressure point and radial-grid stage, then rerun the same
+    no-bootstrap/bootstrap pair with `--resume-existing` so the strict
+    `NS=51` (and later `NS=101`) comparison can accumulate evidence across
+    bounded jobs instead of losing all metrics on timeout.
 
 Best next steps:
 
