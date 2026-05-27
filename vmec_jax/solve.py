@@ -5628,7 +5628,7 @@ def solve_fixed_boundary_residual_iter(
     def _pack_resume_state(base: dict[str, Any], heavy: dict[str, Any] | None = None):
         return _pack_resume_state_record(base=base, heavy=heavy, mode=resume_state_mode)
 
-    from .energy import flux_profiles_from_indata
+    from .energy import flux_profiles_from_indata, flux_profiles_from_indata_host_default
     from .static import build_static
     from .boundary import boundary_from_indata
     from .init_guess import (
@@ -5976,8 +5976,17 @@ def solve_fixed_boundary_residual_iter(
         st_out = _merge_axis_reset_state(st=st, st_axis=st_axis, static=static, full_reset=full_reset)
         return _apply_vmec_lambda_axis_rules(st_out)
 
+    prefer_host_default_profiles = not _tree_has_tracer(state0)
+
     def _build_wout_like_profiles(s_profile):
-        flux_i = flux_profiles_from_indata(indata, s_profile, signgs=signgs)
+        flux_i = None
+        if bool(prefer_host_default_profiles) and not _tree_has_tracer(s_profile):
+            try:
+                flux_i = flux_profiles_from_indata_host_default(indata, s_profile, signgs=signgs)
+            except Exception:
+                flux_i = None
+        if flux_i is None:
+            flux_i = flux_profiles_from_indata(indata, s_profile, signgs=signgs)
         chipf_wout_i = jnp.asarray(flux_i.chipf)
 
         phips_i = jnp.asarray(flux_i.phips)
