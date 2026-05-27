@@ -33,7 +33,7 @@ PROBLEM_DEFAULTS: dict[str, dict[str, Any]] = {
     "qa": {
         "warm_start": "input.nfp2_QA_omnigenity",
         "simple_seed": "input.minimal_seed_nfp2",
-        "max_mode": 5,
+        "max_mode": 4,
         "method": "scipy",
         "scipy_tr_solver": "exact",
         "target_aspect": 5.0,
@@ -47,7 +47,7 @@ PROBLEM_DEFAULTS: dict[str, dict[str, Any]] = {
     "qh": {
         "warm_start": "input.nfp4_QH_warm_start",
         "simple_seed": "input.minimal_seed_nfp4",
-        "max_mode": 5,
+        "max_mode": 4,
         "method": "scipy",
         "scipy_tr_solver": "lsmr",
         "target_aspect": 5.0,
@@ -134,7 +134,7 @@ def _objective_problem(problem: str, defaults: dict[str, Any]) -> vj.LeastSquare
             smooth_penalty=2.0e-2,
         )
         elongation = vj.MaxElongation(
-            threshold=10.0,
+            threshold=8.0,
             ntheta=48,
             nphi=16,
             smooth_extrema=2.0e-2,
