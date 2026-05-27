@@ -168,6 +168,10 @@ Steps taken:
     direct solves, but timing-light rows reduce the measured GPU/CPU warm ratio
     from about `4.06x` to `2.76x`, confirming detailed timing synchronization
     was only part of the gap.
+91. Added an integration-level active direct-coil trace regression that runs the
+    low-resolution free-boundary solver with `adjoint_trace=True` and verifies
+    accepted traces carry finite `freeb_bsqvac_half` plus finite
+    `freeb_pres_scale` into replay metadata.
 
 Results obtained:
 
@@ -221,6 +225,8 @@ Results obtained:
     `direct_solve_jit_forces_timing_light` row reported warm time about
     `0.026 s`, while the detailed-timing `direct_solve_jit_forces` row reported
     about `0.042 s`.
+27. The active direct-coil trace regression and accepted-boundary AD-vs-FD
+    current/geometry gate passed together in 11.59 s after the latest main merge.
 16. Subagent larger spectral-mode benchmark with `sample_points=2352`, `coils=8`, `segments=128` found the JIT sampler reduced warm active sampling from `0.0588 s` to `0.0545 s` (about 7%), but total warm wall time remained about `0.35 s`; dense NESTOR mode remains the main performance bottleneck.
 17. Targeted active-coupling summary tests passed: 2 passed in 7.81 s.
 18. VMEC2000 parser/optional LASYM validation tests passed locally as 1 passed, 1 skipped in 0.40 s without `VMEC2000_INTEGRATION=1`.

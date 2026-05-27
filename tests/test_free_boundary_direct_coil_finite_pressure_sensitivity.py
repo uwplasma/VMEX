@@ -366,6 +366,61 @@ def test_forced_activation_reports_direct_coil_nestor_diagnostics(tmp_path: Path
     assert np.count_nonzero(trial_failed) == 0
 
 
+def test_active_direct_coil_adjoint_trace_records_vacuum_forcing_and_pressure_scale(tmp_path: Path) -> None:
+    """Accepted active free-boundary steps must carry vacuum forcing into replay traces."""
+
+    enable_x64(True)
+    from vmec_jax.driver import run_free_boundary
+    from vmec_jax.solve import solve_fixed_boundary_residual_iter
+
+    params = _circle_coil_params(current=3.0e7, n_segments=32)
+    input_path = _write_tiny_direct_freeb_input(
+        tmp_path / "input.direct_provider_adjoint_trace_forcing",
+        niter=2,
+        mpol=3,
+        ntheta=6,
+    )
+    init = run_free_boundary(
+        input_path,
+        use_initial_guess=True,
+        verbose=False,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+    )
+    result = solve_fixed_boundary_residual_iter(
+        init.state,
+        init.static,
+        indata=init.indata,
+        signgs=init.signgs,
+        max_iter=2,
+        ftol=1.0e-8,
+        vmec2000_control=True,
+        auto_flip_force=False,
+        use_direct_fallback=True,
+        verbose=False,
+        verbose_vmec2000_table=False,
+        jit_forces=False,
+        adjoint_trace=True,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+        free_boundary_activate_fsq=1.0e99,
+    )
+
+    freeb = result.diagnostics["free_boundary"]
+    assert freeb["vacuum_stub"] is False
+    traces = result.diagnostics.get("adjoint_step_trace", [])
+    active_traces = [trace for trace in traces if trace.get("freeb_bsqvac_half") is not None]
+    assert active_traces
+    for trace in active_traces:
+        vac = np.asarray(trace["freeb_bsqvac_half"], dtype=float)
+        assert vac.ndim == 2
+        assert vac.size > 0
+        assert np.all(np.isfinite(vac))
+        assert float(np.linalg.norm(vac)) > 0.0
+        assert trace["freeb_pres_scale"] is not None
+        assert np.isfinite(float(trace["freeb_pres_scale"]))
+
+
 def test_direct_coil_trial_nestor_timing_records_solver_trial_calls(tmp_path: Path) -> None:
     """Solver-level trial scoring should record rejected NESTOR sample timings."""
 
