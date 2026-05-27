@@ -399,7 +399,7 @@ def _discover_results() -> list[CaseResult]:
             input_nfp = _input_nfp_from_result(record, path)
             if input_nfp != QI_INPUT_NFP:
                 continue
-            record["input_file"] = record.get("input_file") or "examples/data/input.nfp2_QI"
+            record["input_file"] = record.get("input_file") or "examples/data/input.minimal_seed_nfp2"
             record["input_nfp"] = input_nfp
             if record.get("project_input_boundary_to_max_mode") in (None, ""):
                 record["project_input_boundary_to_max_mode"] = True

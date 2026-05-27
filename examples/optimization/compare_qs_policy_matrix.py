@@ -71,8 +71,8 @@ PROBLEMS = ("qh", "qa")
 QH_METHOD = "scipy"  # Try also "auto", "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", or "scalar_trust".
 QA_METHOD = "scipy"  # Same optimizer choices as QH; keep both explicit for per-case tests.
 
-QH_MAX_NFEV = 15  # Outer least-squares budget for the final stage.
-QH_CONTINUATION_NFEV = 15  # Per-stage budget when mode continuation is enabled.
+QH_MAX_NFEV = 25  # Outer least-squares budget for the final stage.
+QH_CONTINUATION_NFEV = 25  # Per-stage budget when mode continuation is enabled.
 QH_FTOL = 1e-3  # Relative cost-reduction tolerance for the outer optimizer.
 QH_GTOL = 1e-3  # Gradient optimality tolerance for the outer optimizer.
 QH_XTOL = 1e-3  # Step-size tolerance for the outer optimizer.
@@ -81,8 +81,8 @@ QH_ESS_ALPHA = ESS_ALPHA
 QH_TARGET_ASPECT = 6.0
 QH_SURFACES = np.arange(0.0, 1.01, 0.1)
 
-QA_MAX_NFEV = 40  # QA usually needs more steps because iota is also constrained.
-QA_CONTINUATION_NFEV = 25  # Per-stage budget for max_mode continuation.
+QA_MAX_NFEV = 50  # QA usually needs more steps because iota is also constrained.
+QA_CONTINUATION_NFEV = 35  # Per-stage budget for max_mode continuation.
 QA_FTOL = 1e-3  # Relative cost-reduction tolerance for the outer optimizer.
 QA_GTOL = 1e-3  # Gradient optimality tolerance for the outer optimizer.
 QA_XTOL = 1e-3  # Step-size tolerance for the outer optimizer.

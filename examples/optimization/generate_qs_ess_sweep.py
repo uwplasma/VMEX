@@ -284,8 +284,8 @@ PROBLEM_CONFIGS = {
         method="scipy",  # Try also "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", or "scalar_trust".
         scipy_tr_solver="lsmr",  # For method="scipy": "lsmr" is memory-light; "exact" is dense.
         scipy_lsmr_maxiter=None,  # None lets SciPy choose; set an int to cap LSMR work per step.
-        max_nfev=60,  # Outer least-squares budget for the final stage.
-        continuation_nfev=60,  # Per-stage budget when mode continuation is enabled.
+        max_nfev=70,  # Outer least-squares budget for the final stage.
+        continuation_nfev=70,  # Per-stage budget when mode continuation is enabled.
         ftol=1e-4,  # Relative cost-reduction tolerance for the outer optimizer.
         gtol=1e-4,  # Gradient optimality tolerance for the outer optimizer.
         xtol=1e-4,  # Step-size tolerance for the outer optimizer.
@@ -310,8 +310,8 @@ PROBLEM_CONFIGS = {
         method="scipy",  # Try also "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", or "scalar_trust".
         scipy_tr_solver="lsmr",  # For method="scipy": "lsmr" is memory-light; "exact" is dense.
         scipy_lsmr_maxiter=None,  # None lets SciPy choose; set an int to cap LSMR work per step.
-        max_nfev=60,  # Outer least-squares budget for the final stage.
-        continuation_nfev=60,  # Per-stage budget when mode continuation is enabled.
+        max_nfev=70,  # Outer least-squares budget for the final stage.
+        continuation_nfev=70,  # Per-stage budget when mode continuation is enabled.
         ftol=1e-4,  # Relative cost-reduction tolerance for the outer optimizer.
         gtol=1e-4,  # Gradient optimality tolerance for the outer optimizer.
         xtol=1e-4,  # Step-size tolerance for the outer optimizer.
@@ -337,8 +337,8 @@ PROBLEM_CONFIGS = {
         method="scipy",  # Try also "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", or "scalar_trust".
         scipy_tr_solver="lsmr",  # For method="scipy": "lsmr" is memory-light; "exact" is dense.
         scipy_lsmr_maxiter=None,  # None lets SciPy choose; set an int to cap LSMR work per step.
-        max_nfev=60,  # Outer least-squares budget for the final stage.
-        continuation_nfev=60,  # Per-stage budget when mode continuation is enabled.
+        max_nfev=70,  # Outer least-squares budget for the final stage.
+        continuation_nfev=70,  # Per-stage budget when mode continuation is enabled.
         ftol=1e-4,  # Relative cost-reduction tolerance for the outer optimizer.
         gtol=1e-4,  # Gradient optimality tolerance for the outer optimizer.
         xtol=1e-4,  # Step-size tolerance for the outer optimizer.
@@ -361,12 +361,12 @@ PROBLEM_CONFIGS = {
     ),
     "qi": ProblemConfig(
         name="qi",
-        input_file=DATA_DIR / "input.nfp2_QI",
+        input_file=DATA_DIR / "input.minimal_seed_nfp2",
         method="scipy_matrix_free",  # Try also "scipy", "gauss_newton", "lbfgs_adjoint", or "scalar_trust".
         scipy_tr_solver="lsmr",  # For method="scipy": "lsmr" is memory-light; "exact" is dense.
         scipy_lsmr_maxiter=None,  # None lets SciPy choose; set an int to cap LSMR work per step.
-        max_nfev=60,  # Outer least-squares budget for the final stage.
-        continuation_nfev=60,  # Per-stage budget when mode continuation is enabled.
+        max_nfev=70,  # Outer least-squares budget for the final stage.
+        continuation_nfev=70,  # Per-stage budget when mode continuation is enabled.
         ftol=1e-4,  # Relative cost-reduction tolerance for the outer optimizer.
         gtol=1e-4,  # Gradient optimality tolerance for the outer optimizer.
         xtol=1e-4,  # Step-size tolerance for the outer optimizer.

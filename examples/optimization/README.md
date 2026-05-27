@@ -114,7 +114,7 @@ PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_s
   --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
   --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
   --policy continuation --max-mode 5 --ess on \
-  --max-nfev 60 --continuation-nfev 20 \
+  --max-nfev 70 --continuation-nfev 20 \
   --inner-max-iter 550 --inner-ftol 1e-10 \
   --trial-max-iter 550 --trial-ftol 1e-10 \
   --ess-alpha 1.2 --case-timeout-s 7200 --rerun
@@ -137,10 +137,12 @@ successful `showcase_case.json` rows are reused and can leave old outputs on
 disk; the renderer skips known-stale rows by default, and `--include-stale`
 should be reserved for debugging.  Current common-minimal QI rows use policy
 case names `minimal_nfp1_qi`, `minimal_nfp2_qi`, `minimal_nfp3_qi`, and
-`minimal_nfp4_qi`; old QI rows under `.../continuation/qp_preseed/...` or the
-legacy case names `nfp1_qi`, `nfp2_qi`, `qi_stel_seed_3127`, and `nfp4_qi`
-predate the staged dispatch.  Old QA/QP rows without `reference_preseed`
-metadata also predate the current reference-family preseed policy.
+`minimal_nfp4_qi`; the public aliases `nfp1_qi` through `nfp4_qi` now point to
+those same minimal-seed cases.  Old QI rows under
+`.../continuation/qp_preseed/...` or explicitly named far-seed cases such as
+`qi_stel_seed_3127` predate the staged dispatch.  Old QA/QP rows without
+`reference_preseed` metadata also predate the current reference-family preseed
+policy.
 When a case hits `--case-timeout-s`, the runner terminates the worker process
 group, including solver or GPU descendant processes, before writing the timeout
 result.
@@ -200,8 +202,8 @@ remain available for custom inspection.
 
 - `QA_optimization.py`: recommended quasi-axisymmetric fixed-boundary optimization.
 - `QH_optimization.py`: recommended quasi-helical fixed-boundary optimization.
-- `QP_optimization.py`: quasi-poloidal fixed-boundary optimization from the NFP=2 QI seed.
-- `QI_optimization.py`: recommended quasi-isodynamic optimization with Boozer-space QI metrics, mirror-ratio and elongation penalties, lower-mode continuation by default, and ESS. Edit `INPUT_FILE`, `OUTPUT_DIR`, seed helpers, objective weights, and optimizer controls at the top of the script, then run it directly. Set `STAGE_MODE_POLICY = "repeat"` only when the input is already in a good QI basin and same-mode cleanup is desired.
+- `QP_optimization.py`: quasi-poloidal fixed-boundary optimization from the public NFP=2 minimal seed, with an explicit optimization-time QI-family preseed when enabled.
+- `QI_optimization.py`: recommended quasi-isodynamic optimization from `input.minimal_seed_nfp2` by default, with Boozer-space QI metrics, mirror-ratio and elongation penalties, lower-mode continuation, and ESS. Edit `INPUT_FILE`, `OUTPUT_DIR`, seed helpers, objective weights, and optimizer controls at the top of the script, then run it directly. Set `STAGE_MODE_POLICY = "repeat"` only when the input is already in a good QI basin and same-mode cleanup is desired.
 - `qa_optimization_finite_beta.py`, `qh_optimization_finite_beta.py`, and `qi_optimization_finite_beta.py`:
   finite-beta stage-1 examples with pressure/current-profile terms. These intentionally use
   `FixedBoundaryExactOptimizer` directly because each continuation stage builds custom
@@ -237,9 +239,9 @@ lower Boozer/QI resolution for checkpoint or profiling probes without editing
 the script.
 
 For reproducible comparison artifacts, use the sweep driver rather than a
-single edited script.  The current production sweep runs QI directly from its
-bundled seed (`--qi-qp-preseed off`); use `--qi-qp-preseed both` only for the
-focused QI preseed/no-preseed matrix.
+single edited script.  The current production sweep runs QI directly from the
+public minimal seed (`--qi-qp-preseed off`); use `--qi-qp-preseed both` only
+for the focused QI preseed/no-preseed matrix.
 `--backend-label` is output provenance only; it does not select a backend.
 Select the process backend with `JAX_PLATFORMS=cpu`, `JAX_PLATFORM_NAME=gpu`,
 or `JAX_PLATFORMS=cuda`, and pass matching `--solver-device` when the optimizer
@@ -374,7 +376,7 @@ Example:
 PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py \
   --backend-label cpu --solver-device cpu --policy continuation \
   --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off \
-  --max-nfev 60 --continuation-nfev 15 \
+  --max-nfev 70 --continuation-nfev 25 \
   --inner-max-iter 180 --inner-ftol 1e-9 \
   --trial-max-iter 180 --trial-ftol 1e-9 --rerun
 PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py

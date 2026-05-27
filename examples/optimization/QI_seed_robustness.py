@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""QI seed-robustness probe from a near-axis stellarator seed.
+"""QI seed-robustness probe from a minimal/circular-like seed.
 
 This script is intentionally explicit: the user chooses the seed, constructs
 objective tuples, runs the optimizer, then saves/prints/plots the result.
@@ -34,19 +34,19 @@ def _env_int(name, default):
     return int(value) if value else default
 
 
-# Seed and optimizer settings.  This default is the first short policy that
-# gets the bundled seed onto a low-QI, nonzero-iota branch.  For a quick probe
-# of another VMEC input deck, set VMEC_JAX_QI_SEED_INPUT and optionally
-# VMEC_JAX_QI_SEED_OUTPUT_DIR; audit solved input/wout pairs first with
-# audit_qi_seed_suitability.py because this script launches an optimization.
-INPUT_FILE = _env_path("VMEC_JAX_QI_SEED_INPUT", DATA_DIR / "input.QI_stel_seed_3127")
+# Seed and optimizer settings.  The public default is a minimal NFP=3 deck,
+# matching the README policy for QI: start from a circular-torus-like boundary
+# and let the deterministic target-helicity/preconditioner stages find a QI
+# basin.  To audit a far seed such as input.QI_stel_seed_3127, set
+# VMEC_JAX_QI_SEED_INPUT and VMEC_JAX_QI_SEED_OUTPUT_DIR explicitly.
+INPUT_FILE = _env_path("VMEC_JAX_QI_SEED_INPUT", DATA_DIR / "input.minimal_seed_nfp3")
 OUTPUT_DIR = _env_path(
     "VMEC_JAX_QI_SEED_OUTPUT_DIR",
-    Path("results/qi_seed_robustness/qi_stel_seed_3127/qiiota_aspect_mode3"),
+    Path("results/qi_seed_robustness/minimal_nfp3/qiiota_aspect_mode3"),
 )
 MAX_MODE = 3
 MIN_VMEC_MODE = 6
-MAX_NFEV = _env_int("VMEC_JAX_QI_SEED_MAX_NFEV", 8)
+MAX_NFEV = _env_int("VMEC_JAX_QI_SEED_MAX_NFEV", 18)
 METHOD = "scipy"  # Try "scalar_trust" for stricter monotone line-search probes.
 SCIPY_TR_SOLVER = "lsmr"  # For METHOD="scipy": "lsmr" is memory-light; "exact" is dense.
 FTOL = 1.0e-4

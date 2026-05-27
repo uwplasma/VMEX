@@ -25,17 +25,22 @@ enable_x64(True)
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 
 # Problem parameters. Edit these directly, as in the SIMSOPT examples.
-INPUT_FILE = DATA_DIR / "input.nfp2_QI"
+INPUT_FILE = DATA_DIR / "input.minimal_seed_nfp2"
 # Other useful seeds:
-# INPUT_FILE = DATA_DIR / "input.nfp1_QI"
-# INPUT_FILE = DATA_DIR / "input.QI_stel_seed_3127"
+# INPUT_FILE = DATA_DIR / "input.minimal_seed_nfp1"
+# INPUT_FILE = DATA_DIR / "input.minimal_seed_nfp3"
 # INPUT_FILE = DATA_DIR / "input.minimal_seed_nfp4"
-OUTPUT_DIR = Path("results/qi_opt/ess/nfp2_qi")
+# Use ``--reference-input`` or set REFERENCE_INPUT_FILE below if you want a
+# deterministic same-NFP QI-family proposal before local cleanup; the raw input
+# and initial plots remain the minimal seed.
+OUTPUT_DIR = Path("results/qi_opt/ess/minimal_nfp2_qi")
 MAX_MODE = 5
 MIN_VMEC_MODE = max(6, MAX_MODE + 3)
 
-# Seed preparation. Leave all disabled to optimize directly from INPUT_FILE.
-USE_SIMPLE_SEED = False  # True writes an input.simple_seed from RBC00/RBC01/ZBS01.
+# Seed preparation. QI uses the same circular/minimal input policy as QA/QH/QP:
+# the source input contains only RBC00/RBC01/ZBS01, then tiny active-mode
+# perturbations avoid exact-zero Jacobian columns.
+USE_SIMPLE_SEED = True  # True writes an input.simple_seed from RBC00/RBC01/ZBS01.
 SIMPLE_SEED_PERTURBATION = 1.0e-5
 USE_TARGET_HELICITY_SEED = True  # Adds tiny QI/QP-like modes when missing.
 TARGET_HELICITY_SEED_AMPLITUDE = 1.0e-5
@@ -59,8 +64,8 @@ SOLVER_DEVICE = None  # None uses JAX default; set "cpu" or "gpu" to force one b
 USE_ESS = True  # Set False for an unscaled trust-region solve.
 ALPHA = 1.2  # ESS high-mode scaling strength.
 USE_MODE_CONTINUATION = True
-CONTINUATION_NFEV = 10
-MAX_NFEV = 60
+CONTINUATION_NFEV = 20
+MAX_NFEV = 70
 STAGE_MODE_POLICY = "lower"  # "lower" stages 1..MAX_MODE; "repeat" repeats only MAX_MODE.
 STAGE_REPEATS = 3  # Used only for STAGE_MODE_POLICY="repeat".
 STAGE_MODES = vj.qi_stage_modes(

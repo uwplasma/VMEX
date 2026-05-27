@@ -56,8 +56,8 @@ VMEC_MPOL = 5
 VMEC_NTOR = 5
 MAX_MODE = 1
 
-MAX_NFEV = 8
-CONTINUATION_NFEV = 8
+MAX_NFEV = 18
+CONTINUATION_NFEV = 18
 USE_MODE_CONTINUATION = True
 
 METHOD = "scipy"  # Try also "auto", "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", or "scalar_trust".

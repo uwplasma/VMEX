@@ -54,16 +54,16 @@ the exact policy matrix and selected best-case provenance.
      - Notes
    * - QA
      - ``examples/optimization/QA_optimization.py``
-     - NFP=2 QA deck, aspect target 5, signed mean-iota target, QA residual.
+     - Minimal NFP=2 deck by default, aspect target 5, signed mean-iota target, QA residual; reference-family preseed is explicit and recorded.
    * - QH
      - ``examples/optimization/QH_optimization.py``
-     - NFP=4 warm start, aspect target 5, ``abs(mean_iota) >= 0.41``, QH residual.
+     - Minimal NFP=4 deck by default, aspect target 5, ``abs(mean_iota) >= 0.41``, QH residual; warm starts are optional user edits.
    * - QP
      - ``examples/optimization/QP_optimization.py``
-     - NFP=2 QI seed, aspect target 5, ``abs(mean_iota) >= 0.41``, QP residual.  The final optimized QP row is also the seed for the separate :doc:`piecewise_omnigenous_plan`.
+     - Minimal NFP=2 deck by default, aspect target 5, ``abs(mean_iota) >= 0.41``, QP residual, mirror ratio, and elongation terms.  The final optimized QP row is also the seed for the separate :doc:`piecewise_omnigenous_plan`.
    * - QI
      - ``examples/optimization/QI_optimization.py``
-     - NFP=2 QI default lane with Boozer-space QI, mirror, elongation, QI ceiling, ESS, and lower-mode continuation; set ``STAGE_MODE_POLICY = "repeat"`` for same-mode cleanup when the seed is already in a QI basin.  The README best-row sweep uses aspect target 5, while case-coverage and far-seed probes may choose case-specific aspect targets.
+     - Minimal NFP=2 deck by default with Boozer-space QI, mirror, elongation, QI ceiling, ESS, and lower-mode continuation.  Optional target-helicity/reference-family proposals are deterministic basin searches, not hidden initial conditions.
 
 When using sweep commands, keep backend selection and report labeling separate.
 ``--backend-label`` only names output directories and table rows; it does not
@@ -121,7 +121,7 @@ reviewed case-gated QI coverage instead of the uniform common-minimal matrix:
      --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qp_nfp4,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
      --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
      --policy continuation --max-mode 5 --ess on \
-     --max-nfev 60 --continuation-nfev 20 \
+     --max-nfev 70 --continuation-nfev 20 \
      --inner-max-iter 550 --inner-ftol 1e-10 \
      --trial-max-iter 550 --trial-ftol 1e-10 \
      --ess-alpha 1.2 --case-timeout-s 7200 --rerun
@@ -143,11 +143,12 @@ existing successful ``showcase_case.json`` rows are reused, which can leave old
 rows on disk; the renderer skips known-stale rows by default and
 ``--include-stale`` should be reserved for debugging.  The current
 common-minimal QI dispatch uses policy-case names ``minimal_nfp1_qi``,
-``minimal_nfp2_qi``, ``minimal_nfp3_qi``, and ``minimal_nfp4_qi``.  Any older
-QI showcase rows under ``.../qi_nfp*/continuation/qp_preseed/...`` or the
-legacy case names ``nfp1_qi``, ``nfp2_qi``, ``qi_stel_seed_3127``, and
-``nfp4_qi`` predate this dispatch and should not be treated as current
-common-minimal staged-QI evidence.  Any QA/QP showcase rows without
+``minimal_nfp2_qi``, ``minimal_nfp3_qi``, and ``minimal_nfp4_qi``; the public
+aliases ``nfp1_qi`` through ``nfp4_qi`` now point to those same minimal-seed
+cases.  Any older QI showcase rows under
+``.../qi_nfp*/continuation/qp_preseed/...`` or explicitly named far-seed cases
+such as ``qi_stel_seed_3127`` predate this dispatch and should not be treated
+as current common-minimal staged-QI evidence.  Any QA/QP showcase rows without
 ``reference_preseed`` provenance also predate the current common-seed policy.
 
 The saved objective and state panels below are compact status artifacts for the
@@ -192,12 +193,12 @@ when preseed/no-preseed is the experiment:
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
    PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
 
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
    PYTHONPATH=. python examples/optimization/render_qi_constrained_sweep.py
 
 For QI seed robustness, first rank solved seed candidates without optimizing,
@@ -595,7 +596,7 @@ the same setup-and-solve flow used by the QA/QP/QI examples:
    MAX_MODE = 5
    MIN_VMEC_MODE = MAX_MODE + 2
    SIMPLE_SEED_PERTURBATION = 1.0e-5
-   MAX_NFEV = 60
+   MAX_NFEV = 70
    METHOD = "scipy"            # also: "auto", "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", "scalar_trust"
    SCIPY_TR_SOLVER = "lsmr"    # also: "exact" for small dense trust-region solves
    SOLVER_DEVICE = None        # set to "cpu" or "gpu" to force one backend
@@ -840,18 +841,15 @@ Each problem is run with staged mode continuation and with direct-start mode
 expansion.  Each policy is run with and without ESS using ``alpha = 1.2``,
 matching the gentler scaling used by the local omnigenity optimization
 workflows.
-For QI, the focused constrained sweep additionally compares starting from a
-same-mode QP preseed against starting directly from the bundled
-``input.nfp2_QI`` omnigenity seed.  This QP preseed is useful as a controlled
-warm start, but its scalar objective is different from the QI refinement
-objective and is therefore not stitched into the plotted QI history.  The CLI
-default is ``--qi-qp-preseed off``; use ``--qi-qp-preseed on`` or
+For QI, the focused constrained sweep additionally compares a same-mode QP
+preseed against the public minimal NFP=2 start.  This QP preseed is useful as a
+controlled basin proposal, but its scalar objective is different from the QI
+refinement objective and is therefore not stitched into the plotted QI history.
+The CLI default is ``--qi-qp-preseed off``; use ``--qi-qp-preseed on`` or
 ``--qi-qp-preseed both`` to run the QP-preseed diagnostic rows.
-That NFP=2 seed contains mode-2 boundary harmonics, so QI stages first project
-the input boundary to the requested active space:
-``max(abs(m), abs(n)) <= max_mode``.  Thus a ``max_mode=1`` QI run explicitly
-zeros the mode-2 seed before solving, while ``max_mode=2`` and ``max_mode=3``
-retain and optimize the corresponding larger active spaces.
+The public minimal seed contains only axisymmetric elongation, so QI stages
+first add deterministic active-mode hints and then project the boundary to the
+requested active space: ``max(abs(m), abs(n)) <= max_mode``.
 When enabled, the QP preseed is followed by a final refinement with the full
 QI + mirror-ratio + elongation objective.  ``LgradB`` remains an optional
 commented objective term in the scripts, but it is not active in the default
@@ -903,18 +901,18 @@ until they are explicitly reviewed and compacted.
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
    PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
 
 Run the constrained QI preseed/no-preseed matrix explicitly with:
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
    PYTHONPATH=. python examples/optimization/render_qi_constrained_sweep.py
 
 The default per-case timeout is ``1800 s``.  The current omnigenity-style
@@ -959,8 +957,8 @@ profiling or parity experiment.
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
    PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
 
 Non-Stellarator-Symmetric Sweeps
@@ -977,10 +975,10 @@ and full publication panels when those cases are present.
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
    PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
 
 The checked-in LASYM summary rows are partial bounded-time lanes rather than a
@@ -1102,8 +1100,11 @@ is collected in :doc:`optimization_sweep_results`.
 QI objective tuning
 -------------------
 
-The current standalone ``QI_optimization.py`` defaults encode the best
-mirror-aware QI lane from the bundled NFP=2 ``input.nfp2_QI`` omnigenity seed:
+The current standalone ``QI_optimization.py`` defaults start from
+``input.minimal_seed_nfp2``, write an ``input.simple_seed`` in the run
+directory, add deterministic target-helicity hints to avoid zero Jacobian
+columns, and keep same-NFP reference-family preconditioning disabled unless the
+user explicitly enables it:
 
 .. code-block:: bash
 
@@ -1246,13 +1247,15 @@ ordinary variables near the top of the script:
 
 .. code-block:: python
 
-   INPUT_FILE = DATA_DIR / "input.nfp2_QI"
-   OUTPUT_DIR = Path("results/qi_opt/ess/nfp2_qi")
-   MAX_MODE = 3
-   USE_SIMPLE_SEED = False
+   INPUT_FILE = DATA_DIR / "input.minimal_seed_nfp2"
+   OUTPUT_DIR = Path("results/qi_opt/ess/minimal_nfp2_qi")
+   MAX_MODE = 5
+   USE_SIMPLE_SEED = True
    USE_TARGET_HELICITY_SEED = True
    USE_REFERENCE_FAMILY_SEED = False
    REFERENCE_INPUT_FILE = DATA_DIR / "input.nfp2_QI"
+   MAX_NFEV = 70
+   CONTINUATION_NFEV = 20
    TARGET_ASPECT = 5.0
    TARGET_ABS_IOTA_MIN = 0.41
    MAX_MIRROR_RATIO = 0.30
@@ -1388,8 +1391,8 @@ generator, then run the following validation ladder before promoting a result.
 
    .. code-block:: bash
 
-      PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-      PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 60 --continuation-nfev 15 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+      PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+      PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
       PYTHONPATH=. python examples/optimization/render_qi_constrained_sweep.py
 
 3. Re-evaluate the final candidate at higher Boozer/QI resolution before using
@@ -1667,12 +1670,14 @@ Source files
      - Shared mechanics for objective terms, stage construction, continuation,
        output writing, and plotting while keeping the QA/QH/QP scripts linear.
    * - ``examples/optimization/QI_optimization.py``
-     - QI workflow using ``booz_xform_jax``, a bundled omnigenity seed,
-       and explicit mirror-ratio/elongation/``LgradB``
-       objective blocks that users can extend in the script.
+     - QI workflow using ``booz_xform_jax``, a public minimal seed by default,
+       optional explicit reference-family seeding, and explicit
+       mirror-ratio/elongation/``LgradB`` objective blocks that users can
+       extend in the script.
    * - ``examples/optimization/QI_seed_robustness.py``
      - Focused QI + aspect + iota-floor seed-refinement workflow for
-       ``input.QI_stel_seed_3127`` with a Boozer contour promotion gate.
+       minimal/circular-like seeds, with far seeds such as
+       ``input.QI_stel_seed_3127`` available as explicit diagnostics.
    * - ``examples/optimization/compare_omnigenity_qi_objective.py``
      - Diagnostic QI objective comparison against the local
        ``omnigenity_optimization`` reference scripts, including ``phimin``

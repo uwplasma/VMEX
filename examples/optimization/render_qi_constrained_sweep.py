@@ -197,7 +197,10 @@ def _discover_qi_results() -> list[dict]:
         row["use_ess"] = bool(_bool_value(record.get("use_ess")))
         row["success"] = bool(_bool_value(record.get("success")))
         row["crashed"] = bool(_bool_value(record.get("crashed")))
-        input_file = _path_from_record(row.get("input_file"), REPO_ROOT / "examples" / "data" / "input.nfp2_QI")
+        input_file = _path_from_record(
+            row.get("input_file"),
+            REPO_ROOT / "examples" / "data" / "input.minimal_seed_nfp2",
+        )
         row["input_file"] = _repo_relative_path(input_file)
         row["input_nfp"] = input_nfp
         row["project_input_boundary_to_max_mode"] = (
