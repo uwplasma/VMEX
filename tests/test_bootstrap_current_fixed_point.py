@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -158,11 +160,89 @@ def test_damping_and_input_validation_branches():
             ac_aux_f=[1.0, 1.0, 1.0],
             curtor=1.0,
         )
+    with pytest.raises(ValueError, match="size mismatch"):
+        vj.apply_current_profile_to_indata(
+            InData(scalars={}, indexed={}),
+            ac_aux_s=[0.0, 1.0],
+            ac_aux_f=[1.0],
+            curtor=1.0,
+        )
+    with pytest.raises(ValueError, match="at least two"):
+        vj.apply_current_profile_to_indata(
+            InData(scalars={}, indexed={}),
+            ac_aux_s=[0.0],
+            ac_aux_f=[1.0],
+            curtor=1.0,
+        )
 
 
 def test_vmec_flux_derivative_sign_convention():
     assert float(vj.dpsi_ds_from_vmec_phiedge(0.2, signgs=1)) == pytest.approx(0.2 / (2.0 * np.pi))
     assert float(vj.dpsi_ds_from_vmec_phiedge(0.2, signgs=-1)) == pytest.approx(-0.2 / (2.0 * np.pi))
+
+
+def test_pressure_derivative_and_current_profile_branch_coverage():
+    s = jnp.asarray([0.0, 0.5, 1.0], dtype=jnp.float64)
+    dpds = bc._pressure_derivative_pa_from_profile_coeffs(
+        s=s,
+        ne_coeffs=jnp.asarray([2.0, 3.0]),
+        Te_coeffs=jnp.asarray([5.0, 7.0]),
+        Ti_coeffs=jnp.asarray([11.0, 13.0]),
+        Zeff_coeffs=jnp.asarray([2.0, 0.5]),
+    )
+    assert np.all(np.isfinite(np.asarray(dpds)))
+    assert np.asarray(dpds).shape == (3,)
+
+    indata = InData(scalars={"AC": [1.0, 2.0], "PCURR_TYPE": "power_series"}, indexed={})
+    np.testing.assert_allclose(
+        np.asarray(bc._current_derivative_from_indata(indata, s, "power_series")),
+        [1.0, 2.0, 3.0],
+    )
+    np.testing.assert_allclose(
+        np.asarray(bc._current_derivative_from_indata(InData(scalars={}, indexed={}), s, "unknown")),
+        np.zeros(3),
+    )
+
+    profile = vj.vmec_current_profile_from_bootstrap_update(
+        s=s,
+        current=jnp.asarray([0.0, 0.2, 0.5]),
+        signgs=1,
+        pcurr_type="cubic_spline_i",
+    )
+    assert profile["curtor"] == pytest.approx(0.5)
+    with pytest.raises(ValueError, match="current is required"):
+        vj.vmec_current_profile_from_bootstrap_update(s=s, signgs=1, pcurr_type="cubic_spline_i")
+    with pytest.raises(ValueError, match="current_derivative is required"):
+        vj.vmec_current_profile_from_bootstrap_update(s=s, signgs=1, pcurr_type="cubic_spline_ip")
+    with pytest.raises(ValueError, match="only cubic"):
+        vj.vmec_current_profile_from_bootstrap_update(s=s, current=[0.0, 0.0, 0.0], signgs=1, pcurr_type="power")
+
+
+def test_current_grid_update_samples_validation_and_exact_grid():
+    options = vj.BootstrapCurrentOptions(helicity_n=0, n_current=3)
+    out = bc._current_grid_update_samples(
+        options=options,
+        s=jnp.asarray([0.0, 0.5, 1.0]),
+        jdotB_redl=jnp.asarray([1.0, 2.0, 3.0]),
+        bdotb=jnp.asarray([4.0, 5.0, 6.0]),
+        dpds=jnp.asarray([7.0, 8.0, 9.0]),
+    )
+    np.testing.assert_allclose(np.asarray(out["s"]), [0.0, 0.5, 1.0])
+    np.testing.assert_allclose(np.asarray(out["jdotB_redl"]), [1.0, 2.0, 3.0])
+    with pytest.raises(ValueError, match="n_current"):
+        bc._current_grid_update_samples(
+            options=vj.BootstrapCurrentOptions(helicity_n=0, n_current=1),
+            s=jnp.asarray([0.0, 1.0]),
+            jdotB_redl=jnp.asarray([1.0, 1.0]),
+            bdotb=jnp.asarray([1.0, 1.0]),
+            dpds=jnp.asarray([0.0, 0.0]),
+        )
+    with pytest.raises(ValueError, match="must be 1D"):
+        vj.redl_current_rhs(jdotB_redl=jnp.ones((2, 2)), bdotb=jnp.ones((2, 2)), dpsi_ds=1.0)
+    with pytest.raises(ValueError, match="at least two"):
+        vj.redl_current_rhs(jdotB_redl=[1.0], bdotb=[1.0], dpsi_ds=1.0)
+    with pytest.raises(ValueError, match="length"):
+        vj.redl_current_rhs(jdotB_redl=[1.0, 2.0], bdotb=[1.0, 2.0, 3.0], dpsi_ds=1.0)
 
 
 def test_bootstrap_current_fixed_point_runs_callback_loop_to_convergence():
@@ -269,6 +349,138 @@ def test_bootstrap_current_fixed_point_extends_interior_redl_samples_to_full_cur
     np.testing.assert_allclose(result.indata.scalars["AC_AUX_S"], np.linspace(0.0, 1.0, 5))
     np.testing.assert_allclose(result.indata.scalars["AC_AUX_F"], 2.0 * np.ones(5), rtol=1.0e-12)
     assert result.indata.scalars["CURTOR"] == pytest.approx(2.0)
+
+
+def test_bootstrap_current_fixed_point_low_beta_and_default_callbacks(monkeypatch):
+    s = jnp.asarray([0.0, 1.0], dtype=jnp.float64)
+    indata = InData(
+        scalars={
+            "PHIEDGE": 0.2,
+            "PCURR_TYPE": "cubic_spline_ip",
+            "CURTOR": 0.0,
+            "NCURR": 1,
+            "AC": [1.0],
+            "AC_AUX_S": [0.0, 1.0],
+            "AC_AUX_F": [0.0, 0.0],
+        },
+        indexed={},
+    )
+
+    def fake_solve(current_indata, *, run_kwargs=None):
+        assert run_kwargs == {"max_iter": 4}
+        return SimpleNamespace(signgs=-1)
+
+    def fake_diag(_run, current_indata, **kwargs):
+        assert kwargs["options"].helicity_n == 0
+        assert current_indata.scalars["PCURR_TYPE"] == "cubic_spline_ip"
+        return {
+            "s": s,
+            "jdotB_redl": jnp.asarray([1.0, 1.0]),
+            "bdotb": jnp.asarray([2.0, 2.0]),
+            "dpds": jnp.asarray([0.0, 0.0]),
+            "mismatch_norm": 0.0,
+            "signgs": -1,
+            "beta_total": 0.01,
+            "mean_iota": 0.4,
+            "fsq_total": 1.0e-8,
+        }
+
+    monkeypatch.setattr(bc, "_default_bootstrap_solve_fn", fake_solve)
+    monkeypatch.setattr(bc, "_default_redl_diagnostics_fn", fake_diag)
+    result = vj.bootstrap_current_fixed_point(
+        indata,
+        options=vj.BootstrapCurrentOptions(
+            helicity_n=0,
+            n_current=2,
+            policy="low_beta",
+            damping=1.0,
+            max_fixed_point_iter=1,
+        ),
+        ne_coeffs=[1.0, -0.5],
+        Te_coeffs=[1.0, -0.5],
+        run_kwargs={"max_iter": 4},
+    )
+
+    assert not result.converged
+    assert result.history[0].beta_total == pytest.approx(0.01)
+    assert result.history[0].mean_iota == pytest.approx(0.4)
+    assert result.history[0].fsq_total == pytest.approx(1.0e-8)
+
+
+def test_default_bootstrap_solve_fn_writes_temp_input(monkeypatch):
+    import vmec_jax.driver as driver
+
+    seen = {}
+
+    def fake_run_fixed_boundary(path, **kwargs):
+        seen["path"] = str(path)
+        seen["kwargs"] = dict(kwargs)
+        loaded = vj.read_indata(path)
+        return SimpleNamespace(indata=loaded, signgs=1)
+
+    monkeypatch.setattr(driver, "run_fixed_boundary", fake_run_fixed_boundary)
+    run = bc._default_bootstrap_solve_fn(
+        InData(scalars={"PHIEDGE": 0.3}, indexed={}),
+        run_kwargs={"max_iter": 2},
+    )
+
+    assert run.signgs == 1
+    assert run.indata.get_float("PHIEDGE") == pytest.approx(0.3)
+    assert seen["kwargs"]["max_iter"] == 2
+    assert seen["kwargs"]["verbose"] is False
+
+
+def test_default_redl_diagnostics_fn_extracts_redl_and_solver_diagnostics(monkeypatch):
+    import vmec_jax.finite_beta as finite_beta
+
+    def fake_redl_bootstrap_mismatch_from_state(**_kwargs):
+        return {
+            "geometry": {
+                "s": jnp.asarray([0.25, 0.75]),
+                "fsa_B2": jnp.asarray([2.0, 3.0]),
+            },
+            "jdotB_redl": jnp.asarray([4.0, 5.0]),
+            "residuals1d": jnp.asarray([0.3, 0.4]),
+        }
+
+    monkeypatch.setattr(finite_beta, "redl_bootstrap_mismatch_from_state", fake_redl_bootstrap_mismatch_from_state)
+    run = SimpleNamespace(
+        state=object(),
+        static=object(),
+        indata=InData(scalars={"PHIEDGE": 0.2}, indexed={}),
+        signgs=1,
+        result=SimpleNamespace(diagnostics={"final_fsqr": 1.0, "final_fsqz": 2.0, "final_fsql": 3.0}),
+    )
+
+    diag = bc._default_redl_diagnostics_fn(
+        run,
+        run.indata,
+        options=vj.BootstrapCurrentOptions(helicity_n=0),
+        ne_coeffs=[2.0, -1.0],
+        Te_coeffs=[3.0, -1.0],
+    )
+
+    np.testing.assert_allclose(np.asarray(diag["s"]), [0.25, 0.75])
+    np.testing.assert_allclose(np.asarray(diag["bdotb"]), [2.0, 3.0])
+    assert float(diag["mismatch_norm"]) == pytest.approx(np.sqrt(0.3**2 + 0.4**2) / np.sqrt(2.0))
+    assert diag["fsq_total"] == pytest.approx(6.0)
+
+
+def test_bootstrap_current_fixed_point_rejects_invalid_iteration_controls():
+    with pytest.raises(ValueError, match="max_fixed_point_iter"):
+        vj.bootstrap_current_fixed_point(
+            InData(scalars={}, indexed={}),
+            options=vj.BootstrapCurrentOptions(helicity_n=0, max_fixed_point_iter=0),
+            solve_fn=lambda _indata: object(),
+            diagnostics_fn=lambda _run, _indata: {},
+        )
+    with pytest.raises(NotImplementedError, match="Anderson"):
+        vj.bootstrap_current_fixed_point(
+            InData(scalars={}, indexed={}),
+            options=vj.BootstrapCurrentOptions(helicity_n=0, anderson_depth=1),
+            solve_fn=lambda _indata: object(),
+            diagnostics_fn=lambda _run, _indata: {},
+        )
 
 
 def test_bootstrap_current_fixed_point_requires_redl_profiles_for_default_diagnostics():

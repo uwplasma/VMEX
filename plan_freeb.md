@@ -466,6 +466,36 @@ Need from user:
 
 Nothing now.
 
+### 2026-05-27 Bootstrap-current coverage repair
+
+Steps taken:
+
+1. Added fast deterministic tests for bootstrap-current branch coverage:
+   pressure derivative from Redl profile coefficients, VMEC current derivative
+   extraction from power-series inputs, current-grid resampling validation,
+   `cubic_spline_i` profile conversion, input validation branches, default
+   solve callback temp-input writing, default Redl diagnostic extraction, and
+   low-beta/default-callback fixed-point routing.
+2. Kept the optional real VMEC/Redl integration test skipped by default.
+
+Results obtained:
+
+1. `python -m pytest -q tests/test_bootstrap_current_fixed_point.py tests/test_bootstrap_current_example.py tests/test_bootstrap_current_fixed_point_integration_optional.py -rx`:
+   17 passed, 1 skipped in 3.56 s.
+2. `python -m ruff check tests/test_bootstrap_current_fixed_point.py vmec_jax/bootstrap_current.py`:
+   passed.
+3. Focused coverage for `vmec_jax/bootstrap_current.py` increased to 98%.
+
+Best next steps:
+
+1. Push the coverage repair and recheck Codecov.
+2. If Codecov still fails project coverage, inspect the uploaded XML from the
+   py3.11 job and target only real missed package lines.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-05-27 Bootstrap-current fixed-point example
 
 Steps taken:
