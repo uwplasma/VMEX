@@ -549,11 +549,12 @@ def _minimal_or_circular_qi_case(
             "max_elongation": float(base.get("max_elongation", 8.2)),
             "smooth_qi_max": float(base.get("qi_gate_smooth_max", 2.0e-3)),
             "legacy_qi_max": float(base.get("qi_gate_legacy_max", 2.0e-3)),
-            # The reference scan is a deterministic proposal generator for
-            # circular/minimal seeds.  Do not let its one-evaluation bookkeeping
-            # solve become the final accepted result; the local cleanup stages
-            # below must run and own promotion.
-            "accept_as_baseline": False,
+            # The reference scan is a deterministic proposal generator and a
+            # safe fallback for circular/minimal seeds.  Local cleanup stages
+            # still run and can promote better candidates, but a failed cleanup
+            # must not replace a lower-QI reference candidate with a worse
+            # final state.
+            "accept_as_baseline": True,
         }
     )
     local_stages = []
