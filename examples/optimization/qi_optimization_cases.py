@@ -563,10 +563,16 @@ def _minimal_or_circular_qi_case(
             int(base.get("max_nfev", MINIMAL_QI_LOCAL_STAGE_MIN_NFEV)),
             MINIMAL_QI_LOCAL_STAGE_MIN_NFEV,
         )
+        direct_mode_override = (
+            {}
+            if ("stage_modes" in stage or "stage_mode_limits" in stage)
+            else {"stage_modes": (int(max_mode),), "use_mode_continuation": False}
+        )
         local_stages.append(
             {
                 **stage,
                 "max_nfev": stage_nfev,
+                **direct_mode_override,
                 # Minimal/circular seeds may need to move far from a reference
                 # candidate that is QI-safe but too high-aspect.  Keep the
                 # stage policy case-specific, but make aspect localization
