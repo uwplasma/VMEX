@@ -582,6 +582,7 @@ def _minimal_or_circular_qi_case(
                 # optimizer budget for these reference-seeded cases, not only a
                 # ceiling over legacy one-evaluation audit stages.
                 "use_showcase_max_nfev": True,
+                "use_showcase_max_mode": True,
             }
         )
     return {

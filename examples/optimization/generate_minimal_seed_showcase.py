@@ -511,7 +511,7 @@ def _qp_preseed_config_for_qi_case(
     )
 
 
-def _patch_qi_stage_budget(stage: dict[str, Any], *, budget: MinimalSeedBudget) -> dict[str, Any]:
+def _patch_qi_stage_budget(stage: dict[str, Any], *, budget: MinimalSeedBudget, max_mode: int) -> dict[str, Any]:
     """Return a QI stage dictionary with showcase budgets applied.
 
     The QI catalog contains reviewed stage policies.  The showcase command line
@@ -523,6 +523,9 @@ def _patch_qi_stage_budget(stage: dict[str, Any], *, budget: MinimalSeedBudget) 
     out = dict(stage)
     if bool(out.pop("use_showcase_max_nfev", False)):
         out["max_nfev"] = int(budget.max_nfev)
+    if bool(out.pop("use_showcase_max_mode", False)) and "stage_mode_limits" not in out:
+        out["stage_modes"] = (int(max_mode),)
+        out["use_mode_continuation"] = False
     return out
 
 
@@ -596,7 +599,7 @@ def _run_showcase_case(
     if case.problem == "qi":
         qi_policy = QI_CASES.get(case.qi_policy_case or "qi_stel_seed_3127", {})
         mirror_ramp_stages = tuple(
-            _patch_qi_stage_budget(stage, budget=budget)
+            _patch_qi_stage_budget(stage, budget=budget, max_mode=max_mode)
             for stage in qi_policy.get("mirror_ramp_stages", ())
         )
         # Give the inner QI subprocess room to catch TimeoutExpired, harvest

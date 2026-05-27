@@ -160,6 +160,33 @@ def test_minimal_seed_showcase_default_mode_matches_publication_matrix(monkeypat
     assert args.max_mode == 5
 
 
+def test_minimal_seed_showcase_qi_stage_patch_inherits_requested_max_mode() -> None:
+    generator = _load_module("generate_minimal_seed_showcase_qi_stage_patch", "generate_minimal_seed_showcase.py")
+    budget = generator.MinimalSeedBudget(
+        max_nfev=60,
+        continuation_nfev=20,
+        inner_max_iter=550,
+        inner_ftol=1.0e-10,
+        trial_max_iter=550,
+        trial_ftol=1.0e-10,
+    )
+
+    stage = {
+        "name": "cleanup",
+        "max_nfev": 8,
+        "stage_modes": (3,),
+        "use_showcase_max_nfev": True,
+        "use_showcase_max_mode": True,
+    }
+    patched = generator._patch_qi_stage_budget(stage, budget=budget, max_mode=5)
+
+    assert patched["max_nfev"] == 60
+    assert patched["stage_modes"] == (5,)
+    assert patched["use_mode_continuation"] is False
+    assert "use_showcase_max_nfev" not in patched
+    assert "use_showcase_max_mode" not in patched
+
+
 def test_minimal_seed_showcase_dispatches_qi_to_staged_runner(tmp_path: Path, monkeypatch) -> None:
     generator = _load_module("generate_minimal_seed_showcase_qi_staged", "generate_minimal_seed_showcase.py")
     budget = generator.MinimalSeedBudget(
