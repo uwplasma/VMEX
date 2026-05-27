@@ -772,6 +772,8 @@ def _effective_problem_config(
     max_mode: int,
     use_ess: bool,
     diagnostic_budgets: bool = DIAGNOSTIC_BUDGETS,
+    cli_budget: CaseBudget | None = None,
+    ess_alpha_override: float | None = None,
 ) -> ProblemConfig:
     updates = {}
     backend_key = "gpu" if str(backend).lower().startswith("gpu") else str(backend).lower()
@@ -851,6 +853,21 @@ def _effective_problem_config(
         updates["trial_max_iter"] = int(budget.trial_max_iter)
     if budget is not None and budget.trial_ftol is not None:
         updates["trial_ftol"] = float(budget.trial_ftol)
+    if cli_budget is not None:
+        if cli_budget.max_nfev is not None:
+            updates["max_nfev"] = int(cli_budget.max_nfev)
+        if cli_budget.continuation_nfev is not None:
+            updates["continuation_nfev"] = int(cli_budget.continuation_nfev)
+        if cli_budget.inner_max_iter is not None:
+            updates["inner_max_iter"] = int(cli_budget.inner_max_iter)
+        if cli_budget.inner_ftol is not None:
+            updates["inner_ftol"] = float(cli_budget.inner_ftol)
+        if cli_budget.trial_max_iter is not None:
+            updates["trial_max_iter"] = int(cli_budget.trial_max_iter)
+        if cli_budget.trial_ftol is not None:
+            updates["trial_ftol"] = float(cli_budget.trial_ftol)
+    if ess_alpha_override is not None:
+        updates["ess_alpha"] = float(ess_alpha_override)
     return replace(problem_cfg, **updates)
 
 
@@ -2241,6 +2258,8 @@ def _run_case(
     stellarator_asymmetric: bool = STELLARATOR_ASYMMETRIC,
     qi_qp_preseed: bool | None = None,
     qi_jit_booz: bool | None = None,
+    cli_budget: CaseBudget | None = None,
+    ess_alpha_override: float | None = None,
 ) -> CaseResult:
     result_path = Path(output_dir) / "case_result.json" if result_path is None else Path(result_path)
     problem_cfg = _effective_problem_config(
@@ -2251,6 +2270,8 @@ def _run_case(
         max_mode=max_mode,
         use_ess=use_ess,
         diagnostic_budgets=diagnostic_budgets,
+        cli_budget=cli_budget,
+        ess_alpha_override=ess_alpha_override,
     )
     if problem_cfg.objective_kind == "qi" and qi_qp_preseed is not None:
         problem_cfg = replace(problem_cfg, qi_preseed_qp=bool(qi_qp_preseed))
@@ -2355,6 +2376,8 @@ def _run_case(
             max_mode=max_mode,
             use_ess=use_ess,
             diagnostic_budgets=diagnostic_budgets,
+            cli_budget=cli_budget,
+            ess_alpha_override=ess_alpha_override,
         )
         qp_stage_results, prev_specs, params_stage, qp_opt, qp_params0, qp_result = _run_problem_stages(
             problem_cfg=qp_cfg,
@@ -2523,6 +2546,8 @@ def _worker(
     stellarator_asymmetric: bool,
     qi_qp_preseed: bool | None,
     qi_jit_booz: bool | None,
+    cli_budget: CaseBudget | None = None,
+    ess_alpha_override: float | None = None,
 ):
     _start_worker_session()
     try:
@@ -2541,6 +2566,8 @@ def _worker(
             stellarator_asymmetric=stellarator_asymmetric,
             qi_qp_preseed=qi_qp_preseed,
             qi_jit_booz=qi_jit_booz,
+            cli_budget=cli_budget,
+            ess_alpha_override=ess_alpha_override,
         )
         _atomic_write_json(Path(result_path), asdict(case_result))
         stale_traceback = Path(output_dir) / "traceback.txt"
@@ -2987,6 +3014,43 @@ def _parse_args() -> argparse.Namespace:
             "sweeps use the full optimization budgets."
         ),
     )
+    parser.add_argument("--max-nfev", type=int, default=None, help="Override final-stage outer nfev budget.")
+    parser.add_argument(
+        "--continuation-nfev",
+        type=int,
+        default=None,
+        help="Override per-lower-stage continuation nfev budget.",
+    )
+    parser.add_argument(
+        "--inner-max-iter",
+        type=int,
+        default=None,
+        help="Override accepted-point VMEC iteration budget; 0 uses input-deck NITER.",
+    )
+    parser.add_argument(
+        "--inner-ftol",
+        type=float,
+        default=None,
+        help="Override accepted-point VMEC tolerance; 0 uses input-deck FTOL.",
+    )
+    parser.add_argument(
+        "--trial-max-iter",
+        type=int,
+        default=None,
+        help="Override trial-point VMEC iteration budget; 0 follows accepted/input budget.",
+    )
+    parser.add_argument(
+        "--trial-ftol",
+        type=float,
+        default=None,
+        help="Override trial-point VMEC tolerance; 0 follows accepted/input tolerance.",
+    )
+    parser.add_argument(
+        "--ess-alpha",
+        type=float,
+        default=None,
+        help="Override ESS alpha for all selected cases.",
+    )
     return parser.parse_args()
 
 
@@ -3023,6 +3087,16 @@ def main() -> None:
         worker_jax_platforms = _default_worker_jax_platforms(solver_device)
     else:
         worker_jax_platforms = _normalize_worker_jax_platforms(worker_jax_platforms_arg)
+    cli_budget = CaseBudget(
+        max_nfev=args.max_nfev,
+        continuation_nfev=args.continuation_nfev,
+        inner_max_iter=args.inner_max_iter,
+        inner_ftol=args.inner_ftol,
+        trial_max_iter=args.trial_max_iter,
+        trial_ftol=args.trial_ftol,
+    )
+    if all(getattr(cli_budget, field) is None for field in cli_budget.__dataclass_fields__):
+        cli_budget = None
 
     output_root.mkdir(parents=True, exist_ok=True)
     ctx = mp.get_context("spawn")
@@ -3098,6 +3172,8 @@ def main() -> None:
                             bool(args.stellarator_asymmetric),
                             qi_qp_preseed,
                             qi_jit_booz,
+                            cli_budget,
+                            args.ess_alpha,
                         ),
                     )
                     case_t0 = time.perf_counter()
