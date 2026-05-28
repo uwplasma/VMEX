@@ -631,10 +631,16 @@ def _initial_wout_for_record(record: ShowcaseRecord) -> Path | None:
 
 
 def _existing_initial_wout_for_record(record: ShowcaseRecord) -> Path | None:
-    """Return a proven raw-seed initial WOUT path only if it already exists."""
+    """Return an existing raw-seed initial WOUT path without launching VMEC."""
 
-    candidate = record.output_dir / "wout_original.nc"
-    return candidate if candidate.exists() else None
+    candidates = [record.output_dir / "wout_original.nc"]
+    if record.policy == "continuation":
+        candidates.append(record.output_dir.parent.parent / "mode1" / record.output_dir.name / "wout_initial.nc")
+    candidates.append(record.output_dir / "wout_initial.nc")
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def provenance_for_record(record: ShowcaseRecord) -> ShowcaseProvenance:
