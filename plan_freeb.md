@@ -172,6 +172,10 @@ Steps taken:
     `30%`), preconditioner (`0.40 ms`, `4.8%`), and residual metrics
     (`0.33 ms`, `4.0%`).  This is measurement-only and identifies structural
     staging/fusion as the next performance target.
+77. Lifted the moving-boundary projected-mode fixed-point chain into
+    `direct_coil_projected_mode_fixed_point_jax`, so phase-2 validation no
+    longer lives only in test-local glue. The helper is still dense/tiny-scale
+    and does not claim a production `run_free_boundary` custom VJP.
 
 ### 2026-05-27 Free-boundary beta-scan bootstrap-current preconditioner
 

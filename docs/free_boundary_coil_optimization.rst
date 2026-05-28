@@ -75,15 +75,15 @@ The validation ladder is:
    low-resolution grids. The high-resolution matrix-free production operator
    remains phase-2 work.
 6. Nonlinear fixed-point chain: direct-coil controls feed a dense nonlinear
-   fixed-point solve with a custom implicit adjoint. The promoted fast tests
-   include a moving-boundary loop in which the current state changes where the
-   coil field is sampled, the field is projected through the JAX boundary
-   projection and mode-space vacuum response, and the response updates the
-   next state. This validates the mathematical reverse pass needed by the
-   production free-boundary fixed-point wrapper: solve
-   ``F_x^T lambda = dJ/dx`` at the accepted root and apply ``-F_p^T lambda`` to
-   coil/current parameters. This is still a dense validation primitive, not the
-   production VMEC nonlinear loop.
+   fixed-point solve with a custom implicit adjoint. The reusable
+   ``direct_coil_projected_mode_fixed_point_jax`` helper implements the
+   moving-boundary validation loop: the current state changes where the coil
+   field is sampled, the field is projected through the JAX boundary projection
+   and mode-space vacuum response, and the response updates the next state.
+   This validates the mathematical reverse pass needed by the production
+   free-boundary fixed-point wrapper: solve ``F_x^T lambda = dJ/dx`` at the
+   accepted root and apply ``-F_p^T lambda`` to coil/current parameters. This is
+   still a dense validation primitive, not the production VMEC nonlinear loop.
 7. Full direct-coil free-boundary solve: a low-resolution scalar objective,
    first with one coil current and then with one Fourier coefficient, bounded
    against finite differences of complete solves.
