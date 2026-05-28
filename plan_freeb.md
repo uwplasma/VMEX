@@ -180,12 +180,18 @@ Steps taken:
     objective wrapper with component diagnostics for the projected-mode
     fixed-point helper. The AD-vs-FD gates now target an optimizer-facing
     scalar objective instead of unpacking a test-local state dictionary.
-78. Ran a fresh-clone CPU/CUDA timing probe on `office` with the normalized
+79. Ran a fresh-clone CPU/CUDA timing probe on `office` with the normalized
     phase comparison. CPU warm time was `0.0424 s`; CUDA warm time was
     `0.1466 s`. CUDA force evaluation was `10.0 ms`, but residual metrics,
     preconditioner, and setup were `23.8 ms`, `20.5 ms`, and `20.2 ms`,
     respectively. This reconfirms that the next real speedup is control-loop
     scalar/preconditioner/setup staging, not Biot-Savart kernel work.
+80. Added an optimizer-facing `jax.value_and_grad` gate for
+    `direct_coil_projected_mode_fixed_point_objective_jax` over the full
+    `CoilFieldParams` pytree. The test verifies finite, nonzero gradients for
+    both base coil currents and Fourier curve coefficients through the
+    direct-coil sample, moving-boundary projection, dense mode response, and
+    fixed-point objective chain.
 
 ### 2026-05-27 Free-boundary beta-scan bootstrap-current preconditioner
 
