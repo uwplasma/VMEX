@@ -6,6 +6,25 @@ from tools.benchmarks import bench_freeb_direct_coil_matrix as matrix
 
 
 def _direct_solve_payload() -> dict:
+    solve_total_s = 0.7
+
+    def phase(name: str, key: str, seconds: float, per_iter_s: float) -> dict:
+        return {
+            "name": name,
+            "key": key,
+            "seconds": seconds,
+            "per_iter_s": per_iter_s,
+            "fraction_of_solve": seconds / solve_total_s,
+        }
+
+    phase_entries = [
+        phase("setup", "setup_total_s", 0.20, 0.10),
+        phase("preconditioner", "preconditioner_s", 0.15, 0.075),
+        phase("residual_metrics", "iteration_residual_metrics_s", 0.11, 0.055),
+        phase("force_eval", "force_eval_s", 0.09, 0.045),
+        phase("update", "update_s", 0.04, 0.02),
+        phase("finalize", "finalize_s", 0.02, 0.01),
+    ]
     return {
         "cases": [
             {
@@ -50,6 +69,17 @@ def _direct_solve_payload() -> dict:
                     },
                     "active_nestor_timing_summary": {"active_steps": 1},
                     "trial_nestor_timing_summary": {"recorded_calls": 1},
+                },
+                "phase_timing_comparison": {
+                    "warm": {
+                        "timing_available": True,
+                        "solve_total_s": solve_total_s,
+                        "iterations": 2,
+                        "named_phase_total_s": 0.61,
+                        "named_phase_fraction_of_solve": 0.61 / solve_total_s,
+                        "top_named_phases": phase_entries[:3],
+                        "all_named_phases": phase_entries,
+                    },
                 },
                 "active_nestor_timing_improvement": {"sample_time_s": {"speedup": 10.0}},
                 "trial_nestor_timing_improvement": {"sample_time_s": {"speedup": 2.0}},
@@ -120,6 +150,15 @@ def test_matrix_timing_snapshot_preserves_compact_nestor_details() -> None:
     assert rows[0]["solver"]["warm"]["iteration_loop_unattributed_s"] == 0.1
     assert rows[0]["solver"]["warm"]["iteration_control_s"] == 0.04
     assert rows[0]["solver"]["warm"]["compute_forces_per_iter_s"] == 0.1
+    phase_timing = rows[0]["phase_timing"]["warm"]
+    assert phase_timing["solve_total_s"] == 0.7
+    assert phase_timing["named_phase_fraction_of_solve"] == 0.61 / 0.7
+    assert [phase["name"] for phase in phase_timing["top_named_phases"]] == [
+        "setup",
+        "preconditioner",
+        "residual_metrics",
+    ]
+    assert phase_timing["all_named_phases"][0]["key"] == "setup_total_s"
 
 
 def test_matrix_timing_snapshot_keeps_provider_and_gradient_rows_compact() -> None:
@@ -127,6 +166,7 @@ def test_matrix_timing_snapshot_keeps_provider_and_gradient_rows_compact() -> No
 
     assert rows[0]["label"] == "synthetic_direct_coil_solve"
     assert "nestor" not in rows[0]
+    assert "phase_timing" not in rows[0]
 
 
 def test_matrix_timing_snapshot_skipped_case_is_not_noisy() -> None:
@@ -453,3 +493,22 @@ def test_gpu_bottleneck_summary_ranks_warm_phase_overheads() -> None:
     assert rows[0]["ratio_gpu_over_cpu"] == 3.0
     assert abs(rows[0]["gpu_minus_cpu_s"] - 0.10) < 1.0e-15
     assert rows[2]["ratio_gpu_over_cpu"] == 30.0
+
+
+def test_warm_phase_bottleneck_summary_ranks_single_backend_phase_overheads() -> None:
+    timings = matrix._timing_snapshot(_direct_solve_payload(), include_nestor=True)
+    rows = [
+        {"label": "direct_solve", "backend": "cpu", "status": "completed", "timings": timings},
+        {"label": "direct_solve", "backend": "gpu", "status": "failed", "timings": timings},
+    ]
+
+    summary = matrix._warm_phase_bottleneck_summary(rows, top_n=3)
+
+    assert [(row["backend"], row["phase"]) for row in summary] == [
+        ("cpu", "setup"),
+        ("cpu", "preconditioner"),
+        ("cpu", "residual_metrics"),
+    ]
+    assert summary[0]["seconds"] == 0.20
+    assert summary[0]["fraction_of_solve"] == 0.20 / 0.7
+    assert summary[1]["per_iter_s"] == 0.075
