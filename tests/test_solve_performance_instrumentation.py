@@ -37,6 +37,16 @@ def test_residual_iter_timing_report_exposes_force_eval_aliases() -> None:
         "compute_forces_trial_calls": 1,
         "compute_forces_backtracking": 0.07,
         "compute_forces_backtracking_calls": 1,
+        "iteration_control": 0.25,
+        "iteration_control_fsq1": 0.11,
+        "iteration_control_fsq1_payload_get": 0.04,
+        "iteration_control_fsq1_direct_get": 0.02,
+        "iteration_control_badjac": 0.08,
+        "iteration_control_badjac_ptau_get": 0.03,
+        "iteration_control_badjac_state_jacobian": 0.02,
+        "iteration_control_vmec_time": 0.01,
+        "iteration_control_restart": 0.02,
+        "iteration_control_evolve": 0.01,
         "preconditioner": 0.12,
         "precond_apply": 0.08,
         "precond_mode_scale": 0.01,
@@ -66,6 +76,13 @@ def test_residual_iter_timing_report_exposes_force_eval_aliases() -> None:
     assert report["setup_cache_key_hash_s"] == pytest.approx(0.04)
     assert report["setup_update_constants_s"] == pytest.approx(0.009)
     assert report["setup_unattributed_s"] == pytest.approx(0.08)
+    assert report["iteration_control_fsq1_payload_get_s"] == pytest.approx(0.04)
+    assert report["iteration_control_fsq1_direct_get_s"] == pytest.approx(0.02)
+    assert report["iteration_control_fsq1_unattributed_s"] == pytest.approx(0.05)
+    assert report["iteration_control_badjac_ptau_get_s"] == pytest.approx(0.03)
+    assert report["iteration_control_badjac_state_jacobian_s"] == pytest.approx(0.02)
+    assert report["iteration_control_badjac_unattributed_s"] == pytest.approx(0.03)
+    assert report["iteration_control_unattributed_s"] == pytest.approx(0.02)
 
 
 def test_accelerated_scan_timing_is_opt_in_and_path_labeled(
