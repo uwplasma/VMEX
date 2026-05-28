@@ -475,6 +475,7 @@ QI terms without changing the optimizer setup:
 
    well = vj.MagneticWell(minimum=0.0, softness=1.0e-3)
    dmerc = vj.DMerc(minimum=0.0, softness=1.0e-3)
+   glasser = vj.GlasserResistiveInterchange(maximum=0.0, softness=1.0e-3)
 
    objective_tuples = [
        (aspect.J, TARGET_ASPECT, ASPECT_WEIGHT),
@@ -482,6 +483,7 @@ QI terms without changing the optimizer setup:
        (qs.J, 0.0, QS_WEIGHT),
        (well.J, 0.0, MAGNETIC_WELL_WEIGHT),
        (dmerc.J, 0.0, DMERC_WEIGHT),
+       (glasser.J, 0.0, GLASSER_WEIGHT),
    ]
    problem = vj.LeastSquaresProblem.from_tuples(objective_tuples)
 
@@ -489,8 +491,10 @@ QI terms without changing the optimizer setup:
 state-derived half-mesh volume derivative, also available directly as
 ``vj.magnetic_well_from_state(...)``.  ``DMerc`` uses the differentiable
 state-level Mercier/JXBFORCE path and returns one smooth lower-bound residual
-per interior full-mesh surface.  Both are lower-bound penalties, so their tuple
-target must be ``0.0``.
+per interior full-mesh surface.  ``GlasserResistiveInterchange`` uses the same
+profile reductions to penalize ``D_R > maximum`` for the resistive
+Glasser-Greene-Johnson necessary condition.  These stability objectives encode
+their thresholds internally, so their tuple target must be ``0.0``.
 
 QI objectives use the same tuple syntax, but the QI field-quality terms are
 routed through the Boozer/QI problem path so they can share one Boozer
