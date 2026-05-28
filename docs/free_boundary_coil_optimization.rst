@@ -84,8 +84,9 @@ The validation ladder is:
    wraps the solved state in a scalar quadratic objective with component
    diagnostics for optimizer-facing AD-vs-FD tests. The focused tests also run
    ``jax.value_and_grad`` on that scalar objective with respect to the full
-   ``CoilFieldParams`` pytree, verifying finite, nonzero gradients for both
-   coil-current and Fourier curve-coefficient leaves. This validates the
+   ``CoilFieldParams`` pytree, verifying finite, nonzero gradients and a
+   mixed current/curve-coefficient directional derivative against central
+   finite differences. This validates the
    mathematical reverse pass needed by the production free-boundary fixed-point
    wrapper: solve ``F_x^T lambda = dJ/dx`` at the accepted root and apply
    ``-F_p^T lambda`` to coil/current parameters. This is still a dense

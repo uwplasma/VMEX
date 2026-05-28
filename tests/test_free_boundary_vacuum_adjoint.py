@@ -1687,6 +1687,27 @@ def test_projected_mode_fixed_point_objective_value_and_grad_wrt_coil_pytree():
     assert float(jnp.linalg.norm(grad_params.base_currents)) > 1.0e-18
     assert float(jnp.linalg.norm(grad_params.base_curve_dofs)) > 1.0e-10
 
+    current_direction = coil_params.base_currents * 0.01
+    dofs_direction = jnp.zeros_like(coil_params.base_curve_dofs)
+    dofs_direction = dofs_direction.at[0, 0, 2].set(0.02)
+    dofs_direction = dofs_direction.at[0, 1, 1].set(-0.015)
+
+    def shifted_objective(scale):
+        return objective(
+            coil_params.with_arrays(
+                base_curve_dofs=coil_params.base_curve_dofs + scale * dofs_direction,
+                base_currents=coil_params.base_currents + scale * current_direction,
+            )
+        )
+
+    exact_directional = jnp.vdot(grad_params.base_currents, current_direction) + jnp.vdot(
+        grad_params.base_curve_dofs,
+        dofs_direction,
+    )
+    eps = 1.0e-4
+    fd_directional = (shifted_objective(eps) - shifted_objective(-eps)) / (2.0 * eps)
+    np.testing.assert_allclose(exact_directional, fd_directional, rtol=2.0e-5, atol=1.0e-10)
+
 
 def _boundary_projection_inputs():
     from vmec_jax._compat import jnp

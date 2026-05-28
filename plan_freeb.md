@@ -189,9 +189,10 @@ Steps taken:
 80. Added an optimizer-facing `jax.value_and_grad` gate for
     `direct_coil_projected_mode_fixed_point_objective_jax` over the full
     `CoilFieldParams` pytree. The test verifies finite, nonzero gradients for
-    both base coil currents and Fourier curve coefficients through the
-    direct-coil sample, moving-boundary projection, dense mode response, and
-    fixed-point objective chain.
+    both base coil currents and Fourier curve coefficients, and checks a mixed
+    current/geometry directional derivative against central finite differences
+    through the direct-coil sample, moving-boundary projection, dense mode
+    response, and fixed-point objective chain.
 81. Ran the current-head quick direct-coil benchmark matrix locally and on
     `office` with `--include-gpu --include-timing-light`. Local CPU
     `direct_solve_jit_forces` warmed at `0.0253 s`. On `office`, the detailed
