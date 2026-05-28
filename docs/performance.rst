@@ -1986,9 +1986,10 @@ and ``purely_toroidal_field`` (``0.42x``).  ``NuhrenbergZille_1988_QHS`` timed
 out in both policies and remains a stress fixture rather than a promotion row.
 
 The same 2026-05-24 matrix on ``office`` with ``JAX_PLATFORMS=cuda,cpu`` showed
-the opposite policy conclusion for CUDA: 33 rows had valid warm speedups, 32 of
-those were faster with ``accelerated``, the median warm speedup was ``2.06x``,
-and the geometric-mean warm speedup was ``3.38x``.  Only
+the opposite policy conclusion for CUDA: 33 rows had valid warm
+accelerated-vs-default speedups within CUDA, 32 of those were faster with
+``accelerated``, the median warm speedup was ``2.06x``, and the geometric-mean
+warm speedup was ``3.38x``.  Only
 ``LandremanPaul2021_QA_lowres`` was slower (``0.33x``), and
 ``NuhrenbergZille_1988_QHS`` again timed out.  Representative CUDA wins were
 ``li383_low_res`` (``12.6x``), ``nfp1_QI`` (``11.9x``), minimal-seed NFP

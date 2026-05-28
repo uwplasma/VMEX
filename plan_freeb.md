@@ -12,17 +12,15 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-28 after stage-level beta-scan checkpointing,
-interrupted-stage status marking, accepted-boundary direct-coil replay
-AD-vs-FD validation, latest CPU/GPU direct-coil benchmark triage, concrete GPU
-platform probing in the benchmark matrix, latest `origin/main` merge,
-accelerator-forward host scalar policy probes, and dense nonlinear
-implicit-root adjoint validation. PR #18 is open and conflict-free at commit
-`4ec6f532` before the local nonlinear-adjoint update; CI was restarted by the
-latest merge/docs commits and is not considered merge-ready until all required
-checks are green. The optional ESSOS/direct-coil bootstrap gates are
-local/manual because they require ESSOS assets and launch real free-boundary
-solves. Do not merge PR #18 yet.
+Last updated: 2026-05-29 after the latest `origin/main` integration, direct-coil
+finite-pressure diagnostics hardening, benchmark warm-phase bottleneck
+reporting, and documentation overclaim cleanup. PR #18 is open on
+`feature/freeb-essos-coil-single-stage`; fast CI was failing on stale bundled
+QA WOUT regression constants and a fixture-specific missing-aspect-metadata
+assumption, both now corrected locally pending push. The optional
+ESSOS/direct-coil bootstrap gates remain local/manual because they require
+ESSOS assets and launch real free-boundary solves. Do not merge PR #18 until
+all required checks are green.
 
 Steps taken:
 
@@ -162,7 +160,7 @@ Steps taken:
     wrapper around the nonlinear implicit-root primitive.  This is the
     validation-scale model of the production free-boundary loop contract
     `state = update(state, coil_params)`.
-75. Promoted the miniature complete-loop direct-coil AD-vs-FD rung: tests now
+75. Promoted the miniature dense fixed-point validation AD-vs-FD rung: tests now
     cover direct coils -> state-dependent boundary sampling -> JAX boundary
     projection -> dense mode-space vacuum response -> nonlinear fixed point for
     both one coil current and one Fourier geometry coefficient.

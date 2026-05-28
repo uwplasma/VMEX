@@ -192,12 +192,70 @@ def _active_free_boundary(run) -> bool:
     return bool(full_updates.size and np.any(full_updates > 0))
 
 
+def _final_residuals(run) -> np.ndarray:
+    diag = getattr(run.result, "diagnostics", {}) if run.result is not None else {}
+    return np.asarray([diag.get("final_fsqr"), diag.get("final_fsqz"), diag.get("final_fsql")], dtype=float)
+
+
+def _assert_full_solve_wout_sanity(run, wout_path: Path) -> None:
+    from vmec_jax.driver import load_wout, write_wout_from_fixed_boundary_run
+
+    pressure = _pressure_profile(run)
+    residuals = _final_residuals(run)
+    assert np.max(pressure) > 0.0
+    assert np.all(np.isfinite(residuals))
+    assert np.all(residuals >= 0.0)
+
+    write_wout_from_fixed_boundary_run(wout_path, run, include_fsq=True, fast_bcovar=True)
+    assert wout_path.exists()
+    wout = load_wout(wout_path)
+    wout_residuals = np.asarray([wout.fsqr, wout.fsqz, wout.fsql], dtype=float)
+    assert np.all(np.isfinite(wout_residuals))
+    assert np.all(wout_residuals >= 0.0)
+    assert np.max(np.asarray(wout.presf, dtype=float)) > 0.0
+    for field in ("rmnc", "zmns", "lmns", "phipf", "iotaf"):
+        values = np.asarray(getattr(wout, field), dtype=float)
+        assert values.size > 0
+        assert np.all(np.isfinite(values)), f"non-finite WOUT field {field}"
+
+
+def _first_nonzero_current_index(params: CoilFieldParams) -> int:
+    currents = np.asarray(params.base_currents, dtype=float).reshape(-1)
+    nonzero = np.flatnonzero(np.abs(currents) > 0.0)
+    if nonzero.size == 0:
+        pytest.skip("ESSOS coil file does not expose a nonzero current DOF")
+    return int(nonzero[0])
+
+
+def _first_fourier_geometry_index(params: CoilFieldParams) -> tuple[int, int, int]:
+    dofs = np.asarray(params.base_curve_dofs, dtype=float)
+    if dofs.ndim != 3 or dofs.shape[2] <= 1:
+        pytest.skip("ESSOS coil file does not expose Fourier geometry DOFs")
+    nonconstant = np.argwhere(np.abs(dofs[:, :, 1:]) > 0.0)
+    if nonconstant.size == 0:
+        return 0, 0, 1
+    i, xyz, shifted_mode = (int(v) for v in nonconstant[0])
+    return i, xyz, shifted_mode + 1
+
+
+def _state_central_difference_rms(plus_run, minus_run, *, step: float) -> float:
+    plus = np.asarray(pack_state(plus_run.state), dtype=float)
+    minus = np.asarray(pack_state(minus_run.state), dtype=float)
+    assert plus.shape == minus.shape
+    diff = (plus - minus) / (2.0 * float(step))
+    assert np.all(np.isfinite(diff))
+    return float(np.sqrt(np.mean(diff * diff)))
+
+
 def test_active_direct_coil_provider_is_sensitive_in_finite_pressure_context(tmp_path: Path) -> None:
-    """Active NESTOR sampling should change when direct-coil parameters change."""
+    """Active NESTOR sampling should scale consistently with direct-coil current."""
 
     enable_x64(True)
-    base_params = _circle_coil_params()
-    perturbed_params = _circle_coil_params(current=3.3e7)
+    base_current = 3.0e7
+    perturbed_current = 3.3e7
+    current_ratio = perturbed_current / base_current
+    base_params = _circle_coil_params(current=base_current)
+    perturbed_params = _circle_coil_params(current=perturbed_current)
     input_path = _write_tiny_direct_freeb_input(tmp_path / "input.direct_provider_pressure")
     run = _run_direct_initial_guess(input_path, base_params)
 
@@ -229,6 +287,34 @@ def test_active_direct_coil_provider_is_sensitive_in_finite_pressure_context(tmp
     assert base.diagnostics["provider_kind"] == "direct_coils"
     assert not bool(base.reused)
     assert np.isfinite(np.asarray(base.vac_total.bsqvac)).all()
+    for key in ("bnormal_rms", "bnormal_unit_rms", "rhs_rms", "gsource_rms"):
+        np.testing.assert_allclose(
+            perturbed.diagnostics[key],
+            current_ratio * base.diagnostics[key],
+            rtol=1.0e-12,
+            atol=1.0e-12,
+            err_msg=f"{key} should scale linearly with direct-coil current",
+        )
+    np.testing.assert_allclose(
+        perturbed.phi,
+        current_ratio * base.phi,
+        rtol=1.0e-11,
+        atol=1.0e-12,
+        err_msg="NESTOR potential should scale linearly with direct-coil current",
+    )
+    np.testing.assert_allclose(
+        perturbed.vac_total.bsqvac,
+        current_ratio**2 * base.vac_total.bsqvac,
+        rtol=1.0e-11,
+        atol=1.0e-12,
+        err_msg="vacuum B^2 should scale quadratically with direct-coil current",
+    )
+    np.testing.assert_allclose(
+        perturbed.diagnostics["bsqvac_rms"],
+        current_ratio**2 * base.diagnostics["bsqvac_rms"],
+        rtol=1.0e-12,
+        atol=1.0e-12,
+    )
     assert _relative_rms_delta(base.vac_total.bsqvac, perturbed.vac_total.bsqvac) > 1.0e-3
 
 
@@ -1065,36 +1151,78 @@ def test_jax_nestor_operator_fixed_boundary_ad_matches_central_fd_for_coil_vars(
 
 
 @pytest.mark.full
-def test_essos_full_solve_state_is_sensitive_to_direct_coil_current_at_finite_pressure(
+def test_essos_full_solve_state_central_fd_response_to_current_and_geometry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Optional full-solve guard for accepted-state sensitivity to ESSOS coil parameters."""
+    """Optional full-solve finite-difference guard for ESSOS coil controls.
+
+    This samples complete solves at +/- perturbations around one current and
+    one Fourier curve coefficient. It is a finite-response guard, not a
+    full-loop AD validation.
+    """
 
     if os.environ.get("RUN_FULL", "") != "1":
         pytest.skip("Set RUN_FULL=1 to run the optional ESSOS full-solve sensitivity test")
-    essos_coils = pytest.importorskip("essos.coils")
     if not LPQA_COILS.exists():
         pytest.skip(f"missing local ESSOS Landreman-Paul QA coils: {LPQA_COILS}")
+    pytest.importorskip("netCDF4")
+    essos_coils = pytest.importorskip("essos.coils")
 
     from vmec_jax._compat import jnp
 
     enable_x64(True)
     coils = essos_coils.Coils_from_json(str(LPQA_COILS))
     base_params = from_essos_coils(coils, chunk_size=256)
-    scaled_params = base_params.with_arrays(base_currents=jnp.asarray(base_params.base_currents) * 100.0)
     input_path = _write_lpqa_direct_freeb_input(tmp_path / "input.lpqa_direct_finite_pressure")
 
-    monkeypatch.setenv("VMEC_JAX_FREEB_ACTIVATE_FSQ", "1.0e99")
-    base_run = _run_direct_solve(input_path, base_params)
-    scaled_run = _run_direct_solve(input_path, scaled_params)
+    current_index = _first_nonzero_current_index(base_params)
+    geometry_index = _first_fourier_geometry_index(base_params)
+    base_currents = jnp.asarray(base_params.base_currents)
+    base_dofs = jnp.asarray(base_params.base_curve_dofs)
+    current_step = 0.05
+    geometry_step = max(2.5e-3, 1.0e-3 * abs(float(np.asarray(base_dofs[geometry_index]))))
 
-    assert np.max(_pressure_profile(base_run)) > 0.0
-    if not (_active_free_boundary(base_run) and _active_free_boundary(scaled_run)):
-        pytest.xfail(
-            "Optional direct-coil finite-pressure full solve did not enter active "
-            "free-boundary vacuum coupling within the gated short budget."
+    def current_params(sign: float) -> CoilFieldParams:
+        return base_params.with_arrays(
+            base_currents=base_currents.at[current_index].multiply(1.0 + float(sign) * current_step)
         )
 
-    state_delta = _relative_rms_delta(pack_state(base_run.state), pack_state(scaled_run.state))
-    assert state_delta > 1.0e-9
+    def geometry_params(sign: float) -> CoilFieldParams:
+        return base_params.with_arrays(
+            base_curve_dofs=base_dofs.at[geometry_index].add(float(sign) * geometry_step)
+        )
+
+    def solve(label: str, params: CoilFieldParams):
+        run = _run_direct_solve(input_path, params)
+        _assert_full_solve_wout_sanity(run, tmp_path / f"wout_{label}.nc")
+        return run
+
+    monkeypatch.setenv("VMEC_JAX_FREEB_ACTIVATE_FSQ", "1.0e99")
+    current_minus = solve("current_minus", current_params(-1.0))
+    current_plus = solve("current_plus", current_params(1.0))
+    geometry_minus = solve("geometry_minus", geometry_params(-1.0))
+    geometry_plus = solve("geometry_plus", geometry_params(1.0))
+
+    runs = {
+        "current_minus": current_minus,
+        "current_plus": current_plus,
+        "geometry_minus": geometry_minus,
+        "geometry_plus": geometry_plus,
+    }
+    inactive = [label for label, run in runs.items() if not _active_free_boundary(run)]
+    if inactive:
+        pytest.xfail(
+            "Optional direct-coil finite-pressure full solve did not enter active "
+            f"free-boundary vacuum coupling within the gated short budget: {inactive}"
+        )
+
+    current_response = _relative_rms_delta(pack_state(current_minus.state), pack_state(current_plus.state))
+    geometry_response = _relative_rms_delta(pack_state(geometry_minus.state), pack_state(geometry_plus.state))
+    current_fd_rms = _state_central_difference_rms(current_plus, current_minus, step=current_step)
+    geometry_fd_rms = _state_central_difference_rms(geometry_plus, geometry_minus, step=geometry_step)
+
+    assert current_response > 1.0e-12
+    assert geometry_response > 1.0e-12
+    assert current_fd_rms > 0.0
+    assert geometry_fd_rms > 0.0

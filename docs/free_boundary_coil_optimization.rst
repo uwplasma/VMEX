@@ -3,9 +3,11 @@ Free-Boundary Coil Optimization
 
 This page documents the research lane toward true single-stage
 free-boundary optimization with differentiable coils. The existing VMEC-compatible
-``mgrid`` path remains the parity backend. The new direct-coil path evaluates
-the external field from coil Fourier coefficients and currents in JAX, so the
-coil parameters can become the independent optimization variables.
+``mgrid`` path remains the VMEC2000-compatibility backend; generated-``mgrid``
+WOUT parity is optional/non-promoted unless explicitly stated. The new
+direct-coil path evaluates the external field from coil Fourier coefficients
+and currents in JAX, so the coil parameters can become the independent
+optimization variables.
 
 Architecture
 ------------
@@ -400,13 +402,13 @@ the maximum LCFS displacement is about ``0.478``, the magnetic-axis
 about ``0.181``. This is promoted as a free-boundary finite-beta ``mgrid``
 validation artifact. It is not a direct-coil stellarator promotion artifact.
 
-Executable-backed VMEC2000 validation was run on the same 3.33% WOUT row. The
-VMEC2000 and vmec_jax high-beta WOUTs agree far below the finite-beta response:
-aspect differs by ``6.4e-7``, ``rmnc`` relative RMS by ``5.6e-7``, ``zmns``
-relative RMS by ``3.5e-7``, ``bmnc`` relative RMS by ``5.1e-7``, and LCFS RMS
-displacement between codes by ``1.7e-6``. The beta-induced LCFS RMS shift is
-therefore about five orders of magnitude larger than the vmec_jax-vs-VMEC2000
-geometric mismatch.
+For this DIII-D ``mgrid`` row only, executable-backed VMEC2000 validation was
+run on the same 3.33% WOUT row. The VMEC2000 and vmec_jax high-beta WOUTs
+agree far below the finite-beta response: aspect differs by ``6.4e-7``,
+``rmnc`` relative RMS by ``5.6e-7``, ``zmns`` relative RMS by ``3.5e-7``,
+``bmnc`` relative RMS by ``5.1e-7``, and LCFS RMS displacement between codes by
+``1.7e-6``. The beta-induced LCFS RMS shift is therefore about five orders of
+magnitude larger than the vmec_jax-vs-VMEC2000 geometric mismatch.
 
 Generate the DIII-D WOUTs from the bundled input and fetched ``mgrid`` asset:
 
@@ -434,10 +436,11 @@ High-Resolution LP-QA Stellarator Gate
 --------------------------------------
 
 The corrected unit-scale LP-QA input and ESSOS coil pair has two validation
-layers. The strict direct-coil ``ns=101`` WOUT panel is the phase-1 promoted
-stellarator claim. The lower-resolution ``ns=16,31`` rows below are provenance
-and pressure-continuation diagnostics that explain how the basin was reached;
-they are not the publication-grade promotion rows. A local ``ns=16,31`` run
+layers. The strict direct-coil ``ns=101`` WOUT panel is phase-1 promoted
+forward-validation stellarator evidence. The lower-resolution ``ns=16,31``
+rows below are provenance and pressure-continuation diagnostics that explain
+how the basin was reached; they are not the publication-grade promotion rows.
+A local ``ns=16,31`` run
 with ``PHIEDGE=-0.025`` and ``PRES_SCALE = 1000 * nominal_beta_percent``
 produced:
 
