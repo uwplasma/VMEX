@@ -5521,6 +5521,11 @@ def solve_fixed_boundary_residual_iter(
         host_fsq1_norms_on_accelerator = jax.default_backend() != "cpu"
     else:
         host_fsq1_norms_on_accelerator = host_fsq1_norms_env not in ("", "0", "false", "no", "off")
+    host_residual_metrics_env = os.getenv("VMEC_JAX_HOST_RESIDUAL_METRICS", "auto").strip().lower()
+    if host_residual_metrics_env == "auto":
+        host_residual_metrics_on_accelerator = jax.default_backend() != "cpu"
+    else:
+        host_residual_metrics_on_accelerator = host_residual_metrics_env not in ("", "0", "false", "no", "off")
     adjoint_trace = bool(adjoint_trace)
     adjoint_trace_mode = _normalize_adjoint_trace_mode(adjoint_trace_mode)
     (
@@ -11466,6 +11471,12 @@ def solve_fixed_boundary_residual_iter(
                 if (bool(vmec2000_control) and bool(vmec2000_cache_valid) and (not bool(need_bcovar_update)))
                 else norms_current
             )
+            use_host_residual_metrics = (
+                bool(host_residual_metrics_on_accelerator)
+                and (not bool(host_update_assembly))
+                and (jax.default_backend() != "cpu")
+                and (not _tree_has_tracer((gcr2, gcz2, gcl2, norms_used)))
+            )
             if host_update_assembly:
                 # NumPy path: gcr2/gcz2/gcl2 already synced by block_until_ready above.
                 # float() on synced JAX scalars is fast (no blocking). Avoids 5 JAX dispatches.
@@ -11475,6 +11486,25 @@ def solve_fixed_boundary_residual_iter(
                 _fnorm_f = float(norms_used.fnorm)
                 _fnormL_f = float(norms_used.fnormL)
                 _r1_f = float(norms_used.r1)
+                fsqr = _r1_f * _fnorm_f * _gcr2_f
+                fsqz = _r1_f * _fnorm_f * _gcz2_f
+                fsql = _fnormL_f * _gcl2_f
+            elif use_host_residual_metrics:
+                (
+                    _gcr2_f,
+                    _gcz2_f,
+                    _gcl2_f,
+                    _fnorm_f,
+                    _fnormL_f,
+                    _r1_f,
+                ) = _device_get_floats(
+                    gcr2,
+                    gcz2,
+                    gcl2,
+                    norms_used.fnorm,
+                    norms_used.fnormL,
+                    norms_used.r1,
+                )
                 fsqr = _r1_f * _fnorm_f * _gcr2_f
                 fsqz = _r1_f * _fnorm_f * _gcz2_f
                 fsql = _fnormL_f * _gcl2_f
@@ -11555,7 +11585,7 @@ def solve_fixed_boundary_residual_iter(
                     cache_prec_rz_mats = mats
                     cache_prec_rz_jmax = None if _tree_has_tracer(k) else int(jmax)
                 vmec2000_cache_valid = True
-            if host_update_assembly:
+            if host_update_assembly or use_host_residual_metrics:
                 # fsqr/fsqz/fsql are already Python floats from the NumPy path above.
                 fsqr_f, fsqz_f, fsql_f = fsqr, fsqz, fsql
             else:
