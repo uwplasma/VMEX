@@ -5516,6 +5516,11 @@ def solve_fixed_boundary_residual_iter(
         allow_accelerator=os.getenv("VMEC_JAX_HOST_UPDATE_ON_ACCELERATOR", "").strip().lower()
         in ("1", "true", "yes", "on"),
     ).enabled
+    host_fsq1_norms_env = os.getenv("VMEC_JAX_HOST_FSQ1_NORMS", "auto").strip().lower()
+    if host_fsq1_norms_env == "auto":
+        host_fsq1_norms_on_accelerator = jax.default_backend() != "cpu"
+    else:
+        host_fsq1_norms_on_accelerator = host_fsq1_norms_env not in ("", "0", "false", "no", "off")
     adjoint_trace = bool(adjoint_trace)
     adjoint_trace_mode = _normalize_adjoint_trace_mode(adjoint_trace_mode)
     (
@@ -7219,6 +7224,29 @@ def solve_fixed_boundary_residual_iter(
             lasym=_rz_norm_lasym,
         )
     _record_setup_timing("setup_index_constants", _t_setup_index_constants)
+
+    def _tomnsps_to_numpy_host(frzl: Any) -> TomnspsRZL:
+        """Materialize a force block on the host for tiny scalar reductions."""
+
+        def _host_array(value):
+            if value is None:
+                return None
+            return np.asarray(jax.device_get(value))
+
+        return TomnspsRZL(
+            frcc=_host_array(frzl.frcc),
+            frss=_host_array(frzl.frss),
+            fzsc=_host_array(frzl.fzsc),
+            fzcs=_host_array(frzl.fzcs),
+            flsc=_host_array(frzl.flsc),
+            flcs=_host_array(frzl.flcs),
+            frsc=_host_array(getattr(frzl, "frsc", None)),
+            frcs=_host_array(getattr(frzl, "frcs", None)),
+            fzcc=_host_array(getattr(frzl, "fzcc", None)),
+            fzss=_host_array(getattr(frzl, "fzss", None)),
+            flcc=_host_array(getattr(frzl, "flcc", None)),
+            flss=_host_array(getattr(frzl, "flss", None)),
+        )
 
     m0_mask = np.asarray(
         getattr(static, "m_is_m0", None)
@@ -12386,13 +12414,22 @@ def solve_fixed_boundary_residual_iter(
 
             # Damping for the fixed-point update.
             accepted_control_ptau_host: tuple[float, float] | None = None
+            use_host_fsq1_norms = (
+                bool(host_fsq1_norms_on_accelerator)
+                and (not bool(host_update_assembly))
+                and (jax.default_backend() != "cpu")
+                and (not _tree_has_tracer(state))
+                and (not _tree_has_tracer(frzl_pre))
+            )
+            frzl_pre_host = None
             t_fsq1_precond_norm_start = time.perf_counter() if timing_enabled else None
             if preconditioner_fsq1_ready:
                 pass
-            elif host_update_assembly:
+            elif host_update_assembly or use_host_fsq1_norms:
                 # NumPy path: avoids 6+ JAX dispatches for sum-of-squares.
+                frzl_pre_host = frzl_pre if host_update_assembly else _tomnsps_to_numpy_host(frzl_pre)
                 gcr2_p, gcz2_p, gcl2_p = vmec_gcx2_from_tomnsps_np(
-                    frzl=frzl_pre,
+                    frzl=frzl_pre_host,
                     include_edge=True,
                 )
             else:
@@ -12406,7 +12443,7 @@ def solve_fixed_boundary_residual_iter(
                     apply_scalxc=False,
                     s=s,
                 )
-            if host_update_assembly:
+            if host_update_assembly or use_host_fsq1_norms:
                 # Fast NumPy path: use cached Python-float fnorm1 directly — no JAX dispatch.
                 if (
                     bool(vmec2000_control)
@@ -12427,7 +12464,11 @@ def solve_fixed_boundary_residual_iter(
                 fsqz1 = float(gcz2_p) * _f_norm1_np if _finite else 0.0
                 if bool(vmec2000_control):
                     # VMEC2000 `residue.f90`: fsql1 = hs * SUM( (faclam*gcl)**2 ) over all js.
-                    _gcl2_full = _lambda_preconditioned_full_norm(frzl_pre, use_jax=False)
+                    frzl_for_gcl2_full = frzl_pre if frzl_pre_host is None else frzl_pre_host
+                    _gcl2_full = _lambda_preconditioned_full_norm(
+                        frzl_for_gcl2_full,
+                        use_jax=False,
+                    )
                     fsql1 = _gcl2_full * delta_s
                 else:
                     fsql1 = float(gcl2_p) * delta_s
@@ -12486,7 +12527,7 @@ def solve_fixed_boundary_residual_iter(
                     static=static,
                     iter_idx=int(iter2),
                 )
-            if not host_update_assembly:
+            if not (host_update_assembly or use_host_fsq1_norms):
                 t_fsq1_scalar_build_start = time.perf_counter() if timing_enabled else None
                 # Extremely small late-iteration channels can occasionally surface
                 # as NaN/Inf through mixed 0*Inf paths in XLA. VMEC treats these
