@@ -490,9 +490,12 @@ update:
   tape replay dropping from about `22.2 s` to about `5.3 s`. Production
   fixed-boundary auto policy now uses the VMEC-control non-scan loop on CPU and
   GPU because May 2026 `office` profiles showed converged GPU non-scan solves
-  faster than scan across QH, QA, QI, and LASYM examples. A fused
-  residual-projected replay experiment was profiled and rejected because it was
-  neutral on non-LASYM QH and slower on chunked LASYM CPU callbacks. The
+  faster than scan across QH, QA, QI, and LASYM examples. The older fused
+  residual-projected replay experiment was rejected because it was neutral on
+  non-LASYM QH and slower on chunked LASYM CPU callbacks, but the current
+  JVP-only/basepoint-carry projected replay path is now the GPU default for
+  stellarator-symmetric callbacks with at least 24 columns after a bounded QH
+  mode-2 profile showed a small win. The
   matrix-free linear-operator path now reuses the transpose of the setup
   `jax.linearize` object instead of tracing a second initial-state VJP, and the
   profile comparator exposes the new `linear_operator_initial_transpose`
@@ -513,9 +516,12 @@ update:
   projection dispatch/ready split used three perturbed QH mode-2 GPU exact
   Jacobian callbacks (`13.04 s`, `3.98 s`, `3.27 s`) and showed
   `jacobian_residual_tangents=2.263 s` split into `2.204 s` dispatch and
-  `0.059 s` device-ready time. The next performance blockers are accepted-tape
-  build, replay dispatch/compile-like overhead, dense residual-projection
-  callback construction, scan-trial timing/cache-key evidence, and larger-mode
+  `0.059 s` device-ready time. Without explicit sync timing, standard replay
+  took `20.76 s` over three callbacks and forced projected replay took
+  `20.23 s`, so the production threshold was lowered from 48 to 24 non-LASYM
+  columns. The next performance blockers are accepted-tape build, replay
+  dispatch/compile-like overhead, dense residual-projection callback
+  construction, scan-trial timing/cache-key evidence, and larger-mode
   accepted-point replay cost.
 - VMEC parity and physics gates: 99%. Required-tier bundled gates now cover
   `chipf`, stored `B`, input flux/profile propagation, finite-beta

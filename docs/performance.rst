@@ -518,7 +518,10 @@ This callback has the same Jacobian shape and norm on CPU/GPU
 than a different solve.  The latest GPU run used the effective JVP-only exact
 tape path with basepoint carries.  The next optimizer-performance work should
 target accepted-point tape build/replay and tangent construction; forcing scan
-or projected replay for this mode-2 dense callback is not the production fix.
+for this mode-2 dense callback is not the production fix.  Projected replay is
+now enabled for non-LASYM GPU callbacks with at least 24 columns because later
+bounded profiles show a small mode-2 win, but the remaining bottleneck is still
+accepted-point tape/replay dispatch rather than residual-projection kernel math.
 Older same-point cache probes still show that repeated identical callbacks can
 return from cache in milliseconds, so the production cost is at new accepted
 optimizer points rather than redundant repeated evaluations.
@@ -638,7 +641,7 @@ automatic policy is now:
 
 - GPU callbacks with at least 48 columns use 24-column replay chunks.
 - Projected replay is only auto-enabled for stellarator-symmetric callbacks
-  with at least 48 columns.
+  with at least 24 columns.
 - LASYM uses the conservative chunked standard replay path unless explicitly
   overridden.
 
@@ -871,15 +874,17 @@ measured ``7.98 s`` on CPU and ``8.84 s`` on GPU.  Force assembly was comparable
 ``0.27 s``).  The current scan-lifted profile above has moved that short-case
 target to preflight and scan-runner setup rather than force assembly alone.
 
-A larger QH mode-3 exact-Jacobian callback on ``office`` then showed that the
-projected-replay residual path was the wrong default for GPU.  With projected
-replay enabled the one-callback profile took ``69.06 s`` wall time
-(``63.53 s`` profile time, ``33.40 s`` replay, ``10.00 s`` projected residual
-tangents).  The same callback with projected replay disabled took ``21.59 s``
-wall time (``16.29 s`` profile time, ``4.29 s`` replay, ``2.38 s`` residual
-tangents).  ``VMEC_JAX_OPT_PROJECTED_REPLAY_RESIDUALS=1`` is therefore an
-explicit diagnostic probe; production GPU exact callbacks use the standard full
-replay path unless a future profile matrix reverses this result.
+A larger historical QH mode-3 exact-Jacobian callback on ``office`` showed
+that the pre-JVP-only projected-replay residual path was the wrong default for
+GPU.  With projected replay enabled the one-callback profile took ``69.06 s``
+wall time (``63.53 s`` profile time, ``33.40 s`` replay, ``10.00 s``
+projected residual tangents).  The same callback with projected replay
+disabled took ``21.59 s`` wall time (``16.29 s`` profile time, ``4.29 s``
+replay, ``2.38 s`` residual tangents).  Later JVP-only/basepoint-carry
+profiles changed that conclusion for non-LASYM callbacks, so production GPU
+exact callbacks now enable projected replay for stellarator-symmetric cases
+with at least 24 columns.  ``VMEC_JAX_OPT_PROJECTED_REPLAY_RESIDUALS`` remains
+available as an explicit diagnostic override.
 
 For raw ``input.nfp2_QI`` follow-up profiling, keep the production-like scan
 measurement separate from phase attribution.  The scan path is best inspected
@@ -2887,12 +2892,14 @@ projection:
      - objective ``0.717 -> 0.680``; repeated ``Jv``/``J.Tv`` products make
        this slower than scalar adjoints for this microcase
 
-That test rules out both simple policies: “turn projected replay on for 24
-DOFs” is not faster for this residual layout, and SciPy's generic matrix-free
-trust-region path spends too much time in repeated linear-operator products at
-low LSMR budgets.  In this QH mode-2 GPU microcase, the scalar-adjoint path is
-the best measured lane because it avoids dense Jacobian materialization and now
-accepts monotone steps after aggressive backtracking.  Keeping the best exact
+That historical test ruled out the earlier projected-replay implementation for
+24 DOFs.  After the JVP-only/basepoint-carry tape changes, the updated bounded
+QH mode-2 comparison slightly favors projected replay for non-LASYM GPU
+callbacks, while SciPy's generic matrix-free trust-region path still spends too
+much time in repeated linear-operator products at low LSMR budgets.  In this QH
+mode-2 GPU microcase, the scalar-adjoint path remains useful because it avoids
+dense Jacobian materialization and now accepts monotone steps after aggressive
+backtracking.  Keeping the best exact
 scalar state also removes one final accepted-point solve for runs whose last
 probe is rejected.
 Backtracked accepts now re-expand the next trust radius to the previous rejected
