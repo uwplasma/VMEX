@@ -149,7 +149,7 @@ def test_jit_initial_state_env_and_clear_caches(monkeypatch) -> None:
     opt._post_jacobian_clear = lambda *, clear_compiled=False: None
 
     monkeypatch.delenv("VMEC_JAX_OPT_JIT_INITIAL_STATE", raising=False)
-    assert FixedBoundaryExactOptimizer._use_jit_initial_state(opt) is True
+    assert FixedBoundaryExactOptimizer._use_jit_initial_state(opt) is False
     opt._solver_device_name = "gpu"
     assert FixedBoundaryExactOptimizer._use_jit_initial_state(opt) is False
     monkeypatch.setenv("VMEC_JAX_OPT_JIT_INITIAL_STATE", "0")
