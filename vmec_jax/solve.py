@@ -10335,7 +10335,11 @@ def solve_fixed_boundary_residual_iter(
         "iteration_residual_metrics": 0.0,
         "iteration_control": 0.0,
         "iteration_control_fsq1": 0.0,
+        "iteration_control_fsq1_payload_get": 0.0,
+        "iteration_control_fsq1_direct_get": 0.0,
         "iteration_control_badjac": 0.0,
+        "iteration_control_badjac_ptau_get": 0.0,
+        "iteration_control_badjac_state_jacobian": 0.0,
         "iteration_control_vmec_time": 0.0,
         "iteration_control_restart": 0.0,
         "iteration_control_evolve": 0.0,
@@ -12509,6 +12513,7 @@ def solve_fixed_boundary_residual_iter(
                 )
                 control_payload_used = False
                 if accepted_control_ptau_payload is not None:
+                    t_fsq1_payload_get_start = time.perf_counter() if timing_enabled else None
                     try:
                         fsq1_payload, ptau_min_payload, ptau_max_payload = accepted_control_ptau_payload
                         fsq1, min_tau_ptau_payload, max_tau_ptau_payload = _device_get_floats(
@@ -12520,10 +12525,16 @@ def solve_fixed_boundary_residual_iter(
                         control_payload_used = True
                     except Exception:
                         control_payload_used = False
+                    finally:
+                        if timing_enabled and t_fsq1_payload_get_start is not None:
+                            timing_stats["iteration_control_fsq1_payload_get"] += time.perf_counter() - float(
+                                t_fsq1_payload_get_start
+                            )
                 if (not control_payload_used) and use_control_payload:
                     ptau_arrays = _scan_math_kernel_arrays_from_k(k)
                     payload_fn = _accepted_control_payload_jit()
                     if ptau_arrays is not None and payload_fn is not None:
+                        t_fsq1_payload_get_start = time.perf_counter() if timing_enabled else None
                         try:
                             fsq1_payload, ptau_min_payload, ptau_max_payload = payload_fn(
                                 fsq1_j,
@@ -12540,8 +12551,18 @@ def solve_fixed_boundary_residual_iter(
                             control_payload_used = True
                         except Exception:
                             control_payload_used = False
+                        finally:
+                            if timing_enabled and t_fsq1_payload_get_start is not None:
+                                timing_stats["iteration_control_fsq1_payload_get"] += time.perf_counter() - float(
+                                    t_fsq1_payload_get_start
+                                )
                 if not control_payload_used:
+                    t_fsq1_direct_get_start = time.perf_counter() if timing_enabled else None
                     fsq1 = float(jax.device_get(fsq1_j))
+                    if timing_enabled and t_fsq1_direct_get_start is not None:
+                        timing_stats["iteration_control_fsq1_direct_get"] += time.perf_counter() - float(
+                            t_fsq1_direct_get_start
+                        )
             if timing_enabled and t_iteration_control_fsq1_start is not None:
                 timing_stats["iteration_control_fsq1"] += time.perf_counter() - float(t_iteration_control_fsq1_start)
             precond_diag_host: tuple[float, float, float] | None = None
@@ -12657,7 +12678,12 @@ def solve_fixed_boundary_residual_iter(
                 else:
                     ptau_min, ptau_max = _ptau_minmax_from_k_host(k)
                     if ptau_min is not None and ptau_max is not None:
+                        t_badjac_ptau_get_start = time.perf_counter() if timing_enabled else None
                         min_tau_ptau, max_tau_ptau = _device_get_floats(ptau_min, ptau_max)
+                        if timing_enabled and t_badjac_ptau_get_start is not None:
+                            timing_stats["iteration_control_badjac_ptau_get"] += time.perf_counter() - float(
+                                t_badjac_ptau_get_start
+                            )
                 if min_tau_ptau is not None and max_tau_ptau is not None:
                     if bool(vmec2000_control):
                         tau_tol = _bad_jacobian_tau_tolerance(
@@ -12684,6 +12710,7 @@ def solve_fixed_boundary_residual_iter(
                     or bool(bad_jacobian_ptau)
                 )
                 if need_state_jac:
+                    t_badjac_state_jacobian_start = time.perf_counter() if timing_enabled else None
                     if host_update_assembly and (not _tree_has_tracer(state)) and (not _tree_has_tracer(s)):
                         from .vmec_numpy_forces import _numpy_module_patch as _hot_numpy_patch
 
@@ -12726,6 +12753,10 @@ def solve_fixed_boundary_residual_iter(
                         else:
                             min_tau_state = float("nan")
                             max_tau_state = float("nan")
+                    if timing_enabled and t_badjac_state_jacobian_start is not None:
+                        timing_stats["iteration_control_badjac_state_jacobian"] += time.perf_counter() - float(
+                            t_badjac_state_jacobian_start
+                        )
                     if np.isfinite(min_tau_state) and np.isfinite(max_tau_state):
                         if bool(vmec2000_control):
                             tau_tol = _bad_jacobian_tau_tolerance(

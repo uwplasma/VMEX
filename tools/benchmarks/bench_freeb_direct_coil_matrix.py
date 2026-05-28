@@ -251,7 +251,13 @@ _SOLVER_TIMING_KEYS = (
     "preconditioner_s",
     "iteration_control_s",
     "iteration_control_fsq1_s",
+    "iteration_control_fsq1_payload_get_s",
+    "iteration_control_fsq1_direct_get_s",
+    "iteration_control_fsq1_unattributed_s",
     "iteration_control_badjac_s",
+    "iteration_control_badjac_ptau_get_s",
+    "iteration_control_badjac_state_jacobian_s",
+    "iteration_control_badjac_unattributed_s",
     "iteration_control_vmec_time_s",
     "iteration_control_restart_s",
     "iteration_control_evolve_s",
@@ -371,8 +377,26 @@ def _case_metrics(case: dict[str, Any]) -> dict[str, Any]:
         ),
         "warm_iteration_control_s": _finite_float(_nested_value(solver, ("warm", "iteration_control_s"))),
         "warm_iteration_control_fsq1_s": _finite_float(_nested_value(solver, ("warm", "iteration_control_fsq1_s"))),
+        "warm_iteration_control_fsq1_payload_get_s": _finite_float(
+            _nested_value(solver, ("warm", "iteration_control_fsq1_payload_get_s"))
+        ),
+        "warm_iteration_control_fsq1_direct_get_s": _finite_float(
+            _nested_value(solver, ("warm", "iteration_control_fsq1_direct_get_s"))
+        ),
+        "warm_iteration_control_fsq1_unattributed_s": _finite_float(
+            _nested_value(solver, ("warm", "iteration_control_fsq1_unattributed_s"))
+        ),
         "warm_iteration_control_badjac_s": _finite_float(
             _nested_value(solver, ("warm", "iteration_control_badjac_s"))
+        ),
+        "warm_iteration_control_badjac_ptau_get_s": _finite_float(
+            _nested_value(solver, ("warm", "iteration_control_badjac_ptau_get_s"))
+        ),
+        "warm_iteration_control_badjac_state_jacobian_s": _finite_float(
+            _nested_value(solver, ("warm", "iteration_control_badjac_state_jacobian_s"))
+        ),
+        "warm_iteration_control_badjac_unattributed_s": _finite_float(
+            _nested_value(solver, ("warm", "iteration_control_badjac_unattributed_s"))
         ),
         "warm_iteration_control_vmec_time_s": _finite_float(
             _nested_value(solver, ("warm", "iteration_control_vmec_time_s"))
@@ -509,9 +533,33 @@ def _cpu_gpu_comparison(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         gpu_metrics.get("warm_iteration_control_fsq1_s"),
                         cpu_metrics.get("warm_iteration_control_fsq1_s"),
                     ),
+                    "warm_iteration_control_fsq1_payload_get": _ratio(
+                        gpu_metrics.get("warm_iteration_control_fsq1_payload_get_s"),
+                        cpu_metrics.get("warm_iteration_control_fsq1_payload_get_s"),
+                    ),
+                    "warm_iteration_control_fsq1_direct_get": _ratio(
+                        gpu_metrics.get("warm_iteration_control_fsq1_direct_get_s"),
+                        cpu_metrics.get("warm_iteration_control_fsq1_direct_get_s"),
+                    ),
+                    "warm_iteration_control_fsq1_unattributed": _ratio(
+                        gpu_metrics.get("warm_iteration_control_fsq1_unattributed_s"),
+                        cpu_metrics.get("warm_iteration_control_fsq1_unattributed_s"),
+                    ),
                     "warm_iteration_control_badjac": _ratio(
                         gpu_metrics.get("warm_iteration_control_badjac_s"),
                         cpu_metrics.get("warm_iteration_control_badjac_s"),
+                    ),
+                    "warm_iteration_control_badjac_ptau_get": _ratio(
+                        gpu_metrics.get("warm_iteration_control_badjac_ptau_get_s"),
+                        cpu_metrics.get("warm_iteration_control_badjac_ptau_get_s"),
+                    ),
+                    "warm_iteration_control_badjac_state_jacobian": _ratio(
+                        gpu_metrics.get("warm_iteration_control_badjac_state_jacobian_s"),
+                        cpu_metrics.get("warm_iteration_control_badjac_state_jacobian_s"),
+                    ),
+                    "warm_iteration_control_badjac_unattributed": _ratio(
+                        gpu_metrics.get("warm_iteration_control_badjac_unattributed_s"),
+                        cpu_metrics.get("warm_iteration_control_badjac_unattributed_s"),
                     ),
                     "warm_iteration_control_vmec_time": _ratio(
                         gpu_metrics.get("warm_iteration_control_vmec_time_s"),
