@@ -3140,6 +3140,22 @@ remaining named GPU buckets are residual scalar materialization
 (``18.6 ms``), accepted-control ``fsq1`` (``12.8 ms``), and preconditioner
 dispatch (``10.8 ms``).
 
+The next promoted accelerator-forward policy stages the preconditioned
+``fsq1`` norm reductions on the host for non-traced accelerator solves:
+``VMEC_JAX_HOST_FSQ1_NORMS=auto`` (``0`` disables, ``1`` forces).  The policy
+is disabled for traced/AD solves, so exact-gradient paths keep the JAX-native
+reduction.  A matched ``office`` rerun with
+``VMEC_JAX_HOST_RESIDUAL_METRICS=auto`` also enabled reported the tiny
+``--jit-forces`` row at ``0.0516 s`` warm on CPU and ``0.1637 s`` warm on CUDA
+(``3.17x`` GPU/CPU).  The accepted-control ``fsq1`` bucket dropped from about
+``12.9 ms`` to ``1.85 ms`` on CUDA, with the ``fsq1`` preconditioned-norm
+sub-bucket dropping to ``1.81 ms``.  The remaining named CUDA buckets are now
+residual scalar synchronization (``20.0 ms``), setup/profile work
+(``22.6 ms``), and preconditioner dispatch/application (``10.6 ms`` /
+``9.4 ms``).  This moves the next real performance target away from the
+accepted-control ``fsq1`` path and toward residual metric staging plus
+preconditioner dispatch fusion.
+
 Two opt-in policies were checked and are deliberately not promoted.  Allowing
 the host-update path on accelerators with ``VMEC_JAX_HOST_UPDATE_ON_ACCELERATOR=1``
 made the tiny CUDA row slower in this matrix, and setting
