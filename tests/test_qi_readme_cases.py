@@ -268,6 +268,48 @@ def test_readme_renderer_detects_flat_objective_history() -> None:
     assert not mod._history_is_effectively_flat(moving)
 
 
+def test_readme_renderer_uses_reference_transition_for_flat_history(monkeypatch, tmp_path: Path) -> None:
+    mod = _load_module()
+    case = mod.QICase(
+        label="NFP=4 flat",
+        input_file=tmp_path / "input",
+        output_dir=tmp_path / "case",
+        initial_wout=tmp_path / "case" / "wout_initial.nc",
+        note="flat synthetic case",
+        preconditioner_summary=tmp_path / "case" / "boundary_reference_preconditioner" / "summary.json",
+    )
+    flat = [
+        {
+            "objective": np.asarray([1.0, 1.0 - 1.0e-8, 1.0 - 2.0e-8]),
+            "wall_time_s": np.asarray([0.0, 1.0, 2.0]),
+            "label": "flat",
+            "path": Path("flat"),
+        }
+    ]
+    called = {"transition": False}
+
+    def fake_transition(ax, transition_case):
+        called["transition"] = True
+        assert transition_case is case
+        ax.set_title("transition")
+
+    monkeypatch.setattr(mod, "_history_segments", lambda _case: flat)
+    monkeypatch.setattr(mod, "_plot_reference_transition", fake_transition)
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from matplotlib import pyplot as plt
+
+    fig, ax = plt.subplots()
+    try:
+        mod._plot_history(ax, case)
+    finally:
+        plt.close(fig)
+
+    assert called["transition"]
+
+
 def test_qi_case_catalog_defines_nfp4_minimal_seed_candidate() -> None:
     cases_mod = _load_cases_module()
 
