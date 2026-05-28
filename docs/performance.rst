@@ -1168,6 +1168,17 @@ the preconditioner bucket is the bottleneck; it further reports
 ``exact_tape_solver_preconditioner_mode_scale``.  The detailed mode adds extra
 synchronization and should be used for targeted diagnostics, not production
 sweeps.
+
+The replay diagnostics also include
+``replay_jvp_columns_*`` counters for the accepted-point tangent replay path:
+which path ran (identity, dynamic-basepoint scan, segmented dynamic-basepoint
+scan, dynamic linearization, dynamic-scan linearization, generic per-trace, or
+generic scan), how many tangent-column leaf calls were replayed, how many input
+columns they covered, and whether column chunking split the callback.  This
+keeps GPU profiling focused on accepted-point replay/tangent construction
+instead of conflating scan-cache misses, replay chunks, and residual projection
+in one aggregate callback timer.
+
 Add ``--sync-replay-timing`` when the question is whether a cold callback is
 spending time in replay dispatch/compile-like overhead or in device-ready
 execution.  This exposes ``*_tape_replay_dispatch``,

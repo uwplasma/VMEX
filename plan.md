@@ -304,6 +304,11 @@ Acceptance:
       in `jacobian_tape_replay`, `jacobian_initial_tangents`, and
       `jacobian_residual_tangents`; an `office` cold fixed-boundary smoke still
       favored CPU (`13.80 s` versus `68.86 s` GPU). The next concrete
+      profiling seam now has timing-only counters for
+      `replay_jvp_columns_*` path selection, chunk count, leaf replay calls,
+      and covered tangent columns, so GPU exact callbacks can separate
+      dynamic-basepoint replay, segmented replay, generic scan fallback, and
+      chunking overhead before changing math.
       performance target is tangent fusion/reuse, not fixed-boundary force
       kernels.
 - [x] Reuse cached affine initial-state tangents in the scalar-gradient path.
