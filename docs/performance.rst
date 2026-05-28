@@ -195,13 +195,13 @@ read as a mixed result rather than a broad VMEC2000 speedup claim:
   accepted steps and Jacobian builds.  This roughly halves the per-iteration
   wall time in optimisation loops.
 
-**8. Discrete-adjoint Jacobian (exact, not finite differences)**
+**8. Discrete-adjoint Jacobian (solver-consistent, not finite differences)**
   For optimisation, the Jacobian is computed via discrete-adjoint replay
   (``build_residual_checkpoint_tape_direct`` + ``checkpoint_tape_state_jvp_columns``).
-  This gives a machine-precision Jacobian without finite differences.  The
-  cost scales with the number of boundary degrees of freedom because all
-  parameter tangent columns must be propagated through the converged VMEC
-  iteration tape.
+  This gives a Jacobian consistent with the converged VMEC iteration tape
+  without finite differences.  The cost scales with the number of boundary
+  degrees of freedom because all parameter tangent columns must be propagated
+  through the tape.
 
 **9. Cached quasisymmetry angular grids**
   QS optimisation callbacks reuse the same angular quadrature grid and
@@ -2462,7 +2462,7 @@ Results are in ``outputs/bench_accel_20260413/summary.json``.
 
 **11 of 16 cases** are faster in warm accelerated mode than VMEC2000.
 The 5 slower cases (QA/QH reactor-scale and cth_like) are the main
-Phase 2 targets.
+remaining fixed-boundary performance targets.
 
 Note: cold (first-run) times include XLA compilation and are
 5–30x the warm times. Cold compilation is a one-time cost per

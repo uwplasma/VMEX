@@ -299,6 +299,46 @@ def _compact_solver_timing_snapshot(case: dict[str, Any]) -> dict[str, Any] | No
     return out or None
 
 
+_PHASE_ENTRY_KEYS = ("name", "key", "seconds", "per_iter_s", "fraction_of_solve")
+
+
+def _compact_phase_entries(phases: Any) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    if not isinstance(phases, list):
+        return rows
+    for phase in phases:
+        if not isinstance(phase, dict):
+            continue
+        compact = {key: phase.get(key) for key in _PHASE_ENTRY_KEYS if key in phase}
+        if compact.get("name") is not None and compact.get("seconds") is not None:
+            rows.append(compact)
+    return rows
+
+
+def _compact_phase_timing_snapshot(case: dict[str, Any]) -> dict[str, Any] | None:
+    """Promote the child solve's normalized warm phase timing into the matrix."""
+
+    comparison = case.get("phase_timing_comparison")
+    warm = comparison.get("warm") if isinstance(comparison, dict) else None
+    if not isinstance(warm, dict) or not warm.get("timing_available"):
+        return None
+
+    all_phases = _compact_phase_entries(warm.get("all_named_phases"))
+    top_phases = _compact_phase_entries(warm.get("top_named_phases")) or all_phases[:5]
+    out = {
+        "warm": {
+            "solve_total_s": warm.get("solve_total_s"),
+            "iterations": warm.get("iterations"),
+            "named_phase_total_s": warm.get("named_phase_total_s"),
+            "named_phase_fraction_of_solve": warm.get("named_phase_fraction_of_solve"),
+            "top_named_phases": top_phases[:5],
+        }
+    }
+    if all_phases:
+        out["warm"]["all_named_phases"] = all_phases
+    return out
+
+
 def _timing_snapshot(payload: dict[str, Any] | None, *, include_nestor: bool = False) -> list[dict[str, Any]]:
     if not payload:
         return []
@@ -322,6 +362,9 @@ def _timing_snapshot(payload: dict[str, Any] | None, *, include_nestor: bool = F
             solver = _compact_solver_timing_snapshot(case)
             if solver:
                 row["solver"] = solver
+            phase_timing = _compact_phase_timing_snapshot(case)
+            if phase_timing:
+                row["phase_timing"] = phase_timing
         rows.append(row)
     return rows
 
@@ -709,6 +752,67 @@ def _gpu_bottleneck_summary(comparisons: list[dict[str, Any]], *, top_n: int = 8
     return rows[: max(int(top_n), 0)]
 
 
+def _warm_phase_bottleneck_summary(rows: list[dict[str, Any]], *, top_n: int = 8) -> list[dict[str, Any]]:
+    """Rank absolute warm phase costs for CPU-only or mixed matrix runs."""
+
+    summary: list[dict[str, Any]] = []
+    for row in rows:
+        if row.get("status") != "completed":
+            continue
+        backend = row.get("backend")
+        label = row.get("label")
+        timings = row.get("timings", [])
+        if not isinstance(timings, list):
+            continue
+        for case in timings:
+            if not isinstance(case, dict) or case.get("status") != "completed":
+                continue
+            phase_timing = case.get("phase_timing")
+            warm = phase_timing.get("warm") if isinstance(phase_timing, dict) else None
+            if not isinstance(warm, dict):
+                continue
+            solve_total_s = _finite_float(warm.get("solve_total_s"))
+            iterations = warm.get("iterations")
+            phases = warm.get("all_named_phases") or warm.get("top_named_phases") or []
+            if not isinstance(phases, list):
+                continue
+            for phase in phases:
+                if not isinstance(phase, dict):
+                    continue
+                seconds = _finite_float(phase.get("seconds"))
+                if seconds is None or seconds <= 0.0:
+                    continue
+                fraction = _finite_float(phase.get("fraction_of_solve"))
+                if fraction is None and solve_total_s is not None and solve_total_s > 0.0:
+                    fraction = float(seconds / solve_total_s)
+                summary.append(
+                    {
+                        "backend": backend,
+                        "label": label,
+                        "case": case.get("label"),
+                        "phase": phase.get("name"),
+                        "key": phase.get("key"),
+                        "seconds": seconds,
+                        "per_iter_s": _finite_float(phase.get("per_iter_s")),
+                        "fraction_of_solve": fraction,
+                        "solve_total_s": solve_total_s,
+                        "iterations": iterations,
+                    }
+                )
+    summary.sort(key=lambda item: (item["seconds"], item.get("fraction_of_solve") or 0.0), reverse=True)
+    return summary[: max(int(top_n), 0)]
+
+
+def _format_optional_seconds(value: Any) -> str:
+    seconds = _finite_float(value)
+    return "n/a" if seconds is None else f"{seconds:.4g}s"
+
+
+def _format_optional_pct(value: Any) -> str:
+    fraction = _finite_float(value)
+    return "n/a" if fraction is None else f"{100.0 * fraction:.1f}%"
+
+
 def _with_badjac_probe0_rows(specs: list[ChildSpec]) -> list[ChildSpec]:
     rows: list[ChildSpec] = []
     for label, out, args, env_overrides in specs:
@@ -957,6 +1061,7 @@ def main(argv: list[str] | None = None) -> int:
     status = "completed" if all(row["status"] in {"completed", "skipped"} for row in rows) else "failed"
     comparisons = _cpu_gpu_comparison(rows)
     gpu_bottlenecks = _gpu_bottleneck_summary(comparisons)
+    warm_phase_bottlenecks = _warm_phase_bottleneck_summary(rows)
     payload = {
         "status": status,
         "script": str(Path(__file__).resolve()),
@@ -970,6 +1075,7 @@ def main(argv: list[str] | None = None) -> int:
         "rows": rows,
         "cpu_gpu_comparison": comparisons,
         "gpu_bottleneck_summary": gpu_bottlenecks,
+        "warm_phase_bottleneck_summary": warm_phase_bottlenecks,
     }
     _write_json(summary, payload)
 
@@ -994,6 +1100,14 @@ def main(argv: list[str] | None = None) -> int:
             "[bench-freeb-direct-coil-matrix] "
             f"gpu bottleneck {item['label']} {item['case']} {item['phase']}: "
             f"{item['ratio_gpu_over_cpu']:.2f}x, +{item['gpu_minus_cpu_s']:.4g}s"
+        )
+    for item in warm_phase_bottlenecks[:5]:
+        print(
+            "[bench-freeb-direct-coil-matrix] "
+            f"warm phase {item['backend']} {item['label']} {item['case']} {item['phase']}: "
+            f"{_format_optional_seconds(item.get('seconds'))}, "
+            f"{_format_optional_pct(item.get('fraction_of_solve'))} solve, "
+            f"per_iter={_format_optional_seconds(item.get('per_iter_s'))}"
         )
     return 0 if status == "completed" else 1
 

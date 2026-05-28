@@ -366,6 +366,53 @@ def test_forced_activation_reports_direct_coil_nestor_diagnostics(tmp_path: Path
     assert np.count_nonzero(trial_failed) == 0
 
 
+def test_forced_active_direct_coil_finite_pressure_solve_has_physics_diagnostics(tmp_path: Path) -> None:
+    """A tiny active direct-coil finite-pressure solve should expose finite physics scalars."""
+
+    enable_x64(True)
+    from vmec_jax.driver import run_free_boundary
+    from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state
+
+    params = _circle_coil_params(current=3.0e7)
+    input_path = _write_tiny_direct_freeb_input(tmp_path / "input.direct_finite_pressure_physics_gate")
+    run = run_free_boundary(
+        input_path,
+        max_iter=4,
+        multigrid=False,
+        verbose=False,
+        jit_forces=False,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+        free_boundary_activate_fsq=1.0e99,
+    )
+
+    diag = run.result.diagnostics
+    freeb = diag["free_boundary"]
+    pressure = _pressure_profile(run)
+    aspect = float(np.asarray(equilibrium_aspect_ratio_from_state(state=run.state, static=run.static)))
+    _chips, iotas, iotaf = equilibrium_iota_profiles_from_state(
+        state=run.state,
+        static=run.static,
+        indata=run.indata,
+        signgs=int(run.signgs),
+    )
+    iotas = np.asarray(iotas, dtype=float)
+    iotaf = np.asarray(iotaf, dtype=float)
+    residuals = np.asarray([diag["final_fsqr"], diag["final_fsqz"], diag["final_fsql"]], dtype=float)
+
+    assert freeb["vacuum_stub"] is False
+    assert freeb["final_nestor_recompute_failed"] is False
+    assert freeb["last_nestor_diagnostics"]["provider_kind"] == "direct_coils"
+    assert np.max(pressure) > 0.0
+    assert np.all(np.isfinite(residuals))
+    assert np.all(residuals >= 0.0)
+    assert np.isfinite(aspect)
+    assert aspect > 1.0
+    assert iotas.size > 0
+    assert np.all(np.isfinite(iotas))
+    assert np.all(np.isfinite(iotaf))
+
+
 def test_active_direct_coil_adjoint_trace_records_vacuum_forcing_and_pressure_scale(tmp_path: Path) -> None:
     """Accepted active free-boundary steps must carry vacuum forcing into replay traces."""
 
@@ -834,6 +881,23 @@ def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current_an
     assert np.isfinite(np.asarray(exact_geometry, dtype=float))
     assert abs(float(np.asarray(exact_geometry))) > 1.0e-16
     np.testing.assert_allclose(exact_geometry, fd_geometry, rtol=1.0e-3, atol=1.0e-12)
+
+    mixed_derivs = []
+    for current_direction, geometry_direction in ((1.0, 0.5), (1.0, -0.5)):
+        def mixed_metric(scale):
+            return accepted_bnormal_metric(
+                current_direction * scale,
+                geometry_direction * scale,
+            )
+
+        fd_mixed = (mixed_metric(eps) - mixed_metric(-eps)) / (2.0 * eps)
+        exact_mixed = jax.grad(mixed_metric)(0.0)
+        mixed_derivs.extend([exact_mixed, fd_mixed])
+        np.testing.assert_allclose(exact_mixed, fd_mixed, rtol=1.0e-3, atol=1.0e-12)
+
+    mixed_derivs = np.asarray(mixed_derivs, dtype=float)
+    assert np.all(np.isfinite(mixed_derivs))
+    assert np.max(np.abs(mixed_derivs)) > 1.0e-16
 
 
 @pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])

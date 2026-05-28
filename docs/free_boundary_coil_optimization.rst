@@ -505,8 +505,8 @@ differentiable coil provider after disabling the unsafe automatic CPU
 
 These low-resolution rows are not the promoted phase-1 claim; the strict
 ``ns=101`` WOUT panel below is. Neither row set promotes the full nonlinear
-exact-adjoint path: current phase-2 gradients still stop at accepted-boundary
-replay and dense low-grid NESTOR primitives.
+exact-adjoint path: current gradient validation still stops at
+accepted-boundary replay and dense low-grid NESTOR primitives.
 
 Lessons from the earlier failed attempts:
 
@@ -578,13 +578,13 @@ For ad hoc existing DIII-D WOUTs, the renderer also accepts explicit files:
      --stem diiid_mgrid_beta_ns101_panel \
      --outdir /tmp/freeb_publication_panels
 
-Direct-provider phase-2 diagnostics now record accepted NESTOR histories for
-``bnormal``, ``gsource``, ``bsqvac``, and source reuse. A short LP-QA vacuum
-trace showed that the unsafe ``lax`` tridiagonal path converted identical raw
-R/Z residual blocks into an oversized first active update. The public driver
-still exposes ``limit_update_rms`` and the beta-scan example exposes
-``--direct-coil-limit-update-rms`` for future nonlinear-control diagnostics,
-but the LP-QA promotion result above does not require that limiter.
+Direct-provider nonlinear-control diagnostics now record accepted NESTOR
+histories for ``bnormal``, ``gsource``, ``bsqvac``, and source reuse. A short
+LP-QA vacuum trace showed that the unsafe ``lax`` tridiagonal path converted
+identical raw R/Z residual blocks into an oversized first active update. The
+public driver still exposes ``limit_update_rms`` and the beta-scan example
+exposes ``--direct-coil-limit-update-rms`` for future nonlinear-control
+diagnostics, but the LP-QA promotion result above does not require that limiter.
 
 Generate the benchmark summary used by the README/docs figure renderer:
 
