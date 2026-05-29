@@ -84,11 +84,12 @@ The validation ladder is:
    and mode-space vacuum response, and the response updates the next state. The
    companion ``direct_coil_projected_mode_fixed_point_objective_jax`` helper
    wraps the solved state in a scalar quadratic objective with component
-   diagnostics for optimizer-facing AD-vs-FD tests. The focused tests also run
-   ``jax.value_and_grad`` on that scalar objective with respect to the full
-   ``CoilFieldParams`` pytree, verifying finite, nonzero gradients and a
-   mixed current/curve-coefficient directional derivative against central
-   finite differences. This validates the
+   diagnostics for optimizer-facing AD-vs-FD tests. The reusable
+   ``pytree_directional_derivative_check_jax`` helper then compares exact
+   pytree directional derivatives against central finite differences. The
+   focused tests run that check on the scalar objective with respect to the
+   full ``CoilFieldParams`` pytree, verifying finite, nonzero gradients and a
+   mixed current/curve-coefficient directional derivative. This validates the
    mathematical reverse pass needed by the production free-boundary fixed-point
    wrapper: solve ``F_x^T lambda = dJ/dx`` at the accepted root and apply
    ``-F_p^T lambda`` to coil/current parameters. This is still a dense
@@ -1068,6 +1069,9 @@ evidence. The default gates are CI-safe and cover:
   one coil current and one coil Fourier geometry coefficient through the JAX
   chain direct coils -> boundary projection -> VMEC/NESTOR source/matrix
   assembly -> dense mode solve.
+- reusable pytree directional-derivative checks for optimizer-facing
+  direct-coil objectives, so current and Fourier-geometry controls are checked
+  together instead of only by bespoke scalar tests.
 - a guarded, opt-in low-resolution complete-solve finite-difference smoke for
   one coil current and one Fourier geometry coefficient; this checks finite
   nonzero outer-loop response, not a production AD-vs-finite-difference

@@ -12,16 +12,14 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-29 after the latest `origin/main` integration, direct-coil
+Last updated: 2026-05-29 after merging the latest `origin/main`, direct-coil
 finite-pressure diagnostics hardening, benchmark warm-phase bottleneck
-reporting, Codecov coverage-gate strengthening, and documentation overclaim
-cleanup. PR #18 is open on `feature/freeb-essos-coil-single-stage`; GitHub
-Actions were green after the merge, while the project coverage gate was at
-94.88%. The local coverage additions estimate roughly 95.04% project coverage
-against the CI artifact before push. The optional ESSOS/direct-coil bootstrap
+reporting, Codecov coverage-gate strengthening, phase-2 directional-derivative
+validation reuse, and documentation overclaim cleanup. PR #18 is open on
+`feature/freeb-essos-coil-single-stage`; the previous push was fully green,
+including Codecov project coverage. The optional ESSOS/direct-coil bootstrap
 gates remain local/manual because they require ESSOS assets and launch real
-free-boundary solves. Do not merge PR #18 until all required checks, including
-Codecov project coverage, are green.
+free-boundary solves. Do not merge PR #18 until the post-merge checks are green.
 
 Steps taken:
 
@@ -221,6 +219,16 @@ Steps taken:
     GPU is slower than CPU by absolute overhead and ratio. This makes the next
     performance pass point directly at residual metrics, preconditioner, setup,
     or force evaluation without manually parsing nested JSON.
+84. Merged `origin/main` again, bringing in QI/minimal-seed runner updates and
+    discrete-adjoint changes without conflicts.
+85. Added `pytree_directional_derivative_check_jax`, a reusable phase-2 helper
+    that compares `jax.value_and_grad` directional derivatives for a scalar
+    objective against central finite differences over arbitrary differentiable
+    pytrees.
+86. Switched the direct-coil projected-mode fixed-point objective gate to use
+    the reusable pytree AD-vs-FD helper, keeping the mixed current/geometry
+    directional derivative as an optimizer-facing validation instead of
+    test-local glue.
 
 ### 2026-05-27 Free-boundary beta-scan bootstrap-current preconditioner
 
