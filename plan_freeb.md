@@ -258,6 +258,13 @@ Steps taken:
     Resolved the `preconditioner_1d_jax.py` conflict by keeping main's
     hash-guarded R/Z preconditioner assembly wrapper and this branch's
     non-array-pytree lambda-cache fallback.
+93. Added the next phase-2 accepted-update validation rung: a reusable JAX
+    vacuum-channel replay from NESTOR mode coefficients and a direct-coil test
+    that recomputes `freeb_bsqvac_half`, threads it through the production
+    strict VMEC update, and compares AD vs central finite differences for a
+    mixed current/geometry `CoilFieldParams` direction. This still does not
+    claim a full custom VJP for the host-controlled nonlinear free-boundary
+    loop.
 
 ### 2026-05-27 Free-boundary beta-scan bootstrap-current preconditioner
 
