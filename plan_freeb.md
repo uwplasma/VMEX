@@ -14,12 +14,55 @@ Date opened: 2026-05-24
 
 Last updated: 2026-05-30 after merging the latest `origin/main`, adding the
 two-step direct-coil accepted-replay bridge, and promoting the accepted-boundary
-geometry sampler to a JAX-visible helper. PR #18 is open on
+geometry sampler to a JAX-visible helper. The current local follow-up also
+promotes the two-step replay to an AD-vs-central-FD gate through first accepted
+update, JAX geometry resampling, second direct-coil NESTOR replay, and second
+accepted update. PR #18 is open on
 `feature/freeb-essos-coil-single-stage`; the pre-merge push was fully green,
 including Codecov project coverage, and the refreshed post-main-merge branch is
 being revalidated. The optional ESSOS/direct-coil bootstrap gates remain
 local/manual because they require ESSOS assets and launch real free-boundary
 solves. Do not merge PR #18 until the post-merge checks are green.
+
+### 2026-05-30 Two-step AD-vs-FD replay promotion
+
+Steps taken:
+
+1. Extended `test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state`.
+2. The test now differentiates a two-step accepted replay objective with
+   respect to a mixed coil-current/Fourier-geometry direction.
+3. The differentiated path is:
+   direct-coil `bsqvac` on the first accepted boundary -> strict first accepted
+   VMEC update -> JAX-visible boundary resampling from the replayed state ->
+   direct-coil `bsqvac` on the second boundary -> strict second accepted VMEC
+   update -> scalar state/force objective.
+4. Central finite differences perturb the same `CoilFieldParams` pytree, so the
+   gate validates the composed accepted replay path rather than isolated field
+   derivatives.
+
+Results obtained:
+
+1. `python -m ruff check tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `python -m py_compile tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+3. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state -rx`
+   passed: 1 passed in 40.80 s.
+4. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_coil_provider_forward.py -rx`
+   passed: 23 passed, 1 skipped in 82.97 s.
+
+Best next steps:
+
+1. Run the direct-coil/free-boundary subset and docs check, then commit/push if
+   green.
+2. Next phase-2 target: factor the two-step replay objective into a reusable
+   source helper so future tests and examples do not duplicate trace plumbing.
+3. Remaining production blocker: the outer nonlinear `run_free_boundary`
+   control loop and NESTOR basis/table construction are still host-controlled.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-05-30 JAX-visible accepted-boundary geometry sampler
 
