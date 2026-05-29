@@ -3,8 +3,8 @@
 Last updated: 2026-05-29
 Primary branch: `main`
 Baseline release: `v0.0.14`
-Latest known green `main` CI: `4f0bdb2`
-Current candidate: post-`v0.0.14` stability diagnostics and release-gate refresh
+Latest known green `main` CI: `d5fdbff`
+Current candidate: post-`v0.0.14` CI runtime and GPU scan-cache refresh
 
 This is the living execution plan for making `vmec_jax` accurate, fast,
 differentiable, documented, and usable by external researchers. Update it when
@@ -94,6 +94,13 @@ acceptance criteria or evidence changes.
   parity dry-run, physics smoke, and Python 3.10/3.11/3.12 fast tests through
   `4f0bdb2`. The matching local required gate passed with `2373 passed,
   20 skipped, 110 deselected, 1 xfailed` and 95.27% coverage in 9:54.
+  After the low-mode accelerator scan-cache patch, GitHub Actions passed docs,
+  build, parity dry-run, physics smoke, and Python 3.10/3.11/3.12 fast tests
+  through `d5fdbff`; the py3.11 CI coverage lane reported `2371 passed,
+  25 skipped, 110 deselected, 1 xfailed` and 95.24% coverage in 18:53. A local
+  four-worker `pytest-xdist` trial of the same required coverage gate then
+  passed with `2376 passed, 20 skipped, 1 xfailed` and 95.21% coverage in 3:07,
+  so the next candidate parallelizes the required fast-test lanes.
   The optional converged VMEC2000 parity gate remains opt-in with
   `VMEC2000_INTEGRATION=1`. `solve.py` still dominates the missing-line
   surface, so future coverage should come from physics-gated refactor seams
@@ -600,7 +607,7 @@ update:
   1 xfailed`, 95.09%), plus the exact replay JVP instrumentation rerun at the
   same 95.09% coverage level and the `v0.0.14` release-candidate rerun
   (`2354 passed, 20 skipped, 110 deselected, 1 xfailed`, 95.09%). GitHub
-  Actions is green through `4f0bdb2`,
+  Actions is green through `d5fdbff`,
   carrying the QI staged-seed, explicit CLI docs updates, fallback
   materialization test, optional SIMSOPT Redl gate wiring, replay JVP
   instrumentation, Glasser `D_R` docs/examples, and newer-JAX preconditioner
@@ -618,6 +625,9 @@ update:
   verification on `office` reached a controlled timeout with durable partial
   checkpoints and metrics instead of the previous missing-`input.final` crash.
   Final seed-robust QI promotion and GPU-production artifacts remain open.
+  The current CI runtime target is to keep the same 95% required coverage gate
+  but run the fast-test matrix with four pytest workers, matching the local
+  3:07 coverage trial instead of the previous 18:53 py3.11 CI lane.
 
 Release-critical lanes requested in this push (continuation, exact
 accepted-point output, VMEC parity/physics gates, and docs/release hygiene) are
