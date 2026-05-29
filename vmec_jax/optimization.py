@@ -2192,8 +2192,11 @@ class FixedBoundaryExactOptimizer:
         flag = os.getenv("VMEC_JAX_OPT_JIT_INITIAL_STATE")
         if flag is not None:
             return flag.strip().lower() not in ("", "0", "false", "no", "off")
-        backend = _optimizer_backend_name(getattr(self, "_solver_device_name", None))
-        return backend not in ("gpu", "cuda", "rocm")
+        # The projected initial-state map is small enough that JIT compile and
+        # dispatch overhead dominates cold CPU exact callbacks.  Keep the JIT
+        # helper opt-in until a workload has enough same-shape reuse to amortize
+        # compilation.
+        return False
 
     def _initial_state_from_params_jit(self, params) -> VMECState | None:
         """Return the projected initial state using a cached JIT helper when safe."""
