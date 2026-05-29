@@ -1854,11 +1854,14 @@ def run_fixed_boundary(
             stage_t0 = time.perf_counter()
             stage_run = run_fixed_boundary(input_path, **kwargs)
             stage_wall_s.append(float(time.perf_counter() - stage_t0))
-            stage_timing = (
-                stage_run.result.diagnostics.get("timing", {})
-                if stage_run.result is not None
-                else {}
-            )
+            try:
+                stage_timing = (
+                    stage_run.result.diagnostics.get("timing", {})
+                    if stage_run.result is not None
+                    else {}
+                )
+            except Exception:
+                stage_timing = {}
             stage_solve_total_s.append(float(stage_timing.get("solve_total_s", np.nan)))
             stage_runs.append(stage_run)
             stage_modes.append(str(stage_mode_i))
@@ -1980,11 +1983,14 @@ def run_fixed_boundary(
             stage_t0 = time.perf_counter()
             stage_run = run_fixed_boundary(input_path, **kwargs)
             stage_wall_s.append(float(time.perf_counter() - stage_t0))
-            stage_timing = (
-                stage_run.result.diagnostics.get("timing", {})
-                if stage_run.result is not None
-                else {}
-            )
+            try:
+                stage_timing = (
+                    stage_run.result.diagnostics.get("timing", {})
+                    if stage_run.result is not None
+                    else {}
+                )
+            except Exception:
+                stage_timing = {}
             stage_solve_total_s.append(float(stage_timing.get("solve_total_s", np.nan)))
             stage_runs.append(stage_run)
             stage_modes.append(str(stage_mode_i))
@@ -3523,7 +3529,10 @@ def run_fixed_boundary(
                         pass
             stage_mode_history[-1] = str(stage_mode_i)
             stage_wall_s.append(float(time.perf_counter() - stage_t0))
-            stage_timing = res_i.diagnostics.get("timing", {})
+            try:
+                stage_timing = res_i.diagnostics.get("timing", {})
+            except Exception:
+                stage_timing = {}
             stage_solve_total_s.append(float(stage_timing.get("solve_total_s", np.nan)))
             stage_results.append(res_i)
             stage_statics.append(static_i)
