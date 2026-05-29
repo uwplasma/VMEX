@@ -39,9 +39,9 @@ Steps taken:
 4. Central finite differences perturb the same `CoilFieldParams` pytree, so the
    gate validates the composed accepted replay path rather than isolated field
    derivatives.
-5. After CI exposed a cross-platform roundoff difference of `1.4e-13` relative
+5. After CI exposed cross-platform roundoff differences up to `5.9e-13` relative
    in the two-step `bsqvac` value-parity assertion, relaxed that assertion to
-   `rtol=5e-13, atol=1e-10` while keeping the AD-vs-FD tolerance unchanged.
+   `rtol=2e-12, atol=1e-10` while keeping the AD-vs-FD tolerance unchanged.
 
 Results obtained:
 
