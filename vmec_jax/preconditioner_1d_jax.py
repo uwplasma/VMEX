@@ -698,7 +698,16 @@ def _rz_preconditioner_matrices_impl(
         delta_s=delta_s,
         ns_full=ns,
     )
-    return _assemble_rz_preconditioner_matrices_impl(
+    assemble = _assemble_rz_preconditioner_matrices_impl
+    try:
+        hash(cfg)
+    except TypeError:
+        # Newer JAX releases reject unhashable static args before tracing.
+        # Production configs are hashable, but tests and lightweight callers
+        # may use SimpleNamespace. In that case, bypass only this JIT wrapper;
+        # all array algebra remains identical.
+        assemble = getattr(_assemble_rz_preconditioner_matrices_impl, "__wrapped__", assemble)
+    return assemble(
         arm=arm,
         ard=ard,
         brm=brm,
