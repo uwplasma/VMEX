@@ -21,6 +21,99 @@ including Codecov project coverage. The optional ESSOS/direct-coil bootstrap
 gates remain local/manual because they require ESSOS assets and launch real
 free-boundary solves. Do not merge PR #18 until the post-merge checks are green.
 
+### 2026-05-29 Phase-2 accepted-boundary replay promotion
+
+Steps taken:
+
+1. Spawned subagents on the phase-2 validation ladder, docs language, and
+   validation-test expansion.
+2. Promoted the accepted-boundary direct-coil ``bsqvac`` replay chain into
+   `vmec_jax.free_boundary_adjoint.direct_coil_boundary_bsqvac_jax`.
+3. Refactored the accepted-update replay AD-vs-FD test to call the source
+   helper instead of duplicating the JAX NESTOR replay logic inside the test.
+4. Added a trace parity assertion that the reusable helper reproduces the
+   accepted NESTOR potential/mode coefficients before feeding ``bsqvac`` into
+   the strict accepted-step replay.
+5. Added a LASYM moving-boundary projected-mode fixed-point AD-vs-central-FD
+   test for a mixed coil-current/Fourier-geometry pytree direction.
+6. Tightened the free-boundary coil-optimization docs with a reviewer-facing
+   phase-2 validation ladder table that separates completed validation-scale
+   rungs from the open production ``run_free_boundary`` nonlinear-loop adjoint.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_vacuum_adjoint.py`
+   passed.
+2. `python -m py_compile vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_vacuum_adjoint.py`
+   passed.
+3. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree -rx`
+   passed: 1 passed in 21.47 s.
+4. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py -rx`
+   passed: 52 passed in 69.45 s.
+5. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_coil_provider_forward.py -rx`
+   passed: 20 passed, 1 skipped in 56.66 s.
+6. `python -m sphinx -W --keep-going -b html docs tmp/freeb_docs_check_parent`
+   passed.
+
+Best next steps:
+
+1. Push this phase-2 rung and watch CI.
+2. Next phase-2 implementation target: a two-accepted-step replay where the
+   second boundary is resampled from the first replayed state.  That is the
+   smallest remaining bridge toward the production nonlinear loop while still
+   avoiding an overclaimed full custom VJP.
+3. Continue the performance lane separately; the phase-2 validation changes do
+   not change the CPU/GPU bottleneck conclusions.
+
+Need from user:
+
+Nothing now.
+
+### 2026-05-29 PR CI and residual-metric performance triage
+
+Steps taken:
+
+1. Rechecked PR #18 at head `3a81977580ffd195ee176bb43201bf12cdd9c282`.
+   Build/docs/parity smoke/physics smoke and the py3.10/3.11/3.12 fast-test
+   matrix are green.
+2. Re-ran the local direct-coil/free-boundary and dense vacuum-adjoint
+   validation subsets against the current branch.
+3. Tested a residual-metric payload-JIT experiment that reduced final scalar
+   materialization from six host scalar reads to three, then profiled it on
+   `office` CUDA and local CPU.
+
+Results obtained:
+
+1. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_coil_provider_forward.py -rx`
+   passed: 20 passed, 1 skipped in 57.65 s.
+2. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py -rx`
+   passed: 51 passed in 65.40 s.
+3. The residual-metric payload-JIT experiment did not produce a robust warm-time
+   improvement.  Local CPU tiny direct-coil `--jit-forces` warm time stayed
+   about `0.045 s`; the `office` CUDA warm time was `0.273 s`, within noise of
+   the previous `0.28 s` timing-light row.  The top CUDA warm buckets remained
+   residual metrics (`0.0569 s`), preconditioner (`0.0488 s`), and setup
+   (`0.0322 s`).
+4. The experiment was reverted before promotion, and a clean-head rerun on
+   `office` reported CUDA warm `0.279 s` with the same top buckets
+   (residual metrics `0.0573 s`, preconditioner `0.0501 s`, setup `0.0364 s`).
+   The next performance patch should target structural staging/fusion of residual metrics,
+   preconditioner/update, and setup context reuse, not a tiny scalar-product
+   JIT helper.
+
+Best next steps:
+
+1. Keep PR #18 at `3a819775...` as the current reviewable branch head unless a
+   real code/doc deliverable needs another push.
+2. Continue the performance lane with a real control-loop staging change:
+   batch accepted-control scalar materialization with residual metrics, reduce
+   preconditioner dispatches, and cache/reuse per-stage setup context for
+   accelerator forward solves.
+
+Need from user:
+
+Nothing now.
+
 Steps taken:
 
 1. Cached direct-coil geometry is wired through the free-boundary provider bridge for host-forward runs.

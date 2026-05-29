@@ -1008,7 +1008,6 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         strict_update_one_step_from_state,
     )
     from vmec_jax.driver import run_free_boundary
-    from vmec_jax.external_fields import sample_coil_field_cylindrical
     from vmec_jax.free_boundary import (
         _build_vmec_mode_basis,
         _ensure_vmec_nonsingular_kernel_tables,
@@ -1016,9 +1015,8 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         _vmec_boundary_wint,
     )
     from vmec_jax.free_boundary_adjoint import (
-        dense_vmec_nestor_mode_solve_jax,
+        direct_coil_boundary_bsqvac_jax,
         pytree_directional_derivative_check_jax,
-        vacuum_boundary_fields_from_cylindrical_jax,
         vacuum_boundary_fields_from_mode_coeffs_jax,
     )
     from vmec_jax.solve import solve_fixed_boundary_residual_iter
@@ -1128,22 +1126,12 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         base_currents=base_currents * 0.02,
     )
 
-    def bsqvac_from_coils(params: CoilFieldParams):
-        br, bp, bz = sample_coil_field_cylindrical(params, R, Z, phi)
-        vac = vacuum_boundary_fields_from_cylindrical_jax(
-            br=br + br_axis,
-            bp=bp + bp_axis,
-            bz=bz + bz_axis,
-            R=R,
-            Ru=Ru,
-            Zu=Zu,
-            Rv=Rv,
-            Zv=Zv,
-        )
-        bexni = -vac["bnormal"] * wint_jax * ((2.0 * jnp.pi) ** 2)
-        solved = dense_vmec_nestor_mode_solve_jax(
+    def replay_from_coils(params: CoilFieldParams):
+        return direct_coil_boundary_bsqvac_jax(
+            params,
             R=R,
             Z=Z,
+            phi=phi,
             Ru=Ru,
             Zu=Zu,
             Rv=Rv,
@@ -1154,33 +1142,36 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
             zuu=zuu,
             zuv=zuv,
             zvv=zvv,
-            bexni=jnp.ravel(bexni),
             basis=basis,
             tables=tables,
             signgs=int(init.signgs),
             nvper=nvper,
+            br_add=br_axis,
+            bp_add=bp_axis,
+            bz_add=bz_axis,
+            wint=wint_jax,
             include_analytic=True,
         )
-        channels = vacuum_boundary_fields_from_mode_coeffs_jax(
-            solved["mode_coeffs"],
-            basis=basis,
-            bu_ext=vac["bu"],
-            bv_ext=vac["bv"],
-            g_uu=vac["g_uu"],
-            g_uv=vac["g_uv"],
-            g_vv=vac["g_vv"],
-        )
-        return channels["bsqvac"]
+
+    def bsqvac_from_coils(params: CoilFieldParams):
+        return replay_from_coils(params)["bsqvac"]
 
     nestor_trace = trace.get("freeb_nestor_trace")
     assert isinstance(nestor_trace, dict)
     br_axis = jnp.asarray(nestor_trace["br_axis"])
     bp_axis = jnp.asarray(nestor_trace["bp_axis"])
     bz_axis = jnp.asarray(nestor_trace["bz_axis"])
+    replay0 = replay_from_coils(base_params)
     bsqvac0 = bsqvac_from_coils(base_params)
     assert bsqvac0.shape == np.asarray(trace["freeb_bsqvac_half"]).shape
     assert np.all(np.isfinite(np.asarray(bsqvac0, dtype=float)))
     assert float(np.linalg.norm(np.asarray(bsqvac0, dtype=float))) > 0.0
+    np.testing.assert_allclose(
+        np.asarray(replay0["mode_solution"]["mode_coeffs"]),
+        np.asarray(nestor_trace["potvac"]),
+        rtol=1.0e-13,
+        atol=1.0e-12,
+    )
     np.testing.assert_allclose(
         np.asarray(nestor_trace["bsqvac"]),
         np.asarray(trace["freeb_bsqvac_half"]),

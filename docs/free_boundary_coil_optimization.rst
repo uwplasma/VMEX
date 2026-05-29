@@ -35,9 +35,10 @@ summaries.
 Phase 1 in this lane includes JAX-native coil-field sampling, an ESSOS coil
 adapter, generated-``mgrid`` compatibility, and forward free-boundary solves
 from direct coils. Phase 2 is the production custom adjoint through the full
-free-boundary vacuum/NESTOR solve. Dense toy vacuum-adjoint tests are present
-now, but the full-solve adjoint is not claimed as publication-ready until
-finite-difference checks of complete solves pass.
+free-boundary vacuum/NESTOR solve. Several phase-2 validation rungs are already
+implemented on JAX-visible dense or accepted-state problems, but the production
+``run_free_boundary`` nonlinear-loop adjoint is not claimed as publication-ready
+until complete-solve AD-vs-finite-difference checks pass.
 
 Adjoint Validation Roadmap
 --------------------------
@@ -99,6 +100,69 @@ The validation ladder is:
    against finite differences of complete solves.
 8. Boozer/QS objective: the same complete-solve finite-difference checks after
    Boozer/QS diagnostics are in the objective path.
+
+The reviewer-facing status of this ladder is:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 8 18 39 35
+
+   * - Rung
+     - Status
+     - Current validation evidence
+     - Remaining promotion work
+   * - 1
+     - Complete
+     - Coil Biot-Savart derivatives with respect to currents, Fourier curve
+       coefficients, and evaluation coordinates are checked against finite
+       differences.
+     - None for the provider derivative layer.
+   * - 2
+     - Complete
+     - Dense custom-linear-solve vacuum problems validate implicit gradients
+       with respect to coil current and geometry controls.
+     - None for the dense toy vacuum primitive.
+   * - 3
+     - Complete
+     - Boundary-projection derivatives are checked with respect to sampled
+       cylindrical fields and boundary coefficients.
+     - None for the projection primitive.
+   * - 4
+     - Complete
+     - Direct coils, boundary projection, and a dense implicit vacuum response
+       are chained and AD-vs-FD checked for current and geometry controls.
+     - None for this projected dense-chain primitive.
+   * - 5
+     - Complete for validation scale
+     - ``dense_vmec_nestor_mode_solve_jax`` validates the JAX-visible
+       VMEC-style source/RHS/matrix/mode-space blocks on low-resolution grids.
+     - Replace the dense validation operator with the production
+       matrix-free/high-resolution NESTOR adjoint.
+   * - 6
+     - Complete for validation scale
+     - A dense nonlinear fixed-point loop validates the implicit-root reverse
+       pass for current and Fourier-geometry controls.
+     - Wrap or replace the production VMEC nonlinear free-boundary iteration
+       with the same validated custom-adjoint contract.
+   * - 7
+     - Partial
+     - Complete direct-coil solves have finite-difference response guards, and
+       accepted-boundary replay has AD-vs-FD checks after freezing the accepted
+       plasma boundary.
+     - Promote to an exact complete-loop AD-vs-FD gate for at least one coil
+       current and one Fourier coefficient through production
+       ``run_free_boundary``.
+   * - 8
+     - Open
+     - The phase-1 coil-only optimization example currently uses a cheap
+       residual/aspect/iota proxy instead of Boozer/QS gradients.
+     - Add Boozer/QS diagnostics to the complete-solve objective and validate
+       coil-current and coil-geometry gradients against finite differences.
+
+In short, rungs 1--6 validate the mathematical and operator pieces needed for a
+production adjoint, rung 7 validates finite-response and accepted-state replay
+but not the host-controlled nonlinear iteration derivative, and rung 8 remains
+the publication-level coil-to-QS gradient target.
 
 The first six AD-vs-FD rungs are implemented as fast tests today, and the
 fixed-boundary dense mode-space NESTOR rung is promoted for both
