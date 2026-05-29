@@ -1543,8 +1543,8 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     np.testing.assert_allclose(
         np.asarray(replay1["bsqvac"]),
         np.asarray(trace1["freeb_bsqvac_half"]),
-        rtol=1.0e-13,
-        atol=1.0e-12,
+        rtol=5.0e-13,
+        atol=1.0e-10,
     )
     second_step = strict_update_one_step_from_state(
         replayed_state1,

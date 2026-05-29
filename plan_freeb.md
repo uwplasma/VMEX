@@ -39,6 +39,9 @@ Steps taken:
 4. Central finite differences perturb the same `CoilFieldParams` pytree, so the
    gate validates the composed accepted replay path rather than isolated field
    derivatives.
+5. After CI exposed a cross-platform roundoff difference of `1.4e-13` relative
+   in the two-step `bsqvac` value-parity assertion, relaxed that assertion to
+   `rtol=5e-13, atol=1e-10` while keeping the AD-vs-FD tolerance unchanged.
 
 Results obtained:
 
@@ -50,6 +53,12 @@ Results obtained:
    passed: 1 passed in 40.80 s.
 4. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_coil_provider_forward.py -rx`
    passed: 23 passed, 1 skipped in 82.97 s.
+5. After the tolerance adjustment,
+   `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state -rx`
+   passed: 1 passed in 38.99 s.
+6. After the tolerance adjustment,
+   `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_coil_provider_forward.py -rx`
+   passed: 23 passed, 1 skipped in 82.94 s.
 
 Best next steps:
 
