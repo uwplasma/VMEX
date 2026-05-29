@@ -239,6 +239,10 @@ Steps taken:
     non-JIT-pure objective cotangent hooks fall back cleanly, short `ptau`
     kernels no longer trace empty reductions, and R/Z preconditioner matrix
     assembly no longer JITs `SimpleNamespace` containers as dynamic arguments.
+89. Repaired the remaining py3.10 R/Z preconditioner regression by removing
+    the nested JIT wrapper from `_assemble_rz_preconditioner_matrices_impl`.
+    The broader post-merge local regression batch passed with `147 passed,
+    1 skipped`, so the branch is ready for a fresh CI pass after push.
 
 ### 2026-05-27 Free-boundary beta-scan bootstrap-current preconditioner
 
