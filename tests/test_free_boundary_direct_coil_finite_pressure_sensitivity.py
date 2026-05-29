@@ -1313,6 +1313,62 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     np.testing.assert_allclose(exact, fd, rtol=3.0e-3, atol=1.0e-10)
 
 
+@pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])
+def test_jax_free_boundary_boundary_geometry_matches_host_sampler(
+    tmp_path: Path,
+    lasym: bool,
+) -> None:
+    """The phase-2 JAX boundary sampler must match production host geometry."""
+
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+    from vmec_jax.driver import run_free_boundary
+    from vmec_jax.free_boundary import _sample_external_boundary_arrays
+    from vmec_jax.free_boundary_adjoint import free_boundary_boundary_geometry_jax
+    from vmec_jax.state import pack_state, unpack_state
+
+    enable_x64(True)
+    input_path = _write_tiny_direct_freeb_input(
+        tmp_path / f"input.direct_boundary_geometry_{int(lasym)}",
+        lasym=lasym,
+        niter=1,
+        mpol=3,
+        ntheta=6,
+    )
+    params = _circle_coil_params(current=3.0e7, n_segments=64)
+    run = run_free_boundary(
+        input_path,
+        use_initial_guess=True,
+        verbose=False,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+    )
+    host = _sample_external_boundary_arrays(
+        state=run.state,
+        static=run.static,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+    )
+    geom = free_boundary_boundary_geometry_jax(run.state, run.static)
+    for key in ("R", "Z", "phi", "Ru", "Zu", "Rv", "Zv", "ruu", "ruv", "rvv", "zuu", "zuv", "zvv"):
+        np.testing.assert_allclose(
+            np.asarray(geom[key]),
+            np.asarray(getattr(host, key)),
+            rtol=1.0e-13,
+            atol=1.0e-13,
+            err_msg=f"JAX boundary geometry mismatch for {key}",
+        )
+
+    def geometry_objective(flat_state):
+        state = unpack_state(flat_state, run.state.layout)
+        g = free_boundary_boundary_geometry_jax(state, run.static)
+        return jnp.mean(g["R"] * g["R"] + g["Z"] * g["Z"])
+
+    grad = jax.grad(geometry_objective)(jnp.asarray(pack_state(run.state)))
+    assert np.all(np.isfinite(np.asarray(grad)))
+    assert float(jnp.linalg.norm(grad)) > 0.0
+
+
 def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1322,8 +1378,10 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     This is the next phase-2 bridge after accepted-state AD-vs-FD: the first
     accepted update is replayed, the second NESTOR boundary is resampled from
     that replayed state, and the second strict update is checked against the
-    production trace.  The boundary sampler is still host/NumPy, so this is a
-    value-parity rung, not a full nonlinear-loop VJP claim.
+    production trace.  Geometry resampling is now JAX-visible, but basis/table
+    construction and the outer nonlinear loop are still host-controlled, so
+    this remains a value-parity rung rather than a full nonlinear-loop VJP
+    claim.
     """
 
     pytest.importorskip("jax")
@@ -1333,10 +1391,9 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     from vmec_jax.free_boundary import (
         _build_vmec_mode_basis,
         _ensure_vmec_nonsingular_kernel_tables,
-        _sample_external_boundary_arrays,
         _vmec_boundary_wint,
     )
-    from vmec_jax.free_boundary_adjoint import direct_coil_boundary_bsqvac_jax
+    from vmec_jax.free_boundary_adjoint import direct_coil_boundary_bsqvac_jax, free_boundary_boundary_geometry_jax
     from vmec_jax.solve import solve_fixed_boundary_residual_iter
     from vmec_jax.state import pack_state
 
@@ -1432,41 +1489,37 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         atol=1.0e-13,
     )
 
-    sample = _sample_external_boundary_arrays(
-        state=replayed_state1,
-        static=init.static,
-        external_field_provider_kind="direct_coils",
-        external_field_provider_params=base_params,
-    )
-    wint = _vmec_boundary_wint(static=init.static, ntheta=sample.R.shape[0], nzeta=sample.R.shape[1])
+    geometry = free_boundary_boundary_geometry_jax(replayed_state1, init.static)
+    ntheta, nzeta = (int(v) for v in geometry["R"].shape)
+    wint = _vmec_boundary_wint(static=init.static, ntheta=ntheta, nzeta=nzeta)
     basis = _build_vmec_mode_basis(
-        ntheta=sample.R.shape[0],
-        nzeta=sample.R.shape[1],
+        ntheta=ntheta,
+        nzeta=nzeta,
         nfp=int(init.static.cfg.nfp),
         mf=int(init.static.cfg.mpol) + 1,
         nf=int(init.static.cfg.ntor),
         lasym=bool(init.static.cfg.lasym),
         wint=wint,
     )
-    nvper = 64 if int(sample.R.shape[1]) == 1 else max(1, int(init.static.cfg.nfp))
-    tables = _ensure_vmec_nonsingular_kernel_tables(basis=basis, nv=sample.R.shape[1], nvper=nvper)
+    nvper = 64 if nzeta == 1 else max(1, int(init.static.cfg.nfp))
+    tables = _ensure_vmec_nonsingular_kernel_tables(basis=basis, nv=nzeta, nvper=nvper)
     nestor_trace = trace1.get("freeb_nestor_trace")
     assert isinstance(nestor_trace, dict)
     replay1 = direct_coil_boundary_bsqvac_jax(
         base_params,
-        R=jnp.asarray(sample.R),
-        Z=jnp.asarray(sample.Z),
-        phi=jnp.asarray(sample.phi),
-        Ru=jnp.asarray(sample.Ru),
-        Zu=jnp.asarray(sample.Zu),
-        Rv=jnp.asarray(sample.Rv),
-        Zv=jnp.asarray(sample.Zv),
-        ruu=jnp.asarray(sample.ruu),
-        ruv=jnp.asarray(sample.ruv),
-        rvv=jnp.asarray(sample.rvv),
-        zuu=jnp.asarray(sample.zuu),
-        zuv=jnp.asarray(sample.zuv),
-        zvv=jnp.asarray(sample.zvv),
+        R=geometry["R"],
+        Z=geometry["Z"],
+        phi=geometry["phi"],
+        Ru=geometry["Ru"],
+        Zu=geometry["Zu"],
+        Rv=geometry["Rv"],
+        Zv=geometry["Zv"],
+        ruu=geometry["ruu"],
+        ruv=geometry["ruv"],
+        rvv=geometry["rvv"],
+        zuu=geometry["zuu"],
+        zuv=geometry["zuv"],
+        zvv=geometry["zvv"],
         basis=basis,
         tables=tables,
         signgs=int(init.signgs),

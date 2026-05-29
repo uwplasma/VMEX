@@ -12,14 +12,56 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-29 after merging the latest `origin/main`, direct-coil
-finite-pressure diagnostics hardening, benchmark warm-phase bottleneck
-reporting, Codecov coverage-gate strengthening, phase-2 directional-derivative
-validation reuse, and documentation overclaim cleanup. PR #18 is open on
-`feature/freeb-essos-coil-single-stage`; the previous push was fully green,
-including Codecov project coverage. The optional ESSOS/direct-coil bootstrap
-gates remain local/manual because they require ESSOS assets and launch real
-free-boundary solves. Do not merge PR #18 until the post-merge checks are green.
+Last updated: 2026-05-30 after merging the latest `origin/main`, adding the
+two-step direct-coil accepted-replay bridge, and promoting the accepted-boundary
+geometry sampler to a JAX-visible helper. PR #18 is open on
+`feature/freeb-essos-coil-single-stage`; the pre-merge push was fully green,
+including Codecov project coverage, and the refreshed post-main-merge branch is
+being revalidated. The optional ESSOS/direct-coil bootstrap gates remain
+local/manual because they require ESSOS assets and launch real free-boundary
+solves. Do not merge PR #18 until the post-merge checks are green.
+
+### 2026-05-30 JAX-visible accepted-boundary geometry sampler
+
+Steps taken:
+
+1. Added `free_boundary_boundary_geometry_jax` in
+   `vmec_jax.free_boundary_adjoint`.
+2. The helper mirrors the geometry part of production
+   `_sample_external_boundary_arrays`: VMEC m=1 internal-to-physical conversion,
+   last-surface VMEC synthesis, first derivatives, and exact modal second
+   derivatives.
+3. Added a stellsym/LASYM parity test comparing the JAX-visible geometry helper
+   against the production host sampler for `R`, `Z`, `phi`, first derivatives,
+   and second derivatives.
+4. Added a differentiability gate through the accepted VMEC state by taking a
+   JAX gradient of a boundary-geometry scalar objective.
+5. Updated the two-accepted-step replay test to resample the second boundary
+   with `free_boundary_boundary_geometry_jax` instead of the host sampler.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `python -m py_compile vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+3. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_free_boundary_boundary_geometry_matches_host_sampler tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state -rx`
+   passed: 3 passed in 17.81 s.
+4. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_coil_provider_forward.py -rx`
+   passed: 23 passed, 1 skipped in 63.55 s.
+
+Best next steps:
+
+1. Commit and push the JAX-visible boundary sampler rung, then watch PR CI.
+2. Promote the two-step replay from value parity to AD-vs-FD by differentiating
+   through the JAX-visible geometry resampling and direct-coil JAX NESTOR replay.
+3. Keep the claim scoped: basis/table construction and the outer nonlinear
+   control loop are still host-controlled, so this is not yet the production
+   `run_free_boundary` custom VJP.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-05-29 Phase-2 accepted-boundary replay promotion
 
