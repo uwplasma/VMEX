@@ -217,10 +217,12 @@ read as a mixed result rather than a broad VMEC2000 speedup claim:
 
 **11. On-disk XLA kernel cache**
   The persistent XLA compilation cache is enabled by default for repeated
-  cold-process accelerator runs, including jobs that expose GPUs through
-  ``CUDA_VISIBLE_DEVICES`` or the ROCm equivalents before import, and public
-  calls that explicitly request ``solver_device="gpu"``. CPU cache use remains
-  opt-in to avoid XLA:CPU AOT host-feature mismatch warnings. Set
+  cold-process accelerator runs when the requested JAX platform is
+  GPU/CUDA/ROCm/TPU or a public call explicitly requests
+  ``solver_device="gpu"``. Merely exposing a GPU through
+  ``CUDA_VISIBLE_DEVICES`` no longer enables the cache during import, so CPU
+  runs on GPU workstations do not accidentally load CPU AOT cache entries. CPU
+  cache use remains opt-in to avoid XLA:CPU AOT host-feature mismatch warnings. Set
   ``VMEC_JAX_COMPILATION_CACHE=1`` to enable it for CPU runs,
   ``VMEC_JAX_COMPILATION_CACHE=0`` to disable it, or
   ``VMEC_JAX_COMPILATION_CACHE_DIR`` to choose the cache location.
@@ -391,6 +393,20 @@ read as a mixed result rather than a broad VMEC2000 speedup claim:
   one-step scan runner for preflight.  CPU and verbose/printing paths keep the
   conservative host preflight.  Set ``VMEC_JAX_SCAN_JIT_PREFLIGHT=0`` or ``1``
   to force either behavior during diagnostics.
+
+**26. Multigrid profiles expose per-stage wall time**
+  ``profile_fixed_boundary.py`` now records multigrid stage wall time and
+  per-stage solver-loop timing in diagnostics.  Chunked accelerated stages are
+  aggregated before reporting so stage wall time and VMEC-loop timing are
+  comparable, and scan stages report their ``scan_total_s`` timing through the
+  same generic per-stage solve column as non-scan stages.  On the local
+  finite-beta QH case, the two CPU stages measured
+  about ``5.1 s`` and ``20.5 s`` wall time, while the aggregated final-stage
+  solver-loop timing was about ``20.45 s``.  A
+  ``VMEC_JAX_JIT_PRECOMPILE=0`` probe was slower (``29.2 s`` total), so the
+  remaining cold-CPU target is compiled transform/preconditioner work inside
+  the VMEC iteration loop plus shape-stable reuse, not WOUT output or
+  driver-side staging overhead.
 
 May 2026 policy validation snapshot
 -----------------------------------
@@ -2099,12 +2115,27 @@ remaining GPU production issue is fresh-process compile/cache latency.
 
 Public GPU requests now enable the persistent compilation cache automatically
 even when the user selects the GPU through ``solver_device="gpu"`` instead of a
-JAX platform environment variable.  On ``office`` after the cache-policy fix,
-fresh-process QH warm-start runs measured ``16.0 s`` to populate and ``5.24 s``
-on the next process.  Fresh-process finite-beta runs measured ``19.8 s`` to
-populate and ``8.12 s`` on the next process.  These are still slower than
-same-process warmed solves, but they are a practical improvement for repeated
-CLI/API GPU jobs without user-side cache tuning.
+JAX platform environment variable.  The runtime GPU path mirrors the
+import-time cache setup by setting both ``jax_compilation_cache_dir`` and the
+GPU XLA autotune cache option before first solve compilation.  A post-fix
+``office`` check showed that this alignment is necessary for correct default
+configuration, but not sufficient to make fresh-process GPU solves reuse the
+compiled scan executable on this stack.  Re-running from the checked-out source
+tree with ``PYTHONPATH=$PWD`` gave repeated QH warm-start processes of
+``16.3 s`` and ``16.2 s``, and repeated finite-beta QH processes of
+``55.9 s`` and ``55.5 s``.  The dominant term remains
+``scan_device_dispatch_s`` (about ``12.5 s`` for QH warm start and ``41.9 s``
+for finite beta), so the next GPU lane is persistent executable reuse or
+reducing scan compile/dispatch cost rather than more driver-side cache toggles.
+The first compile/dispatch reduction that survived the finite-beta guardrail is
+an adaptive low-mode accelerator chunk: quiet GPU scans with at most 16 Fourier
+coefficients and more than 512 iterations use a fixed 256-iteration scan chunk,
+while higher-mode cases keep the full-length chunk.  On ``office`` this reduced
+the full input-NITER ``input.nfp4_QH_warm_start`` fresh GPU profile from
+``15.76 s`` to ``13.86 s`` with the same final residual
+(``1.109e-13``).  The finite-beta QH profile stayed on the full chunk because
+it has 50 modes; forcing smaller chunks regressed that case to
+``60--94 s`` versus the ``54.54 s`` patched full-chunk profile.
 
 The exact-optimizer profile has a different bottleneck from single fixed-boundary
 solves.  A 2026-05-24 bounded ``max_mode=3`` two-evaluation profile on the
@@ -2281,9 +2312,11 @@ Controls:
 - ``VMEC_JAX_DYNAMIC_SCAN_ITERS=<int>``: override the probe window
   (defaults to ``10`` on CPU, ``3`` on accelerators).
 
-For quiet accelerator scans, ``vmec-jax`` also increases the default scan chunk
-target and caps each chunk to the remaining iteration budget. This reduces
-host/device launch overhead without changing the in-scan hold semantics.
+For quiet accelerator scans, ``vmec-jax`` uses a backend- and mode-aware scan
+chunk.  Higher-mode runs use one full-length chunk to minimize host/device
+launch overhead.  Low-mode long-budget runs use fixed 256-iteration chunks to
+reduce fresh-process compile/dispatch latency while reusing the same compiled
+body inside the solve.
 
 Controls:
 

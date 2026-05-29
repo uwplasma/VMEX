@@ -12,12 +12,16 @@ from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
+import sys
 from typing import Any
 import time
 
 import numpy as np
 
 _PROCESS_START = time.perf_counter()
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 # Match vmec_jax's import-time defaults before this diagnostics tool imports
 # JAX directly.  Otherwise persistent-cache hits can emit repeated harmless
@@ -187,8 +191,16 @@ def _compact_diagnostics(diag: dict[str, Any]) -> dict[str, Any]:
         "multigrid_niter_stages",
         "multigrid_ftol_stages",
         "multigrid_stage_modes",
+        "multigrid_stage_wall_s",
+        "multigrid_stage_solve_total_s",
         "multigrid_final_stage_niter_exhausted",
         "accelerated_single_grid_default",
+        "cli_accelerated_stage_wall_s",
+        "cli_accelerated_stage_solve_total_s",
+        "cli_staged_followup_stage_wall_s",
+        "cli_staged_followup_stage_solve_total_s",
+        "cli_fixed_boundary_staged_followup_wall_s",
+        "cli_fixed_boundary_staged_followup_solve_total_s",
         "accelerated_scan",
         "accelerated_stage_chunked",
         "accelerated_stage_chunk_count",
@@ -315,6 +327,14 @@ def _print_run_summary(summary: dict[str, Any]) -> None:
         "multigrid_ns_stages",
         "multigrid_niter_stages",
         "multigrid_stage_modes",
+        "multigrid_stage_wall_s",
+        "multigrid_stage_solve_total_s",
+        "cli_accelerated_stage_wall_s",
+        "cli_accelerated_stage_solve_total_s",
+        "cli_staged_followup_stage_wall_s",
+        "cli_staged_followup_stage_solve_total_s",
+        "cli_fixed_boundary_staged_followup_wall_s",
+        "cli_fixed_boundary_staged_followup_solve_total_s",
         "solver_device",
         "use_scan",
         "vmec2000_scan",

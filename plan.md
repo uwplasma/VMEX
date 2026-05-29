@@ -3,8 +3,8 @@
 Last updated: 2026-05-29
 Primary branch: `main`
 Baseline release: `v0.0.14`
-Latest known green `main` CI: `4f0bdb2`
-Current candidate: post-`v0.0.14` stability diagnostics, release-gate refresh, and free-boundary direct-coil PR #18 refresh
+Latest known green `main` CI: `d5fdbff`
+Current candidate: post-`v0.0.14` CI runtime/GPU scan-cache refresh plus free-boundary direct-coil PR #18 refresh
 
 This is the living execution plan for making `vmec_jax` accurate, fast,
 differentiable, documented, and usable by external researchers. Update it when
@@ -94,6 +94,14 @@ acceptance criteria or evidence changes.
   parity dry-run, physics smoke, and Python 3.10/3.11/3.12 fast tests through
   `4f0bdb2`. The matching local required gate passed with `2373 passed,
   20 skipped, 110 deselected, 1 xfailed` and 95.27% coverage in 9:54.
+  After the low-mode accelerator scan-cache patch, GitHub Actions passed docs,
+  build, parity dry-run, physics smoke, and Python 3.10/3.11/3.12 fast tests
+  through `d5fdbff`; the py3.11 CI coverage lane reported `2371 passed,
+  25 skipped, 110 deselected, 1 xfailed` and 95.24% coverage in 18:53. A local
+  four-worker `pytest-xdist` trial of the same required coverage gate then
+  passed with `2376 passed, 20 skipped, 1 xfailed` and 95.21% coverage in 3:07,
+  so the next candidates parallelize the required fast-test lanes and move the
+  duplicate console-script smoke out of the Python-version matrix.
   The optional converged VMEC2000 parity gate remains opt-in with
   `VMEC2000_INTEGRATION=1`. `solve.py` still dominates the missing-line
   surface, so future coverage should come from physics-gated refactor seams
@@ -640,7 +648,7 @@ performance step is structural control-loop staging/fusion.
   1 xfailed`, 95.09%), plus the exact replay JVP instrumentation rerun at the
   same 95.09% coverage level and the `v0.0.14` release-candidate rerun
   (`2354 passed, 20 skipped, 110 deselected, 1 xfailed`, 95.09%). GitHub
-  Actions is green through `4f0bdb2`,
+  Actions is green through `d5fdbff`,
   carrying the QI staged-seed, explicit CLI docs updates, fallback
   materialization test, optional SIMSOPT Redl gate wiring, replay JVP
   instrumentation, Glasser `D_R` docs/examples, and newer-JAX preconditioner
@@ -658,6 +666,12 @@ performance step is structural control-loop staging/fusion.
   verification on `office` reached a controlled timeout with durable partial
   checkpoints and metrics instead of the previous missing-`input.final` crash.
   Final seed-robust QI promotion and GPU-production artifacts remain open.
+  The current CI runtime target is to keep the same 95% required coverage gate,
+  keep the CLI smoke isolated from the Python-version matrix, and run the
+  fast-test matrix with the last stable four-worker pytest-xdist fanout.
+  A six-worker candidate passed locally in 2:51 but was too memory-aggressive
+  for the hosted py3.11 CI runner, which cancelled the test process before
+  completion.
 
 Release-critical lanes requested in this push (continuation, exact
 accepted-point output, VMEC parity/physics gates, and docs/release hygiene) are
@@ -1377,6 +1391,42 @@ Defer beyond the current cycle:
   (`15.59 s`), and finite-beta QH scan converged in `3.80 s`. This supersedes
   the May 17 raw fixed-boundary GPU default evidence; CPU remains non-scan, and
   exact optimization callbacks retain their separate replay/chunking policy.
+- 2026-05-29: Kept CPU persistent compilation cache explicit opt-in after a
+  cold-process timing check showed it can reduce repeated finite-beta CLI runs
+  (`24.85 s` to `17.47 s`) but still risks XLA:CPU AOT host-feature warnings on
+  some systems. The cache trigger no longer treats merely visible
+  `CUDA_VISIBLE_DEVICES`/ROCm devices as accelerator intent at import time;
+  explicit JAX GPU platform requests and `solver_device="gpu"` still enable the
+  accelerator cache path before solve compilation. The runtime
+  `solver_device="gpu"` path now also mirrors the import-time cache setup by
+  setting `jax_compilation_cache_dir` and the GPU XLA autotune cache option, so
+  GPU users do not need environment variables to get the intended persistent
+  cache behavior. A post-push `office` rerun showed this fixes configuration
+  parity but not fresh-process executable reuse on the current stack. The
+  valid checked-out-source profile (`PYTHONPATH=$PWD`) kept repeated QH
+  warm-start GPU processes at `16.3/16.2 s` and finite-beta QH GPU processes at
+  `55.9/55.5 s`, dominated by `scan_device_dispatch_s`. The next GPU blocker is
+  persistent scan executable reuse or reducing scan compile/dispatch cost, not
+  additional cache toggles.
+- 2026-05-29: Added the first scan compile/dispatch reduction after the cache
+  alignment result. Quiet accelerator scans with low spectral mode count
+  (`<=16` stored Fourier coefficients) and long budgets (`>512` iterations)
+  now use fixed 256-iteration scan chunks; higher-mode accelerator cases keep
+  one full-length chunk. On `office`, the full input-NITER
+  `input.nfp4_QH_warm_start` GPU profile improved from `15.76 s` to `13.86 s`
+  with identical final residual (`1.109e-13`). The finite-beta QH guardrail
+  stayed on the full chunk because it has 50 modes; forced small chunks
+  regressed it to `60--94 s` versus `54.54 s` for the patched full chunk.
+- 2026-05-29: Added per-stage multigrid wall-time diagnostics to the driver and
+  fixed-boundary profiler, then fixed chunked-stage accounting so accelerated
+  monitor chunks are summed as one logical stage. Scan-stage `scan_total_s`
+  now feeds the same generic per-stage solve column as non-scan `solve_total_s`.
+  The local finite-beta QH CPU profile reports the two stage walls (`~5.1 s`,
+  `~20.5 s`) separately from the aggregated stage solver-loop timing
+  (`~20.45 s` for the final stage). Disabling explicit JIT precompile regressed
+  total wall time (`~29.2 s`), so the remaining cold CPU target is the compiled
+  transform/preconditioner work inside the VMEC iteration loop plus
+  shape-stable reuse, not a missing WOUT or driver-side staging cost.
 - 2026-05-17: Tightened the CLI fixed-boundary finish policy for explicit
   low-budget runs. If a caller supplies `max_iter`, all accelerated/parity
   finish attempts combined are capped at `2 * max_iter` and report
@@ -1425,7 +1475,12 @@ Defer beyond the current cycle:
   `~/bin/xvmec2000` plus STELLOPT/PATH executables by default, can opt into
   recursive local executable inventory, de-duplicates symlinks, and writes
   VMEC2000/vmec_jax residual, runtime, scalar, and field rel-RMS summaries for
-  benchmark regeneration.
+  benchmark regeneration. A 2026-05-29 local nightly run with
+  `VMEC2000_EXEC=~/bin/xvmec2000 VMEC2000_INTEGRATION=1 VMEC2000_NIGHTLY=1`
+  passed the bounded executable-backed matrix (`4 passed, 1 skipped,
+  1 xfailed` in `15:06`); the skip is the intentionally deferred converged
+  free-boundary WOUT parity row, and the xfail is the documented zero-pressure
+  LASYM external gap.
 - 2026-05-14: Added an opt-in dense branch-shuffle output grid
   (`shuffle_profile_nphi_out`) to the differentiable QI residual and propagated
   it through diagnostics and `QuasiIsodynamicOptions`. This brings vmec_jax
