@@ -1002,7 +1002,11 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
 
     pytest.importorskip("jax")
     from vmec_jax._compat import jnp
-    from vmec_jax.discrete_adjoint import strict_update_one_step_from_state
+    from vmec_jax.discrete_adjoint import (
+        preconditioned_force_channels_from_rz_output,
+        strict_update_accepted_step,
+        strict_update_one_step_from_state,
+    )
     from vmec_jax.driver import run_free_boundary
     from vmec_jax.external_fields import sample_coil_field_cylindrical
     from vmec_jax.free_boundary import (
@@ -1019,6 +1023,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     )
     from vmec_jax.solve import solve_fixed_boundary_residual_iter
     from vmec_jax.state import pack_state
+    from vmec_jax.vmec_tomnsp import TomnspsRZL
 
     enable_x64(True)
     for key, value in {
@@ -1171,6 +1176,63 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     assert bsqvac0.shape == np.asarray(trace["freeb_bsqvac_half"]).shape
     assert np.all(np.isfinite(np.asarray(bsqvac0, dtype=float)))
     assert float(np.linalg.norm(np.asarray(bsqvac0, dtype=float))) > 0.0
+
+    # The accepted trace must be exactly replayable once the force channels have
+    # been computed. This protects accepted-output correctness separately from
+    # the harder coil -> NESTOR -> force reconstruction path below.
+    traced_rz_force = TomnspsRZL(
+        frcc=trace["frzl_rz_frcc"],
+        frss=trace["frzl_rz_frss"],
+        fzsc=trace["frzl_rz_fzsc"],
+        fzcs=trace["frzl_rz_fzcs"],
+        flsc=trace["frzl_rz_flsc"],
+        flcs=trace["frzl_rz_flcs"],
+        frsc=trace["frzl_rz_frsc"],
+        frcs=trace["frzl_rz_frcs"],
+        fzcc=trace["frzl_rz_fzcc"],
+        fzss=trace["frzl_rz_fzss"],
+        flcc=trace["frzl_rz_flcc"],
+        flss=trace["frzl_rz_flss"],
+    )
+    traced_force = preconditioned_force_channels_from_rz_output(
+        frzl_rz=traced_rz_force,
+        lam_prec=trace["lam_prec"],
+        w_mode_mn=trace["w_mode_mn"],
+        lambda_update_scale=trace["lambda_update_scale"],
+    )
+    for key in ("frcc_u", "frss_u", "fzsc_u", "fzcs_u", "flsc_u", "flcs_u"):
+        np.testing.assert_allclose(np.asarray(traced_force[key]), np.asarray(trace[key]), rtol=0.0, atol=0.0)
+    exact_step = strict_update_accepted_step(
+        trace["state_pre"],
+        init.static,
+        dt_eff=trace["dt_eff"],
+        b1=trace["b1"],
+        fac=trace["fac"],
+        force_scale=trace["force_scale"],
+        flip_sign=trace["flip_sign"],
+        vRcc_before=trace["vRcc_before"],
+        vRss_before=trace["vRss_before"],
+        vZsc_before=trace["vZsc_before"],
+        vZcs_before=trace["vZcs_before"],
+        vLsc_before=trace["vLsc_before"],
+        vLcs_before=trace["vLcs_before"],
+        frcc_u=trace["frcc_u"],
+        frss_u=trace["frss_u"],
+        fzsc_u=trace["fzsc_u"],
+        fzcs_u=trace["fzcs_u"],
+        flsc_u=trace["flsc_u"],
+        flcs_u=trace["flcs_u"],
+        max_update_rms=trace["max_update_rms_pre"],
+        limit_update_rms=trace["limit_update_rms"],
+        divide_by_scalxc_for_update=trace["divide_by_scalxc_for_update"],
+        enforce_edge=False,
+    )
+    np.testing.assert_allclose(
+        np.asarray(pack_state(exact_step["state_post"])),
+        np.asarray(pack_state(trace["state_post"])),
+        rtol=0.0,
+        atol=0.0,
+    )
 
     def objective(params: CoilFieldParams):
         out = strict_update_one_step_from_state(

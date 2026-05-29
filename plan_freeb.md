@@ -2020,7 +2020,7 @@ WP11 Coil-only QS optimization example:        90%
 WP12 Robust coil perturbations:               100%
 WP13 Documentation:                           100%
 WP14 CI policy:                               100%
-Overall branch completion:                   99.7%
+Overall branch completion:                   99.8%
 ```
 
 ## Immediate Next Steps
@@ -2038,6 +2038,44 @@ Overall branch completion:                   99.7%
 Nothing is required right now. The next implementation step can proceed locally. Later, maintainers should decide whether ESSOS mgrid export should be released before the `vmec_jax` example is promoted from research example to documented workflow.
 
 ## Work Log
+
+### 2026-05-29 Accepted force-channel replay hardening
+
+Steps taken:
+
+1. Let PR CI complete on commit `74dd0f73`; all required lanes passed,
+   including the Python 3.11 coverage lane after the timeout increase.
+2. Added exact accepted-output assertions to the direct-coil finite-pressure
+   phase-2 gate. The test now reconstructs traced preconditioned force
+   channels from traced R/Z force blocks and replays the accepted VMEC update
+   from traced force channels with zero numerical tolerance.
+3. Ran a diagnostic comparison that separates two error sources:
+   force-channel/update replay is exact, while the remaining JAX NESTOR
+   replay gap is upstream in the coil/boundary-to-vacuum reconstruction. On
+   the tiny active direct-coil case the JAX-recomputed `bsqvac` differs from
+   the traced accepted `bsqvac` by about `4.1e-4` relative RMS.
+
+Results:
+
+1. `python -m ruff check tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree -rx`
+   passed in the local environment.
+3. PR CI run `26642403449` passed all required jobs on `74dd0f73`.
+
+Next:
+
+1. Tighten the JAX NESTOR parity lane by comparing matching production
+   `scalpot` dumps against the JAX replay for the same trace state and
+   accepted step.
+2. Keep the strict accepted-state replay assertions as a regression guard while
+   the upstream NESTOR parity gap is reduced.
+3. Continue GPU performance work only after the new test-only hardening commit
+   passes CI.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-05-25 VMEC2000 trace-gate and fused-fsq1 benchmark pass
 
