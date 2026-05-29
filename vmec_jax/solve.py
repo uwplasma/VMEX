@@ -11252,6 +11252,7 @@ def solve_fixed_boundary_residual_iter(
             freeb_reused = False
             freeb_solve_time = 0.0
             freeb_sample_time = 0.0
+            freeb_plascur_for_bsqvac = float(freeb_plascur)
             if bool(free_boundary_enabled and freeb_couple_edge):
                 try:
                     # VMEC free-boundary path in funct3d only enters NESTOR
@@ -13498,6 +13499,7 @@ def solve_fixed_boundary_residual_iter(
                     ),
                     "freeb_pres_scale": None if freeb_pres_scale is None else float(freeb_pres_scale),
                     "freeb_plascur": float(freeb_plascur),
+                    "freeb_plascur_for_bsqvac": float(freeb_plascur_for_bsqvac),
                     "constraint_rcon0": (
                         None if constraint_rcon0_current is None else _adjoint_trace_array(constraint_rcon0_current)
                     ),

@@ -1087,7 +1087,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     sample = _sample_external_boundary_arrays(
         state=trace["state_pre"],
         static=init.static,
-        plascur=float(trace.get("freeb_plascur", 0.0)),
+        plascur=float(trace.get("freeb_plascur_for_bsqvac", trace.get("freeb_plascur", 0.0))),
         external_field_provider_kind="direct_coils",
         external_field_provider_params=base_params,
     )
@@ -1176,6 +1176,12 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     assert bsqvac0.shape == np.asarray(trace["freeb_bsqvac_half"]).shape
     assert np.all(np.isfinite(np.asarray(bsqvac0, dtype=float)))
     assert float(np.linalg.norm(np.asarray(bsqvac0, dtype=float))) > 0.0
+    bsqvac_delta = np.asarray(bsqvac0, dtype=float) - np.asarray(trace["freeb_bsqvac_half"], dtype=float)
+    bsqvac_rel = np.linalg.norm(bsqvac_delta) / max(
+        1.0,
+        np.linalg.norm(np.asarray(trace["freeb_bsqvac_half"], dtype=float)),
+    )
+    assert bsqvac_rel < 2.0e-5
 
     # The accepted trace must be exactly replayable once the force channels have
     # been computed. This protects accepted-output correctness separately from

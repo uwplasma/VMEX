@@ -2054,8 +2054,10 @@ Steps taken:
    replay gap is upstream in the coil/boundary-to-vacuum reconstruction. On
    the tiny active direct-coil case the JAX-recomputed `bsqvac` differs from
    the traced accepted `bsqvac` by about `4.1e-4` relative RMS.
-4. Added `freeb_plascur` to the accepted adjoint trace so future replays use
-   the per-step plasma-current value rather than a run-final diagnostic value.
+4. Added `freeb_plascur` and `freeb_plascur_for_bsqvac` to the accepted
+   adjoint trace so future replays use the scalar plasma-current value that was
+   actually used to sample the traced vacuum field, not the later post-force
+   update value or run-final diagnostic value.
 5. Changed direct/non-mgrid provider reuse to refresh geometry-dependent dense
    NESTOR operators while leaving legacy mgrid reuse unchanged. This is the
    correct default for direct coils because the sampled boundary geometry and
@@ -2071,9 +2073,9 @@ Results:
 4. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_coil_provider_forward.py -rx`
    passed locally: 20 passed, 1 skipped.
 5. Resampling the same active trace state with the traced `freeb_plascur`
-   still leaves the `4.1e-4` relative `bsqvac` gap, so the next issue is not
-   plasma-current replay. It remains in the exact trace-state NESTOR/sample
-   reconstruction path.
+   still left the original `4.1e-4` relative `bsqvac` gap. Replaying with the
+   new pre-force `freeb_plascur_for_bsqvac` lowers the trace-vs-fresh gap to
+   about `1.2e-5` relative norm; the AD/FD gate now asserts this bound.
 
 Next:
 
