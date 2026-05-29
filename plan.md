@@ -1343,7 +1343,11 @@ Defer beyond the current cycle:
   some systems. The cache trigger no longer treats merely visible
   `CUDA_VISIBLE_DEVICES`/ROCm devices as accelerator intent at import time;
   explicit JAX GPU platform requests and `solver_device="gpu"` still enable the
-  accelerator cache path before solve compilation.
+  accelerator cache path before solve compilation. The runtime
+  `solver_device="gpu"` path now also mirrors the import-time cache setup by
+  setting `jax_compilation_cache_dir` and the GPU XLA autotune cache option, so
+  GPU users do not need environment variables to get the intended persistent
+  cache behavior.
 - 2026-05-29: Added per-stage multigrid wall-time diagnostics to the driver and
   fixed-boundary profiler, then fixed chunked-stage accounting so accelerated
   monitor chunks are summed as one logical stage. Scan-stage `scan_total_s`

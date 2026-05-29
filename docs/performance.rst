@@ -2114,7 +2114,10 @@ remaining GPU production issue is fresh-process compile/cache latency.
 
 Public GPU requests now enable the persistent compilation cache automatically
 even when the user selects the GPU through ``solver_device="gpu"`` instead of a
-JAX platform environment variable.  On ``office`` after the cache-policy fix,
+JAX platform environment variable.  The runtime GPU path mirrors the
+import-time cache setup by setting both ``jax_compilation_cache_dir`` and the
+GPU XLA autotune cache option before first solve compilation.  On ``office``
+after the cache-policy fix,
 fresh-process QH warm-start runs measured ``16.0 s`` to populate and ``5.24 s``
 on the next process.  Fresh-process finite-beta runs measured ``19.8 s`` to
 populate and ``8.12 s`` on the next process.  These are still slower than
