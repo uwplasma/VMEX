@@ -43,6 +43,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import generate_qs_ess_sweep as sweep
+from qi_optimization_cases import QI_CASES
 from vmec_jax.namelist import read_indata
 
 
@@ -73,12 +74,24 @@ class QIStagedCaseConfig:
     target_aspect: float | None = None
     target_abs_iota_min: float | None = None
     max_mirror_ratio: float | None = None
+    mirror_surface_index: int | None = None
     max_elongation: float | None = None
+    qi_gate_smooth_max: float | None = None
+    qi_gate_legacy_max: float | None = None
+    qi_ceiling_max: float | None = None
+    qi_ceiling_smooth_penalty: float | None = None
+    mirror_weight: float | None = None
+    elongation_weight: float | None = None
     qi_mboz: int | None = None
     qi_nboz: int | None = None
     qi_nphi: int | None = None
     qi_nalpha: int | None = None
     qi_n_bounce: int | None = None
+    audit_qi_mboz: int | None = None
+    audit_qi_nboz: int | None = None
+    audit_qi_nphi: int | None = None
+    audit_qi_nalpha: int | None = None
+    audit_qi_n_bounce: int | None = None
     reference_lambdas: tuple[float, ...] | None = DEFAULT_REFERENCE_LAMBDAS
     mirror_ramp_stages: tuple[dict[str, Any], ...] | None = None
     make_plots: bool = True
@@ -133,6 +146,97 @@ def _prepend_pythonpath(env: dict[str, str], *paths: Path) -> None:
     env["PYTHONPATH"] = os.pathsep.join(additions + ([current] if current else []))
 
 
+def _policy_case(config: QIStagedCaseConfig) -> dict[str, Any]:
+    case = QI_CASES.get(str(config.policy_case), {})
+    return case if isinstance(case, dict) else {}
+
+
+def _policy_boundary_reference(config: QIStagedCaseConfig) -> dict[str, Any]:
+    boundary = _policy_case(config).get("boundary_reference_preconditioner", {})
+    return boundary if isinstance(boundary, dict) else {}
+
+
+def _policy_value(config: QIStagedCaseConfig, case_key: str, attr: str | None = None) -> Any:
+    case = _policy_case(config)
+    if case.get(case_key) is not None:
+        return case[case_key]
+    return getattr(config, attr or case_key)
+
+
+def _policy_or_reference_value(config: QIStagedCaseConfig, case_key: str, reference_key: str, attr: str) -> Any:
+    case = _policy_case(config)
+    boundary = _policy_boundary_reference(config)
+    if case.get(case_key) is not None:
+        return case[case_key]
+    if boundary.get(reference_key) is not None:
+        return boundary[reference_key]
+    return getattr(config, attr)
+
+
+def _resolution_value(
+    config: QIStagedCaseConfig,
+    resolution_key: str,
+    item_key: str,
+    attr: str,
+) -> int | None:
+    resolution = _policy_case(config).get(resolution_key, {})
+    if isinstance(resolution, dict) and resolution.get(item_key) is not None:
+        return int(resolution[item_key])
+    value = getattr(config, attr)
+    return None if value is None else int(value)
+
+
+def _jsonable_policy_value(value: Any) -> Any:
+    if isinstance(value, Path):
+        return str(value.expanduser())
+    if isinstance(value, tuple):
+        return [_jsonable_policy_value(item) for item in value]
+    if isinstance(value, list):
+        return [_jsonable_policy_value(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _jsonable_policy_value(item) for key, item in value.items()}
+    return value
+
+
+def _reference_input(config: QIStagedCaseConfig) -> Path | None:
+    if config.reference_input is not None:
+        return Path(config.reference_input)
+    boundary = _policy_boundary_reference(config)
+    if bool(boundary.get("enabled")) and boundary.get("reference_input") is not None:
+        return Path(boundary["reference_input"])
+    return None
+
+
+def _reference_lambdas(config: QIStagedCaseConfig) -> tuple[float, ...] | None:
+    if config.reference_lambdas is None:
+        return None
+    boundary = _policy_boundary_reference(config)
+    if config.reference_lambdas == DEFAULT_REFERENCE_LAMBDAS and boundary.get("lambdas") is not None:
+        return tuple(float(value) for value in boundary["lambdas"])
+    return tuple(float(value) for value in config.reference_lambdas)
+
+
+def _reference_preconditioner_overrides(config: QIStagedCaseConfig) -> dict[str, Any]:
+    boundary = dict(_policy_boundary_reference(config))
+    reference_input = _reference_input(config)
+    if reference_input is not None:
+        boundary["enabled"] = True
+        boundary["reference_input"] = reference_input
+    if boundary:
+        boundary["max_mode"] = int(config.max_mode)
+    lambdas = _reference_lambdas(config)
+    if config.reference_lambdas is None:
+        boundary.pop("lambdas", None)
+    elif lambdas is not None:
+        boundary["lambdas"] = lambdas
+    if boundary:
+        boundary["accept_as_baseline"] = bool(
+            boundary.get("accept_as_baseline", config.reference_accept_as_baseline)
+            or config.reference_accept_as_baseline
+        )
+    return _jsonable_policy_value(boundary)
+
+
 def _build_qi_staged_env(config: QIStagedCaseConfig) -> dict[str, str]:
     """Return process environment for the QI standalone subprocess."""
 
@@ -166,24 +270,32 @@ def _build_qi_staged_args(config: QIStagedCaseConfig) -> list[str]:
         "--stage-mode-policy",
         str(config.stage_mode_policy),
     ]
-    if config.reference_input is not None:
+    reference_input = _reference_input(config)
+    if reference_input is not None:
         args.extend(
             [
                 "--use-reference-family-seed",
                 "--reference-input",
-                str(Path(config.reference_input).expanduser()),
+                str(reference_input.expanduser()),
             ]
         )
-        if config.reference_lambdas is not None:
+        reference_lambdas = _reference_lambdas(config)
+        if reference_lambdas is not None:
             args.extend(
                 [
                     "--reference-lambdas",
-                    ",".join(f"{float(value):.12g}" for value in config.reference_lambdas),
+                    ",".join(f"{float(value):.12g}" for value in reference_lambdas),
                 ]
             )
+        reference_overrides = _reference_preconditioner_overrides(config)
+        if reference_overrides:
+            reference_path = Path(config.output_dir).expanduser() / "boundary_reference_preconditioner.json"
+            reference_path.parent.mkdir(parents=True, exist_ok=True)
+            reference_path.write_text(json.dumps(reference_overrides, indent=2, sort_keys=True) + "\n")
+            args.extend(["--boundary-reference-json", str(reference_path)])
         args.append(
             "--accept-boundary-reference-baseline"
-            if bool(config.reference_accept_as_baseline)
+            if bool(reference_overrides.get("accept_as_baseline", config.reference_accept_as_baseline))
             else "--no-accept-boundary-reference-baseline"
         )
     else:
@@ -205,20 +317,42 @@ def _build_qi_staged_args(config: QIStagedCaseConfig) -> list[str]:
     if config.ess_alpha is not None:
         args.extend(["--ess-alpha", str(float(config.ess_alpha))])
     physics_args = {
-        "--target-aspect": config.target_aspect,
-        "--target-abs-iota-min": config.target_abs_iota_min,
-        "--max-mirror-ratio": config.max_mirror_ratio,
-        "--max-elongation": config.max_elongation,
+        "--target-aspect": _policy_value(config, "target_aspect"),
+        "--target-abs-iota-min": _policy_value(config, "target_abs_iota_min"),
+        "--max-mirror-ratio": _policy_or_reference_value(
+            config, "mirror_threshold", "max_mirror_ratio", "max_mirror_ratio"
+        ),
+        "--max-elongation": _policy_or_reference_value(config, "max_elongation", "max_elongation", "max_elongation"),
+        "--qi-gate-smooth-max": _policy_or_reference_value(
+            config, "qi_gate_smooth_max", "smooth_qi_max", "qi_gate_smooth_max"
+        ),
+        "--qi-gate-legacy-max": _policy_or_reference_value(
+            config, "qi_gate_legacy_max", "legacy_qi_max", "qi_gate_legacy_max"
+        ),
+        "--qi-ceiling-max": _policy_value(config, "qi_ceiling_max"),
+        "--qi-ceiling-smooth-penalty": _policy_value(config, "qi_ceiling_smooth_penalty"),
+        "--mirror-weight": _policy_value(config, "mirror_weight"),
+        "--elongation-weight": _policy_value(config, "elongation_weight"),
     }
     for flag, value in physics_args.items():
         if value is not None:
             args.extend([flag, str(float(value))])
+    mirror_surface_index = _policy_value(config, "mirror_surface_index")
+    if mirror_surface_index is not None:
+        args.extend(["--mirror-surface-index", str(int(mirror_surface_index))])
     qi_resolution_args = {
-        "--qi-mboz": config.qi_mboz,
-        "--qi-nboz": config.qi_nboz,
-        "--qi-nphi": config.qi_nphi,
-        "--qi-nalpha": config.qi_nalpha,
-        "--qi-n-bounce": config.qi_n_bounce,
+        "--qi-mboz": _resolution_value(config, "optimization_qi_resolution", "mboz", "qi_mboz"),
+        "--qi-nboz": _resolution_value(config, "optimization_qi_resolution", "nboz", "qi_nboz"),
+        "--qi-nphi": _resolution_value(config, "optimization_qi_resolution", "nphi", "qi_nphi"),
+        "--qi-nalpha": _resolution_value(config, "optimization_qi_resolution", "nalpha", "qi_nalpha"),
+        "--qi-n-bounce": _resolution_value(config, "optimization_qi_resolution", "n_bounce", "qi_n_bounce"),
+        "--audit-qi-mboz": _resolution_value(config, "audit_qi_resolution", "mboz", "audit_qi_mboz"),
+        "--audit-qi-nboz": _resolution_value(config, "audit_qi_resolution", "nboz", "audit_qi_nboz"),
+        "--audit-qi-nphi": _resolution_value(config, "audit_qi_resolution", "nphi", "audit_qi_nphi"),
+        "--audit-qi-nalpha": _resolution_value(config, "audit_qi_resolution", "nalpha", "audit_qi_nalpha"),
+        "--audit-qi-n-bounce": _resolution_value(
+            config, "audit_qi_resolution", "n_bounce", "audit_qi_n_bounce"
+        ),
     }
     for flag, value in qi_resolution_args.items():
         if value is not None:

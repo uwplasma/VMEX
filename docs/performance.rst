@@ -1894,15 +1894,16 @@ second ``jax.vjp`` through the same initial-state graph.  A cold QA
 remaining first-call cost is in the accepted VMEC tape solve/replay path rather
 than duplicated initial-state autodiff.
 
-The follow-up patch attacks the repeated initial-state construction inside that
-accepted-point path.  ``FixedBoundaryExactOptimizer`` now lazily JITs the
-parameter-to-packed-initial-state map (disable with
-``VMEC_JAX_OPT_JIT_INITIAL_STATE=0`` for diagnostics).  On the same QA
-``max_mode=1`` two-point CPU callback profile, enabling this helper reduced
-total exact callback wall time from ``7.99 s`` to ``6.94 s`` and lowered peak
-RSS from about ``1593 MiB`` to ``1456 MiB``.  The next hot bucket after this
-change is the unattributed compiled work inside the accepted VMEC iteration
-loop, not initialization.
+The follow-up patch tested JIT compilation of the repeated initial-state
+construction inside that accepted-point path.  ``FixedBoundaryExactOptimizer``
+can lazily JIT the parameter-to-packed-initial-state map with
+``VMEC_JAX_OPT_JIT_INITIAL_STATE=1``.  It is not enabled by default because
+new cold CPU exact callbacks pay more compile/dispatch overhead than this small
+projection saves.  On a QH ``max_mode=2`` CPU smoke, the default non-JIT path
+cut a cold accepted callback from ``3.23 s`` to ``2.13 s`` relative to the JIT
+helper, with ``initial_guess_exact`` dropping from ``1.58 s`` to ``0.154 s``.
+The next hot bucket remains the compiled accepted VMEC tape solve/replay path,
+not initialization.
 
 April 2026 local CPU diagnostics with ``inner_max_iter=trial_max_iter=300`` and
 ``max_nfev=2``:

@@ -223,6 +223,7 @@ INPUT_FILE = vj.run_boundary_reference_preconditioner(
         "smooth_qi_max": QI_GATE_SMOOTH_MAX,
         "legacy_qi_max": QI_GATE_LEGACY_MAX,
         "diagnostic_qi_resolution": AUDIT_QI_RESOLUTION,
+        **globals().get("BOUNDARY_REFERENCE_OVERRIDES", {}),
     },
     ctx=QI_CONTEXT,
 )

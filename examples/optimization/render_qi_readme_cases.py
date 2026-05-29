@@ -233,6 +233,85 @@ def _validate_case_initial_wout(case: QICase) -> None:
     )
 
 
+def _repo_relative_or_absolute(path: Path) -> str:
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def _initial_wout_for_case(case: QICase) -> Path:
+    """Return an existing raw-input initial WOUT for README/docs provenance."""
+
+    seen: set[Path] = set()
+    rejected: list[str] = []
+    for candidate in (
+        case.output_dir / "wout_original.nc",
+        case.initial_wout,
+        case.output_dir / "wout_initial.nc",
+    ):
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if not candidate.exists():
+            continue
+        try:
+            _assert_wout_matches_input_boundary(
+                candidate,
+                case.input_file,
+                context=f"{case.label} initial_wout",
+            )
+        except RuntimeError as exc:
+            rejected.append(f"{candidate}: {exc}")
+            continue
+        else:
+            return candidate
+    if rejected:
+        raise RuntimeError(
+            f"{case.label} has initial WOUT candidates, but none match the raw input boundary: "
+            + " | ".join(rejected)
+        )
+    raise FileNotFoundError(
+        f"{case.label} has no existing raw initial WOUT. Checked: "
+        + ", ".join(str(path) for path in seen)
+    )
+
+
+def _checkpoint_wout_path(case: QICase, name: str) -> Path | None:
+    checkpoint = case.output_dir / "stage_checkpoint.json"
+    if not checkpoint.exists():
+        return None
+    try:
+        data = json.loads(checkpoint.read_text())
+    except json.JSONDecodeError:
+        return None
+    raw_path = data.get("wout_path") if name == "wout_final.nc" else None
+    if raw_path:
+        candidate = Path(str(raw_path))
+        if not candidate.is_absolute():
+            candidate = case.output_dir / candidate
+        if candidate.exists():
+            return candidate
+    diagnostics_path = data.get("diagnostics_path")
+    if not diagnostics_path:
+        return None
+    diagnostics = Path(str(diagnostics_path))
+    if not diagnostics.is_absolute():
+        diagnostics = case.output_dir / diagnostics
+    candidate = diagnostics.parent / name
+    return candidate if candidate.exists() else None
+
+
+def _final_wout_for_case(case: QICase) -> Path:
+    for candidate in (
+        case.output_dir / "wout_final.nc",
+        _checkpoint_wout_path(case, "wout_final.nc"),
+    ):
+        if candidate is not None and candidate.exists():
+            return candidate
+    raise FileNotFoundError(case.output_dir / "wout_final.nc")
+
+
 def _history_paths(case: QICase) -> tuple[Path, ...]:
     if case.history_paths:
         return case.history_paths
@@ -426,11 +505,11 @@ def _case_record(case: QICase) -> dict[str, str | float]:
     history = _load_json(case.output_dir / "history.json")
     full_wall_s, history_segment_count, history_point_count = _history_summary(case)
     preconditioner_points, selected_lambda, selected_lambda_qi, selected_lambda_mirror = _preconditioner_summary(case)
-    final_wout = case.output_dir / "wout_final.nc"
-    for path in (case.input_file, case.initial_wout, final_wout):
+    initial_wout = _initial_wout_for_case(case)
+    final_wout = _final_wout_for_case(case)
+    for path in (case.input_file, initial_wout, final_wout):
         if not path.exists():
             raise FileNotFoundError(path)
-    _validate_case_initial_wout(case)
     stress_fixture = bool(diagnostics.get("qi_case_stress_fixture", False))
     expected_gate_status = str(diagnostics.get("qi_case_expected_gate_status", "candidate"))
     if case.validation_status not in {"case-gated", "deferred"}:
@@ -465,7 +544,7 @@ def _case_record(case: QICase) -> dict[str, str | float]:
         "case": case.label,
         "input_file": str(case.input_file.relative_to(REPO_ROOT)),
         "output_dir": str(case.output_dir.relative_to(REPO_ROOT)),
-        "initial_wout": str(case.initial_wout.relative_to(REPO_ROOT)),
+        "initial_wout": _repo_relative_or_absolute(initial_wout),
         "note": case.note,
         "validation_status": validation_status,
         "expected_gate_status": expected_gate_status,
@@ -491,7 +570,7 @@ def _case_record(case: QICase) -> dict[str, str | float]:
         "selected_lambda": "" if selected_lambda is None else selected_lambda,
         "selected_lambda_qi": "" if selected_lambda_qi is None else selected_lambda_qi,
         "selected_lambda_mirror": "" if selected_lambda_mirror is None else selected_lambda_mirror,
-        "final_wout": str(final_wout.relative_to(REPO_ROOT)),
+        "final_wout": _repo_relative_or_absolute(final_wout),
     }
 
 
@@ -575,6 +654,19 @@ def _plot_lcfs(ax, wout_path: Path, title: str) -> None:
 def _plot_history(ax, case: QICase) -> None:
     colors = ("#1f4e79", "#d95f02", "#2ca25f", "#756bb1", "#636363")
     segments = _history_segments(case)
+    if _history_is_effectively_flat(segments):
+        if case.preconditioner_summary is not None:
+            _plot_reference_transition(ax, case)
+            return
+        ax.text(
+            0.5,
+            0.52,
+            "flat local objective history",
+            ha="center",
+            va="center",
+            fontsize=7,
+            transform=ax.transAxes,
+        )
     offset_iter = 0
     for idx, segment in enumerate(segments):
         objective = np.asarray(segment["objective"], dtype=float)
@@ -600,7 +692,6 @@ def _plot_reference_transition(ax, case: QICase) -> None:
 
     row = _selected_preconditioner_row(case)
     diagnostics = _load_json(case.output_dir / "diagnostics.json")
-    segments = _history_segments(case)
     x = np.asarray([0.0, 1.0], dtype=float)
     smooth = np.asarray(
         [
@@ -785,16 +876,22 @@ def _render(records: list[dict[str, str | float]]) -> None:
         ha="left",
     )
     for row, (case, record) in enumerate(zip(CASES, records, strict=True)):
+        initial_wout = Path(str(record["initial_wout"]))
+        final_wout = Path(str(record["final_wout"]))
+        if not initial_wout.is_absolute():
+            initial_wout = REPO_ROOT / initial_wout
+        if not final_wout.is_absolute():
+            final_wout = REPO_ROOT / final_wout
         ax0 = fig.add_subplot(gs[row, 0], projection="3d")
         ax1 = fig.add_subplot(gs[row, 1], projection="3d")
         ax2 = fig.add_subplot(gs[row, 2])
         ax3 = fig.add_subplot(gs[row, 3])
         ax4 = fig.add_subplot(gs[row, 4])
-        _plot_lcfs(ax0, case.initial_wout, "Raw input LCFS")
-        _plot_lcfs(ax1, case.output_dir / "wout_final.nc", "Final LCFS")
+        _plot_lcfs(ax0, initial_wout, "Raw input LCFS")
+        _plot_lcfs(ax1, final_wout, "Final LCFS")
         _plot_history(ax2, case)
-        _plot_boozer_bmag(ax3, case.initial_wout, int(record["qi_nfp"]), r"Initial Boozer $|B|$")
-        _plot_boozer_bmag(ax4, case.output_dir / "wout_final.nc", int(record["qi_nfp"]), r"Final Boozer $|B|$")
+        _plot_boozer_bmag(ax3, initial_wout, int(record["qi_nfp"]), r"Initial Boozer $|B|$")
+        _plot_boozer_bmag(ax4, final_wout, int(record["qi_nfp"]), r"Final Boozer $|B|$")
         row_top = max(ax.get_position().y1 for ax in (ax0, ax1, ax2, ax3, ax4))
         title_y = row_top + 0.034
         fig.text(0.045, title_y, _row_title(record), fontsize=10, ha="left", va="bottom")
