@@ -144,7 +144,7 @@ Current repository release note
 -------------------------------
 
 The latest repository tag prepared from this checklist is
-`v0.0.13 <https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.13>`_, built
+`v0.0.14 <https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.14>`_, built
 from the matching release tag after the required CI gates pass.  Verify PyPI
 with a no-dependencies wheel download after publication.
 Package-index descriptions are immutable for already-published files, so any
@@ -191,8 +191,8 @@ claiming a broader physics milestone:
   wout is available.  Treat trial-solve landscape/basin scans as triage only;
   use exact-solve diagnostics before promotion claims.
 
-Latest local release-hygiene snapshot
--------------------------------------
+Historical local release-hygiene snapshot
+-----------------------------------------
 
 The latest documented local rerun is ``outputs/rerun_20260525_123334``.  It is
 not a release gate by itself, but it is the current evidence bundle to cite
