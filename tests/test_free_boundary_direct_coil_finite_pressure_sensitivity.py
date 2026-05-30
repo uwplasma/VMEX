@@ -1386,7 +1386,7 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
 
     pytest.importorskip("jax")
     from vmec_jax._compat import jnp
-    from vmec_jax.discrete_adjoint import strict_update_accepted_step, strict_update_one_step_from_state
+    from vmec_jax.discrete_adjoint import strict_update_accepted_step, strict_update_one_step_from_trace
     from vmec_jax.driver import run_free_boundary
     from vmec_jax.free_boundary import (
         _build_vmec_mode_basis,
@@ -1394,7 +1394,7 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         _vmec_boundary_wint,
     )
     from vmec_jax.free_boundary_adjoint import (
-        direct_coil_boundary_bsqvac_jax,
+        direct_coil_boundary_bsqvac_from_trace_jax,
         free_boundary_boundary_geometry_jax,
         pytree_directional_derivative_check_jax,
     )
@@ -1511,30 +1511,14 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     assert isinstance(nestor_trace, dict)
 
     def bsqvac_from_trace(params: CoilFieldParams, geom: dict[str, object], trace: dict[str, object]):
-        trace_nestor = trace.get("freeb_nestor_trace")
-        assert isinstance(trace_nestor, dict)
-        return direct_coil_boundary_bsqvac_jax(
+        return direct_coil_boundary_bsqvac_from_trace_jax(
             params,
-            R=geom["R"],
-            Z=geom["Z"],
-            phi=geom["phi"],
-            Ru=geom["Ru"],
-            Zu=geom["Zu"],
-            Rv=geom["Rv"],
-            Zv=geom["Zv"],
-            ruu=geom["ruu"],
-            ruv=geom["ruv"],
-            rvv=geom["rvv"],
-            zuu=geom["zuu"],
-            zuv=geom["zuv"],
-            zvv=geom["zvv"],
+            geom,
+            trace,
             basis=basis,
             tables=tables,
             signgs=int(init.signgs),
             nvper=nvper,
-            br_add=jnp.asarray(trace_nestor["br_axis"]),
-            bp_add=jnp.asarray(trace_nestor["bp_axis"]),
-            bz_add=jnp.asarray(trace_nestor["bz_axis"]),
             wint=jnp.asarray(wint),
             include_analytic=True,
         )
@@ -1546,45 +1530,11 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         rtol=2.0e-12,
         atol=1.0e-10,
     )
-    second_step = strict_update_one_step_from_state(
+    second_step = strict_update_one_step_from_trace(
         replayed_state1,
         init.static,
-        wout_like=trace1["wout_like"],
-        trig=trace1["trig"],
-        apply_lforbal=trace1["apply_lforbal"],
-        include_edge_residual=trace1["include_edge_residual"],
-        apply_m1_constraints=trace1["apply_m1_constraints"],
-        zero_m1=trace1["zero_m1"],
-        mats=trace1["precond_mats"],
-        jmax=trace1["precond_jmax"],
-        lam_prec=trace1["lam_prec"],
-        w_mode_mn=trace1["w_mode_mn"],
-        lambda_update_scale=trace1["lambda_update_scale"],
-        dt_eff=trace1["dt_eff"],
-        b1=trace1["b1"],
-        fac=trace1["fac"],
-        force_scale=trace1["force_scale"],
-        flip_sign=trace1["flip_sign"],
-        vRcc_before=trace1["vRcc_before"],
-        vRss_before=trace1["vRss_before"],
-        vZsc_before=trace1["vZsc_before"],
-        vZcs_before=trace1["vZcs_before"],
-        vLsc_before=trace1["vLsc_before"],
-        vLcs_before=trace1["vLcs_before"],
-        max_update_rms=trace1["max_update_rms_pre"],
-        limit_update_rms=trace1["limit_update_rms"],
-        divide_by_scalxc_for_update=trace1["divide_by_scalxc_for_update"],
-        preconditioner_use_precomputed_tridi=trace1["preconditioner_use_precomputed_tridi"],
-        preconditioner_use_lax_tridi=trace1["preconditioner_use_lax_tridi"],
+        trace1,
         freeb_bsqvac_half=replay1["bsqvac"],
-        freeb_pres_scale=trace1["freeb_pres_scale"],
-        constraint_rcon0=trace1.get("constraint_rcon0"),
-        constraint_zcon0=trace1.get("constraint_zcon0"),
-        constraint_tcon0=trace1.get("constraint_tcon0"),
-        constraint_precond_diag=trace1.get("constraint_precond_diag"),
-        constraint_tcon=trace1.get("constraint_tcon"),
-        constraint_precond_active=trace1.get("constraint_precond_active"),
-        constraint_tcon_active=trace1.get("constraint_tcon_active"),
         enforce_edge=False,
     )
     np.testing.assert_allclose(
@@ -1593,49 +1543,6 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         rtol=1.0e-10,
         atol=1.0e-11,
     )
-
-    def strict_one_step_from_trace(state, trace: dict[str, object], bsqvac):
-        return strict_update_one_step_from_state(
-            state,
-            init.static,
-            wout_like=trace["wout_like"],
-            trig=trace["trig"],
-            apply_lforbal=trace["apply_lforbal"],
-            include_edge_residual=trace["include_edge_residual"],
-            apply_m1_constraints=trace["apply_m1_constraints"],
-            zero_m1=trace["zero_m1"],
-            mats=trace["precond_mats"],
-            jmax=trace["precond_jmax"],
-            lam_prec=trace["lam_prec"],
-            w_mode_mn=trace["w_mode_mn"],
-            lambda_update_scale=trace["lambda_update_scale"],
-            dt_eff=trace["dt_eff"],
-            b1=trace["b1"],
-            fac=trace["fac"],
-            force_scale=trace["force_scale"],
-            flip_sign=trace["flip_sign"],
-            vRcc_before=trace["vRcc_before"],
-            vRss_before=trace["vRss_before"],
-            vZsc_before=trace["vZsc_before"],
-            vZcs_before=trace["vZcs_before"],
-            vLsc_before=trace["vLsc_before"],
-            vLcs_before=trace["vLcs_before"],
-            max_update_rms=trace["max_update_rms_pre"],
-            limit_update_rms=trace["limit_update_rms"],
-            divide_by_scalxc_for_update=trace["divide_by_scalxc_for_update"],
-            preconditioner_use_precomputed_tridi=trace["preconditioner_use_precomputed_tridi"],
-            preconditioner_use_lax_tridi=trace["preconditioner_use_lax_tridi"],
-            freeb_bsqvac_half=bsqvac,
-            freeb_pres_scale=trace["freeb_pres_scale"],
-            constraint_rcon0=trace.get("constraint_rcon0"),
-            constraint_zcon0=trace.get("constraint_zcon0"),
-            constraint_tcon0=trace.get("constraint_tcon0"),
-            constraint_precond_diag=trace.get("constraint_precond_diag"),
-            constraint_tcon=trace.get("constraint_tcon"),
-            constraint_precond_active=trace.get("constraint_precond_active"),
-            constraint_tcon_active=trace.get("constraint_tcon_active"),
-            enforce_edge=False,
-        )
 
     first_geometry = free_boundary_boundary_geometry_jax(trace0["state_pre"], init.static)
     base_dofs = jnp.asarray(base_params.base_curve_dofs)
@@ -1647,11 +1554,23 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
 
     def two_step_objective(params: CoilFieldParams):
         first_bsqvac = bsqvac_from_trace(params, first_geometry, trace0)["bsqvac"]
-        first = strict_one_step_from_trace(trace0["state_pre"], trace0, first_bsqvac)
+        first = strict_update_one_step_from_trace(
+            trace0["state_pre"],
+            init.static,
+            trace0,
+            freeb_bsqvac_half=first_bsqvac,
+            enforce_edge=False,
+        )
         state1 = first["step"]["state_post"]
         second_geometry = free_boundary_boundary_geometry_jax(state1, init.static)
         second_bsqvac = bsqvac_from_trace(params, second_geometry, trace1)["bsqvac"]
-        second = strict_one_step_from_trace(state1, trace1, second_bsqvac)
+        second = strict_update_one_step_from_trace(
+            state1,
+            init.static,
+            trace1,
+            freeb_bsqvac_half=second_bsqvac,
+            enforce_edge=False,
+        )
         state2 = jnp.asarray(pack_state(second["step"]["state_post"]))
         force = jnp.asarray(second["force"]["frcc_u"])
         return 0.5 * jnp.vdot(state2, state2) + 1.0e-3 * jnp.vdot(force, force)

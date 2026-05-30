@@ -17,12 +17,49 @@ two-step direct-coil accepted-replay bridge, and promoting the accepted-boundary
 geometry sampler to a JAX-visible helper. The current local follow-up also
 promotes the two-step replay to an AD-vs-central-FD gate through first accepted
 update, JAX geometry resampling, second direct-coil NESTOR replay, and second
-accepted update. PR #18 is open on
+accepted update, then factors the replay plumbing into source helpers. PR #18 is open on
 `feature/freeb-essos-coil-single-stage`; the pre-merge push was fully green,
 including Codecov project coverage, and the refreshed post-main-merge branch is
 being revalidated. The optional ESSOS/direct-coil bootstrap gates remain
 local/manual because they require ESSOS assets and launch real free-boundary
 solves. Do not merge PR #18 until the post-merge checks are green.
+
+### 2026-05-30 Replay helper refactor
+
+Steps taken:
+
+1. Added `direct_coil_boundary_bsqvac_from_trace_jax` in
+   `vmec_jax.free_boundary_adjoint`.
+2. Added `strict_update_one_step_from_trace` in `vmec_jax.discrete_adjoint`.
+3. Rewired the two-step direct-coil replay test to use the source helpers
+   instead of local trace-plumbing closures.
+4. Kept the differentiated graph unchanged: direct coils -> JAX NESTOR replay
+   -> strict first accepted update -> JAX boundary geometry -> JAX NESTOR
+   replay -> strict second accepted update.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/discrete_adjoint.py vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `python -m py_compile vmec_jax/discrete_adjoint.py vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+3. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state -rx`
+   passed: 1 passed in 41.47 s.
+4. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_coil_provider_forward.py -rx`
+   passed: 23 passed, 1 skipped in 85.70 s.
+
+Best next steps:
+
+1. Finish the broader direct-coil/free-boundary subset, then commit/push if
+   green.
+2. Use these helpers to build a reusable two-step replay objective for future
+   production-adjacent gradient gates.
+3. Keep production-loop claims scoped until basis/table construction and the
+   outer nonlinear controller are JAX-visible or wrapped in a custom VJP.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-05-30 Two-step AD-vs-FD replay promotion
 

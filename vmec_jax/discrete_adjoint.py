@@ -127,6 +127,7 @@ _DIRECT_TAPE_TIMING_KEYS = (
     "tape_dynamic_payload_build_s",
     "tape_trace_stack_s",
 )
+_TRACE_OVERRIDE_UNSET = object()
 
 
 def _scan_cache_limit() -> int:
@@ -2851,6 +2852,70 @@ def strict_update_one_step_from_state(
     }
 
 
+def strict_update_one_step_from_trace(
+    state_pre,
+    static,
+    trace: dict[str, Any],
+    *,
+    freeb_bsqvac_half: Any = _TRACE_OVERRIDE_UNSET,
+    freeb_pres_scale: Any = _TRACE_OVERRIDE_UNSET,
+    enforce_edge: bool = True,
+) -> dict[str, Any]:
+    """Replay one strict residual step using fields captured in a trace dict.
+
+    This source helper is intentionally thin: it maps the diagnostic trace
+    schema produced by ``adjoint_trace=True`` onto
+    :func:`strict_update_one_step_from_state` and allows callers to replace the
+    free-boundary ``bsqvac`` channel with a differentiable replay.  It keeps
+    phase-2 direct-coil validation tests from duplicating trace plumbing while
+    preserving the explicit accepted-step contract.
+    """
+
+    bsqvac = trace.get("freeb_bsqvac_half", None) if freeb_bsqvac_half is _TRACE_OVERRIDE_UNSET else freeb_bsqvac_half
+    pres_scale = trace.get("freeb_pres_scale", None) if freeb_pres_scale is _TRACE_OVERRIDE_UNSET else freeb_pres_scale
+    return strict_update_one_step_from_state(
+        state_pre,
+        static,
+        wout_like=trace["wout_like"],
+        trig=trace["trig"],
+        apply_lforbal=trace["apply_lforbal"],
+        include_edge_residual=trace["include_edge_residual"],
+        apply_m1_constraints=trace["apply_m1_constraints"],
+        zero_m1=trace["zero_m1"],
+        mats=trace["precond_mats"],
+        jmax=trace["precond_jmax"],
+        lam_prec=trace["lam_prec"],
+        w_mode_mn=trace["w_mode_mn"],
+        lambda_update_scale=trace["lambda_update_scale"],
+        dt_eff=trace["dt_eff"],
+        b1=trace["b1"],
+        fac=trace["fac"],
+        force_scale=trace["force_scale"],
+        flip_sign=trace["flip_sign"],
+        vRcc_before=trace["vRcc_before"],
+        vRss_before=trace["vRss_before"],
+        vZsc_before=trace["vZsc_before"],
+        vZcs_before=trace["vZcs_before"],
+        vLsc_before=trace["vLsc_before"],
+        vLcs_before=trace["vLcs_before"],
+        max_update_rms=trace["max_update_rms_pre"],
+        limit_update_rms=trace["limit_update_rms"],
+        divide_by_scalxc_for_update=trace["divide_by_scalxc_for_update"],
+        preconditioner_use_precomputed_tridi=trace["preconditioner_use_precomputed_tridi"],
+        preconditioner_use_lax_tridi=trace["preconditioner_use_lax_tridi"],
+        freeb_bsqvac_half=bsqvac,
+        freeb_pres_scale=pres_scale,
+        constraint_rcon0=trace.get("constraint_rcon0"),
+        constraint_zcon0=trace.get("constraint_zcon0"),
+        constraint_tcon0=trace.get("constraint_tcon0"),
+        constraint_precond_diag=trace.get("constraint_precond_diag"),
+        constraint_tcon=trace.get("constraint_tcon"),
+        constraint_precond_active=trace.get("constraint_precond_active"),
+        constraint_tcon_active=trace.get("constraint_tcon_active"),
+        enforce_edge=bool(enforce_edge),
+    )
+
+
 def strict_update_accepted_step(
     state_pre,
     static,
@@ -3089,6 +3154,7 @@ __all__ = [
     "replay_scan_cache_diagnostics",
     "replay_residual_checkpoint_step",
     "strict_update_accepted_step",
+    "strict_update_one_step_from_trace",
     "strict_update_one_step_from_state",
     "strict_update_velocity_limit",
     "strict_update_velocity_block",
