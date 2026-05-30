@@ -203,7 +203,7 @@ provenance and artifact rules are in `docs/optimization.rst` and
 - Release checklist and CI gates: `docs/release_checklist.rst`; latest local
   rerun snapshot: `outputs/rerun_20260525_123334`.
 - Latest repository release tag:
-  [`v0.0.13`](https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.13).
+  [`v0.0.14`](https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.14).
 - Before tagging, re-check green CI with
   `gh run list --repo uwplasma/vmec_jax --branch main --workflow CI --limit 5`.
 

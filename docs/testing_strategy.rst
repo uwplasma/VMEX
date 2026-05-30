@@ -21,8 +21,8 @@ Target State
 - Current coverage target: keep the required ``95%`` actual line coverage gate
   green with meaningful fast and bounded-physics tests while preserving
   acceptable coverage runtime.  The current Python 3.11 required coverage gate
-  is ``95%`` after the latest local CI-equivalent ratchet reached ``95.10%`` on
-  commit ``1037744``.
+  is ``95%``; the latest post-main-merge local CI-equivalent ratchet on the
+  free-boundary PR branch reached ``95.00%``.
 - Nightly/manual coverage: larger VMEC2000, GPU, and full-resolution physics
   checks run outside the required PR gate.
 - Repository checkout size: keep the tracked source tree small enough that a
@@ -507,7 +507,7 @@ QI seed-robustness gates:
   manual/nightly validation until it is cheap enough to summarize as curated
   artifacts.
 
-Latest local optional evidence:
+Historical local optional evidence:
 
 - ``outputs/rerun_20260525_123334`` passed the VMEC2000 stage-trace smoke
   matrix (``6`` cases, ``0`` failures) and the selected full QH warm-start row

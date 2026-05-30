@@ -53,14 +53,26 @@ Results obtained:
 5. `python -m sphinx -W --keep-going -b html docs tmp/freeb_docs_check_replay_context`
    passed.
 6. `git diff --check` passed.
+7. Follow-up cleanup rewired the remaining accepted-update and fixed-boundary
+   JAX NESTOR direct-coil AD-vs-FD tests to use the same replay context helper.
+8. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_nestor_operator_fixed_boundary_ad_matches_central_fd_for_coil_vars -rx`
+   passed: 4 passed in 68.25 s.
+9. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_coil_provider_forward.py -rx`
+   passed after the follow-up cleanup: 23 passed, 1 skipped in 88.41 s.
+10. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_vacuum_adjoint.py tests/test_free_boundary_coil_provider_forward.py -rx`
+    passed: 75 passed, 1 skipped in 156.70 s.
+11. Updated stale release/coverage hygiene wording in the README and docs:
+    latest public repository tag is `v0.0.14`, and the current required
+    coverage gate is the post-main-merge `95.00%` ratchet.
+12. `python -m sphinx -W --keep-going -b html docs tmp/freeb_docs_check_final_hygiene`
+    passed.
 
 Best next steps:
 
-1. Commit and push the replay-context helper.
-2. Watch PR CI after the post-main-merge push.
-3. Next phase-2 target: use the replay context helper in any remaining
-   production-adjacent direct-coil replay tests that still duplicate static
-   NESTOR setup.
+1. Commit and push the replay-context follow-up and documentation hygiene.
+2. Watch PR CI after the push.
+3. Next phase-2 target: keep the production-loop exact-adjoint claim deferred
+   until the nonlinear controller is JAX-visible or has a validated custom VJP.
 
 Need from user:
 
@@ -2307,9 +2319,11 @@ Stretch acceptance:
 
 ## Progress Tracker
 
-The per-WP status lines above are historical acceptance-checklist snapshots.
+The per-WP status lines above are historical acceptance-checklist snapshots,
+not a claim that production nonlinear free-boundary adjoints are complete.
 The dated work log records when evidence was gathered. The table below is the
-authoritative current plan snapshot for the free-boundary direct-coil branch.
+authoritative current plan snapshot for the phase-1 direct-coil branch plus
+phase-2 validation rungs.
 
 ```text
 WP0 Branch foundation and plan:                100%
@@ -2320,14 +2334,14 @@ WP4 JAX mgrid interpolation:                   91%
 WP5 Free-boundary provider hook:               96%
 WP6 Direct-coil forward example:               92%
 WP7 Vacuum adjoint scaffold:                  100%
-WP8 Gradient checks:                          100%
+WP8 Provider/replay gradient checks:          100%
 WP9 VMEC2000 diagnostics:                      96%
 WP10 Benchmarks/diagnostics:                  100%
 WP11 Coil-only QS optimization example:        90%
 WP12 Robust coil perturbations:               100%
 WP13 Documentation:                           100%
 WP14 CI policy:                               100%
-Overall branch completion:                   99.85%
+Overall phase-1 PR readiness:                99%
 ```
 
 ## Immediate Next Steps

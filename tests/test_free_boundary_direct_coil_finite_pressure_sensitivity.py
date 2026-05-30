@@ -1008,14 +1008,10 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         strict_update_one_step_from_state,
     )
     from vmec_jax.driver import run_free_boundary
-    from vmec_jax.free_boundary import (
-        _build_vmec_mode_basis,
-        _ensure_vmec_nonsingular_kernel_tables,
-        _sample_external_boundary_arrays,
-        _vmec_boundary_wint,
-    )
+    from vmec_jax.free_boundary import _sample_external_boundary_arrays
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_boundary_bsqvac_jax,
+        direct_coil_boundary_replay_context,
         pytree_directional_derivative_check_jax,
         vacuum_boundary_fields_from_mode_coeffs_jax,
     )
@@ -1089,18 +1085,10 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         external_field_provider_kind="direct_coils",
         external_field_provider_params=base_params,
     )
-    wint = _vmec_boundary_wint(static=init.static, ntheta=sample.R.shape[0], nzeta=sample.R.shape[1])
-    basis = _build_vmec_mode_basis(
-        ntheta=sample.R.shape[0],
-        nzeta=sample.R.shape[1],
-        nfp=int(init.static.cfg.nfp),
-        mf=int(init.static.cfg.mpol) + 1,
-        nf=int(init.static.cfg.ntor),
-        lasym=bool(init.static.cfg.lasym),
-        wint=wint,
-    )
-    nvper = 64 if int(sample.R.shape[1]) == 1 else max(1, int(init.static.cfg.nfp))
-    tables = _ensure_vmec_nonsingular_kernel_tables(basis=basis, nv=sample.R.shape[1], nvper=nvper)
+    context = direct_coil_boundary_replay_context(init.static, {"R": sample.R})
+    basis = context["basis"]
+    tables = context["tables"]
+    nvper = context["nvper"]
 
     R = jnp.asarray(sample.R)
     Z = jnp.asarray(sample.Z)
@@ -1118,7 +1106,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     br_axis = jnp.asarray(sample.br - sample_coils_only.br)
     bp_axis = jnp.asarray(sample.bp - sample_coils_only.bp)
     bz_axis = jnp.asarray(sample.bz - sample_coils_only.bz)
-    wint_jax = jnp.asarray(wint)
+    wint_jax = jnp.asarray(context["wint"])
     base_dofs = jnp.asarray(base_params.base_curve_dofs)
     base_currents = jnp.asarray(base_params.base_currents)
     direction = base_params.with_arrays(
@@ -1588,14 +1576,10 @@ def test_jax_nestor_operator_fixed_boundary_ad_matches_central_fd_for_coil_vars(
     from vmec_jax._compat import jax, jnp
     from vmec_jax.driver import run_free_boundary
     from vmec_jax.external_fields import sample_coil_field_cylindrical
-    from vmec_jax.free_boundary import (
-        _build_vmec_mode_basis,
-        _ensure_vmec_nonsingular_kernel_tables,
-        _sample_external_boundary_arrays,
-        _vmec_boundary_wint,
-    )
+    from vmec_jax.free_boundary import _sample_external_boundary_arrays
     from vmec_jax.free_boundary_adjoint import (
         dense_vmec_nestor_mode_solve_jax,
+        direct_coil_boundary_replay_context,
         vacuum_boundary_fields_from_cylindrical_jax,
     )
 
@@ -1645,18 +1629,10 @@ def test_jax_nestor_operator_fixed_boundary_ad_matches_central_fd_for_coil_vars(
         external_field_provider_kind="direct_coils",
         external_field_provider_params=base_params,
     )
-    wint = _vmec_boundary_wint(static=init.static, ntheta=sample.R.shape[0], nzeta=sample.R.shape[1])
-    basis = _build_vmec_mode_basis(
-        ntheta=sample.R.shape[0],
-        nzeta=sample.R.shape[1],
-        nfp=int(init.static.cfg.nfp),
-        mf=int(init.static.cfg.mpol) + 1,
-        nf=int(init.static.cfg.ntor),
-        lasym=bool(init.static.cfg.lasym),
-        wint=wint,
-    )
-    nvper = 64 if int(sample.R.shape[1]) == 1 else max(1, int(init.static.cfg.nfp))
-    tables = _ensure_vmec_nonsingular_kernel_tables(basis=basis, nv=sample.R.shape[1], nvper=nvper)
+    context = direct_coil_boundary_replay_context(init.static, {"R": sample.R})
+    basis = context["basis"]
+    tables = context["tables"]
+    nvper = context["nvper"]
 
     R = jnp.asarray(sample.R)
     Z = jnp.asarray(sample.Z)
@@ -1671,7 +1647,7 @@ def test_jax_nestor_operator_fixed_boundary_ad_matches_central_fd_for_coil_vars(
     zuu = jnp.asarray(sample.zuu)
     zuv = jnp.asarray(sample.zuv)
     zvv = jnp.asarray(sample.zvv)
-    wint_jax = jnp.asarray(wint)
+    wint_jax = jnp.asarray(context["wint"])
     base_dofs = jnp.asarray(base_params.base_curve_dofs)
     base_currents = jnp.asarray(base_params.base_currents)
 
