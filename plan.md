@@ -3,8 +3,9 @@
 Last updated: 2026-05-30
 Primary branch: `main`
 Baseline release: `v0.0.14`
-Latest known green `main` CI: `228683e`
-Current candidate: post-`v0.0.14` scan-cache diagnostics/release-gate refresh plus free-boundary direct-coil PR #18 refresh
+Latest known green `main` CI: `7033647`
+Current candidate: post-`v0.0.14` GPU scan/replay policy refresh plus
+free-boundary direct-coil PR #18 refresh
 
 This is the living execution plan for making `vmec_jax` accurate, fast,
 differentiable, documented, and usable by external researchers. Update it when
@@ -114,6 +115,12 @@ acceptance criteria or evidence changes.
   `VMEC2000_INTEGRATION=1`. `solve.py` still dominates the missing-line
   surface, so future coverage should come from physics-gated refactor seams
   rather than scaffolding.
+  After the May 30 GPU scan/replay policy refresh through `7033647`, the local
+  CI-equivalent gate passed with `2378 passed, 20 skipped, 110 deselected,
+  1 xfailed` and 95.22% coverage, plus physics smoke, compile, CLI smoke,
+  repository-size audit, fast Sphinx, and full Sphinx. GitHub Actions run
+  `26696164006` passed build, docs, CLI smoke, parity dry-run, physics smoke,
+  and Python 3.10/3.11/3.12 fast tests for the same commit.
 - VMEC2000 converged-wout parity now has a fast bundled matrix gate across
   fixed/free, axisymmetric/non-axisymmetric, LASYM, and single/multigrid
   representatives. The executable-backed end-state gate remains opt-in:
@@ -444,7 +451,7 @@ Acceptance:
 
 ## Progress Snapshot
 
-Updated 2026-05-28 after the bundled profile/current wout parity gates, QI
+Updated 2026-05-30 after the bundled profile/current wout parity gates, QI
 selection hardening, exact-Jacobian host-materialization cleanup,
 continuation/exact-history hardening, LASYM-Boozer parity, release-checklist
 push, 85% and 90% coverage-gate pushes, optional SIMSOPT/VMEC2000 gate expansion, the
@@ -457,7 +464,7 @@ wout parity tightening, QI staged-history provenance cleanup, the v0.0.11
 release, the QI optimization driver split, and the May 22 helper/refactor
 coverage wave, the v0.0.13 release, the QI workflow checkpointing push, QI
 resolution-override coverage, and the May 27 minimal-seed helicity-perturbation
-update:
+update, the v0.0.14 release, and the May 30 GPU scan/replay policy refresh:
 
 Free-boundary branch addendum, 2026-05-28: PR #18
 (`feature/freeb-essos-coil-single-stage`) has merged latest `origin/main`,
@@ -504,7 +511,7 @@ performance step is structural control-loop staging/fusion.
   explicit abnormal-termination record instead of losing the run. The finite-beta
   stage-one save helper now has a synthetic execution test proving it also writes
   the selected best exact final parameters and state.
-- Differentiation architecture: 89%. Dense exact Jacobians, scalar reverse
+- Differentiation architecture: 90%. Dense exact Jacobians, scalar reverse
   gradients, state tangents, accepted-residual AD-vs-finite-difference checks,
   solve-free QS residual JVP/VJP checks, QS objective routing JVP/VJP checks,
   QI shared-field objective JVP/VJP checks, optional Lineax solver seams, and
@@ -544,7 +551,7 @@ performance step is structural control-loop staging/fusion.
   test now cover the previously failing missing-`input.final` transition. The
   remaining open cleanup is running and tuning the guarded mirror schedule
   across unrelated seeds and completing stronger multi-seed promotion evidence.
-- CPU/GPU performance: 98%. Backend-adaptive replay bucketing, scalar-gradient
+- CPU/GPU performance: 99%. Backend-adaptive replay bucketing, scalar-gradient
   tangent reuse, detailed timing, and GPU-only preconditioner-output fusion are
   in place. Hot-path algebra and CPU/GPU fusion gating are now covered by
   focused CPU-only regressions. The exact-Jacobian residual tangent helper now
@@ -553,9 +560,11 @@ performance step is structural control-loop staging/fusion.
   CPU/GPU profiling wrapper now exposes optimizer method, trust-region solver,
   dynamic replay mode, and child stdout/stderr logs for production GPU matrix
   diagnosis. Symmetric GPU exact-Jacobian replay now defaults to 8-column
-  chunks for 24+ DOF cases, matching the best bounded `office` profile: QH
+  chunks for 24+ DOF cases, matching the best bounded `office` profiles: QH
   mode-2 exact Jacobian dropped from about `42.0 s` to about `18.0 s`, with
-  tape replay dropping from about `22.2 s` to about `5.3 s`. Production
+  tape replay dropping from about `22.2 s` to about `5.3 s`, and the later QH
+  mode-3 48-DOF check favored chunk 8 (`86.3 s`) over chunks 16/24 (about
+  `143 s`). Production
   fixed-boundary auto policy now uses the VMEC-control non-scan loop on CPU and
   scan on GPU/CUDA/ROCm for ordinary raw fixed-boundary solves; the older May
   2026 GPU non-scan result was superseded after the scan-cache/preconditioner
@@ -581,8 +590,10 @@ performance step is structural control-loop staging/fusion.
   Jacobians with perturbed accepted points. For an `inner_max_iter=160` budget,
   8-column replay chunks were the best tested policy (`94.8 s` for two
   callbacks) versus unchunked (`131.4 s`), chunk 4 (`131.9 s`), chunk 16
-  (`127.5 s`), and chunk 24 (`159.8 s`), so GPU 24-DOF replay now defaults to
-  8-column chunks. A follow-up `office` profile with the residual projection
+  (`127.5 s`), and chunk 24 (`159.8 s`). A bounded QH mode-3 48-DOF callback
+  then measured `86.3 s` for chunk 8 versus about `143 s` for chunks 16 and
+  24, so GPU 24+ DOF replay now defaults to 8-column chunks. A follow-up
+  `office` profile with the residual projection
   dispatch/ready split used three perturbed QH mode-2 GPU exact
   Jacobian callbacks (`13.04 s`, `3.98 s`, `3.27 s`) and showed
   `jacobian_residual_tangents=2.263 s` split into `2.204 s` dispatch and
@@ -661,7 +672,7 @@ performance step is structural control-loop staging/fusion.
   1 xfailed`, 95.09%), plus the exact replay JVP instrumentation rerun at the
   same 95.09% coverage level and the `v0.0.14` release-candidate rerun
   (`2354 passed, 20 skipped, 110 deselected, 1 xfailed`, 95.09%). GitHub
-  Actions is green through `228683e`,
+  Actions is green through `7033647`,
   carrying the QI staged-seed, explicit CLI docs updates, fallback
   materialization test, optional SIMSOPT Redl gate wiring, replay JVP
   instrumentation, Glasser `D_R` docs/examples, and newer-JAX preconditioner
@@ -674,6 +685,10 @@ performance step is structural control-loop staging/fusion.
   warnings, release docs use the 95% coverage gate, and package discovery is
   locked to the `vmec_jax` namespace. Released reference assets are ignored so
   local full-tier refreshes cannot accidentally bloat commits.
+  The latest green `main` CI run for `7033647` passed the build, docs, CLI,
+  parity-smoke, physics-smoke, and Python-version fast-test lanes, and the
+  local CI-equivalent pass reached 95.22% coverage with the size gate still at
+  23.59 MiB tracked.
   The documented custom QI seed audit command was validated end-to-end on
   `input.QI_stel_seed_3127`; a production-scale NFP3 GPU staged-seed
   verification on `office` reached a controlled timeout with durable partial
@@ -1421,15 +1436,15 @@ Defer beyond the current cycle:
   `55.9/55.5 s`, dominated by `scan_device_dispatch_s`. The next GPU blocker is
   persistent scan executable reuse or reducing scan compile/dispatch cost, not
   additional cache toggles.
-- 2026-05-29: Added the first scan compile/dispatch reduction after the cache
-  alignment result. Quiet accelerator scans with low spectral mode count
-  (`<=16` stored Fourier coefficients) and long budgets (`>512` iterations)
-  now use fixed 256-iteration scan chunks; higher-mode accelerator cases keep
-  one full-length chunk. On `office`, the full input-NITER
-  `input.nfp4_QH_warm_start` GPU profile improved from `15.76 s` to `13.86 s`
-  with identical final residual (`1.109e-13`). The finite-beta QH guardrail
-  stayed on the full chunk because it has 50 modes; forced small chunks
-  regressed it to `60--94 s` versus `54.54 s` for the patched full chunk.
+- 2026-05-30: Replaced the earlier low-mode-only GPU scan chunk heuristic with
+  a 512-iteration chunk for all quiet accelerator scans longer than 512
+  iterations.  On `office` (RTX A4000/JAX 0.6.2), this remained neutral for
+  `input.nfp4_QH_warm_start` (`13.49 s` default, `13.43 s` at 512, `15.90 s`
+  for one full chunk, final residual `1.109e-13`) and materially improved the
+  high-mode finite-beta QH guardrail (`54.28 s` default/full, `37.84 s` at 256,
+  `23.48 s` at 512, `51.33 s` at 1024, final residual `5.51e-13`).  The next
+  remaining GPU blocker is fresh-process executable reuse and exact
+  accepted-point tape build/replay, not fixed-boundary scan chunk selection.
 - 2026-05-29: Added per-stage multigrid wall-time diagnostics to the driver and
   fixed-boundary profiler, then fixed chunked-stage accounting so accelerated
   monitor chunks are summed as one logical stage. Scan-stage `scan_total_s`
