@@ -1511,6 +1511,59 @@ def direct_coil_boundary_bsqvac_jax(
     }
 
 
+def direct_coil_boundary_bsqvac_from_trace_jax(
+    params: Any,
+    geometry: dict[str, Any],
+    trace: dict[str, Any],
+    *,
+    basis: dict[str, Any],
+    tables: dict[str, Any],
+    signgs: int,
+    nvper: int,
+    wint: Any,
+    include_analytic: bool = True,
+) -> dict[str, Any]:
+    """Replay direct-coil ``bsqvac`` on accepted geometry using trace metadata.
+
+    ``trace`` may be either a full residual-step trace containing
+    ``freeb_nestor_trace`` or the nested NESTOR trace itself.  This keeps the
+    production validation ladder from duplicating trace-to-replay plumbing in
+    every test while keeping the differentiated path explicit: accepted
+    geometry and direct-coil parameters remain JAX-visible, while basis/tables
+    and axis-additive fields are captured trace data.
+    """
+
+    nestor_trace = trace.get("freeb_nestor_trace", trace)
+    if not isinstance(nestor_trace, dict):
+        raise ValueError("trace must be a NESTOR trace or contain 'freeb_nestor_trace'")
+
+    return direct_coil_boundary_bsqvac_jax(
+        params,
+        R=geometry["R"],
+        Z=geometry["Z"],
+        phi=geometry["phi"],
+        Ru=geometry["Ru"],
+        Zu=geometry["Zu"],
+        Rv=geometry["Rv"],
+        Zv=geometry["Zv"],
+        ruu=geometry["ruu"],
+        ruv=geometry["ruv"],
+        rvv=geometry["rvv"],
+        zuu=geometry["zuu"],
+        zuv=geometry["zuv"],
+        zvv=geometry["zvv"],
+        basis=basis,
+        tables=tables,
+        signgs=int(signgs),
+        nvper=int(nvper),
+        br_add=jnp.asarray(nestor_trace["br_axis"]),
+        bp_add=jnp.asarray(nestor_trace["bp_axis"]),
+        bz_add=jnp.asarray(nestor_trace["bz_axis"]),
+        wint=jnp.asarray(wint),
+        include_analytic=bool(include_analytic),
+    )
+
+
 def direct_coil_projected_mode_fixed_point_jax(
     params: Any,
     initial_state: Any,
