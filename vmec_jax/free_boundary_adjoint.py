@@ -1407,6 +1407,50 @@ def free_boundary_boundary_geometry_jax(
     }
 
 
+def direct_coil_boundary_replay_context(
+    static: Any,
+    geometry: dict[str, Any],
+) -> dict[str, Any]:
+    """Build static NESTOR replay data for an accepted boundary geometry.
+
+    The returned mapping contains the VMEC quadrature weights, mode basis,
+    nonsingular-kernel tables, and `nvper` value needed by
+    :func:`direct_coil_boundary_bsqvac_from_trace_jax`.  It is intentionally
+    separated from the differentiable coil/geometry replay: this setup depends
+    only on grid shapes and VMEC static metadata, while the returned arrays are
+    treated as fixed context for AD validation and future custom-VJP work.
+    """
+
+    from .free_boundary import (
+        _build_vmec_mode_basis,
+        _ensure_vmec_nonsingular_kernel_tables,
+        _vmec_boundary_wint,
+    )
+
+    R = geometry["R"]
+    ntheta, nzeta = (int(v) for v in R.shape)
+    wint = _vmec_boundary_wint(static=static, ntheta=ntheta, nzeta=nzeta)
+    basis = _build_vmec_mode_basis(
+        ntheta=ntheta,
+        nzeta=nzeta,
+        nfp=int(static.cfg.nfp),
+        mf=int(static.cfg.mpol) + 1,
+        nf=int(static.cfg.ntor),
+        lasym=bool(static.cfg.lasym),
+        wint=wint,
+    )
+    nvper = 64 if nzeta == 1 else max(1, int(static.cfg.nfp))
+    tables = _ensure_vmec_nonsingular_kernel_tables(basis=basis, nv=nzeta, nvper=nvper)
+    return {
+        "basis": basis,
+        "tables": tables,
+        "wint": wint,
+        "nvper": nvper,
+        "ntheta": ntheta,
+        "nzeta": nzeta,
+    }
+
+
 def direct_coil_boundary_bsqvac_jax(
     params: Any,
     *,
