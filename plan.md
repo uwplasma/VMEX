@@ -3,8 +3,8 @@
 Last updated: 2026-05-30
 Primary branch: `main`
 Baseline release: `v0.0.14`
-Latest known green `main` CI: `228683e`
-Current candidate: post-`v0.0.14` scan-cache diagnostics and release-gate refresh
+Latest known green `main` CI: `7033647`
+Current candidate: post-`v0.0.14` GPU scan/replay policy refresh
 
 This is the living execution plan for making `vmec_jax` accurate, fast,
 differentiable, documented, and usable by external researchers. Update it when
@@ -114,6 +114,12 @@ acceptance criteria or evidence changes.
   `VMEC2000_INTEGRATION=1`. `solve.py` still dominates the missing-line
   surface, so future coverage should come from physics-gated refactor seams
   rather than scaffolding.
+  After the May 30 GPU scan/replay policy refresh through `7033647`, the local
+  CI-equivalent gate passed with `2378 passed, 20 skipped, 110 deselected,
+  1 xfailed` and 95.22% coverage, plus physics smoke, compile, CLI smoke,
+  repository-size audit, fast Sphinx, and full Sphinx. GitHub Actions run
+  `26696164006` passed build, docs, CLI smoke, parity dry-run, physics smoke,
+  and Python 3.10/3.11/3.12 fast tests for the same commit.
 - VMEC2000 converged-wout parity now has a fast bundled matrix gate across
   fixed/free, axisymmetric/non-axisymmetric, LASYM, and single/multigrid
   representatives. The executable-backed end-state gate remains opt-in:
@@ -437,7 +443,7 @@ Acceptance:
 
 ## Progress Snapshot
 
-Updated 2026-05-28 after the bundled profile/current wout parity gates, QI
+Updated 2026-05-30 after the bundled profile/current wout parity gates, QI
 selection hardening, exact-Jacobian host-materialization cleanup,
 continuation/exact-history hardening, LASYM-Boozer parity, release-checklist
 push, 85% and 90% coverage-gate pushes, optional SIMSOPT/VMEC2000 gate expansion, the
@@ -450,7 +456,7 @@ wout parity tightening, QI staged-history provenance cleanup, the v0.0.11
 release, the QI optimization driver split, and the May 22 helper/refactor
 coverage wave, the v0.0.13 release, the QI workflow checkpointing push, QI
 resolution-override coverage, and the May 27 minimal-seed helicity-perturbation
-update:
+update, the v0.0.14 release, and the May 30 GPU scan/replay policy refresh:
 
 - Continuation correctness: 100%. Source fix is implemented and covered by
   synthetic repeated-stage tests, a real boundary-projection stage test, and
@@ -464,7 +470,7 @@ update:
   explicit abnormal-termination record instead of losing the run. The finite-beta
   stage-one save helper now has a synthetic execution test proving it also writes
   the selected best exact final parameters and state.
-- Differentiation architecture: 89%. Dense exact Jacobians, scalar reverse
+- Differentiation architecture: 90%. Dense exact Jacobians, scalar reverse
   gradients, state tangents, accepted-residual AD-vs-finite-difference checks,
   solve-free QS residual JVP/VJP checks, QS objective routing JVP/VJP checks,
   QI shared-field objective JVP/VJP checks, optional Lineax solver seams, and
@@ -625,7 +631,7 @@ update:
   1 xfailed`, 95.09%), plus the exact replay JVP instrumentation rerun at the
   same 95.09% coverage level and the `v0.0.14` release-candidate rerun
   (`2354 passed, 20 skipped, 110 deselected, 1 xfailed`, 95.09%). GitHub
-  Actions is green through `228683e`,
+  Actions is green through `7033647`,
   carrying the QI staged-seed, explicit CLI docs updates, fallback
   materialization test, optional SIMSOPT Redl gate wiring, replay JVP
   instrumentation, Glasser `D_R` docs/examples, and newer-JAX preconditioner
@@ -638,6 +644,10 @@ update:
   warnings, release docs use the 95% coverage gate, and package discovery is
   locked to the `vmec_jax` namespace. Released reference assets are ignored so
   local full-tier refreshes cannot accidentally bloat commits.
+  The latest green `main` CI run for `7033647` passed the build, docs, CLI,
+  parity-smoke, physics-smoke, and Python-version fast-test lanes, and the
+  local CI-equivalent pass reached 95.22% coverage with the size gate still at
+  23.59 MiB tracked.
   The documented custom QI seed audit command was validated end-to-end on
   `input.QI_stel_seed_3127`; a production-scale NFP3 GPU staged-seed
   verification on `office` reached a controlled timeout with durable partial
