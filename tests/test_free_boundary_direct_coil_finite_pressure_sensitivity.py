@@ -1388,13 +1388,9 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     from vmec_jax._compat import jnp
     from vmec_jax.discrete_adjoint import strict_update_accepted_step, strict_update_one_step_from_trace
     from vmec_jax.driver import run_free_boundary
-    from vmec_jax.free_boundary import (
-        _build_vmec_mode_basis,
-        _ensure_vmec_nonsingular_kernel_tables,
-        _vmec_boundary_wint,
-    )
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_boundary_bsqvac_from_trace_jax,
+        direct_coil_boundary_replay_context,
         free_boundary_boundary_geometry_jax,
         pytree_directional_derivative_check_jax,
     )
@@ -1494,19 +1490,7 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     )
 
     geometry = free_boundary_boundary_geometry_jax(replayed_state1, init.static)
-    ntheta, nzeta = (int(v) for v in geometry["R"].shape)
-    wint = _vmec_boundary_wint(static=init.static, ntheta=ntheta, nzeta=nzeta)
-    basis = _build_vmec_mode_basis(
-        ntheta=ntheta,
-        nzeta=nzeta,
-        nfp=int(init.static.cfg.nfp),
-        mf=int(init.static.cfg.mpol) + 1,
-        nf=int(init.static.cfg.ntor),
-        lasym=bool(init.static.cfg.lasym),
-        wint=wint,
-    )
-    nvper = 64 if nzeta == 1 else max(1, int(init.static.cfg.nfp))
-    tables = _ensure_vmec_nonsingular_kernel_tables(basis=basis, nv=nzeta, nvper=nvper)
+    context = direct_coil_boundary_replay_context(init.static, geometry)
     nestor_trace = trace1.get("freeb_nestor_trace")
     assert isinstance(nestor_trace, dict)
 
@@ -1515,11 +1499,11 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
             params,
             geom,
             trace,
-            basis=basis,
-            tables=tables,
+            basis=context["basis"],
+            tables=context["tables"],
             signgs=int(init.signgs),
-            nvper=nvper,
-            wint=jnp.asarray(wint),
+            nvper=context["nvper"],
+            wint=jnp.asarray(context["wint"]),
             include_analytic=True,
         )
 

@@ -14,15 +14,57 @@ Date opened: 2026-05-24
 
 Last updated: 2026-05-30 after merging the latest `origin/main`, adding the
 two-step direct-coil accepted-replay bridge, and promoting the accepted-boundary
-geometry sampler to a JAX-visible helper. The current local follow-up also
-promotes the two-step replay to an AD-vs-central-FD gate through first accepted
-update, JAX geometry resampling, second direct-coil NESTOR replay, and second
-accepted update, then factors the replay plumbing into source helpers. PR #18 is open on
+geometry sampler to a JAX-visible helper. The current follow-up promotes the
+two-step replay to an AD-vs-central-FD gate through first accepted update, JAX
+geometry resampling, second direct-coil NESTOR replay, and second accepted
+update, then factors the replay plumbing and static NESTOR replay context into
+source helpers. PR #18 is open on
 `feature/freeb-essos-coil-single-stage`; the pre-merge push was fully green,
 including Codecov project coverage, and the refreshed post-main-merge branch is
 being revalidated. The optional ESSOS/direct-coil bootstrap gates remain
 local/manual because they require ESSOS assets and launch real free-boundary
 solves. Do not merge PR #18 until the post-merge checks are green.
+
+### 2026-05-30 Replay context helper follow-up
+
+Steps taken:
+
+1. Added `direct_coil_boundary_replay_context` in
+   `vmec_jax.free_boundary_adjoint`.
+2. The helper builds the fixed VMEC/NESTOR replay context from an accepted
+   boundary geometry: quadrature weights, VMEC mode basis, nonsingular-kernel
+   tables, grid sizes, and `nvper`.
+3. Rewired the two-step direct-coil replay test to use this helper instead of
+   constructing basis/tables directly from private `free_boundary` helpers.
+4. Kept the differentiated path unchanged and explicit: direct coils and
+   accepted geometry are JAX-visible, while the replay context remains fixed
+   metadata for the current phase-2 validation rung.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `python -m py_compile vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+3. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state -rx`
+   passed: 1 passed in 40.00 s.
+4. `python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_coil_provider_forward.py -rx`
+   passed: 23 passed, 1 skipped in 81.13 s.
+5. `python -m sphinx -W --keep-going -b html docs tmp/freeb_docs_check_replay_context`
+   passed.
+6. `git diff --check` passed.
+
+Best next steps:
+
+1. Commit and push the replay-context helper.
+2. Watch PR CI after the post-main-merge push.
+3. Next phase-2 target: use the replay context helper in any remaining
+   production-adjacent direct-coil replay tests that still duplicate static
+   NESTOR setup.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-05-30 Replay helper refactor
 
