@@ -111,13 +111,16 @@ Results obtained:
 2. `python -m py_compile ...` on the same files passed.
 3. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py::test_jax_visible_nonlinear_controller_matches_manual_scan_and_fd tests/test_free_boundary_vacuum_adjoint.py::test_jax_visible_controller_direct_coil_gradient_matches_fd tests/test_solve_performance_instrumentation.py::test_residual_iter_timing_report_exposes_force_eval_aliases tests/test_freeb_direct_coil_matrix_benchmark.py -rx` passed: 15 passed in 3.43 s.
 4. `python tools/benchmarks/bench_freeb_direct_coil_matrix.py --quick --include-badjac-probe0 --include-timing-light --timeout-s 240 --out /tmp/freeb_finalize_timing_cpu_20260531.json` completed all seven CPU rows. The warm direct-coil solve reported `solve_total_s=0.1184`, `finalize_s=0.00876`, with `finalize_nestor_recompute_s=0.00651`, `finalize_residual_recompute_s=0.00218`, and `update_state_ready_s=4.25e-6`, confirming the new buckets populate in a real solve.
+5. On `office`, a fresh clone at `bc00ff4` ran `python3 tools/benchmarks/bench_freeb_direct_coil_matrix.py --quick --include-gpu --include-badjac-probe0 --include-timing-light --include-policy-ablation --timeout-s 600 --out /tmp/freeb_finalize_timing_gpu_bc00ff4f.json`; all 22 CPU/GPU rows completed. The default GPU direct solve remains slow (`warm_min=9.42x` CPU), dominated by non-JIT force evaluation (`0.602 s`), preconditioner (`0.369 s`), setup/axis reset (`0.334 s`), and final residual recompute (`0.296 s`). With JIT forces, GPU warm time improves to `2.48x` CPU, force evaluation becomes faster than CPU (`0.82x`), and the remaining production blockers are preconditioner refresh/apply (`0.0438 s`, `2.55x` CPU) plus residual/control/finalization dispatch overhead.
+6. Added `jax_visible_masked_nonlinear_controller_jax`, which models convergence/early-stop with a fixed-length differentiable `lax.scan` and an on-device `done` mask. This is the concrete replacement pattern for host-controlled fixed-control replay when reverse-mode gradients through the production nonlinear controller are required.
+7. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py::test_jax_visible_masked_controller_keeps_final_state_and_gradient_stable tests/test_free_boundary_vacuum_adjoint.py::test_jax_visible_nonlinear_controller_matches_manual_scan_and_fd tests/test_free_boundary_vacuum_adjoint.py::test_jax_visible_controller_direct_coil_gradient_matches_fd -rx` passed: 3 passed in 3.98 s.
 
 Best next steps:
 
-1. Run a quick CPU timing matrix to confirm the new buckets populate in real direct-coil solves.
-2. Push these changes and let CI validate the full fast matrix.
-3. Run the GPU timing matrix on `office` and use the new finalize/update-ready buckets to decide whether the next production optimization should target final residual synchronization, NESTOR recompute, or update-state dispatch.
-4. Continue the production full-loop exact-adjoint lane by moving one small free-boundary fixed-point/control update onto the JAX-visible controller abstraction and validating AD-vs-FD for one coil current and one Fourier coefficient.
+1. Push the masked-controller commit and let CI validate the full fast matrix.
+2. Promote one direct-coil free-boundary validation loop from fixed-control replay to the masked controller abstraction, with AD-vs-FD for one coil current and one Fourier coefficient.
+3. Target the GPU JIT-forces residual path next: preconditioner refresh/apply and final residual recompute are now the measured blockers after force-eval staging is enabled.
+4. Decide whether final residual recompute can reuse a final force/NESTOR payload from the accepted state, or whether it must be fused into the JIT-forces finish path to avoid a separate GPU dispatch.
 
 Need from user:
 
