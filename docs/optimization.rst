@@ -790,8 +790,9 @@ optimization:
      - ``examples/optimization/QI_optimization.py``
      - ``AspectRatio``, ``AbsMeanIotaFloor``, ``QuasiIsodynamicResidual``,
        ``MirrorRatio``, and ``MaxElongation`` with lower-mode continuation and
-       ESS.  Same-mode repeat is available with ``STAGE_MODE_POLICY =
-       "repeat"``.
+       ESS.  The default ``STAGE_MODE_POLICY = "lower-repeat"`` repeats each
+       spectral rung for far circular seeds; ``"lower"`` is shorter, and
+       ``"repeat"`` repeats only the final mode for near-basin cleanup.
 
 .. code-block:: bash
 
@@ -882,10 +883,10 @@ boundaries.  QA/QH/QP
 continuation uses the repeated omnigenity-style policy ``[1, 1, 2, 2, 2]`` for
 ``max_mode=2`` and
 ``[1, 1, 2, 2, 2, 3, 3, 3]`` for ``max_mode=3``; higher modes follow the same
-repeated-stage pattern when continuation is enabled.  QI now uses the same
-lower-mode continuation by default; same-mode repeat remains available for
-near-basin cleanup via ``STAGE_MODE_POLICY = "repeat"`` or the corresponding
-CLI flag.  Mode-4 and mode-5 rows should be promoted only after matching
+repeated-stage pattern when continuation is enabled.  QI defaults to
+``STAGE_MODE_POLICY = "lower-repeat"`` for seed robustness; same-mode repeat
+remains available for near-basin cleanup via ``STAGE_MODE_POLICY = "repeat"``
+or the corresponding CLI flag.  Mode-4 and mode-5 rows should be promoted only after matching
 reviewed CSV/JSON rows and figures are regenerated.
 
 When the full matrix is regenerated, the objective panels contain the CPU/GPU
