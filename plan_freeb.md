@@ -65,15 +65,21 @@ Results obtained:
    passed: 59 passed in 130.84 s.
 7. `python tools/benchmarks/bench_freeb_direct_coil_matrix.py --quick --include-policy-ablation --include-timing-light --include-badjac-probe0 --timeout-s 240 --out results/bench_freeb_direct_coil_matrix/policy_ablation_cpu_20260531.json`
    completed all CPU rows.
+8. On `office`, `python3 tools/benchmarks/bench_freeb_direct_coil_matrix.py --quick --include-gpu --include-policy-ablation --include-timing-light --include-badjac-probe0 --timeout-s 300 --out /tmp/freeb_policy_ablation_after_f2ec6989/summary.json`
+   completed all CPU and GPU rows.  Tiny direct-solve GPU warm time remains
+   slower than CPU: `10.48x` for non-JIT-force direct solve and `2.65-3.08x`
+   for JIT-force policy-ablation rows.  The timing confirms the remaining GPU
+   lane is structural control/preconditioner/finalize/setup dispatch rather
+   than direct-coil sampling alone.
 
 Best next steps:
 
 1. Run a final docs build and diff check for the follow-up helper commit.
 2. Commit and push the helper/benchmark/docs update.
 3. Wait for GitHub Actions on the new head.
-4. Run the same policy-ablation benchmark on `office` with `--include-gpu` to
-   quantify whether the remaining accelerator gap is host-control dispatch,
-   preconditioner/update launch overhead, or residual scalar synchronization.
+4. Target the performance lane at structural control-loop staging/fusion,
+   preconditioner/update dispatch, and finalization/setup synchronization; the
+   policy ablation does not show a single host-policy flag that fixes GPU.
 5. Keep the production full-loop exact adjoint xfail until a complete
    `run_free_boundary` custom-VJP or fully JAX-visible nonlinear controller is
    implemented and validated by full-solve finite differences.

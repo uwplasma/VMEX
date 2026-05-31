@@ -182,7 +182,13 @@ acceptance criteria or evidence changes.
   CUDA with detailed timing disabled; accepted-control `fsq1` dropped from
   about `12.9 ms` to `1.85 ms` in detailed timing. The remaining GPU targets
   are residual scalar synchronization, setup/profile staging, and preconditioner
-  dispatch/application fusion.
+  dispatch/application fusion. The May 31 policy-ablation benchmark completed
+  CPU and GPU quick rows from PR head `f2ec6989`; GPU warm time on the tiny
+  direct-coil solve remains slower than CPU (`10.48x` without JIT-forces and
+  roughly `2.65-3.08x` for JIT-force ablation rows), so the next performance
+  lane is structural control-loop staging/fusion, preconditioner/update
+  dispatch, finalization/setup synchronization, and cold exact tape/forward
+  cost rather than a single host-policy flag.
 
 ## Milestone 1: QI Truth And Robustness
 
