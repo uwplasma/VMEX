@@ -248,6 +248,11 @@ def test_auto_method_resolver_uses_matrix_free_for_high_mode_stellsym_cpu_cases(
         4,
         "auto:qi-high-mode-matrix-free",
     )
+    assert opt._resolve_optimizer_method("auto_scalar", None) == (
+        "scalar_trust",
+        None,
+        "auto_scalar:high-mode-scalar-trust",
+    )
 
     opt._objective_family = "qs"
     opt._helicity_m = 1
@@ -257,6 +262,11 @@ def test_auto_method_resolver_uses_matrix_free_for_high_mode_stellsym_cpu_cases(
         "scipy",
         None,
         "auto:dense-lasym",
+    )
+    assert opt._resolve_optimizer_method("auto_adjoint", None) == (
+        "scipy",
+        None,
+        "auto_scalar:dense-lasym",
     )
 
     opt._specs = [BoundaryParamSpec("rc30", "rc", 0, 3, 0)]
@@ -273,6 +283,11 @@ def test_auto_method_resolver_uses_matrix_free_for_high_mode_stellsym_cpu_cases(
         "scipy",
         None,
         "auto:dense-default",
+    )
+    assert opt._resolve_optimizer_method("auto_scalar", None) == (
+        "scipy",
+        None,
+        "auto_scalar:dense-default",
     )
 
     opt._specs = [BoundaryParamSpec("rc20", "rc", 0, 2, 0)]

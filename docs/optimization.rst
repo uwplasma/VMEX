@@ -607,7 +607,7 @@ the same setup-and-solve flow used by the QA/QP/QI examples:
    MIN_VMEC_MODE = MAX_MODE + 2
    SIMPLE_SEED_PERTURBATION = 1.0e-5
    MAX_NFEV = 70
-   METHOD = "scipy"            # also: "auto", "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", "scalar_trust"
+   METHOD = "scipy"            # also: "auto", "auto_scalar", "gauss_newton", "scipy_matrix_free", "lbfgs_adjoint", "scalar_trust"
    SCIPY_TR_SOLVER = "lsmr"    # also: "exact" for small dense trust-region solves
    SOLVER_DEVICE = None        # set to "cpu" or "gpu" to force one backend
    SAVE_STAGE_INPUTS = True    # keep per-stage input decks
@@ -1539,6 +1539,10 @@ the problem assembly in user code and standardizes only the repeated mechanics:
      - Run the regular QS or QI least-squares driver.  It should receive
        optimizer, continuation, ESS, device, and artifact-writing controls, not
        hidden physics-target keyword arguments.
+       ``method="auto"`` may route high-mode stellsym CPU/default QS/QI cases
+       to matrix-free LSMR; ``method="auto_scalar"``/``"auto_adjoint"`` routes
+       those same cases to the safeguarded scalar-adjoint trust path while
+       preserving dense SciPy for explicit GPU and LASYM runs.
    * - ``FixedBoundaryOptimizationResult``
      - Return object with teaching accessors such as ``initial_optimizer``,
        ``final_optimizer``, ``initial_params``, ``final_params``,

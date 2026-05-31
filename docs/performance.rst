@@ -1912,15 +1912,31 @@ Validate the case you care about with the profiling commands before promoting
 production timings.  The trial residual path can be compared explicitly with
 ``profile_exact_optimizer.py --trial-scan auto|on|off``.
 
+For high-parameter-count scalar-objective probes, use
+``method="auto_scalar"`` (alias ``"auto_adjoint"``).  This policy keeps the
+same device/LASYM safeguards as ``"auto"``, but selects the safeguarded
+``scalar_trust`` reverse-adjoint path for high-mode, stellarator-symmetric
+QS/QI CPU/default-backend cases and enables cost-only trial filtering unless
+the caller overrides ``scalar_cost_only_trials``.  This is the production
+entry point for testing scalar-adjoint optimization without relying on
+``VMEC_JAX_OPT_SCALAR_COST_ONLY_TRIALS``.
+
 A 2026-05-20 matrix-free cleanup removed one redundant initialization AD pass:
 ``residual_linear_operator`` now obtains the frozen-axis initial-state
 transpose from the already-created ``jax.linearize`` object instead of tracing a
-second ``jax.vjp`` through the same initial-state graph.  A cold QA
-``max_mode=1`` CPU smoke with ``inner_max_iter=trial_max_iter=4`` reported
-``linear_operator_initial_transpose = 0.78 s`` and selected
-``exact_tape_build_solve_call`` as the next patch target, confirming that
-remaining first-call cost is in the accepted VMEC tape solve/replay path rather
-than duplicated initial-state autodiff.
+second ``jax.vjp`` through the same initial-state graph.  A later 2026-05-31
+production pass moved SIMSOPT-style tuple workflows onto the same packed-state
+cotangent hooks used by the older direct QS factories.  For larger
+stellarator-symmetric CPU/default matrix-free operators it can also precompute
+the small initial-state tangent block; by default this is limited to
+64--128 boundary DOFs because a 48-DOF QA microprobe showed the build cost can
+exceed the single ``J.Tv`` transpose it saves.  Override with
+``VMEC_JAX_OPT_LINEAR_OPERATOR_INITIAL_TANGENTS=1`` or tune
+``VMEC_JAX_OPT_LINEAR_OPERATOR_INITIAL_TANGENT_{MIN,MAX}_DOFS`` for profiling.
+New profiles therefore separate
+``linear_operator_initial_tangent_projection`` from the older
+``linear_operator_initial_transpose`` bucket; if the transpose bucket is still
+large, the case has fallen back to the conservative no-precompute path.
 
 The follow-up patch tested JIT compilation of the repeated initial-state
 construction inside that accepted-point path.  ``FixedBoundaryExactOptimizer``

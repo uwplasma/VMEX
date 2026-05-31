@@ -2713,6 +2713,66 @@ def residuals_from_objectives(objectives: Sequence[ObjectiveTerm], ctx: StageCon
         residuals_from_state._helicity_m = int(helicity_m)
     if helicity_n is not None:
         residuals_from_state._helicity_n = int(helicity_n)
+    return _attach_packed_state_autodiff_hooks(residuals_from_state)
+
+
+def _attach_packed_state_autodiff_hooks(residuals_from_state: Callable) -> Callable:
+    """Attach generic packed-state VJP hooks to an objective residual callback.
+
+    The older direct QS residual factories expose custom hooks used by
+    ``FixedBoundaryExactOptimizer`` to avoid rebuilding a generic packed-state
+    residual VJP for every accepted point.  SIMSOPT-style tuple workflows are
+    more flexible, so use a generic hook here: it differentiates the already
+    assembled residual vector with respect to the packed VMEC state.  The
+    optimizer wraps these hooks in cached ``jax.jit`` helpers, so this keeps the
+    flexible tuple API while enabling the matrix-free and scalar-adjoint paths
+    to stay on the same fast accepted-point replay architecture.
+    """
+
+    def _residuals_from_packed(packed_state, layout):
+        from .state import unpack_state
+
+        state = unpack_state(packed_state, layout)
+        return jnp.asarray(residuals_from_state(state), dtype=jnp.float64).reshape(-1)
+
+    def state_cotangent_operator_from_packed(packed_state, layout):
+        from ._compat import jax, jnp as _jnp
+
+        packed_state = _jnp.asarray(packed_state, dtype=_jnp.float64)
+
+        def _packed_residuals(packed):
+            return _residuals_from_packed(packed, layout)
+
+        _, residual_vjp = jax.vjp(_packed_residuals, packed_state)
+
+        def _apply(residual_cotangent):
+            cotangent = _jnp.asarray(residual_cotangent, dtype=_jnp.float64).reshape(-1)
+            state_cotangent = residual_vjp(cotangent)[0]
+            return _jnp.nan_to_num(state_cotangent, nan=0.0, posinf=0.0, neginf=0.0)
+
+        return _apply
+
+    def state_cotangent_from_packed(packed_state, layout, residual_cotangent):
+        return state_cotangent_operator_from_packed(packed_state, layout)(residual_cotangent)
+
+    def state_objective_value_and_cotangent_from_packed(packed_state, layout):
+        from ._compat import jax, jnp as _jnp
+
+        packed_state = _jnp.asarray(packed_state, dtype=_jnp.float64)
+
+        def _objective(packed):
+            residuals = _residuals_from_packed(packed, layout)
+            return 0.5 * _jnp.vdot(residuals, residuals)
+
+        value, cotangent = jax.value_and_grad(_objective)(packed_state)
+        cotangent = _jnp.nan_to_num(cotangent, nan=0.0, posinf=0.0, neginf=0.0)
+        return value, cotangent
+
+    residuals_from_state._state_cotangent_from_packed = state_cotangent_from_packed
+    residuals_from_state._state_cotangent_operator_from_packed = state_cotangent_operator_from_packed
+    residuals_from_state._state_objective_value_and_cotangent_from_packed = (
+        state_objective_value_and_cotangent_from_packed
+    )
     return residuals_from_state
 
 
@@ -3055,6 +3115,7 @@ def build_quasi_isodynamic_objective_stage(
 
     residuals_from_state._qs_total_from_state = _qs_total_from_state
     residuals_from_state._objective_family = "qi"
+    _attach_packed_state_autodiff_hooks(residuals_from_state)
 
     optimizer = FixedBoundaryExactOptimizer(
         static,

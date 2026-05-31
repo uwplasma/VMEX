@@ -70,6 +70,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--method",
         choices=(
             "auto",
+            "auto_scalar",
+            "auto_adjoint",
             "scipy",
             "scipy_matrix_free",
             "gauss_newton",

@@ -50,7 +50,7 @@ REFERENCE_LAMBDAS = (0.995, 1.0, 1.005)
 BOUNDARY_REFERENCE_ACCEPT_AS_BASELINE = False  # True keeps the reference candidate as a safe fallback.
 
 # Optimizer parameters.
-METHOD = "scipy_matrix_free"  # Try "auto", "scipy", "gauss_newton", "lbfgs_adjoint", or "scalar_trust".
+METHOD = "scipy_matrix_free"  # Try "auto", "auto_scalar", "scipy", "gauss_newton", "lbfgs_adjoint", or "scalar_trust".
 SCIPY_TR_SOLVER = "lsmr"  # For METHOD="scipy": "lsmr" is memory-light; "exact" is dense.
 SCIPY_LSMR_MAXITER = 4  # Matrix-free cap; None lets SciPy choose more Jv/J.Tv products.
 SCALAR_COST_ONLY_TRIALS = None  # For METHOD="scalar_trust": True filters trials with forward solves.
