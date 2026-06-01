@@ -1225,17 +1225,19 @@ Jacobian residual projection now reports the same split through
 for normal CPU/GPU comparison sweeps because the explicit synchronization
 changes the measured workload.
 
-A 2026-05-30 ``office`` rerun on RTX A4000/JAX 0.6.2 rechecked QH
-``max_mode=2`` dense exact-Jacobian callbacks with perturbed accepted points
-and ``--inner-max-iter 160``.  The best tested GPU replay policy was an
-8-column chunk: two callbacks took ``94.8 s`` versus ``131.4 s`` unchunked,
-``131.9 s`` with chunk 4, ``127.5 s`` with chunk 16, and ``159.8 s`` with
-chunk 24.  A bounded QH ``max_mode=3`` 48-DOF check with
-``--inner-max-iter 60`` then gave ``86.3 s`` for chunk 8 versus about
-``143 s`` for chunks 16 and 24.  The default GPU replay policy therefore chunks
-all 24+ DOF dense callbacks at 8 columns.  The
-remaining bottlenecks are accepted-tape build, replay dispatch/compile-like
-overhead, and dense residual-tangent projection.
+A 2026-06-01 ``office`` rerun on RTX A4000/JAX 0.6.2 rechecked QH
+``max_mode=2`` dense exact-Jacobian callbacks with perturbed accepted points,
+``--inner-max-iter 80``, and single-GPU sequential timing.  For non-LASYM
+projected replay, larger chunks were faster than the older conservative
+8-column policy: two callbacks took ``81.0 s`` with chunk 24 versus ``83.5 s``
+with chunk 8, and the replay-dispatch bucket dropped from ``30.5 s`` to
+``25.1 s``.  Additional cold checks gave ``73.2 s`` for QH ``max_mode=3`` with
+chunk 48 versus ``81.4 s`` with chunk 8, and ``69.7 s`` for a reduced
+``max_mode=4`` check with chunk 40 versus ``74.0 s`` with chunk 8.  The default
+GPU policy therefore keeps LASYM at conservative 8-column chunks, but uses
+larger bounded chunks for non-LASYM projected replay.  The remaining
+bottlenecks are accepted-tape build, replay dispatch/compile-like overhead,
+and dense residual-tangent projection.
 
 A follow-up QH ``max_mode=2`` GPU profile on ``office`` with
 ``--inner-max-iter 80``, ``--trial-max-iter 40``,
