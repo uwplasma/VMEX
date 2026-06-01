@@ -1,10 +1,10 @@
 # VMEC-JAX Research-Grade Roadmap
 
-Last updated: 2026-05-30
+Last updated: 2026-06-01
 Primary branch: `main`
 Baseline release: `v0.0.14`
-Latest known green `main` CI: `7033647`
-Current candidate: post-`v0.0.14` GPU scan/replay policy refresh
+Latest known green `main` CI: `46be05f`
+Current candidate: post-`v0.0.14` scalar-adjoint GPU production-policy refresh
 
 This is the living execution plan for making `vmec_jax` accurate, fast,
 differentiable, documented, and usable by external researchers. Update it when
@@ -120,6 +120,15 @@ acceptance criteria or evidence changes.
   repository-size audit, fast Sphinx, and full Sphinx. GitHub Actions run
   `26696164006` passed build, docs, CLI smoke, parity dry-run, physics smoke,
   and Python 3.10/3.11/3.12 fast tests for the same commit.
+  After the 2026-05-31 accepted-point performance pass through `46be05f`, the
+  local release gate passed with `2381 passed, 20 skipped, 110 deselected,
+  1 xfailed` and 95.23% coverage, plus physics smoke, build, repository-size
+  audit, fast Sphinx, and full Sphinx. GitHub Actions run `26705376557` then
+  passed docs, build, CLI smoke, parity dry-run, physics smoke, and Python
+  3.10/3.11/3.12 fast tests. The current 2026-06-01 candidate promotes
+  `method="auto_scalar"` through the high-mode stellsym CPU/GPU production
+  sweep policy and adds GPU scalar-gradient initial-tangent projection so
+  eligible GPU scalar-adjoint runs no longer fall back to dense SciPy.
 - VMEC2000 converged-wout parity now has a fast bundled matrix gate across
   fixed/free, axisymmetric/non-axisymmetric, LASYM, and single/multigrid
   representatives. The executable-backed end-state gate remains opt-in:
