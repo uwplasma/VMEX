@@ -2732,6 +2732,7 @@ def strict_update_one_step_from_state(
     state_pre,
     static,
     *,
+    force_state_pre=None,
     wout_like,
     trig,
     apply_lforbal: bool,
@@ -2779,8 +2780,9 @@ def strict_update_one_step_from_state(
     enforce_edge: bool = True,
 ):
     """Compose the exact QH one-step map from state through accepted update."""
+    residual_state = state_pre if force_state_pre is None else force_state_pre
     residual_out = raw_force_residual_from_state(
-        state_pre,
+        residual_state,
         static,
         wout_like=wout_like,
         trig=trig,
@@ -2891,9 +2893,11 @@ def strict_update_one_step_from_trace(
 
     bsqvac = trace.get("freeb_bsqvac_half", None) if freeb_bsqvac_half is _TRACE_OVERRIDE_UNSET else freeb_bsqvac_half
     pres_scale = trace.get("freeb_pres_scale", None) if freeb_pres_scale is _TRACE_OVERRIDE_UNSET else freeb_pres_scale
+    force_state_pre = trace.get("force_state_pre", None)
     return strict_update_one_step_from_state(
         state_pre,
         static,
+        force_state_pre=force_state_pre,
         wout_like=trace["wout_like"],
         trig=trace["trig"],
         apply_lforbal=trace["apply_lforbal"],
