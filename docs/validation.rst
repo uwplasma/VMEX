@@ -489,6 +489,11 @@ Current parity status
   current high-resolution finite-beta WOUT-panel evidence: DIII-D
   VMEC2000-compatible ``mgrid`` rows through actual beta 3.33% at ``ns=101`` and
   a strict LP-QA direct-coil stellarator forward lane through actual beta 1.93%.
+  The same page records the current phase-2 adjoint evidence: accepted-trace
+  replay gates, accepted-state ``bsqvac`` derivatives with respect to the VMEC
+  state, and JAX-visible masked nonlinear-controller AD-vs-FD checks. These are
+  validation primitives for the full-loop refactor, not a promoted production
+  ``run_free_boundary`` exact-adjoint claim.
   See :doc:`free_boundary_coil_optimization` for the artifact links,
   reproduction commands, and phase-2 adjoint limitations.
 
