@@ -62,13 +62,11 @@ vmec --test
 ```
 
 This copies the packaged `input.nfp4_QH_warm_start` into `vmec_jax_test/`,
-runs the solver with `FTOL_ARRAY = 1e-12` for a faster first check, writes
-`wout_nfp4_QH_warm_start.nc`, and automatically plots the WOUT file into
-`vmec_jax_test/figures/`. The terminal output also prints the equivalent manual
-commands so new users can repeat each step themselves.
+runs the solver with `FTOL_ARRAY = 1e-12`, writes
+`wout_nfp4_QH_warm_start.nc`, plots into `vmec_jax_test/figures/`, and prints
+the equivalent manual commands.
 
-The canonical installed executable is `vmec`. The aliases `vmec_jax`,
-`vmec-jax`, and `xvmec_jax` are kept for compatibility.
+The canonical installed executable is `vmec`; `vmec_jax`, `vmec-jax`, and `xvmec_jax` remain compatibility aliases.
 
 To run the same workflow manually with an input downloaded from the repository:
 
@@ -120,12 +118,11 @@ boozmn = vj.run_booz_xform(wout_path, mbooz=32, nbooz=32)
 vj.plot_boozmn(boozmn, outdir="figures/")
 ```
 
-VMEC pressure, iota, and current profiles can be specified as polynomial
-coefficients or tabulated splines. The bundled spline-profile deck uses
-`PMASS_TYPE = "cubic_spline"` with `AM_AUX_S/F` and `PIOTA_TYPE = "cubic_spline"`
-with `AI_AUX_S/F`; finite-beta QH/QA decks use `PCURR_TYPE = "cubic_spline_ip"`
-with `AC_AUX_S/F`. The same auxiliary-array convention also supports
-`akima_spline` and `line_segment` profiles:
+VMEC pressure, iota, and current profiles can be polynomial coefficients or
+tabulated splines. The bundled spline deck uses `PMASS_TYPE`/`PIOTA_TYPE =
+"cubic_spline"` with `*_AUX_S/F`; finite-beta decks use `PCURR_TYPE =
+"cubic_spline_ip"` with `AC_AUX_S/F`. The same syntax supports `akima_spline`
+and `line_segment`:
 
 ```bash
 python examples/profile_input_examples.py
@@ -133,9 +130,8 @@ vmec examples/data/input.profile_splines --plot
 vmec examples/data/input.nfp4_QH_finite_beta
 ```
 
-`examples/profile_input_examples.py` writes editable polynomial and spline
-pressure/current decks under `examples/outputs/profile_inputs/` and prints the
-matching `vmec` commands.
+`examples/profile_input_examples.py` writes editable polynomial and spline decks
+under `examples/outputs/profile_inputs/` and prints the matching `vmec` commands.
 
 For the bundled small free-boundary example, download both the input deck and
 its magnetic grid into the same folder:
