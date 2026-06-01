@@ -51,6 +51,11 @@ Steps taken:
 7. Raised the coil-optimization smoke default from one to two inner VMEC
    iterations so the smoke path actually reaches active NESTOR/direct-coil
    coupling instead of only setup/IO.
+8. Added `direct_coil_fixed_trace_custom_vjp_objective_jax`, a scalar
+   fixed-accepted-trace custom-VJP seam for direct-coil replay objectives.
+   Its backward rule differentiates the frozen accepted trace replay with
+   respect to coil parameters while explicitly excluding adaptive host-control
+   decisions.
 
 Results obtained:
 
@@ -85,14 +90,16 @@ Results obtained:
    tests/test_free_boundary_vacuum_adjoint.py::test_masked_controller_direct_coil_projected_mode_ad_matches_fd_for_current_and_fourier
    tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state -rx`
    (`2 passed in 78.72 s`).
+9. The two-step accepted replay test now also exercises the fixed-trace
+   custom-VJP objective; the focused test passed again after the addition:
+   `1 passed in 101.87 s`.
 
 Best next steps:
 
-1. Commit and push the ESSOS example-readiness patch, then confirm refreshed
-   PR CI is green.
-2. Continue phase 2 with a fixed-accepted-trace custom-VJP wrapper and
-   trace-fingerprint guard. The local derivative blocks are validated, but the
-   adaptive production host loop still is not a promoted full-solve adjoint.
+1. Push the fixed-trace custom-VJP patch and confirm refreshed PR CI is green.
+2. Add a trace-fingerprint guard before any complete-solve custom-VJP
+   promotion. The local derivative blocks are validated, but the adaptive
+   production host loop still is not a promoted full-solve adjoint.
 
 Need from user:
 

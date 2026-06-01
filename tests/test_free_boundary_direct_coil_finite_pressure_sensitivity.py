@@ -1493,7 +1493,9 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         direct_coil_accepted_trace_replay_objective_jax,
         direct_coil_boundary_bsqvac_from_trace_jax,
         direct_coil_boundary_replay_context,
+        direct_coil_fixed_trace_custom_vjp_objective_jax,
         free_boundary_boundary_geometry_jax,
+        pytree_directional_derivative_check_jax,
     )
     from vmec_jax.solve import solve_fixed_boundary_residual_iter
     from vmec_jax.state import pack_state
@@ -1680,6 +1682,38 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         assert abs(exact) > 1.0e-16
         assert abs(fd) > 1.0e-16
         np.testing.assert_allclose(exact, fd, rtol=5.0e-3, atol=1.0e-10)
+
+    def custom_vjp_objective(params):
+        return direct_coil_fixed_trace_custom_vjp_objective_jax(
+            params,
+            trace0["state_pre"],
+            static=init.static,
+            traces=[trace0, trace1],
+            signgs=int(init.signgs),
+            state_weight=1.0,
+            bsqvac_weight=1.0e-12,
+            force_weight=0.0,
+            enforce_edge=False,
+        )
+
+    custom_check = pytree_directional_derivative_check_jax(
+        custom_vjp_objective,
+        base_params,
+        mixed_direction,
+        eps=eps,
+    )
+    np.testing.assert_allclose(
+        np.asarray(custom_check["value"]),
+        np.asarray(replay["objective"]),
+        rtol=1.0e-12,
+        atol=1.0e-12,
+    )
+    np.testing.assert_allclose(
+        np.asarray(custom_check["exact_directional"]),
+        np.asarray(custom_check["fd_directional"]),
+        rtol=5.0e-3,
+        atol=1.0e-10,
+    )
 
 
 @pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])
