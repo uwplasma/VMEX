@@ -12,20 +12,67 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-01 after merging `origin/main` commit `46be05f6` into the
-local `refresh/freeb-slim` branch, committing `8a0ce5c2`, and pushing it to
-`origin/feature/freeb-essos-coil-single-stage`. PR #18 is open on
-`feature/freeb-essos-coil-single-stage`; GitHub Actions run `26762863493` is
-running on the exact pushed head. At the time of this update, build/docs,
-console smoke, parity-manifest smoke, and docs-full have already passed, Physics
-Full is skipped as manual/nightly, and fast tests plus Physics Smoke are still
-in progress. The latest pushed `main` CI run for `46be05f6` was green, but the
-scheduled `main` run `26758910854` on 2026-06-01 failed only in Physics Full
-(manual/nightly) WOUT parity rows: `LandremanPaul2021_QA_lowres` `volume_p`,
-circular-tokamak `DMerc`/`jdotb` and `bsubsmns`,
-shaped-tokamak-pressure `bsubsmns`, and `solovev` `bsubsmns`. Do not
-merge/release until the exact PR-head CI is green and the scheduled full-physics
-parity failure is triaged or explicitly scoped.
+Last updated: 2026-06-01 after merging `origin/main` commit `d7817174` into the
+local `refresh/freeb-slim` branch, resolving the `plan.md` conflict, committing
+`edce04c1`, and pushing it to `origin/feature/freeb-essos-coil-single-stage`.
+PR #18 is open on `feature/freeb-essos-coil-single-stage` and is clean/mergeable
+against `origin/main`. GitHub Actions run `26764857211` is running on the exact
+pushed head. At the time of this update, parity-manifest smoke has already
+passed and Physics Full is skipped as manual/nightly; the remaining required
+jobs are in progress. The latest fully completed PR-head run before this merge,
+`26763413667` on `68c806ed`, passed build/docs, parity dry-run, physics smoke,
+console smoke, Python 3.10/3.11/3.12 fast tests, and Codecov. The latest pushed
+`main` CI run for `46be05f6` was green, but the scheduled `main` run
+`26758910854` on 2026-06-01 failed only in Physics Full (manual/nightly) WOUT
+parity rows: `LandremanPaul2021_QA_lowres` `volume_p`, circular-tokamak
+`DMerc`/`jdotb` and `bsubsmns`, shaped-tokamak-pressure `bsubsmns`, and
+`solovev` `bsubsmns`. Do not merge/release until the exact PR-head CI is green
+and the scheduled full-physics parity failure is triaged or explicitly scoped.
+
+### 2026-06-01 Refresh onto main `d7817174`
+
+Steps taken:
+
+1. Fetched `origin/main` after GitHub reported PR #18 as dirty/conflicting.
+2. Confirmed `origin/main` advanced from `46be05f6` to `d7817174`.
+3. Merged `origin/main` into `refresh/freeb-slim` and resolved the only textual
+   conflict in `plan.md`, preserving both the free-boundary PR evidence and
+   the main-branch scalar-adjoint GPU production-policy refresh.
+4. Accepted main's refreshed optimization figures, `optimization.py`
+   auto-scalar policy, sweep-driver changes, docs, and tests.
+5. Pushed merge commit `edce04c1` to PR #18.
+
+Results obtained:
+
+1. GitHub reports PR #18 as `mergeStateStatus=CLEAN` and
+   `mergeable=MERGEABLE` against base `d7817174`.
+2. Local validation passed:
+   `python -m ruff check vmec_jax/optimization.py examples/optimization/generate_qs_ess_sweep.py tests/test_optimization_auto_scalar_policy.py tests/test_optimization_wave2_coverage.py tests/test_qs_ess_render_smoke.py tests/test_free_boundary_vacuum_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`.
+3. Local main-merge optimization tests passed:
+   `python -m pytest -q tests/test_optimization_auto_scalar_policy.py tests/test_optimization_wave2_coverage.py tests/test_qs_ess_render_smoke.py -rx`
+   (`76 passed in 8.11 s`).
+4. Local free-boundary/performance tests passed:
+   `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py tests/test_solve_performance_instrumentation.py tests/test_freeb_direct_coil_matrix_benchmark.py tests/test_solve_finish_cache_more_coverage.py -rx`
+   (`82 passed in 77.00 s`).
+5. Full docs build passed:
+   `python -m sphinx -W --keep-going -b html docs /tmp/vmec_jax_freeb_docs_check_merge_d7817174`.
+6. `git diff --check` passed before the merge commit.
+
+Best next steps:
+
+1. Wait for GitHub Actions run `26764857211` on `edce04c1` to finish.
+2. If CI is green, keep PR #18 blocked only by the explicit non-required
+   Physics Full parity triage and the documented production full-loop adjoint
+   limitation.
+3. Continue phase-2 work by replacing the production host-controlled
+   free-boundary nonlinear loop with the validated JAX-visible masked-controller
+   or custom-VJP seam.
+4. Continue the GPU lane on preconditioner apply and residual/control scalar
+   synchronization.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-06-01 PR-head preconditioner reuse and GPU rerun
 
