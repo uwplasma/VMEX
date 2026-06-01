@@ -67,6 +67,12 @@ Steps taken:
     fixed-trace custom-VJP directional derivative with the central finite
     difference of the final accepted-state norm for a mixed current/Fourier
     direction.
+11. Fixed LASYM replay plumbing in `strict_update_one_step_from_state` and
+    `strict_update_one_step_from_trace`: asymmetric velocity-history channels
+    and asymmetric preconditioned force channels are now forwarded into
+    `strict_update_accepted_step`.
+12. Promoted the same-branch complete-solve custom-VJP gate from
+    stellarator-symmetric only to both `LASYM=F` and `LASYM=T`.
 
 Results obtained:
 
@@ -113,14 +119,28 @@ Results obtained:
     tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes
     tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch -rx`
     (`2 passed in 28.77 s`).
+12. The parametrized same-branch custom-VJP gate passed for both
+    stellarator-symmetric and LASYM traces:
+    `JAX_ENABLE_X64=1 python -m pytest -q
+    tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch -rx`
+    (`2 passed in 56.00 s`).
+13. The broader replay subset passed after the LASYM plumbing fix:
+    `JAX_ENABLE_X64=1 python -m pytest -q
+    tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes
+    tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch
+    tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state -rx`
+    (`4 passed in 146.22 s`).
+14. PR-head CI for commit `277e7423` passed all required checks and GitHub
+    reports PR #18 as clean and mergeable.
 
 Best next steps:
 
-1. Push the trace-fingerprint guard and confirm refreshed PR CI is green.
-2. Extend the same-branch complete-solve gate to LASYM and calibrated ESSOS
-   finite-pressure coils. The local derivative blocks and one tiny same-branch
-   complete solve are validated, but arbitrary adaptive production host-loop
-   branch changes still are not promoted as differentiable.
+1. Push the LASYM replay plumbing follow-up and confirm refreshed PR CI is
+   green again.
+2. Extend the same-branch complete-solve gate to calibrated ESSOS
+   finite-pressure coils. The local derivative blocks and tiny stellsym/LASYM
+   same-branch complete solves are validated, but arbitrary adaptive production
+   host-loop branch changes still are not promoted as differentiable.
 
 Need from user:
 

@@ -221,9 +221,9 @@ finite-difference perturbation stayed on the same accepted-step/control branch.
 On the tiny forced-active default gate, the branch-compatible complete solve
 also compares this fixed-trace custom-VJP directional derivative against a
 central finite difference of the final accepted-state norm for a mixed coil
-current/Fourier direction.  This is the current promoted same-branch
-complete-solve validation, not yet a claim that arbitrary controller branch
-changes are differentiable.
+current/Fourier direction, for both stellarator-symmetric and ``LASYM`` traces.
+This is the current promoted same-branch complete-solve validation, not yet a
+claim that arbitrary controller branch changes are differentiable.
 The remaining phase-2 blocker is differentiating through the nonlinear
 ``run_free_boundary`` iteration loop itself, rather than through the dense toy
 nonlinear primitive, fixed-boundary operator, complete finite-response proxy,

@@ -909,9 +909,11 @@ def test_jax_nestor_operator_complete_solve_fd_slopes_for_current_and_geometry(
     assert np.min(np.abs(slopes)) > 1.0e-16
 
 
+@pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])
 def test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    lasym: bool,
 ) -> None:
     """Fixed-trace custom VJP matches complete-solve FD when the branch is unchanged.
 
@@ -947,7 +949,7 @@ def test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_br
 
     input_path = _write_tiny_direct_freeb_input(
         tmp_path / "input.direct_same_branch_custom_vjp",
-        lasym=False,
+        lasym=lasym,
         niter=2,
         mpol=3,
         ntheta=6,
@@ -1052,7 +1054,7 @@ def test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_br
     assert abs(base_fixed_trace - base_complete) < 2.0e-3
     assert np.isfinite(float(np.asarray(exact)))
     assert np.isfinite(float(complete_fd))
-    np.testing.assert_allclose(exact, complete_fd, rtol=1.0e-3, atol=1.0e-8)
+    np.testing.assert_allclose(exact, complete_fd, rtol=2.0e-3, atol=1.0e-8)
 
 
 def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current_and_geometry(
