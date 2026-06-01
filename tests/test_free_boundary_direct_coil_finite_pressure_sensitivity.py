@@ -997,8 +997,9 @@ def test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_br
             external_field_provider_params=params,
             free_boundary_activate_fsq=1.0e99,
         )
-        traces = [trace for trace in result.diagnostics.get("adjoint_step_trace", []) if trace.get("freeb_bsqvac_half") is not None]
+        traces = list(result.diagnostics.get("adjoint_step_trace", []))
         assert traces
+        assert any(trace.get("freeb_bsqvac_half") is not None for trace in traces)
         return init, result, traces
 
     base_init, base_result, base_traces = run_trace(base_params)

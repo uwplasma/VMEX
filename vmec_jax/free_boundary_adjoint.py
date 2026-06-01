@@ -1863,6 +1863,20 @@ def direct_coil_accepted_trace_replay_objective_jax(
     if not trace_seq:
         raise ValueError("at least one accepted trace is required")
 
+    def _trace_state_reset_between(prev_trace: dict[str, Any], trace: dict[str, Any]) -> bool:
+        prev_post = prev_trace.get("state_post")
+        next_pre = trace.get("state_pre")
+        if prev_post is None or next_pre is None:
+            return False
+        try:
+            prev_packed = np.asarray(pack_state(prev_post), dtype=float)
+            next_packed = np.asarray(pack_state(next_pre), dtype=float)
+        except Exception:
+            return False
+        if prev_packed.shape != next_packed.shape:
+            return True
+        return not np.allclose(prev_packed, next_packed, rtol=1.0e-13, atol=1.0e-13)
+
     state = initial_state
     objective_components: dict[str, Any] = {
         "state": jnp.asarray(0.0),
@@ -1871,42 +1885,63 @@ def direct_coil_accepted_trace_replay_objective_jax(
     }
     steps: list[dict[str, Any]] = []
     bsqvac_values: list[Any] = []
+    reset_flags: list[bool] = []
+    previous_trace: dict[str, Any] | None = None
     for trace in trace_seq:
-        geometry = free_boundary_boundary_geometry_jax(
-            state,
-            static,
-            sample_nzeta=sample_nzeta,
-        )
-        context = direct_coil_boundary_replay_context(static, geometry)
-        replay = direct_coil_boundary_bsqvac_from_trace_jax(
-            params,
-            geometry,
-            trace,
-            basis=context["basis"],
-            tables=context["tables"],
-            signgs=int(signgs),
-            nvper=int(context["nvper"]),
-            wint=jnp.asarray(context["wint"]),
-            include_analytic=bool(include_analytic),
-        )
+        reset_to_trace_pre = previous_trace is not None and _trace_state_reset_between(previous_trace, trace)
+        if reset_to_trace_pre:
+            # VMEC free-boundary turn-on/restart control can reset the working
+            # state between accepted trace entries. Preserve that fixed host
+            # control transition instead of incorrectly chaining state_post.
+            state = trace["state_pre"]
+        reset_flags.append(bool(reset_to_trace_pre))
+        has_active_freeb_replay = trace.get("freeb_bsqvac_half") is not None and trace.get("freeb_nestor_trace") is not None
+        if has_active_freeb_replay:
+            geometry = free_boundary_boundary_geometry_jax(
+                state,
+                static,
+                sample_nzeta=sample_nzeta,
+            )
+            context = direct_coil_boundary_replay_context(static, geometry)
+            replay = direct_coil_boundary_bsqvac_from_trace_jax(
+                params,
+                geometry,
+                trace,
+                basis=context["basis"],
+                tables=context["tables"],
+                signgs=int(signgs),
+                nvper=int(context["nvper"]),
+                wint=jnp.asarray(context["wint"]),
+                include_analytic=bool(include_analytic),
+            )
+            freeb_bsqvac_half = replay["bsqvac"]
+        else:
+            # Full accepted-trace replay must preserve non-vacuum/setup steps.
+            # These steps do not have enough NESTOR metadata to resample coils,
+            # so replay the original trace payload and keep coil derivatives
+            # zero for that step.
+            replay = None
+            freeb_bsqvac_half = trace.get("freeb_bsqvac_half", None)
         step = strict_update_one_step_from_trace(
             state,
             static,
             trace,
-            freeb_bsqvac_half=replay["bsqvac"],
+            freeb_bsqvac_half=freeb_bsqvac_half,
             enforce_edge=bool(enforce_edge),
         )
         state = step["step"]["state_post"]
         steps.append(step)
-        bsqvac_values.append(replay["bsqvac"])
+        bsqvac_values.append(freeb_bsqvac_half)
         objective_components["force"] = objective_components["force"] + _tree_weighted_half_norm(
             step["force"],
             force_weight,
         )
-        objective_components["bsqvac"] = objective_components["bsqvac"] + _weighted_half_norm(
-            replay["bsqvac"],
-            bsqvac_weight,
-        )
+        if replay is not None:
+            objective_components["bsqvac"] = objective_components["bsqvac"] + _weighted_half_norm(
+                replay["bsqvac"],
+                bsqvac_weight,
+            )
+        previous_trace = trace
 
     objective_components["state"] = _weighted_half_norm(
         pack_state(state),
@@ -1919,6 +1954,7 @@ def direct_coil_accepted_trace_replay_objective_jax(
         "state": state,
         "steps": steps,
         "bsqvac": bsqvac_values,
+        "state_reset_flags": tuple(reset_flags),
     }
 
 
@@ -2022,6 +2058,19 @@ def direct_coil_accepted_trace_fingerprint(
         [_trace_pack_size(trace.get("state_post")) for trace in trace_seq],
         dtype=int,
     )
+    reset_flags = []
+    for prev_trace, trace in zip(trace_seq[:-1], trace_seq[1:], strict=False):
+        try:
+            prev_packed = np.asarray(pack_state(prev_trace.get("state_post")), dtype=float)
+            next_packed = np.asarray(pack_state(trace.get("state_pre")), dtype=float)
+            reset_flags.append(
+                int(
+                    prev_packed.shape != next_packed.shape
+                    or (not np.allclose(prev_packed, next_packed, rtol=1.0e-13, atol=1.0e-13))
+                )
+            )
+        except Exception:
+            reset_flags.append(0)
     return {
         "n_steps": int(len(trace_seq)),
         "n_freeb_steps": int(np.count_nonzero(freeb_sizes)),
@@ -2031,6 +2080,7 @@ def direct_coil_accepted_trace_fingerprint(
         "nestor_trace_key_counts": nestor_sizes,
         "state_pre_sizes": state_pre_sizes,
         "state_post_sizes": state_post_sizes,
+        "state_reset_flags": np.asarray(reset_flags, dtype=int),
     }
 
 
@@ -2067,7 +2117,7 @@ def direct_coil_accepted_trace_fingerprint_delta(
             if ref_values.shape != cand_values.shape or not np.array_equal(ref_values, cand_values):
                 changed.append(f"{group}.{key}")
 
-    for key in ("freeb_sizes", "nestor_trace_key_counts", "state_pre_sizes", "state_post_sizes"):
+    for key in ("freeb_sizes", "nestor_trace_key_counts", "state_pre_sizes", "state_post_sizes", "state_reset_flags"):
         ref_values = np.asarray(ref[key])
         cand_values = np.asarray(cand[key])
         if ref_values.shape != cand_values.shape or not np.array_equal(ref_values, cand_values):

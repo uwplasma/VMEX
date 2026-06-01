@@ -11652,6 +11652,7 @@ def solve_fixed_boundary_residual_iter(
                 fsqr_f, fsqz_f, fsql_f = fsqr, fsqz, fsql
             else:
                 fsqr_f, fsqz_f, fsql_f = _device_get_floats(fsqr, fsqz, fsql)
+            force_state_pre_current = state
             if bool(free_boundary_enabled) and bool(freeb_turnon_iter) and (not bool(freeb_turnon_applied)):
                 # VMEC restarts funct3d immediately after the first
                 # free-boundary turn-on solve, keeping the cached ns4 blocks
@@ -13564,6 +13565,7 @@ def solve_fixed_boundary_residual_iter(
                 trace_entry: dict[str, Any] = {
                     "branch": "strict_update",
                     "state_pre": state_backup,
+                    "force_state_pre": force_state_pre_current,
                     "max_update_rms_pre": float(max_update_rms),
                     "max_coeff_delta_rms_pre": float(max_coeff_delta_rms),
                     "divide_by_scalxc_for_update": bool(divide_by_scalxc_for_update),

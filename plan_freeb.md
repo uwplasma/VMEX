@@ -15,9 +15,10 @@ Date opened: 2026-05-24
 Last updated: 2026-06-01 while pushing the ESSOS finite-pressure direct-coil
 examples and phase-2 replay lane toward PR readiness. PR #18 is open on
 `feature/freeb-essos-coil-single-stage`; local branch `refresh/freeb-slim`
-tracks it. The latest pushed PR-head CI run `26768483437` failed only because
-it tested stale commit `43d28694` before the docs/example refresh; the local
-fast suite now passes with README under the release-hygiene line-count gate.
+tracks it. PR-head CI was green at `277e7423`; the later LASYM replay commit
+`981c946b` exposed a symmetric-trace compatibility regression in Python 3.10
+and 3.12 fast tests. That regression is fixed and pushed as `870dd6e5`, and
+local follow-up validation now promotes reset-aware full accepted-trace replay.
 Do not merge/release until the refreshed pushed head has green GitHub Actions
 and the phase-2 limitations below remain explicit in docs.
 
@@ -141,6 +142,70 @@ Best next steps:
    finite-pressure coils. The local derivative blocks and tiny stellsym/LASYM
    same-branch complete solves are validated, but arbitrary adaptive production
    host-loop branch changes still are not promoted as differentiable.
+
+Need from user:
+
+Nothing now.
+
+### 2026-06-01 Reset-aware full accepted-trace replay
+
+Steps taken:
+
+1. Reproduced the PR-head fast-test failure from commit `981c946b` locally:
+   `test_strict_update_one_step_threads_freeb_bsqvac_half_to_raw_residual`
+   raised `KeyError: 'frsc_u'` because the new LASYM replay plumbing required
+   asymmetric force channels even in symmetric monkeypatched tests.
+2. Fixed the symmetric compatibility regression by forwarding asymmetric force
+   channels with optional `.get(...)` access in
+   `strict_update_one_step_from_state`; pushed this as commit `870dd6e5`.
+3. Audited the remaining same-branch LASYM derivative mismatch and found it was
+   not finite-difference noise: the accepted trace contains a VMEC
+   free-boundary host-control reset between entries, so chaining one
+   `state_post` into the next `state_pre` is wrong for full-trace replay.
+4. Added `force_state_pre` to full adjoint traces and taught
+   `strict_update_one_step_from_trace` to use a separate state for residual
+   reconstruction when production used one state for the force and another for
+   the accepted update.
+5. Updated `direct_coil_accepted_trace_replay_objective_jax` to preserve
+   traced host reset discontinuities. Continuous traces remain chained through
+   replayed states; reset traces explicitly restart from the traced
+   `state_pre`, matching fixed accepted host-control semantics.
+6. Extended accepted-trace fingerprints with `state_reset_flags` so
+   complete-solve finite-difference promotion rejects perturbations that change
+   the reset structure.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   vmec_jax/discrete_adjoint.py vmec_jax/solve.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `python -m py_compile vmec_jax/free_boundary_adjoint.py
+   vmec_jax/discrete_adjoint.py vmec_jax/solve.py` passed.
+3. Targeted replay gate passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_discrete_adjoint_wave6_coverage.py::test_strict_update_one_step_threads_freeb_bsqvac_half_to_raw_residual
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch -rx`
+   (`3 passed in 70.99 s`).
+4. Broader phase-2 direct-coil replay subset passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state -rx`
+   (`4 passed in 169.56 s`).
+5. Default local fast suite passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q -n 4 -m "not full and not vmec2000 and not simsopt"`
+   (`2603 passed, 23 skipped, 2 xfailed in 372.30 s`).
+6. Full Sphinx warning-as-error docs build passed:
+   `python -m sphinx -W --keep-going -b html docs /tmp/vmec_jax_freeb_docs_check_reset_replay`.
+
+Best next steps:
+
+1. Commit/push the reset-aware replay patch.
+2. Check CI on `870dd6e5` and the reset-aware follow-up commit.
+3. Continue the phase-2 production path: replace fixed accepted-control replay
+   with a full `run_free_boundary` custom VJP or a fully JAX-visible nonlinear
+   controller before claiming arbitrary adaptive-loop differentiability.
 
 Need from user:
 

@@ -213,11 +213,15 @@ matches central FD with respect to the packed VMEC state.  The two-step
 accepted-trace replay path is also exposed through
 ``direct_coil_accepted_trace_directional_check_jax`` and checks current,
 Fourier-geometry, and mixed coil directions after resampling the second
-boundary from the first replayed accepted state.  The scalar
-``direct_coil_fixed_trace_custom_vjp_objective_jax`` wrapper exposes this
-fixed accepted replay behind an explicit custom VJP, and
+boundary from the first replayed accepted state.  The full accepted-trace
+replay also preserves inactive/setup accepted steps and VMEC host-control reset
+discontinuities, such as the free-boundary turn-on reset, instead of
+incorrectly chaining every ``state_post`` into the next ``state_pre``.  The
+scalar ``direct_coil_fixed_trace_custom_vjp_objective_jax`` wrapper exposes
+this fixed accepted replay behind an explicit custom VJP, and
 ``direct_coil_accepted_trace_fingerprint_delta`` records whether a
-finite-difference perturbation stayed on the same accepted-step/control branch.
+finite-difference perturbation stayed on the same accepted-step/control branch,
+including the same traced reset pattern.
 On the tiny forced-active default gate, the branch-compatible complete solve
 also compares this fixed-trace custom-VJP directional derivative against a
 central finite difference of the final accepted-state norm for a mixed coil
