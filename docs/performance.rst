@@ -3332,6 +3332,31 @@ rows also showed that production-like wall time remains GPU-slower, so the
 remaining work is structural: stage or fuse the VMEC-control residual scalar
 materialization, accepted-control ``fsq1``, and preconditioner dispatch.
 
+The 2026-05-31 post-merge timing split added correctness-critical finalize
+sub-buckets to the same benchmark matrix. A local CPU quick run with
+``--include-badjac-probe0 --include-timing-light`` reported a warm direct-coil
+``solve_total_s=0.1184`` and ``finalize_s=0.00876``; finalize split into
+``finalize_nestor_recompute_s=0.00651``,
+``finalize_residual_recompute_s=0.00218``, and
+``update_state_ready_s=4.25e-6``. A fresh ``office`` CPU/CUDA clone at
+``bc00ff4`` completed all 22 ``--include-gpu --include-policy-ablation`` rows.
+The default CUDA direct solve remained GPU-slower (``9.42x`` CPU), dominated by
+non-JIT force evaluation (``0.602 s``), preconditioner work (``0.369 s``),
+setup/axis reset (``0.334 s``), and final residual recompute (``0.296 s``).
+With JIT forces enabled, force evaluation became faster than CPU (``0.82x``),
+but the warm row was still ``2.48x`` CPU because preconditioner refresh/apply
+(``0.0438 s``, ``2.55x`` CPU) and residual/control/finalization dispatch
+remained exposed.
+
+The policy-ablation rerun after the direct-coil replay-helper commits reached
+the same conclusion. All CPU/GPU rows completed, but disabling host residual
+metrics, host ``fsq1`` norms, host profile setup, or all three together did not
+produce a single promoted GPU fix. The tiny non-JIT-force direct solve remained
+about ``10.48x`` CPU, and JIT-force policy-ablation rows remained
+``2.65x``--``3.08x`` CPU. Treat the current benchmark evidence as a regression
+target for controller/preconditioner/finalization staging, not as a GPU speedup
+claim for the direct-coil free-boundary row.
+
 Historical bundled example runtime/memory matrix (March 2026)
 -------------------------------------------------------------
 

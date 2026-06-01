@@ -384,6 +384,12 @@ def test_cpu_gpu_comparison_matches_completed_cases_and_reports_nestor_ratios() 
                     "iteration_control_evolve_s": warm_min + 0.01,
                     "compute_forces_s": warm_min + 0.1,
                     "preconditioner_s": warm_min + 0.2,
+                    "precond_refresh_s": warm_min + 0.365,
+                    "precond_refresh_seed_s": warm_min + 0.155,
+                    "precond_refresh_calls": 1,
+                    "precond_reassemble_calls": 0,
+                    "precond_cache_hit_count": 2,
+                    "precond_refresh_seed_reuse_count": 1,
                     "precond_apply_s": warm_min + 0.375,
                     "update_s": warm_min + 0.3,
                     "update_state_s": warm_min + 0.28,
@@ -467,6 +473,11 @@ def test_cpu_gpu_comparison_matches_completed_cases_and_reports_nestor_ratios() 
     assert comparison["gpu"]["warm_iteration_residual_metrics_s"] == 0.625
     assert comparison["cpu"]["warm_finalize_s"] == 2.25
     assert comparison["gpu"]["warm_finalize_s"] == 0.75
+    assert comparison["cpu"]["warm_precond_refresh_s"] == 2.365
+    assert comparison["gpu"]["warm_precond_refresh_s"] == 0.865
+    assert comparison["cpu"]["warm_precond_refresh_seed_s"] == 2.155
+    assert comparison["gpu"]["warm_precond_refresh_seed_s"] == 0.655
+    assert comparison["gpu"]["warm_precond_refresh_seed_reuse_count"] == 1
     assert comparison["cpu"]["warm_precond_apply_s"] == 2.375
     assert comparison["gpu"]["warm_precond_apply_s"] == 0.875
     assert comparison["cpu"]["warm_update_state_ready_s"] == 2.12
@@ -504,6 +515,8 @@ def test_cpu_gpu_comparison_matches_completed_cases_and_reports_nestor_ratios() 
         "warm_iteration_control_evolve": 0.51 / 2.01,
         "warm_compute_forces": 0.6 / 2.1,
         "warm_preconditioner": 0.7 / 2.2,
+        "warm_precond_refresh": 0.865 / 2.365,
+        "warm_precond_refresh_seed": 0.655 / 2.155,
         "warm_precond_apply": 0.875 / 2.375,
         "warm_update": 0.8 / 2.3,
         "warm_update_state": 0.78 / 2.28,

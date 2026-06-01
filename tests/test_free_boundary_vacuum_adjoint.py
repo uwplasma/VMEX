@@ -24,6 +24,7 @@ from vmec_jax.free_boundary_adjoint import (
     dense_vmec_nestor_mode_solve_jax,
     dense_vacuum_residual,
     dense_vacuum_solve_jax,
+    jax_visible_masked_nonlinear_controller_directional_check_jax,
     jax_visible_masked_nonlinear_controller_jax,
     jax_visible_nonlinear_controller_directional_check_jax,
     jax_visible_nonlinear_controller_jax,
@@ -445,6 +446,186 @@ def test_jax_visible_controller_direct_coil_gradient_matches_fd():
     assert np.isfinite(float(check["value"]))
     assert abs(float(check["exact_directional"])) > 1.0e-12
     np.testing.assert_allclose(check["exact_directional"], check["fd_directional"], rtol=2.0e-5, atol=1.0e-10)
+
+
+def test_masked_controller_direct_coil_projected_mode_ad_matches_fd_for_current_and_fourier():
+    """Validate a JAX-visible masked free-boundary surrogate controller.
+
+    The surrogate keeps the production dependency claim narrow:
+    direct-coil parameters move through Biot-Savart sampling on a moving
+    boundary, boundary projection, a dense mode-space vacuum solve, and an
+    unrolled masked nonlinear controller.  It does not exercise or claim a VJP
+    for production ``run_free_boundary``.
+    """
+
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+
+    enable_x64(True)
+    radius = 1.31
+    dofs = jnp.zeros((1, 3, 3), dtype=float)
+    dofs = dofs.at[0, 0, 2].set(radius)
+    dofs = dofs.at[0, 1, 1].set(radius)
+    coil_params = CoilFieldParams(
+        base_curve_dofs=dofs,
+        base_currents=jnp.asarray([4.6e6], dtype=float),
+        n_segments=32,
+        regularization_epsilon=1.0e-9,
+    )
+    controls = {
+        "gain": jnp.asarray([0.12, 0.10, 0.09, 0.08, 0.75], dtype=float),
+        "phase": jnp.asarray([0.06, 0.24, 0.43, 0.67, 0.91], dtype=float),
+        "bias": jnp.asarray(
+            [
+                [0.004, -0.003, 0.002],
+                [0.002, -0.001, 0.003],
+                [-0.003, 0.002, 0.001],
+                [0.001, 0.004, -0.002],
+                [0.70, -0.60, 0.50],
+            ],
+            dtype=float,
+        ),
+        "stop": jnp.asarray([False, False, False, True, False]),
+    }
+    sin_basis = jnp.asarray(
+        [
+            [0.00, 0.21, -0.28],
+            [0.37, -0.13, 0.48],
+            [-0.24, 0.58, 0.16],
+            [0.65, 0.27, -0.36],
+        ],
+        dtype=float,
+    )
+    mode_matrix = jnp.asarray(
+        [
+            [3.15, 0.14, -0.07],
+            [0.11, 2.85, 0.19],
+            [-0.05, 0.22, 3.05],
+        ],
+        dtype=float,
+    )
+    mode_to_state = jnp.asarray(
+        [
+            [0.10, -0.04, 0.03],
+            [-0.03, 0.08, 0.05],
+            [0.04, 0.02, -0.07],
+        ],
+        dtype=float,
+    )
+    phi_offsets = jnp.asarray([[0.00, 0.17], [0.34, 0.53]], dtype=float)
+    imirr = jnp.asarray([1, 0, 3, 2])
+    initial_state = jnp.asarray([0.015, -0.010, 0.012], dtype=float)
+
+    def boundary_from_state(state, control):
+        shape = jnp.asarray([[0.24, -0.16], [0.32, -0.21]], dtype=float)
+        return {
+            "R": jnp.asarray([[0.76, 0.84], [0.90, 0.79]], dtype=float)
+            + 0.026 * state[0]
+            + 0.014 * state[2] * shape,
+            "Z": jnp.asarray([[0.11, -0.12], [0.17, -0.18]], dtype=float)
+            + 0.024 * state[1]
+            - 0.010 * state[2] * shape,
+            "phi": control["phase"] + phi_offsets,
+            "Ru": jnp.asarray([[0.028, -0.038], [0.020, 0.048]], dtype=float) + 0.006 * state[2],
+            "Zu": jnp.asarray([[0.205, 0.218], [0.192, 0.211]], dtype=float) - 0.005 * state[2],
+            "Rv": jnp.asarray([[0.038, 0.012], [-0.028, 0.046]], dtype=float),
+            "Zv": jnp.asarray([[0.018, -0.030], [0.055, -0.013]], dtype=float),
+        }
+
+    def step(state, params, control):
+        boundary = boundary_from_state(state, control)
+        br, bp, bz = sample_coil_field_cylindrical(
+            params,
+            boundary["R"],
+            boundary["Z"],
+            boundary["phi"],
+        )
+        vac = vacuum_boundary_fields_from_cylindrical_jax(
+            br=br,
+            bp=bp,
+            bz=bz,
+            R=boundary["R"],
+            Ru=boundary["Ru"],
+            Zu=boundary["Zu"],
+            Rv=boundary["Rv"],
+            Zv=boundary["Zv"],
+        )
+        rhs_mode = mode_rhs_from_gsource_jax(
+            vac["bnormal"],
+            sin_basis=sin_basis,
+            xmpot=jnp.asarray([0, 1, 1]),
+            n_raw=jnp.asarray([0, 0, 1]),
+            onp=1.0,
+            lasym=False,
+            imirr=imirr,
+            nuv3=4,
+            nuv_full=4,
+        )
+        response = dense_mode_vacuum_solve_jax(mode_matrix, rhs_mode, sin_basis)
+        mode_coeffs = jnp.asarray(response["mode_coeffs"])
+        drive = mode_to_state @ mode_coeffs + control["bias"]
+        next_state = 0.64 * state + control["gain"] * jnp.tanh(drive)
+        return next_state, {
+            "mode_norm": jnp.vdot(mode_coeffs, mode_coeffs),
+            "bnormal_norm": jnp.vdot(vac["bnormal"], vac["bnormal"]),
+            "step_norm": jnp.linalg.norm(next_state - state),
+        }
+
+    def converged_fn(_next_state, _params, control, _aux):
+        return control["stop"]
+
+    def objective_from_run(controller_run):
+        active = jnp.asarray(controller_run["history"]["active"], dtype=float)
+        state = controller_run["state"]
+        return (
+            0.5 * jnp.vdot(jnp.asarray([1.0, 0.8, 1.1], dtype=float) * state, state)
+            + 3.0e-4 * jnp.sum(active * controller_run["history"]["mode_norm"])
+            + 5.0e-8 * jnp.sum(active * controller_run["history"]["bnormal_norm"])
+        )
+
+    zero_dofs = jnp.zeros_like(coil_params.base_curve_dofs)
+    zero_currents = jnp.zeros_like(coil_params.base_currents)
+    current_direction = coil_params.with_arrays(
+        base_curve_dofs=zero_dofs,
+        base_currents=0.02 * coil_params.base_currents,
+    )
+    fourier_direction = coil_params.with_arrays(
+        base_curve_dofs=zero_dofs.at[0, 0, 2].set(0.018),
+        base_currents=zero_currents,
+    )
+
+    current_check = jax_visible_masked_nonlinear_controller_directional_check_jax(
+        step,
+        converged_fn,
+        objective_from_run,
+        coil_params,
+        current_direction,
+        initial_state,
+        controls,
+        eps=1.0e-3,
+        checkpoint_steps=True,
+    )
+    fourier_check = jax_visible_masked_nonlinear_controller_directional_check_jax(
+        step,
+        converged_fn,
+        objective_from_run,
+        coil_params,
+        fourier_direction,
+        initial_state,
+        controls,
+        eps=1.0e-3,
+        checkpoint_steps=True,
+    )
+
+    np.testing.assert_array_equal(
+        np.asarray(current_check["run"]["history"]["active"]),
+        np.asarray([True, True, True, True, False]),
+    )
+    assert bool(current_check["run"]["done"]) is True
+    for check in (current_check, fourier_check):
+        assert np.isfinite(float(check["value"]))
+        assert abs(float(check["exact_directional"])) > 1.0e-12
+        np.testing.assert_allclose(check["exact_directional"], check["fd_directional"], rtol=7.0e-5, atol=1.0e-10)
 
 
 def _mode_basis_for_rhs_tests(*, lasym: bool = False):

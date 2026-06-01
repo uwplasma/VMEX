@@ -363,6 +363,55 @@ def jax_visible_nonlinear_controller_directional_check_jax(
     return {**check, "run": run}
 
 
+def jax_visible_masked_nonlinear_controller_directional_check_jax(
+    step_fn: Any,
+    converged_fn: Any,
+    objective_from_run: Any,
+    params: Any,
+    direction: Any,
+    initial_state: Any,
+    controls: Any,
+    *,
+    eps: float = 1.0e-4,
+    checkpoint_steps: bool = False,
+) -> dict[str, Any]:
+    """AD-vs-FD check for a JAX-visible masked nonlinear controller.
+
+    This is the fixed-length, convergence-masked counterpart to
+    :func:`jax_visible_nonlinear_controller_directional_check_jax`.  It keeps
+    the controller trip count static for reverse-mode AD while validating the
+    same scalar objective against a central finite difference in a pytree
+    parameter direction.
+    """
+
+    def objective(controller_params):
+        run = jax_visible_masked_nonlinear_controller_jax(
+            step_fn,
+            converged_fn,
+            initial_state,
+            controller_params,
+            controls,
+            checkpoint_steps=checkpoint_steps,
+        )
+        return objective_from_run(run)
+
+    check = pytree_directional_derivative_check_jax(
+        objective,
+        params,
+        direction,
+        eps=eps,
+    )
+    run = jax_visible_masked_nonlinear_controller_jax(
+        step_fn,
+        converged_fn,
+        initial_state,
+        params,
+        controls,
+        checkpoint_steps=checkpoint_steps,
+    )
+    return {**check, "run": run}
+
+
 def pytree_directional_derivative_check_jax(
     objective_fn: Any,
     params: Any,

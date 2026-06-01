@@ -10429,6 +10429,11 @@ def solve_fixed_boundary_residual_iter(
         "preconditioner": 0.0,
         "precond_apply": 0.0,
         "precond_mode_scale": 0.0,
+        "precond_refresh_seed": 0.0,
+        "precond_refresh_calls": 0,
+        "precond_reassemble_calls": 0,
+        "precond_cache_hit_count": 0,
+        "precond_refresh_seed_reuse_count": 0,
         "update": 0.0,
         "update_state": 0.0,
         "update_state_ready": 0.0,
@@ -11265,6 +11270,8 @@ def solve_fixed_boundary_residual_iter(
                 or bool(force_bcovar_update)
                 or ((iter2 - iter1) % k_preconditioner_update_interval == 0)
             )
+            precond_cache_seeded_from_bcovar_update = False
+            precond_refresh_seed_time_in_residual_metrics = 0.0
             force_bcovar_update = False
             bcovar_update_history.append(int(bool(need_bcovar_update)))
 
@@ -11618,7 +11625,10 @@ def solve_fixed_boundary_residual_iter(
                         jnp.asarray(float("inf"), dtype=jnp.asarray(cache_rz_norm).dtype),
                     )
                 if not bool(cfg.lasym):
+                    t_precond_refresh_seed_start = time.perf_counter() if timing_enabled else None
                     cache_prec_lam_prec = _lambda_preconditioner(k.bc)
+                    cache_prec_faclam = None
+                    cache_prec_lam_debug = None
                     mats, _jmin, jmax = _rz_preconditioner_matrices_local(
                         bc=k.bc,
                         k=k,
@@ -11628,6 +11638,14 @@ def solve_fixed_boundary_residual_iter(
                     )
                     cache_prec_rz_mats = mats
                     cache_prec_rz_jmax = None if _tree_has_tracer(k) else int(jmax)
+                    precond_cache_seeded_from_bcovar_update = cache_prec_rz_jmax is not None
+                    if timing_enabled and t_precond_refresh_seed_start is not None:
+                        seed_dt = time.perf_counter() - float(t_precond_refresh_seed_start)
+                        precond_refresh_seed_time_in_residual_metrics += seed_dt
+                        timing_stats["precond_refresh_seed"] += seed_dt
+                        timing_stats["precond_refresh"] += seed_dt
+                        timing_stats["preconditioner"] += seed_dt
+                        timing_stats["precond_refresh_calls"] = int(timing_stats["precond_refresh_calls"]) + 1
                 vmec2000_cache_valid = True
             if host_update_assembly or use_host_residual_metrics:
                 # fsqr/fsqz/fsql are already Python floats from the NumPy path above.
@@ -11765,7 +11783,12 @@ def solve_fixed_boundary_residual_iter(
 
             # Precondition forces.
             if timing_enabled and t_residual_metrics_start is not None:
-                timing_stats["iteration_residual_metrics"] += time.perf_counter() - float(t_residual_metrics_start)
+                residual_metrics_dt = (
+                    time.perf_counter()
+                    - float(t_residual_metrics_start)
+                    - float(precond_refresh_seed_time_in_residual_metrics)
+                )
+                timing_stats["iteration_residual_metrics"] += max(0.0, residual_metrics_dt)
             t_precond_start = time.perf_counter() if timing_enabled else None
             frzl_lam_pre = None
             preconditioner_outputs_scaled = False
@@ -11783,13 +11806,22 @@ def solve_fixed_boundary_residual_iter(
                     and (int(cache_prec_rz_jmax) != int(precond_expected_jmax))
                     and _can_reassemble_precond_mats(cache_prec_rz_mats)
                 )
+                can_reuse_bcovar_seeded_precond = (
+                    bool(precond_cache_seeded_from_bcovar_update)
+                    and (not precond_traced)
+                    and (not bool(need_lam_prec))
+                    and (not bool(need_lamcal))
+                    and (cache_prec_lam_prec is not None)
+                    and (cache_prec_rz_mats is not None)
+                    and (cache_prec_rz_jmax is not None)
+                )
                 need_prec_refresh = (
                     precond_traced
                     or (not bool(vmec2000_cache_valid))
                     or (cache_prec_lam_prec is None)
                     or (cache_prec_rz_mats is None)
                     or (cache_prec_rz_jmax is None)
-                    or bool(need_bcovar_update)
+                    or (bool(need_bcovar_update) and (not bool(can_reuse_bcovar_seeded_precond)))
                     or (
                         (cache_prec_rz_jmax is not None)
                         and (int(cache_prec_rz_jmax) != int(precond_expected_jmax))
@@ -11797,6 +11829,8 @@ def solve_fixed_boundary_residual_iter(
                     )
                 )
                 if need_prec_refresh:
+                    if timing_enabled:
+                        timing_stats["precond_refresh_calls"] = int(timing_stats["precond_refresh_calls"]) + 1
                     t_prec_refresh_start = time.perf_counter() if timing_enabled else None
                     if need_lamcal:
                         if need_lam_prec:
@@ -11833,10 +11867,18 @@ def solve_fixed_boundary_residual_iter(
                             pass
                         timing_stats["precond_refresh"] += time.perf_counter() - float(t_prec_refresh_start)
                 else:
+                    if timing_enabled:
+                        timing_stats["precond_cache_hit_count"] = int(timing_stats["precond_cache_hit_count"]) + 1
+                        if bool(can_reuse_bcovar_seeded_precond) and bool(need_bcovar_update):
+                            timing_stats["precond_refresh_seed_reuse_count"] = (
+                                int(timing_stats["precond_refresh_seed_reuse_count"]) + 1
+                            )
                     lam_prec = cache_prec_lam_prec
                     faclam_dump = cache_prec_faclam if need_lam_prec else None
                     lam_debug = cache_prec_lam_debug if need_lamcal else None
                     if bool(need_prec_reassemble):
+                        if timing_enabled:
+                            timing_stats["precond_reassemble_calls"] = int(timing_stats["precond_reassemble_calls"]) + 1
                         mats, _jmin, jmax = rz_preconditioner_matrices_reassemble(
                             mats=cache_prec_rz_mats,
                             cfg=cfg,
@@ -12040,13 +12082,22 @@ def solve_fixed_boundary_residual_iter(
                     and (int(cache_prec_rz_jmax) != int(precond_expected_jmax))
                     and _can_reassemble_precond_mats(cache_prec_rz_mats)
                 )
+                can_reuse_bcovar_seeded_precond = (
+                    bool(precond_cache_seeded_from_bcovar_update)
+                    and (not precond_traced)
+                    and (not bool(need_lam_prec))
+                    and (not bool(need_lamcal))
+                    and (cache_prec_lam_prec is not None)
+                    and (cache_prec_rz_mats is not None)
+                    and (cache_prec_rz_jmax is not None)
+                )
                 need_prec_refresh = (
                     precond_traced
                     or (not bool(vmec2000_cache_valid))
                     or (cache_prec_lam_prec is None)
                     or (cache_prec_rz_mats is None)
                     or (cache_prec_rz_jmax is None)
-                    or bool(need_bcovar_update)
+                    or (bool(need_bcovar_update) and (not bool(can_reuse_bcovar_seeded_precond)))
                     or (
                         (cache_prec_rz_jmax is not None)
                         and (int(cache_prec_rz_jmax) != int(precond_expected_jmax))
@@ -12054,6 +12105,8 @@ def solve_fixed_boundary_residual_iter(
                     )
                 )
                 if need_prec_refresh:
+                    if timing_enabled:
+                        timing_stats["precond_refresh_calls"] = int(timing_stats["precond_refresh_calls"]) + 1
                     t_prec_refresh_start = time.perf_counter() if timing_enabled else None
                     if need_lamcal:
                         if need_lam_prec:
@@ -12090,10 +12143,18 @@ def solve_fixed_boundary_residual_iter(
                             pass
                         timing_stats["precond_refresh"] += time.perf_counter() - float(t_prec_refresh_start)
                 else:
+                    if timing_enabled:
+                        timing_stats["precond_cache_hit_count"] = int(timing_stats["precond_cache_hit_count"]) + 1
+                        if bool(can_reuse_bcovar_seeded_precond) and bool(need_bcovar_update):
+                            timing_stats["precond_refresh_seed_reuse_count"] = (
+                                int(timing_stats["precond_refresh_seed_reuse_count"]) + 1
+                            )
                     lam_prec = cache_prec_lam_prec
                     faclam_dump = cache_prec_faclam if need_lam_prec else None
                     lam_debug = cache_prec_lam_debug if need_lamcal else None
                     if bool(need_prec_reassemble):
+                        if timing_enabled:
+                            timing_stats["precond_reassemble_calls"] = int(timing_stats["precond_reassemble_calls"]) + 1
                         mats, _jmin, jmax = rz_preconditioner_matrices_reassemble(
                             mats=cache_prec_rz_mats,
                             cfg=cfg,

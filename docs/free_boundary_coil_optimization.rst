@@ -38,7 +38,13 @@ from direct coils. Phase 2 is the production custom adjoint through the full
 free-boundary vacuum/NESTOR solve. Several phase-2 validation rungs are already
 implemented on JAX-visible dense or accepted-state problems, but the production
 ``run_free_boundary`` nonlinear-loop adjoint is not claimed as publication-ready
-until complete-solve AD-vs-finite-difference checks pass.
+until complete-solve AD-vs-finite-difference checks pass. The current
+post-merge evidence now includes reusable accepted-trace replay helpers,
+accepted-state ``bsqvac`` replay derivatives with respect to the VMEC state,
+and JAX-visible nonlinear-controller primitives with fixed-length masked
+``lax.scan`` control flow. These validate the intended full-loop adjoint
+contract, but they are still production-adjacent validation gates rather than a
+promoted custom VJP for the host-controlled ``run_free_boundary`` loop.
 
 Adjoint Validation Roadmap
 --------------------------
@@ -95,6 +101,16 @@ The validation ladder is:
    wrapper: solve ``F_x^T lambda = dJ/dx`` at the accepted root and apply
    ``-F_p^T lambda`` to coil/current parameters. This is still a dense
    validation primitive, not the production VMEC nonlinear loop.
+   The same phase-2 work now also includes a JAX-visible nonlinear-controller
+   primitive: ``jax_visible_nonlinear_controller_jax`` and
+   ``jax_visible_masked_nonlinear_controller_jax`` model a fixed-length
+   differentiable controller with an on-device convergence mask. The tests
+   check controller-level AD-vs-central-FD behavior for a direct-coil
+   moving-boundary objective with current and Fourier geometry controls. This
+   is the concrete replacement pattern for differentiating through
+   convergence/early-stop logic without taping a Python host loop, but it is
+   not wired in as the default production free-boundary controller yet.
+
 7. Full direct-coil free-boundary solve: a low-resolution scalar objective,
    first with one coil current and then with one Fourier coefficient, bounded
    against finite differences of complete solves.
@@ -141,14 +157,17 @@ The reviewer-facing status of this ladder is:
    * - 6
      - Complete for validation scale
      - A dense nonlinear fixed-point loop validates the implicit-root reverse
-       pass for current and Fourier-geometry controls.
+       pass for current and Fourier-geometry controls. A JAX-visible masked
+       nonlinear-controller primitive also validates the production replacement
+       pattern for fixed-length scan control with early-stop masking.
      - Wrap or replace the production VMEC nonlinear free-boundary iteration
        with the same validated custom-adjoint contract.
    * - 7
      - Partial
      - Complete direct-coil solves have finite-difference response guards, and
        accepted-boundary replay has AD-vs-FD checks after freezing the accepted
-       plasma boundary.
+       plasma boundary. Accepted-state ``bsqvac`` replay is also AD-vs-FD
+       checked with respect to the VMEC boundary state.
      - Promote to an exact complete-loop AD-vs-FD gate for at least one coil
        current and one Fourier coefficient through production
        ``run_free_boundary``.
@@ -173,7 +192,10 @@ source/matrix assembly -> dense mode solve while the plasma boundary is held
 fixed. The nonlinear fixed-point rung is also AD-vs-FD checked for a
 direct-coil current and one Fourier geometry coefficient, including a
 state-dependent boundary sample and projected mode-space vacuum response, but
-only on a dense validation loop solved inside JAX. Rung 7 is split
+only on a dense validation loop solved inside JAX. The masked-controller rung
+then verifies that a fixed-length JAX scan with an on-device ``done`` mask
+keeps the final state and direct-coil gradients stable against finite
+differences. Rung 7 is split
 deliberately: complete accepted direct-coil solves have
 fast finite-difference response guards for current and one Fourier geometry
 coefficient.  The same complete-solve guard now also evaluates the phase-1
@@ -182,7 +204,9 @@ coil-only proxy objective used by
 plus aspect/iota terms) and checks finite central-difference responses to both
 coil controls.  The accepted-state direct-coil normal-field metric also has a
 JAX replay gate whose current derivative matches central FD after freezing the
-accepted plasma boundary. The remaining phase-2 blocker is differentiating
+accepted plasma boundary, and the accepted-state ``bsqvac`` replay path now
+matches central FD with respect to the packed VMEC state. The remaining
+phase-2 blocker is differentiating
 through the nonlinear ``run_free_boundary`` iteration loop itself, rather than
 through the dense toy nonlinear primitive, fixed-boundary operator, complete
 finite-response proxy, or final accepted-boundary replay. The combined
@@ -241,6 +265,11 @@ single-stage coil optimizer:
   perturbation. This holds the accepted VMEC boundary fixed and validates the
   JAX-visible final-output layer, not the full nonlinear iteration-loop
   derivative.
+- The phase-2 full-loop refactor target has a JAX-visible masked nonlinear
+  controller primitive with AD-vs-FD direct-coil gradient coverage, plus an
+  accepted-state ``bsqvac`` replay gate with VMEC-state derivatives. This
+  validates the replacement contract for the host loop but does not promote a
+  default production ``run_free_boundary`` exact adjoint.
 - The active NESTOR sensitivity checks validate the provider/coupling layer:
   normal-field/source channels scale linearly with current changes and
   ``bsqvac`` scales quadratically. They do not yet validate a full accepted

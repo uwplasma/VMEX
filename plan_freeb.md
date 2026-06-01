@@ -12,17 +12,81 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-05-31 after refreshing PR #18 onto green `origin/main`
-commit `8c41c606` in merge commit `314d13dd`, adding reusable fixed-control
-direct-coil adjoint replay helpers, and adding benchmark-only CPU/GPU policy
-ablation rows. PR #18 is open on
-`feature/freeb-essos-coil-single-stage`; post-main-merge GitHub Actions run
-`26698107572` is still completing at the time of this update, with build/docs,
-parity dry-run, physics smoke, console smoke, and Python 3.10 fast tests
-already green. The optional ESSOS/direct-coil bootstrap gates remain
-local/manual because they require ESSOS assets and launch real free-boundary
-solves. Do not merge PR #18 until the post-merge checks and the follow-up
-helper commit checks are green.
+Last updated: 2026-06-01 after merging `origin/main` commit `46be05f6` into the
+local `refresh/freeb-slim` branch in merge commit `b5082304` and refreshing
+docs/CI status. The exact local head is not pushed yet and has no GitHub Actions
+run; the local branch is ahead of
+`origin/feature/freeb-essos-coil-single-stage` by three commits. PR #18 is open
+on `feature/freeb-essos-coil-single-stage`; the latest pushed PR CI run
+`26705301456` for head `7aaa2c7b` is green across build/docs, parity dry-run,
+physics smoke, console smoke, Python 3.10/3.11/3.12 fast tests, and Codecov,
+with manual/nightly Physics Full skipped. The latest pushed `main` CI run for
+`46be05f6` was green, but the scheduled `main` run `26758910854` on
+2026-06-01 failed only in Physics Full (manual/nightly) WOUT parity rows:
+`LandremanPaul2021_QA_lowres` `volume_p`, circular-tokamak `DMerc`/`jdotb` and
+`bsubsmns`, shaped-tokamak-pressure `bsubsmns`, and `solovev` `bsubsmns`. Do
+not merge/release until the exact local head has CI after push and the scheduled
+full-physics parity failure is triaged or explicitly scoped.
+
+### 2026-06-01 Main-merge docs/CI hygiene
+
+Steps taken:
+
+1. Verified local branch state after merging `origin/main` `46be05f6` into
+   `refresh/freeb-slim` at local merge commit `b5082304`.
+2. Checked PR #18 and `main` GitHub Actions status with `gh run list`,
+   `gh pr view`, and `gh run view`.
+3. Updated `docs/free_boundary_coil_optimization.rst` with the current phase-2
+   evidence: reusable accepted-trace replay, accepted-state `bsqvac`
+   derivatives with respect to the VMEC state, and JAX-visible masked
+   nonlinear-controller AD-vs-FD gates, while keeping production
+   `run_free_boundary` exact-adjoint claims deferred.
+4. Updated `docs/performance.rst` with the latest direct-coil CPU/GPU timing
+   split and policy-ablation conclusion: JIT-force CUDA force evaluation can be
+   faster than CPU, but the tiny direct-coil free-boundary row remains
+   GPU-slower due to preconditioner, residual/control, setup, and finalization
+   dispatch.
+5. Updated `docs/validation.rst` so the free-boundary parity summary points to
+   the new phase-2 adjoint evidence without promoting a production full-loop
+   custom VJP.
+6. Avoided adding generated WOUTs, benchmark JSON, HTML output, or other large
+   runtime artifacts.
+
+Results obtained:
+
+1. Latest pushed PR CI: run `26705301456` on `7aaa2c7b` passed all required PR
+   jobs; Physics Full was skipped as manual/nightly.
+2. Exact local head CI: none observed because `b5082304` is still local and
+   unpushed.
+3. `main` CI: push run `26705376557` on `46be05f6` passed, but scheduled run
+   `26758910854` failed in Physics Full with six WOUT parity failures. Required
+   build/docs, parity dry-run, physics smoke, console smoke, and fast-test jobs
+   passed in that scheduled run.
+4. `python -m sphinx -W --keep-going -b html docs tmp/freeb_docs_check_main_merge_20260601`
+   passed after fixing one RST indentation warning in the adjoint ladder.
+5. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py::test_jax_visible_masked_controller_keeps_final_state_and_gradient_stable tests/test_free_boundary_vacuum_adjoint.py::test_jax_visible_nonlinear_controller_matches_manual_scan_and_fd tests/test_free_boundary_vacuum_adjoint.py::test_jax_visible_controller_direct_coil_gradient_matches_fd -rx`
+   passed: 3 passed in 3.67 s.
+6. `python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py::test_masked_controller_direct_coil_projected_mode_ad_matches_fd_for_current_and_fourier -rx`
+   passed: 1 passed in 4.27 s.
+7. `git diff --check` passed.
+8. Concurrent source/benchmark/test edits were present outside this docs/CI
+   hygiene lane; this pass left them intact.
+
+Best next steps:
+
+1. Push the local merge/docs head and wait for GitHub Actions on the exact
+   `b5082304`-descended commit.
+2. Triage or explicitly scope the scheduled Physics Full WOUT parity failure
+   before release.
+3. Keep production full-loop exact-adjoint claims blocked until a complete
+   `run_free_boundary` custom VJP or fully JAX-visible nonlinear controller is
+   promoted by complete-solve AD-vs-FD checks.
+4. Continue the GPU lane on structural controller/preconditioner/finalization
+   staging rather than direct-coil field sampling.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-05-31 Main refresh, reusable replay helpers, and policy ablation
 

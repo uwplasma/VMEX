@@ -56,6 +56,11 @@ def test_residual_iter_timing_report_exposes_force_eval_aliases() -> None:
         "preconditioner": 0.12,
         "precond_apply": 0.08,
         "precond_mode_scale": 0.01,
+        "precond_refresh_seed": 0.015,
+        "precond_refresh_calls": 3,
+        "precond_reassemble_calls": 1,
+        "precond_cache_hit_count": 5,
+        "precond_refresh_seed_reuse_count": 2,
         "update": 0.09,
         "update_state": 0.07,
         "update_state_ready": 0.025,
@@ -99,6 +104,11 @@ def test_residual_iter_timing_report_exposes_force_eval_aliases() -> None:
     assert report["finalize_residual_device_get_s"] == pytest.approx(0.004)
     assert report["finalize_diag_build_s"] == pytest.approx(0.008)
     assert report["finalize_unattributed_s"] == pytest.approx(0.006)
+    assert report["precond_refresh_seed_s"] == pytest.approx(0.015)
+    assert report["precond_refresh_calls"] == 3
+    assert report["precond_reassemble_calls"] == 1
+    assert report["precond_cache_hit_count"] == 5
+    assert report["precond_refresh_seed_reuse_count"] == 2
 
 
 def test_accelerated_scan_timing_is_opt_in_and_path_labeled(
