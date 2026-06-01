@@ -177,7 +177,7 @@ def test_circle_dry_run_writes_configuration_without_solves(tmp_path, monkeypatc
     assert any("full-loop" in limitation for limitation in summary["wp11_limitations"])
     assert summary["provider"]["provider"] == "circle"
     assert summary["baseline_coils"]["n_base_coils"] == 1
-    assert summary["vmec_config"]["vmec_max_iter"] == 1
+    assert summary["vmec_config"]["vmec_max_iter"] == 2
     assert summary["vmec_config"]["jit_forces"] is True
     assert [record["kind"] for record in summary["optimized_variables"]] == ["current", "fourier_dof"]
     assert summary["optimized_variables"][0]["parameterization"] == "multiplicative"

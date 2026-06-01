@@ -343,6 +343,98 @@ files, and validation plots are handled as release/PR artifacts.
 Reproduction
 ------------
 
+Run all commands in this section from the repository root.  The ESSOS-backed
+commands require an ESSOS checkout on ``PYTHONPATH`` and the Landreman-Paul QA
+coil JSON under ``$ESSOS_INPUT_DIR``.  The beta-scan command exercises both the
+generated-``mgrid`` and direct-coil backends; if your ESSOS checkout does not
+yet provide ``Coils.to_mgrid``, add ``--skip-mgrid-runs`` to keep the
+direct-coil finite-beta scan runnable.
+
+The three PR-review workflows are:
+
+.. code-block:: bash
+
+   export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
+
+   PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
+     python examples/free_boundary_essos_coils_forward.py \
+     --input examples/data/input.LandremanPaul2021_QA_lowres \
+     --beta 0.0025 \
+     --pressure-profile standard \
+     --phiedge=-0.025 \
+     --max-iter 1000 \
+     --ftol 1e-8 \
+     --ns 12 \
+     --mpol 5 \
+     --ntor 5 \
+     --nzeta 16 \
+     --activate-fsq 1e-3 \
+     --outdir results/free_boundary_essos_coils_forward
+
+This ESSOS direct-coil forward run writes
+``results/free_boundary_essos_coils_forward/input.direct_coils``,
+``wout_direct_coils.nc``, and ``summary.json``.  The summary records
+``fsqr/fsqz/fsql``, aspect, mean iota, coil length/current diagnostics, the
+pressure model, WOUT ``wp/wb`` beta proxy, and the active free-boundary/NESTOR
+coupling diagnostics.  The unit-scale ESSOS LP-QA fixture reaches an actual
+WOUT beta of about one percent with ``--beta 0.0025`` in the standard pressure
+profile; the JSON summary is the authoritative beta diagnostic.
+
+.. code-block:: bash
+
+   export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
+
+   PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
+     python examples/free_boundary_essos_coils_beta_scan.py \
+     --outdir results/free_boundary_essos_coils_beta_scan_smoke \
+     --input examples/data/input.LandremanPaul2021_QA_lowres \
+     --phiedge=-0.025 \
+     --betas 0.0025 \
+     --pressure-profile standard \
+     --ns 12 \
+     --max-iter 1000 \
+     --ftol 1e-8 \
+     --mpol 5 \
+     --ntor 5 \
+     --mgrid-nr 16 \
+     --mgrid-nz 16 \
+     --mgrid-nphi 16 \
+     --activate-fsq 1e-3
+
+This finite-beta scan writes ``summary.json`` plus
+``wout_mgrid_beta_*.nc`` and ``wout_direct_beta_*.nc`` rows under the selected
+``--outdir``.  When ``--skip-mgrid-runs`` is used, only the direct-coil WOUT
+rows are expected.  The root summary is checkpointed after each case and
+contains ``complete``, the coil/plasma scale summary, the mgrid path, the
+radial schedule, and per-run entries with backend, nominal beta label, WOUT
+path, residuals, aspect, mean iota, pressure, ``wp/wb`` beta proxy, and NESTOR
+history summaries.  Staged scans additionally write
+``case_checkpoints/*.json`` and per-stage WOUT/input files.
+
+.. code-block:: bash
+
+   python examples/optimization/free_boundary_QS_coil_optimization.py \
+     --smoke \
+     --provider circle \
+     --max-evals 1 \
+     --max-iter 1 \
+     --vmec-max-iter 2 \
+     --pressure-profile standard \
+     --beta 1.0 \
+     --activate-fsq 1e99 \
+     --outdir results/free_boundary_QS_coil_optimization_circle_smoke
+
+This single-stage free-boundary coil-optimization smoke is dependency-light
+because it uses the synthetic circular direct-coil provider.  It writes
+``input.direct_coil_phase1_smoke``, ``history.json``, ``summary.json``, and
+``wout_best_direct_coil_phase1.nc``.  The optimizer vector contains only coil
+current and selected coil Fourier degrees of freedom; the plasma boundary is
+recomputed by the free-boundary solve at each objective evaluation.  The
+current objective is the documented phase-1 residual/aspect/iota proxy, not a
+promoted Boozer/QS objective or full-loop exact adjoint.
+
 Run the dependency-light direct-coil forward example from the repository root.
 This path constructs a synthetic circular ``CoilFieldParams`` object directly in
 ``vmec_jax`` and writes ``wout_direct_coils.nc`` plus ``summary.json`` without
@@ -369,8 +461,9 @@ low-resolution finite-pressure free-boundary forward validation run without writ
    export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
    PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
      python examples/free_boundary_essos_coils_forward.py \
-     --beta 1.0 \
-     --max-iter 20 \
+     --beta 0.0025 \
+     --max-iter 1000 \
+     --activate-fsq 1e-3 \
      --outdir results/free_boundary_essos_coils_forward
 
 Run the matched beta scan from the repository root. Until the ESSOS
@@ -387,10 +480,8 @@ to run the direct-coil provider without generating a magnetic grid.
      --outdir results/free_boundary_essos_coils_beta_scan_readme \
      --input examples/data/input.LandremanPaul2021_QA_lowres \
      --phiedge=-0.025 \
-     --betas 0 0.5 1.0 1.25 \
+     --betas 0.00125 0.0025 0.00375 0.005 \
      --pressure-profile standard \
-     --pressure-continuation \
-     --pressure-continuation-max-fsq 1e-6 \
      --ns-array 16,31 \
      --niter-array 600,1200 \
      --ftol-array 1e-8,1e-8 \
@@ -398,7 +489,7 @@ to run the direct-coil provider without generating a magnetic grid.
      --ntor 5 \
      --mgrid-nphi 24 \
      --max-iter 1200 \
-     --activate-fsq 1e99
+     --activate-fsq 1e-3
 
 To include a self-consistent Redl bootstrap-current preconditioner before each
 finite-beta equilibrium solve, add:
@@ -751,7 +842,7 @@ For a bounded validation run, use the synthetic circular coil provider:
      --provider circle \
      --max-evals 1 \
      --max-iter 1 \
-     --vmec-max-iter 1 \
+     --vmec-max-iter 2 \
      --pressure-profile standard \
      --beta 1.0 \
      --activate-fsq 1e99 \
@@ -794,7 +885,7 @@ adding perturbed coil scenarios to the nominal free-boundary solve:
      --provider circle \
      --max-evals 1 \
      --max-iter 1 \
-     --vmec-max-iter 1 \
+     --vmec-max-iter 2 \
      --robust-samples 2 \
      --robust-risk mean_plus_std \
      --outdir results/free_boundary_QS_coil_optimization_circle_robust_smoke

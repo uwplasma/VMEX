@@ -17,12 +17,16 @@ Run from the repository root:
 
     export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
     export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
-    PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH python examples/free_boundary_essos_coils_forward.py --beta 1.0 --max-iter 20
+    PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH python examples/free_boundary_essos_coils_forward.py --beta 0.0025 --max-iter 1000 --activate-fsq 1e-3
 
 The default finite-pressure profile is the standard
 ``p = e*(ne*Te + ni*Ti)`` polynomial profile used by the SIMSOPT
 finite-beta/bootstrap examples.  Use ``--pressure-profile linear-scale`` only
 for legacy ``PRES_SCALE*(1-s)`` probes.
+
+The ESSOS LP-QA fixture is unit-scale; with the default toroidal-flux override,
+``--beta 0.0025`` in this standard profile gives an actual WOUT ``wp/wb`` beta
+near one percent.  Check ``summary.json`` for the authoritative beta proxy.
 """
 
 from __future__ import annotations
@@ -44,7 +48,7 @@ if str(REPO_ROOT) not in sys.path:
 from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_run
 from vmec_jax.external_fields import coil_current_norm, coil_lengths, from_essos_coils
 from vmec_jax.namelist import read_indata, write_indata
-from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state
+from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state, read_wout
 
 from examples.free_boundary_essos_coils_beta_scan import (
     DEFAULT_INPUT,
@@ -89,6 +93,11 @@ def _summarize_run(run: Any, params: Any, wout_path: Path, wall_s: float, beta_p
         "free_boundary_bsqvac_rms": nestor.get("bsqvac_rms") if isinstance(nestor, dict) else None,
         "coil_current_norm": float(np.asarray(coil_current_norm(params))),
         "coil_length_mean": float(np.mean(np.asarray(coil_lengths(params), dtype=float))),
+        "max_pressure": None,
+        "wp": None,
+        "wb": None,
+        "beta_proxy": None,
+        "beta_proxy_percent": None,
     }
     try:
         summary["aspect"] = float(equilibrium_aspect_ratio_from_state(state=run.state, static=run.static))
@@ -104,6 +113,21 @@ def _summarize_run(run: Any, params: Any, wout_path: Path, wall_s: float, beta_p
         summary["mean_iota"] = float(np.nanmean(np.asarray(iotas, dtype=float)))
     except Exception:
         summary["mean_iota"] = None
+    try:
+        wout = read_wout(wout_path)
+        for name in ("fsqr", "fsqz", "fsql", "aspect"):
+            if hasattr(wout, name):
+                value = float(getattr(wout, name))
+                if np.isfinite(value):
+                    summary[name] = value
+        summary["max_pressure"] = float(np.nanmax(np.asarray(wout.presf, dtype=float)))
+        summary["wp"] = float(wout.wp)
+        summary["wb"] = float(wout.wb)
+        if float(wout.wb) != 0.0:
+            summary["beta_proxy"] = float(wout.wp) / float(wout.wb)
+            summary["beta_proxy_percent"] = 100.0 * float(wout.wp) / float(wout.wb)
+    except Exception:
+        pass
     return summary
 
 

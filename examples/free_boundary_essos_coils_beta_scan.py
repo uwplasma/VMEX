@@ -22,12 +22,17 @@ Use smaller settings for a quick smoke run:
 
     export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
     export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
-    PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH python examples/free_boundary_essos_coils_beta_scan.py --betas 0 1 --max-iter 2 --mgrid-nr 8 --mgrid-nz 8 --mgrid-nphi 4 --activate-fsq 1e99
+    PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH python examples/free_boundary_essos_coils_beta_scan.py --betas 0.0025 --max-iter 1000 --mgrid-nr 16 --mgrid-nz 16 --mgrid-nphi 16 --activate-fsq 1e-3
 
 By default, finite pressure is built from the standard density/temperature
 profiles used by the SIMSOPT finite-beta/bootstrap examples,
 ``p = e * (ne*Te + ni*Ti)``.  Use ``--pressure-profile linear-scale`` only for
 legacy plumbing probes that need the older ``PRES_SCALE*(1-s)`` profile.
+
+The ESSOS LP-QA fixture is unit-scale; with the default toroidal-flux override,
+``--betas 0.0025`` in this standard pressure profile gives actual WOUT
+``wp/wb`` beta near one percent.  The JSON ``beta_proxy_percent`` field is the
+authoritative pressure diagnostic.
 
 The default ESSOS LP-QA coil JSON is unit-scale.  Use
 ``examples/data/input.LandremanPaul2021_QA_lowres`` with unit-scale mgrid
@@ -853,6 +858,7 @@ def _summary_payload(
         "direct_coil_source_reuse": not bool(args.disable_direct_coil_source_reuse),
         "direct_coil_trial_resample": bool(args.direct_coil_trial_resample),
         "direct_coil_limit_update_rms": bool(args.direct_coil_limit_update_rms),
+        "jit_forces": bool(getattr(args, "jit_forces", True)),
         "bootstrap_current_fixed_point": bool(getattr(args, "bootstrap_current_fixed_point", False)),
         "bootstrap_helicity_n": int(getattr(args, "bootstrap_helicity_n", 0)),
         "bootstrap_surfaces": [
@@ -942,6 +948,7 @@ def _run_free_boundary_backend(
     input_path: Path,
     max_iter: int,
     activate_fsq: float | None,
+    jit_forces: bool = True,
     direct_coil_params=None,
     direct_coil_source_reuse: bool = True,
     direct_coil_trial_resample: bool = False,
@@ -953,7 +960,7 @@ def _run_free_boundary_backend(
             max_iter=int(max_iter),
             multigrid=False,
             verbose=False,
-            jit_forces=False,
+            jit_forces=bool(jit_forces),
             free_boundary_activate_fsq=activate_fsq,
         )
     if backend == "direct":
@@ -962,7 +969,7 @@ def _run_free_boundary_backend(
             max_iter=int(max_iter),
             multigrid=False,
             verbose=False,
-            jit_forces=False,
+            jit_forces=bool(jit_forces),
             external_field_provider_kind="direct_coils",
             external_field_provider_static={
                 "allow_source_reuse": bool(direct_coil_source_reuse),
@@ -1009,6 +1016,7 @@ def _run_one_case_staged(
     ns_array: list[int],
     niter_array: list[int],
     ftol_array: list[float],
+    jit_forces: bool = True,
     resume_existing: bool = False,
     direct_coil_params=None,
     direct_coil_source_reuse: bool = True,
@@ -1135,6 +1143,7 @@ def _run_one_case_staged(
                 input_path=stage_input,
                 max_iter=niter if niter > 0 else max_iter,
                 activate_fsq=activate_fsq,
+                jit_forces=bool(jit_forces),
                 direct_coil_params=direct_coil_params,
                 direct_coil_source_reuse=direct_coil_source_reuse,
                 direct_coil_trial_resample=direct_coil_trial_resample,
@@ -1244,6 +1253,7 @@ def run_one_case(
     max_iter: int,
     activate_fsq: float | None,
     pressure_profile: str = DEFAULT_PRESSURE_PROFILE,
+    jit_forces: bool = True,
     ns_array: list[int] | None = None,
     niter_array: list[int] | None = None,
     ftol_array: list[float] | None = None,
@@ -1270,6 +1280,7 @@ def run_one_case(
             ns_array=[int(x) for x in ns_array],
             niter_array=[int(x) for x in stage_niter],
             ftol_array=[float(x) for x in stage_ftol],
+            jit_forces=bool(jit_forces),
             resume_existing=resume_existing,
             direct_coil_params=direct_coil_params,
             direct_coil_source_reuse=direct_coil_source_reuse,
@@ -1297,6 +1308,7 @@ def run_one_case(
         input_path=input_path,
         max_iter=max_iter,
         activate_fsq=activate_fsq,
+        jit_forces=bool(jit_forces),
         direct_coil_params=direct_coil_params,
         direct_coil_source_reuse=direct_coil_source_reuse,
         direct_coil_trial_resample=direct_coil_trial_resample,
@@ -1445,6 +1457,16 @@ def main(argv: list[str] | None = None) -> int:
             "Free-boundary activation threshold for this finite-pressure research example. "
             "Use 1e-3 for literal VMEC2000 cadence parity; the default forces immediate "
             "vacuum coupling so direct-coil and mgrid backends are exercised in short runs."
+        ),
+    )
+    parser.add_argument(
+        "--jit-forces",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Use JIT force kernels for scan solves. This is the recommended "
+            "default for finite-pressure direct-coil runs; --no-jit-forces is "
+            "kept as a parity/debug escape hatch."
         ),
     )
     parser.add_argument("--skip-mgrid-runs", action="store_true")
@@ -1787,6 +1809,7 @@ def main(argv: list[str] | None = None) -> int:
                     pressure_profile=args.pressure_profile,
                     max_iter=args.max_iter,
                     activate_fsq=args.activate_fsq,
+                    jit_forces=bool(args.jit_forces),
                     ns_array=ns_array,
                     niter_array=niter_array,
                     ftol_array=ftol_array,
@@ -1921,6 +1944,7 @@ def main(argv: list[str] | None = None) -> int:
                     pressure_profile=args.pressure_profile,
                     max_iter=args.max_iter,
                     activate_fsq=args.activate_fsq,
+                    jit_forces=bool(args.jit_forces),
                     ns_array=ns_array,
                     niter_array=niter_array,
                     ftol_array=ftol_array,

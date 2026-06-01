@@ -12,22 +12,91 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-01 after merging `origin/main` commit `d7817174` into the
-local `refresh/freeb-slim` branch, resolving the `plan.md` conflict, committing
-`edce04c1`, and pushing it to `origin/feature/freeb-essos-coil-single-stage`.
-PR #18 is open on `feature/freeb-essos-coil-single-stage` and is clean/mergeable
-against `origin/main`. GitHub Actions run `26764857211` is running on the exact
-pushed head. At the time of this update, parity-manifest smoke has already
-passed and Physics Full is skipped as manual/nightly; the remaining required
-jobs are in progress. The latest fully completed PR-head run before this merge,
-`26763413667` on `68c806ed`, passed build/docs, parity dry-run, physics smoke,
-console smoke, Python 3.10/3.11/3.12 fast tests, and Codecov. The latest pushed
-`main` CI run for `46be05f6` was green, but the scheduled `main` run
-`26758910854` on 2026-06-01 failed only in Physics Full (manual/nightly) WOUT
-parity rows: `LandremanPaul2021_QA_lowres` `volume_p`, circular-tokamak
-`DMerc`/`jdotb` and `bsubsmns`, shaped-tokamak-pressure `bsubsmns`, and
-`solovev` `bsubsmns`. Do not merge/release until the exact PR-head CI is green
-and the scheduled full-physics parity failure is triaged or explicitly scoped.
+Last updated: 2026-06-01 while pushing the ESSOS finite-pressure direct-coil
+examples and phase-2 replay lane toward PR readiness. PR #18 is open on
+`feature/freeb-essos-coil-single-stage`; local branch `refresh/freeb-slim`
+tracks it. The latest pushed PR-head CI run `26768483437` failed only because
+it tested stale commit `43d28694` before the docs/example refresh; the local
+fast suite now passes with README under the release-hygiene line-count gate.
+Do not merge/release until the refreshed pushed head has green GitHub Actions
+and the phase-2 limitations below remain explicit in docs.
+
+### 2026-06-01 ESSOS finite-pressure example readiness and phase-2 status
+
+Steps taken:
+
+1. Rechecked PR CI run `26768483437`: build/docs, parity-manifest smoke,
+   console-script smoke, docs full guide, and physics smoke passed. Python
+   3.10/3.11/3.12 fast tests failed only in the README concision gate on the
+   stale pushed commit; local `README.md` is now 214 lines and the focused gate
+   passes.
+2. Ran the default local fast-test slice:
+   `JAX_ENABLE_X64=1 python -m pytest -q -n 4 -m "not full and not vmec2000 and not simsopt"`.
+3. Verified the ESSOS direct-coil forward example with a finite-pressure
+   Landreman-Paul QA case using the unit-scale ESSOS coil fixture. The correct
+   calibrated standard-profile command is `--beta 0.0025 --phiedge=-0.025
+   --max-iter 1000 --activate-fsq 1e-3`, which gives actual WOUT beta near
+   one percent.
+4. Found and fixed an example-path issue: the beta-scan script forced
+   `jit_forces=False`, while the finite-pressure direct-coil forward example
+   converges with the public/default JIT force-kernel path. Added a
+   `--jit-forces/--no-jit-forces` scan flag and defaulted the scan to JIT
+   force kernels.
+5. Added WOUT pressure/beta diagnostics to the ESSOS forward example summary:
+   `wp`, `wb`, `beta_proxy`, `beta_proxy_percent`, and WOUT-derived
+   `fsqr/fsqz/fsql/aspect`.
+6. Updated `docs/free_boundary_coil_optimization.rst` and example docstrings
+   with calibrated one-percent-beta commands and explicit statements that the
+   JSON `beta_proxy_percent` is the authoritative pressure diagnostic.
+7. Raised the coil-optimization smoke default from one to two inner VMEC
+   iterations so the smoke path actually reaches active NESTOR/direct-coil
+   coupling instead of only setup/IO.
+
+Results obtained:
+
+1. Local fast suite passed:
+   `2596 passed, 23 skipped, 2 xfailed in 280.92 s`.
+2. ESSOS direct-coil forward finite-pressure run passed and wrote
+   `/tmp/vmec_jax_freeb_essos_forward_final/{input.direct_coils,wout_direct_coils.nc,summary.json}`.
+   Key diagnostics: actual `beta_proxy_percent=1.0181`, WOUT
+   `fsqr=9.87e-09`, `fsqz=7.05e-09`, `fsql=3.18e-09`, aspect `6.0863`,
+   mean iota `0.3676`, `free_boundary_vacuum_stub=False`, and
+   `free_boundary_nestor_model=vmec2000_like_dense_integral`.
+3. ESSOS mgrid/direct beta-scan smoke with `--betas 0.0025 --mgrid-nphi 16`
+   ran both backends and wrote `/tmp/vmec_jax_freeb_beta_scan_jit_one_phi16`.
+   Key diagnostics: mgrid actual beta `1.0212%`, direct actual beta `1.0185%`,
+   both with active NESTOR coupling and finite WOUTs.
+4. Coil-only single-stage smoke examples ran:
+   - circle provider: `/tmp/vmec_jax_freeb_qs_circle_final`
+   - ESSOS provider: `/tmp/vmec_jax_freeb_qs_essos_final`
+   Both optimize only coil current/Fourier variables; plasma-boundary
+   coefficients are not in the optimization vector.
+5. Focused tests passed:
+   `python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py
+   tests/test_free_boundary_direct_coils_forward_example.py
+   tests/test_free_boundary_essos_coils_forward_example.py
+   tests/test_docs_release_hygiene.py::test_root_readme_stays_concise_and_defers_extended_claims`
+   (`19 passed, 1 skipped, 1 xfailed in 4.00 s`).
+6. `ruff` and Python syntax checks passed on the edited example/test files.
+7. Full Sphinx build passed:
+   `python -m sphinx -W --keep-going -b html docs /tmp/vmec_jax_freeb_docs_check_phase2_examples`.
+8. Phase-2 focused replay/adjoint tests passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_vacuum_adjoint.py::test_masked_controller_direct_coil_projected_mode_ad_matches_fd_for_current_and_fourier
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state -rx`
+   (`2 passed in 78.72 s`).
+
+Best next steps:
+
+1. Commit and push the ESSOS example-readiness patch, then confirm refreshed
+   PR CI is green.
+2. Continue phase 2 with a fixed-accepted-trace custom-VJP wrapper and
+   trace-fingerprint guard. The local derivative blocks are validated, but the
+   adaptive production host loop still is not a promoted full-solve adjoint.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-06-01 Physics Full parity triage and phase-2 accepted-trace helper
 

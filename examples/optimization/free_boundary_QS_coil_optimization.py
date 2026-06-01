@@ -947,7 +947,9 @@ def apply_smoke_defaults(args: argparse.Namespace) -> argparse.Namespace:
     if args.smoke:
         args.max_iter = 1 if args.max_iter is None else args.max_iter
         args.max_evals = 3 if args.max_evals is None else args.max_evals
-        args.vmec_max_iter = 1 if args.vmec_max_iter is None else args.vmec_max_iter
+        # VMEC free-boundary cadence turns on the vacuum/NESTOR path only after
+        # the first iteration, so the smoke run needs at least two inner steps.
+        args.vmec_max_iter = 2 if args.vmec_max_iter is None else args.vmec_max_iter
         args.ns = 12 if args.ns is None else args.ns
         args.mpol = 3 if args.mpol is None else args.mpol
         args.ntor = 2 if args.ntor is None else args.ntor
