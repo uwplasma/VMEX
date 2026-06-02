@@ -1296,6 +1296,15 @@ left unchanged.  The actionable GPU target remains reducing projected replay
 dispatch and residual-tangent projection overhead, not shrinking the replay
 chunk size further.
 
+The same mode-4 callback also ruled out two simple replay-mode promotions.
+Opting into the fused replay/projection helper with chunking disabled took
+``69.9 s`` and spent ``38.6 s`` inside fused projected replay, so it did not
+improve on the default bounded chunk policy.  Forcing
+``VMEC_JAX_DYNAMIC_REPLAY_MODE=whole_scan`` was worse: ``81.5 s`` total with
+``50.0 s`` in projected replay.  Keep both modes as diagnostics rather than
+defaults for high-mode QH until a future implementation changes the underlying
+dispatch structure.
+
 A follow-up QH ``max_mode=2`` GPU profile on ``office`` with
 ``--inner-max-iter 80``, ``--trial-max-iter 40``,
 ``VMEC_JAX_DYNAMIC_REPLAY_MODE=basepoint``,
