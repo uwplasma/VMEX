@@ -2200,6 +2200,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
 
     def step_fn(state, coil_params, control):
         step_index = jnp.asarray(control["step_index"], dtype=jnp.int32)
+        do_propose = jnp.asarray(control["accept"], dtype=bool)
         branches = tuple(
             (
                 lambda operand, trace=trace, reset=reset: _branch_for_trace(
@@ -2211,7 +2212,18 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
             )
             for trace, reset in zip(trace_seq, reset_flags, strict=True)
         )
-        return jax.lax.switch(step_index, branches, (state, coil_params))
+
+        def _propose(_unused):
+            return jax.lax.switch(step_index, branches, (state, coil_params))
+
+        def _skip(_unused):
+            return state, {
+                "force": jnp.asarray(0.0),
+                "bsqvac": jnp.asarray(0.0),
+                "state_reset": jnp.asarray(False, dtype=bool),
+            }
+
+        return jax.lax.cond(do_propose, _propose, _skip, operand=None)
 
     def accept_fn(_state, _proposed_state, _params, control, _aux):
         return control["accept"]
