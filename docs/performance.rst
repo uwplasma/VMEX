@@ -1287,6 +1287,15 @@ larger bounded chunks for non-LASYM projected replay.  The remaining
 bottlenecks are accepted-tape build, replay dispatch/compile-like overhead,
 and dense residual-tangent projection.
 
+A 2026-06-02 follow-up on QH ``max_mode=4`` rechecked smaller and disabled
+non-LASYM replay chunks after the GPU trial-solve policy change.  With the
+same ``inner_max_iter=80`` exact-Jacobian callback budget, chunk 20 took
+``69.4 s`` and no explicit chunking took ``71.0 s``.  Both were slower than the
+current bounded default policy for this case, so the production heuristic was
+left unchanged.  The actionable GPU target remains reducing projected replay
+dispatch and residual-tangent projection overhead, not shrinking the replay
+chunk size further.
+
 A follow-up QH ``max_mode=2`` GPU profile on ``office`` with
 ``--inner-max-iter 80``, ``--trial-max-iter 40``,
 ``VMEC_JAX_DYNAMIC_REPLAY_MODE=basepoint``,
@@ -2027,6 +2036,19 @@ still took ``29.84 s`` for this one-callback diagnostic, dominated by
 new ``auto_scalar`` route.  These numbers are diagnostics for the
 small cold probe, not a production optimization benchmark, but they confirm the
 new route avoids dense-Jacobian fallback on eligible GPU scalar-adjoint runs.
+
+A larger QH ``max_mode=4`` optimizer run on ``office`` then compared the
+production dense SciPy path against ``method="scipy_matrix_free"`` and
+``method="auto_scalar"`` with ``max_nfev=3``, ``inner_max_iter=80``, and
+``trial_max_iter=80``.  Dense SciPy remained the best production choice for
+this high-mode GPU case: it finished in ``94.8 s`` with final objective
+``1.74e-1``.  ``scipy_matrix_free`` took ``213 s`` and stopped at
+``2.50e-1`` because repeated ``Jv``/``J.Tv`` products dominated the trace.
+``auto_scalar`` took ``95.6 s`` but stopped at ``2.85e-1`` because the current
+scalar trust-region globalization did not make enough progress in the same
+budget.  Therefore explicit GPU ``method="auto"`` still preserves dense SciPy
+for high-mode QS/QI optimizations; scalar and matrix-free paths remain opt-in
+diagnostics until longer production sweeps show comparable objective progress.
 
 The follow-up patch tested JIT compilation of the repeated initial-state
 construction inside that accepted-point path.  ``FixedBoundaryExactOptimizer``
