@@ -2734,6 +2734,49 @@ def direct_coil_accepted_trace_directional_check_jax(
     }
 
 
+def direct_coil_accepted_trace_controller_directional_check_jax(
+    params: Any,
+    direction: Any,
+    initial_state: Any,
+    *,
+    eps: float = 1.0e-4,
+    **replay_kwargs: Any,
+) -> dict[str, Any]:
+    """Validate stacked accepted-controller replay gradients by central FD.
+
+    This is the scan-controller counterpart to
+    :func:`direct_coil_accepted_trace_directional_check_jax`.  It validates the
+    differentiated path that carries accepted/rejected masks plus stacked
+    scalar, velocity-history, and preconditioner controls through
+    :func:`jax_visible_accepted_nonlinear_controller_jax`.
+    """
+
+    def objective(coil_params):
+        replay = direct_coil_accepted_trace_controller_replay_objective_jax(
+            coil_params,
+            initial_state,
+            **replay_kwargs,
+        )
+        return replay["objective"]
+
+    check = pytree_directional_derivative_check_jax(
+        objective,
+        params,
+        direction,
+        eps=eps,
+    )
+    replay = direct_coil_accepted_trace_controller_replay_objective_jax(
+        params,
+        initial_state,
+        **replay_kwargs,
+    )
+    return {
+        **check,
+        "replay": replay,
+        "objective_components": replay["objective_components"],
+    }
+
+
 def direct_coil_projected_mode_fixed_point_jax(
     params: Any,
     initial_state: Any,
