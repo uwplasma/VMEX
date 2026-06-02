@@ -474,6 +474,64 @@ Need from user:
 Nothing now, unless you have a known ESSOS coil/input pair that makes VMEC2000
 enter active vacuum and write a WOUT from a generated mgrid.
 
+### 2026-06-02 Same-branch adjoint report and controller policy fix
+
+Steps taken:
+
+1. Added `tools/diagnostics/direct_coil_same_branch_adjoint_report.py`, an
+   optional reviewer-facing JSON diagnostic for the current phase-2
+   same-branch direct-coil adjoint claim.
+2. The script writes a tiny forced-active direct-coil input, runs base and
+   `base +/- eps * direction` complete solves, records branch fingerprints,
+   and compares the fixed-trace custom-VJP directional derivative against the
+   complete-solve central finite difference.
+3. While validating the script, found that the stacked accepted-controller
+   replay could pass traced booleans into Python-control update/preconditioner
+   paths (`limit_update_rms`, `divide_by_scalxc_for_update`, and tridiagonal
+   preconditioner policy flags).
+4. Fixed the controller replay so those Python-policy switches remain
+   branch-local static trace data. Numeric controls and JAX-safe `flip_sign`
+   remain scan-stacked.
+5. Kept the slower stacked-controller custom-VJP JSON report behind
+   `--include-controller-vjp`; the default report is bounded while the
+   controller custom-VJP remains covered by the focused pytest gate.
+6. Documented the JSON diagnostic command and scope in
+   `docs/free_boundary_coil_optimization.rst`.
+
+Results obtained:
+
+1. The standalone default diagnostic passed in about `29 s`:
+   `/tmp/vmec_jax_freeb_same_branch_adjoint_report.json`.
+2. The report showed branch compatibility true and fixed-trace custom VJP slope
+   `0.07212187859042393` versus complete-solve FD
+   `0.07212187859151342`, with absolute error `1.09e-12`.
+3. Static checks passed:
+   `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py
+   tools/diagnostics/direct_coil_same_branch_adjoint_report.py` and
+   `python -m py_compile` on the same files.
+4. Focused phase-2 tests passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch
+   -rx -s`: `3 passed in 239.52 s`.
+5. Full docs passed with warnings as errors:
+   `python -m sphinx -W --keep-going -b html docs
+   /tmp/vmec_jax_freeb_docs_check_same_branch_report`.
+
+Best next steps:
+
+1. Commit and push the controller-policy replay fix, diagnostic script, docs,
+   and regression assertions.
+2. Trigger or inspect a PR-head CI run for the new commit.
+3. Continue phase 2 by moving the remaining Python-control update and
+   preconditioner switches toward a JAX-visible controller, which is the next
+   step before a true full-loop custom VJP can be promoted.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-01 ESSOS finite-pressure example readiness and phase-2 status
 
 Steps taken:

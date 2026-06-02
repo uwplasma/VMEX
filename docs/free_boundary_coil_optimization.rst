@@ -242,6 +242,24 @@ difference of the final accepted-state norm for a mixed coil current/Fourier
 direction, for both stellarator-symmetric and ``LASYM`` traces.  This is the
 current promoted same-branch complete-solve validation, not yet a claim that
 arbitrary controller branch changes are differentiable.
+
+The same evidence can be written as a local JSON artifact without adding
+generated data to the repository:
+
+.. code-block:: bash
+
+   JAX_ENABLE_X64=1 python tools/diagnostics/direct_coil_same_branch_adjoint_report.py \
+     --out /tmp/vmec_jax_freeb_same_branch_adjoint_report.json \
+     --workdir /tmp/vmec_jax_freeb_same_branch_adjoint_report_work
+
+The default command is bounded and records the branch fingerprints,
+complete-solve central finite-difference slope, and fixed-trace custom-VJP
+slope.  Passing ``--include-controller-vjp`` also evaluates the stacked
+accepted-controller custom VJP, which is useful for deeper review but slower in
+cold processes.  The controller replay intentionally keeps Python-policy
+switches such as update limiting and preconditioner choice as branch-local
+static trace data until the full VMEC update/preconditioner loop is refactored
+onto JAX-visible control flow.
 The remaining phase-2 blocker is differentiating through the nonlinear
 ``run_free_boundary`` iteration loop itself, rather than through the dense toy
 nonlinear primitive, fixed-boundary operator, complete finite-response proxy,

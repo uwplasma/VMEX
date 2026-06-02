@@ -2041,10 +2041,17 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         np.asarray(controller_replay["controls"]["step_scalars"]["dt_eff"]),
         np.asarray([_trace_scalar_value(trace0["dt_eff"]), _trace_scalar_value(trace1["dt_eff"])]),
     )
+    assert "flip_sign" in controller_replay["controls"]["step_scalars"]
+    assert "limit_update_rms" not in controller_replay["controls"]["step_scalars"]
+    assert "divide_by_scalxc_for_update" not in controller_replay["controls"]["step_scalars"]
+    assert "preconditioner_use_lax_tridi" not in controller_replay["controls"]["step_scalars"]
+    assert "preconditioner_use_precomputed_tridi" not in controller_replay["controls"]["step_scalars"]
     np.testing.assert_allclose(
         np.asarray(controller_replay["scalar_controls"]["fac"]),
         np.asarray([_trace_scalar_value(trace0["fac"]), _trace_scalar_value(trace1["fac"])]),
     )
+    assert "limit_update_rms" in controller_replay["scalar_controls"]
+    assert "preconditioner_use_lax_tridi" in controller_replay["scalar_controls"]
     np.testing.assert_allclose(
         np.asarray(controller_replay["controls"]["step_arrays"]["vRcc_before"][0]),
         np.asarray(trace0["vRcc_before"]),
@@ -2058,6 +2065,10 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     assert np.asarray(controller_replay["preconditioner_controls"]["w_mode_mn"]).shape[0] == 2
     np.testing.assert_array_equal(
         np.asarray(controller_replay["history"]["rejected"]),
+        np.asarray([False, False]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(controller_replay["history"]["state_reset"]),
         np.asarray([False, False]),
     )
     np.testing.assert_allclose(
