@@ -237,6 +237,30 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-02 Inactive trace-slot skip in controller replay
+
+Steps taken:
+
+1. Updated `direct_coil_accepted_trace_controller_replay_objective_jax` so `accept_mask=False` slots return a no-op proposal before the expensive trace-specific replay branch.
+2. Strengthened the production two-step replay test with a padded third trace whose `dt_eff` and `force_scale` are deliberately changed. The inactive mask must keep final state/objective unchanged.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py` passed.
+2. `python -m py_compile vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py tests/test_free_boundary_vacuum_adjoint.py` passed.
+3. `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state -rx -s` passed: 1 passed in 131.15 s.
+4. `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py -rx` passed: 57 passed in 76.75 s.
+
+Best next steps:
+
+1. Replace trace-branch `lax.switch` with a stacked trace-control payload for the subset of trace fields accepted by `strict_update_one_step_from_state`.
+2. Keep direct-coil NESTOR replay as the only remaining per-trace static closure until basis/table stacking is separated from geometry-dependent replay context.
+3. Then compare stacked replay against the current controller replay on the same production two-step trace.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-01 Reset-aware full accepted-trace replay
 
 Steps taken:

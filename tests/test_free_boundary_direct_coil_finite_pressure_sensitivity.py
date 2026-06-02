@@ -1919,11 +1919,14 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         rtol=5.0e-12,
         atol=5.0e-12,
     )
+    padded_bad_trace = dict(trace1)
+    padded_bad_trace["dt_eff"] = _trace_scalar_value(trace1["dt_eff"]) * 10.0
+    padded_bad_trace["force_scale"] = _trace_scalar_value(trace1["force_scale"]) * 10.0
     padded_controller_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
         base_params,
         trace0["state_pre"],
         static=init.static,
-        traces=[trace0, trace1, trace1],
+        traces=[trace0, trace1, padded_bad_trace],
         signgs=int(init.signgs),
         state_weight=1.0,
         bsqvac_weight=1.0e-12,
