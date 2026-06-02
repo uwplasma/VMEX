@@ -270,9 +270,16 @@ def test_exact_tape_precomputed_tridi_policy_backend_and_env(monkeypatch) -> Non
     monkeypatch.delenv("VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE_MAX_DOFS", raising=False)
     assert opt._use_precomputed_tridi_for_exact_tape() is True
     opt._specs = [object()] * 24
+    assert opt._use_precomputed_tridi_for_exact_tape() is True
+    opt._specs = [object()] * 48
+    assert opt._use_precomputed_tridi_for_exact_tape() is True
+    opt._specs = [object()] * 64
     assert opt._use_precomputed_tridi_for_exact_tape() is None
+    opt._specs = [object()] * 24
     monkeypatch.setenv("VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE_MAX_DOFS", "24")
     assert opt._use_precomputed_tridi_for_exact_tape() is True
+    opt._specs = [object()] * 48
+    assert opt._use_precomputed_tridi_for_exact_tape() is None
     monkeypatch.setenv("VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE_MAX_DOFS", "-1")
     assert opt._use_precomputed_tridi_for_exact_tape() is False
     monkeypatch.delenv("VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE_MAX_DOFS")
@@ -291,6 +298,10 @@ def test_exact_tape_precomputed_tridi_policy_backend_and_env(monkeypatch) -> Non
     monkeypatch.setattr(compat, "jax", SimpleNamespace(default_backend=lambda: "cuda"))
     assert opt._use_precomputed_tridi_for_exact_tape() is True
     opt._specs = [object()] * 24
+    assert opt._use_precomputed_tridi_for_exact_tape() is True
+    opt._specs = [object()] * 48
+    assert opt._use_precomputed_tridi_for_exact_tape() is True
+    opt._specs = [object()] * 64
     assert opt._use_precomputed_tridi_for_exact_tape() is None
     monkeypatch.setattr(compat, "jax", SimpleNamespace(default_backend=lambda: "cpu"))
     assert opt._use_precomputed_tridi_for_exact_tape() is None

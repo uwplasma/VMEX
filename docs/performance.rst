@@ -1251,6 +1251,18 @@ device-ready time.  The next GPU exact-callback optimization should therefore
 reduce Python/JAX dispatch and callback construction around accepted-point
 replay/projection before spending effort on residual-projection kernel math.
 
+A 2026-06-02 ``office`` profile on the same RTX A4000/JAX 0.6.2 setup then
+isolated the accepted-tape preconditioner cost.  For QH ``max_mode=2`` with
+24 boundary DOFs, three perturbed GPU exact-Jacobian callbacks dropped from
+``68.16 s`` to ``65.04 s`` when
+``VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE_MAX_DOFS=24`` was enabled; the first warm
+callback dropped from ``4.39 s`` to ``3.63 s``.  For QH ``max_mode=3`` with
+48 DOFs and a 60-iteration budget, two callbacks dropped from ``64.98 s`` to
+``63.70 s`` with the threshold set to 48; the warm callback dropped from
+``3.57 s`` to ``3.38 s``.  The production default therefore precomputes tridi
+coefficients for accelerator exact tapes up to 48 DOFs and leaves larger
+parameter spaces on the legacy solver policy unless explicitly overridden.
+
 The 2026-05-28 mode-2 GPU policy check also compared regular projected replay
 against the fused replay/projection helper.  Regular projected replay took
 ``12.66 s`` for one QH mode-2 exact-Jacobian callback
