@@ -1697,10 +1697,11 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     """
 
     pytest.importorskip("jax")
-    from vmec_jax._compat import jnp
+    from vmec_jax._compat import jax, jnp
     from vmec_jax.discrete_adjoint import strict_update_accepted_step, strict_update_one_step_from_trace
     from vmec_jax.driver import run_free_boundary
     from vmec_jax.free_boundary_adjoint import (
+        direct_coil_accepted_trace_controller_replay_objective_jax,
         direct_coil_accepted_trace_directional_check_jax,
         direct_coil_accepted_trace_fingerprint,
         direct_coil_accepted_trace_fingerprint_delta,
@@ -1887,6 +1888,37 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     )
     assert {"state", "bsqvac", "force"}.issubset(replay["objective_components"])
     assert np.isfinite(float(replay["objective"]))
+    controller_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
+        base_params,
+        trace0["state_pre"],
+        static=init.static,
+        traces=[trace0, trace1],
+        signgs=int(init.signgs),
+        state_weight=1.0,
+        bsqvac_weight=1.0e-12,
+        force_weight=0.0,
+        enforce_edge=False,
+    )
+    np.testing.assert_array_equal(
+        np.asarray(controller_replay["history"]["accepted"]),
+        np.asarray([True, True]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(controller_replay["history"]["rejected"]),
+        np.asarray([False, False]),
+    )
+    np.testing.assert_allclose(
+        np.asarray(controller_replay["objective"]),
+        np.asarray(replay["objective"]),
+        rtol=2.0e-12,
+        atol=1.0e-12,
+    )
+    np.testing.assert_allclose(
+        np.asarray(pack_state(controller_replay["state"])),
+        np.asarray(pack_state(replay["state"])),
+        rtol=5.0e-12,
+        atol=5.0e-12,
+    )
 
     eps = 1.0e-3
     for direction in (current_direction, fourier_direction, mixed_direction):
@@ -1939,6 +1971,36 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     np.testing.assert_allclose(
         np.asarray(custom_check["exact_directional"]),
         np.asarray(custom_check["fd_directional"]),
+        rtol=5.0e-3,
+        atol=1.0e-10,
+    )
+
+    def controller_objective(params):
+        return direct_coil_accepted_trace_controller_replay_objective_jax(
+            params,
+            trace0["state_pre"],
+            static=init.static,
+            traces=[trace0, trace1],
+            signgs=int(init.signgs),
+            state_weight=1.0,
+            bsqvac_weight=1.0e-12,
+            force_weight=0.0,
+            enforce_edge=False,
+        )["objective"]
+
+    controller_grad = jax.grad(controller_objective)(base_params)
+    controller_exact = sum(
+        jnp.vdot(grad_leaf, direction_leaf)
+        for grad_leaf, direction_leaf in zip(
+            jax.tree_util.tree_leaves(controller_grad),
+            jax.tree_util.tree_leaves(mixed_direction),
+            strict=True,
+        )
+    )
+    assert np.isfinite(float(np.asarray(controller_exact)))
+    np.testing.assert_allclose(
+        np.asarray(controller_exact),
+        np.asarray(custom_check["exact_directional"]),
         rtol=5.0e-3,
         atol=1.0e-10,
     )
