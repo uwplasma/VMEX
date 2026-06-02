@@ -2185,6 +2185,29 @@ def _stack_trace_control_field(trace_seq: tuple[dict[str, Any], ...], key: str, 
     return jnp.stack(arrays, axis=0)
 
 
+def _stack_trace_pytree_field(trace_seq: tuple[dict[str, Any], ...], key: str) -> Any:
+    if not trace_seq:
+        raise ValueError("at least one accepted trace is required")
+    values = []
+    for index, trace in enumerate(trace_seq):
+        if key not in trace:
+            raise KeyError(f"accepted trace {index} is missing control field {key!r}")
+        values.append(trace[key])
+    treedef = tree_util.tree_structure(values[0])
+    for index, value in enumerate(values[1:], start=1):
+        if tree_util.tree_structure(value) != treedef:
+            raise ValueError(f"accepted trace pytree field {key!r} has inconsistent structure at step {index}")
+
+    def _stack_leaf(*leaves):
+        arrays = [jnp.asarray(leaf) for leaf in leaves]
+        shapes = {tuple(arr.shape) for arr in arrays}
+        if len(shapes) != 1:
+            raise ValueError(f"accepted trace pytree field {key!r} must have consistent leaf shapes")
+        return jnp.stack(arrays, axis=0)
+
+    return tree_util.tree_map(_stack_leaf, *values)
+
+
 def direct_coil_accepted_trace_scalar_controls_jax(traces: Any) -> dict[str, Any]:
     """Return stacked scalar/update controls consumed by accepted trace replay.
 
@@ -2205,6 +2228,25 @@ def direct_coil_accepted_trace_scalar_controls_jax(traces: Any) -> dict[str, Any
     for key in _ACCEPTED_TRACE_BOOL_CONTROL_KEYS:
         payload[key] = _stack_trace_control_field(trace_seq, key, dtype=bool)
     return payload
+
+
+def direct_coil_accepted_trace_preconditioner_controls_jax(traces: Any) -> dict[str, Any]:
+    """Return stacked preconditioner/mode payloads for accepted replay.
+
+    ``precond_jmax`` is intentionally not included yet because the current
+    preconditioner application still consumes it via Python ``int(jmax)``.  The
+    stacked payload covers fixed array pytrees whose leading scan axis can be
+    sliced safely by ``lax.scan``.
+    """
+
+    trace_seq = tuple(traces)
+    if not trace_seq:
+        raise ValueError("at least one accepted trace is required")
+    return {
+        "precond_mats": _stack_trace_pytree_field(trace_seq, "precond_mats"),
+        "lam_prec": _stack_trace_control_field(trace_seq, "lam_prec"),
+        "w_mode_mn": _stack_trace_control_field(trace_seq, "w_mode_mn"),
+    }
 
 
 def direct_coil_accepted_trace_array_controls_jax(traces: Any) -> dict[str, Any]:
@@ -2283,7 +2325,13 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
     )
     scalar_controls = direct_coil_accepted_trace_scalar_controls_jax(trace_seq)
     array_controls = direct_coil_accepted_trace_array_controls_jax(trace_seq)
-    controls = {**controls, "step_scalars": scalar_controls, "step_arrays": array_controls}
+    preconditioner_controls = direct_coil_accepted_trace_preconditioner_controls_jax(trace_seq)
+    controls = {
+        **controls,
+        "step_scalars": scalar_controls,
+        "step_arrays": array_controls,
+        "step_preconditioner": preconditioner_controls,
+    }
 
     def _branch_for_trace(trace: dict[str, Any], state: Any, coil_params: Any, control: dict[str, Any]):
         reset_to_trace_pre = jnp.asarray(control["reset_to_trace_pre"], dtype=bool)
@@ -2323,6 +2371,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
             trace,
             scalar_controls=control["step_scalars"],
             array_controls=control["step_arrays"],
+            preconditioner_controls=control["step_preconditioner"],
             freeb_bsqvac_half=freeb_bsqvac_half,
             enforce_edge=bool(enforce_edge),
         )
@@ -2389,6 +2438,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
         "controls": controls,
         "scalar_controls": scalar_controls,
         "array_controls": array_controls,
+        "preconditioner_controls": preconditioner_controls,
         "state_reset_flags": tuple(bool(flag) for flag in np.asarray(controls["reset_to_trace_pre"], dtype=bool)),
     }
 
