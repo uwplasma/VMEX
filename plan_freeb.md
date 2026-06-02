@@ -184,6 +184,47 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-02 Stacked-controller AD-vs-FD promotion gate
+
+Steps taken:
+
+1. Added `direct_coil_accepted_trace_controller_directional_check_jax`, the
+   accepted-controller counterpart to the earlier Python-loop fixed-trace
+   directional checker.
+2. The new helper differentiates through
+   `direct_coil_accepted_trace_controller_replay_objective_jax`, so the
+   gradient path includes accepted/rejected scan controls plus stacked scalar,
+   velocity-history, and preconditioner payloads.
+3. Extended the production-backed two-step direct-coil replay test to compare
+   controller exact directional derivatives against central finite differences
+   for a mixed coil-current/Fourier direction.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `python -m py_compile vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+3. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state
+   -rx -s` passed: `1 passed in 142.09 s`.
+
+Best next steps:
+
+1. Promote the controller directional check into a smaller standalone test if
+   the combined production-backed test becomes too expensive for default CI.
+2. Start the production full-loop custom-VJP design from this validated
+   controller primitive, keeping host adaptive decisions explicit and
+   fingerprint-gated.
+3. Continue VMEC2000/direct-coil finite-pressure parity gates after PR CI is
+   green on the replay refactor commits.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-01 ESSOS finite-pressure example readiness and phase-2 status
 
 Steps taken:

@@ -1751,6 +1751,7 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     from vmec_jax.discrete_adjoint import strict_update_accepted_step, strict_update_one_step_from_trace
     from vmec_jax.driver import run_free_boundary
     from vmec_jax.free_boundary_adjoint import (
+        direct_coil_accepted_trace_controller_directional_check_jax,
         direct_coil_accepted_trace_controller_replay_objective_jax,
         direct_coil_accepted_trace_directional_check_jax,
         direct_coil_accepted_trace_fingerprint,
@@ -2117,6 +2118,31 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         np.asarray(custom_check["exact_directional"]),
         rtol=5.0e-3,
         atol=1.0e-10,
+    )
+    controller_check = direct_coil_accepted_trace_controller_directional_check_jax(
+        base_params,
+        mixed_direction,
+        trace0["state_pre"],
+        static=init.static,
+        traces=[trace0, trace1],
+        signgs=int(init.signgs),
+        state_weight=1.0,
+        bsqvac_weight=1.0e-12,
+        force_weight=0.0,
+        enforce_edge=False,
+        eps=eps,
+    )
+    np.testing.assert_allclose(
+        np.asarray(controller_check["exact_directional"]),
+        np.asarray(controller_check["fd_directional"]),
+        rtol=5.0e-3,
+        atol=1.0e-10,
+    )
+    np.testing.assert_allclose(
+        np.asarray(controller_check["value"]),
+        np.asarray(controller_replay["objective"]),
+        rtol=1.0e-12,
+        atol=1.0e-12,
     )
 
 
