@@ -261,6 +261,33 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-02 Stacked accepted-trace controller controls
+
+Steps taken:
+
+1. Added `direct_coil_accepted_trace_controller_controls_jax`.
+2. The helper exposes stackable controller data as arrays: `step_index`, `accept`, `done`, `reset_to_trace_pre`, and `has_active_freeb_replay`.
+3. Refactored `direct_coil_accepted_trace_controller_replay_objective_jax` to use the stacked controls, including JAX-visible reset decisions instead of per-branch reset closures.
+4. Reused the same reset-flag helper in the legacy Python-loop replay to keep the two replay paths consistent.
+5. Strengthened the production two-step test to assert the stacked control payload directly.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py` passed.
+2. `python -m py_compile vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py` passed.
+3. `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state -rx -s` passed: 1 passed in 134.34 s.
+4. `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py -rx` passed: 57 passed in 75.94 s.
+
+Best next steps:
+
+1. Stack the next trace-control layer: scalar update fields such as `dt_eff`, `b1`, `fac`, `force_scale`, `flip_sign`, and update-limit controls.
+2. Add a low-cost unit test for the stacked scalar-control payload before wiring it into the production replay.
+3. Keep full field-array and NESTOR replay stacking separate until the scalar/control payload is stable.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-01 Reset-aware full accepted-trace replay
 
 Steps taken:

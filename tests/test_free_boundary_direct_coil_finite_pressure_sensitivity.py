@@ -1904,6 +1904,18 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         np.asarray([True, True]),
     )
     np.testing.assert_array_equal(
+        np.asarray(controller_replay["controls"]["step_index"]),
+        np.asarray([0, 1]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(controller_replay["controls"]["reset_to_trace_pre"]),
+        np.asarray([False, False]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(controller_replay["controls"]["has_active_freeb_replay"]),
+        np.asarray([True, True]),
+    )
+    np.testing.assert_array_equal(
         np.asarray(controller_replay["history"]["rejected"]),
         np.asarray([False, False]),
     )
@@ -1942,6 +1954,10 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     np.testing.assert_array_equal(
         np.asarray(padded_controller_replay["history"]["accepted"]),
         np.asarray([True, True, False]),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(padded_controller_replay["controls"]["reset_to_trace_pre"]),
+        np.asarray([False, False, True]),
     )
     np.testing.assert_allclose(
         np.asarray(padded_controller_replay["objective"]),
