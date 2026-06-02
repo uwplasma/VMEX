@@ -1680,10 +1680,10 @@ class FixedBoundaryExactOptimizer:
 
         This is deliberately scoped to accepted-point exact solves. May 2026
         office RTX A4000 profiles show it reduces dense-Jacobian tape cost for
-        small-DOF tapes, while larger parameter spaces can lose more in replay
-        payload cost than they gain in preconditioner cost. ``None`` preserves
-        the solver's legacy environment-controlled default for CPU/default
-        backends.
+        mode-2 and mode-3 stellarator-symmetric tapes (24 and 48 DOFs), while
+        larger parameter spaces can lose more in replay payload cost than they
+        gain in preconditioner cost. ``None`` preserves the solver's legacy
+        environment-controlled default for CPU/default backends.
         """
 
         forced = os.getenv("VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE", "").strip().lower()
@@ -1702,9 +1702,9 @@ class FixedBoundaryExactOptimizer:
         if backend not in ("gpu", "cuda", "tpu", "rocm"):
             return None
         try:
-            max_dofs = int(os.getenv("VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE_MAX_DOFS", "12"))
+            max_dofs = int(os.getenv("VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE_MAX_DOFS", "48"))
         except ValueError:
-            max_dofs = 12
+            max_dofs = 48
         if max_dofs < 0:
             return False
         return True if len(self._specs) <= max_dofs else None
