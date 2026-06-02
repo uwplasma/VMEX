@@ -330,6 +330,7 @@ def test_qi_seed3127_example_exposes_reviewed_readme_preset(tmp_path: Path) -> N
     assert module.MIN_VMEC_MODE == 6
     assert module.TARGET_ASPECT == pytest.approx(4.0)
     assert module.MAX_NFEV == 1
+    assert module.SCIPY_LSMR_MAXITER == 4
     assert module.BOUNDARY_REFERENCE_MAX_ITER == 80
     assert module.INNER_MAX_ITER == 450
     assert module.TRIAL_MAX_ITER == 450
@@ -356,6 +357,7 @@ def test_qi_seed3127_example_exposes_reviewed_readme_preset(tmp_path: Path) -> N
     assert "--accept-boundary-reference-baseline" in command
     assert "--no-use-mode-continuation" in command
     assert "--method scipy_matrix_free" in command_text
+    assert "--scipy-lsmr-maxiter 4" in command_text
     assert "--inner-max-iter 450" in command_text
     assert "--trial-max-iter 450" in command_text
     assert "--make-plots" in command

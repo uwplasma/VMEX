@@ -34,6 +34,7 @@ MAX_MIRROR_RATIO = 0.35
 MAX_ELONGATION = 8.0
 
 METHOD = "scipy_matrix_free"  # Also try "auto_scalar" or "scalar_trust" for performance studies.
+SCIPY_LSMR_MAXITER = 4  # Cap matrix-free Jv/J.Tv products per trust-region subproblem.
 FTOL = 1.0e-5
 GTOL = 1.0e-5
 XTOL = 1.0e-6
@@ -129,6 +130,8 @@ def build_qi_optimization_command(boundary_reference_json: Path) -> list[str]:
         str(MIN_VMEC_MODE),
         "--method",
         METHOD,
+        "--scipy-lsmr-maxiter",
+        str(SCIPY_LSMR_MAXITER),
         "--ftol",
         f"{FTOL:.16g}",
         "--gtol",
