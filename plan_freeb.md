@@ -78,6 +78,60 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-02 Accepted-trace velocity-array replay rung
+
+Steps taken:
+
+1. Added `direct_coil_accepted_trace_array_controls_jax`, which stacks the
+   velocity-history arrays consumed by the accepted VMEC update:
+   `vRcc_before`, `vRss_before`, `vZsc_before`, `vZcs_before`, `vLsc_before`,
+   and `vLcs_before`.
+2. Added all-or-none consistency checks for optional LASYM velocity-history
+   channels: `vRsc_before`, `vRcs_before`, `vZcc_before`, `vZss_before`,
+   `vLcc_before`, and `vLss_before`.
+3. Routed scan-sliced array controls through
+   `direct_coil_accepted_trace_controller_replay_objective_jax` into
+   `strict_update_one_step_from_trace`.
+4. Kept legacy behavior unchanged: callers that do not provide
+   `array_controls` still read velocity histories from the trace dictionary.
+5. Extended synthetic and production-backed direct-coil tests to verify the
+   stacked array payload and controller replay output.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   vmec_jax/discrete_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `python -m py_compile vmec_jax/free_boundary_adjoint.py
+   vmec_jax/discrete_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+3. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes
+   -rx` passed: `1 passed in 0.37 s`.
+4. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state
+   -rx -s` passed: `1 passed in 126.12 s`.
+5. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_discrete_adjoint_wave6_coverage.py
+   tests/test_discrete_adjoint_chunking.py -rx` passed:
+   `63 passed in 1.37 s`.
+
+Best next steps:
+
+1. Stack the remaining reusable trace payloads with care: preconditioner
+   matrices and mode weights are fixed per accepted branch, while force
+   channels must remain recomputed after direct-coil/NESTOR replay.
+2. Add a stacked-payload complete-loop AD-vs-FD promotion gate for one current
+   and one Fourier coefficient.
+3. Re-run the full default fast slice after CI finishes or after the next
+   higher-risk payload refactor.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-01 ESSOS finite-pressure example readiness and phase-2 status
 
 Steps taken:

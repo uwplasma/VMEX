@@ -169,11 +169,13 @@ def _run_direct_solve(input_path: Path, params: CoilFieldParams):
 
 def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     from vmec_jax.free_boundary_adjoint import (
+        direct_coil_accepted_trace_array_controls_jax,
         direct_coil_accepted_trace_scalar_controls_jax,
         direct_coil_accepted_trace_fingerprint,
         direct_coil_accepted_trace_fingerprint_delta,
     )
 
+    z = np.arange(6.0).reshape(2, 3)
     trace0 = {
         "dt_eff": np.asarray(0.5),
         "b1": np.asarray(0.125),
@@ -186,6 +188,12 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
         "divide_by_scalxc_for_update": True,
         "preconditioner_use_precomputed_tridi": False,
         "preconditioner_use_lax_tridi": True,
+        "vRcc_before": z,
+        "vRss_before": z + 1.0,
+        "vZsc_before": z + 2.0,
+        "vZcs_before": z + 3.0,
+        "vLsc_before": z + 4.0,
+        "vLcs_before": z + 5.0,
         "freeb_bsqvac_half": np.ones((2, 3)),
         "freeb_nestor_trace": {"gsource": np.ones(2), "bsqvac": np.ones(2)},
         "state_pre": np.ones(4),
@@ -206,6 +214,19 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     bad_scalar_shape["lambda_update_scale"] = np.asarray([1.0, 0.5, 0.25])
     with pytest.raises(ValueError, match="lambda_update_scale"):
         direct_coil_accepted_trace_scalar_controls_jax([trace0, bad_scalar_shape])
+
+    array_controls = direct_coil_accepted_trace_array_controls_jax([trace0, trace1])
+    assert np.asarray(array_controls["vRcc_before"]).shape == (2, 2, 3)
+    np.testing.assert_allclose(np.asarray(array_controls["vZsc_before"][0]), z + 2.0)
+
+    bad_array_shape = dict(trace1)
+    bad_array_shape["vRcc_before"] = np.ones((3, 3))
+    with pytest.raises(ValueError, match="vRcc_before"):
+        direct_coil_accepted_trace_array_controls_jax([trace0, bad_array_shape])
+
+    optional_lasym = {**trace0, "vRsc_before": z}
+    with pytest.raises(ValueError, match="vRsc_before"):
+        direct_coil_accepted_trace_array_controls_jax([optional_lasym, trace1])
 
     fingerprint = direct_coil_accepted_trace_fingerprint([trace0, trace1])
     assert fingerprint["n_steps"] == 2
@@ -1939,6 +1960,11 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         np.asarray(controller_replay["scalar_controls"]["fac"]),
         np.asarray([_trace_scalar_value(trace0["fac"]), _trace_scalar_value(trace1["fac"])]),
     )
+    np.testing.assert_allclose(
+        np.asarray(controller_replay["controls"]["step_arrays"]["vRcc_before"][0]),
+        np.asarray(trace0["vRcc_before"]),
+    )
+    assert np.asarray(controller_replay["array_controls"]["vLcs_before"]).shape[0] == 2
     np.testing.assert_array_equal(
         np.asarray(controller_replay["history"]["rejected"]),
         np.asarray([False, False]),
