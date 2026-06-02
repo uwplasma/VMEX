@@ -51,6 +51,15 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--trial-max-iter", type=int, default=300)
     p.add_argument("--trial-ftol", type=float, default=1e-10)
     p.add_argument("--solver-device", choices=("auto", "cpu", "gpu", "default"), default="auto")
+    p.add_argument(
+        "--exact-jit-forces",
+        choices=("auto", "on", "off"),
+        default="auto",
+        help=(
+            "Override jit_forces for accepted-point exact/tape solves. "
+            "This is diagnostics-only; auto preserves optimizer defaults."
+        ),
+    )
     p.add_argument("--mpol", type=int, default=5)
     p.add_argument("--ntor", type=int, default=5)
     p.add_argument(
@@ -1171,6 +1180,10 @@ def main() -> int:
         trial_ftol=args.trial_ftol,
         solver_device=args.solver_device,
     )
+    if args.exact_jit_forces == "on":
+        opt._exact_solver_kwargs["jit_forces"] = True
+    elif args.exact_jit_forces == "off":
+        opt._exact_solver_kwargs["jit_forces"] = False
     _install_profile_timing_supplements(opt)
     if args.trial_scan == "on":
         opt._trial_solver_kwargs["use_scan"] = True
