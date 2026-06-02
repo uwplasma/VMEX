@@ -132,6 +132,58 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-02 Accepted-trace preconditioner-array replay rung
+
+Steps taken:
+
+1. Added `direct_coil_accepted_trace_preconditioner_controls_jax`, which
+   stacks reusable preconditioner/mode payloads for accepted replay:
+   `precond_mats`, `lam_prec`, and `w_mode_mn`.
+2. Added a generic pytree stacker with structure and leaf-shape validation for
+   trace payloads like `precond_mats`.
+3. Routed scan-sliced preconditioner arrays through
+   `direct_coil_accepted_trace_controller_replay_objective_jax` into
+   `strict_update_one_step_from_trace`.
+4. Kept `precond_jmax` branch-local for now because the current
+   preconditioner application still consumes it through Python `int(jmax)`.
+5. Extended synthetic and production-backed direct-coil tests to verify the
+   stacked preconditioner payload and controller replay output.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   vmec_jax/discrete_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `python -m py_compile vmec_jax/free_boundary_adjoint.py
+   vmec_jax/discrete_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+3. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes
+   -rx` passed: `1 passed in 0.31 s`.
+4. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state
+   -rx -s` passed: `1 passed in 131.17 s`.
+5. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_discrete_adjoint_wave6_coverage.py
+   tests/test_discrete_adjoint_chunking.py -rx` passed:
+   `63 passed in 1.43 s`.
+
+Best next steps:
+
+1. Add a complete-loop AD-vs-FD promotion gate that uses the stacked
+   controller, scalar, velocity, and preconditioner payloads.
+2. Keep force channels recomputed from replayed direct-coil/NESTOR fields; do
+   not stack `frcc_u`/force outputs as fixed payloads in this replay path.
+3. Tackle `precond_jmax` only as part of a dedicated JAX-static controller
+   design or a preconditioner apply refactor that no longer calls `int(jmax)`
+   on scan-sliced data.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-01 ESSOS finite-pressure example readiness and phase-2 status
 
 Steps taken:

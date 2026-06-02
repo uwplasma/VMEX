@@ -2879,6 +2879,7 @@ def strict_update_one_step_from_trace(
     *,
     scalar_controls: dict[str, Any] | None = None,
     array_controls: dict[str, Any] | None = None,
+    preconditioner_controls: dict[str, Any] | None = None,
     freeb_bsqvac_half: Any = _TRACE_OVERRIDE_UNSET,
     freeb_pres_scale: Any = _TRACE_OVERRIDE_UNSET,
     enforce_edge: bool = True,
@@ -2889,11 +2890,11 @@ def strict_update_one_step_from_trace(
     schema produced by ``adjoint_trace=True`` onto
     :func:`strict_update_one_step_from_state` and allows callers to replace the
     free-boundary ``bsqvac`` channel with a differentiable replay.  Optional
-    ``scalar_controls`` and ``array_controls`` let JAX-visible controller scans
-    pass step-sliced update controls without changing the default
-    trace-dictionary contract.  It keeps phase-2 direct-coil validation tests
-    from duplicating trace plumbing while preserving the explicit accepted-step
-    contract.
+    ``scalar_controls``, ``array_controls``, and ``preconditioner_controls``
+    let JAX-visible controller scans pass step-sliced update controls without
+    changing the default trace-dictionary contract.  It keeps phase-2
+    direct-coil validation tests from duplicating trace plumbing while
+    preserving the explicit accepted-step contract.
     """
 
     def _control(key: str) -> Any:
@@ -2908,6 +2909,11 @@ def strict_update_one_step_from_trace(
             return array_controls[key]
         return trace.get(key)
 
+    def _preconditioner_control(key: str) -> Any:
+        if preconditioner_controls is not None and key in preconditioner_controls:
+            return preconditioner_controls[key]
+        return trace[key]
+
     bsqvac = trace.get("freeb_bsqvac_half", None) if freeb_bsqvac_half is _TRACE_OVERRIDE_UNSET else freeb_bsqvac_half
     pres_scale = trace.get("freeb_pres_scale", None) if freeb_pres_scale is _TRACE_OVERRIDE_UNSET else freeb_pres_scale
     force_state_pre = trace.get("force_state_pre", None)
@@ -2921,10 +2927,10 @@ def strict_update_one_step_from_trace(
         include_edge_residual=trace["include_edge_residual"],
         apply_m1_constraints=trace["apply_m1_constraints"],
         zero_m1=trace["zero_m1"],
-        mats=trace["precond_mats"],
+        mats=_preconditioner_control("precond_mats"),
         jmax=trace["precond_jmax"],
-        lam_prec=trace["lam_prec"],
-        w_mode_mn=trace["w_mode_mn"],
+        lam_prec=_preconditioner_control("lam_prec"),
+        w_mode_mn=_preconditioner_control("w_mode_mn"),
         lambda_update_scale=_control("lambda_update_scale"),
         dt_eff=_control("dt_eff"),
         b1=_control("b1"),

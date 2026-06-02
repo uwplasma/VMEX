@@ -170,6 +170,7 @@ def _run_direct_solve(input_path: Path, params: CoilFieldParams):
 def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_accepted_trace_array_controls_jax,
+        direct_coil_accepted_trace_preconditioner_controls_jax,
         direct_coil_accepted_trace_scalar_controls_jax,
         direct_coil_accepted_trace_fingerprint,
         direct_coil_accepted_trace_fingerprint_delta,
@@ -188,6 +189,9 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
         "divide_by_scalxc_for_update": True,
         "preconditioner_use_precomputed_tridi": False,
         "preconditioner_use_lax_tridi": True,
+        "precond_mats": {"ar": z + 6.0, "br": z + 7.0},
+        "lam_prec": np.asarray([1.0, 2.0, 3.0]),
+        "w_mode_mn": np.ones((2, 3)),
         "vRcc_before": z,
         "vRss_before": z + 1.0,
         "vZsc_before": z + 2.0,
@@ -227,6 +231,15 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     optional_lasym = {**trace0, "vRsc_before": z}
     with pytest.raises(ValueError, match="vRsc_before"):
         direct_coil_accepted_trace_array_controls_jax([optional_lasym, trace1])
+
+    preconditioner_controls = direct_coil_accepted_trace_preconditioner_controls_jax([trace0, trace1])
+    assert np.asarray(preconditioner_controls["precond_mats"]["ar"]).shape == (2, 2, 3)
+    np.testing.assert_allclose(np.asarray(preconditioner_controls["lam_prec"][0]), np.asarray([1.0, 2.0, 3.0]))
+
+    bad_preconditioner_shape = dict(trace1)
+    bad_preconditioner_shape["precond_mats"] = {"ar": np.ones((3, 3)), "br": z + 7.0}
+    with pytest.raises(ValueError, match="precond_mats"):
+        direct_coil_accepted_trace_preconditioner_controls_jax([trace0, bad_preconditioner_shape])
 
     fingerprint = direct_coil_accepted_trace_fingerprint([trace0, trace1])
     assert fingerprint["n_steps"] == 2
@@ -1965,6 +1978,11 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         np.asarray(trace0["vRcc_before"]),
     )
     assert np.asarray(controller_replay["array_controls"]["vLcs_before"]).shape[0] == 2
+    np.testing.assert_allclose(
+        np.asarray(controller_replay["controls"]["step_preconditioner"]["lam_prec"][0]),
+        np.asarray(trace0["lam_prec"]),
+    )
+    assert np.asarray(controller_replay["preconditioner_controls"]["w_mode_mn"]).shape[0] == 2
     np.testing.assert_array_equal(
         np.asarray(controller_replay["history"]["rejected"]),
         np.asarray([False, False]),
