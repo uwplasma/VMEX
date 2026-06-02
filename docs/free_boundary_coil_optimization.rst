@@ -229,7 +229,9 @@ those preconditioner matrices branch-local instead of padding them into the
 scan payload; scalar controls and velocity histories remain scan-stacked.
 ``direct_coil_accepted_trace_fingerprint_delta`` records whether a
 finite-difference perturbation stayed on the same accepted-step/control branch,
-including the same traced reset pattern.
+including the same traced reset pattern, scalar update controls, preconditioner
+policy flags, active preconditioner size, and preconditioner/mode-shape
+signatures.
 On the tiny forced-active default gate, the branch-compatible complete solve
 also compares both the fixed-trace custom-VJP directional derivative and the
 stacked-controller custom-VJP directional derivative against a central finite

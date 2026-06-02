@@ -189,6 +189,7 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
         "divide_by_scalxc_for_update": True,
         "preconditioner_use_precomputed_tridi": False,
         "preconditioner_use_lax_tridi": True,
+        "precond_jmax": 2,
         "precond_mats": {"ar": z + 6.0, "br": z + 7.0},
         "lam_prec": np.asarray([1.0, 2.0, 3.0]),
         "w_mode_mn": np.ones((2, 3)),
@@ -265,6 +266,42 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     )
     assert not different_branch["compatible"]
     assert "scalars.fac" in different_branch["changed_fields"]
+
+    b1_change = dict(trace0)
+    b1_change["b1"] = np.asarray(0.25)
+    different_b1 = direct_coil_accepted_trace_fingerprint_delta(
+        [trace0, trace1],
+        [b1_change, trace1],
+    )
+    assert not different_b1["compatible"]
+    assert "scalars.b1" in different_b1["changed_fields"]
+
+    preconditioner_policy_change = dict(trace0)
+    preconditioner_policy_change["preconditioner_use_lax_tridi"] = False
+    different_preconditioner_policy = direct_coil_accepted_trace_fingerprint_delta(
+        [trace0, trace1],
+        [preconditioner_policy_change, trace1],
+    )
+    assert not different_preconditioner_policy["compatible"]
+    assert "flags.preconditioner_use_lax_tridi" in different_preconditioner_policy["changed_fields"]
+
+    preconditioner_jmax_change = dict(trace0)
+    preconditioner_jmax_change["precond_jmax"] = 3
+    different_preconditioner_jmax = direct_coil_accepted_trace_fingerprint_delta(
+        [trace0, trace1],
+        [preconditioner_jmax_change, trace1],
+    )
+    assert not different_preconditioner_jmax["compatible"]
+    assert "precond_jmax" in different_preconditioner_jmax["changed_fields"]
+
+    preconditioner_shape_change = dict(trace0)
+    preconditioner_shape_change["precond_mats"] = {"ar": np.ones((3, 3)), "br": z + 7.0}
+    different_preconditioner_shape = direct_coil_accepted_trace_fingerprint_delta(
+        [trace0, trace1],
+        [preconditioner_shape_change, trace1],
+    )
+    assert not different_preconditioner_shape["compatible"]
+    assert "precond_mats_shapes" in different_preconditioner_shape["changed_fields"]
 
     size_change = dict(trace0)
     size_change["freeb_bsqvac_half"] = np.ones((3, 3))

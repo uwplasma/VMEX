@@ -310,6 +310,46 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-02 Host-policy fingerprint tightening
+
+Steps taken:
+
+1. Extended `direct_coil_accepted_trace_fingerprint` to include additional
+   host-policy controls used by accepted replay promotion:
+   `b1`, preconditioner policy flags, `precond_jmax`, preconditioner matrix
+   shape signatures, `lam_prec` shapes, and `w_mode_mn` shapes.
+2. Extended the low-cost fingerprint test to ensure those branch-policy changes
+   are detected explicitly.
+3. Updated `docs/free_boundary_coil_optimization.rst` so the documented
+   same-branch promotion gate matches the implemented fingerprint scope.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `python -m py_compile vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+3. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes
+   -rx` passed: `1 passed in 0.32 s`.
+4. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch
+   -rx -s` passed: `2 passed in 70.63 s`.
+
+Best next steps:
+
+1. Continue full-loop custom-VJP design using this tighter fingerprint as the
+   branch-compatibility promotion guard.
+2. Add optional JSON diagnostics for fingerprint deltas in comparison scripts
+   if the PR needs reviewer-facing trace-branch evidence.
+3. Re-run full docs or broad fast suite if further docs/API changes land.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-01 ESSOS finite-pressure example readiness and phase-2 status
 
 Steps taken:
