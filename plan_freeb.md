@@ -416,6 +416,64 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-02 Generated-mgrid direct-coil parity diagnostic after controller seam
+
+Steps taken:
+
+1. Re-ran the optional LP-QA generated-mgrid diagnostic from the current branch
+   head after the stacked-controller custom-VJP seam and JSON-safe fingerprint
+   diagnostics were pushed.
+2. First attempted the diagnostic against `/Users/rogeriojorge/local/ESSOS`;
+   this correctly failed early because that checkout does not expose
+   `Coils.to_mgrid`.
+3. Re-ran with the mgrid-capable ESSOS checkout
+   `/Users/rogeriojorge/local/ESSOS_mgrid_pr`, using a bounded short schedule:
+   `ns=7`, `mpol=3`, `ntor=3`, `niter=3`, generated grid `8 x 8 x 8`,
+   finite pressure scale `1000`, and forced active vmec_jax coupling with
+   `--activate-fsq 1e99`.
+4. Wrote the diagnostic JSON to
+   `/tmp/vmec_jax_freeb_compare_current/summary.json`; generated WOUTs and the
+   ESSOS mgrid were kept under `/tmp/vmec_jax_freeb_compare_current/work` and
+   were not added to the repository.
+
+Results obtained:
+
+1. The `vmec_jax` direct-coil backend and the `vmec_jax` generated-mgrid
+   backend both ran active free-boundary solves and passed the configured
+   comparison.
+2. Direct-coil versus generated-mgrid deltas were tight: aspect
+   `3.76e-12`, `wb` `1.59e-10`, `wp` `1.71e-14`, `rmnc`
+   `2.06e-12`, `zmns` `1.80e-12`, `lmns` `6.27e-14`, `iotas`
+   `5.37e-13`, and `iotaf` `5.53e-13`.
+3. The VMEC2000 leg opened the generated mgrid but stopped before writing a
+   WOUT, with `vmec2000_status=more_iter_exit`, no WOUT available, and the
+   structured warning `vmec2000_vacuum_inactive_force_gate`.
+4. This remains evidence for direct-coil/generated-mgrid `vmec_jax` parity, not
+   external VMEC2000 WOUT parity. The VMEC2000 generated-grid promotion lane
+   stays open until a generated-grid case reaches active vacuum and writes a
+   WOUT.
+5. Manually triggered GitHub Actions run `26850012769` on branch
+   `feature/freeb-essos-coil-single-stage` at head
+   `40a607a341c9989d4acc97267c592e4198792467`. Build/docs, full docs,
+   parity-manifest smoke, and console-script smoke were already green when this
+   entry was written; fast/physics jobs were still running.
+
+Best next steps:
+
+1. Poll the manual CI run and fix any failing fast/physics job before marking
+   the PR ready.
+2. Continue the phase-2 full-loop adjoint lane by replacing the remaining
+   fixed-control replay assumption with either a full custom VJP or a fully
+   JAX-visible nonlinear controller.
+3. Continue VMEC2000 generated-grid fixture discovery separately; current
+   generated-grid evidence is strong for `vmec_jax` direct/mgrid parity but not
+   yet promotable external WOUT parity.
+
+Need from user:
+
+Nothing now, unless you have a known ESSOS coil/input pair that makes VMEC2000
+enter active vacuum and write a WOUT from a generated mgrid.
+
 ### 2026-06-01 ESSOS finite-pressure example readiness and phase-2 status
 
 Steps taken:
