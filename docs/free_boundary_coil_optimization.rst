@@ -260,9 +260,13 @@ cold processes.  The controller replay keeps only the tridiagonal
 preconditioner policy as branch-local static trace data.  Update limiting and
 ``divide_by_scalxc_for_update`` are JAX-visible scan controls, so accepted
 controller payloads can include those switches without traced-Python-boolean
-failures.  The remaining controller refactor is to make the radial
-preconditioner policy itself JAX-visible or split traces by static
-preconditioner branch.
+failures.  The fixed accepted replay is still well-defined because each
+accepted step is selected by a static ``lax.switch`` branch over the recorded
+trace index; the preconditioner policy is therefore fixed for that step and is
+covered by the same-branch fingerprint.  The remaining controller refactor is
+to make the radial preconditioner policy itself JAX-visible, or to split the
+future production controller into static preconditioner-policy subcontrollers
+before claiming gradients through adaptive preconditioner-policy changes.
 The remaining phase-2 blocker is differentiating through the nonlinear
 ``run_free_boundary`` iteration loop itself, rather than through the dense toy
 nonlinear primitive, fixed-boundary operator, complete finite-response proxy,

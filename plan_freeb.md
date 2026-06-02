@@ -532,6 +532,48 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-02 Preconditioner-policy seam review
+
+Steps taken:
+
+1. Audited the remaining accepted-controller preconditioner-policy seam after
+   `limit_update_rms` and `divide_by_scalxc_for_update` were made JAX-visible.
+2. Confirmed that the current fixed accepted replay uses static
+   step-index branch splitting via `lax.switch`: each recorded accepted step
+   can keep its own preconditioner policy without passing traced booleans into
+   `rz_preconditioner_apply_jit`.
+3. Confirmed that this is correct for same-branch fixed accepted replay
+   because `direct_coil_accepted_trace_fingerprint_delta` already rejects
+   preconditioner-policy changes, `precond_jmax` changes, and preconditioner
+   matrix shape changes between complete-solve finite-difference branches.
+4. Updated `docs/free_boundary_coil_optimization.rst` to state the exact scope:
+   fixed accepted replay has static per-step preconditioner policy, while full
+   adaptive production-controller differentiation still needs either
+   JAX-visible preconditioner dispatch or static preconditioner-policy
+   subcontrollers.
+
+Results obtained:
+
+1. No code change was needed for this seam today; the existing tests already
+   cover preconditioner-policy fingerprint incompatibility and same-branch
+   derivative promotion.
+2. The remaining full-loop adjoint blocker is now narrower and explicit:
+   gradients through adaptive preconditioner-policy changes are not claimed.
+
+Best next steps:
+
+1. Keep polling the PR-head CI run and fix any failure on top of commit
+   `7328c205`.
+2. If CI stays green, the next implementation step is a small experimental
+   production-controller split by static preconditioner policy, not a direct
+   traced-boolean call into the existing preconditioner JIT cache.
+3. After that, promote the nonlinear controller custom VJP on complete
+   same-branch solves for one coil current and one Fourier coefficient.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-02 JAX-visible update limiter/scalxc controls
 
 Steps taken:
