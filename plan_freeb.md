@@ -147,6 +147,36 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-02 Generated-mgrid VMEC2000 force-gate classification and phase-2 adjoint validation
+
+Steps taken:
+
+1. Re-ran the optional generated-mgrid VMEC2000 parity gates with the ESSOS mgrid-capable checkout on `PYTHONPATH`.
+2. Confirmed `vmec_jax` direct-coil and `vmec_jax` generated-mgrid backends agree on the LP-QA diagnostic case, while VMEC2000 opens the generated mgrid but exits before producing a WOUT.
+3. Inspected VMEC2000's active-vacuum gate: active vacuum is not entered until the physical `FSQR + FSQZ` force residual is below `1e-3`. The generated-mgrid traces still have `DEL-BSQ = 1`, `FEDGE = 0`, and force residual above that gate.
+4. Patched `tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py` to classify this as `vmec2000_vacuum_inactive_force_gate` instead of a generic `more_iter_exit`.
+5. Patched `tests/test_free_boundary_essos_coil_parity.py` so trace smoke requires the new force-gate diagnostics when present, and strict WOUT parity refuses to promote a VMEC2000 WOUT without active-vacuum trace evidence.
+6. Re-ran focused nonlinear free-boundary adjoint validation gates covering JAX-visible nonlinear controllers, LASYM projected replay, accepted NESTOR current/geometry AD-vs-FD, fixed-trace custom VJP versus same-branch complete-solve FD, complete-solve finite response, and the optional ESSOS full-solve current/geometry finite-difference guard.
+
+Results obtained:
+
+1. `python -m ruff check tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py tests/test_free_boundary_essos_coil_parity.py` passed.
+2. `python -m py_compile tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py tests/test_free_boundary_essos_coil_parity.py` passed.
+3. `PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr:$PYTHONPATH VMEC2000_INTEGRATION=1 JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_essos_coil_parity.py::test_vmec2000_generated_mgrid_trace_smoke_records_iteration_rows tests/test_free_boundary_essos_coil_parity.py::test_vmec2000_generated_mgrid_free_boundary_matches_vmec_jax_and_direct_coils -rx -s` passed with one expected xfail. The trace report now shows `vmec2000_vacuum_inactive_force_gate`.
+4. `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py::test_jax_visible_masked_controller_keeps_final_state_and_gradient_stable tests/test_free_boundary_vacuum_adjoint.py::test_jax_visible_controller_direct_coil_gradient_matches_fd tests/test_free_boundary_vacuum_adjoint.py::test_lasym_projected_mode_fixed_point_objective_ad_matches_central_fd_for_coil_pytree tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current_and_geometry tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch -rx` passed: 6 passed in 78.19 s.
+5. `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_nestor_operator_complete_solve_fd_slopes_for_current_and_geometry tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_essos_full_solve_state_central_fd_response_to_current_and_geometry -rx -s` passed with the `RUN_FULL` guard skipped.
+6. `RUN_FULL=1 JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_essos_full_solve_state_central_fd_response_to_current_and_geometry -rx -s` passed in 18.52 s.
+
+Best next steps:
+
+1. Find or construct an ESSOS-generated mgrid fixture that reaches VMEC2000 active vacuum and writes a WOUT, then promote that case from trace smoke to WOUT-level VMEC2000 parity.
+2. Continue phase-2 work from fixed-trace and accepted-output gradients toward a production full-controller custom VJP or fully JAX-visible nonlinear controller around the free-boundary solve.
+3. Keep the current LP-QA generated-mgrid case as a blocker diagnostic because it proves VMEC2000 reads the grid but does not yet provide active-vacuum WOUT parity evidence.
+
+Need from user:
+
+Nothing now, unless you have a known ESSOS coil/input pair that already reaches VMEC2000 active vacuum and writes a WOUT.
+
 ### 2026-06-01 Reset-aware full accepted-trace replay
 
 Steps taken:

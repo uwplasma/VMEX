@@ -913,6 +913,31 @@ def _vmec2000_underconverged_details(summary: dict[str, Any]) -> dict[str, Any]:
     preconditioned_fsq_total = None
     if all(value is not None for value in preconditioned_parts):
         preconditioned_fsq_total = float(sum(value for value in preconditioned_parts if value is not None))
+    physical_fsqr = _safe_float(last_row.get("fsqr"))
+    physical_fsqz = _safe_float(last_row.get("fsqz"))
+    physical_force_gate = None
+    if physical_fsqr is not None and physical_fsqz is not None:
+        physical_force_gate = float(physical_fsqr + physical_fsqz)
+    vacuum_gate_threshold = 1.0e-3
+    delbsq_last = _safe_float(last_row.get("delbsq"))
+    fedge_last = _safe_float(last_row.get("fedge"))
+    opened_mgrid = bool(summary.get("opened_mgrid", False))
+    default_edge_balance = (
+        delbsq_last is not None
+        and fedge_last is not None
+        and abs(delbsq_last - 1.0) <= 1.0e-12
+        and abs(fedge_last) <= 1.0e-14
+    )
+    # In VMEC2000's free-boundary control flow the active vacuum solve is not
+    # entered until the physical R/Z force residual is below this gate.  When
+    # DEL-BSQ remains at its default value and FEDGE is zero, a generated mgrid
+    # run has read the grid but has not yet exercised the active-vacuum path.
+    vacuum_activation_blocked = bool(
+        opened_mgrid
+        and default_edge_balance
+        and physical_force_gate is not None
+        and physical_force_gate > vacuum_gate_threshold
+    )
 
     stderr_tail = list(summary.get("stderr_tail") or [])
     tails = list(summary.get("stdout_tail") or []) + stderr_tail + list(summary.get("threed1_tail") or [])
@@ -942,6 +967,8 @@ def _vmec2000_underconverged_details(summary: dict[str, Any]) -> dict[str, Any]:
     classification = "unknown_no_wout"
     if runtime_error_lines:
         classification = "vmec2000_runtime_error"
+    elif vacuum_activation_blocked:
+        classification = "vmec2000_vacuum_inactive_force_gate"
     elif more_iter_returncode and (printed_try_increasing_niter or last_it is not None):
         classification = "vmec2000_more_iter_exit"
     elif nonzero_returncode:
@@ -965,14 +992,19 @@ def _vmec2000_underconverged_details(summary: dict[str, Any]) -> dict[str, Any]:
         "last_it": None if last_it is None else int(last_it),
         "niter": None if niter is None else int(niter),
         "ftolv": ftolv,
+        "opened_mgrid": opened_mgrid,
         "physical_fsq_total_last": _safe_float(summary.get("fsq_total_last")),
+        "physical_force_gate_last": physical_force_gate,
+        "physical_force_gate_threshold": vacuum_gate_threshold,
+        "vmec2000_vacuum_activation_blocked": vacuum_activation_blocked,
+        "vmec2000_vacuum_active_evidence": bool(opened_mgrid and not default_edge_balance),
         "preconditioned_fsq_total_last": preconditioned_fsq_total,
         "delt0r_last": _safe_float(last_row.get("delt0r")),
         "w_last": _safe_float(last_row.get("w")),
         "beta_last": _safe_float(last_row.get("beta")),
         "avg_m_last": _safe_float(last_row.get("avg_m")),
-        "delbsq_last": _safe_float(last_row.get("delbsq")),
-        "fedge_last": _safe_float(last_row.get("fedge")),
+        "delbsq_last": delbsq_last,
+        "fedge_last": fedge_last,
     }
     if preconditioned_fsq_total is not None and ftolv not in (None, 0.0):
         details["preconditioned_fsq_total_over_ftolv"] = float(preconditioned_fsq_total / ftolv)
@@ -986,6 +1018,18 @@ def _vmec2000_nonzero_status(summary: dict[str, Any]) -> tuple[str, str, str]:
     """Classify VMEC2000 nonzero exits without conflating VMEC flags with crashes."""
 
     details = _vmec2000_underconverged_details(summary)
+    if details["classification"] == "vmec2000_vacuum_inactive_force_gate":
+        status = "more_iter_exit" if details.get("more_iter_returncode") else "no_wout"
+        return (
+            status,
+            "vmec2000_vacuum_inactive_force_gate",
+            "VMEC2000 opened the generated mgrid but did not enter the active "
+            "vacuum solve before stopping: DEL-BSQ remained at its default "
+            "value, FEDGE stayed zero, and the physical FSQR+FSQZ force was "
+            "above VMEC2000's vacuum-activation gate. This is not WOUT-level "
+            "generated-mgrid parity evidence; rerun with a better seed/schedule "
+            "or promote a fixture that reaches the active-vacuum path.",
+        )
     if details["classification"] == "vmec2000_more_iter_exit":
         return (
             "more_iter_exit",
@@ -1543,7 +1587,8 @@ def main(argv: list[str] | None = None) -> int:
             args=args,
         )
     if vmec_status in ("skipped", "timeout", "no_wout", "more_iter_exit", "nonzero_exit", "wout_unreadable", "error"):
-        warning = f"vmec2000_{vmec_status}"
+        vmec_reason = str(vmec2000_summary.get("reason") or "")
+        warning = vmec_reason if vmec_reason.startswith("vmec2000_") else f"vmec2000_{vmec_status}"
         warnings.append(warning)
         if bool(args.require_vmec2000) or (
             args.vmec2000_exec is not None and vmec_status == "error"
