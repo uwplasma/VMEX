@@ -386,6 +386,36 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-02 Broad local fast-suite validation after controller seam
+
+Steps taken:
+
+1. Re-ran the default broad local fast suite after the stacked-controller
+   custom-VJP seam, tighter host-policy fingerprints, and JSON-safe fingerprint
+   diagnostics were pushed.
+2. This is the current broad local substitute for PR-head CI, since GitHub is
+   still reporting an empty check rollup for PR #18.
+
+Results obtained:
+
+1. `JAX_ENABLE_X64=1 python -m pytest -q -n 4 -m "not full and not vmec2000
+   and not simsopt" -rx` passed:
+   `2607 passed, 23 skipped, 2 xfailed, 80 warnings in 358.89 s`.
+2. The expected xfails remain unchanged:
+   nonaxis getfsq scalar parity and the full Boozer/QS exact-gradient phase-2
+   marker.
+
+Best next steps:
+
+1. Continue the production full-loop custom-VJP lane, now with validated
+   controller custom-VJP and stricter same-branch gating.
+2. Investigate why GitHub is not attaching checks to the PR head, or trigger
+   checks manually if repository settings require it.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-01 ESSOS finite-pressure example readiness and phase-2 status
 
 Steps taken:
