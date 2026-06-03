@@ -28,6 +28,60 @@ docs: the branch has validated provider gradients and bounded complete-solve
 response gates, but not a production full nonlinear `run_free_boundary` exact
 adjoint claim.
 
+### 2026-06-03 Coil-only example same-branch report hook
+
+Steps taken:
+
+1. Added an opt-in `--write-same-branch-report` path to
+   `examples/optimization/free_boundary_QS_coil_optimization.py`.
+2. The report uses the same selected coil variables as the optimizer and builds
+   a mixed current/Fourier direction when both variable classes are present.
+3. The report writes `same_branch_complete_solve_report.json` with compact
+   branch compatibility diagnostics and scalar complete-solve central-FD values.
+4. Kept default and dry-run behavior unchanged: dry-runs never execute VMEC or
+   the same-branch report.
+5. Added mocked tests so the example/report integration is covered without
+   adding expensive VMEC solves to this test file.
+
+Results obtained:
+
+1. `python -m ruff check
+   examples/optimization/free_boundary_QS_coil_optimization.py
+   tests/test_free_boundary_qs_coil_optimization_smoke.py
+   vmec_jax/free_boundary_adjoint.py` passed.
+2. `python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py
+   -q` passed: 8 passed, 1 expected xfail.
+3. `python examples/optimization/free_boundary_QS_coil_optimization.py --smoke
+   --dry-run --provider circle --write-same-branch-report --outdir
+   /tmp/vmec_jax_freeb_qs_coil_dry_report` passed and wrote only the dry-run
+   summary, confirming the opt-in report does not violate dry-run semantics.
+
+Best next steps:
+
+1. Commit and push this example integration.
+2. Run a real smoke with `--write-same-branch-report` once CI queue pressure is
+   low enough, then decide whether to add that command as an optional docs
+   example.
+3. Continue toward production full-loop adjoint by replacing same-branch FD
+   reports with a validated full adaptive-loop custom VJP or fully JAX-visible
+   controller.
+
+Need from user:
+
+Nothing now.
+
+Completion percentages:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 95%.
+- VMEC parity and physics gates: 92%.
+- Single-stage coil-only optimization: 78%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 83%.
+- Docs/release hygiene: 95%.
+- Overall free-boundary ESSOS lane: 98% for merged forward/replay work; still
+  not 100% until production adaptive full-loop adjoint is validated.
+
 ### 2026-06-03 Reusable same-branch complete-solve report seam
 
 Steps taken:

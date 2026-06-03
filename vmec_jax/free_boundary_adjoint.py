@@ -2625,6 +2625,7 @@ def direct_coil_complete_solve_trace(
         "init": init,
         "result": result,
         "traces": traces,
+        "params": params,
         "active_trace": bool(active_trace),
     }
 

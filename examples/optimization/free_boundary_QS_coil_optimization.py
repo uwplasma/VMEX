@@ -45,6 +45,7 @@ import os
 from pathlib import Path
 import sys
 import time
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -504,6 +505,124 @@ def robust_sample_at(samples: CoilPerturbationSample, index: int) -> CoilPerturb
     )
 
 
+def same_branch_direction_from_variables(variables: list[tuple[str, tuple[int, ...]]]) -> np.ndarray:
+    """Return a mixed current/Fourier validation direction in optimizer space."""
+    direction = np.zeros(len(variables), dtype=float)
+    current_index = next((i for i, (kind, _index) in enumerate(variables) if kind == "current"), None)
+    fourier_index = next((i for i, (kind, _index) in enumerate(variables) if kind == "fourier_dof"), None)
+    if current_index is not None:
+        direction[current_index] = 1.0
+    if fourier_index is not None:
+        direction[fourier_index] = 1.0
+    if not np.any(direction):
+        raise ValueError("same-branch validation needs at least one selected coil variable")
+    return direction
+
+
+def write_same_branch_validation_report(
+    *,
+    input_path: Path,
+    base_params: CoilFieldParams,
+    variables: list[tuple[str, tuple[int, ...]]],
+    args: argparse.Namespace,
+    outdir: Path,
+) -> Path:
+    """Write an optional same-branch complete-solve FD report for this example."""
+    from vmec_jax.free_boundary_adjoint import direct_coil_same_branch_complete_solve_fd_report
+
+    direction_x = same_branch_direction_from_variables(variables)
+
+    def params_for(scale: float) -> CoilFieldParams:
+        return apply_coil_variables(
+            base_params,
+            direction_x * float(scale),
+            variables,
+            current_step=float(args.current_step),
+            dof_step=float(args.dof_step),
+        )
+
+    def objective_fn(payload: dict[str, Any]) -> float:
+        run_like = SimpleNamespace(
+            result=payload["result"],
+            state=payload["result"].state,
+            static=payload["init"].static,
+            indata=payload["init"].indata,
+            signgs=payload["init"].signgs,
+        )
+        summary = summarize_run(
+            run_like,
+            payload["params"],
+            objective=np.nan,
+            wall_s=np.nan,
+            target_aspect=float(args.target_aspect),
+            target_iota=float(args.target_iota),
+        )
+        return objective_from_summary(
+            summary,
+            residual_weight=float(args.residual_weight),
+            aspect_weight=float(args.aspect_weight),
+            iota_weight=float(args.iota_weight),
+        )
+
+    report = direct_coil_same_branch_complete_solve_fd_report(
+        input_path,
+        base_params,
+        params_for=params_for,
+        objective_fn=objective_fn,
+        eps=float(args.same_branch_report_eps),
+        solve_kwargs={
+            "max_iter": int(args.same_branch_report_max_iter or args.vmec_max_iter),
+            "ftol": float(args.ftol),
+            "vmec2000_control": True,
+            "auto_flip_force": False,
+            "use_direct_fallback": True,
+            "verbose": False,
+            "verbose_vmec2000_table": False,
+            "jit_forces": bool(args.jit_forces),
+            "use_scan": False,
+            "host_update_assembly": False,
+            "adjoint_trace": True,
+            "adjoint_trace_mode": "full",
+            "external_field_provider_kind": "direct_coils",
+            "free_boundary_activate_fsq": float(args.activate_fsq),
+        },
+    )
+    compact_report = {
+        "phase": "phase-2-same-branch-complete-solve-fd",
+        "scope": "coil-only proxy-objective validation; not arbitrary adaptive-branch differentiation",
+        "input": str(input_path),
+        "eps": float(args.same_branch_report_eps),
+        "direction_x": direction_x.tolist(),
+        "direction_variables": [
+            variable_manifest
+            for active, variable_manifest in zip(
+                direction_x != 0.0,
+                variable_records(
+                    variables,
+                    base_params,
+                    current_step=float(args.current_step),
+                    dof_step=float(args.dof_step),
+                ),
+                strict=True,
+            )
+            if bool(active)
+        ],
+        "branch_compatibility": {
+            "same_branch": bool(report["branch_compatibility"]["same_branch"]),
+            "plus_changed_fields": list(report["branch_compatibility"]["plus"]["changed_fields"]),
+            "minus_changed_fields": list(report["branch_compatibility"]["minus"]["changed_fields"]),
+            "plus_max_abs_scalar_delta": float(report["branch_compatibility"]["plus"]["max_abs_scalar_delta"]),
+            "minus_max_abs_scalar_delta": float(report["branch_compatibility"]["minus"]["max_abs_scalar_delta"]),
+            "plus_max_rel_scalar_delta": float(report["branch_compatibility"]["plus"]["max_rel_scalar_delta"]),
+            "minus_max_rel_scalar_delta": float(report["branch_compatibility"]["minus"]["max_rel_scalar_delta"]),
+        },
+        "values": report["values"],
+    }
+    path = outdir / "same_branch_complete_solve_report.json"
+    write_json(path, compact_report)
+    return path
+
+
 def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
     if args.provider == "essos":
         base_params, provider_metadata = load_essos_provider(
@@ -865,6 +984,15 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
     }
     if robust_options is not None:
         summary["robust_objective"] = robust_options
+    if bool(args.write_same_branch_report):
+        report_path = write_same_branch_validation_report(
+            input_path=input_path,
+            base_params=base_params,
+            variables=variables,
+            args=args,
+            outdir=outdir,
+        )
+        summary["same_branch_complete_solve_report"] = report_path
     write_json(outdir / "summary.json", summary)
     print(f"Wrote {outdir / 'history.json'}")
     print(f"Wrote {outdir / 'summary.json'}")
@@ -940,6 +1068,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--robust-toroidal-phase-sigma", type=float, default=0.0, help="Toroidal phase rotation sigma in radians.")
     parser.add_argument("--robust-centerline-sigma", type=float, default=0.0, help="Fourier centerline coefficient perturbation sigma.")
     parser.add_argument("--robust-centerline-include-constant", action="store_true")
+    parser.add_argument(
+        "--write-same-branch-report",
+        action="store_true",
+        help="After the optimization, write an opt-in same-branch complete-solve FD validation report.",
+    )
+    parser.add_argument("--same-branch-report-eps", type=float, default=1.0e-4)
+    parser.add_argument(
+        "--same-branch-report-max-iter",
+        type=int,
+        default=None,
+        help="Inner iterations for --write-same-branch-report; defaults to --vmec-max-iter.",
+    )
     return parser
 
 
