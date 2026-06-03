@@ -331,8 +331,15 @@ def pytree_directional_derivative_check_jax(
     direction: Any,
     *,
     eps: float = 1.0e-4,
+    compute_fd: bool = True,
 ) -> dict[str, Any]:
-    """Compare an exact JAX directional derivative with central differences."""
+    """Compare an exact JAX directional derivative with central differences.
+
+    Set ``compute_fd=False`` when an external finite-difference slope is
+    already available and the caller only needs the exact JAX directional
+    derivative.  This avoids two additional objective evaluations for expensive
+    replay diagnostics while preserving the default AD-vs-FD contract.
+    """
 
     if jax is None:  # pragma: no cover - JAX is required for exact gradients.
         raise RuntimeError("JAX is required for exact directional derivatives.")
@@ -349,9 +356,14 @@ def pytree_directional_derivative_check_jax(
 
     value, grad_params = jax.value_and_grad(objective_fn)(params)
     exact_directional = _pytree_vdot_jax(grad_params, direction)
-    fd_directional = (objective_fn(shifted(step)) - objective_fn(shifted(-step))) / (2.0 * step)
-    abs_error = jnp.abs(exact_directional - fd_directional)
-    rel_error = abs_error / jnp.maximum(jnp.asarray(1.0, dtype=abs_error.dtype), jnp.abs(fd_directional))
+    if bool(compute_fd):
+        fd_directional = (objective_fn(shifted(step)) - objective_fn(shifted(-step))) / (2.0 * step)
+        abs_error = jnp.abs(exact_directional - fd_directional)
+        rel_error = abs_error / jnp.maximum(jnp.asarray(1.0, dtype=abs_error.dtype), jnp.abs(fd_directional))
+    else:
+        fd_directional = jnp.asarray(jnp.nan, dtype=jnp.asarray(exact_directional).dtype)
+        abs_error = fd_directional
+        rel_error = fd_directional
     return {
         "value": value,
         "grad": grad_params,

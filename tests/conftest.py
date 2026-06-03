@@ -47,6 +47,7 @@ _WOUT_FIXTURE_SENTINEL = _ROOT / "examples" / "data" / "wout_circular_tokamak.nc
 _OPTIONAL_WOUT_FIXTURE_TEST_FILES = {
     "test_booz_input.py",
     "test_converged_wout_matrix_parity.py",
+    "test_free_boundary_beta_response_validation.py",
     "test_physics_gate_wave13_coverage.py",
     "test_physics_parity_helper_gates.py",
     "test_qi_readme_cases.py",

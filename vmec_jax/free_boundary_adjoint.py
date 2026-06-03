@@ -2758,6 +2758,7 @@ def direct_coil_same_branch_controller_scalar_custom_vjp_report(
     rtol: float = 5.0e-3,
     atol: float = 1.0e-8,
     base_value_atol: float = 2.0e-3,
+    compute_frozen_fd: bool = True,
 ) -> dict[str, Any]:
     """Compare a branch-local scalar custom VJP with complete-solve FD.
 
@@ -2772,6 +2773,9 @@ def direct_coil_same_branch_controller_scalar_custom_vjp_report(
     accepted-controller custom VJP agrees with complete-solve central
     differences when the accepted-trace fingerprint is unchanged.  It does not
     differentiate through an arbitrary adaptive host-controller branch change.
+    Set ``compute_frozen_fd=False`` when the caller only needs the exact
+    branch-local custom-VJP slope versus the complete-solve FD slope and wants
+    to avoid two additional frozen replay evaluations.
     """
 
     if jax is None:  # pragma: no cover - JAX is required for custom VJP.
@@ -2814,6 +2818,7 @@ def direct_coil_same_branch_controller_scalar_custom_vjp_report(
         base_params,
         direction,
         eps=float(eps),
+        compute_fd=bool(compute_frozen_fd),
     )
     value = float(np.asarray(check["value"], dtype=float))
     exact = float(np.asarray(check["exact_directional"], dtype=float))

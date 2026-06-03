@@ -240,6 +240,30 @@ def test_dense_fixed_point_implicit_adjoint_matches_finite_difference_for_rhs():
     np.testing.assert_allclose(exact, fd, rtol=5.0e-8, atol=1.0e-10)
 
 
+def test_pytree_directional_derivative_check_can_skip_finite_difference():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+
+    params = {"x": jnp.asarray([1.5, -0.4]), "y": jnp.asarray(0.25)}
+    direction = {"x": jnp.asarray([0.2, -0.3]), "y": jnp.asarray(-0.1)}
+
+    def objective(values):
+        return jnp.sum(values["x"] ** 2) + 0.5 * values["y"] ** 2
+
+    check = pytree_directional_derivative_check_jax(
+        objective,
+        params,
+        direction,
+        compute_fd=False,
+    )
+
+    expected = 2.0 * jnp.vdot(params["x"], direction["x"]) + params["y"] * direction["y"]
+    np.testing.assert_allclose(np.asarray(check["exact_directional"]), np.asarray(expected), rtol=1.0e-14, atol=1.0e-14)
+    assert bool(jnp.isnan(check["fd_directional"]))
+    assert bool(jnp.isnan(check["abs_error"]))
+    assert bool(jnp.isnan(check["rel_error"]))
+
+
 def test_jax_visible_nonlinear_controller_matches_manual_scan_and_fd():
     pytest.importorskip("jax")
     from vmec_jax._compat import jnp
