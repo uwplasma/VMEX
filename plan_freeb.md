@@ -68,6 +68,21 @@ Additional validation after this commit:
    tests/test_external_fields_mgrid_jax.py
    tests/test_robust_coil_perturbations.py -rx` passed:
    `45 passed in 21.34 s`.
+3. Documentation updates to `docs/free_boundary_coil_optimization.rst` and
+   `docs/testing_strategy.rst` now describe the current same-branch
+   complete-solve AD-vs-FD validation, direct-coil generated-mgrid parity, and
+   robust-coil invariance gates.
+4. Fixed a diagnostics bug in
+   `tools/diagnostics/direct_coil_boundary_replay_report.py`: it used
+   `time.perf_counter()` without importing `time`.
+5. `python -m ruff check
+   tools/diagnostics/direct_coil_boundary_replay_report.py
+   tests/test_runtime_diagnostics.py` passed.
+6. `python -m py_compile
+   tools/diagnostics/direct_coil_boundary_replay_report.py` passed.
+7. `python -m pytest -q
+   tests/test_runtime_diagnostics.py::test_direct_coil_boundary_replay_report_selects_active_trace
+   -rx` passed: `1 passed in 0.02 s`.
 
 ### 2026-06-03 Robust-coil perturbation physics gates
 
