@@ -23,6 +23,34 @@ static-policy segment interfaces.
 Do not merge/release until the refreshed pushed head has green GitHub Actions
 and the phase-2 limitations below remain explicit in docs.
 
+### 2026-06-03 Robust-coil perturbation physics gates
+
+Steps taken:
+
+1. Added two deterministic tests in `tests/test_robust_coil_perturbations.py`.
+2. Verified rigid centerline translations and toroidal rotations preserve coil
+   length and curvature. This checks that robust perturbation geometry
+   transforms do not alter intrinsic centerline metrics.
+3. Verified current perturbations scale the direct cylindrical Biot-Savart
+   field linearly at off-axis evaluation points.
+
+Results obtained:
+
+1. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_robust_coil_perturbations.py -rx` passed:
+   `14 passed in 5.62 s`.
+2. `python -m ruff check tests/test_robust_coil_perturbations.py` passed.
+
+Best next steps:
+
+1. Commit and push these robust-coil physics gates.
+2. Continue with the next phase-2 AD-vs-FD or VMEC2000 parity gate after CI
+   status is checked.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-03 Direct-coil generated-mgrid provider parity gate
 
 Steps taken:
