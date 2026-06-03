@@ -1034,6 +1034,9 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     base_params: CoilFieldParams,
     direction: CoilFieldParams,
     params_for,
+    check_controller: bool = True,
+    check_segmented_controller: bool = True,
+    check_aspect_scalar: bool = True,
 ) -> None:
     pytest.importorskip("jax")
     from vmec_jax._compat import jax, jnp
@@ -1129,60 +1132,66 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     assert np.isfinite(float(complete_fd))
     np.testing.assert_allclose(exact, complete_fd, rtol=2.0e-3, atol=1.0e-8)
 
-    def controller_custom_objective(params: CoilFieldParams):
-        return direct_coil_accepted_trace_controller_custom_vjp_objective_jax(
-            params,
-            base_traces[0]["state_pre"],
-            static=base_init.static,
-            traces=base_traces,
-            signgs=int(base_init.signgs),
-            state_weight=1.0,
-            bsqvac_weight=0.0,
-            force_weight=0.0,
-            enforce_edge=False,
-        )
+    controller_exact = None
+    if check_controller:
+        def controller_custom_objective(params: CoilFieldParams):
+            return direct_coil_accepted_trace_controller_custom_vjp_objective_jax(
+                params,
+                base_traces[0]["state_pre"],
+                static=base_init.static,
+                traces=base_traces,
+                signgs=int(base_init.signgs),
+                state_weight=1.0,
+                bsqvac_weight=0.0,
+                force_weight=0.0,
+                enforce_edge=False,
+            )
 
-    controller_grad = jax.grad(controller_custom_objective)(base_params)
-    controller_exact = sum(
-        jnp.vdot(grad_leaf, direction_leaf)
-        for grad_leaf, direction_leaf in zip(
-            jax.tree_util.tree_leaves(controller_grad),
-            jax.tree_util.tree_leaves(direction),
-            strict=True,
+        controller_grad = jax.grad(controller_custom_objective)(base_params)
+        controller_exact = sum(
+            jnp.vdot(grad_leaf, direction_leaf)
+            for grad_leaf, direction_leaf in zip(
+                jax.tree_util.tree_leaves(controller_grad),
+                jax.tree_util.tree_leaves(direction),
+                strict=True,
+            )
         )
-    )
-    base_controller_trace = float(np.asarray(controller_custom_objective(base_params)))
-    assert abs(base_controller_trace - base_complete) < 2.0e-3
-    np.testing.assert_allclose(controller_exact, complete_fd, rtol=2.0e-3, atol=1.0e-8)
-    np.testing.assert_allclose(controller_exact, exact, rtol=2.0e-3, atol=1.0e-8)
+        base_controller_trace = float(np.asarray(controller_custom_objective(base_params)))
+        assert abs(base_controller_trace - base_complete) < 2.0e-3
+        np.testing.assert_allclose(controller_exact, complete_fd, rtol=2.0e-3, atol=1.0e-8)
+        np.testing.assert_allclose(controller_exact, exact, rtol=2.0e-3, atol=1.0e-8)
 
-    def segmented_controller_custom_objective(params: CoilFieldParams):
-        return direct_coil_accepted_trace_controller_custom_vjp_objective_jax(
-            params,
-            base_traces[0]["state_pre"],
-            static=base_init.static,
-            traces=base_traces,
-            signgs=int(base_init.signgs),
-            state_weight=1.0,
-            bsqvac_weight=0.0,
-            force_weight=0.0,
-            enforce_edge=False,
-            use_preconditioner_policy_segments=True,
-        )
+    if check_segmented_controller:
+        def segmented_controller_custom_objective(params: CoilFieldParams):
+            return direct_coil_accepted_trace_controller_custom_vjp_objective_jax(
+                params,
+                base_traces[0]["state_pre"],
+                static=base_init.static,
+                traces=base_traces,
+                signgs=int(base_init.signgs),
+                state_weight=1.0,
+                bsqvac_weight=0.0,
+                force_weight=0.0,
+                enforce_edge=False,
+                use_preconditioner_policy_segments=True,
+            )
 
-    segmented_controller_grad = jax.grad(segmented_controller_custom_objective)(base_params)
-    segmented_controller_exact = sum(
-        jnp.vdot(grad_leaf, direction_leaf)
-        for grad_leaf, direction_leaf in zip(
-            jax.tree_util.tree_leaves(segmented_controller_grad),
-            jax.tree_util.tree_leaves(direction),
-            strict=True,
+        segmented_controller_grad = jax.grad(segmented_controller_custom_objective)(base_params)
+        segmented_controller_exact = sum(
+            jnp.vdot(grad_leaf, direction_leaf)
+            for grad_leaf, direction_leaf in zip(
+                jax.tree_util.tree_leaves(segmented_controller_grad),
+                jax.tree_util.tree_leaves(direction),
+                strict=True,
+            )
         )
-    )
-    base_segmented_controller_trace = float(np.asarray(segmented_controller_custom_objective(base_params)))
-    assert abs(base_segmented_controller_trace - base_complete) < 2.0e-3
-    np.testing.assert_allclose(segmented_controller_exact, complete_fd, rtol=2.0e-3, atol=1.0e-8)
-    np.testing.assert_allclose(segmented_controller_exact, controller_exact, rtol=2.0e-3, atol=1.0e-8)
+        base_segmented_controller_trace = float(np.asarray(segmented_controller_custom_objective(base_params)))
+        assert abs(base_segmented_controller_trace - base_complete) < 2.0e-3
+        np.testing.assert_allclose(segmented_controller_exact, complete_fd, rtol=2.0e-3, atol=1.0e-8)
+        if controller_exact is not None:
+            np.testing.assert_allclose(segmented_controller_exact, controller_exact, rtol=2.0e-3, atol=1.0e-8)
+        else:
+            np.testing.assert_allclose(segmented_controller_exact, exact, rtol=2.0e-3, atol=1.0e-8)
 
     def aspect_objective_from_state(state) -> float:
         return float(np.asarray(equilibrium_aspect_ratio_from_state(state=state, static=base_init.static)))
@@ -1196,28 +1205,30 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         rtol=1.0e-12,
         atol=1.0e-12,
     )
-    aspect_report = direct_coil_same_branch_controller_scalar_custom_vjp_report(
-        complete_report,
-        base_params,
-        direction,
-        scalar_key="aspect",
-        replay_scalar_fn=lambda replay, payload: equilibrium_aspect_ratio_from_state(
-            state=replay["state"],
-            static=payload["init"].static,
-        ),
-        eps=eps,
-        rtol=5.0e-3,
-        atol=5.0e-8,
-    )
-    assert aspect_report["passed"], aspect_report
-    assert aspect_report["same_branch"] is True
-    assert aspect_report["base_abs_delta"] < 2.0e-3
-    np.testing.assert_allclose(
-        aspect_report["complete_fd_directional"],
-        complete_aspect_fd,
-        rtol=1.0e-12,
-        atol=1.0e-12,
-    )
+    if check_aspect_scalar:
+        aspect_report = direct_coil_same_branch_controller_scalar_custom_vjp_report(
+            complete_report,
+            base_params,
+            direction,
+            scalar_key="aspect",
+            replay_scalar_fn=lambda replay, payload: equilibrium_aspect_ratio_from_state(
+                state=replay["state"],
+                static=payload["init"].static,
+            ),
+            eps=eps,
+            rtol=5.0e-3,
+            atol=5.0e-8,
+            compute_frozen_fd=False,
+        )
+        assert aspect_report["passed"], aspect_report
+        assert aspect_report["same_branch"] is True
+        assert aspect_report["base_abs_delta"] < 2.0e-3
+        np.testing.assert_allclose(
+            aspect_report["complete_fd_directional"],
+            complete_aspect_fd,
+            rtol=1.0e-12,
+            atol=1.0e-12,
+        )
 
 
 def test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd(
@@ -1299,6 +1310,9 @@ def test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_
         base_params=base_params,
         direction=direction,
         params_for=params_for,
+        check_controller=False,
+        check_segmented_controller=False,
+        check_aspect_scalar=False,
     )
 
 
@@ -1349,6 +1363,9 @@ def test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_br
         base_params=base_params,
         direction=direction,
         params_for=params_for,
+        check_controller=False,
+        check_segmented_controller=False,
+        check_aspect_scalar=False,
     )
 
 

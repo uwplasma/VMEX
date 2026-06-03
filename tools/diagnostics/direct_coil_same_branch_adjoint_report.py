@@ -255,6 +255,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         direct_coil_accepted_trace_controller_custom_vjp_objective_jax,
         direct_coil_accepted_trace_preconditioner_policy_segment_summary,
         direct_coil_same_branch_complete_solve_fd_report,
+        direct_coil_same_branch_controller_scalar_custom_vjp_report,
         direct_coil_fixed_trace_custom_vjp_objective_jax,
     )
     from vmec_jax.wout import equilibrium_aspect_ratio_from_state
@@ -382,29 +383,32 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     )
     aspect_report: dict[str, Any] = {"status": "skipped", "reason": "pass --include-aspect-scalar-vjp"}
     if bool(args.include_aspect_scalar_vjp):
-        from vmec_jax.free_boundary_adjoint import direct_coil_accepted_trace_controller_custom_vjp_scalar_jax
-
-        def aspect_scalar_fn(replay: dict[str, Any]):
-            return equilibrium_aspect_ratio_from_state(state=replay["state"], static=base_init.static)
-
-        def controller_aspect_objective(params):
-            return direct_coil_accepted_trace_controller_custom_vjp_scalar_jax(
-                params,
-                base_traces[0]["state_pre"],
-                scalar_fn=aspect_scalar_fn,
-                use_preconditioner_policy_segments=True,
-                **replay_kwargs,
-            )
-
-        aspect_value = float(np.asarray(controller_aspect_objective(base_params)))
-        aspect_grad = jax.grad(controller_aspect_objective)(base_params)
-        aspect_exact = float(np.asarray(_directional_dot(aspect_grad, direction)))
+        aspect_helper_report = direct_coil_same_branch_controller_scalar_custom_vjp_report(
+            complete_report,
+            base_params,
+            direction,
+            replay_scalar_fn=lambda replay, base: equilibrium_aspect_ratio_from_state(
+                state=replay["state"],
+                static=base["init"].static,
+            ),
+            scalar_key="aspect",
+            eps=float(args.eps),
+            replay_kwargs=replay_kwargs,
+            rtol=float(args.aspect_rtol),
+            atol=float(args.aspect_atol),
+            base_value_atol=2.0e-3,
+            compute_frozen_fd=False,
+        )
+        aspect_value = float(np.asarray(aspect_helper_report["base_value"], dtype=float))
         aspect_report = _slope_report(
-            exact=aspect_exact,
-            fd=complete_aspect_fd,
+            exact=float(np.asarray(aspect_helper_report["exact_directional"], dtype=float)),
+            fd=float(aspect_helper_report["complete_fd_directional"]),
             rtol=float(args.aspect_rtol),
             atol=float(args.aspect_atol),
         )
+        aspect_report["frozen_trace_fd_directional"] = aspect_helper_report["frozen_trace_fd_directional"]
+        aspect_report["base_abs_delta"] = aspect_helper_report["base_abs_delta"]
+        aspect_report["compute_frozen_fd"] = False
         base_value_report.update(
             {
                 "controller_trace_aspect": float(aspect_value),

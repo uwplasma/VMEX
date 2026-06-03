@@ -37,6 +37,11 @@ acceptance criteria or evidence changes.
   agreement for both `DMerc` and Glasser `D_R`, and (2) required CI runtime
   reduction while preserving the py3.11 95% coverage gate plus physics,
   numerics, algorithm, and parity coverage.
+- The first DMerc/`D_R` derivative gate is now in required tests, comparing
+  JAX AD against central finite differences through `mercier_terms_from_state`.
+  The first CI-runtime refactor keeps fixture-backed WOUT parity on py3.11
+  only, fixture-gates optional response tests on py3.10/py3.12, and emits
+  pytest duration reports so future runtime cuts are evidence-driven.
 - VMEC profile evaluation now covers polynomial pressure/iota/current profiles
   plus VMEC-style cubic, Akima, and line-segment tabulated pressure, iota, and
   current profiles. Cubic pressure/iota and current spline decks have been

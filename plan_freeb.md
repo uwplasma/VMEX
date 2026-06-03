@@ -94,6 +94,95 @@ Completion percentages:
 - Overall free-boundary ESSOS lane: 98% for merged forward/replay work; not
   100% until the production adaptive full-loop adjoint is validated.
 
+### 2026-06-03 CI fixture gate fix and scalar-adjoint runtime trimming
+
+Steps taken:
+
+1. Watched the post-Mercier GitHub Actions run and pulled the Python 3.10
+   failure log once the job failed.
+2. Identified the failure as a CI fixture-gating bug: the py3.10 lane correctly
+   skipped optional WOUT fixture downloads, but
+   `test_free_boundary_beta_response_validation.py` was not listed as an
+   optional WOUT-fixture test and therefore failed on missing
+   `examples/data/wout_circular_tokamak.nc`.
+3. Added that file to the conftest optional-WOUT fixture gate so py3.10/py3.12
+   skip those downloaded-fixture response tests while py3.11 still fetches the
+   bundle and runs them under the 95% coverage gate.
+4. Added `--durations=50` to required CI pytest commands so future CI logs
+   directly show slow-test evidence.
+5. Measured the full local required test selection with durations:
+   `2658 passed, 23 skipped, 2 xfailed` in 7:49. The slowest tests are the
+   direct-coil same-branch AD/FD gates and one two-step free-boundary replay
+   value-parity gate.
+6. Added `compute_fd=False` support to
+   `pytree_directional_derivative_check_jax` and surfaced it through
+   `direct_coil_same_branch_controller_scalar_custom_vjp_report` as
+   `compute_frozen_fd=False`, so diagnostics can compare exact scalar
+   custom-VJP slopes to an already-computed complete-solve FD without two
+   redundant frozen replay objective evaluations.
+7. Routed the optional same-branch aspect diagnostic script through the
+   reusable scalar helper with `compute_frozen_fd=False`.
+8. Refactored the direct-coil same-branch test helper so only the current-only
+   representative gate runs the richer controller/segmented/aspect scalar
+   checks. Fourier-only and LASYM variants still compare complete-solve FD to
+   the fixed-trace custom VJP but skip redundant scalar/controller replay work.
+
+Results obtained:
+
+1. `python -m ruff check tests/conftest.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py
+   tools/diagnostics/direct_coil_same_branch_adjoint_report.py
+   vmec_jax/free_boundary_adjoint.py
+   vmec_jax/free_boundary_adjoint_controller.py
+   tests/test_free_boundary_vacuum_adjoint.py` passed.
+2. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_vacuum_adjoint.py::test_pytree_directional_derivative_check_can_skip_finite_difference
+   tests/test_free_boundary_vacuum_adjoint.py::test_segmented_accepted_controller_matches_monolithic_scan_and_gradient
+   -q` passed.
+3. The full local vacuum adjoint file passed: 59 tests.
+4. The focused same-branch direct-coil gate passed:
+   current-only, Fourier-only, and stellsym/LASYM fixed-trace variants all
+   passed. After the split, Fourier-only and stellsym fixed-trace each took
+   about 12 s locally; the current-only rich representative took about 45 s;
+   LASYM fixed-trace took about 29 s.
+5. A tiny optional standalone diagnostic with aspect-scalar VJP was manually
+   stopped after about 11 minutes due to cold XLA scan compile/replay cost.
+   This is not a required CI gate, but it confirms cold custom scalar
+   diagnostic replay remains a performance target.
+
+Best next steps:
+
+1. Commit and push the CI fixture-gate fix, duration logging, and
+   scalar-adjoint runtime trim.
+2. Watch the new CI run and confirm py3.10/py3.12 skip the optional response
+   test cleanly while py3.11 still runs it with fetched fixtures and maintains
+   95% coverage.
+3. If the py3.11 coverage lane remains above the runtime target, move only
+   redundant long direct-coil replay variants to a nightly/manual validation
+   marker, keeping one current, one Fourier, and one LASYM same-branch
+   complete-solve AD/FD gate in required CI.
+4. Continue the production full-loop free-boundary adjoint milestone:
+   complete-loop AD-vs-central-FD for a physical scalar through an actual tiny
+   direct-coil free-boundary solve with branch/fingerprint compatibility.
+
+Need from user:
+
+Nothing now.
+
+Completion percentages:
+
+- DMerc/D_R AD-vs-FD derivative validation: 96%.
+- CI runtime refactor with preserved coverage/physics gates: 65%.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 96%.
+- VMEC parity and physics gates: 93%.
+- Single-stage coil-only optimization: 79%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 84%.
+- Docs/release hygiene: 95%.
+- Overall free-boundary ESSOS lane: 98% for merged forward/replay work; not
+  100% until the production adaptive full-loop adjoint is validated.
+
 ### 2026-06-03 Reusable scalar custom-VJP versus complete-solve FD helper
 
 Steps taken:
