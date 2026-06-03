@@ -23,6 +23,44 @@ static-policy segment interfaces.
 Do not merge/release until the refreshed pushed head has green GitHub Actions
 and the phase-2 limitations below remain explicit in docs.
 
+### 2026-06-03 Direct-coil generated-mgrid provider parity gate
+
+Steps taken:
+
+1. Added a default-CI physics/numerics gate in
+   `tests/test_external_fields_mgrid_jax.py`.
+2. Built an off-axis circular Biot-Savart filament with the pure-JAX direct-coil
+   provider. The off-axis displacement makes the cylindrical field vary with
+   toroidal angle, so this tests more than an axisymmetric constant-phi case.
+3. Generated an in-memory VMEC-layout `MGridFieldParams` by sampling the same
+   direct-coil field on mgrid nodes.
+4. Required the JAX mgrid provider to reproduce direct Biot-Savart values at
+   grid nodes, including toroidal-period wrapping.
+5. Added an external-current scaling gate showing that `extcur` linearly scales
+   the generated direct-coil field.
+
+Results obtained:
+
+1. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_external_fields_mgrid_jax.py::test_mgrid_jax_generated_from_direct_coils_matches_biot_savart_at_grid_nodes
+   tests/test_external_fields_mgrid_jax.py::test_mgrid_jax_extcur_scales_generated_direct_coil_field_linearly
+   -rx` passed: `2 passed in 2.90 s`.
+2. `python -m ruff check tests/test_external_fields_mgrid_jax.py` passed.
+3. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_external_fields_mgrid_jax.py -rx` passed: `11 passed in 5.76 s`.
+
+Best next steps:
+
+1. Commit and push this default-CI parity gate.
+2. Monitor the PR-head CI run for the latest pushed phase-2/refactor commits.
+3. Continue with the next high-value gate: a small complete-loop direct-coil
+   AD-vs-central-finite-difference check or VMEC2000 generated-mgrid parity,
+   depending on CI status and local runtime.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-03 Segmented accepted-controller primitive
 
 Steps taken:
