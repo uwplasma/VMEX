@@ -2746,6 +2746,109 @@ def direct_coil_same_branch_complete_solve_fd_report(
     }
 
 
+def direct_coil_same_branch_controller_scalar_custom_vjp_report(
+    complete_report: dict[str, Any],
+    base_params: Any,
+    direction: Any,
+    *,
+    replay_scalar_fn: Any,
+    scalar_key: str | None = None,
+    eps: float = 1.0e-4,
+    replay_kwargs: dict[str, Any] | None = None,
+    rtol: float = 5.0e-3,
+    atol: float = 1.0e-8,
+    base_value_atol: float = 2.0e-3,
+) -> dict[str, Any]:
+    """Compare a branch-local scalar custom VJP with complete-solve FD.
+
+    ``complete_report`` must be returned by
+    :func:`direct_coil_same_branch_complete_solve_fd_report`.  ``scalar_key``
+    selects one scalar from its ``objective_values`` block; by default the
+    report's primary scalar is used.  ``replay_scalar_fn(replay, base_payload)``
+    receives the JAX-visible accepted-controller replay and the base complete
+    solve payload, and must return the same scalar in replay coordinates.
+
+    This is still a same-branch validation helper.  It proves that the frozen
+    accepted-controller custom VJP agrees with complete-solve central
+    differences when the accepted-trace fingerprint is unchanged.  It does not
+    differentiate through an arbitrary adaptive host-controller branch change.
+    """
+
+    if jax is None:  # pragma: no cover - JAX is required for custom VJP.
+        raise RuntimeError("JAX is required for same-branch custom-VJP reports.")
+
+    key = str(scalar_key or complete_report.get("primary_objective") or "objective")
+    objective_values = complete_report.get("objective_values", {})
+    if key not in objective_values:
+        raise KeyError(f"scalar_key {key!r} not present in complete_report['objective_values']")
+
+    branch = complete_report.get("branch_compatibility", {})
+    same_branch = bool(branch.get("same_branch", False))
+    base = complete_report["base"]
+    traces = tuple(base["traces"])
+    if not traces:
+        raise ValueError("complete_report base payload contains no accepted traces")
+    replay_options: dict[str, Any] = {
+        "static": base["init"].static,
+        "traces": traces,
+        "signgs": int(base["init"].signgs),
+        "state_weight": 0.0,
+        "bsqvac_weight": 0.0,
+        "force_weight": 0.0,
+        "enforce_edge": False,
+        "use_preconditioner_policy_segments": True,
+    }
+    if replay_kwargs:
+        replay_options.update(replay_kwargs)
+
+    def _controller_scalar(coil_params):
+        return direct_coil_accepted_trace_controller_custom_vjp_scalar_jax(
+            coil_params,
+            traces[0]["state_pre"],
+            scalar_fn=lambda replay: replay_scalar_fn(replay, base),
+            **replay_options,
+        )
+
+    check = pytree_directional_derivative_check_jax(
+        _controller_scalar,
+        base_params,
+        direction,
+        eps=float(eps),
+    )
+    value = float(np.asarray(check["value"], dtype=float))
+    exact = float(np.asarray(check["exact_directional"], dtype=float))
+    frozen_fd = float(np.asarray(check["fd_directional"], dtype=float))
+    complete_values = objective_values[key]
+    complete_base = float(complete_values["base"])
+    complete_fd = float(complete_values["central_fd_directional"])
+    abs_error = abs(exact - complete_fd)
+    rel_error = abs_error / max(1.0, abs(complete_fd))
+    base_abs_delta = abs(value - complete_base)
+    passed = bool(
+        same_branch
+        and np.isfinite(exact)
+        and np.isfinite(complete_fd)
+        and abs_error <= float(atol) + float(rtol) * abs(complete_fd)
+        and base_abs_delta <= float(base_value_atol)
+    )
+    return {
+        "scalar_key": key,
+        "passed": passed,
+        "same_branch": same_branch,
+        "value": check["value"],
+        "grad": check["grad"],
+        "exact_directional": check["exact_directional"],
+        "frozen_trace_fd_directional": check["fd_directional"],
+        "complete_fd_directional": complete_fd,
+        "abs_error": abs_error,
+        "rel_error": rel_error,
+        "base_value": value,
+        "complete_base_value": complete_base,
+        "base_abs_delta": base_abs_delta,
+        "complete_values": complete_values,
+    }
+
+
 def direct_coil_fixed_trace_custom_vjp_objective_jax(
     params: Any,
     initial_state: Any,
