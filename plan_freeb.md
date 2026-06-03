@@ -23,6 +23,42 @@ static-policy segment interfaces.
 Do not merge/release until the refreshed pushed head has green GitHub Actions
 and the phase-2 limitations below remain explicit in docs.
 
+### 2026-06-03 Current-only complete-solve same-branch AD-vs-FD gate
+
+Steps taken:
+
+1. Refactored the direct-coil same-branch custom-VJP test into a reusable
+   helper in `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`.
+2. Added a narrowed current-only gate that runs base/plus/minus complete tiny
+   free-boundary solves, requires compatible accepted-trace fingerprints, and
+   compares the fixed-trace/controller custom-VJP directional derivative
+   against the complete-solve central finite difference.
+3. Kept the existing mixed current/geometry stellsym/LASYM gate intact and
+   reran it after the refactor.
+
+Results obtained:
+
+1. `python -m ruff check
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py` passed.
+2. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd
+   -rx` passed: `1 passed in 32.64 s`.
+3. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch
+   -rx` passed: `2 passed in 66.53 s`.
+
+Best next steps:
+
+1. Commit and push this phase-2 validation/refactor increment.
+2. Continue monitoring CI on PR #18.
+3. Next local lane: either add a small complete-loop Fourier-coefficient-only
+   same-branch variant if runtime remains acceptable, or move to VMEC2000
+   generated-mgrid parity if CI is green.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-03 Robust-coil perturbation physics gates
 
 Steps taken:

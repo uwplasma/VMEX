@@ -1015,34 +1015,7 @@ def test_jax_nestor_operator_complete_solve_fd_slopes_for_current_and_geometry(
     assert np.min(np.abs(slopes)) > 1.0e-16
 
 
-@pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])
-def test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    lasym: bool,
-) -> None:
-    """Fixed-trace custom VJP matches complete-solve FD when the branch is unchanged.
-
-    This is the strongest default phase-2 gate short of a production
-    ``run_free_boundary`` custom VJP: run the same tiny forced-active
-    free-boundary solve at ``base`` and ``base +/- eps * direction``, require
-    the accepted-trace fingerprint to stay compatible, then compare the
-    fixed-trace custom-VJP directional derivative against the complete-solve
-    central finite difference of the final accepted state norm.
-    """
-
-    pytest.importorskip("jax")
-    from vmec_jax._compat import jax, jnp
-    from vmec_jax.driver import run_free_boundary
-    from vmec_jax.free_boundary_adjoint import (
-        direct_coil_accepted_trace_controller_custom_vjp_objective_jax,
-        direct_coil_accepted_trace_fingerprint_delta,
-        direct_coil_fixed_trace_custom_vjp_objective_jax,
-    )
-    from vmec_jax.solve import solve_fixed_boundary_residual_iter
-    from vmec_jax.state import pack_state
-
-    enable_x64(True)
+def _set_same_branch_custom_vjp_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for key, value in {
         "VMEC_JAX_FREEB_NESTOR_MODE": "dense",
         "VMEC_JAX_FREEB_DENSE_SOLVE_MODE": "mode",
@@ -1054,26 +1027,24 @@ def test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_br
     }.items():
         monkeypatch.setenv(key, value)
 
-    input_path = _write_tiny_direct_freeb_input(
-        tmp_path / "input.direct_same_branch_custom_vjp",
-        lasym=lasym,
-        niter=2,
-        mpol=3,
-        ntheta=6,
-    )
-    base_params = _circle_coil_params(current=3.0e7, n_segments=64)
-    base_dofs = jnp.asarray(base_params.base_curve_dofs)
-    base_currents = jnp.asarray(base_params.base_currents)
-    direction = base_params.with_arrays(
-        base_curve_dofs=jnp.zeros_like(base_dofs).at[0, 0, 2].set(5.0e-3),
-        base_currents=base_currents * 0.02,
-    )
 
-    def params_for(scale: float) -> CoilFieldParams:
-        return base_params.with_arrays(
-            base_curve_dofs=base_dofs.at[0, 0, 2].add(5.0e-3 * float(scale)),
-            base_currents=base_currents * (1.0 + 0.02 * float(scale)),
-        )
+def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
+    *,
+    input_path: Path,
+    base_params: CoilFieldParams,
+    direction: CoilFieldParams,
+    params_for,
+) -> None:
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+    from vmec_jax.driver import run_free_boundary
+    from vmec_jax.free_boundary_adjoint import (
+        direct_coil_accepted_trace_controller_custom_vjp_objective_jax,
+        direct_coil_accepted_trace_fingerprint_delta,
+        direct_coil_fixed_trace_custom_vjp_objective_jax,
+    )
+    from vmec_jax.solve import solve_fixed_boundary_residual_iter
+    from vmec_jax.state import pack_state
 
     def run_trace(params: CoilFieldParams):
         init = run_free_boundary(
@@ -1190,6 +1161,96 @@ def test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_br
     assert abs(base_controller_trace - base_complete) < 2.0e-3
     np.testing.assert_allclose(controller_exact, complete_fd, rtol=2.0e-3, atol=1.0e-8)
     np.testing.assert_allclose(controller_exact, exact, rtol=2.0e-3, atol=1.0e-8)
+
+
+def test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Current-only custom VJP matches complete-solve FD on one accepted branch."""
+
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+
+    enable_x64(True)
+    _set_same_branch_custom_vjp_env(monkeypatch)
+    input_path = _write_tiny_direct_freeb_input(
+        tmp_path / "input.direct_current_only_same_branch_custom_vjp",
+        lasym=False,
+        niter=2,
+        mpol=3,
+        ntheta=6,
+    )
+    base_params = _circle_coil_params(current=3.0e7, n_segments=64)
+    base_dofs = jnp.asarray(base_params.base_curve_dofs)
+    base_currents = jnp.asarray(base_params.base_currents)
+    direction = base_params.with_arrays(
+        base_curve_dofs=jnp.zeros_like(base_dofs),
+        base_currents=base_currents * 0.02,
+    )
+
+    def params_for(scale: float) -> CoilFieldParams:
+        return base_params.with_arrays(
+            base_curve_dofs=base_dofs,
+            base_currents=base_currents * (1.0 + 0.02 * float(scale)),
+        )
+
+    _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
+        input_path=input_path,
+        base_params=base_params,
+        direction=direction,
+        params_for=params_for,
+    )
+
+
+@pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])
+def test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    lasym: bool,
+) -> None:
+    """Fixed-trace custom VJP matches complete-solve FD when the branch is unchanged.
+
+    This is the strongest default phase-2 gate short of a production
+    ``run_free_boundary`` custom VJP: run the same tiny forced-active
+    free-boundary solve at ``base`` and ``base +/- eps * direction``, require
+    the accepted-trace fingerprint to stay compatible, then compare the
+    fixed-trace custom-VJP directional derivative against the complete-solve
+    central finite difference of the final accepted state norm.
+    """
+
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+
+    enable_x64(True)
+    _set_same_branch_custom_vjp_env(monkeypatch)
+    input_path = _write_tiny_direct_freeb_input(
+        tmp_path / "input.direct_same_branch_custom_vjp",
+        lasym=lasym,
+        niter=2,
+        mpol=3,
+        ntheta=6,
+    )
+    base_params = _circle_coil_params(current=3.0e7, n_segments=64)
+    base_dofs = jnp.asarray(base_params.base_curve_dofs)
+    base_currents = jnp.asarray(base_params.base_currents)
+    direction = base_params.with_arrays(
+        base_curve_dofs=jnp.zeros_like(base_dofs).at[0, 0, 2].set(5.0e-3),
+        base_currents=base_currents * 0.02,
+    )
+
+    def params_for(scale: float) -> CoilFieldParams:
+        return base_params.with_arrays(
+            base_curve_dofs=base_dofs.at[0, 0, 2].add(5.0e-3 * float(scale)),
+            base_currents=base_currents * (1.0 + 0.02 * float(scale)),
+        )
+
+    _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
+        input_path=input_path,
+        base_params=base_params,
+        direction=direction,
+        params_for=params_for,
+    )
 
 
 def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current_and_geometry(
