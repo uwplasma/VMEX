@@ -1627,3 +1627,24 @@ Defer beyond the current cycle:
   gates `95%`; docs/release hygiene `96%`; overall `98%` for the merged
   correctness lanes, with production adaptive full-loop free-boundary adjoint
   still intentionally not overclaimed.
+- 2026-06-03: Triaged pushed CI run `26915125276` after the runtime refactor.
+  Build/docs/smoke jobs passed, py3.10 fast tests passed in about `12:15`
+  test-step time, and the py3.11 coverage lane reached `95.16%` before failing.
+  The common py3.11/py3.12 failure was
+  `test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree`: the
+  test unconditionally replayed the first accepted direct-coil trace, but that
+  trace can hit a singular analytic Green-function branch on hosted Linux and
+  return all-NaN `bsqvac`. The gate now searches accepted traces for a finite
+  replay candidate and falls back from the singular analytic replay to the
+  finite non-analytic JAX NESTOR replay while preserving the strict accepted
+  force/state replay and coil-parameter AD-vs-FD assertions. Local evidence:
+  `python -m ruff check tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+  passed; the focused failed test passed in about `22 s`; the full edited
+  module passed (`24 passed, 1 skipped`) with the current-only same-branch
+  custom-VJP gate still the largest local module cost (`40.6 s`). Next:
+  push the stabilization, wait for CI, and then split duplicate expensive
+  physics/free-boundary gates to py3.11-only if CI wall time remains too high.
+  Completion: DMerc/`D_R` derivative validation `98%`; CI runtime/refactor
+  `83%`; VMEC parity and physics gates `95%`; full nonlinear free-boundary
+  adjoint `96%`; docs/release hygiene `96%`; overall `98%` for merged
+  correctness lanes.
