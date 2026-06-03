@@ -12,16 +12,59 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-02 while pushing the ESSOS finite-pressure direct-coil
-examples and phase-2 replay lane toward PR readiness. PR #18 is open on
+Last updated: 2026-06-03 while pushing the phase-2 accepted-controller
+segmentation lane toward PR readiness. PR #18 is open on
 `feature/freeb-essos-coil-single-stage`; local branch `refresh/freeb-slim`
-tracks it. PR-head CI is green at `c8a3978d`, including fast tests on Python
+tracks it. PR-head CI is green at `8115cc6b`, including fast tests on Python
 3.10/3.11/3.12, docs, smoke, and the full physics job. Local follow-up
 validation now promotes reset-aware full accepted-trace replay plus stacked
-accepted/rejected, scalar-control, velocity-array, and preconditioner-payload
-interfaces.
+accepted/rejected, scalar-control, velocity-array, preconditioner-payload, and
+static-policy segment interfaces.
 Do not merge/release until the refreshed pushed head has green GitHub Actions
 and the phase-2 limitations below remain explicit in docs.
+
+### 2026-06-03 Segmented accepted-controller primitive
+
+Steps taken:
+
+1. Added an `initial_done` carry to
+   `jax_visible_accepted_nonlinear_controller_jax` so accepted-controller scans
+   can be chained without losing convergence state.
+2. Added `jax_visible_segmented_accepted_nonlinear_controller_jax`, a reusable
+   static-policy subcontroller primitive. It runs a sequence of accepted scans,
+   carries state and done masks across segment boundaries, and concatenates
+   history pytrees along the step axis.
+3. Added a focused unit gate comparing segmented and monolithic accepted scans
+   for a toy controller with accepted, rejected, and post-convergence inactive
+   steps.
+4. The new test also compares segmented gradients against monolithic gradients
+   and central finite differences.
+5. Updated `docs/free_boundary_coil_optimization.rst` to document that this is
+   validated phase-2 structure for future production preconditioner-policy
+   subcontrollers, not yet the default production replay path.
+
+Results obtained:
+
+1. `python -m py_compile vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_vacuum_adjoint.py` passed.
+2. `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_vacuum_adjoint.py` passed.
+3. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_vacuum_adjoint.py::test_segmented_accepted_controller_matches_monolithic_scan_and_gradient
+   -rx` passed: `1 passed in 1.60 s`.
+
+Best next steps:
+
+1. Run the focused accepted-controller suite and docs build after this log
+   update.
+2. If validation passes, commit and push the segmented controller primitive.
+3. Next phase-2 target: use the primitive in a production-trace replay variant
+   that groups accepted traces by static preconditioner policy, while keeping
+   existing branch/fingerprint checks as promotion gates.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-06-02 Accepted-trace scalar-control replay rung
 

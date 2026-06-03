@@ -114,6 +114,15 @@ The validation ladder is:
    is the concrete replacement pattern for differentiating through
    convergence/early-stop logic without taping a Python host loop, but it is
    not wired in as the default production free-boundary controller yet.
+   The accepted/rejected controller layer also includes
+   ``jax_visible_segmented_accepted_nonlinear_controller_jax``.  This helper
+   splits a long accepted-controller scan into static-policy subcontrollers,
+   preserving the accepted state and convergence mask across segment
+   boundaries.  The unit gate compares the segmented run against the monolithic
+   scan and checks the segmented objective gradient against both the monolithic
+   gradient and a central finite difference.  This is the validated structure
+   needed for production traces that change radial preconditioner policy
+   without padding every branch-local array into one large scan payload.
 
 7. Full direct-coil free-boundary solve: a low-resolution scalar objective,
    first with one coil current and then with one Fourier coefficient, bounded
@@ -227,6 +236,12 @@ production-adjacent validation.  When production traces change the active
 radial preconditioner size across accepted steps, the controller replay keeps
 those preconditioner matrices branch-local instead of padding them into the
 scan payload; scalar controls and velocity histories remain scan-stacked.
+The reusable segmented accepted-controller primitive now validates the same
+split on a JAX-visible toy controller: segment boundaries are static Python
+structure, while each segment body is a differentiable ``lax.scan`` and the
+state/done carry is propagated across segments.  Production replay has not yet
+been switched to this segmented primitive, but the mathematical contract is now
+covered before the heavier VMEC trace integration.
 ``direct_coil_accepted_trace_fingerprint_delta`` records whether a
 finite-difference perturbation stayed on the same accepted-step/control branch,
 including the same traced reset pattern, scalar update controls, preconditioner
