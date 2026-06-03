@@ -113,6 +113,51 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-03 Pedagogic ESSOS free-boundary examples
+
+Steps taken:
+
+1. Added a small shared helper module for ESSOS free-boundary examples:
+   ``examples/free_boundary_essos_example_common.py``.
+2. Added ``examples/free_boundary_essos_mgrid_forward.py`` showing the
+   compatibility workflow: ESSOS LP-QA coils -> generated ``mgrid`` ->
+   vmec_jax free-boundary solve -> WOUT/JSON summary.
+3. Added ``examples/free_boundary_essos_direct_forward.py`` showing the
+   research workflow: ESSOS LP-QA coils -> ``CoilFieldParams`` -> direct JAX
+   Biot-Savart free-boundary solve -> WOUT/JSON summary.
+4. Added dry-run tests that monkeypatch a minimal ESSOS-like coil object so CI
+   validates the pedagogic scripts without requiring ESSOS or running VMEC.
+5. Updated ``docs/free_boundary_coil_optimization.rst`` with commands for both
+   examples.
+
+Results obtained:
+
+1. ``python -m ruff check examples/free_boundary_essos_example_common.py
+   examples/free_boundary_essos_mgrid_forward.py
+   examples/free_boundary_essos_direct_forward.py
+   tests/test_free_boundary_essos_pedagogic_examples.py`` passed.
+2. ``python -m pytest -q
+   tests/test_free_boundary_essos_pedagogic_examples.py -rx`` passed:
+   ``2 passed in 0.87 s``.
+3. Real ESSOS dry-runs passed locally for both new examples using
+   ``/Users/rogeriojorge/local/ESSOS_mgrid_pr``.
+4. One-iteration real smoke solves passed for both examples. Both wrote inputs,
+   WOUTs, and summaries under ``/tmp`` and reported the same final values on
+   the matched setup:
+   ``fsqr=4.8678e-3``, ``fsqz=9.5120e-4``, ``fsql=1.8610e-3``,
+   ``aspect=6.0069``, ``mean_iota=0.3398``.
+
+Best next steps:
+
+1. Run a focused docs build for the free-boundary page.
+2. Commit and push the examples/docs/tests.
+3. Continue the VMEC2000 sign-consistent generated-``mgrid`` parity experiment
+   and phase-2 full-loop adjoint validation.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-03 Current-only complete-solve same-branch AD-vs-FD gate
 
 Steps taken:

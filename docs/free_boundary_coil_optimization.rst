@@ -22,6 +22,40 @@ The intended single-stage loop is:
       -> wout/proxy diagnostics
       -> coil-only objective update
 
+Pedagogic forward examples
+--------------------------
+
+Two short examples in ``examples/`` show the two free-boundary external-field
+paths without hiding the workflow inside a large sweep driver.
+
+The compatibility path uses ESSOS coils to write a VMEC ``mgrid`` file, then
+runs ``vmec_jax`` using the same mgrid-style external-field backend used for
+VMEC2000 parity:
+
+.. code-block:: bash
+
+   export ESSOS_ROOT=/Users/rogeriojorge/local/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
+   PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
+     python examples/free_boundary_essos_mgrid_forward.py --max-iter 10
+
+The direct-coil research path converts the same ESSOS coils to
+``CoilFieldParams`` and passes them directly to ``run_free_boundary``.  No
+``mgrid`` file is written or read by the solver:
+
+.. code-block:: bash
+
+   export ESSOS_ROOT=/Users/rogeriojorge/local/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
+   PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
+     python examples/free_boundary_essos_direct_forward.py --max-iter 10
+
+Both examples accept ``--dry-run`` to write the input deck and JSON summary
+without running VMEC.  This is useful for checking the generated namelist,
+magnetic-grid bounds, and direct-coil provider wiring.  By default, outputs go
+under ``results/free_boundary_essos_mgrid_forward/`` and
+``results/free_boundary_essos_direct_forward/``.
+
 Boozer/QS diagnostics are the intended promotion target for this lane, but the
 current implementation keeps the single-stage optimization example on a cheap
 VMEC-residual/aspect/iota proxy until complete full-loop gradient checks pass.
