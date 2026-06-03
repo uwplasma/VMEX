@@ -12,20 +12,65 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-03 while pushing the phase-2 accepted-controller,
-free-boundary performance, and generated-`mgrid` VMEC2000 validation lanes
-toward PR readiness. PR #18 is open on
+Last updated: 2026-06-03 after the generated-`mgrid` domain-diagnostic and
+direct-coil finite-resolution documentation pass. PR #18 is open on
 `feature/freeb-essos-coil-single-stage`; local branch `refresh/freeb-slim`
-tracks it. The current pushed head `3c3eaffc` has GitHub Actions in progress:
-docs, build, smoke, physics smoke, and parity-manifest smoke are green, while
-the Python 3.10/3.11/3.12 fast-test jobs are still running. Local follow-up
-validation now includes reset-aware full accepted-trace replay plus stacked
-accepted/rejected, scalar-control, velocity-array, preconditioner-payload,
-static-policy segment interfaces, current-only/Fourier-only same-branch
-complete-solve AD-vs-FD gates, explicit tridiagonal-policy coverage, and
-VMEC2000 generated-`mgrid` WOUT-quality classification.
-Do not merge/release until the refreshed pushed head has green GitHub Actions
-and the phase-2 limitations below remain explicit in docs.
+tracks it. The current pushed head `4c8788f6` was merge-clean and green on the
+required GitHub Actions matrix before this docs-only update: Python
+3.10/3.11/3.12 fast tests, docs/build, console smoke, physics smoke,
+parity-manifest smoke, and Codecov all passed. Local follow-up validation now
+includes reset-aware full accepted-trace replay, stacked accepted/rejected
+controller segment gates, current-only/Fourier-only same-branch
+complete-solve AD-vs-FD gates, explicit tridiagonal-policy coverage,
+VMEC2000 generated-`mgrid` WOUT-quality classification, and direct/generated
+boundary-domain checks. Keep phase-2 limitations explicit in docs: the branch
+has validated provider gradients and bounded complete-solve response gates, but
+not a production full nonlinear `run_free_boundary` exact adjoint claim.
+
+### 2026-06-03 Bounded low-resolution direct-coil/generated-mgrid convergence
+
+Steps taken:
+
+1. Ran a bounded LP-QA provider comparison with
+   `examples/data/input.LandremanPaul2021_QA_lowres`, `pressure-scale=1000`,
+   `ns=12`, `niter=300`, `ftol=1e-8`, default activation cadence, and
+   `mgrid=24x24x8`.
+2. Re-ran the same provider-only diagnostic with a denser generated grid,
+   `mgrid=48x48x16`, to separate finite-resolution interpolation error from a
+   direct-coil provider regression.
+3. Compared these bounded runs against the forced-active reactor-scale
+   stress test that previously produced large direct/generated WOUT deltas.
+
+Results obtained:
+
+1. The bounded `mgrid=24x24x8` run entered active free-boundary coupling for
+   both vmec_jax backends, stayed inside the generated mgrid domain, and
+   converged to `fsq_total≈6e-4` for both direct coils and generated mgrid.
+2. Refining to `mgrid=48x48x16` kept both runs active and contained, and
+   reduced the direct/generated differences: aspect relative gap fell to about
+   `1.3e-4`, iota relative RMS to about `3.5e-3`, and iotaf relative RMS to
+   about `3.3e-3`.
+3. The forced-active reactor-scale long run is now classified as a
+   failure-mode diagnostic, not a promotion gate. Its final surfaces leave the
+   generated mgrid box and cross into nonphysical `R<=0` geometry, so the
+   direct-provider and generated-mgrid backends are being compared outside the
+   finite-resolution grid's valid domain.
+
+Best next steps:
+
+1. Keep short, forced-active direct/generated checks as provider-regression
+   tests.
+2. Use bounded, default-cadence active traces plus mgrid-resolution convergence
+   and boundary-domain containment as the promotion criterion for longer
+   nonlinear free-boundary evidence.
+3. Continue VMEC2000 generated-mgrid WOUT promotion separately: require finite,
+   positive WOUT geometry scalars and small physical free-boundary residuals
+   before converting that optional row from classified diagnostic to strict
+   parity gate.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-06-03 VMEC2000 `threed1` packed-field parser hardening
 

@@ -1291,7 +1291,13 @@ direct-versus-generated-``mgrid`` comparisons inside ``vmec_jax``.
 The standalone three-way diagnostic writes a JSON report for the current
 research case. It always compares ``vmec_jax`` generated-``mgrid`` against
 ``vmec_jax`` direct coils, then attempts VMEC2000 generated-``mgrid`` if the
-executable is available:
+executable is available.  The generated ``mgrid`` is an interpolated
+compatibility backend, while direct coils sample the continuous Biot-Savart
+field.  For one-update or short bounded traces this is a strict provider
+regression check.  For longer active nonlinear free-boundary traces it is a
+finite-resolution convergence diagnostic: the accepted surface must remain
+inside the generated-``mgrid`` box, residuals must be physical, and the
+direct/generated differences should decrease as the grid is refined.
 
 .. code-block:: bash
 
@@ -1303,8 +1309,7 @@ executable is available:
        --workdir results/freeb_coils_mgrid_vmec2000_work \
        --ns-array 5,9,13 \
        --niter-array 100,500,2000 \
-       --ftol-array 1e-8,1e-10,1e-12 \
-       --activate-fsq 1e99
+       --ftol-array 1e-8,1e-10,1e-12
 
 For a quick provider-only validation run, skip VMEC2000 explicitly:
 
@@ -1323,18 +1328,69 @@ For a quick provider-only validation run, skip VMEC2000 explicitly:
 The diagnostic defaults ``NZETA`` to ``--mgrid-nphi`` so the generated
 ``mgrid`` toroidal grid is compatible with VMEC's free-boundary loader. If you
 override ``--nzeta``, choose a value compatible with the generated grid
-(``kp``). Use ``--activate-fsq 1e99`` for short parity diagnostics so
+(``kp``). Use ``--activate-fsq 1e99`` only for short parity diagnostics so
 ``vmec_jax`` exercises the active NESTOR/free-boundary coupling immediately
-instead of proving only inactive-cadence bookkeeping. The JSON records
-``active_free_boundary`` for both the direct-coil and generated-``mgrid``
-``vmec_jax`` backends, plus compact NESTOR channel diagnostics such as
-``bnormal_rms``, ``gsource_rms``, ``bsqvac_rms``, and ``bsqvac_mean``. The
-default vmec_jax direct-versus-generated-``mgrid`` tolerance is ``1e-9``,
-which is tight enough to catch provider regressions while allowing roundoff
-differences after active vacuum coupling. When a generated ``mgrid`` has more
+instead of proving only inactive-cadence bookkeeping. Do not use forced
+activation as long-trace promotion evidence unless the resulting surfaces stay
+inside the generated-``mgrid`` domain and the final residuals are small. The
+JSON records ``active_free_boundary`` for both the direct-coil and
+generated-``mgrid`` ``vmec_jax`` backends, approximate LCFS
+``boundary_extents`` for each WOUT, and
+``comparisons.vmec_jax_direct_vs_generated_mgrid.boundary_vs_mgrid_domain``.
+That containment block reports whether each final surface is inside the
+generated grid and gives signed margins to the radial and vertical domain
+limits.  The default direct/generated comparison tolerances are
+``--jax-rtol 1e-5`` and ``--jax-atol 1e-7``; stricter values can be used for
+one-update provider regressions, while resolved free-boundary traces should be
+judged by mgrid-resolution convergence. When a generated ``mgrid`` has more
 toroidal planes than VMEC ``NZETA``, vmec_jax follows VMEC2000's
 ``read_mgrid_nc`` reduction and samples file planes ``0, nskip, 2*nskip, ...``
 instead of taking the first ``NZETA`` planes.
+
+A bounded LP-QA low-resolution check illustrates the promoted interpretation.
+With ``examples/data/input.LandremanPaul2021_QA_lowres``, ``ns=12``,
+``niter=300``, default activation cadence, ``mgrid=24x24x8``, and
+``pressure-scale=1000``, both vmec_jax backends enter active free-boundary
+coupling, stay inside the generated grid, and converge to
+``fsq_total≈6e-4``.  Refining the generated grid to ``48x48x16`` reduces the
+direct/generated aspect relative gap to about ``1.3e-4`` and the iota-profile
+relative RMS to about ``3.5e-3``.  This is finite-resolution evidence for the
+continuous direct-coil provider, not a claim that a coarse generated ``mgrid``
+and direct Biot-Savart sampling are bitwise equivalent.
+
+The forced-active reactor-scale LP-QA stress test is intentionally retained as
+a failure-mode diagnostic.  In that run the nonlinear direct/generated
+surfaces leave the generated grid and cross into nonphysical ``R<=0`` geometry,
+so generated-``mgrid`` interpolation clips while the direct provider continues
+sampling a non-toroidal surface.  The comparator now reports this explicitly
+with ``vmec_jax_*_boundary_outside_generated_mgrid`` warnings rather than
+allowing the result to be mistaken for provider-parity evidence.
+
+To reproduce the bounded low-resolution finite-resolution probe:
+
+.. code-block:: bash
+
+   export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH JAX_ENABLE_X64=1 \
+     python tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py \
+       --essos-root "$ESSOS_ROOT" \
+       --skip-vmec2000 \
+       --input examples/data/input.LandremanPaul2021_QA_lowres \
+       --pressure-scale 1000 \
+       --phiedge-scale 1 \
+       --ns 12 \
+       --niter 300 \
+       --ftol 1e-8 \
+       --mpol 4 \
+       --ntor 4 \
+       --mgrid-nr 48 \
+       --mgrid-nz 48 \
+       --mgrid-nphi 16 \
+       --nzeta 8 \
+       --nvacskip 8 \
+       --out results/freeb_lowres_direct_vs_mgrid48.json \
+       --workdir results/freeb_lowres_direct_vs_mgrid48_work \
+       --no-fail-on-jax-mismatch
 
 If VMEC2000 exits before writing ``wout_*.nc``, the JSON still records the
 workdir, return code, whether VMEC2000 opened the vacuum grid, stdout/stderr
