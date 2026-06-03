@@ -139,6 +139,41 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-03 Free-boundary adjoint controller refactor
+
+Steps taken:
+
+1. Extracted JAX-visible nonlinear controller helpers from
+   `vmec_jax/free_boundary_adjoint.py` into
+   `vmec_jax/free_boundary_adjoint_controller.py`.
+2. Kept compatibility re-exports in `free_boundary_adjoint.py` for existing
+   tests, examples, and users.
+3. Added `vmec_jax.free_boundary_adjoint_controller` to the API autosummary
+   list in `docs/api/vmec_jax.rst`.
+
+Results obtained:
+
+1. `vmec_jax/free_boundary_adjoint.py` dropped from about `3481` lines to
+   about `3008` lines.
+2. `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py -rx`
+   passed: `58 passed`.
+3. `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   vmec_jax/free_boundary_adjoint_controller.py tests/test_free_boundary_vacuum_adjoint.py`
+   passed.
+4. `python -m sphinx -W --keep-going -b html docs
+   /tmp/vmec_jax_freeb_docs_check_controller_refactor` passed.
+
+Best next steps:
+
+1. Commit and push this refactor.
+2. Continue the same pattern with the direct-coil replay/NESTOR block in
+   `free_boundary_adjoint.py`, or add the coverage-audit recommended
+   direct-coil/mgrid parity fixture gate before more source movement.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-03 Segmented replay timing diagnostic
 
 Steps taken:
