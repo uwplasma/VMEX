@@ -1037,76 +1037,56 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
 ) -> None:
     pytest.importorskip("jax")
     from vmec_jax._compat import jax, jnp
-    from vmec_jax.driver import run_free_boundary
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_accepted_trace_controller_custom_vjp_objective_jax,
         direct_coil_accepted_trace_controller_custom_vjp_scalar_jax,
-        direct_coil_accepted_trace_fingerprint_delta,
+        direct_coil_same_branch_complete_solve_fd_report,
         direct_coil_fixed_trace_custom_vjp_objective_jax,
     )
-    from vmec_jax.solve import solve_fixed_boundary_residual_iter
     from vmec_jax.state import pack_state
     from vmec_jax.wout import equilibrium_aspect_ratio_from_state
-
-    def run_trace(params: CoilFieldParams):
-        init = run_free_boundary(
-            input_path,
-            use_initial_guess=True,
-            verbose=False,
-            external_field_provider_kind="direct_coils",
-            external_field_provider_params=params,
-        )
-        result = solve_fixed_boundary_residual_iter(
-            init.state,
-            init.static,
-            indata=init.indata,
-            signgs=init.signgs,
-            max_iter=2,
-            ftol=1.0e-8,
-            vmec2000_control=True,
-            auto_flip_force=False,
-            use_direct_fallback=True,
-            verbose=False,
-            verbose_vmec2000_table=False,
-            jit_forces=False,
-            use_scan=False,
-            host_update_assembly=False,
-            adjoint_trace=True,
-            adjoint_trace_mode="full",
-            external_field_provider_kind="direct_coils",
-            external_field_provider_params=params,
-            free_boundary_activate_fsq=1.0e99,
-        )
-        traces = list(result.diagnostics.get("adjoint_step_trace", []))
-        assert traces
-        assert any(trace.get("freeb_bsqvac_half") is not None for trace in traces)
-        return init, result, traces
-
-    base_init, base_result, base_traces = run_trace(base_params)
-    eps = 1.0e-4
-    _plus_init, plus_result, plus_traces = run_trace(params_for(eps))
-    _minus_init, minus_result, minus_traces = run_trace(params_for(-eps))
-
-    plus_branch = direct_coil_accepted_trace_fingerprint_delta(
-        base_traces,
-        plus_traces,
-        rtol=1.0e-6,
-        atol=1.0e-9,
-    )
-    minus_branch = direct_coil_accepted_trace_fingerprint_delta(
-        base_traces,
-        minus_traces,
-        rtol=1.0e-6,
-        atol=1.0e-9,
-    )
-    assert plus_branch["compatible"], plus_branch["changed_fields"]
-    assert minus_branch["compatible"], minus_branch["changed_fields"]
 
     def state_norm_objective(state) -> float:
         packed = np.asarray(pack_state(state), dtype=float)
         return float(0.5 * np.vdot(packed, packed))
 
-    complete_fd = (state_norm_objective(plus_result.state) - state_norm_objective(minus_result.state)) / (2.0 * eps)
+    eps = 1.0e-4
+    complete_report = direct_coil_same_branch_complete_solve_fd_report(
+        input_path,
+        base_params,
+        params_for=params_for,
+        objective_fn=lambda payload: state_norm_objective(payload["result"].state),
+        eps=eps,
+        solve_kwargs={
+            "max_iter": 2,
+            "ftol": 1.0e-8,
+            "vmec2000_control": True,
+            "auto_flip_force": False,
+            "use_direct_fallback": True,
+            "verbose": False,
+            "verbose_vmec2000_table": False,
+            "jit_forces": False,
+            "use_scan": False,
+            "host_update_assembly": False,
+            "adjoint_trace": True,
+            "adjoint_trace_mode": "full",
+            "external_field_provider_kind": "direct_coils",
+            "free_boundary_activate_fsq": 1.0e99,
+        },
+        fingerprint_rtol=1.0e-6,
+        fingerprint_atol=1.0e-9,
+    )
+    base_init = complete_report["base"]["init"]
+    base_result = complete_report["base"]["result"]
+    base_traces = complete_report["base"]["traces"]
+    plus_result = complete_report["plus"]["result"]
+    minus_result = complete_report["minus"]["result"]
+    plus_branch = complete_report["branch_compatibility"]["plus"]
+    minus_branch = complete_report["branch_compatibility"]["minus"]
+    assert plus_branch["compatible"], plus_branch["changed_fields"]
+    assert minus_branch["compatible"], minus_branch["changed_fields"]
+
+    complete_fd = float(complete_report["values"]["central_fd_directional"])
 
     def custom_objective(params: CoilFieldParams):
         return direct_coil_fixed_trace_custom_vjp_objective_jax(

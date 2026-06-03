@@ -28,6 +28,65 @@ docs: the branch has validated provider gradients and bounded complete-solve
 response gates, but not a production full nonlinear `run_free_boundary` exact
 adjoint claim.
 
+### 2026-06-03 Reusable same-branch complete-solve report seam
+
+Steps taken:
+
+1. Confirmed there were no open GitHub PRs to merge; work continues directly on
+   `main`.
+2. Added `direct_coil_complete_solve_trace`, a reusable direct-coil
+   free-boundary solve helper that returns the initialization result, final
+   solve result, active-trace flag, and recorded accepted traces.
+3. Added `direct_coil_same_branch_complete_solve_fd_report`, which runs
+   base/plus/minus direct-coil solves, computes accepted-trace fingerprint
+   compatibility, scalar objective values, and the central finite-difference
+   slope.
+4. Refactored the same-branch diagnostic tool to use this source helper instead
+   of owning test-local solve/fingerprint boilerplate.
+5. Refactored the current-only, Fourier-only, and mixed same-branch pytest gate
+   to exercise the new source helper before comparing custom VJP slopes.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tools/diagnostics/direct_coil_same_branch_adjoint_report.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `JAX_ENABLE_X64=1 python
+   tools/diagnostics/direct_coil_same_branch_adjoint_report.py --out
+   /tmp/vmec_jax_freeb_same_branch_helper_report.json --workdir
+   /tmp/vmec_jax_freeb_same_branch_helper_report_work` passed.
+3. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_fd
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch
+   -q` passed: 4 passed.
+
+Best next steps:
+
+1. Commit and push this reusable same-branch complete-solve report seam.
+2. Use the helper to add a production-adjacent complete-loop scalar report for
+   one current coefficient and one Fourier geometry coefficient in the
+   coil-only optimization example.
+3. Keep the limitation explicit: this is fingerprint-gated same-branch
+   validation, not arbitrary adaptive-branch differentiation.
+
+Need from user:
+
+Nothing now.
+
+Completion percentages:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 95%.
+- VMEC parity and physics gates: 92%.
+- Single-stage coil-only optimization: 76%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 83%.
+- Docs/release hygiene: 95%.
+- Overall free-boundary ESSOS lane: 98% for merged forward/replay work; still
+  not 100% until production adaptive full-loop adjoint is validated.
+
 ### 2026-06-03 Physical-scalar complete-solve same-branch AD-vs-FD gate
 
 Steps taken:

@@ -230,52 +230,31 @@ def _directional_dot(grad: Any, direction: Any):
     )
 
 
-def _run_trace(input_path: Path, params: Any, *, args: argparse.Namespace):
-    from vmec_jax.driver import run_free_boundary
-    from vmec_jax.solve import solve_fixed_boundary_residual_iter
-
-    init = run_free_boundary(
-        input_path,
-        use_initial_guess=True,
-        verbose=False,
-        external_field_provider_kind="direct_coils",
-        external_field_provider_params=params,
-    )
-    result = solve_fixed_boundary_residual_iter(
-        init.state,
-        init.static,
-        indata=init.indata,
-        signgs=init.signgs,
-        max_iter=int(args.niter),
-        ftol=1.0e-8,
-        vmec2000_control=True,
-        auto_flip_force=False,
-        use_direct_fallback=True,
-        verbose=False,
-        verbose_vmec2000_table=False,
-        jit_forces=bool(args.jit_forces),
-        use_scan=False,
-        host_update_assembly=False,
-        adjoint_trace=True,
-        adjoint_trace_mode="full",
-        external_field_provider_kind="direct_coils",
-        external_field_provider_params=params,
-        free_boundary_activate_fsq=float(args.activate_fsq),
-    )
-    traces = list(result.diagnostics.get("adjoint_step_trace", []))
-    if not traces:
-        raise RuntimeError("solve did not record adjoint_step_trace")
-    if not any(trace.get("freeb_bsqvac_half") is not None for trace in traces):
-        raise RuntimeError("solve did not record an active free-boundary trace")
-    return init, result, traces
+def _solve_kwargs_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "max_iter": int(args.niter),
+        "ftol": 1.0e-8,
+        "vmec2000_control": True,
+        "auto_flip_force": False,
+        "use_direct_fallback": True,
+        "verbose": False,
+        "verbose_vmec2000_table": False,
+        "jit_forces": bool(args.jit_forces),
+        "use_scan": False,
+        "host_update_assembly": False,
+        "adjoint_trace": True,
+        "adjoint_trace_mode": "full",
+        "external_field_provider_kind": "direct_coils",
+        "free_boundary_activate_fsq": float(args.activate_fsq),
+    }
 
 
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
     from vmec_jax._compat import enable_x64, jax, jnp
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_accepted_trace_controller_custom_vjp_objective_jax,
-        direct_coil_accepted_trace_fingerprint_delta_summary,
         direct_coil_accepted_trace_preconditioner_policy_segment_summary,
+        direct_coil_same_branch_complete_solve_fd_report,
         direct_coil_fixed_trace_custom_vjp_objective_jax,
     )
     from vmec_jax.wout import equilibrium_aspect_ratio_from_state
@@ -315,32 +294,34 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     previous_env = _configure_validation_nestor_path()
     try:
         t0 = time.perf_counter()
-        base_init, base_result, base_traces = _run_trace(input_path, base_params, args=args)
-        _, plus_result, plus_traces = _run_trace(input_path, params_for(float(args.eps)), args=args)
-        _, minus_result, minus_traces = _run_trace(input_path, params_for(-float(args.eps)), args=args)
+        complete_report = direct_coil_same_branch_complete_solve_fd_report(
+            input_path,
+            base_params,
+            params_for=params_for,
+            objective_fn=lambda payload: _state_norm_objective(payload["result"].state),
+            eps=float(args.eps),
+            solve_kwargs=_solve_kwargs_from_args(args),
+            fingerprint_rtol=float(args.fingerprint_rtol),
+            fingerprint_atol=float(args.fingerprint_atol),
+        )
         wall_s = time.perf_counter() - t0
     finally:
         _restore_env(previous_env)
 
-    plus_branch = direct_coil_accepted_trace_fingerprint_delta_summary(
-        base_traces,
-        plus_traces,
-        rtol=float(args.fingerprint_rtol),
-        atol=float(args.fingerprint_atol),
-    )
-    minus_branch = direct_coil_accepted_trace_fingerprint_delta_summary(
-        base_traces,
-        minus_traces,
-        rtol=float(args.fingerprint_rtol),
-        atol=float(args.fingerprint_atol),
-    )
-    same_branch = bool(plus_branch["compatible"] and minus_branch["compatible"])
+    base_init = complete_report["base"]["init"]
+    base_result = complete_report["base"]["result"]
+    base_traces = complete_report["base"]["traces"]
+    plus_result = complete_report["plus"]["result"]
+    minus_result = complete_report["minus"]["result"]
+    plus_branch = _json_ready(complete_report["branch_compatibility"]["plus"])
+    minus_branch = _json_ready(complete_report["branch_compatibility"]["minus"])
+    same_branch = bool(complete_report["branch_compatibility"]["same_branch"])
     preconditioner_segment_summary = direct_coil_accepted_trace_preconditioner_policy_segment_summary(base_traces)
 
-    base_complete = _state_norm_objective(base_result.state)
-    plus_complete = _state_norm_objective(plus_result.state)
-    minus_complete = _state_norm_objective(minus_result.state)
-    complete_fd = (plus_complete - minus_complete) / (2.0 * float(args.eps))
+    base_complete = float(complete_report["values"]["base"])
+    plus_complete = float(complete_report["values"]["plus"])
+    minus_complete = float(complete_report["values"]["minus"])
+    complete_fd = float(complete_report["values"]["central_fd_directional"])
     base_aspect = float(
         np.asarray(equilibrium_aspect_ratio_from_state(state=base_result.state, static=base_init.static))
     )

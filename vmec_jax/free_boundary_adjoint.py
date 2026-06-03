@@ -2554,6 +2554,165 @@ def direct_coil_accepted_trace_fingerprint_delta_summary(
     return _json_safe_fingerprint_value(delta)
 
 
+def direct_coil_complete_solve_trace(
+    input_path: Any,
+    params: Any,
+    *,
+    init_kwargs: dict[str, Any] | None = None,
+    solve_kwargs: dict[str, Any] | None = None,
+    require_active_trace: bool = True,
+) -> dict[str, Any]:
+    """Run a direct-coil free-boundary solve and return accepted traces.
+
+    This is a validation helper for phase-2 same-branch adjoint promotion.  It
+    runs the same direct-coil initialization plus accepted residual iteration
+    used by the complete-solve finite-difference gates and returns the
+    initialization result, final solve result, and recorded adjoint traces.
+
+    The helper intentionally does not decide whether perturbations are on the
+    same adaptive branch.  Use
+    :func:`direct_coil_same_branch_complete_solve_fd_report` or
+    :func:`direct_coil_accepted_trace_fingerprint_delta` for that gate.
+    """
+
+    from .driver import run_free_boundary
+    from .solve import solve_fixed_boundary_residual_iter
+
+    init_options: dict[str, Any] = {
+        "use_initial_guess": True,
+        "verbose": False,
+        "external_field_provider_kind": "direct_coils",
+        "external_field_provider_params": params,
+    }
+    if init_kwargs:
+        init_options.update(init_kwargs)
+    init = run_free_boundary(input_path, **init_options)
+
+    solve_options: dict[str, Any] = {
+        "max_iter": 2,
+        "ftol": 1.0e-8,
+        "vmec2000_control": True,
+        "auto_flip_force": False,
+        "use_direct_fallback": True,
+        "verbose": False,
+        "verbose_vmec2000_table": False,
+        "jit_forces": False,
+        "use_scan": False,
+        "host_update_assembly": False,
+        "adjoint_trace": True,
+        "adjoint_trace_mode": "full",
+        "external_field_provider_kind": "direct_coils",
+        "external_field_provider_params": params,
+        "free_boundary_activate_fsq": 1.0e99,
+    }
+    if solve_kwargs:
+        solve_options.update(solve_kwargs)
+    solve_options["external_field_provider_params"] = params
+    result = solve_fixed_boundary_residual_iter(
+        init.state,
+        init.static,
+        indata=init.indata,
+        signgs=init.signgs,
+        **solve_options,
+    )
+    traces = list(result.diagnostics.get("adjoint_step_trace", []))
+    if not traces:
+        raise RuntimeError("direct-coil solve did not record adjoint_step_trace")
+    active_trace = any(trace.get("freeb_bsqvac_half") is not None for trace in traces)
+    if bool(require_active_trace) and not active_trace:
+        raise RuntimeError("direct-coil solve did not record an active free-boundary trace")
+    return {
+        "init": init,
+        "result": result,
+        "traces": traces,
+        "active_trace": bool(active_trace),
+    }
+
+
+def direct_coil_same_branch_complete_solve_fd_report(
+    input_path: Any,
+    base_params: Any,
+    *,
+    params_for: Any,
+    objective_fn: Any,
+    eps: float = 1.0e-4,
+    init_kwargs: dict[str, Any] | None = None,
+    solve_kwargs: dict[str, Any] | None = None,
+    fingerprint_rtol: float = 1.0e-6,
+    fingerprint_atol: float = 1.0e-9,
+    require_active_trace: bool = True,
+) -> dict[str, Any]:
+    """Return same-branch complete-solve finite-difference diagnostics.
+
+    ``params_for(scale)`` must return the coil parameters for ``base + scale *
+    direction``.  ``objective_fn(payload)`` receives each payload returned by
+    :func:`direct_coil_complete_solve_trace` and returns a scalar value.  The
+    result contains raw base/plus/minus payloads, branch fingerprint deltas,
+    scalar values, and the central finite-difference slope.
+
+    This helper is deliberately a validation seam rather than a production
+    adjoint: it rejects branch changes using accepted-trace fingerprints and
+    leaves the differentiated frozen-branch replay to the caller.
+    """
+
+    eps_f = float(eps)
+    if eps_f == 0.0:
+        raise ValueError("eps must be nonzero")
+    base = direct_coil_complete_solve_trace(
+        input_path,
+        base_params,
+        init_kwargs=init_kwargs,
+        solve_kwargs=solve_kwargs,
+        require_active_trace=require_active_trace,
+    )
+    plus = direct_coil_complete_solve_trace(
+        input_path,
+        params_for(eps_f),
+        init_kwargs=init_kwargs,
+        solve_kwargs=solve_kwargs,
+        require_active_trace=require_active_trace,
+    )
+    minus = direct_coil_complete_solve_trace(
+        input_path,
+        params_for(-eps_f),
+        init_kwargs=init_kwargs,
+        solve_kwargs=solve_kwargs,
+        require_active_trace=require_active_trace,
+    )
+    plus_branch = direct_coil_accepted_trace_fingerprint_delta(
+        base["traces"],
+        plus["traces"],
+        rtol=float(fingerprint_rtol),
+        atol=float(fingerprint_atol),
+    )
+    minus_branch = direct_coil_accepted_trace_fingerprint_delta(
+        base["traces"],
+        minus["traces"],
+        rtol=float(fingerprint_rtol),
+        atol=float(fingerprint_atol),
+    )
+    base_value = float(np.asarray(objective_fn(base), dtype=float))
+    plus_value = float(np.asarray(objective_fn(plus), dtype=float))
+    minus_value = float(np.asarray(objective_fn(minus), dtype=float))
+    central_fd = (plus_value - minus_value) / (2.0 * eps_f)
+    return {
+        "base": base,
+        "plus": plus,
+        "minus": minus,
+        "branch_compatibility": {
+            "same_branch": bool(plus_branch["compatible"] and minus_branch["compatible"]),
+            "plus": plus_branch,
+            "minus": minus_branch,
+        },
+        "values": {
+            "base": base_value,
+            "plus": plus_value,
+            "minus": minus_value,
+            "central_fd_directional": float(central_fd),
+        },
+    }
+
+
 def direct_coil_fixed_trace_custom_vjp_objective_jax(
     params: Any,
     initial_state: Any,
