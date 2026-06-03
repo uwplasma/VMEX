@@ -1162,6 +1162,34 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     np.testing.assert_allclose(controller_exact, complete_fd, rtol=2.0e-3, atol=1.0e-8)
     np.testing.assert_allclose(controller_exact, exact, rtol=2.0e-3, atol=1.0e-8)
 
+    def segmented_controller_custom_objective(params: CoilFieldParams):
+        return direct_coil_accepted_trace_controller_custom_vjp_objective_jax(
+            params,
+            base_traces[0]["state_pre"],
+            static=base_init.static,
+            traces=base_traces,
+            signgs=int(base_init.signgs),
+            state_weight=1.0,
+            bsqvac_weight=0.0,
+            force_weight=0.0,
+            enforce_edge=False,
+            use_preconditioner_policy_segments=True,
+        )
+
+    segmented_controller_grad = jax.grad(segmented_controller_custom_objective)(base_params)
+    segmented_controller_exact = sum(
+        jnp.vdot(grad_leaf, direction_leaf)
+        for grad_leaf, direction_leaf in zip(
+            jax.tree_util.tree_leaves(segmented_controller_grad),
+            jax.tree_util.tree_leaves(direction),
+            strict=True,
+        )
+    )
+    base_segmented_controller_trace = float(np.asarray(segmented_controller_custom_objective(base_params)))
+    assert abs(base_segmented_controller_trace - base_complete) < 2.0e-3
+    np.testing.assert_allclose(segmented_controller_exact, complete_fd, rtol=2.0e-3, atol=1.0e-8)
+    np.testing.assert_allclose(segmented_controller_exact, controller_exact, rtol=2.0e-3, atol=1.0e-8)
+
 
 def test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd(
     tmp_path: Path,

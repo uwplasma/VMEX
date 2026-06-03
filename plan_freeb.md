@@ -12,20 +12,63 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-03 after the generated-`mgrid` domain-diagnostic and
-direct-coil finite-resolution documentation pass. PR #18 is open on
-`feature/freeb-essos-coil-single-stage`; local branch `refresh/freeb-slim`
-tracks it. The current pushed head `4c8788f6` was merge-clean and green on the
-required GitHub Actions matrix before this docs-only update: Python
-3.10/3.11/3.12 fast tests, docs/build, console smoke, physics smoke,
-parity-manifest smoke, and Codecov all passed. Local follow-up validation now
-includes reset-aware full accepted-trace replay, stacked accepted/rejected
-controller segment gates, current-only/Fourier-only same-branch
-complete-solve AD-vs-FD gates, explicit tridiagonal-policy coverage,
-VMEC2000 generated-`mgrid` WOUT-quality classification, and direct/generated
-boundary-domain checks. Keep phase-2 limitations explicit in docs: the branch
-has validated provider gradients and bounded complete-solve response gates, but
-not a production full nonlinear `run_free_boundary` exact adjoint claim.
+Last updated: 2026-06-03 after PR #18 was merged to `origin/main` as
+`0faa770c`. The merged main CI run `26897211669` is green: Python
+3.10/3.11/3.12 fast tests, docs/build, full-guide docs, console smoke, physics
+smoke, parity-manifest smoke, and Codecov upload all passed. Local follow-up
+work is on `phase2/freeb-adjoint-validation`, branched from merged
+`origin/main`, because the stale local `main` branch in this clone diverged and
+was not force-moved. The phase-2 evidence now includes reset-aware full
+accepted-trace replay, stacked accepted/rejected controller segment gates,
+current-only/Fourier-only same-branch complete-solve AD-vs-FD gates, segmented
+controller custom-VJP complete-solve AD-vs-FD gates, explicit tridiagonal-policy
+coverage, VMEC2000 generated-`mgrid` WOUT-quality classification, and
+direct/generated boundary-domain checks. Keep phase-2 limitations explicit in
+docs: the branch has validated provider gradients and bounded complete-solve
+response gates, but not a production full nonlinear `run_free_boundary` exact
+adjoint claim.
+
+### 2026-06-03 Segmented controller custom-VJP complete-solve gate
+
+Steps taken:
+
+1. Created follow-up branch `phase2/freeb-adjoint-validation` from merged
+   `origin/main`.
+2. Promoted the segmented accepted-controller path from replay-only AD-vs-FD
+   evidence to same-branch complete-solve evidence.
+3. Extended the shared complete-solve helper so the segmented controller
+   custom-VJP derivative is compared against complete-solve central finite
+   differences for both current-only and Fourier-only coil perturbations.
+4. Kept the claim scoped: this validates a frozen accepted branch and
+   JAX-visible segmented controller replay, not differentiation through the
+   adaptive host controller that selected that branch.
+
+Results obtained:
+
+1. Main-branch CI for merge commit `0faa770c` completed successfully.
+2. `python -m ruff check
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py` passed.
+3. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_fd
+   -q` passed.
+4. The focused phase-2 subset passed: current-only same-branch custom VJP,
+   Fourier-only same-branch custom VJP, accepted NESTOR current/geometry
+   AD-vs-FD, accepted-update replay AD-vs-FD, and two-step segmented-controller
+   replay AD-vs-FD.
+
+Best next steps:
+
+1. Commit and push `phase2/freeb-adjoint-validation`.
+2. Open the next PR only if this follow-up branch stays green locally; otherwise
+   fold fixes into the branch before pushing.
+3. Continue the production full-loop adjoint lane by replacing fixed accepted
+   branch replay with either a full `run_free_boundary` custom VJP or a fully
+   JAX-visible nonlinear controller.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-06-03 Segmented accepted-controller AD-vs-FD promotion gate
 
