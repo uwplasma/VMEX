@@ -1339,6 +1339,16 @@ mode-5 result confirms that the current chunked projection path scales
 reasonably with parameter count; the next production target remains reducing
 the replay/projection dispatch and cold accepted-tape build costs.
 
+The same QP ``max_mode=4`` short optimizer was then profiled with
+``method="auto_scalar"``.  With cost-only scalar trial filtering enabled it took
+``90.6 s`` and reduced the objective to ``6.32``; with cost-only trials disabled
+it took ``78.1 s`` and reduced the objective to ``6.55``.  Both scalar-adjoint
+runs made more progress than the dense three-evaluation diagnostic, but the
+no-cost-only variant removed three extra forward trial solves with only a small
+objective penalty.  Therefore ``auto_scalar`` now leaves
+``scalar_cost_only_trials`` disabled by default and keeps it as an explicit
+globalization knob.
+
 A follow-up QH ``max_mode=2`` GPU profile on ``office`` with
 ``--inner-max-iter 80``, ``--trial-max-iter 40``,
 ``VMEC_JAX_DYNAMIC_REPLAY_MODE=basepoint``,
@@ -2035,10 +2045,12 @@ refresh, explicit GPU/CUDA/ROCm high-mode, stellarator-symmetric QS/QI
 ``auto_scalar`` runs also use ``scalar_trust`` rather than falling back to
 dense SciPy.  Low-mode, LASYM, and ordinary ``method="auto"`` GPU runs stay on
 dense SciPy unless the caller explicitly chooses another method.  ``auto_scalar``
-also enables cost-only trial filtering unless the caller overrides
-``scalar_cost_only_trials``.  This is the production entry point for testing
-scalar-adjoint optimization without relying on
-``VMEC_JAX_OPT_SCALAR_COST_ONLY_TRIALS``.
+does not enable cost-only trial filtering by default, since QH and QP GPU
+profiles showed the extra forward trial solves can dominate short high-mode
+runs.  Enable that filter explicitly with ``scalar_cost_only_trials=True`` or
+``VMEC_JAX_OPT_SCALAR_COST_ONLY_TRIALS=1`` when a rugged case needs trial
+screening before exact gradient builds.  This is the production entry point for
+testing scalar-adjoint optimization without relying on environment variables.
 
 A 2026-05-20 matrix-free cleanup removed one redundant initialization AD pass:
 ``residual_linear_operator`` now obtains the frozen-axis initial-state
