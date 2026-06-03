@@ -2408,6 +2408,40 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         rtol=1.0e-12,
         atol=1.0e-12,
     )
+    segmented_controller_check = direct_coil_accepted_trace_controller_directional_check_jax(
+        base_params,
+        mixed_direction,
+        trace0["state_pre"],
+        static=init.static,
+        traces=[trace0, trace1],
+        signgs=int(init.signgs),
+        state_weight=1.0,
+        bsqvac_weight=1.0e-12,
+        force_weight=0.0,
+        enforce_edge=False,
+        use_preconditioner_policy_segments=True,
+        eps=eps,
+    )
+    assert segmented_controller_check["replay"]["used_preconditioner_policy_segments"]
+    assert segmented_controller_check["replay"]["preconditioner_controls_segment_stacked"] == (True,)
+    np.testing.assert_allclose(
+        np.asarray(segmented_controller_check["exact_directional"]),
+        np.asarray(segmented_controller_check["fd_directional"]),
+        rtol=5.0e-3,
+        atol=1.0e-10,
+    )
+    np.testing.assert_allclose(
+        np.asarray(segmented_controller_check["value"]),
+        np.asarray(segmented_controller_replay["objective"]),
+        rtol=1.0e-12,
+        atol=1.0e-12,
+    )
+    np.testing.assert_allclose(
+        np.asarray(segmented_controller_check["exact_directional"]),
+        np.asarray(controller_check["exact_directional"]),
+        rtol=5.0e-3,
+        atol=1.0e-10,
+    )
 
 
 @pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])

@@ -27,6 +27,46 @@ boundary-domain checks. Keep phase-2 limitations explicit in docs: the branch
 has validated provider gradients and bounded complete-solve response gates, but
 not a production full nonlinear `run_free_boundary` exact adjoint claim.
 
+### 2026-06-03 Segmented accepted-controller AD-vs-FD promotion gate
+
+Steps taken:
+
+1. Promoted the next phase-2 nonlinear-controller validation rung from value
+   parity to AD-vs-central-FD for the segmented accepted-controller replay path.
+2. Extended the existing two-accepted-step direct-coil replay test so the
+   static preconditioner-policy segmented controller differentiates in the same
+   mixed current/Fourier-geometry direction already used by the unsegmented
+   controller.
+3. Kept the claim scoped: this validates
+   `state -> boundary geometry -> direct-coil Biot-Savart -> JAX NESTOR ->
+   strict accepted VMEC update` through a segmented accepted-control replay, not
+   the adaptive host policy that selected the production traces.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state
+   -q` passed.
+3. The focused phase-2 subset passed: current-only same-branch custom VJP,
+   Fourier-only same-branch custom VJP, accepted NESTOR current/geometry
+   AD-vs-FD, accepted-update replay AD-vs-FD, and the strengthened two-step
+   segmented-controller replay gate.
+
+Best next steps:
+
+1. Push this gate and let CI rerun on the refreshed PR head.
+2. Prepare PR #18 for merge once required fast-test checks finish green.
+3. Keep the next full-adjoint step explicit: either a production
+   `run_free_boundary` custom VJP around the adaptive host controller or a fully
+   JAX-visible nonlinear controller with complete-solve AD-vs-FD promotion.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-03 Bounded low-resolution direct-coil/generated-mgrid convergence
 
 Steps taken:
