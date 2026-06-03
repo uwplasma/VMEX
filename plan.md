@@ -1648,3 +1648,17 @@ Defer beyond the current cycle:
   `83%`; VMEC parity and physics gates `95%`; full nonlinear free-boundary
   adjoint `96%`; docs/release hygiene `96%`; overall `98%` for merged
   correctness lanes.
+- 2026-06-03: Local full-coverage replay of head `8dad077` reached total
+  coverage `95.03%` but exposed a second order-dependent replay overclaim in
+  `test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current_and_geometry`.
+  The AD-vs-FD derivative check was valid, but the test also required an exact
+  match between the frozen accepted-boundary replay scalar and a separate final
+  host recompute diagnostic. That diagnostic can use a different recompute
+  context, so the equality was replaced with finite/positive base scalar sanity
+  while preserving all current, geometry, and mixed-direction AD-vs-FD checks.
+  Local evidence: ruff passed; both accepted-boundary replay tests passed
+  focused; the full direct-coil finite-pressure module passed
+  (`24 passed, 1 skipped`). Next: push this follow-up and rerun the required
+  coverage/CI gates. Completion: DMerc/`D_R` derivative validation `98%`; CI
+  runtime/refactor `84%`; VMEC parity and physics gates `95%`; full nonlinear
+  free-boundary adjoint `96%`; docs/release hygiene `96%`.
