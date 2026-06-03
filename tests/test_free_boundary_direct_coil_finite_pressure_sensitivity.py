@@ -950,6 +950,7 @@ def test_direct_coil_complete_solve_proxy_objective_fd_response_for_current_and_
     assert abs(float(geometry_slope)) > 1.0e-12
 
 
+@pytest.mark.py311_coverage_only
 def test_jax_nestor_operator_complete_solve_fd_slopes_for_current_and_geometry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1231,6 +1232,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         )
 
 
+@pytest.mark.py311_coverage_only
 def test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1271,6 +1273,7 @@ def test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_
     )
 
 
+@pytest.mark.py311_coverage_only
 def test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_fd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1317,6 +1320,7 @@ def test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_
 
 
 @pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])
+@pytest.mark.py311_coverage_only
 def test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1369,6 +1373,7 @@ def test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_br
     )
 
 
+@pytest.mark.py311_coverage_only
 def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current_and_geometry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1511,6 +1516,7 @@ def test_jax_nestor_operator_accepted_solve_ad_matches_central_fd_for_current_an
     assert np.max(np.abs(mixed_derivs)) > 1.0e-16
 
 
+@pytest.mark.py311_coverage_only
 def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1876,6 +1882,7 @@ def test_jax_free_boundary_boundary_geometry_matches_host_sampler(
     assert float(jnp.linalg.norm(grad)) > 0.0
 
 
+@pytest.mark.py311_coverage_only
 def test_accepted_boundary_bsqvac_replay_grad_wrt_vmec_state_matches_fd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2003,6 +2010,7 @@ def test_accepted_boundary_bsqvac_replay_grad_wrt_vmec_state_matches_fd(
     np.testing.assert_allclose(exact, fd, rtol=2.0e-4, atol=1.0e-10)
 
 
+@pytest.mark.py311_coverage_only
 def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2367,6 +2375,7 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
 
 
 @pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])
+@pytest.mark.py311_coverage_only
 def test_jax_nestor_operator_fixed_boundary_ad_matches_central_fd_for_coil_vars(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

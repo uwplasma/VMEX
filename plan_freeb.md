@@ -6398,13 +6398,27 @@ Results obtained:
    diagnostic that can be produced from a different recompute context. The
    focused pair and the full direct-coil finite-pressure module passed after
    this stabilization.
+5. The full required local CI selection passed again on head `9ed50c8`:
+   `JAX_ENABLE_X64=1 python -m pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --durations=50 --cov=vmec_jax --cov-report=term:skip-covered --cov-fail-under=95`
+   returned `2659 passed, 23 skipped, 2 xfailed` in `6:54` with total coverage
+   `95.03%`. The slowest remaining local required tests are now current-only
+   same-branch custom VJP, exact tangent columns, QH checkpoint JVP, scalar
+   cotangent, and LASYM same-branch replay.
+6. Added `py311_coverage_only` marker plumbing and wired CI so py3.10/py3.12
+   compatibility lanes skip only selected expensive derivative/physics
+   promotion gates that still run in the py3.11 coverage lane. Local
+   compatibility replay with `VMEC_JAX_SKIP_PY311_COVERAGE_ONLY=1` passed:
+   `2640 passed, 42 skipped, 2 xfailed` in `2:52`.
 
 Best next steps:
 
-1. Commit and push the CI stabilization.
-2. Wait for the next CI run to confirm green py3.11 coverage and py3.12.
-3. If runtime remains high, move duplicate expensive physics/free-boundary gates
-   to py3.11 coverage while keeping py3.10/py3.12 as compatibility lanes.
+1. Wait for GitHub Actions run `26917079514` to confirm green py3.11 coverage
+   and py3.12 compatibility lanes.
+2. Push the compatibility-lane skip marker once the current run is green, then
+   confirm the next CI run shows py3.10/py3.12 runtime reduction without
+   lowering the py3.11 coverage/physics gate.
+3. If runtime remains high, trim the remaining compatibility-only duplicate
+   solve gates using the same policy, not by deleting physics assertions.
 4. Continue the production full-loop adjoint milestone only after CI is green:
    complete-loop AD-vs-central-FD through an actual tiny direct-coil
    free-boundary solve for a physical scalar.
@@ -6422,7 +6436,7 @@ Completion:
 - Single-stage coil-only optimization: 79%.
 - Robust coil perturbation optimization: 70%.
 - CPU/GPU performance: 84%.
-- CI runtime refactor with preserved coverage/physics gates: 84%.
+- CI runtime refactor with preserved coverage/physics gates: 88%.
 - Docs/release hygiene: 96%.
 
 ### 2026-05-24 Provider slice 1

@@ -3,12 +3,11 @@
 Last updated: 2026-06-03
 Primary branch: `main`
 Baseline release: `v0.0.14`
-Latest known green `main` CI: `8c7ffcd`
-Current candidate: free-boundary direct-coil PR #18 refreshed onto
-`origin/main` at `63b73705`, retaining the post-`v0.0.14`
-release-hygiene/refactor refresh, the 95% required gate evidence from main, and
-the branch's direct-coil adjoint replay, generated-`mgrid` diagnostics, and
-preconditioner/performance evidence.
+Latest known green `main` CI: `7e7eb47`
+Current candidate: `main` at `9ed50c8`, retaining the 95% required coverage
+gate, the new `DMerc`/Glasser `D_R` AD-vs-central-FD derivative gate, and the
+direct-coil/free-boundary CI-runtime stabilizations. GitHub Actions run
+`26917079514` is the current confirmation run.
 
 This is the living execution plan for making `vmec_jax` accurate, fast,
 differentiable, documented, and usable by external researchers. Update it when
@@ -1662,3 +1661,28 @@ Defer beyond the current cycle:
   coverage/CI gates. Completion: DMerc/`D_R` derivative validation `98%`; CI
   runtime/refactor `84%`; VMEC parity and physics gates `95%`; full nonlinear
   free-boundary adjoint `96%`; docs/release hygiene `96%`.
+- 2026-06-03: Re-ran the full required local CI selection on current head
+  `9ed50c8` after the accepted-boundary replay stabilization:
+  `JAX_ENABLE_X64=1 python -m pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --durations=50 --cov=vmec_jax --cov-report=term:skip-covered --cov-fail-under=95`.
+  Result: `2659 passed, 23 skipped, 2 xfailed` in `6:54`; total coverage
+  remained `95.03%`. The DMerc/Glasser `D_R` AD-vs-FD gate is now covered by
+  required CI-equivalent local testing. Remaining CI-runtime work is structural:
+  keep the full fixture-backed py3.11 coverage/physics lane, but avoid
+  re-running the most expensive free-boundary physics gates redundantly on
+  py3.10/py3.12 compatibility lanes. Completion: DMerc/`D_R` derivative
+  validation `98%`; CI runtime/refactor `85%`; VMEC parity and physics gates
+  `95%`; full nonlinear free-boundary adjoint `96%`; docs/release hygiene
+  `96%`.
+- 2026-06-03: Added the `py311_coverage_only` test marker and CI env gate so
+  duplicate high-cost derivative/physics promotion tests run in the Python
+  3.11 coverage lane but are skipped in Python 3.10/3.12 compatibility lanes.
+  The marked set includes direct-coil same-branch custom-VJP gates,
+  accepted-boundary replay AD-vs-FD gates, fixed-boundary NESTOR AD-vs-FD
+  gates, exact B-field tangent/cotangent gates, and dense fixed-point
+  coil-loop derivative gates. Local compatibility-lane replay with
+  `VMEC_JAX_SKIP_PY311_COVERAGE_ONLY=1` passed:
+  `2640 passed, 42 skipped, 2 xfailed` in `2:52`. This preserves the full
+  py3.11 `95.03%` coverage/physics gate while cutting duplicate CI work in
+  compatibility lanes. Completion: CI runtime/refactor `88%`; DMerc/`D_R`
+  derivative validation `98%`; VMEC parity and physics gates `95%`; docs/release
+  hygiene `96%`.
