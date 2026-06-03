@@ -28,6 +28,61 @@ docs: the branch has validated provider gradients and bounded complete-solve
 response gates, but not a production full nonlinear `run_free_boundary` exact
 adjoint claim.
 
+### 2026-06-03 Reusable scalar custom-VJP versus complete-solve FD helper
+
+Steps taken:
+
+1. Added `direct_coil_same_branch_controller_scalar_custom_vjp_report`, which
+   consumes an existing same-branch complete-solve report and compares a
+   selected scalar's controller custom-VJP directional derivative against the
+   complete-solve central finite difference.
+2. The helper reuses the complete-report payload, so it does not rerun
+   base/plus/minus VMEC solves; it only evaluates the branch-local
+   JAX-visible accepted-controller scalar replay and its directional
+   derivative.
+3. Replaced the duplicate aspect-scalar custom-VJP logic inside the
+   direct-coil finite-pressure same-branch test with this helper.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd
+   -q` passed.
+3. The full focused same-branch set passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_fd
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch
+   -q`.
+
+Best next steps:
+
+1. Commit and push the reusable scalar custom-VJP report helper.
+2. Use this helper in the standalone diagnostic script for optional physical
+   scalar checks after the current CI run is green.
+3. Continue toward the production full-loop seam by lifting more of the
+   adaptive accepted/rejected host controller into a reusable JAX-visible
+   controller or fingerprint-gated custom-VJP wrapper.
+
+Need from user:
+
+Nothing now.
+
+Completion percentages:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 96%.
+- VMEC parity and physics gates: 92%.
+- Single-stage coil-only optimization: 79%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 83%.
+- Docs/release hygiene: 95%.
+- Overall free-boundary ESSOS lane: 98% for merged forward/replay work; not
+  100% until the production adaptive full-loop adjoint is validated.
+
 ### 2026-06-03 Multi-scalar same-branch validation artifacts on main
 
 Steps taken:
