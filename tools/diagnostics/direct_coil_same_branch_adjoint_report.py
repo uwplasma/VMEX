@@ -54,6 +54,18 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--radius-direction", type=float, default=5.0e-3, help="Fourier radius perturbation direction.")
     p.add_argument("--rtol", type=float, default=2.0e-3, help="Relative tolerance for slope agreement.")
     p.add_argument("--atol", type=float, default=1.0e-8, help="Absolute tolerance for slope agreement.")
+    p.add_argument(
+        "--aspect-rtol",
+        type=float,
+        default=5.0e-3,
+        help="Relative tolerance for final aspect-ratio slope agreement.",
+    )
+    p.add_argument(
+        "--aspect-atol",
+        type=float,
+        default=5.0e-8,
+        help="Absolute tolerance for final aspect-ratio slope agreement.",
+    )
     p.add_argument("--fingerprint-rtol", type=float, default=1.0e-6)
     p.add_argument("--fingerprint-atol", type=float, default=1.0e-9)
     p.add_argument(
@@ -67,6 +79,11 @@ def _parser() -> argparse.ArgumentParser:
         "--include-controller-vjp",
         action="store_true",
         help="Also evaluate the stacked-controller custom-VJP slope. This is slower in cold processes.",
+    )
+    p.add_argument(
+        "--include-aspect-scalar-vjp",
+        action="store_true",
+        help="Also evaluate the final aspect-ratio custom-VJP scalar slope. This is slower in cold processes.",
     )
     p.add_argument(
         "--fail-on-mismatch",
@@ -261,6 +278,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         direct_coil_accepted_trace_preconditioner_policy_segment_summary,
         direct_coil_fixed_trace_custom_vjp_objective_jax,
     )
+    from vmec_jax.wout import equilibrium_aspect_ratio_from_state
 
     if jax is None:
         raise RuntimeError("JAX is required for same-branch adjoint diagnostics.")
@@ -323,6 +341,16 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     plus_complete = _state_norm_objective(plus_result.state)
     minus_complete = _state_norm_objective(minus_result.state)
     complete_fd = (plus_complete - minus_complete) / (2.0 * float(args.eps))
+    base_aspect = float(
+        np.asarray(equilibrium_aspect_ratio_from_state(state=base_result.state, static=base_init.static))
+    )
+    plus_aspect = float(
+        np.asarray(equilibrium_aspect_ratio_from_state(state=plus_result.state, static=base_init.static))
+    )
+    minus_aspect = float(
+        np.asarray(equilibrium_aspect_ratio_from_state(state=minus_result.state, static=base_init.static))
+    )
+    complete_aspect_fd = (plus_aspect - minus_aspect) / (2.0 * float(args.eps))
 
     replay_kwargs = {
         "static": base_init.static,
@@ -351,6 +379,43 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         "fixed_trace_objective": float(fixed_value),
         "fixed_trace_abs_delta": float(abs(fixed_value - base_complete)),
     }
+
+    base_value_report.update(
+        {
+            "complete_aspect": float(base_aspect),
+        }
+    )
+    aspect_report: dict[str, Any] = {"status": "skipped", "reason": "pass --include-aspect-scalar-vjp"}
+    if bool(args.include_aspect_scalar_vjp):
+        from vmec_jax.free_boundary_adjoint import direct_coil_accepted_trace_controller_custom_vjp_scalar_jax
+
+        def aspect_scalar_fn(replay: dict[str, Any]):
+            return equilibrium_aspect_ratio_from_state(state=replay["state"], static=base_init.static)
+
+        def controller_aspect_objective(params):
+            return direct_coil_accepted_trace_controller_custom_vjp_scalar_jax(
+                params,
+                base_traces[0]["state_pre"],
+                scalar_fn=aspect_scalar_fn,
+                use_preconditioner_policy_segments=True,
+                **replay_kwargs,
+            )
+
+        aspect_value = float(np.asarray(controller_aspect_objective(base_params)))
+        aspect_grad = jax.grad(controller_aspect_objective)(base_params)
+        aspect_exact = float(np.asarray(_directional_dot(aspect_grad, direction)))
+        aspect_report = _slope_report(
+            exact=aspect_exact,
+            fd=complete_aspect_fd,
+            rtol=float(args.aspect_rtol),
+            atol=float(args.aspect_atol),
+        )
+        base_value_report.update(
+            {
+                "controller_trace_aspect": float(aspect_value),
+                "controller_trace_aspect_abs_delta": float(abs(aspect_value - base_aspect)),
+            }
+        )
     controller_report: dict[str, Any] = {"status": "skipped", "reason": "pass --include-controller-vjp"}
     fixed_controller_agree: dict[str, Any] = {"status": "skipped", "reason": "pass --include-controller-vjp"}
     if bool(args.include_controller_vjp):
@@ -387,6 +452,12 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         and fixed_report["passed"]
         and base_value_report["fixed_trace_abs_delta"] < 2.0e-3
     )
+    if bool(args.include_aspect_scalar_vjp):
+        passed = bool(
+            passed
+            and aspect_report["passed"]
+            and base_value_report["controller_trace_aspect_abs_delta"] < 2.0e-3
+        )
     if bool(args.include_controller_vjp):
         passed = bool(
             passed
@@ -410,6 +481,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                 "input": str(input_path),
                 "wall_s": float(wall_s),
                 "include_controller_vjp": bool(args.include_controller_vjp),
+                "include_aspect_scalar_vjp": bool(args.include_aspect_scalar_vjp),
                 "note": (
                     "Same-branch phase-2 evidence only. Adaptive host-controller "
                     "branch changes are guarded by fingerprints and are not claimed differentiable."
@@ -430,9 +502,16 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                 "minus": float(minus_complete),
                 "central_fd_directional": float(complete_fd),
             },
+            "complete_solve_aspect": {
+                "base": float(base_aspect),
+                "plus": float(plus_aspect),
+                "minus": float(minus_aspect),
+                "central_fd_directional": float(complete_aspect_fd),
+            },
             "base_value_consistency": base_value_report,
             "checks": {
                 "fixed_trace_custom_vjp_vs_complete_fd": fixed_report,
+                "controller_custom_vjp_aspect_vs_complete_fd": aspect_report,
                 "controller_custom_vjp_vs_complete_fd": controller_report,
                 "controller_vs_fixed_trace_custom_vjp": fixed_controller_agree,
             },

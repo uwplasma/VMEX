@@ -42,6 +42,9 @@ Steps taken:
    differentiates a frozen accepted branch and segmented JAX-visible replay,
    while the adaptive host policy that selected that branch remains outside the
    production adjoint claim.
+5. Extended `tools/diagnostics/direct_coil_same_branch_adjoint_report.py` so
+   its default JSON artifact records complete-solve aspect values, while the
+   slower aspect scalar VJP artifact is explicitly opt-in.
 
 Results obtained:
 
@@ -59,6 +62,14 @@ Results obtained:
 5. `JAX_ENABLE_X64=1 python -m pytest -q
    tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -q`
    passed with the expected optional skip.
+6. `JAX_ENABLE_X64=1 python
+   tools/diagnostics/direct_coil_same_branch_adjoint_report.py --out
+   /tmp/vmec_jax_freeb_same_branch_default_report.json --workdir
+   /tmp/vmec_jax_freeb_same_branch_default_report_work` passed and wrote a
+   JSON payload with finite base/plus/minus aspect and aspect central-FD
+   values. The opt-in `--include-aspect-scalar-vjp` artifact is intentionally
+   kept out of the default path because its cold-process runtime is much
+   slower than the bounded diagnostic.
 
 Best next steps:
 
