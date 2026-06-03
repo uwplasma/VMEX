@@ -73,6 +73,13 @@ Results obtained:
    vmec_jax direct coils vs generated `mgrid` fails at `ns=7` with iota
    relative RMS about `1.80`, `rmnc` relative RMS about `0.108`, `zmns`
    relative RMS about `0.236`, and aspect relative gap about `0.172`.
+8. A follow-up provider-only run with a denser generated `mgrid`
+   (`40x40x16` instead of `20x20x8`) still fails the same forced-active
+   direct-coil/generated-`mgrid` comparison. The denser mgrid reduces the
+   aspect relative gap from about `0.172` to about `0.033` and improves the
+   `zmns` relative RMS from about `0.236` to about `0.160`, but the
+   direct-provider solve remains underconverged with `fsq_total≈3.59` while
+   the generated-`mgrid` backend is much lower at `fsq_total≈0.15`.
 
 Best next steps:
 
@@ -82,7 +89,11 @@ Best next steps:
 2. Treat the tighter forced-active low-resolution schedule as a research
    diagnostic for direct-coil/generated-`mgrid` nonlinear divergence, not as a
    promotion gate.
-3. After CI completes, push this parser hardening as a small logical commit.
+3. The next direct-provider parity target is nonlinear/free-boundary update
+   control and NESTOR sampling under active direct-coil fields, not simply
+   generated-`mgrid` interpolation resolution.
+4. Poll CI on the pushed parser-hardening head and fix any required-job
+   fallout before marking PR #18 ready.
 
 Need from user:
 
