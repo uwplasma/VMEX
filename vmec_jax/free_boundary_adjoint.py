@@ -2404,6 +2404,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
         accept_mask=accept_mask,
         done_mask=done_mask,
     )
+    preconditioner_policy_segments = direct_coil_accepted_trace_preconditioner_policy_segments(trace_seq)
     scalar_controls = direct_coil_accepted_trace_scalar_controls_jax(trace_seq)
     array_controls = direct_coil_accepted_trace_array_controls_jax(trace_seq)
     # These preconditioner policy flags still feed Python bool/int dispatch in
@@ -2540,6 +2541,8 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
         "array_controls": array_controls,
         "preconditioner_controls": preconditioner_controls,
         "preconditioner_controls_stacked": bool(preconditioner_controls_stacked),
+        "preconditioner_policy_segments": preconditioner_policy_segments,
+        "preconditioner_policy_n_segments": len(preconditioner_policy_segments),
         "state_reset_flags": tuple(bool(flag) for flag in np.asarray(controls["reset_to_trace_pre"], dtype=bool)),
     }
 
