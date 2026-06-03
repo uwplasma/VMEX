@@ -6273,6 +6273,10 @@ Results obtained:
    `26 passed, 1 skipped` plus helper tests. In that full-module context the
    former huge two-step replay gate was `9.99 s` instead of the previous
    `149 s` local full-suite duration and `274--457 s` CI durations.
+6. Local full required CI selection passed with coverage:
+   `JAX_ENABLE_X64=1 python -m pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --cov=vmec_jax --cov-fail-under=95`
+   returned `2659 passed, 23 skipped, 2 xfailed` in `6:32`; total coverage
+   stayed at `95.03%`.
 
 Best next steps:
 

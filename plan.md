@@ -1616,6 +1616,10 @@ Defer beyond the current cycle:
   the two helper tests passed with the former huge two-step replay gate down to
   about `10 s` in the full-module run; focused same-branch gates passed with
   current-only `30.9 s`, LASYM `24.3 s`, Fourier/stellsym `9--10 s`.
+  The full local required CI selection also passed with coverage:
+  `JAX_ENABLE_X64=1 python -m pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --cov=vmec_jax --cov-fail-under=95`,
+  yielding `2659 passed, 23 skipped, 2 xfailed` in `6:32` and total coverage
+  `95.03%`.
   Remaining work: wait for the current pushed CI run to finish, push this
   runtime refactor, and continue trimming the current-only same-branch custom
   VJP gate through trace reuse rather than assertion removal. Completion:
