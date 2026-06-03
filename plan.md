@@ -42,6 +42,9 @@ acceptance criteria or evidence changes.
   The first CI-runtime refactor keeps fixture-backed WOUT parity on py3.11
   only, fixture-gates optional response tests on py3.10/py3.12, and emits
   pytest duration reports so future runtime cuts are evidence-driven.
+  GitHub Actions run `26910704175` for `7e7eb47` passed all required jobs;
+  py3.11 reported 95.03% coverage, while duration logs show the two-step
+  direct-coil replay gate is now the largest required-CI runtime target.
 - VMEC profile evaluation now covers polynomial pressure/iota/current profiles
   plus VMEC-style cubic, Akima, and line-segment tabulated pressure, iota, and
   current profiles. Cubic pressure/iota and current spline decks have been

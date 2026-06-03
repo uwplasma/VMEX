@@ -183,6 +183,60 @@ Completion percentages:
 - Overall free-boundary ESSOS lane: 98% for merged forward/replay work; not
   100% until the production adaptive full-loop adjoint is validated.
 
+### 2026-06-03 Green CI after optional-WOUT gate fix
+
+Steps taken:
+
+1. Monitored GitHub Actions run `26910704175` for commit `7e7eb47`.
+2. Confirmed py3.10 and py3.12 skipped the optional WOUT fixture fetch, while
+   py3.11 fetched the fixture bundle and ran the full coverage/parity lane.
+3. Pulled the emitted `--durations=50` logs from py3.10, py3.11, and py3.12.
+
+Results obtained:
+
+1. CI completed green for `7e7eb47`: build, docs, full docs, CLI smoke,
+   physics smoke, parity smoke, py3.10 fast tests, py3.11 coverage tests, and
+   py3.12 fast tests all passed.
+2. The py3.11 coverage lane reported `2651 passed, 30 skipped, 2 xfailed` in
+   29:34 with exact line coverage of 95.03%.
+3. The py3.10 lane reported `2377 passed, 305 skipped, 1 xfailed` in 17:24.
+4. The py3.12 lane reported `2377 passed, 305 skipped, 1 xfailed` in 23:51.
+5. Duration logs identify the largest remaining required-CI cost: the
+   two-step direct-coil accepted replay value-parity test takes 274 s on
+   py3.10 and 457 s on py3.12. The next slow group is same-branch
+   direct-coil AD/FD, exact boundary-field Jacobian/cotangent checks, and QH
+   checkpoint-tape JVP checks.
+
+Best next steps:
+
+1. Split the long two-step replay test into a required lightweight value gate
+   plus a nightly/manual full-depth replay gate, or cache/reuse its expensive
+   complete trace so the required lane keeps the same algorithm coverage at
+   much lower runtime.
+2. Keep py3.11 as the only fixture-backed 95% coverage lane; keep py3.10 and
+   py3.12 as compatibility lanes until the slow replay gate is made cheaper.
+3. Resume the production full-loop adjoint milestone with a complete-loop
+   physical scalar AD-vs-central-FD gate guarded by accepted-trace
+   fingerprints.
+
+Need from user:
+
+Nothing now.
+
+Completion percentages:
+
+- DMerc/D_R AD-vs-FD derivative validation: 96%.
+- CI runtime refactor with preserved coverage/physics gates: 72%.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 96%.
+- VMEC parity and physics gates: 94%.
+- Single-stage coil-only optimization: 79%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 84%.
+- Docs/release hygiene: 96%.
+- Overall free-boundary ESSOS lane: 98% for merged forward/replay work; not
+  100% until the production adaptive full-loop adjoint is validated.
+
 ### 2026-06-03 Reusable scalar custom-VJP versus complete-solve FD helper
 
 Steps taken:
