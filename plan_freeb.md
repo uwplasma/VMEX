@@ -59,6 +59,16 @@ Need from user:
 
 Nothing now.
 
+Additional validation after this commit:
+
+1. `python -m sphinx -W --keep-going -b html docs
+   /tmp/vmec_jax_freeb_docs_check_latest` passed.
+2. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_external_fields_coils_jax.py
+   tests/test_external_fields_mgrid_jax.py
+   tests/test_robust_coil_perturbations.py -rx` passed:
+   `45 passed in 21.34 s`.
+
 ### 2026-06-03 Robust-coil perturbation physics gates
 
 Steps taken:

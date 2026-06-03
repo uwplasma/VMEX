@@ -180,7 +180,10 @@ The reviewer-facing status of this ladder is:
      - Complete direct-coil solves have finite-difference response guards, and
        accepted-boundary replay has AD-vs-FD checks after freezing the accepted
        plasma boundary. Accepted-state ``bsqvac`` replay is also AD-vs-FD
-       checked with respect to the VMEC boundary state.
+       checked with respect to the VMEC boundary state. The fixed accepted-trace
+       custom-VJP seam is now checked against complete-solve central finite
+       differences on unchanged accepted branches for a current-only direction
+       and for mixed current/Fourier-geometry directions.
      - Promote to an exact complete-loop AD-vs-FD gate for at least one coil
        current and one Fourier coefficient through production
        ``run_free_boundary``.
@@ -255,6 +258,14 @@ finite-difference perturbation stayed on the same accepted-step/control branch,
 including the same traced reset pattern, scalar update controls, preconditioner
 policy flags, active preconditioner size, and preconditioner/mode-shape
 signatures.
+The current required gate exercises this same-branch contract in two ways:
+a current-only perturbation validates the cleanest coil-control direction,
+while the existing stellsym/``LASYM`` gate validates a mixed current and
+Fourier-geometry direction.  These tests compare the custom-VJP directional
+derivative to the central finite difference of complete tiny free-boundary
+solves after explicitly rejecting branch changes.  This is stronger than a
+fixed-boundary replay test, but it remains a same-branch accepted-trace
+validation rather than a general derivative of the adaptive host loop.
 For scripts that need reviewer-facing evidence, the companion
 ``direct_coil_accepted_trace_fingerprint_delta_summary`` helper converts the
 delta into a strict-JSON-safe payload.
