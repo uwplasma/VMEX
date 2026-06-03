@@ -12,19 +12,81 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-03 while pushing the phase-2 accepted-controller and
-free-boundary performance lanes toward PR readiness. PR #18 is open on
+Last updated: 2026-06-03 while pushing the phase-2 accepted-controller,
+free-boundary performance, and generated-`mgrid` VMEC2000 validation lanes
+toward PR readiness. PR #18 is open on
 `feature/freeb-essos-coil-single-stage`; local branch `refresh/freeb-slim`
-tracks it. The previous pushed head `f9581997` had green GitHub Actions,
-including fast tests on Python 3.10/3.11/3.12, docs, smoke, and physics smoke.
-The current pushed head `d324ed9b` has a fresh CI run queued/in progress after
-the explicit tridiagonal-policy patch. Local follow-up validation now promotes
-reset-aware full accepted-trace replay plus stacked accepted/rejected,
-scalar-control, velocity-array, preconditioner-payload, static-policy segment
-interfaces, and separate current-only/Fourier-only same-branch complete-solve
-AD-vs-FD gates.
+tracks it. The current pushed head `3c3eaffc` has GitHub Actions in progress:
+docs, build, smoke, physics smoke, and parity-manifest smoke are green, while
+the Python 3.10/3.11/3.12 fast-test jobs are still running. Local follow-up
+validation now includes reset-aware full accepted-trace replay plus stacked
+accepted/rejected, scalar-control, velocity-array, preconditioner-payload,
+static-policy segment interfaces, current-only/Fourier-only same-branch
+complete-solve AD-vs-FD gates, explicit tridiagonal-policy coverage, and
+VMEC2000 generated-`mgrid` WOUT-quality classification.
 Do not merge/release until the refreshed pushed head has green GitHub Actions
 and the phase-2 limitations below remain explicit in docs.
+
+### 2026-06-03 VMEC2000 `threed1` packed-field parser hardening
+
+Steps taken:
+
+1. Hardened `vmec_jax.vmec2000_exec._parse_vmec2000_threed1` so it can parse
+   VMEC2000 free-boundary `threed1.*` rows with adjacent fixed-width numeric
+   fields such as `1.001-3.53E+00`.
+2. Preserved support for legacy Fortran missing-exponent underflow tokens such
+   as `1.0564215887228806-316`; those are parsed as a single float, not split
+   into adjacent fields.
+3. Added focused parser tests for packed `BETA/<M>/DEL-BSQ/FEDGE` rows and
+   omitted-exponent underflow values.
+4. Re-parsed the real failed diagnostic trace from
+   `/tmp/vmec_jax_freeb_vmec2000_sign_phiedge_minus_longer_work/...` and
+   confirmed the packed iteration-400 row now yields finite parsed fields.
+5. Reran the longer sign-flipped generated-`mgrid` diagnostic in
+   classification mode with failure-on-mismatch disabled, writing
+   `/tmp/vmec_jax_freeb_vmec2000_sign_phiedge_minus_longer_parser_fixed.json`.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/vmec2000_exec.py
+   tests/test_vmec2000_exec_parser_more_coverage.py` passed.
+2. `python -m pytest -q tests/test_vmec2000_exec_parser_more_coverage.py -q`
+   passed: 13 tests.
+3. `python -m pytest -q
+   tests/test_fast_physics_kernels.py::test_vmec2000_trace_parser_handles_multiple_stages_and_d_exponents
+   tests/test_vmec2000_exec_parser_more_coverage.py -q` passed: 14 tests.
+4. The long optional diagnostic now completes with no hard errors. It still
+   reports warnings:
+   `vmec_jax_direct_vs_generated_mgrid_mismatch`,
+   `vmec2000_wout_nonpromotable`,
+   `vmec_jax_mgrid_vs_vmec2000_mgrid_limits_exceeded`, and
+   `vmec_jax_direct_vs_vmec2000_mgrid_limits_exceeded`.
+5. The VMEC2000 process itself completed with return code 0 and a parseable
+   final row at iteration 600:
+   `FSQR=0.519`, `FSQZ=0.090`, `FSQL=0.194`, `BETA=8.089e-4`,
+   `<M>=1.001`, `DEL-BSQ=1.02`, and `FEDGE=0.846`.
+6. The WOUT is correctly classified as non-promotable:
+   `fsq_total=0.8034107792301185`, geometry scalars
+   `aspect=Rmajor_p=Aminor_p=volume_p=0`, reason
+   `nonpositive_geometry_scalars`.
+7. The tighter forced-active `ns=5,7` schedule is not provider-parity evidence:
+   vmec_jax direct coils vs generated `mgrid` fails at `ns=7` with iota
+   relative RMS about `1.80`, `rmnc` relative RMS about `0.108`, `zmns`
+   relative RMS about `0.236`, and aspect relative gap about `0.172`.
+
+Best next steps:
+
+1. Keep the optional VMEC2000 WOUT row classified/xfail until a sign-consistent
+   generated-`mgrid` LP-QA schedule produces finite, positive WOUT geometry
+   scalars and small physical residuals.
+2. Treat the tighter forced-active low-resolution schedule as a research
+   diagnostic for direct-coil/generated-`mgrid` nonlinear divergence, not as a
+   promotion gate.
+3. After CI completes, push this parser hardening as a small logical commit.
+
+Need from user:
+
+Nothing now.
 
 ### 2026-06-03 PR green CI and optional VMEC2000 generated-mgrid validation
 
