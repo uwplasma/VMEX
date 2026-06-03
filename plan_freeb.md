@@ -616,6 +616,12 @@ Results obtained:
    `accepted_trace_controls.preconditioner_policy_n_segments = 2` for the
    two-step tiny case, with separate setup and active free-boundary replay
    policy segments.
+5. The optional `--include-controller-vjp` same-branch report reached the
+   stacked-controller scan compile path and remained in XLA compilation long
+   enough to be manually terminated after more than ten minutes. This is not a
+   correctness failure for the default diagnostic, but it confirms the next
+   performance target: reduce cold accepted-controller scan/JVP compile cost
+   before making controller-VJP evidence part of routine validation.
 
 Best next steps:
 
