@@ -258,6 +258,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_accepted_trace_controller_custom_vjp_objective_jax,
         direct_coil_accepted_trace_fingerprint_delta_summary,
+        direct_coil_accepted_trace_preconditioner_policy_segment_summary,
         direct_coil_fixed_trace_custom_vjp_objective_jax,
     )
 
@@ -316,6 +317,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         atol=float(args.fingerprint_atol),
     )
     same_branch = bool(plus_branch["compatible"] and minus_branch["compatible"])
+    preconditioner_segment_summary = direct_coil_accepted_trace_preconditioner_policy_segment_summary(base_traces)
 
     base_complete = _state_norm_objective(base_result.state)
     plus_complete = _state_norm_objective(plus_result.state)
@@ -417,6 +419,10 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                 "same_branch": same_branch,
                 "plus": plus_branch,
                 "minus": minus_branch,
+            },
+            "accepted_trace_controls": {
+                "preconditioner_policy_segment_summary": preconditioner_segment_summary,
+                "preconditioner_policy_n_segments": len(preconditioner_segment_summary),
             },
             "complete_solve_values": {
                 "base": float(base_complete),

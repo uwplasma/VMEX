@@ -256,7 +256,10 @@ The default command is bounded and records the branch fingerprints,
 complete-solve central finite-difference slope, and fixed-trace custom-VJP
 slope.  Passing ``--include-controller-vjp`` also evaluates the stacked
 accepted-controller custom VJP, which is useful for deeper review but slower in
-cold processes.  The controller replay keeps only the tridiagonal
+cold processes.  The JSON report includes
+``accepted_trace_controls.preconditioner_policy_segment_summary`` so reviewers
+can see whether the accepted trace is a single static preconditioner-policy
+range or will require multiple subcontrollers.  The controller replay keeps only the tridiagonal
 preconditioner policy as branch-local static trace data.  Update limiting and
 ``divide_by_scalxc_for_update`` are JAX-visible scan controls, so accepted
 controller payloads can include those switches without traced-Python-boolean

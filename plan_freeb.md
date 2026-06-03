@@ -585,6 +585,48 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-03 Segment summaries in same-branch report
+
+Steps taken:
+
+1. Added the accepted-trace preconditioner-policy segment summary to
+   `tools/diagnostics/direct_coil_same_branch_adjoint_report.py`.
+2. The report now writes
+   `accepted_trace_controls.preconditioner_policy_segment_summary` and
+   `preconditioner_policy_n_segments` next to the complete-solve FD and
+   fixed/controller VJP checks.
+3. Updated `docs/free_boundary_coil_optimization.rst` so reviewers know where
+   to inspect the segment diagnostics in the generated JSON.
+
+Results obtained:
+
+1. Static checks passed:
+   `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tools/diagnostics/direct_coil_same_branch_adjoint_report.py` and
+   `python -m py_compile` on the same files.
+2. Full docs passed with warnings as errors:
+   `python -m sphinx -W --keep-going -b html docs
+   /tmp/vmec_jax_freeb_docs_check_same_branch_segments`.
+3. The bounded same-branch report passed:
+   `JAX_ENABLE_X64=1 python
+   tools/diagnostics/direct_coil_same_branch_adjoint_report.py --out
+   /tmp/vmec_jax_freeb_same_branch_segments.json --workdir
+   /tmp/vmec_jax_freeb_same_branch_segments_work`: `status=passed`.
+4. The report emitted
+   `accepted_trace_controls.preconditioner_policy_n_segments = 2` for the
+   two-step tiny case, with separate setup and active free-boundary replay
+   policy segments.
+
+Best next steps:
+
+1. Commit and push this report enhancement.
+2. Inspect the PR-head CI run.
+3. Continue toward the static preconditioner-policy subcontroller prototype.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-03 Segment summary diagnostics
 
 Steps taken:
