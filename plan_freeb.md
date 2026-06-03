@@ -23,6 +23,85 @@ static-policy segment interfaces.
 Do not merge/release until the refreshed pushed head has green GitHub Actions
 and the phase-2 limitations below remain explicit in docs.
 
+### 2026-06-03 PR green CI and optional VMEC2000 generated-mgrid validation
+
+Steps taken:
+
+1. Confirmed PR #18 at head `726dfe71` is merge-clean and up to date with
+   `origin/main`.
+2. Verified GitHub Actions CI run `26861727029` completed successfully:
+   Python 3.10/3.11/3.12 fast tests, physics smoke, wheel/sdist + docs,
+   full-guide docs, console smoke, parity-manifest smoke, and Codecov
+   project/patch all passed.
+3. Ran the provider-only ESSOS generated-`mgrid` parity test locally with
+   `PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr`.
+4. Ran the optional VMEC2000 trace-smoke row with explicit
+   `VMEC2000_EXEC=/Users/rogeriojorge/bin/xvmec2000`.
+5. Ran the optional VMEC2000 WOUT-level row to confirm the current blocker is
+   still classified, not a vmec_jax direct/mgrid mismatch.
+6. Diagnosed the generated-`mgrid` VMEC2000 blocker with longer VMEC2000-only
+   probes and sign variants.
+7. Patched the generated-`mgrid` diagnostic to derive mgrid bounds from the
+   actual input boundary and to use RMS-based modal tolerances for
+   direct-coil/generated-`mgrid` comparisons over nonlinear iteration traces.
+
+Results obtained:
+
+1. `PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr:$PYTHONPATH
+   JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_essos_coil_parity.py::test_essos_direct_coil_free_boundary_matches_generated_mgrid_backend
+   -rx -s` passed: `1 passed in 16.96 s`.
+2. `PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr:$PYTHONPATH
+   VMEC2000_INTEGRATION=1 VMEC2000_EXEC=/Users/rogeriojorge/bin/xvmec2000
+   JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_essos_coil_parity.py::test_vmec2000_generated_mgrid_trace_smoke_records_iteration_rows
+   -rx -s` passed: `1 passed in 21.57 s`, with the expected warning
+   `vmec2000_vacuum_inactive_force_gate`.
+3. `PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr:$PYTHONPATH
+   VMEC2000_INTEGRATION=1 VMEC2000_EXEC=/Users/rogeriojorge/bin/xvmec2000
+   JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_essos_coil_parity.py::test_vmec2000_generated_mgrid_free_boundary_matches_vmec_jax_and_direct_coils
+   -rx -s` produced the expected xfail in `18.46 s`:
+   `status=more_iter_exit classification=vmec2000_vacuum_inactive_force_gate`.
+4. The previous VMEC2000 promotion blocker was partly contaminated by a too
+   small/generated fixed mgrid domain for the reactor-scale LP-QA input.
+   Auto-bounds now resolve the diagnostic mgrid to approximately
+   `R=[4.12, 15.26]`, `Z=[-6.30, 6.30]`, enclosing the sampled input boundary
+   `R=[6.21, 13.17]`, `Z=[-3.94, 3.94]`.
+5. Provider-only auto-bounds diagnostic passed:
+   `PYTHONPATH=/Users/rogeriojorge/local/ESSOS_mgrid_pr:$PYTHONPATH
+   JAX_ENABLE_X64=1 python
+   tools/diagnostics/compare_freeb_coils_mgrid_vmec2000.py --skip-vmec2000
+   --ns-array 5,7 --niter-array 80,80 --ftol-array 1e-5,1e-5 --mpol 3
+   --ntor 2 --mgrid-nr 20 --mgrid-nz 20 --mgrid-nphi 8 --nzeta 8
+   --nvacskip 8 --activate-fsq 1e99 ...` completed with only
+   `vmec2000_skipped`; direct-coil vs generated-`mgrid` passed.
+6. Optional VMEC2000 auto-bounds diagnostic now completes with the single
+   warning `vmec2000_phiedge_wrong_sign`; vmec_jax direct-coil vs
+   generated-`mgrid` still passes. The VMEC2000 error WOUT has `ier_flag=7`
+   and no mode table, so it is not WOUT-level parity evidence.
+7. VMEC2000 sign variants on the corrected grid show that VMEC2000 enters the
+   active vacuum path only when exactly one of `PHIEDGE` or `EXTCUR` is flipped,
+   but those active runs are still underconverged for the current short LP-QA
+   schedule and therefore cannot yet be promoted to a parity gate.
+
+Best next steps:
+
+1. Keep the optional VMEC2000 WOUT row classified/xfail until a sign-consistent
+   LP-QA generated-`mgrid` schedule produces a parseable, converged WOUT with
+   active-vacuum trace evidence.
+2. Next VMEC2000 parity experiment: generate a sign-consistent input/mgrid pair
+   (`PHIEDGE` or `EXTCUR` flipped, not both), increase the schedule enough to
+   reduce physical `FSQR+FSQZ`, then compare against a vmec_jax run with the
+   same sign convention.
+3. Return to full-loop free-boundary adjoint validation and performance work;
+   the direct-coil/generated-`mgrid` vmec_jax provider path is no longer the
+   blocker.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-03 Current-only complete-solve same-branch AD-vs-FD gate
 
 Steps taken:

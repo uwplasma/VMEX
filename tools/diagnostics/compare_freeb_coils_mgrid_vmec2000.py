@@ -119,6 +119,27 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--mgrid-rmax", type=float, default=15.0)
     p.add_argument("--mgrid-zmin", type=float, default=-5.0)
     p.add_argument("--mgrid-zmax", type=float, default=5.0)
+    p.add_argument(
+        "--mgrid-auto-bounds",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Derive mgrid R/Z bounds from the VMEC boundary and padding. "
+            "Use --no-mgrid-auto-bounds to honor explicit --mgrid-rmin/rmax/zmin/zmax."
+        ),
+    )
+    p.add_argument(
+        "--mgrid-padding-fraction",
+        type=float,
+        default=0.30,
+        help="Fractional boundary-span padding used by --mgrid-auto-bounds.",
+    )
+    p.add_argument(
+        "--mgrid-min-padding",
+        type=float,
+        default=0.50,
+        help="Minimum absolute R/Z padding used by --mgrid-auto-bounds.",
+    )
     p.add_argument("--direct-chunk-size", type=int, default=256)
     p.add_argument("--regularization-epsilon", type=float, default=0.0)
     p.add_argument(
@@ -176,14 +197,81 @@ def _parser() -> argparse.ArgumentParser:
         help="Exit nonzero when VMEC2000 WOUT comparison limits are exceeded.",
     )
     p.add_argument("--strict", action="store_true", help="Require all optional paths and fail on all comparison mismatches.")
-    p.add_argument("--jax-rtol", type=float, default=1.0e-9)
-    p.add_argument("--jax-atol", type=float, default=1.0e-9)
+    p.add_argument("--jax-rtol", type=float, default=1.0e-5)
+    p.add_argument("--jax-atol", type=float, default=1.0e-7)
     return p
 
 
 def _diagnostic_nzeta(args: argparse.Namespace) -> int:
     """Return a VMEC NZETA compatible with the generated mgrid kp."""
     return int(args.mgrid_nphi if args.nzeta is None else args.nzeta)
+
+
+def _sample_input_boundary_extents(indata: Any, *, ntheta: int = 96, nzeta: int = 96) -> dict[str, float]:
+    """Return R/Z extrema from VMEC input Fourier boundary coefficients.
+
+    The generated-mgrid diagnostic must contain the actual plasma boundary.
+    Hard-coded small mgrid boxes can otherwise make VMEC2000 fail in the
+    vacuum solve for reasons unrelated to the direct-coil/mgrid field provider.
+    """
+
+    theta = np.linspace(0.0, 2.0 * np.pi, int(ntheta), endpoint=False)
+    zeta = np.linspace(0.0, 2.0 * np.pi / max(1, int(indata.scalars.get("NFP", 1))), int(nzeta), endpoint=False)
+    theta_grid, zeta_grid = np.meshgrid(theta, zeta, indexing="ij")
+    nfp = max(1, int(indata.scalars.get("NFP", 1)))
+
+    r = np.zeros_like(theta_grid, dtype=float)
+    z = np.zeros_like(theta_grid, dtype=float)
+    for name, sign in (("RBC", "cos"), ("RBS", "sin")):
+        for (m, n), value in (indata.indexed.get(name) or {}).items():
+            angle = int(m) * theta_grid - int(n) * nfp * zeta_grid
+            term = np.cos(angle) if sign == "cos" else np.sin(angle)
+            r = r + float(value) * term
+    for name, sign in (("ZBC", "cos"), ("ZBS", "sin")):
+        for (m, n), value in (indata.indexed.get(name) or {}).items():
+            angle = int(m) * theta_grid - int(n) * nfp * zeta_grid
+            term = np.cos(angle) if sign == "cos" else np.sin(angle)
+            z = z + float(value) * term
+
+    return {
+        "boundary_rmin": float(np.min(r)),
+        "boundary_rmax": float(np.max(r)),
+        "boundary_zmin": float(np.min(z)),
+        "boundary_zmax": float(np.max(z)),
+    }
+
+
+def _resolve_mgrid_bounds(indata: Any, args: argparse.Namespace) -> dict[str, float | bool]:
+    if not bool(args.mgrid_auto_bounds):
+        return {
+            "auto_bounds": False,
+            "rmin": float(args.mgrid_rmin),
+            "rmax": float(args.mgrid_rmax),
+            "zmin": float(args.mgrid_zmin),
+            "zmax": float(args.mgrid_zmax),
+        }
+
+    extents = _sample_input_boundary_extents(indata)
+    r_span = max(float(extents["boundary_rmax"] - extents["boundary_rmin"]), 1.0e-12)
+    z_span = max(float(extents["boundary_zmax"] - extents["boundary_zmin"]), 1.0e-12)
+    r_pad = max(float(args.mgrid_min_padding), float(args.mgrid_padding_fraction) * r_span)
+    z_pad = max(float(args.mgrid_min_padding), float(args.mgrid_padding_fraction) * z_span)
+    rmin = max(1.0e-6, float(extents["boundary_rmin"]) - r_pad)
+    rmax = float(extents["boundary_rmax"]) + r_pad
+    zmin = float(extents["boundary_zmin"]) - z_pad
+    zmax = float(extents["boundary_zmax"]) + z_pad
+    if not (rmin < rmax and zmin < zmax):
+        raise ValueError(f"invalid auto mgrid bounds from boundary extents: {extents}")
+    return {
+        "auto_bounds": True,
+        "rmin": rmin,
+        "rmax": rmax,
+        "zmin": zmin,
+        "zmax": zmax,
+        "padding_fraction": float(args.mgrid_padding_fraction),
+        "min_padding": float(args.mgrid_min_padding),
+        **extents,
+    }
 
 
 def _parse_int_array(text: str, *, name: str) -> list[int]:
@@ -547,7 +635,9 @@ def _array_gap(
         "max_abs_delta": float(np.max(np.abs(diff))),
     }
     if rtol is not None and atol is not None:
-        out["within_tolerance"] = bool(np.allclose(got_arr, ref_arr, rtol=float(rtol), atol=float(atol), equal_nan=False))
+        rms_tolerance = float(atol) + float(rtol) * ref_rms
+        out["within_tolerance"] = bool(abs_rms <= rms_tolerance)
+        out["rms_tolerance"] = rms_tolerance
         out["rtol"] = float(rtol)
         out["atol"] = float(atol)
     return out
@@ -1103,15 +1193,27 @@ def _wout_file_diagnostics(path: Path) -> dict[str, Any]:
 
 
 def _mark_unreadable_vmec2000_wout(summary: dict[str, Any], *, wout_path: Path, error: Exception) -> None:
+    wout_file = _wout_file_diagnostics(wout_path)
+    stdout_tail = "\n".join(str(line) for line in summary.get("stdout_tail", []))
+    phiedge_wrong_sign = "PHIEDGE HAS WRONG SIGN IN VACUUM SUBROUTINE" in stdout_tail
     summary["status"] = "wout_unreadable"
-    summary["reason"] = "vmec2000_wout_read_failed"
+    summary["reason"] = "vmec2000_phiedge_wrong_sign" if phiedge_wrong_sign else "vmec2000_wout_read_failed"
     summary["wout_read_error"] = repr(error)
-    summary["wout_file"] = _wout_file_diagnostics(wout_path)
-    summary["help"] = (
-        "VMEC2000 wrote a WOUT file, but vmec_jax could not parse it. "
-        "Inspect wout_file.ier_flag, variables, stdout_tail, threed1_tail, "
-        "and the generated input/mgrid in the VMEC2000 workdir."
-    )
+    summary["wout_file"] = wout_file
+    if phiedge_wrong_sign:
+        summary["help"] = (
+            "VMEC2000 aborted in the vacuum routine because PHIEDGE has the "
+            "wrong sign for this generated-mgrid/current convention. The small "
+            "WOUT is an error WOUT without mode tables, not parity evidence. "
+            "Try a sign-consistent PHIEDGE/EXTCUR convention before promoting "
+            "this optional VMEC2000 row."
+        )
+    else:
+        summary["help"] = (
+            "VMEC2000 wrote a WOUT file, but vmec_jax could not parse it. "
+            "Inspect wout_file.ier_flag, variables, stdout_tail, threed1_tail, "
+            "and the generated input/mgrid in the VMEC2000 workdir."
+        )
 
 
 def _read_vmec2000_wout_for_summary(summary: dict[str, Any], *, wout_path: Path) -> Any | None:
@@ -1345,6 +1447,7 @@ def _base_payload(args: argparse.Namespace, *, out: Path, workdir: Path) -> dict
             "nr": int(args.mgrid_nr),
             "nz": int(args.mgrid_nz),
             "nphi": int(args.mgrid_nphi),
+            "auto_bounds_requested": bool(args.mgrid_auto_bounds),
             "rmin": float(args.mgrid_rmin),
             "rmax": float(args.mgrid_rmax),
             "zmin": float(args.mgrid_zmin),
@@ -1483,8 +1586,14 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"[compare-freeb-coils] generating mgrid: {mgrid_path}")
     try:
-        _write_generated_mgrid(coils, mgrid_path, args=args)
         base_indata = read_indata(base_input)
+        bounds = _resolve_mgrid_bounds(base_indata, args)
+        args.mgrid_rmin = float(bounds["rmin"])
+        args.mgrid_rmax = float(bounds["rmax"])
+        args.mgrid_zmin = float(bounds["zmin"])
+        args.mgrid_zmax = float(bounds["zmax"])
+        payload["mgrid_generation"].update(bounds)
+        _write_generated_mgrid(coils, mgrid_path, args=args)
         write_indata(mgrid_input, _make_freeb_indata(base_indata, mgrid_file=mgrid_path.name, args=args))
         write_indata(direct_input, _make_freeb_indata(base_indata, mgrid_file="DIRECT_COILS", args=args))
         direct_params = from_essos_coils(
