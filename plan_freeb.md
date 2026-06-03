@@ -167,7 +167,11 @@ Steps taken:
    such as ``bmnc``, ``bsub*``, and ``bsup*`` were incorrectly built from the
    main ``xm/xn`` basis. The diagnostic and optional test helper now choose the
    main or Nyquist basis according to each array's last dimension.
-5. Added a synthetic unit test covering both main and Nyquist low-order masks.
+5. Hardened WOUT layout checks so Nyquist ``xm_nyq/xn_nyq`` bases are rejected
+   when mismatched, rather than silently comparing magnetic-field arrays on
+   incompatible mode bases.
+6. Added a synthetic unit test covering both main and Nyquist low-order masks
+   and Nyquist-basis layout rejection.
 
 Results obtained:
 
@@ -194,7 +198,7 @@ Results obtained:
    tests/test_free_boundary_essos_coil_parity.py` passed.
 6. `python -m pytest -q
    tests/test_free_boundary_essos_coil_parity.py::test_low_order_mode_mask_matches_main_and_nyquist_wout_bases
-   -q` passed.
+   -q` passed after the Nyquist layout hardening.
 
 Best next steps:
 

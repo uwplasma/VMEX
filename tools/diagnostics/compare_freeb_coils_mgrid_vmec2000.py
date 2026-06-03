@@ -665,6 +665,16 @@ def _same_layout(got_wout: Any, ref_wout: Any) -> bool:
             return False
         if not np.array_equal(np.asarray(got_wout.xn, dtype=int), np.asarray(ref_wout.xn, dtype=int)):
             return False
+        got_xm_nyq = np.asarray(getattr(got_wout, "xm_nyq", []), dtype=int)
+        ref_xm_nyq = np.asarray(getattr(ref_wout, "xm_nyq", []), dtype=int)
+        got_xn_nyq = np.asarray(getattr(got_wout, "xn_nyq", []), dtype=int)
+        ref_xn_nyq = np.asarray(getattr(ref_wout, "xn_nyq", []), dtype=int)
+        if got_xm_nyq.size or ref_xm_nyq.size:
+            if not np.array_equal(got_xm_nyq, ref_xm_nyq):
+                return False
+        if got_xn_nyq.size or ref_xn_nyq.size:
+            if not np.array_equal(got_xn_nyq, ref_xn_nyq):
+                return False
     except Exception:
         return False
     return True
