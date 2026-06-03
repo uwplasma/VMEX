@@ -325,6 +325,25 @@ monolithic replay versus ``7.56 s`` for segmented replay.  That validates the
 control-flow split, but it does not yet demonstrate a meaningful speedup; the
 next performance target is a real multi-policy production trace or a larger
 trace-width benchmark.
+Running the same diagnostic on a slightly longer tiny solve without synthetic
+policy edits,
+
+.. code-block:: bash
+
+   JAX_ENABLE_X64=1 python tools/diagnostics/direct_coil_segmented_replay_report.py \
+     --out /tmp/vmec_jax_freeb_segmented_replay_nosynth_n4.json \
+     --workdir /tmp/vmec_jax_freeb_segmented_replay_nosynth_n4_work \
+     --niter 4 \
+     --no-synthetic-multi-policy
+
+produced a real two-segment accepted trace: the first step used
+``precond_jmax=6`` and the remaining three steps used ``precond_jmax=7`` with
+active free-boundary replay.  The segmented and monolithic replay objectives
+and final states matched exactly in the JSON report, but cold replay timing
+was still comparable: about ``21.19 s`` monolithic versus ``21.38 s``
+segmented.  This confirms the next optimization target is the strict-update
+and preconditioner replay compilation path itself, not just the controller
+segment wrapper.
 The remaining phase-2 blocker is differentiating through the nonlinear
 ``run_free_boundary`` iteration loop itself, rather than through the dense toy
 nonlinear primitive, fixed-boundary operator, complete finite-response proxy,

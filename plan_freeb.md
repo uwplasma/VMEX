@@ -117,15 +117,24 @@ Results obtained:
    /tmp/vmec_jax_freeb_segmented_replay_work --warm-repeats 1` passed:
    `segments=2`, monolithic first replay `7.589 s`, segmented first replay
    `7.560 s`, objective delta `0.0`, state max absolute delta `0.0`.
+4. `JAX_ENABLE_X64=1 python tools/diagnostics/direct_coil_segmented_replay_report.py
+   --out /tmp/vmec_jax_freeb_segmented_replay_nosynth_n4.json --workdir
+   /tmp/vmec_jax_freeb_segmented_replay_nosynth_n4_work --warm-repeats 1
+   --niter 4 --no-synthetic-multi-policy` passed on a real two-segment
+   production trace. The first segment had `precond_jmax=6`; the remaining
+   three accepted steps had `precond_jmax=7` and active free-boundary replay.
+   Objective and state deltas were exactly `0.0`; monolithic replay was
+   `21.191 s`, segmented replay was `21.379 s`.
 
 Best next steps:
 
 1. Run focused tests/docs/lint, commit, and push.
 2. Keep this diagnostic out of default CI because it costs about 25 seconds
-   end-to-end locally.
-3. Next performance step: collect a real production trace with more than one
-   static preconditioner-policy segment. If segmented replay still does not
-   help, focus on strict-update/preconditioner replay compilation.
+   end-to-end locally for the synthetic two-step run and longer for the
+   no-synthetic four-step run.
+3. The real two-segment run confirms segmentation is behavior-preserving but
+   not the dominant speed lever at this trace size. Next performance work
+   should target strict-update/preconditioner replay compilation directly.
 
 Need from user:
 
