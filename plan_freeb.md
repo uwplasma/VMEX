@@ -585,6 +585,53 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-03 Segment summary diagnostics
+
+Steps taken:
+
+1. Added
+   `direct_coil_accepted_trace_preconditioner_policy_segment_summary`.
+2. The helper converts raw static preconditioner-policy segments into
+   JSON-safe diagnostics with accepted-step, rejected-step,
+   free-boundary-replay, state-reset, and done-marker counts.
+3. Wired the summary into
+   `direct_coil_accepted_trace_controller_replay_objective_jax` as
+   `preconditioner_policy_segment_summary`.
+4. Extended the production-backed two-step replay test to assert the summary
+   for both a normal two-step replay and a padded three-slot replay with one
+   rejected slot.
+5. Updated `docs/free_boundary_coil_optimization.rst` to describe the summary
+   payload.
+
+Results obtained:
+
+1. Static checks passed:
+   `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   and `python -m py_compile` on the same files.
+2. The focused fingerprint/segment test passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes
+   -rx`: `1 passed in 0.58 s`.
+3. Full docs passed with warnings as errors:
+   `python -m sphinx -W --keep-going -b html docs
+   /tmp/vmec_jax_freeb_docs_check_segment_summary`.
+4. The production-backed two-step controller replay gate passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state
+   -rx -s`: `1 passed in 174.55 s`.
+
+Best next steps:
+
+1. Commit and push this diagnostics rung.
+2. Inspect the PR-head CI run.
+3. Use these summaries in benchmark/diagnostic outputs, then prototype the
+   static-policy subcontroller split.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-03 Main-branch merge validation
 
 Steps taken:

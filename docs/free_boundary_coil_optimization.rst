@@ -274,7 +274,10 @@ data model for that subcontroller split.  The accepted-controller replay
 returns these ranges as ``preconditioner_policy_segments`` together with the
 segment count, so diagnostics can distinguish a same-policy replay from one
 that will need multiple static-policy subcontrollers before the replay
-implementation is refactored.
+implementation is refactored.  The companion
+``preconditioner_policy_segment_summary`` payload is JSON-safe and records the
+accepted, rejected, free-boundary replay, state-reset, and done-marker counts
+inside each static-policy range.
 The remaining phase-2 blocker is differentiating through the nonlinear
 ``run_free_boundary`` iteration loop itself, rather than through the dense toy
 nonlinear primitive, fixed-boundary operator, complete finite-response proxy,

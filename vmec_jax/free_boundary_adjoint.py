@@ -2330,6 +2330,72 @@ def direct_coil_accepted_trace_preconditioner_policy_segments(
     return segments
 
 
+def direct_coil_accepted_trace_preconditioner_policy_segment_summary(
+    traces: Any,
+    *,
+    accept_mask: Any | None = None,
+    done_mask: Any | None = None,
+    max_steps: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return JSON-safe preconditioner-policy segment diagnostics.
+
+    The raw segment signatures are intentionally precise Python tuples for
+    equality checks.  This summary is the user-facing diagnostic payload for
+    accepted-controller replay: each entry records the half-open step range,
+    static preconditioner policy, and how many accepted, rejected, free-boundary
+    replay, reset, and done-marker slots live in that range.
+    """
+
+    trace_seq = tuple(traces)
+    if max_steps is not None:
+        trace_seq = trace_seq[: int(max_steps)]
+    if not trace_seq:
+        raise ValueError("at least one accepted trace is required")
+
+    n_steps = len(trace_seq)
+    if accept_mask is not None:
+        accept_mask = np.asarray(accept_mask, dtype=bool)[:n_steps]
+    if done_mask is not None:
+        done_mask = np.asarray(done_mask, dtype=bool)[:n_steps]
+    controls = direct_coil_accepted_trace_controller_controls_jax(
+        trace_seq,
+        accept_mask=accept_mask,
+        done_mask=done_mask,
+    )
+    accepted = np.asarray(controls["accept"], dtype=bool)
+    done = np.asarray(controls["done"], dtype=bool)
+    reset = np.asarray(controls["reset_to_trace_pre"], dtype=bool)
+    freeb = np.asarray(controls["has_active_freeb_replay"], dtype=bool)
+
+    summaries: list[dict[str, Any]] = []
+    for index, segment in enumerate(direct_coil_accepted_trace_preconditioner_policy_segments(trace_seq)):
+        start = int(segment["start"])
+        stop = int(segment["stop"])
+        signature = segment["signature"]
+        segment_accept = accepted[start:stop]
+        segment_done = done[start:stop]
+        segment_reset = reset[start:stop]
+        segment_freeb = freeb[start:stop]
+        summaries.append(
+            {
+                "index": int(index),
+                "start": start,
+                "stop": stop,
+                "n_steps": int(stop - start),
+                "accepted_steps": int(np.count_nonzero(segment_accept)),
+                "rejected_steps": int(segment_accept.size - np.count_nonzero(segment_accept)),
+                "done_markers": int(np.count_nonzero(segment_done)),
+                "state_resets": int(np.count_nonzero(segment_reset)),
+                "free_boundary_replay_steps": int(np.count_nonzero(segment_freeb)),
+                "preconditioner_use_precomputed_tridi": int(signature[0]),
+                "preconditioner_use_lax_tridi": int(signature[1]),
+                "precond_jmax": int(signature[2]),
+                "signature_repr": repr(signature),
+            }
+        )
+    return summaries
+
+
 def direct_coil_accepted_trace_array_controls_jax(traces: Any) -> dict[str, Any]:
     """Return stacked array-valued update controls for accepted trace replay.
 
@@ -2405,6 +2471,11 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
         done_mask=done_mask,
     )
     preconditioner_policy_segments = direct_coil_accepted_trace_preconditioner_policy_segments(trace_seq)
+    preconditioner_policy_segment_summary = direct_coil_accepted_trace_preconditioner_policy_segment_summary(
+        trace_seq,
+        accept_mask=accept_mask,
+        done_mask=done_mask,
+    )
     scalar_controls = direct_coil_accepted_trace_scalar_controls_jax(trace_seq)
     array_controls = direct_coil_accepted_trace_array_controls_jax(trace_seq)
     # These preconditioner policy flags still feed Python bool/int dispatch in
@@ -2543,6 +2614,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
         "preconditioner_controls_stacked": bool(preconditioner_controls_stacked),
         "preconditioner_policy_segments": preconditioner_policy_segments,
         "preconditioner_policy_n_segments": len(preconditioner_policy_segments),
+        "preconditioner_policy_segment_summary": preconditioner_policy_segment_summary,
         "state_reset_flags": tuple(bool(flag) for flag in np.asarray(controls["reset_to_trace_pre"], dtype=bool)),
     }
 

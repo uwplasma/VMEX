@@ -2081,6 +2081,17 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         (segment["start"], segment["stop"], segment["n_steps"])
         for segment in controller_replay["preconditioner_policy_segments"]
     ] == [(0, 2, 2)]
+    assert [
+        (
+            segment["start"],
+            segment["stop"],
+            segment["accepted_steps"],
+            segment["rejected_steps"],
+            segment["free_boundary_replay_steps"],
+            segment["state_resets"],
+        )
+        for segment in controller_replay["preconditioner_policy_segment_summary"]
+    ] == [(0, 2, 2, 0, 2, 0)]
     np.testing.assert_array_equal(
         np.asarray(controller_replay["history"]["rejected"]),
         np.asarray([False, False]),
@@ -2134,6 +2145,18 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         (segment["start"], segment["stop"], segment["n_steps"])
         for segment in padded_controller_replay["preconditioner_policy_segments"]
     ] == [(0, 3, 3)]
+    assert [
+        (
+            segment["start"],
+            segment["stop"],
+            segment["accepted_steps"],
+            segment["rejected_steps"],
+            segment["done_markers"],
+            segment["free_boundary_replay_steps"],
+            segment["state_resets"],
+        )
+        for segment in padded_controller_replay["preconditioner_policy_segment_summary"]
+    ] == [(0, 3, 2, 1, 1, 3, 1)]
     np.testing.assert_allclose(
         np.asarray(padded_controller_replay["objective"]),
         np.asarray(controller_replay["objective"]),
