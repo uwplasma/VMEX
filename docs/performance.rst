@@ -1125,13 +1125,18 @@ Exact optimizer profiling
 -------------------------
 
 Use ``tools/diagnostics/profile_exact_optimizer.py`` to time the exact
-optimization callback stack:
+optimization callback stack for the QA, QH, and QP quasisymmetry objectives:
 
 .. code-block:: bash
 
    PYTHONPATH=. python tools/diagnostics/profile_exact_optimizer.py \
      --problem qa --max-mode 2 --max-nfev 2 \
      --trial-max-iter 300 --trial-ftol 1e-10
+
+Use ``--problem qp`` for the quasi-poloidal fixed-boundary profile preset.  QI
+uses Boozer-space residuals and promotion gates, so profile it with the
+dedicated ``tools/diagnostics/profile_qi_boozer_gpu.py`` path before launching
+full QI optimization sweeps.
 
 The callback profile reports separate timings for relaxed trial solves, exact
 tape construction, checkpoint-tape JVP replay, residual tangent projection, and

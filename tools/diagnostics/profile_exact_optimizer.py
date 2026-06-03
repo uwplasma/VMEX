@@ -29,6 +29,7 @@ ACCEPTED_REPLAY_PROFILE_NAMES = (
     "jacobian_tape_replay",
     "jacobian_projected_replay_total",
     "jacobian_fused_projected_replay_total",
+    "jacobian_chunked_projected_replay_projection_total",
     "gradient_tape_replay",
     "state_tangent_tape_replay",
     "b_cartesian_tangent_tape_replay",
@@ -43,7 +44,7 @@ RESIDUAL_TANGENT_PROFILE_NAMES = (
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser()
-    p.add_argument("--problem", choices=("qa", "qh"), default="qa")
+    p.add_argument("--problem", choices=("qa", "qh", "qp"), default="qa")
     p.add_argument("--max-mode", type=int, default=1)
     p.add_argument("--max-nfev", type=int, default=3)
     p.add_argument("--inner-max-iter", type=int, default=0)
@@ -1124,12 +1125,43 @@ def main() -> int:
     enable_x64(True)
 
     root = Path(__file__).resolve().parents[2]
-    input_file = root / "examples" / "data" / (
-        "input.nfp2_QA" if args.problem == "qa" else "input.nfp4_QH_warm_start"
-    )
-    helicity_n = 0 if args.problem == "qa" else -1
-    target_aspect = 6.0 if args.problem == "qa" else 7.0
-    target_iota = 0.41 if args.problem == "qa" else None
+    problem_defaults = {
+        "qa": {
+            "input": "input.nfp2_QA",
+            "helicity_m": 1,
+            "helicity_n": 0,
+            "target_aspect": 6.0,
+            "target_iota": 0.41,
+            "min_abs_iota": None,
+            "iota_weight": 1.0,
+        },
+        "qh": {
+            "input": "input.nfp4_QH_warm_start",
+            "helicity_m": 1,
+            "helicity_n": -1,
+            "target_aspect": 7.0,
+            "target_iota": None,
+            "min_abs_iota": None,
+            "iota_weight": 1.0,
+        },
+        "qp": {
+            "input": "input.nfp2_QI",
+            "helicity_m": 0,
+            "helicity_n": -1,
+            "target_aspect": 5.0,
+            "target_iota": None,
+            "min_abs_iota": 0.41,
+            # The QP example uses tuple weight=40000, i.e. residual scale=200.
+            "iota_weight": 200.0,
+        },
+    }
+    problem_cfg = problem_defaults[str(args.problem)]
+    input_file = root / "examples" / "data" / str(problem_cfg["input"])
+    helicity_m = int(problem_cfg["helicity_m"])
+    helicity_n = int(problem_cfg["helicity_n"])
+    target_aspect = float(problem_cfg["target_aspect"])
+    target_iota = problem_cfg["target_iota"]
+    min_abs_iota = problem_cfg["min_abs_iota"]
 
     cfg, indata = vj.load_config(str(input_file))
     indata = rebuild_indata_with_resolution(indata, mpol=args.mpol, ntor=args.ntor)
@@ -1158,13 +1190,14 @@ def main() -> int:
     residuals_fn = vj.make_qs_residuals_fn(
         static,
         indata,
-        helicity_m=1,
+        helicity_m=helicity_m,
         helicity_n=helicity_n,
         target_aspect=target_aspect,
         target_iota=target_iota,
+        min_abs_iota=min_abs_iota,
         surfaces=np.arange(0.0, 1.01, 0.1),
         aspect_weight=1.0,
-        iota_weight=1.0,
+        iota_weight=float(problem_cfg["iota_weight"]),
         qs_weight=1.0,
     )
     opt = vj.FixedBoundaryExactOptimizer(

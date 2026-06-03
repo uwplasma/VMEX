@@ -152,7 +152,7 @@ def _build_parser() -> argparse.ArgumentParser:
     fixed.add_argument("--allow-multigrid", dest="single_grid", action="store_false")
 
     exact = parser.add_argument_group("exact-callback mode")
-    exact.add_argument("--problem", choices=("qa", "qh"), default="qh")
+    exact.add_argument("--problem", choices=("qa", "qh", "qp"), default="qh")
     exact.add_argument("--max-mode", type=int, default=2)
     exact.add_argument(
         "--callback",
