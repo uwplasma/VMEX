@@ -89,6 +89,56 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-03 Physics-gate coverage and diagnostic refactor batch
+
+Steps taken:
+
+1. Added literature/physics-anchored pure-JAX Biot-Savart coil tests in
+   `tests/test_external_fields_coils_jax.py`:
+   - circular-loop on-axis analytic field profile,
+   - current reversal and multi-coil superposition,
+   - circular-loop axisymmetry and midplane parity.
+2. Refactored duplicated optional free-boundary diagnostic helper code into
+   `tools/diagnostics/freeb_replay_diagnostic_utils.py`.
+3. Updated direct-coil segmented, strict-update, and boundary replay
+   diagnostics to share JSON conversion and timing/synchronization helpers.
+4. Added focused utility tests in `tests/test_runtime_diagnostics.py`.
+
+Results obtained:
+
+1. `python -m pytest -q tests/test_external_fields_coils_jax.py -rx`
+   passed: `20 passed`.
+2. `python -m pytest -q tests/test_runtime_diagnostics.py::test_freeb_replay_diagnostic_utils_json_ready_and_timed_call
+   tests/test_runtime_diagnostics.py::test_direct_coil_segmented_replay_report_synthetic_policy_helpers
+   tests/test_runtime_diagnostics.py::test_direct_coil_strict_update_replay_report_helpers
+   tests/test_runtime_diagnostics.py::test_direct_coil_boundary_replay_report_selects_active_trace -rx`
+   passed: `4 passed`.
+3. `python -m ruff check tools/diagnostics/freeb_replay_diagnostic_utils.py
+   tools/diagnostics/direct_coil_segmented_replay_report.py
+   tools/diagnostics/direct_coil_strict_update_replay_report.py
+   tools/diagnostics/direct_coil_boundary_replay_report.py
+   tests/test_runtime_diagnostics.py tests/test_external_fields_coils_jax.py`
+   passed.
+4. `python -m py_compile tools/diagnostics/freeb_replay_diagnostic_utils.py
+   tools/diagnostics/direct_coil_segmented_replay_report.py
+   tools/diagnostics/direct_coil_strict_update_replay_report.py
+   tools/diagnostics/direct_coil_boundary_replay_report.py`
+   passed.
+
+Best next steps:
+
+1. Commit and push this batch after `git diff --check`.
+2. Start the first core refactor from the explorer plan: extract the
+   JAX-visible controller helpers from `vmec_jax/free_boundary_adjoint.py`
+   into a compatibility-preserving module.
+3. Add the next physics gate from the coverage audit: a low-cost
+   Shafranov-shift/free-boundary finite-beta promotion test with VMEC2000 as
+   optional external validation and a deterministic internal threshold.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-03 Segmented replay timing diagnostic
 
 Steps taken:

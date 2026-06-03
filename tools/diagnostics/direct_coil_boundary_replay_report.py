@@ -18,7 +18,6 @@ import argparse
 import json
 from pathlib import Path
 import sys
-import time
 from typing import Any
 
 import numpy as np
@@ -27,6 +26,9 @@ import numpy as np
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+from tools.diagnostics.freeb_replay_diagnostic_utils import json_ready as _json_ready
+from tools.diagnostics.freeb_replay_diagnostic_utils import timed_call as _timed
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -67,40 +69,6 @@ def _parser() -> argparse.ArgumentParser:
         help="Exit nonzero if fixed-geometry and full-geometry replay values differ.",
     )
     return p
-
-
-def _block(value: Any) -> Any:
-    if hasattr(value, "block_until_ready"):
-        return value.block_until_ready()
-    return value
-
-
-def _json_ready(value: Any) -> Any:
-    if isinstance(value, np.ndarray):
-        return _json_ready(value.tolist())
-    if isinstance(value, np.generic):
-        return _json_ready(value.item())
-    if isinstance(value, dict):
-        return {str(key): _json_ready(val) for key, val in value.items()}
-    if isinstance(value, (tuple, list)):
-        return [_json_ready(item) for item in value]
-    if isinstance(value, float):
-        return value if np.isfinite(value) else None
-    return value
-
-
-def _timed(fn: Any, *args: Any, warm_repeats: int) -> tuple[Any, float, list[float]]:
-    t0 = time.perf_counter()
-    value = fn(*args)
-    _block(value)
-    first = time.perf_counter() - t0
-    warm: list[float] = []
-    for _ in range(max(0, int(warm_repeats))):
-        t0 = time.perf_counter()
-        value = fn(*args)
-        _block(value)
-        warm.append(time.perf_counter() - t0)
-    return value, first, warm
 
 
 def _select_active_trace(traces: list[dict[str, Any]], trace_index: int) -> tuple[int, dict[str, Any]]:

@@ -32,6 +32,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from tools.diagnostics.freeb_replay_diagnostic_utils import block_until_ready as _block
+from tools.diagnostics.freeb_replay_diagnostic_utils import json_ready as _json_ready
+
 
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__)
@@ -80,26 +83,6 @@ def _parser() -> argparse.ArgumentParser:
         help="Exit nonzero if segmented replay differs from monolithic replay.",
     )
     return p
-
-
-def _block(value: Any) -> Any:
-    if hasattr(value, "block_until_ready"):
-        return value.block_until_ready()
-    return value
-
-
-def _json_ready(value: Any) -> Any:
-    if isinstance(value, np.ndarray):
-        return _json_ready(value.tolist())
-    if isinstance(value, np.generic):
-        return _json_ready(value.item())
-    if isinstance(value, dict):
-        return {str(key): _json_ready(val) for key, val in value.items()}
-    if isinstance(value, (tuple, list)):
-        return [_json_ready(item) for item in value]
-    if isinstance(value, float):
-        return value if np.isfinite(value) else None
-    return value
 
 
 def _with_synthetic_policy_segments(traces: list[dict[str, Any]]) -> list[dict[str, Any]]:
