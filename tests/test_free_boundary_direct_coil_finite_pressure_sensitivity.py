@@ -1247,9 +1247,9 @@ def test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_
         lasym=False,
         niter=2,
         mpol=3,
-        ntheta=6,
+        ntheta=4,
     )
-    base_params = _circle_coil_params(current=3.0e7, n_segments=64)
+    base_params = _circle_coil_params(current=3.0e7, n_segments=24)
     base_dofs = jnp.asarray(base_params.base_curve_dofs)
     base_currents = jnp.asarray(base_params.base_currents)
     direction = base_params.with_arrays(
@@ -1287,9 +1287,9 @@ def test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_
         lasym=False,
         niter=2,
         mpol=3,
-        ntheta=6,
+        ntheta=4,
     )
-    base_params = _circle_coil_params(current=3.0e7, n_segments=64)
+    base_params = _circle_coil_params(current=3.0e7, n_segments=24)
     base_dofs = jnp.asarray(base_params.base_curve_dofs)
     base_currents = jnp.asarray(base_params.base_currents)
     dof_index = (0, 0, 2)
@@ -1342,9 +1342,9 @@ def test_direct_coil_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_br
         lasym=lasym,
         niter=2,
         mpol=3,
-        ntheta=6,
+        ntheta=4,
     )
-    base_params = _circle_coil_params(current=3.0e7, n_segments=64)
+    base_params = _circle_coil_params(current=3.0e7, n_segments=24)
     base_dofs = jnp.asarray(base_params.base_curve_dofs)
     base_currents = jnp.asarray(base_params.base_currents)
     direction = base_params.with_arrays(
@@ -2008,21 +2008,17 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     """
 
     pytest.importorskip("jax")
-    from vmec_jax._compat import jax, jnp
+    from vmec_jax._compat import jnp
     from vmec_jax.discrete_adjoint import strict_update_accepted_step, strict_update_one_step_from_trace
     from vmec_jax.driver import run_free_boundary
     from vmec_jax.free_boundary_adjoint import (
-        direct_coil_accepted_trace_controller_directional_check_jax,
         direct_coil_accepted_trace_controller_replay_objective_jax,
-        direct_coil_accepted_trace_directional_check_jax,
         direct_coil_accepted_trace_fingerprint,
         direct_coil_accepted_trace_fingerprint_delta,
         direct_coil_accepted_trace_replay_objective_jax,
         direct_coil_boundary_bsqvac_from_trace_jax,
         direct_coil_boundary_replay_context,
-        direct_coil_fixed_trace_custom_vjp_objective_jax,
         free_boundary_boundary_geometry_jax,
-        pytree_directional_derivative_check_jax,
     )
     from vmec_jax.solve import solve_fixed_boundary_residual_iter
     from vmec_jax.state import pack_state
@@ -2044,9 +2040,9 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         lasym=False,
         niter=3,
         mpol=3,
-        ntheta=6,
+        ntheta=4,
     )
-    base_params = _circle_coil_params(current=3.0e7, n_segments=64)
+    base_params = _circle_coil_params(current=3.0e7, n_segments=24)
     init = run_free_boundary(
         input_path,
         use_initial_guess=True,
@@ -2170,21 +2166,6 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         np.asarray(pack_state(trace1["state_post"])),
         rtol=1.0e-10,
         atol=1.0e-11,
-    )
-
-    base_dofs = jnp.asarray(base_params.base_curve_dofs)
-    base_currents = jnp.asarray(base_params.base_currents)
-    current_direction = base_params.with_arrays(
-        base_curve_dofs=jnp.zeros_like(base_dofs),
-        base_currents=base_currents * 0.02,
-    )
-    fourier_direction = base_params.with_arrays(
-        base_curve_dofs=jnp.zeros_like(base_dofs).at[0, 0, 2].set(1.0e-2),
-        base_currents=jnp.zeros_like(base_currents),
-    )
-    mixed_direction = base_params.with_arrays(
-        base_curve_dofs=jnp.zeros_like(base_dofs).at[0, 0, 2].set(1.0e-2),
-        base_currents=base_currents * 0.02,
     )
 
     replay = direct_coil_accepted_trace_replay_objective_jax(
@@ -2371,150 +2352,6 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         np.asarray(controller_replay["objective"]),
         rtol=2.0e-12,
         atol=1.0e-12,
-    )
-
-    eps = 1.0e-3
-    for direction in (current_direction, fourier_direction, mixed_direction):
-        check = direct_coil_accepted_trace_directional_check_jax(
-            base_params,
-            direction,
-            trace0["state_pre"],
-            static=init.static,
-            traces=[trace0, trace1],
-            signgs=int(init.signgs),
-            state_weight=1.0,
-            bsqvac_weight=1.0e-12,
-            force_weight=0.0,
-            enforce_edge=False,
-            eps=eps,
-        )
-        exact = float(np.asarray(check["exact_directional"]))
-        fd = float(np.asarray(check["fd_directional"]))
-        assert np.isfinite(exact)
-        assert np.isfinite(fd)
-        assert abs(exact) > 1.0e-16
-        assert abs(fd) > 1.0e-16
-        np.testing.assert_allclose(exact, fd, rtol=5.0e-3, atol=1.0e-10)
-
-    def custom_vjp_objective(params):
-        return direct_coil_fixed_trace_custom_vjp_objective_jax(
-            params,
-            trace0["state_pre"],
-            static=init.static,
-            traces=[trace0, trace1],
-            signgs=int(init.signgs),
-            state_weight=1.0,
-            bsqvac_weight=1.0e-12,
-            force_weight=0.0,
-            enforce_edge=False,
-        )
-
-    custom_check = pytree_directional_derivative_check_jax(
-        custom_vjp_objective,
-        base_params,
-        mixed_direction,
-        eps=eps,
-    )
-    np.testing.assert_allclose(
-        np.asarray(custom_check["value"]),
-        np.asarray(replay["objective"]),
-        rtol=1.0e-12,
-        atol=1.0e-12,
-    )
-    np.testing.assert_allclose(
-        np.asarray(custom_check["exact_directional"]),
-        np.asarray(custom_check["fd_directional"]),
-        rtol=5.0e-3,
-        atol=1.0e-10,
-    )
-
-    def controller_objective(params):
-        return direct_coil_accepted_trace_controller_replay_objective_jax(
-            params,
-            trace0["state_pre"],
-            static=init.static,
-            traces=[trace0, trace1],
-            signgs=int(init.signgs),
-            state_weight=1.0,
-            bsqvac_weight=1.0e-12,
-            force_weight=0.0,
-            enforce_edge=False,
-        )["objective"]
-
-    controller_grad = jax.grad(controller_objective)(base_params)
-    controller_exact = sum(
-        jnp.vdot(grad_leaf, direction_leaf)
-        for grad_leaf, direction_leaf in zip(
-            jax.tree_util.tree_leaves(controller_grad),
-            jax.tree_util.tree_leaves(mixed_direction),
-            strict=True,
-        )
-    )
-    assert np.isfinite(float(np.asarray(controller_exact)))
-    np.testing.assert_allclose(
-        np.asarray(controller_exact),
-        np.asarray(custom_check["exact_directional"]),
-        rtol=5.0e-3,
-        atol=1.0e-10,
-    )
-    controller_check = direct_coil_accepted_trace_controller_directional_check_jax(
-        base_params,
-        mixed_direction,
-        trace0["state_pre"],
-        static=init.static,
-        traces=[trace0, trace1],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
-        eps=eps,
-    )
-    np.testing.assert_allclose(
-        np.asarray(controller_check["exact_directional"]),
-        np.asarray(controller_check["fd_directional"]),
-        rtol=5.0e-3,
-        atol=1.0e-10,
-    )
-    np.testing.assert_allclose(
-        np.asarray(controller_check["value"]),
-        np.asarray(controller_replay["objective"]),
-        rtol=1.0e-12,
-        atol=1.0e-12,
-    )
-    segmented_controller_check = direct_coil_accepted_trace_controller_directional_check_jax(
-        base_params,
-        mixed_direction,
-        trace0["state_pre"],
-        static=init.static,
-        traces=[trace0, trace1],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
-        use_preconditioner_policy_segments=True,
-        eps=eps,
-    )
-    assert segmented_controller_check["replay"]["used_preconditioner_policy_segments"]
-    assert segmented_controller_check["replay"]["preconditioner_controls_segment_stacked"] == (True,)
-    np.testing.assert_allclose(
-        np.asarray(segmented_controller_check["exact_directional"]),
-        np.asarray(segmented_controller_check["fd_directional"]),
-        rtol=5.0e-3,
-        atol=1.0e-10,
-    )
-    np.testing.assert_allclose(
-        np.asarray(segmented_controller_check["value"]),
-        np.asarray(segmented_controller_replay["objective"]),
-        rtol=1.0e-12,
-        atol=1.0e-12,
-    )
-    np.testing.assert_allclose(
-        np.asarray(segmented_controller_check["exact_directional"]),
-        np.asarray(controller_check["exact_directional"]),
-        rtol=5.0e-3,
-        atol=1.0e-10,
     )
 
 

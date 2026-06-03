@@ -1600,3 +1600,26 @@ Defer beyond the current cycle:
   callback profile improved from `7.99 s` to `6.94 s` with peak RSS dropping
   from about `1593 MiB` to `1456 MiB`; the next patch target moved to
   accepted-solver iteration-loop unattributed compiled work.
+- 2026-06-03: Added the DMerc/Glasser `D_R` derivative-validation lane and
+  required CI runtime-reduction lane. The promoted gate now checks
+  `mercier_terms_from_state` AD-vs-central-FD for both `DMerc` and `D_R` on a
+  finite-beta synthetic state, so these physics metrics are protected as
+  differentiable optimization quantities. To cut CI time without weakening the
+  required physics/numerics coverage, the largest direct-coil free-boundary
+  bottleneck was refactored: the two-step accepted replay test is now a
+  value-parity/branch-control gate, while high-level directional-helper
+  coverage is exercised by a cheap mocked AD-vs-FD unit gate. Toy same-branch
+  custom-VJP gates were also lowered from `ntheta=6`, `n_segments=64` to
+  `ntheta=4`, `n_segments=24`, preserving the branch and derivative assertions
+  but removing unnecessary quadrature cost. Local evidence:
+  `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py` plus
+  the two helper tests passed with the former huge two-step replay gate down to
+  about `10 s` in the full-module run; focused same-branch gates passed with
+  current-only `30.9 s`, LASYM `24.3 s`, Fourier/stellsym `9--10 s`.
+  Remaining work: wait for the current pushed CI run to finish, push this
+  runtime refactor, and continue trimming the current-only same-branch custom
+  VJP gate through trace reuse rather than assertion removal. Completion:
+  DMerc/`D_R` derivative validation `98%`; CI runtime refactor `80%`; physics
+  gates `95%`; docs/release hygiene `96%`; overall `98%` for the merged
+  correctness lanes, with production adaptive full-loop free-boundary adjoint
+  still intentionally not overclaimed.

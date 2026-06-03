@@ -6231,6 +6231,79 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-03 Required CI runtime reduction and Mercier/Glasser derivative gate
+
+Steps taken:
+
+1. Added the plan item for AD-vs-FD validation of `DMerc` and Glasser `D_R`.
+2. Promoted a synthetic finite-beta JAX state derivative gate for
+   `mercier_terms_from_state`, comparing AD against central FD for both
+   `DMerc` and `D_R`.
+3. Identified required-CI runtime bottlenecks from run `26910704175`; the
+   worst required direct-coil replay test was
+   `test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state`.
+4. Refactored that two-step replay test back to its intended scope:
+   branch/value parity for two accepted direct-coil free-boundary replay steps.
+5. Added `compute_fd` to the high-level accepted-trace and accepted-controller
+   directional helpers so expensive callers can avoid duplicate central FDs
+   when an FD gate already exists.
+6. Added a cheap mocked helper-contract test for those high-level helpers so
+   line coverage remains protected without another full VMEC trace.
+7. Reduced same-branch toy custom-VJP gate resolution from `ntheta=6`,
+   `n_segments=64` to `ntheta=4`, `n_segments=24`; these tests still compare
+   fixed-trace/custom-VJP directional derivatives against complete-solve
+   central FD on compatible branches.
+
+Results obtained:
+
+1. Latest pushed CI run `26912390286` is still in progress, with build, docs,
+   CLI smoke, parity smoke, physics smoke, and py3.10 fast tests green as of
+   this entry.
+2. Local ruff passes for changed files:
+   `vmec_jax/free_boundary_adjoint.py`,
+   `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`, and
+   `tests/test_free_boundary_vacuum_adjoint.py`.
+3. Local focused helper tests passed:
+   `test_pytree_directional_derivative_check_can_skip_finite_difference` and
+   `test_direct_coil_trace_directional_helpers_can_skip_finite_difference`.
+4. Local focused same-branch/two-step group passed. Durations after refactor:
+   current-only custom VJP `30.92 s`, LASYM same-branch `24.33 s`, two-step
+   replay `19.60 s`, stellsym same-branch `9.65 s`, Fourier-only `9.37 s`.
+5. Local full edited direct-coil module plus helper tests passed:
+   `26 passed, 1 skipped` plus helper tests. In that full-module context the
+   former huge two-step replay gate was `9.99 s` instead of the previous
+   `149 s` local full-suite duration and `274--457 s` CI durations.
+
+Best next steps:
+
+1. Poll run `26912390286`; if it finishes green, push the runtime refactor and
+   verify the next CI run.
+2. If the new CI run still spends too long in required tests, target the
+   current-only same-branch custom-VJP gate by reusing the complete-solve trace
+   across current/Fourier/LASYM variants or adding a shared fixture, not by
+   removing the complete-solve FD comparison.
+3. Continue the production full-loop free-boundary adjoint milestone:
+   fingerprint-gated complete-loop AD-vs-central-FD through an actual tiny
+   direct-coil free-boundary solve for a physical scalar.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 96%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 98%.
+- VMEC parity and physics gates: 95%.
+- Single-stage coil-only optimization: 79%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 84%.
+- CI runtime refactor with preserved coverage/physics gates: 80%.
+- Docs/release hygiene: 96%.
+- Overall free-boundary ESSOS lane: 98% for merged forward/replay/controller
+  work; not 100% until production adaptive full-loop adjoint is validated.
+
 ### 2026-05-24 Vacuum adjoint scaffold
 
 Steps taken:
