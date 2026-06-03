@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from vmec_jax._compat import enable_x64
-from vmec_jax.external_fields import CoilFieldParams
+from vmec_jax.external_fields import CoilFieldParams, coil_curvatures, coil_lengths, sample_coil_field_cylindrical
 from vmec_jax.robust_coils import (
     CoilPerturbationSample,
     aggregate_risk,
@@ -95,6 +95,48 @@ def test_toroidal_phase_rotation_rotates_all_centerline_dof_vectors_about_z():
     np.testing.assert_allclose(rotated[0, 1, 1], 0.0, atol=1.0e-15)
     np.testing.assert_allclose(rotated[0, 1, 2], 1.0, atol=1.0e-15)
     np.testing.assert_allclose(rotated[0, 2, :], params.base_curve_dofs[0, 2, :], atol=1.0e-15)
+
+
+def test_rigid_centerline_motion_preserves_length_and_curvature():
+    enable_x64(True)
+    from vmec_jax._compat import jnp
+
+    params = _circle_params(radius=1.1)
+    displacement = jnp.asarray([0.35, -0.25, 0.15], dtype=float)
+    phase = jnp.asarray(0.37 * jnp.pi, dtype=float)
+
+    translated = params.with_arrays(base_curve_dofs=displace_curve_dofs(params.base_curve_dofs, displacement))
+    rotated = params.with_arrays(base_curve_dofs=rotate_curve_dofs_about_z(params.base_curve_dofs, phase))
+
+    np.testing.assert_allclose(coil_lengths(translated), coil_lengths(params), rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(coil_curvatures(translated), coil_curvatures(params), rtol=0.0, atol=0.0)
+    np.testing.assert_allclose(coil_lengths(rotated), coil_lengths(params), rtol=1.0e-15, atol=1.0e-15)
+    np.testing.assert_allclose(coil_curvatures(rotated), coil_curvatures(params), rtol=1.0e-14, atol=1.0e-14)
+
+
+def test_current_perturbation_scales_direct_biot_savart_field():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+
+    enable_x64(True)
+    params = _circle_params(current=4.2, radius=1.15)
+    identity = identity_coil_perturbation(params)
+    current_factor = 1.75
+    sample = CoilPerturbationSample(
+        current_factors=jnp.asarray([current_factor], dtype=float),
+        displacement_xyz=identity.displacement_xyz,
+        toroidal_phase=identity.toroidal_phase,
+        centerline_dof_delta=identity.centerline_dof_delta,
+    )
+    perturbed = perturb_coil_params(params, sample)
+    R = jnp.asarray([0.42, 0.74, 1.68], dtype=float)
+    Z = jnp.asarray([0.18, -0.24, 0.37], dtype=float)
+    phi = jnp.asarray([0.13, 0.91, 2.04], dtype=float)
+
+    base_field = jnp.stack(sample_coil_field_cylindrical(params, R, Z, phi))
+    scaled_field = jnp.stack(sample_coil_field_cylindrical(perturbed, R, Z, phi))
+
+    np.testing.assert_allclose(scaled_field, current_factor * base_field, rtol=1.0e-14, atol=1.0e-20)
 
 
 def test_centerline_gaussian_perturbation_is_deterministic_and_preserves_constants_by_default():
