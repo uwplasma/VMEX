@@ -6412,14 +6412,19 @@ Results obtained:
 
 Best next steps:
 
-1. Wait for GitHub Actions run `26917079514` to confirm green py3.11 coverage
-   and py3.12 compatibility lanes.
-2. Push the compatibility-lane skip marker once the current run is green, then
-   confirm the next CI run shows py3.10/py3.12 runtime reduction without
-   lowering the py3.11 coverage/physics gate.
-3. If runtime remains high, trim the remaining compatibility-only duplicate
-   solve gates using the same policy, not by deleting physics assertions.
-4. Continue the production full-loop adjoint milestone only after CI is green:
+1. Use the green GitHub Actions run `26918086767` as the baseline for the next
+   runtime pass.
+2. Reduce the py3.11 coverage lane itself by refactoring the four largest
+   remaining promotion gates into lower-dimensional physics-equivalent checks
+   plus one retained complete-solve trace: direct-coil current-only
+   same-branch custom VJP (`147 s`), exact B Cartesian tangent columns
+   (`123 s`), QH checkpoint JVP columns (`106 s`), and scalar-objective
+   cotangent (`93 s`).
+3. Keep py3.10/py3.12 as compatibility lanes with
+   `VMEC_JAX_SKIP_PY311_COVERAGE_ONLY=1`; do not remove assertions from the
+   py3.11 coverage-bearing lane until replacement coverage is validated.
+4. Continue the production full-loop adjoint milestone after the second-stage
+   coverage-runtime refactor:
    complete-loop AD-vs-central-FD through an actual tiny direct-coil
    free-boundary solve for a physical scalar.
 
@@ -6436,7 +6441,59 @@ Completion:
 - Single-stage coil-only optimization: 79%.
 - Robust coil perturbation optimization: 70%.
 - CPU/GPU performance: 84%.
-- CI runtime refactor with preserved coverage/physics gates: 88%.
+- CI runtime refactor with preserved coverage/physics gates: 90%.
+- Docs/release hygiene: 96%.
+
+### 2026-06-03 CI runtime split confirmation
+
+Steps taken:
+
+1. Confirmed `main` is clean at `17a0ccd`.
+2. Verified there are no open PRs in `uwplasma/vmec_jax`.
+3. Waited for GitHub Actions run `26918086767` after the
+   `py311_coverage_only` split.
+4. Pulled CI duration logs for py3.10, py3.11, and py3.12.
+
+Results obtained:
+
+1. The full workflow passed.
+2. py3.10 compatibility tests passed:
+   `2357 passed, 326 skipped, 1 xfailed` in `6:08`.
+3. py3.12 compatibility tests passed:
+   `2357 passed, 326 skipped, 1 xfailed` in `7:49`.
+4. py3.11 coverage/physics tests passed:
+   `2652 passed, 30 skipped, 2 xfailed` in `22:04`, exact line coverage
+   `95.03%`.
+5. The compatibility-lane split works, but py3.11 remains the required-CI
+   bottleneck. Slowest py3.11 tests are:
+   current-only same-branch custom VJP (`147 s`), exact B Cartesian tangent
+   columns (`123 s`), QH checkpoint JVP columns (`106 s`), and scalar-objective
+   cotangent (`93 s`).
+
+Best next steps:
+
+1. Add a second-stage py3.11 runtime refactor: reduce high-dimensional FD column
+   count and reuse synthetic states/traces in those four slow gates while
+   preserving one complete-solve promotion trace.
+2. Keep the DMerc/Glasser `D_R` AD-vs-central-FD gate in required CI; it is not
+   the current runtime bottleneck.
+3. After runtime is under target, resume production adaptive full-loop
+   direct-coil free-boundary AD-vs-FD validation for a physical scalar.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 96%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 98%.
+- VMEC parity and physics gates: 95%.
+- Single-stage coil-only optimization: 79%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 84%.
+- CI runtime refactor with preserved coverage/physics gates: 90%.
 - Docs/release hygiene: 96%.
 
 ### 2026-05-24 Provider slice 1

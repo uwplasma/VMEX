@@ -3,11 +3,11 @@
 Last updated: 2026-06-03
 Primary branch: `main`
 Baseline release: `v0.0.14`
-Latest known green `main` CI: `7e7eb47`
-Current candidate: `main` at `9ed50c8`, retaining the 95% required coverage
-gate, the new `DMerc`/Glasser `D_R` AD-vs-central-FD derivative gate, and the
-direct-coil/free-boundary CI-runtime stabilizations. GitHub Actions run
-`26917079514` is the current confirmation run.
+Latest known green `main` CI: `17a0ccd`
+Current candidate: `main` at `17a0ccd`, retaining the 95% required coverage
+gate, the `DMerc`/Glasser `D_R` AD-vs-central-FD derivative gate, and the
+first direct-coil/free-boundary CI-runtime split. GitHub Actions run
+`26918086767` passed all required jobs.
 
 This is the living execution plan for making `vmec_jax` accurate, fast,
 differentiable, documented, and usable by external researchers. Update it when
@@ -38,12 +38,15 @@ acceptance criteria or evidence changes.
   numerics, algorithm, and parity coverage.
 - The first DMerc/`D_R` derivative gate is now in required tests, comparing
   JAX AD against central finite differences through `mercier_terms_from_state`.
-  The first CI-runtime refactor keeps fixture-backed WOUT parity on py3.11
-  only, fixture-gates optional response tests on py3.10/py3.12, and emits
-  pytest duration reports so future runtime cuts are evidence-driven.
-  GitHub Actions run `26910704175` for `7e7eb47` passed all required jobs;
-  py3.11 reported 95.03% coverage, while duration logs show the two-step
-  direct-coil replay gate is now the largest required-CI runtime target.
+  The first CI-runtime refactor keeps fixture-backed WOUT parity and expensive
+  derivative-promotion gates on py3.11 only while py3.10/py3.12 remain
+  compatibility lanes. GitHub Actions run `26918086767` for `17a0ccd` passed:
+  py3.10 `2357 passed, 326 skipped, 1 xfailed` in `6:08`, py3.12
+  `2357 passed, 326 skipped, 1 xfailed` in `7:49`, and py3.11
+  `2652 passed, 30 skipped, 2 xfailed` with exact line coverage `95.03%` in
+  `22:04`. The remaining py3.11 runtime targets are the direct-coil
+  same-branch custom-VJP complete-solve FD gate, exact B-field tangent columns,
+  QH checkpoint JVP, and scalar cotangent gate.
 - VMEC profile evaluation now covers polynomial pressure/iota/current profiles
   plus VMEC-style cubic, Akima, and line-segment tabulated pressure, iota, and
   current profiles. Cubic pressure/iota and current spline decks have been
@@ -1686,3 +1689,17 @@ Defer beyond the current cycle:
   compatibility lanes. Completion: CI runtime/refactor `88%`; DMerc/`D_R`
   derivative validation `98%`; VMEC parity and physics gates `95%`; docs/release
   hygiene `96%`.
+- 2026-06-03: Confirmed pushed CI run `26918086767` for `17a0ccd` is green
+  after the compatibility-lane split. Results: py3.10
+  `2357 passed, 326 skipped, 1 xfailed` in `6:08`; py3.12
+  `2357 passed, 326 skipped, 1 xfailed` in `7:49`; py3.11
+  `2652 passed, 30 skipped, 2 xfailed` in `22:04` with exact line coverage
+  `95.03%`. The compatibility lanes are now bounded, but the py3.11 coverage
+  lane remains above the target. Slowest py3.11 tests are current-only
+  same-branch custom VJP (`147 s`), exact Cartesian B tangent columns (`123 s`),
+  QH checkpoint JVP columns (`106 s`), and scalar-objective cotangent
+  (`93 s`). Next CI-runtime work should replace duplicate high-dimensional FD
+  column checks with lower-dimensional physics-equivalent gates plus one
+  retained promotion trace, not weaken the DMerc/`D_R` derivative gate.
+  Completion: CI runtime/refactor `90%`; DMerc/`D_R` derivative validation
+  `98%`; VMEC parity and physics gates `95%`; docs/release hygiene `96%`.
