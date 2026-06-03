@@ -6542,6 +6542,49 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 91%.
 - Docs/release hygiene: 96%.
 
+### 2026-06-03 Exact B tangent/scalar cotangent gate consolidation
+
+Steps taken:
+
+1. Consolidated the exact optimizer B Cartesian tangent-column gate and scalar
+   objective cotangent gate into one py3.11 promotion test.
+2. Kept all four assertions in the merged test: B field equals residual,
+   tangent columns equal dense Jacobian, scalar cost equals `0.5 ||r||^2`, and
+   scalar cotangent gradient equals `J^T r`.
+3. Left the separate central-FD Jacobian gate in place for multi-column
+   finite-difference validation.
+
+Results obtained:
+
+1. Ruff passed for `tests/test_boundary_field.py`.
+2. Focused exact optimizer boundary-field tests passed.
+3. Full boundary-field test file passed: `4 passed` in `47.06 s`; the merged
+   promotion gate measured `38.42 s`.
+
+Best next steps:
+
+1. Push the consolidation and watch CI.
+2. Next py3.11 runtime targets are QH checkpoint JVP columns and any remaining
+   direct-coil same-branch complete-solve FD gates that can share traces.
+3. Do not change the DMerc/Glasser `D_R` AD-vs-FD gate unless its own duration
+   becomes a bottleneck.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 96%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 98%.
+- VMEC parity and physics gates: 95%.
+- Single-stage coil-only optimization: 79%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 84%.
+- CI runtime refactor with preserved coverage/physics gates: 92%.
+- Docs/release hygiene: 96%.
+
 ### 2026-05-24 Provider slice 1
 
 Steps taken:

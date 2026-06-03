@@ -1713,3 +1713,11 @@ Defer beyond the current cycle:
   passed with `23 passed, 1 skipped`, and that gate measured `36.13 s` in the
   module run. Completion: CI runtime/refactor `91%`; DMerc/`D_R` derivative
   validation `98%`; VMEC parity and physics gates `95%`.
+- 2026-06-03: Consolidated the exact optimizer B-field tangent-column and
+  scalar cotangent promotion gates. The merged gate still checks field vs
+  residual, B Cartesian tangent columns vs dense Jacobian, scalar cost, and
+  reverse cotangent gradient vs `J^T r`, while removing one duplicate exact
+  optimizer setup and accepted-point replay. Focused boundary-field validation
+  passed: `4 passed` in `47.06 s`, with the merged promotion gate measuring
+  `38.42 s`. Completion: CI runtime/refactor `92%`; DMerc/`D_R` derivative
+  validation `98%`; VMEC parity and physics gates `95%`.
