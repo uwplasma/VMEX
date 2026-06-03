@@ -270,7 +270,11 @@ before claiming gradients through adaptive preconditioner-policy changes.  The
 ``direct_coil_accepted_trace_preconditioner_policy_segments`` helper exposes
 the consecutive trace ranges with identical static preconditioner policy,
 ``precond_jmax``, and preconditioner/mode payload shapes; this is the tested
-data model for that subcontroller split.
+data model for that subcontroller split.  The accepted-controller replay
+returns these ranges as ``preconditioner_policy_segments`` together with the
+segment count, so diagnostics can distinguish a same-policy replay from one
+that will need multiple static-policy subcontrollers before the replay
+implementation is refactored.
 The remaining phase-2 blocker is differentiating through the nonlinear
 ``run_free_boundary`` iteration loop itself, rather than through the dense toy
 nonlinear primitive, fixed-boundary operator, complete finite-response proxy,

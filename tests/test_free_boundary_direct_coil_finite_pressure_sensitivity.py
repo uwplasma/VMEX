@@ -2076,6 +2076,11 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
     )
     assert controller_replay["preconditioner_controls_stacked"]
     assert np.asarray(controller_replay["preconditioner_controls"]["w_mode_mn"]).shape[0] == 2
+    assert controller_replay["preconditioner_policy_n_segments"] == 1
+    assert [
+        (segment["start"], segment["stop"], segment["n_steps"])
+        for segment in controller_replay["preconditioner_policy_segments"]
+    ] == [(0, 2, 2)]
     np.testing.assert_array_equal(
         np.asarray(controller_replay["history"]["rejected"]),
         np.asarray([False, False]),
@@ -2124,6 +2129,11 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         np.asarray(padded_controller_replay["controls"]["reset_to_trace_pre"]),
         np.asarray([False, False, True]),
     )
+    assert padded_controller_replay["preconditioner_policy_n_segments"] == 1
+    assert [
+        (segment["start"], segment["stop"], segment["n_steps"])
+        for segment in padded_controller_replay["preconditioner_policy_segments"]
+    ] == [(0, 3, 3)]
     np.testing.assert_allclose(
         np.asarray(padded_controller_replay["objective"]),
         np.asarray(controller_replay["objective"]),

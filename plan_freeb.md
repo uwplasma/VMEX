@@ -585,6 +585,52 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-03 Accepted replay segment diagnostics
+
+Steps taken:
+
+1. Wired `direct_coil_accepted_trace_preconditioner_policy_segments` into
+   `direct_coil_accepted_trace_controller_replay_objective_jax`.
+2. The accepted-controller replay now reports
+   `preconditioner_policy_segments` and `preconditioner_policy_n_segments`
+   alongside the stacked preconditioner-control payload.
+3. Added production-backed assertions in the two-step direct-coil controller
+   replay test for both the normal two-step replay and a three-slot padded
+   replay with a rejected slot.
+4. Updated `docs/free_boundary_coil_optimization.rst` to clarify that these
+   replay diagnostics are the coverage target for future static
+   preconditioner-policy subcontrollers.
+
+Results obtained:
+
+1. Static checks passed:
+   `python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   and `python -m py_compile` on the same files.
+2. The focused fingerprint/segment test passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes
+   -rx`: `1 passed in 0.41 s`.
+3. Full docs passed with warnings as errors:
+   `python -m sphinx -W --keep-going -b html docs
+   /tmp/vmec_jax_freeb_docs_check_segment_diagnostics`.
+4. The production-backed two-step controller replay gate passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state
+   -rx -s`: `1 passed in 173.07 s`.
+
+Best next steps:
+
+1. Commit and push this diagnostics rung.
+2. Inspect the PR-head CI rerun.
+3. If CI is green, use the segment diagnostics to start a coarse
+   preconditioner-policy subcontroller split without changing the accepted
+   solver math.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-02 Preconditioner-policy seam review
 
 Steps taken:
