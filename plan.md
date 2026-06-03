@@ -612,6 +612,11 @@ update, the v0.0.14 release, and the May 30 GPU scan/replay policy refresh:
   (`8.82 s`), ITERModel (`9.33 s`), up-down LASYM (`11.20 s`),
   QA lowres (`26.17 s`), basic non-stellarator-symmetric pressure (`12.68 s`),
   and CTH-like free-boundary (`14.04 s`) all passed with `failed_cases=0`.
+  The same local VMEC2000 executable was then used for optional converged-WOUT
+  parity rows: `nfp4_QH_finite_beta` passed in `6:04`, covering finite-beta
+  non-axisymmetric multigrid profiles and `DMerc`/`D_R`, and
+  `basic_non_stellsym_pressure` passed in `1:48`, covering converged LASYM
+  finite-pressure WOUT channels.
   Full fixed/free/LASYM/finite-beta converged-equilibrium parity is still open.
   The near-zero `bsubvmns` sine covariant-channel reference-state gap is now
   covered by a focused `up_down_asymmetric_tokamak` regression using VMEC's
