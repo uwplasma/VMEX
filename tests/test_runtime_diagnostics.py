@@ -108,6 +108,35 @@ def test_runtime_compare_exports_vmec2000_vmec_jax_and_vmecpp_rows(tmp_path):
     assert record["vmecpp_speedup_vs_vmec2000"] == 8.0
 
 
+def test_direct_coil_segmented_replay_report_synthetic_policy_helpers():
+    mod = _load_tool("direct_coil_segmented_replay_report")
+    traces = [
+        {
+            "preconditioner_use_lax_tridi": True,
+            "preconditioner_use_precomputed_tridi": False,
+            "value": np.asarray([1.0, 2.0]),
+        },
+        {
+            "preconditioner_use_lax_tridi": True,
+            "preconditioner_use_precomputed_tridi": False,
+            "value": np.asarray([3.0, 4.0]),
+        },
+        {
+            "preconditioner_use_lax_tridi": True,
+            "preconditioner_use_precomputed_tridi": False,
+            "value": np.asarray([5.0, 6.0]),
+        },
+    ]
+
+    changed = mod._with_synthetic_policy_segments(traces)
+
+    assert changed[0]["preconditioner_use_lax_tridi"] is True
+    assert changed[1]["preconditioner_use_lax_tridi"] is False
+    assert changed[2]["preconditioner_use_lax_tridi"] is True
+    assert traces[1]["preconditioner_use_lax_tridi"] is True
+    assert mod._json_ready({"x": np.asarray([1.0]), "bad": float("nan")}) == {"x": [1.0], "bad": None}
+
+
 def test_vmecpp_runtime_two_cases_runtime_updates():
     mod = _load_tool("readme_vmecpp_runtime_two_cases")
 

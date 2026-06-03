@@ -89,6 +89,48 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-03 Segmented replay timing diagnostic
+
+Steps taken:
+
+1. Added `tools/diagnostics/direct_coil_segmented_replay_report.py`.
+2. The diagnostic builds the same tiny forced-active direct-coil accepted
+   traces used by the same-branch adjoint report, then compares monolithic
+   accepted-controller replay with opt-in segmented replay.
+3. By default it synthesizes a multi-policy trace by flipping alternating
+   static preconditioner policy flags while keeping trace payload shapes fixed.
+   This is a control-flow/performance diagnostic, not production-physics
+   evidence.
+4. Added a lightweight helper test for synthetic policy mutation and JSON
+   serialization without running the heavy diagnostic in default CI.
+5. Documented the command and current result in
+   `docs/free_boundary_coil_optimization.rst`.
+
+Results obtained:
+
+1. `python -m py_compile tools/diagnostics/direct_coil_segmented_replay_report.py`
+   passed.
+2. `python -m ruff check tools/diagnostics/direct_coil_segmented_replay_report.py`
+   passed.
+3. `JAX_ENABLE_X64=1 python tools/diagnostics/direct_coil_segmented_replay_report.py
+   --out /tmp/vmec_jax_freeb_segmented_replay_report.json --workdir
+   /tmp/vmec_jax_freeb_segmented_replay_work --warm-repeats 1` passed:
+   `segments=2`, monolithic first replay `7.589 s`, segmented first replay
+   `7.560 s`, objective delta `0.0`, state max absolute delta `0.0`.
+
+Best next steps:
+
+1. Run focused tests/docs/lint, commit, and push.
+2. Keep this diagnostic out of default CI because it costs about 25 seconds
+   end-to-end locally.
+3. Next performance step: collect a real production trace with more than one
+   static preconditioner-policy segment. If segmented replay still does not
+   help, focus on strict-update/preconditioner replay compilation.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-02 Accepted-trace scalar-control replay rung
 
 Steps taken:

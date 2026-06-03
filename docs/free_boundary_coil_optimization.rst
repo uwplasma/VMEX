@@ -304,6 +304,27 @@ implementation is refactored.  The companion
 ``preconditioner_policy_segment_summary`` payload is JSON-safe and records the
 accepted, rejected, free-boundary replay, state-reset, and done-marker counts
 inside each static-policy range.
+
+The segmented replay timing diagnostic is separate from the same-branch
+adjoint evidence:
+
+.. code-block:: bash
+
+   JAX_ENABLE_X64=1 python tools/diagnostics/direct_coil_segmented_replay_report.py \
+     --out /tmp/vmec_jax_freeb_segmented_replay_report.json \
+     --workdir /tmp/vmec_jax_freeb_segmented_replay_work
+
+By default this diagnostic synthesizes a two-policy accepted-trace sequence by
+flipping a static preconditioner policy flag on alternating traces while
+keeping trace payload shapes fixed.  This exercises the segmented controller
+machinery and checks objective/final-state parity against the monolithic
+controller replay; it is not a claim that the synthetic policy sequence came
+from production.  The current tiny local run passed with two segments, zero
+objective/state difference, and cold timings of about ``7.59 s`` for the
+monolithic replay versus ``7.56 s`` for segmented replay.  That validates the
+control-flow split, but it does not yet demonstrate a meaningful speedup; the
+next performance target is a real multi-policy production trace or a larger
+trace-width benchmark.
 The remaining phase-2 blocker is differentiating through the nonlinear
 ``run_free_boundary`` iteration loop itself, rather than through the dense toy
 nonlinear primitive, fixed-boundary operator, complete finite-response proxy,
