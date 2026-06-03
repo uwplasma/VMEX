@@ -122,6 +122,101 @@ def test_circle_variable_manifest_and_apply_are_coil_only():
     assert perturbed.stellsym == base_params.stellsym
 
 
+def test_same_branch_direction_selects_current_and_fourier_variables():
+    module = _load_example_module()
+
+    direction = module.same_branch_direction_from_variables(
+        [
+            ("current", (0,)),
+            ("fourier_dof", (0, 0, 2)),
+            ("fourier_dof", (0, 1, 1)),
+        ]
+    )
+
+    np.testing.assert_array_equal(direction, np.asarray([1.0, 1.0, 0.0]))
+
+
+def test_same_branch_report_writer_uses_source_helper(tmp_path, monkeypatch):
+    module = _load_example_module()
+    base_params, _metadata = module.make_circle_provider(current_scale=1.0)
+    _x0, variables = module.select_coil_variables(
+        base_params,
+        max_current_vars=1,
+        max_fourier_vars=1,
+    )
+    args = SimpleNamespace(
+        current_step=0.02,
+        dof_step=1.0e-3,
+        target_aspect=6.0,
+        target_iota=0.4,
+        residual_weight=1.0,
+        aspect_weight=1.0e-2,
+        iota_weight=1.0,
+        same_branch_report_eps=1.0e-4,
+        same_branch_report_max_iter=3,
+        vmec_max_iter=2,
+        ftol=1.0e-8,
+        jit_forces=False,
+        activate_fsq=1.0e99,
+    )
+    calls = []
+
+    def fake_report(input_path, params, *, params_for, objective_fn, eps, solve_kwargs):
+        calls.append(
+            {
+                "input_path": input_path,
+                "params": params,
+                "plus_current": float(np.asarray(params_for(eps).base_currents)[0]),
+                "minus_current": float(np.asarray(params_for(-eps).base_currents)[0]),
+                "eps": eps,
+                "solve_kwargs": solve_kwargs,
+            }
+        )
+        return {
+            "branch_compatibility": {
+                "same_branch": True,
+                "plus": {
+                    "changed_fields": (),
+                    "max_abs_scalar_delta": 0.0,
+                    "max_rel_scalar_delta": 0.0,
+                },
+                "minus": {
+                    "changed_fields": (),
+                    "max_abs_scalar_delta": 0.0,
+                    "max_rel_scalar_delta": 0.0,
+                },
+            },
+            "values": {
+                "base": 1.0,
+                "plus": 1.1,
+                "minus": 0.9,
+                "central_fd_directional": 1000.0,
+            },
+        }
+
+    import vmec_jax.free_boundary_adjoint as freeb_adj
+
+    monkeypatch.setattr(freeb_adj, "direct_coil_same_branch_complete_solve_fd_report", fake_report)
+    path = module.write_same_branch_validation_report(
+        input_path=tmp_path / "input.direct",
+        base_params=base_params,
+        variables=variables,
+        args=args,
+        outdir=tmp_path,
+    )
+
+    assert path == tmp_path / "same_branch_complete_solve_report.json"
+    assert calls
+    assert calls[0]["solve_kwargs"]["max_iter"] == 3
+    assert calls[0]["solve_kwargs"]["jit_forces"] is False
+    assert calls[0]["plus_current"] > float(np.asarray(base_params.base_currents)[0])
+    assert calls[0]["minus_current"] < float(np.asarray(base_params.base_currents)[0])
+    report = json.loads(path.read_text())
+    assert report["branch_compatibility"]["same_branch"] is True
+    assert report["values"]["central_fd_directional"] == pytest.approx(1000.0)
+    assert [record["kind"] for record in report["direction_variables"]] == ["current", "fourier_dof"]
+
+
 def test_circle_dry_run_writes_configuration_without_solves(tmp_path, monkeypatch):
     module = _load_example_module()
 
