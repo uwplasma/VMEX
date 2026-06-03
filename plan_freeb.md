@@ -113,6 +113,38 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-03 Pedagogic examples post-push validation
+
+Steps taken:
+
+1. Pushed commit ``3d440288`` to
+   ``origin/feature/freeb-essos-coil-single-stage``.
+2. Re-ran the optional generated-``mgrid`` VMEC2000 trace-smoke gate locally
+   using ``/Users/rogeriojorge/local/ESSOS_mgrid_pr`` and
+   ``/Users/rogeriojorge/local/STELLOPT/VMEC2000/Release/xvmec2000``.
+3. Checked the active GitHub Actions run for the pushed commit.
+
+Results obtained:
+
+1. ``VMEC2000_INTEGRATION=1 python -m pytest -q
+   tests/test_free_boundary_essos_coil_parity.py::test_vmec2000_generated_mgrid_trace_smoke_records_iteration_rows
+   -rx`` passed: ``1 passed in 21.87 s``.
+2. GitHub Actions for ``3d440288`` has docs, build, console smoke, and parity
+   manifest smoke passing; fast tests and physics smoke were still in progress
+   at the time of this log entry.
+
+Best next steps:
+
+1. Let CI finish and address any fast-test/physics-smoke failure if it appears.
+2. Continue generated-``mgrid`` VMEC2000 WOUT promotion after the sign-consistent
+   schedule probes finish.
+3. Continue phase-2 full-loop adjoint validation; accepted-boundary and
+   provider-level AD gates are not the remaining blocker.
+
+Need from user:
+
+Nothing now.
+
 ### 2026-06-03 Pedagogic ESSOS free-boundary examples
 
 Steps taken:
