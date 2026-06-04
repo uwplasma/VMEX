@@ -3407,6 +3407,14 @@ def direct_coil_same_branch_physical_scalar_gate_report(
         errors.append("scalar report is not same-branch")
 
     objective_values = complete_report.get("objective_values", {})
+    branch = complete_report.get("branch_compatibility", {})
+    same_accepted_trace_branch = bool(branch.get("same_accepted_trace_branch", branch.get("same_branch", False)))
+    same_residual_branch = bool(branch.get("same_residual_branch", branch.get("same_branch", False)))
+    if not same_accepted_trace_branch:
+        errors.append("accepted-trace branch fingerprint changed")
+    if not same_residual_branch:
+        errors.append("residual-controller branch fingerprint changed")
+
     scalar_summaries: dict[str, dict[str, float | bool]] = {}
     for key in scalar_keys:
         scalar_report = scalar_reports.get(key)
@@ -3436,11 +3444,12 @@ def direct_coil_same_branch_physical_scalar_gate_report(
             "base_abs_delta": base_abs_delta,
         }
 
-    branch = complete_report.get("branch_compatibility", {})
     result = {
         "contract": "same-branch complete-solve physical-scalar AD-vs-FD gate",
         "passed": len(errors) == 0,
         "same_branch": bool(branch.get("same_branch", False)),
+        "same_accepted_trace_branch": same_accepted_trace_branch,
+        "same_residual_branch": same_residual_branch,
         "differentiates_adaptive_controller": False,
         "scalar_keys": scalar_keys,
         "replay_gate": replay_gate,
