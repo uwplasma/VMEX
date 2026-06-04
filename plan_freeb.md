@@ -12,15 +12,17 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-04 on `main` with the current exact-coverage matrix
-working tree. The latest fully green pushed main is commit `272e8dd`,
+Last updated: 2026-06-04 on `main` with the current stacked physical-scalar
+gate working tree. The latest fully green pushed main is commit `272e8dd`,
 `test: require free-boundary branch subcondition gates`, which passed GitHub
 Actions run `26973402880`, including docs, build, smoke, exact, slow-physics,
 core py3.11 coverage, and the combined 95% coverage gate. Commit `ba9d031`,
 `test: add stacked free-boundary replay seam`, has been pushed and is waiting
-on CI. The current local patch splits the exact coverage shard into three
-coverage-artifact buckets without dropping any py3.11 exact physics/numerics
-gate.
+on CI. Commit `da7e6fc`, `ci: fix exact coverage matrix syntax`, has been
+pushed and the split exact-coverage matrix is in progress with the
+accepted-update and same-branch buckets already green. The current local patch
+promotes the same-branch physical-scalar report through the stacked
+step-control replay path.
 
 The latest green main splits required py3.11 coverage into core, slow-physics,
 and exact shards while keeping a combined 95% coverage threshold, preserves the
@@ -39,6 +41,54 @@ same-branch gates, explicit tridiagonal-policy coverage, VMEC2000
 generated-`mgrid` WOUT-quality classification, and direct/generated
 boundary-domain checks. The code still does not claim a production full
 adaptive nonlinear `run_free_boundary` exact adjoint.
+
+### 2026-06-04 Stacked physical-scalar gate promotion
+
+Steps taken:
+
+1. Added lightweight `replay_option_flags` diagnostics to the batched
+   same-branch physical-scalar custom-VJP report.
+2. Routed the existing current-only same-branch physical scalar gate through
+   `use_stacked_step_controls=True`, reusing the same complete-solve
+   central-FD report rather than adding a new solve triplet.
+3. Made mixed optional step controls conservative: if a control is present on
+   only some accepted steps, it is not globally stacked and remains fixed
+   per-segment trace data under value-sensitive static-policy segmentation.
+
+Results obtained:
+
+1. Ruff passed for `vmec_jax/free_boundary_adjoint.py` and
+   `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`.
+2. The focused current-only same-branch physical scalar gate passed in
+   `36.62 s`.
+3. The full local py3.11 exact shard passed:
+   `18 passed in 107.58 s`.
+
+Best next steps:
+
+1. Commit and push this stacked physical-scalar promotion.
+2. Watch the final CI run after this push, especially the exact matrix buckets
+   and combined coverage artifact glob.
+3. Continue toward the adaptive full-loop seam by promoting another physical
+   scalar or objective through the stacked path only if branch fingerprints
+   remain unchanged.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.95%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 82%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 86%.
+- CI runtime refactor with preserved coverage/physics gates: 99.7%.
+- Docs/release hygiene: 96%.
+- Overall free-boundary single-stage plan: 94.7%.
 
 ### 2026-06-04 Exact coverage matrix split
 

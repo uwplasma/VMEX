@@ -1542,12 +1542,14 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             base_params,
             direction,
             replay_scalar_fns=replay_scalar_fns,
+            replay_kwargs={"use_stacked_step_controls": True},
             eps=eps,
             rtol=rtol_by_key,
             atol=atol_by_key,
             compute_frozen_fd=False,
         )
         assert scalars_report["passed"], scalars_report
+        assert scalars_report["replay_option_flags"]["use_stacked_step_controls"] is True
         physical_scalar_gate = direct_coil_same_branch_physical_scalar_gate_report(
             complete_report,
             scalars_report,
