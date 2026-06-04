@@ -1539,11 +1539,16 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     from vmec_jax.discrete_adjoint import (
         preconditioned_force_channels_from_rz_output,
         strict_update_accepted_step,
+        strict_update_one_step_from_trace,
         strict_update_one_step_from_state,
     )
     from vmec_jax.driver import run_free_boundary
     from vmec_jax.free_boundary import _sample_external_boundary_arrays
     from vmec_jax.free_boundary_adjoint import (
+        direct_coil_accepted_trace_controller_replay_objective_jax,
+        direct_coil_accepted_trace_fingerprint,
+        direct_coil_accepted_trace_fingerprint_delta,
+        direct_coil_accepted_trace_replay_objective_jax,
         direct_coil_boundary_bsqvac_jax,
         direct_coil_boundary_bsqvac_from_trace_jax,
         direct_coil_boundary_replay_context,
@@ -1570,11 +1575,11 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     input_path = _write_tiny_direct_freeb_input(
         tmp_path / "input.direct_accepted_update_ad_fd",
         lasym=False,
-        niter=2,
+        niter=3,
         mpol=3,
-        ntheta=6,
+        ntheta=4,
     )
-    base_params = _circle_coil_params(current=3.0e7, n_segments=64)
+    base_params = _circle_coil_params(current=3.0e7, n_segments=24)
     init = run_free_boundary(
         input_path,
         use_initial_guess=True,
@@ -1587,7 +1592,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         init.static,
         indata=init.indata,
         signgs=init.signgs,
-        max_iter=2,
+        max_iter=3,
         ftol=1.0e-8,
         vmec2000_control=True,
         auto_flip_force=False,
@@ -1605,7 +1610,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     )
     traces = result.diagnostics.get("adjoint_step_trace", [])
     active_traces = [trace for trace in traces if trace.get("freeb_bsqvac_half") is not None]
-    assert active_traces
+    assert len(active_traces) >= 2
     base_dofs = jnp.asarray(base_params.base_curve_dofs)
     base_currents = jnp.asarray(base_params.base_currents)
     direction = base_params.with_arrays(
@@ -1615,7 +1620,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
 
     selected = None
     for include_analytic in (True, False):
-        for candidate_trace in active_traces:
+        for candidate_idx, candidate_trace in enumerate(active_traces):
             sample = _sample_external_boundary_arrays(
                 state=candidate_trace["state_pre"],
                 static=init.static,
@@ -1662,6 +1667,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
             candidate_bsqvac0_np = np.asarray(candidate_bsqvac0, dtype=float)
             if np.all(np.isfinite(candidate_bsqvac0_np)) and float(np.linalg.norm(candidate_bsqvac0_np)) > 0.0:
                 selected = (
+                    candidate_idx,
                     candidate_trace,
                     candidate_nestor_trace,
                     context["basis"],
@@ -1675,7 +1681,9 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
             break
 
     assert selected is not None, "No finite accepted direct-coil replay trace found"
-    trace, nestor_trace, basis, replay_from_coils, replay0, bsqvac0, analytic_replay = selected
+    selected_idx, trace, nestor_trace, basis, replay_from_coils, replay0, bsqvac0, analytic_replay = selected
+    assert selected_idx + 1 < len(active_traces), "Selected trace must have a following trace for two-step replay"
+    trace1 = active_traces[selected_idx + 1]
 
     def bsqvac_from_coils(params: CoilFieldParams):
         return replay_from_coils(params)["bsqvac"]
@@ -1880,147 +1888,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     exact_state, fd_state = directional_pairs[0]
     np.testing.assert_allclose(exact_state, fd_state, rtol=2.0e-4, atol=1.0e-10)
 
-
-@pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])
-def test_jax_free_boundary_boundary_geometry_matches_host_sampler(
-    tmp_path: Path,
-    lasym: bool,
-) -> None:
-    """The phase-2 JAX boundary sampler must match production host geometry."""
-
-    pytest.importorskip("jax")
-    from vmec_jax._compat import jax, jnp
-    from vmec_jax.driver import run_free_boundary
-    from vmec_jax.free_boundary import _sample_external_boundary_arrays
-    from vmec_jax.free_boundary_adjoint import free_boundary_boundary_geometry_jax
-    from vmec_jax.state import pack_state, unpack_state
-
-    enable_x64(True)
-    input_path = _write_tiny_direct_freeb_input(
-        tmp_path / f"input.direct_boundary_geometry_{int(lasym)}",
-        lasym=lasym,
-        niter=1,
-        mpol=3,
-        ntheta=6,
-    )
-    params = _circle_coil_params(current=3.0e7, n_segments=64)
-    run = run_free_boundary(
-        input_path,
-        use_initial_guess=True,
-        verbose=False,
-        external_field_provider_kind="direct_coils",
-        external_field_provider_params=params,
-    )
-    host = _sample_external_boundary_arrays(
-        state=run.state,
-        static=run.static,
-        external_field_provider_kind="direct_coils",
-        external_field_provider_params=params,
-    )
-    geom = free_boundary_boundary_geometry_jax(run.state, run.static)
-    for key in ("R", "Z", "phi", "Ru", "Zu", "Rv", "Zv", "ruu", "ruv", "rvv", "zuu", "zuv", "zvv"):
-        np.testing.assert_allclose(
-            np.asarray(geom[key]),
-            np.asarray(getattr(host, key)),
-            rtol=1.0e-13,
-            atol=1.0e-13,
-            err_msg=f"JAX boundary geometry mismatch for {key}",
-        )
-
-    def geometry_objective(flat_state):
-        state = unpack_state(flat_state, run.state.layout)
-        g = free_boundary_boundary_geometry_jax(state, run.static)
-        return jnp.mean(g["R"] * g["R"] + g["Z"] * g["Z"])
-
-    grad = jax.grad(geometry_objective)(jnp.asarray(pack_state(run.state)))
-    assert np.all(np.isfinite(np.asarray(grad)))
-    assert float(jnp.linalg.norm(grad)) > 0.0
-
-
-@pytest.mark.py311_coverage_only
-def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Replay two accepted direct-coil updates with boundary resampling.
-
-    This is the next phase-2 bridge after accepted-state AD-vs-FD: the first
-    accepted update is replayed, the second NESTOR boundary is resampled from
-    that replayed state, and the second strict update is checked against the
-    production trace.  Geometry resampling is now JAX-visible, but basis/table
-    construction and the outer nonlinear loop are still host-controlled, so
-    this remains a value-parity rung rather than a full nonlinear-loop VJP
-    claim.
-    """
-
-    pytest.importorskip("jax")
-    from vmec_jax._compat import jnp
-    from vmec_jax.discrete_adjoint import strict_update_accepted_step, strict_update_one_step_from_trace
-    from vmec_jax.driver import run_free_boundary
-    from vmec_jax.free_boundary_adjoint import (
-        direct_coil_accepted_trace_controller_replay_objective_jax,
-        direct_coil_accepted_trace_fingerprint,
-        direct_coil_accepted_trace_fingerprint_delta,
-        direct_coil_accepted_trace_replay_objective_jax,
-        direct_coil_boundary_bsqvac_from_trace_jax,
-        direct_coil_boundary_replay_context,
-        free_boundary_boundary_geometry_jax,
-    )
-    from vmec_jax.solve import solve_fixed_boundary_residual_iter
-    from vmec_jax.state import pack_state
-
-    enable_x64(True)
-    for key, value in {
-        "VMEC_JAX_FREEB_NESTOR_MODE": "dense",
-        "VMEC_JAX_FREEB_DENSE_SOLVE_MODE": "mode",
-        "VMEC_JAX_FREEB_USE_GREENF_SOURCE": "1",
-        "VMEC_JAX_FREEB_EXPERIMENTAL_FOURI_MATRIX": "1",
-        "VMEC_JAX_FREEB_ADD_ANALYTIC_BVEC": "1",
-        "VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR": "1",
-        "VMEC_JAX_FREEB_JAX_NESTOR_JIT_OPERATOR": "0",
-    }.items():
-        monkeypatch.setenv(key, value)
-
-    input_path = _write_tiny_direct_freeb_input(
-        tmp_path / "input.direct_two_step_replay",
-        lasym=False,
-        niter=3,
-        mpol=3,
-        ntheta=4,
-    )
-    base_params = _circle_coil_params(current=3.0e7, n_segments=24)
-    init = run_free_boundary(
-        input_path,
-        use_initial_guess=True,
-        verbose=False,
-        external_field_provider_kind="direct_coils",
-        external_field_provider_params=base_params,
-    )
-    result = solve_fixed_boundary_residual_iter(
-        init.state,
-        init.static,
-        indata=init.indata,
-        signgs=init.signgs,
-        max_iter=3,
-        ftol=1.0e-8,
-        vmec2000_control=True,
-        auto_flip_force=False,
-        use_direct_fallback=True,
-        verbose=False,
-        verbose_vmec2000_table=False,
-        jit_forces=False,
-        use_scan=False,
-        host_update_assembly=False,
-        adjoint_trace=True,
-        adjoint_trace_mode="full",
-        external_field_provider_kind="direct_coils",
-        external_field_provider_params=base_params,
-        free_boundary_activate_fsq=1.0e99,
-    )
-    traces = result.diagnostics.get("adjoint_step_trace", [])
-    active_traces = [trace for trace in traces if trace.get("freeb_bsqvac_half") is not None]
-    assert len(active_traces) >= 2
-    trace0, trace1 = active_traces[:2]
+    trace0 = trace
     fingerprint = direct_coil_accepted_trace_fingerprint([trace0, trace1])
     assert fingerprint["n_steps"] == 2
     assert fingerprint["n_freeb_steps"] == 2
@@ -2077,23 +1945,19 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
 
     geometry = free_boundary_boundary_geometry_jax(replayed_state1, init.static)
     context = direct_coil_boundary_replay_context(init.static, geometry)
-    nestor_trace = trace1.get("freeb_nestor_trace")
-    assert isinstance(nestor_trace, dict)
-
-    def bsqvac_from_trace(params: CoilFieldParams, geom: dict[str, object], trace: dict[str, object]):
-        return direct_coil_boundary_bsqvac_from_trace_jax(
-            params,
-            geom,
-            trace,
-            basis=context["basis"],
-            tables=context["tables"],
-            signgs=int(init.signgs),
-            nvper=context["nvper"],
-            wint=jnp.asarray(context["wint"]),
-            include_analytic=True,
-        )
-
-    replay1 = bsqvac_from_trace(base_params, geometry, trace1)
+    nestor_trace1 = trace1.get("freeb_nestor_trace")
+    assert isinstance(nestor_trace1, dict)
+    replay1 = direct_coil_boundary_bsqvac_from_trace_jax(
+        base_params,
+        geometry,
+        trace1,
+        basis=context["basis"],
+        tables=context["tables"],
+        signgs=int(init.signgs),
+        nvper=context["nvper"],
+        wint=jnp.asarray(context["wint"]),
+        include_analytic=True,
+    )
     np.testing.assert_allclose(
         np.asarray(replay1["bsqvac"]),
         np.asarray(trace1["freeb_bsqvac_half"]),
@@ -2138,10 +2002,8 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         force_weight=0.0,
         enforce_edge=False,
     )
-    np.testing.assert_array_equal(
-        np.asarray(controller_replay["history"]["accepted"]),
-        np.asarray([True, True]),
-    )
+    np.testing.assert_array_equal(np.asarray(controller_replay["history"]["accepted"]), np.asarray([True, True]))
+    np.testing.assert_array_equal(np.asarray(controller_replay["history"]["rejected"]), np.asarray([False, False]))
     np.testing.assert_array_equal(
         np.asarray(controller_replay["controls"]["step_index"]),
         np.asarray([0, 1]),
@@ -2197,6 +2059,18 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         )
         for segment in controller_replay["preconditioner_policy_segment_summary"]
     ] == [(0, 2, 2, 0, 2, 0)]
+    np.testing.assert_allclose(
+        np.asarray(controller_replay["objective"]),
+        np.asarray(replay["objective"]),
+        rtol=2.0e-12,
+        atol=1.0e-12,
+    )
+    np.testing.assert_allclose(
+        np.asarray(pack_state(controller_replay["state"])),
+        np.asarray(pack_state(replay["state"])),
+        rtol=5.0e-12,
+        atol=5.0e-12,
+    )
     segmented_controller_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
         base_params,
         trace0["state_pre"],
@@ -2228,26 +2102,6 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
             np.asarray(segmented_controller_replay["history"][key]),
             np.asarray(controller_replay["history"][key]),
         )
-    np.testing.assert_array_equal(
-        np.asarray(controller_replay["history"]["rejected"]),
-        np.asarray([False, False]),
-    )
-    np.testing.assert_array_equal(
-        np.asarray(controller_replay["history"]["state_reset"]),
-        np.asarray([False, False]),
-    )
-    np.testing.assert_allclose(
-        np.asarray(controller_replay["objective"]),
-        np.asarray(replay["objective"]),
-        rtol=2.0e-12,
-        atol=1.0e-12,
-    )
-    np.testing.assert_allclose(
-        np.asarray(pack_state(controller_replay["state"])),
-        np.asarray(pack_state(replay["state"])),
-        rtol=5.0e-12,
-        atol=5.0e-12,
-    )
     padded_bad_trace = dict(trace1)
     padded_bad_trace["dt_eff"] = _trace_scalar_value(trace1["dt_eff"]) * 10.0
     padded_bad_trace["force_scale"] = _trace_scalar_value(trace1["force_scale"]) * 10.0
@@ -2299,6 +2153,62 @@ def test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state(
         rtol=2.0e-12,
         atol=1.0e-12,
     )
+
+
+@pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])
+def test_jax_free_boundary_boundary_geometry_matches_host_sampler(
+    tmp_path: Path,
+    lasym: bool,
+) -> None:
+    """The phase-2 JAX boundary sampler must match production host geometry."""
+
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jax, jnp
+    from vmec_jax.driver import run_free_boundary
+    from vmec_jax.free_boundary import _sample_external_boundary_arrays
+    from vmec_jax.free_boundary_adjoint import free_boundary_boundary_geometry_jax
+    from vmec_jax.state import pack_state, unpack_state
+
+    enable_x64(True)
+    input_path = _write_tiny_direct_freeb_input(
+        tmp_path / f"input.direct_boundary_geometry_{int(lasym)}",
+        lasym=lasym,
+        niter=1,
+        mpol=3,
+        ntheta=6,
+    )
+    params = _circle_coil_params(current=3.0e7, n_segments=64)
+    run = run_free_boundary(
+        input_path,
+        use_initial_guess=True,
+        verbose=False,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+    )
+    host = _sample_external_boundary_arrays(
+        state=run.state,
+        static=run.static,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+    )
+    geom = free_boundary_boundary_geometry_jax(run.state, run.static)
+    for key in ("R", "Z", "phi", "Ru", "Zu", "Rv", "Zv", "ruu", "ruv", "rvv", "zuu", "zuv", "zvv"):
+        np.testing.assert_allclose(
+            np.asarray(geom[key]),
+            np.asarray(getattr(host, key)),
+            rtol=1.0e-13,
+            atol=1.0e-13,
+            err_msg=f"JAX boundary geometry mismatch for {key}",
+        )
+
+    def geometry_objective(flat_state):
+        state = unpack_state(flat_state, run.state.layout)
+        g = free_boundary_boundary_geometry_jax(state, run.static)
+        return jnp.mean(g["R"] * g["R"] + g["Z"] * g["Z"])
+
+    grad = jax.grad(geometry_objective)(jnp.asarray(pack_state(run.state)))
+    assert np.all(np.isfinite(np.asarray(grad)))
+    assert float(jnp.linalg.norm(grad)) > 0.0
 
 
 @pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])

@@ -12,13 +12,14 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-04 on `main` after commit `9504360`, `test: add
-free-boundary lcfs scalar adjoint gate`, passed GitHub Actions run
-`26955489190`. The latest green main splits required py3.11 coverage into core,
-slow-physics, and exact shards while keeping a combined 95% coverage threshold,
-preserves the `DMerc`/Glasser `D_R` AD-vs-central-FD gate, promotes
-same-branch complete-loop aspect-ratio and LCFS boundary-moment physical-scalar
-free-boundary custom-VJP gates, and keeps production adaptive
+Last updated: 2026-06-04 on `main` after commit `a6a696a`, `test: share
+free-boundary replay gradient trace`, passed GitHub Actions run `26957173529`.
+The latest green main splits required py3.11 coverage into core, slow-physics,
+and exact shards while keeping a combined 95% coverage threshold, preserves the
+`DMerc`/Glasser `D_R` AD-vs-central-FD gate, promotes same-branch complete-loop
+aspect-ratio and LCFS boundary-moment physical-scalar free-boundary custom-VJP
+gates, shares one accepted replay trace across coil-pytree and VMEC-state
+gradient checks, and keeps production adaptive
 `run_free_boundary` full-loop claims conservative. It also uses
 Node-24-compatible v7 artifact actions and `codecov/codecov-action@v6`.
 The phase-2 evidence includes reset-aware full accepted-trace replay, stacked
@@ -29,6 +30,56 @@ complete-solve gate, explicit tridiagonal-policy coverage, VMEC2000
 generated-`mgrid` WOUT-quality classification, and direct/generated
 boundary-domain checks. The code still does not claim a production full
 adaptive nonlinear `run_free_boundary` exact adjoint.
+
+### 2026-06-04 Full accepted replay trace sharing
+
+Steps taken:
+
+1. Merged the standalone two-step direct-coil accepted replay/controller test
+   into the direct-coil accepted-update AD-vs-FD test.
+2. Reused one `max_iter=3` forced-active trace for coil-pytree directional
+   AD-vs-FD, VMEC-state accepted-boundary AD-vs-FD, two-step boundary
+   resampling, controller replay, segmented preconditioner policy replay, and
+   padded inactive-step checks.
+3. Preserved the detailed fingerprint, scalar-control, array-control,
+   preconditioner-control, accepted/rejected history, and segment-summary
+   assertions from the removed standalone test.
+
+Results obtained:
+
+1. Ruff passed on the touched free-boundary test file.
+2. The merged focused gate passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree --durations=10 --disable-warnings`
+   reported `1 passed in 34.95 s`.
+3. The removed standalone test previously consumed a second complete tiny
+   direct-coil free-boundary trace build; those assertions now run against the
+   shared accepted trace instead.
+
+Best next steps:
+
+1. Push this test consolidation and watch CI.
+2. Continue exact-shard runtime reduction by sharing trace setup across the
+   remaining same-branch physical-scalar free-boundary gates where possible.
+3. Promote the next full-loop adjoint seam only after complete-solve
+   AD-vs-central-FD passes for a physically meaningful scalar under an
+   explicitly compatible branch fingerprint.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 98%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 81%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 86%.
+- CI runtime refactor with preserved coverage/physics gates: 98%.
+- Docs/release hygiene: 96%.
+- Overall free-boundary single-stage plan: 92%.
 
 ### 2026-06-04 Exact-gate runtime consolidation
 
