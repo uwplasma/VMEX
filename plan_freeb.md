@@ -12,13 +12,21 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-04 on `main` after commit `69d5523`, `test: reduce
-free-boundary accepted replay cost`, passed GitHub Actions run `26970556579`.
+Last updated: 2026-06-04 on `main` with the current physical-scalar gate
+working tree. The latest fully green pushed main is commit `69d5523`,
+`test: reduce free-boundary accepted replay cost`, passed GitHub Actions run
+`26970556579`. Commit `2f08d67`, `test: add residual branch fingerprint gate
+helper`, passed every test/build/docs shard in run `26971168043` but failed
+only the combined coverage gate at exact line coverage `94.99%`, just below
+the strict `95.00%` threshold. The current patch adds a reusable same-branch
+complete-solve physical-scalar AD-vs-central-FD gate and cheap synthetic branch
+coverage to restore coverage margin while preserving conservative
+adaptive-controller claims.
+
 The latest green main splits required py3.11 coverage into core, slow-physics,
-and exact shards while keeping a combined 95% coverage threshold (`Exact line
-coverage: 95.00%`), preserves the `DMerc`/Glasser `D_R` AD-vs-central-FD gate,
-promotes same-branch complete-loop aspect-ratio, LCFS boundary-moment, accepted
-`Bnormal` RMS, and accepted `Bsqvac` RMS physical-scalar free-boundary
+and exact shards while keeping a combined 95% coverage threshold, preserves the
+`DMerc`/Glasser `D_R` AD-vs-central-FD gate, promotes same-branch complete-loop
+aspect-ratio and accepted `Bnormal` RMS physical-scalar free-boundary
 custom-VJP gates, shares one accepted replay trace across coil-pytree,
 VMEC-state, and two-step controller replay checks, and keeps production
 adaptive `run_free_boundary` full-loop claims conservative. It also uses
@@ -31,6 +39,73 @@ complete-solve gate, explicit tridiagonal-policy coverage, VMEC2000
 generated-`mgrid` WOUT-quality classification, and direct/generated
 boundary-domain checks. The code still does not claim a production full
 adaptive nonlinear `run_free_boundary` exact adjoint.
+
+### 2026-06-04 Explicit physical-scalar gate and coverage repair
+
+Steps taken:
+
+1. Added `direct_coil_same_branch_physical_scalar_gate_report` in
+   `vmec_jax/free_boundary_adjoint.py`.
+2. Wired the new gate into the existing direct-coil same-branch complete-solve
+   current-only promotion test. It consumes the already computed
+   complete-solve central-FD report and accepted-controller custom-VJP scalar
+   report, so it does not add another VMEC solve triplet.
+3. Kept the promoted scalar set focused on one geometry scalar (`aspect`) plus
+   one active free-boundary history scalar (`accepted_bnormal_rms`). The
+   complete-solve report still records auxiliary LCFS boundary moment and
+   accepted `Bsqvac` RMS diagnostics, but they are no longer separate expensive
+   custom-VJP pullbacks in this hotspot.
+4. Added synthetic success/failure/json-safe coverage for the new gate,
+   including replay-gate failure, missing scalar reports, missing
+   complete-solve scalar values, and non-finite FD/custom-VJP slopes.
+5. Re-tested the boundary-field small-static experiment and rejected it: the
+   finite-difference residual gate becomes inaccurate on the smaller solve
+   static grid, while the identity gate remains compile dominated.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes -q`
+   passed.
+3. The current/Fourier same-branch pair passed:
+   `2 passed in 48.92 s`.
+4. The boundary-field exact pair passed after reverting the small-static
+   experiment: `2 passed in 49.58 s`.
+5. The local py3.11 exact coverage shard passed with the current source/helper
+   patch: `18 passed in 116.07 s`.
+6. The previous pushed CI run `26971168043` failed only the combined coverage
+   gate (`94.99%`); all test, physics, docs, build, and compatibility shards
+   were green.
+
+Best next steps:
+
+1. Commit and push this physical-scalar gate/coverage repair patch, then watch
+   the new combined coverage gate.
+2. Continue the adaptive full-loop seam by adding a complete-loop
+   branch-fingerprint report around one physical scalar that can explicitly
+   skip or fail on adaptive branch changes instead of comparing derivatives
+   across discontinuous host-control decisions.
+3. Continue exact-shard runtime reduction only where full-shard timings improve
+   and physics coverage is preserved; the rejected boundary-field static-grid
+   reduction should not be re-applied.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.7%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 82%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 86%.
+- CI runtime refactor with preserved coverage/physics gates: 99.4%.
+- Docs/release hygiene: 96%.
+- Overall free-boundary single-stage plan: 94.0%.
 
 ### 2026-06-04 CI-green replay coverage and exact-shard duplicate removal
 

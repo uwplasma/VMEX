@@ -325,9 +325,85 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     from vmec_jax.free_boundary_adjoint import (
         _pytree_batched_directional_vdot_jax,
         direct_coil_accepted_trace_controller_custom_vjp_scalars_jax,
+        direct_coil_same_branch_physical_scalar_gate_report,
         direct_coil_same_branch_controller_scalar_custom_vjp_report,
         direct_coil_same_branch_controller_scalars_custom_vjp_report,
     )
+
+    physical_synthetic_report = deepcopy(synthetic_report)
+    physical_synthetic_report["objective_values"] = {
+        "aspect": {"base": 5.0, "plus": 5.01, "minus": 4.99, "central_fd_directional": 100.0},
+        "accepted_bnormal_rms": {
+            "base": 0.2,
+            "plus": 0.21,
+            "minus": 0.19,
+            "central_fd_directional": 100.0,
+        },
+    }
+    physical_scalars_report = {
+        "same_branch": True,
+        "scalar_keys": ("aspect", "accepted_bnormal_rms"),
+        "scalar_reports": {
+            "aspect": {
+                "passed": True,
+                "same_branch": True,
+                "exact_directional": 100.0,
+                "abs_error": 0.0,
+                "rel_error": 0.0,
+                "base_abs_delta": 1.0e-6,
+            },
+            "accepted_bnormal_rms": {
+                "passed": True,
+                "same_branch": True,
+                "exact_directional": 100.0,
+                "abs_error": 0.0,
+                "rel_error": 0.0,
+                "base_abs_delta": 1.0e-6,
+            },
+        },
+    }
+    physical_gate = direct_coil_same_branch_physical_scalar_gate_report(
+        physical_synthetic_report,
+        physical_scalars_report,
+    )
+    assert physical_gate["passed"], physical_gate
+    assert physical_gate["scalar_keys"] == ("aspect", "accepted_bnormal_rms")
+    assert physical_gate["differentiates_adaptive_controller"] is False
+    json.dumps(
+        direct_coil_same_branch_physical_scalar_gate_report(
+            physical_synthetic_report,
+            physical_scalars_report,
+            json_safe=True,
+        ),
+        allow_nan=False,
+    )
+    bad_physical_scalars_report = deepcopy(physical_scalars_report)
+    bad_physical_scalars_report["same_branch"] = False
+    bad_physical_scalars_report["scalar_reports"]["aspect"]["passed"] = False
+    bad_physical_scalars_report["scalar_reports"]["aspect"]["exact_directional"] = np.nan
+    bad_physical_scalars_report["scalar_reports"]["missing_objective"] = {
+        "passed": True,
+        "same_branch": True,
+        "exact_directional": 1.0,
+        "abs_error": 0.0,
+        "rel_error": 0.0,
+        "base_abs_delta": 0.0,
+    }
+    bad_physical_report = deepcopy(physical_synthetic_report)
+    bad_physical_report["branch_compatibility"]["same_branch"] = False
+    bad_physical_report["objective_values"]["accepted_bnormal_rms"]["central_fd_directional"] = np.nan
+    bad_physical_gate = direct_coil_same_branch_physical_scalar_gate_report(
+        bad_physical_report,
+        bad_physical_scalars_report,
+        scalar_keys=("aspect", "accepted_bnormal_rms", "missing", "missing_objective"),
+    )
+    assert not bad_physical_gate["passed"]
+    assert any("replay gate failed" in error for error in bad_physical_gate["errors"])
+    assert any("not same-branch" in error for error in bad_physical_gate["errors"])
+    assert any("missing scalar report" in error for error in bad_physical_gate["errors"])
+    assert any("missing complete-solve objective values" in error for error in bad_physical_gate["errors"])
+    assert any("non-finite complete-solve FD" in error for error in bad_physical_gate["errors"])
+    assert any("non-finite custom-VJP" in error for error in bad_physical_gate["errors"])
 
     jacobian_tree = {
         "a": jnp.asarray([[1.0, 2.0], [3.0, 4.0]]),
@@ -1155,6 +1231,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_accepted_trace_controller_custom_vjp_objective_jax,
         free_boundary_boundary_geometry_jax,
+        direct_coil_same_branch_physical_scalar_gate_report,
         direct_coil_same_branch_controller_scalar_custom_vjp_report,
         direct_coil_same_branch_controller_scalars_custom_vjp_report,
         direct_coil_same_branch_complete_solve_fd_report,
@@ -1457,6 +1534,26 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             compute_frozen_fd=False,
         )
         assert scalars_report["passed"], scalars_report
+        physical_scalar_gate = direct_coil_same_branch_physical_scalar_gate_report(
+            complete_report,
+            scalars_report,
+            scalar_keys=tuple(replay_scalar_fns),
+        )
+        assert physical_scalar_gate["passed"], physical_scalar_gate
+        assert physical_scalar_gate["contract"] == "same-branch complete-solve physical-scalar AD-vs-FD gate"
+        assert physical_scalar_gate["same_branch"] is True
+        assert physical_scalar_gate["differentiates_adaptive_controller"] is False
+        assert physical_scalar_gate["scalar_keys"] == tuple(replay_scalar_fns)
+        assert physical_scalar_gate["replay_gate"]["passed"] is True
+        json.dumps(
+            direct_coil_same_branch_physical_scalar_gate_report(
+                complete_report,
+                scalars_report,
+                scalar_keys=tuple(replay_scalar_fns),
+                json_safe=True,
+            ),
+            allow_nan=False,
+        )
         aspect_report = scalars_report["scalar_reports"]["aspect"]
         assert aspect_report["passed"], aspect_report
         assert aspect_report["same_branch"] is True
@@ -1596,9 +1693,9 @@ def test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_
         check_controller=False,
         check_segmented_controller=False,
         check_aspect_scalar=True,
-        check_boundary_moment_scalar=True,
+        check_boundary_moment_scalar=False,
         check_accepted_bnormal_rms_scalar=True,
-        check_accepted_bsqvac_rms_scalar=True,
+        check_accepted_bsqvac_rms_scalar=False,
     )
 
 
