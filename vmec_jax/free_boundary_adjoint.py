@@ -2907,9 +2907,12 @@ def direct_coil_same_branch_complete_solve_fd_report(
     ``objective_fn``.
 
     This helper is deliberately a validation seam rather than a production
-    adjoint: it rejects branch changes using accepted-trace fingerprints and
-    leaves the differentiated frozen-branch replay to the caller.
+    adjoint: it rejects branch changes using accepted-trace and residual
+    controller fingerprints and leaves the differentiated frozen-branch replay
+    to the caller.
     """
+
+    from .discrete_adjoint import residual_branch_fingerprint
 
     eps_f = float(eps)
     if eps_f == 0.0:
@@ -2950,6 +2953,13 @@ def direct_coil_same_branch_complete_solve_fd_report(
     base_fingerprint = direct_coil_accepted_trace_fingerprint(base["traces"])
     plus_fingerprint = direct_coil_accepted_trace_fingerprint(plus["traces"])
     minus_fingerprint = direct_coil_accepted_trace_fingerprint(minus["traces"])
+    base_residual_fingerprint = residual_branch_fingerprint(base["result"])
+    plus_residual_fingerprint = residual_branch_fingerprint(plus["result"])
+    minus_residual_fingerprint = residual_branch_fingerprint(minus["result"])
+    same_residual_branch = bool(
+        base_residual_fingerprint == plus_residual_fingerprint
+        and base_residual_fingerprint == minus_residual_fingerprint
+    )
     trace_replay_diagnostics = {
         "base": free_boundary_adjoint_trace_replay_diagnostics(base["traces"]),
         "plus": free_boundary_adjoint_trace_replay_diagnostics(plus["traces"]),
@@ -2975,12 +2985,17 @@ def direct_coil_same_branch_complete_solve_fd_report(
         "plus": plus,
         "minus": minus,
         "branch_compatibility": {
-            "same_branch": bool(plus_branch["compatible"] and minus_branch["compatible"]),
+            "same_branch": bool(plus_branch["compatible"] and minus_branch["compatible"] and same_residual_branch),
+            "same_accepted_trace_branch": bool(plus_branch["compatible"] and minus_branch["compatible"]),
+            "same_residual_branch": same_residual_branch,
             "plus": plus_branch,
             "minus": minus_branch,
             "base_fingerprint": base_fingerprint,
             "plus_fingerprint": plus_fingerprint,
             "minus_fingerprint": minus_fingerprint,
+            "base_residual_fingerprint": base_residual_fingerprint,
+            "plus_residual_fingerprint": plus_residual_fingerprint,
+            "minus_residual_fingerprint": minus_residual_fingerprint,
         },
         "trace_replay_diagnostics": trace_replay_diagnostics,
         "primary_objective": primary_key,
