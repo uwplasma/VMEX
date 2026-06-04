@@ -6585,6 +6585,63 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 92%.
 - Docs/release hygiene: 96%.
 
+### 2026-06-03 Coverage recovery after exact-gate consolidation failure
+
+Steps taken:
+
+1. Inspected the failed GitHub Actions run for pushed commit `29312c1`.
+2. Confirmed the failure was only the py3.11 coverage threshold: tests passed,
+   but total coverage was `94.94%`, below the required `95.00%`.
+3. Restored the exact scalar objective cotangent gate as a separate
+   py3.11-only validation instead of folding it into the B-field tangent-column
+   test.
+4. Kept the current-only direct-coil same-branch de-duplication, which remains
+   the accepted runtime reduction from this pass.
+5. Added fast, non-scaffold coverage around user-facing and physics/API paths:
+   `vmec --test` quick-start branches and Boozer/wout CLI errors,
+   residual-iteration bad-Jacobian parsing, scan-cache diagnostics,
+   JAX-visible accepted/masked/segmented controller edge cases, Glasser `D_R`
+   underspecified-input validation, high-resolution VTK export, sparse
+   signed-map static handling, and state-level Mercier automatic trig-table
+   construction.
+
+Results obtained:
+
+1. Ruff passed for all touched tests.
+2. Focused touched-file tests passed, including the restored exact scalar
+   cotangent gate and the new free-boundary controller edge-case test.
+3. The full local CI-equivalent coverage gate passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --durations=50 --cov=vmec_jax --cov-report=term:skip-covered --cov-fail-under=95`
+   reported `2667 passed, 23 skipped, 2 xfailed`, exact line coverage
+   `95.00%`, and runtime `5:57`.
+
+Best next steps:
+
+1. Commit and push the coverage recovery patch.
+2. Watch the resulting CI run to confirm py3.11 coverage stays at or above
+   `95.00%` on GitHub and that py3.10/py3.12 compatibility lanes keep the
+   earlier fixture-skip runtime improvements.
+3. Resume CI runtime reduction only from a green baseline. The next candidates
+   are QH checkpoint JVP and direct-coil LASYM/Fourier gates; keep one current,
+   one Fourier, one LASYM, one scalar-cotangent, and one exact B-field tangent
+   representative in required CI.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 96%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 99%.
+- VMEC parity and physics gates: 95%.
+- Single-stage coil-only optimization: 79%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 84%.
+- CI runtime refactor with preserved coverage/physics gates: 93%.
+- Docs/release hygiene: 96%.
+
 ### 2026-05-24 Provider slice 1
 
 Steps taken:

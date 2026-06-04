@@ -4,10 +4,13 @@ Last updated: 2026-06-03
 Primary branch: `main`
 Baseline release: `v0.0.14`
 Latest known green `main` CI: `17a0ccd`
-Current candidate: `main` at `17a0ccd`, retaining the 95% required coverage
-gate, the `DMerc`/Glasser `D_R` AD-vs-central-FD derivative gate, and the
-first direct-coil/free-boundary CI-runtime split. GitHub Actions run
-`26918086767` passed all required jobs.
+Current candidate: local `main` after the CI coverage-restoration patch,
+retaining the 95% required coverage gate, the `DMerc`/Glasser `D_R`
+AD-vs-central-FD derivative gate, and the first direct-coil/free-boundary
+CI-runtime split. GitHub Actions run `26918086767` passed all required jobs;
+pushed commit `29312c1` passed tests but failed the py3.11 coverage threshold
+at `94.94%`, so the current local candidate adds cheap, user-facing and
+physics/API tests to restore coverage before pushing.
 
 This is the living execution plan for making `vmec_jax` accurate, fast,
 differentiable, documented, and usable by external researchers. Update it when
@@ -47,6 +50,16 @@ acceptance criteria or evidence changes.
   `22:04`. The remaining py3.11 runtime targets are the direct-coil
   same-branch custom-VJP complete-solve FD gate, exact B-field tangent columns,
   QH checkpoint JVP, and scalar cotangent gate.
+- On 2026-06-03, a boundary-field consolidation commit (`29312c1`) reduced
+  local full-gate runtime but dropped coverage to `94.94%`. The corrected local
+  candidate restores the exact scalar cotangent validation, keeps the
+  direct-coil current-only same-branch de-duplication, and adds fast coverage
+  around `vmec --test`/Boozer CLI errors, residual-iteration config parsing,
+  scan-cache diagnostics, JAX-visible free-boundary controller edge cases,
+  Glasser `D_R` underspecified-input failure, high-resolution VTK export, and
+  static signed-map sparse-mode handling. The full local required gate now
+  passes with `2667 passed, 23 skipped, 2 xfailed`, exact line coverage
+  `95.00%`, and runtime `5:57`.
 - VMEC profile evaluation now covers polynomial pressure/iota/current profiles
   plus VMEC-style cubic, Akima, and line-segment tabulated pressure, iota, and
   current profiles. Cubic pressure/iota and current spline decks have been
