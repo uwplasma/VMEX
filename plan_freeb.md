@@ -12,20 +12,74 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-04 on `main` after artifact-action v7 commit `faf6ebf`
-passed GitHub Actions run `26927785364`. The current local candidate updates
-the Codecov upload action to `codecov/codecov-action@v6`. The latest green main
-splits required py3.11 coverage into core and exact shards
-while keeping a combined 95% coverage threshold, preserves the `DMerc`/Glasser
-`D_R` AD-vs-central-FD gate, and keeps full-loop free-boundary claims
-conservative. It also uses Node-24-compatible v7 artifact actions.
+Last updated: 2026-06-04 on `main` after commit `f0ea62d`, `test: promote
+free-boundary aspect scalar adjoint gate`, passed GitHub Actions run
+`26954691506`. The latest green main splits required py3.11 coverage into core,
+slow-physics, and exact shards while keeping a combined 95% coverage threshold,
+preserves the `DMerc`/Glasser `D_R` AD-vs-central-FD gate, promotes a
+same-branch complete-loop aspect-ratio physical-scalar free-boundary custom-VJP
+gate, and keeps production adaptive `run_free_boundary` full-loop claims
+conservative. It also uses Node-24-compatible v7 artifact actions and
+`codecov/codecov-action@v6`.
 The phase-2 evidence includes reset-aware full accepted-trace replay, stacked
 accepted/rejected controller segment gates, current-only/Fourier-only
 same-branch complete-solve AD-vs-FD gates, segmented controller custom-VJP
-complete-solve AD-vs-FD gates, explicit tridiagonal-policy coverage, VMEC2000
+complete-solve AD-vs-FD gates, an aspect-ratio physical-scalar same-branch
+complete-solve gate, explicit tridiagonal-policy coverage, VMEC2000
 generated-`mgrid` WOUT-quality classification, and direct/generated
 boundary-domain checks. The code still does not claim a production full
-nonlinear `run_free_boundary` exact adjoint.
+adaptive nonlinear `run_free_boundary` exact adjoint.
+
+### 2026-06-04 Exact-gate runtime consolidation
+
+Steps taken:
+
+1. Confirmed GitHub Actions run `26954691506` for `f0ea62d` passed all required
+   jobs, including the combined py3.11 coverage gate.
+2. Merged the forced-active direct-coil NESTOR diagnostics and finite-pressure
+   physics-scalar tests so one tiny forced-active solve now validates both
+   diagnostic metadata and finite pressure/aspect/iota/residual scalars.
+3. Merged the exact optimizer B-field tangent-column parity and scalar
+   cotangent parity checks so one cold exact optimizer setup and one dense
+   Jacobian validate both paths.
+
+Results obtained:
+
+1. Focused ruff checks passed for the touched tests.
+2. The merged forced-active direct-coil diagnostics/physics test passed in
+   `5.69 s`.
+3. The affected exact optimizer tests passed in `56.01 s`; the merged
+   tangent/scalar test exercises both `b_cartesian_tangent_columns_fun` and the
+   scalar cotangent hook against the same dense Jacobian.
+4. Required CI for the preceding free-boundary aspect-scalar gate passed:
+   py3.11 exact coverage `8:31`, py3.11 core coverage `8:14`, slow physics
+   coverage `5:35`, and combined coverage gate `31 s`.
+
+Best next steps:
+
+1. Commit and push this exact-gate runtime consolidation, then watch CI.
+2. Continue runtime reduction by sharing one forced-active direct-coil accepted
+   trace payload across accepted-update replay, VMEC-state replay, and two-step
+   replay tests.
+3. Use the next full-loop adjoint seam only for a conservative same-branch
+   physical-scalar gate until production adaptive branch compatibility is
+   explicitly fingerprinted.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 97%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 80%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 84%.
+- CI runtime refactor with preserved coverage/physics gates: 97%.
+- Docs/release hygiene: 96%.
 
 ### 2026-06-04 CI split and exact-gate triage
 

@@ -582,11 +582,14 @@ def test_direct_coil_dense_nestor_output_is_independent_of_nonsingular_ip_chunk(
         np.testing.assert_allclose(chunked.diagnostics[key], scalar.diagnostics[key], rtol=1.0e-11, atol=1.0e-12)
 
 
-def test_forced_activation_reports_direct_coil_nestor_diagnostics(tmp_path: Path) -> None:
-    """Explicit activation should expose active direct-coil NESTOR diagnostics."""
+def test_forced_active_direct_coil_finite_pressure_solve_has_physics_diagnostics(
+    tmp_path: Path,
+) -> None:
+    """A tiny active direct-coil finite-pressure solve exposes active NESTOR diagnostics."""
 
     enable_x64(True)
     from vmec_jax.driver import run_free_boundary
+    from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state
 
     params = _circle_coil_params(current=3.0e7)
     input_path = _write_tiny_direct_freeb_input(tmp_path / "input.direct_provider_forced_active")
@@ -601,7 +604,8 @@ def test_forced_activation_reports_direct_coil_nestor_diagnostics(tmp_path: Path
         free_boundary_activate_fsq=1.0e99,
     )
 
-    freeb = run.result.diagnostics["free_boundary"]
+    diag = run.result.diagnostics
+    freeb = diag["free_boundary"]
     assert freeb["vacuum_stub"] is False
     assert freeb["activate_fsq"] == 1.0e99
     assert freeb["nestor_model"].startswith("vmec2000_like_dense_integral")
@@ -620,29 +624,6 @@ def test_forced_activation_reports_direct_coil_nestor_diagnostics(tmp_path: Path
     assert np.all(trial_samples >= 0.0)
     assert np.count_nonzero(trial_failed) == 0
 
-
-def test_forced_active_direct_coil_finite_pressure_solve_has_physics_diagnostics(tmp_path: Path) -> None:
-    """A tiny active direct-coil finite-pressure solve should expose finite physics scalars."""
-
-    enable_x64(True)
-    from vmec_jax.driver import run_free_boundary
-    from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state
-
-    params = _circle_coil_params(current=3.0e7)
-    input_path = _write_tiny_direct_freeb_input(tmp_path / "input.direct_finite_pressure_physics_gate")
-    run = run_free_boundary(
-        input_path,
-        max_iter=4,
-        multigrid=False,
-        verbose=False,
-        jit_forces=False,
-        external_field_provider_kind="direct_coils",
-        external_field_provider_params=params,
-        free_boundary_activate_fsq=1.0e99,
-    )
-
-    diag = run.result.diagnostics
-    freeb = diag["free_boundary"]
     pressure = _pressure_profile(run)
     aspect = float(np.asarray(equilibrium_aspect_ratio_from_state(state=run.state, static=run.static)))
     _chips, iotas, iotaf = equilibrium_iota_profiles_from_state(
@@ -655,9 +636,6 @@ def test_forced_active_direct_coil_finite_pressure_solve_has_physics_diagnostics
     iotaf = np.asarray(iotaf, dtype=float)
     residuals = np.asarray([diag["final_fsqr"], diag["final_fsqz"], diag["final_fsql"]], dtype=float)
 
-    assert freeb["vacuum_stub"] is False
-    assert freeb["final_nestor_recompute_failed"] is False
-    assert freeb["last_nestor_diagnostics"]["provider_kind"] == "direct_coils"
     assert np.max(pressure) > 0.0
     assert np.all(np.isfinite(residuals))
     assert np.all(residuals >= 0.0)
