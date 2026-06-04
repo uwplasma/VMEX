@@ -1770,3 +1770,20 @@ Defer beyond the current cycle:
   passed: `4 passed` in `47.06 s`, with the merged promotion gate measuring
   `38.42 s`. Completion: CI runtime/refactor `92%`; DMerc/`D_R` derivative
   validation `98%`; VMEC parity and physics gates `95%`.
+- 2026-06-04: Split the remaining expensive py3.11 physics coverage work into
+  a third required shard, `py311_slow_coverage`, while preserving the exact
+  combined `95%` coverage gate. The slow shard now owns selected current-driven
+  VMEC profile, host/JAX update parity, QI diagnostic, discrete-adjoint QH,
+  projected free-boundary, Glasser finite-beta, and resume-state gates; core and
+  compatibility lanes skip those tests only via the existing
+  `VMEC_JAX_SKIP_PY311_COVERAGE_ONLY=1` switch. A small real coverage buffer was
+  added by fixing the cache machine-fingerprint node fallback and covering the
+  no-JAX tree-util fallback. Local validation passed: ruff clean; `tests/test_compat.py`
+  `17 passed`; core coverage shard `2624 passed, 69 skipped, 2 xfailed` in
+  `2:12`; exact coverage shard `21 passed` in `2:06`; slow physics shard
+  `25 passed` in `1:22`; combined exact XML line coverage `95.03%`. Best next
+  step: commit/push and watch CI, then continue reducing cold exact-adjoint
+  setup cost and promote the next complete-loop free-boundary physical-scalar
+  AD-vs-FD gate. Completion: CI runtime/refactor `95%`; DMerc/`D_R` derivative
+  validation `99%`; VMEC parity and physics gates `95%`; full nonlinear
+  free-boundary adjoint `96%`; docs/release hygiene `96%`.

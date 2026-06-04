@@ -6776,6 +6776,57 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 94%.
 - Docs/release hygiene: 96%.
 
+### 2026-06-04 Py3.11 slow physics coverage shard
+
+Steps taken:
+
+1. Added a separate `py311_slow_coverage` marker and CI job for expensive
+   physics/numerics gates that remain required for py3.11 coverage but no
+   longer run inside the py3.11 core coverage shard.
+2. Moved selected free-boundary projected-mode, discrete-adjoint QH,
+   Glasser finite-beta, QI diagnostic, current-driven VMEC profile, and resume
+   gates into the slow shard.
+3. Preserved all existing exact/free-boundary `py311_coverage_only` promotion
+   tests in their dedicated exact shard.
+4. Fixed the machine fingerprint node fallback in `_compat.py` and added a fast
+   no-JAX tree-util fallback test to keep the exact combined coverage gate above
+   threshold after sharding.
+
+Results obtained:
+
+1. Ruff passed on all touched source/tests.
+2. `tests/test_compat.py` passed: `17 passed in 0.28 s`.
+3. Local core coverage shard passed: `2624 passed, 69 skipped, 2 xfailed` in
+   `2:12`.
+4. Local exact coverage shard passed: `21 passed` in `2:06`.
+5. Local slow physics coverage shard passed: `25 passed` in `1:22`.
+6. Combined three-shard XML coverage passed the strict gate with exact line
+   coverage `95.03%`.
+
+Best next steps:
+
+1. Commit and push the CI split, then watch the full GitHub Actions run.
+2. After CI is green, promote the next full-loop free-boundary physical-scalar
+   AD-vs-central-FD gate rather than adding docs churn.
+3. Continue runtime reduction by sharing accepted direct-coil traces across
+   replay/state/two-step gates and by reducing cold exact tape setup cost.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 96%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 99%.
+- VMEC parity and physics gates: 95%.
+- Single-stage coil-only optimization: 79%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 84%.
+- CI runtime refactor with preserved coverage/physics gates: 95%.
+- Docs/release hygiene: 96%.
+
 ### 2026-05-24 Provider slice 1
 
 Steps taken:
