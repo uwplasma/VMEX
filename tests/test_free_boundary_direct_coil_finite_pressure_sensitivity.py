@@ -490,6 +490,16 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     assert adaptive_gate["differentiates_run_free_boundary"] is False
     assert adaptive_gate["same_stacked_step_policy_branch"] is True
     assert adaptive_gate["used_stacked_step_controls"] is True
+    unstacked_allowed_scalars_report = deepcopy(physical_scalars_report)
+    unstacked_allowed_scalars_report["replay_option_flags"] = {"use_stacked_step_controls": False}
+    unstacked_allowed_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
+        physical_synthetic_report,
+        unstacked_allowed_scalars_report,
+        require_stacked_step_controls=False,
+    )
+    assert unstacked_allowed_gate["passed"], unstacked_allowed_gate
+    assert unstacked_allowed_gate["requires_stacked_step_controls"] is False
+    assert unstacked_allowed_gate["used_stacked_step_controls"] is False
     json.dumps(
         direct_coil_adaptive_full_loop_same_branch_gate_report(
             physical_synthetic_report,
@@ -524,7 +534,9 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     bad_physical_report["branch_compatibility"]["same_residual_branch"] = False
     bad_physical_report["objective_values"]["accepted_bnormal_rms"]["central_fd_directional"] = np.nan
     changed_policy_trace = {**trace1, "include_edge_residual": True}
+    bad_physical_report["base"] = {"traces": ()}
     bad_physical_report["plus"] = {"traces": (trace0, changed_policy_trace)}
+    bad_physical_report.pop("minus")
     bad_physical_scalars_report["replay_option_flags"] = {"use_stacked_step_controls": False}
     bad_physical_gate = direct_coil_same_branch_physical_scalar_gate_report(
         bad_physical_report,
@@ -548,6 +560,8 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     assert not bad_adaptive_gate["passed"]
     assert any("stacked step-control replay was not used" in error for error in bad_adaptive_gate["errors"])
     assert any("stacked step-policy branch changed" in error for error in bad_adaptive_gate["errors"])
+    assert any("base: no accepted step-policy segments" in error for error in bad_adaptive_gate["errors"])
+    assert any("minus: missing complete-solve payload" in error for error in bad_adaptive_gate["errors"])
     assert any("physical scalar gate:" in error for error in bad_adaptive_gate["errors"])
 
     jacobian_tree = {

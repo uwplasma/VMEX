@@ -7990,6 +7990,62 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 95%.
 - Docs/release hygiene: 96%.
 
+### 2026-06-04 Adaptive seam coverage and py3.11 core split
+
+Steps taken:
+
+1. Confirmed the pushed adaptive seam commit `d37a3da` passed every CI test
+   shard; the only failure was the final combined coverage gate.
+2. Inspected the coverage-gate log and found exact line coverage was
+   `94.99%`, just below the strict `95.00%` threshold after the new adaptive
+   seam report added lines.
+3. Added real synthetic coverage for the adaptive full-loop seam report:
+   optional non-required stacked controls, empty accepted step-policy payloads,
+   and missing complete-solve payload diagnostics.
+4. Split the py3.11 core coverage job into four deterministic buckets:
+   driver/solve/discrete, optimization/QI/free-boundary, WOUT/Boozer/plot/profile,
+   and rest.
+5. Added `tools/diagnostics/ci_core_bucket_args.py` to keep the bucket
+   assignment explicit and locally auditable.
+
+Results obtained:
+
+1. Ruff passed on the touched free-boundary test and CI bucket helper.
+2. The fast synthetic seam diagnostic test passed in `0.72 s`.
+3. The current-only, Fourier-only, and LASYM same-branch exact custom-VJP gates
+   passed locally: `3 passed in 86.01 s`.
+4. Local bucket-collection equality passed exactly:
+   `all=2692`, `combined=2692`, `unique=2692`.
+5. The CI split preserves the same marker expression and test set while
+   allowing the former py3.11 core bottleneck to run as four parallel jobs.
+
+Best next steps:
+
+1. Commit and push the coverage diagnostic fix plus py3.11 core split.
+2. Watch the new CI run to confirm the split artifact names and combined
+   coverage glob are correct.
+3. After CI is green, implement the next production branch-local
+   `run_free_boundary` custom-VJP seam: production forward run, saved
+   same-branch accepted-trace replay in backward, explicit branch fingerprint
+   gating, and no claim of adaptive-branch differentiation.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.98%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 82%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 86%.
+- CI runtime refactor with preserved coverage/physics gates: 99.9% locally
+  validated, pending split CI run.
+- Docs/release hygiene: 96%.
+
 ### 2026-05-24 Provider slice 1
 
 Steps taken:
