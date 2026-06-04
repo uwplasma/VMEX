@@ -429,12 +429,16 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     from vmec_jax.free_boundary_adjoint import (
         _pytree_batched_directional_vdot_jax,
         direct_coil_accepted_trace_controller_custom_vjp_scalars_jax,
+        direct_coil_adaptive_full_loop_same_branch_gate_report,
         direct_coil_same_branch_physical_scalar_gate_report,
         direct_coil_same_branch_controller_scalar_custom_vjp_report,
         direct_coil_same_branch_controller_scalars_custom_vjp_report,
     )
 
     physical_synthetic_report = deepcopy(synthetic_report)
+    physical_synthetic_report["base"] = {"traces": (trace0, trace1)}
+    physical_synthetic_report["plus"] = {"traces": (trace0, trace1)}
+    physical_synthetic_report["minus"] = {"traces": (trace0, trace1)}
     physical_synthetic_report["objective_values"] = {
         "aspect": {"base": 5.0, "plus": 5.01, "minus": 4.99, "central_fd_directional": 100.0},
         "accepted_bnormal_rms": {
@@ -446,6 +450,7 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     }
     physical_scalars_report = {
         "same_branch": True,
+        "replay_option_flags": {"use_stacked_step_controls": True},
         "scalar_keys": ("aspect", "accepted_bnormal_rms"),
         "scalar_reports": {
             "aspect": {
@@ -475,6 +480,24 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     assert physical_gate["differentiates_adaptive_controller"] is False
     assert physical_gate["same_accepted_trace_branch"] is True
     assert physical_gate["same_residual_branch"] is True
+    adaptive_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
+        physical_synthetic_report,
+        physical_scalars_report,
+    )
+    assert adaptive_gate["passed"], adaptive_gate
+    assert adaptive_gate["contract"] == "same-branch adaptive full-loop seam report"
+    assert adaptive_gate["differentiates_adaptive_controller"] is False
+    assert adaptive_gate["differentiates_run_free_boundary"] is False
+    assert adaptive_gate["same_stacked_step_policy_branch"] is True
+    assert adaptive_gate["used_stacked_step_controls"] is True
+    json.dumps(
+        direct_coil_adaptive_full_loop_same_branch_gate_report(
+            physical_synthetic_report,
+            physical_scalars_report,
+            json_safe=True,
+        ),
+        allow_nan=False,
+    )
     json.dumps(
         direct_coil_same_branch_physical_scalar_gate_report(
             physical_synthetic_report,
@@ -500,6 +523,9 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     bad_physical_report["branch_compatibility"]["same_accepted_trace_branch"] = False
     bad_physical_report["branch_compatibility"]["same_residual_branch"] = False
     bad_physical_report["objective_values"]["accepted_bnormal_rms"]["central_fd_directional"] = np.nan
+    changed_policy_trace = {**trace1, "include_edge_residual": True}
+    bad_physical_report["plus"] = {"traces": (trace0, changed_policy_trace)}
+    bad_physical_scalars_report["replay_option_flags"] = {"use_stacked_step_controls": False}
     bad_physical_gate = direct_coil_same_branch_physical_scalar_gate_report(
         bad_physical_report,
         bad_physical_scalars_report,
@@ -514,6 +540,15 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     assert any("missing complete-solve objective values" in error for error in bad_physical_gate["errors"])
     assert any("non-finite complete-solve FD" in error for error in bad_physical_gate["errors"])
     assert any("non-finite custom-VJP" in error for error in bad_physical_gate["errors"])
+    bad_adaptive_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
+        bad_physical_report,
+        bad_physical_scalars_report,
+        scalar_keys=("aspect", "accepted_bnormal_rms", "missing", "missing_objective"),
+    )
+    assert not bad_adaptive_gate["passed"]
+    assert any("stacked step-control replay was not used" in error for error in bad_adaptive_gate["errors"])
+    assert any("stacked step-policy branch changed" in error for error in bad_adaptive_gate["errors"])
+    assert any("physical scalar gate:" in error for error in bad_adaptive_gate["errors"])
 
     jacobian_tree = {
         "a": jnp.asarray([[1.0, 2.0], [3.0, 4.0]]),
@@ -1340,6 +1375,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     from vmec_jax._compat import jax, jnp
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_accepted_trace_controller_custom_vjp_objective_jax,
+        direct_coil_adaptive_full_loop_same_branch_gate_report,
         free_boundary_boundary_geometry_jax,
         direct_coil_same_branch_physical_scalar_gate_report,
         direct_coil_same_branch_controller_scalar_custom_vjp_report,
@@ -1663,6 +1699,29 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         assert physical_scalar_gate["differentiates_adaptive_controller"] is False
         assert physical_scalar_gate["scalar_keys"] == tuple(replay_scalar_fns)
         assert physical_scalar_gate["replay_gate"]["passed"] is True
+        adaptive_full_loop_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
+            complete_report,
+            scalars_report,
+            scalar_keys=tuple(replay_scalar_fns),
+        )
+        assert adaptive_full_loop_gate["passed"], adaptive_full_loop_gate
+        assert adaptive_full_loop_gate["contract"] == "same-branch adaptive full-loop seam report"
+        assert adaptive_full_loop_gate["differentiates_adaptive_controller"] is False
+        assert adaptive_full_loop_gate["differentiates_run_free_boundary"] is False
+        assert adaptive_full_loop_gate["same_branch"] is True
+        assert adaptive_full_loop_gate["same_accepted_trace_branch"] is True
+        assert adaptive_full_loop_gate["same_residual_branch"] is True
+        assert adaptive_full_loop_gate["same_stacked_step_policy_branch"] is True
+        assert adaptive_full_loop_gate["used_stacked_step_controls"] is True
+        json.dumps(
+            direct_coil_adaptive_full_loop_same_branch_gate_report(
+                complete_report,
+                scalars_report,
+                scalar_keys=tuple(replay_scalar_fns),
+                json_safe=True,
+            ),
+            allow_nan=False,
+        )
         json.dumps(
             direct_coil_same_branch_physical_scalar_gate_report(
                 complete_report,

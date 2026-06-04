@@ -228,6 +228,55 @@ Completion:
 - Docs/release hygiene: 96%.
 - Overall free-boundary single-stage plan: 95.0%.
 
+### 2026-06-04 Report-only adaptive full-loop seam gate
+
+Steps taken:
+
+1. Added `direct_coil_adaptive_full_loop_same_branch_gate_report`.
+2. Composed the existing complete-solve physical-scalar AD-vs-FD gate with an
+   additional stacked step-policy branch check for base/plus/minus complete
+   host-loop traces.
+3. Required stacked step-control replay by default and kept the contract
+   explicit: this report does not differentiate the adaptive host controller
+   and does not differentiate `run_free_boundary`.
+4. Extended synthetic replay-gate coverage for pass/fail/json-safe paths.
+5. Wired the report into the existing complete-solve same-branch scalar-gate
+   helper, reusing current complete-solve triplets.
+
+Results obtained:
+
+1. Ruff passed for `vmec_jax/free_boundary_adjoint.py` and
+   `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`.
+2. Synthetic replay/fingerprint gate passed in `0.77 s`.
+3. Current-only same-branch physical-scalar gate passed in `38.20 s`.
+4. Full same-branch exact bucket passed: `3 passed in 49.69 s`.
+
+Best next steps:
+
+1. Commit and push this report-only seam.
+2. Watch CI, especially the exact same-branch bucket and combined coverage
+   gate.
+3. If CI is green, consider Ptolemy's next CI runtime cut: split py3.11 core
+   coverage into file-list buckets while preserving the exact marker selector
+   and combined coverage threshold.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.98%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 82%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 86%.
+- CI runtime refactor with preserved coverage/physics gates: 99.9%.
+- Docs/release hygiene: 96%.
+- Overall free-boundary single-stage plan: 95.1%.
+
 ### 2026-06-04 Exact coverage matrix split
 
 Steps taken:
