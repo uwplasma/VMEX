@@ -2116,6 +2116,7 @@ def test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_
         check_segmented_controller=False,
         check_aspect_scalar=True,
         check_boundary_moment_scalar=True,
+        check_production_branch_local_scalar=True,
     )
 
 

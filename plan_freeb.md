@@ -155,6 +155,58 @@ Completion:
 - Docs/release hygiene: 96.5%.
 - Overall free-boundary/single-stage plan: 96.9%.
 
+### 2026-06-04 Fourier branch-local production seam promotion
+
+Steps taken:
+
+1. Promoted the production-forward branch-local scalar/vector wrapper from
+   current-only same-branch validation to the Fourier-coil-geometry
+   same-branch validation gate.
+2. Kept the promotion solve-neutral: the Fourier test reuses its existing
+   complete-solve central-FD triplet and only adds fixed accepted-branch replay
+   checks for aspect-ratio production values and derivatives.
+
+Results obtained:
+
+1. `python -m ruff check
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_fd
+   --durations=20` passed: `1 passed in 43.05 s`.
+3. Runtime stayed comparable to the current-only branch-local gate, so this
+   strengthens the validation matrix without materially increasing complete
+   solve cost.
+
+Best next steps:
+
+1. Commit and push the Fourier promotion.
+2. Watch CI for both the stacked-axis fix and the Fourier promotion.
+3. Keep the next correctness target conservative: production adaptive
+   full-loop differentiation remains unclaimed until branch changes are either
+   made JAX-visible or fingerprint-gated in a full custom-VJP seam.
+4. Continue performance work on the report-only stacked replay compile warning
+   after CI is green.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.998% for branch-local
+  production-forward current and Fourier geometry scalar/vector gradients;
+  full adaptive branch differentiation remains intentionally unclaimed.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 86.5%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 86.5%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 96.5%.
+- Overall free-boundary/single-stage plan: 97.0%.
+
 ### 2026-06-04 Branch-local vector production seam
 
 Steps taken:
