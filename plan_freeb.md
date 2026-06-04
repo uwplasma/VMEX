@@ -77,6 +77,67 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-04 Accepted-only branch-local replay fast path
+
+Steps taken:
+
+1. Added an accepted-only replay eligibility predicate based on
+   `_accepted_trace_effective_controller_masks`, so the optimization uses the
+   same active/accepted/rejected/done semantics as the JAX-visible accepted
+   controller.
+2. Wired the predicate into `direct_coil_accepted_trace_controller_replay_objective_jax`
+   for unsegmented, preconditioner-segmented, and stacked step-control replay.
+3. Kept the path conservative and metadata-visible: rejected, inactive, or
+   post-convergence padded slots automatically use the existing fallback path,
+   and the replay now reports `used_accepted_only_fast_path` plus per-segment
+   fast-path flags.
+4. Exposed `use_accepted_only_fast_path` in the branch-local scalar/Jacobian
+   report option flags.
+5. Added tests for all-fast-path, forced fallback, stacked replay, segmented
+   replay, mixed fast/fallback segment eligibility, and padded rejected-step
+   fallback.
+
+Results obtained:
+
+1. `python -m ruff check vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree --durations=20`
+   passed: `2 passed in 43.84 s`.
+3. Before this patch, the current pushed main CI run `26980710881` passed every
+   job, including the combined 95% coverage gate.
+
+Best next steps:
+
+1. Commit and push the accepted-only replay fast path.
+2. Watch the new CI run until build, exact free-boundary shards, physics smoke,
+   and combined coverage pass.
+3. If CI is green, continue the production full-loop adjoint seam by promoting
+   another same-branch physical-scalar gate while preserving the conservative
+   no-adaptive-branch-differentiation contract.
+4. Profile the report path with and without the accepted-only fast path to
+   quantify compile/runtime savings and decide whether a deeper accepted-only
+   controller primitive is worth the additional complexity.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.998% for branch-local
+  production-forward current/Fourier scalar and vector gradients; full
+  adaptive branch differentiation remains intentionally unclaimed.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 86.5%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 87%.
+- CI runtime refactor with preserved coverage/physics gates: 100% on the
+  previous pushed run.
+- Docs/release hygiene: 96.5%.
+- Overall free-boundary/single-stage plan: 97.1%.
+
 ### 2026-06-04 Stacked replay NESTOR-axis correction
 
 Steps taken:

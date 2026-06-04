@@ -174,6 +174,7 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_accepted_trace_array_controls_jax,
         direct_coil_accepted_trace_branch_metadata,
+        direct_coil_accepted_trace_controller_controls_jax,
         direct_coil_accepted_trace_fingerprint_delta_summary,
         direct_coil_accepted_trace_preconditioner_controls_jax,
         direct_coil_accepted_trace_preconditioner_policy_segments,
@@ -185,6 +186,8 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
         direct_coil_accepted_trace_fingerprint_delta,
         direct_coil_same_branch_replay_gate_report,
         free_boundary_adjoint_trace_replay_diagnostics,
+        _accepted_trace_effective_controller_masks,
+        _accepted_trace_segment_is_unconditionally_accepted,
     )
 
     z = np.arange(6.0).reshape(2, 3)
@@ -322,6 +325,14 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     )
     assert step_policy_summary[0]["accepted_steps"] == 1
     assert step_policy_summary[1]["rejected_steps"] == 1
+    mixed_segment_controls = direct_coil_accepted_trace_controller_controls_jax(
+        [axis_trace0, changed_static_trace],
+        accept_mask=np.asarray([True, False]),
+        done_mask=np.asarray([False, False]),
+    )
+    mixed_segment_masks = _accepted_trace_effective_controller_masks(mixed_segment_controls)
+    assert _accepted_trace_segment_is_unconditionally_accepted(mixed_segment_masks, start=0, stop=1)
+    assert not _accepted_trace_segment_is_unconditionally_accepted(mixed_segment_masks, start=1, stop=2)
 
     branch_metadata = direct_coil_accepted_trace_branch_metadata([trace0, trace1])
     assert branch_metadata["n_steps"] == 2
@@ -332,6 +343,7 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     assert np.array_equal(np.asarray(branch_metadata["reset_to_trace_pre"]), np.asarray([False, False]))
     assert np.array_equal(np.asarray(branch_metadata["active_free_boundary_mask"]), np.asarray([True, True]))
     assert branch_metadata["preconditioner_policy_segment_summary"][0]["free_boundary_replay_steps"] == 2
+    assert _accepted_trace_segment_is_unconditionally_accepted(branch_metadata["masks"], start=0, stop=2)
     branch_metadata_json = direct_coil_accepted_trace_branch_metadata(
         [trace0, trace1],
         accept_mask=np.asarray([True, False]),
@@ -2798,6 +2810,41 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         force_weight=0.0,
         enforce_edge=False,
     )
+    fallback_controller_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
+        base_params,
+        trace0["state_pre"],
+        static=init.static,
+        traces=[trace0, trace1],
+        signgs=int(init.signgs),
+        state_weight=1.0,
+        bsqvac_weight=1.0e-12,
+        force_weight=0.0,
+        enforce_edge=False,
+        use_accepted_only_fast_path=False,
+    )
+    assert controller_replay["used_accepted_only_fast_path"]
+    assert controller_replay["accepted_only_fast_path_segments"] == (True,)
+    assert not fallback_controller_replay["used_accepted_only_fast_path"]
+    assert fallback_controller_replay["accepted_only_fast_path_segments"] == (False,)
+    np.testing.assert_allclose(
+        np.asarray(controller_replay["objective"]),
+        np.asarray(fallback_controller_replay["objective"]),
+        rtol=2.0e-12,
+        atol=1.0e-12,
+    )
+    np.testing.assert_allclose(
+        np.asarray(pack_state(controller_replay["state"])),
+        np.asarray(pack_state(fallback_controller_replay["state"])),
+        rtol=5.0e-12,
+        atol=5.0e-12,
+    )
+    for key in ("active", "accepted", "rejected", "done", "state_reset", "force", "bsqvac"):
+        np.testing.assert_allclose(
+            np.asarray(controller_replay["history"][key]),
+            np.asarray(fallback_controller_replay["history"][key]),
+            rtol=5.0e-12,
+            atol=5.0e-12,
+        )
     np.testing.assert_array_equal(np.asarray(controller_replay["history"]["accepted"]), np.asarray([True, True]))
     np.testing.assert_array_equal(np.asarray(controller_replay["history"]["rejected"]), np.asarray([False, False]))
     np.testing.assert_array_equal(
@@ -2885,8 +2932,24 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         enforce_edge=False,
         use_preconditioner_policy_segments=True,
     )
+    segmented_fallback_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
+        base_params,
+        trace0["state_pre"],
+        static=init.static,
+        traces=[trace0, trace1],
+        signgs=int(init.signgs),
+        state_weight=1.0,
+        bsqvac_weight=1.0e-12,
+        force_weight=0.0,
+        enforce_edge=False,
+        use_preconditioner_policy_segments=True,
+        use_accepted_only_fast_path=False,
+    )
     assert segmented_controller_replay["used_preconditioner_policy_segments"]
     assert segmented_controller_replay["preconditioner_controls_segment_stacked"] == (True,)
+    assert segmented_controller_replay["used_accepted_only_fast_path"]
+    assert segmented_controller_replay["accepted_only_fast_path_segments"] == (True,)
+    assert segmented_fallback_replay["accepted_only_fast_path_segments"] == (False,)
     np.testing.assert_allclose(
         np.asarray(segmented_controller_replay["objective"]),
         np.asarray(controller_replay["objective"]),
@@ -2898,6 +2961,12 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         np.asarray(pack_state(controller_replay["state"])),
         rtol=5.0e-12,
         atol=5.0e-12,
+    )
+    np.testing.assert_allclose(
+        np.asarray(segmented_controller_replay["objective"]),
+        np.asarray(segmented_fallback_replay["objective"]),
+        rtol=2.0e-12,
+        atol=1.0e-12,
     )
     stacked_controller_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
         base_params,
@@ -2911,9 +2980,25 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         enforce_edge=False,
         use_stacked_step_controls=True,
     )
+    stacked_fallback_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
+        base_params,
+        trace0["state_pre"],
+        static=init.static,
+        traces=[trace0, trace1],
+        signgs=int(init.signgs),
+        state_weight=1.0,
+        bsqvac_weight=1.0e-12,
+        force_weight=0.0,
+        enforce_edge=False,
+        use_stacked_step_controls=True,
+        use_accepted_only_fast_path=False,
+    )
     assert stacked_controller_replay["used_stacked_step_controls"]
     assert stacked_controller_replay["step_policy_n_segments"] == len(step_segments)
     assert stacked_controller_replay["preconditioner_controls_segment_stacked"] == (True,) * len(step_segments)
+    assert stacked_controller_replay["used_accepted_only_fast_path"]
+    assert stacked_controller_replay["accepted_only_fast_path_segments"] == (True,) * len(step_segments)
+    assert stacked_fallback_replay["accepted_only_fast_path_segments"] == (False,) * len(step_segments)
     np.testing.assert_allclose(
         np.asarray(stacked_controller_replay["objective"]),
         np.asarray(controller_replay["objective"]),
@@ -2925,6 +3010,12 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         np.asarray(pack_state(controller_replay["state"])),
         rtol=5.0e-12,
         atol=5.0e-12,
+    )
+    np.testing.assert_allclose(
+        np.asarray(stacked_controller_replay["objective"]),
+        np.asarray(stacked_fallback_replay["objective"]),
+        rtol=2.0e-12,
+        atol=1.0e-12,
     )
     for key in ("active", "accepted", "rejected", "done", "state_reset"):
         np.testing.assert_array_equal(
@@ -3031,6 +3122,8 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         accept_mask=np.asarray([True, True, False]),
         done_mask=np.asarray([False, True, False]),
     )
+    assert not padded_controller_replay["used_accepted_only_fast_path"]
+    assert padded_controller_replay["accepted_only_fast_path_segments"] == (False,)
     np.testing.assert_array_equal(
         np.asarray(padded_controller_replay["history"]["active"]),
         np.asarray([True, True, False]),
