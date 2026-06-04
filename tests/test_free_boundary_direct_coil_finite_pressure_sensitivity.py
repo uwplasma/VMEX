@@ -1087,6 +1087,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     check_segmented_controller: bool = True,
     check_aspect_scalar: bool = True,
     check_boundary_moment_scalar: bool = False,
+    check_accepted_bnormal_rms_scalar: bool = False,
     check_accepted_bsqvac_rms_scalar: bool = False,
 ) -> None:
     pytest.importorskip("jax")
@@ -1095,6 +1096,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         direct_coil_accepted_trace_controller_custom_vjp_objective_jax,
         free_boundary_boundary_geometry_jax,
         direct_coil_same_branch_controller_scalar_custom_vjp_report,
+        direct_coil_same_branch_controller_scalars_custom_vjp_report,
         direct_coil_same_branch_complete_solve_fd_report,
         direct_coil_same_branch_replay_gate_report,
         direct_coil_fixed_trace_custom_vjp_objective_jax,
@@ -1122,6 +1124,28 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             return 0.0
         return float(np.mean(values))
 
+    def accepted_bnormal_rms_from_payload(payload) -> float:
+        values = [
+            float(np.sqrt(np.mean(np.square(np.asarray(trace["freeb_nestor_trace"]["bnormal"], dtype=float)))))
+            for trace in payload["traces"]
+            if trace.get("freeb_bsqvac_half") is not None
+            and isinstance(trace.get("freeb_nestor_trace"), dict)
+            and trace["freeb_nestor_trace"].get("bnormal") is not None
+        ]
+        if not values:
+            return 0.0
+        return float(np.mean(values))
+
+    def accepted_bnormal_rms_from_replay(replay) -> object:
+        accepted = jnp.asarray(replay["history"]["accepted"], dtype=jnp.asarray(replay["history"]["bnormal_rms"]).dtype)
+        active = jnp.asarray(
+            replay["controls"]["has_active_freeb_replay"],
+            dtype=jnp.asarray(replay["history"]["bnormal_rms"]).dtype,
+        )
+        weights = accepted * active
+        denom = jnp.maximum(jnp.sum(weights), jnp.asarray(1.0, dtype=weights.dtype))
+        return jnp.sum(weights * jnp.asarray(replay["history"]["bnormal_rms"])) / denom
+
     def accepted_bsqvac_rms_from_replay(replay) -> object:
         accepted = jnp.asarray(replay["history"]["accepted"], dtype=jnp.asarray(replay["history"]["bsqvac_rms"]).dtype)
         active = jnp.asarray(
@@ -1148,6 +1172,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                 )
             ),
             "lcfs_boundary_moment": float(np.asarray(lcfs_boundary_moment(payload["result"].state, payload["init"].static))),
+            "accepted_bnormal_rms": accepted_bnormal_rms_from_payload(payload),
             "accepted_bsqvac_rms": accepted_bsqvac_rms_from_payload(payload),
         },
         eps=eps,
@@ -1230,6 +1255,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         "objective",
         "aspect",
         "lcfs_boundary_moment",
+        "accepted_bnormal_rms",
         "accepted_bsqvac_rms",
     }
     complete_fd = float(complete_report["values"]["central_fd_directional"])
@@ -1337,20 +1363,41 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         atol=1.0e-12,
     )
     if check_aspect_scalar:
-        aspect_report = direct_coil_same_branch_controller_scalar_custom_vjp_report(
-            complete_report,
-            base_params,
-            direction,
-            scalar_key="aspect",
-            replay_scalar_fn=lambda replay, payload: equilibrium_aspect_ratio_from_state(
+        replay_scalar_fns = {
+            "aspect": lambda replay, payload: equilibrium_aspect_ratio_from_state(
                 state=replay["state"],
                 static=payload["init"].static,
             ),
+        }
+        rtol_by_key = {"aspect": 5.0e-3}
+        atol_by_key = {"aspect": 5.0e-8}
+        if check_boundary_moment_scalar:
+            replay_scalar_fns["lcfs_boundary_moment"] = lambda replay, payload: lcfs_boundary_moment(
+                replay["state"],
+                payload["init"].static,
+            )
+            rtol_by_key["lcfs_boundary_moment"] = 5.0e-3
+            atol_by_key["lcfs_boundary_moment"] = 5.0e-8
+        if check_accepted_bsqvac_rms_scalar:
+            replay_scalar_fns["accepted_bsqvac_rms"] = lambda replay, _payload: accepted_bsqvac_rms_from_replay(replay)
+            rtol_by_key["accepted_bsqvac_rms"] = 1.0e-2
+            atol_by_key["accepted_bsqvac_rms"] = 1.0e-8
+        if check_accepted_bnormal_rms_scalar:
+            replay_scalar_fns["accepted_bnormal_rms"] = lambda replay, _payload: accepted_bnormal_rms_from_replay(replay)
+            rtol_by_key["accepted_bnormal_rms"] = 1.0e-2
+            atol_by_key["accepted_bnormal_rms"] = 1.0e-8
+        scalars_report = direct_coil_same_branch_controller_scalars_custom_vjp_report(
+            complete_report,
+            base_params,
+            direction,
+            replay_scalar_fns=replay_scalar_fns,
             eps=eps,
-            rtol=5.0e-3,
-            atol=5.0e-8,
+            rtol=rtol_by_key,
+            atol=atol_by_key,
             compute_frozen_fd=False,
         )
+        assert scalars_report["passed"], scalars_report
+        aspect_report = scalars_report["scalar_reports"]["aspect"]
         assert aspect_report["passed"], aspect_report
         assert aspect_report["same_branch"] is True
         assert aspect_report["replay_gate"]["passed"] is True
@@ -1361,7 +1408,33 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             rtol=1.0e-12,
             atol=1.0e-12,
         )
-    if check_boundary_moment_scalar:
+        if check_boundary_moment_scalar:
+            moment_report = scalars_report["scalar_reports"]["lcfs_boundary_moment"]
+            assert moment_report["passed"], moment_report
+            assert moment_report["same_branch"] is True
+            assert moment_report["replay_gate"]["passed"] is True
+            assert moment_report["base_abs_delta"] < 2.0e-3
+        if check_accepted_bsqvac_rms_scalar:
+            bsqvac_values = complete_report["objective_values"]["accepted_bsqvac_rms"]
+            assert bsqvac_values["base"] > 0.0
+            assert bsqvac_values["plus"] > bsqvac_values["minus"]
+            assert bsqvac_values["central_fd_directional"] > 0.0
+            bsqvac_report = scalars_report["scalar_reports"]["accepted_bsqvac_rms"]
+            assert bsqvac_report["passed"], bsqvac_report
+            assert bsqvac_report["same_branch"] is True
+            assert bsqvac_report["replay_gate"]["passed"] is True
+            assert bsqvac_report["base_abs_delta"] < 2.0e-3
+        if check_accepted_bnormal_rms_scalar:
+            bnormal_values = complete_report["objective_values"]["accepted_bnormal_rms"]
+            assert bnormal_values["base"] > 0.0
+            assert bnormal_values["plus"] > bnormal_values["minus"]
+            assert bnormal_values["central_fd_directional"] > 0.0
+            bnormal_report = scalars_report["scalar_reports"]["accepted_bnormal_rms"]
+            assert bnormal_report["passed"], bnormal_report
+            assert bnormal_report["same_branch"] is True
+            assert bnormal_report["replay_gate"]["passed"] is True
+            assert bnormal_report["base_abs_delta"] < 2.0e-3
+    elif check_boundary_moment_scalar:
         moment_report = direct_coil_same_branch_controller_scalar_custom_vjp_report(
             complete_report,
             base_params,
@@ -1380,7 +1453,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         assert moment_report["same_branch"] is True
         assert moment_report["replay_gate"]["passed"] is True
         assert moment_report["base_abs_delta"] < 2.0e-3
-    if check_accepted_bsqvac_rms_scalar:
+    elif check_accepted_bsqvac_rms_scalar:
         bsqvac_values = complete_report["objective_values"]["accepted_bsqvac_rms"]
         assert bsqvac_values["base"] > 0.0
         assert bsqvac_values["plus"] > bsqvac_values["minus"]
@@ -1400,6 +1473,26 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         assert bsqvac_report["same_branch"] is True
         assert bsqvac_report["replay_gate"]["passed"] is True
         assert bsqvac_report["base_abs_delta"] < 2.0e-3
+    elif check_accepted_bnormal_rms_scalar:
+        bnormal_values = complete_report["objective_values"]["accepted_bnormal_rms"]
+        assert bnormal_values["base"] > 0.0
+        assert bnormal_values["plus"] > bnormal_values["minus"]
+        assert bnormal_values["central_fd_directional"] > 0.0
+        bnormal_report = direct_coil_same_branch_controller_scalar_custom_vjp_report(
+            complete_report,
+            base_params,
+            direction,
+            scalar_key="accepted_bnormal_rms",
+            replay_scalar_fn=lambda replay, _payload: accepted_bnormal_rms_from_replay(replay),
+            eps=eps,
+            rtol=1.0e-2,
+            atol=1.0e-8,
+            compute_frozen_fd=False,
+        )
+        assert bnormal_report["passed"], bnormal_report
+        assert bnormal_report["same_branch"] is True
+        assert bnormal_report["replay_gate"]["passed"] is True
+        assert bnormal_report["base_abs_delta"] < 2.0e-3
 
 
 @pytest.mark.py311_coverage_only
@@ -1444,6 +1537,7 @@ def test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_
         check_segmented_controller=False,
         check_aspect_scalar=True,
         check_boundary_moment_scalar=True,
+        check_accepted_bnormal_rms_scalar=True,
         check_accepted_bsqvac_rms_scalar=True,
     )
 

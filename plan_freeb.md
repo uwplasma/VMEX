@@ -91,6 +91,67 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-04 Branch-gated batched scalar replay and Bnormal gate
+
+Steps taken:
+
+1. Confirmed CI for commit `1569862` completed green across build, docs,
+   parity smoke, console smoke, py3.10/py3.12 tests, py3.11 core coverage,
+   py3.11 exact coverage, py3.11 slow physics coverage, and physics smoke.
+2. Added a vector-valued accepted-controller custom-VJP helper,
+   `direct_coil_accepted_trace_controller_custom_vjp_scalars_jax`.
+3. Added `direct_coil_same_branch_controller_scalars_custom_vjp_report`, which
+   batches several branch-local physical scalar comparisons against one
+   complete-solve finite-difference report while still using reverse-mode
+   custom VJP pullbacks.
+4. Replaced the current-only same-branch promotion test's separate scalar
+   reports for aspect, LCFS boundary moment, and accepted `bsqvac` RMS with the
+   batched report.
+5. Added accepted active free-boundary `bnormal_rms` to the JAX-visible
+   accepted-controller replay history and promoted it into the same
+   complete-solve AD-vs-central-FD gate.
+
+Results obtained:
+
+1. Ruff passed for `vmec_jax/free_boundary_adjoint.py` and
+   `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`.
+2. The focused current-only same-branch custom-VJP gate passed with the new
+   `accepted_bnormal_rms` scalar: `1 passed in 38.78 s`.
+3. Before adding `bnormal_rms`, the batched VJP implementation reduced the
+   focused current-only gate from roughly `40.9 s` to `37.7 s` and the full
+   file current-only duration to `34.2 s` in one local run.
+4. The promoted scalar still carries the explicit branch-local limitation:
+   the replay gate must pass and the helper reports
+   `differentiates_adaptive_controller=False`.
+
+Best next steps:
+
+1. Let the full finite-pressure/free-boundary exact file finish, then commit
+   and push this branch-gated scalar replay patch if it remains green.
+2. Use `accepted_bnormal_rms` as the next physical-scalar evidence in the
+   production-adjacent full-loop adjoint seam documentation, without claiming
+   arbitrary adaptive-controller differentiation.
+3. Continue exact-shard runtime reduction by attacking cold complete-solve
+   tape setup and the LASYM same-branch gate, which remain larger bottlenecks
+   than the batched current-only scalar reports.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.4%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 82%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 86%.
+- CI runtime refactor with preserved coverage/physics gates: 98.5%.
+- Docs/release hygiene: 96%.
+- Overall free-boundary single-stage plan: 93.6%.
+
 Completion:
 
 - Direct-coil/free-boundary phase 1: 100%.
