@@ -6642,6 +6642,63 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 93%.
 - Docs/release hygiene: 96%.
 
+### 2026-06-04 Coverage-buffer and exact-gate runtime pass
+
+Steps taken:
+
+1. Started from green `main` at `e6163e0`, whose GitHub Actions run
+   `26922628047` passed all required jobs.
+2. Added fast VMEC profile edge-case tests for degenerate line-segment, Akima,
+   and cubic endpoint branches plus unsupported tabulated profile types.
+3. Added a malformed spectral-size branch test for the NumPy preconditioner
+   apply policy so invalid `mpol`/`ntor` inputs fail closed.
+4. Added a fail-soft static-cache test proving VMEC phase-cache construction
+   errors do not discard the already-built trig tables or tomnsp masks.
+5. Reduced the synthetic B-field grid in the exact optimizer tangent-column
+   and scalar-cotangent boundary-field gates. The central-FD Jacobian gate was
+   intentionally left on the larger grid after the smaller grid produced
+   unacceptable FD mismatch.
+
+Results obtained:
+
+1. Ruff passed for all touched tests.
+2. Focused fast helper tests passed: `36 passed in 3.21 s`.
+3. The focused boundary-field exact tests passed after restoring the FD grid:
+   `5 passed in 46.76 s`.
+4. The full local required coverage gate passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --durations=50 --cov=vmec_jax --cov-report=term:skip-covered --cov-report=xml --cov-fail-under=95`
+   reported `2669 passed, 23 skipped, 2 xfailed`, exact line coverage
+   `95.05%`, and runtime `5:49`.
+5. The full-suite slow table still shows the py3.11 bottleneck is dominated by
+   cold exact-adjoint/free-boundary gates, not by the new fast coverage-buffer
+   tests.
+
+Best next steps:
+
+1. Commit and push the coverage-buffer patch, then watch CI to confirm the
+   GitHub py3.11 lane reports coverage above the exact threshold.
+2. Continue runtime reduction from the validated exact-adjoint gates:
+   boundary-field exact tangent/scalar gates, QH checkpoint JVP columns, and
+   direct-coil same-branch current/Fourier/LASYM gates.
+3. Keep the `DMerc`/Glasser `D_R` AD-vs-FD gate in required CI; it is not a
+   top runtime offender compared with the exact free-boundary gates.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 96%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 99%.
+- VMEC parity and physics gates: 95%.
+- Single-stage coil-only optimization: 79%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 84%.
+- CI runtime refactor with preserved coverage/physics gates: 94%.
+- Docs/release hygiene: 96%.
+
 ### 2026-05-24 Provider slice 1
 
 Steps taken:

@@ -1,16 +1,16 @@
 # VMEC-JAX Research-Grade Roadmap
 
-Last updated: 2026-06-03
+Last updated: 2026-06-04
 Primary branch: `main`
 Baseline release: `v0.0.14`
-Latest known green `main` CI: `17a0ccd`
-Current candidate: local `main` after the CI coverage-restoration patch,
-retaining the 95% required coverage gate, the `DMerc`/Glasser `D_R`
-AD-vs-central-FD derivative gate, and the first direct-coil/free-boundary
-CI-runtime split. GitHub Actions run `26918086767` passed all required jobs;
-pushed commit `29312c1` passed tests but failed the py3.11 coverage threshold
-at `94.94%`, so the current local candidate adds cheap, user-facing and
-physics/API tests to restore coverage before pushing.
+Latest known green `main` CI: `e6163e0` (GitHub Actions run `26922628047`)
+Current candidate: local `main` after the coverage-buffer and boundary-field
+exact-gate runtime pass, retaining the 95% required coverage gate, the
+`DMerc`/Glasser `D_R` AD-vs-central-FD derivative gate, and the first
+direct-coil/free-boundary CI-runtime split. GitHub Actions run `26922628047`
+passed all required jobs on `e6163e0`; the current local patch raises the
+local required coverage margin to `95.05%` while keeping the exact
+boundary-field tangent, scalar cotangent, and finite-difference gates.
 
 This is the living execution plan for making `vmec_jax` accurate, fast,
 differentiable, documented, and usable by external researchers. Update it when
@@ -60,6 +60,15 @@ acceptance criteria or evidence changes.
   static signed-map sparse-mode handling. The full local required gate now
   passes with `2667 passed, 23 skipped, 2 xfailed`, exact line coverage
   `95.00%`, and runtime `5:57`.
+- On 2026-06-04, the next coverage-buffer pass added fast VMEC tabulated-profile
+  edge tests (degenerate line-segment/Akima/cubic endpoint branches and
+  unsupported profile types), a malformed preconditioner spectral-shape policy
+  guard, and a fail-soft VMEC phase-cache static test. It also reduced the
+  synthetic B-field grid in the exact tangent/scalar-cotangent optimizer gates
+  where the mathematical contract is unchanged; the finite-difference gate
+  keeps the larger grid because the smaller grid degraded the FD agreement.
+  The full local required gate passed with `2669 passed, 23 skipped, 2 xfailed`,
+  exact line coverage `95.05%`, and runtime `5:49`.
 - VMEC profile evaluation now covers polynomial pressure/iota/current profiles
   plus VMEC-style cubic, Akima, and line-segment tabulated pressure, iota, and
   current profiles. Cubic pressure/iota and current spline decks have been
