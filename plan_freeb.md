@@ -12,15 +12,15 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-04 on `main` after commit `f0ea62d`, `test: promote
-free-boundary aspect scalar adjoint gate`, passed GitHub Actions run
-`26954691506`. The latest green main splits required py3.11 coverage into core,
+Last updated: 2026-06-04 on `main` after commit `9504360`, `test: add
+free-boundary lcfs scalar adjoint gate`, passed GitHub Actions run
+`26955489190`. The latest green main splits required py3.11 coverage into core,
 slow-physics, and exact shards while keeping a combined 95% coverage threshold,
-preserves the `DMerc`/Glasser `D_R` AD-vs-central-FD gate, promotes a
-same-branch complete-loop aspect-ratio physical-scalar free-boundary custom-VJP
-gate, and keeps production adaptive `run_free_boundary` full-loop claims
-conservative. It also uses Node-24-compatible v7 artifact actions and
-`codecov/codecov-action@v6`.
+preserves the `DMerc`/Glasser `D_R` AD-vs-central-FD gate, promotes
+same-branch complete-loop aspect-ratio and LCFS boundary-moment physical-scalar
+free-boundary custom-VJP gates, and keeps production adaptive
+`run_free_boundary` full-loop claims conservative. It also uses
+Node-24-compatible v7 artifact actions and `codecov/codecov-action@v6`.
 The phase-2 evidence includes reset-aware full accepted-trace replay, stacked
 accepted/rejected controller segment gates, current-only/Fourier-only
 same-branch complete-solve AD-vs-FD gates, segmented controller custom-VJP
@@ -138,6 +138,60 @@ Completion:
 - CPU/GPU performance: 84%.
 - CI runtime refactor with preserved coverage/physics gates: 98%.
 - Docs/release hygiene: 96%.
+
+### 2026-06-04 Accepted replay/state-gradient trace sharing
+
+Steps taken:
+
+1. Folded the accepted-boundary VMEC-state AD-vs-central-FD replay check into
+   the existing accepted-update direct-coil replay test.
+2. Reused the same tiny direct-coil `max_iter=2` accepted trace for both
+   coil-pytree AD-vs-FD through the accepted update and VMEC-state AD-vs-FD
+   through `state -> boundary geometry -> direct-coil NESTOR bsqvac`.
+3. Left the two-step replay test separate because it intentionally uses a
+   `max_iter=3` trace and validates controller history/fingerprint behavior
+   across two accepted steps.
+
+Results obtained:
+
+1. Ruff passed on the touched exact test file.
+2. Focused validation passed:
+   `test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree` and
+   `test_direct_coil_two_step_replay_resamples_boundary_from_replayed_state`
+   both passed in `41.79 s`.
+3. The merged accepted-update test now preserves two promoted assertions with
+   one trace setup: mixed current/geometry coil-pytree accepted-update AD-vs-FD
+   and VMEC-state accepted-boundary bsqvac AD-vs-FD.
+
+Best next steps:
+
+1. Commit and push this trace-sharing cleanup, then watch CI.
+2. If CI remains green, evaluate whether the two-step replay gate can share a
+   longer `max_iter=3` payload without weakening its controller-history
+   assertions.
+3. Begin designing the production full-loop adjoint seam, keeping it
+   fingerprint-gated and same-branch until adaptive branch changes are handled
+   explicitly.
+
+Need from user:
+
+Nothing now.
+
+Single-stage free-boundary implementation phases:
+
+- Phase 1, forward direct-coil/free-boundary provider: 100%.
+- Phase 2, exact/free-boundary adjoint validation: 98%.
+- Phase 3, true single-stage coil-only QS/QI optimization: 81%.
+- Phase 4, robust/stochastic coil optimization and engineering constraints: 70%.
+- Phase 5, performance and GPU optimization: 85%.
+- Phase 6, docs/release polish: 96%.
+
+Other open lanes:
+
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- CI runtime refactor with preserved coverage/physics gates: 98%.
+- Overall free-boundary single-stage plan: 91%.
 
 ### 2026-06-04 CI split and exact-gate triage
 
