@@ -12,16 +12,17 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-04 on `main` with the current physical-scalar gate
-working tree. The latest fully green pushed main is commit `69d5523`,
+Last updated: 2026-06-04 on `main` with the current residual-fingerprinted
+physical-scalar gate working tree. The latest fully green pushed main is commit `69d5523`,
 `test: reduce free-boundary accepted replay cost`, passed GitHub Actions run
 `26970556579`. Commit `2f08d67`, `test: add residual branch fingerprint gate
 helper`, passed every test/build/docs shard in run `26971168043` but failed
 only the combined coverage gate at exact line coverage `94.99%`, just below
-the strict `95.00%` threshold. The current patch adds a reusable same-branch
-complete-solve physical-scalar AD-vs-central-FD gate and cheap synthetic branch
-coverage to restore coverage margin while preserving conservative
-adaptive-controller claims.
+the strict `95.00%` threshold. The current patches add a reusable same-branch
+complete-solve physical-scalar AD-vs-central-FD gate, attach the residual
+controller branch fingerprint to the complete-solve FD report, and add cheap
+synthetic branch coverage to restore coverage margin while preserving
+conservative adaptive-controller claims.
 
 The latest green main splits required py3.11 coverage into core, slow-physics,
 and exact shards while keeping a combined 95% coverage threshold, preserves the
@@ -58,7 +59,13 @@ Steps taken:
 4. Added synthetic success/failure/json-safe coverage for the new gate,
    including replay-gate failure, missing scalar reports, missing
    complete-solve scalar values, and non-finite FD/custom-VJP slopes.
-5. Re-tested the boundary-field small-static experiment and rejected it: the
+5. Added residual-controller branch fingerprints from
+   `residual_branch_fingerprint` to
+   `direct_coil_same_branch_complete_solve_fd_report`. The report now exposes
+   `same_accepted_trace_branch`, `same_residual_branch`, and the three
+   base/plus/minus residual fingerprints, and `same_branch` requires both
+   compatibility checks to pass.
+6. Re-tested the boundary-field small-static experiment and rejected it: the
    finite-difference residual gate becomes inaccurate on the smaller solve
    static grid, while the identity gate remains compile dominated.
 
@@ -74,7 +81,10 @@ Results obtained:
    experiment: `2 passed in 49.58 s`.
 5. The local py3.11 exact coverage shard passed with the current source/helper
    patch: `18 passed in 116.07 s`.
-6. The previous pushed CI run `26971168043` failed only the combined coverage
+6. The current-only, Fourier-only, and LASYM direct-coil same-branch
+   complete-solve gates all passed with the stricter residual-controller branch
+   fingerprint requirement.
+7. The previous pushed CI run `26971168043` failed only the combined coverage
    gate (`94.99%`); all test, physics, docs, build, and compatibility shards
    were green.
 
@@ -83,9 +93,10 @@ Best next steps:
 1. Commit and push this physical-scalar gate/coverage repair patch, then watch
    the new combined coverage gate.
 2. Continue the adaptive full-loop seam by adding a complete-loop
-   branch-fingerprint report around one physical scalar that can explicitly
-   skip or fail on adaptive branch changes instead of comparing derivatives
-   across discontinuous host-control decisions.
+   promotion test around one physical scalar that uses the new residual and
+   accepted-trace branch fingerprints to explicitly skip or fail on adaptive
+   branch changes instead of comparing derivatives across discontinuous
+   host-control decisions.
 3. Continue exact-shard runtime reduction only where full-shard timings improve
    and physics coverage is preserved; the rejected boundary-field static-grid
    reduction should not be re-applied.

@@ -1342,10 +1342,16 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     base_fingerprint = complete_report["branch_compatibility"]["base_fingerprint"]
     plus_fingerprint = complete_report["branch_compatibility"]["plus_fingerprint"]
     minus_fingerprint = complete_report["branch_compatibility"]["minus_fingerprint"]
+    base_residual_fingerprint = complete_report["branch_compatibility"]["base_residual_fingerprint"]
+    plus_residual_fingerprint = complete_report["branch_compatibility"]["plus_residual_fingerprint"]
+    minus_residual_fingerprint = complete_report["branch_compatibility"]["minus_residual_fingerprint"]
     assert complete_report["branch_compatibility"]["same_branch"] is True
+    assert complete_report["branch_compatibility"]["same_accepted_trace_branch"] is True
+    assert complete_report["branch_compatibility"]["same_residual_branch"] is True
     assert plus_branch["compatible"], plus_branch["changed_fields"]
     assert minus_branch["compatible"], minus_branch["changed_fields"]
     assert base_fingerprint["n_steps"] == plus_fingerprint["n_steps"] == minus_fingerprint["n_steps"]
+    assert base_residual_fingerprint == plus_residual_fingerprint == minus_residual_fingerprint
     assert base_fingerprint["n_freeb_steps"] > 0
     assert plus_fingerprint["n_freeb_steps"] == base_fingerprint["n_freeb_steps"]
     assert minus_fingerprint["n_freeb_steps"] == base_fingerprint["n_freeb_steps"]
