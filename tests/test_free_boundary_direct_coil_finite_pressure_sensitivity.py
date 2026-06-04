@@ -324,6 +324,8 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
 
     from vmec_jax.free_boundary_adjoint import (
         _pytree_batched_directional_vdot_jax,
+        direct_coil_accepted_trace_controller_custom_vjp_scalars_jax,
+        direct_coil_same_branch_controller_scalar_custom_vjp_report,
         direct_coil_same_branch_controller_scalars_custom_vjp_report,
     )
 
@@ -346,12 +348,36 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
             direction={},
             replay_scalar_fns={},
         )
+    with pytest.raises(ValueError, match="scalar_fns"):
+        direct_coil_accepted_trace_controller_custom_vjp_scalars_jax(
+            {},
+            None,
+            scalar_fns=(),
+        )
+    with pytest.raises(KeyError, match="not present"):
+        direct_coil_same_branch_controller_scalar_custom_vjp_report(
+            {"objective_values": {}},
+            base_params={},
+            direction={},
+            scalar_key="missing",
+            replay_scalar_fn=lambda _replay, _payload: 0.0,
+        )
     with pytest.raises(KeyError, match="not present"):
         direct_coil_same_branch_controller_scalars_custom_vjp_report(
             {"objective_values": {"known": {"base": 0.0, "central_fd_directional": 0.0}}},
             base_params={},
             direction={},
             replay_scalar_fns={"missing": lambda _replay, _payload: 0.0},
+        )
+    with pytest.raises(ValueError, match="accepted traces"):
+        direct_coil_same_branch_controller_scalars_custom_vjp_report(
+            {
+                "objective_values": {"known": {"base": 0.0, "central_fd_directional": 0.0}},
+                "base": {"traces": ()},
+            },
+            base_params={},
+            direction={},
+            replay_scalar_fns={"known": lambda _replay, _payload: 0.0},
         )
 
     bad_preconditioner_shape = dict(trace1)
