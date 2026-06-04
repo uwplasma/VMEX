@@ -182,6 +182,52 @@ Completion:
 - Docs/release hygiene: 96%.
 - Overall free-boundary single-stage plan: 94.9%.
 
+### 2026-06-04 Fourier/LASYM physical-scalar gate promotion
+
+Steps taken:
+
+1. Promoted the Fourier-only same-branch direct-coil complete-solve FD gate to
+   use the stacked vector physical-scalar custom-VJP report.
+2. Promoted the LASYM mixed-direction same-branch gate to the same stacked
+   physical-scalar report.
+3. Reused each test's existing base/plus/minus complete-solve triplet; no new
+   full-solve finite-difference triplets were added.
+4. Gated the additional physical outputs on unchanged accepted-trace and
+   residual-controller fingerprints, preserving the explicit same-branch
+   contract.
+
+Results obtained:
+
+1. Ruff passed for
+   `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`.
+2. Fourier-only same-branch exact gate passed in `38.18 s`.
+3. LASYM mixed-direction same-branch exact gate passed in `48.29 s`.
+
+Best next steps:
+
+1. Run the complete same-branch exact bucket locally.
+2. Commit and push if it passes, then watch CI.
+3. Next validation rung: either add a second no-extra-solve physical scalar to
+   the current-only gate if useful, or start the adaptive full-loop seam using
+   the existing fingerprint-gated accepted trace contract.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.97%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 82%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 86%.
+- CI runtime refactor with preserved coverage/physics gates: 99.9%.
+- Docs/release hygiene: 96%.
+- Overall free-boundary single-stage plan: 95.0%.
+
 ### 2026-06-04 Exact coverage matrix split
 
 Steps taken:

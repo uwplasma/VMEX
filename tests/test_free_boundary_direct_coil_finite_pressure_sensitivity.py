@@ -1859,7 +1859,8 @@ def test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_
         params_for=params_for,
         check_controller=False,
         check_segmented_controller=False,
-        check_aspect_scalar=False,
+        check_aspect_scalar=True,
+        check_boundary_moment_scalar=True,
     )
 
 
@@ -1908,7 +1909,8 @@ def test_direct_coil_lasym_fixed_trace_custom_vjp_matches_complete_solve_fd_on_s
         params_for=params_for,
         check_controller=False,
         check_segmented_controller=False,
-        check_aspect_scalar=False,
+        check_aspect_scalar=True,
+        check_boundary_moment_scalar=True,
     )
 
 
