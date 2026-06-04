@@ -3,14 +3,14 @@
 Last updated: 2026-06-04
 Primary branch: `main`
 Baseline release: `v0.0.14`
-Latest known green `main` CI: `e6163e0` (GitHub Actions run `26922628047`)
-Current candidate: local `main` after the coverage-buffer and boundary-field
-exact-gate runtime pass, retaining the 95% required coverage gate, the
-`DMerc`/Glasser `D_R` AD-vs-central-FD derivative gate, and the first
-direct-coil/free-boundary CI-runtime split. GitHub Actions run `26922628047`
-passed all required jobs on `e6163e0`; the current local patch raises the
-local required coverage margin to `95.05%` while keeping the exact
-boundary-field tangent, scalar cotangent, and finite-difference gates.
+Latest known green `main` CI: `4817053` (GitHub Actions run `26924803010`)
+Current candidate: local `main` after the py3.11 coverage split, duplicate
+plot-render cleanup, and a small current-only direct-coil same-branch
+de-duplication. The patch retains the 95% required coverage gate, the
+`DMerc`/Glasser `D_R` AD-vs-central-FD derivative gate, and the exact
+boundary-field tangent, scalar cotangent, and finite-difference gates. The
+split-coverage local proof combines core and exact py3.11 raw coverage at
+`95.12%`.
 
 This is the living execution plan for making `vmec_jax` accurate, fast,
 differentiable, documented, and usable by external researchers. Update it when
@@ -69,6 +69,16 @@ acceptance criteria or evidence changes.
   keeps the larger grid because the smaller grid degraded the FD agreement.
   The full local required gate passed with `2669 passed, 23 skipped, 2 xfailed`,
   exact line coverage `95.05%`, and runtime `5:49`.
+- The follow-up CI-runtime pass keeps py3.10/py3.12 as compatibility lanes and
+  splits py3.11 coverage into a core shard and a `py311_coverage_only` exact
+  shard, then combines raw coverage in a separate threshold job. Local evidence:
+  core without py3.11-only gates runs in `3:35` without coverage, exact-only
+  gates run in `1:50` without coverage and `2:12` with coverage, and combined
+  raw coverage reports `95.12%`. A duplicate heavy `plot_wout` render in the
+  wave-12 branch test was replaced with a save/show-path stub while the real
+  rendering test in `tests/test_plotting_unit.py` remains. The current-only
+  same-branch direct-coil gate now avoids the duplicate controller check; the
+  standalone fixed-trace current AD-vs-complete-FD assertion remains.
 - VMEC profile evaluation now covers polynomial pressure/iota/current profiles
   plus VMEC-style cubic, Akima, and line-segment tabulated pressure, iota, and
   current profiles. Cubic pressure/iota and current spline decks have been

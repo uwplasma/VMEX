@@ -44,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -68,31 +68,132 @@ jobs:
         run: |
           python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50 --max-file-mib 2
 
-      - name: Fetch optional WOUT fixtures
-        if: matrix.python-version == '3.11'
-        run: |
-          python tools/fetch_assets.py --bundle wout-fixtures
-
       - name: Run tests
         env:
           JAX_ENABLE_X64: "1"
         run: |
-          if [ "${{ matrix.python-version }}" = "3.11" ]; then
-            pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --durations=50 --cov=vmec_jax --cov-report=xml --cov-report=term:skip-covered --cov-fail-under=95
-            python -c 'import sys, xml.etree.ElementTree as ET; threshold=0.95; rate=float(ET.parse("coverage.xml").getroot().attrib["line-rate"]); print(f"Exact line coverage: {100.0 * rate:.2f}%"); sys.exit(0 if rate + 1.0e-12 >= threshold else f"Exact line coverage {100.0 * rate:.2f}% is below {100.0 * threshold:.2f}%")'
-          else
-            VMEC_JAX_SKIP_PY311_COVERAGE_ONLY=1 pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --durations=50
-          fi
+          VMEC_JAX_SKIP_PY311_COVERAGE_ONLY=1 pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --durations=50
+
+  test-py311-core:
+    name: Fast Tests (py3.11 core coverage)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          python -m pip install .
+          python -m pip install pytest pytest-cov pytest-xdist
+
+      - name: Compile (Python)
+        run: |
+          python -m compileall -q vmec_jax
+
+      - name: Repository size audit
+        run: |
+          python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50 --max-file-mib 2
+
+      - name: Fetch optional WOUT fixtures
+        run: |
+          python tools/fetch_assets.py --bundle wout-fixtures
+
+      - name: Run core coverage tests
+        env:
+          JAX_ENABLE_X64: "1"
+          VMEC_JAX_SKIP_PY311_COVERAGE_ONLY: "1"
+        run: |
+          pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --durations=50 --cov=vmec_jax --cov-report=
+          cp .coverage coverage.py311-core
+
+      - name: Upload core coverage artifact
+        uses: actions/upload-artifact@v5.0.0
+        with:
+          name: coverage-py311-core
+          path: coverage.py311-core
+
+  test-py311-exact:
+    name: Fast Tests (py3.11 exact coverage)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          python -m pip install .
+          python -m pip install pytest pytest-cov pytest-xdist
+
+      - name: Fetch optional WOUT fixtures
+        run: |
+          python tools/fetch_assets.py --bundle wout-fixtures
+
+      - name: Run exact coverage tests
+        env:
+          JAX_ENABLE_X64: "1"
+        run: |
+          pytest -q -n 4 -m "py311_coverage_only and not full and not vmec2000 and not simsopt" --durations=50 --cov=vmec_jax --cov-report=
+          cp .coverage coverage.py311-exact
+
+      - name: Upload exact coverage artifact
+        uses: actions/upload-artifact@v5.0.0
+        with:
+          name: coverage-py311-exact
+          path: coverage.py311-exact
+
+  coverage-py311:
+    name: Coverage Gate (py3.11 combined)
+    needs: [test-py311-core, test-py311-exact]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install coverage tooling
+        run: |
+          python -m pip install -U pip
+          python -m pip install "coverage[toml]"
+
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v5.0.0
+        with:
+          pattern: coverage-py311-*
+          path: coverage-artifacts
+
+      - name: Combine and enforce coverage
+        run: |
+          coverage combine coverage-artifacts/coverage-py311-core/coverage.py311-core coverage-artifacts/coverage-py311-exact/coverage.py311-exact
+          coverage xml
+          coverage report --skip-covered
+          python -c 'import sys, xml.etree.ElementTree as ET; threshold=0.95; rate=float(ET.parse("coverage.xml").getroot().attrib["line-rate"]); print(f"Exact line coverage: {100.0 * rate:.2f}%"); sys.exit(0 if rate + 1.0e-12 >= threshold else f"Exact line coverage {100.0 * rate:.2f}% is below {100.0 * threshold:.2f}%")'
 
       - name: Upload coverage artifact
-        if: matrix.python-version == '3.11'
         uses: actions/upload-artifact@v5.0.0
         with:
           name: coverage-py311
           path: coverage.xml
 
       - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.11'
         uses: codecov/codecov-action@v5
         with:
           use_oidc: true

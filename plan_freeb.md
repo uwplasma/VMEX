@@ -12,21 +12,82 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-03 after PR #18 was merged to `origin/main` as
-`0faa770c`. The merged main CI run `26897211669` is green: Python
-3.10/3.11/3.12 fast tests, docs/build, full-guide docs, console smoke, physics
-smoke, parity-manifest smoke, and Codecov upload all passed. Local follow-up
-work is on `phase2/freeb-adjoint-validation`, branched from merged
-`origin/main`, because the stale local `main` branch in this clone diverged and
-was not force-moved. The phase-2 evidence now includes reset-aware full
-accepted-trace replay, stacked accepted/rejected controller segment gates,
-current-only/Fourier-only same-branch complete-solve AD-vs-FD gates, segmented
-controller custom-VJP complete-solve AD-vs-FD gates, explicit tridiagonal-policy
-coverage, VMEC2000 generated-`mgrid` WOUT-quality classification, and
-direct/generated boundary-domain checks. Keep phase-2 limitations explicit in
-docs: the branch has validated provider gradients and bounded complete-solve
-response gates, but not a production full nonlinear `run_free_boundary` exact
-adjoint claim.
+Last updated: 2026-06-04 on `main` after the coverage-buffer commit
+`4817053` passed GitHub Actions run `26924803010`. The current local candidate
+splits required py3.11 coverage into core and exact shards while keeping a
+combined 95% coverage threshold, preserves the `DMerc`/Glasser `D_R`
+AD-vs-central-FD gate, and keeps full-loop free-boundary claims conservative.
+The phase-2 evidence includes reset-aware full accepted-trace replay, stacked
+accepted/rejected controller segment gates, current-only/Fourier-only
+same-branch complete-solve AD-vs-FD gates, segmented controller custom-VJP
+complete-solve AD-vs-FD gates, explicit tridiagonal-policy coverage, VMEC2000
+generated-`mgrid` WOUT-quality classification, and direct/generated
+boundary-domain checks. The code still does not claim a production full
+nonlinear `run_free_boundary` exact adjoint.
+
+### 2026-06-04 CI split and exact-gate triage
+
+Steps taken:
+
+1. Confirmed the pushed `4817053` CI run was green. The py3.11 lane reported
+   `2662 passed, 30 skipped, 2 xfailed`, exact coverage `95.04%`, and runtime
+   `18:30`.
+2. Timed the required local selection without coverage and split it into the
+   core shard and the `py311_coverage_only` exact shard. The core shard passed
+   with `2648 passed, 44 skipped, 2 xfailed` in `3:35`; the exact shard passed
+   with `21 passed` in `1:50` without coverage and `2:12` with coverage.
+3. Refactored CI so Python 3.10/3.12 remain compatibility lanes, Python 3.11
+   runs separate core and exact coverage shards, and a final job combines raw
+   coverage artifacts before enforcing the same exact 95% threshold.
+4. Replaced a duplicate heavy `plot_wout` branch-coverage render with a
+   save/show-path stub; the real render remains covered by
+   `tests/test_plotting_unit.py`.
+5. Removed a duplicate controller custom-VJP check from the current-only
+   same-branch direct-coil complete-FD gate. The fixed-trace current
+   AD-vs-complete-FD assertion remains, and controller/segmented behavior stays
+   covered by dedicated controller tests.
+6. Reviewed the next proposed physical-scalar full-loop adjoint gate. It is a
+   good promotion candidate, but it would add roughly `40-90 s` locally and
+   possibly more than `2 min` on CI, so it should not enter required CI until
+   existing exact gates are further consolidated or moved into a lower-cost
+   shared-trace setup.
+
+Results obtained:
+
+1. Local split coverage combine succeeded: `coverage combine` on core and exact
+   raw coverage files reports exact line coverage `95.12%`.
+2. Focused plotting tests passed: `23 passed in 12.71 s`.
+3. Focused current-only direct-coil plus segmented-controller checks passed:
+   `2 passed in 38.50 s`.
+4. The exact-only coverage shard passed with coverage in `2:12`.
+
+Best next steps:
+
+1. Let the full local monolithic coverage gate finish, then commit and push the
+   CI split and test de-duplication patch.
+2. Watch the new GitHub Actions run to verify the combined coverage job uploads
+   one `coverage.xml` and reports at least 95% exact line coverage.
+3. Next runtime reductions should share one accepted direct-coil trace across
+   replay/state/two-step tests and combine the boundary-field tangent/scalar
+   optimizer setup, rather than weakening physics gates.
+4. Promote the physical-scalar controller custom-VJP complete-solve FD gate only
+   after the exact-gate sharing work keeps required CI stable.
+
+Need from user:
+
+Nothing now.
+
+Completion percentages:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 96%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 99%.
+- VMEC parity and physics gates: 95%.
+- Single-stage coil-only optimization: 79%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 84%.
+- CI runtime refactor with preserved coverage/physics gates: 96%.
+- Docs/release hygiene: 96%.
 
 ### 2026-06-03 DMerc/D_R derivative gate and CI runtime refactor
 
