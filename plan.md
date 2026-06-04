@@ -3,14 +3,14 @@
 Last updated: 2026-06-04
 Primary branch: `main`
 Baseline release: `v0.0.14`
-Latest known green `main` CI: `6e9472b` (GitHub Actions run `26926678454`)
-Current candidate: local `main` after updating CI/release artifact actions to
-the Node-24-compatible v7 artifact actions. The latest green main split py3.11
+Latest known green `main` CI: `faf6ebf` (GitHub Actions run `26927785364`)
+Current candidate: local `main` after updating the Codecov upload action to
+`codecov/codecov-action@v6`. The latest green main split py3.11
 coverage into core and exact shards, retained the 95% combined coverage gate,
 kept the `DMerc`/Glasser `D_R` AD-vs-central-FD derivative gate, and preserved
 the exact boundary-field tangent, scalar cotangent, and finite-difference
-gates. The split-coverage local proof combines core and exact py3.11 raw
-coverage at `95.12%`.
+gates. It also uses Node-24-compatible v7 artifact actions. The split-coverage
+local proof combines core and exact py3.11 raw coverage at `95.12%`.
 
 This is the living execution plan for making `vmec_jax` accurate, fast,
 differentiable, documented, and usable by external researchers. Update it when
@@ -91,6 +91,11 @@ acceptance criteria or evidence changes.
   exact shard `7:46`, core shard `12:02`, combined coverage gate `0:34`.
   Because v6 artifact actions still emitted a Node-20 deprecation annotation,
   the current candidate advances artifact actions one more step to v7.
+- GitHub Actions run `26927785364` for artifact-action v7 commit `faf6ebf`
+  passed all required jobs. Exact coverage took `7:58`, core coverage took
+  `11:51`, and combined coverage took `0:32`. The artifact-action Node warning
+  is resolved; the only remaining Node annotation comes from
+  `codecov/codecov-action@v5`, so the current candidate updates Codecov to v6.
 - VMEC profile evaluation now covers polynomial pressure/iota/current profiles
   plus VMEC-style cubic, Akima, and line-segment tabulated pressure, iota, and
   current profiles. Cubic pressure/iota and current spline decks have been
