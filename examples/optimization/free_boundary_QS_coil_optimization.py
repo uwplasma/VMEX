@@ -519,6 +519,53 @@ def same_branch_direction_from_variables(variables: list[tuple[str, tuple[int, .
     return direction
 
 
+def coil_param_direction_from_variables(
+    base_params: CoilFieldParams,
+    x_direction: np.ndarray,
+    variables: list[tuple[str, tuple[int, ...]]],
+    *,
+    current_step: float,
+    dof_step: float,
+) -> CoilFieldParams:
+    """Return the direct-coil parameter tangent for one optimizer direction."""
+
+    currents = np.zeros_like(np.asarray(base_params.base_currents, dtype=float))
+    dofs = np.zeros_like(np.asarray(base_params.base_curve_dofs, dtype=float))
+    for value, (kind, index) in zip(np.asarray(x_direction, dtype=float), variables, strict=True):
+        if value == 0.0:
+            continue
+        if kind == "current":
+            i = index[0]
+            currents[i] += float(value) * float(current_step) * float(np.asarray(base_params.base_currents)[i])
+        elif kind == "fourier_dof":
+            dofs[index] += float(value) * float(dof_step)
+        else:  # pragma: no cover - defensive programming for future variable kinds.
+            raise ValueError(f"unknown coil variable kind {kind!r}")
+    return base_params.with_arrays(base_curve_dofs=jnp.asarray(dofs), base_currents=jnp.asarray(currents))
+
+
+def _vector_jacobian_directional(jacobian: Any, direction: Any, n_outputs: int) -> np.ndarray:
+    """Contract a row-stacked pytree Jacobian with one pytree direction."""
+
+    leaves = jax.tree_util.tree_leaves(
+        jax.tree_util.tree_map(
+            lambda jac_leaf, direction_leaf: jnp.sum(
+                jnp.reshape(jnp.asarray(jac_leaf), (int(n_outputs), -1))
+                * jnp.reshape(jnp.asarray(direction_leaf), (1, -1)),
+                axis=1,
+            ),
+            jacobian,
+            direction,
+        )
+    )
+    if not leaves:
+        return np.zeros(int(n_outputs), dtype=float)
+    total = leaves[0]
+    for leaf in leaves[1:]:
+        total = total + leaf
+    return np.asarray(total, dtype=float)
+
+
 def write_same_branch_validation_report(
     *,
     input_path: Path,
@@ -528,9 +575,26 @@ def write_same_branch_validation_report(
     outdir: Path,
 ) -> Path:
     """Write an optional same-branch complete-solve FD report for this example."""
-    from vmec_jax.free_boundary_adjoint import direct_coil_same_branch_complete_solve_fd_report
+    from vmec_jax.free_boundary_adjoint import (
+        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax,
+        direct_coil_same_branch_complete_solve_fd_report,
+        free_boundary_boundary_geometry_jax,
+    )
 
     direction_x = same_branch_direction_from_variables(variables)
+    direction_params = coil_param_direction_from_variables(
+        base_params,
+        direction_x,
+        variables,
+        current_step=float(args.current_step),
+        dof_step=float(args.dof_step),
+    )
+
+    def lcfs_boundary_moment(state: Any, static: Any) -> Any:
+        geometry = free_boundary_boundary_geometry_jax(state, static)
+        r = jnp.asarray(geometry["R"])
+        z = jnp.asarray(geometry["Z"])
+        return jnp.mean((r - 1.0) * (r - 1.0) + z * z)
 
     def params_for(scale: float) -> CoilFieldParams:
         return apply_coil_variables(
@@ -567,6 +631,7 @@ def write_same_branch_validation_report(
             "objective": total,
             "residual_proxy": float(summary.get("residual_proxy") or 0.0),
             "aspect": float(summary["aspect"]) if summary.get("aspect") is not None else np.nan,
+            "lcfs_boundary_moment": float(np.asarray(lcfs_boundary_moment(payload["result"].state, payload["init"].static))),
             "mean_iota": float(summary["mean_iota"]) if summary.get("mean_iota") is not None else np.nan,
             "bnormal_rms": float(summary["free_boundary_bnormal_rms"])
             if summary.get("free_boundary_bnormal_rms") is not None
@@ -629,6 +694,65 @@ def write_same_branch_validation_report(
         "objective_values": report["objective_values"],
         "primary_objective": report["primary_objective"],
     }
+    branch_local_vector: dict[str, Any] = {
+        "available": False,
+        "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
+    }
+    if "base" in report and "aspect" in report["objective_values"] and "lcfs_boundary_moment" in report["objective_values"]:
+        scalar_keys = ("aspect", "lcfs_boundary_moment")
+        vector = direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
+            params=base_params,
+            complete_payload=report["base"],
+            scalar_keys=scalar_keys,
+            scalar_fn=lambda payload: {
+                "aspect": float(
+                    np.asarray(
+                        equilibrium_aspect_ratio_from_state(
+                            state=payload["result"].state,
+                            static=payload["init"].static,
+                        )
+                    )
+                ),
+                "lcfs_boundary_moment": float(
+                    np.asarray(lcfs_boundary_moment(payload["result"].state, payload["init"].static))
+                ),
+            },
+            replay_scalar_fns={
+                "aspect": lambda replay, payload: equilibrium_aspect_ratio_from_state(
+                    state=replay["state"],
+                    static=payload["init"].static,
+                ),
+                "lcfs_boundary_moment": lambda replay, payload: lcfs_boundary_moment(
+                    replay["state"],
+                    payload["init"].static,
+                ),
+            },
+            replay_kwargs={"use_stacked_step_controls": True},
+        )
+        directionals = _vector_jacobian_directional(vector["jacobian"], direction_params, len(scalar_keys))
+        branch_local_vector = {
+            "available": True,
+            "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
+            "uses_production_forward": bool(vector["uses_production_forward"]),
+            "differentiates_adaptive_controller": bool(vector["differentiates_adaptive_controller"]),
+            "differentiates_run_free_boundary": bool(vector["differentiates_run_free_boundary"]),
+            "differentiates_fixed_accepted_branch": bool(vector["differentiates_fixed_accepted_branch"]),
+            "scalar_keys": list(scalar_keys),
+            "replay_option_flags": vector["replay_option_flags"],
+            "max_base_abs_delta": float(vector["max_base_abs_delta"]),
+            "scalars": {
+                key: {
+                    "value": float(vector["values"][key]),
+                    "replay_value": float(np.asarray(vector["replay_value_map"][key], dtype=float)),
+                    "base_abs_delta": float(vector["base_abs_delta"][key]),
+                    "exact_directional": float(directionals[index]),
+                    "complete_fd_directional": float(report["objective_values"][key]["central_fd_directional"]),
+                    "abs_error": float(abs(directionals[index] - report["objective_values"][key]["central_fd_directional"])),
+                }
+                for index, key in enumerate(scalar_keys)
+            },
+        }
+    compact_report["branch_local_vector_jacobian"] = branch_local_vector
     path = outdir / "same_branch_complete_solve_report.json"
     write_json(path, compact_report)
     return path

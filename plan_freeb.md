@@ -141,6 +141,69 @@ Completion:
 - Docs/release hygiene: 96%.
 - Overall free-boundary/single-stage plan: 96.5%.
 
+### 2026-06-04 Same-branch example vector report
+
+Steps taken:
+
+1. Extended `examples/optimization/free_boundary_QS_coil_optimization.py` so
+   `--write-same-branch-report` also writes an opt-in branch-local vector
+   Jacobian block for aspect and an LCFS boundary-moment scalar.
+2. Kept the optimizer derivative-free; the new block is a validation/reporting
+   seam only and explicitly reports
+   `differentiates_run_free_boundary=False`.
+3. Added the optimizer-space to direct-coil-parameter tangent helper used to
+   project row-stacked Jacobians onto the selected current/Fourier variables.
+4. Ran the real circle smoke with `--write-same-branch-report` in `/tmp`. This
+   exposed a JAX tracer bug in dynamic constraint replay.
+5. Fixed the replay bug by replacing Python `float(tcon0)` clamps in the
+   dynamic constraint/TCON path with JAX scalar clamps.
+6. Added the scalar and vector production-forward branch-local helpers to the
+   free-boundary adjoint API autosummary page.
+
+Results obtained:
+
+1. Ruff passed on the touched example, tests, and constraint/force files.
+2. The real circle smoke with same-branch vector report passed and wrote
+   `/tmp/vmec_jax_freeb_qs_vector_report/same_branch_complete_solve_report.json`.
+3. The generated report had `same_branch=True`, vector Jacobian
+   `available=True`, `differentiates_run_free_boundary=False`, and aspect /
+   boundary-moment directional errors at numerical-zero scale.
+4. Fast constraint and example tests passed:
+   `16 passed, 3 skipped, 1 xfailed in 4.88 s`.
+5. The current-only complete-solve AD-vs-FD gate passed after the TCON replay
+   fix: `1 passed in 48.17 s`.
+6. The real smoke still emits XLA algebraic-simplifier warnings during replay
+   compilation; this is a performance follow-up, not a correctness failure.
+
+Best next steps:
+
+1. Commit and push the example report integration and TCON replay fix.
+2. Watch CI for the new commit.
+3. Move the vector branch-local interface into the coil-only optimization
+   example only as an opt-in gradient diagnostic until a production adaptive
+   full-loop derivative is validated.
+4. Profile the XLA simplifier warning in the accepted-controller replay path.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.996% for branch-local
+  production-forward scalar/vector gradients; full adaptive branch
+  differentiation remains intentionally unclaimed.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 85%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 86% overall, with accepted-controller replay compile
+  warnings now identified as a concrete follow-up.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 96.5%.
+- Overall free-boundary/single-stage plan: 96.7%.
+
 Completion:
 
 - Direct-coil/free-boundary phase 1: 100%.
