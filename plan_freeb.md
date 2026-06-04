@@ -12,17 +12,12 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-04 on `main` with the current stacked physical-scalar
-gate working tree. The latest fully green pushed main is commit `272e8dd`,
-`test: require free-boundary branch subcondition gates`, which passed GitHub
-Actions run `26973402880`, including docs, build, smoke, exact, slow-physics,
-core py3.11 coverage, and the combined 95% coverage gate. Commit `ba9d031`,
-`test: add stacked free-boundary replay seam`, has been pushed and is waiting
-on CI. Commit `da7e6fc`, `ci: fix exact coverage matrix syntax`, has been
-pushed and the split exact-coverage matrix is in progress with the
-accepted-update and same-branch buckets already green. The current local patch
-promotes the same-branch physical-scalar report through the stacked
-step-control replay path.
+Last updated: 2026-06-04 on `main` after commit `e514d3a`,
+`Test accepted replay fast-path report flags`. The latest fully green pushed
+main is commit `e514d3a`, which passed GitHub Actions run `26985076961`,
+including docs, build, console smoke, physics smoke, py3.10, py3.12,
+slow-physics coverage, exact free-boundary coverage shards, core py3.11
+coverage shards, and the combined 95% coverage gate.
 
 The latest green main splits required py3.11 coverage into core, slow-physics,
 and exact shards while keeping a combined 95% coverage threshold, preserves the
@@ -135,6 +130,61 @@ Completion:
 - CPU/GPU performance: 87%.
 - CI runtime refactor with preserved coverage/physics gates: 100% on the
   previous pushed run.
+- Docs/release hygiene: 96.5%.
+- Overall free-boundary/single-stage plan: 97.1%.
+
+### 2026-06-04 Accepted-only fast-path report flag hardening
+
+Steps taken:
+
+1. Added assertions to the same-branch current-only gate that require the
+   scalar report, production branch-local scalar report, and production
+   branch-local vector/Jacobian report to expose
+   `use_accepted_only_fast_path=True`.
+2. Kept the change solve-neutral: it validates the report contract added by
+   the accepted-only replay fast path without adding new complete-solve finite
+   difference triplets.
+3. Confirmed the working tree stayed on `main` and pushed commit `e514d3a`,
+   `Test accepted replay fast-path report flags`.
+
+Results obtained:
+
+1. `python -m ruff check tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   passed.
+2. `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd --durations=20`
+   passed: `1 passed in 47.47 s`.
+3. GitHub Actions run `26985076961` passed every required job, including the
+   exact same-branch and accepted-update shards that cover this report flag.
+
+Best next steps:
+
+1. Build a lightweight replay benchmark that separates complete-solve trace
+   setup from accepted-branch scalar/Jacobian replay, instead of timing both
+   together in an ad-hoc script.
+2. Continue the adaptive full-loop seam by keeping the production claim
+   branch-local and fingerprint-gated; do not claim differentiation of host
+   adaptive branch selection until a real full-loop custom VJP or JAX-visible
+   controller replaces it.
+3. Extend the coil-only optimization example only after the branch-local
+   timing and complete-loop scalar gates remain stable under the current CI
+   split.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.998% for branch-local
+  production-forward current/Fourier scalar and vector gradients; full
+  adaptive branch differentiation remains intentionally unclaimed.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 86.5%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 87%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 96.5%.
 - Overall free-boundary/single-stage plan: 97.1%.
 
