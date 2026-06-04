@@ -12,12 +12,12 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-04 on `main` after commit `e514d3a`,
-`Test accepted replay fast-path report flags`. The latest fully green pushed
-main is commit `e514d3a`, which passed GitHub Actions run `26985076961`,
-including docs, build, console smoke, physics smoke, py3.10, py3.12,
-slow-physics coverage, exact free-boundary coverage shards, core py3.11
-coverage shards, and the combined 95% coverage gate.
+Last updated: 2026-06-04 on `main` with the current replay-diagnostic
+fast-path timing patch. The latest fully green pushed main is commit
+`fe92381`, `docs: update free-boundary plan status`, which passed GitHub
+Actions run `26985348171`, including docs, build, console smoke, physics
+smoke, py3.10, py3.12, slow-physics coverage, exact free-boundary coverage
+shards, core py3.11 coverage shards, and the combined 95% coverage gate.
 
 The latest green main splits required py3.11 coverage into core, slow-physics,
 and exact shards while keeping a combined 95% coverage threshold, preserves the
@@ -187,6 +187,71 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 96.5%.
 - Overall free-boundary/single-stage plan: 97.1%.
+
+### 2026-06-04 Replay diagnostic fast-path timing separation
+
+Steps taken:
+
+1. Extended `tools/diagnostics/direct_coil_segmented_replay_report.py` so the
+   saved accepted trace is timed through both the accepted-only fast path and
+   the conservative accept/reject fallback, for monolithic and segmented
+   replay.
+2. Added JSON fields for fast/fallback first-call timings, accepted-only
+   speedup ratios, per-segment fast-path flags, and fast-vs-fallback parity
+   deltas.
+3. Restored `_run_trace` in
+   `tools/diagnostics/direct_coil_same_branch_adjoint_report.py`, delegating to
+   `direct_coil_complete_solve_trace`. This fixed the segmented, boundary, and
+   strict-update replay diagnostics that still imported `_run_trace`.
+4. Fixed a missing `time` import in
+   `tools/diagnostics/direct_coil_strict_update_replay_report.py`.
+5. Added a focused runtime-diagnostics unit test that monkeypatches the replay
+   primitive and verifies `use_accepted_only_fast_path` is forwarded.
+
+Results obtained:
+
+1. `python -m ruff check tools/diagnostics/direct_coil_same_branch_adjoint_report.py tools/diagnostics/direct_coil_segmented_replay_report.py tools/diagnostics/direct_coil_boundary_replay_report.py tools/diagnostics/direct_coil_strict_update_replay_report.py tests/test_runtime_diagnostics.py`
+   passed.
+2. `python -m pytest -q tests/test_runtime_diagnostics.py` passed:
+   `7 passed in 0.25 s`.
+3. The real segmented replay diagnostic passed on a tiny direct-coil trace:
+   monolithic fast/fallback parity deltas were exactly zero, segmented
+   fast/fallback parity deltas were exactly zero, and first-call accepted-only
+   speedups were about `1.03x` monolithic and `1.06x` segmented in the cold
+   local run.
+4. The boundary replay diagnostic passed:
+   `fixed_geometry_first_s=2.38744`, `geometry_plus_boundary_first_s=6.52252`.
+5. The strict-update replay diagnostic passed:
+   `trace_static_first_s=0.432927`, `dynamic_controls_first_s=0.50237`.
+
+Best next steps:
+
+1. Commit and push this diagnostics/performance evidence patch, then watch CI.
+2. Use the repaired replay diagnostics as the bounded benchmark harness for the
+   next CPU/GPU performance pass rather than timing full complete-solve setup
+   and replay together.
+3. If the accepted-only fast path stays parity-clean under CI, evaluate whether
+   the same option should be surfaced in the coil-only optimization example's
+   optional same-branch report summary.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.998% for branch-local
+  production-forward current/Fourier scalar and vector gradients; full
+  adaptive branch differentiation remains intentionally unclaimed.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 86.5%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 87.5%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 96.5%.
+- Overall free-boundary/single-stage plan: 97.2%.
 
 ### 2026-06-04 Stacked replay NESTOR-axis correction
 

@@ -249,6 +249,20 @@ def _solve_kwargs_from_args(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def _run_trace(input_path: Path, params: Any, *, args: argparse.Namespace):
+    """Run the tiny direct-coil solve used by optional replay diagnostics."""
+
+    from vmec_jax.free_boundary_adjoint import direct_coil_complete_solve_trace
+
+    payload = direct_coil_complete_solve_trace(
+        input_path,
+        params,
+        solve_kwargs=_solve_kwargs_from_args(args),
+        require_active_trace=True,
+    )
+    return payload["init"], payload["result"], payload["traces"]
+
+
 def build_report(args: argparse.Namespace) -> dict[str, Any]:
     from vmec_jax._compat import enable_x64, jax, jnp
     from vmec_jax.free_boundary_adjoint import (

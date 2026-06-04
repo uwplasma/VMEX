@@ -109,6 +109,7 @@ def _timed_replay(
     signgs: int,
     use_segments: bool,
     use_segment_preconditioner_controls: bool,
+    use_accepted_only_fast_path: bool,
     repeats: int,
 ) -> tuple[dict[str, Any], list[float]]:
     from vmec_jax.free_boundary_adjoint import direct_coil_accepted_trace_controller_replay_objective_jax
@@ -129,6 +130,7 @@ def _timed_replay(
             enforce_edge=False,
             use_preconditioner_policy_segments=bool(use_segments),
             use_segment_preconditioner_controls=bool(use_segment_preconditioner_controls),
+            use_accepted_only_fast_path=bool(use_accepted_only_fast_path),
         )
         _block(replay["objective"])
         timings.append(time.perf_counter() - t0)
@@ -183,6 +185,18 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         signgs=int(init.signgs),
         use_segments=False,
         use_segment_preconditioner_controls=False,
+        use_accepted_only_fast_path=True,
+        repeats=int(args.warm_repeats),
+    )
+    monolithic_fallback, monolithic_fallback_times = _timed_replay(
+        params=params,
+        initial_state=replay_traces[0]["state_pre"],
+        static=init.static,
+        traces=replay_traces,
+        signgs=int(init.signgs),
+        use_segments=False,
+        use_segment_preconditioner_controls=False,
+        use_accepted_only_fast_path=False,
         repeats=int(args.warm_repeats),
     )
     segmented, segmented_times = _timed_replay(
@@ -193,13 +207,35 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         signgs=int(init.signgs),
         use_segments=True,
         use_segment_preconditioner_controls=bool(args.segment_local_preconditioner_controls),
+        use_accepted_only_fast_path=True,
+        repeats=int(args.warm_repeats),
+    )
+    segmented_fallback, segmented_fallback_times = _timed_replay(
+        params=params,
+        initial_state=replay_traces[0]["state_pre"],
+        static=init.static,
+        traces=replay_traces,
+        signgs=int(init.signgs),
+        use_segments=True,
+        use_segment_preconditioner_controls=bool(args.segment_local_preconditioner_controls),
+        use_accepted_only_fast_path=False,
         repeats=int(args.warm_repeats),
     )
 
     monolithic_state = np.asarray(pack_state(monolithic["state"]), dtype=float)
     segmented_state = np.asarray(pack_state(segmented["state"]), dtype=float)
+    monolithic_fallback_state = np.asarray(pack_state(monolithic_fallback["state"]), dtype=float)
+    segmented_fallback_state = np.asarray(pack_state(segmented_fallback["state"]), dtype=float)
     objective_delta = abs(float(np.asarray(segmented["objective"])) - float(np.asarray(monolithic["objective"])))
     state_max_abs_delta = float(np.max(np.abs(segmented_state - monolithic_state)))
+    monolithic_fast_fallback_objective_delta = abs(
+        float(np.asarray(monolithic["objective"])) - float(np.asarray(monolithic_fallback["objective"]))
+    )
+    segmented_fast_fallback_objective_delta = abs(
+        float(np.asarray(segmented["objective"])) - float(np.asarray(segmented_fallback["objective"]))
+    )
+    monolithic_fast_fallback_state_delta = float(np.max(np.abs(monolithic_state - monolithic_fallback_state)))
+    segmented_fast_fallback_state_delta = float(np.max(np.abs(segmented_state - segmented_fallback_state)))
     objective_close = bool(
         np.allclose(
             np.asarray(segmented["objective"]),
@@ -241,14 +277,42 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                 "segmented_preconditioner_controls_segment_stacked": tuple(
                     bool(value) for value in segmented["preconditioner_controls_segment_stacked"]
                 ),
+                "monolithic_used_accepted_only_fast_path": bool(monolithic["used_accepted_only_fast_path"]),
+                "segmented_used_accepted_only_fast_path": bool(segmented["used_accepted_only_fast_path"]),
+                "monolithic_fallback_used_accepted_only_fast_path": bool(
+                    monolithic_fallback["used_accepted_only_fast_path"]
+                ),
+                "segmented_fallback_used_accepted_only_fast_path": bool(
+                    segmented_fallback["used_accepted_only_fast_path"]
+                ),
+                "monolithic_accepted_only_fast_path_segments": tuple(
+                    bool(value) for value in monolithic["accepted_only_fast_path_segments"]
+                ),
+                "segmented_accepted_only_fast_path_segments": tuple(
+                    bool(value) for value in segmented["accepted_only_fast_path_segments"]
+                ),
             },
             "timings": {
                 "monolithic_replay_s": monolithic_times,
                 "segmented_replay_s": segmented_times,
+                "monolithic_fallback_replay_s": monolithic_fallback_times,
+                "segmented_fallback_replay_s": segmented_fallback_times,
                 "monolithic_first_s": float(monolithic_times[0]),
                 "segmented_first_s": float(segmented_times[0]),
+                "monolithic_fallback_first_s": float(monolithic_fallback_times[0]),
+                "segmented_fallback_first_s": float(segmented_fallback_times[0]),
                 "speedup_first": (
                     float(monolithic_times[0] / segmented_times[0])
+                    if segmented_times and segmented_times[0] > 0.0
+                    else None
+                ),
+                "accepted_only_monolithic_speedup_first": (
+                    float(monolithic_fallback_times[0] / monolithic_times[0])
+                    if monolithic_times and monolithic_times[0] > 0.0
+                    else None
+                ),
+                "accepted_only_segmented_speedup_first": (
+                    float(segmented_fallback_times[0] / segmented_times[0])
                     if segmented_times and segmented_times[0] > 0.0
                     else None
                 ),
@@ -258,8 +322,14 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                 "state_close": state_close,
                 "objective_delta": float(objective_delta),
                 "state_max_abs_delta": state_max_abs_delta,
+                "monolithic_fast_fallback_objective_delta": float(monolithic_fast_fallback_objective_delta),
+                "segmented_fast_fallback_objective_delta": float(segmented_fast_fallback_objective_delta),
+                "monolithic_fast_fallback_state_delta": monolithic_fast_fallback_state_delta,
+                "segmented_fast_fallback_state_delta": segmented_fast_fallback_state_delta,
                 "monolithic_objective": float(np.asarray(monolithic["objective"])),
                 "segmented_objective": float(np.asarray(segmented["objective"])),
+                "monolithic_fallback_objective": float(np.asarray(monolithic_fallback["objective"])),
+                "segmented_fallback_objective": float(np.asarray(segmented_fallback["objective"])),
             },
         }
     )
