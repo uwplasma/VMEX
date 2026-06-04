@@ -31,6 +31,63 @@ generated-`mgrid` WOUT-quality classification, and direct/generated
 boundary-domain checks. The code still does not claim a production full
 adaptive nonlinear `run_free_boundary` exact adjoint.
 
+### 2026-06-04 Fixed accepted-trace replay diagnostics seam
+
+Steps taken:
+
+1. Added `direct_coil_accepted_trace_branch_metadata`, a first-class branch
+   payload for accepted direct-coil free-boundary traces.  It packages the
+   branch fingerprint, controller proposal masks, effective active/accepted/
+   rejected/done masks, reset flags, active free-boundary replay cadence, and
+   static preconditioner-policy segments.
+2. Added `free_boundary_adjoint_trace_replay_diagnostics`, a diagnostics-only
+   wrapper that accepts a trace list, diagnostics dictionary,
+   `SolveVmecResidualResult`, or `FixedBoundaryRun`-like object and reports the
+   fixed accepted-trace replay contract.  The payload explicitly records
+   `differentiates_adaptive_controller=False` so this seam cannot be confused
+   with a production adaptive-loop adjoint.
+3. Added JSON-safe export coverage and stackability probes for scalar, array,
+   and preconditioner replay controls.
+4. Added a zero-extra-solve current-only physics assertion: under same-branch
+   positive current scaling, accepted vacuum-response RMS must increase.
+
+Results obtained:
+
+1. Ruff passed for `vmec_jax/free_boundary_adjoint.py` and
+   `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`.
+2. The synthetic branch/fingerprint diagnostics test passed:
+   `1 passed in 0.59 s`.
+3. The current-only same-branch complete-solve/custom-VJP gate passed with the
+   new monotonic accepted-vacuum response assertion:
+   `1 passed in 39.50 s`.
+4. The combined focused rerun passed:
+   `2 passed in 39.23 s`.
+
+Best next steps:
+
+1. Commit and push this diagnostics seam and watch CI.
+2. Use `free_boundary_adjoint_trace_replay_diagnostics` as the branch-gating
+   payload for the next production full-loop adjoint wrapper prototype.
+3. Continue exact-shard runtime reduction by reusing existing same-branch
+   complete-solve payloads for any additional physical scalar assertions.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 82%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 86%.
+- CI runtime refactor with preserved coverage/physics gates: 98.5%.
+- Docs/release hygiene: 96%.
+- Overall free-boundary single-stage plan: 93%.
+
 ### 2026-06-04 Accepted vacuum-response scalar seam
 
 Steps taken:

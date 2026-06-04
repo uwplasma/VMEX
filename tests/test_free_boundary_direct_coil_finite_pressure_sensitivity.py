@@ -171,12 +171,14 @@ def _run_direct_solve(input_path: Path, params: CoilFieldParams):
 def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_accepted_trace_array_controls_jax,
+        direct_coil_accepted_trace_branch_metadata,
         direct_coil_accepted_trace_fingerprint_delta_summary,
         direct_coil_accepted_trace_preconditioner_controls_jax,
         direct_coil_accepted_trace_preconditioner_policy_segments,
         direct_coil_accepted_trace_scalar_controls_jax,
         direct_coil_accepted_trace_fingerprint,
         direct_coil_accepted_trace_fingerprint_delta,
+        free_boundary_adjoint_trace_replay_diagnostics,
     )
 
     z = np.arange(6.0).reshape(2, 3)
@@ -212,6 +214,11 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
         "dt_eff": np.asarray(0.25),
         "freeb_bsqvac_half": np.ones((2, 3)) * 3.0,
     }
+    trace2 = {
+        **trace0,
+        "dt_eff": np.asarray(0.125),
+        "freeb_bsqvac_half": np.ones((2, 3)) * 4.0,
+    }
     scalar_controls = direct_coil_accepted_trace_scalar_controls_jax([trace0, trace1])
     assert np.allclose(np.asarray(scalar_controls["dt_eff"]), np.asarray([0.5, 0.25]))
     assert np.allclose(np.asarray(scalar_controls["lambda_update_scale"]), np.asarray([[1.0, 0.5], [1.0, 0.5]]))
@@ -243,6 +250,52 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     assert [(segment["start"], segment["stop"], segment["n_steps"]) for segment in same_policy_segments] == [(0, 2, 2)]
     assert same_policy_segments[0]["signature"][1] == 1
     assert same_policy_segments[0]["signature"][2] == 2
+
+    branch_metadata = direct_coil_accepted_trace_branch_metadata([trace0, trace1])
+    assert branch_metadata["n_steps"] == 2
+    assert branch_metadata["n_free_boundary_replay_steps"] == 2
+    assert branch_metadata["fingerprint"]["n_freeb_steps"] == 2
+    assert np.array_equal(np.asarray(branch_metadata["accepted_mask"]), np.asarray([True, True]))
+    assert np.array_equal(np.asarray(branch_metadata["done_mask"]), np.asarray([False, True]))
+    assert np.array_equal(np.asarray(branch_metadata["reset_to_trace_pre"]), np.asarray([False, False]))
+    assert np.array_equal(np.asarray(branch_metadata["active_free_boundary_mask"]), np.asarray([True, True]))
+    assert branch_metadata["preconditioner_policy_segment_summary"][0]["free_boundary_replay_steps"] == 2
+    branch_metadata_json = direct_coil_accepted_trace_branch_metadata(
+        [trace0, trace1],
+        accept_mask=np.asarray([True, False]),
+        done_mask=np.asarray([False, False]),
+        json_safe=True,
+    )
+    json.dumps(branch_metadata_json, allow_nan=False)
+    assert branch_metadata_json["accepted_mask"] == [True, False]
+    assert branch_metadata_json["active_free_boundary_mask"] == [True, False]
+    assert branch_metadata_json["preconditioner_policy_segment_summary"][0]["rejected_steps"] == 1
+    padded_diagnostics = free_boundary_adjoint_trace_replay_diagnostics(
+        {"adjoint_step_trace": [trace0, trace1, trace2]},
+        accept_mask=np.asarray([True, True, False]),
+        done_mask=np.asarray([False, True, False]),
+    )
+    assert padded_diagnostics["differentiates_adaptive_controller"] is False
+    assert padded_diagnostics["n_steps"] == 3
+    assert padded_diagnostics["branch_fingerprint"]["n_steps"] == 3
+    assert np.array_equal(np.asarray(padded_diagnostics["masks"]["active"]), np.asarray([True, True, False]))
+    assert np.array_equal(np.asarray(padded_diagnostics["masks"]["accepted"]), np.asarray([True, True, False]))
+    assert np.array_equal(np.asarray(padded_diagnostics["masks"]["rejected"]), np.asarray([False, False, False]))
+    assert np.array_equal(np.asarray(padded_diagnostics["masks"]["done"]), np.asarray([False, True, True]))
+    assert padded_diagnostics["replay_diagnostics"]["preconditioner_policy_n_segments"] == 1
+    assert padded_diagnostics["replay_diagnostics"]["scalar_controls_stackable"] is True
+    assert padded_diagnostics["replay_diagnostics"]["array_controls_stackable"] is True
+    assert padded_diagnostics["replay_diagnostics"]["preconditioner_controls_stackable"] is True
+    padded_json = free_boundary_adjoint_trace_replay_diagnostics(
+        {"diagnostics": {"adjoint_step_trace": [trace0, trace1, trace2]}},
+        accept_mask=np.asarray([True, True, False]),
+        done_mask=np.asarray([False, True, False]),
+        json_safe=True,
+    )
+    json.dumps(padded_json, allow_nan=False)
+    assert padded_json["masks"]["done"] == [False, True, True]
+    with pytest.raises(RuntimeError, match="adjoint_trace=True"):
+        free_boundary_adjoint_trace_replay_diagnostics({"diagnostics": {}})
 
     bad_preconditioner_shape = dict(trace1)
     bad_preconditioner_shape["precond_mats"] = {"ar": np.ones((3, 3)), "br": z + 7.0}
@@ -1267,6 +1320,10 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         assert moment_report["same_branch"] is True
         assert moment_report["base_abs_delta"] < 2.0e-3
     if check_accepted_bsqvac_rms_scalar:
+        bsqvac_values = complete_report["objective_values"]["accepted_bsqvac_rms"]
+        assert bsqvac_values["base"] > 0.0
+        assert bsqvac_values["plus"] > bsqvac_values["minus"]
+        assert bsqvac_values["central_fd_directional"] > 0.0
         bsqvac_report = direct_coil_same_branch_controller_scalar_custom_vjp_report(
             complete_report,
             base_params,
