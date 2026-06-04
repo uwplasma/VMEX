@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import matplotlib
@@ -242,7 +243,8 @@ def test_plotting_contours_history_wrappers_and_error_branches(monkeypatch, tmp_
 
 
 def test_plot_wout_name_defaults_and_show_branch(monkeypatch, tmp_path) -> None:
-    import vmec_jax.plotting as plotting
+    import matplotlib.figure
+    import matplotlib.pyplot as plt
 
     tiny = _wout(ns=2, nfp=1)
     tiny.ntor = 0
@@ -260,11 +262,19 @@ def test_plot_wout_name_defaults_and_show_branch(monkeypatch, tmp_path) -> None:
     tiny.raxis_cs = np.asarray([0.0])
     tiny.zaxis_cs = np.asarray([0.0])
     tiny.zaxis_cc = np.asarray([0.0])
+    tiny.bmnc = np.asarray(tiny.bmnc, dtype=float)
+    tiny.bmnc[:, 1] = 0.05
 
     monkeypatch.setattr("vmec_jax.wout.read_wout", lambda _path: tiny)
+    monkeypatch.setattr(
+        matplotlib.figure.Figure,
+        "savefig",
+        lambda _fig, path, *args, **kwargs: Path(path).write_bytes(b"plot"),
+    )
     show_calls = []
-    monkeypatch.setattr(plotting.plt if hasattr(plotting, "plt") else matplotlib.pyplot, "show", lambda: show_calls.append(True), raising=False)
+    monkeypatch.setattr(plt, "show", lambda: show_calls.append(True))
 
-    results = plot_wout(tmp_path / "wout_tiny.nc", outdir=tmp_path / "plots", show=False)
+    results = plot_wout(tmp_path / "wout_tiny.nc", outdir=tmp_path / "plots", show=True)
     assert results["vmec_params"].name == "tiny_VMECparams.pdf"
     assert all(path.exists() for path in results.values())
+    assert show_calls == [True]
