@@ -12,17 +12,14 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-04 on `main` with the current residual-fingerprinted
-physical-scalar gate working tree. The latest fully green pushed main is commit
-`eed9a0b`, `test: fingerprint free-boundary complete-solve branch`, which passed
-GitHub Actions run `26972223905`, including the combined 95% coverage gate.
-Commit `2f08d67`, `test: add residual branch fingerprint gate helper`, passed
-every test/build/docs shard in run `26971168043` but failed only the combined
-coverage gate at exact line coverage `94.99%`, just below the strict `95.00%`
-threshold. The current local patch promotes accepted `Bsqvac` RMS as an
-additional same-branch complete-solve physical scalar in the existing batched
-current-only custom-VJP gate while preserving conservative adaptive-controller
-claims.
+Last updated: 2026-06-04 on `main` with the current stacked accepted-step
+replay working tree. The latest fully green pushed main is commit `272e8dd`,
+`test: require free-boundary branch subcondition gates`, which passed GitHub
+Actions run `26973402880`, including docs, build, smoke, exact, slow-physics,
+core py3.11 coverage, and the combined 95% coverage gate. The current local
+patch adds an opt-in stacked step-control replay rung that calls
+`strict_update_one_step_from_state` through value-sensitive static-policy
+segments while preserving conservative adaptive-controller claims.
 
 The latest green main splits required py3.11 coverage into core, slow-physics,
 and exact shards while keeping a combined 95% coverage threshold, preserves the
@@ -36,10 +33,74 @@ The phase-2 evidence includes reset-aware full accepted-trace replay, stacked
 accepted/rejected controller segment gates, current-only/Fourier-only
 same-branch complete-solve AD-vs-FD gates, segmented controller custom-VJP
 complete-solve AD-vs-FD gates, an aspect-ratio physical-scalar same-branch
-complete-solve gate, explicit tridiagonal-policy coverage, VMEC2000
+complete-solve gate, accepted `Bnormal` and `Bsqvac` RMS physical-scalar
+same-branch gates, explicit tridiagonal-policy coverage, VMEC2000
 generated-`mgrid` WOUT-quality classification, and direct/generated
 boundary-domain checks. The code still does not claim a production full
 adaptive nonlinear `run_free_boundary` exact adjoint.
+
+### 2026-06-04 Stacked accepted-step replay seam
+
+Steps taken:
+
+1. Added `direct_coil_accepted_trace_step_policy_segments` and
+   `direct_coil_accepted_trace_step_controls_jax` in
+   `vmec_jax/free_boundary_adjoint.py`.
+2. Added an opt-in `use_stacked_step_controls` path to
+   `direct_coil_accepted_trace_controller_replay_objective_jax`.
+3. The new path segments traces by value-sensitive static step-policy
+   signatures and then calls `strict_update_one_step_from_state` directly with
+   stacked state, velocity, preconditioner, NESTOR-axis, and constraint
+   controls.
+4. Kept the old trace-dictionary replay as the default and comparison oracle.
+   The new path does not differentiate the adaptive host branch chooser; it
+   only validates a stricter JAX-visible same-branch accepted replay.
+5. Added production-trace assertions proving stacked replay matches the legacy
+   controller replay objective, final state, and accepted/rejected/done/reset
+   histories.
+
+Results obtained:
+
+1. Ruff passed on the touched source and free-boundary test file.
+2. Focused branch fingerprint regression passed:
+   `test_direct_coil_trace_fingerprint_detects_control_branch_changes`.
+3. Focused accepted-update replay gate passed with the stacked path enabled:
+   `test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree`.
+4. Focused current-only same-branch complete-solve physical scalar gate passed
+   in `37.83 s`.
+5. Local py3.11 exact shard passed:
+   `18 passed in 110.58 s`.
+6. The latest pushed CI run before this local patch, `26973402880`, is green
+   with exact line coverage above the required 95% gate.
+
+Best next steps:
+
+1. Commit and push the stacked accepted-step replay seam, then watch CI.
+2. Split the py3.11 exact coverage shard into multiple coverage-artifact jobs
+   to reduce wall time without dropping any physics/numerics tests; the
+   accepted-update and current-only free-boundary gates are the dominant
+   per-test runtime offenders.
+3. Continue the adaptive full-loop seam from this conservative rung: promote a
+   same-branch physical scalar through the stacked replay path first, then only
+   consider host-loop wrappers once branch-fingerprint compatibility is
+   explicit.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 82%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 86%.
+- CI runtime refactor with preserved coverage/physics gates: 99.5%.
+- Docs/release hygiene: 96%.
+- Overall free-boundary single-stage plan: 94.5%.
 
 ### 2026-06-04 Explicit physical-scalar gate and coverage repair
 

@@ -1980,6 +1980,8 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         direct_coil_accepted_trace_controller_replay_objective_jax,
         direct_coil_accepted_trace_fingerprint,
         direct_coil_accepted_trace_fingerprint_delta,
+        direct_coil_accepted_trace_step_controls_jax,
+        direct_coil_accepted_trace_step_policy_segments,
         direct_coil_accepted_trace_replay_objective_jax,
         direct_coil_boundary_bsqvac_jax,
         direct_coil_boundary_bsqvac_from_trace_jax,
@@ -2476,6 +2478,12 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     assert controller_replay["preconditioner_controls_stacked"]
     assert np.asarray(controller_replay["preconditioner_controls"]["w_mode_mn"]).shape[0] == 2
     assert controller_replay["preconditioner_policy_n_segments"] == 1
+    assert controller_replay["step_policy_n_segments"] >= 1
+    assert "state_pre" in direct_coil_accepted_trace_step_controls_jax([trace0, trace1])
+    step_segments = direct_coil_accepted_trace_step_policy_segments([trace0, trace1])
+    assert step_segments[0]["start"] == 0
+    assert step_segments[-1]["stop"] == 2
+    assert sum(int(segment["n_steps"]) for segment in step_segments) == 2
     assert [
         (segment["start"], segment["stop"], segment["n_steps"])
         for segment in controller_replay["preconditioner_policy_segments"]
@@ -2529,11 +2537,48 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         rtol=5.0e-12,
         atol=5.0e-12,
     )
+    stacked_controller_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
+        base_params,
+        trace0["state_pre"],
+        static=init.static,
+        traces=[trace0, trace1],
+        signgs=int(init.signgs),
+        state_weight=1.0,
+        bsqvac_weight=1.0e-12,
+        force_weight=0.0,
+        enforce_edge=False,
+        use_stacked_step_controls=True,
+    )
+    assert stacked_controller_replay["used_stacked_step_controls"]
+    assert stacked_controller_replay["step_policy_n_segments"] == len(step_segments)
+    assert stacked_controller_replay["preconditioner_controls_segment_stacked"] == (True,) * len(step_segments)
+    np.testing.assert_allclose(
+        np.asarray(stacked_controller_replay["objective"]),
+        np.asarray(controller_replay["objective"]),
+        rtol=2.0e-12,
+        atol=1.0e-12,
+    )
+    np.testing.assert_allclose(
+        np.asarray(pack_state(stacked_controller_replay["state"])),
+        np.asarray(pack_state(controller_replay["state"])),
+        rtol=5.0e-12,
+        atol=5.0e-12,
+    )
     for key in ("active", "accepted", "rejected", "done", "state_reset"):
         np.testing.assert_array_equal(
             np.asarray(segmented_controller_replay["history"][key]),
             np.asarray(controller_replay["history"][key]),
         )
+        np.testing.assert_array_equal(
+            np.asarray(stacked_controller_replay["history"][key]),
+            np.asarray(controller_replay["history"][key]),
+        )
+    static_changed_trace = dict(trace1)
+    static_changed_trace["include_edge_residual"] = not bool(trace1["include_edge_residual"])
+    assert [
+        (segment["start"], segment["stop"], segment["n_steps"])
+        for segment in direct_coil_accepted_trace_step_policy_segments([trace0, static_changed_trace])
+    ] == [(0, 1, 1), (1, 2, 1)]
     padded_bad_trace = dict(trace1)
     padded_bad_trace["dt_eff"] = _trace_scalar_value(trace1["dt_eff"]) * 10.0
     padded_bad_trace["force_scale"] = _trace_scalar_value(trace1["force_scale"]) * 10.0
