@@ -170,6 +170,51 @@ Completion:
 - Docs/release hygiene: 96%.
 - Overall free-boundary single-stage plan: 94.2%.
 
+### 2026-06-04 Explicit scalar-gate branch subconditions
+
+Steps taken:
+
+1. Hardened `direct_coil_same_branch_physical_scalar_gate_report` so it reports
+   and enforces both accepted-trace branch compatibility and residual-controller
+   branch compatibility, instead of relying only on the aggregate
+   `same_branch` flag.
+2. Extended the synthetic branch-fingerprint test to verify the promoted scalar
+   gate passes with both subconditions true and fails with explicit errors when
+   either subcondition is false.
+
+Results obtained:
+
+1. Ruff passed for the touched source and test files.
+2. The synthetic branch-fingerprint test passed.
+3. The focused current-only complete-solve physical-scalar gate passed:
+   `1 passed in 38.59 s`.
+
+Best next steps:
+
+1. Commit and push the stricter scalar-gate branch contract.
+2. Let the latest main CI finish and update this status block once the combined
+   coverage gate is green.
+3. Move from same-branch promotion gates toward the production full-loop seam:
+   a named fingerprint-gated host-loop scalar wrapper or a JAX-visible
+   nonlinear controller replacement with complete-loop AD-vs-central-FD tests.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.85%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 82%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 86%.
+- CI runtime refactor with preserved coverage/physics gates: 99.5%.
+- Docs/release hygiene: 96%.
+- Overall free-boundary single-stage plan: 94.3%.
+
 ### 2026-06-04 CI-green replay coverage and exact-shard duplicate removal
 
 Steps taken:

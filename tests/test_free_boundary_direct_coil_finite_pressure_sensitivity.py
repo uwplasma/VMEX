@@ -303,6 +303,8 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     synthetic_report = {
         "branch_compatibility": {
             "same_branch": True,
+            "same_accepted_trace_branch": True,
+            "same_residual_branch": True,
             "base_fingerprint": synthetic_fingerprint,
             "plus_fingerprint": synthetic_fingerprint,
             "minus_fingerprint": synthetic_fingerprint,
@@ -369,6 +371,8 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     assert physical_gate["passed"], physical_gate
     assert physical_gate["scalar_keys"] == ("aspect", "accepted_bnormal_rms")
     assert physical_gate["differentiates_adaptive_controller"] is False
+    assert physical_gate["same_accepted_trace_branch"] is True
+    assert physical_gate["same_residual_branch"] is True
     json.dumps(
         direct_coil_same_branch_physical_scalar_gate_report(
             physical_synthetic_report,
@@ -391,6 +395,8 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     }
     bad_physical_report = deepcopy(physical_synthetic_report)
     bad_physical_report["branch_compatibility"]["same_branch"] = False
+    bad_physical_report["branch_compatibility"]["same_accepted_trace_branch"] = False
+    bad_physical_report["branch_compatibility"]["same_residual_branch"] = False
     bad_physical_report["objective_values"]["accepted_bnormal_rms"]["central_fd_directional"] = np.nan
     bad_physical_gate = direct_coil_same_branch_physical_scalar_gate_report(
         bad_physical_report,
@@ -400,6 +406,8 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     assert not bad_physical_gate["passed"]
     assert any("replay gate failed" in error for error in bad_physical_gate["errors"])
     assert any("not same-branch" in error for error in bad_physical_gate["errors"])
+    assert any("accepted-trace branch fingerprint changed" in error for error in bad_physical_gate["errors"])
+    assert any("residual-controller branch fingerprint changed" in error for error in bad_physical_gate["errors"])
     assert any("missing scalar report" in error for error in bad_physical_gate["errors"])
     assert any("missing complete-solve objective values" in error for error in bad_physical_gate["errors"])
     assert any("non-finite complete-solve FD" in error for error in bad_physical_gate["errors"])
