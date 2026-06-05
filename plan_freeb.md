@@ -9950,3 +9950,113 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100% on latest
   green baseline, current CI in progress.
 - Docs/release hygiene: 98.3%.
+
+### 2026-06-05 Single-Stage Same-Branch Report Timing
+
+Steps taken:
+
+1. Added timing fields to
+   `examples/optimization/free_boundary_QS_coil_optimization.py` for the
+   optional same-branch validation report.
+2. The report now records complete-solve finite-difference wall time and,
+   depending on the selected mode, branch-local scalar or vector replay wall
+   time.
+3. Added focused tests so the JSON report format preserves those timings for
+   `none`, `scalar`, and `vector` report modes.
+
+Results obtained:
+
+1. Ruff passed for the single-stage example and its smoke tests.
+2. `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py -q`
+   passed with `12 passed, 1 xfailed`.
+3. The phase-3 example now emits performance evidence in the same artifact that
+   reports branch compatibility and branch-local derivative status.  This makes
+   future CPU/GPU and same-branch derivative runs auditable without rerunning a
+   separate diagnostic script.
+
+Best next steps:
+
+1. Use the new report timings in the next single-stage direct-coil QS run to
+   identify whether branch-local scalar/Jacobian replay or complete-solve FD is
+   limiting the phase-3 example.
+2. Keep vector reports optional until their cold compile/runtime is bounded.
+3. Continue phase-2 promotion by validating physical scalar gates, not only
+   state-norm/fixed-trace diagnostics.
+4. Continue VMEC/direct-coil/mgrid parity with bounded physical surfaces before
+   claiming broader external parity.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.5%.
+- Single-stage coil-only optimization: 91.0%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 92.8%; phase-3 same-branch artifacts now include
+  timing splits.
+- CI runtime refactor with preserved coverage/physics gates: 100% on latest
+  green baseline.
+- Docs/release hygiene: 98.3%.
+
+### 2026-06-05 Real Single-Stage Scalar Report Timing Smoke
+
+Steps taken:
+
+1. Ran the bounded circle-provider single-stage QS smoke with one optimizer
+   evaluation and ``--write-same-branch-report --same-branch-report-mode
+   scalar`` under ``/tmp/vmec_jax_freeb_qs_timing_smoke``.
+2. Inspected ``same_branch_complete_solve_report.json`` for branch
+   compatibility, scalar AD-vs-FD data, and the new timing fields.
+3. Updated ``docs/free_boundary_coil_optimization.rst`` to explain the timing
+   block and why scalar/vector derivative reports remain opt-in.
+4. Rebuilt the full docs with warnings as errors and re-ran focused tests.
+
+Results obtained:
+
+1. The actual optimization objective evaluation completed in ``1.81 s``.
+2. The same-branch report stayed on the same branch.
+3. Report timings were: complete-solve finite-difference ``6.51 s`` and
+   branch-local scalar replay ``41.00 s``.
+4. The scalar report validated ``qs_total`` with replay/base delta
+   ``5.995e-15`` and absolute directional-slope error ``1.46e-11``.
+5. The result confirms the phase-3 bottleneck is branch-local scalar/Jacobian
+   replay compile/runtime, not the forward direct-coil objective evaluation and
+   not the complete-solve finite-difference triplet.
+6. ``python -m sphinx -W -b html docs /tmp/vmec_jax_docs_freeb_check`` passed.
+7. Ruff passed for the changed example/test files.
+8. ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py -q``
+   passed with ``12 passed, 1 xfailed``.
+
+Best next steps:
+
+1. Keep same-branch derivative detail opt-in in phase-3 examples.
+2. Reduce branch-local scalar/Jacobian replay cold compile before promoting
+   scalar/vector derivative reports as routine artifacts.
+3. Prioritize production physical scalar gates and branch-fingerprint clarity
+   over further legacy fixed-trace diagnostic work.
+4. Continue VMEC/direct-coil/mgrid parity on bounded physical surfaces.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.5%.
+- Single-stage coil-only optimization: 91.2%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 93.0%; the phase-3 bottleneck is localized to
+  branch-local scalar/Jacobian replay.
+- CI runtime refactor with preserved coverage/physics gates: 100% on latest
+  green baseline.
+- Docs/release hygiene: 98.4%.

@@ -737,6 +737,8 @@ def write_same_branch_validation_report(
             else np.nan,
         }
 
+    timings: dict[str, float] = {}
+    t0 = time.perf_counter()
     report = direct_coil_same_branch_complete_solve_fd_report(
         input_path,
         base_params,
@@ -760,6 +762,7 @@ def write_same_branch_validation_report(
             "free_boundary_activate_fsq": float(args.activate_fsq),
         },
     )
+    timings["complete_solve_fd_wall_s"] = float(time.perf_counter() - t0)
     compact_report = {
         "phase": "phase-2-same-branch-complete-solve-fd",
         "scope": "coil-only proxy-objective validation; not arbitrary adaptive-branch differentiation",
@@ -807,6 +810,7 @@ def write_same_branch_validation_report(
     if mode not in {"none", "scalar", "vector"}:
         raise ValueError("--same-branch-report-mode must be one of none, scalar, vector")
     if mode == "scalar" and "base" in report and "qs_total" in report["objective_values"]:
+        t0 = time.perf_counter()
         scalar = direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
             params=base_params,
             complete_payload=report["base"],
@@ -831,6 +835,7 @@ def write_same_branch_validation_report(
             ),
             replay_kwargs={"use_stacked_step_controls": True},
         )
+        timings["branch_local_scalar_wall_s"] = float(time.perf_counter() - t0)
         exact_directional = _pytree_directional_vdot(scalar["grad"], direction_params)
         branch_local_scalar = {
             "available": True,
@@ -858,6 +863,7 @@ def write_same_branch_validation_report(
         and "accepted_bnormal_rms" in report["objective_values"]
     ):
         scalar_keys = ("aspect", "qs_total", "lcfs_boundary_moment", "accepted_bnormal_rms")
+        t0 = time.perf_counter()
         vector = direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             params=base_params,
             complete_payload=report["base"],
@@ -905,6 +911,7 @@ def write_same_branch_validation_report(
             },
             replay_kwargs={"use_stacked_step_controls": True},
         )
+        timings["branch_local_vector_wall_s"] = float(time.perf_counter() - t0)
         directionals = _vector_jacobian_directional(vector["jacobian"], direction_params, len(scalar_keys))
         branch_local_vector = {
             "available": True,
@@ -930,6 +937,7 @@ def write_same_branch_validation_report(
         }
     compact_report["branch_local_scalar_gradient"] = branch_local_scalar
     compact_report["branch_local_vector_jacobian"] = branch_local_vector
+    compact_report["timings"] = timings
     path = outdir / "same_branch_complete_solve_report.json"
     write_json(path, compact_report)
     return path

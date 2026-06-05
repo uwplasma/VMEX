@@ -699,6 +699,16 @@ finite-difference only and avoids the cold branch-local replay compilation.
 Use ``--same-branch-report-mode scalar`` to additionally validate one
 fixed-accepted-branch ``qs_total`` gradient, or ``vector`` to build the
 more expensive multi-scalar branch-local Jacobian for reviewer diagnostics.
+The resulting ``same_branch_complete_solve_report.json`` includes a
+``timings`` block.  ``complete_solve_fd_wall_s`` measures the complete
+base/plus/minus finite-difference solves, while
+``branch_local_scalar_wall_s`` or ``branch_local_vector_wall_s`` measures the
+fixed-accepted-branch replay derivative.  On the current tiny circle-provider
+smoke, the forward objective evaluation is about two seconds, the complete
+finite-difference report is several seconds, and the first cold branch-local
+scalar replay can still take tens of seconds.  That is why derivative-detail
+reports remain opt-in performance diagnostics rather than default example
+output.
 
 Run the dependency-light direct-coil forward example from the repository root.
 This path constructs a synthetic circular ``CoilFieldParams`` object directly in
