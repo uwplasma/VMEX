@@ -4,6 +4,7 @@ from copy import deepcopy
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -439,6 +440,7 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     assert any("minus: missing replay diagnostics" in error for error in mismatch_gate["errors"])
 
     from vmec_jax.free_boundary_adjoint import (
+        _block_until_ready_for_timing,
         _pytree_batched_directional_vdot_jax,
         direct_coil_accepted_trace_controller_custom_vjp_scalars_jax,
         direct_coil_adaptive_full_loop_same_branch_gate_report,
@@ -651,6 +653,34 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
             scalar_fn=lambda payload: {"objective": 0.0},
             replay_scalar_fns={"objective": lambda replay, payload: 0.0},
         )
+    invalid_mode_payload = {
+        "params": {},
+        "init": SimpleNamespace(static=None, signgs=1),
+        "traces": (
+            {
+                "freeb_bsqvac_half": np.ones(1),
+                "freeb_nestor_trace": {"active": True},
+                "state_pre": object(),
+            },
+        ),
+    }
+    with pytest.raises(ValueError, match="replay_ad_mode"):
+        direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
+            complete_payload=invalid_mode_payload,
+            scalar_fn=lambda payload: {"objective": 0.0},
+            replay_scalar_fn=lambda replay, payload: 0.0,
+            replay_ad_mode="invalid",
+        )
+    with pytest.raises(ValueError, match="replay_ad_mode"):
+        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
+            complete_payload=invalid_mode_payload,
+            scalar_fn=lambda payload: {"objective": 0.0},
+            replay_scalar_fns={"objective": lambda replay, payload: 0.0},
+            replay_ad_mode="invalid",
+        )
+
+    ready_tree = _block_until_ready_for_timing({"value": jnp.asarray([1.0, 2.0])})
+    np.testing.assert_allclose(np.asarray(ready_tree["value"]), np.asarray([1.0, 2.0]))
 
     jacobian_tree = {
         "a": jnp.asarray([[1.0, 2.0], [3.0, 4.0]]),
