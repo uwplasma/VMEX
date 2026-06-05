@@ -12,10 +12,10 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-04 on `main` with the current fused full-trace and
-stacked replay-diagnostic patch. The latest fully green pushed main is commit
-`36652af`, `bench: add accepted replay diagnostic row`, which passed GitHub
-Actions run `26988433843`, including docs, build, console smoke, physics
+Last updated: 2026-06-04 on `main` with the fused full-trace and stacked
+replay-diagnostic patch. The latest fully green pushed main is commit
+`bf2a57f`, `test: update replay diagnostic helper call`, which passed GitHub
+Actions run `26993152393`, including docs, build, console smoke, physics
 smoke, py3.10, py3.12, slow-physics coverage, exact free-boundary coverage
 shards, core py3.11 coverage shards, and the combined 95% coverage gate.
 
