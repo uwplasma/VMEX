@@ -164,6 +164,7 @@ def test_direct_coil_segmented_replay_report_synthetic_policy_helpers(monkeypatc
         signgs=1,
         use_segments=True,
         use_segment_preconditioner_controls=False,
+        use_stacked_step_controls=False,
         use_accepted_only_fast_path=False,
         repeats=1,
     )
