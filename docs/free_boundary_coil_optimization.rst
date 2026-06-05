@@ -697,15 +697,18 @@ For a local same-branch validation artifact, add
 ``--write-same-branch-report``.  The default report mode is complete-solve
 finite-difference only and avoids the cold branch-local replay compilation.
 Use ``--same-branch-report-mode scalar`` to additionally validate one
-fixed-accepted-branch ``qs_total`` gradient, or ``vector`` to build the
-more expensive multi-scalar branch-local Jacobian for reviewer diagnostics.
+fixed-accepted-branch ``qs_total`` gradient, or ``vector`` to validate several
+physical-scalar directional derivatives against the same complete-solve
+central finite-difference direction.
 The scalar can be changed with ``--same-branch-report-scalar-key``.  Use
 ``aspect`` for a cheaper physical-scalar timing probe and ``qs_total`` for the
 QS-relevant scalar.  The derivative report defaults to
 ``--same-branch-report-ad-mode direct``, which differentiates the fixed
-accepted-branch replay directly and avoids an extra custom-VJP wrapper replay.
-Use ``--same-branch-report-ad-mode custom_vjp`` only when explicitly auditing
-the custom-VJP seam.
+accepted-branch replay directly.  In ``vector`` mode this direct path uses a
+JVP and reports ``J @ direction`` without materializing the full Jacobian.  Use
+``--same-branch-report-ad-mode custom_vjp`` only when explicitly auditing the
+custom-VJP seam; that path falls back to the more expensive full-Jacobian VJP
+diagnostic.
 The resulting ``same_branch_complete_solve_report.json`` includes a
 ``timings`` block.  ``complete_solve_fd_wall_s`` measures the complete
 base/plus/minus finite-difference solves, while

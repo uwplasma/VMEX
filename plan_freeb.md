@@ -212,6 +212,76 @@ Completion:
 - Docs/release hygiene: 98.8%.
 - Overall free-boundary/single-stage plan: 98.75%.
 
+### 2026-06-05 Directional JVP Vector Reports
+
+Steps taken:
+
+1. Extended
+   ``direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax``
+   with an optional ``direction_params`` argument.
+2. When a direction is supplied and ``replay_ad_mode="direct"``, the helper
+   now computes only ``J @ direction`` with ``jax.jvp`` instead of building a
+   full vector-output VJP pullback and materializing the complete Jacobian
+   pytree.
+3. Preserved the existing full-Jacobian VJP path for callers that omit
+   ``direction_params`` or explicitly audit the custom-VJP seam.
+4. Updated ``examples/optimization/free_boundary_QS_coil_optimization.py`` so
+   ``--same-branch-report-mode vector`` uses the JVP directional path in the
+   default direct mode, while ``--same-branch-report-ad-mode custom_vjp`` keeps
+   the expensive full-Jacobian diagnostic.
+5. Updated tests and docs to state the distinction between vector/direct
+   directional reports and vector/custom-VJP full-Jacobian audits.
+
+Results obtained:
+
+1. The one-evaluation circle-provider vector same-branch report stayed on the
+   same branch, used precomputed values, and matched complete-solve finite
+   differences for ``aspect``, ``qs_total``, ``lcfs_boundary_moment``, and
+   ``accepted_bnormal_rms`` at about ``1e-11`` absolute error or better.
+2. The same report improved from about ``39.5 s`` for full VJP/Jacobian
+   materialization to about ``16.8 s`` with directional JVP.  Pullback timing
+   is now zero; the remaining cost is replay JVP graph construction/lowering
+   (about ``16.75 s`` in the smoke).
+3. Focused validation passed:
+   ``python -m ruff check`` on the touched source/example/tests,
+   the full ``tests/test_free_boundary_qs_coil_optimization_smoke.py`` file,
+   the exact same-branch shard (``3 passed in 92.56 s``), and a full Sphinx
+   build.
+4. CI run ``27041177933`` for the previous branch-trace commit completed green
+   across all shards including combined coverage.
+
+Best next steps:
+
+1. Commit and push the JVP directional report patch, then confirm CI.
+2. Reduce replay graph construction/lowering itself.  The avoidable full
+   pullback/Jacobian materialization is removed from production vector reports.
+3. Prototype a smaller accepted-only scalar replay kernel for final-state-only
+   physical scalars; it should avoid building full replay history/objective
+   machinery when the scalar only needs the final accepted state.
+4. Keep adaptive full-loop differentiation explicitly unclaimed until
+   complete adaptive-loop AD-vs-central-FD validation passes.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- DMerc/Glasser ``D_R`` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 97.5%.
+- Single-stage coil-only optimization: 92.7%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 96.0%; vector production reports now avoid full
+  Jacobian materialization, but replay JVP graph construction remains the
+  dominant cost.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 98.9%.
+- Overall free-boundary/single-stage plan: 98.85%.
+
 ### 2026-06-05 Reuse complete-report base values in branch-local reports
 
 Steps taken:

@@ -912,6 +912,7 @@ def write_same_branch_validation_report(
         t0 = time.perf_counter()
         vector = direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             params=base_params,
+            direction_params=direction_params if ad_mode == "direct" else None,
             complete_payload=report["base"],
             scalar_keys=scalar_keys,
             production_values={key: report_base_values[key] for key in scalar_keys},
@@ -964,7 +965,13 @@ def write_same_branch_validation_report(
         vector_timings = {str(key): float(value) for key, value in vector.get("timings", {}).items()}
         for key, value in vector_timings.items():
             timings[f"branch_local_vector_{key}"] = value
-        directionals = _vector_jacobian_directional(vector["jacobian"], direction_params, len(scalar_keys))
+        if vector.get("directional_derivatives") is None:
+            directionals = _vector_jacobian_directional(vector["jacobian"], direction_params, len(scalar_keys))
+        else:
+            directionals = [
+                float(np.asarray(vector["directional_derivatives"][key], dtype=float))
+                for key in scalar_keys
+            ]
         branch_local_vector = {
             "available": True,
             "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
@@ -973,6 +980,7 @@ def write_same_branch_validation_report(
             "differentiates_run_free_boundary": bool(vector["differentiates_run_free_boundary"]),
             "differentiates_fixed_accepted_branch": bool(vector["differentiates_fixed_accepted_branch"]),
             "replay_ad_mode": str(vector["replay_ad_mode"]),
+            "derivative_mode": str(vector.get("derivative_mode", "full_jacobian_vjp")),
             "scalar_keys": list(scalar_keys),
             "production_values_source": str(vector.get("production_values_source", "unknown")),
             "replay_option_flags": vector["replay_option_flags"],
@@ -1338,8 +1346,9 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Derivative detail for --write-same-branch-report. 'none' writes only "
             "complete-solve FD diagnostics and is the default. 'scalar' validates one "
-            "branch-local physical-scalar gradient. 'vector' also builds the more expensive "
-            "multi-scalar Jacobian."
+            "branch-local physical-scalar gradient. 'vector' validates several "
+            "physical scalars; in direct mode it reports JVP directional derivatives, "
+            "while custom_vjp mode builds the more expensive full Jacobian."
         ),
     )
     parser.add_argument(

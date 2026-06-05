@@ -731,6 +731,15 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
             replay_scalar_fns={"objective": lambda replay, payload: 0.0},
             replay_ad_mode="invalid",
         )
+    with pytest.raises(ValueError, match="direction_params"):
+        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
+            params={},
+            direction_params={},
+            complete_payload=invalid_mode_payload,
+            scalar_fn=lambda payload: {"objective": 0.0},
+            replay_scalar_fns={"objective": lambda replay, payload: 0.0},
+            replay_ad_mode="custom_vjp",
+        )
 
     ready_tree = _block_until_ready_for_timing({"value": jnp.asarray([1.0, 2.0])})
     np.testing.assert_allclose(np.asarray(ready_tree["value"]), np.asarray([1.0, 2.0]))
@@ -1673,7 +1682,6 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     pytest.importorskip("jax")
     from vmec_jax._compat import jax, jnp
     from vmec_jax.free_boundary_adjoint import (
-        _pytree_batched_directional_vdot_jax,
         direct_coil_accepted_trace_controller_custom_vjp_objective_jax,
         direct_coil_adaptive_full_loop_same_branch_gate_report,
         direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax,
@@ -2251,6 +2259,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             production_branch_local_scalars = (
                 direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
                     params=base_params,
+                    direction_params=direction,
                     complete_payload=complete_report["base"],
                     scalar_keys=tuple(vector_scalar_keys),
                     production_values={key: complete_base_values[key] for key in vector_scalar_keys},
@@ -2274,6 +2283,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert production_branch_local_scalars["differentiates_adaptive_controller"] is False
             assert production_branch_local_scalars["differentiates_run_free_boundary"] is False
             assert production_branch_local_scalars["differentiates_fixed_accepted_branch"] is True
+            assert production_branch_local_scalars["derivative_mode"] == "directional_jvp"
             assert production_branch_local_scalars["production_values_source"] == "precomputed"
             assert production_branch_local_scalars["scalar_keys"] == tuple(vector_scalar_keys)
             assert production_branch_local_scalars["trace_replay_diagnostics"]["differentiates_adaptive_controller"] is False
@@ -2284,8 +2294,9 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert production_branch_local_scalars["replay_graph_metadata"]["active_free_boundary_replay_steps"] >= 1
             assert production_branch_local_scalars["replay_graph_metadata"]["step_policy_n_segments"] >= 1
             assert production_branch_local_scalars["timings"]["production_scalar_eval_wall_s"] >= 0.0
-            assert production_branch_local_scalars["timings"]["replay_vjp_wall_s"] >= 0.0
-            assert production_branch_local_scalars["timings"]["replay_pullbacks_wall_s"] >= 0.0
+            assert production_branch_local_scalars["timings"]["replay_jvp_wall_s"] >= 0.0
+            assert production_branch_local_scalars["timings"]["replay_vjp_wall_s"] == 0.0
+            assert production_branch_local_scalars["timings"]["replay_pullbacks_wall_s"] == 0.0
             assert production_branch_local_scalars["timings"]["jacobian_stack_ready_s"] >= 0.0
             assert production_branch_local_scalars["timings"]["total_wall_s"] >= 0.0
             assert production_branch_local_scalars["base_abs_delta"]["aspect"] < 2.0e-3
@@ -2302,28 +2313,9 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                 rtol=1.0e-12,
                 atol=1.0e-12,
             )
-            vector_directionals = _pytree_batched_directional_vdot_jax(
-                production_branch_local_scalars["jacobian"],
-                direction,
-                len(vector_scalar_keys),
-            )
             for key in vector_scalar_keys:
-                key_index = vector_scalar_keys.index(key)
-                production_branch_vector_exact = sum(
-                    jnp.vdot(grad_leaf, direction_leaf)
-                    for grad_leaf, direction_leaf in zip(
-                        jax.tree_util.tree_leaves(production_branch_local_scalars["grads"][key]),
-                        jax.tree_util.tree_leaves(direction),
-                        strict=True,
-                    )
-                )
+                production_branch_vector_exact = production_branch_local_scalars["directional_derivatives"][key]
                 complete_directional = complete_report["objective_values"][key]["central_fd_directional"]
-                np.testing.assert_allclose(
-                    vector_directionals[key_index],
-                    production_branch_vector_exact,
-                    rtol=1.0e-12,
-                    atol=1.0e-12,
-                )
                 np.testing.assert_allclose(
                     production_branch_vector_exact,
                     complete_directional,
