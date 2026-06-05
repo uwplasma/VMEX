@@ -116,6 +116,10 @@ Results obtained:
    `python -m sphinx -W -b html docs docs/_build/html`,
    `git diff --check`, and the combined current/Fourier exact gate
    `2 passed in 74.37 s`.
+6. Added and validated a fast synthetic negative gate proving
+   `require_fixed_rejected_controller_slot=True` fails when no rejected slot is
+   replayed or when the accepted-only fast path is still enabled:
+   `1 passed in 0.80 s`.
 
 Best next steps:
 

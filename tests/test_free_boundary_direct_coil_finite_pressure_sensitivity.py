@@ -504,6 +504,14 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
     assert adaptive_gate["differentiates_run_free_boundary"] is False
     assert adaptive_gate["same_stacked_step_policy_branch"] is True
     assert adaptive_gate["used_stacked_step_controls"] is True
+    missing_rejected_slot_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
+        physical_synthetic_report,
+        physical_scalars_report,
+        require_fixed_rejected_controller_slot=True,
+    )
+    assert not missing_rejected_slot_gate["passed"]
+    assert any("fixed rejected controller slot" in error for error in missing_rejected_slot_gate["errors"])
+    assert any("accepted-only fast path" in error for error in missing_rejected_slot_gate["errors"])
     unstacked_allowed_scalars_report = deepcopy(physical_scalars_report)
     unstacked_allowed_scalars_report["replay_option_flags"] = {"use_stacked_step_controls": False}
     unstacked_allowed_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
