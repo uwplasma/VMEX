@@ -13,14 +13,14 @@ Date opened: 2026-05-24
 ## Current Release Status
 
 Last updated: 2026-06-05 on `main` with branch-local vector gates,
-`DMerc`/Glasser `D_R` gradient checks, CI runtime trimming, and direct-coil
-benchmark policy ablations. The latest fully green pushed main before the
-current benchmark-only commit is `fcbdec2`, `test: expand branch-local scalar
-gates`, which passed GitHub Actions run `27013643781`, including docs, build,
-console smoke, physics smoke, py3.10, py3.12, slow-physics coverage, exact
-free-boundary coverage shards, core py3.11 coverage shards, and the combined
-95% coverage gate. The newer benchmark-only commit `f6ac3d2` is pushed and CI
-run `27014030806` is in progress.
+`DMerc`/Glasser `D_R` gradient checks, CI runtime trimming, direct-coil
+benchmark policy ablations, Fourier-geometry accepted-vacuum scalar gates, and
+the accelerator residual-metric default change. The latest fully green pushed
+main is `d541550`, `perf: keep accelerator residual metrics on device`, which
+passed GitHub Actions run `27014825015`, including docs, build, console smoke,
+physics smoke, py3.10, py3.12, slow-physics coverage, exact free-boundary
+coverage shards, core py3.11 coverage shards, and the combined 95% coverage
+gate.
 
 The latest green main splits required py3.11 coverage into core, slow-physics,
 and exact shards while keeping a combined 95% coverage threshold, preserves the
@@ -137,8 +137,7 @@ Completion:
 - Single-stage coil-only optimization: 86.5%.
 - Robust coil perturbation optimization: 70%.
 - CPU/GPU performance: 90.0%.
-- CI runtime and coverage hygiene: 100% locally validated, pending CI run
-  `27014030806` for benchmark-only commit `f6ac3d2`.
+- CI runtime and coverage hygiene: 100%; green in CI run `27014825015`.
 - Docs/release hygiene: 96.8%.
 - Overall free-boundary/single-stage plan: 97.8%.
 
@@ -190,8 +189,7 @@ Completion:
 - Single-stage coil-only optimization: 86.5%.
 - Robust coil perturbation optimization: 70%.
 - CPU/GPU performance: 90.0%.
-- CI runtime and coverage hygiene: 100% locally validated, pending CI for the
-  current pushed head.
+- CI runtime and coverage hygiene: 100%; green in CI run `27014825015`.
 - Docs/release hygiene: 97.0%.
 - Overall free-boundary/single-stage plan: 98.0%.
 
@@ -241,8 +239,7 @@ Completion:
 - Single-stage coil-only optimization: 86.5%.
 - Robust coil perturbation optimization: 70%.
 - CPU/GPU performance: 91.5%.
-- CI runtime and coverage hygiene: 100% locally validated, pending CI for the
-  current pushed head.
+- CI runtime and coverage hygiene: 100%; green in CI run `27014825015`.
 - Docs/release hygiene: 97.0%.
 - Overall free-boundary/single-stage plan: 98.1%.
 
