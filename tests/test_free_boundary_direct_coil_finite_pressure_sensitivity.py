@@ -2472,6 +2472,98 @@ def test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_
 
 
 @pytest.mark.py311_coverage_only
+def test_direct_coil_branch_trace_mode_keeps_replay_controls_without_raw_force_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lean branch traces keep replay controls but omit full raw-force payloads."""
+
+    pytest.importorskip("jax")
+    enable_x64(True)
+    _set_same_branch_custom_vjp_env(monkeypatch)
+
+    from vmec_jax.free_boundary_adjoint import (
+        direct_coil_accepted_trace_preconditioner_controls_jax,
+        direct_coil_accepted_trace_preconditioner_policy_segments,
+        direct_coil_accepted_trace_replay_graph_metadata,
+        direct_coil_accepted_trace_step_controls_jax,
+        direct_coil_complete_solve_trace,
+        free_boundary_adjoint_trace_replay_diagnostics,
+    )
+
+    input_path = _write_tiny_direct_freeb_input(
+        tmp_path / "input.direct_branch_trace_mode",
+        lasym=False,
+        niter=1,
+        mpol=3,
+        ntheta=4,
+    )
+    base_params = _circle_coil_params(current=3.0e7, n_segments=24)
+
+    payload = direct_coil_complete_solve_trace(
+        input_path,
+        base_params,
+        solve_kwargs={
+            "max_iter": 2,
+            "ftol": 1.0e-8,
+            "vmec2000_control": True,
+            "auto_flip_force": False,
+            "use_direct_fallback": True,
+            "verbose": False,
+            "verbose_vmec2000_table": False,
+            "jit_forces": False,
+            "use_scan": False,
+            "host_update_assembly": False,
+            "adjoint_trace": True,
+            "adjoint_trace_mode": "branch",
+            "external_field_provider_kind": "direct_coils",
+            "free_boundary_activate_fsq": 1.0e99,
+        },
+    )
+
+    traces = tuple(payload["traces"])
+    assert traces
+    trace = traces[0]
+    for key in (
+        "state_pre",
+        "state_post",
+        "dt_eff",
+        "b1",
+        "fac",
+        "force_scale",
+        "lam_prec",
+        "precond_mats",
+        "w_mode_mn",
+        "freeb_bsqvac_half",
+        "freeb_nestor_trace",
+    ):
+        assert key in trace
+    for omitted_key in ("frzl_frcc", "frzl_rz_frcc", "frcc_u", "vRcc_after"):
+        assert omitted_key not in trace
+
+    step_controls = direct_coil_accepted_trace_step_controls_jax(traces)
+    preconditioner_segments = direct_coil_accepted_trace_preconditioner_policy_segments(traces)
+    segment = preconditioner_segments[0]
+    preconditioner_controls = direct_coil_accepted_trace_preconditioner_controls_jax(
+        traces[int(segment["start"]) : int(segment["stop"])]
+    )
+    assert "state_pre" in step_controls
+    assert "precond_mats" in preconditioner_controls
+    metadata = direct_coil_accepted_trace_replay_graph_metadata(
+        traces,
+        static=payload["init"].static,
+        use_stacked_step_controls=True,
+        json_safe=True,
+    )
+    assert metadata["active_free_boundary_replay_steps"] >= 1
+    diagnostics = free_boundary_adjoint_trace_replay_diagnostics(traces)
+    assert diagnostics["differentiates_adaptive_controller"] is False
+    assert diagnostics["replay_diagnostics"]["scalar_controls_stackable"] is True
+    assert diagnostics["replay_diagnostics"]["array_controls_stackable"] is True
+    assert diagnostics["replay_diagnostics"]["preconditioner_policy_n_segments"] >= 1
+
+
+@pytest.mark.py311_coverage_only
 def test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_fd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

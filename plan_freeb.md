@@ -140,6 +140,78 @@ Completion:
 - Docs/release hygiene: 98.8%.
 - Overall free-boundary/single-stage plan: 98.7%.
 
+### 2026-06-05 Lean Branch-Local Trace Mode
+
+Steps taken:
+
+1. Added a third adjoint trace mode, ``branch``, with aliases
+   ``branch_local``, ``branch-local``, ``lean``, and ``compact``.
+2. Kept the full trace as the oracle, but made ``branch`` store only the
+   accepted-branch replay controls needed by the current fixed/same-branch
+   custom-VJP path: preconditioner data, accepted update scalars, ``state_post``,
+   and JAX NESTOR/source trace arrays.
+3. Left raw frozen-force payloads and post-update coefficient snapshots
+   full-only, avoiding unnecessary production-report payload when we are not
+   debugging force assembly itself.
+4. Switched the optional same-branch reports in
+   ``examples/optimization/free_boundary_QS_coil_optimization.py`` from
+   ``adjoint_trace_mode="full"`` to ``"branch"``.
+5. Added targeted tests for trace-mode normalization/materialization and for a
+   tiny direct-coil free-boundary solve that verifies branch traces retain
+   replay controls while omitting raw force payloads.
+
+Results obtained:
+
+1. Ruff passed for ``vmec_jax/solve.py``,
+   ``vmec_jax/solve_diagnostics_io.py``, ``vmec_jax/free_boundary_adjoint.py``,
+   the QS coil optimization example, and the touched tests.
+2. The trace-mode unit test passed.
+3. The new branch-trace direct-coil structural test passed.
+4. The full free-boundary QS coil optimization smoke file passed with
+   ``..........x..``.
+5. The exact same-branch shard passed with ``3 passed in 88.68 s``.
+6. A real one-evaluation circle-provider vector report using branch trace
+   stayed on the same branch and reported precomputed production values.  The
+   redundant trace diagnostics were effectively eliminated
+   (``trace_replay_diagnostics_wall_s`` about ``1.5e-6`` s), while the dominant
+   costs remained replay VJP and pullback graph construction
+   (about ``18`` s and ``21`` s respectively).
+7. CI run ``27040636400`` for the previous compact-report commit completed
+   green across docs, build, py3.10/3.11/3.12 tests, physics smoke, console
+   smoke, and combined coverage.
+
+Best next steps:
+
+1. Commit and push the branch trace mode, then confirm CI.
+2. Attack the replay VJP/pullback graph construction itself.  Trace payload
+   slimming and diagnostics removal are done; the remaining blocker is the
+   traced replay graph size/static signature.
+3. Consider a smaller physical-scalar replay kernel or cached replay graph
+   signature for accepted-point scalar/vector reports.
+4. Keep production adaptive-controller differentiation explicitly unclaimed
+   until a complete adaptive-loop AD-vs-central-FD gate passes.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- DMerc/Glasser ``D_R`` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 97.5%.
+- Single-stage coil-only optimization: 92.4%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 95.4%; branch traces now avoid raw force payloads in
+  production reports, but replay VJP/pullback graph construction remains the
+  next blocker.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 98.8%.
+- Overall free-boundary/single-stage plan: 98.75%.
+
 ### 2026-06-05 Reuse complete-report base values in branch-local reports
 
 Steps taken:

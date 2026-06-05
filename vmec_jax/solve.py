@@ -11319,7 +11319,7 @@ def solve_fixed_boundary_residual_iter(
                             external_field_provider_kind=external_field_provider_kind,
                             external_field_provider_static=external_field_provider_static,
                             external_field_provider_params=external_field_provider_params,
-                            collect_trace_arrays=bool(adjoint_trace and adjoint_trace_mode == "full"),
+                            collect_trace_arrays=bool(adjoint_trace and adjoint_trace_mode in {"full", "branch"}),
                         )
                         freeb_last_model = str(getattr(nestor_res, "model", "spectral_poisson_external_only"))
                         freeb_reused = bool(getattr(nestor_res, "reused", False))
@@ -13646,11 +13646,16 @@ def solve_fixed_boundary_residual_iter(
                     "constraint_precond_active": _adjoint_trace_array(constraint_precond_active),
                     "constraint_tcon_active": _adjoint_trace_array(constraint_tcon_active),
                 }
-                if adjoint_trace_mode == "full":
+                if adjoint_trace_mode in {"full", "branch"}:
                     trace_entry.update(
                         {
                             "lam_prec": np.asarray(lam_prec),
                             "precond_mats": mats,
+                        }
+                    )
+                if adjoint_trace_mode == "full":
+                    trace_entry.update(
+                        {
                             "frzl_frcc": np.asarray(frzl.frcc),
                             "frzl_frss": None if frzl.frss is None else np.asarray(frzl.frss),
                             "frzl_fzsc": np.asarray(frzl.fzsc),
@@ -14388,20 +14393,25 @@ def solve_fixed_boundary_residual_iter(
                         "limit_update_rms": bool(limit_update_rms),
                     }
                 )
-                if adjoint_trace_mode == "full":
+                if adjoint_trace_mode in {"full", "branch"}:
                     trace_entry.update(
                         {
                             "dt_eff": float(dt_eff),
-                            "w_curr": float(w_curr),
-                            "w_try": float(w_try),
-                            "w_try_ratio": float(w_try_ratio),
                             "b1": float(b1),
                             "fac": float(fac),
                             "force_scale": float(force_scale),
+                            "state_post": state,
+                        }
+                    )
+                if adjoint_trace_mode == "full":
+                    trace_entry.update(
+                        {
+                            "w_curr": float(w_curr),
+                            "w_try": float(w_try),
+                            "w_try_ratio": float(w_try_ratio),
                             "update_rms_preclip": None if update_rms_preclip is None else float(update_rms_preclip),
                             "update_rms_postclip": None if update_rms is None else float(update_rms),
                             "update_rms_scale": float(scl),
-                            "state_post": state,
                             "vRcc_after": np.asarray(vRcc),
                             "vRss_after": np.asarray(vRss),
                             "vZsc_after": np.asarray(vZsc),

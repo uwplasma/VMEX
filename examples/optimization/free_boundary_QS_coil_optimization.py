@@ -757,7 +757,7 @@ def write_same_branch_validation_report(
             "use_scan": False,
             "host_update_assembly": False,
             "adjoint_trace": True,
-            "adjoint_trace_mode": "full",
+            "adjoint_trace_mode": "branch",
             "external_field_provider_kind": "direct_coils",
             "free_boundary_activate_fsq": float(args.activate_fsq),
         },
