@@ -72,18 +72,30 @@ def _json_default(value: Any) -> Any:
     return str(value)
 
 
-def _summarize_run(run: Any, params: Any, wout_path: Path, wall_s: float, beta_percent: float) -> dict[str, Any]:
-    diag = getattr(run.result, "diagnostics", {}) if run.result is not None else {}
+def _summarize_run(
+    run: Any | None,
+    params: Any,
+    wout_path: Path | None,
+    wall_s: float,
+    beta_percent: float,
+    *,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    diag = getattr(run.result, "diagnostics", {}) if run is not None and run.result is not None else {}
     freeb = diag.get("free_boundary", {}) if isinstance(diag, dict) else {}
     nestor = freeb.get("last_nestor_diagnostics", {}) if isinstance(freeb, dict) else {}
     summary: dict[str, Any] = {
         "backend": "direct_coils",
+        "dry_run": bool(dry_run),
+        "external_field_provider_kind": "direct_coils",
+        "mgrid_file": "DIRECT_COILS",
+        "uses_generated_mgrid": False,
         "surface_dofs_optimized": False,
         "nominal_beta_percent": float(beta_percent),
         "pressure_scale": float(PRESSURE_SCALE_FOR_ONE_PERCENT_BETA) * float(beta_percent),
         "wall_s": float(wall_s),
         "wout": wout_path,
-        "n_iter": None if run.result is None else int(getattr(run.result, "n_iter", -1)),
+        "n_iter": None if run is None or run.result is None else int(getattr(run.result, "n_iter", -1)),
         "fsqr": diag.get("final_fsqr"),
         "fsqz": diag.get("final_fsqz"),
         "fsql": diag.get("final_fsql"),
@@ -100,10 +112,14 @@ def _summarize_run(run: Any, params: Any, wout_path: Path, wall_s: float, beta_p
         "beta_proxy_percent": None,
     }
     try:
+        if run is None:
+            raise ValueError("dry-run")
         summary["aspect"] = float(equilibrium_aspect_ratio_from_state(state=run.state, static=run.static))
     except Exception:
         summary["aspect"] = None
     try:
+        if run is None:
+            raise ValueError("dry-run")
         _chips, iotas, _iotaf = equilibrium_iota_profiles_from_state(
             state=run.state,
             static=run.static,
@@ -136,6 +152,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
     parser.add_argument("--coils-json", type=Path, default=None)
     parser.add_argument("--outdir", type=Path, default=DEFAULT_OUTDIR)
+    parser.add_argument("--dry-run", action="store_true", help="Write input/summary and skip the VMEC solve.")
     parser.add_argument("--beta", type=float, default=1.0, help="Nominal beta percentage for the pressure scale.")
     parser.add_argument(
         "--pressure-profile",
@@ -199,22 +216,26 @@ def main(argv: list[str] | None = None) -> int:
     input_path = outdir / "input.direct_coils"
     write_indata(input_path, indata)
 
-    t0 = time.perf_counter()
-    run = run_free_boundary(
-        input_path,
-        max_iter=int(args.max_iter),
-        multigrid=False,
-        verbose=False,
-        jit_forces=bool(args.jit_forces),
-        external_field_provider_kind="direct_coils",
-        external_field_provider_params=params,
-        free_boundary_activate_fsq=float(args.activate_fsq),
-    )
-    wall_s = time.perf_counter() - t0
-
-    wout_path = outdir / "wout_direct_coils.nc"
-    write_wout_from_fixed_boundary_run(wout_path, run, include_fsq=True)
-    summary = _summarize_run(run, params, wout_path, wall_s, float(args.beta))
+    run = None
+    wout_path: Path | None = outdir / "wout_direct_coils.nc"
+    if bool(args.dry_run):
+        wall_s = 0.0
+        wout_path = None
+    else:
+        t0 = time.perf_counter()
+        run = run_free_boundary(
+            input_path,
+            max_iter=int(args.max_iter),
+            multigrid=False,
+            verbose=False,
+            jit_forces=bool(args.jit_forces),
+            external_field_provider_kind="direct_coils",
+            external_field_provider_params=params,
+            free_boundary_activate_fsq=float(args.activate_fsq),
+        )
+        wall_s = time.perf_counter() - t0
+        write_wout_from_fixed_boundary_run(wout_path, run, include_fsq=True)
+    summary = _summarize_run(run, params, wout_path, wall_s, float(args.beta), dry_run=bool(args.dry_run))
     summary["input"] = input_path
     summary["coils_json"] = coils_json
     summary["coil_current_scale"] = float(args.coil_current_scale)
@@ -226,10 +247,12 @@ def main(argv: list[str] | None = None) -> int:
     summary_path.write_text(json.dumps(summary, indent=2, default=_json_default) + "\n")
 
     print(f"Wrote input: {input_path}")
-    print(f"Wrote wout: {wout_path}")
     print(f"Wrote summary: {summary_path}")
+    if wout_path is not None:
+        print(f"Wrote wout: {wout_path}")
     print(
         "Final: "
+        f"dry_run={summary['dry_run']} "
         f"fsqr={summary['fsqr']} fsqz={summary['fsqz']} fsql={summary['fsql']} "
         f"aspect={summary['aspect']} mean_iota={summary['mean_iota']} "
         f"coil_length_mean={summary['coil_length_mean']:.6g}",

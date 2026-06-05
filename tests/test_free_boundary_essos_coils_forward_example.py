@@ -4,7 +4,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pytest
@@ -40,6 +41,54 @@ def test_forward_direct_coil_example_imports_without_essos_import_side_effects()
     assert module.DEFAULT_OUTDIR.name == "free_boundary_essos_coils_forward"
     assert callable(module.main)
     assert callable(module._summarize_run)
+
+
+def test_forward_direct_coil_example_dry_run_writes_no_mgrid_summary(monkeypatch, tmp_path):
+    module = _load_forward_module()
+    fake_essos_coils = ModuleType("essos.coils")
+
+    class FakeCoils:
+        currents_scale = 1.0
+
+    def fake_coils_from_json(path):
+        assert str(path).endswith("coils.json")
+        return FakeCoils()
+
+    fake_essos_coils.Coils_from_json = fake_coils_from_json
+    monkeypatch.setitem(sys.modules, "essos.coils", fake_essos_coils)
+    monkeypatch.setattr(module, "find_essos_landreman_paul_qa_coils", lambda: tmp_path / "coils.json")
+    monkeypatch.setattr(module, "from_essos_coils", lambda _coils, chunk_size: SimpleNamespace(params="direct"))
+
+    def fail_run_free_boundary(*_args, **_kwargs):
+        raise AssertionError("dry-run must not call run_free_boundary")
+
+    def fail_write_wout(*_args, **_kwargs):
+        raise AssertionError("dry-run must not write a WOUT")
+
+    monkeypatch.setattr(module, "run_free_boundary", fail_run_free_boundary)
+    monkeypatch.setattr(module, "write_wout_from_fixed_boundary_run", fail_write_wout)
+    monkeypatch.setattr(module, "coil_current_norm", lambda _params: np.asarray(1.0))
+    monkeypatch.setattr(module, "coil_lengths", lambda _params: np.asarray([2.0, 4.0]))
+
+    rc = module.main(["--dry-run", "--outdir", str(tmp_path), "--max-iter", "1", "--chunk-size", "64"])
+
+    assert rc == 0
+    assert (tmp_path / "input.direct_coils").exists()
+    assert not (tmp_path / "wout_direct_coils.nc").exists()
+    input_text = (tmp_path / "input.direct_coils").read_text()
+    assert "LFREEB = .TRUE." in input_text
+    assert "MGRID_FILE = 'DIRECT_COILS'" in input_text
+
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert summary["backend"] == "direct_coils"
+    assert summary["dry_run"] is True
+    assert summary["wout"] is None
+    assert summary["external_field_provider_kind"] == "direct_coils"
+    assert summary["mgrid_file"] == "DIRECT_COILS"
+    assert summary["uses_generated_mgrid"] is False
+    assert summary["surface_dofs_optimized"] is False
+    assert summary["coil_current_norm"] == pytest.approx(1.0)
+    assert summary["coil_length_mean"] == pytest.approx(3.0)
 
 
 def test_beta_scan_pressure_continuation_helpers_convert_wout_boundary(tmp_path):
