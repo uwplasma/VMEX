@@ -685,6 +685,13 @@ VMEC-state quasisymmetry-ratio residual, aspect-ratio, and mean-iota terms.
 The QS residual is evaluated from the accepted VMEC state, not from a promoted
 coil-to-Boozer exact adjoint through adaptive branch selection.
 
+For a local same-branch validation artifact, add
+``--write-same-branch-report``.  The default report mode is complete-solve
+finite-difference only and avoids the cold branch-local replay compilation.
+Use ``--same-branch-report-mode scalar`` to additionally validate one
+fixed-accepted-branch ``qs_total`` gradient, or ``vector`` to build the
+more expensive multi-scalar branch-local Jacobian for reviewer diagnostics.
+
 Run the dependency-light direct-coil forward example from the repository root.
 This path constructs a synthetic circular ``CoilFieldParams`` object directly in
 ``vmec_jax`` and writes ``wout_direct_coils.nc`` plus ``summary.json`` without

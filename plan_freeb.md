@@ -9460,6 +9460,74 @@ Completion:
   green baseline, current head pending CI.
 - Docs/release hygiene: 98.3%.
 
+### 2026-06-05 Same-Branch Report Default Runtime Reduction
+
+Steps taken:
+
+1. Confirmed GitHub Actions for `045bef6` completed successfully, including
+   the combined coverage gate and docs jobs.
+2. Split the single-stage QS example same-branch report into three explicit
+   modes: `none`, `scalar`, and `vector`.
+3. Made `none` the default for `--write-same-branch-report`, so the
+   user-facing report writes complete-solve finite-difference diagnostics
+   without compiling the branch-local replay derivative.
+4. Kept `scalar` available for one fixed-accepted-branch `qs_total` gradient
+   and `vector` available for the multi-scalar Jacobian reviewer artifact.
+5. Added smoke-test coverage for finite-difference-only, scalar-gradient, and
+   vector-Jacobian report modes.
+6. Updated the free-boundary coil optimization docs to describe the report
+   modes and their intended use.
+
+Results obtained:
+
+1. Targeted ruff passed for the QS optimization example and smoke tests.
+2. `python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py
+   --durations=10` passed: `11 passed, 1 xfailed in 1.27 s`.
+3. `python -m sphinx -W -b html docs docs/_build/html` passed.
+4. `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -q
+   --durations=10` passed: `21 passed, 1 skipped`. The slowest promoted
+   current-only same-branch custom-VJP gate took `67.48 s`.
+5. The real bounded circle single-stage QS smoke with the default
+   `--write-same-branch-report` finished in `14.84 s` and emitted no XLA
+   algebraic-simplifier warnings.
+6. The default report wrote `same_branch=true` and left both
+   `branch_local_scalar_gradient` and `branch_local_vector_jacobian`
+   unavailable with `mode=none`, as intended.
+7. The explicit scalar mode was also exercised: it validated `qs_total` with
+   branch-local replay value agreement at `5.99e-15` and directional error
+   `1.46e-11`, but still took about one minute and emitted XLA warnings. This
+   remains a deeper opt-in validation path, not a default artifact.
+
+Best next steps:
+
+1. Run the focused docs build and a bounded free-boundary exact shard before
+   committing this report-mode change.
+2. Commit and push the report-mode change, then watch CI.
+3. Continue the phase-2 production-adjacent seam by reducing cold branch-local
+   replay compilation cost, but keep production claims conservative until the
+   adaptive full-loop branch seam is promoted.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.4%.
+- Single-stage coil-only optimization: 91.0%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 92.4%; default report no longer triggers the expensive
+  branch-local replay compile, but explicit scalar/vector replay still needs
+  lower cold compile cost.
+- CI runtime refactor with preserved coverage/physics gates: 100% on latest
+  green baseline.
+- Docs/release hygiene: 98.5%.
+
 ### 2026-06-05 Finite-Beta ESSOS Direct-Coil Dry-Run Support
 
 Steps taken:

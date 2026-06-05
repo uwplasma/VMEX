@@ -603,6 +603,24 @@ def _vector_jacobian_directional(jacobian: Any, direction: Any, n_outputs: int) 
     return np.asarray(total, dtype=float)
 
 
+def _pytree_directional_vdot(gradient: Any, direction: Any) -> float:
+    """Contract one pytree gradient with one pytree direction."""
+
+    leaves = jax.tree_util.tree_leaves(
+        jax.tree_util.tree_map(
+            lambda grad_leaf, direction_leaf: jnp.sum(jnp.asarray(grad_leaf) * jnp.asarray(direction_leaf)),
+            gradient,
+            direction,
+        )
+    )
+    if not leaves:
+        return 0.0
+    total = leaves[0]
+    for leaf in leaves[1:]:
+        total = total + leaf
+    return float(np.asarray(total, dtype=float))
+
+
 def write_same_branch_validation_report(
     *,
     input_path: Path,
@@ -613,6 +631,7 @@ def write_same_branch_validation_report(
 ) -> Path:
     """Write an optional same-branch complete-solve FD report for this example."""
     from vmec_jax.free_boundary_adjoint import (
+        direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax,
         direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax,
         direct_coil_same_branch_complete_solve_fd_report,
         free_boundary_boundary_geometry_jax,
@@ -774,12 +793,65 @@ def write_same_branch_validation_report(
         "objective_values": report["objective_values"],
         "primary_objective": report["primary_objective"],
     }
+    mode = str(getattr(args, "same_branch_report_mode", "none")).strip().lower()
+    branch_local_scalar: dict[str, Any] = {
+        "available": False,
+        "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
+        "mode": mode,
+    }
     branch_local_vector: dict[str, Any] = {
         "available": False,
         "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
+        "mode": mode,
     }
+    if mode not in {"none", "scalar", "vector"}:
+        raise ValueError("--same-branch-report-mode must be one of none, scalar, vector")
+    if mode == "scalar" and "base" in report and "qs_total" in report["objective_values"]:
+        scalar = direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
+            params=base_params,
+            complete_payload=report["base"],
+            scalar_key="qs_total",
+            scalar_fn=lambda payload: {
+                "qs_total": float(
+                    np.asarray(
+                        qs_total_from_state(
+                            payload["result"].state,
+                            payload["init"].static,
+                            payload["init"].indata,
+                            payload["init"].signgs,
+                        )
+                    )
+                )
+            },
+            replay_scalar_fn=lambda replay, payload: qs_total_from_state(
+                replay["state"],
+                payload["init"].static,
+                payload["init"].indata,
+                payload["init"].signgs,
+            ),
+            replay_kwargs={"use_stacked_step_controls": True},
+        )
+        exact_directional = _pytree_directional_vdot(scalar["grad"], direction_params)
+        branch_local_scalar = {
+            "available": True,
+            "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
+            "mode": mode,
+            "uses_production_forward": bool(scalar["uses_production_forward"]),
+            "differentiates_adaptive_controller": bool(scalar["differentiates_adaptive_controller"]),
+            "differentiates_run_free_boundary": bool(scalar["differentiates_run_free_boundary"]),
+            "differentiates_fixed_accepted_branch": bool(scalar["differentiates_fixed_accepted_branch"]),
+            "scalar_key": str(scalar["scalar_key"]),
+            "replay_option_flags": scalar["replay_option_flags"],
+            "value": float(scalar["value"]),
+            "replay_value": float(np.asarray(scalar["replay_value"], dtype=float)),
+            "base_abs_delta": float(scalar["base_abs_delta"]),
+            "exact_directional": float(exact_directional),
+            "complete_fd_directional": float(report["objective_values"]["qs_total"]["central_fd_directional"]),
+            "abs_error": float(abs(exact_directional - report["objective_values"]["qs_total"]["central_fd_directional"])),
+        }
     if (
-        "base" in report
+        mode == "vector"
+        and "base" in report
         and "aspect" in report["objective_values"]
         and "qs_total" in report["objective_values"]
         and "lcfs_boundary_moment" in report["objective_values"]
@@ -856,6 +928,7 @@ def write_same_branch_validation_report(
                 for index, key in enumerate(scalar_keys)
             },
         }
+    compact_report["branch_local_scalar_gradient"] = branch_local_scalar
     compact_report["branch_local_vector_jacobian"] = branch_local_vector
     path = outdir / "same_branch_complete_solve_report.json"
     write_json(path, compact_report)
@@ -1194,6 +1267,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="After the optimization, write an opt-in same-branch complete-solve FD validation report.",
     )
     parser.add_argument("--same-branch-report-eps", type=float, default=1.0e-4)
+    parser.add_argument(
+        "--same-branch-report-mode",
+        choices=("scalar", "vector", "none"),
+        default="none",
+        help=(
+            "Derivative detail for --write-same-branch-report. 'none' writes only "
+            "complete-solve FD diagnostics and is the default. 'scalar' validates one "
+            "branch-local qs_total gradient. 'vector' also builds the more expensive "
+            "multi-scalar Jacobian."
+        ),
+    )
     parser.add_argument(
         "--same-branch-report-max-iter",
         type=int,
