@@ -872,6 +872,7 @@ def write_same_branch_validation_report(
             replay_scalar_fn=lambda replay, payload: scalar_replay_fns[scalar_key](replay, payload),
             replay_kwargs={"use_stacked_step_controls": True},
             replay_ad_mode=ad_mode,
+            include_trace_replay_diagnostics=False,
         )
         timings["branch_local_scalar_wall_s"] = float(time.perf_counter() - t0)
         scalar_timings = {str(key): float(value) for key, value in scalar.get("timings", {}).items()}
@@ -957,6 +958,7 @@ def write_same_branch_validation_report(
             },
             replay_kwargs={"use_stacked_step_controls": True},
             replay_ad_mode=ad_mode,
+            include_trace_replay_diagnostics=False,
         )
         timings["branch_local_vector_wall_s"] = float(time.perf_counter() - t0)
         vector_timings = {str(key): float(value) for key, value in vector.get("timings", {}).items()}

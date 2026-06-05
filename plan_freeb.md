@@ -71,7 +71,74 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100%; run
   `27039430048` passed all shards including the combined coverage gate.
 - Docs/release hygiene: 98.8%.
-- Overall free-boundary/single-stage plan: 98.6%.
+
+### 2026-06-05 Compact Branch-Local Production Reports
+
+Steps taken:
+
+1. Confirmed CI run ``27040121055`` for commit ``9d098f8`` completed green.
+2. Prototyped a Boozer/QI same-branch scalar gate on the tiny direct-coil
+   free-boundary fixture.  The prototype did not reach the first complete
+   report within about one minute, so this is not yet suitable for the normal
+   exact CI shard without a smaller Boozer/QI replay path.
+3. Added ``include_trace_replay_diagnostics`` to the production branch-local
+   scalar and vector helpers.  Validation defaults remain unchanged, but
+   production reports can skip the extra replay-diagnostics tree walk after
+   replay graph metadata has already been recorded.
+4. Updated ``examples/optimization/free_boundary_QS_coil_optimization.py`` so
+   optional same-branch scalar/vector reports use the compact diagnostic mode.
+5. Re-ran targeted ruff, example report unit tests, the full free-boundary QS
+   coil optimization smoke test file, and a real one-evaluation circle-provider
+   vector same-branch report smoke.
+6. Re-ran the exact same-branch shard locally after the helper API change.
+
+Results obtained:
+
+1. ``python -m ruff check`` passed for the changed source, example, and tests.
+2. The targeted scalar/vector report tests passed.
+3. The full optimization smoke file passed with ``..........x..``.
+4. The real vector report smoke completed and wrote the same-branch report.
+   It used precomputed production values and reduced
+   ``trace_replay_diagnostics_wall_s`` to about ``1e-6`` s.
+5. The dominant remaining cost is still replay graph construction:
+   ``replay_vjp_dispatch_s`` about ``17.37`` s and
+   ``replay_pullbacks_dispatch_s`` about ``20.10`` s for the one-active-step
+   circle smoke.
+6. The exact same-branch shard passed with ``3 passed in 86.92 s``.
+
+Best next steps:
+
+1. Implement the next structural performance lane: a lean fixed-branch replay
+   trace/static-control payload that avoids tracing unused raw force payloads
+   while preserving the full trace as the oracle.
+2. Add full-vs-lean parity tests for replay value, state, graph metadata, and
+   directional derivatives before using lean traces in production examples.
+3. Keep Boozer/QI complete-loop AD-vs-FD as a manual/experimental gate until
+   there is a substantially cheaper state-to-Boozer/QI replay path.
+4. Continue phase-3 coil-only optimization work only through validated
+   fixed/same-branch gradients, with adaptive branch differentiation still
+   explicitly unclaimed.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- DMerc/Glasser ``D_R`` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 97.5%.
+- Single-stage coil-only optimization: 92.2%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 95.1%; redundant diagnostics are now optional in
+  production reports, but replay VJP/pullback graph construction remains the
+  next blocker.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 98.8%.
+- Overall free-boundary/single-stage plan: 98.7%.
 
 ### 2026-06-05 Reuse complete-report base values in branch-local reports
 

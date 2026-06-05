@@ -4521,6 +4521,7 @@ def direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
     solve_kwargs: dict[str, Any] | None = None,
     replay_kwargs: dict[str, Any] | None = None,
     replay_ad_mode: str = "direct",
+    include_trace_replay_diagnostics: bool = True,
     require_active_trace: bool = True,
 ) -> dict[str, Any]:
     """Return a production-forward branch-local scalar value and gradient.
@@ -4647,7 +4648,15 @@ def direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
         timings["replay_value_and_grad_dispatch_s"] + timings["replay_value_and_grad_ready_s"]
     )
     t0 = time.perf_counter()
-    diagnostics = free_boundary_adjoint_trace_replay_diagnostics(traces)
+    if bool(include_trace_replay_diagnostics):
+        diagnostics = free_boundary_adjoint_trace_replay_diagnostics(traces)
+    else:
+        diagnostics = {
+            "contract": "fixed accepted-trace replay diagnostics only",
+            "omitted": True,
+            "reason": "include_trace_replay_diagnostics=False",
+            "differentiates_adaptive_controller": False,
+        }
     timings["trace_replay_diagnostics_wall_s"] = float(time.perf_counter() - t0)
     timings["total_wall_s"] = float(time.perf_counter() - total_start)
     return {
@@ -4692,6 +4701,7 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
     solve_kwargs: dict[str, Any] | None = None,
     replay_kwargs: dict[str, Any] | None = None,
     replay_ad_mode: str = "direct",
+    include_trace_replay_diagnostics: bool = True,
     require_active_trace: bool = True,
 ) -> dict[str, Any]:
     """Return production-forward branch-local values and a scalar Jacobian.
@@ -4848,7 +4858,15 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
         for index, key in enumerate(keys)
     }
     t0 = time.perf_counter()
-    diagnostics = free_boundary_adjoint_trace_replay_diagnostics(traces)
+    if bool(include_trace_replay_diagnostics):
+        diagnostics = free_boundary_adjoint_trace_replay_diagnostics(traces)
+    else:
+        diagnostics = {
+            "contract": "fixed accepted-trace replay diagnostics only",
+            "omitted": True,
+            "reason": "include_trace_replay_diagnostics=False",
+            "differentiates_adaptive_controller": False,
+        }
     timings["trace_replay_diagnostics_wall_s"] = float(time.perf_counter() - t0)
     timings["total_wall_s"] = float(time.perf_counter() - total_start)
     return {

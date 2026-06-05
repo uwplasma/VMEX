@@ -337,6 +337,7 @@ def test_same_branch_report_writer_records_branch_local_scalar_gradient(tmp_path
     def fake_branch_local_scalar(*_args, **kwargs):
         assert kwargs["scalar_key"] == "aspect"
         assert kwargs["replay_ad_mode"] == "direct"
+        assert kwargs["include_trace_replay_diagnostics"] is False
         return {
             "uses_production_forward": True,
             "differentiates_adaptive_controller": False,
@@ -481,6 +482,7 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
 
     def fake_branch_local_vector(*_args, **kwargs):
         assert kwargs["replay_ad_mode"] == "direct"
+        assert kwargs["include_trace_replay_diagnostics"] is False
         return {
             "uses_production_forward": True,
             "differentiates_adaptive_controller": False,
