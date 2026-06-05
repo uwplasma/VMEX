@@ -80,6 +80,10 @@ Results obtained:
    by force evaluation (`0.592 s`), preconditioner (`0.407 s`), setup
    (`0.333 s`), and finalize/residual recompute (`0.305 s`) for the tiny
    two-iteration direct-coil solve.
+7. The first pushed CI attempt exposed one compatibility failure in the
+   synthetic runtime diagnostic test after `_timed_replay` gained the
+   `use_stacked_step_controls` keyword. The test was updated and the exact
+   local CI rest bucket passed: `623 passed, 1 skipped in 51.45 s`.
 
 Best next steps:
 
