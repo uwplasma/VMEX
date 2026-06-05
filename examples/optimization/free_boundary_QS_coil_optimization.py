@@ -927,6 +927,9 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
     vmec_config = {
         "input_template": args.input,
         "generated_input": input_path,
+        "external_field_provider_kind": "direct_coils",
+        "mgrid_file": "DIRECT_COILS",
+        "uses_generated_mgrid": False,
         "vmec_max_iter": int(args.vmec_max_iter),
         "ftol": float(args.ftol),
         "ns": int(args.ns),

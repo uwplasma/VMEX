@@ -9357,7 +9357,10 @@ Steps taken:
    `MGRID_FILE='DIRECT_COILS'` VMEC deck and `summary.json` without a generated
    `mgrid`, without calling VMEC, and without optimizing plasma-boundary
    variables.
-4. Updated the free-boundary docs so the ESSOS no-mgrid dry-run and promoted
+4. Made the example summary explicitly record
+   `external_field_provider_kind='direct_coils'`, `mgrid_file='DIRECT_COILS'`,
+   and `uses_generated_mgrid=false` so generated artifacts are self-describing.
+5. Updated the free-boundary docs so the ESSOS no-mgrid dry-run and promoted
    VMEC-state `qs_total` same-branch scalar gate are documented without
    claiming a production adaptive full-loop or Boozer/QS exact adjoint.
 
@@ -9368,6 +9371,8 @@ Results obtained:
    --durations=10` passed: `10 passed, 1 xfailed in 1.35 s`.
 3. The direct-coil optimization example now has CI coverage for both synthetic
    circle and optional ESSOS provider configuration lanes.
+4. The dry-run summaries now make the no-mgrid direct-coil backend explicit for
+   downstream scripts and reviewer artifacts.
 
 Best next steps:
 
