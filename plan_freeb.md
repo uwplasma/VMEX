@@ -84,6 +84,67 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-05 Fixed rejected-slot same-branch controller gate
+
+Steps taken:
+
+1. Added `replay_branch_metadata` to
+   `direct_coil_same_branch_controller_scalars_custom_vjp_report`, derived from
+   the effective replay traces plus optional `accept_mask` and `done_mask`.
+2. Added an opt-in `require_fixed_rejected_controller_slot` guard to
+   `direct_coil_adaptive_full_loop_same_branch_gate_report`.
+3. Extended the promoted current-only exact same-branch test to append one
+   fixed rejected controller slot, disable the accepted-only fast path, and
+   compare the same aspect/accepted-vacuum scalar custom-VJP directional
+   derivatives against the existing complete-solve central-FD report.
+4. Kept the claim conservative: this validates a fixed rejected-slot replay
+   under an unchanged complete-solve branch fingerprint, not differentiation
+   through host-side branch selection.
+5. Updated `docs/free_boundary_coil_optimization.rst` so the rejected-slot seam
+   is documented without overclaiming adaptive controller differentiation.
+
+Results obtained:
+
+1. Ruff passed:
+   `python -m ruff check vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`.
+2. The current-only promoted exact gate passed with the fixed rejected-slot
+   check enabled: `1 passed in 48.42 s`.
+3. The Fourier-only exact regression gate passed: `1 passed in 49.02 s`.
+4. The previous pushed plan-only CI run `27015202733` completed green, giving a
+   clean baseline before this source/test update.
+5. Final local release checks passed after the docs update:
+   `python -m sphinx -W -b html docs docs/_build/html`,
+   `git diff --check`, and the combined current/Fourier exact gate
+   `2 passed in 74.37 s`.
+
+Best next steps:
+
+1. Commit and push the fixed rejected-slot gate.
+2. Watch CI and use the next pass to promote the adaptive full-loop seam only
+   where branch fingerprints stay explicit.
+3. Add the opt-in final-recompute performance guard recommended by the
+   performance audit before changing any final direct-coil recompute defaults.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9997% for fixed same-branch
+  scalar/vector gates; adaptive branch differentiation remains explicitly
+  unclaimed.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 97.2%.
+- Single-stage coil-only optimization: 86.5%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 91.5%.
+- CI runtime refactor with preserved coverage/physics gates: 100% on the latest
+  pushed baseline.
+- Docs/release hygiene: 97.0%.
+- Overall free-boundary/single-stage plan: 98.1%.
+
 ### 2026-06-05 Direct-coil tridiagonal policy ablations
 
 Steps taken:

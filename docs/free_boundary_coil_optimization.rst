@@ -307,7 +307,13 @@ base/plus/minus solve triplet: final aspect ratio, accepted ``Bnormal`` RMS,
 and accepted ``Bsqvac`` RMS.  The last two scalars exercise active
 free-boundary vacuum forcing seen by the accepted update, while still requiring
 identical accepted-trace and residual-controller fingerprints before comparing
-AD against central finite differences.
+AD against central finite differences.  The same current-only promotion now
+also replays one explicit fixed rejected controller slot with the accepted-only
+fast path disabled.  This validates that the JAX-visible controller seam carries
+accepted/rejected masks and ``done`` controls through the custom-VJP scalar path
+instead of silently reducing the branch to accepted-only replay.  This is still
+a fixed same-branch replay check; it does not claim derivatives through a host
+branch change that would alter which trial steps are accepted.
 For scripts that need reviewer-facing evidence, the companion
 ``direct_coil_accepted_trace_fingerprint_delta_summary`` helper converts the
 delta into a strict-JSON-safe payload.

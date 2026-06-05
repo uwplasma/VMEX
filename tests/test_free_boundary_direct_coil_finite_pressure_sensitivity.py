@@ -1524,6 +1524,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     check_accepted_bsqvac_rms_scalar: bool = False,
     require_positive_accepted_vacuum_scalar_slope: bool = True,
     check_production_branch_local_scalar: bool = False,
+    check_fixed_rejected_controller_mask_gate: bool = False,
 ) -> None:
     pytest.importorskip("jax")
     from vmec_jax._compat import jax, jnp
@@ -1882,6 +1883,8 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         assert adaptive_full_loop_gate["same_residual_branch"] is True
         assert adaptive_full_loop_gate["same_stacked_step_policy_branch"] is True
         assert adaptive_full_loop_gate["used_stacked_step_controls"] is True
+        assert adaptive_full_loop_gate["requires_fixed_rejected_controller_slot"] is False
+        assert adaptive_full_loop_gate["fixed_rejected_controller_slot_present"] is False
         json.dumps(
             direct_coil_adaptive_full_loop_same_branch_gate_report(
                 complete_report,
@@ -1900,6 +1903,63 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             ),
             allow_nan=False,
         )
+        if check_fixed_rejected_controller_mask_gate:
+            padded_traces = tuple(base_traces) + (deepcopy(base_traces[-1]),)
+            accept_mask = np.ones(len(padded_traces), dtype=bool)
+            accept_mask[-1] = False
+            done_mask = np.zeros(len(padded_traces), dtype=bool)
+            rejected_slot_scalars_report = direct_coil_same_branch_controller_scalars_custom_vjp_report(
+                complete_report,
+                base_params,
+                direction,
+                replay_scalar_fns=replay_scalar_fns,
+                replay_kwargs={
+                    "traces": padded_traces,
+                    "accept_mask": accept_mask,
+                    "done_mask": done_mask,
+                    "use_stacked_step_controls": True,
+                    "use_accepted_only_fast_path": False,
+                },
+                eps=eps,
+                rtol=rtol_by_key,
+                atol=atol_by_key,
+                compute_frozen_fd=False,
+            )
+            assert rejected_slot_scalars_report["passed"], rejected_slot_scalars_report
+            assert rejected_slot_scalars_report["replay_option_flags"]["use_stacked_step_controls"] is True
+            assert rejected_slot_scalars_report["replay_option_flags"]["use_accepted_only_fast_path"] is False
+            rejected_metadata = rejected_slot_scalars_report["replay_branch_metadata"]
+            expected_active_freeb_steps = sum(
+                1
+                for trace in base_traces
+                if trace.get("freeb_bsqvac_half") is not None and trace.get("freeb_nestor_trace") is not None
+            )
+            assert int(np.count_nonzero(np.asarray(rejected_metadata["rejected_mask"], dtype=bool))) == 1
+            assert int(np.count_nonzero(np.asarray(rejected_metadata["accepted_mask"], dtype=bool))) == len(base_traces)
+            assert int(rejected_metadata["n_steps"]) == len(padded_traces)
+            assert int(rejected_metadata["n_free_boundary_replay_steps"]) == expected_active_freeb_steps
+            rejected_slot_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
+                complete_report,
+                rejected_slot_scalars_report,
+                scalar_keys=tuple(replay_scalar_fns),
+                require_fixed_rejected_controller_slot=True,
+            )
+            assert rejected_slot_gate["passed"], rejected_slot_gate
+            assert rejected_slot_gate["requires_fixed_rejected_controller_slot"] is True
+            assert rejected_slot_gate["fixed_rejected_controller_slot_present"] is True
+            assert rejected_slot_gate["fixed_rejected_controller_slots"] == 1
+            assert rejected_slot_gate["used_stacked_step_controls"] is True
+            assert rejected_slot_gate["replay_option_flags"]["use_accepted_only_fast_path"] is False
+            json.dumps(
+                direct_coil_adaptive_full_loop_same_branch_gate_report(
+                    complete_report,
+                    rejected_slot_scalars_report,
+                    scalar_keys=tuple(replay_scalar_fns),
+                    require_fixed_rejected_controller_slot=True,
+                    json_safe=True,
+                ),
+                allow_nan=False,
+            )
         aspect_report = scalars_report["scalar_reports"]["aspect"]
         assert aspect_report["passed"], aspect_report
         assert aspect_report["same_branch"] is True
@@ -2161,6 +2221,7 @@ def test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_
         check_accepted_bnormal_rms_scalar=True,
         check_accepted_bsqvac_rms_scalar=True,
         check_production_branch_local_scalar=True,
+        check_fixed_rejected_controller_mask_gate=True,
     )
 
 
