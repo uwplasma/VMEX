@@ -10377,3 +10377,73 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100% on latest
   green baseline, current CI pending.
 - Docs/release hygiene: 98.5%.
+
+### 2026-06-05 Replay Graph Instrumentation, Context Hoist, And Coverage Fix
+
+Steps taken:
+
+1. Added named JAX scopes and replay graph metadata for the direct-coil
+   accepted-boundary replay path.
+2. Propagated the structural replay metadata into the single-stage
+   free-boundary QS coil optimization same-branch JSON reports.
+3. Hoisted direct-coil replay context construction by boundary-grid shape so
+   fixed-trace and segmented controller replay can share shape/static setup
+   across accepted branches.
+4. Ran the one-evaluation circle-provider scalar same-branch smoke for
+   ``aspect`` and recorded a local JAX profiler trace under
+   ``/tmp/vmec_jax_freeb_replay_trace``.
+5. Pushed commits ``f3d3c29``, ``8cb5a08``, and ``bfd145f``.
+6. The CI run for ``bfd145f`` passed all functional/docs/build shards but
+   failed the combined coverage gate at exact line coverage ``94.97%``.
+7. Added synthetic-trace coverage for replay graph metadata and boundary-shape
+   inference in the py3.11 coverage-only finite-pressure sensitivity test.
+8. Pushed commit ``0af2e66`` and started the new CI run.
+
+Results obtained:
+
+1. The replay metadata records accepted/rejected/done counts, active
+   free-boundary replay slots, step/preconditioner segment counts, inferred
+   boundary shapes, ``nfp/mpol/ntor/lasym``, and replay option flags.
+2. The local scalar ``aspect`` report stayed on the same branch with absolute
+   directional error ``1.45e-11`` and replay/base delta ``2.66e-15``.
+3. Context hoisting preserved correctness but did not materially improve the
+   tiny CPU replay timing: replay wall remained about ``26.7 s`` for the
+   two-step scalar smoke.
+4. The local profiler trace confirmed the remaining bottleneck is host-side
+   replay graph build/dispatch rather than device readiness time, but the CPU
+   trace did not expose enough named-scope detail for a lower-level kernel
+   attribution.
+5. Focused local checks passed after the coverage fix:
+   ``python -m ruff check`` on the touched files,
+   the synthetic trace fingerprint test, and the CI exact-remaining coverage
+   shard with ``14 passed in 68.25 s``.
+
+Best next steps:
+
+1. Wait for CI on ``0af2e66`` and confirm the combined coverage gate is green.
+2. Continue the production full-loop seam with a complete-loop AD-vs-central-FD
+   gate for another physical scalar under an explicit branch fingerprint.
+3. Reduce cold branch-local scalar/Jacobian replay graph construction; context
+   hoisting alone is not enough.
+4. Keep direct-coil free-boundary optimization claims limited to validated
+   fixed/same-branch replay until adaptive host-controller differentiation is
+   promoted.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.5%.
+- Single-stage coil-only optimization: 91.8%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 94.5%; replay graph metadata is now available, but
+  cold branch-local graph construction remains the next performance blocker.
+- CI runtime refactor with preserved coverage/physics gates: 100% on latest
+  green baseline; coverage-fix CI is pending.
+- Docs/release hygiene: 98.8%.
