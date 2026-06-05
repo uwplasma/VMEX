@@ -72,6 +72,80 @@ Completion:
   `27039430048` passed all shards including the combined coverage gate.
 - Docs/release hygiene: 98.8%.
 
+### 2026-06-05 Lean Branch Trace And Directional JVP Reports
+
+Steps taken:
+
+1. Added ``adjoint_trace_mode="branch"`` and aliases
+   ``branch_local``, ``branch-local``, ``lean``, and ``compact`` so production
+   same-branch reports retain accepted replay controls without carrying raw
+   force payloads.
+2. Updated the free-boundary QS coil optimization example to use branch trace
+   mode for optional same-branch reports.
+3. Added structural tests showing branch trace mode keeps replay controls
+   needed for fixed accepted-branch replay while dropping full-only raw force
+   payloads.
+4. Replaced full Jacobian materialization for vector directional reports with
+   a ``jax.jvp`` path when ``direction_params`` is supplied.
+5. Kept the previous full-Jacobian VJP path for callers that need the full
+   matrix, and made directional mode explicitly reject ``replay_ad_mode`` values
+   other than ``direct``.
+6. Added a lightweight synthetic coverage test for the new ``directional_jvp``
+   branch so CI preserves the 95% exact coverage gate.
+7. Pushed commits ``d8e7f35``, ``9ab5229``, and ``823f3b0``.
+
+Results obtained:
+
+1. CI for ``d8e7f35`` passed all shards, including the combined coverage gate.
+2. The first CI run for ``9ab5229`` passed all functional/docs/physics/exact
+   shards but failed combined exact coverage narrowly at ``94.96%``.
+3. Local exact same-branch validation after the JVP patch passed with
+   ``3 passed in 92.56 s`` before push and ``3 passed in 84.78 s`` after the
+   coverage recovery test.
+4. A one-evaluation circle-provider vector report with four scalar outputs
+   moved from full VJP/pullback timing of roughly ``39.5 s`` to directional JVP
+   timing of roughly ``16.8 s`` on the local CPU.
+5. The physical scalar directional derivatives matched complete-solve central
+   finite differences: ``aspect`` and ``qs_total`` errors were about
+   ``1.5e-11``, ``lcfs_boundary_moment`` error was about ``1.5e-14``, and
+   ``accepted_bnormal_rms`` error was about ``4e-19``.
+6. The latest CI run for ``823f3b0`` is pending; the coverage recovery test
+   passes locally in about two seconds and is included in the exact-remaining
+   coverage shard.
+
+Best next steps:
+
+1. Wait for CI on ``823f3b0`` and confirm the combined coverage gate is green.
+2. Continue reducing cold branch-local replay/JVP graph construction time; the
+   remaining bottleneck is still first-call replay graph lowering, not trace
+   diagnostics or Python pullback loops.
+3. Promote one additional complete-loop AD-vs-central-FD physical scalar gate
+   under an explicit same-branch fingerprint before extending single-stage
+   optimization claims.
+4. Keep adaptive full-loop ``run_free_boundary`` exact-adjoint claims
+   conservative until branch-changing host-controller differentiation is
+   validated.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- DMerc/Glasser ``D_R`` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 97.5%.
+- Single-stage coil-only optimization: 92.7%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 96.0%; vector reports now avoid full Jacobian
+  materialization, but cold replay/JVP graph construction remains expensive.
+- CI runtime refactor with preserved coverage/physics gates: 100% on latest
+  green baseline; coverage recovery CI for ``823f3b0`` is pending.
+- Docs/release hygiene: 98.9%.
+
 ### 2026-06-05 Compact Branch-Local Production Reports
 
 Steps taken:
