@@ -467,6 +467,114 @@ def test_circle_dry_run_writes_configuration_without_solves(tmp_path, monkeypatc
     assert summary["objective_model"]["qs_surfaces"] == [0.3, 0.7]
 
 
+def test_essos_provider_skip_returns_code_77_without_solves(tmp_path, monkeypatch, capsys):
+    module = _load_example_module()
+
+    def fake_load_essos_provider(*_args, **_kwargs):
+        raise module.SkipExample("synthetic missing ESSOS assets")
+
+    def fail_make_free_boundary_indata(*_args, **_kwargs):
+        raise AssertionError("ESSOS skip must happen before input generation")
+
+    monkeypatch.setattr(module, "load_essos_provider", fake_load_essos_provider)
+    monkeypatch.setattr(module, "make_free_boundary_indata", fail_make_free_boundary_indata)
+
+    exit_code = module.main(
+        [
+            "--smoke",
+            "--dry-run",
+            "--provider",
+            "essos",
+            "--outdir",
+            str(tmp_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == module.SKIP_EXIT_CODE
+    assert "SKIP: synthetic missing ESSOS assets" in captured.err
+    assert not (tmp_path / "summary.json").exists()
+
+
+def test_essos_dry_run_writes_direct_coil_configuration_without_mgrid(tmp_path, monkeypatch):
+    module = _load_example_module()
+    synthetic_params, _metadata = module.make_circle_provider(current_scale=1.0)
+
+    def fake_load_essos_provider(coils_json, *, chunk_size, current_scale):
+        assert coils_json is None
+        assert chunk_size == 128
+        assert current_scale == pytest.approx(1.25)
+        return synthetic_params, {
+            "provider": "essos",
+            "coils_json": "/synthetic/ESSOS_biot_savart_LandremanPaulQA.json",
+            "n_base_coils": 1,
+            "n_segments": int(synthetic_params.n_segments),
+            "nfp": int(synthetic_params.nfp),
+            "stellsym": bool(synthetic_params.stellsym),
+            "current_scale_multiplier": 1.25,
+        }
+
+    def fake_make_free_boundary_indata(_input_path, output_path, **kwargs):
+        output_path.write_text("&INDATA\n  LFREEB = T\n  MGRID_FILE = 'DIRECT_COILS'\n/\n")
+        assert kwargs["vmec_max_iter"] == 2
+        assert kwargs["ftol"] == pytest.approx(1.0e-8)
+        return output_path
+
+    def fail_run_direct_free_boundary(*_args, **_kwargs):
+        raise AssertionError("dry-run must not call run_direct_free_boundary")
+
+    def fail_minimize(*_args, **_kwargs):
+        raise AssertionError("dry-run must not call scipy.optimize.minimize")
+
+    def fail_write_wout(*_args, **_kwargs):
+        raise AssertionError("dry-run must not write a best wout")
+
+    monkeypatch.setattr(module, "load_essos_provider", fake_load_essos_provider)
+    monkeypatch.setattr(module, "make_free_boundary_indata", fake_make_free_boundary_indata)
+    monkeypatch.setattr(module, "run_direct_free_boundary", fail_run_direct_free_boundary)
+    monkeypatch.setattr(module, "write_wout_from_fixed_boundary_run", fail_write_wout)
+    fake_scipy_optimize = ModuleType("scipy.optimize")
+    fake_scipy_optimize.minimize = fail_minimize
+    monkeypatch.setitem(sys.modules, "scipy.optimize", fake_scipy_optimize)
+
+    exit_code = module.main(
+        [
+            "--smoke",
+            "--dry-run",
+            "--provider",
+            "essos",
+            "--chunk-size",
+            "128",
+            "--current-scale",
+            "1.25",
+            "--max-current-vars",
+            "1",
+            "--max-fourier-vars",
+            "1",
+            "--outdir",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 0
+    assert not (tmp_path / "history.json").exists()
+    assert not (tmp_path / "wout_best_direct_coil_qs.nc").exists()
+    generated_input = tmp_path / "input.direct_coil_qs"
+    assert "DIRECT_COILS" in generated_input.read_text()
+
+    summary = json.loads((tmp_path / "summary.json").read_text())
+    assert summary["dry_run"] is True
+    assert summary["plasma_boundary_optimized"] is False
+    assert summary["provider"]["provider"] == "essos"
+    assert summary["provider"]["coils_json"].endswith("ESSOS_biot_savart_LandremanPaulQA.json")
+    assert summary["baseline_coils"]["n_base_coils"] == 1
+    assert summary["vmec_config"]["generated_input"].endswith("input.direct_coil_qs")
+    assert summary["vmec_config"]["generated_input"] == str(generated_input)
+    assert "generated_mgrid" not in summary["vmec_config"]
+    assert [record["kind"] for record in summary["optimized_variables"]] == ["current", "fourier_dof"]
+    assert all(record["kind"] != "boundary" for record in summary["optimized_variables"])
+
+
 @pytest.mark.xfail(
     strict=True,
     reason=(
