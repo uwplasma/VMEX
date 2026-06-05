@@ -9615,6 +9615,64 @@ Completion:
   green baseline.
 - Docs/release hygiene: 98.8%.
 
+### 2026-06-05 Shape-Static Replay Context Hoist
+
+Steps taken:
+
+1. Split ``direct_coil_boundary_replay_context`` into a shape/static builder
+   ``direct_coil_boundary_replay_context_for_shape`` plus the existing
+   geometry wrapper.
+2. Added trace-shape inference from accepted NESTOR axis fields or
+   ``freeb_bsqvac_half``.
+3. Added per-call ``(ntheta, nzeta)`` replay-context caching in both the
+   legacy fixed-trace replay and the segmented accepted-controller replay.
+4. Reused cached contexts in traced branches when the accepted trace shape
+   matches the replayed boundary geometry; kept a geometry-based fallback for
+   mismatched shapes.
+
+Results obtained:
+
+1. ``ruff`` passed for ``vmec_jax/free_boundary_adjoint.py``.
+2. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qs_coil_optimization_smoke.py -q`` passed with
+   ``12 passed, 1 xfailed``.
+3. The two production branch-local AD-vs-complete-FD tests passed again.
+4. The real aspect scalar report stayed on the same branch with replay/base
+   delta ``2.66e-15`` and directional-slope absolute error ``1.45e-11``.
+5. The hoist did not reduce the dominant tiny-smoke replay wall time:
+   ``26.74 s`` after hoisting versus ``26.54 s`` before. The replay remains
+   dispatch/trace dominated and still triggers the XLA algebraic-simplifier
+   warning.
+
+Best next steps:
+
+1. Keep the hoist because it clarifies shape/static replay setup and provides
+   a safe seam for future segment-level caching, but do not count it as a
+   solved performance bottleneck.
+2. Use JAX/XLA profiler traces with the new named scopes to locate the
+   simplifier loop inside the replay graph.
+3. Target the actual algebraic graph size next: strict-update replay and dense
+   NESTOR algebra are more likely culprits than context construction.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.5%.
+- Single-stage coil-only optimization: 91.8%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 94.4%; context setup is now isolated, but the measured
+  bottleneck remains XLA replay graph construction.
+- CI runtime refactor with preserved coverage/physics gates: 100% on latest
+  green baseline.
+- Docs/release hygiene: 98.8%.
+
 ### 2026-06-05 Direct Accepted-Branch AD Timing Path
 
 Steps taken:
