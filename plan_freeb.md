@@ -21,8 +21,8 @@ is `b769e35`, `Validate direct-coil QS scalar same-branch gate`, which passed
 GitHub Actions run `27021796983`, including docs, build, console smoke,
 physics smoke, py3.10, py3.12, slow-physics coverage, exact free-boundary
 coverage shards, core py3.11 coverage shards, and the combined 95% coverage
-gate. The current pushed head is `b78a610`, `Record direct-coil backend in QS
-summary`, with GitHub Actions run `27022275051` pending.
+gate. The current pushed head is `47e0b79`, `Record ESSOS example backend
+metadata`, with GitHub Actions run `27022485277` in progress.
 
 The latest green main splits required py3.11 coverage into core, slow-physics,
 and exact shards while keeping a combined 95% coverage threshold, preserves the
@@ -9456,6 +9456,62 @@ Completion:
 - Single-stage coil-only optimization: 90.0%.
 - Robust coil perturbation optimization: deferred by current scope, 70%.
 - CPU/GPU performance: 92.0%.
+- CI runtime refactor with preserved coverage/physics gates: 100% on latest
+  green baseline, current head pending CI.
+- Docs/release hygiene: 98.3%.
+
+### 2026-06-05 Bounded Single-Stage QS Report Smoke
+
+Steps taken:
+
+1. Ran the synthetic direct-coil single-stage QS optimization example with one
+   objective evaluation and `--write-same-branch-report`.
+2. Kept the output under `/tmp/vmec_jax_direct_coil_qs_circle_report_smoke` so
+   no WOUT or JSON runtime artifact enters the repository.
+3. Inspected `summary.json` and `same_branch_complete_solve_report.json`.
+
+Results obtained:
+
+1. The actual direct-coil free-boundary objective evaluation completed in
+   `1.87 s` and wrote `history.json`, `summary.json`, and
+   `wout_best_direct_coil_qs.nc`.
+2. The best one-evaluation objective was `0.8821604025094142`, with
+   `qs_total=0.6424839083248817`, aspect `5.365201036706552`, and mean iota
+   `0.26132953666198727`.
+3. The same-branch report wrote successfully with `same_branch=true` and
+   objective scalar keys `accepted_bnormal_rms`, `aspect`, `bnormal_rms`,
+   `lcfs_boundary_moment`, `mean_iota`, `objective`, `qs_total`, and
+   `residual_proxy`.
+4. The branch-local vector report was available and covered `aspect`,
+   `qs_total`, `lcfs_boundary_moment`, and `accepted_bnormal_rms`.
+5. The report path emitted repeated XLA algebraic-simplifier loop warnings
+   during compilation/replay. This is a performance/noise issue and confirms
+   the same-branch report should remain opt-in until the cold compile path is
+   reduced.
+
+Best next steps:
+
+1. Keep the same-branch report opt-in in examples.
+2. Add a focused performance issue/diagnostic lane for the XLA simplifier
+   warning in branch-local vector report generation.
+3. Watch `47e0b79` CI to completion before promoting any further
+   free-boundary adjoint or single-stage claims.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.4%.
+- Single-stage coil-only optimization: 90.5%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 92.0%; branch-local report compile warning is the next
+  low-level performance/noise target.
 - CI runtime refactor with preserved coverage/physics gates: 100% on latest
   green baseline, current head pending CI.
 - Docs/release hygiene: 98.3%.
