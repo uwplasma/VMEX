@@ -75,6 +75,9 @@ def test_pedagogic_essos_mgrid_example_dry_run(monkeypatch, tmp_path: Path) -> N
     assert summary["dry_run"] is True
     assert summary["surface_dofs_optimized"] is False
     assert Path(summary["mgrid"]).name == "mgrid_lpqa_from_essos.nc"
+    assert summary["external_field_provider_kind"] == "mgrid"
+    assert Path(summary["mgrid_file"]).name == "mgrid_lpqa_from_essos.nc"
+    assert summary["uses_generated_mgrid"] is True
     assert summary["mgrid_bounds"]["rmin"] < summary["mgrid_bounds"]["rmax"]
     assert summary["mgrid_bounds"]["zmin"] < summary["mgrid_bounds"]["zmax"]
 
@@ -97,5 +100,8 @@ def test_pedagogic_essos_direct_example_dry_run(monkeypatch, tmp_path: Path) -> 
     assert summary["dry_run"] is True
     assert summary["surface_dofs_optimized"] is False
     assert summary["mgrid"] is None
+    assert summary["external_field_provider_kind"] == "direct_coils"
+    assert summary["mgrid_file"] == "DIRECT_COILS"
+    assert summary["uses_generated_mgrid"] is False
     assert np.isfinite(float(summary["coil_current_norm"]))
     assert np.isfinite(float(summary["coil_length_mean"]))

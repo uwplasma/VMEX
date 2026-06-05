@@ -9410,3 +9410,52 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100% on latest
   green baseline, current head pending CI.
 - Docs/release hygiene: 98.2%.
+
+### 2026-06-05 Pedagogic ESSOS Backend Metadata Alignment
+
+Steps taken:
+
+1. Added explicit backend metadata to the shared ESSOS free-boundary example
+   summary helper: `external_field_provider_kind`, `mgrid_file`, and
+   `uses_generated_mgrid`.
+2. Updated the pedagogic generated-`mgrid` and direct-coil dry-run tests so
+   reviewer artifacts distinguish `mgrid` compatibility runs from direct
+   `MGRID_FILE='DIRECT_COILS'` no-`mgrid` runs.
+3. Ran the real local direct ESSOS dry-run example with
+   `/Users/rogeriojorge/local/ESSOS_mgrid_pr`; it wrote a direct-coil input and
+   summary without running VMEC.
+
+Results obtained:
+
+1. Ruff passed for `examples/free_boundary_essos_example_common.py` and
+   `tests/test_free_boundary_essos_pedagogic_examples.py`.
+2. `python -m pytest -q tests/test_free_boundary_essos_pedagogic_examples.py
+   --durations=10` passed: `2 passed in 1.09 s`.
+3. The direct-coil optimization smoke tests still passed:
+   `10 passed, 1 xfailed in 1.38 s`.
+
+Best next steps:
+
+1. Commit and push the pedagogic metadata alignment.
+2. Watch the latest head CI to completion.
+3. If CI stays green, move to the next technical milestone: a bounded
+   single-stage coil-only QS run that writes the same-branch validation report
+   by default for the synthetic provider, then optional ESSOS assets.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.4%.
+- Single-stage coil-only optimization: 90.0%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 92.0%.
+- CI runtime refactor with preserved coverage/physics gates: 100% on latest
+  green baseline, current head pending CI.
+- Docs/release hygiene: 98.3%.
