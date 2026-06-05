@@ -202,6 +202,13 @@ and ``mercier_terms_from_profile_integrals``.  They are differentiable JAX
 array operations, so ``DMerc`` and ``D_R`` can be used both as persisted wout
 diagnostics and as least-squares optimization objectives.
 
+Validation tests compare automatic differentiation with central finite
+differences for the full ``mercier_terms_from_state`` path and for the public
+``DMerc`` / ``GlasserResistiveInterchange`` objective wrappers.  The algebraic
+``D_R`` helper is also checked independently for perturbations of ``DMerc``,
+magnetic shear and ``H``, which localizes sign or normalization regressions
+without requiring an expensive VMEC solve.
+
 When only Mercier profile terms are available,
 ``glasser_resistive_interchange_from_mercier_terms`` can fall back to
 ``H = -Dcurr``.  The full state path uses the ``jdotb/bdotb`` ratio above, so it

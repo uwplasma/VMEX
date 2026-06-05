@@ -73,6 +73,36 @@ def test_glasser_d_r_gradient_matches_central_finite_difference():
     np.testing.assert_allclose(np.asarray(grad_ad), np.asarray(grad_fd), rtol=5.0e-8, atol=5.0e-10)
 
 
+@pytest.mark.parametrize("perturb_key", ["DMerc", "shear", "H"])
+def test_glasser_d_r_gradients_wrt_mercier_inputs_match_central_finite_difference(perturb_key):
+    jax = pytest.importorskip("jax")
+
+    base = {
+        "DMerc": jnp.asarray([0.04, -0.03, 0.08, 0.02], dtype=jnp.float64),
+        "shear": jnp.asarray([0.25, -0.35, 0.55, -0.70], dtype=jnp.float64),
+        "H": jnp.asarray([0.012, -0.025, 0.040, 0.018], dtype=jnp.float64),
+    }
+    directions = {
+        "DMerc": jnp.asarray([0.2, -0.1, 0.4, -0.3], dtype=jnp.float64),
+        "shear": jnp.asarray([0.05, -0.08, 0.03, 0.07], dtype=jnp.float64),
+        "H": jnp.asarray([0.2, -0.4, 0.3, 0.5], dtype=jnp.float64),
+    }
+
+    def objective(alpha):
+        trial = dict(base)
+        trial[perturb_key] = base[perturb_key] + alpha * directions[perturb_key]
+        terms = vj.glasser_resistive_interchange_from_mercier_terms(**trial)
+        return jnp.sum(terms["D_R"])
+
+    alpha0 = jnp.asarray(0.15, dtype=jnp.float64)
+    grad_ad = jax.grad(objective)(alpha0)
+    eps = jnp.asarray(1.0e-5, dtype=jnp.float64)
+    grad_fd = (objective(alpha0 + eps) - objective(alpha0 - eps)) / (2.0 * eps)
+
+    assert np.isfinite(float(np.asarray(grad_ad)))
+    np.testing.assert_allclose(np.asarray(grad_ad), np.asarray(grad_fd), rtol=5.0e-8, atol=5.0e-10)
+
+
 def test_mercier_profile_integrals_prefer_jdotb_bdotb_H_reconstruction_over_dcurr_fallback():
     data = dict(
         s=np.linspace(0.0, 1.0, 5),

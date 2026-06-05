@@ -38,6 +38,65 @@ generated-`mgrid` WOUT-quality classification, and direct/generated
 boundary-domain checks. The code still does not claim a production full
 adaptive nonlinear `run_free_boundary` exact adjoint.
 
+### 2026-06-05 Branch-local vector gates, DMerc/D_R gradients, and CI runtime trim
+
+Steps taken:
+
+1. Spawned subagents for the full-loop adjoint seam, CI runtime duplication,
+   and `DMerc`/Glasser `D_R` AD-vs-FD coverage.
+2. Confirmed the expensive same-branch exact shard already covers accepted
+   `Bnormal` and `Bsqvac` RMS physical scalars, so no duplicate complete-solve
+   triplet was added.
+3. Expanded the existing production-forward branch-local vector-Jacobian gate
+   inside the current/Fourier same-branch tests. It now validates aspect,
+   LCFS boundary moment, accepted `Bnormal` RMS, and accepted `Bsqvac` RMS when
+   those scalars are already present in the paid complete-solve central-FD
+   report.
+4. Added a cheap helper-level Glasser test that perturbs `DMerc`, shear, and
+   `H` independently and compares AD against central finite differences for
+   the summed `D_R` diagnostic.
+5. Trimmed CI runtime without weakening coverage gates: the py3.11
+   `driver-solve-discrete` bucket no longer fetches optional WOUT fixtures it
+   does not use, and `physics-smoke` no longer reruns the full
+   `test_qs_ess_render_smoke.py` file because that file is already selected by
+   py3.11 core coverage.
+
+Results obtained:
+
+1. `python -m ruff check tests/test_glasser_resistive_interchange.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py` passed.
+2. `JAX_ENABLE_X64=1 python -m pytest -q tests/test_glasser_resistive_interchange.py::test_glasser_d_r_gradient_matches_central_finite_difference tests/test_glasser_resistive_interchange.py::test_glasser_d_r_gradients_wrt_mercier_inputs_match_central_finite_difference --durations=10` passed: `4 passed in 0.60 s`.
+3. `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_fd --durations=10` passed: `2 passed in 65.47 s`.
+4. The workflow YAML parsed successfully after the CI trim.
+
+Best next steps:
+
+1. Run the final focused validation bundle and commit/push this incremental
+   gate/runtime patch.
+2. Watch CI for both the previous `f97326d` push and the new push; update this
+   plan once the latest main is fully green.
+3. Continue performance work on first-call exact tape/force construction and
+   GPU preconditioner/setup/finalize launch overhead. Host diagnostics and
+   broad histories have now been addressed; they are not the dominant cost.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999% for branch-local
+  production-forward scalar/vector gradients; adaptive branch differentiation
+  remains intentionally unclaimed.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96.8%.
+- Single-stage coil-only optimization: 86.5%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 89.8%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 96.8%.
+- Overall free-boundary/single-stage plan: 97.7%.
+
 ### 2026-06-05 Boundary-projection parity and raw solve performance triage
 
 Steps taken:

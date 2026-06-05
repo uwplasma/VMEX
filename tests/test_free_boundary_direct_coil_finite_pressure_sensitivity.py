@@ -1942,10 +1942,23 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                     static=payload["init"].static,
                 ),
             }
+            if check_boundary_moment_scalar:
+                vector_scalar_keys.append("lcfs_boundary_moment")
+                vector_replay_scalar_fns["lcfs_boundary_moment"] = (
+                    lambda replay, payload: lcfs_boundary_moment(
+                        replay["state"],
+                        payload["init"].static,
+                    )
+                )
             if check_accepted_bnormal_rms_scalar:
                 vector_scalar_keys.append("accepted_bnormal_rms")
                 vector_replay_scalar_fns["accepted_bnormal_rms"] = (
                     lambda replay, _payload: accepted_bnormal_rms_from_replay(replay)
+                )
+            if check_accepted_bsqvac_rms_scalar:
+                vector_scalar_keys.append("accepted_bsqvac_rms")
+                vector_replay_scalar_fns["accepted_bsqvac_rms"] = (
+                    lambda replay, _payload: accepted_bsqvac_rms_from_replay(replay)
                 )
             production_branch_local_scalars = (
                 direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
@@ -1954,7 +1967,9 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                     scalar_keys=tuple(vector_scalar_keys),
                     scalar_fn=lambda payload: {
                         "aspect": aspect_objective_from_state(payload["result"].state),
+                        "lcfs_boundary_moment": lcfs_boundary_moment(payload["result"].state, payload["init"].static),
                         "accepted_bnormal_rms": accepted_bnormal_rms_from_payload(payload),
+                        "accepted_bsqvac_rms": accepted_bsqvac_rms_from_payload(payload),
                     },
                     replay_scalar_fns=vector_replay_scalar_fns,
                     replay_kwargs={"use_stacked_step_controls": True},
@@ -2007,7 +2022,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                 np.testing.assert_allclose(
                     production_branch_vector_exact,
                     complete_directional,
-                    rtol=1.0e-2 if key == "accepted_bnormal_rms" else 5.0e-3,
+                    rtol=1.0e-2 if key in {"accepted_bnormal_rms", "accepted_bsqvac_rms"} else 5.0e-3,
                     atol=5.0e-8,
                 )
         if check_boundary_moment_scalar:
