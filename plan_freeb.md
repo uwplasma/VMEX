@@ -9460,6 +9460,57 @@ Completion:
   green baseline, current head pending CI.
 - Docs/release hygiene: 98.3%.
 
+### 2026-06-05 Finite-Beta ESSOS Direct-Coil Dry-Run Support
+
+Steps taken:
+
+1. Added `--dry-run` to `examples/free_boundary_essos_coils_forward.py`.
+2. Made its summary support `run=None` and `wout=None` while still recording
+   direct-coil no-`mgrid` backend metadata.
+3. Added a CLI-level dry-run smoke test with a fake ESSOS module, asserting
+   that dry-run writes the VMEC input and summary but does not call VMEC or
+   write a WOUT.
+4. Ran the real local dry-run with
+   `/Users/rogeriojorge/local/ESSOS_mgrid_pr`.
+
+Results obtained:
+
+1. Ruff passed for the finite-beta ESSOS forward script and tests.
+2. `python -m pytest -q tests/test_free_boundary_essos_coils_forward_example.py
+   tests/test_free_boundary_essos_pedagogic_examples.py --durations=10`
+   passed: `13 passed, 1 skipped in 1.39 s`.
+3. The real local dry-run wrote
+   `/tmp/vmec_jax_essos_coils_forward_dry_run/summary.json` with
+   `backend=direct_coils`, `dry_run=true`,
+   `external_field_provider_kind=direct_coils`, `mgrid_file=DIRECT_COILS`,
+   `uses_generated_mgrid=false`, and `wout=null`.
+
+Best next steps:
+
+1. Commit and push the finite-beta dry-run support.
+2. Watch CI to completion.
+3. If CI is green, focus the next technical lane on reducing cold compile cost
+   in the same-branch branch-local vector report path before promoting it as a
+   default optimization artifact.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.4%.
+- Single-stage coil-only optimization: 90.5%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 92.0%.
+- CI runtime refactor with preserved coverage/physics gates: 100% on latest
+  green baseline, current head pending CI.
+- Docs/release hygiene: 98.4%.
+
 ### 2026-06-05 Bounded Single-Stage QS Report Smoke
 
 Steps taken:
