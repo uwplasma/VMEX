@@ -425,6 +425,10 @@ def _compact_replay_diagnostic_snapshot(payload: dict[str, Any] | None) -> dict[
         "trace_generation_wall_s": _finite_float(metadata.get("trace_generation_wall_s")),
         "n_traces": trace_summary.get("n_traces"),
         "preconditioner_policy_n_segments": trace_summary.get("preconditioner_policy_n_segments"),
+        "monolithic_used_stacked_step_controls": trace_summary.get("monolithic_used_stacked_step_controls"),
+        "segmented_used_stacked_step_controls": trace_summary.get("segmented_used_stacked_step_controls"),
+        "monolithic_step_policy_n_segments": trace_summary.get("monolithic_step_policy_n_segments"),
+        "segmented_step_policy_n_segments": trace_summary.get("segmented_step_policy_n_segments"),
         "monolithic_used_accepted_only_fast_path": trace_summary.get("monolithic_used_accepted_only_fast_path"),
         "segmented_used_accepted_only_fast_path": trace_summary.get("segmented_used_accepted_only_fast_path"),
         "monolithic_fallback_used_accepted_only_fast_path": trace_summary.get(
@@ -1059,7 +1063,18 @@ def _child_specs(
                 (
                     "segmented_replay",
                     outdir / f"direct_coil_segmented_replay_report{suffix}",
-                    ["--niter", "2", "--mpol", "3", "--ntheta", "6", "--warm-repeats", "1", "--no-synthetic-multi-policy"],
+                    [
+                        "--niter",
+                        "2",
+                        "--mpol",
+                        "3",
+                        "--ntheta",
+                        "6",
+                        "--warm-repeats",
+                        "1",
+                        "--no-synthetic-multi-policy",
+                        "--use-stacked-step-controls",
+                    ],
                     {},
                 )
             )
@@ -1099,7 +1114,18 @@ def _child_specs(
             (
                 "segmented_replay",
                 outdir / f"direct_coil_segmented_replay_report{suffix}",
-                ["--niter", "2", "--mpol", "3", "--ntheta", "6", "--warm-repeats", "1", "--no-synthetic-multi-policy"],
+                [
+                    "--niter",
+                    "2",
+                    "--mpol",
+                    "3",
+                    "--ntheta",
+                    "6",
+                    "--warm-repeats",
+                    "1",
+                    "--no-synthetic-multi-policy",
+                    "--use-stacked-step-controls",
+                ],
                 {},
             )
         )

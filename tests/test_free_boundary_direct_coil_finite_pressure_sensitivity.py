@@ -1152,6 +1152,64 @@ def test_active_direct_coil_adjoint_trace_records_vacuum_forcing_and_pressure_sc
         assert np.isfinite(float(trace["freeb_pres_scale"]))
 
 
+def test_full_adjoint_trace_records_raw_preconditioner_on_fused_payload_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Full replay traces must include raw preconditioned forces on fused backends."""
+
+    enable_x64(True)
+    from vmec_jax.driver import run_free_boundary
+    import vmec_jax.solve as solve_mod
+
+    params = _circle_coil_params(current=3.0e7, n_segments=24)
+    input_path = _write_tiny_direct_freeb_input(
+        tmp_path / "input.direct_provider_fused_full_trace",
+        niter=2,
+        mpol=3,
+        ntheta=6,
+    )
+    init = run_free_boundary(
+        input_path,
+        use_initial_guess=True,
+        verbose=False,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+    )
+
+    monkeypatch.setattr(solve_mod.jax, "default_backend", lambda: "gpu")
+    result = solve_mod.solve_fixed_boundary_residual_iter(
+        init.state,
+        init.static,
+        indata=init.indata,
+        signgs=init.signgs,
+        max_iter=2,
+        ftol=1.0e-8,
+        vmec2000_control=True,
+        auto_flip_force=False,
+        use_direct_fallback=True,
+        verbose=False,
+        verbose_vmec2000_table=False,
+        jit_forces=False,
+        use_scan=False,
+        host_update_assembly=False,
+        adjoint_trace=True,
+        adjoint_trace_mode="full",
+        external_field_provider_kind="direct_coils",
+        external_field_provider_params=params,
+        free_boundary_activate_fsq=1.0e99,
+    )
+
+    traces = result.diagnostics.get("adjoint_step_trace", [])
+    assert traces
+    for trace in traces:
+        raw_precond = np.asarray(trace["frzl_rz_frcc"], dtype=float)
+        update_precond = np.asarray(trace["frcc_u"], dtype=float)
+        assert raw_precond.shape == update_precond.shape
+        assert np.all(np.isfinite(raw_precond))
+        assert np.linalg.norm(raw_precond) > 0.0
+
+
 def test_direct_coil_trial_nestor_timing_records_solver_trial_calls(tmp_path: Path) -> None:
     """Solver-level trial scoring should record rejected NESTOR sample timings."""
 

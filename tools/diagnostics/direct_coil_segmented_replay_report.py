@@ -73,6 +73,16 @@ def _parser() -> argparse.ArgumentParser:
             "cannot be stacked, try stacking controls independently inside each segment."
         ),
     )
+    p.add_argument(
+        "--use-stacked-step-controls",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Replay through full step-policy segments with stacked step controls. "
+            "This is a stricter GPU-performance diagnostic; it preserves parity "
+            "only when every segment can stack the required controls."
+        ),
+    )
     p.add_argument("--warm-repeats", type=int, default=1, help="Number of repeated replay timings per mode.")
     p.add_argument("--rtol", type=float, default=1.0e-10, help="Replay objective/state parity relative tolerance.")
     p.add_argument("--atol", type=float, default=1.0e-10, help="Replay objective/state parity absolute tolerance.")
@@ -109,6 +119,7 @@ def _timed_replay(
     signgs: int,
     use_segments: bool,
     use_segment_preconditioner_controls: bool,
+    use_stacked_step_controls: bool,
     use_accepted_only_fast_path: bool,
     repeats: int,
 ) -> tuple[dict[str, Any], list[float]]:
@@ -130,6 +141,7 @@ def _timed_replay(
             enforce_edge=False,
             use_preconditioner_policy_segments=bool(use_segments),
             use_segment_preconditioner_controls=bool(use_segment_preconditioner_controls),
+            use_stacked_step_controls=bool(use_stacked_step_controls),
             use_accepted_only_fast_path=bool(use_accepted_only_fast_path),
         )
         _block(replay["objective"])
@@ -185,6 +197,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         signgs=int(init.signgs),
         use_segments=False,
         use_segment_preconditioner_controls=False,
+        use_stacked_step_controls=bool(args.use_stacked_step_controls),
         use_accepted_only_fast_path=True,
         repeats=int(args.warm_repeats),
     )
@@ -196,6 +209,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         signgs=int(init.signgs),
         use_segments=False,
         use_segment_preconditioner_controls=False,
+        use_stacked_step_controls=bool(args.use_stacked_step_controls),
         use_accepted_only_fast_path=False,
         repeats=int(args.warm_repeats),
     )
@@ -207,6 +221,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         signgs=int(init.signgs),
         use_segments=True,
         use_segment_preconditioner_controls=bool(args.segment_local_preconditioner_controls),
+        use_stacked_step_controls=bool(args.use_stacked_step_controls),
         use_accepted_only_fast_path=True,
         repeats=int(args.warm_repeats),
     )
@@ -218,6 +233,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         signgs=int(init.signgs),
         use_segments=True,
         use_segment_preconditioner_controls=bool(args.segment_local_preconditioner_controls),
+        use_stacked_step_controls=bool(args.use_stacked_step_controls),
         use_accepted_only_fast_path=False,
         repeats=int(args.warm_repeats),
     )
@@ -261,6 +277,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                 "n_segments": int(args.n_segments),
                 "synthetic_multi_policy": bool(args.synthetic_multi_policy),
                 "segment_local_preconditioner_controls": bool(args.segment_local_preconditioner_controls),
+                "use_stacked_step_controls": bool(args.use_stacked_step_controls),
                 "trace_generation_wall_s": float(trace_generation_wall_s),
                 "note": (
                     "Synthetic multi-policy mode flips static preconditioner policy "
@@ -279,12 +296,16 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                 ),
                 "monolithic_used_accepted_only_fast_path": bool(monolithic["used_accepted_only_fast_path"]),
                 "segmented_used_accepted_only_fast_path": bool(segmented["used_accepted_only_fast_path"]),
+                "monolithic_used_stacked_step_controls": bool(monolithic["used_stacked_step_controls"]),
+                "segmented_used_stacked_step_controls": bool(segmented["used_stacked_step_controls"]),
                 "monolithic_fallback_used_accepted_only_fast_path": bool(
                     monolithic_fallback["used_accepted_only_fast_path"]
                 ),
                 "segmented_fallback_used_accepted_only_fast_path": bool(
                     segmented_fallback["used_accepted_only_fast_path"]
                 ),
+                "monolithic_step_policy_n_segments": int(monolithic["step_policy_n_segments"]),
+                "segmented_step_policy_n_segments": int(segmented["step_policy_n_segments"]),
                 "monolithic_accepted_only_fast_path_segments": tuple(
                     bool(value) for value in monolithic["accepted_only_fast_path_segments"]
                 ),

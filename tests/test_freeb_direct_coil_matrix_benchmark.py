@@ -138,6 +138,10 @@ def _segmented_replay_payload() -> dict:
         "trace_summary": {
             "n_traces": 2,
             "preconditioner_policy_n_segments": 2,
+            "monolithic_used_stacked_step_controls": True,
+            "segmented_used_stacked_step_controls": True,
+            "monolithic_step_policy_n_segments": 2,
+            "segmented_step_policy_n_segments": 2,
             "monolithic_used_accepted_only_fast_path": True,
             "segmented_used_accepted_only_fast_path": True,
             "monolithic_fallback_used_accepted_only_fast_path": False,
@@ -374,6 +378,7 @@ def test_child_specs_can_add_segmented_replay_diagnostic_row(tmp_path) -> None:
         "--warm-repeats",
         "1",
         "--no-synthetic-multi-policy",
+        "--use-stacked-step-controls",
     ]
     assert env == {}
     assert matrix._script_for(label).name == "direct_coil_segmented_replay_report.py"
@@ -436,6 +441,10 @@ def test_run_child_records_segmented_replay_diagnostic_snapshot(monkeypatch, tmp
     assert replay["passed"] is True
     assert replay["trace_generation_wall_s"] == 12.5
     assert replay["n_traces"] == 2
+    assert replay["monolithic_used_stacked_step_controls"] is True
+    assert replay["segmented_used_stacked_step_controls"] is True
+    assert replay["monolithic_step_policy_n_segments"] == 2
+    assert replay["segmented_step_policy_n_segments"] == 2
     assert replay["monolithic_used_accepted_only_fast_path"] is True
     assert replay["segmented_fallback_used_accepted_only_fast_path"] is False
     assert replay["monolithic_first_s"] == 8.0

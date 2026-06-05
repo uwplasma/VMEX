@@ -12,12 +12,12 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-04 on `main` with the current matrix replay-diagnostic
-row patch. The latest fully green pushed main is commit `da15112`,
-`diagnostics: time accepted replay fast path`, which passed GitHub Actions run
-`26986003210`, including docs, build, console smoke, physics smoke, py3.10,
-py3.12, slow-physics coverage, exact free-boundary coverage shards, core
-py3.11 coverage shards, and the combined 95% coverage gate.
+Last updated: 2026-06-04 on `main` with the current fused full-trace and
+stacked replay-diagnostic patch. The latest fully green pushed main is commit
+`36652af`, `bench: add accepted replay diagnostic row`, which passed GitHub
+Actions run `26988433843`, including docs, build, console smoke, physics
+smoke, py3.10, py3.12, slow-physics coverage, exact free-boundary coverage
+shards, core py3.11 coverage shards, and the combined 95% coverage gate.
 
 The latest green main splits required py3.11 coverage into core, slow-physics,
 and exact shards while keeping a combined 95% coverage threshold, preserves the
@@ -36,6 +36,80 @@ same-branch gates, explicit tridiagonal-policy coverage, VMEC2000
 generated-`mgrid` WOUT-quality classification, and direct/generated
 boundary-domain checks. The code still does not claim a production full
 adaptive nonlinear `run_free_boundary` exact adjoint.
+
+### 2026-06-04 Fused full-trace and stacked replay GPU diagnostic
+
+Steps taken:
+
+1. Reproduced the optional GPU segmented replay benchmark failure on `office`:
+   the fused non-CPU preconditioner payload path skipped the raw
+   `frzl_rz` object while full accepted-trace serialization still required
+   `frzl_rz_*` arrays.
+2. Fixed the seam by materializing the raw R/Z-preconditioned force only when
+   `adjoint_trace=True` and `adjoint_trace_mode="full"` on the fused path.
+   Ordinary GPU solves keep the fused preconditioner/update payload path.
+3. Added a CPU-safe regression test that monkeypatches
+   `jax.default_backend()` to `"gpu"` so CI exercises the fused full-trace
+   serialization path without requiring a GPU runner.
+4. Exposed `--use-stacked-step-controls` in
+   `tools/diagnostics/direct_coil_segmented_replay_report.py`.
+5. Promoted the optional benchmark matrix replay row to use stacked
+   step-policy controls and compactly report stacked replay flags and
+   step-policy segment counts.
+
+Results obtained:
+
+1. Local validation passed:
+   `ruff` on touched files, `tests/test_freeb_direct_coil_matrix_benchmark.py`
+   (`14 passed`), the fused full-trace regression, the active trace forcing
+   test, and the accepted-update replay AD-vs-FD test (`2 passed in 51.54 s`).
+2. Local quick matrix with replay diagnostics passed and wrote exact parity
+   diagnostics; the replay row reported zero fast/fallback state and objective
+   deltas.
+3. On `office`, the fused-path regression passed with the GPU JAX install.
+4. Before stacked controls, the CPU/GPU quick matrix completed but GPU replay
+   took about `283.6 s`; unstacked GPU first replay timings were
+   `monolithic_first_s=64.82` and `segmented_first_s=67.45`.
+5. After promoting stacked step controls, the CPU/GPU quick matrix completed
+   and the GPU replay row elapsed time dropped to about `40.4 s`; compact
+   replay timings were `monolithic_first_s=6.68`,
+   `segmented_first_s=6.51`, with both stacked flags true and zero
+   fast/fallback state deltas.
+6. The remaining GPU direct-solve bottleneck is not replay correctness:
+   non-JIT warm direct solve remains about `13.1x` slower than CPU, dominated
+   by force evaluation (`0.592 s`), preconditioner (`0.407 s`), setup
+   (`0.333 s`), and finalize/residual recompute (`0.305 s`) for the tiny
+   two-iteration direct-coil solve.
+
+Best next steps:
+
+1. Commit and push this fused full-trace and stacked replay diagnostic patch.
+2. Watch CI until docs, exact free-boundary shards, and combined coverage pass.
+3. Continue CPU/GPU performance on raw direct solves rather than replay:
+   target GPU force-eval dispatch, preconditioner refresh/reuse, setup
+   constants, and final residual recompute.
+4. Keep production full adaptive-loop adjoint claims conservative; the current
+   improvement is accepted-trace replay performance and validation robustness.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.998% for branch-local
+  production-forward current/Fourier scalar and vector gradients; full
+  adaptive branch differentiation remains intentionally unclaimed.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96%.
+- Single-stage coil-only optimization: 86.5%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 89%.
+- CI runtime refactor with preserved coverage/physics gates: 100% on the
+  previous pushed run.
+- Docs/release hygiene: 96.5%.
+- Overall free-boundary/single-stage plan: 97.4%.
 
 ### 2026-06-04 Stacked physical-scalar gate promotion
 
