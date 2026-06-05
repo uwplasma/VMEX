@@ -12,13 +12,15 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
-Last updated: 2026-06-05 on `main` with the direct-coil/generated-`mgrid`
-boundary-projection parity gate and raw direct-solve CPU/GPU performance
-triage. The latest fully green pushed main is commit `e3c1382`,
-`docs: update free-boundary status after ci`, which passed GitHub Actions run
-`26993402840`, including docs, build, console smoke, physics smoke, py3.10,
-py3.12, slow-physics coverage, exact free-boundary coverage shards, core
-py3.11 coverage shards, and the combined 95% coverage gate.
+Last updated: 2026-06-05 on `main` with branch-local vector gates,
+`DMerc`/Glasser `D_R` gradient checks, CI runtime trimming, and direct-coil
+benchmark policy ablations. The latest fully green pushed main before the
+current benchmark-only commit is `fcbdec2`, `test: expand branch-local scalar
+gates`, which passed GitHub Actions run `27013643781`, including docs, build,
+console smoke, physics smoke, py3.10, py3.12, slow-physics coverage, exact
+free-boundary coverage shards, core py3.11 coverage shards, and the combined
+95% coverage gate. The newer benchmark-only commit `f6ac3d2` is pushed and CI
+run `27014030806` is in progress.
 
 The latest green main splits required py3.11 coverage into core, slow-physics,
 and exact shards while keeping a combined 95% coverage threshold, preserves the
@@ -102,9 +104,12 @@ Results obtained:
 2. Active force precompile office GPU trace: cold/compile `8.98 s`, warm
    `0.211 s`, worse than the previous JIT-forces warm baseline near
    `0.183 s`.
-3. Office GPU tridiagonal ablations before promotion:
-   `VMEC_JAX_TRIDI_PRECOMPUTE=1` was neutral at about `0.185 s` warm,
-   while `VMEC_JAX_TRIDI_SOLVE=1` was worse at about `0.225 s` warm.
+3. Office GPU matrix after promotion of the benchmark rows:
+   direct-solve JIT-forces took `0.224 s` warm on GPU versus `0.070 s` warm
+   on CPU for the tiny synthetic solve. `VMEC_JAX_HOST_RESIDUAL_METRICS=0`
+   was the best GPU ablation at `0.181 s` warm, while
+   `VMEC_JAX_TRIDI_PRECOMPUTE=1` and `VMEC_JAX_TRIDI_SOLVE=1` were worse at
+   `0.250 s` and `0.230 s` warm, respectively.
 4. The new matrix rows are benchmark-only evidence and do not change solver
    defaults.
 
@@ -132,24 +137,10 @@ Completion:
 - Single-stage coil-only optimization: 86.5%.
 - Robust coil perturbation optimization: 70%.
 - CPU/GPU performance: 90.0%.
-- CI runtime and coverage hygiene: 100% locally validated, pending the
-  current post-push CI run.
+- CI runtime and coverage hygiene: 100% locally validated, pending CI run
+  `27014030806` for benchmark-only commit `f6ac3d2`.
 - Docs/release hygiene: 96.8%.
-
-Completion:
-
-- Direct-coil/free-boundary phase 1: 100%.
-- Full nonlinear free-boundary adjoint phase 2: 99.999% for branch-local
-  production-forward scalar/vector gradients; adaptive branch differentiation
-  remains intentionally unclaimed.
-- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
-- VMEC parity and physics gates: 96.8%.
-- Single-stage coil-only optimization: 86.5%.
-- Robust coil perturbation optimization: 70%.
-- CPU/GPU performance: 89.8%.
-- CI runtime refactor with preserved coverage/physics gates: 100%.
-- Docs/release hygiene: 96.8%.
-- Overall free-boundary/single-stage plan: 97.7%.
+- Overall free-boundary/single-stage plan: 97.8%.
 
 ### 2026-06-05 Boundary-projection parity and raw solve performance triage
 

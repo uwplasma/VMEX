@@ -75,6 +75,8 @@ The required release baseline is:
 - Full docs build with warnings as errors.
 - The parity-manifest smoke job succeeds.
 - The bounded physics smoke job succeeds.
+- The ``Coverage Gate (py3.11 combined)`` job succeeds and reports at least
+  95% combined coverage.
 - Manual/nightly physics jobs may be skipped, but must not fail.
 
 During release preparation, record the latest completed green ``main`` CI
