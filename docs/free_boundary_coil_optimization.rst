@@ -158,9 +158,12 @@ The validation ladder is:
    needed for production traces that change radial preconditioner policy
    without padding every branch-local array into one large scan payload.
 
-7. Full direct-coil free-boundary solve: a low-resolution scalar objective,
-   first with one coil current and then with one Fourier coefficient, bounded
-   against finite differences of complete solves.
+7. Full direct-coil free-boundary solve: low-resolution physical scalar
+   objectives, first with one coil current and then with one Fourier
+   coefficient, bounded against finite differences of complete solves.  The
+   promoted same-branch current representative includes a VMEC-state
+   quasisymmetry-ratio scalar, ``qs_total``, in addition to aspect ratio and
+   accepted-vacuum scalars.
 8. Boozer/QS objective: the same complete-solve finite-difference checks after
    Boozer/QS diagnostics are in the objective path.
 
@@ -303,8 +306,9 @@ solves after explicitly rejecting branch changes.  This is stronger than a
 fixed-boundary replay test, but it remains a same-branch accepted-trace
 validation rather than a general derivative of the adaptive host loop.
 The current-only gate also promotes physical scalars from the same complete
-base/plus/minus solve triplet: final aspect ratio, accepted ``Bnormal`` RMS,
-and accepted ``Bsqvac`` RMS.  The last two scalars exercise active
+base/plus/minus solve triplet: final aspect ratio, VMEC-state
+quasisymmetry-ratio ``qs_total``, accepted ``Bnormal`` RMS, and accepted
+``Bsqvac`` RMS.  The last two scalars exercise active
 free-boundary vacuum forcing seen by the accepted update, while still requiring
 identical accepted-trace and residual-controller fingerprints before comparing
 AD against central finite differences.  The same current-only promotion now
@@ -337,8 +341,9 @@ generated data to the repository:
 The default command is bounded and records the branch fingerprints,
 complete-solve central finite-difference slope, and fixed-trace custom-VJP
 slope.  The required CI gate is stricter than this default diagnostic: it also
-checks same-branch physical scalar slopes for aspect ratio plus accepted
-``Bnormal``/``Bsqvac`` RMS on the current-only representative.  Passing
+checks same-branch physical scalar slopes for aspect ratio, VMEC-state
+``qs_total``, and accepted ``Bnormal``/``Bsqvac`` RMS on the current-only
+representative.  Passing
 ``--include-controller-vjp`` also evaluates the stacked
 accepted-controller custom VJP, which is useful for deeper review but slower in
 cold processes.  The JSON report includes
@@ -1082,6 +1087,24 @@ when shared without this page:
      --helicity-n 0 \
      --outdir results/free_boundary_QS_coil_optimization_circle_preview
 
+The same dry-run contract is covered for the optional ESSOS provider in CI by
+monkeypatching a synthetic ESSOS coil provider.  The generated VMEC deck uses
+``MGRID_FILE='DIRECT_COILS'`` and no generated ``mgrid`` artifact, so the
+example remains a direct-coil path:
+
+.. code-block:: bash
+
+   export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+   export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
+   PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
+     python examples/optimization/free_boundary_QS_coil_optimization.py \
+     --smoke \
+     --dry-run \
+     --provider essos \
+     --helicity-m 1 \
+     --helicity-n 0 \
+     --outdir results/free_boundary_QS_coil_optimization_essos_preview
+
 For a bounded validation run, use the synthetic circular coil provider:
 
 .. code-block:: bash
@@ -1114,12 +1137,12 @@ For the ESSOS Landreman-Paul QA coils, put ESSOS on ``PYTHONPATH`` and use:
      --helicity-n 0 \
      --outdir results/free_boundary_QS_coil_optimization_essos_smoke
 
-The next promotion step is making the complete direct-coil free-boundary loop
-differentiate through the accepted-state solve path, either by threading the
-accepted state through a JAX-visible replay or by wrapping the final replay in
-a validated custom adjoint. Only after that should this example replace the
-VMEC-state QS residual with a Boozer-space QS objective and validate the same
-complete-loop gradients through the full Boozer/QS diagnostic path.
+The promoted complete-loop gate now covers a VMEC-state ``qs_total`` scalar on
+the same fixed accepted branch as the aspect and accepted-vacuum scalars.  The
+next scientific promotion step is replacing that VMEC-state proxy in this
+example with a Boozer-space QS objective and validating the same complete-loop
+gradients through the full Boozer/QS diagnostic path.  The adaptive host branch
+selection itself remains outside the promoted derivative claim.
 
 Each accepted objective evaluation records a weighted objective-term breakdown
 for the residual, QS, aspect-ratio, and mean-iota terms.
@@ -1538,9 +1561,10 @@ evidence. The default gates are CI-safe and cover:
   adaptive controller changes.
 - branch-local production-forward scalar/vector replay gates. Both the
   current-only and Fourier-geometry representatives cover aspect ratio plus
-  accepted ``Bnormal`` and ``Bsqvac`` RMS scalars; the Fourier-geometry
-  representative also covers an LCFS boundary moment. These validate fixed
-  accepted-branch replay, not a general derivative of adaptive
+  accepted ``Bnormal`` and ``Bsqvac`` RMS scalars; the current-only
+  representative also covers VMEC-state ``qs_total``, and the
+  Fourier-geometry representative also covers an LCFS boundary moment. These
+  validate fixed accepted-branch replay, not a general derivative of adaptive
   ``run_free_boundary`` branch selection.
 
 Optional evidence includes ESSOS-backed full finite-pressure response tests,

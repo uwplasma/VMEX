@@ -9343,3 +9343,57 @@ Completion:
 - CPU/GPU performance: 92.0%.
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 98.0%.
+
+### 2026-06-05 ESSOS Direct-Coil Optimization Dry-Run Validation
+
+Steps taken:
+
+1. Added CI smoke coverage for the optional ESSOS provider path in
+   `examples/optimization/free_boundary_QS_coil_optimization.py` without
+   requiring external ESSOS assets.
+2. Added a skip-path test proving missing ESSOS assets return code `77`
+   before VMEC input generation, VMEC solves, optimizer calls, or WOUT writes.
+3. Added a synthetic ESSOS dry-run test proving the example writes a direct
+   `MGRID_FILE='DIRECT_COILS'` VMEC deck and `summary.json` without a generated
+   `mgrid`, without calling VMEC, and without optimizing plasma-boundary
+   variables.
+4. Updated the free-boundary docs so the ESSOS no-mgrid dry-run and promoted
+   VMEC-state `qs_total` same-branch scalar gate are documented without
+   claiming a production adaptive full-loop or Boozer/QS exact adjoint.
+
+Results obtained:
+
+1. Ruff passed for the direct-coil QS optimization example and smoke tests.
+2. `python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py
+   --durations=10` passed: `10 passed, 1 xfailed in 1.35 s`.
+3. The direct-coil optimization example now has CI coverage for both synthetic
+   circle and optional ESSOS provider configuration lanes.
+
+Best next steps:
+
+1. Run Sphinx and `git diff --check` for the docs/test update.
+2. Commit and push the ESSOS dry-run validation update after focused checks
+   pass.
+3. Watch the current `b769e35` and follow-up CI runs to completion.
+4. Promote the next milestone only after CI is green: Boozer-space QS
+   objective validation or a still-explicit same-branch production full-loop
+   seam, without overclaiming adaptive host-branch differentiation.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.3%.
+- Single-stage coil-only optimization: 89.5% after ESSOS no-mgrid dry-run
+  validation.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 92.0%.
+- CI runtime refactor with preserved coverage/physics gates: 100% on latest
+  green baseline, current head pending CI.
+- Docs/release hygiene: 98.2%.
