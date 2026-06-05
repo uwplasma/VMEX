@@ -133,7 +133,11 @@ Tag only after the local and GitHub gates are green:
    - ...
 
    Known limitations:
-   - ...
+   - For direct-coil free-boundary optimization, state whether gradients are
+     fixed accepted-branch, same-branch complete-solve validated, or a promoted
+     adaptive full-loop derivative. Do not imply full adaptive coil-to-Boozer
+     differentiation unless the release candidate includes that specific
+     finite-difference gate.
    EOF
    gh release create vX.Y.Z --repo uwplasma/vmec_jax --title "vmec-jax vX.Y.Z" --notes-file /tmp/vmec_jax_release_notes.md
 
@@ -156,7 +160,11 @@ Do not describe the repository tag as the latest PyPI or conda-forge package
 unless the corresponding package index has been checked.
 
 The release notes should list user-visible changes, validation coverage, known
-limitations, and any optional external validation that was not run.
+limitations, and any optional external validation that was not run. For
+direct-coil free-boundary milestones, the limitations must explicitly separate
+JAX-native direct-coil fields, fixed accepted-branch replay/custom-VJP gates,
+same-branch complete-solve finite-difference evidence, and any still-unclaimed
+adaptive host-controller or Boozer/QS full-loop derivative.
 The next release candidate should cite the latest completed green CI run after
 re-checking the newest ``main`` workflow and the latest passing local coverage
 result from the release-candidate commit at the enforced ``95%`` coverage gate.
