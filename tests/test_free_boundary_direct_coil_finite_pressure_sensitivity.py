@@ -801,6 +801,17 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
             replay_scalar_fns={"missing": lambda _replay, _payload: 0.0},
         )
     with pytest.raises(ValueError, match="accepted traces"):
+        direct_coil_same_branch_controller_scalar_custom_vjp_report(
+            {
+                "objective_values": {"known": {"base": 0.0, "central_fd_directional": 0.0}},
+                "base": {"traces": ()},
+            },
+            base_params={},
+            direction={},
+            scalar_key="known",
+            replay_scalar_fn=lambda _replay, _payload: 0.0,
+        )
+    with pytest.raises(ValueError, match="accepted traces"):
         direct_coil_same_branch_controller_scalars_custom_vjp_report(
             {
                 "objective_values": {"known": {"base": 0.0, "central_fd_directional": 0.0}},
@@ -809,6 +820,22 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
             base_params={},
             direction={},
             replay_scalar_fns={"known": lambda _replay, _payload: 0.0},
+        )
+    with pytest.raises(ValueError, match="replay traces"):
+        direct_coil_same_branch_controller_scalars_custom_vjp_report(
+            {
+                "branch_compatibility": {"same_branch": True},
+                "trace_replay_diagnostics": {},
+                "objective_values": {"known": {"base": 0.0, "central_fd_directional": 0.0}},
+                "base": {
+                    "init": SimpleNamespace(static=None, signgs=1),
+                    "traces": (trace0,),
+                },
+            },
+            base_params={},
+            direction={},
+            replay_scalar_fns={"known": lambda _replay, _payload: 0.0},
+            replay_kwargs={"traces": ()},
         )
 
     bad_preconditioner_shape = dict(trace1)

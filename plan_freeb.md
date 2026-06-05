@@ -12,6 +12,66 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-05 Coverage gate recovery for branch-local replay helpers
+
+Steps taken:
+
+1. Downloaded the latest GitHub Actions coverage artifacts from run
+   `27038912134`, remapped runner paths to the local checkout, and confirmed
+   that the only red CI lane was the combined py3.11 coverage gate.
+2. The combined gate reported exact coverage of `94.99%`, missing the
+   `95.00%` threshold by five covered source lines while all functional,
+   docs, build, and exact free-boundary shards passed.
+3. Added cheap synthetic coverage for two branch-local replay helper guards:
+   the scalar custom-VJP report with a structurally valid complete report but
+   no accepted traces, and the batched scalar report with an explicit empty
+   replay-trace override.
+4. Kept the patch test-only; no solver behavior, adjoint math, or production
+   free-boundary code paths changed.
+
+Results obtained:
+
+1. Ruff passed for `vmec_jax/free_boundary_adjoint.py` and
+   `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`.
+2. The focused synthetic helper test passed:
+   `JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes -q`.
+3. The exact-remaining coverage shard passed locally:
+   `14 passed in 70.54 s`.
+4. A single-test coverage probe confirmed the scalar-report setup branch and
+   empty replay-trace override line are now covered, which should recover more
+   than the five missing source lines from the combined CI gate.
+
+Best next steps:
+
+1. Commit and push the coverage recovery patch.
+2. Watch the next CI run; the expected result is all green, with the combined
+   coverage gate clearing `95.00%`.
+3. Once CI is green, return to the phase-2/phase-3 technical lane: continue
+   accepted-point tape-build reduction and promote the next explicitly
+   fingerprinted complete-loop scalar gate without claiming adaptive branch
+   differentiation.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 97.5%.
+- Single-stage coil-only optimization: 91.9%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 94.8%.
+- CI runtime refactor with preserved coverage/physics gates: 99.9% until the
+  latest coverage recovery push is green.
+- Docs/release hygiene: 98.8%.
+- Overall free-boundary/single-stage plan: 98.6%.
+
 Last updated: 2026-06-05 on `main` with branch-local vector gates,
 `DMerc`/Glasser `D_R` gradient checks, CI runtime trimming, direct-coil
 benchmark policy ablations, Fourier-geometry accepted-vacuum scalar gates,
