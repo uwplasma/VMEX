@@ -9233,3 +9233,61 @@ Best next steps:
 Need from user:
 
 Nothing now.
+
+### 2026-06-05 Direct-Coil QS CI Repair And QS Scalar Report Promotion
+
+Steps taken:
+
+1. Investigated the failed CI run for `167c346` and isolated two regressions:
+   new required QS keyword-only arguments in `summarize_run()` broke older
+   residual/aspect/iota validation tests, and the README exceeded the strict
+   220-line release-hygiene budget.
+2. Restored backward compatibility by giving `summarize_run()` default QS
+   helicity, surface, and grid arguments.
+3. Restored backward compatibility for proxy-objective callers by making
+   `qs_weight` default to zero and only reporting missing scalar terms when
+   their weights are nonzero.
+4. Trimmed the root README direct-coil section back to quick-start length and
+   deferred ESSOS/direct-coil optimization command details to the free-boundary
+   docs page.
+5. Promoted `qs_total` into the optional same-branch branch-local vector report
+   for the deterministic direct-coil QS optimization example.
+
+Results obtained:
+
+1. README line count is now 208 lines, below the 220-line hygiene gate.
+2. `ruff` passed for the modified optimization example and smoke test.
+3. `tests/test_free_boundary_qs_coil_optimization_smoke.py` passed:
+   `8 passed, 1 xfailed`.
+4. The three CI-failing direct-coil finite-pressure sensitivity tests passed
+   locally in `16.97 s`.
+5. The same-branch report now includes exact-vs-complete-FD directional data
+   for the physically relevant `qs_total` scalar in addition to aspect,
+   boundary moment, and accepted Bnormal RMS.
+
+Best next steps:
+
+1. Run a broader local gate including Sphinx and free-boundary provider tests.
+2. Commit and push the CI repair and QS scalar report promotion.
+3. Watch CI for py3.10/py3.11/py3.12 fast-test and coverage shards.
+4. Continue the production full-loop adjoint seam only after current `main`
+   returns to green.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9997% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.2%.
+- Single-stage coil-only optimization: 88.5% after `qs_total` branch-local
+  report promotion.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 92.0%.
+- CI runtime refactor with preserved coverage/physics gates: 100% on latest
+  green baseline, current head repair locally validated and pending CI.
+- Docs/release hygiene: 98.0% after README line-budget repair.

@@ -376,12 +376,13 @@ def summarize_run(
     wall_s: float,
     target_aspect: float,
     target_iota: float,
-    helicity_m: int,
-    helicity_n: int,
-    qs_surfaces: list[float],
-    qs_ntheta: int,
-    qs_nphi: int,
+    helicity_m: int = 1,
+    helicity_n: int = 0,
+    qs_surfaces: list[float] | None = None,
+    qs_ntheta: int = 31,
+    qs_nphi: int = 32,
 ) -> dict[str, Any]:
+    qs_surfaces = [0.25, 0.5, 0.75] if qs_surfaces is None else qs_surfaces
     diag = getattr(run.result, "diagnostics", {}) if run.result is not None else {}
     freeb = diag.get("free_boundary", {}) if isinstance(diag, dict) else {}
     nestor = freeb.get("last_nestor_diagnostics", {}) if isinstance(freeb, dict) else {}
@@ -462,9 +463,9 @@ def objective_from_summary(
     summary: dict[str, Any],
     *,
     residual_weight: float,
-    qs_weight: float,
     aspect_weight: float,
     iota_weight: float,
+    qs_weight: float = 0.0,
 ) -> float:
     return float(
         objective_terms_from_summary(
@@ -481,9 +482,9 @@ def objective_terms_from_summary(
     summary: dict[str, Any],
     *,
     residual_weight: float,
-    qs_weight: float,
     aspect_weight: float,
     iota_weight: float,
+    qs_weight: float = 0.0,
 ) -> dict[str, Any]:
     residual = float(summary.get("residual_proxy") or 0.0)
     qs_total = summary.get("qs_total")
@@ -499,11 +500,11 @@ def objective_terms_from_summary(
     aspect_term = float(aspect_weight) * aspect_penalty
     iota_term = float(iota_weight) * iota_penalty
     missing_terms = []
-    if qs_total is None:
+    if qs_total is None and float(qs_weight) != 0.0:
         missing_terms.append("qs_total")
-    if aspect is None:
+    if aspect is None and float(aspect_weight) != 0.0:
         missing_terms.append("aspect")
-    if mean_iota is None:
+    if mean_iota is None and float(iota_weight) != 0.0:
         missing_terms.append("mean_iota")
     return {
         "total": float(residual_term + qs_term + aspect_term + iota_term),
@@ -625,6 +626,7 @@ def write_same_branch_validation_report(
         current_step=float(args.current_step),
         dof_step=float(args.dof_step),
     )
+    qs_surfaces = parse_float_list(str(args.qs_surfaces))
 
     def lcfs_boundary_moment(state: Any, static: Any) -> Any:
         geometry = free_boundary_boundary_geometry_jax(state, static)
@@ -652,6 +654,20 @@ def write_same_branch_validation_report(
         denom = jnp.maximum(jnp.sum(weights), jnp.asarray(1.0, dtype=bnormal.dtype))
         return jnp.sum(weights * bnormal) / denom
 
+    def qs_total_from_state(state: Any, static: Any, indata: Any, signgs: int) -> Any:
+        qs = quasisymmetry_ratio_residual_from_state(
+            state=state,
+            static=static,
+            indata=indata,
+            signgs=int(signgs),
+            surfaces=qs_surfaces,
+            helicity_m=int(args.helicity_m),
+            helicity_n=int(args.helicity_n),
+            ntheta=int(args.qs_ntheta),
+            nphi=int(args.qs_nphi),
+        )
+        return qs["total"]
+
     def params_for(scale: float) -> CoilFieldParams:
         return apply_coil_variables(
             base_params,
@@ -678,7 +694,7 @@ def write_same_branch_validation_report(
             target_iota=float(args.target_iota),
             helicity_m=int(args.helicity_m),
             helicity_n=int(args.helicity_n),
-            qs_surfaces=parse_float_list(str(args.qs_surfaces)),
+            qs_surfaces=qs_surfaces,
             qs_ntheta=int(args.qs_ntheta),
             qs_nphi=int(args.qs_nphi),
         )
@@ -765,10 +781,11 @@ def write_same_branch_validation_report(
     if (
         "base" in report
         and "aspect" in report["objective_values"]
+        and "qs_total" in report["objective_values"]
         and "lcfs_boundary_moment" in report["objective_values"]
         and "accepted_bnormal_rms" in report["objective_values"]
     ):
-        scalar_keys = ("aspect", "lcfs_boundary_moment", "accepted_bnormal_rms")
+        scalar_keys = ("aspect", "qs_total", "lcfs_boundary_moment", "accepted_bnormal_rms")
         vector = direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             params=base_params,
             complete_payload=report["base"],
@@ -782,6 +799,16 @@ def write_same_branch_validation_report(
                         )
                     )
                 ),
+                "qs_total": float(
+                    np.asarray(
+                        qs_total_from_state(
+                            payload["result"].state,
+                            payload["init"].static,
+                            payload["init"].indata,
+                            payload["init"].signgs,
+                        )
+                    )
+                ),
                 "lcfs_boundary_moment": float(
                     np.asarray(lcfs_boundary_moment(payload["result"].state, payload["init"].static))
                 ),
@@ -791,6 +818,12 @@ def write_same_branch_validation_report(
                 "aspect": lambda replay, payload: equilibrium_aspect_ratio_from_state(
                     state=replay["state"],
                     static=payload["init"].static,
+                ),
+                "qs_total": lambda replay, payload: qs_total_from_state(
+                    replay["state"],
+                    payload["init"].static,
+                    payload["init"].indata,
+                    payload["init"].signgs,
                 ),
                 "lcfs_boundary_moment": lambda replay, payload: lcfs_boundary_moment(
                     replay["state"],
