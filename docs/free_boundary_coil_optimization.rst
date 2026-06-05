@@ -1567,11 +1567,12 @@ evidence. The default gates are CI-safe and cover:
   for one coil current, one Fourier geometry coefficient, and a mixed
   stellsym/``LASYM`` direction, with branch-fingerprint checks that reject
   adaptive controller changes.
-- branch-local production-forward scalar/vector replay gates. The current-only
-  representative covers aspect ratio plus accepted ``Bnormal`` and ``Bsqvac``
-  RMS scalars; the Fourier-geometry representative covers aspect ratio plus an
-  LCFS boundary moment. These validate fixed accepted-branch replay, not a
-  general derivative of adaptive ``run_free_boundary`` branch selection.
+- branch-local production-forward scalar/vector replay gates. Both the
+  current-only and Fourier-geometry representatives cover aspect ratio plus
+  accepted ``Bnormal`` and ``Bsqvac`` RMS scalars; the Fourier-geometry
+  representative also covers an LCFS boundary moment. These validate fixed
+  accepted-branch replay, not a general derivative of adaptive
+  ``run_free_boundary`` branch selection.
 
 Optional evidence includes ESSOS-backed full finite-pressure response tests,
 VMEC2000 executable comparisons, and ``RUN_FULL=1`` complete-solve finite

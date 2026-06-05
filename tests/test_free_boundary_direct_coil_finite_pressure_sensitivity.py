@@ -1522,6 +1522,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     check_boundary_moment_scalar: bool = False,
     check_accepted_bnormal_rms_scalar: bool = False,
     check_accepted_bsqvac_rms_scalar: bool = False,
+    require_positive_accepted_vacuum_scalar_slope: bool = True,
     check_production_branch_local_scalar: bool = False,
 ) -> None:
     pytest.importorskip("jax")
@@ -1594,6 +1595,17 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         weights = accepted * active
         denom = jnp.maximum(jnp.sum(weights), jnp.asarray(1.0, dtype=weights.dtype))
         return jnp.sum(weights * jnp.asarray(replay["history"]["bsqvac_rms"])) / denom
+
+    def assert_accepted_vacuum_scalar_fd(values: dict[str, float]) -> None:
+        assert values["base"] > 0.0
+        assert np.isfinite(float(values["plus"]))
+        assert np.isfinite(float(values["minus"]))
+        assert np.isfinite(float(values["central_fd_directional"]))
+        if require_positive_accepted_vacuum_scalar_slope:
+            assert values["plus"] > values["minus"]
+            assert values["central_fd_directional"] > 0.0
+        else:
+            assert abs(float(values["central_fd_directional"])) > 1.0e-12
 
     eps = 1.0e-4
     complete_report = direct_coil_same_branch_complete_solve_fd_report(
@@ -2033,9 +2045,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert moment_report["base_abs_delta"] < 2.0e-3
         if check_accepted_bsqvac_rms_scalar:
             bsqvac_values = complete_report["objective_values"]["accepted_bsqvac_rms"]
-            assert bsqvac_values["base"] > 0.0
-            assert bsqvac_values["plus"] > bsqvac_values["minus"]
-            assert bsqvac_values["central_fd_directional"] > 0.0
+            assert_accepted_vacuum_scalar_fd(bsqvac_values)
             bsqvac_report = scalars_report["scalar_reports"]["accepted_bsqvac_rms"]
             assert bsqvac_report["passed"], bsqvac_report
             assert bsqvac_report["same_branch"] is True
@@ -2043,9 +2053,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert bsqvac_report["base_abs_delta"] < 2.0e-3
         if check_accepted_bnormal_rms_scalar:
             bnormal_values = complete_report["objective_values"]["accepted_bnormal_rms"]
-            assert bnormal_values["base"] > 0.0
-            assert bnormal_values["plus"] > bnormal_values["minus"]
-            assert bnormal_values["central_fd_directional"] > 0.0
+            assert_accepted_vacuum_scalar_fd(bnormal_values)
             bnormal_report = scalars_report["scalar_reports"]["accepted_bnormal_rms"]
             assert bnormal_report["passed"], bnormal_report
             assert bnormal_report["same_branch"] is True
@@ -2072,9 +2080,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         assert moment_report["base_abs_delta"] < 2.0e-3
     elif check_accepted_bsqvac_rms_scalar:
         bsqvac_values = complete_report["objective_values"]["accepted_bsqvac_rms"]
-        assert bsqvac_values["base"] > 0.0
-        assert bsqvac_values["plus"] > bsqvac_values["minus"]
-        assert bsqvac_values["central_fd_directional"] > 0.0
+        assert_accepted_vacuum_scalar_fd(bsqvac_values)
         bsqvac_report = direct_coil_same_branch_controller_scalar_custom_vjp_report(
             complete_report,
             base_params,
@@ -2092,9 +2098,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         assert bsqvac_report["base_abs_delta"] < 2.0e-3
     elif check_accepted_bnormal_rms_scalar:
         bnormal_values = complete_report["objective_values"]["accepted_bnormal_rms"]
-        assert bnormal_values["base"] > 0.0
-        assert bnormal_values["plus"] > bnormal_values["minus"]
-        assert bnormal_values["central_fd_directional"] > 0.0
+        assert_accepted_vacuum_scalar_fd(bnormal_values)
         bnormal_report = direct_coil_same_branch_controller_scalar_custom_vjp_report(
             complete_report,
             base_params,
@@ -2204,6 +2208,9 @@ def test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_
         check_segmented_controller=False,
         check_aspect_scalar=True,
         check_boundary_moment_scalar=True,
+        check_accepted_bnormal_rms_scalar=True,
+        check_accepted_bsqvac_rms_scalar=True,
+        require_positive_accepted_vacuum_scalar_slope=False,
         check_production_branch_local_scalar=True,
     )
 

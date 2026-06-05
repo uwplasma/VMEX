@@ -142,6 +142,59 @@ Completion:
 - Docs/release hygiene: 96.8%.
 - Overall free-boundary/single-stage plan: 97.8%.
 
+### 2026-06-05 Fourier geometry accepted-vacuum scalar gate
+
+Steps taken:
+
+1. Used the validation subagent recommendation to extend the existing
+   Fourier-geometry same-branch complete-solve test instead of adding another
+   complete-solve triplet.
+2. Enabled accepted ``Bnormal`` RMS and accepted ``Bsqvac`` RMS scalar checks
+   in the Fourier-geometry branch-local custom-VJP gate.
+3. Kept the current-only gate's positive-slope guard, but allowed the
+   Fourier-geometry perturbation to use a finite nonzero signed slope because
+   moving a coil-shape Fourier coefficient can either increase or decrease
+   the accepted vacuum scalar.
+
+Results obtained:
+
+1. Fourier-geometry same-branch complete-solve gate with aspect, LCFS boundary
+   moment, accepted ``Bnormal`` RMS, and accepted ``Bsqvac`` RMS passed locally:
+   `1 passed in 45.43 s`.
+2. Current-only same-branch gate still passed with the positive accepted-vacuum
+   scalar slope guard: `1 passed in 42.53 s`.
+3. This closes the highest-value normal-CI free-boundary validation gap without
+   adding another complete-solve central-FD triplet.
+
+Best next steps:
+
+1. Commit and push the strengthened Fourier-geometry accepted-vacuum scalar
+   gate.
+2. Watch the exact same-branch shard in CI because this test is already in
+   that shard and should not require workflow changes.
+3. Continue the adaptive full-loop seam work only after this stronger
+   branch-local physical scalar evidence remains green.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9995% for branch-local
+  production-forward scalar/vector gradients; adaptive branch differentiation
+  remains explicitly unclaimed.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 97.2%.
+- Single-stage coil-only optimization: 86.5%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 90.0%.
+- CI runtime and coverage hygiene: 100% locally validated, pending CI for the
+  current pushed head.
+- Docs/release hygiene: 97.0%.
+- Overall free-boundary/single-stage plan: 98.0%.
+
 ### 2026-06-05 Boundary-projection parity and raw solve performance triage
 
 Steps taken:
