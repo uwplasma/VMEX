@@ -82,6 +82,60 @@ Need from user:
 
 Nothing now.
 
+### 2026-06-05 Direct-coil tridiagonal policy ablations
+
+Steps taken:
+
+1. Audited the active direct-coil free-boundary force-signature precompile
+   experiment suggested by the performance subagent.
+2. Benchmarked the experiment locally and on `ssh office`.
+3. Reverted the solver-default precompile patch because the office GPU warm
+   solve regressed and the JAX cache-miss trace still showed an uncovered
+   active force signature.
+4. Added benchmark-only policy rows for tridiagonal precompute and lax
+   tridiagonal solve variants to the direct-coil CPU/GPU matrix runner.
+
+Results obtained:
+
+1. Active force precompile local CPU trace: cold/compile `1.32 s`, warm
+   `0.032 s` for the tiny direct-coil solve.
+2. Active force precompile office GPU trace: cold/compile `8.98 s`, warm
+   `0.211 s`, worse than the previous JIT-forces warm baseline near
+   `0.183 s`.
+3. Office GPU tridiagonal ablations before promotion:
+   `VMEC_JAX_TRIDI_PRECOMPUTE=1` was neutral at about `0.185 s` warm,
+   while `VMEC_JAX_TRIDI_SOLVE=1` was worse at about `0.225 s` warm.
+4. The new matrix rows are benchmark-only evidence and do not change solver
+   defaults.
+
+Best next steps:
+
+1. Commit and push the benchmark matrix extension after local ruff/pytest.
+2. Re-run the direct-coil matrix with `--include-policy-ablation` on office
+   after CI is green to keep the performance table current.
+3. Target the next real performance seam: reduce first-call accepted-point
+   tape/forward-force setup and avoid additional compile variants unless they
+   improve both cold and warm GPU timings.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999% for branch-local
+  production-forward scalar/vector gradients; adaptive branch differentiation
+  remains explicitly unclaimed.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 96.8%.
+- Single-stage coil-only optimization: 86.5%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 90.0%.
+- CI runtime and coverage hygiene: 100% locally validated, pending the
+  current post-push CI run.
+- Docs/release hygiene: 96.8%.
+
 Completion:
 
 - Direct-coil/free-boundary phase 1: 100%.

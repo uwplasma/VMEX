@@ -26,6 +26,8 @@ POLICY_ABLATION_ENVS = {
     "no_residual_metrics": {"VMEC_JAX_HOST_RESIDUAL_METRICS": "0"},
     "no_fsq1_norms": {"VMEC_JAX_HOST_FSQ1_NORMS": "0"},
     "no_profile_setup": {"VMEC_JAX_HOST_PROFILE_SETUP": "0"},
+    "tridi_precompute": {"VMEC_JAX_TRIDI_PRECOMPUTE": "1"},
+    "tridi_lax": {"VMEC_JAX_TRIDI_SOLVE": "1"},
     "host_policies_off": {
         "VMEC_JAX_HOST_RESIDUAL_METRICS": "0",
         "VMEC_JAX_HOST_FSQ1_NORMS": "0",
@@ -61,8 +63,9 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Add direct-solve JIT-forces rows that disable host residual metrics, fsq1 norms, "
-            "profile setup, and all three together. This is benchmark-only evidence for "
-            "CPU/GPU control-path overhead and does not change solver defaults."
+            "profile setup, force tridiagonal precompute/lax-solve variants, and disable all "
+            "host policies together. This is benchmark-only evidence for CPU/GPU control and "
+            "preconditioner overhead and does not change solver defaults."
         ),
     )
     p.add_argument(
