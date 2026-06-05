@@ -487,6 +487,17 @@ def _free_boundary_summary(run: Any) -> dict[str, Any]:
         if isinstance(last_diag, dict) and last_diag:
             out["last_nestor_diagnostics"] = last_diag
     for key in (
+        "final_fsqr",
+        "final_fsqz",
+        "final_fsql",
+        "pre_update_final_fsqr",
+        "pre_update_final_fsqz",
+        "pre_update_final_fsql",
+        "final_residual_recomputed_on_accepted_state",
+    ):
+        if isinstance(diag, dict) and key in diag:
+            out[key] = diag[key]
+    for key in (
         "freeb_full_update_history",
         "freeb_nestor_reused_history",
         "freeb_nestor_solve_time_history",
@@ -524,6 +535,89 @@ def _solver_timing_summary(run: Any) -> dict[str, Any]:
     out["active_nestor_timing_summary"] = _active_nestor_timing_summary(diag)
     out["trial_nestor_timing_summary"] = _trial_nestor_timing_summary(diag)
     return out
+
+
+def _final_recompute_guard(run: Any, solver_timing: dict[str, Any]) -> dict[str, Any]:
+    """Return benchmark-only evidence for future final-recompute cache tests.
+
+    This does not declare any final recompute skip safe.  It records the
+    accepted-state residual deltas and timing cost that a future opt-in cache
+    must match before changing production defaults.
+    """
+
+    diag = getattr(run.result, "diagnostics", {}) if run.result is not None else {}
+    freeb = diag.get("free_boundary", {}) if isinstance(diag, dict) else {}
+    timing = solver_timing.get("timing", {}) if isinstance(solver_timing, dict) else {}
+
+    final = {
+        "fsqr": _finite_float(diag.get("final_fsqr")) if isinstance(diag, dict) else None,
+        "fsqz": _finite_float(diag.get("final_fsqz")) if isinstance(diag, dict) else None,
+        "fsql": _finite_float(diag.get("final_fsql")) if isinstance(diag, dict) else None,
+    }
+    pre_update = {
+        "fsqr": _finite_float(diag.get("pre_update_final_fsqr")) if isinstance(diag, dict) else None,
+        "fsqz": _finite_float(diag.get("pre_update_final_fsqz")) if isinstance(diag, dict) else None,
+        "fsql": _finite_float(diag.get("pre_update_final_fsql")) if isinstance(diag, dict) else None,
+    }
+    abs_delta: dict[str, float | None] = {}
+    for key in final:
+        abs_delta[key] = None if final[key] is None or pre_update[key] is None else abs(final[key] - pre_update[key])
+    finite_deltas = [float(value) for value in abs_delta.values() if value is not None]
+    residual_max_abs_delta = max(finite_deltas) if finite_deltas else None
+
+    final_nestor_diag = freeb.get("last_nestor_diagnostics") if isinstance(freeb, dict) else {}
+    last_active_bnormal = _last_float(diag.get("freeb_nestor_bnormal_rms_history")) if isinstance(diag, dict) else None
+    last_active_bsqvac = _last_float(diag.get("freeb_nestor_bsqvac_rms_history")) if isinstance(diag, dict) else None
+    final_bnormal = (
+        _finite_float(final_nestor_diag.get("bnormal_rms")) if isinstance(final_nestor_diag, dict) else None
+    )
+    final_bsqvac = _finite_float(final_nestor_diag.get("bsqvac_rms")) if isinstance(final_nestor_diag, dict) else None
+
+    finalize_nestor = _finite_float(timing.get("finalize_nestor_recompute_s")) if isinstance(timing, dict) else None
+    finalize_residual = _finite_float(timing.get("finalize_residual_recompute_s")) if isinstance(timing, dict) else None
+    finalize_get = _finite_float(timing.get("finalize_residual_device_get_s")) if isinstance(timing, dict) else None
+    timing_parts = [value for value in (finalize_nestor, finalize_residual, finalize_get) if value is not None]
+    measured_cost = float(sum(timing_parts)) if timing_parts else None
+
+    return {
+        "contract": "benchmark-only final recompute guard",
+        "safe_to_skip_final_recompute": False,
+        "cache_validation_required": True,
+        "final_nestor_recompute_attempted": bool(
+            freeb.get("final_nestor_recompute_attempted", False) if isinstance(freeb, dict) else False
+        ),
+        "final_nestor_recompute_failed": bool(
+            freeb.get("final_nestor_recompute_failed", False) if isinstance(freeb, dict) else False
+        ),
+        "final_residual_recomputed_on_accepted_state": bool(
+            diag.get("final_residual_recomputed_on_accepted_state", False) if isinstance(diag, dict) else False
+        ),
+        "residuals": {
+            "final": final,
+            "pre_update": pre_update,
+            "abs_delta": abs_delta,
+            "max_abs_delta": residual_max_abs_delta,
+            "changed_from_pre_update": bool(residual_max_abs_delta is not None and residual_max_abs_delta > 0.0),
+        },
+        "vacuum_metric_delta": {
+            "final_bnormal_rms": final_bnormal,
+            "last_active_bnormal_rms": last_active_bnormal,
+            "bnormal_abs_delta": None
+            if final_bnormal is None or last_active_bnormal is None
+            else abs(final_bnormal - last_active_bnormal),
+            "final_bsqvac_rms": final_bsqvac,
+            "last_active_bsqvac_rms": last_active_bsqvac,
+            "bsqvac_abs_delta": None
+            if final_bsqvac is None or last_active_bsqvac is None
+            else abs(final_bsqvac - last_active_bsqvac),
+        },
+        "measured_cost_s": {
+            "finalize_nestor_recompute": finalize_nestor,
+            "finalize_residual_recompute": finalize_residual,
+            "finalize_residual_device_get": finalize_get,
+            "total": measured_cost,
+        },
+    }
 
 
 def _circle_coil_params(
@@ -722,6 +816,7 @@ def _bench_case(label: str, input_path: Path, params: Any, args: argparse.Namesp
         "trial_nestor_timing_improvement": _trial_nestor_timing_improvement(cold_solver_timing, warm_solver_timing),
         "fsq": _fsq_summary(warm_run),
         "free_boundary": _free_boundary_summary(warm_run),
+        "final_recompute_guard": _final_recompute_guard(warm_run, warm_solver_timing),
     }
 
 

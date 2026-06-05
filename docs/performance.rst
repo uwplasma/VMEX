@@ -3546,6 +3546,16 @@ precompute/lax-solve variants. ``VMEC_JAX_HOST_RESIDUAL_METRICS=1`` remains
 available as a diagnostic override, but the production target is now reducing
 preconditioner/update/finalization launch overhead.
 
+The same benchmark family now writes a ``final_recompute_guard`` block for
+direct-solve children.  This is deliberately a benchmark-only correctness
+guard, not a solver shortcut: it records final accepted-state residuals,
+pre-update residuals, their maximum absolute delta, final NESTOR metric deltas,
+and the measured finalize recompute cost.  A quick CPU probe after the guard
+was added reported nonzero final/pre-update residual deltas, so final NESTOR
+and final residual recomputes remain required by default.  Any future cached
+finalization path must first make this guard pass with parity evidence before
+changing production behavior.
+
 Historical bundled example runtime/memory matrix (March 2026)
 -------------------------------------------------------------
 

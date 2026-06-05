@@ -1274,7 +1274,12 @@ construction plus GPU preconditioner/setup/finalize launch overhead.
 
 The direct-solve child JSON includes active and trial NESTOR timing summaries:
 sample time, scalar-potential solve time, reuse counts, failed trial counts,
-and the final recompute sampler/solver timings. The matrix runner also enables
+and the final recompute sampler/solver timings. It also records a
+``final_recompute_guard`` block for direct-solve children. This block compares
+the final accepted-state residuals against the pre-update final residuals,
+records final-vacuum metric deltas, and keeps ``safe_to_skip_final_recompute``
+false until an explicit cached-finalization path proves parity. The matrix
+runner also enables
 ``VMEC_JAX_TIMING=1`` and ``VMEC_JAX_TIMING_DETAIL=1`` for the direct-solve
 child and records compact cold/warm solve-loop buckets in ``summary.json``:
 force evaluation, preconditioner, update, trace construction, and unattributed

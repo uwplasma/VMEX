@@ -145,6 +145,63 @@ Completion:
 - Docs/release hygiene: 97.0%.
 - Overall free-boundary/single-stage plan: 98.1%.
 
+### 2026-06-05 Benchmark-only final recompute guard
+
+Steps taken:
+
+1. Added residual fields from the solver diagnostics to the child
+   direct-solve benchmark's compact free-boundary summary.
+2. Added a benchmark-only `final_recompute_guard` block to
+   `bench_freeb_direct_coil_solve.py`.  The guard records final accepted-state
+   residuals, pre-update residuals, residual deltas, final-vacuum metric deltas,
+   and measured final NESTOR/residual recompute cost.
+3. Propagated the guard through the matrix summary and CPU/GPU metric path in
+   `bench_freeb_direct_coil_matrix.py`.
+4. Added matrix-unit assertions so the guard remains visible in compact
+   summaries and explicitly keeps `safe_to_skip_final_recompute=false`.
+5. Updated the performance and free-boundary docs to state that final recompute
+   remains correctness-critical until a future cache path proves parity through
+   this guard.
+
+Results obtained:
+
+1. Ruff passed for the touched benchmark scripts and matrix tests.
+2. Matrix benchmark unit tests passed: `14 passed in 0.05 s`.
+3. A real quick CPU matrix passed:
+   `JAX_ENABLE_X64=1 python tools/benchmarks/bench_freeb_direct_coil_matrix.py --quick --out /tmp/vmec_jax_freeb_guard_matrix/summary.json --timeout-s 180`.
+4. The quick CPU matrix serialized the guard.  The direct-solve row reported
+   `safe_to_skip_final_recompute=false`,
+   `residuals.max_abs_delta=0.0272597979193608`, and
+   `measured_cost_s.total=0.006609792006202042`.  The JIT-forces row reported
+   the same residual delta and `measured_cost_s.total=0.004933541989885271`.
+
+Best next steps:
+
+1. Run Sphinx and `git diff --check` after the docs update.
+2. Commit and push the final-recompute guard.
+3. Watch CI for the rejected-slot and final-recompute benchmark commits.
+4. Continue performance work on preconditioner/update/finalization launch
+   overhead, not on unsafe final recompute skipping.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9997%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 97.2%.
+- Single-stage coil-only optimization: 86.5%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 92.0% after adding the final-recompute guard for future
+  safe cache experiments.
+- CI runtime refactor with preserved coverage/physics gates: 100% on the latest
+  pushed baseline.
+- Docs/release hygiene: 97.2%.
+- Overall free-boundary/single-stage plan: 98.2%.
+
 ### 2026-06-05 Direct-coil tridiagonal policy ablations
 
 Steps taken:

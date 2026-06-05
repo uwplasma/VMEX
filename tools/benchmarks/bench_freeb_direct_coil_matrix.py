@@ -258,6 +258,9 @@ def _compact_nestor_snapshot(case: dict[str, Any]) -> dict[str, Any] | None:
         }
     if final_diagnostics:
         out["final_diagnostics"] = final_diagnostics
+    guard = case.get("final_recompute_guard")
+    if isinstance(guard, dict):
+        out["final_recompute_guard"] = guard
     return out
 
 
@@ -408,6 +411,9 @@ def _timing_snapshot(payload: dict[str, Any] | None, *, include_nestor: bool = F
             phase_timing = _compact_phase_timing_snapshot(case)
             if phase_timing:
                 row["phase_timing"] = phase_timing
+            guard = case.get("final_recompute_guard")
+            if isinstance(guard, dict):
+                row["final_recompute_guard"] = guard
         rows.append(row)
     return rows
 
@@ -599,6 +605,12 @@ def _case_metrics(case: dict[str, Any]) -> dict[str, Any]:
         ),
         "final_recompute_sample_s": _finite_float(_nested_value(nestor, ("final_recompute", "sample_time_s"))),
         "final_recompute_solve_s": _finite_float(_nested_value(nestor, ("final_recompute", "solve_time_s"))),
+        "final_recompute_guard_cost_s": _finite_float(
+            _nested_value(case, ("final_recompute_guard", "measured_cost_s", "total"))
+        ),
+        "final_recompute_guard_residual_delta_s": _finite_float(
+            _nested_value(case, ("final_recompute_guard", "residuals", "max_abs_delta"))
+        ),
         "final_external_field_sample_s": _finite_float(
             _nested_value(nestor, ("final_diagnostics", "sample_phase_time_s", "external_field"))
         ),
