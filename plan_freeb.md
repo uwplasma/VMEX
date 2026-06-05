@@ -195,6 +195,57 @@ Completion:
 - Docs/release hygiene: 97.0%.
 - Overall free-boundary/single-stage plan: 98.0%.
 
+### 2026-06-05 Accelerator residual-metric default
+
+Steps taken:
+
+1. Used the direct-coil matrix evidence showing
+   `VMEC_JAX_HOST_RESIDUAL_METRICS=0` was the best GPU JIT-forces row.
+2. Changed `VMEC_JAX_HOST_RESIDUAL_METRICS=auto` to keep primary residual
+   products on device for accelerator solves, materializing only the three
+   final residual scalars. Users can still force the old six-scalar host path
+   with `VMEC_JAX_HOST_RESIDUAL_METRICS=1`.
+3. Added an explicit benchmark-ablation row for
+   `VMEC_JAX_HOST_RESIDUAL_METRICS=1` so future CPU/GPU matrices compare the
+   new default against the old forced host-residual policy.
+
+Results obtained:
+
+1. Office CUDA A/B benchmark for the tiny direct-coil JIT-forces solve:
+   new default `auto` warmed at `0.175 s`; forced host residual metrics warmed
+   at `0.209 s`.
+2. Local CPU benchmark remained on the CPU path and completed the same tiny
+   solve at `0.032 s` warm.
+3. This is a production default change only for non-traced accelerator solves;
+   traced/AD paths and explicit user overrides remain unchanged.
+
+Best next steps:
+
+1. Commit and push the residual-metric default patch after local tests and
+   docs pass.
+2. Re-run the office policy matrix after CI is green so the benchmark summary
+   includes the new forced-host row.
+3. Continue with preconditioner/update/finalization staging; residual metrics
+   are no longer the dominant promoted default issue.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9995%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 97.2%.
+- Single-stage coil-only optimization: 86.5%.
+- Robust coil perturbation optimization: 70%.
+- CPU/GPU performance: 91.5%.
+- CI runtime and coverage hygiene: 100% locally validated, pending CI for the
+  current pushed head.
+- Docs/release hygiene: 97.0%.
+- Overall free-boundary/single-stage plan: 98.1%.
+
 ### 2026-06-05 Boundary-projection parity and raw solve performance triage
 
 Steps taken:

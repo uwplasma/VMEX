@@ -3446,17 +3446,13 @@ The next promoted accelerator-forward policy stages the preconditioned
 ``fsq1`` norm reductions on the host for non-traced accelerator solves:
 ``VMEC_JAX_HOST_FSQ1_NORMS=auto`` (``0`` disables, ``1`` forces).  The policy
 is disabled for traced/AD solves, so exact-gradient paths keep the JAX-native
-reduction.  A matched ``office`` rerun with
-``VMEC_JAX_HOST_RESIDUAL_METRICS=auto`` also enabled reported the tiny
-``--jit-forces`` row at ``0.0516 s`` warm on CPU and ``0.1637 s`` warm on CUDA
-(``3.17x`` GPU/CPU).  The accepted-control ``fsq1`` bucket dropped from about
-``12.9 ms`` to ``1.85 ms`` on CUDA, with the ``fsq1`` preconditioned-norm
-sub-bucket dropping to ``1.81 ms``.  The remaining named CUDA buckets are now
-residual scalar synchronization (``20.0 ms``), setup/profile work
-(``22.6 ms``), and preconditioner dispatch/application (``10.6 ms`` /
-``9.4 ms``).  This moves the next real performance target away from the
-accepted-control ``fsq1`` path and toward residual metric staging plus
-preconditioner dispatch fusion.
+reduction. Later ``office`` policy-ablation runs showed that host-staging the
+primary residual metrics was not robustly beneficial: the leaner device-product
+path measured ``0.181 s`` warm on CUDA versus ``0.224 s`` for the old
+host-residual default in the tiny direct-coil JIT-forces row. Therefore
+``VMEC_JAX_HOST_RESIDUAL_METRICS=auto`` now keeps residual products on device
+and only materializes the three residual scalars; set the variable to ``1`` to
+force the older six-scalar host-staging path for diagnostics.
 
 The production-like timing-light row, which disables detailed timing
 synchronization, moved in the same direction: the tiny ``--jit-forces`` direct
@@ -3540,6 +3536,15 @@ accepted-control scalar work (``4.09x``), and residual-metric synchronization
 performance target is therefore not Biot-Savart or force assembly; it is
 structural staging/fusion of the preconditioner apply and residual/control
 scalar synchronization.
+
+A 2026-06-05 follow-up policy-ablation matrix kept the same conclusion but
+changed one default: host-staged residual metrics are no longer the accelerator
+``auto`` path. The tiny direct-coil JIT-forces row measured ``0.224 s`` warm
+on CUDA with the old host-residual policy, ``0.181 s`` when residual products
+were kept on device, and ``0.250 s``/``0.230 s`` for the tridiagonal
+precompute/lax-solve variants. ``VMEC_JAX_HOST_RESIDUAL_METRICS=1`` remains
+available as a diagnostic override, but the production target is now reducing
+preconditioner/update/finalization launch overhead.
 
 Historical bundled example runtime/memory matrix (March 2026)
 -------------------------------------------------------------

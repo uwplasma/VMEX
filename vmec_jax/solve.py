@@ -5546,7 +5546,7 @@ def solve_fixed_boundary_residual_iter(
         host_fsq1_norms_on_accelerator = host_fsq1_norms_env not in ("", "0", "false", "no", "off")
     host_residual_metrics_env = os.getenv("VMEC_JAX_HOST_RESIDUAL_METRICS", "auto").strip().lower()
     if host_residual_metrics_env == "auto":
-        host_residual_metrics_on_accelerator = jax.default_backend() != "cpu"
+        host_residual_metrics_on_accelerator = False
     else:
         host_residual_metrics_on_accelerator = host_residual_metrics_env not in ("", "0", "false", "no", "off")
     adjoint_trace = bool(adjoint_trace)

@@ -1238,16 +1238,15 @@ the same performance conclusion: the tiny direct-coil ``--jit-forces`` row was
 itself was still near parity.  The remaining work is setup/control staging, not
 Biot-Savart kernel math.
 
-The host-profile setup path is now controlled by
+The host-profile setup path is controlled by
 ``VMEC_JAX_HOST_PROFILE_SETUP``.  With the default ``auto`` policy, the latest
-office CUDA matrix improved the tiny ``--jit-forces`` direct-coil row, and the
-follow-up accelerator-forward policies now default
-``VMEC_JAX_HOST_FSQ1_NORMS=auto`` and ``VMEC_JAX_HOST_RESIDUAL_METRICS=auto``
-for non-traced solves.  The detailed timing row measured ``0.1637 s`` warm on
-CUDA versus ``0.0516 s`` on CPU, with accepted-control ``fsq1`` reduced from
-about ``12.9 ms`` to ``1.85 ms``.  The timing-light row, with detailed timing
-synchronization disabled, measured ``0.1857 s`` warm on CUDA versus ``0.0528 s``
-on CPU.  Residual scalar staging and preconditioner dispatch are the next
+office CUDA matrix keeps host ``fsq1`` norms enabled but leaves primary
+residual products on device.  The direct-coil JIT-forces row measured
+``0.224 s`` warm on CUDA with the old host-residual policy and ``0.181 s``
+when residual products were kept on device.  The matrix also tested
+``VMEC_JAX_TRIDI_PRECOMPUTE=1`` and ``VMEC_JAX_TRIDI_SOLVE=1``; both were
+slower than the default on the tiny direct-coil GPU row.  Preconditioner
+dispatch/application and cold accepted-point force setup remain the next
 production GPU targets.
 
 The same benchmark pass tested existing opt-in knobs and did not promote them:

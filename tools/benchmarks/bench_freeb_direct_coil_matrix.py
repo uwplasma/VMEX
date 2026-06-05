@@ -23,6 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT = REPO_ROOT / "results" / "bench_freeb_direct_coil_matrix" / "summary.json"
 BADJAC_PROBE0_ENV = {"VMEC_JAX_BADJAC_INITIAL_STATE_PROBE_ITERS": "0"}
 POLICY_ABLATION_ENVS = {
+    "host_residual_metrics": {"VMEC_JAX_HOST_RESIDUAL_METRICS": "1"},
     "no_residual_metrics": {"VMEC_JAX_HOST_RESIDUAL_METRICS": "0"},
     "no_fsq1_norms": {"VMEC_JAX_HOST_FSQ1_NORMS": "0"},
     "no_profile_setup": {"VMEC_JAX_HOST_PROFILE_SETUP": "0"},
@@ -62,10 +63,10 @@ def _parser() -> argparse.ArgumentParser:
         "--include-policy-ablation",
         action="store_true",
         help=(
-            "Add direct-solve JIT-forces rows that disable host residual metrics, fsq1 norms, "
-            "profile setup, force tridiagonal precompute/lax-solve variants, and disable all "
-            "host policies together. This is benchmark-only evidence for CPU/GPU control and "
-            "preconditioner overhead and does not change solver defaults."
+            "Add direct-solve JIT-forces rows that force/disable host residual metrics, disable "
+            "host fsq1 norms/profile setup, force tridiagonal precompute/lax-solve variants, "
+            "and disable all host policies together. This is benchmark-only evidence for "
+            "CPU/GPU control and preconditioner overhead and does not change solver defaults."
         ),
     )
     p.add_argument(
