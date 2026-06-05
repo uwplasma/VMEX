@@ -135,6 +135,32 @@ python examples/free_boundary_direct_coils_forward.py \
   --outdir results/free_boundary_direct_coils_forward
 ```
 
+With ESSOS coils, the direct path uses `MGRID_FILE='DIRECT_COILS'` and never
+writes or reads an `mgrid`:
+
+```bash
+export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
+export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
+PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
+  python examples/free_boundary_essos_direct_forward.py \
+  --max-iter 10 \
+  --outdir results/free_boundary_essos_direct_forward
+```
+
+For a deterministic single-stage coil-only QS validation run, optimize direct
+coil currents/Fourier coefficients while the plasma boundary is recomputed by
+`run_free_boundary` at every objective evaluation:
+
+```bash
+python examples/optimization/free_boundary_QS_coil_optimization.py \
+  --smoke \
+  --provider circle \
+  --helicity-m 1 \
+  --helicity-n 0 \
+  --max-evals 1 \
+  --outdir results/free_boundary_QS_coil_optimization_circle_smoke
+```
+
 With ESSOS on `PYTHONPATH`, `examples/free_boundary_essos_coils_beta_scan.py`
 runs finite-pressure coil beta scans with the SIMSOPT/Landreman-style
 `e*(ne*Te+ni*Ti)` pressure profile. Use `--resume-existing` for completed

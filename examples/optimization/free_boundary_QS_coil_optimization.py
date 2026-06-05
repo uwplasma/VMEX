@@ -1,20 +1,23 @@
 #!/usr/bin/env python
-"""Phase-1 smoke scaffold for free-boundary coil-only optimization.
+"""Direct-coil free-boundary coil-only quasisymmetry optimization.
 
 This is intentionally *not* a production QS optimization.  The only optimizer
 variables are direct-coil currents and selected direct-coil Fourier dofs.  The
 plasma boundary coefficients from the VMEC input deck are never included in the
 optimization vector.
 
-The phase-1 objective is deliberately cheap:
+The validation-scale objective is deliberately transparent:
 
 * VMEC residual from a tiny direct-coil free-boundary solve,
+* VMEC-state quasisymmetry-ratio residual,
 * aspect-ratio target,
 * mean-iota target.
 
-Phase-2 note: replace or augment this proxy with Boozer/QS residuals once that
-path is cheap enough for this single-stage free-boundary coil loop and complete
-full-loop finite-difference checks pass.
+The QS residual is evaluated from the accepted VMEC state, not from a
+full coil-to-Boozer exact adjoint.  The optional same-branch report writes the
+current complete-solve finite-difference and fixed-accepted-branch derivative
+evidence without claiming differentiation through adaptive host branch
+selection.
 
 Run a minimal smoke from the repository root:
 
@@ -60,12 +63,7 @@ from vmec_jax.external_fields import CoilFieldParams, from_essos_coils
 from vmec_jax.external_fields.coils_jax import coil_current_norm, coil_lengths
 from vmec_jax.namelist import read_indata, write_indata
 from vmec_jax.profiles import pressure_profile_to_vmec_am, standard_finite_beta_profiles
-from vmec_jax.robust_coils import (
-    CoilPerturbationSample,
-    aggregate_risk,
-    perturb_coil_params,
-    sample_coil_perturbations,
-)
+from vmec_jax.quasisymmetry import quasisymmetry_ratio_residual_from_state
 from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state
 
 
@@ -74,10 +72,9 @@ DEFAULT_INPUT = REPO_ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lo
 DEFAULT_OUTDIR = REPO_ROOT / "results" / "free_boundary_QS_coil_optimization"
 DEFAULT_ESSOS_COIL_JSON = "ESSOS_biot_savart_LandremanPaulQA.json"
 DEFAULT_FREE_BOUNDARY_PHIEDGE = -0.025
-WP11_LIMITATIONS = [
-    "Phase-1 objective is a VMEC residual/aspect/iota proxy, not a Boozer/QS objective.",
+SINGLE_STAGE_LIMITATIONS = [
+    "The QS term is a VMEC-state quasisymmetry-ratio residual, not a Boozer-space exact-adjoint objective.",
     "Production full-loop direct-coil free-boundary adjoints are not promoted yet.",
-    "Robust runs multiply full free-boundary solves in a Python loop and are intended for small validation cases.",
     "ESSOS and VMEC2000 generated-mgrid comparisons remain optional external-asset diagnostics.",
 ]
 
@@ -339,6 +336,16 @@ def array_history(value: Any) -> list[float]:
         return []
 
 
+def parse_float_list(text: str) -> list[float]:
+    """Parse comma/space-separated floats from a small CLI option."""
+
+    cleaned = str(text).replace(",", " ")
+    values = [float(part) for part in cleaned.split() if part]
+    if not values:
+        raise ValueError("expected at least one floating-point value")
+    return values
+
+
 def run_direct_free_boundary(
     input_path: Path,
     params: CoilFieldParams,
@@ -369,6 +376,11 @@ def summarize_run(
     wall_s: float,
     target_aspect: float,
     target_iota: float,
+    helicity_m: int,
+    helicity_n: int,
+    qs_surfaces: list[float],
+    qs_ntheta: int,
+    qs_nphi: int,
 ) -> dict[str, Any]:
     diag = getattr(run.result, "diagnostics", {}) if run.result is not None else {}
     freeb = diag.get("free_boundary", {}) if isinstance(diag, dict) else {}
@@ -396,6 +408,22 @@ def summarize_run(
         mean_iota = float(np.nanmean(iota_arr[1:] if iota_arr.size > 1 else iota_arr))
     except Exception:
         pass
+    qs_total = None
+    try:
+        qs = quasisymmetry_ratio_residual_from_state(
+            state=run.state,
+            static=run.static,
+            indata=run.indata,
+            signgs=int(run.signgs),
+            surfaces=qs_surfaces,
+            helicity_m=int(helicity_m),
+            helicity_n=int(helicity_n),
+            ntheta=int(qs_ntheta),
+            nphi=int(qs_nphi),
+        )
+        qs_total = float(np.asarray(qs["total"]))
+    except Exception:
+        pass
 
     return {
         "objective": float(objective),
@@ -409,6 +437,12 @@ def summarize_run(
         "target_aspect": float(target_aspect),
         "mean_iota": mean_iota,
         "target_iota": float(target_iota),
+        "qs_total": qs_total,
+        "qs_helicity_m": int(helicity_m),
+        "qs_helicity_n": int(helicity_n),
+        "qs_surfaces": [float(value) for value in qs_surfaces],
+        "qs_ntheta": int(qs_ntheta),
+        "qs_nphi": int(qs_nphi),
         "coil_current_norm": float(np.asarray(coil_current_norm(params))),
         "mean_coil_length": float(np.mean(np.asarray(coil_lengths(params), dtype=float))),
         "free_boundary_vacuum_stub": freeb.get("vacuum_stub") if isinstance(freeb, dict) else None,
@@ -428,6 +462,7 @@ def objective_from_summary(
     summary: dict[str, Any],
     *,
     residual_weight: float,
+    qs_weight: float,
     aspect_weight: float,
     iota_weight: float,
 ) -> float:
@@ -435,6 +470,7 @@ def objective_from_summary(
         objective_terms_from_summary(
             summary,
             residual_weight=residual_weight,
+            qs_weight=qs_weight,
             aspect_weight=aspect_weight,
             iota_weight=iota_weight,
         )["total"]
@@ -445,30 +481,45 @@ def objective_terms_from_summary(
     summary: dict[str, Any],
     *,
     residual_weight: float,
+    qs_weight: float,
     aspect_weight: float,
     iota_weight: float,
 ) -> dict[str, Any]:
     residual = float(summary.get("residual_proxy") or 0.0)
+    qs_total = summary.get("qs_total")
     aspect = summary.get("aspect")
     mean_iota = summary.get("mean_iota")
     aspect_error = None if aspect is None else float(aspect) - float(summary["target_aspect"])
     iota_error = None if mean_iota is None else float(mean_iota) - float(summary["target_iota"])
+    qs_penalty = 0.0 if qs_total is None else float(qs_total)
     aspect_penalty = 0.0 if aspect_error is None else aspect_error**2
     iota_penalty = 0.0 if iota_error is None else iota_error**2
     residual_term = float(residual_weight) * residual
+    qs_term = float(qs_weight) * qs_penalty
     aspect_term = float(aspect_weight) * aspect_penalty
     iota_term = float(iota_weight) * iota_penalty
     missing_terms = []
+    if qs_total is None:
+        missing_terms.append("qs_total")
     if aspect is None:
         missing_terms.append("aspect")
     if mean_iota is None:
         missing_terms.append("mean_iota")
     return {
-        "total": float(residual_term + aspect_term + iota_term),
+        "total": float(residual_term + qs_term + aspect_term + iota_term),
         "residual": {
             "value": residual,
             "weight": float(residual_weight),
             "contribution": float(residual_term),
+        },
+        "quasisymmetry": {
+            "value": None if qs_total is None else float(qs_total),
+            "target": 0.0,
+            "weight": float(qs_weight),
+            "contribution": float(qs_term),
+            "helicity_m": int(summary.get("qs_helicity_m", 1)),
+            "helicity_n": int(summary.get("qs_helicity_n", 0)),
+            "surfaces": [float(value) for value in summary.get("qs_surfaces", [])],
         },
         "aspect": {
             "value": None if aspect is None else float(aspect),
@@ -488,21 +539,6 @@ def objective_terms_from_summary(
         },
         "missing_unweighted_terms": missing_terms,
     }
-
-
-def robust_risk_method(method: str) -> str:
-    if method == "smooth":
-        return "smooth_max"
-    return method
-
-
-def robust_sample_at(samples: CoilPerturbationSample, index: int) -> CoilPerturbationSample:
-    return CoilPerturbationSample(
-        current_factors=samples.current_factors[index],
-        displacement_xyz=samples.displacement_xyz[index],
-        toroidal_phase=samples.toroidal_phase[index],
-        centerline_dof_delta=samples.centerline_dof_delta[index],
-    )
 
 
 def same_branch_direction_from_variables(variables: list[tuple[str, tuple[int, ...]]]) -> np.ndarray:
@@ -640,16 +676,23 @@ def write_same_branch_validation_report(
             wall_s=np.nan,
             target_aspect=float(args.target_aspect),
             target_iota=float(args.target_iota),
+            helicity_m=int(args.helicity_m),
+            helicity_n=int(args.helicity_n),
+            qs_surfaces=parse_float_list(str(args.qs_surfaces)),
+            qs_ntheta=int(args.qs_ntheta),
+            qs_nphi=int(args.qs_nphi),
         )
         total = objective_from_summary(
             summary,
             residual_weight=float(args.residual_weight),
+            qs_weight=float(args.qs_weight),
             aspect_weight=float(args.aspect_weight),
             iota_weight=float(args.iota_weight),
         )
         return {
             "objective": total,
             "residual_proxy": float(summary.get("residual_proxy") or 0.0),
+            "qs_total": float(summary["qs_total"]) if summary.get("qs_total") is not None else np.nan,
             "aspect": float(summary["aspect"]) if summary.get("aspect") is not None else np.nan,
             "lcfs_boundary_moment": float(np.asarray(lcfs_boundary_moment(payload["result"].state, payload["init"].static))),
             "mean_iota": float(summary["mean_iota"]) if summary.get("mean_iota") is not None else np.nan,
@@ -830,11 +873,20 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     objective_model = {
-        "description": "Cheap residual/aspect/iota proxy; Boozer/QS residual is intentionally deferred.",
-        "phase2_note": "Add Boozer/QS objective after full-loop gradients are validated.",
+        "description": "Deterministic direct-coil free-boundary objective with VMEC residual, QS, aspect, and iota terms.",
+        "qs_note": (
+            "The QS term is evaluated from the accepted VMEC state. Full coil-to-Boozer/QS exact "
+            "gradients through adaptive free-boundary branch selection remain a separate promotion gate."
+        ),
+        "helicity_m": int(args.helicity_m),
+        "helicity_n": int(args.helicity_n),
+        "qs_surfaces": parse_float_list(str(args.qs_surfaces)),
+        "qs_ntheta": int(args.qs_ntheta),
+        "qs_nphi": int(args.qs_nphi),
         "target_aspect": float(args.target_aspect),
         "target_iota": float(args.target_iota),
         "residual_weight": float(args.residual_weight),
+        "qs_weight": float(args.qs_weight),
         "aspect_weight": float(args.aspect_weight),
         "iota_weight": float(args.iota_weight),
         "failure_objective": float(args.failure_objective),
@@ -864,45 +916,13 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
     }
     history: list[dict[str, Any]] = []
     best: dict[str, Any] | None = None
-    robust_samples: CoilPerturbationSample | None = None
-    robust_options: dict[str, Any] | None = None
-    if int(args.robust_samples) < 0:
-        raise ValueError("--robust-samples must be non-negative.")
-    if int(args.robust_samples) > 0:
-        robust_options = {
-            "samples": int(args.robust_samples),
-            "scenario_count_including_nominal": int(args.robust_samples) + 1,
-            "risk": str(args.robust_risk),
-            "aggregate_risk_method": robust_risk_method(str(args.robust_risk)),
-            "risk_std_weight": float(args.robust_std_weight),
-            "risk_temperature": float(args.robust_temperature),
-            "seed": int(args.robust_seed),
-            "current_sigma": float(args.robust_current_sigma),
-            "displacement_sigma": float(args.robust_displacement_sigma),
-            "toroidal_phase_sigma": float(args.robust_toroidal_phase_sigma),
-            "centerline_sigma": float(args.robust_centerline_sigma),
-            "centerline_include_constant": bool(args.robust_centerline_include_constant),
-        }
-        if not bool(args.dry_run):
-            if jax is None:  # pragma: no cover - JAX is a declared dependency in CI.
-                raise RuntimeError("JAX is required for --robust-samples.")
-            robust_samples = sample_coil_perturbations(
-                jax.random.PRNGKey(int(args.robust_seed)),
-                base_params,
-                int(args.robust_samples),
-                current_sigma=float(args.robust_current_sigma),
-                displacement_sigma=float(args.robust_displacement_sigma),
-                toroidal_phase_sigma=float(args.robust_toroidal_phase_sigma),
-                centerline_sigma=float(args.robust_centerline_sigma),
-                centerline_include_constant=bool(args.robust_centerline_include_constant),
-            )
     if bool(args.dry_run):
         summary = {
-            "phase": "phase-1-smoke",
-            "scope": "coil-only direct-coil free-boundary scaffold",
+            "phase": "single-stage-direct-coil-validation",
+            "scope": "deterministic coil-only direct-coil free-boundary QS optimization example",
             "dry_run": True,
             "plasma_boundary_optimized": False,
-            "wp11_limitations": WP11_LIMITATIONS,
+            "single_stage_limitations": SINGLE_STAGE_LIMITATIONS,
             "optimized_variables": variable_manifest,
             "objective_model": objective_model,
             "provider": provider_metadata,
@@ -914,8 +934,6 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
             "history_json": outdir / "history.json",
             "best_wout": outdir / "wout_best_direct_coil_phase1.nc",
         }
-        if robust_options is not None:
-            summary["robust_objective"] = robust_options
         write_json(outdir / "summary.json", summary)
         print(f"Dry run: wrote {outdir / 'summary.json'} without running VMEC or the optimizer.")
         return summary
@@ -930,119 +948,6 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
             current_step=float(args.current_step),
             dof_step=float(args.dof_step),
         )
-
-        if robust_samples is not None:
-            scenario_entries: list[dict[str, Any]] = []
-            scenario_objectives: list[float] = []
-            nominal_run: Any | None = None
-            for scenario_id in range(int(args.robust_samples) + 1):
-                scenario_name = "nominal" if scenario_id == 0 else f"perturbation_{scenario_id - 1}"
-                scenario_params = (
-                    params
-                    if scenario_id == 0
-                    else perturb_coil_params(params, robust_sample_at(robust_samples, scenario_id - 1))
-                )
-                try:
-                    run, wall_s = run_direct_free_boundary(
-                        input_path,
-                        scenario_params,
-                        vmec_max_iter=int(args.vmec_max_iter),
-                        activate_fsq=float(args.activate_fsq),
-                        jit_forces=bool(args.jit_forces),
-                    )
-                    provisional = summarize_run(
-                        run,
-                        scenario_params,
-                        objective=np.nan,
-                        wall_s=wall_s,
-                        target_aspect=float(args.target_aspect),
-                        target_iota=float(args.target_iota),
-                    )
-                    objective_terms = objective_terms_from_summary(
-                        provisional,
-                        residual_weight=float(args.residual_weight),
-                        aspect_weight=float(args.aspect_weight),
-                        iota_weight=float(args.iota_weight),
-                    )
-                    scenario_objective = float(objective_terms["total"])
-                    provisional["objective"] = scenario_objective
-                    provisional["objective_terms"] = objective_terms
-                    if scenario_id == 0:
-                        nominal_run = run
-                    scenario_entries.append(
-                        {
-                            "scenario": scenario_name,
-                            "perturbed": scenario_id > 0,
-                            "summary": provisional,
-                        }
-                    )
-                except Exception as exc:
-                    scenario_objective = float(args.failure_objective)
-                    scenario_entries.append(
-                        {
-                            "scenario": scenario_name,
-                            "perturbed": scenario_id > 0,
-                            "error": f"{type(exc).__name__}: {exc}",
-                            "summary": {"objective": scenario_objective},
-                        }
-                    )
-                    print(
-                        f"eval={eval_id:03d} scenario={scenario_name} failed with "
-                        f"{scenario_entries[-1]['error']}; returning {scenario_objective:.3e}",
-                        flush=True,
-                    )
-                scenario_objectives.append(float(scenario_objective))
-
-            objective = float(
-                np.asarray(
-                    aggregate_risk(
-                        jnp.asarray(scenario_objectives, dtype=float),
-                        robust_risk_method(str(args.robust_risk)),
-                        std_weight=float(args.robust_std_weight),
-                        temperature=float(args.robust_temperature),
-                    )
-                )
-            )
-            scenario_arr = np.asarray(scenario_objectives, dtype=float)
-            nominal_summary = dict(scenario_entries[0]["summary"])
-            nominal_objective_terms = nominal_summary.pop("objective_terms", None)
-            nominal_summary.update(
-                {
-                    "objective": objective,
-                    "nominal_objective": float(scenario_objectives[0]),
-                    "nominal_objective_terms": nominal_objective_terms,
-                    "scenario_objectives": scenario_objectives,
-                    "scenario_objective_min": float(np.min(scenario_arr)),
-                    "scenario_objective_max": float(np.max(scenario_arr)),
-                    "scenario_objective_mean": float(np.mean(scenario_arr)),
-                    "scenario_objective_std": float(np.std(scenario_arr)),
-                    "robust_samples": int(args.robust_samples),
-                    "robust_risk": str(args.robust_risk),
-                }
-            )
-            entry = {
-                "eval": eval_id,
-                "x": np.asarray(x, dtype=float).tolist(),
-                "variables": variable_manifest,
-                "coil_diagnostics": coil_diagnostics(params),
-                "summary": nominal_summary,
-                "scenarios": scenario_entries,
-            }
-            if best is None or objective < float(best["summary"]["objective"]):
-                best = entry
-                if nominal_run is not None:
-                    write_wout_from_fixed_boundary_run(outdir / "wout_best_direct_coil_phase1.nc", nominal_run, include_fsq=True)
-            print(
-                f"eval={eval_id:03d} objective={objective:.6e} "
-                f"nominal={scenario_objectives[0]:.6e} robust_samples={int(args.robust_samples)} "
-                f"risk={args.robust_risk} scenario_max={float(np.max(scenario_arr)):.6e} "
-                f"scenario_std={float(np.std(scenario_arr)):.3e} "
-                f"wall_s={sum(float(s['summary'].get('wall_s') or 0.0) for s in scenario_entries):.2f}",
-                flush=True,
-            )
-            history.append(entry)
-            write_json(outdir / "history.json", history)
-            return objective
 
         try:
             run, wall_s = run_direct_free_boundary(
@@ -1059,10 +964,16 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
                 wall_s=wall_s,
                 target_aspect=float(args.target_aspect),
                 target_iota=float(args.target_iota),
+                helicity_m=int(args.helicity_m),
+                helicity_n=int(args.helicity_n),
+                qs_surfaces=parse_float_list(str(args.qs_surfaces)),
+                qs_ntheta=int(args.qs_ntheta),
+                qs_nphi=int(args.qs_nphi),
             )
             objective_terms = objective_terms_from_summary(
                 provisional,
                 residual_weight=float(args.residual_weight),
+                qs_weight=float(args.qs_weight),
                 aspect_weight=float(args.aspect_weight),
                 iota_weight=float(args.iota_weight),
             )
@@ -1081,9 +992,11 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
                 write_wout_from_fixed_boundary_run(outdir / "wout_best_direct_coil_phase1.nc", run, include_fsq=True)
             print(
                 f"eval={eval_id:03d} objective={objective:.6e} "
-                f"residual={provisional['residual_proxy']:.3e} aspect={provisional['aspect']} "
+                f"residual={provisional['residual_proxy']:.3e} qs={provisional['qs_total']} "
+                f"aspect={provisional['aspect']} "
                 f"mean_iota={provisional['mean_iota']} "
                 f"residual_term={objective_terms['residual']['contribution']:.3e} "
+                f"qs_term={objective_terms['quasisymmetry']['contribution']:.3e} "
                 f"aspect_term={objective_terms['aspect']['contribution']:.3e} "
                 f"iota_term={objective_terms['mean_iota']['contribution']:.3e} wall_s={wall_s:.2f}",
                 flush=True,
@@ -1119,11 +1032,11 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     summary = {
-        "phase": "phase-1-smoke",
-        "scope": "coil-only direct-coil free-boundary scaffold",
+        "phase": "single-stage-direct-coil-validation",
+        "scope": "deterministic coil-only direct-coil free-boundary QS optimization example",
         "dry_run": False,
         "plasma_boundary_optimized": False,
-        "wp11_limitations": WP11_LIMITATIONS,
+        "single_stage_limitations": SINGLE_STAGE_LIMITATIONS,
         "optimized_variables": variable_manifest,
         "objective_model": objective_model,
         "provider": provider_metadata,
@@ -1145,8 +1058,6 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "history_json": outdir / "history.json",
         "best_wout": outdir / "wout_best_direct_coil_phase1.nc",
     }
-    if robust_options is not None:
-        summary["robust_objective"] = robust_options
     if bool(args.write_same_branch_report):
         report_path = write_same_branch_validation_report(
             input_path=input_path,
@@ -1217,20 +1128,30 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dof-step", type=float, default=1.0e-3)
     parser.add_argument("--target-aspect", type=float, default=6.0)
     parser.add_argument("--target-iota", type=float, default=0.4)
+    parser.add_argument(
+        "--helicity-m",
+        type=int,
+        default=1,
+        help="QS helicity m for the VMEC-state quasisymmetry-ratio residual; QH uses 1.",
+    )
+    parser.add_argument(
+        "--helicity-n",
+        type=int,
+        default=0,
+        help="QS helicity n for the VMEC-state quasisymmetry-ratio residual; QA uses 0, QH typically uses -1.",
+    )
+    parser.add_argument(
+        "--qs-surfaces",
+        default="0.25,0.5,0.75",
+        help="Comma/space-separated normalized toroidal-flux surfaces for the QS residual.",
+    )
+    parser.add_argument("--qs-ntheta", type=int, default=31, help="Angular theta grid for the QS residual.")
+    parser.add_argument("--qs-nphi", type=int, default=32, help="Angular phi grid for the QS residual.")
     parser.add_argument("--residual-weight", type=float, default=1.0)
+    parser.add_argument("--qs-weight", type=float, default=1.0)
     parser.add_argument("--aspect-weight", type=float, default=1.0e-2)
     parser.add_argument("--iota-weight", type=float, default=1.0)
     parser.add_argument("--failure-objective", type=float, default=1.0e30)
-    parser.add_argument("--robust-samples", type=int, default=0, help="Number of perturbed coil scenarios to add to the nominal objective.")
-    parser.add_argument("--robust-risk", choices=("mean", "mean_plus_std", "smooth"), default="mean")
-    parser.add_argument("--robust-std-weight", type=float, default=1.0)
-    parser.add_argument("--robust-temperature", type=float, default=1.0e-3, help="Temperature for --robust-risk smooth.")
-    parser.add_argument("--robust-seed", type=int, default=20240524)
-    parser.add_argument("--robust-current-sigma", type=float, default=1.0e-2, help="Fractional current perturbation sigma.")
-    parser.add_argument("--robust-displacement-sigma", type=float, default=0.0, help="Rigid Cartesian displacement sigma.")
-    parser.add_argument("--robust-toroidal-phase-sigma", type=float, default=0.0, help="Toroidal phase rotation sigma in radians.")
-    parser.add_argument("--robust-centerline-sigma", type=float, default=0.0, help="Fourier centerline coefficient perturbation sigma.")
-    parser.add_argument("--robust-centerline-include-constant", action="store_true")
     parser.add_argument(
         "--write-same-branch-report",
         action="store_true",

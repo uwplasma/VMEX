@@ -253,6 +253,79 @@ Completion:
 - Docs/release hygiene: 97.2%.
 - Overall free-boundary/single-stage plan: 98.25%.
 
+### 2026-06-05 Deterministic direct-coil QS optimization example
+
+Steps taken:
+
+1. Left robust/stochastic coil optimization out of the active example lane for
+   now, per user direction, without removing the underlying library utilities.
+2. Refactored
+   `examples/optimization/free_boundary_QS_coil_optimization.py` into a
+   deterministic direct-coil single-stage example. The optimizer variables are
+   still only coil currents and selected coil Fourier coefficients, while the
+   plasma boundary is recomputed by `run_free_boundary` at every evaluation.
+3. Added a real VMEC-state quasisymmetry-ratio residual term to the example
+   objective, with user-facing `--helicity-m`, `--helicity-n`,
+   `--qs-surfaces`, `--qs-ntheta`, `--qs-nphi`, and `--qs-weight` controls.
+4. Removed robust/stochastic CLI options and per-scenario evaluation branches
+   from this example so it now teaches the requested direct-coil QS workflow
+   without mixing in uncertainty/risk aggregation.
+5. Updated smoke tests to validate deterministic QS term accounting,
+   dry-run metadata, best-WOUT writing, and same-branch report JSON fields.
+6. Updated `README.md` and `docs/free_boundary_coil_optimization.rst` to put
+   the pedagogic ESSOS direct/no-mgrid example
+   (`examples/free_boundary_essos_direct_forward.py`) and deterministic
+   coil-only QS optimization command in front of the user.
+
+Results obtained:
+
+1. ESSOS direct/no-mgrid dry-run passed locally with
+   `MGRID_FILE='DIRECT_COILS'` and `summary.json` reporting `mgrid: null`.
+2. The deterministic circle QS smoke optimization ran locally and produced a
+   nonzero objective breakdown:
+   residual `2.164e-01`, QS `3.605e-01`, aspect term `4.030e-03`, iota term
+   `1.923e-02`, total `6.001e-01`.
+3. Ruff passed for the touched examples/tests.
+4. Focused examples passed:
+   `22 passed, 1 skipped, 1 xfailed in 3.00 s`.
+5. Direct-coil provider/gradient tests passed:
+   `22 passed in 16.95 s`.
+6. Sphinx full docs build with warnings as errors passed.
+
+Best next steps:
+
+1. Commit and push this deterministic example/docs/test update.
+2. Keep phase-3 claims conservative: the example includes a VMEC-state QS term,
+   but full coil-to-Boozer/QS exact gradients through adaptive branch selection
+   remain a separate promotion gate.
+3. Continue the production full-loop adjoint seam only where branch
+   fingerprints are explicit and complete-solve FD evidence is available.
+4. After the full objective-path branch-local gradients are promoted, replace
+   or augment the example's VMEC-state QS term with a Boozer-space QS objective
+   and validate coil-current/coil-geometry directions against complete-solve FD.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9997% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 97.2%.
+- Single-stage coil-only optimization: 88.0% after adding a deterministic
+  VMEC-state QS objective to the example.
+- Robust/stochastic coil perturbation optimization: deferred by request, held
+  at 70%.
+- CPU/GPU performance: 92.0%.
+- CI runtime refactor with preserved coverage/physics gates: 100% on the
+  latest pushed baseline.
+- Docs/release hygiene: 97.5%.
+- Overall free-boundary/single-stage plan: 98.3%.
+
 ### 2026-06-05 Direct-coil tridiagonal policy ablations
 
 Steps taken:

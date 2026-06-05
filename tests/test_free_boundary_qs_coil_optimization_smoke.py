@@ -23,19 +23,15 @@ def _load_example_module():
     return module
 
 
-def test_robust_smooth_cli_risk_maps_to_smooth_max():
-    module = _load_example_module()
-
-    assert module.robust_risk_method("mean") == "mean"
-    assert module.robust_risk_method("mean_plus_std") == "mean_plus_std"
-    assert module.robust_risk_method("smooth") == "smooth_max"
-
-
 def test_objective_terms_report_weighted_proxy_components():
     module = _load_example_module()
 
     summary = {
         "residual_proxy": 2.0,
+        "qs_total": 0.25,
+        "qs_helicity_m": 1,
+        "qs_helicity_n": 0,
+        "qs_surfaces": [0.25, 0.5],
         "aspect": 5.5,
         "target_aspect": 6.0,
         "mean_iota": 0.3,
@@ -45,18 +41,23 @@ def test_objective_terms_report_weighted_proxy_components():
     terms = module.objective_terms_from_summary(
         summary,
         residual_weight=3.0,
+        qs_weight=4.0,
         aspect_weight=0.5,
         iota_weight=10.0,
     )
 
     assert terms["residual"]["contribution"] == pytest.approx(6.0)
+    assert terms["quasisymmetry"]["contribution"] == pytest.approx(1.0)
+    assert terms["quasisymmetry"]["helicity_m"] == 1
+    assert terms["quasisymmetry"]["surfaces"] == [0.25, 0.5]
     assert terms["aspect"]["error"] == pytest.approx(-0.5)
     assert terms["aspect"]["contribution"] == pytest.approx(0.125)
     assert terms["mean_iota"]["contribution"] == pytest.approx(0.1)
-    assert terms["total"] == pytest.approx(6.225)
+    assert terms["total"] == pytest.approx(7.225)
     assert module.objective_from_summary(
         summary,
         residual_weight=3.0,
+        qs_weight=4.0,
         aspect_weight=0.5,
         iota_weight=10.0,
     ) == pytest.approx(terms["total"])
@@ -68,18 +69,21 @@ def test_objective_terms_report_missing_unweighted_proxy_components():
     terms = module.objective_terms_from_summary(
         {
             "residual_proxy": 2.0,
+            "qs_total": None,
             "aspect": None,
             "target_aspect": 6.0,
             "mean_iota": None,
             "target_iota": 0.4,
         },
         residual_weight=3.0,
+        qs_weight=4.0,
         aspect_weight=0.5,
         iota_weight=10.0,
     )
 
     assert terms["total"] == pytest.approx(6.0)
-    assert terms["missing_unweighted_terms"] == ["aspect", "mean_iota"]
+    assert terms["missing_unweighted_terms"] == ["qs_total", "aspect", "mean_iota"]
+    assert terms["quasisymmetry"]["contribution"] == pytest.approx(0.0)
     assert terms["aspect"]["contribution"] == pytest.approx(0.0)
     assert terms["mean_iota"]["contribution"] == pytest.approx(0.0)
 
@@ -164,7 +168,13 @@ def test_same_branch_report_writer_uses_source_helper(tmp_path, monkeypatch):
         dof_step=1.0e-3,
         target_aspect=6.0,
         target_iota=0.4,
+        helicity_m=1,
+        helicity_n=0,
+        qs_surfaces="0.25,0.5",
+        qs_ntheta=15,
+        qs_nphi=16,
         residual_weight=1.0,
+        qs_weight=2.0,
         aspect_weight=1.0e-2,
         iota_weight=1.0,
         same_branch_report_eps=1.0e-4,
@@ -214,6 +224,12 @@ def test_same_branch_report_writer_uses_source_helper(tmp_path, monkeypatch):
                     "minus": 0.9,
                     "central_fd_directional": 1000.0,
                 },
+                "qs_total": {
+                    "base": 0.5,
+                    "plus": 0.6,
+                    "minus": 0.4,
+                    "central_fd_directional": 1000.0,
+                },
                 "aspect": {
                     "base": 6.0,
                     "plus": 6.1,
@@ -244,7 +260,7 @@ def test_same_branch_report_writer_uses_source_helper(tmp_path, monkeypatch):
     report = json.loads(path.read_text())
     assert report["branch_compatibility"]["same_branch"] is True
     assert report["values"]["central_fd_directional"] == pytest.approx(1000.0)
-    assert set(report["objective_values"]) == {"objective", "aspect"}
+    assert set(report["objective_values"]) == {"objective", "qs_total", "aspect"}
     assert report["primary_objective"] == "objective"
     assert report["branch_local_vector_jacobian"]["available"] is False
     assert "adaptive host branch" in report["branch_local_vector_jacobian"]["scope"]
@@ -267,7 +283,13 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
         dof_step=1.0e-3,
         target_aspect=6.0,
         target_iota=0.4,
+        helicity_m=1,
+        helicity_n=0,
+        qs_surfaces="0.25,0.5",
+        qs_ntheta=15,
+        qs_nphi=16,
         residual_weight=1.0,
+        qs_weight=2.0,
         aspect_weight=1.0e-2,
         iota_weight=1.0,
         same_branch_report_eps=1.0e-4,
@@ -379,9 +401,6 @@ def test_circle_dry_run_writes_configuration_without_solves(tmp_path, monkeypatc
     def fail_run_direct_free_boundary(*_args, **_kwargs):
         raise AssertionError("dry-run must not call run_direct_free_boundary")
 
-    def fail_sample_coil_perturbations(*_args, **_kwargs):
-        raise AssertionError("dry-run must not sample robust perturbations")
-
     def fail_minimize(*_args, **_kwargs):
         raise AssertionError("dry-run must not call scipy.optimize.minimize")
 
@@ -390,7 +409,6 @@ def test_circle_dry_run_writes_configuration_without_solves(tmp_path, monkeypatc
 
     monkeypatch.setattr(module, "make_free_boundary_indata", fake_make_free_boundary_indata)
     monkeypatch.setattr(module, "run_direct_free_boundary", fail_run_direct_free_boundary)
-    monkeypatch.setattr(module, "sample_coil_perturbations", fail_sample_coil_perturbations)
     monkeypatch.setattr(module, "write_wout_from_fixed_boundary_run", fail_write_wout)
     fake_scipy_optimize = ModuleType("scipy.optimize")
     fake_scipy_optimize.minimize = fail_minimize
@@ -402,8 +420,10 @@ def test_circle_dry_run_writes_configuration_without_solves(tmp_path, monkeypatc
             "--dry-run",
             "--provider",
             "circle",
-            "--robust-samples",
-            "2",
+            "--helicity-n",
+            "-1",
+            "--qs-surfaces",
+            "0.3,0.7",
             "--outdir",
             str(tmp_path),
         ]
@@ -417,11 +437,11 @@ def test_circle_dry_run_writes_configuration_without_solves(tmp_path, monkeypatc
     summary = json.loads((tmp_path / "summary.json").read_text())
     assert "optimizer" not in summary
     assert "best" not in summary
-    assert summary["scope"] == "coil-only direct-coil free-boundary scaffold"
+    assert summary["scope"] == "deterministic coil-only direct-coil free-boundary QS optimization example"
     assert summary["dry_run"] is True
     assert summary["plasma_boundary_optimized"] is False
-    assert any("Boozer/QS" in limitation for limitation in summary["wp11_limitations"])
-    assert any("full-loop" in limitation for limitation in summary["wp11_limitations"])
+    assert any("Boozer-space" in limitation for limitation in summary["single_stage_limitations"])
+    assert any("full-loop" in limitation for limitation in summary["single_stage_limitations"])
     assert summary["provider"]["provider"] == "circle"
     assert summary["baseline_coils"]["n_base_coils"] == 1
     assert summary["vmec_config"]["vmec_max_iter"] == 2
@@ -429,9 +449,9 @@ def test_circle_dry_run_writes_configuration_without_solves(tmp_path, monkeypatc
     assert [record["kind"] for record in summary["optimized_variables"]] == ["current", "fourier_dof"]
     assert summary["optimized_variables"][0]["parameterization"] == "multiplicative"
     assert summary["optimized_variables"][1]["parameterization"] == "additive"
-    assert summary["robust_objective"]["samples"] == 2
-    assert summary["robust_objective"]["scenario_count_including_nominal"] == 3
     assert summary["objective_model"]["target_aspect"] == pytest.approx(6.0)
+    assert summary["objective_model"]["helicity_n"] == -1
+    assert summary["objective_model"]["qs_surfaces"] == [0.3, 0.7]
 
 
 @pytest.mark.xfail(
@@ -446,8 +466,7 @@ def test_full_free_boundary_qs_exact_gradient_validation_phase2_marker():
     raise NotImplementedError("production NESTOR/QS exact-gradient validation is not promoted yet")
 
 
-def test_robust_circle_smoke_uses_bounded_perturbed_scenarios(tmp_path, monkeypatch):
-    pytest.importorskip("jax")
+def test_deterministic_circle_smoke_records_qs_terms(tmp_path, monkeypatch):
     module = _load_example_module()
     calls = []
 
@@ -467,7 +486,20 @@ def test_robust_circle_smoke_uses_bounded_perturbed_scenarios(tmp_path, monkeypa
         )
         return SimpleNamespace(), 0.01
 
-    def fake_summarize_run(_run, params, *, objective, wall_s, target_aspect, target_iota):
+    def fake_summarize_run(
+        _run,
+        params,
+        *,
+        objective,
+        wall_s,
+        target_aspect,
+        target_iota,
+        helicity_m,
+        helicity_n,
+        qs_surfaces,
+        qs_ntheta,
+        qs_nphi,
+    ):
         current = float(np.asarray(params.base_currents)[0])
         return {
             "objective": objective,
@@ -477,6 +509,12 @@ def test_robust_circle_smoke_uses_bounded_perturbed_scenarios(tmp_path, monkeypa
             "fsqz": 0.0,
             "fsql": 0.0,
             "residual_proxy": current,
+            "qs_total": 0.25,
+            "qs_helicity_m": helicity_m,
+            "qs_helicity_n": helicity_n,
+            "qs_surfaces": qs_surfaces,
+            "qs_ntheta": qs_ntheta,
+            "qs_nphi": qs_nphi,
             "aspect": target_aspect,
             "target_aspect": target_aspect,
             "mean_iota": target_iota,
@@ -503,41 +541,33 @@ def test_robust_circle_smoke_uses_bounded_perturbed_scenarios(tmp_path, monkeypa
             "1",
             "--max-iter",
             "1",
-            "--robust-samples",
-            "2",
-            "--robust-risk",
-            "mean_plus_std",
+            "--qs-weight",
+            "4.0",
+            "--helicity-n",
+            "-1",
             "--outdir",
             str(tmp_path),
         ]
     )
 
     assert exit_code == 0
-    assert len(calls) == 3
+    assert len(calls) == 1
     assert all(call["jit_forces"] is True for call in calls)
     assert calls[0]["current"] == pytest.approx(2.0)
-    assert any(call["current"] != pytest.approx(2.0) for call in calls[1:])
 
     history = json.loads((tmp_path / "history.json").read_text())
     summary = json.loads((tmp_path / "summary.json").read_text())
 
     assert len(history) == 1
-    assert history[0]["summary"]["robust_samples"] == 2
-    assert history[0]["summary"]["robust_risk"] == "mean_plus_std"
-    assert len(history[0]["summary"]["scenario_objectives"]) == 3
-    assert history[0]["summary"]["nominal_objective_terms"]["residual"]["contribution"] == pytest.approx(2.0)
-    assert history[0]["summary"]["scenario_objective_max"] >= history[0]["summary"]["scenario_objective_min"]
     assert history[0]["variables"][0]["parameterization"] == "multiplicative"
     assert history[0]["coil_diagnostics"]["n_base_coils"] == 1
-    assert [scenario["scenario"] for scenario in history[0]["scenarios"]] == [
-        "nominal",
-        "perturbation_0",
-        "perturbation_1",
-    ]
-    assert history[0]["scenarios"][0]["summary"]["objective_terms"]["total"] == pytest.approx(2.0)
-    assert summary["robust_objective"]["samples"] == 2
-    assert summary["robust_objective"]["risk"] == "mean_plus_std"
+    assert history[0]["summary"]["objective_terms"]["residual"]["contribution"] == pytest.approx(2.0)
+    assert history[0]["summary"]["objective_terms"]["quasisymmetry"]["contribution"] == pytest.approx(1.0)
+    assert history[0]["summary"]["objective_terms"]["total"] == pytest.approx(3.0)
     assert summary["dry_run"] is False
+    assert summary["scope"] == "deterministic coil-only direct-coil free-boundary QS optimization example"
     assert summary["baseline_coils"]["n_base_coils"] == 1
     assert summary["optimized_variables"][0]["unit_x_delta"] == pytest.approx(0.04)
+    assert summary["objective_model"]["qs_weight"] == pytest.approx(4.0)
+    assert summary["objective_model"]["helicity_n"] == -1
     assert (tmp_path / "wout_best_direct_coil_phase1.nc").read_text() == "include_fsq=True\n"

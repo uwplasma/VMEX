@@ -600,28 +600,23 @@ The three PR-review workflows are:
    export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
 
    PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
-     python examples/free_boundary_essos_coils_forward.py \
-     --input examples/data/input.LandremanPaul2021_QA_lowres \
-     --beta 0.0025 \
-     --pressure-profile standard \
-     --phiedge=-0.025 \
-     --max-iter 1000 \
-     --ftol 1e-8 \
-     --ns 12 \
-     --mpol 5 \
-     --ntor 5 \
-     --nzeta 16 \
-     --activate-fsq 1e-3 \
-     --outdir results/free_boundary_essos_coils_forward
+     python examples/free_boundary_essos_direct_forward.py \
+     --input examples/data/input.LandremanPaul2021_QA_reactorScale_lowres \
+     --max-iter 10 \
+     --ns 7 \
+     --mpol 3 \
+     --ntor 2 \
+     --nzeta 8 \
+     --outdir results/free_boundary_essos_direct_forward
 
 This ESSOS direct-coil forward run writes
-``results/free_boundary_essos_coils_forward/input.direct_coils``,
+``results/free_boundary_essos_direct_forward/input.lpqa_direct_coils``,
 ``wout_direct_coils.nc``, and ``summary.json``.  The summary records
 ``fsqr/fsqz/fsql``, aspect, mean iota, coil length/current diagnostics, the
-pressure model, WOUT ``wp/wb`` beta proxy, and the active free-boundary/NESTOR
-coupling diagnostics.  The unit-scale ESSOS LP-QA fixture reaches an actual
-WOUT beta of about one percent with ``--beta 0.0025`` in the standard pressure
-profile; the JSON summary is the authoritative beta diagnostic.
+``DIRECT_COILS`` provider tag, ``mgrid: null``, and the active
+free-boundary/NESTOR coupling diagnostics.  Use the beta-scan command below
+when you need the standardized finite-beta pressure profile and the
+generated-``mgrid`` comparison row.
 
 .. code-block:: bash
 
@@ -663,6 +658,9 @@ history summaries.  Staged scans additionally write
      --max-evals 1 \
      --max-iter 1 \
      --vmec-max-iter 2 \
+     --helicity-m 1 \
+     --helicity-n 0 \
+     --qs-surfaces 0.25,0.5,0.75 \
      --pressure-profile standard \
      --beta 1.0 \
      --activate-fsq 1e99 \
@@ -674,8 +672,10 @@ because it uses the synthetic circular direct-coil provider.  It writes
 ``wout_best_direct_coil_phase1.nc``.  The optimizer vector contains only coil
 current and selected coil Fourier degrees of freedom; the plasma boundary is
 recomputed by the free-boundary solve at each objective evaluation.  The
-current objective is the documented phase-1 residual/aspect/iota proxy, not a
-promoted Boozer/QS objective or full-loop exact adjoint.
+current deterministic objective contains accepted-state VMEC residual,
+VMEC-state quasisymmetry-ratio residual, aspect-ratio, and mean-iota terms.
+The QS residual is evaluated from the accepted VMEC state, not from a promoted
+coil-to-Boozer exact adjoint through adaptive branch selection.
 
 Run the dependency-light direct-coil forward example from the repository root.
 This path constructs a synthetic circular ``CoilFieldParams`` object directly in
@@ -702,11 +702,14 @@ low-resolution finite-pressure free-boundary forward validation run without writ
    export ESSOS_ROOT=/path/to/ESSOS_mgrid_pr
    export ESSOS_INPUT_DIR=$ESSOS_ROOT/examples/input_files
    PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
-     python examples/free_boundary_essos_coils_forward.py \
-     --beta 0.0025 \
-     --max-iter 1000 \
-     --activate-fsq 1e-3 \
-     --outdir results/free_boundary_essos_coils_forward
+     python examples/free_boundary_essos_direct_forward.py \
+     --max-iter 10 \
+     --outdir results/free_boundary_essos_direct_forward
+
+Use ``--dry-run`` on the same command to validate the ESSOS coil conversion,
+the generated VMEC input deck, and the direct provider wiring without running
+VMEC.  The generated input explicitly uses ``MGRID_FILE='DIRECT_COILS'`` and
+the JSON summary records ``mgrid: null``.
 
 Run the matched beta scan from the repository root. Until the ESSOS
 ``to_mgrid`` PR is merged and released, put the ESSOS branch checkout on
@@ -1044,18 +1047,19 @@ and ``summary.json`` in the output directory. Those runtime files are ignored
 by git; the committed figures and CSV are generated artifacts for documentation
 only.
 
-Phase-1 Coil-Only Optimization Validation
------------------------------------------
+Single-Stage Coil-Only Optimization Validation
+----------------------------------------------
 
-The initial single-stage optimization example is a bounded validation example,
-not a promoted QS design. It optimizes only coil currents and selected coil
-Fourier coefficients. The VMEC plasma boundary coefficients are never included
-in the optimization vector; the plasma surface is recomputed by a direct-coil
-free-boundary solve at every objective evaluation.
+The initial single-stage optimization example is a bounded validation example.
+It optimizes only coil currents and selected coil Fourier coefficients. The
+VMEC plasma boundary coefficients are never included in the optimization
+vector; the plasma surface is recomputed by a direct-coil free-boundary solve
+at every objective evaluation.
 
-The default objective is a cheap proxy:
+The default deterministic objective is:
 
 - accepted-state VMEC residual,
+- VMEC-state quasisymmetry-ratio residual,
 - aspect-ratio target,
 - mean-iota target.
 
@@ -1063,9 +1067,10 @@ The example records ``history.json``, ``summary.json``, and the best ``wout``.
 It exits with code ``77`` when optional ESSOS assets are unavailable. For a
 dependency-light setup check that does not run VMEC or the optimizer, use
 ``--dry-run``. This writes ``summary.json`` with the generated VMEC input path,
-selected coil variables, objective weights, robust-objective options, and
-baseline coil diagnostics. The summary also carries a ``wp11_limitations`` list
-so dry-run artifacts remain self-describing when shared without this page:
+selected coil variables, objective weights, QS helicity/surface settings, and
+baseline coil diagnostics. The summary also carries a
+``single_stage_limitations`` list so dry-run artifacts remain self-describing
+when shared without this page:
 
 .. code-block:: bash
 
@@ -1073,6 +1078,8 @@ so dry-run artifacts remain self-describing when shared without this page:
      --smoke \
      --dry-run \
      --provider circle \
+     --helicity-m 1 \
+     --helicity-n 0 \
      --outdir results/free_boundary_QS_coil_optimization_circle_preview
 
 For a bounded validation run, use the synthetic circular coil provider:
@@ -1085,6 +1092,9 @@ For a bounded validation run, use the synthetic circular coil provider:
      --max-evals 1 \
      --max-iter 1 \
      --vmec-max-iter 2 \
+     --helicity-m 1 \
+     --helicity-n 0 \
+     --qs-surfaces 0.25,0.5,0.75 \
      --pressure-profile standard \
      --beta 1.0 \
      --activate-fsq 1e99 \
@@ -1100,69 +1110,19 @@ For the ESSOS Landreman-Paul QA coils, put ESSOS on ``PYTHONPATH`` and use:
      python examples/optimization/free_boundary_QS_coil_optimization.py \
      --smoke \
      --max-evals 3 \
+     --helicity-m 1 \
+     --helicity-n 0 \
      --outdir results/free_boundary_QS_coil_optimization_essos_smoke
 
 The next promotion step is making the complete direct-coil free-boundary loop
 differentiate through the accepted-state solve path, either by threading the
 accepted state through a JAX-visible replay or by wrapping the final replay in
 a validated custom adjoint. Only after that should this example replace the
-cheap proxy with a Boozer/QS objective and validate the same complete-loop
-gradients through the QS diagnostic path.
+VMEC-state QS residual with a Boozer-space QS objective and validate the same
+complete-loop gradients through the full Boozer/QS diagnostic path.
 
 Each accepted objective evaluation records a weighted objective-term breakdown
-for the residual, aspect-ratio, and mean-iota proxy terms. Robust runs keep the
-per-scenario objective terms in ``history.json`` and record aggregate
-min/mean/std/max scenario diagnostics on the nominal evaluation summary.
-
-Robust Coil Perturbations
--------------------------
-
-The phase-1 direct-coil example can optionally evaluate a robust objective by
-adding perturbed coil scenarios to the nominal free-boundary solve:
-
-.. code-block:: bash
-
-   python examples/optimization/free_boundary_QS_coil_optimization.py \
-     --smoke \
-     --provider circle \
-     --max-evals 1 \
-     --max-iter 1 \
-     --vmec-max-iter 2 \
-     --robust-samples 2 \
-     --robust-risk mean_plus_std \
-     --outdir results/free_boundary_QS_coil_optimization_circle_robust_smoke
-
-The default remains the deterministic nominal objective. When
-``--robust-samples`` is positive, the example samples common coil perturbations
-with ``vmec_jax.robust_coils`` and aggregates nominal plus perturbed scenario
-losses with ``mean``, ``mean_plus_std``, or ``smooth`` risk aggregation.
-
-Each objective evaluation then runs one nominal direct-coil free-boundary solve
-plus one solve per perturbation sample. The resulting ``history.json`` contains
-per-scenario entries, while ``summary.json`` records the robust aggregation
-options under ``robust_objective``.
-
-For a finite-pressure robust validation run, add the same finite-pressure flags
-used by the deterministic validation run, for example
-``--pressure-profile standard --beta 1.0`` and ``--activate-fsq 1e99``.  Use
-``--pressure-profile linear-scale --pressure-scale ...`` only for legacy
-plumbing probes. Keep ``--max-evals`` and ``--robust-samples`` small because
-the solve count multiplies quickly.
-
-``vmec_jax.robust_coils`` provides pure-JAX perturbation helpers for robust coil
-objectives:
-
-- multiplicative current perturbations,
-- rigid Cartesian displacements,
-- toroidal phase rotations about the z axis,
-- additive Fourier-centerline perturbations,
-- risk aggregation with mean, mean-plus-standard-deviation, smooth maximum, and
-  smooth tail/CVaR-like penalties.
-
-These functions operate on ``CoilFieldParams`` pytrees and do not require
-ESSOS. They can be used with ``jax.vmap`` for transformable objective pieces;
-the example intentionally uses a Python loop around full free-boundary solves
-until the production solver path is fully JAX-transformable.
+for the residual, QS, aspect-ratio, and mean-iota terms.
 
 Benchmarks
 ----------
@@ -1549,7 +1509,6 @@ evidence. The default gates are CI-safe and cover:
   scaling;
 - direct-provider source refresh on reuse and trial-state vacuum-field refresh,
   so direct coils are not scored against stale pre-update source data;
-- robust-coil perturbation/risk aggregation utilities;
 - dense toy vacuum-adjoint tests.
 - direct-coil to implicit dense-vacuum-chain finite-difference checks for one
   current scale and one Fourier geometry perturbation.
