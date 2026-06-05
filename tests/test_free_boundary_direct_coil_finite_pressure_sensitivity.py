@@ -2056,6 +2056,11 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert production_branch_local["trace_replay_diagnostics"]["differentiates_adaptive_controller"] is False
             assert production_branch_local["replay_option_flags"]["use_stacked_step_controls"] is True
             assert production_branch_local["replay_option_flags"]["use_accepted_only_fast_path"] is True
+            assert production_branch_local["timings"]["production_scalar_eval_wall_s"] >= 0.0
+            assert production_branch_local["timings"]["replay_value_and_grad_dispatch_s"] >= 0.0
+            assert production_branch_local["timings"]["replay_value_and_grad_ready_s"] >= 0.0
+            assert production_branch_local["timings"]["replay_value_and_grad_wall_s"] >= 0.0
+            assert production_branch_local["timings"]["total_wall_s"] >= 0.0
             assert production_branch_local["base_abs_delta"] < 2.0e-3
             np.testing.assert_allclose(
                 production_branch_exact,
@@ -2127,6 +2132,11 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert production_branch_local_scalars["trace_replay_diagnostics"]["differentiates_adaptive_controller"] is False
             assert production_branch_local_scalars["replay_option_flags"]["use_stacked_step_controls"] is True
             assert production_branch_local_scalars["replay_option_flags"]["use_accepted_only_fast_path"] is True
+            assert production_branch_local_scalars["timings"]["production_scalar_eval_wall_s"] >= 0.0
+            assert production_branch_local_scalars["timings"]["replay_vjp_wall_s"] >= 0.0
+            assert production_branch_local_scalars["timings"]["replay_pullbacks_wall_s"] >= 0.0
+            assert production_branch_local_scalars["timings"]["jacobian_stack_ready_s"] >= 0.0
+            assert production_branch_local_scalars["timings"]["total_wall_s"] >= 0.0
             assert production_branch_local_scalars["base_abs_delta"]["aspect"] < 2.0e-3
             assert production_branch_local_scalars["max_base_abs_delta"] < 2.0e-3
             np.testing.assert_allclose(

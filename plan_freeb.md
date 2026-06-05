@@ -9539,6 +9539,76 @@ Completion:
   green baseline.
 - Docs/release hygiene: 98.5%.
 
+### 2026-06-05 Direct Accepted-Branch AD Timing Path
+
+Steps taken:
+
+1. Added nested timing diagnostics to the production branch-local scalar and
+   vector replay helpers in ``vmec_jax/free_boundary_adjoint.py``.
+2. Timings now separate complete-payload setup, production scalar evaluation,
+   replay AD dispatch, device-ready synchronization, pullback/Jacobian work,
+   trace diagnostics, and total helper wall time.
+3. Added ``--same-branch-report-ad-mode`` to the single-stage direct-coil QS
+   optimization example. ``direct`` is now the default report path, while
+   ``custom_vjp`` remains available for explicit custom-VJP seam audits.
+4. Updated smoke and production same-branch tests so timing fields and the AD
+   mode are part of the validated report schema.
+5. Tightened free-boundary docs, README, and release checklist wording so
+   fixed accepted-branch/same-branch evidence is not confused with a claimed
+   arbitrary adaptive host-controller derivative.
+
+Results obtained:
+
+1. Ruff passed for the changed source/example/test files.
+2. ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py -q``
+   passed with ``12 passed, 1 xfailed``.
+3. The two production same-branch custom-VJP finite-pressure tests passed.
+4. Full Sphinx ``-W`` docs build passed.
+5. On the tiny circle-provider aspect-scalar report, ``direct`` AD stayed on
+   the same branch with replay/base delta ``2.66e-15`` and directional-slope
+   absolute error ``1.45e-11``.
+6. The same smoke measured ``27.52 s`` branch-local scalar replay with
+   ``direct`` AD versus ``36.31 s`` with ``custom_vjp``. This is a real
+   ~24% reduction for the phase-3 report path.
+7. Nested timing shows the remaining cost is almost entirely
+   ``replay_value_and_grad_dispatch_s`` (``27.49 s`` for direct AD), while
+   device-ready synchronization is near zero. The next blocker is therefore
+   accepted-controller replay tracing/compilation, not physical scalar
+   evaluation or runtime device math.
+
+Best next steps:
+
+1. Keep ``direct`` as the default branch-local report AD path and reserve
+   ``custom_vjp`` for explicit seam audits.
+2. Target accepted-controller replay graph size next: hoist/cache replay
+   context constants, reduce duplicated dense NESTOR tracing, and add
+   named-scope/timing labels inside geometry, direct-coil sampling, NESTOR, and
+   strict-update subpaths.
+3. Continue phase-2/phase-3 gates only under explicit branch fingerprints; do
+   not claim arbitrary adaptive ``run_free_boundary`` differentiation.
+4. Keep release docs conservative until a complete adaptive full-loop
+   derivative gate exists.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9998% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.5%.
+- Single-stage coil-only optimization: 91.8%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 94.0%; the scalar report path is faster and now has
+  device-synchronized timing splits, with accepted-controller replay tracing as
+  the remaining bottleneck.
+- CI runtime refactor with preserved coverage/physics gates: 100% on latest
+  green baseline; current CI not yet run for this commit.
+- Docs/release hygiene: 98.8%.
+
 ### 2026-06-05 ESSOS Direct-Coil Example Scale and Diagnostics Cleanup
 
 Steps taken:

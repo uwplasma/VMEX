@@ -797,18 +797,23 @@ def write_same_branch_validation_report(
         "primary_objective": report["primary_objective"],
     }
     mode = str(getattr(args, "same_branch_report_mode", "none")).strip().lower()
+    ad_mode = str(getattr(args, "same_branch_report_ad_mode", "direct")).strip().lower()
     branch_local_scalar: dict[str, Any] = {
         "available": False,
         "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
         "mode": mode,
+        "replay_ad_mode": ad_mode,
     }
     branch_local_vector: dict[str, Any] = {
         "available": False,
         "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
         "mode": mode,
+        "replay_ad_mode": ad_mode,
     }
     if mode not in {"none", "scalar", "vector"}:
         raise ValueError("--same-branch-report-mode must be one of none, scalar, vector")
+    if ad_mode not in {"direct", "custom_vjp"}:
+        raise ValueError("--same-branch-report-ad-mode must be one of direct, custom_vjp")
     scalar_value_fns = {
         "aspect": lambda payload: float(
             np.asarray(
@@ -860,8 +865,12 @@ def write_same_branch_validation_report(
             scalar_fn=lambda payload: {scalar_key: scalar_value_fns[scalar_key](payload)},
             replay_scalar_fn=lambda replay, payload: scalar_replay_fns[scalar_key](replay, payload),
             replay_kwargs={"use_stacked_step_controls": True},
+            replay_ad_mode=ad_mode,
         )
         timings["branch_local_scalar_wall_s"] = float(time.perf_counter() - t0)
+        scalar_timings = {str(key): float(value) for key, value in scalar.get("timings", {}).items()}
+        for key, value in scalar_timings.items():
+            timings[f"branch_local_scalar_{key}"] = value
         exact_directional = _pytree_directional_vdot(scalar["grad"], direction_params)
         branch_local_scalar = {
             "available": True,
@@ -871,6 +880,7 @@ def write_same_branch_validation_report(
             "differentiates_adaptive_controller": bool(scalar["differentiates_adaptive_controller"]),
             "differentiates_run_free_boundary": bool(scalar["differentiates_run_free_boundary"]),
             "differentiates_fixed_accepted_branch": bool(scalar["differentiates_fixed_accepted_branch"]),
+            "replay_ad_mode": str(scalar["replay_ad_mode"]),
             "scalar_key": str(scalar["scalar_key"]),
             "replay_option_flags": scalar["replay_option_flags"],
             "value": float(scalar["value"]),
@@ -879,6 +889,7 @@ def write_same_branch_validation_report(
             "exact_directional": float(exact_directional),
             "complete_fd_directional": float(report["objective_values"][scalar_key]["central_fd_directional"]),
             "abs_error": float(abs(exact_directional - report["objective_values"][scalar_key]["central_fd_directional"])),
+            "timings": scalar_timings,
         }
     if (
         mode == "vector"
@@ -936,8 +947,12 @@ def write_same_branch_validation_report(
                 "accepted_bnormal_rms": lambda replay, _payload: accepted_bnormal_rms_from_replay(replay),
             },
             replay_kwargs={"use_stacked_step_controls": True},
+            replay_ad_mode=ad_mode,
         )
         timings["branch_local_vector_wall_s"] = float(time.perf_counter() - t0)
+        vector_timings = {str(key): float(value) for key, value in vector.get("timings", {}).items()}
+        for key, value in vector_timings.items():
+            timings[f"branch_local_vector_{key}"] = value
         directionals = _vector_jacobian_directional(vector["jacobian"], direction_params, len(scalar_keys))
         branch_local_vector = {
             "available": True,
@@ -946,9 +961,11 @@ def write_same_branch_validation_report(
             "differentiates_adaptive_controller": bool(vector["differentiates_adaptive_controller"]),
             "differentiates_run_free_boundary": bool(vector["differentiates_run_free_boundary"]),
             "differentiates_fixed_accepted_branch": bool(vector["differentiates_fixed_accepted_branch"]),
+            "replay_ad_mode": str(vector["replay_ad_mode"]),
             "scalar_keys": list(scalar_keys),
             "replay_option_flags": vector["replay_option_flags"],
             "max_base_abs_delta": float(vector["max_base_abs_delta"]),
+            "timings": vector_timings,
             "scalars": {
                 key: {
                     "value": float(vector["values"][key]),
@@ -1308,7 +1325,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Derivative detail for --write-same-branch-report. 'none' writes only "
             "complete-solve FD diagnostics and is the default. 'scalar' validates one "
-            "branch-local qs_total gradient. 'vector' also builds the more expensive "
+            "branch-local physical-scalar gradient. 'vector' also builds the more expensive "
             "multi-scalar Jacobian."
         ),
     )
@@ -1320,6 +1337,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Physical scalar validated by --same-branch-report-mode scalar. "
             "Use 'aspect' for a cheaper branch-local replay timing probe, or "
             "'qs_total' for the QS-relevant scalar."
+        ),
+    )
+    parser.add_argument(
+        "--same-branch-report-ad-mode",
+        choices=("direct", "custom_vjp"),
+        default="direct",
+        help=(
+            "Accepted-branch AD path for scalar/vector derivative reports. "
+            "'direct' differentiates the fixed replay directly and is faster; "
+            "'custom_vjp' exercises the explicit custom-VJP wrapper."
         ),
     )
     parser.add_argument(

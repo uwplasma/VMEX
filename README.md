@@ -125,6 +125,10 @@ vmec input.cth_like_free_bdy_lasym_small
 
 The direct-coil free-boundary lane samples differentiable Biot-Savart coils
 directly while keeping the existing `mgrid` path for VMEC2000 compatibility.
+Current coil-only optimization examples validate fixed accepted-branch
+derivatives and cheap VMEC-state QS/aspect/iota proxies; they do not yet claim
+full adaptive coil-to-Boozer differentiation through every host-controller
+branch.
 
 ```bash
 python examples/free_boundary_direct_coils_forward.py \

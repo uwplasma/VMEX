@@ -9,6 +9,7 @@ in the backward pass rather than differentiating through an iterative solver.
 from __future__ import annotations
 
 import hashlib
+import time
 from collections.abc import Mapping
 from typing import Any
 
@@ -48,6 +49,19 @@ __all__ = [
     "jax_visible_segmented_accepted_nonlinear_controller_jax",
     "pytree_directional_derivative_check_jax",
 ]
+
+
+def _block_until_ready_for_timing(value: Any) -> Any:
+    """Synchronize JAX arrays before recording device timing diagnostics."""
+
+    if jax is None:
+        return value
+    try:
+        return jax.block_until_ready(value)
+    except Exception:
+        # Some older JAX versions do not accept every pytree container at the
+        # top level.  Fall back to synchronizing individual leaves.
+        return tree_util.tree_map(lambda leaf: jax.block_until_ready(leaf), value)
 
 
 def dense_vacuum_solve_jax(A: Any, b: Any, *, symmetric: bool = False) -> Any:
@@ -4203,6 +4217,7 @@ def direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
     init_kwargs: dict[str, Any] | None = None,
     solve_kwargs: dict[str, Any] | None = None,
     replay_kwargs: dict[str, Any] | None = None,
+    replay_ad_mode: str = "direct",
     require_active_trace: bool = True,
 ) -> dict[str, Any]:
     """Return a production-forward branch-local scalar value and gradient.
@@ -4224,9 +4239,12 @@ def direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
     if jax is None:  # pragma: no cover - JAX is required for this helper.
         raise RuntimeError("JAX is required for branch-local scalar gradients.")
 
+    timings: dict[str, float] = {}
+    total_start = time.perf_counter()
     if complete_payload is None:
         if input_path is None or params is None:
             raise ValueError("input_path and params are required when complete_payload is not supplied")
+        t0 = time.perf_counter()
         payload = direct_coil_complete_solve_trace(
             input_path,
             params,
@@ -4234,12 +4252,15 @@ def direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
             solve_kwargs=solve_kwargs,
             require_active_trace=require_active_trace,
         )
+        timings["complete_solve_trace_wall_s"] = float(time.perf_counter() - t0)
     else:
+        t0 = time.perf_counter()
         payload = dict(complete_payload)
         if params is None:
             params = payload.get("params")
         if params is None:
             raise ValueError("params must be supplied when complete_payload does not contain params")
+        timings["payload_copy_wall_s"] = float(time.perf_counter() - t0)
 
     traces = tuple(payload.get("traces", ()))
     if not traces:
@@ -4251,7 +4272,9 @@ def direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
     if init is None:
         raise ValueError("complete payload is missing the initialization result")
 
+    t0 = time.perf_counter()
     values = _complete_solve_objective_values(scalar_fn(payload))
+    timings["production_scalar_eval_wall_s"] = float(time.perf_counter() - t0)
     key = str(scalar_key or ("objective" if "objective" in values else next(iter(values))))
     if key not in values:
         raise KeyError(f"scalar_key {key!r} not returned by scalar_fn")
@@ -4270,7 +4293,19 @@ def direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
     if replay_kwargs:
         replay_options.update(replay_kwargs)
 
-    def _replay_scalar(coil_params):
+    ad_mode = str(replay_ad_mode).strip().lower()
+    if ad_mode not in {"direct", "custom_vjp"}:
+        raise ValueError("replay_ad_mode must be 'direct' or 'custom_vjp'")
+
+    def _replay_scalar_direct(coil_params):
+        replay = direct_coil_accepted_trace_controller_replay_objective_jax(
+            coil_params,
+            traces[0]["state_pre"],
+            **replay_options,
+        )
+        return replay_scalar_fn(replay, payload)
+
+    def _replay_scalar_custom_vjp(coil_params):
         return direct_coil_accepted_trace_controller_custom_vjp_scalar_jax(
             coil_params,
             traces[0]["state_pre"],
@@ -4278,14 +4313,28 @@ def direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
             **replay_options,
         )
 
+    _replay_scalar = _replay_scalar_direct if ad_mode == "direct" else _replay_scalar_custom_vjp
+
+    t0 = time.perf_counter()
     replay_value, grad = jax.value_and_grad(_replay_scalar)(params)
+    timings["replay_value_and_grad_dispatch_s"] = float(time.perf_counter() - t0)
+    t0 = time.perf_counter()
+    replay_value, grad = _block_until_ready_for_timing((replay_value, grad))
+    timings["replay_value_and_grad_ready_s"] = float(time.perf_counter() - t0)
+    timings["replay_value_and_grad_wall_s"] = (
+        timings["replay_value_and_grad_dispatch_s"] + timings["replay_value_and_grad_ready_s"]
+    )
+    t0 = time.perf_counter()
     diagnostics = free_boundary_adjoint_trace_replay_diagnostics(traces)
+    timings["trace_replay_diagnostics_wall_s"] = float(time.perf_counter() - t0)
+    timings["total_wall_s"] = float(time.perf_counter() - total_start)
     return {
         "contract": "production-forward branch-local run_free_boundary scalar value/gradient",
         "uses_production_forward": True,
         "differentiates_adaptive_controller": False,
         "differentiates_run_free_boundary": False,
         "differentiates_fixed_accepted_branch": True,
+        "replay_ad_mode": ad_mode,
         "scalar_key": key,
         "value": float(values[key]),
         "all_values": values,
@@ -4293,6 +4342,7 @@ def direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
         "base_abs_delta": abs(float(np.asarray(replay_value, dtype=float)) - float(values[key])),
         "grad": grad,
         "payload": payload,
+        "timings": timings,
         "trace_replay_diagnostics": diagnostics,
         "replay_option_flags": {
             "use_preconditioner_policy_segments": bool(
@@ -4300,6 +4350,7 @@ def direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
             ),
             "use_stacked_step_controls": bool(replay_options.get("use_stacked_step_controls", False)),
             "use_accepted_only_fast_path": bool(replay_options.get("use_accepted_only_fast_path", True)),
+            "replay_ad_mode": ad_mode,
         },
     }
 
@@ -4315,6 +4366,7 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
     init_kwargs: dict[str, Any] | None = None,
     solve_kwargs: dict[str, Any] | None = None,
     replay_kwargs: dict[str, Any] | None = None,
+    replay_ad_mode: str = "direct",
     require_active_trace: bool = True,
 ) -> dict[str, Any]:
     """Return production-forward branch-local values and a scalar Jacobian.
@@ -4338,9 +4390,12 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
     if not replay_scalar_fns:
         raise ValueError("replay_scalar_fns must contain at least one scalar")
 
+    timings: dict[str, float] = {}
+    total_start = time.perf_counter()
     if complete_payload is None:
         if input_path is None or params is None:
             raise ValueError("input_path and params are required when complete_payload is not supplied")
+        t0 = time.perf_counter()
         payload = direct_coil_complete_solve_trace(
             input_path,
             params,
@@ -4348,12 +4403,15 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             solve_kwargs=solve_kwargs,
             require_active_trace=require_active_trace,
         )
+        timings["complete_solve_trace_wall_s"] = float(time.perf_counter() - t0)
     else:
+        t0 = time.perf_counter()
         payload = dict(complete_payload)
         if params is None:
             params = payload.get("params")
         if params is None:
             raise ValueError("params must be supplied when complete_payload does not contain params")
+        timings["payload_copy_wall_s"] = float(time.perf_counter() - t0)
 
     traces = tuple(payload.get("traces", ()))
     if not traces:
@@ -4365,7 +4423,9 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
     if init is None:
         raise ValueError("complete payload is missing the initialization result")
 
+    t0 = time.perf_counter()
     all_values = _complete_solve_objective_values(scalar_fn(payload))
+    timings["production_scalar_eval_wall_s"] = float(time.perf_counter() - t0)
     keys = tuple(str(key) for key in (scalar_keys if scalar_keys is not None else tuple(replay_scalar_fns)))
     if not keys:
         raise ValueError("scalar_keys must contain at least one scalar")
@@ -4394,7 +4454,19 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
         for key in keys
     )
 
-    def _replay_scalars(coil_params):
+    ad_mode = str(replay_ad_mode).strip().lower()
+    if ad_mode not in {"direct", "custom_vjp"}:
+        raise ValueError("replay_ad_mode must be 'direct' or 'custom_vjp'")
+
+    def _replay_scalars_direct(coil_params):
+        replay = direct_coil_accepted_trace_controller_replay_objective_jax(
+            coil_params,
+            traces[0]["state_pre"],
+            **replay_options,
+        )
+        return jnp.asarray([fn(replay) for fn in scalar_fn_seq])
+
+    def _replay_scalars_custom_vjp(coil_params):
         return direct_coil_accepted_trace_controller_custom_vjp_scalars_jax(
             coil_params,
             traces[0]["state_pre"],
@@ -4402,13 +4474,32 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             **replay_options,
         )
 
+    _replay_scalars = _replay_scalars_direct if ad_mode == "direct" else _replay_scalars_custom_vjp
+
+    t0 = time.perf_counter()
     replay_values, pullback = jax.vjp(_replay_scalars, params)
+    timings["replay_vjp_dispatch_s"] = float(time.perf_counter() - t0)
+    t0 = time.perf_counter()
+    replay_values = _block_until_ready_for_timing(replay_values)
+    timings["replay_vjp_ready_s"] = float(time.perf_counter() - t0)
     basis = jnp.eye(len(keys), dtype=jnp.asarray(replay_values).dtype)
+    t0 = time.perf_counter()
     basis_gradients = tuple(pullback(basis[index])[0] for index in range(len(keys)))
+    timings["replay_pullbacks_dispatch_s"] = float(time.perf_counter() - t0)
+    t0 = time.perf_counter()
+    basis_gradients = _block_until_ready_for_timing(basis_gradients)
+    timings["replay_pullbacks_ready_s"] = float(time.perf_counter() - t0)
+    timings["replay_vjp_wall_s"] = timings["replay_vjp_dispatch_s"] + timings["replay_vjp_ready_s"]
+    timings["replay_pullbacks_wall_s"] = (
+        timings["replay_pullbacks_dispatch_s"] + timings["replay_pullbacks_ready_s"]
+    )
     jacobian = tree_util.tree_map(
         lambda *parts: jnp.stack([jnp.asarray(part) for part in parts], axis=0),
         *basis_gradients,
     )
+    t0 = time.perf_counter()
+    jacobian = _block_until_ready_for_timing(jacobian)
+    timings["jacobian_stack_ready_s"] = float(time.perf_counter() - t0)
     gradients = {key: basis_gradients[index] for index, key in enumerate(keys)}
     values = {key: float(all_values[key]) for key in keys}
     replay_value_map = {key: replay_values[index] for index, key in enumerate(keys)}
@@ -4416,13 +4507,17 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
         key: abs(float(np.asarray(replay_values[index], dtype=float)) - float(values[key]))
         for index, key in enumerate(keys)
     }
+    t0 = time.perf_counter()
     diagnostics = free_boundary_adjoint_trace_replay_diagnostics(traces)
+    timings["trace_replay_diagnostics_wall_s"] = float(time.perf_counter() - t0)
+    timings["total_wall_s"] = float(time.perf_counter() - total_start)
     return {
         "contract": "production-forward branch-local run_free_boundary scalar values/Jacobian",
         "uses_production_forward": True,
         "differentiates_adaptive_controller": False,
         "differentiates_run_free_boundary": False,
         "differentiates_fixed_accepted_branch": True,
+        "replay_ad_mode": ad_mode,
         "scalar_keys": keys,
         "values": values,
         "all_values": all_values,
@@ -4433,6 +4528,7 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
         "jacobian": jacobian,
         "grads": gradients,
         "payload": payload,
+        "timings": timings,
         "trace_replay_diagnostics": diagnostics,
         "replay_option_flags": {
             "use_preconditioner_policy_segments": bool(
@@ -4440,6 +4536,7 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             ),
             "use_stacked_step_controls": bool(replay_options.get("use_stacked_step_controls", False)),
             "use_accepted_only_fast_path": bool(replay_options.get("use_accepted_only_fast_path", True)),
+            "replay_ad_mode": ad_mode,
         },
     }
 

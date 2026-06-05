@@ -69,11 +69,11 @@ summaries.
 
 Phase 1 in this lane includes JAX-native coil-field sampling, an ESSOS coil
 adapter, generated-``mgrid`` compatibility, and forward free-boundary solves
-from direct coils. Phase 2 is the production custom adjoint through the full
-free-boundary vacuum/NESTOR solve. Several phase-2 validation rungs are already
-implemented on JAX-visible dense or accepted-state problems, but the production
-``run_free_boundary`` nonlinear-loop adjoint is not claimed as publication-ready
-until complete-solve AD-vs-finite-difference checks pass. The current
+from direct coils. Phase 2 targets the production custom adjoint through the
+full free-boundary vacuum/NESTOR solve. Several phase-2 validation rungs are
+already implemented on JAX-visible dense or accepted-state problems, but the
+production ``run_free_boundary`` nonlinear-loop adjoint is not claimed as
+publication-ready until complete-solve AD-vs-finite-difference checks pass. The current
 post-merge evidence now includes reusable accepted-trace replay helpers,
 accepted-state ``bsqvac`` replay derivatives with respect to the VMEC state,
 JAX-visible nonlinear-controller primitives with fixed-length masked
@@ -701,7 +701,11 @@ fixed-accepted-branch ``qs_total`` gradient, or ``vector`` to build the
 more expensive multi-scalar branch-local Jacobian for reviewer diagnostics.
 The scalar can be changed with ``--same-branch-report-scalar-key``.  Use
 ``aspect`` for a cheaper physical-scalar timing probe and ``qs_total`` for the
-QS-relevant scalar.
+QS-relevant scalar.  The derivative report defaults to
+``--same-branch-report-ad-mode direct``, which differentiates the fixed
+accepted-branch replay directly and avoids an extra custom-VJP wrapper replay.
+Use ``--same-branch-report-ad-mode custom_vjp`` only when explicitly auditing
+the custom-VJP seam.
 The resulting ``same_branch_complete_solve_report.json`` includes a
 ``timings`` block.  ``complete_solve_fd_wall_s`` measures the complete
 base/plus/minus finite-difference solves, while
@@ -711,7 +715,13 @@ smoke, the forward objective evaluation is about two seconds, the complete
 finite-difference report is several seconds, and the first cold branch-local
 scalar replay can still take tens of seconds.  That is why derivative-detail
 reports remain opt-in performance diagnostics rather than default example
-output.
+output.  When scalar or vector detail is requested, the corresponding
+``branch_local_*`` block also includes nested timing fields such as
+``production_scalar_eval_wall_s``, ``replay_value_and_grad_dispatch_s``,
+``replay_value_and_grad_ready_s``, ``replay_vjp_wall_s``, and
+``replay_pullbacks_wall_s``.  These fields synchronize JAX arrays before
+recording device-ready timings, so they are suitable for distinguishing Python
+dispatch, XLA compilation, and CPU/GPU execution costs in local profiling.
 
 Run the dependency-light direct-coil forward example from the repository root.
 This path constructs a synthetic circular ``CoilFieldParams`` object directly in

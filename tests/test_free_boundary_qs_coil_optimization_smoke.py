@@ -336,17 +336,27 @@ def test_same_branch_report_writer_records_branch_local_scalar_gradient(tmp_path
 
     def fake_branch_local_scalar(*_args, **kwargs):
         assert kwargs["scalar_key"] == "aspect"
+        assert kwargs["replay_ad_mode"] == "direct"
         return {
             "uses_production_forward": True,
             "differentiates_adaptive_controller": False,
             "differentiates_run_free_boundary": False,
             "differentiates_fixed_accepted_branch": True,
+            "replay_ad_mode": "direct",
             "scalar_key": "aspect",
             "replay_option_flags": {"use_stacked_step_controls": True},
             "value": 6.0,
             "replay_value": jnp.asarray(6.0),
             "base_abs_delta": 0.0,
             "grad": grad,
+            "timings": {
+                "production_scalar_eval_wall_s": 0.01,
+                "replay_value_and_grad_dispatch_s": 0.02,
+                "replay_value_and_grad_ready_s": 0.03,
+                "replay_value_and_grad_wall_s": 0.05,
+                "trace_replay_diagnostics_wall_s": 0.004,
+                "total_wall_s": 0.07,
+            },
         }
 
     import vmec_jax.free_boundary_adjoint as freeb_adj
@@ -374,12 +384,15 @@ def test_same_branch_report_writer_records_branch_local_scalar_gradient(tmp_path
     assert scalar["differentiates_adaptive_controller"] is False
     assert scalar["differentiates_run_free_boundary"] is False
     assert scalar["differentiates_fixed_accepted_branch"] is True
+    assert scalar["replay_ad_mode"] == "direct"
     assert scalar["scalar_key"] == "aspect"
     assert scalar["exact_directional"] == pytest.approx(expected_directional)
     assert scalar["complete_fd_directional"] == pytest.approx(0.7)
     assert report["branch_local_vector_jacobian"]["available"] is False
     assert report["timings"]["complete_solve_fd_wall_s"] >= 0.0
     assert report["timings"]["branch_local_scalar_wall_s"] >= 0.0
+    assert scalar["timings"]["replay_value_and_grad_wall_s"] == pytest.approx(0.05)
+    assert report["timings"]["branch_local_scalar_replay_value_and_grad_wall_s"] == pytest.approx(0.05)
     assert "branch_local_vector_wall_s" not in report["timings"]
 
 
@@ -460,12 +473,14 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
         direction_params,
     )
 
-    def fake_branch_local_vector(*_args, **_kwargs):
+    def fake_branch_local_vector(*_args, **kwargs):
+        assert kwargs["replay_ad_mode"] == "direct"
         return {
             "uses_production_forward": True,
             "differentiates_adaptive_controller": False,
             "differentiates_run_free_boundary": False,
             "differentiates_fixed_accepted_branch": True,
+            "replay_ad_mode": "direct",
             "scalar_keys": ("aspect", "qs_total", "lcfs_boundary_moment", "accepted_bnormal_rms"),
             "replay_option_flags": {"use_stacked_step_controls": True},
             "max_base_abs_delta": 0.0,
@@ -488,6 +503,13 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
                 "accepted_bnormal_rms": 0.0,
             },
             "jacobian": jacobian,
+            "timings": {
+                "production_scalar_eval_wall_s": 0.01,
+                "replay_vjp_wall_s": 0.02,
+                "replay_pullbacks_wall_s": 0.03,
+                "jacobian_stack_ready_s": 0.004,
+                "total_wall_s": 0.06,
+            },
         }
 
     import vmec_jax.free_boundary_adjoint as freeb_adj
@@ -514,6 +536,7 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
     assert vector["differentiates_adaptive_controller"] is False
     assert vector["differentiates_run_free_boundary"] is False
     assert vector["differentiates_fixed_accepted_branch"] is True
+    assert vector["replay_ad_mode"] == "direct"
     assert vector["scalar_keys"] == ["aspect", "qs_total", "lcfs_boundary_moment", "accepted_bnormal_rms"]
     assert vector["replay_option_flags"]["use_stacked_step_controls"] is True
     assert vector["max_base_abs_delta"] == pytest.approx(0.0)
@@ -521,6 +544,8 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
     assert vector["scalars"]["qs_total"]["complete_fd_directional"] == pytest.approx(0.4)
     assert report["timings"]["complete_solve_fd_wall_s"] >= 0.0
     assert report["timings"]["branch_local_vector_wall_s"] >= 0.0
+    assert vector["timings"]["replay_pullbacks_wall_s"] == pytest.approx(0.03)
+    assert report["timings"]["branch_local_vector_replay_pullbacks_wall_s"] == pytest.approx(0.03)
     assert "branch_local_scalar_wall_s" not in report["timings"]
 
 
