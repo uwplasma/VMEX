@@ -170,7 +170,7 @@ def _run_direct_solve(input_path: Path, params: CoilFieldParams):
 
 
 @pytest.mark.py311_coverage_only
-def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
+def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatch: pytest.MonkeyPatch) -> None:
     from vmec_jax._compat import jax, jnp
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_accepted_trace_array_controls_jax,
@@ -740,6 +740,60 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes() -> None:
             replay_scalar_fns={"objective": lambda replay, payload: 0.0},
             replay_ad_mode="custom_vjp",
         )
+
+    import vmec_jax.free_boundary_adjoint as freeb_adj
+
+    def fake_direct_coil_replay(coil_params, _state_pre, **_replay_options):
+        x = coil_params["x"]
+        return {"linear": 2.0 * x, "quadratic": x * x}
+
+    monkeypatch.setattr(
+        freeb_adj,
+        "direct_coil_accepted_trace_controller_replay_objective_jax",
+        fake_direct_coil_replay,
+    )
+    synthetic_jvp_payload = {
+        "params": {"x": jnp.asarray(2.0)},
+        "init": SimpleNamespace(
+            static=SimpleNamespace(cfg=SimpleNamespace(nfp=1, mpol=2, ntor=0, lasym=False)),
+            signgs=1,
+        ),
+        "traces": (axis_trace0,),
+    }
+    synthetic_jvp_report = direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
+        complete_payload=synthetic_jvp_payload,
+        direction_params={"x": jnp.asarray(0.25)},
+        scalar_fn=lambda payload: {"linear": 4.0, "quadratic": 4.0},
+        production_values={"linear": 4.0, "quadratic": 4.0},
+        replay_scalar_fns={
+            "linear": lambda replay, payload: replay["linear"],
+            "quadratic": lambda replay, payload: replay["quadratic"],
+        },
+        include_trace_replay_diagnostics=False,
+    )
+    assert synthetic_jvp_report["derivative_mode"] == "directional_jvp"
+    assert synthetic_jvp_report["jacobian"] is None
+    assert synthetic_jvp_report["grads"] == {}
+    assert synthetic_jvp_report["production_values_source"] == "precomputed"
+    assert synthetic_jvp_report["trace_replay_diagnostics"]["omitted"] is True
+    assert synthetic_jvp_report["replay_option_flags"]["replay_ad_mode"] == "direct"
+    assert synthetic_jvp_report["replay_graph_metadata"]["active_free_boundary_replay_steps"] == 1
+    np.testing.assert_allclose(
+        np.asarray(synthetic_jvp_report["replay_values"]),
+        np.asarray([4.0, 4.0]),
+    )
+    np.testing.assert_allclose(
+        np.asarray(synthetic_jvp_report["directional_derivatives"]["linear"]),
+        np.asarray(0.5),
+    )
+    np.testing.assert_allclose(
+        np.asarray(synthetic_jvp_report["directional_derivatives"]["quadratic"]),
+        np.asarray(1.0),
+    )
+    assert synthetic_jvp_report["timings"]["replay_jvp_wall_s"] >= 0.0
+    assert synthetic_jvp_report["timings"]["replay_vjp_wall_s"] == 0.0
+    assert synthetic_jvp_report["timings"]["replay_pullbacks_wall_s"] == 0.0
+    assert synthetic_jvp_report["timings"]["jacobian_stack_ready_s"] == 0.0
 
     ready_tree = _block_until_ready_for_timing({"value": jnp.asarray([1.0, 2.0])})
     np.testing.assert_allclose(np.asarray(ready_tree["value"]), np.asarray([1.0, 2.0]))
