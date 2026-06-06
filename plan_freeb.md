@@ -30,7 +30,10 @@ Steps taken:
    ``lcfs_boundary_moment``.
 4. Kept ``accepted_bnormal_rms`` on the full-history replay path because it
    explicitly depends on accepted-step vacuum RMS history.
-5. Added tests that compare state-only replay state and directional JVPs
+5. Added state-only accepted-controller runners that return only final state
+   and final done status, avoiding scan-history materialization entirely for
+   compact final-state reports.
+6. Added tests that compare state-only replay state and directional JVPs
    against the existing full replay, and tests that the example report records
    compact replay provenance.
 
@@ -47,7 +50,7 @@ Results obtained:
    --same-branch-report-mode vector --same-branch-report-vector-keys
    aspect,qs_total`` completed and wrote ``state_only_replay=true`` in the
    branch-local vector report.  The branch-local vector JVP wall time was about
-   ``10.07 s`` on the local machine; the remaining dominant cost is still cold
+   ``10.00 s`` on the local machine; the remaining dominant cost is still cold
    JAX replay/JVP graph construction.
 
 Best next steps:

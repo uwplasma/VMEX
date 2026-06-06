@@ -3621,15 +3621,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     )
     assert stacked_state_only_replay["used_stacked_step_controls"]
     assert stacked_state_only_replay["used_state_only_replay"] is True
-    assert "force" not in stacked_state_only_replay["history"]
-    assert "bsqvac" not in stacked_state_only_replay["history"]
-    assert "bnormal_rms" not in stacked_state_only_replay["history"]
-    assert "bsqvac_rms" not in stacked_state_only_replay["history"]
-    for key in ("active", "accepted", "rejected", "done", "state_reset"):
-        np.testing.assert_array_equal(
-            np.asarray(stacked_state_only_replay["history"][key]),
-            np.asarray(stacked_controller_replay["history"][key]),
-        )
+    assert stacked_state_only_replay["history"] == {}
     np.testing.assert_allclose(
         np.asarray(pack_state(stacked_state_only_replay["state"])),
         np.asarray(pack_state(stacked_controller_replay["state"])),
