@@ -3858,6 +3858,142 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     )
 
 
+@pytest.mark.py311_coverage_only
+def test_direct_coil_vacuum_field_override_replay_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cover the diagnostic frozen-vacuum replay branch with synthetic arrays.
+
+    The frozen-vacuum path is diagnostic-only, but it is useful for performance
+    attribution.  This test keeps it honest without launching a VMEC solve: the
+    direct-coil/NESTOR source arrays are supplied from a trace, while the dense
+    solve and field reconstruction are patched to a small deterministic map.
+    """
+
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+    import vmec_jax.free_boundary_adjoint as freeb_adj
+
+    shape = (2, 2)
+    base_trace = {
+        "bnormal": jnp.asarray([[1.0, -2.0], [3.0, -4.0]]),
+        "g_uu": jnp.ones(shape),
+        "g_uv": 2.0 * jnp.ones(shape),
+        "g_vv": 3.0 * jnp.ones(shape),
+    }
+    trace_with_tangents = {
+        "freeb_nestor_trace": {
+            **base_trace,
+            "bexu_ext": 4.0 * jnp.ones(shape),
+            "bexv_ext": -5.0 * jnp.ones(shape),
+        }
+    }
+    override = freeb_adj._direct_coil_trace_vacuum_field_override(trace_with_tangents)
+    np.testing.assert_allclose(np.asarray(override["bu"]), 4.0)
+    np.testing.assert_allclose(np.asarray(override["bv"]), -5.0)
+
+    trace_with_legacy_names = {**base_trace, "bu": 6.0 * jnp.ones(shape), "bv": 7.0 * jnp.ones(shape)}
+    legacy_override = freeb_adj._direct_coil_trace_vacuum_field_override(trace_with_legacy_names)
+    np.testing.assert_allclose(np.asarray(legacy_override["bu"]), 6.0)
+    np.testing.assert_allclose(np.asarray(legacy_override["bv"]), 7.0)
+
+    zero_tangent_override = freeb_adj._direct_coil_trace_vacuum_field_override(base_trace)
+    np.testing.assert_allclose(np.asarray(zero_tangent_override["bu"]), 0.0)
+    np.testing.assert_allclose(np.asarray(zero_tangent_override["bv"]), 0.0)
+
+    with pytest.raises(ValueError, match="NESTOR trace"):
+        freeb_adj._direct_coil_trace_vacuum_field_override({"freeb_nestor_trace": object()})
+    with pytest.raises(ValueError, match="missing vacuum-field override"):
+        freeb_adj._direct_coil_trace_vacuum_field_override({"bnormal": jnp.ones(shape)})
+
+    calls: list[dict[str, object]] = []
+
+    def fake_dense_vmec_nestor_mode_solve_jax(**kwargs):
+        calls.append(
+            {
+                "bexni": kwargs["bexni"],
+                "include_analytic": kwargs["include_analytic"],
+                "include_phi_flat": kwargs["include_phi_flat"],
+                "include_residual": kwargs["include_residual"],
+            }
+        )
+        return {"mode_coeffs": 0.0 * kwargs["bexni"]}
+
+    def fake_vacuum_boundary_fields_from_mode_coeffs_jax(_mode_coeffs, *, bu_ext, bv_ext, g_uu, g_uv, g_vv, basis):
+        del basis
+        return {
+            "bsqvac": jnp.asarray(bu_ext)
+            + 2.0 * jnp.asarray(bv_ext)
+            + jnp.asarray(g_uu)
+            + jnp.asarray(g_uv)
+            + jnp.asarray(g_vv)
+        }
+
+    monkeypatch.setattr(freeb_adj, "dense_vmec_nestor_mode_solve_jax", fake_dense_vmec_nestor_mode_solve_jax)
+    monkeypatch.setattr(
+        freeb_adj,
+        "vacuum_boundary_fields_from_mode_coeffs_jax",
+        fake_vacuum_boundary_fields_from_mode_coeffs_jax,
+    )
+
+    grid = jnp.ones(shape)
+    out = freeb_adj.direct_coil_boundary_bsqvac_jax(
+        params=None,
+        R=grid,
+        Z=grid,
+        phi=grid,
+        Ru=grid,
+        Zu=grid,
+        Rv=grid,
+        Zv=grid,
+        ruu=grid,
+        ruv=grid,
+        rvv=grid,
+        zuu=grid,
+        zuv=grid,
+        zvv=grid,
+        basis={},
+        tables={},
+        signgs=1,
+        nvper=1,
+        wint=0.5 * grid,
+        include_analytic=False,
+        include_diagnostics=True,
+        vac_override=override,
+    )
+    expected_bexni = -override["bnormal"] * 0.5 * ((2.0 * np.pi) ** 2)
+    np.testing.assert_allclose(np.asarray(calls[-1]["bexni"]).reshape(shape), np.asarray(expected_bexni))
+    assert calls[-1]["include_analytic"] is False
+    assert calls[-1]["include_phi_flat"] is True
+    assert calls[-1]["include_residual"] is True
+    np.testing.assert_allclose(np.asarray(out["bsqvac"]), np.asarray(override["bu"] + 2.0 * override["bv"] + 6.0))
+    assert {"channels", "mode_solution", "vac", "bexni"}.issubset(out)
+
+    out_no_diag = freeb_adj.direct_coil_boundary_bsqvac_jax(
+        params=None,
+        R=grid,
+        Z=grid,
+        phi=grid,
+        Ru=grid,
+        Zu=grid,
+        Rv=grid,
+        Zv=grid,
+        ruu=grid,
+        ruv=grid,
+        rvv=grid,
+        zuu=grid,
+        zuv=grid,
+        zvv=grid,
+        basis={},
+        tables={},
+        signgs=1,
+        nvper=1,
+        include_diagnostics=False,
+        vac_override=zero_tangent_override,
+    )
+    assert set(out_no_diag) == {"bsqvac"}
+    assert calls[-1]["include_phi_flat"] is False
+    assert calls[-1]["include_residual"] is False
+
+
 @pytest.mark.parametrize("lasym", [False, True], ids=["stellsym", "lasym"])
 def test_jax_free_boundary_boundary_geometry_matches_host_sampler(
     tmp_path: Path,

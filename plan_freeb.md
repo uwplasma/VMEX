@@ -12,6 +12,57 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-06 Frozen-Vacuum Replay Coverage Gate Repair
+
+Steps taken:
+
+1. Diagnosed GitHub Actions run ``27075820001``.  Build, docs, smoke,
+   physics, and all test shards passed; only the combined coverage gate failed
+   at exact line coverage ``94.98%`` against the required ``95.00%``.
+2. Added a cheap synthetic py3.11 coverage-only test for the diagnostic
+   frozen-vacuum replay contract.  The test covers accepted-trace vacuum
+   override extraction, explicit tangential arrays, legacy ``bu``/``bv`` names,
+   zero-tangent fallback, error handling, the ``vac_override`` branch of
+   ``direct_coil_boundary_bsqvac_jax``, and the diagnostics/no-diagnostics
+   replay split.
+3. Kept the test solve-free by monkeypatching dense NESTOR and mode-field
+   reconstruction to a deterministic small map.  This repairs coverage without
+   adding another slow free-boundary solve to CI.
+
+Results obtained:
+
+1. ``python -m ruff check tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py``
+   passed locally.
+2. The focused new test passed locally.
+3. The CI-equivalent ``remaining`` exact coverage bucket passed locally with
+   ``22 passed in 72.83 s``.
+
+Best next steps:
+
+1. Commit and push the coverage repair, then confirm the next full CI run
+   restores the strict ``95%`` line-coverage gate.
+2. Resume the performance lane after CI is green: the next target remains
+   direct-coil boundary sampling/projection, followed by dense
+   NESTOR/source/mode reconstruction.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99994% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 97.0%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 98.5%.
+- CI runtime refactor with preserved coverage/physics gates: 100% after local
+  coverage-bucket validation; pending full GitHub Actions confirmation.
+- Docs/release hygiene: 99.5%.
+
 ### 2026-06-06 Vacuum-Field vs NESTOR Replay Cost Split
 
 Steps taken:
