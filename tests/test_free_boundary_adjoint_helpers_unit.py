@@ -161,3 +161,97 @@ def test_free_boundary_adjoint_segment_fast_path_guards() -> None:
 
     early_done = {**masks, "done": np.asarray([True, False])}
     assert not fba._accepted_trace_segment_is_unconditionally_accepted(early_done, start=0, stop=2)
+
+
+@pytest.mark.py311_coverage_only
+def test_direct_coil_trace_shape_and_frozen_vacuum_wrapper(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cover trace-shape inference and the frozen-vacuum wrapper without a solve."""
+
+    shape = (2, 3)
+    assert fba._direct_coil_trace_boundary_shape(
+        {"freeb_nestor_trace": {"br_axis": np.ones(shape)}}
+    ) == shape
+    assert fba._direct_coil_trace_boundary_shape({"freeb_bsqvac_half": np.ones(shape)}) == shape
+    assert fba._direct_coil_trace_boundary_shape({"freeb_nestor_trace": {"br_axis": np.ones((2, 3, 4))}}) is None
+
+    calls: list[dict[str, object]] = []
+
+    def fake_dense_vmec_nestor_mode_solve_jax(**kwargs):
+        calls.append(
+            {
+                "bexni": kwargs["bexni"],
+                "include_phi_flat": kwargs["include_phi_flat"],
+                "include_residual": kwargs["include_residual"],
+            }
+        )
+        return {"mode_coeffs": jnp.zeros_like(kwargs["bexni"])}
+
+    def fake_vacuum_boundary_fields_from_mode_coeffs_jax(_mode_coeffs, *, bu_ext, bv_ext, g_uu, g_uv, g_vv, basis):
+        del basis
+        return {"bsqvac": jnp.asarray(bu_ext) - jnp.asarray(bv_ext) + jnp.asarray(g_uu) + jnp.asarray(g_uv) + jnp.asarray(g_vv)}
+
+    monkeypatch.setattr(fba, "dense_vmec_nestor_mode_solve_jax", fake_dense_vmec_nestor_mode_solve_jax)
+    monkeypatch.setattr(
+        fba,
+        "vacuum_boundary_fields_from_mode_coeffs_jax",
+        fake_vacuum_boundary_fields_from_mode_coeffs_jax,
+    )
+
+    grid = jnp.ones(shape)
+    geometry = {
+        "R": grid,
+        "Z": 2.0 * grid,
+        "phi": 3.0 * grid,
+        "Ru": grid,
+        "Zu": grid,
+        "Rv": grid,
+        "Zv": grid,
+        "ruu": grid,
+        "ruv": grid,
+        "rvv": grid,
+        "zuu": grid,
+        "zuv": grid,
+        "zvv": grid,
+    }
+    trace = {
+        "freeb_nestor_trace": {
+            "bnormal": 2.0 * grid,
+            "g_uu": grid,
+            "g_uv": 2.0 * grid,
+            "g_vv": 3.0 * grid,
+            "bu": 4.0 * grid,
+            "bv": 5.0 * grid,
+            "br_axis": 6.0 * grid,
+            "bp_axis": 7.0 * grid,
+            "bz_axis": 8.0 * grid,
+        }
+    }
+    out = fba.direct_coil_boundary_bsqvac_from_trace_jax(
+        params=None,
+        geometry=geometry,
+        trace=trace,
+        basis={},
+        tables={},
+        signgs=1,
+        nvper=1,
+        wint=0.25 * grid,
+        include_diagnostics=False,
+        include_mode_diagnostics=False,
+        freeze_vacuum_field=True,
+    )
+    np.testing.assert_allclose(np.asarray(out["bsqvac"]), np.asarray(5.0 * grid))
+    np.testing.assert_allclose(np.asarray(calls[-1]["bexni"]).reshape(shape), np.asarray(-0.5 * grid * ((2.0 * np.pi) ** 2)))
+    assert calls[-1]["include_phi_flat"] is False
+    assert calls[-1]["include_residual"] is False
+
+    with pytest.raises(ValueError, match="NESTOR trace"):
+        fba.direct_coil_boundary_bsqvac_from_trace_jax(
+            params=None,
+            geometry=geometry,
+            trace={"freeb_nestor_trace": object()},
+            basis={},
+            tables={},
+            signgs=1,
+            nvper=1,
+            wint=grid,
+        )

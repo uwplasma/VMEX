@@ -1554,6 +1554,7 @@ def direct_coil_boundary_bsqvac_jax(
     wint: Any | None = None,
     include_analytic: bool = True,
     include_diagnostics: bool = True,
+    include_mode_diagnostics: bool = True,
     vac_override: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Replay accepted-boundary direct-coil ``bsqvac`` through JAX NESTOR.
@@ -1629,8 +1630,8 @@ def direct_coil_boundary_bsqvac_jax(
             signgs=int(signgs),
             nvper=int(nvper),
             include_analytic=bool(include_analytic),
-            include_phi_flat=bool(include_diagnostics),
-            include_residual=bool(include_diagnostics),
+            include_phi_flat=bool(include_mode_diagnostics),
+            include_residual=bool(include_mode_diagnostics),
         )
     with _jax_named_scope("vmec_jax.free_boundary.mode_field_reconstruction"):
         channels = vacuum_boundary_fields_from_mode_coeffs_jax(
@@ -1667,6 +1668,7 @@ def direct_coil_boundary_bsqvac_from_trace_jax(
     wint: Any,
     include_analytic: bool = True,
     include_diagnostics: bool = True,
+    include_mode_diagnostics: bool = True,
     freeze_vacuum_field: bool = False,
 ) -> dict[str, Any]:
     """Replay direct-coil ``bsqvac`` on accepted geometry using trace metadata.
@@ -1709,6 +1711,7 @@ def direct_coil_boundary_bsqvac_from_trace_jax(
         wint=jnp.asarray(wint),
         include_analytic=bool(include_analytic),
         include_diagnostics=bool(include_diagnostics),
+        include_mode_diagnostics=bool(include_mode_diagnostics),
         vac_override=vac_override,
     )
 
@@ -3079,6 +3082,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
     state_only_replay: bool = False,
     freeze_vacuum_field: bool = False,
     freeze_freeb_bsqvac: bool = False,
+    include_mode_diagnostics: bool = False,
     jit_preconditioner_apply: bool = True,
     unroll_accepted_only_segments_below: int = 0,
 ) -> dict[str, Any]:
@@ -3121,6 +3125,10 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
     runs the JAX dense NESTOR mode solve and field reconstruction.  This
     separates Biot-Savart/projection graph cost from NESTOR/source assembly
     graph cost, and is also not a promoted derivative path.
+    ``include_mode_diagnostics`` controls dense-mode diagnostic outputs such as
+    ``phi_flat`` and residual vectors.  Accepted-controller replay only needs
+    ``bsqvac`` and optionally boundary RMS diagnostics, so branch-local reports
+    default this to false to avoid building unused dense-solve outputs.
 
     The helper intentionally keeps every trace accepted.  It does not
     differentiate through the host policy that selected the traces; it validates
@@ -3231,6 +3239,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
                             wint=jnp.asarray(context["wint"]),
                             include_analytic=bool(include_analytic),
                             include_diagnostics=not bool(state_only_replay),
+                            include_mode_diagnostics=bool(include_mode_diagnostics),
                             freeze_vacuum_field=bool(freeze_vacuum_field),
                         )
                 else:
@@ -3260,6 +3269,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
                             wint=jnp.asarray(context["wint"]),
                             include_analytic=bool(include_analytic),
                             include_diagnostics=not bool(state_only_replay),
+                            include_mode_diagnostics=bool(include_mode_diagnostics),
                             vac_override=(
                                 _direct_coil_trace_vacuum_field_override(trace)
                                 if bool(freeze_vacuum_field)
@@ -3359,6 +3369,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
                             wint=jnp.asarray(context["wint"]),
                             include_analytic=bool(include_analytic),
                             include_diagnostics=not bool(state_only_replay),
+                            include_mode_diagnostics=bool(include_mode_diagnostics),
                             freeze_vacuum_field=bool(freeze_vacuum_field),
                         )
                 else:
@@ -3388,6 +3399,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
                             wint=jnp.asarray(context["wint"]),
                             include_analytic=bool(include_analytic),
                             include_diagnostics=not bool(state_only_replay),
+                            include_mode_diagnostics=bool(include_mode_diagnostics),
                             vac_override=(
                                 _direct_coil_trace_vacuum_field_override(trace)
                                 if bool(freeze_vacuum_field)
@@ -4667,6 +4679,7 @@ def direct_coil_same_branch_controller_scalars_custom_vjp_report(
             "use_stacked_step_controls": bool(replay_options.get("use_stacked_step_controls", False)),
             "use_accepted_only_fast_path": bool(replay_options.get("use_accepted_only_fast_path", True)),
             "include_analytic": bool(replay_options.get("include_analytic", True)),
+            "include_mode_diagnostics": bool(replay_options.get("include_mode_diagnostics", False)),
             "freeze_vacuum_field": bool(replay_options.get("freeze_vacuum_field", False)),
             "freeze_freeb_bsqvac": bool(replay_options.get("freeze_freeb_bsqvac", False)),
         },
@@ -5120,6 +5133,7 @@ def direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
             "use_replay_plan": bool(replay_plan_for_scalars is not None),
             "include_replay_aux": bool(replay_options.get("include_replay_aux", True)),
             "include_analytic": bool(replay_options.get("include_analytic", True)),
+            "include_mode_diagnostics": bool(replay_options.get("include_mode_diagnostics", False)),
             "freeze_vacuum_field": bool(replay_options.get("freeze_vacuum_field", False)),
             "freeze_freeb_bsqvac": bool(replay_options.get("freeze_freeb_bsqvac", False)),
             "state_only_replay": bool(replay_options.get("state_only_replay", False)),
@@ -5428,6 +5442,7 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             "use_replay_plan": bool(replay_plan_for_scalars is not None),
             "include_replay_aux": bool(replay_options.get("include_replay_aux", True)),
             "include_analytic": bool(replay_options.get("include_analytic", True)),
+            "include_mode_diagnostics": bool(replay_options.get("include_mode_diagnostics", False)),
             "freeze_vacuum_field": bool(replay_options.get("freeze_vacuum_field", False)),
             "freeze_freeb_bsqvac": bool(replay_options.get("freeze_freeb_bsqvac", False)),
             "state_only_replay": bool(replay_options.get("state_only_replay", False)),
