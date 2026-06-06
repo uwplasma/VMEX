@@ -193,6 +193,70 @@ def test_same_branch_report_anchor_uses_best_or_initial_coil_point():
     assert float(np.asarray(fallback_params.base_currents)[0]) == pytest.approx(float(np.asarray(base_params.base_currents)[0]))
 
 
+def test_same_branch_derivative_proposal_uses_gated_directional_report():
+    module = _load_example_module()
+    report = {
+        "direction_x": [1.0, 0.0, -1.0],
+        "branch_local_vector_jacobian": {
+            "available": True,
+            "differentiates_adaptive_controller": False,
+            "differentiates_fixed_accepted_branch": True,
+            "scalars": {
+                "qs_total": {
+                    "value": 0.2,
+                    "exact_directional": 3.0,
+                },
+                "aspect": {
+                    "value": 5.5,
+                    "exact_directional": -4.0,
+                },
+            },
+        },
+    }
+    objective_model = {
+        "qs_weight": 2.0,
+        "aspect_weight": 0.5,
+        "target_aspect": 6.0,
+    }
+
+    proposal = module.same_branch_derivative_proposal_from_report(
+        report,
+        objective_model,
+        {"x": [0.1, 0.2, 0.3]},
+        step_size=0.25,
+    )
+
+    assert proposal["available"] is True
+    assert proposal["differentiates_adaptive_controller"] is False
+    assert proposal["directional_derivative"] == pytest.approx(8.0)
+    assert proposal["contributions"]["qs_total"]["contribution"] == pytest.approx(6.0)
+    assert proposal["contributions"]["aspect"]["contribution"] == pytest.approx(2.0)
+    assert proposal["alpha"] == pytest.approx(-0.25)
+    np.testing.assert_allclose(proposal["trial_x"], [-0.15, 0.2, 0.55])
+
+
+def test_same_branch_derivative_proposal_rejects_adaptive_claims():
+    module = _load_example_module()
+
+    proposal = module.same_branch_derivative_proposal_from_report(
+        {
+            "direction_x": [1.0],
+            "branch_local_vector_jacobian": {
+                "available": True,
+                "differentiates_adaptive_controller": True,
+                "differentiates_fixed_accepted_branch": True,
+                "scalars": {"qs_total": {"value": 0.2, "exact_directional": 1.0}},
+            },
+        },
+        {"qs_weight": 1.0},
+        {"x": [0.0]},
+        step_size=0.1,
+    )
+
+    assert proposal["available"] is False
+    assert "adaptive-controller" in proposal["reason"]
+
+
 def test_same_branch_report_writer_uses_source_helper(tmp_path, monkeypatch):
     module = _load_example_module()
     base_params, _metadata = module.make_circle_provider(current_scale=1.0)
