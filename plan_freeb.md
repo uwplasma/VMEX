@@ -11065,6 +11065,71 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 99.0%.
 
+### 2026-06-06 Same-Branch Fingerprint Gate and Compact Vector Keys
+
+Steps taken:
+
+1. Added a same-branch fingerprint guard to the coil-only QS example's
+   branch-local scalar/vector report paths.  If the complete-solve
+   finite-difference report is not branch compatible, the example now records
+   the incompatibility and skips branch-local AD instead of reporting an invalid
+   derivative.
+2. Added ``--same-branch-report-vector-keys`` so compact production reports can
+   trace only the requested physical scalars.  The default is the smaller
+   ``aspect,qs_total`` pair; broader diagnostics can request
+   ``aspect,qs_total,lcfs_boundary_moment,accepted_bnormal_rms`` explicitly.
+3. Added ``include_replay_graph_metadata=False`` for compact example reports.
+   Validation helpers keep metadata enabled by default, so the physics gates
+   still check the full replay metadata.
+4. Added lightweight tests for omitted metadata and updated the example report
+   writer tests to cover the compact vector-key path.
+
+Results obtained:
+
+1. ``python -m ruff check`` passed for the touched source, example, and tests.
+2. Focused example/free-boundary tests passed locally:
+   ``test_same_branch_report_writer_records_branch_local_scalar_gradient``,
+   ``test_same_branch_report_writer_records_branch_local_vector_jacobian``, and
+   ``test_direct_coil_trace_fingerprint_detects_control_branch_changes``.
+3. ``python -m sphinx -b html -q docs docs/_build/html`` passed.
+4. A bounded ``free_boundary_QS_coil_optimization.py --write-same-branch-report``
+   smoke completed and wrote a compact vector report with ``scalar_keys`` equal
+   to ``['aspect', 'qs_total']``, ``directional_jvp`` derivatives, omitted
+   payload/metadata, and replay base delta about ``6e-15``.
+5. The compact report still spent about ``15 s`` in ``replay_jvp_dispatch_s``.
+   That confirms the remaining bottleneck is XLA/JAX graph construction for the
+   fixed-branch replay itself, not payload retention, JSON emission, metadata
+   construction, or scalar-output count.
+
+Best next steps:
+
+1. Implement a replay-plan object that precomputes and reuses static step
+   controls, policy segments, and masks for
+   ``direct_coil_accepted_trace_controller_replay_objective_jax``.
+2. Add an accepted-only segment replay specialization that removes
+   accepted/rejected ``where`` bookkeeping for all-accepted segments, while
+   keeping rejected-slot gates on the general path.
+3. After replay graph size is reduced, rerun the compact same-branch report and
+   compare ``replay_jvp_dispatch_s`` against the current ``~15 s`` baseline.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99987% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.8%.
+- Single-stage coil-only optimization: 93.6%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 96.4%; compact reports are gated, but replay graph
+  construction remains the dominant blocker.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.1%.
+
 ### 2026-06-06 Axis-R Same-Branch Physical Scalar Gate
 
 Steps taken:

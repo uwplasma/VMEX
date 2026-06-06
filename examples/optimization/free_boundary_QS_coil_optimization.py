@@ -54,7 +54,7 @@ from pathlib import Path
 import sys
 import time
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 
@@ -77,6 +77,13 @@ DEFAULT_INPUT = REPO_ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lo
 DEFAULT_OUTDIR = REPO_ROOT / "results" / "free_boundary_QS_coil_optimization"
 DEFAULT_ESSOS_COIL_JSON = "ESSOS_biot_savart_LandremanPaulQA.json"
 DEFAULT_FREE_BOUNDARY_PHIEDGE = -0.025
+DEFAULT_SAME_BRANCH_VECTOR_KEYS = ("aspect", "qs_total")
+SUPPORTED_SAME_BRANCH_VECTOR_KEYS = (
+    "aspect",
+    "qs_total",
+    "lcfs_boundary_moment",
+    "accepted_bnormal_rms",
+)
 SINGLE_STAGE_LIMITATIONS = [
     "The QS term is a VMEC-state quasisymmetry-ratio residual, not a Boozer-space exact-adjoint objective.",
     "Production full-loop direct-coil free-boundary adjoints are not promoted yet.",
@@ -349,6 +356,24 @@ def parse_float_list(text: str) -> list[float]:
     if not values:
         raise ValueError("expected at least one floating-point value")
     return values
+
+
+def parse_same_branch_vector_keys(value: str | Sequence[str] | None) -> tuple[str, ...]:
+    """Parse branch-local vector report scalar keys from a small CLI option."""
+
+    if value is None:
+        keys = DEFAULT_SAME_BRANCH_VECTOR_KEYS
+    elif isinstance(value, str):
+        keys = tuple(part.strip() for part in value.replace(",", " ").split() if part.strip())
+    else:
+        keys = tuple(str(part).strip() for part in value if str(part).strip())
+    if not keys:
+        raise ValueError("expected at least one same-branch vector scalar key")
+    unsupported = tuple(key for key in keys if key not in SUPPORTED_SAME_BRANCH_VECTOR_KEYS)
+    if unsupported:
+        supported = ", ".join(SUPPORTED_SAME_BRANCH_VECTOR_KEYS)
+        raise ValueError(f"Unsupported same-branch vector scalar key(s) {unsupported}; supported keys: {supported}")
+    return keys
 
 
 def run_direct_free_boundary(
@@ -803,17 +828,24 @@ def write_same_branch_validation_report(
     }
     mode = str(getattr(args, "same_branch_report_mode", "none")).strip().lower()
     ad_mode = str(getattr(args, "same_branch_report_ad_mode", "direct")).strip().lower()
+    same_branch = bool(report["branch_compatibility"]["same_branch"])
+    vector_keys = parse_same_branch_vector_keys(getattr(args, "same_branch_report_vector_keys", None))
     branch_local_scalar: dict[str, Any] = {
         "available": False,
         "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
         "mode": mode,
         "replay_ad_mode": ad_mode,
+        "same_branch": same_branch,
+        "reason": "not requested" if mode != "scalar" else "branch fingerprint is not same-branch compatible",
     }
     branch_local_vector: dict[str, Any] = {
         "available": False,
         "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
         "mode": mode,
         "replay_ad_mode": ad_mode,
+        "same_branch": same_branch,
+        "scalar_keys": list(vector_keys),
+        "reason": "not requested" if mode != "vector" else "branch fingerprint is not same-branch compatible",
     }
     if mode not in {"none", "scalar", "vector"}:
         raise ValueError("--same-branch-report-mode must be one of none, scalar, vector")
@@ -867,7 +899,7 @@ def write_same_branch_validation_report(
         "accepted_bnormal_rms": lambda replay, _payload: accepted_bnormal_rms_from_replay(replay),
     }
     scalar_key = str(getattr(args, "same_branch_report_scalar_key", "qs_total"))
-    if mode == "scalar" and "base" in report and scalar_key in report["objective_values"]:
+    if same_branch and mode == "scalar" and "base" in report and scalar_key in report["objective_values"]:
         t0 = time.perf_counter()
         scalar = direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
             params=base_params,
@@ -912,15 +944,11 @@ def write_same_branch_validation_report(
             "abs_error": float(abs(exact_directional - report["objective_values"][scalar_key]["central_fd_directional"])),
             "timings": scalar_timings,
         }
-    if (
-        mode == "vector"
-        and "base" in report
-        and "aspect" in report["objective_values"]
-        and "qs_total" in report["objective_values"]
-        and "lcfs_boundary_moment" in report["objective_values"]
-        and "accepted_bnormal_rms" in report["objective_values"]
-    ):
-        scalar_keys = ("aspect", "qs_total", "lcfs_boundary_moment", "accepted_bnormal_rms")
+    missing_vector_keys = tuple(key for key in vector_keys if key not in report["objective_values"])
+    if mode == "vector" and missing_vector_keys:
+        branch_local_vector["reason"] = f"missing complete-solve objective value(s): {missing_vector_keys}"
+    if same_branch and mode == "vector" and "base" in report and not missing_vector_keys:
+        scalar_keys = vector_keys
         t0 = time.perf_counter()
         vector = direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             params=base_params,
@@ -1117,6 +1145,7 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "enabled": bool(args.write_same_branch_report),
         "mode": str(args.same_branch_report_mode),
         "ad_mode": str(args.same_branch_report_ad_mode),
+        "vector_keys": list(parse_same_branch_vector_keys(getattr(args, "same_branch_report_vector_keys", None))),
         "default_derivative_detail": (
             "direct vector JVP for several physical scalars"
             if str(args.same_branch_report_mode) == "vector" and str(args.same_branch_report_ad_mode) == "direct"
@@ -1395,6 +1424,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Physical scalar validated by --same-branch-report-mode scalar. "
             "Use 'aspect' for a cheaper branch-local replay timing probe, or "
             "'qs_total' for the QS-relevant scalar."
+        ),
+    )
+    parser.add_argument(
+        "--same-branch-report-vector-keys",
+        default=",".join(DEFAULT_SAME_BRANCH_VECTOR_KEYS),
+        help=(
+            "Comma/space-separated physical scalars for --same-branch-report-mode vector. "
+            f"Supported: {', '.join(SUPPORTED_SAME_BRANCH_VECTOR_KEYS)}. "
+            "Use all supported keys for broader validation, or the default smaller "
+            "aspect,qs_total set for lower cold JVP graph cost."
         ),
     )
     parser.add_argument(

@@ -699,7 +699,10 @@ For a local same-branch validation artifact, add
 is the validated production-report path for this lane: it evaluates production
 values from a complete direct-coil free-boundary solve, replays the saved fixed
 accepted branch in JAX, and reports ``J @ direction`` for several physical
-scalars using a directional JVP without materializing the full Jacobian.  Use
+scalars using a directional JVP without materializing the full Jacobian.  The
+default vector scalar set is the lower-cost ``aspect,qs_total`` pair; pass
+``--same-branch-report-vector-keys aspect,qs_total,lcfs_boundary_moment,accepted_bnormal_rms``
+when you want the broader physical-scalar artifact.  Use
 ``--same-branch-report-mode none`` when you only want the complete-solve
 finite-difference artifact and want to avoid cold branch-local replay
 compilation.  Use ``--same-branch-report-mode scalar`` to validate one
@@ -732,7 +735,9 @@ The report also writes ``same_branch_report_config`` in ``summary.json`` so the
 artifact remains self-describing.  Its derivative contract is fixed accepted
 branch only; it does not differentiate adaptive host branch selection, rejected
 step selection, resets, or branch changes unless the explicit fingerprint
-remains compatible.
+remains compatible.  If the complete-solve finite-difference branch fingerprint
+is not same-branch compatible, the example records the incompatibility and skips
+branch-local AD instead of reporting an invalid derivative.
 
 Run the dependency-light direct-coil forward example from the repository root.
 This path constructs a synthetic circular ``CoilFieldParams`` object directly in
