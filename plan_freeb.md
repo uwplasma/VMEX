@@ -11161,6 +11161,11 @@ Results obtained:
    but it does not solve the dominant cold compile cost on the tiny report
    fixture.  The remaining hotspot is still replay graph construction inside
    the VMEC/free-boundary update itself.
+6. A scalar-output comparison showed ``aspect``-only replay dispatch around
+   ``12.27 s`` and the broad
+   ``aspect,qs_total,lcfs_boundary_moment,accepted_bnormal_rms`` report around
+   ``15.99 s``.  Scalar-output selection helps, but the lower bound is still
+   dominated by replay update graph construction.
 
 Best next steps:
 
