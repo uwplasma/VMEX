@@ -98,16 +98,17 @@ def test_build_static_can_disable_vmec_phase_cache(monkeypatch) -> None:
 
 
 def test_build_static_phase_cache_failure_keeps_trig_tables(monkeypatch) -> None:
-    original_concatenate = static_mod.np.concatenate
+    class PhaseCacheNumpyProxy:
+        def __getattr__(self, name):
+            return getattr(np, name)
 
-    def fail_concatenate(*_args, **_kwargs):
-        raise RuntimeError("synthetic phase-cache failure")
+        def concatenate(self, *_args, **_kwargs):
+            raise RuntimeError("synthetic phase-cache failure")
 
-    monkeypatch.setattr(static_mod.np, "concatenate", fail_concatenate)
+    monkeypatch.setattr(static_mod, "np", PhaseCacheNumpyProxy())
 
     out = static_mod.build_static(_cfg(ns=3, ntor=1))
 
-    monkeypatch.setattr(static_mod.np, "concatenate", original_concatenate)
     assert out.trig_vmec is not None
     assert getattr(out.trig_vmec, "phase_stack", None) is None
     assert getattr(out.trig_vmec, "phase_dtheta_stack", None) is None

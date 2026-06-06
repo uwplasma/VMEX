@@ -1,16 +1,100 @@
 # Free-Boundary Coil-Aware Single-Stage Optimization Plan
 
-PR head branch: `feature/freeb-essos-coil-single-stage`
+PR head branch: merged to `main`
 
-Local working branch: `refresh/freeb-slim`
+Local working branch: `main`
 
-Repository clone: `/Users/rogeriojorge/local/vmec_jax_freeb`
+Repository clone: `/Users/rogeriojorge/local/vmec_jax`
 
 Baseline commit: `3657e0c release: prepare v0.0.13`
 
 Date opened: 2026-05-24
 
 ## Current Release Status
+
+### 2026-06-06 Proposal Evidence Final-Best Bookkeeping
+
+Steps taken:
+
+1. Verified that the accepted/rejected controller-slot gate is already
+   promoted in the current-only same-branch complete-solve test: it pads the
+   fixed accepted trace with one rejected controller slot, disables the
+   accepted-only fast path, and requires
+   ``direct_coil_adaptive_full_loop_same_branch_gate_report`` to pass with
+   ``require_fixed_rejected_controller_slot=True``.
+2. Re-ran the focused current-only same-branch gate locally; it passed.
+3. Reviewed the new branch-local derivative proposal bridge and found one
+   output-correctness nuance: the same-branch derivative report is generated
+   before the optional proposal trial, so if the complete solve accepts that
+   trial, the report is proposal evidence rather than final-best derivative
+   evidence.
+4. Added explicit ``same_branch_complete_solve_report_final_best_status`` data
+   to ``summary.json`` so accepted derivative-assisted trials cannot silently
+   imply that the report validates the final best point.
+5. Added a lightweight mocked optimization test covering an accepted
+   derivative-assisted trial without adding another VMEC solve to CI.
+6. Updated the free-boundary coil optimization docs with the same limitation.
+7. Investigated the failed ``py3.10`` CI job on commit ``eecfc44``.  The
+   failure was in ``test_build_static_phase_cache_failure_keeps_trig_tables``:
+   the test monkeypatched the shared NumPy module's ``concatenate`` method,
+   which also broke ``fourier.build_helical_basis`` before reaching the
+   intended static phase-cache fallback.
+8. Replaced that broad monkeypatch with a narrow proxy for ``static_mod.np`` so
+   only the phase-cache concatenate path fails while the Fourier basis
+   construction still uses real NumPy.
+
+Results obtained:
+
+1. ``python -m ruff check`` passed for the touched example and smoke tests.
+2. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qs_coil_optimization_smoke.py -q`` passed with
+   ``16`` passing tests plus one expected xfail.
+3. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd
+   -q`` passed, including the fixed rejected-slot controller seam.
+4. GitHub Actions for commit ``eecfc44`` finished with every job green except
+   ``Fast Tests (py3.10)``, which exposed the broad NumPy monkeypatch test bug
+   fixed in this pass.
+5. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_static_more_coverage.py::test_build_static_phase_cache_failure_keeps_trig_tables
+   tests/test_free_boundary_qs_coil_optimization_smoke.py::test_derivative_proposal_summary_marks_report_stale_when_trial_is_accepted
+   -q`` passed.
+6. ``python -m sphinx -b html -q docs docs/_build/html`` passed after the docs
+   update.
+
+Best next steps:
+
+1. Commit/push this bookkeeping and CI-fix update, then confirm the new CI run
+   finishes green.
+2. Continue reducing cold branch-local replay/JVP graph construction in the
+   accepted update/NESTOR replay body; report plumbing, replay-plan setup,
+   preconditioner dispatch, and short accepted-only scan overhead are no longer
+   the dominant blockers on the tiny smoke trace.
+3. If the derivative proposal becomes more than a one-step bridge, require a
+   fresh same-branch report at every derivative-assisted accepted point or
+   explicitly mark the derivative evidence as stale.
+4. Keep the adaptive full-loop exact-adjoint claim conservative until branch
+   changes in the host controller are differentiated or explicitly excluded by
+   a production-compatible fingerprint gate at every optimizer step.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99991% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 96.0%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 97.2%; cold branch-local replay graph construction
+  remains the next blocker.
+- CI runtime refactor with preserved coverage/physics gates: 100% on the
+  latest green baseline; current post-push CI is in progress.
+- Docs/release hygiene: 99.45%.
 
 ### 2026-06-06 Gated Branch-Local Derivative Proposal Bridge
 

@@ -1438,6 +1438,7 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "best_wout": outdir / "wout_best_direct_coil_qs.nc",
     }
     if bool(args.write_same_branch_report):
+        report_best_before_derivative_proposal = best
         report_params, report_anchor = same_branch_report_anchor_params(
             base_params,
             best,
@@ -1454,6 +1455,11 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         )
         summary["same_branch_complete_solve_report"] = report_path
         summary["same_branch_complete_solve_report_anchor"] = report_anchor
+        summary["same_branch_complete_solve_report_final_best_status"] = {
+            "report_generated_before_derivative_proposal": bool(args.same_branch_derivative_proposal),
+            "final_best_changed_after_report": False,
+            "report_matches_final_best": True,
+        }
         if bool(args.same_branch_derivative_proposal):
             report_data = json.loads(report_path.read_text())
             proposal = same_branch_derivative_proposal_from_report(
@@ -1472,6 +1478,24 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
                     None if previous_best is None else float(previous_best["summary"]["objective"])
                 )
                 proposal["accepted_by_complete_solve"] = bool(best is trial_entry)
+                final_best_changed_after_report = bool(best is trial_entry)
+                summary["same_branch_complete_solve_report_final_best_status"] = {
+                    "report_generated_before_derivative_proposal": True,
+                    "final_best_changed_after_report": final_best_changed_after_report,
+                    "report_matches_final_best": not final_best_changed_after_report,
+                    "note": (
+                        "The same-branch report is the derivative evidence used to form the trial. "
+                        "If the normal complete solve accepts that trial, rerun the report at the "
+                        "new best point for final-point derivative evidence."
+                    ),
+                }
+            elif report_best_before_derivative_proposal is not best:
+                summary["same_branch_complete_solve_report_final_best_status"] = {
+                    "report_generated_before_derivative_proposal": True,
+                    "final_best_changed_after_report": True,
+                    "report_matches_final_best": False,
+                    "note": "The final best point changed after the report was written.",
+                }
             summary["same_branch_derivative_proposal"] = proposal
         else:
             summary["same_branch_derivative_proposal"] = {

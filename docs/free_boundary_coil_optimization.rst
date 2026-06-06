@@ -1226,6 +1226,12 @@ that complete-solve objective can accept it.  This keeps the branch-local
 derivative path as a proposal mechanism while the production solve remains the
 acceptance authority:
 
+The same-branch report is generated before the optional proposal is evaluated.
+If the complete solve accepts that derivative-assisted trial, ``summary.json``
+marks the report as proposal evidence rather than final-best derivative
+evidence.  Rerun the same-branch report at the new best point when you need
+final-point derivative evidence for a reviewer-facing artifact.
+
 .. code-block:: bash
 
    python examples/optimization/free_boundary_QS_coil_optimization.py \
