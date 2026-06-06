@@ -10995,6 +10995,76 @@ Completion:
   CI is green with strict 95% line coverage.
 - Docs/release hygiene: 98.9%.
 
+### 2026-06-06 Slim Branch-Local Vector/JVP Production Reports
+
+Steps taken:
+
+1. Reviewed the same-branch accepted/rejected controller-slot gate.  No code
+   patch was needed: the current-only complete-solve gate already pads the
+   fixed accepted trace with one rejected controller slot and requires the
+   explicit same-branch fingerprint gate to pass.
+2. Added a ``replay_payload`` path to the production branch-local scalar and
+   vector/JVP helpers so replay scalar functions can close over only the small
+   initialization context they need, instead of the whole complete-solve
+   payload.
+3. Added ``include_payload=False`` for production reports so helper return
+   dictionaries can omit the large complete-solve payload after scalar values
+   and derivatives have been extracted.
+4. Wired the coil-only QS optimization example's opt-in
+   ``--write-same-branch-report`` path to the validated vector/direct JVP
+   report with the slim replay payload and no retained complete-solve payload.
+5. Kept the derivative claim narrow: production values come from a complete
+   direct-coil free-boundary solve, while derivatives are through the fixed
+   accepted branch only.  Adaptive branch selection remains unclaimed.
+
+Results obtained:
+
+1. ``python -m ruff check`` passed for
+   ``vmec_jax/free_boundary_adjoint.py``,
+   ``tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py``, and
+   ``examples/optimization/free_boundary_QS_coil_optimization.py``.
+2. ``python -m sphinx -b html -q docs docs/_build/html`` passed.
+3. The focused current-only complete-solve FD gate passed locally after the
+   slim-payload change.
+4. The full exact same-branch shard passed locally with ``3 passed in
+   85.64 s``.
+5. The bounded coil-only QS smoke with ``--write-same-branch-report`` completed
+   and wrote a vector ``directional_jvp`` report for ``aspect``, ``qs_total``,
+   ``lcfs_boundary_moment``, and ``accepted_bnormal_rms``.  The report records
+   ``replay_payload_source='user'``, ``production_values_source='precomputed'``,
+   ``includes_payload=false``, and a replay base delta of about ``6e-15``.
+
+Best next steps:
+
+1. Continue cold replay/JVP graph-construction reduction by sharing/reusing
+   replay metadata and step-control setup across branch-local reports, while
+   preserving the explicit same-branch fingerprint contract.
+2. Add a timing comparison between compact vector/JVP reports and the older
+   scalar/full-Jacobian diagnostic path so production reports can choose the
+   lowest-cost validated route automatically.
+3. Extend the coil-only QS optimization example from diagnostic reporting to a
+   guarded optimization mode that can use the branch-local vector/JVP report as
+   the derivative source when the branch fingerprint remains compatible.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99986% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.7%.
+- Single-stage coil-only optimization: 93.2%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 96.3%; vector/JVP and slim report retention are in
+  production-report paths, while cold graph construction remains the next
+  bottleneck.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.0%.
+
 ### 2026-06-06 Axis-R Same-Branch Physical Scalar Gate
 
 Steps taken:

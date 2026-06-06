@@ -2258,6 +2258,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                     static=payload["init"].static,
                 ),
                 replay_kwargs={"use_stacked_step_controls": True},
+                include_payload=False,
             )
             production_branch_exact = sum(
                 jnp.vdot(grad_leaf, direction_leaf)
@@ -2273,6 +2274,8 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert production_branch_local["differentiates_fixed_accepted_branch"] is True
             assert production_branch_local["production_values_source"] == "precomputed"
             assert production_branch_local["replay_payload_source"] == "user"
+            assert production_branch_local["includes_payload"] is False
+            assert production_branch_local["payload"] is None
             assert production_branch_local["trace_replay_diagnostics"]["differentiates_adaptive_controller"] is False
             assert production_branch_local["replay_option_flags"]["use_stacked_step_controls"] is True
             assert production_branch_local["replay_option_flags"]["use_accepted_only_fast_path"] is True
@@ -2358,6 +2361,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                     },
                     replay_scalar_fns=vector_replay_scalar_fns,
                     replay_kwargs={"use_stacked_step_controls": True},
+                    include_payload=False,
                 )
             )
             assert production_branch_local_scalars["uses_production_forward"] is True
@@ -2367,6 +2371,8 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert production_branch_local_scalars["derivative_mode"] == "directional_jvp"
             assert production_branch_local_scalars["production_values_source"] == "precomputed"
             assert production_branch_local_scalars["replay_payload_source"] == "user"
+            assert production_branch_local_scalars["includes_payload"] is False
+            assert production_branch_local_scalars["payload"] is None
             assert production_branch_local_scalars["scalar_keys"] == tuple(vector_scalar_keys)
             assert production_branch_local_scalars["trace_replay_diagnostics"]["differentiates_adaptive_controller"] is False
             assert production_branch_local_scalars["replay_option_flags"]["use_stacked_step_controls"] is True

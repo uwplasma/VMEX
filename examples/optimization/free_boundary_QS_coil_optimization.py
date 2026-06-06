@@ -880,6 +880,7 @@ def write_same_branch_validation_report(
             replay_kwargs={"use_stacked_step_controls": True, "use_accepted_only_fast_path": True},
             replay_ad_mode=ad_mode,
             include_trace_replay_diagnostics=False,
+            include_payload=False,
         )
         timings["branch_local_scalar_wall_s"] = float(time.perf_counter() - t0)
         scalar_timings = {str(key): float(value) for key, value in scalar.get("timings", {}).items()}
@@ -898,6 +899,7 @@ def write_same_branch_validation_report(
             "scalar_key": str(scalar["scalar_key"]),
             "production_values_source": str(scalar.get("production_values_source", "unknown")),
             "replay_payload_source": str(scalar.get("replay_payload_source", "unknown")),
+            "includes_payload": bool(scalar.get("includes_payload", True)),
             "replay_option_flags": scalar["replay_option_flags"],
             "replay_graph_metadata": scalar.get("replay_graph_metadata", {}),
             "value": float(scalar["value"]),
@@ -969,6 +971,7 @@ def write_same_branch_validation_report(
             replay_kwargs={"use_stacked_step_controls": True, "use_accepted_only_fast_path": True},
             replay_ad_mode=ad_mode,
             include_trace_replay_diagnostics=False,
+            include_payload=False,
         )
         timings["branch_local_vector_wall_s"] = float(time.perf_counter() - t0)
         vector_timings = {str(key): float(value) for key, value in vector.get("timings", {}).items()}
@@ -993,6 +996,7 @@ def write_same_branch_validation_report(
             "scalar_keys": list(scalar_keys),
             "production_values_source": str(vector.get("production_values_source", "unknown")),
             "replay_payload_source": str(vector.get("replay_payload_source", "unknown")),
+            "includes_payload": bool(vector.get("includes_payload", True)),
             "replay_option_flags": vector["replay_option_flags"],
             "replay_graph_metadata": vector.get("replay_graph_metadata", {}),
             "max_base_abs_delta": float(vector["max_base_abs_delta"]),
