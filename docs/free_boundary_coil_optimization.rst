@@ -1215,6 +1215,31 @@ The same-branch report in this command validates the best accepted coil point
 from the smoke optimization.  Add ``--same-branch-report-anchor initial`` if
 you want the diagnostic at the original coil seed instead.
 
+An additional opt-in bridge toward derivative-assisted coil optimization is
+available with ``--same-branch-derivative-proposal``.  This mode still does
+not pass a Jacobian to SciPy and still does not differentiate adaptive
+accepted/rejected host branches.  Instead, after Powell finishes, it uses the
+validated fixed-accepted-branch vector/JVP report at the best coil point to
+choose one one-dimensional trial step in coil-parameter space.  The proposed
+trial is then evaluated by the ordinary complete free-boundary solve, and only
+that complete-solve objective can accept it.  This keeps the branch-local
+derivative path as a proposal mechanism while the production solve remains the
+acceptance authority:
+
+.. code-block:: bash
+
+   python examples/optimization/free_boundary_QS_coil_optimization.py \
+     --smoke \
+     --provider circle \
+     --max-evals 1 \
+     --max-iter 1 \
+     --vmec-max-iter 2 \
+     --helicity-m 1 \
+     --helicity-n 0 \
+     --write-same-branch-report \
+     --same-branch-derivative-proposal \
+     --outdir results/free_boundary_QS_coil_optimization_circle_same_branch_proposal
+
 For the ESSOS Landreman-Paul QA coils, put ESSOS on ``PYTHONPATH`` and use:
 
 .. code-block:: bash

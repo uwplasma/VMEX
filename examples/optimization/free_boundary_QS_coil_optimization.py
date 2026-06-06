@@ -679,6 +679,85 @@ def same_branch_report_anchor_params(
     )
 
 
+def same_branch_derivative_proposal_from_report(
+    report: dict[str, Any],
+    objective_model: dict[str, Any],
+    best: dict[str, Any] | None,
+    *,
+    step_size: float,
+) -> dict[str, Any]:
+    """Return one conservative derivative-assisted proposal from a report.
+
+    The proposal uses the validated fixed-accepted-branch directional JVP only
+    to choose a one-dimensional trial direction.  A normal complete VMEC solve
+    must still evaluate and accept or reject the returned ``trial_x``.
+    """
+
+    if best is None or "x" not in best:
+        return {"available": False, "reason": "no best point is available"}
+    vector = report.get("branch_local_vector_jacobian", {})
+    if not bool(vector.get("available", False)):
+        return {"available": False, "reason": str(vector.get("reason", "branch-local vector report unavailable"))}
+    if bool(vector.get("differentiates_adaptive_controller", True)):
+        return {"available": False, "reason": "branch-local vector report claims adaptive-controller differentiation"}
+    if not bool(vector.get("differentiates_fixed_accepted_branch", False)):
+        return {"available": False, "reason": "branch-local vector report does not differentiate a fixed accepted branch"}
+
+    scalars = vector.get("scalars", {})
+    contributions: dict[str, dict[str, float]] = {}
+    directional = 0.0
+
+    if "qs_total" in scalars:
+        scalar = scalars["qs_total"]
+        deriv = float(scalar["exact_directional"])
+        contribution = float(objective_model.get("qs_weight", 0.0)) * deriv
+        contributions["qs_total"] = {"exact_directional": deriv, "contribution": contribution}
+        directional += contribution
+
+    if "aspect" in scalars:
+        scalar = scalars["aspect"]
+        value = float(scalar["value"])
+        deriv = float(scalar["exact_directional"])
+        target = float(objective_model.get("target_aspect", value))
+        contribution = 2.0 * float(objective_model.get("aspect_weight", 0.0)) * (value - target) * deriv
+        contributions["aspect"] = {
+            "value": value,
+            "target": target,
+            "exact_directional": deriv,
+            "contribution": contribution,
+        }
+        directional += contribution
+
+    if not contributions:
+        return {"available": False, "reason": "no report scalars map to the objective terms"}
+    if not np.isfinite(directional):
+        return {"available": False, "reason": "non-finite directional derivative"}
+    if directional == 0.0:
+        return {"available": False, "reason": "zero directional derivative"}
+
+    direction_x = np.asarray(report.get("direction_x", []), dtype=float)
+    x_best = np.asarray(best["x"], dtype=float)
+    if direction_x.shape != x_best.shape:
+        return {
+            "available": False,
+            "reason": f"direction_x shape {direction_x.shape} does not match best x shape {x_best.shape}",
+        }
+    alpha = -float(step_size) * float(np.sign(directional))
+    trial_x = x_best + alpha * direction_x
+    return {
+        "available": True,
+        "scope": "fixed accepted-branch directional proposal; complete solve decides acceptance",
+        "differentiates_adaptive_controller": False,
+        "directional_derivative": float(directional),
+        "contributions": contributions,
+        "alpha": float(alpha),
+        "step_size": float(step_size),
+        "direction_x": direction_x.tolist(),
+        "base_x": x_best.tolist(),
+        "trial_x": trial_x.tolist(),
+    }
+
+
 def write_same_branch_validation_report(
     *,
     input_path: Path,
@@ -1200,6 +1279,16 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "max_iter": int(args.same_branch_report_max_iter or args.vmec_max_iter),
         "anchor": str(getattr(args, "same_branch_report_anchor", "best")),
     }
+    same_branch_derivative_proposal_config = {
+        "enabled": bool(args.same_branch_derivative_proposal),
+        "requires_same_branch_report": True,
+        "scope": (
+            "one fixed-accepted-branch directional proposal followed by a "
+            "normal complete-solve objective evaluation"
+        ),
+        "step_size": float(args.same_branch_proposal_step),
+        "differentiates_adaptive_controller": False,
+    }
     history: list[dict[str, Any]] = []
     best: dict[str, Any] | None = None
     if bool(args.dry_run):
@@ -1216,6 +1305,7 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
             "vmec_config": vmec_config,
             "optimizer_config": optimizer_config,
             "same_branch_report_config": same_branch_report_config,
+            "same_branch_derivative_proposal_config": same_branch_derivative_proposal_config,
             "input": input_path,
             "outdir": outdir,
             "history_json": outdir / "history.json",
@@ -1331,6 +1421,7 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "vmec_config": vmec_config,
         "optimizer_config": optimizer_config,
         "same_branch_report_config": same_branch_report_config,
+        "same_branch_derivative_proposal_config": same_branch_derivative_proposal_config,
         "input": input_path,
         "outdir": outdir,
         "optimizer": {
@@ -1363,6 +1454,36 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         )
         summary["same_branch_complete_solve_report"] = report_path
         summary["same_branch_complete_solve_report_anchor"] = report_anchor
+        if bool(args.same_branch_derivative_proposal):
+            report_data = json.loads(report_path.read_text())
+            proposal = same_branch_derivative_proposal_from_report(
+                report_data,
+                objective_model,
+                best,
+                step_size=float(args.same_branch_proposal_step),
+            )
+            if proposal.get("available"):
+                previous_best = best
+                trial_objective = evaluate(np.asarray(proposal["trial_x"], dtype=float))
+                trial_entry = history[-1]
+                proposal["trial_eval"] = int(trial_entry["eval"])
+                proposal["trial_objective"] = float(trial_objective)
+                proposal["previous_best_objective"] = (
+                    None if previous_best is None else float(previous_best["summary"]["objective"])
+                )
+                proposal["accepted_by_complete_solve"] = bool(best is trial_entry)
+            summary["same_branch_derivative_proposal"] = proposal
+        else:
+            summary["same_branch_derivative_proposal"] = {
+                "available": False,
+                "reason": "not requested",
+            }
+    elif bool(args.same_branch_derivative_proposal):
+        summary["same_branch_derivative_proposal"] = {
+            "available": False,
+            "reason": "--same-branch-derivative-proposal requires --write-same-branch-report",
+        }
+    summary["best"] = best
     write_json(outdir / "summary.json", summary)
     print(f"Wrote {outdir / 'history.json'}")
     print(f"Wrote {outdir / 'summary.json'}")
@@ -1520,6 +1641,22 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Inner iterations for --write-same-branch-report; defaults to --vmec-max-iter.",
+    )
+    parser.add_argument(
+        "--same-branch-derivative-proposal",
+        action="store_true",
+        help=(
+            "Opt-in only: after Powell, use the same-branch vector/JVP report "
+            "to propose one directional coil step, then evaluate that trial "
+            "with the normal complete-solve objective. This does not "
+            "differentiate adaptive host branch selection."
+        ),
+    )
+    parser.add_argument(
+        "--same-branch-proposal-step",
+        type=float,
+        default=0.05,
+        help="Optimizer-coordinate step length for --same-branch-derivative-proposal.",
     )
     return parser
 

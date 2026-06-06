@@ -12,6 +12,63 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-06 Gated Branch-Local Derivative Proposal Bridge
+
+Steps taken:
+
+1. Confirmed GitHub Actions run ``27051474640`` on commit ``3d8c2bf`` passed
+   all jobs, including exact free-boundary shards and the combined strict
+   coverage gate.
+2. Added an opt-in ``--same-branch-derivative-proposal`` lane to the
+   direct-coil QS coil-only optimization example.
+3. Kept the implementation conservative: the branch-local vector/JVP report
+   only proposes one directional coil step after Powell, and the ordinary
+   complete direct-coil free-boundary solve remains the sole acceptance
+   authority.
+4. Added pure proposal tests for sign/weight handling and for rejecting any
+   report that claims adaptive-controller differentiation.
+5. Documented the proposal mode and its limitations in the free-boundary coil
+   optimization guide.
+
+Results obtained:
+
+1. The example now has a concrete bridge from validated fixed-accepted-branch
+   vector/JVP reports to coil-only optimization behavior without wiring an
+   unsafe full adaptive-loop Jacobian into SciPy.
+2. ``python -m ruff check`` passed for the touched example and tests.
+3. The example smoke test module passed locally with ``16`` tests plus one
+   expected xfail.
+4. A dry-run with ``--write-same-branch-report`` and
+   ``--same-branch-derivative-proposal`` wrote the expected configuration and
+   confirmed that the proposal remains explicitly non-adaptive.
+
+Best next steps:
+
+1. Run Sphinx and commit/push the proposal bridge.
+2. Add a real solve smoke for the proposal mode only if we can keep it bounded
+   inside the current CI runtime budget.
+3. For a future stronger optimizer mode, enforce same-branch compatibility at
+   every accepted derivative-assisted point and keep complete-solve acceptance
+   as the authority until adaptive branch differentiation is promoted.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99990% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 95.8%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 97.2%.
+- CI runtime refactor with preserved coverage/physics gates: 100%; latest
+  pushed run ``27051474640`` is green.
+- Docs/release hygiene: 99.4%.
+
 ### 2026-06-06 Best-Point Branch-Local QS Report Anchor
 
 Steps taken:
