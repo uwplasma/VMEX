@@ -12,6 +12,67 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-06 QS Scalar JVP Cache for Branch-Local Reports
+
+Steps taken:
+
+1. Ran scalar-isolation smoke reports for the direct-coil free-boundary QS
+   example using branch-local vector JVP keys ``state_norm``, ``aspect``, and
+   ``qs_total``.
+2. Confirmed the replay/update baseline is lower for simple state scalars:
+   ``state_norm`` JVP dispatch ``7.14 s`` and ``aspect`` JVP dispatch
+   ``7.41 s``.
+3. Confirmed QS scalar construction is a separate overhead: ``qs_total`` JVP
+   dispatch ``10.03 s`` and default ``aspect,qs_total`` dispatch ``10.28 s``.
+4. Added public QS angle-cache helpers:
+   ``quasisymmetry_angle_cache`` and
+   ``quasisymmetry_angle_cache_from_static``.
+5. Updated ``examples/optimization/free_boundary_QS_coil_optimization.py`` to
+   precompute and reuse QS angular tables inside same-branch report callbacks,
+   avoiding repeated angle-grid construction inside the branch-local JVP trace.
+6. Added direct tests for the public cache helper and the static-VMEC metadata
+   helper.
+
+Results obtained:
+
+1. ``python -m ruff check`` passed for the touched QS/example files.
+2. Focused QS cache tests and the free-boundary QS same-branch report writer
+   smoke test passed.
+3. Full ``tests/test_quasisymmetry.py`` passed with one expected skip.
+4. Full ``tests/test_free_boundary_qs_coil_optimization_smoke.py`` passed with
+   one expected xfail.
+5. QS-only report JVP dispatch improved from ``10.03 s`` to ``9.56 s``.
+6. Default ``aspect,qs_total`` report JVP dispatch improved from ``10.28 s``
+   to ``9.87 s``.
+
+Best next steps:
+
+1. Keep the public QS cache helper as the default path for repeated
+   optimization/report callbacks.
+2. The remaining ``~7 s`` lower bound is replay/NESTOR/update construction;
+   the next performance work should target matrix/source assembly and geometry
+   tangents, not QS table construction.
+3. Re-run the GitHub Actions coverage gate after this commit because the public
+   helper adds new source lines.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99994% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 96.7%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 98.0%; QS report JVP overhead is lower, while NESTOR
+  replay/update remains the dominant exact-callback cost.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.5%.
+
 ### 2026-06-06 Compact Direct-Coil NESTOR Diagnostics Trim
 
 Steps taken:

@@ -526,12 +526,12 @@ def test_quasisymmetry_angle_cache_matches_uncached_wout():
 
     from vmec_jax import load_wout
     from vmec_jax.quasisymmetry import (
-        _quasisymmetry_angle_cache,
+        quasisymmetry_angle_cache,
         quasisymmetry_ratio_residual_from_wout,
     )
 
     wout = load_wout(_optional_wout_path("wout_nfp4_QH_warm_start.nc"))
-    cache = _quasisymmetry_angle_cache(
+    cache = quasisymmetry_angle_cache(
         nfp=int(wout.nfp),
         xm_nyq=wout.xm_nyq,
         xn_nyq=wout.xn_nyq,
@@ -562,6 +562,37 @@ def test_quasisymmetry_angle_cache_matches_uncached_wout():
         atol=0.0,
     )
     np.testing.assert_allclose(np.asarray(cached["total"]), np.asarray(uncached["total"]), rtol=0.0, atol=0.0)
+
+
+def test_quasisymmetry_angle_cache_from_static_matches_generic_cache():
+    pytest.importorskip("jax")
+
+    from types import SimpleNamespace
+
+    from vmec_jax.modes import nyquist_mode_table_from_grid
+    from vmec_jax.quasisymmetry import quasisymmetry_angle_cache, quasisymmetry_angle_cache_from_static
+
+    static = SimpleNamespace(cfg=SimpleNamespace(nfp=2, mpol=3, ntor=2, ntheta=10, nzeta=8))
+    nyq_modes = nyquist_mode_table_from_grid(
+        mpol=static.cfg.mpol,
+        ntor=static.cfg.ntor,
+        ntheta=static.cfg.ntheta,
+        nzeta=static.cfg.nzeta,
+    )
+
+    from_static = quasisymmetry_angle_cache_from_static(static, ntheta=7, nphi=9)
+    generic = quasisymmetry_angle_cache(
+        nfp=static.cfg.nfp,
+        xm_nyq=nyq_modes.m,
+        xn_nyq=nyq_modes.n * static.cfg.nfp,
+        ntheta=7,
+        nphi=9,
+    )
+
+    assert int(from_static["ntheta"]) == 7
+    assert int(from_static["nphi"]) == 9
+    np.testing.assert_allclose(np.asarray(from_static["cosangle"]), np.asarray(generic["cosangle"]))
+    np.testing.assert_allclose(np.asarray(from_static["sinangle"]), np.asarray(generic["sinangle"]))
 
 
 @pytest.mark.parametrize(

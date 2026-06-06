@@ -68,7 +68,7 @@ from vmec_jax.external_fields import CoilFieldParams, from_essos_coils
 from vmec_jax.external_fields.coils_jax import coil_current_norm, coil_lengths
 from vmec_jax.namelist import read_indata, write_indata
 from vmec_jax.profiles import pressure_profile_to_vmec_am, standard_finite_beta_profiles
-from vmec_jax.quasisymmetry import quasisymmetry_ratio_residual_from_state
+from vmec_jax.quasisymmetry import quasisymmetry_angle_cache_from_static, quasisymmetry_ratio_residual_from_state
 from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state
 
 
@@ -791,6 +791,26 @@ def write_same_branch_validation_report(
         dof_step=float(args.dof_step),
     )
     qs_surfaces = parse_float_list(str(args.qs_surfaces))
+    qs_angle_cache_by_key: dict[tuple[int, ...], dict[str, object]] = {}
+
+    def qs_angle_cache_for_static(static: Any) -> dict[str, object]:
+        cfg = static.cfg
+        key = (
+            int(cfg.nfp),
+            int(cfg.mpol),
+            int(cfg.ntor),
+            int(cfg.ntheta),
+            int(cfg.nzeta),
+            int(args.qs_ntheta),
+            int(args.qs_nphi),
+        )
+        if key not in qs_angle_cache_by_key:
+            qs_angle_cache_by_key[key] = quasisymmetry_angle_cache_from_static(
+                static,
+                ntheta=int(args.qs_ntheta),
+                nphi=int(args.qs_nphi),
+            )
+        return qs_angle_cache_by_key[key]
 
     def lcfs_boundary_moment(state: Any, static: Any) -> Any:
         geometry = free_boundary_boundary_geometry_jax(state, static)
@@ -829,6 +849,7 @@ def write_same_branch_validation_report(
             helicity_n=int(args.helicity_n),
             ntheta=int(args.qs_ntheta),
             nphi=int(args.qs_nphi),
+            angle_cache=qs_angle_cache_for_static(static),
         )
         return qs["total"]
 
