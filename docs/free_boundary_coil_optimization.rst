@@ -723,6 +723,9 @@ diagnostic.
 switch: it replaces the cached JIT radial-preconditioner apply inside the
 fixed replay with the non-JIT array implementation.  It is not a default
 production setting; use it only to isolate cold graph-construction costs.
+Short accepted-only branch-local segments are unrolled automatically in this
+report path, which avoids the pathological cold ``lax.scan`` graph that the
+tiny smoke trace used to trigger.
 The resulting ``same_branch_complete_solve_report.json`` includes a
 ``timings`` block.  ``complete_solve_fd_wall_s`` measures the complete
 base/plus/minus finite-difference solves, while

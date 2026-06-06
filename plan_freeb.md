@@ -312,6 +312,64 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 99.2%.
 
+### 2026-06-06 Short Accepted-Only Replay Unroll
+
+Steps taken:
+
+1. Added ``jax_visible_unrolled_accepted_only_nonlinear_controller_jax`` for
+   short accepted-only segments.
+2. Extended the segmented accepted-controller helper with
+   ``unroll_accepted_only_segments_below`` while preserving the existing scan
+   path by default.
+3. Enabled short accepted-only unrolling for branch-local production reports
+   with a small threshold, leaving long traces on the scan path.
+4. Added controller tests showing unrolled accepted-only replay matches the
+   scan accepted-only controller, including initial-done safety and mixed
+   accepted-only/general segmented controllers.
+5. Re-ran branch-local timing probes and exact same-branch AD-vs-FD gates.
+
+Results obtained:
+
+1. ``state_norm`` cold ``replay_jvp_dispatch_s`` improved from about
+   ``11.76 s`` to ``7.11 s``.
+2. ``aspect`` improved from about ``12.37 s`` to ``7.66 s``.
+3. ``qs_total`` improved from about ``17.58 s`` to ``10.22 s``.
+4. The default ``aspect,qs_total`` branch-local vector report now dispatches
+   in about ``10.41 s`` on the bounded circle-provider smoke.
+5. The XLA algebraic-simplifier warning disappeared for these short unrolled
+   reports.
+6. ``python -m ruff check`` passed for touched Python files.
+7. Focused controller tests, Sphinx, the accepted-update AD-vs-FD gate, and
+   the full exact same-branch shard all passed locally.
+
+Best next steps:
+
+1. Preserve the unroll threshold as a short-trace optimization only; do not
+   unroll long production traces without a separate memory/compile-time study.
+2. Use the now-lower branch-local JVP report as the basis for wiring a
+   coil-only optimization mode to validated same-branch directional
+   derivatives.
+3. Continue profiling larger traces; if scan overhead reappears, consider a
+   chunked/unrolled hybrid with explicit compile-budget guards.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99990% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 94.4%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 97.2%; short accepted-only branch-local replay no
+  longer hits the pathological cold scan graph.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.25%.
+
 ### 2026-06-05 Compact Branch-Local Production Reports
 
 Steps taken:
