@@ -12,6 +12,73 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-06 Compact Direct-Coil NESTOR Diagnostics Trim
+
+Steps taken:
+
+1. Reviewed the strict accepted-state direct-coil replay path after commit
+   ``d72df05`` to identify remaining graph payload that is not needed by
+   compact state-only production reports.
+2. Added ``include_residual`` to ``dense_mode_vacuum_solve_jax`` and
+   propagated it through ``dense_vmec_nestor_mode_solve_jax`` so compact replay
+   can skip the dense linear residual diagnostic.
+3. Added ``include_phi_flat`` to ``dense_mode_vacuum_solve_jax`` and propagated
+   it through the VMEC/NESTOR solve so compact replay can skip reconstructing
+   the grid scalar potential when only mode coefficients are needed for
+   ``bsqvac``.
+4. Added ``include_diagnostics`` to direct-coil ``bsqvac`` replay.  Public
+   defaults remain diagnostic-rich; ``state_only_replay`` now requests the lean
+   path and returns only ``bsqvac``.
+5. Added focused dense-mode tests for both residual-diagnostic and grid
+   potential opt-out behavior.
+6. Measured the production smoke report against a clean ``d72df05`` worktree
+   to avoid interpreting machine noise as progress.
+
+Results obtained:
+
+1. ``python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_vacuum_adjoint.py`` passed.
+2. Dense mode reconstruction/diagnostic opt-out tests passed.
+3. ``test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree``
+   passed.
+4. ``test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd``
+   passed.
+5. The full ``tests/test_free_boundary_vacuum_adjoint.py`` shard passed.
+6. Same-machine smoke timing:
+   clean ``d72df05`` branch-local vector JVP dispatch ``10.44 s``;
+   compact replay runs ``10.21 s`` and ``10.28 s``.  This is a small
+   ``~2-3%`` reduction, not a fundamental performance shift.
+
+Best next steps:
+
+1. Stop chasing auxiliary payload pruning for this path.  The remaining cost is
+   strict accepted-state update plus JAX NESTOR/source assembly and dense-solve
+   differentiation.
+2. Prototype a matrix-free/custom-linearized NESTOR replay for branch-local
+   vector/JVP reports, starting with current-only perturbations where the
+   plasma-geometry mode matrix is fixed within a replay step.
+3. Wire the coil-only QS optimization example to consume the validated compact
+   branch-local vector path once the next JVP cost cut is in place.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99994% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 96.5%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 97.8%; compact replay now skips unused residual and
+  potential diagnostics, but dense NESTOR replay/JVP remains the dominant
+  blocker.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.5%.
+
 ### 2026-06-06 State-Only Coverage Recovery and Zero-Weight Replay Trim
 
 Steps taken:

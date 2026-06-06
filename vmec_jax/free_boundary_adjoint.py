@@ -882,6 +882,8 @@ def dense_mode_vacuum_solve_jax(
     cos_basis: Any | None = None,
     *,
     symmetric: bool = False,
+    include_phi_flat: bool = True,
+    include_residual: bool = True,
 ) -> dict[str, Any]:
     """Solve a dense mode-space vacuum system and reconstruct a grid potential.
 
@@ -906,6 +908,14 @@ def dense_mode_vacuum_solve_jax(
         ``cos_basis``.
     symmetric:
         Forwarded to :func:`dense_vacuum_solve_jax`.
+    include_phi_flat:
+        Reconstruct the scalar potential on the boundary grid. Compact
+        accepted-state replay paths can disable this because field
+        reconstruction uses the mode coefficients directly.
+    include_residual:
+        Include the dense linear residual in the returned diagnostics. Compact
+        accepted-state replay paths can disable this since only ``bsqvac`` is
+        needed for the strict VMEC update.
     """
 
     A = jnp.asarray(mode_matrix)
@@ -918,7 +928,7 @@ def dense_mode_vacuum_solve_jax(
     if cos_basis is None:
         if coeffs.shape[0] != sin.shape[1]:
             raise ValueError("rhs/mode_matrix size must match sin_basis columns")
-        phi_flat = sin @ coeffs
+        phi_flat = sin @ coeffs if bool(include_phi_flat) else None
     else:
         cos = jnp.asarray(cos_basis)
         if cos.shape != sin.shape:
@@ -926,13 +936,14 @@ def dense_mode_vacuum_solve_jax(
         nmodes = int(sin.shape[1])
         if coeffs.shape[0] != 2 * nmodes:
             raise ValueError("doubled rhs/mode_matrix size must be 2 * sin_basis columns")
-        phi_flat = sin @ coeffs[:nmodes] + cos @ coeffs[nmodes:]
+        phi_flat = sin @ coeffs[:nmodes] + cos @ coeffs[nmodes:] if bool(include_phi_flat) else None
 
-    return {
-        "mode_coeffs": coeffs,
-        "phi_flat": phi_flat,
-        "residual": dense_vacuum_residual(A, coeffs, rhs),
-    }
+    out = {"mode_coeffs": coeffs}
+    if bool(include_phi_flat):
+        out["phi_flat"] = phi_flat
+    if bool(include_residual):
+        out["residual"] = dense_vacuum_residual(A, coeffs, rhs)
+    return out
 
 
 def _nonsingular_full_grid_from_active_jax(
@@ -1027,6 +1038,8 @@ def dense_vmec_nestor_mode_solve_jax(
     nvper: int,
     include_analytic: bool = True,
     symmetric: bool = False,
+    include_phi_flat: bool = True,
+    include_residual: bool = True,
 ) -> dict[str, Any]:
     """Assemble and solve the dense JAX VMEC/NESTOR mode operator.
 
@@ -1121,6 +1134,8 @@ def dense_vmec_nestor_mode_solve_jax(
         basis["sinmni"],
         basis["cosmni"] if bool(basis["lasym"]) else None,
         symmetric=symmetric,
+        include_phi_flat=bool(include_phi_flat),
+        include_residual=bool(include_residual),
     )
     return {
         **solved,
@@ -1511,6 +1526,7 @@ def direct_coil_boundary_bsqvac_jax(
     bz_add: Any = 0.0,
     wint: Any | None = None,
     include_analytic: bool = True,
+    include_diagnostics: bool = True,
 ) -> dict[str, Any]:
     """Replay accepted-boundary direct-coil ``bsqvac`` through JAX NESTOR.
 
@@ -1575,6 +1591,8 @@ def direct_coil_boundary_bsqvac_jax(
             signgs=int(signgs),
             nvper=int(nvper),
             include_analytic=bool(include_analytic),
+            include_phi_flat=bool(include_diagnostics),
+            include_residual=bool(include_diagnostics),
         )
     with _jax_named_scope("vmec_jax.free_boundary.mode_field_reconstruction"):
         channels = vacuum_boundary_fields_from_mode_coeffs_jax(
@@ -1586,13 +1604,17 @@ def direct_coil_boundary_bsqvac_jax(
             g_uv=vac["g_uv"],
             g_vv=vac["g_vv"],
         )
-    return {
-        "bsqvac": channels["bsqvac"],
-        "channels": channels,
-        "mode_solution": mode_solution,
-        "vac": vac,
-        "bexni": bexni,
-    }
+    out = {"bsqvac": channels["bsqvac"]}
+    if bool(include_diagnostics):
+        out.update(
+            {
+                "channels": channels,
+                "mode_solution": mode_solution,
+                "vac": vac,
+                "bexni": bexni,
+            }
+        )
+    return out
 
 
 def direct_coil_boundary_bsqvac_from_trace_jax(
@@ -1606,6 +1628,7 @@ def direct_coil_boundary_bsqvac_from_trace_jax(
     nvper: int,
     wint: Any,
     include_analytic: bool = True,
+    include_diagnostics: bool = True,
 ) -> dict[str, Any]:
     """Replay direct-coil ``bsqvac`` on accepted geometry using trace metadata.
 
@@ -1645,6 +1668,7 @@ def direct_coil_boundary_bsqvac_from_trace_jax(
         bz_add=jnp.asarray(nestor_trace["bz_axis"]),
         wint=jnp.asarray(wint),
         include_analytic=bool(include_analytic),
+        include_diagnostics=bool(include_diagnostics),
     )
 
 
@@ -3149,6 +3173,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
                         nvper=int(context["nvper"]),
                         wint=jnp.asarray(context["wint"]),
                         include_analytic=bool(include_analytic),
+                        include_diagnostics=not bool(state_only_replay),
                     )
             else:
                 with _jax_named_scope("vmec_jax.free_boundary.direct_coil_bsqvac_replay"):
@@ -3176,6 +3201,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
                         bz_add=jnp.asarray(nestor_axes["bz_axis"]),
                         wint=jnp.asarray(context["wint"]),
                         include_analytic=bool(include_analytic),
+                        include_diagnostics=not bool(state_only_replay),
                     )
             freeb_bsqvac_half = replay["bsqvac"]
             if bool(state_only_replay):
@@ -3262,6 +3288,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
                         nvper=int(context["nvper"]),
                         wint=jnp.asarray(context["wint"]),
                         include_analytic=bool(include_analytic),
+                        include_diagnostics=not bool(state_only_replay),
                     )
             else:
                 with _jax_named_scope("vmec_jax.free_boundary.direct_coil_bsqvac_replay"):
@@ -3289,6 +3316,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
                         bz_add=jnp.asarray(nestor_axes["bz_axis"]),
                         wint=jnp.asarray(context["wint"]),
                         include_analytic=bool(include_analytic),
+                        include_diagnostics=not bool(state_only_replay),
                     )
             freeb_bsqvac_half = replay["bsqvac"]
             if bool(state_only_replay):
