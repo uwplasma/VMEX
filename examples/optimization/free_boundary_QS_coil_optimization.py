@@ -1046,6 +1046,7 @@ def write_same_branch_validation_report(
         "use_accepted_only_fast_path": True,
         "jit_preconditioner_apply": not bool(getattr(args, "same_branch_report_disable_jit_preconditioner", False)),
         "include_analytic": not bool(getattr(args, "same_branch_report_disable_analytic", False)),
+        "include_mode_diagnostics": False,
         "freeze_vacuum_field": bool(getattr(args, "same_branch_report_freeze_vacuum_field", False)),
         "freeze_freeb_bsqvac": bool(getattr(args, "same_branch_report_freeze_bsqvac", False)),
     }

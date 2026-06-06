@@ -444,6 +444,7 @@ def test_same_branch_report_writer_records_branch_local_scalar_gradient(tmp_path
         assert kwargs["include_replay_graph_metadata"] is False
         assert kwargs["replay_kwargs"]["state_only_replay"] is True
         assert kwargs["replay_kwargs"]["include_analytic"] is True
+        assert kwargs["replay_kwargs"]["include_mode_diagnostics"] is False
         assert kwargs["replay_kwargs"]["freeze_vacuum_field"] is False
         assert kwargs["replay_kwargs"]["freeze_freeb_bsqvac"] is False
         return {
@@ -455,7 +456,11 @@ def test_same_branch_report_writer_records_branch_local_scalar_gradient(tmp_path
             "scalar_key": "aspect",
             "includes_payload": False,
             "includes_replay_graph_metadata": False,
-            "replay_option_flags": {"use_stacked_step_controls": True, "state_only_replay": True},
+            "replay_option_flags": {
+                "use_stacked_step_controls": True,
+                "state_only_replay": True,
+                "include_mode_diagnostics": False,
+            },
             "replay_graph_metadata": {
                 "omitted": True,
                 "differentiates_adaptive_controller": False,
@@ -598,6 +603,7 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
         assert kwargs["include_replay_graph_metadata"] is False
         assert kwargs["replay_kwargs"]["state_only_replay"] is True
         assert kwargs["replay_kwargs"]["include_analytic"] is False
+        assert kwargs["replay_kwargs"]["include_mode_diagnostics"] is False
         assert kwargs["replay_kwargs"]["freeze_vacuum_field"] is True
         assert kwargs["replay_kwargs"]["freeze_freeb_bsqvac"] is True
         assert kwargs["direction_params"] is not None
@@ -613,7 +619,11 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
             "scalar_keys": ("aspect", "qs_total"),
             "includes_payload": False,
             "includes_replay_graph_metadata": False,
-            "replay_option_flags": {"use_stacked_step_controls": True, "state_only_replay": True},
+            "replay_option_flags": {
+                "use_stacked_step_controls": True,
+                "state_only_replay": True,
+                "include_mode_diagnostics": False,
+            },
             "replay_graph_metadata": {
                 "omitted": True,
                 "differentiates_adaptive_controller": False,

@@ -3987,6 +3987,7 @@ def test_direct_coil_vacuum_field_override_replay_contract(monkeypatch: pytest.M
         signgs=1,
         nvper=1,
         include_diagnostics=False,
+        include_mode_diagnostics=False,
         vac_override=zero_tangent_override,
     )
     assert set(out_no_diag) == {"bsqvac"}

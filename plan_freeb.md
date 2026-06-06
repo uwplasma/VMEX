@@ -12,6 +12,73 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-06 Branch-Local Replay Graph Width Reduction
+
+Steps taken:
+
+1. Added an ``include_mode_diagnostics`` switch to the direct-coil
+   boundary-``bsqvac`` replay path.  Public low-level NESTOR primitives still
+   default to full dense-mode diagnostics, but accepted-controller replay now
+   defaults this option to false because branch-local reports only need
+   ``bsqvac`` and optional boundary RMS quantities, not dense ``phi_flat`` or
+   residual vectors.
+2. Recorded ``include_mode_diagnostics`` in same-branch scalar/vector report
+   option flags and made the coil-only QS example pass it explicitly.
+3. Replaced the Biot-Savart kernel's materialized 4D cross-product/weighted
+   tensors with componentwise cross-product reductions and a JAX ``rsqrt``
+   denominator path.  This preserves the same Biot-Savart normalization while
+   reducing graph width for primal/JVP/VJP work.
+4. Added cheap py3.11 coverage-only tests for the frozen-vacuum trace wrapper
+   and trace-shape inference.  These avoid VMEC solves while covering the
+   diagnostic replay contract that was causing the strict coverage gate to sit
+   just below 95%.
+
+Results obtained:
+
+1. ``python -m ruff check`` passed for the touched source, example, and tests.
+2. Coil-field parity/gradient tests passed locally:
+   ``tests/test_external_fields_coils_jax.py`` and
+   ``tests/test_free_boundary_coil_provider_gradients.py``.
+3. The accepted-update AD-vs-FD gate passed locally after the replay and
+   Biot-Savart changes.
+4. The focused smoke/synthetic tests passed locally.
+5. The CI-equivalent ``remaining`` exact coverage bucket passed locally with
+   ``23 passed in 69.62 s``.
+6. Compact state-only ``aspect,qs_total`` branch-local report timing remains
+   dominated by state replay at about ``10.18 s`` total, as expected.
+7. A boundary-metric report using ``aspect,accepted_bnormal_rms`` completed in
+   about ``7.73 s`` total with ``include_mode_diagnostics=False``.  This is the
+   relevant path for the new diagnostic split because it exercises
+   Biot-Savart/NESTOR replay while retaining boundary diagnostics.
+
+Best next steps:
+
+1. Push the patch and confirm GitHub Actions restores the strict combined
+   coverage gate.
+2. Continue performance work on the field-replay path: add a source-only
+   cylindrical-to-NESTOR projection helper so direct-coil replay does not build
+   pre-NESTOR ``bsqvac`` components that are unused before the dense solve.
+3. After that, evaluate chunked/static-index nonsingular assembly and compact
+   mode-operator assembly for the remaining dense NESTOR/source cost.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99995% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 97.2%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 98.7%.
+- CI runtime refactor with preserved coverage/physics gates: 100% after local
+  coverage-bucket validation; pending full GitHub Actions confirmation.
+- Docs/release hygiene: 99.5%.
+
 ### 2026-06-06 Frozen-Vacuum Replay Coverage Gate Repair
 
 Steps taken:

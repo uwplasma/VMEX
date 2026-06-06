@@ -256,13 +256,25 @@ def _biot_savart_xyz_vectorized(
     points = jnp.asarray(points_xyz)
     original_shape = points.shape[:-1]
     flat = jnp.reshape(points, (-1, 3))
-    r = flat[None, None, :, :] - gamma[:, :, None, :]
+    rx = flat[None, None, :, 0] - gamma[:, :, None, 0]
+    ry = flat[None, None, :, 1] - gamma[:, :, None, 1]
+    rz = flat[None, None, :, 2] - gamma[:, :, None, 2]
     eps = jnp.asarray(regularization_epsilon, dtype=points.dtype)
-    denom2 = jnp.sum(r * r, axis=-1) + eps * eps
-    denom = denom2 ** 1.5
-    dB = jnp.cross(gamma_dash[:, :, None, :], r, axis=-1) / denom[..., None]
-    weighted = dB * jnp.asarray(currents)[:, None, None, None]
-    field = 1.0e-7 * jnp.mean(jnp.sum(weighted, axis=0), axis=0)
+    denom2 = rx * rx + ry * ry + rz * rz + eps * eps
+    if jax is None:  # pragma: no cover - dependency fallback.
+        inv_r = 1.0 / jnp.sqrt(denom2)
+    else:
+        inv_r = jax.lax.rsqrt(denom2)
+    inv_r3 = inv_r * inv_r * inv_r
+
+    gx = gamma_dash[:, :, None, 0]
+    gy = gamma_dash[:, :, None, 1]
+    gz = gamma_dash[:, :, None, 2]
+    weights = jnp.asarray(currents, dtype=points.dtype)[:, None, None] * inv_r3
+    field_x = jnp.mean(jnp.sum(weights * (gy * rz - gz * ry), axis=0), axis=0)
+    field_y = jnp.mean(jnp.sum(weights * (gz * rx - gx * rz), axis=0), axis=0)
+    field_z = jnp.mean(jnp.sum(weights * (gx * ry - gy * rx), axis=0), axis=0)
+    field = 1.0e-7 * jnp.stack((field_x, field_y, field_z), axis=-1)
     return jnp.reshape(field, original_shape + (3,))
 
 
