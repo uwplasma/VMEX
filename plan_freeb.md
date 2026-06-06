@@ -31,6 +31,11 @@ Steps taken:
 5. Ran compact direct-coil QS vector reports for three levels: full
    branch-local field replay, frozen vacuum-field projection, and frozen
    ``bsqvac``.
+6. Tried prebuilding differentiable coil geometry once per branch-local replay
+   call and reusing it across accepted steps.  This was reverted before commit
+   because it increased the compact report dispatch from ``9.78 s`` to
+   ``9.90 s`` and total branch-local vector wall time from ``9.98 s`` to
+   ``10.14 s``.
 
 Results obtained:
 
@@ -51,6 +56,10 @@ Results obtained:
    as follows: ``4.95 s`` for Biot-Savart sampling plus boundary projection,
    ``2.80 s`` for dense NESTOR/source/mode reconstruction, and ``2.04 s`` for
    strict VMEC accepted-state update plus scalar replay.
+8. Naive coil-geometry hoisting is not beneficial on this fixture; a useful
+   Biot-Savart performance fix will likely need a real custom JVP/transpose,
+   chunking policy, or lower-rank source representation rather than just
+   moving geometry construction outside the per-step sampler.
 
 Best next steps:
 
@@ -58,8 +67,9 @@ Best next steps:
    promoted validation or optimization because both remove part of the
    differentiable coil-field path.
 2. Target direct-coil boundary sampling/projection first.  It is the largest
-   measured field-replay component and likely benefits from prebuilt coil
-   geometry/JVP structure or chunked/custom-transpose Biot-Savart kernels.
+   measured field-replay component and likely needs a custom JVP/transpose,
+   chunking policy, or lower-rank source representation; simple geometry
+   hoisting was measured and reverted.
 3. Target dense NESTOR/source assembly second.  The remaining ``~2.8 s`` split
    points to ``vmec_nonsingular_terms_from_bexni_jax`` and mode-matrix assembly
    after coil sampling/projection is improved.
