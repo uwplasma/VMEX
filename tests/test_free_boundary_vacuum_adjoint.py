@@ -2362,6 +2362,34 @@ def test_dense_mode_vacuum_solve_reconstructs_grid_potential():
     np.testing.assert_allclose(actual["residual"], np.zeros_like(np.asarray(rhs)), atol=1.0e-14)
 
 
+def test_dense_mode_vacuum_solve_can_skip_residual_diagnostics():
+    from vmec_jax._compat import jnp
+
+    enable_x64(True)
+    A, rhs, sin_basis, _cos_basis = _mode_vacuum_inputs()
+
+    actual = dense_mode_vacuum_solve_jax(A, rhs, sin_basis, include_residual=False)
+    coeffs = jnp.linalg.solve(A, rhs)
+
+    np.testing.assert_allclose(actual["mode_coeffs"], coeffs, rtol=1.0e-14, atol=1.0e-14)
+    np.testing.assert_allclose(actual["phi_flat"], sin_basis @ coeffs, rtol=1.0e-14, atol=1.0e-14)
+    assert "residual" not in actual
+
+
+def test_dense_mode_vacuum_solve_can_skip_grid_potential_reconstruction():
+    from vmec_jax._compat import jnp
+
+    enable_x64(True)
+    A, rhs, sin_basis, _cos_basis = _mode_vacuum_inputs()
+
+    actual = dense_mode_vacuum_solve_jax(A, rhs, sin_basis, include_phi_flat=False, include_residual=False)
+    coeffs = jnp.linalg.solve(A, rhs)
+
+    np.testing.assert_allclose(actual["mode_coeffs"], coeffs, rtol=1.0e-14, atol=1.0e-14)
+    assert "phi_flat" not in actual
+    assert "residual" not in actual
+
+
 def test_dense_mode_vacuum_solve_reconstructs_lasym_grid_potential():
     from vmec_jax._compat import jnp
 
