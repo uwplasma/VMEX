@@ -12384,3 +12384,74 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100% locally for
   the affected exact shards; full post-push CI still required.
 - Docs/release hygiene: 99.5%.
+
+### 2026-06-06 Scanned NESTOR Source-Point Replay Loop
+
+Steps taken:
+
+1. Confirmed the static-table hoist commit ``5101b7f`` reached a fully green
+   GitHub Actions run, ``27076899340``, with exact combined line coverage at
+   ``95.00%``.
+2. Replaced the Python-unrolled source-point loop in
+   ``vmec_nonsingular_terms_from_bexni_jax`` with a ``jax.lax.scan`` path to
+   reduce replay/JVP graph width while retaining the old unrolled path behind
+   ``tables["use_ip_scan"] = False``.
+3. Added an asset-free equivalence gate comparing the scanned path against the
+   retained unrolled path for both ``gsource`` and ``grpmn``.
+4. Re-ran the promoted same-branch report timings for the branch-local vector
+   and state-only vector paths.
+
+Results obtained:
+
+1. ``python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_vacuum_adjoint.py`` passed.
+2. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_vacuum_adjoint.py -q`` passed with ``64`` tests.
+3. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree
+   -q`` passed.
+4. The CI-equivalent same-branch exact shard passed locally with
+   ``3 passed in 95.85 s``.
+5. The branch-local vector report ``aspect,accepted_bnormal_rms`` improved from
+   ``7.54 s`` after static-table hoisting to ``7.01 s`` with the scan path,
+   with unchanged AD-vs-central-FD errors of about ``1e-11`` for aspect and
+   ``1e-19`` for accepted ``Bnormal`` RMS.
+6. The state-only production vector report ``aspect,qs_total`` improved from
+   ``9.90 s`` to ``9.45 s``, with unchanged AD-vs-central-FD errors near
+   ``1e-11`` for both scalars.
+7. The diagnostic split still shows the main remaining cost is not strict
+   accepted-boundary VMEC replay, but direct-coil vacuum response plus JAX
+   NESTOR/source assembly inside the JVP graph.
+
+Best next steps:
+
+1. Commit and push the scan-path patch, then watch the full GitHub Actions run
+   because the exact coverage gate remains intentionally strict at ``95%``.
+2. Continue performance work only where it attacks the remaining dominant
+   branch-local cost: matrix-free/custom-transpose NESTOR/source response,
+   direct-coil vacuum-response JVP reuse, or reducing cold trace construction.
+3. Wire the validated branch-local vector/JVP path into the coil-only QS
+   optimization example, still under explicit same-branch/fingerprint-gated
+   claims.
+4. Keep adaptive branch differentiation unclaimed until a true adaptive
+   branch-changing controller derivative is validated against complete-solve
+   finite differences.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99995% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 97.3%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 98.9%; scan reduced branch-local report wall time, but
+  cold replay/JVP graph construction remains the main blocker.
+- CI runtime refactor with preserved coverage/physics gates: 100% for the last
+  green CI run; post-scan CI is pending after push.
+- Docs/release hygiene: 99.5%.
