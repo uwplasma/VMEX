@@ -68,6 +68,51 @@ def _quasisymmetry_angle_cache(
     }
 
 
+def quasisymmetry_angle_cache(
+    *,
+    nfp: int,
+    xm_nyq,
+    xn_nyq,
+    ntheta: int = 63,
+    nphi: int = 64,
+) -> dict[str, object]:
+    """Precompute angular tables for repeated QS residual evaluations."""
+
+    return _quasisymmetry_angle_cache(
+        nfp=int(nfp),
+        xm_nyq=xm_nyq,
+        xn_nyq=xn_nyq,
+        ntheta=int(ntheta),
+        nphi=int(nphi),
+    )
+
+
+def quasisymmetry_angle_cache_from_static(
+    static,
+    *,
+    ntheta: int = 63,
+    nphi: int = 64,
+) -> dict[str, object]:
+    """Precompute QS angular tables from VMEC static grid metadata."""
+
+    from .modes import nyquist_mode_table_from_grid
+
+    cfg = static.cfg
+    nyq_modes = nyquist_mode_table_from_grid(
+        mpol=int(cfg.mpol),
+        ntor=int(cfg.ntor),
+        ntheta=int(cfg.ntheta),
+        nzeta=int(cfg.nzeta),
+    )
+    return _quasisymmetry_angle_cache(
+        nfp=int(cfg.nfp),
+        xm_nyq=jnp.asarray(nyq_modes.m, dtype=jnp.float64),
+        xn_nyq=jnp.asarray(nyq_modes.n * int(cfg.nfp), dtype=jnp.float64),
+        ntheta=int(ntheta),
+        nphi=int(nphi),
+    )
+
+
 def _half_grid(radial_count: int, dtype) -> jnp.ndarray:
     if radial_count < 2:
         return jnp.zeros((0,), dtype=dtype)
