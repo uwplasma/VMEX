@@ -1725,6 +1725,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     check_controller: bool = True,
     check_segmented_controller: bool = True,
     check_aspect_scalar: bool = True,
+    check_axis_R_scalar: bool = False,
     check_boundary_moment_scalar: bool = False,
     check_qs_total_scalar: bool = False,
     check_accepted_bnormal_rms_scalar: bool = False,
@@ -1755,6 +1756,11 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     def state_norm_objective(state) -> float:
         packed = np.asarray(pack_state(state), dtype=float)
         return float(0.5 * np.vdot(packed, packed))
+
+    def axis_R_from_state(state, static):
+        idx = np.where((np.asarray(static.modes.m) == 0) & (np.asarray(static.modes.n) == 0))[0]
+        idx00 = int(idx[0]) if idx.size else 0
+        return jnp.asarray(state.Rcos)[0, idx00]
 
     def lcfs_boundary_moment(state, static):
         geometry = free_boundary_boundary_geometry_jax(state, static)
@@ -1848,6 +1854,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                 "lcfs_boundary_moment": float(
                     np.asarray(lcfs_boundary_moment(payload["result"].state, payload["init"].static))
                 ),
+                "axis_R": float(np.asarray(axis_R_from_state(payload["result"].state, payload["init"].static))),
                 "accepted_bnormal_rms": accepted_bnormal_rms_from_payload(payload),
                 "accepted_bsqvac_rms": accepted_bsqvac_rms_from_payload(payload),
             },
@@ -1953,6 +1960,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     expected_objective_value_keys = {
         "objective",
         "aspect",
+        "axis_R",
         "lcfs_boundary_moment",
         "accepted_bnormal_rms",
         "accepted_bsqvac_rms",
@@ -2073,6 +2081,13 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         }
         rtol_by_key = {"aspect": 5.0e-3}
         atol_by_key = {"aspect": 5.0e-8}
+        if check_axis_R_scalar:
+            replay_scalar_fns["axis_R"] = lambda replay, payload: axis_R_from_state(
+                replay["state"],
+                payload["init"].static,
+            )
+            rtol_by_key["axis_R"] = 5.0e-3
+            atol_by_key["axis_R"] = 5.0e-8
         if check_boundary_moment_scalar:
             replay_scalar_fns["lcfs_boundary_moment"] = lambda replay, payload: lcfs_boundary_moment(
                 replay["state"],
@@ -2282,6 +2297,14 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                     static=payload["init"].static,
                 ),
             }
+            if check_axis_R_scalar:
+                vector_scalar_keys.append("axis_R")
+                vector_replay_scalar_fns["axis_R"] = (
+                    lambda replay, payload: axis_R_from_state(
+                        replay["state"],
+                        payload["init"].static,
+                    )
+                )
             if check_boundary_moment_scalar:
                 vector_scalar_keys.append("lcfs_boundary_moment")
                 vector_replay_scalar_fns["lcfs_boundary_moment"] = (
@@ -2319,6 +2342,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                     production_values={key: complete_base_values[key] for key in vector_scalar_keys},
                     scalar_fn=lambda payload: {
                         "aspect": aspect_objective_from_state(payload["result"].state),
+                        "axis_R": axis_R_from_state(payload["result"].state, payload["init"].static),
                         "lcfs_boundary_moment": lcfs_boundary_moment(payload["result"].state, payload["init"].static),
                         "qs_total": qs_total_from_state(
                             payload["result"].state,
@@ -2388,6 +2412,12 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert qs_report["same_branch"] is True
             assert qs_report["replay_gate"]["passed"] is True
             assert qs_report["base_abs_delta"] < 2.0e-3
+        if check_axis_R_scalar:
+            axis_R_report = scalars_report["scalar_reports"]["axis_R"]
+            assert axis_R_report["passed"], axis_R_report
+            assert axis_R_report["same_branch"] is True
+            assert axis_R_report["replay_gate"]["passed"] is True
+            assert axis_R_report["base_abs_delta"] < 2.0e-3
         if check_boundary_moment_scalar:
             moment_report = scalars_report["scalar_reports"]["lcfs_boundary_moment"]
             assert moment_report["passed"], moment_report
@@ -2508,6 +2538,7 @@ def test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_
         check_controller=False,
         check_segmented_controller=False,
         check_aspect_scalar=True,
+        check_axis_R_scalar=True,
         check_boundary_moment_scalar=False,
         check_qs_total_scalar=True,
         check_accepted_bnormal_rms_scalar=True,
