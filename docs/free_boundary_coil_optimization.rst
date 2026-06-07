@@ -741,8 +741,14 @@ timings, replay errors against complete-solve central differences, and a
 conservative promotion decision.  Dense remains the default unless matrix-free
 wins beyond both ``--same-branch-report-profile-min-mode-count`` and
 ``--same-branch-report-profile-min-speedup``.  On the current local
-circle-provider active-trace reports, dense was still faster at both 41 modes
-and 128 modes, so matrix-free remains opt-in.  Use
+circle-provider active-trace reports, dense was still faster at 41, 128, and
+200 modes, so matrix-free remains opt-in.  The branch-local replay report has
+a default ``--same-branch-report-replay-max-mode-count 220`` guard, and the
+profile loop has a matching ``--same-branch-report-profile-max-mode-count
+220`` guard: larger replay/JVP graphs can terminate from graph-construction
+resource pressure on small machines.  Set those options to ``0`` only on a
+larger-memory profiling machine when deliberately exploring higher mode
+counts.  Use
 ``--same-branch-report-rejected-slot-gate`` to add an explicit fixed
 accepted/rejected controller-slot replay artifact.  This proves the stacked
 controller replay can carry a rejected slot under the same branch fingerprint;
@@ -1256,7 +1262,9 @@ accepted/rejected controller-slot gate on a larger low-resolution report, run:
      --write-same-branch-report \
      --same-branch-report-mode vector \
      --same-branch-report-vector-keys aspect,qs_total \
+     --same-branch-report-replay-max-mode-count 220 \
      --same-branch-report-profile-nestor dense-vs-matrix-free \
+     --same-branch-report-profile-max-mode-count 220 \
      --same-branch-report-rejected-slot-gate \
      --outdir results/free_boundary_QS_coil_optimization_circle_nestor_profile
 

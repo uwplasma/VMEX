@@ -850,10 +850,12 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
         same_branch_report_nestor_operator_atol=1.0e-13,
         same_branch_report_nestor_operator_maxiter=None,
         same_branch_report_nestor_operator_restart=None,
+        same_branch_report_replay_max_mode_count=220,
         same_branch_report_profile_nestor="dense-vs-matrix-free",
         same_branch_report_profile_matrix_free_solvers="gmres,bicgstab",
         same_branch_report_profile_min_mode_count=96,
         same_branch_report_profile_min_speedup=1.15,
+        same_branch_report_profile_max_mode_count=220,
         same_branch_report_rejected_slot_gate=True,
         vmec_max_iter=2,
         ftol=1.0e-8,
@@ -987,6 +989,156 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
     assert len(profile["results"]) == 3
     assert {item["nestor_solve_mode"] for item in profile["results"]} == {"dense", "matrix_free"}
     assert profile["policy"]["mode_count"] == 144
+
+
+def test_same_branch_report_profile_skips_above_mode_count_cap(tmp_path, monkeypatch):
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+
+    module = _load_example_module()
+    base_params, _metadata = module.make_circle_provider(current_scale=1.0)
+    _x0, variables = module.select_coil_variables(
+        base_params,
+        max_current_vars=1,
+        max_fourier_vars=1,
+    )
+    args = SimpleNamespace(
+        current_step=0.02,
+        dof_step=1.0e-3,
+        target_aspect=6.0,
+        target_iota=0.4,
+        helicity_m=1,
+        helicity_n=0,
+        qs_surfaces="0.25,0.5",
+        qs_ntheta=15,
+        qs_nphi=16,
+        residual_weight=1.0,
+        qs_weight=2.0,
+        aspect_weight=1.0e-2,
+        iota_weight=1.0,
+        same_branch_report_eps=1.0e-4,
+        same_branch_report_mode="vector",
+        same_branch_report_vector_keys="aspect,qs_total",
+        same_branch_report_max_iter=3,
+        same_branch_report_disable_analytic=False,
+        same_branch_report_freeze_vacuum_field=False,
+        same_branch_report_freeze_bsqvac=False,
+        same_branch_report_nestor_solve_mode="dense",
+        same_branch_report_nestor_operator_solver="gmres",
+        same_branch_report_nestor_operator_tol=1.0e-11,
+        same_branch_report_nestor_operator_atol=1.0e-13,
+        same_branch_report_nestor_operator_maxiter=None,
+        same_branch_report_nestor_operator_restart=None,
+        same_branch_report_replay_max_mode_count=100,
+        same_branch_report_profile_nestor="dense-vs-matrix-free",
+        same_branch_report_profile_matrix_free_solvers="gmres,bicgstab",
+        same_branch_report_profile_min_mode_count=96,
+        same_branch_report_profile_min_speedup=1.15,
+        same_branch_report_profile_max_mode_count=100,
+        same_branch_report_rejected_slot_gate=False,
+        vmec_max_iter=2,
+        ftol=1.0e-8,
+        jit_forces=False,
+        activate_fsq=1.0e99,
+    )
+
+    trace = {"state_pre": np.zeros(3), "freeb_bsqvac_half": np.ones(2)}
+    init = SimpleNamespace(static=SimpleNamespace(modes=SimpleNamespace(m=np.arange(144))))
+
+    def fake_report(*_args, **_kwargs):
+        return {
+            "base": {"traces": [trace], "init": init},
+            "branch_compatibility": {
+                "same_branch": True,
+                "plus": {"changed_fields": (), "max_abs_scalar_delta": 0.0, "max_rel_scalar_delta": 0.0},
+                "minus": {"changed_fields": (), "max_abs_scalar_delta": 0.0, "max_rel_scalar_delta": 0.0},
+            },
+            "values": {"base": 1.0, "plus": 1.1, "minus": 0.9, "central_fd_directional": 1000.0},
+            "objective_values": {
+                "objective": {"base": 1.0, "plus": 1.1, "minus": 0.9, "central_fd_directional": 1000.0},
+                "aspect": {"base": 6.0, "plus": 6.1, "minus": 5.9, "central_fd_directional": 0.1},
+                "qs_total": {"base": 0.4, "plus": 0.42, "minus": 0.38, "central_fd_directional": 0.4},
+            },
+            "primary_objective": "objective",
+        }
+
+    calls: list[dict[str, object]] = []
+
+    def fake_branch_local_vector(*_args, **kwargs):
+        replay_kwargs = dict(kwargs["replay_kwargs"])
+        calls.append(replay_kwargs)
+        return {
+            "uses_production_forward": True,
+            "differentiates_adaptive_controller": False,
+            "differentiates_run_free_boundary": False,
+            "differentiates_fixed_accepted_branch": True,
+            "replay_ad_mode": "direct",
+            "derivative_mode": "directional_jvp",
+            "scalar_keys": ("aspect", "qs_total"),
+            "includes_payload": False,
+            "includes_replay_graph_metadata": bool(kwargs["include_replay_graph_metadata"]),
+            "replay_option_flags": {
+                "use_stacked_step_controls": bool(replay_kwargs["use_stacked_step_controls"]),
+                "use_accepted_only_fast_path": bool(replay_kwargs["use_accepted_only_fast_path"]),
+                "state_only_replay": bool(replay_kwargs["state_only_replay"]),
+                "include_mode_diagnostics": False,
+                "nestor_solve_mode": str(replay_kwargs["nestor_solve_mode"]),
+                "nestor_operator_solver": str(replay_kwargs["nestor_operator_solver"]),
+                "nestor_operator_tol": float(replay_kwargs["nestor_operator_tol"]),
+                "nestor_operator_atol": float(replay_kwargs["nestor_operator_atol"]),
+                "nestor_operator_maxiter": replay_kwargs["nestor_operator_maxiter"],
+                "nestor_operator_restart": replay_kwargs["nestor_operator_restart"],
+            },
+            "replay_graph_metadata": {"omitted": not bool(kwargs["include_replay_graph_metadata"])},
+            "replay_branch_metadata": {
+                "n_steps": 1,
+                "n_free_boundary_replay_steps": 1,
+                "accepted_mask": [True],
+                "rejected_mask": [False],
+            },
+            "max_base_abs_delta": 0.0,
+            "values": {"aspect": 6.0, "qs_total": 0.4},
+            "replay_value_map": {"aspect": jnp.asarray(6.0), "qs_total": jnp.asarray(0.4)},
+            "base_abs_delta": {"aspect": 0.0, "qs_total": 0.0},
+            "jacobian": None,
+            "directional_derivatives": {"aspect": jnp.asarray(0.1), "qs_total": jnp.asarray(0.4)},
+            "timings": {
+                "production_scalar_eval_wall_s": 0.01,
+                "replay_jvp_wall_s": 0.02,
+                "replay_vjp_wall_s": 0.0,
+                "replay_pullbacks_wall_s": 0.0,
+                "jacobian_stack_ready_s": 0.0,
+                "total_wall_s": 0.03,
+            },
+        }
+
+    import vmec_jax.free_boundary_adjoint as freeb_adj
+
+    monkeypatch.setattr(freeb_adj, "direct_coil_same_branch_complete_solve_fd_report", fake_report)
+    monkeypatch.setattr(
+        freeb_adj,
+        "direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax",
+        fake_branch_local_vector,
+    )
+
+    path = module.write_same_branch_validation_report(
+        input_path=tmp_path / "input.direct",
+        base_params=base_params,
+        variables=variables,
+        args=args,
+        outdir=tmp_path,
+    )
+
+    report = json.loads(path.read_text())
+    profile = report["nestor_replay_profile"]
+    assert len(calls) == 0
+    assert report["same_branch_replay_mode_count_guard"]["triggered"] is True
+    assert report["branch_local_vector_jacobian"]["available"] is False
+    assert profile["enabled"] is True
+    assert profile["results"] == []
+    assert profile["skipped_due_to_replay_mode_count_cap"] is True
+    assert profile["policy"]["promote_matrix_free"] is False
+    assert "mode-count cap" in profile["policy"]["reason"]
 
 
 def test_circle_dry_run_writes_configuration_without_solves(tmp_path, monkeypatch):

@@ -1142,6 +1142,19 @@ def write_same_branch_validation_report(
     }
     mode_count = same_branch_report_mode_count(report)
     compact_report["mode_count"] = int(mode_count)
+    replay_max_mode_count = int(getattr(args, "same_branch_report_replay_max_mode_count", 220))
+    replay_mode_count_guard_triggered = replay_max_mode_count > 0 and int(mode_count) > replay_max_mode_count
+    replay_mode_count_guard_reason = (
+        f"mode_count {int(mode_count)} exceeds replay cap {replay_max_mode_count}; "
+        "set --same-branch-report-replay-max-mode-count 0 to disable this guard"
+    )
+    compact_report["same_branch_replay_mode_count_guard"] = {
+        "enabled": replay_max_mode_count > 0,
+        "triggered": bool(replay_mode_count_guard_triggered),
+        "mode_count": int(mode_count),
+        "max_mode_count": replay_max_mode_count,
+        "reason": replay_mode_count_guard_reason if replay_mode_count_guard_triggered else "not triggered",
+    }
 
     def _run_branch_local_vector(
         scalar_keys: tuple[str, ...],
@@ -1205,7 +1218,16 @@ def write_same_branch_validation_report(
                 for index, key in enumerate(scalar_keys)
             },
         }
-    if same_branch and mode == "scalar" and "base" in report and scalar_key in report["objective_values"]:
+    if mode in {"scalar", "vector"} and replay_mode_count_guard_triggered:
+        branch_local_scalar["reason"] = replay_mode_count_guard_reason
+        branch_local_vector["reason"] = replay_mode_count_guard_reason
+    if (
+        same_branch
+        and not replay_mode_count_guard_triggered
+        and mode == "scalar"
+        and "base" in report
+        and scalar_key in report["objective_values"]
+    ):
         t0 = time.perf_counter()
         scalar = direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
             params=base_params,
@@ -1254,7 +1276,7 @@ def write_same_branch_validation_report(
     missing_vector_keys = tuple(key for key in vector_keys if key not in report["objective_values"])
     if mode == "vector" and missing_vector_keys:
         branch_local_vector["reason"] = f"missing complete-solve objective value(s): {missing_vector_keys}"
-    if same_branch and mode == "vector" and "base" in report and not missing_vector_keys:
+    if same_branch and not replay_mode_count_guard_triggered and mode == "vector" and "base" in report and not missing_vector_keys:
         scalar_keys = vector_keys
         t0 = time.perf_counter()
         vector = _run_branch_local_vector(
@@ -1273,7 +1295,9 @@ def write_same_branch_validation_report(
         "differentiates_adaptive_controller": False,
     }
     if bool(getattr(args, "same_branch_report_rejected_slot_gate", False)):
-        if not (same_branch and mode == "vector" and "base" in report and not missing_vector_keys):
+        if replay_mode_count_guard_triggered:
+            rejected_slot_gate["reason"] = replay_mode_count_guard_reason
+        elif not (same_branch and mode == "vector" and "base" in report and not missing_vector_keys):
             rejected_slot_gate["reason"] = "requires same-branch vector report with all requested scalar keys"
         else:
             base_traces = tuple(report["base"].get("traces", ()))
@@ -1333,10 +1357,34 @@ def write_same_branch_validation_report(
             "mode_count": int(mode_count),
             "results": [],
         }
+        profile_max_mode_count = int(getattr(args, "same_branch_report_profile_max_mode_count", 220))
         if profile_request != "dense-vs-matrix-free":
             nestor_profile["reason"] = "--same-branch-report-profile-nestor must be none or dense-vs-matrix-free"
         elif not (same_branch and mode == "vector" and "base" in report and not missing_vector_keys):
             nestor_profile["reason"] = "requires same-branch vector report with all requested scalar keys"
+        elif replay_mode_count_guard_triggered:
+            nestor_profile["reason"] = replay_mode_count_guard_reason
+            nestor_profile["skipped_due_to_replay_mode_count_cap"] = True
+            nestor_profile["replay_max_mode_count"] = replay_max_mode_count
+            nestor_profile["policy"] = {
+                "promote_matrix_free": False,
+                "reason": "profile skipped by replay mode-count cap",
+                "mode_count": int(mode_count),
+                "replay_max_mode_count": replay_max_mode_count,
+            }
+        elif profile_max_mode_count > 0 and int(mode_count) > profile_max_mode_count:
+            nestor_profile["reason"] = (
+                f"mode_count {int(mode_count)} exceeds profile cap {profile_max_mode_count}; "
+                "set --same-branch-report-profile-max-mode-count 0 to disable this guard"
+            )
+            nestor_profile["skipped_due_to_mode_count_cap"] = True
+            nestor_profile["profile_max_mode_count"] = profile_max_mode_count
+            nestor_profile["policy"] = {
+                "promote_matrix_free": False,
+                "reason": "profile skipped by mode-count cap",
+                "mode_count": int(mode_count),
+                "profile_max_mode_count": profile_max_mode_count,
+            }
         else:
             profile_results: list[dict[str, Any]] = []
             profile_cases = [("dense", str(getattr(args, "same_branch_report_nestor_operator_solver", "gmres")))]
@@ -1516,12 +1564,14 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "nestor_operator_atol": float(getattr(args, "same_branch_report_nestor_operator_atol", 1.0e-13)),
         "nestor_operator_maxiter": getattr(args, "same_branch_report_nestor_operator_maxiter", None),
         "nestor_operator_restart": getattr(args, "same_branch_report_nestor_operator_restart", None),
+        "replay_max_mode_count": int(getattr(args, "same_branch_report_replay_max_mode_count", 220)),
         "profile_nestor": str(getattr(args, "same_branch_report_profile_nestor", "none")),
         "profile_matrix_free_solvers": list(
             parse_profile_matrix_free_solvers(getattr(args, "same_branch_report_profile_matrix_free_solvers", None))
         ),
         "profile_min_mode_count": int(getattr(args, "same_branch_report_profile_min_mode_count", 96)),
         "profile_min_speedup": float(getattr(args, "same_branch_report_profile_min_speedup", 1.15)),
+        "profile_max_mode_count": int(getattr(args, "same_branch_report_profile_max_mode_count", 220)),
         "rejected_slot_gate": bool(getattr(args, "same_branch_report_rejected_slot_gate", False)),
     }
     same_branch_derivative_proposal_config = {
@@ -1986,6 +2036,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional GMRES restart length for the matrix-free NESTOR/source solve.",
     )
     parser.add_argument(
+        "--same-branch-report-replay-max-mode-count",
+        type=int,
+        default=220,
+        help=(
+            "Skip branch-local scalar/vector replay reports above this VMEC Fourier mode count. "
+            "Use 0 to disable the guard on larger-memory machines."
+        ),
+    )
+    parser.add_argument(
         "--same-branch-report-profile-nestor",
         choices=("none", "dense-vs-matrix-free"),
         default="none",
@@ -2011,6 +2070,15 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=1.15,
         help="Do not promote matrix-free replay unless dense_wall/matrix_free_wall exceeds this speedup.",
+    )
+    parser.add_argument(
+        "--same-branch-report-profile-max-mode-count",
+        type=int,
+        default=220,
+        help=(
+            "Skip dense-vs-matrix-free replay profiling above this VMEC Fourier mode count. "
+            "Use 0 to disable the guard on larger-memory machines."
+        ),
     )
     parser.add_argument(
         "--same-branch-report-rejected-slot-gate",

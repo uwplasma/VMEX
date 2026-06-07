@@ -12,6 +12,85 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-07 Generated-Mgrid Parity and High-Mode Replay Cap
+
+Steps taken:
+
+1. Rechecked ``main`` after commit ``6ae584a``; the worktree was clean and the
+   pushed GitHub Actions run was green.
+2. Ran the optional generated-mgrid parity gates against
+   ``/Users/rogeriojorge/local/ESSOS_mgrid_pr`` by putting that checkout first
+   on ``PYTHONPATH``.
+3. Profiled larger dense-vs-matrix-free branch-local NESTOR/source replay
+   cases from the circle-provider direct-coil report.
+4. Added ``--same-branch-report-replay-max-mode-count`` and
+   ``--same-branch-report-profile-max-mode-count`` to the QS coil example so
+   unsafe high-mode branch-local replay/JVP graphs are skipped by default
+   instead of terminating the process.
+5. Added smoke-test coverage for the new mode-count caps and documented the
+   cap/override workflow in the free-boundary coil optimization guide.
+
+Results obtained:
+
+1. ``test_vmec2000_generated_mgrid_trace_smoke_records_iteration_rows`` passed
+   locally with ESSOS ``Coils.to_mgrid`` available from ``ESSOS_mgrid_pr``.
+2. ``test_essos_direct_coil_free_boundary_matches_generated_mgrid_backend``
+   passed locally, validating vmec_jax direct-coil/free-boundary and
+   generated-mgrid backend parity on the bounded LP-QA fixture.
+3. The optional WOUT-level VMEC2000 generated-mgrid promotion row remains an
+   expected failure with classification
+   ``vmec2000_vacuum_inactive_force_gate``; this is still a promotion blocker,
+   not a new regression.
+4. A ``mpol=10, ntor=10, nzeta=20`` profile produced ``mode_count=200``.
+   Dense replay took about ``3.91 s``; matrix-free GMRES took about ``4.70 s``
+   and matrix-free BiCGSTAB took about ``3.94 s``.  Matrix-free did not meet
+   the ``1.15`` speedup threshold, so dense remains the default.
+5. ``mpol=11`` and ``mpol=12`` report profiles completed the initial complete
+   solve but terminated during branch-local replay/profile graph construction
+   before writing the report.  This sets the current local safe replay/profile
+   limit near ``mode_count=200`` on this machine; the new cap defaults to
+   ``220`` and can be disabled with ``0`` on a larger-memory machine.
+6. Reran the ``mpol=12, ntor=12, nzeta=24`` report after adding the cap.  It
+   completed in about ``18`` seconds, wrote
+   ``same_branch_complete_solve_report.json``, recorded ``mode_count=288``,
+   and explicitly skipped branch-local vector replay, the rejected-slot gate,
+   and dense-vs-matrix-free profiling due to the replay cap.
+
+Best next steps:
+
+1. Keep dense NESTOR/source replay as the default.  Matrix-free remains an
+   explicit profiling option until a larger bounded machine/case shows a clear
+   win.
+2. Run any higher-mode replay-profile experiments on ``ssh office`` or another
+   larger-memory machine with
+   ``--same-branch-report-replay-max-mode-count 0`` and
+   ``--same-branch-report-profile-max-mode-count 0``.
+3. Continue using the accepted/rejected controller-slot gate as same-branch
+   fingerprint evidence, but do not claim arbitrary adaptive host branch
+   differentiation.
+4. Move the WOUT-level VMEC2000 generated-mgrid promotion row forward by
+   fixing or bypassing the current inactive-vacuum-force gate.
+
+Need from user:
+
+Nothing now. If higher-than-200 mode replay profiles are required locally, use
+``ssh office`` or another larger-memory machine and disable the cap explicitly.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999% for fixed
+  same-branch scalar/vector gates, fingerprint-gated adaptive seam reports,
+  and explicit accepted/rejected replay-slot evidence; arbitrary adaptive
+  branch differentiation remains explicitly unclaimed.
+- VMEC parity and physics gates: 98.3%.
+- Single-stage coil-only optimization: 98.2%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.6%.
+- CI runtime refactor with preserved coverage/physics gates: 100%; latest
+  pushed CI is green before this local cap patch.
+- Docs/release hygiene: 99.7%.
+
 ### 2026-06-07 Dense-vs-Matrix-Free Replay Profile and Rejected-Slot Gate
 
 Steps taken:
