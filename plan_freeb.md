@@ -199,6 +199,64 @@ Completion:
 - CI/runtime/coverage hygiene: 100%.
 - Docs/release hygiene: 99.8%.
 
+### 2026-06-07 Free-Boundary QS Example Default Vector Report
+
+Steps taken:
+
+1. Checked local VMEC2000 binaries for ``VMEC_DUMP_SCALPOT``/
+   ``VMEC_DUMP_FREEB_COUPLING`` instrumentation strings.  The available
+   STELLOPT and ``senac`` executables are stock-style binaries and do not
+   contain the dump instrumentation needed by the strict ``scalpot/vacuum``
+   comparator.
+2. Kept strict instrumented VMEC2000 dump parity blocked locally and avoided
+   re-running the long manifest row with a binary that cannot emit the required
+   dumps.
+3. Updated the coil-only free-boundary QS optimization example so vector-mode
+   same-branch reports default to the promoted compact physical scalars:
+   ``aspect``, ``qs_total``, ``mean_iota``, and ``lcfs_boundary_moment``.
+4. Added a parser-contract test for the promoted default vector keys.
+5. Ran a real smoke example with ``--same-branch-report-mode vector`` and no
+   explicit key override.
+
+Results obtained:
+
+1. ``python -m ruff check`` passed for the example and smoke tests.
+2. The targeted default-key and vector-report tests passed.
+3. The real default vector report was available, same-branch compatible, and
+   used the compact state-only replay path.
+4. Real report AD-vs-central-FD directional errors:
+   ``aspect`` about ``1.45e-11``, ``qs_total`` about ``1.46e-11``,
+   ``mean_iota`` about ``1.95e-13``, and ``lcfs_boundary_moment`` about
+   ``1.46e-14``.
+
+Best next steps:
+
+1. Commit and push the default-vector report improvement, then watch CI.
+2. If an instrumented VMEC2000 executable is provided, run the strict
+   ``freeb_nonaxis_lasym_true_cth_like_local`` comparator row.
+3. Continue phase-3 single-stage optimization work by using the richer
+   branch-local vector report to guide conservative derivative proposals while
+   complete solves remain the acceptance authority.
+
+Need from user:
+
+An instrumented VMEC2000 executable only if strict ``scalpot/vacuum`` dump
+parity should be promoted now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999996% for fixed
+  same-branch scalar/vector gates and explicit accepted/rejected slot evidence;
+  arbitrary adaptive branch differentiation still unclaimed.
+- VMEC parity and physics gates: 98.6%; strict instrumented dump parity is
+  blocked locally by unavailable VMEC2000 instrumentation.
+- Single-stage coil-only optimization: 98.6%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 99.8%.
+
 ### 2026-06-07 LCFS Boundary-Moment Same-Branch Vector Gate
 
 Steps taken:

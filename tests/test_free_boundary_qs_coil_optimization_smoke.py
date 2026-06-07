@@ -181,6 +181,14 @@ def test_same_branch_vector_key_parser_accepts_bnormal_alias():
     assert keys == ("qs_total", "accepted_bnormal_rms")
 
 
+def test_same_branch_vector_key_parser_defaults_to_promoted_state_scalars():
+    module = _load_example_module()
+
+    keys = module.parse_same_branch_vector_keys(None)
+
+    assert keys == ("aspect", "qs_total", "mean_iota", "lcfs_boundary_moment")
+
+
 def test_same_branch_report_anchor_uses_best_or_initial_coil_point():
     module = _load_example_module()
     base_params, _metadata = module.make_circle_provider(current_scale=1.0)

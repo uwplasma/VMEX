@@ -77,7 +77,7 @@ DEFAULT_INPUT = REPO_ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lo
 DEFAULT_OUTDIR = REPO_ROOT / "results" / "free_boundary_QS_coil_optimization"
 DEFAULT_ESSOS_COIL_JSON = "ESSOS_biot_savart_LandremanPaulQA.json"
 DEFAULT_FREE_BOUNDARY_PHIEDGE = -0.025
-DEFAULT_SAME_BRANCH_VECTOR_KEYS = ("aspect", "qs_total")
+DEFAULT_SAME_BRANCH_VECTOR_KEYS = ("aspect", "qs_total", "mean_iota", "lcfs_boundary_moment")
 SUPPORTED_SAME_BRANCH_VECTOR_KEYS = (
     "state_norm",
     "aspect",
