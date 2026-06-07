@@ -93,6 +93,73 @@ Completion:
   now cover representative families, but reviewed constrained prefine runs and
   final contour audits remain open.
 
+### 2026-06-07 Reviewed QI Constrained-Prefine Replay
+
+Steps taken:
+
+1. Re-ran the reviewed constrained-prefine worklist produced by
+   ``examples/optimization/audit_qi_seed_suitability.py --quick
+   --prefine-probes run --prefine-reviewed``.
+2. Found and fixed the first replay blocker: the mirror-ratio term in the
+   constrained prefine objective was constructed without the shared
+   ``QuasiIsodynamicOptions`` instance.  That forced an independent
+   ``booz_xform_jax`` constants preparation inside the jitted residual path and
+   triggered a ``ConcretizationTypeError``.  The mirror term now reuses the same
+   Boozer/QI options as the QI residual and QI-ceiling terms.
+3. Added a focused unit assertion that constrained-prefine dispatch passes
+   ``qi_options`` into ``workflow.MirrorRatio``.
+4. Re-ran the five-family reviewed prefine worklist after the fix.
+
+Results obtained:
+
+1. The QP, QI, QH, QA, and simple-family prefine probes all completed with the
+   constrained objective active.
+2. The audit correctly rejected scalar-improved but QI-worsened candidates:
+   ``qp_from_omnigenity_nfp2_qi`` improved scalar objective
+   ``16.50 -> 1.84`` but worsened smooth QI ``1.30e-3 -> 3.23e-2``,
+   legacy QI ``2.37e-4 -> 2.19e-2``, mirror ``0.260 -> 0.705``, and
+   elongation ``7.48 -> 9.61``.
+3. ``qi_omnigenity_nfp3`` improved scalar objective ``1.07 -> 0.43`` but
+   worsened smooth QI ``1.68e-3 -> 5.58e-2`` and mirror
+   ``0.288 -> 0.485``, so it was also flagged for review.
+4. The best accepted constrained-prefine evidence came from the QH-family
+   seed, which improved smooth QI ``0.186 -> 0.0497``, legacy QI
+   ``0.493 -> 0.0864``, mirror ``0.237 -> 0.218``, elongation
+   ``3.37 -> 2.72``, and scalar objective ``0.782 -> 0.277``.
+5. The QA and simple-family probes also improved QI metrics from far seeds,
+   but remained far from a precise-QI promotion threshold.
+
+Best next steps:
+
+1. Treat the constrained prefine as a safe screening/recovery stage, not a
+   final QI optimizer.  It now rejects misleading scalar-only improvements.
+2. For the near-QI QP/QI seeds, add a staged policy that first preserves or
+   tightens the QI ceiling before mirror/elongation cleanup, so auxiliary
+   geometry terms cannot pull the candidate out of the QI basin.
+3. Promote only candidates whose independent final diagnostics improve smooth
+   QI, legacy QI, mirror, and elongation or whose tradeoff is explicitly
+   reviewed in plots.
+
+Need from user:
+
+Nothing immediately.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999997% for fixed
+  same-branch scalar/vector gates and accepted/rejected slot evidence;
+  arbitrary adaptive branch differentiation remains explicitly unclaimed.
+- VMEC parity and physics gates: 99.25%.
+- Single-stage coil-only optimization: 100.0%.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100%; latest pushed main CI for ``96b52be`` is
+  green.
+- Docs/release hygiene: 100% for this fixture/prefine validation update.
+- QI seed robustness: 92%; the constrained-prefine path now runs end-to-end and
+  blocks false promotions, but precise seed-robust QI from broad seeds remains
+  open.
+
 ### 2026-06-07 Bounded VMEC2000 W7-X Generated-Mgrid WOUT Fixture
 
 Steps taken:

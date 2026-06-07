@@ -86,6 +86,87 @@ FAST_QI_DIAGNOSTIC_ARTIFACTS = [
     }
 ]
 
+QI_SEED_ROBUSTNESS_PROMOTION_GATES = [
+    {
+        "gate_id": "solved-state-family-audit",
+        "title": "Solved-state family audit",
+        "status": "manual-required",
+        "required_before_robustness_claim": True,
+        "pass_criteria": [
+            "Audit rows cover QI, QH, QA, and simple bundled representatives; QP is included when the optional checkout exists.",
+            "Each available row records smooth QI, raw QI, legacy QI, mirror ratio, elongation, aspect, mean iota, and failed constraints.",
+            "Skipped optional representatives remain explicit in the report and keep that family deferred.",
+        ],
+        "artifact_paths": [
+            "results/qi_seed_audit/summary.json",
+            "results/qi_seed_audit/summary.csv",
+        ],
+    },
+    {
+        "gate_id": "reviewed-constrained-prefine-manifest",
+        "title": "Reviewed constrained prefine manifest",
+        "status": "manual-required",
+        "required_before_robustness_claim": True,
+        "pass_criteria": [
+            "Dry-run plans select top-ranked rows plus one best-ranked representative per available seed family.",
+            "Default objectives include smooth QI, a QI ceiling, all-surface mirror ratio, and elongation; QI-only ablations use explicit zero-weight flags.",
+            "Each plan records exact run commands, stage modes, ESS controls, Boozer/QI resolution, phimin policy, and hard nfev caps before any run mode.",
+        ],
+        "artifact_paths": ["results/qi_seed_audit/prefine_manifest.json"],
+    },
+    {
+        "gate_id": "bounded-prefine-probe-results",
+        "title": "Bounded constrained prefine probe results",
+        "status": "not-complete",
+        "required_before_robustness_claim": True,
+        "pass_criteria": [
+            "Reviewed run-mode probes finish with completed, failed, or timed-out status rather than silent promotion.",
+            "Summaries identify best final objective, best improvement, objective-history regressions, and recommended next action.",
+            "Scalar-objective improvement is insufficient when smooth or legacy QI worsens or engineering diagnostics fail.",
+        ],
+        "artifact_paths": ["results/qi_seed_audit/prefine_probes"],
+    },
+    {
+        "gate_id": "independent-final-diagnostics",
+        "title": "Independent final diagnostics",
+        "status": "not-complete",
+        "required_before_robustness_claim": True,
+        "pass_criteria": [
+            "Final candidates pass smooth QI, legacy QI, abs(mean iota), mirror ratio, elongation, and aspect gates at audit resolution.",
+            "Diagnostics are computed from final input and wout artifacts, not from optimizer scalar objectives alone.",
+            "Higher-resolution Boozer/QI re-evaluation does not qualitatively change QI ranking or engineering gate status.",
+        ],
+        "artifact_paths": [
+            "results/qi_seed_audit/prefine_probes/*/diagnostics.json",
+            "results/qi_seed_audit/prefine_probes/*/wout_final.nc",
+        ],
+    },
+    {
+        "gate_id": "boozer-contour-review",
+        "title": "Boozer contour review",
+        "status": "not-complete",
+        "required_before_robustness_claim": True,
+        "pass_criteria": [
+            "Final Boozer |B| contour plots are generated from the same final wout used for diagnostics.",
+            "Reviewed contours are poloidally closed or otherwise flagged as failed QI evidence.",
+            "VMEC-angle plots alone are not accepted as a QI visual gate.",
+        ],
+        "artifact_paths": ["results/qi_seed_audit/prefine_probes/*/boozer_bmag_contours.png"],
+    },
+    {
+        "gate_id": "multi-family-convergence-matrix",
+        "title": "Multi-family convergence matrix",
+        "status": "deferred",
+        "required_before_robustness_claim": True,
+        "pass_criteria": [
+            "The constrained objective is run from QI, QP, QH, QA, and simple non-omnigenous seed families.",
+            "Every accepted family row passes the independent numerical gates and Boozer contour review.",
+            "Failing or missing family rows are documented as robustness gaps instead of being hidden by passing rows.",
+        ],
+        "artifact_paths": ["results/qi_seed_audit/multi_family_matrix.json"],
+    },
+]
+
 
 @dataclass(frozen=True)
 class ValidationLane:
@@ -413,6 +494,7 @@ def build_plan(*, ci: dict[str, Any] | None = None) -> dict[str, Any]:
     return {
         "schema_version": 2,
         "mode": "optional_qi_seed_robustness_validation_plan",
+        "robustness_claim_status": "incomplete_until_promotion_gates_pass",
         "required_ci_baseline": ci or CI_VERIFICATION_PLACEHOLDER,
         "required_ci_policy": {
             "heavy_external_validation_required": False,
@@ -421,6 +503,7 @@ def build_plan(*, ci: dict[str, Any] | None = None) -> dict[str, Any]:
         },
         "family_representatives": QI_FAMILY_REPRESENTATIVES,
         "fast_diagnostic_artifacts": FAST_QI_DIAGNOSTIC_ARTIFACTS,
+        "qi_seed_robustness_promotion_gates": QI_SEED_ROBUSTNESS_PROMOTION_GATES,
         "lanes": [asdict(lane) for lane in lanes],
         "optional_parity_commands": [asdict(command) for command in optional_parity_commands],
         "next_parity_gates": [
@@ -487,6 +570,16 @@ def render_markdown(plan: dict[str, Any]) -> str:
     for artifact in plan["fast_diagnostic_artifacts"]:
         marker = "required CI" if artifact["required_ci"] else "optional"
         lines.append(f"- {artifact['artifact_id']} ({marker})")
+    lines.extend(["", "## QI Seed Robustness Promotion Gates"])
+    lines.append(f"Status: {plan['robustness_claim_status']}")
+    for gate in plan["qi_seed_robustness_promotion_gates"]:
+        marker = "required" if gate["required_before_robustness_claim"] else "optional"
+        lines.extend(
+            [
+                f"- {gate['gate_id']}: {gate['title']} ({marker}; {gate['status']})",
+                f"  Criteria: {'; '.join(gate['pass_criteria'])}",
+            ]
+        )
     lines.extend(["", "## Lanes"])
     for lane in plan["lanes"]:
         marker = "required CI" if lane["required_ci"] else "optional"

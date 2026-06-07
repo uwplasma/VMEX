@@ -1962,6 +1962,7 @@ def run_qi_prefine_probe(plan: dict[str, Any], *, workflow: Any | None = None) -
             ),
             phimin=qi_phimin,
             jit_booz=qi_jit_booz,
+            qi_options=qi_options,
         )
         objective_tuples.append((mirror.J, 0.0, float(qi_options_raw["mirror_weight"])))
     if float(qi_options_raw.get("elongation_weight", 0.0)) > 0.0:

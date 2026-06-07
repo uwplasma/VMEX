@@ -801,6 +801,7 @@ def test_run_qi_prefine_probe_can_dispatch_constrained_qi_terms(tmp_path):
     assert calls["mirror"]["ntheta"] == 12
     assert calls["mirror"]["nphi"] == 10
     assert calls["mirror"]["surface_index"] is None
+    assert isinstance(calls["mirror"]["qi_options"], FakeQuasiIsodynamicOptions)
     assert calls["elongation"]["threshold"] == 8.0
     assert calls["elongation"]["ntheta"] == 14
     assert calls["elongation"]["nphi"] == 6

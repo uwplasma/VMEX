@@ -47,6 +47,14 @@ acceptance criteria or evidence changes.
   representatives and generated a five-row constrained worklist; broad QI seed
   robustness remains open until those reviewed probes pass final independent
   diagnostics and Boozer contour review.
+- A reviewed five-family constrained-prefine replay now completes end-to-end.
+  The run fixed a Boozer/JIT plumbing bug by ensuring the mirror-ratio term
+  reuses the shared `QuasiIsodynamicOptions` object instead of preparing
+  independent Boozer constants inside the jitted residual path.  The audit
+  correctly blocks scalar-improved but QI-worsened QP/QI candidates, while QH,
+  QA, and simple-family probes improve QI metrics from farther seeds.  This
+  raises QI seed robustness to a tested screening/recovery lane, but not yet a
+  final precise-QI claim for arbitrary seeds.
 - The first DMerc/`D_R` derivative gate is now in required tests, comparing
   JAX AD against central finite differences through `mercier_terms_from_state`.
   The first CI-runtime refactor keeps fixture-backed WOUT parity and expensive
