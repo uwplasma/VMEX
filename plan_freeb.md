@@ -160,6 +160,64 @@ Completion:
   blocks false promotions, but precise seed-robust QI from broad seeds remains
   open.
 
+### 2026-06-07 Post-Push Free-Boundary Exact and VMEC2000 Validation
+
+Steps taken:
+
+1. Confirmed pushed CI for ``96b52be`` was green and pushed
+   ``4bc038c`` with the constrained-prefine replay fix.
+2. Ran the optional VMEC2000 W7-X generated-``mgrid`` WOUT-promotion fixture
+   locally with ``RUN_VMEC2000=1`` and ``VMEC2000_INTEGRATION=1``.
+3. Ran the free-boundary QS coil optimization smoke suite on the current
+   ``main``.
+4. Ran the full
+   ``tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py``
+   module with ``JAX_ENABLE_X64=1`` on the current ``main``.
+
+Results obtained:
+
+1. The optional VMEC2000 W7-X generated-``mgrid`` fixture passed locally.  This
+   confirms the fixture reaches active vacuum and finite positive WOUT geometry
+   with the local stock VMEC2000 executable.
+2. The free-boundary QS coil optimization smoke suite passed with the expected
+   xfail: ``23`` tests total with one expected xfail.
+3. The direct-coil finite-pressure sensitivity module passed: ``23`` passing
+   tests and one expected skip.  This revalidates the fixed/same-branch custom
+   VJP, accepted-controller replay, rejected-slot evidence, production
+   branch-local scalar/vector report, and finite-pressure direct-coil gates on
+   the latest source.
+4. GitHub Actions for ``4bc038c`` is running while this entry was written; docs,
+   build, console smoke, parity-manifest smoke, repository-size checks, and
+   several py3.11 core shards were already green.
+
+Best next steps:
+
+1. Wait for the full ``4bc038c`` CI run to finish and record the final result.
+2. Keep arbitrary adaptive branch differentiation unclaimed until a
+   fingerprint-gated full adaptive branch AD-vs-FD gate passes.
+3. For QI seed robustness, add a staged near-QI policy that tightens/preserves
+   QI before mirror/elongation cleanup.
+
+Need from user:
+
+Nothing.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998% for fixed
+  same-branch scalar/vector gates, accepted/rejected slot evidence, and local
+  full exact-shard validation; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 99.35% after local optional VMEC2000 W7-X
+  generated-``mgrid`` WOUT validation.
+- Single-stage coil-only optimization: 100.0%.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100% locally; latest pushed CI is pending final
+  result.
+- Docs/release hygiene: 100%.
+- QI seed robustness: 92%.
+
 ### 2026-06-07 Bounded VMEC2000 W7-X Generated-Mgrid WOUT Fixture
 
 Steps taken:
