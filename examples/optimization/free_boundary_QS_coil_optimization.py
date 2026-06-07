@@ -769,6 +769,85 @@ def same_branch_derivative_proposal_from_report(
     }
 
 
+def same_branch_report_mode_count(report: dict[str, Any]) -> int:
+    """Return the VMEC Fourier mode count for report-size policy decisions."""
+
+    try:
+        static = report["base"]["init"].static
+        return int(np.asarray(static.modes.m).size)
+    except Exception:
+        return 0
+
+
+def nestor_profile_policy_from_results(
+    results: list[dict[str, Any]],
+    *,
+    mode_count: int,
+    min_mode_count: int,
+    min_speedup: float,
+) -> dict[str, Any]:
+    """Decide whether matrix-free NESTOR should be promoted for this report."""
+
+    dense = [item for item in results if item.get("nestor_solve_mode") == "dense" and item.get("available")]
+    matrix_free = [
+        item
+        for item in results
+        if item.get("nestor_solve_mode") == "matrix_free" and item.get("available")
+    ]
+    if not dense:
+        return {
+            "promote_matrix_free": False,
+            "reason": "dense baseline timing is unavailable",
+            "mode_count": int(mode_count),
+        }
+    if not matrix_free:
+        return {
+            "promote_matrix_free": False,
+            "reason": "matrix-free timing is unavailable",
+            "mode_count": int(mode_count),
+        }
+    dense_best = min(float(item["wall_s"]) for item in dense)
+    mf_best_entry = min(matrix_free, key=lambda item: float(item["wall_s"]))
+    mf_best = float(mf_best_entry["wall_s"])
+    speedup = dense_best / mf_best if mf_best > 0.0 else np.inf
+    if int(mode_count) < int(min_mode_count):
+        reason = f"mode_count {int(mode_count)} below threshold {int(min_mode_count)}"
+        promote = False
+    elif speedup < float(min_speedup):
+        reason = f"matrix-free speedup {speedup:.3g} below threshold {float(min_speedup):.3g}"
+        promote = False
+    else:
+        reason = "matrix-free is faster beyond the configured mode-count and speedup thresholds"
+        promote = True
+    return {
+        "promote_matrix_free": bool(promote),
+        "reason": reason,
+        "mode_count": int(mode_count),
+        "min_mode_count": int(min_mode_count),
+        "min_speedup": float(min_speedup),
+        "dense_best_wall_s": dense_best,
+        "matrix_free_best_wall_s": mf_best,
+        "matrix_free_best_solver": str(mf_best_entry.get("nestor_operator_solver", "unknown")),
+        "speedup_dense_over_matrix_free": float(speedup),
+    }
+
+
+def parse_profile_matrix_free_solvers(value: str | Sequence[str] | None) -> tuple[str, ...]:
+    """Parse matrix-free solver names for the same-branch NESTOR profile."""
+
+    if value is None:
+        return ("gmres", "bicgstab")
+    if isinstance(value, str):
+        raw = value.replace(",", " ").split()
+    else:
+        raw = [str(item) for item in value]
+    solvers = tuple(item.strip().lower() for item in raw if item.strip())
+    unsupported = tuple(item for item in solvers if item not in {"gmres", "bicgstab"})
+    if unsupported:
+        raise ValueError(f"unsupported matrix-free NESTOR solver(s): {unsupported}")
+    return solvers or ("gmres", "bicgstab")
+
+
 def write_same_branch_validation_report(
     *,
     input_path: Path,
@@ -1061,6 +1140,71 @@ def write_same_branch_validation_report(
         "freeze_vacuum_field": bool(getattr(args, "same_branch_report_freeze_vacuum_field", False)),
         "freeze_freeb_bsqvac": bool(getattr(args, "same_branch_report_freeze_bsqvac", False)),
     }
+    mode_count = same_branch_report_mode_count(report)
+    compact_report["mode_count"] = int(mode_count)
+
+    def _run_branch_local_vector(
+        scalar_keys: tuple[str, ...],
+        replay_kwargs_for_call: dict[str, Any],
+        *,
+        include_replay_graph_metadata: bool = False,
+    ) -> dict[str, Any]:
+        return direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
+            params=base_params,
+            direction_params=direction_params if ad_mode == "direct" else None,
+            complete_payload=report["base"],
+            scalar_keys=scalar_keys,
+            production_values={key: report_base_values[key] for key in scalar_keys},
+            replay_payload=replay_payload,
+            scalar_fn=lambda payload: {key: scalar_value_fns[key](payload) for key in SUPPORTED_SAME_BRANCH_VECTOR_KEYS},
+            replay_scalar_fns=scalar_replay_fns,
+            replay_kwargs=replay_kwargs_for_call,
+            replay_ad_mode=ad_mode,
+            include_trace_replay_diagnostics=False,
+            include_payload=False,
+            include_replay_graph_metadata=include_replay_graph_metadata,
+        )
+
+    def _summarize_vector_result(vector: dict[str, Any], scalar_keys: tuple[str, ...]) -> dict[str, Any]:
+        if vector.get("directional_derivatives") is None:
+            directionals = _vector_jacobian_directional(vector["jacobian"], direction_params, len(scalar_keys))
+        else:
+            directionals = [
+                float(np.asarray(vector["directional_derivatives"][key], dtype=float))
+                for key in scalar_keys
+            ]
+        return {
+            "available": True,
+            "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
+            "uses_production_forward": bool(vector["uses_production_forward"]),
+            "differentiates_adaptive_controller": bool(vector["differentiates_adaptive_controller"]),
+            "differentiates_run_free_boundary": bool(vector["differentiates_run_free_boundary"]),
+            "differentiates_fixed_accepted_branch": bool(vector["differentiates_fixed_accepted_branch"]),
+            "replay_ad_mode": str(vector["replay_ad_mode"]),
+            "derivative_mode": str(vector.get("derivative_mode", "full_jacobian_vjp")),
+            "scalar_keys": list(scalar_keys),
+            "production_values_source": str(vector.get("production_values_source", "unknown")),
+            "replay_payload_source": str(vector.get("replay_payload_source", "unknown")),
+            "includes_payload": bool(vector.get("includes_payload", True)),
+            "includes_replay_graph_metadata": bool(vector.get("includes_replay_graph_metadata", True)),
+            "state_only_replay": bool(all(key in STATE_ONLY_SAME_BRANCH_KEYS for key in scalar_keys)),
+            "replay_option_flags": vector["replay_option_flags"],
+            "replay_graph_metadata": vector.get("replay_graph_metadata", {}),
+            "replay_branch_metadata": vector.get("replay_branch_metadata", {}),
+            "max_base_abs_delta": float(vector["max_base_abs_delta"]),
+            "timings": {str(key): float(value) for key, value in vector.get("timings", {}).items()},
+            "scalars": {
+                key: {
+                    "value": float(vector["values"][key]),
+                    "replay_value": float(np.asarray(vector["replay_value_map"][key], dtype=float)),
+                    "base_abs_delta": float(vector["base_abs_delta"][key]),
+                    "exact_directional": float(directionals[index]),
+                    "complete_fd_directional": float(report["objective_values"][key]["central_fd_directional"]),
+                    "abs_error": float(abs(directionals[index] - report["objective_values"][key]["central_fd_directional"])),
+                }
+                for index, key in enumerate(scalar_keys)
+            },
+        }
     if same_branch and mode == "scalar" and "base" in report and scalar_key in report["objective_values"]:
         t0 = time.perf_counter()
         scalar = direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
@@ -1113,106 +1257,142 @@ def write_same_branch_validation_report(
     if same_branch and mode == "vector" and "base" in report and not missing_vector_keys:
         scalar_keys = vector_keys
         t0 = time.perf_counter()
-        vector = direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
-            params=base_params,
-            direction_params=direction_params if ad_mode == "direct" else None,
-            complete_payload=report["base"],
-            scalar_keys=scalar_keys,
-            production_values={key: report_base_values[key] for key in scalar_keys},
-            replay_payload=replay_payload,
-            scalar_fn=lambda payload: {
-                "state_norm": float(np.linalg.norm(np.asarray(pack_state(payload["result"].state), dtype=float))),
-                "aspect": float(
-                    np.asarray(
-                        equilibrium_aspect_ratio_from_state(
-                            state=payload["result"].state,
-                            static=payload["init"].static,
-                        )
-                    )
-                ),
-                "qs_total": float(
-                    np.asarray(
-                        qs_total_from_state(
-                            payload["result"].state,
-                            payload["init"].static,
-                            payload["init"].indata,
-                            payload["init"].signgs,
-                        )
-                    )
-                ),
-                "lcfs_boundary_moment": float(
-                    np.asarray(lcfs_boundary_moment(payload["result"].state, payload["init"].static))
-                ),
-                "accepted_bnormal_rms": accepted_bnormal_rms_from_payload(payload),
-            },
-            replay_scalar_fns={
-                "state_norm": lambda replay, _payload: jnp.linalg.norm(pack_state(replay["state"])),
-                "aspect": lambda replay, payload: equilibrium_aspect_ratio_from_state(
-                    state=replay["state"],
-                    static=payload["init"].static,
-                ),
-                "qs_total": lambda replay, payload: qs_total_from_state(
-                    replay["state"],
-                    payload["init"].static,
-                    payload["init"].indata,
-                    payload["init"].signgs,
-                ),
-                "lcfs_boundary_moment": lambda replay, payload: lcfs_boundary_moment(
-                    replay["state"],
-                    payload["init"].static,
-                ),
-                "accepted_bnormal_rms": lambda replay, _payload: accepted_bnormal_rms_from_replay(replay),
-            },
-            replay_kwargs={**replay_kwargs, "state_only_replay": vector_uses_state_only_replay},
-            replay_ad_mode=ad_mode,
-            include_trace_replay_diagnostics=False,
-            include_payload=False,
-            include_replay_graph_metadata=False,
+        vector = _run_branch_local_vector(
+            scalar_keys,
+            {**replay_kwargs, "state_only_replay": vector_uses_state_only_replay},
         )
         timings["branch_local_vector_wall_s"] = float(time.perf_counter() - t0)
         vector_timings = {str(key): float(value) for key, value in vector.get("timings", {}).items()}
         for key, value in vector_timings.items():
             timings[f"branch_local_vector_{key}"] = value
-        if vector.get("directional_derivatives") is None:
-            directionals = _vector_jacobian_directional(vector["jacobian"], direction_params, len(scalar_keys))
+        branch_local_vector = _summarize_vector_result(vector, scalar_keys)
+    rejected_slot_gate: dict[str, Any] = {
+        "available": False,
+        "requested": bool(getattr(args, "same_branch_report_rejected_slot_gate", False)),
+        "reason": "not requested",
+        "differentiates_adaptive_controller": False,
+    }
+    if bool(getattr(args, "same_branch_report_rejected_slot_gate", False)):
+        if not (same_branch and mode == "vector" and "base" in report and not missing_vector_keys):
+            rejected_slot_gate["reason"] = "requires same-branch vector report with all requested scalar keys"
         else:
-            directionals = [
-                float(np.asarray(vector["directional_derivatives"][key], dtype=float))
-                for key in scalar_keys
-            ]
-        branch_local_vector = {
-            "available": True,
-            "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
-            "uses_production_forward": bool(vector["uses_production_forward"]),
-            "differentiates_adaptive_controller": bool(vector["differentiates_adaptive_controller"]),
-            "differentiates_run_free_boundary": bool(vector["differentiates_run_free_boundary"]),
-            "differentiates_fixed_accepted_branch": bool(vector["differentiates_fixed_accepted_branch"]),
-            "replay_ad_mode": str(vector["replay_ad_mode"]),
-            "derivative_mode": str(vector.get("derivative_mode", "full_jacobian_vjp")),
-            "scalar_keys": list(scalar_keys),
-            "production_values_source": str(vector.get("production_values_source", "unknown")),
-            "replay_payload_source": str(vector.get("replay_payload_source", "unknown")),
-            "includes_payload": bool(vector.get("includes_payload", True)),
-            "includes_replay_graph_metadata": bool(vector.get("includes_replay_graph_metadata", True)),
-            "state_only_replay": bool(vector_uses_state_only_replay),
-            "replay_option_flags": vector["replay_option_flags"],
-            "replay_graph_metadata": vector.get("replay_graph_metadata", {}),
-            "max_base_abs_delta": float(vector["max_base_abs_delta"]),
-            "timings": vector_timings,
-            "scalars": {
-                key: {
-                    "value": float(vector["values"][key]),
-                    "replay_value": float(np.asarray(vector["replay_value_map"][key], dtype=float)),
-                    "base_abs_delta": float(vector["base_abs_delta"][key]),
-                    "exact_directional": float(directionals[index]),
-                    "complete_fd_directional": float(report["objective_values"][key]["central_fd_directional"]),
-                    "abs_error": float(abs(directionals[index] - report["objective_values"][key]["central_fd_directional"])),
+            base_traces = tuple(report["base"].get("traces", ()))
+            if not base_traces:
+                rejected_slot_gate["reason"] = "base complete-solve payload has no traces"
+            else:
+                padded_traces = base_traces + (deepcopy(base_traces[-1]),)
+                accept_mask = np.ones(len(padded_traces), dtype=bool)
+                accept_mask[-1] = False
+                done_mask = np.zeros(len(padded_traces), dtype=bool)
+                t0 = time.perf_counter()
+                rejected_vector = _run_branch_local_vector(
+                    vector_keys,
+                    {
+                        **replay_kwargs,
+                        "state_only_replay": vector_uses_state_only_replay,
+                        "traces": padded_traces,
+                        "accept_mask": accept_mask,
+                        "done_mask": done_mask,
+                        "use_accepted_only_fast_path": False,
+                    },
+                    include_replay_graph_metadata=False,
+                )
+                timings["branch_local_rejected_slot_wall_s"] = float(time.perf_counter() - t0)
+                rejected_summary = _summarize_vector_result(rejected_vector, vector_keys)
+                rejected_metadata = rejected_summary.get("replay_branch_metadata", {})
+                rejected_mask = np.asarray(rejected_metadata.get("rejected_mask", []), dtype=bool)
+                rejected_slot_gate = {
+                    "available": True,
+                    "requested": True,
+                    "scope": (
+                        "fixed accepted/rejected controller-slot replay; "
+                        "does not differentiate adaptive host branch selection"
+                    ),
+                    "differentiates_adaptive_controller": False,
+                    "same_branch": same_branch,
+                    "scalar_keys": list(vector_keys),
+                    "fixed_rejected_controller_slot_present": bool(np.any(rejected_mask)),
+                    "fixed_rejected_controller_slots": int(np.count_nonzero(rejected_mask)),
+                    "replay_option_flags": rejected_summary["replay_option_flags"],
+                    "replay_branch_metadata": rejected_metadata,
+                    "max_base_abs_delta": float(rejected_summary["max_base_abs_delta"]),
+                    "scalars": rejected_summary["scalars"],
+                    "wall_s": float(timings["branch_local_rejected_slot_wall_s"]),
                 }
-                for index, key in enumerate(scalar_keys)
-            },
+    nestor_profile: dict[str, Any] = {
+        "enabled": False,
+        "request": str(getattr(args, "same_branch_report_profile_nestor", "none")),
+        "reason": "not requested",
+    }
+    profile_request = str(getattr(args, "same_branch_report_profile_nestor", "none")).strip().lower()
+    if profile_request != "none":
+        nestor_profile = {
+            "enabled": True,
+            "request": profile_request,
+            "scope": "same complete-solve payload replay/JVP timings; no additional full FD solves",
+            "mode_count": int(mode_count),
+            "results": [],
         }
+        if profile_request != "dense-vs-matrix-free":
+            nestor_profile["reason"] = "--same-branch-report-profile-nestor must be none or dense-vs-matrix-free"
+        elif not (same_branch and mode == "vector" and "base" in report and not missing_vector_keys):
+            nestor_profile["reason"] = "requires same-branch vector report with all requested scalar keys"
+        else:
+            profile_results: list[dict[str, Any]] = []
+            profile_cases = [("dense", str(getattr(args, "same_branch_report_nestor_operator_solver", "gmres")))]
+            profile_cases.extend(
+                ("matrix_free", solver)
+                for solver in parse_profile_matrix_free_solvers(
+                    getattr(args, "same_branch_report_profile_matrix_free_solvers", None)
+                )
+            )
+            for solve_mode, operator_solver in profile_cases:
+                case_kwargs = {
+                    **replay_kwargs,
+                    "state_only_replay": vector_uses_state_only_replay,
+                    "nestor_solve_mode": solve_mode,
+                    "nestor_operator_solver": operator_solver,
+                }
+                t0 = time.perf_counter()
+                try:
+                    profile_vector = _run_branch_local_vector(vector_keys, case_kwargs)
+                    wall_s = float(time.perf_counter() - t0)
+                    profile_summary = _summarize_vector_result(profile_vector, vector_keys)
+                    profile_results.append(
+                        {
+                            "available": True,
+                            "nestor_solve_mode": solve_mode,
+                            "nestor_operator_solver": operator_solver,
+                            "wall_s": wall_s,
+                            "timings": profile_summary["timings"],
+                            "max_base_abs_delta": float(profile_summary["max_base_abs_delta"]),
+                            "max_abs_error": max(
+                                float(item["abs_error"]) for item in profile_summary["scalars"].values()
+                            ),
+                            "replay_option_flags": profile_summary["replay_option_flags"],
+                        }
+                    )
+                except Exception as exc:  # pragma: no cover - profile diagnostics should not abort the promoted report.
+                    profile_results.append(
+                        {
+                            "available": False,
+                            "nestor_solve_mode": solve_mode,
+                            "nestor_operator_solver": operator_solver,
+                            "wall_s": float(time.perf_counter() - t0),
+                            "error": f"{type(exc).__name__}: {exc}",
+                        }
+                    )
+            nestor_profile["results"] = profile_results
+            nestor_profile["policy"] = nestor_profile_policy_from_results(
+                profile_results,
+                mode_count=int(mode_count),
+                min_mode_count=int(getattr(args, "same_branch_report_profile_min_mode_count", 96)),
+                min_speedup=float(getattr(args, "same_branch_report_profile_min_speedup", 1.15)),
+            )
     compact_report["branch_local_scalar_gradient"] = branch_local_scalar
     compact_report["branch_local_vector_jacobian"] = branch_local_vector
+    compact_report["accepted_rejected_controller_slot_gate"] = rejected_slot_gate
+    compact_report["nestor_replay_profile"] = nestor_profile
     compact_report["timings"] = timings
     path = outdir / "same_branch_complete_solve_report.json"
     write_json(path, compact_report)
@@ -1336,10 +1516,19 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "nestor_operator_atol": float(getattr(args, "same_branch_report_nestor_operator_atol", 1.0e-13)),
         "nestor_operator_maxiter": getattr(args, "same_branch_report_nestor_operator_maxiter", None),
         "nestor_operator_restart": getattr(args, "same_branch_report_nestor_operator_restart", None),
+        "profile_nestor": str(getattr(args, "same_branch_report_profile_nestor", "none")),
+        "profile_matrix_free_solvers": list(
+            parse_profile_matrix_free_solvers(getattr(args, "same_branch_report_profile_matrix_free_solvers", None))
+        ),
+        "profile_min_mode_count": int(getattr(args, "same_branch_report_profile_min_mode_count", 96)),
+        "profile_min_speedup": float(getattr(args, "same_branch_report_profile_min_speedup", 1.15)),
+        "rejected_slot_gate": bool(getattr(args, "same_branch_report_rejected_slot_gate", False)),
     }
     same_branch_derivative_proposal_config = {
         "enabled": bool(args.same_branch_derivative_proposal),
         "requires_same_branch_report": True,
+        "requires_report_mode": "vector",
+        "requires_report_ad_mode": "direct for JVP-only proposal; custom_vjp is report-only",
         "scope": (
             "one fixed-accepted-branch directional proposal followed by a "
             "normal complete-solve objective evaluation"
@@ -1795,6 +1984,42 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Optional GMRES restart length for the matrix-free NESTOR/source solve.",
+    )
+    parser.add_argument(
+        "--same-branch-report-profile-nestor",
+        choices=("none", "dense-vs-matrix-free"),
+        default="none",
+        help=(
+            "Optionally profile dense and matrix-free NESTOR/source replay on the same "
+            "complete-solve payload. This adds replay/JVP timings only; it does not rerun "
+            "the complete FD triplet."
+        ),
+    )
+    parser.add_argument(
+        "--same-branch-report-profile-matrix-free-solvers",
+        default="gmres,bicgstab",
+        help="Comma/space-separated matrix-free solvers to profile; supported: gmres,bicgstab.",
+    )
+    parser.add_argument(
+        "--same-branch-report-profile-min-mode-count",
+        type=int,
+        default=96,
+        help="Do not promote matrix-free replay unless the VMEC Fourier mode count is at least this value.",
+    )
+    parser.add_argument(
+        "--same-branch-report-profile-min-speedup",
+        type=float,
+        default=1.15,
+        help="Do not promote matrix-free replay unless dense_wall/matrix_free_wall exceeds this speedup.",
+    )
+    parser.add_argument(
+        "--same-branch-report-rejected-slot-gate",
+        action="store_true",
+        help=(
+            "Also replay a fixed accepted/rejected controller-slot mask using the same branch. "
+            "This is a fingerprint/provenance gate and still does not differentiate adaptive "
+            "host branch selection."
+        ),
     )
     parser.add_argument(
         "--same-branch-report-max-iter",

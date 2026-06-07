@@ -12,6 +12,87 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-07 Dense-vs-Matrix-Free Replay Profile and Rejected-Slot Gate
+
+Steps taken:
+
+1. Confirmed latest GitHub Actions run ``27080170410`` for commit ``2d727f9``
+   passed, including docs, test shards, and the combined py3.11 coverage gate.
+2. Added effective-replay-branch metadata to the branch-local scalar/vector
+   helpers so reports can state which accepted/rejected masks were actually
+   replayed.
+3. Fixed the replay trace/mask seam: when callers override ``traces`` to add a
+   rejected controller slot, replay-plan construction now uses that effective
+   trace list instead of the original accepted-only trace list.
+4. Added opt-in direct-coil QS example flags:
+   ``--same-branch-report-profile-nestor dense-vs-matrix-free`` and
+   ``--same-branch-report-rejected-slot-gate``.
+5. Added report policy logic that only promotes matrix-free NESTOR/source
+   replay when it wins beyond explicit mode-count and speedup thresholds.
+6. Updated the free-boundary coil optimization documentation with the new
+   profile/gate flags and a reproducer command.
+
+Results obtained:
+
+1. Targeted lint passed for ``vmec_jax/free_boundary_adjoint.py``,
+   ``examples/optimization/free_boundary_QS_coil_optimization.py``, and the
+   affected tests.
+2. ``tests/test_free_boundary_qs_coil_optimization_smoke.py`` passed locally
+   with ``20`` tests including the expected phase-2 marker ``xfail``.
+3. The production-adjacent current-only complete-solve same-branch AD-vs-FD
+   gate passed locally in about ``62`` seconds after the effective-trace fix.
+4. Real circle-provider same-branch profile at ``mpol=5, ntor=4`` produced
+   ``mode_count=41``. Dense replay took about ``1.43 s``; the best matrix-free
+   replay was BiCGSTAB at about ``1.50 s``. The policy correctly kept dense
+   because the mode count was below the ``96`` threshold.
+5. Larger real circle-provider profile at ``mpol=8, ntor=8`` produced
+   ``mode_count=128``. Dense replay took about ``2.66 s``; matrix-free GMRES
+   took about ``3.44 s`` and matrix-free BiCGSTAB took about ``2.70 s``. The
+   policy correctly kept dense because the matrix-free speedup was only
+   ``0.985`` versus the ``1.15`` promotion threshold.
+6. Both real profiles wrote an accepted/rejected controller-slot gate with one
+   fixed rejected slot and ``use_accepted_only_fast_path=False``.
+7. Optional VMEC2000 generated-mgrid/free-boundary trace smoke skipped locally
+   because the available ESSOS checkout does not provide ``Coils.to_mgrid``.
+8. Optional executable-backed VMEC2000 converged-WOUT diagnostics validation
+   passed for the three bounded fixed-boundary rows in about ``91`` seconds.
+
+Best next steps:
+
+1. Keep dense NESTOR/source replay as the promoted default for branch-local
+   reports. Matrix-free stays opt-in until a larger bounded case shows a clear
+   speedup over dense.
+2. Add one no-ESSOS direct-coil/mgrid compatibility parity fixture or refresh
+   the local ESSOS checkout when generated-mgrid free-boundary promotion is
+   needed.
+3. Use the rejected-slot gate in future same-branch physical-scalar promotion
+   reports, but continue to state explicitly that arbitrary adaptive
+   branch-selection differentiation is not claimed.
+4. Wire the same branch-local vector/JVP proposal into a slightly larger
+   coil-only QS optimization run, keeping complete free-boundary solves as the
+   only acceptance authority.
+
+Need from user:
+
+Nothing now. If strict generated-mgrid VMEC2000 free-boundary parity is needed
+locally, the ESSOS checkout should be updated to a version with
+``Coils.to_mgrid``.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999% for fixed
+  same-branch scalar/vector gates, fingerprint-gated adaptive seam reports,
+  and explicit accepted/rejected replay-slot evidence; arbitrary adaptive
+  branch differentiation remains explicitly unclaimed.
+- VMEC parity and physics gates: 98.1%.
+- Single-stage coil-only optimization: 98.1%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.5%.
+- CI runtime refactor with preserved coverage/physics gates: 100%; latest
+  pushed CI is green.
+- Docs/release hygiene: 99.6%.
+
 ### 2026-06-06 Matrix-Free Replay Controls for Branch-Local Reports
 
 Steps taken:

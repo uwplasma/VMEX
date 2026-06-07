@@ -733,6 +733,21 @@ diagnostic.
 switch: it replaces the cached JIT radial-preconditioner apply inside the
 fixed replay with the non-JIT array implementation.  It is not a default
 production setting; use it only to isolate cold graph-construction costs.
+The direct-coil report can also profile dense versus matrix-free NESTOR/source
+replay without rerunning the complete finite-difference triplet:
+``--same-branch-report-profile-nestor dense-vs-matrix-free``.  The profile
+records the VMEC Fourier mode count, dense timing, matrix-free GMRES/BiCGSTAB
+timings, replay errors against complete-solve central differences, and a
+conservative promotion decision.  Dense remains the default unless matrix-free
+wins beyond both ``--same-branch-report-profile-min-mode-count`` and
+``--same-branch-report-profile-min-speedup``.  On the current local
+circle-provider active-trace reports, dense was still faster at both 41 modes
+and 128 modes, so matrix-free remains opt-in.  Use
+``--same-branch-report-rejected-slot-gate`` to add an explicit fixed
+accepted/rejected controller-slot replay artifact.  This proves the stacked
+controller replay can carry a rejected slot under the same branch fingerprint;
+it still does not differentiate the adaptive host policy that decides which
+steps are accepted or rejected.
 Short accepted-only branch-local segments are unrolled automatically in this
 report path, which avoids the pathological cold ``lax.scan`` graph that the
 tiny smoke trace used to trigger.
@@ -1222,6 +1237,32 @@ run, append ``--write-same-branch-report``:
 The same-branch report in this command validates the best accepted coil point
 from the smoke optimization.  Add ``--same-branch-report-anchor initial`` if
 you want the diagnostic at the original coil seed instead.
+
+To reproduce the dense-versus-matrix-free NESTOR/source replay profile and the
+accepted/rejected controller-slot gate on a larger low-resolution report, run:
+
+.. code-block:: bash
+
+   python examples/optimization/free_boundary_QS_coil_optimization.py \
+     --smoke \
+     --provider circle \
+     --max-evals 1 \
+     --max-iter 1 \
+     --vmec-max-iter 2 \
+     --same-branch-report-max-iter 2 \
+     --mpol 8 \
+     --ntor 8 \
+     --nzeta 16 \
+     --write-same-branch-report \
+     --same-branch-report-mode vector \
+     --same-branch-report-vector-keys aspect,qs_total \
+     --same-branch-report-profile-nestor dense-vs-matrix-free \
+     --same-branch-report-rejected-slot-gate \
+     --outdir results/free_boundary_QS_coil_optimization_circle_nestor_profile
+
+The profile is intentionally branch-local: complete solves provide the
+base/plus/minus finite-difference authority, while dense and matrix-free replay
+only compare the fixed accepted branch under the same fingerprint.
 
 An additional opt-in bridge toward derivative-assisted coil optimization is
 available with ``--same-branch-derivative-proposal``.  This mode still does
