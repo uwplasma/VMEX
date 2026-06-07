@@ -13665,3 +13665,79 @@ Completion:
   next blocker remains direct-coil vacuum/NESTOR JVP graph cost.
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 99.5%.
+
+### 2026-06-07 Dense-vs-Matrix-Free NESTOR Replay Promotion Check
+
+Steps taken:
+
+1. Re-read the same-branch complete-solve FD helper and the coil-only QS
+   optimization same-branch report path.
+2. Confirmed the earlier plan note that ``mean_iota`` is not a useful
+   additional scalar for the tiny direct-coil same-branch gate because the
+   fixture uses ``NCURR=0`` and the iota profile is prescribed by the input
+   deck rather than coil-sensitive.
+3. Re-ran the focused matrix-free NESTOR/source unit parity gates.
+4. Ran two bounded production-adjacent same-branch vector/JVP reports with
+   ``--same-branch-report-profile-nestor dense-vs-matrix-free``:
+   one smoke-size report with 13 Fourier modes, and one larger ``mpol=5``,
+   ``ntor=5`` report with 50 Fourier modes.
+5. Re-ran the coil-only QS smoke shard and the current/Fourier/LASYM exact
+   same-branch complete-solve FD shard.
+
+Results obtained:
+
+1. ``python -m ruff check examples/optimization/free_boundary_QS_coil_optimization.py
+   vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_vacuum_adjoint.py
+   tests/test_free_boundary_qs_coil_optimization_smoke.py`` passed.
+2. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_vacuum_adjoint.py::test_matrix_free_mode_operator_solve_matches_dense_response_and_gradients
+   tests/test_free_boundary_vacuum_adjoint.py::test_dense_vmec_nestor_mode_solve_can_use_matrix_free_response
+   -q`` passed.
+3. The 13-mode production-adjacent report kept dense as the fastest path:
+   dense ``0.732 s``, matrix-free GMRES ``1.391 s``, matrix-free BiCGSTAB
+   ``0.833 s``.  The policy rejected matrix-free with dense/matrix-free
+   speedup ``0.878`` below the ``1.1`` threshold.
+4. The 50-mode bounded report also kept dense as fastest: dense ``1.179 s``,
+   matrix-free GMRES ``1.868 s``, matrix-free BiCGSTAB ``1.280 s``.  The
+   policy rejected matrix-free with speedup ``0.921`` below the threshold.
+5. Both profile runs preserved same-branch directional accuracy at roughly
+   ``1e-11`` absolute error for the selected physical scalars.
+6. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qs_coil_optimization_smoke.py -q`` passed with the
+   expected xfail.
+7. The exact same-branch shard
+   ``test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd``,
+   ``test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_fd``,
+   and ``test_direct_coil_lasym_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch``
+   passed locally.
+
+Best next steps:
+
+1. Do not promote matrix-free NESTOR/source replay by default at the current
+   bounded sizes; keep it opt-in for larger profiling and GPU/memory probes.
+2. Continue attacking the dominant cold branch-local JVP cost through
+   direct-coil vacuum-response reuse, narrower replay graphs, or a true
+   custom-transpose/source-response path rather than current matrix-free
+   Krylov solves.
+3. Keep complete-solve acceptance authority in the coil-only optimization
+   example; branch-local derivatives remain same-branch/fingerprint-gated
+   proposal evidence only.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99995% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 97.4%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.0%; matrix-free replay was measured and rejected for
+  bounded CPU cases, so the remaining performance target is cold
+  direct-coil/NESTOR JVP graph cost.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.5%.
