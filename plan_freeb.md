@@ -35,6 +35,9 @@ Steps taken:
    states that the physical-scalar AD-vs-FD gate is fingerprint-gated while
    still explicitly not claiming differentiation of the adaptive host
    controller.
+6. Added the matrix-free NESTOR response tests to the existing
+   ``py311_slow_coverage`` lane so the new source/operator lines contribute to
+   the 95% CI coverage gate.
 
 Results obtained:
 
@@ -53,6 +56,9 @@ Results obtained:
 5. The full
    ``tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py``
    shard passed locally with ``23`` passed and ``1`` skipped.
+6. The vacuum-adjoint slow-coverage selection passed locally with ``8`` passed
+   and ``61`` deselected, confirming that the new matrix-free tests are routed
+   into the py3.11 coverage artifacts.
 
 Best next steps:
 
