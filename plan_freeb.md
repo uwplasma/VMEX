@@ -199,6 +199,54 @@ Completion:
 - CI/runtime/coverage hygiene: 100%.
 - Docs/release hygiene: 99.8%.
 
+### 2026-06-07 LCFS Boundary-Moment Same-Branch Vector Gate
+
+Steps taken:
+
+1. Promoted ``lcfs_boundary_moment`` into the mocked branch-local vector/JVP
+   smoke test alongside ``aspect``, ``qs_total``, and ``mean_iota``.
+2. Ran the real compact same-branch vector report from
+   ``examples/optimization/free_boundary_QS_coil_optimization.py`` with
+   ``aspect,mean_iota,lcfs_boundary_moment``.
+
+Results obtained:
+
+1. ``python -m ruff check`` passed for the optimization example and smoke test.
+2. The targeted mocked vector/JVP smoke test passed.
+3. The real compact report was same-branch compatible and used the
+   state-only replay path.
+4. Physical-scalar AD-vs-central-FD directional errors from the real report:
+   ``aspect`` about ``1.45e-11``, ``mean_iota`` about ``1.95e-13``, and
+   ``lcfs_boundary_moment`` about ``1.46e-14``.
+5. Replay diagnostics for the compact report: replay-plan build about
+   ``0.20 s`` and JVP wall time about ``7.18 s``.
+
+Best next steps:
+
+1. Commit and push the promoted vector-scalar test.
+2. Continue watching CI for the prior comparator commit and the new test
+   promotion.
+3. Use the validated branch-local vector path as the preferred reporting lane
+   in the coil-only QS optimization example while complete solves remain the
+   acceptance authority.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999996% for fixed
+  same-branch scalar/vector gates and explicit accepted/rejected slot evidence;
+  arbitrary adaptive branch differentiation still unclaimed.
+- VMEC parity and physics gates: 98.6%.
+- Single-stage coil-only optimization: 98.45%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 99.8%.
+
 ### 2026-06-07 Mean-Iota Same-Branch Physical-Scalar Gate
 
 Steps taken:
