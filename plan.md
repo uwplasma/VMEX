@@ -1839,3 +1839,14 @@ Defer beyond the current cycle:
   `keep_audited_near_qi_seed`.  Completion: QI seed robustness `94%`; false
   promotion closed, near-QI non-degradation complete, far-seed multi-family
   convergence and Boozer contour review still open.
+- 2026-06-07: Ran a reviewed bounded multi-family QI prefine execution in
+  `/tmp/vmec_jax_prefine_multifamily_*`.  Five rows completed with no failures,
+  no timeouts, and `qi_worsened_count=0`.  Near-QI QP/QI rows remained
+  diagnostic baselines with zero QI metric deltas.  Far-family constrained
+  recovery reduced diagnostics under hard caps: QH smooth QI
+  `0.18644600107996434 -> 0.049680000354045725`, QA smooth QI
+  `0.902037615924743 -> 0.27412089188102196`, and simple smooth QI
+  `0.39841043600194476 -> 0.21446443478211397`; legacy QI also improved for
+  all three.  Completion: QI seed robustness `95%`; bounded first-pass
+  non-degradation and multi-family diagnostic improvement are covered, while
+  higher-budget precision QI plus Boozer contour review remains open.

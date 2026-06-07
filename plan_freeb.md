@@ -1869,6 +1869,56 @@ Completion:
   non-degrading, while far-seed robust convergence remains the open promotion
   lane.
 
+### 2026-06-07 Bounded Multi-Family QI Prefine Evidence
+
+Steps taken:
+
+1. Ran the reviewed bounded QI prefine workflow with ``--prefine-top-n 2`` and
+   family representatives enabled into ``/tmp/vmec_jax_prefine_multifamily_*``.
+2. Confirmed the two already-low-QI rows used the
+   ``near_qi_diagnostic_baseline`` policy and skipped optimization.
+3. Confirmed QH, QA, and simple representatives used the capped
+   ``constrained_recovery`` policy.
+
+Results obtained:
+
+1. All five prefine rows completed; there were no failures, no timeouts, and
+   ``qi_worsened_count=0``.
+2. Near-QI baselines were unchanged:
+   ``qp_from_omnigenity_nfp2_qi`` smooth QI
+   ``0.0012982733181478073 -> 0.0012982733181478073`` and legacy QI
+   ``0.00023744992469448665 -> 0.00023744992469448665``;
+   ``qi_omnigenity_nfp3`` smooth QI
+   ``0.0016826152378900392 -> 0.0016826152378900392`` and legacy QI
+   ``0.0002258900351401033 -> 0.0002258900351401033``.
+3. Far-family recovery probes all reduced the QI diagnostics under hard caps:
+   QH smooth QI ``0.18644600107996434 -> 0.049680000354045725`` and legacy QI
+   ``0.49322274654178877 -> 0.08643853379936375``; QA smooth QI
+   ``0.902037615924743 -> 0.27412089188102196`` and legacy QI
+   ``1.0037731086252313 -> 0.38282899336040693``; simple smooth QI
+   ``0.39841043600194476 -> 0.21446443478211397`` and legacy QI
+   ``1.0595335031600763 -> 0.5145388845266068``.
+4. The manifest recommendation remains ``keep_audited_near_qi_seed`` because
+   the best row is already near QI; the far-seed rows are evidence that the
+   recovery path improves diagnostics, not final robustness claims.
+
+Best next steps:
+
+1. Convert this bounded evidence into persistent artifacts only after deciding
+   the multi-family matrix should become a documented promotion gate.
+2. Continue QI robustness with higher-budget far-seed recovery plus Boozer
+   contour review, rather than broadening the bounded first-pass caps.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- QI seed robustness: 95%; the audit/prefine workflow is now non-degrading and
+  multi-family bounded recovery improves QI metrics, but precision QI from all
+  far seeds still requires the higher-budget optimization/contour-review lane.
+
 ### 2026-06-06 Frozen-Bsqvac Replay Cost Split
 
 Steps taken:
