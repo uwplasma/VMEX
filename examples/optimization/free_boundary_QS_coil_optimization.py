@@ -1351,6 +1351,8 @@ def write_same_branch_validation_report(
         "requested": bool(getattr(args, "same_branch_report_rejected_slot_gate", False)),
         "reason": "not requested",
         "differentiates_adaptive_controller": False,
+        "differentiates_run_free_boundary": False,
+        "same_stacked_step_policy_branch": False,
     }
     if bool(getattr(args, "same_branch_report_rejected_slot_gate", False)):
         if replay_mode_count_guard_triggered:
@@ -1391,7 +1393,11 @@ def write_same_branch_validation_report(
                         "does not differentiate adaptive host branch selection"
                     ),
                     "differentiates_adaptive_controller": False,
+                    "differentiates_run_free_boundary": False,
                     "same_branch": same_branch,
+                    "same_stacked_step_policy_branch": bool(
+                        rejected_summary["replay_option_flags"].get("use_stacked_step_controls", False)
+                    ),
                     "scalar_keys": list(vector_keys),
                     "fixed_rejected_controller_slot_present": bool(np.any(rejected_mask)),
                     "fixed_rejected_controller_slots": int(np.count_nonzero(rejected_mask)),

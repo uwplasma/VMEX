@@ -212,7 +212,7 @@ reference path in ``QI_optimization.py`` before running the standalone script:
 
    PYTHONPATH=. python examples/optimization/audit_qi_seed_suitability.py --quick --csv results/qi_seed_audit.csv
    PYTHONPATH=. python examples/optimization/audit_qi_seed_suitability.py --quick --smooth-qi-max 5e-3 --legacy-qi-max 2e-3 --csv results/qi_seed3127_audit.csv
-   PYTHONPATH=. python examples/optimization/audit_qi_seed_suitability.py --quick --prefine-probes plan --prefine-manifest results/qi_seed_audit/prefine_manifest.json --prefine-output-dir results/qi_seed_audit/prefine_probes
+   PYTHONPATH=. python examples/optimization/audit_qi_seed_suitability.py --quick --prefine-probes plan --prefine-manifest results/qi_seed_audit/prefine_manifest.json --prefine-output-dir results/qi_seed_audit/prefine_probes --prefine-mirror-weight 2.0 --prefine-elongation-weight 0.5 --prefine-mirror-surface-index all
    PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/QI_seed_robustness.py
    PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/QI_optimization.py
    PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/QI_optimization_seed.py

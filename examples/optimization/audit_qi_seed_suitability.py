@@ -58,6 +58,8 @@ DEFAULT_TARGET_ASPECT = 10.0
 DEFAULT_ABS_IOTA_MIN = 0.41
 DEFAULT_MAX_MIRROR_RATIO = 0.21
 DEFAULT_MAX_ELONGATION = 8.0
+DEFAULT_PREFINE_MIRROR_WEIGHT = 2.0
+DEFAULT_PREFINE_ELONGATION_WEIGHT = 0.5
 DEFAULT_SURFACES = (0.1, 0.35, 0.6, 0.85)
 DEFAULT_PREFINE_SURFACES = (0.35, 0.65)
 SEED_FAMILY_ORDER = ("qi", "qp", "qh", "qa", "simple")
@@ -101,7 +103,7 @@ class SuitabilityTargets:
 
 @dataclass(frozen=True)
 class QIPrefineProbeConfig:
-    """Hard-capped settings for tiny optional QI-only prefine probes."""
+    """Hard-capped settings for tiny optional constrained QI prefine probes."""
 
     top_n: int = 1
     include_family_representatives: bool = True
@@ -124,12 +126,12 @@ class QIPrefineProbeConfig:
     qi_ceiling_weight: float = 100.0
     qi_ceiling_max: float = 2.0e-3
     qi_ceiling_smooth_penalty: float = 2.0e-3
-    mirror_weight: float = 0.0
+    mirror_weight: float = DEFAULT_PREFINE_MIRROR_WEIGHT
     mirror_threshold: float = DEFAULT_MAX_MIRROR_RATIO
     mirror_ntheta: int = 32
     mirror_nphi: int = 32
     mirror_surface_index: int | None = None
-    elongation_weight: float = 0.0
+    elongation_weight: float = DEFAULT_PREFINE_ELONGATION_WEIGHT
     elongation_threshold: float = DEFAULT_MAX_ELONGATION
     elongation_ntheta: int = 24
     elongation_nphi: int = 8
@@ -1900,7 +1902,7 @@ def summarize_qi_prefine_probe_manifest(manifest: dict[str, Any]) -> dict[str, A
 
 
 def run_qi_prefine_probe(plan: dict[str, Any], *, workflow: Any | None = None) -> dict[str, Any]:
-    """Run one explicit tiny QI-only probe from a manifest plan."""
+    """Run one explicit tiny constrained-QI probe from a manifest plan."""
 
     if workflow is None:
         import vmec_jax as workflow
@@ -2360,7 +2362,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         choices=("none", "plan", "run"),
         default="none",
         help=(
-            "Optional bounded QI-only prefine workflow: 'plan' writes a dry-run manifest; "
+            "Optional bounded constrained-QI prefine workflow: 'plan' writes a dry-run manifest; "
             "'run' executes the tiny capped probes."
         ),
     )
@@ -2414,8 +2416,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--prefine-mirror-weight",
         type=float,
-        default=0.0,
-        help="Optional mirror-ratio penalty weight for constrained prefine probes. Default 0 keeps QI-only behavior.",
+        default=DEFAULT_PREFINE_MIRROR_WEIGHT,
+        help=(
+            "Mirror-ratio penalty weight for constrained prefine probes. "
+            "Set 0 for a QI-only prefine diagnostic."
+        ),
     )
     parser.add_argument("--prefine-mirror-threshold", type=float, default=DEFAULT_MAX_MIRROR_RATIO)
     parser.add_argument("--prefine-mirror-ntheta", type=int, default=32)
@@ -2429,8 +2434,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--prefine-elongation-weight",
         type=float,
-        default=0.0,
-        help="Optional max-elongation penalty weight for constrained prefine probes. Default 0 keeps QI-only behavior.",
+        default=DEFAULT_PREFINE_ELONGATION_WEIGHT,
+        help=(
+            "Max-elongation penalty weight for constrained prefine probes. "
+            "Set 0 for a QI-only prefine diagnostic."
+        ),
     )
     parser.add_argument("--prefine-elongation-threshold", type=float, default=DEFAULT_MAX_ELONGATION)
     parser.add_argument("--prefine-elongation-ntheta", type=int, default=24)

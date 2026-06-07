@@ -2269,6 +2269,10 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                 require_fixed_rejected_controller_slot=True,
             )
             assert rejected_slot_gate["passed"], rejected_slot_gate
+            assert rejected_slot_gate["same_branch"] is True
+            assert rejected_slot_gate["differentiates_adaptive_controller"] is False
+            assert rejected_slot_gate["differentiates_run_free_boundary"] is False
+            assert rejected_slot_gate["same_stacked_step_policy_branch"] is True
             assert rejected_slot_gate["requires_fixed_rejected_controller_slot"] is True
             assert rejected_slot_gate["fixed_rejected_controller_slot_present"] is True
             assert rejected_slot_gate["fixed_rejected_controller_slots"] == 1

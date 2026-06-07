@@ -12,6 +12,87 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-07 Same-Branch Slot Gate and QI Constrained-Prefine Planning
+
+Steps taken:
+
+1. Rechecked ``main`` at commit ``16a8b75`` with a clean working tree and
+   confirmed the latest pushed CI run was green.
+2. Added the bounded W7-X generated-``mgrid`` VMEC2000 WOUT-promotion fixture
+   to the declarative optional validation plan, so release/nightly validation
+   has a concrete command for the new executable-backed row.
+3. Hardened the fixed accepted/rejected controller-slot evidence gate.  The
+   compact single-stage coil report and exact current-only same-branch test now
+   explicitly assert that the gate is same-branch, stacked-policy compatible,
+   and does not claim differentiation of the adaptive host controller or
+   production ``run_free_boundary`` branch selection.
+4. Audited current QI solved-state seed representatives with
+   ``examples/optimization/audit_qi_seed_suitability.py --quick`` and then
+   generated a dry-run constrained prefine manifest.
+5. Promoted the QI prefine manifest default from QI-only screening to
+   constrained screening: smooth QI, QI ceiling, all-surface mirror ratio, and
+   elongation terms are now active by default, with explicit zero-weight knobs
+   for QI-only ablations.
+6. Updated validation and optimization docs so the seed-robustness worklist
+   records the constrained default and review-before-run policy.
+
+Results obtained:
+
+1. The focused QI validation tests passed:
+   ``tests/test_qi_seed_suitability_audit.py`` and
+   ``tests/test_qi_seed_robustness_plan.py`` passed with ``27 passed``.
+2. The constrained dry-run prefine manifest selected five probes covering
+   ``qp``, ``qi``, ``qh``, ``qa``, and ``simple`` families.  Every selected
+   probe uses ``qi_constrained_prefine_probe`` with weights
+   ``QI=1``, ``QI ceiling=100``, ``mirror=2``, ``elongation=0.5`` and
+   ``mirror_surface_mode=all``.
+3. The compact NFP=3 seed3127 reproduction script completed in about ``38 s``.
+   It reproduced the current bounded reference-family path but did not pass the
+   smooth-QI gate: smooth QI ``3.0e-3``, legacy QI ``3.5e-4``, mirror ratio
+   ``0.300``, elongation ``4.00``.  This confirms that seed robustness still
+   needs constrained local work instead of another QI-only probe.
+4. The exact current-only same-branch complete-solve FD gate passed in about
+   ``64 s`` and the same-branch report rejected-slot smoke passed.
+5. Full Sphinx HTML build passed after the docs updates.
+
+Best next steps:
+
+1. Run the reviewed constrained prefine manifest locally or on ``ssh office``
+   and inspect final independent QI, mirror, elongation, aspect, iota, and
+   Boozer-contour diagnostics before promoting any seed-robust QI claim.
+2. Keep the adaptive free-boundary branch claim conservative: current evidence
+   is fixed same-branch accepted/rejected replay, not arbitrary adaptive branch
+   differentiation.
+3. If constrained prefine still trades QI against mirror, test a short
+   two-stage policy: QI-ceiling constrained mirror cleanup followed by a
+   QI-tightening cleanup from the best mirror candidate.
+4. Keep the W7-X VMEC2000 generated-``mgrid`` fixture optional/nightly because
+   it depends on SIMSOPT plus a local stock VMEC2000 executable.
+
+Need from user:
+
+Nothing immediately. A longer reviewed constrained QI prefine run can be
+launched on ``ssh office`` when we are ready to spend optimizer time.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999997% for fixed
+  same-branch scalar/vector gates and accepted/rejected slot evidence;
+  arbitrary adaptive branch differentiation remains explicitly unclaimed.
+- VMEC parity and physics gates: 99.25% after wiring the W7-X generated-
+  ``mgrid`` VMEC2000 fixture into the optional validation plan.
+- Single-stage coil-only optimization: 100.0% for the conservative
+  complete-solve-accepted, branch-local-derivative lane.
+- Robust/stochastic coil perturbation optimization: deferred by current scope.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100% for focused gates; latest pushed main CI
+  is green.
+- Docs/release hygiene: 100% for this fixture/prefine validation update.
+- QI seed robustness: 90%; solved-state audit and constrained prefine planning
+  now cover representative families, but reviewed constrained prefine runs and
+  final contour audits remain open.
+
 ### 2026-06-07 Bounded VMEC2000 W7-X Generated-Mgrid WOUT Fixture
 
 Steps taken:

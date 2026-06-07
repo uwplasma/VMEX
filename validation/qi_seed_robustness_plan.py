@@ -235,6 +235,27 @@ def _optional_parity_commands() -> list[OptionalParityCommand]:
             ],
         ),
         OptionalParityCommand(
+            command_id="vmec2000-w7x-generated-mgrid-wout",
+            backend="VMEC2000 executable + SIMSOPT generated mgrid",
+            required_ci=False,
+            env=["VMEC2000_EXEC=/path/to/xvmec2000", "VMEC2000_INTEGRATION=1"],
+            command=(
+                "VMEC2000_EXEC=/path/to/xvmec2000 VMEC2000_INTEGRATION=1 pytest -q "
+                "tests/test_free_boundary_essos_coil_parity.py::"
+                "test_vmec2000_w7x_generated_mgrid_fixture_reaches_active_vacuum_and_finite_wout"
+            ),
+            bounded_by=[
+                "regenerates the W7-X mgrid in a temporary directory from SIMSOPT coil data",
+                "uses a low-resolution two-stage free-boundary VMEC2000 schedule",
+                "promotes only active vacuum, finite residuals, and finite positive geometry WOUTs",
+            ],
+            validates=[
+                "stock VMEC2000 can consume a generated mgrid and produce a physical free-boundary WOUT",
+                "generated mgrid WOUT-level promotion stays optional and executable-backed",
+                "binary mgrid and WOUT assets remain outside the git repository",
+            ],
+        ),
+        OptionalParityCommand(
             command_id="bundled-wout-two-case-smoke",
             backend="bundled VMEC2000 wout fixtures",
             required_ci=False,
@@ -314,10 +335,13 @@ def _lanes() -> list[ValidationLane]:
             command=(
                 "PYTHONPATH=. python examples/optimization/audit_qi_seed_suitability.py "
                 "--quick --prefine-probes plan "
-                "--prefine-manifest results/qi_seed_audit/prefine_manifest.json"
+                "--prefine-manifest results/qi_seed_audit/prefine_manifest.json "
+                "--prefine-mirror-weight 2.0 --prefine-elongation-weight 0.5 "
+                "--prefine-mirror-surface-index all"
             ),
             acceptance=[
                 "Manifest selects top-ranked rows plus one best-ranked representative per available seed family.",
+                "Default prefine objective includes smooth QI, a QI ceiling, all-surface mirror ratio, and elongation terms.",
                 "Hard caps keep max_nfev, continuation_nfev, stage count, mode count, and Boozer resolution small.",
                 "Dry-run manifest lists exact commands and expected outputs before any expensive probe runs.",
             ],
@@ -331,10 +355,13 @@ def _lanes() -> list[ValidationLane]:
             command=(
                 "PYTHONPATH=. python examples/optimization/audit_qi_seed_suitability.py "
                 "--quick --prefine-probes run --prefine-reviewed "
-                "--prefine-manifest results/qi_seed_audit/prefine_manifest.json"
+                "--prefine-manifest results/qi_seed_audit/prefine_manifest.json "
+                "--prefine-mirror-weight 2.0 --prefine-elongation-weight 0.5 "
+                "--prefine-mirror-surface-index all"
             ),
             acceptance=[
                 "Each executed plan reports completed, failed, or timed-out status with completed stage modes.",
+                "Constrained probes must report independent QI, mirror, elongation, iota, and aspect diagnostics.",
                 "Manifest summary identifies best final objective, best improvement, objective-history regressions, and next action.",
                 "A family can only support robustness claims after final diagnostics and Boozer contour plots are audited.",
             ],

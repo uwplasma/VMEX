@@ -1,6 +1,6 @@
 # VMEC-JAX Research-Grade Roadmap
 
-Last updated: 2026-06-04
+Last updated: 2026-06-07
 Primary branch: `main`
 Baseline release: `v0.0.14`
 Latest known green `main` CI: `faf6ebf` (GitHub Actions run `26927785364`)
@@ -39,6 +39,14 @@ acceptance criteria or evidence changes.
   agreement for both `DMerc` and Glasser `D_R`, and (2) required CI runtime
   reduction while preserving the py3.11 95% coverage gate plus physics,
   numerics, algorithm, and parity coverage.
+- On 2026-06-07, the QI seed-robustness audit workflow was tightened so its
+  default prefine manifest is no longer QI-only.  Dry-run prefine manifests now
+  use a constrained objective by default: smooth QI, a QI ceiling, all-surface
+  mirror ratio, and elongation, with explicit zero-weight flags for QI-only
+  ablations.  A current solved-state audit covered QI/QP/QH/QA/simple
+  representatives and generated a five-row constrained worklist; broad QI seed
+  robustness remains open until those reviewed probes pass final independent
+  diagnostics and Boozer contour review.
 - The first DMerc/`D_R` derivative gate is now in required tests, comparing
   JAX AD against central finite differences through `mercier_terms_from_state`.
   The first CI-runtime refactor keeps fixture-backed WOUT parity and expensive
