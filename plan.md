@@ -56,11 +56,12 @@ acceptance criteria or evidence changes.
   raises QI seed robustness to a tested screening/recovery lane, but not yet a
   final precise-QI claim for arbitrary seeds.
 - The next QI seed-robustness blocker is now isolated more narrowly: for
-  already-low-QI QP/QI rows, even a QI-only low-mode prefine pass worsens
+  already-low-QI QP/QI rows, even a QI-only bounded mode-3 prefine pass worsens
   independent final QI diagnostics.  The manifest now labels such rows with a
-  near-QI preservation policy and removes auxiliary mirror/elongation cleanup
-  from the bounded first pass, but final promotion needs a no-truncation or
-  full-existing-mode cleanup lane.
+  near-QI preservation policy, removes auxiliary mirror/elongation cleanup, and
+  preserves existing input boundary modes during the bounded first pass, but
+  final promotion needs either a no-prefine baseline/skip path or a
+  full-existing-mode cleanup lane beyond the bounded mode-3 worklist.
 - The first DMerc/`D_R` derivative gate is now in required tests, comparing
   JAX AD against central finite differences through `mercier_terms_from_state`.
   The first CI-runtime refactor keeps fixture-backed WOUT parity and expensive

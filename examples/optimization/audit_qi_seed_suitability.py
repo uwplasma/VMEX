@@ -135,6 +135,7 @@ class QIPrefineProbeConfig:
     near_qi_aux_weight_scale: float = DEFAULT_PREFINE_NEAR_QI_AUX_WEIGHT_SCALE
     near_qi_ceiling_weight: float = DEFAULT_PREFINE_NEAR_QI_CEILING_WEIGHT
     near_qi_ceiling_guard_factor: float = DEFAULT_PREFINE_NEAR_QI_GUARD_FACTOR
+    project_input_boundary_to_max_mode: bool = True
     mirror_weight: float = DEFAULT_PREFINE_MIRROR_WEIGHT
     mirror_threshold: float = DEFAULT_MAX_MIRROR_RATIO
     mirror_ntheta: int = 32
@@ -797,6 +798,7 @@ def _prefine_qi_preservation_policy(record: dict[str, Any], config: QIPrefinePro
     qi_ceiling_smooth_penalty = float(config.qi_ceiling_smooth_penalty)
     mirror_weight = float(config.mirror_weight)
     elongation_weight = float(config.elongation_weight)
+    project_input_boundary_to_max_mode = bool(config.project_input_boundary_to_max_mode)
     policy = "constrained_recovery"
     reasons: list[str] = []
 
@@ -821,6 +823,7 @@ def _prefine_qi_preservation_policy(record: dict[str, Any], config: QIPrefinePro
         qi_ceiling_weight = max(qi_ceiling_weight, float(config.near_qi_ceiling_weight))
         mirror_weight *= float(config.near_qi_aux_weight_scale)
         elongation_weight *= float(config.near_qi_aux_weight_scale)
+        project_input_boundary_to_max_mode = False
     else:
         reasons.append("qi_above_preservation_threshold_or_policy_disabled")
 
@@ -844,6 +847,7 @@ def _prefine_qi_preservation_policy(record: dict[str, Any], config: QIPrefinePro
         "qi_ceiling_smooth_penalty": qi_ceiling_smooth_penalty,
         "mirror_weight": mirror_weight,
         "elongation_weight": elongation_weight,
+        "project_input_boundary_to_max_mode": project_input_boundary_to_max_mode,
     }
 
 
@@ -933,6 +937,11 @@ def _prefine_run_command(
     ]
     command.append("--prefine-use-ess" if bool(config.use_ess) else "--no-prefine-use-ess")
     command.append("--no-prefine-preserve-near-qi")
+    command.append(
+        "--prefine-project-input-boundary-to-max-mode"
+        if bool(policy["project_input_boundary_to_max_mode"])
+        else "--no-prefine-project-input-boundary-to-max-mode"
+    )
     if config.scipy_lsmr_maxiter is not None:
         command.extend(["--prefine-scipy-lsmr-maxiter", str(config.scipy_lsmr_maxiter)])
     command.append(
@@ -1074,6 +1083,9 @@ def build_qi_prefine_probe_manifest(
                 "continuation_nfev": int(config.continuation_nfev),
                 "max_mode": int(config.max_mode),
                 "min_vmec_mode": int(config.min_vmec_mode),
+                "project_input_boundary_to_max_mode": bool(
+                    prefine_policy["project_input_boundary_to_max_mode"]
+                ),
                 "stage_modes": [int(mode) for mode in config.stage_modes],
                 "stage_count": len(config.stage_modes),
                 "stage_plan": stage_plan,
@@ -2078,7 +2090,7 @@ def run_qi_prefine_probe(plan: dict[str, Any], *, workflow: Any | None = None) -
         max_mode=int(opt["max_mode"]),
         min_vmec_mode=int(opt["min_vmec_mode"]),
         output_dir=Path(plan["output_dir"]),
-        project_input_boundary_to_max_mode=True,
+        project_input_boundary_to_max_mode=bool(opt.get("project_input_boundary_to_max_mode", True)),
     )
     result = workflow.least_squares_solve(
         vmec,
@@ -2486,6 +2498,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prefine-continuation-nfev", type=int, default=1)
     parser.add_argument("--prefine-max-mode", type=int, default=3)
     parser.add_argument("--prefine-min-vmec-mode", type=int, default=3)
+    parser.add_argument(
+        "--prefine-project-input-boundary-to-max-mode",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Project input boundary modes to each bounded prefine stage. "
+            "Near-QI preservation plans disable this so existing high-mode seed "
+            "content is not truncated during cleanup."
+        ),
+    )
     parser.add_argument("--prefine-stage-modes", type=parse_stage_modes, default=DEFAULT_PREFINE_STAGE_MODES)
     parser.add_argument("--prefine-surfaces", type=parse_surfaces, default=DEFAULT_PREFINE_SURFACES)
     parser.add_argument("--prefine-mboz", type=int, default=8)
@@ -2660,6 +2682,7 @@ def main(argv: list[str] | None = None) -> int:
             continuation_nfev=args.prefine_continuation_nfev,
             max_mode=args.prefine_max_mode,
             min_vmec_mode=args.prefine_min_vmec_mode,
+            project_input_boundary_to_max_mode=args.prefine_project_input_boundary_to_max_mode,
             stage_modes=args.prefine_stage_modes,
             output_dir=args.prefine_output_dir,
             surfaces=args.prefine_surfaces,

@@ -226,10 +226,12 @@ Steps taken:
    ``examples/optimization/audit_qi_seed_suitability.py``.  Seeds already below
    the smooth or legacy QI thresholds now get ``near_qi_preservation`` instead
    of the far-seed ``constrained_recovery`` policy.
-2. The near-QI policy strengthens the QI ceiling and sets mirror/elongation
-   cleanup weights to zero for the bounded first pass.  Generated one-case
-   commands carry the effective weights and disable a second policy application
-   with ``--no-prefine-preserve-near-qi``.
+2. The near-QI policy strengthens the QI ceiling, sets mirror/elongation
+   cleanup weights to zero for the bounded first pass, and preserves existing
+   input boundary modes by disabling input-boundary projection to the bounded
+   max-mode ladder.  Generated one-case commands carry the effective weights
+   and projection flag and disable a second policy application with
+   ``--no-prefine-preserve-near-qi``.
 3. Added focused tests for the near-QI policy and updated the optional
    validation plan so robust-QI promotion requires this preservation labeling.
 4. Generated a real dry-run manifest and then ran a bounded top-two reviewed
@@ -240,22 +242,28 @@ Results obtained:
 1. The real dry-run manifest labels ``qp_from_omnigenity_nfp2_qi`` and
    ``qi_omnigenity_nfp3`` as ``near_qi_preservation``.  It labels QH, QA, and
    simple representatives as ``constrained_recovery``.
-2. The near-QI QI-only top-two run completed both probes.  It removed
-   mirror/elongation terms from the first pass, but independent final
-   diagnostics still worsened:
+2. The near-QI QI-only top-two run completed both probes.  With projection
+   enabled, independent final diagnostics still worsened substantially:
    ``qp_from_omnigenity_nfp2_qi`` smooth QI ``1.30e-3 -> 2.52e-2`` and mirror
    ``0.260 -> 0.662``; ``qi_omnigenity_nfp3`` smooth QI
    ``1.68e-3 -> 7.07e-2`` and mirror ``0.288 -> 0.553``.
-3. The audit correctly kept both near-QI probes in ``needs_review`` and did not
+3. Disabling projection of existing input boundary modes reduced but did not
+   eliminate the near-QI degradation.  QP moved to smooth QI
+   ``1.30e-3 -> 7.70e-3`` and mirror ``0.260 -> 0.335``; QI moved to smooth QI
+   ``1.68e-3 -> 3.55e-2`` and mirror ``0.288 -> 0.436``.
+4. Running a direct mode-3 stage without the repeated mode-continuation ladder
+   produced the same diagnostics as the no-projection run, so repeated
+   continuation is not the remaining cause.
+5. The audit correctly kept both near-QI probes in ``needs_review`` and did not
    promote them.  This isolates the remaining near-QI failure to the bounded
-   low-mode continuation/truncation path rather than auxiliary mirror or
-   elongation weights.
+   max-mode-3 active parameterization/objective path rather than auxiliary
+   mirror/elongation weights or repeated low-mode continuation.
 
 Best next steps:
 
-1. For near-QI seeds, avoid low-mode prefine truncation.  Add either a
-   no-prefine baseline/skip policy or a full-existing-mode cleanup path that
-   preserves the seed boundary modes before any local optimization.
+1. For near-QI seeds, add either a no-prefine baseline/skip policy or a
+   full-existing-mode cleanup path that promotes the active max mode above the
+   bounded mode-3 worklist before any local optimization.
 2. Keep far-seed constrained recovery unchanged; it improves QI metrics for QH,
    QA, and simple representatives and remains useful as a screening stage.
 3. Only claim seed-robust QI after independent diagnostics and Boozer contours
