@@ -133,6 +133,72 @@ Completion:
   differentiation remains explicitly unclaimed.
 - Docs/release hygiene: 99.75%.
 
+### 2026-06-07 Bounded LASYM Free-Boundary VMEC2000 Comparator Hygiene
+
+Steps taken:
+
+1. Confirmed the latest pushed CI run for commit ``844010d`` completed green,
+   including docs, py3.10/3.12, all py3.11 coverage shards, physics smoke,
+   repository-size audit, and the combined coverage gate.
+2. Re-ran the stock-executable bundled ``LASYM=true`` free-boundary smoke gate:
+   ``tests/test_vmec2000_exec_fast_validation.py::test_vmec2000_free_boundary_lasym_true_reaches_vacuum_solve``.
+3. Restored ``--activate-fsq`` on
+   ``tools/diagnostics/vmec2000_exec_freeb_scalpot_compare.py`` and forwarded
+   it to ``run_fixed_boundary(..., free_boundary_activate_fsq=...)`` so the
+   documented short-trace one-off diagnostic is executable again.
+4. Taught ``tools/diagnostics/parity_sweep_manifest.py`` to pass
+   ``activate_fsq`` from manifest rows and added ``activate_fsq = 1.0e99`` to
+   the self-contained ``freeb_nonaxis_lasym_true_cth_like_local`` planning row.
+5. Added structured ``missing_vmec_dumps`` JSON output for stock VMEC2000
+   executables that solve the case but do not honor the required
+   ``VMEC_DUMP_*`` instrumentation variables.
+6. Added unit/contract tests for the activation threshold, manifest wiring,
+   documentation hygiene, and missing-dump payload.
+
+Results obtained:
+
+1. The enabled local VMEC2000 LASYM smoke gate passed in about ``1 s``.
+2. ``python -m ruff check`` passed for the changed comparator, manifest, and
+   tests.
+3. The targeted manifest/parser/docs tests passed:
+   ``5 passed in 0.18 s``.
+4. A dry-run of ``freeb_nonaxis_lasym_true_cth_like_local`` now emits
+   ``--activate-fsq 1e+99`` for both iterations ``80`` and ``100``.
+5. A stock ``~/bin/xvmec2000`` one-off scalpot probe now exits with code ``2``
+   and writes ``summary.json`` with ``error=missing_vmec_dumps`` instead of
+   failing only via stderr.  This preserves the distinction between a bounded
+   stock-executable smoke gate and a stricter instrumented dump-to-dump parity
+   gate.
+
+Best next steps:
+
+1. Commit and push the comparator/manifest hygiene patch, then watch the new
+   CI run.
+2. If an instrumented VMEC2000 executable is available, rerun the
+   ``freeb_nonaxis_lasym_true_cth_like_local`` manifest row with real
+   ``scalpot/vacuum`` dumps and promote only if thresholds pass.
+3. Continue phase-2/phase-3 work by adding one more same-branch physical-scalar
+   gate through the branch-local vector/JVP path, still keeping arbitrary
+   adaptive branch differentiation unclaimed.
+
+Need from user:
+
+Nothing now unless an instrumented VMEC2000 executable path should be preferred
+over the stock ``~/bin/xvmec2000`` binary for the strict dump comparator.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999995% for fixed
+  same-branch scalar/vector gates and explicit accepted/rejected slot evidence;
+  arbitrary adaptive branch differentiation still unclaimed.
+- VMEC parity and physics gates: 98.6%.
+- Single-stage coil-only optimization: 98.35%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 99.8%.
+
 ### 2026-06-07 Mean-Iota Same-Branch Physical-Scalar Gate
 
 Steps taken:

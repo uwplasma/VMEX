@@ -813,6 +813,61 @@ def _cap_multigrid_input_to_max_iter(path: Path, max_iter: int) -> None:
     _append_indata_overrides(path, lines)
 
 
+def _dump_inventory(path: Path) -> list[str]:
+    """Return a stable file inventory for diagnostics."""
+
+    if not path.exists():
+        return []
+    return sorted(p.name for p in path.iterdir() if p.is_file())
+
+
+def _missing_vmec_dumps_payload(
+    *,
+    workdir: Path,
+    vmec_dump_dir: Path,
+    jax_dump_dir: Path,
+    input_path: Path,
+    vmec_exec: Path,
+    iter_idx: int,
+    max_iter: int,
+    activate_fsq: float | None,
+    missing: list[str],
+) -> dict[str, Any]:
+    """Build a structured diagnostic for non-instrumented VMEC2000 binaries."""
+
+    return {
+        "error": "missing_vmec_dumps",
+        "missing_required_dumps": list(missing),
+        "workdir": str(workdir),
+        "input": str(input_path),
+        "vmec_exec": str(vmec_exec),
+        "iter": int(iter_idx),
+        "max_iter": int(max_iter),
+        "jax_free_boundary_activate_fsq": None if activate_fsq is None else float(activate_fsq),
+        "requested_vmec_dump_env": {
+            "VMEC_DUMP_SCALPOT": "1",
+            "VMEC_DUMP_BEXTERN": "1",
+            "VMEC_DUMP_FOURI": "1",
+            "VMEC_DUMP_FREEB_COUPLING": "1",
+            "VMEC_DUMP_ITER": str(int(iter_idx)),
+        },
+        "vmec_dump_inventory": _dump_inventory(vmec_dump_dir),
+        "jax_dump_inventory": _dump_inventory(jax_dump_dir),
+        "note": (
+            "The stock VMEC2000 executable can solve this case but usually does "
+            "not honor the VMEC_DUMP_* instrumentation variables required by "
+            "this dump-to-dump comparator."
+        ),
+    }
+
+
+def _write_json_if_requested(path: Path | None, payload: dict[str, Any]) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input", type=Path, required=True)
@@ -823,6 +878,16 @@ def main() -> int:
     )
     p.add_argument("--iter", type=int, default=1, help="Iteration index to compare.")
     p.add_argument("--max-iter", type=int, default=2, help="vmec_jax max_iter.")
+    p.add_argument(
+        "--activate-fsq",
+        type=float,
+        default=None,
+        help=(
+            "Optional vmec_jax-only free-boundary activation threshold. "
+            "Use a large value, e.g. 1e99, for short diagnostics that must "
+            "force immediate active free-boundary replay."
+        ),
+    )
     p.add_argument(
         "--multigrid",
         type=str,
@@ -897,7 +962,20 @@ def main() -> int:
 
     vmec_scalpot_files = sorted(vmec_dump_dir.glob(f"scalpot_iter{int(args.iter)}_ivacskip*.dat"))
     if not vmec_scalpot_files:
-        raise SystemExit(f"missing VMEC scalpot dump in {vmec_dump_dir}")
+        payload = _missing_vmec_dumps_payload(
+            workdir=workdir,
+            vmec_dump_dir=vmec_dump_dir,
+            jax_dump_dir=jax_dump_dir,
+            input_path=input_path,
+            vmec_exec=vmec_exec,
+            iter_idx=int(args.iter),
+            max_iter=int(args.max_iter),
+            activate_fsq=args.activate_fsq,
+            missing=["scalpot"],
+        )
+        _write_json_if_requested(args.json, payload)
+        print(json.dumps(payload, indent=2))
+        return 2
     vmec_scal = _parse_scalpot_dump(vmec_scalpot_files[0])
     # On reuse steps (`ivacskip>0`), VMEC dump for target iteration may only
     # contain LU-form matrix data. Pull the source-cache reference iteration
@@ -932,6 +1010,7 @@ def main() -> int:
             solver="vmec2000_iter",
             max_iter=int(args.max_iter),
             multigrid=bool(use_multigrid),
+            free_boundary_activate_fsq=args.activate_fsq,
             verbose=False,
             performance_mode=False,
             use_scan=False,
@@ -956,9 +1035,35 @@ def main() -> int:
         for stage in ("raw", "precond")
     }
     if not vmec_scalpot_files:
-        raise SystemExit(f"missing VMEC scalpot dump in {vmec_dump_dir}")
+        payload = _missing_vmec_dumps_payload(
+            workdir=workdir,
+            vmec_dump_dir=vmec_dump_dir,
+            jax_dump_dir=jax_dump_dir,
+            input_path=input_path,
+            vmec_exec=vmec_exec,
+            iter_idx=int(args.iter),
+            max_iter=int(args.max_iter),
+            activate_fsq=args.activate_fsq,
+            missing=["scalpot"],
+        )
+        _write_json_if_requested(args.json, payload)
+        print(json.dumps(payload, indent=2))
+        return 2
     if not vmec_vac_files:
-        raise SystemExit(f"missing VMEC vacuum dump in {vmec_dump_dir}")
+        payload = _missing_vmec_dumps_payload(
+            workdir=workdir,
+            vmec_dump_dir=vmec_dump_dir,
+            jax_dump_dir=jax_dump_dir,
+            input_path=input_path,
+            vmec_exec=vmec_exec,
+            iter_idx=int(args.iter),
+            max_iter=int(args.max_iter),
+            activate_fsq=args.activate_fsq,
+            missing=["vacuum"],
+        )
+        _write_json_if_requested(args.json, payload)
+        print(json.dumps(payload, indent=2))
+        return 2
     jax_iter_used = int(args.iter)
     if not jax_npz.exists():
         candidates = []
@@ -1005,6 +1110,7 @@ def main() -> int:
         "iter": int(args.iter),
         "jax_iter_used": int(jax_iter_used),
         "jax_multigrid": bool(use_multigrid),
+        "jax_free_boundary_activate_fsq": None if args.activate_fsq is None else float(args.activate_fsq),
         "mode_map_applied": bool(mode_map is not None),
         "vmec_scalpot_meta": {
             "iter2": int(vmec_scal.get("iter2", -1)),
@@ -1778,9 +1884,7 @@ def main() -> int:
             pass
 
     print(json.dumps(out, indent=2))
-    if args.json is not None:
-        args.json.parent.mkdir(parents=True, exist_ok=True)
-        args.json.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    _write_json_if_requested(args.json, out)
     return 0
 
 

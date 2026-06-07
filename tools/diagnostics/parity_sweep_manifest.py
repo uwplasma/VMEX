@@ -304,7 +304,7 @@ def _build_freeb_scalpot_cmd(
     json_path: Path,
 ) -> list[str]:
     script = REPO_ROOT / "tools" / "diagnostics" / "vmec2000_exec_freeb_scalpot_compare.py"
-    return [
+    cmd = [
         sys.executable,
         str(script),
         "--input",
@@ -320,6 +320,9 @@ def _build_freeb_scalpot_cmd(
         "--json",
         str(json_path),
     ]
+    if "activate_fsq" in case and case["activate_fsq"] not in (None, ""):
+        cmd.extend(["--activate-fsq", str(float(case["activate_fsq"]))])
+    return cmd
 
 
 def _run_cmd(
