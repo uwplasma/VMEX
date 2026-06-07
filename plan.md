@@ -1824,3 +1824,18 @@ Defer beyond the current cycle:
   Completion: CI runtime/refactor `96%`; DMerc/`D_R` derivative validation
   `100%`; VMEC parity and physics gates `96%`; full nonlinear free-boundary
   adjoint `96%`; docs/release hygiene `96%`.
+- 2026-06-07: Confirmed main commit `e226a73` completed CI successfully
+  (`27098491495`), including the combined py3.11 coverage gate.  Added a
+  non-degrading near-QI prefine policy: already-low-QI seeds now become
+  `near_qi_diagnostic_baseline` rows with `run_optimization=False`, no stage
+  budget, preserved input boundary modes, and explicit initial/final diagnostic
+  equality.  Acceptance now rejects any smooth or legacy QI regression, even if
+  the scalar objective is stable and below the low-objective threshold.  Focused
+  validation passed: `31 passed` for QI audit/plan tests and targeted `ruff`
+  clean.  A reviewed top-two run completed both
+  `qp_from_omnigenity_nfp2_qi` and `qi_omnigenity_nfp3` as diagnostic baselines
+  with unchanged smooth QI (`0.0012982733181478073` and
+  `0.0016826152378900392`, respectively) and recommendation
+  `keep_audited_near_qi_seed`.  Completion: QI seed robustness `94%`; false
+  promotion closed, near-QI non-degradation complete, far-seed multi-family
+  convergence and Boozer contour review still open.

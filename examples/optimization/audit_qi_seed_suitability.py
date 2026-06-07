@@ -803,7 +803,7 @@ def _prefine_qi_preservation_policy(record: dict[str, Any], config: QIPrefinePro
     reasons: list[str] = []
 
     if near_qi:
-        policy = "near_qi_preservation"
+        policy = "near_qi_diagnostic_baseline"
         reasons.extend(
             reason
             for reason, enabled in (
@@ -848,6 +848,7 @@ def _prefine_qi_preservation_policy(record: dict[str, Any], config: QIPrefinePro
         "mirror_weight": mirror_weight,
         "elongation_weight": elongation_weight,
         "project_input_boundary_to_max_mode": project_input_boundary_to_max_mode,
+        "run_optimization": not near_qi,
     }
 
 
@@ -936,7 +937,12 @@ def _prefine_run_command(
         str(config.ess_alpha),
     ]
     command.append("--prefine-use-ess" if bool(config.use_ess) else "--no-prefine-use-ess")
-    command.append("--no-prefine-preserve-near-qi")
+    command.append("--prefine-preserve-near-qi" if bool(config.preserve_near_qi) else "--no-prefine-preserve-near-qi")
+    command.extend(["--prefine-near-qi-smooth-max", str(config.near_qi_smooth_max)])
+    command.extend(["--prefine-near-qi-legacy-max", str(config.near_qi_legacy_max)])
+    command.extend(["--prefine-near-qi-aux-weight-scale", str(config.near_qi_aux_weight_scale)])
+    command.extend(["--prefine-near-qi-ceiling-weight", str(config.near_qi_ceiling_weight)])
+    command.extend(["--prefine-near-qi-ceiling-guard-factor", str(config.near_qi_ceiling_guard_factor)])
     command.append(
         "--prefine-project-input-boundary-to-max-mode"
         if bool(policy["project_input_boundary_to_max_mode"])
@@ -1026,8 +1032,13 @@ def build_qi_prefine_probe_manifest(
         label = str(record.get("label", f"seed_{index}"))
         probe_dir = config.output_dir / f"{index:02d}_{_safe_label(label)}"
         selected_phimin, phimin_source = _prefine_phimin_for_record(record, config)
-        stage_plan = _prefine_stage_plan(config, probe_dir=probe_dir)
         prefine_policy = _prefine_qi_preservation_policy(record, config)
+        run_optimization = bool(prefine_policy["run_optimization"])
+        stage_plan = _prefine_stage_plan(config, probe_dir=probe_dir) if run_optimization else []
+        stage_modes = [int(mode) for mode in config.stage_modes] if run_optimization else []
+        per_plan_max_nfev = int(config.max_nfev) if run_optimization else 0
+        per_plan_continuation_nfev = int(config.continuation_nfev) if run_optimization else 0
+        per_plan_total_nfev = _prefine_total_nfev_cap(config) if run_optimization else 0
         plan = {
             "status": "planned" if dry_run else "pending",
             "review": {
@@ -1073,23 +1084,27 @@ def build_qi_prefine_probe_manifest(
             },
             "optimization": {
                 "objective": (
+                    "near_qi_diagnostic_baseline"
+                    if not run_optimization
+                    else
                     "qi_constrained_prefine_probe"
                     if float(prefine_policy["mirror_weight"]) > 0.0
                     or float(prefine_policy["elongation_weight"]) > 0.0
                     else "qi_only_prefine_probe"
                 ),
                 "prefine_policy": prefine_policy["name"],
-                "max_nfev": int(config.max_nfev),
-                "continuation_nfev": int(config.continuation_nfev),
+                "run_optimization": run_optimization,
+                "max_nfev": per_plan_max_nfev,
+                "continuation_nfev": per_plan_continuation_nfev,
                 "max_mode": int(config.max_mode),
                 "min_vmec_mode": int(config.min_vmec_mode),
                 "project_input_boundary_to_max_mode": bool(
                     prefine_policy["project_input_boundary_to_max_mode"]
                 ),
-                "stage_modes": [int(mode) for mode in config.stage_modes],
-                "stage_count": len(config.stage_modes),
+                "stage_modes": stage_modes,
+                "stage_count": len(stage_modes),
                 "stage_plan": stage_plan,
-                "total_nfev_cap": _prefine_total_nfev_cap(config),
+                "total_nfev_cap": per_plan_total_nfev,
                 "method": config.method,
                 "ftol": float(config.ftol),
                 "gtol": float(config.gtol),
@@ -1130,13 +1145,17 @@ def build_qi_prefine_probe_manifest(
                 "elongation_nphi": int(config.elongation_nphi),
             },
             "prefine_policy": prefine_policy,
-            "would_write": [
-                str(probe_dir / "input.initial"),
-                str(probe_dir / "input.final"),
-                str(probe_dir / "wout_initial.nc"),
-                str(probe_dir / "wout_final.nc"),
-                str(probe_dir / "history.json"),
-            ],
+            "would_write": (
+                [
+                    str(probe_dir / "input.initial"),
+                    str(probe_dir / "input.final"),
+                    str(probe_dir / "wout_initial.nc"),
+                    str(probe_dir / "wout_final.nc"),
+                    str(probe_dir / "history.json"),
+                ]
+                if run_optimization
+                else []
+            ),
             "would_write_stage_dirs": [str(probe_dir / f"stage_{stage['index']:02d}_mode{stage['mode']:02d}") for stage in stage_plan],
             "run_command": _prefine_run_command(record, config, manifest_path, policy=prefine_policy),
         }
@@ -1387,7 +1406,8 @@ def _prefine_normalized_objective_diagnostics(
         worsened_terms.append("smooth_qi")
     if legacy_worsened is True:
         worsened_terms.append("legacy_qi")
-    scalar_improved_qi_worsened = bool(scalar_improved is True and worsened_terms)
+    qi_worsened = bool(worsened_terms)
+    scalar_improved_qi_worsened = bool(scalar_improved is True and qi_worsened)
     return {
         "initial": initial,
         "final": final,
@@ -1397,6 +1417,7 @@ def _prefine_normalized_objective_diagnostics(
             "smooth_qi_worsened": smooth_worsened,
             "legacy_qi_worsened": legacy_worsened,
             "worsened_qi_terms": worsened_terms,
+            "qi_worsened": qi_worsened,
             "scalar_improved_but_qi_worsened": scalar_improved_qi_worsened,
         },
     }
@@ -1678,8 +1699,9 @@ def _prefine_plan_acceptance(row: dict[str, Any]) -> dict[str, Any]:
         reasons.append("did not complete all requested stage modes")
     if row.get("objective_final_regressed") is True:
         reasons.append("final objective is worse than initial objective")
-    if bool(row.get("scalar_improved_but_qi_worsened", False)):
-        reasons.append("scalar objective improved while smooth/legacy QI worsened")
+    if bool(row.get("qi_worsened", False)):
+        terms = ", ".join(str(term) for term in row.get("worsened_qi_terms", []))
+        reasons.append(f"smooth/legacy QI worsened ({terms or 'unknown terms'})")
 
     history = row.get("history_summary", {})
     if bool(history.get("nonfinite_objective_sample_count", 0)):
@@ -1693,7 +1715,11 @@ def _prefine_plan_acceptance(row: dict[str, Any]) -> dict[str, Any]:
         float(row.get("objective_final") or 0.0),
     ):
         objective_final = _finite_float(row.get("objective_final"))
-        if objective_final is not None and objective_final <= PREFINE_STABLE_LOW_OBJECTIVE_THRESHOLD:
+        if (
+            not reasons
+            and objective_final is not None
+            and objective_final <= PREFINE_STABLE_LOW_OBJECTIVE_THRESHOLD
+        ):
             return {
                 "accepted": True,
                 "decision": "accepted_stable_low_objective",
@@ -1757,6 +1783,15 @@ def _prefine_plan_result_summary(plan: dict[str, Any], *, index: int) -> dict[st
         "label": str(plan.get("label", f"probe_{index}")),
         "family": plan.get("family"),
         "audit_rank": plan.get("audit_rank"),
+        "prefine_policy": (
+            plan.get("prefine_policy", {}).get("name")
+            if isinstance(plan.get("prefine_policy"), dict)
+            else None
+        ),
+        "near_qi": bool(plan.get("prefine_policy", {}).get("near_qi", False))
+        if isinstance(plan.get("prefine_policy"), dict)
+        else False,
+        "diagnostic_baseline": bool(result.get("diagnostic_baseline", False)),
         "status": status,
         "failed": failed,
         "timed_out": timed_out,
@@ -1774,6 +1809,7 @@ def _prefine_plan_result_summary(plan: dict[str, Any], *, index: int) -> dict[st
         "completed_all_requested_stages": completed_all_requested_stages,
         "history_summary": history_summary,
         "objective_diagnostics": objective_diagnostics,
+        "qi_worsened": bool(diagnostic_flags.get("qi_worsened", False)),
         "scalar_improved_but_qi_worsened": bool(diagnostic_flags.get("scalar_improved_but_qi_worsened", False)),
         "worsened_qi_terms": diagnostic_flags.get("worsened_qi_terms", []),
         "output_dir": plan.get("output_dir"),
@@ -1798,6 +1834,10 @@ def _compact_prefine_summary_row(row: dict[str, Any] | None) -> dict[str, Any] |
         "objective_improvement": row.get("objective_improvement"),
         "objective_relative_improvement": row.get("objective_relative_improvement"),
         "objective_diagnostics": row.get("objective_diagnostics"),
+        "prefine_policy": row.get("prefine_policy"),
+        "near_qi": row.get("near_qi"),
+        "diagnostic_baseline": row.get("diagnostic_baseline"),
+        "qi_worsened": row.get("qi_worsened"),
         "scalar_improved_but_qi_worsened": row.get("scalar_improved_but_qi_worsened"),
         "worsened_qi_terms": row.get("worsened_qi_terms", []),
         "requested_stage_modes": row.get("requested_stage_modes", []),
@@ -1881,6 +1921,15 @@ def _prefine_probe_recommendation(
         }
     if accepted_candidate is not None:
         label = str(accepted_candidate["label"])
+        if bool(accepted_candidate.get("diagnostic_baseline", False)):
+            return {
+                "action": "keep_audited_near_qi_seed",
+                "label": label,
+                "message": (
+                    f"Keep '{label}' as the current audited near-QI baseline; bounded prefine "
+                    "was intentionally skipped to avoid degrading an already-low-QI seed."
+                ),
+            }
         if pending is not None:
             return {
                 "action": "run_next_pending_probe",
@@ -1943,7 +1992,7 @@ def summarize_qi_prefine_probe_manifest(manifest: dict[str, Any]) -> dict[str, A
         if bool(row.get("objective_final_regressed", False))
         or int(row.get("history_summary", {}).get("objective_regression_count") or 0) > 0
     ]
-    qi_worsening_rows = [row for row in rows if bool(row.get("scalar_improved_but_qi_worsened", False))]
+    qi_worsening_rows = [row for row in rows if bool(row.get("qi_worsened", False))]
     accepted_rows = [row for row in finite_completed if bool(row.get("acceptance", {}).get("accepted", False))]
     accepted_candidate = min(accepted_rows, key=_prefine_best_final_key) if accepted_rows else None
     best_final = finite_completed[0] if finite_completed else None
@@ -1966,7 +2015,7 @@ def summarize_qi_prefine_probe_manifest(manifest: dict[str, Any]) -> dict[str, A
     if regression_rows:
         blocking_issues.append(f"{len(regression_rows)} objective-regression probe(s)")
     if qi_worsening_rows:
-        blocking_issues.append(f"{len(qi_worsening_rows)} scalar-improved QI-worsening probe(s)")
+        blocking_issues.append(f"{len(qi_worsening_rows)} QI-worsening probe(s)")
 
     return {
         "schema_version": 1,
@@ -1999,7 +2048,10 @@ def summarize_qi_prefine_probe_manifest(manifest: dict[str, Any]) -> dict[str, A
             }
             for row in regression_rows
         ],
-        "scalar_improved_qi_worsened_count": len(qi_worsening_rows),
+        "qi_worsened_count": len(qi_worsening_rows),
+        "scalar_improved_qi_worsened_count": len(
+            [row for row in rows if bool(row.get("scalar_improved_but_qi_worsened", False))]
+        ),
         "scalar_improved_qi_worsened": [_compact_prefine_summary_row(row) for row in qi_worsening_rows],
         "accepted_candidate": _compact_prefine_summary_row(accepted_candidate),
         "acceptance": {
@@ -2016,11 +2068,59 @@ def summarize_qi_prefine_probe_manifest(manifest: dict[str, Any]) -> dict[str, A
 def run_qi_prefine_probe(plan: dict[str, Any], *, workflow: Any | None = None) -> dict[str, Any]:
     """Run one explicit tiny constrained-QI probe from a manifest plan."""
 
+    qi_options_raw = plan["qi_options"]
+    opt = plan["optimization"]
+    if not bool(opt.get("run_optimization", True)):
+        audit_metrics = dict(plan.get("audit_metrics", {})) if isinstance(plan.get("audit_metrics"), dict) else {}
+        objective = _finite_float(audit_metrics.get("qi_smooth_total"))
+        if objective is None:
+            objective = _finite_float(audit_metrics.get("qi_legacy_total"))
+        if objective is None:
+            objective = 0.0
+        completed = dict(plan)
+        completed["status"] = "completed"
+        completed["review"] = {
+            **dict(plan.get("review", {})),
+            "operator_confirmed": bool(plan.get("review", {}).get("operator_confirmed", False)),
+        }
+        completed["result"] = {
+            "objective_initial": objective,
+            "objective_final": objective,
+            "qi_final": audit_metrics.get("qi_smooth_total", audit_metrics.get("qi_legacy_total")),
+            "wall_time_s": 0.0,
+            "optimizer_success": True,
+            "optimizer_message": "near-QI diagnostic baseline; optimizer intentionally skipped",
+            "nfev": 0,
+            "njev": 0,
+            "requested_stage_modes": [],
+            "completed_stage_modes": [],
+            "stage_count_requested": 0,
+            "stage_count_completed": 0,
+            "stage_plan": [],
+            "total_nfev_cap": 0,
+            "endpoint_mode": qi_options_raw.get(
+                "endpoint_mode",
+                _prefine_endpoint_mode(bool(qi_options_raw.get("include_bounce_endpoints", False))),
+            ),
+            "phimin": float(qi_options_raw["phimin"]),
+            "history": [{"objective": objective}],
+            "history_summary": _prefine_history_summary(
+                [{"objective": objective}],
+                objective_initial=objective,
+                objective_final=objective,
+            ),
+            "objective_diagnostics": {
+                "initial": dict(audit_metrics),
+                "final": dict(audit_metrics),
+            },
+            "final_diagnostics": dict(audit_metrics),
+            "diagnostic_baseline": True,
+        }
+        return completed
+
     if workflow is None:
         import vmec_jax as workflow
 
-    qi_options_raw = plan["qi_options"]
-    opt = plan["optimization"]
     requested_stage_modes = tuple(int(mode) for mode in opt["stage_modes"])
     qi_surfaces = tuple(float(surface) for surface in qi_options_raw["surfaces"])
     qi_mboz = int(qi_options_raw["mboz"])

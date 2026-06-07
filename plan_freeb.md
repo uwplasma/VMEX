@@ -1803,6 +1803,72 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 99.5%.
 
+### 2026-06-07 Green CI and Non-Degrading Near-QI Baseline Gate
+
+Steps taken:
+
+1. Verified GitHub Actions run ``27098491495`` for commit ``e226a73`` completed
+   successfully across docs, build, console smoke, parity manifest smoke,
+   py3.10/py3.12 compatibility, py3.11 core/exact/slow coverage shards,
+   physics smoke, and the combined coverage gate.
+2. Converted already-low-QI prefine rows from bounded low-mode cleanup attempts
+   into explicit ``near_qi_diagnostic_baseline`` rows.  These rows keep the
+   audited seed, set ``run_optimization=False``, use zero nfev/stage budgets,
+   preserve input boundary modes, and record initial/final diagnostics with
+   zero metric deltas.
+3. Strengthened prefine acceptance so any smooth or legacy QI regression blocks
+   promotion, even when the scalar objective is already below the stable-low
+   threshold.
+4. Ran focused validation:
+   ``python -m pytest -q tests/test_qi_seed_suitability_audit.py tests/test_qi_seed_robustness_plan.py``
+   passed with ``31 passed``; targeted ``ruff`` passed.
+5. Ran a reviewed top-two QI prefine command with ``--prefine-probes run``.
+   Both selected near-QI rows completed as diagnostic baselines with unchanged
+   QI metrics:
+   ``qp_from_omnigenity_nfp2_qi`` smooth QI
+   ``0.0012982733181478073 -> 0.0012982733181478073`` and
+   ``qi_omnigenity_nfp3`` smooth QI
+   ``0.0016826152378900392 -> 0.0016826152378900392``.  The recommendation is
+   now ``keep_audited_near_qi_seed`` instead of promoting a degraded cleanup
+   run.
+
+Results obtained:
+
+1. The free-boundary/direct-coil lane has green required CI on main at
+   ``e226a73``.
+2. QI seed robustness no longer has a false-promotion path where stable-low
+   objective values can hide smooth/legacy QI degradation.
+3. Already-good QI seeds are non-degrading by construction in the bounded
+   prefine workflow; recovery optimization remains reserved for far seeds.
+
+Best next steps:
+
+1. Push the near-QI baseline gate commit and watch CI.
+2. For QI robustness, run far-seed constrained recovery representatives under
+   the same no-false-promotion summary; do not claim broad seed robustness until
+   the multi-family convergence matrix and Boozer contour review pass.
+3. Keep adaptive production branch differentiation explicitly unclaimed unless
+   a fingerprint-gated full adaptive branch AD-vs-FD gate is added.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999996% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 99.35%.
+- Single-stage coil-only optimization: 100%.
+- CPU/GPU performance: 99.6%.
+- CI runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100% for this update.
+- QI seed robustness: 94%; false promotion is closed and near-QI baselines are
+  non-degrading, while far-seed robust convergence remains the open promotion
+  lane.
+
 ### 2026-06-06 Frozen-Bsqvac Replay Cost Split
 
 Steps taken:
