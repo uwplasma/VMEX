@@ -169,7 +169,7 @@ def load_essos_provider(coils_json: Path | None, *, chunk_size: int, current_sca
     return params, metadata
 
 
-def make_circle_provider(*, current_scale: float) -> tuple[CoilFieldParams, dict[str, Any]]:
+def make_circle_provider(*, current_scale: float, chunk_size: int | None = None) -> tuple[CoilFieldParams, dict[str, Any]]:
     dofs = jnp.zeros((1, 3, 3), dtype=float)
     dofs = dofs.at[0, 0, 2].set(1.4)
     dofs = dofs.at[0, 1, 1].set(1.4)
@@ -178,8 +178,13 @@ def make_circle_provider(*, current_scale: float) -> tuple[CoilFieldParams, dict
         base_currents=jnp.asarray([2.0]),
         n_segments=96,
         current_scale=float(current_scale),
+        chunk_size=None if chunk_size is None else int(chunk_size),
     )
-    return params, {"provider": "circle", "current_scale_multiplier": float(current_scale)}
+    return params, {
+        "provider": "circle",
+        "current_scale_multiplier": float(current_scale),
+        "chunk_size": None if chunk_size is None else int(chunk_size),
+    }
 
 
 def make_free_boundary_indata(
@@ -1212,11 +1217,14 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
     if args.provider == "essos":
         base_params, provider_metadata = load_essos_provider(
             args.coils_json,
-            chunk_size=int(args.chunk_size),
+            chunk_size=256 if args.chunk_size is None else int(args.chunk_size),
             current_scale=float(args.current_scale),
         )
     elif args.provider == "circle":
-        base_params, provider_metadata = make_circle_provider(current_scale=float(args.current_scale))
+        base_params, provider_metadata = make_circle_provider(
+            current_scale=float(args.current_scale),
+            chunk_size=None if args.chunk_size is None else int(args.chunk_size),
+        )
     else:
         raise ValueError(f"unknown provider {args.provider!r}")
 
@@ -1565,7 +1573,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--provider", choices=("essos", "circle"), default="essos")
     parser.add_argument("--coils-json", type=Path, default=None)
     parser.add_argument("--current-scale", type=float, default=1.0)
-    parser.add_argument("--chunk-size", type=int, default=256)
+    parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=None,
+        help=(
+            "Direct-coil field point chunk size. By default, synthetic circle runs are "
+            "unchunked and ESSOS runs use 256. Use 0 to disable chunking explicitly."
+        ),
+    )
     parser.add_argument("--max-iter", type=int, default=None, help="Outer Powell optimizer iterations.")
     parser.add_argument("--max-evals", type=int, default=None, help="Maximum objective evaluations.")
     parser.add_argument("--vmec-max-iter", type=int, default=None, help="Inner free-boundary VMEC iterations.")
@@ -1755,6 +1771,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def apply_smoke_defaults(args: argparse.Namespace) -> argparse.Namespace:
     if args.smoke:
+        if args.chunk_size is None:
+            args.chunk_size = None if args.provider == "circle" else 256
+        elif int(args.chunk_size) <= 0:
+            args.chunk_size = None
         args.max_iter = 1 if args.max_iter is None else args.max_iter
         args.max_evals = 3 if args.max_evals is None else args.max_evals
         # VMEC free-boundary cadence turns on the vacuum/NESTOR path only after
@@ -1766,6 +1786,10 @@ def apply_smoke_defaults(args: argparse.Namespace) -> argparse.Namespace:
         args.nzeta = 4 if args.nzeta is None else args.nzeta
         return args
 
+    if args.chunk_size is None:
+        args.chunk_size = None if args.provider == "circle" else 256
+    elif int(args.chunk_size) <= 0:
+        args.chunk_size = None
     args.max_iter = 4 if args.max_iter is None else args.max_iter
     args.max_evals = 12 if args.max_evals is None else args.max_evals
     args.vmec_max_iter = 3 if args.vmec_max_iter is None else args.vmec_max_iter

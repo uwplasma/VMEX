@@ -12455,3 +12455,76 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100% for the last
   green CI run; post-scan CI is pending after push.
 - Docs/release hygiene: 99.5%.
+
+### 2026-06-06 Direct-Coil Chunking Probe for Branch-Local Reports
+
+Steps taken:
+
+1. Confirmed the scan-path commit ``d273bd3`` reached a fully green GitHub
+   Actions run, ``27077229465``.  The run passed docs, physics smoke, py3.10,
+   py3.12, all py3.11 exact/core/slow coverage shards, and the combined
+   coverage gate.
+2. Benchmarked the free-boundary QS smoke example with the validated
+   same-branch vector/JVP report and derivative proposal enabled.
+3. Ran a controlled chunking experiment on the synthetic circle direct-coil
+   provider to test whether Biot-Savart point chunking reduces cold
+   branch-local JVP graph construction time.
+4. Exposed ``--chunk-size`` to the synthetic circle provider so users can still
+   opt into point chunking for memory/debugging parity with ESSOS providers,
+   but kept the default synthetic circle path unchunked because fresh-process
+   timings did not show a cold-speed improvement.
+
+Results obtained:
+
+1. ``JAX_ENABLE_X64=1 python examples/optimization/free_boundary_QS_coil_optimization.py
+   --smoke --provider circle --write-same-branch-report
+   --same-branch-derivative-proposal --same-branch-report-anchor initial
+   --same-branch-report-mode vector --same-branch-report-vector-keys aspect,qs_total``
+   produced a same-branch-compatible vector/JVP report and one conservative
+   derivative proposal.  The complete-solve objective correctly rejected the
+   proposal because the directional signal at the tiny smoke point was
+   essentially zero.
+2. Diagnostic split with current scan path:
+   ``aspect,qs_total`` baseline JVP wall time was about ``9.18 s`` in one
+   cold CLI run; disabling analytic terms was ``8.10 s`` but changed replay
+   values; freezing vacuum-field projection was ``3.97 s``; freezing all
+   ``bsqvac`` was ``1.98 s``.  The dominant promoted cost remains direct-coil
+   vacuum-field sampling/projection plus NESTOR/source assembly.
+3. A same-process chunking sweep initially appeared to reduce JVP time, but a
+   fresh-process chunk-first rerun showed ``chunk_size=32`` still took about
+   ``8.62 s`` for the JVP.  The earlier speedup was JAX cache contamination,
+   not a valid cold-performance gain.
+4. ``python -m ruff check examples/optimization/free_boundary_QS_coil_optimization.py
+   tests/test_free_boundary_qs_coil_optimization_smoke.py`` passed.
+5. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qs_coil_optimization_smoke.py -q`` passed with
+   ``17`` passing tests and ``1`` expected failure.
+
+Best next steps:
+
+1. Do not spend more time on point chunking for cold branch-local JVP
+   performance unless a GPU or large-grid memory case requires it.
+2. Target the real remaining cost: a matrix-free/custom-transpose NESTOR/source
+   response, direct-coil vacuum-field JVP reuse, or lowering cold trace
+   construction for the direct-coil vacuum projection.
+3. Keep the derivative proposal path opt-in and conservative: it may propose
+   a direction from a fixed accepted branch, but every trial is still accepted
+   or rejected by a normal complete solve.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99995% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 97.4%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 98.9%; chunking is not a cold-speed solution, so the
+  next blocker remains direct-coil vacuum/NESTOR JVP graph cost.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.5%.
