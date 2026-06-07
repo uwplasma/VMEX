@@ -216,6 +216,42 @@ def test_plan_lists_fast_qi_diagnostic_artifacts():
     assert any("legacy Goodman-style QI totals" in item for item in artifact["validates"])
 
 
+def test_plan_records_qi_seed_robustness_promotion_gates():
+    mod = _load_module()
+
+    plan = mod.build_plan()
+    gates = {gate["gate_id"]: gate for gate in plan["qi_seed_robustness_promotion_gates"]}
+
+    assert plan["robustness_claim_status"] == "incomplete_until_promotion_gates_pass"
+    assert {
+        "solved-state-family-audit",
+        "reviewed-constrained-prefine-manifest",
+        "bounded-prefine-probe-results",
+        "independent-final-diagnostics",
+        "boozer-contour-review",
+        "multi-family-convergence-matrix",
+    } == set(gates)
+
+    for gate in gates.values():
+        assert gate["required_before_robustness_claim"] is True
+        assert gate["pass_criteria"], gate["gate_id"]
+        assert gate["artifact_paths"], gate["gate_id"]
+
+    manifest_criteria = " ".join(gates["reviewed-constrained-prefine-manifest"]["pass_criteria"])
+    assert "all-surface mirror ratio" in manifest_criteria
+    assert "QI-only ablations use explicit zero-weight flags" in manifest_criteria
+
+    diagnostics_criteria = " ".join(gates["independent-final-diagnostics"]["pass_criteria"])
+    for metric in ("smooth QI", "legacy QI", "abs(mean iota)", "mirror ratio", "elongation", "aspect"):
+        assert metric in diagnostics_criteria
+    assert "not from optimizer scalar objectives alone" in diagnostics_criteria
+
+    contour_criteria = " ".join(gates["boozer-contour-review"]["pass_criteria"])
+    assert "Final Boozer |B| contour plots" in contour_criteria
+    assert "VMEC-angle plots alone are not accepted" in contour_criteria
+    assert gates["multi-family-convergence-matrix"]["status"] == "deferred"
+
+
 def test_cli_writes_json_and_markdown(tmp_path):
     mod = _load_module()
 
@@ -233,6 +269,9 @@ def test_cli_writes_json_and_markdown(tmp_path):
     assert "Optional QI Seed Robustness Validation Plan" in markdown
     assert "Fast Diagnostic Artifacts" in markdown
     assert "qi-seed-suitability-annotation" in markdown
+    assert "QI Seed Robustness Promotion Gates" in markdown
+    assert "incomplete_until_promotion_gates_pass" in markdown
+    assert "multi-family-convergence-matrix" in markdown
     assert "Optional Parity Commands" in markdown
     assert "simsopt-qs-family-formula" in markdown
     assert "vmec2000-converged-wout-smoke" in markdown
