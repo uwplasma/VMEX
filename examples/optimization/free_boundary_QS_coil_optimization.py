@@ -85,6 +85,9 @@ SUPPORTED_SAME_BRANCH_VECTOR_KEYS = (
     "lcfs_boundary_moment",
     "accepted_bnormal_rms",
 )
+SAME_BRANCH_VECTOR_KEY_ALIASES = {
+    "bnormal_rms": "accepted_bnormal_rms",
+}
 STATE_ONLY_SAME_BRANCH_KEYS = (
     "state_norm",
     "aspect",
@@ -379,6 +382,7 @@ def parse_same_branch_vector_keys(value: str | Sequence[str] | None) -> tuple[st
         keys = tuple(part.strip() for part in value.replace(",", " ").split() if part.strip())
     else:
         keys = tuple(str(part).strip() for part in value if str(part).strip())
+    keys = tuple(SAME_BRANCH_VECTOR_KEY_ALIASES.get(key, key) for key in keys)
     if not keys:
         raise ValueError("expected at least one same-branch vector scalar key")
     unsupported = tuple(key for key in keys if key not in SUPPORTED_SAME_BRANCH_VECTOR_KEYS)
@@ -1942,6 +1946,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Comma/space-separated physical scalars for --same-branch-report-mode vector. "
             f"Supported: {', '.join(SUPPORTED_SAME_BRANCH_VECTOR_KEYS)}. "
+            "Alias: bnormal_rms -> accepted_bnormal_rms. "
             "Use state_norm as a non-physics replay-graph timing probe. "
             "Use all supported keys for broader validation, or the default smaller "
             "aspect,qs_total set for lower cold JVP graph cost. Final-state-only "

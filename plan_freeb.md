@@ -83,6 +83,56 @@ Completion:
   adds only fast default-CI coverage.
 - Docs/release hygiene: 99.7%.
 
+### 2026-06-07 Same-Branch Example Vector/JVP Usability Check
+
+Steps taken:
+
+1. Ran the coil-only QS smoke example with ``--write-same-branch-report``,
+   ``--same-branch-report-mode vector``, and
+   ``--same-branch-report-rejected-slot-gate`` to exercise the production
+   branch-local vector/JVP path from the example script.
+2. The first run exposed a usability issue: users naturally request
+   ``bnormal_rms``, while the validated report key is
+   ``accepted_bnormal_rms``.
+3. Added ``bnormal_rms -> accepted_bnormal_rms`` canonicalization in
+   ``free_boundary_QS_coil_optimization.py`` for vector report keys and added
+   focused smoke-test coverage for the alias.
+
+Results obtained:
+
+1. ``ruff`` passed for the example script and affected smoke test.
+2. The new parser-alias unit test passed.
+3. The real smoke example completed and wrote
+   ``same_branch_complete_solve_report.json``.
+4. The report validated the branch-local vector/JVP path for
+   ``qs_total``, ``aspect``, and ``accepted_bnormal_rms`` and wrote an
+   accepted/rejected controller-slot gate with one fixed rejected slot.
+5. The same-branch report remains correctly scoped as a fixed-branch
+   validation artifact: it does not claim arbitrary adaptive host-branch
+   differentiation.
+
+Best next steps:
+
+1. Keep using the validated branch-local vector/JVP path as a proposal and
+   diagnostic tool in the coil-only QS example, while complete free-boundary
+   solves remain the acceptance authority.
+2. If users need more scalar aliases, add canonicalization at the parser
+   boundary only, not new internal objective names.
+3. Continue the next full-loop AD-vs-central-FD physical-scalar gate under an
+   explicit branch fingerprint.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Single-stage coil-only optimization: 98.3%.
+- Full nonlinear free-boundary adjoint phase 2: unchanged at 99.99999% for
+  fixed same-branch scalar/vector gates; arbitrary adaptive branch
+  differentiation remains explicitly unclaimed.
+- Docs/release hygiene: 99.75%.
+
 ### 2026-06-07 Generated-Mgrid Parity and High-Mode Replay Cap
 
 Steps taken:
