@@ -173,6 +173,14 @@ def test_same_branch_direction_selects_current_and_fourier_variables():
     assert float(np.asarray(tangent.base_curve_dofs)[0, 1, 1]) == pytest.approx(0.0)
 
 
+def test_same_branch_vector_key_parser_accepts_bnormal_alias():
+    module = _load_example_module()
+
+    keys = module.parse_same_branch_vector_keys("qs_total,bnormal_rms")
+
+    assert keys == ("qs_total", "accepted_bnormal_rms")
+
+
 def test_same_branch_report_anchor_uses_best_or_initial_coil_point():
     module = _load_example_module()
     base_params, _metadata = module.make_circle_provider(current_scale=1.0)
