@@ -807,7 +807,13 @@ counts.  Use
 accepted/rejected controller-slot replay artifact.  This proves the stacked
 controller replay can carry a rejected slot under the same branch fingerprint;
 it still does not differentiate the adaptive host policy that decides which
-steps are accepted or rejected.
+steps are accepted or rejected.  The scalar, vector, and rejected-slot JSON
+blocks expose a compact ``controller_slot_summary`` with ``accepted_slots``,
+``rejected_slots``, ``done_markers``, and
+``accepted_free_boundary_slots``.  Use this top-level summary when reviewing
+artifacts; it is intentionally redundant with the lower-level masks so users
+do not need to inspect nested JAX arrays to confirm whether the fixed replay
+included an accepted-only branch or an explicit rejected controller slot.
 Short accepted-only branch-local segments are unrolled automatically in this
 report path, which avoids the pathological cold ``lax.scan`` graph that the
 tiny smoke trace used to trigger.
@@ -1328,7 +1334,11 @@ accepted/rejected controller-slot gate on a larger low-resolution report, run:
 The profile is intentionally branch-local: complete solves provide the
 base/plus/minus finite-difference and objective-acceptance authority, while
 dense and matrix-free replay only compare the fixed accepted branch under the
-same fingerprint.
+same fingerprint.  In the resulting
+``same_branch_complete_solve_report.json``, inspect
+``branch_local_vector_jacobian.controller_slot_summary`` and
+``accepted_rejected_controller_slot_gate.controller_slot_summary`` to confirm
+how many controller slots were accepted or rejected in the replayed branch.
 
 An additional opt-in bridge toward derivative-assisted coil optimization is
 available with ``--same-branch-derivative-proposal``.  This mode still does

@@ -1158,6 +1158,44 @@ Completion:
   pushed CI is green.
 - Docs/release hygiene: 99.6%.
 
+### 2026-06-08 Free-Boundary Docs for Controller-Slot Summaries
+
+Steps taken:
+
+1. Updated ``docs/free_boundary_coil_optimization.rst`` to describe the new
+   ``controller_slot_summary`` fields in scalar, vector/JVP, and
+   accepted/rejected controller-slot JSON report blocks.
+2. Added explicit guidance to inspect
+   ``branch_local_vector_jacobian.controller_slot_summary`` and
+   ``accepted_rejected_controller_slot_gate.controller_slot_summary`` in
+   ``same_branch_complete_solve_report.json``.
+
+Results obtained:
+
+1. ``python -m sphinx -q -W -b html docs docs/_build/html`` passed.
+
+Best next steps:
+
+1. Push this docs-only update after committing.
+2. Check CI for the resulting head and fix any failure.
+3. Continue with either a genuinely new same-branch physical scalar gate or a
+   bounded VMEC2000/mgrid/direct-coil parity fixture.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99996%.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 97.6%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.1%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.7%.
+
 ### 2026-06-08 Coil-Only QS Example Controller-Slot Report Surfacing
 
 Steps taken:
