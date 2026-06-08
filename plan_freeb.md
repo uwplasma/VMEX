@@ -15800,6 +15800,60 @@ Completion:
   combined coverage CI.
 - Docs/release hygiene: 99.95%.
 
+### 2026-06-08 Production-Forward Rejected-Slot Gate
+
+Steps taken:
+
+1. Extended the current-only same-branch complete-solve AD-vs-FD gate to run
+   the production-forward vector/JVP helper with a padded rejected controller
+   slot.
+2. Reused the existing complete finite-difference payload, so the new gate
+   validates the production branch-local path without another complete FD
+   triplet.
+3. Required the adaptive full-loop seam report to pass with both
+   ``require_fixed_rejected_controller_slot`` and
+   ``require_status_derived_rejected_controller_slot`` for that production
+   vector/JVP evidence.
+
+Results obtained:
+
+1. ``python -m ruff check
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py``
+   passed.
+2. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd
+   -q`` passed.
+3. The production-forward vector/JVP path now participates in the same
+   fingerprint-gated accepted/rejected controller-slot evidence used by the
+   phase-3 coil-only proposal example.
+
+Best next steps:
+
+1. Commit and push the exact-gate extension.
+2. Wait for the latest CI run to finish, especially combined py3.11 coverage.
+3. If CI is green, continue phase 3 by using the branch-local proposal report
+   in a small coil-only QS optimization run as proposal evidence while complete
+   solves remain acceptance authority.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999997% for
+  production-forward same-branch vector/JVP gates including accepted/rejected
+  controller-slot provenance; arbitrary adaptive branch selection remains
+  unclaimed.
+- VMEC parity and physics gates: 98.7%.
+- Single-stage coil-only optimization: 99.0%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.3%.
+- CI runtime refactor with preserved coverage/physics gates: 99.8%, pending
+  combined coverage CI.
+- Docs/release hygiene: 99.95%.
+
 ### 2026-06-08 Bounded W7-X VMEC2000 Parity Recheck
 
 Steps taken:

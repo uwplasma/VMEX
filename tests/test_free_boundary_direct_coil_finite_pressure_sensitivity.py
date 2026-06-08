@@ -2627,6 +2627,79 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                 base_value_atol={key: 2.0e-3 for key in vector_scalar_keys},
                 json_safe=True,
             )["passed"]
+            if check_fixed_rejected_controller_mask_gate:
+                rejected_trace = deepcopy(base_traces[-1])
+                rejected_trace["step_status"] = "rejected"
+                padded_traces = tuple(base_traces) + (rejected_trace,)
+                production_rejected_scalars = (
+                    direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
+                        params=base_params,
+                        direction_params=direction,
+                        complete_payload=complete_report["base"],
+                        scalar_keys=tuple(vector_scalar_keys),
+                        production_values={key: complete_base_values[key] for key in vector_scalar_keys},
+                        replay_payload={"init": complete_report["base"]["init"]},
+                        scalar_fn=lambda payload: {
+                            "aspect": aspect_objective_from_state(payload["result"].state),
+                            "axis_R": axis_R_from_state(payload["result"].state, payload["init"].static),
+                            "lcfs_boundary_moment": lcfs_boundary_moment(payload["result"].state, payload["init"].static),
+                            "qs_total": qs_total_from_state(
+                                payload["result"].state,
+                                payload["init"].static,
+                                payload["init"].indata,
+                                payload["init"].signgs,
+                            ),
+                            "accepted_bnormal_rms": accepted_bnormal_rms_from_payload(payload),
+                            "accepted_bsqvac_rms": accepted_bsqvac_rms_from_payload(payload),
+                        },
+                        replay_scalar_fns=vector_replay_scalar_fns,
+                        replay_kwargs={
+                            "traces": padded_traces,
+                            "use_stacked_step_controls": True,
+                            "use_accepted_only_fast_path": False,
+                        },
+                        include_payload=False,
+                        include_replay_graph_metadata=False,
+                    )
+                )
+                assert production_rejected_scalars["uses_production_forward"] is True
+                assert production_rejected_scalars["differentiates_adaptive_controller"] is False
+                assert production_rejected_scalars["differentiates_run_free_boundary"] is False
+                assert production_rejected_scalars["differentiates_fixed_accepted_branch"] is True
+                assert production_rejected_scalars["replay_option_flags"]["use_stacked_step_controls"] is True
+                assert production_rejected_scalars["replay_option_flags"]["use_accepted_only_fast_path"] is False
+                assert production_rejected_scalars["controller_slot_summary"]["rejected_slots"] == 1
+                assert production_rejected_scalars["replay_branch_metadata"]["status_acceptance_source"] == "trace_step_status"
+                assert tuple(production_rejected_scalars["replay_branch_metadata"]["status_masks"]["step_status"])[-1] == "rejected"
+                assert bool(
+                    np.asarray(
+                        production_rejected_scalars["replay_branch_metadata"]["status_masks"]["accept_mask"],
+                        dtype=bool,
+                    )[-1]
+                ) is False
+                production_rejected_report = direct_coil_branch_local_scalars_report_from_complete_fd(
+                    complete_report,
+                    production_rejected_scalars,
+                    scalar_keys=tuple(vector_scalar_keys),
+                    rtol=production_rtol,
+                    atol={key: 5.0e-8 for key in vector_scalar_keys},
+                    base_value_atol={key: 2.0e-3 for key in vector_scalar_keys},
+                )
+                assert production_rejected_report["passed"], production_rejected_report
+                production_rejected_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
+                    complete_report,
+                    production_rejected_report,
+                    scalar_keys=tuple(vector_scalar_keys),
+                    require_fixed_rejected_controller_slot=True,
+                    require_status_derived_rejected_controller_slot=True,
+                )
+                assert production_rejected_gate["passed"], production_rejected_gate
+                assert production_rejected_gate["fingerprint_gated"] is True
+                assert production_rejected_gate["same_branch"] is True
+                assert production_rejected_gate["fixed_rejected_controller_slot_present"] is True
+                assert production_rejected_gate["status_derived_rejected_controller_slot_present"] is True
+                assert production_rejected_gate["differentiates_adaptive_controller"] is False
+                assert production_rejected_gate["differentiates_run_free_boundary"] is False
         if check_qs_total_scalar:
             qs_report = scalars_report["scalar_reports"]["qs_total"]
             assert qs_report["passed"], qs_report
