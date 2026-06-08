@@ -1223,6 +1223,67 @@ Completion:
   matrix-free coverage run ``27079913312`` is green.
 - Docs/release hygiene: 99.5%.
 
+### 2026-06-08 Seed-3127 Audit-Resolution Boozer Mirror Cleanup
+
+Steps taken:
+
+1. Tested an LCFS-only VMEC-grid augmented-Lagrangian mirror cleanup from the
+   accepted seed-3127 AL candidate.  The stage-local edge metric dropped below
+   0.35, but the independent all-surface Boozer audit did not improve, so this
+   path was kept diagnostic only.
+2. Added ``qi_mirror_objective_for_stage`` so QI stages can select the fast
+   VMEC mirror proxy, shared-field Boozer mirror, or scalar audit-resolution
+   Boozer mirror without making the public driver longer.
+3. Added ``mirror_backend="boozer_scalar"`` with stage-local
+   ``mirror_mboz/mirror_nboz`` for final high-fidelity mirror cleanup.
+4. Fixed two objective-assembly issues exposed by this lane:
+   ``AugmentedLagrangianConstraint`` now preserves prepared scalar objective
+   hooks, and QI stages now bind prepared scalar objectives before JIT
+   residual evaluation.
+5. Ran an audit-resolution scalar Boozer AL cleanup from the accepted
+   seed-3127 candidate and promoted the successful stage into the public
+   seed-3127 policy.
+
+Results obtained:
+
+1. The low-resolution shared-Boozer mirror cleanup reduced stage-local mirror
+   but worsened the independent high-resolution audit to about ``0.35765``;
+   this confirmed a resolution/backend mismatch.
+2. The scalar audit-resolution Boozer cleanup reached independent diagnostics:
+   smooth QI ``1.973690e-03``, legacy QI ``3.309490e-04``, mirror ratio
+   ``0.344853``, max elongation ``3.87628``, and mean iota ``-1.07000``.
+3. Focused helper/structure tests and lint passed after the refactor and AL
+   prepare-hook fixes.
+
+Best next steps:
+
+1. Run the full public ``QI_optimization_seed.py`` preset with the new final
+   stage enabled, then regenerate the reviewed seed-3127 figure if the root
+   diagnostics reproduce the probe result.
+2. Keep the scalar Boozer backend for final cleanup only; broad stages should
+   continue using the cheaper VMEC-grid mirror proxy.
+3. Add a small regression gate around prepared scalar objectives in QI stages
+   if a lightweight synthetic stage can be added without increasing CI runtime.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99995% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 97.4%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- Seed-robust QI: 98.0%; seed-3127 now has strict QI below ``2e-3`` and
+  independent mirror below ``0.35`` in the focused cleanup probe.
+- CPU/GPU performance: 99.1%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.6%.
+
 ### 2026-06-08 Seed-3127 QI-First Constrained Cleanup Probe
 
 Steps taken:
