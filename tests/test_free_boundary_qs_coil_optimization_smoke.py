@@ -252,6 +252,7 @@ def test_same_branch_derivative_proposal_uses_gated_directional_report():
         },
     }
     objective_model = {
+        "residual_weight": 0.75,
         "qs_weight": 2.0,
         "aspect_weight": 0.5,
         "target_aspect": 6.0,
@@ -268,11 +269,15 @@ def test_same_branch_derivative_proposal_uses_gated_directional_report():
 
     assert proposal["available"] is True
     assert proposal["differentiates_adaptive_controller"] is False
+    assert proposal["complete_solve_acceptance_authority"] is True
     assert proposal["directional_derivative"] == pytest.approx(9.0)
     assert proposal["contributions"]["qs_total"]["contribution"] == pytest.approx(6.0)
     assert proposal["contributions"]["aspect"]["contribution"] == pytest.approx(2.0)
     assert proposal["contributions"]["mean_iota"]["contribution"] == pytest.approx(1.0)
     assert proposal["contributions"]["mean_iota"]["target"] == pytest.approx(0.4)
+    assert proposal["objective_terms_used"] == ["aspect", "mean_iota", "qs_total"]
+    assert proposal["objective_terms_omitted"]["residual_proxy"]["weight"] == pytest.approx(0.75)
+    assert "complete free-boundary solve" in proposal["objective_terms_omitted"]["residual_proxy"]["reason"]
     assert proposal["alpha"] == pytest.approx(-0.25)
     np.testing.assert_allclose(proposal["trial_x"], [-0.15, 0.2, 0.55])
 
