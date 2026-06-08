@@ -570,7 +570,10 @@ single-stage coil optimizer:
   VMEC-state ``qs_total`` plus accepted ``Bnormal`` and ``Bsqvac`` RMS
   physical scalars, with scalar/vector coverage for current and Fourier
   geometry representatives. This validates a fixed accepted branch, not
-  arbitrary adaptive host-controller branch changes.
+  arbitrary adaptive host-controller branch changes. The helper
+  ``direct_coil_branch_local_scalars_report_from_complete_fd`` normalizes the
+  production-forward vector/JVP evidence into the same physical-scalar and
+  adaptive-seam gate schema used by the stacked-controller custom-VJP reports.
 - The phase-2 full-loop refactor target has JAX-visible masked and segmented
   nonlinear-controller primitives with AD-vs-FD direct-coil gradient coverage,
   plus accepted-state replay gates for coil and VMEC-state derivatives. This
@@ -831,6 +834,14 @@ For directional vector reports, also inspect ``directional_jvp_fast_path`` and
 ``directional_uses_fixed_coil_geometry``.  A ``current_only`` fast path means
 the JVP reused the coil curve geometry and differentiated only the currents,
 which is the intended low-overhead path for current-only proposal evidence.
+The same production-forward vector report can be passed through
+``direct_coil_branch_local_scalars_report_from_complete_fd`` and then through
+``direct_coil_same_branch_physical_scalar_gate_report`` or
+``direct_coil_adaptive_full_loop_same_branch_gate_report``.  That adapter keeps
+the explicit flags
+``differentiates_adaptive_controller=False`` and
+``differentiates_run_free_boundary=False`` while checking complete-solve
+central finite differences under the unchanged branch fingerprint.
 Short accepted-only branch-local segments are unrolled automatically in this
 report path, which avoids the pathological cold ``lax.scan`` graph that the
 tiny smoke trace used to trigger.

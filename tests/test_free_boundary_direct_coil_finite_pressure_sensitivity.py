@@ -1850,6 +1850,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_accepted_trace_controller_custom_vjp_objective_jax,
         direct_coil_adaptive_full_loop_same_branch_gate_report,
+        direct_coil_branch_local_scalars_report_from_complete_fd,
         direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax,
         direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax,
         free_boundary_boundary_geometry_jax,
@@ -2567,6 +2568,65 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                     ),
                     atol=5.0e-8,
                 )
+            production_rtol = {
+                key: (
+                    2.0e-2
+                    if key == "qs_total"
+                    else 1.0e-2
+                    if key in {"accepted_bnormal_rms", "accepted_bsqvac_rms"}
+                    else 5.0e-3
+                )
+                for key in vector_scalar_keys
+            }
+            production_scalars_report = direct_coil_branch_local_scalars_report_from_complete_fd(
+                complete_report,
+                production_branch_local_scalars,
+                scalar_keys=tuple(vector_scalar_keys),
+                rtol=production_rtol,
+                atol={key: 5.0e-8 for key in vector_scalar_keys},
+                base_value_atol={key: 2.0e-3 for key in vector_scalar_keys},
+            )
+            assert production_scalars_report["passed"], production_scalars_report
+            assert production_scalars_report["uses_production_forward"] is True
+            assert production_scalars_report["differentiates_adaptive_controller"] is False
+            assert production_scalars_report["differentiates_run_free_boundary"] is False
+            assert production_scalars_report["differentiates_fixed_accepted_branch"] is True
+            production_physical_gate = direct_coil_same_branch_physical_scalar_gate_report(
+                complete_report,
+                production_scalars_report,
+                scalar_keys=tuple(vector_scalar_keys),
+            )
+            assert production_physical_gate["passed"], production_physical_gate
+            production_adaptive_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
+                complete_report,
+                production_scalars_report,
+                scalar_keys=tuple(vector_scalar_keys),
+            )
+            assert production_adaptive_gate["passed"], production_adaptive_gate
+            assert production_adaptive_gate["fingerprint_gated"] is True
+            assert production_adaptive_gate["same_branch"] is True
+            assert production_adaptive_gate["same_accepted_trace_branch"] is True
+            assert production_adaptive_gate["same_residual_branch"] is True
+            assert production_adaptive_gate["differentiates_adaptive_controller"] is False
+            assert production_adaptive_gate["differentiates_run_free_boundary"] is False
+            assert production_adaptive_gate["used_stacked_step_controls"] is True
+            assert production_adaptive_gate["same_stacked_step_policy_branch"] is True
+            assert production_adaptive_gate["physical_scalar_gate"]["passed"] is True
+            for key in vector_scalar_keys:
+                scalar_report = production_scalars_report["scalar_reports"][key]
+                assert scalar_report["passed"], scalar_report
+                assert np.isfinite(scalar_report["exact_directional"])
+                assert np.isfinite(scalar_report["complete_fd_directional"])
+                assert scalar_report["base_abs_delta"] < 2.0e-3
+            assert direct_coil_branch_local_scalars_report_from_complete_fd(
+                complete_report,
+                production_branch_local_scalars,
+                scalar_keys=tuple(vector_scalar_keys),
+                rtol=production_rtol,
+                atol={key: 5.0e-8 for key in vector_scalar_keys},
+                base_value_atol={key: 2.0e-3 for key in vector_scalar_keys},
+                json_safe=True,
+            )["passed"]
         if check_qs_total_scalar:
             qs_report = scalars_report["scalar_reports"]["qs_total"]
             assert qs_report["passed"], qs_report

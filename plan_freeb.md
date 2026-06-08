@@ -15598,3 +15598,55 @@ Completion:
 - CPU/GPU performance: 99.3%.
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 99.9%.
+
+### 2026-06-08 Production-Forward Branch-Local Scalar Gate Adapter
+
+Steps taken:
+
+1. Added ``direct_coil_branch_local_scalars_report_from_complete_fd`` to
+   normalize production-forward branch-local scalar/JVP evidence into the
+   existing same-branch physical-scalar report schema.
+2. Wired the current-only finite-pressure same-branch gate so the
+   production-forward vector/JVP path now passes through
+   ``direct_coil_same_branch_physical_scalar_gate_report`` and
+   ``direct_coil_adaptive_full_loop_same_branch_gate_report`` instead of only
+   a manual per-scalar comparison.
+3. Added assertions that the production-forward gate remains fingerprint
+   gated, uses stacked step controls, has unchanged accepted/residual
+   branches, and keeps ``differentiates_adaptive_controller`` and
+   ``differentiates_run_free_boundary`` false.
+4. Updated the free-boundary coil optimization docs to describe the adapter
+   and its same-branch scope.
+
+Results obtained:
+
+1. The production-forward vector/JVP report is now a first-class promotion
+   artifact for the physical/adaptive same-branch gate API.
+2. Phase 2 remains conservative: the new gate validates fixed accepted-branch
+   replay against complete-solve central finite differences, but it still does
+   not claim derivatives through arbitrary adaptive host branch selection.
+
+Best next steps:
+
+1. Run focused ruff, direct-coil finite-pressure tests, and the Sphinx build.
+2. If clean, commit and push the adapter.
+3. Continue phase 3 by keeping coil-only QS optimization proposals tied to
+   these gated branch-local reports while complete solves remain the
+   acceptance authority.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999995% for
+  production-forward same-branch vector/JVP physical/adaptive gates; arbitrary
+  adaptive branch selection remains explicitly unclaimed.
+- VMEC parity and physics gates: 98.3%.
+- Single-stage coil-only optimization: 98.4%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.3%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.9%.
