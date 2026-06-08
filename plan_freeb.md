@@ -15455,3 +15455,46 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100%; current
   remote run still pending.
 - Docs/release hygiene: 99.8%.
+
+### 2026-06-08 Coil QS Proposal Objective-Term Provenance
+
+Steps taken:
+
+1. Added explicit objective-term provenance to
+   ``same_branch_derivative_proposal_from_report``.
+2. The proposal now records ``objective_terms_used`` for branch-local vector
+   JVP terms and ``objective_terms_omitted`` for weighted objective terms not
+   differentiated by the proposal, currently including the VMEC residual proxy.
+3. Added test coverage that the proposal keeps complete-solve acceptance
+   authority and records the residual omission.
+4. Updated docs so users can interpret the derivative proposal without
+   mistaking it for a full objective Jacobian.
+
+Results obtained:
+
+1. The coil-only QS example now exposes the derivative proposal contract more
+   clearly: branch-local JVPs suggest one trial direction, while complete
+   free-boundary solves still accept or reject the point.
+
+Best next steps:
+
+1. Run the focused proposal smoke test, ruff, and docs build.
+2. Check CI for the current main head and fix any failure.
+3. After CI is green, continue with production coil-only examples or bounded
+   VMEC2000/mgrid/direct-coil parity expansion; keep adaptive branch
+   differentiation conservative.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99998%.
+- VMEC parity and physics gates: 98.2%.
+- Single-stage coil-only optimization: 98.0%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.3%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.85%.

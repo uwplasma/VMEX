@@ -1366,6 +1366,11 @@ trial is then evaluated by the ordinary complete free-boundary solve, and only
 that complete-solve objective can accept it.  This keeps the branch-local
 derivative path as a proposal mechanism while the production solve remains the
 acceptance authority.
+The proposal block records ``objective_terms_used`` and
+``objective_terms_omitted``.  For example, the VMEC residual proxy is normally
+omitted from the branch-local JVP proposal because the residual term is still
+validated by the complete free-boundary solve that evaluates the proposed
+point.
 
 The same-branch report is generated before the optional proposal is evaluated.
 If the complete solve accepts that derivative-assisted trial, ``summary.json``

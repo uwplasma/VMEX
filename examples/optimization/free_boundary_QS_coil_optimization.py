@@ -748,7 +748,17 @@ def same_branch_derivative_proposal_from_report(
 
     scalars = vector.get("scalars", {})
     contributions: dict[str, dict[str, float]] = {}
+    omitted_terms: dict[str, dict[str, Any]] = {}
     directional = 0.0
+
+    if float(objective_model.get("residual_weight", 0.0)) != 0.0:
+        omitted_terms["residual_proxy"] = {
+            "weight": float(objective_model.get("residual_weight", 0.0)),
+            "reason": (
+                "not included in branch-local vector/JVP report; the complete "
+                "free-boundary solve remains acceptance authority"
+            ),
+        }
 
     if "qs_total" in scalars:
         scalar = scalars["qs_total"]
@@ -805,8 +815,11 @@ def same_branch_derivative_proposal_from_report(
         "available": True,
         "scope": "fixed accepted-branch directional proposal; complete solve decides acceptance",
         "differentiates_adaptive_controller": False,
+        "complete_solve_acceptance_authority": True,
         "directional_derivative": float(directional),
         "contributions": contributions,
+        "objective_terms_used": sorted(contributions),
+        "objective_terms_omitted": omitted_terms,
         "alpha": float(alpha),
         "step_size": float(step_size),
         "direction_x": direction_x.tolist(),
