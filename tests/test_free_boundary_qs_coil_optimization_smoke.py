@@ -304,6 +304,154 @@ def test_branch_local_scalar_report_adapter_records_gate_evidence():
     assert failed_report["scalar_reports"]["aspect"]["passed"] is False
 
 
+def test_branch_local_scalar_report_adapter_records_failure_modes():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+    from vmec_jax.free_boundary_adjoint import (
+        direct_coil_adaptive_full_loop_same_branch_gate_report,
+        direct_coil_branch_local_scalars_report_from_complete_fd,
+        direct_coil_same_branch_physical_scalar_gate_report,
+    )
+
+    gate = _same_branch_replay_gate_stub()
+    complete_report = {
+        "branch_compatibility": gate["branch"],
+        "trace_replay_diagnostics": gate["trace_replay_diagnostics"],
+        "objective_values": {
+            "aspect": {"base": 6.0, "plus": 6.1, "minus": 5.9, "central_fd_directional": 0.2},
+            "qs_total": {"base": 0.4, "plus": 0.42, "minus": 0.38, "central_fd_directional": 0.1},
+        },
+    }
+
+    valid_branch_local = {
+        "uses_production_forward": True,
+        "differentiates_adaptive_controller": False,
+        "differentiates_run_free_boundary": False,
+        "differentiates_fixed_accepted_branch": True,
+        "derivative_mode": "directional_jvp",
+        "replay_ad_mode": "direct",
+        "scalar_keys": ("aspect", "qs_total"),
+        "values": {"aspect": jnp.asarray(6.0), "qs_total": jnp.asarray(0.4)},
+        "replay_value_map": {"aspect": jnp.asarray(6.0), "qs_total": jnp.asarray(0.4)},
+        "directional_derivatives": {"aspect": jnp.asarray(0.2), "qs_total": jnp.asarray(0.1)},
+        "replay_option_flags": {"use_stacked_step_controls": False, "use_accepted_only_fast_path": True},
+        "replay_branch_metadata": {"accepted_mask": [True], "rejected_mask": [False]},
+        "controller_slot_summary": {"accepted_slots": 1, "rejected_slots": 0},
+    }
+
+    with pytest.raises(ValueError, match="scalar_keys"):
+        direct_coil_branch_local_scalars_report_from_complete_fd(
+            complete_report,
+            {**valid_branch_local, "scalar_keys": ()},
+        )
+
+    incomplete_report = direct_coil_branch_local_scalars_report_from_complete_fd(
+        complete_report,
+        {
+            **valid_branch_local,
+            "uses_production_forward": False,
+            "differentiates_adaptive_controller": True,
+            "differentiates_run_free_boundary": True,
+            "differentiates_fixed_accepted_branch": False,
+            "directional_derivatives": None,
+            "values": {"aspect": jnp.asarray(6.0)},
+        },
+        scalar_keys=("aspect", "qs_total", "missing"),
+        json_safe=True,
+    )
+    assert incomplete_report["passed"] is False
+    assert "branch-local report does not contain directional derivatives" in incomplete_report["errors"]
+    assert "branch-local report did not use production forward values" in incomplete_report["errors"]
+    assert "branch-local report unexpectedly claims adaptive-controller differentiation" in incomplete_report["errors"]
+    assert "branch-local report unexpectedly claims run_free_boundary differentiation" in incomplete_report["errors"]
+    assert "branch-local report does not differentiate the fixed accepted branch" in incomplete_report["errors"]
+    assert "aspect: missing branch-local directional derivative" in incomplete_report["errors"]
+    assert "qs_total: missing branch-local directional derivative" in incomplete_report["errors"]
+    assert "missing: missing complete-solve objective values" in incomplete_report["errors"]
+    assert incomplete_report["scalar_reports"] == {}
+
+    replay_delta_report = direct_coil_branch_local_scalars_report_from_complete_fd(
+        complete_report,
+        {
+            **valid_branch_local,
+            "values": {"aspect": jnp.asarray(6.0), "qs_total": jnp.asarray(0.4)},
+            "replay_value_map": {"aspect": jnp.asarray(6.01), "qs_total": jnp.asarray(0.4)},
+            "base_abs_delta": {},
+        },
+        scalar_keys=("aspect",),
+        base_value_atol={"aspect": 1.0e-3},
+    )
+    assert replay_delta_report["passed"] is False
+    assert replay_delta_report["scalar_reports"]["aspect"]["base_abs_delta"] == pytest.approx(1.0e-2)
+
+    complete_delta_report = direct_coil_branch_local_scalars_report_from_complete_fd(
+        complete_report,
+        {
+            **valid_branch_local,
+            "values": {"aspect": jnp.asarray(6.03), "qs_total": jnp.asarray(0.4)},
+            "replay_value_map": {},
+            "base_abs_delta": {},
+        },
+        scalar_keys=("aspect",),
+        base_value_atol=1.0e-3,
+    )
+    assert complete_delta_report["passed"] is False
+    assert complete_delta_report["scalar_reports"]["aspect"]["base_abs_delta"] == pytest.approx(3.0e-2)
+
+    missing_scalar_gate = direct_coil_same_branch_physical_scalar_gate_report(
+        complete_report,
+        replay_delta_report,
+        scalar_keys=("aspect", "qs_total", "missing"),
+        json_safe=True,
+    )
+    assert missing_scalar_gate["passed"] is False
+    assert "aspect: scalar AD-vs-FD report failed" in missing_scalar_gate["errors"]
+    assert "qs_total: missing scalar report" in missing_scalar_gate["errors"]
+    assert "missing: missing scalar report" in missing_scalar_gate["errors"]
+
+    changed_branch = {
+        **complete_report,
+        "branch_compatibility": {
+            **gate["branch"],
+            "same_branch": False,
+            "same_accepted_trace_branch": False,
+            "same_residual_branch": False,
+        },
+    }
+    changed_branch_report = direct_coil_branch_local_scalars_report_from_complete_fd(
+        changed_branch,
+        valid_branch_local,
+        scalar_keys=("aspect",),
+    )
+    changed_gate = direct_coil_same_branch_physical_scalar_gate_report(
+        changed_branch,
+        changed_branch_report,
+        scalar_keys=("aspect",),
+    )
+    assert changed_gate["passed"] is False
+    assert "same-branch replay gate failed" in changed_gate["errors"]
+    assert "scalar report is not same-branch" in changed_gate["errors"]
+    assert "accepted-trace branch fingerprint changed" in changed_gate["errors"]
+    assert "residual-controller branch fingerprint changed" in changed_gate["errors"]
+
+    adaptive_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
+        complete_report,
+        replay_delta_report,
+        scalar_keys=("aspect",),
+        require_stacked_step_controls=True,
+        require_fixed_rejected_controller_slot=True,
+        require_status_derived_rejected_controller_slot=True,
+        json_safe=True,
+    )
+    assert adaptive_gate["passed"] is False
+    assert "stacked step-control replay was not used" in adaptive_gate["errors"]
+    assert "fixed rejected controller slot was not replayed" in adaptive_gate["errors"]
+    assert "accepted-only fast path was used for a rejected-slot replay gate" in adaptive_gate["errors"]
+    assert "rejected controller slot was not derived from trace step_status" in adaptive_gate["errors"]
+    assert "base: missing complete-solve payload" in adaptive_gate["errors"]
+    assert "stacked step-policy branch changed" in adaptive_gate["errors"]
+
+
 def test_same_branch_report_anchor_uses_best_or_initial_coil_point():
     module = _load_example_module()
     base_params, _metadata = module.make_circle_provider(current_scale=1.0)

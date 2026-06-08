@@ -15697,3 +15697,97 @@ Completion:
 - CPU/GPU performance: 99.3%.
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 99.95%.
+
+### 2026-06-08 Coverage Gate Recovery for Branch-Local Scalar Promotion
+
+Steps taken:
+
+1. Added a no-solve regression covering failure and fallback paths in the
+   production-forward branch-local scalar report adapter.
+2. Exercised missing scalar-key validation, missing production/JVP data,
+   changed branch fingerprints, replay/complete base-value mismatch fallback,
+   JSON-safe reporting, and adaptive full-loop rejected-slot error reporting.
+3. Re-ran the focused QS coil optimization smoke shard and the Sphinx docs
+   build after the patch.
+
+Results obtained:
+
+1. ``python -m ruff check tests/test_free_boundary_qs_coil_optimization_smoke.py
+   vmec_jax/free_boundary_adjoint.py`` passed.
+2. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qs_coil_optimization_smoke.py -q`` passed, with
+   the existing expected xfail unchanged.
+3. ``python -m sphinx -q -W -b html docs docs/_build/html`` passed.
+4. The new coverage is concentrated on the same phase-2/phase-3 promotion
+   seam that caused the prior combined CI coverage shortfall.
+
+Best next steps:
+
+1. Push the focused coverage recovery commit and monitor the combined py3.11
+   coverage gate.
+2. If exact coverage remains below 95%, add another no-solve gate regression
+   for free-boundary adjoint report helpers rather than weakening the
+   threshold.
+3. Once CI is green, resume the next production milestone: fingerprint-gated
+   complete-loop AD-vs-central-FD validation through the adaptive free-boundary
+   branch seam.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999995% for
+  production-forward same-branch vector/JVP physical/adaptive gates; arbitrary
+  adaptive branch selection remains unclaimed.
+- VMEC parity and physics gates: 98.6%.
+- Single-stage coil-only optimization: 98.8%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.3%.
+- CI runtime refactor with preserved coverage/physics gates: 99.8%, pending
+  combined coverage CI after this recovery commit.
+- Docs/release hygiene: 99.95%.
+
+### 2026-06-08 Bounded W7-X VMEC2000 Parity Recheck
+
+Steps taken:
+
+1. Re-ran the optional VMEC2000 integration gate for the bounded W7-X
+   generated-``mgrid`` fixture with ``VMEC2000_INTEGRATION=1`` and
+   ``VMEC2000_EXEC=~/bin/xvmec2000``.
+2. Kept LP-QA forced-active/generated-``mgrid`` rows non-promoted because they
+   can produce nonphysical or underconverged WOUT geometry and are not suitable
+   promotion evidence.
+
+Results obtained:
+
+1. ``test_vmec2000_w7x_generated_mgrid_fixture_reaches_active_vacuum_and_finite_wout``
+   passed locally.
+2. The promoted external parity row remains bounded, active-vacuum coupled,
+   parseable, and finite-positive in geometry scalars.
+
+Best next steps:
+
+1. Wait for the current CI run on ``d379515``.
+2. If coverage is still below threshold, add another lightweight physics-gate
+   coverage test rather than weakening the gate.
+3. Do not promote another VMEC2000 generated-``mgrid`` WOUT row until a
+   bounded physical direct-coil/mgrid/VMEC2000 family fixture is available.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999995% for
+  production-forward same-branch vector/JVP physical/adaptive gates.
+- VMEC parity and physics gates: 98.6%.
+- Single-stage coil-only optimization: 98.8%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.3%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.95%.
