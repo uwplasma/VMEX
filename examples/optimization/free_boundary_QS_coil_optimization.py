@@ -777,6 +777,20 @@ def same_branch_derivative_proposal_from_report(
         physical_gate = vector_gate.get("physical_scalar_gate", {})
         if isinstance(physical_gate, dict) and not bool(physical_gate.get("passed", False)):
             return {"available": False, "reason": "branch-local physical-scalar gate did not pass"}
+    rejected_slot_gate = report.get("accepted_rejected_controller_slot_gate")
+    if isinstance(rejected_slot_gate, dict) and bool(rejected_slot_gate.get("requested", False)):
+        if not bool(rejected_slot_gate.get("available", False)):
+            return {
+                "available": False,
+                "reason": str(
+                    rejected_slot_gate.get(
+                        "reason",
+                        "requested accepted/rejected controller-slot gate is unavailable",
+                    )
+                ),
+            }
+        if not bool(rejected_slot_gate.get("passed", False)):
+            return {"available": False, "reason": "accepted/rejected controller-slot gate did not pass"}
 
     scalars = vector.get("scalars", {})
     contributions: dict[str, dict[str, float]] = {}
@@ -1531,6 +1545,7 @@ def write_same_branch_validation_report(
     rejected_slot_gate: dict[str, Any] = {
         "available": False,
         "requested": bool(getattr(args, "same_branch_report_rejected_slot_gate", False)),
+        "passed": False,
         "reason": "not requested",
         "differentiates_adaptive_controller": False,
         "differentiates_run_free_boundary": False,
@@ -1565,9 +1580,21 @@ def write_same_branch_validation_report(
                 rejected_metadata = rejected_summary.get("replay_branch_metadata", {})
                 rejected_controller_slot_summary = rejected_summary.get("controller_slot_summary", {})
                 rejected_mask = np.asarray(rejected_metadata.get("rejected_mask", []), dtype=bool)
+                rejected_slot_passed = bool(
+                    same_branch
+                    and rejected_summary["replay_option_flags"].get("use_stacked_step_controls", False)
+                    and not rejected_summary["replay_option_flags"].get("use_accepted_only_fast_path", True)
+                    and np.any(rejected_mask)
+                    and np.isfinite(float(rejected_summary["max_base_abs_delta"]))
+                    and float(rejected_summary["max_base_abs_delta"]) <= 2.0e-3
+                    and not bool(rejected_summary.get("differentiates_adaptive_controller", True))
+                    and not bool(rejected_summary.get("differentiates_run_free_boundary", True))
+                    and bool(rejected_summary.get("differentiates_fixed_accepted_branch", False))
+                )
                 rejected_slot_gate = {
                     "available": True,
                     "requested": True,
+                    "passed": rejected_slot_passed,
                     "scope": (
                         "fixed accepted/rejected controller-slot replay; "
                         "does not differentiate adaptive host branch selection"
