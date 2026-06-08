@@ -1312,6 +1312,84 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 99.5%.
 
+### 2026-06-08 Seed-3127 Augmented-Lagrangian Mirror Cleanup
+
+Steps taken:
+
+1. Added ``qi_engineering_constraint_tuples`` in ``vmec_jax.qi_optimization``
+   so QI example scripts can assemble regular mirror/elongation penalties or
+   augmented-Lagrangian mirror/elongation constraints through the same
+   SIMSOPT-style objective tuple workflow.
+2. Exported the helper through ``vmec_jax`` and ``vmec_jax.api``.
+3. Refactored ``examples/optimization/QI_optimization.py`` to use the helper
+   while keeping the script under the 500-line readability guard.
+4. Added a guarded seed-3127 augmented-Lagrangian mirror cleanup stage after
+   the nonsmoothed mirror cleanup stage.
+5. Added unit coverage for regular and augmented-Lagrangian engineering tuple
+   assembly.
+6. Ran focused tests and lint:
+   ``tests/test_qi_optimization_public_helpers.py::test_qi_engineering_constraint_tuples_support_augmented_lagrangian``,
+   ``tests/test_qi_optimization_public_helpers.py::test_boundary_reference_preconditioner_can_prefer_lowest_qi_candidate``,
+   ``tests/test_optimization_examples.py::test_qi_seed3127_example_exposes_reviewed_readme_preset``,
+   ``tests/test_qi_case_resolution.py::test_resolve_qi_case_external_reference_overrides_policy_controls``,
+   ``tests/test_optimization_examples.py::test_qi_example_uses_qi_problem_api``,
+   ``tests/test_optimization_examples.py::test_qi_example_keeps_mirror_cleanup_guarded_by_qi_ceiling``,
+   and ruff on the touched files.
+7. Ran the exact public ``QI_optimization_seed.py`` path in
+   ``/tmp/vmec_jax_qi_seed3127_al_catalog_check`` with plots disabled.
+
+Results obtained:
+
+1. GitHub Actions for commit ``65577e0`` completed successfully.
+2. The public seed-3127 AL-enabled catalog reproduced the validated QI branch:
+   stage 2 reached smooth QI ``1.954402e-03`` and legacy QI
+   ``2.608790e-04`` with mirror ``0.370787``.
+3. The nonsmoothed mirror stage recovered mirror to ``0.357733`` while keeping
+   smooth QI ``1.911372e-03``.
+4. The regular final mirror cleanup reached smooth QI ``1.870791e-03``,
+   legacy QI ``2.987812e-04``, and mirror ``0.356315``.
+5. The new augmented-Lagrangian mirror cleanup improved the final independent
+   diagnostics to smooth QI ``1.862178e-03``, legacy QI ``3.095830e-04``,
+   mirror ratio ``0.354323``, max elongation ``3.83171``, mean iota
+   ``-1.05908``, and aspect ``3.53445``.
+6. A stronger one-off AL repeat from that point
+   (``al_mirror_multiplier=180``, ``al_mirror_penalty=40000``) did not help:
+   mirror was ``0.354482`` and smooth QI ``1.858955e-03``.  It should not be
+   added to the default schedule.
+
+Best next steps:
+
+1. Keep the committed single AL cleanup stage: it improves mirror without
+   sacrificing strict QI, but still misses the ``0.35`` mirror target by about
+   ``0.0043``.
+2. The next mirror target push should vary the design space or constraint
+   formulation, not simply increase AL penalty.  Useful candidates are a
+   surface-weighted edge mirror term, a softer aspect target to free the edge
+   geometry, or a Boozer-contour/piecewise-omnigenous cleanup stage.
+3. Only regenerate README/docs QI plots after mirror reaches ``<=0.35`` or
+   after deciding that ``0.354`` is the best acceptable seed-3127 branch for
+   this release.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99995% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 97.4%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- Seed-robust QI: 96.0%; seed-3127 now has strict QI below ``2e-3`` and
+  mirror reduced to ``0.354323`` through a validated AL cleanup, with the
+  final ``<=0.35`` mirror gate still open.
+- CPU/GPU performance: 99.1%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.5%.
+
 ### 2026-06-07 QI-First Boundary-Reference Selection
 
 Steps taken:
