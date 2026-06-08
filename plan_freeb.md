@@ -1284,6 +1284,22 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 99.6%.
 
+Follow-up validation:
+
+1. Ran the full public ``QI_optimization_seed.py`` preset in a temporary output
+   directory with plots disabled.  The workflow selected the same
+   reference-family ``lambda=1.008`` branch and promoted all six stages.
+2. The final full-preset independent diagnostics were stronger than the
+   one-stage probe: smooth QI ``1.947546e-03``, legacy QI
+   ``3.608425e-04``, mirror ratio ``0.340176``, max elongation ``3.86166``,
+   and mean iota ``-1.06065``.
+3. GitHub Actions for the pushed policy commit completed successfully.
+
+Updated next step:
+
+Regenerate the seed-3127 README/docs figure from the public preset output when
+the figure lane is active; the numerical policy itself is now validated.
+
 ### 2026-06-08 Seed-3127 QI-First Constrained Cleanup Probe
 
 Steps taken:
