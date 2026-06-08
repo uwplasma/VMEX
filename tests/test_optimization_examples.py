@@ -348,6 +348,7 @@ def test_qi_seed3127_example_exposes_reviewed_readme_preset(tmp_path: Path) -> N
     assert config["smooth_qi_max"] == pytest.approx(5.0e-3)
     assert config["legacy_qi_max"] == pytest.approx(2.0e-3)
     assert config["prefer_non_endpoint"] is True
+    assert config["prefer_lowest_qi_candidate"] is True
     assert config["accept_as_baseline"] is True
 
     assert "examples/optimization/QI_optimization.py" in command_text

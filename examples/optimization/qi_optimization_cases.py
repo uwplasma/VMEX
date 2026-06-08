@@ -180,6 +180,7 @@ QI_CASES = {
             # elongation margin of this seed without promoting non-QI states.
             "mirror_selection_weight": 10.0,
             "prefer_non_endpoint": True,
+            "prefer_lowest_qi_candidate": True,
             "accept_as_baseline": True,
         },
         "basin_prefilter": {

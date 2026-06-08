@@ -1223,6 +1223,50 @@ Completion:
   matrix-free coverage run ``27079913312`` is green.
 - Docs/release hygiene: 99.5%.
 
+### 2026-06-07 QI-First Boundary-Reference Selection
+
+Steps taken:
+
+1. Added ``prefer_lowest_qi_candidate`` to the boundary-reference
+   preconditioner.  It applies after existing engineering/aspect/safety filters
+   and selects by smooth QI, then legacy QI, then the existing scalar score.
+2. Enabled this selector for the reviewed seed-3127 policy and the compact
+   ``QI_optimization_seed.py`` reproduction script.
+3. Added a deterministic unit test showing that the preconditioner can choose
+   a lower-QI safe candidate even when the default score would prefer another
+   branch.
+4. Ran a short seed-3127 selector probe with no mirror cleanup stages.
+
+Results obtained:
+
+1. Focused helper/example tests and ``ruff`` passed.
+2. The seed-3127 selector now chooses ``lambda=1.008`` instead of the previous
+   lower-mirror ``lambda=0.990`` branch.  The scan metrics were legacy QI
+   ``7.727009e-04``, mirror ``0.313542``, mean iota ``-1.04331``, and aspect
+   ``3.47761``.
+3. The replay diagnostics for the selected branch were smooth QI
+   ``2.991207e-03``, legacy QI ``3.853817e-04``, mirror ratio ``0.312747``,
+   max elongation ``3.92404``, mean iota ``-1.05784``, and aspect ``3.47761``.
+   This improves the seed-3127 smooth-QI metric relative to the previous
+   branch but still does not reach the strict ``2e-3`` smooth-QI target.
+
+Best next steps:
+
+1. Add a smoother constrained cleanup schedule around the QI-first branch:
+   likely scalar-trust or augmented-Lagrangian steps with a reference-relative
+   smooth-QI guard rather than a single very hard ceiling.
+2. Keep the unrelated QH-warm far seed classified as a stress fixture until it
+   is paired with a same-NFP QI reference/global proposal.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Seed-robust QI: 94.5%; QI-first reference selection improved seed-3127, but
+  strict smooth-QI below ``2e-3`` from far seeds remains open.
+
 ### 2026-06-07 QI Guarded Cleanup and Far-Seed Rechecks
 
 Steps taken:

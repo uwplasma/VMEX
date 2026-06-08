@@ -112,6 +112,7 @@ def boundary_reference_config() -> dict:
         "diagnostic_qi_resolution": QI_RESOLUTION,
         "mirror_selection_weight": MIRROR_SELECTION_WEIGHT,
         "prefer_non_endpoint": True,
+        "prefer_lowest_qi_candidate": True,
         "accept_as_baseline": True,
     }
 
