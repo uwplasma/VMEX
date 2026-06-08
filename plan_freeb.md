@@ -1223,6 +1223,86 @@ Completion:
   matrix-free coverage run ``27079913312`` is green.
 - Docs/release hygiene: 99.5%.
 
+### 2026-06-07 QI Guarded Cleanup and Far-Seed Rechecks
+
+Steps taken:
+
+1. Strengthened the editable ``QI_optimization.py`` cleanup stage so mirror
+   cleanup now carries a high QI residual weight plus an explicit hard QI
+   ceiling.  The base solve remains QI-first and does not add the hard ceiling
+   unless the user requests it.
+2. Updated ``QI_optimization_seed.py`` to use the reviewed
+   ``qi_stel_seed_3127`` policy catalog directly and pass the guarded
+   mirror-ramp stages through ``--mirror-ramp-stages-json`` instead of falling
+   back to the generic one-stage cleanup.
+3. Re-ran the seed-3127 preset from ``input.QI_stel_seed_3127`` with the
+   same-NFP reference-family preconditioner and guarded cleanup stages.
+4. Probed the alternate seed-3127 reference branch at ``lambda=1.008`` because
+   the scan showed lower QI than the lower-mirror selected branch.
+5. Re-ran an unrelated far-seed stress test from
+   ``input.nfp4_QH_warm_start`` with the stronger default cleanup, no
+   reference-family basin step, and a bounded local budget.
+6. Re-checked the adaptive free-boundary VJP scope: the JAX-visible fixed-slot
+   controller helpers exist and are validated for branch-local gates, but the
+   production host adaptive branch-selection loop is still not claimed as a
+   full adaptive VJP.
+
+Results obtained:
+
+1. Focused checks passed:
+   ``ruff`` on the edited QI files and focused QI example tests, plus the
+   QI case-resolution and CLI override shards.
+2. The seed-3127 run completed in ``112.66 s``.  The accepted result had
+   smooth QI ``3.458408e-03``, legacy QI ``6.297831e-04``, mirror ratio
+   ``0.291659``, max elongation ``4.06693``, mean iota ``-1.06316``, and
+   aspect ``3.59395``.  The second hard-ceiling mirror cleanup was correctly
+   rejected after exact diagnostics showed smooth QI ``0.1627``, legacy QI
+   ``0.7718``, and mirror ratio ``1.0``.
+3. The ``lambda=1.008`` reference branch replay had lower smooth QI
+   ``2.991207e-03`` and legacy QI ``3.853817e-04`` with mirror ratio
+   ``0.312747``.  It still misses the strict ``2e-3`` smooth-QI gate, but it
+   is useful evidence that reference-family selection should prioritize QI
+   before mirror cleanup for stricter publications.
+4. The unrelated QH-warm far seed reduced the local objective by ``91.9%`` but
+   did not reach the QI basin: independent smooth QI ``6.561403e-02``, legacy
+   QI ``7.875787e-02``, mirror ratio ``0.60455``, aspect ``7.27177``.  The
+   promotion gate correctly rejected it.
+5. Latest pushed CI before these edits, run ``27110660158`` for ``e9cb736``,
+   is green.
+
+Best next steps:
+
+1. For seed-3127, add a QI-first reference-selection policy or a smoother
+   augmented-Lagrangian cleanup schedule so the final accepted smooth-QI metric
+   falls below ``2e-3`` while keeping mirror below ``0.35``.
+2. For unrelated far seeds, do not rely on local cleanup alone; route them
+   through a reference/global basin proposal layer first, then run hard
+   QI-preserving cleanup.
+3. For the free-boundary full-loop adjoint, only continue production VJP work
+   after branch selection is represented by a JAX-visible controller and
+   guarded by an explicit branch fingerprint.  Until then, keep claims limited
+   to same-branch/fixed-slot validation.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99995% for fixed
+  same-branch scalar/vector gates; adaptive branch differentiation remains
+  explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 97.4%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- Seed-robust QI: 94.0%; seed-3127 is guarded and low-legacy-QI, but strict
+  smooth-QI below ``2e-3`` from unrelated seeds still needs a QI-first
+  reference/global basin policy.
+- CPU/GPU performance: 99.1%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.5%.
+
 ### 2026-06-07 QI Basin-First Probe and Adaptive Free-Boundary Gate Scope
 
 Steps taken:

@@ -320,7 +320,8 @@ def test_qi_seed3127_example_exposes_reviewed_readme_preset(tmp_path: Path) -> N
 
     config = module.boundary_reference_config()
     json_path = tmp_path / "boundary_reference.json"
-    command = module.build_qi_optimization_command(json_path)
+    stages_path = tmp_path / "mirror_ramp_stages.json"
+    command = module.build_qi_optimization_command(json_path, stages_path)
     command_text = " ".join(command)
 
     assert "os.environ" not in text
@@ -328,8 +329,8 @@ def test_qi_seed3127_example_exposes_reviewed_readme_preset(tmp_path: Path) -> N
     assert 'REFERENCE_INPUT_FILE = DATA_DIR / "input.nfp3_QI_fixed_resolution_final"' in text
     assert module.MAX_MODE == 4
     assert module.MIN_VMEC_MODE == 6
-    assert module.TARGET_ASPECT == pytest.approx(4.0)
-    assert module.MAX_NFEV == 1
+    assert module.TARGET_ASPECT == pytest.approx(5.0)
+    assert module.MAX_NFEV == 18
     assert module.SCIPY_LSMR_MAXITER == 4
     assert module.BOUNDARY_REFERENCE_MAX_ITER == 80
     assert module.INNER_MAX_ITER == 450
@@ -337,11 +338,13 @@ def test_qi_seed3127_example_exposes_reviewed_readme_preset(tmp_path: Path) -> N
     assert module.USE_MODE_CONTINUATION is False
     assert module.USE_ESS is True
     assert module.MAKE_PLOTS is True
+    assert module.mirror_ramp_stages_config()[0]["qi_weight"] >= 250.0
+    assert module.mirror_ramp_stages_config()[0]["qi_ceiling_weight"] >= 2500.0
 
     assert config["reference_input"] == "examples/data/input.nfp3_QI_fixed_resolution_final"
-    assert config["lambdas"] == [0.998, 1.0, 1.002, 1.004, 1.006, 1.008, 1.01]
+    assert config["lambdas"] == [0.99, 0.995, 1.0, 1.005, 1.008, 1.01, 1.012]
     assert config["max_iter"] == 80
-    assert config["target_aspect"] == pytest.approx(4.0)
+    assert config["target_aspect"] == pytest.approx(5.0)
     assert config["smooth_qi_max"] == pytest.approx(5.0e-3)
     assert config["legacy_qi_max"] == pytest.approx(2.0e-3)
     assert config["prefer_non_endpoint"] is True
@@ -351,6 +354,7 @@ def test_qi_seed3127_example_exposes_reviewed_readme_preset(tmp_path: Path) -> N
     assert "--input-file examples/data/input.QI_stel_seed_3127" in command_text
     assert "--reference-input examples/data/input.nfp3_QI_fixed_resolution_final" in command_text
     assert f"--boundary-reference-json {json_path}" in command_text
+    assert f"--mirror-ramp-stages-json {stages_path}" in command_text
     assert "--no-use-simple-seed" in command
     assert "--no-use-target-helicity-seed" in command
     assert "--use-reference-family-seed" in command

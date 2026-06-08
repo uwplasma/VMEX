@@ -21,17 +21,24 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = REPO_ROOT / "examples" / "data"
 QI_DRIVER = REPO_ROOT / "examples" / "optimization" / "QI_optimization.py"
 
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from examples.optimization.qi_optimization_cases import QI_CASES
+
 # Edit these ordinary variables for related same-NFP seed/reference experiments.
 INPUT_FILE = DATA_DIR / "input.QI_stel_seed_3127"
 REFERENCE_INPUT_FILE = DATA_DIR / "input.nfp3_QI_fixed_resolution_final"
 OUTPUT_DIR = Path("results/qi_opt/ess/nfp3_seed3127")
+POLICY_CASE = QI_CASES["qi_stel_seed_3127"]
 
-MAX_MODE = 4
-MIN_VMEC_MODE = 6
-TARGET_ASPECT = 4.0
-TARGET_ABS_IOTA_MIN = 0.41
-MAX_MIRROR_RATIO = 0.35
-MAX_ELONGATION = 8.0
+MAX_MODE = int(POLICY_CASE["max_mode"])
+MIN_VMEC_MODE = int(POLICY_CASE["min_vmec_mode"])
+BOUNDARY_REFERENCE_POLICY = POLICY_CASE["boundary_reference_preconditioner"]
+TARGET_ASPECT = float(POLICY_CASE["target_aspect"])
+TARGET_ABS_IOTA_MIN = float(POLICY_CASE["target_abs_iota_min"])
+MAX_MIRROR_RATIO = float(POLICY_CASE["mirror_threshold"])
+MAX_ELONGATION = float(BOUNDARY_REFERENCE_POLICY["max_elongation"])
 
 METHOD = "scipy_matrix_free"  # Also try "auto_scalar" or "scalar_trust" for performance studies.
 SCIPY_LSMR_MAXITER = 4  # Cap matrix-free Jv/J.Tv products per trust-region subproblem.
@@ -42,7 +49,7 @@ USE_ESS = True
 ALPHA = 1.2
 USE_MODE_CONTINUATION = False
 CONTINUATION_NFEV = 0
-MAX_NFEV = 1
+MAX_NFEV = int(POLICY_CASE["max_nfev"])
 STAGE_MODE_POLICY = "repeat"
 STAGE_REPEATS = 1
 
@@ -56,10 +63,10 @@ TRIAL_MAX_ITER = 450
 TRIAL_FTOL = 1.0e-9
 SOLVER_DEVICE = None  # Set "cpu" or "gpu" to force a backend; None inherits JAX.
 
-REFERENCE_LAMBDAS = (0.998, 1.0, 1.002, 1.004, 1.006, 1.008, 1.01)
-QI_GATE_SMOOTH_MAX = 5.0e-3
-QI_GATE_LEGACY_MAX = 2.0e-3
-QI_RESOLUTION = {"mboz": 18, "nboz": 18, "nphi": 151, "nalpha": 31, "n_bounce": 51}
+REFERENCE_LAMBDAS = tuple(BOUNDARY_REFERENCE_POLICY["lambdas"])
+QI_GATE_SMOOTH_MAX = float(POLICY_CASE["qi_gate_smooth_max"])
+QI_GATE_LEGACY_MAX = float(POLICY_CASE["qi_gate_legacy_max"])
+QI_RESOLUTION = dict(POLICY_CASE["audit_qi_resolution"])
 MIRROR_SELECTION_WEIGHT = 10.0
 
 MAKE_PLOTS = True  # Set False for a faster diagnostics-only reproduction.
@@ -114,7 +121,18 @@ def write_boundary_reference_config(path: Path) -> Path:
     return path
 
 
-def build_qi_optimization_command(boundary_reference_json: Path) -> list[str]:
+def mirror_ramp_stages_config() -> list[dict]:
+    """Return the reviewed guarded cleanup stages for the seed-3127 lane."""
+
+    return [dict(stage) for stage in POLICY_CASE["mirror_ramp_stages"]]
+
+
+def write_mirror_ramp_stages_config(path: Path) -> Path:
+    path.write_text(json.dumps(mirror_ramp_stages_config(), indent=2, sort_keys=True) + "\n")
+    return path
+
+
+def build_qi_optimization_command(boundary_reference_json: Path, mirror_ramp_stages_json: Path) -> list[str]:
     """Build the delegated ``QI_optimization.py`` command."""
 
     command = [
@@ -155,6 +173,8 @@ def build_qi_optimization_command(boundary_reference_json: Path) -> list[str]:
         _csv(REFERENCE_LAMBDAS),
         "--boundary-reference-json",
         str(boundary_reference_json),
+        "--mirror-ramp-stages-json",
+        str(mirror_ramp_stages_json),
         "--accept-boundary-reference-baseline",
         _bool_flag("use-mode-continuation", USE_MODE_CONTINUATION),
         "--max-nfev",
@@ -201,7 +221,8 @@ def build_qi_optimization_command(boundary_reference_json: Path) -> list[str]:
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="vmec_jax_qi3127_") as tmpdir:
         boundary_reference_json = write_boundary_reference_config(Path(tmpdir) / "boundary_reference.json")
-        command = build_qi_optimization_command(boundary_reference_json)
+        mirror_ramp_stages_json = write_mirror_ramp_stages_config(Path(tmpdir) / "mirror_ramp_stages.json")
+        command = build_qi_optimization_command(boundary_reference_json, mirror_ramp_stages_json)
         print("Reproducing the README NFP=3 seed-3127 QI row.")
         print(f"  raw seed:        {_path_arg(INPUT_FILE)}")
         print(f"  QI reference:    {_path_arg(REFERENCE_INPUT_FILE)}")

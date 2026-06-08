@@ -101,13 +101,17 @@ SURFACES = np.linspace(0.1, 1.0, 6)
 ASPECT_WEIGHT = 0.25
 IOTA_FLOOR_WEIGHT = 200.0**2
 QI_WEIGHT = 10.0
-QI_CEILING_MAX = 2.0e-2
-QI_CEILING_WEIGHT = 0.0
-QI_CEILING_SMOOTH_PENALTY = 2.0e-3
 MIRROR_WEIGHT = 20.0
 ELONGATION_WEIGHT = 10.0
 QI_GATE_SMOOTH_MAX = 2.0e-3
 QI_GATE_LEGACY_MAX = 2.0e-3
+QI_CEILING_MAX = QI_GATE_SMOOTH_MAX
+QI_CEILING_WEIGHT = 0.0  # Base solve stays QI-first; cleanup stages add the hard guard.
+QI_CEILING_SMOOTH_PENALTY = 5.0e-4
+QI_CLEANUP_QI_WEIGHT = 250.0
+QI_CLEANUP_CEILING_WEIGHT = 7500.0
+QI_CLEANUP_CEILING_MAX = QI_GATE_SMOOTH_MAX
+QI_CLEANUP_CEILING_SMOOTH_PENALTY = QI_CEILING_SMOOTH_PENALTY
 JIT_BOOZ = True
 OPT_QI_RESOLUTION = {"mboz": 18, "nboz": 18, "nphi": 151, "nalpha": 31, "n_bounce": 51}
 AUDIT_QI_RESOLUTION = dict(OPT_QI_RESOLUTION)
@@ -125,9 +129,14 @@ if "MIRROR_RAMP_STAGES" not in globals():
             "use_mode_continuation": USE_MODE_CONTINUATION,
             "mirror_threshold": MAX_MIRROR_RATIO,
             "promotion_mirror_threshold": MAX_MIRROR_RATIO,
+            "smooth_qi_max": QI_GATE_SMOOTH_MAX,
+            "legacy_qi_max": QI_GATE_LEGACY_MAX,
+            "qi_weight": QI_CLEANUP_QI_WEIGHT,
             "mirror_weight": MIRROR_WEIGHT,
             "elongation_weight": ELONGATION_WEIGHT,
-            "qi_ceiling_weight": QI_CEILING_WEIGHT,
+            "qi_ceiling_max": QI_CLEANUP_CEILING_MAX,
+            "qi_ceiling_smooth_penalty": QI_CLEANUP_CEILING_SMOOTH_PENALTY,
+            "qi_ceiling_weight": QI_CLEANUP_CEILING_WEIGHT,
             "require_mirror_improvement": False,
             "require_engineering_gate": True,
         },
