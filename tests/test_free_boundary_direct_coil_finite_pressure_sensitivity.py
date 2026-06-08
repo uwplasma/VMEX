@@ -175,6 +175,7 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_accepted_trace_array_controls_jax,
         direct_coil_accepted_trace_branch_metadata,
+        direct_coil_accepted_trace_controller_slot_summary,
         direct_coil_accepted_trace_controller_controls_jax,
         direct_coil_accepted_trace_fingerprint_delta_summary,
         direct_coil_accepted_trace_preconditioner_controls_jax,
@@ -385,8 +386,19 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
         direct_coil_accepted_trace_replay_graph_metadata([])
 
     branch_metadata = direct_coil_accepted_trace_branch_metadata([trace0, trace1])
+    branch_slot_summary = direct_coil_accepted_trace_controller_slot_summary(branch_metadata)
     assert branch_metadata["n_steps"] == 2
     assert branch_metadata["n_free_boundary_replay_steps"] == 2
+    assert branch_slot_summary == {
+        "n_steps": 2,
+        "active_slots": 2,
+        "accepted_slots": 2,
+        "rejected_slots": 0,
+        "done_markers": 1,
+        "active_free_boundary_slots": 2,
+        "accepted_free_boundary_slots": 2,
+        "fixed_rejected_controller_slot_present": False,
+    }
     assert branch_metadata["fingerprint"]["n_freeb_steps"] == 2
     assert np.array_equal(np.asarray(branch_metadata["accepted_mask"]), np.asarray([True, True]))
     assert np.array_equal(np.asarray(branch_metadata["done_mask"]), np.asarray([False, True]))
@@ -400,10 +412,14 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
         done_mask=np.asarray([False, False]),
         json_safe=True,
     )
+    rejected_slot_summary = direct_coil_accepted_trace_controller_slot_summary(branch_metadata_json)
     json.dumps(branch_metadata_json, allow_nan=False)
     assert branch_metadata_json["accepted_mask"] == [True, False]
     assert branch_metadata_json["active_free_boundary_mask"] == [True, False]
     assert branch_metadata_json["preconditioner_policy_segment_summary"][0]["rejected_steps"] == 1
+    assert rejected_slot_summary["accepted_slots"] == 1
+    assert rejected_slot_summary["rejected_slots"] == 1
+    assert rejected_slot_summary["fixed_rejected_controller_slot_present"] is True
     padded_diagnostics = free_boundary_adjoint_trace_replay_diagnostics(
         {"adjoint_step_trace": [trace0, trace1, trace2]},
         accept_mask=np.asarray([True, True, False]),
@@ -520,6 +536,7 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     physical_scalars_report = {
         "same_branch": True,
         "replay_option_flags": {"use_stacked_step_controls": True},
+        "replay_branch_metadata": branch_metadata,
         "scalar_keys": ("aspect", "accepted_bnormal_rms"),
         "scalar_reports": {
             "aspect": {
@@ -546,6 +563,8 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     )
     assert physical_gate["passed"], physical_gate
     assert physical_gate["scalar_keys"] == ("aspect", "accepted_bnormal_rms")
+    assert physical_gate["controller_slot_summary"]["accepted_slots"] == 2
+    assert physical_gate["controller_slot_summary"]["rejected_slots"] == 0
     assert physical_gate["differentiates_adaptive_controller"] is False
     assert physical_gate["same_accepted_trace_branch"] is True
     assert physical_gate["same_residual_branch"] is True
@@ -561,6 +580,9 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     assert adaptive_gate["differentiates_run_free_boundary"] is False
     assert adaptive_gate["same_stacked_step_policy_branch"] is True
     assert adaptive_gate["used_stacked_step_controls"] is True
+    assert adaptive_gate["controller_slot_summary"]["accepted_slots"] == 2
+    assert adaptive_gate["controller_slot_summary"]["rejected_slots"] == 0
+    assert adaptive_gate["controller_slot_summary"]["fixed_rejected_controller_slot_present"] is False
     missing_rejected_slot_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
         physical_synthetic_report,
         physical_scalars_report,
@@ -2184,6 +2206,8 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         assert physical_scalar_gate["same_branch"] is True
         assert physical_scalar_gate["differentiates_adaptive_controller"] is False
         assert physical_scalar_gate["scalar_keys"] == tuple(replay_scalar_fns)
+        assert physical_scalar_gate["controller_slot_summary"]["accepted_slots"] >= 1
+        assert physical_scalar_gate["controller_slot_summary"]["rejected_slots"] == 0
         assert physical_scalar_gate["replay_gate"]["passed"] is True
         adaptive_full_loop_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
             complete_report,
@@ -2219,6 +2243,8 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         assert adaptive_full_loop_gate["used_stacked_step_controls"] is True
         assert adaptive_full_loop_gate["requires_fixed_rejected_controller_slot"] is False
         assert adaptive_full_loop_gate["fixed_rejected_controller_slot_present"] is False
+        assert adaptive_full_loop_gate["controller_slot_summary"]["accepted_slots"] >= 1
+        assert adaptive_full_loop_gate["controller_slot_summary"]["rejected_slots"] == 0
         json.dumps(
             direct_coil_adaptive_full_loop_same_branch_gate_report(
                 complete_report,
@@ -2286,6 +2312,9 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert rejected_slot_gate["requires_fixed_rejected_controller_slot"] is True
             assert rejected_slot_gate["fixed_rejected_controller_slot_present"] is True
             assert rejected_slot_gate["fixed_rejected_controller_slots"] == 1
+            assert rejected_slot_gate["controller_slot_summary"]["accepted_slots"] == len(base_traces)
+            assert rejected_slot_gate["controller_slot_summary"]["rejected_slots"] == 1
+            assert rejected_slot_gate["controller_slot_summary"]["fixed_rejected_controller_slot_present"] is True
             assert rejected_slot_gate["used_stacked_step_controls"] is True
             assert rejected_slot_gate["replay_option_flags"]["use_accepted_only_fast_path"] is False
             json.dumps(
@@ -2349,6 +2378,8 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert production_branch_local["trace_replay_diagnostics"]["differentiates_adaptive_controller"] is False
             assert production_branch_local["replay_option_flags"]["use_stacked_step_controls"] is True
             assert production_branch_local["replay_option_flags"]["use_accepted_only_fast_path"] is True
+            assert production_branch_local["controller_slot_summary"]["accepted_slots"] >= 1
+            assert production_branch_local["controller_slot_summary"]["rejected_slots"] == 0
             assert production_branch_local["replay_graph_metadata"]["differentiates_adaptive_controller"] is False
             assert production_branch_local["replay_graph_metadata"]["n_steps"] >= 1
             assert production_branch_local["replay_graph_metadata"]["active_free_boundary_replay_steps"] >= 1
@@ -2447,6 +2478,8 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert production_branch_local_scalars["trace_replay_diagnostics"]["differentiates_adaptive_controller"] is False
             assert production_branch_local_scalars["replay_option_flags"]["use_stacked_step_controls"] is True
             assert production_branch_local_scalars["replay_option_flags"]["use_accepted_only_fast_path"] is True
+            assert production_branch_local_scalars["controller_slot_summary"]["accepted_slots"] >= 1
+            assert production_branch_local_scalars["controller_slot_summary"]["rejected_slots"] == 0
             assert production_branch_local_scalars["replay_graph_metadata"]["differentiates_adaptive_controller"] is False
             assert production_branch_local_scalars["replay_graph_metadata"]["n_steps"] >= 1
             assert production_branch_local_scalars["replay_graph_metadata"]["active_free_boundary_replay_steps"] >= 1

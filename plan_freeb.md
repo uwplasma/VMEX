@@ -1223,6 +1223,62 @@ Completion:
   matrix-free coverage run ``27079913312`` is green.
 - Docs/release hygiene: 99.5%.
 
+### 2026-06-08 Accepted/Rejection Controller Slot Report Contract
+
+Steps taken:
+
+1. Verified the latest pushed main CI run for commit ``49343fd`` completed
+   successfully before starting another push.
+2. Added ``direct_coil_accepted_trace_controller_slot_summary`` to turn raw or
+   JSON-safe accepted-branch metadata into plain accepted/rejected/done slot
+   counts for reports and CI artifacts.
+3. Wired that summary into branch-local scalar, branch-local vector/JVP,
+   same-branch physical-scalar, and adaptive full-loop seam reports.
+4. Strengthened tests so synthetic gates, production-forward branch-local
+   reports, and the complete-solve same-branch fixed rejected-slot gate all
+   assert the explicit controller-slot summary.
+
+Results obtained:
+
+1. ``python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`` passed.
+2. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes
+   -q`` passed.
+3. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd
+   -q`` passed.  This is the promoted current-only complete-solve branch gate
+   with physical scalars, production branch-local vector/JVP, and one fixed
+   rejected controller slot.
+
+Best next steps:
+
+1. Keep adaptive full-loop differentiation claims conservative: the report now
+   cleanly exposes fixed accepted/rejected slots, but arbitrary host branch
+   differentiation remains unclaimed.
+2. Wire the coil-only QS optimization example to surface this new compact
+   controller-slot summary directly in its JSON report.
+3. Continue the production seam by adding the next complete-loop scalar gate
+   only if it adds a new physical output or a new branch pattern, not another
+   duplicate accepted-only solve.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99996% for fixed
+  same-branch scalar/vector gates with explicit accepted/rejected slot
+  summaries; adaptive branch differentiation remains explicitly unclaimed.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 97.5%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.1%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.6%.
+
 ### 2026-06-08 Seed-3127 Audit-Resolution Boozer Mirror Cleanup
 
 Steps taken:
