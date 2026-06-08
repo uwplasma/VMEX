@@ -1300,6 +1300,19 @@ Updated next step:
 Regenerate the seed-3127 README/docs figure from the public preset output when
 the figure lane is active; the numerical policy itself is now validated.
 
+Figure/docs refresh:
+
+1. Copied the validated public seed-3127 JSON histories/diagnostics into the
+   tracked lightweight docs artifact tree while keeping WOUT files ignored.
+2. Rerendered ``readme_qi_optimization_cases.png`` and CSV.  The NFP=3
+   seed-3127 row now reports smooth QI ``1.947546e-03``, legacy QI
+   ``3.608425e-04``, mirror ``0.340176``, elongation ``3.86166``, and mean
+   iota ``-1.06065``.
+3. Updated docs text and renderer labels to describe the current aspect-5
+   reference-family plus audit-resolution scalar Boozer-mirror cleanup policy.
+4. ``tests/test_qi_readme_cases.py``, the relevant renderer smoke test, docs
+   hygiene test, and ruff checks passed locally.
+
 ### 2026-06-08 Seed-3127 QI-First Constrained Cleanup Probe
 
 Steps taken:
