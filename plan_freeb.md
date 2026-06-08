@@ -1268,6 +1268,14 @@ Results obtained:
    ``3.138201e-04``, mirror ratio ``0.358332``, max elongation ``3.81366``,
    mean iota ``-1.06144``, and aspect ``3.56780``.  This satisfies the strict
    QI target but still misses the ``0.35`` mirror target by about ``0.008``.
+6. The exact committed catalog was then rerun end-to-end from the public
+   ``QI_optimization_seed.py`` path in
+   ``/tmp/vmec_jax_qi_seed3127_committed_catalog_check``.  It selected the
+   QI-first ``lambda=1.008`` branch and promoted all four guarded stages.  The
+   final independent diagnostics were smooth QI ``1.870791e-03``, legacy QI
+   ``2.987812e-04``, mirror ratio ``0.356315``, max elongation ``3.81654``,
+   mean iota ``-1.05607``, and aspect ``3.51584``.  This validates the
+   committed strict-QI schedule, but mirror remains slightly above ``0.35``.
 
 Best next steps:
 

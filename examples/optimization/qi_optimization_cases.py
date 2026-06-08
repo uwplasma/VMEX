@@ -289,7 +289,7 @@ QI_CASES = {
                 "mirror_improvement_min": 1.0e-3,
             },
             {
-                "name": "matrix_free_final_mirror_under035",
+                "name": "matrix_free_final_mirror_cleanup",
                 "max_nfev": 10,
                 "stage_repeats": 1,
                 "stage_modes": (4,),
