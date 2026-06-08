@@ -1158,6 +1158,55 @@ Completion:
   pushed CI is green.
 - Docs/release hygiene: 99.6%.
 
+### 2026-06-08 Coil-Only QS Example Controller-Slot Report Surfacing
+
+Steps taken:
+
+1. Updated ``examples/optimization/free_boundary_QS_coil_optimization.py`` so
+   the optional same-branch report exposes ``controller_slot_summary`` directly
+   for branch-local scalar, branch-local vector/JVP, and accepted/rejected
+   controller-slot sections.
+2. Added a fallback that computes the summary from returned branch metadata,
+   so older mocked reports and existing JSON-compatible metadata remain
+   consumable.
+3. Strengthened the smoke tests to assert the compact accepted/rejected slot
+   counts in the vector report and rejected-slot gate.
+
+Results obtained:
+
+1. ``python -m ruff check
+   examples/optimization/free_boundary_QS_coil_optimization.py
+   tests/test_free_boundary_qs_coil_optimization_smoke.py`` passed.
+2. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_writer_records_branch_local_vector_jacobian
+   tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_profiles_nestor_and_rejected_slot
+   -q`` passed.
+
+Best next steps:
+
+1. Let CI for the previous pushed commit finish, then push this example-report
+   surfacing patch.
+2. Continue free-boundary phase 3 by using the compact same-branch report in
+   the coil-only optimization documentation and examples, without claiming
+   arbitrary adaptive branch differentiation.
+3. Start the next physics validation increment only if it adds a genuinely new
+   scalar or branch pattern.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99996%.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 97.6%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.1%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.6%.
+
 ### 2026-06-06 Matrix-Free Replay Controls for Branch-Local Reports
 
 Steps taken:

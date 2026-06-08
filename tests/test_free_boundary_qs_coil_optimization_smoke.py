@@ -760,6 +760,14 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
                 "omitted": True,
                 "differentiates_adaptive_controller": False,
             },
+            "replay_branch_metadata": {
+                "n_steps": 1,
+                "n_free_boundary_replay_steps": 1,
+                "accepted_mask": [True],
+                "rejected_mask": [False],
+                "done_mask": [True],
+                "has_active_freeb_replay": [True],
+            },
             "max_base_abs_delta": 0.0,
             "values": {
                 "aspect": 6.0,
@@ -833,6 +841,8 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
     assert vector["includes_payload"] is False
     assert vector["includes_replay_graph_metadata"] is False
     assert vector["replay_graph_metadata"]["omitted"] is True
+    assert vector["controller_slot_summary"]["accepted_slots"] == 1
+    assert vector["controller_slot_summary"]["rejected_slots"] == 0
     assert vector["max_base_abs_delta"] == pytest.approx(0.0)
     expected_directionals = {
         "aspect": 0.1,
@@ -1028,6 +1038,8 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
     assert rejected_gate["same_stacked_step_policy_branch"] is True
     assert rejected_gate["fixed_rejected_controller_slot_present"] is True
     assert rejected_gate["fixed_rejected_controller_slots"] == 1
+    assert rejected_gate["controller_slot_summary"]["accepted_slots"] == 1
+    assert rejected_gate["controller_slot_summary"]["rejected_slots"] == 1
     assert rejected_gate["replay_option_flags"]["use_accepted_only_fast_path"] is False
 
     profile = report["nestor_replay_profile"]

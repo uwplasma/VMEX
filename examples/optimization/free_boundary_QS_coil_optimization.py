@@ -891,6 +891,7 @@ def write_same_branch_validation_report(
 ) -> Path:
     """Write an optional same-branch complete-solve FD report for this example."""
     from vmec_jax.free_boundary_adjoint import (
+        direct_coil_accepted_trace_controller_slot_summary,
         direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax,
         direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax,
         direct_coil_same_branch_complete_solve_fd_report,
@@ -1233,8 +1234,17 @@ def write_same_branch_validation_report(
             replay_ad_mode=ad_mode,
             include_trace_replay_diagnostics=False,
             include_payload=False,
-            include_replay_graph_metadata=include_replay_graph_metadata,
+        include_replay_graph_metadata=include_replay_graph_metadata,
         )
+
+    def _controller_slot_summary_from_result(result: dict[str, Any]) -> dict[str, Any]:
+        summary = result.get("controller_slot_summary")
+        if isinstance(summary, dict) and summary:
+            return summary
+        metadata = result.get("replay_branch_metadata", {})
+        if isinstance(metadata, dict) and metadata:
+            return direct_coil_accepted_trace_controller_slot_summary(metadata)
+        return {}
 
     def _summarize_vector_result(vector: dict[str, Any], scalar_keys: tuple[str, ...]) -> dict[str, Any]:
         if vector.get("directional_derivatives") is None:
@@ -1262,6 +1272,7 @@ def write_same_branch_validation_report(
             "replay_option_flags": vector["replay_option_flags"],
             "replay_graph_metadata": vector.get("replay_graph_metadata", {}),
             "replay_branch_metadata": vector.get("replay_branch_metadata", {}),
+            "controller_slot_summary": _controller_slot_summary_from_result(vector),
             "max_base_abs_delta": float(vector["max_base_abs_delta"]),
             "timings": {str(key): float(value) for key, value in vector.get("timings", {}).items()},
             "scalars": {
@@ -1323,6 +1334,8 @@ def write_same_branch_validation_report(
             "state_only_replay": bool(scalar_uses_state_only_replay),
             "replay_option_flags": scalar["replay_option_flags"],
             "replay_graph_metadata": scalar.get("replay_graph_metadata", {}),
+            "replay_branch_metadata": scalar.get("replay_branch_metadata", {}),
+            "controller_slot_summary": _controller_slot_summary_from_result(scalar),
             "value": float(scalar["value"]),
             "replay_value": float(np.asarray(scalar["replay_value"], dtype=float)),
             "base_abs_delta": float(scalar["base_abs_delta"]),
@@ -1384,6 +1397,7 @@ def write_same_branch_validation_report(
                 timings["branch_local_rejected_slot_wall_s"] = float(time.perf_counter() - t0)
                 rejected_summary = _summarize_vector_result(rejected_vector, vector_keys)
                 rejected_metadata = rejected_summary.get("replay_branch_metadata", {})
+                rejected_controller_slot_summary = rejected_summary.get("controller_slot_summary", {})
                 rejected_mask = np.asarray(rejected_metadata.get("rejected_mask", []), dtype=bool)
                 rejected_slot_gate = {
                     "available": True,
@@ -1401,6 +1415,7 @@ def write_same_branch_validation_report(
                     "scalar_keys": list(vector_keys),
                     "fixed_rejected_controller_slot_present": bool(np.any(rejected_mask)),
                     "fixed_rejected_controller_slots": int(np.count_nonzero(rejected_mask)),
+                    "controller_slot_summary": rejected_controller_slot_summary,
                     "replay_option_flags": rejected_summary["replay_option_flags"],
                     "replay_branch_metadata": rejected_metadata,
                     "max_base_abs_delta": float(rejected_summary["max_base_abs_delta"]),
