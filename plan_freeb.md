@@ -608,6 +608,52 @@ Completion:
   adds only fast default-CI coverage.
 - Docs/release hygiene: 99.7%.
 
+### 2026-06-08 DMerc and Glasser D_R AD-vs-FD Validation Check
+
+Steps taken:
+
+1. Audited the finite-beta/Mercier/Glasser tests after the free-boundary
+   report updates.
+2. Confirmed the suite already contains AD-vs-central-FD checks for
+   ``DMerc`` and ``D_R`` at the state-level Mercier path, the algebraic
+   Glasser relation, and the public optimization objective wrappers.
+3. Ran the focused derivative shard instead of adding redundant tests.
+
+Results obtained:
+
+1. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_finite_beta_helpers_unit.py::test_mercier_terms_from_state_dmerc_and_d_r_ad_match_central_fd
+   tests/test_glasser_resistive_interchange.py::test_glasser_d_r_gradient_matches_central_finite_difference
+   tests/test_glasser_resistive_interchange.py::test_glasser_d_r_gradients_wrt_mercier_inputs_match_central_finite_difference
+   tests/test_optimization_examples.py::test_dmerc_and_glasser_objective_gradients_match_finite_difference
+   -q`` passed with six checks.
+
+Best next steps:
+
+1. Treat the DMerc/D_R derivative lane as covered unless a real equilibrium
+   regression appears; the existing tests already compare AD and central FD to
+   good precision.
+2. Keep these tests in the fast physics/optimization shards so CI preserves
+   the derivative gate without adding runtime.
+3. Continue free-boundary phase 3 or bounded VMEC2000/direct-coil parity work
+   after checking CI for the current pushed head.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99996%.
+- DMerc/D_R AD-vs-FD validation: 100%.
+- VMEC parity and physics gates: 98.0%.
+- Single-stage coil-only optimization: 97.6%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.1%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.7%.
+
 ### 2026-06-07 Same-Branch Example Vector/JVP Usability Check
 
 Steps taken:
