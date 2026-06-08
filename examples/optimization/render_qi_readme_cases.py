@@ -352,7 +352,12 @@ def _short_history_label(label: str) -> str:
         "matrix_free_mirror030 (max_mode=3, ESS)": "mirror<=0.30",
         "lcfs_mirror_030 (max_mode=3, ESS)": "LCFS mirror check",
         "boundary-reference baseline (max_mode=4)": "boundary baseline",
-        "prefiltered_mirror_qi_iota_cleanup (max_mode=4, ESS)": "rejected cleanup",
+        "matrix_free_qi_refine_full_mode (max_mode=4, ESS)": "QI refine 1",
+        "matrix_free_qi_refine_repeat_full_mode (max_mode=4, ESS)": "QI refine 2",
+        "matrix_free_nonsmooth_mirror_preserve_qi (max_mode=4, ESS)": "mirror preserve",
+        "matrix_free_final_mirror_cleanup (max_mode=4, ESS)": "VMEC mirror",
+        "matrix_free_augmented_lagrangian_mirror_cleanup (max_mode=4, ESS)": "VMEC AL mirror",
+        "matrix_free_boozer_scalar_al_mirror_cleanup (max_mode=4, ESS)": "Boozer AL mirror",
     }
     return replacements.get(label, label[:34])
 

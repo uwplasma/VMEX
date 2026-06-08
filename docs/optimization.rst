@@ -222,18 +222,19 @@ The second audit command uses the far-seed QI gate convention from
 below ``5e-3``.
 
 The explicit target-aspect and output-dir overrides above reproduce the
-archived mixed-target rows currently embedded in the docs QI coverage figure.
-Omit those overrides only when regenerating the current uniform aspect-5 policy.
+case-specific rows currently embedded in the docs QI coverage figure.  Omit
+those overrides only when regenerating the current uniform aspect-5 policy.
 
 The docs QI coverage figure is rendered from existing reviewed
 ``QI_optimization.py`` outputs.  These rows are archived mixed-target case
-checks, not additional aspect-5 README best-row promotions: the NFP=1 lane uses
-target aspect 10, the NFP=2 target-helicity lane uses target aspect 6, the
-seed-3127 lane uses target aspect 4, and the NFP=4 row starts from the
-three-coefficient minimal seed with a same-NFP finite-beta QI reference-family
-preconditioner.  It is not a completed common-minimal QI showcase row.
-Regenerate all rows with the current uniform aspect-5 policy before using this
-figure as current README promotion evidence.
+checks, not additional aspect-5 README best-row promotions or common-minimal
+README best-row promotions: the NFP=1 lane uses target aspect 10, the NFP=2
+target-helicity lane uses target aspect 6, the seed-3127 lane now uses the
+reviewed aspect-5 reference-family and audit-resolution Boozer-mirror cleanup
+policy, and the NFP=4 row starts from the three-coefficient minimal seed with a
+same-NFP finite-beta QI reference-family preconditioner.  It is not a completed
+common-minimal QI showcase row.  Regenerate all rows with the current uniform
+aspect-5 policy before using this figure as current README promotion evidence.
 The finite-beta NFP=4 input is kept as a separate stress fixture, not as the
 README initial state:
 
@@ -1316,10 +1317,13 @@ The compact ``QI_optimization_seed.py`` preset is the reproducible NFP=3
 seed-3127 path used for the docs/README row. It leaves the raw
 ``input.QI_stel_seed_3127`` as the initial artifact, scans the same-NFP
 ``input.nfp3_QI_fixed_resolution_final`` reference family with
-``REFERENCE_LAMBDAS = (0.998, 1.0, 1.002, 1.004, 1.006, 1.008, 1.01)``, keeps
+``REFERENCE_LAMBDAS = (0.99, 0.995, 1.0, 1.005, 1.008, 1.01, 1.012)``, keeps
 the preconditioner scan cheap with ``BOUNDARY_REFERENCE_MAX_ITER = 80``, then
-replays the selected accepted baseline with ``INNER_MAX_ITER = 450`` so final
-QI/mirror/iota diagnostics are not taken from an underconverged candidate.
+replays the selected accepted baseline with ``INNER_MAX_ITER = 450``.  The
+reviewed policy uses QI-first refinement, VMEC-grid mirror cleanup, and a final
+audit-resolution scalar Boozer-mirror augmented-Lagrangian cleanup so final
+QI/mirror/iota diagnostics are not taken from an underconverged or
+low-resolution candidate.
 Use it directly when you want to reproduce the reviewed seed-3127 row without
 editing the larger QI driver.
 

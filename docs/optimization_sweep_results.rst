@@ -463,12 +463,14 @@ the existing ``QI_optimization.py`` outputs, records the final smooth QI
 metric, legacy QI metric, mirror ratio, elongation, iota, aspect, and CPU wall
 time, and draws source-initial and final Boozer ``|B|`` line contours only
 after the initial WOUT boundary matches the paired input deck.  These are
-archived mixed-target case checks, not current aspect-5 README best-row
-promotions: NFP=1 uses target aspect 10, the NFP=2 target-helicity lane uses
-target aspect 6, the seed-3127 NFP=3 lane uses target aspect 4, and the NFP=4
-row uses the minimal seed plus a same-NFP finite-beta QI reference-family
-proposal.  Regenerate all rows with the current uniform aspect-5 policy before
-using this figure as current README promotion evidence.
+case-specific checks, not current aspect-5 README best-row promotions or
+common-minimal README best-row promotions: NFP=1 uses target aspect 10, the
+NFP=2 target-helicity lane uses target aspect 6, the seed-3127 NFP=3 lane now
+uses the reviewed aspect-5 reference-family and audit-resolution Boozer-mirror
+cleanup policy, and the NFP=4 row uses the minimal seed plus a same-NFP
+finite-beta QI reference-family proposal.  Regenerate all rows with the
+current uniform aspect-5 policy before using this figure as current README
+promotion evidence.
 Finite-beta NFP=4 remains a separate stress fixture.
 
 The NFP=3 seed-3127 row uses
