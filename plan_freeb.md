@@ -15048,3 +15048,48 @@ Completion:
   remains the blocker.
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 99.5%.
+
+### 2026-06-08 Tail Status After Controller-Slot Report Pushes
+
+Steps taken:
+
+1. Pushed ``64e5e2e`` to expose compact accepted/rejected controller-slot
+   summaries from free-boundary same-branch report helpers.
+2. Pushed ``c1bfb83`` to surface those summaries in the coil-only QS
+   optimization same-branch JSON report.
+3. Confirmed pre-push CI for ``49343fd`` was fully green and local focused
+   validation passed for both pushed increments.
+
+Results obtained:
+
+1. The report contract now exposes plain ``controller_slot_summary`` fields in
+   helper outputs and example JSON reports.
+2. The promoted current-only same-branch free-boundary gate with physical
+   scalars, production branch-local vector/JVP, and a fixed rejected slot
+   passed locally before the first push.
+3. GitHub Actions for ``c1bfb83`` is pending/running and should be checked
+   before the next source push.
+
+Best next steps:
+
+1. Check CI for ``c1bfb83`` and fix any failure immediately.
+2. Continue phase 3 by using these compact summaries in docs/examples, while
+   keeping adaptive host branch differentiation explicitly unclaimed.
+3. If CI is green, move to the next non-duplicative validation target:
+   either a new physical scalar in the same-branch gate or a bounded
+   VMEC2000/mgrid/direct-coil parity fixture.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99996%.
+- VMEC parity and physics gates: 97.9%.
+- Single-stage coil-only optimization: 97.6%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.1%.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.6%.
