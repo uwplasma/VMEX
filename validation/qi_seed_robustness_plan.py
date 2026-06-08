@@ -83,6 +83,20 @@ FAST_QI_DIAGNOSTIC_ARTIFACTS = [
             "Mirror, iota, aspect, and elongation gates emit explicit failure reasons.",
             "The bundled solved QI seed fixture records scalar state metrics without launching optimization.",
         ],
+    },
+    {
+        "artifact_id": "qi-seed-multifamily-prefine-20260607",
+        "required_ci": True,
+        "tests": [
+            "tests/test_qi_seed_evidence_artifacts.py::test_multifamily_prefine_artifact_records_all_seed_families_without_qi_worsening",
+            "tests/test_qi_seed_evidence_artifacts.py::test_multifamily_prefine_artifact_keeps_near_qi_rows_as_diagnostic_baselines",
+            "tests/test_qi_seed_evidence_artifacts.py::test_multifamily_prefine_artifact_does_not_claim_full_seed_robustness",
+        ],
+        "validates": [
+            "A reviewed bounded QI prefine run covers QP, QI, QH, QA, and simple seed families.",
+            "Accepted rows do not worsen smooth or legacy QI metrics.",
+            "Near-QI rows remain diagnostic baselines and the artifact does not claim full seed robustness.",
+        ],
     }
 ]
 
@@ -118,14 +132,17 @@ QI_SEED_ROBUSTNESS_PROMOTION_GATES = [
     {
         "gate_id": "bounded-prefine-probe-results",
         "title": "Bounded constrained prefine probe results",
-        "status": "not-complete",
+        "status": "partial-bounded-evidence-recorded",
         "required_before_robustness_claim": True,
         "pass_criteria": [
             "Reviewed run-mode probes finish with completed, failed, or timed-out status rather than silent promotion.",
             "Summaries identify best final objective, best improvement, objective-history regressions, and recommended next action.",
             "Scalar-objective improvement is insufficient when smooth or legacy QI worsens or engineering diagnostics fail.",
         ],
-        "artifact_paths": ["results/qi_seed_audit/prefine_probes"],
+        "artifact_paths": [
+            "validation/artifacts/qi_seed_multifamily_prefine_20260607.json",
+            "results/qi_seed_audit/prefine_probes",
+        ],
     },
     {
         "gate_id": "independent-final-diagnostics",

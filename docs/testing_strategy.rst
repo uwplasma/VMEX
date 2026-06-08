@@ -451,7 +451,10 @@ Differentiability gates:
   that leave the accepted branch, and compares the fixed-trace/controller
   custom-VJP directional derivative against the complete-solve central finite
   difference.  This is a same-branch accepted-trace validation, not yet a
-  derivative of every adaptive host-controller branch.
+  derivative of every adaptive host-controller branch.  Promoting adaptive
+  branch differentiation requires a fingerprint-gated full adaptive
+  AD-vs-central-FD gate through the adaptive loop, not only accepted-trace
+  replay.
 - Optimization objective gradients are nonzero for seeded active boundary
   modes that should move iota, aspect ratio, quasisymmetry, or QI residuals.
 - Exact callback replay must not retain unbounded host or XLA state across a

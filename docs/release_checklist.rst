@@ -136,8 +136,8 @@ Tag only after the local and GitHub gates are green:
    - For direct-coil free-boundary optimization, state whether gradients are
      fixed accepted-branch, same-branch complete-solve validated, or a promoted
      adaptive full-loop derivative. Do not imply full adaptive coil-to-Boozer
-     differentiation unless the release candidate includes that specific
-     finite-difference gate.
+     differentiation unless the release candidate includes a fingerprint-gated
+     full adaptive AD-vs-central-FD gate through the adaptive loop.
    EOF
    gh release create vX.Y.Z --repo uwplasma/vmec_jax --title "vmec-jax vX.Y.Z" --notes-file /tmp/vmec_jax_release_notes.md
 

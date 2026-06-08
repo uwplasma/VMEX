@@ -1850,3 +1850,20 @@ Defer beyond the current cycle:
   all three.  Completion: QI seed robustness `95%`; bounded first-pass
   non-degradation and multi-family diagnostic improvement are covered, while
   higher-budget precision QI plus Boozer contour review remains open.
+- 2026-06-07: Promoted the bounded multi-family prefine evidence into
+  `validation/artifacts/qi_seed_multifamily_prefine_20260607.json`, docs, and
+  a regression test that protects all-family coverage, no QI worsening, and
+  near-QI diagnostic-baseline semantics.  Ran a higher-budget capped far-seed
+  probe in `/tmp/vmec_jax_qi_far_highbudget_*` using stage modes
+  `1,1,2,2,3`, `max_nfev=5`, `continuation_nfev=3`, and all-surface mirror
+  cleanup.  All three far rows completed and none worsened smooth or legacy
+  QI, but the manifest correctly refused promotion because all histories had
+  objective regressions.  Boozer LCFS contour review showed: QH improved
+  strongly (`smooth QI 0.18644600107996434 -> 0.001830609444244168`,
+  `legacy 0.49322274654178877 -> 0.0009297443453210633`) but still had
+  non-ideal contour islands/puddles; circular tokamak stayed essentially
+  unchanged; QA improved scalar diagnostics but produced noisy/nonphysical
+  Boozer contours after a SciPy NaN fallback.  Completion: QI seed robustness
+  `95.5%`; workflow evidence is persistent, but full seed-robust QI remains
+  unclaimed pending higher-budget precision recovery with clean Boozer contour
+  closure.

@@ -1409,6 +1409,73 @@ Completion:
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 99.5%.
 
+### 2026-06-07 QI Robustness Evidence and Conservative Free-Boundary Claim Boundary
+
+Steps taken:
+
+1. Promoted the reviewed bounded multi-family QI prefine evidence into the
+   repository as
+   ``validation/artifacts/qi_seed_multifamily_prefine_20260607.json`` with a
+   test that protects all-family coverage, no smooth/legacy QI worsening, and
+   near-QI diagnostic-baseline semantics.
+2. Updated the QI validation docs to reference the persistent artifact while
+   stating that it is first-pass workflow evidence only, not a full
+   arbitrary-start QI robustness claim.
+3. Tightened release/testing language so adaptive free-boundary branch
+   differentiation remains unclaimed until a fingerprint-gated full adaptive
+   AD-vs-central-FD gate through the adaptive loop exists.
+4. Ran a higher-budget capped far-seed QI recovery probe from QH, QA, and a
+   simple circular tokamak seed with repeated stage modes ``1,1,2,2,3``,
+   ``max_nfev=5``, ``continuation_nfev=3``, and all-surface mirror cleanup.
+5. Generated Boozer LCFS ``|B|`` line-contour comparison plots from the same
+   initial/final WOUT files in ``/tmp/vmec_jax_qi_far_highbudget_probes``.
+
+Results obtained:
+
+1. The far-seed probe completed all three rows with no smooth/legacy QI
+   worsening, no failures, and no timeouts, but the manifest correctly marked
+   the run ``needs_review`` because all three histories contained objective
+   regressions.
+2. QH warm-start recovery was the only numerically strong far-seed result:
+   smooth QI ``0.18644600107996434 -> 0.001830609444244168`` and legacy QI
+   ``0.49322274654178877 -> 0.0009297443453210633``.  Boozer contours improved
+   substantially but still showed non-ideal island/puddle structure, so the row
+   is not promoted to full robustness evidence.
+3. The circular tokamak row improved scalar QI only modestly and visually stayed
+   essentially unchanged; it remains a stress diagnostic.
+4. The QA row reduced scalar QI diagnostics but hit a SciPy NaN fallback and
+   generated noisy/nonphysical Boozer contours; it is visual-failed evidence.
+
+Best next steps:
+
+1. Keep arbitrary-start QI robustness unclaimed.
+2. For the next QI robustness push, separate "recover from far seeds" from
+   "engineering cleanup": first use a stronger basin search/reference-family or
+   global proposal layer to reach clean Boozer contour closure, then add mirror
+   and elongation cleanup.
+3. Do not spend more free-boundary docs churn until the adaptive full-loop seam
+   has a fingerprint-gated full adaptive AD-vs-central-FD promotion gate.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999996% for fixed
+  same-branch scalar/vector gates; arbitrary adaptive branch differentiation
+  remains explicitly unclaimed.
+- VMEC parity and physics gates: 99.35%.
+- Single-stage coil-only optimization: 100% for the current validated
+  branch-local lane.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+- QI seed robustness: 95.5%; bounded evidence is persistent and false
+  promotion is guarded, but far-seed precision recovery and clean Boozer
+  contour closure remain open.
+
 ### 2026-06-06 Current-Only Fixed-Geometry Replay Path
 
 Steps taken:

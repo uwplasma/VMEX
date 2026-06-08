@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "artifact_id": "qi_seed_multifamily_prefine_20260607",
+  "status": "bounded_first_pass_evidence_not_full_seed_robustness_claim",
+  "purpose": "Compact record of a reviewed bounded QI prefine probe across QP, QI, QH, QA, and simple seed families. This artifact supports the next probe gate only; full seed-robust QI still requires higher-budget far-seed recovery and reviewed Boozer contour plots.",
+  "source_command": [
+    "PYTHONPATH=.",
+    "JAX_PLATFORMS=cpu",
+    "python",
+    "examples/optimization/audit_qi_seed_suitability.py",
+    "--quick",
+    "--prefine-probes",
+    "run",
+    "--prefine-reviewed",
+    "--prefine-top-n",
+    "2",
+    "--prefine-manifest",
+    "/tmp/vmec_jax_prefine_multifamily_manifest.json",
+    "--prefine-output-dir",
+    "/tmp/vmec_jax_prefine_multifamily_probes",
+    "--output",
+    "/tmp/vmec_jax_prefine_multifamily_summary.json",
+    "--csv",
+    "/tmp/vmec_jax_prefine_multifamily_summary.csv"
+  ],
+  "summary": {
+    "planned_rows": 5,
+    "statuses": {
+      "completed": 5
+    },
+    "accepted": true,
+    "recommendation": "keep_audited_near_qi_seed",
+    "qi_worsened_count": 0,
+    "scalar_improved_qi_worsened_count": 0,
+    "best_candidate_label": "qp_from_omnigenity_nfp2_qi",
+    "best_candidate_policy": "near_qi_diagnostic_baseline"
+  },
+  "rows": [
+    {
+      "label": "qp_from_omnigenity_nfp2_qi",
+      "family": "qp",
+      "prefine_policy": "near_qi_diagnostic_baseline",
+      "diagnostic_baseline": true,
+      "smooth_qi_initial": 0.0012982733181478073,
+      "smooth_qi_final": 0.0012982733181478073,
+      "legacy_qi_initial": 0.00023744992469448665,
+      "legacy_qi_final": 0.00023744992469448665,
+      "objective_initial": 0.0025965466362956146,
+      "objective_final": 0.0025965466362956146,
+      "accepted": true,
+      "decision": "accepted_stable_low_objective",
+      "qi_worsened": false
+    },
+    {
+      "label": "qi_omnigenity_nfp3",
+      "family": "qi",
+      "prefine_policy": "near_qi_diagnostic_baseline",
+      "diagnostic_baseline": true,
+      "smooth_qi_initial": 0.0016826152378900392,
+      "smooth_qi_final": 0.0016826152378900392,
+      "legacy_qi_initial": 0.0002258900351401033,
+      "legacy_qi_final": 0.0002258900351401033,
+      "objective_initial": 0.0033652304757800785,
+      "objective_final": 0.0033652304757800785,
+      "accepted": true,
+      "decision": "accepted_stable_low_objective",
+      "qi_worsened": false
+    },
+    {
+      "label": "qh_nfp4_warm_start",
+      "family": "qh",
+      "prefine_policy": "qi_constrained_prefine_probe",
+      "diagnostic_baseline": false,
+      "smooth_qi_initial": 0.18644600107996434,
+      "smooth_qi_final": 0.049680000354045725,
+      "legacy_qi_initial": 0.49322274654178877,
+      "legacy_qi_final": 0.08643853379936375,
+      "objective_initial": 0.782242989207162,
+      "objective_final": 0.2770843055982604,
+      "accepted": true,
+      "decision": "accepted_improved",
+      "qi_worsened": false
+    },
+    {
+      "label": "qa_landreman_paul_lowres",
+      "family": "qa",
+      "prefine_policy": "qi_constrained_prefine_probe",
+      "diagnostic_baseline": false,
+      "smooth_qi_initial": 0.902037615924743,
+      "smooth_qi_final": 0.27412089188102196,
+      "legacy_qi_initial": 1.0037731086252313,
+      "legacy_qi_final": 0.38282899336040693,
+      "objective_initial": 11.021253543095204,
+      "objective_final": 7.689111086717296,
+      "accepted": true,
+      "decision": "accepted_improved",
+      "qi_worsened": false
+    },
+    {
+      "label": "simple_circular_tokamak",
+      "family": "simple",
+      "prefine_policy": "qi_constrained_prefine_probe",
+      "diagnostic_baseline": false,
+      "smooth_qi_initial": 0.39841043600194476,
+      "smooth_qi_final": 0.21446443478211397,
+      "legacy_qi_initial": 1.0595335031600763,
+      "legacy_qi_final": 0.5145388845266068,
+      "objective_initial": 64.31242258619135,
+      "objective_final": 45.402746537565235,
+      "accepted": true,
+      "decision": "accepted_improved",
+      "qi_worsened": false
+    }
+  ],
+  "claim_boundary": {
+    "supports": [
+      "The reviewed bounded prefine workflow records all selected rows and does not silently promote QI-worsening candidates.",
+      "Already-low-QI QP/QI seeds are preserved as diagnostic baselines instead of being degraded by auxiliary mirror or elongation cleanup.",
+      "Far-family QH, QA, and simple seeds improve both smooth and legacy QI metrics under the tiny capped prefine budget."
+    ],
+    "does_not_support": [
+      "A full seed-robust QI claim.",
+      "Publication-quality QI from arbitrary starts.",
+      "Promotion without independent higher-budget diagnostics and reviewed Boozer |B| contour plots."
+    ]
+  }
+}

@@ -335,6 +335,19 @@ The dry-run manifest is the intended bridge between seed audit and full
 seed-robust QI sweeps.  It is bounded by design and should be inspected before
 switching to ``--prefine-probes run``.
 
+The checked-in compact evidence file
+``validation/artifacts/qi_seed_multifamily_prefine_20260607.json`` records one
+reviewed bounded run across QP, QI, QH, QA, and simple seed families.  The QP
+and QI rows were already low-QI and therefore use the
+``near_qi_diagnostic_baseline`` policy: the optimizer is skipped and the
+initial diagnostics are kept as the final diagnostics.  The QH, QA, and simple
+rows use the constrained prefine probe and improve both smooth and legacy QI
+under the tiny capped budget.  Treat this as a persistent smoke-level evidence
+artifact for the selection and false-promotion logic, not as publication
+evidence that arbitrary far seeds produce precise QI.  That stronger claim
+still requires higher-budget far-seed recovery plus manual review of
+Boozer-coordinate ``|B|`` line-contour closure.
+
 The docs NFP=4 QI coverage lane starts from ``examples/data/input.minimal_seed_nfp4``
 with only ``RBC(0,0)``, ``RBC(0,1)``, and ``ZBS(0,1)`` in the source input,
 then applies a same-NFP finite-beta QI reference-family preconditioner before
