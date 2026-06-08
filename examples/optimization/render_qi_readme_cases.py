@@ -75,11 +75,30 @@ CASES = (
         initial_wout=ARTIFACT_DIR / "nfp3_seed3127" / "wout_initial.nc",
         note="passing reference-family QI lane",
         history_paths=(
-            ARTIFACT_DIR / "nfp3_seed3127" / "history.json",
             ARTIFACT_DIR / "nfp3_seed3127" / "boundary_reference_baseline" / "history.json",
             ARTIFACT_DIR
             / "nfp3_seed3127"
-            / "mirror_ramp_01_prefiltered_mirror_qi_iota_cleanup"
+            / "mirror_ramp_01_matrix_free_qi_refine_full_mode"
+            / "history.json",
+            ARTIFACT_DIR
+            / "nfp3_seed3127"
+            / "mirror_ramp_02_matrix_free_qi_refine_repeat_full_mode"
+            / "history.json",
+            ARTIFACT_DIR
+            / "nfp3_seed3127"
+            / "mirror_ramp_03_matrix_free_nonsmooth_mirror_preserve_qi"
+            / "history.json",
+            ARTIFACT_DIR
+            / "nfp3_seed3127"
+            / "mirror_ramp_04_matrix_free_final_mirror_cleanup"
+            / "history.json",
+            ARTIFACT_DIR
+            / "nfp3_seed3127"
+            / "mirror_ramp_05_matrix_free_augmented_lagrangian_mirror_cleanup"
+            / "history.json",
+            ARTIFACT_DIR
+            / "nfp3_seed3127"
+            / "mirror_ramp_06_matrix_free_boozer_scalar_al_mirror_cleanup"
             / "history.json",
         ),
         preconditioner_summary=ARTIFACT_DIR

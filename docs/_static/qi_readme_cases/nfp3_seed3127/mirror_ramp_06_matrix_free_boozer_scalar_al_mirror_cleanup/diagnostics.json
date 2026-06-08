@@ -7,6 +7,10 @@
   "failed_constraints": [],
   "iota_shortfall": 0.0,
   "mean_iota": -1.0606453226685504,
+  "nfev": 8,
+  "njev": 5,
+  "objective_final": 1.8167354396935567,
+  "partial": true,
   "qi_aspect_gate_passed": true,
   "qi_boozer_resolution": {
     "mboz": 18,
@@ -69,7 +73,7 @@
   "qi_seed_suitability": "pass",
   "qi_shuffle_profile_nphi_out": null,
   "qi_smooth_excess": 0.0,
-  "qi_smooth_gate": 0.002,
+  "qi_smooth_gate": 0.0025,
   "qi_smooth_total": 0.0019475461294185615,
   "qi_surface_indices": [
     3,
@@ -87,6 +91,8 @@
     0.82,
     1.0
   ],
+  "qs_final": 1.7757156415210127,
   "seed_suitability": "pass",
-  "target_aspect": 5.0
+  "target_aspect": 5.0,
+  "total_wall_time_s": 314.21495916706044
 }
