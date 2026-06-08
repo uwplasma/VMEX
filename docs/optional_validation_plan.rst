@@ -163,6 +163,18 @@ histories.  If the relaxed trial solve accepts a point that replays worse under
 the exact Jacobian path, the optimizer retains the best exact point as the
 final output and increments ``rejected_trial_exact_history_count``.
 
+The compact artifact
+``validation/artifacts/qi_seed_multifamily_prefine_20260607.json`` records the
+first reviewed bounded multi-family prefine run.  It contains five completed
+rows: a QP near-QI diagnostic baseline, a QI near-QI diagnostic baseline, and
+bounded constrained-recovery rows for QH, QA, and a simple circular tokamak.
+All accepted rows have non-worsening smooth and legacy QI metrics, and the
+near-QI rows are explicitly preserved without optimizer cleanup.  This artifact
+is evidence for the prefine workflow and false-promotion guard only; it is not a
+full seed-robust QI claim.  Before documenting arbitrary-start QI robustness,
+run higher-budget far-seed recovery and review the final Boozer-coordinate
+``|B|`` line contours from the same final ``wout`` files.
+
 Optional external lanes
 -----------------------
 
