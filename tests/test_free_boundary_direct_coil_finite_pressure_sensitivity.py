@@ -175,6 +175,7 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_accepted_trace_array_controls_jax,
         direct_coil_accepted_trace_branch_metadata,
+        direct_coil_accepted_trace_controller_replay_plan,
         direct_coil_accepted_trace_controller_slot_summary,
         direct_coil_accepted_trace_controller_controls_jax,
         direct_coil_accepted_trace_fingerprint_delta_summary,
@@ -182,6 +183,7 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
         direct_coil_accepted_trace_preconditioner_policy_segments,
         direct_coil_accepted_trace_replay_graph_metadata,
         direct_coil_accepted_trace_scalar_controls_jax,
+        direct_coil_accepted_trace_status_masks,
         direct_coil_accepted_trace_step_controls_jax,
         direct_coil_accepted_trace_step_policy_segment_summary,
         direct_coil_accepted_trace_step_policy_segments,
@@ -406,6 +408,37 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     assert np.array_equal(np.asarray(branch_metadata["active_free_boundary_mask"]), np.asarray([True, True]))
     assert branch_metadata["preconditioner_policy_segment_summary"][0]["free_boundary_replay_steps"] == 2
     assert _accepted_trace_segment_is_unconditionally_accepted(branch_metadata["masks"], start=0, stop=2)
+    status_rejected_trace = {**trace1, "step_status": "rejected"}
+    status_masks = direct_coil_accepted_trace_status_masks([trace0, status_rejected_trace])
+    assert status_masks["step_status"] == ("accepted", "rejected")
+    assert np.array_equal(status_masks["accept_mask"], np.asarray([True, False]))
+    assert status_masks["status_acceptance_source"] == "trace_step_status"
+    status_controls = direct_coil_accepted_trace_controller_controls_jax([trace0, status_rejected_trace])
+    assert np.array_equal(np.asarray(status_controls["accept"]), np.asarray([True, False]))
+    status_metadata = direct_coil_accepted_trace_branch_metadata([trace0, status_rejected_trace])
+    status_slot_summary = direct_coil_accepted_trace_controller_slot_summary(status_metadata)
+    assert status_metadata["step_status"] == ("accepted", "rejected")
+    assert np.array_equal(np.asarray(status_metadata["accepted_mask"]), np.asarray([True, False]))
+    assert np.array_equal(np.asarray(status_metadata["rejected_mask"]), np.asarray([False, True]))
+    assert status_metadata["preconditioner_policy_segment_summary"][0]["rejected_steps"] == 1
+    assert status_slot_summary["accepted_slots"] == 1
+    assert status_slot_summary["rejected_slots"] == 1
+    assert status_slot_summary["fixed_rejected_controller_slot_present"] is True
+    override_status_metadata = direct_coil_accepted_trace_branch_metadata(
+        [trace0, status_rejected_trace],
+        accept_mask=np.asarray([True, True]),
+    )
+    assert np.array_equal(np.asarray(override_status_metadata["accepted_mask"]), np.asarray([True, True]))
+    assert np.array_equal(np.asarray(override_status_metadata["rejected_mask"]), np.asarray([False, False]))
+    override_plan = direct_coil_accepted_trace_controller_replay_plan(
+        [trace0, status_rejected_trace],
+        static=SimpleNamespace(cfg=SimpleNamespace(nfp=1, mpol=2, ntor=0, lasym=False)),
+        accept_mask=np.asarray([True, False]),
+        use_stacked_step_controls=False,
+        use_accepted_only_fast_path=False,
+    )
+    assert override_plan["status_masks"]["step_status"] == ("accepted", "rejected")
+    assert np.array_equal(np.asarray(override_plan["controls"]["accept"]), np.asarray([True, False]))
     branch_metadata_json = direct_coil_accepted_trace_branch_metadata(
         [trace0, trace1],
         accept_mask=np.asarray([True, False]),
@@ -828,6 +861,7 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     assert synthetic_jvp_report["timings"]["replay_jvp_wall_s"] >= 0.0
     assert synthetic_jvp_report["timings"]["replay_vjp_wall_s"] == 0.0
     assert synthetic_jvp_report["timings"]["replay_pullbacks_wall_s"] == 0.0
+    assert synthetic_jvp_report["timings"]["replay_graph_metadata_wall_s"] >= 0.0
     assert synthetic_jvp_report["timings"]["jacobian_stack_ready_s"] == 0.0
 
     current_base_params = _circle_coil_params(current=3.0, n_segments=8)
@@ -2388,6 +2422,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert production_branch_local["timings"]["replay_value_and_grad_dispatch_s"] >= 0.0
             assert production_branch_local["timings"]["replay_value_and_grad_ready_s"] >= 0.0
             assert production_branch_local["timings"]["replay_value_and_grad_wall_s"] >= 0.0
+            assert production_branch_local["timings"]["replay_graph_metadata_wall_s"] >= 0.0
             assert production_branch_local["timings"]["total_wall_s"] >= 0.0
             assert production_branch_local["base_abs_delta"] < 2.0e-3
             np.testing.assert_allclose(
@@ -2488,6 +2523,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert production_branch_local_scalars["timings"]["replay_jvp_wall_s"] >= 0.0
             assert production_branch_local_scalars["timings"]["replay_vjp_wall_s"] == 0.0
             assert production_branch_local_scalars["timings"]["replay_pullbacks_wall_s"] == 0.0
+            assert production_branch_local_scalars["timings"]["replay_graph_metadata_wall_s"] >= 0.0
             assert production_branch_local_scalars["timings"]["jacobian_stack_ready_s"] >= 0.0
             assert production_branch_local_scalars["timings"]["total_wall_s"] >= 0.0
             assert production_branch_local_scalars["base_abs_delta"]["aspect"] < 2.0e-3

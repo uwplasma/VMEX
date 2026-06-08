@@ -815,6 +815,11 @@ blocks expose a compact ``controller_slot_summary`` with ``accepted_slots``,
 artifacts; it is intentionally redundant with the lower-level masks so users
 do not need to inspect nested JAX arrays to confirm whether the fixed replay
 included an accepted-only branch or an explicit rejected controller slot.
+When production traces contain ``step_status`` values such as ``rejected`` or
+``restart_bad_progress``, the report derives the fixed replay ``accept_mask``
+from those statuses unless the caller supplied an explicit mask.  The
+``status_masks`` and ``status_acceptance_source`` fields record that
+provenance.
 For directional vector reports, also inspect ``directional_jvp_fast_path`` and
 ``directional_uses_fixed_coil_geometry``.  A ``current_only`` fast path means
 the JVP reused the coil curve geometry and differentiated only the currents,
@@ -834,11 +839,12 @@ the selected scalars need replay history.  That is why derivative-detail
 reports remain opt-in performance diagnostics rather than default example
 output.  When scalar or vector detail is requested, the corresponding
 ``branch_local_*`` block also includes nested timing fields such as
-``production_scalar_eval_wall_s``, ``replay_value_and_grad_dispatch_s``,
-``replay_value_and_grad_ready_s``, ``replay_vjp_wall_s``, and
-``replay_pullbacks_wall_s``.  These fields synchronize JAX arrays before
-recording device-ready timings, so they are suitable for distinguishing Python
-dispatch, XLA compilation, and CPU/GPU execution costs in local profiling.
+``production_scalar_eval_wall_s``, ``replay_graph_metadata_wall_s``,
+``replay_value_and_grad_dispatch_s``, ``replay_value_and_grad_ready_s``,
+``replay_vjp_wall_s``, and ``replay_pullbacks_wall_s``.  These fields
+synchronize JAX arrays before recording device-ready timings, so they are
+suitable for distinguishing Python dispatch, XLA compilation, and CPU/GPU
+execution costs in local profiling.
 The report also writes ``same_branch_report_config`` in ``summary.json`` so the
 artifact remains self-describing.  Its derivative contract is fixed accepted
 branch only; it does not differentiate adaptive host branch selection, rejected

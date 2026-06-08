@@ -15286,3 +15286,67 @@ Completion:
 - CPU/GPU performance: 99.2%.
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 99.7%.
+
+### 2026-06-08 Status-Derived Rejected Slots and Replay Metadata Timing
+
+Steps taken:
+
+1. Added ``direct_coil_accepted_trace_status_masks`` to derive fixed replay
+   ``accept_mask`` and ``done_mask`` from production trace ``step_status``
+   values.
+2. Kept status strings out of JAX controller-control pytrees and exposed them
+   through branch metadata and replay-plan payloads instead.
+3. Added focused tests that legacy traces remain accepted, production
+   ``step_status='rejected'`` creates a rejected controller slot without a
+   caller-supplied mask, and explicit masks still override status-derived
+   masks for diagnostic branches.
+4. Added ``replay_graph_metadata_wall_s`` to scalar and vector branch-local
+   report timings so profiling can separate report metadata construction from
+   actual replay/JVP work.
+5. Documented status-derived masks and the new timing key.
+
+Results obtained:
+
+1. Rejected-slot provenance no longer relies only on manually padded
+   ``accept_mask`` tests; production trace statuses can now drive fixed
+   accepted/rejected replay slots.
+2. The adaptive-branch claim remains conservative: this differentiates only
+   fingerprint-gated fixed controller slots, not the host adaptive policy that
+   selected those statuses.
+3. ``python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py``
+   passed.
+4. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd
+   -q`` passed.
+5. ``python -m sphinx -q -W -b html docs docs/_build/html`` passed.
+
+Best next steps:
+
+1. Check the latest CI run for the two most recent pushes and fix failures if
+   any appear.
+2. If CI is green, run the free-boundary QS smoke report once locally with
+   ``--same-branch-report-rejected-slot-gate`` and inspect the new
+   ``status_masks``/``replay_graph_metadata_wall_s`` fields in the JSON.
+3. Continue phase 3 only after this phase-2 provenance gate is stable:
+   derivative proposals can use branch-local JVP evidence, but complete solves
+   remain acceptance authority.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99997% for fixed
+  same-branch scalar/vector gates; arbitrary adaptive branch differentiation
+  remains explicitly unclaimed.
+- VMEC parity and physics gates: 98.1%.
+- Single-stage coil-only optimization: 97.8%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.3%; replay metadata timing now separates report
+  construction from JVP execution.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.8%.

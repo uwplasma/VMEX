@@ -41,6 +41,7 @@ __all__ = [
     "direct_coil_accepted_trace_controller_custom_vjp_scalars_jax",
     "direct_coil_accepted_trace_controller_replay_plan",
     "direct_coil_accepted_trace_replay_graph_metadata",
+    "direct_coil_accepted_trace_status_masks",
     "direct_coil_accepted_trace_step_controls_jax",
     "direct_coil_accepted_trace_step_policy_segments",
     "direct_coil_boundary_replay_context_for_shape",
@@ -2245,6 +2246,54 @@ def _accepted_trace_reset_flags(trace_seq: Any) -> tuple[bool, ...]:
     )
 
 
+_REJECTED_TRACE_STEP_STATUSES = {
+    "rejected",
+    "restart_bad_jacobian",
+    "restart_bad_progress",
+    "restart_stage_transition",
+    "restart_time_control",
+}
+
+_DONE_TRACE_STEP_STATUSES = {
+    "converged",
+}
+
+
+def _normalise_trace_step_status(status: Any) -> str:
+    text = str(status).strip().lower()
+    return text if text else "accepted"
+
+
+def _trace_step_status_is_rejected(status: str) -> bool:
+    return status in _REJECTED_TRACE_STEP_STATUSES or status.startswith("restart_")
+
+
+def direct_coil_accepted_trace_status_masks(traces: Any) -> dict[str, Any]:
+    """Derive replay accept/done masks from production trace ``step_status``.
+
+    Older synthetic tests and replay payloads predate ``step_status`` and should
+    keep the historical accepted-only behavior.  For production traces, explicit
+    restart/rejected statuses are represented as fixed rejected controller slots
+    so same-branch reports do not need a hand-built ``accept_mask`` to preserve
+    that branch provenance.
+    """
+
+    trace_seq = tuple(traces)
+    if not trace_seq:
+        raise ValueError("at least one accepted trace is required")
+    statuses = tuple(_normalise_trace_step_status(trace.get("step_status", "accepted")) for trace in trace_seq)
+    accept_mask = np.asarray([not _trace_step_status_is_rejected(status) for status in statuses], dtype=bool)
+    done_mask = np.asarray([status in _DONE_TRACE_STEP_STATUSES for status in statuses], dtype=bool)
+    if not np.any(done_mask):
+        done_mask[-1] = True
+    return {
+        "step_status": statuses,
+        "accept_mask": accept_mask,
+        "done_mask": done_mask,
+        "status_acceptance_source": "trace_step_status",
+    }
+
+
 def direct_coil_accepted_trace_controller_controls_jax(
     traces: Any,
     *,
@@ -2265,14 +2314,15 @@ def direct_coil_accepted_trace_controller_controls_jax(
     if not trace_seq:
         raise ValueError("at least one accepted trace is required")
     step_count = len(trace_seq)
+    status_masks = direct_coil_accepted_trace_status_masks(trace_seq)
     if accept_mask is None:
-        accept_arr = jnp.ones(step_count, dtype=bool)
+        accept_arr = jnp.asarray(status_masks["accept_mask"], dtype=bool)
     else:
         if np.shape(accept_mask) != (step_count,):
             raise ValueError("accept_mask must have shape (n_steps,)")
         accept_arr = jnp.asarray(accept_mask, dtype=bool)
     if done_mask is None:
-        done_arr = jnp.arange(step_count, dtype=jnp.int32) == jnp.asarray(step_count - 1, dtype=jnp.int32)
+        done_arr = jnp.asarray(status_masks["done_mask"], dtype=bool)
     else:
         if np.shape(done_mask) != (step_count,):
             raise ValueError("done_mask must have shape (n_steps,)")
@@ -2860,6 +2910,7 @@ def direct_coil_accepted_trace_branch_metadata(
     if done_mask is not None:
         done_mask = np.asarray(done_mask, dtype=bool)[:n_steps]
 
+    status_masks = direct_coil_accepted_trace_status_masks(trace_seq)
     controls = direct_coil_accepted_trace_controller_controls_jax(
         trace_seq,
         accept_mask=accept_mask,
@@ -2871,6 +2922,9 @@ def direct_coil_accepted_trace_branch_metadata(
     metadata = {
         "n_steps": int(n_steps),
         "n_free_boundary_replay_steps": int(np.count_nonzero(np.asarray(active_freeb, dtype=bool))),
+        "status_masks": status_masks,
+        "step_status": status_masks["step_status"],
+        "status_acceptance_source": status_masks["status_acceptance_source"],
         "fingerprint": direct_coil_accepted_trace_fingerprint(trace_seq),
         "controller_controls": controls,
         "masks": masks,
@@ -3135,6 +3189,7 @@ def direct_coil_accepted_trace_controller_replay_plan(
     if not trace_seq:
         raise ValueError("at least one accepted trace is required")
 
+    status_masks = direct_coil_accepted_trace_status_masks(trace_seq)
     controller_controls = direct_coil_accepted_trace_controller_controls_jax(
         trace_seq,
         accept_mask=accept_mask,
@@ -3249,6 +3304,7 @@ def direct_coil_accepted_trace_controller_replay_plan(
         "contract": "fixed accepted-branch controller replay plan",
         "differentiates_adaptive_controller": False,
         "traces": trace_seq,
+        "status_masks": status_masks,
         "controls": controls,
         "effective_masks": effective_masks,
         "scalar_controls": scalar_controls,
@@ -5535,6 +5591,7 @@ def direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
     else:
         timings["replay_plan_build_wall_s"] = 0.0
 
+    t0 = time.perf_counter()
     if bool(include_replay_graph_metadata):
         graph_metadata = direct_coil_accepted_trace_replay_graph_metadata(
             replay_traces_for_scalars,
@@ -5555,6 +5612,7 @@ def direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
             "reason": "include_replay_graph_metadata=False",
             "differentiates_adaptive_controller": False,
         }
+    timings["replay_graph_metadata_wall_s"] = float(time.perf_counter() - t0)
 
     def _replay_scalar_direct(coil_params):
         replay = direct_coil_accepted_trace_controller_replay_objective_jax(
@@ -5814,6 +5872,7 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
     else:
         timings["replay_plan_build_wall_s"] = 0.0
 
+    t0 = time.perf_counter()
     if bool(include_replay_graph_metadata):
         graph_metadata = direct_coil_accepted_trace_replay_graph_metadata(
             replay_traces_for_scalars,
@@ -5834,6 +5893,7 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             "reason": "include_replay_graph_metadata=False",
             "differentiates_adaptive_controller": False,
         }
+    timings["replay_graph_metadata_wall_s"] = float(time.perf_counter() - t0)
 
     scalar_fn_seq = tuple(
         (lambda replay, key=key: replay_scalar_fns[key](replay, replay_payload_for_scalars)) for key in keys
