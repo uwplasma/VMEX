@@ -16422,3 +16422,76 @@ Completion:
   exists and reproduces the mismatch on CPU/GPU, implementation fix still open.
 - QI minimal-seed README artifact regeneration: unchanged at 50%
   artifact-complete, 0% promoted.
+
+### 2026-06-09 QI State-Level JVP-vs-FD Split
+
+Steps taken:
+
+1. Extended ``tools/diagnostics/qi_optimizer_jvp_fd_compare.py`` with
+   ``--state-fd`` so it can compare packed accepted-state tangent columns
+   against central finite differences of complete accepted VMEC solves.
+2. Added ``--dynamic-axis-tangent`` to replay one selected tangent whose
+   initial-state JVP differentiates through the inferred-axis path, as a check
+   against the frozen-axis replay hypothesis.
+3. Added finite-difference residual norm reporting
+   (``residual_plus_norm``, ``residual_minus_norm``, and
+   ``residual_plus_minus_delta_norm``) so QI branch/noise effects are visible
+   in the JSON report.
+4. Ran a small local NFP2 smoke diagnostic and two production-size GPU
+   diagnostics on the NFP2 candidate
+   ``docs/_static/qi_readme_cases/nfp2_minimal/.../lambda_0p990/input.interpolated``
+   via the clean ``office`` checkout.
+5. Tried a production optimizer change that froze the initial-axis convention
+   for residual solves as well as tangent replay.  The small diagnostic did not
+   improve, so the production optimizer change was reverted before commit.
+
+Results obtained:
+
+1. Local smoke case still shows state-level mismatch:
+   ``state_relative_diff_norm = 1.048`` and
+   ``residual_state_jvp_vs_matrix_free_norm = 8.65e-2``.  The latter is small
+   relative to the complete FD failure, so the replay-to-residual projection is
+   not the dominant issue.
+2. Production NFP2, ``eps=1e-3``:
+   dense and matrix-free exact columns agree to ``1.4e-12``; exact-vs-FD has
+   ``relative_diff_norm = 0.473`` and ``cosine_similarity = 0.884``.
+3. Production NFP2, ``eps=1e-3`` state split:
+   packed final-state JVP and complete-solve state FD differ strongly
+   (``state_relative_diff_norm = 0.969``, ``state_cosine_similarity = 0.399``).
+   The residual projection of the exact state JVP matches matrix-free to
+   ``1.1e-12``.
+4. Production NFP2, ``eps=1e-4`` state split:
+   state FD mismatch worsens rather than converges
+   (``state_relative_diff_norm = 0.995``,
+   ``initial_state_relative_diff_norm = 1.002``).  This is consistent with a
+   nonsmooth initialization/complete-solve branch in the finite-difference
+   stencil, not a simple local linearization bug.
+5. The candidate has no explicit ``RAXIS``/``ZAXIS`` entries, but the VMEC
+   theta-flip diagnostic remains stable through ``eps=5e-3``.  The current
+   evidence therefore points away from ``lflip`` and toward nonsmooth inferred
+   axis/projection/initialization or complete-solve branch sensitivity.
+
+Best next steps:
+
+1. Add a narrower initialization-only diagnostic that compares
+   ``initial_guess_from_boundary`` JVPs to central FD before any VMEC residual
+   iteration, with component/block attribution for axis terms, m=1 constrained
+   terms, and VMEC projection.
+2. Use that diagnostic to decide whether QI optimization should insert an
+   explicit smooth axis seed/preconditioned axis in generated stage inputs, or
+   whether the robust path should remain finite-step/global proposal based
+   rather than relying on tiny local exact JVPs near nonsmooth initializations.
+3. Do not restore the four-row QI README panel until NFP1/NFP2 pass strict
+   case-gated metrics under the unchanged renderer gates.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- QI optimizer/JVP correctness for minimal-seed cleanup: 86%; dense vs
+  matrix-free and residual projection are cleared, initial/complete-solve
+  branch sensitivity remains open.
+- QI minimal-seed README artifact regeneration: unchanged at 50%
+  artifact-complete, 0% promoted.
