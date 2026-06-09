@@ -72,6 +72,15 @@ def _parse_args() -> argparse.Namespace:
             "through VMEC's inferred axis guess instead of freezing it."
         ),
     )
+    parser.add_argument(
+        "--state-fd-iters",
+        type=str,
+        default="",
+        help=(
+            "Optional comma/space-separated accepted-solve iteration counts "
+            "for state-JVP-vs-state-FD localization, e.g. '1,2,5,10'."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -80,6 +89,11 @@ def _surfaces(text: str) -> np.ndarray:
     if not values:
         raise ValueError("--surfaces must contain at least one value.")
     return np.asarray(values, dtype=float)
+
+
+def _int_list(text: str) -> list[int]:
+    values = [int(item) for item in str(text).replace(",", " ").split() if item.strip()]
+    return [value for value in values if value > 0]
 
 
 def _spec_index(specs, *, kind: str, m: int, n: int) -> int:
@@ -135,45 +149,48 @@ def main() -> None:
     problem = vj.LeastSquaresProblem.from_tuples(
         [(vj.QuasiIsodynamicResidual(qi_options).J, 0.0, 1.0)]
     )
-    stage = build_quasi_isodynamic_objective_stage(
-        vmec.cfg,
-        vmec.indata,
-        stage_mode=int(args.max_mode),
-        scalar_objectives=problem.objective_terms,
-        qi_objectives=problem.qi_objective_terms,
-        surfaces=qi_options.surfaces,
-        mboz=qi_options.mboz,
-        nboz=qi_options.nboz,
-        nphi=qi_options.nphi,
-        nalpha=qi_options.nalpha,
-        n_bounce=qi_options.n_bounce,
-        include_bounce_endpoints=qi_options.include_bounce_endpoints,
-        softness=qi_options.softness,
-        width_weight=qi_options.width_weight,
-        branch_width_weight=qi_options.branch_width_weight,
-        branch_width_softness=qi_options.branch_width_softness,
-        profile_weight=qi_options.profile_weight,
-        shuffle_profile_weight=qi_options.shuffle_profile_weight,
-        shuffle_profile_softness=qi_options.shuffle_profile_softness,
-        shuffle_profile_nphi_out=qi_options.shuffle_profile_nphi_out,
-        weighted_shuffle_profile_weight=qi_options.weighted_shuffle_profile_weight,
-        weighted_shuffle_profile_softness=qi_options.weighted_shuffle_profile_softness,
-        aligned_profile_weight=qi_options.aligned_profile_weight,
-        aligned_profile_softness=qi_options.aligned_profile_softness,
-        aligned_profile_trap_level=qi_options.aligned_profile_trap_level,
-        aligned_profile_trap_softness=qi_options.aligned_profile_trap_softness,
-        phimin=qi_options.phimin,
-        jit_booz=qi_options.jit_booz,
-        project_input_boundary_to_max_mode=vmec.project_input_boundary_to_max_mode,
-        include=vmec.include,
-        fix=vmec.fix,
-        inner_max_iter=int(args.inner_max_iter),
-        inner_ftol=float(args.inner_ftol),
-        trial_max_iter=int(args.trial_max_iter),
-        trial_ftol=float(args.trial_ftol),
-        solver_device=solver_device,
-        exact_path=exact_path,
-    )
+    def _build_stage(inner_max_iter: int):
+        return build_quasi_isodynamic_objective_stage(
+            vmec.cfg,
+            vmec.indata,
+            stage_mode=int(args.max_mode),
+            scalar_objectives=problem.objective_terms,
+            qi_objectives=problem.qi_objective_terms,
+            surfaces=qi_options.surfaces,
+            mboz=qi_options.mboz,
+            nboz=qi_options.nboz,
+            nphi=qi_options.nphi,
+            nalpha=qi_options.nalpha,
+            n_bounce=qi_options.n_bounce,
+            include_bounce_endpoints=qi_options.include_bounce_endpoints,
+            softness=qi_options.softness,
+            width_weight=qi_options.width_weight,
+            branch_width_weight=qi_options.branch_width_weight,
+            branch_width_softness=qi_options.branch_width_softness,
+            profile_weight=qi_options.profile_weight,
+            shuffle_profile_weight=qi_options.shuffle_profile_weight,
+            shuffle_profile_softness=qi_options.shuffle_profile_softness,
+            shuffle_profile_nphi_out=qi_options.shuffle_profile_nphi_out,
+            weighted_shuffle_profile_weight=qi_options.weighted_shuffle_profile_weight,
+            weighted_shuffle_profile_softness=qi_options.weighted_shuffle_profile_softness,
+            aligned_profile_weight=qi_options.aligned_profile_weight,
+            aligned_profile_softness=qi_options.aligned_profile_softness,
+            aligned_profile_trap_level=qi_options.aligned_profile_trap_level,
+            aligned_profile_trap_softness=qi_options.aligned_profile_trap_softness,
+            phimin=qi_options.phimin,
+            jit_booz=qi_options.jit_booz,
+            project_input_boundary_to_max_mode=vmec.project_input_boundary_to_max_mode,
+            include=vmec.include,
+            fix=vmec.fix,
+            inner_max_iter=int(inner_max_iter),
+            inner_ftol=float(args.inner_ftol),
+            trial_max_iter=int(args.trial_max_iter),
+            trial_ftol=float(args.trial_ftol),
+            solver_device=solver_device,
+            exact_path=exact_path,
+        )
+
+    stage = _build_stage(int(args.inner_max_iter))
 
     params0 = np.zeros(len(stage.specs), dtype=float)
     direction = np.zeros_like(params0)
@@ -374,6 +391,93 @@ def main() -> None:
             )
             state_report["dynamic_axis_tangent"] = dynamic_axis_report
         report["state_fd"] = state_report
+    state_fd_iters = _int_list(args.state_fd_iters)
+    if state_fd_iters:
+        from vmec_jax._compat import jnp
+        from vmec_jax.discrete_adjoint import residual_branch_fingerprint
+        from vmec_jax.solve import solve_fixed_boundary_residual_iter
+        from vmec_jax.state import pack_state
+
+        by_iter = []
+
+        def _complete_solve_result(iter_stage, iter_params, *, iter_count: int):
+            state0 = iter_stage.optimizer._initial_state_from_params(
+                iter_params,
+                profile_name="diagnostic_iter_initial",
+            )
+            solve_kwargs = dict(iter_stage.optimizer._exact_solver_kwargs)
+            solve_kwargs["light_history"] = False
+            solve_kwargs["adjoint_trace"] = True
+            return solve_fixed_boundary_residual_iter(
+                state0,
+                iter_stage.optimizer._static,
+                max_iter=int(iter_count),
+                ftol=iter_stage.optimizer._inner_ftol,
+                **solve_kwargs,
+            )
+
+        for iter_count in state_fd_iters:
+            iter_stage = stage if int(iter_count) == int(args.inner_max_iter) else _build_stage(int(iter_count))
+            iter_params0 = np.zeros(len(iter_stage.specs), dtype=float)
+            iter_direction = np.zeros_like(iter_params0)
+            iter_idx = _spec_index(iter_stage.specs, kind=str(args.kind), m=int(args.m), n=int(args.n))
+            iter_direction[iter_idx] = 1.0
+            iter_state, iter_tangents = iter_stage.optimizer.state_tangent_columns_fun(iter_params0)
+            iter_state_jvp = np.asarray(iter_tangents[iter_idx], dtype=float)
+            iter_base_result = _complete_solve_result(iter_stage, iter_params0, iter_count=int(iter_count))
+            iter_plus_result = _complete_solve_result(
+                iter_stage,
+                iter_params0 + eps * iter_direction,
+                iter_count=int(iter_count),
+            )
+            iter_minus_result = _complete_solve_result(
+                iter_stage,
+                iter_params0 - eps * iter_direction,
+                iter_count=int(iter_count),
+            )
+            iter_fd = np.asarray(
+                (
+                    jnp.asarray(pack_state(iter_plus_result.state), dtype=jnp.float64)
+                    - jnp.asarray(pack_state(iter_minus_result.state), dtype=jnp.float64)
+                )
+                / (2.0 * eps),
+                dtype=float,
+            )
+            base_fingerprint = residual_branch_fingerprint(iter_base_result)
+            plus_fingerprint = residual_branch_fingerprint(iter_plus_result)
+            minus_fingerprint = residual_branch_fingerprint(iter_minus_result)
+            iter_diff = iter_state_jvp - iter_fd
+            iter_state_jvp_norm = float(np.linalg.norm(iter_state_jvp))
+            iter_state_fd_norm = float(np.linalg.norm(iter_fd))
+            iter_diff_norm = float(np.linalg.norm(iter_diff))
+            iter_dot = float(np.vdot(iter_state_jvp, iter_fd))
+            by_iter.append(
+                {
+                    "inner_max_iter": int(iter_count),
+                    "parameter_index": int(iter_idx),
+                    "packed_state_size": int(iter_state_jvp.size),
+                    "state_jvp_norm": iter_state_jvp_norm,
+                    "state_fd_norm": iter_state_fd_norm,
+                    "state_diff_norm": iter_diff_norm,
+                    "state_relative_diff_norm": iter_diff_norm
+                    / max(iter_state_jvp_norm, iter_state_fd_norm, np.finfo(float).eps),
+                    "state_max_abs_diff": float(np.max(np.abs(iter_diff))) if iter_diff.size else 0.0,
+                    "state_cosine_similarity": iter_dot
+                    / max(iter_state_jvp_norm * iter_state_fd_norm, np.finfo(float).eps),
+                    "fingerprint_plus_matches_base": bool(plus_fingerprint == base_fingerprint),
+                    "fingerprint_minus_matches_base": bool(minus_fingerprint == base_fingerprint),
+                    "fingerprint_plus_matches_minus": bool(plus_fingerprint == minus_fingerprint),
+                    "base_fingerprint": base_fingerprint,
+                    "plus_fingerprint": plus_fingerprint,
+                    "minus_fingerprint": minus_fingerprint,
+                    "base_residual_norm": float(
+                        np.linalg.norm(
+                            np.asarray(iter_stage.optimizer._residuals_eval_fn(iter_base_result.state), dtype=float)
+                        )
+                    ),
+                }
+            )
+        report["state_fd_by_iter"] = by_iter
     text = json.dumps(report, indent=2, sort_keys=True)
     print(text)
     if args.output_json is not None:

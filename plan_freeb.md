@@ -16559,3 +16559,64 @@ Completion:
   mismatch remains open.
 - QI minimal-seed README artifact regeneration: unchanged at 50%
   artifact-complete, 0% promoted.
+
+### 2026-06-09 QI First-Step Replay Localization
+
+Steps taken:
+
+1. Extended ``tools/diagnostics/qi_optimizer_jvp_fd_compare.py`` with
+   ``--state-fd-iters`` to rebuild QI stages at selected accepted-solve
+   iteration counts and compare packed-state JVPs against complete-solve
+   central finite differences.
+2. Added base/plus/minus ``residual_branch_fingerprint`` reports for those
+   iteration-local comparisons so same-branch failures can be separated from
+   accepted/rejected controller-slot switches.
+3. Ran the fingerprinted diagnostic on the production NFP2 QI candidate on the
+   ``office`` GPU for ``rc(m=1,n=0)`` at iteration counts
+   ``1,2,5,10,25``.
+4. Ran a one-step epsilon sweep at ``eps=1e-3,1e-4,1e-5,1e-6`` for the same
+   candidate.
+5. Fixed the CI unit-test fake optimizer to accept and assert the QI staged
+   builder's ``freeze_initial_axis=True`` default.
+
+Results obtained:
+
+1. The packed-state mismatch is already present after one residual iteration:
+   at ``eps=1e-4``, one-step ``state_relative_diff_norm = 0.995`` with
+   state FD norm about ``168.7`` and replay JVP norm about ``3.95``.
+2. The branch fingerprints match for base, plus, and minus solves at all
+   checked iteration counts.  The first step remains on the same
+   ``momentum_accept`` / ``strict_update`` branch with matching preconditioner
+   and constraint flags, so this is not an accepted/rejected controller branch
+   mismatch.
+3. The epsilon sweep shows residual-level agreement improves at smaller
+   epsilon but does not become promotion-grade:
+   ``eps=1e-5`` and ``eps=1e-6`` both give residual
+   ``relative_diff_norm ~= 0.347`` and cosine ``~= 0.947``.  Packed-state FD
+   remains poorly aligned, which suggests the current tape replay is missing
+   part of the first strict-update tangent or the packed state includes large
+   nearly-null directions not represented by the residual projection.
+
+Best next steps:
+
+1. Add a focused first-step replay AD-vs-FD unit/diagnostic around
+   ``replay_residual_checkpoint_step`` or the extracted ``strict_update``
+   trace, using the same NFP2 candidate branch but a reduced mode/resolution
+   fixture if possible.
+2. Compare direct JAX differentiation of one residual update against the
+   checkpoint-tape replay for the same initial tangent; this should identify
+   whether the missing term is in preconditioner reconstruction, m=1
+   constraints, update limiting/scaling, or the packed-state projection.
+3. Keep README QI artifacts blocked until the first-step replay tangent passes
+   same-branch FD.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- QI optimizer/JVP correctness for minimal-seed cleanup: 90%; the failure is
+  now localized to a same-branch first residual update/replay mismatch.
+- QI minimal-seed README artifact regeneration: unchanged at 50%
+  artifact-complete, 0% promoted.
