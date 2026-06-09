@@ -16277,3 +16277,90 @@ Completion:
   (NFP3/NFP4 passing); NFP1/NFP2 unresolved under strict gates, 0% promoted.
 - CI runtime refactor with preserved coverage/physics gates: 100%.
 - Docs/release hygiene: 99.95%; blocked on a passing four-row QI panel.
+
+### 2026-06-09 QI Minimal-Seed NFP1/NFP2 Diagnostic Push
+
+Steps taken:
+
+1. Started from clean local ``main`` at ``fc69d59`` and confirmed the
+   corresponding GitHub Actions run was green before launching new diagnostics.
+2. Created a separate clean remote worktree on ``office`` at
+   ``/home/rjorge/local/tests/vmec_jax_qi_stage_fc69`` so new QI diagnostics
+   did not mutate the previous dirty artifact tree.
+3. Re-read the QI staged policy, renderer, and staged-runner plumbing.  The
+   renderer remains correctly gated on diagnostics provenance and should not be
+   weakened.
+4. Summarized the previous remote QI artifact metrics.  NFP3/NFP4 passed their
+   configured gates; NFP1/NFP2 remained blocked.
+5. Tested the alternate untracked ``input.nfp2_QI_fixed_resolution_final``
+   reference as an NFP2 basin.  A low-resolution audit looked promising, but
+   the full-resolution renderer audit failed the smooth-QI gate.
+6. Confirmed the local matrix-free QI cleanup stage is not currently moving the
+   NFP2 boundary: previous history spent many callbacks with unchanged aspect,
+   iota, objective, and QI objective.
+7. Ran direct fixed-solve finite-perturbation diagnostics around the selected
+   NFP2 reference candidate.  Decreasing ``RBC(0,1)`` and then adding a small
+   ``ZBS(0,1)`` perturbation improved smooth QI, proving the local landscape is
+   not flat.
+8. Performed a full-resolution finite grid around the best low-resolution
+   micro-polish and a small max-mode-5 reference scan.  Neither closed the
+   strict smooth-QI gate.
+
+Results obtained:
+
+1. Previous NFP2 canonical candidate:
+   ``smooth QI = 2.7047e-3``, ``legacy QI = 2.09e-4``,
+   ``mirror = 0.265``, ``mean iota = -0.699``.  Only smooth QI fails.
+2. Alternate NFP2 fixed-resolution reference at full audit:
+   ``smooth QI = 4.32e-3``, ``legacy QI = 1.80e-3``,
+   ``mirror = 0.284``, ``mean iota = -0.706``.  It is worse in smooth QI.
+3. NFP2 finite perturbation at low audit showed useful derivative information:
+   ``RBC(0,1)-0.005`` and ``ZBS(0,1)-0.001`` reached
+   ``smooth QI = 1.997e-3`` with clean mirror/iota at low resolution.
+4. The same micro-polished NFP2 candidate at full audit reached
+   ``smooth QI = 2.393e-3``, ``legacy QI = 1.90e-4``,
+   ``mirror = 0.288``, ``mean iota = -0.706``.  It improved the canonical
+   candidate but still failed the strict ``2e-3`` smooth-QI gate.
+5. NFP2 max-mode-5 reference candidates were worse, with smooth QI above
+   ``4e-3`` and aspect near ``8``.
+6. The negative diagnostic is important: fixed-solve perturbations can improve
+   QI, while the exact local optimizer path currently stalls.  The next fix
+   should target QI optimizer step construction/JVP conditioning rather than
+   rerunning the same staged policy.
+
+Best next steps:
+
+1. Add a focused QI optimizer diagnostic that compares finite-difference QI
+   residual changes against the exact JVP/J.Tv products for the selected NFP2
+   candidate.  This should identify whether the matrix-free least-squares path
+   is losing QI sensitivity, over-scaling it, or terminating on a zero step.
+2. Once the QI JVP/step issue is fixed, rerun NFP2 from the canonical
+   ``input.minimal_seed_nfp2`` with the strict renderer gates unchanged.
+3. For NFP1, avoid more broad lambda sweeps until the same QI optimizer/JVP
+   issue is resolved; the best NFP1 alternate already clears legacy QI and
+   mirror but needs a coupled iota/QI improvement.
+4. Keep the QI README panel/CSV absent until all four canonical minimal-seed
+   rows pass case-gated diagnostics.
+5. Continue keeping adaptive free-boundary differentiation claims conservative:
+   current evidence remains fingerprint-gated branch-local/accepted-rejected
+   replay, not arbitrary host adaptive branch differentiation.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999997%.
+- VMEC parity and physics gates: 98.8%.
+- Single-stage coil-only optimization: 99.0%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.3%.
+- QI minimal-seed README artifact regeneration: 50% artifact-complete
+  (NFP3/NFP4 passing); NFP1/NFP2 unresolved under strict gates, 0% promoted.
+- QI optimizer/JVP correctness for minimal-seed cleanup: 80%; new blocker is
+  exact local optimizer stagnation despite nonzero finite-perturbation
+  sensitivity.
+- CI runtime refactor with preserved coverage/physics gates: 100%.
+- Docs/release hygiene: 99.95%; blocked on a passing four-row QI panel.
