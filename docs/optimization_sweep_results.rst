@@ -453,32 +453,23 @@ QI_optimization Input Coverage
 ------------------------------
 
 The dedicated QI docs renderer is a lightweight snapshot renderer for
-case-gated QI lanes; it does not rerun optimization jobs.  The current rows are
-the NFP=1 QI seed deck, the NFP=2 target-helicity seed deck, the NFP=3
-seed-3127 deck, and the NFP=4 minimal-seed lane.  This figure is separate from
-the deferred
-common-minimal-seed stress matrix and should not be read as evidence that one
-common simple seed optimizes successfully for every NFP.  The renderer reads
-the existing ``QI_optimization.py`` outputs, records the final smooth QI
-metric, legacy QI metric, mirror ratio, elongation, iota, aspect, and CPU wall
-time, and draws source-initial and final Boozer ``|B|`` line contours only
-after the initial WOUT boundary matches the paired input deck.  These are
-case-specific checks, not current aspect-5 README best-row promotions or
-common-minimal README best-row promotions: NFP=1 uses target aspect 10, the
-NFP=2 target-helicity lane uses target aspect 6, the seed-3127 NFP=3 lane now
-uses the reviewed aspect-5 reference-family and audit-resolution Boozer-mirror
-cleanup policy, and the NFP=4 row uses the minimal seed plus a same-NFP
-finite-beta QI reference-family proposal.  Regenerate all rows with the
-current uniform aspect-5 policy before using this figure as current README
-promotion evidence.
-Finite-beta NFP=4 remains a separate stress fixture.
+case-gated QI lanes; it does not rerun optimization jobs.  Public README QI
+rows must now use the circular-torus-like
+``examples/data/input.minimal_seed_nfp1`` through
+``examples/data/input.minimal_seed_nfp4`` decks as raw inputs.  Any
+deterministic target-helicity hint, same-NFP reference-family preconditioner, or
+cleanup stage is recorded in the output bundle rather than hidden in the seed
+file.  The renderer reads reviewed ``QI_optimization.py`` outputs, records the
+final smooth QI metric, legacy QI metric, mirror ratio, elongation, iota,
+aspect, and CPU wall time, and draws source-initial and final Boozer ``|B|``
+line contours only after the initial WOUT boundary matches the paired input
+deck.
 
-The NFP=3 seed-3127 row uses
-``examples/data/wout_QI_stel_seed_3127.nc`` as the raw initial artifact.  The
-renderer validates it against ``examples/data/input.QI_stel_seed_3127`` under
-the direct VMEC input convention or VMEC's equivalent canonical phase
-convention, and fails if neither boundary map matches; there is no
-known-artifact exception bypass.
+The historical NFP=3 seed-3127 path remains a far-seed diagnostic in
+``QI_optimization_seed.py`` and validation fixtures.  It is not a public README
+promotion row.  The renderer has no known-artifact bypass: every displayed raw
+initial WOUT must match the paired input deck under the direct VMEC input
+convention or VMEC's equivalent canonical phase convention.
 For lanes with a reference-family preconditioner, the plotted initial panel is
 still the raw/source input WOUT and the plotted final panel is the accepted
 audited WOUT; preconditioner scan points are provenance for basin capture, not
@@ -493,17 +484,14 @@ renderer boundary match before the panel is published.
 
 .. code-block:: bash
 
-   for nfp in 1 2 3 4; do
-     PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/QI_optimization.py \
-       --input-file examples/data/input.minimal_seed_nfp${nfp} \
-       --output-dir results/qi_opt/ess/minimal_nfp${nfp}_qi \
-       --target-aspect 5 --target-abs-iota-min 0.41 \
-       --max-mode 5 --max-nfev 70 --continuation-nfev 20 \
-       --inner-max-iter 450 --inner-ftol 1e-9 \
-       --trial-max-iter 450 --trial-ftol 1e-9 \
-       --ess-alpha 1.2 --use-ess --use-mode-continuation \
-       --stage-mode-policy lower
-   done
+   PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
+     --cases qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
+     --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
+     --policy continuation --max-mode 5 --ess on \
+     --max-nfev 70 --continuation-nfev 20 \
+     --inner-max-iter 550 --inner-ftol 1e-10 \
+     --trial-max-iter 550 --trial-ftol 1e-10 \
+     --ess-alpha 1.2 --case-timeout-s 7200 --rerun
    PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
 
 The optimization commands above create candidate result directories under
@@ -513,77 +501,29 @@ does not read ignored local result directories.
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 25 10 10 10 9 8 8 8 8 10
+   :widths: 25 25 35
 
    * - Input
      - Output/provenance
-     - Final J
-     - Smooth QI
-     - Legacy QI
-     - Mirror
-     - Elong.
-     - Aspect
-     - Iota
-     - CPU min
-     - Status
-   * - ``examples/data/input.nfp1_QI``
-     - ``docs/_static/qi_readme_cases/nfp1``
-     - ``1.56e-2``
-     - ``1.48e-3``
-     - ``7.75e-4``
-     - ``0.242/0.30``
-     - ``6.24/8.2``
-     - ``9.999/10.0``
-     - ``0.5369``
-     - ``15.8``
-     - ``case-gated``
-   * - ``examples/data/input.minimal_seed_nfp2_target_helicity``
-     - ``docs/_static/qi_readme_cases/nfp2_target_helicity``
-     - ``1.61e-2``
-     - ``1.52e-3``
-     - ``5.25e-4``
-     - ``0.240/0.30``
-     - ``6.51/8.2``
-     - ``6.006/6.0``
-     - ``-0.5994``
-     - ``28.7``
-     - ``case-gated``
-   * - ``examples/data/input.QI_stel_seed_3127``
-     - ``docs/_static/qi_readme_cases/nfp3_seed3127``
-     - ``9.33e-2``
-     - ``4.11e-3``
-     - ``1.01e-3``
-     - ``0.304/0.35``
-     - ``4.00/8.0``
-     - ``3.541/4.0``
-     - ``-1.0401``
-     - ``4.6``
-     - ``case-gated``
+     - Policy
+   * - ``examples/data/input.minimal_seed_nfp1``
+     - ``docs/_static/qi_readme_cases/nfp1_minimal``
+     - Same-NFP QI reference-family preconditioner plus local QI/mirror cleanup.
+   * - ``examples/data/input.minimal_seed_nfp2``
+     - ``docs/_static/qi_readme_cases/nfp2_minimal``
+     - Deterministic optimization-time helicity hints plus local QI/mirror cleanup.
+   * - ``examples/data/input.minimal_seed_nfp3``
+     - ``docs/_static/qi_readme_cases/nfp3_minimal``
+     - Same-NFP QI reference-family preconditioner plus local QI/mirror cleanup.
    * - ``examples/data/input.minimal_seed_nfp4``
      - ``docs/_static/qi_readme_cases/nfp4_minimal``
-     - ``2.52e-2``
-     - ``2.56e-3``
-     - ``2.54e-4``
-     - ``0.287/0.35``
-     - ``4.14/8.2``
-     - ``6.011/6.0``
-     - ``-1.2930``
-     - ``0.4``
-     - ``case-gated``
+     - Same-NFP finite-beta QI reference-family preconditioner plus local cleanup.
 
-.. image:: _static/figures/readme_qi_optimization_cases.png
-   :width: 100%
-   :align: center
-   :alt: QI optimization coverage for reviewed NFP=1, 2, 3, and 4 inputs
-
-Source table snapshot:
-:download:`readme_qi_optimization_cases.csv <_static/figures/readme_qi_optimization_cases.csv>`.
-In that generated CSV, ``validation_status=case-gated`` records
-case-specific QI gate status from the renderer and should not be read as
-aspect-5 README best-row promotion evidence or global seed-robustness
-evidence; the NFP=4 row is case-gated by the minimal-seed plus same-NFP
-reference-family path.  The NFP=3 raw initial artifact is now checked by the
-renderer instead of accepted through a case-specific exception.
+After regeneration, the source table snapshot is written to
+``docs/_static/figures/readme_qi_optimization_cases.csv``. In that generated
+CSV, ``validation_status=case-gated`` records case-specific QI gate status from
+the renderer and should not be read as global seed-robustness evidence beyond
+the listed minimal-seed policy.
 
 Regenerate these lightweight artifacts with:
 
@@ -602,11 +542,10 @@ The bundled preconditioner summaries are also scrubbed to scalar scan metrics
 and selected-``lambda`` flags so the tracked release artifacts do not point at
 local scratch directories from the run host.
 
-The staged objective panel concatenates every recorded history file used by
-the selected case-specific result.  It plots the best-so-far value in each
-stage, normalized to that stage's first objective, with dashed separators marking
-objective-definition or weight changes.  For the seed-3127 lane, the inset is
-a boundary-reference interpolation scan, not an optimizer trajectory.
+The staged objective panel concatenates every recorded history file used by the
+selected case-specific result.  It plots the best-so-far value in each stage,
+normalized to that stage's first objective, with dashed separators marking
+objective-definition or weight changes.
 
 Minimal-Seed Showcase Snapshot
 ------------------------------

@@ -203,7 +203,7 @@ remain available for custom inspection.
 - `QH_optimization.py`: recommended quasi-helical fixed-boundary optimization.
 - `QP_optimization.py`: quasi-poloidal fixed-boundary optimization from the public NFP=2 minimal seed, with an explicit optimization-time QI-family preseed when enabled.
 - `QI_optimization.py`: recommended quasi-isodynamic optimization from `input.minimal_seed_nfp2` by default, with Boozer-space QI metrics, mirror-ratio and elongation penalties, repeated lower-mode continuation, and ESS. Edit `INPUT_FILE`, `OUTPUT_DIR`, seed helpers, objective weights, and optimizer controls at the top of the script, then run it directly. Use `STAGE_MODE_POLICY = "lower"` for a shorter one-pass ladder, or `"repeat"` only when the input is already in a good QI basin and same-mode cleanup is desired.
-- `QI_optimization_seed.py`: compact preset that reproduces the reviewed NFP=3 `input.QI_stel_seed_3127` README row by scanning the same-NFP QI reference family, accepting the gated boundary-reference baseline, and delegating to `QI_optimization.py` with explicit controls.
+- `QI_optimization_seed.py`: diagnostic far-seed preset for NFP=3 `input.QI_stel_seed_3127`; README QI promotion rows use `input.minimal_seed_nfp*` decks instead.
 - `qa_optimization_finite_beta.py`, `qh_optimization_finite_beta.py`, and `qi_optimization_finite_beta.py`:
   finite-beta stage-1 examples with pressure/current-profile terms. These intentionally use
   `FixedBoundaryExactOptimizer` directly because each continuation stage builds custom
@@ -335,10 +335,10 @@ PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
 
 To reproduce one reviewed NFP=1/2/3/4 QI row, run the loop body above with a
 single `nfp` value or edit the top-level `INPUT_FILE`, `OUTPUT_DIR`, and
-optional `REFERENCE_INPUT_FILE` values in `QI_optimization.py`.  The archived
-`readme_qi_optimization_cases.png` panel is rendered from reviewed output
-bundles under `docs/_static/qi_readme_cases`.
-For the reviewed NFP=3 seed-3127 row specifically, run:
+optional `REFERENCE_INPUT_FILE` values in `QI_optimization.py`.  The public QI
+README renderer expects reviewed minimal-seed bundles under
+`docs/_static/qi_readme_cases/nfp*_minimal`.
+For the diagnostic NFP=3 seed-3127 far-seed stress case, run:
 
 ```bash
 PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/QI_optimization_seed.py

@@ -121,9 +121,9 @@ def test_readme_renderer_records_case_gated_nfp123_gate_status(monkeypatch, tmp_
     monkeypatch.setattr(mod, "_load_json", fake_load_json)
 
     records = [
-        mod._case_record(_synthetic_case(mod, tmp_path, "NFP=1 QI", nfp=1)),
-        mod._case_record(_synthetic_case(mod, tmp_path, "NFP=2 bundled QI", nfp=2)),
-        mod._case_record(_synthetic_case(mod, tmp_path, "NFP=3 seed 3127", nfp=3)),
+        mod._case_record(_synthetic_case(mod, tmp_path, "NFP=1 minimal seed to QI", nfp=1)),
+        mod._case_record(_synthetic_case(mod, tmp_path, "NFP=2 minimal seed to QI", nfp=2)),
+        mod._case_record(_synthetic_case(mod, tmp_path, "NFP=3 minimal seed to QI", nfp=3)),
     ]
 
     assert {record["qi_nfp"] for record in records} == {1, 2, 3}
@@ -187,7 +187,7 @@ def test_readme_renderer_points_nfp4_row_at_reference_proposal_seed() -> None:
 
     nfp4 = mod.CASES[-1]
 
-    assert nfp4.label == "NFP=4 minimal + QI-reference proposal"
+    assert nfp4.label == "NFP=4 minimal seed to QI"
     assert nfp4.input_file.name == "input.minimal_seed_nfp4"
     assert nfp4.output_dir == ROOT / "docs" / "_static" / "qi_readme_cases" / "nfp4_minimal"
     assert "nfp4_qi_finite_beta" not in str(nfp4.output_dir)
@@ -197,23 +197,19 @@ def test_readme_renderer_points_nfp4_row_at_reference_proposal_seed() -> None:
     assert nfp4.preconditioner_summary.name == "summary.json"
 
 
-def test_readme_renderer_points_nfp3_at_bundled_raw_initial_artifact() -> None:
+def test_readme_renderer_cases_use_only_minimal_public_seeds() -> None:
     mod = _load_module()
 
-    nfp3 = next(case for case in mod.CASES if case.label == "NFP=3 seed 3127")
-
-    bundled_raw_wout = ROOT / "examples" / "data" / "wout_QI_stel_seed_3127.nc"
-    assert nfp3.initial_wout == ROOT / "docs" / "_static" / "qi_readme_cases" / "nfp3_seed3127" / "wout_initial.nc"
-    assert nfp3.initial_wout.read_bytes() == bundled_raw_wout.read_bytes()
-
-
-def test_real_nfp3_raw_initial_wout_matches_input_boundary() -> None:
-    mod = _load_module()
-
-    nfp3 = next(case for case in mod.CASES if case.label == "NFP=3 seed 3127")
-
-    assert mod._boundary_mismatches(nfp3.input_file, nfp3.initial_wout) == []
-    mod._validate_case_initial_wout(nfp3)
+    assert len(mod.CASES) == 4
+    assert {case.input_file.name for case in mod.CASES} == {
+        "input.minimal_seed_nfp1",
+        "input.minimal_seed_nfp2",
+        "input.minimal_seed_nfp3",
+        "input.minimal_seed_nfp4",
+    }
+    assert all("minimal" in case.output_dir.name for case in mod.CASES)
+    assert all("seed3127" not in str(case.output_dir) for case in mod.CASES)
+    assert all("input.QI_stel_seed_3127" not in str(case.input_file) for case in mod.CASES)
 
 
 def test_nfp3_case_catalog_uses_current_aspect5_policy_metadata() -> None:
@@ -236,7 +232,7 @@ def test_nfp3_case_catalog_uses_current_aspect5_policy_metadata() -> None:
 def test_real_nfp4_raw_initial_wout_matches_minimal_seed_and_final_differs() -> None:
     mod = _load_module()
 
-    nfp4 = next(case for case in mod.CASES if case.label == "NFP=4 minimal + QI-reference proposal")
+    nfp4 = next(case for case in mod.CASES if case.label == "NFP=4 minimal seed to QI")
     final_wout = nfp4.output_dir / "wout_final.nc"
 
     assert nfp4.initial_wout.read_bytes() != final_wout.read_bytes()
@@ -419,6 +415,8 @@ def test_readme_renderer_rejects_case_gated_case_with_nonfinite_metric(monkeypat
 
 def test_real_qi_readme_csv_contains_only_clean_case_gated_rows() -> None:
     csv_path = ROOT / "docs" / "_static" / "figures" / "readme_qi_optimization_cases.csv"
+    if not csv_path.exists():
+        pytest.skip("QI README CSV is generated only after reviewed minimal-seed artifacts exist")
     rows = list(csv.DictReader(csv_path.open()))
 
     assert {int(row["qi_nfp"]) for row in rows} == {1, 2, 3, 4}
@@ -426,9 +424,14 @@ def test_real_qi_readme_csv_contains_only_clean_case_gated_rows() -> None:
     assert {row["qi_gate_failures"] for row in rows} == {""}
     assert {row["qi_seed_gate_passed"] for row in rows} == {"True"}
     assert {row["qi_engineering_gate_passed"] for row in rows} == {"True"}
-    labels = {row["case"] for row in rows}
-    assert "NFP=2 target-helicity seed" in labels
-    assert "NFP=4 minimal + QI-reference proposal" in labels
+    assert all("seed3127" not in row["output_dir"] for row in rows)
+    assert all("input.QI_stel_seed_3127" not in row["input_file"] for row in rows)
+    assert {row["input_file"] for row in rows} == {
+        "examples/data/input.minimal_seed_nfp1",
+        "examples/data/input.minimal_seed_nfp2",
+        "examples/data/input.minimal_seed_nfp3",
+        "examples/data/input.minimal_seed_nfp4",
+    }
     nfp4 = next(row for row in rows if int(row["qi_nfp"]) == 4)
     assert int(nfp4["preconditioner_points"]) == 1
     assert float(nfp4["selected_lambda"]) == pytest.approx(1.0)
@@ -477,7 +480,7 @@ def test_readme_renderer_accepts_vmec_canonical_phase_equivalent_wout(monkeypatc
 
 def test_readme_renderer_has_no_raw_wout_artifact_exception_bypass(monkeypatch, tmp_path: Path) -> None:
     mod = _load_module()
-    case = _synthetic_case(mod, tmp_path, "NFP=3 seed 3127", nfp=3)
+    case = _synthetic_case(mod, tmp_path, "NFP=3 minimal seed to QI", nfp=3)
     monkeypatch.setattr(mod, "read_wout", lambda _path: _synthetic_wout(nfp=3, rbc01=0.95))
 
     assert not hasattr(case, "raw_initial_wout_exception")

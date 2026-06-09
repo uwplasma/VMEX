@@ -186,23 +186,15 @@ handling, including stellarator-asymmetric geometry and magnetic channels, and
 synthetic ranking consistency.  It is intentionally cheap enough for ordinary
 development.
 
-The current QI NFP 1-4 coverage panel and CSV document reviewed NFP=1, NFP=2,
-seed-3127, and minimal-seed NFP=4 lanes under their case-specific aspect
-targets:
-``docs/_static/figures/readme_qi_optimization_cases.png`` and
-``docs/_static/figures/readme_qi_optimization_cases.csv``.  These artifacts are
-case-gated coverage rows, not a global seed-robustness claim.  The plotted
-initial panels are raw/source input WOUTs that match the paired input decks;
-the plotted final panels are the accepted audited WOUTs.  The NFP=4 row is a
-case-gated minimal-seed lane that uses a same-NFP reference-family proposal
-plus an exact audit, not a long local descent; its CSV row records one
-preconditioner point and one short history segment along with the exact
-``qi_seed_gate_passed``/``qi_engineering_gate_passed``/``qi_gate_failures``
-fields.  It is separate from the common-minimal showcase, whose current
-checked-in summary does not contain non-stale QI completions.  The separate
-``nfp4_qi_finite_beta`` and ``nfp4_qh_warm_to_qi`` cases remain stress lanes
-rather than broad arbitrary-seed NFP=4 robustness claims.  These rows are not
-additional aspect-5 README best-row promotions.
+The public QI README panel and CSV are generated artifacts, not static
+validation fixtures.  They may be regenerated only from reviewed
+case-specific NFP=1/2/3/4 minimal-seed runs whose raw/source WOUTs match
+``examples/data/input.minimal_seed_nfp*``.  The renderer rejects a row if the
+initial WOUT does not match the paired input deck or if the case-gated QI,
+mirror, elongation, iota, or finite-metric fields fail.  The seed-3127 and
+finite-beta NFP=4 lanes remain explicit diagnostics/stress fixtures rather than
+README promotion rows.  These generated rows are not global seed-robustness
+claims and are not additional aspect-5 README best-row promotions.
 May 2026 bounded NFP=4 reruns that reproduce this metric envelope should be
 recorded as QA/provenance checks unless they provide a new reviewed
 ``docs/_static/qi_readme_cases/nfp4_minimal`` replacement bundle.  Do not

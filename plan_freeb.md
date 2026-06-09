@@ -12,6 +12,80 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-09 Branch-Local Coil Proposal Smoke and Minimal-Seed QI README Policy
+
+Steps taken:
+
+1. Rechecked ``main`` at commit ``792706a`` with a clean working tree.
+2. Ran the compact direct-coil free-boundary QS optimization example with the
+   promoted same-branch vector/JVP report, the accepted/rejected controller-slot
+   gate, and the derivative-proposal option enabled.
+3. Updated ``docs/free_boundary_coil_optimization.rst`` so the documented
+   proposal smoke uses ``--same-branch-report-mode vector``,
+   ``--same-branch-report-vector-keys aspect,qs_total``, and
+   ``--same-branch-report-rejected-slot-gate`` before forming a proposal.
+4. Changed the QI README renderer catalog so public NFP=1/2/3/4 QI rows point
+   only to ``examples/data/input.minimal_seed_nfp*`` raw seed decks and
+   ``docs/_static/qi_readme_cases/nfp*_minimal`` artifact directories.
+5. Removed stale README/docs embedding and table text for the older mixed-input
+   QI panel.  The seed-3127 preset is now documented as a diagnostic far-seed
+   stress lane, not as a README promotion row.
+6. Updated release-hygiene and QI renderer tests to enforce the minimal-seed
+   public QI policy and prevent a silent fallback to ``input.QI_stel_seed_3127``
+   in README renderer cases.
+
+Results obtained:
+
+1. The small coil-only QS run completed in about ``28 s``.  Every optimizer
+   trial used a complete free-boundary solve.  The derivative-assisted trial was
+   rejected by ``acceptance_decision_source = complete_solve_objective``.
+2. The same run wrote a branch-local vector gate with ``passed = True`` for
+   ``aspect`` and ``qs_total`` and a rejected-slot gate with ``passed = True``
+   and one fixed rejected slot.
+3. ``ssh office`` was not reachable from this session, so the long QI NFP=1/2/3
+   minimal-seed artifact regeneration was not launched.
+4. Focused checks passed:
+   ``tests/test_qi_readme_cases.py``, ``tests/test_docs_release_hygiene.py``,
+   ``tests/test_optimization_examples.py``, the three exact free-boundary
+   same-branch AD-vs-central-FD gates in
+   ``tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py``, and
+   the two focused coil-QS derivative-proposal smoke tests.
+
+Best next steps:
+
+1. When a GPU runner is reachable, rerun the minimal-seed QI NFP=1/2/3/4 jobs
+   with ``generate_minimal_seed_showcase.py --cases qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4``
+   and regenerate ``readme_qi_optimization_cases.png`` only after every raw
+   ``wout_initial.nc`` matches its ``input.minimal_seed_nfp*`` deck.
+2. Keep arbitrary adaptive branch differentiation unclaimed.  The current
+   promoted evidence is fingerprint-gated branch-local replay, vector/JVP
+   reports, accepted/rejected slot evidence, and complete-solve acceptance
+   authority.
+3. Continue VMEC2000/mgrid/direct-coil parity expansion only with bounded,
+   finite-positive physical WOUT fixtures.
+
+Need from user:
+
+Access to ``ssh office`` or another GPU runner is needed to regenerate and
+review the long QI minimal-seed NFP=1/2/3/4 artifacts.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998% for fixed
+  same-branch scalar/vector gates and accepted/rejected slot evidence;
+  arbitrary adaptive branch differentiation remains explicitly unclaimed.
+- VMEC parity and physics gates: 99.35%.
+- Single-stage coil-only optimization: 100.0% for complete-solve-accepted,
+  branch-local-derivative proposal runs.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100% for focused gates.
+- Docs/release hygiene: 100% for the branch-local proposal docs and
+  minimal-seed QI policy update.
+- QI seed robustness: 92%; public README policy is now minimal-seed-only, but
+  NFP=1/2/3 minimal artifacts still need long-run regeneration before a new
+  QI panel is reintroduced.
+
 ### 2026-06-07 Same-Branch Slot Gate and QI Constrained-Prefine Planning
 
 Steps taken:

@@ -1,10 +1,12 @@
 #!/usr/bin/env python
-"""Reproduce the reviewed NFP=3 seed-3127 QI optimization row.
+"""Run the diagnostic NFP=3 seed-3127 QI optimization preset.
 
-This is a compact preset for the NFP=3 ``input.QI_stel_seed_3127`` row in
-``readme_qi_optimization_cases.png``. It keeps the scientific controls visible
-here, then delegates to ``QI_optimization.py`` with explicit command-line
-overrides so users do not need to manually edit the larger QI driver.
+This is a compact stress-case preset for the far-seed
+``input.QI_stel_seed_3127`` lane. Public README QI rows use the bundled
+``input.minimal_seed_nfp*`` decks instead. This script keeps the scientific
+controls visible here, then delegates to ``QI_optimization.py`` with explicit
+command-line overrides so users do not need to manually edit the larger QI
+driver for the seed-3127 diagnostic.
 """
 
 from __future__ import annotations
@@ -224,7 +226,7 @@ def main() -> int:
         boundary_reference_json = write_boundary_reference_config(Path(tmpdir) / "boundary_reference.json")
         mirror_ramp_stages_json = write_mirror_ramp_stages_config(Path(tmpdir) / "mirror_ramp_stages.json")
         command = build_qi_optimization_command(boundary_reference_json, mirror_ramp_stages_json)
-        print("Reproducing the README NFP=3 seed-3127 QI row.")
+        print("Running the diagnostic NFP=3 seed-3127 QI preset.")
         print(f"  raw seed:        {_path_arg(INPUT_FILE)}")
         print(f"  QI reference:    {_path_arg(REFERENCE_INPUT_FILE)}")
         print(f"  output dir:      {OUTPUT_DIR}")

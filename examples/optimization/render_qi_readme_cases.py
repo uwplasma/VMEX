@@ -42,76 +42,44 @@ class QICase:
 
 CASES = (
     QICase(
-        label="NFP=1 QI",
-        input_file=REPO_ROOT / "examples" / "data" / "input.nfp1_QI",
-        output_dir=ARTIFACT_DIR / "nfp1",
-        initial_wout=ARTIFACT_DIR / "nfp1" / "wout_initial.nc",
-        note="mirror-aware QI lane",
+        label="NFP=1 minimal seed to QI",
+        input_file=REPO_ROOT / "examples" / "data" / "input.minimal_seed_nfp1",
+        output_dir=ARTIFACT_DIR / "nfp1_minimal",
+        initial_wout=ARTIFACT_DIR / "nfp1_minimal" / "wout_initial.nc",
+        note="minimal/circular seed with same-NFP QI reference-family preconditioner",
         history_paths=(
-            ARTIFACT_DIR / "nfp1" / "mirror_ramp_01_matrix_free_mirror030" / "history.json",
+            ARTIFACT_DIR / "nfp1_minimal" / "history.json",
         ),
+        preconditioner_summary=ARTIFACT_DIR / "nfp1_minimal" / "boundary_reference_preconditioner" / "summary.json",
     ),
     QICase(
-        label="NFP=2 target-helicity seed",
-        input_file=REPO_ROOT / "examples" / "data" / "input.minimal_seed_nfp2_target_helicity",
-        output_dir=ARTIFACT_DIR / "nfp2_target_helicity",
-        initial_wout=ARTIFACT_DIR / "nfp2_target_helicity" / "wout_initial.nc",
-        note="aspect-5 target-helicity hinted mirror-aware QI lane",
+        label="NFP=2 minimal seed to QI",
+        input_file=REPO_ROOT / "examples" / "data" / "input.minimal_seed_nfp2",
+        output_dir=ARTIFACT_DIR / "nfp2_minimal",
+        initial_wout=ARTIFACT_DIR / "nfp2_minimal" / "wout_initial.nc",
+        note="minimal/circular seed with deterministic optimization-time helicity hints",
         history_paths=(
-            ARTIFACT_DIR
-            / "nfp2_target_helicity"
-            / "mirror_ramp_01_matrix_free_mirror030"
-            / "history.json",
+            ARTIFACT_DIR / "nfp2_minimal" / "history.json",
         ),
-        preconditioner_summary=ARTIFACT_DIR
-        / "nfp2_target_helicity"
-        / "boundary_reference_preconditioner"
-        / "summary.json",
+        preconditioner_summary=ARTIFACT_DIR / "nfp2_minimal" / "boundary_reference_preconditioner" / "summary.json",
     ),
     QICase(
-        label="NFP=3 seed 3127",
-        input_file=REPO_ROOT / "examples" / "data" / "input.QI_stel_seed_3127",
-        output_dir=ARTIFACT_DIR / "nfp3_seed3127",
-        initial_wout=ARTIFACT_DIR / "nfp3_seed3127" / "wout_initial.nc",
-        note="passing reference-family QI lane",
+        label="NFP=3 minimal seed to QI",
+        input_file=REPO_ROOT / "examples" / "data" / "input.minimal_seed_nfp3",
+        output_dir=ARTIFACT_DIR / "nfp3_minimal",
+        initial_wout=ARTIFACT_DIR / "nfp3_minimal" / "wout_initial.nc",
+        note="minimal/circular seed with same-NFP QI reference-family preconditioner",
         history_paths=(
-            ARTIFACT_DIR / "nfp3_seed3127" / "boundary_reference_baseline" / "history.json",
-            ARTIFACT_DIR
-            / "nfp3_seed3127"
-            / "mirror_ramp_01_matrix_free_qi_refine_full_mode"
-            / "history.json",
-            ARTIFACT_DIR
-            / "nfp3_seed3127"
-            / "mirror_ramp_02_matrix_free_qi_refine_repeat_full_mode"
-            / "history.json",
-            ARTIFACT_DIR
-            / "nfp3_seed3127"
-            / "mirror_ramp_03_matrix_free_nonsmooth_mirror_preserve_qi"
-            / "history.json",
-            ARTIFACT_DIR
-            / "nfp3_seed3127"
-            / "mirror_ramp_04_matrix_free_final_mirror_cleanup"
-            / "history.json",
-            ARTIFACT_DIR
-            / "nfp3_seed3127"
-            / "mirror_ramp_05_matrix_free_augmented_lagrangian_mirror_cleanup"
-            / "history.json",
-            ARTIFACT_DIR
-            / "nfp3_seed3127"
-            / "mirror_ramp_06_matrix_free_boozer_scalar_al_mirror_cleanup"
-            / "history.json",
+            ARTIFACT_DIR / "nfp3_minimal" / "history.json",
         ),
-        preconditioner_summary=ARTIFACT_DIR
-        / "nfp3_seed3127"
-        / "boundary_reference_preconditioner"
-        / "summary.json",
+        preconditioner_summary=ARTIFACT_DIR / "nfp3_minimal" / "boundary_reference_preconditioner" / "summary.json",
     ),
     QICase(
-        label="NFP=4 minimal + QI-reference proposal",
+        label="NFP=4 minimal seed to QI",
         input_file=REPO_ROOT / "examples" / "data" / "input.minimal_seed_nfp4",
         output_dir=ARTIFACT_DIR / "nfp4_minimal",
         initial_wout=ARTIFACT_DIR / "nfp4_minimal" / "wout_initial.nc",
-        note="minimal seed with same-NFP finite-beta QI reference-family preconditioner",
+        note="minimal/circular seed with same-NFP finite-beta QI reference-family preconditioner",
         history_paths=(
             ARTIFACT_DIR
             / "nfp4_minimal"

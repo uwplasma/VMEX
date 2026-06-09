@@ -89,16 +89,21 @@ def test_qi_case_specific_artifacts_are_not_documented_as_aspect5_promotions() -
     optimization = (ROOT / "docs" / "optimization.rst").read_text()
     sweep_results = (ROOT / "docs" / "optimization_sweep_results.rst").read_text()
     validation = (ROOT / "docs" / "validation.rst").read_text()
-    qi_cases_csv = (ROOT / "docs" / "_static" / "figures" / "readme_qi_optimization_cases.csv").read_text()
+    qi_cases_csv_path = ROOT / "docs" / "_static" / "figures" / "readme_qi_optimization_cases.csv"
 
     assert "common-minimal-seed" in readme
-    assert "current QI NFP1/2/3/4 reviewed snapshot" in readme
-    assert "case-gated reference-family steps" in readme
-    assert "rather than claims that every NFP row is" in readme
+    assert "QI NFP1/2/3/4" in readme
+    assert "input.minimal_seed_nfp*" in readme
+    assert "seed-3127 preset is retained as a diagnostic stress" in readme
     assert "artifact-promotion" in readme
     assert "rules live in the docs" in readme
 
-    for text in (optimization, sweep_results, validation):
+    for text in (optimization, sweep_results):
+        assert "input.minimal_seed_nfp" in text
+        assert "seed-3127" in text
+        assert "diagnostic" in text
+
+    for text in (validation,):
         assert "case-specific" in text
         assert "aspect-5 README" in text
         assert "best-row promotion" in text
@@ -108,8 +113,11 @@ def test_qi_case_specific_artifacts_are_not_documented_as_aspect5_promotions() -
         assert "passing QI lanes" not in text
         assert "validation_status=promoted" not in text
 
-    assert ",promoted," not in qi_cases_csv
-    assert ",case-gated," in qi_cases_csv
+    if qi_cases_csv_path.exists():
+        qi_cases_csv = qi_cases_csv_path.read_text()
+        assert ",promoted," not in qi_cases_csv
+        assert "input.QI_stel_seed_3127" not in qi_cases_csv
+        assert "input.minimal_seed_nfp" in qi_cases_csv
 
 
 def _tracked_files(*pathspecs: str) -> list[Path]:
@@ -120,7 +128,7 @@ def _tracked_files(*pathspecs: str) -> list[Path]:
         text=True,
         stdout=subprocess.PIPE,
     )
-    return [ROOT / line for line in result.stdout.splitlines()]
+    return [path for line in result.stdout.splitlines() if (path := ROOT / line).exists()]
 
 
 def test_checked_in_docs_figures_stay_compact() -> None:

@@ -1419,8 +1419,16 @@ final-point derivative evidence for a reviewer-facing artifact.
      --helicity-m 1 \
      --helicity-n 0 \
      --write-same-branch-report \
+     --same-branch-report-mode vector \
+     --same-branch-report-vector-keys aspect,qs_total \
+     --same-branch-report-rejected-slot-gate \
      --same-branch-derivative-proposal \
      --outdir results/free_boundary_QS_coil_optimization_circle_same_branch_proposal
+
+This is the compact production-style proposal smoke: the branch-local report is
+the promoted vector/JVP artifact, the accepted/rejected slot gate is checked
+before a proposal is formed, and the ordinary complete free-boundary solve is
+still the only authority for accepting or rejecting the proposed coil point.
 
 For the ESSOS Landreman-Paul QA coils, put ESSOS on ``PYTHONPATH`` and use:
 
