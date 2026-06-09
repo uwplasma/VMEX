@@ -169,32 +169,34 @@ Editable optimization examples live in `examples/optimization/`. Start with
 `examples/optimization/README.md`, then use `docs/optimization.rst`,
 `docs/optimization_sweep_results.rst`, and `docs/piecewise_omnigenous_plan.rst`.
 
-The compact panels show QA/QH/QP common-minimal-seed runs and the current QI NFP1/2/3/4 reviewed snapshot. QI uses case-gated reference-family steps rather than claims that every NFP row is solved from the same seed. Full numeric tables, caveats, LASYM panels,
-artifact-promotion rules live in the docs, alongside historical `readme_best_optimization_qa.png`,
-`readme_best_optimization_qh.png`, `readme_best_optimization_qp.png`, and
-`readme_best_optimization_qi.png` panels live in the docs.
+The compact panels show QA/QH/QP common-minimal-seed runs and the QI NFP1/2/3/4
+minimal-seed policy. For QI, the raw input is always a circular-torus-like
+`input.minimal_seed_nfp*` deck; optimization-time helicity hints and same-NFP
+reference-family stages are recorded as artifacts, not hidden seed edits. Full
+numeric tables, caveats, LASYM panels, artifact-promotion rules live in the docs,
+with historical `readme_best_optimization_qa.png`, `readme_best_optimization_qh.png`,
+`readme_best_optimization_qp.png`, and `readme_best_optimization_qi.png` archived there.
 
 ![Common minimal-seed QA/QH/QP states](docs/_static/figures/minimal_seed_showcase_state_panel.png)
-![QI optimization from NFP seeds](docs/_static/figures/readme_qi_optimization_cases.png)
 
-Reproduce the common-minimal QA/QH/QP rows with:
+Reproduce the minimal-seed optimization rows with:
 
 ```bash
 PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
-  --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3 --backend-label gpu \
+  --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
+  --backend-label gpu \
   --solver-device gpu --worker-jax-platforms cuda --policy continuation --max-mode 5 --ess on \
   --max-nfev 70 --continuation-nfev 20 --inner-max-iter 550 --inner-ftol 1e-10 \
-  --trial-max-iter 550 --trial-ftol 1e-10 \
-  --ess-alpha 1.2 --case-timeout-s 7200 --rerun
+  --trial-max-iter 550 --trial-ftol 1e-10 --ess-alpha 1.2 --case-timeout-s 7200 --rerun
 PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py --publication-matrix
+PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
 ```
+
 Run individual editable examples with `python examples/optimization/QA_optimization.py`,
-`QH_optimization.py`, `QP_optimization.py`, `QI_optimization.py`, or
-`QI_optimization_seed.py` for seed-3127 QI. Full provenance and artifact rules
-are in `docs/optimization.rst` and `docs/optimization_sweep_results.rst`.
-Historical panels remain documented as
-`readme_best_optimization_qa.png`, `readme_best_optimization_qh.png`,
-`readme_best_optimization_qp.png`, and `readme_best_optimization_qi.png`.
+`QH_optimization.py`, `QP_optimization.py`, or `QI_optimization.py`. The
+`QI_optimization_seed.py` seed-3127 preset is retained as a diagnostic stress
+case, not as a README promotion row. Full provenance and artifact rules are in
+`docs/optimization.rst` and `docs/optimization_sweep_results.rst`.
 
 ## Performance, Validation, Release
 
