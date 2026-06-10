@@ -177,6 +177,54 @@ def test_initial_state_from_params_uses_frozen_axis_override(monkeypatch) -> Non
     ]
 
 
+def test_solver_initial_state_from_params_applies_solver_setup_rules(monkeypatch) -> None:
+    import jax.numpy as jnp
+
+    import vmec_jax.init_guess as init_guess_module
+    from vmec_jax.state import unpack_state
+
+    layout = StateLayout(ns=3, K=2, lasym=False)
+    raw_state = VMECState(
+        layout=layout,
+        Rcos=jnp.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=jnp.float64),
+        Rsin=jnp.asarray([[0.0, 0.2], [0.3, 0.4], [0.5, 0.6]], dtype=jnp.float64),
+        Zcos=jnp.asarray([[0.0, 0.7], [0.8, 0.9], [1.0, 1.1]], dtype=jnp.float64),
+        Zsin=jnp.asarray([[0.0, 1.2], [1.3, 1.4], [1.5, 1.6]], dtype=jnp.float64),
+        Lcos=jnp.asarray([[9.0, 8.0], [7.0, 6.0], [5.0, 4.0]], dtype=jnp.float64),
+        Lsin=jnp.asarray([[3.0, 2.0], [1.0, 0.5], [0.25, 0.125]], dtype=jnp.float64),
+    )
+
+    opt = object.__new__(FixedBoundaryExactOptimizer)
+    opt._static = SimpleNamespace(
+        cfg=SimpleNamespace(lasym=False),
+        modes=SimpleNamespace(m=np.asarray([0, 1]), n=np.asarray([0, 0])),
+        m_is_m0=np.asarray([True, False]),
+    )
+    opt._indata = object()
+    opt._boundary_from_params = lambda params: params
+    monkeypatch.setattr(
+        init_guess_module,
+        "initial_guess_from_boundary",
+        lambda *_args, **_kwargs: raw_state,
+    )
+
+    packed = FixedBoundaryExactOptimizer._solver_initial_state_packed_from_params(
+        opt,
+        np.asarray([1.0]),
+        axis_override=None,
+    )
+    state = unpack_state(packed, layout)
+
+    np.testing.assert_allclose(np.asarray(state.Rcos)[0], [1.0, 0.0])
+    np.testing.assert_allclose(np.asarray(state.Zsin)[0], [0.0, 0.0])
+    np.testing.assert_allclose(np.asarray(state.Rcos)[-1], np.asarray(raw_state.Rcos)[-1])
+    np.testing.assert_allclose(np.asarray(state.Zsin)[-1], np.asarray(raw_state.Zsin)[-1])
+    np.testing.assert_allclose(np.asarray(state.Lcos)[0], [0.0, 0.0])
+    np.testing.assert_allclose(np.asarray(state.Lsin)[0], [0.0, 0.0])
+    np.testing.assert_allclose(np.asarray(state.Lcos)[:, 0], 0.0)
+    np.testing.assert_allclose(np.asarray(state.Lsin)[:, 0], 0.0)
+
+
 def test_initial_state_from_params_jit_helper_success_with_sync(monkeypatch) -> None:
     import jax.numpy as jnp
 
