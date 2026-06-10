@@ -27,8 +27,9 @@ no separate plotting or QI extra.
 
 For most users, bare ``pip`` is the shortest install path.  If it does not
 install into the Python you intend to use, check that ``pip --version`` and
-``python -m pip --version`` agree; if they do not, retry with
-``python -m pip install vmec-jax``.  If an install or backend import fails, run::
+``python -m pip --version`` agree; use ``python -m pip`` only when bare
+``pip`` points at the wrong interpreter.  If an install or backend import
+fails, run::
 
   vmec --doctor
 
@@ -44,11 +45,14 @@ If an editable/source install fails with an error like::
 do not start by uninstalling global ``setuptools`` or ``packaging`` packages.
 That usually makes a Homebrew/system Python environment more inconsistent.  First
 check that ``pip --version`` and ``python -m pip --version`` point to the same
-Python.  Then try::
+Python.  Then try the same bare ``pip`` install again::
 
-  python -m pip install vmec-jax
+  pip install vmec-jax
   vmec --doctor
   vmec --test
+
+If bare ``pip`` still points at the wrong Python, use the matching
+``python -m pip`` form for that same install command.
 
 For a source checkout, replace the package install line with::
 

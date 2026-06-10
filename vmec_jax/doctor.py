@@ -190,8 +190,7 @@ def format_report(report: DoctorReport) -> str:
                 "",
                 "Recommended clean install:",
                 "  pip install vmec-jax",
-                "  # If pip targets a different Python, use:",
-                "  python -m pip install vmec-jax",
+                "  If pip targets a different Python, use the matching python -m pip form.",
             ]
         )
     else:

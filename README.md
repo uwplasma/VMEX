@@ -24,7 +24,9 @@ pip install vmec-jax
 
 The plain package includes plotting support and `booz_xform_jax`; no separate
 extra is needed. If bare `pip` does not install into the Python you intend to
-use, retry with `python -m pip install vmec-jax`.
+use, check that `pip --version` and `python -m pip --version` agree; use the
+matching `python -m pip` form only if bare `pip` points at the wrong
+interpreter.
 
 ```bash
 pixi add vmec-jax
