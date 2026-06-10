@@ -329,7 +329,7 @@ def test_qi_seed3127_example_exposes_reviewed_readme_preset(tmp_path: Path) -> N
     assert 'REFERENCE_INPUT_FILE = DATA_DIR / "input.nfp3_QI_fixed_resolution_final"' in text
     assert module.MAX_MODE == 4
     assert module.MIN_VMEC_MODE == 6
-    assert module.TARGET_ASPECT == pytest.approx(5.0)
+    assert module.TARGET_ASPECT == pytest.approx(6.0)
     assert module.MAX_NFEV == 18
     assert module.SCIPY_LSMR_MAXITER == 4
     assert module.BOUNDARY_REFERENCE_MAX_ITER == 80
@@ -344,7 +344,7 @@ def test_qi_seed3127_example_exposes_reviewed_readme_preset(tmp_path: Path) -> N
     assert config["reference_input"] == "examples/data/input.nfp3_QI_fixed_resolution_final"
     assert config["lambdas"] == [0.99, 0.995, 1.0, 1.005, 1.008, 1.01, 1.012]
     assert config["max_iter"] == 80
-    assert config["target_aspect"] == pytest.approx(5.0)
+    assert config["target_aspect"] == pytest.approx(6.0)
     assert config["smooth_qi_max"] == pytest.approx(5.0e-3)
     assert config["legacy_qi_max"] == pytest.approx(2.0e-3)
     assert config["prefer_non_endpoint"] is True

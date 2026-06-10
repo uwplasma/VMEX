@@ -31,7 +31,7 @@ SUMMARY_CSV = FIGURE_DIR / "qs_ess_summary_all.csv"
 QI_CONSTRAINED_CSV = FIGURE_DIR / "qi_constrained_summary.csv"
 QI_CONSTRAINED_BEST_JSON = FIGURE_DIR / "qi_constrained_best.json"
 OUT_CSV = FIGURE_DIR / "readme_best_optimizations.csv"
-QI_DEFAULT_RESULT_DIR = REPO_ROOT / "results" / "qi_opt" / "ess" / "nfp2_qi_aspect5"
+QI_DEFAULT_RESULT_DIR = REPO_ROOT / "results" / "qi_opt" / "ess" / "nfp2_qi_aspect6"
 README_CASES_ROOT = REPO_ROOT / "docs" / "_static" / "readme_best_cases"
 README_CASES_SUMMARY = README_CASES_ROOT / "summary.csv"
 

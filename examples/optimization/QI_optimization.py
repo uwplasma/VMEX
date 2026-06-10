@@ -91,7 +91,7 @@ MAKE_PLOTS = True
 
 # Physics targets and weights. Tuple weights use SIMSOPT semantics:
 # residual = sqrt(weight) * (objective - target).
-TARGET_ASPECT = 5.0
+TARGET_ASPECT = 6.0
 TARGET_ABS_IOTA_MIN = 0.41
 MAX_MIRROR_RATIO = 0.30
 MIRROR_SURFACE_INDEX = None

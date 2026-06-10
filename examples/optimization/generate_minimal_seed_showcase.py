@@ -29,7 +29,7 @@ Examples:
   # One quick representative case.
   python examples/optimization/generate_minimal_seed_showcase.py --cases qa_nfp2 --max-nfev 2 --continuation-nfev 2
 
-  # Full aspect-5 README/docs production lane.  Use the CUDA variant on
+  # Full README/docs production lane.  QI rows use an aspect-6 target. Use the CUDA variant on
   # production GPU hosts; use cpu/cpu/cpu for a slower local reproduction.
   PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \\
     --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \\
@@ -213,6 +213,7 @@ DEFAULT_CASE_ORDER = (
 )
 
 PHYSICS_IOTA_FLOOR = 0.35
+QI_SHOWCASE_TARGET_ASPECT = 6.0
 PHYSICS_QA_IOTA_TARGET = 0.42
 PHYSICS_QA_IOTA_TOL = 0.08
 PHYSICS_QI_LEGACY_MAX = 2.0e-3
@@ -620,7 +621,7 @@ def _run_showcase_case(
                 trial_max_iter=int(budget.trial_max_iter),
                 trial_ftol=float(budget.trial_ftol),
                 ess_alpha=float(budget.ess_alpha),
-                target_aspect=sweep.TARGET_ASPECT,
+                target_aspect=QI_SHOWCASE_TARGET_ASPECT,
                 target_abs_iota_min=0.41,
                 max_mirror_ratio=0.30,
                 max_elongation=10.0,

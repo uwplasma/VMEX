@@ -12,6 +12,69 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-10 Beginner Install Policy and Aspect-6 Minimal-Seed QI Lane
+
+Steps taken:
+
+1. Simplified the public installation policy on ``main`` so README/docs use
+   ``pip install vmec-jax`` and source installs use ``pip install -e .`` without
+   asking beginner users to create virtual environments or preinstall packaging
+   tools.
+2. Removed package lower-bound pins from the project metadata, including the
+   core JAX, scientific Python, plotting, packaging, and ``booz_xform_jax``
+   dependencies.
+3. Verified a clean source install in a temporary environment without manual
+   build-tool preinstallation and pushed commit ``f6d7548``.
+4. Changed the minimal-seed public QI lane to target aspect ratio 6 while
+   leaving the current common-minimal QA/QH/QP showcase at aspect ratio 5.
+5. Propagated the effective QI target aspect into the staged-runner
+   boundary-reference preconditioner so preconditioning and optimization use
+   the same target.
+6. Updated QI case metadata, focused tests, and optimization docs so the
+   README-promoted QI artifacts are explicitly aspect-6 gated.
+
+Results obtained:
+
+1. The simplified install policy passes a no-preinstall editable install smoke
+   and ``vmec --doctor`` reports a clean environment.
+2. The focused QI policy tests passed:
+   ``tests/test_minimal_seed_showcase.py``,
+   ``tests/test_qi_staged_runner.py``, ``tests/test_qi_case_resolution.py``,
+   ``tests/test_qi_optimization_more_coverage.py``,
+   ``tests/test_optimization_examples.py``, and
+   ``tests/test_qi_readme_cases.py``.
+3. Ruff passed on the edited QI runner, renderer, case metadata, and focused
+   tests.
+4. The aspect-6 QI artifacts have not been promoted yet; the long NFP=1/2/3/4
+   minimal-seed rerun still has to finish and pass provenance/physics gates.
+
+Best next steps:
+
+1. Commit and push the aspect-6 QI policy change after the focused gates.
+2. Launch the GPU-backed minimal-seed QI NFP=1/2/3/4 rerun from a clean clone
+   on ``ssh office`` and keep artifacts isolated until provenance passes.
+3. Promote ``readme_qi_optimization_cases.png`` only after every row starts
+   from the corresponding ``input.minimal_seed_nfp*`` raw deck and reaches the
+   reviewed aspect, QI, mirror, elongation, and iota gates.
+4. Continue bounded VMEC2000/mgrid/direct-coil parity only with finite-positive
+   physical WOUT fixtures.
+
+Need from user:
+
+Nothing immediately. The next blocker is optimizer time on ``ssh office``.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 98.9%.
+- Single-stage coil-only optimization: 99.0%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% locally; latest pushed CI is pending.
+- Docs/release hygiene: 99.98%.
+- QI minimal-seed README artifacts: 50% artifact-complete, 0% promoted until
+  the aspect-6 NFP=1/2/3/4 rerun is reviewed.
+
 ### 2026-06-09 Branch-Local Coil Proposal Smoke and Minimal-Seed QI README Policy
 
 Steps taken:

@@ -224,6 +224,9 @@ def _reference_preconditioner_overrides(config: QIStagedCaseConfig) -> dict[str,
         boundary["reference_input"] = reference_input
     if boundary:
         boundary["max_mode"] = int(config.max_mode)
+    target_aspect = _policy_value(config, "target_aspect")
+    if boundary and target_aspect is not None:
+        boundary["target_aspect"] = float(target_aspect)
     lambdas = _reference_lambdas(config)
     if config.reference_lambdas is None:
         boundary.pop("lambdas", None)

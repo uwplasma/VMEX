@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
-DEFAULT_QI_TARGET_ASPECT = 5.0
+DEFAULT_QI_TARGET_ASPECT = 6.0
 DEFAULT_INNER_MAX_ITER = 450
 DEFAULT_INNER_FTOL = 1.0e-9
 DEFAULT_TRIAL_MAX_ITER = 450
@@ -42,7 +42,7 @@ QI_CASES = {
     "nfp1_qi": {
         "case_goal": "NFP=1 mirror-aware QI lane",
         "input_file": DATA_DIR / "input.minimal_seed_nfp1",
-        "output_dir": Path("results/qi_opt/ess/minimal_nfp1_qi_aspect5"),
+        "output_dir": Path("results/qi_opt/ess/minimal_nfp1_qi_aspect6"),
         "max_mode": 3,
         "min_vmec_mode": 6,
         "method": "scipy_matrix_free",
@@ -85,7 +85,7 @@ QI_CASES = {
     "nfp2_qi": {
         "case_goal": "default NFP=2 mirror-aware QI lane",
         "input_file": DATA_DIR / "input.minimal_seed_nfp2",
-        "output_dir": Path("results/qi_opt/ess/minimal_nfp2_qi_aspect5"),
+        "output_dir": Path("results/qi_opt/ess/minimal_nfp2_qi_aspect6"),
         "max_mode": 3,
         "min_vmec_mode": 6,
         "method": "scipy_matrix_free",
@@ -131,7 +131,7 @@ QI_CASES = {
     "qi_stel_seed_3127": {
         "case_goal": "far-seed staged QI robustness lane with reference-family global preconditioning",
         "input_file": DATA_DIR / "input.QI_stel_seed_3127",
-        "output_dir": Path("results/qi_opt/ess/qi_stel_seed_3127_aspect5"),
+        "output_dir": Path("results/qi_opt/ess/qi_stel_seed_3127_aspect6"),
         "max_mode": 4,
         "min_vmec_mode": 6,
         "use_mode_continuation": False,
@@ -525,7 +525,7 @@ QI_CASES = {
             "smooth_qi": 8.421446105814759e-3,
             "legacy_qi": 5.205127302950363e-3,
             "mirror_ratio": 3.133889788613409e-1,
-            "audit_command": "audit_qi_seed_suitability.py --quick --target-aspect 5 --max-mirror-ratio 0.35",
+            "audit_command": "audit_qi_seed_suitability.py --quick --target-aspect 6 --max-mirror-ratio 0.35",
         },
         "max_mode": 3,
         "min_vmec_mode": 6,
@@ -683,7 +683,7 @@ def _minimal_or_circular_qi_case(
                 # Minimal/circular seeds may need to move far from a reference
                 # candidate that is QI-safe but too high-aspect.  Keep the
                 # stage policy case-specific, but make aspect localization
-                # explicit for the common aspect-5 showcase lane.
+                # explicit for the common aspect-6 showcase lane.
                 "aspect_weight": max(float(stage.get("aspect_weight", 0.0)), 4.0),
                 # Showcase and staged-runner --max-nfev should be the local
                 # optimizer budget for these reference-seeded cases, not only a
