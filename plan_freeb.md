@@ -16620,3 +16620,77 @@ Completion:
   now localized to a same-branch first residual update/replay mismatch.
 - QI minimal-seed README artifact regeneration: unchanged at 50%
   artifact-complete, 0% promoted.
+
+### 2026-06-10 QI Solver-Initial Tangent Fix
+
+Steps taken:
+
+1. Reviewed the stopped worktree after CI-green commit ``813e3b0`` and kept the
+   scope narrow to the QI exact-optimizer same-branch JVP/FD mismatch.
+2. Added packed-state block diagnostics to
+   ``tools/diagnostics/qi_optimizer_jvp_fd_compare.py`` and pinned that script's
+   imports to the checkout root so remote diagnostics do not accidentally import
+   an older installed ``vmec_jax``.
+3. Validated the production NFP2 interpolated QI candidate on ``office`` with
+   ``PYTHONPATH=.``.  The previous runs without ``PYTHONPATH=.`` were using the
+   venv-installed package and are not promotion evidence.
+4. Patched ``FixedBoundaryExactOptimizer`` so initial tangent columns, scalar
+   initial VJPs, and matrix-free initial transpose/JVP paths differentiate the
+   solver's setup-enforced ``state_pre`` map rather than the raw
+   ``initial_guess_from_boundary`` map.
+5. Added unit coverage for the solver-initial helper's fixed-boundary edge,
+   axis, and lambda-gauge setup rules.
+
+Results obtained:
+
+1. With the checkout-pinned diagnostic, the first traced ``state_pre`` tangent
+   now matches complete-solve central FD to roundoff on the NFP2 QI candidate:
+   ``state_pre_relative_diff_norm = 5.7e-11`` and cosine ``1.0`` at
+   ``eps=1e-5``.
+2. The helper's base packed state matches the solver trace with norm
+   ``5.8e-15`` and max absolute difference ``2.0e-15``.
+3. One-step accepted packed-state mismatch dropped from the stale-installed
+   diagnostic's apparent ``1.08`` relative error to ``2.20e-2`` with cosine
+   ``0.99976``.
+4. Five-step accepted packed-state mismatch is still ``9.46e-2`` with cosine
+   ``0.99565``; feeding the finite-difference final state through the residual
+   linearization matches complete residual FD to ``4.46e-4`` relative, so the
+   remaining issue is in continuous accepted-controller/tape carry derivatives,
+   not the QI/Boozer residual projection.
+5. Local checks passed:
+   ``ruff`` on changed files, ``py_compile``/``git diff --check``, the focused
+   solver-initial unit test, and
+   ``tests/test_optimization_wave2_coverage.py tests/test_optimization_workflow_unit.py tests/test_optimization_fast_optimizer_methods.py tests/test_optimization_helpers.py``.
+
+Best next steps:
+
+1. Add an accepted-controller carry tangent diagnostic for ``fsq_prev``,
+   ``inv_tau``, ``dt_eff``, ``force_scale``, and update limiter scale over the
+   first five iterations.
+2. Promote continuous carry derivatives in the dynamic/basepoint replay only
+   after the first- and five-step accepted-state FD gates pass.
+3. Keep README QI artifact promotion blocked until the accepted-state gate is
+   promotion-grade; current residual projection is valid when supplied the
+   finite-difference state, but the replayed state tangent remains under the
+   target tolerance.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999997%; fixed same-branch
+  setup tangents are now correct, but arbitrary adaptive host-branch
+  differentiation remains unclaimed.
+- VMEC parity and physics gates: 98.8%.
+- Single-stage coil-only optimization: 99.0%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.3%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 99.95%, still blocked on valid QI artifacts.
+- QI minimal-seed README artifact regeneration: 50% artifact-complete, 0%
+  promoted.
+- QI optimizer/JVP correctness for minimal-seed cleanup: 96%; solver setup
+  tangent fixed, accepted-controller continuous carry derivative still open.

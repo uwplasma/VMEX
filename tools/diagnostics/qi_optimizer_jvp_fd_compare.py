@@ -21,8 +21,13 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
 
 import numpy as np
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 import vmec_jax as vj
 from vmec_jax._compat import enable_x64
@@ -109,6 +114,33 @@ def _spec_index(specs, *, kind: str, m: int, n: int) -> int:
             f"First active parameters: {available}"
         )
     return int(matches[0])
+
+
+def _packed_block_report(layout, lhs, rhs) -> dict[str, dict[str, float]]:
+    """Return per-state-block mismatch diagnostics for two packed vectors."""
+
+    from vmec_jax.state import unpack_state
+
+    lhs_state = unpack_state(lhs, layout)
+    rhs_state = unpack_state(rhs, layout)
+    report: dict[str, dict[str, float]] = {}
+    for name in ("Rcos", "Rsin", "Zcos", "Zsin", "Lcos", "Lsin"):
+        lhs_block = np.asarray(getattr(lhs_state, name), dtype=float)
+        rhs_block = np.asarray(getattr(rhs_state, name), dtype=float)
+        diff = lhs_block - rhs_block
+        lhs_norm = float(np.linalg.norm(lhs_block))
+        rhs_norm = float(np.linalg.norm(rhs_block))
+        diff_norm = float(np.linalg.norm(diff))
+        dot = float(np.vdot(lhs_block.reshape(-1), rhs_block.reshape(-1)))
+        report[name] = {
+            "lhs_norm": lhs_norm,
+            "rhs_norm": rhs_norm,
+            "diff_norm": diff_norm,
+            "relative_diff_norm": diff_norm / max(lhs_norm, rhs_norm, np.finfo(float).eps),
+            "max_abs_diff": float(np.max(np.abs(diff))) if diff.size else 0.0,
+            "cosine_similarity": dot / max(lhs_norm * rhs_norm, np.finfo(float).eps),
+        }
+    return report
 
 
 def main() -> None:
@@ -308,6 +340,11 @@ def main() -> None:
                     "residual_state_fd_vs_complete_fd_norm": float(np.linalg.norm(jvp_from_state_fd - fd)),
                     "residual_state_fd_vs_complete_fd_relative_norm": float(np.linalg.norm(jvp_from_state_fd - fd))
                     / max(float(np.linalg.norm(jvp_from_state_fd)), fd_norm, np.finfo(float).eps),
+                    "state_block_report": _packed_block_report(
+                        stage.optimizer._layout,
+                        state_jvp_np,
+                        state_fd_np,
+                    ),
                 }
             )
         if bool(args.dynamic_axis_tangent):
@@ -424,6 +461,35 @@ def main() -> None:
             iter_direction[iter_idx] = 1.0
             iter_state, iter_tangents = iter_stage.optimizer.state_tangent_columns_fun(iter_params0)
             iter_state_jvp = np.asarray(iter_tangents[iter_idx], dtype=float)
+            _iter_exact_state, iter_payload = iter_stage.optimizer._solve_exact_with_tape_for_jvp(iter_params0)
+            iter_initial_tangents = iter_stage.optimizer._initial_tangent_columns(
+                jnp.asarray(iter_params0, dtype=jnp.float64),
+                iter_payload["axis_override"],
+                profile_prefix="diagnostic_iter",
+            )
+            iter_initial_jvp = np.asarray(iter_initial_tangents[iter_idx], dtype=float)
+            iter_state_pre_helper = np.asarray(
+                iter_stage.optimizer._solver_initial_state_packed_from_params(
+                    jnp.asarray(iter_params0, dtype=jnp.float64),
+                    iter_payload["axis_override"],
+                ),
+                dtype=float,
+            )
+            iter_state_pre_helper_plus = np.asarray(
+                iter_stage.optimizer._solver_initial_state_packed_from_params(
+                    jnp.asarray(iter_params0 + eps * iter_direction, dtype=jnp.float64),
+                    iter_payload["axis_override"],
+                ),
+                dtype=float,
+            )
+            iter_state_pre_helper_minus = np.asarray(
+                iter_stage.optimizer._solver_initial_state_packed_from_params(
+                    jnp.asarray(iter_params0 - eps * iter_direction, dtype=jnp.float64),
+                    iter_payload["axis_override"],
+                ),
+                dtype=float,
+            )
+            iter_state_pre_helper_fd = (iter_state_pre_helper_plus - iter_state_pre_helper_minus) / (2.0 * eps)
             iter_base_result = _complete_solve_result(iter_stage, iter_params0, iter_count=int(iter_count))
             iter_plus_result = _complete_solve_result(
                 iter_stage,
@@ -434,6 +500,17 @@ def main() -> None:
                 iter_stage,
                 iter_params0 - eps * iter_direction,
                 iter_count=int(iter_count),
+            )
+            base_trace = iter_base_result.diagnostics["adjoint_step_trace"][0]
+            plus_trace = iter_plus_result.diagnostics["adjoint_step_trace"][0]
+            minus_trace = iter_minus_result.diagnostics["adjoint_step_trace"][0]
+            iter_state_pre_fd = np.asarray(
+                (
+                    jnp.asarray(pack_state(plus_trace["state_pre"]), dtype=jnp.float64)
+                    - jnp.asarray(pack_state(minus_trace["state_pre"]), dtype=jnp.float64)
+                )
+                / (2.0 * eps),
+                dtype=float,
             )
             iter_fd = np.asarray(
                 (
@@ -451,11 +528,52 @@ def main() -> None:
             iter_state_fd_norm = float(np.linalg.norm(iter_fd))
             iter_diff_norm = float(np.linalg.norm(iter_diff))
             iter_dot = float(np.vdot(iter_state_jvp, iter_fd))
+            iter_state_pre_diff = iter_initial_jvp - iter_state_pre_fd
+            iter_state_pre_jvp_norm = float(np.linalg.norm(iter_initial_jvp))
+            iter_state_pre_fd_norm = float(np.linalg.norm(iter_state_pre_fd))
+            iter_state_pre_diff_norm = float(np.linalg.norm(iter_state_pre_diff))
+            iter_state_pre_dot = float(np.vdot(iter_initial_jvp, iter_state_pre_fd))
+            iter_state_pre_base = np.asarray(pack_state(base_trace["state_pre"]), dtype=float)
+            iter_state_pre_base_diff = iter_state_pre_helper - iter_state_pre_base
+            iter_state_pre_helper_fd_diff = iter_state_pre_helper_fd - iter_state_pre_fd
+            iter_state_pre_helper_fd_norm = float(np.linalg.norm(iter_state_pre_helper_fd))
+            iter_state_pre_helper_fd_diff_norm = float(np.linalg.norm(iter_state_pre_helper_fd_diff))
+            iter_state_pre_helper_fd_dot = float(np.vdot(iter_state_pre_helper_fd, iter_state_pre_fd))
             by_iter.append(
                 {
                     "inner_max_iter": int(iter_count),
                     "parameter_index": int(iter_idx),
                     "packed_state_size": int(iter_state_jvp.size),
+                    "state_pre_jvp_norm": iter_state_pre_jvp_norm,
+                    "state_pre_fd_norm": iter_state_pre_fd_norm,
+                    "state_pre_diff_norm": iter_state_pre_diff_norm,
+                    "state_pre_relative_diff_norm": iter_state_pre_diff_norm
+                    / max(iter_state_pre_jvp_norm, iter_state_pre_fd_norm, np.finfo(float).eps),
+                    "state_pre_max_abs_diff": (
+                        float(np.max(np.abs(iter_state_pre_diff))) if iter_state_pre_diff.size else 0.0
+                    ),
+                    "state_pre_cosine_similarity": iter_state_pre_dot
+                    / max(iter_state_pre_jvp_norm * iter_state_pre_fd_norm, np.finfo(float).eps),
+                    "state_pre_helper_base_diff_norm": float(np.linalg.norm(iter_state_pre_base_diff)),
+                    "state_pre_helper_base_max_abs_diff": (
+                        float(np.max(np.abs(iter_state_pre_base_diff))) if iter_state_pre_base_diff.size else 0.0
+                    ),
+                    "state_pre_helper_fd_norm": iter_state_pre_helper_fd_norm,
+                    "state_pre_helper_fd_diff_norm": iter_state_pre_helper_fd_diff_norm,
+                    "state_pre_helper_fd_relative_diff_norm": iter_state_pre_helper_fd_diff_norm
+                    / max(iter_state_pre_helper_fd_norm, iter_state_pre_fd_norm, np.finfo(float).eps),
+                    "state_pre_helper_fd_cosine_similarity": iter_state_pre_helper_fd_dot
+                    / max(iter_state_pre_helper_fd_norm * iter_state_pre_fd_norm, np.finfo(float).eps),
+                    "state_pre_helper_fd_block_report": _packed_block_report(
+                        base_trace["state_pre"].layout,
+                        iter_state_pre_helper_fd,
+                        iter_state_pre_fd,
+                    ),
+                    "state_pre_block_report": _packed_block_report(
+                        base_trace["state_pre"].layout,
+                        iter_initial_jvp,
+                        iter_state_pre_fd,
+                    ),
                     "state_jvp_norm": iter_state_jvp_norm,
                     "state_fd_norm": iter_state_fd_norm,
                     "state_diff_norm": iter_diff_norm,
@@ -464,6 +582,11 @@ def main() -> None:
                     "state_max_abs_diff": float(np.max(np.abs(iter_diff))) if iter_diff.size else 0.0,
                     "state_cosine_similarity": iter_dot
                     / max(iter_state_jvp_norm * iter_state_fd_norm, np.finfo(float).eps),
+                    "state_block_report": _packed_block_report(
+                        iter_stage.optimizer._layout,
+                        iter_state_jvp,
+                        iter_fd,
+                    ),
                     "fingerprint_plus_matches_base": bool(plus_fingerprint == base_fingerprint),
                     "fingerprint_minus_matches_base": bool(minus_fingerprint == base_fingerprint),
                     "fingerprint_plus_matches_minus": bool(plus_fingerprint == minus_fingerprint),

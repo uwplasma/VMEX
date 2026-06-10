@@ -2898,8 +2898,6 @@ class FixedBoundaryExactOptimizer:
     def _initial_tangent_columns(self, params, axis_override, *, profile_prefix: str):
         """Return cached packed initial-state tangents for boundary parameters."""
         from ._compat import jax, jnp as _jnp
-        from .init_guess import initial_guess_from_boundary as _ig
-        from .state import pack_state
 
         params = _jnp.asarray(params, dtype=_jnp.float64)
         if int(params.size) == 0:
@@ -2919,19 +2917,11 @@ class FixedBoundaryExactOptimizer:
                 key: _jnp.asarray(value, dtype=params.dtype) for key, value in axis_override.items()
             }
 
-            def _initial_state_packed(p):
-                bdy = self._boundary_from_params(p)
-                s0 = _ig(
-                    self._static,
-                    bdy,
-                    self._indata,
-                    vmec_project=True,
-                    axis_override=axis_override,
-                )
-                return _jnp.asarray(pack_state(s0), dtype=_jnp.float64)
-
             t_linearize = time.perf_counter()
-            _, initial_state_linear = jax.linearize(_initial_state_packed, params)
+            _, initial_state_linear = jax.linearize(
+                lambda p: self._solver_initial_state_packed_from_params(p, axis_override),
+                params,
+            )
             self._profile_add(
                 f"{profile_prefix}_initial_tangents_linearize",
                 time.perf_counter() - t_linearize,
@@ -2967,6 +2957,56 @@ class FixedBoundaryExactOptimizer:
             time.perf_counter() - t_initial,
         )
         return initial_tangents
+
+    def _solver_initial_state_packed_from_params(self, params, axis_override):
+        """Packed initial state after the solver's setup-time constraints.
+
+        ``solve_fixed_boundary_residual_iter`` applies fixed-boundary edge
+        enforcement, axis regularity, and VMEC lambda-axis rules before it
+        records the first adjoint trace.  Replay tangents must enter at that
+        same ``state_pre`` point rather than at the raw initial-guess state.
+        """
+
+        from ._compat import jnp as _jnp
+        from .init_guess import initial_guess_from_boundary as _ig
+        from .solve import (
+            _apply_vmec_lambda_axis_rules_to_state,
+            _enforce_fixed_boundary_and_axis,
+            _mode00_index,
+        )
+        from .state import pack_state
+
+        bdy = self._boundary_from_params(params)
+        state0 = _ig(
+            self._static,
+            bdy,
+            self._indata,
+            vmec_project=True,
+            axis_override=axis_override,
+        )
+        modes = getattr(self._static, "modes", None)
+        if modes is None:
+            return _jnp.asarray(pack_state(state0), dtype=_jnp.float64)
+
+        idx00 = _mode00_index(modes)
+        state0 = _enforce_fixed_boundary_and_axis(
+            state0,
+            self._static,
+            edge_Rcos=_jnp.asarray(state0.Rcos)[-1, :],
+            edge_Rsin=_jnp.asarray(state0.Rsin)[-1, :],
+            edge_Zcos=_jnp.asarray(state0.Zcos)[-1, :],
+            edge_Zsin=_jnp.asarray(state0.Zsin)[-1, :],
+            enforce_edge=True,
+            enforce_lambda_axis=True,
+            idx00=idx00,
+        )
+        state0 = _apply_vmec_lambda_axis_rules_to_state(
+            state0,
+            enforce_vmec_lambda_axis=True,
+            host_update_assembly=False,
+            idx00=idx00,
+        )
+        return _jnp.asarray(pack_state(state0), dtype=_jnp.float64)
 
     def _initial_tangent_directions(self, params, *, profile_prefix: str):
         """Return cached identity directions used for dense initial-state JVPs."""
@@ -3584,7 +3624,7 @@ class FixedBoundaryExactOptimizer:
             return self._run_in_solver_device_context(self.objective_and_gradient_fun, params)
         from ._compat import jax, jnp as _jnp
         from .discrete_adjoint import checkpoint_tape_state_vjp
-        from .state import pack_state, unpack_state
+        from .state import unpack_state
 
         t_total = time.perf_counter()
         params = _jnp.asarray(params, dtype=_jnp.float64)
@@ -3715,24 +3755,14 @@ class FixedBoundaryExactOptimizer:
             if initial_vjp is not None:
                 self._profile_add("gradient_initial_vjp_cache_hit", 0.0)
             else:
-                from .init_guess import initial_guess_from_boundary as _ig
-
                 axis_override = {
                     key: _jnp.asarray(value, dtype=params.dtype) for key, value in axis_override.items()
                 }
 
-                def _initial_state_packed(p):
-                    bdy = self._boundary_from_params(p)
-                    s0 = _ig(
-                        self._static,
-                        bdy,
-                        self._indata,
-                        vmec_project=True,
-                        axis_override=axis_override,
-                    )
-                    return _jnp.asarray(pack_state(s0), dtype=_jnp.float64)
-
-                _, initial_vjp = jax.vjp(_initial_state_packed, params)
+                _, initial_vjp = jax.vjp(
+                    lambda p: self._solver_initial_state_packed_from_params(p, axis_override),
+                    params,
+                )
                 if initial_vjp_key is not None:
                     self._discrete_jacobian_helper_cache[initial_vjp_key] = initial_vjp
             grad = initial_vjp(_jnp.asarray(initial_cotangent, dtype=_jnp.float64))[0]
@@ -3766,7 +3796,7 @@ class FixedBoundaryExactOptimizer:
             checkpoint_tape_state_jvp_columns,
             checkpoint_tape_state_vjp,
         )
-        from .state import pack_state, unpack_state
+        from .state import unpack_state
 
         t_total = time.perf_counter()
         params = _jnp.asarray(params, dtype=_jnp.float64)
@@ -3811,20 +3841,10 @@ class FixedBoundaryExactOptimizer:
             initial_linear = None
             initial_transpose = None
         else:
-            from .init_guess import initial_guess_from_boundary as _ig
-
-            def _initial_state_packed(p):
-                bdy = self._boundary_from_params(p)
-                s0 = _ig(
-                    self._static,
-                    bdy,
-                    self._indata,
-                    vmec_project=True,
-                    axis_override=axis_override,
-                )
-                return _jnp.asarray(pack_state(s0), dtype=_jnp.float64)
-
-            _, initial_linear = jax.linearize(_initial_state_packed, params)
+            _, initial_linear = jax.linearize(
+                lambda p: self._solver_initial_state_packed_from_params(p, axis_override),
+                params,
+            )
             initial_transpose = jax.linear_transpose(initial_linear, params)
             self._profile_add("linear_operator_initial_tangents_cache_miss", 0.0)
         residuals, residual_linear = jax.linearize(_residuals_from_packed, packed_final)
