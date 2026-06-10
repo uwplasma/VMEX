@@ -499,6 +499,125 @@ def _dynamic_replay_base_report(base_traces, static) -> list[dict[str, object]]:
     return report
 
 
+def _dynamic_replay_jvp_trace_report(
+    base_traces,
+    plus_traces,
+    minus_traces,
+    static,
+    initial_tangent,
+    eps: float,
+) -> list[dict[str, object]]:
+    """Compare stepwise replay carry JVPs against central FD trace arrays."""
+
+    from vmec_jax._compat import jax, jnp
+    from vmec_jax.discrete_adjoint import (
+        _dynamic_replay_initial_carry,
+        _packed_dynamic_replay_step_from_carry,
+        _static_flags_from_replay_step_traces,
+    )
+    from vmec_jax.state import pack_state
+
+    if not base_traces:
+        return []
+    static_flags = _static_flags_from_replay_step_traces(tuple(base_traces))
+    carry = _dynamic_replay_initial_carry(base_traces[0])
+
+    def _zero_tree(value):
+        return jax.tree_util.tree_map(lambda x: jnp.zeros_like(jnp.asarray(x)), value)
+
+    carry_tangent = (jnp.asarray(initial_tangent, dtype=jnp.asarray(carry[0]).dtype),) + tuple(
+        _zero_tree(value) for value in carry[1:]
+    )
+    velocity_slots = {
+        "vRcc_after": 3,
+        "vRss_after": 4,
+        "vRsc_after": 5,
+        "vRcs_after": 6,
+        "vZsc_after": 7,
+        "vZcs_after": 8,
+        "vZcc_after": 9,
+        "vZss_after": 10,
+        "vLsc_after": 11,
+        "vLcs_after": 12,
+        "vLcc_after": 13,
+        "vLss_after": 14,
+    }
+    report: list[dict[str, object]] = []
+    nsteps = min(len(base_traces), len(plus_traces), len(minus_traces))
+    for step in range(nsteps):
+        trace = base_traces[step]
+
+        def _step(carry_arg):
+            return _packed_dynamic_replay_step_from_carry(
+                carry_arg,
+                trace,
+                static=static,
+                static_flags=static_flags,
+                preconditioner_jmax_override=int(static_flags["precond_jmax"]),
+                preconditioner_use_precomputed_tridi=static_flags.get(
+                    "preconditioner_use_precomputed_tridi",
+                    None,
+                ),
+                preconditioner_use_lax_tridi=static_flags.get(
+                    "preconditioner_use_lax_tridi",
+                    None,
+                ),
+            )
+
+        carry, carry_tangent = jax.jvp(_step, (carry,), (carry_tangent,))
+        item: dict[str, object] = {
+            "step": int(step + 1),
+            "step_status": str(trace.get("step_status", "")),
+            "restart_path": str(trace.get("restart_path", "")),
+        }
+        plus = plus_traces[step]
+        minus = minus_traces[step]
+        if trace.get("state_post") is not None and plus.get("state_post") is not None and minus.get("state_post") is not None:
+            fd_state = (
+                np.asarray(pack_state(plus["state_post"]), dtype=float)
+                - np.asarray(pack_state(minus["state_post"]), dtype=float)
+            ) / (2.0 * float(eps))
+            jvp_state = np.asarray(carry_tangent[0], dtype=float)
+            diff = jvp_state - fd_state
+            jvp_norm = float(np.linalg.norm(jvp_state))
+            fd_norm = float(np.linalg.norm(fd_state))
+            diff_norm = float(np.linalg.norm(diff))
+            item["state_post_tangent"] = {
+                "jvp_norm": jvp_norm,
+                "fd_norm": fd_norm,
+                "diff_norm": diff_norm,
+                "relative_diff_norm": diff_norm / max(jvp_norm, fd_norm, np.finfo(float).eps),
+                "max_abs_diff": float(np.max(np.abs(diff))) if diff.size else 0.0,
+                "cosine_similarity": float(np.vdot(jvp_state, fd_state))
+                / max(jvp_norm * fd_norm, np.finfo(float).eps),
+            }
+        velocities: dict[str, dict[str, float]] = {}
+        for key, slot in velocity_slots.items():
+            if trace.get(key) is None or plus.get(key) is None or minus.get(key) is None:
+                continue
+            fd_value = (np.asarray(plus[key], dtype=float) - np.asarray(minus[key], dtype=float)) / (
+                2.0 * float(eps)
+            )
+            jvp_value = np.asarray(carry_tangent[slot], dtype=float)
+            diff = jvp_value - fd_value
+            jvp_norm = float(np.linalg.norm(jvp_value))
+            fd_norm = float(np.linalg.norm(fd_value))
+            diff_norm = float(np.linalg.norm(diff))
+            velocities[key] = {
+                "jvp_norm": jvp_norm,
+                "fd_norm": fd_norm,
+                "diff_norm": diff_norm,
+                "relative_diff_norm": diff_norm / max(jvp_norm, fd_norm, np.finfo(float).eps),
+                "max_abs_diff": float(np.max(np.abs(diff))) if diff.size else 0.0,
+                "cosine_similarity": float(np.vdot(jvp_value, fd_value))
+                / max(jvp_norm * fd_norm, np.finfo(float).eps),
+            }
+        if velocities:
+            item["velocity_tangents"] = velocities
+        report.append(item)
+    return report
+
+
 def main() -> None:
     args = _parse_args()
     enable_x64(True)
@@ -955,6 +1074,14 @@ def main() -> None:
                     "dynamic_replay_base": _dynamic_replay_base_report(
                         base_traces,
                         iter_stage.optimizer._static,
+                    ),
+                    "dynamic_replay_jvp_trace": _dynamic_replay_jvp_trace_report(
+                        base_traces,
+                        plus_traces,
+                        minus_traces,
+                        iter_stage.optimizer._static,
+                        iter_initial_jvp,
+                        eps,
                     ),
                     "fingerprint_plus_matches_base": bool(plus_fingerprint == base_fingerprint),
                     "fingerprint_minus_matches_base": bool(minus_fingerprint == base_fingerprint),
