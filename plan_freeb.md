@@ -12,6 +12,94 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-10 Open-Lane Assessment and Aspect-6 QI Remote Launch
+
+Steps taken:
+
+1. Rechecked ``main`` at commit ``80a7712`` and then pushed
+   ``22ddc34`` to keep beginner-facing install commands on bare ``pip``.
+2. Confirmed the latest GitHub Actions run for ``22ddc34`` completed
+   successfully in about six and a half minutes.
+3. Audited install/docs metadata for stale beginner-facing virtualenv recipes,
+   lower-bound dependency pins, plotting/QI extras, and build-tool preinstall
+   instructions.  The only remaining ``virtualenv`` text is internal
+   ``vmec --doctor`` reporting/test state, not install instructions.
+4. Ran the focused install/docs gates:
+   ``tests/test_docs_release_hygiene.py``,
+   ``tests/test_packaging_metadata.py``, and ``tests/test_doctor.py``.
+5. Built the full Sphinx docs locally with warnings as errors after the install
+   docs changes.
+6. Ran the exact/free-boundary focused validation shard:
+   ``tests/test_free_boundary_vacuum_adjoint.py``,
+   ``tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py``,
+   ``tests/test_external_fields_coils_jax.py``,
+   ``tests/test_external_fields_mgrid_jax.py``, and
+   ``tests/test_free_boundary_coil_provider_gradients.py``.
+7. Ran lightweight VMEC2000 support/parity tests and bounded executable gates:
+   parser/scalar/API helper tests, short stage-trace parity, and the small
+   ``LASYM=T`` free-boundary vacuum-turn-on fixture.
+8. Launched a clean ``ssh office`` GPU run at
+   ``/home/rjorge/local/tests/vmec_jax_qi_aspect6_22ddc34`` for QI
+   minimal-seed NFP=1/2/3/4 with aspect-6 target, ``max_mode=5``, ESS, mode
+   continuation, and the current QI/mirror/elongation gates.
+9. Confirmed the remote run is active and currently processing the NFP=1 row.
+   The active local optimizer input comes from the reference-family
+   preconditioner, so the promotion audit must verify that README rendering
+   shows the raw ``input.minimal_seed_nfp*`` state as the initial condition.
+
+Results obtained:
+
+1. CI is green for the latest pushed main commit ``22ddc34``.
+2. Focused local tests passed:
+   install/docs/doctor shard ``20 passed``; parser/scalar VMEC2000 support
+   shard ``13 passed, 2 skipped``; exact free-boundary/direct-coil shard
+   ``56 passed, 1 skipped``; bounded VMEC2000 executable gates ``2 passed``.
+3. Sphinx completed without warnings.
+4. The remote QI run has created the NFP=1 output/checkpoint tree under
+   ``docs/_static/qi_readme_cases/gpu/...`` in the clean remote clone, but no
+   QI README artifact is promotable yet.
+5. Subagent delegation was attempted for sidecar CI/docs audits, but both
+   subagents failed immediately due to the account usage limit.  No delegated
+   edits were made.
+
+Best next steps:
+
+1. Let the remote QI NFP=1/2/3/4 aspect-6 run finish, then audit every row for
+   raw-minimal-seed provenance, final aspect near 6, QI residuals, mirror
+   ratio, elongation, iota floor, and Boozer contour quality.
+2. Promote ``readme_qi_optimization_cases.png`` only if all four rows pass
+   provenance and physics gates; otherwise keep the artifacts as diagnostics
+   and tune the QI cleanup schedule.
+3. Continue bounded VMEC2000/mgrid/direct-coil parity only with finite-positive
+   physical WOUT fixtures.  The next heavy W7-X generated-``mgrid`` fixture
+   should remain optional/nightly because it depends on SIMSOPT/VMEC2000 and
+   writes generated artifacts.
+4. Keep arbitrary adaptive free-boundary branch differentiation unclaimed.
+   Current evidence remains branch-local/fingerprint-gated with complete
+   solves as acceptance authority.
+
+Need from user:
+
+Nothing immediately.  The only current blocker is completion and review of the
+remote QI artifact run.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%; fixed
+  same-branch and branch-local gates are green, arbitrary adaptive branch
+  differentiation remains explicitly unclaimed.
+- VMEC parity and physics gates: 99.0% after the bounded local VMEC2000
+  executable gates passed.
+- Single-stage coil-only optimization: 99.0%.
+- Robust coil perturbation optimization: deferred by current scope, 70%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100%; latest pushed CI is green.
+- Docs/release hygiene: 100% for install/docs state; QI artifact docs remain
+  blocked on reviewed NFP=1/2/3/4 aspect-6 results.
+- QI minimal-seed README artifacts: 50% artifact-complete, 0% promoted until
+  the current aspect-6 remote run is reviewed.
+
 ### 2026-06-10 Beginner Install Policy and Aspect-6 Minimal-Seed QI Lane
 
 Steps taken:
