@@ -16771,3 +16771,82 @@ Completion:
 - QI optimizer/JVP correctness for minimal-seed cleanup: 97%; replay primals
   are exact and major cache tangents are carried, but step-2 force/velocity
   tangent localization remains open.
+
+### 2026-06-10 Install Hardening and Dynamic Replay CI Recovery
+
+Steps taken:
+
+1. Checked the stopped workspace, latest ``main`` commits, attached user
+   install log, and failed GitHub Actions run for ``1ce678c``.
+2. Reproduced the CI failure locally in the discrete-adjoint shard. The failure
+   was a compatibility issue: synthetic tests and older fake traces did not
+   include the new constraint/preconditioner cache-update fields.
+3. Made dynamic replay trace construction backward-compatible by defaulting
+   missing cache-update flags to ``False``, zero-filling missing synthetic cache
+   carries, and raising the intended stored-layout error for malformed carries.
+4. Wired the QI optimizer diagnostic helper into the JSON report so stepwise
+   dynamic replay JVP-vs-FD trace comparisons are emitted.
+5. Committed and pushed the CI replay fix as ``9ae273e``.
+6. Diagnosed the attached install failure: setuptools 77+ validates PEP 639
+   license expressions and needs ``packaging>=24.2`` in the build environment;
+   the user's global Homebrew/user-site Python mix made manual recovery hard.
+7. Added ``packaging>=24.2`` to ``build-system.requires`` and runtime
+   dependencies, added modest dependency lower bounds, and kept GPU JAX
+   installation external/platform-specific.
+8. Added ``vmec --doctor`` to print Python, pip, package, and JAX backend
+   diagnostics without running a solver.
+9. Updated README and installation/quickstart docs to recommend a clean venv,
+   ``python -m pip``, build-tool upgrades, ``vmec --doctor``, then
+   ``vmec --test``.
+
+Results obtained:
+
+1. Local replay/CI checks passed:
+   ``ruff``/``py_compile`` on touched replay files and
+   ``tests/test_discrete_adjoint_wave6_coverage.py tests/test_discrete_adjoint_qh.py tests/test_discrete_adjoint_chunking.py``.
+2. Focused install/doctor checks passed:
+   ``ruff``/``py_compile`` on CLI/doctor files and
+   ``tests/test_doctor.py tests/test_cli_helpers.py tests/test_packaging_metadata.py``.
+3. Clean temporary venv full editable install succeeded with dependencies, and
+   ``vmec --doctor`` reported a clean CPU JAX backend. This reproduces the
+   attached build-isolation failure class and confirms the metadata fix avoids
+   the missing ``packaging.licenses`` path.
+
+Best next steps:
+
+1. Commit and push the install-hardening patch.
+2. Watch CI for ``9ae273e`` and the install-hardening commit; if green, resume
+   the QI replay derivative localization using the new
+   ``dynamic_replay_jvp_trace`` diagnostic.
+3. Run the remote ``office`` five-step QI diagnostic again and target the first
+   velocity/force tangent drift at step 2.
+4. Keep QI README artifact promotion blocked until the five-step same-branch
+   accepted-state and residual gates are promotion-grade.
+
+Need from user:
+
+Two install-policy decisions remain:
+
+1. Whether to keep dependency lower bounds only, as implemented, or publish a
+   stricter lock/constraints file for reproducible research installs.
+2. Whether to add official conda/pixi environment files as a first-class
+   beginner path in addition to PyPI/venv.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999997%; branch-local replay
+  primals are exact for the tested QI candidate, but multi-step tangent
+  localization remains open.
+- VMEC parity and physics gates: 98.8%.
+- Single-stage coil-only optimization: 99.0%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.3%.
+- CI/runtime/coverage hygiene: 100% locally for the touched shards; awaiting
+  GitHub Actions for the pushed replay fix and install-hardening commit.
+- Docs/release hygiene: 99.97%; install docs are hardened, QI artifacts remain
+  blocked on derivative validation.
+- QI minimal-seed README artifact regeneration: 50% artifact-complete, 0%
+  promoted.
+- QI optimizer/JVP correctness for minimal-seed cleanup: 97%; stepwise replay
+  JVP diagnostics are now available for the next localization pass.
