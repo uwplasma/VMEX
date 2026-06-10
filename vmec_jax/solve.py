@@ -11579,6 +11579,7 @@ def solve_fixed_boundary_residual_iter(
             if bool(vmec2000_control) and bool(vmec2000_cache_valid) and (not bool(need_bcovar_update)):
                 rz_scale = cache_rz_scale
                 l_scale = cache_l_scale
+            preconditioner_cache_update_trace = False
             if bool(vmec2000_control) and bool(need_bcovar_update):
                 if constraint_tcon0 is None or float(constraint_tcon0) == 0.0:
                     cache_precond_diag = None
@@ -11640,6 +11641,7 @@ def solve_fixed_boundary_residual_iter(
                     cache_prec_rz_mats = mats
                     cache_prec_rz_jmax = None if _tree_has_tracer(k) else int(jmax)
                     precond_cache_seeded_from_bcovar_update = cache_prec_rz_jmax is not None
+                    preconditioner_cache_update_trace = True
                     if timing_enabled and t_precond_refresh_seed_start is not None:
                         seed_dt = time.perf_counter() - float(t_precond_refresh_seed_start)
                         precond_refresh_seed_time_in_residual_metrics += seed_dt
@@ -11831,6 +11833,7 @@ def solve_fixed_boundary_residual_iter(
                     )
                 )
                 if need_prec_refresh:
+                    preconditioner_cache_update_trace = True
                     if timing_enabled:
                         timing_stats["precond_refresh_calls"] = int(timing_stats["precond_refresh_calls"]) + 1
                     t_prec_refresh_start = time.perf_counter() if timing_enabled else None
@@ -12119,6 +12122,7 @@ def solve_fixed_boundary_residual_iter(
                     )
                 )
                 if need_prec_refresh:
+                    preconditioner_cache_update_trace = True
                     if timing_enabled:
                         timing_stats["precond_refresh_calls"] = int(timing_stats["precond_refresh_calls"]) + 1
                     t_prec_refresh_start = time.perf_counter() if timing_enabled else None
@@ -13611,6 +13615,8 @@ def solve_fixed_boundary_residual_iter(
                     "inv_tau_before": _adjoint_trace_array(inv_tau),
                     "fsq_prev_before": float(fsq_prev_before),
                     "reset_inv_tau": bool(iter2 == iter1),
+                    "constraint_cache_update": bool(need_bcovar_update),
+                    "precond_cache_update": bool(preconditioner_cache_update_trace),
                     "vRcc_before": _adjoint_trace_array(vRcc),
                     "vRss_before": _adjoint_trace_array(vRss),
                     "vZsc_before": _adjoint_trace_array(vZsc),
@@ -13645,6 +13651,8 @@ def solve_fixed_boundary_residual_iter(
                     ),
                     "constraint_precond_active": _adjoint_trace_array(constraint_precond_active),
                     "constraint_tcon_active": _adjoint_trace_array(constraint_tcon_active),
+                    "lam_prec": np.asarray(lam_prec),
+                    "precond_mats": mats,
                 }
                 if adjoint_trace_mode in {"full", "branch"}:
                     trace_entry.update(

@@ -143,6 +143,362 @@ def _packed_block_report(layout, lhs, rhs) -> dict[str, dict[str, float]]:
     return report
 
 
+def _trace_control_fd_report(base_traces, plus_traces, minus_traces, eps: float) -> list[dict[str, object]]:
+    """Return per-step central-FD diagnostics for recorded controller controls."""
+
+    scalar_keys = (
+        "time_step",
+        "dt_eff",
+        "b1",
+        "fac",
+        "force_scale",
+        "flip_sign",
+        "fsq_prev_before",
+        "constraint_cache_update",
+        "precond_cache_update",
+        "max_update_rms_pre",
+        "max_coeff_delta_rms_pre",
+        "lambda_update_scale",
+        "update_rms_preclip",
+        "update_rms_postclip",
+        "update_rms_scale",
+    )
+    array_keys = (
+        "inv_tau_before",
+        "vRcc_before",
+        "vRss_before",
+        "vZsc_before",
+        "vZcs_before",
+        "vLsc_before",
+        "vLcs_before",
+        "constraint_tcon",
+        "constraint_precond_active",
+        "constraint_tcon_active",
+        "constraint_rcon0",
+        "constraint_zcon0",
+    )
+    tuple_array_keys = ("constraint_precond_diag",)
+    nsteps = min(len(base_traces), len(plus_traces), len(minus_traces))
+    report: list[dict[str, object]] = []
+    for step in range(nsteps):
+        base = base_traces[step]
+        plus = plus_traces[step]
+        minus = minus_traces[step]
+        item: dict[str, object] = {
+            "step": int(step + 1),
+            "branch": str(base.get("branch", "")),
+            "step_status": str(base.get("step_status", "")),
+            "restart_path": str(base.get("restart_path", "")),
+        }
+        scalar_report: dict[str, dict[str, float]] = {}
+        for key in scalar_keys:
+            if key not in base or key not in plus or key not in minus:
+                continue
+            if base.get(key) is None or plus.get(key) is None or minus.get(key) is None:
+                continue
+            base_value = float(base[key])
+            fd_value = (float(plus[key]) - float(minus[key])) / (2.0 * float(eps))
+            scalar_report[key] = {
+                "base": base_value,
+                "fd": fd_value,
+                "plus": float(plus[key]),
+                "minus": float(minus[key]),
+                "abs_delta": abs(float(plus[key]) - float(minus[key])),
+            }
+        if scalar_report:
+            item["scalars"] = scalar_report
+        array_report: dict[str, dict[str, float]] = {}
+        for key in array_keys:
+            if key not in base or key not in plus or key not in minus:
+                continue
+            if base.get(key) is None or plus.get(key) is None or minus.get(key) is None:
+                continue
+            base_arr = np.asarray(base[key], dtype=float)
+            fd_arr = (np.asarray(plus[key], dtype=float) - np.asarray(minus[key], dtype=float)) / (
+                2.0 * float(eps)
+            )
+            array_report[key] = {
+                "base_norm": float(np.linalg.norm(base_arr)),
+                "fd_norm": float(np.linalg.norm(fd_arr)),
+                "fd_max_abs": float(np.max(np.abs(fd_arr))) if fd_arr.size else 0.0,
+            }
+        if array_report:
+            item["arrays"] = array_report
+        tuple_report: dict[str, list[dict[str, float]]] = {}
+        for key in tuple_array_keys:
+            if key not in base or key not in plus or key not in minus:
+                continue
+            if base.get(key) is None or plus.get(key) is None or minus.get(key) is None:
+                continue
+            pieces: list[dict[str, float]] = []
+            for base_piece, plus_piece, minus_piece in zip(base[key], plus[key], minus[key], strict=False):
+                base_arr = np.asarray(base_piece, dtype=float)
+                fd_arr = (np.asarray(plus_piece, dtype=float) - np.asarray(minus_piece, dtype=float)) / (
+                    2.0 * float(eps)
+                )
+                pieces.append(
+                    {
+                        "base_norm": float(np.linalg.norm(base_arr)),
+                        "fd_norm": float(np.linalg.norm(fd_arr)),
+                        "fd_max_abs": float(np.max(np.abs(fd_arr))) if fd_arr.size else 0.0,
+                    }
+                )
+            tuple_report[key] = pieces
+        if tuple_report:
+            item["tuple_arrays"] = tuple_report
+        report.append(item)
+    return report
+
+
+def _dynamic_replay_base_report(base_traces, static) -> list[dict[str, object]]:
+    """Compare differentiable dynamic replay primals against recorded host trace."""
+
+    from vmec_jax.discrete_adjoint import (
+        _dynamic_replay_initial_carry,
+        _dynamic_fsq1_from_force_channels,
+        _packed_dynamic_replay_step_from_carry,
+        _static_flags_from_replay_step_traces,
+        _trace_preconditioner_use_lax_tridi,
+        _trace_preconditioner_use_precomputed_tridi,
+        preconditioned_force_channels_from_raw_forces,
+        raw_force_residual_from_state,
+        state_dependent_preconditioner_from_forces,
+    )
+    from vmec_jax.state import pack_state, unpack_state
+
+    if not base_traces:
+        return []
+    static_flags = _static_flags_from_replay_step_traces(tuple(base_traces))
+    carry = _dynamic_replay_initial_carry(base_traces[0])
+    report: list[dict[str, object]] = []
+    velocity_slots = {
+        "vRcc_after": 3,
+        "vRss_after": 4,
+        "vRsc_after": 5,
+        "vRcs_after": 6,
+        "vZsc_after": 7,
+        "vZcs_after": 8,
+        "vZcc_after": 9,
+        "vZss_after": 10,
+        "vLsc_after": 11,
+        "vLcs_after": 12,
+        "vLcc_after": 13,
+        "vLss_after": 14,
+    }
+    for step, trace in enumerate(base_traces, start=1):
+        layout = trace["state_pre"].layout
+        state_pre = unpack_state(carry[0], layout)
+        wout_like = trace["wout_like"] if "wout_like" in trace else static_flags["wout_like"]
+        trig = trace["trig"] if "trig" in trace else static_flags["trig"]
+        w_mode_mn = trace["w_mode_mn"] if "w_mode_mn" in trace else static_flags["w_mode_mn"]
+        lambda_update_scale = (
+            trace["lambda_update_scale"] if "lambda_update_scale" in trace else static_flags["lambda_update_scale"]
+        )
+        residual_out = raw_force_residual_from_state(
+            state_pre,
+            static,
+            wout_like=wout_like,
+            trig=trig,
+            apply_lforbal=static_flags["apply_lforbal"],
+            include_edge_residual=static_flags["include_edge_residual"],
+            apply_m1_constraints=static_flags["apply_m1_constraints"],
+            zero_m1=trace["zero_m1"],
+            constraint_tcon0=trace.get("constraint_tcon0"),
+            constraint_tcon=trace.get("constraint_tcon"),
+            constraint_precond_diag=trace.get("constraint_precond_diag"),
+            constraint_precond_active=trace.get("constraint_precond_active"),
+            constraint_tcon_active=trace.get("constraint_tcon_active"),
+            constraint_rcon0=trace.get("constraint_rcon0"),
+            constraint_zcon0=trace.get("constraint_zcon0"),
+            freeb_bsqvac_half=trace.get("freeb_bsqvac_half", None),
+            freeb_pres_scale=trace.get("freeb_pres_scale", None) if "freeb_pres_scale" in trace else static_flags.get("freeb_pres_scale", None),
+        )
+        tridi_policy = _trace_preconditioner_use_precomputed_tridi(trace, static_flags)
+        lax_tridi_policy = _trace_preconditioner_use_lax_tridi(trace, static_flags)
+        preconditioner_out = state_dependent_preconditioner_from_forces(
+            k=residual_out["k"],
+            static=static,
+            trig=trig,
+            dtype=np.asarray(carry[0]).dtype,
+            jmax_override=int(static_flags["precond_jmax"]),
+            w_mode_mn=w_mode_mn,
+            use_precomputed=tridi_policy,
+            use_lax_tridi=lax_tridi_policy,
+        )
+        force_out = preconditioned_force_channels_from_raw_forces(
+            frzl=residual_out["frzl"],
+            mats=preconditioner_out["mats"],
+            jmax=preconditioner_out["jmax"],
+            cfg=static.cfg,
+            lam_prec=preconditioner_out["lam_prec"],
+            w_mode_mn=preconditioner_out["w_mode_mn"],
+            lambda_update_scale=lambda_update_scale,
+            use_precomputed=tridi_policy,
+            use_lax_tridi=lax_tridi_policy,
+        )
+        fsq1 = _dynamic_fsq1_from_force_channels(
+            state_pre=state_pre,
+            static=static,
+            vmec2000_control=bool(static_flags["vmec2000_control"]),
+            frzl_pre=force_out["frzl_pre"],
+        )
+        carry = _packed_dynamic_replay_step_from_carry(
+            carry,
+            trace,
+            static=static,
+            static_flags=static_flags,
+            preconditioner_jmax_override=int(static_flags["precond_jmax"]),
+            preconditioner_use_precomputed_tridi=static_flags.get(
+                "preconditioner_use_precomputed_tridi",
+                None,
+            ),
+            preconditioner_use_lax_tridi=static_flags.get(
+                "preconditioner_use_lax_tridi",
+                None,
+            ),
+        )
+        item: dict[str, object] = {
+            "step": int(step),
+            "step_status": str(trace.get("step_status", "")),
+            "restart_path": str(trace.get("restart_path", "")),
+            "fsq1_replay": float(np.asarray(fsq1)),
+        }
+        force_report: dict[str, dict[str, float]] = {}
+        block_sources = {
+            "raw": (
+                residual_out["frzl"],
+                {
+                    "frcc": "frzl_frcc",
+                    "frss": "frzl_frss",
+                    "frsc": "frzl_frsc",
+                    "frcs": "frzl_frcs",
+                    "fzsc": "frzl_fzsc",
+                    "fzcs": "frzl_fzcs",
+                    "fzcc": "frzl_fzcc",
+                    "fzss": "frzl_fzss",
+                    "flsc": "frzl_flsc",
+                    "flcs": "frzl_flcs",
+                    "flcc": "frzl_flcc",
+                    "flss": "frzl_flss",
+                },
+            ),
+            "rz": (
+                force_out["frzl_rz"],
+                {
+                    "frcc": "frzl_rz_frcc",
+                    "frss": "frzl_rz_frss",
+                    "frsc": "frzl_rz_frsc",
+                    "frcs": "frzl_rz_frcs",
+                    "fzsc": "frzl_rz_fzsc",
+                    "fzcs": "frzl_rz_fzcs",
+                    "fzcc": "frzl_rz_fzcc",
+                    "fzss": "frzl_rz_fzss",
+                    "flsc": "frzl_rz_flsc",
+                    "flcs": "frzl_rz_flcs",
+                    "flcc": "frzl_rz_flcc",
+                    "flss": "frzl_rz_flss",
+                },
+            ),
+        }
+        block_report: dict[str, dict[str, dict[str, float]]] = {}
+        for source_name, (source_blocks, trace_keys) in block_sources.items():
+            source_report: dict[str, dict[str, float]] = {}
+            for block_name, trace_key in trace_keys.items():
+                if trace_key not in trace or trace.get(trace_key) is None:
+                    continue
+                replay_block = np.asarray(getattr(source_blocks, block_name), dtype=float)
+                recorded_block = np.asarray(trace[trace_key], dtype=float)
+                diff = replay_block - recorded_block
+                diff_norm = float(np.linalg.norm(diff))
+                if diff_norm <= 0.0:
+                    continue
+                replay_norm = float(np.linalg.norm(replay_block))
+                recorded_norm = float(np.linalg.norm(recorded_block))
+                source_report[block_name] = {
+                    "replay_norm": replay_norm,
+                    "recorded_norm": recorded_norm,
+                    "diff_norm": diff_norm,
+                    "relative_diff_norm": diff_norm / max(replay_norm, recorded_norm, np.finfo(float).eps),
+                    "max_abs_diff": float(np.max(np.abs(diff))) if diff.size else 0.0,
+                }
+            if source_report:
+                block_report[source_name] = source_report
+        if block_report:
+            item["force_blocks"] = block_report
+        for key in (
+            "frcc_u",
+            "frss_u",
+            "frsc_u",
+            "frcs_u",
+            "fzsc_u",
+            "fzcs_u",
+            "fzcc_u",
+            "fzss_u",
+            "flsc_u",
+            "flcs_u",
+            "flcc_u",
+            "flss_u",
+        ):
+            if key not in trace or trace.get(key) is None or key not in force_out:
+                continue
+            replay_force = np.asarray(force_out[key], dtype=float)
+            recorded_force = np.asarray(trace[key], dtype=float)
+            diff = replay_force - recorded_force
+            diff_norm = float(np.linalg.norm(diff))
+            if diff_norm <= 0.0:
+                continue
+            replay_norm = float(np.linalg.norm(replay_force))
+            recorded_norm = float(np.linalg.norm(recorded_force))
+            force_report[key] = {
+                "replay_norm": replay_norm,
+                "recorded_norm": recorded_norm,
+                "diff_norm": diff_norm,
+                "relative_diff_norm": diff_norm / max(replay_norm, recorded_norm, np.finfo(float).eps),
+                "max_abs_diff": float(np.max(np.abs(diff))) if diff.size else 0.0,
+            }
+        if force_report:
+            item["forces"] = force_report
+        if "state_post" in trace:
+            replay_state = np.asarray(carry[0], dtype=float)
+            recorded_state = np.asarray(pack_state(trace["state_post"]), dtype=float)
+            state_diff = replay_state - recorded_state
+            item["state_post"] = {
+                "replay_norm": float(np.linalg.norm(replay_state)),
+                "recorded_norm": float(np.linalg.norm(recorded_state)),
+                "diff_norm": float(np.linalg.norm(state_diff)),
+                "relative_diff_norm": float(np.linalg.norm(state_diff))
+                / max(
+                    float(np.linalg.norm(replay_state)),
+                    float(np.linalg.norm(recorded_state)),
+                    np.finfo(float).eps,
+                ),
+                "max_abs_diff": float(np.max(np.abs(state_diff))) if state_diff.size else 0.0,
+            }
+        velocities: dict[str, dict[str, float]] = {}
+        for key, slot in velocity_slots.items():
+            if key not in trace or trace.get(key) is None:
+                continue
+            replay_value = np.asarray(carry[slot], dtype=float)
+            recorded_value = np.asarray(trace[key], dtype=float)
+            diff = replay_value - recorded_value
+            diff_norm = float(np.linalg.norm(diff))
+            if diff_norm <= 0.0:
+                continue
+            replay_norm = float(np.linalg.norm(replay_value))
+            recorded_norm = float(np.linalg.norm(recorded_value))
+            velocities[key] = {
+                "replay_norm": replay_norm,
+                "recorded_norm": recorded_norm,
+                "diff_norm": diff_norm,
+                "relative_diff_norm": diff_norm / max(replay_norm, recorded_norm, np.finfo(float).eps),
+                "max_abs_diff": float(np.max(np.abs(diff))) if diff.size else 0.0,
+            }
+        if velocities:
+            item["velocities"] = velocities
+        report.append(item)
+    return report
+
+
 def main() -> None:
     args = _parse_args()
     enable_x64(True)
@@ -523,6 +879,9 @@ def main() -> None:
             base_fingerprint = residual_branch_fingerprint(iter_base_result)
             plus_fingerprint = residual_branch_fingerprint(iter_plus_result)
             minus_fingerprint = residual_branch_fingerprint(iter_minus_result)
+            base_traces = iter_base_result.diagnostics["adjoint_step_trace"]
+            plus_traces = iter_plus_result.diagnostics["adjoint_step_trace"]
+            minus_traces = iter_minus_result.diagnostics["adjoint_step_trace"]
             iter_diff = iter_state_jvp - iter_fd
             iter_state_jvp_norm = float(np.linalg.norm(iter_state_jvp))
             iter_state_fd_norm = float(np.linalg.norm(iter_fd))
@@ -586,6 +945,16 @@ def main() -> None:
                         iter_stage.optimizer._layout,
                         iter_state_jvp,
                         iter_fd,
+                    ),
+                    "trace_control_fd": _trace_control_fd_report(
+                        base_traces,
+                        plus_traces,
+                        minus_traces,
+                        eps,
+                    ),
+                    "dynamic_replay_base": _dynamic_replay_base_report(
+                        base_traces,
+                        iter_stage.optimizer._static,
                     ),
                     "fingerprint_plus_matches_base": bool(plus_fingerprint == base_fingerprint),
                     "fingerprint_minus_matches_base": bool(minus_fingerprint == base_fingerprint),

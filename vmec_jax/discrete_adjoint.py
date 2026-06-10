@@ -38,6 +38,8 @@ _REPLAY_STEP_TRACE_KEYS = (
     "time_step",
     "fsq_prev_before",
     "reset_inv_tau",
+    "constraint_cache_update",
+    "precond_cache_update",
     "inv_tau_before",
     "max_coeff_delta_rms_pre",
     "vRcc_before",
@@ -55,6 +57,24 @@ _REPLAY_STEP_TRACE_KEYS = (
     "max_update_rms_pre",
     "freeb_bsqvac_half",
     "freeb_pres_scale",
+    "constraint_tcon0",
+    "constraint_precond_diag",
+    "constraint_tcon",
+    "constraint_precond_active",
+    "constraint_tcon_active",
+    "constraint_rcon0",
+    "constraint_zcon0",
+)
+_OPTIONAL_REPLAY_STEP_TRACE_KEYS = (
+    "freeb_bsqvac_half",
+    "freeb_pres_scale",
+    "constraint_tcon0",
+    "constraint_precond_diag",
+    "constraint_tcon",
+    "constraint_precond_active",
+    "constraint_tcon_active",
+    "constraint_rcon0",
+    "constraint_zcon0",
 )
 
 _REPLAY_STEP_TRACE_STATIC_KEYS = (
@@ -1248,7 +1268,7 @@ def _static_flags_from_replay_step_traces(step_traces: tuple[dict[str, Any], ...
 def _stack_replay_step_traces(step_traces: tuple[dict[str, Any], ...]):
     from ._compat import jax
 
-    optional_keys = ("freeb_bsqvac_half", "freeb_pres_scale")
+    optional_keys = _OPTIONAL_REPLAY_STEP_TRACE_KEYS
     optional_present: dict[str, list[bool]] = {
         key: [trace.get(key, None) is not None for trace in step_traces]
         for key in optional_keys
@@ -1342,23 +1362,41 @@ def _build_dynamic_replay_payload(
         "wout_like",
         "trig",
         "w_mode_mn",
+        "constraint_tcon0",
+        "constraint_precond_diag",
+        "constraint_tcon",
+        "constraint_precond_active",
+        "constraint_tcon_active",
+        "constraint_rcon0",
+        "constraint_zcon0",
     )
     varying_keys = [
         "time_step",
         "flip_sign",
         "reset_inv_tau",
+        "constraint_cache_update",
+        "precond_cache_update",
         "zero_m1",
         *_DYNAMIC_REPLAY_SCALAR_TRACE_KEYS,
     ]
-    for freeb_key in ("freeb_bsqvac_half", "freeb_pres_scale"):
-        freeb_present = [trace.get(freeb_key, None) is not None for trace in step_traces]
-        if all(freeb_present):
-            varying_keys.append(freeb_key)
-        elif any(freeb_present):
+    for optional_key in _OPTIONAL_REPLAY_STEP_TRACE_KEYS:
+        optional_present = [trace.get(optional_key, None) is not None for trace in step_traces]
+        if optional_key in constant_candidates:
+            continue
+        if all(optional_present):
+            varying_keys.append(optional_key)
+        elif any(optional_present):
             raise ValueError(
-                f"Dynamic replay requires {freeb_key} to be present on every active trace or none."
+                f"Dynamic replay requires {optional_key} to be present on every active trace or none."
             )
     for key in constant_candidates:
+        present = [trace.get(key, None) is not None for trace in step_traces]
+        if not any(present):
+            continue
+        if not all(present):
+            raise ValueError(
+                f"Dynamic replay requires {key} to be present on every active trace or none."
+            )
         first = step_traces[0][key]
         if all(_replay_values_equal(trace[key], first) for trace in step_traces[1:]):
             dynamic_static_flags[key] = first
@@ -1454,7 +1492,7 @@ def _dynamic_restart_trace_supported(trace) -> bool:
 
 def _restart_carry_tangents(carry_tangents):
     packed_state_tangent, inv_tau_tangent, fsq_prev_tangent, *velocity_tangents = carry_tangents
-    zero_like = lambda arr: jnp.zeros_like(arr)
+    zero_like = lambda arr: jax.tree_util.tree_map(lambda x: jnp.zeros_like(x), arr)
     return (
         packed_state_tangent,
         zero_like(inv_tau_tangent),
@@ -1489,7 +1527,40 @@ def _dynamic_replay_initial_carry(trace):
         _arr("vLcs_before"),
         _arr("vLcc_before"),
         _arr("vLss_before"),
+        *_constraint_cache_from_trace(trace, dtype=dtype),
+        jnp.asarray(trace["lam_prec"], dtype=dtype),
+        jax.tree_util.tree_map(lambda x: jnp.asarray(x, dtype=dtype), trace["precond_mats"]),
     )
+
+
+def _constraint_precond_diag_as_tuple(value):
+    if value is None or isinstance(value, tuple):
+        return value
+    arr = jnp.asarray(value)
+    if len(arr.shape) >= 1 and int(arr.shape[0]) == 2:
+        return (arr[0], arr[1])
+    return value
+
+
+def _constraint_cache_from_trace(trace, *, dtype):
+    diag = _constraint_precond_diag_as_tuple(trace.get("constraint_precond_diag", None))
+    tcon_value = trace.get("constraint_tcon", None)
+    if diag is None:
+        template = (
+            jnp.asarray(tcon_value, dtype=dtype)
+            if tcon_value is not None
+            else jnp.asarray(trace["inv_tau_before"], dtype=dtype)
+        )
+        ard1 = jnp.zeros((int(template.shape[0]),), dtype=dtype)
+        azd1 = jnp.zeros_like(ard1)
+    else:
+        ard1 = jnp.asarray(diag[0], dtype=dtype)
+        azd1 = jnp.asarray(diag[1], dtype=dtype)
+    if tcon_value is None:
+        tcon = jnp.zeros_like(ard1)
+    else:
+        tcon = jnp.asarray(tcon_value, dtype=dtype)
+    return ard1, azd1, tcon
 
 
 def _dynamic_safe_dt_from_force_arrays(
@@ -1593,7 +1664,28 @@ def _packed_dynamic_replay_step_from_carry(
     preconditioner_use_precomputed_tridi: bool | None = None,
     preconditioner_use_lax_tridi: bool | None = None,
 ):
-    packed_state, inv_tau, fsq_prev, vRcc_before, vRss_before, vRsc_before, vRcs_before, vZsc_before, vZcs_before, vZcc_before, vZss_before, vLsc_before, vLcs_before, vLcc_before, vLss_before = carry
+    (
+        packed_state,
+        inv_tau,
+        fsq_prev,
+        vRcc_before,
+        vRss_before,
+        vRsc_before,
+        vRcs_before,
+        vZsc_before,
+        vZcs_before,
+        vZcc_before,
+        vZss_before,
+        vLsc_before,
+        vLcs_before,
+        vLcc_before,
+        vLss_before,
+        constraint_ard1_before,
+        constraint_azd1_before,
+        constraint_tcon_before,
+        cache_lam_prec_before,
+        cache_prec_mats_before,
+    ) = carry
     layout = static_flags.get("layout", trace["state_pre"].layout if isinstance(trace, dict) and "state_pre" in trace else None)
     if layout is None:
         raise ValueError("dynamic replay requires a stored VMEC layout")
@@ -1616,6 +1708,35 @@ def _packed_dynamic_replay_step_from_carry(
         if isinstance(trace, dict) and "max_update_rms_pre" in trace
         else static_flags["max_update_rms_pre"]
     )
+    def _optional_replay_value(key: str):
+        if isinstance(trace, dict) and key in trace:
+            return trace[key]
+        return static_flags.get(key, None)
+
+    constraint_precond_active = _optional_replay_value("constraint_precond_active")
+    constraint_tcon_active = _optional_replay_value("constraint_tcon_active")
+    if constraint_precond_active is None:
+        constraint_precond_active = jnp.asarray(False)
+    if constraint_tcon_active is None:
+        constraint_tcon_active = jnp.asarray(False)
+    constraint_precond_diag_current = (
+        jnp.where(
+            jnp.asarray(constraint_precond_active, dtype=bool),
+            jnp.asarray(constraint_ard1_before),
+            jnp.zeros_like(jnp.asarray(constraint_ard1_before)),
+        ),
+        jnp.where(
+            jnp.asarray(constraint_precond_active, dtype=bool),
+            jnp.asarray(constraint_azd1_before),
+            jnp.zeros_like(jnp.asarray(constraint_azd1_before)),
+        ),
+    )
+    constraint_tcon_current = jnp.where(
+        jnp.asarray(constraint_tcon_active, dtype=bool),
+        jnp.asarray(constraint_tcon_before),
+        jnp.zeros_like(jnp.asarray(constraint_tcon_before)),
+    )
+
     residual_out = raw_force_residual_from_state(
         state_pre,
         static,
@@ -1625,6 +1746,13 @@ def _packed_dynamic_replay_step_from_carry(
         include_edge_residual=static_flags["include_edge_residual"],
         apply_m1_constraints=static_flags["apply_m1_constraints"],
         zero_m1=trace["zero_m1"],
+        constraint_tcon0=_optional_replay_value("constraint_tcon0"),
+        constraint_tcon=constraint_tcon_current,
+        constraint_precond_diag=constraint_precond_diag_current,
+        constraint_precond_active=constraint_precond_active,
+        constraint_tcon_active=constraint_tcon_active,
+        constraint_rcon0=_optional_replay_value("constraint_rcon0"),
+        constraint_zcon0=_optional_replay_value("constraint_zcon0"),
         freeb_bsqvac_half=trace.get("freeb_bsqvac_half", None) if isinstance(trace, dict) else None,
         freeb_pres_scale=trace.get("freeb_pres_scale", None) if isinstance(trace, dict) else static_flags.get("freeb_pres_scale", None),
     )
@@ -1638,7 +1766,7 @@ def _packed_dynamic_replay_step_from_carry(
         if preconditioner_use_lax_tridi is None
         else preconditioner_use_lax_tridi
     )
-    preconditioner_out = state_dependent_preconditioner_from_forces(
+    refreshed_preconditioner_out = state_dependent_preconditioner_from_forces(
         k=residual_out["k"],
         static=static,
         trig=trig,
@@ -1648,6 +1776,63 @@ def _packed_dynamic_replay_step_from_carry(
         use_precomputed=tridi_policy,
         use_lax_tridi=lax_tridi_policy,
     )
+    constraint_cache_update = (
+        trace["constraint_cache_update"]
+        if isinstance(trace, dict) and "constraint_cache_update" in trace
+        else False
+    )
+    precond_cache_update = (
+        trace["precond_cache_update"]
+        if isinstance(trace, dict) and "precond_cache_update" in trace
+        else constraint_cache_update
+    )
+    update_precond_cache = jnp.asarray(precond_cache_update, dtype=bool)
+    lam_prec_current = jnp.where(
+        update_precond_cache,
+        jnp.asarray(refreshed_preconditioner_out["lam_prec"]),
+        jnp.asarray(cache_lam_prec_before),
+    )
+    mats_current = jax.tree_util.tree_map(
+        lambda refreshed, cached: jnp.where(
+            update_precond_cache,
+            jnp.asarray(refreshed),
+            jnp.asarray(cached),
+        ),
+        refreshed_preconditioner_out["mats"],
+        cache_prec_mats_before,
+    )
+    preconditioner_out = {
+        "lam_prec": lam_prec_current,
+        "mats": mats_current,
+        "jmax": refreshed_preconditioner_out["jmax"],
+        "w_mode_mn": refreshed_preconditioner_out["w_mode_mn"],
+    }
+    constraint_tcon0 = _optional_replay_value("constraint_tcon0")
+    if constraint_tcon0 is None or float(constraint_tcon0) == 0.0:
+        refreshed_ard1 = jnp.zeros_like(jnp.asarray(constraint_ard1_before))
+        refreshed_azd1 = jnp.zeros_like(jnp.asarray(constraint_azd1_before))
+        refreshed_tcon = jnp.zeros_like(jnp.asarray(constraint_tcon_before))
+    else:
+        from .vmec_constraints import precondn_diag_axd1_from_bcovar
+
+        refreshed_ard1, refreshed_azd1 = precondn_diag_axd1_from_bcovar(
+            trig=trig,
+            s=jnp.asarray(static.s),
+            bsq=residual_out["k"].bc.bsq,
+            r12=residual_out["k"].bc.jac.r12,
+            sqrtg=residual_out["k"].bc.jac.sqrtg,
+            ru12=residual_out["k"].bc.jac.ru12,
+            zu12=residual_out["k"].bc.jac.zu12,
+        )
+        refreshed_tcon = jnp.asarray(residual_out["k"].tcon, dtype=jnp.asarray(constraint_tcon_before).dtype)
+        refreshed_ard1 = jnp.asarray(refreshed_ard1, dtype=jnp.asarray(constraint_ard1_before).dtype)
+        refreshed_azd1 = jnp.asarray(refreshed_azd1, dtype=jnp.asarray(constraint_azd1_before).dtype)
+    update_cache = jnp.asarray(constraint_cache_update, dtype=bool)
+    constraint_ard1_next = jnp.where(update_cache, refreshed_ard1, jnp.asarray(constraint_ard1_before))
+    constraint_azd1_next = jnp.where(update_cache, refreshed_azd1, jnp.asarray(constraint_azd1_before))
+    constraint_tcon_next = jnp.where(update_cache, refreshed_tcon, jnp.asarray(constraint_tcon_before))
+    cache_lam_prec_next = lam_prec_current
+    cache_prec_mats_next = mats_current
     force_out = preconditioned_force_channels_from_raw_forces(
         frzl=residual_out["frzl"],
         mats=preconditioner_out["mats"],
@@ -1750,6 +1935,11 @@ def _packed_dynamic_replay_step_from_carry(
         step_out["vLcs_after"],
         step_out["vLcc_after"],
         step_out["vLss_after"],
+        constraint_ard1_next,
+        constraint_azd1_next,
+        constraint_tcon_next,
+        cache_lam_prec_next,
+        cache_prec_mats_next,
     )
 
 
@@ -1961,8 +2151,10 @@ def _checkpoint_tape_dynamic_basepoint_scan_runner(*, static, stacked, stacked_b
         carry0 = jax.tree_util.tree_map(lambda x: x[0], stacked_base_carries_in)
 
         def _zeros_like_base(arr):
-            arr = jnp.asarray(arr)
-            return jnp.zeros((state_tangents0.shape[0],) + arr.shape, dtype=arr.dtype)
+            return jax.tree_util.tree_map(
+                lambda x: jnp.zeros((state_tangents0.shape[0],) + jnp.asarray(x).shape, dtype=jnp.asarray(x).dtype),
+                arr,
+            )
 
         carry_tangents0 = (state_tangents0,) + tuple(_zeros_like_base(arr) for arr in carry0[1:])
         return _scan_from_carry(carry_tangents0, stacked_base_carries_in, stacked_traces_in)
@@ -1991,8 +2183,10 @@ def _run_dynamic_basepoint_scan_zero_aux(*, run_scan, state_tangents, stacked_ba
     carry0 = jax.tree_util.tree_map(lambda x: x[0], stacked_base_carries)
 
     def _zeros_like_base(arr):
-        arr = jnp.asarray(arr)
-        return jnp.zeros((state_tangents.shape[0],) + arr.shape, dtype=arr.dtype)
+        return jax.tree_util.tree_map(
+            lambda x: jnp.zeros((state_tangents.shape[0],) + jnp.asarray(x).shape, dtype=jnp.asarray(x).dtype),
+            arr,
+        )
 
     carry_tangents0 = (state_tangents,) + tuple(_zeros_like_base(arr) for arr in carry0[1:])
     return run_scan(carry_tangents0, stacked_base_carries, stacked)
@@ -2184,9 +2378,9 @@ def checkpoint_tape_state_jvp_columns(
             if _dynamic_restart_trace_supported(trace):
                 if carry_tangents is None:
                     carry0 = _dynamic_replay_initial_carry(trace)
-                    zeros_like = lambda arr: jnp.zeros(
-                        (tangents.shape[0],) + jnp.asarray(arr).shape,
-                        dtype=jnp.asarray(arr).dtype,
+                    zeros_like = lambda arr: jax.tree_util.tree_map(
+                        lambda x: jnp.zeros((tangents.shape[0],) + jnp.asarray(x).shape, dtype=jnp.asarray(x).dtype),
+                        arr,
                     )
                     carry_tangents = (tangents,) + tuple(zeros_like(arr) for arr in carry0[1:])
                 carry_tangents = _restart_carry_tangents(carry_tangents)
@@ -2199,7 +2393,10 @@ def checkpoint_tape_state_jvp_columns(
             return carry_tangents[0]
     if tape.step_traces and _dynamic_replay_supported(tape=tape, rebuild_preconditioner=rebuild_preconditioner):
         carry0 = _dynamic_replay_initial_carry(tape.step_traces[0])
-        zeros_like = lambda arr: jnp.zeros((tangents.shape[0],) + jnp.asarray(arr).shape, dtype=jnp.asarray(arr).dtype)
+        zeros_like = lambda arr: jax.tree_util.tree_map(
+            lambda x: jnp.zeros((tangents.shape[0],) + jnp.asarray(x).shape, dtype=jnp.asarray(x).dtype),
+            arr,
+        )
         carry_tangents = (tangents,) + tuple(zeros_like(arr) for arr in carry0[1:])
         for trace in tape.step_traces:
             carry_base = _dynamic_replay_initial_carry(trace)
@@ -2231,24 +2428,11 @@ def checkpoint_tape_state_jvp_columns(
         return carry_tangents[0]
     if tape.dynamic_initial_carry is not None and stacked is not None and static_flags is not None and rebuild_preconditioner:
         carry0 = tape.dynamic_initial_carry
-        zeros_like = lambda arr: jnp.zeros((tangents.shape[0],) + jnp.asarray(arr).shape, dtype=jnp.asarray(arr).dtype)
-        carry_tangents0 = (
-            tangents,
-            zeros_like(carry0[1]),
-            zeros_like(carry0[2]),
-            zeros_like(carry0[3]),
-            zeros_like(carry0[4]),
-            zeros_like(carry0[5]),
-            zeros_like(carry0[6]),
-            zeros_like(carry0[7]),
-            zeros_like(carry0[8]),
-            zeros_like(carry0[9]),
-            zeros_like(carry0[10]),
-            zeros_like(carry0[11]),
-            zeros_like(carry0[12]),
-            zeros_like(carry0[13]),
-            zeros_like(carry0[14]),
+        zeros_like = lambda arr: jax.tree_util.tree_map(
+            lambda x: jnp.zeros((tangents.shape[0],) + jnp.asarray(x).shape, dtype=jnp.asarray(x).dtype),
+            arr,
         )
+        carry_tangents0 = (tangents,) + tuple(zeros_like(arr) for arr in carry0[1:])
         run_scan = _checkpoint_tape_dynamic_scan_runner(
             static=static,
             stacked=stacked,
@@ -3241,7 +3425,7 @@ def strict_update_velocity_state_advance(
     and acceptance/restart logic and is intended as the first local reverse-mode
     target for the discrete-adjoint refactor.
     """
-    from .solve import _enforce_fixed_boundary_and_axis, _mode00_index
+    from .solve import _apply_vmec_lambda_axis_rules_to_state, _enforce_fixed_boundary_and_axis, _mode00_index
     from .vmec_parity import _mn_cos_to_signed_cached, _mn_sin_to_signed_cached, signed_maps_from_modes
     from .vmec_residue import vmec_scalxc_from_s
 
@@ -3284,7 +3468,7 @@ def strict_update_velocity_state_advance(
         Lcos=jnp.asarray(state.Lcos) + dL_cos,
         Lsin=jnp.asarray(state.Lsin) + dL,
     )
-    return _enforce_fixed_boundary_and_axis(
+    state_out = _enforce_fixed_boundary_and_axis(
         state_try,
         static,
         edge_Rcos=edge_Rcos,
@@ -3293,6 +3477,12 @@ def strict_update_velocity_state_advance(
         edge_Zsin=edge_Zsin,
         enforce_edge=enforce_edge,
         enforce_lambda_axis=True,
+        idx00=idx00,
+    )
+    return _apply_vmec_lambda_axis_rules_to_state(
+        state_out,
+        enforce_vmec_lambda_axis=True,
+        host_update_assembly=False,
         idx00=idx00,
     )
 

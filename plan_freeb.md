@@ -16694,3 +16694,80 @@ Completion:
   promoted.
 - QI optimizer/JVP correctness for minimal-seed cleanup: 96%; solver setup
   tangent fixed, accepted-controller continuous carry derivative still open.
+
+### 2026-06-10 QI Replay Constraint/Preconditioner Cache Carry
+
+Steps taken:
+
+1. Resumed from the stopped ``bce850e`` main checkout and reviewed the dirty
+   QI exact-optimizer diagnostic/replay patches.
+2. Added VMEC constraint cache fields and cache-refresh flags to the dynamic
+   replay trace, then made the constraint preconditioner/tcon cache part of
+   the differentiable replay carry.
+3. Localized the remaining primal replay drift to the R/Z/lambda
+   preconditioner cache: raw residuals matched, but preconditioned force
+   channels diverged starting at the first cache-reuse step.
+4. Added the actual host-used ``lam_prec`` and ``precond_mats`` to every
+   adjoint trace and made them part of the dynamic replay carry.  Replay now
+   refreshes this cache only on the recorded branch-local refresh steps and
+   otherwise reuses the carried cache, matching VMEC2000-style cache semantics.
+5. Made dynamic replay tangent initialization tree-aware so nested
+   preconditioner matrix dictionaries can be carried through ``jax.vmap`` and
+   ``lax.scan``.
+6. Extended ``tools/diagnostics/qi_optimizer_jvp_fd_compare.py`` with
+   per-step controller/cache FD reports and replay-vs-host primal block
+   diagnostics.
+
+Results obtained:
+
+1. Local checks passed:
+   ``ruff`` on changed files, ``py_compile``/``git diff --check``, and
+   ``tests/test_optimization_wave2_coverage.py tests/test_optimization_workflow_unit.py tests/test_optimization_fast_optimizer_methods.py tests/test_optimization_helpers.py``.
+2. On ``office`` with the NFP2 QI candidate and CUDA:
+   - one-step accepted-state JVP/FD remains promotion-grade:
+     ``state_relative_diff_norm = 5.96e-9`` and cosine ``~= 1.0``;
+   - five-step primal replay now matches the host trace to roundoff:
+     replay-vs-host state relative ``1.4e-14`` at step 5;
+   - five-step accepted-state JVP/FD improved but is not promotion-grade:
+     ``state_relative_diff_norm = 3.12e-2`` and cosine ``0.99953``;
+   - top QI residual JVP/FD improved from ``2.20e-1`` to ``6.12e-2``
+     relative difference.
+3. Epsilon sweep at ``1e-4``, ``1e-5``, ``3e-6``, and ``1e-6`` leaves the
+   five-step state mismatch unchanged at ``~= 3.12e-2``, so the residual gap is
+   a real missing replay tangent rather than finite-difference step-size noise.
+4. The first remaining derivative drift appears at step 2, exactly when the
+   first refreshed preconditioner cache is reused.
+
+Best next steps:
+
+1. Add a force/velocity tangent diagnostic for step 2: compare replay JVP of
+   ``frzl_rz``, update-force blocks, and ``v*_after`` against central FD of the
+   trace arrays.
+2. If the force tangent is correct, inspect strict-update/state packing
+   tangents; if not, compare the carried ``precond_mats`` and ``lam_prec`` JVP
+   after step 1 against FD of the step-2 trace cache.
+3. Keep QI README artifact promotion blocked until the five-step same-branch
+   state and residual gates are promotion-grade.
+
+Need from user:
+
+Nothing now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999997%; branch-local
+  primal replay is now exact for the tested QI candidate, but the multi-step
+  accepted-state tangent still has a 3.1% gap and arbitrary adaptive
+  host-branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 98.8%.
+- Single-stage coil-only optimization: 99.0%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.3%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 99.95%, still blocked on valid QI artifacts.
+- QI minimal-seed README artifact regeneration: 50% artifact-complete, 0%
+  promoted.
+- QI optimizer/JVP correctness for minimal-seed cleanup: 97%; replay primals
+  are exact and major cache tangents are carried, but step-2 force/velocity
+  tangent localization remains open.
