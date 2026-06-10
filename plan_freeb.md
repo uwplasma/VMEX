@@ -16930,3 +16930,67 @@ Completion:
   promoted.
 - QI optimizer/JVP correctness for minimal-seed cleanup: 99%; the prior
   multi-step accepted-state tangent blocker is fixed for the tested branch.
+
+### 2026-06-10 Beginner Install Diagnostics and Coverage Follow-Up
+
+Steps taken:
+
+1. Reviewed the attached user install transcript.  The root cause was a mixed
+   Homebrew/user-site Python environment: editable build hooks imported
+   ``setuptools>=77`` from one prefix while seeing ``packaging`` without the
+   required ``packaging.licenses`` module from another prefix.
+2. Added focused tests for ``vmec_jax.doctor`` covering missing/broken package
+   metadata, stale ``packaging``, broken ``pip`` subprocess diagnostics, broken
+   JAX import diagnostics, mixed user-site/Homebrew prefix warnings, clean
+   conda/venv reports, and the doctor CLI print path.
+3. Added installation troubleshooting docs that explain the exact
+   ``Cannot import packaging.licenses`` failure and tell users to create a clean
+   environment instead of uninstalling global packages.
+4. Pushed commit ``589d82c`` so CI can recompute the strict 95% aggregate
+   coverage gate.
+
+Results obtained:
+
+1. Local focused tests passed:
+   ``python -m pytest -q tests/test_doctor.py tests/test_cli_helpers.py::test_cli_doctor_dispatches_without_solver tests/test_packaging_metadata.py -q``.
+2. With third-party pytest plugin autoload disabled, the isolated doctor shard
+   passed in ``0.15 s``.  Local coverage tooling itself exposed the same class
+   of global/user-site Python prefix instability as the user install log, so
+   GitHub Actions remains the authoritative coverage measurement.
+3. The repository-side fix for the install failure is already present:
+   ``pyproject.toml`` declares ``packaging>=24.2`` in both build and runtime
+   dependencies, and ``vmec --doctor`` gives a beginner-readable diagnosis.
+
+Best next steps:
+
+1. Watch CI for ``589d82c``.  If coverage still fails, add targeted tests for
+   uncovered production modules rather than relaxing the 95% gate.
+2. Decide whether to add a pinned constraints file for reproducible research
+   installs, and whether to add Pixi/conda environment files as a first-class
+   beginner path.
+3. After CI is green, resume QI minimal-seed artifact regeneration and the
+   bounded free-boundary parity/adaptive-branch validation plan.
+
+Need from user:
+
+Two install-policy choices remain:
+
+1. Keep the current lower-bound dependency policy, or add an official
+   ``constraints``/lock-file lane for reproducible research installs.
+2. Keep PyPI/venv as the primary beginner path, or promote Pixi/conda
+   environment files to first-class documented install recipes.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 98.9%.
+- Single-stage coil-only optimization: 99.0%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 99.9%; new coverage tests are pushed and CI is
+  running.
+- Docs/release hygiene: 99.98%; install troubleshooting is documented, pending
+  CI confirmation.
+- QI minimal-seed README artifact regeneration: 50% artifact-complete, 0%
+  promoted.
