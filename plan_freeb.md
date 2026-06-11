@@ -17300,3 +17300,49 @@ Completion:
 - QI minimal-seed README artifacts: 55% artifact-complete, 0% promoted.  The
   selection logic is now safer, but NFP1/2/3 still need successful cleanup
   reruns before any README promotion.
+
+### 2026-06-10 QI Showcase Reference-Lambda Override
+
+Steps taken:
+
+1. Audited the clean ``office`` reruns from commit ``3c0591a``.  The NFP=2
+   staged subprocesses used the fixed selector, but the current production
+   QI policy still supplied a narrow reference family around ``lambda=1``.
+2. Added ``--qi-reference-lambdas`` to
+   ``generate_minimal_seed_showcase.py``.  Unset keeps the policy-defined
+   reference family, a comma-separated list overrides it, and ``none`` disables
+   explicit lambda passing for diagnostics.
+3. Preserved staged-runner semantics by using
+   ``qi_staged_runner.DEFAULT_REFERENCE_LAMBDAS`` as the driver sentinel; this
+   avoids accidentally turning an unset CLI option into a disabled reference
+   scan.
+4. Added a focused test for parser semantics and dispatch into
+   ``QIStagedCaseConfig.reference_lambdas``.
+
+Results obtained:
+
+1. Local lint passed:
+   ``python -m ruff check examples/optimization/generate_minimal_seed_showcase.py tests/test_minimal_seed_showcase.py``.
+2. Focused staged/showcase tests passed:
+   ``python -m pytest -q tests/test_minimal_seed_showcase.py tests/test_qi_staged_runner.py -q``.
+
+Best next steps:
+
+1. Commit and push the CLI override.
+2. After CI starts, rerun QI NFP=2/3 diagnostics with a broader explicit
+   lambda set from a clean clone.  This will separate reference-family basin
+   selection from local high-mode cleanup failures.
+3. Keep current remote runs as diagnostics; do not promote artifacts unless
+   they pass the full QI/aspect/iota/mirror/elongation gates.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- QI minimal-seed README artifacts: 58% artifact-complete, 0% promoted.  The
+  driver can now test broad reference families reproducibly, but the promoted
+  README rows are still blocked on successful NFP1/2/3 cleanup artifacts.
+- CI/runtime/coverage hygiene: 100% on the previous commit and focused local
+  tests for this change; pending CI after push.

@@ -255,6 +255,19 @@ def _parse_case_names(value: str) -> tuple[str, ...]:
     return names
 
 
+def _parse_qi_reference_lambdas(value: str | None) -> tuple[float, ...] | None:
+    """Parse QI reference lambdas while preserving staged-runner semantics."""
+
+    if value is None:
+        return qi_staged_runner.DEFAULT_REFERENCE_LAMBDAS
+    items = tuple(item.strip() for item in str(value).split(",") if item.strip())
+    if len(items) == 1 and items[0].lower() in {"none", "off", "disable", "disabled"}:
+        return None
+    if not items:
+        return None
+    return tuple(float(item) for item in items)
+
+
 def _bool_from_choice(value: str) -> bool:
     return str(value).strip().lower() in {"on", "true", "1", "yes"}
 
@@ -586,6 +599,7 @@ def _run_showcase_case(
     input_file: Path | None = None,
     case_timeout_s: float | None = None,
     qi_method: str | None = None,
+    qi_reference_lambdas: tuple[float, ...] | None = qi_staged_runner.DEFAULT_REFERENCE_LAMBDAS,
 ) -> sweep.CaseResult:
     """Run one minimal-seed case with temporary sweep config overrides."""
 
@@ -623,6 +637,7 @@ def _run_showcase_case(
                 trial_ftol=float(budget.trial_ftol),
                 ess_alpha=float(budget.ess_alpha),
                 method=qi_method,
+                reference_lambdas=qi_reference_lambdas,
                 target_aspect=QI_SHOWCASE_TARGET_ASPECT,
                 target_abs_iota_min=0.41,
                 max_mirror_ratio=0.30,
@@ -684,6 +699,7 @@ def _worker(
     reference_preseed_blend: float | None = None,
     case_timeout_s: float | None = None,
     qi_method: str | None = None,
+    qi_reference_lambdas: tuple[float, ...] | None = qi_staged_runner.DEFAULT_REFERENCE_LAMBDAS,
 ) -> None:
     output_dir = Path(output_dir_str)
     result_path = Path(result_path_str)
@@ -712,6 +728,7 @@ def _worker(
                 reference_preseed_blend,
                 case_timeout_s,
                 qi_method,
+                qi_reference_lambdas,
             )
 
 
@@ -784,6 +801,7 @@ def _worker_impl(
     reference_preseed_blend: float | None = None,
     case_timeout_s: float | None = None,
     qi_method: str | None = None,
+    qi_reference_lambdas: tuple[float, ...] | None = qi_staged_runner.DEFAULT_REFERENCE_LAMBDAS,
 ) -> None:
     case = SHOWCASE_CASES[case_name]
     if reference_preseed_blend is not None and case.reference_preseed_input is not None:
@@ -833,6 +851,7 @@ def _worker_impl(
             input_file=seeded_input_file,
             case_timeout_s=case_timeout_s,
             qi_method=qi_method,
+            qi_reference_lambdas=qi_reference_lambdas,
         )
         _annotate_qi_partial_result(case, result, output_dir)
         _apply_physics_gate(case, result)
@@ -922,6 +941,15 @@ def _parse_args() -> argparse.Namespace:
             "mirror-ramp cleanup stages, e.g. scipy, scalar_trust, or auto_scalar."
         ),
     )
+    parser.add_argument(
+        "--qi-reference-lambdas",
+        type=str,
+        default=None,
+        help=(
+            "Optional comma-separated lambda family for QI reference preconditioning. "
+            "Unset uses the case policy; use 'none' to disable explicit lambda passing."
+        ),
+    )
     parser.add_argument("--case-timeout-s", type=float, default=1800.0)
     parser.add_argument(
         "--reference-preseed-blend",
@@ -955,6 +983,7 @@ def main() -> None:
     )
     use_ess = _bool_from_choice(args.ess)
     max_mode = int(args.max_mode)
+    qi_reference_lambdas = _parse_qi_reference_lambdas(args.qi_reference_lambdas)
     output_root = Path(args.output_root).expanduser().resolve()
     output_root.mkdir(parents=True, exist_ok=True)
     ctx = mp.get_context("spawn")
@@ -1004,6 +1033,7 @@ def main() -> None:
                     reference_preseed_blend,
                     case_timeout_s,
                     args.qi_method,
+                    qi_reference_lambdas,
                 ),
             )
             t0 = time.perf_counter()
