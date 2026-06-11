@@ -17938,6 +17938,58 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 75% artifact-complete, 0% promoted.
 
+### 2026-06-11 Boozer/QS Same-Branch Vector Gate
+
+Steps taken:
+
+1. Reviewed the free-boundary sidecar audit.  The next conservative phase-2/3
+   step is not a broad adaptive-branch adjoint claim; it is adding Boozer/QS to
+   the existing same-branch complete-solve scalar/JVP evidence path.
+2. Extended the branch-local vector report regression for the direct-coil QS
+   optimization example to request ``aspect, qs_total, boozer_qs_total,
+   mean_iota, lcfs_boundary_moment``.
+3. Added complete-solve central-FD and branch-local JVP evidence for
+   ``boozer_qs_total`` in the stubbed report.
+4. Kept the claim boundary explicit in the asserted report fields:
+   ``differentiates_adaptive_controller=False``,
+   ``differentiates_run_free_boundary=False``, and
+   ``differentiates_fixed_accepted_branch=True``.
+
+Results obtained:
+
+1. Focused lint passed:
+   ``python -m ruff check tests/test_free_boundary_qs_coil_optimization_smoke.py``.
+2. Focused Boozer/QS vector gate test passed:
+   ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_writer_records_branch_local_vector_jacobian -q``.
+3. Full free-boundary QS optimization smoke shard passed:
+   ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py -q``
+   with one expected xfail.
+
+Best next steps:
+
+1. Commit and push the Boozer/QS same-branch vector gate.
+2. Continue monitoring the NFP=2 minimal-seed QI office run for the new
+   ``working_seed_promoted`` handoff and final strict mirror gate.
+3. Keep arbitrary adaptive host-branch differentiation unclaimed until a true
+   fingerprint-gated adaptive-branch AD-vs-FD gate exists.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%.
+- VMEC parity and physics gates: 99.15%.
+- Single-stage coil-only optimization: 99.45%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.48%.
+- CI/runtime/coverage hygiene: 100% locally for focused gates; latest CI run
+  pending.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 75% artifact-complete, 0% promoted.
+
 ### 2026-06-11 QI Minimal-Seed Reference Selection Guard
 
 Steps taken:
