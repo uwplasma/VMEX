@@ -1532,6 +1532,7 @@ def write_same_branch_validation_report(
     missing_vector_keys = tuple(key for key in vector_keys if key not in report["objective_values"])
     if mode == "vector" and missing_vector_keys:
         branch_local_vector["reason"] = f"missing complete-solve objective value(s): {missing_vector_keys}"
+    main_vector_summary: dict[str, Any] | None = None
     if same_branch and not replay_mode_count_guard_triggered and mode == "vector" and "base" in report and not missing_vector_keys:
         scalar_keys = vector_keys
         t0 = time.perf_counter()
@@ -1544,6 +1545,7 @@ def write_same_branch_validation_report(
         for key, value in vector_timings.items():
             timings[f"branch_local_vector_{key}"] = value
         branch_local_vector = _summarize_vector_result(vector, scalar_keys)
+        main_vector_summary = branch_local_vector
         production_rtol = {
             key: (
                 2.0e-2
@@ -1737,6 +1739,27 @@ def write_same_branch_validation_report(
                     "nestor_solve_mode": solve_mode,
                     "nestor_operator_solver": operator_solver,
                 }
+                if (
+                    main_vector_summary is not None
+                    and solve_mode == str(replay_kwargs["nestor_solve_mode"])
+                    and operator_solver == str(replay_kwargs["nestor_operator_solver"])
+                ):
+                    profile_results.append(
+                        {
+                            "available": True,
+                            "nestor_solve_mode": solve_mode,
+                            "nestor_operator_solver": operator_solver,
+                            "wall_s": float(timings.get("branch_local_vector_wall_s", 0.0)),
+                            "timing_source": "main_branch_local_vector_report",
+                            "timings": main_vector_summary["timings"],
+                            "max_base_abs_delta": float(main_vector_summary["max_base_abs_delta"]),
+                            "max_abs_error": max(
+                                float(item["abs_error"]) for item in main_vector_summary["scalars"].values()
+                            ),
+                            "replay_option_flags": main_vector_summary["replay_option_flags"],
+                        }
+                    )
+                    continue
                 t0 = time.perf_counter()
                 try:
                     profile_vector = _run_branch_local_vector(vector_keys, case_kwargs)
@@ -1748,6 +1771,7 @@ def write_same_branch_validation_report(
                             "nestor_solve_mode": solve_mode,
                             "nestor_operator_solver": operator_solver,
                             "wall_s": wall_s,
+                            "timing_source": "independent_profile_replay",
                             "timings": profile_summary["timings"],
                             "max_base_abs_delta": float(profile_summary["max_base_abs_delta"]),
                             "max_abs_error": max(

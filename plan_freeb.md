@@ -17767,3 +17767,58 @@ Completion:
 - CI/runtime/coverage hygiene: 100%.
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 67% artifact-complete, 0% promoted.
+
+### 2026-06-11 Same-Branch Profile Replay Reuse
+
+Steps taken:
+
+1. Reviewed the free-boundary sidecar audit.  It found a low-risk duplicate
+   runtime path in ``write_same_branch_validation_report``: the main
+   branch-local vector/JVP report can be rerun again as the first
+   dense-vs-matrix-free profile row when the requested profile uses the same
+   NESTOR solve mode and operator solver.
+2. Added reuse of the main vector/JVP summary for the matching profile row.
+3. Added a ``timing_source`` field to profile rows so reports distinguish
+   ``main_branch_local_vector_report`` from independent profile replays.
+4. Kept the adaptive-branch differentiation contract unchanged: this only
+   reduces duplicate same-branch replay work and does not broaden claims.
+
+Results obtained:
+
+1. Focused lint passed:
+   ``python -m ruff check examples/optimization/free_boundary_QS_coil_optimization.py tests/test_free_boundary_qs_coil_optimization_smoke.py``.
+2. Focused profile tests passed:
+   ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_writer_records_branch_local_vector_jacobian tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_profiles_nestor_and_rejected_slot tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_profile_skips_above_mode_count_cap -q``.
+3. Full free-boundary QS smoke shard passed:
+   ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py -q``
+   with one expected xfail.
+4. The profiled smoke path now performs four branch-local vector calls instead
+   of five for the dense/gmres + two matrix-free profile fixture: main vector,
+   rejected-slot gate, matrix-free/gmres profile, matrix-free/bicgstab profile.
+
+Best next steps:
+
+1. Commit/push the profile-reuse patch and monitor CI.
+2. Continue the stronger derivative-proposal lane only as an opt-in
+   multi-direction proposal set, with complete solves still acting as
+   acceptance authority.
+3. Harvest the running office NFP=2 QI aspect-ramp diagnostic before promoting
+   any README artifact.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.0%.
+- Single-stage coil-only optimization: 99.2%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.45%; branch-local report profiling now avoids one
+  duplicate vector/JVP replay in the dense-profile case.
+- CI/runtime/coverage hygiene: 100% locally for the focused free-boundary
+  shard; GitHub CI for the previous QI ramp commit is still running.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 67% artifact-complete, 0% promoted.

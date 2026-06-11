@@ -1488,13 +1488,13 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
 
     report = json.loads(path.read_text())
     assert report["mode_count"] == 144
-    assert len(calls) == 5
+    assert len(calls) == 4
     assert calls[0]["nestor_solve_mode"] == "dense"
     assert calls[1]["use_accepted_only_fast_path"] is False
     assert "accept_mask" not in calls[1]
     assert [item.get("step_status", "accepted") for item in calls[1]["traces"]] == ["accepted", "rejected"]
     profiled = {(call["nestor_solve_mode"], call["nestor_operator_solver"]) for call in calls[2:]}
-    assert profiled == {("dense", "gmres"), ("matrix_free", "gmres"), ("matrix_free", "bicgstab")}
+    assert profiled == {("matrix_free", "gmres"), ("matrix_free", "bicgstab")}
 
     rejected_gate = report["accepted_rejected_controller_slot_gate"]
     assert rejected_gate["available"] is True
@@ -1517,6 +1517,12 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
     assert profile["enabled"] is True
     assert len(profile["results"]) == 3
     assert {item["nestor_solve_mode"] for item in profile["results"]} == {"dense", "matrix_free"}
+    by_case = {
+        (item["nestor_solve_mode"], item["nestor_operator_solver"]): item
+        for item in profile["results"]
+    }
+    assert by_case[("dense", "gmres")]["timing_source"] == "main_branch_local_vector_report"
+    assert by_case[("matrix_free", "gmres")]["timing_source"] == "independent_profile_replay"
     assert profile["policy"]["mode_count"] == 144
 
 
