@@ -49,7 +49,7 @@ REFERENCE_LAMBDAS = (0.995, 1.0, 1.005)
 BOUNDARY_REFERENCE_ACCEPT_AS_BASELINE = False  # True keeps the reference candidate as a safe fallback.
 
 # Optimizer parameters.
-METHOD = "scipy_matrix_free"  # Try "auto", "auto_scalar", "scipy", "gauss_newton", "lbfgs_adjoint", or "scalar_trust".
+METHOD = "auto"  # Try "scipy", "auto_scalar", "scipy_matrix_free", "gauss_newton", "lbfgs_adjoint", or "scalar_trust".
 SCIPY_TR_SOLVER = "lsmr"  # For METHOD="scipy": "lsmr" is memory-light; "exact" is dense.
 SCIPY_LSMR_MAXITER = 4  # Matrix-free Jv/J.Tv cap; None uses vmec_jax's bounded cap of 4.
 SCALAR_COST_ONLY_TRIALS = None  # For METHOD="scalar_trust": True filters trials with forward solves.
@@ -120,7 +120,7 @@ vj.apply_qi_example_cli_overrides(globals())
 if "MIRROR_RAMP_STAGES" not in globals():
     MIRROR_RAMP_STAGES = (
         {
-            "name": "matrix_free_qi_mirror_cleanup",
+            "name": "auto_qi_mirror_cleanup",
             "max_nfev": MAX_NFEV,
             "stage_modes": tuple(STAGE_MODES),
             "method": METHOD,

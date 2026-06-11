@@ -1543,8 +1543,9 @@ the problem assembly in user code and standardizes only the repeated mechanics:
      - Run the regular QS or QI least-squares driver.  It should receive
        optimizer, continuation, ESS, device, and artifact-writing controls, not
        hidden physics-target keyword arguments.
-       ``method="auto"`` may route high-mode stellsym CPU/default QS/QI cases
-       to matrix-free LSMR while preserving dense SciPy for GPU runs;
+       ``method="auto"`` may route high-mode stellsym CPU/default QS cases
+       to matrix-free LSMR while preserving dense SciPy for GPU runs and QI
+       cleanup stages;
        ``method="auto_scalar"``/``"auto_adjoint"`` routes high-mode stellsym
        CPU/GPU QS/QI cases to the safeguarded scalar-adjoint trust path, with
        dense SciPy retained for LASYM and low-mode runs.

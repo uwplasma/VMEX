@@ -2027,11 +2027,14 @@ fallbacks, and larger parameter-count cases, but it is not a global default
 because it is problem dependent.  Use ``method="auto"`` as an opt-in,
 device-preserving policy rather than as a promise of the fastest wall time for
 every case.  The current automatic policy may select matrix-free LSMR for
-high-mode, stellarator-symmetric QS/QI problems on CPU/default CPU, where
-cold-process and memory-pressure profiles motivated the lane.  It still keeps
-LASYM cases and explicit GPU runs on the dense SciPy path until case-specific
-matrix-free GPU profiles show a benefit.  The retained benchmark table below is
-a useful counterexample: on that warm QA run, dense SciPy is still faster.
+high-mode, stellarator-symmetric QS problems on CPU/default CPU, where
+cold-process and memory-pressure profiles motivated the lane.  QI stays on
+dense SciPy by default because current Boozer/bounce residual JVPs can be
+non-finite in cleanup stages; request ``method="scipy_matrix_free"``
+explicitly for QI diagnostics.  The policy still keeps LASYM cases and explicit
+GPU runs on the dense SciPy path until case-specific matrix-free GPU profiles
+show a benefit.  The retained benchmark table below is a useful counterexample:
+on that warm QA run, dense SciPy is still faster.
 Validate the case you care about with the profiling commands before promoting
 production timings.  The trial residual path can be compared explicitly with
 ``profile_exact_optimizer.py --trial-scan auto|on|off``.
@@ -2102,7 +2105,8 @@ this high-mode GPU case: it finished in ``94.8 s`` with final objective
 ``auto_scalar`` took ``95.6 s`` but stopped at ``2.85e-1`` because the current
 scalar trust-region globalization did not make enough progress in the same
 budget.  Therefore explicit GPU ``method="auto"`` still preserves dense SciPy
-for high-mode QS/QI optimizations; scalar and matrix-free paths remain opt-in
+for high-mode QS/QI optimizations, and CPU/default ``method="auto"`` preserves
+dense SciPy for QI cleanup; scalar and matrix-free paths remain opt-in
 diagnostics until longer production sweeps show comparable objective progress.
 
 The follow-up patch tested JIT compilation of the repeated initial-state

@@ -18721,3 +18721,81 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 76% artifact-complete, 0% promoted; NFP2
   has a verified good-QI working seed but still lacks a mirror-passing final.
+
+### 2026-06-11 QI Matrix-Free Finite-Guard and Auto-Policy Update
+
+Steps taken:
+
+1. Added finite guards at the matrix-free residual callback and
+   ``LinearOperator`` output boundaries.  Bad trial residual entries now become
+   large finite penalties, while invalid ``Jv``/``J.Tv`` products are zeroed
+   and counted in the optimizer profile.
+2. Added regression tests for non-finite matrix-free trial residuals and for
+   non-finite exact residual-operator products.
+3. Reran focused optimizer shards:
+   ``ruff`` on the touched files, all
+   ``tests/test_optimization_fast_optimizer_methods.py`` tests, and the
+   residual-operator helper/coverage tests.
+4. Reran the reduced-resolution NFP2 QI ``scipy_matrix_free`` diagnostic from
+   the mirror-weight-80 seed that previously aborted immediately.
+5. Updated the automatic optimizer policy so high-mode QI on CPU/default CPU
+   uses dense SciPy under ``method="auto"``.  Explicit
+   ``method="scipy_matrix_free"`` remains available for diagnostics, but QI is
+   no longer routed there by default.
+6. Updated the public ``QI_optimization.py`` default method to ``"auto"`` and
+   refreshed the performance/optimization docs to describe the safer QI policy.
+7. Confirmed GitHub Actions run ``27357016672`` passed for ``b4cd1b4``.
+
+Results obtained:
+
+1. Focused tests passed:
+   ``python -m ruff check ...`` and
+   ``JAX_ENABLE_X64=1 python -m pytest -q`` on the optimizer shards listed
+   above.
+2. The reduced NFP2 QI matrix-free run no longer aborted with
+   ``array must not contain infs or NaNs``.  It reached ``max_nfev=8`` and
+   made finite progress from cost ``2.5095e-1`` to ``2.4691e-1``.
+3. Final reduced diagnostic metrics were: smooth QI ``1.732e-3``, legacy QI
+   ``3.686e-4``, mirror ``0.34611``, elongation ``4.991``, aspect ``6.344``,
+   mean iota ``-0.4926``, wall time ``191.48 s``.  The run still fails the
+   mirror gate.
+4. The profile showed why this path should not be promoted for QI cleanup:
+   ``linear_operator_nonfinite_matvec`` fired for all 19 ``Jv`` calls, two
+   ``matmat`` calls were also non-finite, and ``Jv``/``J.Tv`` products
+   consumed about ``99 s`` of the run.  The finite guard prevents crashes but
+   the current QI linear model is not reliable enough for default use.
+
+Best next steps:
+
+1. Keep matrix-free enabled as an explicit diagnostic/profiling method, but do
+   not use it as the default QI cleanup route until Boozer/bounce QI residual
+   JVPs are finite without guard intervention.
+2. For QI mirror cleanup, prioritize dense SciPy or scalar trust with a smoother
+   constrained merit schedule rather than matrix-free LSMR.
+3. Continue the NFP1/2/3/4 minimal-seed QI artifact lane with the safer default
+   policy, promoting README artifacts only after provenance and mirror/QI gates
+   pass.
+4. For performance, target QI residual differentiability and cold exact callback
+   cost.  The finite guard fixed robustness but did not make QI matrix-free
+   competitive.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%; arbitrary adaptive
+  branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.2%.
+- Single-stage coil-only optimization: 99.5%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.58%; remaining blocker is QI cold exact callback
+  cost and non-finite QI residual JVPs.
+- CI/runtime/coverage hygiene: 100%; latest pushed CI is green, this new patch
+  has focused local tests only until pushed.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 77% artifact-complete, 0% promoted; NFP2
+  has good QI and iota/aspect/elongation from a minimal seed but still needs a
+  mirror-passing cleanup.
