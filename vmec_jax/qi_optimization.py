@@ -1870,7 +1870,20 @@ def run_qi_stage_policy(
             require_engineering_gate=bool(stage.get("require_engineering_gate", False)),
             mirror_improvement_min=float(stage.get("mirror_improvement_min", 0.0)),
         )
+        strict_cleanup_promoted = bool(promotion.get("qi_cleanup_promoted", False))
         promotion = stage_promotes_candidate(stage, promotion, reference_diagnostics, ctx=ctx)
+        if (
+            bool(stage.get("promote_as_working_seed_only", False))
+            and bool(promotion.get("qi_cleanup_promoted", False))
+            and not strict_cleanup_promoted
+        ):
+            promotion = dict(promotion)
+            promotion["qi_working_seed_promoted"] = True
+            promotion["qi_cleanup_promoted"] = False
+            promotion["qi_cleanup_rejection_reasons"] = [
+                "intermediate working seed only; final promotion still requires "
+                f"mirror <= {stage_promotion_mirror_threshold:.6g}"
+            ]
         write_qi_stage_checkpoint(
             stage_output_dir,
             stage_index=stage_index,
@@ -1890,6 +1903,7 @@ def run_qi_stage_policy(
                 "stage_modes": [_jsonable(vj.normalize_boundary_mode_limits(mode).__dict__) for mode in stage_modes_i],
                 "method": str(stage.get("method", _ctx(ctx, "method"))),
                 "promoted": bool(promotion["qi_cleanup_promoted"]),
+                "working_seed_promoted": bool(promotion.get("qi_working_seed_promoted", False)),
                 "smooth_qi": promotion.get("qi_smooth_total"),
                 "legacy_qi": promotion.get("qi_legacy_total"),
                 "mirror": promotion.get("qi_mirror_ratio_max"),
@@ -1908,6 +1922,8 @@ def run_qi_stage_policy(
         print(f"  elongation:   {promotion.get('qi_max_elongation')}")
         print(f"  mean iota:    {promotion.get('mean_iota')}")
         print(f"  promoted:     {promotion['qi_cleanup_promoted']}")
+        if promotion.get("qi_working_seed_promoted"):
+            print("  working seed: True")
         for reason in promotion.get("qi_cleanup_rejection_reasons", []):
             print(f"    - {reason}")
 
@@ -1917,6 +1933,8 @@ def run_qi_stage_policy(
         if promotion["qi_cleanup_promoted"]:
             accepted_result = stage_result
             accepted_seed_diagnostics = stage_diagnostics
+            active_input_file = stage_final_input or stage_output_dir / "input.final"
+        elif bool(promotion.get("qi_working_seed_promoted", False)):
             active_input_file = stage_final_input or stage_output_dir / "input.final"
         elif accepted_result is None:
             print(

@@ -421,6 +421,10 @@ def test_minimal_seed_showcase_dispatches_qi_to_staged_runner(tmp_path: Path, mo
     assert config.reference_lambdas[-1] == pytest.approx(1.005)
     assert [stage["aspect_weight"] for stage in config.mirror_ramp_stages] == pytest.approx([0.35, 0.75, 1.5])
     assert [stage["accept_if_qi_safe_aspect_improves"] for stage in config.mirror_ramp_stages] == [True, True, False]
+    assert [stage["promote_as_working_seed_only"] for stage in config.mirror_ramp_stages] == [True, True, False]
+    assert [stage["qi_safe_mirror_relax"] for stage in config.mirror_ramp_stages] == pytest.approx(
+        [4.0 / 3.0, 4.0 / 3.0, 1.0]
+    )
     assert all(stage["iota_floor_weight"] >= 50.0**2 for stage in config.mirror_ramp_stages)
     assert all(stage["qi_weight"] >= 1000.0 for stage in config.mirror_ramp_stages)
     assert all(stage["qi_ceiling_weight"] >= 50000.0 for stage in config.mirror_ramp_stages)
