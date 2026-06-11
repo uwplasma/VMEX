@@ -17647,3 +17647,53 @@ Completion:
 - CI/runtime/coverage hygiene: 100% locally for the touched QI shard.
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 65% artifact-complete, 0% promoted.
+
+### 2026-06-11 QI Policy CI Assertion Fix
+
+Steps taken:
+
+1. Reviewed the failed GitHub Actions run for commit ``19a3975``.
+2. Identified the failure as a stale regression assertion in
+   ``tests/test_qi_case_resolution.py`` that still required
+   ``aspect_weight >= 4`` for minimal/circular QI cleanup stages.
+3. Updated the test to assert the current QI-preserving cleanup hierarchy:
+   gentle ``aspect_weight == 0.75``, strong iota-floor protection,
+   strong raw-QI weight, and strict QI-ceiling protection.
+4. Confirmed the office NFP=2 GPU diagnostic from ``19a3975`` is still
+   running, so no promotion decision has been made from that artifact yet.
+
+Results obtained:
+
+1. Focused lint passed:
+   ``python -m ruff check examples/optimization/qi_optimization_cases.py tests/test_qi_case_resolution.py tests/test_minimal_seed_showcase.py tests/test_qi_staged_runner.py``.
+2. Focused QI tests passed:
+   ``python -m pytest -q tests/test_qi_case_resolution.py tests/test_minimal_seed_showcase.py tests/test_qi_staged_runner.py -q``
+   with 37 passing tests.
+3. Broader focused shard passed:
+   ``python -m pytest -q tests/test_qi_case_resolution.py tests/test_qi_staged_runner.py tests/test_minimal_seed_showcase.py tests/test_quasisymmetry.py tests/test_free_boundary_qs_coil_optimization_smoke.py -q``
+   with one optional skip and one expected xfail.
+
+Best next steps:
+
+1. Commit and push the CI assertion fix.
+2. Monitor the replacement CI run.
+3. Harvest the running office NFP=2 QI diagnostic and decide whether the
+   gentler aspect cleanup is promotable or whether aspect localization needs a
+   multi-stage QI-ceiling ramp.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.0%.
+- Single-stage coil-only optimization: 99.1%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% locally for this repair; GitHub CI is
+  awaiting the pushed fix.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 65% artifact-complete, 0% promoted.
