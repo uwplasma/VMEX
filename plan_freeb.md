@@ -17825,6 +17825,66 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 69% artifact-complete, 0% promoted.
 
+### 2026-06-11 QI Staged Subprocess Provenance Cleanup
+
+Steps taken:
+
+1. Investigated the replacement office ``qi_nfp2`` run from commit
+   ``744caf6``.  The reference scan correctly selected ``lambda=1.0`` under the
+   aspect-aware policy, but the output directory contained mixed metrics from
+   an older orphaned ``QI_optimization.py`` process and the replacement run.
+2. Identified the failure mode: killing or restarting the outer showcase worker
+   could leave the staged QI subprocess alive.  A later ``--rerun`` deletes and
+   recreates the same output directory, after which the orphan can write stale
+   ``history.json``/``diagnostics.json``/``case_result.json`` files into the
+   replacement run.
+3. Replaced ``subprocess.run`` in the staged QI bridge with an owned process
+   group.  The bridge now starts ``QI_optimization.py`` in a new session,
+   forwards parent ``SIGTERM``/``SIGINT`` to the child process group, and kills
+   the group on timeout before harvesting partial artifacts.
+4. Added a focused unit test that fakes ``Popen`` and verifies timeout cleanup
+   sends ``SIGTERM`` to the process group.
+
+Results obtained:
+
+1. Focused lint passed:
+   ``python -m ruff check examples/optimization/qi_staged_runner.py tests/test_qi_staged_runner.py``.
+2. Focused QI staged tests passed:
+   ``python -m pytest -q tests/test_qi_staged_runner.py::test_qi_staged_runner_builds_external_input_cli_and_environment tests/test_qi_staged_runner.py::test_qi_staged_subprocess_timeout_terminates_process_group tests/test_qi_staged_runner.py::test_qi_staged_runner_preserves_partial_reference_metrics_on_timeout tests/test_qi_staged_runner.py::test_qi_staged_runner_prefers_stage_checkpoint_metrics_on_timeout tests/test_qi_staged_runner.py::test_qi_staged_runner_falls_back_from_invalid_root_checkpoint tests/test_qi_case_resolution.py::test_minimal_and_circular_qi_cases_require_reference_seeded_local_stage tests/test_minimal_seed_showcase.py::test_minimal_seed_showcase_qi_reference_lambda_override -q``.
+3. Focused timeout/partial shard passed:
+   ``python -m pytest -q tests/test_qi_staged_runner.py -k 'timeout or partial_reference or stage_checkpoint or process_group or build' -q``.
+4. The stale office QI processes were stopped.  The observed mixed NFP2 output
+   must not be used for README promotion; a fresh output root is required after
+   this patch is pushed.
+
+Best next steps:
+
+1. Commit/push the subprocess cleanup patch and monitor CI.
+2. Relaunch ``qi_nfp2`` from the new commit into a fresh output root, not the
+   contaminated ``vmec_jax_qi_nfp2_ramp_31ab5ef`` directory.
+3. If the fresh NFP2 run still misses mirror/iota gates, adjust the NFP2 cleanup
+   stages rather than promoting the artifact.  The current evidence suggests
+   the reference selection is fixed but the aspect-pull cleanup can still trade
+   away mirror ratio.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.1%.
+- Single-stage coil-only optimization: 99.3%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.48%; avoids orphaned expensive staged QI work after
+  timeout or parent termination.
+- CI/runtime/coverage hygiene: 100% locally for focused staged-QI timeout and
+  policy shards.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 70% artifact-complete, 0% promoted.
+
 ### 2026-06-11 Bounded Same-Branch Proposal Set
 
 Steps taken:

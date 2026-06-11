@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import time
@@ -583,6 +584,74 @@ def _message_from_artifacts(history: dict[str, Any], diagnostics: dict[str, Any]
     return "; ".join(pieces)
 
 
+def _terminate_process_group(process: subprocess.Popen, *, grace_s: float = 5.0) -> None:
+    """Terminate a staged QI subprocess and any children it spawned."""
+
+    if process.poll() is not None:
+        return
+    try:
+        pgid = os.getpgid(process.pid)
+    except ProcessLookupError:
+        return
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=float(grace_s))
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    process.wait(timeout=float(grace_s))
+
+
+def _run_qi_subprocess(
+    cli_args: list[str],
+    *,
+    env: dict[str, str],
+    stdout,
+    stderr,
+    timeout_s: float | None,
+) -> int:
+    """Run ``QI_optimization.py`` in a process group that cannot outlive us."""
+
+    process = subprocess.Popen(
+        [sys.executable, *cli_args],
+        cwd=str(SCRIPT_DIR),
+        env=env,
+        stdout=stdout,
+        stderr=stderr,
+        start_new_session=True,
+    )
+    previous_handlers: dict[int, Any] = {}
+
+    def _handle_parent_signal(signum, frame):  # noqa: ANN001
+        _terminate_process_group(process, grace_s=1.0)
+        previous = previous_handlers.get(signum)
+        if callable(previous):
+            previous(signum, frame)
+            return
+        raise SystemExit(128 + int(signum))
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        previous_handlers[signum] = signal.getsignal(signum)
+        signal.signal(signum, _handle_parent_signal)
+    try:
+        try:
+            process.wait(timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            _terminate_process_group(process)
+            raise
+        return int(process.returncode)
+    finally:
+        for signum, handler in previous_handlers.items():
+            signal.signal(signum, handler)
+
+
 def run_qi_staged_case(config: QIStagedCaseConfig) -> sweep.CaseResult:
     """Run ``QI_optimization.py`` and return a sweep-compatible result."""
 
@@ -598,16 +667,13 @@ def run_qi_staged_case(config: QIStagedCaseConfig) -> sweep.CaseResult:
     timeout_s = None if config.timeout_s in (None, 0) else float(config.timeout_s)
     try:
         with stdout_path.open("w") as stdout, stderr_path.open("w") as stderr:
-            completed = subprocess.run(
-                [sys.executable, *cli_args],
-                cwd=str(SCRIPT_DIR),
+            returncode = _run_qi_subprocess(
+                cli_args,
                 env=env,
                 stdout=stdout,
                 stderr=stderr,
-                timeout=timeout_s,
-                check=False,
+                timeout_s=timeout_s,
             )
-        returncode = int(completed.returncode)
         message_prefix = ""
     except subprocess.TimeoutExpired:
         returncode = 124
