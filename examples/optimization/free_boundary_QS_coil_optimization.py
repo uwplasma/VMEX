@@ -744,50 +744,88 @@ def same_branch_derivative_proposal_from_report(
     must still evaluate and accept or reject the returned ``trial_x``.
     """
 
+    proposals = same_branch_derivative_proposals_from_report(
+        report,
+        objective_model,
+        best,
+        step_sizes=(float(step_size),),
+        max_base_abs_delta=float(max_base_abs_delta),
+        max_trials=1,
+    )
+    if proposals and proposals[0].get("available", False):
+        return proposals[0]
+    if proposals:
+        return proposals[0]
+    return {"available": False, "reason": "no same-branch derivative proposal was generated"}
+
+
+def same_branch_derivative_proposals_from_report(
+    report: dict[str, Any],
+    objective_model: dict[str, Any],
+    best: dict[str, Any] | None,
+    *,
+    step_sizes: Sequence[float],
+    max_base_abs_delta: float = 2.0e-3,
+    max_trials: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return bounded derivative-assisted proposals from one same-branch report.
+
+    Each proposal uses the same validated fixed-accepted-branch directional JVP
+    and differs only by optimizer-coordinate step length.  Every returned
+    ``trial_x`` is still a suggestion; the production complete solve remains
+    the sole acceptance authority.
+    """
+
     if best is None or "x" not in best:
-        return {"available": False, "reason": "no best point is available"}
+        return [{"available": False, "reason": "no best point is available"}]
+    raw_step_sizes = [float(step) for step in step_sizes]
+    step_sizes = [step for step in raw_step_sizes if np.isfinite(step) and step > 0.0]
+    if not step_sizes:
+        return [{"available": False, "reason": "no positive finite proposal step sizes were requested"}]
+    if max_trials is not None and int(max_trials) > 0:
+        step_sizes = step_sizes[: int(max_trials)]
     vector = report.get("branch_local_vector_jacobian", {})
     if not bool(vector.get("available", False)):
-        return {"available": False, "reason": str(vector.get("reason", "branch-local vector report unavailable"))}
+        return [{"available": False, "reason": str(vector.get("reason", "branch-local vector report unavailable"))}]
     same_branch = bool(report.get("branch_compatibility", {}).get("same_branch", vector.get("same_branch", False)))
     if not same_branch:
-        return {"available": False, "reason": "complete-solve finite-difference branch fingerprint is not unchanged"}
+        return [{"available": False, "reason": "complete-solve finite-difference branch fingerprint is not unchanged"}]
     if not bool(vector.get("uses_production_forward", False)):
-        return {"available": False, "reason": "branch-local vector report did not use production-forward scalar values"}
+        return [{"available": False, "reason": "branch-local vector report did not use production-forward scalar values"}]
     if bool(vector.get("differentiates_adaptive_controller", True)):
-        return {"available": False, "reason": "branch-local vector report claims adaptive-controller differentiation"}
+        return [{"available": False, "reason": "branch-local vector report claims adaptive-controller differentiation"}]
     if bool(vector.get("differentiates_run_free_boundary", True)):
-        return {"available": False, "reason": "branch-local vector report claims run_free_boundary differentiation"}
+        return [{"available": False, "reason": "branch-local vector report claims run_free_boundary differentiation"}]
     if not bool(vector.get("differentiates_fixed_accepted_branch", False)):
-        return {"available": False, "reason": "branch-local vector report does not differentiate a fixed accepted branch"}
+        return [{"available": False, "reason": "branch-local vector report does not differentiate a fixed accepted branch"}]
     replay_ad_mode = str(vector.get("replay_ad_mode", "")).strip().lower()
     if replay_ad_mode != "direct":
-        return {"available": False, "reason": "branch-local proposal requires direct JVP replay_ad_mode"}
+        return [{"available": False, "reason": "branch-local proposal requires direct JVP replay_ad_mode"}]
     derivative_mode = str(vector.get("derivative_mode", "")).strip().lower()
     if derivative_mode != "directional_jvp":
-        return {"available": False, "reason": "branch-local proposal requires directional_jvp derivative_mode"}
+        return [{"available": False, "reason": "branch-local proposal requires directional_jvp derivative_mode"}]
     report_base_delta = float(vector.get("max_base_abs_delta", np.inf))
     if not np.isfinite(report_base_delta):
-        return {"available": False, "reason": "branch-local vector report has non-finite replay base delta"}
+        return [{"available": False, "reason": "branch-local vector report has non-finite replay base delta"}]
     if report_base_delta > float(max_base_abs_delta):
-        return {
+        return [{
             "available": False,
             "reason": (
                 f"branch-local replay base delta {report_base_delta:.3e} exceeds proposal cap "
                 f"{float(max_base_abs_delta):.3e}"
             ),
-        }
+        }]
     vector_gate = report.get("branch_local_vector_gate")
     if isinstance(vector_gate, dict) and bool(vector_gate.get("available", False)):
         if not bool(vector_gate.get("passed", False)):
-            return {"available": False, "reason": "branch-local vector gate did not pass"}
+            return [{"available": False, "reason": "branch-local vector gate did not pass"}]
         physical_gate = vector_gate.get("physical_scalar_gate", {})
         if isinstance(physical_gate, dict) and not bool(physical_gate.get("passed", False)):
-            return {"available": False, "reason": "branch-local physical-scalar gate did not pass"}
+            return [{"available": False, "reason": "branch-local physical-scalar gate did not pass"}]
     rejected_slot_gate = report.get("accepted_rejected_controller_slot_gate")
     if isinstance(rejected_slot_gate, dict) and bool(rejected_slot_gate.get("requested", False)):
         if not bool(rejected_slot_gate.get("available", False)):
-            return {
+            return [{
                 "available": False,
                 "reason": str(
                     rejected_slot_gate.get(
@@ -795,9 +833,9 @@ def same_branch_derivative_proposal_from_report(
                         "requested accepted/rejected controller-slot gate is unavailable",
                     )
                 ),
-            }
+            }]
         if not bool(rejected_slot_gate.get("passed", False)):
-            return {"available": False, "reason": "accepted/rejected controller-slot gate did not pass"}
+            return [{"available": False, "reason": "accepted/rejected controller-slot gate did not pass"}]
 
     scalars = vector.get("scalars", {})
     contributions: dict[str, dict[str, float]] = {}
@@ -840,7 +878,7 @@ def same_branch_derivative_proposal_from_report(
         aspect_scalar = _validated_scalar("aspect", float(objective_model.get("aspect_weight", 0.0)))
         iota_scalar = _validated_scalar("mean_iota", float(objective_model.get("iota_weight", 0.0)))
     except ValueError as exc:
-        return {"available": False, "reason": str(exc)}
+        return [{"available": False, "reason": str(exc)}]
 
     if qs_scalar is not None:
         deriv = float(qs_scalar["exact_directional"])
@@ -881,44 +919,52 @@ def same_branch_derivative_proposal_from_report(
         directional += contribution
 
     if not contributions:
-        return {"available": False, "reason": "no report scalars map to the objective terms"}
+        return [{"available": False, "reason": "no report scalars map to the objective terms"}]
     if not np.isfinite(directional):
-        return {"available": False, "reason": "non-finite directional derivative"}
+        return [{"available": False, "reason": "non-finite directional derivative"}]
     if directional == 0.0:
-        return {"available": False, "reason": "zero directional derivative"}
+        return [{"available": False, "reason": "zero directional derivative"}]
 
     direction_x = np.asarray(report.get("direction_x", []), dtype=float)
     x_best = np.asarray(best["x"], dtype=float)
     if direction_x.shape != x_best.shape:
-        return {
+        return [{
             "available": False,
             "reason": f"direction_x shape {direction_x.shape} does not match best x shape {x_best.shape}",
-        }
-    alpha = -float(step_size) * float(np.sign(directional))
-    trial_x = x_best + alpha * direction_x
-    return {
-        "available": True,
-        "scope": "fixed accepted-branch directional proposal; complete solve decides acceptance",
-        "same_branch": True,
-        "uses_production_forward": True,
-        "replay_ad_mode": replay_ad_mode,
-        "derivative_mode": derivative_mode,
-        "differentiates_adaptive_controller": False,
-        "differentiates_run_free_boundary": False,
-        "differentiates_fixed_accepted_branch": True,
-        "complete_solve_acceptance_authority": True,
-        "max_base_abs_delta": report_base_delta,
-        "max_base_abs_delta_allowed": float(max_base_abs_delta),
-        "directional_derivative": float(directional),
-        "contributions": contributions,
-        "objective_terms_used": sorted(contributions),
-        "objective_terms_omitted": omitted_terms,
-        "alpha": float(alpha),
-        "step_size": float(step_size),
-        "direction_x": direction_x.tolist(),
-        "base_x": x_best.tolist(),
-        "trial_x": trial_x.tolist(),
-    }
+        }]
+
+    proposals = []
+    for trial_index, step_size in enumerate(step_sizes):
+        alpha = -float(step_size) * float(np.sign(directional))
+        trial_x = x_best + alpha * direction_x
+        proposals.append(
+            {
+                "available": True,
+                "scope": "fixed accepted-branch directional proposal; complete solve decides acceptance",
+                "same_branch": True,
+                "uses_production_forward": True,
+                "replay_ad_mode": replay_ad_mode,
+                "derivative_mode": derivative_mode,
+                "differentiates_adaptive_controller": False,
+                "differentiates_run_free_boundary": False,
+                "differentiates_fixed_accepted_branch": True,
+                "complete_solve_acceptance_authority": True,
+                "max_base_abs_delta": report_base_delta,
+                "max_base_abs_delta_allowed": float(max_base_abs_delta),
+                "directional_derivative": float(directional),
+                "contributions": contributions,
+                "objective_terms_used": sorted(contributions),
+                "objective_terms_omitted": omitted_terms,
+                "alpha": float(alpha),
+                "step_size": float(step_size),
+                "trial_index": int(trial_index),
+                "n_requested_trials": int(len(step_sizes)),
+                "direction_x": direction_x.tolist(),
+                "base_x": x_best.tolist(),
+                "trial_x": trial_x.tolist(),
+            }
+        )
+    return proposals
 
 
 def same_branch_report_mode_count(report: dict[str, Any]) -> int:
@@ -1950,6 +1996,10 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
             "normal complete-solve objective evaluation"
         ),
         "step_size": float(args.same_branch_proposal_step),
+        "step_sizes": parse_float_list(str(args.same_branch_proposal_steps))
+        if str(args.same_branch_proposal_steps).strip()
+        else [float(args.same_branch_proposal_step)],
+        "max_trials": int(args.same_branch_proposal_max_trials),
         "max_base_abs_delta": float(args.same_branch_proposal_max_base_delta),
         "differentiates_adaptive_controller": False,
     }
@@ -2131,34 +2181,54 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         }
         if bool(args.same_branch_derivative_proposal):
             report_data = json.loads(report_path.read_text())
-            proposal = same_branch_derivative_proposal_from_report(
+            proposal_steps = parse_float_list(str(args.same_branch_proposal_steps)) if str(
+                args.same_branch_proposal_steps
+            ).strip() else [float(args.same_branch_proposal_step)]
+            proposals = same_branch_derivative_proposals_from_report(
                 report_data,
                 objective_model,
                 best,
-                step_size=float(args.same_branch_proposal_step),
+                step_sizes=proposal_steps,
                 max_base_abs_delta=float(args.same_branch_proposal_max_base_delta),
+                max_trials=int(args.same_branch_proposal_max_trials),
             )
-            if proposal.get("available"):
+            evaluated_proposals: list[dict[str, Any]] = []
+            final_best_changed_after_report = False
+            accepted_proposal_index: int | None = None
+            for proposal in proposals:
+                if not proposal.get("available"):
+                    evaluated_proposals.append(proposal)
+                    break
                 previous_best = best
+                previous_best_objective = None if previous_best is None else float(previous_best["summary"]["objective"])
                 trial_objective = evaluate(np.asarray(proposal["trial_x"], dtype=float))
                 trial_entry = history[-1]
+                accepted_by_complete_solve = bool(best is trial_entry)
                 proposal["trial_eval"] = int(trial_entry["eval"])
                 proposal["trial_objective"] = float(trial_objective)
-                proposal["previous_best_objective"] = (
-                    None if previous_best is None else float(previous_best["summary"]["objective"])
-                )
-                proposal["accepted_by_complete_solve"] = bool(best is trial_entry)
-                proposal["rejected_by_complete_solve"] = not bool(proposal["accepted_by_complete_solve"])
+                proposal["previous_best_objective"] = previous_best_objective
+                proposal["accepted_by_complete_solve"] = accepted_by_complete_solve
+                proposal["rejected_by_complete_solve"] = not accepted_by_complete_solve
                 proposal["acceptance_decision_source"] = "complete_solve_objective"
                 proposal["best_eval_before_trial"] = (
                     None if previous_best is None else int(previous_best.get("eval", -1))
                 )
                 proposal["best_eval_after_trial"] = None if best is None else int(best.get("eval", -1))
-                final_best_changed_after_report = bool(best is trial_entry)
+                evaluated_proposals.append(proposal)
+                if accepted_by_complete_solve:
+                    final_best_changed_after_report = True
+                    accepted_proposal_index = int(proposal.get("trial_index", len(evaluated_proposals) - 1))
+                    break
+            proposal = evaluated_proposals[-1] if evaluated_proposals else {
+                "available": False,
+                "reason": "no same-branch derivative proposal was generated",
+            }
+            if evaluated_proposals and any(item.get("available") for item in evaluated_proposals):
                 summary["same_branch_complete_solve_report_final_best_status"] = {
                     "report_generated_before_derivative_proposal": True,
                     "final_best_changed_after_report": final_best_changed_after_report,
                     "report_matches_final_best": not final_best_changed_after_report,
+                    "accepted_proposal_index": accepted_proposal_index,
                     "note": (
                         "The same-branch report is the derivative evidence used to form the trial. "
                         "If the normal complete solve accepts that trial, rerun the report at the "
@@ -2173,16 +2243,19 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
                     "note": "The final best point changed after the report was written.",
                 }
             summary["same_branch_derivative_proposal"] = proposal
+            summary["same_branch_derivative_proposals"] = evaluated_proposals
         else:
             summary["same_branch_derivative_proposal"] = {
                 "available": False,
                 "reason": "not requested",
             }
+            summary["same_branch_derivative_proposals"] = []
     elif bool(args.same_branch_derivative_proposal):
         summary["same_branch_derivative_proposal"] = {
             "available": False,
             "reason": "--same-branch-derivative-proposal requires --write-same-branch-report",
         }
+        summary["same_branch_derivative_proposals"] = []
     summary["best"] = best
     write_json(outdir / "summary.json", summary)
     print("Flow: single-stage direct-coil/no-mgrid optimization; every trial used a complete free-boundary solve.")
@@ -2510,6 +2583,24 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.05,
         help="Optimizer-coordinate step length for --same-branch-derivative-proposal.",
+    )
+    parser.add_argument(
+        "--same-branch-proposal-steps",
+        default="",
+        help=(
+            "Optional comma/space-separated optimizer-coordinate step lengths "
+            "for --same-branch-derivative-proposal. If omitted, "
+            "--same-branch-proposal-step is used."
+        ),
+    )
+    parser.add_argument(
+        "--same-branch-proposal-max-trials",
+        type=int,
+        default=3,
+        help=(
+            "Maximum number of same-direction proposal lengths to evaluate with "
+            "complete solves. Values <=0 evaluate all requested lengths."
+        ),
     )
     parser.add_argument(
         "--same-branch-proposal-max-base-delta",

@@ -17768,6 +17768,75 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 67% artifact-complete, 0% promoted.
 
+### 2026-06-11 Bounded Same-Branch Proposal Set
+
+Steps taken:
+
+1. Reviewed the free-boundary sidecar audit.  The current coil-only QS example
+   already forms a validated branch-local directional proposal and sends it
+   through a complete VMEC solve as acceptance authority.
+2. Added ``same_branch_derivative_proposals_from_report`` to generate a
+   bounded list of trial step lengths along the already validated same-branch
+   JVP direction.
+3. Kept ``same_branch_derivative_proposal_from_report`` backward compatible as
+   the one-step wrapper.
+4. Added ``--same-branch-proposal-steps`` and
+   ``--same-branch-proposal-max-trials``.  The old
+   ``--same-branch-proposal-step`` remains the default when no list is
+   provided.
+5. Updated the optimization summary to write both the legacy
+   ``same_branch_derivative_proposal`` field and the full
+   ``same_branch_derivative_proposals`` list.  The driver stops after the first
+   complete-solve accepted trial so it does not reuse stale branch-local
+   derivative evidence after the best point changes.
+
+Results obtained:
+
+1. Focused lint passed:
+   ``python -m ruff check examples/optimization/free_boundary_QS_coil_optimization.py tests/test_free_boundary_qs_coil_optimization_smoke.py``.
+2. Focused proposal tests passed:
+   ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_derivative_proposal_uses_gated_directional_report tests/test_free_boundary_qs_coil_optimization_smoke.py::test_derivative_proposal_summary_marks_report_stale_when_trial_is_accepted tests/test_free_boundary_qs_coil_optimization_smoke.py::test_derivative_proposal_summary_records_rejected_trial_as_complete_solve_rejection -q``.
+3. Full free-boundary QS optimization smoke shard passed:
+   ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py -q``
+   with one expected xfail.
+4. The heavier local validation shards also passed before this patch:
+   QI policy/checkpoint tests (68 passing tests), external-field/free-boundary
+   gradient tests, and finite-pressure/adaptive free-boundary sensitivity tests
+   with one optional skip.
+5. GitHub Actions run ``27344284413`` passed for ``10f2a46``.
+
+Best next steps:
+
+1. Commit and push the bounded proposal-list patch.
+2. Monitor the replacement CI run.
+3. Harvest the office NFP=2 QI aspect-ramp diagnostic when it finishes.  Do
+   not promote README QI artifacts until NFP1/2/3/4 minimal-seed provenance
+   gates pass.
+4. Keep adaptive full-loop differentiation conservative: this patch only uses
+   same-branch derivative evidence to form complete-solve-authorized trials.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%; arbitrary adaptive
+  branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.0%.
+- Single-stage coil-only optimization: 99.3%; branch-local derivative evidence
+  can now propose a bounded step list, while complete solves remain acceptance
+  authority.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.47%; avoids duplicate report profiling from the
+  previous patch and now allows a few bounded derivative-assisted trials from
+  one validated report.
+- CI/runtime/coverage hygiene: 100% locally for focused shards; new CI run
+  pending after this commit.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 67% artifact-complete, 0% promoted.
+
 ### 2026-06-11 Same-Branch Profile Replay Reuse
 
 Steps taken:
