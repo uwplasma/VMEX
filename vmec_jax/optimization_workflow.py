@@ -2844,6 +2844,7 @@ def run_fixed_boundary_objective_optimization(
 
     _enable_line_buffered_output()
     stage_records: list[tuple[int, FixedBoundaryExactOptimizer, np.ndarray, dict]] = []
+    accepted_stage_records: list[tuple[int, FixedBoundaryExactOptimizer, np.ndarray, dict]] = []
     current_cfg = cfg
     current_indata = indata
 
@@ -2938,19 +2939,28 @@ def run_fixed_boundary_objective_optimization(
             save_wouts=save_stage_wouts,
             save_rerun_wouts=save_rerun_wouts,
         )
-        stage_records.append((int(stage_limits.mode), stage.optimizer, params0, result))
-        current_indata = stage.optimizer._indata_from_params(result["x"])
+        attempted_record = (int(stage_limits.mode), stage.optimizer, params0, result)
+        stage_records.append(attempted_record)
+        accepted_record = _select_nonworsening_stage_record(
+            attempted_record,
+            accepted_stage_records,
+            stage_label=describe_boundary_mode_limits(stage_limits),
+        )
+        if accepted_record is attempted_record:
+            accepted_stage_records.append(accepted_record)
+        _accepted_mode, accepted_optimizer, _accepted_params0, accepted_result = accepted_record
+        current_indata = accepted_optimizer._indata_from_params(accepted_result["x"])
         current_cfg = config_from_indata(current_indata)
 
-    final_optimizer = stage_records[-1][1]
-    final_result = stage_records[-1][3]
+    final_optimizer = accepted_stage_records[-1][1]
+    final_result = accepted_stage_records[-1][3]
     combined_history = combine_qs_stage_histories(
         label=label,
         max_mode=max_mode,
         max_nfev=max_nfev,
         continuation_nfev=continuation_nfev,
         stage_modes=normalized_stage_modes,
-        stage_records=stage_records,
+        stage_records=accepted_stage_records,
     )
     if combined_history is not None:
         final_result["_history_dump"] = combined_history
@@ -2959,7 +2969,7 @@ def run_fixed_boundary_objective_optimization(
     if save_final_outputs:
         save_qs_final_outputs(
             output_dir=output_dir,
-            stage_records=stage_records,
+            stage_records=accepted_stage_records,
             final_optimizer=final_optimizer,
             final_result=final_result,
             label=label,
@@ -2977,7 +2987,7 @@ def run_fixed_boundary_objective_optimization(
             iota_abs_min=iota_abs_min,
         )
     return FixedBoundaryOptimizationResult(
-        stage_records=stage_records,
+        stage_records=accepted_stage_records,
         final_optimizer=final_optimizer,
         final_result=final_result,
         stage_modes=[int(stage_mode.mode) for stage_mode in normalized_stage_modes],
@@ -3237,6 +3247,7 @@ def run_quasi_isodynamic_objective_optimization(
 
     _enable_line_buffered_output()
     stage_records: list[tuple[int, FixedBoundaryExactOptimizer, np.ndarray, dict]] = []
+    accepted_stage_records: list[tuple[int, FixedBoundaryExactOptimizer, np.ndarray, dict]] = []
     current_cfg = cfg
     current_indata = indata
 
@@ -3354,7 +3365,15 @@ def run_quasi_isodynamic_objective_optimization(
             save_inputs=save_stage_inputs,
             save_wouts=save_stage_wouts,
         )
-        stage_records.append((int(stage_limits.mode), stage.optimizer, params0, result))
+        attempted_record = (int(stage_limits.mode), stage.optimizer, params0, result)
+        stage_records.append(attempted_record)
+        accepted_record = _select_nonworsening_stage_record(
+            attempted_record,
+            accepted_stage_records,
+            stage_label=describe_boundary_mode_limits(stage_limits),
+        )
+        if accepted_record is attempted_record:
+            accepted_stage_records.append(accepted_record)
         write_qi_workflow_stage_checkpoint(
             output_dir=output_dir,
             stage_dir=output_dir / f"stage_{stage_index:02d}_{describe_boundary_mode_limits(stage_limits)}",
@@ -3364,18 +3383,19 @@ def run_quasi_isodynamic_objective_optimization(
             completed_stage_modes=[record[0] for record in stage_records],
             requested_stage_modes=normalized_stage_modes,
         )
-        current_indata = stage.optimizer._indata_from_params(result["x"])
+        _accepted_mode, accepted_optimizer, _accepted_params0, accepted_result = accepted_record
+        current_indata = accepted_optimizer._indata_from_params(accepted_result["x"])
         current_cfg = config_from_indata(current_indata)
 
-    final_optimizer = stage_records[-1][1]
-    final_result = stage_records[-1][3]
+    final_optimizer = accepted_stage_records[-1][1]
+    final_result = accepted_stage_records[-1][3]
     combined_history = combine_qs_stage_histories(
         label=label,
         max_mode=max_mode,
         max_nfev=max_nfev,
         continuation_nfev=continuation_nfev,
         stage_modes=normalized_stage_modes,
-        stage_records=stage_records,
+        stage_records=accepted_stage_records,
     )
     if combined_history is not None:
         final_result["_history_dump"] = combined_history
@@ -3384,7 +3404,7 @@ def run_quasi_isodynamic_objective_optimization(
     if save_final_outputs:
         save_qs_final_outputs(
             output_dir=output_dir,
-            stage_records=stage_records,
+            stage_records=accepted_stage_records,
             final_optimizer=final_optimizer,
             final_result=final_result,
             label=label,
@@ -3399,7 +3419,7 @@ def run_quasi_isodynamic_objective_optimization(
             iota_abs_min=iota_abs_min,
         )
     return FixedBoundaryOptimizationResult(
-        stage_records=stage_records,
+        stage_records=accepted_stage_records,
         final_optimizer=final_optimizer,
         final_result=final_result,
         stage_modes=[int(stage_mode.mode) for stage_mode in normalized_stage_modes],
@@ -3650,6 +3670,64 @@ def save_qs_stage_artifacts(
     else:
         _remove_stale(stage_dir / "wout_initial_rerun.nc")
         _remove_stale(stage_dir / "wout_final_rerun.nc")
+
+
+def _result_objective_final(result) -> float:
+    """Return the final scalar objective recorded for a stage result."""
+
+    try:
+        history = result.get("_history_dump", {})
+        if "objective_final" in history:
+            return float(history["objective_final"])
+        if "objective" in result:
+            return float(result["objective"])
+        if "cost" in result:
+            return 2.0 * float(result["cost"])
+    except Exception:
+        return math.inf
+    return math.inf
+
+
+def _select_nonworsening_stage_record(
+    attempted_record,
+    accepted_stage_records,
+    *,
+    stage_label: str,
+):
+    """Reject continuation stages whose final objective worsens the handoff.
+
+    Repeated same-mode continuation is meant to refine the previously accepted
+    boundary.  It can still fail because the VMEC/QI subproblem is nonlinear and
+    finite-budget.  In that case keep the attempted artifacts for diagnostics
+    but do not hand a worse boundary to the next stage or final outputs.  Do not
+    compare different mode numbers here: higher-mode continuation changes the
+    active parameter space and existing tests intentionally use synthetic
+    cross-mode objective values that are not comparable.
+    """
+
+    if not accepted_stage_records:
+        return attempted_record
+    previous_record = accepted_stage_records[-1]
+    if int(attempted_record[0]) != int(previous_record[0]):
+        return attempted_record
+    previous_objective = _result_objective_final(previous_record[3])
+    attempted_objective = _result_objective_final(attempted_record[3])
+    if not math.isfinite(previous_objective):
+        return attempted_record
+    tolerance = max(1.0e-12, 1.0e-10 * max(1.0, abs(previous_objective)))
+    if math.isfinite(attempted_objective) and attempted_objective <= previous_objective + tolerance:
+        return attempted_record
+
+    history = attempted_record[3].setdefault("_history_dump", {})
+    history["stage_rejected_nonworsening"] = True
+    history["stage_rejected_reference_objective"] = float(previous_objective)
+    history["stage_rejected_attempt_objective"] = float(attempted_objective)
+    history["stage_rejected_reason"] = "continuation stage worsened final objective"
+    print(
+        f"Stage {stage_label} rejected by non-worsening continuation guard: "
+        f"{attempted_objective:.6e} > {previous_objective:.6e}."
+    )
+    return previous_record
 
 
 def write_qi_workflow_stage_checkpoint(
