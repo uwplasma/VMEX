@@ -1122,6 +1122,54 @@ def test_combine_stage_histories_handles_single_stage_and_iota_boundaries() -> N
     np.testing.assert_allclose([entry["wall_time_s"] for entry in combined["history"]], [1.0, 2.0, 5.0])
 
 
+def test_same_mode_continuation_guard_rejects_only_worse_repeats() -> None:
+    import vmec_jax.optimization_workflow as workflow
+
+    def record(mode: int, objective: float):
+        return (
+            mode,
+            f"optimizer-{mode}-{objective}",
+            np.asarray([0.0]),
+            {"_history_dump": {"objective_final": float(objective)}},
+        )
+
+    accepted = [record(1, 10.0)]
+
+    better_repeat = record(1, 9.0)
+    assert (
+        workflow._select_nonworsening_stage_record(
+            better_repeat,
+            accepted,
+            stage_label="mode01_m01_n01",
+        )
+        is better_repeat
+    )
+
+    worse_repeat = record(1, 11.0)
+    rejected = workflow._select_nonworsening_stage_record(
+        worse_repeat,
+        accepted,
+        stage_label="mode01_m01_n01",
+    )
+    assert rejected is accepted[0]
+    assert worse_repeat[3]["_history_dump"]["stage_rejected_nonworsening"] is True
+    if rejected is worse_repeat:
+        accepted.append(rejected)
+    assert len(accepted) == 1
+    assert accepted[0] is rejected
+
+    worse_higher_mode = record(2, 100.0)
+    assert (
+        workflow._select_nonworsening_stage_record(
+            worse_higher_mode,
+            accepted,
+            stage_label="mode02_m02_n02",
+        )
+        is worse_higher_mode
+    )
+    assert "stage_rejected_nonworsening" not in worse_higher_mode[3]["_history_dump"]
+
+
 def test_least_squares_problem_assembly_handles_custom_state_and_qi_owners() -> None:
     import vmec_jax.optimization_workflow as workflow
 

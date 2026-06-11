@@ -18922,3 +18922,60 @@ Completion:
 - QI minimal-seed README artifacts: 79% artifact-complete, 0% promoted; NFP2
   full-budget staging has escaped zero iota but has not reached final QI/mirror
   gates.
+
+### 2026-06-11 Repeated-Continuation Non-Worsening Guard
+
+Steps taken:
+
+1. Reviewed the interrupted full NFP2 minimal-seed QI office CPU run under
+   ``/home/rjorge/local/tests/vmec_jax_qi_minimal_auto_full_dfc9b05/nfp2``.
+2. Confirmed the stage-file handoff was correct:
+   ``stage_02/input.initial`` matched ``stage_01/input.final``.
+3. Identified the failure mode: repeated same-mode continuation with a finite
+   budget can worsen the final scalar objective, then contaminate later
+   higher-mode stages even though the previous accepted boundary was better.
+4. Added a non-worsening guard for repeated same-mode stages in
+   ``optimization_workflow``.  The attempted stage artifacts and QI checkpoint
+   remain on disk, but the next stage and final outputs keep the previous
+   accepted boundary if a repeated mode worsens the final objective.
+5. Kept cross-mode handoff conservative: different mode numbers are not
+   compared by this guard because the active parameter space changes.
+
+Results obtained:
+
+1. Targeted lint passed for ``vmec_jax/optimization_workflow.py`` and related
+   optimization tests.
+2. Targeted workflow tests passed, including continuation handoff tests and the
+   new repeated-mode guard unit test.
+3. Broader optimization-workflow unit shard passed: ``38`` tests.
+4. The guard addresses the specific NFP2 minimal-seed regression observed on
+   office without hiding rejected-stage diagnostics from stage checkpoints.
+
+Best next steps:
+
+1. Commit and push the guard, then let CI validate the change.
+2. Relaunch a bounded CPU NFP2 minimal-seed QI run using the guard.  Prefer a
+   shorter non-repeating ``stage_mode_policy=lower`` check first; use the
+   default repeated policy only after confirming the guard behaves as expected.
+3. Promote QI README artifacts only after raw-seed provenance, smooth/legacy QI,
+   mirror, elongation, aspect, and iota gates pass.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%; arbitrary adaptive
+  branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.25%.
+- Single-stage coil-only optimization: 99.5%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100%; latest pushed CI is green before this
+  local guard commit.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 80% artifact-complete, 0% promoted; the
+  continuation handoff bug is fixed locally but promotion runs still need to be
+  regenerated.
