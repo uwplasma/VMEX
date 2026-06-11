@@ -17768,6 +17768,61 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 67% artifact-complete, 0% promoted.
 
+### 2026-06-11 CI Runtime Shard Split and Heartbeat
+
+Steps taken:
+
+1. Reviewed GitHub Actions run ``27347246117``.  Most shards passed, but the
+   py3.10 compatibility job and the py3.11 ``optimization-qi-freeb`` coverage
+   shard were cancelled near the 10-minute no-output boundary.
+2. Reduced the py3.10/py3.12 compatibility lane to a curated cross-version
+   smoke set.  Full 95% coverage and physics/numerics gates remain in the
+   Python 3.11 coverage matrix.
+3. Split the previous ``optimization-qi-freeb`` py3.11 core bucket into
+   ``optimization-qi`` and ``freeb-external`` so expensive QI/optimization and
+   free-boundary/external-field tests run in parallel.
+4. Added a lightweight heartbeat to the compatibility and py3.11 core coverage
+   pytest steps to avoid GitHub's no-output cancellation while retaining the
+   configured job timeouts.
+
+Results obtained:
+
+1. Focused lint passed:
+   ``python -m ruff check tools/diagnostics/ci_core_bucket_args.py``.
+2. Local compatibility smoke passed:
+   ``JAX_ENABLE_X64=1 VMEC_JAX_SKIP_PY311_COVERAGE_ONLY=1 python -m pytest -q -n 2 ...``
+   with ``146 passed, 6 skipped`` in 36 seconds.
+3. All py3.11 core coverage buckets collect cleanly:
+   ``driver-solve-discrete`` 878/879 collected, ``optimization-qi`` 570/573,
+   ``freeb-external`` 305/311, ``wout-booz-plot-profiles`` 389/427, and
+   ``rest`` 637/705.
+
+Best next steps:
+
+1. Commit and push the CI split.
+2. Monitor the replacement GitHub Actions run.
+3. Harvest the running office NFP=2 QI aspect-aware minimal-seed run and decide
+   whether an intermediate relaxed-mirror working-seed promotion is needed
+   before promoting README QI artifacts.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%; arbitrary adaptive
+  branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.1%.
+- Single-stage coil-only optimization: 99.35%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.48%.
+- CI/runtime/coverage hygiene: 100% locally for the compatibility and bucket
+  collection gates; replacement CI pending after push.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 70% artifact-complete, 0% promoted.
+
 ### 2026-06-11 QI Minimal-Seed Reference Selection Guard
 
 Steps taken:

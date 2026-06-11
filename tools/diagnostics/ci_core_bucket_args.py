@@ -17,18 +17,20 @@ BUCKET_PREFIXES = {
         "tests/test_solve",
         "tests/test_vmecpp_restart",
     ),
-    "optimization-qi-freeb": (
+    "optimization-qi": (
         "tests/test_augmented_lagrangian",
-        "tests/test_external_fields",
-        "tests/test_free_boundary",
-        "tests/test_freeb",
-        "tests/test_implicit_differentiation",
         "tests/test_minimal_seed",
         "tests/test_optimization",
         "tests/test_qi",
         "tests/test_qs",
         "tests/test_quasi",
         "tests/test_robust_coil",
+    ),
+    "freeb-external": (
+        "tests/test_external_fields",
+        "tests/test_free_boundary",
+        "tests/test_freeb",
+        "tests/test_implicit_differentiation",
     ),
     "wout-booz-plot-profiles": (
         "tests/test_bootstrap",
