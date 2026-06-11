@@ -18581,3 +18581,59 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 75% artifact-complete, 0% promoted; NFP2
   cleanup is running from a verified working seed.
+
+### 2026-06-11 NFP2 Cleanup Stopped Due GPU Contention
+
+Steps taken:
+
+1. Continued monitoring the office NFP2 cleanup launched from the completed
+   stage-1 working seed.
+2. Checked process ownership and GPU memory/process tables after the run spent
+   more than 10 minutes in the first exact callback without accepted metrics.
+3. Found that separate ``spectraxgk`` jobs had started on both GPUs after the
+   QI cleanup launch, with GPU 0 shared by the QI cleanup and one ``spectraxgk``
+   job.
+4. Stopped the QI cleanup process group to avoid wasting GPU time under
+   contention.  The run had produced only pending checkpoints, so no useful
+   metrics were lost.
+
+Results obtained:
+
+1. The QI cleanup process was active, not hung: child Python process had about
+   2.7 GB RSS and >100% CPU, and owned GPU memory.
+2. No completed ``history.json`` or exact diagnostics were emitted before the
+   stop; root and stage checkpoints remained ``mirror_ramp_pending`` only.
+3. GPU contention is a confounder for this diagnostic.  The result should not
+   be used as performance evidence beyond confirming that high-mode first
+   callbacks need exclusive-GPU timing.
+
+Best next steps:
+
+1. Relaunch the same NFP2 working-seed cleanup only when one GPU is idle and
+   expected to stay idle.
+2. If exclusive-GPU first-callback time is still too high, run a reduced
+   resolution diagnostic (for example ``mboz/nboz=12`` and lower
+   ``nphi/nalpha/n_bounce``) to separate Boozer/QI-objective cost from VMEC
+   exact tape/JVP cost.
+3. Keep the corrected checkpoint-selection code; it remains the right fix for
+   preserving completed-stage partial metrics on future timeouts.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%; arbitrary adaptive
+  branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.2%.
+- Single-stage coil-only optimization: 99.5%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.5% overall; exclusive-GPU timing is still needed for
+  the NFP2 QI high-mode cleanup.
+- CI/runtime/coverage hygiene: 100%; latest code CI was green, plan-only CI is
+  running.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 75% artifact-complete, 0% promoted; NFP2
+  still requires an uncontended cleanup rerun from the verified working seed.
