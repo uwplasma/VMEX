@@ -682,21 +682,18 @@ def _minimal_or_circular_qi_case(
                 **stage,
                 "max_nfev": stage_nfev,
                 **direct_mode_override,
-                # Minimal/circular seeds may need to move far from a reference
-                # candidate that is QI-safe but too high-aspect.  Keep the
-                # stage policy case-specific, but make aspect localization
-                # explicit for the common aspect-6 showcase lane.
-                "aspect_weight": max(float(stage.get("aspect_weight", 0.0)), 4.0),
-                # The aspect-localization stage must still be QI-preserving.
-                # Otherwise scalar cleanup can lower aspect while destroying
-                # the Boozer-contour metric, which is not a promotable QI
-                # optimization path.
-                "qi_weight": max(float(stage.get("qi_weight", 0.0)), 250.0),
+                # Minimal/circular seeds first select the lowest-QI reference.
+                # Aspect localization must therefore be gentle: a large aspect
+                # pull can move toward A=6 while destroying the QI/iota/mirror
+                # gates.  Use QI and iota as hard guards, not post-hoc filters.
+                "aspect_weight": max(float(stage.get("aspect_weight", 0.0)), 0.75),
+                "iota_floor_weight": max(float(stage.get("iota_floor_weight", 0.0)), 50.0**2),
+                "qi_weight": max(float(stage.get("qi_weight", 0.0)), 1000.0),
                 "qi_ceiling_max": min(
                     float(stage.get("qi_ceiling_max", base.get("qi_gate_smooth_max", 2.0e-3))),
                     float(base.get("qi_gate_smooth_max", 2.0e-3)),
                 ),
-                "qi_ceiling_weight": max(float(stage.get("qi_ceiling_weight", 0.0)), 7500.0),
+                "qi_ceiling_weight": max(float(stage.get("qi_ceiling_weight", 0.0)), 50000.0),
                 # Showcase and staged-runner --max-nfev should be the local
                 # optimizer budget for these reference-seeded cases, not only a
                 # ceiling over legacy one-evaluation audit stages.

@@ -17585,3 +17585,65 @@ Completion:
 - CI/runtime/coverage hygiene: 100%.
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 64% artifact-complete, 0% promoted.
+
+### 2026-06-11 QI Aspect-Ramp Policy Tightening
+
+Steps taken:
+
+1. Harvested the clean NFP=2 GPU diagnostic from commit ``92cb2a2`` using the
+   lowest-QI reference selector.
+2. Confirmed the selector kept a better-QI baseline instead of the old
+   aspect-preferred baseline.
+3. Identified the remaining failure as an overly aggressive local aspect pull:
+   the scalar cleanup reduced aspect from about ``8.37`` to ``7.24`` but
+   worsened smooth QI, legacy QI, mirror, and iota, so the candidate was
+   correctly rejected.
+4. Changed minimal/circular QI cleanup policy from an aspect-dominated
+   ``aspect_weight >= 4`` stage to a QI-preserving stage:
+   ``aspect_weight >= 0.75``, ``iota_floor_weight >= 50^2``,
+   ``qi_weight >= 1000``, and ``qi_ceiling_weight >= 50000``.
+5. Updated the focused showcase regression to assert the new QI-first
+   hierarchy.
+
+Results obtained:
+
+1. The lowest-QI baseline diagnostic ended at ``aspect=8.37309``,
+   ``mean_iota=-0.48779``, smooth QI ``3.714e-3``, legacy QI ``2.087e-3``,
+   mirror ``0.2468``, elongation ``5.16``.  It is close to the QI gate but not
+   promotable because smooth/legacy QI and aspect still fail.
+2. The rejected scalar candidate had ``aspect=7.24263`` but degraded to smooth
+   QI ``5.237e-3``, legacy QI ``2.799e-3``, mirror ``0.3289``, and
+   ``|iota|=0.4017``.  This confirms the promotion gates are protecting
+   physical quality.
+3. Focused lint passed:
+   ``python -m ruff check examples/optimization/qi_optimization_cases.py tests/test_qi_staged_runner.py tests/test_minimal_seed_showcase.py``.
+4. Focused tests passed:
+   ``python -m pytest -q tests/test_qi_staged_runner.py tests/test_minimal_seed_showcase.py -q``
+   with 31 passing tests.
+
+Best next steps:
+
+1. Commit/push the QI-first cleanup policy.
+2. Re-run NFP=2 GPU diagnostics from the new commit.  Success criterion:
+   either a promoted candidate, or a clean rejection that does not worsen QI
+   while documenting the remaining aspect tradeoff.
+3. If the gentler stage still stalls, split aspect localization into explicit
+   staged ramps with stricter QI ceilings and promote only candidates that keep
+   both smooth and legacy QI non-increasing.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.0%.
+- Single-stage coil-only optimization: 99.1%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.4%; NFP=2 QI cleanup still shows exact tape build
+  as the dominant GPU cost.
+- CI/runtime/coverage hygiene: 100% locally for the touched QI shard.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 65% artifact-complete, 0% promoted.
