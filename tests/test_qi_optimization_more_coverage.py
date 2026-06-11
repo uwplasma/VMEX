@@ -571,7 +571,7 @@ def test_stage_promotes_candidate_accepts_relaxed_intermediate_mirror_aspect_imp
         "accept_if_qi_safe_aspect_improves": True,
         "aspect_improvement_min": 0.005,
         "promotion_mirror_threshold": 0.30,
-        "qi_safe_mirror_relax": 1.35,
+        "qi_safe_mirror_relax": 4.0 / 3.0,
         "target_abs_iota_min": 0.41,
     }
     promotion = {

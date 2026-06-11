@@ -1096,6 +1096,128 @@ def test_run_qi_stage_policy_materializes_promoted_seed_for_next_stage(
     assert first_stage_final.read_text().startswith("final-0:")
 
 
+def test_run_qi_stage_policy_working_seed_handoff_does_not_become_final(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure(tmp_path)
+    calls: list[dict[str, object]] = []
+
+    class DummyOptimizer:
+        def __init__(self, label: str) -> None:
+            self.label = label
+
+        def save_input(self, path, params) -> None:
+            Path(path).write_text(f"{self.label}: {np.asarray(params, dtype=float).tolist()}\n")
+
+    def solve_qi_stage(input_file, output_dir, problem, **kwargs):
+        call_index = len(calls)
+        label = str(kwargs["label"])
+        calls.append(
+            {
+                "input": input_file,
+                "output": Path(output_dir),
+                "problem": problem,
+                "label": label,
+            }
+        )
+        return SimpleNamespace(
+            label=label,
+            history={"objective_final": call_index + 1.0},
+            initial_optimizer=DummyOptimizer(f"initial-{call_index}"),
+            final_optimizer=DummyOptimizer(f"final-{call_index}"),
+            initial_params=np.asarray([call_index], dtype=float),
+            final_params=np.asarray([call_index + 10], dtype=float),
+            final_result={"x": np.asarray([call_index + 20], dtype=float)},
+            final_state="state",
+        )
+
+    def fake_diagnostics(stage_result, **_kwargs):
+        label = str(stage_result.label)
+        if "boundary-reference baseline" in label:
+            return {
+                "label": "baseline",
+                "aspect_relative_error": 0.333,
+                "qi_rank_score": 1.0,
+                "qi_constraint_score": 1.0,
+                "qi_seed_gate_passed": True,
+                "qi_engineering_gate_passed": True,
+                "qi_mirror_ratio_max": 0.241,
+                "qi_max_elongation": 4.9,
+                "mean_iota": -0.447,
+                "qi_smooth_total": 5.3e-3,
+                "qi_legacy_total": 2.9e-3,
+            }
+        if "aspect_seed" in label:
+            return {
+                "label": "aspect_seed",
+                "aspect_relative_error": 0.265,
+                "qi_rank_score": 0.8,
+                "qi_constraint_score": 1.0,
+                "qi_seed_gate_passed": True,
+                "qi_engineering_gate_passed": False,
+                "qi_mirror_ratio_max": 0.377,
+                "qi_max_elongation": 4.8,
+                "mean_iota": -0.427,
+                "qi_smooth_total": 1.7e-3,
+                "qi_legacy_total": 2.9e-4,
+            }
+        return {
+            "label": "failed_polish",
+            "aspect_relative_error": 0.40,
+            "qi_rank_score": 5.0,
+            "qi_constraint_score": 10.0,
+            "qi_seed_gate_passed": False,
+            "qi_engineering_gate_passed": False,
+            "qi_mirror_ratio_max": 0.45,
+            "qi_max_elongation": 9.0,
+            "mean_iota": -0.2,
+            "qi_smooth_total": 9.0e-3,
+            "qi_legacy_total": 9.0e-3,
+        }
+
+    def fake_promotable(stage_diagnostics, **_kwargs):
+        return {
+            **stage_diagnostics,
+            "qi_cleanup_promoted": False,
+            "qi_cleanup_rejection_reasons": ["strict engineering gate failed"],
+        }
+
+    monkeypatch.setattr(qio, "qi_diagnostics_for_result", fake_diagnostics)
+    monkeypatch.setattr(qio.vj, "qi_cleanup_candidate_promotable", fake_promotable)
+
+    result, promotion_log = qio.run_qi_stage_policy(
+        "input.seed",
+        tmp_path,
+        solve_qi_stage=solve_qi_stage,
+        make_qi_problem=lambda stage=None: {"stage": None if stage is None else stage.get("name", "baseline")},
+        boundary_reference_preconditioner={"enabled": True, "accept_as_baseline": True},
+        mirror_ramp_stages=[
+            {
+                "name": "aspect_seed",
+                "stage_modes": [5],
+                "max_nfev": 2,
+                "accept_if_qi_safe_aspect_improves": True,
+                "promote_as_working_seed_only": True,
+                "promotion_mirror_threshold": 0.30,
+                "qi_safe_mirror_relax": 4.0 / 3.0,
+                "target_abs_iota_min": 0.41,
+            },
+            {"name": "failed_polish", "stage_modes": [5], "max_nfev": 2},
+        ],
+    )
+
+    first_stage_final = tmp_path / "mirror_ramp_01_aspect_seed" / "input.final"
+    assert result.label.startswith("QI boundary-reference baseline")
+    assert [entry["promoted"] for entry in promotion_log] == [False, False]
+    assert [entry["working_seed_promoted"] for entry in promotion_log] == [True, False]
+    assert calls[0]["input"] == "input.seed"
+    assert calls[1]["input"] == "input.seed"
+    assert calls[2]["input"] == first_stage_final
+    assert first_stage_final.exists()
+    assert "intermediate working seed only" in promotion_log[0]["rejection_reasons"][0]
+
+
 def test_run_qi_stage_policy_keeps_baseline_when_cleanup_rejected(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

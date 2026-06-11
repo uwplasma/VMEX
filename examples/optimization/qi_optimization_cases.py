@@ -714,13 +714,14 @@ def _minimal_or_circular_qi_case(
                     ),
                     "qi_ceiling_weight": max(float(stage.get("qi_ceiling_weight", 0.0)), 50000.0),
                     "accept_if_qi_safe_aspect_improves": aspect_weight is not None and ramp_index < len(ramp_weights),
+                    "promote_as_working_seed_only": aspect_weight is not None and ramp_index < len(ramp_weights),
                     "aspect_improvement_min": 5.0e-3,
                     "qi_safe_smooth_relax": 1.0,
                     "qi_safe_legacy_relax": 1.0,
                     "qi_safe_mirror_relax": (
                         float(stage.get("qi_safe_mirror_relax", 1.0))
                         if not (aspect_weight is not None and ramp_index < len(ramp_weights))
-                        else max(float(stage.get("qi_safe_mirror_relax", 1.0)), 1.35)
+                        else max(float(stage.get("qi_safe_mirror_relax", 1.0)), 4.0 / 3.0)
                     ),
                     "qi_safe_elongation_relax": 1.0,
                     # Showcase and staged-runner --max-nfev should be the local

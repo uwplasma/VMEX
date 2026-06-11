@@ -17882,6 +17882,62 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 73% artifact-complete, 0% promoted.
 
+### 2026-06-11 QI Working-Seed-Only Promotion Contract
+
+Steps taken:
+
+1. Reviewed the QI sidecar audit after the intermediate mirror carry-forward
+   patch.  The audit found a real promotion-contract risk: a relaxed
+   intermediate aspect-ramp candidate could become the returned final result if
+   later strict mirror cleanup failed.
+2. Split strict cleanup promotion from continuation-only working-seed
+   promotion in ``run_qi_stage_policy``.
+3. Added ``promote_as_working_seed_only`` for intermediate minimal/circular QI
+   aspect-ramp stages.  These stages may update ``active_input_file`` for the
+   next stage, but ``qi_cleanup_promoted`` is forced back to ``False`` unless
+   the strict engineering gate already promoted the stage.
+4. Kept final README/promotion semantics unchanged: final candidates still
+   require the strict mirror gate and engineering diagnostics.
+5. Reduced the intermediate mirror relax factor to exactly ``4/3`` so the
+   observed NFP=2 stage-1 mirror ``0.377`` can be carried forward while keeping
+   the allowed band narrow (``<= 0.4`` for a ``0.30`` final target).
+6. Added a run-policy regression proving a working-seed candidate feeds the
+   next stage via ``input.final`` but does not become the returned final result
+   when no later strict stage passes.
+
+Results obtained:
+
+1. Focused lint passed:
+   ``python -m ruff check examples/optimization/qi_optimization_cases.py vmec_jax/qi_optimization.py tests/test_qi_case_resolution.py tests/test_minimal_seed_showcase.py tests/test_qi_optimization_more_coverage.py tests/test_qi_optimization_public_helpers.py``.
+2. Impacted QI policy/helper tests passed:
+   ``python -m pytest -q tests/test_qi_case_resolution.py tests/test_minimal_seed_showcase.py tests/test_qi_optimization_more_coverage.py tests/test_qi_optimization_public_helpers.py::test_run_qi_stage_policy_working_seed_handoff_does_not_become_final tests/test_qi_optimization_public_helpers.py::test_run_qi_stage_policy_materializes_promoted_seed_for_next_stage -q``
+   with ``48`` passing tests.
+
+Best next steps:
+
+1. Commit and push the working-seed-only contract.
+2. Pull the commit on office and relaunch the fresh NFP=2 minimal-seed QI run.
+3. Monitor CI replacement run after the push.
+4. Promote QI README artifacts only after all NFP1/2/3/4 minimal-seed gates
+   pass with provenance and reviewed Boozer contours.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%.
+- VMEC parity and physics gates: 99.1%.
+- Single-stage coil-only optimization: 99.35%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.48%.
+- CI/runtime/coverage hygiene: 100% locally for focused gates; latest CI run
+  pending after push.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 75% artifact-complete, 0% promoted.
+
 ### 2026-06-11 QI Minimal-Seed Reference Selection Guard
 
 Steps taken:
