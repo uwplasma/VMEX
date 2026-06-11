@@ -19032,3 +19032,52 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 81% artifact-complete, 0% promoted; a clean
   one-pass NFP2 promotion attempt is active on office CPU.
+
+### 2026-06-11 Local Stability and Free-Boundary Validation Shards
+
+Steps taken:
+
+1. Ran the focused Glasser/Mercier AD-vs-central-FD stability gates:
+   ``test_glasser_d_r_gradient_matches_central_finite_difference``,
+   ``test_glasser_d_r_gradients_wrt_mercier_inputs_match_central_finite_difference``,
+   ``test_mercier_terms_from_state_dmerc_and_d_r_ad_match_central_fd``, and
+   ``test_dmerc_and_glasser_objective_gradients_match_finite_difference``.
+2. Ran the local free-boundary/direct-coil validation shard:
+   ``tests/test_free_boundary_vacuum_adjoint.py``,
+   ``tests/test_free_boundary_coil_provider_gradients.py``, and
+   ``tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py``.
+
+Results obtained:
+
+1. DMerc/D_R focused AD-vs-FD shard passed: ``6`` tests.
+2. Free-boundary/direct-coil validation shard passed: ``24`` tests, with one
+   optional skip.
+3. These local checks cover the immediate plan additions for DMerc/D_R gradient
+   consistency and keep the phase-2/free-boundary derivative gates green while
+   the longer QI artifact run proceeds on office CPU.
+
+Best next steps:
+
+1. Let GitHub Actions finish for ``a7c51a8``.
+2. Monitor the active office QI NFP2 single-pass run and parse stage metrics as
+   soon as the first checkpointed stage completes.
+3. If the single-pass ladder does not reach the QI/mirror gates, rerun the
+   repeated ladder with the non-worsening guard and compare accepted stage
+   histories.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%; arbitrary adaptive
+  branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.3%.
+- Single-stage coil-only optimization: 99.5%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100%; ``a7c51a8`` CI is running.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 81% artifact-complete, 0% promoted.
