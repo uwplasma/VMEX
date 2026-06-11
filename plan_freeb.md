@@ -18860,3 +18860,65 @@ Completion:
 - QI minimal-seed README artifacts: 78% artifact-complete, 0% promoted; the
   public driver is safer, but promotion-quality NFP1/2/3/4 artifacts still need
   full staged reruns.
+
+### 2026-06-11 Full NFP2 QI Minimal-Seed Office CPU Run Launch
+
+Steps taken:
+
+1. Created a clean office clone at
+   ``/home/rjorge/local/tests/vmec_jax_main_current`` and fast-forwarded it to
+   ``dfc9b05``.
+2. Launched a full staged NFP2 minimal-seed QI run on office CPU with
+   ``JAX_PLATFORMS=cpu``, default ``QI_optimization.py`` staging
+   ``[1, 1, 2, 2, 3, 3, 4, 4, 5, 5]``, ``method=auto``, aspect target ``6``,
+   ``|iota| >= 0.41``, mirror target ``0.30``, and no plot generation.
+3. Confirmed GitHub Actions run ``27358286480`` passed for ``dfc9b05``.
+4. Ran a local free-boundary/direct-coil validation shard while the office QI
+   run was active:
+   ``tests/test_free_boundary_vacuum_adjoint.py``,
+   ``tests/test_free_boundary_coil_provider_gradients.py``, and
+   ``tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py``.
+
+Results obtained:
+
+1. Local free-boundary/direct-coil lint and targeted tests passed.  The pytest
+   shard completed with ``24`` tests, one skipped optional case.
+2. The first full-resolution NFP2 QI mode-1 stage completed on office CPU in
+   ``501.66 s`` with ``method=scipy`` and ``method_auto_reason=auto:dense-default``.
+3. That first stage reduced the objective from ``3.3156e4`` to ``7.1970e2`` and
+   moved the minimal seed off the zero-transform branch: final mean iota
+   ``-0.5972`` and aspect ``7.4615``.  This confirms the full-budget staged
+   run can escape the zero-iota branch; it is not yet a promoted QI artifact.
+4. The office run is still active and repeating mode 1 at the time of this
+   entry.
+
+Best next steps:
+
+1. Let the active NFP2 run reach at least the repeated mode-1 and mode-2
+   checkpoints before deciding whether the full lower-repeat policy is worth
+   completing.
+2. If the full run remains too slow, restart from the best completed stage with
+   a shorter stage policy such as ``[1, 2, 3, 4, 5]`` or reduced Boozer
+   optimization resolution, while keeping full-resolution diagnostics for
+   promotion.
+3. Use the completed stage-1 result as evidence that the public/minimal seed
+   path is not fundamentally trapped at zero iota when given sufficient budget.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%; arbitrary adaptive
+  branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.25%.
+- Single-stage coil-only optimization: 99.5%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100%; latest pushed CI is green.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 79% artifact-complete, 0% promoted; NFP2
+  full-budget staging has escaped zero iota but has not reached final QI/mirror
+  gates.
