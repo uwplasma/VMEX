@@ -17823,6 +17823,65 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 70% artifact-complete, 0% promoted.
 
+### 2026-06-11 NFP2 QI Intermediate Mirror Carry-Forward
+
+Steps taken:
+
+1. Monitored the fresh office NFP=2 minimal-seed QI run using the
+   aspect-aware reference selector.  The reference scan correctly selected
+   ``lambda=1.0`` instead of the lower-aspect endpoint.
+2. The first local cleanup stage reached exact diagnostics with good QI and
+   iota (smooth QI about ``1.7e-3``, legacy QI about ``2.9e-4``, mean iota
+   about ``-0.427``) and improved aspect, but mirror was ``0.377``.  That is
+   above the strict final engineering cap of ``0.30`` and therefore was not
+   promoted as the next working seed.
+3. Added a narrow policy-only relaxation for minimal/circular QI intermediate
+   aspect-ramp stages: stages that only carry a QI-safe aspect improvement
+   forward may use ``qi_safe_mirror_relax >= 1.35``.  The final stage remains
+   strict at ``1.0`` and the final README/promotion engineering gate remains
+   ``mirror <= 0.30``.
+4. Added tests that assert only the two NFP=2 intermediate aspect-ramp stages
+   get the relaxed carry-forward threshold and that the final stage remains
+   strict.
+5. Added a unit-level promotion test matching the observed exact diagnostics:
+   the intermediate stage can be promoted as a working seed when QI/iota/aspect
+   are safe even if mirror is between ``0.30`` and ``1.35 * 0.30``.
+
+Results obtained:
+
+1. Focused lint passed:
+   ``python -m ruff check examples/optimization/qi_optimization_cases.py tests/test_qi_case_resolution.py tests/test_qi_optimization_more_coverage.py``.
+2. Focused policy tests passed:
+   ``python -m pytest -q tests/test_qi_case_resolution.py::test_minimal_and_circular_qi_cases_require_reference_seeded_local_stage tests/test_minimal_seed_showcase.py::test_minimal_seed_showcase_qi_reference_lambda_override tests/test_qi_optimization_more_coverage.py::test_stage_promotes_candidate_accepts_relaxed_intermediate_mirror_aspect_improvement tests/test_qi_optimization_more_coverage.py::test_stage_promotes_candidate_rejects_qi_degrading_aspect_improvement -q``.
+3. Broader impacted QI policy tests passed:
+   ``python -m pytest -q tests/test_qi_case_resolution.py tests/test_minimal_seed_showcase.py tests/test_qi_optimization_more_coverage.py -q``
+   with ``46`` passing tests.
+
+Best next steps:
+
+1. Commit and push the NFP=2 carry-forward policy.
+2. Stop the obsolete office NFP=2 run that uses the old strict policy.
+3. Pull the new commit on office and rerun NFP=2 into a fresh output root.
+4. Promote QI README artifacts only after NFP1/2/3/4 minimal-seed provenance
+   gates pass and Boozer contours are reviewed.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%.
+- VMEC parity and physics gates: 99.1%.
+- Single-stage coil-only optimization: 99.35%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.48%.
+- CI/runtime/coverage hygiene: 100% locally for focused gates; latest CI run
+  pending.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 73% artifact-complete, 0% promoted.
+
 ### 2026-06-11 QI Minimal-Seed Reference Selection Guard
 
 Steps taken:

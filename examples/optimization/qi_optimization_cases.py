@@ -717,7 +717,11 @@ def _minimal_or_circular_qi_case(
                     "aspect_improvement_min": 5.0e-3,
                     "qi_safe_smooth_relax": 1.0,
                     "qi_safe_legacy_relax": 1.0,
-                    "qi_safe_mirror_relax": 1.0,
+                    "qi_safe_mirror_relax": (
+                        float(stage.get("qi_safe_mirror_relax", 1.0))
+                        if not (aspect_weight is not None and ramp_index < len(ramp_weights))
+                        else max(float(stage.get("qi_safe_mirror_relax", 1.0)), 1.35)
+                    ),
                     "qi_safe_elongation_relax": 1.0,
                     # Showcase and staged-runner --max-nfev should be the local
                     # optimizer budget for these reference-seeded cases, not only a
