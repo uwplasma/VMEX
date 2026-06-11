@@ -17239,3 +17239,64 @@ Completion:
 - QI minimal-seed README artifact regeneration: 50% artifact-complete, 0%
   promoted; NFP=4 passed, NFP=1/2/3 need non-matrix-free cleanup reruns.
 - Docs/release hygiene: 99.98%; no stale QI artifact was promoted.
+
+### 2026-06-10 QI Reference-Preconditioner Selection Gate
+
+Steps taken:
+
+1. Re-ran the failed QI minimal-seed cleanup lane on ``office`` with the new
+   staged ``--qi-method`` override.  The generated stage JSON correctly used
+   ``scipy`` and ``scalar_trust`` when requested, so the previous blocker was
+   not stale method selection.
+2. Dense SciPy on GPU returned only an NFP=1 diagnostic result and then hit a
+   GPU shared-memory resource limit during high-mode cleanup.  The result was
+   not promotion-ready: aspect ``7.04``, mean iota ``0.469``, legacy QI
+   ``5.55e-3``, smooth/raw QI ``8.66e-3``.
+3. A low-resolution broad reference-family scan showed that the existing
+   reference selector narrowed by aspect before checking QI safety.  This could
+   select aspect-near but physically poor references, including circular
+   low-transform candidates for NFP=3.
+4. Changed ``boundary_reference_record_is_qi_safe`` to include elongation,
+   smooth-QI, and legacy-QI thresholds in addition to mirror and iota.
+5. Changed ``run_boundary_reference_preconditioner`` so QI-safe candidates are
+   preferred before aspect-near candidates.  Aspect is still used, but only
+   after the candidate pool satisfies the physics/QI safety gate.
+
+Results obtained:
+
+1. Local lint passed:
+   ``python -m ruff check vmec_jax/qi_optimization.py tests/test_qi_optimization_public_helpers.py tests/test_qi_basin_promote.py tests/test_qi_case_resolution.py tests/test_minimal_seed_showcase.py tests/test_qi_staged_runner.py``.
+2. Focused QI tests passed:
+   ``python -m pytest -q tests/test_qi_optimization_public_helpers.py tests/test_qi_basin_promote.py tests/test_qi_case_resolution.py tests/test_minimal_seed_showcase.py tests/test_qi_staged_runner.py -q``.
+3. The public-helper test now locks the intended selector behavior: QI-safe
+   candidates win over merely aspect-near candidates.
+
+Best next steps:
+
+1. Commit and push the selector fix, then monitor CI.
+2. Re-run NFP=2/3 minimal-seed QI diagnostics from a clean ``main`` clone,
+   since those are the cases where the selector bug most clearly chose bad
+   references.
+3. Keep QI README artifacts blocked until all promoted rows pass provenance,
+   aspect, iota, mirror, elongation, and QI gates.
+
+Need from user:
+
+No immediate action.  If the public README policy should allow aspect values
+far from 6 for QI NFP1/2/3, that remains a physics/communication decision.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.0%.
+- Single-stage coil-only optimization: 99.0%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% for the local focused shard, pending CI
+  after the selector-fix commit.
+- Docs/release hygiene: 100% for install/docs hygiene; QI artifact docs remain
+  blocked.
+- QI minimal-seed README artifacts: 55% artifact-complete, 0% promoted.  The
+  selection logic is now safer, but NFP1/2/3 still need successful cleanup
+  reruns before any README promotion.
