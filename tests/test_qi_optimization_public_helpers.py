@@ -131,9 +131,19 @@ def test_qi_helper_scalar_parsers_and_scores(tmp_path: Path) -> None:
     )
     assert aspect_failed_score > aspect_ok_score
     assert qio.boundary_reference_record_is_qi_safe(
-        {"mirror": 0.2, "mean_iota": -0.5, "aspect": 5.4},
+        {"mirror": 0.2, "mean_iota": -0.5, "aspect": 5.4, "smooth_qi": 5.0e-4, "legacy_qi": 8.0e-4},
         max_mirror_ratio=0.3,
         abs_iota_min=0.4,
+        smooth_qi_max=1.0e-3,
+        legacy_qi_max=2.0e-3,
+        target_aspect=5.0,
+    )
+    assert not qio.boundary_reference_record_is_qi_safe(
+        {"mirror": 0.2, "mean_iota": -0.5, "aspect": 5.4, "smooth_qi": 2.0e-3, "legacy_qi": 8.0e-4},
+        max_mirror_ratio=0.3,
+        abs_iota_min=0.4,
+        smooth_qi_max=1.0e-3,
+        legacy_qi_max=2.0e-3,
         target_aspect=5.0,
     )
     assert not qio.boundary_reference_record_is_qi_safe(
@@ -716,7 +726,7 @@ def test_boundary_reference_preconditioner_selects_safe_non_endpoint(
     assert qio.run_boundary_reference_preconditioner("input.seed", tmp_path, {"enabled": False}) == Path("input.seed")
 
 
-def test_boundary_reference_preconditioner_prefers_aspect_pool_before_qi_rank(
+def test_boundary_reference_preconditioner_prefers_qi_safe_pool_before_aspect(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -737,18 +747,19 @@ def test_boundary_reference_preconditioner_prefers_aspect_pool_before_qi_rank(
     def fake_diagnostics(run, **kwargs):
         lam = float(Path(run.path).read_text())
         aspect = 5.6 if lam < 0.5 else 7.0
+        low_qi = lam >= 0.5
         return {
-            "qi_smooth_total": 1.0,
-            "qi_legacy_total": 0.2 if lam < 0.5 else 0.001,
+            "qi_smooth_total": 0.2 if not low_qi else 5.0e-4,
+            "qi_legacy_total": 0.2 if not low_qi else 0.001,
             "qi_mirror_ratio_max": 0.2,
             "qi_max_elongation": 4.0,
             "mean_iota": 0.5,
             "aspect": aspect,
             "aspect_relative_error": abs(aspect - 5.0) / 5.0,
-            "qi_seed_gate_passed": False,
-            "qi_engineering_gate_passed": False,
-            "qi_failure_reasons": ["synthetic"],
-            "qi_rank_score": 100.0 if lam < 0.5 else 0.001,
+            "qi_seed_gate_passed": low_qi,
+            "qi_engineering_gate_passed": low_qi,
+            "qi_failure_reasons": [] if low_qi else ["synthetic"],
+            "qi_rank_score": 100.0 if not low_qi else 0.001,
             "qi_constraint_score": 0.0,
         }
 
@@ -766,10 +777,11 @@ def test_boundary_reference_preconditioner_prefers_aspect_pool_before_qi_rank(
         },
     )
 
-    assert "lambda_0p250" in str(selected)
+    assert "lambda_1p000" in str(selected)
     summary = json.loads((tmp_path / "boundary_reference_preconditioner" / "summary.json").read_text())
     selected_record = next(record for record in summary if record["selected"])
-    assert selected_record["aspect"] == pytest.approx(5.6)
+    assert selected_record["aspect"] == pytest.approx(7.0)
+    assert selected_record["smooth_qi"] == pytest.approx(5.0e-4)
 
 
 def test_boundary_reference_preconditioner_can_prefer_lowest_qi_candidate(

@@ -1300,6 +1300,9 @@ def boundary_reference_record_is_qi_safe(
     *,
     max_mirror_ratio,
     abs_iota_min,
+    max_elongation=None,
+    smooth_qi_max=None,
+    legacy_qi_max=None,
     target_aspect=None,
     aspect_relative_tolerance=0.25,
 ):
@@ -1307,6 +1310,15 @@ def boundary_reference_record_is_qi_safe(
 
     mirror_ok = _finite_or_inf(record.get("mirror")) <= float(max_mirror_ratio)
     iota_ok = abs(float(record.get("mean_iota") or 0.0)) >= float(abs_iota_min)
+    elongation_ok = True
+    if max_elongation is not None:
+        elongation_ok = _finite_or_inf(record.get("elongation")) <= float(max_elongation)
+    smooth_qi_ok = True
+    if smooth_qi_max is not None:
+        smooth_qi_ok = _finite_or_inf(record.get("smooth_qi")) <= float(smooth_qi_max)
+    legacy_qi_ok = True
+    if legacy_qi_max is not None:
+        legacy_qi_ok = _finite_or_inf(record.get("legacy_qi")) <= float(legacy_qi_max)
     if target_aspect is None:
         aspect_ok = True
     else:
@@ -1314,7 +1326,7 @@ def boundary_reference_record_is_qi_safe(
         aspect_ok = abs(aspect - float(target_aspect)) / max(float(target_aspect), 1.0e-16) <= float(
             aspect_relative_tolerance
         )
-    return mirror_ok and iota_ok and aspect_ok
+    return mirror_ok and iota_ok and elongation_ok and smooth_qi_ok and legacy_qi_ok and aspect_ok
 
 
 def run_boundary_reference_preconditioner(input_file, output_dir, config, *, ctx: QIOptimizationContext | None = None):
@@ -1422,6 +1434,26 @@ def run_boundary_reference_preconditioner(input_file, output_dir, config, *, ctx
     candidate_pool = [record for record in successful if bool(record.get("qi_engineering_gate_passed"))] or successful
     target_aspect = float(config.get("target_aspect", _ctx(ctx, "target_aspect")))
     aspect_relative_tolerance = float(config.get("aspect_relative_tolerance", 0.37))
+    if bool(config.get("prefer_qi_safe_candidates", True)):
+        max_mirror_ratio = float(config.get("max_mirror_ratio", _ctx(ctx, "max_mirror_ratio")))
+        abs_iota_min = float(config.get("abs_iota_min", _ctx(ctx, "target_abs_iota_min")))
+        max_elongation = float(config.get("max_elongation", _ctx(ctx, "max_elongation")))
+        smooth_qi_max = float(config.get("smooth_qi_max", _ctx(ctx, "qi_gate_smooth_max")))
+        legacy_qi_max = float(config.get("legacy_qi_max", _ctx(ctx, "qi_gate_legacy_max")))
+        safe_pool = [
+            record
+            for record in candidate_pool
+            if boundary_reference_record_is_qi_safe(
+                record,
+                max_mirror_ratio=max_mirror_ratio,
+                abs_iota_min=abs_iota_min,
+                max_elongation=max_elongation,
+                smooth_qi_max=smooth_qi_max,
+                legacy_qi_max=legacy_qi_max,
+            )
+        ]
+        if safe_pool:
+            candidate_pool = safe_pool
     if bool(config.get("prefer_aspect_candidates", True)):
         aspect_pool = [
             record
@@ -1431,22 +1463,6 @@ def run_boundary_reference_preconditioner(input_file, output_dir, config, *, ctx
         ]
         if aspect_pool:
             candidate_pool = aspect_pool
-    if bool(config.get("prefer_qi_safe_candidates", True)):
-        max_mirror_ratio = float(config.get("max_mirror_ratio", _ctx(ctx, "max_mirror_ratio")))
-        abs_iota_min = float(config.get("abs_iota_min", _ctx(ctx, "target_abs_iota_min")))
-        safe_pool = [
-            record
-            for record in candidate_pool
-            if boundary_reference_record_is_qi_safe(
-                record,
-                max_mirror_ratio=max_mirror_ratio,
-                abs_iota_min=abs_iota_min,
-                target_aspect=target_aspect,
-                aspect_relative_tolerance=aspect_relative_tolerance,
-            )
-        ]
-        if safe_pool:
-            candidate_pool = safe_pool
     if bool(config.get("prefer_non_endpoint", False)):
         non_endpoint = [record for record in candidate_pool if abs(float(record["lambda"]) - 1.0) > 1.0e-12]
         if non_endpoint:
