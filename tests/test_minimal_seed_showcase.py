@@ -157,6 +157,12 @@ def test_minimal_seed_showcase_default_mode_matches_publication_matrix(monkeypat
     args = generator._parse_args()
 
     assert args.max_mode == 5
+    assert args.qi_method is None
+
+    monkeypatch.setattr(sys, "argv", ["generate_minimal_seed_showcase.py", "--qi-method", "scipy"])
+    args = generator._parse_args()
+
+    assert args.qi_method == "scipy"
 
 
 def test_minimal_seed_showcase_qi_stage_patch_inherits_requested_max_mode() -> None:
@@ -399,6 +405,7 @@ def test_minimal_seed_showcase_dispatches_qi_to_staged_runner(tmp_path: Path, mo
         use_ess=True,
         budget=budget,
         input_file=tmp_path / "input.target_helicity_seed",
+        qi_method="scipy",
     )
 
     config = captured["config"]
@@ -414,6 +421,7 @@ def test_minimal_seed_showcase_dispatches_qi_to_staged_runner(tmp_path: Path, mo
     assert config.reference_lambdas[-1] == pytest.approx(1.005)
     assert config.max_nfev == 4
     assert config.continuation_nfev == 3
+    assert config.method == "scipy"
     assert config.target_aspect == pytest.approx(generator.QI_SHOWCASE_TARGET_ASPECT)
     assert config.inner_max_iter == 11
     assert config.trial_ftol == pytest.approx(2.0e-8)

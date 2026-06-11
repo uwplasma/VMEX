@@ -17188,4 +17188,54 @@ Completion:
 
 - QI minimal-seed README artifact regeneration: 50% artifact-complete, 0%
   promoted; remote diagnostics exist but fail current promotion gates.
+
+### 2026-06-10 QI Minimal-Seed Cleanup Method Override
+
+Steps taken:
+
+1. Audited the completed remote aspect-6 minimal-seed QI rerun.  NFP=4 passed
+   the current gates, but NFP=1/2/3 remained non-promotable.  The shared
+   blocker was the ``scipy_matrix_free`` mirror-cleanup path failing at the
+   first Jacobian/trust-region step with non-finite arrays, so no cleanup
+   movement occurred.
+2. Added an explicit ``method`` override to ``QIStagedCaseConfig`` and threaded
+   ``--qi-method`` through ``generate_minimal_seed_showcase.py``.
+3. Patched the generated ``mirror_ramp_stages.json`` when a staged method
+   override is requested.  This is required because ``QI_optimization.py``
+   treats stage JSON as authoritative over the top-level ``--method``.
+4. Added focused tests that verify both the CLI argument and the authoritative
+   stage JSON use the requested method.
+
+Results obtained:
+
+1. Local formatting/lint passed:
+   ``python -m ruff check examples/optimization/qi_staged_runner.py examples/optimization/generate_minimal_seed_showcase.py tests/test_qi_staged_runner.py tests/test_minimal_seed_showcase.py``.
+2. Local focused tests passed:
+   ``python -m pytest -q tests/test_qi_staged_runner.py tests/test_minimal_seed_showcase.py -q``.
+
+Best next steps:
+
+1. Commit and push the staged-method override.
+2. Re-run failed QI minimal-seed NFP=1/2/3 rows on ``office`` with
+   ``--qi-method scipy`` first.  If dense SciPy is too slow or still non-finite,
+   retry with ``scalar_trust`` or ``auto_scalar``.
+3. Promote QI README artifacts only if every NFP row passes provenance and
+   physics gates; otherwise keep the remote outputs diagnostic-only.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.0%.
+- Single-stage coil-only optimization: 99.0%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% for this focused shard.
+- Docs/release hygiene: 100% for install docs; QI artifact docs remain gated.
+- QI minimal-seed README artifact regeneration: 50% artifact-complete, 0%
+  promoted; NFP=4 passed, NFP=1/2/3 need non-matrix-free cleanup reruns.
 - Docs/release hygiene: 99.98%; no stale QI artifact was promoted.

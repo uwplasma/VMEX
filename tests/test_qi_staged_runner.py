@@ -45,6 +45,7 @@ def test_qi_staged_runner_builds_external_input_cli_and_environment(tmp_path: Pa
         trial_max_iter=22,
         trial_ftol=2.0e-8,
         ess_alpha=1.7,
+        method="scipy",
         target_aspect=5.0,
         target_abs_iota_min=0.41,
         max_mirror_ratio=0.3,
@@ -65,6 +66,7 @@ def test_qi_staged_runner_builds_external_input_cli_and_environment(tmp_path: Pa
     assert env["JAX_PLATFORMS"] == "cuda"
     assert "--input-file" in args
     assert "--ess-alpha" in args and "1.7" in args
+    assert "--method" in args and "scipy" in args
     assert str(ROOT / "examples" / "data" / "input.minimal_seed_nfp2") in args
     assert str(tmp_path / "out") in args
     assert "--max-mode" in args and "3" in args
@@ -96,7 +98,8 @@ def test_qi_staged_runner_builds_external_input_cli_and_environment(tmp_path: Pa
     assert "--mirror-ramp-stages-json" in args
     stages_path = Path(args[args.index("--mirror-ramp-stages-json") + 1])
     assert stages_path == tmp_path / "out" / "mirror_ramp_stages.json"
-    assert '"name": "cleanup"' in stages_path.read_text()
+    stages = json.loads(stages_path.read_text())
+    assert stages == [{"max_nfev": 5, "method": "scipy", "mirror_weight": 20.0, "name": "cleanup"}]
     lambdas = tuple(float(value) for value in args[args.index("--reference-lambdas") + 1].split(","))
     assert lambdas == pytest.approx((0.99, 0.995, 1.0, 1.005, 1.01))
     reference_path = Path(args[args.index("--boundary-reference-json") + 1])

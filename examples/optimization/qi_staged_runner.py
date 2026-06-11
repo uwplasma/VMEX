@@ -71,6 +71,7 @@ class QIStagedCaseConfig:
     trial_max_iter: int | None = None
     trial_ftol: float | None = None
     ess_alpha: float | None = None
+    method: str | None = None
     target_aspect: float | None = None
     target_abs_iota_min: float | None = None
     max_mirror_ratio: float | None = None
@@ -319,6 +320,8 @@ def _build_qi_staged_args(config: QIStagedCaseConfig) -> list[str]:
         args.extend(["--trial-ftol", str(float(config.trial_ftol))])
     if config.ess_alpha is not None:
         args.extend(["--ess-alpha", str(float(config.ess_alpha))])
+    if config.method is not None:
+        args.extend(["--method", str(config.method)])
     physics_args = {
         "--target-aspect": _policy_value(config, "target_aspect"),
         "--target-abs-iota-min": _policy_value(config, "target_abs_iota_min"),
@@ -363,7 +366,13 @@ def _build_qi_staged_args(config: QIStagedCaseConfig) -> list[str]:
     if config.mirror_ramp_stages is not None:
         stages_path = Path(config.output_dir).expanduser() / "mirror_ramp_stages.json"
         stages_path.parent.mkdir(parents=True, exist_ok=True)
-        stages_path.write_text(json.dumps(list(config.mirror_ramp_stages), indent=2, sort_keys=True) + "\n")
+        mirror_ramp_stages = [dict(stage) for stage in config.mirror_ramp_stages]
+        if config.method is not None:
+            # Stage JSON is authoritative inside QI_optimization.py, so patch it
+            # along with --method to make showcase reruns reproducible.
+            for stage in mirror_ramp_stages:
+                stage["method"] = str(config.method)
+        stages_path.write_text(json.dumps(mirror_ramp_stages, indent=2, sort_keys=True) + "\n")
         args.extend(["--mirror-ramp-stages-json", str(stages_path)])
     return args
 

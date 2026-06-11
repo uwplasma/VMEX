@@ -585,6 +585,7 @@ def _run_showcase_case(
     budget: MinimalSeedBudget,
     input_file: Path | None = None,
     case_timeout_s: float | None = None,
+    qi_method: str | None = None,
 ) -> sweep.CaseResult:
     """Run one minimal-seed case with temporary sweep config overrides."""
 
@@ -621,6 +622,7 @@ def _run_showcase_case(
                 trial_max_iter=int(budget.trial_max_iter),
                 trial_ftol=float(budget.trial_ftol),
                 ess_alpha=float(budget.ess_alpha),
+                method=qi_method,
                 target_aspect=QI_SHOWCASE_TARGET_ASPECT,
                 target_abs_iota_min=0.41,
                 max_mirror_ratio=0.30,
@@ -681,6 +683,7 @@ def _worker(
     target_helicity_seed_amplitude: float,
     reference_preseed_blend: float | None = None,
     case_timeout_s: float | None = None,
+    qi_method: str | None = None,
 ) -> None:
     output_dir = Path(output_dir_str)
     result_path = Path(result_path_str)
@@ -708,6 +711,7 @@ def _worker(
                 target_helicity_seed_amplitude,
                 reference_preseed_blend,
                 case_timeout_s,
+                qi_method,
             )
 
 
@@ -779,6 +783,7 @@ def _worker_impl(
     target_helicity_seed_amplitude: float,
     reference_preseed_blend: float | None = None,
     case_timeout_s: float | None = None,
+    qi_method: str | None = None,
 ) -> None:
     case = SHOWCASE_CASES[case_name]
     if reference_preseed_blend is not None and case.reference_preseed_input is not None:
@@ -827,6 +832,7 @@ def _worker_impl(
             budget=budget,
             input_file=seeded_input_file,
             case_timeout_s=case_timeout_s,
+            qi_method=qi_method,
         )
         _annotate_qi_partial_result(case, result, output_dir)
         _apply_physics_gate(case, result)
@@ -907,6 +913,15 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--trial-max-iter", type=int, default=120)
     parser.add_argument("--trial-ftol", type=float, default=1e-9)
     parser.add_argument("--ess-alpha", type=float, default=1.2, help="ESS high-mode scaling strength.")
+    parser.add_argument(
+        "--qi-method",
+        type=str,
+        default=None,
+        help=(
+            "Override the optimizer method for QI staged subprocesses and their "
+            "mirror-ramp cleanup stages, e.g. scipy, scalar_trust, or auto_scalar."
+        ),
+    )
     parser.add_argument("--case-timeout-s", type=float, default=1800.0)
     parser.add_argument(
         "--reference-preseed-blend",
@@ -988,6 +1003,7 @@ def main() -> None:
                     float(args.target_helicity_seed_amplitude),
                     reference_preseed_blend,
                     case_timeout_s,
+                    args.qi_method,
                 ),
             )
             t0 = time.perf_counter()
