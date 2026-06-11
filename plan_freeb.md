@@ -18979,3 +18979,56 @@ Completion:
 - QI minimal-seed README artifacts: 80% artifact-complete, 0% promoted; the
   continuation handoff bug is fixed locally but promotion runs still need to be
   regenerated.
+
+### 2026-06-11 QI Stage-Policy Clarification and Single-Pass Relaunch
+
+Steps taken:
+
+1. Confirmed that ``QI_optimization.py --stage-mode-policy lower`` intentionally
+   uses the legacy QA/QH/QP repeated lower-mode ladder
+   ``[1, 1, 2, 2, 2, ...]``.
+2. Confirmed that the intended one-pass ladder is
+   ``--stage-mode-policy lower-repeat --stage-repeats 1``, producing
+   ``[1, 2, ..., max_mode]``.
+3. Stopped the accidental office NFP2 repeated-ladder launch and relaunched the
+   bounded NFP2 minimal-seed CPU run with the explicit single-pass ladder under
+   ``/home/rjorge/local/tests/vmec_jax_qi_minimal_auto_singlepass_bd34e1a/nfp2``.
+4. Fixed misleading comments in ``examples/optimization/QI_optimization.py`` and
+   ``examples/optimization/README.md`` and clarified the
+   ``qi_stage_modes`` docstring.
+5. Added a one-pass policy regression assertion to
+   ``tests/test_qi_optimization_public_helpers.py``.
+
+Results obtained:
+
+1. The relaunched office run prints ``stage modes: [1, 2, 3, 4, 5]`` and is
+   currently in the mode-1 continuation seed.
+2. Focused ruff checks passed for the QI optimization helper/script/test files.
+3. The focused QI stage-policy test passed.
+
+Best next steps:
+
+1. Monitor the active office single-pass run through the mode-1 and mode-2
+   checkpoints.
+2. If the one-pass ladder is too weak, rerun the repeated ladder with the new
+   non-worsening guard and compare accepted-stage diagnostics.
+3. Do not promote the README QI panel until the final artifact passes QI,
+   mirror, elongation, aspect, iota, and raw-seed provenance gates.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%; arbitrary adaptive
+  branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.25%.
+- Single-stage coil-only optimization: 99.5%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100%; ``bd34e1a`` CI is running.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 81% artifact-complete, 0% promoted; a clean
+  one-pass NFP2 promotion attempt is active on office CPU.

@@ -66,7 +66,7 @@ ALPHA = 1.2  # ESS high-mode scaling strength.
 USE_MODE_CONTINUATION = True
 CONTINUATION_NFEV = 20
 MAX_NFEV = 70
-STAGE_MODE_POLICY = "lower-repeat"  # "lower", "lower-repeat", or "repeat" only MAX_MODE.
+STAGE_MODE_POLICY = "lower-repeat"  # "lower" is the QA/QH/QP repeated ladder; "repeat" repeats only MAX_MODE.
 STAGE_REPEATS = 2  # Used by "lower-repeat" and "repeat" policies.
 STAGE_MODES = vj.qi_stage_modes(
     max_mode=MAX_MODE,
@@ -78,7 +78,8 @@ STAGE_MODES = vj.qi_stage_modes(
 # Common alternatives:
 # STAGE_MODES = [1, 1, 2, 2, 3, 3]
 # MIRROR_RAMP_STAGES = ()
-# STAGE_MODE_POLICY = "lower"   # one pass at each mode
+# STAGE_MODE_POLICY = "lower-repeat"; STAGE_REPEATS = 1  # one pass at each mode
+# STAGE_MODE_POLICY = "lower"   # legacy QA/QH/QP ladder: [1, 1, 2, 2, 2, ...]
 # STAGE_MODE_POLICY = "repeat"  # repeat only MAX_MODE for already-good seeds
 # METHOD = "lbfgs_adjoint"
 # USE_REFERENCE_FAMILY_SEED = True

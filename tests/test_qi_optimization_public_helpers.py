@@ -252,6 +252,15 @@ def test_qi_lower_repeat_stage_policy_and_cli_controls() -> None:
     )
     assert modes == [1, 1, 2, 2, 3, 3]
 
+    one_pass = qio.qi_stage_modes(
+        max_mode=3,
+        use_mode_continuation=True,
+        continuation_nfev=2,
+        repeats=1,
+        policy="lower-repeat",
+    )
+    assert one_pass == [1, 2, 3]
+
     direct = qio.qi_stage_modes(
         max_mode=3,
         use_mode_continuation=False,

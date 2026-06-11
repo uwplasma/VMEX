@@ -171,12 +171,13 @@ def qi_stage_modes(
 ) -> list[int]:
     """Return the stage mode sequence for the QI example workflow.
 
-    ``policy="lower"`` uses the same lower-mode continuation semantics as the
-    QA/QH/QP examples. ``policy="lower-repeat"`` repeats each lower-mode rung,
-    which is useful for far circular seeds because each active spectral shell
-    gets cleanup passes before adding more degrees of freedom. ``policy="repeat"``
-    preserves the older QI behavior of repeating only the final mode, which can
-    still be useful when the input is already in the right basin.
+    ``policy="lower"`` uses the same repeated lower-mode continuation ladder as
+    the QA/QH/QP examples: mode 1 is run twice and higher modes three times.
+    ``policy="lower-repeat"`` repeats each lower-mode rung exactly ``repeats``
+    times, so ``repeats=1`` is the one-pass ladder ``[1, 2, ..., max_mode]``.
+    ``policy="repeat"`` preserves the older QI behavior of repeating only the
+    final mode, which can still be useful when the input is already in the right
+    basin.
     """
 
     policy_key = str(policy).strip().lower().replace("_", "-")
