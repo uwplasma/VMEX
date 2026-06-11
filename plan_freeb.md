@@ -17885,6 +17885,53 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 70% artifact-complete, 0% promoted.
 
+### 2026-06-11 Same-Branch Negative Promotion Guard
+
+Steps taken:
+
+1. Followed the free-boundary audit recommendation and added one explicit
+   unit-level guard tying an accepted/residual branch-fingerprint mismatch to
+   non-promotion across all branch-local promotion paths.
+2. The new test checks the scalar AD-vs-FD gate, adaptive full-loop
+   same-branch gate, and coil-optimization derivative proposal helper.  The
+   report is synthetic and does not run VMEC, so it is a fast CI guard for the
+   conservative phase-2/phase-3 boundary.
+
+Results obtained:
+
+1. Focused lint passed:
+   ``python -m ruff check tests/test_free_boundary_qs_coil_optimization_smoke.py``.
+2. Focused tests passed:
+   ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py::test_branch_local_scalar_report_adapter_records_failure_modes tests/test_free_boundary_qs_coil_optimization_smoke.py::test_branch_mismatch_blocks_scalar_adaptive_and_proposal_promotion tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_derivative_proposal_requires_direct_jvp_and_fresh_replay -q``.
+
+Best next steps:
+
+1. Commit/push the negative promotion guard and monitor CI.
+2. Keep adaptive full-loop differentiation conservative.  This test strengthens
+   the guardrail; it does not claim arbitrary adaptive branch differentiation.
+3. Continue the fresh office NFP2 QI run and only use artifacts from the new
+   ``qi_nfp2_aspectaware_8686f67_results`` output root.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%; same-branch
+  promotion now has an explicit negative guard across scalar, adaptive, and
+  derivative-proposal paths.  Arbitrary adaptive branch differentiation remains
+  unclaimed.
+- VMEC parity and physics gates: 99.1%.
+- Single-stage coil-only optimization: 99.35%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.48%.
+- CI/runtime/coverage hygiene: 100% locally for the focused guard shard; CI
+  pending after this commit.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 70% artifact-complete, 0% promoted.
+
 ### 2026-06-11 Bounded Same-Branch Proposal Set
 
 Steps taken:

@@ -452,6 +452,106 @@ def test_branch_local_scalar_report_adapter_records_failure_modes():
     assert "stacked step-policy branch changed" in adaptive_gate["errors"]
 
 
+def test_branch_mismatch_blocks_scalar_adaptive_and_proposal_promotion():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+    from vmec_jax.free_boundary_adjoint import (
+        direct_coil_adaptive_full_loop_same_branch_gate_report,
+        direct_coil_branch_local_scalars_report_from_complete_fd,
+        direct_coil_same_branch_physical_scalar_gate_report,
+    )
+
+    module = _load_example_module()
+    gate = _same_branch_replay_gate_stub()
+    mismatched_branch = {
+        **gate["branch"],
+        "same_branch": False,
+        "same_accepted_trace_branch": False,
+        "same_residual_branch": False,
+    }
+    complete_report = {
+        "branch_compatibility": mismatched_branch,
+        "trace_replay_diagnostics": gate["trace_replay_diagnostics"],
+        "objective_values": {
+            "aspect": {"base": 6.0, "plus": 6.1, "minus": 5.9, "central_fd_directional": 0.2},
+            "qs_total": {"base": 0.4, "plus": 0.42, "minus": 0.38, "central_fd_directional": 0.1},
+        },
+    }
+    branch_local = {
+        "uses_production_forward": True,
+        "differentiates_adaptive_controller": False,
+        "differentiates_run_free_boundary": False,
+        "differentiates_fixed_accepted_branch": True,
+        "derivative_mode": "directional_jvp",
+        "replay_ad_mode": "direct",
+        "scalar_keys": ("aspect", "qs_total"),
+        "values": {"aspect": 6.0, "qs_total": 0.4},
+        "replay_value_map": {"aspect": jnp.asarray(6.0), "qs_total": jnp.asarray(0.4)},
+        "base_abs_delta": {"aspect": 0.0, "qs_total": 0.0},
+        "directional_derivatives": {"aspect": jnp.asarray(0.2), "qs_total": jnp.asarray(0.1)},
+        "replay_option_flags": {
+            "use_stacked_step_controls": True,
+            "use_accepted_only_fast_path": False,
+            "use_status_derived_rejected_controller_slot": True,
+        },
+        "replay_branch_metadata": {
+            "n_steps": 1,
+            "accepted_mask": [True],
+            "rejected_mask": [False],
+            "done_mask": [True],
+        },
+        "controller_slot_summary": {"accepted_slots": 1, "rejected_slots": 1},
+    }
+
+    scalar_report = direct_coil_branch_local_scalars_report_from_complete_fd(
+        complete_report,
+        branch_local,
+        scalar_keys=("aspect", "qs_total"),
+    )
+    physical_gate = direct_coil_same_branch_physical_scalar_gate_report(
+        complete_report,
+        scalar_report,
+        scalar_keys=("aspect", "qs_total"),
+    )
+    adaptive_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
+        complete_report,
+        scalar_report,
+        scalar_keys=("aspect", "qs_total"),
+        require_stacked_step_controls=True,
+        require_fixed_rejected_controller_slot=True,
+        require_status_derived_rejected_controller_slot=True,
+    )
+    proposal = module.same_branch_derivative_proposal_from_report(
+        {
+            "branch_compatibility": mismatched_branch,
+            "direction_x": [1.0],
+            "branch_local_vector_jacobian": {
+                "available": True,
+                "uses_production_forward": True,
+                "differentiates_adaptive_controller": False,
+                "differentiates_run_free_boundary": False,
+                "differentiates_fixed_accepted_branch": True,
+                "replay_ad_mode": "direct",
+                "derivative_mode": "directional_jvp",
+                "max_base_abs_delta": 0.0,
+                "scalars": {"qs_total": {"value": 0.2, "exact_directional": 1.0, "base_abs_delta": 0.0}},
+            },
+        },
+        {"residual_weight": 0.0, "qs_weight": 1.0, "aspect_weight": 0.0, "iota_weight": 0.0},
+        {"x": [0.0]},
+        step_size=0.1,
+    )
+
+    assert scalar_report["same_branch"] is False
+    assert physical_gate["passed"] is False
+    assert "same-branch replay gate failed" in physical_gate["errors"]
+    assert "accepted-trace branch fingerprint changed" in physical_gate["errors"]
+    assert adaptive_gate["passed"] is False
+    assert "physical scalar gate: same-branch replay gate failed" in adaptive_gate["errors"]
+    assert proposal["available"] is False
+    assert "branch fingerprint" in proposal["reason"]
+
+
 def test_same_branch_report_anchor_uses_best_or_initial_coil_point():
     module = _load_example_module()
     base_params, _metadata = module.make_circle_provider(current_scale=1.0)
