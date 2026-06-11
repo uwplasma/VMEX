@@ -18799,3 +18799,64 @@ Completion:
 - QI minimal-seed README artifacts: 77% artifact-complete, 0% promoted; NFP2
   has good QI and iota/aspect/elongation from a minimal seed but still needs a
   mirror-passing cleanup.
+
+### 2026-06-11 QI Public-Driver Auto-Policy Smoke Across NFP
+
+Steps taken:
+
+1. Ran reduced, bounded public-driver QI smoke optimizations for
+   ``input.minimal_seed_nfp1``, ``input.minimal_seed_nfp2``,
+   ``input.minimal_seed_nfp3``, and ``input.minimal_seed_nfp4``.
+2. Used ``method=auto``, CPU backend, ``max_mode=3``, ``max_nfev=2``, no mode
+   continuation, reduced QI resolution, and no plot generation.  These runs are
+   policy/stability checks, not promotion-quality QI optimizations.
+3. Stored outputs outside the repository under
+   ``/Users/rogeriojorge/local/tests/vmec_jax_qi_public_auto_smoke_aed9132*``.
+
+Results obtained:
+
+1. All four field-period cases resolved to ``method=scipy`` with
+   ``method_auto_reason=auto:qi-dense-default``.
+2. No run produced ``nonfinite`` profile counters, confirming that the public
+   ``method=auto`` path avoids the matrix-free QI JVP guard.
+3. Reduced smoke metrics:
+   ``NFP1`` wall ``41.76 s``, smooth QI ``1.036``, legacy QI ``1.310``,
+   mirror ``0.2896``, aspect ``5.010``, mean iota ``-7.69e-4``.
+   ``NFP2`` wall ``27.78 s``, smooth QI ``1.075``, legacy QI ``1.161``,
+   mirror ``0.2962``, aspect ``5.004``, mean iota ``-9.21e-5``.
+   ``NFP3`` wall ``40.60 s``, smooth QI ``1.263``, legacy QI ``1.305``,
+   mirror ``0.2511``, aspect ``5.001``, mean iota ``1.63e-4``.
+   ``NFP4`` wall ``40.64 s``, smooth QI ``1.724``, legacy QI ``1.440``,
+   mirror ``0.2103``, aspect ``5.000``, mean iota ``1.54e-5``.
+4. As expected at ``max_nfev=2``, none of these smoke runs promoted: the
+   minimized cases remain near zero iota and far from precise QI.
+
+Best next steps:
+
+1. Use the safe ``method=auto`` default for beginner/public QI examples.
+2. For promotion-quality README artifacts, rerun NFP1/2/3/4 with the stronger
+   staged seed/continuation policy and enough iterations to move iota and QI,
+   not the two-evaluation smoke budget.
+3. Keep the production QI artifact gate strict: no README promotion unless
+   raw-seed provenance, QI, iota, mirror, elongation, and aspect gates pass.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%; arbitrary adaptive
+  branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.2%.
+- Single-stage coil-only optimization: 99.5%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.6%; QI public-driver default no longer enters the
+  slow matrix-free JVP-guard path.
+- CI/runtime/coverage hygiene: 100%; latest pushed CI for ``aed9132`` is still
+  running at the time of this entry.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 78% artifact-complete, 0% promoted; the
+  public driver is safer, but promotion-quality NFP1/2/3/4 artifacts still need
+  full staged reruns.
