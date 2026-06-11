@@ -660,6 +660,8 @@ def _minimal_or_circular_qi_case(
             # still run and can promote better candidates, but a failed cleanup
             # must not replace a lower-QI reference candidate with a worse
             # final state.
+            "prefer_aspect_candidates": False,
+            "prefer_lowest_qi_candidate": True,
             "accept_as_baseline": True,
         }
     )

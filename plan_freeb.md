@@ -17459,3 +17459,61 @@ Completion:
   now have a concrete policy fix to test, but NFP1/2/3 artifacts remain blocked.
 - CPU/GPU performance: 99.4% overall; scalar cleanup exposes repeated exact
   tape builds as the next runtime target.
+
+### 2026-06-11 QI Lowest-QI Reference Selection
+
+Steps taken:
+
+1. Harvested the patched NFP=2 ``auto_scalar`` GPU diagnostic from commit
+   ``4c4f550``.
+2. Confirmed the QI-preserving ceiling is now active in scalar cleanup, but the
+   accepted scalar proposal still lowers aspect by worsening QI and is therefore
+   correctly rejected by provenance gates.
+3. Changed minimal/circular QI reference preconditioning to select the
+   lowest-QI reference candidate first instead of narrowing to aspect-preferred
+   candidates.
+4. Added a regression assertion that generated staged-runner reference JSON
+   keeps ``prefer_aspect_candidates=False`` and
+   ``prefer_lowest_qi_candidate=True`` for minimal-seed QI cases.
+
+Results obtained:
+
+1. The previous scalar diagnostic remained at the baseline state:
+   ``aspect=8.00194``, ``mean_iota=-0.44720``, legacy QI
+   ``2.904e-3``, mirror ``0.24065``, elongation ``4.497``.
+2. The rejected scalar candidate moved aspect toward 6 but pushed iota to the
+   floor and worsened QI, so the correct next policy is QI-first selection plus
+   gentler aspect correction rather than a larger aspect pull.
+3. Focused lint passed:
+   ``python -m ruff check examples/optimization/qi_optimization_cases.py tests/test_qi_staged_runner.py tests/test_minimal_seed_showcase.py``.
+4. Focused tests passed:
+   ``python -m pytest -q tests/test_qi_staged_runner.py tests/test_minimal_seed_showcase.py -q``
+   with 31 passing tests.
+
+Best next steps:
+
+1. Commit and push the lowest-QI reference-selection policy.
+2. Launch a clean NFP=2 GPU diagnostic from the new commit and confirm the
+   reference selector promotes the lower-QI lambda candidate before scalar
+   cleanup.
+3. If QI is preserved but aspect stalls, implement a staged aspect-ramp cleanup
+   schedule with strict QI ceilings rather than a single aspect-dominated stage.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.0%.
+- Single-stage coil-only optimization: 99.0%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.4%; QI scalar cleanup remains the live high-mode
+  exact-callback stress case.
+- CI/runtime/coverage hygiene: 100% locally for the touched shard; remote CI
+  to be checked after push.
+- Docs/release hygiene: 100% for current docs; QI README artifacts remain
+  intentionally blocked.
+- QI minimal-seed README artifacts: 64% artifact-complete, 0% promoted.
