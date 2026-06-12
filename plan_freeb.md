@@ -19379,6 +19379,50 @@ Completion:
   promoted for strict gates; best balanced local candidate now satisfies QI but
   misses the mirror target by about ``0.012``.
 
+### 2026-06-11 QI Targeted Polish Outcome
+
+Steps taken:
+
+1. Ran a final mirror-polish from the QI-gated candidate
+   ``al_lcfs_bridge_final_balance``.
+2. Ran the opposite-direction QI-heavy polish from the raw mirror-best branch
+   ``al_all_auto_on_a12_w080``.
+3. Re-aggregated targeted diagnostics for the QI and mirror tradeoff.
+
+Results obtained:
+
+1. Mirror-polish after the QI gate preserved strict QI but did not cross the
+   mirror threshold: smooth QI ``1.617e-3``, legacy ``5.58e-4``,
+   mirror ``0.3120``, elongation ``4.92``, ``iota=-0.495``, aspect ``6.388``.
+2. QI-heavy polish from the raw mirror branch preserved excellent mirror but
+   did not recover QI: smooth QI ``4.321e-3``, legacy ``1.740e-3``,
+   mirror ``0.2519``, elongation ``5.09``, ``iota=-0.487``, aspect ``6.366``.
+3. The completed scans therefore identify a narrow Pareto front rather than a
+   single strict-pass candidate:
+   QI-passing side has mirror ``0.312--0.340``; mirror-passing side has smooth
+   QI ``3.18e-3--6.55e-3``.
+
+Best next steps:
+
+1. Implement or prototype a filtered trust-region acceptance rule for QI:
+   from a QI-passing state, accept only trial points that reduce mirror while
+   keeping smooth/legacy QI below gate; from a mirror-passing state, accept only
+   trial points that reduce QI while keeping mirror below gate.
+2. Add step-size throttling/line-search over the scalar-trust direction rather
+   than relying on weighted least-squares objective balance alone.
+3. Only after that filtered acceptance exists, re-run the bridge and raw-mirror
+   branches with short budgets; simple larger weights have been exhausted.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- QI minimal-seed README artifacts: 89% infrastructure/artifact-complete, 0%
+  promoted for strict gates; best candidate is scientifically close but still
+  misses mirror by ``0.012``.
+
 ### 2026-06-11 QI Minimal-Seed NFP2 Single-Pass Triage
 
 Steps taken:
