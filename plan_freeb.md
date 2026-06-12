@@ -20896,3 +20896,46 @@ Completion:
   0% promoted; full NFP1/2/3/4 rerun is active on ``office``.
 - CI/runtime/coverage hygiene: 100%; latest CI still running after the plan
   update.
+
+### 2026-06-12 Optional VMEC2000 Fast Parity Recheck
+
+Steps taken:
+
+1. Ran local CPU physics/diagnostic shards:
+   ``tests/test_glasser_resistive_interchange.py``,
+   ``tests/test_glasser_diagnostic_example.py``,
+   ``tests/test_free_boundary_beta_response_validation.py``, and
+   ``tests/test_free_boundary_essos_coil_parity.py``.
+2. Confirmed the default VMEC2000 tests skip unless
+   ``VMEC2000_INTEGRATION=1`` is set.
+3. Found the local VMEC2000 executable at ``~/bin/xvmec2000``.
+4. Ran the bounded optional VMEC2000 executable gates with
+   ``VMEC2000_INTEGRATION=1``:
+   ``test_fast_vmec2000_stage_trace_validation_cases`` and
+   ``test_vmec2000_converged_wout_diagnostics_validation``.
+
+Results obtained:
+
+1. Glasser/``D_R`` and free-boundary finite-beta/ESSOS tests passed, with only
+   expected optional external-asset skips.
+2. The fast VMEC2000 stage-trace gate passed.
+3. The promoted converged WOUT diagnostics VMEC2000 gate passed for its three
+   bounded cases.
+
+Best next steps:
+
+1. Keep broader VMEC2000/free-boundary parity expansion limited to bounded,
+   finite-positive physical WOUT fixtures.
+2. Do not promote optional nightly free-boundary WOUT parity as a default CI
+   blocker.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- VMEC parity and physics gates: 99.75%; local optional VMEC2000 executable
+  gates passed for the bounded promoted cases.
+- CI/runtime/coverage hygiene: 100%; the optional gates remain opt-in to keep
+  default CI runtime bounded.
