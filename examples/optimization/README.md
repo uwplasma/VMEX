@@ -110,7 +110,7 @@ NFP rows indicate open validation work rather than successful hidden results.
 
 ```bash
 PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
-  --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
+  --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3 \
   --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
   --policy continuation --max-mode 5 --ess on \
   --max-nfev 70 --continuation-nfev 20 \
@@ -119,6 +119,9 @@ PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_s
   --ess-alpha 1.2 --case-timeout-s 7200 --rerun
 PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py --publication-matrix
 ```
+
+Run QI rows separately with their reviewed policy modes (`qi_nfp1:3`,
+`qi_nfp2:5`, `qi_nfp3:4`, `qi_nfp4:3`) or use the per-NFP scripts below.
 
 For a bounded smoke render after one case or partial timeout, keep roots explicit
 and filter to the attempted case:

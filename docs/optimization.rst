@@ -121,7 +121,7 @@ reviewed case-gated QI coverage instead of the uniform common-minimal matrix:
 .. code-block:: bash
 
    PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
-     --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3,qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
+     --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3 \
      --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
      --policy continuation --max-mode 5 --ess on \
      --max-nfev 70 --continuation-nfev 20 \
@@ -280,14 +280,18 @@ Regenerate the QI rows and then render the figure/CSV with:
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
-     --cases qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
-     --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
-     --policy continuation --max-mode 5 --ess on \
-     --max-nfev 70 --continuation-nfev 20 \
-     --inner-max-iter 550 --inner-ftol 1e-10 \
-     --trial-max-iter 550 --trial-ftol 1e-10 \
-     --ess-alpha 1.2 --case-timeout-s 7200 --rerun
+   for spec in qi_nfp1:3 qi_nfp2:5 qi_nfp3:4 qi_nfp4:3; do
+     case_name=${spec%%:*}
+     mode=${spec##*:}
+     PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
+       --cases "$case_name" \
+       --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
+       --policy continuation --max-mode "$mode" --ess on \
+       --max-nfev 70 --continuation-nfev 20 \
+       --inner-max-iter 550 --inner-ftol 1e-10 \
+       --trial-max-iter 550 --trial-ftol 1e-10 \
+       --ess-alpha 1.2 --case-timeout-s 7200 --rerun
+   done
 
 Render already-reviewed artifact directories without launching new optimization
 jobs with:
