@@ -449,6 +449,54 @@ Completion:
   result.
 - Docs/release hygiene: 100%.
 
+### 2026-06-12 CI and Bounded VMEC2000 Parity Completion
+
+Steps taken:
+
+1. Let GitHub Actions finish on ``1c61d4a`` after the mirror035 working-seed
+   checkpoint.
+2. Collected the optional VMEC2000 bounded parity worker results for the fast
+   VMEC2000 validation cases, LASYM finite-beta/free-boundary response, and
+   W7-X generated-mgrid WOUT-level fixture.
+
+Results obtained:
+
+1. CI on ``1c61d4a`` completed successfully.
+2. Optional VMEC2000 command 1 passed all promoted bounded rows:
+   ``3 passed in 1038.04 s``.
+3. Optional VMEC2000 W7-X generated-mgrid active-vacuum finite-positive WOUT
+   fixture passed: ``1 passed`` in ``9.78 s`` with only external
+   ``pyoculus`` deprecation warnings.
+4. No optional VMEC2000 test skipped or failed; no files were modified by the
+   worker.
+
+Best next steps:
+
+1. Keep the successful W7-X generated-mgrid fixture as the promoted external
+   WOUT-level parity row; keep LP-QA forced-active generated-mgrid rows as
+   diagnostics only until they satisfy bounded positive-geometry requirements.
+2. Let the corrected ``office`` mirror035 QI run finish and decide whether to
+   promote artifacts or tune the two direct mode-5 stages.
+3. Consider splitting the optional VMEC2000 command or marking its expected
+   runtime clearly in docs, since the bounded parity rows are correct but slow
+   at about ``17`` minutes.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- QI minimal-seed README artifacts: 91% artifact-ready, 0% re-promoted while
+  the corrected office artifact is still running.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.3%.
+- Single-stage coil-only optimization: 99.0%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+
 ### 2026-06-12 Balanced NFP2 Working-Seed Polish Fix
 
 Steps taken:
