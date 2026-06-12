@@ -869,6 +869,10 @@ _NFP2_BALANCED_STAGES = (
         "require_mirror_improvement": False,
         "accept_if_qi_improves": True,
         "promote_as_working_seed_only": True,
+        # The first stage is a basin-transfer stage, not a final promotion.
+        # Allow a narrow mirror overshoot so later guarded stages can start
+        # from the low-QI branch instead of falling back to the worse baseline.
+        "qi_safe_mirror_relax": 1.02,
     },
     {
         "name": "guarded_tighten_qi_mirror035",

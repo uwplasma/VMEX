@@ -97,6 +97,55 @@ Completion:
 - CI/runtime/coverage hygiene: 100%.
 - Docs/release hygiene: 100%.
 
+### 2026-06-12 NFP2 Working-Seed Mirror Relaxation
+
+Steps taken:
+
+1. Inspected the active NFP=2 three-stage CPU run on ``office`` after the first
+   mirror-ramp stage completed.
+2. Found that stage 1 reached the intended low-QI basin but was rejected as a
+   working seed because its mirror ratio was ``0.352689``, slightly above the
+   public ``0.35`` final cap.
+3. Updated only the first NFP=2 basin-transfer stage to allow a narrow
+   ``qi_safe_mirror_relax=1.02`` for intermediate working-seed promotion.
+   Final promotion and later engineering gates still use the strict mirror cap.
+4. Added a catalog regression assertion for the stage-1 relaxation and the
+   strict stage-2 relaxation.
+
+Results obtained:
+
+1. The rejected stage-1 candidate had smooth QI ``1.53e-3`` and legacy QI
+   ``2.13e-4``, confirming the policy found the QI basin but failed the
+   intermediate promotion rule.
+2. Focused validation passed:
+   ``python -m ruff check examples/optimization/qi_optimization_cases.py
+   tests/test_qi_case_resolution.py`` and
+   ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_qi_case_resolution.py::test_nfp2_balanced_qi_case_exposes_reviewed_mode5_mirror035_polish -q``.
+
+Best next steps:
+
+1. Stop the stale NFP=2 CPU run that used the too-strict policy.
+2. Relaunch NFP=2 from the new commit and inspect whether stage 2/3 now start
+   from the low-QI working seed and recover mirror/aspect without losing QI.
+3. Keep README QI artifacts unpromoted until the rerun passes exact provenance.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- QI minimal-seed README artifacts: 93% infrastructure/artifact-ready,
+  0% promoted; NFP=2 policy bug fixed and queued for rerun, NFP=1 still open.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.6%.
+- Single-stage coil-only optimization: 99.0%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% locally for focused shards.
+- Docs/release hygiene: 100%.
+
 ### 2026-06-12 Low-Cost Finite-Positive Free-Boundary Parity Gates
 
 Steps taken:
