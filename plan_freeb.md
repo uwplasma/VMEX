@@ -51,12 +51,30 @@ Results obtained:
    ``39 passed, 4 skipped`` for external-field/mgrid/direct-coil parity tests
    and ``123 passed, 1 skipped, 1 xfailed`` for exact free-boundary and
    coil-QS smoke tests.
+5. The latest pushed CI run for ``45025a0`` completed successfully.
+6. Additional bounded parity/physics gates passed locally:
+   ``tests/test_wout_beta_eqfor_bundled_parity.py`` and
+   ``tests/test_validation_gates_extra.py`` (``11 passed``),
+   selected finite-beta/LASYM physics gates (``3 passed``),
+   converged-WOUT matrix and fixture inventory gates (``19 passed``), and the
+   bounded VMEC2000 W7-X generated-``mgrid`` finite-positive WOUT fixture
+   (``1 passed``).
+7. A first office QI matrix launch from ``0aba9fe`` reached NFP=1 but failed
+   promotion and hit XLA CUDA command-buffer OOM in mirror diagnostics.  It was
+   stopped and relaunched from ``45025a0`` with
+   ``XLA_FLAGS=--xla_gpu_enable_command_buffer=`` and
+   ``XLA_CLIENT_MEM_FRACTION=0.75``.
+8. The restarted office matrix is active at
+   ``/home/rjorge/local/tests/qi_readme_matrix_45025a0_nocmd``.  It selected
+   the NFP=1 ``lambda=1.010`` reference-family candidate, replayed the accepted
+   baseline, and entered the real ``max_nfev=70`` QI cleanup stage without the
+   previous command-buffer OOM.
 
 Best next steps:
 
-1. Commit/push the QI preset/example wiring, then launch the full
-   ``qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4`` artifact matrix on ``ssh office`` from
-   that exact commit.
+1. Let the active office QI matrix finish, then audit NFP=1/2/3/4 for raw
+   minimal-seed provenance, QI gates, mirror/elongation/iota/aspect gates, and
+   Boozer contour quality.
 2. Promote the README QI panel only after provenance checks confirm raw
    ``input.minimal_seed_nfp*`` initial WOUTs and physics gates pass.
 3. Continue bounded VMEC2000/direct-coil/mgrid parity with finite-positive WOUT
@@ -78,8 +96,9 @@ Completion:
 - CPU/GPU performance: 99.4%.
 - CI/runtime/coverage hygiene: 100%.
 - Docs/release hygiene: 100%.
-- QI minimal-seed README artifacts: 62% policy-ready, still 0% promoted for
-  NFP1/2/3 until the rerun is reviewed.
+- QI minimal-seed README artifacts: 70% policy-ready, active office run in
+  progress, still 0% promoted until all NFP rows pass provenance and physics
+  gates.
 
 ### 2026-06-10 Open-Lane Assessment and Aspect-6 QI Remote Launch
 
