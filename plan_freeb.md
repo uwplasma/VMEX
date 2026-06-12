@@ -12,6 +12,65 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-12 QI Public NFP Preset Wiring and Focused Checks
+
+Steps taken:
+
+1. Rechecked ``main`` at commit ``6cb26ed`` with a clean working tree.
+2. Updated the public ``qi_nfp2`` minimal-seed showcase mapping to use the
+   reviewed ``minimal_nfp2_qi_balanced_mirror035`` preset instead of the older
+   exploratory ``minimal_nfp2_qi`` preset.
+3. Added per-NFP QI example entry points:
+   ``QI_optimization_nfp1.py``, ``QI_optimization_nfp2.py``,
+   ``QI_optimization_nfp3.py``, and ``QI_optimization_nfp4.py``.  These expose
+   seed/reference/output/policy variables and delegate to the editable
+   ``QI_optimization.py`` driver with explicit command-line controls.
+4. Updated README and optimization docs so users can reproduce each public QI
+   field-period case individually and so the NFP=2 README row is documented as
+   the balanced mode-5 mirror<=0.35 preset.
+5. Added focused tests that lock the public NFP2 showcase alias to the balanced
+   preset and verify the new per-NFP QI example scripts.
+
+Results obtained:
+
+1. Ruff passed on the edited showcase script, new QI example scripts, helper,
+   and focused tests.
+2. Focused QI/docs/example tests passed:
+   ``tests/test_minimal_seed_showcase.py``,
+   ``tests/test_optimization_examples.py``,
+   ``tests/test_qi_case_resolution.py``,
+   ``tests/test_qi_staged_runner.py``, and
+   ``tests/test_qi_readme_cases.py``.
+
+Best next steps:
+
+1. Commit/push the QI preset/example wiring, then launch the full
+   ``qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4`` artifact matrix on ``ssh office`` from
+   that exact commit.
+2. Promote the README QI panel only after provenance checks confirm raw
+   ``input.minimal_seed_nfp*`` initial WOUTs and physics gates pass.
+3. Continue bounded VMEC2000/direct-coil/mgrid parity with finite-positive WOUT
+   fixtures only.
+4. Keep adaptive full-loop differentiation claims conservative until a true
+   fingerprint-gated adaptive AD-vs-central-FD gate exists.
+
+Need from user:
+
+Nothing right now.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%; arbitrary adaptive
+  host-controller branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.0%.
+- Single-stage coil-only optimization: 99.0%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 62% policy-ready, still 0% promoted for
+  NFP1/2/3 until the rerun is reviewed.
+
 ### 2026-06-10 Open-Lane Assessment and Aspect-6 QI Remote Launch
 
 Steps taken:

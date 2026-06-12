@@ -272,7 +272,8 @@ stage followed by a guarded QI tightening stage.  This path avoids the older
 expensive mode-3 aspect ramp while preserving smooth and legacy QI gates below
 ``2e-3`` and the public mirror-ratio cap ``0.35``.  Use this preset when
 reproducing the best balanced NFP=2 QI example; use ``minimal_nfp2_qi`` for
-faster exploratory runs.
+faster exploratory runs.  The public showcase alias ``qi_nfp2`` uses this
+balanced preset.
 Regenerate the QI rows and then render the figure/CSV with:
 
 .. code-block:: bash
@@ -292,6 +293,20 @@ jobs with:
 .. code-block:: bash
 
    PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
+
+Run one QI field-period example at a time with:
+
+.. code-block:: bash
+
+   python examples/optimization/QI_optimization_nfp1.py
+   python examples/optimization/QI_optimization_nfp2.py
+   python examples/optimization/QI_optimization_nfp3.py
+   python examples/optimization/QI_optimization_nfp4.py
+
+Each file exposes the VMEC seed, same-NFP reference input, output directory,
+and policy case as ordinary top-level variables before delegating to
+``QI_optimization.py``.  Inspect ``QI_optimization.py`` for the objective tuple
+assembly, optimizer controls, result saving, and plotting workflow.
 
 The renderer reads reviewed local or release-asset WOUT files plus tracked
 diagnostics, preconditioner summaries, and raw per-stage ``history.json`` files.

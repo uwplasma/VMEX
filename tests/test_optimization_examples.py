@@ -19,6 +19,12 @@ PRIMARY_OPTIMIZATION_SCRIPTS = (
     ROOT / "examples" / "optimization" / "QI_optimization.py",
 )
 QI_SEED_OPTIMIZATION_SCRIPT = ROOT / "examples" / "optimization" / "QI_optimization_seed.py"
+QI_MINIMAL_NFP_SCRIPTS = {
+    1: ROOT / "examples" / "optimization" / "QI_optimization_nfp1.py",
+    2: ROOT / "examples" / "optimization" / "QI_optimization_nfp2.py",
+    3: ROOT / "examples" / "optimization" / "QI_optimization_nfp3.py",
+    4: ROOT / "examples" / "optimization" / "QI_optimization_nfp4.py",
+}
 FORBIDDEN_SOLVE_PHYSICS_KWARGS = {
     "target_aspect",
     "target_iota",
@@ -366,6 +372,52 @@ def test_qi_seed3127_example_exposes_reviewed_readme_preset(tmp_path: Path) -> N
     assert "--inner-max-iter 450" in command_text
     assert "--trial-max-iter 450" in command_text
     assert "--make-plots" in command
+
+
+def test_qi_minimal_seed_nfp_examples_expose_public_presets(tmp_path: Path) -> None:
+    expected_policy = {
+        1: "minimal_nfp1_qi",
+        2: "minimal_nfp2_qi_balanced_mirror035",
+        3: "minimal_nfp3_qi",
+        4: "minimal_nfp4_qi",
+    }
+    expected_reference = {
+        1: "input.nfp1_QI",
+        2: "input.nfp2_QI",
+        3: "input.nfp3_QI_fixed_resolution_final",
+        4: "input.nfp4_QI_finite_beta",
+    }
+
+    for nfp, script in QI_MINIMAL_NFP_SCRIPTS.items():
+        spec = importlib.util.spec_from_file_location(f"qi_optimization_nfp{nfp}_for_test", script)
+        assert spec is not None
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        example = module.EXAMPLE
+        boundary_path = tmp_path / f"boundary_nfp{nfp}.json"
+        stages_path = tmp_path / f"stages_nfp{nfp}.json"
+        command = module.build_qi_optimization_command(example, boundary_path, stages_path)
+        command_text = " ".join(command)
+
+        assert module.INPUT_FILE.name == f"input.minimal_seed_nfp{nfp}"
+        assert module.REFERENCE_INPUT_FILE.name == expected_reference[nfp]
+        assert module.POLICY_CASE == expected_policy[nfp]
+        assert example.target_aspect == pytest.approx(6.0)
+        assert example.max_mirror_ratio == pytest.approx(0.35)
+        assert example.max_elongation == pytest.approx(10.0)
+        assert example.max_nfev == 70
+        assert example.inner_max_iter == 550
+        assert example.trial_max_iter == 550
+        assert "--use-simple-seed" in command
+        assert "--use-target-helicity-seed" in command
+        assert "--use-reference-family-seed" in command
+        assert "--accept-boundary-reference-baseline" in command
+        assert f"--input-file examples/data/input.minimal_seed_nfp{nfp}" in command_text
+        assert f"--reference-input examples/data/{expected_reference[nfp]}" in command_text
+        assert "--max-mode 5" in command_text
+        assert "--target-aspect 6" in command_text
 
 
 def test_qi_case_resolver_respects_editable_default_and_env(monkeypatch) -> None:

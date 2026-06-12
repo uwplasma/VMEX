@@ -112,7 +112,7 @@ SHOWCASE_CASES: dict[str, MinimalSeedCase] = {
         input_file=DATA_DIR / "input.minimal_seed_nfp2",
         qi_qp_preseed=False,
         qi_jit_booz=True,
-        qi_policy_case="minimal_nfp2_qi",
+        qi_policy_case="minimal_nfp2_qi_balanced_mirror035",
         qi_reference_input=DATA_DIR / "input.nfp2_QI",
     ),
     "qi_nfp3": MinimalSeedCase(

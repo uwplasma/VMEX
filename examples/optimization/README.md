@@ -135,9 +135,9 @@ for a slower local CPU-only reproduction.  Keep `--rerun` for a fresh local repr
 successful `showcase_case.json` rows are reused and can leave old outputs on
 disk; the renderer skips known-stale rows by default, and `--include-stale`
 should be reserved for debugging.  Current common-minimal QI rows use policy
-case names `minimal_nfp1_qi`, `minimal_nfp2_qi`, `minimal_nfp3_qi`, and
-`minimal_nfp4_qi`; the public aliases `nfp1_qi` through `nfp4_qi` now point to
-those same minimal-seed cases.  Old QI rows under
+case names `minimal_nfp1_qi`, `minimal_nfp2_qi_balanced_mirror035`,
+`minimal_nfp3_qi`, and `minimal_nfp4_qi`; the public aliases `nfp1_qi` through
+`nfp4_qi` point to those minimal-seed cases in the showcase script.  Old QI rows under
 `.../continuation/qp_preseed/...` or explicitly named far-seed cases such as
 `qi_stel_seed_3127` predate the staged dispatch.  Old QA/QP rows without
 `reference_preseed` metadata also predate the current reference-family preseed
@@ -145,6 +145,19 @@ policy.
 When a case hits `--case-timeout-s`, the runner terminates the worker process
 group, including solver or GPU descendant processes, before writing the timeout
 result.
+
+Run the public QI examples one NFP at a time with:
+
+```bash
+python examples/optimization/QI_optimization_nfp1.py
+python examples/optimization/QI_optimization_nfp2.py  # reviewed balanced NFP=2 preset
+python examples/optimization/QI_optimization_nfp3.py
+python examples/optimization/QI_optimization_nfp4.py
+```
+
+Those scripts only define seed/reference/policy variables and then delegate to
+`QI_optimization.py`, where the objective tuples, optimizer call, output saving,
+and plotting workflow remain visible.
 
 ## Result Object Pattern
 
