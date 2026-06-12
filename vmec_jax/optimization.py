@@ -160,6 +160,10 @@ def extend_boundary_for_max_mode(
     boundary: "BoundaryCoeffs",
     max_mode: int,
     *,
+    active_max_m: int | None = None,
+    active_max_n: int | None = None,
+    min_mpol: int | None = None,
+    min_ntor: int | None = None,
     required_mpol: int | None = None,
     required_ntor: int | None = None,
 ) -> tuple:
@@ -189,6 +193,14 @@ def extend_boundary_for_max_mode(
         have ``mpol = ntor = max(max(mpol_cur, ntor_cur), max(5, max_mode + 2))``
         so that the VMEC solver resolution (and hence the QS metric
         normalisation) is independent of *max_mode*.
+    active_max_m, active_max_n:
+        Optional anisotropic active boundary limits.  These keep toroidal-first
+        or poloidal-first probes from re-extending the inactive direction just
+        because the scalar stage ``max_mode`` is large.
+    min_mpol, min_ntor:
+        Optional per-axis minimum floors.  The default preserves the historical
+        ``5`` floor; stage builders pass the already-selected input resolution
+        so an explicit ``VMEC_MPOL/NTOR`` choice is not undone here.
     required_mpol, required_ntor:
         Optional explicit VMEC spectral floors for diagnostic sweeps that
         decouple internal ``MPOL``/``NTOR`` from active boundary mode limits.
@@ -210,8 +222,12 @@ def extend_boundary_for_max_mode(
     # QS metric normalisation) is independent of max_mode.  Without this floor
     # max_mode=1 would run with mpol=3 and give a different initial QS value
     # than max_mode=2/3, making cross-mode comparisons misleading.
-    need_mpol = max(5, max_mode + 2)  # VMEC mpol = max_m + 1; add extra headroom
-    need_ntor = max(5, max_mode + 2)
+    active_m = int(max_mode if active_max_m is None else active_max_m)
+    active_n = int(max_mode if active_max_n is None else active_max_n)
+    mpol_floor = 5 if min_mpol is None else int(min_mpol)
+    ntor_floor = 5 if min_ntor is None else int(min_ntor)
+    need_mpol = max(mpol_floor, active_m + 2)  # VMEC mpol = max_m + 1; add extra headroom
+    need_ntor = max(ntor_floor, active_n + 2)
     if required_mpol is not None:
         need_mpol = max(need_mpol, int(required_mpol))
     if required_ntor is not None:

@@ -1708,6 +1708,15 @@ def stage_promotes_candidate(
     return promotion
 
 
+def _final_qi_stage_modes(*, ctx: QIOptimizationContext | None = None) -> tuple:
+    """Return the final active QI stage descriptor without forcing square modes."""
+
+    stage_modes = tuple(_ctx(ctx, "stage_modes"))
+    if stage_modes:
+        return (stage_modes[-1],)
+    return (_ctx(ctx, "max_mode"),)
+
+
 def run_qi_stage_policy(
     active_input_file,
     output_dir,
@@ -1770,12 +1779,13 @@ def run_qi_stage_policy(
         boundary_reference_preconditioner.get("accept_as_baseline", False)
     ):
         baseline_output_dir = Path(output_dir) / "boundary_reference_baseline"
+        baseline_stage_modes = _final_qi_stage_modes(ctx=ctx)
         print("\nRecording boundary-reference candidate as accepted baseline ...")
         write_qi_stage_checkpoint(
             baseline_output_dir,
             stage_index=0,
             stage_name="boundary_reference_baseline",
-            stage_modes=(_ctx(ctx, "max_mode"),),
+            stage_modes=baseline_stage_modes,
             stage_result=None,
             diagnostics=_boundary_reference_checkpoint_diagnostics(output_dir, active_input_file),
             promotion={"stage_pending": True, "baseline": True},
@@ -1788,7 +1798,7 @@ def run_qi_stage_policy(
             make_qi_problem({"qi_weight": _ctx(ctx, "qi_weight"), "qi_ceiling_weight": 0.0}),
             max_nfev=1,
             label=f"QI boundary-reference baseline (max_mode={_ctx(ctx, 'max_mode')})",
-            stage_modes=(_ctx(ctx, "max_mode"),),
+            stage_modes=baseline_stage_modes,
             method="scipy_matrix_free",
             use_mode_continuation=False,
             scipy_lsmr_maxiter=_ctx(ctx, "scipy_lsmr_maxiter"),
@@ -1799,7 +1809,7 @@ def run_qi_stage_policy(
             baseline_output_dir,
             stage_index=0,
             stage_name="boundary_reference_baseline",
-            stage_modes=(_ctx(ctx, "max_mode"),),
+            stage_modes=baseline_stage_modes,
             stage_result=accepted_result,
             diagnostics={},
             promotion={"qi_cleanup_promoted": True, "baseline": True, "diagnostics_pending": True},
@@ -1816,7 +1826,7 @@ def run_qi_stage_policy(
             baseline_output_dir,
             stage_index=0,
             stage_name="boundary_reference_baseline",
-            stage_modes=(_ctx(ctx, "max_mode"),),
+            stage_modes=baseline_stage_modes,
             stage_result=accepted_result,
             diagnostics=accepted_seed_diagnostics,
             promotion={"qi_cleanup_promoted": True, "baseline": True},

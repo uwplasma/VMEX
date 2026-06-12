@@ -534,13 +534,21 @@ def test_build_quasi_isodynamic_stage_wires_shared_field_residuals(monkeypatch) 
         "booz_xform_jax",
         SimpleNamespace(prepare_booz_xform_constants=fake_prepare_booz_xform_constants),
     )
-    monkeypatch.setattr(workflow, "truncate_indata_boundary_modes", lambda indata, *, max_mode: f"{indata}-m{max_mode}")
+    monkeypatch.setattr(
+        workflow,
+        "truncate_indata_boundary_modes",
+        lambda indata, *, max_mode, max_m=None, max_n=None: f"{indata}-m{max_mode}",
+    )
     monkeypatch.setattr(workflow, "build_static", lambda cfg: static)
     monkeypatch.setattr(workflow, "boundary_from_indata", lambda indata, modes, *, apply_m1_constraint: f"boundary:{indata}")
     monkeypatch.setattr(
         workflow,
         "extend_boundary_for_max_mode",
-        lambda indata, static_arg, boundary, stage_mode: (f"extended:{indata}", static_arg, f"extended:{boundary}"),
+        lambda indata, static_arg, boundary, stage_mode, **kwargs: (
+            f"extended:{indata}",
+            static_arg,
+            f"extended:{boundary}",
+        ),
     )
     monkeypatch.setattr(workflow, "boundary_input_from_indata", lambda indata, modes: f"boundary_input:{indata}")
     monkeypatch.setattr(
