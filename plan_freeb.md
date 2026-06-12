@@ -19642,3 +19642,62 @@ Completion:
 - QI minimal-seed README artifacts: 87% artifact-complete, 0% re-promoted
   after the gate change; the best NFP2 preset is now executable through the
   staged-runner plumbing.
+
+### 2026-06-11 Local CPU Balanced NFP2 Preset Runtime Probe
+
+Steps taken:
+
+1. Launched the executable ``minimal_nfp2_qi_balanced_mirror032`` staged preset
+   from ``examples/data/input.minimal_seed_nfp2`` in scratch directory
+   ``/Users/rogeriojorge/local/tests/qi_balanced_mirror032_f16d0b3/run`` with
+   plots disabled, CPU backend forced, and a one-hour subprocess timeout.
+2. Monitored boundary-reference and stage checkpoints rather than waiting for
+   root finalization.
+3. Interrupted the run after about ``40`` minutes because it was still in the
+   third mode-3 local stage and had not reached the new mode-5
+   augmented-Lagrangian polish stages.
+
+Results obtained:
+
+1. The boundary-reference preconditioner completed all five NFP=2 lambdas and
+   selected ``lambda=1.01``: smooth QI ``4.36e-3``, legacy QI ``2.30e-3``,
+   mirror ``0.2408``, elongation ``4.62``, mean iota ``-0.455``, aspect
+   ``8.07``.
+2. Stage ``matrix_free_mirror032_aspect0p35`` completed ``20`` evaluations in
+   ``850`` s.  It passed smooth/legacy QI and iota but failed mirror:
+   smooth QI ``1.81e-3``, legacy QI ``3.23e-4``, mirror ``0.348``, elongation
+   ``4.75``, mean iota ``-0.442``, aspect ``7.94``.  The guard promoted it
+   only as an intermediate working seed, not as a final candidate.
+3. Stage ``matrix_free_mirror032_aspect0p75`` completed ``20`` evaluations in
+   ``794`` s.  It also passed QI/iota but failed mirror worse:
+   smooth QI ``1.75e-3``, legacy QI ``3.33e-4``, mirror ``0.393``, elongation
+   ``4.58``, mean iota ``-0.417``, aspect ``6.98``.
+4. Stage ``matrix_free_mirror032_aspect1p5`` had only the pending baseline
+   checkpoint when interrupted.  Root ``history.json`` and ``diagnostics.json``
+   were correctly absent, so no incomplete artifact can be mistaken for a
+   promoted result.
+5. This confirms the staged-runner/checkpoint path is correct, but the local
+   CPU mode-3 ladder is too slow to use as the routine route to the reviewed
+   mode-5 polish stages.
+
+Best next steps:
+
+1. Do not promote the local CPU partial artifact.
+2. For artifact refresh, start the balanced NFP2 preset from the reviewed
+   lower-mode working seed or run it on ``office`` with enough wall time to
+   reach the mode-5 AL stages.
+3. Consider a shorter public balanced policy that jumps directly from the
+   selected boundary-reference candidate to the two mode-5 AL stages, since the
+   aspect-ramp mode-3 stages are expensive and did not improve mirror.
+
+Need from user:
+
+No immediate action.  If you prefer the public balanced preset to skip the
+mode-3 aspect-ramp stages and go directly to mode-5 polish, I can make that
+policy change next.
+
+Completion:
+
+- QI minimal-seed README artifacts: 88% artifact-complete, 0% re-promoted
+  after the gate change.  The runnable preset and guards are validated, but the
+  local CPU artifact refresh remains too slow and did not reach final polish.
