@@ -449,6 +449,53 @@ Completion:
   result.
 - Docs/release hygiene: 100%.
 
+### 2026-06-12 Optional VMEC2000 Timeout Robustness
+
+Steps taken:
+
+1. Ran the bounded optional VMEC2000 executable parity subset after the
+   mirror035 QI policy change.  The W7-X generated-mgrid active-vacuum fixture
+   passed, but the broader optional VMEC2000 batch hit a timeout in the
+   free-boundary LASYM smoke gate when run concurrently with other local work.
+2. Reran the LASYM free-boundary gate alone with a higher explicit timeout; it
+   passed, confirming the issue was local runtime budget rather than a WOUT or
+   physics regression.
+3. Made ``VMEC2000_FREEB_LASYM_TIMEOUT_S`` configurable from the environment
+   and increased its default from ``60`` to ``120`` seconds.  The test remains
+   optional behind ``VMEC2000_INTEGRATION=1`` and therefore does not affect
+   normal CI runtime.
+
+Results obtained:
+
+1. ``python -m ruff check tests/test_vmec2000_exec_fast_validation.py`` passed.
+2. Without ``VMEC2000_INTEGRATION=1``, the targeted test still skips cleanly.
+3. With ``VMEC2000_INTEGRATION=1``, the targeted LASYM gate passed under the new
+   default timeout.
+4. GitHub Actions for commit ``8faf865`` completed successfully.
+
+Best next steps:
+
+1. Commit and push the optional timeout robustness fix.
+2. Continue the QI aspect-recovery probes; do not refresh README QI artifacts
+   until a candidate passes the full QI engineering gate.
+3. Keep bounded VMEC2000/direct-coil/mgrid parity fixtures finite-positive and
+   physical; do not promote unbounded long forced-active diagnostics.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- QI minimal-seed README artifacts: 93% artifact-ready, 0% re-promoted.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.4%.
+- Single-stage coil-only optimization: 99.0%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+
 ### 2026-06-12 QI-Improvement Working-Seed Handoff
 
 Steps taken:
