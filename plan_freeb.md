@@ -19227,6 +19227,87 @@ Completion:
   promoted; search infrastructure improved, but precise robust candidates
   remain unpromoted.
 
+### 2026-06-11 Broad QI Parameter Scan and CI Coverage Repair
+
+Steps taken:
+
+1. Confirmed main was clean at ``06de06b`` and the latest CI failed only in
+   the combined Python 3.11 coverage gate.
+2. Pulled the CI coverage report and found the failure was a tiny threshold
+   miss: exact line coverage was ``94.99%`` against the ``95.00%`` gate.
+3. Added real QI scan/parser/checkpoint tests covering bad stage-mode JSON,
+   bad boundary-reference JSON, bad mirror-ramp JSON, and selected
+   boundary-reference checkpoint diagnostics.
+4. Re-ran the exact local optimization-QI CI bucket:
+   ``587 passed, 6 skipped in 126.56s``.
+5. Pushed ``b1fc6e9`` (``Cover QI scan parser error paths``); GitHub Actions
+   reran green on main.
+6. Spawned parallel scan workers for:
+   constrained/augmented-Lagrangian mirror cleanup from the known working NFP2
+   QI seed, basin/reference escape from minimal seeds, and
+   direct/continuation/ESS/anisotropic-mode scans.
+7. Launched additional local and office scan lanes in scratch directories under
+   ``/Users/rogeriojorge/local/tests`` and ``~/local/tests`` on office.
+
+Results obtained so far:
+
+1. Direct high-mode cleanup from the known working seed is unreliable.  Local
+   scalar-trust runs fell into nonphysical/high-transform branches with
+   ``mean_iota`` of order ``50--80`` and objectives ``>3000``.  The first
+   office direct auto-scalar case likewise moved to a bad branch
+   (``mean_iota≈2.54``, objective ``≈2302``).
+2. The working-seed soft/AL cleanup family robustly preserves excellent QI but
+   does not yet satisfy mirror.  Typical results are smooth QI
+   ``≈1.67e-3``, legacy QI ``≈3.8e-4``, ``mean_iota≈-0.493``,
+   ``aspect≈6.40``, and mirror ``≈0.372``.
+3. The best bridge case so far is
+   ``al_lcfs_scalar_off_a08_w160``: smooth QI ``2.06e-3``,
+   legacy QI ``4.66e-4``, mirror ``0.346``, ``mean_iota≈-0.493``,
+   and ``aspect≈6.40``.  It is near the QI gate but still misses mirror.
+4. The minimal-seed boundary-reference lane finds a low-mirror branch
+   (mirror ``≈0.24``, ``|iota|≈0.45``), but QI remains too high
+   (smooth QI ``≈5.7e-3`` to ``6.0e-3``).  A matrix-free max-mode-5 cleanup
+   from that branch terminated immediately with zero step, indicating a
+   Jacobian/scaling or branch-local optimizer issue rather than a converged
+   optimum.
+5. A strong AL cleanup directly from the working seed damaged the branch
+   (smooth QI ``≈0.42``, legacy QI ``≈2.89``, ``mean_iota≈-0.303``), so
+   unconstrained high-penalty AL is not a safe promotion policy.
+
+Best next steps:
+
+1. Continue the active bounded scans and rank only completed finite diagnostics.
+2. Focus next QI attempts on the bridge branch
+   ``al_lcfs_scalar_off_a08_w160``: use QI-preserving mirror cleanup with
+   LCFS mirror pressure, softer AL penalties, and explicit branch guards.
+3. Treat direct max-mode-5 cleanup from the known working seed as rejected
+   unless a fingerprint/branch guard and trust-region step limiter are added.
+4. For the low-mirror reference branch, try scalar-trust/reduced-mode cleanup
+   instead of scipy matrix-free, since the first matrix-free attempt produced a
+   zero accepted step.
+5. Keep scan artifacts outside the repo and only promote a README/docs QI panel
+   after both QI and engineering gates pass from a simple/minimal seed.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%; arbitrary adaptive
+  branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.3%.
+- Single-stage coil-only optimization: 99.5%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100%; latest main CI is green after
+  ``b1fc6e9``.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 86% infrastructure/artifact-complete, 0%
+  promoted; current searches have identified bridge and low-mirror basins but
+  no single candidate satisfies both QI and mirror gates yet.
+
 ### 2026-06-11 QI Minimal-Seed NFP2 Single-Pass Triage
 
 Steps taken:
