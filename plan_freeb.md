@@ -528,7 +528,10 @@ Results obtained:
 1. The promoted ``aw075_g3`` office diagnostic passes the existing engineering
    gates without relaxing aspect: smooth QI ``1.607074833e-3``, legacy QI
    ``2.352156922e-4``, mirror ratio ``0.347714748``, aspect ``8.005514``,
-   and mean iota ``-0.446072``.
+   and mean iota ``-0.446072``.  The committed full preset rerun reproduced
+   this result with smooth QI ``1.607061585e-3``, legacy QI
+   ``2.352127353e-4``, mirror ratio ``0.347714541``, aspect ``8.005522``,
+   mean iota ``-0.446073``, and ``success=true``.
 2. Stronger aspect-guard variants from the ``aw200`` first-stage state did not
    improve the gate balance: ``aw200_g6`` passed QI/mirror but missed aspect
    at ``8.123``; ``aw200_g8`` passed QI/aspect but missed mirror at ``0.357``;
@@ -552,12 +555,14 @@ Results obtained:
 
 Best next steps:
 
-1. Commit and push the encoded aspect-first/guarded-tighten balanced preset.
-2. Run the full ``minimal_nfp2_qi_balanced_mirror035`` preset from the public
-   minimal seed on ``office`` using the committed code to verify the catalog
-   reproduces ``aw075_g3`` end-to-end.
-3. Only after the full committed preset passes, refresh
-   ``readme_qi_optimization_cases.png`` and the QI CSV/provenance artifacts.
+1. The encoded aspect-first/guarded-tighten balanced preset was committed and
+   pushed as ``e57f147``; the full office rerun from the public minimal seed
+   reproduced the passing branch end-to-end in about ``408`` s on GPU.
+2. Fix the README line-count hygiene failure from the ``e57f147`` CI run, then
+   push the README/plan-only follow-up.
+3. Refresh ``readme_qi_optimization_cases.png`` and the QI CSV/provenance
+   artifacts only after deciding whether to promote just the NFP=2 balanced row
+   or rerun the full NFP=1/2/3/4 README matrix.
 4. Keep arbitrary adaptive free-boundary branch differentiation conservative:
    current tests validate branch-local/fingerprint-gated paths, not arbitrary
    host adaptive branch selection.
