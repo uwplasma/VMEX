@@ -20671,3 +20671,41 @@ Completion:
 - CPU/GPU performance: 99.4%.
 - CI/runtime/coverage hygiene: 100%.
 - Docs/release hygiene: 100%.
+
+### 2026-06-12 DMerc / Glasser Objective AD-vs-FD Gate
+
+Steps taken:
+
+1. Added a fast public-wrapper finite-difference gate for ``vj.DMerc`` and
+   ``vj.GlasserResistiveInterchange``.  The test mocks the differentiable
+   Mercier term source so it validates the objective wrappers without adding a
+   slow VMEC solve to CI.
+2. Kept the existing algebraic ``D_R`` AD-vs-central-FD tests in place; the
+   new gate covers the remaining wrapper-level path used in optimization
+   objective tuples.
+
+Results obtained:
+
+1. ``python -m ruff check tests/test_glasser_resistive_interchange.py`` passed.
+2. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_glasser_resistive_interchange.py -q`` passed.
+
+Best next steps:
+
+1. Continue QI minimal-seed artifact work; the active NFP=2 GPU cleanup probe
+   is testing whether the low-QI working seed can be tightened to the final
+   mirror/aspect gate.
+2. Keep full-solve DMerc/``D_R`` parity as an optional external gate, not a
+   default CI blocker, to preserve CI runtime.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- VMEC parity and physics gates: 99.65%; the DMerc/``D_R`` public objective
+  AD-vs-FD gap is now covered by a fast CI-safe test.
+- CI/runtime/coverage hygiene: 100%; no slow solve was added.
+- QI minimal-seed README artifacts: 93% infrastructure/artifact-ready,
+  0% promoted; NFP=2 cleanup evidence is still running.
