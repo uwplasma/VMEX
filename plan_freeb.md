@@ -19082,6 +19082,67 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 81% artifact-complete, 0% promoted.
 
+### 2026-06-11 QI Anisotropic Mode/Resolution Probe Controls
+
+Steps taken:
+
+1. Added explicit ``VMEC_MPOL`` and ``VMEC_NTOR`` controls to the QI example
+   context and CLI so internal VMEC spectral resolution can be swept
+   independently from active boundary mode limits.
+2. Added ``--stage-mode-limits-json`` support to ``QI_optimization.py``.
+   JSON entries can be integers, ``(max_m, max_n)`` pairs, explicit
+   ``(mode, max_m, max_n)`` triples, or dictionaries with ``mode/max_m/max_n``.
+3. Extended boundary projection to support anisotropic active rectangles:
+   ``truncate_indata_boundary_modes(..., max_m=..., max_n=...)`` now removes
+   only harmonics outside the chosen poloidal/toroidal active-mode rectangle.
+4. Integrated the QI parameter-probe harness and upgraded it to emit real
+   per-case ``stage_mode_limits.json`` files, not just metadata, so dry-run
+   matrices can test e.g. toroidal-first ``max_m=1, max_n=5`` stages.
+5. Added unit coverage for anisotropic projection, explicit VMEC resolution
+   floors, QI context/CLI overrides, and probe-harness command generation.
+
+Results obtained:
+
+1. Focused lint passed for the changed source, QI example, harness, and tests.
+2. Targeted validation passed: ``15`` tests.
+3. Broader lightweight QI/helper validation passed:
+   ``119 passed, 1 skipped``.
+4. Public QI helper validation passed: ``22 passed``.
+5. Harness smoke generation produced a lower-repeat toroidal-first stage
+   sequence ``m1/n1 -> m1/n5`` and a runnable
+   ``--stage-mode-limits-json`` command without launching a long optimization.
+
+Best next steps:
+
+1. Use the new harness to launch bounded QI parameter probes on office/local
+   CPU: vary ``max_m/max_n``, ``VMEC_MPOL/NTOR``, QI Boozer resolution,
+   tolerances, ESS alpha, and local optimizer method.
+2. Promote only candidates that pass exact diagnostics and Boozer contour
+   review; keep README QI artifacts unpromoted until minimal-seed NFP1/2/3/4
+   are regenerated with trustworthy provenance.
+3. Continue targeted performance work on QI exact callbacks at mode 2 and
+   higher, since current full-resolution local cleanup remains the practical
+   bottleneck.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%; arbitrary adaptive
+  branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.3%.
+- Single-stage coil-only optimization: 99.5%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100% locally for this shard.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 83% infrastructure/artifact-complete, 0%
+  promoted; parameter-search controls are now in place, but robust precise-QI
+  candidates still need to be run and reviewed.
+
 ### 2026-06-11 QI Minimal-Seed NFP2 Single-Pass Triage
 
 Steps taken:

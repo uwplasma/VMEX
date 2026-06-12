@@ -35,6 +35,8 @@ INPUT_FILE = DATA_DIR / "input.minimal_seed_nfp2"
 OUTPUT_DIR = Path("results/qi_opt/ess/minimal_nfp2_qi")
 MAX_MODE = 5
 MIN_VMEC_MODE = max(6, MAX_MODE + 3)
+VMEC_MPOL = None  # None uses max(MIN_VMEC_MODE, MAX_MODE + 2); set e.g. 7 to force MPOL.
+VMEC_NTOR = None  # None uses max(MIN_VMEC_MODE, MAX_MODE + 2); set e.g. 9 to force NTOR.
 
 # Seed preparation. QI uses the same circular/minimal input policy as QA/QH/QP:
 # the source input contains only RBC00/RBC01/ZBS01, then tiny active-mode
@@ -68,6 +70,7 @@ CONTINUATION_NFEV = 20
 MAX_NFEV = 70
 STAGE_MODE_POLICY = "lower-repeat"  # "lower" is the QA/QH/QP repeated ladder; "repeat" repeats only MAX_MODE.
 STAGE_REPEATS = 2  # Used by "lower-repeat" and "repeat" policies.
+STAGE_MODE_LIMITS = None  # Optional anisotropic stages, e.g. [{"mode": 5, "max_m": 1, "max_n": 5}].
 STAGE_MODES = vj.qi_stage_modes(
     max_mode=MAX_MODE,
     use_mode_continuation=USE_MODE_CONTINUATION,
@@ -81,6 +84,7 @@ STAGE_MODES = vj.qi_stage_modes(
 # STAGE_MODE_POLICY = "lower-repeat"; STAGE_REPEATS = 1  # one pass at each mode
 # STAGE_MODE_POLICY = "lower"   # legacy QA/QH/QP ladder: [1, 1, 2, 2, 2, ...]
 # STAGE_MODE_POLICY = "repeat"  # repeat only MAX_MODE for already-good seeds
+# STAGE_MODE_LIMITS = [{"mode": 5, "max_m": 1, "max_n": 5, "label": "toroidal_first"}]
 # METHOD = "lbfgs_adjoint"
 # USE_REFERENCE_FAMILY_SEED = True
 # SOLVER_DEVICE = "gpu"
@@ -173,6 +177,8 @@ QI_CONTEXT = vj.make_qi_optimization_context(
     max_nfev=MAX_NFEV,
     method=METHOD,
     min_vmec_mode=MIN_VMEC_MODE,
+    vmec_mpol=VMEC_MPOL,
+    vmec_ntor=VMEC_NTOR,
     mirror_surface_index=MIRROR_SURFACE_INDEX,
     mirror_weight=MIRROR_WEIGHT,
     opt_qi_resolution=OPT_QI_RESOLUTION,
@@ -202,6 +208,8 @@ INPUT_FILE = vj.prepare_simple_omnigenity_seed_input(
     OUTPUT_DIR,
     max_mode=MAX_MODE,
     min_vmec_mode=MIN_VMEC_MODE,
+    vmec_mpol=VMEC_MPOL,
+    vmec_ntor=VMEC_NTOR,
     enabled=USE_SIMPLE_SEED,
     perturbation=SIMPLE_SEED_PERTURBATION,
 )
@@ -298,6 +306,7 @@ print(f"  raw input:      {RAW_INPUT_FILE}")
 print(f"  active input:   {INPUT_FILE}")
 print(f"  output dir:     {OUTPUT_DIR}")
 print(f"  max_mode:       {MAX_MODE}")
+print(f"  VMEC MPOL/NTOR: {VMEC_MPOL or 'auto'} / {VMEC_NTOR or 'auto'}")
 print(f"  stage modes:    {STAGE_MODES}")
 print(f"  ESS:            {USE_ESS} (alpha={ALPHA})")
 print(f"  target aspect:  {TARGET_ASPECT}")
@@ -328,6 +337,8 @@ def solve_qi_stage(
         input_file,
         max_mode=MAX_MODE,
         min_vmec_mode=MIN_VMEC_MODE,
+        vmec_mpol=VMEC_MPOL,
+        vmec_ntor=VMEC_NTOR,
         output_dir=output_dir,
         project_input_boundary_to_max_mode=True,
     )

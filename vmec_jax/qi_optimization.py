@@ -98,6 +98,8 @@ class QIOptimizationContext:
     max_nfev: int
     method: str
     min_vmec_mode: int
+    vmec_mpol: int | None
+    vmec_ntor: int | None
     mirror_surface_index: object
     mirror_weight: float
     opt_qi_resolution: dict
@@ -130,6 +132,8 @@ _CONTEXT_FIELDS = {
     "max_nfev": "MAX_NFEV",
     "method": "METHOD",
     "min_vmec_mode": "MIN_VMEC_MODE",
+    "vmec_mpol": "VMEC_MPOL",
+    "vmec_ntor": "VMEC_NTOR",
     "mirror_surface_index": "MIRROR_SURFACE_INDEX",
     "mirror_weight": "MIRROR_WEIGHT",
     "opt_qi_resolution": "OPT_QI_RESOLUTION",
@@ -159,6 +163,23 @@ def _float_tuple(value: str) -> tuple[float, ...]:
     if not text:
         return ()
     return tuple(float(part.strip()) for part in text.split(",") if part.strip())
+
+
+def _json_stage_mode_limits(value) -> tuple:
+    if value is None:
+        return ()
+    path = Path(value).expanduser()
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid stage mode limits JSON file: {path}") from exc
+    if not isinstance(data, list):
+        raise ValueError("Stage mode limits JSON must contain a list of ints, tuples, or objects.")
+    limits = []
+    for item in data:
+        mode = vj.normalize_boundary_mode_limits(item)
+        limits.append({"mode": mode.mode, "max_m": mode.max_m, "max_n": mode.max_n, "label": mode.label})
+    return tuple(limits)
 
 
 def qi_stage_modes(
@@ -308,6 +329,8 @@ def apply_qi_example_cli_overrides(namespace: dict, argv: list[str] | None = Non
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--max-mode", type=int)
     parser.add_argument("--min-vmec-mode", type=int)
+    parser.add_argument("--vmec-mpol", type=int)
+    parser.add_argument("--vmec-ntor", type=int)
     parser.add_argument("--max-nfev", type=int)
     parser.add_argument("--continuation-nfev", type=int)
     parser.add_argument(
@@ -341,6 +364,7 @@ def apply_qi_example_cli_overrides(namespace: dict, argv: list[str] | None = Non
     parser.add_argument("--accept-boundary-reference-baseline", action=argparse.BooleanOptionalAction)
     parser.add_argument("--stage-repeats", type=int)
     parser.add_argument("--stage-mode-policy", choices=("lower", "lower-repeat", "repeat"))
+    parser.add_argument("--stage-mode-limits-json", type=Path)
     parser.add_argument("--scipy-lsmr-maxiter", type=int)
     parser.add_argument("--scalar-cost-only-trials", action=argparse.BooleanOptionalAction)
     parser.add_argument("--make-plots", action=argparse.BooleanOptionalAction)
@@ -384,6 +408,8 @@ def apply_qi_example_cli_overrides(namespace: dict, argv: list[str] | None = Non
         if args.min_vmec_mode is not None
         else max(6, int(namespace["MAX_MODE"]) + 3)
     )
+    set_if("VMEC_MPOL", None if args.vmec_mpol is None else int(args.vmec_mpol))
+    set_if("VMEC_NTOR", None if args.vmec_ntor is None else int(args.vmec_ntor))
     set_if("MAX_NFEV", None if args.max_nfev is None else int(args.max_nfev))
     set_if("CONTINUATION_NFEV", None if args.continuation_nfev is None else int(args.continuation_nfev))
     set_if("METHOD", args.method)
@@ -410,6 +436,8 @@ def apply_qi_example_cli_overrides(namespace: dict, argv: list[str] | None = Non
     set_if("BOUNDARY_REFERENCE_ACCEPT_AS_BASELINE", args.accept_boundary_reference_baseline)
     set_if("STAGE_REPEATS", None if args.stage_repeats is None else int(args.stage_repeats))
     set_if("STAGE_MODE_POLICY", args.stage_mode_policy)
+    if args.stage_mode_limits_json is not None:
+        namespace["STAGE_MODE_LIMITS"] = _json_stage_mode_limits(args.stage_mode_limits_json)
     set_if("SCIPY_LSMR_MAXITER", None if args.scipy_lsmr_maxiter is None else int(args.scipy_lsmr_maxiter))
     set_if("SCALAR_COST_ONLY_TRIALS", args.scalar_cost_only_trials)
     set_if("MAKE_PLOTS", args.make_plots)
@@ -481,13 +509,16 @@ def apply_qi_example_cli_overrides(namespace: dict, argv: list[str] | None = Non
         if not isinstance(stages, list) or not all(isinstance(stage, dict) for stage in stages):
             raise ValueError("--mirror-ramp-stages-json must contain a JSON list of stage dictionaries.")
         namespace["MIRROR_RAMP_STAGES"] = tuple(stages)
-    namespace["STAGE_MODES"] = qi_stage_modes(
-        max_mode=int(namespace["MAX_MODE"]),
-        use_mode_continuation=bool(namespace["USE_MODE_CONTINUATION"]),
-        continuation_nfev=int(namespace["CONTINUATION_NFEV"]),
-        repeats=int(namespace["STAGE_REPEATS"]),
-        policy=str(namespace.get("STAGE_MODE_POLICY", "lower")),
-    )
+    if namespace.get("STAGE_MODE_LIMITS") is not None:
+        namespace["STAGE_MODES"] = tuple(namespace["STAGE_MODE_LIMITS"])
+    else:
+        namespace["STAGE_MODES"] = qi_stage_modes(
+            max_mode=int(namespace["MAX_MODE"]),
+            use_mode_continuation=bool(namespace["USE_MODE_CONTINUATION"]),
+            continuation_nfev=int(namespace["CONTINUATION_NFEV"]),
+            repeats=int(namespace["STAGE_REPEATS"]),
+            policy=str(namespace.get("STAGE_MODE_POLICY", "lower")),
+        )
     return args
 
 
@@ -527,6 +558,9 @@ def make_qi_optimization_context(
         except KeyError:
             return default
 
+    vmec_mpol = get_optional("vmec_mpol", None)
+    vmec_ntor = get_optional("vmec_ntor", None)
+
     return QIOptimizationContext(
         alpha=float(get("alpha")),
         continuation_nfev=int(get("continuation_nfev")),
@@ -538,6 +572,8 @@ def make_qi_optimization_context(
         max_nfev=int(get("max_nfev")),
         method=str(get("method")),
         min_vmec_mode=int(get("min_vmec_mode")),
+        vmec_mpol=None if vmec_mpol is None else int(vmec_mpol),
+        vmec_ntor=None if vmec_ntor is None else int(vmec_ntor),
         mirror_surface_index=get("mirror_surface_index"),
         mirror_weight=float(get("mirror_weight")),
         opt_qi_resolution=dict(get("opt_qi_resolution") or {}),
