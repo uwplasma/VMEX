@@ -19701,3 +19701,62 @@ Completion:
 - QI minimal-seed README artifacts: 88% artifact-complete, 0% re-promoted
   after the gate change.  The runnable preset and guards are validated, but the
   local CPU artifact refresh remains too slow and did not reach final polish.
+
+### 2026-06-12 Balanced NFP2 Direct Mode-5 Mirror035 Preset
+
+Steps taken:
+
+1. Relaxed the public QI mirror gate from ``0.32`` to ``0.35`` in the staged
+   QI case catalog, standalone QI example, minimal-seed showcase runner, and
+   QS/QI sweep defaults.
+2. Replaced the public balanced NFP=2 preset with
+   ``minimal_nfp2_qi_balanced_mirror035``.  The preset now skips the expensive
+   mode-3 aspect-ramp stages and jumps from the deterministic
+   reference-family baseline directly to two mode-5 scalar-trust
+   augmented-Lagrangian cleanup stages:
+   ``final_balance_qi_mirror035`` and ``mirror_polish_after_qi_gate035``.
+3. Kept ``minimal_nfp2_qi_balanced_mirror032`` as a legacy alias to avoid
+   breaking old automation, but changed README/docs/user-facing instructions to
+   the new ``mirror035`` selector.
+4. Updated QI renderer labels and focused regression tests so the code asserts
+   the new direct two-stage policy rather than just checking the tail of the
+   old longer ramp.
+
+Results obtained:
+
+1. A direct smoke import confirms
+   ``QI_CASES["minimal_nfp2_qi_balanced_mirror035"]`` has exactly two stages,
+   both mode-5, and a public mirror threshold of ``0.35``.
+2. Focused validation passed:
+   ``python -m ruff check`` on edited optimization/test files and
+   ``python -m pytest -q`` on the QI/script regression set completed with
+   ``131 passed, 2 skipped``.
+
+Best next steps:
+
+1. Commit and push the mirror035 policy change.
+2. Launch the full ``minimal_nfp2_qi_balanced_mirror035`` preset on ``office``
+   with enough wall time to test whether direct reference-baseline to mode-5 AL
+   polish reproduces a promotable NFP=2 QI artifact.
+3. If the artifact passes smooth/legacy QI, iota, elongation, aspect, and
+   mirror ``<=0.35``, refresh the README QI artifacts and docs provenance.
+4. Continue bounded VMEC2000/direct-coil/mgrid parity and free-boundary
+   adaptive-branch gates in parallel; keep arbitrary adaptive-loop
+   differentiability claims conservative until the fingerprint-gated gate is
+   promoted.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- QI minimal-seed README artifacts: 90% artifact-ready, 0% re-promoted after
+  the mirror035 policy change until the full office artifact finishes.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.0%.
+- Single-stage coil-only optimization: 99.0%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.

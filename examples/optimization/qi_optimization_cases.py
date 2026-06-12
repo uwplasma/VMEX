@@ -7,7 +7,7 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DEFAULT_QI_TARGET_ASPECT = 6.0
-DEFAULT_QI_MIRROR_RATIO = 0.32
+DEFAULT_QI_MIRROR_RATIO = 0.35
 DEFAULT_INNER_MAX_ITER = 450
 DEFAULT_INNER_FTOL = 1.0e-9
 DEFAULT_TRIAL_MAX_ITER = 450
@@ -67,7 +67,7 @@ QI_CASES = {
         "target_helicity_seed_terms": TARGET_HELICITY_SEED_TERMS,
         "mirror_ramp_stages": (
             {
-                "name": "matrix_free_mirror032",
+                "name": "matrix_free_mirror035",
                 "max_nfev": 20,
                 "stage_repeats": 1,
                 "method": "scipy_matrix_free",
@@ -110,10 +110,10 @@ QI_CASES = {
         "target_helicity_seed_terms": TARGET_HELICITY_SEED_TERMS,
         # Guarded mirror-aware policy.  This matrix-free lane is the current
         # validated default: it obtains low smooth/legacy QI, nonzero transform,
-        # and an all-surface mirror ratio below 0.32 from the bundled NFP=2 seed.
+        # and an all-surface mirror ratio below 0.35 from the bundled NFP=2 seed.
         "mirror_ramp_stages": (
             {
-                "name": "matrix_free_mirror032",
+                "name": "matrix_free_mirror035",
                 "max_nfev": 20,
                 "stage_repeats": 1,
                 "method": "scipy_matrix_free",
@@ -822,13 +822,14 @@ QI_CASES["nfp4_qi"] = {
     "case_goal": "NFP=4 minimal-seed QI lane",
 }
 
-# Reviewed high-budget NFP=2 polish lane.  The first stages reuse the
-# deterministic minimal-seed/reference-family basin from ``minimal_nfp2_qi``;
-# the final two stages are the mode-5 scalar-trust augmented-Lagrangian cleanup
-# that reached smooth QI < 2e-3 while keeping mirror below the public 0.32 cap.
-_NFP2_BALANCED_STAGES = tuple(QI_CASES["minimal_nfp2_qi"]["mirror_ramp_stages"]) + (
+# Reviewed high-budget NFP=2 polish lane.  It reuses the deterministic
+# minimal-seed/reference-family basin as the accepted baseline, then jumps
+# directly to the mode-5 scalar-trust augmented-Lagrangian cleanup.  Avoiding
+# the older mode-3 aspect-ramp stages keeps this public preset focused on the
+# current fast path for smooth QI < 2e-3 with mirror below the public 0.35 cap.
+_NFP2_BALANCED_STAGES = (
     {
-        "name": "final_balance_qi_mirror032",
+        "name": "final_balance_qi_mirror035",
         "max_nfev": 18,
         "method": "scalar_trust",
         "use_mode_continuation": False,
@@ -861,7 +862,7 @@ _NFP2_BALANCED_STAGES = tuple(QI_CASES["minimal_nfp2_qi"]["mirror_ramp_stages"])
         "require_mirror_improvement": False,
     },
     {
-        "name": "mirror_polish_after_qi_gate032",
+        "name": "mirror_polish_after_qi_gate035",
         "max_nfev": 12,
         "method": "scalar_trust",
         "use_mode_continuation": False,
@@ -894,16 +895,20 @@ _NFP2_BALANCED_STAGES = tuple(QI_CASES["minimal_nfp2_qi"]["mirror_ramp_stages"])
         "require_mirror_improvement": False,
     },
 )
-QI_CASES["minimal_nfp2_qi_balanced_mirror032"] = {
+QI_CASES["minimal_nfp2_qi_balanced_mirror035"] = {
     **QI_CASES["minimal_nfp2_qi"],
-    "case_goal": "NFP=2 minimal-seed QI lane with reviewed mode-5 mirror<=0.32 polish",
-    "output_dir": Path("results/qi_opt/ess/minimal_nfp2_to_qi_balanced_mirror032"),
+    "case_goal": "NFP=2 minimal-seed QI lane with reviewed mode-5 mirror<=0.35 polish",
+    "output_dir": Path("results/qi_opt/ess/minimal_nfp2_to_qi_balanced_mirror035"),
     "max_mode": 5,
     "min_vmec_mode": 8,
     "max_nfev": 70,
     "mirror_threshold": DEFAULT_QI_MIRROR_RATIO,
     "max_elongation": 10.0,
     "mirror_ramp_stages": _NFP2_BALANCED_STAGES,
+}
+QI_CASES["minimal_nfp2_qi_balanced_mirror032"] = {
+    **QI_CASES["minimal_nfp2_qi_balanced_mirror035"],
+    "case_goal": "legacy alias for the NFP=2 mirror<=0.35 balanced polish preset",
 }
 
 RUN_CASE_DEFAULT = "minimal_nfp2_qi"

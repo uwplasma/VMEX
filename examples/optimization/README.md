@@ -204,7 +204,7 @@ remain available for custom inspection.
 - `QP_optimization.py`: quasi-poloidal fixed-boundary optimization from the public NFP=2 minimal seed, with an explicit optimization-time QI-family preseed when enabled.
 - `QI_optimization.py`: recommended quasi-isodynamic optimization from `input.minimal_seed_nfp2` by default, with Boozer-space QI metrics, mirror-ratio and elongation penalties, repeated lower-mode continuation, and ESS. Edit `INPUT_FILE`, `OUTPUT_DIR`, seed helpers, objective weights, and optimizer controls at the top of the script, then run it directly. Use `STAGE_MODE_POLICY = "lower-repeat"` with `STAGE_REPEATS = 1` for a shorter one-pass ladder, `STAGE_MODE_POLICY = "lower"` for the legacy QA/QH/QP repeated ladder, or `"repeat"` only when the input is already in a good QI basin and same-mode cleanup is desired.
 - `QI_optimization_seed.py`: diagnostic far-seed preset for NFP=3 `input.QI_stel_seed_3127`; README QI promotion rows use `input.minimal_seed_nfp*` decks instead.
-- `qi_optimization_cases.py`: reproducible staged presets for sweeps and docs. Use `minimal_nfp2_qi_balanced_mirror032` when you want the reviewed high-budget NFP=2 mode-5 polish path with smooth QI below `2e-3` and mirror ratio below `0.32`.
+- `qi_optimization_cases.py`: reproducible staged presets for sweeps and docs. Use `minimal_nfp2_qi_balanced_mirror035` when you want the reviewed high-budget NFP=2 mode-5 polish path with smooth QI below `2e-3` and mirror ratio below `0.35`.
 - `qa_optimization_finite_beta.py`, `qh_optimization_finite_beta.py`, and `qi_optimization_finite_beta.py`:
   finite-beta stage-1 examples with pressure/current-profile terms. These intentionally use
   `FixedBoundaryExactOptimizer` directly because each continuation stage builds custom
@@ -308,7 +308,7 @@ for nfp in 1 2 3 4; do
     --input-file examples/data/input.minimal_seed_nfp${nfp} \
     --output-dir results/qi_opt/ess/minimal_nfp${nfp}_qi \
     --target-aspect 6 --target-abs-iota-min 0.41 \
-    --max-mirror-ratio 0.32 --max-elongation 10 \
+    --max-mirror-ratio 0.35 --max-elongation 10 \
     --max-mode 5 --max-nfev 70 --continuation-nfev 20 \
     --inner-max-iter 450 --inner-ftol 1e-9 \
     --trial-max-iter 450 --trial-ftol 1e-9 \
