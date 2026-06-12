@@ -19189,16 +19189,21 @@ Results obtained:
 6. Raw/minimal/far-like bounded probe cases stayed near zero iota and high QI
    residuals even with rectangular/toroidal-first active mode rectangles.  They
    are useful negative evidence, not README promotion candidates.
+7. A stronger mirror-weight scalar-trust cleanup from the same working seed
+   (``mirror_weight=80``, ``max_nfev=3``) preserved QI and slightly improved
+   mirror (``0.3659 -> 0.3648``), but it still missed the ``0.3`` mirror gate.
+   This indicates simple mirror reweighting is not enough; the next useful
+   cleanup should use a constrained or augmented-Lagrangian schedule.
 
 Best next steps:
 
 1. Commit and push the CI repair plus true anisotropic/internal-resolution
    decoupling patch, then monitor the rerun.
 2. For QI robustness, do not spend more low-budget iterations from raw seeds
-   without a stronger basin step.  The next useful experiment is a mirror-aware
-   scalar-trust cleanup with stronger mirror constraint/weight starting from
-   the working NFP2 stage-1 seed, followed by a separate basin/preconditioner
-   stage to avoid near-zero-iota raw-seed traps.
+   without a stronger basin step.  The next useful experiment is a constrained
+   or augmented-Lagrangian mirror cleanup starting from the working NFP2
+   stage-1 seed, followed by a separate basin/preconditioner stage to avoid
+   near-zero-iota raw-seed traps.
 3. Keep README QI artifacts unpromoted until candidates pass exact diagnostics
    and Boozer contour review from documented minimal seeds.
 
