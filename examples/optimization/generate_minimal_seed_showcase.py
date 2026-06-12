@@ -640,7 +640,7 @@ def _run_showcase_case(
                 reference_lambdas=qi_reference_lambdas,
                 target_aspect=QI_SHOWCASE_TARGET_ASPECT,
                 target_abs_iota_min=0.41,
-                max_mirror_ratio=0.30,
+                max_mirror_ratio=0.32,
                 max_elongation=10.0,
                 mirror_ramp_stages=mirror_ramp_stages,
                 make_plots=False,

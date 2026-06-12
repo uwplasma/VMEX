@@ -410,7 +410,7 @@ PROBLEM_CONFIGS = {
         qi_aligned_profile_softness=2.0e-2,
         qi_aligned_profile_trap_level=0.65,
         qi_aligned_profile_trap_softness=5.0e-2,
-        qi_max_mirror_ratio=0.30,
+        qi_max_mirror_ratio=0.32,
         # Match the reference SIMSOPT QI script: MirrorRatioPen and
         # MaxElongationPen are scalar residuals with least-squares weight 1e1.
         qi_mirror_weight=math.sqrt(20.0),

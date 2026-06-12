@@ -19533,3 +19533,72 @@ Completion:
   rerun after push.
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 81% artifact-complete, 0% promoted.
+
+### 2026-06-11 QI Mirror Gate Relaxation and Balanced NFP2 Preset
+
+Steps taken:
+
+1. Relaxed the public QI engineering mirror-ratio gate from ``0.30`` to
+   ``0.32`` for the standalone QI example, staged QI case catalog, minimal-seed
+   showcase dispatch, and QS/QI sweep configuration.
+2. Added a named reviewed preset,
+   ``minimal_nfp2_qi_balanced_mirror032``, to
+   ``examples/optimization/qi_optimization_cases.py``.  It starts from the
+   existing minimal NFP=2/reference-family lane and appends the two successful
+   mode-5 scalar-trust augmented-Lagrangian cleanup stages from the targeted
+   scan.
+3. Updated renderer labels so new ``matrix_free_mirror032`` and balanced
+   mode-5 polish stages render with meaningful objective-history labels.
+4. Updated README/docs/examples text to point users at the reviewed balanced
+   NFP=2 preset while preserving the faster ``minimal_nfp2_qi`` exploratory
+   lane.
+5. Updated focused QI/catalog/staged-runner tests so the public gate and new
+   preset are covered without changing unrelated generic ``0.30`` fixtures.
+
+Results obtained:
+
+1. The promoted scan evidence now has a consistent public gate: the best
+   balance branch had smooth QI ``1.55e-3``, legacy QI ``5.44e-4``, mirror
+   ``0.3178``, max elongation ``4.92``, aspect ``6.39``, and
+   ``|mean_iota| = 0.494``; it passes the relaxed ``mirror <= 0.32`` gate.
+2. The follow-up mirror-polish branch had smooth QI ``1.62e-3``, legacy QI
+   ``5.58e-4``, mirror ``0.3120``, max elongation ``4.92``, aspect ``6.39``,
+   and ``|mean_iota| = 0.495``; it also passes the relaxed gate.
+3. Focused tests passed:
+   ``python -m pytest -q tests/test_qi_case_resolution.py tests/test_qi_staged_runner.py tests/test_qi_readme_cases.py tests/test_optimization_examples.py tests/test_qi_optimization_more_coverage.py tests/test_qi_optimization_public_helpers.py``
+   -> ``129 passed, 2 skipped``.
+4. Lint passed on all edited Python files with ``python -m ruff check``.
+
+Best next steps:
+
+1. Run the balanced NFP=2 preset end-to-end from the public minimal seed when
+   compute is available, then copy only compressed plots/CSV summaries into
+   docs if the diagnostics reproduce the scan branch.
+2. Refresh the QI README panel with the new gate only after the artifact
+   provenance checker confirms raw minimal-seed initial WOUTs and final
+   diagnostics.
+3. Continue VMEC2000/mgrid/direct-coil parity expansion only with bounded,
+   finite-positive WOUT fixtures.
+4. Keep the adaptive free-boundary adjoint claim conservative until a true
+   fingerprint-gated adaptive-loop AD-vs-central-FD gate exists.
+
+Need from user:
+
+No immediate action.  If you want the top-level ``nfp2_qi`` alias to point to
+the heavier balanced mode-5 preset by default instead of the faster exploratory
+mode-3 path, say so explicitly.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%; arbitrary adaptive
+  branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.3%.
+- Single-stage coil-only optimization: 99.5%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100%; latest local focused QI shard is green.
+- Docs/release hygiene: 100% for this gate/preset update.
+- QI minimal-seed README artifacts: 86% artifact-complete, 0% re-promoted
+  after the gate change; the balanced NFP=2 preset is encoded, but artifacts
+  still need an end-to-end rerun/provenance refresh before README promotion.

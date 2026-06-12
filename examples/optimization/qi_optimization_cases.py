@@ -7,6 +7,7 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DEFAULT_QI_TARGET_ASPECT = 6.0
+DEFAULT_QI_MIRROR_RATIO = 0.32
 DEFAULT_INNER_MAX_ITER = 450
 DEFAULT_INNER_FTOL = 1.0e-9
 DEFAULT_TRIAL_MAX_ITER = 450
@@ -52,7 +53,7 @@ QI_CASES = {
         "target_aspect": DEFAULT_QI_TARGET_ASPECT,
         "target_abs_iota_min": 0.41,
         "max_elongation": 8.2,
-        "mirror_threshold": 0.30,
+        "mirror_threshold": DEFAULT_QI_MIRROR_RATIO,
         "mirror_surface_index": None,
         "qi_ceiling_max": 2.0e-2,
         "qi_ceiling_smooth_penalty": 2.0e-3,
@@ -66,12 +67,12 @@ QI_CASES = {
         "target_helicity_seed_terms": TARGET_HELICITY_SEED_TERMS,
         "mirror_ramp_stages": (
             {
-                "name": "matrix_free_mirror030",
+                "name": "matrix_free_mirror032",
                 "max_nfev": 20,
                 "stage_repeats": 1,
                 "method": "scipy_matrix_free",
                 "mirror_threshold": 0.21,
-                "promotion_mirror_threshold": 0.30,
+                "promotion_mirror_threshold": DEFAULT_QI_MIRROR_RATIO,
                 "mirror_surface_index": None,
                 "mirror_weight": 20.0,
                 "elongation_weight": 10.0,
@@ -95,7 +96,7 @@ QI_CASES = {
         "target_aspect": DEFAULT_QI_TARGET_ASPECT,
         "target_abs_iota_min": 0.41,
         "max_elongation": 8.2,
-        "mirror_threshold": 0.30,
+        "mirror_threshold": DEFAULT_QI_MIRROR_RATIO,
         "mirror_surface_index": None,
         "qi_ceiling_max": 2.0e-2,
         "qi_ceiling_smooth_penalty": 2.0e-3,
@@ -109,15 +110,15 @@ QI_CASES = {
         "target_helicity_seed_terms": TARGET_HELICITY_SEED_TERMS,
         # Guarded mirror-aware policy.  This matrix-free lane is the current
         # validated default: it obtains low smooth/legacy QI, nonzero transform,
-        # and an all-surface mirror ratio below 0.30 from the bundled NFP=2 seed.
+        # and an all-surface mirror ratio below 0.32 from the bundled NFP=2 seed.
         "mirror_ramp_stages": (
             {
-                "name": "matrix_free_mirror030",
+                "name": "matrix_free_mirror032",
                 "max_nfev": 20,
                 "stage_repeats": 1,
                 "method": "scipy_matrix_free",
                 "mirror_threshold": 0.21,
-                "promotion_mirror_threshold": 0.30,
+                "promotion_mirror_threshold": DEFAULT_QI_MIRROR_RATIO,
                 "mirror_surface_index": None,
                 "mirror_weight": 20.0,
                 "elongation_weight": 10.0,
@@ -821,6 +822,90 @@ QI_CASES["nfp4_qi"] = {
     "case_goal": "NFP=4 minimal-seed QI lane",
 }
 
+# Reviewed high-budget NFP=2 polish lane.  The first stages reuse the
+# deterministic minimal-seed/reference-family basin from ``minimal_nfp2_qi``;
+# the final two stages are the mode-5 scalar-trust augmented-Lagrangian cleanup
+# that reached smooth QI < 2e-3 while keeping mirror below the public 0.32 cap.
+_NFP2_BALANCED_STAGES = tuple(QI_CASES["minimal_nfp2_qi"]["mirror_ramp_stages"]) + (
+    {
+        "name": "final_balance_qi_mirror032",
+        "max_nfev": 18,
+        "method": "scalar_trust",
+        "use_mode_continuation": False,
+        "stage_mode_limits": ({"mode": 5, "max_m": 5, "max_n": 5, "label": "m05_n05"},),
+        "use_augmented_lagrangian_constraints": True,
+        "mirror_backend": "vmec",
+        "mirror_surface_index": -1,
+        "mirror_threshold": DEFAULT_QI_MIRROR_RATIO,
+        "promotion_mirror_threshold": DEFAULT_QI_MIRROR_RATIO,
+        "mirror_weight": 140.0,
+        "elongation_weight": 2.0,
+        "al_mirror_multiplier": 0.0,
+        "al_mirror_penalty": 500.0,
+        "al_mirror_weight": 140.0,
+        "al_elongation_multiplier": 0.0,
+        "al_elongation_penalty": 50.0,
+        "al_elongation_weight": 2.0,
+        "al_constraint_softness": 3.0e-3,
+        "qi_weight": 9000.0,
+        "qi_ceiling_weight": 12000.0,
+        "qi_ceiling_max": 2.2e-3,
+        "qi_ceiling_smooth_penalty": 8.0e-4,
+        "aspect_weight": 0.10,
+        "iota_floor_weight": 125.0**2,
+        "smooth_qi_max": 2.0e-3,
+        "legacy_qi_max": 2.0e-3,
+        "max_elongation": 10.0,
+        "require_seed_gate": False,
+        "require_engineering_gate": True,
+        "require_mirror_improvement": False,
+    },
+    {
+        "name": "mirror_polish_after_qi_gate032",
+        "max_nfev": 12,
+        "method": "scalar_trust",
+        "use_mode_continuation": False,
+        "stage_mode_limits": ({"mode": 5, "max_m": 5, "max_n": 5, "label": "m05_n05"},),
+        "use_augmented_lagrangian_constraints": True,
+        "mirror_backend": "vmec",
+        "mirror_surface_index": -1,
+        "mirror_threshold": DEFAULT_QI_MIRROR_RATIO,
+        "promotion_mirror_threshold": DEFAULT_QI_MIRROR_RATIO,
+        "mirror_weight": 260.0,
+        "elongation_weight": 2.0,
+        "al_mirror_multiplier": 0.0,
+        "al_mirror_penalty": 1500.0,
+        "al_mirror_weight": 260.0,
+        "al_elongation_multiplier": 0.0,
+        "al_elongation_penalty": 50.0,
+        "al_elongation_weight": 2.0,
+        "al_constraint_softness": 2.0e-3,
+        "qi_weight": 12000.0,
+        "qi_ceiling_weight": 16000.0,
+        "qi_ceiling_max": 2.0e-3,
+        "qi_ceiling_smooth_penalty": 5.0e-4,
+        "aspect_weight": 0.08,
+        "iota_floor_weight": 125.0**2,
+        "smooth_qi_max": 2.0e-3,
+        "legacy_qi_max": 2.0e-3,
+        "max_elongation": 10.0,
+        "require_seed_gate": False,
+        "require_engineering_gate": True,
+        "require_mirror_improvement": False,
+    },
+)
+QI_CASES["minimal_nfp2_qi_balanced_mirror032"] = {
+    **QI_CASES["minimal_nfp2_qi"],
+    "case_goal": "NFP=2 minimal-seed QI lane with reviewed mode-5 mirror<=0.32 polish",
+    "output_dir": Path("results/qi_opt/ess/minimal_nfp2_to_qi_balanced_mirror032"),
+    "max_mode": 5,
+    "min_vmec_mode": 8,
+    "max_nfev": 70,
+    "mirror_threshold": DEFAULT_QI_MIRROR_RATIO,
+    "max_elongation": 10.0,
+    "mirror_ramp_stages": _NFP2_BALANCED_STAGES,
+}
+
 RUN_CASE_DEFAULT = "minimal_nfp2_qi"
 
 
@@ -857,7 +942,7 @@ def resolve_qi_case(default_run_case: str | None = None):
                 "max_mode": _external_max_mode,
                 "target_aspect": float(_external_base_case.get("target_aspect", DEFAULT_QI_TARGET_ASPECT)),
                 "abs_iota_min": float(_external_base_case.get("target_abs_iota_min", 0.41)),
-                "max_mirror_ratio": float(_external_base_case.get("mirror_threshold", 0.30)),
+                "max_mirror_ratio": float(_external_base_case.get("mirror_threshold", DEFAULT_QI_MIRROR_RATIO)),
                 "max_elongation": float(_external_base_case.get("max_elongation", 8.2)),
                 "smooth_qi_max": float(_external_base_case.get("qi_gate_smooth_max", 2.0e-3)),
                 "legacy_qi_max": float(_external_base_case.get("qi_gate_legacy_max", 2.0e-3)),

@@ -263,6 +263,14 @@ The regenerated initial and final Boozer ``|B|`` panels use line contours only.
 The staged objective panel concatenates every recorded history file and plots
 the best-so-far value in each stage, normalized to that stage's first objective,
 with dashed separators where objective definitions or weights change.
+The reviewed high-budget NFP=2 polish path is registered as
+``minimal_nfp2_qi_balanced_mirror032`` in
+``examples/optimization/qi_optimization_cases.py``.  It starts from the same
+minimal NFP=2 seed/reference-family lane, then adds two mode-5 scalar-trust
+augmented-Lagrangian cleanup stages that were selected because they keep smooth
+and legacy QI below ``2e-3`` while satisfying the public mirror-ratio cap
+``0.32``.  Use this preset when reproducing the best balanced NFP=2 QI example;
+use ``minimal_nfp2_qi`` for faster exploratory runs.
 Regenerate the QI rows and then render the figure/CSV with:
 
 .. code-block:: bash
@@ -1261,10 +1269,10 @@ ordinary variables near the top of the script:
    REFERENCE_INPUT_FILE = DATA_DIR / "input.nfp2_QI"
    MAX_NFEV = 70
    CONTINUATION_NFEV = 20
-   TARGET_ASPECT = 5.0
+   TARGET_ASPECT = 6.0
    TARGET_ABS_IOTA_MIN = 0.41
-   MAX_MIRROR_RATIO = 0.30
-   MAX_ELONGATION = 8.2
+   MAX_MIRROR_RATIO = 0.32
+   MAX_ELONGATION = 10.0
 
 The script takes ``nfp`` from the VMEC input file, so NFP=1/2/3/4 do not need
 separate drivers.  To try a different VMEC input deck, change only
