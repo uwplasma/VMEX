@@ -30,6 +30,10 @@ Steps taken:
    the balanced mode-5 mirror<=0.35 preset.
 5. Added focused tests that lock the public NFP2 showcase alias to the balanced
    preset and verify the new per-NFP QI example scripts.
+6. Hardened the per-NFP QI scripts with ``--help`` and ``--dry-run`` CLI
+   support so users can inspect the generated command without launching VMEC.
+7. Removed stale docs wording that described public QI rows as part of an
+   aspect-5 matrix; QA/QH/QP remain aspect 5 while public QI rows are aspect 6.
 
 Results obtained:
 
@@ -41,6 +45,12 @@ Results obtained:
    ``tests/test_qi_case_resolution.py``,
    ``tests/test_qi_staged_runner.py``, and
    ``tests/test_qi_readme_cases.py``.
+3. Full docs-release hygiene plus focused QI example tests passed after the
+   wrapper CLI and docs wording updates.
+4. The bounded free-boundary/direct-coil sidecar validation passed:
+   ``39 passed, 4 skipped`` for external-field/mgrid/direct-coil parity tests
+   and ``123 passed, 1 skipped, 1 xfailed`` for exact free-boundary and
+   coil-QS smoke tests.
 
 Best next steps:
 
