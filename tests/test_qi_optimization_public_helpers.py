@@ -48,6 +48,8 @@ def _configure(tmp_path: Path) -> SimpleNamespace:
             "MAX_NFEV": 4,
             "METHOD": "scipy_matrix_free",
             "MIN_VMEC_MODE": 5,
+            "VMEC_MPOL": None,
+            "VMEC_NTOR": None,
             "MIRROR_SURFACE_INDEX": -1,
             "MIRROR_WEIGHT": 2.0,
             "OPT_QI_RESOLUTION": {"nphi": 17},

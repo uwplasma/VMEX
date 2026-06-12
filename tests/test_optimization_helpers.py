@@ -38,6 +38,7 @@ from vmec_jax.optimization_workflow import (
     describe_boundary_mode_limits,
     interpolate_indata_boundary,
     normalize_boundary_mode_limits,
+    rebuild_for_optimization_resolution,
 )
 from vmec_jax.state import pack_state
 
@@ -684,6 +685,36 @@ def test_truncate_indata_boundary_modes_projects_inactive_harmonics():
     assert projected.source_path == indata.source_path
 
 
+def test_truncate_indata_boundary_modes_supports_anisotropic_limits():
+    indata = InData(
+        scalars={"MPOL": 7, "NTOR": 7, "NFP": 2},
+        indexed={
+            "RBC": {
+                (0, 0): 1.0,
+                (3, 0): 0.3,
+                (-3, 1): 0.31,
+                (0, 2): 0.02,
+                (4, 1): 0.41,
+            },
+            "ZBS": {
+                (0, 1): 0.1,
+                (-3, 1): 0.2,
+                (2, 2): 0.22,
+            },
+            "AC": {(2,): 1.23},
+        },
+        source_path="input.anisotropic",
+    )
+
+    projected = truncate_indata_boundary_modes(indata, max_mode=3, max_m=1, max_n=3)
+
+    assert projected.indexed["RBC"] == {(0, 0): 1.0, (3, 0): 0.3, (-3, 1): 0.31}
+    assert projected.indexed["ZBS"] == {(0, 1): 0.1, (-3, 1): 0.2}
+    assert projected.indexed["AC"] == {(2,): 1.23}
+    assert (0, 2) in indata.indexed["RBC"]
+    assert projected.source_path == "input.anisotropic"
+
+
 def test_truncate_indata_boundary_modes_none_returns_original():
     indata = InData(
         scalars={"NFP": 2},
@@ -692,6 +723,27 @@ def test_truncate_indata_boundary_modes_none_returns_original():
     )
 
     assert truncate_indata_boundary_modes(indata, max_mode=None) is indata
+
+
+def test_rebuild_for_optimization_resolution_accepts_explicit_vmec_floors():
+    indata = InData(
+        scalars={"MPOL": 3, "NTOR": 3, "NFP": 2},
+        indexed={"RBC": {(0, 0): 1.0}},
+        source_path="input.resolution",
+    )
+
+    rebuilt = rebuild_for_optimization_resolution(
+        indata,
+        max_mode=2,
+        min_vmec_mode=5,
+        vmec_mpol=8,
+        vmec_ntor=9,
+    )
+
+    assert rebuilt.scalars["MPOL"] == 8
+    assert rebuilt.scalars["NTOR"] == 9
+    assert rebuilt.indexed == indata.indexed
+    assert indata.scalars["MPOL"] == 3
 
 
 def test_tiny_target_helicity_seed_terms_survive_active_mode_projection():
@@ -799,6 +851,48 @@ def test_extend_boundary_for_max_mode_rebuilds_resolution(monkeypatch):
     assert out_indata.scalars["MPOL"] == 5
     assert out_indata.scalars["NTOR"] == 5
     assert indata.scalars["MPOL"] == 2
+    assert out_static.modes is rebuilt_modes
+    assert out_boundary is rebuilt_boundary
+
+
+def test_extend_boundary_for_max_mode_respects_explicit_resolution_floors(monkeypatch):
+    import vmec_jax.boundary as boundary_module
+    import vmec_jax.config as config_module
+    import vmec_jax.static as static_module
+
+    modes = vmec_mode_table(mpol=5, ntor=5)
+    rebuilt_modes = vmec_mode_table(mpol=7, ntor=9)
+    static = SimpleNamespace(modes=modes)
+    boundary = BoundaryCoeffs(
+        R_cos=np.zeros(modes.K),
+        R_sin=np.zeros(modes.K),
+        Z_cos=np.zeros(modes.K),
+        Z_sin=np.zeros(modes.K),
+    )
+    rebuilt_boundary = BoundaryCoeffs(
+        R_cos=np.ones(rebuilt_modes.K),
+        R_sin=np.zeros(rebuilt_modes.K),
+        Z_cos=np.zeros(rebuilt_modes.K),
+        Z_sin=np.zeros(rebuilt_modes.K),
+    )
+
+    monkeypatch.setattr(config_module, "config_from_indata", lambda _indata: SimpleNamespace())
+    monkeypatch.setattr(static_module, "build_static", lambda _cfg: SimpleNamespace(modes=rebuilt_modes))
+    monkeypatch.setattr(boundary_module, "boundary_from_indata", lambda _indata, _modes: rebuilt_boundary)
+
+    indata = InData(scalars={"MPOL": 5, "NTOR": 5, "NFP": 2}, indexed={}, source_path="input.lowres")
+
+    out_indata, out_static, out_boundary = extend_boundary_for_max_mode(
+        indata,
+        static,
+        boundary,
+        max_mode=3,
+        required_mpol=7,
+        required_ntor=9,
+    )
+
+    assert out_indata.scalars["MPOL"] == 7
+    assert out_indata.scalars["NTOR"] == 9
     assert out_static.modes is rebuilt_modes
     assert out_boundary is rebuilt_boundary
 

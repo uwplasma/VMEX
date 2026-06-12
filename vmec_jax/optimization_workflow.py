@@ -358,6 +358,8 @@ class FixedBoundaryVMEC:
     indata: object
     max_mode: int
     min_vmec_mode: int = 5
+    vmec_mpol: int | None = None
+    vmec_ntor: int | None = None
     output_dir: Path = Path("results/optimization")
     project_input_boundary_to_max_mode: bool = False
     include: tuple[str, ...] = ("rc", "zs")
@@ -370,6 +372,8 @@ class FixedBoundaryVMEC:
         *,
         max_mode: int,
         min_vmec_mode: int = 5,
+        vmec_mpol: int | None = None,
+        vmec_ntor: int | None = None,
         output_dir: Path | str = Path("results/optimization"),
         project_input_boundary_to_max_mode: bool = False,
         simple_seed: bool = False,
@@ -395,6 +399,8 @@ class FixedBoundaryVMEC:
             indata,
             max_mode=max_mode,
             min_vmec_mode=min_vmec_mode,
+            vmec_mpol=vmec_mpol,
+            vmec_ntor=vmec_ntor,
         )
         if bool(simple_seed):
             indata = simple_omnigenity_seed_indata(
@@ -410,6 +416,8 @@ class FixedBoundaryVMEC:
             indata=indata,
             max_mode=int(max_mode),
             min_vmec_mode=int(min_vmec_mode),
+            vmec_mpol=None if vmec_mpol is None else int(vmec_mpol),
+            vmec_ntor=None if vmec_ntor is None else int(vmec_ntor),
             output_dir=Path(output_dir),
             project_input_boundary_to_max_mode=bool(project_input_boundary_to_max_mode),
             include=tuple(include),
@@ -2424,11 +2432,27 @@ def describe_boundary_mode_limits(stage_mode) -> str:
     return f"{base}_{limits.label}" if limits.label else base
 
 
-def rebuild_for_optimization_resolution(indata, *, max_mode: int, min_vmec_mode: int = 5):
-    """Set VMEC spectral resolution to at least ``max(min_vmec_mode, max_mode+2)``."""
+def rebuild_for_optimization_resolution(
+    indata,
+    *,
+    max_mode: int,
+    min_vmec_mode: int = 5,
+    vmec_mpol: int | None = None,
+    vmec_ntor: int | None = None,
+):
+    """Set VMEC spectral resolution for an optimization run.
 
-    vmec_mpol = max(int(min_vmec_mode), int(max_mode) + 2)
-    return rebuild_indata_with_resolution(indata, mpol=vmec_mpol, ntor=vmec_mpol)
+    By default both VMEC ``MPOL`` and ``NTOR`` are set to at least
+    ``max(min_vmec_mode, max_mode + 2)``.  ``vmec_mpol`` and ``vmec_ntor`` let
+    diagnostic sweeps decouple the internal VMEC spectral resolution from the
+    active boundary degrees of freedom; each explicit value is still floored by
+    ``min_vmec_mode`` and by the active boundary ``max_mode``.
+    """
+
+    floor = max(int(min_vmec_mode), int(max_mode) + 2)
+    mpol = max(floor, int(vmec_mpol)) if vmec_mpol is not None else floor
+    ntor = max(floor, int(vmec_ntor)) if vmec_ntor is not None else floor
+    return rebuild_indata_with_resolution(indata, mpol=mpol, ntor=ntor)
 
 
 def simple_omnigenity_seed_indata(
@@ -2518,6 +2542,8 @@ def prepare_simple_omnigenity_seed_input(
     *,
     max_mode: int,
     min_vmec_mode: int = 5,
+    vmec_mpol: int | None = None,
+    vmec_ntor: int | None = None,
     enabled: bool = True,
     include: Sequence[str] = ("rc", "zs"),
     fix: Sequence[str] = ("rc00",),
@@ -2539,6 +2565,8 @@ def prepare_simple_omnigenity_seed_input(
         indata,
         max_mode=max_mode,
         min_vmec_mode=min_vmec_mode,
+        vmec_mpol=vmec_mpol,
+        vmec_ntor=vmec_ntor,
     )
     seeded = simple_omnigenity_seed_indata(
         indata,
@@ -2634,7 +2662,12 @@ def build_fixed_boundary_objective_stage(
     """Build one VMEC/JAX optimization stage from an objective list."""
 
     stage_indata0 = (
-        truncate_indata_boundary_modes(indata, max_mode=stage_mode)
+        truncate_indata_boundary_modes(
+            indata,
+            max_mode=stage_mode,
+            max_m=stage_max_m,
+            max_n=stage_max_n,
+        )
         if bool(project_input_boundary_to_max_mode)
         else indata
     )
@@ -3040,7 +3073,12 @@ def build_quasi_isodynamic_objective_stage(
     """Build one QI stage while sharing one Boozer transform across QI terms."""
 
     stage_indata0 = (
-        truncate_indata_boundary_modes(indata, max_mode=stage_mode)
+        truncate_indata_boundary_modes(
+            indata,
+            max_mode=stage_mode,
+            max_m=stage_max_m,
+            max_n=stage_max_n,
+        )
         if bool(project_input_boundary_to_max_mode)
         else indata
     )

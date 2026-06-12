@@ -159,6 +159,9 @@ def extend_boundary_for_max_mode(
     static: "VMECStatic",
     boundary: "BoundaryCoeffs",
     max_mode: int,
+    *,
+    required_mpol: int | None = None,
+    required_ntor: int | None = None,
 ) -> tuple:
     """Extend *indata*, *static*, and *boundary* to support ``max_mode`` DOFs.
 
@@ -182,10 +185,13 @@ def extend_boundary_for_max_mode(
     boundary:
         Current boundary coefficients.  Replaced if extension is needed.
     max_mode:
-        Desired maximum mode number.  The extended mode table will have
-        ``mpol = ntor = max(max(mpol_cur, ntor_cur), max(5, max_mode + 2))``
+        Desired maximum mode number.  By default the extended mode table will
+        have ``mpol = ntor = max(max(mpol_cur, ntor_cur), max(5, max_mode + 2))``
         so that the VMEC solver resolution (and hence the QS metric
         normalisation) is independent of *max_mode*.
+    required_mpol, required_ntor:
+        Optional explicit VMEC spectral floors for diagnostic sweeps that
+        decouple internal ``MPOL``/``NTOR`` from active boundary mode limits.
 
     Returns
     -------
@@ -206,6 +212,10 @@ def extend_boundary_for_max_mode(
     # than max_mode=2/3, making cross-mode comparisons misleading.
     need_mpol = max(5, max_mode + 2)  # VMEC mpol = max_m + 1; add extra headroom
     need_ntor = max(5, max_mode + 2)
+    if required_mpol is not None:
+        need_mpol = max(need_mpol, int(required_mpol))
+    if required_ntor is not None:
+        need_ntor = max(need_ntor, int(required_ntor))
 
     if need_mpol <= cur_mpol and need_ntor <= cur_ntor:
         return indata, static, boundary  # nothing to do
@@ -249,21 +259,34 @@ def rebuild_indata_with_resolution(indata, *, mpol: int, ntor: int):
     )
 
 
-def truncate_indata_boundary_modes(indata, *, max_mode: int | None):
-    """Return a copy of ``indata`` with boundary modes above ``max_mode`` zeroed.
+def truncate_indata_boundary_modes(
+    indata,
+    *,
+    max_mode: int | None,
+    max_m: int | None = None,
+    max_n: int | None = None,
+):
+    """Return a copy of ``indata`` with inactive boundary modes zeroed.
 
     VMEC inputs can contain non-zero harmonics outside the active optimization
     space.  Parameter specs only decide which coefficients are free; they do
     not alter the fixed coefficients already present in the input.  Use this
-    helper when a ``max_mode=N`` optimization should start from the boundary
-    projected onto ``max(abs(m), abs(n)) <= N`` rather than keeping higher
-    harmonics fixed in the background.
+    helper when an optimization should start from the boundary projected onto
+    the active ``m``/``n`` mode rectangle rather than keeping higher harmonics
+    fixed in the background.
     """
     from .namelist import InData
 
-    if max_mode is None:
+    if max_mode is None and max_m is None and max_n is None:
         return indata
-    limit = int(max_mode)
+    if max_m is None:
+        max_m = max_mode
+    if max_n is None:
+        max_n = max_mode
+    if max_m is None or max_n is None:
+        raise ValueError("max_m and max_n must be finite when max_mode is omitted.")
+    m_limit = int(max_m)
+    n_limit = int(max_n)
     boundary_names = {"RBC", "RBS", "ZBC", "ZBS"}
     indexed = {}
     for name, values in indata.indexed.items():
@@ -273,7 +296,9 @@ def truncate_indata_boundary_modes(indata, *, max_mode: int | None):
             copied = {
                 tuple(key): float(value)
                 for key, value in copied.items()
-                if len(tuple(key)) >= 2 and max(abs(int(tuple(key)[0])), abs(int(tuple(key)[1]))) <= limit
+                if len(tuple(key)) >= 2
+                and abs(int(tuple(key)[0])) <= n_limit
+                and abs(int(tuple(key)[1])) <= m_limit
             }
         indexed[name] = copied
     return InData(

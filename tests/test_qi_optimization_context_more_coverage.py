@@ -24,6 +24,8 @@ def _context_values(tmp_path: Path) -> dict[str, object]:
         "MAX_NFEV": 8,
         "METHOD": "scipy_matrix_free",
         "MIN_VMEC_MODE": 5,
+        "VMEC_MPOL": None,
+        "VMEC_NTOR": None,
         "MIRROR_SURFACE_INDEX": -1,
         "MIRROR_WEIGHT": 4.0,
         "OPT_QI_RESOLUTION": {"mboz": 11, "nphi": 17},
@@ -65,11 +67,15 @@ def test_context_factory_accepts_uppercase_and_lowercase_overrides(tmp_path: Pat
         max_mode=5,
         output_dir=tmp_path / "lower",
         opt_qi_resolution={"nalpha": 23},
+        vmec_mpol=9,
+        vmec_ntor=11,
     )
 
     assert ctx.max_mode == 5
     assert ctx.output_dir == tmp_path / "lower"
     assert ctx.opt_qi_resolution == {"nalpha": 23}
+    assert ctx.vmec_mpol == 9
+    assert ctx.vmec_ntor == 11
     assert ctx.stage_modes == (1, 2, 3)
     assert ctx.target_abs_iota_min == pytest.approx(0.41)
 

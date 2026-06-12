@@ -43,6 +43,8 @@ def test_qi_example_cli_overrides_update_namespace_and_stage_modes(tmp_path: Pat
         "INNER_FTOL": 1.0e-8,
         "TRIAL_MAX_ITER": 80,
         "TRIAL_FTOL": 1.0e-7,
+        "VMEC_MPOL": None,
+        "VMEC_NTOR": None,
         "SOLVER_DEVICE": None,
         "ALPHA": 1.0,
         "USE_ESS": False,
@@ -91,6 +93,10 @@ def test_qi_example_cli_overrides_update_namespace_and_stage_modes(tmp_path: Pat
             "5",
             "--min-vmec-mode",
             "9",
+            "--vmec-mpol",
+            "8",
+            "--vmec-ntor",
+            "10",
             "--max-nfev",
             "60",
             "--continuation-nfev",
@@ -175,6 +181,8 @@ def test_qi_example_cli_overrides_update_namespace_and_stage_modes(tmp_path: Pat
     assert namespace["OUTPUT_DIR"] == tmp_path / "out"
     assert namespace["MIN_VMEC_MODE"] == 9
     assert namespace["MAX_NFEV"] == 60
+    assert namespace["VMEC_MPOL"] == 8
+    assert namespace["VMEC_NTOR"] == 10
     assert namespace["CONTINUATION_NFEV"] == 11
     assert namespace["METHOD"] == "scipy_matrix_free"
     assert namespace["FTOL"] == pytest.approx(1.0e-5)
@@ -241,6 +249,51 @@ def test_qi_example_cli_defaults_min_vmec_mode_and_accepts_default_solver(monkey
     assert namespace["MIN_VMEC_MODE"] == 7
     assert namespace["SOLVER_DEVICE"] is None
     assert namespace["STAGE_MODES"] == (4, 2, "lower")
+
+
+def test_qi_example_cli_loads_anisotropic_stage_mode_limits(tmp_path: Path) -> None:
+    stage_limits = tmp_path / "stage_limits.json"
+    stage_limits.write_text(
+        json.dumps(
+            [
+                {"mode": 5, "max_m": 1, "max_n": 5, "label": "toroidal_first"},
+                [2, 4],
+                3,
+            ]
+        )
+        + "\n"
+    )
+    namespace = {
+        "MAX_MODE": 5,
+        "MIN_VMEC_MODE": 8,
+        "VMEC_MPOL": None,
+        "VMEC_NTOR": None,
+        "CONTINUATION_NFEV": 2,
+        "USE_MODE_CONTINUATION": True,
+        "STAGE_MODE_POLICY": "lower",
+        "STAGE_REPEATS": 2,
+    }
+
+    qio.apply_qi_example_cli_overrides(
+        namespace,
+        [
+            "--stage-mode-limits-json",
+            str(stage_limits),
+            "--vmec-mpol",
+            "9",
+            "--vmec-ntor",
+            "11",
+        ],
+    )
+
+    assert namespace["VMEC_MPOL"] == 9
+    assert namespace["VMEC_NTOR"] == 11
+    assert namespace["STAGE_MODE_LIMITS"] == (
+        {"mode": 5, "max_m": 1, "max_n": 5, "label": "toroidal_first"},
+        {"mode": 4, "max_m": 2, "max_n": 4, "label": None},
+        {"mode": 3, "max_m": None, "max_n": None, "label": None},
+    )
+    assert namespace["STAGE_MODES"] == namespace["STAGE_MODE_LIMITS"]
 
 
 def test_qi_example_cli_real_stage_mode_policies() -> None:
