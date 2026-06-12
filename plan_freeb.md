@@ -20709,3 +20709,63 @@ Completion:
 - CI/runtime/coverage hygiene: 100%; no slow solve was added.
 - QI minimal-seed README artifacts: 93% infrastructure/artifact-ready,
   0% promoted; NFP=2 cleanup evidence is still running.
+
+### 2026-06-12 NFP2 QI Reference-Lambda and Cleanup Evidence
+
+Steps taken:
+
+1. Reran the reviewed NFP=2 ``minimal_nfp2_qi_balanced_mirror035`` lane on
+   ``office`` CPU after relaxing the first stage to allow a working seed.
+2. The run reached a strong intermediate low-QI branch at stage 1:
+   smooth QI ``1.53e-3``, legacy QI ``2.13e-4``, mean iota ``-0.457``,
+   elongation ``4.97``, aspect ``8.16``, and mirror ``0.3527``.  It was
+   correctly treated as an intermediate working seed, not a final promotion,
+   because the hard mirror gate is ``0.35``.
+3. Tested follow-on local cleanup from that branch.  Full scalar-trust CPU
+   cleanup spent more than one CPU-hour before producing useful first-step
+   metrics; the GPU version also spent more than ten minutes in initial
+   derivative construction.  These are not suitable as public preset stages.
+4. Ran a fast low-resolution reference-family lambda scan for
+   ``0.72..0.96``.  Lower lambdas moved aspect toward 6 but lost QI and
+   transform; by lambda ``0.96`` the scan had aspect ``7.74``, mean iota
+   ``-0.416``, mirror ``0.235``, smooth QI ``1.32e-2``, and legacy QI
+   ``7.51e-3``.
+5. Forced a high-accuracy rerun with only lambda ``0.96``.  After about
+   50 CPU-minutes, stage 1 remained essentially unchanged from the baseline
+   (smooth QI ``1.21e-2``, legacy QI ``7.48e-3``, mirror ``0.240``,
+   aspect ``7.74``), so this branch is not a useful replacement for the
+   lambda-near-1 low-QI basin.
+
+Results obtained:
+
+1. The current NFP=2 minimal-seed path has a real low-QI basin but it sits at
+   higher aspect and just misses the final mirror cap.  Local aspect cleanup
+   from that branch tends to degrade mirror/iota.
+2. Widening only the scalar lambda scan cannot provide aspect-6, iota-safe,
+   low-QI candidates.  The next viable NFP=2 route needs a different reference
+   family or a constrained optimizer that can treat aspect/mirror as true
+   constraints without destroying QI.
+3. No README QI artifact should be promoted from these runs.
+
+Best next steps:
+
+1. Keep the stage-1 lambda-near-1 candidate as evidence of a low-QI basin, but
+   do not use it as final public output.
+2. For NFP=2, try either a lower-aspect reference family or an augmented
+   Lagrangian schedule that preserves QI/mirror before applying aspect pressure.
+3. Keep NFP=1/NFP=2/NFP=3/NFP=4 README QI promotion blocked until each row has
+   provenance and independent QI/iota/mirror/aspect diagnostics.
+
+Need from user:
+
+No action needed unless the aspect-6 requirement can be relaxed for QI.  With
+aspect fixed at 6, NFP=2 needs a new basin/reference strategy.
+
+Completion:
+
+- QI minimal-seed README artifacts: 93% infrastructure/artifact-ready,
+  0% promoted; NFP=2 has useful negative evidence and a known near-miss branch,
+  but not a promotable aspect-6 final result.
+- CPU/GPU performance: 99.4%; this experiment re-confirms high-mode QI
+  scalar-trust cold derivative construction is still too expensive for broad
+  public cleanup sweeps.
