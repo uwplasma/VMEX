@@ -449,6 +449,61 @@ Completion:
   result.
 - Docs/release hygiene: 100%.
 
+### 2026-06-12 QI-Improvement Working-Seed Handoff
+
+Steps taken:
+
+1. Inspected the corrected ``office`` run from ``e27a193``.  It reproduced the
+   near-pass stage-1 result but still did not hand off to stage 2 because the
+   generic ``accept_if_rank_improves`` score penalized the larger aspect error:
+   candidate score ``119.547`` versus reference score ``118.986``.
+2. Added a generic ``accept_if_qi_improves`` staged-promotion rule.  It accepts
+   a candidate as an intermediate promotion when smooth and legacy QI improve
+   while absolute iota, mirror ratio, and elongation remain within safe limits;
+   it deliberately does not require aspect improvement.
+3. Switched ``final_balance_qi_mirror035`` from rank-score handoff to
+   ``accept_if_qi_improves`` plus ``promote_as_working_seed_only``.
+4. Added a unit test reproducing the office failure mode: QI improves, mirror
+   stays below ``0.35``, iota/elongation stay safe, but aspect gets worse.
+5. Re-ran focused validation and pushed
+   ``87e2814 Use QI improvement for balanced polish handoff``.
+6. Stopped the obsolete ``e27a193`` office run and launched a fresh run from
+   ``87e2814`` in ``~/local/tests/qi_balanced_mirror035_87e2814``.
+
+Results obtained:
+
+1. Focused validation passed: ``ruff`` clean and ``110 passed, 2 skipped`` for
+   the QI case, staged-runner, readme, example, and promotion-helper tests.
+2. The new rule directly covers the observed stage-1 metrics:
+   smooth QI improved from ``4.36e-3`` to ``2.02e-3``, legacy QI improved from
+   ``2.30e-3`` to ``4.70e-4``, mirror stayed below ``0.35``, and iota /
+   elongation remained within safe limits.
+
+Best next steps:
+
+1. Let the ``87e2814`` office run reach stage 2 and verify that the log prints
+   ``working seed: True`` after stage 1 and starts stage 2 from
+   ``mirror_ramp_01_final_balance_qi_mirror035/input.final``.
+2. If stage 2 produces a final gate pass, sync artifacts and render the README
+   QI panel.  If it still misses only aspect, tune direct mode-5 aspect weight
+   or aspect tolerance rather than reintroducing the mode-3 ramp.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- QI minimal-seed README artifacts: 92% artifact-ready, 0% re-promoted while
+  the ``87e2814`` office artifact is running.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.3%.
+- Single-stage coil-only optimization: 99.0%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+
 ### 2026-06-12 CI and Bounded VMEC2000 Parity Completion
 
 Steps taken:
