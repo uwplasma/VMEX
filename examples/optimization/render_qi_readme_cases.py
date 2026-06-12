@@ -326,6 +326,7 @@ def _short_history_label(label: str) -> str:
         "mirror_polish_after_qi_gate032 (max_mode=5, ESS)": "mirror polish",
         "mirror_polish_after_qi_gate035 (max_mode=5, ESS)": "mirror polish",
         "guarded_tighten_qi_mirror035 (max_mode=5, ESS)": "guarded QI polish",
+        "aspect_localize_after_qi_gate035 (max_mode=5, ESS)": "QI-safe aspect cleanup",
         "aspect_recovery_after_qi_gate035 (max_mode=5, ESS)": "aspect recovery",
         "lcfs_mirror_030 (max_mode=3, ESS)": "LCFS mirror check",
         "boundary-reference baseline (max_mode=4)": "boundary baseline",

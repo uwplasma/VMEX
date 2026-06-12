@@ -828,10 +828,11 @@ QI_CASES["nfp4_qi"] = {
 }
 
 # Reviewed high-budget NFP=2 polish lane.  It reuses the deterministic
-# minimal-seed/reference-family basin as the accepted baseline, then jumps
-# directly to the mode-5 scalar-trust augmented-Lagrangian cleanup.  Avoiding
-# the older mode-3 aspect-ramp stages keeps this public preset focused on the
-# current fast path for smooth QI < 2e-3 with mirror below the public 0.35 cap.
+# minimal-seed/reference-family basin as the accepted baseline, jumps to the
+# mode-5 scalar-trust augmented-Lagrangian cleanup, then performs one guarded
+# aspect-localization stage.  Avoiding the older mode-3 aspect-ramp stages
+# keeps this public preset focused on the current fast path for smooth QI <
+# 2e-3 with mirror below the public 0.35 cap.
 _NFP2_BALANCED_STAGES = (
     {
         "name": "aspect_first_qi_mirror035",
@@ -902,6 +903,50 @@ _NFP2_BALANCED_STAGES = (
         "require_seed_gate": False,
         "require_engineering_gate": True,
         "require_mirror_improvement": False,
+        "accept_if_qi_improves": True,
+        "promote_as_working_seed_only": True,
+        "qi_safe_mirror_relax": 1.0,
+        "qi_safe_elongation_relax": 1.0,
+    },
+    {
+        "name": "aspect_localize_after_qi_gate035",
+        "max_nfev": 26,
+        "method": "scalar_trust",
+        "use_mode_continuation": False,
+        "stage_mode_limits": ({"mode": 5, "max_m": 5, "max_n": 5, "label": "m05_n05"},),
+        "use_augmented_lagrangian_constraints": True,
+        "scalar_step_bound": 1.5e-2,
+        "mirror_backend": "vmec",
+        "mirror_surface_index": -1,
+        "mirror_threshold": DEFAULT_QI_MIRROR_RATIO,
+        "promotion_mirror_threshold": DEFAULT_QI_MIRROR_RATIO,
+        "mirror_weight": 45.0,
+        "elongation_weight": 2.0,
+        "al_mirror_multiplier": 0.0,
+        "al_mirror_penalty": 400.0,
+        "al_mirror_weight": 45.0,
+        "al_elongation_multiplier": 0.0,
+        "al_elongation_penalty": 50.0,
+        "al_elongation_weight": 2.0,
+        "al_constraint_softness": 2.0e-3,
+        "qi_weight": 22000.0,
+        "qi_ceiling_weight": 32000.0,
+        "qi_ceiling_max": 2.0e-3,
+        "qi_ceiling_smooth_penalty": 5.0e-4,
+        "aspect_weight": 8.0,
+        "iota_floor_weight": 125.0**2,
+        "smooth_qi_max": 2.0e-3,
+        "legacy_qi_max": 2.0e-3,
+        "max_elongation": 10.0,
+        "require_seed_gate": False,
+        "require_engineering_gate": True,
+        "require_mirror_improvement": False,
+        "accept_if_qi_safe_aspect_improves": True,
+        "aspect_improvement_min": 1.0e-2,
+        "qi_safe_smooth_relax": 1.0,
+        "qi_safe_legacy_relax": 1.0,
+        "qi_safe_mirror_relax": 1.0,
+        "qi_safe_elongation_relax": 1.0,
     },
 )
 QI_CASES["minimal_nfp2_qi_balanced_mirror035"] = {

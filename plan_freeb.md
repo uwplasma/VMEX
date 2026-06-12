@@ -20461,6 +20461,55 @@ Completion:
   0% promoted; NFP=1 still misses QI gates, NFP=2 has a good-QI candidate but
   needs aspect-safe promotion/cleanup, NFP=3/4 are still pending in the office
   policy matrix.
+
+### 2026-06-12 NFP2 QI Aspect-Safe Cleanup Policy
+
+Steps taken:
+
+1. Updated the reviewed NFP=2 ``minimal_nfp2_qi_balanced_mirror035`` policy
+   after inspecting the office mode-5 result.  The second polish stage now can
+   become an intermediate working seed when it safely improves QI but still
+   misses the final engineering gate.
+2. Added a third mode-5 scalar-trust stage,
+   ``aspect_localize_after_qi_gate035``, that targets aspect localization while
+   preserving smooth/legacy QI, iota, mirror, and elongation gates.
+3. Updated renderer labels and regression tests so the three-stage policy is
+   explicit in CI.
+
+Results obtained:
+
+1. Focused validation passed:
+   ``ruff`` on edited files and
+   ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_qi_case_resolution.py tests/test_qi_staged_runner.py tests/test_minimal_seed_showcase.py tests/test_optimization_examples.py -q``.
+2. The patch is not yet a promoted QI artifact.  It addresses the observed
+   failure mode from the office NFP=2 run, where a good-QI/mirror state was
+   rejected only because aspect remained too high.
+
+Best next steps:
+
+1. Rerun the NFP=2 policy on ``office`` or local CPU once the active office
+   matrix reaches a safe stopping point; promote only if the new third stage
+   passes independent diagnostics and provenance.
+2. Keep NFP=1 unpromoted until a different basin strategy lowers smooth/legacy
+   QI below the gate; scalar-aware over-lambda probing did not fix it.
+3. Continue the office NFP=3/NFP=4 policy matrix for evidence.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- QI minimal-seed README artifacts: 92% infrastructure/artifact-ready,
+  0% promoted; NFP=2 now has a policy fix queued for rerun, NFP=1 remains the
+  main QI gate blocker.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.55%.
+- Single-stage coil-only optimization: 99.0%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% locally for focused shards.
+- Docs/release hygiene: 100%.
 - VMEC parity and physics gates: 99.0%.
 - Single-stage coil-only optimization: 99.0%.
 - CPU/GPU performance: 99.4%.
