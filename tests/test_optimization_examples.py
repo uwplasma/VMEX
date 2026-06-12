@@ -401,6 +401,7 @@ def test_qi_example_keeps_mirror_cleanup_guarded_by_qi_ceiling() -> None:
     assert '"name": "matrix_free_mirror035"' in cases_text
     assert '"name": "final_balance_qi_mirror035"' in cases_text
     assert '"name": "mirror_polish_after_qi_gate035"' in cases_text
+    assert '"name": "aspect_recovery_after_qi_gate035"' in cases_text
     assert '"require_mirror_improvement": False' in cases_text
     assert "stage_smooth_qi_max = float(stage.get(\"smooth_qi_max\", _ctx(ctx, \"qi_gate_smooth_max\")))" in support_text
     assert "stage_promotion_mirror_threshold = float(" in support_text

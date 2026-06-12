@@ -504,6 +504,72 @@ Completion:
 - CI/runtime/coverage hygiene: 100%.
 - Docs/release hygiene: 100%.
 
+### 2026-06-12 Balanced NFP2 Mode-5 Aspect-Recovery Polish
+
+Steps taken:
+
+1. Reviewed the completed ``office`` mirror035 run from commit ``87e2814``.
+   The direct mode-5 QI/mirror lane reached a scientifically useful candidate
+   with smooth QI ``1.99e-3``, legacy QI ``4.36e-4``, mirror ratio ``0.343``,
+   elongation ``5.11``, and mean iota ``-0.465``, but it failed final
+   promotion only on the aspect gate with aspect ``8.30`` against the
+   target-aspect-6, 35%-relative-tolerance gate.
+2. Kept the expensive mode-3 aspect-ramp stages removed and added a third
+   mode-5 scalar-trust augmented-Lagrangian stage,
+   ``aspect_recovery_after_qi_gate035``.  It starts after the QI/mirror-safe
+   working-seed handoff, increases aspect pressure, and still requires the full
+   QI engineering gate before final promotion.
+3. Made ``mirror_polish_after_qi_gate035`` an intermediate working-seed stage
+   when it improves smooth and legacy QI while preserving iota, mirror, and
+   elongation, so the final aspect-recovery stage starts from the best
+   QI/mirror-safe candidate rather than the reference-family baseline.
+4. Updated README/docs/example wording, renderer labels, and focused
+   regression tests to describe the mode-5 QI/mirror/aspect cleanup chain.
+
+Results obtained:
+
+1. Focused static checks passed:
+   ``python -m ruff check examples/optimization/qi_optimization_cases.py
+   examples/optimization/render_qi_readme_cases.py tests/test_qi_case_resolution.py
+   tests/test_qi_staged_runner.py tests/test_optimization_examples.py``.
+2. Focused QI/example tests passed:
+   ``python -m pytest -q tests/test_qi_case_resolution.py
+   tests/test_qi_staged_runner.py tests/test_qi_readme_cases.py
+   tests/test_optimization_examples.py tests/test_qi_optimization_more_coverage.py
+   tests/test_qi_optimization_public_helpers.py`` completed with
+   ``132 passed, 2 skipped``.
+3. GitHub Actions for the previous checkpoint ``117f322`` completed
+   successfully before this new patch.
+
+Best next steps:
+
+1. Commit and push the three-stage mirror035 policy.
+2. Relaunch the full ``minimal_nfp2_qi_balanced_mirror035`` preset on
+   ``office`` from the new commit and inspect whether the aspect-recovery stage
+   brings aspect under the public 35% gate without losing QI or mirror.
+3. If the new artifact passes all gates, sync it back and refresh the README QI
+   figure/provenance.  If it still fails only aspect, tune only the mode-5
+   recovery stage before reconsidering any gate relaxation.
+4. Continue bounded VMEC2000/direct-coil/mgrid parity and free-boundary
+   adaptive-branch gates; current validated derivative claims remain
+   branch-local/fingerprint-gated, not arbitrary adaptive-loop differentiation.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- QI minimal-seed README artifacts: 93% artifact-ready, 0% re-promoted after
+  the mirror035 stage-chain change until the new office artifact passes.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.3%.
+- Single-stage coil-only optimization: 99.0%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+
 ### 2026-06-12 CI and Bounded VMEC2000 Parity Completion
 
 Steps taken:
