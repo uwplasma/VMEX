@@ -5,10 +5,10 @@ This diagnostic builds a lightweight Cartesian matrix for
 ``examples/optimization/QI_optimization.py`` without launching optimization
 jobs by default.  It is intended for short, auditable QI parameter searches
 over knobs such as ``max_mode``, ``stage_mode_policy``, ``stage_repeats``,
-Boozer/QI resolution, ``max_nfev``, optimizer ``method``, ESS ``alpha``,
-accepted/trial VMEC tolerances and iteration caps, and supported objective
-weights.  The harness writes a ``plan.json`` plus command summaries that can be
-run manually or by a scheduler.
+Boozer/QI resolution, internal VMEC ``MPOL``/``NTOR`` floors, ``max_nfev``,
+optimizer ``method``, ESS ``alpha``, accepted/trial VMEC tolerances and
+iteration caps, and supported objective weights.  The harness writes a
+``plan.json`` plus command summaries that can be run manually or by a scheduler.
 
 Boundary ``max_m``/``max_n`` are emitted through per-case
 ``--stage-mode-limits-json`` files, so probes can vary active poloidal and
@@ -44,6 +44,9 @@ CSV_FIELDS = (
     "stage_repeats",
     "boundary_max_m",
     "boundary_max_n",
+    "min_vmec_mode",
+    "vmec_mpol",
+    "vmec_ntor",
     "qi_mboz",
     "qi_nboz",
     "qi_nphi",
@@ -109,6 +112,9 @@ class ProbeCase:
     stage_repeats: int
     boundary_max_m: int | None
     boundary_max_n: int | None
+    min_vmec_mode: int | None
+    vmec_mpol: int | None
+    vmec_ntor: int | None
     qi_mboz: int
     qi_nboz: int
     qi_nphi: int
@@ -287,6 +293,9 @@ def build_command(
     max_mode: int,
     stage_mode_policy: str,
     stage_repeats: int,
+    min_vmec_mode: int | None,
+    vmec_mpol: int | None,
+    vmec_ntor: int | None,
     qi_mboz: int,
     qi_nboz: int,
     qi_nphi: int,
@@ -353,6 +362,12 @@ def build_command(
         str(int(trial_max_iter)),
         "--no-make-plots",
     ]
+    if min_vmec_mode is not None:
+        command.extend(["--min-vmec-mode", str(int(min_vmec_mode))])
+    if vmec_mpol is not None:
+        command.extend(["--vmec-mpol", str(int(vmec_mpol))])
+    if vmec_ntor is not None:
+        command.extend(["--vmec-ntor", str(int(vmec_ntor))])
     if stage_mode_limits_json is not None:
         command.extend(["--stage-mode-limits-json", str(stage_mode_limits_json)])
     unsupported: list[str] = []
@@ -376,6 +391,9 @@ def generate_cases(
     stage_repeats: Sequence[int],
     boundary_max_ms: Sequence[int | None],
     boundary_max_ns: Sequence[int | None],
+    min_vmec_modes: Sequence[int | None],
+    vmec_mpol_values: Sequence[int | None],
+    vmec_ntor_values: Sequence[int | None],
     qi_mboz_values: Sequence[int],
     qi_nboz_values: Sequence[int],
     qi_nphi_values: Sequence[int],
@@ -399,6 +417,9 @@ def generate_cases(
         stage_repeats,
         boundary_max_ms,
         boundary_max_ns,
+        min_vmec_modes,
+        vmec_mpol_values,
+        vmec_ntor_values,
         qi_mboz_values,
         qi_nboz_values,
         qi_nphi_values,
@@ -419,6 +440,9 @@ def generate_cases(
             repeats,
             boundary_max_m,
             boundary_max_n,
+            min_vmec_mode,
+            vmec_mpol,
+            vmec_ntor,
             qi_mboz,
             qi_nboz,
             qi_nphi,
@@ -460,6 +484,9 @@ def generate_cases(
             max_mode=int(max_mode),
             stage_mode_policy=str(policy),
             stage_repeats=int(repeats),
+            min_vmec_mode=None if min_vmec_mode is None else int(min_vmec_mode),
+            vmec_mpol=None if vmec_mpol is None else int(vmec_mpol),
+            vmec_ntor=None if vmec_ntor is None else int(vmec_ntor),
             qi_mboz=int(qi_mboz),
             qi_nboz=int(qi_nboz),
             qi_nphi=int(qi_nphi),
@@ -483,6 +510,9 @@ def generate_cases(
                 stage_repeats=int(repeats),
                 boundary_max_m=None if boundary_max_m is None else int(boundary_max_m),
                 boundary_max_n=None if boundary_max_n is None else int(boundary_max_n),
+                min_vmec_mode=None if min_vmec_mode is None else int(min_vmec_mode),
+                vmec_mpol=None if vmec_mpol is None else int(vmec_mpol),
+                vmec_ntor=None if vmec_ntor is None else int(vmec_ntor),
                 qi_mboz=int(qi_mboz),
                 qi_nboz=int(qi_nboz),
                 qi_nphi=int(qi_nphi),
@@ -638,6 +668,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stage-repeats", type=_int_values, default=(1,))
     parser.add_argument("--boundary-max-m", type=_optional_int_values, default=(None,))
     parser.add_argument("--boundary-max-n", type=_optional_int_values, default=(None,))
+    parser.add_argument("--min-vmec-mode", type=_optional_int_values, default=(None,))
+    parser.add_argument("--vmec-mpol", type=_optional_int_values, default=(None,))
+    parser.add_argument("--vmec-ntor", type=_optional_int_values, default=(None,))
     parser.add_argument("--qi-mboz", type=_int_values, default=(8,))
     parser.add_argument("--qi-nboz", type=_int_values, default=(8,))
     parser.add_argument("--qi-nphi", type=_int_values, default=(41,))
@@ -690,6 +723,9 @@ def main(argv: list[str] | None = None) -> int:
         stage_repeats=args.stage_repeats,
         boundary_max_ms=args.boundary_max_m,
         boundary_max_ns=args.boundary_max_n,
+        min_vmec_modes=args.min_vmec_mode,
+        vmec_mpol_values=args.vmec_mpol,
+        vmec_ntor_values=args.vmec_ntor,
         qi_mboz_values=args.qi_mboz,
         qi_nboz_values=args.qi_nboz,
         qi_nphi_values=args.qi_nphi,

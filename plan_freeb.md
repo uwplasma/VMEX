@@ -19143,6 +19143,85 @@ Completion:
   promoted; parameter-search controls are now in place, but robust precise-QI
   candidates still need to be run and reviewed.
 
+### 2026-06-11 QI Decoupling Follow-Up and CI Repair
+
+Steps taken:
+
+1. Inspected the failed GitHub Actions run for ``67adb76``.  Only
+   ``Fast Tests (py3.11 core coverage: optimization-qi)`` failed.
+2. Pulled the failing job log with ``gh``.  The root causes were:
+   ``QI_optimization.py`` crossed the strict example-size gate
+   (``505`` then ``500`` lines), and a unit-test monkeypatch did not accept the
+   new ``max_m/max_n`` projection keywords.
+3. Trimmed nonessential QI example comments to keep the script at ``499`` lines
+   and updated the workflow unit-test monkeypatches.
+4. Applied the code-audit follow-up: active boundary ``max_m/max_n`` is now
+   decoupled from internal VMEC ``MPOL/NTOR`` resolution in stage extension,
+   explicit ``VMEC_MPOL/NTOR`` overrides are true overrides, and
+   boundary-reference baseline stages preserve the final anisotropic stage
+   descriptor instead of forcing scalar ``max_mode``.
+5. Extended the QI parameter-probe harness to sweep ``--min-vmec-mode``,
+   ``--vmec-mpol``, and ``--vmec-ntor`` in addition to active
+   ``max_m/max_n`` and QI/Boozer resolution.
+6. Ran two bounded CPU QI triage batches:
+   one from the working NFP2 stage-1 seed and one from raw/minimal/far-like
+   seeds with very small budgets.
+
+Results obtained:
+
+1. Local exact CI failure reproduction now passes:
+   ``tests/test_optimization_examples.py::test_qi_example_uses_qi_problem_api``
+   and
+   ``tests/test_optimization_workflow_unit.py::test_build_quasi_isodynamic_stage_wires_shared_field_residuals``.
+2. Exact local ``optimization-qi`` CI bucket passed:
+   ``584 passed, 6 skipped`` in ``122.07 s``.
+3. Broader lightweight QI/helper shard passed:
+   ``144 passed, 1 skipped``.
+4. Harness VMEC-resolution smoke generated commands containing
+   ``--min-vmec-mode 1 --vmec-mpol 3 --vmec-ntor 7`` plus
+   ``--stage-mode-limits-json``.
+5. Working-seed bounded triage result:
+   ``scalar_trust`` repeat with reduced QI resolution remained the best
+   low-budget setting.  ``nfev=2`` gave smooth QI ``1.80e-3``, legacy QI
+   ``3.98e-4``, mirror ``0.366``, iota ``-0.491``, aspect ``6.40``.  Increasing
+   to ``nfev=5`` improved QI slightly (smooth ``1.66e-3``, legacy
+   ``3.35e-4``) but worsened mirror to ``0.384``.
+6. Raw/minimal/far-like bounded probe cases stayed near zero iota and high QI
+   residuals even with rectangular/toroidal-first active mode rectangles.  They
+   are useful negative evidence, not README promotion candidates.
+
+Best next steps:
+
+1. Commit and push the CI repair plus true anisotropic/internal-resolution
+   decoupling patch, then monitor the rerun.
+2. For QI robustness, do not spend more low-budget iterations from raw seeds
+   without a stronger basin step.  The next useful experiment is a mirror-aware
+   scalar-trust cleanup with stronger mirror constraint/weight starting from
+   the working NFP2 stage-1 seed, followed by a separate basin/preconditioner
+   stage to avoid near-zero-iota raw-seed traps.
+3. Keep README QI artifacts unpromoted until candidates pass exact diagnostics
+   and Boozer contour review from documented minimal seeds.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999%; arbitrary adaptive
+  branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.3%.
+- Single-stage coil-only optimization: 99.5%.
+- Robust coil perturbation optimization: deferred, 70%.
+- CPU/GPU performance: 99.6%.
+- CI/runtime/coverage hygiene: 100% locally after reproducing the failed CI
+  bucket; pending rerun after push.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 84% infrastructure/artifact-complete, 0%
+  promoted; search infrastructure improved, but precise robust candidates
+  remain unpromoted.
+
 ### 2026-06-11 QI Minimal-Seed NFP2 Single-Pass Triage
 
 Steps taken:

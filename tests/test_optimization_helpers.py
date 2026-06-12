@@ -746,6 +746,25 @@ def test_rebuild_for_optimization_resolution_accepts_explicit_vmec_floors():
     assert indata.scalars["MPOL"] == 3
 
 
+def test_rebuild_for_optimization_resolution_allows_anisotropic_low_mpol_override():
+    indata = InData(
+        scalars={"MPOL": 9, "NTOR": 9, "NFP": 2},
+        indexed={"RBC": {(0, 0): 1.0}},
+        source_path="input.resolution",
+    )
+
+    rebuilt = rebuild_for_optimization_resolution(
+        indata,
+        max_mode=5,
+        min_vmec_mode=1,
+        vmec_mpol=3,
+        vmec_ntor=9,
+    )
+
+    assert rebuilt.scalars["MPOL"] == 3
+    assert rebuilt.scalars["NTOR"] == 9
+
+
 def test_tiny_target_helicity_seed_terms_survive_active_mode_projection():
     """Document the optimization-time target-helicity seed convention."""
 
@@ -895,6 +914,33 @@ def test_extend_boundary_for_max_mode_respects_explicit_resolution_floors(monkey
     assert out_indata.scalars["NTOR"] == 9
     assert out_static.modes is rebuilt_modes
     assert out_boundary is rebuilt_boundary
+
+
+def test_extend_boundary_for_max_mode_keeps_anisotropic_resolution_when_sufficient():
+    modes = vmec_mode_table(mpol=3, ntor=7)
+    static = SimpleNamespace(modes=modes)
+    boundary = BoundaryCoeffs(
+        R_cos=np.zeros(modes.K),
+        R_sin=np.zeros(modes.K),
+        Z_cos=np.zeros(modes.K),
+        Z_sin=np.zeros(modes.K),
+    )
+    indata = InData(scalars={"MPOL": 3, "NTOR": 7, "NFP": 2}, indexed={}, source_path="input.aniso")
+
+    out_indata, out_static, out_boundary = extend_boundary_for_max_mode(
+        indata,
+        static,
+        boundary,
+        max_mode=5,
+        active_max_m=1,
+        active_max_n=5,
+        min_mpol=3,
+        min_ntor=7,
+    )
+
+    assert out_indata is indata
+    assert out_static is static
+    assert out_boundary is boundary
 
 
 def test_pressure_profile_for_static_defaults_to_zero(monkeypatch):

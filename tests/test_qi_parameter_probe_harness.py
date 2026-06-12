@@ -33,6 +33,9 @@ def test_generate_cases_uses_supported_flags_and_keeps_metadata(tmp_path: Path) 
         stage_repeats=(2,),
         boundary_max_ms=(3,),
         boundary_max_ns=(4,),
+        min_vmec_modes=(2,),
+        vmec_mpol_values=(5,),
+        vmec_ntor_values=(7,),
         qi_mboz_values=(6,),
         qi_nboz_values=(7,),
         qi_nphi_values=(31,),
@@ -52,6 +55,9 @@ def test_generate_cases_uses_supported_flags_and_keeps_metadata(tmp_path: Path) 
     case = cases[0]
     assert case.boundary_max_m == 3
     assert case.boundary_max_n == 4
+    assert case.min_vmec_mode == 2
+    assert case.vmec_mpol == 5
+    assert case.vmec_ntor == 7
     assert case.stage_mode_limits_json is not None
     assert case.stage_mode_limits == (
         {"mode": 2, "max_m": 2, "max_n": 2, "label": "m2_n2"},
@@ -59,6 +65,9 @@ def test_generate_cases_uses_supported_flags_and_keeps_metadata(tmp_path: Path) 
     )
     assert case.unsupported_weight_keys == ("qi_weight",)
     assert "--stage-mode-limits-json" in case.command
+    assert "--min-vmec-mode" in case.command
+    assert "--vmec-mpol" in case.command
+    assert "--vmec-ntor" in case.command
     assert "--mirror-weight" in case.command
     assert "--qi-weight" not in case.command
     assert "--max-mode" in case.command
@@ -119,6 +128,12 @@ def test_cli_dry_run_writes_anisotropic_stage_mode_json(tmp_path: Path) -> None:
             "1",
             "--boundary-max-n",
             "5",
+            "--min-vmec-mode",
+            "1",
+            "--vmec-mpol",
+            "3",
+            "--vmec-ntor",
+            "7",
             "--max-nfev",
             "1",
             "--method",
@@ -132,6 +147,9 @@ def test_cli_dry_run_writes_anisotropic_stage_mode_json(tmp_path: Path) -> None:
     assert rc == 0
     plan = json.loads((tmp_path / "plan.json").read_text())
     case = plan["cases"][0]
+    assert case["min_vmec_mode"] == 1
+    assert case["vmec_mpol"] == 3
+    assert case["vmec_ntor"] == 7
     stage_json = Path(case["stage_mode_limits_json"])
     stages = json.loads(stage_json.read_text())
     assert stages == [
@@ -141,7 +159,11 @@ def test_cli_dry_run_writes_anisotropic_stage_mode_json(tmp_path: Path) -> None:
         {"label": "m1_n4", "max_m": 1, "max_n": 4, "mode": 4},
         {"label": "m1_n5", "max_m": 1, "max_n": 5, "mode": 5},
     ]
-    assert f"--stage-mode-limits-json {stage_json}" in (tmp_path / "commands.sh").read_text()
+    commands = (tmp_path / "commands.sh").read_text()
+    assert f"--stage-mode-limits-json {stage_json}" in commands
+    assert "--min-vmec-mode 1" in commands
+    assert "--vmec-mpol 3" in commands
+    assert "--vmec-ntor 7" in commands
 
 
 def test_summarize_output_dir_reads_diagnostics_and_history(tmp_path: Path) -> None:

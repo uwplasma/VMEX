@@ -78,13 +78,7 @@ STAGE_MODES = vj.qi_stage_modes(
     repeats=STAGE_REPEATS,
     policy=STAGE_MODE_POLICY,
 )
-# Common alternatives:
-# STAGE_MODES = [1, 1, 2, 2, 3, 3]
-# MIRROR_RAMP_STAGES = ()
-# STAGE_MODE_POLICY = "lower-repeat"; STAGE_REPEATS = 1  # one pass at each mode
-# STAGE_MODE_POLICY = "lower"   # legacy QA/QH/QP ladder: [1, 1, 2, 2, 2, ...]
-# STAGE_MODE_POLICY = "repeat"  # repeat only MAX_MODE for already-good seeds
-# STAGE_MODE_LIMITS = [{"mode": 5, "max_m": 1, "max_n": 5, "label": "toroidal_first"}]
+# Alternatives: STAGE_MODE_POLICY = "lower"/"repeat"; STAGE_MODE_LIMITS = [{"mode": 5, "max_m": 1, "max_n": 5}].
 # METHOD = "lbfgs_adjoint"
 # USE_REFERENCE_FAMILY_SEED = True
 # SOLVER_DEVICE = "gpu"

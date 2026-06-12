@@ -516,6 +516,14 @@ def test_stage_modes_for_uses_limits_explicit_modes_and_default_repetition(
     ]
 
 
+def test_final_qi_stage_modes_preserves_anisotropic_descriptor(monkeypatch: pytest.MonkeyPatch) -> None:
+    final = {"mode": 5, "max_m": 1, "max_n": 5, "label": "m1_n5"}
+    monkeypatch.setattr(qio, "STAGE_MODES", (1, final), raising=False)
+    monkeypatch.setattr(qio, "_DEFAULT_CONTEXT", None, raising=False)
+
+    assert qio._final_qi_stage_modes() == (final,)
+
+
 def test_promotion_scores_apply_gate_penalties_and_nonfinite_fallbacks() -> None:
     gated = {
         "qi_seed_gate_passed": True,

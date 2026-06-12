@@ -2443,15 +2443,17 @@ def rebuild_for_optimization_resolution(
     """Set VMEC spectral resolution for an optimization run.
 
     By default both VMEC ``MPOL`` and ``NTOR`` are set to at least
-    ``max(min_vmec_mode, max_mode + 2)``.  ``vmec_mpol`` and ``vmec_ntor`` let
-    diagnostic sweeps decouple the internal VMEC spectral resolution from the
-    active boundary degrees of freedom; each explicit value is still floored by
-    ``min_vmec_mode`` and by the active boundary ``max_mode``.
+    ``max(min_vmec_mode, max_mode + 2)``.  ``vmec_mpol`` and ``vmec_ntor`` are
+    explicit internal-resolution overrides for diagnostic sweeps that decouple
+    the VMEC spectral grid from active boundary degrees of freedom.  Stage
+    builders still extend a mode table if a later active stage actually needs
+    more modes, so these overrides are safe for anisotropic probes such as
+    ``max_m=1, max_n=5``.
     """
 
     floor = max(int(min_vmec_mode), int(max_mode) + 2)
-    mpol = max(floor, int(vmec_mpol)) if vmec_mpol is not None else floor
-    ntor = max(floor, int(vmec_ntor)) if vmec_ntor is not None else floor
+    mpol = max(1, int(vmec_mpol)) if vmec_mpol is not None else floor
+    ntor = max(0, int(vmec_ntor)) if vmec_ntor is not None else floor
     return rebuild_indata_with_resolution(indata, mpol=mpol, ntor=ntor)
 
 
@@ -2639,6 +2641,16 @@ def interpolate_indata_boundary(
     return out
 
 
+def _indata_get_int(indata, key: str, default: int) -> int:
+    getter = getattr(indata, "get_int", None)
+    if callable(getter):
+        return int(getter(key, default))
+    scalars = getattr(indata, "scalars", None)
+    if isinstance(scalars, dict) and key in scalars:
+        return int(scalars[key])
+    return int(default)
+
+
 def build_fixed_boundary_objective_stage(
     cfg,
     indata,
@@ -2678,6 +2690,10 @@ def build_fixed_boundary_objective_stage(
         static,
         boundary,
         stage_mode,
+        active_max_m=stage_max_m,
+        active_max_n=stage_max_n,
+        min_mpol=_indata_get_int(stage_indata0, "MPOL", 5),
+        min_ntor=_indata_get_int(stage_indata0, "NTOR", 5),
     )
     boundary_input = boundary_input_from_indata(stage_indata, static.modes)
     specs = boundary_param_specs(
@@ -3089,6 +3105,10 @@ def build_quasi_isodynamic_objective_stage(
         static,
         boundary,
         stage_mode,
+        active_max_m=stage_max_m,
+        active_max_n=stage_max_n,
+        min_mpol=_indata_get_int(stage_indata0, "MPOL", 5),
+        min_ntor=_indata_get_int(stage_indata0, "NTOR", 5),
     )
     boundary_input = boundary_input_from_indata(stage_indata, static.modes)
     specs = boundary_param_specs(
