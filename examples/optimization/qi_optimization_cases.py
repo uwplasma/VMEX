@@ -860,6 +860,8 @@ _NFP2_BALANCED_STAGES = (
         "require_seed_gate": False,
         "require_engineering_gate": True,
         "require_mirror_improvement": False,
+        "accept_if_rank_improves": True,
+        "promote_as_working_seed_only": True,
     },
     {
         "name": "mirror_polish_after_qi_gate035",
