@@ -449,6 +449,63 @@ Completion:
   result.
 - Docs/release hygiene: 100%.
 
+### 2026-06-12 Balanced NFP2 Working-Seed Polish Fix
+
+Steps taken:
+
+1. Monitored the first ``office`` mirror035 run.  It reached the requested
+   direct mode-5 AL stage but revealed a stage-policy issue: the first polish
+   stage improved QI and kept mirror below ``0.35`` but missed final promotion
+   by a small smooth-QI margin and aspect, so the second polish stage restarted
+   from the reference baseline instead of polishing the improved stage-1
+   boundary.
+2. Patched ``minimal_nfp2_qi_balanced_mirror035`` so
+   ``final_balance_qi_mirror035`` can be accepted as an intermediate working
+   seed when its rank score improves, while still not being final-promoted
+   unless the strict engineering gate passes.
+3. Added a regression assertion that only the first balanced stage has
+   ``accept_if_rank_improves=True`` and ``promote_as_working_seed_only=True``.
+4. Re-ran focused validation and pushed
+   ``e27a193 Let balanced QI polish use working seed``.
+5. Stopped the obsolete ``office`` job from the previous commit and launched a
+   corrected run from ``e27a193`` at
+   ``~/local/tests/qi_balanced_mirror035_e27a193``.
+
+Results obtained:
+
+1. Pre-fix stage-1 metrics on ``office`` were near the target but not
+   final-promotable: smooth QI ``2.021e-3``, legacy QI ``4.70e-4``, mirror
+   ``0.343``, elongation ``5.13``, and mean iota ``-0.464``.
+2. Focused validation after the working-seed patch passed:
+   ``python -m ruff check`` and ``python -m pytest -q`` on the QI case/staged
+   runner/readme/example tests produced ``86 passed, 2 skipped``.
+3. The corrected ``office`` run is alive; CI for ``e27a193`` is in progress.
+
+Best next steps:
+
+1. Let the corrected ``office`` run reach stage 2 and check whether the
+   working-seed handoff produces a final-promotable NFP=2 QI artifact.
+2. If the corrected direct mode-5 two-stage policy still misses aspect/QI
+   narrowly, tune the mode-5 stage weights/budget directly rather than
+   reintroducing the expensive mode-3 aspect-ramp ladder.
+3. Finish collecting optional VMEC2000 parity worker results.
+
+Need from user:
+
+No immediate action.
+
+Completion:
+
+- QI minimal-seed README artifacts: 91% artifact-ready, 0% re-promoted while
+  corrected office artifact is running.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998%.
+- VMEC parity and physics gates: 99.1%, pending optional VMEC2000 worker result.
+- Single-stage coil-only optimization: 99.0%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+
 ### 2026-06-12 Mirror035 Validation and Office Run Launch
 
 Steps taken:
