@@ -21849,6 +21849,72 @@ Completion:
 - QI minimal-seed README artifacts: 98% infrastructure/provenance-ready,
   scientific promotion still pending for NFP1/NFP2/NFP3.
 
+## 2026-06-13 NFP1/NFP2/NFP3 QI Follow-Up Poll
+
+Steps taken:
+
+1. Let the remote NFP1 and NFP2 QI cleanup jobs finish and audited their
+   diagnostics.
+2. Launched a targeted NFP2 cleanup from the best low-QI working seed in
+   ``/home/rjorge/local/tests/qi_nfp2_targeted_mirror_aspect_cleanup_f288e47``.
+   This run starts from the NFP2 stage-1 output with smooth QI already below
+   ``3e-3`` and tries mirror-first cleanup before aspect localization.
+3. Replaced the first NFP3 axisymmetric-scale scan after its initial
+   over-aggressive scale stalled.  The bounded replacement lives in
+   ``/home/rjorge/local/tests/qi_nfp3_axisym_scale_scan_bounded_f288e47`` and
+   runs one scale per subprocess with a timeout.
+
+Results obtained:
+
+1. NFP1 wide-reference cleanup did not improve QI: final diagnostics remain
+   smooth QI ``8.283e-3``, legacy QI ``5.167e-3``, mirror ``0.289``, aspect
+   ``7.09``, and mean iota ``0.480``.  This is not promotable.
+2. NFP2 balanced full run did not promote a final row.  Its best intermediate
+   stage reached smooth QI ``1.516e-3`` and legacy QI ``2.067e-4`` with mirror
+   ``0.354`` and aspect ``8.17``.  Later aspect-localization stages kept QI
+   low but worsened mirror to ``0.39--0.40`` and eventually fell back to the
+   reference-baseline row.
+3. NFP2 targeted cleanup is still running; no completed final diagnostic exists
+   yet.
+4. NFP3 bounded scale ``1.00`` confirms the low-aspect basin diagnosis:
+   smooth QI ``2.655e-3``, legacy QI ``2.416e-4``, mirror ``0.301``, and mean
+   iota ``-1.068`` pass the field gates, but aspect remains ``3.53``.  Scale
+   ``0.95`` is still running.
+5. GitHub Actions run ``27472716052`` for ``00bf816`` completed successfully.
+
+Best next steps:
+
+1. Let the NFP2 targeted cleanup finish.  If it can move mirror below ``0.35``
+   while preserving smooth QI below ``3e-3``, use that output as the next
+   NFP2 candidate; otherwise retire this particular NFP2 schedule and try a
+   different basin or document the tradeoff.
+2. Let the bounded NFP3 scan finish at least through scales ``0.95`` and
+   ``0.90``.  If aspect stays near ``3.5`` for every scale that preserves QI,
+   the next NFP3 route must be a new basin, not another local relock from the
+   current reference family.
+3. Do not restore/promote the README QI NFP1/2/3 panel until the rows pass
+   provenance and physics gates.  The current evidence is useful but not a
+   final public artifact.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999998% for fixed
+  branch-local accepted/rejected gates; arbitrary adaptive host branch
+  selection remains unclaimed.
+- VMEC parity and physics gates: 99.8%.
+- Single-stage coil-only optimization: 99.5%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 98% infrastructure/provenance-ready,
+  NFP4 previously passable, NFP1/NFP2/NFP3 still scientifically blocked for
+  final promotion.
+
 ### 2026-06-13: free-boundary validation rerun after QI batch
 
 Steps taken:
