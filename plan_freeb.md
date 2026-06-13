@@ -21721,6 +21721,74 @@ Completion:
 - QI minimal-seed README artifacts: 96% infrastructure/provenance-ready,
   0% promoted under strict four-row policy.
 
+## 2026-06-13 QI Staged-Runner CI Repair and Remote Artifact Poll
+
+Steps taken:
+
+1. Reproduced the latest GitHub Actions ``optimization-qi`` shard failure
+   locally using ``tools/diagnostics/ci_core_bucket_args.py optimization-qi``.
+2. Identified the failure as a stale staged-runner assertion that still
+   expected the older NFP3 smooth-QI gate ``5e-3`` after the public
+   minimal-NFP3 preset had been locked to the relaxed README promotion gate
+   ``3e-3``.
+3. Updated ``tests/test_qi_staged_runner.py`` to compare the generated CLI
+   argument against ``QI_CASES["minimal_nfp3_qi"]["qi_gate_smooth_max"]``
+   instead of duplicating a numerical literal.
+4. Polled remote QI minimal-seed jobs on ``office`` after allowing the smooth
+   QI evidence gate to ``3e-3``.
+
+Results obtained:
+
+1. ``python -m ruff check tests/test_qi_staged_runner.py`` passed.
+2. ``JAX_ENABLE_X64=1 pytest -q
+   tests/test_qi_staged_runner.py::test_qi_staged_runner_passes_policy_qi_gates_and_audit_resolution
+   -q`` passed.
+3. ``JAX_ENABLE_X64=1 VMEC_JAX_SKIP_PY311_COVERAGE_ONLY=1 xargs pytest -q
+   -m "not full and not vmec2000 and not simsopt" --durations=30 <
+   /tmp/py311-core-optimization-qi.txt`` passed with ``584 passed, 14
+   skipped, 3 deselected`` in about 79 seconds.
+4. Remote NFP2 balanced run reached a strong working seed:
+   smooth QI ``1.516e-3``, legacy QI ``2.067e-4``, mirror ``0.354``, aspect
+   ``8.17``, and mean iota ``-0.459``.  It is not yet promotable because the
+   final public row still needs mirror/aspect cleanup.
+5. Remote NFP3 remains a real aspect-recovery blocker: the best current branch
+   has smooth QI near ``2.9e-3`` and mirror near ``0.30`` but aspect remains
+   near ``3.54``.
+6. Remote NFP1 wide-reference scan improves smoothly with reference amplitude
+   but remains above the QI gate before cleanup.
+
+Best next steps:
+
+1. Commit and push the staged-runner CI repair.
+2. Wait for the restarted CI run to confirm the stale assertion is gone.
+3. Let the active NFP1/NFP2/NFP3 remote jobs finish or time out, then promote
+   only rows that pass provenance and physics gates.
+4. If NFP2 mirror/aspect cleanup fails, launch a targeted direct cleanup from
+   the low-QI working seed rather than restarting the full reference scan.
+5. Treat NFP3 aspect-6 QI from the current reference family as unresolved; do
+   not promote it as an aspect-6 README artifact without a different basin or
+   a defensible relaxed-aspect policy.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999998% for fixed
+  branch-local accepted/rejected gates; arbitrary adaptive host branch
+  selection remains unclaimed.
+- VMEC parity and physics gates: 99.8%.
+- Single-stage coil-only optimization: 99.5%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% locally; latest GitHub Actions run still
+  needs the staged-runner fix pushed.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 98% infrastructure/provenance-ready,
+  scientific promotion still pending for NFP1/NFP2/NFP3 under the four-row
+  minimal-seed policy.
+
 ### 2026-06-13: free-boundary validation rerun after QI batch
 
 Steps taken:
