@@ -23817,3 +23817,60 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 98% infrastructure/provenance-ready; NFP1
   remains unpromoted pending final exact diagnostics.
+
+### 2026-06-13 Fixed NFP1 Probe Final Diagnostics
+
+Steps taken:
+
+1. Retrieved the final exact diagnostics for both fixed NFP=1 mirror cleanup
+   probes on office.
+2. Compared the full mode-5 mirror-only cleanup against the anisotropic
+   ``max_m=2,max_n=5`` mirror-only cleanup.
+3. Interpreted the two failures as a basin/constraint tradeoff rather than an
+   isolated optimizer failure.
+
+Results obtained:
+
+1. The full mode-5 mirror-only cleanup reduced mirror below the public gate but
+   destroyed QI:
+   ``smooth_qi=4.2860e-2``, ``legacy_qi=4.0891e-2``, ``mirror=0.2382``,
+   ``aspect=5.9927``, ``mean_iota=0.4117``, ``max_elongation=3.4501``.
+   It failed the smooth-QI and legacy-QI engineering gates.
+2. The anisotropic ``max_m=2,max_n=5`` cleanup preserved QI but did not reduce
+   mirror:
+   ``smooth_qi=2.2336e-3``, ``legacy_qi=9.7526e-4``, ``mirror=0.4718``,
+   ``aspect=6.9137``, ``mean_iota=0.4752``, ``max_elongation=4.3393``.
+   It failed only the mirror gate.
+3. Pure mirror-only cleanup is therefore not a promotable NFP=1 strategy:
+   unrestricted modes find a low-mirror non-QI basin, while reduced modes stay
+   in the QI basin but cannot move mirror.
+
+Best next steps:
+
+1. Run a cheap boundary interpolation scan between the QI-good/high-mirror
+   candidate and the low-mirror/non-QI candidate to determine whether the
+   feasible gate intersection exists along that bridge.
+2. If the bridge has a passing or near-passing point, promote that point into a
+   QI-ceiling constrained local polish with small step bounds.
+3. If the bridge has no intersection, launch a constrained optimizer stage with
+   active QI residual and QI ceiling, not another zero-weight mirror-only run.
+4. Do not promote the NFP=1 README artifact until exact diagnostics pass the
+   public gates: smooth QI <= ``5e-3``, legacy QI <= ``2e-3``, mirror <=
+   ``0.35``, elongation <= ``10``, aspect <= ``7``, and ``|iota| >= 0.41``.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999999%; arbitrary
+  adaptive host branch selection remains explicitly unclaimed.
+- VMEC parity and physics gates: 99.86%.
+- Single-stage coil-only optimization phase 3: 99.8%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene: 100% on current green main CI.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 98% infrastructure/provenance-ready; NFP2,
+  NFP3, and NFP4 have reviewed passing evidence, NFP1 remains unpromoted.
