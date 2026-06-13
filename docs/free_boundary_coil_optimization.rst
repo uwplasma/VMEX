@@ -1441,6 +1441,12 @@ default.  This keeps the example dependency-light while exercising the same
 single-stage free-boundary path: coil variables are optimized, the VMEC
 boundary is not in the optimization vector, and complete free-boundary solves
 are still the acceptance authority.
+The default synthetic coil branch uses a current of ``1.0e7`` and major radius
+``10.0`` because that branch gives finite, well-scaled smoke diagnostics and a
+passing same-branch vector/JVP report for aspect, QS, mean-iota, and LCFS
+boundary-moment scalars.  Larger synthetic currents can be useful stress tests,
+but they can also leave the branch-local replay too far from the complete solve
+to form a safe derivative proposal.
 
 .. code-block:: bash
 

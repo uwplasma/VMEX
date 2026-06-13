@@ -22803,6 +22803,12 @@ Steps taken:
 4. Patched the test to monkeypatch the already-imported ``threading`` module
    object directly, avoiding import-string resolution while the import mock is
    active.
+5. Scanned four synthetic finite-beta QA direct-coil smoke branches.  The
+   previous wrapper default ``current=3.0e7, radius=14`` was pathological for
+   this low-resolution smoke, while ``current=1.0e7, radius=10`` gave a finite,
+   well-scaled branch.
+6. Reran the same-branch vector/JVP derivative-proposal path on the sane
+   branch and updated the wrapper defaults and docs accordingly.
 
 Results obtained:
 
@@ -22825,6 +22831,22 @@ Results obtained:
    -q`` passed locally.
 5. The full CI compatibility command passed locally after the patch:
    ``146 passed, 6 skipped``.
+6. The sane finite-beta QA branch produced initial complete-solve smoke
+   diagnostics ``objective=1.155e-1``, ``QS=9.97e-3``, ``aspect=4.235``,
+   ``mean_iota=0.429``, and ``Bnormal RMS=3.91``.
+7. On that branch, the same-branch vector/JVP gate passed for aspect, QS,
+   mean-iota, and LCFS boundary moment with errors from about ``5e-13`` to
+   ``3e-10``.  The derivative proposal was then accepted by the normal
+   complete solve, reducing the objective from ``0.1155242`` to ``0.1155222``.
+8. ``python -m ruff check`` on the affected example/test files passed.
+9. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py
+   tests/test_free_boundary_qs_coil_optimization_smoke.py
+   tests/test_cli_helpers.py::test_cli_wout_io_warmup_swallows_import_and_thread_start_failures
+   -q`` passed.
+10. ``python examples/optimization/free_boundary_QA_finite_beta_coil_optimization.py
+    --smoke --dry-run`` now records the stable default branch
+    ``current=1.0e7, radius=10``.
 
 Best next steps:
 
@@ -22833,7 +22855,11 @@ Best next steps:
 2. Keep the finite-beta QA single-stage example claims narrow until a milder
    physically useful setup gives a passed branch-local QS vector gate.  Complete
    solves remain the acceptance authority.
-3. Leave the still-running NFP3 QI aspect-lift job on ``office`` running and do
+3. Use the sane finite-beta QA branch for the next non-smoke phase-3 run:
+   slightly more VMEC iterations and 3--5 optimizer evaluations, with complete
+   solves deciding acceptance and the branch-local vector/JVP report used only
+   for proposal evidence.
+4. Leave the still-running NFP3 QI aspect-lift job on ``office`` running and do
    not promote NFP1/NFP3 README QI artifacts until their strict provenance gates
    pass.
 
@@ -22849,9 +22875,9 @@ Completion:
   complete-loop rejected-slot same-branch gates; arbitrary adaptive host branch
   selection remains unclaimed.
 - VMEC parity and physics gates: 99.86%.
-- Single-stage coil-only optimization phase 3: 99.72%; the finite-beta QA
-  wrapper exists and the conservative derivative-proposal refusal path has now
-  been exercised on a complete-solve smoke run.
+- Single-stage coil-only optimization phase 3: 99.78%; the finite-beta QA
+  wrapper now defaults to a stable direct-coil branch, and the same-branch
+  vector/JVP proposal path has one complete-solve accepted trial on that branch.
 - CPU/GPU performance: 99.4%.
 - CI/runtime/coverage hygiene: 100% locally after the compatibility fix;
   replacement GitHub Actions run pending.
