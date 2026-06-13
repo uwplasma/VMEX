@@ -21251,6 +21251,71 @@ Completion:
 - QI minimal-seed README artifacts: 96% infrastructure/provenance-ready,
   0% promoted under strict four-row policy.
 
+### 2026-06-12: launched replacement QI minimal-seed recovery jobs
+
+Steps taken:
+
+1. Rechecked CI for commit ``c4c57da``.  The run is still active with no
+   failures reported; only the long exact/physics shards remain pending.
+2. Re-polled ``office`` QI jobs.  The previous NFP1, NFP2, and NFP3 jobs are
+   non-promotable under the strict README policy.  The NFP4 strict-refine job
+   finished with finite positive geometry and good mirror/elongation, but still
+   has smooth QI above the strict ``2e-3`` README gate.
+3. Launched a replacement NFP1 run on ``office`` GPU0:
+   ``/home/rjorge/local/tests/qi_nfp1_qionly_boozer_recovery_c4c57da``.  This
+   uses a QI-only mode-5 basin stage followed by a Boozer-scalar mirror re-entry
+   stage, both starting from ``input.minimal_seed_nfp1`` provenance.
+4. Launched a replacement NFP3 run on ``office`` CPU:
+   ``/home/rjorge/local/tests/qi_nfp3_aspect6_m6_recovery_c4c57da``.  This uses
+   an aspect-biased mode-6 recovery stage followed by a strict mode-6 QI relock,
+   starting from ``input.minimal_seed_nfp3`` provenance.
+5. Launched an NFP4 mode-6 micro-polish on ``office`` GPU1:
+   ``/home/rjorge/local/tests/qi_nfp4_mode6_micro_polish_c4c57da``.  This starts
+   from the previous NFP4 final input only as a polish candidate; README
+   provenance still has to point back to the original ``input.minimal_seed_nfp4``
+   run if the polish is selected.
+
+Results obtained:
+
+1. Previous NFP4 final diagnostics:
+   smooth QI ``2.576753812501745e-3``, legacy QI
+   ``3.5987532300233425e-4``, mirror ``0.292085007350452``,
+   elongation ``4.1128402639539035``, aspect ``6.002339890167478``,
+   mean iota ``-1.2879634876854233``.
+2. The NFP4 internal stage promotion was true, but it is not promoted to the
+   README four-row artifact set because the strict smooth-QI gate remains
+   ``2e-3``.
+3. NFP1, NFP3, and NFP4 replacement/polish jobs are running remotely.
+
+Best next steps:
+
+1. Poll the active NFP1/NFP3/NFP4 jobs until each produces a
+   ``qi_stage_checkpoint.json`` with exact diagnostics.
+2. Promote a README QI row only if it has raw ``input.minimal_seed_nfp*``
+   provenance and passes the strict QI/mirror/elongation/aspect/iota gates.
+3. Keep the phase-2 free-boundary claim conservative: current evidence is
+   fingerprint-gated, branch-local accepted/rejected complete-solve
+   AD-vs-central-FD, not arbitrary adaptive host-controller differentiation.
+4. Let the ``c4c57da`` CI run finish and address only real failures.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999995% for fixed
+  branch-local accepted/rejected gates; adaptive host branch selection remains
+  unclaimed.
+- VMEC parity and physics gates: 99.8%.
+- Single-stage coil-only optimization: 99.4%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% locally, pending the ``c4c57da`` CI result.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 96% infrastructure/provenance-ready,
+  0% promoted under strict four-row policy.
+
 ### 2026-06-12 Native Rejected-Slot Branch Gate
 
 Steps taken:
