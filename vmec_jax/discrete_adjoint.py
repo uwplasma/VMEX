@@ -502,8 +502,6 @@ _FINGERPRINT_TRACE_KEYS = (
     "precond_jmax",
     "preconditioner_use_precomputed_tridi",
     "preconditioner_use_lax_tridi",
-    "freeb_plascur",
-    "freeb_plascur_for_bsqvac",
 )
 
 _FINGERPRINT_DIAGNOSTIC_KEYS = (
