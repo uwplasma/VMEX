@@ -23874,3 +23874,68 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 98% infrastructure/provenance-ready; NFP2,
   NFP3, and NFP4 have reviewed passing evidence, NFP1 remains unpromoted.
+
+### 2026-06-13 NFP1 Bridge Scan and QI-Ceiling Cleanup
+
+Steps taken:
+
+1. Launched a high-resolution boundary interpolation scan on office from the
+   QI-good/high-mirror NFP=1 candidate toward the low-mirror/non-QI candidate.
+2. Ran a QI-ceiling constrained small-step cleanup from the QI-good candidate
+   with active QI residuals, active QI ceiling, and mirror/elongation
+   engineering penalties.
+3. Stopped the failed small-step cleanup after it reached final exact
+   diagnostics and moved into nonessential comparison-plot work.
+4. Launched a second constrained polish from the interpolation bridge point
+   ``lambda=0.15``, which is still QI-safe but has lower mirror than the
+   original QI-good seed.
+5. Re-ran the targeted free-boundary phase-2/phase-3 derivative shard locally.
+
+Results obtained:
+
+1. The interpolation bridge is smooth but has no passing point on the sampled
+   grid:
+   ``lambda=0.15`` gives ``smooth_qi=3.0927e-3``,
+   ``legacy_qi=1.7494e-3``, ``mirror=0.4249``, ``aspect=6.7600``,
+   ``mean_iota=0.4638``; ``lambda=0.40`` reaches ``mirror=0.3562`` but fails
+   smooth/legacy QI.
+2. The first QI-ceiling cleanup from the original QI-good seed did not move:
+   it terminated with scalar trust radius too small, ``smooth_qi=2.2229e-3``,
+   ``legacy_qi=9.7829e-4``, ``mirror=0.4718``, ``aspect=6.9138``,
+   ``mean_iota=0.4779``.  It failed only the mirror gate.
+3. The active bridge-started constrained polish is running at
+   ``results/qi_opt/ess/nfp1_bridge015_qiceiling_mirror_polish``.
+4. Local phase-2/phase-3 same-branch derivative tests passed:
+   rejected-slot current/geometry JVP-vs-complete-solve-FD plus
+   derivative-proposal authority tests.
+5. GitHub CI for commit ``7b3d716`` completed successfully.
+
+Best next steps:
+
+1. Let the ``lambda=0.15`` constrained polish finish and inspect exact
+   diagnostics.
+2. If it passes, sync only reviewed JSON/figures and promote the NFP=1 README
+   artifact.
+3. If it improves mirror but misses the gate, start a second polish from its
+   final input with tighter QI ceiling and smaller mode subspace.
+4. If it fails to move, switch to a two-objective constrained line-search
+   policy along the bridge plus a local polish near the best tradeoff point,
+   because the scan shows a continuous but narrow QI/mirror tradeoff.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999999%; adaptive host
+  branch changes remain unclaimed.
+- VMEC parity and physics gates: 99.87%.
+- Single-stage coil-only optimization phase 3: 99.8%.
+- CPU/GPU performance: 99.45%; cold high-mode QI exact setup remains the active
+  bottleneck in this lane.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 98.5% infrastructure/provenance-ready;
+  NFP1 remains unpromoted pending the bridge-started constrained polish.
