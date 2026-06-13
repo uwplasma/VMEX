@@ -5472,6 +5472,30 @@ def _accepted_step_policy_signature_for_complete_payload(payload: Mapping[str, A
     )
 
 
+def _accepted_step_policy_layout_for_complete_payload(payload: Mapping[str, Any]) -> tuple[tuple[int, int, int], ...]:
+    """Return the stacked replay segment layout without continuous payload values.
+
+    ``direct_coil_accepted_trace_step_policy_segments`` must remain strict when
+    it decides how to segment one replay trace.  For base/plus/minus
+    complete-solve branch compatibility, however, the relevant question is
+    whether the same controller slots and segment boundaries are used.  The
+    actual continuous static payload values may differ under a finite
+    perturbation and are checked by the physical AD-vs-FD gate instead.
+    """
+
+    traces = tuple(payload.get("traces", ()))
+    if not traces:
+        return ()
+    return tuple(
+        (
+            int(segment["start"]),
+            int(segment["stop"]),
+            int(segment["n_steps"]),
+        )
+        for segment in direct_coil_accepted_trace_step_policy_segments(traces)
+    )
+
+
 def _accepted_step_policy_summary_for_complete_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     traces = tuple(payload.get("traces", ()))
     if not traces:
@@ -5576,7 +5600,7 @@ def direct_coil_adaptive_full_loop_same_branch_gate_report(
             errors.append("rejected controller slot was not derived from trace step_status")
 
     labels = ("base", "plus", "minus")
-    step_policy_signatures: dict[str, tuple[Any, ...]] = {}
+    step_policy_signatures: dict[str, tuple[tuple[int, int, int], ...]] = {}
     step_policy_summaries: dict[str, dict[str, Any]] = {}
     for label in labels:
         payload = complete_report.get(label)
@@ -5585,7 +5609,7 @@ def direct_coil_adaptive_full_loop_same_branch_gate_report(
             step_policy_signatures[label] = ()
             step_policy_summaries[label] = {"n_segments": 0, "segments": ()}
             continue
-        signature = _accepted_step_policy_signature_for_complete_payload(payload)
+        signature = _accepted_step_policy_layout_for_complete_payload(payload)
         if not signature:
             errors.append(f"{label}: no accepted step-policy segments")
         step_policy_signatures[label] = signature

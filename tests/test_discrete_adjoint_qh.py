@@ -105,7 +105,14 @@ def test_residual_branch_fingerprint_tracks_control_not_residual_values():
 
     changed_numeric = dict(base)
     changed_numeric["w_curr_history"] = np.asarray([3.0, 2.0], dtype=float)
-    changed_numeric["adjoint_step_trace"] = [dict(base["adjoint_step_trace"][0], freeb_bsqvac_half=np.asarray([1.0]))]
+    changed_numeric["adjoint_step_trace"] = [
+        dict(
+            base["adjoint_step_trace"][0],
+            freeb_bsqvac_half=np.asarray([1.0]),
+            freeb_plascur=9.5,
+            freeb_plascur_for_bsqvac=8.5,
+        )
+    ]
     assert residual_branch_fingerprint(base) == residual_branch_fingerprint(changed_numeric)
 
     changed_branch = dict(base)

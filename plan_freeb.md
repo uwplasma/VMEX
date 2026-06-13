@@ -21250,3 +21250,87 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 96% infrastructure/provenance-ready,
   0% promoted under strict four-row policy.
+
+### 2026-06-12 Native Rejected-Slot Branch Gate
+
+Steps taken:
+
+1. Investigated the next phase-2 gap: a same-branch complete-solve
+   AD-vs-central-FD gate that contains a real rejected/restart controller slot,
+   rather than the earlier synthetic padded rejected slot.
+2. Found a deterministic tiny direct-coil branch with native statuses
+   ``("momentum", "momentum", "restart_bad_jacobian")`` under
+   ``niter=3``, ``step_size=0.9``, and a stronger circular-coil current.
+3. Fixed an over-strict branch-fingerprint issue: continuous
+   ``freeb_plascur`` and ``freeb_plascur_for_bsqvac`` values are no longer
+   treated as residual branch-control metadata.
+4. Kept per-trace replay segmentation strict, but changed the
+   complete-solve-triplet stacked-step branch comparison to use segment layout
+   rather than continuous payload value digests.
+5. Added a native rejected-slot test that requires:
+   same base/plus/minus branch fingerprints, one status-derived rejected slot,
+   branch-local vector/JVP agreement with complete-solve central FD for
+   ``aspect`` and ``state_norm``, and a passing
+   ``direct_coil_adaptive_full_loop_same_branch_gate_report``.
+6. Re-polled the remote QI minimal-seed jobs.  None is promotable yet.
+
+Results obtained:
+
+1. ``python -m ruff check vmec_jax/discrete_adjoint.py
+   vmec_jax/free_boundary_adjoint.py tests/test_discrete_adjoint_qh.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`` passed.
+2. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_discrete_adjoint_qh.py::test_residual_branch_fingerprint_tracks_control_not_residual_values
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve_fd
+   -q`` passed.
+3. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve_fd
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_branch_trace_mode_keeps_replay_controls_without_raw_force_payload
+   -q`` passed.  The native rejected-slot test emits expected warnings from
+   the deliberately aggressive nonphysical restart probe.
+4. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_discrete_adjoint_qh.py::test_residual_branch_fingerprint_tracks_control_not_residual_values
+   tests/test_free_boundary_adjoint_helpers_unit.py::test_accepted_trace_control_metadata_and_stack_contracts
+   -q`` passed.
+5. GitHub Actions run ``27452275230`` for the previous plan-only commit
+   completed successfully.
+6. QI follow-up status:
+   NFP1 improved to smooth QI ``2.98e-3`` / legacy QI ``1.72e-3`` but fails
+   smooth QI and mirror ``0.413``; NFP3 remains at aspect ``3.54`` and smooth
+   QI ``2.83e-3``; NFP2 remains low-QI but mirror-limited
+   (best recent mirror ``0.368``); NFP4 is close with smooth QI ``2.58e-3``,
+   mirror ``0.291``, and aspect ``6.00`` but still fails the strict
+   ``2e-3`` smooth-QI README gate.
+
+Best next steps:
+
+1. Commit and push the native rejected-slot branch gate.
+2. Keep phase-2 wording conservative: this validates fingerprint-gated fixed
+   accepted/rejected controller slots through complete-solve central FD; it
+   still does not differentiate arbitrary host adaptive branch selection.
+3. Let current QI jobs finish or time out.  If NFP1/NFP3/NFP4 remain blocked,
+   replace them with non-duplicate schedules: QI-only basin plus Boozer-scalar
+   mirror re-entry for NFP1, aspect-biased mode-6 recovery for NFP3, and
+   mode-6 scalar micro-polish for NFP4.
+4. Do not promote the README QI panel until every NFP row has raw
+   ``input.minimal_seed_nfp*`` provenance and passes gates.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999995% for fixed
+  branch-local accepted/rejected gates; adaptive host branch selection remains
+  unclaimed.
+- VMEC parity and physics gates: 99.8%.
+- Single-stage coil-only optimization: 99.4%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 96% infrastructure/provenance-ready,
+  0% promoted under strict four-row policy.

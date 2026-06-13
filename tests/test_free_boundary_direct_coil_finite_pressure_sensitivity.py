@@ -2872,6 +2872,150 @@ def test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_
 
 
 @pytest.mark.py311_coverage_only
+def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve_fd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native restart/rejected slots can be validated under an unchanged branch."""
+
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+    from vmec_jax.free_boundary_adjoint import (
+        direct_coil_adaptive_full_loop_same_branch_gate_report,
+        direct_coil_branch_local_scalars_report_from_complete_fd,
+        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax,
+        direct_coil_same_branch_complete_solve_fd_report,
+    )
+    from vmec_jax.state import pack_state
+    from vmec_jax.wout import equilibrium_aspect_ratio_from_state
+
+    enable_x64(True)
+    _set_same_branch_custom_vjp_env(monkeypatch)
+    input_path = _write_tiny_direct_freeb_input(
+        tmp_path / "input.direct_native_rejected_slot",
+        lasym=False,
+        niter=3,
+        mpol=3,
+        ntheta=4,
+    )
+    base_params = _circle_coil_params(current=3.0e8, n_segments=24)
+    base_dofs = jnp.asarray(base_params.base_curve_dofs)
+    base_currents = jnp.asarray(base_params.base_currents)
+    direction = base_params.with_arrays(
+        base_curve_dofs=jnp.zeros_like(base_dofs),
+        base_currents=base_currents * 0.002,
+    )
+
+    def params_for(scale: float) -> CoilFieldParams:
+        return base_params.with_arrays(
+            base_curve_dofs=base_dofs,
+            base_currents=base_currents * (1.0 + 0.002 * float(scale)),
+        )
+
+    def scalar_map(payload):
+        state = payload["result"].state
+        packed = pack_state(state)
+        return {
+            "aspect": equilibrium_aspect_ratio_from_state(
+                state=state,
+                static=payload["init"].static,
+            ),
+            "state_norm": 0.5 * jnp.vdot(packed, packed),
+        }
+
+    solve_kwargs = {
+        "max_iter": 3,
+        "step_size": 0.9,
+        "ftol": 1.0e-12,
+        "use_restart_triggers": True,
+        "vmecpp_restart": True,
+        "free_boundary_activate_fsq": 1.0e99,
+    }
+    complete_report = direct_coil_same_branch_complete_solve_fd_report(
+        input_path,
+        base_params,
+        params_for=params_for,
+        objective_fn=scalar_map,
+        eps=0.25,
+        solve_kwargs=solve_kwargs,
+        fingerprint_rtol=1.0e-6,
+        fingerprint_atol=1.0e-9,
+    )
+    branch = complete_report["branch_compatibility"]
+    assert branch["same_branch"], branch
+    for label in ("base", "plus", "minus"):
+        fingerprint = branch[f"{label}_fingerprint"]
+        assert fingerprint["step_status"] == ("momentum", "momentum", "restart_bad_jacobian")
+        np.testing.assert_array_equal(np.asarray(fingerprint["accept_mask"], dtype=int), [1, 1, 0])
+        np.testing.assert_array_equal(np.asarray(fingerprint["done_mask"], dtype=int), [0, 0, 1])
+
+    production_values = {
+        key: values["base"]
+        for key, values in complete_report["objective_values"].items()
+    }
+    replay_scalar_fns = {
+        "aspect": lambda replay, payload: equilibrium_aspect_ratio_from_state(
+            state=replay["state"],
+            static=payload["init"].static,
+        ),
+        "state_norm": lambda replay, _payload: 0.5 * jnp.vdot(
+            pack_state(replay["state"]),
+            pack_state(replay["state"]),
+        ),
+    }
+    branch_local = direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
+        params=base_params,
+        direction_params=direction,
+        complete_payload=complete_report["base"],
+        scalar_keys=("aspect", "state_norm"),
+        production_values=production_values,
+        replay_payload={"init": complete_report["base"]["init"]},
+        scalar_fn=scalar_map,
+        replay_scalar_fns=replay_scalar_fns,
+        replay_kwargs={
+            "use_stacked_step_controls": True,
+            "use_accepted_only_fast_path": False,
+        },
+        include_payload=False,
+        include_replay_graph_metadata=False,
+    )
+    assert branch_local["uses_production_forward"] is True
+    assert branch_local["differentiates_adaptive_controller"] is False
+    assert branch_local["differentiates_run_free_boundary"] is False
+    assert branch_local["differentiates_fixed_accepted_branch"] is True
+    assert branch_local["controller_slot_summary"]["rejected_slots"] == 1
+    assert branch_local["replay_branch_metadata"]["status_acceptance_source"] == "trace_step_status"
+    np.testing.assert_array_equal(
+        np.asarray(branch_local["replay_branch_metadata"]["status_masks"]["accept_mask"], dtype=bool),
+        [True, True, False],
+    )
+
+    scalars_report = direct_coil_branch_local_scalars_report_from_complete_fd(
+        complete_report,
+        branch_local,
+        scalar_keys=("aspect", "state_norm"),
+        rtol={"aspect": 5.0e-3, "state_norm": 5.0e-3},
+        atol={"aspect": 5.0e-8, "state_norm": 5.0e-8},
+        base_value_atol={"aspect": 2.0e-3, "state_norm": 2.0e-3},
+    )
+    assert scalars_report["passed"], scalars_report
+    adaptive_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
+        complete_report,
+        scalars_report,
+        scalar_keys=("aspect", "state_norm"),
+        require_fixed_rejected_controller_slot=True,
+        require_status_derived_rejected_controller_slot=True,
+    )
+    assert adaptive_gate["passed"], adaptive_gate
+    assert adaptive_gate["fingerprint_gated"] is True
+    assert adaptive_gate["same_branch"] is True
+    assert adaptive_gate["fixed_rejected_controller_slot_present"] is True
+    assert adaptive_gate["status_derived_rejected_controller_slot_present"] is True
+    assert adaptive_gate["differentiates_adaptive_controller"] is False
+    assert adaptive_gate["differentiates_run_free_boundary"] is False
+
+
+@pytest.mark.py311_coverage_only
 def test_direct_coil_branch_trace_mode_keeps_replay_controls_without_raw_force_payload(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
