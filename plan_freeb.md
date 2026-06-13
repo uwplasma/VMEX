@@ -22862,8 +22862,8 @@ Results obtained:
     mean-iota, and LCFS boundary moment all had AD-vs-central-FD errors
     below ``2e-10``.  The derivative proposal was accepted by the normal
     complete solve and became the final best point.
-13. The still-running NFP3 QI aspect-lift job on ``office`` is not currently
-    promotable: the latest strict stage has smooth/legacy QI
+13. The NFP3 QI aspect-lift job on ``office`` finished with exit code ``0``
+    but is not promotable: the latest strict stage has smooth/legacy QI
     ``3.05e-3/3.44e-4`` with mirror ``0.299`` and iota ``-1.055``, but aspect
     is only ``3.53`` and the strict gate fails ``smooth_qi`` and ``aspect``.
 
@@ -22878,9 +22878,8 @@ Best next steps:
    pedagogic example result: keep complete solves as acceptance authority,
    preserve the branch-local vector/JVP report as proposal evidence, and avoid
    claiming adaptive branch-selection differentiation.
-4. Leave the still-running NFP3 QI aspect-lift job on ``office`` running and do
-   not promote NFP1/NFP3 README QI artifacts until their strict provenance gates
-   pass.
+4. Do not promote NFP1/NFP3 README QI artifacts from the latest follow-ups.
+   They remain below promotion quality despite useful partial diagnostics.
 
 Need from user:
 
