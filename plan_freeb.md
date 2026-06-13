@@ -20939,3 +20939,59 @@ Completion:
   gates passed for the bounded promoted cases.
 - CI/runtime/coverage hygiene: 100%; the optional gates remain opt-in to keep
   default CI runtime bounded.
+
+### 2026-06-12 CI Green and QI Minimal-Seed Partial Matrix Results
+
+Steps taken:
+
+1. Confirmed the ``2e5f1cb`` GitHub Actions run completed successfully.  The
+   build/docs, console smoke, parity manifest smoke, Python 3.10/3.12, Python
+   3.11 coverage shards, physics smoke, exact same-branch shards, and combined
+   coverage gate are green.
+2. Parsed the remote QI minimal-seed matrix under
+   ``/home/rjorge/local/tests/qi_minimal_seed_readme_bb03076``.
+3. Left the still-running NFP4 job active on ``office``.  Its baseline/reference
+   candidate is physically strong but the smooth QI metric remains slightly
+   above the current promotion threshold, so the local optimization stage is
+   still running.
+
+Results obtained:
+
+1. NFP1 did not pass promotion.  The best QI stage reached smooth QI
+   ``1.77e-3`` and legacy QI ``5.80e-4`` with aspect ``6.91`` and iota
+   ``0.485``, but mirror was ``0.536`` and failed the mirror gate.  The
+   baseline had good mirror ``0.284`` but QI was too high.
+2. NFP2 did not pass promotion.  The best low-QI stage reached smooth QI
+   ``1.55e-3`` and legacy QI ``2.23e-4`` but had mirror ``0.354`` and aspect
+   ``8.16``.  The later aspect-localized stage reached aspect ``6.61`` and
+   smooth QI ``1.84e-3`` / legacy QI ``4.48e-4``, but mirror increased to
+   ``0.408`` and mean |iota| slipped just below ``0.41``.
+3. NFP3 did not pass promotion.  It had good mirror ``0.298`` and legacy QI
+   ``2.95e-4``, but the aspect remained ``3.53`` rather than the aspect-6
+   target.
+4. NFP4 has a promising candidate: aspect ``6.011``, mirror ``0.292``,
+   elongation ``4.14``, and mean iota ``-1.29``.  Legacy QI is good
+   (``1.03e-3`` for the baseline, ``5.29e-4`` for the reference), but smooth
+   QI is still ``2.58e-3`` to ``2.74e-3`` versus the ``2e-3`` gate.
+
+Best next steps:
+
+1. Let the NFP4 job finish unless it becomes clearly stalled; it is the only
+   row currently near a promotable QI minimal-seed artifact.
+2. Do not promote README QI rows for NFP1/2/3.  They need new schedules:
+   NFP1 needs mirror cleanup that preserves QI, NFP2 needs simultaneous
+   mirror/iota/aspect preservation after the low-QI basin, and NFP3 needs a
+   true aspect-raising path.
+3. Keep README QI promotion blocked until all selected rows have final
+   ``case_result.json`` and independent diagnostics passing the gates.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- CI/runtime/coverage hygiene: 100%; latest ``main`` CI is green.
+- QI minimal-seed README artifacts: 94% infrastructure/artifact-ready,
+  0% promoted; NFP1/2/3 have definitive non-promotion evidence from the current
+  matrix, and NFP4 is still running.
