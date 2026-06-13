@@ -22825,6 +22825,20 @@ Results obtained:
    tests/test_free_boundary_qs_coil_optimization_smoke.py
    tests/test_cli_helpers.py::test_cli_wout_io_warmup_swallows_import_and_thread_start_failures -q``
    passed (``33 passed, 1 xfailed``).
+7. Ran the compact finite-beta QA direct-coil derivative-proposal smoke:
+   ``python examples/optimization/free_boundary_QA_finite_beta_coil_optimization.py
+   --smoke --provider circle --max-evals 1 --max-iter 1 --vmec-max-iter 2
+   --no-jit-forces --circle-current 1.0e7 --circle-radius 10.0
+   --write-same-branch-report --same-branch-report-mode vector
+   --same-branch-report-vector-keys aspect,qs_total,mean_iota,lcfs_boundary_moment
+   --same-branch-derivative-proposal --same-branch-proposal-steps
+   0.02,0.05,0.1 --outdir
+   /tmp/vmec_jax_qa_fb_derivative_proposal_final``.  The complete-solve
+   objective moved from ``0.1155242163`` to ``0.1155222224`` and accepted the
+   branch-local derivative proposal.  The report records
+   ``differentiates_adaptive_controller=False``,
+   ``differentiates_run_free_boundary=False``, and
+   ``differentiates_fixed_accepted_branch=True``.
 
 Best next steps:
 
