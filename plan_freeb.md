@@ -23760,3 +23760,60 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 98% infrastructure/provenance-ready; NFP1
   remains unpromoted pending fixed mirror-only cleanup diagnostics.
+
+### 2026-06-13 Fixed NFP1 Mirror-Only Probe Relaunch
+
+Steps taken:
+
+1. Pulled commit ``17f9d7e`` onto the office NFP=1 repair checkout.
+2. Stopped the obsolete mirror-only probe that was launched before zero-weight
+   objective pruning.
+3. Relaunched the full mode-5 mirror-only cleanup from the QI-good NFP=1 stage
+   with ``qi_weight=0`` and ``qi_ceiling_weight=0``.  The stage now correctly
+   prints no QI field objectives.
+4. Stopped the older full-QI NFP=1 probes after they spent more than twelve
+   minutes in first-point work, so office CPU is focused on the fixed probes.
+5. Launched a second anisotropic mirror-only probe with ``max_m=2`` and
+   ``max_n=5`` to test whether tangent dimension or VMEC solve setup dominates
+   the NFP=1 cleanup cost.
+
+Results obtained:
+
+1. The full mode-5 mirror-only probe has 120 DOFs and reached initial scalar
+   evaluation with field objective ``7.254947e3``.
+2. The anisotropic ``max_m=2,max_n=5`` mirror-only probe has 54 DOFs and reached
+   initial scalar evaluation with field objective ``7.281762e3``.
+3. Time to first scalar evaluation was similar for 120 DOFs and 54 DOFs, so the
+   immediate bottleneck is VMEC/JAX high-mode solve setup rather than only the
+   active tangent dimension.
+4. Neither fixed probe has produced final exact QI diagnostics yet, so no NFP=1
+   artifact is eligible for README promotion.
+
+Best next steps:
+
+1. Let the two fixed NFP=1 mirror-only probes finish or reach their explicit
+   ``max_nfev`` budgets.
+2. If one passes exact diagnostics, sync only JSON provenance and render the
+   README QI panel with the reviewed NFP=1/2/3/4 rows.
+3. If both fail, use their exact diagnostics to choose between a small-step
+   QI-preserving mirror cleanup and a lower-resolution final audit stage.
+4. Treat cold high-mode VMEC/JAX setup as the next performance target for this
+   QI cleanup lane.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999999%.
+- VMEC parity and physics gates: 99.86%.
+- Single-stage coil-only optimization phase 3: 99.8%.
+- CPU/GPU performance: 99.45%; NFP=1 cleanup now identifies cold high-mode
+  VMEC/JAX setup as the active bottleneck.
+- CI/runtime/coverage hygiene: 100% locally; GitHub CI for ``17f9d7e`` is in
+  progress.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 98% infrastructure/provenance-ready; NFP1
+  remains unpromoted pending final exact diagnostics.
