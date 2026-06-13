@@ -22899,6 +22899,74 @@ Completion:
   NFP1/NFP3 remain unpromoted while targeted follow-up searches run.
 
 
+### 2026-06-13 Targeted QI Follow-Ups and Free-Boundary Gate Triage
+
+Steps taken:
+
+1. Polled the remote QI minimal-seed searches.  Current NFP1 evidence remains
+   split between low-QI/low-iota branches and higher-iota/high-QI branches.
+   Current NFP3 evidence remains split between aspect-valid/high-QI branches
+   and low-QI/low-aspect branches.
+2. Launched targeted CPU follow-ups under
+   ``/home/rjorge/local/tests/qi_followup_9c02091`` rather than another broad
+   matrix:
+   ``nfp1_lowqi_more_iota`` from the best low-QI NFP1 branch,
+   ``nfp3_r00_1p25_strict_qi`` from the best R00-shell NFP3 branch, and
+   ``nfp3_lowqi_aspect_lift_from_interp`` from the retained
+   ``input.interpolated`` low-QI NFP3 preconditioner candidate.
+3. A first NFP3 aspect-lift attempt used a diagnostics JSON as ``--input-file``
+   and failed immediately with ``No &INDATA found``; the corrected
+   ``*_from_interp`` run uses the proper VMEC input file.
+4. Reviewed the free-boundary direct-coil validation ladder after the mixed
+   current/geometry accepted/rejected-slot gate.  The current normal-shard
+   evidence already covers current-only, geometry-only, and mixed
+   branch-local JVP-vs-complete-solve central FD through real
+   accepted/rejected/restart slots.  The next distinct gate would be an
+   opt-in/nightly Boozer-QS scalar gate, not another normal CI blocker.
+
+Results obtained:
+
+1. The QI follow-up jobs are still running; no strict-promotion NFP1/NFP3
+   artifact exists yet.
+2. GitHub Actions for ``7256c04`` completed green.  GitHub Actions for
+   ``9c02091`` has completed the test shards and is waiting on the combined
+   coverage gate at the time of this log entry.
+3. Free-boundary differentiation claims remain deliberately conservative:
+   branch-local/fingerprint-gated evidence is strong, but arbitrary adaptive
+   host branch selection is still unclaimed.
+
+Best next steps:
+
+1. Let the targeted QI follow-ups finish and promote only root/final
+   diagnostics that pass the strict README gates enforced by the renderer.
+2. If the follow-ups fail, use the diagnostics to choose one more narrow run:
+   for NFP1, iota lift that does not relax QI/mirror; for NFP3, either a
+   sharper QI drop from the R00 branch or a guarded aspect lift from the
+   low-QI branch.
+3. Wait for ``9c02091`` CI coverage gate to finish and fix only if it fails.
+4. Keep the Boozer-QS complete-solve FD gate opt-in/nightly unless the user
+   wants to pay that CI/runtime cost.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999995% for fixed
+  branch-local current, geometry, and mixed current/geometry accepted/rejected
+  gates; arbitrary adaptive host branch selection remains unclaimed.
+- VMEC parity and physics gates: 99.85%.
+- Single-stage coil-only optimization: 99.6%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% for completed shards; awaiting the
+  ``9c02091`` combined coverage gate.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 98% infrastructure/provenance-ready and
+  strict-gated; NFP4 passes, NFP1/NFP3 remain unpromoted.
+
+
 ### 2026-06-13 Geometry-Only Rejected-Slot Adaptive Gate
 
 Steps taken:
