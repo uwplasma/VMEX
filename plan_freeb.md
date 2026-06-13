@@ -21251,6 +21251,59 @@ Completion:
 - QI minimal-seed README artifacts: 96% infrastructure/provenance-ready,
   0% promoted under strict four-row policy.
 
+### 2026-06-12: replaced failed NFP3 aspect-basin run
+
+Steps taken:
+
+1. Polled the NFP3 aspect-biased mode-6 recovery run after its first stage
+   finished.
+2. Stopped the NFP3 run at
+   ``/home/rjorge/local/tests/qi_nfp3_aspect6_m6_recovery_c4c57da`` because
+   the stage made no aspect progress from the low-aspect reference-family
+   baseline.
+3. Launched a replacement NFP3 run at
+   ``/home/rjorge/local/tests/qi_nfp3_minimal_no_reference_c4c57da``.  This run
+   starts from ``input.minimal_seed_nfp3``, keeps the simple/target-helicity
+   seed perturbations, disables the reference-family baseline, and runs on CPU
+   with ``JAX_PLATFORMS=cpu`` to avoid CUDA plugin discovery noise.
+
+Results obtained:
+
+1. Failed NFP3 aspect stage diagnostics:
+   smooth QI ``3.966691688772214e-3``, legacy QI
+   ``9.062591419409592e-4``, mirror ``0.291854055721238``,
+   elongation ``3.8659781197558174``, aspect ``3.562852200099205``,
+   mean iota ``-1.0366267216585863``.
+2. The aspect-improvement promotion failed with effectively zero aspect gain,
+   so continuing that run would not address the README aspect-6 requirement.
+
+Best next steps:
+
+1. Poll the replacement NFP3 minimal-seed run for first-stage diagnostics.
+2. Keep NFP1 and NFP4 mode-7 running; intervene only after exact diagnostics
+   show either a promotable result or a clearly stalled/failed basin.
+3. Preserve the conservative free-boundary phase-2 claims until a true
+   arbitrary adaptive-branch AD-vs-FD gate exists.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999995% for fixed
+  branch-local accepted/rejected gates; adaptive host branch selection remains
+  unclaimed.
+- VMEC parity and physics gates: 99.8%.
+- Single-stage coil-only optimization: 99.4%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% with ``aaaebd0`` CI green; ``4a22cf2`` CI
+  still pending at launch time.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 96% infrastructure/provenance-ready,
+  0% promoted under strict four-row policy.
+
 ### 2026-06-12: QI follow-up polling and NFP4 mode-7 polish launch
 
 Steps taken:
