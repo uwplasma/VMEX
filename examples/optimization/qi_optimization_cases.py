@@ -875,7 +875,10 @@ _NFP2_BALANCED_STAGES = (
         # The first stage is a basin-transfer stage, not a final promotion.
         # Allow a narrow mirror overshoot so later guarded stages can start
         # from the low-QI branch instead of falling back to the worse baseline.
-        "qi_safe_mirror_relax": 1.02,
+        # The final public promotion gate remains mirror <= 0.35; this looser
+        # working-seed gate only lets later guarded stages repair a narrow
+        # mirror overshoot after a large QI improvement.
+        "qi_safe_mirror_relax": 1.05,
     },
     {
         "name": "guarded_tighten_qi_mirror035",
