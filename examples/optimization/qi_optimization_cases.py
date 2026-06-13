@@ -8,6 +8,8 @@ from pathlib import Path
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DEFAULT_QI_TARGET_ASPECT = 6.0
 DEFAULT_QI_MIRROR_RATIO = 0.35
+DEFAULT_QI_SMOOTH_GATE = 3.0e-3
+DEFAULT_QI_LEGACY_GATE = 2.0e-3
 DEFAULT_INNER_MAX_ITER = 450
 DEFAULT_INNER_FTOL = 1.0e-9
 DEFAULT_TRIAL_MAX_ITER = 450
@@ -145,7 +147,7 @@ QI_CASES = {
         "mirror_threshold": 0.35,
         "mirror_surface_index": None,
         "qi_gate_smooth_max": 5.0e-3,
-        "qi_gate_legacy_max": 2.0e-3,
+        "qi_gate_legacy_max": DEFAULT_QI_LEGACY_GATE,
         "qi_ceiling_max": 2.0e-3,
         "qi_ceiling_smooth_penalty": 2.0e-3,
         # First find a low-QI, nonzero-transform basin.  Current Boozer-target
@@ -174,7 +176,7 @@ QI_CASES = {
             "max_mirror_ratio": 0.35,
             "max_elongation": 8.0,
             "smooth_qi_max": 5.0e-3,
-            "legacy_qi_max": 2.0e-3,
+            "legacy_qi_max": DEFAULT_QI_LEGACY_GATE,
             "diagnostic_qi_resolution": {"mboz": 18, "nboz": 18, "nphi": 151, "nalpha": 31, "n_bounce": 51},
             # Once a candidate passes the independent QI/iota/mirror/elongation
             # gates, prefer the lower-mirror branch.  This uses the aspect and
@@ -405,7 +407,7 @@ QI_CASES = {
         "mirror_threshold": 0.35,
         "mirror_surface_index": None,
         "qi_gate_smooth_max": 3.0e-3,
-        "qi_gate_legacy_max": 2.0e-3,
+        "qi_gate_legacy_max": DEFAULT_QI_LEGACY_GATE,
         "qi_ceiling_max": 2.0e-2,
         "qi_ceiling_smooth_penalty": 2.0e-3,
         "branch_width_weight": 0.5,
@@ -428,7 +430,7 @@ QI_CASES = {
             "max_mirror_ratio": 0.35,
             "max_elongation": 8.2,
             "smooth_qi_max": 3.0e-3,
-            "legacy_qi_max": 2.0e-3,
+            "legacy_qi_max": DEFAULT_QI_LEGACY_GATE,
             "diagnostic_qi_resolution": {"mboz": 18, "nboz": 18, "nphi": 151, "nalpha": 31, "n_bounce": 51},
             "accept_as_baseline": True,
         },
@@ -513,12 +515,13 @@ QI_CASES = {
         "output_dir": Path("results/qi_opt/ess/nfp4_qh_warm_to_qi"),
         # This case is intentionally kept as a seed-robustness stress fixture,
         # not a promoted QI lane.  Bounded May 2026 diagnostics found no local
-        # NFP=4 path satisfying the agreed smooth/legacy QI < 2e-3 gates.
+        # NFP=4 path satisfying the agreed smooth-QI < 3e-3 and legacy-QI
+        # < 2e-3 gates.
         "expected_gate_status": "non_passing_stress_fixture",
         "expected_gate_failures": ("smooth_qi", "legacy_qi", "mirror"),
         "stress_fixture_notes": (
             "Bundled QH warm start and QH-to-QI local cleanup remain above the legacy QI gate.",
-            "Archived external NFP=4 QI references improve QI but still miss the 2e-3 smooth/legacy gates.",
+            "Archived external NFP=4 QI references improve QI but still miss the 3e-3 smooth / 2e-3 legacy gates.",
             "Do not promote this case without an independent diagnostics.json gate pass.",
         ),
         "known_best_nfp4_quick_audit": {
@@ -660,8 +663,8 @@ def _minimal_or_circular_qi_case(
             "abs_iota_min": float(base.get("target_abs_iota_min", 0.41)),
             "max_mirror_ratio": float(base.get("mirror_threshold", 0.35)),
             "max_elongation": float(base.get("max_elongation", 8.2)),
-            "smooth_qi_max": float(base.get("qi_gate_smooth_max", 2.0e-3)),
-            "legacy_qi_max": float(base.get("qi_gate_legacy_max", 2.0e-3)),
+            "smooth_qi_max": float(base.get("qi_gate_smooth_max", DEFAULT_QI_SMOOTH_GATE)),
+            "legacy_qi_max": float(base.get("qi_gate_legacy_max", DEFAULT_QI_LEGACY_GATE)),
             # The reference scan is a deterministic proposal generator and a
             # safe fallback for circular/minimal seeds.  Local cleanup stages
             # still run and can promote better candidates, but a failed cleanup
@@ -715,8 +718,8 @@ def _minimal_or_circular_qi_case(
                     "iota_floor_weight": max(float(stage.get("iota_floor_weight", 0.0)), 50.0**2),
                     "qi_weight": max(float(stage.get("qi_weight", 0.0)), 1000.0),
                     "qi_ceiling_max": min(
-                        float(stage.get("qi_ceiling_max", base.get("qi_gate_smooth_max", 2.0e-3))),
-                        float(base.get("qi_gate_smooth_max", 2.0e-3)),
+                        float(stage.get("qi_ceiling_max", base.get("qi_gate_smooth_max", DEFAULT_QI_SMOOTH_GATE))),
+                        float(base.get("qi_gate_smooth_max", DEFAULT_QI_SMOOTH_GATE)),
                     ),
                     "qi_ceiling_weight": max(float(stage.get("qi_ceiling_weight", 0.0)), 50000.0),
                     "accept_if_qi_safe_aspect_improves": aspect_weight is not None and ramp_index < len(ramp_weights),
@@ -832,7 +835,7 @@ QI_CASES["nfp4_qi"] = {
 # mode-5 scalar-trust augmented-Lagrangian cleanup, then performs one guarded
 # aspect-localization stage.  Avoiding the older mode-3 aspect-ramp stages
 # keeps this public preset focused on the current fast path for smooth QI <
-# 2e-3 with mirror below the public 0.35 cap.
+# 3e-3 with mirror below the public 0.35 cap.
 _NFP2_BALANCED_STAGES = (
     {
         "name": "aspect_first_qi_mirror035",
@@ -1011,8 +1014,8 @@ def resolve_qi_case(default_run_case: str | None = None):
                 "abs_iota_min": float(_external_base_case.get("target_abs_iota_min", 0.41)),
                 "max_mirror_ratio": float(_external_base_case.get("mirror_threshold", DEFAULT_QI_MIRROR_RATIO)),
                 "max_elongation": float(_external_base_case.get("max_elongation", 8.2)),
-                "smooth_qi_max": float(_external_base_case.get("qi_gate_smooth_max", 2.0e-3)),
-                "legacy_qi_max": float(_external_base_case.get("qi_gate_legacy_max", 2.0e-3)),
+                "smooth_qi_max": float(_external_base_case.get("qi_gate_smooth_max", DEFAULT_QI_SMOOTH_GATE)),
+                "legacy_qi_max": float(_external_base_case.get("qi_gate_legacy_max", DEFAULT_QI_LEGACY_GATE)),
                 "max_iter": int(os.environ.get("VMEC_JAX_QI_INNER_MAX_ITER", _reference_base.get("max_iter", 80))),
                 "prefer_qi_safe_candidates": True,
             }

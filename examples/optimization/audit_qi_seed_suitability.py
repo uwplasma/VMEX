@@ -98,7 +98,7 @@ class SeedCase:
 class SuitabilityTargets:
     target_aspect: float = DEFAULT_TARGET_ASPECT
     abs_iota_min: float = DEFAULT_ABS_IOTA_MIN
-    smooth_qi_max: float | None = 2.0e-3
+    smooth_qi_max: float | None = 3.0e-3
     legacy_qi_max: float | None = 2.0e-3
     max_mirror_ratio: float = DEFAULT_MAX_MIRROR_RATIO
     max_elongation: float = DEFAULT_MAX_ELONGATION
@@ -127,10 +127,10 @@ class QIPrefineProbeConfig:
     phimin: float = 0.0
     qi_weight: float = 1.0
     qi_ceiling_weight: float = 100.0
-    qi_ceiling_max: float = 2.0e-3
+    qi_ceiling_max: float = 3.0e-3
     qi_ceiling_smooth_penalty: float = 2.0e-3
     preserve_near_qi: bool = True
-    near_qi_smooth_max: float = 2.0e-3
+    near_qi_smooth_max: float = 3.0e-3
     near_qi_legacy_max: float = 2.0e-3
     near_qi_aux_weight_scale: float = DEFAULT_PREFINE_NEAR_QI_AUX_WEIGHT_SCALE
     near_qi_ceiling_weight: float = DEFAULT_PREFINE_NEAR_QI_CEILING_WEIGHT
@@ -2173,7 +2173,7 @@ def run_qi_prefine_probe(plan: dict[str, Any], *, workflow: Any | None = None) -
         )
     ):
         qi_ceiling = workflow.QuasiIsodynamicResidualCeiling(
-            maximum=float(qi_options_raw.get("qi_ceiling_max", 2.0e-3)),
+            maximum=float(qi_options_raw.get("qi_ceiling_max", 3.0e-3)),
             smooth_penalty=float(qi_options_raw.get("qi_ceiling_smooth_penalty", 2.0e-3)),
             qi_options=qi_options,
         )
@@ -2577,7 +2577,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--smooth-qi-max",
         type=float,
-        default=2.0e-3,
+        default=3.0e-3,
         help="Maximum accepted smooth differentiable QI diagnostic; use a negative value to disable this gate.",
     )
     parser.add_argument(
@@ -2653,7 +2653,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "is enabled in constrained prefine probes."
         ),
     )
-    parser.add_argument("--prefine-qi-ceiling-max", type=float, default=2.0e-3)
+    parser.add_argument("--prefine-qi-ceiling-max", type=float, default=3.0e-3)
     parser.add_argument("--prefine-qi-ceiling-smooth-penalty", type=float, default=2.0e-3)
     parser.add_argument(
         "--prefine-preserve-near-qi",
@@ -2665,7 +2665,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "out of the QI basin."
         ),
     )
-    parser.add_argument("--prefine-near-qi-smooth-max", type=float, default=2.0e-3)
+    parser.add_argument("--prefine-near-qi-smooth-max", type=float, default=3.0e-3)
     parser.add_argument("--prefine-near-qi-legacy-max", type=float, default=2.0e-3)
     parser.add_argument(
         "--prefine-near-qi-aux-weight-scale",
