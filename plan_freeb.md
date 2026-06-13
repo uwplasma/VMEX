@@ -23939,3 +23939,64 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 98.5% infrastructure/provenance-ready;
   NFP1 remains unpromoted pending the bridge-started constrained polish.
+
+### 2026-06-13 NFP1 Bridge-Started Low-Resolution Polish Progress
+
+Steps taken:
+
+1. Stopped the first high-resolution ``lambda=0.15`` constrained polish after
+   it reached only one optimizer step in about eight minutes.
+2. Relaunched the same physical cleanup from the ``lambda=0.15`` bridge point
+   with a cheaper optimization-time QI residual
+   (``mboz=nboz=8``, ``nphi=61``, ``nalpha=13``, ``n_bounce=21``) while keeping
+   the high-resolution audit diagnostics
+   (``mboz=nboz=18``, ``nphi=151``, ``nalpha=31``, ``n_bounce=51``).
+3. Kept the stage bounded by ``max_nfev=20`` and used matrix-free SciPy with
+   ``scipy_lsmr_maxiter=3``.
+4. Re-ran the single-stage direct-coil free-boundary QS smoke with the
+   branch-local derivative proposal report.
+
+Results obtained:
+
+1. The low-resolution NFP=1 polish is making monotonic progress instead of
+   stalling: cost decreased from ``7.4328e-1`` at nfev 1 to ``4.4421e-1`` at
+   nfev 13.
+2. The run is still active on office at
+   ``results/qi_opt/ess/nfp1_bridge015_lowres_qiceiling_mirror_polish`` and has
+   not yet produced final exact diagnostics.
+3. The direct-coil QS smoke produced a branch-local directional proposal whose
+   trial was accepted by a complete free-boundary solve.  The summary explicitly
+   reports ``differentiates_adaptive_controller=False`` and
+   ``differentiates_run_free_boundary=False``.
+4. GitHub CI for commit ``552f2e7`` completed successfully.
+
+Best next steps:
+
+1. Let the active NFP=1 polish reach its ``max_nfev=20`` cap, then inspect
+   high-resolution exact diagnostics.
+2. If mirror remains above the gate but QI stays below the gate, restart from
+   the final input with an additional short low-resolution polish instead of
+   returning to the original seed.
+3. If high-resolution audit QI fails, use the bridge scan to pick the best
+   QI-safe tradeoff point and stop treating NFP=1 as promotable until a new
+   constrained policy is found.
+4. Keep the free-boundary phase-3 derivative proposal language conservative:
+   branch-local proposals are production evidence, complete solves remain the
+   acceptance authority, and adaptive branch differentiation remains unclaimed.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999999%.
+- VMEC parity and physics gates: 99.87%.
+- Single-stage coil-only optimization phase 3: 99.85%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 98.6% infrastructure/provenance-ready;
+  NFP1 remains unpromoted pending final exact diagnostics from the active
+  bridge-started polish.
