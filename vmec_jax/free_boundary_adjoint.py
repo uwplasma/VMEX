@@ -4408,6 +4408,15 @@ def direct_coil_accepted_trace_fingerprint(
     precond_mats_shapes = tuple(_trace_pytree_shape_signature(trace.get("precond_mats")) for trace in trace_seq)
     lam_prec_shapes = tuple(tuple(np.asarray(trace.get("lam_prec", [])).shape) for trace in trace_seq)
     w_mode_shapes = tuple(tuple(np.asarray(trace.get("w_mode_mn", [])).shape) for trace in trace_seq)
+    if trace_seq:
+        status_masks = direct_coil_accepted_trace_status_masks(trace_seq)
+        step_status = tuple(status_masks["step_status"])
+        accept_mask = np.asarray(status_masks["accept_mask"], dtype=int)
+        done_mask = np.asarray(status_masks["done_mask"], dtype=int)
+    else:
+        step_status = ()
+        accept_mask = np.asarray((), dtype=int)
+        done_mask = np.asarray((), dtype=int)
     reset_flags = []
     for prev_trace, trace in zip(trace_seq[:-1], trace_seq[1:], strict=False):
         try:
@@ -4434,6 +4443,9 @@ def direct_coil_accepted_trace_fingerprint(
         "precond_mats_shapes": precond_mats_shapes,
         "lam_prec_shapes": lam_prec_shapes,
         "w_mode_mn_shapes": w_mode_shapes,
+        "step_status": step_status,
+        "accept_mask": accept_mask,
+        "done_mask": done_mask,
         "state_reset_flags": np.asarray(reset_flags, dtype=int),
     }
 
@@ -4477,6 +4489,8 @@ def direct_coil_accepted_trace_fingerprint_delta(
         "state_pre_sizes",
         "state_post_sizes",
         "precond_jmax",
+        "accept_mask",
+        "done_mask",
         "state_reset_flags",
     ):
         ref_values = np.asarray(ref[key])
@@ -4484,7 +4498,7 @@ def direct_coil_accepted_trace_fingerprint_delta(
         if ref_values.shape != cand_values.shape or not np.array_equal(ref_values, cand_values):
             changed.append(key)
 
-    for key in ("precond_mats_shapes", "lam_prec_shapes", "w_mode_mn_shapes"):
+    for key in ("precond_mats_shapes", "lam_prec_shapes", "w_mode_mn_shapes", "step_status"):
         if ref[key] != cand[key]:
             changed.append(key)
 
