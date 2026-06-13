@@ -21251,6 +21251,73 @@ Completion:
 - QI minimal-seed README artifacts: 96% infrastructure/provenance-ready,
   0% promoted under strict four-row policy.
 
+### 2026-06-13: launched next non-duplicate QI recovery set
+
+Steps taken:
+
+1. Polled the completed NFP1, NFP3, and NFP4 QI follow-up runs on ``office``.
+2. Confirmed GitHub Actions run ``27453433079`` for ``ac72857`` completed
+   successfully.
+3. Verified no remote QI Python workers were still active before launching new
+   work.
+4. Built a new NFP3 hybrid seed that preserves the minimal seed's low-order
+   aspect-setting modes while injecting only scaled high-order modes from the
+   same-NFP QI reference:
+   ``/home/rjorge/local/tests/qi_nfp3_hybrid_highmode_seed_c4c57da/input.hybrid_highmode_seed``.
+5. Launched three non-duplicate recovery jobs:
+   NFP1 mode6/7 QI+mirror recovery on GPU0,
+   NFP4 mode8 QI-dominant polish on GPU1, and
+   NFP3 hybrid high-mode seed recovery on CPU.
+
+Results obtained:
+
+1. NFP1 QI-only/Boozer re-entry was not promotable:
+   best smooth QI ``4.019547488229662e-3``, legacy QI
+   ``2.279633190934776e-3``, mirror ``0.37596657054990923``,
+   aspect ``7.043946477507409``, mean iota ``0.4848600880455083``.
+2. NFP3 minimal/no-reference failed:
+   best first-stage smooth QI ``0.2739459599036102``, legacy QI
+   ``0.30732017926973076``, mirror ``1.0``, aspect
+   ``5.931155842317066``, mean iota ``-0.07330331482555555``; the strict stage
+   worsened to aspect ``11.804515351671416`` and mirror ``1.0``.
+3. NFP4 mode7 QI-dominant polish was close but not promotable:
+   smooth QI ``2.4592839682898477e-3``, legacy QI
+   ``3.30580550776267e-4``, mirror ``0.2972045785925792``,
+   elongation ``4.104350686460996``, aspect ``6.0000067367594605``,
+   mean iota ``-1.2893625507028066``.
+4. New active run directories:
+   ``/home/rjorge/local/tests/qi_nfp1_mode67_qi_mirror_recovery_c4c57da``,
+   ``/home/rjorge/local/tests/qi_nfp3_hybrid_highmode_seed_c4c57da``, and
+   ``/home/rjorge/local/tests/qi_nfp4_mode8_qi_polish_c4c57da``.
+
+Best next steps:
+
+1. Poll the three new jobs until exact diagnostics are written.
+2. If NFP4 mode8 still misses smooth QI by a small margin, decide whether the
+   strict README gate should remain ``2e-3`` or whether NFP4 should be deferred.
+3. If the NFP3 hybrid seed preserves aspect and improves QI, promote that seed
+   construction into an example helper; otherwise defer NFP3 minimal-seed README
+   promotion rather than overclaiming.
+4. Keep the free-boundary phase-2 claim conservative.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999995% for fixed
+  branch-local accepted/rejected gates; adaptive host branch selection remains
+  unclaimed.
+- VMEC parity and physics gates: 99.8%.
+- Single-stage coil-only optimization: 99.4%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% with ``ac72857`` CI green.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 96% infrastructure/provenance-ready,
+  0% promoted under strict four-row policy.
+
 ### 2026-06-12: CI green, QI jobs still running
 
 Steps taken:
