@@ -3014,6 +3014,28 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
     assert adaptive_gate["differentiates_adaptive_controller"] is False
     assert adaptive_gate["differentiates_run_free_boundary"] is False
 
+    changed_branch_report = deepcopy(complete_report)
+    changed_branch_report["branch_compatibility"]["same_branch"] = False
+    changed_branch_report["branch_compatibility"]["plus_fingerprint"] = deepcopy(
+        changed_branch_report["branch_compatibility"]["plus_fingerprint"]
+    )
+    changed_branch_report["branch_compatibility"]["plus_fingerprint"]["step_status"] = (
+        "momentum",
+        "restart_bad_jacobian",
+        "restart_bad_jacobian",
+    )
+    changed_branch_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
+        changed_branch_report,
+        scalars_report,
+        scalar_keys=("aspect", "state_norm"),
+        require_fixed_rejected_controller_slot=True,
+        require_status_derived_rejected_controller_slot=True,
+    )
+    assert changed_branch_gate["passed"] is False
+    assert changed_branch_gate["same_branch"] is False
+    assert changed_branch_gate["same_full_loop_branch_fingerprint"] is False
+    assert any("branch fingerprints" in error for error in changed_branch_gate["errors"])
+
 
 @pytest.mark.py311_coverage_only
 def test_direct_coil_branch_trace_mode_keeps_replay_controls_without_raw_force_payload(
