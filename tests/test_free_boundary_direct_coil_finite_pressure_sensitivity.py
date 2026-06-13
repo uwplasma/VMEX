@@ -1029,6 +1029,10 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     assert fingerprint["step_status"] == ("accepted", "accepted")
     np.testing.assert_array_equal(fingerprint["accept_mask"], np.asarray([1, 1]))
     np.testing.assert_array_equal(fingerprint["done_mask"], np.asarray([0, 1]))
+    empty_fingerprint = direct_coil_accepted_trace_fingerprint([])
+    assert empty_fingerprint["step_status"] == ()
+    np.testing.assert_array_equal(empty_fingerprint["accept_mask"], np.asarray([], dtype=int))
+    np.testing.assert_array_equal(empty_fingerprint["done_mask"], np.asarray([], dtype=int))
 
     same = direct_coil_accepted_trace_fingerprint_delta([trace0, trace1], [trace0, trace1])
     assert same["compatible"]
