@@ -24000,3 +24000,56 @@ Completion:
 - QI minimal-seed README artifacts: 98.6% infrastructure/provenance-ready;
   NFP1 remains unpromoted pending final exact diagnostics from the active
   bridge-started polish.
+
+### 2026-06-13 NFP1 Low-Resolution Polish Final Diagnostics
+
+Steps taken:
+
+1. Let the low-resolution NFP=1 bridge-started constrained polish reach its
+   explicit ``max_nfev=20`` budget.
+2. Inspected the high-resolution audit diagnostics.
+3. Stopped the non-promotable run after diagnostics, before wasting more office
+   CPU on comparison plotting.
+4. Launched a short Boozer-mirror-aligned polish from the QI-safe final input,
+   because the VMEC-grid mirror penalty did not reduce the audited mirror ratio.
+
+Results obtained:
+
+1. The low-resolution constrained polish reduced the optimizer objective by
+   ``45.3%`` and improved QI/aspect:
+   ``smooth_qi=1.7204e-3``, ``legacy_qi=6.8863e-4``, ``aspect=6.5951``,
+   ``mean_iota=0.4949``, ``max_elongation=4.6101``.
+2. It still failed the mirror gate: ``mirror=0.4414`` against the public
+   threshold ``0.35``.
+3. The result is not promotable, but it is the best QI-safe NFP=1 starting point
+   found in this sequence.
+4. The active follow-up run is
+   ``results/qi_opt/ess/nfp1_bridge015_boozer_mirror_polish``.  It uses
+   ``mirror_backend=boozer_scalar`` with a short ``max_nfev=12`` budget and
+   high-resolution final audit diagnostics.
+
+Best next steps:
+
+1. Let the Boozer-mirror polish finish and compare exact mirror/QI diagnostics.
+2. If Boozer-mirror polish lowers mirror materially while preserving QI, repeat
+   one more short polish from its final input.
+3. If it does not lower mirror, stop the NFP=1 promotion attempt for this cycle:
+   the current evidence says the reviewed minimal-seed NFP=1 path is QI-safe
+   but not mirror-safe without a different global move.
+4. Keep NFP=2/3/4 README artifacts unchanged; this work only affects NFP=1.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999999%.
+- VMEC parity and physics gates: 99.87%.
+- Single-stage coil-only optimization phase 3: 99.85%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 98.7% infrastructure/provenance-ready;
+  NFP1 remains unpromoted pending the Boozer-mirror cleanup.
