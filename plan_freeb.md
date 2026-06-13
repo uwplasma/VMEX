@@ -21251,6 +21251,50 @@ Completion:
 - QI minimal-seed README artifacts: 96% infrastructure/provenance-ready,
   0% promoted under strict four-row policy.
 
+### 2026-06-13: CI green for QI recovery launch checkpoint
+
+Steps taken:
+
+1. Polled GitHub Actions for commit ``2c70268``.
+2. Polled the three active remote QI recovery jobs:
+   ``qi_nfp1_mode67_qi_mirror_recovery_c4c57da``,
+   ``qi_nfp3_hybrid_highmode_seed_c4c57da``, and
+   ``qi_nfp4_mode8_qi_polish_c4c57da``.
+
+Results obtained:
+
+1. GitHub Actions run ``27468627020`` for ``2c70268`` completed successfully.
+2. All three remote QI jobs are active and have only pending first-stage
+   checkpoints so far.  After roughly 9--10 minutes this is high-mode exact
+   callback/runtime cost, not a launch failure.
+
+Best next steps:
+
+1. Continue polling the active remote runs until exact diagnostics appear.
+2. If the NFP4 mode8 run fails by a small margin, treat NFP4 as close evidence
+   but do not promote the README row unless the strict gate is intentionally
+   revised.
+3. Use the NFP3 hybrid run to decide whether the high-mode-reference seed
+   construction is worth promoting into a documented helper.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999995% for fixed
+  branch-local accepted/rejected gates; adaptive host branch selection remains
+  unclaimed.
+- VMEC parity and physics gates: 99.8%.
+- Single-stage coil-only optimization: 99.4%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% with ``2c70268`` CI green.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 96% infrastructure/provenance-ready,
+  0% promoted under strict four-row policy.
+
 ### 2026-06-13: launched next non-duplicate QI recovery set
 
 Steps taken:
