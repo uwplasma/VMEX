@@ -20995,3 +20995,58 @@ Completion:
 - QI minimal-seed README artifacts: 94% infrastructure/artifact-ready,
   0% promoted; NFP1/2/3 have definitive non-promotion evidence from the current
   matrix, and NFP4 is still running.
+
+### 2026-06-12 Focused QI Minimal-Seed Follow-Up Launch
+
+Steps taken:
+
+1. Rechecked ``main`` after commit ``a9fceb6``.  The local worktree is clean,
+   and the new GitHub Actions run is in progress with the build/docs, console,
+   Python 3.10/3.12, core coverage, optimization-QI, and physics-smoke jobs
+   already green.
+2. Confirmed the remote NFP4 minimal-seed QI job remains active on ``office``
+   GPU1.  It is still in the finite-beta QI cleanup stage; the reference
+   candidate remains aspect ``6.011``, mirror ``0.291``--``0.292``, elongation
+   ``4.14``, mean iota about ``-1.26`` to ``-1.29``, legacy QI below
+   ``1.1e-3``, and smooth QI slightly above the current ``2e-3`` gate.
+3. Used idle ``office`` GPU0 to launch a bounded, provenance-preserving NFP2
+   follow-up under
+   ``/home/rjorge/local/tests/qi_nfp2_followup_a9fceb6``.  The run keeps
+   ``examples/data/input.minimal_seed_nfp2`` as the raw seed, uses the same
+   NFP2 QI reference family and lambdas ``0.97,0.98,0.99``, and adds three
+   explicit mode-5 scalar-trust cleanup stages focused on preserving QI while
+   tightening mirror, aspect, and iota gates.
+4. Left both remote jobs running; no README/docs QI artifacts were promoted.
+
+Results obtained:
+
+1. The NFP2 follow-up reproduced the previous deterministic reference-family
+   selection: ``lambda=0.99`` with aspect ``7.934``, mean iota ``-0.439``,
+   mirror ``0.2407``, legacy QI ``3.74e-3``, and smooth QI ``6.51e-3`` before
+   local cleanup.
+2. The NFP2 follow-up is now in the baseline/local cleanup stage and using
+   GPU0.  Final promotion evidence is not yet available.
+3. The NFP4 job has reached the local cleanup iteration table and remains
+   active on GPU1.  Final promotion evidence is not yet available.
+
+Best next steps:
+
+1. Continue monitoring both remote QI jobs.  Stop neither unless it stalls,
+   exits, or exceeds its intended timeout window.
+2. If NFP2 succeeds, copy back only compact diagnostics/provenance and then
+   decide whether to patch the reviewed NFP2 policy catalog.  If it fails,
+   record the exact gate that remains limiting.
+3. If NFP4 ends with only the reference-family candidate passing engineering
+   gates but failing smooth QI, keep NFP4 blocked from README promotion rather
+   than relaxing the QI gate silently.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- QI minimal-seed README artifacts: 94% infrastructure/artifact-ready,
+  0% promoted; NFP2 and NFP4 focused follow-ups are active.
+- CI/runtime/coverage hygiene: 100%; latest CI is still running but all
+  completed jobs are green.
