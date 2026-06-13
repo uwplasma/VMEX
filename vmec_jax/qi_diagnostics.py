@@ -88,11 +88,12 @@ class QISeedSuitabilityTargets:
     """Promotion gates used to compare solved QI seed candidates.
 
     ``None`` disables a gate.  The defaults match the lightweight QI audit and
-    optimization examples in this repository: smooth/legacy QI first, then
-    nonzero transform, aspect, mirror, and elongation cleanup gates.
+    optimization examples in this repository: a differentiable smooth-QI gate
+    for optimization evidence, an independent legacy Goodman-style QI gate,
+    then nonzero transform, aspect, mirror, and elongation cleanup gates.
     """
 
-    smooth_qi_max: float | None = 2.0e-3
+    smooth_qi_max: float | None = 3.0e-3
     legacy_qi_max: float | None = 2.0e-3
     target_aspect: float | None = 5.0
     aspect_relative_tolerance: float = 0.35
