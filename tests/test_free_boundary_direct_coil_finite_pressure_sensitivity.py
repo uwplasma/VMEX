@@ -1026,6 +1026,9 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     assert fingerprint["n_steps"] == 2
     assert fingerprint["n_freeb_steps"] == 2
     assert np.array_equal(fingerprint["freeb_sizes"], np.asarray([6, 6]))
+    assert fingerprint["step_status"] == ("accepted", "accepted")
+    np.testing.assert_array_equal(fingerprint["accept_mask"], np.asarray([1, 1]))
+    np.testing.assert_array_equal(fingerprint["done_mask"], np.asarray([0, 1]))
 
     same = direct_coil_accepted_trace_fingerprint_delta([trace0, trace1], [trace0, trace1])
     assert same["compatible"]
@@ -1041,6 +1044,23 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
         [field_only_change, trace1],
     )
     assert same_branch["compatible"]
+
+    status_change = dict(trace1)
+    status_change["step_status"] = "restart_bad_progress"
+    rejected_slot_branch = direct_coil_accepted_trace_fingerprint_delta(
+        [trace0, trace1],
+        [trace0, status_change],
+    )
+    assert not rejected_slot_branch["compatible"]
+    assert "step_status" in rejected_slot_branch["changed_fields"]
+    assert "accept_mask" in rejected_slot_branch["changed_fields"]
+    status_json = direct_coil_accepted_trace_fingerprint_delta_summary(
+        [trace0, trace1],
+        [trace0, status_change],
+    )
+    json.dumps(status_json, allow_nan=False)
+    assert status_json["candidate"]["step_status"] == ["accepted", "restart_bad_progress"]
+    assert status_json["candidate"]["accept_mask"] == [1, 0]
 
     control_change = dict(trace0)
     control_change["fac"] = np.asarray(0.7)

@@ -21050,3 +21050,73 @@ Completion:
   0% promoted; NFP2 and NFP4 focused follow-ups are active.
 - CI/runtime/coverage hygiene: 100%; latest CI is still running but all
   completed jobs are green.
+
+### 2026-06-12 Accepted/Rejected Branch Fingerprint Hardening
+
+Steps taken:
+
+1. Hardened the direct-coil accepted-trace branch fingerprint so it now records
+   normalized ``step_status`` plus the derived accepted/rejected and done masks
+   used by the JAX-visible replay controller.
+2. Added a regression to
+   ``test_direct_coil_trace_fingerprint_detects_control_branch_changes`` showing
+   that a status-only change from ``accepted`` to ``restart_bad_progress`` is a
+   branch change, while field-only changes remain compatible.
+3. Ran the focused production-adjacent gate recommended by the free-boundary
+   review: fingerprint regression plus
+   ``test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd``.
+4. Re-ran the broader local free-boundary adjoint shard and the QI staging
+   helper shard.
+5. Re-polled the active ``office`` QI follow-ups.  NFP2 all-surface cleanup and
+   NFP4 strict smooth-QI refinement remain active, but neither has accepted a
+   new promotable stage yet.
+
+Results obtained:
+
+1. ``python -m ruff check vmec_jax/free_boundary_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`` passed.
+2. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd
+   -q`` passed.
+3. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_vacuum_adjoint.py
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`` passed
+   with ``93 passed, 1 skipped`` in about 6m19s.
+4. ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_qi_case_resolution.py
+   tests/test_minimal_seed_showcase.py tests/test_qi_staged_runner.py -q``
+   passed with ``42 passed``.
+5. QI promotion remains blocked.  The current NFP2 all-surface run is still at
+   smooth QI ``6.51e-3`` / legacy QI ``3.73e-3`` before accepted cleanup
+   improvement.  The current NFP4 strict run remains at smooth QI ``2.59e-3``
+   with good legacy QI, mirror, aspect, elongation, and iota, so it is still
+   not a strict ``2e-3`` README row.
+
+Best next steps:
+
+1. Keep the adaptive-loop differentiation claim conservative: this commit
+   strengthens fingerprint gating for fixed accepted/rejected slots; it still
+   does not claim arbitrary host adaptive branch differentiation.
+2. Let the two active remote QI jobs either finish or time out, then record
+   final diagnostics.  Promote no QI README panel unless every selected row has
+   raw minimal-seed provenance and passes gates.
+3. If NFP4 strict refinement remains stuck above smooth QI ``2e-3``, decide
+   explicitly whether the public NFP4 row can use the documented ``3e-3``
+   engineering policy or should remain blocked.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Full nonlinear free-boundary adjoint phase 2: 99.999999% for fixed
+  branch-local gates; adaptive host branch selection remains unclaimed.
+- VMEC parity and physics gates: 99.75%.
+- Single-stage coil-only optimization: 99.2%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100%; latest CI is green and local focused
+  shards pass.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 95% infrastructure/provenance-ready,
+  0% promoted under the strict four-row README policy.
