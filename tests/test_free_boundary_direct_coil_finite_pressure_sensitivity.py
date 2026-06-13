@@ -2888,6 +2888,7 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
     )
     from vmec_jax.state import pack_state
     from vmec_jax.wout import equilibrium_aspect_ratio_from_state
+    from vmec_jax.quasisymmetry import quasisymmetry_ratio_residual_from_state
 
     enable_x64(True)
     _set_same_branch_custom_vjp_env(monkeypatch)
@@ -2915,12 +2916,24 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
     def scalar_map(payload):
         state = payload["result"].state
         packed = pack_state(state)
+        qs = quasisymmetry_ratio_residual_from_state(
+            state=state,
+            static=payload["init"].static,
+            indata=payload["init"].indata,
+            signgs=int(payload["init"].signgs),
+            surfaces=[0.5],
+            helicity_m=1,
+            helicity_n=0,
+            ntheta=7,
+            nphi=8,
+        )
         return {
             "aspect": equilibrium_aspect_ratio_from_state(
                 state=state,
                 static=payload["init"].static,
             ),
             "state_norm": 0.5 * jnp.vdot(packed, packed),
+            "qs_total": qs["total"],
         }
 
     solve_kwargs = {
@@ -2962,12 +2975,23 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
             pack_state(replay["state"]),
             pack_state(replay["state"]),
         ),
+        "qs_total": lambda replay, payload: quasisymmetry_ratio_residual_from_state(
+            state=replay["state"],
+            static=payload["init"].static,
+            indata=payload["init"].indata,
+            signgs=int(payload["init"].signgs),
+            surfaces=[0.5],
+            helicity_m=1,
+            helicity_n=0,
+            ntheta=7,
+            nphi=8,
+        )["total"],
     }
     branch_local = direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
         params=base_params,
         direction_params=direction,
         complete_payload=complete_report["base"],
-        scalar_keys=("aspect", "state_norm"),
+        scalar_keys=("aspect", "state_norm", "qs_total"),
         production_values=production_values,
         replay_payload={"init": complete_report["base"]["init"]},
         scalar_fn=scalar_map,
@@ -2993,16 +3017,16 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
     scalars_report = direct_coil_branch_local_scalars_report_from_complete_fd(
         complete_report,
         branch_local,
-        scalar_keys=("aspect", "state_norm"),
-        rtol={"aspect": 5.0e-3, "state_norm": 5.0e-3},
-        atol={"aspect": 5.0e-8, "state_norm": 5.0e-8},
-        base_value_atol={"aspect": 2.0e-3, "state_norm": 2.0e-3},
+        scalar_keys=("aspect", "state_norm", "qs_total"),
+        rtol={"aspect": 5.0e-3, "state_norm": 5.0e-3, "qs_total": 2.0e-2},
+        atol={"aspect": 5.0e-8, "state_norm": 5.0e-8, "qs_total": 1.0e-8},
+        base_value_atol={"aspect": 2.0e-3, "state_norm": 2.0e-3, "qs_total": 2.0e-3},
     )
     assert scalars_report["passed"], scalars_report
     adaptive_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
         complete_report,
         scalars_report,
-        scalar_keys=("aspect", "state_norm"),
+        scalar_keys=("aspect", "state_norm", "qs_total"),
         require_fixed_rejected_controller_slot=True,
         require_status_derived_rejected_controller_slot=True,
     )
@@ -3027,7 +3051,7 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
     changed_branch_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
         changed_branch_report,
         scalars_report,
-        scalar_keys=("aspect", "state_norm"),
+        scalar_keys=("aspect", "state_norm", "qs_total"),
         require_fixed_rejected_controller_slot=True,
         require_status_derived_rejected_controller_slot=True,
     )

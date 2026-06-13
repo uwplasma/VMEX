@@ -78,6 +78,57 @@ Completion:
 - QI minimal-seed README artifacts: 97.5% infrastructure/provenance-ready;
   NFP4 passable, NFP2/NFP3 active recovery, NFP1 unpromoted.
 
+### 2026-06-13 Rejected-Slot QS Scalar Gate
+
+Steps taken:
+
+1. Added a physics scalar, ``qs_total``, to the native rejected-slot
+   same-branch free-boundary gate.  The test now validates aspect, packed-state
+   norm, and a low-resolution quasisymmetry residual through the
+   status-derived accepted/rejected controller-slot replay.
+2. Kept the claim boundary unchanged: this is still a fingerprint-gated,
+   branch-local replay report, not arbitrary differentiation of the adaptive
+   host controller.
+3. Ran:
+   ``python -m ruff check tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py``.
+4. Ran:
+   ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve_fd -q``.
+
+Results obtained:
+
+1. The new QS scalar passes branch-local JVP/Jacobian checks against
+   complete-solve central finite differences under an unchanged adaptive
+   fingerprint.
+2. Runtime remains acceptable for the exact shard: the single targeted test
+   completes in roughly 31 seconds locally with the expected aggressive
+   nonphysical-branch warnings.
+
+Best next steps:
+
+1. Push the QS scalar gate and monitor CI exact shards.
+2. Use this gate as phase-3 evidence for branch-local coil-only QS derivative
+   proposals, while keeping complete solves as acceptance authority.
+3. Do not promote production arbitrary adaptive-loop VJP claims until a
+   fingerprint-gated full adaptive AD-vs-FD gate exists.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999998% for fixed
+  branch-local accepted/rejected gates with physical QS scalar coverage;
+  arbitrary adaptive host branch differentiation remains unclaimed.
+- VMEC parity and physics gates: 99.8%.
+- Single-stage coil-only optimization: 99.5%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% locally; CI pending for this increment.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 97.5% infrastructure/provenance-ready;
+  NFP4 passable, NFP2/NFP3 active recovery, NFP1 unpromoted.
+
 ### 2026-06-13 Adaptive Negative Gate and QI Recovery Runs
 
 Steps taken:
