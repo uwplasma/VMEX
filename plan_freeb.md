@@ -22536,3 +22536,43 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 96% infrastructure/provenance-ready,
   0% promoted under strict four-row policy.
+
+
+### 2026-06-13 CI Green and Targeted QI Repair Launch
+
+Steps taken:
+
+1. Confirmed GitHub Actions run ``27473205762`` for commit ``9a69dca`` completed successfully across docs, coverage gate, exact free-boundary shards, physics smoke, repository-size audit, console script smoke, and core/slow physics test buckets.
+2. Polled active ``office`` QI recovery jobs.  The NFP2 targeted cleanup is still in its second stage; its first stage improved smooth/legacy QI but violated the mirror gate.  The NFP3 bounded axisymmetric-scale scan confirmed the scale-1.00 basin remains low aspect and is still probing smaller scale values.
+3. Inventoried existing remote QI diagnostics under the relaxed smooth-QI gate ``3e-3``.  NFP4 has passing relaxed-gate candidates; NFP2 has a passing balanced-mirror candidate with raw minimal input provenance but high aspect within the configured 35% aspect gate; NFP1 and NFP3 remain the active scientific blockers for a four-row README panel.
+4. Created a fresh shallow ``office`` checkout at ``9a69dca`` for new targeted NFP1 repair experiments, without touching active experiment source trees.
+5. Launched two bounded NFP1 repair jobs: a GPU0 Boozer-scalar augmented-Lagrangian mirror repair from the good-QI/good-iota/high-mirror basin, and a lower-priority CPU iota-floor repair from the good-QI/good-mirror/low-iota basin.
+
+Results obtained:
+
+1. CI is green for the latest pushed commit.
+2. NFP2 active first-stage diagnostics: smooth QI ``1.106e-3``, legacy QI ``2.935e-4``, mirror ``0.526``, aspect ``7.55``, mean iota ``-0.427``; not promotable because mirror fails.
+3. NFP3 bounded scan scale ``1.00`` diagnostics: smooth QI ``2.655e-3``, legacy QI ``2.416e-4``, mirror ``0.301``, aspect ``3.528``, mean iota ``-1.068``; not promotable because aspect is below the configured aspect-6 gate tolerance.
+4. The best existing NFP4 relaxed-gate candidate has smooth QI about ``2.44e-3``, legacy QI about ``3.23e-4``, mirror about ``0.297``, aspect ``6.00``, and mean iota about ``-1.288``.  It still needs provenance packaging before README promotion.
+
+Best next steps:
+
+1. Poll the two new NFP1 repair jobs and active NFP2/NFP3 jobs until exact diagnostics or timeouts are available.
+2. If NFP1 repair succeeds, package it with raw minimal-seed provenance; if both targeted repairs fail, stop local NFP1 tweaks and switch to a new NFP1 reference-family basin.
+3. If NFP3 axisymmetric scaling never reaches the aspect gate while preserving QI/mirror/iota, declare the current NFP3 basin exhausted and start a new same-NFP seed/reference family rather than repeating low-aspect relocks.
+4. Keep README QI promotion blocked until every promoted row has raw minimal-seed provenance and passes the relaxed smooth-QI, legacy-QI, mirror, iota, elongation, and aspect gates.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999998% for fixed branch-local accepted/rejected gates; arbitrary adaptive host branch selection remains unclaimed.
+- VMEC parity and physics gates: 99.8%.
+- Single-stage coil-only optimization: 99.5%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% with ``9a69dca`` CI green.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 98% infrastructure/provenance-ready; NFP4 relaxed-gate evidence exists, NFP2 likely usable with high-aspect caveat, NFP1/NFP3 remain unpromoted scientific blockers.
