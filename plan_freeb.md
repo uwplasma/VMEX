@@ -21120,3 +21120,65 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 95% infrastructure/provenance-ready,
   0% promoted under the strict four-row README policy.
+
+### 2026-06-12 QI Minimal-Seed Focused CPU Follow-Ups
+
+Steps taken:
+
+1. Verified the prior NFP2 balanced mirror artifact under
+   ``/home/rjorge/local/tests/qi_balanced_mirror035_e57f147_full/run``.  Its
+   root diagnostics are complete and pass the current engineering gate, but it
+   does not include a staged-runner ``case_result.json`` wrapper.
+2. Launched two bounded CPU-only follow-ups on ``office`` so the active GPU QI
+   runs remain undisturbed:
+   ``/home/rjorge/local/tests/qi_nfp1_cpu_followup_9ce7add`` and
+   ``/home/rjorge/local/tests/qi_nfp3_cpu_followup_9ce7add``.
+3. The NFP1 follow-up starts from ``input.minimal_seed_nfp1`` with the NFP1 QI
+   reference family, first seeks a low-QI basin with relaxed mirror promotion,
+   then runs an all-surface mirror augmented-Lagrangian cleanup with a strict
+   QI ceiling.
+4. The NFP3 follow-up starts from ``input.minimal_seed_nfp3`` with the NFP3
+   reference family, first preserves strict QI, then runs an aspect-raising
+   scalar-trust stage under strict QI/mirror/iota gates.
+5. Re-polled the active GPU jobs.  NFP2 all-surface cleanup remains in its
+   first local cleanup stage.  NFP4 strict smooth-QI refinement has reached
+   iteration 1 with a small cost decrease, but it still has no promotable final
+   diagnostics.
+
+Results obtained:
+
+1. The verified NFP2 balanced artifact has smooth QI ``1.607e-3``, legacy QI
+   ``2.35e-4``, all-surface mirror ``0.3477``, elongation ``4.95``, mean iota
+   ``-0.446``, and aspect ``8.01``.  This is physically promotable under the
+   current relaxed aspect policy, but needs explicit provenance wrapping before
+   it should become a README row.
+2. NFP1 and NFP3 follow-ups launched successfully on CPU.  No final diagnostics
+   are available yet.
+3. The latest GitHub Actions run for ``9ce7add`` is in progress.  Build/docs
+   and parity smoke have already completed successfully; coverage shards are
+   still running.
+
+Best next steps:
+
+1. Let the NFP1/NFP3 CPU follow-ups and NFP2/NFP4 GPU follow-ups finish or time
+   out, then parse final root diagnostics and promotion logs.
+2. If the NFP2 all-surface follow-up does not beat the verified ``e57f147``
+   artifact, use ``e57f147`` only after adding or reconstructing the missing
+   ``case_result.json`` provenance in a compact, documented way.
+3. Keep the README QI panel blocked until NFP1/NFP2/NFP3/NFP4 all have
+   provenance-complete, gate-passing rows from raw ``input.minimal_seed_nfp*``
+   seeds.
+
+Need from user:
+
+No action needed unless you want to explicitly relax NFP4 smooth-QI promotion
+from ``2e-3`` to the existing ``3e-3`` engineering policy.
+
+Completion:
+
+- QI minimal-seed README artifacts: 96% infrastructure/provenance-ready,
+  still 0% promoted under strict four-row policy.
+- CI/runtime/coverage hygiene: 100% locally; latest remote CI is running.
+- Full nonlinear free-boundary adjoint phase 2: 99.999999% for fixed
+  branch-local gates; arbitrary adaptive host branch differentiation remains
+  unclaimed.
