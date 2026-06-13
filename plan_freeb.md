@@ -21789,6 +21789,66 @@ Completion:
   scientific promotion still pending for NFP1/NFP2/NFP3 under the four-row
   minimal-seed policy.
 
+## 2026-06-13 CI Green and NFP3 Aspect-Basin Probe
+
+Steps taken:
+
+1. Confirmed GitHub Actions run ``27472514880`` for commit ``f288e47`` completed
+   successfully after the staged-runner QI gate assertion repair.
+2. Delegated a focused NFP3 blocker analysis.  The result was that the current
+   NFP3 reference-family basin is intrinsically low-aspect: it preserves QI and
+   mirror but remains near aspect ``3.5``, and scalar-trust recovery makes only
+   tiny aspect moves before the trust region collapses.
+3. Launched a separate CPU-only NFP3 axisymmetric-scale scan on ``office`` in
+   ``/home/rjorge/local/tests/qi_nfp3_axisym_scale_scan_f288e47``.  This scan
+   keeps the NFP3 QI reference helical content, scales only ``n=0, m>0`` modes,
+   and audits exact smooth/legacy QI, mirror, iota, and aspect before any local
+   polish.
+
+Results obtained:
+
+1. ``f288e47`` has green CI.
+2. The active remote NFP2 balanced run found a strong working seed but not a
+   final public row yet: smooth QI ``1.516e-3``, legacy QI ``2.067e-4``,
+   mirror ``0.354``, aspect ``8.17``.  A later aspect-localization stage
+   improved aspect to ``6.94`` and kept smooth QI ``1.45e-3`` but worsened
+   mirror to ``0.391``.
+3. The active remote NFP1 wide-reference run selected a reference candidate
+   with aspect ``7.09``, mirror ``0.289``, and mean iota ``0.478``, but smooth
+   and legacy QI remain above the promotion gate before cleanup.
+4. The new NFP3 axisymmetric-scale scan is running; early CUDA plugin warnings
+   on the remote CPU-only process are non-fatal.
+
+Best next steps:
+
+1. Let NFP1 and NFP2 cleanup stages finish before deciding whether to launch
+   targeted short cleanups.
+2. Use the NFP3 axisymmetric-scale scan to decide if there exists an aspect-6
+   candidate in a nearby split-axisymmetric family.  If one exists, relock it
+   with a no-simple-seed mode-6 QI stage; if not, do not keep repeating the
+   failed low-aspect reference-family route.
+3. Keep README QI promotion blocked until each row has raw minimal-seed
+   provenance and passes the relaxed smooth-QI gate ``3e-3`` plus the strict
+   legacy, mirror, iota, elongation, and aspect checks.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999998% for fixed
+  branch-local accepted/rejected gates; arbitrary adaptive host branch
+  selection remains unclaimed.
+- VMEC parity and physics gates: 99.8%.
+- Single-stage coil-only optimization: 99.5%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 98% infrastructure/provenance-ready,
+  scientific promotion still pending for NFP1/NFP2/NFP3.
+
 ### 2026-06-13: free-boundary validation rerun after QI batch
 
 Steps taken:
