@@ -22576,3 +22576,41 @@ Completion:
 - CI/runtime/coverage hygiene: 100% with ``9a69dca`` CI green.
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 98% infrastructure/provenance-ready; NFP4 relaxed-gate evidence exists, NFP2 likely usable with high-aspect caveat, NFP1/NFP3 remain unpromoted scientific blockers.
+
+
+### 2026-06-13 CI Green and NFP2 Targeted Cleanup Exhausted
+
+Steps taken:
+
+1. Confirmed GitHub Actions run ``27473596780`` for commit ``3650e54`` completed successfully, including the combined coverage gate.
+2. Re-polled the active QI jobs on ``office``.  The NFP2 targeted mirror/aspect cleanup completed; NFP1 targeted mirror/iota repair jobs and the NFP3 bounded scale scan are still running.
+3. Checked the local QI README artifact bundle.  Only ``docs/_static/qi_readme_cases/nfp4_minimal`` is currently present locally, and it passes the relaxed smooth-QI gate.  NFP1/2/3 artifact bundles remain intentionally absent until passing provenance-gated outputs exist.
+
+Results obtained:
+
+1. CI is green for ``3650e54``.
+2. NFP2 targeted cleanup is exhausted for promotion.  Stage 2 reached smooth QI ``1.028e-3`` and legacy QI ``2.633e-4``, but mirror worsened to ``0.587`` with aspect ``7.43`` and mean iota ``-0.435``.  The run-level selected candidate reverted to the first-stage state with mirror ``0.526``.  Neither satisfies the ``mirror <= 0.35`` gate.
+3. NFP3 axisymmetric scaling has timed out at scales ``0.95`` and ``0.90`` and is currently probing scale ``0.85``.  The only completed scale, ``1.00``, remains below the aspect gate.
+4. NFP1 targeted repair jobs are running under the corrected ``stage_mode_limits`` setup.  They have reached scalar-trust optimization but have not yet written exact post-stage diagnostics.
+
+Best next steps:
+
+1. Let the NFP1 repair jobs finish.  If either passes all gates, package that row with raw ``input.minimal_seed_nfp1`` provenance; otherwise switch to a different NFP1 reference-family basin instead of more local cleanup.
+2. Let the NFP3 scale scan finish or time out.  If all nontrivial scales time out or fail aspect, stop this scale family and start a new NFP3 same-NFP reference family.
+3. For NFP2, use the existing balanced candidate only if we accept its high-but-gated aspect; do not repeat the exhausted mirror/aspect cleanup branch.
+4. Keep the README QI panel blocked until all four rows have local artifact bundles that pass the renderer's case-gated checks.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999998% for fixed branch-local accepted/rejected gates; arbitrary adaptive host branch selection remains unclaimed.
+- VMEC parity and physics gates: 99.8%.
+- Single-stage coil-only optimization: 99.5%.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% with ``3650e54`` CI green.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 98% infrastructure/provenance-ready; NFP4 local artifact passes, NFP2 has existing passing evidence with high aspect but the latest targeted cleanup failed, NFP1/NFP3 remain active blockers.
