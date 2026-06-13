@@ -22781,6 +22781,85 @@ Completion:
   NFP1/NFP3 remain unpromoted while round-2/round-3 searches continue.
 
 
+### 2026-06-13 Finite-Beta QA Proposal Diagnostic And CI Compatibility Fix
+
+Steps taken:
+
+1. Ran the new finite-beta QA direct-coil wrapper with one complete-solve
+   smoke evaluation plus a same-branch vector/JVP derivative-proposal report:
+   ``python examples/optimization/free_boundary_QA_finite_beta_coil_optimization.py
+   --smoke --provider circle --max-evals 1 --max-iter 1 --vmec-max-iter 2
+   --write-same-branch-report --same-branch-report-mode vector
+   --same-branch-report-vector-keys aspect,qs_total,mean_iota,lcfs_boundary_moment
+   --same-branch-report-rejected-slot-gate --same-branch-derivative-proposal
+   --same-branch-proposal-steps 0.02,0.05,0.1 --no-jit-forces``.
+2. Inspected ``same_branch_complete_solve_report.json`` and
+   ``summary.json`` from that run.
+3. Triaged the failed GitHub Actions run for ``3be39a0``.  The failures were
+   not in the new free-boundary exact shards; they were caused by
+   ``test_cli_wout_io_warmup_swallows_import_and_thread_start_failures``
+   patching ``importlib.import_module`` and then asking pytest to resolve
+   ``"threading.Thread"`` through that patched import path on the CI runners.
+4. Patched the test to monkeypatch the already-imported ``threading`` module
+   object directly, avoiding import-string resolution while the import mock is
+   active.
+
+Results obtained:
+
+1. The finite-beta QA smoke completed and wrote
+   ``history.json``, ``summary.json``, ``wout_best_direct_coil_qs.nc``, and a
+   same-branch complete-solve report under ``/tmp``.
+2. The same-branch fingerprints were stable, and the accepted/rejected
+   controller-slot report was available.  The physical scalar components tied
+   directly to accepted geometry were tight: aspect AD-vs-FD absolute error was
+   about ``7.2e-8``, mean-iota error about ``2.0e-6``, and LCFS boundary
+   moment error about ``1.5e-4``.
+3. The QS component in this deliberately rough one-iteration finite-beta smoke
+   was not a valid proposal anchor: the branch-local replay base delta was
+   ``1.55e5`` and the QS directional mismatch was about ``3.2%``.  The
+   derivative-proposal path therefore refused to generate an accepted proposal
+   with the explicit reason ``branch-local replay base delta ... exceeds
+   proposal cap``.  This is the desired conservative behavior.
+4. ``python -m pytest -q
+   tests/test_cli_helpers.py::test_cli_wout_io_warmup_swallows_import_and_thread_start_failures
+   -q`` passed locally.
+5. The full CI compatibility command passed locally after the patch:
+   ``146 passed, 6 skipped``.
+
+Best next steps:
+
+1. Commit and push the CI compatibility fix, then confirm the replacement CI
+   run passes.
+2. Keep the finite-beta QA single-stage example claims narrow until a milder
+   physically useful setup gives a passed branch-local QS vector gate.  Complete
+   solves remain the acceptance authority.
+3. Leave the still-running NFP3 QI aspect-lift job on ``office`` running and do
+   not promote NFP1/NFP3 README QI artifacts until their strict provenance gates
+   pass.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999998% for
+  fingerprint-gated current, geometry, mixed current/geometry, and native
+  complete-loop rejected-slot same-branch gates; arbitrary adaptive host branch
+  selection remains unclaimed.
+- VMEC parity and physics gates: 99.86%.
+- Single-stage coil-only optimization phase 3: 99.72%; the finite-beta QA
+  wrapper exists and the conservative derivative-proposal refusal path has now
+  been exercised on a complete-solve smoke run.
+- CPU/GPU performance: 99.4%.
+- CI/runtime/coverage hygiene: 100% locally after the compatibility fix;
+  replacement GitHub Actions run pending.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 98% infrastructure/provenance-ready and
+  strict-gated; NFP4 passes, NFP1/NFP3 remain unpromoted.
+
+
 ### 2026-06-13 Mixed Current/Geometry State-Only Branch Gate
 
 Steps taken:
