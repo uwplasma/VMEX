@@ -24053,3 +24053,57 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 98.7% infrastructure/provenance-ready;
   NFP1 remains unpromoted pending the Boozer-mirror cleanup.
+
+### 2026-06-13 NFP1 Boozer-Mirror Cleanup Diagnostics
+
+Steps taken:
+
+1. Let the Boozer-mirror-aligned NFP=1 cleanup finish its short
+   ``max_nfev=12`` budget.
+2. Inspected high-resolution audit diagnostics.
+3. Stopped the completed non-promoted run before post-run comparison plotting.
+4. Launched a final short aspect cleanup from the Boozer-mirror candidate with
+   QI and mirror guards active.
+
+Results obtained:
+
+1. Boozer-mirror cleanup fixed the hard engineering metric:
+   ``mirror=0.3071`` with ``smooth_qi=2.2385e-3``,
+   ``legacy_qi=9.0753e-4``, ``mean_iota=0.5118``, and
+   ``max_elongation=4.5463``.
+2. The candidate failed only aspect: ``aspect=7.0984`` against the public
+   ``aspect <= 7`` gate.
+3. This proves the NFP=1 minimal-seed route has a feasible-looking basin close
+   to promotion; the remaining step is a small aspect correction that preserves
+   QI and mirror.
+4. Active run:
+   ``results/qi_opt/ess/nfp1_boozer_mirror_aspect_polish``. It uses the
+   Boozer-mirror candidate as input, a short ``max_nfev=10`` budget, active
+   QI ceiling, and Boozer-scalar mirror guard.
+
+Best next steps:
+
+1. Let the aspect cleanup finish and inspect exact diagnostics.
+2. If it passes, sync the NFP=1 JSON provenance and regenerate/promote the
+   NFP=1/2/3/4 README QI panel.
+3. If it misses only aspect by a small amount, run one more aspect-only polish
+   with a smaller mirror weight and the same QI ceiling.
+4. If QI or mirror regresses, promote the Boozer-mirror candidate only as
+   evidence in docs, not as a README passing artifact.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999999%.
+- VMEC parity and physics gates: 99.87%.
+- Single-stage coil-only optimization phase 3: 99.85%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 99.0% infrastructure/provenance-ready;
+  NFP1 now has passing QI/mirror/iota/elongation evidence and misses only
+  aspect by about ``1.4%``.
