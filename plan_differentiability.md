@@ -745,3 +745,51 @@ For future updates, append entries with:
 5. Best next steps.
 6. User decisions needed.
 7. Completion percentages by lane.
+
+## 2026-06-14 Umbrella PR and First Solver Helper Extraction
+
+Commit: `6e8a335` plus follow-up extraction on
+`codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Opened draft PR #20 as the single umbrella PR for the full
+   differentiability/refactor plan.
+2. Updated the PR title to make clear that this is the long-lived umbrella
+   branch, not a short standalone planning PR.
+3. Added the source-health diagnostic and documented it in
+   `docs/code_structure.rst`.
+4. Performed the first low-risk extraction from `vmec_jax/solve.py`:
+   force-block mode weighting, lambda full-mesh residual norm, and
+   stability-guard timestep calculation now live in
+   `vmec_jax/solve_force_norm_helpers.py`.
+5. Kept backward-compatible private aliases in `solve.py` so existing tests and
+   internal imports continue to work.
+
+Results obtained:
+
+1. Draft PR #20 CI passed before the follow-up extraction.
+2. `solve.py` decreased from roughly 15438 to 15348 lines.
+3. The extracted helpers are pure and synthetic-testable, making them a safe
+   pattern for the next solver-kernel split.
+
+Best next steps:
+
+1. Keep all refactor work on PR #20 until the full plan is finalized.
+2. Continue Wave 1/Wave 2 by extracting small pure solver helpers from
+   `solve.py`: dtype/tolerance resolution, gradient masking, and fixed-boundary
+   constraint row operations are the next low-risk candidates.
+3. Add compatibility tests for every extracted private alias before ratcheting
+   any source-health threshold.
+
+User decisions needed:
+
+No immediate decision.  PR #20 remains draft until the full refactor plan is
+complete.
+
+Completion:
+
+- Differentiability/refactor plan: 100%.
+- Differentiability/refactor implementation: 4%.
+- Source-health instrumentation: 100%.
+- Solver monolith reduction: 1% of the large-file extraction work.
