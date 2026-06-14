@@ -35,6 +35,8 @@ Top-level package layout (selected):
   control decisions, axis-state merging, and optional axis coefficient dumps
 - ``vmec_jax/solve_free_boundary_control_helpers.py``: free-boundary cadence,
   turn-on, constraint-baseline, and velocity-block control helpers
+- ``vmec_jax/solve_free_boundary_diagnostics.py``: solve-facing
+  free-boundary external-field diagnostic adapters
 - ``vmec_jax/solve_scan_resume_helpers.py``: VMEC2000-style scan resume-state
   initialization and carry-field restoration
 - ``vmec_jax/solve.py``: fixed-boundary solvers + VMEC2000 iteration loop
