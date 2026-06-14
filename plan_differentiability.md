@@ -837,12 +837,16 @@ Steps taken:
     projection checks, and VMEC history comparison helpers into
     `vmec_jax/driver_result_helpers.py`.  `driver.py` again keeps private
     compatibility aliases for existing tests and internal imports.
+27. Extracted current-driven post-solve flux/profile reconciliation into
+    `vmec_jax/driver_flux_helpers.py`, leaving a small `driver.py` wrapper to
+    preserve historical monkeypatch hooks for `boundary_from_indata` and
+    `_iotaf_from_iotas`.
 
 Results obtained:
 
 1. Draft PR #20 CI passed before the follow-up extraction.
 2. `solve.py` decreased from roughly 15438 to 12898 lines locally.
-3. `driver.py` decreased from 4064 to 3291 lines while preserving existing CLI
+3. `driver.py` decreased from 4064 to 3125 lines while preserving existing CLI
    and test import paths.
 4. The extracted helpers are pure and synthetic-testable, making them a safe
    pattern for the next solver-kernel split.
@@ -855,6 +859,9 @@ Results obtained:
 7. Driver-result focused tests passed after the second driver extraction: 116
    tests across driver policy, wave, fast-reconstruction, wout-driver, and
    helper-edge coverage, with only pre-existing synthetic `wout.py` warnings.
+8. Driver flux focused tests passed after restoring compatibility hooks: 62
+   passed and 1 skipped across fast-reconstruction, traced-Lsin,
+   driver-wave2, and quasisymmetry tests.
 
 Best next steps:
 
@@ -877,7 +884,7 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 26%.
+- Differentiability/refactor implementation: 27%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 20% of the large-file extraction work.
-- Driver workflow decomposition: 22%.
+- Driver workflow decomposition: 27%.
