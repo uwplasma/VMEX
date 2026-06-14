@@ -206,9 +206,13 @@ from .solve_free_boundary_control_helpers import (
 )
 from .solve_free_boundary_diagnostics import sample_free_boundary_external_field as _sample_free_boundary_external_field
 from .solve_force_dump_helpers import (
-    dump_array as _dump_array,
+    dump_array as _dump_array,  # noqa: F401 - re-exported for internal tests/importers.
     gc_from_frzl as _gc_from_frzl,  # noqa: F401 - compatibility alias for internal tests/importers.
+    maybe_dump_force_kernels as _maybe_dump_force_kernels,
     maybe_dump_gc as _maybe_dump_gc,
+    maybe_dump_gcx2 as _maybe_dump_gcx2,
+    maybe_dump_scalars as _maybe_dump_scalars,
+    maybe_dump_tomnsps as _maybe_dump_tomnsps,
 )
 from .solve_bsub_dump_helpers import (
     maybe_dump_bsube as _maybe_dump_bsube,
@@ -1274,177 +1278,6 @@ class _ScanCarry(NamedTuple):
     edge_Rsin: Any
     edge_Zcos: Any
     edge_Zsin: Any
-
-
-def _maybe_dump_tomnsps(*, frzl, static, iter_idx: int, label: str = "raw") -> None:
-    env = os.getenv("VMEC_JAX_DUMP_TOMNSPS", "")
-    if not _dump_env_enabled(env):
-        return
-    if not _dump_iter_selected(iter_idx=iter_idx, iter_env=os.getenv("VMEC_JAX_DUMP_ITER", "")):
-        return
-    outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
-    outdir.mkdir(parents=True, exist_ok=True)
-    ns = int(static.cfg.ns)
-    path = outdir / f"tomnsps_{label}_ns{ns}_iter{int(iter_idx)}.npz"
-
-    np.savez(
-        path,
-        frcc=_dump_array(frzl.frcc),
-        frss=_dump_array(getattr(frzl, "frss", None)),
-        fzsc=_dump_array(frzl.fzsc),
-        fzcs=_dump_array(getattr(frzl, "fzcs", None)),
-        flsc=_dump_array(frzl.flsc),
-        flcs=_dump_array(getattr(frzl, "flcs", None)),
-        frsc=_dump_array(getattr(frzl, "frsc", None)),
-        frcs=_dump_array(getattr(frzl, "frcs", None)),
-        fzcc=_dump_array(getattr(frzl, "fzcc", None)),
-        fzss=_dump_array(getattr(frzl, "fzss", None)),
-        flcc=_dump_array(getattr(frzl, "flcc", None)),
-        flss=_dump_array(getattr(frzl, "flss", None)),
-        ns=int(static.cfg.ns),
-        mpol=int(static.cfg.mpol),
-        ntor=int(static.cfg.ntor),
-        lasym=bool(static.cfg.lasym),
-    )
-
-
-def _maybe_dump_force_kernels(*, k, static, iter_idx: int, label: str = "raw") -> None:
-    env = os.getenv("VMEC_JAX_DUMP_FORCE_KERNELS", "")
-    if not _dump_env_enabled(env):
-        return
-    if not _dump_iter_selected(iter_idx=iter_idx, iter_env=os.getenv("VMEC_JAX_DUMP_ITER", "")):
-        return
-    outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
-    outdir.mkdir(parents=True, exist_ok=True)
-    ns = int(static.cfg.ns)
-    path = outdir / f"force_kernels_{label}_ns{ns}_iter{int(iter_idx)}.npz"
-
-    np.savez(
-        path,
-        armn_e=_dump_array(getattr(k, "armn_e", None)),
-        armn_o=_dump_array(getattr(k, "armn_o", None)),
-        brmn_e=_dump_array(getattr(k, "brmn_e", None)),
-        brmn_o=_dump_array(getattr(k, "brmn_o", None)),
-        crmn_e=_dump_array(getattr(k, "crmn_e", None)),
-        crmn_o=_dump_array(getattr(k, "crmn_o", None)),
-        azmn_e=_dump_array(getattr(k, "azmn_e", None)),
-        azmn_o=_dump_array(getattr(k, "azmn_o", None)),
-        bzmn_e=_dump_array(getattr(k, "bzmn_e", None)),
-        bzmn_o=_dump_array(getattr(k, "bzmn_o", None)),
-        czmn_e=_dump_array(getattr(k, "czmn_e", None)),
-        czmn_o=_dump_array(getattr(k, "czmn_o", None)),
-        arcon_e=_dump_array(getattr(k, "arcon_e", None)),
-        arcon_o=_dump_array(getattr(k, "arcon_o", None)),
-        azcon_e=_dump_array(getattr(k, "azcon_e", None)),
-        azcon_o=_dump_array(getattr(k, "azcon_o", None)),
-        gcon=_dump_array(getattr(k, "gcon", None)),
-        tcon=_dump_array(getattr(k, "tcon", None)),
-        blmn_e=_dump_array(getattr(getattr(k, "bc", None), "blmn_even", None)),
-        blmn_o=_dump_array(getattr(getattr(k, "bc", None), "blmn_odd", None)),
-        clmn_e=_dump_array(getattr(getattr(k, "bc", None), "clmn_even", None)),
-        clmn_o=_dump_array(getattr(getattr(k, "bc", None), "clmn_odd", None)),
-        bsubu_e=_dump_array(getattr(getattr(k, "bc", None), "bsubu_e", None)),
-        bsubv_e=_dump_array(getattr(getattr(k, "bc", None), "bsubv_e", None)),
-        bsubu=_dump_array(getattr(getattr(k, "bc", None), "bsubu", None)),
-        bsubv=_dump_array(getattr(getattr(k, "bc", None), "bsubv", None)),
-        bsupu=_dump_array(getattr(getattr(k, "bc", None), "bsupu", None)),
-        bsupv=_dump_array(getattr(getattr(k, "bc", None), "bsupv", None)),
-        guu_metric=_dump_array(getattr(getattr(k, "bc", None), "guu", None)),
-        guv_metric=_dump_array(getattr(getattr(k, "bc", None), "guv", None)),
-        gvv_metric=_dump_array(getattr(getattr(k, "bc", None), "gvv", None)),
-        sqrtg=_dump_array(getattr(getattr(getattr(k, "bc", None), "jac", None), "sqrtg", None)),
-        r12=_dump_array(getattr(getattr(getattr(k, "bc", None), "jac", None), "r12", None)),
-        tau=_dump_array(getattr(getattr(getattr(k, "bc", None), "jac", None), "tau", None)),
-        ru12=_dump_array(getattr(getattr(getattr(k, "bc", None), "jac", None), "ru12", None)),
-        zu12=_dump_array(getattr(getattr(getattr(k, "bc", None), "jac", None), "zu12", None)),
-        rs=_dump_array(getattr(getattr(getattr(k, "bc", None), "jac", None), "rs", None)),
-        zs=_dump_array(getattr(getattr(getattr(k, "bc", None), "jac", None), "zs", None)),
-        bsubu_e_scaled=_dump_array(
-            getattr(getattr(k, "bc", None), "bsubu_e_scaled", None)
-            if getattr(getattr(k, "bc", None), "bsubu_e_scaled", None) is not None
-            else getattr(getattr(k, "bc", None), "clmn_even", None)
-        ),
-        bsubv_e_scaled=_dump_array(
-            getattr(getattr(k, "bc", None), "bsubv_e_scaled", None)
-            if getattr(getattr(k, "bc", None), "bsubv_e_scaled", None) is not None
-            else getattr(getattr(k, "bc", None), "blmn_even", None)
-        ),
-        bsubu_tmp=_dump_array(getattr(getattr(k, "bc", None), "bsubu_tmp", None)),
-        bsubv_preblend=_dump_array(getattr(getattr(k, "bc", None), "bsubv_preblend", None)),
-        bsubv_avg=_dump_array(getattr(getattr(k, "bc", None), "bsubv_avg", None)),
-        lamscale=_dump_array(getattr(getattr(k, "bc", None), "lamscale", None)),
-        lu0_full=_dump_array(getattr(getattr(k, "bc", None), "lu0_full", None)),
-        lu0_force=_dump_array(getattr(getattr(k, "bc", None), "lu0_force", None)),
-        lu1_full=_dump_array(getattr(getattr(k, "bc", None), "lu1_full", None)),
-        lvv=_dump_array(getattr(getattr(k, "bc", None), "lvv", None)),
-        lvv_sh=_dump_array(getattr(getattr(k, "bc", None), "lvv_sh", None)),
-        phip_full=_dump_array(getattr(getattr(k, "bc", None), "phip_full", None)),
-        phip_internal=_dump_array(getattr(getattr(k, "bc", None), "phip_internal", None)),
-        pr1_even=_dump_array(getattr(k, "pr1_even", None)),
-        pr1_odd=_dump_array(getattr(k, "pr1_odd", None)),
-        pz1_even=_dump_array(getattr(k, "pz1_even", None)),
-        pz1_odd=_dump_array(getattr(k, "pz1_odd", None)),
-        pru_even=_dump_array(getattr(k, "pru_even", None)),
-        pru_odd=_dump_array(getattr(k, "pru_odd", None)),
-        pzu_even=_dump_array(getattr(k, "pzu_even", None)),
-        pzu_odd=_dump_array(getattr(k, "pzu_odd", None)),
-        prv_even=_dump_array(getattr(k, "prv_even", None)),
-        prv_odd=_dump_array(getattr(k, "prv_odd", None)),
-        pzv_even=_dump_array(getattr(k, "pzv_even", None)),
-        pzv_odd=_dump_array(getattr(k, "pzv_odd", None)),
-        ns=int(static.cfg.ns),
-        ntheta=int(static.cfg.ntheta),
-        nzeta=int(static.cfg.nzeta),
-        lasym=bool(static.cfg.lasym),
-    )
-
-
-def _maybe_dump_scalars(*, norms, iter_idx: int, ns: int) -> None:
-    env = os.getenv("VMEC_JAX_DUMP_SCALARS", "")
-    if not _dump_env_enabled(env):
-        return
-    if not _dump_iter_selected(iter_idx=iter_idx, iter_env=os.getenv("VMEC_JAX_DUMP_ITER", "")):
-        return
-    outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
-    outdir.mkdir(parents=True, exist_ok=True)
-    path = outdir / f"scalars_ns{int(ns)}_iter{int(iter_idx)}.dat"
-
-    wb = float(np.asarray(getattr(norms, "wb", np.nan)))
-    wp = float(np.asarray(getattr(norms, "wp", np.nan)))
-    volume = float(np.asarray(getattr(norms, "volume", np.nan)))
-    r2 = float(np.asarray(getattr(norms, "r2", np.nan)))
-    fnorm = float(np.asarray(getattr(norms, "fnorm", np.nan)))
-    fnormL = float(np.asarray(getattr(norms, "fnormL", np.nan)))
-    fnorm1 = float("nan")
-    with path.open("w") as f:
-        f.write("# bcovar scalars dump\n")
-        f.write("cols: iter wb wp vol r2 fnorm\n")
-        f.write("      fn1 fnL\n")
-        f.write(
-            f"{int(iter_idx):6d}"
-            f"{wb:24.16e}{wp:24.16e}{volume:24.16e}{r2:24.16e}"
-            f"{fnorm:24.16e}{fnorm1:24.16e}{fnormL:24.16e}\n"
-        )
-
-
-def _maybe_dump_gcx2(*, gcr2, gcz2, gcl2, iter_idx: int, include_edge: bool, ns: int) -> None:
-    env = os.getenv("VMEC_JAX_DUMP_GCX2", "")
-    if not _dump_env_enabled(env):
-        return
-    if not _dump_iter_selected(iter_idx=iter_idx, iter_env=os.getenv("VMEC_JAX_DUMP_ITER", "")):
-        return
-    outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
-    outdir.mkdir(parents=True, exist_ok=True)
-    path = outdir / f"gcx2_ns{int(ns)}_iter{int(iter_idx)}.dat"
-    with path.open("w") as f:
-        f.write("# gcx2 dump (post-scalxc, post-m1)\n")
-        f.write("columns: iter include_edge gcr2 gcz2 gcl2\n")
-        f.write(
-            f"{int(iter_idx):6d} {int(bool(include_edge)):3d}"
-            f"{float(np.asarray(gcr2)):24.16e}"
-            f"{float(np.asarray(gcz2)):24.16e}"
-            f"{float(np.asarray(gcl2)):24.16e}\n"
-        )
 
 
 _HLO_DUMPED_KEYS = _hlo_dump_helpers.HLO_DUMPED_KEYS

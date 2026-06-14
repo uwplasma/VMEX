@@ -40,8 +40,8 @@ Top-level package layout (selected):
   turn-on, constraint-baseline, and velocity-block control helpers
 - ``vmec_jax/solve_free_boundary_diagnostics.py``: solve-facing
   free-boundary external-field diagnostic adapters
-- ``vmec_jax/solve_force_dump_helpers.py``: optional force-channel debug dump
-  array adapters and GC force-layout mapping
+- ``vmec_jax/solve_force_dump_helpers.py``: optional force-channel,
+  TOMNSP, scalar residual, and force-kernel debug dump helpers
 - ``vmec_jax/solve_bsub_dump_helpers.py``: optional covariant-field debug
   dumps for scaled full-mesh, half-mesh, and radial ``B_s`` diagnostics
 - ``vmec_jax/solve_lambda_dump_helpers.py``: optional lambda residual,
