@@ -16,6 +16,9 @@ Top-level package layout (selected):
 - ``vmec_jax/vmec_tomnsp.py``: VMEC ``fixaray`` tables + DFT tomnsps kernels
 - ``vmec_jax/vmec_bcovar.py``: bcovar/metric assembly and half-mesh pipeline
 - ``vmec_jax/preconditioner_1d.py``: VMEC-style preconditioner operators
+- ``vmec_jax/solve_force_norm_helpers.py``: force-block weighting, lambda
+  residual norms, and stability-guard timestep helpers extracted from the
+  residual iteration hot path
 - ``vmec_jax/solve.py``: fixed-boundary solvers + VMEC2000 iteration loop
 - ``vmec_jax/driver.py``: CLI-facing fixed/free-boundary drivers, output
   policies, staged solve dispatch, and wout writing
