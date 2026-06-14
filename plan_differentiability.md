@@ -763,15 +763,20 @@ Steps taken:
    force-block mode weighting, lambda full-mesh residual norm, and
    stability-guard timestep calculation now live in
    `vmec_jax/solve_force_norm_helpers.py`.
-5. Kept backward-compatible private aliases in `solve.py` so existing tests and
+5. Performed the second low-risk extraction from `vmec_jax/solve.py`:
+   dtype-aware gradient, conjugate-gradient, and Levenberg-Marquardt tolerance
+   policy now live in `vmec_jax/solve_tolerance_helpers.py`.
+6. Kept backward-compatible private aliases in `solve.py` so existing tests and
    internal imports continue to work.
 
 Results obtained:
 
 1. Draft PR #20 CI passed before the follow-up extraction.
-2. `solve.py` decreased from roughly 15438 to 15348 lines.
+2. `solve.py` decreased from roughly 15438 to 15298 lines.
 3. The extracted helpers are pure and synthetic-testable, making them a safe
    pattern for the next solver-kernel split.
+4. Focused Ruff, pytest, source-health, and fast docs checks passed for the
+   extracted helper modules.
 
 Best next steps:
 
@@ -790,6 +795,6 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 4%.
+- Differentiability/refactor implementation: 5%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 1% of the large-file extraction work.
+- Solver monolith reduction: 2% of the large-file extraction work.

@@ -140,6 +140,13 @@ from .solve_force_norm_helpers import (
     mode_weight_force_blocks_np as _mode_weight_force_blocks_np,
     safe_dt_from_force_blocks as _safe_dt_from_force_blocks,
 )
+from .solve_tolerance_helpers import (
+    dtype_eps as _dtype_eps,  # noqa: F401 - re-exported for existing internal tests/importers.
+    dtype_tiny as _dtype_tiny,
+    resolve_cg_tol as _resolve_cg_tol,
+    resolve_grad_tol as _resolve_grad_tol,
+    resolve_lm_damping as _resolve_lm_damping,
+)
 from .solve_residual_objective_helpers import (
     assemble_residual_objective_terms as _assemble_residual_objective_terms,
     residual_objective_vector as _residual_objective_vector,
@@ -3369,63 +3376,6 @@ def _grad_rms_state(grad: VMECState) -> float:
     g = g + np.asarray(grad.Lcos) ** 2
     g = g + np.asarray(grad.Lsin) ** 2
     return float(np.sqrt(np.mean(g)))
-
-
-def _dtype_eps(dtype: Any) -> float:
-    return float(np.finfo(np.dtype(dtype)).eps)
-
-
-def _dtype_tiny(dtype: Any) -> float:
-    return float(np.finfo(np.dtype(dtype)).tiny)
-
-
-def _resolve_grad_tol(
-    grad_tol: float | None,
-    *,
-    grad_rms0: float,
-    dtype: Any,
-) -> float:
-    if grad_tol is not None:
-        grad_tol = float(grad_tol)
-        if grad_tol < 0.0:
-            raise ValueError("grad_tol must be >= 0")
-        return grad_tol
-    scale = max(abs(float(grad_rms0)), _dtype_tiny(dtype))
-    return float(np.sqrt(_dtype_eps(dtype)) * scale)
-
-
-def _resolve_cg_tol(
-    cg_tol: float | None,
-    *,
-    current_obj: float,
-    initial_obj: float,
-    target_obj: float,
-    dtype: Any,
-) -> float:
-    if cg_tol is not None:
-        cg_tol = float(cg_tol)
-        if cg_tol <= 0.0:
-            raise ValueError("cg_tol must be > 0")
-        return cg_tol
-    tiny = _dtype_tiny(dtype)
-    denom = max(abs(float(initial_obj)), abs(float(target_obj)), tiny)
-    ratio = max(abs(float(current_obj)), tiny) / denom
-    eta = ratio / (1.0 + ratio)
-    return float(max(eta, np.sqrt(_dtype_eps(dtype))))
-
-
-def _resolve_lm_damping(
-    damping: float | None,
-    *,
-    curvature_scale: float,
-    dtype: Any,
-) -> float:
-    if damping is not None:
-        damping = float(damping)
-        if damping < 0.0:
-            raise ValueError("damping must be nonnegative")
-        return damping
-    return float(np.sqrt(_dtype_eps(dtype)) * max(abs(float(curvature_scale)), _dtype_tiny(dtype)))
 
 
 def _update_state_gd(state: VMECState, grad: VMECState, *, step: float, scale_rz: float, scale_l: float) -> VMECState:
