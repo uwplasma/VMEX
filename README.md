@@ -176,6 +176,8 @@ with historical `readme_best_optimization_qa.png`, `readme_best_optimization_qh.
 
 ![Common minimal-seed QA/QH/QP states](docs/_static/figures/minimal_seed_showcase_state_panel.png)
 
+![QI minimal-seed NFP coverage](docs/_static/figures/readme_qi_optimization_cases.png)
+
 Reproduce the minimal-seed optimization rows with:
 
 ```bash

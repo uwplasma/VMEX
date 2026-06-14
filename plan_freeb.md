@@ -24155,3 +24155,60 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 99.2% infrastructure/provenance-ready;
   NFP1 is within one small mirror touch-up of promotion.
+
+### 2026-06-14 NFP1 QI Minimal-Seed Promotion
+
+Steps taken:
+
+1. Stopped the completed NFP1 final mirror touch-up after it wrote exact
+   diagnostics and WOUTs.
+2. Synced the passing NFP1 diagnostics/history and bridge-scan provenance into
+   ``docs/_static/qi_readme_cases/nfp1_minimal``.
+3. Regenerated the raw NFP1 minimal-seed initial WOUT from
+   ``examples/data/input.minimal_seed_nfp1`` so the README renderer displays
+   the true circular-torus-like input rather than a late-stage polish seed.
+4. Synced ignored WOUT render inputs for the existing NFP2/NFP3 minimal
+   artifacts and reused the ignored NFP4 render WOUTs from the local docs
+   build.
+5. Re-ran ``examples/optimization/render_qi_readme_cases.py`` and added the
+   resulting QI NFP1/2/3/4 panel to the README.
+
+Results obtained:
+
+1. NFP1 now passes the public README gates:
+   ``smooth_qi=2.5156e-3``, ``legacy_qi=1.0012e-3``,
+   ``mirror=0.3218``, ``aspect=6.2660``, ``mean_iota=0.4930``,
+   ``max_elongation=4.4186``.
+2. The four-row renderer passed all case gates and wrote
+   ``docs/_static/figures/readme_qi_optimization_cases.png`` plus
+   ``docs/_static/figures/readme_qi_optimization_cases.csv``.
+3. The rendered panel shows the actual raw minimal seed for each NFP row and
+   the final Boozer ``|B|`` contours; WOUT files remain ignored and are not
+   intended as tracked git artifacts.
+
+Best next steps:
+
+1. Run the focused QI artifact tests and docs hygiene checks that validate the
+   CSV/panel promotion path.
+2. Run the branch-local free-boundary phase-2/phase-3 smoke gates once more
+   before committing.
+3. Commit and push the small tracked provenance, README, plan, and rendered
+   figure/CSV changes.
+4. Recheck GitHub Actions after the push.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999999%; adaptive host
+  branch changes remain unclaimed.
+- VMEC parity and physics gates: 99.88%.
+- Single-stage coil-only optimization phase 3: 99.86%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100% for the current NFP1/2/3/4
+  case-gated panel.
