@@ -871,6 +871,12 @@ Steps taken:
     `solve.first_step_diagnostics` wrapper now delegates to the helper while
     injecting the historical private solve-module helper aliases, preserving
     existing synthetic tests and monkeypatch seams.
+34. Extracted the lambda-only fixed-geometry optimizer implementation from
+    `solve_lambda_gd` into `vmec_jax/solve_lambda_optimizer.py`.  The public
+    `solve.solve_lambda_gd` wrapper keeps the historical API and injects the
+    solve-module aliases that tests and downstream private hooks monkeypatch
+    (`eval_geom`, Fourier derivatives, `bsup_from_sqrtg_lambda`, `jit`,
+    `has_jax`, constraint/tolerance helpers).
 
 Results obtained:
 
@@ -919,6 +925,10 @@ Results obtained:
     clean for the moved implementation, with 26 synthetic first-step and branch
     coverage tests passing.  `solve.py` decreased again from 12189 to 11847
     lines; the new diagnostic helper is 429 lines.
+16. Lambda optimizer extraction focused checks passed: compile and Ruff clean
+    for `solve.py` and `solve_lambda_optimizer.py`; 4 targeted lambda tests
+    passed; the broader lambda/wave coverage subset passed with 134 tests and
+    1 expected skip.  `solve.py` decreased again from 11847 to 11706 lines.
 
 Best next steps:
 
@@ -929,6 +939,10 @@ Best next steps:
    file formatting are the next low-risk candidates.  The next larger
    candidate is a scan-runner/cache adapter split, but only after focused tests
    are identified for existing monkeypatch seams.
+   The next fixed-boundary optimizer candidate is the shared GD/L-BFGS
+   magnetic-energy context/evaluator setup, with `solve.py` retaining wrappers
+   and injecting `eval_geom`, `bsup_from_geom`, `b2_from_bsup`,
+   `angle_steps`, and pressure-validation hooks.
 3. Continue broader refactors in parallel with `driver.py`, `optimization.py`,
    and `wout.py` by extracting pure policy/formatting/data-container seams
    before moving any physics kernels.
@@ -945,5 +959,5 @@ Completion:
 - Differentiability/refactor plan: 100%.
 - Differentiability/refactor implementation: 39%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 33% of the large-file extraction work.
+- Solver monolith reduction: 35% of the large-file extraction work.
 - Driver workflow decomposition: 34%.

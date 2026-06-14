@@ -82,6 +82,7 @@ from .solve_jit_cache_helpers import (
 )
 from . import solve_hlo_dump_helpers as _hlo_dump_helpers
 from . import solve_first_step_diagnostics as _first_step_diagnostics_helpers
+from . import solve_lambda_optimizer as _lambda_optimizer_helpers
 from .solve_diagnostics_io import (
     _dump_freeb_axis_trace_record,
     _dump_freeb_control_trace_record,
@@ -547,181 +548,39 @@ def solve_lambda_gd(
     precond_radial_alpha: float = 0.0,
     verbose: bool = True,
 ) -> SolveLambdaResult:
-    """Solve for VMEC lambda (scaled coefficients) with fixed R/Z.
+    """Solve for VMEC lambda (scaled coefficients) with fixed R/Z."""
 
-    Parameters
-    ----------
-    state0:
-        Initial state. Only the lambda coefficients are updated.
-    static:
-        VMECStatic from :func:`vmec_jax.static.build_static`.
-    phipf, chipf:
-        1D flux functions (ns,) matching VMEC's `wout` meaning.
-    signgs:
-        Orientation (+1 or -1).
-    lamscale:
-        VMEC lambda scaling factor (see :func:`vmec_jax.field.lamscale_from_phips`).
-    sqrtg:
-        Optional signed Jacobian on the 3D grid. If provided (e.g. reconstructed from
-        `wout` Nyquist coefficients), it is used for the objective and field formulas.
-        Otherwise we use :func:`vmec_jax.geom.eval_geom`'s sqrtg.
-    """
-    if not has_jax():
-        raise ImportError("solve_lambda_gd requires JAX (jax + jaxlib)")
-
-    opts = validate_lambda_gd_options(
+    return _lambda_optimizer_helpers.solve_lambda_gd_impl(
+        state0,
+        static,
+        phipf=phipf,
+        chipf=chipf,
+        signgs=signgs,
+        lamscale=lamscale,
+        sqrtg=sqrtg,
         max_iter=max_iter,
+        step_size=step_size,
+        grad_tol=grad_tol,
         max_backtracks=max_backtracks,
         bt_factor=bt_factor,
+        jit_grad=jit_grad,
         preconditioner=preconditioner,
         precond_exponent=precond_exponent,
-    )
-    max_iter = opts.max_iter
-    max_backtracks = opts.max_backtracks
-    bt_factor = opts.bt_factor
-    preconditioner = opts.preconditioner
-    precond_exponent = opts.precond_exponent
-
-    idx00 = _mode00_index(static.modes)
-
-    # Metric depends only on R/Z, so compute it once.
-    g0 = eval_geom(state0, static)
-    gtt = jnp.asarray(g0.g_tt)
-    gtp = jnp.asarray(g0.g_tp)
-    gpp = jnp.asarray(g0.g_pp)
-
-    sqrtg_use = jnp.asarray(g0.sqrtg if sqrtg is None else sqrtg)
-
-    phipf = jnp.asarray(phipf)
-    chipf = jnp.asarray(chipf)
-    lamscale = jnp.asarray(lamscale)
-    signgs = int(signgs)
-    nfp = int(static.cfg.nfp)
-
-    s = jnp.asarray(static.s)
-    dtype_state = jnp.asarray(state0.Rcos).dtype
-    zero_precond_diag = (
-        jnp.zeros((int(s.shape[0]),), dtype=dtype_state),
-        jnp.zeros((int(s.shape[0]),), dtype=dtype_state),
-    )
-    zero_tcon = jnp.zeros((int(s.shape[0]),), dtype=dtype_state)
-    constraint_active_false = jnp.asarray(False)
-    constraint_active_false = jnp.asarray(False)
-    constraint_active_false = jnp.asarray(False)
-    theta = jnp.asarray(static.grid.theta)
-    zeta = jnp.asarray(static.grid.zeta)
-    if s.shape[0] < 2:
-        ds = jnp.asarray(1.0, dtype=s.dtype)
-    else:
-        ds = s[1] - s[0]
-    dtheta_f, dzeta_f = angle_steps(ntheta=int(theta.shape[0]), nzeta=int(zeta.shape[0]))
-    dtheta = jnp.asarray(dtheta_f, dtype=s.dtype)
-    dzeta = jnp.asarray(dzeta_f, dtype=s.dtype)
-    weight = ds * dtheta * dzeta
-
-    def _wb_from_L(Lcos, Lsin):
-        lam_u = eval_fourier_dtheta(Lcos, Lsin, static.basis, coeffs_internal=True)
-        lam_v = eval_fourier_dzeta_phys(Lcos, Lsin, static.basis, coeffs_internal=True) / nfp
-        bsupu, bsupv = bsup_from_sqrtg_lambda(
-            sqrtg=sqrtg_use,
-            lam_u=lam_u,
-            lam_v=lam_v,
-            phipf=phipf,
-            chipf=chipf,
-            signgs=signgs,
-            lamscale=lamscale,
-        )
-        B2 = gtt * bsupu**2 + 2.0 * gtp * bsupu * bsupv + gpp * bsupv**2
-        jac = signgs * sqrtg_use
-        E_total = jnp.sum(0.5 * B2 * jac) * weight
-        return E_total / (TWOPI * TWOPI)
-
-    wb_and_grad = jax.value_and_grad(_wb_from_L, argnums=(0, 1))
-    wb_only = _wb_from_L
-    if jit_grad:
-        wb_and_grad = jit(wb_and_grad)
-        wb_only = jit(wb_only)
-
-    Lcos = jnp.asarray(state0.Lcos)
-    Lsin = jnp.asarray(state0.Lsin)
-    Lcos, Lsin = _enforce_lambda_gauge(Lcos, Lsin, idx00=idx00)
-
-    wb0, (gcos, gsin) = wb_and_grad(Lcos, Lsin)
-    wb_history = [float(np.asarray(wb0))]
-    grad_rms_history = []
-    step_history = []
-    grad_tol_eff: float | None = None
-
-    for it in range(max_iter):
-        # Optional mode-diagonal preconditioning for the lambda subproblem.
-        if preconditioner == "mode_diag":
-            m = jnp.asarray(static.modes.m)
-            n = jnp.asarray(static.modes.n)
-            k2 = m.astype(jnp.float64) ** 2 + (n.astype(jnp.float64) * float(static.cfg.nfp)) ** 2
-            w = (1.0 + k2) ** (-precond_exponent)
-            w = w.astype(jnp.asarray(Lcos).dtype)
-            gcos_p = gcos * w[None, :]
-            gsin_p = gsin * w[None, :]
-        else:
-            gcos_p = gcos
-            gsin_p = gsin
-
-        grad_rms = float(np.sqrt(np.mean(np.asarray(gcos_p) ** 2 + np.asarray(gsin_p) ** 2)))
-        grad_rms_history.append(grad_rms)
-        if grad_tol_eff is None:
-            grad_tol_eff = _resolve_grad_tol(grad_tol, grad_rms0=grad_rms, dtype=np.asarray(Lcos).dtype)
-
-        if verbose:
-            print(f"[solve_lambda_gd] iter={it:03d} wb={wb_history[-1]:.8e} grad_rms={grad_rms:.3e}")
-
-        if grad_rms < float(grad_tol_eff):
-            break
-
-        step = float(step_size)
-        accepted = False
-
-        for bt in range(max_backtracks + 1):
-            if bt > 0:
-                step *= bt_factor
-            Lcos_t = Lcos - step * gcos_p
-            Lsin_t = Lsin - step * gsin_p
-            Lcos_t, Lsin_t = _enforce_lambda_gauge(Lcos_t, Lsin_t, idx00=idx00)
-            wb_t = wb_only(Lcos_t, Lsin_t)
-            if float(np.asarray(wb_t)) < wb_history[-1]:
-                accepted = True
-                Lcos, Lsin, wb0 = Lcos_t, Lsin_t, wb_t
-                break
-
-        step_history.append(step)
-
-        if not accepted:
-            if verbose:
-                print("[solve_lambda_gd] line search failed to improve objective; stopping")
-            break
-
-        wb_history.append(float(np.asarray(wb0)))
-        wb0, (gcos, gsin) = wb_and_grad(Lcos, Lsin)
-
-    st = VMECState(
-        layout=state0.layout,
-        Rcos=state0.Rcos,
-        Rsin=state0.Rsin,
-        Zcos=state0.Zcos,
-        Zsin=state0.Zsin,
-        Lcos=Lcos,
-        Lsin=Lsin,
-    )
-    diag: Dict[str, Any] = {
-        "idx00": idx00,
-        "grad_tol": None if grad_tol_eff is None else float(grad_tol_eff),
-    }
-    return SolveLambdaResult(
-        state=st,
-        n_iter=len(wb_history) - 1,
-        wb_history=np.asarray(wb_history, dtype=float),
-        grad_rms_history=np.asarray(grad_rms_history, dtype=float),
-        step_history=np.asarray(step_history, dtype=float),
-        diagnostics=diag,
+        precond_radial_alpha=precond_radial_alpha,
+        verbose=verbose,
+        has_jax_func=has_jax,
+        validate_options_func=validate_lambda_gd_options,
+        mode00_index_func=_mode00_index,
+        eval_geom_func=eval_geom,
+        eval_fourier_dtheta_func=eval_fourier_dtheta,
+        eval_fourier_dzeta_phys_func=eval_fourier_dzeta_phys,
+        bsup_from_sqrtg_lambda_func=bsup_from_sqrtg_lambda,
+        angle_steps_func=angle_steps,
+        enforce_lambda_gauge_func=_enforce_lambda_gauge,
+        resolve_grad_tol_func=_resolve_grad_tol,
+        jax_module=jax,
+        jnp_module=jnp,
+        jit_func=jit,
     )
 
 
