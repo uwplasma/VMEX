@@ -199,6 +199,7 @@ from .solve_free_boundary_control_helpers import (
     scale_velocity_blocks as _scale_velocity_blocks,
     zero_velocity_blocks_like as _zero_velocity_blocks_like,
 )
+from .solve_free_boundary_diagnostics import sample_free_boundary_external_field as _sample_free_boundary_external_field
 from .solve_scan_resume_helpers import (
     ScanResumeInitialFields as _ScanResumeInitialFields,  # noqa: F401 - re-exported for existing internal tests/importers.
     initialize_scan_resume_state as _initialize_scan_resume_state,
@@ -1244,18 +1245,6 @@ class _ScanCarry(NamedTuple):
     edge_Rsin: Any
     edge_Zcos: Any
     edge_Zsin: Any
-
-
-def _sample_free_boundary_external_field(*, state: VMECState, static) -> dict[str, Any]:
-    """WP2 diagnostic scaffold for external-field boundary channels."""
-    from .free_boundary import sample_external_vacuum_diagnostics
-
-    plascur = float(getattr(static, "free_boundary_plascur", 0.0) or 0.0)
-    return sample_external_vacuum_diagnostics(
-        state=state,
-        static=static,
-        plascur=plascur,
-    )
 
 
 def _dump_array(x):
