@@ -165,8 +165,8 @@ from .solve_constraint_helpers import (
     mode00_index as _mode00_index,
     replace_mode_slice as _replace_mode_slice,  # noqa: F401 - re-exported for existing internal tests/importers.
     replace_mode_slice_np as _replace_mode_slice_np,  # noqa: F401 - re-exported for existing internal tests/importers.
-    scale_mode_slice as _scale_mode_slice,
-    scale_mode_slice_np as _scale_mode_slice_np,
+    scale_mode_slice as _scale_mode_slice,  # noqa: F401 - re-exported for existing internal tests/importers.
+    scale_mode_slice_np as _scale_mode_slice_np,  # noqa: F401 - re-exported for existing internal tests/importers.
     zero_coeff_column as _zero_coeff_column,  # noqa: F401 - re-exported for existing internal tests/importers.
     zero_coeff_column_np as _zero_coeff_column_np,  # noqa: F401 - re-exported for existing internal tests/importers.
 )
@@ -176,13 +176,17 @@ from .solve_gradient_helpers import (
 )
 from .solve_preconditioner_helpers import (
     apply_preconditioner as _apply_preconditioner,
+    can_reassemble_precond_mats as _can_reassemble_precond_mats,
     metric_surface_precond_scales_jax as _metric_surface_precond_scales_jax,
     metric_surface_precond_scales_np as _metric_surface_precond_scales_np,
     pshalf_from_s_jax as _pshalf_from_s_jax,
     pshalf_from_s_np as _pshalf_from_s_np,
     radial_tridi_smooth_dirichlet as _radial_tridi_smooth_dirichlet,
     resolve_preconditioner_tridi_policies as _resolve_preconditioner_tridi_policies,
+    scale_m1_precond_rhs_from_mats as _scale_m1_precond_rhs_from_mats,
     sm_sp_from_s_np as _sm_sp_from_s_np,
+    vmec_scale_m1_factors_from_mats as _vmec_scale_m1_factors_from_mats,  # noqa: F401 - re-exported for existing internal tests/importers.
+    vmec_scale_m1_factors_from_mats_np as _vmec_scale_m1_factors_from_mats_np,  # noqa: F401 - re-exported for existing internal tests/importers.
 )
 from .solve_axis_reset_helpers import (
     InitialAxisResetDecision as _InitialAxisResetDecision,  # noqa: F401 - re-exported for existing internal tests/importers.
@@ -1640,157 +1644,6 @@ def _maybe_dump_lamcal(*, lam_debug: dict[str, np.ndarray], static, iter_idx: in
         clam_post=np.asarray(lam_debug.get("clam_post")),
         dlam_post=np.asarray(lam_debug.get("dlam_post")),
     )
-
-
-def _vmec_scale_m1_factors_from_mats(mats: dict[str, Any]) -> tuple[Any, Any]:
-    """Return VMEC `scale_m1_par` R/Z factors from cached preconditioner data."""
-    ard = mats.get("ard_parity")
-    brd = mats.get("brd_parity")
-    azd = mats.get("azd_parity")
-    bzd = mats.get("bzd_parity")
-    if ard is not None and brd is not None and azd is not None and bzd is not None:
-        ard_arr = jnp.asarray(ard)
-        brd_arr = jnp.asarray(brd)
-        azd_arr = jnp.asarray(azd)
-        bzd_arr = jnp.asarray(bzd)
-        if (
-            ard_arr.ndim == 2
-            and brd_arr.shape == ard_arr.shape
-            and azd_arr.shape == ard_arr.shape
-            and bzd_arr.shape == ard_arr.shape
-            and ard_arr.shape[1] > 1
-        ):
-            sr = ard_arr[:, 1] + brd_arr[:, 1]
-            sz = azd_arr[:, 1] + bzd_arr[:, 1]
-            denom = sr + sz
-            fac_r = jnp.where(denom != 0.0, sr / denom, 1.0)
-            fac_z = jnp.where(denom != 0.0, sz / denom, 1.0)
-            return fac_r, fac_z
-
-    dr = jnp.asarray(mats["dr"])
-    dz = jnp.asarray(mats["dz"])
-    sr = -dr[:, 1, 0]
-    sz = -dz[:, 1, 0]
-    denom = sr + sz
-    fac_r = jnp.where(denom != 0.0, sr / denom, 1.0)
-    fac_z = jnp.where(denom != 0.0, sz / denom, 1.0)
-    return fac_r, fac_z
-
-
-def _vmec_scale_m1_factors_from_mats_np(mats: dict) -> tuple[np.ndarray, np.ndarray]:
-    """NumPy version of _vmec_scale_m1_factors_from_mats (no JAX dispatch)."""
-    ard = mats.get("ard_parity")
-    brd = mats.get("brd_parity")
-    azd = mats.get("azd_parity")
-    bzd = mats.get("bzd_parity")
-    if ard is not None and brd is not None and azd is not None and bzd is not None:
-        ard_arr = np.asarray(ard)
-        brd_arr = np.asarray(brd)
-        azd_arr = np.asarray(azd)
-        bzd_arr = np.asarray(bzd)
-        if (
-            ard_arr.ndim == 2
-            and brd_arr.shape == ard_arr.shape
-            and azd_arr.shape == ard_arr.shape
-            and bzd_arr.shape == ard_arr.shape
-            and ard_arr.shape[1] > 1
-        ):
-            sr = ard_arr[:, 1] + brd_arr[:, 1]
-            sz = azd_arr[:, 1] + bzd_arr[:, 1]
-            denom = sr + sz
-            fac_r = np.where(denom != 0.0, sr / np.where(denom != 0.0, denom, 1.0), 1.0)
-            fac_z = np.where(denom != 0.0, sz / np.where(denom != 0.0, denom, 1.0), 1.0)
-            return fac_r, fac_z
-    dr = np.asarray(mats["dr"])
-    dz = np.asarray(mats["dz"])
-    sr = -dr[:, 1, 0]
-    sz = -dz[:, 1, 0]
-    denom = sr + sz
-    fac_r = np.where(denom != 0.0, sr / np.where(denom != 0.0, denom, 1.0), 1.0)
-    fac_z = np.where(denom != 0.0, sz / np.where(denom != 0.0, denom, 1.0), 1.0)
-    return fac_r, fac_z
-
-
-def _scale_m1_precond_rhs_from_mats(
-    frzl_in,
-    mats: dict[str, Any],
-    *,
-    lconm1: bool,
-    mpol: int,
-    host_update_assembly: bool,
-):
-    """Apply VMEC `scale_m1_par` factors before the radial preconditioner solve."""
-    if (not bool(lconm1)) or (int(mpol) <= 1):
-        return frzl_in
-
-    from .vmec_tomnsp import TomnspsRZL
-
-    if bool(host_update_assembly):
-        fac_r_arr, fac_z_arr = _vmec_scale_m1_factors_from_mats_np(mats)
-        if fac_r_arr.size == 0:
-            return frzl_in
-        ns_full = int(np.asarray(frzl_in.frcc).shape[0])
-        nsolve = min(ns_full, int(fac_r_arr.shape[0]))
-        if nsolve == ns_full:
-            fac_r_full = fac_r_arr[:nsolve]
-            fac_z_full = fac_z_arr[:nsolve]
-        else:
-            ones = np.ones((ns_full - nsolve,), dtype=fac_r_arr.dtype)
-            fac_r_full = np.concatenate([fac_r_arr[:nsolve], ones])
-            fac_z_full = np.concatenate([fac_z_arr[:nsolve], ones])
-        frss = _scale_mode_slice_np(frzl_in.frss, mode_idx=1, scale=fac_r_full)
-        fzcs = _scale_mode_slice_np(frzl_in.fzcs, mode_idx=1, scale=fac_z_full)
-        frsc = _scale_mode_slice_np(getattr(frzl_in, "frsc", None), mode_idx=1, scale=fac_r_full)
-        fzcc = _scale_mode_slice_np(getattr(frzl_in, "fzcc", None), mode_idx=1, scale=fac_z_full)
-    else:
-        fac_r_jax, fac_z_jax = _vmec_scale_m1_factors_from_mats(mats)
-        if fac_r_jax.size == 0:
-            return frzl_in
-        fac_r = jnp.asarray(fac_r_jax, dtype=jnp.asarray(frzl_in.frcc).dtype)
-        fac_z = jnp.asarray(fac_z_jax, dtype=jnp.asarray(frzl_in.fzsc).dtype)
-        ns_full = int(jnp.asarray(frzl_in.frcc).shape[0])
-        nsolve = min(ns_full, int(fac_r.shape[0]))
-        ones_r = jnp.ones((max(ns_full - nsolve, 0),), dtype=jnp.asarray(frzl_in.frcc).dtype)
-        ones_z = jnp.ones((max(ns_full - nsolve, 0),), dtype=jnp.asarray(frzl_in.fzsc).dtype)
-        fac_r_full = fac_r[:nsolve] if nsolve == ns_full else jnp.concatenate([fac_r[:nsolve], ones_r], axis=0)
-        fac_z_full = fac_z[:nsolve] if nsolve == ns_full else jnp.concatenate([fac_z[:nsolve], ones_z], axis=0)
-        frss = _scale_mode_slice(frzl_in.frss, mode_idx=1, scale=fac_r_full)
-        fzcs = _scale_mode_slice(frzl_in.fzcs, mode_idx=1, scale=fac_z_full)
-        frsc = _scale_mode_slice(getattr(frzl_in, "frsc", None), mode_idx=1, scale=fac_r_full)
-        fzcc = _scale_mode_slice(getattr(frzl_in, "fzcc", None), mode_idx=1, scale=fac_z_full)
-
-    return TomnspsRZL(
-        frcc=frzl_in.frcc,
-        frss=frss,
-        fzsc=frzl_in.fzsc,
-        fzcs=fzcs,
-        flsc=frzl_in.flsc,
-        flcs=frzl_in.flcs,
-        frsc=frsc,
-        frcs=getattr(frzl_in, "frcs", None),
-        fzcc=fzcc,
-        fzss=getattr(frzl_in, "fzss", None),
-        flcc=getattr(frzl_in, "flcc", None),
-        flss=getattr(frzl_in, "flss", None),
-    )
-
-
-def _can_reassemble_precond_mats(mats: Any) -> bool:
-    if not isinstance(mats, dict):
-        return False
-    required = (
-        "arm_parity",
-        "ard_parity",
-        "brm_parity",
-        "brd_parity",
-        "azm_parity",
-        "azd_parity",
-        "bzm_parity",
-        "bzd_parity",
-        "cxd_full",
-        "delta_s",
-    )
-    return all(key in mats for key in required)
 
 
 def _maybe_dump_lam_gcl(

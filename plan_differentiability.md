@@ -795,13 +795,16 @@ Steps taken:
 14. Performed the eleventh low-risk extraction from `vmec_jax/solve.py`:
     solve-facing free-boundary external-field diagnostic adapters now live in
     `vmec_jax/solve_free_boundary_diagnostics.py`.
-15. Kept backward-compatible private aliases in `solve.py` so existing tests and
+15. Extended `vmec_jax/solve_preconditioner_helpers.py` with a twelfth
+    low-risk extraction: VMEC `m=1` preconditioner scale factors, right-hand-side
+    scaling, and matrix reassembly contract checks.
+16. Kept backward-compatible private aliases in `solve.py` so existing tests and
    internal imports continue to work.
 
 Results obtained:
 
 1. Draft PR #20 CI passed before the follow-up extraction.
-2. `solve.py` decreased from roughly 15438 to 14232 lines.
+2. `solve.py` decreased from roughly 15438 to 14085 lines.
 3. The extracted helpers are pure and synthetic-testable, making them a safe
    pattern for the next solver-kernel split.
 4. Focused Ruff, pytest, source-health, and fast docs checks passed for the
@@ -825,6 +828,6 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 14%.
+- Differentiability/refactor implementation: 15%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 11% of the large-file extraction work.
+- Solver monolith reduction: 12% of the large-file extraction work.
