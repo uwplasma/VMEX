@@ -31,6 +31,8 @@ Top-level package layout (selected):
   resolution, metric preconditioner scales, and radial mesh scale factors
 - ``vmec_jax/solve_jit_cache_helpers.py``: environment-controlled JIT-cache
   limits, structural cache keys, LRU helpers, and scan-cache miss diagnostics
+- ``vmec_jax/solve_axis_reset_helpers.py``: initial magnetic-axis reset
+  control decisions, axis-state merging, and optional axis coefficient dumps
 - ``vmec_jax/solve.py``: fixed-boundary solvers + VMEC2000 iteration loop
 - ``vmec_jax/driver.py``: CLI-facing fixed/free-boundary drivers, output
   policies, staged solve dispatch, and wout writing
