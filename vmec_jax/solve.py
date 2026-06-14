@@ -52,6 +52,7 @@ from .solve_residual_iter_policy import (
     vmec2000_time_control_decision as _vmec2000_time_control_decision,
 )
 from .solve_residual_iter_runtime_helpers import (
+    _attach_free_boundary_external_field_diag as _runtime_attach_free_boundary_external_field_diag,
     _build_residual_iter_timing_report,
     _build_resume_state_base,
     _converged_residuals_scan_fast as _runtime_converged_residuals_scan_fast,
@@ -3218,43 +3219,14 @@ def solve_fixed_boundary_residual_iter(
     _record_setup_timing("setup_freeb_policy", _t_setup_freeb_policy)
 
     def _attach_freeb_diag(res: SolveVmecResidualResult) -> SolveVmecResidualResult:
-        if not bool(free_boundary_enabled):
-            return res
-        diag_local = dict(res.diagnostics)
-        if "free_boundary_external_field" not in diag_local:
-            if external_field_provider_kind is not None and str(external_field_provider_kind).strip().lower() not in (
-                "",
-                "mgrid",
-                "legacy_mgrid",
-            ):
-                diag_local["free_boundary_external_field"] = {
-                    "enabled": True,
-                    "available": False,
-                    "provider_kind": str(external_field_provider_kind),
-                    "reason": "direct_provider_runtime_path",
-                }
-            elif bool(freeb_sample_external):
-                diag_local["free_boundary_external_field"] = _sample_free_boundary_external_field(
-                    state=res.state,
-                    static=static,
-                )
-            else:
-                diag_local["free_boundary_external_field"] = {
-                    "enabled": False,
-                    "available": False,
-                    "vacuum_stub": True,
-                    "reason": "disabled_by_env",
-                }
-        return SolveVmecResidualResult(
-            state=res.state,
-            n_iter=int(res.n_iter),
-            w_history=np.asarray(res.w_history),
-            fsqr2_history=np.asarray(res.fsqr2_history),
-            fsqz2_history=np.asarray(res.fsqz2_history),
-            fsql2_history=np.asarray(res.fsql2_history),
-            grad_rms_history=np.asarray(res.grad_rms_history),
-            step_history=np.asarray(res.step_history),
-            diagnostics=diag_local,
+        return _runtime_attach_free_boundary_external_field_diag(
+            res,
+            free_boundary_enabled=free_boundary_enabled,
+            external_field_provider_kind=external_field_provider_kind,
+            freeb_sample_external=freeb_sample_external,
+            sample_external_field_func=_sample_free_boundary_external_field,
+            static=static,
+            result_type=SolveVmecResidualResult,
         )
 
     _t_setup_boundary_profiles = _setup_timer_start()

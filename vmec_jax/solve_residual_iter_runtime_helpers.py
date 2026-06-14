@@ -605,3 +605,52 @@ def _build_resume_state_base(
             0 if freeb_nestor_runtime is None else int(getattr(freeb_nestor_runtime, "reuse_count", 0))
         ),
     }
+
+
+def _attach_free_boundary_external_field_diag(
+    res: Any,
+    *,
+    free_boundary_enabled: bool,
+    external_field_provider_kind: str | None,
+    freeb_sample_external: bool,
+    sample_external_field_func: Callable[..., dict[str, Any]],
+    static: Any,
+    result_type: Callable[..., Any],
+) -> Any:
+    """Attach free-boundary external-field diagnostics to a solver result."""
+
+    if not bool(free_boundary_enabled):
+        return res
+    diag_local = dict(res.diagnostics)
+    if "free_boundary_external_field" not in diag_local:
+        provider_kind = "" if external_field_provider_kind is None else str(external_field_provider_kind).strip().lower()
+        if provider_kind not in ("", "mgrid", "legacy_mgrid"):
+            diag_local["free_boundary_external_field"] = {
+                "enabled": True,
+                "available": False,
+                "provider_kind": str(external_field_provider_kind),
+                "reason": "direct_provider_runtime_path",
+            }
+        elif bool(freeb_sample_external):
+            diag_local["free_boundary_external_field"] = sample_external_field_func(
+                state=res.state,
+                static=static,
+            )
+        else:
+            diag_local["free_boundary_external_field"] = {
+                "enabled": False,
+                "available": False,
+                "vacuum_stub": True,
+                "reason": "disabled_by_env",
+            }
+    return result_type(
+        state=res.state,
+        n_iter=int(res.n_iter),
+        w_history=np.asarray(res.w_history),
+        fsqr2_history=np.asarray(res.fsqr2_history),
+        fsqz2_history=np.asarray(res.fsqz2_history),
+        fsql2_history=np.asarray(res.fsql2_history),
+        grad_rms_history=np.asarray(res.grad_rms_history),
+        step_history=np.asarray(res.step_history),
+        diagnostics=diag_local,
+    )

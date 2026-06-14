@@ -856,11 +856,15 @@ Steps taken:
     wrapper and injects `initial_guess_from_boundary` and
     `solve_fixed_boundary_gd`, preserving the existing solver-wiring test and
     optimization-script API.
+31. Extended `vmec_jax/solve_residual_iter_runtime_helpers.py` with
+    free-boundary external-field diagnostic attachment.  `solve.py` retains the
+    local `_attach_freeb_diag` wrapper so existing solve-exit call sites stay
+    unchanged while the branch logic now has direct unit coverage.
 
 Results obtained:
 
 1. Draft PR #20 CI passed before the follow-up extraction.
-2. `solve.py` decreased from roughly 15438 to 12898 lines locally.
+2. `solve.py` decreased from roughly 15438 to 12870 lines locally.
 3. `driver.py` decreased from 4064 to 2966 lines while preserving existing CLI
    and test import paths.
 4. The extracted helpers are pure and synthetic-testable, making them a safe
@@ -888,6 +892,10 @@ Results obtained:
 11. Driver solve-helper focused tests passed after the sixth driver extraction:
     3 tests covering solver-input wiring and initial-guess fixed-boundary
     driver paths.
+12. Residual runtime-helper focused tests passed after the free-boundary
+    diagnostic extraction: 20 unit tests passed, plus 3 representative
+    free-boundary diagnostics tests passed with only pre-existing synthetic
+    residual warnings.
 
 Best next steps:
 
@@ -910,7 +918,7 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 30%.
+- Differentiability/refactor implementation: 31%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 20% of the large-file extraction work.
+- Solver monolith reduction: 21% of the large-file extraction work.
 - Driver workflow decomposition: 34%.
