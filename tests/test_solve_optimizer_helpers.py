@@ -4,8 +4,12 @@ import numpy as np
 import pytest
 
 from vmec_jax._compat import jnp
-from vmec_jax.solve_lambda_optimizer import solve_lambda_gd_impl
 from vmec_jax.solve import _resolve_lbfgs_curvature_tol
+from vmec_jax.solve_fixed_boundary_gd_optimizer import solve_fixed_boundary_gd_impl
+from vmec_jax.solve_fixed_boundary_lbfgs_optimizer import solve_fixed_boundary_lbfgs_impl
+from vmec_jax.solve_fixed_boundary_residual_gn_optimizer import solve_fixed_boundary_gn_vmec_residual_impl
+from vmec_jax.solve_fixed_boundary_residual_lbfgs_optimizer import solve_fixed_boundary_lbfgs_vmec_residual_impl
+from vmec_jax.solve_lambda_optimizer import solve_lambda_gd_impl
 from vmec_jax.solve_optimizer_helpers import (
     ensure_descent_direction,
     lbfgs_curvature_tolerance,
@@ -149,17 +153,41 @@ def test_lambda_optimizer_impl_runs_with_injected_tiny_quadratic_problem():
     np.testing.assert_allclose(np.asarray(result.state.Lcos)[:, 0], 0.0)
 
 
-def test_lambda_optimizer_impl_reports_missing_jax():
-    with pytest.raises(ImportError, match="solve_lambda_gd requires JAX"):
-        solve_lambda_gd_impl(
+@pytest.mark.parametrize(
+    ("impl", "kwargs", "message"),
+    [
+        (
+            solve_lambda_gd_impl,
+            {"phipf": (), "chipf": (), "signgs": 1, "lamscale": 1.0},
+            "solve_lambda_gd requires JAX",
+        ),
+        (
+            solve_fixed_boundary_gd_impl,
+            {"phipf": (), "chipf": (), "signgs": 1, "lamscale": 1.0},
+            "solve_fixed_boundary_gd requires JAX",
+        ),
+        (
+            solve_fixed_boundary_lbfgs_impl,
+            {"phipf": (), "chipf": (), "signgs": 1, "lamscale": 1.0},
+            "solve_fixed_boundary_lbfgs requires JAX",
+        ),
+        (
+            solve_fixed_boundary_lbfgs_vmec_residual_impl,
+            {"indata": object(), "signgs": 1},
+            "solve_fixed_boundary_lbfgs_vmec_residual requires JAX",
+        ),
+        (
+            solve_fixed_boundary_gn_vmec_residual_impl,
+            {"indata": object(), "signgs": 1},
+            "solve_fixed_boundary_gn_vmec_residual requires JAX",
+        ),
+    ],
+)
+def test_extracted_optimizer_impls_report_missing_jax(impl, kwargs, message):
+    with pytest.raises(ImportError, match=message):
+        impl(
             object(),
             object(),
-            phipf=(),
-            chipf=(),
-            signgs=1,
-            lamscale=1.0,
+            **kwargs,
             has_jax_func=lambda: False,
-            jax_module=object(),
-            jnp_module=object(),
-            jit_func=lambda f: f,
         )
