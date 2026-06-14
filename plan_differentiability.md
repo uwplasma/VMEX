@@ -1042,6 +1042,11 @@ Results obtained:
     `free_boundary_adjoint.py`.  This is intentionally a small branch-local
     diagnostics seam: it reduces the large adjoint module without touching
     NESTOR kernels, replay objectives, or adaptive host branch claims.
+27. DMerc/`D_R` stability-gradient coverage now includes a direct
+    profile-integral AD-vs-central-FD gate for both `DMerc` and `D_R`, in
+    addition to the existing Glasser algebra and public objective-wrapper
+    gradient gates.  The focused Glasser/Mercier shard passed with 12 tests,
+    Ruff was clean, and the fast docs build passed.
 
 Best next steps:
 
@@ -1074,9 +1079,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 51%.
+- Differentiability/refactor implementation: 52%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 45% of the large-file extraction work.
 - Free-boundary adjoint monolith reduction: 9%.
 - Driver workflow decomposition: 34%.
-- WOUT diagnostic decomposition: 3%.
+- WOUT diagnostic decomposition: 4%.
