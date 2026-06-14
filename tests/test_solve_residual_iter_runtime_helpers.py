@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from vmec_jax.solve_residual_iter_runtime_helpers import (
+    _attach_free_boundary_external_field_diag,
     _build_residual_iter_timing_report,
     _build_resume_state_base,
     _converged_residuals_scan_fast,
@@ -18,6 +19,32 @@ from vmec_jax.solve_residual_iter_runtime_helpers import (
     _scan_print_uses_io_callback,
     _vmec_freeb_plascur_from_bcovar,
 )
+
+
+class _Result:
+    def __init__(self, diagnostics=None):
+        self.state = "state"
+        self.n_iter = 3
+        self.w_history = np.asarray([1.0, 0.5])
+        self.fsqr2_history = np.asarray([0.1])
+        self.fsqz2_history = np.asarray([0.2])
+        self.fsql2_history = np.asarray([0.3])
+        self.grad_rms_history = np.asarray([0.4])
+        self.step_history = np.asarray([0.5])
+        self.diagnostics = {} if diagnostics is None else diagnostics
+
+
+def _result_type(**kwargs):
+    out = _Result(kwargs["diagnostics"])
+    out.state = kwargs["state"]
+    out.n_iter = kwargs["n_iter"]
+    out.w_history = kwargs["w_history"]
+    out.fsqr2_history = kwargs["fsqr2_history"]
+    out.fsqz2_history = kwargs["fsqz2_history"]
+    out.fsql2_history = kwargs["fsql2_history"]
+    out.grad_rms_history = kwargs["grad_rms_history"]
+    out.step_history = kwargs["step_history"]
+    return out
 
 
 def test_ptau_dump_enabled_requires_env_and_directory():
@@ -211,6 +238,79 @@ def test_vmec_freeb_plascur_from_bcovar_uses_finite_value_or_fallback():
         wout=None,
         s=None,
     ) == 1.5
+
+
+def test_attach_free_boundary_external_field_diag_branches():
+    res = _Result()
+    assert (
+        _attach_free_boundary_external_field_diag(
+            res,
+            free_boundary_enabled=False,
+            external_field_provider_kind=None,
+            freeb_sample_external=True,
+            sample_external_field_func=lambda **_: {"unused": True},
+            static="static",
+            result_type=_result_type,
+        )
+        is res
+    )
+
+    direct = _attach_free_boundary_external_field_diag(
+        _Result(),
+        free_boundary_enabled=True,
+        external_field_provider_kind="direct_coils",
+        freeb_sample_external=True,
+        sample_external_field_func=lambda **_: {"unused": True},
+        static="static",
+        result_type=_result_type,
+    )
+    assert direct.diagnostics["free_boundary_external_field"] == {
+        "enabled": True,
+        "available": False,
+        "provider_kind": "direct_coils",
+        "reason": "direct_provider_runtime_path",
+    }
+
+    sampled_calls = []
+    sampled = _attach_free_boundary_external_field_diag(
+        _Result(),
+        free_boundary_enabled=True,
+        external_field_provider_kind="mgrid",
+        freeb_sample_external=True,
+        sample_external_field_func=lambda **kwargs: sampled_calls.append(kwargs) or {"available": True},
+        static="static",
+        result_type=_result_type,
+    )
+    assert sampled.diagnostics["free_boundary_external_field"] == {"available": True}
+    assert sampled_calls == [{"state": "state", "static": "static"}]
+
+    disabled = _attach_free_boundary_external_field_diag(
+        _Result(),
+        free_boundary_enabled=True,
+        external_field_provider_kind=None,
+        freeb_sample_external=False,
+        sample_external_field_func=lambda **_: {"unused": True},
+        static="static",
+        result_type=_result_type,
+    )
+    assert disabled.diagnostics["free_boundary_external_field"] == {
+        "enabled": False,
+        "available": False,
+        "vacuum_stub": True,
+        "reason": "disabled_by_env",
+    }
+
+    existing = _attach_free_boundary_external_field_diag(
+        _Result({"free_boundary_external_field": {"kept": True}}),
+        free_boundary_enabled=True,
+        external_field_provider_kind="mgrid",
+        freeb_sample_external=True,
+        sample_external_field_func=lambda **_: {"unused": True},
+        static="static",
+        result_type=_result_type,
+    )
+    assert existing.diagnostics["free_boundary_external_field"] == {"kept": True}
+    assert isinstance(existing.w_history, np.ndarray)
 
 
 @pytest.mark.parametrize(

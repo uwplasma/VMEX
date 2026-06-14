@@ -54,6 +54,10 @@ Top-level package layout (selected):
   driver, implicit differentiation, and tests
 - ``vmec_jax/solve_scan_resume_helpers.py``: VMEC2000-style scan resume-state
   initialization and carry-field restoration
+- ``vmec_jax/solve_residual_iter_runtime_helpers.py``: residual-iteration
+  runtime seams for scan readiness, optional debug printing, timing reports,
+  resume-state summaries, and free-boundary external-field diagnostic
+  attachment
 - ``vmec_jax/solve.py``: fixed-boundary solvers + VMEC2000 iteration loop
 - ``vmec_jax/driver.py``: CLI-facing fixed/free-boundary drivers, output
   policies, staged solve dispatch, and wout writing
