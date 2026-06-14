@@ -24212,3 +24212,52 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 100% for the current NFP1/2/3/4
   case-gated panel.
+
+### 2026-06-14 Phase-3 Rejected-Slot Example Gate
+
+Steps taken:
+
+1. Ran the direct-coil coil-only QS smoke example with
+   ``--write-same-branch-report``, vector branch-local derivatives,
+   ``--same-branch-report-rejected-slot-gate``, and derivative proposals:
+   ``/tmp/vmec_jax_fb_qs_smoke_rejected_slot``.
+2. Inspected ``same_branch_complete_solve_report.json`` for the detailed
+   phase-3 evidence rather than relying on the compact summary.
+
+Results obtained:
+
+1. The branch-local vector/JVP physical-scalar gate passed.
+2. The fixed accepted/rejected controller-slot gate passed with
+   ``accepted_slots=2`` and ``rejected_slots=1``; the fixed rejected slot was
+   explicit, the stacked step-control replay path was used, and
+   ``max_base_abs_delta=5.9952e-15``.
+3. The report continues to state
+   ``differentiates_adaptive_controller=False`` and
+   ``differentiates_run_free_boundary=False``. Complete free-boundary solves
+   remain the acceptance authority for the optimization example.
+
+Best next steps:
+
+1. Keep the full adaptive host branch-selection derivative claim deferred until
+   there is a true fingerprint-gated adaptive AD-vs-central-FD gate through the
+   actual branch-changing host loop.
+2. Continue bounded VMEC2000/mgrid/direct-coil parity expansion only with
+   finite-positive WOUT fixtures.
+3. Recheck CI for the latest pushed README/QI artifact promotion commit.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999999%; fixed
+  accepted/rejected branch-local gates are covered, adaptive host branch
+  changes remain unclaimed.
+- VMEC parity and physics gates: 99.88%.
+- Single-stage coil-only optimization phase 3: 99.9%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.
