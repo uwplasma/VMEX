@@ -47,6 +47,8 @@ Top-level package layout (selected):
 - ``vmec_jax/solve_lambda_dump_helpers.py``: optional lambda residual,
   lambda-preconditioner, lambda-derivative, and radial-preconditioner debug
   dump helpers
+- ``vmec_jax/solve_metric_dump_helpers.py``: optional metric,
+  preconditioner-input, and VMEC internal state-vector debug dump helpers
 - ``vmec_jax/solve_scan_resume_helpers.py``: VMEC2000-style scan resume-state
   initialization and carry-field restoration
 - ``vmec_jax/solve.py``: fixed-boundary solvers + VMEC2000 iteration loop

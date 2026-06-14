@@ -812,13 +812,16 @@ Steps taken:
     optional covariant-field debug dumps for scaled full-mesh, half-mesh, and
     radial `B_s` reconstruction diagnostics now live in
     `vmec_jax/solve_bsub_dump_helpers.py`.
-20. Kept backward-compatible private aliases in `solve.py` so existing tests and
+20. Performed the seventeenth low-risk extraction from `vmec_jax/solve.py`:
+    optional metric, preconditioner-input, and VMEC internal state-vector debug
+    dump helpers now live in `vmec_jax/solve_metric_dump_helpers.py`.
+21. Kept backward-compatible private aliases in `solve.py` so existing tests and
     internal imports continue to work.
 
 Results obtained:
 
 1. Draft PR #20 CI passed before the follow-up extraction.
-2. `solve.py` decreased from roughly 15438 to 13468 lines.
+2. `solve.py` decreased from roughly 15438 to 13250 lines.
 3. The extracted helpers are pure and synthetic-testable, making them a safe
    pattern for the next solver-kernel split.
 4. Focused Ruff, pytest, source-health, and fast docs checks passed for the
@@ -842,6 +845,6 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 21%.
+- Differentiability/refactor implementation: 22%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 18% of the large-file extraction work.
+- Solver monolith reduction: 19% of the large-file extraction work.
