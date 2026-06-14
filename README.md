@@ -205,7 +205,7 @@ and `docs/optimization_sweep_results.rst`.
 - Performance notes: `docs/performance.rst`; validation, coverage, and release
   gates: `docs/validation.rst`, `docs/testing_strategy.rst`, and
   `docs/release_checklist.rst`.
-- Latest repository release tag: [`v0.0.14`](https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.14).
+- Latest repository release tag: [`v0.0.15`](https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.15).
 
 ## CLI Reference
 

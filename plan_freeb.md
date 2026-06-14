@@ -24262,6 +24262,51 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 100%.
 
+### 2026-06-14 v0.0.15 Release-Candidate Local Gate
+
+Steps taken:
+
+1. Bumped ``project.version`` to ``0.0.15`` and updated the README/release
+   checklist release-tag references to ``v0.0.15``.
+2. Ran the local release gate with ``JAX_ENABLE_X64=1``:
+   ``python tools/diagnostics/local_ci_gate.py``.
+3. Cleaned generated build outputs after the gate; ignored large fetched WOUT
+   fixtures and docs render inputs remain untracked.
+
+Results obtained:
+
+1. Repository size audit passed at ``27.18 MiB`` tracked size with all tracked
+   files below the configured limit.
+2. Fast pytest coverage passed with ``2793 passed, 23 skipped, 116 deselected,
+   2 xfailed`` and ``95.25%`` coverage at the enforced ``95%`` gate.
+3. Bounded physics smoke, wheel/sdist build, fast docs, and full docs passed.
+4. Built artifacts identified the package as ``vmec_jax-0.0.15``.
+
+Best next steps:
+
+1. Commit and push the release metadata.
+2. Wait for the GitHub Actions gate on the release-candidate commit.
+3. If CI is green, create and push annotated tag ``v0.0.15`` and publish the
+   GitHub release with notes that keep adaptive free-boundary differentiation
+   claims conservative.
+
+Need from user:
+
+No action needed unless the release should be held.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999999%; adaptive host
+  branch changes remain deferred/unclaimed.
+- VMEC parity and physics gates: 99.9%.
+- Single-stage coil-only optimization phase 3: 99.9%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene: 100% locally for the release candidate; waiting
+  on GitHub Actions for the version-bump commit.
+- Docs/release hygiene: 100% locally for the release candidate.
+- QI minimal-seed README artifacts: 100%.
+
 ### 2026-06-14 Final CI Confirmation For QI Panel Promotion
 
 Steps taken:
