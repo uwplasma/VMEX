@@ -24307,6 +24307,56 @@ Completion:
 - Docs/release hygiene: 100% locally for the release candidate.
 - QI minimal-seed README artifacts: 100%.
 
+### 2026-06-14 v0.0.15 Publication
+
+Steps taken:
+
+1. Waited for GitHub Actions run ``27485324373`` on release-candidate commit
+   ``55dde90``.
+2. Created and pushed annotated tag ``v0.0.15``.
+3. Published GitHub release ``vmec-jax v0.0.15`` with release notes separating
+   validated branch-local free-boundary derivatives from still-unclaimed
+   arbitrary adaptive host-branch differentiation.
+4. Watched release-triggered workflow ``27485516496``.
+5. Verified PyPI publication by downloading ``vmec-jax==0.0.15`` with
+   ``pip download --no-deps --only-binary=:all:`` into a temporary directory.
+
+Results obtained:
+
+1. The release-candidate CI passed: console smoke, physics smoke, Python
+   3.10/3.12 tests, all Python 3.11 core/exact/slow-physics shards, docs,
+   wheel/sdist build, parity-manifest smoke, and combined coverage gate.
+2. The GitHub release is public at
+   ``https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.15``.
+3. The PyPI publish workflow passed, including tag/package-version validation,
+   distribution build, PyPI upload, and digital attestations.
+4. PyPI served ``vmec_jax-0.0.15-py3-none-any.whl``.
+
+Best next steps:
+
+1. Leave the true adaptive host-branch differentiation roadmap deferred to
+   ``plan_differentiability.md`` rather than claiming it in released docs.
+2. Resume future work from post-release ``main`` with feature commits only;
+   bump the version again before any future publication.
+3. Keep optional long VMEC2000/DIII-D parity refreshes out of required release
+   gates unless their runtime is reduced or they run as manual/nightly jobs.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999999%; adaptive host
+  branch changes remain deferred/unclaimed.
+- VMEC parity and physics gates: 99.9%.
+- Single-stage coil-only optimization phase 3: 99.9%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.
+
 ### 2026-06-14 Final CI Confirmation For QI Panel Promotion
 
 Steps taken:
