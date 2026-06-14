@@ -818,17 +818,20 @@ Steps taken:
 21. Extended `vmec_jax/solve_force_dump_helpers.py` with an eighteenth
     low-risk extraction: TOMNSP, force-kernel, scalar residual, and post-scaling
     force-channel norm debug dumps.
-22. Kept backward-compatible private aliases in `solve.py` so existing tests and
+22. Performed the nineteenth low-risk extraction from `vmec_jax/solve.py`:
+    solver result dataclasses and the residual-loop scan carry container now
+    live in `vmec_jax/solve_result_types.py`.
+23. Kept backward-compatible private aliases in `solve.py` so existing tests and
     internal imports continue to work.
 
 Results obtained:
 
 1. Draft PR #20 CI passed before the follow-up extraction.
-2. `solve.py` decreased from roughly 15438 to 13083 lines locally.
+2. `solve.py` decreased from roughly 15438 to 12983 lines locally.
 3. The extracted helpers are pure and synthetic-testable, making them a safe
    pattern for the next solver-kernel split.
 4. Focused Ruff, pytest, source-health, and fast docs checks passed for the
-   extracted helper modules.
+   extracted helper modules and result containers.
 
 Best next steps:
 
