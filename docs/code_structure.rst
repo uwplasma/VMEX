@@ -60,6 +60,9 @@ Top-level package layout (selected):
 - ``vmec_jax/driver_policy_helpers.py``: backend-aware driver policy,
   residual-convergence, staged-budget, and resume-state helper functions kept
   outside the CLI-facing workflow while preserving driver compatibility aliases
+- ``vmec_jax/driver_result_helpers.py``: staged/chunked solver-result merging,
+  timing aggregation, final-force payload propagation, and VMEC history
+  comparison helpers shared by driver tests and runtime finish policy
 - ``vmec_jax/free_boundary.py``: mgrid loading, NESTOR-like vacuum coupling,
   and free-boundary runtime state helpers
 - ``vmec_jax/optimization.py``: exact fixed-boundary optimizer, boundary DOF

@@ -22,6 +22,7 @@ from .init_guess import initial_guess_from_boundary
 from .multigrid import interp_vmec_state
 from .profiles import eval_profiles
 from . import driver_policy_helpers as _driver_policy_helpers
+from . import driver_result_helpers as _driver_result_helpers
 from .solve import (
     SolveVmecResidualResult,
     solve_fixed_boundary_gd,
@@ -57,6 +58,16 @@ _result_meets_requested_ftol = _driver_policy_helpers.result_meets_requested_fto
 _sanitize_minimal_resume_state_for_finish = _driver_policy_helpers.sanitize_minimal_resume_state_for_finish
 _sanitize_resume_state_for_grid_change = _driver_policy_helpers.sanitize_resume_state_for_grid_change
 _sanitize_resume_state_for_same_grid = _driver_policy_helpers.sanitize_resume_state_for_same_grid
+_STAGE_CHUNK_DIAG_KEYS = _driver_result_helpers.STAGE_CHUNK_DIAG_KEYS
+_aggregate_stage_chunk_timing = _driver_result_helpers.aggregate_stage_chunk_timing
+_cat_result_history = _driver_result_helpers.cat_result_history
+_copy_final_force_payload = _driver_result_helpers.copy_final_force_payload
+_merge_stage_chunk_results = _driver_result_helpers.merge_stage_chunk_results
+_result_with_diag = _driver_result_helpers.result_with_diag
+_stage_switch_reason_from_progress = _driver_result_helpers.stage_switch_reason_from_progress
+_timing_solve_total_s = _driver_result_helpers.timing_solve_total_s
+_vmec_histories_match = _driver_result_helpers.vmec_histories_match
+_vmec_history_relerr = _driver_result_helpers.vmec_history_relerr
 
 
 def _free_boundary_module():
@@ -165,249 +176,6 @@ def default_non_autodiff_solver_policy(indata) -> tuple[str, bool]:
     """Choose the ordinary non-autodiff solver policy from input structure."""
 
     return _default_non_autodiff_solver_policy_for_backend(indata, _default_backend_name())
-
-
-_STAGE_CHUNK_DIAG_KEYS = (
-    "step_status_history",
-    "restart_reason_history",
-    "pre_restart_reason_history",
-    "time_step_history",
-    "res0_history",
-    "res1_history",
-    "fsq_prev_history",
-    "bad_growth_streak_history",
-    "iter1_history",
-    "bcovar_update_history",
-    "include_edge_history",
-    "zero_m1_history",
-    "dt_eff_history",
-    "update_rms_history",
-    "w_curr_history",
-    "w_try_history",
-    "w_try_ratio_history",
-    "restart_path_history",
-    "min_tau_history",
-    "max_tau_history",
-    "bad_jacobian_history",
-    "fsq1_history",
-    "fsqr1_history",
-    "fsqz1_history",
-    "fsql1_history",
-    "r00_history",
-    "z00_history",
-    "wb_history",
-    "wp_history",
-    "w_vmec_history",
-    "rz_norm_history",
-    "f_norm1_history",
-    "gcr2_p_history",
-    "gcz2_p_history",
-    "gcl2_p_history",
-)
-
-
-def _result_with_diag(result_i: SolveVmecResidualResult, **updates) -> SolveVmecResidualResult:
-    diag = dict(result_i.diagnostics)
-    diag.update(updates)
-    out = SolveVmecResidualResult(
-        state=result_i.state,
-        n_iter=int(result_i.n_iter),
-        w_history=np.asarray(result_i.w_history),
-        fsqr2_history=np.asarray(result_i.fsqr2_history),
-        fsqz2_history=np.asarray(result_i.fsqz2_history),
-        fsql2_history=np.asarray(result_i.fsql2_history),
-        grad_rms_history=np.asarray(result_i.grad_rms_history),
-        step_history=np.asarray(result_i.step_history),
-        diagnostics=diag,
-    )
-    return _copy_final_force_payload(out, result_i)
-
-
-def _copy_final_force_payload(result_i: SolveVmecResidualResult, source_i) -> SolveVmecResidualResult:
-    payload = getattr(source_i, "_final_force_payload", None)
-    if payload is not None:
-        try:
-            object.__setattr__(result_i, "_final_force_payload", payload)
-        except Exception:
-            pass
-    return result_i
-
-
-def _cat_result_history(results_i: list[object], attr: str) -> np.ndarray:
-    """Concatenate an optional history array across VMEC stage/chunk results."""
-
-    parts = [
-        np.asarray(getattr(result_i, attr))
-        for result_i in results_i
-        if getattr(result_i, attr, None) is not None
-    ]
-    return np.concatenate(parts, axis=0) if parts else np.zeros((0,), dtype=float)
-
-
-def _timing_solve_total_s(timing_i: dict) -> float:
-    """Return the generic solve wall time from non-scan or scan timing blocks."""
-
-    if not isinstance(timing_i, dict):
-        return float("nan")
-    for key in ("solve_total_s", "scan_total_s"):
-        try:
-            value = float(timing_i.get(key, np.nan))
-        except Exception:
-            value = float("nan")
-        if np.isfinite(value):
-            return value
-    return float("nan")
-
-
-def _aggregate_stage_chunk_timing(results_i: list[SolveVmecResidualResult]) -> dict:
-    """Combine per-chunk timing dictionaries for one logical VMEC stage."""
-
-    timings: list[dict] = []
-    for result_i in results_i:
-        try:
-            timing_i = result_i.diagnostics.get("timing", {})
-        except Exception:
-            timing_i = {}
-        if isinstance(timing_i, dict) and timing_i:
-            timings.append(timing_i)
-    if not timings:
-        return {}
-
-    aggregate: dict[str, object] = dict(timings[-1])
-    sum_keys: set[str] = set()
-    for timing_i in timings:
-        for key, value in timing_i.items():
-            if key.endswith("_per_iter_s") or key.endswith("_first_s"):
-                continue
-            if key.endswith("_s") or key.endswith("_calls") or key == "iterations":
-                try:
-                    float(value)
-                except Exception:
-                    continue
-                sum_keys.add(str(key))
-
-    for key in sum_keys:
-        vals: list[float] = []
-        for timing_i in timings:
-            try:
-                vals.append(float(timing_i.get(key, 0.0)))
-            except Exception:
-                vals.append(0.0)
-        total = float(np.sum(vals))
-        if key.endswith("_calls") or key == "iterations":
-            aggregate[key] = int(round(total))
-        else:
-            aggregate[key] = total
-
-    iterations = max(int(aggregate.get("iterations", 0)), 1)
-    for key, value in list(aggregate.items()):
-        if key.endswith("_s") and not key.endswith("_per_iter_s") and not key.endswith("_first_s"):
-            aggregate[f"{key[:-2]}_per_iter_s"] = float(value) / float(iterations)
-    chunk_solve_total = np.asarray([_timing_solve_total_s(t) for t in timings], dtype=float)
-    valid = chunk_solve_total[np.isfinite(chunk_solve_total)]
-    if valid.size:
-        aggregate["solve_total_s"] = float(np.sum(valid))
-        iterations = max(int(aggregate.get("iterations", 0)), 1)
-        aggregate["solve_total_per_iter_s"] = float(aggregate["solve_total_s"]) / float(iterations)
-    aggregate["chunk_count"] = int(len(timings))
-    aggregate["chunk_solve_total_s"] = chunk_solve_total
-    return aggregate
-
-
-def _merge_stage_chunk_results(
-    results_i: list[SolveVmecResidualResult],
-    *,
-    mode_i: str,
-) -> SolveVmecResidualResult:
-    if len(results_i) == 1:
-        return _result_with_diag(
-            results_i[0],
-            accelerated_stage_chunked=False,
-            accelerated_stage_effective_mode=str(mode_i),
-        )
-
-    last = results_i[-1]
-    diag = dict(last.diagnostics)
-    for key in _STAGE_CHUNK_DIAG_KEYS:
-        if any(key in r.diagnostics for r in results_i):
-            diag[key] = np.concatenate(
-                [np.asarray(r.diagnostics.get(key, np.zeros((0,), dtype=float))) for r in results_i]
-            )
-    diag["accelerated_stage_chunked"] = True
-    diag["accelerated_stage_effective_mode"] = str(mode_i)
-    diag["accelerated_stage_chunk_count"] = int(len(results_i))
-    diag["accelerated_stage_chunk_iters"] = np.asarray(
-        [int(r.n_iter) + 1 for r in results_i],
-        dtype=int,
-    )
-    timing = _aggregate_stage_chunk_timing(results_i)
-    if timing:
-        diag["timing"] = timing
-    out = SolveVmecResidualResult(
-        state=last.state,
-        n_iter=int(sum(int(r.n_iter) + 1 for r in results_i) - 1),
-        w_history=_cat_result_history(results_i, "w_history"),
-        fsqr2_history=_cat_result_history(results_i, "fsqr2_history"),
-        fsqz2_history=_cat_result_history(results_i, "fsqz2_history"),
-        fsql2_history=_cat_result_history(results_i, "fsql2_history"),
-        grad_rms_history=_cat_result_history(results_i, "grad_rms_history"),
-        step_history=_cat_result_history(results_i, "step_history"),
-        diagnostics=diag,
-    )
-    return _copy_final_force_payload(out, last)
-
-
-def _stage_switch_reason_from_progress(
-    *,
-    start_total_fsq: float,
-    best_total_fsq: float,
-    target_total_fsq: float,
-    chunk_iters: int,
-    remaining_budget: int,
-) -> str | None:
-    if remaining_budget <= 0:
-        return None
-    if (not np.isfinite(best_total_fsq)) or (not np.isfinite(start_total_fsq)):
-        return "nonfinite_total_fsq"
-    if best_total_fsq <= max(0.0, float(target_total_fsq)):
-        return None
-    if best_total_fsq >= start_total_fsq:
-        return "nondecreasing_total_fsq"
-    if best_total_fsq <= 0.0 or start_total_fsq <= 0.0:
-        return None
-    rate = (np.log(float(start_total_fsq)) - np.log(float(best_total_fsq))) / max(1, int(chunk_iters))
-    if (not np.isfinite(rate)) or rate <= 0.0:
-        return "nonpositive_decay_rate"
-    projected_iters = np.log(float(best_total_fsq) / max(float(target_total_fsq), 1.0e-300)) / rate
-    if (not np.isfinite(projected_iters)) or projected_iters > float(remaining_budget):
-        return (
-            "projected_budget_miss:"
-            f" projected_iters={float(projected_iters):.1f}"
-            f" remaining_budget={int(remaining_budget)}"
-        )
-    return None
-
-
-def _vmec_history_relerr(lhs_hist, rhs_hist) -> float:
-    lhs_hist = np.asarray(lhs_hist)
-    rhs_hist = np.asarray(rhs_hist)
-    if lhs_hist.shape != rhs_hist.shape:
-        return float("inf")
-    diff = np.max(np.abs(lhs_hist - rhs_hist))
-    scale = max(float(np.max(np.abs(rhs_hist))), 1e-30)
-    return float(diff / scale)
-
-
-def _vmec_histories_match(lhs, rhs, *, rtol: float, atol: float) -> bool:
-    keys = ("w_history", "fsqr2_history", "fsqz2_history", "fsql2_history")
-    for key in keys:
-        lhs_hist = np.asarray(getattr(lhs, key))
-        rhs_hist = np.asarray(getattr(rhs, key))
-        if lhs_hist.shape != rhs_hist.shape:
-            return False
-        if not np.allclose(lhs_hist, rhs_hist, rtol=float(rtol), atol=float(atol)):
-            return False
-    return True
 
 
 def _final_flux_profiles_from_state(

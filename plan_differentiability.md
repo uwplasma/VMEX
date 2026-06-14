@@ -832,12 +832,17 @@ Steps taken:
     historical private names as compatibility aliases/wrappers, including the
     local `default_non_autodiff_solver_policy` wrapper so backend monkeypatches
     still work.
+26. Continued the driver decomposition by extracting staged/chunked result
+    merging, timing aggregation, final-force payload propagation, stage-switch
+    projection checks, and VMEC history comparison helpers into
+    `vmec_jax/driver_result_helpers.py`.  `driver.py` again keeps private
+    compatibility aliases for existing tests and internal imports.
 
 Results obtained:
 
 1. Draft PR #20 CI passed before the follow-up extraction.
 2. `solve.py` decreased from roughly 15438 to 12898 lines locally.
-3. `driver.py` decreased from 4064 to 3523 lines while preserving existing CLI
+3. `driver.py` decreased from 4064 to 3291 lines while preserving existing CLI
    and test import paths.
 4. The extracted helpers are pure and synthetic-testable, making them a safe
    pattern for the next solver-kernel split.
@@ -847,6 +852,9 @@ Results obtained:
 6. Driver-policy focused tests passed after the extraction: 76 driver-policy
    tests, 17 driver wave tests, 15 driver run/wave12 tests, and 37 CLI/non-solve
    tests.
+7. Driver-result focused tests passed after the second driver extraction: 116
+   tests across driver policy, wave, fast-reconstruction, wout-driver, and
+   helper-edge coverage, with only pre-existing synthetic `wout.py` warnings.
 
 Best next steps:
 
@@ -869,7 +877,7 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 25%.
+- Differentiability/refactor implementation: 26%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 20% of the large-file extraction work.
-- Driver workflow decomposition: 14%.
+- Driver workflow decomposition: 22%.
