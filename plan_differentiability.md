@@ -3,7 +3,7 @@
 Status: deferred research lane, not a blocker for the current free-boundary
 phase-2/phase-3 release.
 
-Last updated: 2026-06-13.
+Last updated: 2026-06-14.
 
 Repository: `/Users/rogeriojorge/local/vmec_jax`.
 
@@ -151,6 +151,233 @@ Examples and docs:
 6. Keep claims conservative.
    Do not claim full adaptive-loop differentiability until fingerprint-gated
    full adaptive AD-vs-central-FD gates pass on physical scalar outputs.
+
+## 2026-06-14 Differentiability and Refactor Review
+
+This review cross-checked the current codebase against current JAX, Python,
+JAXopt, Optax, Equinox, Orthax, VMEC++, DESC, SIMSOPT, Scientific Python, and
+spectral-adjoint guidance.
+
+Key conclusions:
+
+1. Treat the VMEC solve as a differentiable numerical program with explicit
+   state objects, residual operators, solver policies, and output adapters.
+   Do not keep growing monolithic VMEC2000-style translation files.
+2. Use native JAX PyTrees and frozen dataclasses first.  Equinox-style modules
+   are attractive for filtered transforms, but adding Equinox as a mandatory
+   dependency is not justified until a concrete filtered-transform seam needs
+   it.  The source layout should remain plain-Python and JAX-native.
+3. Use `lax.scan` or static-trip `fori_loop` for fixed-budget iteration traces
+   that need reverse-mode AD.  Use `while_loop` only for JAX-visible dynamic
+   controllers whose derivative semantics are intentionally limited or supplied
+   by a custom rule.
+4. Use `jax.custom_vjp`, `jax.custom_jvp`, and JAXopt-style implicit
+   differentiation for equilibrium roots and branch-local fixed points instead
+   of relying on unbounded tape retention through every nonlinear iteration.
+5. Use Optax as an optional optimizer backend only through a small adapter.
+   Keep SciPy least-squares as the beginner-friendly and VMEC/SIMSOPT-familiar
+   path.
+6. Orthax can be useful for future orthogonal-polynomial profile bases, but it
+   should not replace current VMEC-compatible polynomial and spline profile
+   handling unless a validation fixture needs that basis.
+7. Keep optional dependencies imported lazily at call sites.  `import vmec_jax`
+   and `vmec --test` must remain beginner-friendly and fast.
+8. Adopt a Scientific-Python-style separation between public API, internal
+   kernels, diagnostics, optional external gates, and generated artifacts.
+
+Current line-count hotspots from the main branch:
+
+.. code-block:: text
+
+   vmec_jax/solve.py                                      15438
+   vmec_jax/free_boundary_adjoint.py                       6941
+   vmec_jax/wout.py                                        6321
+   vmec_jax/optimization.py                                5441
+   tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py  5150
+   vmec_jax/free_boundary.py                               4271
+   vmec_jax/optimization_workflow.py                       4252
+   vmec_jax/driver.py                                      4064
+   vmec_jax/discrete_adjoint.py                            3557
+
+These files are too large for sustained research development.  The refactor
+must reduce local cognitive load while preserving VMEC parity, public API
+compatibility, and validated derivative behavior.
+
+## Target Package Architecture
+
+The refactored package should expose stable public modules and keep large
+implementation modules split by responsibility.  The target layout is:
+
+.. code-block:: text
+
+   vmec_jax/
+     api.py                     stable public import surface
+     config/                    parsed INDATA, profiles, grids, run options
+     state/                     PyTree equilibrium, force, and output states
+     kernels/
+       geometry.py              real-space geometry and metric kernels
+       fourier.py               Fourier transforms, mode maps, Nyquist tables
+       fields.py                covariant/contravariant B, J, pressure terms
+       forces.py                fixed-boundary and finite-beta force blocks
+       residuals.py             residual assembly and norms
+     solvers/
+       fixed_boundary.py        fixed-boundary solve orchestration
+       free_boundary.py         free-boundary solve orchestration
+       controller.py            accepted/rejected/update policy data classes
+       scan.py                  JAX-visible fixed-budget traces
+       implicit.py              root/JVP/VJP/linear-solve derivative seams
+       outputs.py               accepted-state, rerun, WOUT, and checkpoints
+     free_boundary/
+       providers.py             mgrid/direct-coil/ESSOS provider protocol
+       nestor.py                source/NESTOR operators
+       adjoint.py               branch-local reports and custom VJP seams
+       fingerprints.py          adaptive branch metadata and promotion checks
+     objectives/
+       quasisymmetry.py
+       quasi_isodynamic.py
+       finite_beta.py
+       stability.py             DMerc, Glasser D_R, magnetic well, jdotB
+       coils.py
+       least_squares.py         objective tuple/object assembly
+     optimization/
+       boundary.py              boundary DOF spaces and continuation policies
+       coils.py                 coil DOF spaces and proposal/acceptance loops
+       callbacks.py             exact/scalar/matrix-free callback policies
+       result.py                history, provenance, saved artifacts
+       scipy_backend.py
+       jaxopt_backend.py        optional
+       optax_backend.py         optional
+     io/
+       namelist.py
+       wout.py
+       booz.py
+       assets.py
+     plotting/
+       geometry.py
+       boozer.py
+       optimization.py
+       stability.py
+     diagnostics/
+       parity.py
+       performance.py
+       source_health.py
+
+The existing module names should remain available through compatibility
+re-exports until the next major release.  Tests should import from the new
+module paths when validating new functionality and from old paths when
+checking backward compatibility.
+
+## Refactor Migration Waves
+
+Wave 0: Baseline and source-health guard.
+
+1. Add a diagnostic that reports Python source line counts and flags files over
+   agreed warning/error thresholds.
+2. Add CI/documentation guidance that new large helpers must be split before
+   merging unless an explicit exemption is recorded.
+3. Freeze the current public API surface with import and smoke tests.
+
+Wave 1: Extract pure data/state/config modules.
+
+1. Move parsed profile/config objects into small frozen dataclasses and PyTrees.
+2. Split large solver carries into named `EquilibriumState`, `ForceState`,
+   `ControllerState`, `SolveTrace`, and `OutputState` containers.
+3. Add docstrings describing units, mesh location, shape conventions, and
+   differentiability status for every public state object.
+
+Wave 2: Extract pure kernels from `solve.py`.
+
+1. Separate residual norm calculation, timestep updates, scan fallback
+   planning, restart/fallback policy, and axis/Jacobian repair into focused
+   modules.
+2. Keep each extracted helper testable with synthetic small arrays.
+3. Require one parity or numerical gate for every extracted physics kernel.
+
+Wave 3: Solver-controller seam.
+
+1. Introduce explicit controller policy objects for fixed boundary and free
+   boundary.
+2. Represent accepted/rejected steps, resets, limiter choices, and fallback
+   choices in a branch fingerprint object.
+3. Keep hard branch changes nondifferentiable by default; expose
+   same-fingerprint derivative reports and changed-fingerprint rejection.
+
+Wave 4: Derivative backends.
+
+1. Make exact, scalar-adjoint, projected, matrix-free, and implicit
+   derivatives pluggable through one `DerivativePolicy` interface.
+2. Promote each backend only with AD-vs-central-FD gates on physical scalars.
+3. Use JAX rematerialization only on localized kernels where profiling shows
+   tape memory pressure; do not blanket-remat the solve.
+
+Wave 5: Optimization API cleanup.
+
+1. Replace high-argument helper calls with Simsopt-like objective tuples and
+   lightweight objective objects.
+2. Keep example scripts explicit: parameters at top, VMEC object, objectives,
+   optimizer call, result inspection, saving, and plotting.
+3. Add optional JAXopt/Optax backends behind adapters without making either
+   mandatory for beginner installs.
+
+Wave 6: Free-boundary production adjoint.
+
+1. Keep complete solves as acceptance authority for coil optimization.
+2. Use branch-local vector/JVP paths only when fingerprints match.
+3. Add a fully JAX-visible adaptive-controller prototype only as a research
+   experiment after branch-local gates are exhausted.
+
+Wave 7: Documentation and examples.
+
+1. Turn every public objective and derivative policy into an example-backed
+   docs page.
+2. Keep README short; move derivations, sweep tables, limitations, and
+   validation provenance into docs.
+3. Add "developer map" pages for new contributors that explain where to add
+   a kernel, objective, solver policy, external-field provider, or test.
+
+## Refactor Test and Validation Contract
+
+Every migrated module must satisfy one or more of these gates:
+
+1. Import/backward-compatibility gate: old public imports still work.
+2. Shape/unit gate: synthetic arrays validate mesh location, sign conventions,
+   and mode ordering.
+3. Numerical identity gate: algebraic identities such as divergence-free field
+   relations, covariant/contravariant consistency, Fourier reconstruction, and
+   radial interpolation hold to tight tolerances.
+4. AD-vs-central-FD gate: smooth scalar outputs agree for boundary modes,
+   pressure/current profile coefficients, spline knots, coil currents, coil
+   Fourier coefficients, DMerc, `D_R`, QS/QI residuals, Bnormal RMS, aspect,
+   iota, and finite-beta response.
+5. External parity gate: compact fixtures agree with VMEC2000, VMEC++, SIMSOPT,
+   booz_xform_jax, or ESSOS where applicable and available.
+6. Physics gate: outputs satisfy finite-positive geometry, monotone/expected
+   profile behavior, magnetic-axis regularity, force residual convergence,
+   Boozer-space symmetry expectations, Mercier/Glasser sign conventions, and
+   coil-engineering constraints.
+7. Artifact gate: saved `input.final`, `wout_final.nc`, Boozer files, and
+   history JSON reproduce rerun results when convergence is claimed.
+8. Performance gate: compact cold/warm solve and derivative timing budgets are
+   recorded, with optional GPU and VMEC2000/ESSOS lanes separated from required
+   CI.
+
+The required CI suite should stay below the current runtime budget by using
+small deterministic fixtures, sharded coverage, fetched assets for large WOUTs,
+and optional markers for VMEC2000, SIMSOPT, ESSOS, GPU, and full-resolution
+physics.  Coverage increases must come from real physics/numerics/API tests,
+not scaffold-only tests.
+
+## Documentation and Pedagogy Contract
+
+New public code should satisfy:
+
+1. A short docstring with inputs, outputs, mesh conventions, differentiability
+   status, and failure modes.
+2. One docs paragraph or example snippet for user-facing APIs.
+3. One test that demonstrates the simplest expected user workflow.
+4. Comments only where they explain a non-obvious numerical or physics choice.
+5. No hidden environment-variable behavior in beginner examples; advanced
+   toggles belong in explicit variables or CLI flags.
 
 ## Main Work Lanes
 
