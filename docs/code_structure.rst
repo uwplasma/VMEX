@@ -42,6 +42,8 @@ Top-level package layout (selected):
   free-boundary external-field diagnostic adapters
 - ``vmec_jax/solve_force_dump_helpers.py``: optional force-channel debug dump
   array adapters and GC force-layout mapping
+- ``vmec_jax/solve_bsub_dump_helpers.py``: optional covariant-field debug
+  dumps for scaled full-mesh and half-mesh ``B_u/B_v`` diagnostics
 - ``vmec_jax/solve_lambda_dump_helpers.py``: optional lambda residual,
   lambda-preconditioner, and radial-preconditioner debug dump helpers
 - ``vmec_jax/solve_scan_resume_helpers.py``: VMEC2000-style scan resume-state
