@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
+
+__all__ = [
+    "compact_segment_summaries",
+    "direct_coil_accepted_trace_controller_slot_summary",
+    "json_safe_fingerprint_value",
+    "unique_shape_list",
+]
 
 
 def unique_shape_list(shapes: list[tuple[int, ...]]) -> list[list[int]]:
@@ -47,7 +55,52 @@ def json_safe_fingerprint_value(value: Any) -> Any:
     return value
 
 
+def direct_coil_accepted_trace_controller_slot_summary(metadata: Mapping[str, Any]) -> dict[str, int | bool]:
+    """Return compact accepted/rejected/done slot counts from branch metadata.
+
+    Promotion reports should not force callers to inspect nested JAX masks to
+    answer basic questions like whether a fixed rejected-controller slot was
+    replayed.  This helper accepts both raw and JSON-safe branch metadata and
+    returns plain Python scalars suitable for CI artifacts and optimization
+    reports.
+    """
+
+    masks = metadata.get("masks", {}) if isinstance(metadata, Mapping) else {}
+
+    def _mask(name: str, fallback: str | None = None) -> np.ndarray:
+        value = None
+        if isinstance(masks, Mapping):
+            value = masks.get(name)
+        if value is None and fallback is not None and isinstance(metadata, Mapping):
+            value = metadata.get(fallback)
+        if value is None:
+            return np.asarray([], dtype=bool)
+        return np.asarray(value, dtype=bool).reshape(-1)
+
+    accepted = _mask("accepted", "accepted_mask")
+    rejected = _mask("rejected", "rejected_mask")
+    done = _mask("done", "done_mask")
+    active = _mask("active")
+    active_freeb = _mask("has_active_freeb_replay", "has_active_freeb_replay")
+    accepted_freeb = _mask("active_free_boundary", "active_free_boundary_mask")
+    if accepted_freeb.size == 0 and accepted.size and active_freeb.size == accepted.size:
+        accepted_freeb = np.logical_and(accepted, active_freeb)
+
+    n_steps = int(metadata.get("n_steps", max(accepted.size, rejected.size, done.size, active.size)))
+    n_freeb = int(metadata.get("n_free_boundary_replay_steps", np.count_nonzero(accepted_freeb)))
+    rejected_slots = int(np.count_nonzero(rejected))
+    return {
+        "n_steps": n_steps,
+        "active_slots": int(np.count_nonzero(active)) if active.size else n_steps,
+        "accepted_slots": int(np.count_nonzero(accepted)),
+        "rejected_slots": rejected_slots,
+        "done_markers": int(np.count_nonzero(done)),
+        "active_free_boundary_slots": int(np.count_nonzero(active_freeb)),
+        "accepted_free_boundary_slots": int(n_freeb),
+        "fixed_rejected_controller_slot_present": bool(rejected_slots > 0),
+    }
+
+
 _unique_shape_list = unique_shape_list
 _compact_segment_summaries = compact_segment_summaries
 _json_safe_fingerprint_value = json_safe_fingerprint_value
-

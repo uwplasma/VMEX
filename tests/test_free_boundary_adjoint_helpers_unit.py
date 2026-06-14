@@ -71,6 +71,10 @@ def test_free_boundary_adjoint_trace_stackability_error_paths() -> None:
     assert fba._unique_shape_list is trace_metadata.unique_shape_list
     assert fba._compact_segment_summaries is trace_metadata.compact_segment_summaries
     assert fba._json_safe_fingerprint_value is trace_metadata.json_safe_fingerprint_value
+    assert (
+        fba.direct_coil_accepted_trace_controller_slot_summary
+        is trace_metadata.direct_coil_accepted_trace_controller_slot_summary
+    )
     assert trace_metadata.unique_shape_list([(2, 3), (2, 3), (1,)]) == [[2, 3], [1]]
     assert trace_metadata.compact_segment_summaries(
         [{"count": 1, "signature_repr": "large"}, {"count": 2, "tag": "kept"}]
@@ -84,6 +88,28 @@ def test_free_boundary_adjoint_trace_stackability_error_paths() -> None:
         }
     )
     assert json_safe == {"array": [1.0, None], "scalar": 2.0, "bad": None, "3": [4]}
+    slot_summary = trace_metadata.direct_coil_accepted_trace_controller_slot_summary(
+        {
+            "n_steps": 3,
+            "masks": {
+                "accepted": [True, False, False],
+                "rejected": [False, True, False],
+                "done": [False, False, True],
+                "active": [True, True, False],
+                "has_active_freeb_replay": [True, True, False],
+            },
+        }
+    )
+    assert slot_summary == {
+        "n_steps": 3,
+        "active_slots": 2,
+        "accepted_slots": 1,
+        "rejected_slots": 1,
+        "done_markers": 1,
+        "active_free_boundary_slots": 2,
+        "accepted_free_boundary_slots": 1,
+        "fixed_rejected_controller_slot_present": True,
+    }
     assert fba._accepted_trace_reset_flags([]) == ()
     assert fba._accepted_trace_reset_flags([{}, {}]) == (False, False)
 

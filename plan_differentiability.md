@@ -1036,12 +1036,12 @@ Results obtained:
     previous combined gate failure at 94.89% without lowering the 95% threshold
     or adding expensive solves.
 26. Free-boundary trace-metadata extraction moved dependency-light
-    accepted-trace shape, segment-summary, and JSON-safe fingerprint helpers
-    into `free_boundary_adjoint_trace_metadata.py` while keeping the historical
-    private aliases in `free_boundary_adjoint.py`.  This is intentionally a
-    small branch-local diagnostics seam: it reduces the large adjoint module
-    without touching NESTOR kernels, replay objectives, or adaptive host branch
-    claims.
+    accepted-trace shape, segment-summary, controller-slot summary, and
+    JSON-safe fingerprint helpers into `free_boundary_adjoint_trace_metadata.py`
+    while keeping the historical private/public aliases in
+    `free_boundary_adjoint.py`.  This is intentionally a small branch-local
+    diagnostics seam: it reduces the large adjoint module without touching
+    NESTOR kernels, replay objectives, or adaptive host branch claims.
 
 Best next steps:
 
