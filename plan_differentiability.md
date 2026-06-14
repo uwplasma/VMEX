@@ -877,6 +877,13 @@ Steps taken:
     solve-module aliases that tests and downstream private hooks monkeypatch
     (`eval_geom`, Fourier derivatives, `bsup_from_sqrtg_lambda`, `jit`,
     `has_jax`, constraint/tolerance helpers).
+35. Extracted the shared fixed-boundary GD/L-BFGS magnetic-energy context into
+    `vmec_jax/solve_fixed_boundary_energy_helpers.py`.  The optimizer loops
+    still live in `solve.py`, but duplicated flux/pressure/grid-weight/edge
+    coefficient preparation and `wb/wp/W` evaluators now share one injected
+    helper that preserves historical `solve.py` monkeypatch seams
+    (`eval_geom`, `bsup_from_geom`, `b2_from_bsup`, `angle_steps`, and
+    pressure-shape validation).
 
 Results obtained:
 
@@ -929,6 +936,11 @@ Results obtained:
     for `solve.py` and `solve_lambda_optimizer.py`; 4 targeted lambda tests
     passed; the broader lambda/wave coverage subset passed with 134 tests and
     1 expected skip.  `solve.py` decreased again from 11847 to 11706 lines.
+17. Fixed-boundary energy-context extraction focused checks passed: compile and
+    Ruff clean for `solve.py` and the new energy helper; 24 focused GD/L-BFGS
+    tests passed; the broader solver optimizer subset passed with 157 tests.
+    `solve.py` decreased from 11706 to 11652 lines while eliminating duplicated
+    objective/evaluator setup across GD and L-BFGS.
 
 Best next steps:
 
@@ -939,10 +951,9 @@ Best next steps:
    file formatting are the next low-risk candidates.  The next larger
    candidate is a scan-runner/cache adapter split, but only after focused tests
    are identified for existing monkeypatch seams.
-   The next fixed-boundary optimizer candidate is the shared GD/L-BFGS
-   magnetic-energy context/evaluator setup, with `solve.py` retaining wrappers
-   and injecting `eval_geom`, `bsup_from_geom`, `b2_from_bsup`,
-   `angle_steps`, and pressure-validation hooks.
+   The next fixed-boundary optimizer candidate is moving the GD/L-BFGS loop
+   bodies themselves behind wrapper functions after adding compatibility tests
+   for private gradient/preconditioner monkeypatch hooks.
 3. Continue broader refactors in parallel with `driver.py`, `optimization.py`,
    and `wout.py` by extracting pure policy/formatting/data-container seams
    before moving any physics kernels.
@@ -957,7 +968,7 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 39%.
+- Differentiability/refactor implementation: 41%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 35% of the large-file extraction work.
+- Solver monolith reduction: 36% of the large-file extraction work.
 - Driver workflow decomposition: 34%.

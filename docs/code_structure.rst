@@ -41,6 +41,9 @@ Top-level package layout (selected):
 - ``vmec_jax/solve_lambda_optimizer.py``: lambda-only fixed-geometry magnetic
   energy optimizer used by the public ``solve.solve_lambda_gd`` wrapper while
   preserving historical solve-module monkeypatch hooks
+- ``vmec_jax/solve_fixed_boundary_energy_helpers.py``: shared fixed-boundary
+  magnetic-energy context/evaluator setup for GD and L-BFGS optimizers, with
+  solve-module dependency injection for historical monkeypatch compatibility
 - ``vmec_jax/solve_hlo_dump_helpers.py``: optional JAX HLO lowering dump
   helpers for solver-kernel diagnostics
 - ``vmec_jax/solve_axis_reset_helpers.py``: initial magnetic-axis reset

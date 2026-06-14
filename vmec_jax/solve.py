@@ -19,7 +19,7 @@ from contextlib import nullcontext
 import time
 import os
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 import numpy as np
 
@@ -83,6 +83,7 @@ from .solve_jit_cache_helpers import (
 from . import solve_hlo_dump_helpers as _hlo_dump_helpers
 from . import solve_first_step_diagnostics as _first_step_diagnostics_helpers
 from . import solve_lambda_optimizer as _lambda_optimizer_helpers
+from . import solve_fixed_boundary_energy_helpers as _fixed_boundary_energy_helpers
 from .solve_diagnostics_io import (
     _dump_freeb_axis_trace_record,
     _dump_freeb_control_trace_record,
@@ -642,68 +643,41 @@ def solve_fixed_boundary_gd(
     bt_factor = opts.bt_factor
     gamma = opts.gamma
 
-    idx00 = _mode00_index(static.modes)
-
-    phipf = jnp.asarray(phipf)
-    chipf = jnp.asarray(chipf)
-    lamscale = jnp.asarray(lamscale)
-    signgs = int(signgs)
-    nfp = int(static.cfg.nfp)
-
-    s = jnp.asarray(static.s)
-    theta = jnp.asarray(static.grid.theta)
-    zeta = jnp.asarray(static.grid.zeta)
-    if s.shape[0] < 2:
-        ds = jnp.asarray(1.0, dtype=s.dtype)
-    else:
-        ds = s[1] - s[0]
-    dtheta_f, dzeta_f = angle_steps(ntheta=int(theta.shape[0]), nzeta=int(zeta.shape[0]))
-    dtheta = jnp.asarray(dtheta_f, dtype=s.dtype)
-    dzeta = jnp.asarray(dzeta_f, dtype=s.dtype)
-    weight = ds * dtheta * dzeta
-
-    if pressure is None:
-        pressure = jnp.zeros_like(s)
-    pressure = jnp.asarray(pressure)
-    validate_pressure_shape(tuple(pressure.shape), tuple(s.shape))
-
-    edge_Rcos = jnp.asarray(edge_Rcos) if edge_Rcos is not None else jnp.asarray(state0.Rcos)[-1, :]
-    edge_Rsin = jnp.asarray(edge_Rsin) if edge_Rsin is not None else jnp.asarray(state0.Rsin)[-1, :]
-    edge_Zcos = jnp.asarray(edge_Zcos) if edge_Zcos is not None else jnp.asarray(state0.Zcos)[-1, :]
-    edge_Zsin = jnp.asarray(edge_Zsin) if edge_Zsin is not None else jnp.asarray(state0.Zsin)[-1, :]
-
-    def _wb_wp_from_geom(g) -> Tuple[Any, Any]:
-        bsupu, bsupv = bsup_from_geom(g, phipf=phipf, chipf=chipf, nfp=nfp, signgs=signgs, lamscale=lamscale)
-        B2 = b2_from_bsup(g, bsupu, bsupv)
-        jac = signgs * g.sqrtg
-        wb = (jnp.sum(0.5 * B2 * jac) * weight) / (TWOPI * TWOPI)
-        wp = (jnp.sum(pressure[:, None, None] * jac) * weight) / (TWOPI * TWOPI)
-        return wb, wp
-
-    def _w_total_from_wb_wp(wb, wp) -> Any:
-        return wb + wp / (gamma - 1.0)
-
-    def _objective(state: VMECState) -> Any:
-        # Softly enforce a consistent Jacobian sign away from the axis (s=0).
-        g = eval_geom(state, static)
-        wb, wp = _wb_wp_from_geom(g)
-        w = _w_total_from_wb_wp(wb, wp)
-        jac = signgs * g.sqrtg
-        jac = jac.at[0, :, :].set(0.0)
-        neg = jnp.minimum(jac, 0.0)
-        penalty = float(jacobian_penalty) * jnp.mean(neg * neg)
-        return w + penalty
-
-    def _w_terms(state: VMECState) -> Tuple[Any, Any, Any]:
-        g = eval_geom(state, static)
-        wb, wp = _wb_wp_from_geom(g)
-        return wb, wp, _w_total_from_wb_wp(wb, wp)
-
-    obj_and_grad = jax.value_and_grad(_objective)
-    w_terms = _w_terms
-    if jit_grad:
-        obj_and_grad = jit(obj_and_grad)
-        w_terms = jit(w_terms)
+    energy = _fixed_boundary_energy_helpers.prepare_fixed_boundary_energy_context(
+        state0,
+        static,
+        phipf=phipf,
+        chipf=chipf,
+        signgs=signgs,
+        lamscale=lamscale,
+        edge_Rcos=edge_Rcos,
+        edge_Rsin=edge_Rsin,
+        edge_Zcos=edge_Zcos,
+        edge_Zsin=edge_Zsin,
+        pressure=pressure,
+        gamma=gamma,
+        jacobian_penalty=jacobian_penalty,
+        jit_grad=jit_grad,
+        mode00_index_func=_mode00_index,
+        eval_geom_func=eval_geom,
+        bsup_from_geom_func=bsup_from_geom,
+        b2_from_bsup_func=b2_from_bsup,
+        angle_steps_func=angle_steps,
+        validate_pressure_shape_func=validate_pressure_shape,
+        jax_module=jax,
+        jnp_module=jnp,
+        jit_func=jit,
+    )
+    idx00 = energy.idx00
+    signgs = energy.signgs
+    gamma = energy.gamma
+    edge_Rcos = energy.edge_Rcos
+    edge_Rsin = energy.edge_Rsin
+    edge_Zcos = energy.edge_Zcos
+    edge_Zsin = energy.edge_Zsin
+    obj_and_grad = energy.objective_and_grad
+    _objective = energy.objective
+    w_terms = energy.w_terms
 
     # Start from a constraint-satisfying state.
     state = _enforce_fixed_boundary_and_axis(
@@ -938,68 +912,40 @@ def solve_fixed_boundary_lbfgs(
     bt_factor = opts.bt_factor
     gamma = opts.gamma
 
-    idx00 = _mode00_index(static.modes)
-
-    phipf = jnp.asarray(phipf)
-    chipf = jnp.asarray(chipf)
-    lamscale = jnp.asarray(lamscale)
-    signgs = int(signgs)
-    nfp = int(static.cfg.nfp)
-
-    s = jnp.asarray(static.s)
-    theta = jnp.asarray(static.grid.theta)
-    zeta = jnp.asarray(static.grid.zeta)
-    if s.shape[0] < 2:
-        ds = jnp.asarray(1.0, dtype=s.dtype)
-    else:
-        ds = s[1] - s[0]
-    dtheta_f, dzeta_f = angle_steps(ntheta=int(theta.shape[0]), nzeta=int(zeta.shape[0]))
-    dtheta = jnp.asarray(dtheta_f, dtype=s.dtype)
-    dzeta = jnp.asarray(dzeta_f, dtype=s.dtype)
-    weight = ds * dtheta * dzeta
-
-    if pressure is None:
-        pressure = jnp.zeros_like(s)
-    pressure = jnp.asarray(pressure)
-    validate_pressure_shape(tuple(pressure.shape), tuple(s.shape))
-
-    edge_Rcos = jnp.asarray(edge_Rcos) if edge_Rcos is not None else jnp.asarray(state0.Rcos)[-1, :]
-    edge_Rsin = jnp.asarray(edge_Rsin) if edge_Rsin is not None else jnp.asarray(state0.Rsin)[-1, :]
-    edge_Zcos = jnp.asarray(edge_Zcos) if edge_Zcos is not None else jnp.asarray(state0.Zcos)[-1, :]
-    edge_Zsin = jnp.asarray(edge_Zsin) if edge_Zsin is not None else jnp.asarray(state0.Zsin)[-1, :]
-
-    def _wb_wp_from_geom(g) -> Tuple[Any, Any]:
-        bsupu, bsupv = bsup_from_geom(g, phipf=phipf, chipf=chipf, nfp=nfp, signgs=signgs, lamscale=lamscale)
-        B2 = b2_from_bsup(g, bsupu, bsupv)
-        jac = signgs * g.sqrtg
-        wb = (jnp.sum(0.5 * B2 * jac) * weight) / (TWOPI * TWOPI)
-        wp = (jnp.sum(pressure[:, None, None] * jac) * weight) / (TWOPI * TWOPI)
-        return wb, wp
-
-    def _w_total_from_wb_wp(wb, wp) -> Any:
-        return wb + wp / (gamma - 1.0)
-
-    def _w_only(state: VMECState) -> Any:
-        g = eval_geom(state, static)
-        wb, wp = _wb_wp_from_geom(g)
-        return _w_total_from_wb_wp(wb, wp)
-
-    def _w_terms_and_jacmin(state: VMECState) -> Tuple[Any, Any, Any, Any]:
-        g = eval_geom(state, static)
-        wb, wp = _wb_wp_from_geom(g)
-        w = _w_total_from_wb_wp(wb, wp)
-        jac = signgs * g.sqrtg
-        if jac.shape[0] <= 1:
-            jac_min = jnp.min(jac)
-        else:
-            jac_min = jnp.min(jac[1:, :, :])
-        return wb, wp, w, jac_min
-
-    w_and_grad = jax.value_and_grad(_w_only)
-    w_terms = _w_terms_and_jacmin
-    if jit_grad:
-        w_and_grad = jit(w_and_grad)
-        w_terms = jit(w_terms)
+    energy = _fixed_boundary_energy_helpers.prepare_fixed_boundary_energy_context(
+        state0,
+        static,
+        phipf=phipf,
+        chipf=chipf,
+        signgs=signgs,
+        lamscale=lamscale,
+        edge_Rcos=edge_Rcos,
+        edge_Rsin=edge_Rsin,
+        edge_Zcos=edge_Zcos,
+        edge_Zsin=edge_Zsin,
+        pressure=pressure,
+        gamma=gamma,
+        jacobian_penalty=0.0,
+        jit_grad=jit_grad,
+        mode00_index_func=_mode00_index,
+        eval_geom_func=eval_geom,
+        bsup_from_geom_func=bsup_from_geom,
+        b2_from_bsup_func=b2_from_bsup,
+        angle_steps_func=angle_steps,
+        validate_pressure_shape_func=validate_pressure_shape,
+        jax_module=jax,
+        jnp_module=jnp,
+        jit_func=jit,
+    )
+    idx00 = energy.idx00
+    signgs = energy.signgs
+    gamma = energy.gamma
+    edge_Rcos = energy.edge_Rcos
+    edge_Rsin = energy.edge_Rsin
+    edge_Zcos = energy.edge_Zcos
+    edge_Zsin = energy.edge_Zsin
+    w_and_grad = energy.objective_and_grad
+    w_terms = energy.w_terms_and_jacmin
 
     # Start from a constraint-satisfying state.
     state = _enforce_fixed_boundary_and_axis(
