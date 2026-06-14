@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import vmec_jax.free_boundary_adjoint as fba
+import vmec_jax.free_boundary_adjoint_trace_controls as trace_controls
 from vmec_jax._compat import jnp
 
 
@@ -61,6 +62,11 @@ def test_free_boundary_adjoint_timing_and_dense_helper_fallbacks(monkeypatch: py
 def test_free_boundary_adjoint_trace_stackability_error_paths() -> None:
     """Cover trace stackability guards without running a free-boundary solve."""
 
+    assert fba.direct_coil_accepted_trace_status_masks is trace_controls.direct_coil_accepted_trace_status_masks
+    assert (
+        fba.direct_coil_accepted_trace_controller_controls_jax
+        is trace_controls.direct_coil_accepted_trace_controller_controls_jax
+    )
     assert fba._accepted_trace_reset_flags([]) == ()
     assert fba._accepted_trace_reset_flags([{}, {}]) == (False, False)
 
