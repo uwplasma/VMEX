@@ -81,6 +81,7 @@ from .solve_jit_cache_helpers import (
     record_scan_runner_cache_miss_categories as _record_scan_runner_cache_miss_categories,
     strict_update_static_cache_key as _strict_update_static_cache_key,
 )
+from . import solve_hlo_dump_helpers as _hlo_dump_helpers
 from .solve_diagnostics_io import (
     _dump_freeb_axis_trace_record,
     _dump_freeb_control_trace_record,
@@ -1434,7 +1435,7 @@ def _maybe_dump_gcx2(*, gcr2, gcz2, gcl2, iter_idx: int, include_edge: bool, ns:
         )
 
 
-_HLO_DUMPED_KEYS: set[tuple[str, int, int, int, int, int, bool]] = set()
+_HLO_DUMPED_KEYS = _hlo_dump_helpers.HLO_DUMPED_KEYS
 
 
 def _maybe_dump_hlo_kernel(
@@ -1447,79 +1448,17 @@ def _maybe_dump_hlo_kernel(
     wout_like: Any,
     force: bool = False,
 ) -> None:
-    env_dir = os.getenv("VMEC_JAX_DUMP_HLO_DIR", "").strip()
-    if not env_dir:
-        return
-    env_all = os.getenv("VMEC_JAX_DUMP_HLO", "").strip().lower()
-    enabled_all = env_all not in ("", "0", "false", "no")
-    env_label = os.getenv(f"VMEC_JAX_DUMP_HLO_{label.upper()}", "").strip().lower()
-    enabled_label = env_label not in ("", "0", "false", "no")
-    if not force and not (enabled_all or enabled_label):
-        return
-    if not has_jax():
-        return
-    try:
-        ns = int(getattr(static.cfg, "ns", 0))
-        key = (
-            str(label),
-            ns,
-            int(getattr(wout_like, "mpol", 0)),
-            int(getattr(wout_like, "ntor", 0)),
-            int(getattr(wout_like, "nfp", 0)),
-            int(getattr(static.cfg, "ntheta", 0)),
-            bool(getattr(wout_like, "lasym", False)),
-        )
-    except Exception:
-        key = (str(label), 0, 0, 0, 0, 0, False)
-    if key in _HLO_DUMPED_KEYS:
-        return
-
-    try:
-        import jax
-    except Exception:
-        return
-
-    outdir = Path(env_dir).expanduser().resolve()
-    outdir.mkdir(parents=True, exist_ok=True)
-    fname = f"hlo_{label}_ns{key[1]}_mpol{key[2]}_ntor{key[3]}.txt"
-    outpath = outdir / fname
-
-    hlo_text = None
-    err_text = None
-    try:
-        jitted = jax.jit(fn)
-        hlo = jitted.lower(*args, **kwargs).compiler_ir(dialect="hlo")
-        if hasattr(hlo, "as_hlo_text"):
-            hlo_text = hlo.as_hlo_text()
-        elif hasattr(hlo, "as_text"):
-            hlo_text = hlo.as_text()
-        else:
-            hlo_text = str(hlo)
-    except Exception as exc:
-        err_text = f"jit.lower failed: {exc!r}"
-        try:
-            hlo = jax.xla_computation(fn)(*args, **kwargs)
-            if hasattr(hlo, "as_hlo_text"):
-                hlo_text = hlo.as_hlo_text()
-            else:
-                hlo_text = str(hlo)
-        except Exception as exc2:
-            err_text = f"{err_text}\n xla_computation failed: {exc2!r}"
-            hlo_text = None
-
-    if hlo_text is None:
-        if os.getenv("VMEC_JAX_DUMP_HLO_VERBOSE", "").strip().lower() not in ("", "0", "false", "no"):
-            try:
-                errpath = outdir / f"hlo_{label}_error_ns{key[1]}_mpol{key[2]}_ntor{key[3]}.txt"
-                errpath.write_text(err_text or "unknown error")
-            except Exception:
-                pass
-        return
-    try:
-        outpath.write_text(hlo_text)
-        _HLO_DUMPED_KEYS.add(key)
-    except Exception:
-        return
+    _hlo_dump_helpers.maybe_dump_hlo_kernel(
+        label=label,
+        fn=fn,
+        args=args,
+        kwargs=kwargs,
+        static=static,
+        wout_like=wout_like,
+        force=force,
+        has_jax_func=has_jax,
+        path_cls=Path,
+    )
 
 
 def _maybe_dump_bsube(*, bc, static, iter_idx: int) -> None:
