@@ -866,6 +866,11 @@ Steps taken:
     `vmec_jax/solve_preconditioner_payload_helpers.py`.  `solve.py` retains
     private wrappers and shared cache aliases so existing tests, monkeypatches,
     and downstream private imports keep the same behavior.
+33. Extracted the first-step VMEC residual diagnostic implementation into
+    `vmec_jax/solve_first_step_diagnostics.py`.  The public
+    `solve.first_step_diagnostics` wrapper now delegates to the helper while
+    injecting the historical private solve-module helper aliases, preserving
+    existing synthetic tests and monkeypatch seams.
 
 Results obtained:
 
@@ -910,6 +915,10 @@ Results obtained:
 14. `solve.py` decreased further from 12870 to 12189 lines.  The new
     `solve_preconditioner_payload_helpers.py` is 841 lines and provides a
     focused seam for future accelerator preconditioner/timing work.
+15. First-step diagnostic extraction focused checks passed: Ruff and compile
+    clean for the moved implementation, with 26 synthetic first-step and branch
+    coverage tests passing.  `solve.py` decreased again from 12189 to 11847
+    lines; the new diagnostic helper is 429 lines.
 
 Best next steps:
 
@@ -934,7 +943,7 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 36%.
+- Differentiability/refactor implementation: 39%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 29% of the large-file extraction work.
+- Solver monolith reduction: 33% of the large-file extraction work.
 - Driver workflow decomposition: 34%.

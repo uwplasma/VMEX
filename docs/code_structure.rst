@@ -35,6 +35,9 @@ Top-level package layout (selected):
 - ``vmec_jax/solve_preconditioner_payload_helpers.py``: cached strict-update,
   preconditioner-output, fused preconditioner-apply, accepted-control, and
   ``ptau`` JIT payload helpers used by the residual-iteration hot path
+- ``vmec_jax/solve_first_step_diagnostics.py``: first-step VMEC residual,
+  preconditioner, force-channel, and update diagnostic assembly used by the
+  public ``solve.first_step_diagnostics`` wrapper
 - ``vmec_jax/solve_hlo_dump_helpers.py``: optional JAX HLO lowering dump
   helpers for solver-kernel diagnostics
 - ``vmec_jax/solve_axis_reset_helpers.py``: initial magnetic-axis reset
