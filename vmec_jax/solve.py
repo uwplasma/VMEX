@@ -26,8 +26,8 @@ import numpy as np
 
 from ._compat import has_jax, jax, jnp, jit
 from . import _solve_runtime
-from . import solve_residual_iter_policy as _residual_iter_policy
-from .solve_residual_iter_config import (
+from .solvers.fixed_boundary.residual import policy as _residual_iter_policy
+from .solvers.fixed_boundary.residual.config import (
     HEAVY_DUMP_ENVS as _HEAVY_DUMP_ENVS,
     LIGHT_DUMP_ENVS as _LIGHT_DUMP_ENVS,
     bad_jacobian_tau_tolerance as _bad_jacobian_tau_tolerance,
@@ -39,7 +39,7 @@ from .solve_residual_iter_config import (
     resolve_nstep_screen as _resolve_nstep_screen,
     should_probe_bad_jacobian_state as _should_probe_bad_jacobian_state,
 )
-from .solve_residual_iter_policy import (
+from .solvers.fixed_boundary.residual.policy import (
     append_residual_iter_history_record as _append_residual_iter_history_record,
     append_residual_iter_terminal_history as _append_residual_iter_terminal_history,
     host_restart_decision as _host_restart_decision,
@@ -53,7 +53,7 @@ from .solve_residual_iter_policy import (
     vmec2000_scan_options_from_env as _vmec2000_scan_options_from_env,
     vmec2000_time_control_decision as _vmec2000_time_control_decision,
 )
-from .solve_residual_iter_runtime_helpers import (
+from .solvers.fixed_boundary.residual.runtime import (
     _attach_free_boundary_external_field_diag as _runtime_attach_free_boundary_external_field_diag,
     _converged_residuals_scan_fast as _runtime_converged_residuals_scan_fast,
     _device_get_floats,
@@ -70,20 +70,20 @@ from .solve_residual_iter_runtime_helpers import (
     _setup_timer_start as _runtime_setup_timer_start,
     _vmec_freeb_plascur_from_bcovar as _runtime_vmec_freeb_plascur_from_bcovar,
 )
-from .solve_residual_iter_setup_helpers import (
+from .solvers.fixed_boundary.residual.setup import (
     grid_matches_vmec_static_grid as _grid_matches_vmec_static_grid,
     resolve_free_boundary_setup_policy as _resolve_free_boundary_setup_policy,
 )
-from .solve_residual_iter_finalize_helpers import (
+from .solvers.fixed_boundary.residual.finalize import (
     attach_residual_iter_timing_diagnostics as _attach_residual_iter_timing_diagnostics,
     build_residual_iter_resume_state_payload as _build_residual_iter_resume_state_payload,
     finalize_residual_iter_result as _finalize_residual_iter_result,
 )
-from .solve_residual_iter_force_cache_helpers import (
+from .solvers.fixed_boundary.residual.force_cache import (
     compute_forces_jit_cache_key as _compute_forces_jit_cache_key,
     select_compute_forces_callable as _select_compute_forces_callable,
 )
-from .solve_residual_iter_force_payload_helpers import (
+from .solvers.fixed_boundary.residual.force_payload import (
     force_z_channel_square_sums as _force_z_channel_square_sums,  # noqa: F401 - compatibility alias for tests/internal users.
     maybe_debug_force_z_channel_square_sums as _maybe_debug_force_z_channel_square_sums,  # noqa: F401 - compatibility alias for tests/internal users.
     residual_force_payload_after_m1_scalxc_with_scan_debug as _residual_force_payload_after_m1_scalxc_with_scan_debug,  # noqa: F401 - compatibility alias for tests/internal users.
@@ -91,7 +91,7 @@ from .solve_residual_iter_force_payload_helpers import (
     residual_force_payload_from_kernels as _residual_force_payload_from_kernels,
     resolve_residual_force_mask_pack as _resolve_residual_force_mask_pack,  # noqa: F401 - compatibility alias for tests/internal users.
 )
-from .solve_residual_iter_update_helpers import (
+from .solvers.fixed_boundary.residual.update import (
     ResidualVelocityBlocks as _ResidualVelocityBlocks,
     host_momentum_update_np as _host_momentum_update_np,
     scale_velocity_blocks as _scale_velocity_blocks,
@@ -163,12 +163,12 @@ from .solve_profile_helpers import (
     _s_half_from_full_mesh_s,  # noqa: F401 - re-exported for existing internal tests/importers.
     _vmec_force_flux_profiles,
 )
-from .solve_residual_iter_geometry_helpers import (
+from .solvers.fixed_boundary.residual.geometry import (
     _m1_internal_to_physical_pair as _geometry_m1_internal_to_physical_pair,
     _mn_sin_to_signed_physical_batch as _geometry_mn_sin_to_signed_physical_batch,
     _rz_norm_np as _geometry_rz_norm_np,
 )
-from .solve_residual_iter_mode_transform_helpers import (
+from .solvers.fixed_boundary.residual.mode_transform import (
     build_mode_transform_host_projection as _build_mode_transform_host_projection,
     mn_cos_to_signed_host_projected as _mn_cos_to_signed_host_projected,
     mn_sin_to_signed_host_projected as _mn_sin_to_signed_host_projected,

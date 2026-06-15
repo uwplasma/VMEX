@@ -463,8 +463,8 @@ Current source-health snapshot on PR #20 after the latest extractions:
 .. code-block:: text
 
    vmec_jax Python files under maxdepth=2: 140
-   root-level vmec_jax/*.py files:      128
-   root helper-prefix files:             62
+   root-level vmec_jax/*.py files:      118
+   root helper-prefix files:             52
    vmec_jax/solve.py:                 10119 lines
    vmec_jax/wout.py:                   5894 lines
    vmec_jax/free_boundary_adjoint.py:   5687 lines
@@ -1825,6 +1825,63 @@ Completion:
 - Differentiability/refactor implementation: 94%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 71% of the large-file extraction work.
+- Free-boundary adjoint monolith reduction: 30%.
+- Driver workflow decomposition: 35%.
+- WOUT diagnostic/profile decomposition: 22%.
+
+## 2026-06-15 Fixed-Boundary Residual Package Move
+
+Commit: follow-up on `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved the residual-iteration helper family from root-level
+   `vmec_jax/solve_residual_iter_*.py` files into
+   `vmec_jax.solvers.fixed_boundary.residual`.
+2. Updated `vmec_jax.solve`, `solve_free_boundary_control_helpers`, and the
+   scan-planning helper to import the residual helpers from the domain package.
+3. Updated internal tests to import the residual helper seams from their new
+   package paths.
+4. Fixed the moved force-payload helper's lazy VMEC force-kernel import so it
+   still resolves from the root implementation package.
+5. Updated `docs/code_structure.rst` to describe the new residual and scan
+   package locations.
+6. Ratcheted the root-helper source-health CI gate from 62 to 52 files.
+
+Results obtained:
+
+- Root-level `vmec_jax/*.py` files dropped from 128 to 118.
+- Root helper-prefix files dropped from 62 to 52.
+- The fixed-boundary residual helper namespace is now package-oriented and
+  aligned with the fixed-boundary scan helper namespace.
+
+Tests and commands run:
+
+- `python -m pytest -q tests/test_solve_residual_iter_config.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_solve_residual_iter_force_cache_helpers.py tests/test_solve_residual_iter_force_payload_helpers.py tests/test_solve_residual_iter_geometry_helpers.py tests/test_solve_residual_iter_mode_transform_helpers.py tests/test_solve_residual_iter_policy.py tests/test_solve_residual_iter_policy_gap_coverage.py tests/test_solve_residual_iter_runtime_helpers.py tests/test_solve_residual_iter_setup_helpers.py tests/test_solve_residual_iter_update_helpers.py tests/test_solve_scan_planning_helpers.py tests/test_solve_performance_instrumentation.py -q`
+- `python -m ruff check vmec_jax/solve.py vmec_jax/solve_free_boundary_control_helpers.py vmec_jax/solvers/fixed_boundary/residual vmec_jax/solvers/fixed_boundary/scan tests/test_solve_residual_iter_*.py tests/test_solve_scan_planning_helpers.py tests/test_solve_performance_instrumentation.py`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 12 --max-root-helper-prefix-files 52`
+
+Best next steps:
+
+1. Run the broader `driver-solve-discrete` shard before committing.
+2. If green, commit and push this tranche.
+3. Continue with the next cohesive fixed-boundary package move, likely
+   preconditioner payload helpers or fixed-boundary optimizer helpers, while
+   keeping behavior unchanged.
+4. Start a separate free-boundary package move only after the fixed-boundary
+   solver package settles under CI.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 14%.
+- Differentiability/refactor implementation: 95%.
+- Solver monolith reduction: 75%.
 - Free-boundary adjoint monolith reduction: 30%.
 - Driver workflow decomposition: 35%.
 - WOUT diagnostic/profile decomposition: 22%.
