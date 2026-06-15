@@ -19,11 +19,12 @@ future solver:
   kernels for straight-axis cylinder/flared tubes;
 - scalar radial profiles, contravariant/covariant/cartesian magnetic-field
   kernels, and magnetic/pressure energy integrals;
+- differentiable axisymmetric energy wrappers, projected residuals, and
+  manufactured-solution source helpers;
 - focused tests for node ordering, polynomial exactness, interpolation, filtering,
   theta orthogonality, analytic axisymmetric geometry, field identities, and
-  analytic energy.
+  analytic energy, gradient checks, Hessian symmetry, and MMS stationarity.
 
-Later phases add variational force kernels, manufactured solutions,
-fixed-boundary solves, mirror native ``mout`` output, plotting, WHAM-inspired
-validation, nonaxisymmetric boundaries, mirror straight-field-line diagnostics,
-and optimization workflows.
+Later phases add fixed-boundary solves, mirror native ``mout`` output, plotting,
+WHAM-inspired validation, nonaxisymmetric boundaries, mirror straight-field-line
+diagnostics, and optimization workflows.
