@@ -21,12 +21,12 @@ from .energy import _iotaf_from_iotas, flux_profiles_from_indata, flux_profiles_
 from .init_guess import initial_guess_from_boundary
 from .multigrid import interp_vmec_state
 from .profiles import eval_profiles
-from . import driver_flux_helpers as _driver_flux_helpers
-from . import driver_io_helpers as _driver_io_helpers
-from . import driver_output_helpers as _driver_output_helpers
-from . import driver_policy_helpers as _driver_policy_helpers
-from . import driver_result_helpers as _driver_result_helpers
-from . import driver_solve_helpers as _driver_solve_helpers
+from .drivers import flux as _driver_flux_helpers
+from .drivers import io as _driver_io_helpers
+from .drivers import output as _driver_output_helpers
+from .drivers import policy as _driver_policy_helpers
+from .drivers import results as _driver_result_helpers
+from .drivers import solve as _driver_solve_helpers
 from .solve import (
     SolveVmecResidualResult,
     solve_fixed_boundary_gd,

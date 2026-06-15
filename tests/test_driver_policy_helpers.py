@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 import vmec_jax.driver as driver
-from vmec_jax.driver_policy_helpers import dynamic_scan_probe_settings
+from vmec_jax.drivers.policy import dynamic_scan_probe_settings
 
 
 class _Input:

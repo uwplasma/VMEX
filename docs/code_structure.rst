@@ -115,24 +115,9 @@ Top-level package layout (selected):
 - ``vmec_jax/solve.py``: fixed-boundary solvers + VMEC2000 iteration loop
 - ``vmec_jax/driver.py``: CLI-facing fixed/free-boundary drivers, output
   policies, staged solve dispatch, and wout writing
-- ``vmec_jax/driver_policy_helpers.py``: backend-aware driver policy,
-  residual-convergence, staged-budget, and resume-state helper functions kept
-  outside the CLI-facing workflow while preserving driver compatibility aliases
-- ``vmec_jax/driver_result_helpers.py``: staged/chunked solver-result merging,
-  timing aggregation, final-force payload propagation, and VMEC history
-  comparison helpers shared by driver tests and runtime finish policy
-- ``vmec_jax/driver_solve_helpers.py``: lightweight fixed-boundary solve entry
-  helpers used by optimization scripts, with ``driver.py`` injecting the
-  historical initial-guess and solver callables
-- ``vmec_jax/driver_flux_helpers.py``: post-solve current-driven
-  flux/profile reconciliation helpers, with ``driver.py`` retaining a small
-  wrapper for historical monkeypatch hooks
-- ``vmec_jax/driver_io_helpers.py``: bundled example path resolution,
-  lightweight input/wout loaders, and NumPy archive writing helpers, with
-  ``driver.py`` injecting historical monkeypatch hooks
-- ``vmec_jax/driver_output_helpers.py``: VMEC-style residual scalar
-  reconstruction and fixed-boundary ``wout`` construction helpers, with
-  ``driver.py`` retaining wrappers for downstream monkeypatch compatibility
+- ``vmec_jax/drivers/``: driver policy, result merging, fixed-boundary solve
+  entry, current-driven flux reconciliation, example I/O, and VMEC-style output
+  construction helpers used by the CLI-facing ``driver.py`` facade
 - ``vmec_jax/free_boundary.py``: mgrid loading, NESTOR-like vacuum coupling,
   and free-boundary runtime state helpers
 - ``vmec_jax/solvers/free_boundary/adjoint/``: accepted-trace replay plans,

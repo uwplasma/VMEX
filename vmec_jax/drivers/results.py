@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .solve import SolveVmecResidualResult
+from ..solve import SolveVmecResidualResult
 
 
 STAGE_CHUNK_DIAG_KEYS = (

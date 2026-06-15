@@ -20,9 +20,9 @@ def residual_scalars_from_state(
 ):
     """Compute VMEC-style invariant residual scalars from a solved state."""
 
-    from .vmec_forces import vmec_forces_rz_from_wout, vmec_residual_internal_from_kernels
-    from .vmec_residue import vmec_force_norms_from_bcovar_dynamic, vmec_fsq_from_tomnsps_dynamic
-    from .vmec_tomnsp import TomnspsRZL, vmec_trig_tables
+    from ..vmec_forces import vmec_forces_rz_from_wout, vmec_residual_internal_from_kernels
+    from ..vmec_residue import vmec_force_norms_from_bcovar_dynamic, vmec_fsq_from_tomnsps_dynamic
+    from ..vmec_tomnsp import TomnspsRZL, vmec_trig_tables
 
     class _WoutLike:
         __slots__ = ("nfp", "mpol", "ntor", "lasym", "signgs")
@@ -100,7 +100,7 @@ def wout_from_fixed_boundary_run(
 ):
     """Build a minimal VMEC-style ``WoutData`` from a fixed-boundary run."""
 
-    from .wout import wout_minimal_from_fixed_boundary
+    from ..wout import wout_minimal_from_fixed_boundary
 
     path = Path(path) if path is not None else Path("wout_vmec_jax.nc")
 
@@ -194,7 +194,7 @@ def write_wout_from_fixed_boundary_run(
 ):
     """Write a minimal VMEC-style ``wout_*.nc`` from a fixed-boundary run."""
 
-    from .wout import write_wout
+    from ..wout import write_wout
 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

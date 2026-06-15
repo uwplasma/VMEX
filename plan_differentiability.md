@@ -2429,3 +2429,64 @@ Completion:
 - Free-boundary adjoint monolith reduction: 58%.
 - Driver workflow decomposition: 35%.
 - WOUT diagnostic/profile decomposition: 72%.
+
+## 2026-06-15 Driver Helper Package Move
+
+Commit: high-level driver helper package tranche on
+`codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Created `vmec_jax.drivers` as the domain package for CLI-facing driver
+   support code.
+2. Moved driver policy, staged-result merging, fixed-boundary solve entry,
+   current-driven flux reconciliation, bundled example I/O, and VMEC-style
+   output construction helpers out of the root `vmec_jax` namespace.
+3. Kept `vmec_jax.driver` as the user-facing runtime facade and preserved its
+   historical private aliases by importing the moved helper modules.
+4. Updated the direct driver-policy helper test and code-structure docs to use
+   the new package path.
+5. Ratcheted the root-helper source-health CI gate from 14 to 8 files.
+
+Results obtained:
+
+- Root helper-prefix files dropped from 14 to 8.
+- Driver workflow support now has a coherent namespace under `vmec_jax.drivers`
+  without changing `run_fixed_boundary`, `run_free_boundary`, or CLI-facing
+  behavior.
+- Driver API and policy tests still pass after the move.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers tests/test_driver_policy_helpers.py tests/test_driver_api.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_api.py -q`
+- `python tools/diagnostics/source_health.py --max-root-helper-prefix-files 8`
+- `SPHINX_FAST=1 python -m sphinx -T -b html docs docs/_build/html_fast`
+
+Best next steps:
+
+1. Commit and push this driver helper package move.
+2. Continue with the remaining five `solve_*` helper-prefix files, but split
+   them by actual domain: result/options/profile helpers under
+   `vmec_jax.solvers.fixed_boundary`, and JIT/optimizer helpers under the
+   existing fixed-boundary optimization/runtime packages.
+3. After root helper-prefix files reach the minimum practical count, shift from
+   namespace cleanup to line-count reduction in `solve.py`, `driver.py`,
+   `wout.py`, and `free_boundary_adjoint.py`.
+4. Keep full behavior and parity changes out of namespace-only commits.
+
+User decisions needed:
+
+No immediate decision. PR #20 remains draft and all refactor work stays on this
+branch until the full plan is complete.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 78%.
+- Differentiability/refactor implementation: 98.2%.
+- Solver monolith reduction: 82%.
+- Free-boundary adjoint monolith reduction: 58%.
+- Driver workflow decomposition: 72%.
+- WOUT diagnostic/profile decomposition: 72%.
