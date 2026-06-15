@@ -7,6 +7,8 @@ from typing import Any
 
 from vmec_jax._compat import jnp, tree_util
 
+from .free_boundary_adjoint_trace_stack import direct_coil_accepted_trace_step_policy_segments
+
 
 def slice_replay_controls(controls: Mapping[str, Any], *, start: int, stop: int) -> dict[str, Any]:
     """Slice stacked replay controls without rebuilding them from traces."""
@@ -62,3 +64,63 @@ def stackability_probe(name: str, fn: Any, traces: tuple[Any, ...]) -> tuple[boo
     except Exception as exc:
         return False, f"{name}: {exc}"
     return True, None
+
+
+def accepted_step_policy_signature_for_complete_payload(payload: Mapping[str, Any]) -> tuple[Any, ...]:
+    """Return branch-sensitive step-policy segment signatures for a complete payload."""
+
+    traces = tuple(payload.get("traces", ()))
+    if not traces:
+        return ()
+    return tuple(
+        (
+            int(segment["start"]),
+            int(segment["stop"]),
+            int(segment["n_steps"]),
+            segment["signature"],
+        )
+        for segment in direct_coil_accepted_trace_step_policy_segments(traces)
+    )
+
+
+def accepted_step_policy_layout_for_complete_payload(payload: Mapping[str, Any]) -> tuple[tuple[int, int, int], ...]:
+    """Return accepted step-policy segment boundaries for complete-solve branch checks.
+
+    The strict segment helper still owns one-trace segmentation.  Complete-solve
+    AD-vs-FD compatibility only needs to know whether base/plus/minus reused
+    the same controller slots and segment boundaries; continuous payload values
+    may legitimately differ under a finite perturbation and are checked by the
+    physical scalar gate.
+    """
+
+    traces = tuple(payload.get("traces", ()))
+    if not traces:
+        return ()
+    return tuple(
+        (
+            int(segment["start"]),
+            int(segment["stop"]),
+            int(segment["n_steps"]),
+        )
+        for segment in direct_coil_accepted_trace_step_policy_segments(traces)
+    )
+
+
+def accepted_step_policy_summary_for_complete_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a compact JSON-safe step-policy segment summary for diagnostics."""
+
+    traces = tuple(payload.get("traces", ()))
+    if not traces:
+        return {"n_segments": 0, "segments": ()}
+    segments = direct_coil_accepted_trace_step_policy_segments(traces)
+    return {
+        "n_segments": len(segments),
+        "segments": tuple(
+            {
+                "start": int(segment["start"]),
+                "stop": int(segment["stop"]),
+                "n_steps": int(segment["n_steps"]),
+            }
+            for segment in segments
+        ),
+    }

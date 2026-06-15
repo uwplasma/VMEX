@@ -153,6 +153,18 @@ def test_free_boundary_adjoint_trace_stackability_error_paths() -> None:
     assert fba._extract_adjoint_step_trace is replay_plan_helpers.extract_adjoint_step_trace
     assert fba._slice_replay_controls is replay_plan_helpers.slice_replay_controls
     assert fba._stackability_probe is replay_plan_helpers.stackability_probe
+    assert (
+        fba._accepted_step_policy_signature_for_complete_payload
+        is replay_plan_helpers.accepted_step_policy_signature_for_complete_payload
+    )
+    assert (
+        fba._accepted_step_policy_layout_for_complete_payload
+        is replay_plan_helpers.accepted_step_policy_layout_for_complete_payload
+    )
+    assert (
+        fba._accepted_step_policy_summary_for_complete_payload
+        is replay_plan_helpers.accepted_step_policy_summary_for_complete_payload
+    )
     assert fba._stack_trace_control_field is trace_stack.stack_trace_control_field
     assert fba._stack_trace_pytree_field is trace_stack.stack_trace_pytree_field
     assert fba._stack_optional_trace_pytree_field is trace_stack.stack_optional_trace_pytree_field
