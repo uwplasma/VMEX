@@ -6,6 +6,9 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from ._compat import jax, jnp
+from ._solve_runtime import _tree_has_tracer
+
 
 class ResidualVelocityBlocks(NamedTuple):
     rcc: Any
@@ -25,6 +28,30 @@ class ResidualVelocityBlocks(NamedTuple):
 class HostMomentumUpdate(NamedTuple):
     velocities: ResidualVelocityBlocks
     update_rms: Any
+
+
+def zero_velocity_blocks_like(*blocks):
+    """Return zeroed velocity blocks with each input block's shape and dtype."""
+
+    out = []
+    for block in blocks:
+        if _tree_has_tracer(block):
+            out.append(jnp.zeros_like(block))
+            continue
+        try:
+            if jax is not None and isinstance(block, jax.Array):
+                out.append(jnp.zeros_like(block))
+                continue
+        except Exception:
+            pass
+        out.append(np.zeros_like(np.asarray(block)))
+    return tuple(out)
+
+
+def scale_velocity_blocks(scale: float, *blocks):
+    """Scale velocity blocks uniformly while preserving JAX array semantics."""
+
+    return tuple(float(scale) * block for block in blocks)
 
 
 def host_momentum_update_np(
@@ -59,4 +86,6 @@ def host_momentum_update_np(
 
 
 _ResidualVelocityBlocks = ResidualVelocityBlocks
+_zero_velocity_blocks_like = zero_velocity_blocks_like
+_scale_velocity_blocks = scale_velocity_blocks
 _host_momentum_update_np = host_momentum_update_np
