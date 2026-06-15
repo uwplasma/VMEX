@@ -349,18 +349,102 @@ Every substantial refactor must improve or preserve all of the following:
    package map and where to add new physics, solvers, objectives, providers,
    validation gates, and examples.
 
+Line-count and simplicity budgets:
+
+The refactor is successful only if it reduces both file size and the number of
+places a developer must inspect to understand one workflow.  The goal is not
+many tiny files; the goal is a small number of cohesive, well-named modules.
+
+1. Root namespace budget.
+   Keep root-level `vmec_jax/*.py` files mostly for public facades,
+   compatibility shims, and historically stable modules.  New implementation
+   code should live in domain packages.  Target: fewer than 35 root-level
+   implementation files after compatibility retirement.
+2. Package/module budget.
+   Each domain package should expose a small surface through `__init__.py` or
+   `api.py`.  Internal package modules should be cohesive and usually stay
+   below 800 lines.  Files above 1500 lines require a plan exemption and a
+   documented split path.  Files above 2000 lines fail the maintainability gate
+   once the migration is active.
+3. Function/class budget.
+   New functions should usually stay below 80 lines; functions above 150 lines
+   need a documented reason.  Large controller loops may be longer during
+   migration, but their policy, diagnostics, checkpoint, and I/O pieces should
+   be extracted into named domain functions.
+4. Example budget.
+   Pedagogical optimization scripts should be readable end-to-end.  Target:
+   common QA/QH/QP examples under 250 lines and QI/free-boundary examples under
+   400 lines, excluding long explanatory comments.  More complex sweeps belong
+   in reusable source modules plus short driver scripts.
+5. Test budget.
+   Large tests are acceptable only for integration/parity matrices.  Unit and
+   physics-gate tests should mirror the package structure and stay focused on
+   one concept.  Oversized legacy tests should be split as code moves.
+6. Import budget.
+   `import vmec_jax` must stay fast and must not import optional heavy
+   dependencies, plotting stacks, ESSOS, VMEC2000 wrappers, or GPU-specific
+   setup.  Optional dependencies are imported lazily inside the relevant
+   command/function.
+7. Cognitive-load budget.
+   A developer adding a feature should need at most one domain package plus
+   one test package for routine work.  If a change routinely touches five or
+   more unrelated root-level files, the package boundary is wrong.
+
+Performance and memory budgets:
+
+The package refactor must not make vmec_jax easier to read at the cost of being
+slower or more memory hungry.  Every large movement of solver, derivative, or
+optimization code must record before/after measurements for representative
+cases.
+
+1. Hot-path imports and compatibility shims.
+   Compatibility shims must not sit inside JIT, `lax.scan`, nonlinear residual
+   loops, or exact-callback replay loops.  Hot code should import from the final
+   domain package directly.
+2. Allocation discipline.
+   State containers should be PyTrees of arrays and small static metadata.
+   Avoid per-iteration Python object churn, dict construction, string
+   formatting, logging, or diagnostics payload assembly inside hot loops.
+3. Derivative memory discipline.
+   Prefer scalar-adjoint, matrix-free, projected, or implicit derivative paths
+   over dense unrolled tapes when they pass AD-vs-FD gates.  Use remat only
+   around measured tape-memory hotspots.
+4. Cold and warm timing gates.
+   Track cold solve, warm solve, first exact callback, accepted-point replay,
+   matrix-free/JVP replay, and optimization wall-clock timings on compact CPU
+   and GPU cases.  A refactor should be neutral or faster unless a documented
+   accuracy/differentiability gate requires extra work.
+5. Peak-memory gates.
+   Track peak resident memory for long fixed-boundary optimizations,
+   free-boundary direct-coil solves, and exact derivative callbacks.  Package
+   moves must not increase peak memory except where a new validated feature is
+   explicitly enabled.
+6. CI runtime gates.
+   Keep default CI under the agreed budget by separating fast unit/physics gates
+   from optional VMEC2000/SIMSOPT/ESSOS/GPU matrices.  Maintain coverage and
+   physics depth by using compact fixtures, not by running every expensive
+   workflow in default CI.
+
 Acceptance metrics for the refactor:
 
 - Root-level implementation files under `vmec_jax/*.py`: fewer than 35.
 - No new root-level helper-prefix files without explicit plan exemption.
 - Largest implementation module target: under 1500 lines; hard warning above
   2000 lines.
+- Common implementation modules normally under 800 lines.
+- New functions normally under 80 lines, with documented exceptions above 150
+  lines.
+- Public examples remain short enough to teach the workflow, not hide it behind
+  opaque wrapper calls.
 - Full local release gate and GitHub CI stay green.
 - Coverage and physics/parity gates do not regress.
 - Public import/runtime smoke tests pass from both source checkout and installed
   wheel.
 - Representative fixed-boundary, free-boundary, direct-coil, finite-beta,
   QS/QI, DMerc/`D_R`, and Boozer workflows retain documented outputs.
+- Cold/warm solve, exact-callback, optimization wall-time, and peak-memory
+  benchmarks do not regress without explicit accuracy/differentiability
+  justification.
 
 ## 2026-06-15 Architecture Correction: Stop Flat Helper Proliferation
 
