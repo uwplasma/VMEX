@@ -6,10 +6,60 @@ import numpy as np
 import pytest
 
 import vmec_jax.free_boundary_adjoint as fba
+import vmec_jax.free_boundary_adjoint_runtime_helpers as runtime_helpers
 import vmec_jax.free_boundary_adjoint_trace_controls as trace_controls
 import vmec_jax.free_boundary_adjoint_trace_fingerprint as trace_fingerprint
 import vmec_jax.free_boundary_adjoint_trace_metadata as trace_metadata
 from vmec_jax._compat import jnp
+
+
+def test_free_boundary_adjoint_runtime_helpers_sync_and_scope_fallbacks() -> None:
+    assert runtime_helpers.block_until_ready_for_timing(
+        {"value": 1.0},
+        jax_module=None,
+        tree_util_module=None,
+    ) == {"value": 1.0}
+
+    class ReadyModule:
+        @staticmethod
+        def block_until_ready(value):
+            if isinstance(value, dict):
+                raise TypeError("top-level container unsupported")
+            return f"{value}-ready"
+
+    class TreeUtilModule:
+        @staticmethod
+        def tree_map(fn, value):
+            return {key: fn(item) for key, item in value.items()}
+
+    assert runtime_helpers.block_until_ready_for_timing(
+        {"leaf": "x"},
+        jax_module=ReadyModule(),
+        tree_util_module=TreeUtilModule(),
+    ) == {"leaf": "x-ready"}
+
+    with runtime_helpers.jax_named_scope("fallback", jax_module=None):
+        pass
+
+    class ScopeContext:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, *_exc):
+            return False
+
+    class ScopeModule:
+        @staticmethod
+        def named_scope(name):
+            assert name == "named"
+            return ScopeContext()
+
+    with runtime_helpers.jax_named_scope(
+        "named",
+        jax_module=ScopeModule(),
+        nullcontext_factory=lambda: pytest.fail("named_scope should be used"),
+    ):
+        pass
 
 
 @pytest.mark.py311_coverage_only
