@@ -3093,3 +3093,70 @@ Completion:
 - Driver workflow decomposition: 84%.
 - WOUT diagnostic/profile decomposition: 88%.
 - Overall differentiability-refactor PR: 97.9%.
+
+## 2026-06-15 Finite-Beta DMerc/Glasser AD-vs-FD Gate
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Probed `mercier_terms_from_state` on the bundled finite-beta QI input by
+   perturbing a physical `m=1,n=0` radial geometry coefficient.
+2. Found that `DMerc` and Glasser `D_R` values and central finite differences
+   were finite, but AD returned `nan`.
+3. Traced the first invalid tangent to masked divisions in
+   `equilibrium_iota_profiles_from_state`, where inactive `jnp.where` branches
+   still evaluated zero-denominator divisions at the axis.
+4. Replaced the affected masked divisions with safe-denominator forms in the
+   iota-profile helper, differentiable Mercier algebra, JXBFORCE profile
+   algebra, and finite-beta scalar beta-total helper.
+5. Added a persistent full-test physics gate that compares AD against central
+   finite differences for summed interior `DMerc` and `D_R` on the real
+   finite-beta QI input.
+
+Results obtained:
+
+- Real-input AD/FD probe after the fix:
+  - `DMerc`: relative AD-vs-FD error approximately `2.4e-10`.
+  - `D_R`: relative AD-vs-FD error approximately `1.3e-9`.
+- Existing algebraic and synthetic-state DMerc/`D_R` gates still pass.
+- The new gate covers the realistic composition path through finite-beta
+  profiles, iota reconstruction, bcovar, Mercier surface integrals, JXBFORCE
+  channels, and Glasser algebra.
+
+Tests and commands run:
+
+- Manual real-input AD/FD probe for `DMerc` and `D_R`.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_finite_beta.py tests/test_glasser_resistive_interchange.py tests/test_finite_beta_helpers_unit.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_helpers.py tests/test_wout_physics_wave8_coverage.py tests/test_wout_driver_wave10_coverage.py tests/test_driver_wout_wave9_coverage.py tests/test_residue_finite_beta_wave3.py -q`
+- `python -m ruff check vmec_jax/mercier.py vmec_jax/finite_beta.py vmec_jax/wout.py tests/test_finite_beta.py tests/test_glasser_resistive_interchange.py`
+- `python -m compileall -q vmec_jax/mercier.py vmec_jax/finite_beta.py vmec_jax/wout.py tests/test_finite_beta.py`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 20 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Commit and push the differentiability fix and physics gate.
+2. Check the CI run for the previous pushed refactor tranche and the new run
+   after this push.
+3. Consider adding one LASYM finite-beta AD/FD gate only if a small physical
+   LASYM finite-beta fixture is available; do not add a scaffold-only test.
+4. Return to larger source decomposition after this correctness gate, with
+   `run_fixed_boundary` stage seams and `wout_minimal_from_fixed_boundary` as
+   the next high-value candidates.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.25%.
+- Differentiability/refactor implementation: 99.65%.
+- Solver monolith reduction: 86.5%.
+- Free-boundary adjoint monolith reduction: 65%.
+- Driver workflow decomposition: 84%.
+- WOUT diagnostic/profile decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 98.0%.
