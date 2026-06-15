@@ -1085,15 +1085,27 @@ Results obtained:
     Ruff clean; the new helper shard passed with 3 tests and 100% local line
     coverage; existing geometry, VMEC parity host, hotpath, and cache subsets
     passed with 29 tests.  `solve.py` decreased from 10596 to 10512 lines.
+32. Residual-iteration setup-policy extraction moved VMEC-grid reuse checks,
+    free-boundary provider normalization, free-boundary scan disablement,
+    external-field sampling flags, and CPU/GPU strict-update setup defaults
+    into `solve_residual_iter_setup_helpers.py`.  This is a control-policy
+    extraction only: no force kernel, time-control branch, NESTOR update, or
+    accepted/rejected adaptive loop was moved.  Focused checks passed: Ruff
+    clean; setup-policy and residual-iteration policy tests passed with 17
+    tests; mode-transform, hotpath, and finish-cache subsets passed with 22
+    tests.  `solve.py` decreased from 10512 to 10492 lines while making the
+    free-boundary CPU/GPU setup behavior directly testable.
 
 Best next steps:
 
 1. Keep all refactor work on PR #20 until the full plan is finalized.
-2. Continue Wave 1/Wave 2 with the residual-iteration force-pipeline adapter
-   only after a narrow cache-object ownership test is in place.  Keep the
-   adaptive scan loop and branch-control policy in `solve.py` until the
-   fingerprinted free-boundary gates and solver hotpath tests can isolate that
-   risk.
+2. Continue Wave 1/Wave 2 with either the non-scan final-result assembly
+   extraction or the residual-iteration force-pipeline adapter.  Prefer the
+   final-result assembly first because it is diagnostic/payload construction,
+   while the force-pipeline adapter must wait for a narrow cache-object
+   ownership test.  Keep the adaptive scan loop and branch-control policy in
+   `solve.py` until the fingerprinted free-boundary gates and solver hotpath
+   tests can isolate that risk.
 3. Continue broader refactors in parallel with `driver.py`, `optimization.py`,
    `free_boundary_adjoint.py`, and `wout.py` by extracting pure
    policy/formatting/data-container seams before moving any physics kernels.
@@ -1111,9 +1123,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 56%.
+- Differentiability/refactor implementation: 57%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 47% of the large-file extraction work.
+- Solver monolith reduction: 48% of the large-file extraction work.
 - Free-boundary adjoint monolith reduction: 13%.
 - Driver workflow decomposition: 34%.
 - WOUT diagnostic decomposition: 4%.

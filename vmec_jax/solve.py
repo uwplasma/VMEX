@@ -66,6 +66,10 @@ from .solve_residual_iter_runtime_helpers import (
     _scan_print_uses_io_callback,
     _vmec_freeb_plascur_from_bcovar as _runtime_vmec_freeb_plascur_from_bcovar,
 )
+from .solve_residual_iter_setup_helpers import (
+    grid_matches_vmec_static_grid as _grid_matches_vmec_static_grid,
+    resolve_free_boundary_setup_policy as _resolve_free_boundary_setup_policy,
+)
 from .solve_residual_iter_update_helpers import (
     ResidualVelocityBlocks as _ResidualVelocityBlocks,
     host_momentum_update_np as _host_momentum_update_np,
@@ -1237,19 +1241,7 @@ def solve_fixed_boundary_residual_iter(
         nfp=int(cfg.nfp),
         lasym=bool(cfg.lasym),
     )
-    reuse_static = False
-    try:
-        theta_curr = np.asarray(static.grid.theta)
-        zeta_curr = np.asarray(static.grid.zeta)
-        reuse_static = (
-            int(static.grid.nfp) == int(grid_vmec.nfp)
-            and theta_curr.shape == np.asarray(grid_vmec.theta).shape
-            and zeta_curr.shape == np.asarray(grid_vmec.zeta).shape
-            and np.allclose(theta_curr, np.asarray(grid_vmec.theta))
-            and np.allclose(zeta_curr, np.asarray(grid_vmec.zeta))
-        )
-    except Exception:
-        reuse_static = False
+    reuse_static = _grid_matches_vmec_static_grid(static.grid, grid_vmec)
     if not reuse_static:
         static = build_static(
             cfg,
@@ -1261,38 +1253,26 @@ def solve_fixed_boundary_residual_iter(
     # Free-boundary control + coupling path:
     # VMEC-style ivac/ivacskip cadence with edge bsqvac coupling.
     _t_setup_freeb_policy = _setup_timer_start()
-    free_boundary_enabled = bool(getattr(cfg, "lfreeb", False))
-    free_boundary_provider_kind = (
-        ""
-        if external_field_provider_kind is None
-        else str(external_field_provider_kind).strip().lower()
+    _freeb_policy = _resolve_free_boundary_setup_policy(
+        cfg,
+        external_field_provider_kind=external_field_provider_kind,
+        use_scan=use_scan,
+        freeb_couple_env=os.getenv("VMEC_JAX_FREEB_COUPLE_EDGE", "1"),
+        freeb_sample_env=os.getenv("VMEC_JAX_FREEB_SAMPLE_EXTERNAL", "1"),
+        jit_strict_update_env=os.getenv("VMEC_JAX_JIT_STRICT_UPDATE", "auto"),
+        backend_name=_scan_backend_name(),
+        host_update_assembly=host_update_assembly,
+        cpu_work_limit_env=os.getenv("VMEC_JAX_HOST_UPDATE_CPU_WORK_LIMIT", "1000"),
     )
-    direct_free_boundary_provider = free_boundary_provider_kind in ("direct_coils", "coils", "coil")
-    freeb_nvacskip = max(1, int(getattr(cfg, "nvacskip", int(getattr(cfg, "nfp", 1)))))
-    freeb_nvskip0 = max(1, freeb_nvacskip)
-    freeb_couple_env = os.getenv("VMEC_JAX_FREEB_COUPLE_EDGE", "1").strip().lower()
-    freeb_couple_edge = bool(free_boundary_enabled) and (freeb_couple_env not in ("", "0", "false", "no"))
-    if free_boundary_enabled and use_scan:
-        # WP2 free-boundary coupling is currently wired through the VMEC2000
-        # control (non-scan) path, including ivacskip-driven reuse.
-        use_scan = False
-    freeb_sample_env = os.getenv("VMEC_JAX_FREEB_SAMPLE_EXTERNAL", "1").strip().lower()
-    freeb_sample_external = freeb_sample_env not in ("", "0", "false", "no")
-    jit_strict_update_env = os.getenv("VMEC_JAX_JIT_STRICT_UPDATE", "auto").strip().lower()
-    jit_strict_update_enabled = jit_strict_update_env not in ("", "0", "false", "no", "off")
-    if jit_strict_update_env == "auto":
-        backend_name = _scan_backend_name()
-        nrange = int(getattr(cfg, "ntor", 0)) + 1
-        if bool(getattr(cfg, "lasym", False)):
-            nrange = 2 * int(getattr(cfg, "ntor", 0)) + 1
-        update_work = int(getattr(cfg, "ns", 0)) * int(getattr(cfg, "mpol", 0)) * int(nrange)
-        try:
-            cpu_work_limit = int(os.getenv("VMEC_JAX_HOST_UPDATE_CPU_WORK_LIMIT", "1000"))
-        except Exception:
-            cpu_work_limit = 1000
-        jit_strict_update_enabled = (backend_name != "cpu") or (
-            backend_name == "cpu" and (not bool(host_update_assembly)) and update_work >= cpu_work_limit
-        )
+    free_boundary_enabled = _freeb_policy.free_boundary_enabled
+    free_boundary_provider_kind = _freeb_policy.free_boundary_provider_kind
+    direct_free_boundary_provider = _freeb_policy.direct_free_boundary_provider
+    freeb_nvacskip = _freeb_policy.freeb_nvacskip
+    freeb_nvskip0 = _freeb_policy.freeb_nvskip0
+    freeb_couple_edge = _freeb_policy.freeb_couple_edge
+    use_scan = _freeb_policy.use_scan
+    freeb_sample_external = _freeb_policy.freeb_sample_external
+    jit_strict_update_enabled = _freeb_policy.jit_strict_update_enabled
     _record_setup_timing("setup_freeb_policy", _t_setup_freeb_policy)
 
     def _attach_freeb_diag(res: SolveVmecResidualResult) -> SolveVmecResidualResult:
