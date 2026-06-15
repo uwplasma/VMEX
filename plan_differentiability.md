@@ -1295,6 +1295,13 @@ Results obtained:
     initialization, disabled-timing start behavior, and elapsed accumulation
     now have direct helper tests.  Focused runtime/helper tests, Ruff, and
     compileall passed.  `solve.py` decreased to 10291 lines.
+62. Moved dynamic scan probe budget/timing policy into
+    `driver_policy_helpers.py`.  `driver._dynamic_scan_probe_settings` remains
+    as a private compatibility wrapper so existing tests can still monkeypatch
+    `driver._default_backend_name`, while the policy body now accepts injected
+    backend and environment readers for direct unit testing.  Focused driver
+    policy/API tests, Ruff, and compileall passed.  `driver.py` decreased to
+    2953 lines.
 
 Best next steps:
 
@@ -1322,9 +1329,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 79%.
+- Differentiability/refactor implementation: 80%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 60% of the large-file extraction work.
 - Free-boundary adjoint monolith reduction: 26%.
-- Driver workflow decomposition: 34%.
+- Driver workflow decomposition: 35%.
 - WOUT diagnostic decomposition: 4%.
