@@ -58,6 +58,73 @@ def safe_divide(num: np.ndarray, den: np.ndarray) -> np.ndarray:
     return num / den_safe
 
 
+def compute_eqfor_beta(
+    *,
+    pres: np.ndarray,
+    vp: np.ndarray,
+    bsq: np.ndarray,
+    r12: np.ndarray,
+    bsupv: np.ndarray,
+    sqrtg: np.ndarray,
+    wint: np.ndarray,
+    signgs: int,
+) -> tuple[float, float, float, float]:
+    """Compute VMEC ``eqfor`` betapol/betator/betatot/betaxis diagnostics."""
+
+    ns = int(pres.shape[0])
+    if ns < 3:
+        return 0.0, 0.0, 0.0, 0.0
+    hs = 1.0 / float(ns - 1)
+    vnorm = (2.0 * np.pi) ** 2 * hs
+    tau = float(signgs) * wint * np.asarray(sqrtg, dtype=float)
+    tau = np.asarray(tau, dtype=float)
+    tau[0] = 0.0
+
+    sump = vnorm * float(np.sum(np.asarray(vp[1:], dtype=float) * np.asarray(pres[1:], dtype=float)))
+    bsq = np.asarray(bsq, dtype=float)
+    r12 = np.asarray(r12, dtype=float)
+    bsupv = np.asarray(bsupv, dtype=float)
+    sum_bsq_tau = float(np.sum(bsq[1:] * tau[1:]))
+    sumbtot = 2.0 * (vnorm * sum_bsq_tau - sump)
+    sumbtor = vnorm * float(np.sum(tau[1:] * (r12[1:] * bsupv[1:]) ** 2))
+    sumbpol = sumbtot - sumbtor
+
+    betapol = float(safe_divide(2.0 * sump, sumbpol))
+    betator = float(safe_divide(2.0 * sump, sumbtor))
+    betatot = float(safe_divide(2.0 * sump, sumbtot))
+
+    beta_vol = np.zeros((ns,), dtype=float)
+    for i in range(1, ns):
+        s2 = float(np.sum(bsq[i] * tau[i])) / float(vp[i]) - float(pres[i])
+        beta_vol[i] = float(safe_divide(float(pres[i]), s2))
+    betaxis = float(1.5 * beta_vol[1] - 0.5 * beta_vol[2])
+    return betapol, betator, betatot, betaxis
+
+
+def compute_eqfor_betaxis(
+    *,
+    pres: np.ndarray,
+    vp: np.ndarray,
+    bsq: np.ndarray,
+    sqrtg: np.ndarray,
+    wint: np.ndarray,
+    signgs: int,
+) -> float:
+    """Compute VMEC ``eqfor`` betaxis independently of convergence status."""
+
+    ns = int(pres.shape[0])
+    if ns < 3:
+        return 0.0
+    tau = float(signgs) * np.asarray(wint, dtype=float) * np.asarray(sqrtg, dtype=float)
+    tau[0] = 0.0
+    beta_vol = np.zeros((ns,), dtype=float)
+    for i in range(1, ns):
+        denom = float(np.sum(bsq[i] * tau[i])) / float(vp[i]) - float(pres[i])
+        if denom != 0.0:
+            beta_vol[i] = float(pres[i]) / denom
+    return float(1.5 * beta_vol[1] - 0.5 * beta_vol[2])
+
+
 def glasser_from_wout_mercier_terms(
     *,
     DMerc: np.ndarray,
@@ -90,6 +157,8 @@ def glasser_from_wout_mercier_terms(
 
 
 __all__ = [
+    "compute_eqfor_beta",
+    "compute_eqfor_betaxis",
     "glasser_from_wout_mercier_terms",
     "lambda_half_mesh_weights",
     "pshalf_from_s",

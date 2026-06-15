@@ -41,15 +41,18 @@ from .wout_io import (
     write_int_variable,
     write_nyquist_fourier_fields,
 )
-from .wout_diagnostics import glasser_from_wout_mercier_terms as _glasser_from_wout_mercier_terms
-from .wout_diagnostics import lambda_half_mesh_weights as _lambda_half_mesh_weights
-from .wout_diagnostics import pshalf_from_s as _pshalf_from_s
-from .wout_diagnostics import safe_divide as _safe_divide
+from . import wout_diagnostics as _wout_diagnostics
 from . import wout_parity_helpers as _wout_parity_helpers
 from .vmec_tomnsp import vmec_trig_tables
 
 
 MU0 = 4e-7 * np.pi  # N/A^2
+_compute_eqfor_beta = _wout_diagnostics.compute_eqfor_beta
+_compute_eqfor_betaxis = _wout_diagnostics.compute_eqfor_betaxis
+_glasser_from_wout_mercier_terms = _wout_diagnostics.glasser_from_wout_mercier_terms
+_lambda_half_mesh_weights = _wout_diagnostics.lambda_half_mesh_weights
+_pshalf_from_s = _wout_diagnostics.pshalf_from_s
+_safe_divide = _wout_diagnostics.safe_divide
 _bss_scalxc_undo_factor = _wout_parity_helpers.bss_scalxc_undo_factor
 _bss_should_undo_scalxc = _wout_parity_helpers.bss_should_undo_scalxc
 _undo_bss_scalxc_if_enabled = _wout_parity_helpers.undo_bss_scalxc_if_enabled
@@ -235,71 +238,6 @@ def _jxbforce_nyquist_limits(trig) -> tuple[int, int]:
     mnyq = max(ntheta2 - 1, 0)
     nnyq = max(nzeta // 2, 0)
     return mnyq, nnyq
-
-
-def _compute_eqfor_beta(
-    *,
-    pres: np.ndarray,
-    vp: np.ndarray,
-    bsq: np.ndarray,
-    r12: np.ndarray,
-    bsupv: np.ndarray,
-    sqrtg: np.ndarray,
-    wint: np.ndarray,
-    signgs: int,
-) -> tuple[float, float, float, float]:
-    """Compute betapol/betator/betatot/betaxis using VMEC eqfor conventions."""
-    ns = int(pres.shape[0])
-    if ns < 3:
-        return 0.0, 0.0, 0.0, 0.0
-    hs = 1.0 / float(ns - 1)
-    vnorm = (2.0 * np.pi) ** 2 * hs
-    tau = float(signgs) * wint * np.asarray(sqrtg, dtype=float)
-    tau = np.asarray(tau, dtype=float)
-    tau[0] = 0.0
-
-    sump = vnorm * float(np.sum(np.asarray(vp[1:], dtype=float) * np.asarray(pres[1:], dtype=float)))
-    bsq = np.asarray(bsq, dtype=float)
-    r12 = np.asarray(r12, dtype=float)
-    bsupv = np.asarray(bsupv, dtype=float)
-    sum_bsq_tau = float(np.sum(bsq[1:] * tau[1:]))
-    sumbtot = 2.0 * (vnorm * sum_bsq_tau - sump)
-    sumbtor = vnorm * float(np.sum(tau[1:] * (r12[1:] * bsupv[1:]) ** 2))
-    sumbpol = sumbtot - sumbtor
-
-    betapol = float(_safe_divide(2.0 * sump, sumbpol))
-    betator = float(_safe_divide(2.0 * sump, sumbtor))
-    betatot = float(_safe_divide(2.0 * sump, sumbtot))
-
-    beta_vol = np.zeros((ns,), dtype=float)
-    for i in range(1, ns):
-        s2 = float(np.sum(bsq[i] * tau[i])) / float(vp[i]) - float(pres[i])
-        beta_vol[i] = float(_safe_divide(float(pres[i]), s2))
-    betaxis = float(1.5 * beta_vol[1] - 0.5 * beta_vol[2])
-    return betapol, betator, betatot, betaxis
-
-
-def _compute_eqfor_betaxis(
-    *,
-    pres: np.ndarray,
-    vp: np.ndarray,
-    bsq: np.ndarray,
-    sqrtg: np.ndarray,
-    wint: np.ndarray,
-    signgs: int,
-) -> float:
-    """Compute betaxis using eqfor.f conventions (independent of convergence)."""
-    ns = int(pres.shape[0])
-    if ns < 3:
-        return 0.0
-    tau = float(signgs) * np.asarray(wint, dtype=float) * np.asarray(sqrtg, dtype=float)
-    tau[0] = 0.0
-    beta_vol = np.zeros((ns,), dtype=float)
-    for i in range(1, ns):
-        denom = float(np.sum(bsq[i] * tau[i])) / float(vp[i]) - float(pres[i])
-        if denom != 0.0:
-            beta_vol[i] = float(pres[i]) / denom
-    return float(1.5 * beta_vol[1] - 0.5 * beta_vol[2])
 
 
 def _compute_aspectratio(

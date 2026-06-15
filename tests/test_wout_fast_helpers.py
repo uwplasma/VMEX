@@ -178,6 +178,19 @@ def test_eqfor_beta_aspect_and_ctor_match_vmec_normalizations() -> None:
         wint=wint,
         signgs=1,
     )
+    np.testing.assert_allclose(
+        wout_diagnostics.compute_eqfor_beta(
+            pres=pres,
+            vp=vp,
+            bsq=bsq,
+            r12=r12,
+            bsupv=bsupv,
+            sqrtg=sqrtg,
+            wint=wint,
+            signgs=1,
+        ),
+        (betapol, betator, betatot, betaxis),
+    )
 
     hs = 0.5
     vnorm = (2.0 * np.pi) ** 2 * hs
@@ -192,6 +205,14 @@ def test_eqfor_beta_aspect_and_ctor_match_vmec_normalizations() -> None:
     assert _compute_eqfor_betaxis(pres=pres, vp=vp, bsq=bsq, sqrtg=sqrtg, wint=wint, signgs=1) == pytest.approx(
         betaxis
     )
+    assert wout_diagnostics.compute_eqfor_betaxis(
+        pres=pres,
+        vp=vp,
+        bsq=bsq,
+        sqrtg=sqrtg,
+        wint=wint,
+        signgs=1,
+    ) == pytest.approx(betaxis)
     assert _compute_eqfor_betaxis(pres=pres[:2], vp=vp[:2], bsq=bsq[:2], sqrtg=sqrtg[:2], wint=wint, signgs=1) == 0.0
 
     R = np.asarray([[[1.0, 1.0], [1.0, 1.0]], [[3.0, 3.0], [5.0, 5.0]]])

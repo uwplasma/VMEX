@@ -1315,6 +1315,13 @@ Results obtained:
     module while `wout.py` keeps the private compatibility aliases used by
     existing tests and call sites.  Focused WOUT helper/env tests, Ruff, and
     compileall passed.  `wout.py` decreased to 6230 lines.
+65. Moved VMEC `eqfor` finite-beta diagnostic scalars into
+    `wout_diagnostics.py`.  Betapol, betator, betatot, and betaxis
+    reconstruction now share the same persisted-WOUT diagnostic module as
+    Glasser/`D_R` fallback algebra, while `wout.py` keeps private aliases for
+    monkeypatch-heavy compatibility tests.  Direct module checks, WOUT
+    finite-beta helper tests, bundled beta parity tests, Ruff, and compileall
+    passed.  `wout.py` decreased to 6168 lines.
 
 Best next steps:
 
@@ -1342,9 +1349,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 82%.
+- Differentiability/refactor implementation: 83%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 60% of the large-file extraction work.
 - Free-boundary adjoint monolith reduction: 26%.
 - Driver workflow decomposition: 35%.
-- WOUT diagnostic decomposition: 6%.
+- WOUT diagnostic decomposition: 8%.
