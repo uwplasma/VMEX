@@ -1417,6 +1417,13 @@ Results obtained:
     initialization, accepted checkpoint, and skipped-time-control branches;
     focused scan/time-control tests and actual accelerated-scan smoke tests
     passed along with Ruff.
+76. Moved VMEC2000 scan history row builders into `solve_scan_output.py`,
+    next to the corresponding unpacker and postprocessor.  The solver no
+    longer carries local tuple-layout helpers for minimal/light/full scan
+    histories, and tests now verify that each row builder matches
+    `unpack_vmec2000_scan_histories`.  Focused scan output/time-control tests
+    and actual accelerated-scan smoke tests passed along with Ruff.
+    `solve.py` decreased to 10166 lines.
 
 Best next steps:
 

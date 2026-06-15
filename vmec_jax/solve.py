@@ -295,7 +295,13 @@ from .solve_residual_objective_helpers import (
     assemble_residual_objective_terms as _assemble_residual_objective_terms,
     residual_objective_vector as _residual_objective_vector,
 )
-from .solve_scan_output import postprocess_vmec2000_scan_result, unpack_vmec2000_scan_histories
+from .solve_scan_output import (
+    postprocess_vmec2000_scan_result,
+    unpack_vmec2000_scan_histories,
+    vmec2000_scan_full_history_row,
+    vmec2000_scan_light_history_row,
+    vmec2000_scan_minimal_history_row,
+)
 from .solve_scan_payload_helpers import (
     ScanStepFields as _ScanStepFields,
     current_scan_payload as _current_scan_payload,
@@ -3044,32 +3050,6 @@ def solve_fixed_boundary_residual_iter(
         axis_reset_enabled = bool(vmec2000_control) and (not axis_reset_done) and bool(lmove_axis)
         axis_reset_repeat = False
 
-        def _scan_hist_light(
-            fsqr,
-            fsqz,
-            fsql,
-            accepted,
-            r00,
-            z00,
-            w_mhd,
-            time_step,
-            bad_jacobian,
-        ):
-            return (
-                fsqr,
-                fsqz,
-                fsql,
-                accepted,
-                r00,
-                z00,
-                w_mhd,
-                time_step,
-                bad_jacobian,
-            )
-
-        def _scan_hist_min(fsqr, fsqz, fsql):
-            return (fsqr, fsqz, fsql)
-
         def _should_print_vmec2000_local(iter_idx: int, max_iter_local: int) -> bool:
             return _should_print_vmec2000_row(
                 iter_idx=iter_idx,
@@ -3487,8 +3467,8 @@ def solve_fixed_boundary_residual_iter(
                     state_only_scan=state_only_scan,
                     scan_minimal=scan_minimal,
                     scan_light=scan_light,
-                    scan_hist_min=_scan_hist_min,
-                    scan_hist_light=_scan_hist_light,
+                    scan_hist_min=vmec2000_scan_minimal_history_row,
+                    scan_hist_light=vmec2000_scan_light_history_row,
                 )
 
             def _advance_step(carry_adv: _ScanCarry):
@@ -4595,9 +4575,9 @@ def solve_fixed_boundary_residual_iter(
                 if state_only_scan:
                     return new_carry, ()
                 if scan_minimal:
-                    return new_carry, _scan_hist_min(fsqr_out, fsqz_out, fsql_out)
+                    return new_carry, vmec2000_scan_minimal_history_row(fsqr_out, fsqz_out, fsql_out)
                 if scan_light:
-                    return new_carry, _scan_hist_light(
+                    return new_carry, vmec2000_scan_light_history_row(
                         fsqr_out,
                         fsqz_out,
                         fsql_out,
@@ -4608,7 +4588,7 @@ def solve_fixed_boundary_residual_iter(
                         time_step_report,
                         bad_jacobian,
                     )
-                return new_carry, (
+                return new_carry, vmec2000_scan_full_history_row(
                     fsqr_out,
                     fsqz_out,
                     fsql_out,
