@@ -1,0 +1,484 @@
+"""Half-mesh Bsubs construction for VMEC WOUT/JXBFORCE diagnostics."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from vmec_jax.state import VMECState
+from vmec_jax.vmec_jacobian import _apply_vmec_axis_rules
+from vmec_jax.vmec_parity import vmec_m1_internal_to_physical_signed
+from vmec_jax.vmec_realspace import (
+    vmec_realspace_synthesis,
+    vmec_realspace_synthesis_dtheta,
+    vmec_realspace_synthesis_dzeta_phys,
+)
+
+from .parity import undo_bss_scalxc_if_enabled as _undo_bss_scalxc_if_enabled
+
+def compute_bsubs_half_mesh(
+    *,
+    state: VMECState,
+    geom_modes,
+    s: np.ndarray,
+    lconm1: bool,
+    lthreed: bool,
+    lasym: bool,
+    bsupu: np.ndarray,
+    bsupv: np.ndarray,
+    trig,
+    geom: dict[str, Any],
+    jac_half: Any | None = None,
+    force_rs: np.ndarray | None = None,
+    force_zs: np.ndarray | None = None,
+    force_ru12: np.ndarray | None = None,
+    force_zu12: np.ndarray | None = None,
+    apply_m1_constraint: bool = False,
+    apply_scalxc: bool = False,
+) -> np.ndarray:
+    """Compute bsubs on the half mesh using VMEC's bss.f conventions."""
+    if bool(lasym):
+        # LASYM path uses full-interval grids. When force-kernel parity is
+        # supplied (via `geom["pr*"]` populated from symforce), the same
+        # algebra as the VMEC bss.f half-mesh update applies.
+        pass
+
+    # Geometry fields split into even/odd-m components on the full mesh.
+    # VMEC's realspace arrays are built directly from internal coefficients
+    # (which already include the 1/sqrt(s) odd-m scaling), so we keep
+    # apply_scalxc=False to match bss.f inputs.
+    m = np.asarray(geom_modes.m, dtype=int)
+    mask_even = (m % 2) == 0
+    mask_m1 = m == 1
+    mask_odd_rest = (m % 2 == 1) & (~mask_m1)
+    Rcos = np.asarray(state.Rcos)
+    Rsin = np.asarray(state.Rsin)
+    Zcos = np.asarray(state.Zcos)
+    Zsin = np.asarray(state.Zsin)
+    if bool(lconm1) and bool(apply_m1_constraint):
+        Rcos, Zsin, Rsin, Zcos = vmec_m1_internal_to_physical_signed(
+            Rcos=Rcos,
+            Zsin=Zsin,
+            Rsin=Rsin,
+            Zcos=Zcos,
+            modes=geom_modes,
+            lthreed=bool(lthreed),
+            lasym=bool(lasym),
+            lconm1=bool(lconm1),
+        )
+    Rcos = _apply_vmec_axis_rules(Rcos, m)
+    Rsin = _apply_vmec_axis_rules(Rsin, m)
+    Zcos = _apply_vmec_axis_rules(Zcos, m)
+    Zsin = _apply_vmec_axis_rules(Zsin, m)
+
+    coeff_cos_stack = np.stack([Rcos, Zcos], axis=0)
+    coeff_sin_stack = np.stack([Rsin, Zsin], axis=0)
+
+    mask_even_f = mask_even.astype(float)
+    mask_m1_f = mask_m1.astype(float)
+    mask_odd_rest_f = mask_odd_rest.astype(float)
+
+    def _eval_mask(mask: np.ndarray, *, deriv: str, apply_scalxc_local: bool):
+        coeff_cos = coeff_cos_stack * mask[None, None, :]
+        coeff_sin = coeff_sin_stack * mask[None, None, :]
+        if deriv == "base":
+            return vmec_realspace_synthesis(
+                coeff_cos=coeff_cos,
+                coeff_sin=coeff_sin,
+                modes=geom_modes,
+                trig=trig,
+                coeffs_internal=True,
+                apply_scalxc=bool(apply_scalxc_local),
+                s=s,
+            )
+        if deriv == "dtheta":
+            return vmec_realspace_synthesis_dtheta(
+                coeff_cos=coeff_cos,
+                coeff_sin=coeff_sin,
+                modes=geom_modes,
+                trig=trig,
+                coeffs_internal=True,
+                apply_scalxc=bool(apply_scalxc_local),
+                s=s,
+            )
+        if deriv == "dzeta":
+            return vmec_realspace_synthesis_dzeta_phys(
+                coeff_cos=coeff_cos,
+                coeff_sin=coeff_sin,
+                modes=geom_modes,
+                trig=trig,
+                coeffs_internal=True,
+                apply_scalxc=bool(apply_scalxc_local),
+                s=s,
+            )
+        raise ValueError(f"Unknown deriv {deriv}")
+
+    if bool(lasym):
+        # LASYM: VMEC's even/odd realspace fields correspond to cos/sin phase
+        # components (theta parity), not m-parity splits. Build them directly
+        # from the cos/sin coefficient stacks.
+        zeros = np.zeros_like(coeff_cos_stack)
+        even_base = np.asarray(
+            vmec_realspace_synthesis(
+                coeff_cos=coeff_cos_stack,
+                coeff_sin=zeros,
+                modes=geom_modes,
+                trig=trig,
+                coeffs_internal=True,
+                apply_scalxc=False,
+                s=s,
+            )
+        )
+        even_t = np.asarray(
+            vmec_realspace_synthesis_dtheta(
+                coeff_cos=coeff_cos_stack,
+                coeff_sin=zeros,
+                modes=geom_modes,
+                trig=trig,
+                coeffs_internal=True,
+                apply_scalxc=False,
+                s=s,
+            )
+        )
+        even_p = np.asarray(
+            vmec_realspace_synthesis_dzeta_phys(
+                coeff_cos=coeff_cos_stack,
+                coeff_sin=zeros,
+                modes=geom_modes,
+                trig=trig,
+                coeffs_internal=True,
+                apply_scalxc=False,
+                s=s,
+            )
+        )
+        odd_base = np.asarray(
+            vmec_realspace_synthesis(
+                coeff_cos=zeros,
+                coeff_sin=coeff_sin_stack,
+                modes=geom_modes,
+                trig=trig,
+                coeffs_internal=True,
+                apply_scalxc=False,
+                s=s,
+            )
+        )
+        odd_t = np.asarray(
+            vmec_realspace_synthesis_dtheta(
+                coeff_cos=zeros,
+                coeff_sin=coeff_sin_stack,
+                modes=geom_modes,
+                trig=trig,
+                coeffs_internal=True,
+                apply_scalxc=False,
+                s=s,
+            )
+        )
+        odd_p = np.asarray(
+            vmec_realspace_synthesis_dzeta_phys(
+                coeff_cos=zeros,
+                coeff_sin=coeff_sin_stack,
+                modes=geom_modes,
+                trig=trig,
+                coeffs_internal=True,
+                apply_scalxc=False,
+                s=s,
+            )
+        )
+    else:
+        # Match VMEC/bcovar conventions:
+        # - even components use physical coefficients (no scalxc),
+        # - odd components use internal coefficients (apply scalxc).
+        even_base = np.asarray(_eval_mask(mask_even_f, deriv="base", apply_scalxc_local=False))
+        even_t = np.asarray(_eval_mask(mask_even_f, deriv="dtheta", apply_scalxc_local=False))
+        even_p = np.asarray(_eval_mask(mask_even_f, deriv="dzeta", apply_scalxc_local=False))
+
+        odd_m1_base = np.asarray(_eval_mask(mask_m1_f, deriv="base", apply_scalxc_local=bool(apply_scalxc)))
+        odd_m1_t = np.asarray(_eval_mask(mask_m1_f, deriv="dtheta", apply_scalxc_local=bool(apply_scalxc)))
+        odd_m1_p = np.asarray(_eval_mask(mask_m1_f, deriv="dzeta", apply_scalxc_local=bool(apply_scalxc)))
+
+        odd_rest_base = np.asarray(_eval_mask(mask_odd_rest_f, deriv="base", apply_scalxc_local=bool(apply_scalxc)))
+        odd_rest_t = np.asarray(_eval_mask(mask_odd_rest_f, deriv="dtheta", apply_scalxc_local=bool(apply_scalxc)))
+        odd_rest_p = np.asarray(_eval_mask(mask_odd_rest_f, deriv="dzeta", apply_scalxc_local=bool(apply_scalxc)))
+
+        odd_base = odd_m1_base + odd_rest_base
+        odd_t = odd_m1_t + odd_rest_t
+        odd_p = odd_m1_p + odd_rest_p
+        if odd_base.shape[0] >= 2:
+            # VMEC axis convention: copy m=1 odd field from js=2 to js=1.
+            # Axis corresponds to the radial index (js=1 -> index 0).
+            odd_base[0] = odd_m1_base[1]
+            odd_t[0] = odd_m1_t[1]
+            odd_p[0] = odd_m1_p[1]
+
+    R_even = even_base[0]
+    Z_even = even_base[1]
+    Ru_even = even_t[0]
+    Zu_even = even_t[1]
+    Rv_even = even_p[0]
+    Zv_even = even_p[1]
+
+    R1 = odd_base[0]
+    Z1 = odd_base[1]
+    Ru1 = odd_t[0]
+    Zu1 = odd_t[1]
+    Rv1 = odd_p[0]
+    Zv1 = odd_p[1]
+
+    s = np.asarray(s, dtype=float)
+    if s.shape[0] < 2:
+        return np.zeros_like(np.asarray(bsupu, dtype=float))
+
+    # VMEC's bss.f uses internal even/odd components with explicit shalf factors.
+    # See jacobian.f: rs/zs use shalf scaling; rs12/zs12 include d(shalf)/ds.
+    hs = float(s[1] - s[0])
+    ohs = 1.0 / hs
+    dphids = 0.25
+    s_half = 0.5 * (s[1:] + s[:-1])
+    shalf = np.zeros_like(s, dtype=float)
+    shalf[1:] = np.sqrt(np.maximum(s_half, 0.0))
+    sh = shalf[:, None, None]
+
+    rv12 = np.zeros_like(R_even, dtype=float)
+    zv12 = np.zeros_like(Z_even, dtype=float)
+    rs12 = np.zeros_like(R_even, dtype=float)
+    zs12 = np.zeros_like(Z_even, dtype=float)
+
+    use_parity_geom_full = (
+        isinstance(geom, dict)
+        and ("pr1_even" in geom)
+        and ("pr1_odd" in geom)
+        and ("pz1_even" in geom)
+        and ("pz1_odd" in geom)
+        and ("pru_even" in geom)
+        and ("pru_odd" in geom)
+        and ("pzu_even" in geom)
+        and ("pzu_odd" in geom)
+    )
+    # Prefer parity-geometry inputs for bss when available. VMEC's bss.f
+    # uses the realspace (symforce) parity fields directly, so default to
+    # that behavior unless explicitly disabled.
+    use_parity_bss = use_parity_geom_full and (os.getenv("VMEC_JAX_BSS_FROM_PARITY_GEOM", "1") not in ("", "0"))
+    use_force_terms = (
+        force_rs is not None and force_zs is not None and force_ru12 is not None and force_zu12 is not None
+    )
+    if use_force_terms:
+        use_parity_bss = False
+
+    # Use force-kernel R/Z arrays (VMEC bss.f path) when supplied.
+    if use_parity_bss:
+        pr1_even = np.asarray(geom["pr1_even"], dtype=float)
+        pr1_odd = np.asarray(geom["pr1_odd"], dtype=float)
+        pz1_even = np.asarray(geom["pz1_even"], dtype=float)
+        pz1_odd = np.asarray(geom["pz1_odd"], dtype=float)
+        pru_even = np.asarray(geom["pru_even"], dtype=float)
+        pru_odd = np.asarray(geom["pru_odd"], dtype=float)
+        pzu_even = np.asarray(geom["pzu_even"], dtype=float)
+        pzu_odd = np.asarray(geom["pzu_odd"], dtype=float)
+
+        # The parity fields are built from internal coefficients with VMEC's
+        # scalxc applied (odd-m scaled by 1/max(sqrt(s), sqrt(s2))). bss.f
+        # expects the *internal* odd fields (before scalxc), so undo it here
+        # when the compatibility flag is enabled.
+        pr1_odd, pz1_odd, pru_odd, pzu_odd = _undo_bss_scalxc_if_enabled(
+            s,
+            pr1_odd,
+            pz1_odd,
+            pru_odd,
+            pzu_odd,
+        )
+
+        ru12 = np.zeros_like(R_even, dtype=float)
+        zu12 = np.zeros_like(Z_even, dtype=float)
+        rs = np.zeros_like(R_even, dtype=float)
+        zs = np.zeros_like(Z_even, dtype=float)
+        ru12[1:] = 0.5 * (pru_even[1:] + pru_even[:-1] + sh[1:] * (pru_odd[1:] + pru_odd[:-1]))
+        zu12[1:] = 0.5 * (pzu_even[1:] + pzu_even[:-1] + sh[1:] * (pzu_odd[1:] + pzu_odd[:-1]))
+        rs[1:] = ohs * (pr1_even[1:] - pr1_even[:-1] + sh[1:] * (pr1_odd[1:] - pr1_odd[:-1]))
+        zs[1:] = ohs * (pz1_even[1:] - pz1_even[:-1] + sh[1:] * (pz1_odd[1:] - pz1_odd[:-1]))
+    elif use_force_terms:
+        ru12 = np.array(force_ru12, dtype=float, copy=True)
+        zu12 = np.array(force_zu12, dtype=float, copy=True)
+        rs = np.array(force_rs, dtype=float, copy=True)
+        zs = np.array(force_zs, dtype=float, copy=True)
+    # Otherwise use half-mesh Jacobian from bcovar when provided to stay
+    # consistent with bsupu/bsupv (computed from the same bcovar pipeline).
+    elif jac_half is not None:
+        ru12 = np.array(jac_half.ru12, dtype=float, copy=True)
+        zu12 = np.array(jac_half.zu12, dtype=float, copy=True)
+        rs = np.array(jac_half.rs, dtype=float, copy=True)
+        zs = np.array(jac_half.zs, dtype=float, copy=True)
+    else:
+        ru12 = np.zeros_like(R_even, dtype=float)
+        zu12 = np.zeros_like(Z_even, dtype=float)
+        rs = np.zeros_like(R_even, dtype=float)
+        zs = np.zeros_like(Z_even, dtype=float)
+        ru12[1:] = 0.5 * (Ru_even[1:] + Ru_even[:-1] + sh[1:] * (Ru1[1:] + Ru1[:-1]))
+        zu12[1:] = 0.5 * (Zu_even[1:] + Zu_even[:-1] + sh[1:] * (Zu1[1:] + Zu1[:-1]))
+        rs[1:] = ohs * (R_even[1:] - R_even[:-1] + sh[1:] * (R1[1:] - R1[:-1]))
+        zs[1:] = ohs * (Z_even[1:] - Z_even[:-1] + sh[1:] * (Z1[1:] - Z1[:-1]))
+
+    use_parity_geom = (
+        isinstance(geom, dict)
+        and ("pr1_odd" in geom)
+        and ("pz1_odd" in geom)
+        and ("prv_even" in geom)
+        and ("prv_odd" in geom)
+        and ("pzv_even" in geom)
+        and ("pzv_odd" in geom)
+    )
+    if use_parity_geom:
+        pr1_odd = np.asarray(geom["pr1_odd"], dtype=float)
+        pz1_odd = np.asarray(geom["pz1_odd"], dtype=float)
+        prv_even = np.asarray(geom["prv_even"], dtype=float)
+        prv_odd = np.asarray(geom["prv_odd"], dtype=float)
+        pzv_even = np.asarray(geom["pzv_even"], dtype=float)
+        pzv_odd = np.asarray(geom["pzv_odd"], dtype=float)
+
+        pr1_odd, pz1_odd, prv_odd, pzv_odd = _undo_bss_scalxc_if_enabled(
+            s,
+            pr1_odd,
+            pz1_odd,
+            prv_odd,
+            pzv_odd,
+        )
+
+        rv12[1:] = 0.5 * (prv_even[1:] + prv_even[:-1] + sh[1:] * (prv_odd[1:] + prv_odd[:-1]))
+        zv12[1:] = 0.5 * (pzv_even[1:] + pzv_even[:-1] + sh[1:] * (pzv_odd[1:] + pzv_odd[:-1]))
+        rs12[1:] = rs[1:] + dphids * (pr1_odd[1:] + pr1_odd[:-1]) / sh[1:]
+        zs12[1:] = zs[1:] + dphids * (pz1_odd[1:] + pz1_odd[:-1]) / sh[1:]
+    else:
+        rv12[1:] = 0.5 * (Rv_even[1:] + Rv_even[:-1] + sh[1:] * (Rv1[1:] + Rv1[:-1]))
+        zv12[1:] = 0.5 * (Zv_even[1:] + Zv_even[:-1] + sh[1:] * (Zv1[1:] + Zv1[:-1]))
+
+        rs12[1:] = rs[1:] + dphids * (R1[1:] + R1[:-1]) / sh[1:]
+        zs12[1:] = zs[1:] + dphids * (Z1[1:] + Z1[:-1]) / sh[1:]
+
+    # Axis fill: mirror js=2 into js=1 (VMEC convention).
+    if rs12.shape[0] > 1:
+        rs12[0] = rs12[1]
+        zs12[0] = zs12[1]
+        ru12[0] = ru12[1]
+        zu12[0] = zu12[1]
+        rv12[0] = rv12[1]
+        zv12[0] = zv12[1]
+
+    g_su = rs12 * ru12 + zs12 * zu12
+    g_sv = rs12 * rv12 + zs12 * zv12
+    bsubs = np.asarray(bsupu, dtype=float) * g_su + np.asarray(bsupv, dtype=float) * g_sv
+
+    if os.getenv("VMEC_JAX_DUMP_BSS_INPUTS", "") not in ("", "0"):
+        outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
+        outdir.mkdir(parents=True, exist_ok=True)
+        tag = os.getenv("VMEC_JAX_DUMP_TAG", "").strip()
+        name = "bss_inputs_jax" + (f"_{tag}" if tag else "") + ".dat"
+        path = outdir / name
+        r12 = None
+        if jac_half is not None:
+            try:
+                r12 = np.asarray(jac_half.r12, dtype=float)
+            except Exception:
+                r12 = None
+        if r12 is None:
+            r12 = np.zeros_like(R_even, dtype=float)
+            r12[1:] = 0.5 * (R_even[1:] + R_even[:-1] + sh[1:] * (R1[1:] + R1[:-1]))
+            r12[0] = r12[1]
+        with path.open("w") as f:
+            f.write("# bss inputs dump (half mesh)\n")
+            f.write(f"ns={r12.shape[0]}\n")
+            f.write(f"ntheta3={r12.shape[1]}\n")
+            f.write(f"nzeta={r12.shape[2]}\n")
+            f.write("columns: js lt lz r12 rs zs ru12 zu12 bsupu bsupv\n")
+            ns, ntheta3, nzeta = r12.shape
+            for lt in range(ntheta3):
+                for lz in range(nzeta):
+                    for js in range(ns):
+                        bsupu_val = float(np.asarray(bsupu, dtype=float)[js, lt, lz])
+                        bsupv_val = float(np.asarray(bsupv, dtype=float)[js, lt, lz])
+                        f.write(
+                            f"{js + 1:6d}{lt + 1:6d}{lz + 1:6d}"
+                            f"{r12[js, lt, lz]:24.16E}{rs[js, lt, lz]:24.16E}{zs[js, lt, lz]:24.16E}"
+                            f"{ru12[js, lt, lz]:24.16E}{zu12[js, lt, lz]:24.16E}"
+                            f"{bsupu_val:24.16E}{bsupv_val:24.16E}\n"
+                        )
+
+    if os.getenv("VMEC_JAX_DUMP_BSS_TERMS", "") not in ("", "0"):
+        outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
+        outdir.mkdir(parents=True, exist_ok=True)
+        tag = os.getenv("VMEC_JAX_DUMP_TAG", "").strip()
+        name = "bss_terms_jax" + (f"_{tag}" if tag else "") + ".npz"
+        pr1_even = (
+            np.asarray(geom.get("pr1_even"), dtype=float)
+            if isinstance(geom, dict) and "pr1_even" in geom
+            else np.zeros_like(R_even, dtype=float)
+        )
+        pr1_odd = (
+            np.asarray(geom.get("pr1_odd"), dtype=float)
+            if isinstance(geom, dict) and "pr1_odd" in geom
+            else np.zeros_like(R_even, dtype=float)
+        )
+        prv_even = (
+            np.asarray(geom.get("prv_even"), dtype=float)
+            if isinstance(geom, dict) and "prv_even" in geom
+            else np.zeros_like(R_even, dtype=float)
+        )
+        prv_odd = (
+            np.asarray(geom.get("prv_odd"), dtype=float)
+            if isinstance(geom, dict) and "prv_odd" in geom
+            else np.zeros_like(R_even, dtype=float)
+        )
+        pru_even = (
+            np.asarray(geom.get("pru_even"), dtype=float)
+            if isinstance(geom, dict) and "pru_even" in geom
+            else np.zeros_like(R_even, dtype=float)
+        )
+        pru_odd = (
+            np.asarray(geom.get("pru_odd"), dtype=float)
+            if isinstance(geom, dict) and "pru_odd" in geom
+            else np.zeros_like(R_even, dtype=float)
+        )
+        pzu_even = (
+            np.asarray(geom.get("pzu_even"), dtype=float)
+            if isinstance(geom, dict) and "pzu_even" in geom
+            else np.zeros_like(R_even, dtype=float)
+        )
+        pzu_odd = (
+            np.asarray(geom.get("pzu_odd"), dtype=float)
+            if isinstance(geom, dict) and "pzu_odd" in geom
+            else np.zeros_like(R_even, dtype=float)
+        )
+        np.savez(
+            outdir / name,
+            r1_even=np.asarray(R_even, dtype=float),
+            r1_odd=np.asarray(R1, dtype=float),
+            pr1_even=pr1_even,
+            pr1_odd=pr1_odd,
+            rv_even=np.asarray(Rv_even, dtype=float),
+            rv_odd=np.asarray(Rv1, dtype=float),
+            prv_even=prv_even,
+            prv_odd=prv_odd,
+            pru_even=pru_even,
+            pru_odd=pru_odd,
+            pzu_even=pzu_even,
+            pzu_odd=pzu_odd,
+            rs12=np.asarray(rs12, dtype=float),
+            zs12=np.asarray(zs12, dtype=float),
+            rv12=np.asarray(rv12, dtype=float),
+            zv12=np.asarray(zv12, dtype=float),
+            ru12=np.asarray(ru12, dtype=float),
+            zu12=np.asarray(zu12, dtype=float),
+            gsu=np.asarray(g_su, dtype=float),
+            gsv=np.asarray(g_sv, dtype=float),
+            bsubs=np.asarray(bsubs, dtype=float),
+            bsupu=np.asarray(bsupu, dtype=float),
+            bsupv=np.asarray(bsupv, dtype=float),
+            s=np.asarray(s, dtype=float),
+        )
+
+    return bsubs
+
+
+
+__all__ = ["compute_bsubs_half_mesh"]

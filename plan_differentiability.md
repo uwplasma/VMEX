@@ -3028,3 +3028,68 @@ Completion:
 - Driver workflow decomposition: 84%.
 - WOUT diagnostic/profile decomposition: 84%.
 - Overall differentiability-refactor PR: 97.7%.
+
+## 2026-06-15 WOUT Half-Mesh Bsubs Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved the VMEC `bss.f` half-mesh `B_s` construction out of
+   `vmec_jax.wout` into `vmec_jax.io.wout.bsubs`.
+2. Kept `vmec_jax.wout._compute_bsubs_half_mesh` as a thin compatibility
+   wrapper so existing tests, monkeypatches, and internal diagnostic imports
+   continue to use the historical name.
+3. Updated the WOUT package and code-structure docs so the half-mesh Bsubs
+   responsibility is explicit and discoverable.
+4. Validated the branch, environment, dump, driver, Mercier, and direct helper
+   tests that exercise the moved kernel.
+
+Results obtained:
+
+- `wout.py` dropped from 3,628 lines to 3,166 lines.
+- Half-mesh `B_s` construction is now isolated from NetCDF writing, Mercier
+  reduction, Nyquist projection, and JXBFORCE filter kernels.
+- The historical compatibility surface remains intact through the wrapper in
+  `vmec_jax.wout`.
+- Source-health still passes the root namespace-sprawl ratchet; remaining WOUT
+  work is concentrated in `wout_minimal_from_fixed_boundary` and writer/schema
+  assembly rather than this diagnostic kernel.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/wout.py vmec_jax/io/wout/bsubs.py vmec_jax/io/wout/__init__.py tests/test_wout_branch_coverage.py tests/test_wout_env_branch_coverage.py`
+- `python -m compileall -q vmec_jax/wout.py vmec_jax/io/wout/bsubs.py vmec_jax/io/wout/jxbforce.py vmec_jax/io/wout/mercier.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_branch_coverage.py tests/test_wout_env_branch_coverage.py tests/test_solve_dump_helpers.py tests/test_wout_driver_wave10_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_helpers.py tests/test_wout_branch_coverage.py tests/test_wout_env_branch_coverage.py tests/test_wout_fast_helpers.py tests/test_wout_wave2.py tests/test_wout_wave3_coverage.py tests/test_wout_wave4_coverage.py tests/test_wout_wave5_coverage.py tests/test_wout_physics_wave8_coverage.py tests/test_wout_driver_wave10_coverage.py tests/test_driver_wout_wave9_coverage.py tests/test_solve_dump_helpers.py -q`
+- `SPHINX_FAST=1 python -m sphinx -q -b html docs docs/_build/fast_html`
+- `python -m ruff check vmec_jax docs/conf.py tests/test_wout_branch_coverage.py tests/test_wout_env_branch_coverage.py`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 20 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Commit and push this WOUT/Bsubs tranche once the local diff is reviewed.
+2. Check the pending CI run for the previous WOUT tranche and the new run after
+   this push.
+3. Continue decomposition with either WOUT writer assembly
+   (`wout_minimal_from_fixed_boundary`) or the fixed-boundary driver stage seam;
+   avoid moving numerical scan-update internals until a dedicated parity gate is
+   attached.
+4. Use the new `io.wout.bsubs`, `io.wout.jxbforce`, and `io.wout.mercier`
+   seams for DMerc/`D_R` AD-vs-FD tests.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.25%.
+- Differentiability/refactor implementation: 99.6%.
+- Solver monolith reduction: 86.5%.
+- Free-boundary adjoint monolith reduction: 65%.
+- Driver workflow decomposition: 84%.
+- WOUT diagnostic/profile decomposition: 88%.
+- Overall differentiability-refactor PR: 97.9%.
