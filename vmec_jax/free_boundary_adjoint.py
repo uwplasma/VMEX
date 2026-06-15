@@ -66,6 +66,13 @@ from .solvers.free_boundary.adjoint.custom_vjp import (
     scalar_custom_vjp_value_jax as _scalar_custom_vjp_value_jax,
     vector_custom_vjp_value_jax as _vector_custom_vjp_value_jax,
 )
+from .solvers.free_boundary.adjoint.dense import (
+    dense_fixed_point_solve_jax,
+    dense_nonlinear_solve_jax,
+    dense_vacuum_residual,
+    dense_vacuum_solve_jax,
+    finite_difference_jacobian as _finite_difference_jacobian,
+)
 from .solvers.free_boundary.adjoint.runtime import (
     block_until_ready_for_timing as _runtime_block_until_ready_for_timing,
     jax_named_scope as _runtime_jax_named_scope,
@@ -105,6 +112,11 @@ from .solvers.free_boundary.adjoint.trace_stack import (
 from .solvers.free_boundary.adjoint import trace_fingerprint as _trace_fingerprint
 
 __all__ = [
+    "_finite_difference_jacobian",
+    "dense_fixed_point_solve_jax",
+    "dense_nonlinear_solve_jax",
+    "dense_vacuum_residual",
+    "dense_vacuum_solve_jax",
     "direct_coil_accepted_trace_branch_metadata",
     "direct_coil_accepted_trace_controller_slot_summary",
     "direct_coil_accepted_trace_controller_custom_vjp_scalars_jax",
@@ -159,200 +171,6 @@ def _block_until_ready_for_timing(value: Any) -> Any:
 
 def _jax_named_scope(name: str) -> Any:
     return _runtime_jax_named_scope(name, jax_module=jax, nullcontext_factory=nullcontext)
-
-
-def dense_vacuum_solve_jax(A: Any, b: Any, *, symmetric: bool = False) -> Any:
-    """Solve a dense toy vacuum linear system with an implicit adjoint.
-
-    Parameters
-    ----------
-    A:
-        Dense square matrix.
-    b:
-        Right-hand side vector or matrix.
-    symmetric:
-        If true, the transpose solve is the same as the primal solve.
-
-    Notes
-    -----
-    This is a scaffold for small tests and future NESTOR refactoring.  It does
-    not imply that the current production NESTOR path is fully differentiable.
-    The production path should eventually expose a JAX-native matrix-free
-    operator and pass it through ``jax.lax.custom_linear_solve`` or equivalent.
-    """
-
-    A_arr = jnp.asarray(A)
-    b_arr = jnp.asarray(b)
-    if A_arr.ndim != 2 or A_arr.shape[0] != A_arr.shape[1]:
-        raise ValueError("A must be a square dense matrix")
-    if b_arr.shape[0] != A_arr.shape[0]:
-        raise ValueError(f"b leading dimension {b_arr.shape[0]} does not match A size {A_arr.shape[0]}")
-
-    if jax is None:  # pragma: no cover - dependency fallback.
-        return jnp.linalg.solve(A_arr, b_arr)
-
-    def matvec(x):
-        return A_arr @ x
-
-    def solve_fn(_matvec, rhs):
-        return jnp.linalg.solve(A_arr, rhs)
-
-    def transpose_solve_fn(_matvec, rhs):
-        matrix = A_arr if bool(symmetric) else A_arr.T
-        return jnp.linalg.solve(matrix, rhs)
-
-    return jax.lax.custom_linear_solve(
-        matvec,
-        b_arr,
-        solve_fn,
-        transpose_solve=transpose_solve_fn,
-        symmetric=bool(symmetric),
-    )
-
-
-def dense_vacuum_residual(A: Any, x: Any, b: Any) -> Any:
-    """Return ``A @ x - b`` for tests and diagnostics."""
-
-    return jnp.asarray(A) @ jnp.asarray(x) - jnp.asarray(b)
-
-
-def dense_nonlinear_solve_jax(
-    residual_fn: Any,
-    initial: Any,
-    params: Any,
-    *,
-    max_iter: int = 10,
-    damping: float = 1.0,
-) -> Any:
-    """Solve a small nonlinear residual with an implicit-root adjoint.
-
-    Parameters
-    ----------
-    residual_fn:
-        Callable ``residual_fn(x, params)`` returning a 1D residual array.
-        ``params`` may be any JAX pytree.
-    initial:
-        Initial state for Newton iterations.
-    params:
-        Differentiable residual parameters.
-    max_iter:
-        Number of dense Newton iterations.
-    damping:
-        Scalar multiplier applied to each Newton step.
-
-    Notes
-    -----
-    This is the nonlinear analogue of :func:`dense_vacuum_solve_jax` for the
-    free-boundary phase-2 validation ladder.  The forward pass still uses an
-    explicit dense Newton iteration, but the reverse pass applies the implicit
-    function theorem at the converged root,
-
-    ``F_x.T @ lambda = dJ/dx`` and ``dJ/dp = -F_p.T @ lambda``.
-
-    It is intentionally limited to dense toy systems and validation gates.  It
-    does not claim that the production VMEC/NESTOR nonlinear iteration loop has
-    a full custom adjoint; it provides the tested primitive that loop should be
-    refactored toward.
-    """
-
-    x0 = jnp.asarray(initial)
-    if x0.ndim != 1:
-        raise ValueError("initial must be a 1D state vector")
-    max_iter_i = int(max_iter)
-    if max_iter_i < 0:
-        raise ValueError("max_iter must be non-negative")
-    damping_f = float(damping)
-
-    def _newton_solve(init, prm):
-        def _step(_i, x):
-            residual = jnp.asarray(residual_fn(x, prm))
-            if residual.shape != x.shape:
-                raise ValueError("residual_fn must return the same shape as initial")
-            jac_x = jax.jacfwd(lambda y: jnp.asarray(residual_fn(y, prm)))(x)
-            delta = jnp.linalg.solve(jac_x, residual)
-            return x - damping_f * delta
-
-        if jax is None:  # pragma: no cover - JAX-free import fallback.
-            x = init
-            for _ in range(max_iter_i):
-                residual = jnp.asarray(residual_fn(x, prm))
-                jac_x = _finite_difference_jacobian(lambda y: residual_fn(y, prm), x)
-                x = x - damping_f * jnp.linalg.solve(jac_x, residual)
-            return x
-        return jax.lax.fori_loop(0, max_iter_i, _step, init)
-
-    if jax is None:  # pragma: no cover - dependency fallback.
-        return _newton_solve(x0, params)
-
-    @jax.custom_vjp
-    def _solve(init, prm):
-        return _newton_solve(init, prm)
-
-    def _solve_fwd(init, prm):
-        root = _newton_solve(init, prm)
-        return root, (root, prm, jnp.zeros_like(init))
-
-    def _solve_bwd(saved, root_bar):
-        root, prm, init_zero = saved
-        jac_x = jax.jacfwd(lambda y: jnp.asarray(residual_fn(y, prm)))(root)
-        lam = jnp.linalg.solve(jac_x.T, jnp.asarray(root_bar))
-        _, pullback_params = jax.vjp(lambda pp: jnp.asarray(residual_fn(root, pp)), prm)
-        grad_params = pullback_params(lam)[0]
-        grad_params = tree_util.tree_map(lambda value: -value, grad_params)
-        return init_zero, grad_params
-
-    _solve.defvjp(_solve_fwd, _solve_bwd)
-    return _solve(x0, params)
-
-
-def dense_fixed_point_solve_jax(
-    update_fn: Any,
-    initial: Any,
-    params: Any,
-    *,
-    max_iter: int = 10,
-    damping: float = 1.0,
-) -> Any:
-    """Solve ``x = update_fn(x, params)`` with the nonlinear implicit adjoint.
-
-    This is the small JAX-visible fixed-point wrapper used by the
-    free-boundary phase-2 validation ladder.  It models the production coupling
-    pattern, in which the accepted plasma state changes the boundary on which
-    the external field is sampled and the vacuum response updates the state.
-    Gradients are supplied by :func:`dense_nonlinear_solve_jax` through the
-    residual ``x - update_fn(x, params)``.
-
-    The helper is intentionally dense and validation-scale.  It should not be
-    mistaken for the production ``run_free_boundary`` adjoint; it is the tested
-    primitive that a future JAX-visible free-boundary fixed-point loop should
-    reduce to.
-    """
-
-    def residual(state, prm):
-        state_arr = jnp.asarray(state)
-        update = jnp.asarray(update_fn(state_arr, prm))
-        if update.shape != state_arr.shape:
-            raise ValueError("update_fn must return the same shape as initial")
-        return state_arr - update
-
-    return dense_nonlinear_solve_jax(
-        residual,
-        initial,
-        params,
-        max_iter=max_iter,
-        damping=damping,
-    )
-
-def _finite_difference_jacobian(fn: Any, x: Any, eps: float = 1.0e-6) -> Any:
-    """Small NumPy/JAX-free fallback Jacobian for import-only environments."""
-
-    x_arr = jnp.asarray(x)
-    eye = jnp.eye(int(x_arr.size), dtype=x_arr.dtype)
-    cols = []
-    for k in range(int(x_arr.size)):
-        step = eps * eye[k]
-        cols.append((jnp.asarray(fn(x_arr + step)) - jnp.asarray(fn(x_arr - step))) / (2.0 * eps))
-    return jnp.stack(cols, axis=1)
 
 
 def vmec_source_from_gsource_jax(
