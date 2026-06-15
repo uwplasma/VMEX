@@ -1424,6 +1424,15 @@ Results obtained:
     `unpack_vmec2000_scan_histories`.  Focused scan output/time-control tests
     and actual accelerated-scan smoke tests passed along with Ruff.
     `solve.py` decreased to 10166 lines.
+77. Added an optimization-objective AD-vs-central-FD diagnostic gate for the
+    public `DMerc.J` and `GlasserResistiveInterchange.J` wrappers.  This
+    complements the existing state-level `mercier_terms_from_state` AD/FD gate
+    by validating the exact user-facing residuals that enter least-squares
+    optimization.  The Mercier, Glasser and magnetic-well wrappers now reuse
+    the shared `_smooth_positive_part` helper instead of duplicating soft-bound
+    `logaddexp` algebra.  Focused optimization workflow tests, the new wrapper
+    AD/FD test, and the full finite-beta helper unit suite passed along with
+    Ruff.
 
 Best next steps:
 
