@@ -3379,3 +3379,58 @@ Completion:
 - WOUT diagnostic/profile decomposition: 92%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 98.2%.
+
+## 2026-06-15 Dense Free-Boundary Adjoint Primitive Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved dense validation-scale vacuum/nonlinear/fixed-point adjoint primitives
+   into `vmec_jax.solvers.free_boundary.adjoint.dense`.
+2. Preserved the public `vmec_jax.free_boundary_adjoint` import surface for
+   dense solve helpers and the legacy `_finite_difference_jacobian` test seam.
+3. Re-ran vacuum-adjoint and focused direct-coil same-branch replay gates.
+
+Results obtained:
+
+- `free_boundary_adjoint.py` dropped from 5,273 lines at the start of this
+  session to 5,091 lines.
+- The dense toy/validation primitives now live in the free-boundary adjoint
+  domain package, while the root module remains a compatibility facade.
+- No change in adaptive-loop claims: these helpers are validation-scale
+  building blocks, not a production arbitrary-branch adjoint.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/free_boundary_adjoint.py vmec_jax/solvers/free_boundary/adjoint/dense.py tests/test_free_boundary_vacuum_adjoint.py tests/test_free_boundary_adjoint_helpers_unit.py`
+- `python -m compileall -q vmec_jax/free_boundary_adjoint.py vmec_jax/solvers/free_boundary/adjoint/dense.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py tests/test_free_boundary_adjoint_helpers_unit.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree -q`
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 25 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Continue free-boundary adjoint decomposition with similarly isolated seams
+   such as mode-source/matrix helpers or branch-local report assembly.
+2. Avoid moving adaptive host-controller code until a fingerprint-gated
+   complete-loop AD-vs-FD gate is attached.
+3. Keep VMEC parity and physics gates focused on finite-positive physical
+   WOUT fixtures.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.45%.
+- Differentiability/refactor implementation: 99.76%.
+- Solver monolith reduction: 86.5%.
+- Free-boundary adjoint monolith reduction: 68%.
+- Driver workflow decomposition: 84%.
+- WOUT diagnostic/profile decomposition: 92%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 98.25%.
