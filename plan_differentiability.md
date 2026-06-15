@@ -1163,6 +1163,11 @@ Results obtained:
     implementation now sits with the residual-iteration host momentum update.
     Focused tests cover shape/dtype preservation, scaling, and the compatibility
     re-export.
+42. Extracted VMEC residual `FSQ` scalar assembly from the residual-loop closure
+    into `solve_force_norm_helpers.py` as `residual_fsq_from_norms`.  The solver
+    now uses the helper for trial, probe, damped, and final residual scalars,
+    while focused tests cover NumPy/JAX scalar behavior and the private
+    `solve.py` compatibility alias.
 
 Best next steps:
 
@@ -1190,9 +1195,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 62%.
+- Differentiability/refactor implementation: 63%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 53% of the large-file extraction work.
+- Solver monolith reduction: 54% of the large-file extraction work.
 - Free-boundary adjoint monolith reduction: 13%.
 - Driver workflow decomposition: 34%.
 - WOUT diagnostic decomposition: 4%.

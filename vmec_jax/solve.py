@@ -178,6 +178,7 @@ from .solve_force_payload_helpers import (
 from .solve_force_norm_helpers import (
     lambda_preconditioned_full_norm as _lambda_preconditioned_full_norm,
     mode_weight_force_blocks_np as _mode_weight_force_blocks_np,
+    residual_fsq_from_norms as _residual_fsq_from_norms,
     safe_dt_from_force_blocks as _safe_dt_from_force_blocks,
 )
 from . import solve_preconditioner_payload_helpers as _precond_payload_helpers
@@ -2540,12 +2541,6 @@ def solve_fixed_boundary_residual_iter(
             iter_idx=iter_idx,
             **({"freeb_bsqvac_half": freeb_bsqvac_half} if freeb_bsqvac_half is not None else {}),
         )
-
-    def _fsq_from_norms(norms_in, *, gcr2_in, gcz2_in, gcl2_in):
-        fsqr_out = norms_in.r1 * norms_in.fnorm * gcr2_in
-        fsqz_out = norms_in.r1 * norms_in.fnorm * gcz2_in
-        fsql_out = norms_in.fnormL * gcl2_in
-        return fsqr_out, fsqz_out, fsql_out
 
     _t_setup_index_constants = _setup_timer_start()
     mpol = int(static.cfg.mpol)
@@ -7900,11 +7895,11 @@ def solve_fixed_boundary_residual_iter(
                         iter2=iter2,
                     )
                     _record_compute_force_timing("auto_flip", t_auto_flip_force_start, gcr2_t)
-                    fsqr_t, fsqz_t, fsql_t = _fsq_from_norms(
+                    fsqr_t, fsqz_t, fsql_t = _residual_fsq_from_norms(
                         norms_t,
-                        gcr2_in=gcr2_t,
-                        gcz2_in=gcz2_t,
-                        gcl2_in=gcl2_t,
+                        gcr2=gcr2_t,
+                        gcz2=gcz2_t,
+                        gcl2=gcl2_t,
                     )
                     return float(np.asarray(fsqr_t + fsqz_t + fsql_t))
 
@@ -9375,11 +9370,11 @@ def solve_fixed_boundary_residual_iter(
                     iter2=iter2,
                 )
                 _record_compute_force_timing("trial", t_trial_force_start, gcr2_t)
-                fsqr_t, fsqz_t, fsql_t = _fsq_from_norms(
+                fsqr_t, fsqz_t, fsql_t = _residual_fsq_from_norms(
                     norms_t,
-                    gcr2_in=gcr2_t,
-                    gcz2_in=gcz2_t,
-                    gcl2_in=gcl2_t,
+                    gcr2=gcr2_t,
+                    gcz2=gcz2_t,
+                    gcl2=gcl2_t,
                 )
                 w_try = float(np.asarray(fsqr_t + fsqz_t + fsql_t))
                 w_try_ratio = w_try / max(w_curr, 1e-30) if np.isfinite(w_try) else float("inf")
@@ -9395,11 +9390,11 @@ def solve_fixed_boundary_residual_iter(
                         constraint_tcon_active=constraint_tcon_active,
                         iter2=iter2,
                     )
-                    fsqr_probe, fsqz_probe, fsql_probe = _fsq_from_norms(
+                    fsqr_probe, fsqz_probe, fsql_probe = _residual_fsq_from_norms(
                         norms_probe,
-                        gcr2_in=gcr2_probe,
-                        gcz2_in=gcz2_probe,
-                        gcl2_in=gcl2_probe,
+                        gcr2=gcr2_probe,
+                        gcz2=gcz2_probe,
+                        gcl2=gcl2_probe,
                     )
                     w_probe = float(np.asarray(fsqr_probe + fsqz_probe + fsql_probe))
                     if (not np.isfinite(w_probe)) or (w_probe > 1.0e2 * max(w_curr, 1e-30)):
@@ -9469,11 +9464,11 @@ def solve_fixed_boundary_residual_iter(
                         iter2=iter2,
                     )
                     _record_compute_force_timing("trial", t_trial_force_start, gcr2_t)
-                    fsqr_t, fsqz_t, fsql_t = _fsq_from_norms(
+                    fsqr_t, fsqz_t, fsql_t = _residual_fsq_from_norms(
                         norms_t,
-                        gcr2_in=gcr2_t,
-                        gcz2_in=gcz2_t,
-                        gcl2_in=gcl2_t,
+                        gcr2=gcr2_t,
+                        gcz2=gcz2_t,
+                        gcl2=gcl2_t,
                     )
                     w_try = float(np.asarray(fsqr_t + fsqz_t + fsql_t))
                     w_try_ratio = w_try / max(w_curr, 1e-30) if np.isfinite(w_try) else float("inf")
@@ -9569,11 +9564,11 @@ def solve_fixed_boundary_residual_iter(
                         constraint_tcon_active=constraint_tcon_active,
                         iter2=iter2,
                     )
-                    fsqr_d, fsqz_d, fsql_d = _fsq_from_norms(
+                    fsqr_d, fsqz_d, fsql_d = _residual_fsq_from_norms(
                         norms_d,
-                        gcr2_in=gcr2_d,
-                        gcz2_in=gcz2_d,
-                        gcl2_in=gcl2_d,
+                        gcr2=gcr2_d,
+                        gcz2=gcz2_d,
+                        gcl2=gcl2_d,
                     )
                     w_dir = float(np.asarray(fsqr_d + fsqz_d + fsql_d))
                     if np.isfinite(w_dir) and (w_dir <= 1.5 * max(w_curr, 1e-30)):
@@ -9873,11 +9868,11 @@ def solve_fixed_boundary_residual_iter(
                     iter2=iter2,
                 )
                 _record_compute_force_timing("backtracking", t_backtracking_force_start, gcr2_t)
-                fsqr_t, fsqz_t, fsql_t = _fsq_from_norms(
+                fsqr_t, fsqz_t, fsql_t = _residual_fsq_from_norms(
                     norms_t,
-                    gcr2_in=gcr2_t,
-                    gcz2_in=gcz2_t,
-                    gcl2_in=gcl2_t,
+                    gcr2=gcr2_t,
+                    gcz2=gcz2_t,
+                    gcl2=gcl2_t,
                 )
                 w_try = float(np.asarray(fsqr_t + fsqz_t + fsql_t))
                 if np.isfinite(w_try) and (w_try <= 1.05 * w_curr):
@@ -10152,11 +10147,11 @@ def solve_fixed_boundary_residual_iter(
                 constraint_tcon_active=constraint_tcon_active,
                 iter2=last_iter2,
             )
-            fsqr_final, fsqz_final, fsql_final = _fsq_from_norms(
+            fsqr_final, fsqz_final, fsql_final = _residual_fsq_from_norms(
                 norms_final,
-                gcr2_in=gcr2_final,
-                gcz2_in=gcz2_final,
-                gcl2_in=gcl2_final,
+                gcr2=gcr2_final,
+                gcz2=gcz2_final,
+                gcl2=gcl2_final,
             )
             t_finalize_residual_get_start = time.perf_counter() if timing_enabled else None
             final_fsqr_report, final_fsqz_report, final_fsql_report = _device_get_floats(
