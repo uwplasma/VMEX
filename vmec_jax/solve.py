@@ -178,7 +178,9 @@ from .solve_residual_iter_mode_transform_helpers import (
 from .solve_force_payload_helpers import (
     ForceBlocks as _ForceBlocks,
     normalize_force_blocks as _normalize_force_blocks,  # noqa: F401 - re-exported for internal tests/importers.
+    preconditioner_output_blocks_jax as _preconditioner_output_blocks_jax,
     preconditioner_output_blocks_np as _preconditioner_output_blocks_np,
+    radial_preconditioner_output_blocks_jax as _radial_preconditioner_output_blocks_jax,
     residual_force_payload_after_m1_scalxc as _residual_force_payload_after_m1_scalxc,  # noqa: F401 - compatibility alias for tests/internal users.
     residual_force_payload_m1_scalxc_stages as _residual_force_payload_m1_scalxc_stages,  # noqa: F401 - compatibility alias for tests/internal users.
     zero_edge_rz_force_block as _zero_edge_rz_force_block,  # noqa: F401 - re-exported for internal tests/importers.
@@ -7241,30 +7243,9 @@ def solve_fixed_boundary_residual_iter(
                     preconditioner_outputs_scaled = True
                     preconditioner_fsq1_ready = True
                 elif not use_apply_payload_fusion:
-                    frcc = jnp.asarray(frzl_rz.frcc)
-                    frss = frzl_rz.frss
-                    fzsc = jnp.asarray(frzl_rz.fzsc)
-                    fzcs = frzl_rz.fzcs
-                    flsc = jnp.asarray(frzl_rz.flsc) * jnp.asarray(lam_prec)
-                    flcs = None if frzl_rz.flcs is None else (jnp.asarray(frzl_rz.flcs) * jnp.asarray(lam_prec))
-                    frsc = jnp.zeros_like(frcc)
-                    frcs = jnp.zeros_like(frcc)
-                    fzcc = jnp.zeros_like(fzsc)
-                    fzss = jnp.zeros_like(fzsc)
-                    flcc = jnp.zeros_like(flsc)
-                    flss = jnp.zeros_like(flsc)
-                    if getattr(frzl_rz, "frsc", None) is not None:
-                        frsc = jnp.asarray(frzl_rz.frsc)
-                    if getattr(frzl_rz, "frcs", None) is not None:
-                        frcs = jnp.asarray(frzl_rz.frcs)
-                    if getattr(frzl_rz, "fzcc", None) is not None:
-                        fzcc = jnp.asarray(frzl_rz.fzcc)
-                    if getattr(frzl_rz, "fzss", None) is not None:
-                        fzss = jnp.asarray(frzl_rz.fzss)
-                    if getattr(frzl_rz, "flcc", None) is not None:
-                        flcc = jnp.asarray(frzl_rz.flcc) * jnp.asarray(lam_prec)
-                    if getattr(frzl_rz, "flss", None) is not None:
-                        flss = jnp.asarray(frzl_rz.flss) * jnp.asarray(lam_prec)
+                    (frcc, frss, fzsc, fzcs, flsc, flcs, frsc, frcs, fzcc, fzss, flcc, flss) = (
+                        _preconditioner_output_blocks_jax(frzl_rz=frzl_rz, lam_prec=lam_prec)
+                    )
                 if timing_detail_enabled and t_precond_apply_start is not None:
                     try:
                         if has_jax():
@@ -7563,53 +7544,15 @@ def solve_fixed_boundary_residual_iter(
                     timing_stats["precond_apply"] += time.perf_counter() - float(t_precond_apply_start)
             else:
                 t_precond_apply_start = time.perf_counter() if timing_detail_enabled else None
-                frcc = _apply_radial_tridi(frzl.frcc * rz_scale[:, None, None], precond_radial_alpha)
-                frss = (
-                    _apply_radial_tridi(frzl.frss * rz_scale[:, None, None], precond_radial_alpha)
-                    if frzl.frss is not None
-                    else None
-                )
-                fzsc = _apply_radial_tridi(frzl.fzsc * rz_scale[:, None, None], precond_radial_alpha)
-                fzcs = (
-                    _apply_radial_tridi(frzl.fzcs * rz_scale[:, None, None], precond_radial_alpha)
-                    if frzl.fzcs is not None
-                    else None
-                )
-                flsc = _apply_radial_tridi(frzl.flsc * l_scale[:, None, None], precond_lambda_alpha)
-                flcs = (
-                    _apply_radial_tridi(frzl.flcs * l_scale[:, None, None], precond_lambda_alpha)
-                    if frzl.flcs is not None
-                    else None
-                )
-                frsc = (
-                    _apply_radial_tridi(frzl.frsc * rz_scale[:, None, None], precond_radial_alpha)
-                    if getattr(frzl, "frsc", None) is not None
-                    else jnp.zeros_like(frcc)
-                )
-                frcs = (
-                    _apply_radial_tridi(frzl.frcs * rz_scale[:, None, None], precond_radial_alpha)
-                    if getattr(frzl, "frcs", None) is not None
-                    else jnp.zeros_like(frcc)
-                )
-                fzcc = (
-                    _apply_radial_tridi(frzl.fzcc * rz_scale[:, None, None], precond_radial_alpha)
-                    if getattr(frzl, "fzcc", None) is not None
-                    else jnp.zeros_like(fzsc)
-                )
-                fzss = (
-                    _apply_radial_tridi(frzl.fzss * rz_scale[:, None, None], precond_radial_alpha)
-                    if getattr(frzl, "fzss", None) is not None
-                    else jnp.zeros_like(fzsc)
-                )
-                flcc = (
-                    _apply_radial_tridi(frzl.flcc * l_scale[:, None, None], precond_lambda_alpha)
-                    if getattr(frzl, "flcc", None) is not None
-                    else jnp.zeros_like(flsc)
-                )
-                flss = (
-                    _apply_radial_tridi(frzl.flss * l_scale[:, None, None], precond_lambda_alpha)
-                    if getattr(frzl, "flss", None) is not None
-                    else jnp.zeros_like(flsc)
+                (frcc, frss, fzsc, fzcs, flsc, flcs, frsc, frcs, fzcc, fzss, flcc, flss) = (
+                    _radial_preconditioner_output_blocks_jax(
+                        frzl=frzl,
+                        rz_scale=rz_scale,
+                        l_scale=l_scale,
+                        precond_radial_alpha=precond_radial_alpha,
+                        precond_lambda_alpha=precond_lambda_alpha,
+                        apply_radial_tridi_func=_apply_radial_tridi,
+                    )
                 )
                 if timing_detail_enabled and t_precond_apply_start is not None:
                     try:

@@ -1368,15 +1368,25 @@ Results obtained:
     fast path.  Focused force-payload tests plus actual residual-iteration
     host/JAX parity and QH trace extraction tests passed along with Ruff and
     compileall.  `solve.py` decreased to 10266 lines.
+71. Moved residual-iteration preconditioner output block materialization into
+    `solve_force_payload_helpers.py`.  The non-fused JAX lambda-preconditioned
+    path and the scalar radial-preconditioner path now share named helper
+    functions that return `ForceBlocks`, while the main loop still controls
+    cache refresh, fused GPU paths, timing buckets, and update acceptance.
+    Direct helper tests cover lambda scaling, missing asymmetric channels,
+    radial R/Z versus lambda weights, and optional-channel zero fill.  Focused
+    force-payload tests and actual residual-iteration host/JAX parity plus QH
+    trace extraction tests passed along with Ruff and compileall.  `solve.py`
+    decreased to 10209 lines.
 
 Best next steps:
 
 1. Keep all refactor work on PR #20 until the full plan is finalized.
 2. Continue Wave 1/Wave 2 by extracting the next solver pure seams around
-   force payload cache normalization and residual-iteration checkpoint payload
-   assembly.  Keep `_COMPUTE_FORCES_CACHE`, `_compute_forces_impl`, and the
-   adaptive scan loop in `solve.py` until the smaller helpers prove stable
-   under the existing hotpath/cache tests.
+   preconditioner cache refresh policy and residual-iteration checkpoint
+   payload assembly.  Keep `_COMPUTE_FORCES_CACHE`, `_compute_forces_impl`,
+   and the adaptive scan loop in `solve.py` until the smaller helpers prove
+   stable under the existing hotpath/cache tests.
 3. Continue broader refactors in parallel with `driver.py`, `optimization.py`,
    `free_boundary_adjoint.py`, and `wout.py` by extracting pure
    policy/formatting/data-container seams before moving any physics kernels.
@@ -1394,9 +1404,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 89%.
+- Differentiability/refactor implementation: 90%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 63% of the large-file extraction work.
+- Solver monolith reduction: 66% of the large-file extraction work.
 - Free-boundary adjoint monolith reduction: 30%.
 - Driver workflow decomposition: 35%.
 - WOUT diagnostic decomposition: 16%.
