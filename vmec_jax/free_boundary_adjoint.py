@@ -52,6 +52,7 @@ from .free_boundary_adjoint_trace_controls import (
 )
 from .free_boundary_adjoint_trace_metadata import (
     _compact_segment_summaries,
+    _fingerprint_has_rejected_controller_slot,
     _json_safe_fingerprint_value,
     _unique_shape_list,
     direct_coil_accepted_trace_controller_slot_summary,
@@ -4535,18 +4536,6 @@ def direct_coil_adaptive_full_loop_same_branch_gate_report(
     if bool(require_status_derived_rejected_controller_slot):
         if not status_derived_rejected_controller_slot_present:
             errors.append("rejected controller slot was not derived from trace step_status")
-
-    def _fingerprint_has_rejected_controller_slot(fingerprint: Mapping[str, Any]) -> bool:
-        if not isinstance(fingerprint, Mapping):
-            return False
-        accept_mask = np.asarray(fingerprint.get("accept_mask", ()), dtype=int)
-        if accept_mask.size and np.any(accept_mask == 0):
-            return True
-        step_status = tuple(str(status) for status in fingerprint.get("step_status", ()))
-        return any(
-            status.startswith("restart_") or status == "rejected"
-            for status in step_status
-        )
 
     complete_loop_rejected_slot_present = all(
         _fingerprint_has_rejected_controller_slot(branch_fingerprints[label])
