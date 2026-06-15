@@ -1168,6 +1168,13 @@ Results obtained:
     now uses the helper for trial, probe, damped, and final residual scalars,
     while focused tests cover NumPy/JAX scalar behavior and the private
     `solve.py` compatibility alias.
+43. Removed two residual-loop pass-through closures for radial mesh helper
+    ownership.  The solver now calls `pshalf_from_s_np` directly from
+    `solve_preconditioner_helpers.py`, the dead `_sm_sp_from_s` closure was
+    deleted, and the remaining `_sm_sp_from_s_np` import is explicitly marked
+    as a compatibility re-export for existing tests/importers.  Focused checks
+    passed for Ruff, compileall, and the ptau/radial helper branches.  `solve.py`
+    decreased to 10412 lines.
 
 Best next steps:
 
@@ -1195,9 +1202,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 63%.
+- Differentiability/refactor implementation: 64%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 54% of the large-file extraction work.
+- Solver monolith reduction: 55% of the large-file extraction work.
 - Free-boundary adjoint monolith reduction: 13%.
 - Driver workflow decomposition: 34%.
 - WOUT diagnostic decomposition: 4%.

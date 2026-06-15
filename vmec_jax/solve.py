@@ -221,7 +221,7 @@ from .solve_preconditioner_helpers import (
     radial_tridi_smooth_dirichlet as _radial_tridi_smooth_dirichlet,
     resolve_preconditioner_tridi_policies as _resolve_preconditioner_tridi_policies,
     scale_m1_precond_rhs_from_mats as _scale_m1_precond_rhs_from_mats,
-    sm_sp_from_s_np as _sm_sp_from_s_np,
+    sm_sp_from_s_np as _sm_sp_from_s_np,  # noqa: F401 - re-exported for existing internal tests/importers.
     vmec_scale_m1_factors_from_mats as _vmec_scale_m1_factors_from_mats,  # noqa: F401 - re-exported for existing internal tests/importers.
     vmec_scale_m1_factors_from_mats_np as _vmec_scale_m1_factors_from_mats_np,  # noqa: F401 - re-exported for existing internal tests/importers.
 )
@@ -1748,9 +1748,6 @@ def solve_fixed_boundary_residual_iter(
         smooth = _radial_tridi_smooth_dirichlet(stack, alpha=alpha)
         return tuple(smooth[:, i] for i in range(int(smooth.shape[1])))
 
-    def _pshalf_from_s(s_arr):
-        return _pshalf_from_s_np(s_arr)
-
     _t_setup_ptau_constants = _setup_timer_start()
     # Precompute pshalf and ohs for the JIT-accelerated ptau check.
     # These are fixed for the lifetime of this NS-stage closure. Keep the
@@ -1769,7 +1766,7 @@ def solve_fixed_boundary_residual_iter(
         _ptau_s_np = np.asarray(s)
         _ptau_hs = float(_ptau_s_np[1] - _ptau_s_np[0]) if int(_ptau_s_np.shape[0]) > 1 else 1.0
         _ptau_ohs_scalar = 0.0 if _ptau_hs == 0.0 else 1.0 / _ptau_hs
-        _ptau_pshalf_np = _pshalf_from_s(s)
+        _ptau_pshalf_np = _pshalf_from_s_np(s)
     if has_jax():
         if _ptau_s_is_traced:
             _ptau_pshalf_jax = _pshalf_from_s_jax(_ptau_s_jax, jnp.float64)
@@ -1814,9 +1811,6 @@ def solve_fixed_boundary_residual_iter(
         except Exception:
             return None
         return arrays if ns >= 2 else None
-
-    def _sm_sp_from_s(s_arr):
-        return _sm_sp_from_s_np(s_arr)
 
     def _maybe_dump_jacobian_terms(*, k, iter_idx: int) -> None:
         _maybe_dump_jacobian_terms_record(k=k, s=s, iter_idx=iter_idx)
