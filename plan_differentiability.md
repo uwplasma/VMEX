@@ -2490,3 +2490,67 @@ Completion:
 - Free-boundary adjoint monolith reduction: 58%.
 - Driver workflow decomposition: 72%.
 - WOUT diagnostic/profile decomposition: 72%.
+
+## 2026-06-15 Fixed-Boundary Solver Support Package Move
+
+Commit: remaining fixed-boundary solver support helper tranche on
+`codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved solver result dataclasses, solver option validators, profile/flux
+   convention helpers, JIT-cache helpers, and L-BFGS/quasi-Newton helper
+   functions out of the root `vmec_jax` namespace.
+2. Placed result/options/profile/JIT-cache helpers under
+   `vmec_jax.solvers.fixed_boundary`, and quasi-Newton helpers under
+   `vmec_jax.solvers.fixed_boundary.optimization`.
+3. Updated `solve.py`, implicit differentiation, finite-beta helpers, WOUT
+   synthesis, NumPy-force monkeypatch coverage, fixed-boundary diagnostics,
+   preconditioning, and optimizer packages to import the new paths.
+4. Updated direct helper tests and code-structure docs to use the new package
+   paths.
+5. Ratcheted the root-helper source-health CI gate from 8 to 3 files.
+
+Results obtained:
+
+- Root Python files dropped from 74 to 69.
+- Root helper-prefix files dropped from 8 to 3.
+- The remaining helper-prefix roots are now only the main free-boundary adjoint
+  facade, its public controller module, and free-boundary validation.
+- The broad driver/solve-discrete CI shard still passes after the move.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solve.py vmec_jax/solvers/fixed_boundary vmec_jax/implicit.py vmec_jax/finite_beta.py vmec_jax/wout.py vmec_jax/vmec_numpy_forces.py tests/test_solve_options.py tests/test_solve_optimizer_helpers.py tests/test_solve_residual_iter_force_cache_helpers.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_solve_diagnostics_io.py tests/test_solve_additional_branch_coverage.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_options.py tests/test_solve_optimizer_helpers.py tests/test_solve_residual_iter_force_cache_helpers.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_solve_diagnostics_io.py tests/test_solve_additional_branch_coverage.py tests/test_solve_branch_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_step9_implicit_fixed_boundary.py tests/test_finite_beta_helpers_unit.py tests/test_wout_fast_helpers.py -q`
+- `python tools/diagnostics/source_health.py --max-root-helper-prefix-files 3`
+- `SPHINX_FAST=1 python -m sphinx -T -b html docs docs/_build/html_fast`
+- `python tools/diagnostics/ci_core_bucket_args.py driver-solve-discrete > /tmp/vmec_jax-driver-solve-discrete.txt && JAX_ENABLE_X64=1 VMEC_JAX_SKIP_PY311_COVERAGE_ONLY=1 xargs pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --durations=30 --cov=vmec_jax --cov-report= < /tmp/vmec_jax-driver-solve-discrete.txt`
+
+Best next steps:
+
+1. Commit and push this solver-support package move.
+2. Stop root-helper-prefix ratcheting here unless `free_boundary_validation.py`
+   is moved deliberately; the remaining two `free_boundary_adjoint*` files are
+   public facades for the current free-boundary adjoint validation API.
+3. Shift the next tranche from namespace movement to line-count/function-count
+   reduction, starting with the nested scan loop inside `solve.py`.
+4. Preserve all VMEC parity and physics gates while extracting nested functions
+   into the existing `solvers.fixed_boundary.scan` package.
+
+User decisions needed:
+
+No immediate decision. PR #20 remains draft and all refactor work stays on this
+branch until the full plan is complete.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 92%.
+- Differentiability/refactor implementation: 98.8%.
+- Solver monolith reduction: 85%.
+- Free-boundary adjoint monolith reduction: 58%.
+- Driver workflow decomposition: 72%.
+- WOUT diagnostic/profile decomposition: 72%.

@@ -101,7 +101,7 @@ from .field import TWOPI, b2_from_bsup, bsup_from_geom, bsup_from_sqrtg_lambda
 from .fourier import eval_fourier_dtheta, eval_fourier_dzeta_phys
 from .geom import eval_geom
 from .grids import angle_steps
-from .solve_jit_cache_helpers import (
+from .solvers.fixed_boundary.jit_cache import (
     jit_cache_get as _jit_cache_get,
     jit_cache_limit as _jit_cache_limit,  # noqa: F401 - re-exported for existing internal tests/importers.
     jit_cache_put as _jit_cache_put,
@@ -141,7 +141,7 @@ from .solvers.fixed_boundary.diagnostics.io import (
     _should_print_vmec2000_row,
     _vmec2000_cadence_selected,
 )
-from .solve_options import (
+from .solvers.fixed_boundary.options import (
     validate_fixed_boundary_gd_options,
     validate_fixed_boundary_lbfgs_options,
     validate_lambda_gd_options,
@@ -150,12 +150,12 @@ from .solve_options import (
     validate_residual_iteration_options,
     validate_residual_lbfgs_options,
 )
-from .solve_optimizer_helpers import (
+from .solvers.fixed_boundary.optimization.quasi_newton import (
     ensure_descent_direction as _ensure_descent_direction,
     lbfgs_curvature_tolerance as _resolve_lbfgs_curvature_tol,
     lbfgs_two_loop_direction as _lbfgs_two_loop_direction,
 )
-from .solve_profile_helpers import (
+from .solvers.fixed_boundary.profiles import (
     _half_mesh_from_full_mesh,
     _icurv_full_mesh_from_indata,
     _mass_half_mesh_from_indata,
@@ -239,7 +239,7 @@ from .solvers.fixed_boundary.preconditioning.operators import (
     vmec_scale_m1_factors_from_mats as _vmec_scale_m1_factors_from_mats,  # noqa: F401 - re-exported for existing internal tests/importers.
     vmec_scale_m1_factors_from_mats_np as _vmec_scale_m1_factors_from_mats_np,  # noqa: F401 - re-exported for existing internal tests/importers.
 )
-from .solve_result_types import (
+from .solvers.fixed_boundary.results import (
     ScanCarry as _ScanCarry,
     SolveFixedBoundaryResult,
     SolveLambdaResult,
