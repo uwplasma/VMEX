@@ -1218,6 +1218,13 @@ Results obtained:
     preconditioner static signatures, and trace payload digests are covered
     through the dedicated helper module and existing trace-stack tests.  Focused
     free-boundary trace/control tests, Ruff, and compileall passed.
+51. Moved accepted-trace effective controller masks and unconditional-accept
+    segment checks into `free_boundary_adjoint_trace_controls.py`.  These
+    helpers interpret fixed branch accept/done/reset controls and decide which
+    replay segments can skip accept/reject conditionals; they are now colocated
+    with the controller-control payload builder while `free_boundary_adjoint.py`
+    keeps compatibility aliases.  Focused branch metadata/control tests, Ruff,
+    and compileall passed.
 
 Best next steps:
 
@@ -1245,9 +1252,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 68%.
+- Differentiability/refactor implementation: 69%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 57% of the large-file extraction work.
-- Free-boundary adjoint monolith reduction: 17%.
+- Free-boundary adjoint monolith reduction: 18%.
 - Driver workflow decomposition: 34%.
 - WOUT diagnostic decomposition: 4%.
