@@ -161,6 +161,23 @@ def test_free_boundary_adjoint_trace_stackability_error_paths() -> None:
     assert fba._trace_static_value_shape_signature is trace_stack.trace_static_value_shape_signature
     assert fba._trace_optional_presence_signature is trace_stack.trace_optional_presence_signature
     assert fba._stack_trace_nestor_axis_controls is trace_stack.stack_trace_nestor_axis_controls
+    assert fba._trace_step_policy_static_signature is trace_stack.trace_step_policy_static_signature
+    assert (
+        fba.direct_coil_accepted_trace_step_policy_segments
+        is trace_stack.direct_coil_accepted_trace_step_policy_segments
+    )
+    assert (
+        fba.direct_coil_accepted_trace_step_policy_segment_summary
+        is trace_stack.direct_coil_accepted_trace_step_policy_segment_summary
+    )
+    assert (
+        fba.direct_coil_accepted_trace_preconditioner_policy_segments
+        is trace_stack.direct_coil_accepted_trace_preconditioner_policy_segments
+    )
+    assert (
+        fba.direct_coil_accepted_trace_preconditioner_policy_segment_summary
+        is trace_stack.direct_coil_accepted_trace_preconditioner_policy_segment_summary
+    )
     assert trace_metadata.unique_shape_list([(2, 3), (2, 3), (1,)]) == [[2, 3], [1]]
     assert trace_metadata.compact_segment_summaries(
         [{"count": 1, "signature_repr": "large"}, {"count": 2, "tag": "kept"}]
