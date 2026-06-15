@@ -17,10 +17,13 @@ future solver:
 - uniform-theta Fourier grids, derivatives, and quadrature;
 - axisymmetric fixed side boundaries, state projection, metric and Jacobian
   kernels for straight-axis cylinder/flared tubes;
+- scalar radial profiles, contravariant/covariant/cartesian magnetic-field
+  kernels, and magnetic/pressure energy integrals;
 - focused tests for node ordering, polynomial exactness, interpolation, filtering,
-  theta orthogonality, and analytic axisymmetric geometry.
+  theta orthogonality, analytic axisymmetric geometry, field identities, and
+  analytic energy.
 
-Later phases add the divergence-free contravariant field representation,
-variational energy and residuals, fixed-boundary solves, mirror native ``mout``
-output, plotting, WHAM-inspired validation, nonaxisymmetric boundaries, mirror
-straight-field-line diagnostics, and optimization workflows.
+Later phases add variational force kernels, manufactured solutions,
+fixed-boundary solves, mirror native ``mout`` output, plotting, WHAM-inspired
+validation, nonaxisymmetric boundaries, mirror straight-field-line diagnostics,
+and optimization workflows.

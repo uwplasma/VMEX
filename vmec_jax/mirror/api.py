@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from .core.basis import ChebyshevLobattoBasis, ThetaFourierBasis
 from .core.boundary import MirrorBoundary
 from .core.grids import MirrorGrid, make_mirror_grid
+from .core.profiles import IPrimeProfile, PressureProfile, PsiPrimeProfile
 from .core.state import MirrorStateAxisym
 
 
@@ -46,11 +47,14 @@ class MirrorConfig:
 
 __all__ = [
     "ChebyshevLobattoBasis",
+    "IPrimeProfile",
     "MirrorBoundary",
     "MirrorConfig",
     "MirrorGrid",
     "MirrorResolution",
     "MirrorStateAxisym",
+    "PressureProfile",
+    "PsiPrimeProfile",
     "ThetaFourierBasis",
     "make_mirror_grid",
 ]
