@@ -12,6 +12,65 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-14 Accepted-Trace Fingerprint Extraction
+
+Steps taken:
+
+1. Extracted accepted-trace branch fingerprint helpers from
+   ``vmec_jax/free_boundary_adjoint.py`` into
+   ``vmec_jax/free_boundary_adjoint_trace_fingerprint.py``.
+2. Preserved the historical public import path from
+   ``vmec_jax.free_boundary_adjoint`` and added the fingerprint helpers to
+   ``free_boundary_adjoint.__all__`` to match the documented API surface.
+3. Added unit coverage that verifies alias compatibility with the extracted
+   module and verifies that discontinuities between one accepted trace's
+   ``state_post`` and the next trace's ``state_pre`` are reported through
+   ``state_reset_flags``.
+4. Kept production differentiation claims conservative: this improves
+   fingerprint-gated branch-local validation, but it is not a claim of
+   arbitrary differentiation through changed adaptive host branches.
+
+Results obtained:
+
+1. ``free_boundary_adjoint.py`` decreased from roughly ``6742`` to ``6493``
+   lines while keeping all existing fingerprint callers on the same import
+   path.
+2. The stricter reset fingerprint makes same-branch gates safer: mixed
+   accepted traces are now rejected when trace-state continuity changes, rather
+   than relying on a silent fallback.
+3. Focused checks passed locally:
+   ``python -m ruff check vmec_jax/free_boundary_adjoint.py vmec_jax/free_boundary_adjoint_trace_fingerprint.py tests/test_free_boundary_adjoint_helpers_unit.py``;
+   ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_adjoint_helpers_unit.py -q``;
+   ``JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes -q``.
+
+Best next steps:
+
+1. Let the current GitHub Actions run for the previous coverage repair finish
+   before pushing this extraction, unless another blocking failure appears.
+2. Add the next same-fingerprint physical scalar gate only if it remains
+   branch-local and rejects changed fingerprints; finite-beta ``betatotal`` is
+   the narrowest next candidate.
+3. Start the next solver refactor on the residual-iteration mode-transform
+   context, not the adaptive scan loop or force-pipeline cache owner.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.9999999% for fixed and
+  fingerprint-gated branch-local gates; adaptive host branch changes remain
+  deferred/unclaimed.
+- VMEC parity and physics gates: 99.9%.
+- Single-stage coil-only optimization phase 3: 99.9%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene: 100% locally; latest GitHub coverage run still
+  pending at the time of this note.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.
+
 ### 2026-06-13 Deferred Differentiability Roadmap and QI CI Guard
 
 Steps taken:

@@ -7,6 +7,7 @@ import pytest
 
 import vmec_jax.free_boundary_adjoint as fba
 import vmec_jax.free_boundary_adjoint_trace_controls as trace_controls
+import vmec_jax.free_boundary_adjoint_trace_fingerprint as trace_fingerprint
 import vmec_jax.free_boundary_adjoint_trace_metadata as trace_metadata
 from vmec_jax._compat import jnp
 
@@ -75,6 +76,23 @@ def test_free_boundary_adjoint_trace_stackability_error_paths() -> None:
         fba.direct_coil_accepted_trace_controller_slot_summary
         is trace_metadata.direct_coil_accepted_trace_controller_slot_summary
     )
+    assert fba._trace_scalar is trace_fingerprint.trace_scalar
+    assert fba._trace_bool is trace_fingerprint.trace_bool
+    assert fba._trace_pack_size is trace_fingerprint.trace_pack_size
+    assert fba._trace_array_size is trace_fingerprint.trace_array_size
+    assert fba._trace_pytree_shape_signature is trace_fingerprint.trace_pytree_shape_signature
+    assert (
+        fba.direct_coil_accepted_trace_fingerprint
+        is trace_fingerprint.direct_coil_accepted_trace_fingerprint
+    )
+    assert (
+        fba.direct_coil_accepted_trace_fingerprint_delta
+        is trace_fingerprint.direct_coil_accepted_trace_fingerprint_delta
+    )
+    assert (
+        fba.direct_coil_accepted_trace_fingerprint_delta_summary
+        is trace_fingerprint.direct_coil_accepted_trace_fingerprint_delta_summary
+    )
     assert trace_metadata.unique_shape_list([(2, 3), (2, 3), (1,)]) == [[2, 3], [1]]
     assert trace_metadata.compact_segment_summaries(
         [{"count": 1, "signature_repr": "large"}, {"count": 2, "tag": "kept"}]
@@ -120,6 +138,28 @@ def test_free_boundary_adjoint_trace_stackability_error_paths() -> None:
     }
     assert fba._accepted_trace_reset_flags([]) == ()
     assert fba._accepted_trace_reset_flags([{}, {}]) == (False, False)
+    trace0 = {
+        "state_pre": np.asarray([0.0, 0.0]),
+        "state_post": np.asarray([1.0, 1.0]),
+    }
+    trace1_continuous = {
+        "state_pre": np.asarray([1.0, 1.0]),
+        "state_post": np.asarray([2.0, 2.0]),
+    }
+    trace1_reset = {
+        "state_pre": np.asarray([9.0, 9.0]),
+        "state_post": np.asarray([2.0, 2.0]),
+    }
+    continuous = trace_fingerprint.direct_coil_accepted_trace_fingerprint([trace0, trace1_continuous])
+    reset = trace_fingerprint.direct_coil_accepted_trace_fingerprint([trace0, trace1_reset])
+    np.testing.assert_array_equal(continuous["state_reset_flags"], np.asarray([0]))
+    np.testing.assert_array_equal(reset["state_reset_flags"], np.asarray([1]))
+    reset_delta = trace_fingerprint.direct_coil_accepted_trace_fingerprint_delta(
+        [trace0, trace1_continuous],
+        [trace0, trace1_reset],
+    )
+    assert not reset_delta["compatible"]
+    assert "state_reset_flags" in reset_delta["changed_fields"]
 
     with pytest.raises(ValueError, match="at least one"):
         fba._stack_trace_control_field((), "dt_eff")
@@ -158,6 +198,90 @@ def test_free_boundary_adjoint_trace_stackability_error_paths() -> None:
         {"preconditioner_use_lax_tridi": np.asarray([True])},
         "preconditioner_use_lax_tridi",
     ) == 1
+
+
+@pytest.mark.py311_coverage_only
+def test_free_boundary_trace_fingerprint_fallback_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Cover branch-fingerprint fallback paths without a free-boundary solve."""
+
+    assert trace_fingerprint.trace_scalar({"value": None}, "value", default=3.0) == 3.0
+    assert trace_fingerprint.trace_scalar({"value": np.asarray([])}, "value", default=4.0) == 4.0
+    assert trace_fingerprint.trace_bool({"flag": None}, "flag") == 0
+    assert trace_fingerprint.trace_bool({"flag": np.asarray([])}, "flag") == 0
+    assert trace_fingerprint.trace_array_size(None) == 0
+    assert trace_fingerprint.trace_pack_size(None) == 0
+
+    real_tree_util = trace_fingerprint.tree_util
+
+    class RaisingTreeUtil:
+        @staticmethod
+        def tree_leaves(_value):
+            raise TypeError("synthetic non-pytree")
+
+    monkeypatch.setattr(trace_fingerprint, "tree_util", RaisingTreeUtil())
+    assert trace_fingerprint.trace_pytree_shape_signature(np.ones((2, 3))) == ((2, 3),)
+    monkeypatch.setattr(trace_fingerprint, "tree_util", real_tree_util)
+
+    empty = trace_fingerprint.direct_coil_accepted_trace_fingerprint([])
+    assert empty["n_steps"] == 0
+    assert empty["step_status"] == ()
+    np.testing.assert_array_equal(empty["accept_mask"], np.asarray([], dtype=int))
+    np.testing.assert_array_equal(empty["done_mask"], np.asarray([], dtype=int))
+
+    trace0 = {
+        "dt_eff": np.asarray(0.5),
+        "fac": np.asarray(1.0),
+        "flip_sign": False,
+        "freeb_bsqvac_half": np.ones((2, 2)),
+        "state_pre": np.asarray([0.0, 0.0]),
+        "state_post": np.asarray([1.0, 1.0]),
+    }
+    trace1 = {
+        **trace0,
+        "dt_eff": np.asarray(0.25),
+        "fac": np.asarray(0.75),
+        "flip_sign": True,
+        "freeb_bsqvac_half": np.ones((3, 2)),
+        "state_pre": np.asarray([1.0, 1.0]),
+        "state_post": np.asarray([2.0, 2.0]),
+    }
+    truncated = trace_fingerprint.direct_coil_accepted_trace_fingerprint([trace0, trace1], max_steps=1)
+    assert truncated["n_steps"] == 1
+    np.testing.assert_array_equal(truncated["freeb_sizes"], np.asarray([4]))
+
+    changed = trace_fingerprint.direct_coil_accepted_trace_fingerprint_delta([trace0], [trace0, trace1])
+    assert not changed["compatible"]
+    assert "n_steps" in changed["changed_fields"]
+    assert "freeb_sizes" in changed["changed_fields"]
+    assert "flags.flip_sign" in changed["changed_fields"]
+    assert "scalars.dt_eff" in changed["changed_fields"]
+
+    scalar_changed_trace0 = {**trace0, "dt_eff": np.asarray(0.75)}
+    scalar_changed = trace_fingerprint.direct_coil_accepted_trace_fingerprint_delta(
+        [trace0],
+        [scalar_changed_trace0],
+    )
+    assert not scalar_changed["compatible"]
+    assert "scalars.dt_eff" in scalar_changed["changed_fields"]
+    assert scalar_changed["max_abs_scalar_delta"] > 0.0
+    assert scalar_changed["max_rel_scalar_delta"] > 0.0
+
+    json_changed = trace_fingerprint.direct_coil_accepted_trace_fingerprint_delta_summary(
+        [trace0, trace1],
+        [trace0, trace1],
+        max_steps=1,
+    )
+    assert json_changed["compatible"]
+    assert json_changed["reference"]["n_steps"] == 1
+
+    bad_state = object()
+    bad_reset = trace_fingerprint.direct_coil_accepted_trace_fingerprint(
+        [
+            {"state_post": bad_state},
+            {"state_pre": bad_state},
+        ]
+    )
+    np.testing.assert_array_equal(bad_reset["state_reset_flags"], np.asarray([0]))
 
 
 @pytest.mark.py311_coverage_only

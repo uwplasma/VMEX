@@ -45,12 +45,16 @@ from .free_boundary_adjoint_trace_metadata import (
     _unique_shape_list,
     direct_coil_accepted_trace_controller_slot_summary,
 )
+from . import free_boundary_adjoint_trace_fingerprint as _trace_fingerprint
 
 __all__ = [
     "direct_coil_accepted_trace_branch_metadata",
     "direct_coil_accepted_trace_controller_slot_summary",
     "direct_coil_accepted_trace_controller_custom_vjp_scalars_jax",
     "direct_coil_accepted_trace_controller_replay_plan",
+    "direct_coil_accepted_trace_fingerprint",
+    "direct_coil_accepted_trace_fingerprint_delta",
+    "direct_coil_accepted_trace_fingerprint_delta_summary",
     "direct_coil_accepted_trace_replay_graph_metadata",
     "direct_coil_accepted_trace_status_masks",
     "direct_coil_accepted_trace_step_controls_jax",
@@ -79,6 +83,17 @@ __all__ = [
     "jax_visible_unrolled_accepted_only_nonlinear_controller_jax",
     "pytree_directional_derivative_check_jax",
 ]
+
+_trace_scalar = _trace_fingerprint.trace_scalar
+_trace_bool = _trace_fingerprint.trace_bool
+_trace_pack_size = _trace_fingerprint.trace_pack_size
+_trace_array_size = _trace_fingerprint.trace_array_size
+_trace_pytree_shape_signature = _trace_fingerprint.trace_pytree_shape_signature
+direct_coil_accepted_trace_fingerprint = _trace_fingerprint.direct_coil_accepted_trace_fingerprint
+direct_coil_accepted_trace_fingerprint_delta = _trace_fingerprint.direct_coil_accepted_trace_fingerprint_delta
+direct_coil_accepted_trace_fingerprint_delta_summary = (
+    _trace_fingerprint.direct_coil_accepted_trace_fingerprint_delta_summary
+)
 
 
 def _block_until_ready_for_timing(value: Any) -> Any:
@@ -4109,268 +4124,6 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
         "accepted_only_fast_path_segments": accepted_only_fast_path_segments,
         "state_reset_flags": tuple(bool(flag) for flag in np.asarray(controls["reset_to_trace_pre"], dtype=bool)),
     }
-
-
-def _trace_scalar(trace: dict[str, Any], key: str, *, default: float = np.nan) -> float:
-    value = trace.get(key, default)
-    if value is None:
-        return float(default)
-    arr = np.asarray(value)
-    if arr.size == 0:
-        return float(default)
-    return float(arr.reshape(-1)[0])
-
-
-def _trace_bool(trace: dict[str, Any], key: str) -> int:
-    value = trace.get(key, False)
-    if value is None:
-        return 0
-    arr = np.asarray(value)
-    if arr.size == 0:
-        return 0
-    return int(bool(arr.reshape(-1)[0]))
-
-
-def _trace_pack_size(value: Any) -> int:
-    if value is None:
-        return 0
-    from .state import pack_state
-
-    try:
-        return int(np.asarray(pack_state(value)).size)
-    except Exception:
-        return int(np.asarray(value).size)
-
-
-def _trace_array_size(value: Any) -> int:
-    if value is None:
-        return 0
-    return int(np.asarray(value).size)
-
-
-def _trace_pytree_shape_signature(value: Any) -> tuple[tuple[int, ...], ...]:
-    if value is None:
-        return ()
-    try:
-        leaves = tree_util.tree_leaves(value)
-    except Exception:
-        leaves = [value]
-    return tuple(tuple(np.asarray(leaf).shape) for leaf in leaves)
-
-
-def direct_coil_accepted_trace_fingerprint(
-    traces: Any,
-    *,
-    max_steps: int | None = None,
-) -> dict[str, Any]:
-    """Return a branch-control fingerprint for accepted free-boundary traces.
-
-    The fixed-trace direct-coil adjoint differentiates a frozen local model:
-    accepted controller choices, time-step scalars, limiter policy, and NESTOR
-    trace structure are fixed while coil fields are resampled.  This
-    fingerprint captures those *discrete/control* choices so a complete-solve
-    finite-difference check can reject perturbations that moved onto a
-    different adaptive branch before comparing derivatives.
-
-    Differentiable values that should vary with coil parameters, such as the
-    actual ``freeb_bsqvac_half`` entries, are intentionally not included except
-    for presence/size metadata.
-    """
-
-    trace_seq = list(traces)
-    if max_steps is not None:
-        trace_seq = trace_seq[: int(max_steps)]
-
-    scalar_keys = (
-        "dt_eff",
-        "b1",
-        "fac",
-        "force_scale",
-        "max_update_rms_pre",
-        "limit_update_rms",
-    )
-    bool_keys = (
-        "flip_sign",
-        "divide_by_scalxc_for_update",
-        "preconditioner_use_precomputed_tridi",
-        "preconditioner_use_lax_tridi",
-    )
-    scalars = {
-        key: np.asarray([_trace_scalar(trace, key) for trace in trace_seq], dtype=float)
-        for key in scalar_keys
-    }
-    flags = {
-        key: np.asarray([_trace_bool(trace, key) for trace in trace_seq], dtype=int)
-        for key in bool_keys
-    }
-    freeb_sizes = np.asarray(
-        [_trace_array_size(trace.get("freeb_bsqvac_half")) for trace in trace_seq],
-        dtype=int,
-    )
-    nestor_sizes = np.asarray(
-        [
-            len(trace.get("freeb_nestor_trace", {}) or {})
-            if isinstance(trace.get("freeb_nestor_trace", {}), dict)
-            else 0
-            for trace in trace_seq
-        ],
-        dtype=int,
-    )
-    state_pre_sizes = np.asarray(
-        [_trace_pack_size(trace.get("state_pre")) for trace in trace_seq],
-        dtype=int,
-    )
-    state_post_sizes = np.asarray(
-        [_trace_pack_size(trace.get("state_post")) for trace in trace_seq],
-        dtype=int,
-    )
-    precond_jmax = np.asarray([int(trace.get("precond_jmax", -1)) for trace in trace_seq], dtype=int)
-    precond_mats_shapes = tuple(_trace_pytree_shape_signature(trace.get("precond_mats")) for trace in trace_seq)
-    lam_prec_shapes = tuple(tuple(np.asarray(trace.get("lam_prec", [])).shape) for trace in trace_seq)
-    w_mode_shapes = tuple(tuple(np.asarray(trace.get("w_mode_mn", [])).shape) for trace in trace_seq)
-    if trace_seq:
-        status_masks = direct_coil_accepted_trace_status_masks(trace_seq)
-        step_status = tuple(status_masks["step_status"])
-        accept_mask = np.asarray(status_masks["accept_mask"], dtype=int)
-        done_mask = np.asarray(status_masks["done_mask"], dtype=int)
-    else:
-        step_status = ()
-        accept_mask = np.asarray((), dtype=int)
-        done_mask = np.asarray((), dtype=int)
-    reset_flags = []
-    for prev_trace, trace in zip(trace_seq[:-1], trace_seq[1:], strict=False):
-        try:
-            prev_packed = np.asarray(pack_state(prev_trace.get("state_post")), dtype=float)
-            next_packed = np.asarray(pack_state(trace.get("state_pre")), dtype=float)
-            reset_flags.append(
-                int(
-                    prev_packed.shape != next_packed.shape
-                    or (not np.allclose(prev_packed, next_packed, rtol=1.0e-13, atol=1.0e-13))
-                )
-            )
-        except Exception:
-            reset_flags.append(0)
-    return {
-        "n_steps": int(len(trace_seq)),
-        "n_freeb_steps": int(np.count_nonzero(freeb_sizes)),
-        "scalars": scalars,
-        "flags": flags,
-        "freeb_sizes": freeb_sizes,
-        "nestor_trace_key_counts": nestor_sizes,
-        "state_pre_sizes": state_pre_sizes,
-        "state_post_sizes": state_post_sizes,
-        "precond_jmax": precond_jmax,
-        "precond_mats_shapes": precond_mats_shapes,
-        "lam_prec_shapes": lam_prec_shapes,
-        "w_mode_mn_shapes": w_mode_shapes,
-        "step_status": step_status,
-        "accept_mask": accept_mask,
-        "done_mask": done_mask,
-        "state_reset_flags": np.asarray(reset_flags, dtype=int),
-    }
-
-
-def direct_coil_accepted_trace_fingerprint_delta(
-    reference: Any,
-    candidate: Any,
-    *,
-    rtol: float = 1.0e-10,
-    atol: float = 1.0e-12,
-    max_steps: int | None = None,
-) -> dict[str, Any]:
-    """Compare two accepted-trace fingerprints.
-
-    Returns a small diagnostic dictionary with ``compatible=True`` only when
-    the accepted-step structure and fixed controller scalars agree within the
-    requested tolerances.  This is a guard for fixed-trace AD-vs-FD promotion;
-    incompatibility means the perturbation exercised a different host-control
-    branch and should not be used to validate the frozen-trace derivative.
-    """
-
-    ref = direct_coil_accepted_trace_fingerprint(reference, max_steps=max_steps)
-    cand = direct_coil_accepted_trace_fingerprint(candidate, max_steps=max_steps)
-    changed: list[str] = []
-    max_abs = 0.0
-    max_rel = 0.0
-
-    for key in ("n_steps", "n_freeb_steps"):
-        if int(ref[key]) != int(cand[key]):
-            changed.append(key)
-
-    for group in ("flags",):
-        for key, ref_values in ref[group].items():
-            cand_values = cand[group].get(key, np.asarray([], dtype=ref_values.dtype))
-            if ref_values.shape != cand_values.shape or not np.array_equal(ref_values, cand_values):
-                changed.append(f"{group}.{key}")
-
-    for key in (
-        "freeb_sizes",
-        "nestor_trace_key_counts",
-        "state_pre_sizes",
-        "state_post_sizes",
-        "precond_jmax",
-        "accept_mask",
-        "done_mask",
-        "state_reset_flags",
-    ):
-        ref_values = np.asarray(ref[key])
-        cand_values = np.asarray(cand[key])
-        if ref_values.shape != cand_values.shape or not np.array_equal(ref_values, cand_values):
-            changed.append(key)
-
-    for key in ("precond_mats_shapes", "lam_prec_shapes", "w_mode_mn_shapes", "step_status"):
-        if ref[key] != cand[key]:
-            changed.append(key)
-
-    for key, ref_values in ref["scalars"].items():
-        cand_values = cand["scalars"].get(key, np.asarray([], dtype=float))
-        if ref_values.shape != cand_values.shape:
-            changed.append(f"scalars.{key}")
-            continue
-        abs_delta = np.abs(cand_values - ref_values)
-        finite = np.isfinite(abs_delta)
-        if np.any(finite):
-            max_abs = max(max_abs, float(np.max(abs_delta[finite])))
-            denom = np.maximum(np.abs(ref_values[finite]), float(atol))
-            max_rel = max(max_rel, float(np.max(abs_delta[finite] / denom)))
-        if not np.allclose(cand_values, ref_values, rtol=float(rtol), atol=float(atol), equal_nan=True):
-            changed.append(f"scalars.{key}")
-
-    return {
-        "compatible": len(changed) == 0,
-        "changed_fields": tuple(changed),
-        "max_abs_scalar_delta": float(max_abs),
-        "max_rel_scalar_delta": float(max_rel),
-        "reference": ref,
-        "candidate": cand,
-    }
-
-
-def direct_coil_accepted_trace_fingerprint_delta_summary(
-    reference: Any,
-    candidate: Any,
-    *,
-    rtol: float = 1.0e-10,
-    atol: float = 1.0e-12,
-    max_steps: int | None = None,
-) -> dict[str, Any]:
-    """Return a strict-JSON-safe accepted-trace fingerprint delta summary.
-
-    The raw :func:`direct_coil_accepted_trace_fingerprint_delta` output keeps
-    NumPy arrays for in-process diagnostics.  Comparison scripts and reviewer
-    artifacts need a payload that can be written with
-    ``json.dumps(..., allow_nan=False)``; this helper converts arrays, tuples,
-    NumPy scalars, and non-finite values into JSON-safe Python objects.
-    """
-
-    delta = direct_coil_accepted_trace_fingerprint_delta(
-        reference,
-        candidate,
-        rtol=rtol,
-        atol=atol,
-        max_steps=max_steps,
-    )
-    return _json_safe_fingerprint_value(delta)
 
 
 def direct_coil_complete_solve_trace(

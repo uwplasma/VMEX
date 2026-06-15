@@ -1055,21 +1055,35 @@ Results obtained:
     fast docs build passed.  A local coverage invocation was not usable because
     the developer machine mixed Python/pytest plugin environments before test
     collection; the clean GitHub runner remains the coverage authority.
+29. Free-boundary branch-fingerprint extraction moved accepted-trace scalar,
+    boolean, payload-shape, state-size, fingerprint, fingerprint-delta, and
+    JSON-safe delta-summary helpers into
+    `vmec_jax/free_boundary_adjoint_trace_fingerprint.py`.  The historical
+    imports from `free_boundary_adjoint.py` remain valid and are now included
+    in `free_boundary_adjoint.__all__` to match the documented API.  The
+    extraction also fixes a silent reset-fingerprint weakness: synthetic
+    array-valued trace states and full VMEC states now both detect
+    discontinuities between `state_post` and the next `state_pre`, so
+    same-fingerprint gates reject mixed accepted branches instead of silently
+    accepting them.  The focused helper shard covers the new fingerprint
+    module at 100% line coverage while keeping the trace-metadata helper at
+    100% and the combined extracted trace-helper subset at 96%.
+30. Parallel solve-monolith audit identified the next larger low-risk
+    `solve.py` split: extract residual-iteration mode-transform setup into a
+    focused module that owns signed-mode projection matrices, host/JAX
+    `mn -> signed` transforms, physical/scalxc wrappers, residual norms, and
+    mode-diagonal weights.  This should return a small context object and be
+    validated with host-vs-JAX transform parity plus existing hot-path/cache
+    tests before touching the force pipeline or adaptive scan loop.
 
 Best next steps:
 
 1. Keep all refactor work on PR #20 until the full plan is finalized.
-2. Continue Wave 1/Wave 2 by extracting small pure solver helpers from
-   `solve.py`: residual-loop controller-state bookkeeping, scan/restart scalar
-   policy adapters, host/device update payload assembly, and diagnostic dump
-   file formatting are the next low-risk candidates.  The next larger
-   candidate is a scan-runner/cache adapter split, but only after focused tests
-   are identified for existing monkeypatch seams.
-   With lambda, fixed-boundary energy GD/L-BFGS, and residual-objective
-   L-BFGS/Gauss-Newton split out, the next `solve.py` candidates are the
-   residual-iteration controller-state bookkeeping and scan/restart scalar
-   policy adapters.  Avoid moving the full adaptive loop until branch
-   fingerprint gates are narrowed further.
+2. Continue Wave 1/Wave 2 by extracting the residual-iteration mode-transform
+   context from `solve.py` before moving the force pipeline or adaptive scan
+   loop.  Keep cache-object ownership and monkeypatch seams stable, and add
+   host-vs-JAX signed-transform parity tests instead of widening default CI to
+   expensive VMEC solves.
 3. Continue broader refactors in parallel with `driver.py`, `optimization.py`,
    `free_boundary_adjoint.py`, and `wout.py` by extracting pure
    policy/formatting/data-container seams before moving any physics kernels.
@@ -1087,9 +1101,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 53%.
+- Differentiability/refactor implementation: 55%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 45% of the large-file extraction work.
-- Free-boundary adjoint monolith reduction: 9%.
+- Free-boundary adjoint monolith reduction: 13%.
 - Driver workflow decomposition: 34%.
 - WOUT diagnostic decomposition: 4%.
