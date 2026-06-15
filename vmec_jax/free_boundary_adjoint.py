@@ -45,6 +45,10 @@ from .free_boundary_adjoint_trace_metadata import (
     _unique_shape_list,
     direct_coil_accepted_trace_controller_slot_summary,
 )
+from .free_boundary_adjoint_runtime_helpers import (
+    block_until_ready_for_timing as _runtime_block_until_ready_for_timing,
+    jax_named_scope as _runtime_jax_named_scope,
+)
 from . import free_boundary_adjoint_trace_fingerprint as _trace_fingerprint
 
 __all__ = [
@@ -97,24 +101,11 @@ direct_coil_accepted_trace_fingerprint_delta_summary = (
 
 
 def _block_until_ready_for_timing(value: Any) -> Any:
-    """Synchronize JAX arrays before recording device timing diagnostics."""
-
-    if jax is None:
-        return value
-    try:
-        return jax.block_until_ready(value)
-    except Exception:
-        # Some older JAX versions do not accept every pytree container at the
-        # top level.  Fall back to synchronizing individual leaves.
-        return tree_util.tree_map(lambda leaf: jax.block_until_ready(leaf), value)
+    return _runtime_block_until_ready_for_timing(value, jax_module=jax, tree_util_module=tree_util)
 
 
 def _jax_named_scope(name: str) -> Any:
-    """Return a JAX named-scope context when supported, otherwise a no-op."""
-
-    if jax is None or not hasattr(jax, "named_scope"):
-        return nullcontext()
-    return jax.named_scope(name)
+    return _runtime_jax_named_scope(name, jax_module=jax, nullcontext_factory=nullcontext)
 
 
 def dense_vacuum_solve_jax(A: Any, b: Any, *, symmetric: bool = False) -> Any:

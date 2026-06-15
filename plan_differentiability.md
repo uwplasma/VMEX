@@ -1204,6 +1204,13 @@ Results obtained:
     independently by runtime-helper tests, including disabled timing and
     synchronization-failure paths.  Focused runtime/hotpath tests, Ruff, and
     compileall passed.  `solve.py` decreased to 10357 lines.
+49. Started the free-boundary adjoint runtime-helper seam by moving JAX timing
+    synchronization and named-scope fallback utilities into
+    `free_boundary_adjoint_runtime_helpers.py`.  `free_boundary_adjoint.py`
+    keeps compatibility wrappers so existing monkeypatch-based tests still
+    exercise module-local JAX shims, while the helper behavior is now directly
+    unit-tested.  Focused free-boundary helper/vacuum-adjoint tests, Ruff, and
+    compileall passed.
 
 Best next steps:
 
@@ -1231,9 +1238,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 66%.
+- Differentiability/refactor implementation: 67%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 57% of the large-file extraction work.
-- Free-boundary adjoint monolith reduction: 13%.
+- Free-boundary adjoint monolith reduction: 14%.
 - Driver workflow decomposition: 34%.
 - WOUT diagnostic decomposition: 4%.
