@@ -56,14 +56,17 @@ from .solve_residual_iter_runtime_helpers import (
     _attach_free_boundary_external_field_diag as _runtime_attach_free_boundary_external_field_diag,
     _converged_residuals_scan_fast as _runtime_converged_residuals_scan_fast,
     _device_get_floats,
+    _initial_setup_phase_timings,
     _maybe_dump_ptau as _runtime_maybe_dump_ptau,
     _maybe_print_nonscan_state_debug,
     _record_compute_force_timing as _runtime_record_compute_force_timing,
+    _record_setup_timing as _runtime_record_setup_timing,
     _scan_block_until_ready,
     _scan_device_run_ready as _runtime_scan_device_run_ready,
     _scan_print_uses_debug_callback,
     _scan_print_uses_debug_print,
     _scan_print_uses_io_callback,
+    _setup_timer_start as _runtime_setup_timer_start,
     _vmec_freeb_plascur_from_bcovar as _runtime_vmec_freeb_plascur_from_bcovar,
 )
 from .solve_residual_iter_setup_helpers import (
@@ -1044,24 +1047,13 @@ def solve_fixed_boundary_residual_iter(
     timing_enabled = timing_env not in ("", "0", "false", "no")
     timing_detail_env = os.getenv("VMEC_JAX_TIMING_DETAIL", "").strip().lower()
     timing_detail_enabled = timing_enabled and timing_detail_env not in ("", "0", "false", "no")
-    _setup_phase_timings = {
-        "setup_static_grid_rebuild": 0.0,
-        "setup_freeb_policy": 0.0,
-        "setup_boundary_profiles": 0.0,
-        "setup_cache_key_hash": 0.0,
-        "setup_ptau_constants": 0.0,
-        "setup_index_constants": 0.0,
-        "setup_update_constants": 0.0,
-    }
+    _setup_phase_timings = _initial_setup_phase_timings()
 
     def _setup_timer_start() -> float | None:
-        return time.perf_counter() if bool(timing_enabled) else None
+        return _runtime_setup_timer_start(timing_enabled=bool(timing_enabled), perf_counter=time.perf_counter)
 
     def _record_setup_timing(key: str, start: float | None) -> None:
-        if start is not None:
-            _setup_phase_timings[key] = float(_setup_phase_timings.get(key, 0.0)) + (
-                time.perf_counter() - float(start)
-            )
+        _runtime_record_setup_timing(_setup_phase_timings, key, start, perf_counter=time.perf_counter)
 
     opts = validate_residual_iteration_options(
         max_iter=max_iter,

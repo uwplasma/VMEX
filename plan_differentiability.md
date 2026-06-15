@@ -1289,6 +1289,12 @@ Results obtained:
     accept-mask rejection, rejected/restart statuses, accepted-only masks, and
     non-mapping inputs.  Focused free-boundary helper tests, Ruff, and
     compileall passed.  `free_boundary_adjoint.py` decreased to 5826 lines.
+61. Extracted residual-iteration setup timing bookkeeping into
+    `solve_residual_iter_runtime_helpers.py`.  The main solver still records
+    the same setup buckets at the same call sites, but zeroed setup timing
+    initialization, disabled-timing start behavior, and elapsed accumulation
+    now have direct helper tests.  Focused runtime/helper tests, Ruff, and
+    compileall passed.  `solve.py` decreased to 10291 lines.
 
 Best next steps:
 
@@ -1316,9 +1322,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 78%.
+- Differentiability/refactor implementation: 79%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 59% of the large-file extraction work.
+- Solver monolith reduction: 60% of the large-file extraction work.
 - Free-boundary adjoint monolith reduction: 26%.
 - Driver workflow decomposition: 34%.
 - WOUT diagnostic decomposition: 4%.
