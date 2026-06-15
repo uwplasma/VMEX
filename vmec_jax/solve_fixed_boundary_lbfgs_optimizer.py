@@ -85,7 +85,9 @@ def solve_fixed_boundary_lbfgs_impl(
     if mask_grad_for_constraints_func is None:
         from .solve_gradient_helpers import mask_grad_for_constraints as mask_grad_for_constraints_func
     if apply_preconditioner_func is None:
-        from .solve_preconditioner_helpers import apply_preconditioner as apply_preconditioner_func
+        from .solvers.fixed_boundary.preconditioning.operators import (
+            apply_preconditioner as apply_preconditioner_func,
+        )
     if grad_rms_state_func is None:
         from .solve_constraint_helpers import grad_rms_state as grad_rms_state_func
     if resolve_grad_tol_func is None:

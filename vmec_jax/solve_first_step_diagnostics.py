@@ -66,14 +66,14 @@ def first_step_diagnostics_impl(
     if zero_edge_rz_force_blocks_func is None:
         from .solve_force_payload_helpers import zero_edge_rz_force_blocks as zero_edge_rz_force_blocks_func
     if radial_tridi_smooth_dirichlet_func is None:
-        from .solve_preconditioner_helpers import (
+        from .solvers.fixed_boundary.preconditioning.operators import (
             radial_tridi_smooth_dirichlet as radial_tridi_smooth_dirichlet_func,
         )
     if metric_surface_precond_scales_np_func is None:
-        from .solve_preconditioner_helpers import (
+        from .solvers.fixed_boundary.preconditioning.operators import (
             metric_surface_precond_scales_np as metric_surface_precond_scales_np_func,
         )
-    from .solve_preconditioner_helpers import metric_surface_precond_from_bcovar_np
+    from .solvers.fixed_boundary.preconditioning.operators import metric_surface_precond_from_bcovar_np
     if wout_like_vmec_forces_cls is None:
         from .solve_result_types import WoutLikeVmecForces as wout_like_vmec_forces_cls
 
