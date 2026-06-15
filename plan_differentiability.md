@@ -1157,6 +1157,12 @@ Results obtained:
     still returns the same final normalized payload.  Focused force-payload
     and scan-debug tests passed, including the VMEC sign convention for the
     rotated `m=1` Z-force channel.
+41. Moved generic velocity-block zeroing/scaling helpers from the
+    free-boundary control module into `solve_residual_iter_update_helpers.py`.
+    The free-boundary module keeps compatibility re-exports, while the
+    implementation now sits with the residual-iteration host momentum update.
+    Focused tests cover shape/dtype preservation, scaling, and the compatibility
+    re-export.
 
 Best next steps:
 
@@ -1184,9 +1190,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 61%.
+- Differentiability/refactor implementation: 62%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 52% of the large-file extraction work.
+- Solver monolith reduction: 53% of the large-file extraction work.
 - Free-boundary adjoint monolith reduction: 13%.
 - Driver workflow decomposition: 34%.
 - WOUT diagnostic decomposition: 4%.

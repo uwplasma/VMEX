@@ -3,7 +3,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from vmec_jax.solve_residual_iter_update_helpers import ResidualVelocityBlocks, host_momentum_update_np
+from vmec_jax.solve_residual_iter_update_helpers import (
+    ResidualVelocityBlocks,
+    host_momentum_update_np,
+    scale_velocity_blocks,
+    zero_velocity_blocks_like,
+)
 
 
 def _blocks(*, offset: float, scale: float = 1.0) -> ResidualVelocityBlocks:
@@ -65,3 +70,27 @@ def test_host_momentum_update_np_can_skip_rms_without_changing_blocks() -> None:
     for with_block, without_block in zip(with_rms.velocities, without_rms.velocities):
         np.testing.assert_allclose(without_block, with_block)
     assert without_rms.update_rms == pytest.approx(0.0)
+
+
+def test_velocity_block_helpers_preserve_shape_dtype_and_scale() -> None:
+    a = np.arange(6.0, dtype=np.float64).reshape(2, 3)
+    b = np.arange(6, dtype=np.int32).reshape(2, 3)
+
+    za, zb = zero_velocity_blocks_like(a, b)
+    assert np.asarray(za).shape == a.shape
+    assert np.asarray(zb).shape == b.shape
+    assert np.asarray(za).dtype == a.dtype
+    assert np.asarray(zb).dtype == b.dtype
+    np.testing.assert_allclose(np.asarray(za), 0.0)
+    np.testing.assert_allclose(np.asarray(zb), 0.0)
+
+    sa, sb = scale_velocity_blocks(0.5, a, b)
+    np.testing.assert_allclose(np.asarray(sa), 0.5 * a)
+    np.testing.assert_allclose(np.asarray(sb), 0.5 * b)
+
+
+def test_free_boundary_control_module_reexports_velocity_helpers() -> None:
+    import vmec_jax.solve_free_boundary_control_helpers as freeb_control
+
+    assert freeb_control.zero_velocity_blocks_like is zero_velocity_blocks_like
+    assert freeb_control.scale_velocity_blocks is scale_velocity_blocks

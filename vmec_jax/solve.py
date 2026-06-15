@@ -84,6 +84,8 @@ from .solve_residual_iter_force_payload_helpers import (
 from .solve_residual_iter_update_helpers import (
     ResidualVelocityBlocks as _ResidualVelocityBlocks,
     host_momentum_update_np as _host_momentum_update_np,
+    scale_velocity_blocks as _scale_velocity_blocks,
+    zero_velocity_blocks_like as _zero_velocity_blocks_like,
 )
 from .field import TWOPI, b2_from_bsup, bsup_from_geom, bsup_from_sqrtg_lambda
 from .fourier import eval_fourier_dtheta, eval_fourier_dzeta_phys
@@ -241,8 +243,6 @@ from .solve_free_boundary_control_helpers import (
     free_boundary_prev_rz_fsq_next as _free_boundary_prev_rz_fsq_next,
     free_boundary_should_damp_constraint_baseline as _free_boundary_should_damp_constraint_baseline,
     free_boundary_turnon_resets_iter1_immediately as _free_boundary_turnon_resets_iter1_immediately,
-    scale_velocity_blocks as _scale_velocity_blocks,
-    zero_velocity_blocks_like as _zero_velocity_blocks_like,
 )
 from .solve_free_boundary_diagnostics import sample_free_boundary_external_field as _sample_free_boundary_external_field
 from .solve_force_dump_helpers import (

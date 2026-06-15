@@ -66,8 +66,11 @@ Top-level package layout (selected):
   helpers for solver-kernel diagnostics
 - ``vmec_jax/solve_axis_reset_helpers.py``: initial magnetic-axis reset
   control decisions, axis-state merging, and optional axis coefficient dumps
+- ``vmec_jax/solve_residual_iter_update_helpers.py``: residual-iteration
+  velocity-block containers, host momentum update, and generic velocity
+  zeroing/scaling helpers
 - ``vmec_jax/solve_free_boundary_control_helpers.py``: free-boundary cadence,
-  turn-on, constraint-baseline, and velocity-block control helpers
+  turn-on, and constraint-baseline control helpers
 - ``vmec_jax/solve_free_boundary_diagnostics.py``: solve-facing
   free-boundary external-field diagnostic adapters
 - ``vmec_jax/solve_force_dump_helpers.py``: optional force-channel,

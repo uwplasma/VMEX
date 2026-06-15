@@ -6,8 +6,10 @@ import os
 
 import numpy as np
 
-from ._compat import jax, jnp
-from ._solve_runtime import _tree_has_tracer
+from .solve_residual_iter_update_helpers import (
+    scale_velocity_blocks,
+    zero_velocity_blocks_like,
+)
 
 
 def free_boundary_iter_controls(iter2: int, iter1: int, nvacskip: int) -> tuple[int, int]:
@@ -95,25 +97,5 @@ def free_boundary_turnon_resets_iter1_immediately(*, lthreed: bool, lasym: bool)
     return (not bool(lthreed)) or (not bool(lasym))
 
 
-def zero_velocity_blocks_like(*blocks):
-    """Return zeroed velocity blocks with each input block's shape and dtype."""
-
-    out = []
-    for block in blocks:
-        if _tree_has_tracer(block):
-            out.append(jnp.zeros_like(block))
-            continue
-        try:
-            if jax is not None and isinstance(block, jax.Array):
-                out.append(jnp.zeros_like(block))
-                continue
-        except Exception:
-            pass
-        out.append(np.zeros_like(np.asarray(block)))
-    return tuple(out)
-
-
-def scale_velocity_blocks(scale: float, *blocks):
-    """Scale velocity blocks uniformly while preserving JAX array semantics."""
-
-    return tuple(float(scale) * block for block in blocks)
+_zero_velocity_blocks_like = zero_velocity_blocks_like
+_scale_velocity_blocks = scale_velocity_blocks
