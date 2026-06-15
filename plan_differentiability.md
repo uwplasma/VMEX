@@ -1122,6 +1122,14 @@ Results obtained:
     Ruff clean; helper, cache-ownership, and precompile force-cache tests
     passed with 5 tests; compileall passed.  `solve.py` decreased from 10477
     to 10471 lines.
+36. Extracted the first pure residual force-payload postprocessing seam into
+    `solve_residual_iter_force_payload_helpers.py`.  This helper owns the
+    metric-only edge-masking policy, Z-force NaN preservation guard, and
+    scalar `(gcr2, gcz2, gcl2)` assembly after M1/scalxc normalization.  The
+    unmasked force payload remains in `solve.py` for preconditioner and
+    free-boundary parity, and all debug/HLO dump branches remain at the solver
+    call site.  Focused checks passed: Ruff clean and the new helper tests
+    passed with 5 tests.
 
 Best next steps:
 

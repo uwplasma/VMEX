@@ -76,6 +76,9 @@ from .solve_residual_iter_force_cache_helpers import (
     compute_forces_jit_cache_key as _compute_forces_jit_cache_key,
     select_compute_forces_callable as _select_compute_forces_callable,
 )
+from .solve_residual_iter_force_payload_helpers import (
+    residual_force_gcx2_after_edge_policy as _residual_force_gcx2_after_edge_policy,
+)
 from .solve_residual_iter_update_helpers import (
     ResidualVelocityBlocks as _ResidualVelocityBlocks,
     host_momentum_update_np as _host_momentum_update_np,
@@ -2112,9 +2115,6 @@ def solve_fixed_boundary_residual_iter(
                 lconm1=bool(getattr(static.cfg, "lconm1", True)),
                 zero_m1=zero_m1,
             )
-        z_force_dummy = jnp.sum(frzl.fzsc)
-        if frzl.fzcs is not None:
-            z_force_dummy = z_force_dummy + jnp.sum(frzl.fzcs)
         if scan_debug_force_enabled:
             try:
                 from jax import debug as _jax_debug  # type: ignore
@@ -2135,31 +2135,14 @@ def solve_fixed_boundary_residual_iter(
         if iter_idx is not None:
             _maybe_dump_gc(frzl=frzl, static=static, iter_idx=int(iter_idx), label="raw")
 
-        # Optionally remove the LCFS contribution from the R/Z force arrays
-        # before forming physical gcr2/gcz2. Keep the unmasked residual for
-        # the preconditioner path (VMEC free-boundary parity).
-        def _mask_edge(frzl_in: TomnspsRZL) -> TomnspsRZL:
-            return _zero_edge_rz_force_blocks(frzl_in)
-
         frzl_full = frzl
-        frzl_metric = frzl_full
-        if not bool(include_edge):
-            frzl_metric = _mask_edge(frzl_full)
-
-        gcr2, gcz2, gcl2 = vmec_gcx2_from_tomnsps(
-            frzl=frzl_metric,
+        metric_payload = _residual_force_gcx2_after_edge_policy(
+            frzl_full,
+            include_edge=bool(include_edge),
             lconm1=bool(getattr(static.cfg, "lconm1", True)),
-            apply_m1_constraints=False,
-            include_edge=include_edge,
-            apply_scalxc=False,
             s=s,
         )
-        z_guard = jnp.where(
-            jnp.isnan(z_force_dummy),
-            z_force_dummy,
-            jnp.asarray(0.0, dtype=jnp.asarray(z_force_dummy).dtype),
-        )
-        gcz2 = gcz2 + z_guard
+        gcr2, gcz2, gcl2 = metric_payload.gcr2, metric_payload.gcz2, metric_payload.gcl2
         if iter_idx is not None:
             _maybe_dump_gcx2(
                 gcr2=gcr2,
