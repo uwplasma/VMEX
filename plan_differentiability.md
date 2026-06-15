@@ -2772,3 +2772,66 @@ Completion:
 - Driver workflow decomposition: 81%.
 - WOUT diagnostic/profile decomposition: 72%.
 - Overall differentiability-refactor PR: 96.5%.
+
+## 2026-06-15 Driver Runtime and Debug Helper Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted JAX persistent compilation-cache setup from the nested
+   `run_fixed_boundary` closure into `vmec_jax.drivers.runtime`.
+2. Preserved the historical `vmec_jax.driver.Path` monkeypatch seam by passing
+   the driver path factory into the runtime helper.
+3. Extracted optional VMEC `xc`/`xcdot` init-state dump writing into
+   `vmec_jax.drivers.debug`.
+4. Updated `run_fixed_boundary` to call the extracted runtime/debug helpers.
+5. Updated the code-structure docs for driver runtime and debug helper
+   responsibilities.
+
+Results obtained:
+
+- `driver.py` dropped from 2,572 lines at the start of the refactor slice to
+  2,467 lines.
+- `run_fixed_boundary` dropped from 2,205 lines to 2,098 lines.
+- The cache setup and debug dump behavior remain covered by the same
+  environment-variable tests.
+- A failed focused run exposed the `Path` monkeypatch compatibility seam; the
+  helper now accepts `path_cls` to preserve it.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers/runtime.py vmec_jax/drivers/debug.py tests/test_driver_wave2_coverage.py tests/test_driver_policy_coverage_extra.py`
+- `python -m compileall -q vmec_jax/driver.py vmec_jax/drivers/runtime.py vmec_jax/drivers/debug.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_wave2_coverage.py -k "compilation or cache or xc_init or accelerator" -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_coverage_extra.py -k "compilation or cache or accelerator" -q`
+- `python -m pytest tests/test_driver_api.py tests/test_driver_api_finish_more_coverage.py tests/test_driver_wave12_coverage.py tests/test_driver_wave2_coverage.py tests/test_driver_policy_coverage_extra.py tests/test_wout_driver_wave10_coverage.py -k "finish or finisher or compilation or cache or xc_init or fixed_boundary" -q`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 20 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Commit this driver runtime/debug extraction after a final status check.
+2. Continue reducing `run_fixed_boundary` by extracting stage initialization and
+   multigrid stage dispatch only after identifying existing tests that cover
+   restart-state and free-boundary dispatch branches.
+3. Start a separate WOUT helper migration by moving pure Nyquist/WROUT
+   transform helpers into `vmec_jax.io.wout.nyquist` while re-exporting from
+   `vmec_jax.wout` for compatibility.
+4. Keep branch-local free-boundary adjoint claims unchanged until an adaptive
+   branch AD-vs-FD gate exists.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 98.5%.
+- Differentiability/refactor implementation: 99.4%.
+- Solver monolith reduction: 86.5%.
+- Free-boundary adjoint monolith reduction: 65%.
+- Driver workflow decomposition: 84%.
+- WOUT diagnostic/profile decomposition: 72%.
+- Overall differentiability-refactor PR: 96.8%.
