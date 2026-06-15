@@ -1346,6 +1346,16 @@ Results obtained:
     for the new module APIs; focused WOUT, vmecPlot2, bundled current-profile,
     driver reconstruction, and finite-beta helper tests passed along with Ruff
     and compileall.  `wout.py` decreased to 5920 lines.
+69. Moved accepted-trace control payload assembly into
+    `free_boundary_adjoint_trace_stack.py`.  Scalar/update controls,
+    preconditioner controls, array-valued update controls, and stacked
+    state/constraint step controls now live with the lower-level trace
+    stacking utilities and static-policy segment summaries.  Public exports
+    and private compatibility aliases remain available from
+    `free_boundary_adjoint.py`, including the legacy `_ACCEPTED_TRACE_*`
+    constants used by tests/internal callers.  Focused free-boundary helper
+    and direct-coil finite-pressure sensitivity tests passed along with Ruff
+    and compileall.  `free_boundary_adjoint.py` decreased to 5687 lines.
 
 Best next steps:
 
@@ -1373,9 +1383,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 87%.
+- Differentiability/refactor implementation: 88%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 60% of the large-file extraction work.
-- Free-boundary adjoint monolith reduction: 26%.
+- Free-boundary adjoint monolith reduction: 30%.
 - Driver workflow decomposition: 35%.
 - WOUT diagnostic decomposition: 16%.
