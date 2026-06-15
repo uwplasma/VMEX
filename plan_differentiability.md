@@ -3322,3 +3322,60 @@ Completion:
 - WOUT diagnostic/profile decomposition: 90.5%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 98.15%.
+
+## 2026-06-15 WOUT Debug and State Reconstruction Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved WOUT environment-variable debug dump side effects into
+   `vmec_jax.io.wout.debug`.
+2. Moved WOUT-to-`VMECState` reconstruction into `vmec_jax.io.wout.state`.
+3. Preserved the public `vmec_jax.wout.state_from_wout` wrapper and its
+   monkeypatch-compatible validation/lambda-scaling seams for existing tests.
+4. Re-ran focused and broad WOUT shards plus source-health diagnostics.
+
+Results obtained:
+
+- `wout.py` dropped from 2,886 lines to 2,677 lines.
+- `wout_minimal_from_fixed_boundary` dropped from 1,307 lines before the WOUT
+  extraction series to 1,192 lines after debug-dump removal.
+- Debug dumps and state reconstruction now live in domain-named WOUT IO modules
+  instead of the root compatibility module.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/wout.py vmec_jax/io/wout/debug.py vmec_jax/io/wout/bsubs.py`
+- `python -m ruff check vmec_jax/wout.py vmec_jax/io/wout/state.py`
+- `python -m compileall -q vmec_jax/wout.py vmec_jax/io/wout/debug.py`
+- `python -m compileall -q vmec_jax/wout.py vmec_jax/io/wout/debug.py vmec_jax/io/wout/state.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_helpers.py tests/test_wout_fast_helpers.py tests/test_wout_wave3_coverage.py tests/test_wout_branch_coverage.py tests/test_wout_env_branch_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_driver_wave10_coverage.py::test_state_from_wout_recovers_internal_lambda_for_half_mesh_parity_branches tests/test_wout_driver_wave10_coverage.py::test_state_from_wout_lambda_rejects_bad_shapes_and_handles_missing_m -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_helpers.py tests/test_wout_branch_coverage.py tests/test_wout_env_branch_coverage.py tests/test_wout_fast_helpers.py tests/test_wout_wave2.py tests/test_wout_wave3_coverage.py tests/test_wout_wave4_coverage.py tests/test_wout_wave5_coverage.py tests/test_wout_physics_wave8_coverage.py tests/test_wout_driver_wave10_coverage.py tests/test_driver_wout_wave9_coverage.py tests/test_solve_dump_helpers.py -q`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 20 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Commit and push this WOUT tranche after checking latest CI state.
+2. Continue WOUT writer decomposition only at low-risk seams, or switch to
+   driver-stage policy extraction if the next WOUT seam is too coupled.
+3. Keep full adaptive free-boundary differentiation claims conservative until a
+   true fingerprint-gated adaptive AD-vs-FD gate exists.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.45%.
+- Differentiability/refactor implementation: 99.74%.
+- Solver monolith reduction: 86.5%.
+- Free-boundary adjoint monolith reduction: 65%.
+- Driver workflow decomposition: 84%.
+- WOUT diagnostic/profile decomposition: 92%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 98.2%.
