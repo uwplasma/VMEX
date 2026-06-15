@@ -113,7 +113,7 @@ from .solvers.fixed_boundary.optimization import energy as _fixed_boundary_energ
 from .solvers.fixed_boundary.optimization import gd as _fixed_boundary_gd_helpers
 from .solvers.fixed_boundary.optimization import lambda_gd as _lambda_optimizer_helpers
 from .solvers.fixed_boundary.optimization import lbfgs as _fixed_boundary_lbfgs_helpers
-from . import solve_residual_force_context as _residual_force_context_helpers
+from .solvers.fixed_boundary.optimization import residual_context as _residual_force_context_helpers
 from .solvers.fixed_boundary.optimization import residual_gn as _residual_gn_helpers
 from .solvers.fixed_boundary.optimization import residual_lbfgs as _residual_lbfgs_helpers
 from .solve_diagnostics_io import (
@@ -176,7 +176,7 @@ from .solvers.fixed_boundary.residual.mode_transform import (
     mode_diag_weights_mn_np as _mode_diag_weights_mn_np_helper,
     vmec_scalxc_from_s_np as _vmec_scalxc_from_s_np_helper,
 )
-from .solve_force_payload_helpers import (
+from .solvers.fixed_boundary.residual.payload_blocks import (
     ForceBlocks as _ForceBlocks,
     normalize_force_blocks as _normalize_force_blocks,  # noqa: F401 - re-exported for internal tests/importers.
     preconditioner_output_blocks_jax as _preconditioner_output_blocks_jax,
@@ -187,7 +187,7 @@ from .solve_force_payload_helpers import (
     zero_edge_rz_force_block as _zero_edge_rz_force_block,  # noqa: F401 - re-exported for internal tests/importers.
     zero_edge_rz_force_blocks as _zero_edge_rz_force_blocks,
 )
-from .solve_force_norm_helpers import (
+from .solvers.fixed_boundary.residual.force_norms import (
     lambda_preconditioned_full_norm as _lambda_preconditioned_full_norm,
     mode_weight_force_blocks_jax as _mode_weight_force_blocks_jax,
     mode_weight_force_blocks_np as _mode_weight_force_blocks_np,
@@ -293,7 +293,7 @@ from .solvers.fixed_boundary.scan.resume import (
     build_traced_scan_resume_state as _build_traced_scan_resume_state,
     initialize_scan_resume_state as _initialize_scan_resume_state,
 )
-from .solve_residual_objective_helpers import (
+from .solvers.fixed_boundary.optimization.residual_objective import (
     assemble_residual_objective_terms as _assemble_residual_objective_terms,
     residual_objective_vector as _residual_objective_vector,
 )

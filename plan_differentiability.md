@@ -1829,6 +1829,66 @@ Completion:
 - Driver workflow decomposition: 35%.
 - WOUT diagnostic/profile decomposition: 22%.
 
+## 2026-06-15 Residual Payload and Objective Package Move
+
+Commit: residual payload/objective package tranche on
+`codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved residual force payload block primitives from the root helper namespace
+   into `vmec_jax.solvers.fixed_boundary.residual.payload_blocks`.
+2. Moved residual force-norm helpers into
+   `vmec_jax.solvers.fixed_boundary.residual.force_norms`.
+3. Moved residual-objective block assembly and residual-force optimizer setup
+   into `vmec_jax.solvers.fixed_boundary.optimization.residual_objective` and
+   `vmec_jax.solvers.fixed_boundary.optimization.residual_context`.
+4. Updated the solver facade, NumPy force patching, preconditioner payload,
+   residual optimizers, tests, and code-structure docs to use the package
+   paths.
+5. Ratcheted the root-helper source-health CI gate from 41 to 37 files.
+
+Results obtained:
+
+- Four more residual/optimization helper files left the root package.
+- Root-level `vmec_jax/*.py` files dropped to 103.
+- Root helper-prefix files dropped to 37.
+- The fixed-boundary residual package now owns force payload and force norm
+  primitives, while the fixed-boundary optimization package owns residual
+  objective/context setup.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solve.py vmec_jax/solve_first_step_diagnostics.py vmec_jax/vmec_numpy_forces.py vmec_jax/solvers/fixed_boundary/residual vmec_jax/solvers/fixed_boundary/optimization vmec_jax/solvers/fixed_boundary/preconditioning tests/test_solve_force_payload_helpers.py tests/test_solve_force_norm_helpers.py tests/test_solve_residual_objective_helpers.py tests/test_refactorable_seams_coverage.py tests/test_vmec_numpy_forces_cache.py`
+- `python -m pytest -q tests/test_solve_force_payload_helpers.py tests/test_solve_force_norm_helpers.py tests/test_solve_residual_objective_helpers.py tests/test_refactorable_seams_coverage.py tests/test_vmec_numpy_forces_cache.py tests/test_solve_residual_iter_force_payload_helpers.py tests/test_solve_optimizer_helpers.py tests/test_solve_residual_optimizer_wave8_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 20 --max-root-helper-prefix-files 37`
+
+Best next steps:
+
+1. Run the broader `driver-solve-discrete` shard again after this second
+   package move.
+2. If green, commit and push this residual payload/objective tranche.
+3. Continue reducing `solve.py` by extracting the nested VMEC2000 scan
+   implementation or by moving dump/diagnostic helper groups into stable domain
+   packages.
+4. Keep the public `solve` facade aliases stable until the full refactor plan
+   is complete.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 28%.
+- Differentiability/refactor implementation: 95.8%.
+- Solver monolith reduction: 79%.
+- Free-boundary adjoint monolith reduction: 30%.
+- Driver workflow decomposition: 35%.
+- WOUT diagnostic/profile decomposition: 22%.
+
 ## 2026-06-15 Fixed-Boundary Preconditioning Package Move
 
 Commit: follow-up on `codex/differentiability-refactor-plan`.
