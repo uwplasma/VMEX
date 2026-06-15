@@ -1399,6 +1399,15 @@ Results obtained:
     zero fill and the compatibility alias from `solve.py`; actual
     residual-iteration host/JAX parity plus QH trace extraction tests passed
     along with Ruff and compileall.  `solve.py` decreased to 10181 lines.
+74. Restored the residual force-payload dependency-injection seam after the
+    extraction in step 70.  The helper now resolves the production
+    `vmec_residual_internal_from_kernels` lazily when no explicit
+    `residual_func` is supplied, so focused tests, monkeypatches, and future
+    pedagogical examples can inject small residual kernels without being
+    blocked by import-time binding.  The full `driver-solve-discrete` CI shard
+    passed locally (`904 passed, 30 skipped`), including the previously failing
+    finish/cache coverage tests.  Ruff and compileall passed for the changed
+    helper.
 
 Best next steps:
 
