@@ -1142,6 +1142,14 @@ Results obtained:
     asymmetric Z-channel sum-of-squares algebra moved.  Focused checks passed:
     Ruff clean; force-payload helper and hotpath subsets passed with 18 tests.
     `solve.py` decreased to 10437 lines.
+39. Extracted bcovar-to-metric-preconditioner scale wrappers into
+    `solve_preconditioner_helpers.py`.  The traced JAX wrapper is now shared by
+    the main force path, and the host NumPy wrapper is shared by first-step
+    diagnostics while preserving the injectable scale kernel used by tests.
+    The local radial-tridiagonal closures and parity-sensitive force assembly
+    remain in `solve.py`; only duplicate quadrature/materialization policy
+    moved.  Focused wrapper tests were added for direct scale-kernel parity and
+    injected scale/wint functions.
 
 Best next steps:
 
@@ -1169,9 +1177,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 59%.
+- Differentiability/refactor implementation: 60%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 50% of the large-file extraction work.
+- Solver monolith reduction: 51% of the large-file extraction work.
 - Free-boundary adjoint monolith reduction: 13%.
 - Driver workflow decomposition: 34%.
 - WOUT diagnostic decomposition: 4%.

@@ -209,7 +209,8 @@ from .solve_gradient_helpers import (
 from .solve_preconditioner_helpers import (
     apply_preconditioner as _apply_preconditioner,
     can_reassemble_precond_mats as _can_reassemble_precond_mats,
-    metric_surface_precond_scales_jax as _metric_surface_precond_scales_jax,
+    metric_surface_precond_from_bcovar_jax as _metric_surface_precond_from_bcovar_jax,
+    metric_surface_precond_scales_jax as _metric_surface_precond_scales_jax,  # noqa: F401 - re-exported for existing internal tests/importers.
     metric_surface_precond_scales_np as _metric_surface_precond_scales_np,
     pshalf_from_s_jax as _pshalf_from_s_jax,
     pshalf_from_s_np as _pshalf_from_s_np,
@@ -1232,7 +1233,6 @@ def solve_fixed_boundary_residual_iter(
         vmec_gcx2_from_tomnsps,
         vmec_gcx2_from_tomnsps_np,
         vmec_scalxc_from_s,
-        vmec_wint_from_trig,
         vmec_zero_m1_zforce,
     )
     from .vmec_jacobian import vmec_half_mesh_jacobian_from_state
@@ -1749,22 +1749,6 @@ def solve_fixed_boundary_residual_iter(
         smooth = _radial_tridi_smooth_dirichlet(stack, alpha=alpha)
         return tuple(smooth[:, i] for i in range(int(smooth.shape[1])))
 
-    def _metric_surface_precond_from_bcovar(bc):
-        """Approximate radial preconditioner scaling from bcovar metrics.
-
-        Called from within JIT-compiled force computation (both CPU and GPU),
-        so all operations on traced arrays must use jnp rather than np.
-        The integration weights w_ang come from a static (non-traced) source
-        and can be computed with plain NumPy before being passed to jnp ops.
-        """
-        guu = bc.guu
-        r12 = bc.jac.r12
-        bsubu = bc.bsubu
-        bsubv = bc.bsubv
-        nzeta = int(guu.shape[2])
-        w_ang = jnp.asarray(vmec_wint_from_trig(trig, nzeta=nzeta), dtype=guu.dtype)
-        return _metric_surface_precond_scales_jax(guu=guu, r12=r12, bsubu=bsubu, bsubv=bsubv, w_ang=w_ang)
-
     def _pshalf_from_s(s_arr):
         return _pshalf_from_s_np(s_arr)
 
@@ -2138,7 +2122,7 @@ def solve_fixed_boundary_residual_iter(
         norms_current = vmec_force_norms_from_bcovar_dynamic(bc=k.bc, trig=trig, s=s, signgs=signgs)
         if iter_idx is not None:
             _maybe_dump_scalars(norms=norms_current, iter_idx=int(iter_idx), ns=int(static.cfg.ns))
-        rz_scale, l_scale = _metric_surface_precond_from_bcovar(k.bc)
+        rz_scale, l_scale = _metric_surface_precond_from_bcovar_jax(bc=k.bc, trig=trig)
         return k, frzl_full, gcr2, gcz2, gcl2, rz_scale, l_scale, norms_current
 
     if os.getenv("VMEC_JAX_DUMP_HLO_DIR", "").strip():
