@@ -1829,6 +1829,61 @@ Completion:
 - Driver workflow decomposition: 35%.
 - WOUT diagnostic/profile decomposition: 22%.
 
+## 2026-06-15 Solve-Facing Free-Boundary Helper Package Move
+
+Commit: solve-facing free-boundary helper package tranche on
+`codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Created `vmec_jax.solvers.free_boundary` for solve-facing free-boundary
+   control and diagnostic helper seams.
+2. Moved free-boundary cadence/turn-on control helpers into
+   `vmec_jax.solvers.free_boundary.control`.
+3. Moved solve-facing free-boundary external-field sampling diagnostics into
+   `vmec_jax.solvers.free_boundary.diagnostics`.
+4. Updated the solver facade, focused tests, and code-structure docs to use
+   the new package paths.
+5. Ratcheted the root-helper source-health CI gate from 29 to 27 files.
+
+Results obtained:
+
+- Two more free-boundary helper files left the root package.
+- Root-level `vmec_jax/*.py` files dropped to 93.
+- Root helper-prefix files dropped to 27.
+- The free-boundary solve-control seam is now separated from fixed-boundary
+  helper packages while preserving the public `solve` aliases.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solve.py vmec_jax/solvers/free_boundary tests/test_solve_residual_iter_update_helpers.py`
+- `python -m pytest -q tests/test_solve_residual_iter_update_helpers.py tests/test_free_boundary_coil_provider_forward.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -q`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 20 --max-root-helper-prefix-files 27`
+
+Best next steps:
+
+1. Run final hygiene checks, then commit and push this free-boundary helper
+   tranche.
+2. Treat the larger free-boundary-adjoint helper family as a separate
+   high-value tranche with broader AD-vs-FD gates.
+3. Continue reducing root helper sprawl by moving WOUT helper families or
+   driver workflow helpers into domain packages.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 42%.
+- Differentiability/refactor implementation: 96.7%.
+- Solver monolith reduction: 81%.
+- Free-boundary adjoint monolith reduction: 30%.
+- Driver workflow decomposition: 35%.
+- WOUT diagnostic/profile decomposition: 22%.
+
 ## 2026-06-15 Axis Reset and First-Step Diagnostics Package Move
 
 Commit: axis reset and first-step diagnostics package tranche on

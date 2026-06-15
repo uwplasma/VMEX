@@ -252,14 +252,14 @@ from .solvers.fixed_boundary.diagnostics.axis_reset import (
     merge_axis_reset_state as _merge_axis_reset_state,
     write_axis_reset_dump as _write_axis_reset_dump,
 )
-from .solve_free_boundary_control_helpers import (
+from .solvers.free_boundary.control import (
     free_boundary_iter_controls as _free_boundary_iter_controls,
     free_boundary_iter_controls_vmec as _free_boundary_iter_controls_vmec,
     free_boundary_prev_rz_fsq_next as _free_boundary_prev_rz_fsq_next,
     free_boundary_should_damp_constraint_baseline as _free_boundary_should_damp_constraint_baseline,
     free_boundary_turnon_resets_iter1_immediately as _free_boundary_turnon_resets_iter1_immediately,
 )
-from .solve_free_boundary_diagnostics import sample_free_boundary_external_field as _sample_free_boundary_external_field
+from .solvers.free_boundary.diagnostics import sample_free_boundary_external_field as _sample_free_boundary_external_field
 from .solvers.fixed_boundary.diagnostics.force import (
     dump_array as _dump_array,  # noqa: F401 - re-exported for internal tests/importers.
     gc_from_frzl as _gc_from_frzl,  # noqa: F401 - compatibility alias for internal tests/importers.
