@@ -10,7 +10,6 @@ from .solve_force_payload_helpers import (
     residual_force_payload_m1_scalxc_stages,
     zero_edge_rz_force_blocks,
 )
-from .vmec_forces import vmec_residual_internal_from_kernels
 from .vmec_residue import vmec_gcx2_from_tomnsps
 from .vmec_tomnsp import TomnspsRZL
 
@@ -242,7 +241,7 @@ def residual_force_payload_from_kernels(
     hlo_dump_func: Callable[..., None] | None = None,
     raw_tomnsps_callback: Callable[[TomnspsRZL], None] | None = None,
     gc_callback: Callable[[TomnspsRZL], None] | None = None,
-    residual_func: Callable[..., TomnspsRZL] = vmec_residual_internal_from_kernels,
+    residual_func: Callable[..., TomnspsRZL] | None = None,
     postprocess_func: Callable[..., TomnspsRZL] = residual_force_payload_after_m1_scalxc_with_scan_debug,
     metric_func: Callable[..., ResidualForceMetricPayload] = residual_force_gcx2_after_edge_policy,
 ) -> ResidualForcePayloadResult:
@@ -260,6 +259,9 @@ def residual_force_payload_from_kernels(
         include_edge=bool(include_edge),
         include_edge_residual=include_edge_residual,
     )
+    if residual_func is None:
+        from .vmec_forces import vmec_residual_internal_from_kernels as residual_func
+
     frzl_raw = residual_func(
         kernels,
         cfg_ntheta=int(static.cfg.ntheta),
