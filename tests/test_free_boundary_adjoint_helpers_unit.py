@@ -131,6 +131,7 @@ def test_free_boundary_adjoint_trace_stackability_error_paths() -> None:
     assert fba._unique_shape_list is trace_metadata.unique_shape_list
     assert fba._compact_segment_summaries is trace_metadata.compact_segment_summaries
     assert fba._json_safe_fingerprint_value is trace_metadata.json_safe_fingerprint_value
+    assert fba._fingerprint_has_rejected_controller_slot is trace_metadata.fingerprint_has_rejected_controller_slot
     assert (
         fba.direct_coil_accepted_trace_controller_slot_summary
         is trace_metadata.direct_coil_accepted_trace_controller_slot_summary
@@ -242,6 +243,11 @@ def test_free_boundary_adjoint_trace_stackability_error_paths() -> None:
         "accepted_free_boundary_slots": 1,
         "fixed_rejected_controller_slot_present": True,
     }
+    assert trace_metadata.fingerprint_has_rejected_controller_slot({"accept_mask": np.asarray([1, 0])})
+    assert trace_metadata.fingerprint_has_rejected_controller_slot({"step_status": ("restart_bad_jacobian",)})
+    assert trace_metadata.fingerprint_has_rejected_controller_slot({"step_status": ("rejected",)})
+    assert not trace_metadata.fingerprint_has_rejected_controller_slot({"accept_mask": np.asarray([1, 1])})
+    assert not trace_metadata.fingerprint_has_rejected_controller_slot("not-a-fingerprint")
     assert replay_plan_helpers.complete_solve_objective_values(2.5) == {"objective": 2.5}
     assert replay_plan_helpers.complete_solve_objective_values({"a": np.asarray([1.5]), 2: 3.0}) == {
         "a": 1.5,

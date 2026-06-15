@@ -10,6 +10,7 @@ import numpy as np
 __all__ = [
     "compact_segment_summaries",
     "direct_coil_accepted_trace_controller_slot_summary",
+    "fingerprint_has_rejected_controller_slot",
     "json_safe_fingerprint_value",
     "unique_shape_list",
 ]
@@ -101,6 +102,19 @@ def direct_coil_accepted_trace_controller_slot_summary(metadata: Mapping[str, An
     }
 
 
+def fingerprint_has_rejected_controller_slot(fingerprint: Mapping[str, Any]) -> bool:
+    """Return whether a complete-loop fingerprint includes a rejected slot."""
+
+    if not isinstance(fingerprint, Mapping):
+        return False
+    accept_mask = np.asarray(fingerprint.get("accept_mask", ()), dtype=int)
+    if accept_mask.size and np.any(accept_mask == 0):
+        return True
+    step_status = tuple(str(status) for status in fingerprint.get("step_status", ()))
+    return any(status.startswith("restart_") or status == "rejected" for status in step_status)
+
+
 _unique_shape_list = unique_shape_list
 _compact_segment_summaries = compact_segment_summaries
 _json_safe_fingerprint_value = json_safe_fingerprint_value
+_fingerprint_has_rejected_controller_slot = fingerprint_has_rejected_controller_slot

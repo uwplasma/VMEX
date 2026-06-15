@@ -1281,6 +1281,14 @@ Results obtained:
     `device_get` batching policy is now isolated and unit-tested with an
     injected fake JAX module.  Focused runtime/helper tests, Ruff, and
     compileall passed.  `solve.py` decreased to 10299 lines.
+60. Moved complete-loop rejected-controller-slot fingerprint detection into
+    `free_boundary_adjoint_trace_metadata.py`.  The adaptive same-branch report
+    now delegates accept-mask and step-status inspection to a metadata helper,
+    keeping the branch-claim logic explicit while avoiding another nested
+    report-only predicate.  Helper tests cover compatibility aliasing,
+    accept-mask rejection, rejected/restart statuses, accepted-only masks, and
+    non-mapping inputs.  Focused free-boundary helper tests, Ruff, and
+    compileall passed.  `free_boundary_adjoint.py` decreased to 5826 lines.
 
 Best next steps:
 
@@ -1308,9 +1316,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 77%.
+- Differentiability/refactor implementation: 78%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 59% of the large-file extraction work.
-- Free-boundary adjoint monolith reduction: 25%.
+- Free-boundary adjoint monolith reduction: 26%.
 - Driver workflow decomposition: 34%.
 - WOUT diagnostic decomposition: 4%.
