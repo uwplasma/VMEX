@@ -463,6 +463,8 @@ Current source-health snapshot on PR #20 after the latest extractions:
 .. code-block:: text
 
    vmec_jax Python files under maxdepth=2: 140
+   root-level vmec_jax/*.py files:      135
+   root helper-prefix files:             69
    vmec_jax/solve.py:                 10119 lines
    vmec_jax/wout.py:                   5894 lines
    vmec_jax/free_boundary_adjoint.py:   5687 lines
