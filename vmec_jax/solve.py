@@ -77,6 +77,7 @@ from .solve_residual_iter_force_cache_helpers import (
     select_compute_forces_callable as _select_compute_forces_callable,
 )
 from .solve_residual_iter_force_payload_helpers import (
+    force_z_channel_square_sums as _force_z_channel_square_sums,
     residual_force_gcx2_after_edge_policy as _residual_force_gcx2_after_edge_policy,
     resolve_residual_force_mask_pack as _resolve_residual_force_mask_pack,
 )
@@ -2023,12 +2024,7 @@ def solve_fixed_boundary_residual_iter(
             except Exception:
                 _jax_debug = None  # type: ignore
             if _jax_debug is not None:
-                fzsc2_raw = jnp.sum(frzl.fzsc * frzl.fzsc)
-                fzcs2_raw = (
-                    jnp.sum(frzl.fzcs * frzl.fzcs)
-                    if frzl.fzcs is not None
-                    else jnp.asarray(0.0, dtype=jnp.asarray(frzl.fzsc).dtype)
-                )
+                fzsc2_raw, fzcs2_raw = _force_z_channel_square_sums(frzl)
                 _jax_debug.print(
                     "[scan-debug-raw] fzsc2_raw={fzsc:.6e} fzcs2_raw={fzcs:.6e}",
                     fzsc=fzsc2_raw,
@@ -2079,12 +2075,7 @@ def solve_fixed_boundary_residual_iter(
                 except Exception:
                     _jax_debug = None  # type: ignore
                 if _jax_debug is not None:
-                    fzsc2_c = jnp.sum(frzl.fzsc * frzl.fzsc)
-                    fzcs2_c = (
-                        jnp.sum(frzl.fzcs * frzl.fzcs)
-                        if frzl.fzcs is not None
-                        else jnp.asarray(0.0, dtype=jnp.asarray(frzl.fzsc).dtype)
-                    )
+                    fzsc2_c, fzcs2_c = _force_z_channel_square_sums(frzl)
                     _jax_debug.print(
                         "[scan-debug-m1] fzsc2={fzsc:.6e} fzcs2={fzcs:.6e}",
                         fzsc=fzsc2_c,
@@ -2096,12 +2087,7 @@ def solve_fixed_boundary_residual_iter(
             except Exception:
                 _jax_debug = None  # type: ignore
             if _jax_debug is not None:
-                fzsc2_z = jnp.sum(frzl.fzsc * frzl.fzsc)
-                fzcs2_z = (
-                    jnp.sum(frzl.fzcs * frzl.fzcs)
-                    if frzl.fzcs is not None
-                    else jnp.asarray(0.0, dtype=jnp.asarray(frzl.fzsc).dtype)
-                )
+                fzsc2_z, fzcs2_z = _force_z_channel_square_sums(frzl)
                 _jax_debug.print(
                     "[scan-debug-zero] fzsc2={fzsc:.6e} fzcs2={fzcs:.6e}",
                     fzsc=fzsc2_z,
@@ -2123,12 +2109,7 @@ def solve_fixed_boundary_residual_iter(
             except Exception:
                 _jax_debug = None  # type: ignore
             if _jax_debug is not None:
-                fzsc2_s = jnp.sum(frzl.fzsc * frzl.fzsc)
-                fzcs2_s = (
-                    jnp.sum(frzl.fzcs * frzl.fzcs)
-                    if frzl.fzcs is not None
-                    else jnp.asarray(0.0, dtype=jnp.asarray(frzl.fzsc).dtype)
-                )
+                fzsc2_s, fzcs2_s = _force_z_channel_square_sums(frzl)
                 _jax_debug.print(
                     "[scan-debug-scalxc] fzsc2={fzsc:.6e} fzcs2={fzcs:.6e}",
                     fzsc=fzsc2_s,

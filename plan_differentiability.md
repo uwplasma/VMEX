@@ -1136,6 +1136,12 @@ Results obtained:
     edge-residual control policy independently testable.  Focused checks
     passed: Ruff clean; force-payload, generic force-payload, and hotpath
     subsets passed with 25 tests.
+38. Extracted repeated scan-debug Z-force channel square-sum reductions into
+    the residual force-payload helper.  The debug-print labels, environment
+    gates, and HLO dump behavior remain in `solve.py`; only the symmetric and
+    asymmetric Z-channel sum-of-squares algebra moved.  Focused checks passed:
+    Ruff clean; force-payload helper and hotpath subsets passed with 18 tests.
+    `solve.py` decreased to 10437 lines.
 
 Best next steps:
 
