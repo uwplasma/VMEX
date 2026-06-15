@@ -7,7 +7,7 @@ import time
 
 import numpy as np
 
-from ....solve_diagnostics_io import _pack_resume_state_record
+from ..diagnostics.io import _pack_resume_state_record
 from .runtime import (
     _build_residual_iter_timing_report,
     _build_resume_state_base,

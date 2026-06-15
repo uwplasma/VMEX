@@ -107,7 +107,7 @@ from .solve_jit_cache_helpers import (
     jit_cache_put as _jit_cache_put,
     record_scan_runner_cache_miss_categories as _record_scan_runner_cache_miss_categories,
 )
-from . import solve_hlo_dump_helpers as _hlo_dump_helpers
+from .solvers.fixed_boundary.diagnostics import hlo as _hlo_dump_helpers
 from . import solve_first_step_diagnostics as _first_step_diagnostics_helpers
 from .solvers.fixed_boundary.optimization import energy as _fixed_boundary_energy_helpers
 from .solvers.fixed_boundary.optimization import gd as _fixed_boundary_gd_helpers
@@ -116,7 +116,7 @@ from .solvers.fixed_boundary.optimization import lbfgs as _fixed_boundary_lbfgs_
 from .solvers.fixed_boundary.optimization import residual_context as _residual_force_context_helpers
 from .solvers.fixed_boundary.optimization import residual_gn as _residual_gn_helpers
 from .solvers.fixed_boundary.optimization import residual_lbfgs as _residual_lbfgs_helpers
-from .solve_diagnostics_io import (
+from .solvers.fixed_boundary.diagnostics.io import (
     _dump_freeb_axis_trace_record,
     _dump_freeb_control_trace_record,
     _dump_time_control_trace_record,
@@ -260,7 +260,7 @@ from .solve_free_boundary_control_helpers import (
     free_boundary_turnon_resets_iter1_immediately as _free_boundary_turnon_resets_iter1_immediately,
 )
 from .solve_free_boundary_diagnostics import sample_free_boundary_external_field as _sample_free_boundary_external_field
-from .solve_force_dump_helpers import (
+from .solvers.fixed_boundary.diagnostics.force import (
     dump_array as _dump_array,  # noqa: F401 - re-exported for internal tests/importers.
     gc_from_frzl as _gc_from_frzl,  # noqa: F401 - compatibility alias for internal tests/importers.
     maybe_dump_force_kernels as _maybe_dump_force_kernels,
@@ -269,13 +269,13 @@ from .solve_force_dump_helpers import (
     maybe_dump_scalars as _maybe_dump_scalars,
     maybe_dump_tomnsps as _maybe_dump_tomnsps,
 )
-from .solve_bsub_dump_helpers import (
+from .solvers.fixed_boundary.diagnostics.bsub import (
     maybe_dump_bsube as _maybe_dump_bsube,
     maybe_dump_bsube_terms as _maybe_dump_bsube_terms,
     maybe_dump_bsubh as _maybe_dump_bsubh,
     maybe_dump_bsubs as _maybe_dump_bsubs,
 )
-from .solve_lambda_dump_helpers import (
+from .solvers.fixed_boundary.diagnostics.lambda_debug import (
     maybe_dump_lam_fsql1 as _maybe_dump_lam_fsql1,
     maybe_dump_lam_gcl as _maybe_dump_lam_gcl,
     maybe_dump_lam_prec as _maybe_dump_lam_prec,
@@ -283,7 +283,7 @@ from .solve_lambda_dump_helpers import (
     maybe_dump_lulv as _maybe_dump_lulv,
     maybe_dump_precond_mats as _maybe_dump_precond_mats,
 )
-from .solve_metric_dump_helpers import (
+from .solvers.fixed_boundary.diagnostics.metric import (
     maybe_dump_gmetric as _maybe_dump_gmetric,
     maybe_dump_precond_inputs as _maybe_dump_precond_inputs,
     maybe_dump_xc as _maybe_dump_xc,

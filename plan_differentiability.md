@@ -1829,6 +1829,59 @@ Completion:
 - Driver workflow decomposition: 35%.
 - WOUT diagnostic/profile decomposition: 22%.
 
+## 2026-06-15 Fixed-Boundary Diagnostics Package Move
+
+Commit: fixed-boundary diagnostics package tranche on
+`codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Created `vmec_jax.solvers.fixed_boundary.diagnostics` for fixed-boundary
+   solver diagnostics, optional debug dumps, and trace-output formatting.
+2. Moved diagnostic I/O, HLO dump, force dump, covariant-field dump, lambda
+   dump, and metric dump helpers out of the root package.
+3. Updated `vmec_jax.solve`, residual finalization, scan debug helpers, tests,
+   and docs to use the diagnostics package.
+4. Ratcheted the root-helper source-health CI gate from 37 to 31 files.
+
+Results obtained:
+
+- Six more diagnostic helper files left the root package.
+- Root-level `vmec_jax/*.py` files dropped to 97.
+- Root helper-prefix files dropped to 31.
+- Fixed-boundary residual/scan diagnostics now have a domain package rather
+  than being spread across root `solve_*` helpers.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/diagnostics vmec_jax/solvers/fixed_boundary/residual/finalize.py vmec_jax/solvers/fixed_boundary/scan/debug.py tests/test_solve_diagnostics_io.py tests/test_solve_scan_debug_helpers.py`
+- `python -m pytest -q tests/test_solve_diagnostics_io.py tests/test_solve_scan_debug_helpers.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_solve_scan_output.py -q`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 20 --max-root-helper-prefix-files 31`
+
+Best next steps:
+
+1. Run the broader `driver-solve-discrete` shard after this diagnostic package
+   move.
+2. If green, commit and push this diagnostics tranche.
+3. Continue with a larger, behavior-preserving extraction of the nested
+   VMEC2000 scan loop or move free-boundary trace helper families into a
+   domain package.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 35%.
+- Differentiability/refactor implementation: 96.2%.
+- Solver monolith reduction: 80%.
+- Free-boundary adjoint monolith reduction: 30%.
+- Driver workflow decomposition: 35%.
+- WOUT diagnostic/profile decomposition: 22%.
+
 ## 2026-06-15 Residual Payload and Objective Package Move
 
 Commit: residual payload/objective package tranche on

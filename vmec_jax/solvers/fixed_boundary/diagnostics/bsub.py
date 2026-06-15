@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ._solve_runtime import _parse_iter_list
+from ...._solve_runtime import _parse_iter_list
 
 
 def maybe_dump_bsube(*, bc, static, iter_idx: int) -> None:
@@ -123,7 +123,7 @@ def maybe_dump_bsubs(*, bc, state, static, trig, iter_idx: int, kernels=None) ->
     ns = int(static.cfg.ns)
     path = outdir / f"bsubs_ns{ns}_iter{int(iter_idx)}.npz"
 
-    from .wout import _compute_bsubs_half_mesh, _vmec_symforce_apply
+    from ....wout import _compute_bsubs_half_mesh, _vmec_symforce_apply
 
     s = np.asarray(static.s, dtype=float)
     bsupu = np.asarray(bc.bsupu)

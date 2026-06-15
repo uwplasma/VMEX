@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 import numpy as np
 
-from ....solve_diagnostics_io import (
+from ..diagnostics.io import (
     _format_axis_coeff,
     _format_time_control_trace_row,
     _format_vmec2000_iter_row,

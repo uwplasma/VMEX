@@ -7,9 +7,9 @@ from pathlib import Path
 
 import numpy as np
 
-from ._compat import jnp
-from ._solve_runtime import _parse_iter_list
-from .solve_force_dump_helpers import gc_from_frzl
+from ...._compat import jnp
+from ...._solve_runtime import _parse_iter_list
+from .force import gc_from_frzl
 
 
 def maybe_dump_lam_prec(*, lam_prec, faclam, static, iter_idx: int) -> None:
@@ -232,7 +232,7 @@ def maybe_dump_lulv(*, bc, static, iter_idx: int, state=None, trig=None) -> None
         data["n_modes"] = np.asarray(static.modes.n, dtype=int)
         if trig is not None:
             # Debug lambda odd-m synthesis inputs (physical odd pieces).
-            from .vmec_realspace import vmec_realspace_synthesis_dtheta, vmec_realspace_synthesis_dzeta_phys
+            from ....vmec_realspace import vmec_realspace_synthesis_dtheta, vmec_realspace_synthesis_dzeta_phys
 
             m_modes = np.asarray(static.modes.m, dtype=int)
             mask_m1 = (m_modes == 1).astype(np.asarray(state.Lsin).dtype)

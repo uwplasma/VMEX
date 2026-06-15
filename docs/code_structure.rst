@@ -64,7 +64,7 @@ Top-level package layout (selected):
 - ``vmec_jax/solvers/fixed_boundary/optimization/residual_gn.py``:
   fixed-boundary VMEC-style force-residual Gauss-Newton/CG optimizer loop used
   by the public ``solve.solve_fixed_boundary_gn_vmec_residual`` wrapper
-- ``vmec_jax/solve_hlo_dump_helpers.py``: optional JAX HLO lowering dump
+- ``vmec_jax/solvers/fixed_boundary/diagnostics/hlo.py``: optional JAX HLO lowering dump
   helpers for solver-kernel diagnostics
 - ``vmec_jax/solve_axis_reset_helpers.py``: initial magnetic-axis reset
   control decisions, axis-state merging, and optional axis coefficient dumps
@@ -76,14 +76,14 @@ Top-level package layout (selected):
   turn-on, and constraint-baseline control helpers
 - ``vmec_jax/solve_free_boundary_diagnostics.py``: solve-facing
   free-boundary external-field diagnostic adapters
-- ``vmec_jax/solve_force_dump_helpers.py``: optional force-channel,
+- ``vmec_jax/solvers/fixed_boundary/diagnostics/force.py``: optional force-channel,
   TOMNSP, scalar residual, and force-kernel debug dump helpers
-- ``vmec_jax/solve_bsub_dump_helpers.py``: optional covariant-field debug
+- ``vmec_jax/solvers/fixed_boundary/diagnostics/bsub.py``: optional covariant-field debug
   dumps for scaled full-mesh, half-mesh, and radial ``B_s`` diagnostics
-- ``vmec_jax/solve_lambda_dump_helpers.py``: optional lambda residual,
+- ``vmec_jax/solvers/fixed_boundary/diagnostics/lambda_debug.py``: optional lambda residual,
   lambda-preconditioner, lambda-derivative, and radial-preconditioner debug
   dump helpers
-- ``vmec_jax/solve_metric_dump_helpers.py``: optional metric,
+- ``vmec_jax/solvers/fixed_boundary/diagnostics/metric.py``: optional metric,
   preconditioner-input, and VMEC internal state-vector debug dump helpers
 - ``vmec_jax/solve_result_types.py``: solver result dataclasses, scan carry
   containers, and ``wout``-like force-kernel PyTree containers shared by solve,

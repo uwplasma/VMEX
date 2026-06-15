@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ._solve_runtime import _dump_env_enabled, _dump_iter_selected, _parse_iter_list
+from ...._solve_runtime import _dump_env_enabled, _dump_iter_selected, _parse_iter_list
 
 
 def dump_array(x):

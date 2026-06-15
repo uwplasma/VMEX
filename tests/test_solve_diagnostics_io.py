@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-import vmec_jax.solve_diagnostics_io as dio
+import vmec_jax.solvers.fixed_boundary.diagnostics.io as dio
 import vmec_jax.solve_profile_helpers as sph
 
 

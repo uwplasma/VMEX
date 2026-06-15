@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
-from ._compat import has_jax
+from ...._compat import has_jax
 
 
 HLO_DUMPED_KEYS: set[tuple[str, int, int, int, int, int, bool]] = set()
