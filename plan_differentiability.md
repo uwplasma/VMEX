@@ -267,7 +267,226 @@ re-exports until the next major release.  Tests should import from the new
 module paths when validating new functionality and from old paths when
 checking backward compatibility.
 
+## 2026-06-15 Architecture Correction: Stop Flat Helper Proliferation
+
+The first implementation pass made useful progress reducing the largest
+modules, but it also created too many top-level files with origin-based names
+such as `solve_*`, `driver_*`, `free_boundary_*`, and `wout_*`.  That defeats
+one of the core goals: a codebase that is easy for researchers to understand,
+extend, and test.
+
+Effective immediately, the refactor should stop adding new top-level helper
+modules unless they are temporary compatibility shims.  New implementation code
+should move into domain packages with short, stable names and clear ownership.
+
+Current source-health snapshot on PR #20 after the latest extractions:
+
+.. code-block:: text
+
+   vmec_jax Python files under maxdepth=2: 140
+   vmec_jax/solve.py:                 10119 lines
+   vmec_jax/wout.py:                   5894 lines
+   vmec_jax/free_boundary_adjoint.py:   5687 lines
+   vmec_jax/optimization.py:           5441 lines
+   vmec_jax/free_boundary.py:          4271 lines
+   vmec_jax/optimization_workflow.py:  4249 lines
+   vmec_jax/driver.py:                 2953 lines
+
+Problem diagnosis:
+
+1. Flat files named after the old monolith (`solve_*`) document extraction
+   history, not scientific meaning.
+2. Discoverability is poor: a contributor must know the old file name before
+   finding the new helper.
+3. The number of root modules is becoming its own maintenance burden.
+4. Tests increasingly import private aliases from compatibility modules instead
+   of domain APIs.
+
+Architecture principle:
+
+- Public APIs remain small and stable: `vmec_jax.run_fixed_boundary`,
+  `vmec_jax.run_free_boundary`, objective functions, WOUT/Boozer readers, and
+  optimization entry points.
+- Internal implementation is organized by scientific/numerical responsibility,
+  not by the old source file.
+- Compatibility shims are allowed, but they should be thin, documented, and
+  marked for removal after one major release.
+- New tests should target the domain package first and only use old private
+  aliases for explicit backward-compatibility checks.
+
+Revised package map:
+
+.. code-block:: text
+
+   vmec_jax/
+     api.py                       public convenience imports
+     cli.py                       command-line interface
+
+     core/
+       config.py                  parsed INDATA/run options
+       state.py                   PyTree equilibrium state objects
+       modes.py                   mode tables and indexing conventions
+       grids.py                   radial/angular grids
+       profiles.py                pressure/current/iota profiles
+       runtime.py                 optional backend/runtime settings
+
+     kernels/
+       fourier.py                 transforms, Nyquist maps, mode projections
+       geometry.py                R/Z geometry, metrics, Jacobians
+       fields.py                  B/J/covariant/contravariant field kernels
+       forces.py                  VMEC force blocks and finite-beta terms
+       residuals.py               residual assembly and norms
+       preconditioning.py         radial and spectral preconditioners
+
+     solvers/
+       fixed_boundary/
+         api.py                   fixed-boundary orchestration
+         controller.py            accepted/rejected update policies
+         scan.py                  VMEC2000-style fixed-budget scan
+         nonlinear.py             residual iteration and restart loop
+         optimizers.py            GD/LBFGS/GN inner-solve algorithms
+         checkpoints.py           resume/checkpoint payloads
+         diagnostics.py           trace rows, timing, fallback reports
+
+       free_boundary/
+         api.py                   free-boundary orchestration
+         providers.py             mgrid/direct-coil/ESSOS field providers
+         nestor.py                vacuum/source/NESTOR operators
+         controller.py            free-boundary activation/update policies
+         adjoints.py              branch-local reports and custom VJPs
+         fingerprints.py          branch metadata and same-branch checks
+         validation.py            bounded physical fixture gates
+
+       differentiation/
+         policies.py              exact/scalar/matrix-free/implicit choices
+         implicit.py              root/JVP/VJP helper interfaces
+         finite_difference.py     central-FD validation utilities
+         linear_solvers.py        CG/dense/matrix-free linear solves
+
+     objectives/
+       quasisymmetry.py
+       quasi_isodynamic.py
+       finite_beta.py
+       stability.py               DMerc, Glasser D_R, well, jdotB
+       coils.py
+       least_squares.py
+
+     optimization/
+       boundary.py                boundary DOF spaces and continuation
+       coils.py                   coil DOF spaces and acceptance loops
+       workflow.py                Simsopt-like problem assembly
+       callbacks.py               exact/scalar/matrix-free callback policies
+       result.py                  histories, provenance, saved artifacts
+       backends/
+         scipy.py
+         jaxopt.py                optional
+         optax.py                 optional
+
+     io/
+       namelist.py
+       wout.py
+       wout_schema.py
+       booz.py
+       assets.py
+
+     plotting/
+       geometry.py
+       boozer.py
+       optimization.py
+       stability.py
+
+     validation/
+       vmec2000.py
+       simsopt.py
+       physics.py
+       parity.py
+
+     performance/
+       profiling.py
+       source_health.py
+
+Naming rules:
+
+1. Do not add new root-level `solve_*`, `driver_*`, `free_boundary_*`, or
+   `wout_*` modules.
+2. Avoid suffixes such as `_helpers`, `_utils`, `_misc`, and `_common` in new
+   modules.  If a name needs `_helpers`, the module boundary is probably not
+   scientific enough.
+3. Prefer nouns that describe the domain object (`controller`, `scan`,
+   `fingerprints`, `preconditioning`, `checkpoints`, `stability`) over nouns
+   that describe extraction history.
+4. A module should have one reason to change.  If it mixes I/O, solver policy,
+   physics kernels, and diagnostics, split by responsibility.
+5. Domain packages may have private implementation modules, but the package
+   `__init__.py` should expose a small, documented surface for tests and
+   neighboring packages.
+
+Migration policy:
+
+1. Consolidate before extracting more.
+   The next refactor wave should move existing flat helper files into the new
+   package tree before adding additional helpers.
+2. Keep compatibility shims thin.
+   Old imports may remain as re-export files during PR #20, but each shim must
+   have no physics logic and should be excluded from future development.
+3. Move tests with the code.
+   New tests should mirror the package structure, e.g.
+   `tests/solvers/fixed_boundary/test_scan.py`, while legacy tests remain until
+   compatibility is retired.
+4. Set source-health gates on both file size and namespace bloat:
+   - target root `vmec_jax/*.py` implementation files: under 35,
+   - target implementation module length: under 1500 lines,
+   - warning threshold: 2000 lines,
+   - no new root-level helper-prefix files without explicit plan approval.
+5. Public API imports are the compatibility contract, not private helper paths.
+   Internal tests can cover private paths, but user docs should point to
+   public APIs and domain packages.
+
+Near-term consolidation order:
+
+1. `solve_*` files -> `solvers/fixed_boundary/`.
+   First move pure scan/checkpoint/diagnostics/policy modules; leave
+   `solve.py` as a compatibility orchestrator until the package API is stable.
+2. `free_boundary_adjoint_*` and `free_boundary_*` files ->
+   `solvers/free_boundary/`.
+   Keep direct-coil provider code in `external_fields/` until the provider API
+   is settled, then expose it through `solvers/free_boundary/providers.py`.
+3. `wout_*` files -> `io/`.
+   Keep WOUT reader/writer, schema, parity conventions, and profile metadata
+   together under `io/`; stability diagnostics should stay in `objectives/` or
+   `diagnostics/` depending on whether they are differentiable objectives or
+   WOUT persistence helpers.
+4. `driver_*` files -> public `api.py` plus `solvers/*/api.py`.
+   The driver should become a small facade over fixed-boundary/free-boundary
+   package APIs.
+5. `optimization.py` and `optimization_workflow.py` -> `optimization/` and
+   `objectives/`.
+   The user-facing flow should be Simsopt-like: object, objective tuple,
+   optimizer, result, plotting/saving.
+
+Deferred decisions:
+
+- Do not add Equinox as a dependency yet.  The architecture should be PyTree
+  compatible and Equinox-ready, but plain dataclasses/NamedTuples plus JAX
+  pytrees are enough now.
+- Do not add JAXopt/Optax as required dependencies.  Keep them optional backend
+  adapters after the package boundaries are stable.
+- Do not convert the whole adaptive VMEC controller into JAX-visible control
+  flow until branch-local derivative seams and same-fingerprint gates are fully
+  exhausted.
+
 ## Refactor Migration Waves
+
+Wave -1: Namespace consolidation and naming cleanup.
+
+1. Create the domain package skeleton above with no physics changes.
+2. Move existing flat helper modules into the package tree in groups, preserving
+   old import paths as thin re-export shims.
+3. Update tests for new functionality to import from the package path, and add
+   one compatibility test per old public/private alias group.
+4. Add a source-health namespace gate that fails if new root-level helper-prefix
+   files are added without an explicit plan exemption.
+5. Only resume extracting new seams after the existing helper sprawl is reduced.
 
 Wave 0: Baseline and source-health guard.
 
