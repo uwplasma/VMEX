@@ -16,12 +16,11 @@ from ._compat import has_jax, jax, jnp
 from .modes import vmec_mode_table
 from .modes import nyquist_mode_table_from_grid
 from .namelist import InData
-from .state import StateLayout, VMECState
+from .state import VMECState
 from .fourier import eval_fourier
 from .vmec_parity import (
     vmec_m1_internal_to_physical_signed,
     vmec_m1_internal_to_physical_signed_host,
-    vmec_m1_physical_to_internal_signed,
 )
 from .vmec_realspace import (
     vmec_realspace_synthesis,
@@ -30,11 +29,13 @@ from .vmec_realspace import (
 )
 from .vmec_residue import vmec_pwint_from_trig
 from .io.wout import bsubs as _wout_bsubs_helpers
+from .io.wout import debug as _wout_debug_helpers
 from .io.wout import diagnostics as _wout_diagnostics
 from .io.wout import flux as _wout_flux_helpers
 from .io.wout import jxbforce as _wout_jxbforce_helpers
 from .io.wout import mercier as _wout_mercier
 from .io.wout import parity as _wout_parity_helpers
+from .io.wout import state as _wout_state_helpers
 from .io.wout.netcdf import (
     read_mode_table,
     read_nyquist_fourier_fields,
@@ -1522,6 +1523,7 @@ def wout_minimal_from_fixed_boundary(
         # Light output favors speed; also use the fast bcovar path.
         wout_fast_bcovar = True
     wout_timing: dict[str, float] = {}
+    t_wout_total_start = None
     if wout_timing_enabled:
         import time as _time
 
@@ -1893,34 +1895,8 @@ def wout_minimal_from_fixed_boundary(
         if hasattr(k_force, "armn_e"):
             armn_e_sym = _force_sym(k_force.armn_e, "ars")
             zu12_bss = armn_e_sym
-    if os.getenv("VMEC_JAX_DUMP_BSUB_PARITY", "") not in ("", "0"):
-        outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
-        outdir.mkdir(parents=True, exist_ok=True)
-        np.savez(
-            outdir / "bsub_parity_dump.npz",
-            s=np.asarray(s, dtype=float),
-            bsubu=np.asarray(getattr(bc, "bsubu"), dtype=float),
-            bsubv=np.asarray(getattr(bc, "bsubv"), dtype=float),
-            bsubu_e=np.asarray(getattr(bc, "bsubu_e"), dtype=float),
-            bsubv_e=np.asarray(getattr(bc, "bsubv_e"), dtype=float),
-            bsubu_e_scaled=np.asarray(getattr(bc, "bsubu_e_scaled"), dtype=float),
-            bsubv_e_scaled=np.asarray(getattr(bc, "bsubv_e_scaled"), dtype=float),
-            bsubu_parity_even=np.asarray(getattr(bc, "bsubu_parity_even"), dtype=float),
-            bsubu_parity_odd=np.asarray(getattr(bc, "bsubu_parity_odd"), dtype=float),
-            bsubv_parity_even=np.asarray(getattr(bc, "bsubv_parity_even"), dtype=float),
-            bsubv_parity_odd=np.asarray(getattr(bc, "bsubv_parity_odd"), dtype=float),
-        )
-    if os.getenv("VMEC_JAX_DUMP_BSUBH", "") not in ("", "0"):
-        outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
-        outdir.mkdir(parents=True, exist_ok=True)
-        np.savez(
-            outdir / "bsubh_wout.npz",
-            s=np.asarray(s, dtype=float),
-            bsupu=np.asarray(bsupu_bss, dtype=float),
-            bsupv=np.asarray(bsupv_bss, dtype=float),
-            bsubu=np.asarray(getattr(bc, "bsubu"), dtype=float),
-            bsubv=np.asarray(getattr(bc, "bsubv"), dtype=float),
-        )
+    _wout_debug_helpers.dump_bsub_parity_if_requested(s=np.asarray(s, dtype=float), bc=bc)
+    _wout_debug_helpers.dump_bsubh_if_requested(s=np.asarray(s, dtype=float), bsupu=bsupu_bss, bsupv=bsupv_bss, bc=bc)
 
     # Derived 1D profiles and scalars.
     norms = vmec_force_norms_from_bcovar_dynamic(bc=bc, trig=trig, s=s, signgs=int(signgs))
@@ -1992,30 +1968,7 @@ def wout_minimal_from_fixed_boundary(
             bsubv_e=np.asarray(getattr(bc, "bsubv_e"), dtype=float),
             trig=trig,
         )
-    if os.getenv("VMEC_JAX_DUMP_BSUB_SOURCES", "") not in ("", "0"):
-        tag = os.getenv("VMEC_JAX_DUMP_TAG", "").strip()
-        outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
-        outdir.mkdir(parents=True, exist_ok=True)
-        payload = {
-            "bsubu": np.asarray(getattr(bc, "bsubu"), dtype=float),
-            "bsubv": np.asarray(getattr(bc, "bsubv"), dtype=float),
-        }
-        for key in (
-            "bsubu_e",
-            "bsubv_e",
-            "bsubu_e_scaled",
-            "bsubv_e_scaled",
-            "bsubu_preblend",
-            "bsubv_preblend",
-            "bsubu_parity_even",
-            "bsubu_parity_odd",
-            "bsubv_parity_even",
-            "bsubv_parity_odd",
-        ):
-            val = getattr(bc, key, None)
-            if val is not None:
-                payload[key] = np.asarray(val, dtype=float)
-        np.savez(outdir / f"bsub_sources{('_' + tag) if tag else ''}.npz", **payload)
+    _wout_debug_helpers.dump_bsub_sources_if_requested(bc=bc)
 
     # VMEC wrout.f uses the *raw* bsubu/bsubv for Fourier output (bsubumnc/etc).
     # JXBFORCE-style diagnostics (jdotb/Mercier) use the equilibrated + filtered
@@ -2144,35 +2097,14 @@ def wout_minimal_from_fixed_boundary(
         bmag = np.sqrt(2.0 * np.abs(np.asarray(bc.bsq) - pres_h))
         sqrtg = np.asarray(bc.jac.sqrtg)
 
-        if os.getenv("VMEC_JAX_DUMP_BSUB_PRE_SYM", "") not in ("", "0"):
-            outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
-            outdir.mkdir(parents=True, exist_ok=True)
-            tag = os.getenv("VMEC_JAX_DUMP_TAG", "").strip()
-            name = "bsub_pre_sym_jax" + (f"_{tag}" if tag else "") + ".dat"
-            path = outdir / name
-            bsubu_dump = np.asarray(bsubu_out, dtype=float)
-            bsubv_dump = np.asarray(bsubv_out, dtype=float)
-            bsupu_dump = np.asarray(bsupu_out, dtype=float)
-            bsupv_dump = np.asarray(bsupv_out, dtype=float)
-            bsubs_dump = np.asarray(bsubs_full, dtype=float)
-            ns_d, ntheta_d, nzeta_d = bsubu_dump.shape
-            with path.open("w") as f:
-                f.write("# bsub pre-symoutput dump (full grid)\n")
-                f.write(f"ns={ns_d}\n")
-                f.write(f"ntheta3={ntheta_d}\n")
-                f.write(f"nzeta={nzeta_d}\n")
-                f.write("columns: js lt lz bsubu bsubv bsupu bsupv bsubs\n")
-                for lt in range(ntheta_d):
-                    for lz in range(nzeta_d):
-                        for js in range(ns_d):
-                            f.write(
-                                f"{js + 1:6d}{lt + 1:6d}{lz + 1:6d}"
-                                f"{bsubu_dump[js, lt, lz]:24.16E}"
-                                f"{bsubv_dump[js, lt, lz]:24.16E}"
-                                f"{bsupu_dump[js, lt, lz]:24.16E}"
-                                f"{bsupv_dump[js, lt, lz]:24.16E}"
-                                f"{bsubs_dump[js, lt, lz]:24.16E}\n"
-                            )
+        _wout_debug_helpers.dump_bsub_pre_sym_if_requested(
+            trig=trig,
+            bsubu=bsubu_out,
+            bsubv=bsubv_out,
+            bsupu=bsupu_out,
+            bsupv=bsupv_out,
+            bsubs=bsubs_full,
+        )
 
         bsubu_sym, bsubu_asym = _vmec_symoutput_split(f=bsubu_out, trig=trig)
         bsubv_sym, bsubv_asym = _vmec_symoutput_split(f=bsubv_out, trig=trig)
@@ -2369,20 +2301,15 @@ def wout_minimal_from_fixed_boundary(
                 bsubv_even = np.asarray(bsubv_diag, dtype=float)
                 bsubu_odd = _psh * bsubu_even
                 bsubv_odd = _psh * bsubv_even
-            if os.getenv("VMEC_JAX_DUMP_BSUB_PARITY_INPUTS", "") not in ("", "0"):
-                tag = os.getenv("VMEC_JAX_DUMP_TAG", "").strip()
-                outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
-                outdir.mkdir(parents=True, exist_ok=True)
-                np.savez(
-                    outdir / f"bsub_parity_inputs{('_' + tag) if tag else ''}.npz",
-                    bsubu_diag=np.asarray(bsubu_diag, dtype=float),
-                    bsubv_diag=np.asarray(bsubv_diag, dtype=float),
-                    bsubu_even=np.asarray(bsubu_even, dtype=float),
-                    bsubu_odd=np.asarray(bsubu_odd, dtype=float),
-                    bsubv_even=np.asarray(bsubv_even, dtype=float),
-                    bsubv_odd=np.asarray(bsubv_odd, dtype=float),
-                    odd_needs_shalf=np.asarray(use_bc_parity, dtype=np.int32),
-                )
+            _wout_debug_helpers.dump_bsub_parity_inputs_if_requested(
+                bsubu_diag=bsubu_diag,
+                bsubv_diag=bsubv_diag,
+                bsubu_even=bsubu_even,
+                bsubu_odd=bsubu_odd,
+                bsubv_even=bsubv_even,
+                bsubv_odd=bsubv_odd,
+                use_bc_parity=bool(use_bc_parity),
+            )
             bsubu_diag, bsubv_diag = _filter_bsubuv_jxbforce_parity(
                 bsubu_even=np.asarray(bsubu_even, dtype=float),
                 bsubu_odd=np.asarray(bsubu_odd, dtype=float),
@@ -2619,47 +2546,24 @@ def wout_minimal_from_fixed_boundary(
     else:
         fsqt_out = np.asarray(fsqt, dtype=float)
 
-    if os.getenv("VMEC_JAX_DUMP_WROUT_MODES", "") not in ("", "0"):
-        dump_dir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
-        dump_dir.mkdir(parents=True, exist_ok=True)
-        dump_path = dump_dir / "wrout_modes_jax.dat"
-        m_modes = np.asarray(nyq_modes.m, dtype=int)
-        n_modes = np.asarray(nyq_modes.n, dtype=int)
-        gmnc_np = np.asarray(gmnc, dtype=float)
-        gmns_np = np.asarray(gmns, dtype=float)
-        bmnc_np = np.asarray(bmnc, dtype=float)
-        bmns_np = np.asarray(bmns, dtype=float)
-        bsubumnc_np = np.asarray(bsubumnc, dtype=float)
-        bsubumns_np = np.asarray(bsubumns, dtype=float)
-        bsubvmnc_np = np.asarray(bsubvmnc, dtype=float)
-        bsubvmns_np = np.asarray(bsubvmns, dtype=float)
-        bsubsmnc_np = np.asarray(bsubsmnc, dtype=float)
-        bsubsmns_np = np.asarray(bsubsmns, dtype=float)
-        bsupumnc_np = np.asarray(bsupumnc, dtype=float)
-        bsupumns_np = np.asarray(bsupumns, dtype=float)
-        bsupvmnc_np = np.asarray(bsupvmnc, dtype=float)
-        bsupvmns_np = np.asarray(bsupvmns, dtype=float)
-        with dump_path.open("w") as f:
-            f.write("# wrout Fourier-mode dump (vmec_jax)\n")
-            f.write(f"ns={ns}\n")
-            f.write(f"mnmax_nyq={m_modes.size}\n")
-            f.write("cols: js mn m n\n")
-            f.write(" gmnc gmns bmnc bmns\n")
-            f.write(" bsubumnc bsubumns bsubvmnc bsubvmns\n")
-            f.write(" bsubsmnc bsubsmns\n")
-            f.write(" bsupumnc bsupumns bsupvmnc bsupvmns\n")
-            for js_idx in range(ns):
-                for mn_idx in range(m_modes.size):
-                    f.write(
-                        f"{js_idx + 1:6d}{mn_idx + 1:6d}{int(m_modes[mn_idx]):6d}{int(n_modes[mn_idx]):6d}"
-                        f"{gmnc_np[js_idx, mn_idx]:24.16E}{gmns_np[js_idx, mn_idx]:24.16E}"
-                        f"{bmnc_np[js_idx, mn_idx]:24.16E}{bmns_np[js_idx, mn_idx]:24.16E}"
-                        f"{bsubumnc_np[js_idx, mn_idx]:24.16E}{bsubumns_np[js_idx, mn_idx]:24.16E}"
-                        f"{bsubvmnc_np[js_idx, mn_idx]:24.16E}{bsubvmns_np[js_idx, mn_idx]:24.16E}"
-                        f"{bsubsmnc_np[js_idx, mn_idx]:24.16E}{bsubsmns_np[js_idx, mn_idx]:24.16E}"
-                        f"{bsupumnc_np[js_idx, mn_idx]:24.16E}{bsupumns_np[js_idx, mn_idx]:24.16E}"
-                        f"{bsupvmnc_np[js_idx, mn_idx]:24.16E}{bsupvmns_np[js_idx, mn_idx]:24.16E}\n"
-                    )
+    _wout_debug_helpers.dump_wrout_modes_if_requested(
+        ns=int(ns),
+        nyq_modes=nyq_modes,
+        gmnc=gmnc,
+        gmns=gmns,
+        bmnc=bmnc,
+        bmns=bmns,
+        bsubumnc=bsubumnc,
+        bsubumns=bsubumns,
+        bsubvmnc=bsubvmnc,
+        bsubvmns=bsubvmns,
+        bsubsmnc=bsubsmnc,
+        bsubsmns=bsubsmns,
+        bsupumnc=bsupumnc,
+        bsupumns=bsupumns,
+        bsupvmnc=bsupvmnc,
+        bsupvmns=bsupvmns,
+    )
 
     wout = WoutData(
         path=Path(path),
@@ -2754,133 +2658,20 @@ def wout_minimal_from_fixed_boundary(
     )
 
     if wout_timing_enabled:
-        wout_timing["total_s"] = _time.perf_counter() - t_wout_total_start
-        try:
-            parts = []
-            for k in (
-                "total_s",
-                "trig_tables_s",
-                "geom_synthesis_s",
-                "forces_bcovar_s",
-                "bsubs_half_s",
-                "nyquist_coeffs_s",
-                "equif_s",
-                "beta_s",
-                "mercier_s",
-                "bsub_filter_s",
-                "bsub_coeffs_s",
-                "jxbforce_mercier_s",
-            ):
-                if k in wout_timing:
-                    parts.append(f"{k}={wout_timing[k]:.3e}")
-            print("[vmec_jax wout timing] " + " ".join(parts), flush=True)
-        except Exception:
-            pass
+        _wout_debug_helpers.print_wout_timing_if_requested(
+            timing=wout_timing,
+            total_start=t_wout_total_start,
+        )
     return wout
 
 
 def state_from_wout(wout: WoutData) -> VMECState:
-    """Build a :class:`~vmec_jax.state.VMECState` from `wout` Fourier coefficients.
+    """Build a :class:`~vmec_jax.state.VMECState` from WOUT Fourier coefficients."""
 
-    Notes
-    -----
-    VMEC's ``wout`` files do **not** store the internal lambda coefficients in the
-    same units VMEC uses in ``bcovar`` / ``totzsps``.
+    from . import field as _field
 
-    In ``wrout.f`` VMEC writes (schematically, for each radial surface ``js``)::
-
-        lmns_wout(:,js) = (lmns_internal(:,js) / phipf(js)) * lamscale
-
-    to preserve an older output convention.
-
-    For parity-style kernels that re-use VMEC's ``bcovar`` formulas, we therefore
-    invert this scaling when constructing the state:
-
-        lmns_internal = lmns_wout * phipf / lamscale
-    """
-    assert_main_modes_match_wout(wout=wout)
-    layout = StateLayout(ns=wout.ns, K=int(wout.xm.size), lasym=bool(wout.lasym))
-
-    # Reconstruct VMEC's internal lambda coefficients from the `wout` convention.
-    # See `VMEC2000/Sources/Input_Output/wrout.f` (comment: "IF B^v ~ phip + lamu,
-    # MUST DIVIDE BY phipf(js) below to maintain old-style format").
-    from .field import lamscale_from_phips
-
-    ns = int(wout.ns)
-    if ns < 2:
-        s = np.asarray([0.0], dtype=float)
-    else:
-        s = np.linspace(0.0, 1.0, ns, dtype=float)
-    lamscale = float(np.asarray(lamscale_from_phips(wout.phips, s)))
-    # VMEC's `wout` stores phipf scaled by 2π*signgs. Internally, lambda scaling
-    # uses the unscaled phipf (= phipf_internal). Align the reconstruction with
-    # bcovar's bsupv formula by undoing the 2π*signgs factor here.
-    scale = float(2.0 * np.pi * float(getattr(wout, "signgs", 1)))
-    phipf_internal = (
-        np.asarray(wout.phipf, dtype=float) / scale if scale != 0.0 else np.asarray(wout.phipf, dtype=float)
-    )
-    if lamscale == 0.0:
-        lam_scale = np.zeros((ns,), dtype=float)
-    else:
-        lam_scale = phipf_internal / lamscale  # (ns,)
-
-    # VMEC writes lambda in a backward-compatible *half-mesh* convention (wrout.f),
-    # which is not the internal full-mesh representation used by `totzsps`/`bcovar`.
-    # We reproduce VMEC's own recovery logic from `load_xc_from_wout.f`:
-    #   - undo the half-mesh interpolation (recurrence in `js`)
-    #   - multiply by `phipf(js)` (undo old-style division)
-    #   - divide by `lamscale` (undo old-style multiply)
-    #
-    # This yields lambda coefficients that are consistent with VMEC's internal
-    # `bcovar` formulas when used with our `lamscale` scaling.
-    lmns_full = _lambda_full_from_wout_half_mesh(
-        lam_wout=np.asarray(wout.lmns),
-        m_modes=np.asarray(wout.xm),
-        s=s,
-        phipf_internal=np.asarray(phipf_internal),
-        lamscale=lamscale,
-    )
-    lmnc_full = _lambda_full_from_wout_half_mesh(
-        lam_wout=np.asarray(wout.lmnc),
-        m_modes=np.asarray(wout.xm),
-        s=s,
-        phipf_internal=np.asarray(phipf_internal),
-        lamscale=lamscale,
-    )
-
-    m_arr = np.asarray(wout.xm, dtype=int)
-    n_arr = (np.asarray(wout.xn, dtype=int) // int(wout.nfp)).astype(int)
-    sqrt2 = np.sqrt(2.0)
-    mscale = np.where(m_arr == 0, 1.0, sqrt2)
-    nscale = np.where(np.abs(n_arr) == 0, 1.0, sqrt2)
-    mode_scale = (1.0 / (mscale * nscale))[None, :]
-
-    Rcos = np.asarray(wout.rmnc) * mode_scale
-    Rsin = np.asarray(wout.rmns) * mode_scale
-    Zcos = np.asarray(wout.zmnc) * mode_scale
-    Zsin = np.asarray(wout.zmns) * mode_scale
-
-    modes = vmec_mode_table(wout.mpol, wout.ntor)
-    lthreed = bool(int(wout.ntor) > 0)
-    lasym = bool(wout.lasym)
-    lconm1 = bool(lthreed or lasym)
-    Rcos, Zsin, Rsin, Zcos = vmec_m1_physical_to_internal_signed(
-        Rcos=Rcos,
-        Zsin=Zsin,
-        Rsin=Rsin,
-        Zcos=Zcos,
-        modes=modes,
-        lthreed=lthreed,
-        lasym=lasym,
-        lconm1=lconm1,
-    )
-
-    return VMECState(
-        layout=layout,
-        Rcos=Rcos,
-        Rsin=Rsin,
-        Zcos=Zcos,
-        Zsin=Zsin,
-        Lcos=np.asarray(lmnc_full) * mode_scale,
-        Lsin=np.asarray(lmns_full) * mode_scale,
+    return _wout_state_helpers.state_from_wout(
+        wout,
+        assert_main_modes_match_wout_func=assert_main_modes_match_wout,
+        lamscale_from_phips_func=_field.lamscale_from_phips,
     )
