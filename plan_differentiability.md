@@ -1192,6 +1192,11 @@ Results obtained:
     keeping the coefficient-RMS limiter testable in `solve_force_norm_helpers.py`
     without another local adapter layer.  Focused limiter/hotpath tests, Ruff,
     and compileall passed.  `solve.py` decreased to 10373 lines.
+47. Removed the non-scan residual-loop axis-guess print wrapper.  The two
+    call sites now use the shared VMEC2000-style axis printer directly, while
+    the scan-local wrapper remains untouched because it is inside the staged
+    scan controller.  Focused axis-reset helper tests, Ruff, and compileall
+    passed.  `solve.py` decreased to 10370 lines.
 
 Best next steps:
 

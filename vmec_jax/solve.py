@@ -6093,9 +6093,6 @@ def solve_fixed_boundary_residual_iter(
             freeb_nvskip0 = max(1, int(resume_state.get("freeb_nvskip0", freeb_nvskip0)))
             freeb_last_model = str(resume_state.get("freeb_model", freeb_last_model))
 
-    def _print_axis_guess(raxis_cc, zaxis_cs) -> None:
-        _print_scan_axis_guess(raxis_cc, zaxis_cs)
-
     def _apply_vmec_scale_m1_precond_rhs(frzl_in: TomnspsRZL, mats: dict[str, Any]) -> TomnspsRZL:
         return _scale_m1_precond_rhs_from_mats(
             frzl_in,
@@ -6398,7 +6395,7 @@ def solve_fixed_boundary_residual_iter(
                 if verbose and bool(vmec2000_control) and bool(verbose_vmec2000_table):
                     if axis_reset_coeffs is not None:
                         raxis_cc, _raxis_cs, _zaxis_cc, zaxis_cs = axis_reset_coeffs
-                        _print_axis_guess(raxis_cc, zaxis_cs)
+                        _print_scan_axis_guess(raxis_cc, zaxis_cs)
                 axis_reset_done = True
                 ijacob = 1
                 state_checkpoint = state
@@ -8350,7 +8347,7 @@ def solve_fixed_boundary_residual_iter(
                     if verbose and bool(vmec2000_control) and bool(verbose_vmec2000_table):
                         if axis_reset_coeffs is not None:
                             raxis_cc, _raxis_cs, _zaxis_cc, zaxis_cs = axis_reset_coeffs
-                            _print_axis_guess(raxis_cc, zaxis_cs)
+                            _print_scan_axis_guess(raxis_cc, zaxis_cs)
                     state_checkpoint = state
                     vRcc, vRss, vZsc, vZcs, vLsc, vLcs = _zero_velocity_blocks_like(
                         vRcc, vRss, vZsc, vZcs, vLsc, vLcs
