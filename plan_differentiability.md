@@ -1186,6 +1186,12 @@ Results obtained:
     directly with the resolved `nstep_screen`, keeping print/sample cadence
     policy in `solve_diagnostics_io.py`.  Focused cadence/formatting tests,
     Ruff, and compileall passed.
+46. Removed the single-use residual-loop `_safe_dt_from_force` closure.  The
+    update path now constructs `_ForceBlocks` at the only limiter call site and
+    calls the already-extracted `safe_dt_from_force_blocks` helper directly,
+    keeping the coefficient-RMS limiter testable in `solve_force_norm_helpers.py`
+    without another local adapter layer.  Focused limiter/hotpath tests, Ruff,
+    and compileall passed.  `solve.py` decreased to 10373 lines.
 
 Best next steps:
 
@@ -1213,9 +1219,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 64%.
+- Differentiability/refactor implementation: 65%.
 - Source-health instrumentation: 100%.
-- Solver monolith reduction: 55% of the large-file extraction work.
+- Solver monolith reduction: 56% of the large-file extraction work.
 - Free-boundary adjoint monolith reduction: 13%.
 - Driver workflow decomposition: 34%.
 - WOUT diagnostic decomposition: 4%.

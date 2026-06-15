@@ -6096,41 +6096,6 @@ def solve_fixed_boundary_residual_iter(
     def _print_axis_guess(raxis_cc, zaxis_cs) -> None:
         _print_scan_axis_guess(raxis_cc, zaxis_cs)
 
-    def _safe_dt_from_force(
-        *,
-        dt_nominal: float,
-        frcc,
-        frss,
-        fzsc,
-        fzcs,
-        flsc,
-        flcs,
-        frsc=None,
-        frcs=None,
-        fzcc=None,
-        fzss=None,
-        flcc=None,
-        flss=None,
-    ) -> float:
-        return _safe_dt_from_force_blocks(
-            dt_nominal=dt_nominal,
-            max_coeff_delta_rms=max_coeff_delta_rms,
-            blocks=_ForceBlocks(
-                frcc,
-                frss,
-                fzsc,
-                fzcs,
-                flsc,
-                flcs,
-                frsc,
-                frcs,
-                fzcc,
-                fzss,
-                flcc,
-                flss,
-            ),
-        )
-
     def _apply_vmec_scale_m1_precond_rhs(frzl_in: TomnspsRZL, mats: dict[str, Any]) -> TomnspsRZL:
         return _scale_m1_precond_rhs_from_mats(
             frzl_in,
@@ -9046,20 +9011,23 @@ def solve_fixed_boundary_residual_iter(
             t_state_update_start = time.perf_counter() if timing_enabled else None
             dt_eff = float(time_step)
             if bool(limit_dt_from_force):
-                dt_eff = _safe_dt_from_force(
+                dt_eff = _safe_dt_from_force_blocks(
                     dt_nominal=time_step,
-                    frcc=frcc_u,
-                    frss=frss_u,
-                    fzsc=fzsc_u,
-                    fzcs=fzcs_u,
-                    flsc=flsc_u,
-                    flcs=flcs_u,
-                    frsc=frsc_u,
-                    frcs=frcs_u,
-                    fzcc=fzcc_u,
-                    fzss=fzss_u,
-                    flcc=flcc_u,
-                    flss=flss_u,
+                    max_coeff_delta_rms=max_coeff_delta_rms,
+                    blocks=_ForceBlocks(
+                        frcc_u,
+                        frss_u,
+                        fzsc_u,
+                        fzcs_u,
+                        flsc_u,
+                        flcs_u,
+                        frsc_u,
+                        frcs_u,
+                        fzcc_u,
+                        fzss_u,
+                        flcc_u,
+                        flss_u,
+                    ),
                 )
 
             # Momentum semantics: v <- fac*(b1*v + dt*F), x <- x + dt*v.
