@@ -9,6 +9,7 @@ import numpy as np
 
 from vmec_jax._compat import jnp, tree_util
 
+from .free_boundary_adjoint_trace_controls import direct_coil_accepted_trace_controller_controls_jax
 from .free_boundary_adjoint_trace_fingerprint import trace_pytree_shape_signature
 
 
@@ -147,3 +148,234 @@ def stack_trace_nestor_axis_controls(trace_seq: tuple[dict[str, Any], ...]) -> d
             values.append(value)
         payload[key] = jnp.stack(values, axis=0)
     return payload
+
+
+_ACCEPTED_TRACE_OPTIONAL_STEP_PYTREE_CONTROL_KEYS = (
+    "force_state_pre",
+    "freeb_pres_scale",
+    "constraint_rcon0",
+    "constraint_zcon0",
+    "constraint_tcon0",
+    "constraint_precond_diag",
+    "constraint_tcon",
+    "constraint_precond_active",
+    "constraint_tcon_active",
+)
+
+
+def trace_step_policy_static_signature(trace: dict[str, Any]) -> tuple[Any, ...]:
+    """Return the static-dispatch signature for one accepted replay step."""
+
+    has_active_freeb_replay = trace.get("freeb_bsqvac_half") is not None and trace.get("freeb_nestor_trace") is not None
+    return (
+        trace_preconditioner_static_signature(trace),
+        int(bool(trace.get("apply_lforbal", False))),
+        int(bool(trace.get("include_edge_residual", False))),
+        int(bool(trace.get("apply_m1_constraints", False))),
+        int(bool(has_active_freeb_replay)),
+        trace_static_value_shape_signature(trace.get("wout_like")),
+        trace_static_value_shape_signature(trace.get("trig")),
+        trace_static_value_shape_signature(trace.get("zero_m1")),
+        trace_optional_presence_signature(trace, _ACCEPTED_TRACE_OPTIONAL_STEP_PYTREE_CONTROL_KEYS),
+        tuple(
+            trace_static_value_shape_signature(trace.get(key))
+            for key in _ACCEPTED_TRACE_OPTIONAL_STEP_PYTREE_CONTROL_KEYS
+            if trace.get(key) is not None
+        ),
+    )
+
+
+def direct_coil_accepted_trace_step_policy_segments(
+    traces: Any,
+    *,
+    max_steps: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return consecutive static step-policy segments for stacked replay."""
+
+    trace_seq = tuple(traces)
+    if max_steps is not None:
+        trace_seq = trace_seq[: int(max_steps)]
+    if not trace_seq:
+        raise ValueError("at least one accepted trace is required")
+
+    segments: list[dict[str, Any]] = []
+    start = 0
+    current_signature = trace_step_policy_static_signature(trace_seq[0])
+    for index, trace in enumerate(trace_seq[1:], start=1):
+        signature = trace_step_policy_static_signature(trace)
+        if signature == current_signature:
+            continue
+        segments.append(
+            {
+                "start": start,
+                "stop": index,
+                "n_steps": index - start,
+                "signature": current_signature,
+            }
+        )
+        start = index
+        current_signature = signature
+    segments.append(
+        {
+            "start": start,
+            "stop": len(trace_seq),
+            "n_steps": len(trace_seq) - start,
+            "signature": current_signature,
+        }
+    )
+    return segments
+
+
+def direct_coil_accepted_trace_step_policy_segment_summary(
+    traces: Any,
+    *,
+    accept_mask: Any | None = None,
+    done_mask: Any | None = None,
+    max_steps: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return JSON-safe diagnostics for stacked step-policy segments."""
+
+    trace_seq = tuple(traces)
+    if max_steps is not None:
+        trace_seq = trace_seq[: int(max_steps)]
+    if not trace_seq:
+        raise ValueError("at least one accepted trace is required")
+
+    n_steps = len(trace_seq)
+    if accept_mask is not None:
+        accept_mask = np.asarray(accept_mask, dtype=bool)[:n_steps]
+    if done_mask is not None:
+        done_mask = np.asarray(done_mask, dtype=bool)[:n_steps]
+    controls = direct_coil_accepted_trace_controller_controls_jax(
+        trace_seq,
+        accept_mask=accept_mask,
+        done_mask=done_mask,
+    )
+    accepted = np.asarray(controls["accept"], dtype=bool)
+    done = np.asarray(controls["done"], dtype=bool)
+    reset = np.asarray(controls["reset_to_trace_pre"], dtype=bool)
+    freeb = np.asarray(controls["has_active_freeb_replay"], dtype=bool)
+
+    summaries: list[dict[str, Any]] = []
+    for index, segment in enumerate(direct_coil_accepted_trace_step_policy_segments(trace_seq)):
+        start = int(segment["start"])
+        stop = int(segment["stop"])
+        segment_accept = accepted[start:stop]
+        segment_done = done[start:stop]
+        segment_reset = reset[start:stop]
+        segment_freeb = freeb[start:stop]
+        summaries.append(
+            {
+                "index": int(index),
+                "start": start,
+                "stop": stop,
+                "n_steps": int(stop - start),
+                "accepted_steps": int(np.count_nonzero(segment_accept)),
+                "rejected_steps": int(segment_accept.size - np.count_nonzero(segment_accept)),
+                "done_markers": int(np.count_nonzero(segment_done)),
+                "state_resets": int(np.count_nonzero(segment_reset)),
+                "free_boundary_replay_steps": int(np.count_nonzero(segment_freeb)),
+                "signature_repr": repr(segment["signature"]),
+            }
+        )
+    return summaries
+
+
+def direct_coil_accepted_trace_preconditioner_policy_segments(
+    traces: Any,
+    *,
+    max_steps: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return consecutive static-preconditioner-policy segments."""
+
+    trace_seq = tuple(traces)
+    if max_steps is not None:
+        trace_seq = trace_seq[: int(max_steps)]
+    if not trace_seq:
+        raise ValueError("at least one accepted trace is required")
+
+    segments: list[dict[str, Any]] = []
+    start = 0
+    current_signature = trace_preconditioner_static_signature(trace_seq[0])
+    for index, trace in enumerate(trace_seq[1:], start=1):
+        signature = trace_preconditioner_static_signature(trace)
+        if signature == current_signature:
+            continue
+        segments.append(
+            {
+                "start": start,
+                "stop": index,
+                "n_steps": index - start,
+                "signature": current_signature,
+            }
+        )
+        start = index
+        current_signature = signature
+    segments.append(
+        {
+            "start": start,
+            "stop": len(trace_seq),
+            "n_steps": len(trace_seq) - start,
+            "signature": current_signature,
+        }
+    )
+    return segments
+
+
+def direct_coil_accepted_trace_preconditioner_policy_segment_summary(
+    traces: Any,
+    *,
+    accept_mask: Any | None = None,
+    done_mask: Any | None = None,
+    max_steps: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return JSON-safe preconditioner-policy segment diagnostics."""
+
+    trace_seq = tuple(traces)
+    if max_steps is not None:
+        trace_seq = trace_seq[: int(max_steps)]
+    if not trace_seq:
+        raise ValueError("at least one accepted trace is required")
+
+    n_steps = len(trace_seq)
+    if accept_mask is not None:
+        accept_mask = np.asarray(accept_mask, dtype=bool)[:n_steps]
+    if done_mask is not None:
+        done_mask = np.asarray(done_mask, dtype=bool)[:n_steps]
+    controls = direct_coil_accepted_trace_controller_controls_jax(
+        trace_seq,
+        accept_mask=accept_mask,
+        done_mask=done_mask,
+    )
+    accepted = np.asarray(controls["accept"], dtype=bool)
+    done = np.asarray(controls["done"], dtype=bool)
+    reset = np.asarray(controls["reset_to_trace_pre"], dtype=bool)
+    freeb = np.asarray(controls["has_active_freeb_replay"], dtype=bool)
+
+    summaries: list[dict[str, Any]] = []
+    for index, segment in enumerate(direct_coil_accepted_trace_preconditioner_policy_segments(trace_seq)):
+        start = int(segment["start"])
+        stop = int(segment["stop"])
+        signature = segment["signature"]
+        segment_accept = accepted[start:stop]
+        segment_done = done[start:stop]
+        segment_reset = reset[start:stop]
+        segment_freeb = freeb[start:stop]
+        summaries.append(
+            {
+                "index": int(index),
+                "start": start,
+                "stop": stop,
+                "n_steps": int(stop - start),
+                "accepted_steps": int(np.count_nonzero(segment_accept)),
+                "rejected_steps": int(segment_accept.size - np.count_nonzero(segment_accept)),
+                "done_markers": int(np.count_nonzero(segment_done)),
+                "state_resets": int(np.count_nonzero(segment_reset)),
+                "free_boundary_replay_steps": int(np.count_nonzero(segment_freeb)),
+                "preconditioner_use_precomputed_tridi": int(signature[0]),
+                "preconditioner_use_lax_tridi": int(signature[1]),
+                "precond_jmax": int(signature[2]),
+                "signature_repr": repr(signature),
+            }
+        )
+    return summaries

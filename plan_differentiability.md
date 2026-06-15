@@ -1231,6 +1231,13 @@ Results obtained:
     now live outside the main adjoint module with private compatibility aliases
     retained.  Focused replay-plan/control tests, Ruff, and compileall passed.
     `free_boundary_adjoint.py` decreased to 6248 lines.
+53. Moved accepted-trace step-policy and preconditioner-policy segmentation
+    helpers into `free_boundary_adjoint_trace_stack.py`.  The public segment
+    functions remain imported from `free_boundary_adjoint.py`, while static
+    step signatures, segment construction, and JSON-safe segment summaries now
+    live beside the trace stacking/signature utilities they depend on.  Focused
+    trace-control/segment tests, Ruff, and compileall passed.
+    `free_boundary_adjoint.py` decreased to 5995 lines.
 
 Best next steps:
 
@@ -1258,9 +1265,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 70%.
+- Differentiability/refactor implementation: 71%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 57% of the large-file extraction work.
-- Free-boundary adjoint monolith reduction: 19%.
+- Free-boundary adjoint monolith reduction: 21%.
 - Driver workflow decomposition: 34%.
 - WOUT diagnostic decomposition: 4%.
