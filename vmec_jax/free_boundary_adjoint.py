@@ -51,6 +51,9 @@ from .free_boundary_adjoint_runtime_helpers import (
     jax_named_scope as _runtime_jax_named_scope,
 )
 from .free_boundary_adjoint_replay_plan_helpers import (
+    accepted_step_policy_layout_for_complete_payload as _accepted_step_policy_layout_for_complete_payload,
+    accepted_step_policy_signature_for_complete_payload as _accepted_step_policy_signature_for_complete_payload,  # noqa: F401 - compatibility alias for tests/internal users.
+    accepted_step_policy_summary_for_complete_payload as _accepted_step_policy_summary_for_complete_payload,
     extract_adjoint_step_trace as _extract_adjoint_step_trace,
     slice_replay_controls as _slice_replay_controls,
     stackability_probe as _stackability_probe,
@@ -4509,63 +4512,6 @@ def direct_coil_same_branch_physical_scalar_gate_report(
     if json_safe:
         return _json_safe_fingerprint_value(result)
     return result
-
-
-def _accepted_step_policy_signature_for_complete_payload(payload: Mapping[str, Any]) -> tuple[Any, ...]:
-    traces = tuple(payload.get("traces", ()))
-    if not traces:
-        return ()
-    return tuple(
-        (
-            int(segment["start"]),
-            int(segment["stop"]),
-            int(segment["n_steps"]),
-            segment["signature"],
-        )
-        for segment in direct_coil_accepted_trace_step_policy_segments(traces)
-    )
-
-
-def _accepted_step_policy_layout_for_complete_payload(payload: Mapping[str, Any]) -> tuple[tuple[int, int, int], ...]:
-    """Return the stacked replay segment layout without continuous payload values.
-
-    ``direct_coil_accepted_trace_step_policy_segments`` must remain strict when
-    it decides how to segment one replay trace.  For base/plus/minus
-    complete-solve branch compatibility, however, the relevant question is
-    whether the same controller slots and segment boundaries are used.  The
-    actual continuous static payload values may differ under a finite
-    perturbation and are checked by the physical AD-vs-FD gate instead.
-    """
-
-    traces = tuple(payload.get("traces", ()))
-    if not traces:
-        return ()
-    return tuple(
-        (
-            int(segment["start"]),
-            int(segment["stop"]),
-            int(segment["n_steps"]),
-        )
-        for segment in direct_coil_accepted_trace_step_policy_segments(traces)
-    )
-
-
-def _accepted_step_policy_summary_for_complete_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
-    traces = tuple(payload.get("traces", ()))
-    if not traces:
-        return {"n_segments": 0, "segments": ()}
-    segments = direct_coil_accepted_trace_step_policy_segments(traces)
-    return {
-        "n_segments": len(segments),
-        "segments": tuple(
-            {
-                "start": int(segment["start"]),
-                "stop": int(segment["stop"]),
-                "n_steps": int(segment["n_steps"]),
-            }
-            for segment in segments
-        ),
-    }
 
 
 def direct_coil_adaptive_full_loop_same_branch_gate_report(

@@ -1238,6 +1238,12 @@ Results obtained:
     live beside the trace stacking/signature utilities they depend on.  Focused
     trace-control/segment tests, Ruff, and compileall passed.
     `free_boundary_adjoint.py` decreased to 5995 lines.
+54. Extracted complete-payload accepted-step policy report helpers into
+    `free_boundary_adjoint_replay_plan_helpers.py`.  The full-loop same-branch
+    gate now imports the payload signature/layout/summary helpers through
+    private compatibility aliases, and helper-unit tests assert those aliases
+    remain stable for internal users.  Focused helper tests, Ruff, and
+    compileall passed.  `free_boundary_adjoint.py` decreased to 5941 lines.
 
 Best next steps:
 
@@ -1265,9 +1271,9 @@ complete.
 Completion:
 
 - Differentiability/refactor plan: 100%.
-- Differentiability/refactor implementation: 71%.
+- Differentiability/refactor implementation: 72%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 57% of the large-file extraction work.
-- Free-boundary adjoint monolith reduction: 21%.
+- Free-boundary adjoint monolith reduction: 22%.
 - Driver workflow decomposition: 34%.
 - WOUT diagnostic decomposition: 4%.
