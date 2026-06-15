@@ -29,13 +29,15 @@ Top-level package layout (selected):
   coefficient-slice helpers
 - ``vmec_jax/solve_gradient_helpers.py``: state gradient-descent updates and
   feasible-gradient projections for fixed-boundary/axis/lambda constraints
-- ``vmec_jax/solve_preconditioner_helpers.py``: fixed-boundary mode-diagonal
+- ``vmec_jax/solvers/fixed_boundary/preconditioning/operators.py``:
+  fixed-boundary mode-diagonal
   and radial Dirichlet smoothing preconditioner kernels, tridiagonal policy
   resolution, metric preconditioner scales and bcovar wrapper helpers, radial
   mesh scale factors, and VMEC ``m=1`` preconditioner scaling helpers
 - ``vmec_jax/solve_jit_cache_helpers.py``: environment-controlled JIT-cache
   limits, structural cache keys, LRU helpers, and scan-cache miss diagnostics
-- ``vmec_jax/solve_preconditioner_payload_helpers.py``: cached strict-update,
+- ``vmec_jax/solvers/fixed_boundary/preconditioning/payload.py``:
+  cached strict-update,
   preconditioner-output, fused preconditioner-apply, accepted-control, and
   ``ptau`` JIT payload helpers used by the residual-iteration hot path
 - ``vmec_jax/solve_first_step_diagnostics.py``: first-step VMEC residual,

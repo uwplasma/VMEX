@@ -463,8 +463,8 @@ Current source-health snapshot on PR #20 after the latest extractions:
 .. code-block:: text
 
    vmec_jax Python files under maxdepth=2: 140
-   root-level vmec_jax/*.py files:      118
-   root helper-prefix files:             52
+   root-level vmec_jax/*.py files:      116
+   root helper-prefix files:             50
    vmec_jax/solve.py:                 10119 lines
    vmec_jax/wout.py:                   5894 lines
    vmec_jax/free_boundary_adjoint.py:   5687 lines
@@ -1825,6 +1825,58 @@ Completion:
 - Differentiability/refactor implementation: 94%.
 - Source-health instrumentation: 100%.
 - Solver monolith reduction: 71% of the large-file extraction work.
+- Free-boundary adjoint monolith reduction: 30%.
+- Driver workflow decomposition: 35%.
+- WOUT diagnostic/profile decomposition: 22%.
+
+## 2026-06-15 Fixed-Boundary Preconditioning Package Move
+
+Commit: follow-up on `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved fixed-boundary preconditioner operator and payload helper seams into
+   `vmec_jax.solvers.fixed_boundary.preconditioning`.
+2. Updated `solve.py`, first-step diagnostics, fixed-boundary GD/L-BFGS
+   optimizer helpers, residual L-BFGS helper, and preconditioner tests to use
+   the new package path.
+3. Fixed package-relative lazy imports for `vmec_residue`,
+   `discrete_adjoint`, and `preconditioner_1d_jax`.
+4. Updated `docs/code_structure.rst` to document the new package locations.
+5. Ratcheted the root-helper source-health CI gate from 52 to 50 files.
+
+Results obtained:
+
+- Root-level `vmec_jax/*.py` files dropped from 118 to 116.
+- Root helper-prefix files dropped from 52 to 50.
+- Preconditioning helper code is now grouped with the fixed-boundary solver
+  domain rather than the root package.
+
+Tests and commands run:
+
+- `python -m pytest -q tests/test_solve_preconditioner_metric_helpers.py tests/test_solve_hotpaths.py tests/test_solve_force_payload_helpers.py tests/test_solve_residual_optimizer_wave8_coverage.py tests/test_solve_residual_iter_helpers_wave8_coverage.py tests/test_tcon_precondn_diag.py -q`
+- `python -m ruff check vmec_jax/solve.py vmec_jax/solve_first_step_diagnostics.py vmec_jax/solve_fixed_boundary_gd_optimizer.py vmec_jax/solve_fixed_boundary_lbfgs_optimizer.py vmec_jax/solve_fixed_boundary_residual_lbfgs_optimizer.py vmec_jax/solvers/fixed_boundary/preconditioning tests/test_solve_preconditioner_metric_helpers.py tests/test_solve_force_payload_helpers.py`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 12 --max-root-helper-prefix-files 50`
+
+Best next steps:
+
+1. Run the broader `driver-solve-discrete` shard before committing.
+2. If green, commit and push this tranche.
+3. Continue reducing root helper sprawl by moving fixed-boundary optimizer
+   helpers under `vmec_jax.solvers.fixed_boundary.optimizers` once the
+   preconditioning package passes CI.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 17%.
+- Differentiability/refactor implementation: 95.2%.
+- Solver monolith reduction: 76%.
 - Free-boundary adjoint monolith reduction: 30%.
 - Driver workflow decomposition: 35%.
 - WOUT diagnostic/profile decomposition: 22%.

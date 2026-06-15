@@ -194,7 +194,7 @@ from .solve_force_norm_helpers import (
     residual_fsq_from_norms as _residual_fsq_from_norms,
     safe_dt_from_force_blocks as _safe_dt_from_force_blocks,
 )
-from . import solve_preconditioner_payload_helpers as _precond_payload_helpers
+from .solvers.fixed_boundary.preconditioning import payload as _precond_payload_helpers
 from .solve_tolerance_helpers import (
     dtype_eps as _dtype_eps,  # noqa: F401 - re-exported for existing internal tests/importers.
     dtype_tiny as _dtype_tiny,
@@ -223,7 +223,7 @@ from .solve_gradient_helpers import (
     mask_grad_for_constraints as _mask_grad_for_constraints,
     update_state_gd as _update_state_gd,
 )
-from .solve_preconditioner_helpers import (
+from .solvers.fixed_boundary.preconditioning.operators import (
     apply_preconditioner as _apply_preconditioner,
     can_reassemble_precond_mats as _can_reassemble_precond_mats,
     metric_surface_precond_from_bcovar_jax as _metric_surface_precond_from_bcovar_jax,

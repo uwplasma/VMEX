@@ -5,15 +5,15 @@ from __future__ import annotations
 from collections import OrderedDict
 from typing import Any, Callable
 
-from ._compat import has_jax, jax, jit, jnp
-from .solve_force_norm_helpers import lambda_preconditioned_full_norm
-from .solve_jit_cache_helpers import (
+from ...._compat import has_jax, jax, jit, jnp
+from ....solve_force_norm_helpers import lambda_preconditioned_full_norm
+from ....solve_jit_cache_helpers import (
     jit_cache_get,
     jit_cache_put,
     strict_update_static_cache_key,
 )
-from .vmec_residue import vmec_gcx2_from_tomnsps
-from .vmec_tomnsp import TomnspsRZL
+from ....vmec_residue import vmec_gcx2_from_tomnsps
+from ....vmec_tomnsp import TomnspsRZL
 
 
 STRICT_UPDATE_STEP_JIT_CACHE: OrderedDict[tuple, Any] = OrderedDict()
@@ -46,7 +46,7 @@ def strict_update_step_jit(
     if cached is not None:
         return cached
 
-    from .discrete_adjoint import strict_update_accepted_step
+    from ....discrete_adjoint import strict_update_accepted_step
 
     def _step(
         state_pre,
@@ -346,7 +346,7 @@ def preconditioner_apply_payload_jit(
     if cached is not None:
         return cached
 
-    from .preconditioner_1d_jax import _rz_preconditioner_apply_arrays
+    from ....preconditioner_1d_jax import _rz_preconditioner_apply_arrays
 
     use_rss = bool(lthreed)
     use_rsc = bool(lasym)
@@ -663,7 +663,7 @@ def preconditioner_apply_payload_fused(
 ):
     """Apply R/Z preconditioning and build update/diagnostic payload in one dispatch."""
 
-    from .preconditioner_1d_jax import _get_env_tridi_flags
+    from ....preconditioner_1d_jax import _get_env_tridi_flags
 
     lthreed = bool(getattr(cfg, "lthreed", False))
     lasym = bool(getattr(cfg, "lasym", False))

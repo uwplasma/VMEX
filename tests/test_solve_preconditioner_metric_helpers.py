@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from vmec_jax._compat import jnp
-from vmec_jax.solve_preconditioner_helpers import (
+from vmec_jax.solvers.fixed_boundary.preconditioning.operators import (
     PreconditionerCacheDecision,
     metric_surface_precond_from_bcovar_jax,
     metric_surface_precond_from_bcovar_np,
