@@ -7,8 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-from ._solve_runtime import _parse_iter_list
-from .state import VMECState
+from ...._solve_runtime import _parse_iter_list
+from ....state import VMECState
 
 
 def maybe_dump_precond_inputs(*, bc, trig, static, iter_idx: int, kernels=None) -> None:
@@ -182,7 +182,7 @@ def maybe_dump_xc(
     outdir.mkdir(parents=True, exist_ok=True)
     ns_val = int(static.cfg.ns)
     path = outdir / f"xc_ns{ns_val}_iter{int(iter_idx)}.npz"
-    from .diagnostics import vmec_internal_mn_from_state, vmec_xc_from_mn_blocks
+    from ....diagnostics import vmec_internal_mn_from_state, vmec_xc_from_mn_blocks
 
     blocks = vmec_internal_mn_from_state(state, static, apply_basis_norm=False, apply_m1_constraint=False)
     xc_kwargs = dict(

@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vmec_jax.solve_diagnostics_io import _format_vmec2000_iter_row
+from vmec_jax.solvers.fixed_boundary.diagnostics.io import _format_vmec2000_iter_row
 from vmec_jax.solvers.fixed_boundary.scan.debug import (
     _append_timecontrol_scan_trace_row,
     _axis_guess_lines,

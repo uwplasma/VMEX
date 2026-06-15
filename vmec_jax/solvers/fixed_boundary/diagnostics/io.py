@@ -13,7 +13,7 @@ from typing import Any
 
 import numpy as np
 
-from . import _solve_runtime
+from .... import _solve_runtime
 
 
 _dump_env_enabled = _solve_runtime._dump_env_enabled
@@ -350,7 +350,7 @@ def _maybe_dump_evolve_trace_record(
     if path is None:
         return
     try:
-        from .diagnostics import vmec_internal_mn_from_state, vmec_xc_from_mn_blocks
+        from ....diagnostics import vmec_internal_mn_from_state, vmec_xc_from_mn_blocks
 
         blocks = vmec_internal_mn_from_state(
             state_val,
