@@ -42,6 +42,19 @@ def _small_result():
     )
 
 
+def _small_3d_result():
+    config = MirrorConfig(MirrorResolution(ns=5, ntheta=9, nxi=9, mpol=3), z_min=-1.0, z_max=1.0)
+    boundary = MirrorBoundary.cosine_modulated_radius(r0=0.28, a2=0.06, epsilon=0.04, theta_mode=2)
+    return run_mirror_fixed_boundary(
+        config,
+        boundary,
+        psi_prime=PsiPrimeProfile.constant(0.01),
+        i_prime=IPrimeProfile.zero(),
+        pressure=PressureProfile.zero(),
+        options=MirrorSolveOptions(optimizer="lbfgs", maxiter=2, tolerance=1.0e-10, mu0=1.0),
+    )
+
+
 def test_mirror_output_roundtrip_preserves_schema_and_arrays(tmp_path):
     result = _small_result()
     path = tmp_path / "mout_roundtrip.nc"
@@ -67,6 +80,23 @@ def test_mirror_output_roundtrip_preserves_schema_and_arrays(tmp_path):
 
     with pytest.raises(FileExistsError):
         write_mirror_output(path, result)
+
+
+def test_mirror_output_roundtrip_preserves_nonaxisymmetric_arrays(tmp_path):
+    pytest.importorskip("scipy.optimize")
+    result = _small_3d_result()
+    path = tmp_path / "mout_nonaxisymmetric.nc"
+
+    written = write_mirror_output(path, result)
+    loaded = load_mirror_output(written)
+
+    assert loaded.geometry.r.shape == (result.grid.ns, result.grid.ntheta, result.grid.nxi)
+    assert loaded.field.bmag.shape == loaded.geometry.r.shape
+    assert loaded.geometry.boundary_r.shape == (result.grid.ntheta, result.grid.nxi)
+    assert np.allclose(loaded.geometry.boundary_r, result.boundary.radius_on_grid_3d(result.grid))
+    assert np.max(np.ptp(loaded.geometry.boundary_r, axis=0)) > 0.0
+    assert np.isclose(loaded.diagnostics.energy_total, loaded.history.energy_total[-1])
+    assert loaded.diagnostics.min_sqrtg > 0.0
 
 
 def test_mirror_output_exports_npz_and_axisym_csv(tmp_path):

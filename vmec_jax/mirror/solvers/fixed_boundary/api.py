@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
 from ...core.boundary import MirrorBoundary
 from ...core.config import MirrorConfig
 from ...core.grids import MirrorGrid
 from ...core.profiles import IPrimeProfile, PressureProfile, PsiPrimeProfile
-from ...core.state import MirrorStateAxisym
-from ...kernels.constraints import project_axisym_state
+from ...core.state import MirrorState3D, MirrorStateAxisym
+from ...kernels.constraints import project_axisym_state, project_state_3d
 from .continuation import pressure_stage_profiles
 from .diagnostics import FixedBoundaryTraceRow, trace_row_from_state
-from .nonlinear import solve_axisym_fixed_boundary_stage
+from .nonlinear import solve_3d_fixed_boundary_stage, solve_axisym_fixed_boundary_stage
 from .optimizers import OptimizerOptions
 
 
@@ -49,7 +51,7 @@ class MirrorFixedBoundaryResult:
     config: MirrorConfig
     grid: MirrorGrid
     boundary: MirrorBoundary
-    state: MirrorStateAxisym
+    state: MirrorStateAxisym | MirrorState3D
     psi_prime: PsiPrimeProfile
     i_prime: IPrimeProfile
     pressure: PressureProfile
@@ -68,7 +70,7 @@ def run_mirror_fixed_boundary(
     psi_prime: PsiPrimeProfile | None = None,
     i_prime: IPrimeProfile | None = None,
     pressure: PressureProfile | None = None,
-    initial_state: MirrorStateAxisym | None = None,
+    initial_state: MirrorStateAxisym | MirrorState3D | None = None,
     options: MirrorSolveOptions | None = None,
 ) -> MirrorFixedBoundaryResult:
     """Run the first axisymmetric fixed-boundary mirror solve workflow."""
@@ -78,8 +80,19 @@ def run_mirror_fixed_boundary(
     pressure = pressure or PressureProfile.zero()
 
     grid = config.build_grid()
-    state = initial_state or MirrorStateAxisym.from_boundary(grid, boundary)
-    state = project_axisym_state(state, grid, boundary)
+    use_3d = isinstance(initial_state, MirrorState3D) or (initial_state is None and (not boundary.is_axisymmetric or grid.ntheta > 1))
+    if initial_state is not None and np.asarray(initial_state.a).ndim == 3:
+        use_3d = True
+    if use_3d:
+        if initial_state is not None and not isinstance(initial_state, MirrorState3D):
+            raise ValueError("3D mirror solves require a MirrorState3D initial_state")
+        state = initial_state or MirrorState3D.from_boundary(grid, boundary)
+        state = project_state_3d(state, grid, boundary)
+    else:
+        if initial_state is not None and not isinstance(initial_state, MirrorStateAxisym):
+            raise ValueError("axisymmetric mirror solves require a MirrorStateAxisym initial_state")
+        state = initial_state or MirrorStateAxisym.from_boundary(grid, boundary)
+        state = project_axisym_state(state, grid, boundary)
 
     trace: list[FixedBoundaryTraceRow] = []
     stages = pressure_stage_profiles(pressure, options.pressure_continuation)
@@ -113,17 +126,30 @@ def run_mirror_fixed_boundary(
         )
 
     for stage_index, pressure_scale, stage_pressure in stages:
-        stage_result = solve_axisym_fixed_boundary_stage(
-            state,
-            grid,
-            boundary,
-            psi_prime=psi_prime,
-            i_prime=i_prime,
-            pressure=stage_pressure,
-            options=options.optimizer_options(),
-            stage_index=stage_index,
-            pressure_scale=pressure_scale,
-        )
+        if use_3d:
+            stage_result = solve_3d_fixed_boundary_stage(
+                state,
+                grid,
+                boundary,
+                psi_prime=psi_prime,
+                i_prime=i_prime,
+                pressure=stage_pressure,
+                options=options.optimizer_options(),
+                stage_index=stage_index,
+                pressure_scale=pressure_scale,
+            )
+        else:
+            stage_result = solve_axisym_fixed_boundary_stage(
+                state,
+                grid,
+                boundary,
+                psi_prime=psi_prime,
+                i_prime=i_prime,
+                pressure=stage_pressure,
+                options=options.optimizer_options(),
+                stage_index=stage_index,
+                pressure_scale=pressure_scale,
+            )
         state = stage_result.state
         trace.extend(stage_result.trace)
 

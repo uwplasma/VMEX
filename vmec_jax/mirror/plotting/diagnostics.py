@@ -43,6 +43,17 @@ class MirrorResidualHistoryData:
     pressure_scale: np.ndarray
 
 
+@dataclass(frozen=True)
+class MirrorRadialDiagnosticsData:
+    """Radial beta, twist, and magnetic-well proxy diagnostics."""
+
+    s: np.ndarray
+    beta: np.ndarray
+    iota_like_twist: np.ndarray
+    mean_bmag: np.ndarray
+    magnetic_well_proxy: np.ndarray
+
+
 def _as_output(output_or_path) -> MirrorOutput:
     return output_or_path if isinstance(output_or_path, MirrorOutput) else load_mirror_output(output_or_path)
 
@@ -79,6 +90,34 @@ def mirror_residual_history_data(output_or_path) -> MirrorResidualHistoryData:
         residual_norm=np.asarray(output.history.residual_norm),
         energy_total=np.asarray(output.history.energy_total),
         pressure_scale=np.asarray(output.history.pressure_scale),
+    )
+
+
+def mirror_radial_diagnostics_data(output_or_path) -> MirrorRadialDiagnosticsData:
+    """Return radial diagnostics for open-ended mirror outputs.
+
+    The ``iota_like_twist`` field is the profile ratio ``I'/Psi'``.  It is a
+    twist proxy, not toroidal rotational transform, because mirror field lines
+    are open and the axial coordinate is nonperiodic.
+    """
+    output = _as_output(output_or_path)
+    bmag = np.asarray(output.field.bmag)
+    weights = output.w_theta[:, None] * output.w_xi[None, :]
+    mean_bmag = np.einsum("jk,ijk->i", weights, bmag) / np.sum(weights)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        twist = np.divide(
+            output.profiles.i_prime,
+            output.profiles.psi_prime,
+            out=np.zeros_like(output.profiles.i_prime),
+            where=np.abs(output.profiles.psi_prime) > 0.0,
+        )
+    magnetic_well_proxy = -np.gradient(mean_bmag, output.s, edge_order=1)
+    return MirrorRadialDiagnosticsData(
+        s=np.asarray(output.s),
+        beta=np.asarray(output.profiles.beta),
+        iota_like_twist=twist,
+        mean_bmag=mean_bmag,
+        magnetic_well_proxy=magnetic_well_proxy,
     )
 
 
@@ -141,6 +180,34 @@ def write_mirror_residual_history(output_or_path, *, outdir: str | Path, name: s
     ax2.set_ylabel("total energy")
     fig.tight_layout()
     path = outdir / f"{_plot_name(output, name)}_mirror_residual_history.png"
+    fig.savefig(path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def write_mirror_radial_diagnostics(output_or_path, *, outdir: str | Path, name: str | None = None) -> Path:
+    """Write radial beta, twist-proxy, and magnetic-well proxy diagnostics."""
+    output = _as_output(output_or_path)
+    data = mirror_radial_diagnostics_data(output)
+    plt = _import_matplotlib()
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    fig, axes = plt.subplots(2, 2, figsize=(7, 5), sharex=True)
+    axes[0, 0].plot(data.s, data.beta, ".-")
+    axes[0, 0].set_ylabel("beta")
+    axes[0, 1].plot(data.s, data.iota_like_twist, ".-")
+    axes[0, 1].set_ylabel("I'/Psi'")
+    axes[0, 1].set_title("open-field twist proxy")
+    axes[1, 0].plot(data.s, data.mean_bmag, ".-")
+    axes[1, 0].set_ylabel("<|B|>")
+    axes[1, 1].plot(data.s, data.magnetic_well_proxy, ".-")
+    axes[1, 1].set_ylabel("-d<|B|>/ds")
+    axes[1, 1].set_title("magnetic-well proxy")
+    for ax in axes[-1, :]:
+        ax.set_xlabel("s")
+    fig.tight_layout()
+    path = outdir / f"{_plot_name(output, name)}_mirror_radial_diagnostics.png"
     fig.savefig(path, dpi=180, bbox_inches="tight")
     plt.close(fig)
     return path

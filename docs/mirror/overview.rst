@@ -19,7 +19,8 @@ VMEC assumptions:
 - axisymmetric fixed side boundaries, state projection, metric and Jacobian
   kernels for straight-axis cylinder/flared tubes;
 - theta-dependent radius side boundaries, 3D state projection, and
-  nonaxisymmetric cylindrical-radius metric, field, and energy kernels;
+  nonaxisymmetric cylindrical-radius metric, field, energy, residual, and
+  fixed-boundary solve kernels;
 - scalar radial profiles, contravariant/covariant/cartesian magnetic-field
   kernels, and magnetic/pressure energy integrals;
 - differentiable axisymmetric energy wrappers, projected residuals, and
@@ -27,15 +28,16 @@ VMEC assumptions:
 - an experimental fixed-boundary axisymmetric projected-gradient solve path
   with pressure-continuation trace diagnostics;
 - mirror-native ``mout_*.nc`` read/write helpers, plot-data extraction, PNG
-  writing, ``.npz``/CSV export helpers, and ``vmec --plot mout_*.nc`` dispatch;
+  writing, 3D boundary field-vector and radial beta/twist/well-proxy diagnostics,
+  ``.npz``/CSV export helpers, and ``vmec --plot mout_*.nc`` dispatch;
 - WHAM-inspired circular-loop fixture metadata, deterministic vacuum-field
   reference checks, optional ``magpylib`` comparison hooks, and low-resolution
-  runnable examples;
+  runnable axisymmetric/nonaxisymmetric examples;
 - focused tests for node ordering, polynomial exactness, interpolation, filtering,
   theta orthogonality, analytic axisymmetric geometry, field identities, and
   analytic energy, gradient checks, Hessian symmetry, MMS stationarity, I/O
   roundtrip, plotting numerical content, WHAM fixture parity, and example
   smoke coverage.
 
-Later phases add the nonaxisymmetric fixed-boundary solve path, mirror
-straight-field-line diagnostics, and optimization workflows.
+Later phases add mirror straight-field-line diagnostics and optimization
+workflows.

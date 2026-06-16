@@ -7,10 +7,10 @@ from typing import Any
 
 import numpy as np
 
-from ..kernels.energy import total_energy_axisym
-from ..kernels.fields import evaluate_axisym_field
-from ..kernels.forces import axisym_projected_energy_residual
-from ..kernels.geometry import evaluate_axisym_geometry
+from ..kernels.energy import total_energy_3d, total_energy_axisym
+from ..kernels.fields import evaluate_axisym_field, evaluate_field_3d
+from ..kernels.forces import axisym_projected_energy_residual, projected_energy_residual_3d
+from ..kernels.geometry import evaluate_axisym_geometry, evaluate_geometry_3d
 from ..kernels.residuals import field_diagnostics
 from .schema import (
     MOUT_COORDINATE_DIMS,
@@ -90,7 +90,7 @@ def _geometry_output(result, geometry) -> MirrorOutputGeometry:
     r = _as_axisym_3d(geometry.r, ntheta=grid.ntheta)
     theta = np.asarray(grid.theta, dtype=float)
     z = np.broadcast_to(np.asarray(grid.z, dtype=float)[None, None, :], r.shape).copy()
-    boundary_r = np.broadcast_to(result.boundary.radius_on_grid(grid)[None, :], (grid.ntheta, grid.nxi)).copy()
+    boundary_r = result.boundary.radius_on_grid_3d(grid)
     return MirrorOutputGeometry(
         r=r,
         x=r * np.cos(theta)[None, :, None],
@@ -129,7 +129,12 @@ def _profile_output(result, field) -> MirrorOutputProfiles:
     i_prime = result.i_prime.evaluate(grid.s_full, dtype=float)
     pressure = result.pressure.evaluate(grid.s_full, dtype=float)
     dpressure_ds = result.pressure.derivative(grid.s_full, dtype=float)
-    b2_s_average = np.mean(field.b2, axis=1)
+    b2 = np.asarray(field.b2, dtype=float)
+    if b2.ndim == 2:
+        b2_s_average = np.einsum("k,ik->i", grid.w_xi, b2) / np.sum(grid.w_xi)
+    else:
+        weights = grid.w_theta[:, None] * grid.w_xi[None, :]
+        b2_s_average = np.einsum("jk,ijk->i", weights, b2) / np.sum(weights)
     with np.errstate(divide="ignore", invalid="ignore"):
         beta = np.divide(
             2.0 * result.options.mu0 * pressure,
@@ -307,23 +312,42 @@ def _read_history(variables: Any) -> MirrorOutputHistory:
 def mirror_output_from_result(result) -> MirrorOutput:
     """Build an in-memory mirror output payload from a fixed-boundary result."""
     grid = result.grid
-    geometry = evaluate_axisym_geometry(result.state, grid)
-    field = evaluate_axisym_field(
-        result.state,
-        grid,
-        geometry,
-        psi_prime=result.psi_prime,
-        i_prime=result.i_prime,
-    )
-    energy = total_energy_axisym(field, result.pressure, geometry, grid, mu0=result.options.mu0)
-    residual = axisym_projected_energy_residual(
-        result.state,
-        grid,
-        psi_prime=result.psi_prime,
-        i_prime=result.i_prime,
-        pressure=result.pressure,
-        mu0=result.options.mu0,
-    )
+    if np.asarray(result.state.a).ndim == 3:
+        geometry = evaluate_geometry_3d(result.state, grid)
+        field = evaluate_field_3d(
+            result.state,
+            grid,
+            geometry,
+            psi_prime=result.psi_prime,
+            i_prime=result.i_prime,
+        )
+        energy = total_energy_3d(field, result.pressure, geometry, grid, mu0=result.options.mu0)
+        residual = projected_energy_residual_3d(
+            result.state,
+            grid,
+            psi_prime=result.psi_prime,
+            i_prime=result.i_prime,
+            pressure=result.pressure,
+            mu0=result.options.mu0,
+        )
+    else:
+        geometry = evaluate_axisym_geometry(result.state, grid)
+        field = evaluate_axisym_field(
+            result.state,
+            grid,
+            geometry,
+            psi_prime=result.psi_prime,
+            i_prime=result.i_prime,
+        )
+        energy = total_energy_axisym(field, result.pressure, geometry, grid, mu0=result.options.mu0)
+        residual = axisym_projected_energy_residual(
+            result.state,
+            grid,
+            psi_prime=result.psi_prime,
+            i_prime=result.i_prime,
+            pressure=result.pressure,
+            mu0=result.options.mu0,
+        )
     return MirrorOutput(
         path=None,
         attributes=_attrs_with_result_metadata(result),

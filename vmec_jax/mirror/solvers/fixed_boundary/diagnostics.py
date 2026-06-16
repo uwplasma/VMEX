@@ -8,10 +8,10 @@ import numpy as np
 
 from ...core.grids import MirrorGrid
 from ...core.profiles import IPrimeProfile, PressureProfile, PsiPrimeProfile
-from ...core.state import MirrorStateAxisym
-from ...kernels.fields import evaluate_axisym_field
-from ...kernels.forces import axisym_projected_energy_residual
-from ...kernels.geometry import evaluate_axisym_geometry
+from ...core.state import MirrorState3D, MirrorStateAxisym
+from ...kernels.fields import evaluate_axisym_field, evaluate_field_3d
+from ...kernels.forces import axisym_projected_energy_residual, projected_energy_residual_3d
+from ...kernels.geometry import evaluate_axisym_geometry, evaluate_geometry_3d
 from ...kernels.residuals import field_diagnostics
 
 
@@ -42,7 +42,7 @@ def ensure_finite_pressure_scale(scale: float) -> float:
 
 
 def trace_row_from_state(
-    state: MirrorStateAxisym,
+    state: MirrorStateAxisym | MirrorState3D,
     grid: MirrorGrid,
     *,
     stage_index: int,
@@ -56,17 +56,29 @@ def trace_row_from_state(
     mu0: float,
 ) -> FixedBoundaryTraceRow:
     """Build a diagnostic trace row from a state."""
-    geometry = evaluate_axisym_geometry(state, grid)
-    field = evaluate_axisym_field(state, grid, geometry, psi_prime=psi_prime, i_prime=i_prime)
+    if np.asarray(state.a).ndim == 3:
+        geometry = evaluate_geometry_3d(state, grid)
+        field = evaluate_field_3d(state, grid, geometry, psi_prime=psi_prime, i_prime=i_prime)
+        residual = projected_energy_residual_3d(
+            state,
+            grid,
+            psi_prime=psi_prime,
+            i_prime=i_prime,
+            pressure=pressure,
+            mu0=mu0,
+        )
+    else:
+        geometry = evaluate_axisym_geometry(state, grid)
+        field = evaluate_axisym_field(state, grid, geometry, psi_prime=psi_prime, i_prime=i_prime)
+        residual = axisym_projected_energy_residual(
+            state,
+            grid,
+            psi_prime=psi_prime,
+            i_prime=i_prime,
+            pressure=pressure,
+            mu0=mu0,
+        )
     diagnostics = field_diagnostics(field, grid)
-    residual = axisym_projected_energy_residual(
-        state,
-        grid,
-        psi_prime=psi_prime,
-        i_prime=i_prime,
-        pressure=pressure,
-        mu0=mu0,
-    )
     return FixedBoundaryTraceRow(
         stage_index=int(stage_index),
         iteration=int(iteration),

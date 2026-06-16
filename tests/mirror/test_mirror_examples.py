@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 import runpy
+import subprocess
+import sys
 
 import pytest
 
@@ -20,6 +22,7 @@ def test_mirror_examples_write_readable_outputs_without_plots(tmp_path):
         ("fixed_cylinder.py", {"maxiter": 1, "write_plots": False}),
         ("fixed_flared_tube.py", {"maxiter": 1, "write_plots": False}),
         ("wham_vacuum_boundary.py", {"midplane_radius": 0.25, "maxiter": 1, "write_plots": False}),
+        ("nonaxisymmetric_boundary.py", {"epsilon": 0.03, "maxiter": 1, "write_plots": False}),
     ]
     for script_name, kwargs in cases:
         run_case = _load_run_case(script_name)
@@ -28,3 +31,25 @@ def test_mirror_examples_write_readable_outputs_without_plots(tmp_path):
         assert output.attributes["geometry_type"] == "mirror"
         assert output.diagnostics.min_sqrtg > 0.0
         assert output.diagnostics.mirror_ratio >= 1.0
+
+
+def test_nonaxisymmetric_example_runs_as_standalone_script(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror/nonaxisymmetric_boundary.py",
+            "--outdir",
+            str(tmp_path / "standalone"),
+            "--maxiter",
+            "0",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    mout = Path(completed.stdout.strip())
+    output = load_mirror_output(mout)
+    assert output.ntheta > 1
+    assert output.diagnostics.min_sqrtg > 0.0

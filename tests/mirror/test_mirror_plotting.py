@@ -19,10 +19,11 @@ from vmec_jax.mirror import (
 )
 from vmec_jax.mirror.core.boundary import MirrorBoundary
 from vmec_jax.mirror.io.mout import load_mirror_output
-from vmec_jax.mirror.plotting.bfield import mirror_bmag_boundary_data, mirror_bmag_sxi_data
+from vmec_jax.mirror.plotting.bfield import mirror_bfield_boundary_data, mirror_bmag_boundary_data, mirror_bmag_sxi_data
 from vmec_jax.mirror.plotting.diagnostics import (
     mirror_jacobian_data,
     mirror_pressure_profile_data,
+    mirror_radial_diagnostics_data,
     mirror_residual_history_data,
 )
 from vmec_jax.mirror.plotting.geometry import mirror_boundary_3d_data, mirror_surfaces_rz_data
@@ -50,18 +51,23 @@ def test_mirror_plot_data_helpers_expose_numerical_content(tmp_path):
     surfaces = mirror_surfaces_rz_data(output, num_surfaces=4)
     bmag_sxi = mirror_bmag_sxi_data(output)
     bmag_boundary = mirror_bmag_boundary_data(output)
+    bfield_boundary = mirror_bfield_boundary_data(output, stride_theta=3, stride_xi=2)
     boundary = mirror_boundary_3d_data(output, ntheta_axisym=12)
     jacobian = mirror_jacobian_data(output)
     pressure = mirror_pressure_profile_data(output)
+    radial = mirror_radial_diagnostics_data(output)
     history = mirror_residual_history_data(output)
 
     assert surfaces.radii.shape == (4, output.nxi)
     assert np.allclose(surfaces.boundary_radius, output.geometry.boundary_r[0])
     assert np.allclose(bmag_sxi.bmag, np.mean(output.field.bmag, axis=1))
     assert np.allclose(bmag_boundary.bmag, output.field.bmag[-1])
+    assert bfield_boundary.x.shape == bfield_boundary.bx.shape
     assert boundary.x.shape == boundary.y.shape == boundary.z.shape == boundary.bmag.shape
     assert jacobian.min_sqrtg == pytest.approx(float(np.min(jacobian.sqrtg)))
     assert np.allclose(pressure.pressure, output.profiles.pressure)
+    assert radial.mean_bmag.shape == output.s.shape
+    assert radial.iota_like_twist.shape == output.s.shape
     assert np.allclose(history.residual_norm, output.history.residual_norm)
 
 
@@ -74,15 +80,41 @@ def test_plot_mirror_output_writes_expected_pngs(tmp_path):
     assert set(paths) == {
         "surfaces_rz",
         "boundary_3d",
+        "bfield_boundary",
         "bmag_sxi",
         "bmag_boundary",
         "jacobian",
         "pressure_profile",
+        "radial_diagnostics",
         "residual_history",
     }
     for path in paths.values():
         assert path.suffix == ".png"
         assert path.exists()
+        assert path.stat().st_size > 0
+
+
+def test_plot_mirror_output_writes_nonaxisymmetric_pngs(tmp_path):
+    pytest.importorskip("matplotlib")
+    pytest.importorskip("scipy.optimize")
+    config = MirrorConfig(MirrorResolution(ns=5, ntheta=9, nxi=9, mpol=3), z_min=-1.0, z_max=1.0)
+    boundary = MirrorBoundary.cosine_modulated_radius(r0=0.28, a2=0.06, epsilon=0.04, theta_mode=2)
+    result = run_mirror_fixed_boundary(
+        config,
+        boundary,
+        psi_prime=PsiPrimeProfile.constant(0.01),
+        i_prime=IPrimeProfile.zero(),
+        pressure=PressureProfile.zero(),
+        options=MirrorSolveOptions(optimizer="lbfgs", maxiter=2, tolerance=1.0e-10, mu0=1.0),
+    )
+    mout = write_mirror_output(tmp_path / "mout_nonaxisymmetric_plot.nc", result)
+
+    paths = plot_mirror_output(mout, outdir=tmp_path / "figures", name="nonaxisymmetric")
+
+    assert paths["boundary_3d"].exists()
+    assert paths["bmag_boundary"].exists()
+    for path in paths.values():
+        assert path.suffix == ".png"
         assert path.stat().st_size > 0
 
 

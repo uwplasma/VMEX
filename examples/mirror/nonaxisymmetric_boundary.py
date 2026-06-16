@@ -1,4 +1,4 @@
-"""Run a low-resolution fixed-boundary flared mirror tube example."""
+"""Run a low-resolution fixed-boundary mirror with a theta-shaped side wall."""
 
 from __future__ import annotations
 
@@ -26,30 +26,26 @@ from vmec_jax.mirror import (
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--outdir", type=Path, default=Path("results/mirror/fixed_flared_tube"))
-    parser.add_argument("--maxiter", type=int, default=10)
+    parser.add_argument("--outdir", type=Path, default=Path("results/mirror/nonaxisymmetric_boundary"))
+    parser.add_argument("--epsilon", type=float, default=0.04)
+    parser.add_argument("--maxiter", type=int, default=6)
     parser.add_argument("--no-plots", action="store_true")
     return parser
 
 
-def run_case(outdir: Path, *, maxiter: int, write_plots: bool = True) -> Path:
+def run_case(outdir: Path, *, epsilon: float, maxiter: int, write_plots: bool = True) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
-    config = MirrorConfig(MirrorResolution(ns=9, ntheta=1, nxi=17, mpol=0), z_min=-1.2, z_max=1.2)
+    config = MirrorConfig(MirrorResolution(ns=7, ntheta=13, nxi=13, mpol=4), z_min=-1.0, z_max=1.0)
+    boundary = MirrorBoundary.cosine_modulated_radius(r0=0.3, a2=0.08, epsilon=epsilon, theta_mode=2)
     result = run_mirror_fixed_boundary(
         config,
-        MirrorBoundary.polynomial_radius(r0=0.27, a2=0.16, a4=0.02),
-        psi_prime=PsiPrimeProfile.constant(0.012),
+        boundary,
+        psi_prime=PsiPrimeProfile.constant(0.01),
         i_prime=IPrimeProfile.zero(),
-        pressure=PressureProfile.polynomial([0.2, -0.2], gamma=2.0),
-        options=MirrorSolveOptions(
-            optimizer="lbfgs",
-            maxiter=maxiter,
-            tolerance=1.0e-10,
-            pressure_continuation=(0.0, 0.5, 1.0),
-            mu0=1.0,
-        ),
+        pressure=PressureProfile.zero(),
+        options=MirrorSolveOptions(optimizer="lbfgs", maxiter=maxiter, tolerance=1.0e-10, mu0=1.0),
     )
-    mout = write_mirror_output(outdir / "mout_fixed_flared_tube.nc", result, overwrite=True)
+    mout = write_mirror_output(outdir / "mout_nonaxisymmetric_boundary.nc", result, overwrite=True)
     if write_plots:
         plot_mirror_output(mout, outdir=outdir / "figures")
     return mout
@@ -57,7 +53,7 @@ def run_case(outdir: Path, *, maxiter: int, write_plots: bool = True) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    mout = run_case(args.outdir, maxiter=args.maxiter, write_plots=not args.no_plots)
+    mout = run_case(args.outdir, epsilon=args.epsilon, maxiter=args.maxiter, write_plots=not args.no_plots)
     print(mout)
     return 0
 

@@ -8,8 +8,13 @@ import numpy as np
 
 from ..io.mout import load_mirror_output
 from ..io.schema import MirrorOutput
-from .bfield import write_mirror_bmag_boundary, write_mirror_bmag_sxi
-from .diagnostics import write_mirror_jacobian, write_mirror_pressure_profile, write_mirror_residual_history
+from .bfield import write_mirror_bfield_boundary, write_mirror_bmag_boundary, write_mirror_bmag_sxi
+from .diagnostics import (
+    write_mirror_jacobian,
+    write_mirror_pressure_profile,
+    write_mirror_radial_diagnostics,
+    write_mirror_residual_history,
+)
 from .geometry import write_mirror_boundary_3d, write_mirror_surfaces_rz
 
 
@@ -42,10 +47,12 @@ def plot_mirror_output(
     paths = {
         "surfaces_rz": write_mirror_surfaces_rz(output, outdir=outdir, name=plot_name),
         "boundary_3d": write_mirror_boundary_3d(output, outdir=outdir, name=plot_name),
+        "bfield_boundary": write_mirror_bfield_boundary(output, outdir=outdir, name=plot_name),
         "bmag_sxi": write_mirror_bmag_sxi(output, outdir=outdir, name=plot_name),
         "bmag_boundary": write_mirror_bmag_boundary(output, outdir=outdir, name=plot_name),
         "jacobian": write_mirror_jacobian(output, outdir=outdir, name=plot_name),
         "pressure_profile": write_mirror_pressure_profile(output, outdir=outdir, name=plot_name),
+        "radial_diagnostics": write_mirror_radial_diagnostics(output, outdir=outdir, name=plot_name),
         "residual_history": write_mirror_residual_history(output, outdir=outdir, name=plot_name),
     }
     if show:

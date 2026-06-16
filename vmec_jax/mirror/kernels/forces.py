@@ -32,6 +32,27 @@ class AxisymProjectedResidual:
     norm: float
 
 
+@dataclass(frozen=True)
+class EnergyGradient3D:
+    """Energy value and gradients with respect to 3D ``a`` and ``lambda``."""
+
+    energy: float
+    grad_a: np.ndarray
+    grad_lam: np.ndarray
+
+
+@dataclass(frozen=True)
+class ProjectedResidual3D:
+    """Unprojected and constraint-projected 3D energy residuals."""
+
+    energy: float
+    grad_a: np.ndarray
+    grad_lam: np.ndarray
+    projected_a: np.ndarray
+    projected_lam: np.ndarray
+    norm: float
+
+
 def _require_jax() -> None:
     if jax is None:
         raise RuntimeError("JAX is required for differentiable mirror force wrappers")
@@ -63,6 +84,15 @@ def radial_derivative_matrix(s_full) -> np.ndarray:
         derivative[idx, idx - 1] = -0.5 / spacing
         derivative[idx, idx + 1] = 0.5 / spacing
     return derivative
+
+
+def theta_derivative_matrix(theta_basis) -> np.ndarray:
+    """Return the dense Fourier differentiation matrix for the theta grid."""
+    ntheta = int(theta_basis.ntheta)
+    if ntheta == 1:
+        return np.zeros((1, 1), dtype=float)
+    columns = [theta_basis.differentiate(np.eye(ntheta, dtype=float)[idx], axis=0) for idx in range(ntheta)]
+    return np.asarray(columns, dtype=float).T
 
 
 def _polyval_jnp(coefficients, s):
@@ -114,6 +144,56 @@ def axisym_total_energy_jax(
     return magnetic + pressure_energy
 
 
+def total_energy_3d_jax(
+    a,
+    lam,
+    grid,
+    *,
+    psi_prime,
+    i_prime,
+    pressure,
+    mu0: float = MU0,
+):
+    """Return differentiable theta-dependent mirror energy for fixed static grid/profile data."""
+    a = jnp.asarray(a)
+    lam = jnp.asarray(lam, dtype=a.dtype)
+    rho = jnp.asarray(grid.rho_full, dtype=a.dtype)[:, None, None]
+    s_full = jnp.asarray(grid.s_full, dtype=a.dtype)
+    w_s = jnp.asarray(grid.w_s, dtype=a.dtype)
+    w_theta = jnp.asarray(grid.w_theta, dtype=a.dtype)
+    w_xi = jnp.asarray(grid.w_xi, dtype=a.dtype)
+    d_theta = jnp.asarray(theta_derivative_matrix(grid.theta_basis), dtype=a.dtype)
+    d_xi = jnp.asarray(grid.axial_basis.derivative_matrix, dtype=a.dtype)
+    d_s = jnp.asarray(radial_derivative_matrix(grid.s_full), dtype=a.dtype)
+    z_xi = jnp.asarray(grid.z_xi, dtype=a.dtype)
+
+    r = rho * a
+    a_theta = jnp.einsum("ij,sjk->sik", d_theta, a)
+    a_xi = jnp.einsum("ij,stj->sti", d_xi, a)
+    r_theta = rho * a_theta
+    r_xi = rho * a_xi
+    r_r_s = 0.5 * jnp.einsum("ij,jtk->itk", d_s, r**2)
+    sqrtg = r_r_s * z_xi
+
+    g_thetatheta = r_theta**2 + r**2
+    g_thetaxi = r_theta * r_xi
+    g_xixi = r_xi**2 + z_xi**2
+
+    psi = _polyval_jnp(psi_prime.coefficients, s_full)[:, None, None]
+    current = _polyval_jnp(i_prime.coefficients, s_full)[:, None, None]
+    pressure_values = _polyval_jnp(pressure.coefficients, s_full)[:, None, None]
+    lam_theta = jnp.einsum("ij,sjk->sik", d_theta, lam)
+    lam_xi = jnp.einsum("ij,stj->sti", d_xi, lam)
+
+    b_sup_theta = (current - lam_xi) / sqrtg
+    b_sup_xi = (psi + lam_theta) / sqrtg
+    b2 = g_thetatheta * b_sup_theta**2 + 2.0 * g_thetaxi * b_sup_theta * b_sup_xi + g_xixi * b_sup_xi**2
+    weights = w_s[:, None, None] * w_theta[None, :, None] * w_xi[None, None, :]
+    magnetic = jnp.sum(weights * sqrtg * b2 / (2.0 * mu0))
+    pressure_energy = jnp.sum(weights * sqrtg * pressure_values / (pressure.gamma - 1.0))
+    return magnetic + pressure_energy
+
+
 def axisym_flat_state_energy_jax(flat_state, shape, grid, *, psi_prime, i_prime, pressure, mu0: float = MU0):
     """Return differentiable energy for a packed ``[a, lambda]`` vector."""
     flat_state = jnp.asarray(flat_state)
@@ -121,6 +201,23 @@ def axisym_flat_state_energy_jax(flat_state, shape, grid, *, psi_prime, i_prime,
     a = jnp.reshape(flat_state[:size], shape)
     lam = jnp.reshape(flat_state[size:], shape)
     return axisym_total_energy_jax(
+        a,
+        lam,
+        grid,
+        psi_prime=psi_prime,
+        i_prime=i_prime,
+        pressure=pressure,
+        mu0=mu0,
+    )
+
+
+def flat_state_energy_3d_jax(flat_state, shape, grid, *, psi_prime, i_prime, pressure, mu0: float = MU0):
+    """Return differentiable 3D energy for a packed ``[a, lambda]`` vector."""
+    flat_state = jnp.asarray(flat_state)
+    size = int(np.prod(shape))
+    a = jnp.reshape(flat_state[:size], shape)
+    lam = jnp.reshape(flat_state[size:], shape)
+    return total_energy_3d_jax(
         a,
         lam,
         grid,
@@ -154,6 +251,29 @@ def axisym_energy_value_and_gradient(state, grid, *, psi_prime, i_prime, pressur
     )
 
 
+def energy_value_and_gradient_3d(state, grid, *, psi_prime, i_prime, pressure, mu0: float = MU0) -> EnergyGradient3D:
+    """Return energy and AD gradients for theta-dependent mirror states."""
+    _require_jax()
+
+    def objective(a, lam):
+        return total_energy_3d_jax(
+            a,
+            lam,
+            grid,
+            psi_prime=psi_prime,
+            i_prime=i_prime,
+            pressure=pressure,
+            mu0=mu0,
+        )
+
+    value, (grad_a, grad_lam) = jax.value_and_grad(objective, argnums=(0, 1))(state.a, state.lam)
+    return EnergyGradient3D(
+        energy=float(value),
+        grad_a=np.asarray(grad_a),
+        grad_lam=np.asarray(grad_lam),
+    )
+
+
 def project_axisym_residual(grad_a, grad_lam, grid, *, fix_end_surfaces: bool = True) -> tuple[np.ndarray, np.ndarray]:
     """Project gradients onto admissible fixed-boundary/gauge variations."""
     projected_a = np.asarray(grad_a).copy()
@@ -165,6 +285,23 @@ def project_axisym_residual(grad_a, grad_lam, grid, *, fix_end_surfaces: bool = 
         projected_a[:, -1] = 0.0
     average = np.tensordot(projected_lam, grid.w_xi, axes=([-1], [0])) / np.sum(grid.w_xi)
     projected_lam = projected_lam - average[:, None]
+    return projected_a, projected_lam
+
+
+def project_residual_3d(grad_a, grad_lam, grid, *, fix_end_surfaces: bool = True) -> tuple[np.ndarray, np.ndarray]:
+    """Project 3D gradients onto admissible fixed-boundary/gauge variations."""
+    projected_a = np.asarray(grad_a).copy()
+    projected_lam = np.asarray(grad_lam).copy()
+    projected_a[-1, :, :] = 0.0
+    projected_a[0, :, :] = 0.0
+    if fix_end_surfaces:
+        projected_a[:, :, 0] = 0.0
+        projected_a[:, :, -1] = 0.0
+    average = np.sum(
+        projected_lam * grid.w_theta[None, :, None] * grid.w_xi[None, None, :],
+        axis=(1, 2),
+    ) / (np.sum(grid.w_theta) * np.sum(grid.w_xi))
+    projected_lam = projected_lam - average[:, None, None]
     return projected_a, projected_lam
 
 
@@ -189,6 +326,36 @@ def axisym_projected_energy_residual(
     projected_a, projected_lam = project_axisym_residual(gradient.grad_a, gradient.grad_lam, grid)
     norm = float(np.sqrt(np.sum(projected_a**2) + np.sum(projected_lam**2)))
     return AxisymProjectedResidual(
+        energy=gradient.energy,
+        grad_a=gradient.grad_a,
+        grad_lam=gradient.grad_lam,
+        projected_a=projected_a,
+        projected_lam=projected_lam,
+        norm=norm,
+    )
+
+
+def projected_energy_residual_3d(
+    state,
+    grid,
+    *,
+    psi_prime,
+    i_prime,
+    pressure,
+    mu0: float = MU0,
+) -> ProjectedResidual3D:
+    """Return unprojected and constraint-projected 3D AD energy residuals."""
+    gradient = energy_value_and_gradient_3d(
+        state,
+        grid,
+        psi_prime=psi_prime,
+        i_prime=i_prime,
+        pressure=pressure,
+        mu0=mu0,
+    )
+    projected_a, projected_lam = project_residual_3d(gradient.grad_a, gradient.grad_lam, grid)
+    norm = float(np.sqrt(np.sum(projected_a**2) + np.sum(projected_lam**2)))
+    return ProjectedResidual3D(
         energy=gradient.energy,
         grad_a=gradient.grad_a,
         grad_lam=gradient.grad_lam,
