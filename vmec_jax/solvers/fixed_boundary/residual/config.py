@@ -217,6 +217,15 @@ def resolve_host_residual_metric_config(
     )
 
 
+def resolve_host_profile_setup(*, backend_name: str, profile_setup_env: str | None) -> bool:
+    """Resolve host-side flux-profile setup policy for residual solves."""
+
+    value = str("auto" if profile_setup_env is None else profile_setup_env).strip().lower()
+    if value == "auto":
+        return str(backend_name).strip().lower() != "cpu"
+    return env_flag_enabled_with_off(value)
+
+
 def resolve_nstep_screen(*, indata_nstep: int, override_env: str | None) -> int:
     """Resolve VMEC screen cadence with the legacy NSTEP override semantics."""
     nstep_screen = int(indata_nstep)

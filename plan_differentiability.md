@@ -5284,3 +5284,59 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.24%.
+
+## 2026-06-16 Residual Host-Profile Setup Config Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `resolve_host_profile_setup` to
+   `vmec_jax.solvers.fixed_boundary.residual.config`.
+2. Replaced inline `VMEC_JAX_HOST_PROFILE_SETUP` parsing in
+   `solve_fixed_boundary_residual_iter` with the new config helper.
+3. Added focused tests for CPU/GPU `auto`, explicit `off`, and explicit `on`
+   behavior.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` decreased from 8958 to 8957 lines.
+- The host-side profile setup policy is now independently unit-tested and
+  grouped with the residual-solver config policy helpers.
+- Existing performance instrumentation tests still pass, including the forced
+  host-profile setup comparison.
+- No profile values, force assembly, JIT, scan, or branch behavior changed.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/residual/config.py tests/test_solve_residual_iter_config.py tests/test_solve_performance_instrumentation.py`
+- `python -m compileall -q vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/residual/config.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_config.py tests/test_solve_performance_instrumentation.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_helpers_wave8_coverage.py tests/test_solve_runtime.py -q`
+- `python tools/diagnostics/source_health.py --top 24 --top-functions 32`
+
+Best next steps:
+
+1. Commit and push the residual host-profile setup config extraction.
+2. Continue extracting pure config/setup policy first; reserve numerical loop
+   extractions for tranches with stronger parity and fingerprint gates.
+3. Poll CI for the latest branch run after this push.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.67%.
+- Differentiability/refactor implementation: 99.987%.
+- Solver monolith reduction: 88.8%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 91.6%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.25%.

@@ -35,6 +35,7 @@ from .solvers.fixed_boundary.residual.config import (
     resolve_chunked_scan_config as _resolve_chunked_scan_config,
     resolve_debug_print_config as _resolve_debug_print_config,
     resolve_dump_history_config as _resolve_dump_history_config,
+    resolve_host_profile_setup as _resolve_host_profile_setup,
     resolve_host_residual_metric_config as _resolve_host_residual_metric_config,
     resolve_nstep_screen as _resolve_nstep_screen,
     should_probe_bad_jacobian_state as _should_probe_bad_jacobian_state,
@@ -1580,14 +1581,13 @@ def solve_fixed_boundary_residual_iter(
             chipf_internal_i,
             chips_eff_i,
             wout_like_i,
-        )
+    )
 
     _profile_numpy_patch = None
-    host_profile_setup_env = os.getenv("VMEC_JAX_HOST_PROFILE_SETUP", "auto").strip().lower()
-    if host_profile_setup_env == "auto":
-        host_profile_setup = _scan_backend_name() != "cpu"
-    else:
-        host_profile_setup = host_profile_setup_env not in ("", "0", "false", "no", "off")
+    host_profile_setup = _resolve_host_profile_setup(
+        backend_name=_scan_backend_name(),
+        profile_setup_env=os.getenv("VMEC_JAX_HOST_PROFILE_SETUP", "auto"),
+    )
     if (
         (bool(host_update_assembly) or bool(host_profile_setup))
         and has_jax()

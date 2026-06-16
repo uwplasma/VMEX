@@ -10,6 +10,7 @@ from vmec_jax.solvers.fixed_boundary.residual.config import (
     resolve_chunked_scan_config,
     resolve_debug_print_config,
     resolve_dump_history_config,
+    resolve_host_profile_setup,
     resolve_host_residual_metric_config,
     resolve_nstep_screen,
     should_probe_bad_jacobian_state,
@@ -159,6 +160,13 @@ def test_host_residual_metric_policy_auto_and_explicit_flags():
     )
     assert explicit.fsq1_norms_on_accelerator is False
     assert explicit.residual_metrics_on_accelerator is True
+
+
+def test_host_profile_setup_policy_auto_and_explicit_flags():
+    assert resolve_host_profile_setup(backend_name="cpu", profile_setup_env="auto") is False
+    assert resolve_host_profile_setup(backend_name="gpu", profile_setup_env="auto") is True
+    assert resolve_host_profile_setup(backend_name="gpu", profile_setup_env=" off ") is False
+    assert resolve_host_profile_setup(backend_name="cpu", profile_setup_env=" on ") is True
 
 
 def test_nstep_override_parsing_and_clamping():
