@@ -255,6 +255,7 @@ from vmec_jax.solvers.fixed_boundary.diagnostics.axis_reset import (
     InitialAxisResetDecision as _InitialAxisResetDecision,  # noqa: F401 - re-exported for existing internal tests/importers.
     initial_axis_reset_decision as _initial_axis_reset_decision,
     merge_axis_reset_state as _merge_axis_reset_state,
+    reset_axis_from_boundary as _reset_axis_from_boundary_impl,
     write_axis_reset_dump as _write_axis_reset_dump,
 )
 from vmec_jax.solvers.free_boundary.control import (
@@ -339,6 +340,7 @@ from vmec_jax.solvers.fixed_boundary.scan.debug import (
 from vmec_jax.solvers.fixed_boundary.scan.planning import (
     build_scan_timing_report as _build_scan_timing_report,
     build_vmec2000_scan_cache_key as _build_vmec2000_scan_cache_key,
+    default_vmec2000_controller_constants as _default_vmec2000_controller_constants,
     new_scan_timing_stats as _new_scan_timing_stats,
     resolve_scan_iteration_plan as _resolve_scan_iteration_plan,
     resolve_scan_preflight_iters as _resolve_scan_preflight_iters,
@@ -959,136 +961,30 @@ def solve_fixed_boundary_residual_iter(
         refine_axis_guess: bool = True,
     ) -> VMECState:
         nonlocal axis_reset_coeffs
-        if boundary_for_axis is None:
-            return st
-        ntor = int(static.cfg.ntor)
-        raxis_cc = np.zeros((ntor + 1,), dtype=float)
-        raxis_cs = np.zeros((ntor + 1,), dtype=float)
-        zaxis_cc = np.zeros((ntor + 1,), dtype=float)
-        zaxis_cs = np.zeros((ntor + 1,), dtype=float)
-
-        used_state_guess = False
-        if k_guess is not None:
-            try:
-                raxis_cc, raxis_cs, zaxis_cc, zaxis_cs = _recompute_axis_from_state_vmec(
-                    static,
-                    pr1_even=k_guess.pr1_even,
-                    pr1_odd=k_guess.pr1_odd,
-                    pz1_even=k_guess.pz1_even,
-                    pz1_odd=k_guess.pz1_odd,
-                    pru_even=k_guess.pru_even,
-                    pru_odd=k_guess.pru_odd,
-                    pzu_even=k_guess.pzu_even,
-                    pzu_odd=k_guess.pzu_odd,
-                    signgs=int(signgs),
-                    trig=trig,
-                )
-                used_state_guess = True
-            except Exception:
-                used_state_guess = False
-
-        def _state_from_axis_coeffs(
-            rcc: np.ndarray,
-            rcs: np.ndarray,
-            zcc: np.ndarray,
-            zcs: np.ndarray,
-            *,
-            dtype,
-        ) -> VMECState:
-            scalars_local = dict(indata.scalars)
-            scalars_local["RAXIS_CC"] = [float(v) for v in np.ravel(rcc)]
-            scalars_local["RAXIS_CS"] = [float(v) for v in np.ravel(rcs)]
-            scalars_local["ZAXIS_CC"] = [float(v) for v in np.ravel(zcc)]
-            scalars_local["ZAXIS_CS"] = [float(v) for v in np.ravel(zcs)]
-            indata_local = type(indata)(scalars=scalars_local, indexed=indata.indexed)
-            return initial_guess_from_boundary(
-                static,
-                boundary_for_axis,
-                indata_local,
-                dtype=dtype,
-                infer_axis_if_missing=False,
-            )
-
-        # One refinement pass on the VMEC state-based axis estimate stabilizes
-        # non-axis starts where the first guess is still too far off.
-        if used_state_guess and bool(refine_axis_guess):
-            try:
-                st_tmp = _state_from_axis_coeffs(
-                    raxis_cc,
-                    raxis_cs,
-                    zaxis_cc,
-                    zaxis_cs,
-                    dtype=jnp.asarray(st.Rcos).dtype,
-                )
-                k_tmp, _, _, _, _, _, _, _ = _compute_forces_iter(
-                    st_tmp,
-                    include_edge=False,
-                    zero_m1=jnp.asarray(1.0, dtype=jnp.asarray(st.Rcos).dtype),
-                    constraint_precond_diag=zero_precond_diag,
-                    constraint_tcon=zero_tcon,
-                    constraint_precond_active=constraint_active_false,
-                    constraint_tcon_active=constraint_active_false,
-                    iter_idx=None,
-                    iter2=1,
-                )
-                raxis_cc, raxis_cs, zaxis_cc, zaxis_cs = _recompute_axis_from_state_vmec(
-                    static,
-                    pr1_even=k_tmp.pr1_even,
-                    pr1_odd=k_tmp.pr1_odd,
-                    pz1_even=k_tmp.pz1_even,
-                    pz1_odd=k_tmp.pz1_odd,
-                    pru_even=k_tmp.pru_even,
-                    pru_odd=k_tmp.pru_odd,
-                    pzu_even=k_tmp.pzu_even,
-                    pzu_odd=k_tmp.pzu_odd,
-                    signgs=int(signgs),
-                    trig=trig,
-                )
-            except Exception:
-                pass
-
-        if not used_state_guess:
-            axis_vals = _read_axis_coeffs(indata)
-            raxis_cc = np.asarray(axis_vals.get("RAXIS_CC", 0.0), dtype=float)
-            zaxis_cs = np.asarray(axis_vals.get("ZAXIS_CS", 0.0), dtype=float)
-            if raxis_cc.ndim == 0:
-                raxis_cc = np.asarray([float(raxis_cc)], dtype=float)
-            if zaxis_cs.ndim == 0:
-                zaxis_cs = np.asarray([float(zaxis_cs)], dtype=float)
-            if raxis_cc.size < ntor + 1:
-                raxis_cc = np.pad(raxis_cc, (0, ntor + 1 - raxis_cc.size))
-            if zaxis_cs.size < ntor + 1:
-                zaxis_cs = np.pad(zaxis_cs, (0, ntor + 1 - zaxis_cs.size))
-            raxis_cc, zaxis_cs = _recompute_axis_from_boundary(
-                static,
-                boundary_for_axis,
-                raxis_cc=raxis_cc,
-                zaxis_cs=zaxis_cs,
-                signgs=int(signgs),
-            )
-
-        axis_dump_dir = os.environ.get("VMEC_JAX_DUMP_AXIS_DIR", "").strip()
-        _write_axis_reset_dump(
-            axis_dump_dir=axis_dump_dir,
-            ns=int(static.cfg.ns),
-            ntor=int(static.cfg.ntor),
-            used_state_guess=bool(used_state_guess),
-            raxis_cc=raxis_cc,
-            raxis_cs=raxis_cs,
-            zaxis_cc=zaxis_cc,
-            zaxis_cs=zaxis_cs,
+        st_out, coeffs = _reset_axis_from_boundary_impl(
+            st,
+            boundary_for_axis=boundary_for_axis,
+            static=static,
+            indata=indata,
+            signgs=int(signgs),
+            trig=trig,
+            k_guess=k_guess,
+            full_reset=full_reset,
+            refine_axis_guess=refine_axis_guess,
+            zero_precond_diag=zero_precond_diag,
+            zero_tcon=zero_tcon,
+            constraint_active_false=constraint_active_false,
+            compute_forces_iter_func=_compute_forces_iter,
+            apply_vmec_lambda_axis_rules_func=_apply_vmec_lambda_axis_rules,
+            initial_guess_from_boundary_func=initial_guess_from_boundary,
+            read_axis_coeffs_func=_read_axis_coeffs,
+            recompute_axis_from_state_vmec_func=_recompute_axis_from_state_vmec,
+            recompute_axis_from_boundary_func=_recompute_axis_from_boundary,
+            axis_dump_dir=os.environ.get("VMEC_JAX_DUMP_AXIS_DIR", "").strip(),
         )
-
-        st_axis = _state_from_axis_coeffs(
-            raxis_cc,
-            raxis_cs,
-            zaxis_cc,
-            zaxis_cs,
-            dtype=jnp.asarray(st.Rcos).dtype,
-        )
-        axis_reset_coeffs = (raxis_cc, raxis_cs, zaxis_cc, zaxis_cs)
-        st_out = _merge_axis_reset_state(st=st, st_axis=st_axis, static=static, full_reset=full_reset)
-        return _apply_vmec_lambda_axis_rules(st_out)
+        if coeffs is not None:
+            axis_reset_coeffs = coeffs
+        return st_out
 
     prefer_host_default_profiles = not _tree_has_tracer(state0)
 
@@ -2515,10 +2411,11 @@ def solve_fixed_boundary_residual_iter(
         state_only_scan = scan_setup.state_only_scan
         scan_fallback_enabled_run = scan_setup.scan_fallback_enabled_run
         force_chunked_scan_run = scan_setup.force_chunked_scan_run
-        k_preconditioner_update_interval = 25
-        restart_badjac_factor = 0.9
-        restart_badprog_factor = 1.03
-        vmec2000_fact = 1.0e4
+        controller_constants = _default_vmec2000_controller_constants()
+        k_preconditioner_update_interval = controller_constants.preconditioner_update_interval
+        restart_badjac_factor = controller_constants.restart_badjac_factor
+        restart_badprog_factor = controller_constants.restart_badprog_factor
+        vmec2000_fact = controller_constants.vmec2000_fact
         iter_offset0 = 0
         nstep_screen = scan_setup.nstep_screen
         scan_options = scan_setup.options
@@ -2640,7 +2537,7 @@ def solve_fixed_boundary_residual_iter(
                 fsq_total_target=fsq_total_target_j,
             )
 
-        k_ndamp = 10
+        k_ndamp = controller_constants.ndamp
         scan_resume0 = _initialize_scan_resume_state(
             resume_state,
             dtype=dtype,
@@ -5145,8 +5042,9 @@ def solve_fixed_boundary_residual_iter(
     w_vmec_last = float("nan")
 
     # Conjugate-gradient-like time-stepping state.
+    controller_constants = _default_vmec2000_controller_constants()
     time_step = float(step_size)
-    k_ndamp = 10
+    k_ndamp = controller_constants.ndamp
     inv_tau = [0.15 / time_step] * k_ndamp
     fsq_prev = 1.0
     fsq0_prev = 1.0
@@ -5213,18 +5111,18 @@ def solve_fixed_boundary_residual_iter(
         return float(fallback)
 
     res0 = -1.0
-    k_preconditioner_update_interval = 25
+    k_preconditioner_update_interval = controller_constants.preconditioner_update_interval
     state_checkpoint = state
     bad_growth_streak = 0
     # Restart trigger factors:
     # - bad_jacobian: time_step *= 0.9
     # - bad_progress: time_step /= 1.03
-    restart_badjac_factor = 0.9
-    restart_badprog_factor = 1.03
+    restart_badjac_factor = controller_constants.restart_badjac_factor
+    restart_badprog_factor = controller_constants.restart_badprog_factor
     huge_force_restart_count = 0
     huge_force_restart_budget = 2
     res1 = -1.0
-    vmec2000_fact = 1.0e4
+    vmec2000_fact = controller_constants.vmec2000_fact
 
     # Edge-force gating uses the *previous* iteration's residual (the first
     # iteration initializes forces to 1.0). Track that explicitly.

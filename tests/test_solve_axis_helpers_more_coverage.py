@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from vmec_jax._compat import has_jax
+from vmec_jax.solvers.fixed_boundary.diagnostics.axis_reset import reset_axis_from_boundary
 from vmec_jax.solve import (
     _apply_vmec_lambda_axis_rules_to_state,
     _enforce_field_rows,
@@ -54,6 +55,73 @@ def test_merge_axis_reset_state_uses_full_reset_fallback_and_cached_masks():
     cached = _merge_axis_reset_state(st=state, st_axis=axis_state, static=static_cached_mask, full_reset=False)
     np.testing.assert_allclose(np.asarray(cached.Zsin)[:, 1], np.asarray(axis_state.Zsin)[:, 1])
     np.testing.assert_allclose(np.asarray(cached.Zsin)[:, [0, 2]], np.asarray(state.Zsin)[:, [0, 2]])
+
+
+def test_reset_axis_from_boundary_fallback_coefficients_preserve_non_axis_modes():
+    class FakeIndata:
+        def __init__(self, *, scalars, indexed):
+            self.scalars = scalars
+            self.indexed = indexed
+
+    state = _state_from_base(np.arange(4.0).reshape(2, 2))
+    static = SimpleNamespace(
+        cfg=SimpleNamespace(ntor=1, ns=2),
+        modes=SimpleNamespace(m=np.asarray([0, 1])),
+    )
+    indata = FakeIndata(scalars={"RAXIS_CC": [1.0], "ZAXIS_CS": [0.25]}, indexed={})
+
+    def initial_guess_from_boundary(_static, _boundary, indata_local, *, dtype, infer_axis_if_missing):
+        assert not infer_axis_if_missing
+        raxis = float(indata_local.scalars["RAXIS_CC"][0])
+        zaxis = float(indata_local.scalars["ZAXIS_CS"][0])
+        layout = StateLayout(ns=2, K=2, lasym=False)
+        rcos = np.full((2, 2), 110.0, dtype=dtype)
+        zsin = np.full((2, 2), 140.0, dtype=dtype)
+        rcos[0, 0] = raxis
+        zsin[0, 0] = zaxis
+        return VMECState(
+            layout=layout,
+            Rcos=rcos,
+            Rsin=np.full((2, 2), 120.0, dtype=dtype),
+            Zcos=np.full((2, 2), 130.0, dtype=dtype),
+            Zsin=zsin,
+            Lcos=np.full((2, 2), 150.0, dtype=dtype),
+            Lsin=np.full((2, 2), 160.0, dtype=dtype),
+        )
+
+    def read_axis_coeffs(_indata):
+        return {"RAXIS_CC": [1.0], "ZAXIS_CS": [0.25]}
+
+    def recompute_axis_from_boundary(_static, _boundary, *, raxis_cc, zaxis_cs, signgs):
+        assert signgs == 1
+        return np.asarray([2.0, 3.0]), np.asarray([4.0, 5.0])
+
+    out, coeffs = reset_axis_from_boundary(
+        state,
+        boundary_for_axis=object(),
+        static=static,
+        indata=indata,
+        signgs=1,
+        trig=object(),
+        full_reset=False,
+        zero_precond_diag=None,
+        zero_tcon=None,
+        constraint_active_false=False,
+        compute_forces_iter_func=lambda *args, **kwargs: None,
+        apply_vmec_lambda_axis_rules_func=lambda st: st,
+        initial_guess_from_boundary_func=initial_guess_from_boundary,
+        read_axis_coeffs_func=read_axis_coeffs,
+        recompute_axis_from_state_vmec_func=lambda *args, **kwargs: None,
+        recompute_axis_from_boundary_func=recompute_axis_from_boundary,
+        axis_dump_dir="",
+    )
+
+    assert coeffs is not None
+    np.testing.assert_allclose(coeffs[0], [2.0, 3.0])
+    np.testing.assert_allclose(coeffs[3], [4.0, 5.0])
+    np.testing.assert_allclose(np.asarray(out.Rcos)[:, 0], [2.0, 110.0])
+    np.testing.assert_allclose(np.asarray(out.Rcos)[:, 1], np.asarray(state.Rcos)[:, 1])
+    np.testing.assert_allclose(np.asarray(out.Lcos), np.asarray(state.Lcos))
 
 
 @pytest.mark.parametrize(

@@ -5720,3 +5720,67 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.39%.
+
+## 2026-06-16 Residual Controller Constants and Axis Reset Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `Vmec2000ControllerConstants` and
+   `default_vmec2000_controller_constants` to
+   `vmec_jax.solvers.fixed_boundary.scan.planning`.
+2. Replaced duplicated scan and non-scan VMEC2000 controller magic constants
+   with the typed defaults object.
+3. Moved the initial magnetic-axis reset implementation from
+   `solve_fixed_boundary_residual_iter` into
+   `vmec_jax.solvers.fixed_boundary.diagnostics.axis_reset`.
+4. Kept a thin local wrapper in the residual loop only to update the existing
+   `axis_reset_coeffs` side-channel.
+5. Added focused tests for controller constants and the extracted axis-reset
+   fallback path.
+
+Results obtained:
+
+- The residual iteration module dropped from 9,520 lines to 9,418 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 8,926 to 8,822 lines.
+- The nested `_reset_axis_from_boundary` block dropped to a 32-line delegating
+  wrapper.
+- Magnetic-axis reset logic now lives with the existing axis reset decision,
+  merge, and dump helpers.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/diagnostics/axis_reset.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_axis_helpers_more_coverage.py tests/test_solve_scan_planning_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_axis_helpers_more_coverage.py tests/test_solve_scan_planning_helpers.py tests/test_solve_scan_chunking.py tests/test_solve_real_scan_wave10_coverage.py tests/test_solve_residual_iter_helpers_wave8_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_branch_coverage.py tests/test_solve_gd_wave10_coverage.py tests/test_solve_lbfgs_wave8_coverage.py tests/test_solve_residual_optimizer_wave8_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 25`
+
+Best next steps:
+
+1. Continue reducing `solve_fixed_boundary_residual_iter` by moving setup-phase
+   helper clusters to their existing domains, especially ptau/bad-Jacobian
+   setup and mode-transform/update helpers.
+2. After setup clusters are extracted, introduce the typed scan/controller
+   context needed to move `_run_vmec2000_scan` itself.
+3. Keep branch-fingerprint and VMEC2000 parity tests as the gate before moving
+   accepted/rejected controller math.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.75%.
+- Differentiability/refactor implementation: 99.995%.
+- Solver monolith reduction: 92.1%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 91.6%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.41%.
