@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import os
-from typing import NamedTuple
+from typing import Any, Callable, NamedTuple
 
 import numpy as np
 
@@ -126,3 +126,156 @@ def write_axis_reset_dump(
         return True
     except Exception:
         return False
+
+
+def reset_axis_from_boundary(
+    st: VMECState,
+    *,
+    boundary_for_axis: Any,
+    static: Any,
+    indata: Any,
+    signgs: int,
+    trig: Any,
+    k_guess: Any = None,
+    full_reset: bool = False,
+    refine_axis_guess: bool = True,
+    zero_precond_diag: Any,
+    zero_tcon: Any,
+    constraint_active_false: Any,
+    compute_forces_iter_func: Callable[..., Any],
+    apply_vmec_lambda_axis_rules_func: Callable[[VMECState], VMECState],
+    initial_guess_from_boundary_func: Callable[..., VMECState],
+    read_axis_coeffs_func: Callable[[Any], dict[str, Any]],
+    recompute_axis_from_state_vmec_func: Callable[..., tuple[Any, Any, Any, Any]],
+    recompute_axis_from_boundary_func: Callable[..., tuple[Any, Any]],
+    axis_dump_dir: str | os.PathLike[str] | None = None,
+) -> tuple[VMECState, tuple[Any, Any, Any, Any] | None]:
+    """Return a VMEC-style initial magnetic-axis reset state and coefficients."""
+
+    if boundary_for_axis is None:
+        return st, None
+
+    ntor = int(static.cfg.ntor)
+    raxis_cc = np.zeros((ntor + 1,), dtype=float)
+    raxis_cs = np.zeros((ntor + 1,), dtype=float)
+    zaxis_cc = np.zeros((ntor + 1,), dtype=float)
+    zaxis_cs = np.zeros((ntor + 1,), dtype=float)
+
+    used_state_guess = False
+    if k_guess is not None:
+        try:
+            raxis_cc, raxis_cs, zaxis_cc, zaxis_cs = recompute_axis_from_state_vmec_func(
+                static,
+                pr1_even=k_guess.pr1_even,
+                pr1_odd=k_guess.pr1_odd,
+                pz1_even=k_guess.pz1_even,
+                pz1_odd=k_guess.pz1_odd,
+                pru_even=k_guess.pru_even,
+                pru_odd=k_guess.pru_odd,
+                pzu_even=k_guess.pzu_even,
+                pzu_odd=k_guess.pzu_odd,
+                signgs=int(signgs),
+                trig=trig,
+            )
+            used_state_guess = True
+        except Exception:
+            used_state_guess = False
+
+    def _state_from_axis_coeffs(
+        rcc: np.ndarray,
+        rcs: np.ndarray,
+        zcc: np.ndarray,
+        zcs: np.ndarray,
+        *,
+        dtype,
+    ) -> VMECState:
+        scalars_local = dict(indata.scalars)
+        scalars_local["RAXIS_CC"] = [float(v) for v in np.ravel(rcc)]
+        scalars_local["RAXIS_CS"] = [float(v) for v in np.ravel(rcs)]
+        scalars_local["ZAXIS_CC"] = [float(v) for v in np.ravel(zcc)]
+        scalars_local["ZAXIS_CS"] = [float(v) for v in np.ravel(zcs)]
+        indata_local = type(indata)(scalars=scalars_local, indexed=indata.indexed)
+        return initial_guess_from_boundary_func(
+            static,
+            boundary_for_axis,
+            indata_local,
+            dtype=dtype,
+            infer_axis_if_missing=False,
+        )
+
+    if used_state_guess and bool(refine_axis_guess):
+        try:
+            st_tmp = _state_from_axis_coeffs(
+                raxis_cc,
+                raxis_cs,
+                zaxis_cc,
+                zaxis_cs,
+                dtype=jnp.asarray(st.Rcos).dtype,
+            )
+            k_tmp, _, _, _, _, _, _, _ = compute_forces_iter_func(
+                st_tmp,
+                include_edge=False,
+                zero_m1=jnp.asarray(1.0, dtype=jnp.asarray(st.Rcos).dtype),
+                constraint_precond_diag=zero_precond_diag,
+                constraint_tcon=zero_tcon,
+                constraint_precond_active=constraint_active_false,
+                constraint_tcon_active=constraint_active_false,
+                iter_idx=None,
+                iter2=1,
+            )
+            raxis_cc, raxis_cs, zaxis_cc, zaxis_cs = recompute_axis_from_state_vmec_func(
+                static,
+                pr1_even=k_tmp.pr1_even,
+                pr1_odd=k_tmp.pr1_odd,
+                pz1_even=k_tmp.pz1_even,
+                pz1_odd=k_tmp.pz1_odd,
+                pru_even=k_tmp.pru_even,
+                pru_odd=k_tmp.pru_odd,
+                pzu_even=k_tmp.pzu_even,
+                pzu_odd=k_tmp.pzu_odd,
+                signgs=int(signgs),
+                trig=trig,
+            )
+        except Exception:
+            pass
+
+    if not used_state_guess:
+        axis_vals = read_axis_coeffs_func(indata)
+        raxis_cc = np.asarray(axis_vals.get("RAXIS_CC", 0.0), dtype=float)
+        zaxis_cs = np.asarray(axis_vals.get("ZAXIS_CS", 0.0), dtype=float)
+        if raxis_cc.ndim == 0:
+            raxis_cc = np.asarray([float(raxis_cc)], dtype=float)
+        if zaxis_cs.ndim == 0:
+            zaxis_cs = np.asarray([float(zaxis_cs)], dtype=float)
+        if raxis_cc.size < ntor + 1:
+            raxis_cc = np.pad(raxis_cc, (0, ntor + 1 - raxis_cc.size))
+        if zaxis_cs.size < ntor + 1:
+            zaxis_cs = np.pad(zaxis_cs, (0, ntor + 1 - zaxis_cs.size))
+        raxis_cc, zaxis_cs = recompute_axis_from_boundary_func(
+            static,
+            boundary_for_axis,
+            raxis_cc=raxis_cc,
+            zaxis_cs=zaxis_cs,
+            signgs=int(signgs),
+        )
+
+    write_axis_reset_dump(
+        axis_dump_dir=axis_dump_dir,
+        ns=int(static.cfg.ns),
+        ntor=int(static.cfg.ntor),
+        used_state_guess=bool(used_state_guess),
+        raxis_cc=raxis_cc,
+        raxis_cs=raxis_cs,
+        zaxis_cc=zaxis_cc,
+        zaxis_cs=zaxis_cs,
+    )
+
+    st_axis = _state_from_axis_coeffs(
+        raxis_cc,
+        raxis_cs,
+        zaxis_cc,
+        zaxis_cs,
+        dtype=jnp.asarray(st.Rcos).dtype,
+    )
+    st_out = merge_axis_reset_state(st=st, st_axis=st_axis, static=static, full_reset=full_reset)
+    return apply_vmec_lambda_axis_rules_func(st_out), (raxis_cc, raxis_cs, zaxis_cc, zaxis_cs)

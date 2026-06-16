@@ -7,6 +7,7 @@ from vmec_jax.solvers.fixed_boundary.scan.planning import (
     apply_state_only_scan_options,
     build_scan_timing_report,
     build_vmec2000_scan_cache_key,
+    default_vmec2000_controller_constants,
     new_scan_timing_stats,
     normalize_scan_print_mode,
     resolve_scan_iteration_plan,
@@ -130,6 +131,16 @@ def test_timing_report_math_excludes_dispatch_breakdown_from_leaf_total():
     assert report["scan_cold_cache_miss_ready_s"] == pytest.approx(0.2)
     assert report["scan_cache_build_wrapper_s"] == pytest.approx(0.1)
     assert build_scan_timing_report(iterations=7, stats=stats, scan_total_s=3.0)["scan_unattributed_s"] == 0.0
+
+
+def test_default_vmec2000_controller_constants_match_legacy_values():
+    constants = default_vmec2000_controller_constants()
+
+    assert constants.preconditioner_update_interval == 25
+    assert constants.restart_badjac_factor == pytest.approx(0.9)
+    assert constants.restart_badprog_factor == pytest.approx(1.03)
+    assert constants.vmec2000_fact == pytest.approx(1.0e4)
+    assert constants.ndamp == 10
 
 
 def test_scan_runtime_hooks_disable_optional_callbacks_for_quiet_defaults():

@@ -69,9 +69,31 @@ class Vmec2000ScanSetup(NamedTuple):
     options: Vmec2000ScanOptions
 
 
+class Vmec2000ControllerConstants(NamedTuple):
+    """VMEC2000-style residual-controller constants used by scan and host paths."""
+
+    preconditioner_update_interval: int
+    restart_badjac_factor: float
+    restart_badprog_factor: float
+    vmec2000_fact: float
+    ndamp: int
+
+
 def _env_value(env: Mapping[str, str | None], name: str, default: str = "") -> str:
     value = env.get(name, default)
     return default if value is None else str(value)
+
+
+def default_vmec2000_controller_constants() -> Vmec2000ControllerConstants:
+    """Return VMEC2000 controller constants used historically by the solver."""
+
+    return Vmec2000ControllerConstants(
+        preconditioner_update_interval=25,
+        restart_badjac_factor=0.9,
+        restart_badprog_factor=1.03,
+        vmec2000_fact=1.0e4,
+        ndamp=10,
+    )
 
 
 def scan_timing_enabled(env_value: str) -> bool:
