@@ -4605,3 +4605,72 @@ Completion:
 - Optimizer workflow decomposition: 82%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.10%.
+
+## 2026-06-16 Implicit Residual Active-Space Helper Consolidation
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved stellarator-symmetric active-coordinate index, pack, and update helpers
+   from `vmec_jax.implicit` into the existing
+   `vmec_jax.implicit_adjoint_helpers` module.
+2. Kept the historical private names exported from `vmec_jax.implicit` by
+   importing the helper implementations under the old names, preserving tests
+   and downstream monkeypatch/import seams.
+3. Extracted passive VMEC residual setup into `_build_vmec_residual_setup`,
+   covering flux/profile construction, wout-like force metadata, trig tables,
+   LFORBAL policy, Tomnsps masks, and stellarator-symmetric residual
+   projection metadata.
+4. Removed an unused in-function `stellsym_active_keep_idx` calculation that
+   duplicated active-space bookkeeping without feeding the residual or adjoint
+   branches.
+5. Left custom-JVP/custom-VJP control flow, host solve callbacks, active/full
+   adjoint solver selection, and residual force evaluation unchanged.
+
+Results obtained:
+
+- `vmec_jax.implicit` dropped out of the top source-file warnings.
+- `solve_fixed_boundary_state_implicit_vmec_residual` dropped from 1,006 to
+  927 lines without changing the implicit AD branch semantics.
+- The active-coordinate helpers are now directly colocated with the linear
+  adjoint helper utilities, making future same-branch residual-adjoint tests
+  easier to expand.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/implicit.py vmec_jax/implicit_adjoint_helpers.py tests/test_implicit_adjoint_helpers.py tests/test_implicit_helpers.py tests/test_implicit_wave6_coverage.py tests/test_implicit_wout_driver_branch_coverage.py tests/test_implicit_wave12_coverage.py`
+- `python -m compileall -q vmec_jax/implicit.py vmec_jax/implicit_adjoint_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_implicit_adjoint_helpers.py tests/test_implicit_helpers.py tests/test_implicit_wave6_coverage.py tests/test_implicit_wout_driver_branch_coverage.py tests/test_implicit_wave12_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_implicit_differentiation_fast.py tests/test_implicit_more_coverage.py tests/test_implicit_sensitivity_fast_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q $(rg --files tests | rg 'implicit') -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 20`
+
+Best next steps:
+
+1. Commit and push this implicit residual helper consolidation.
+2. Continue source-health work on method-specific optimizer bodies or the
+   solver scan sub-loop; the solver scan loop remains high-risk because its
+   nested JAX scan closes over many branch-control arrays.
+3. Keep CI monitored after the push; cancelled runs from superseded pushes are
+   expected, but the newest run must finish green before the umbrella PR is
+   considered stable.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.67%.
+- Differentiability/refactor implementation: 99.972%.
+- Solver monolith reduction: 88.7%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 90%.
+- WOUT diagnostic/profile decomposition: 98.0%.
+- Optimizer workflow decomposition: 82%.
+- Implicit residual-adjoint decomposition: 86%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.13%.
