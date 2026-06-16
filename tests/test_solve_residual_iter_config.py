@@ -10,6 +10,7 @@ from vmec_jax.solvers.fixed_boundary.residual.config import (
     resolve_chunked_scan_config,
     resolve_debug_print_config,
     resolve_dump_history_config,
+    resolve_host_residual_metric_config,
     resolve_nstep_screen,
     should_probe_bad_jacobian_state,
 )
@@ -132,6 +133,32 @@ def test_chunked_scan_disabled_when_not_using_scan_but_fallback_preserved():
     assert cfg.differentiating_scan is False
     assert cfg.force_chunked_scan is False
     assert cfg.scan_fallback_enabled is True
+
+
+def test_host_residual_metric_policy_auto_and_explicit_flags():
+    cpu_auto = resolve_host_residual_metric_config(
+        backend_name="cpu",
+        fsq1_norms_env="auto",
+        residual_metrics_env="auto",
+    )
+    assert cpu_auto.fsq1_norms_on_accelerator is False
+    assert cpu_auto.residual_metrics_on_accelerator is False
+
+    gpu_auto = resolve_host_residual_metric_config(
+        backend_name="gpu",
+        fsq1_norms_env="auto",
+        residual_metrics_env="auto",
+    )
+    assert gpu_auto.fsq1_norms_on_accelerator is True
+    assert gpu_auto.residual_metrics_on_accelerator is False
+
+    explicit = resolve_host_residual_metric_config(
+        backend_name="gpu",
+        fsq1_norms_env=" off ",
+        residual_metrics_env=" yes ",
+    )
+    assert explicit.fsq1_norms_on_accelerator is False
+    assert explicit.residual_metrics_on_accelerator is True
 
 
 def test_nstep_override_parsing_and_clamping():
