@@ -302,6 +302,7 @@ from vmec_jax.solvers.fixed_boundary.diagnostics.metric import (
 )
 from vmec_jax.solvers.fixed_boundary.scan.resume import (
     ScanResumeInitialFields as _ScanResumeInitialFields,  # noqa: F401 - re-exported for existing internal tests/importers.
+    build_initial_scan_carry as _build_initial_scan_carry,
     build_traced_scan_resume_state as _build_traced_scan_resume_state,
     initialize_scan_resume_state as _initialize_scan_resume_state,
 )
@@ -2331,35 +2332,7 @@ def solve_fixed_boundary_residual_iter(
             flip_sign_default=flip_sign0,
             state_checkpoint_default=state_init,
         )
-        time_step0 = scan_resume0.time_step
         flip_sign0 = scan_resume0.flip_sign
-        inv_tau0 = scan_resume0.inv_tau
-        fsq_prev0 = scan_resume0.fsq_prev
-        fsq0_prev0 = scan_resume0.fsq0_prev
-        res0_0 = scan_resume0.res0
-        res1_0 = scan_resume0.res1
-        iter1_0 = scan_resume0.iter1
-        ijacob0 = scan_resume0.ijacob
-        bad_resets0 = scan_resume0.bad_resets
-        bad_growth0 = scan_resume0.bad_growth
-        fsqz_prev0 = scan_resume0.fsqz_prev
-        force_bcovar0 = scan_resume0.force_bcovar_update
-        vRcc0 = scan_resume0.vRcc
-        vRss0 = scan_resume0.vRss
-        vZsc0 = scan_resume0.vZsc
-        vZcs0 = scan_resume0.vZcs
-        vLsc0 = scan_resume0.vLsc
-        vLcs0 = scan_resume0.vLcs
-        vRsc0 = scan_resume0.vRsc
-        vRcs0 = scan_resume0.vRcs
-        vZcc0 = scan_resume0.vZcc
-        vZss0 = scan_resume0.vZss
-        vLcc0 = scan_resume0.vLcc
-        vLss0 = scan_resume0.vLss
-        r00_prev0 = scan_resume0.r00_prev
-        z00_prev0 = scan_resume0.z00_prev
-        w_mhd_prev0 = scan_resume0.w_mhd_prev
-        state_checkpoint0 = scan_resume0.state_checkpoint
 
         def _scale_m1_precond_rhs(frzl_in: TomnspsRZL, mats: dict[str, Any]) -> TomnspsRZL:
             return _scale_m1_precond_rhs_from_mats(
@@ -2508,8 +2481,10 @@ def solve_fixed_boundary_residual_iter(
                 if axis_reset_coeffs is not None:
                     raxis_cc, _raxis_cs, _zaxis_cc, zaxis_cs = axis_reset_coeffs
                     _print_axis_guess_local(raxis_cc, zaxis_cs)
-            ijacob0 = jnp.asarray(1, dtype=jnp.int32)
-            state_checkpoint0 = state_init
+            scan_resume0 = scan_resume0._replace(
+                ijacob=jnp.asarray(1, dtype=jnp.int32),
+                state_checkpoint=state_init,
+            )
             axis_reset_enabled = False
             axis_reset_repeat = True
             t_scan_axis_force = time.perf_counter() if scan_timing_enabled else None
@@ -3325,40 +3300,11 @@ def solve_fixed_boundary_residual_iter(
             hold_cond = carry.converged | carry.abort_scan | (iter2_hold > jnp.asarray(int(max_iter), dtype=jnp.int32))
             return jax.lax.cond(hold_cond, _hold_step, _advance_step, operand=carry)
 
-        carry0 = _ScanCarry(
-            state=state_init,
-            time_step=time_step0,
-            inv_tau=inv_tau0,
-            fsq_prev=fsq_prev0,
-            fsq0_prev=fsq0_prev0,
-            accepted_count=jnp.asarray(0, dtype=jnp.int32),
-            probe_count=jnp.asarray(0, dtype=jnp.int32),
-            probe_bad_jac=jnp.asarray(0, dtype=jnp.int32),
-            probe_accept=jnp.asarray(0, dtype=jnp.int32),
-            probe_fsq_min=jnp.asarray(jnp.inf, dtype=dtype),
-            probe_fsq_max=jnp.asarray(-jnp.inf, dtype=dtype),
-            probe_fsq_start=jnp.asarray(jnp.inf, dtype=dtype),
-            fallback_active=jnp.asarray(True),
-            abort_scan=jnp.asarray(False),
-            skip_timecontrol=jnp.asarray(False),
-            vRcc=vRcc0,
-            vRss=vRss0,
-            vZsc=vZsc0,
-            vZcs=vZcs0,
-            vLsc=vLsc0,
-            vLcs=vLcs0,
-            vRsc=vRsc0,
-            vRcs=vRcs0,
-            vZcc=vZcc0,
-            vZss=vZss0,
-            vLcc=vLcc0,
-            vLss=vLss0,
-            flip_sign=flip_sign0,
-            iter_offset=jnp.asarray(iter_offset0, dtype=jnp.int32),
-            iter1=iter1_0,
-            res0=res0_0,
-            res1=res1_0,
-            state_checkpoint=state_checkpoint0,
+        carry0 = _build_initial_scan_carry(
+            state_init=state_init,
+            resume_fields=scan_resume0,
+            dtype=dtype,
+            iter_offset0=iter_offset0,
             cache_valid=cache_valid0,
             cache_precond_diag=cache_precond_diag0,
             cache_tcon=cache_tcon0,
@@ -3367,33 +3313,12 @@ def solve_fixed_boundary_residual_iter(
             cache_l_scale=cache_l_scale0,
             cache_rz_norm=cache_rz_norm0,
             cache_f_norm1=cache_f_norm1_0,
-            cache_prec_rz_mats=cache_rz_mats0,
-            cache_prec_lam_prec=cache_lam_prec0,
-            force_bcovar_update=force_bcovar0,
-            ijacob=ijacob0,
-            bad_resets=bad_resets0,
-            bad_growth=bad_growth0,
-            fsqz_prev=fsqz_prev0,
-            r00_prev=r00_prev0,
-            z00_prev=z00_prev0,
-            w_mhd_prev=w_mhd_prev0,
-            converged=jnp.asarray(False),
-            fsqr_prev_phys=jnp.asarray(2.0, dtype=dtype),
-            fsqz_prev_phys=jnp.asarray(0.0, dtype=dtype),
-            fsql_prev_phys=jnp.asarray(0.0, dtype=dtype),
-            fsqr1_prev=jnp.asarray(0.0, dtype=dtype),
-            fsqz1_prev=jnp.asarray(0.0, dtype=dtype),
-            fsql1_prev=jnp.asarray(0.0, dtype=dtype),
-            fsqr_checkpoint=jnp.asarray(0.0, dtype=dtype),
-            fsqz_checkpoint=jnp.asarray(0.0, dtype=dtype),
-            fsql_checkpoint=jnp.asarray(0.0, dtype=dtype),
-            fsqr1_checkpoint=jnp.asarray(0.0, dtype=dtype),
-            fsqz1_checkpoint=jnp.asarray(0.0, dtype=dtype),
-            fsql1_checkpoint=jnp.asarray(0.0, dtype=dtype),
-            edge_Rcos=jnp.asarray(edge_Rcos, dtype=dtype),
-            edge_Rsin=jnp.asarray(edge_Rsin, dtype=dtype),
-            edge_Zcos=jnp.asarray(edge_Zcos, dtype=dtype),
-            edge_Zsin=jnp.asarray(edge_Zsin, dtype=dtype),
+            cache_rz_mats=cache_rz_mats0,
+            cache_lam_prec=cache_lam_prec0,
+            edge_Rcos=edge_Rcos,
+            edge_Rsin=edge_Rsin,
+            edge_Zcos=edge_Zcos,
+            edge_Zsin=edge_Zsin,
         )
 
         preflight_plan = _resolve_scan_preflight_iters(

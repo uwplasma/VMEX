@@ -6694,3 +6694,67 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.58%.
+
+## 2026-06-16 VMEC2000 Initial Scan Carry Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `build_initial_scan_carry` to the scan resume module.
+2. Moved the initial `_ScanCarry` construction out of
+   `_run_vmec2000_scan`, leaving the controller to assemble resume/cache
+   inputs and delegate carry construction to a focused helper.
+3. Preserved the initial-axis-reset semantics by updating the resume fields
+   before carry construction when the reset path changes `ijacob` and the
+   checkpoint state.
+4. Added direct resume-state coverage for the initial carry fields, cache
+   payload, iteration offset, edge arrays, and fallback/convergence defaults.
+
+Results obtained:
+
+- The residual iteration module dropped from 8,587 lines to 8,512 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 7,976 to 7,900 lines.
+- `_run_vmec2000_scan` dropped from 1,698 to 1,622 lines.
+- Initial scan state assembly is now testable without entering the full
+  VMEC2000 scan loop.
+- `_run_vmec2000_scan` is now closer to a readable orchestration function:
+  resume initialization, cache construction, carry setup, scan execution, and
+  finalization are separate seams.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/scan/resume.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_scan_resume_state.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_scan_resume_state.py tests/test_solve_real_scan_wave10_coverage.py tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_minimal_one_step tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_state_only -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_scan_resume_state.py tests/test_solve_scan_planning_helpers.py tests/test_solve_scan_output.py tests/test_solve_scan_output_edge_cases_more_coverage.py tests/test_solve_finish_cache_more_coverage.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_solve_scan_debug_helpers.py tests/test_solve_scan_payload_helpers.py -q`
+- `python tools/diagnostics/source_health.py --top 8 --top-functions 12`
+
+Best next steps:
+
+1. Commit and push this initial scan-carry extraction.
+2. Re-check branch CI now that GitHub authentication is restored.
+3. Continue with one more large scan orchestration seam if there is still a
+   clean extraction with direct tests, otherwise shift to the free-boundary
+   adaptive-branch AD/FD gate now that fixed-boundary scan logic is smaller.
+4. Keep resisting generic module names: new seams should remain domain-named
+   around VMEC scan state, restart payloads, output rows, and branch
+   fingerprints.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.996%.
+- Solver monolith reduction: 97.6%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 93.2%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.59%.
