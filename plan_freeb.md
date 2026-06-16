@@ -24723,3 +24723,51 @@ Completion:
   for the latest branch head.
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 100%.
+
+### 2026-06-16 Same-Branch Scalar Registry Extraction
+
+Steps taken:
+
+1. Extracted the production/replay scalar-function registry out of the
+   coil-only QS same-branch report writer and into
+   ``same_branch_scalar_function_registry`` in the same example file.
+2. Kept the helper local to the example module to avoid adding another source
+   file while still separating scalar definitions from report orchestration.
+3. Reused the registry for both complete-solve FD objective values and
+   branch-local replay/JVP scalar functions.
+
+Results obtained:
+
+1. ``write_same_branch_validation_report`` dropped from 822 lines to 655 lines
+   without changing the public example API.
+2. ``python -m ruff check`` passed for the touched example/tests.
+3. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qs_coil_optimization_smoke.py
+   tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py -q``
+   passed.
+4. ``python tools/diagnostics/source_health.py --top 10 --top-functions 16``
+   confirms the report writer moved lower in the function-hotspot list.
+
+Best next steps:
+
+1. Commit and push the scalar-registry extraction.
+2. Continue source-health work only where there is a clean domain seam; avoid
+   adding new files just to hide complexity.
+3. Keep free-boundary phase-2 claims conservative and focus phase-3 examples on
+   complete-solve acceptance authority with branch-local derivative evidence.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999996%.
+- VMEC parity and physics gates: 99.9%.
+- Single-stage coil-only optimization phase 3: 99.95%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene: 100% locally for this shard; awaiting GitHub CI
+  for the latest branch head.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.

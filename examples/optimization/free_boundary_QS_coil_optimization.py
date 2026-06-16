@@ -1111,67 +1111,16 @@ def parse_profile_matrix_free_solvers(value: str | Sequence[str] | None) -> tupl
     return solvers or ("gmres", "bicgstab")
 
 
-def write_same_branch_validation_report(
+def same_branch_scalar_function_registry(
     *,
-    input_path: Path,
-    base_params: CoilFieldParams,
-    variables: list[tuple[str, tuple[int, ...]]],
     args: argparse.Namespace,
-    outdir: Path,
-    report_anchor: str = "initial",
-) -> Path:
-    """Write an optional same-branch complete-solve FD report for this example."""
-    from vmec_jax.free_boundary_adjoint import (
-        direct_coil_accepted_trace_controller_slot_summary,
-        direct_coil_branch_local_scalars_report_from_complete_fd,
-        direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax,
-        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax,
-        direct_coil_same_branch_physical_scalar_gate_report,
-        direct_coil_same_branch_complete_solve_fd_report,
-        free_boundary_boundary_geometry_jax,
-    )
+    qs_surfaces: Sequence[float],
+    qs_angle_cache_for_static: Any,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return production and replay scalar functions for same-branch reports."""
+
+    from vmec_jax.free_boundary_adjoint import free_boundary_boundary_geometry_jax
     from vmec_jax.state import pack_state
-
-    direction_x = same_branch_direction_from_variables(variables)
-    direction_params = coil_param_direction_from_variables(
-        base_params,
-        direction_x,
-        variables,
-        current_step=float(args.current_step),
-        dof_step=float(args.dof_step),
-    )
-    qs_surfaces = parse_float_list(str(args.qs_surfaces))
-    qs_angle_cache_by_key: dict[tuple[int, ...], dict[str, object]] = {}
-
-    def qs_angle_cache_for_static(static: Any) -> dict[str, object]:
-        cfg = static.cfg
-        key = (
-            int(cfg.nfp),
-            int(cfg.mpol),
-            int(cfg.ntor),
-            int(cfg.ntheta),
-            int(cfg.nzeta),
-            int(args.qs_ntheta),
-            int(args.qs_nphi),
-        )
-        if key not in qs_angle_cache_by_key:
-            qs_angle_cache_by_key[key] = quasisymmetry_angle_cache_from_static(
-                static,
-                ntheta=int(args.qs_ntheta),
-                nphi=int(args.qs_nphi),
-            )
-        return qs_angle_cache_by_key[key]
-
-    mode = str(getattr(args, "same_branch_report_mode", "none")).strip().lower()
-    ad_mode = str(getattr(args, "same_branch_report_ad_mode", "direct")).strip().lower()
-    if mode not in {"none", "scalar", "vector"}:
-        raise ValueError("--same-branch-report-mode must be one of none, scalar, vector")
-    if ad_mode not in {"direct", "custom_vjp"}:
-        raise ValueError("--same-branch-report-ad-mode must be one of direct, custom_vjp")
-    vector_keys = parse_same_branch_vector_keys(getattr(args, "same_branch_report_vector_keys", None))
-    scalar_key = str(getattr(args, "same_branch_report_scalar_key", "qs_total"))
-    requested_report_keys = {scalar_key} if mode == "scalar" else set(vector_keys) if mode == "vector" else set()
-    needs_boozer_qs = "boozer_qs_total" in requested_report_keys
 
     def lcfs_boundary_moment(state: Any, static: Any) -> Any:
         geometry = free_boundary_boundary_geometry_jax(state, static)
@@ -1244,6 +1193,166 @@ def write_same_branch_validation_report(
         )
         return qs["total"]
 
+    scalar_value_fns = {
+        "state_norm": lambda payload: float(np.linalg.norm(np.asarray(pack_state(payload["result"].state), dtype=float))),
+        "aspect": lambda payload: float(
+            np.asarray(
+                equilibrium_aspect_ratio_from_state(
+                    state=payload["result"].state,
+                    static=payload["init"].static,
+                )
+            )
+        ),
+        "mean_iota": lambda payload: float(
+            np.asarray(
+                mean_iota_from_state(
+                    payload["result"].state,
+                    payload["init"].static,
+                    payload["init"].indata,
+                    payload["init"].signgs,
+                )
+            )
+        ),
+        "qs_total": lambda payload: float(
+            np.asarray(
+                qs_total_from_state(
+                    payload["result"].state,
+                    payload["init"].static,
+                    payload["init"].indata,
+                    payload["init"].signgs,
+                )
+            )
+        ),
+        "boozer_qs_total": lambda payload: float(
+            np.asarray(
+                boozer_qs_total_from_state(
+                    payload["result"].state,
+                    payload["init"].static,
+                    payload["init"].indata,
+                    payload["init"].signgs,
+                )
+            )
+        ),
+        "lcfs_boundary_moment": lambda payload: float(
+            np.asarray(lcfs_boundary_moment(payload["result"].state, payload["init"].static))
+        ),
+        "accepted_bnormal_rms": accepted_bnormal_rms_from_payload,
+        "betatotal": lambda payload: float(
+            np.asarray(
+                finite_beta_scalars_from_state(
+                    state=payload["result"].state,
+                    static=payload["init"].static,
+                    indata=payload["init"].indata,
+                    signgs=payload["init"].signgs,
+                )["betatotal"]
+            )
+        ),
+    }
+    scalar_replay_fns = {
+        "state_norm": lambda replay, _payload: jnp.linalg.norm(pack_state(replay["state"])),
+        "aspect": lambda replay, payload: equilibrium_aspect_ratio_from_state(
+            state=replay["state"],
+            static=payload["init"].static,
+        ),
+        "mean_iota": lambda replay, payload: mean_iota_from_state(
+            replay["state"],
+            payload["init"].static,
+            payload["init"].indata,
+            payload["init"].signgs,
+        ),
+        "qs_total": lambda replay, payload: qs_total_from_state(
+            replay["state"],
+            payload["init"].static,
+            payload["init"].indata,
+            payload["init"].signgs,
+        ),
+        "boozer_qs_total": lambda replay, payload: boozer_qs_total_from_state(
+            replay["state"],
+            payload["init"].static,
+            payload["init"].indata,
+            payload["init"].signgs,
+        ),
+        "lcfs_boundary_moment": lambda replay, payload: lcfs_boundary_moment(
+            replay["state"],
+            payload["init"].static,
+        ),
+        "accepted_bnormal_rms": lambda replay, _payload: accepted_bnormal_rms_from_replay(replay),
+        "betatotal": lambda replay, payload: finite_beta_scalars_from_state(
+            state=replay["state"],
+            static=payload["init"].static,
+            indata=payload["init"].indata,
+            signgs=payload["init"].signgs,
+        )["betatotal"],
+    }
+    return scalar_value_fns, scalar_replay_fns
+
+
+def write_same_branch_validation_report(
+    *,
+    input_path: Path,
+    base_params: CoilFieldParams,
+    variables: list[tuple[str, tuple[int, ...]]],
+    args: argparse.Namespace,
+    outdir: Path,
+    report_anchor: str = "initial",
+) -> Path:
+    """Write an optional same-branch complete-solve FD report for this example."""
+    from vmec_jax.free_boundary_adjoint import (
+        direct_coil_accepted_trace_controller_slot_summary,
+        direct_coil_branch_local_scalars_report_from_complete_fd,
+        direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax,
+        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax,
+        direct_coil_same_branch_physical_scalar_gate_report,
+        direct_coil_same_branch_complete_solve_fd_report,
+    )
+
+    direction_x = same_branch_direction_from_variables(variables)
+    direction_params = coil_param_direction_from_variables(
+        base_params,
+        direction_x,
+        variables,
+        current_step=float(args.current_step),
+        dof_step=float(args.dof_step),
+    )
+    qs_surfaces = parse_float_list(str(args.qs_surfaces))
+    qs_angle_cache_by_key: dict[tuple[int, ...], dict[str, object]] = {}
+
+    def qs_angle_cache_for_static(static: Any) -> dict[str, object]:
+        cfg = static.cfg
+        key = (
+            int(cfg.nfp),
+            int(cfg.mpol),
+            int(cfg.ntor),
+            int(cfg.ntheta),
+            int(cfg.nzeta),
+            int(args.qs_ntheta),
+            int(args.qs_nphi),
+        )
+        if key not in qs_angle_cache_by_key:
+            qs_angle_cache_by_key[key] = quasisymmetry_angle_cache_from_static(
+                static,
+                ntheta=int(args.qs_ntheta),
+                nphi=int(args.qs_nphi),
+            )
+        return qs_angle_cache_by_key[key]
+
+    mode = str(getattr(args, "same_branch_report_mode", "none")).strip().lower()
+    ad_mode = str(getattr(args, "same_branch_report_ad_mode", "direct")).strip().lower()
+    if mode not in {"none", "scalar", "vector"}:
+        raise ValueError("--same-branch-report-mode must be one of none, scalar, vector")
+    if ad_mode not in {"direct", "custom_vjp"}:
+        raise ValueError("--same-branch-report-ad-mode must be one of direct, custom_vjp")
+    vector_keys = parse_same_branch_vector_keys(getattr(args, "same_branch_report_vector_keys", None))
+    scalar_key = str(getattr(args, "same_branch_report_scalar_key", "qs_total"))
+    requested_report_keys = {scalar_key} if mode == "scalar" else set(vector_keys) if mode == "vector" else set()
+    needs_boozer_qs = "boozer_qs_total" in requested_report_keys
+
+    scalar_value_fns, scalar_replay_fns = same_branch_scalar_function_registry(
+        args=args,
+        qs_surfaces=qs_surfaces,
+        qs_angle_cache_for_static=qs_angle_cache_for_static,
+    )
+
     def params_for(scale: float) -> CoilFieldParams:
         return apply_coil_variables(
             base_params,
@@ -1283,28 +1392,19 @@ def write_same_branch_validation_report(
         )
         values = {
             "objective": total,
-            "state_norm": float(np.linalg.norm(np.asarray(pack_state(payload["result"].state), dtype=float))),
+            "state_norm": scalar_value_fns["state_norm"](payload),
             "residual_proxy": float(summary.get("residual_proxy") or 0.0),
             "qs_total": float(summary["qs_total"]) if summary.get("qs_total") is not None else np.nan,
             "aspect": float(summary["aspect"]) if summary.get("aspect") is not None else np.nan,
             "mean_iota": float(summary["mean_iota"]) if summary.get("mean_iota") is not None else np.nan,
-            "lcfs_boundary_moment": float(np.asarray(lcfs_boundary_moment(payload["result"].state, payload["init"].static))),
-            "accepted_bnormal_rms": accepted_bnormal_rms_from_payload(payload),
+            "lcfs_boundary_moment": scalar_value_fns["lcfs_boundary_moment"](payload),
+            "accepted_bnormal_rms": scalar_value_fns["accepted_bnormal_rms"](payload),
             "bnormal_rms": float(summary["free_boundary_bnormal_rms"])
             if summary.get("free_boundary_bnormal_rms") is not None
             else np.nan,
         }
         if needs_boozer_qs:
-            values["boozer_qs_total"] = float(
-                np.asarray(
-                    boozer_qs_total_from_state(
-                        payload["result"].state,
-                        payload["init"].static,
-                        payload["init"].indata,
-                        payload["init"].signgs,
-                    )
-                )
-            )
+            values["boozer_qs_total"] = scalar_value_fns["boozer_qs_total"](payload)
         return values
 
     timings: dict[str, float] = {}
@@ -1397,97 +1497,6 @@ def write_same_branch_validation_report(
         if isinstance(values, dict) and "base" in values
     }
     replay_payload = {"init": report["base"]["init"]} if isinstance(report.get("base"), dict) and "init" in report["base"] else None
-    scalar_value_fns = {
-        "state_norm": lambda payload: float(np.linalg.norm(np.asarray(pack_state(payload["result"].state), dtype=float))),
-        "aspect": lambda payload: float(
-            np.asarray(
-                equilibrium_aspect_ratio_from_state(
-                    state=payload["result"].state,
-                    static=payload["init"].static,
-                )
-            )
-        ),
-        "mean_iota": lambda payload: float(
-            np.asarray(
-                mean_iota_from_state(
-                    payload["result"].state,
-                    payload["init"].static,
-                    payload["init"].indata,
-                    payload["init"].signgs,
-                )
-            )
-        ),
-        "qs_total": lambda payload: float(
-            np.asarray(
-                qs_total_from_state(
-                    payload["result"].state,
-                    payload["init"].static,
-                    payload["init"].indata,
-                    payload["init"].signgs,
-                )
-            )
-        ),
-        "boozer_qs_total": lambda payload: float(
-            np.asarray(
-                boozer_qs_total_from_state(
-                    payload["result"].state,
-                    payload["init"].static,
-                    payload["init"].indata,
-                    payload["init"].signgs,
-                )
-            )
-        ),
-        "lcfs_boundary_moment": lambda payload: float(
-            np.asarray(lcfs_boundary_moment(payload["result"].state, payload["init"].static))
-        ),
-        "accepted_bnormal_rms": accepted_bnormal_rms_from_payload,
-        "betatotal": lambda payload: float(
-            np.asarray(
-                finite_beta_scalars_from_state(
-                    state=payload["result"].state,
-                    static=payload["init"].static,
-                    indata=payload["init"].indata,
-                    signgs=payload["init"].signgs,
-                )["betatotal"]
-            )
-        ),
-    }
-    scalar_replay_fns = {
-        "state_norm": lambda replay, _payload: jnp.linalg.norm(pack_state(replay["state"])),
-        "aspect": lambda replay, payload: equilibrium_aspect_ratio_from_state(
-            state=replay["state"],
-            static=payload["init"].static,
-        ),
-        "mean_iota": lambda replay, payload: mean_iota_from_state(
-            replay["state"],
-            payload["init"].static,
-            payload["init"].indata,
-            payload["init"].signgs,
-        ),
-        "qs_total": lambda replay, payload: qs_total_from_state(
-            replay["state"],
-            payload["init"].static,
-            payload["init"].indata,
-            payload["init"].signgs,
-        ),
-        "boozer_qs_total": lambda replay, payload: boozer_qs_total_from_state(
-            replay["state"],
-            payload["init"].static,
-            payload["init"].indata,
-            payload["init"].signgs,
-        ),
-        "lcfs_boundary_moment": lambda replay, payload: lcfs_boundary_moment(
-            replay["state"],
-            payload["init"].static,
-        ),
-        "accepted_bnormal_rms": lambda replay, _payload: accepted_bnormal_rms_from_replay(replay),
-        "betatotal": lambda replay, payload: finite_beta_scalars_from_state(
-            state=replay["state"],
-            static=payload["init"].static,
-            indata=payload["init"].indata,
-            signgs=payload["init"].signgs,
-        )["betatotal"],
-    }
     scalar_uses_state_only_replay = scalar_key in STATE_ONLY_SAME_BRANCH_KEYS
     vector_uses_state_only_replay = all(key in STATE_ONLY_SAME_BRANCH_KEYS for key in vector_keys)
     replay_kwargs = {
