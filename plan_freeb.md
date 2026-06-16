@@ -24676,3 +24676,50 @@ Completion:
   for the latest branch head.
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 100%.
+
+### 2026-06-16 Finite-Beta QA Wrapper Beta Report Default
+
+Steps taken:
+
+1. Updated the finite-beta QA single-stage direct-coil wrapper so its
+   same-branch vector report default includes ``betatotal``.
+2. Recorded the wrapper's report vector keys in its metadata so dry-run and
+   complete-run summaries expose the finite-beta report contract.
+3. Extended the finite-beta wrapper smoke tests to assert the beta report key
+   is present in parsed defaults and dry-run summary metadata.
+
+Results obtained:
+
+1. Users running
+   ``examples/optimization/free_boundary_QA_finite_beta_coil_optimization.py``
+   with ``--write-same-branch-report`` get beta evidence by default rather
+   than needing to know the lower-level vector-key option.
+2. ``python -m ruff check`` passed for the finite-beta wrapper and test.
+3. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py
+   tests/test_free_boundary_qs_coil_optimization_smoke.py -q`` passed.
+
+Best next steps:
+
+1. Commit and push this wrapper default.
+2. Watch the draft PR CI head after the push.
+3. If the heavier phase-3 example is run later, request the same-branch report
+   and inspect ``betatotal`` alongside QS/aspect/iota evidence before promoting
+   any example result.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999996%.
+- VMEC parity and physics gates: 99.9%.
+- Single-stage coil-only optimization phase 3: 99.94%; finite-beta QA wrapper
+  now exposes beta same-branch evidence by default.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene: 100% locally for this shard; awaiting GitHub CI
+  for the latest branch head.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.
