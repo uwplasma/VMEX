@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 import numpy as np
+
+from ...._compat import jnp
+from ..results import ScanCarry
 
 
 @dataclass(frozen=True)
@@ -144,6 +147,13 @@ class Vmec2000ScanPostprocessResult:
         }
 
 
+class Vmec2000ScanStepResult(NamedTuple):
+    """Carry and history row emitted by one VMEC2000 scan step."""
+
+    carry: ScanCarry
+    history_row: Any
+
+
 def vmec2000_scan_minimal_history_row(fsqr: Any, fsqz: Any, fsql: Any) -> tuple[Any, Any, Any]:
     """Return the compact scan-history row used for residual-only scans."""
     return (fsqr, fsqz, fsql)
@@ -218,6 +228,191 @@ def vmec2000_scan_full_history_row(
         max_tau_state,
         badjac_ptau,
         badjac_state,
+    )
+
+
+def vmec2000_scan_step_result(
+    *,
+    carry_adv: ScanCarry,
+    step_fields: Any,
+    current_payload: Any,
+    selected_payload: Any,
+    probe_update: Any,
+    checkpoint_update: Any,
+    vmec2000_control: bool,
+    scan_core: bool,
+    do_restart: Any,
+    state_only_scan: bool,
+    scan_minimal: bool,
+    scan_light: bool,
+    fsq0_prev_post: Any,
+    force_bcovar_post: Any,
+    flip_sign: Any,
+    iter_offset_post: Any,
+    iter1_post: Any,
+    res0: Any,
+    res1: Any,
+    ijacob_post: Any,
+    bad_resets_post: Any,
+    bad_growth_post: Any,
+    r00: Any,
+    z00: Any,
+    w_mhd: Any,
+    conv_now: Any,
+    time_step_report: Any,
+    zero_m1: Any,
+    include_edge: Any,
+    bad_jacobian: Any,
+    min_tau: Any,
+    max_tau: Any,
+    min_tau_ptau: Any,
+    max_tau_ptau: Any,
+    min_tau_state: Any,
+    max_tau_state: Any,
+    badjac_ptau: Any,
+    badjac_state: Any,
+) -> Vmec2000ScanStepResult:
+    """Build the next scan carry and selected history row for a scan step."""
+
+    fsqr_out = selected_payload.fsqr
+    fsqz_out = selected_payload.fsqz
+    fsql_out = selected_payload.fsql
+    fsqr1_out = selected_payload.fsqr1
+    fsqz1_out = selected_payload.fsqz1
+    fsql1_out = selected_payload.fsql1
+    restart_effective = do_restart if not bool(vmec2000_control) else jnp.asarray(False)
+    accepted = jnp.logical_not(do_restart)
+    accepted_count = jnp.where(
+        jnp.asarray(scan_core),
+        carry_adv.accepted_count,
+        carry_adv.accepted_count + jnp.asarray(accepted, dtype=jnp.int32),
+    )
+    cache_valid = selected_payload.cache_valid if bool(vmec2000_control) else jnp.where(
+        do_restart,
+        jnp.asarray(False),
+        current_payload.cache_valid,
+    )
+    new_carry = ScanCarry(
+        state=step_fields.state,
+        time_step=time_step_report,
+        inv_tau=step_fields.inv_tau,
+        fsq_prev=step_fields.fsq_prev,
+        fsq0_prev=fsq0_prev_post,
+        accepted_count=accepted_count,
+        abort_scan=probe_update.abort_scan,
+        skip_timecontrol=jnp.asarray(False) if bool(vmec2000_control) else jnp.asarray(do_restart),
+        vRcc=step_fields.vRcc,
+        vRss=step_fields.vRss,
+        vZsc=step_fields.vZsc,
+        vZcs=step_fields.vZcs,
+        vLsc=step_fields.vLsc,
+        vLcs=step_fields.vLcs,
+        vRsc=step_fields.vRsc,
+        vRcs=step_fields.vRcs,
+        vZcc=step_fields.vZcc,
+        vZss=step_fields.vZss,
+        vLcc=step_fields.vLcc,
+        vLss=step_fields.vLss,
+        flip_sign=flip_sign,
+        iter_offset=iter_offset_post,
+        iter1=iter1_post,
+        res0=res0,
+        res1=res1,
+        state_checkpoint=checkpoint_update.state_checkpoint,
+        cache_valid=cache_valid,
+        cache_precond_diag=current_payload.cache_precond_diag,
+        cache_tcon=current_payload.cache_tcon,
+        cache_norms=current_payload.cache_norms,
+        cache_rz_scale=current_payload.cache_rz_scale,
+        cache_l_scale=current_payload.cache_l_scale,
+        cache_rz_norm=current_payload.cache_rz_norm,
+        cache_f_norm1=current_payload.cache_f_norm1,
+        cache_prec_rz_mats=current_payload.cache_rz_mats,
+        cache_prec_lam_prec=current_payload.cache_lam_prec,
+        force_bcovar_update=jnp.asarray(False) if bool(vmec2000_control) else force_bcovar_post,
+        ijacob=ijacob_post,
+        bad_resets=bad_resets_post,
+        bad_growth=bad_growth_post,
+        fsqz_prev=jnp.where(restart_effective, carry_adv.fsqz_prev, fsqz_out),
+        r00_prev=r00,
+        z00_prev=z00,
+        w_mhd_prev=w_mhd,
+        converged=carry_adv.converged | conv_now,
+        probe_count=probe_update.probe_count,
+        probe_bad_jac=probe_update.probe_bad_jac,
+        probe_accept=probe_update.probe_accept,
+        probe_fsq_min=probe_update.probe_fsq_min,
+        probe_fsq_max=probe_update.probe_fsq_max,
+        probe_fsq_start=probe_update.probe_fsq_start,
+        fallback_active=carry_adv.fallback_active,
+        fsqr_prev_phys=jnp.where(restart_effective, carry_adv.fsqr_prev_phys, fsqr_out),
+        fsqz_prev_phys=jnp.where(restart_effective, carry_adv.fsqz_prev_phys, fsqz_out),
+        fsql_prev_phys=jnp.where(restart_effective, carry_adv.fsql_prev_phys, fsql_out),
+        fsqr1_prev=jnp.where(restart_effective, carry_adv.fsqr1_prev, fsqr1_out),
+        fsqz1_prev=jnp.where(restart_effective, carry_adv.fsqz1_prev, fsqz1_out),
+        fsql1_prev=jnp.where(restart_effective, carry_adv.fsql1_prev, fsql1_out),
+        fsqr_checkpoint=checkpoint_update.residuals.fsqr,
+        fsqz_checkpoint=checkpoint_update.residuals.fsqz,
+        fsql_checkpoint=checkpoint_update.residuals.fsql,
+        fsqr1_checkpoint=checkpoint_update.residuals.fsqr1,
+        fsqz1_checkpoint=checkpoint_update.residuals.fsqz1,
+        fsql1_checkpoint=checkpoint_update.residuals.fsql1,
+        edge_Rcos=carry_adv.edge_Rcos,
+        edge_Rsin=carry_adv.edge_Rsin,
+        edge_Zcos=carry_adv.edge_Zcos,
+        edge_Zsin=carry_adv.edge_Zsin,
+    )
+    if bool(state_only_scan):
+        return Vmec2000ScanStepResult(carry=new_carry, history_row=())
+    if bool(scan_minimal):
+        return Vmec2000ScanStepResult(
+            carry=new_carry,
+            history_row=vmec2000_scan_minimal_history_row(fsqr_out, fsqz_out, fsql_out),
+        )
+    if bool(scan_light):
+        return Vmec2000ScanStepResult(
+            carry=new_carry,
+            history_row=vmec2000_scan_light_history_row(
+                fsqr_out,
+                fsqz_out,
+                fsql_out,
+                accepted,
+                r00,
+                z00,
+                w_mhd,
+                time_step_report,
+                bad_jacobian,
+            ),
+        )
+    return Vmec2000ScanStepResult(
+        carry=new_carry,
+        history_row=vmec2000_scan_full_history_row(
+            fsqr_out,
+            fsqz_out,
+            fsql_out,
+            fsqr1_out,
+            fsqz1_out,
+            fsql1_out,
+            accepted,
+            r00,
+            z00,
+            w_mhd,
+            time_step_report,
+            zero_m1,
+            include_edge,
+            res0,
+            res1,
+            iter1_post,
+            bad_jacobian,
+            min_tau,
+            max_tau,
+            min_tau_ptau,
+            max_tau_ptau,
+            min_tau_state,
+            max_tau_state,
+            badjac_ptau,
+            badjac_state,
+        ),
     )
 
 
