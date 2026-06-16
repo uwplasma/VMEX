@@ -315,6 +315,7 @@ from vmec_jax.solvers.fixed_boundary.scan.output import (
     vmec2000_scan_full_history_row,
     vmec2000_scan_light_history_row,
     vmec2000_scan_minimal_history_row,
+    vmec2000_scan_step_result,
     vmec2000_state_only_scan_diagnostics,
     vmec2000_traced_scan_diagnostics,
 )
@@ -3173,20 +3174,7 @@ def solve_fixed_boundary_residual_iter(
                 fsqr = payload_use.fsqr
                 fsqz = payload_use.fsqz
                 fsql = payload_use.fsql
-                fsqr1 = payload_use.fsqr1
-                fsqz1 = payload_use.fsqz1
-                fsql1 = payload_use.fsql1
-                cache_precond_diag_use = payload_use.cache_precond_diag
-                cache_tcon_use = payload_use.cache_tcon
-                cache_norms_use = payload_use.cache_norms
-                cache_rz_scale_use = payload_use.cache_rz_scale
-                cache_l_scale_use = payload_use.cache_l_scale
-                cache_rz_norm_use = payload_use.cache_rz_norm
-                cache_f_norm1_use = payload_use.cache_f_norm1
-                cache_rz_mats_use = payload_use.cache_rz_mats
-                cache_lam_prec_use = payload_use.cache_lam_prec
-                cache_valid_use = payload_use.cache_valid
-                fsq1 = fsqr1 + fsqz1 + fsql1
+                fsq1 = payload_use.fsqr1 + payload_use.fsqz1 + payload_use.fsql1
 
                 step_fields = _build_scan_step_fields(
                     payload=payload_use,
@@ -3232,41 +3220,7 @@ def solve_fixed_boundary_residual_iter(
                     do_restart=do_restart,
                     cond=jax.lax.cond,
                 )
-                (
-                    state_new,
-                    vRcc_new,
-                    vRss_new,
-                    vZsc_new,
-                    vZcs_new,
-                    vLsc_new,
-                    vLcs_new,
-                    vRsc_new,
-                    vRcs_new,
-                    vZcc_new,
-                    vZss_new,
-                    vLcc_new,
-                    vLss_new,
-                    inv_tau_new,
-                    fsq_prev_new,
-                ) = step_fields
-                fsq0_prev_new = fsq0_prev_post
-
-                fsqr_out = fsqr
-                fsqz_out = fsqz
-                fsql_out = fsql
-                fsqr1_out = fsqr1
-                fsqz1_out = fsqz1
-                fsql1_out = fsql1
-
-                restart_effective = do_restart if not bool(vmec2000_control) else jnp.asarray(False)
-                fsqz_prev = jnp.where(restart_effective, carry_adv.fsqz_prev, fsqz_out)
-
                 accepted = jnp.logical_not(do_restart)
-                accepted_count_new = jnp.where(
-                    jnp.asarray(scan_core),
-                    carry_adv.accepted_count,
-                    carry_adv.accepted_count + jnp.asarray(accepted, dtype=jnp.int32),
-                )
                 fallback_active = carry_adv.fallback_active
                 probe_update = scan_fallback_probe_update(
                     enabled=scan_fallback_enabled_run,
@@ -3292,18 +3246,6 @@ def solve_fixed_boundary_residual_iter(
                     improve=scan_fallback_improve_j,
                     dtype=dtype,
                 )
-                probe_count_new = probe_update.probe_count
-                probe_bad_jac_new = probe_update.probe_bad_jac
-                probe_accept_new = probe_update.probe_accept
-                probe_fsq_start_new = probe_update.probe_fsq_start
-                probe_fsq_min_new = probe_update.probe_fsq_min
-                probe_fsq_max_new = probe_update.probe_fsq_max
-                abort_scan_new = probe_update.abort_scan
-
-                if bool(vmec2000_control):
-                    cache_valid_out = cache_valid_use
-                else:
-                    cache_valid_out = jnp.where(do_restart, jnp.asarray(False), cache_valid)
                 # VMEC prints the updated time-step (post TimeStepControl/restart),
                 # so report the post-update value on this iteration.
                 time_step_report = time_step_post
@@ -3337,119 +3279,47 @@ def solve_fixed_boundary_residual_iter(
                         lambda _: jnp.asarray(0, dtype=jnp.int32),
                         operand=None,
                     )
-                new_carry = _ScanCarry(
-                    state=state_new,
-                    time_step=time_step_post,
-                    inv_tau=inv_tau_new,
-                    fsq_prev=fsq_prev_new,
-                    fsq0_prev=fsq0_prev_new,
-                    accepted_count=accepted_count_new,
-                    abort_scan=abort_scan_new,
-                    skip_timecontrol=jnp.asarray(False) if bool(vmec2000_control) else jnp.asarray(do_restart),
-                    vRcc=vRcc_new,
-                    vRss=vRss_new,
-                    vZsc=vZsc_new,
-                    vZcs=vZcs_new,
-                    vLsc=vLsc_new,
-                    vLcs=vLcs_new,
-                    vRsc=vRsc_new,
-                    vRcs=vRcs_new,
-                    vZcc=vZcc_new,
-                    vZss=vZss_new,
-                    vLcc=vLcc_new,
-                    vLss=vLss_new,
+                step_result = vmec2000_scan_step_result(
+                    carry_adv=carry_adv,
+                    step_fields=step_fields,
+                    current_payload=current_payload_pre,
+                    selected_payload=payload_use,
+                    probe_update=probe_update,
+                    checkpoint_update=checkpoint_update,
+                    vmec2000_control=bool(vmec2000_control),
+                    scan_core=bool(scan_core),
+                    do_restart=do_restart,
+                    state_only_scan=bool(state_only_scan),
+                    scan_minimal=bool(scan_minimal),
+                    scan_light=bool(scan_light),
+                    fsq0_prev_post=fsq0_prev_post,
+                    force_bcovar_post=force_bcovar_post,
                     flip_sign=flip_sign0,
-                    iter_offset=iter_offset_post,
-                    iter1=iter1_post,
+                    iter_offset_post=iter_offset_post,
+                    iter1_post=iter1_post,
                     res0=res0,
                     res1=res1,
-                    state_checkpoint=state_checkpoint,
-                    cache_valid=cache_valid_out,
-                    cache_precond_diag=cache_precond_diag,
-                    cache_tcon=cache_tcon,
-                    cache_norms=cache_norms,
-                    cache_rz_scale=cache_rz_scale,
-                    cache_l_scale=cache_l_scale,
-                    cache_rz_norm=cache_rz_norm,
-                    cache_f_norm1=cache_f_norm1,
-                    cache_prec_rz_mats=cache_rz_mats,
-                    cache_prec_lam_prec=cache_lam_prec,
-                    force_bcovar_update=jnp.asarray(False) if bool(vmec2000_control) else force_bcovar_post,
-                    ijacob=ijacob_post,
-                    bad_resets=bad_resets_post,
-                    bad_growth=bad_growth_post,
-                    fsqz_prev=fsqz_prev,
-                    r00_prev=r00_j,
-                    z00_prev=z00_j,
-                    w_mhd_prev=w_mhd,
-                    converged=carry_adv.converged | conv_now,
-                    probe_count=probe_count_new,
-                    probe_bad_jac=probe_bad_jac_new,
-                    probe_accept=probe_accept_new,
-                    probe_fsq_min=probe_fsq_min_new,
-                    probe_fsq_max=probe_fsq_max_new,
-                    probe_fsq_start=probe_fsq_start_new,
-                    fallback_active=fallback_active,
-                    fsqr_prev_phys=jnp.where(restart_effective, carry_adv.fsqr_prev_phys, fsqr_out),
-                    fsqz_prev_phys=jnp.where(restart_effective, carry_adv.fsqz_prev_phys, fsqz_out),
-                    fsql_prev_phys=jnp.where(restart_effective, carry_adv.fsql_prev_phys, fsql_out),
-                    fsqr1_prev=jnp.where(restart_effective, carry_adv.fsqr1_prev, fsqr1_out),
-                    fsqz1_prev=jnp.where(restart_effective, carry_adv.fsqz1_prev, fsqz1_out),
-                    fsql1_prev=jnp.where(restart_effective, carry_adv.fsql1_prev, fsql1_out),
-                    fsqr_checkpoint=fsqr_checkpoint,
-                    fsqz_checkpoint=fsqz_checkpoint,
-                    fsql_checkpoint=fsql_checkpoint,
-                    fsqr1_checkpoint=fsqr1_checkpoint,
-                    fsqz1_checkpoint=fsqz1_checkpoint,
-                    fsql1_checkpoint=fsql1_checkpoint,
-                    edge_Rcos=carry.edge_Rcos,
-                    edge_Rsin=carry.edge_Rsin,
-                    edge_Zcos=carry.edge_Zcos,
-                    edge_Zsin=carry.edge_Zsin,
+                    ijacob_post=ijacob_post,
+                    bad_resets_post=bad_resets_post,
+                    bad_growth_post=bad_growth_post,
+                    r00=r00_j,
+                    z00=z00_j,
+                    w_mhd=w_mhd,
+                    conv_now=conv_now,
+                    time_step_report=time_step_report,
+                    zero_m1=zero_m1,
+                    include_edge=include_edge,
+                    bad_jacobian=bad_jacobian,
+                    min_tau=min_tau,
+                    max_tau=max_tau,
+                    min_tau_ptau=min_tau_ptau,
+                    max_tau_ptau=max_tau_ptau,
+                    min_tau_state=min_tau_state,
+                    max_tau_state=max_tau_state,
+                    badjac_ptau=badjac_ptau,
+                    badjac_state=badjac_state,
                 )
-                if state_only_scan:
-                    return new_carry, ()
-                if scan_minimal:
-                    return new_carry, vmec2000_scan_minimal_history_row(fsqr_out, fsqz_out, fsql_out)
-                if scan_light:
-                    return new_carry, vmec2000_scan_light_history_row(
-                        fsqr_out,
-                        fsqz_out,
-                        fsql_out,
-                        accepted,
-                        r00_j,
-                        z00_j,
-                        w_mhd,
-                        time_step_report,
-                        bad_jacobian,
-                    )
-                return new_carry, vmec2000_scan_full_history_row(
-                    fsqr_out,
-                    fsqz_out,
-                    fsql_out,
-                    fsqr1_out,
-                    fsqz1_out,
-                    fsql1_out,
-                    accepted,
-                    r00_j,
-                    z00_j,
-                    w_mhd,
-                    time_step_report,
-                    zero_m1,
-                    include_edge,
-                    res0,
-                    res1,
-                    iter1_post,
-                    bad_jacobian,
-                    min_tau,
-                    max_tau,
-                    min_tau_ptau,
-                    max_tau_ptau,
-                    min_tau_state,
-                    max_tau_state,
-                    badjac_ptau,
-                    badjac_state,
-                )
+                return step_result.carry, step_result.history_row
 
             iter2_hold = jnp.asarray(it + 1, dtype=jnp.int32) + jnp.asarray(carry.iter_offset, dtype=jnp.int32)
             hold_cond = carry.converged | carry.abort_scan | (iter2_hold > jnp.asarray(int(max_iter), dtype=jnp.int32))

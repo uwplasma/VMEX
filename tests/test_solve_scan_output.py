@@ -11,6 +11,7 @@ from vmec_jax.solvers.fixed_boundary.scan.output import (
     vmec2000_scan_full_history_row,
     vmec2000_scan_light_history_row,
     vmec2000_scan_minimal_history_row,
+    vmec2000_scan_step_result,
     vmec2000_state_only_scan_diagnostics,
     vmec2000_traced_scan_diagnostics,
 )
@@ -120,6 +121,180 @@ def test_scan_history_row_builders_match_unpacker_layouts():
     assert full.accepted == 6
     assert full.ptau_min == 19
     assert full.badjac_state == 24
+
+
+def test_scan_step_result_builds_carry_and_history_modes():
+    carry = _carry(
+        state="old-state",
+        fsq0_prev=0.44,
+        accepted_count=np.asarray(2),
+        converged=np.asarray(False),
+        fallback_active=np.asarray(True),
+        abort_scan=np.asarray(False),
+        fsqr_prev_phys=np.asarray(9.0),
+        fsqz_prev_phys=np.asarray(8.0),
+        fsql_prev_phys=np.asarray(7.0),
+        fsqr1_prev=np.asarray(6.0),
+        fsqz1_prev=np.asarray(5.0),
+        fsql1_prev=np.asarray(4.0),
+        edge_Rcos="edge-rc",
+        edge_Rsin="edge-rs",
+        edge_Zcos="edge-zc",
+        edge_Zsin="edge-zs",
+    )
+    step_fields = SimpleNamespace(
+        state="new-state",
+        inv_tau=np.asarray([0.3, 0.4]),
+        fsq_prev=np.asarray(1.25),
+        vRcc="vRcc",
+        vRss="vRss",
+        vZsc="vZsc",
+        vZcs="vZcs",
+        vLsc="vLsc",
+        vLcs="vLcs",
+        vRsc="vRsc",
+        vRcs="vRcs",
+        vZcc="vZcc",
+        vZss="vZss",
+        vLcc="vLcc",
+        vLss="vLss",
+    )
+    current_payload = SimpleNamespace(
+        cache_valid=np.asarray(True),
+        cache_precond_diag=("diag",),
+        cache_tcon=("tcon",),
+        cache_norms=("norms",),
+        cache_rz_scale="rz-scale",
+        cache_l_scale="l-scale",
+        cache_rz_norm=np.asarray(3.0),
+        cache_f_norm1=np.asarray(1.0 / 3.0),
+        cache_rz_mats=("mats",),
+        cache_lam_prec=np.asarray([0.9]),
+    )
+    selected_payload = SimpleNamespace(
+        fsqr=np.asarray(1.0),
+        fsqz=np.asarray(2.0),
+        fsql=np.asarray(3.0),
+        fsqr1=np.asarray(4.0),
+        fsqz1=np.asarray(5.0),
+        fsql1=np.asarray(6.0),
+        cache_valid=np.asarray(True),
+    )
+    probe_update = SimpleNamespace(
+        probe_count=np.asarray(3),
+        probe_bad_jac=np.asarray(1),
+        probe_accept=np.asarray(2),
+        probe_fsq_start=np.asarray(10.0),
+        probe_fsq_min=np.asarray(0.5),
+        probe_fsq_max=np.asarray(12.0),
+        abort_scan=np.asarray(False),
+    )
+    checkpoint_update = SimpleNamespace(
+        state_checkpoint="checkpoint-state",
+        residuals=SimpleNamespace(
+            fsqr=np.asarray(0.1),
+            fsqz=np.asarray(0.2),
+            fsql=np.asarray(0.3),
+            fsqr1=np.asarray(0.4),
+            fsqz1=np.asarray(0.5),
+            fsql1=np.asarray(0.6),
+        ),
+    )
+
+    result = vmec2000_scan_step_result(
+        carry_adv=carry,
+        step_fields=step_fields,
+        current_payload=current_payload,
+        selected_payload=selected_payload,
+        probe_update=probe_update,
+        checkpoint_update=checkpoint_update,
+        vmec2000_control=True,
+        scan_core=False,
+        do_restart=np.asarray(False),
+        state_only_scan=False,
+        scan_minimal=False,
+        scan_light=True,
+        fsq0_prev_post=np.asarray(0.25),
+        force_bcovar_post=np.asarray(True),
+        flip_sign=np.asarray(-1.0),
+        iter_offset_post=np.asarray(4),
+        iter1_post=np.asarray(5),
+        res0=np.asarray(0.7),
+        res1=np.asarray(0.8),
+        ijacob_post=np.asarray(6),
+        bad_resets_post=np.asarray(7),
+        bad_growth_post=np.asarray(8),
+        r00=np.asarray(1.1),
+        z00=np.asarray(1.2),
+        w_mhd=np.asarray(1.3),
+        conv_now=np.asarray(True),
+        time_step_report=np.asarray(0.9),
+        zero_m1=np.asarray(0),
+        include_edge=np.asarray(1),
+        bad_jacobian=np.asarray(False),
+        min_tau=np.asarray(-0.1),
+        max_tau=np.asarray(0.2),
+        min_tau_ptau=np.asarray(-0.3),
+        max_tau_ptau=np.asarray(0.4),
+        min_tau_state=np.asarray(-0.5),
+        max_tau_state=np.asarray(0.6),
+        badjac_ptau=np.asarray(False),
+        badjac_state=np.asarray(True),
+    )
+
+    assert result.carry.state == "new-state"
+    assert result.carry.state_checkpoint == "checkpoint-state"
+    assert int(np.asarray(result.carry.accepted_count)) == 3
+    assert bool(np.asarray(result.carry.converged))
+    assert result.carry.cache_precond_diag == ("diag",)
+    histories = unpack_vmec2000_scan_histories(result.history_row, scan_minimal=False, scan_light=True)
+    np.testing.assert_allclose(np.asarray(histories.fsqr), 1.0)
+    np.testing.assert_allclose(np.asarray(histories.dt), 0.9)
+
+    restart_result = vmec2000_scan_step_result(
+        carry_adv=carry,
+        step_fields=step_fields,
+        current_payload=current_payload,
+        selected_payload=selected_payload,
+        probe_update=probe_update,
+        checkpoint_update=checkpoint_update,
+        vmec2000_control=False,
+        scan_core=True,
+        do_restart=np.asarray(True),
+        state_only_scan=True,
+        scan_minimal=False,
+        scan_light=False,
+        fsq0_prev_post=np.asarray(0.25),
+        force_bcovar_post=np.asarray(True),
+        flip_sign=np.asarray(-1.0),
+        iter_offset_post=np.asarray(4),
+        iter1_post=np.asarray(5),
+        res0=np.asarray(0.7),
+        res1=np.asarray(0.8),
+        ijacob_post=np.asarray(6),
+        bad_resets_post=np.asarray(7),
+        bad_growth_post=np.asarray(8),
+        r00=np.asarray(1.1),
+        z00=np.asarray(1.2),
+        w_mhd=np.asarray(1.3),
+        conv_now=np.asarray(False),
+        time_step_report=np.asarray(0.9),
+        zero_m1=np.asarray(0),
+        include_edge=np.asarray(1),
+        bad_jacobian=np.asarray(False),
+        min_tau=np.asarray(-0.1),
+        max_tau=np.asarray(0.2),
+        min_tau_ptau=np.asarray(-0.3),
+        max_tau_ptau=np.asarray(0.4),
+        min_tau_state=np.asarray(-0.5),
+        max_tau_state=np.asarray(0.6),
+        badjac_ptau=np.asarray(False),
+        badjac_state=np.asarray(True),
+    )
+    assert restart_result.history_row == ()
+    assert int(np.asarray(restart_result.carry.accepted_count)) == 2
+    np.testing.assert_allclose(np.asarray(restart_result.carry.fsqr_prev_phys), 9.0)
+    assert not bool(np.asarray(restart_result.carry.cache_valid))
 
 
 def test_state_only_scan_diagnostics_include_host_scalars_only_when_untraced():

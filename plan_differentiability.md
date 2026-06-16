@@ -6634,3 +6634,63 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.57%.
+
+## 2026-06-16 VMEC2000 Scan Step Result Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `vmec2000_scan_step_result` to the scan output module.
+2. Moved the final per-step carry construction and history-row selection out of
+   `_advance_step`.
+3. Preserved existing semantics for selected residual payloads versus current
+   cache fields: restart-selected residuals can feed the emitted row, while the
+   current preconditioner cache remains the carried cache state.
+4. Added direct output-level coverage for light-history accepted steps and
+   state-only restart/reject semantics.
+
+Results obtained:
+
+- The residual iteration module dropped from 8,717 lines to 8,587 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 8,107 to 7,976 lines.
+- `_run_vmec2000_scan` dropped from 1,829 to 1,698 lines.
+- `_scan_step` and `_advance_step` no longer appear in the top-12 longest
+  function report; `_advance_step` is below the previous 806-line level.
+- Scan output selection is now unit-testable independently of the scan
+  controller.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/scan/output.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_scan_output.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_scan_output.py tests/test_solve_scan_output_edge_cases_more_coverage.py tests/test_solve_real_scan_wave10_coverage.py tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_minimal_one_step tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_state_only -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_scan_planning_helpers.py tests/test_solve_scan_output.py tests/test_solve_scan_output_edge_cases_more_coverage.py tests/test_solve_finish_cache_more_coverage.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_solve_scan_debug_helpers.py tests/test_solve_scan_payload_helpers.py -q`
+- `python tools/diagnostics/source_health.py --top 8 --top-functions 12`
+
+Best next steps:
+
+1. Commit and push this scan step-result extraction.
+2. Let the latest CI run complete before stacking more pushes.
+3. Reassess the next highest-value target: either continue reducing
+   `_run_vmec2000_scan` setup/preflight orchestration or shift back to the
+   free-boundary adaptive full-loop AD/FD gate now that the scan branch is more
+   inspectable.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.996%.
+- Solver monolith reduction: 97.3%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 93.2%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.58%.
