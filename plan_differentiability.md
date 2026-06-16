@@ -6141,3 +6141,66 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.49%.
+
+## 2026-06-16 Driver Static/Profile/Initial-Guess Setup Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved driver sign-convention, VMEC2000 force-JIT override, and public
+   step-size default policy into the existing driver policy module.
+2. Moved static-grid profile assembly into the driver flux module, including
+   the VMEC half-mesh pressure/profile evaluation rule.
+3. Moved the CPU NumPy/no-JIT initial-guess fallback seam into the driver solve
+   module, preserving all injected callables used by tests and monkeypatches.
+4. Replaced the corresponding inline `run_fixed_boundary` setup clusters with
+   named helper calls.
+5. Added focused unit coverage for VMEC2000 sign parity, JIT env overrides,
+   step-size policy, host-default/fallback profile construction, and
+   tracer/env-safe initial-guess routing.
+
+Results obtained:
+
+- `run_fixed_boundary` dropped from 1,774 lines to 1,709 lines.
+- Public-driver setup is now split into explicit policy, flux/profile, runtime,
+  and solve-domain helper seams without adding a new root module.
+- The next largest driver-level setup seams are now smaller than the residual
+  scan-controller monolith; source-health still identifies
+  `solve_fixed_boundary_residual_iter` and `_run_vmec2000_scan` as the next
+  meaningful solve seams.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers/policy.py vmec_jax/drivers/flux.py vmec_jax/drivers/solve.py tests/test_driver_policy_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_run_wave8_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_api.py::test_run_fixed_boundary_returns_current_driven_flux_profiles tests/test_driver_api.py::test_python_default_fixed_boundary_uses_optimized_controller -q`
+- `python tools/diagnostics/source_health.py --top 8 --top-functions 12`
+
+Best next steps:
+
+1. Commit and push this driver setup tranche after a final diff review.
+2. Start the next large solve seam at the VMEC2000 scan-controller boundary,
+   favoring extraction into existing fixed-boundary residual/scan/preconditioner
+   domains instead of adding generic `solver.py`-style files.
+3. Keep branch-fingerprint and free-boundary replay tests green while reducing
+   `_run_vmec2000_scan`, because that is now the highest-value refactor seam.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.995%.
+- Solver monolith reduction: 94.4%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 93.2%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.50%.
