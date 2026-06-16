@@ -9,10 +9,12 @@ from vmec_jax._compat import jnp
 from vmec_jax.solvers.fixed_boundary.scan.math import (
     _hold_step,
     _no_restart_updates,
+    _ptau_minmax_from_context_host,
     _ptau_minmax_from_k_host,
     _ptau_minmax_from_k_jax,
     _restart_updates,
     _state_jacobian,
+    build_ptau_minmax_context,
 )
 
 
@@ -20,6 +22,12 @@ def _pshalf_from_s_jax(s_arr, dtype):
     s_arr = jnp.asarray(s_arr, dtype=dtype)
     sh = 0.5 * (s_arr[1:] + s_arr[:-1])
     return jnp.sqrt(jnp.maximum(jnp.concatenate([sh[:1], sh], axis=0), jnp.asarray(0.0, dtype=dtype)))
+
+
+def _pshalf_from_s_np(s_arr):
+    s_arr = np.asarray(s_arr, dtype=float)
+    sh = 0.5 * (s_arr[1:] + s_arr[:-1])
+    return np.sqrt(np.maximum(np.concatenate([sh[:1], sh], axis=0), 0.0))
 
 
 def _kernel(ns: int = 3, *, nan: bool = False) -> SimpleNamespace:
@@ -49,6 +57,29 @@ def test_ptau_minmax_host_computes_normal_missing_short_and_nan_paths():
     ptau_min, ptau_max = _ptau_minmax_from_k_host(_kernel(nan=True), pshalf=pshalf, ohs=2.0)
     assert np.isnan(ptau_min)
     assert np.isnan(ptau_max)
+
+
+def test_ptau_minmax_context_host_matches_legacy_and_bypasses_jit_on_host_update():
+    context = build_ptau_minmax_context(
+        np.asarray([0.0, 0.5, 1.0]),
+        has_jax=True,
+        s_has_tracer=False,
+        pshalf_from_s_np=_pshalf_from_s_np,
+        pshalf_from_s_jax=_pshalf_from_s_jax,
+    )
+
+    def unexpected_jit(*_args, **_kwargs):
+        raise AssertionError("host update path should bypass ptau JIT callback")
+
+    result = _ptau_minmax_from_context_host(
+        _kernel(),
+        context=context,
+        host_update_assembly=True,
+        tree_has_tracer=lambda _value: False,
+        compute_jit=unexpected_jit,
+    )
+
+    assert result == pytest.approx((4.0, 8.0))
 
 
 def test_ptau_minmax_jax_matches_host_and_returns_nan_for_missing_or_short_kernel():

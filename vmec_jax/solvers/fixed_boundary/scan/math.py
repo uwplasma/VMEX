@@ -40,6 +40,62 @@ class ScanRestartUpdates(NamedTuple):
     force_bcovar_update: Any
 
 
+class PtauMinmaxContext(NamedTuple):
+    """Precomputed constants for VMEC ``ptau`` bad-Jacobian checks."""
+
+    s: Any
+    pshalf_np: Any | None
+    ohs_scalar: float | None
+    pshalf_jax: Any | None
+    ohs_jax: Any | None
+
+
+def build_ptau_minmax_context(
+    s: Any,
+    *,
+    has_jax: bool,
+    s_has_tracer: bool,
+    pshalf_from_s_np: Any,
+    pshalf_from_s_jax: Any,
+) -> PtauMinmaxContext:
+    """Precompute host/JAX ``ptau`` constants for a fixed radial mesh."""
+
+    if bool(s_has_tracer) and bool(has_jax):
+        s_jax = jnp.asarray(s, dtype=jnp.float64)
+        hs_jax0 = s_jax[1] - s_jax[0] if int(s_jax.shape[0]) > 1 else jnp.asarray(1.0, dtype=jnp.float64)
+        pshalf_np = None
+        ohs_scalar = None
+    else:
+        s_np = np.asarray(s)
+        hs = float(s_np[1] - s_np[0]) if int(s_np.shape[0]) > 1 else 1.0
+        pshalf_np = pshalf_from_s_np(s)
+        ohs_scalar = 0.0 if hs == 0.0 else 1.0 / hs
+        s_jax = None
+        hs_jax0 = None
+
+    pshalf_jax = None
+    ohs_jax = None
+    if bool(has_jax):
+        if bool(s_has_tracer):
+            pshalf_jax = pshalf_from_s_jax(s_jax, jnp.float64)
+            ohs_jax = jnp.where(
+                hs_jax0 == 0.0,
+                jnp.asarray(0.0, dtype=jnp.float64),
+                jnp.asarray(1.0, dtype=jnp.float64) / hs_jax0,
+            )
+        else:
+            pshalf_jax = jnp.asarray(pshalf_np, dtype=jnp.float64)
+            ohs_jax = jnp.asarray(ohs_scalar, dtype=jnp.float64)
+
+    return PtauMinmaxContext(
+        s=s,
+        pshalf_np=pshalf_np,
+        ohs_scalar=ohs_scalar,
+        pshalf_jax=pshalf_jax,
+        ohs_jax=ohs_jax,
+    )
+
+
 def _kernel_arrays_from_k(k: Any) -> tuple[Any, ...] | None:
     try:
         return (
@@ -142,6 +198,27 @@ def _ptau_minmax_from_k_host(
         return None, None
 
 
+def _ptau_minmax_from_context_host(
+    k: Any,
+    *,
+    context: PtauMinmaxContext,
+    host_update_assembly: bool,
+    tree_has_tracer: Any,
+    compute_jit: Any = None,
+) -> tuple[Any | None, Any | None]:
+    """Compute host-side ``ptau`` min/max using a precomputed context."""
+
+    use_host_np_ptau = bool(host_update_assembly) and (not tree_has_tracer(k))
+    return _ptau_minmax_from_k_host(
+        k,
+        pshalf=context.pshalf_np,
+        ohs=context.ohs_scalar,
+        compute_jit=None if use_host_np_ptau else compute_jit,
+        pshalf_jax=None if use_host_np_ptau else context.pshalf_jax,
+        ohs_jax=None if use_host_np_ptau else context.ohs_jax,
+    )
+
+
 def _ptau_minmax_from_k_jax(k: Any, *, s: Any, pshalf_from_s_jax: Any):
     arrays = _kernel_arrays_from_k(k)
     if arrays is None:
@@ -182,6 +259,12 @@ def _ptau_minmax_from_k_jax(k: Any, *, s: Any, pshalf_from_s_jax: Any):
         return jnp.min(ptau), jnp.max(ptau)
 
     return _compute(None)
+
+
+def _ptau_minmax_from_context_jax(k: Any, *, context: PtauMinmaxContext, pshalf_from_s_jax: Any):
+    """Compute JAX-side ``ptau`` min/max using a precomputed context."""
+
+    return _ptau_minmax_from_k_jax(k, s=context.s, pshalf_from_s_jax=pshalf_from_s_jax)
 
 
 def _state_jacobian(
