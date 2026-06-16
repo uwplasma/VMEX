@@ -6083,3 +6083,61 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.48%.
+
+## 2026-06-16 Direct External Provider Runtime Context Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `ExternalFieldProviderContext` and
+   `resolve_external_field_provider_context` to the existing driver runtime
+   module.
+2. Moved direct-coil provider detection and optional host-side coil-geometry
+   cache setup out of `run_fixed_boundary`.
+3. Kept lazy coil import semantics and fallback behavior for custom providers
+   that cannot use the built-in cached coil geometry.
+4. Added focused driver-runtime tests for legacy mgrid mode, direct-coil cache
+   construction, disabled/existing cache behavior, and custom-provider fallback.
+
+Results obtained:
+
+- `run_fixed_boundary` dropped from 1,809 lines before this turn to 1,774
+  lines.
+- Direct external provider setup is now a named runtime context with explicit
+  tests instead of inline public-driver branching.
+- No new source file was added.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers/runtime.py tests/test_driver_policy_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_run_wave8_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_coil_provider_forward.py::test_run_free_boundary_direct_coil_geometry_cache_matches_uncached_path tests/test_driver_run_wave8_coverage.py::test_direct_coil_free_boundary_exposes_limited_updates tests/test_driver_run_wave8_coverage.py::test_direct_coil_free_boundary_quiet_performance_path_uses_light_history -q`
+- `python tools/diagnostics/source_health.py --top 8 --top-functions 12`
+
+Best next steps:
+
+1. Commit this driver runtime extraction after the current CI run is understood.
+2. Continue driver decomposition by moving one setup cluster at a time into
+   existing `vmec_jax.drivers` domain modules.
+3. Keep the next extraction away from the adaptive solver branch until the
+   latest residual/preconditioner CI runs have passed.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.995%.
+- Solver monolith reduction: 94.4%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 92.4%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.49%.
