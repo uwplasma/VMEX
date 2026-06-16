@@ -31,6 +31,7 @@ class OptimizerOptions:
     min_step_size: float = 1.0e-12
     ftol: float | None = None
     line_search_steps: int = 16
+    reduced_coordinate_scaling: str = "geometry"
     mu0: float = 4.0e-7 * np.pi
 
 
@@ -58,6 +59,36 @@ class OptimizerRun:
     nfev: int = 0
     njev: int = 0
     accepted: bool = True
+    rejection_reason: str = ""
+    candidate_energy_total: float | None = None
+    candidate_residual_norm: float | None = None
+    candidate_min_a: float | None = None
+    candidate_min_sqrtg: float | None = None
+    candidate_energy_improved: bool | None = None
+    candidate_positive_radius: bool | None = None
+    candidate_positive_jacobian: bool | None = None
+
+
+@dataclass(frozen=True)
+class _CandidateDiagnostics:
+    """Acceptance diagnostics for the raw optimizer candidate."""
+
+    accepted: bool
+    reason: str
+    min_a: float
+    min_sqrtg: float
+    energy_improved: bool
+    positive_radius: bool
+    positive_jacobian: bool
+
+
+def _scaling_key(value: str) -> str:
+    key = str(value).strip().lower().replace("-", "_")
+    if key in {"none", "identity", "off", "false"}:
+        return "none"
+    if key in {"geometry", "vmec", "vmec_like", "diagonal"}:
+        return "geometry"
+    raise ValueError(f"unsupported mirror reduced-coordinate scaling {value!r}")
 
 
 def _positive_radius(state: MirrorStateAxisym | MirrorState3D, floor: float = 1.0e-10) -> bool:
@@ -75,6 +106,55 @@ def _admissible_state(state: MirrorStateAxisym | MirrorState3D, grid: MirrorGrid
     return _positive_radius(state) and _positive_jacobian(state, grid)
 
 
+def _candidate_diagnostics(
+    step: OptimizerStep,
+    grid: MirrorGrid,
+    *,
+    initial_energy: float,
+    floor: float = 1.0e-10,
+) -> _CandidateDiagnostics:
+    energy = float(step.energy)
+    finite_energy = bool(np.isfinite(energy))
+    energy_improved = bool(finite_energy and energy <= float(initial_energy))
+    min_a = float(np.min(np.asarray(step.state.a, dtype=float)))
+    geometry = (
+        evaluate_geometry_3d(step.state, grid)
+        if np.asarray(step.state.a).ndim == 3
+        else evaluate_axisym_geometry(step.state, grid)
+    )
+    min_sqrtg = float(np.min(np.asarray(geometry.sqrtg, dtype=float)))
+    positive_radius = bool(np.isfinite(min_a) and min_a > floor)
+    positive_jacobian = bool(np.isfinite(min_sqrtg) and min_sqrtg > floor)
+
+    failures: list[str] = []
+    if not finite_energy:
+        failures.append("nonfinite_energy")
+    elif not energy_improved:
+        failures.append("energy_increase")
+    if not positive_radius:
+        failures.append("nonpositive_radius")
+    if not positive_jacobian:
+        failures.append("nonpositive_jacobian")
+    return _CandidateDiagnostics(
+        accepted=not failures,
+        reason="accepted" if not failures else ",".join(failures),
+        min_a=min_a,
+        min_sqrtg=min_sqrtg,
+        energy_improved=energy_improved,
+        positive_radius=positive_radius,
+        positive_jacobian=positive_jacobian,
+    )
+
+
+def _sanitize_scale(scale, *, expected_size: int) -> np.ndarray:
+    scale = np.asarray(scale, dtype=float).reshape(-1)
+    if scale.size != int(expected_size):
+        raise ValueError(f"scale vector has size {scale.size}, expected {int(expected_size)}")
+    scale = np.abs(scale)
+    scale[(~np.isfinite(scale)) | (scale <= np.finfo(float).tiny)] = 1.0
+    return scale
+
+
 def axisym_reduced_a_mask(grid: MirrorGrid) -> np.ndarray:
     """Return the independent ``a`` nodes for fixed-boundary axisymmetric solves."""
     mask = np.zeros((grid.ns, grid.nxi), dtype=bool)
@@ -83,12 +163,60 @@ def axisym_reduced_a_mask(grid: MirrorGrid) -> np.ndarray:
     return mask
 
 
+def axisym_reduced_coordinate_scale(
+    state: MirrorStateAxisym,
+    grid: MirrorGrid,
+    boundary: MirrorBoundary,
+    *,
+    mode: str = "geometry",
+) -> np.ndarray:
+    """Return the diagonal reduced-coordinate scale used by mirror L-BFGS-B.
+
+    This mirrors the ``x_scale`` convention used by the toroidal optimization
+    code: SciPy optimizes ``y = x / scale`` and gradients are transformed as
+    ``grad_y = grad_x * scale``.  Radius DOFs use the local fixed-boundary
+    radius; lambda DOFs use the median boundary-radius scale until a dedicated
+    VMEC-style radial/lambda preconditioner is promoted for mirror states.
+    """
+    vector_size = pack_axisym_reduced_state(state, grid, boundary).size
+    if _scaling_key(mode) == "none":
+        return np.ones(vector_size, dtype=float)
+
+    boundary_radius = np.asarray(boundary.radius_on_grid(grid), dtype=float)
+    radius_scale = _sanitize_scale(boundary_radius, expected_size=grid.nxi)
+    a_scale = np.broadcast_to(radius_scale[None, :], (grid.ns, grid.nxi))[axisym_reduced_a_mask(grid)]
+    lambda_scale = np.full(grid.ns * (grid.nxi - 1), float(np.median(radius_scale)), dtype=float)
+    return _sanitize_scale(np.concatenate([a_scale, lambda_scale]), expected_size=vector_size)
+
+
 def reduced_a_mask_3d(grid: MirrorGrid) -> np.ndarray:
     """Return the independent ``a`` nodes for fixed-boundary 3D solves."""
     mask = np.zeros((grid.ns, grid.ntheta, grid.nxi), dtype=bool)
     if grid.ns > 2 and grid.nxi > 2:
         mask[1:-1, :, 1:-1] = True
     return mask
+
+
+def reduced_coordinate_scale_3d(
+    state: MirrorState3D,
+    grid: MirrorGrid,
+    boundary: MirrorBoundary,
+    *,
+    mode: str = "geometry",
+) -> np.ndarray:
+    """Return the diagonal reduced-coordinate scale used by 3D mirror L-BFGS-B."""
+    vector_size = pack_reduced_state_3d(state, grid, boundary).size
+    if _scaling_key(mode) == "none":
+        return np.ones(vector_size, dtype=float)
+
+    boundary_radius = np.asarray(boundary.radius_on_grid_3d(grid), dtype=float)
+    radius_scale = _sanitize_scale(boundary_radius, expected_size=grid.ntheta * grid.nxi).reshape(
+        grid.ntheta,
+        grid.nxi,
+    )
+    a_scale = np.broadcast_to(radius_scale[None, :, :], (grid.ns, grid.ntheta, grid.nxi))[reduced_a_mask_3d(grid)]
+    lambda_scale = np.full(grid.ns * (grid.ntheta * grid.nxi - 1), float(np.median(radius_scale)), dtype=float)
+    return _sanitize_scale(np.concatenate([a_scale, lambda_scale]), expected_size=vector_size)
 
 
 def pack_axisym_reduced_state(state: MirrorStateAxisym, grid: MirrorGrid, boundary: MirrorBoundary) -> np.ndarray:
@@ -104,6 +232,21 @@ def axisym_reduced_bounds(grid: MirrorGrid, *, a_floor: float = 1.0e-10) -> list
     num_a = int(np.count_nonzero(axisym_reduced_a_mask(grid)))
     num_lam = grid.ns * (grid.nxi - 1)
     return [(float(a_floor), None)] * num_a + [(None, None)] * num_lam
+
+
+def _scaled_bounds(
+    bounds: list[tuple[float | None, float | None]], scale: np.ndarray
+) -> list[tuple[float | None, float | None]]:
+    scale = _sanitize_scale(scale, expected_size=len(bounds))
+    scaled: list[tuple[float | None, float | None]] = []
+    for (lower, upper), item_scale in zip(bounds, scale, strict=True):
+        scaled.append(
+            (
+                None if lower is None else float(lower) / float(item_scale),
+                None if upper is None else float(upper) / float(item_scale),
+            )
+        )
+    return scaled
 
 
 def unpack_axisym_reduced_state(vector, grid: MirrorGrid, boundary: MirrorBoundary) -> MirrorStateAxisym:
@@ -461,6 +604,8 @@ def _optimizer_run_from_result(
     steps: tuple[OptimizerStep, ...],
     result,
     accepted: bool = True,
+    candidate_step: OptimizerStep | None = None,
+    candidate_diagnostics: _CandidateDiagnostics | None = None,
 ) -> OptimizerRun:
     return OptimizerRun(
         state=state,
@@ -472,6 +617,20 @@ def _optimizer_run_from_result(
         nfev=int(getattr(result, "nfev", 0)),
         njev=int(getattr(result, "njev", 0)),
         accepted=bool(accepted),
+        rejection_reason="" if candidate_diagnostics is None else str(candidate_diagnostics.reason),
+        candidate_energy_total=None if candidate_step is None else float(candidate_step.energy),
+        candidate_residual_norm=None if candidate_step is None else float(candidate_step.residual_norm),
+        candidate_min_a=None if candidate_diagnostics is None else float(candidate_diagnostics.min_a),
+        candidate_min_sqrtg=None if candidate_diagnostics is None else float(candidate_diagnostics.min_sqrtg),
+        candidate_energy_improved=None
+        if candidate_diagnostics is None
+        else bool(candidate_diagnostics.energy_improved),
+        candidate_positive_radius=None
+        if candidate_diagnostics is None
+        else bool(candidate_diagnostics.positive_radius),
+        candidate_positive_jacobian=None
+        if candidate_diagnostics is None
+        else bool(candidate_diagnostics.positive_jacobian),
     )
 
 
@@ -516,8 +675,19 @@ def projected_lbfgs_solve(
 
     steps: list[OptimizerStep] = []
     previous_x = x0.copy()
+    x_scale = axisym_reduced_coordinate_scale(
+        initial_state,
+        grid,
+        boundary,
+        mode=options.reduced_coordinate_scaling,
+    )
+    y0 = x0 / x_scale
 
-    def objective(vector):
+    def _x_from_y(vector_y) -> np.ndarray:
+        return np.asarray(vector_y, dtype=float) * x_scale
+
+    def objective(vector_y):
+        vector = _x_from_y(vector_y)
         value, gradient = reduced_axisym_energy_and_gradient(
             vector,
             grid,
@@ -527,10 +697,11 @@ def projected_lbfgs_solve(
             pressure=pressure,
             mu0=options.mu0,
         )
-        return value, gradient
+        return value, np.asarray(gradient, dtype=float) * x_scale
 
-    def record_step(vector, *, accepted: bool = True) -> OptimizerStep:
+    def record_step(vector_y, *, accepted: bool = True) -> OptimizerStep:
         nonlocal previous_x
+        vector = _x_from_y(vector_y)
         step = _reduced_step_payload(
             vector,
             previous_x,
@@ -545,15 +716,15 @@ def projected_lbfgs_solve(
         previous_x = np.asarray(vector, dtype=float).copy()
         return step
 
-    def callback(vector):
-        steps.append(record_step(vector))
+    def callback(vector_y):
+        steps.append(record_step(vector_y))
 
     result = minimize(
         objective,
-        x0,
+        y0,
         jac=True,
         method="L-BFGS-B",
-        bounds=axisym_reduced_bounds(grid),
+        bounds=_scaled_bounds(axisym_reduced_bounds(grid), x_scale),
         callback=callback,
         options=_lbfgs_options(options),
     )
@@ -562,11 +733,25 @@ def projected_lbfgs_solve(
         steps.append(final_step)
 
     final = steps[-1]
-    improved = np.isfinite(final.energy) and final.energy <= initial_residual.energy
-    if not improved or not _admissible_state(final.state, grid):
+    candidate_diagnostics = _candidate_diagnostics(final, grid, initial_energy=initial_residual.energy)
+    if not candidate_diagnostics.accepted:
         rejected_steps = (_rejected_lbfgs_step(initial_state, initial_residual),)
-        return _optimizer_run_from_result(state=initial_state, steps=rejected_steps, result=result, accepted=False)
-    return _optimizer_run_from_result(state=final.state, steps=tuple(steps), result=result, accepted=True)
+        return _optimizer_run_from_result(
+            state=initial_state,
+            steps=rejected_steps,
+            result=result,
+            accepted=False,
+            candidate_step=final,
+            candidate_diagnostics=candidate_diagnostics,
+        )
+    return _optimizer_run_from_result(
+        state=final.state,
+        steps=tuple(steps),
+        result=result,
+        accepted=True,
+        candidate_step=final,
+        candidate_diagnostics=candidate_diagnostics,
+    )
 
 
 def projected_lbfgs_solve_3d(
@@ -610,8 +795,19 @@ def projected_lbfgs_solve_3d(
 
     steps: list[OptimizerStep] = []
     previous_x = x0.copy()
+    x_scale = reduced_coordinate_scale_3d(
+        initial_state,
+        grid,
+        boundary,
+        mode=options.reduced_coordinate_scaling,
+    )
+    y0 = x0 / x_scale
 
-    def objective(vector):
+    def _x_from_y(vector_y) -> np.ndarray:
+        return np.asarray(vector_y, dtype=float) * x_scale
+
+    def objective(vector_y):
+        vector = _x_from_y(vector_y)
         value, gradient = reduced_3d_energy_and_gradient(
             vector,
             grid,
@@ -621,10 +817,11 @@ def projected_lbfgs_solve_3d(
             pressure=pressure,
             mu0=options.mu0,
         )
-        return value, gradient
+        return value, np.asarray(gradient, dtype=float) * x_scale
 
-    def record_step(vector, *, accepted: bool = True) -> OptimizerStep:
+    def record_step(vector_y, *, accepted: bool = True) -> OptimizerStep:
         nonlocal previous_x
+        vector = _x_from_y(vector_y)
         step = _reduced_step_payload_3d(
             vector,
             previous_x,
@@ -639,15 +836,15 @@ def projected_lbfgs_solve_3d(
         previous_x = np.asarray(vector, dtype=float).copy()
         return step
 
-    def callback(vector):
-        steps.append(record_step(vector))
+    def callback(vector_y):
+        steps.append(record_step(vector_y))
 
     result = minimize(
         objective,
-        x0,
+        y0,
         jac=True,
         method="L-BFGS-B",
-        bounds=reduced_bounds_3d(grid),
+        bounds=_scaled_bounds(reduced_bounds_3d(grid), x_scale),
         callback=callback,
         options=_lbfgs_options(options),
     )
@@ -656,8 +853,22 @@ def projected_lbfgs_solve_3d(
         steps.append(final_step)
 
     final = steps[-1]
-    improved = np.isfinite(final.energy) and final.energy <= initial_residual.energy
-    if not improved or not _admissible_state(final.state, grid):
+    candidate_diagnostics = _candidate_diagnostics(final, grid, initial_energy=initial_residual.energy)
+    if not candidate_diagnostics.accepted:
         rejected_steps = (_rejected_lbfgs_step_3d(initial_state, initial_residual),)
-        return _optimizer_run_from_result(state=initial_state, steps=rejected_steps, result=result, accepted=False)
-    return _optimizer_run_from_result(state=final.state, steps=tuple(steps), result=result, accepted=True)
+        return _optimizer_run_from_result(
+            state=initial_state,
+            steps=rejected_steps,
+            result=result,
+            accepted=False,
+            candidate_step=final,
+            candidate_diagnostics=candidate_diagnostics,
+        )
+    return _optimizer_run_from_result(
+        state=final.state,
+        steps=tuple(steps),
+        result=result,
+        accepted=True,
+        candidate_step=final,
+        candidate_diagnostics=candidate_diagnostics,
+    )

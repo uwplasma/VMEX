@@ -21,6 +21,7 @@ from vmec_jax.mirror.solvers.fixed_boundary.optimizers import (
     pack_reduced_state_3d,
     reduced_3d_energy_and_gradient,
     reduced_a_mask_3d,
+    reduced_coordinate_scale_3d,
 )
 
 pytestmark = pytest.mark.mirror
@@ -43,9 +44,13 @@ def test_reduced_3d_lbfgs_gradient_matches_central_difference():
     pytest.importorskip("scipy.optimize")
     config, grid, boundary, state = _case()
     del config
-    lam = 0.003 * grid.s_full[:, None, None] * (1.0 - grid.s_full[:, None, None]) * np.sin(
-        2.0 * grid.theta[None, :, None]
-    ) * (1.0 - grid.xi[None, None, :] ** 2)
+    lam = (
+        0.003
+        * grid.s_full[:, None, None]
+        * (1.0 - grid.s_full[:, None, None])
+        * np.sin(2.0 * grid.theta[None, :, None])
+        * (1.0 - grid.xi[None, None, :] ** 2)
+    )
     state = MirrorState3D(a=state.a, lam=lam)
     psi = PsiPrimeProfile.constant(0.01)
     current = IPrimeProfile.zero()
@@ -90,6 +95,25 @@ def test_reduced_3d_lbfgs_gradient_matches_central_difference():
         finite_difference = (e_plus - e_minus) / (2.0 * step)
         assert np.isfinite(value)
         assert gradient[index] == pytest.approx(finite_difference, rel=3.0e-2, abs=3.0e-5)
+
+
+def test_reduced_coordinate_scaling_matches_reduced_3d_layout():
+    config, grid, boundary, state = _case()
+    del config
+    vector = pack_reduced_state_3d(state, grid, boundary)
+    scale = reduced_coordinate_scale_3d(state, grid, boundary)
+    identity = reduced_coordinate_scale_3d(state, grid, boundary, mode="none")
+    num_a = int(np.count_nonzero(reduced_a_mask_3d(grid)))
+    boundary_radius = boundary.radius_on_grid_3d(grid)
+
+    assert scale.shape == vector.shape
+    assert np.all(np.isfinite(scale))
+    assert np.all(scale > 0.0)
+    assert np.allclose(identity, 1.0)
+    assert np.allclose(
+        scale[:num_a], np.broadcast_to(boundary_radius[None, :, :], state.a.shape)[reduced_a_mask_3d(grid)]
+    )
+    assert np.allclose(scale[num_a:], np.median(boundary_radius))
 
 
 def test_nonaxisymmetric_fixed_boundary_solver_preserves_boundary_and_positive_jacobian():

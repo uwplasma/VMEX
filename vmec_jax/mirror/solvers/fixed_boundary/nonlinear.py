@@ -46,6 +46,14 @@ def _summary_from_run(
         nfev=int(run.nfev),
         njev=int(run.njev),
         accepted=bool(run.accepted),
+        rejection_reason=str(run.rejection_reason),
+        candidate_energy_total=run.candidate_energy_total,
+        candidate_residual_norm=run.candidate_residual_norm,
+        candidate_min_a=run.candidate_min_a,
+        candidate_min_sqrtg=run.candidate_min_sqrtg,
+        candidate_energy_improved=run.candidate_energy_improved,
+        candidate_positive_radius=run.candidate_positive_radius,
+        candidate_positive_jacobian=run.candidate_positive_jacobian,
     )
 
 

@@ -2807,3 +2807,72 @@ For the two-coil perturbed-interior diagnostic with `ns=31`, `nxi=33`, `maxiter=
 - Add a manufactured fixed-boundary case that reaches projected `gtol` and use it as the first solver-convergence acceptance test.
 - Add a two-coil solve-quality study over `ns`, `nxi`, `line_search_steps`, `ftol`, `gtol`, and perturbation amplitude.
 - Keep `vmec --plot mout_*.nc` as a required regression path for every new mirror output quantity.
+
+---
+
+## 35. 2026-06-16 VMEC-like optimizer scaling and candidate rejection diagnostics lane
+
+This lane aligns the mirror reduced-coordinate L-BFGS path with the existing
+toroidal `vmec_jax.optimization` scaling convention before adding a larger
+VMEC-style residual iteration.
+
+### Implemented in this lane
+
+- Added `reduced_coordinate_scaling` to `MirrorSolveOptions` and `OptimizerOptions`.
+- Default scaling is `geometry`.
+  - Independent radius DOFs scale with the local fixed-boundary radius.
+  - Gauge-fixed `lambda` DOFs use the median boundary-radius scale until a
+    dedicated mirror radial/lambda preconditioner is promoted.
+- The mirror L-BFGS-B wrapper now optimizes `y = x / scale`, transforms
+  gradients as `grad_y = grad_x * scale`, and scales positive-radius bounds in
+  the same coordinate system. This follows the same `x_scale` pattern used in
+  regular toroidal fixed-boundary optimization.
+- Added candidate-state diagnostics to optimizer summaries:
+  - raw candidate energy and residual;
+  - raw candidate minimum `a` and minimum `sqrt(g)`;
+  - whether energy, radius, and Jacobian acceptance gates passed;
+  - a compact rejection reason such as `energy_increase` or
+    `nonpositive_jacobian`.
+- Added the scaling policy to mirror output metadata.
+- Extended the root fixed-boundary diagnostic JSON with the raw candidate
+  diagnostics.
+
+### Solver-design interpretation
+
+- This is a diagonal preconditioner/scaling step, not yet a full VMEC radial
+  block preconditioner.
+- It is deliberately close to the production toroidal optimizer API: scale the
+  internal optimizer variable, leave the physical reduced vector and force
+  kernels unchanged, and enforce bounds in scaled coordinates.
+- The next solver upgrade should reuse the regular VMEC residual-iteration
+  ingredients where applicable:
+  - accepted-state monotonicity/restart logic;
+  - limited-memory descent safeguards;
+  - radial smoothing/tridiagonal preconditioning adapted to open-ended `xi`
+    cap constraints;
+  - a separate lambda preconditioner after the mirror lambda residual has a
+    stronger manufactured benchmark.
+
+### Updated fixed-boundary solve finding
+
+With geometry scaling enabled, the two-coil perturbed-interior diagnostic with
+`ns=31`, `nxi=33`, `maxiter=2000`, `ftol=1e-12`, `gtol=1e-12`, and
+`line_search_steps=128` now has an accepted raw optimizer candidate:
+
+- SciPy L-BFGS-B still stops by `CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH`.
+- It uses `nit=359`, `nfev=376`, and `njev=376`.
+- The mirror wrapper accepts the candidate (`optimizer_rejection_reason="accepted"`).
+- The final projected residual drops from `0.05300130515941412` to
+  `2.7422308936414194e-06`.
+- The final mirror `fsq` drops to `3.976642133284726e-15`.
+- The accepted candidate has `min(a)=0.07743070667688474` and
+  `min(sqrt(g))=0.0028931215777452182`.
+- The requested projected `gtol=1e-12` is still not reached, so this is an
+  accepted improvement, not yet a full projected-gradient convergence proof.
+
+### Next gates
+
+- Add a manufactured fixed-boundary case that reaches projected `gtol`; this
+  should become the first true convergence acceptance test.
+- Add a mirror residual-iteration solver lane that mirrors the regular VMEC
+  residual iteration more directly than scalar L-BFGS-B does.

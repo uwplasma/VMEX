@@ -29,6 +29,7 @@ class MirrorSolveOptions:
     min_step_size: float = 1.0e-12
     ftol: float | None = None
     line_search_steps: int = 16
+    reduced_coordinate_scaling: str = "geometry"
     pressure_continuation: tuple[float, ...] = (1.0,)
     mu0: float = 4.0e-7 * 3.141592653589793
 
@@ -42,6 +43,7 @@ class MirrorSolveOptions:
             min_step_size=self.min_step_size,
             ftol=self.ftol,
             line_search_steps=self.line_search_steps,
+            reduced_coordinate_scaling=self.reduced_coordinate_scaling,
             mu0=self.mu0,
         )
 

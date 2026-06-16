@@ -50,6 +50,14 @@ class FixedBoundaryOptimizerSummary:
     nfev: int
     njev: int
     accepted: bool
+    rejection_reason: str = ""
+    candidate_energy_total: float | None = None
+    candidate_residual_norm: float | None = None
+    candidate_min_a: float | None = None
+    candidate_min_sqrtg: float | None = None
+    candidate_energy_improved: bool | None = None
+    candidate_positive_radius: bool | None = None
+    candidate_positive_jacobian: bool | None = None
 
 
 def ensure_finite_pressure_scale(scale: float) -> float:

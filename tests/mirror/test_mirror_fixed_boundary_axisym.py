@@ -19,6 +19,7 @@ from vmec_jax.mirror.kernels.geometry import evaluate_axisym_geometry
 from vmec_jax.mirror.solvers.fixed_boundary.optimizers import (
     OptimizerOptions,
     _lbfgs_options,
+    axisym_reduced_coordinate_scale,
     axisym_reduced_a_mask,
     axisym_reduced_bounds,
     pack_axisym_reduced_state,
@@ -170,6 +171,25 @@ def test_reduced_lbfgs_gradient_matches_central_difference():
         assert gradient[index] == pytest.approx(finite_difference, rel=2.0e-2, abs=2.0e-5)
 
 
+def test_reduced_coordinate_scaling_matches_reduced_axisym_layout():
+    config, grid, boundary, initial_state = _perturbed_cylinder_case()
+    del config
+    vector = pack_axisym_reduced_state(initial_state, grid, boundary)
+    scale = axisym_reduced_coordinate_scale(initial_state, grid, boundary)
+    identity = axisym_reduced_coordinate_scale(initial_state, grid, boundary, mode="none")
+    num_a = int(np.count_nonzero(axisym_reduced_a_mask(grid)))
+    boundary_radius = boundary.radius_on_grid(grid)
+
+    assert scale.shape == vector.shape
+    assert np.all(np.isfinite(scale))
+    assert np.all(scale > 0.0)
+    assert np.allclose(identity, 1.0)
+    assert np.allclose(
+        scale[:num_a], np.broadcast_to(boundary_radius[None, :], initial_state.a.shape)[axisym_reduced_a_mask(grid)]
+    )
+    assert np.allclose(scale[num_a:], np.median(boundary_radius))
+
+
 def test_lbfgs_solver_uses_reduced_optimizer_and_improves_perturbed_cylinder():
     pytest.importorskip("scipy.optimize")
     config, grid, boundary, initial_state = _perturbed_cylinder_case()
@@ -200,6 +220,9 @@ def test_lbfgs_solver_uses_reduced_optimizer_and_improves_perturbed_cylinder():
     assert result.optimizer_summaries[0].nit <= 8
     assert result.optimizer_summaries[0].message
     assert isinstance(result.optimizer_summaries[0].accepted, bool)
+    assert result.optimizer_summaries[0].rejection_reason in {"", "accepted"}
+    assert result.optimizer_summaries[0].candidate_energy_total is not None
+    assert result.optimizer_summaries[0].candidate_min_sqrtg is not None
     assert result.final_trace.energy_total <= initial_residual.energy
     assert result.final_trace.residual_norm <= initial_residual.norm
     assert result.final_trace.min_sqrtg > 0.0
