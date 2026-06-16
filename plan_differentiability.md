@@ -5041,3 +5041,63 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.20%.
+
+## 2026-06-16 Optimizer Final Exact-Point Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `FixedBoundaryExactOptimizer._wall_time_for_final_history_entry` to
+   keep final history timestamps monotone with prior accepted entries.
+2. Added `FixedBoundaryExactOptimizer._evaluate_and_record_final_exact_point`
+   to centralize the final-output correctness policy:
+   use an exact cached final state when available, reconstruct it through the
+   selected exact path when needed, and fall back to the best prior exact
+   accepted point when the optimizer's nominal final point is not a valid exact
+   artifact.
+3. Replaced the inline final exact replay/best-exact-selection block in
+   `run()` with the new helper call.
+4. Preserved the policy that final artifacts never come from relaxed trial
+   solves.
+
+Results obtained:
+
+- `FixedBoundaryExactOptimizer.run` decreased from 927 to 822 lines.
+- The exact accepted-output correctness seam is now easier to audit because the
+  final state selection and history append live in one named method.
+- No public API change and no optimizer-method behavior change.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization.py tests/test_optimization_helpers.py tests/test_optimization_examples.py tests/test_continuation_exact_history.py`
+- `python -m compileall -q vmec_jax/optimization.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_helpers.py tests/test_optimization_examples.py tests/test_optimization_auto_scalar_policy.py tests/test_optimization_callback_trace.py tests/test_optimization_fast_optimizer_methods.py tests/test_continuation_exact_history.py tests/test_differentiation_optimization_api_fast.py -q`
+- `python tools/diagnostics/source_health.py --top 24 --top-functions 32`
+
+Best next steps:
+
+1. Commit and push this optimizer final-output extraction.
+2. Monitor CI for the new branch run.
+3. Continue optimizer cleanup only through passive method extraction. The
+   scalar-trust loop itself should be split into a small solver object only with
+   dedicated behavior tests, since it owns trust-region/globalization semantics.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.67%.
+- Differentiability/refactor implementation: 99.983%.
+- Solver monolith reduction: 88.7%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 91%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.21%.
