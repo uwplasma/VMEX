@@ -1,9 +1,8 @@
 """Compatibility facade for fixed-boundary solver implementations.
 
-The implementation lives in
-``vmec_jax.solvers.fixed_boundary.residual.iteration`` so the public
-``vmec_jax.solve`` module stays small while existing imports and internal
-monkeypatch seams continue to work.
+The implementation lives in domain modules under
+``vmec_jax.solvers.fixed_boundary`` so this historical public module stays
+small while existing imports and internal monkeypatch seams continue to work.
 """
 
 from __future__ import annotations
@@ -11,17 +10,19 @@ from __future__ import annotations
 import sys
 import types
 
+from .solvers.fixed_boundary import api as _fixed_boundary_api
 from .solvers.fixed_boundary.residual import iteration as _iteration
 
 
-def _export_iteration_symbols() -> None:
-    for name, value in vars(_iteration).items():
+def _export_symbols(module) -> None:
+    for name, value in vars(module).items():
         if name.startswith("__") and name.endswith("__"):
             continue
         globals()[name] = value
 
 
-_export_iteration_symbols()
+_export_symbols(_iteration)
+_export_symbols(_fixed_boundary_api)
 
 
 class _SolveFacadeModule(types.ModuleType):
@@ -34,11 +35,13 @@ class _SolveFacadeModule(types.ModuleType):
     """
 
     def __setattr__(self, name, value):
-        if not (name.startswith("__") and name.endswith("__")) and hasattr(_iteration, name):
-            setattr(_iteration, name, value)
+        if not (name.startswith("__") and name.endswith("__")):
+            for module in (_iteration, _fixed_boundary_api):
+                if hasattr(module, name):
+                    setattr(module, name, value)
         super().__setattr__(name, value)
 
 
 sys.modules[__name__].__class__ = _SolveFacadeModule
 
-__all__ = tuple(name for name in vars(_iteration) if not (name.startswith("__") and name.endswith("__")))
+__all__ = tuple(name for name in globals() if not (name.startswith("__") and name.endswith("__")))

@@ -5536,3 +5536,76 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.35%.
+
+## 2026-06-16 Fixed-Boundary Public API Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `vmec_jax.solvers.fixed_boundary.api` for the user-facing fixed-boundary
+   solver entry points:
+   `solve_lambda_gd`, fixed-boundary GD/L-BFGS, residual L-BFGS/Gauss-Newton,
+   and `first_step_diagnostics`.
+2. Removed those public wrappers from
+   `vmec_jax.solvers.fixed_boundary.residual.iteration`, leaving that module
+   focused on the residual iteration engine and its compatibility aliases.
+3. Updated the historical `vmec_jax.solve` facade to export both the residual
+   implementation module and the new fixed-boundary API module.
+4. Preserved assignment forwarding for both private residual monkeypatch seams
+   and public API monkeypatch seams.
+5. Added a regression test that verifies assigning
+   `vmec_jax.solve.solve_lambda_gd` also updates
+   `vmec_jax.solvers.fixed_boundary.api.solve_lambda_gd`.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` dropped from 10,000
+  lines to 9,544 lines.
+- Public fixed-boundary solver wrappers now have a domain-owned home instead of
+  living inside the residual iteration engine.
+- `vmec_jax.solve` remains backward-compatible for public imports and private
+  debug/monkeypatch workflows.
+- CI for the previous residual-domain relocation is green, including coverage,
+  docs, console script smoke, and physics smoke.
+- Source-health still correctly identifies the next real hotspot:
+  `solve_fixed_boundary_residual_iter` itself and its nested VMEC2000
+  scan/controller function.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/api.py vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/api.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_residual_iter_helpers_wave8_coverage.py tests/test_solve_branch_coverage.py tests/test_solve_gd_wave10_coverage.py tests/test_solve_lbfgs_wave8_coverage.py tests/test_solve_residual_optimizer_wave8_coverage.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_branch_coverage.py tests/test_solve_gd_wave10_coverage.py tests/test_solve_lbfgs_wave8_coverage.py tests/test_solve_residual_optimizer_wave8_coverage.py tests/test_solve_residual_iter_helpers_wave8_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 25`
+
+Best next steps:
+
+1. Build a typed scan/controller context for the VMEC2000 residual-iteration
+   branch before moving `_run_vmec2000_scan`; direct extraction is too risky
+   because that nested function owns accepted/rejected branch behavior and
+   currently closes over ~100 local symbols.
+2. Move the VMEC2000 scan implementation into `vmec_jax.solvers.fixed_boundary.scan`
+   once the context and branch-fingerprint tests are in place.
+3. Then split force setup from iteration control so the Python API can expose a
+   cleaner differentiable path while CLI solve paths keep non-differentiable
+   performance shortcuts.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.70%.
+- Differentiability/refactor implementation: 99.993%.
+- Solver monolith reduction: 91.4%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 91.6%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.37%.
