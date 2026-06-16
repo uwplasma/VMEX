@@ -38,6 +38,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--nxi", type=int, default=33)
     parser.add_argument("--maxiter", type=int, default=2000)
     parser.add_argument("--line-search-steps", type=int, default=64)
+    parser.add_argument("--optimizer", type=str, default="lbfgs", choices=("lbfgs", "residual_newton"))
+    parser.add_argument("--residual-linear-maxiter", type=int, default=16)
     parser.add_argument("--gtol", type=float, default=1.0e-12)
     parser.add_argument("--ftol", type=float, default=1.0e-12)
     parser.add_argument("--coil-radius", type=float, default=0.35)
@@ -76,6 +78,8 @@ def _run_one(
     nxi: int,
     maxiter: int,
     line_search_steps: int,
+    optimizer: str,
+    residual_linear_maxiter: int,
     gtol: float,
     ftol: float,
     coil_radius: float,
@@ -110,11 +114,12 @@ def _run_one(
         pressure=PressureProfile.zero(),
         initial_state=initial_state,
         options=MirrorSolveOptions(
-            optimizer="lbfgs",
+            optimizer=optimizer,
             maxiter=maxiter,
             tolerance=gtol,
             ftol=ftol,
             line_search_steps=line_search_steps,
+            residual_linear_maxiter=residual_linear_maxiter,
             mu0=1.0,
         ),
     )
@@ -134,6 +139,8 @@ def _run_one(
         "nxi": int(nxi),
         "maxiter": int(maxiter),
         "line_search_steps": int(line_search_steps),
+        "optimizer": str(optimizer),
+        "residual_linear_maxiter": int(residual_linear_maxiter),
         "gtol": float(gtol),
         "ftol": float(ftol),
         "mout": str(mout),
@@ -174,6 +181,8 @@ def run_case(
     nxi: int = 33,
     maxiter: int = 2000,
     line_search_steps: int = 64,
+    optimizer: str = "lbfgs",
+    residual_linear_maxiter: int = 16,
     gtol: float = 1.0e-12,
     ftol: float = 1.0e-12,
     coil_radius: float = 0.35,
@@ -191,6 +200,8 @@ def run_case(
             nxi=nxi,
             maxiter=maxiter,
             line_search_steps=line_search_steps,
+            optimizer=optimizer,
+            residual_linear_maxiter=residual_linear_maxiter,
             gtol=gtol,
             ftol=ftol,
             coil_radius=coil_radius,
@@ -215,6 +226,8 @@ def main(argv: list[str] | None = None) -> int:
         nxi=args.nxi,
         maxiter=args.maxiter,
         line_search_steps=args.line_search_steps,
+        optimizer=args.optimizer,
+        residual_linear_maxiter=args.residual_linear_maxiter,
         gtol=args.gtol,
         ftol=args.ftol,
         coil_radius=args.coil_radius,

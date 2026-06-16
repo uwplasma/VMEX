@@ -30,6 +30,7 @@ class MirrorSolveOptions:
     ftol: float | None = None
     line_search_steps: int = 16
     reduced_coordinate_scaling: str = "geometry"
+    residual_linear_maxiter: int = 16
     pressure_continuation: tuple[float, ...] = (1.0,)
     mu0: float = 4.0e-7 * 3.141592653589793
 
@@ -44,6 +45,7 @@ class MirrorSolveOptions:
             ftol=self.ftol,
             line_search_steps=self.line_search_steps,
             reduced_coordinate_scaling=self.reduced_coordinate_scaling,
+            residual_linear_maxiter=self.residual_linear_maxiter,
             mu0=self.mu0,
         )
 

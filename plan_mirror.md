@@ -2938,3 +2938,79 @@ For `ns=5`, `nxi=9`, `maxiter=20`, `gtol=1e-12`, `ftol=1e-12`, and a
   Newton on cylinder, manufactured, and two-coil cases.
 - Extend manufactured gates to finite pressure and nonzero-current cases after
   the scalar-pressure physical solver path is stable.
+
+---
+
+## 37. 2026-06-16 production axisymmetric residual-Newton optimizer lane
+
+This lane promotes the residual-iteration idea from the manufactured validation
+harness into the production fixed-boundary mirror solver for axisymmetric
+states.
+
+### Implemented in this lane
+
+- Added `optimizer="residual_newton"` for axisymmetric fixed-boundary mirror
+  solves.
+- Added `residual_linear_maxiter` to `MirrorSolveOptions` and
+  `OptimizerOptions`.
+- The optimizer uses:
+  - the same reduced-coordinate packing as L-BFGS-B;
+  - the same geometry-based coordinate scaling;
+  - a matrix-free exact JAX Hessian-vector product;
+  - bounded SciPy `lsmr` inner solves;
+  - damped backtracking;
+  - positive-radius and positive-Jacobian admissibility checks;
+  - monotone physical-energy and projected-residual acceptance;
+  - the existing optimizer summary and candidate diagnostics path.
+- The 3-D dispatcher now rejects `residual_newton` explicitly with a clear
+  axisymmetric-only error.
+- `examples/mirror_fixed_boundary_solve_diagnostic.py` now accepts
+  `--optimizer lbfgs|residual_newton` and `--residual-linear-maxiter`.
+
+### Validation result: perturbed cylinder
+
+For a small physical cylinder with `ns=5`, `nxi=9`, `tolerance=1e-12`,
+`ftol=1e-14`, and `residual_linear_maxiter=64`:
+
+- Projected residual drops from `0.01523117825133471` to
+  `5.559206409266248e-17`.
+- The optimizer reaches projected `gtol`.
+- It uses `5` accepted outer iterations.
+- Energy decreases from `0.013971785058962185` to the accepted final state.
+- The final state keeps positive radius and positive Jacobian.
+
+### Validation result: small two-coil physical diagnostic
+
+For the two-coil diagnostic with `ns=9`, `nxi=17`, `maxiter=15`,
+`gtol=1e-8`, `ftol=1e-12`, and `residual_linear_maxiter=32`:
+
+- The optimizer accepts all `15` outer steps but does not reach `gtol`.
+- Projected residual drops from `0.06786492634022206` to
+  `6.53350188839826e-05`.
+- Mirror `fsq` drops to `1.7143231697069735e-11`.
+- Energy drops by `0.00029052860893919244`.
+- Candidate diagnostics pass:
+  - `optimizer_rejection_reason="accepted"`;
+  - `min(a)=0.07860225137361508`;
+  - `min(sqrt(g))=0.0029972531869492825`.
+
+### Interpretation
+
+- The production residual-Newton path is now useful for small axisymmetric
+  physical solves and reaches tight projected residuals on a cylinder.
+- On the two-coil benchmark it improves residual and energy substantially but
+  still does not reach `gtol=1e-8` within the tested budget.
+- This confirms the next open solver problem is not just scalar optimization
+  scaffolding: the two-coil physical solve needs stronger preconditioning,
+  better cap-policy studies, or a refined residual model before claiming tight
+  convergence.
+
+### Next gates
+
+- Add a comparison table/example over gradient descent, scaled L-BFGS-B, and
+  residual Newton for cylinder, manufactured, and two-coil cases.
+- Add radial/lambda preconditioning for the residual-Newton inner solve, using
+  the regular VMEC radial preconditioner design as the reference but adapting
+  it to open `xi` caps.
+- Study two-coil convergence over `residual_linear_maxiter`, `maxiter`,
+  `ns`, `nxi`, and cap constraints.

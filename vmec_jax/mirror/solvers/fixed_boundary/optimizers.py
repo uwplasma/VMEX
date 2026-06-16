@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from vmec_jax._compat import jax, jnp
+
 from ...core.boundary import MirrorBoundary
 from ...core.grids import MirrorGrid
 from ...core.profiles import IPrimeProfile, PressureProfile, PsiPrimeProfile
@@ -14,6 +16,7 @@ from ...kernels.constraints import project_axisym_state, project_state_3d
 from ...kernels.forces import (
     axisym_energy_value_and_gradient,
     axisym_projected_energy_residual,
+    axisym_total_energy_jax,
     energy_value_and_gradient_3d,
     projected_energy_residual_3d,
 )
@@ -32,6 +35,7 @@ class OptimizerOptions:
     ftol: float | None = None
     line_search_steps: int = 16
     reduced_coordinate_scaling: str = "geometry"
+    residual_linear_maxiter: int = 16
     mu0: float = 4.0e-7 * np.pi
 
 
@@ -273,6 +277,46 @@ def unpack_axisym_reduced_state(vector, grid: MirrorGrid, boundary: MirrorBounda
     lam[:, :-1] = vector[num_a:].reshape(grid.ns, grid.nxi - 1)
     lam[:, -1] = -np.einsum("j,ij->i", grid.w_xi[:-1], lam[:, :-1]) / float(grid.w_xi[-1])
     return project_axisym_state(MirrorStateAxisym(a=a, lam=lam), grid, boundary)
+
+
+def _unpack_axisym_reduced_state_jax(vector, grid: MirrorGrid, boundary: MirrorBoundary):
+    boundary_radius = jnp.asarray(boundary.radius_on_grid(grid), dtype=jnp.asarray(vector).dtype)
+    mask_i, mask_j = np.nonzero(axisym_reduced_a_mask(grid))
+    num_a = int(mask_i.size)
+
+    a = jnp.broadcast_to(boundary_radius[None, :], (grid.ns, grid.nxi))
+    a = a.at[(mask_i, mask_j)].set(vector[:num_a])
+    a = a.at[0, :].set(a[1, :])
+    a = a.at[0, 0].set(boundary_radius[0])
+    a = a.at[0, -1].set(boundary_radius[-1])
+
+    lam_inner = jnp.reshape(vector[num_a:], (grid.ns, grid.nxi - 1))
+    w_xi = jnp.asarray(grid.w_xi, dtype=jnp.asarray(vector).dtype)
+    lam_last = -jnp.einsum("j,ij->i", w_xi[:-1], lam_inner) / w_xi[-1]
+    lam = jnp.concatenate([lam_inner, lam_last[:, None]], axis=1)
+    return a, lam
+
+
+def _axisym_reduced_energy_jax(
+    vector,
+    grid: MirrorGrid,
+    boundary: MirrorBoundary,
+    *,
+    psi_prime: PsiPrimeProfile,
+    i_prime: IPrimeProfile,
+    pressure: PressureProfile,
+    mu0: float,
+):
+    a, lam = _unpack_axisym_reduced_state_jax(vector, grid, boundary)
+    return axisym_total_energy_jax(
+        a,
+        lam,
+        grid,
+        psi_prime=psi_prime,
+        i_prime=i_prime,
+        pressure=pressure,
+        mu0=mu0,
+    )
 
 
 def pack_reduced_state_3d(state: MirrorState3D, grid: MirrorGrid, boundary: MirrorBoundary) -> np.ndarray:
@@ -779,6 +823,210 @@ def projected_lbfgs_solve(
         result=result,
         accepted=True,
         candidate_step=final,
+        candidate_diagnostics=candidate_diagnostics,
+    )
+
+
+def projected_residual_newton_solve(
+    state: MirrorStateAxisym,
+    grid: MirrorGrid,
+    boundary: MirrorBoundary,
+    *,
+    psi_prime: PsiPrimeProfile,
+    i_prime: IPrimeProfile,
+    pressure: PressureProfile,
+    options: OptimizerOptions,
+) -> OptimizerRun:
+    """Run a matrix-free damped Newton solve on reduced fixed-boundary residuals."""
+    if jax is None:
+        raise RuntimeError("optimizer='residual_newton' requires JAX")
+    try:
+        from scipy.optimize import OptimizeResult
+        from scipy.sparse.linalg import LinearOperator, lsmr
+    except Exception as exc:  # pragma: no cover
+        raise ImportError("optimizer='residual_newton' requires scipy.sparse.linalg.lsmr") from exc
+
+    initial_state = project_axisym_state(state, grid, boundary)
+    x0 = pack_axisym_reduced_state(initial_state, grid, boundary)
+    initial_residual = axisym_projected_energy_residual(
+        initial_state,
+        grid,
+        psi_prime=psi_prime,
+        i_prime=i_prime,
+        pressure=pressure,
+        mu0=options.mu0,
+    )
+    if initial_residual.norm <= options.tolerance:
+        return OptimizerRun(
+            state=initial_state,
+            steps=(),
+            success=True,
+            status=0,
+            message="initial projected residual is below tolerance",
+            nit=0,
+            nfev=0,
+            njev=0,
+            accepted=True,
+        )
+
+    x_scale = axisym_reduced_coordinate_scale(
+        initial_state,
+        grid,
+        boundary,
+        mode=options.reduced_coordinate_scaling,
+    )
+    y = x0 / x_scale
+    scale_jax = jnp.asarray(x_scale, dtype=jnp.asarray(x0).dtype)
+
+    def objective_x(vector):
+        return _axisym_reduced_energy_jax(
+            vector,
+            grid,
+            boundary,
+            psi_prime=psi_prime,
+            i_prime=i_prime,
+            pressure=pressure,
+            mu0=options.mu0,
+        )
+
+    grad_fun = jax.grad(objective_x)
+
+    def x_from_y(vector_y) -> np.ndarray:
+        return np.asarray(vector_y, dtype=float) * x_scale
+
+    def reduced_gradient_x(vector: np.ndarray) -> np.ndarray:
+        return np.asarray(grad_fun(jnp.asarray(vector, dtype=scale_jax.dtype)), dtype=float)
+
+    def step_payload(vector: np.ndarray, previous_vector: np.ndarray, *, accepted: bool = True) -> OptimizerStep:
+        return _reduced_step_payload(
+            vector,
+            previous_vector,
+            grid,
+            boundary,
+            psi_prime=psi_prime,
+            i_prime=i_prime,
+            pressure=pressure,
+            options=options,
+            accepted=accepted,
+        )
+
+    steps: list[OptimizerStep] = []
+    current_x = x0.copy()
+    current_step = step_payload(current_x, current_x)
+    nfev = 0
+    njev = 0
+    success = False
+    status = 0
+    message = "maximum iterations reached"
+    ftol = float(options.ftol) if options.ftol is not None else float(options.min_step_size)
+
+    for _iteration in range(1, int(options.maxiter) + 1):
+        grad_x = reduced_gradient_x(current_x)
+        nfev += 1
+        reduced_norm = float(np.linalg.norm(grad_x))
+        if current_step.residual_norm <= options.tolerance or reduced_norm <= options.tolerance:
+            success = True
+            status = 1
+            message = "`gtol` termination condition is satisfied."
+            break
+
+        x_jax = jnp.asarray(current_x, dtype=scale_jax.dtype)
+
+        def matvec_y(vector_y):
+            direction_x = scale_jax * jnp.asarray(vector_y, dtype=scale_jax.dtype)
+            _, hvp = jax.jvp(grad_fun, (x_jax,), (direction_x,))
+            return np.asarray(hvp * scale_jax, dtype=float)
+
+        size = int(y.size)
+        operator = LinearOperator((size, size), matvec=matvec_y, rmatvec=matvec_y, dtype=float)
+        rhs = -grad_x * x_scale
+        linear_maxiter = max(1, int(options.residual_linear_maxiter))
+        linear_result = lsmr(
+            operator,
+            rhs,
+            atol=min(1.0e-10, max(options.tolerance, np.finfo(float).eps)),
+            btol=min(1.0e-10, max(options.tolerance, np.finfo(float).eps)),
+            maxiter=linear_maxiter,
+        )
+        njev += int(linear_result[2])
+        step_y = np.asarray(linear_result[0], dtype=float)
+        if not np.all(np.isfinite(step_y)):
+            message = "non-finite reduced-Newton step"
+            break
+
+        step_x_norm = float(np.linalg.norm(step_y * x_scale))
+        if step_x_norm <= ftol * max(1.0, float(np.linalg.norm(current_x))):
+            success = True
+            status = 3
+            message = "`xtol` termination condition is satisfied."
+            break
+
+        accepted = False
+        alpha = 1.0
+        for _ in range(int(options.line_search_steps)):
+            trial_y = y + alpha * step_y
+            trial_x = x_from_y(trial_y)
+            trial_state = unpack_axisym_reduced_state(trial_x, grid, boundary)
+            if _admissible_state(trial_state, grid):
+                trial_step = step_payload(trial_x, current_x)
+                energy_ok = np.isfinite(trial_step.energy) and trial_step.energy <= current_step.energy + 1.0e-12
+                residual_ok = np.isfinite(trial_step.residual_norm) and (
+                    trial_step.residual_norm < current_step.residual_norm
+                )
+                if energy_ok and residual_ok:
+                    y = trial_y
+                    current_x = trial_x
+                    current_step = trial_step
+                    steps.append(trial_step)
+                    accepted = True
+                    if trial_step.residual_norm <= options.tolerance:
+                        success = True
+                        status = 1
+                        message = "`gtol` termination condition is satisfied."
+                    break
+            alpha *= 0.5
+        if success:
+            break
+        if not accepted:
+            message = "line search failed to reduce the projected residual"
+            rejected = OptimizerStep(
+                state=current_step.state,
+                energy=current_step.energy,
+                residual_norm=current_step.residual_norm,
+                step_size=0.0,
+                accepted=False,
+            )
+            steps.append(rejected)
+            break
+
+    final_step = current_step if not steps else steps[-1]
+    final_state = final_step.state if final_step.accepted else current_step.state
+    result = OptimizeResult(
+        success=success,
+        status=status,
+        message=message,
+        nit=sum(1 for step in steps if step.accepted),
+        nfev=nfev,
+        njev=njev,
+    )
+    candidate_diagnostics = _candidate_diagnostics(current_step, grid, initial_energy=initial_residual.energy)
+    accepted_run = bool(steps and steps[-1].accepted and candidate_diagnostics.accepted)
+    if not accepted_run:
+        rejected_steps = tuple(steps) if steps else (_rejected_lbfgs_step(initial_state, initial_residual),)
+        return _optimizer_run_from_result(
+            state=final_state,
+            steps=rejected_steps,
+            result=result,
+            accepted=False,
+            candidate_step=current_step,
+            candidate_diagnostics=candidate_diagnostics,
+        )
+    return _optimizer_run_from_result(
+        state=current_step.state,
+        steps=tuple(steps),
+        result=result,
+        accepted=True,
+        candidate_step=current_step,
         candidate_diagnostics=candidate_diagnostics,
     )
 

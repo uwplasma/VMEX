@@ -16,6 +16,7 @@ from .optimizers import (
     projected_gradient_step_3d,
     projected_lbfgs_solve,
     projected_lbfgs_solve_3d,
+    projected_residual_newton_solve,
 )
 
 
@@ -213,6 +214,55 @@ def _gradient_descent_stage(
     )
 
 
+def _residual_newton_stage(
+    state: MirrorStateAxisym,
+    grid: MirrorGrid,
+    boundary: MirrorBoundary,
+    *,
+    psi_prime: PsiPrimeProfile,
+    i_prime: IPrimeProfile,
+    pressure: PressureProfile,
+    options: OptimizerOptions,
+    stage_index: int,
+    pressure_scale: float,
+) -> FixedBoundaryStageResult:
+    run = projected_residual_newton_solve(
+        state,
+        grid,
+        boundary,
+        psi_prime=psi_prime,
+        i_prime=i_prime,
+        pressure=pressure,
+        options=options,
+    )
+    trace = [
+        _stage_trace_row(
+            step.state,
+            grid,
+            psi_prime=psi_prime,
+            i_prime=i_prime,
+            pressure=pressure,
+            options=options,
+            stage_index=stage_index,
+            pressure_scale=pressure_scale,
+            iteration=iteration,
+            step_size=step.step_size,
+            accepted=step.accepted,
+        )
+        for iteration, step in enumerate(run.steps, start=1)
+    ]
+    return FixedBoundaryStageResult(
+        state=run.state,
+        trace=tuple(trace),
+        optimizer_summary=_summary_from_run(
+            run,
+            options=options,
+            stage_index=stage_index,
+            pressure_scale=pressure_scale,
+        ),
+    )
+
+
 def solve_axisym_fixed_boundary_stage(
     state: MirrorStateAxisym,
     grid: MirrorGrid,
@@ -227,7 +277,7 @@ def solve_axisym_fixed_boundary_stage(
 ) -> FixedBoundaryStageResult:
     """Run one projected fixed-boundary optimizer stage."""
     optimizer = options.optimizer.lower().replace("-", "_")
-    if optimizer not in {"gradient_descent", "gd", "lbfgs", "l_bfgs_b"}:
+    if optimizer not in {"gradient_descent", "gd", "lbfgs", "l_bfgs_b", "residual_newton", "newton"}:
         raise ValueError(f"unsupported mirror fixed-boundary optimizer {options.optimizer!r}")
 
     state = project_axisym_state(state, grid, boundary)
@@ -249,6 +299,18 @@ def solve_axisym_fixed_boundary_stage(
 
     if optimizer in {"lbfgs", "l_bfgs_b"}:
         result = _lbfgs_stage(
+            state,
+            grid,
+            boundary,
+            psi_prime=psi_prime,
+            i_prime=i_prime,
+            pressure=pressure,
+            options=options,
+            stage_index=stage_index,
+            pressure_scale=pressure_scale,
+        )
+    elif optimizer in {"residual_newton", "newton"}:
+        result = _residual_newton_stage(
             state,
             grid,
             boundary,
@@ -396,6 +458,8 @@ def solve_3d_fixed_boundary_stage(
     """Run one projected 3D fixed-boundary optimizer stage."""
     optimizer = options.optimizer.lower().replace("-", "_")
     if optimizer not in {"gradient_descent", "gd", "lbfgs", "l_bfgs_b"}:
+        if optimizer in {"residual_newton", "newton"}:
+            raise ValueError("optimizer='residual_newton' is currently implemented for axisymmetric mirror states only")
         raise ValueError(f"unsupported mirror fixed-boundary optimizer {options.optimizer!r}")
 
     state = project_state_3d(state, grid, boundary)

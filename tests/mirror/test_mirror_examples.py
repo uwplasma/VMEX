@@ -138,6 +138,8 @@ def test_root_fixed_boundary_solve_diagnostic_runs_without_plots(tmp_path):
     rows = json.loads(path.read_text())
     assert len(rows) == 1
     assert rows[0]["ns"] == 7
+    assert rows[0]["optimizer"] == "lbfgs"
+    assert rows[0]["residual_linear_maxiter"] == 16
     assert rows[0]["optimizer_nit"] <= 2
     assert "optimizer_rejection_reason" in rows[0]
     assert "optimizer_candidate_min_sqrtg" in rows[0]

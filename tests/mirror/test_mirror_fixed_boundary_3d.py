@@ -154,3 +154,18 @@ def test_nonaxisymmetric_fixed_boundary_solver_preserves_boundary_and_positive_j
     assert np.allclose(result.state.a[:, :, -1], boundary.radius_on_grid_3d(result.grid)[:, -1][None, :])
     assert np.mean(field.bmag[-1, :, 0]) > np.mean(field.bmag[-1, :, center_index])
     assert np.mean(field.bmag[-1, :, -1]) > np.mean(field.bmag[-1, :, center_index])
+
+
+def test_residual_newton_is_axisymmetric_only_for_now():
+    config, _grid, boundary, initial_state = _case()
+
+    with pytest.raises(ValueError, match="axisymmetric"):
+        run_mirror_fixed_boundary(
+            config,
+            boundary,
+            psi_prime=PsiPrimeProfile.constant(0.01),
+            i_prime=IPrimeProfile.zero(),
+            pressure=PressureProfile.zero(),
+            initial_state=initial_state,
+            options=MirrorSolveOptions(optimizer="residual_newton", maxiter=1, mu0=1.0),
+        )

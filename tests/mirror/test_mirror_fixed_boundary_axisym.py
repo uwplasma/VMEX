@@ -231,6 +231,55 @@ def test_lbfgs_solver_uses_reduced_optimizer_and_improves_perturbed_cylinder():
     assert np.allclose(result.state.a[:, -1], boundary.radius_on_grid(result.grid)[-1])
 
 
+def test_residual_newton_solver_reaches_tight_residual_for_perturbed_cylinder():
+    config = MirrorConfig(MirrorResolution(ns=5, ntheta=1, nxi=9, mpol=0), z_min=-1.0, z_max=1.0)
+    grid = config.build_grid()
+    boundary = MirrorBoundary.constant_radius(0.3)
+    base = MirrorStateAxisym.from_boundary(grid, boundary)
+    s = grid.s_full[:, None]
+    xi = grid.xi[None, :]
+    initial_state = MirrorStateAxisym(a=base.a * (1.0 + 0.01 * s * (1.0 - s) * (1.0 - xi**2)), lam=base.lam)
+    psi = PsiPrimeProfile.constant(0.01)
+    current = IPrimeProfile.zero()
+    pressure = PressureProfile.zero()
+    initial_residual = axisym_projected_energy_residual(
+        initial_state,
+        grid,
+        psi_prime=psi,
+        i_prime=current,
+        pressure=pressure,
+        mu0=1.0,
+    )
+
+    result = run_mirror_fixed_boundary(
+        config,
+        boundary,
+        psi_prime=psi,
+        i_prime=current,
+        pressure=pressure,
+        initial_state=initial_state,
+        options=MirrorSolveOptions(
+            optimizer="residual_newton",
+            maxiter=20,
+            tolerance=1.0e-12,
+            ftol=1.0e-14,
+            line_search_steps=32,
+            residual_linear_maxiter=64,
+            mu0=1.0,
+        ),
+    )
+    summary = result.optimizer_summaries[0]
+
+    assert summary.success
+    assert summary.accepted
+    assert summary.optimizer == "residual_newton"
+    assert summary.nit <= 6
+    assert result.final_trace.residual_norm < 1.0e-12
+    assert result.final_trace.residual_norm < initial_residual.norm
+    assert result.final_trace.energy_total < initial_residual.energy
+    assert result.final_trace.min_sqrtg > 0.0
+
+
 def test_lbfgs_options_use_explicit_ftol_when_requested():
     options = OptimizerOptions(optimizer="lbfgs", maxiter=2000, tolerance=1.0e-12, ftol=1.0e-12)
     assert _lbfgs_options(options)["ftol"] == pytest.approx(1.0e-12)

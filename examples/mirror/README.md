@@ -55,7 +55,9 @@ The root-level ``examples/mirror_fixed_boundary_solve_diagnostic.py`` script
 runs an actual L-BFGS fixed-boundary relaxation from a perturbed interior state.
 Its default diagnostic uses ``ns_array=31``, ``maxiter=2000``, and explicit
 ``ftol=1e-12``/``gtol=1e-12`` and writes a JSON table with optimizer status,
-iteration counts, residuals, ``fsq``, and plot paths.
+iteration counts, residuals, ``fsq``, and plot paths. Pass
+``--optimizer residual_newton`` to exercise the axisymmetric matrix-free
+residual-Newton path instead of the scaled L-BFGS-B path.
 
 The root-level ``examples/mirror_manufactured_fixed_boundary.py`` script solves
 a sourced manufactured fixed-boundary problem with a known stationary state. It
