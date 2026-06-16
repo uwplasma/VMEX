@@ -6821,3 +6821,63 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.60%.
+
+## 2026-06-16 VMEC2000 Scan Bad-Jacobian Decision Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `ScanBadJacobianDecision` and `scan_bad_jacobian_decision` to the
+   scan math module.
+2. Moved the VMEC2000 ptau/state bad-Jacobian branch decision out of
+   `_advance_step`.
+3. Preserved legacy behavior: ptau-triggered diagnostics can compute state
+   Jacobian metrics, but the bad-Jacobian decision uses the state result only
+   when state-Jacobian mode is enabled.
+4. Added direct tests for ptau-only VMEC decisions, state override behavior,
+   missing-ptau fallback diagnostics, and non-VMEC tau decisions.
+
+Results obtained:
+
+- The residual iteration module dropped from 8,471 lines to 8,435 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 7,858 to 7,821 lines.
+- `_run_vmec2000_scan` dropped from 1,580 to 1,543 lines.
+- Bad-Jacobian scan branch logic is now a named, tested seam, which is the
+  right shape for future adaptive-branch fingerprint gates.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/scan/math.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_scan_math_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_scan_math_helpers.py tests/test_solve_real_scan_wave10_coverage.py tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_minimal_one_step tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_state_only -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_scan_math_helpers.py tests/test_solve_scan_time_control.py tests/test_solve_scan_resume_state.py tests/test_solve_scan_planning_helpers.py tests/test_solve_scan_output.py tests/test_solve_scan_output_edge_cases_more_coverage.py tests/test_solve_finish_cache_more_coverage.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_solve_scan_debug_helpers.py tests/test_solve_scan_payload_helpers.py -q`
+- `python tools/diagnostics/source_health.py --top 8 --top-functions 12`
+
+Best next steps:
+
+1. Commit and push this bad-Jacobian decision extraction.
+2. Watch the latest CI run for this branch.
+3. Continue extracting only branch-policy seams with direct tests; the next
+   fixed-boundary candidate is the screen-scalar sampling block or the
+   time-control/checkpoint/restart update staging.
+4. Use the extracted bad-Jacobian helper when building the next
+   fingerprint-gated adaptive-branch AD/FD validation gate.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.996%.
+- Solver monolith reduction: 98.0%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 93.2%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.61%.
