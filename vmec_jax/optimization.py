@@ -4577,6 +4577,148 @@ class FixedBoundaryExactOptimizer:
         self._exact_history_rejected_count += 1
         return False
 
+    def _wall_time_for_final_history_entry(self) -> float:
+        """Return monotone wall time for a final optimization-history entry."""
+
+        final_wall_time_s = time.perf_counter() - self._wall_t0
+        if self._history:
+            final_wall_time_s = max(final_wall_time_s, float(self._history[-1].get("wall_time_s", 0.0)))
+        return final_wall_time_s
+
+    def _evaluate_and_record_final_exact_point(
+        self,
+        result: dict,
+        *,
+        selected_best_exact: bool,
+    ):
+        """Select the final exact accepted point and append its history entry.
+
+        Final artifacts must come from an exact accepted solve.  If the optimizer's
+        nominal final point cannot be reconstructed, or if a prior exact accepted
+        point has a lower exact cost, use that best exact point instead of a
+        relaxed trial solve.
+        """
+
+        best_exact_params = getattr(self, "_best_exact_params", None)
+        best_exact_state = getattr(self, "_best_exact_state", None)
+        best_exact_residual = getattr(self, "_best_exact_residual", None)
+        best_exact_cost = float(getattr(self, "_best_exact_cost", math.inf))
+
+        final_key = self._exact_cache_key(result["x"])
+        res_final = self._cached_exact_residual(cache_key=final_key)
+        if (
+            res_final is None
+            and best_exact_params is not None
+            and best_exact_residual is not None
+            and final_key == self._exact_cache_key(best_exact_params)
+        ):
+            res_final = np.asarray(best_exact_residual, dtype=float).reshape(-1)
+            self._remember_exact_residual(final_key, res_final)
+
+        state_final = self._cached_exact_state(result["x"])
+        if state_final is None:
+            try:
+                state_final = (
+                    self._solve_scan_exact_state(result["x"])
+                    if self._scan_exact_path == "scan"
+                    else self._solve_exact_with_tape(result["x"])
+                )
+            except Exception as exc:
+                if best_exact_params is not None and best_exact_residual is not None and np.isfinite(best_exact_cost):
+                    selected_best_exact = True
+                    result["x"] = np.asarray(best_exact_params, dtype=float).copy()
+                    final_key = self._exact_cache_key(result["x"])
+                    res_final = np.asarray(best_exact_residual, dtype=float).reshape(-1)
+                    state_final = self._cached_exact_state(result["x"])
+                    if state_final is None:
+                        state_final = best_exact_state
+                    if state_final is None:
+                        state_final = (
+                            self._solve_scan_exact_state(result["x"])
+                            if self._scan_exact_path == "scan"
+                            else self._solve_exact_with_tape(result["x"])
+                        )
+                else:
+                    raise RuntimeError(
+                        "Final exact accepted-point solve failed and no prior exact "
+                        "accepted point is available for final output."
+                    ) from exc
+
+        if state_final is not None:
+            self._remember_exact_state(final_key, state_final)
+
+        final_wall_time_s = self._wall_time_for_final_history_entry()
+        entry_final = self._history_entry_from_state_or_residual(
+            state_final,
+            res_final,
+            wall_time_s=final_wall_time_s,
+            cache_key=final_key,
+        )
+        cost_final = float(entry_final["cost"])
+        qs_total_final = float(entry_final["qs_objective"])
+        aspect_final = float(entry_final["aspect"])
+
+        exact_improvement_tol = max(
+            1.0e-14,
+            1.0e-9
+            * max(
+                1.0,
+                abs(cost_final) if np.isfinite(cost_final) else 1.0,
+                abs(best_exact_cost) if np.isfinite(best_exact_cost) else 1.0,
+            ),
+        )
+        if (
+            best_exact_params is not None
+            and best_exact_residual is not None
+            and np.isfinite(best_exact_cost)
+            and (not np.isfinite(cost_final) or best_exact_cost < cost_final - exact_improvement_tol)
+        ):
+            selected_best_exact = True
+            result["x"] = np.asarray(best_exact_params, dtype=float).copy()
+            final_key = self._exact_cache_key(result["x"])
+            res_final = np.asarray(best_exact_residual, dtype=float).reshape(-1)
+            state_final = self._cached_exact_state(result["x"])
+            if state_final is None:
+                state_final = best_exact_state
+            if state_final is None:
+                try:
+                    state_final = (
+                        self._solve_scan_exact_state(result["x"])
+                        if self._scan_exact_path == "scan"
+                        else self._solve_exact_with_tape(result["x"])
+                    )
+                except Exception as exc:
+                    raise RuntimeError(
+                        "Best exact accepted point was selected for final output, "
+                        "but its exact state could not be reconstructed."
+                    ) from exc
+            final_wall_time_s = self._wall_time_for_final_history_entry()
+            entry_final = self._history_entry_from_state_or_residual(
+                state_final,
+                res_final,
+                wall_time_s=final_wall_time_s,
+                cache_key=final_key,
+            )
+            cost_final = float(entry_final["cost"])
+            qs_total_final = float(entry_final["qs_objective"])
+            aspect_final = float(entry_final["aspect"])
+
+        if state_final is not None:
+            self._remember_exact_state(final_key, state_final)
+
+        result["cost"] = float(cost_final)
+        result["objective"] = float(2.0 * cost_final)
+        self._history.append(entry_final)
+        return (
+            state_final,
+            entry_final,
+            cost_final,
+            qs_total_final,
+            aspect_final,
+            final_wall_time_s,
+            selected_best_exact,
+        )
+
     # ── main entry point ──────────────────────────────────────────────────────
 
     def run(
@@ -5348,123 +5490,18 @@ class FixedBoundaryExactOptimizer:
         # point; never use a relaxed trial solve for final artifacts.
         selected_best_exact = bool(result.pop("_selected_best_exact_point", False))
         optimizer_exception = result.pop("_optimizer_exception", None)
-        best_exact_params = getattr(self, "_best_exact_params", None)
-        best_exact_state = getattr(self, "_best_exact_state", None)
-        best_exact_residual = getattr(self, "_best_exact_residual", None)
-        best_exact_cost = float(getattr(self, "_best_exact_cost", math.inf))
-
-        final_key = self._exact_cache_key(result["x"])
-        res_final = self._cached_exact_residual(cache_key=final_key)
-        if (
-            res_final is None
-            and best_exact_params is not None
-            and best_exact_residual is not None
-            and final_key == self._exact_cache_key(best_exact_params)
-        ):
-            res_final = np.asarray(best_exact_residual, dtype=float).reshape(-1)
-            self._remember_exact_residual(final_key, res_final)
-        state_final = self._cached_exact_state(result["x"])
-        if state_final is None:
-            try:
-                state_final = (
-                    self._solve_scan_exact_state(result["x"])
-                    if self._scan_exact_path == "scan"
-                    else self._solve_exact_with_tape(result["x"])
-                )
-            except Exception as exc:
-                if (
-                    best_exact_params is not None
-                    and best_exact_residual is not None
-                    and np.isfinite(best_exact_cost)
-                ):
-                    selected_best_exact = True
-                    result["x"] = np.asarray(best_exact_params, dtype=float).copy()
-                    final_key = self._exact_cache_key(result["x"])
-                    res_final = np.asarray(best_exact_residual, dtype=float).reshape(-1)
-                    state_final = self._cached_exact_state(result["x"])
-                    if state_final is None:
-                        state_final = best_exact_state
-                    if state_final is None:
-                        state_final = (
-                            self._solve_scan_exact_state(result["x"])
-                            if self._scan_exact_path == "scan"
-                            else self._solve_exact_with_tape(result["x"])
-                        )
-                else:
-                    raise RuntimeError(
-                        "Final exact accepted-point solve failed and no prior exact "
-                        "accepted point is available for final output."
-                    ) from exc
-
-        if state_final is not None:
-            self._remember_exact_state(final_key, state_final)
-
-        final_wall_time_s = time.perf_counter() - self._wall_t0
-        if self._history:
-            final_wall_time_s = max(final_wall_time_s, float(self._history[-1].get("wall_time_s", 0.0)))
-        entry_final = self._history_entry_from_state_or_residual(
+        (
             state_final,
-            res_final,
-            wall_time_s=final_wall_time_s,
-            cache_key=final_key,
+            entry_final,
+            cost_final,
+            qs_total_final,
+            aspect_final,
+            final_wall_time_s,
+            selected_best_exact,
+        ) = self._evaluate_and_record_final_exact_point(
+            result,
+            selected_best_exact=selected_best_exact,
         )
-        cost_final = float(entry_final["cost"])
-        qs_total_final = float(entry_final["qs_objective"])
-        aspect_final = float(entry_final["aspect"])
-
-        exact_improvement_tol = max(
-            1.0e-14,
-            1.0e-9
-            * max(
-                1.0,
-                abs(cost_final) if np.isfinite(cost_final) else 1.0,
-                abs(best_exact_cost) if np.isfinite(best_exact_cost) else 1.0,
-            ),
-        )
-        if (
-            best_exact_params is not None
-            and best_exact_residual is not None
-            and np.isfinite(best_exact_cost)
-            and (not np.isfinite(cost_final) or best_exact_cost < cost_final - exact_improvement_tol)
-        ):
-            selected_best_exact = True
-            result["x"] = np.asarray(best_exact_params, dtype=float).copy()
-            final_key = self._exact_cache_key(result["x"])
-            res_final = np.asarray(best_exact_residual, dtype=float).reshape(-1)
-            state_final = self._cached_exact_state(result["x"])
-            if state_final is None:
-                state_final = best_exact_state
-            if state_final is None:
-                try:
-                    state_final = (
-                        self._solve_scan_exact_state(result["x"])
-                        if self._scan_exact_path == "scan"
-                        else self._solve_exact_with_tape(result["x"])
-                    )
-                except Exception as exc:
-                    raise RuntimeError(
-                        "Best exact accepted point was selected for final output, "
-                        "but its exact state could not be reconstructed."
-                    ) from exc
-            final_wall_time_s = time.perf_counter() - self._wall_t0
-            if self._history:
-                final_wall_time_s = max(final_wall_time_s, float(self._history[-1].get("wall_time_s", 0.0)))
-            entry_final = self._history_entry_from_state_or_residual(
-                state_final,
-                res_final,
-                wall_time_s=final_wall_time_s,
-                cache_key=final_key,
-            )
-            cost_final = float(entry_final["cost"])
-            qs_total_final = float(entry_final["qs_objective"])
-            aspect_final = float(entry_final["aspect"])
-
-        if state_final is not None:
-            self._remember_exact_state(final_key, state_final)
-
-        result["cost"] = float(cost_final)
-        result["objective"] = float(2.0 * cost_final)
-        self._history.append(entry_final)
 
         # ── assemble history dump ───────────────────────────────────────────
         history_dump = self._build_run_history_dump(
