@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
 from datetime import datetime
 import os
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ import pytest
 
 import vmec_jax.driver as driver
 from vmec_jax.drivers import io as driver_io
+from vmec_jax.drivers import runtime as driver_runtime
 from vmec_jax.drivers.policy import dynamic_scan_probe_settings
 
 
@@ -139,6 +141,130 @@ def test_driver_io_helpers_print_concise_and_vmec_style_banners() -> None:
 )
 def test_default_non_autodiff_solver_policy_for_backend_uses_input_structure(backend, indata, expected):
     assert driver._default_non_autodiff_solver_policy_for_backend(indata, backend) == expected
+
+
+def test_resolve_initial_fixed_boundary_policy_preserves_interactive_cpu_cli_defaults():
+    policy = driver._resolve_initial_fixed_boundary_policy(
+        requested_solver_device="auto",
+        policy_backend="cpu",
+        indata=_Input(),
+        cfg=SimpleNamespace(lfreeb=False),
+        solver="vmec2000_iter",
+        solver_mode=None,
+        performance_mode=True,
+        use_scan=None,
+        verbose=True,
+        grid=None,
+        cli_fixed_boundary_mode=False,
+        auto_cli_fixed_boundary_mode=True,
+    )
+
+    assert policy.solver_mode_explicit is False
+    assert policy.solver_mode_eff == "default"
+    assert policy.performance_mode is True
+    assert policy.accelerated_mode is False
+    assert policy.use_scan is False
+    assert policy.cli_fixed_boundary_mode is True
+
+
+def test_resolve_initial_fixed_boundary_policy_honors_explicit_solver_mode_and_scan():
+    policy = driver._resolve_initial_fixed_boundary_policy(
+        requested_solver_device="gpu",
+        policy_backend="gpu",
+        indata=_Input(NS_ARRAY=[5, 9]),
+        cfg=SimpleNamespace(lfreeb=False),
+        solver="vmec2000_iter",
+        solver_mode="safe",
+        performance_mode=True,
+        use_scan=None,
+        verbose=True,
+        grid=None,
+        cli_fixed_boundary_mode=False,
+        auto_cli_fixed_boundary_mode=True,
+    )
+
+    assert policy.solver_mode_explicit is True
+    assert policy.solver_mode_eff == "parity"
+    assert policy.performance_mode is False
+    assert policy.accelerated_mode is False
+    assert policy.use_scan is True
+    assert policy.cli_fixed_boundary_mode is False
+
+
+def test_resolve_axis_infer_missing_policy_matches_parity_performance_and_env():
+    assert driver._resolve_axis_infer_missing_policy(
+        solver_lower="vmec_lbfgs",
+        performance_mode=False,
+    ) is True
+    assert driver._resolve_axis_infer_missing_policy(
+        solver_lower="vmec2000_iter",
+        performance_mode=False,
+        getenv=lambda _key, default="": default,
+    ) is False
+    assert driver._resolve_axis_infer_missing_policy(
+        solver_lower="vmec2000_iter",
+        performance_mode=True,
+        getenv=lambda _key, default="": default,
+    ) is True
+    assert driver._resolve_axis_infer_missing_policy(
+        solver_lower="vmec2000_iter",
+        performance_mode=False,
+        getenv=lambda key, default="": {"VMEC_JAX_ENABLE_AXIS_INFER": "yes"}.get(key, default),
+    ) is True
+    assert driver._resolve_axis_infer_missing_policy(
+        solver_lower="vmec2000_iter",
+        performance_mode=True,
+        getenv=lambda key, default="": {"VMEC_JAX_DISABLE_AXIS_INFER": "1"}.get(key, default),
+    ) is False
+
+
+@dataclass(frozen=True)
+class _RestartCfg:
+    ns: int
+
+
+def test_resolve_restart_context_loads_wout_state_and_copies_resume_state(tmp_path):
+    restart_state = SimpleNamespace(layout=SimpleNamespace(ns=5), marker="restart")
+    resume = {"iter_offset": 7}
+    calls: list[object] = []
+
+    def read_wout_func(path):
+        calls.append(path)
+        return "wout"
+
+    context = driver_runtime.resolve_restart_context(
+        cfg=_RestartCfg(ns=3),
+        restart_state=None,
+        restart_wout_path=tmp_path / "wout_case.nc",
+        restart_solver_state=resume,
+        ns_override=5,
+        read_wout_func=read_wout_func,
+        state_from_wout_func=lambda wout: restart_state if wout == "wout" else None,
+        replace_func=replace,
+    )
+
+    assert calls == [tmp_path / "wout_case.nc"]
+    assert context.cfg.ns == 5
+    assert context.restart_state is restart_state
+    assert context.restart_wout == "wout"
+    assert context.restart_solver_state["iter_offset"] == 7
+    assert context.restart_solver_state["state_checkpoint"] is restart_state
+    assert "state_checkpoint" not in resume
+
+
+def test_resolve_restart_context_rejects_mismatched_ns_override():
+    restart_state = SimpleNamespace(layout=SimpleNamespace(ns=5))
+    with pytest.raises(ValueError, match="restart_state ns=5 does not match ns_override=7"):
+        driver_runtime.resolve_restart_context(
+            cfg=_RestartCfg(ns=3),
+            restart_state=restart_state,
+            restart_wout_path=None,
+            restart_solver_state=None,
+            ns_override=7,
+            read_wout_func=lambda _path: None,
+            state_from_wout_func=lambda _wout: None,
+            replace_func=replace,
+        )
 
 
 def test_resolve_jit_forces_auto_policy_preserves_explicit_flags():
