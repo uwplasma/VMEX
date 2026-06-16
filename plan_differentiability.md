@@ -3896,3 +3896,62 @@ Completion:
 - WOUT diagnostic/profile decomposition: 92%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 98.65%.
+
+## 2026-06-15 Free-Boundary Axis-Current Helper Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved VMEC++ simple and VMEC2000 `tolicu`/`belicu`-equivalent axis-current
+   field helpers into `vmec_jax.solvers.free_boundary.axis_current`.
+2. Preserved the historical private facade names
+   `_axis_current_field_simple` and `_axis_current_field_vmec_filament` in
+   `vmec_jax.free_boundary` for tests and downstream diagnostics.
+3. Re-ran axis-current helper tests plus free-boundary sampling coverage that
+   verifies plasma-current axis fields change the boundary vacuum field.
+4. Left mgrid/provider sampling, NESTOR, controller, scan, and adaptive branch
+   semantics unchanged.
+
+Results obtained:
+
+- `free_boundary.py` dropped from 3,821 to 3,609 lines in the source-health
+  report.
+- Axis-current physics/parity helper code now has a domain-named module instead
+  of living inline in the free-boundary solver body.
+- The next meaningful free-boundary source-health work should focus on boundary
+  metric/projection helpers or WOUT assembly, not adaptive controller logic.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/free_boundary.py vmec_jax/solvers/free_boundary/axis_current.py tests/test_free_boundary_helper_branches.py tests/test_free_boundary_additional_helpers.py tests/test_free_boundary_wave2.py tests/test_free_boundary_wp0.py`
+- `python -m compileall -q vmec_jax/free_boundary.py vmec_jax/solvers/free_boundary/axis_current.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_helper_branches.py::test_axis_current_helpers_nonzero_and_degenerate_filament_paths tests/test_free_boundary_additional_helpers.py::test_axis_current_helpers_zero_current_and_validation_paths tests/test_free_boundary_wp0.py::test_axis_current_vmec_filament_nonzero_for_nzeta1 tests/test_free_boundary_wp0.py::test_freeb_axis_current_sampling_changes_boundary_field -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_wave2.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 12`
+
+Best next steps:
+
+1. Monitor CI for the latest pushed head and fix any failure before broader
+   refactors.
+2. Next safe extraction candidate is boundary metric/projection utilities,
+   which are pure NumPy physics helpers with direct tests.
+3. Avoid moving adaptive branch selection or scan-controller internals until
+   the differentiability gate around that branch seam exists.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.52%.
+- Differentiability/refactor implementation: 99.88%.
+- Solver monolith reduction: 88%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 84%.
+- WOUT diagnostic/profile decomposition: 92%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 98.7%.
