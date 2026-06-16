@@ -4544,3 +4544,64 @@ Completion:
 - WOUT diagnostic/profile decomposition: 98.0%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.05%.
+
+## 2026-06-16 Fixed-Boundary Optimizer Run Bookkeeping Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_reset_run_state` to isolate per-run cache, callback trace, profile,
+   and accepted-point bookkeeping reset logic from
+   `FixedBoundaryExactOptimizer.run`.
+2. Added `_initial_run_evaluation` to isolate the exact initial residual/state
+   evaluation and first history entry construction.
+3. Added `_build_run_history_dump` to isolate the serializable optimization
+   history payload assembly.
+4. Added `_attach_run_private_payload` to isolate the non-serializable result
+   state/profile payload used by examples and output writers.
+5. Left all residual callbacks, SciPy/matrix-free/scalar-trust paths,
+   accepted-point exact solve selection, and cache semantics unchanged.
+
+Results obtained:
+
+- `FixedBoundaryExactOptimizer.run` dropped from 1,048 lines before this
+  refactor lane to 989 lines, below the 1,000-line source-health marker.
+- The public result dictionary and `_history_dump` keys remain unchanged.
+- The next optimizer tranche should target method-specific solver bodies rather
+  than further bookkeeping so the outer optimization API becomes easier to
+  audit and test.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization.py tests/test_optimization_fast_optimizer_methods.py tests/test_optimization_callback_trace.py tests/test_optimization_wave2_coverage.py`
+- `python -m compileall -q vmec_jax/optimization.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_fast_optimizer_methods.py tests/test_optimization_callback_trace.py tests/test_optimization_wave2_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_differentiation_optimization_api_fast.py tests/test_optimization_auto_scalar_policy.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 15`
+
+Best next steps:
+
+1. Commit and push this optimizer-run bookkeeping tranche.
+2. Continue source-health work on either method-specific optimizer bodies or the
+   solver scan sub-loop; both require narrower branch/parity tests than WOUT.
+3. Monitor CI for the current draft PR after the push and avoid merging until
+   the full differentiability/refactor plan is complete.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.66%.
+- Differentiability/refactor implementation: 99.97%.
+- Solver monolith reduction: 88.7%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 90%.
+- WOUT diagnostic/profile decomposition: 98.0%.
+- Optimizer workflow decomposition: 82%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.10%.

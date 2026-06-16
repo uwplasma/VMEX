@@ -4389,6 +4389,157 @@ class FixedBoundaryExactOptimizer:
             json.dump(result["_history_dump"], f, indent=2)
         print(f"  Wrote {path}")
 
+    def _reset_run_state(self, *, trace_callbacks: bool | None, iota_fn) -> None:
+        """Reset mutable per-run caches, traces, and accepted-point bookkeeping."""
+
+        self._history = []
+        self._profile = {}
+        self._trial_residual_cache.clear()
+        if not hasattr(self, "_exact_jacobian_cache"):
+            self._exact_jacobian_cache = {}
+        else:
+            self._exact_jacobian_cache.clear()
+        self._callback_trace_enabled = (
+            os.getenv("VMEC_JAX_OPT_TRACE_CALLBACKS", "").strip().lower() in ("1", "true", "yes", "on")
+            if trace_callbacks is None
+            else bool(trace_callbacks)
+        )
+        self._callback_trace = []
+        self._callback_point_ids = {}
+        self._callback_previous_key = None
+        self._wall_t0 = time.perf_counter()
+        self._iota_fn = iota_fn
+        self._best_exact_params = None
+        self._best_exact_state = None
+        self._best_exact_residual = None
+        self._best_exact_cost = math.inf
+        self._exact_history_rejected_count = 0
+
+    def _build_run_history_dump(
+        self,
+        *,
+        max_nfev: int,
+        ftol: float,
+        gtol: float,
+        xtol: float,
+        method_key: str,
+        method_requested: str,
+        method_auto_reason: str | None,
+        scipy_tr_solver: str | None,
+        scipy_lsmr_maxiter: int | None,
+        lbfgs_step_bound: float | None,
+        scalar_step_bound: float | None,
+        scalar_cost_only_trials_used: bool | None,
+        final_wall_time_s: float,
+        result: dict,
+        cost0: float,
+        cost_final: float,
+        qs_total0: float,
+        qs_total_final: float,
+        aspect0: float,
+        aspect_final: float,
+        entry0: dict,
+        entry_final: dict,
+        iota_fn,
+        target_iota: float | None,
+        target_aspect: float | None,
+        selected_best_exact: bool,
+        optimizer_exception,
+    ) -> dict:
+        """Assemble the serializable optimization history payload."""
+
+        history_dump: dict = {
+            "label": "Optimisation",
+            "max_nfev": max_nfev,
+            "ftol": ftol,
+            "gtol": gtol,
+            "xtol": xtol,
+            "method": method_key,
+            "method_requested": method_requested,
+            "method_auto_reason": method_auto_reason,
+            "exact_path": self._scan_exact_path,
+            "scipy_tr_solver": (
+                scipy_tr_solver
+                if method_key == "scipy"
+                else "lsmr"
+                if method_key in ("scipy_matrix_free", "matrix_free", "scipy_mf")
+                else None
+            ),
+            "scipy_lsmr_maxiter": (None if scipy_lsmr_maxiter is None else int(scipy_lsmr_maxiter)),
+            "lbfgs_step_bound": (None if lbfgs_step_bound is None else float(lbfgs_step_bound)),
+            "scalar_step_bound": (None if scalar_step_bound is None else float(scalar_step_bound)),
+            "scalar_cost_only_trials": scalar_cost_only_trials_used,
+            "solver_device": self._solver_device_name or "default",
+            "inner_max_iter": int(self._inner_max_iter),
+            "inner_ftol": float(self._inner_ftol),
+            "trial_max_iter": int(self._trial_max_iter),
+            "trial_ftol": float(self._trial_ftol),
+            "total_wall_time_s": final_wall_time_s,
+            "nfev": result["nfev"],
+            "njev": result["njev"],
+            "success": result["success"],
+            "message": result["message"],
+            "objective_initial": 2.0 * cost0,
+            "objective_final": 2.0 * cost_final,
+            "qs_initial": qs_total0,
+            "qs_final": qs_total_final,
+            "aspect_initial": aspect0,
+            "aspect_final": aspect_final,
+            "history": self._history,
+            "profile": self._profile_dump(),
+            "selected_best_exact_point": bool(selected_best_exact),
+            "rejected_trial_exact_history_count": int(self._exact_history_rejected_count),
+        }
+        if optimizer_exception is not None:
+            history_dump["optimizer_exception"] = str(optimizer_exception)
+        if iota_fn is not None:
+            history_dump["iota_initial"] = float(entry0["iota"])
+            history_dump["iota_final"] = float(entry_final["iota"])
+        if target_iota is not None:
+            history_dump["target_iota"] = float(target_iota)
+        if target_aspect is not None:
+            history_dump["target_aspect"] = float(target_aspect)
+        if self._callback_trace_enabled:
+            history_dump["callback_trace"] = self._callback_trace_dump()
+        return history_dump
+
+    def _attach_run_private_payload(
+        self,
+        result: dict,
+        *,
+        state_initial,
+        state_final,
+        history_dump: dict,
+    ) -> dict:
+        """Attach non-serializable state/profile payloads used by examples."""
+
+        result["_state_initial"] = state_initial
+        result["_state_final"] = state_final
+        result["_profile"] = self._profile_dump()
+        result["_history_dump"] = history_dump
+        return result
+
+    def _initial_run_evaluation(self, params0_arr: np.ndarray):
+        """Evaluate and record the exact initial point for an optimization run."""
+
+        res0 = self.residual_fun(params0_arr)
+        if self._scan_exact_path == "scan":
+            state0 = self._solve_scan_exact_state(params0_arr)
+        else:
+            state0, _ = self._solve_exact_with_tape(params0_arr, return_payload=True)
+        entry0 = self._history_entry_from_state_or_residual(
+            state0,
+            res0,
+            wall_time_s=0.0,
+            cache_key=self._exact_cache_key(params0_arr),
+        )
+        cost0 = float(entry0["cost"])
+        qs_total0 = float(entry0["qs_objective"])
+        aspect0 = float(entry0["aspect"])
+        self._history.append(entry0)
+        self._remember_best_exact_point(params0_arr, res0, cost0, state=state0)
+        return res0, state0, entry0, cost0, qs_total0, aspect0
+
     # ── main entry point ──────────────────────────────────────────────────────
 
     def run(
@@ -4510,49 +4661,13 @@ class FixedBoundaryExactOptimizer:
             ``_history_dump`` (the full per-iteration history suitable for
             :meth:`save_history`).
         """
-        self._history = []
-        self._profile = {}
-        self._trial_residual_cache.clear()
-        if not hasattr(self, "_exact_jacobian_cache"):
-            self._exact_jacobian_cache = {}
-        else:
-            self._exact_jacobian_cache.clear()
-        self._callback_trace_enabled = (
-            os.getenv("VMEC_JAX_OPT_TRACE_CALLBACKS", "").strip().lower() in ("1", "true", "yes", "on")
-            if trace_callbacks is None
-            else bool(trace_callbacks)
-        )
-        self._callback_trace = []
-        self._callback_point_ids = {}
-        self._callback_previous_key = None
-        self._wall_t0 = time.perf_counter()
-        self._iota_fn = iota_fn  # stored so _jacobian_fun_tracked can use it
-        self._best_exact_params = None
-        self._best_exact_state = None
-        self._best_exact_residual = None
-        self._best_exact_cost = math.inf
-        self._exact_history_rejected_count = 0
+        self._reset_run_state(trace_callbacks=trace_callbacks, iota_fn=iota_fn)
 
         params0_arr = np.asarray(params0, dtype=float)
         scalar_cost_only_trials_used: bool | None = None
 
         # ── initial evaluation ──────────────────────────────────────────────
-        res0 = self.residual_fun(params0_arr)
-        if self._scan_exact_path == "scan":
-            state0 = self._solve_scan_exact_state(params0_arr)
-        else:
-            state0, _ = self._solve_exact_with_tape(params0_arr, return_payload=True)
-        entry0 = self._history_entry_from_state_or_residual(
-            state0,
-            res0,
-            wall_time_s=0.0,
-            cache_key=self._exact_cache_key(params0_arr),
-        )
-        cost0 = float(entry0["cost"])
-        qs_total0 = float(entry0["qs_objective"])
-        aspect0 = float(entry0["aspect"])
-        self._history.append(entry0)
-        self._remember_best_exact_point(params0_arr, res0, cost0, state=state0)
+        res0, state0, entry0, cost0, qs_total0, aspect0 = self._initial_run_evaluation(params0_arr)
 
         # ── outer least-squares loop ────────────────────────────────────────
         method_requested = str(method).strip().lower().replace("-", "_")
@@ -5377,65 +5492,42 @@ class FixedBoundaryExactOptimizer:
         self._history.append(entry_final)
 
         # ── assemble history dump ───────────────────────────────────────────
-        history_dump: dict = {
-            "label": "Optimisation",
-            "max_nfev": max_nfev,
-            "ftol": ftol,
-            "gtol": gtol,
-            "xtol": xtol,
-            "method": method_key,
-            "method_requested": method_requested,
-            "method_auto_reason": method_auto_reason,
-            "exact_path": self._scan_exact_path,
-            "scipy_tr_solver": (
-                scipy_tr_solver
-                if method_key == "scipy"
-                else "lsmr"
-                if method_key in ("scipy_matrix_free", "matrix_free", "scipy_mf")
-                else None
-            ),
-            "scipy_lsmr_maxiter": (None if scipy_lsmr_maxiter is None else int(scipy_lsmr_maxiter)),
-            "lbfgs_step_bound": (None if lbfgs_step_bound is None else float(lbfgs_step_bound)),
-            "scalar_step_bound": (None if scalar_step_bound is None else float(scalar_step_bound)),
-            "scalar_cost_only_trials": scalar_cost_only_trials_used,
-            "solver_device": self._solver_device_name or "default",
-            "inner_max_iter": int(self._inner_max_iter),
-            "inner_ftol": float(self._inner_ftol),
-            "trial_max_iter": int(self._trial_max_iter),
-            "trial_ftol": float(self._trial_ftol),
-            "total_wall_time_s": final_wall_time_s,
-            "nfev": result["nfev"],
-            "njev": result["njev"],
-            "success": result["success"],
-            "message": result["message"],
-            "objective_initial": 2.0 * cost0,
-            "objective_final": 2.0 * cost_final,
-            "qs_initial": qs_total0,
-            "qs_final": qs_total_final,
-            "aspect_initial": aspect0,
-            "aspect_final": aspect_final,
-            "history": self._history,
-            "profile": self._profile_dump(),
-            "selected_best_exact_point": bool(selected_best_exact),
-            "rejected_trial_exact_history_count": int(self._exact_history_rejected_count),
-        }
-        if optimizer_exception is not None:
-            history_dump["optimizer_exception"] = str(optimizer_exception)
-        if iota_fn is not None:
-            history_dump["iota_initial"] = float(entry0["iota"])
-            history_dump["iota_final"] = float(entry_final["iota"])
-        if target_iota is not None:
-            history_dump["target_iota"] = float(target_iota)
-        if target_aspect is not None:
-            history_dump["target_aspect"] = float(target_aspect)
-        if self._callback_trace_enabled:
-            history_dump["callback_trace"] = self._callback_trace_dump()
+        history_dump = self._build_run_history_dump(
+            max_nfev=max_nfev,
+            ftol=ftol,
+            gtol=gtol,
+            xtol=xtol,
+            method_key=method_key,
+            method_requested=method_requested,
+            method_auto_reason=method_auto_reason,
+            scipy_tr_solver=scipy_tr_solver,
+            scipy_lsmr_maxiter=scipy_lsmr_maxiter,
+            lbfgs_step_bound=lbfgs_step_bound,
+            scalar_step_bound=scalar_step_bound,
+            scalar_cost_only_trials_used=scalar_cost_only_trials_used,
+            final_wall_time_s=final_wall_time_s,
+            result=result,
+            cost0=cost0,
+            cost_final=cost_final,
+            qs_total0=qs_total0,
+            qs_total_final=qs_total_final,
+            aspect0=aspect0,
+            aspect_final=aspect_final,
+            entry0=entry0,
+            entry_final=entry_final,
+            iota_fn=iota_fn,
+            target_iota=target_iota,
+            target_aspect=target_aspect,
+            selected_best_exact=selected_best_exact,
+            optimizer_exception=optimizer_exception,
+        )
 
         # Private, non-serializable convenience payload for scripts that want
         # to write wout files without rerunning the VMEC solve immediately after
         # optimization. save_history() only persists `_history_dump`.
-        result["_state_initial"] = state0
-        result["_state_final"] = state_final
-        result["_profile"] = self._profile_dump()
-        result["_history_dump"] = history_dump
-        return result
+        return self._attach_run_private_payload(
+            result,
+            state_initial=state0,
+            state_final=state_final,
+            history_dump=history_dump,
+        )
