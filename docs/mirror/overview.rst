@@ -33,6 +33,9 @@ VMEC assumptions:
 - WHAM-inspired circular-loop fixture metadata, deterministic vacuum-field
   reference checks, optional ``magpylib`` comparison hooks, and low-resolution
   runnable axisymmetric/nonaxisymmetric examples;
+- a repo-root ``examples/mirror_two_coil_axisym.py`` analytic benchmark that
+  builds a fixed boundary from the closed-form on-axis field of two circular
+  coils and overlays mirror ``B_z`` against that reference;
 - focused tests for node ordering, polynomial exactness, interpolation, filtering,
   theta orthogonality, analytic axisymmetric geometry, field identities, and
   analytic energy, gradient checks, Hessian symmetry, MMS stationarity, I/O

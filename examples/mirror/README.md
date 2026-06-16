@@ -12,6 +12,7 @@ python examples/mirror/fixed_cylinder.py --outdir results/mirror/cylinder
 python examples/mirror/fixed_flared_tube.py --outdir results/mirror/flared
 python examples/mirror/wham_vacuum_boundary.py --outdir results/mirror/wham
 python examples/mirror/nonaxisymmetric_boundary.py --outdir results/mirror/nonaxisymmetric
+python examples/mirror_two_coil_axisym.py --outdir results/mirror/two_coil_axisym
 ```
 
 Each script writes a mirror-native ``mout_*.nc`` file and, unless
@@ -22,3 +23,8 @@ figures.  These are research fixtures for the scalar-pressure fixed-boundary
 mirror path, not WHAM predictive modelling tools.  For physically axisymmetric
 mirrors use the cylinder, flared-tube, or WHAM examples; the nonaxisymmetric
 example is a solver/plot stress test.
+
+The root-level ``examples/mirror_two_coil_axisym.py`` script is the first
+analytic benchmark example: it builds a fixed boundary from the closed-form
+on-axis field of two equal circular coils and overlays the mirror on-axis
+``B_z`` against that analytic expression.

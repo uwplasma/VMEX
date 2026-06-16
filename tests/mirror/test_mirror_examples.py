@@ -53,3 +53,27 @@ def test_nonaxisymmetric_example_runs_as_standalone_script(tmp_path):
     output = load_mirror_output(mout)
     assert output.ntheta > 1
     assert output.diagnostics.min_sqrtg > 0.0
+
+
+def test_root_two_coil_axisym_example_runs_without_plots(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_two_coil_axisym.py",
+            "--outdir",
+            str(tmp_path / "two_coil"),
+            "--maxiter",
+            "0",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    mout = Path(completed.stdout.strip())
+    output = load_mirror_output(mout)
+    metrics = (mout.parent / "two_coil_axisym_metrics.json").read_text()
+    assert output.ntheta == 1
+    assert output.diagnostics.min_sqrtg > 0.0
+    assert "axis_bz_relative_linf" in metrics

@@ -5,10 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from ..core.boundary import MirrorBoundary
+from .coils import mirror_boundary_from_on_axis_bz
+
+if TYPE_CHECKING:
+    from ..core.boundary import MirrorBoundary
 
 MU0 = 4.0e-7 * np.pi
 
@@ -170,14 +174,5 @@ def mirror_boundary_from_vacuum_flux_tube(
 ) -> MirrorBoundary:
     """Build an axisymmetric fixed boundary from the near-axis vacuum flux tube."""
     z = np.asarray(z_grid, dtype=float)
-    if z.ndim != 1 or z.size < 2:
-        raise ValueError("z_grid must be a one-dimensional grid with at least two nodes")
-    if not np.all(np.diff(z) > 0.0):
-        raise ValueError("z_grid must be strictly increasing")
-    if psi_value <= 0.0:
-        raise ValueError("psi_value must be positive")
     field = wham_vacuum_field_rz(np.zeros_like(z), z, fixture)
-    bz = np.maximum(np.abs(field.bz), np.finfo(float).tiny)
-    radius = np.maximum(np.sqrt(2.0 * float(psi_value) / bz), float(radius_floor))
-    xi = 2.0 * (z - z[0]) / (z[-1] - z[0]) - 1.0
-    return MirrorBoundary.tabulated_radius(xi, radius)
+    return mirror_boundary_from_on_axis_bz(psi_value, z, field.bz, radius_floor=radius_floor)

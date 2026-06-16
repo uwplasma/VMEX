@@ -2649,3 +2649,47 @@ This assessment was added after reviewing the first nonaxisymmetric fixed-bounda
 - Add regression tests for end-stronger-than-center field strength in mirror-like fixed-boundary cases.
 - Promote theta-symmetry tests for axisymmetric mirror cases into the M9/M11 validation lane.
 - Treat DESC as a boundary-condition reference for explicit fixed-surface constraints, while keeping vmec_jax mirror cap conditions mirror-native.
+
+---
+
+## 32. 2026-06-16 analytic two-coil benchmark lane
+
+The next step from scaffolds toward research-grade solves is to add analytic gates before adding more optimizer complexity.
+
+### Analytic reference
+
+- Use the closed-form on-axis magnetic field of a circular current loop:
+  `B_z(z) = mu0 I R^2 / (2 (R^2 + (z - z0)^2)^(3/2))`.
+- Use two equal circular coils centered at `z = +/- L/2` as the first mirror benchmark.
+- The analytic field should be used to build a fixed near-axis flux-tube boundary with `r_b(z) = sqrt(2 psi / |B_z(z)|)`.
+- With `I' = 0`, `lambda = 0`, and the self-similar axisymmetric state `r = sqrt(s) r_b(z)`, the mirror field on axis should reproduce the analytic `B_z(z)` to roundoff.
+
+### What this validates now
+
+- fixed-boundary flux normalization;
+- axis regularity for the stored `a(s,z)` representation;
+- mirror ratio and cap/center field trend;
+- root example plotting, including coil location, flux tube, `|B|`, field lines, and residual/step history.
+
+### What this does not validate yet
+
+- finite-radius off-axis Biot-Savart field matching;
+- free-boundary coil-plasma coupling;
+- anisotropic finite-beta mirror equilibrium;
+- VMEC-like `fsq` force convergence.
+
+### Required code gates
+
+- generic circular-loop on-axis helpers independent of the WHAM fixture;
+- two-coil fixed-boundary example in the repo-root `examples/` folder;
+- test comparing the helper to the full circular-loop on-axis branch;
+- test comparing mirror on-axis `B_z` to the analytic two-coil `B_z`;
+- plots and JSON metrics reporting analytic mirror ratio, mirror output mirror ratio, relative on-axis error, final residual, energy, and minimum Jacobian.
+
+### Next solve-quality steps
+
+- Add a true mirror `fsq` diagnostic rather than overinterpreting the current projected residual norm.
+- Add a normalized force metric that separates boundary-constrained degrees of freedom from free interior degrees of freedom.
+- Add off-axis low-radius comparisons against circular-loop Biot-Savart fields to test `B_r` and radial variation.
+- Add convergence studies in `ns` and `nxi` for the analytic two-coil boundary.
+- Only after those gates pass, promote higher-beta scalar-pressure and then anisotropic mirror solve benchmarks.
