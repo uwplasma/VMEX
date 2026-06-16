@@ -322,6 +322,7 @@ from vmec_jax.solvers.fixed_boundary.scan.output import (
 )
 from vmec_jax.solvers.fixed_boundary.scan.payload import (
     build_current_preconditioned_scan_payload as _build_current_preconditioned_scan_payload,
+    build_initial_preconditioner_cache as _build_initial_preconditioner_cache,
     build_restart_preconditioned_scan_payload as _build_restart_preconditioned_scan_payload,
     build_scan_step_fields as _build_scan_step_fields,
     mask_scan_restart_force_payload as _mask_scan_restart_force_payload,  # noqa: F401 - re-exported for internal tests/importers.
@@ -2510,78 +2511,36 @@ def solve_fixed_boundary_residual_iter(
         # Axis reset handled before scan; avoid per-iteration callbacks.
         axis_reset_enabled = False
         scan_run_setup_start = time.perf_counter() if scan_timing_enabled else None
-        cache_valid0 = jnp.asarray(False)
-        if constraint_tcon0 is None or float(constraint_tcon0) == 0.0:
-            cache_precond_diag0 = zero_precond_diag
-            cache_tcon0 = zero_tcon
-        else:
-            from vmec_jax.vmec_constraints import precondn_diag_axd1_from_bcovar
-
-            ard1_0, azd1_0 = precondn_diag_axd1_from_bcovar(
-                trig=trig,
-                s=s,
-                bsq=k0.bc.bsq,
-                r12=k0.bc.jac.r12,
-                sqrtg=k0.bc.jac.sqrtg,
-                ru12=k0.bc.jac.ru12,
-                zu12=k0.bc.jac.zu12,
-            )
-            cache_precond_diag0 = (ard1_0, azd1_0)
-            cache_tcon0 = jnp.asarray(k0.tcon)
-        cache_norms0 = norms0
-        cache_rz_scale0 = rz_scale0
-        cache_l_scale0 = l_scale0
-        cache_rz_norm0 = _rz_norm(state_init)
-        cache_f_norm1_0 = jnp.where(cache_rz_norm0 != 0.0, 1.0 / cache_rz_norm0, jnp.asarray(float("inf"), dtype=dtype))
-        from vmec_jax.preconditioner_1d_jax import rz_preconditioner_matrices
-
-        cache_lam_prec0 = _lambda_preconditioner(k0.bc)
-        cache_rz_mats0, _jmin0, jmax0 = rz_preconditioner_matrices(
-            bc=k0.bc,
+        initial_cache = _build_initial_preconditioner_cache(
+            state_init=state_init,
             k=k0,
+            norms=norms0,
+            rz_scale=rz_scale0,
+            l_scale=l_scale0,
+            constraint_tcon0=constraint_tcon0,
+            zero_precond_diag=zero_precond_diag,
+            zero_tcon=zero_tcon,
             trig=trig,
             s=s,
             cfg=cfg,
-            use_precomputed=bool(scan_use_precomputed),
-            use_lax_tridi=bool(scan_use_lax_tridi),
+            dtype=dtype,
+            scan_use_precomputed=bool(scan_use_precomputed),
+            scan_use_lax_tridi=bool(scan_use_lax_tridi),
+            lambda_preconditioner_func=_lambda_preconditioner,
+            rz_norm_func=_rz_norm,
+            resume_state=resume_state,
         )
-        # `rz_preconditioner_matrices` is JIT-compiled, so the returned jmax
-        # may be a tracer when the scan solve is differentiated.  For fixed
-        # grids this value is purely shape-derived.
-        jmax0 = max(int(jnp.asarray(s).shape[0]) - 1, 1)
-        cache_valid0 = jnp.asarray(True)
-
-        if resume_state is not None:
-            try:
-                cache_valid0 = jnp.asarray(
-                    bool(resume_state.get("vmec2000_cache_valid", bool(cache_valid0))), dtype=bool
-                )
-            except Exception:
-                cache_valid0 = jnp.asarray(cache_valid0, dtype=bool)
-            if "cache_precond_diag" in resume_state:
-                cache_precond_diag0 = resume_state.get("cache_precond_diag", cache_precond_diag0)
-            if "cache_tcon" in resume_state:
-                cache_tcon0 = resume_state.get("cache_tcon", cache_tcon0)
-            if "cache_norms" in resume_state:
-                cache_norms0 = resume_state.get("cache_norms", cache_norms0)
-            if "cache_rz_scale" in resume_state:
-                cache_rz_scale0 = resume_state.get("cache_rz_scale", cache_rz_scale0)
-            if "cache_l_scale" in resume_state:
-                cache_l_scale0 = resume_state.get("cache_l_scale", cache_l_scale0)
-            if "cache_rz_norm" in resume_state:
-                try:
-                    cache_rz_norm0 = jnp.asarray(resume_state.get("cache_rz_norm", cache_rz_norm0), dtype=dtype)
-                except Exception:
-                    pass
-            if "cache_f_norm1" in resume_state:
-                try:
-                    cache_f_norm1_0 = jnp.asarray(resume_state.get("cache_f_norm1", cache_f_norm1_0), dtype=dtype)
-                except Exception:
-                    pass
-            if "cache_prec_rz_mats" in resume_state:
-                cache_rz_mats0 = resume_state.get("cache_prec_rz_mats", cache_rz_mats0)
-            if "cache_prec_lam_prec" in resume_state:
-                cache_lam_prec0 = resume_state.get("cache_prec_lam_prec", cache_lam_prec0)
+        cache_precond_diag0 = initial_cache.precond_diag
+        cache_tcon0 = initial_cache.tcon
+        cache_norms0 = initial_cache.norms
+        cache_rz_scale0 = initial_cache.rz_scale
+        cache_l_scale0 = initial_cache.l_scale
+        cache_rz_norm0 = initial_cache.rz_norm
+        cache_f_norm1_0 = initial_cache.f_norm1
+        cache_lam_prec0 = initial_cache.lam_prec
+        cache_rz_mats0 = initial_cache.rz_mats
+        jmax0 = initial_cache.jmax
+        cache_valid0 = initial_cache.valid
 
         def _tree_select(cond, t_true, t_false):
             if t_true is None or t_false is None:
