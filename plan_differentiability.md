@@ -4088,3 +4088,64 @@ Completion:
 - WOUT diagnostic/profile decomposition: 94%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 98.8%.
+
+## 2026-06-16 Driver Presentation Helper Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved VMEC-style fixed-boundary intro/header/summary printing out of
+   `run_fixed_boundary` and into the existing `vmec_jax.drivers.io` domain
+   helper module.
+2. Kept all solver routing, multigrid staging, scan selection, restart,
+   finisher, and adaptive branch semantics unchanged.
+3. Added direct tests for:
+   - concise vmec_jax fixed-boundary intro printing,
+   - deterministic VMEC2000-style header text,
+   - VMEC2000-style final summary for non-converged budget exhaustion.
+4. Re-ran driver policy and driver API tests.
+
+Results obtained:
+
+- `run_fixed_boundary` dropped from 2,098 to 2,063 lines in the source-health
+  report.
+- Driver presentation text is now centralized in `vmec_jax.drivers.io`, making
+  future CLI/pedagogical output changes lower risk and easier to test.
+- No adaptive or solver branch-selection code was moved.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers/io.py tests/test_driver_policy_helpers.py`
+- `python -m compileall -q vmec_jax/driver.py vmec_jax/drivers/io.py tests/test_driver_policy_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_wave4_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_api.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 12`
+
+Best next steps:
+
+1. Let CI validate the WOUT and driver presentation tranches together.
+2. Continue source-health reduction with either:
+   - a small driver setup/context extraction that leaves control branches
+     untouched, or
+   - WOUT diagnostic/Nyquist helper extraction if focused parity tests remain
+     cheap.
+3. Do not claim arbitrary adaptive full-loop differentiability until the
+   fingerprint-gated full adaptive AD-vs-central-FD gate exists.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.55%.
+- Differentiability/refactor implementation: 99.91%.
+- Solver monolith reduction: 88.5%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 85%.
+- WOUT diagnostic/profile decomposition: 94%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 98.82%.
