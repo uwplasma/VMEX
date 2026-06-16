@@ -3,11 +3,13 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from vmec_jax.solvers.fixed_boundary.scan.payload import (
     ScanForceBlocks,
     ScanForcePayload,
     ScanStepFields,
+    build_current_preconditioned_scan_payload,
     build_scan_force_payload,
     current_scan_payload,
     mask_scan_restart_force_payload,
@@ -222,6 +224,136 @@ def test_scan_payload_wrappers_include_nonzero_flcs_in_lambda_metric():
     expected_fsql1 = (np.sum(np.full((2, 2, 2), 10.0) ** 2) + np.sum(np.full((2, 2, 2), 12.0) ** 2)) * 0.25
     np.testing.assert_allclose(np.asarray(current.fsql1), expected_fsql1)
     np.testing.assert_allclose(np.asarray(restart.fsql1), expected_fsql1)
+
+
+def test_build_current_preconditioned_scan_payload_keeps_valid_cache(monkeypatch):
+    import vmec_jax.preconditioner_1d_jax as precond_module
+
+    monkeypatch.setattr(
+        precond_module,
+        "rz_preconditioner_apply",
+        lambda *, frzl_in, mats, jmax, cfg, use_precomputed, use_lax_tridi: frzl_in,
+    )
+    carry = SimpleNamespace(
+        state="state",
+        cache_precond_diag=("cached-diag",),
+        cache_tcon=np.asarray([0.1]),
+        cache_norms="cached-norms",
+        cache_rz_scale="cached-rz-scale",
+        cache_l_scale="cached-l-scale",
+        cache_rz_norm=np.asarray(4.0),
+        cache_f_norm1=np.asarray(0.25),
+        cache_prec_lam_prec=np.asarray(2.0),
+        cache_prec_rz_mats="cached-mats",
+        cache_valid=True,
+    )
+    payload = build_current_preconditioned_scan_payload(
+        need_bcovar_update=False,
+        carry_adv=carry,
+        k=SimpleNamespace(bc=object()),
+        frzl=_frzl(1.0),
+        norms_used=SimpleNamespace(),
+        rz_scale="new-rz-scale",
+        l_scale="new-l-scale",
+        constraint_tcon0=0.0,
+        zero_precond_diag=("zero",),
+        zero_tcon=np.asarray([0.0]),
+        trig=object(),
+        s=np.linspace(0.0, 1.0, 3),
+        cfg=SimpleNamespace(lconm1=True),
+        dtype=float,
+        scan_use_precomputed=False,
+        scan_use_lax_tridi=False,
+        lambda_preconditioner_func=lambda _bc: pytest.fail("valid cache should not refresh lambda preconditioner"),
+        rz_norm_func=lambda state: np.asarray(99.0) if state == "state" else pytest.fail("wrong state"),
+        scale_m1_precond_rhs_func=lambda frzl, _mats: frzl,
+        w_mode_mn=np.full((2, 2), 3.0),
+        lambda_update_scale_j=np.asarray(1.0),
+        apply_lambda_update_scale=False,
+        fsqr=1.0,
+        fsqz=2.0,
+        fsql=3.0,
+        delta_s=0.25,
+        jmax0=2,
+        cond=_fake_cond,
+    )
+
+    assert payload.cache_precond_diag == ("cached-diag",)
+    assert payload.cache_norms == "cached-norms"
+    assert payload.cache_rz_mats == "cached-mats"
+    assert bool(np.asarray(payload.cache_valid))
+    np.testing.assert_allclose(np.asarray(payload.cache_f_norm1), 0.25)
+
+
+def test_build_current_preconditioned_scan_payload_refreshes_cache(monkeypatch):
+    import vmec_jax.preconditioner_1d_jax as precond_module
+
+    matrix_calls = []
+    monkeypatch.setattr(
+        precond_module,
+        "rz_preconditioner_matrices",
+        lambda **kwargs: matrix_calls.append(kwargs) or ("fresh-mats", 0, 2),
+    )
+    monkeypatch.setattr(
+        precond_module,
+        "rz_preconditioner_apply",
+        lambda *, frzl_in, mats, jmax, cfg, use_precomputed, use_lax_tridi: frzl_in,
+    )
+    carry = SimpleNamespace(
+        state="state",
+        cache_precond_diag=("old",),
+        cache_tcon=np.asarray([0.1]),
+        cache_norms="old-norms",
+        cache_rz_scale="old-rz-scale",
+        cache_l_scale="old-l-scale",
+        cache_rz_norm=np.asarray(9.0),
+        cache_f_norm1=np.asarray(1.0 / 9.0),
+        cache_prec_lam_prec=np.asarray(1.0),
+        cache_prec_rz_mats="old-mats",
+        cache_valid=False,
+    )
+    norms = SimpleNamespace(tag="fresh")
+    payload = build_current_preconditioned_scan_payload(
+        need_bcovar_update=True,
+        carry_adv=carry,
+        k=SimpleNamespace(bc="bc"),
+        frzl=_frzl(1.0),
+        norms_used=norms,
+        rz_scale="fresh-rz-scale",
+        l_scale="fresh-l-scale",
+        constraint_tcon0=0.0,
+        zero_precond_diag=("zero",),
+        zero_tcon=np.asarray([0.0]),
+        trig="trig",
+        s=np.linspace(0.0, 1.0, 3),
+        cfg=SimpleNamespace(lconm1=True),
+        dtype=float,
+        scan_use_precomputed=True,
+        scan_use_lax_tridi=True,
+        lambda_preconditioner_func=lambda bc: np.asarray(2.0) if bc == "bc" else pytest.fail("wrong bc"),
+        rz_norm_func=lambda state: np.asarray(4.0) if state == "state" else pytest.fail("wrong state"),
+        scale_m1_precond_rhs_func=lambda frzl, _mats: frzl,
+        w_mode_mn=np.full((2, 2), 3.0),
+        lambda_update_scale_j=np.asarray(1.0),
+        apply_lambda_update_scale=False,
+        fsqr=1.0,
+        fsqz=2.0,
+        fsql=3.0,
+        delta_s=0.25,
+        jmax0=2,
+        cond=_fake_cond,
+    )
+
+    assert payload.cache_precond_diag == ("zero",)
+    assert payload.cache_norms is norms
+    assert payload.cache_rz_scale == "fresh-rz-scale"
+    assert payload.cache_l_scale == "fresh-l-scale"
+    assert payload.cache_rz_mats == "fresh-mats"
+    assert bool(np.asarray(payload.cache_valid))
+    np.testing.assert_allclose(np.asarray(payload.cache_f_norm1), 0.25)
+    assert matrix_calls[0]["bc"] == "bc"
+    assert matrix_calls[0]["use_precomputed"] is True
+    assert matrix_calls[0]["use_lax_tridi"] is True
 
 
 def test_select_scan_force_payload_restart_and_no_restart_paths():

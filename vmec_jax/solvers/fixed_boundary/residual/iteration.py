@@ -320,7 +320,7 @@ from vmec_jax.solvers.fixed_boundary.scan.output import (
 )
 from vmec_jax.solvers.fixed_boundary.scan.payload import (
     ScanStepFields as _ScanStepFields,
-    current_scan_payload as _current_scan_payload,
+    build_current_preconditioned_scan_payload as _build_current_preconditioned_scan_payload,
     mask_scan_restart_force_payload as _mask_scan_restart_force_payload,  # noqa: F401 - re-exported for internal tests/importers.
     restart_scan_payload as _restart_scan_payload,
     select_scan_force_payload as _select_scan_force_payload,
@@ -2751,125 +2751,46 @@ def solve_fixed_boundary_residual_iter(
 
                 r00_j, z00_j, w_mhd = jax.lax.cond(sample_vmec, _compute_scalars, _reuse_scalars, operand=None)
 
-                def _refresh_cache(_):
-                    if constraint_tcon0 is None or float(constraint_tcon0) == 0.0:
-                        cache_precond_diag = zero_precond_diag
-                        cache_tcon = zero_tcon
-                    else:
-                        from vmec_jax.vmec_constraints import precondn_diag_axd1_from_bcovar
-
-                        ard1, azd1 = precondn_diag_axd1_from_bcovar(
-                            trig=trig,
-                            s=s,
-                            bsq=k.bc.bsq,
-                            r12=k.bc.jac.r12,
-                            sqrtg=k.bc.jac.sqrtg,
-                            ru12=k.bc.jac.ru12,
-                            zu12=k.bc.jac.zu12,
-                        )
-                        cache_precond_diag = (ard1, azd1)
-                        cache_tcon = jnp.asarray(k.tcon)
-                    cache_norms = norms_used
-                    cache_rz_scale = rz_scale
-                    cache_l_scale = l_scale
-                    cache_rz_norm = _rz_norm(carry_adv.state)
-                    cache_f_norm1 = jnp.where(
-                        cache_rz_norm != 0.0, 1.0 / cache_rz_norm, jnp.asarray(float("inf"), dtype=dtype)
-                    )
-                    from vmec_jax.preconditioner_1d_jax import rz_preconditioner_matrices
-
-                    cache_lam_prec = _lambda_preconditioner(k.bc)
-                    mats, _jmin, jmax = rz_preconditioner_matrices(
-                        bc=k.bc,
-                        k=k,
-                        trig=trig,
-                        s=s,
-                        cfg=cfg,
-                        use_precomputed=bool(scan_use_precomputed),
-                        use_lax_tridi=bool(scan_use_lax_tridi),
-                    )
-                    # jmax is constant for fixed ns; reuse the static jmax0
-                    return (
-                        cache_precond_diag,
-                        cache_tcon,
-                        cache_norms,
-                        cache_rz_scale,
-                        cache_l_scale,
-                        cache_rz_norm,
-                        cache_f_norm1,
-                        cache_lam_prec,
-                        mats,
-                        jnp.asarray(True),
-                    )
-
-                def _keep_cache(_):
-                    return (
-                        carry_adv.cache_precond_diag,
-                        carry_adv.cache_tcon,
-                        carry_adv.cache_norms,
-                        carry_adv.cache_rz_scale,
-                        carry_adv.cache_l_scale,
-                        carry_adv.cache_rz_norm,
-                        carry_adv.cache_f_norm1,
-                        carry_adv.cache_prec_lam_prec,
-                        carry_adv.cache_prec_rz_mats,
-                        carry_adv.cache_valid,
-                    )
-
-                (
-                    cache_precond_diag,
-                    cache_tcon,
-                    cache_norms,
-                    cache_rz_scale,
-                    cache_l_scale,
-                    cache_rz_norm,
-                    cache_f_norm1,
-                    cache_lam_prec,
-                    cache_rz_mats,
-                    cache_valid,
-                ) = jax.lax.cond(need_bcovar_update, _refresh_cache, _keep_cache, operand=None)
-
-                frzl_rhs = _scale_m1_precond_rhs(frzl, cache_rz_mats)
-                from vmec_jax.preconditioner_1d_jax import rz_preconditioner_apply
-
-                frzl_rz = rz_preconditioner_apply(
-                    frzl_in=frzl_rhs,
-                    mats=cache_rz_mats,
-                    jmax=jmax0,
+                current_payload_pre = _build_current_preconditioned_scan_payload(
+                    need_bcovar_update=need_bcovar_update,
+                    carry_adv=carry_adv,
+                    k=k,
+                    frzl=frzl,
+                    norms_used=norms_used,
+                    rz_scale=rz_scale,
+                    l_scale=l_scale,
+                    constraint_tcon0=constraint_tcon0,
+                    zero_precond_diag=zero_precond_diag,
+                    zero_tcon=zero_tcon,
+                    trig=trig,
+                    s=s,
                     cfg=cfg,
-                    use_precomputed=bool(scan_use_precomputed),
-                    use_lax_tridi=bool(scan_use_lax_tridi),
-                )
-                rz_norm = jnp.where(cache_valid, cache_rz_norm, _rz_norm(carry_adv.state))
-                f_norm1 = jnp.where(
-                    cache_valid,
-                    cache_f_norm1,
-                    jnp.where(rz_norm != 0.0, 1.0 / rz_norm, jnp.asarray(float("inf"), dtype=dtype)),
-                )
-                current_payload_pre = _current_scan_payload(
-                    frzl_rz=frzl_rz,
-                    cache_lam_prec=cache_lam_prec,
+                    dtype=dtype,
+                    scan_use_precomputed=bool(scan_use_precomputed),
+                    scan_use_lax_tridi=bool(scan_use_lax_tridi),
+                    lambda_preconditioner_func=_lambda_preconditioner,
+                    rz_norm_func=_rz_norm,
+                    scale_m1_precond_rhs_func=_scale_m1_precond_rhs,
                     w_mode_mn=w_mode_mn,
                     lambda_update_scale_j=lambda_update_scale_j,
                     apply_lambda_update_scale=(lambda_update_scale != 1.0),
                     fsqr=fsqr,
                     fsqz=fsqz,
                     fsql=fsql,
-                    f_norm1=f_norm1,
                     delta_s=delta_s,
-                    s=s,
-                    lconm1=bool(getattr(static.cfg, "lconm1", True)),
-                    cache_precond_diag=cache_precond_diag,
-                    cache_tcon=cache_tcon,
-                    cache_norms=cache_norms,
-                    cache_rz_scale=cache_rz_scale,
-                    cache_l_scale=cache_l_scale,
-                    cache_rz_norm=cache_rz_norm,
-                    cache_f_norm1=cache_f_norm1,
-                    cache_rz_mats=cache_rz_mats,
-                    cache_valid=cache_valid,
-                    lambda_fsq1_optional_source=frzl,
+                    jmax0=jmax0,
+                    cond=jax.lax.cond,
                 )
+                cache_precond_diag = current_payload_pre.cache_precond_diag
+                cache_tcon = current_payload_pre.cache_tcon
+                cache_norms = current_payload_pre.cache_norms
+                cache_rz_scale = current_payload_pre.cache_rz_scale
+                cache_l_scale = current_payload_pre.cache_l_scale
+                cache_rz_norm = current_payload_pre.cache_rz_norm
+                cache_f_norm1 = current_payload_pre.cache_f_norm1
+                cache_lam_prec = current_payload_pre.cache_lam_prec
+                cache_rz_mats = current_payload_pre.cache_rz_mats
+                cache_valid = current_payload_pre.cache_valid
                 (
                     frcc_u,
                     frss_u,

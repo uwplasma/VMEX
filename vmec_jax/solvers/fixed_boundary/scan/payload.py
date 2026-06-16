@@ -255,6 +255,161 @@ def build_scan_force_payload(
     )
 
 
+def build_current_preconditioned_scan_payload(
+    *,
+    need_bcovar_update: Any,
+    carry_adv: Any,
+    k: Any,
+    frzl: TomnspsRZL,
+    norms_used: Any,
+    rz_scale: Any,
+    l_scale: Any,
+    constraint_tcon0: Any,
+    zero_precond_diag: Any,
+    zero_tcon: Any,
+    trig: Any,
+    s: Any,
+    cfg: Any,
+    dtype: Any,
+    scan_use_precomputed: bool,
+    scan_use_lax_tridi: bool,
+    lambda_preconditioner_func: Callable[[Any], Any],
+    rz_norm_func: Callable[[Any], Any],
+    scale_m1_precond_rhs_func: Callable[[TomnspsRZL, Any], TomnspsRZL],
+    w_mode_mn: Any,
+    lambda_update_scale_j: Any,
+    apply_lambda_update_scale: bool,
+    fsqr: Any,
+    fsqz: Any,
+    fsql: Any,
+    delta_s: Any,
+    jmax0: Any,
+    cond: Callable[..., Any],
+) -> ScanForcePayload:
+    """Build the current scan force payload and its refreshed cache fields."""
+
+    def _refresh_cache(_):
+        if constraint_tcon0 is None or float(constraint_tcon0) == 0.0:
+            cache_precond_diag = zero_precond_diag
+            cache_tcon = zero_tcon
+        else:
+            from vmec_jax.vmec_constraints import precondn_diag_axd1_from_bcovar
+
+            ard1, azd1 = precondn_diag_axd1_from_bcovar(
+                trig=trig,
+                s=s,
+                bsq=k.bc.bsq,
+                r12=k.bc.jac.r12,
+                sqrtg=k.bc.jac.sqrtg,
+                ru12=k.bc.jac.ru12,
+                zu12=k.bc.jac.zu12,
+            )
+            cache_precond_diag = (ard1, azd1)
+            cache_tcon = jnp.asarray(k.tcon)
+        cache_norms = norms_used
+        cache_rz_scale = rz_scale
+        cache_l_scale = l_scale
+        cache_rz_norm = rz_norm_func(carry_adv.state)
+        cache_f_norm1 = jnp.where(
+            cache_rz_norm != 0.0,
+            1.0 / cache_rz_norm,
+            jnp.asarray(float("inf"), dtype=dtype),
+        )
+        from vmec_jax.preconditioner_1d_jax import rz_preconditioner_matrices
+
+        cache_lam_prec = lambda_preconditioner_func(k.bc)
+        mats, _jmin, _jmax = rz_preconditioner_matrices(
+            bc=k.bc,
+            k=k,
+            trig=trig,
+            s=s,
+            cfg=cfg,
+            use_precomputed=bool(scan_use_precomputed),
+            use_lax_tridi=bool(scan_use_lax_tridi),
+        )
+        return (
+            cache_precond_diag,
+            cache_tcon,
+            cache_norms,
+            cache_rz_scale,
+            cache_l_scale,
+            cache_rz_norm,
+            cache_f_norm1,
+            cache_lam_prec,
+            mats,
+            jnp.asarray(True),
+        )
+
+    def _keep_cache(_):
+        return (
+            carry_adv.cache_precond_diag,
+            carry_adv.cache_tcon,
+            carry_adv.cache_norms,
+            carry_adv.cache_rz_scale,
+            carry_adv.cache_l_scale,
+            carry_adv.cache_rz_norm,
+            carry_adv.cache_f_norm1,
+            carry_adv.cache_prec_lam_prec,
+            carry_adv.cache_prec_rz_mats,
+            carry_adv.cache_valid,
+        )
+
+    (
+        cache_precond_diag,
+        cache_tcon,
+        cache_norms,
+        cache_rz_scale,
+        cache_l_scale,
+        cache_rz_norm,
+        cache_f_norm1,
+        cache_lam_prec,
+        cache_rz_mats,
+        cache_valid,
+    ) = cond(need_bcovar_update, _refresh_cache, _keep_cache, operand=None)
+
+    frzl_rhs = scale_m1_precond_rhs_func(frzl, cache_rz_mats)
+    from vmec_jax.preconditioner_1d_jax import rz_preconditioner_apply
+
+    frzl_rz = rz_preconditioner_apply(
+        frzl_in=frzl_rhs,
+        mats=cache_rz_mats,
+        jmax=jmax0,
+        cfg=cfg,
+        use_precomputed=bool(scan_use_precomputed),
+        use_lax_tridi=bool(scan_use_lax_tridi),
+    )
+    rz_norm = jnp.where(cache_valid, cache_rz_norm, rz_norm_func(carry_adv.state))
+    f_norm1 = jnp.where(
+        cache_valid,
+        cache_f_norm1,
+        jnp.where(rz_norm != 0.0, 1.0 / rz_norm, jnp.asarray(float("inf"), dtype=dtype)),
+    )
+    return current_scan_payload(
+        frzl_rz=frzl_rz,
+        cache_lam_prec=cache_lam_prec,
+        w_mode_mn=w_mode_mn,
+        lambda_update_scale_j=lambda_update_scale_j,
+        apply_lambda_update_scale=bool(apply_lambda_update_scale),
+        fsqr=fsqr,
+        fsqz=fsqz,
+        fsql=fsql,
+        f_norm1=f_norm1,
+        delta_s=delta_s,
+        s=s,
+        lconm1=bool(getattr(cfg, "lconm1", True)),
+        cache_precond_diag=cache_precond_diag,
+        cache_tcon=cache_tcon,
+        cache_norms=cache_norms,
+        cache_rz_scale=cache_rz_scale,
+        cache_l_scale=cache_l_scale,
+        cache_rz_norm=cache_rz_norm,
+        cache_f_norm1=cache_f_norm1,
+        cache_rz_mats=cache_rz_mats,
+        cache_valid=cache_valid,
+        lambda_fsq1_optional_source=frzl,
+    )
+
+
 def current_scan_payload(**kwargs: Any) -> ScanForcePayload:
     return build_scan_force_payload(**kwargs)
 
