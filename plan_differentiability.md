@@ -4863,3 +4863,63 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.17%.
+
+## 2026-06-16 Optimizer Cached-History Callback Consolidation
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `FixedBoundaryExactOptimizer._record_cached_exact_history_entry` to
+   centralize exact-cache history entry creation, best-exact-point tracking, and
+   rejected-history counting.
+2. Replaced three local `run()` closures with calls to the shared helper:
+   scalar trust, scalar L-BFGS, and SciPy matrix-free.
+3. Preserved the existing per-method behavior:
+   scalar methods still pass their scalar cost into history entries, while the
+   matrix-free least-squares path lets residual metadata determine cost.
+
+Results obtained:
+
+- `FixedBoundaryExactOptimizer.run` decreased from 989 to 927 lines.
+- Duplicated accepted-history bookkeeping now lives in one method, reducing the
+  risk that scalar and matrix-free optimizer paths diverge in future edits.
+- No public API change and no numerical path change.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization.py tests/test_optimization_helpers.py tests/test_optimization_examples.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_helpers.py tests/test_optimization_examples.py -q`
+- `python -m ruff check tests/test_optimization_auto_scalar_policy.py tests/test_optimization_callback_trace.py tests/test_optimization_fast_optimizer_methods.py tests/test_continuation_exact_history.py tests/test_differentiation_optimization_api_fast.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_auto_scalar_policy.py tests/test_optimization_callback_trace.py tests/test_optimization_fast_optimizer_methods.py tests/test_continuation_exact_history.py tests/test_differentiation_optimization_api_fast.py -q`
+- `python -m compileall -q vmec_jax/optimization.py`
+- `python tools/diagnostics/source_health.py --top 16 --top-functions 24`
+- `git diff --check`
+
+Best next steps:
+
+1. Commit and push this optimizer bookkeeping refactor.
+2. Monitor CI for the newest branch run.
+3. Continue optimizer decomposition only through similarly duplicated local
+   helpers or passive result assembly. Defer deeper scalar-trust loop extraction
+   until it can be moved into a small solver object with dedicated method-level
+   regression tests.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.67%.
+- Differentiability/refactor implementation: 99.980%.
+- Solver monolith reduction: 88.7%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 91%.
+- WOUT diagnostic/profile decomposition: 98.0%.
+- Optimizer workflow decomposition: 84%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.18%.
