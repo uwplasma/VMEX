@@ -6,7 +6,9 @@ import numpy as np
 
 from vmec_jax._compat import jnp
 from vmec_jax.solvers.fixed_boundary.preconditioning.operators import (
+    LambdaPreconditionerOutputs,
     PreconditionerCacheDecision,
+    lambda_preconditioner_outputs,
     metric_surface_precond_from_bcovar_jax,
     metric_surface_precond_from_bcovar_np,
     metric_surface_precond_scales_jax,
@@ -205,3 +207,33 @@ def test_resolve_preconditioner_cache_decision_distinguishes_reassemble_from_ref
     )
     assert refresh.need_prec_reassemble is False
     assert refresh.need_prec_refresh is True
+
+
+def test_lambda_preconditioner_outputs_requests_only_needed_payloads() -> None:
+    calls = []
+
+    def fake_lambda_preconditioner(_bc, *, return_faclam=False, return_debug=False):
+        calls.append((bool(return_faclam), bool(return_debug)))
+        if return_faclam and return_debug:
+            return "lam", "faclam", "debug"
+        if return_debug:
+            return "lam", "debug"
+        if return_faclam:
+            return "lam", "faclam"
+        return "lam"
+
+    cases = [
+        (False, False, LambdaPreconditionerOutputs("lam", None, None), (False, False)),
+        (True, False, LambdaPreconditionerOutputs("lam", "faclam", None), (True, False)),
+        (False, True, LambdaPreconditionerOutputs("lam", None, "debug"), (False, True)),
+        (True, True, LambdaPreconditionerOutputs("lam", "faclam", "debug"), (True, True)),
+    ]
+    for need_lam_prec, need_lamcal, expected, expected_call in cases:
+        got = lambda_preconditioner_outputs(
+            object(),
+            need_lam_prec=need_lam_prec,
+            need_lamcal=need_lamcal,
+            lambda_preconditioner_func=fake_lambda_preconditioner,
+        )
+        assert got == expected
+        assert calls[-1] == expected_call

@@ -45,6 +45,48 @@ class PreconditionerCacheDecision(NamedTuple):
     need_prec_refresh: bool
 
 
+class LambdaPreconditionerOutputs(NamedTuple):
+    """Resolved lambda-preconditioner payload for optional debug dumps."""
+
+    lam_prec: Any
+    faclam_dump: Any | None
+    lam_debug: Any | None
+
+
+def lambda_preconditioner_outputs(
+    bc: Any,
+    *,
+    need_lam_prec: bool,
+    need_lamcal: bool,
+    lambda_preconditioner_func: Callable[..., Any],
+) -> LambdaPreconditionerOutputs:
+    """Call the lambda preconditioner with the dump payloads actually needed."""
+
+    if bool(need_lamcal):
+        if bool(need_lam_prec):
+            lam_prec, faclam_dump, lam_debug = lambda_preconditioner_func(
+                bc,
+                return_faclam=True,
+                return_debug=True,
+            )
+        else:
+            lam_prec, lam_debug = lambda_preconditioner_func(bc, return_debug=True)
+            faclam_dump = None
+    else:
+        if bool(need_lam_prec):
+            lam_prec, faclam_dump = lambda_preconditioner_func(bc, return_faclam=True)
+        else:
+            lam_prec = lambda_preconditioner_func(bc)
+            faclam_dump = None
+        lam_debug = None
+
+    return LambdaPreconditionerOutputs(
+        lam_prec=lam_prec,
+        faclam_dump=faclam_dump,
+        lam_debug=lam_debug,
+    )
+
+
 def resolve_preconditioner_cache_decision(
     *,
     precond_traced: bool,
