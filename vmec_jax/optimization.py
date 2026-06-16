@@ -4540,6 +4540,43 @@ class FixedBoundaryExactOptimizer:
         self._remember_best_exact_point(params0_arr, res0, cost0, state=state0)
         return res0, state0, entry0, cost0, qs_total0, aspect0
 
+    def _record_cached_exact_history_entry(
+        self,
+        params,
+        *,
+        last_history_key: list,
+        cost: float | None = None,
+    ) -> bool:
+        """Append history from an exact cached state when this is a new accepted point."""
+
+        key = self._exact_cache_key(params)
+        if key == last_history_key[0] or key not in self._exact_cache:
+            return False
+        cached_state, _ = self._exact_cache[key]
+        exact_residual = self._cached_exact_residual(cache_key=key)
+        kwargs = {
+            "wall_time_s": time.perf_counter() - self._wall_t0,
+            "cache_key": key,
+        }
+        if cost is not None:
+            kwargs["cost"] = float(cost)
+        entry = self._history_entry_from_state_or_residual(
+            cached_state,
+            exact_residual,
+            **kwargs,
+        )
+        entry_cost = float(entry["cost"])
+        if self._exact_history_accepts(entry_cost):
+            self._history.append(entry)
+            if exact_residual is None:
+                exact_residual = self._cached_exact_residual(cache_key=key)
+            if exact_residual is not None:
+                self._remember_best_exact_point(params, exact_residual, entry_cost, state=cached_state)
+            last_history_key[0] = key
+            return True
+        self._exact_history_rejected_count += 1
+        return False
+
     # ── main entry point ──────────────────────────────────────────────────────
 
     def run(
@@ -4717,28 +4754,7 @@ class FixedBoundaryExactOptimizer:
             }
 
             def _record_history_from_cached_state(x, cost):
-                key = self._exact_cache_key(x)
-                if key == last_history_key[0] or key not in self._exact_cache:
-                    return
-                cached_state, _ = self._exact_cache[key]
-                exact_residual = self._cached_exact_residual(cache_key=key)
-                entry = self._history_entry_from_state_or_residual(
-                    cached_state,
-                    exact_residual,
-                    wall_time_s=time.perf_counter() - self._wall_t0,
-                    cost=float(cost),
-                    cache_key=key,
-                )
-                entry_cost = float(entry["cost"])
-                if self._exact_history_accepts(entry_cost):
-                    self._history.append(entry)
-                    if exact_residual is None:
-                        exact_residual = self._cached_exact_residual(cache_key=key)
-                    if exact_residual is not None:
-                        self._remember_best_exact_point(x, exact_residual, entry_cost, state=cached_state)
-                    last_history_key[0] = key
-                else:
-                    self._exact_history_rejected_count += 1
+                self._record_cached_exact_history_entry(x, last_history_key=last_history_key, cost=float(cost))
 
             def _evaluate_y(y):
                 nonlocal eval_count
@@ -4973,28 +4989,7 @@ class FixedBoundaryExactOptimizer:
                 pass
 
             def _record_history_from_cached_state(x, cost):
-                key = self._exact_cache_key(x)
-                if key == last_history_key[0] or key not in self._exact_cache:
-                    return
-                cached_state, _ = self._exact_cache[key]
-                exact_residual = self._cached_exact_residual(cache_key=key)
-                entry = self._history_entry_from_state_or_residual(
-                    cached_state,
-                    exact_residual,
-                    wall_time_s=time.perf_counter() - self._wall_t0,
-                    cost=float(cost),
-                    cache_key=key,
-                )
-                entry_cost = float(entry["cost"])
-                if self._exact_history_accepts(entry_cost):
-                    self._history.append(entry)
-                    if exact_residual is None:
-                        exact_residual = self._cached_exact_residual(cache_key=key)
-                    if exact_residual is not None:
-                        self._remember_best_exact_point(x, exact_residual, entry_cost, state=cached_state)
-                    last_history_key[0] = key
-                else:
-                    self._exact_history_rejected_count += 1
+                self._record_cached_exact_history_entry(x, last_history_key=last_history_key, cost=float(cost))
 
             def _objective_and_gradient_y(y):
                 if eval_count[0] >= max_scalar_evals:
@@ -5080,27 +5075,7 @@ class FixedBoundaryExactOptimizer:
             matrix_free_residual_size = [None]
 
             def _record_history_from_cached_state(x):
-                key = self._exact_cache_key(x)
-                if key == last_history_key[0] or key not in self._exact_cache:
-                    return
-                cached_state, _ = self._exact_cache[key]
-                exact_residual = self._cached_exact_residual(cache_key=key)
-                entry = self._history_entry_from_state_or_residual(
-                    cached_state,
-                    exact_residual,
-                    wall_time_s=time.perf_counter() - self._wall_t0,
-                    cache_key=key,
-                )
-                entry_cost = float(entry["cost"])
-                if self._exact_history_accepts(entry_cost):
-                    self._history.append(entry)
-                    if exact_residual is None:
-                        exact_residual = self._cached_exact_residual(cache_key=key)
-                    if exact_residual is not None:
-                        self._remember_best_exact_point(x, exact_residual, entry_cost, state=cached_state)
-                    last_history_key[0] = key
-                else:
-                    self._exact_history_rejected_count += 1
+                self._record_cached_exact_history_entry(x, last_history_key=last_history_key)
 
             def _residuals_y(y):
                 x = np.asarray(y, dtype=float) * scale - base_params
