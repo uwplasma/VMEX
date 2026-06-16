@@ -5101,3 +5101,62 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.21%.
+
+## 2026-06-16 Driver Stage-Array Helper Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_stage_array_list` as a top-level private driver helper for VMEC
+   multigrid stage arrays.
+2. Removed the local `_as_list` closure from `run_fixed_boundary`.
+3. Replaced all `NS_ARRAY`, `NITER_ARRAY`, and `FTOL_ARRAY` conversions inside
+   `run_fixed_boundary` with `_stage_array_list`.
+4. Kept the exact legacy conversion semantics instead of using the more
+   permissive policy helper, since the driver intentionally returns `None` for
+   unsupported values rather than treating arbitrary iterables as stage lists.
+
+Results obtained:
+
+- `run_fixed_boundary` decreased from 1828 to 1812 lines.
+- Stage-array parsing is now named and independently inspectable without
+  changing driver policy, CLI behavior, VMEC2000 compatibility, or adaptive
+  branch logic.
+- Source-health still identifies the same major hotspots, with no new module or
+  root namespace sprawl.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/driver.py tests/test_driver_policy_helpers.py tests/test_driver_api.py tests/test_driver_run_wave8_coverage.py`
+- `python -m compileall -q vmec_jax/driver.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_api.py tests/test_driver_run_wave8_coverage.py tests/test_driver_wave5_coverage.py tests/test_driver_wout_wave9_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 24 --top-functions 32`
+
+Best next steps:
+
+1. Commit and push the driver helper extraction.
+2. Continue driver cleanup only through passive helpers such as resume-state
+   sanitization or stage-header formatting, with focused driver tests after each
+   tranche.
+3. Defer adaptive branch/controller rewrites until a dedicated
+   fingerprint-gated AD-vs-FD validation tranche exists.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.67%.
+- Differentiability/refactor implementation: 99.984%.
+- Solver monolith reduction: 88.7%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 91.5%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.22%.
