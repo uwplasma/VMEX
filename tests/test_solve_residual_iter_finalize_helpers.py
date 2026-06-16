@@ -7,6 +7,8 @@ from vmec_jax.solvers.fixed_boundary.residual.finalize import (
     attach_residual_iter_timing_diagnostics,
     build_residual_iter_resume_state_payload,
     finalize_residual_iter_result,
+    vmec2000_state_only_scan_result,
+    vmec2000_traced_scan_result,
 )
 from vmec_jax.solvers.fixed_boundary.results import SolveVmecResidualResult
 
@@ -173,3 +175,66 @@ def test_finalize_residual_iter_result_attaches_free_boundary_and_force_payload(
     assert result.diagnostics["attached"] is True
     assert getattr(result, "_final_force_payload") is payload
     np.testing.assert_allclose(result.w_history, [0.0, 1.0, 2.0])
+
+
+def test_vmec2000_state_only_scan_result_builds_empty_history_result() -> None:
+    empty = np.asarray([], dtype=float)
+    carry = type("Carry", (), {"state": "state"})()
+
+    def attach(result):
+        result.diagnostics["attached"] = True
+        return result
+
+    result = vmec2000_state_only_scan_result(
+        result_type=SolveVmecResidualResult,
+        carry_final=carry,
+        empty_history=empty,
+        max_iter=7,
+        diagnostics={"state_only": True},
+        attach_free_boundary_diagnostics=attach,
+    )
+
+    assert result.state == "state"
+    assert result.n_iter == 7
+    assert result.diagnostics == {"state_only": True, "attached": True}
+    assert result.w_history is empty
+    assert result.fsqr2_history is empty
+    assert result.step_history is empty
+
+
+def test_vmec2000_traced_scan_result_builds_resume_diagnostics() -> None:
+    empty = np.asarray([], dtype=float)
+    carry = type("Carry", (), {"state": "traced-state"})()
+    resume_state = {"iter_offset": 3}
+    attach_calls = []
+
+    def attach(result):
+        attach_calls.append(result)
+        return result
+
+    def diagnostics_func(*, resume_state, scan_use_precomputed, scan_use_lax_tridi):
+        return {
+            "resume_state": resume_state,
+            "scan_use_precomputed": scan_use_precomputed,
+            "scan_use_lax_tridi": scan_use_lax_tridi,
+        }
+
+    result = vmec2000_traced_scan_result(
+        result_type=SolveVmecResidualResult,
+        carry_final=carry,
+        empty_history=empty,
+        max_iter=5,
+        resume_state=resume_state,
+        scan_use_precomputed=True,
+        scan_use_lax_tridi=False,
+        attach_free_boundary_diagnostics=attach,
+        traced_diagnostics_func=diagnostics_func,
+    )
+
+    assert attach_calls == [result]
+    assert result.state == "traced-state"
+    assert result.n_iter == 5
+    assert result.diagnostics["resume_state"] is resume_state
+    assert result.diagnostics["scan_use_precomputed"] is True
+    assert result.diagnostics["scan_use_lax_tridi"] is False
+    assert result.w_history is empty
