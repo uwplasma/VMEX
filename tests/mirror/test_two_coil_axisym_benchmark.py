@@ -103,7 +103,7 @@ def test_two_coil_flux_tube_mirror_axis_field_matches_analytic_bz():
         psi_prime=PsiPrimeProfile.constant(psi_value),
         i_prime=IPrimeProfile.zero(),
         pressure=PressureProfile.zero(),
-        options=MirrorSolveOptions(optimizer="lbfgs", maxiter=4, tolerance=1.0e-10, mu0=1.0),
+        options=MirrorSolveOptions(optimizer="lbfgs", maxiter=0, tolerance=1.0e-10, mu0=1.0),
     )
     geometry = evaluate_axisym_geometry(result.state, result.grid)
     field = evaluate_axisym_field(

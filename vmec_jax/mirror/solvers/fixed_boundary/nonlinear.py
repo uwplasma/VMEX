@@ -9,7 +9,7 @@ from ...core.grids import MirrorGrid
 from ...core.profiles import IPrimeProfile, PressureProfile, PsiPrimeProfile
 from ...core.state import MirrorState3D, MirrorStateAxisym
 from ...kernels.constraints import project_axisym_state, project_state_3d
-from .diagnostics import FixedBoundaryTraceRow, trace_row_from_state
+from .diagnostics import FixedBoundaryOptimizerSummary, FixedBoundaryTraceRow, trace_row_from_state
 from .optimizers import (
     OptimizerOptions,
     projected_gradient_step,
@@ -25,6 +25,52 @@ class FixedBoundaryStageResult:
 
     state: MirrorStateAxisym | MirrorState3D
     trace: tuple[FixedBoundaryTraceRow, ...]
+    optimizer_summary: FixedBoundaryOptimizerSummary | None = None
+
+
+def _summary_from_run(
+    run,
+    *,
+    options: OptimizerOptions,
+    stage_index: int,
+    pressure_scale: float,
+) -> FixedBoundaryOptimizerSummary:
+    return FixedBoundaryOptimizerSummary(
+        stage_index=int(stage_index),
+        pressure_scale=float(pressure_scale),
+        optimizer=str(options.optimizer),
+        success=bool(run.success),
+        status=int(run.status),
+        message=str(run.message),
+        nit=int(run.nit),
+        nfev=int(run.nfev),
+        njev=int(run.njev),
+        accepted=bool(run.accepted),
+    )
+
+
+def _summary_from_trace(
+    trace: tuple[FixedBoundaryTraceRow, ...],
+    *,
+    options: OptimizerOptions,
+    stage_index: int,
+    pressure_scale: float,
+) -> FixedBoundaryOptimizerSummary:
+    final = trace[-1] if trace else None
+    success = bool(final is not None and final.accepted and final.residual_norm <= options.tolerance)
+    message = "projected residual is below tolerance" if success else "iteration stopped before tolerance"
+    return FixedBoundaryOptimizerSummary(
+        stage_index=int(stage_index),
+        pressure_scale=float(pressure_scale),
+        optimizer=str(options.optimizer),
+        success=success,
+        status=0 if success else 1,
+        message=message,
+        nit=len(trace),
+        nfev=len(trace),
+        njev=len(trace),
+        accepted=bool(final is not None and final.accepted),
+    )
 
 
 def _stage_trace_row(
@@ -93,7 +139,16 @@ def _lbfgs_stage(
         )
         for iteration, step in enumerate(run.steps, start=1)
     ]
-    return FixedBoundaryStageResult(state=run.state, trace=tuple(trace))
+    return FixedBoundaryStageResult(
+        state=run.state,
+        trace=tuple(trace),
+        optimizer_summary=_summary_from_run(
+            run,
+            options=options,
+            stage_index=stage_index,
+            pressure_scale=pressure_scale,
+        ),
+    )
 
 
 def _gradient_descent_stage(
@@ -137,7 +192,17 @@ def _gradient_descent_stage(
         )
         if step.residual_norm <= options.tolerance or not step.accepted:
             break
-    return FixedBoundaryStageResult(state=state, trace=tuple(trace))
+    trace_tuple = tuple(trace)
+    return FixedBoundaryStageResult(
+        state=state,
+        trace=trace_tuple,
+        optimizer_summary=_summary_from_trace(
+            trace_tuple,
+            options=options,
+            stage_index=stage_index,
+            pressure_scale=pressure_scale,
+        ),
+    )
 
 
 def solve_axisym_fixed_boundary_stage(
@@ -198,7 +263,11 @@ def solve_axisym_fixed_boundary_stage(
             stage_index=stage_index,
             pressure_scale=pressure_scale,
         )
-    return FixedBoundaryStageResult(state=result.state, trace=initial_trace + result.trace)
+    return FixedBoundaryStageResult(
+        state=result.state,
+        trace=initial_trace + result.trace,
+        optimizer_summary=result.optimizer_summary,
+    )
 
 
 def _lbfgs_stage_3d(
@@ -238,7 +307,16 @@ def _lbfgs_stage_3d(
         )
         for iteration, step in enumerate(run.steps, start=1)
     ]
-    return FixedBoundaryStageResult(state=run.state, trace=tuple(trace))
+    return FixedBoundaryStageResult(
+        state=run.state,
+        trace=tuple(trace),
+        optimizer_summary=_summary_from_run(
+            run,
+            options=options,
+            stage_index=stage_index,
+            pressure_scale=pressure_scale,
+        ),
+    )
 
 
 def _gradient_descent_stage_3d(
@@ -282,7 +360,17 @@ def _gradient_descent_stage_3d(
         )
         if step.residual_norm <= options.tolerance or not step.accepted:
             break
-    return FixedBoundaryStageResult(state=state, trace=tuple(trace))
+    trace_tuple = tuple(trace)
+    return FixedBoundaryStageResult(
+        state=state,
+        trace=trace_tuple,
+        optimizer_summary=_summary_from_trace(
+            trace_tuple,
+            options=options,
+            stage_index=stage_index,
+            pressure_scale=pressure_scale,
+        ),
+    )
 
 
 def solve_3d_fixed_boundary_stage(
@@ -343,4 +431,8 @@ def solve_3d_fixed_boundary_stage(
             stage_index=stage_index,
             pressure_scale=pressure_scale,
         )
-    return FixedBoundaryStageResult(state=result.state, trace=initial_trace + result.trace)
+    return FixedBoundaryStageResult(
+        state=result.state,
+        trace=initial_trace + result.trace,
+        optimizer_summary=result.optimizer_summary,
+    )

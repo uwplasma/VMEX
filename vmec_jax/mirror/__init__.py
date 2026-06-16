@@ -2,6 +2,7 @@
 
 from .api import (
     ChebyshevLobattoBasis,
+    FixedBoundaryOptimizerSummary,
     IPrimeProfile,
     MirrorBoundary,
     MirrorConfig,
@@ -42,6 +43,7 @@ from .api import (
 
 __all__ = [
     "ChebyshevLobattoBasis",
+    "FixedBoundaryOptimizerSummary",
     "IPrimeProfile",
     "MirrorBoundary",
     "MirrorConfig",

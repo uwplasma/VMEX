@@ -2746,3 +2746,64 @@ This lane moves the analytic two-coil work from plotting scaffold toward testabl
 - Add scalar-pressure two-coil benchmarks and compare convergence of energy, `fsq`, and magnetic well proxy over `ns`, `nxi`, and optimizer settings.
 - Add higher-order off-axis benchmarks by shrinking the flux tube radius and confirming the low-radius Biot-Savart discrepancy scales down as expected.
 - Add anisotropic-pressure APIs only after scalar-pressure force diagnostics converge on these analytic and manufactured cases.
+
+---
+
+## 34. 2026-06-16 fixed-boundary solve diagnostic and mirror CLI plotting lane
+
+This lane diagnoses the current reduced-coordinate fixed-boundary solve behavior and promotes mirror plotting through the standard `vmec --plot` path.
+
+### Implemented in this lane
+
+- Added explicit `ftol` to `MirrorSolveOptions` and `OptimizerOptions`; `tolerance` remains the projected-gradient `gtol`.
+- Added L-BFGS-B lower bounds for independent reduced `a` coordinates while leaving gauge-fixed `lambda` coordinates unbounded.
+- Added optimizer summaries to in-memory fixed-boundary results:
+  - raw optimizer success/status/message;
+  - `nit`, `nfev`, `njev`;
+  - whether the mirror wrapper accepted the optimizer final state.
+- Added `examples/mirror_fixed_boundary_solve_diagnostic.py`.
+  - Default diagnostic uses `ns_array=31`, `maxiter=2000`, `ftol=1e-12`, `gtol=1e-12`.
+  - The example starts from a perturbed interior state on the two-coil fixed boundary.
+  - It writes JSON metrics plus standard mirror plots for each `ns`.
+- Added mirror cross-section plot data and writer.
+- Added cross sections to the standard `plot_mirror_output` bundle.
+- Updated 3-D boundary plots and root example coil plots so field-line overlays are visible on the rendered surface.
+- Verified `vmec --plot mout_*.nc` writes:
+  - nested `r-z` surfaces;
+  - cross sections;
+  - 3-D boundary `|B|` with field-line overlays;
+  - boundary field-direction plot;
+  - `|B|` maps;
+  - Jacobian;
+  - pressure/beta;
+  - radial diagnostics;
+  - residual/force history.
+
+### Current fixed-boundary solve finding
+
+For the two-coil perturbed-interior diagnostic with `ns=31`, `nxi=33`, `maxiter=2000`, `ftol=1e-12`, `gtol=1e-12`, and `line_search_steps=128`:
+
+- SciPy L-BFGS-B reports `CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH`.
+- It uses `nit=10`, `nfev=266`, and `njev=266`.
+- The mirror wrapper rejects the optimizer final state, so no accepted energy or residual reduction is recorded.
+- The accepted final projected residual remains `0.05300130515941412`.
+- The accepted final mirror `fsq` remains `1.4855305915395756e-06`.
+- The requested projected `gtol=1e-12` is not reached.
+
+### Interpretation
+
+- Reaching SciPy `ftol` is not sufficient for a valid mirror fixed-boundary solve; the candidate state must also pass mirror admissibility and accepted-energy checks.
+- The current two-coil fixed-boundary residual is therefore a real open lane, not a plotting artifact.
+- The next solver work should inspect why the raw L-BFGS-B final state is rejected:
+  - positive-Jacobian failure versus energy increase;
+  - reduced-coordinate scaling;
+  - projected-gradient consistency with the reduced L-BFGS-B objective;
+  - end-cap constraints and whether fixed cap nodes overconstrain the two-coil near-axis boundary.
+
+### Next gates
+
+- Store diagnostic raw candidate-state reason for rejection in optimizer summaries.
+- Add reduced-coordinate scaling/preconditioning before increasing optimizer complexity.
+- Add a manufactured fixed-boundary case that reaches projected `gtol` and use it as the first solver-convergence acceptance test.
+- Add a two-coil solve-quality study over `ns`, `nxi`, `line_search_steps`, `ftol`, `gtol`, and perturbation amplitude.
+- Keep `vmec --plot mout_*.nc` as a required regression path for every new mirror output quantity.

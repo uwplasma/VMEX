@@ -112,3 +112,32 @@ def test_root_finite_current_pitch_example_runs_without_plots(tmp_path):
     assert output.profiles.i_prime[0] > 0.0
     assert np.min(theta_advance) > 1.0
     assert metrics["field_line_theta_advance_mean"] > 1.0
+
+
+def test_root_fixed_boundary_solve_diagnostic_runs_without_plots(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_fixed_boundary_solve_diagnostic.py",
+            "--outdir",
+            str(tmp_path / "solve_diagnostic"),
+            "--ns-array",
+            "7",
+            "--nxi",
+            "13",
+            "--maxiter",
+            "2",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    path = Path(completed.stdout.strip())
+    rows = json.loads(path.read_text())
+    assert len(rows) == 1
+    assert rows[0]["ns"] == 7
+    assert rows[0]["optimizer_nit"] <= 2
+    assert rows[0]["final_residual_norm"] >= 0.0
+    assert Path(rows[0]["mout"]).exists()

@@ -123,8 +123,22 @@ def _write_geometry_coils_and_lines_plot(output, *, coil_radius: float, separati
         x = float(coil_radius) * np.cos(theta)
         y = float(coil_radius) * np.sin(theta)
         ax.plot(z, x, y, color="tab:orange", linewidth=2.0)
+    line_scale = 1.025
     for line_index in range(lines.z.shape[0]):
-        ax.plot(lines.z[line_index], lines.x[line_index], lines.y[line_index], color="tab:red", linewidth=1.1)
+        ax.plot(
+            lines.z[line_index],
+            line_scale * lines.x[line_index],
+            line_scale * lines.y[line_index],
+            color="white",
+            linewidth=2.5,
+        )
+        ax.plot(
+            lines.z[line_index],
+            line_scale * lines.x[line_index],
+            line_scale * lines.y[line_index],
+            color="tab:red",
+            linewidth=1.5,
+        )
     ax.set_xlabel("z")
     ax.set_ylabel("x")
     ax.set_zlabel("y")

@@ -9,7 +9,12 @@ from .core.state import MirrorState3D, MirrorStateAxisym
 from .io.mout import is_mirror_output, load_mirror_output, read_mirror_output, write_mirror_output
 from .io.schema import MirrorOutput
 from .plotting.export import mirror_axisym_slice_to_csv, mirror_output_to_npz, plot_mirror_output
-from .solvers.fixed_boundary.api import MirrorFixedBoundaryResult, MirrorSolveOptions, run_mirror_fixed_boundary
+from .solvers.fixed_boundary.api import (
+    FixedBoundaryOptimizerSummary,
+    MirrorFixedBoundaryResult,
+    MirrorSolveOptions,
+    run_mirror_fixed_boundary,
+)
 from .validation.coils import (
     circular_loop_field_rz,
     circular_loop_on_axis_bz,
@@ -32,6 +37,7 @@ from .validation.wham import (
 
 __all__ = [
     "ChebyshevLobattoBasis",
+    "FixedBoundaryOptimizerSummary",
     "IPrimeProfile",
     "MirrorBoundary",
     "MirrorConfig",

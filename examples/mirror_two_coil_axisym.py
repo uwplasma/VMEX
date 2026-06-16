@@ -29,6 +29,7 @@ from vmec_jax.mirror import (
     two_coil_on_axis_bz,
     write_mirror_output,
 )
+from vmec_jax.mirror.plotting.bfield import mirror_boundary_field_line_data
 from vmec_jax.mirror.plotting.geometry import mirror_boundary_3d_data
 
 
@@ -41,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--midplane-radius", type=float, default=0.3)
     parser.add_argument("--ns", type=int, default=9)
     parser.add_argument("--nxi", type=int, default=33)
-    parser.add_argument("--maxiter", type=int, default=8)
+    parser.add_argument("--maxiter", type=int, default=0)
     parser.add_argument("--no-plots", action="store_true")
     return parser
 
@@ -90,6 +91,7 @@ def _write_geometry_with_coils_plot(output, *, coil_radius: float, separation: f
     outdir.mkdir(parents=True, exist_ok=True)
     theta = np.linspace(0.0, 2.0 * np.pi, 128)
     boundary = mirror_boundary_3d_data(output)
+    lines = mirror_boundary_field_line_data(output, num_lines=6)
     fig = plt.figure(figsize=(6.5, 4.5))
     ax = fig.add_subplot(111, projection="3d")
     ax.plot_surface(
@@ -105,6 +107,22 @@ def _write_geometry_with_coils_plot(output, *, coil_radius: float, separation: f
         x = float(coil_radius) * np.cos(theta)
         y = float(coil_radius) * np.sin(theta)
         ax.plot(z, x, y, color="tab:orange", linewidth=2.0)
+    line_scale = 1.025
+    for line_index in range(lines.z.shape[0]):
+        ax.plot(
+            lines.z[line_index],
+            line_scale * lines.x[line_index],
+            line_scale * lines.y[line_index],
+            color="white",
+            linewidth=2.4,
+        )
+        ax.plot(
+            lines.z[line_index],
+            line_scale * lines.x[line_index],
+            line_scale * lines.y[line_index],
+            color="tab:red",
+            linewidth=1.4,
+        )
     ax.set_xlabel("z")
     ax.set_ylabel("x")
     ax.set_zlabel("y")
@@ -126,6 +144,7 @@ def _write_bmag_with_coils_plot(output, *, coil_radius: float, separation: float
     outdir.mkdir(parents=True, exist_ok=True)
     theta = np.linspace(0.0, 2.0 * np.pi, 128)
     boundary = mirror_boundary_3d_data(output)
+    lines = mirror_boundary_field_line_data(output, num_lines=6)
     norm = Normalize(vmin=float(np.min(boundary.bmag)), vmax=float(np.max(boundary.bmag)))
     fig = plt.figure(figsize=(6.75, 4.75))
     ax = fig.add_subplot(111, projection="3d")
@@ -142,6 +161,22 @@ def _write_bmag_with_coils_plot(output, *, coil_radius: float, separation: float
         x = float(coil_radius) * np.cos(theta)
         y = float(coil_radius) * np.sin(theta)
         ax.plot(z, x, y, color="tab:orange", linewidth=2.0)
+    line_scale = 1.025
+    for line_index in range(lines.z.shape[0]):
+        ax.plot(
+            lines.z[line_index],
+            line_scale * lines.x[line_index],
+            line_scale * lines.y[line_index],
+            color="white",
+            linewidth=2.4,
+        )
+        ax.plot(
+            lines.z[line_index],
+            line_scale * lines.x[line_index],
+            line_scale * lines.y[line_index],
+            color="tab:red",
+            linewidth=1.4,
+        )
     ax.set_xlabel("z")
     ax.set_ylabel("x")
     ax.set_zlabel("y")
@@ -350,7 +385,7 @@ def run_case(
     midplane_radius: float = 0.3,
     ns: int = 9,
     nxi: int = 33,
-    maxiter: int = 8,
+    maxiter: int = 0,
     write_plots: bool = True,
 ) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)

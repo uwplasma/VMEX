@@ -13,7 +13,7 @@ from ...core.profiles import IPrimeProfile, PressureProfile, PsiPrimeProfile
 from ...core.state import MirrorState3D, MirrorStateAxisym
 from ...kernels.constraints import project_axisym_state, project_state_3d
 from .continuation import pressure_stage_profiles
-from .diagnostics import FixedBoundaryTraceRow, trace_row_from_state
+from .diagnostics import FixedBoundaryOptimizerSummary, FixedBoundaryTraceRow, trace_row_from_state
 from .nonlinear import solve_3d_fixed_boundary_stage, solve_axisym_fixed_boundary_stage
 from .optimizers import OptimizerOptions
 
@@ -27,6 +27,7 @@ class MirrorSolveOptions:
     tolerance: float = 1.0e-8
     step_size: float = 1.0e-3
     min_step_size: float = 1.0e-12
+    ftol: float | None = None
     line_search_steps: int = 16
     pressure_continuation: tuple[float, ...] = (1.0,)
     mu0: float = 4.0e-7 * 3.141592653589793
@@ -39,6 +40,7 @@ class MirrorSolveOptions:
             tolerance=self.tolerance,
             step_size=self.step_size,
             min_step_size=self.min_step_size,
+            ftol=self.ftol,
             line_search_steps=self.line_search_steps,
             mu0=self.mu0,
         )
@@ -57,6 +59,7 @@ class MirrorFixedBoundaryResult:
     pressure: PressureProfile
     options: MirrorSolveOptions
     trace: tuple[FixedBoundaryTraceRow, ...]
+    optimizer_summaries: tuple[FixedBoundaryOptimizerSummary, ...] = ()
 
     @property
     def final_trace(self) -> FixedBoundaryTraceRow:
@@ -80,7 +83,9 @@ def run_mirror_fixed_boundary(
     pressure = pressure or PressureProfile.zero()
 
     grid = config.build_grid()
-    use_3d = isinstance(initial_state, MirrorState3D) or (initial_state is None and (not boundary.is_axisymmetric or grid.ntheta > 1))
+    use_3d = isinstance(initial_state, MirrorState3D) or (
+        initial_state is None and (not boundary.is_axisymmetric or grid.ntheta > 1)
+    )
     if initial_state is not None and np.asarray(initial_state.a).ndim == 3:
         use_3d = True
     if use_3d:
@@ -95,6 +100,7 @@ def run_mirror_fixed_boundary(
         state = project_axisym_state(state, grid, boundary)
 
     trace: list[FixedBoundaryTraceRow] = []
+    optimizer_summaries: list[FixedBoundaryOptimizerSummary] = []
     stages = pressure_stage_profiles(pressure, options.pressure_continuation)
     if options.maxiter == 0:
         stage_index, pressure_scale, stage_pressure = stages[-1]
@@ -123,6 +129,7 @@ def run_mirror_fixed_boundary(
             pressure=pressure,
             options=options,
             trace=tuple(trace),
+            optimizer_summaries=(),
         )
 
     for stage_index, pressure_scale, stage_pressure in stages:
@@ -152,6 +159,8 @@ def run_mirror_fixed_boundary(
             )
         state = stage_result.state
         trace.extend(stage_result.trace)
+        if stage_result.optimizer_summary is not None:
+            optimizer_summaries.append(stage_result.optimizer_summary)
 
     return MirrorFixedBoundaryResult(
         config=config,
@@ -163,4 +172,5 @@ def run_mirror_fixed_boundary(
         pressure=pressure,
         options=options,
         trace=tuple(trace),
+        optimizer_summaries=tuple(optimizer_summaries),
     )

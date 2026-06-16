@@ -36,6 +36,22 @@ class FixedBoundaryTraceRow:
     accepted: bool
 
 
+@dataclass(frozen=True)
+class FixedBoundaryOptimizerSummary:
+    """Optimizer metadata for one fixed-boundary continuation stage."""
+
+    stage_index: int
+    pressure_scale: float
+    optimizer: str
+    success: bool
+    status: int
+    message: str
+    nit: int
+    nfev: int
+    njev: int
+    accepted: bool
+
+
 def ensure_finite_pressure_scale(scale: float) -> float:
     """Validate and return a finite pressure continuation scale."""
     scale = float(scale)

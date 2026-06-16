@@ -29,6 +29,7 @@ class OptimizerOptions:
     tolerance: float = 1.0e-8
     step_size: float = 1.0e-3
     min_step_size: float = 1.0e-12
+    ftol: float | None = None
     line_search_steps: int = 16
     mu0: float = 4.0e-7 * np.pi
 
@@ -50,6 +51,13 @@ class OptimizerRun:
 
     state: MirrorStateAxisym | MirrorState3D
     steps: tuple[OptimizerStep, ...]
+    success: bool = False
+    status: int = 0
+    message: str = ""
+    nit: int = 0
+    nfev: int = 0
+    njev: int = 0
+    accepted: bool = True
 
 
 def _positive_radius(state: MirrorStateAxisym | MirrorState3D, floor: float = 1.0e-10) -> bool:
@@ -57,7 +65,9 @@ def _positive_radius(state: MirrorStateAxisym | MirrorState3D, floor: float = 1.
 
 
 def _positive_jacobian(state: MirrorStateAxisym | MirrorState3D, grid: MirrorGrid, floor: float = 1.0e-10) -> bool:
-    geometry = evaluate_geometry_3d(state, grid) if np.asarray(state.a).ndim == 3 else evaluate_axisym_geometry(state, grid)
+    geometry = (
+        evaluate_geometry_3d(state, grid) if np.asarray(state.a).ndim == 3 else evaluate_axisym_geometry(state, grid)
+    )
     return bool(np.all(np.asarray(geometry.sqrtg) > floor))
 
 
@@ -89,6 +99,13 @@ def pack_axisym_reduced_state(state: MirrorStateAxisym, grid: MirrorGrid, bounda
     return np.concatenate([a_values, lam_values])
 
 
+def axisym_reduced_bounds(grid: MirrorGrid, *, a_floor: float = 1.0e-10) -> list[tuple[float | None, float | None]]:
+    """Return L-BFGS-B bounds for axisymmetric reduced coordinates."""
+    num_a = int(np.count_nonzero(axisym_reduced_a_mask(grid)))
+    num_lam = grid.ns * (grid.nxi - 1)
+    return [(float(a_floor), None)] * num_a + [(None, None)] * num_lam
+
+
 def unpack_axisym_reduced_state(vector, grid: MirrorGrid, boundary: MirrorBoundary) -> MirrorStateAxisym:
     """Reconstruct a projected axisymmetric state from reduced coordinates."""
     vector = np.asarray(vector, dtype=float)
@@ -114,6 +131,13 @@ def pack_reduced_state_3d(state: MirrorState3D, grid: MirrorGrid, boundary: Mirr
     a_values = projected.a[reduced_a_mask_3d(grid)]
     lam_values = np.asarray(projected.lam[:, :, :], dtype=float).reshape(grid.ns, -1)[:, :-1].ravel()
     return np.concatenate([a_values, lam_values])
+
+
+def reduced_bounds_3d(grid: MirrorGrid, *, a_floor: float = 1.0e-10) -> list[tuple[float | None, float | None]]:
+    """Return L-BFGS-B bounds for 3D reduced coordinates."""
+    num_a = int(np.count_nonzero(reduced_a_mask_3d(grid)))
+    num_lam = grid.ns * (grid.ntheta * grid.nxi - 1)
+    return [(float(a_floor), None)] * num_a + [(None, None)] * num_lam
 
 
 def unpack_reduced_state_3d(vector, grid: MirrorGrid, boundary: MirrorBoundary) -> MirrorState3D:
@@ -422,12 +446,33 @@ def _rejected_lbfgs_step_3d(initial_state: MirrorState3D, initial_residual) -> O
 
 
 def _lbfgs_options(options: OptimizerOptions) -> dict[str, float | int]:
+    ftol = float(options.ftol) if options.ftol is not None else float(max(options.min_step_size, np.finfo(float).eps))
     return {
         "maxiter": int(options.maxiter),
         "gtol": float(options.tolerance),
         "maxls": int(options.line_search_steps),
-        "ftol": float(max(options.min_step_size, np.finfo(float).eps)),
+        "ftol": ftol,
     }
+
+
+def _optimizer_run_from_result(
+    *,
+    state: MirrorStateAxisym | MirrorState3D,
+    steps: tuple[OptimizerStep, ...],
+    result,
+    accepted: bool = True,
+) -> OptimizerRun:
+    return OptimizerRun(
+        state=state,
+        steps=steps,
+        success=bool(getattr(result, "success", False)),
+        status=int(getattr(result, "status", 0)),
+        message=str(getattr(result, "message", "")),
+        nit=int(getattr(result, "nit", len(steps))),
+        nfev=int(getattr(result, "nfev", 0)),
+        njev=int(getattr(result, "njev", 0)),
+        accepted=bool(accepted),
+    )
 
 
 def projected_lbfgs_solve(
@@ -457,7 +502,17 @@ def projected_lbfgs_solve(
         mu0=options.mu0,
     )
     if initial_residual.norm <= options.tolerance:
-        return OptimizerRun(state=initial_state, steps=())
+        return OptimizerRun(
+            state=initial_state,
+            steps=(),
+            success=True,
+            status=0,
+            message="initial projected residual is below tolerance",
+            nit=0,
+            nfev=0,
+            njev=0,
+            accepted=True,
+        )
 
     steps: list[OptimizerStep] = []
     previous_x = x0.copy()
@@ -498,6 +553,7 @@ def projected_lbfgs_solve(
         x0,
         jac=True,
         method="L-BFGS-B",
+        bounds=axisym_reduced_bounds(grid),
         callback=callback,
         options=_lbfgs_options(options),
     )
@@ -508,8 +564,9 @@ def projected_lbfgs_solve(
     final = steps[-1]
     improved = np.isfinite(final.energy) and final.energy <= initial_residual.energy
     if not improved or not _admissible_state(final.state, grid):
-        return OptimizerRun(state=initial_state, steps=(_rejected_lbfgs_step(initial_state, initial_residual),))
-    return OptimizerRun(state=final.state, steps=tuple(steps))
+        rejected_steps = (_rejected_lbfgs_step(initial_state, initial_residual),)
+        return _optimizer_run_from_result(state=initial_state, steps=rejected_steps, result=result, accepted=False)
+    return _optimizer_run_from_result(state=final.state, steps=tuple(steps), result=result, accepted=True)
 
 
 def projected_lbfgs_solve_3d(
@@ -539,7 +596,17 @@ def projected_lbfgs_solve_3d(
         mu0=options.mu0,
     )
     if initial_residual.norm <= options.tolerance:
-        return OptimizerRun(state=initial_state, steps=())
+        return OptimizerRun(
+            state=initial_state,
+            steps=(),
+            success=True,
+            status=0,
+            message="initial projected residual is below tolerance",
+            nit=0,
+            nfev=0,
+            njev=0,
+            accepted=True,
+        )
 
     steps: list[OptimizerStep] = []
     previous_x = x0.copy()
@@ -580,6 +647,7 @@ def projected_lbfgs_solve_3d(
         x0,
         jac=True,
         method="L-BFGS-B",
+        bounds=reduced_bounds_3d(grid),
         callback=callback,
         options=_lbfgs_options(options),
     )
@@ -590,5 +658,6 @@ def projected_lbfgs_solve_3d(
     final = steps[-1]
     improved = np.isfinite(final.energy) and final.energy <= initial_residual.energy
     if not improved or not _admissible_state(final.state, grid):
-        return OptimizerRun(state=initial_state, steps=(_rejected_lbfgs_step_3d(initial_state, initial_residual),))
-    return OptimizerRun(state=final.state, steps=tuple(steps))
+        rejected_steps = (_rejected_lbfgs_step_3d(initial_state, initial_residual),)
+        return _optimizer_run_from_result(state=initial_state, steps=rejected_steps, result=result, accepted=False)
+    return _optimizer_run_from_result(state=final.state, steps=tuple(steps), result=result, accepted=True)

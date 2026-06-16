@@ -27,7 +27,11 @@ from vmec_jax.mirror.plotting.diagnostics import (
     mirror_radial_diagnostics_data,
     mirror_residual_history_data,
 )
-from vmec_jax.mirror.plotting.geometry import mirror_boundary_3d_data, mirror_surfaces_rz_data
+from vmec_jax.mirror.plotting.geometry import (
+    mirror_boundary_3d_data,
+    mirror_cross_sections_data,
+    mirror_surfaces_rz_data,
+)
 
 pytestmark = pytest.mark.mirror
 
@@ -55,6 +59,7 @@ def test_mirror_plot_data_helpers_expose_numerical_content(tmp_path):
     bfield_boundary = mirror_bfield_boundary_data(output, stride_theta=3, stride_xi=2)
     field_lines = mirror_boundary_field_line_data(output, num_lines=4)
     boundary = mirror_boundary_3d_data(output, ntheta_axisym=12)
+    cross_sections = mirror_cross_sections_data(output, num_sections=3, num_surfaces=4, ntheta_axisym=10)
     jacobian = mirror_jacobian_data(output)
     pressure = mirror_pressure_profile_data(output)
     radial = mirror_radial_diagnostics_data(output)
@@ -68,6 +73,8 @@ def test_mirror_plot_data_helpers_expose_numerical_content(tmp_path):
     assert field_lines.x.shape == (4, output.nxi)
     assert np.allclose(field_lines.z, output.z[None, :])
     assert boundary.x.shape == boundary.y.shape == boundary.z.shape == boundary.bmag.shape
+    assert cross_sections.x.shape == (3, 4, 10)
+    assert cross_sections.y.shape == cross_sections.x.shape
     assert jacobian.min_sqrtg == pytest.approx(float(np.min(jacobian.sqrtg)))
     assert np.allclose(pressure.pressure, output.profiles.pressure)
     assert radial.mean_bmag.shape == output.s.shape
@@ -86,6 +93,7 @@ def test_plot_mirror_output_writes_expected_pngs(tmp_path):
 
     assert set(paths) == {
         "surfaces_rz",
+        "cross_sections",
         "boundary_3d",
         "bfield_boundary",
         "bmag_sxi",
@@ -119,6 +127,7 @@ def test_plot_mirror_output_writes_nonaxisymmetric_pngs(tmp_path):
     paths = plot_mirror_output(mout, outdir=tmp_path / "figures", name="nonaxisymmetric")
 
     assert paths["boundary_3d"].exists()
+    assert paths["cross_sections"].exists()
     assert paths["bmag_boundary"].exists()
     for path in paths.values():
         assert path.suffix == ".png"

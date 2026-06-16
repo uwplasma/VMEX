@@ -22,10 +22,13 @@ from .diagnostics import (
 from .export import mirror_axisym_slice_to_csv, mirror_output_to_npz, plot_mirror_output
 from .geometry import (
     MirrorBoundary3DData,
+    MirrorCrossSectionsData,
     MirrorSurfacesRZData,
     mirror_boundary_3d_data,
+    mirror_cross_sections_data,
     mirror_surfaces_rz_data,
     write_mirror_boundary_3d,
+    write_mirror_cross_sections,
     write_mirror_surfaces_rz,
 )
 
@@ -33,6 +36,7 @@ __all__ = [
     "MirrorBmagBoundaryData",
     "MirrorBmagSXiData",
     "MirrorBoundary3DData",
+    "MirrorCrossSectionsData",
     "MirrorJacobianData",
     "MirrorPressureProfileData",
     "MirrorResidualHistoryData",
@@ -41,6 +45,7 @@ __all__ = [
     "mirror_bmag_boundary_data",
     "mirror_bmag_sxi_data",
     "mirror_boundary_3d_data",
+    "mirror_cross_sections_data",
     "mirror_jacobian_data",
     "mirror_output_to_npz",
     "mirror_pressure_profile_data",
@@ -50,6 +55,7 @@ __all__ = [
     "write_mirror_bmag_boundary",
     "write_mirror_bmag_sxi",
     "write_mirror_boundary_3d",
+    "write_mirror_cross_sections",
     "write_mirror_jacobian",
     "write_mirror_pressure_profile",
     "write_mirror_residual_history",

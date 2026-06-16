@@ -15,7 +15,7 @@ from .diagnostics import (
     write_mirror_radial_diagnostics,
     write_mirror_residual_history,
 )
-from .geometry import write_mirror_boundary_3d, write_mirror_surfaces_rz
+from .geometry import write_mirror_boundary_3d, write_mirror_cross_sections, write_mirror_surfaces_rz
 
 
 def _as_output(output_or_path) -> MirrorOutput:
@@ -46,6 +46,7 @@ def plot_mirror_output(
     plot_name = _plot_name(output, name)
     paths = {
         "surfaces_rz": write_mirror_surfaces_rz(output, outdir=outdir, name=plot_name),
+        "cross_sections": write_mirror_cross_sections(output, outdir=outdir, name=plot_name),
         "boundary_3d": write_mirror_boundary_3d(output, outdir=outdir, name=plot_name),
         "bfield_boundary": write_mirror_bfield_boundary(output, outdir=outdir, name=plot_name),
         "bmag_sxi": write_mirror_bmag_sxi(output, outdir=outdir, name=plot_name),

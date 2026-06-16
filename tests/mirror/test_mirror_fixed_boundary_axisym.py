@@ -17,7 +17,10 @@ from vmec_jax.mirror.core.state import MirrorStateAxisym
 from vmec_jax.mirror.kernels.forces import axisym_projected_energy_residual
 from vmec_jax.mirror.kernels.geometry import evaluate_axisym_geometry
 from vmec_jax.mirror.solvers.fixed_boundary.optimizers import (
+    OptimizerOptions,
+    _lbfgs_options,
     axisym_reduced_a_mask,
+    axisym_reduced_bounds,
     pack_axisym_reduced_state,
     reduced_axisym_energy_and_gradient,
 )
@@ -123,6 +126,7 @@ def test_reduced_lbfgs_gradient_matches_central_difference():
     current = IPrimeProfile.zero()
     pressure = PressureProfile.zero()
     vector = pack_axisym_reduced_state(state, grid, boundary)
+    bounds = axisym_reduced_bounds(grid)
     value, gradient = reduced_axisym_energy_and_gradient(
         vector,
         grid,
@@ -132,6 +136,8 @@ def test_reduced_lbfgs_gradient_matches_central_difference():
         pressure=pressure,
         mu0=1.0,
     )
+    assert len(bounds) == vector.size
+    assert all(bound[0] is not None for bound in bounds[: int(np.count_nonzero(axisym_reduced_a_mask(grid)))])
 
     num_a = int(np.count_nonzero(axisym_reduced_a_mask(grid)))
     indices = [0, num_a] if num_a < vector.size else [0]
@@ -186,13 +192,22 @@ def test_lbfgs_solver_uses_reduced_optimizer_and_improves_perturbed_cylinder():
         i_prime=current,
         pressure=pressure,
         initial_state=initial_state,
-        options=MirrorSolveOptions(optimizer="lbfgs", maxiter=8, tolerance=1.0e-10, mu0=1.0),
+        options=MirrorSolveOptions(optimizer="lbfgs", maxiter=8, tolerance=1.0e-10, ftol=1.0e-12, mu0=1.0),
     )
 
     assert len(result.trace) > 1
+    assert len(result.optimizer_summaries) == 1
+    assert result.optimizer_summaries[0].nit <= 8
+    assert result.optimizer_summaries[0].message
+    assert isinstance(result.optimizer_summaries[0].accepted, bool)
     assert result.final_trace.energy_total <= initial_residual.energy
     assert result.final_trace.residual_norm <= initial_residual.norm
     assert result.final_trace.min_sqrtg > 0.0
     assert np.allclose(result.state.a[-1], boundary.radius_on_grid(result.grid))
     assert np.allclose(result.state.a[:, 0], boundary.radius_on_grid(result.grid)[0])
     assert np.allclose(result.state.a[:, -1], boundary.radius_on_grid(result.grid)[-1])
+
+
+def test_lbfgs_options_use_explicit_ftol_when_requested():
+    options = OptimizerOptions(optimizer="lbfgs", maxiter=2000, tolerance=1.0e-12, ftol=1.0e-12)
+    assert _lbfgs_options(options)["ftol"] == pytest.approx(1.0e-12)
