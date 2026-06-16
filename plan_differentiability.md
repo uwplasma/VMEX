@@ -3489,3 +3489,57 @@ Completion:
 - WOUT diagnostic/profile decomposition: 92%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 98.3%.
+
+## 2026-06-15 Branch-Local Scalar Report Adapter Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved `direct_coil_branch_local_scalars_report_from_complete_fd` from the
+   root free-boundary adjoint facade into
+   `vmec_jax.solvers.free_boundary.adjoint.gate_reports`.
+2. Preserved the public import from `vmec_jax.free_boundary_adjoint`.
+3. Re-ran the free-boundary QS coil optimization smoke/report shard that
+   exercises success, failure, JSON-safety, branch-delta and physical-gate
+   report paths.
+
+Results obtained:
+
+- `free_boundary_adjoint.py` dropped from 4,758 to 4,617 lines.
+- Branch-local report normalization now lives next to the same-branch replay,
+  physical-scalar, and adaptive full-loop seam gate reports.
+- No production replay/JVP execution path changed.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/free_boundary_adjoint.py vmec_jax/solvers/free_boundary/adjoint/gate_reports.py tests/test_free_boundary_qs_coil_optimization_smoke.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `python -m compileall -q vmec_jax/free_boundary_adjoint.py vmec_jax/solvers/free_boundary/adjoint/gate_reports.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes -q`
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 25 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Let the latest CI run for `a1307c4` complete before pushing this local
+   adapter cleanup unless CI needs a fix.
+2. If CI passes, commit and push this report-adapter tranche.
+3. Next refactor target should be a similarly isolated report/replay-planning
+   seam; avoid moving adaptive host branch selection until full AD-vs-FD gates
+   are attached.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.45%.
+- Differentiability/refactor implementation: 99.8%.
+- Solver monolith reduction: 86.5%.
+- Free-boundary adjoint monolith reduction: 72%.
+- Driver workflow decomposition: 84%.
+- WOUT diagnostic/profile decomposition: 92%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 98.35%.
