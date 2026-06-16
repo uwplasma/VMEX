@@ -18,6 +18,8 @@ __all__ = [
     "attach_residual_iter_timing_diagnostics",
     "build_residual_iter_resume_state_payload",
     "finalize_residual_iter_result",
+    "vmec2000_state_only_scan_result",
+    "vmec2000_traced_scan_result",
 ]
 
 
@@ -117,3 +119,62 @@ def finalize_residual_iter_result(
         except Exception:
             pass
     return result
+
+
+def vmec2000_state_only_scan_result(
+    *,
+    result_type: type,
+    carry_final: Any,
+    empty_history: Any,
+    max_iter: int,
+    diagnostics: dict[str, Any],
+    attach_free_boundary_diagnostics: Callable[[Any], Any],
+) -> Any:
+    """Construct a VMEC2000 state-only scan result with empty histories."""
+
+    return attach_free_boundary_diagnostics(
+        result_type(
+            state=carry_final.state,
+            n_iter=int(max_iter),
+            w_history=empty_history,
+            fsqr2_history=empty_history,
+            fsqz2_history=empty_history,
+            fsql2_history=empty_history,
+            grad_rms_history=empty_history,
+            step_history=empty_history,
+            diagnostics=diagnostics,
+        )
+    )
+
+
+def vmec2000_traced_scan_result(
+    *,
+    result_type: type,
+    carry_final: Any,
+    empty_history: Any,
+    max_iter: int,
+    resume_state: dict[str, Any],
+    scan_use_precomputed: bool,
+    scan_use_lax_tridi: bool,
+    attach_free_boundary_diagnostics: Callable[[Any], Any],
+    traced_diagnostics_func: Callable[..., dict[str, Any]],
+) -> Any:
+    """Construct a traced VMEC2000 scan result with resume diagnostics."""
+
+    return attach_free_boundary_diagnostics(
+        result_type(
+            state=carry_final.state,
+            n_iter=int(max_iter),
+            w_history=empty_history,
+            fsqr2_history=empty_history,
+            fsqz2_history=empty_history,
+            fsql2_history=empty_history,
+            grad_rms_history=empty_history,
+            step_history=empty_history,
+            diagnostics=traced_diagnostics_func(
+                resume_state=resume_state,
+                scan_use_precomputed=bool(scan_use_precomputed),
+                scan_use_lax_tridi=bool(scan_use_lax_tridi),
+            ),
+        )
+    )

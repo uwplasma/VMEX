@@ -83,6 +83,8 @@ from vmec_jax.solvers.fixed_boundary.residual.finalize import (
     attach_residual_iter_timing_diagnostics as _attach_residual_iter_timing_diagnostics,
     build_residual_iter_resume_state_payload as _build_residual_iter_resume_state_payload,
     finalize_residual_iter_result as _finalize_residual_iter_result,
+    vmec2000_state_only_scan_result as _vmec2000_state_only_scan_result,
+    vmec2000_traced_scan_result as _vmec2000_traced_scan_result,
 )
 from vmec_jax.solvers.fixed_boundary.residual.force_cache import (
     compute_forces_jit_cache_key as _compute_forces_jit_cache_key,
@@ -4131,18 +4133,13 @@ def solve_fixed_boundary_residual_iter(
                 scan_use_lax_tridi=bool(scan_use_lax_tridi),
                 timing_report=scan_timing_report,
             )
-            return _attach_freeb_diag(
-                SolveVmecResidualResult(
-                    state=carry_final.state,
-                    n_iter=int(max_iter),
-                    w_history=empty,
-                    fsqr2_history=empty,
-                    fsqz2_history=empty,
-                    fsql2_history=empty,
-                    grad_rms_history=empty,
-                    step_history=empty,
-                    diagnostics=diagnostics,
-                )
+            return _vmec2000_state_only_scan_result(
+                result_type=SolveVmecResidualResult,
+                carry_final=carry_final,
+                empty_history=empty,
+                max_iter=int(max_iter),
+                diagnostics=diagnostics,
+                attach_free_boundary_diagnostics=_attach_freeb_diag,
             )
         scan_histories = unpack_vmec2000_scan_histories(
             hist,
@@ -4153,22 +4150,16 @@ def solve_fixed_boundary_residual_iter(
             hist_dtype = jnp.asarray(state0.Rcos).dtype
             empty = jnp.zeros((0,), dtype=hist_dtype)
             traced_resume_state = _build_traced_scan_resume_state(carry_final, max_iter=int(max_iter))
-            return _attach_freeb_diag(
-                SolveVmecResidualResult(
-                    state=carry_final.state,
-                    n_iter=int(max_iter),
-                    w_history=empty,
-                    fsqr2_history=empty,
-                    fsqz2_history=empty,
-                    fsql2_history=empty,
-                    grad_rms_history=empty,
-                    step_history=empty,
-                    diagnostics=vmec2000_traced_scan_diagnostics(
-                        resume_state=traced_resume_state,
-                        scan_use_precomputed=bool(scan_use_precomputed),
-                        scan_use_lax_tridi=bool(scan_use_lax_tridi),
-                    ),
-                )
+            return _vmec2000_traced_scan_result(
+                result_type=SolveVmecResidualResult,
+                carry_final=carry_final,
+                empty_history=empty,
+                max_iter=int(max_iter),
+                resume_state=traced_resume_state,
+                scan_use_precomputed=bool(scan_use_precomputed),
+                scan_use_lax_tridi=bool(scan_use_lax_tridi),
+                attach_free_boundary_diagnostics=_attach_freeb_diag,
+                traced_diagnostics_func=vmec2000_traced_scan_diagnostics,
             )
         scan_output = postprocess_vmec2000_scan_result(
             scan_histories,
