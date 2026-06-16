@@ -4482,3 +4482,65 @@ Completion:
 - WOUT diagnostic/profile decomposition: 97.5%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.00%.
+
+## 2026-06-16 Minimal-WOUT Runtime/Profile Helper Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `WoutMinimalRuntimeOptions` and
+   `minimal_wout_runtime_options_from_env` in `vmec_jax.io.wout.minimal`.
+2. Added `lbsubs_from_indata_and_env` so the VMEC `LBSUBS` output policy and
+   debug override are isolated from the high-level WOUT builder.
+3. Added `pressure_profiles_from_mass_vp` for VMEC-style half/full-mesh pressure
+   reconstruction after force/volume diagnostics are available.
+4. Rewired `wout_minimal_from_fixed_boundary` to consume these helpers while
+   leaving bcovar, Fourier transforms, Mercier, and Glasser calculations
+   unchanged.
+5. Added direct helper tests for environment/default semantics, `LBSUBS`
+   override behavior, and pressure endpoint reconstruction.
+
+Results obtained:
+
+- `wout_minimal_from_fixed_boundary` dropped from 1,012 lines before the WOUT
+  sequence of tranches to 984 lines after this extraction.
+- The helper coverage makes the passive environment/default policy explicit,
+  reducing risk from future WOUT refactors.
+- Remaining WOUT work is now mostly physics/field assembly, so future tranches
+  should be narrower and parity-test backed.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/wout.py vmec_jax/io/wout/minimal.py tests/test_wout_fast_helpers.py`
+- `python -m compileall -q vmec_jax/wout.py vmec_jax/io/wout/minimal.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_fast_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_helpers.py tests/test_wout_fast_helpers.py tests/test_wout_bcovar_forces_extra_coverage.py tests/test_wout_wave3_coverage.py tests/test_wout_additional_helpers.py tests/test_non_solve_wave6_coverage.py tests/test_implicit_wout_driver_branch_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 15`
+
+Best next steps:
+
+1. Run the remaining WOUT parity/profile shards, commit, and push this helper
+   extraction.
+2. Next large source-health target should shift from WOUT to either the solver
+   scan sub-loop or `FixedBoundaryExactOptimizer.run`, because further WOUT
+   reductions now require careful numerical parity tranches.
+3. Keep CI monitored after each push; the current draft PR should remain the
+   single umbrella PR until the full plan is complete.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.64%.
+- Differentiability/refactor implementation: 99.965%.
+- Solver monolith reduction: 88.7%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 90%.
+- WOUT diagnostic/profile decomposition: 98.0%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.05%.

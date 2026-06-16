@@ -229,6 +229,63 @@ def test_wout_minimal_vmec_like_payload_matches_force_reconstruction_contract() 
     np.testing.assert_allclose(payload.mass, [0.0, 1.0, 2.0])
 
 
+def test_wout_minimal_runtime_policy_helpers_preserve_env_semantics() -> None:
+    opts = wout_minimal_helpers.minimal_wout_runtime_options_from_env({})
+    assert opts.timing_enabled is False
+    assert opts.light is False
+    assert opts.fast_bcovar is True
+
+    opts = wout_minimal_helpers.minimal_wout_runtime_options_from_env(
+        {
+            "VMEC_JAX_WOUT_TIMING": "1",
+            "VMEC_JAX_WOUT_LIGHT": "yes",
+            "VMEC_JAX_WOUT_FAST_BCOVAR": "0",
+        }
+    )
+    assert opts.timing_enabled is True
+    assert opts.light is True
+    assert opts.fast_bcovar is True
+
+    opts = wout_minimal_helpers.minimal_wout_runtime_options_from_env(
+        {
+            "VMEC_JAX_WOUT_TIMING": "no",
+            "VMEC_JAX_WOUT_LIGHT": "false",
+            "VMEC_JAX_WOUT_FAST_BCOVAR": "off",
+        }
+    )
+    assert opts.timing_enabled is False
+    assert opts.light is False
+    assert opts.fast_bcovar is False
+
+    assert wout_minimal_helpers.lbsubs_from_indata_and_env(InData(scalars={"LBSUBS": True}, indexed={}), {}) is True
+    assert wout_minimal_helpers.lbsubs_from_indata_and_env(InData(scalars={"LBSUBS": False}, indexed={}), {}) is False
+    assert (
+        wout_minimal_helpers.lbsubs_from_indata_and_env(
+            InData(scalars={"LBSUBS": False}, indexed={}),
+            {"VMEC_JAX_ENABLE_BSUBS_CORR": "1"},
+        )
+        is True
+    )
+
+
+def test_pressure_profiles_from_mass_vp_matches_vmec_full_mesh_edges() -> None:
+    pres, presf = wout_minimal_helpers.pressure_profiles_from_mass_vp(
+        mass=np.asarray([10.0, 8.0, 18.0, 32.0]),
+        vp=np.asarray([0.0, 2.0, 3.0, 4.0]),
+        gamma=2.0,
+    )
+    np.testing.assert_allclose(pres, [0.0, 2.0, 2.0, 2.0])
+    np.testing.assert_allclose(presf, [2.0, 2.0, 2.0, 2.0])
+
+    single, single_f = wout_minimal_helpers.pressure_profiles_from_mass_vp(
+        mass=np.asarray([5.0]),
+        vp=np.asarray([2.0]),
+        gamma=1.0,
+    )
+    np.testing.assert_allclose(single, [0.0])
+    np.testing.assert_allclose(single_f, [0.0])
+
+
 def test_wout_profile_payload_preserves_current_driven_iota_recompute(monkeypatch) -> None:
     modes = vmec_mode_table(mpol=2, ntor=0)
     state = SimpleNamespace()

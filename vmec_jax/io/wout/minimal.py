@@ -47,6 +47,74 @@ class WoutProfilePayload(NamedTuple):
     phipf_internal: np.ndarray
 
 
+class WoutMinimalRuntimeOptions(NamedTuple):
+    """Environment-derived switches for minimal WOUT construction."""
+
+    timing_enabled: bool
+    light: bool
+    fast_bcovar: bool
+
+
+def minimal_wout_runtime_options_from_env(environ: Mapping[str, str] | None = None) -> WoutMinimalRuntimeOptions:
+    """Resolve passive WOUT runtime switches from environment variables."""
+
+    env = os.environ if environ is None else environ
+    timing_env = env.get("VMEC_JAX_WOUT_TIMING", "").strip().lower()
+    light_env = env.get("VMEC_JAX_WOUT_LIGHT", "").strip().lower()
+    fast_bcovar_env = env.get("VMEC_JAX_WOUT_FAST_BCOVAR", "").strip().lower()
+    timing_enabled = timing_env not in ("", "0", "false", "no")
+    light = light_env not in ("", "0", "false", "no")
+    fast_bcovar = fast_bcovar_env not in ("0", "false", "no", "off")
+    if light:
+        fast_bcovar = True
+    return WoutMinimalRuntimeOptions(
+        timing_enabled=bool(timing_enabled),
+        light=bool(light),
+        fast_bcovar=bool(fast_bcovar),
+    )
+
+
+def lbsubs_from_indata_and_env(indata: Any, environ: Mapping[str, str] | None = None) -> bool:
+    """Resolve VMEC ``LBSUBS`` output policy with the debug env override."""
+
+    env = os.environ if environ is None else environ
+    lbsubs = bool(getattr(indata, "get_bool", lambda *_args, **_kwargs: False)("LBSUBS", False))
+    override = env.get("VMEC_JAX_ENABLE_BSUBS_CORR", "").strip().lower()
+    if override not in ("", "0", "false", "no"):
+        lbsubs = True
+    return bool(lbsubs)
+
+
+def pressure_profiles_from_mass_vp(
+    *,
+    mass: np.ndarray,
+    vp: np.ndarray,
+    gamma: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Reconstruct VMEC half/full-mesh pressure profiles from mass and volume."""
+
+    mass_arr = np.asarray(mass, dtype=float)
+    vp_arr = np.asarray(vp, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        denom = np.where(vp_arr != 0.0, vp_arr, 1.0)
+        pres = np.where(vp_arr != 0.0, mass_arr / (denom**float(gamma)), 0.0)
+    if pres.size:
+        pres = pres.copy()
+        pres[0] = 0.0
+
+    if pres.size < 2:
+        presf = pres.copy()
+    else:
+        presf = np.zeros_like(pres)
+        if pres.size >= 3:
+            presf[0] = 1.5 * pres[1] - 0.5 * pres[2]
+        else:
+            presf[0] = pres[1]
+        presf[1:-1] = 0.5 * (pres[1:-1] + pres[2:])
+        presf[-1] = 1.5 * pres[-1] - 0.5 * pres[-2]
+    return pres, presf
+
+
 def prepare_profile_payload(
     *,
     state: Any,

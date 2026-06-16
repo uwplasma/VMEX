@@ -37,6 +37,9 @@ from .io.wout.minimal import (
     WoutMinimalVmecLike,
     build_main_geometry_coefficients,
     build_minimal_wout_data_kwargs,
+    lbsubs_from_indata_and_env,
+    minimal_wout_runtime_options_from_env,
+    pressure_profiles_from_mass_vp,
     prepare_profile_payload,
 )
 from .io.wout.netcdf import (
@@ -1047,15 +1050,10 @@ def wout_minimal_from_fixed_boundary(
     nfp = int(cfg.nfp)
     lasym = bool(cfg.lasym)
 
-    wout_timing_env = os.getenv("VMEC_JAX_WOUT_TIMING", "").strip().lower()
-    wout_timing_enabled = wout_timing_env not in ("", "0", "false", "no")
-    wout_light_env = os.getenv("VMEC_JAX_WOUT_LIGHT", "").strip().lower()
-    wout_light = wout_light_env not in ("", "0", "false", "no")
-    wout_fast_bcovar_env = os.getenv("VMEC_JAX_WOUT_FAST_BCOVAR", "").strip().lower()
-    wout_fast_bcovar = wout_fast_bcovar_env not in ("0", "false", "no", "off")
-    if wout_light:
-        # Light output favors speed; also use the fast bcovar path.
-        wout_fast_bcovar = True
+    runtime_options = minimal_wout_runtime_options_from_env()
+    wout_timing_enabled = runtime_options.timing_enabled
+    wout_light = runtime_options.light
+    wout_fast_bcovar = runtime_options.fast_bcovar
     wout_timing: dict[str, float] = {}
     t_wout_total_start = None
     if wout_timing_enabled:
@@ -1066,13 +1064,7 @@ def wout_minimal_from_fixed_boundary(
     if converged is None:
         converged = True
 
-    # VMEC2000 uses namelist LBSUBS to enable the "corrected" bsubs path
-    # in jxbforce. Default is False in libstell vmec_input.
-    lbsubs = bool(getattr(indata, "get_bool", lambda *_args, **_kwargs: False)("LBSUBS", False))
-    # Allow explicit env override for parity/debugging.
-    _lbsubs_env = os.getenv("VMEC_JAX_ENABLE_BSUBS_CORR", "").strip().lower()
-    if _lbsubs_env not in ("", "0", "false", "no"):
-        lbsubs = True
+    lbsubs = lbsubs_from_indata_and_env(indata)
 
     main_modes = vmec_mode_table(mpol, ntor)
     if int(main_modes.K) != int(state.layout.K):
@@ -1358,24 +1350,7 @@ def wout_minimal_from_fixed_boundary(
     volume_p = volume * float(4.0 * np.pi**2)
     betatotal = (wp / wb) if wb != 0.0 else 0.0
 
-    # Reconstruct pressure from mass/vp to match VMEC's bcovar path.
-    pres = np.zeros_like(vp)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        denom = np.where(vp != 0.0, vp, 1.0)
-        pres = np.where(vp != 0.0, mass / (denom**gamma), 0.0)
-    if pres.size:
-        pres = pres.copy()
-        pres[0] = 0.0
-    if ns < 2:
-        presf = pres.copy()
-    else:
-        presf = np.zeros_like(pres)
-        if ns >= 3:
-            presf[0] = 1.5 * pres[1] - 0.5 * pres[2]
-        else:
-            presf[0] = pres[1]
-        presf[1:-1] = 0.5 * (pres[1:-1] + pres[2:])
-        presf[-1] = 1.5 * pres[-1] - 0.5 * pres[-2]
+    pres, presf = pressure_profiles_from_mass_vp(mass=mass, vp=vp, gamma=gamma)
 
     wint = _vmec_wint_from_trig(trig)
     Aminor_p, Rmajor_p, aspect, volume_p, _ = _compute_aspectratio(
