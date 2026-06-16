@@ -7,8 +7,9 @@ uses Chebyshev-Gauss-Lobatto nodes in increasing physical order; ``theta`` is
 periodic and uses a real Fourier representation.  This is intentionally not a
 large-aspect-ratio torus and does not store results as classic ``wout`` files.
 
-The first committed phase provides only the numerical scaffolding needed by the
-future solver:
+The current mirror package provides the fixed-boundary axisymmetric path and
+validation surfaces needed to grow the backend without coupling it to toroidal
+VMEC assumptions:
 
 - ``vmec_jax.mirror`` as a domain package;
 - static mirror resolution/configuration objects;
@@ -25,10 +26,14 @@ future solver:
   with pressure-continuation trace diagnostics;
 - mirror-native ``mout_*.nc`` read/write helpers, plot-data extraction, PNG
   writing, ``.npz``/CSV export helpers, and ``vmec --plot mout_*.nc`` dispatch;
+- WHAM-inspired circular-loop fixture metadata, deterministic vacuum-field
+  reference checks, optional ``magpylib`` comparison hooks, and low-resolution
+  runnable examples;
 - focused tests for node ordering, polynomial exactness, interpolation, filtering,
   theta orthogonality, analytic axisymmetric geometry, field identities, and
   analytic energy, gradient checks, Hessian symmetry, MMS stationarity, I/O
-  roundtrip, and plotting numerical content.
+  roundtrip, plotting numerical content, WHAM fixture parity, and example
+  smoke coverage.
 
-Later phases add WHAM-inspired validation, nonaxisymmetric boundaries, mirror
-straight-field-line diagnostics, and optimization workflows.
+Later phases add nonaxisymmetric boundaries, mirror straight-field-line
+diagnostics, and optimization workflows.

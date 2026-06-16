@@ -12,6 +12,7 @@ from ...core.profiles import IPrimeProfile, PressureProfile, PsiPrimeProfile
 from ...core.state import MirrorStateAxisym
 from ...kernels.constraints import project_axisym_state
 from ...kernels.forces import axisym_energy_value_and_gradient, axisym_projected_energy_residual
+from ...kernels.geometry import evaluate_axisym_geometry
 
 
 @dataclass(frozen=True)
@@ -48,6 +49,15 @@ class OptimizerRun:
 
 def _positive_radius(state: MirrorStateAxisym, floor: float = 1.0e-10) -> bool:
     return bool(np.all(np.asarray(state.a) > floor))
+
+
+def _positive_jacobian(state: MirrorStateAxisym, grid: MirrorGrid, floor: float = 1.0e-10) -> bool:
+    geometry = evaluate_axisym_geometry(state, grid)
+    return bool(np.all(np.asarray(geometry.sqrtg) > floor))
+
+
+def _admissible_state(state: MirrorStateAxisym, grid: MirrorGrid) -> bool:
+    return _positive_radius(state) and _positive_jacobian(state, grid)
 
 
 def axisym_reduced_a_mask(grid: MirrorGrid) -> np.ndarray:
@@ -155,7 +165,7 @@ def projected_gradient_step(
             lam=state.lam - step * residual.projected_lam,
         )
         trial = project_axisym_state(trial, grid, boundary)
-        if _positive_radius(trial):
+        if _admissible_state(trial, grid):
             trial_residual = axisym_projected_energy_residual(
                 trial,
                 grid,
@@ -312,6 +322,6 @@ def projected_lbfgs_solve(
 
     final = steps[-1]
     improved = np.isfinite(final.energy) and final.energy <= initial_residual.energy
-    if not improved or not _positive_radius(final.state):
+    if not improved or not _admissible_state(final.state, grid):
         return OptimizerRun(state=initial_state, steps=(_rejected_lbfgs_step(initial_state, initial_residual),))
     return OptimizerRun(state=final.state, steps=tuple(steps))

@@ -1,0 +1,20 @@
+{
+  "source": "coil_model_WHAM-2.txt",
+  "reference": "Radovinsky et al., Design of High Field HTS Coils for Magnetic Mirror, IEEE Transactions on Applied Superconductivity, 2023",
+  "physics_basis_reference": "Endrizzi et al., Physics basis for the Wisconsin HTS Axisymmetric Mirror (WHAM), Journal of Plasma Physics, 2023",
+  "coil_centers_z_m": [-0.98, 0.98],
+  "nz": 8,
+  "nr": 310,
+  "dz_HF_m": 0.1144,
+  "r_in_HF_m": 0.043,
+  "r_out_HF_m": 0.365,
+  "I_coil_A": 1941.7475728155339,
+  "reference_field": {
+    "model": "axisymmetric circular-loop Biot-Savart field from fixture metadata",
+    "r_m": [0.0, 0.0, 0.0, 0.04, 0.04, 0.08, 0.08],
+    "z_m": [-0.98, 0.0, 0.98, -0.5, 0.5, -0.2, 0.2],
+    "B_r_T": [0.0, 0.0, 0.0, 0.0866287521669, -0.0866287521669, 0.0283277300947, -0.0283277300947],
+    "B_z_T": [17.0032726832, 0.289519722992, 17.0032726832, 0.953822815597, 0.953822815597, 0.348659304296, 0.348659304296],
+    "on_axis_mirror_ratio": 58.729237882095454
+  }
+}
