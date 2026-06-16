@@ -3716,3 +3716,60 @@ Completion:
 - WOUT diagnostic/profile decomposition: 92%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 98.5%.
+
+## 2026-06-15 Controller Replay Plan Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved fixed accepted-branch controller replay plan construction and
+   boundary-context precomputation into
+   `vmec_jax.solvers.free_boundary.adjoint.replay_plan`.
+2. Preserved the public `direct_coil_accepted_trace_controller_replay_plan`
+   facade and private compatibility aliases for tests/internal callers.
+3. Re-ran focused replay-plan, segmentation, stackability, branch-metadata,
+   and branch-trace tests.
+
+Results obtained:
+
+- `free_boundary_adjoint.py` dropped from 4,001 to 3,818 lines.
+- `free_boundary_adjoint.py` moved below `tests/test_free_boundary_vacuum_adjoint.py`
+  in the source-health hotspot list.
+- Replay plan construction is now colocated with lower-level replay-plan
+  helpers instead of the root free-boundary adjoint facade.
+- No adaptive controller branch-selection semantics changed.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/free_boundary_adjoint.py vmec_jax/solvers/free_boundary/adjoint/replay_plan.py tests/test_free_boundary_adjoint_helpers_unit.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `python -m compileall -q vmec_jax/free_boundary_adjoint.py vmec_jax/solvers/free_boundary/adjoint/replay_plan.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_adjoint_helpers_unit.py::test_free_boundary_adjoint_trace_stackability_error_paths tests/test_free_boundary_adjoint_helpers_unit.py::test_accepted_trace_control_metadata_and_stack_contracts tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_branch_trace_mode_keeps_replay_controls_without_raw_force_payload -q`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 20 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Let CI finish for this pushed tranche and fix failures before another broad
+   refactor.
+2. Next high-impact source-health targets are `free_boundary.py` direct-coil
+   NESTOR support or `wout_minimal_from_fixed_boundary`; both need more careful
+   decomposition than report/plan helpers.
+3. Do not split `direct_coil_accepted_trace_controller_replay_objective_jax`
+   until the execution helper boundaries are explicit and tested.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.45%.
+- Differentiability/refactor implementation: 99.85%.
+- Solver monolith reduction: 86.5%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 84%.
+- WOUT diagnostic/profile decomposition: 92%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 98.55%.
