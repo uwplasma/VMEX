@@ -3773,3 +3773,63 @@ Completion:
 - WOUT diagnostic/profile decomposition: 92%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 98.55%.
+
+## 2026-06-15 Free-Boundary Type Container Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved passive free-boundary dataclasses into
+   `vmec_jax.solvers.free_boundary.types`.
+2. Preserved the public `vmec_jax.free_boundary` type names by importing the
+   moved containers back into the facade module.
+3. Left NESTOR math, mgrid interpolation, provider hooks, adaptive controller
+   semantics, and VMEC parity behavior unchanged.
+4. Re-ran focused type/user-facing import, mgrid, provider, and NESTOR reuse
+   tests.
+
+Results obtained:
+
+- `free_boundary.py` dropped from the prior 4,271-line source-health baseline
+  to 4,114 lines.
+- Type contracts are now inspectable without mixing them into the solver body,
+  while downstream imports from `vmec_jax.free_boundary` remain compatible.
+- The source-health report still points to true algorithmic hotspots next:
+  `solve_fixed_boundary_residual_iter`, `run_fixed_boundary`,
+  `wout_minimal_from_fixed_boundary`, and the larger free-boundary solver body.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/free_boundary.py vmec_jax/solvers/free_boundary/types.py tests/test_free_boundary_helper_branches.py tests/test_free_boundary_additional_helpers.py tests/test_free_boundary_wave2.py tests/test_free_boundary_wp0.py`
+- `python -m compileall -q vmec_jax/free_boundary.py vmec_jax/solvers/free_boundary/types.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_helper_branches.py tests/test_free_boundary_additional_helpers.py tests/test_free_boundary_wave2.py::test_nestor_external_only_step_reuse_spectral_and_dense_fallback tests/test_free_boundary_wp0.py::test_nestor_external_only_step_reuse -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_external_fields_mgrid_jax.py tests/test_free_boundary_coil_provider_forward.py tests/test_free_boundary_coil_provider_gradients.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_vacuum_field_override_replay_contract tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_jax_free_boundary_boundary_geometry_matches_host_sampler -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 12`
+
+Best next steps:
+
+1. Let the current CI run finish and fix failures if any appear.
+2. Next low-risk free-boundary target is separating mgrid/prepared-input
+   helpers from `free_boundary.py`; avoid moving the core NESTOR integrals or
+   adaptive scan/controller behavior until narrower parity gates are attached.
+3. Continue reducing `free_boundary.py` toward a facade/solver split, then
+   shift to WOUT minimal assembly and driver workflow decomposition.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.48%.
+- Differentiability/refactor implementation: 99.86%.
+- Solver monolith reduction: 87%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 84%.
+- WOUT diagnostic/profile decomposition: 92%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 98.6%.
