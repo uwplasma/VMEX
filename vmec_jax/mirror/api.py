@@ -5,7 +5,7 @@ from .core.boundary import MirrorBoundary
 from .core.config import MirrorConfig, MirrorResolution
 from .core.grids import MirrorGrid, make_mirror_grid
 from .core.profiles import IPrimeProfile, PressureProfile, PsiPrimeProfile
-from .core.state import MirrorStateAxisym
+from .core.state import MirrorState3D, MirrorStateAxisym
 from .io.mout import is_mirror_output, load_mirror_output, read_mirror_output, write_mirror_output
 from .io.schema import MirrorOutput
 from .plotting.export import mirror_axisym_slice_to_csv, mirror_output_to_npz, plot_mirror_output
@@ -30,6 +30,7 @@ __all__ = [
     "MirrorOutput",
     "MirrorResolution",
     "MirrorSolveOptions",
+    "MirrorState3D",
     "MirrorStateAxisym",
     "PressureProfile",
     "PsiPrimeProfile",

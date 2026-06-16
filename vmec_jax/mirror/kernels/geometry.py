@@ -25,6 +25,25 @@ class AxisymMirrorGeometry:
     volume: float
 
 
+@dataclass(frozen=True)
+class MirrorGeometry3D:
+    """Theta-dependent radius embedding, metrics, and quadrature diagnostics."""
+
+    r: np.ndarray
+    z: np.ndarray
+    r_theta: np.ndarray
+    r_xi: np.ndarray
+    r_r_s: np.ndarray
+    sqrtg: np.ndarray
+    g_ss: np.ndarray
+    g_stheta: np.ndarray
+    g_sxi: np.ndarray
+    g_thetatheta: np.ndarray
+    g_thetaxi: np.ndarray
+    g_xixi: np.ndarray
+    volume: float
+
+
 def _radial_derivative(values, s_full):
     edge_order = 2 if len(s_full) > 2 else 1
     return np.gradient(values, s_full, axis=0, edge_order=edge_order)
@@ -69,6 +88,62 @@ def evaluate_axisym_geometry(state, grid) -> AxisymMirrorGeometry:
     return AxisymMirrorGeometry(
         r=r,
         z=z,
+        r_xi=r_xi,
+        r_r_s=r_r_s,
+        sqrtg=sqrtg,
+        g_ss=g_ss,
+        g_stheta=g_stheta,
+        g_sxi=g_sxi,
+        g_thetatheta=g_thetatheta,
+        g_thetaxi=g_thetaxi,
+        g_xixi=g_xixi,
+        volume=volume,
+    )
+
+
+def evaluate_geometry_3d(state, grid) -> MirrorGeometry3D:
+    """Evaluate straight-axis theta-dependent mirror geometry.
+
+    The first 3D representation keeps cylindrical coordinates and lets
+    ``r = sqrt(s) * a(s, theta, xi)`` vary in theta.  The Jacobian remains
+    ``sqrt(g) = r*r_s*z_xi``; theta shaping enters the metric terms through
+    ``r_theta``.
+    """
+    expected_shape = (grid.ns, grid.ntheta, grid.nxi)
+    if state.a.shape != expected_shape:
+        raise ValueError(f"state shape {state.a.shape} does not match grid {expected_shape}")
+
+    a = np.asarray(state.a, dtype=float)
+    rho = grid.rho_full[:, None, None]
+    r = rho * a
+    z = grid.z
+    a_theta = grid.theta_basis.differentiate(a, axis=1)
+    a_xi = grid.axial_basis.differentiate(a, axis=2)
+    r_theta = rho * a_theta
+    r_xi = rho * a_xi
+
+    r_squared = r**2
+    r_r_s = 0.5 * _radial_derivative(r_squared, grid.s_full)
+    sqrtg = r_r_s * grid.z_xi
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        g_ss = np.divide(r_r_s**2, r_squared, out=np.zeros_like(r_squared), where=r_squared > 0.0)
+        a_theta_over_a = np.divide(a_theta, a, out=np.zeros_like(a_theta), where=a != 0.0)
+        a_xi_over_a = np.divide(a_xi, a, out=np.zeros_like(a_xi), where=a != 0.0)
+    if grid.ns > 1:
+        g_ss[0, :, :] = g_ss[1, :, :]
+
+    g_stheta = r_r_s * a_theta_over_a
+    g_sxi = r_r_s * a_xi_over_a
+    g_thetatheta = r_theta**2 + r_squared
+    g_thetaxi = r_theta * r_xi
+    g_xixi = r_xi**2 + grid.z_xi**2
+    volume = float(np.einsum("i,j,k,ijk->", grid.w_s, grid.w_theta, grid.w_xi, sqrtg))
+
+    return MirrorGeometry3D(
+        r=r,
+        z=z,
+        r_theta=r_theta,
         r_xi=r_xi,
         r_r_s=r_r_s,
         sqrtg=sqrtg,

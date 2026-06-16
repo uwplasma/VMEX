@@ -58,3 +58,54 @@ class MirrorStateAxisym:
         del aux
         a, lam = children
         return cls(a=a, lam=lam)
+
+
+@tree_util.register_pytree_node_class
+@dataclass(frozen=True)
+class MirrorState3D:
+    """Theta-dependent nodal mirror state.
+
+    ``a`` has shape ``(ns, ntheta, nxi)`` and defines the physical radius by
+    ``r = sqrt(s) * a``.  This is the first nonaxisymmetric representation from
+    the mirror plan; full ``X,Y,Z`` surfaces remain a later extension.
+    """
+
+    a: np.ndarray
+    lam: np.ndarray
+
+    def __post_init__(self):
+        a = np.asarray(self.a)
+        lam = np.asarray(self.lam)
+        if a.ndim != 3:
+            raise ValueError("3D mirror a must have shape (ns, ntheta, nxi)")
+        if lam.shape != a.shape:
+            raise ValueError("3D mirror lam must have the same shape as a")
+        object.__setattr__(self, "a", a)
+        object.__setattr__(self, "lam", lam)
+
+    @classmethod
+    def from_boundary(cls, grid, boundary, *, lam=None, project: bool = True) -> "MirrorState3D":
+        """Build the radial initial guess ``r = sqrt(s) * r_b(theta, xi)``."""
+        boundary_radius = boundary.radius_on_grid_3d(grid)
+        a = np.broadcast_to(boundary_radius[None, :, :], (grid.ns, grid.ntheta, grid.nxi)).copy()
+        if lam is None:
+            lam = np.zeros_like(a)
+        state = cls(a=a, lam=np.asarray(lam, dtype=a.dtype))
+        if not project:
+            return state
+        from ..kernels.constraints import project_state_3d
+
+        return project_state_3d(state, grid, boundary)
+
+    @property
+    def shape(self) -> tuple[int, int, int]:
+        return self.a.shape
+
+    def tree_flatten(self):
+        return (self.a, self.lam), None
+
+    @classmethod
+    def tree_unflatten(cls, aux, children):
+        del aux
+        a, lam = children
+        return cls(a=a, lam=lam)

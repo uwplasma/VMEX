@@ -18,6 +18,8 @@ VMEC assumptions:
 - uniform-theta Fourier grids, derivatives, and quadrature;
 - axisymmetric fixed side boundaries, state projection, metric and Jacobian
   kernels for straight-axis cylinder/flared tubes;
+- theta-dependent radius side boundaries, 3D state projection, and
+  nonaxisymmetric cylindrical-radius metric, field, and energy kernels;
 - scalar radial profiles, contravariant/covariant/cartesian magnetic-field
   kernels, and magnetic/pressure energy integrals;
 - differentiable axisymmetric energy wrappers, projected residuals, and
@@ -35,5 +37,5 @@ VMEC assumptions:
   roundtrip, plotting numerical content, WHAM fixture parity, and example
   smoke coverage.
 
-Later phases add nonaxisymmetric boundaries, mirror straight-field-line
-diagnostics, and optimization workflows.
+Later phases add the nonaxisymmetric fixed-boundary solve path, mirror
+straight-field-line diagnostics, and optimization workflows.

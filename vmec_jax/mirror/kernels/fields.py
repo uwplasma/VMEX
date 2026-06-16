@@ -38,6 +38,27 @@ class AxisymMirrorField:
     jb_xi: np.ndarray
 
 
+@dataclass(frozen=True)
+class MirrorField3D:
+    """Theta-dependent magnetic-field components on ``(s, theta, xi)`` nodes."""
+
+    b_sup_s: np.ndarray
+    b_sup_theta: np.ndarray
+    b_sup_xi: np.ndarray
+    b_cov_s: np.ndarray
+    b_cov_theta: np.ndarray
+    b_cov_xi: np.ndarray
+    b_r: np.ndarray
+    b_phi: np.ndarray
+    b_z: np.ndarray
+    b_x: np.ndarray
+    b_y: np.ndarray
+    bmag: np.ndarray
+    b2: np.ndarray
+    jb_theta: np.ndarray
+    jb_xi: np.ndarray
+
+
 def _profile_values(profile, s_full):
     if profile is None:
         return np.zeros_like(s_full)
@@ -119,6 +140,57 @@ def evaluate_axisym_field(
     b_y = b_r[:, None, :] * np.sin(theta)[None, :, None] + b_phi[:, None, :] * np.cos(theta)[None, :, None]
 
     return AxisymMirrorField(
+        b_sup_s=b_sup_s,
+        b_sup_theta=b_sup_theta,
+        b_sup_xi=b_sup_xi,
+        b_cov_s=b_cov_s,
+        b_cov_theta=b_cov_theta,
+        b_cov_xi=b_cov_xi,
+        b_r=b_r,
+        b_phi=b_phi,
+        b_z=b_z,
+        b_x=b_x,
+        b_y=b_y,
+        bmag=np.sqrt(b2),
+        b2=b2,
+        jb_theta=fluxes.jb_theta,
+        jb_xi=fluxes.jb_xi,
+    )
+
+
+def evaluate_field_3d(
+    state,
+    grid,
+    geometry,
+    *,
+    psi_prime: PsiPrimeProfile,
+    i_prime: IPrimeProfile | None = None,
+) -> MirrorField3D:
+    """Evaluate theta-dependent mirror magnetic-field components."""
+    fluxes = contravariant_fluxes_from_lambda(state.lam, grid, psi_prime=psi_prime, i_prime=i_prime)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        b_sup_theta = np.divide(fluxes.jb_theta, geometry.sqrtg, out=np.zeros_like(geometry.sqrtg), where=geometry.sqrtg != 0.0)
+        b_sup_xi = np.divide(fluxes.jb_xi, geometry.sqrtg, out=np.zeros_like(geometry.sqrtg), where=geometry.sqrtg != 0.0)
+
+    b_sup_s = np.zeros_like(b_sup_theta)
+    b2 = (
+        geometry.g_thetatheta * b_sup_theta**2
+        + 2.0 * geometry.g_thetaxi * b_sup_theta * b_sup_xi
+        + geometry.g_xixi * b_sup_xi**2
+    )
+    b2 = np.maximum(b2, 0.0)
+    b_cov_s = geometry.g_stheta * b_sup_theta + geometry.g_sxi * b_sup_xi
+    b_cov_theta = geometry.g_thetatheta * b_sup_theta + geometry.g_thetaxi * b_sup_xi
+    b_cov_xi = geometry.g_thetaxi * b_sup_theta + geometry.g_xixi * b_sup_xi
+
+    b_r = b_sup_theta * geometry.r_theta + b_sup_xi * geometry.r_xi
+    b_phi = geometry.r * b_sup_theta
+    b_z = grid.z_xi * b_sup_xi
+    theta = grid.theta[None, :, None]
+    b_x = b_r * np.cos(theta) - b_phi * np.sin(theta)
+    b_y = b_r * np.sin(theta) + b_phi * np.cos(theta)
+
+    return MirrorField3D(
         b_sup_s=b_sup_s,
         b_sup_theta=b_sup_theta,
         b_sup_xi=b_sup_xi,
