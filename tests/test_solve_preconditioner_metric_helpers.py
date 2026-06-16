@@ -8,12 +8,14 @@ from vmec_jax._compat import jnp
 from vmec_jax.solvers.fixed_boundary.preconditioning.operators import (
     LambdaPreconditionerOutputs,
     PreconditionerCacheDecision,
+    PreconditionerCacheUpdate,
     lambda_preconditioner_outputs,
     metric_surface_precond_from_bcovar_jax,
     metric_surface_precond_from_bcovar_np,
     metric_surface_precond_scales_jax,
     metric_surface_precond_scales_np,
     resolve_preconditioner_cache_decision,
+    update_preconditioner_cache,
 )
 
 
@@ -237,3 +239,101 @@ def test_lambda_preconditioner_outputs_requests_only_needed_payloads() -> None:
         )
         assert got == expected
         assert calls[-1] == expected_call
+
+
+def _cache_update_inputs(**overrides):
+    calls = []
+
+    def lambda_preconditioner(_bc, *, return_faclam=False, return_debug=False):
+        calls.append(("lambda", bool(return_faclam), bool(return_debug)))
+        if return_faclam and return_debug:
+            return "lam-new", "faclam-new", "debug-new"
+        if return_debug:
+            return "lam-new", "debug-new"
+        if return_faclam:
+            return "lam-new", "faclam-new"
+        return "lam-new"
+
+    def matrices(**kwargs):
+        calls.append(("matrices", kwargs["jmax_override"], kwargs["use_precomputed"], kwargs["use_lax_tridi"]))
+        return "mats-new", 0, 7
+
+    def reassemble(**kwargs):
+        calls.append(("reassemble", kwargs["jmax_override"]))
+        return "mats-reassembled", 0, 9
+
+    defaults = dict(
+        bc="bc",
+        k=SimpleNamespace(bc="bc"),
+        cfg=SimpleNamespace(name="cfg"),
+        precond_traced=False,
+        vmec2000_cache_valid=True,
+        need_bcovar_update=False,
+        precond_cache_seeded_from_bcovar_update=False,
+        need_lam_prec=False,
+        need_lamcal=False,
+        cache_prec_lam_prec="lam-cache",
+        cache_prec_faclam="faclam-cache",
+        cache_prec_lam_debug="debug-cache",
+        cache_prec_rz_mats="mats-cache",
+        cache_prec_rz_jmax=4,
+        precond_expected_jmax=4,
+        precond_jmax_override=11,
+        preconditioner_use_precomputed_tridi=True,
+        preconditioner_use_lax_tridi=False,
+        lambda_preconditioner_func=lambda_preconditioner,
+        rz_preconditioner_matrices_func=matrices,
+        rz_preconditioner_matrices_reassemble_func=reassemble,
+        can_reassemble_func=lambda _mats: True,
+    )
+    defaults.update(overrides)
+    return defaults, calls
+
+
+def test_update_preconditioner_cache_reuses_clean_cache_hit() -> None:
+    kwargs, calls = _cache_update_inputs(need_lam_prec=True, need_lamcal=True)
+
+    got = update_preconditioner_cache(**kwargs)
+
+    assert isinstance(got, PreconditionerCacheUpdate)
+    assert got.decision.need_prec_refresh is False
+    assert got.decision.need_prec_reassemble is False
+    assert got.lam_prec == "lam-cache"
+    assert got.faclam_dump == "faclam-cache"
+    assert got.lam_debug == "debug-cache"
+    assert got.mats == "mats-cache"
+    assert got.jmax == 4
+    assert calls == []
+
+
+def test_update_preconditioner_cache_refreshes_missing_cache_and_updates_debug_payloads() -> None:
+    kwargs, calls = _cache_update_inputs(
+        cache_prec_lam_prec=None,
+        need_lam_prec=True,
+        need_lamcal=True,
+    )
+
+    got = update_preconditioner_cache(**kwargs)
+
+    assert got.decision.need_prec_refresh is True
+    assert got.lam_prec == "lam-new"
+    assert got.faclam_dump == "faclam-new"
+    assert got.lam_debug == "debug-new"
+    assert got.mats == "mats-new"
+    assert got.cache_prec_rz_jmax == 7
+    assert calls == [("lambda", True, True), ("matrices", 11, True, False)]
+
+
+def test_update_preconditioner_cache_reassembles_jmax_mismatch_without_refresh() -> None:
+    kwargs, calls = _cache_update_inputs(cache_prec_rz_jmax=3, precond_expected_jmax=9)
+
+    got = update_preconditioner_cache(**kwargs)
+
+    assert got.decision.need_prec_refresh is False
+    assert got.decision.need_prec_reassemble is True
+    assert got.lam_prec == "lam-cache"
+    assert got.faclam_dump is None
+    assert got.lam_debug is None
+    assert got.mats == "mats-reassembled"
+    assert got.cache_prec_rz_jmax == 9
+    assert calls == [("reassemble", 11)]

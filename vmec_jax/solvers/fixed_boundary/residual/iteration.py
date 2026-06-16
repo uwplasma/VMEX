@@ -243,6 +243,7 @@ from vmec_jax.solvers.fixed_boundary.preconditioning.operators import (
     resolve_preconditioner_tridi_policies as _resolve_preconditioner_tridi_policies,
     scale_m1_precond_rhs_from_mats as _scale_m1_precond_rhs_from_mats,
     sm_sp_from_s_np as _sm_sp_from_s_np,  # noqa: F401 - re-exported for existing internal tests/importers.
+    update_preconditioner_cache as _update_preconditioner_cache,
     vmec_scale_m1_factors_from_mats as _vmec_scale_m1_factors_from_mats,  # noqa: F401 - re-exported for existing internal tests/importers.
     vmec_scale_m1_factors_from_mats_np as _vmec_scale_m1_factors_from_mats_np,  # noqa: F401 - re-exported for existing internal tests/importers.
 )
@@ -6050,7 +6051,11 @@ def solve_fixed_boundary_residual_iter(
                 precond_traced = _tree_has_tracer(k)
                 need_lam_prec = _env_dump_lam not in ("", "0")
                 need_lamcal = _env_dump_lamcal not in ("", "0")
-                precond_cache_decision = _resolve_preconditioner_cache_decision(
+                t_prec_refresh_start = time.perf_counter() if timing_enabled else None
+                precond_cache_update = _update_preconditioner_cache(
+                    bc=k.bc,
+                    k=k,
+                    cfg=cfg,
                     precond_traced=bool(precond_traced),
                     vmec2000_cache_valid=bool(vmec2000_cache_valid),
                     need_bcovar_update=bool(need_bcovar_update),
@@ -6058,70 +6063,52 @@ def solve_fixed_boundary_residual_iter(
                     need_lam_prec=bool(need_lam_prec),
                     need_lamcal=bool(need_lamcal),
                     cache_prec_lam_prec=cache_prec_lam_prec,
+                    cache_prec_faclam=cache_prec_faclam,
+                    cache_prec_lam_debug=cache_prec_lam_debug,
                     cache_prec_rz_mats=cache_prec_rz_mats,
                     cache_prec_rz_jmax=cache_prec_rz_jmax,
                     precond_expected_jmax=int(precond_expected_jmax),
+                    precond_jmax_override=precond_jmax_override,
+                    preconditioner_use_precomputed_tridi=preconditioner_use_precomputed_tridi_policy,
+                    preconditioner_use_lax_tridi=preconditioner_use_lax_tridi_policy,
+                    lambda_preconditioner_func=_lambda_preconditioner,
+                    rz_preconditioner_matrices_func=_rz_preconditioner_matrices_local,
+                    rz_preconditioner_matrices_reassemble_func=rz_preconditioner_matrices_reassemble,
                     can_reassemble_func=_can_reassemble_precond_mats,
                 )
-                need_prec_reassemble = precond_cache_decision.need_prec_reassemble
-                can_reuse_bcovar_seeded_precond = precond_cache_decision.can_reuse_bcovar_seeded_precond
+                precond_cache_decision = precond_cache_update.decision
                 need_prec_refresh = precond_cache_decision.need_prec_refresh
                 if need_prec_refresh:
                     preconditioner_cache_update_trace = True
                     if timing_enabled:
                         timing_stats["precond_refresh_calls"] = int(timing_stats["precond_refresh_calls"]) + 1
-                    t_prec_refresh_start = time.perf_counter() if timing_enabled else None
-                    lam_outputs = _lambda_preconditioner_outputs(
-                        k.bc,
-                        need_lam_prec=bool(need_lam_prec),
-                        need_lamcal=bool(need_lamcal),
-                        lambda_preconditioner_func=_lambda_preconditioner,
-                    )
-                    lam_prec = lam_outputs.lam_prec
-                    faclam_dump = lam_outputs.faclam_dump
-                    lam_debug = lam_outputs.lam_debug
-                    mats, _jmin, jmax = _rz_preconditioner_matrices_local(
-                        bc=k.bc,
-                        k=k,
-                        jmax_override=precond_jmax_override,
-                        use_precomputed=preconditioner_use_precomputed_tridi_policy,
-                        use_lax_tridi=preconditioner_use_lax_tridi_policy,
-                    )
-                    cache_prec_lam_prec = lam_prec
-                    cache_prec_faclam = faclam_dump
-                    cache_prec_lam_debug = lam_debug
-                    cache_prec_rz_mats = mats
-                    cache_prec_rz_jmax = None if precond_traced else int(jmax)
                     if timing_enabled and t_prec_refresh_start is not None:
                         try:
                             if has_jax():
-                                jax.block_until_ready(lam_prec)
+                                jax.block_until_ready(precond_cache_update.lam_prec)
                         except Exception:
                             pass
                         timing_stats["precond_refresh"] += time.perf_counter() - float(t_prec_refresh_start)
                 else:
                     if timing_enabled:
                         timing_stats["precond_cache_hit_count"] = int(timing_stats["precond_cache_hit_count"]) + 1
-                        if bool(can_reuse_bcovar_seeded_precond) and bool(need_bcovar_update):
+                        if bool(precond_cache_decision.can_reuse_bcovar_seeded_precond) and bool(need_bcovar_update):
                             timing_stats["precond_refresh_seed_reuse_count"] = (
                                 int(timing_stats["precond_refresh_seed_reuse_count"]) + 1
                             )
-                    lam_prec = cache_prec_lam_prec
-                    faclam_dump = cache_prec_faclam if need_lam_prec else None
-                    lam_debug = cache_prec_lam_debug if need_lamcal else None
-                    if bool(need_prec_reassemble):
+                    if bool(precond_cache_decision.need_prec_reassemble):
                         if timing_enabled:
                             timing_stats["precond_reassemble_calls"] = int(timing_stats["precond_reassemble_calls"]) + 1
-                        mats, _jmin, jmax = rz_preconditioner_matrices_reassemble(
-                            mats=cache_prec_rz_mats,
-                            cfg=cfg,
-                            jmax_override=precond_jmax_override,
-                        )
-                        cache_prec_rz_mats = mats
-                        cache_prec_rz_jmax = None if precond_traced else int(jmax)
-                    else:
-                        mats = cache_prec_rz_mats
-                        jmax = cache_prec_rz_jmax
+                lam_prec = precond_cache_update.lam_prec
+                faclam_dump = precond_cache_update.faclam_dump
+                lam_debug = precond_cache_update.lam_debug
+                mats = precond_cache_update.mats
+                jmax = precond_cache_update.jmax
+                cache_prec_lam_prec = precond_cache_update.cache_prec_lam_prec
+                cache_prec_faclam = precond_cache_update.cache_prec_faclam
+                cache_prec_lam_debug = precond_cache_update.cache_prec_lam_debug
+                cache_prec_rz_mats = precond_cache_update.cache_prec_rz_mats
+                cache_prec_rz_jmax = precond_cache_update.cache_prec_rz_jmax
                 _maybe_dump_lam_prec(lam_prec=lam_prec, faclam=faclam_dump, static=static, iter_idx=int(iter2))
                 if not precond_traced:
                     _maybe_dump_precond_mats(
@@ -6300,7 +6287,11 @@ def solve_fixed_boundary_residual_iter(
                 precond_traced = _tree_has_tracer(k)
                 need_lam_prec = _env_dump_lam not in ("", "0")
                 need_lamcal = _env_dump_lamcal not in ("", "0")
-                precond_cache_decision = _resolve_preconditioner_cache_decision(
+                t_prec_refresh_start = time.perf_counter() if timing_enabled else None
+                precond_cache_update = _update_preconditioner_cache(
+                    bc=k.bc,
+                    k=k,
+                    cfg=cfg,
                     precond_traced=bool(precond_traced),
                     vmec2000_cache_valid=bool(vmec2000_cache_valid),
                     need_bcovar_update=bool(need_bcovar_update),
@@ -6308,70 +6299,52 @@ def solve_fixed_boundary_residual_iter(
                     need_lam_prec=bool(need_lam_prec),
                     need_lamcal=bool(need_lamcal),
                     cache_prec_lam_prec=cache_prec_lam_prec,
+                    cache_prec_faclam=cache_prec_faclam,
+                    cache_prec_lam_debug=cache_prec_lam_debug,
                     cache_prec_rz_mats=cache_prec_rz_mats,
                     cache_prec_rz_jmax=cache_prec_rz_jmax,
                     precond_expected_jmax=int(precond_expected_jmax),
+                    precond_jmax_override=precond_jmax_override,
+                    preconditioner_use_precomputed_tridi=preconditioner_use_precomputed_tridi_policy,
+                    preconditioner_use_lax_tridi=preconditioner_use_lax_tridi_policy,
+                    lambda_preconditioner_func=_lambda_preconditioner,
+                    rz_preconditioner_matrices_func=_rz_preconditioner_matrices_local,
+                    rz_preconditioner_matrices_reassemble_func=rz_preconditioner_matrices_reassemble,
                     can_reassemble_func=_can_reassemble_precond_mats,
                 )
-                need_prec_reassemble = precond_cache_decision.need_prec_reassemble
-                can_reuse_bcovar_seeded_precond = precond_cache_decision.can_reuse_bcovar_seeded_precond
+                precond_cache_decision = precond_cache_update.decision
                 need_prec_refresh = precond_cache_decision.need_prec_refresh
                 if need_prec_refresh:
                     preconditioner_cache_update_trace = True
                     if timing_enabled:
                         timing_stats["precond_refresh_calls"] = int(timing_stats["precond_refresh_calls"]) + 1
-                    t_prec_refresh_start = time.perf_counter() if timing_enabled else None
-                    lam_outputs = _lambda_preconditioner_outputs(
-                        k.bc,
-                        need_lam_prec=bool(need_lam_prec),
-                        need_lamcal=bool(need_lamcal),
-                        lambda_preconditioner_func=_lambda_preconditioner,
-                    )
-                    lam_prec = lam_outputs.lam_prec
-                    faclam_dump = lam_outputs.faclam_dump
-                    lam_debug = lam_outputs.lam_debug
-                    mats, _jmin, jmax = _rz_preconditioner_matrices_local(
-                        bc=k.bc,
-                        k=k,
-                        jmax_override=precond_jmax_override,
-                        use_precomputed=preconditioner_use_precomputed_tridi_policy,
-                        use_lax_tridi=preconditioner_use_lax_tridi_policy,
-                    )
-                    cache_prec_lam_prec = lam_prec
-                    cache_prec_faclam = faclam_dump
-                    cache_prec_lam_debug = lam_debug
-                    cache_prec_rz_mats = mats
-                    cache_prec_rz_jmax = None if precond_traced else int(jmax)
                     if timing_enabled and t_prec_refresh_start is not None:
                         try:
                             if has_jax():
-                                jax.block_until_ready(lam_prec)
+                                jax.block_until_ready(precond_cache_update.lam_prec)
                         except Exception:
                             pass
                         timing_stats["precond_refresh"] += time.perf_counter() - float(t_prec_refresh_start)
                 else:
                     if timing_enabled:
                         timing_stats["precond_cache_hit_count"] = int(timing_stats["precond_cache_hit_count"]) + 1
-                        if bool(can_reuse_bcovar_seeded_precond) and bool(need_bcovar_update):
+                        if bool(precond_cache_decision.can_reuse_bcovar_seeded_precond) and bool(need_bcovar_update):
                             timing_stats["precond_refresh_seed_reuse_count"] = (
                                 int(timing_stats["precond_refresh_seed_reuse_count"]) + 1
                             )
-                    lam_prec = cache_prec_lam_prec
-                    faclam_dump = cache_prec_faclam if need_lam_prec else None
-                    lam_debug = cache_prec_lam_debug if need_lamcal else None
-                    if bool(need_prec_reassemble):
+                    if bool(precond_cache_decision.need_prec_reassemble):
                         if timing_enabled:
                             timing_stats["precond_reassemble_calls"] = int(timing_stats["precond_reassemble_calls"]) + 1
-                        mats, _jmin, jmax = rz_preconditioner_matrices_reassemble(
-                            mats=cache_prec_rz_mats,
-                            cfg=cfg,
-                            jmax_override=precond_jmax_override,
-                        )
-                        cache_prec_rz_mats = mats
-                        cache_prec_rz_jmax = None if precond_traced else int(jmax)
-                    else:
-                        mats = cache_prec_rz_mats
-                        jmax = cache_prec_rz_jmax
+                lam_prec = precond_cache_update.lam_prec
+                faclam_dump = precond_cache_update.faclam_dump
+                lam_debug = precond_cache_update.lam_debug
+                mats = precond_cache_update.mats
+                jmax = precond_cache_update.jmax
+                cache_prec_lam_prec = precond_cache_update.cache_prec_lam_prec
+                cache_prec_faclam = precond_cache_update.cache_prec_faclam
+                cache_prec_lam_debug = precond_cache_update.cache_prec_lam_debug
+                cache_prec_rz_mats = precond_cache_update.cache_prec_rz_mats
+                cache_prec_rz_jmax = precond_cache_update.cache_prec_rz_jmax
                 _maybe_dump_lam_prec(lam_prec=lam_prec, faclam=faclam_dump, static=static, iter_idx=int(iter2))
                 if not precond_traced:
                     _maybe_dump_precond_mats(

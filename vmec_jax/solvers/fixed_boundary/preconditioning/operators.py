@@ -53,6 +53,22 @@ class LambdaPreconditionerOutputs(NamedTuple):
     lam_debug: Any | None
 
 
+class PreconditionerCacheUpdate(NamedTuple):
+    """Resolved current preconditioner payload plus updated cache entries."""
+
+    decision: PreconditionerCacheDecision
+    lam_prec: Any
+    faclam_dump: Any | None
+    lam_debug: Any | None
+    mats: Any
+    jmax: Any
+    cache_prec_lam_prec: Any
+    cache_prec_faclam: Any | None
+    cache_prec_lam_debug: Any | None
+    cache_prec_rz_mats: Any
+    cache_prec_rz_jmax: int | None
+
+
 def lambda_preconditioner_outputs(
     bc: Any,
     *,
@@ -135,6 +151,105 @@ def resolve_preconditioner_cache_decision(
         need_prec_reassemble=bool(need_prec_reassemble),
         can_reuse_bcovar_seeded_precond=bool(can_reuse_bcovar_seeded_precond),
         need_prec_refresh=bool(need_prec_refresh),
+    )
+
+
+def update_preconditioner_cache(
+    *,
+    bc: Any,
+    k: Any,
+    cfg: Any,
+    precond_traced: bool,
+    vmec2000_cache_valid: bool,
+    need_bcovar_update: bool,
+    precond_cache_seeded_from_bcovar_update: bool,
+    need_lam_prec: bool,
+    need_lamcal: bool,
+    cache_prec_lam_prec: Any,
+    cache_prec_faclam: Any | None,
+    cache_prec_lam_debug: Any | None,
+    cache_prec_rz_mats: Any,
+    cache_prec_rz_jmax: int | None,
+    precond_expected_jmax: int,
+    precond_jmax_override: int | None,
+    preconditioner_use_precomputed_tridi: bool,
+    preconditioner_use_lax_tridi: bool,
+    lambda_preconditioner_func: Callable[..., Any],
+    rz_preconditioner_matrices_func: Callable[..., Any],
+    rz_preconditioner_matrices_reassemble_func: Callable[..., Any],
+    can_reassemble_func: Callable[[Any], bool],
+) -> PreconditionerCacheUpdate:
+    """Refresh, reassemble, or reuse cached 1D preconditioner payloads."""
+
+    decision = resolve_preconditioner_cache_decision(
+        precond_traced=bool(precond_traced),
+        vmec2000_cache_valid=bool(vmec2000_cache_valid),
+        need_bcovar_update=bool(need_bcovar_update),
+        precond_cache_seeded_from_bcovar_update=bool(precond_cache_seeded_from_bcovar_update),
+        need_lam_prec=bool(need_lam_prec),
+        need_lamcal=bool(need_lamcal),
+        cache_prec_lam_prec=cache_prec_lam_prec,
+        cache_prec_rz_mats=cache_prec_rz_mats,
+        cache_prec_rz_jmax=cache_prec_rz_jmax,
+        precond_expected_jmax=int(precond_expected_jmax),
+        can_reassemble_func=can_reassemble_func,
+    )
+
+    if decision.need_prec_refresh:
+        lam_outputs = lambda_preconditioner_outputs(
+            bc,
+            need_lam_prec=bool(need_lam_prec),
+            need_lamcal=bool(need_lamcal),
+            lambda_preconditioner_func=lambda_preconditioner_func,
+        )
+        mats, _jmin, jmax = rz_preconditioner_matrices_func(
+            bc=bc,
+            k=k,
+            jmax_override=precond_jmax_override,
+            use_precomputed=preconditioner_use_precomputed_tridi,
+            use_lax_tridi=preconditioner_use_lax_tridi,
+        )
+        return PreconditionerCacheUpdate(
+            decision=decision,
+            lam_prec=lam_outputs.lam_prec,
+            faclam_dump=lam_outputs.faclam_dump,
+            lam_debug=lam_outputs.lam_debug,
+            mats=mats,
+            jmax=jmax,
+            cache_prec_lam_prec=lam_outputs.lam_prec,
+            cache_prec_faclam=lam_outputs.faclam_dump,
+            cache_prec_lam_debug=lam_outputs.lam_debug,
+            cache_prec_rz_mats=mats,
+            cache_prec_rz_jmax=None if bool(precond_traced) else int(jmax),
+        )
+
+    lam_prec = cache_prec_lam_prec
+    faclam_dump = cache_prec_faclam if bool(need_lam_prec) else None
+    lam_debug = cache_prec_lam_debug if bool(need_lamcal) else None
+    if decision.need_prec_reassemble:
+        mats, _jmin, jmax = rz_preconditioner_matrices_reassemble_func(
+            mats=cache_prec_rz_mats,
+            cfg=cfg,
+            jmax_override=precond_jmax_override,
+        )
+        cache_prec_rz_mats = mats
+        cache_prec_rz_jmax = None if bool(precond_traced) else int(jmax)
+    else:
+        mats = cache_prec_rz_mats
+        jmax = cache_prec_rz_jmax
+
+    return PreconditionerCacheUpdate(
+        decision=decision,
+        lam_prec=lam_prec,
+        faclam_dump=faclam_dump,
+        lam_debug=lam_debug,
+        mats=mats,
+        jmax=jmax,
+        cache_prec_lam_prec=cache_prec_lam_prec,
+        cache_prec_faclam=cache_prec_faclam,
+        cache_prec_lam_debug=cache_prec_lam_debug,
+        cache_prec_rz_mats=cache_prec_rz_mats,
+        cache_prec_rz_jmax=cache_prec_rz_jmax,
     )
 
 

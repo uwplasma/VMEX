@@ -5964,3 +5964,64 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.46%.
+
+## 2026-06-16 Preconditioner Cache Update Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `PreconditionerCacheUpdate` and `update_preconditioner_cache`
+   to the existing fixed-boundary preconditioning operators module.
+2. Moved the shared nonscan preconditioner refresh/reassemble/reuse policy out
+   of the residual loop while keeping timing counters, debug dumps, and force
+   application at the call site.
+3. Replaced the duplicated 3D VMEC2000-control and axisymmetric nonscan cache
+   blocks with the shared helper.
+4. Added focused unit coverage for clean cache hits, missing-cache refreshes
+   with `faclam`/`lamcal` debug payloads, and jmax-only reassembly.
+
+Results obtained:
+
+- The residual iteration module dropped from 9,180 lines to 9,153 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 8,579 to 8,551 lines.
+- Preconditioner cache state transitions are now a named preconditioning
+  domain operation instead of inline duplicated controller code.
+- The previous branch CI run for commit `10f7cfb` passed.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/preconditioning/operators.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_preconditioner_metric_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_preconditioner_metric_helpers.py tests/test_solve_finish_cache_more_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_scan_math_helpers.py tests/test_solve_axis_helpers_more_coverage.py tests/test_solve_scan_planning_helpers.py tests/test_solve_scan_chunking.py tests/test_solve_real_scan_wave10_coverage.py tests/test_solve_residual_iter_helpers_wave8_coverage.py tests/test_solve_residual_iter_mode_transform_helpers.py tests/test_solve_residual_iter_geometry_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_branch_coverage.py tests/test_solve_gd_wave10_coverage.py tests/test_solve_lbfgs_wave8_coverage.py tests/test_solve_residual_optimizer_wave8_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_full_adjoint_trace_records_raw_preconditioner_on_fused_payload_path -q`
+- `python tools/diagnostics/ci_core_bucket_args.py "driver-solve-discrete" > /tmp/vmec_jax_core_args.txt && JAX_ENABLE_X64=1 xargs pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --durations=25 < /tmp/vmec_jax_core_args.txt`
+- `python tools/diagnostics/ci_core_bucket_args.py "freeb-external" > /tmp/vmec_jax_freeb_args.txt && JAX_ENABLE_X64=1 xargs pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --durations=25 < /tmp/vmec_jax_freeb_args.txt`
+- `python tools/diagnostics/source_health.py --top 8 --top-functions 12`
+
+Best next steps:
+
+1. Run the local core CI buckets before pushing this tranche.
+2. Continue preconditioner-cache context consolidation in the existing
+   preconditioning namespace if the buckets pass.
+3. Defer driver decomposition until this residual-loop seam is green on CI.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.995%.
+- Solver monolith reduction: 94.0%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 91.6%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.47%.
