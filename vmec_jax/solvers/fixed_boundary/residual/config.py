@@ -56,6 +56,11 @@ class ChunkedScanConfig(NamedTuple):
     differentiating_scan: bool
 
 
+class HostResidualMetricConfig(NamedTuple):
+    fsq1_norms_on_accelerator: bool
+    residual_metrics_on_accelerator: bool
+
+
 class DebugPrintConfig(NamedTuple):
     print_live: bool
     mode: str
@@ -70,6 +75,11 @@ def _env_value(env: Mapping[str, str | None], name: str, default: str = "") -> s
 def env_flag_enabled(value: str | None) -> bool:
     """Parse modern boolean-ish env flags using stripped/lower false tokens."""
     return str("" if value is None else value).strip().lower() not in FALSE_TOKENS
+
+
+def env_flag_enabled_with_off(value: str | None) -> bool:
+    """Parse env flags that also treat ``off`` as false."""
+    return str("" if value is None else value).strip().lower() not in (*FALSE_TOKENS, "off")
 
 
 def legacy_dump_enabled(value: str | None) -> bool:
@@ -178,6 +188,32 @@ def resolve_chunked_scan_config(
         force_chunked_scan=bool(force_chunked_scan),
         scan_fallback_enabled=bool(scan_fallback_enabled),
         differentiating_scan=bool(differentiating_scan),
+    )
+
+
+def resolve_host_residual_metric_config(
+    *,
+    backend_name: str,
+    fsq1_norms_env: str | None,
+    residual_metrics_env: str | None,
+) -> HostResidualMetricConfig:
+    """Resolve host metric collection policy for accelerated residual solves."""
+
+    fsq1_norms_value = str("auto" if fsq1_norms_env is None else fsq1_norms_env).strip().lower()
+    if fsq1_norms_value == "auto":
+        fsq1_norms_on_accelerator = str(backend_name).strip().lower() != "cpu"
+    else:
+        fsq1_norms_on_accelerator = env_flag_enabled_with_off(fsq1_norms_value)
+
+    residual_metrics_value = str("auto" if residual_metrics_env is None else residual_metrics_env).strip().lower()
+    if residual_metrics_value == "auto":
+        residual_metrics_on_accelerator = False
+    else:
+        residual_metrics_on_accelerator = env_flag_enabled_with_off(residual_metrics_value)
+
+    return HostResidualMetricConfig(
+        fsq1_norms_on_accelerator=bool(fsq1_norms_on_accelerator),
+        residual_metrics_on_accelerator=bool(residual_metrics_on_accelerator),
     )
 
 

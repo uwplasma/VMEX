@@ -35,6 +35,7 @@ from .solvers.fixed_boundary.residual.config import (
     resolve_chunked_scan_config as _resolve_chunked_scan_config,
     resolve_debug_print_config as _resolve_debug_print_config,
     resolve_dump_history_config as _resolve_dump_history_config,
+    resolve_host_residual_metric_config as _resolve_host_residual_metric_config,
     resolve_nstep_screen as _resolve_nstep_screen,
     should_probe_bad_jacobian_state as _should_probe_bad_jacobian_state,
 )
@@ -1098,16 +1099,13 @@ def solve_fixed_boundary_residual_iter(
         allow_accelerator=os.getenv("VMEC_JAX_HOST_UPDATE_ON_ACCELERATOR", "").strip().lower()
         in ("1", "true", "yes", "on"),
     ).enabled
-    host_fsq1_norms_env = os.getenv("VMEC_JAX_HOST_FSQ1_NORMS", "auto").strip().lower()
-    if host_fsq1_norms_env == "auto":
-        host_fsq1_norms_on_accelerator = jax.default_backend() != "cpu"
-    else:
-        host_fsq1_norms_on_accelerator = host_fsq1_norms_env not in ("", "0", "false", "no", "off")
-    host_residual_metrics_env = os.getenv("VMEC_JAX_HOST_RESIDUAL_METRICS", "auto").strip().lower()
-    if host_residual_metrics_env == "auto":
-        host_residual_metrics_on_accelerator = False
-    else:
-        host_residual_metrics_on_accelerator = host_residual_metrics_env not in ("", "0", "false", "no", "off")
+    host_metric_config = _resolve_host_residual_metric_config(
+        backend_name=jax.default_backend(),
+        fsq1_norms_env=os.getenv("VMEC_JAX_HOST_FSQ1_NORMS", "auto"),
+        residual_metrics_env=os.getenv("VMEC_JAX_HOST_RESIDUAL_METRICS", "auto"),
+    )
+    host_fsq1_norms_on_accelerator = host_metric_config.fsq1_norms_on_accelerator
+    host_residual_metrics_on_accelerator = host_metric_config.residual_metrics_on_accelerator
     adjoint_trace = bool(adjoint_trace)
     adjoint_trace_mode = _normalize_adjoint_trace_mode(adjoint_trace_mode)
     (

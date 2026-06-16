@@ -5223,3 +5223,64 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.23%.
+
+## 2026-06-16 Residual Host-Metric Config Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `HostResidualMetricConfig` and
+   `resolve_host_residual_metric_config` to
+   `vmec_jax.solvers.fixed_boundary.residual.config`.
+2. Added `env_flag_enabled_with_off` for the residual-solver env flags that
+   historically treat `off` as false in addition to the standard false tokens.
+3. Replaced inline `VMEC_JAX_HOST_FSQ1_NORMS` and
+   `VMEC_JAX_HOST_RESIDUAL_METRICS` parsing in
+   `solve_fixed_boundary_residual_iter` with the new config helper.
+4. Added focused tests for CPU/GPU `auto` policy and explicit true/false env
+   values.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` decreased from 8961 to 8958 lines.
+- `solve.py` decreased from 10008 to 10006 lines despite the new import.
+- Host metric policy is now independently unit-tested without importing or
+  running the full fixed-boundary solver.
+- No force assembly, scan, restart, free-boundary, or adaptive-branch behavior
+  changed.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/residual/config.py tests/test_solve_residual_iter_config.py tests/test_solve_residual_iter_helpers_wave8_coverage.py`
+- `python -m compileall -q vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/residual/config.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_config.py tests/test_solve_residual_iter_helpers_wave8_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 24 --top-functions 32`
+
+Best next steps:
+
+1. Commit and push the residual host-metric config extraction.
+2. Continue solver-monolith work by moving additional pure env/config policy
+   blocks into existing residual domain modules, not by splitting numerical
+   kernels prematurely.
+3. Keep VMEC2000 scan-loop and adaptive branch semantics untouched unless a
+   dedicated fingerprint/parity gate is added in the same tranche.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.67%.
+- Differentiability/refactor implementation: 99.986%.
+- Solver monolith reduction: 88.75%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 91.6%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.24%.
