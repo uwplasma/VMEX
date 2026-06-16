@@ -34,8 +34,17 @@ from .implicit_adjoint_helpers import (
     make_active_normal_map,
     make_damped_transpose_map,
     make_full_normal_map,
+    pack_stellsym_feasible_state as _pack_stellsym_feasible_state,
+    pack_stellsym_reduced_state as _pack_stellsym_reduced_state,
     select_active_adjoint_mode,
     select_active_packing_strategy,
+    stellsym_feasible_indices as _stellsym_feasible_indices,  # noqa: F401 - compatibility export
+    stellsym_feasible_indices_np as _stellsym_feasible_indices_np,
+    stellsym_lambda_mn_indices as _stellsym_lambda_mn_indices,
+    stellsym_reduced_z_indices as _stellsym_reduced_z_indices,
+    stellsym_structural_active_keep_indices as _stellsym_structural_active_keep_indices,  # noqa: F401 - compatibility export
+    update_stellsym_feasible_state as _update_stellsym_feasible_state,
+    update_stellsym_reduced_state as _update_stellsym_reduced_state,
     validate_active_adjoint_shapes,
     validate_full_adjoint_shapes,
 )
@@ -177,6 +186,112 @@ class ImplicitFixedBoundaryOptions:
     jac_chunk_size: int | None = None
 
 
+@dataclass(frozen=True)
+class _VmecResidualSetup:
+    """Passive data needed by the VMEC residual implicit-adjoint closure."""
+
+    s: Any
+    wout_like: Any
+    trig: Any
+    apply_lforbal: bool
+    mask_pack: Any
+    stellsym_residual_projector: Any
+
+
+def _build_vmec_residual_setup(*, state0_c: VMECState, static, indata, signgs_i: int, idx00: int) -> _VmecResidualSetup:
+    """Build profile, force, and structural residual metadata for implicit VMEC residual AD."""
+    from .boundary import boundary_from_indata
+    from .vmec_tomnsp import vmec_trig_tables
+
+    s = jnp.asarray(static.s)
+    flux = flux_profiles_from_indata(indata, s, signgs=signgs_i)
+    phips = jnp.asarray(flux.phips)
+    if phips.shape[0] >= 1:
+        phips = phips.at[0].set(0.0)
+    chipf_wout = jnp.asarray(flux.chipf)
+
+    boundary = boundary_from_indata(indata, static.modes)
+    r00 = float(np.asarray(boundary.R_cos)[int(idx00)]) if int(idx00) >= 0 else float(np.asarray(boundary.R_cos)[0])
+    gamma = float(indata.get_float("GAMMA", 0.0))
+    lrfp = bool(indata.get_bool("LRFP", False))
+    chips = _half_mesh_from_full_mesh(chipf_wout) if lrfp else None
+    mass = _mass_half_mesh_from_indata(
+        indata=indata,
+        s_full=s,
+        phips=phips,
+        r00=r00,
+        gamma=gamma,
+        lrfp=lrfp,
+        chips=chips,
+    )
+    pres = _pressure_half_mesh_from_indata(indata=indata, s_full=s)
+    ncurr = int(indata.get_int("NCURR", 0))
+    icurv = _icurv_full_mesh_from_indata(indata=indata, s_full=s, signgs=signgs_i)
+    phipf_internal, chipf_internal, chips_eff = _vmec_force_flux_profiles(
+        phipf=jnp.asarray(flux.phipf),
+        chipf=chipf_wout,
+        signgs=signgs_i,
+        flux_is_internal=True,
+    )
+    wout_like = _WoutLikeVmecForces(
+        nfp=int(static.cfg.nfp),
+        mpol=int(static.cfg.mpol),
+        ntor=int(static.cfg.ntor),
+        lasym=bool(static.cfg.lasym),
+        signgs=signgs_i,
+        phipf=jnp.asarray(flux.phipf),
+        phips=phips,
+        chipf=chipf_wout,
+        pres=pres,
+        mass=mass,
+        gamma=gamma,
+        ncurr=ncurr,
+        lcurrent=True,
+        icurv=icurv,
+        phipf_internal=phipf_internal,
+        chipf_internal=chipf_internal,
+        chips_eff=chips_eff,
+    )
+    trig = getattr(static, "trig_vmec", None)
+    if trig is None:
+        trig = vmec_trig_tables(
+            ntheta=int(static.cfg.ntheta),
+            nzeta=int(static.cfg.nzeta),
+            nfp=int(wout_like.nfp),
+            mmax=int(wout_like.mpol) - 1,
+            nmax=int(wout_like.ntor),
+            lasym=bool(wout_like.lasym),
+            dtype=jnp.asarray(state0_c.Rcos).dtype,
+        )
+    apply_lforbal = bool(indata.get_bool("LFORBAL", False))
+    mask_pack = getattr(static, "tomnsps_masks", None)
+    stellsym_residual_projector = None
+    if (not bool(static.cfg.lasym)) and (mask_pack is not None):
+        ns_mask = int(static.cfg.ns)
+        mpol_mask = int(static.cfg.mpol)
+        ntor1_mask = int(static.cfg.ntor) + 1
+        mask_rz_np = np.broadcast_to(np.asarray(mask_pack.mask_rz) > 0, (ns_mask, mpol_mask, ntor1_mask))
+        mask_l_np = np.broadcast_to(np.asarray(mask_pack.mask_l) > 0, (ns_mask, mpol_mask, ntor1_mask))
+        m0_mask = np.broadcast_to((np.arange(mpol_mask)[None, :, None] == 0), (ns_mask, mpol_mask, ntor1_mask))
+        n0_mask = np.broadcast_to((np.arange(ntor1_mask)[None, None, :] == 0), (ns_mask, mpol_mask, ntor1_mask))
+        stellsym_residual_projector = {
+            "frcc": jnp.asarray(np.flatnonzero(mask_rz_np.reshape(-1)), dtype=jnp.int32),
+            "fzsc": jnp.asarray(np.flatnonzero((mask_rz_np & ~m0_mask).reshape(-1)), dtype=jnp.int32),
+            "flsc": jnp.asarray(np.flatnonzero((mask_l_np & ~m0_mask).reshape(-1)), dtype=jnp.int32),
+            "frss": jnp.asarray(np.flatnonzero((mask_rz_np & ~m0_mask & ~n0_mask).reshape(-1)), dtype=jnp.int32),
+            "fzcs": jnp.asarray(np.flatnonzero((mask_rz_np & ~n0_mask).reshape(-1)), dtype=jnp.int32),
+            "flcs": jnp.asarray(np.flatnonzero((mask_l_np & ~n0_mask).reshape(-1)), dtype=jnp.int32),
+        }
+    return _VmecResidualSetup(
+        s=s,
+        wout_like=wout_like,
+        trig=trig,
+        apply_lforbal=apply_lforbal,
+        mask_pack=mask_pack,
+        stellsym_residual_projector=stellsym_residual_projector,
+    )
+
+
 def _stop_gradient_tree(x):
     return jax.tree_util.tree_map(jax.lax.stop_gradient, x)
 
@@ -289,228 +404,6 @@ def _linear_map_jacobian_columns(
         dtype=dtype,
         chunk_size=chunk_size,
     )
-
-
-def _stellsym_feasible_indices_np(static, *, idx00: int | None, mask_lambda_axis: bool = True):
-    """NumPy flat indices for feasible lasym=False coefficients."""
-    ns = int(static.cfg.ns)
-    K = int(static.modes.m.shape[0])
-    m = np.asarray(static.modes.m)
-
-    rz_mask = np.ones((ns, K), dtype=bool)
-    rz_mask[-1, :] = False
-    rz_mask[0, :] = (m == 0)
-
-    lam_mask = np.ones((ns, K), dtype=bool)
-    if bool(mask_lambda_axis):
-        lam_mask[0, :] = False
-    if idx00 is not None:
-        lam_mask[:, int(idx00)] = False
-
-    return np.flatnonzero(rz_mask.reshape(-1)), np.flatnonzero(lam_mask.reshape(-1)), ns, K
-
-
-def _stellsym_feasible_indices(static, *, idx00: int | None, mask_lambda_axis: bool = True):
-    """Flat indices for feasible lasym=False coefficients."""
-    rz_idx, lam_idx, ns, K = _stellsym_feasible_indices_np(static, idx00=idx00, mask_lambda_axis=mask_lambda_axis)
-    return jnp.asarray(rz_idx, dtype=jnp.int32), jnp.asarray(lam_idx, dtype=jnp.int32), ns, K
-
-
-def _pack_stellsym_feasible_state(state: VMECState, *, rz_idx, lam_idx):
-    """Pack only feasible stellarator-symmetric coefficients."""
-    return jnp.concatenate(
-        [
-            jnp.take(jnp.ravel(jnp.asarray(state.Rcos)), rz_idx),
-            jnp.take(jnp.ravel(jnp.asarray(state.Zsin)), rz_idx),
-            jnp.take(jnp.ravel(jnp.asarray(state.Lsin)), lam_idx),
-        ],
-        axis=0,
-    )
-
-
-def _update_stellsym_feasible_state(state: VMECState, x, *, rz_idx, lam_idx, ns: int, K: int):
-    """Update feasible lasym=False coefficients, leaving constrained entries unchanged."""
-    x = jnp.asarray(x)
-    n_rz = int(rz_idx.shape[0])
-    n_l = int(lam_idx.shape[0])
-
-    Rcos = (
-        jnp.ravel(jnp.asarray(state.Rcos))
-        .at[rz_idx]
-        .set(x[:n_rz], indices_are_sorted=True, unique_indices=True)
-        .reshape((ns, K))
-    )
-    Zsin = (
-        jnp.ravel(jnp.asarray(state.Zsin))
-        .at[rz_idx]
-        .set(x[n_rz : 2 * n_rz], indices_are_sorted=True, unique_indices=True)
-        .reshape((ns, K))
-    )
-    Lsin = (
-        jnp.ravel(jnp.asarray(state.Lsin))
-        .at[lam_idx]
-        .set(x[2 * n_rz : 2 * n_rz + n_l], indices_are_sorted=True, unique_indices=True)
-        .reshape((ns, K))
-    )
-    return VMECState(
-        layout=state.layout,
-        Rcos=Rcos,
-        Rsin=jnp.asarray(state.Rsin),
-        Zcos=jnp.asarray(state.Zcos),
-        Zsin=Zsin,
-        Lcos=jnp.asarray(state.Lcos),
-        Lsin=Lsin,
-    )
-
-
-def _stellsym_reduced_z_indices(*, rz_idx, K: int, idx00: int | None):
-    """Flat Zsin indices that remain active after dropping dead (m,n)=(0,0) rows."""
-    rz_idx_np = np.asarray(rz_idx, dtype=np.int32)
-    z_idx_np = np.array(rz_idx_np, copy=True)
-    if idx00 is not None:
-        z_idx_np = z_idx_np[(rz_idx_np % int(K)) != int(idx00)]
-    return jnp.asarray(z_idx_np, dtype=jnp.int32)
-
-
-def _stellsym_lambda_mn_indices(static, *, idx00: int | None, mask_lambda_axis: bool = True):
-    """Independent stellarator-symmetric lambda coordinates in VMEC (m,n>=0) sin storage."""
-    from .vmec_parity import signed_maps_from_modes
-
-    ns = int(static.cfg.ns)
-    maps = signed_maps_from_modes(static.modes)
-
-    sc_mask = np.ones((ns, maps.mpol, maps.nrange), dtype=bool)
-    cs_mask = np.ones((ns, maps.mpol, maps.nrange), dtype=bool)
-    if bool(mask_lambda_axis):
-        sc_mask[0, :, :] = False
-        cs_mask[0, :, :] = False
-
-    # For stellarator-symmetric lambda the m=0,n>0 branch lives in cs only,
-    # while n=0 lives in sc only.
-    sc_mask[:, 0, 1:] = False
-    cs_mask[:, :, 0] = False
-    if idx00 is not None:
-        sc_mask[:, 0, 0] = False
-
-    return (
-        jnp.asarray(np.flatnonzero(sc_mask.reshape(-1)), dtype=jnp.int32),
-        jnp.asarray(np.flatnonzero(cs_mask.reshape(-1)), dtype=jnp.int32),
-        maps,
-    )
-
-
-def _pack_stellsym_reduced_state(
-    state: VMECState,
-    *,
-    rz_idx,
-    z_idx,
-    lam_sc_idx,
-    lam_cs_idx,
-    lam_maps,
-):
-    """Pack reduced lasym=False coordinates using VMEC lambda mn-sin storage."""
-    from .vmec_parity import _signed_to_mn_sin_cached
-
-    lam_sc, lam_cs = _signed_to_mn_sin_cached(jnp.asarray(state.Lsin), maps=lam_maps)
-    return jnp.concatenate(
-        [
-            jnp.take(jnp.ravel(jnp.asarray(state.Rcos)), rz_idx),
-            jnp.take(jnp.ravel(jnp.asarray(state.Zsin)), z_idx),
-            jnp.take(jnp.ravel(jnp.asarray(lam_sc)), lam_sc_idx),
-            jnp.take(jnp.ravel(jnp.asarray(lam_cs)), lam_cs_idx),
-        ],
-        axis=0,
-    )
-
-
-def _update_stellsym_reduced_state(
-    state: VMECState,
-    x,
-    *,
-    rz_idx,
-    z_idx,
-    lam_sc_idx,
-    lam_cs_idx,
-    lam_maps,
-    ns: int,
-    K: int,
-):
-    """Update reduced lasym=False coordinates in VMEC lambda mn-sin storage."""
-    from .vmec_parity import _mn_sin_to_signed_cached, _signed_to_mn_sin_cached
-
-    x = jnp.asarray(x)
-    n_rz = int(rz_idx.shape[0])
-    n_z = int(z_idx.shape[0])
-    n_sc = int(lam_sc_idx.shape[0])
-    n_cs = int(lam_cs_idx.shape[0])
-
-    Rcos = (
-        jnp.ravel(jnp.asarray(state.Rcos))
-        .at[rz_idx]
-        .set(x[:n_rz], indices_are_sorted=True, unique_indices=True)
-        .reshape((ns, K))
-    )
-    Zsin = (
-        jnp.ravel(jnp.asarray(state.Zsin))
-        .at[z_idx]
-        .set(x[n_rz : n_rz + n_z], indices_are_sorted=True, unique_indices=True)
-        .reshape((ns, K))
-    )
-
-    lam_sc0, lam_cs0 = _signed_to_mn_sin_cached(jnp.asarray(state.Lsin), maps=lam_maps)
-    lam_sc = (
-        jnp.ravel(jnp.asarray(lam_sc0))
-        .at[lam_sc_idx]
-        .set(x[n_rz + n_z : n_rz + n_z + n_sc], indices_are_sorted=True, unique_indices=True)
-        .reshape((ns, lam_maps.mpol, lam_maps.nrange))
-    )
-    lam_cs = (
-        jnp.ravel(jnp.asarray(lam_cs0))
-        .at[lam_cs_idx]
-        .set(
-            x[n_rz + n_z + n_sc : n_rz + n_z + n_sc + n_cs],
-            indices_are_sorted=True,
-            unique_indices=True,
-        )
-        .reshape((ns, lam_maps.mpol, lam_maps.nrange))
-    )
-    Lsin = _mn_sin_to_signed_cached(lam_sc, lam_cs, maps=lam_maps, ncoeff=K)
-    return VMECState(
-        layout=state.layout,
-        Rcos=Rcos,
-        Rsin=jnp.asarray(state.Rsin),
-        Zcos=jnp.asarray(state.Zcos),
-        Zsin=Zsin,
-        Lcos=jnp.asarray(state.Lcos),
-        Lsin=Lsin,
-    )
-
-
-def _stellsym_structural_active_keep_indices(*, rz_idx, lam_idx, K: int, idx00: int | None):
-    """Packed active-column keep indices for the reduced lasym=False adjoint.
-
-    After projecting the residual onto structurally nonzero Tomnsps rows, the
-    only remaining dead active columns in the simplified fixed-boundary
-    lasym=False path are the Zsin (m,n)=(0,0) coefficients across radius.
-    Dropping them makes the reduced system square on the QH case.
-    """
-    rz_idx = np.asarray(rz_idx, dtype=np.int32)
-    lam_idx = np.asarray(lam_idx, dtype=np.int32)
-    n_rz = int(rz_idx.shape[0])
-    n_l = int(lam_idx.shape[0])
-    rz_keep = np.arange(n_rz, dtype=np.int32)
-    z_keep = np.arange(n_rz, dtype=np.int32)
-    if idx00 is not None:
-        rz_mod = rz_idx % int(K)
-        z_keep = z_keep[rz_mod != int(idx00)]
-    keep = np.concatenate(
-        [
-            rz_keep,
-            n_rz + z_keep,
-            2 * n_rz + np.arange(n_l, dtype=np.int32),
-        ]
-    )
-    return jnp.asarray(keep, dtype=jnp.int32)
 
 
 def solve_lambda_state_implicit(
@@ -1079,7 +972,7 @@ def solve_fixed_boundary_state_implicit_vmec_residual(
     edge_Zcos_use = jnp.asarray(edge_Zcos) if edge_Zcos is not None else jnp.asarray(state0_c.Zcos)[-1, :]
     edge_Zsin_use = jnp.asarray(edge_Zsin) if edge_Zsin is not None else jnp.asarray(state0_c.Zsin)[-1, :]
 
-    from .boundary import BoundaryCoeffs, boundary_from_indata
+    from .boundary import BoundaryCoeffs
     from .init_guess import initial_guess_from_boundary
     from .preconditioner_1d_jax import (
         lambda_preconditioner_cached,
@@ -1091,99 +984,20 @@ def solve_fixed_boundary_state_implicit_vmec_residual(
         vmec_force_norms_from_bcovar_dynamic,
         vmec_zero_m1_zforce,
     )
-    from .vmec_tomnsp import vmec_trig_tables
 
-    s = jnp.asarray(static.s)
-    flux = flux_profiles_from_indata(indata, s, signgs=signgs_i)
-    phips = jnp.asarray(flux.phips)
-    if phips.shape[0] >= 1:
-        phips = phips.at[0].set(0.0)
-    chipf_wout = jnp.asarray(flux.chipf)
-
-    boundary = boundary_from_indata(indata, static.modes)
-    r00 = float(np.asarray(boundary.R_cos)[int(idx00)]) if int(idx00) >= 0 else float(np.asarray(boundary.R_cos)[0])
-    gamma = float(indata.get_float("GAMMA", 0.0))
-    lrfp = bool(indata.get_bool("LRFP", False))
-    chips = _half_mesh_from_full_mesh(chipf_wout) if lrfp else None
-    mass = _mass_half_mesh_from_indata(
+    setup = _build_vmec_residual_setup(
+        state0_c=state0_c,
+        static=static,
         indata=indata,
-        s_full=s,
-        phips=phips,
-        r00=r00,
-        gamma=gamma,
-        lrfp=lrfp,
-        chips=chips,
+        signgs_i=signgs_i,
+        idx00=idx00,
     )
-    pres = _pressure_half_mesh_from_indata(indata=indata, s_full=s)
-    ncurr = int(indata.get_int("NCURR", 0))
-    icurv = _icurv_full_mesh_from_indata(indata=indata, s_full=s, signgs=signgs_i)
-    phipf_internal, chipf_internal, chips_eff = _vmec_force_flux_profiles(
-        phipf=jnp.asarray(flux.phipf),
-        chipf=chipf_wout,
-        signgs=signgs_i,
-        flux_is_internal=True,
-    )
-    wout_like = _WoutLikeVmecForces(
-        nfp=int(static.cfg.nfp),
-        mpol=int(static.cfg.mpol),
-        ntor=int(static.cfg.ntor),
-        lasym=bool(static.cfg.lasym),
-        signgs=signgs_i,
-        phipf=jnp.asarray(flux.phipf),
-        phips=phips,
-        chipf=chipf_wout,
-        pres=pres,
-        mass=mass,
-        gamma=gamma,
-        ncurr=ncurr,
-        lcurrent=True,
-        icurv=icurv,
-        phipf_internal=phipf_internal,
-        chipf_internal=chipf_internal,
-        chips_eff=chips_eff,
-    )
-    trig = getattr(static, "trig_vmec", None)
-    if trig is None:
-        trig = vmec_trig_tables(
-            ntheta=int(static.cfg.ntheta),
-            nzeta=int(static.cfg.nzeta),
-            nfp=int(wout_like.nfp),
-            mmax=int(wout_like.mpol) - 1,
-            nmax=int(wout_like.ntor),
-            lasym=bool(wout_like.lasym),
-            dtype=jnp.asarray(state0.Rcos).dtype,
-        )
-    apply_lforbal = bool(indata.get_bool("LFORBAL", False))
-    mask_pack = getattr(static, "tomnsps_masks", None)
-    stellsym_residual_projector = None
-    stellsym_active_keep_idx = None
-    if (not bool(static.cfg.lasym)) and (mask_pack is not None):
-        ns_mask = int(static.cfg.ns)
-        mpol_mask = int(static.cfg.mpol)
-        ntor1_mask = int(static.cfg.ntor) + 1
-        mask_rz_np = np.broadcast_to(np.asarray(mask_pack.mask_rz) > 0, (ns_mask, mpol_mask, ntor1_mask))
-        mask_l_np = np.broadcast_to(np.asarray(mask_pack.mask_l) > 0, (ns_mask, mpol_mask, ntor1_mask))
-        m0_mask = np.broadcast_to((np.arange(mpol_mask)[None, :, None] == 0), (ns_mask, mpol_mask, ntor1_mask))
-        n0_mask = np.broadcast_to((np.arange(ntor1_mask)[None, None, :] == 0), (ns_mask, mpol_mask, ntor1_mask))
-        stellsym_residual_projector = {
-            "frcc": jnp.asarray(np.flatnonzero(mask_rz_np.reshape(-1)), dtype=jnp.int32),
-            "fzsc": jnp.asarray(np.flatnonzero((mask_rz_np & ~m0_mask).reshape(-1)), dtype=jnp.int32),
-            "flsc": jnp.asarray(np.flatnonzero((mask_l_np & ~m0_mask).reshape(-1)), dtype=jnp.int32),
-            "frss": jnp.asarray(np.flatnonzero((mask_rz_np & ~m0_mask & ~n0_mask).reshape(-1)), dtype=jnp.int32),
-            "fzcs": jnp.asarray(np.flatnonzero((mask_rz_np & ~n0_mask).reshape(-1)), dtype=jnp.int32),
-            "flcs": jnp.asarray(np.flatnonzero((mask_l_np & ~n0_mask).reshape(-1)), dtype=jnp.int32),
-        }
-        rz_idx_np, lam_idx_np, _ns_active_tmp, K_active_tmp = _stellsym_feasible_indices_np(
-            static,
-            idx00=idx00,
-            mask_lambda_axis=True,
-        )
-        stellsym_active_keep_idx = _stellsym_structural_active_keep_indices(
-            rz_idx=np.asarray(rz_idx_np),
-            lam_idx=np.asarray(lam_idx_np),
-            K=int(K_active_tmp),
-            idx00=idx00,
-        )
+    s = setup.s
+    wout_like = setup.wout_like
+    trig = setup.trig
+    apply_lforbal = setup.apply_lforbal
+    mask_pack = setup.mask_pack
+    stellsym_residual_projector = setup.stellsym_residual_projector
 
     def _boundary_state_edge_rows(eRcos, eRsin, eZcos, eZsin):
         boundary_state = initial_guess_from_boundary(
