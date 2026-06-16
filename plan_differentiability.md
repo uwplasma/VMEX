@@ -5160,3 +5160,66 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.22%.
+
+## 2026-06-16 Driver Resume-State Helper Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_driver_resume_step_size_value` to centralize the driver fallback
+   from explicit `step_size` to input-deck `DELT`.
+2. Added `_sanitize_resume_state_for_driver_stage` and
+   `_sanitize_resume_state_for_driver_same_stage` as facade-local wrappers over
+   the tested policy helpers.
+3. Replaced the local resume-state closure group in `run_fixed_boundary` with
+   bound callables, preserving the callable interface consumed by staging and
+   finish contexts.
+4. Kept the helper in `driver.py` rather than adding another module, since this
+   is driver facade glue and the current architecture goal is fewer, clearer
+   domain modules rather than namespace growth.
+
+Results obtained:
+
+- `run_fixed_boundary` decreased from 1812 to 1809 lines.
+- Resume-state sanitization now has named helper seams for unit tests or later
+  relocation if the driver facade is split.
+- `driver.py` grew modestly because the helper remains local to the facade;
+  root namespace count is unchanged.
+- No adaptive controller, scan, multigrid, VMEC2000 parity, or resume-state
+  policy behavior changed.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/driver.py tests/test_driver_policy_helpers.py tests/test_driver_api.py tests/test_driver_run_wave8_coverage.py`
+- `python -m compileall -q vmec_jax/driver.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_api.py tests/test_driver_run_wave8_coverage.py tests/test_driver_wave5_coverage.py tests/test_driver_wout_wave9_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 24 --top-functions 32`
+
+Best next steps:
+
+1. Commit and push this driver resume-state helper extraction.
+2. Reassess whether the next driver reduction should be another passive helper
+   extraction or whether effort is better spent on the larger solver scan
+   monolith.
+3. Keep adaptive branch differentiation claims unchanged until a true
+   fingerprint-gated adaptive AD-vs-FD gate exists.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.67%.
+- Differentiability/refactor implementation: 99.985%.
+- Solver monolith reduction: 88.7%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 91.6%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.23%.
