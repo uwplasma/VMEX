@@ -5784,3 +5784,58 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.41%.
+
+## 2026-06-16 Ptau Bad-Jacobian Context Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `PtauMinmaxContext` and `build_ptau_minmax_context` to
+   `vmec_jax.solvers.fixed_boundary.scan.math`.
+2. Added context-aware host and JAX ptau min/max dispatch helpers.
+3. Replaced the residual loop's inline pshalf/ohs/JAX-constant setup block
+   with a scan-math context object.
+4. Added a test proving the context host path matches legacy ptau min/max
+   values and bypasses the tiny JIT callback in the host-update path.
+
+Results obtained:
+
+- The residual iteration module dropped from 9,418 lines to 9,397 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 8,822 to 8,800 lines.
+- Ptau/bad-Jacobian precomputed constants now live in the scan math domain,
+  not in the residual driver.
+- This keeps the hot bad-Jacobian path explicit while moving setup state toward
+  the typed context needed for a future scan-controller extraction.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/scan/math.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_scan_math_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_scan_math_helpers.py tests/test_solve_axis_helpers_more_coverage.py tests/test_solve_scan_planning_helpers.py tests/test_solve_scan_chunking.py tests/test_solve_real_scan_wave10_coverage.py tests/test_solve_residual_iter_helpers_wave8_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 25`
+
+Best next steps:
+
+1. Continue extracting setup helper clusters, especially mode-transform and
+   update preconditioner setup.
+2. Then introduce a typed scan-controller context and branch-fingerprint tests
+   before moving accepted/rejected controller math.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.76%.
+- Differentiability/refactor implementation: 99.995%.
+- Solver monolith reduction: 92.3%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 91.6%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.42%.

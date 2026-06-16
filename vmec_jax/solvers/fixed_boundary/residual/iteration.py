@@ -324,10 +324,11 @@ from vmec_jax.solvers.fixed_boundary.scan.math import (
     _hold_step as _scan_math_hold_step,
     _kernel_arrays_from_k as _scan_math_kernel_arrays_from_k,
     _no_restart_updates as _scan_math_no_restart_updates,
-    _ptau_minmax_from_k_host as _scan_math_ptau_minmax_from_k_host,
-    _ptau_minmax_from_k_jax as _scan_math_ptau_minmax_from_k_jax,
+    _ptau_minmax_from_context_host as _scan_math_ptau_minmax_from_context_host,
+    _ptau_minmax_from_context_jax as _scan_math_ptau_minmax_from_context_jax,
     _restart_updates as _scan_math_restart_updates,
     _state_jacobian as _scan_math_state_jacobian,
+    build_ptau_minmax_context as _build_ptau_minmax_context,
 )
 from vmec_jax.solvers.fixed_boundary.scan.debug import (
     _emit_vmec2000_iter_row as _emit_scan_vmec2000_iter_row,
@@ -1225,53 +1226,31 @@ def solve_fixed_boundary_residual_iter(
         return tuple(smooth[:, i] for i in range(int(smooth.shape[1])))
 
     _t_setup_ptau_constants = _setup_timer_start()
-    # Precompute pshalf and ohs for the JIT-accelerated ptau check.
-    # These are fixed for the lifetime of this NS-stage closure. Keep the
-    # cached constants tracer-safe so the residual solver can participate in a
-    # JIT-compiled forward-mode Jacobian build.
-    _ptau_s_is_traced = _tree_has_tracer(s)
-    if _ptau_s_is_traced and has_jax():
-        _ptau_s_jax = jnp.asarray(s, dtype=jnp.float64)
-        if int(_ptau_s_jax.shape[0]) > 1:
-            _ptau_hs_jax0 = _ptau_s_jax[1] - _ptau_s_jax[0]
-        else:
-            _ptau_hs_jax0 = jnp.asarray(1.0, dtype=jnp.float64)
-        _ptau_ohs_scalar = None
-        _ptau_pshalf_np = None
-    else:
-        _ptau_s_np = np.asarray(s)
-        _ptau_hs = float(_ptau_s_np[1] - _ptau_s_np[0]) if int(_ptau_s_np.shape[0]) > 1 else 1.0
-        _ptau_ohs_scalar = 0.0 if _ptau_hs == 0.0 else 1.0 / _ptau_hs
-        _ptau_pshalf_np = _pshalf_from_s_np(s)
-    if has_jax():
-        if _ptau_s_is_traced:
-            _ptau_pshalf_jax = _pshalf_from_s_jax(_ptau_s_jax, jnp.float64)
-            _ptau_ohs_jax = jnp.where(
-                _ptau_hs_jax0 == 0.0,
-                jnp.asarray(0.0, dtype=jnp.float64),
-                jnp.asarray(1.0, dtype=jnp.float64) / _ptau_hs_jax0,
-            )
-        else:
-            _ptau_pshalf_jax = jnp.asarray(_ptau_pshalf_np, dtype=jnp.float64)
-            _ptau_ohs_jax = jnp.asarray(_ptau_ohs_scalar, dtype=jnp.float64)
+    _ptau_context = _build_ptau_minmax_context(
+        s,
+        has_jax=has_jax(),
+        s_has_tracer=_tree_has_tracer(s),
+        pshalf_from_s_np=_pshalf_from_s_np,
+        pshalf_from_s_jax=_pshalf_from_s_jax,
+    )
     _record_setup_timing("setup_ptau_constants", _t_setup_ptau_constants)
 
     def _ptau_minmax_from_k_host(k) -> tuple[Any | None, Any | None]:
         """Compute VMEC `ptau` min/max on the host for controller decisions."""
-        # In the CPU non-scan hot path, do not call the JIT ptau helper:
-        # compiling that tiny kernel shows up as avoidable cold-start overhead.
-        use_host_np_ptau = bool(host_update_assembly) and (not _tree_has_tracer(k))
-        return _scan_math_ptau_minmax_from_k_host(
+        return _scan_math_ptau_minmax_from_context_host(
             k,
-            pshalf=_ptau_pshalf_np,
-            ohs=_ptau_ohs_scalar,
-            compute_jit=None if use_host_np_ptau else _ptau_compute_jit,
-            pshalf_jax=None if use_host_np_ptau else (_ptau_pshalf_jax if has_jax() else None),
-            ohs_jax=None if use_host_np_ptau else (_ptau_ohs_jax if has_jax() else None),
+            context=_ptau_context,
+            host_update_assembly=host_update_assembly,
+            tree_has_tracer=_tree_has_tracer,
+            compute_jit=_ptau_compute_jit,
         )
 
     def _ptau_minmax_from_k_jax(k):
-        return _scan_math_ptau_minmax_from_k_jax(k, s=s, pshalf_from_s_jax=_pshalf_from_s_jax)
+        return _scan_math_ptau_minmax_from_context_jax(
+            k,
+            context=_ptau_context,
+            pshalf_from_s_jax=_pshalf_from_s_jax,
+        )
 
     def _ptau_minmax(k):
         if has_jax():
