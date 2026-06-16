@@ -44,6 +44,9 @@ def prepare_residual_force_context(
     icurv_full_mesh_from_indata_func: Callable[..., Any] | None = None,
     vmec_force_flux_profiles_func: Callable[..., tuple[Any, Any, Any]] | None = None,
     wout_like_cls: type | None = None,
+    flux_profiles_from_indata_func: Callable[..., Any] | None = None,
+    boundary_from_indata_func: Callable[..., Any] | None = None,
+    vmec_trig_tables_func: Callable[..., Any] | None = None,
     jnp_module: Any | None = None,
 ) -> ResidualForceContext:
     """Prepare flux/profile/trig data for residual-objective optimizers.
@@ -69,23 +72,25 @@ def prepare_residual_force_context(
         from ..profiles import _vmec_force_flux_profiles as vmec_force_flux_profiles_func
     if wout_like_cls is None:
         from ..results import WoutLikeVmecForces as wout_like_cls
-
-    from ....boundary import boundary_from_indata
-    from ....energy import flux_profiles_from_indata
-    from ....vmec_tomnsp import vmec_trig_tables
+    if flux_profiles_from_indata_func is None:
+        from ....energy import flux_profiles_from_indata as flux_profiles_from_indata_func
+    if boundary_from_indata_func is None:
+        from ....boundary import boundary_from_indata as boundary_from_indata_func
+    if vmec_trig_tables_func is None:
+        from ....vmec_tomnsp import vmec_trig_tables as vmec_trig_tables_func
 
     signgs = int(signgs)
     idx00 = int(idx00 if idx00 is not None else mode00_index_func(static.modes))
     s = jnp_module.asarray(static.s)
 
-    flux = flux_profiles_from_indata(indata, s, signgs=signgs)
+    flux = flux_profiles_from_indata_func(indata, s, signgs=signgs)
     chipf_wout = jnp_module.asarray(flux.chipf)
 
     phips = jnp_module.asarray(flux.phips)
     if phips.shape[0] >= 1:
         phips = phips.at[0].set(0.0)
 
-    boundary = boundary_from_indata(indata, static.modes)
+    boundary = boundary_from_indata_func(indata, static.modes)
     r00 = float(np.asarray(boundary.R_cos)[idx00]) if idx00 >= 0 else float(np.asarray(boundary.R_cos)[0])
     gamma = float(indata.get_float("GAMMA", 0.0))
     lrfp = bool(indata.get_bool("LRFP", False))
@@ -132,7 +137,7 @@ def prepare_residual_force_context(
 
     trig = getattr(static, "trig_vmec", None)
     if trig is None:
-        trig = vmec_trig_tables(
+        trig = vmec_trig_tables_func(
             ntheta=int(static.cfg.ntheta),
             nzeta=int(static.cfg.nzeta),
             nfp=int(wout_like.nfp),

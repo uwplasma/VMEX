@@ -201,69 +201,28 @@ class _VmecResidualSetup:
 def _build_vmec_residual_setup(*, state0_c: VMECState, static, indata, signgs_i: int, idx00: int) -> _VmecResidualSetup:
     """Build profile, force, and structural residual metadata for implicit VMEC residual AD."""
     from .boundary import boundary_from_indata
+    from .solvers.fixed_boundary.optimization.residual_context import prepare_residual_force_context
     from .vmec_tomnsp import vmec_trig_tables
 
-    s = jnp.asarray(static.s)
-    flux = flux_profiles_from_indata(indata, s, signgs=signgs_i)
-    phips = jnp.asarray(flux.phips)
-    if phips.shape[0] >= 1:
-        phips = phips.at[0].set(0.0)
-    chipf_wout = jnp.asarray(flux.chipf)
-
-    boundary = boundary_from_indata(indata, static.modes)
-    r00 = float(np.asarray(boundary.R_cos)[int(idx00)]) if int(idx00) >= 0 else float(np.asarray(boundary.R_cos)[0])
-    gamma = float(indata.get_float("GAMMA", 0.0))
-    lrfp = bool(indata.get_bool("LRFP", False))
-    chips = _half_mesh_from_full_mesh(chipf_wout) if lrfp else None
-    mass = _mass_half_mesh_from_indata(
+    context = prepare_residual_force_context(
+        state0_c,
+        static,
         indata=indata,
-        s_full=s,
-        phips=phips,
-        r00=r00,
-        gamma=gamma,
-        lrfp=lrfp,
-        chips=chips,
+        signgs=int(signgs_i),
+        idx00=int(idx00),
+        include_constraint_force=True,
+        mode00_index_func=_mode00_index,
+        half_mesh_from_full_mesh_func=_half_mesh_from_full_mesh,
+        mass_half_mesh_from_indata_func=_mass_half_mesh_from_indata,
+        pressure_half_mesh_from_indata_func=_pressure_half_mesh_from_indata,
+        icurv_full_mesh_from_indata_func=_icurv_full_mesh_from_indata,
+        vmec_force_flux_profiles_func=_vmec_force_flux_profiles,
+        wout_like_cls=_WoutLikeVmecForces,
+        flux_profiles_from_indata_func=flux_profiles_from_indata,
+        boundary_from_indata_func=boundary_from_indata,
+        vmec_trig_tables_func=vmec_trig_tables,
+        jnp_module=jnp,
     )
-    pres = _pressure_half_mesh_from_indata(indata=indata, s_full=s)
-    ncurr = int(indata.get_int("NCURR", 0))
-    icurv = _icurv_full_mesh_from_indata(indata=indata, s_full=s, signgs=signgs_i)
-    phipf_internal, chipf_internal, chips_eff = _vmec_force_flux_profiles(
-        phipf=jnp.asarray(flux.phipf),
-        chipf=chipf_wout,
-        signgs=signgs_i,
-        flux_is_internal=True,
-    )
-    wout_like = _WoutLikeVmecForces(
-        nfp=int(static.cfg.nfp),
-        mpol=int(static.cfg.mpol),
-        ntor=int(static.cfg.ntor),
-        lasym=bool(static.cfg.lasym),
-        signgs=signgs_i,
-        phipf=jnp.asarray(flux.phipf),
-        phips=phips,
-        chipf=chipf_wout,
-        pres=pres,
-        mass=mass,
-        gamma=gamma,
-        ncurr=ncurr,
-        lcurrent=True,
-        icurv=icurv,
-        phipf_internal=phipf_internal,
-        chipf_internal=chipf_internal,
-        chips_eff=chips_eff,
-    )
-    trig = getattr(static, "trig_vmec", None)
-    if trig is None:
-        trig = vmec_trig_tables(
-            ntheta=int(static.cfg.ntheta),
-            nzeta=int(static.cfg.nzeta),
-            nfp=int(wout_like.nfp),
-            mmax=int(wout_like.mpol) - 1,
-            nmax=int(wout_like.ntor),
-            lasym=bool(wout_like.lasym),
-            dtype=jnp.asarray(state0_c.Rcos).dtype,
-        )
-    apply_lforbal = bool(indata.get_bool("LFORBAL", False))
     mask_pack = getattr(static, "tomnsps_masks", None)
     stellsym_residual_projector = None
     if (not bool(static.cfg.lasym)) and (mask_pack is not None):
@@ -283,10 +242,10 @@ def _build_vmec_residual_setup(*, state0_c: VMECState, static, indata, signgs_i:
             "flcs": jnp.asarray(np.flatnonzero((mask_l_np & ~n0_mask).reshape(-1)), dtype=jnp.int32),
         }
     return _VmecResidualSetup(
-        s=s,
-        wout_like=wout_like,
-        trig=trig,
-        apply_lforbal=apply_lforbal,
+        s=context.s,
+        wout_like=context.wout_like,
+        trig=context.trig,
+        apply_lforbal=bool(context.apply_lforbal),
         mask_pack=mask_pack,
         stellsym_residual_projector=stellsym_residual_projector,
     )

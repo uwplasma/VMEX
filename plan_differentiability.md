@@ -4737,3 +4737,66 @@ Completion:
 - Implicit residual-adjoint decomposition: 86%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.15%.
+
+## 2026-06-16 Shared Implicit Residual Context Reuse
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extended `prepare_residual_force_context` with optional injected callback
+   seams for flux-profile construction, boundary construction, and VMEC
+   trigonometric-table construction.
+2. Rewired `_build_vmec_residual_setup` in `vmec_jax.implicit` to reuse the
+   fixed-boundary residual-force context instead of carrying a second copy of
+   flux/profile/boundary/trig setup logic.
+3. Preserved the implicit module's existing private monkeypatch seams by
+   passing its local helper functions into the shared context builder.
+4. Left the implicit Tomnsps mask/projector assembly local to
+   `_build_vmec_residual_setup`, since that residual-shape logic is specific to
+   the implicit residual objective.
+
+Results obtained:
+
+- The fixed-boundary optimizer residual context and implicit residual-adjoint
+  path now share one tested force-context setup implementation.
+- No public API change.
+- No new source file or namespace expansion.
+- This tranche reduces duplicated profile/boundary/trig setup logic while
+  keeping branch behavior and differentiability seams unchanged.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/implicit.py vmec_jax/solvers/fixed_boundary/optimization/residual_context.py`
+- `python -m compileall -q vmec_jax/implicit.py vmec_jax/solvers/fixed_boundary/optimization/residual_context.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q $(rg --files tests | rg 'implicit') tests/test_solve_wave7_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_wave7_coverage.py tests/test_solve_wave6_coverage.py tests/test_solve_driver_control_fast.py -q`
+- `git diff --check`
+
+Best next steps:
+
+1. Commit and push this shared residual-context reuse tranche.
+2. Recheck CI for the branch after the push.
+3. Continue with the next bounded source-health seam: either extract passive
+   helper logic from `solve_fixed_boundary_state_implicit_vmec_residual` or
+   reduce optimizer workflow duplication, avoiding risky adaptive-controller
+   behavior changes until the fingerprint-gated validation gates are in place.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.67%.
+- Differentiability/refactor implementation: 99.976%.
+- Solver monolith reduction: 88.7%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 91%.
+- WOUT diagnostic/profile decomposition: 98.0%.
+- Optimizer workflow decomposition: 82%.
+- Implicit residual-adjoint decomposition: 87%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.16%.
