@@ -143,6 +143,25 @@ def _write_boundary_3d_plot(result, *, outdir: Path) -> Path:
     surf = ax.plot_surface(zz, x, y, facecolors=colors, linewidth=0.0, antialiased=True, shade=False)
     surf.set_array(bmag.ravel())
     surf.set_cmap("viridis")
+    with np.errstate(divide="ignore", invalid="ignore"):
+        pitch = np.divide(
+            field.b_sup_theta[-1],
+            field.b_sup_xi[-1],
+            out=np.zeros_like(field.b_sup_theta[-1]),
+            where=np.abs(field.b_sup_xi[-1]) > 0.0,
+        )
+    theta_delta = np.zeros_like(grid.xi)
+    for idx in range(1, grid.nxi):
+        theta_delta[idx] = theta_delta[idx - 1] + 0.5 * (pitch[idx - 1] + pitch[idx]) * (
+            grid.xi[idx] - grid.xi[idx - 1]
+        )
+    line_scale = 1.12
+    for theta0 in np.linspace(0.0, 2.0 * np.pi, 6, endpoint=False):
+        theta_line = theta0 + theta_delta
+        line_x = line_scale * radius * np.cos(theta_line)
+        line_y = line_scale * radius * np.sin(theta_line)
+        ax.plot(z, line_x, line_y, color="white", linewidth=3.0)
+        ax.plot(z, line_x, line_y, color="red", linewidth=1.7)
     ax.set_xlabel("z")
     ax.set_ylabel("x")
     ax.set_zlabel("y")
