@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 from pathlib import Path
 from typing import Any, Callable
+
+
+@dataclass(frozen=True)
+class RestartContext:
+    """Normalized restart inputs for a fixed-boundary run."""
+
+    cfg: Any
+    restart_state: Any | None
+    restart_wout: Any | None
+    restart_solver_state: Any | None
 
 
 def maybe_enable_compilation_cache(
@@ -86,4 +97,55 @@ def maybe_enable_compilation_cache(
         return
 
 
-__all__ = ["maybe_enable_compilation_cache"]
+def resolve_restart_context(
+    *,
+    cfg,
+    restart_state,
+    restart_wout_path,
+    restart_solver_state,
+    ns_override,
+    read_wout_func: Callable[[Any], Any],
+    state_from_wout_func: Callable[[Any], Any],
+    replace_func: Callable[..., Any],
+    path_cls: Callable[[Any], Any] = Path,
+) -> RestartContext:
+    """Resolve restart WOUT/state inputs and enforce grid consistency.
+
+    The driver historically exposed ``read_wout`` and ``state_from_wout`` as
+    module-level monkeypatch points. Accepting those callables keeps that
+    compatibility while moving the mechanical restart normalization out of the
+    long public workflow.
+    """
+
+    restart_state_eff = restart_state
+    restart_wout = None
+    if restart_wout_path is not None:
+        restart_wout = read_wout_func(path_cls(restart_wout_path))
+        restart_state_eff = state_from_wout_func(restart_wout)
+
+    cfg_eff = cfg
+    restart_solver_state_eff = restart_solver_state
+    if restart_state_eff is not None:
+        restart_ns = int(restart_state_eff.layout.ns)
+        if ns_override is not None and int(ns_override) != restart_ns:
+            raise ValueError(f"restart_state ns={restart_ns} does not match ns_override={ns_override}")
+        cfg_eff = replace_func(cfg_eff, ns=int(restart_ns))
+        if restart_solver_state_eff is not None:
+            # Ensure resume checkpoints align with the provided restart state.
+            try:
+                restart_solver_state_eff = dict(restart_solver_state_eff)
+                restart_solver_state_eff["state_checkpoint"] = restart_state_eff
+            except Exception:
+                pass
+    elif ns_override is not None:
+        cfg_eff = replace_func(cfg_eff, ns=int(ns_override))
+
+    return RestartContext(
+        cfg=cfg_eff,
+        restart_state=restart_state_eff,
+        restart_wout=restart_wout,
+        restart_solver_state=restart_solver_state_eff,
+    )
+
+
+__all__ = ["RestartContext", "maybe_enable_compilation_cache", "resolve_restart_context"]

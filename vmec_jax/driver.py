@@ -55,7 +55,11 @@ _distribute_stage_iters = _driver_policy_helpers.distribute_stage_iters
 _dynamic_scan_probe_settings_for_backend = _driver_policy_helpers.dynamic_scan_probe_settings
 _host_update_assembly_driver_default = _driver_policy_helpers.host_update_assembly_driver_default
 _normalize_solver_mode = _driver_policy_helpers.normalize_solver_mode
+_policy_backend_for_requested_device = _driver_policy_helpers.policy_backend_for_requested_device
+_requested_solver_device_name = _driver_policy_helpers.requested_solver_device_name
 _requested_final_ftol = _driver_policy_helpers.requested_final_ftol
+_resolve_initial_fixed_boundary_policy = _driver_policy_helpers.resolve_initial_fixed_boundary_policy
+_resolve_axis_infer_missing_policy = _driver_policy_helpers.resolve_axis_infer_missing_policy
 _resolve_fixed_boundary_solver_device_name = _driver_policy_helpers.resolve_fixed_boundary_solver_device_name
 _resolve_jit_forces_auto_policy = _driver_policy_helpers.resolve_jit_forces_auto_policy
 _resolve_vmec2000_stage_controls = _driver_policy_helpers.resolve_vmec2000_stage_controls
@@ -446,11 +450,10 @@ def run_fixed_boundary(
         enable_x64(True)
     except Exception:
         pass
-    requested_solver_device = "auto" if solver_device is None else str(solver_device).strip().lower()
-    policy_backend = (
-        requested_solver_device
-        if requested_solver_device in ("cpu", "gpu")
-        else _default_backend_name()
+    requested_solver_device = _requested_solver_device_name(solver_device)
+    policy_backend = _policy_backend_for_requested_device(
+        requested_solver_device=requested_solver_device,
+        default_backend=_default_backend_name(),
     )
     if not bool(_solver_device_context_active):
         from ._compat import _default_compilation_cache_dir
@@ -461,84 +464,51 @@ def run_fixed_boundary(
             path_cls=Path,
         )
     cfg, indata = load_config(str(input_path))
-    solver_mode_explicit = solver_mode is not None
-    if solver_mode is None and bool(performance_mode):
-        solver_mode, performance_mode = _default_non_autodiff_solver_policy_for_backend(indata, policy_backend)
-    solver_mode_eff = _normalize_solver_mode(solver_mode=solver_mode, performance_mode=bool(performance_mode))
-    if use_scan is None:
-        if bool(solver_mode_explicit):
-            use_scan = True
-        else:
-            use_scan = _default_use_scan_for_backend(indata, policy_backend, solver_mode_eff)
-            if bool(verbose) and str(policy_backend).strip().lower() == "cpu":
-                # CPU scan is valuable for quiet high-work solves, but VMEC-style
-                # table output needs host-visible progress rows. Chunked scan
-                # printing loses the CPU win, so keep interactive CLI runs on
-                # the host VMEC-control loop unless the caller explicitly
-                # requests use_scan=True.
-                use_scan = False
-    else:
-        use_scan = bool(use_scan)
-    accelerated_mode = solver_mode_eff == "accelerated"
-    performance_mode = solver_mode_eff != "parity"
-    cli_fixed_boundary_mode = bool(cli_fixed_boundary_mode) or (
-        bool(_auto_cli_fixed_boundary_mode)
-        and (not bool(solver_mode_explicit))
-        and (not bool(cfg.lfreeb))
-        and bool(performance_mode)
-        and (grid is None)
-        and str(solver).strip().lower() == "vmec2000_iter"
+    initial_policy = _resolve_initial_fixed_boundary_policy(
+        requested_solver_device=requested_solver_device,
+        policy_backend=policy_backend,
+        indata=indata,
+        cfg=cfg,
+        solver=solver,
+        solver_mode=solver_mode,
+        performance_mode=bool(performance_mode),
+        use_scan=use_scan,
+        verbose=bool(verbose),
+        grid=grid,
+        cli_fixed_boundary_mode=bool(cli_fixed_boundary_mode),
+        auto_cli_fixed_boundary_mode=bool(_auto_cli_fixed_boundary_mode),
+        default_non_autodiff_policy_func=_default_non_autodiff_solver_policy_for_backend,
+        default_use_scan_func=_default_use_scan_for_backend,
     )
-    restart_state_eff = restart_state
-    restart_wout = None
-    if restart_wout_path is not None:
-        restart_wout = read_wout(Path(restart_wout_path))
-        restart_state_eff = state_from_wout(restart_wout)
-
-    if restart_state_eff is not None:
-        restart_ns = int(restart_state_eff.layout.ns)
-        if ns_override is not None and int(ns_override) != restart_ns:
-            raise ValueError(
-                f"restart_state ns={restart_ns} does not match ns_override={ns_override}"
-            )
-        cfg = replace(cfg, ns=int(restart_ns))
-        if restart_solver_state is not None:
-            # Ensure resume checkpoints align with the provided restart state.
-            try:
-                restart_solver_state = dict(restart_solver_state)
-                restart_solver_state["state_checkpoint"] = restart_state_eff
-            except Exception:
-                pass
-    elif ns_override is not None:
-        cfg = replace(cfg, ns=int(ns_override))
+    solver_mode_explicit = bool(initial_policy.solver_mode_explicit)
+    solver_mode_eff = str(initial_policy.solver_mode_eff)
+    accelerated_mode = bool(initial_policy.accelerated_mode)
+    performance_mode = bool(initial_policy.performance_mode)
+    use_scan = bool(initial_policy.use_scan)
+    cli_fixed_boundary_mode = bool(initial_policy.cli_fixed_boundary_mode)
+    restart_context = _driver_runtime_helpers.resolve_restart_context(
+        cfg=cfg,
+        restart_state=restart_state,
+        restart_wout_path=restart_wout_path,
+        restart_solver_state=restart_solver_state,
+        ns_override=ns_override,
+        read_wout_func=read_wout,
+        state_from_wout_func=state_from_wout,
+        replace_func=replace,
+        path_cls=Path,
+    )
+    cfg = restart_context.cfg
+    restart_state_eff = restart_context.restart_state
+    restart_wout = restart_context.restart_wout
+    restart_solver_state = restart_context.restart_solver_state
     solver_lower = str(solver).lower()
     # VMEC starts from the input axis coefficients and only recomputes the
     # axis (guess_axis) after a bad-Jacobian trigger. For vmec2000_iter we
     # follow that behavior by default and allow opt-in axis inference via env.
-    axis_infer_missing = solver_lower != "vmec2000_iter"
-    if solver_lower == "vmec2000_iter":
-        enable_axis_infer = os.getenv("VMEC_JAX_ENABLE_AXIS_INFER", "").strip().lower() in (
-            "1",
-            "true",
-            "yes",
-            "on",
-        )
-        disable_axis_infer = os.getenv("VMEC_JAX_DISABLE_AXIS_INFER", "").strip().lower() in (
-            "1",
-            "true",
-            "yes",
-            "on",
-        )
-        if enable_axis_infer:
-            axis_infer_missing = True
-        if disable_axis_infer:
-            axis_infer_missing = False
-        if (not disable_axis_infer) and bool(performance_mode):
-            # Performance-mode fixed-boundary solves infer a boundary-based
-            # magnetic axis up front instead of paying for a bad-Jacobian
-            # reset solve in the first VMEC iteration. Keep the conservative
-            # VMEC-style raw-axis start in parity mode.
-            axis_infer_missing = True
+    axis_infer_missing = _resolve_axis_infer_missing_policy(
+        solver_lower=solver_lower,
+        performance_mode=bool(performance_mode),
+    )
 
     ns_list_for_device = _as_list_like(indata.get("NS_ARRAY", None))
     niter_list_for_device = _as_list_like(indata.get("NITER_ARRAY", None))

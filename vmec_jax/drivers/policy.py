@@ -8,6 +8,7 @@ workflow so they can be unit-tested without importing the whole driver stack.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 
 import numpy as np
@@ -15,6 +16,20 @@ import numpy as np
 
 VALID_SOLVER_MODES = frozenset(("default", "parity", "accelerated"))
 FSQ_COMPONENT_NAMES = ("fsqr", "fsqz", "fsql")
+
+
+@dataclass(frozen=True)
+class InitialFixedBoundaryPolicy:
+    """Resolved driver policy before static-data construction."""
+
+    requested_solver_device: str
+    policy_backend: str
+    solver_mode_explicit: bool
+    solver_mode_eff: str
+    performance_mode: bool
+    accelerated_mode: bool
+    use_scan: bool
+    cli_fixed_boundary_mode: bool
 
 
 def host_update_assembly_driver_default(
@@ -104,6 +119,139 @@ def normalize_solver_mode(*, solver_mode: str | None, performance_mode: bool) ->
         valid = ", ".join(sorted(VALID_SOLVER_MODES))
         raise ValueError(f"Unknown solver_mode {solver_mode!r}. Expected one of: {valid}.")
     return mode
+
+
+def requested_solver_device_name(solver_device: str | None) -> str:
+    """Normalize the public solver-device request without selecting a device."""
+
+    return "auto" if solver_device is None else str(solver_device).strip().lower()
+
+
+def policy_backend_for_requested_device(*, requested_solver_device: str, default_backend: str) -> str:
+    """Choose the backend name used for policy decisions before device routing."""
+
+    requested = str(requested_solver_device).strip().lower()
+    if requested in ("cpu", "gpu"):
+        return requested
+    return str(default_backend).strip().lower()
+
+
+def resolve_initial_fixed_boundary_policy(
+    *,
+    requested_solver_device: str,
+    policy_backend: str,
+    indata,
+    cfg,
+    solver: str,
+    solver_mode: str | None,
+    performance_mode: bool,
+    use_scan: bool | None,
+    verbose: bool,
+    grid,
+    cli_fixed_boundary_mode: bool,
+    auto_cli_fixed_boundary_mode: bool,
+    default_non_autodiff_policy_func=None,
+    default_use_scan_func=None,
+) -> InitialFixedBoundaryPolicy:
+    """Resolve the initial run policy shared by CLI and API entry points.
+
+    This helper is intentionally pure policy logic: it does not import JAX,
+    build grids, prepare free-boundary metadata, or enter solver loops. Keeping
+    it isolated makes the front of ``run_fixed_boundary`` testable without
+    accidentally changing VMEC control-flow semantics.
+    """
+
+    solver_mode_explicit = solver_mode is not None
+    performance_mode_eff = bool(performance_mode)
+    solver_mode_input = solver_mode
+    if default_non_autodiff_policy_func is None:
+        default_non_autodiff_policy_func = default_non_autodiff_solver_policy_for_backend
+    if default_use_scan_func is None:
+        default_use_scan_func = default_use_scan_for_backend
+    if solver_mode_input is None and performance_mode_eff:
+        solver_mode_input, performance_mode_eff = default_non_autodiff_policy_func(
+            indata,
+            policy_backend,
+        )
+    solver_mode_eff = normalize_solver_mode(
+        solver_mode=solver_mode_input,
+        performance_mode=bool(performance_mode_eff),
+    )
+
+    if use_scan is None:
+        if bool(solver_mode_explicit):
+            use_scan_eff = True
+        else:
+            use_scan_eff = default_use_scan_func(indata, policy_backend, solver_mode_eff)
+            if bool(verbose) and str(policy_backend).strip().lower() == "cpu":
+                # Interactive CPU CLI runs favor host-visible VMEC progress
+                # rows. Quiet API calls can still use scan when policy selects it.
+                use_scan_eff = False
+    else:
+        use_scan_eff = bool(use_scan)
+
+    accelerated_mode = solver_mode_eff == "accelerated"
+    performance_mode_eff = solver_mode_eff != "parity"
+    cli_fixed_boundary_mode_eff = bool(cli_fixed_boundary_mode) or (
+        bool(auto_cli_fixed_boundary_mode)
+        and (not bool(solver_mode_explicit))
+        and (not bool(getattr(cfg, "lfreeb", False)))
+        and bool(performance_mode_eff)
+        and (grid is None)
+        and str(solver).strip().lower() == "vmec2000_iter"
+    )
+
+    return InitialFixedBoundaryPolicy(
+        requested_solver_device=str(requested_solver_device),
+        policy_backend=str(policy_backend),
+        solver_mode_explicit=bool(solver_mode_explicit),
+        solver_mode_eff=str(solver_mode_eff),
+        performance_mode=bool(performance_mode_eff),
+        accelerated_mode=bool(accelerated_mode),
+        use_scan=bool(use_scan_eff),
+        cli_fixed_boundary_mode=bool(cli_fixed_boundary_mode_eff),
+    )
+
+
+def resolve_axis_infer_missing_policy(
+    *,
+    solver_lower: str,
+    performance_mode: bool,
+    getenv=os.getenv,
+) -> bool:
+    """Resolve whether missing axis coefficients are inferred before iteration.
+
+    VMEC2000 parity starts from the input axis and lets the bad-Jacobian path
+    improve it. Performance mode may infer the axis up front to avoid that
+    extra first-stage reset. This helper keeps the env-controlled decision
+    visible and testable without moving solver math.
+    """
+
+    solver_name = str(solver_lower).strip().lower()
+    axis_infer_missing = solver_name != "vmec2000_iter"
+    if solver_name != "vmec2000_iter":
+        return bool(axis_infer_missing)
+
+    enable_axis_infer = str(getenv("VMEC_JAX_ENABLE_AXIS_INFER", "")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    disable_axis_infer = str(getenv("VMEC_JAX_DISABLE_AXIS_INFER", "")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    if enable_axis_infer:
+        axis_infer_missing = True
+    if disable_axis_infer:
+        axis_infer_missing = False
+    if (not disable_axis_infer) and bool(performance_mode):
+        # Conservative VMEC-style raw-axis start remains the parity default.
+        axis_infer_missing = True
+    return bool(axis_infer_missing)
 
 
 def accelerated_fsq_total_target_from_ftol(ftol: float) -> float:

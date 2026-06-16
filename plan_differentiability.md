@@ -4149,3 +4149,81 @@ Completion:
 - WOUT diagnostic/profile decomposition: 94%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 98.82%.
+
+## 2026-06-16 Driver Setup Policy/Restart Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved the initial fixed-boundary run policy resolution out of
+   `run_fixed_boundary` and into `vmec_jax.drivers.policy`:
+   - solver-device request normalization,
+   - backend used for policy decisions,
+   - solver-mode/performance-mode resolution,
+   - default scan policy,
+   - CLI fixed-boundary auto-mode selection.
+2. Moved restart WOUT/state normalization out of `run_fixed_boundary` and into
+   `vmec_jax.drivers.runtime.resolve_restart_context`.
+3. Moved the VMEC2000 axis-inference policy into
+   `vmec_jax.drivers.policy.resolve_axis_infer_missing_policy`.
+4. Preserved driver-level monkeypatch compatibility by injecting
+   `_default_non_autodiff_solver_policy_for_backend`,
+   `_default_use_scan_for_backend`, `read_wout`, and `state_from_wout` from
+   `vmec_jax.driver` instead of hard-binding helper-module call sites.
+5. Added direct helper tests for:
+   - interactive CPU CLI default policy,
+   - explicit parity/scan policy,
+   - axis-inference parity/performance/env branches,
+   - restart WOUT loading, `ns_override` validation, and resume-state copying.
+
+Results obtained:
+
+- `run_fixed_boundary` dropped from 2,063 to 2,029 lines in the source-health
+  report.
+- The public driver workflow now has typed setup contexts for policy and
+  restart handling, while solver routing, multigrid staging, scan selection,
+  adaptive branch semantics, and force math remain unchanged.
+- A local compatibility regression was caught and fixed: driver-level policy
+  monkeypatches now remain effective through dependency injection.
+- Previous pushed CI run `27587015247` completed successfully before this local
+  tranche.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers/policy.py vmec_jax/drivers/runtime.py tests/test_driver_policy_helpers.py`
+- `python -m compileall -q vmec_jax/driver.py vmec_jax/drivers/policy.py vmec_jax/drivers/runtime.py tests/test_driver_policy_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_wave2_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_run_wave8_coverage.py::test_run_fixed_boundary_selects_default_accelerated_policy_and_explicit_parity tests/test_driver_policy_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_wave2_coverage.py tests/test_driver_policy_coverage_extra.py tests/test_driver_helper_edges_wave14_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_api.py tests/test_driver_run_wave8_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 15`
+
+Best next steps:
+
+1. Commit and push this driver setup tranche, then let CI validate it.
+2. Next safe refactor candidates:
+   - extract CLI staged/budgeted multigrid orchestration into a
+     `drivers/staging.py` helper with dependency injection for monkeypatch
+     compatibility, or
+   - move `read_wout`/`write_wout` netCDF serialization behind the existing
+     `io/wout` domain while preserving the `vmec_jax.wout` facade.
+3. Continue avoiding changes to adaptive branch selection until a true
+   fingerprint-gated full adaptive AD-vs-central-FD gate exists.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.55%.
+- Differentiability/refactor implementation: 99.92%.
+- Solver monolith reduction: 88.7%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 86%.
+- WOUT diagnostic/profile decomposition: 94%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 98.84%.
