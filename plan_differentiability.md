@@ -5908,3 +5908,59 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.45%.
+
+## 2026-06-16 Lambda Preconditioner Payload Selection Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `LambdaPreconditionerOutputs` and
+   `lambda_preconditioner_outputs` to the existing fixed-boundary
+   preconditioning operators module.
+2. Replaced duplicated residual-loop branches for `faclam` and `lamcal`
+   debug-payload selection with the shared helper.
+3. Added focused unit coverage for all four payload combinations:
+   base lambda preconditioner, `faclam`, `lamcal`, and both together.
+
+Results obtained:
+
+- The residual iteration module dropped from 9,191 lines to 9,180 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 8,591 to 8,579 lines.
+- The payload-selection policy now lives in the preconditioning domain instead
+  of being duplicated in two controller branches.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/preconditioning/operators.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_preconditioner_metric_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_preconditioner_metric_helpers.py tests/test_solve_finish_cache_more_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_scan_math_helpers.py tests/test_solve_axis_helpers_more_coverage.py tests/test_solve_scan_planning_helpers.py tests/test_solve_scan_chunking.py tests/test_solve_real_scan_wave10_coverage.py tests/test_solve_residual_iter_helpers_wave8_coverage.py tests/test_solve_residual_iter_mode_transform_helpers.py tests/test_solve_residual_iter_geometry_helpers.py -q`
+- `python tools/diagnostics/source_health.py --top 8 --top-functions 12`
+
+Best next steps:
+
+1. Continue setup-only extraction, but avoid creating new files for small
+   helpers; prefer extending existing domains.
+2. Next likely target: a typed preconditioner cache context that can make the
+   duplicated refresh/reassemble blocks smaller without changing controller
+   semantics.
+3. Keep CI and VMEC parity gates green before moving `_run_vmec2000_scan`.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.995%.
+- Solver monolith reduction: 93.8%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 91.6%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.46%.

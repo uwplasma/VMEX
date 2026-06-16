@@ -232,6 +232,7 @@ from vmec_jax.solvers.fixed_boundary.optimization.gradient import (
 from vmec_jax.solvers.fixed_boundary.preconditioning.operators import (
     apply_preconditioner as _apply_preconditioner,
     can_reassemble_precond_mats as _can_reassemble_precond_mats,
+    lambda_preconditioner_outputs as _lambda_preconditioner_outputs,
     metric_surface_precond_from_bcovar_jax as _metric_surface_precond_from_bcovar_jax,
     metric_surface_precond_scales_jax as _metric_surface_precond_scales_jax,  # noqa: F401 - re-exported for existing internal tests/importers.
     metric_surface_precond_scales_np as _metric_surface_precond_scales_np,
@@ -6070,21 +6071,15 @@ def solve_fixed_boundary_residual_iter(
                     if timing_enabled:
                         timing_stats["precond_refresh_calls"] = int(timing_stats["precond_refresh_calls"]) + 1
                     t_prec_refresh_start = time.perf_counter() if timing_enabled else None
-                    if need_lamcal:
-                        if need_lam_prec:
-                            lam_prec, faclam_dump, lam_debug = _lambda_preconditioner(
-                                k.bc, return_faclam=True, return_debug=True
-                            )
-                        else:
-                            lam_prec, lam_debug = _lambda_preconditioner(k.bc, return_debug=True)
-                            faclam_dump = None
-                    else:
-                        if need_lam_prec:
-                            lam_prec, faclam_dump = _lambda_preconditioner(k.bc, return_faclam=True)
-                        else:
-                            lam_prec = _lambda_preconditioner(k.bc)
-                            faclam_dump = None
-                        lam_debug = None
+                    lam_outputs = _lambda_preconditioner_outputs(
+                        k.bc,
+                        need_lam_prec=bool(need_lam_prec),
+                        need_lamcal=bool(need_lamcal),
+                        lambda_preconditioner_func=_lambda_preconditioner,
+                    )
+                    lam_prec = lam_outputs.lam_prec
+                    faclam_dump = lam_outputs.faclam_dump
+                    lam_debug = lam_outputs.lam_debug
                     mats, _jmin, jmax = _rz_preconditioner_matrices_local(
                         bc=k.bc,
                         k=k,
@@ -6326,21 +6321,15 @@ def solve_fixed_boundary_residual_iter(
                     if timing_enabled:
                         timing_stats["precond_refresh_calls"] = int(timing_stats["precond_refresh_calls"]) + 1
                     t_prec_refresh_start = time.perf_counter() if timing_enabled else None
-                    if need_lamcal:
-                        if need_lam_prec:
-                            lam_prec, faclam_dump, lam_debug = _lambda_preconditioner(
-                                k.bc, return_faclam=True, return_debug=True
-                            )
-                        else:
-                            lam_prec, lam_debug = _lambda_preconditioner(k.bc, return_debug=True)
-                            faclam_dump = None
-                    else:
-                        if need_lam_prec:
-                            lam_prec, faclam_dump = _lambda_preconditioner(k.bc, return_faclam=True)
-                        else:
-                            lam_prec = _lambda_preconditioner(k.bc)
-                            faclam_dump = None
-                        lam_debug = None
+                    lam_outputs = _lambda_preconditioner_outputs(
+                        k.bc,
+                        need_lam_prec=bool(need_lam_prec),
+                        need_lamcal=bool(need_lamcal),
+                        lambda_preconditioner_func=_lambda_preconditioner,
+                    )
+                    lam_prec = lam_outputs.lam_prec
+                    faclam_dump = lam_outputs.faclam_dump
+                    lam_debug = lam_outputs.lam_debug
                     mats, _jmin, jmax = _rz_preconditioner_matrices_local(
                         bc=k.bc,
                         k=k,
