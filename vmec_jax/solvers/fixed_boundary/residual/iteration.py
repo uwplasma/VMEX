@@ -350,7 +350,7 @@ from vmec_jax.solvers.fixed_boundary.scan.planning import (
     validate_vmec2000_scan_guards as _validate_vmec2000_scan_guards,
 )
 from vmec_jax.solvers.fixed_boundary.scan.runtime import (
-    resolve_scan_runtime_hooks as _resolve_scan_runtime_hooks,
+    resolve_scan_runtime_hooks_from_env as _resolve_scan_runtime_hooks_from_env,
     scan_trace_context_or_null as _scan_trace_context_or_null,
 )
 from vmec_jax.solvers.fixed_boundary.scan.time_control import (
@@ -2538,9 +2538,8 @@ def solve_fixed_boundary_residual_iter(
         # selected at Python level (Python loop), so this overhead is avoided.
         # Default: use restart payload on CPU only; skip it on GPU/TPU.
         scan_use_restart_payload = scan_options.scan_use_restart_payload
-        scan_hooks = _resolve_scan_runtime_hooks(
-            dump_timecontrol_env=os.getenv("VMEC_JAX_DUMP_TIMECONTROL", ""),
-            dump_dir_env=os.getenv("VMEC_JAX_DUMP_DIR", ""),
+        scan_hooks = _resolve_scan_runtime_hooks_from_env(
+            os.environ,
             print_in_scan=scan_options.print_in_scan,
             scan_print_mode=scan_options.scan_print_mode,
             scan_trace=scan_options.scan_trace,
