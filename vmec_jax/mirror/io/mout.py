@@ -96,11 +96,24 @@ def _attrs_with_result_metadata(result) -> dict[str, str]:
     attrs = dict(MOUT_GLOBAL_ATTRIBUTES)
     attrs["solver_optimizer"] = str(result.options.optimizer)
     attrs["solver_reduced_coordinate_scaling"] = str(result.options.reduced_coordinate_scaling)
+    attrs["solver_residual_linear_maxiter"] = str(int(result.options.residual_linear_maxiter))
+    attrs["solver_residual_linear_maxiter_policy"] = str(result.options.residual_linear_maxiter_policy)
+    attrs["solver_residual_linear_adaptive_factor"] = str(float(result.options.residual_linear_adaptive_factor))
     attrs["solver_residual_preconditioner"] = str(result.options.residual_preconditioner)
     attrs["solver_residual_radial_alpha"] = str(float(result.options.residual_radial_alpha))
     attrs["solver_residual_lambda_alpha"] = str(float(result.options.residual_lambda_alpha))
     attrs["solver_residual_xi_alpha"] = str(float(result.options.residual_xi_alpha))
     attrs["solver_maxiter"] = str(int(result.options.maxiter))
+    if result.optimizer_summaries:
+        summary = result.optimizer_summaries[-1]
+        if summary.residual_linear_maxiter_effective_max is not None:
+            attrs["solver_residual_linear_maxiter_effective_max"] = str(
+                int(summary.residual_linear_maxiter_effective_max)
+            )
+        if summary.residual_linear_maxiter_effective_last is not None:
+            attrs["solver_residual_linear_maxiter_effective_last"] = str(
+                int(summary.residual_linear_maxiter_effective_last)
+            )
     attrs["pressure_continuation"] = ",".join(str(float(stage)) for stage in result.options.pressure_continuation)
     return attrs
 

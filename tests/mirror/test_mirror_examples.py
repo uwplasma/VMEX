@@ -140,6 +140,7 @@ def test_root_fixed_boundary_solve_diagnostic_runs_without_plots(tmp_path):
     assert rows[0]["ns"] == 7
     assert rows[0]["optimizer"] == "lbfgs"
     assert rows[0]["residual_linear_maxiter"] == 16
+    assert rows[0]["residual_linear_maxiter_policy"] == "adaptive"
     assert rows[0]["residual_preconditioner"] == "radial_xi_tridi"
     assert rows[0]["residual_xi_alpha"] == pytest.approx(0.2)
     assert rows[0]["optimizer_nit"] <= 2
@@ -217,6 +218,7 @@ def test_root_solver_comparison_example_runs_without_plots(tmp_path):
     assert all(row["final_residual_norm"] >= 0.0 for row in metrics["rows"])
     production_rows = [row for row in metrics["rows"] if row["solver_scope"] == "production_fixed_boundary"]
     assert all(row["residual_preconditioner"] == "radial_xi_tridi" for row in production_rows)
+    assert all(row["residual_linear_maxiter_policy"] == "adaptive" for row in production_rows)
 
 
 def test_root_residual_newton_convergence_grid_runs_without_plots(tmp_path):
@@ -253,6 +255,8 @@ def test_root_residual_newton_convergence_grid_runs_without_plots(tmp_path):
     assert row["optimizer"] == "residual_newton"
     assert row["residual_preconditioner"] == "radial_xi_tridi"
     assert row["residual_linear_maxiter"] == 8
+    assert row["residual_linear_maxiter_policy"] == "fixed"
+    assert row["residual_linear_maxiter_effective_max"] == 8
     assert row["final_residual_norm"] >= 0.0
     assert row["component_norm"] == pytest.approx(row["final_residual_norm"])
     assert row["component_active_dof"] > 0

@@ -23,6 +23,7 @@ from vmec_jax.mirror.solvers.fixed_boundary.optimizers import (
     axisym_reduced_a_mask,
     axisym_reduced_bounds,
     axisym_reduced_residual_preconditioner,
+    axisym_residual_linear_maxiter,
     pack_axisym_reduced_state,
     reduced_axisym_energy_and_gradient,
 )
@@ -301,10 +302,46 @@ def test_residual_newton_solver_reaches_tight_residual_for_perturbed_cylinder():
     assert summary.accepted
     assert summary.optimizer == "residual_newton"
     assert summary.nit <= 6
+    assert summary.residual_linear_maxiter_policy == "adaptive"
+    assert summary.residual_linear_maxiter_effective_max is not None
+    assert (
+        summary.residual_linear_maxiter_effective_max
+        == pack_axisym_reduced_state(
+            result.state,
+            result.grid,
+            boundary,
+        ).size
+    )
     assert result.final_trace.residual_norm < 1.0e-12
     assert result.final_trace.residual_norm < initial_residual.norm
     assert result.final_trace.energy_total < initial_residual.energy
     assert result.final_trace.min_sqrtg > 0.0
+
+
+def test_residual_newton_linear_maxiter_policy_preserves_fixed_and_expands_adaptive():
+    config = MirrorConfig(MirrorResolution(ns=9, ntheta=1, nxi=17, mpol=0), z_min=-1.0, z_max=1.0)
+    grid = config.build_grid()
+    size = int(np.count_nonzero(axisym_reduced_a_mask(grid)) + grid.ns * (grid.nxi - 1))
+    fixed = OptimizerOptions(
+        optimizer="residual_newton",
+        residual_linear_maxiter=16,
+        residual_linear_maxiter_policy="fixed",
+        tolerance=1.0e-12,
+    )
+    adaptive = OptimizerOptions(
+        optimizer="residual_newton",
+        residual_linear_maxiter=16,
+        residual_linear_maxiter_policy="adaptive",
+        tolerance=1.0e-12,
+    )
+
+    fixed_budget = axisym_residual_linear_maxiter(fixed, grid, vector_size=size, residual_norm=1.0e-3)
+    adaptive_budget = axisym_residual_linear_maxiter(adaptive, grid, vector_size=size, residual_norm=1.0e-3)
+
+    assert fixed_budget == 16
+    assert adaptive_budget > fixed_budget
+    assert adaptive_budget <= size
+    assert adaptive_budget >= 5 * grid.nxi
 
 
 def test_lbfgs_options_use_explicit_ftol_when_requested():

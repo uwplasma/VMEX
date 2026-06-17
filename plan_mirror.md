@@ -3371,3 +3371,97 @@ central well.
   examples where lambda residuals should no longer be identically zero.
 - Promote the high-resolution `linear=96` two-coil row into a benchmark gate,
   with a runtime-conscious smoke variant for CI.
+
+---
+
+## 42. 2026-06-17 adaptive residual-Newton inner-budget lane
+
+This lane turns the high-resolution budget finding into production solver
+behavior: residual-Newton now has an adaptive inner `lsmr` budget policy so
+users do not need to manually guess `residual_linear_maxiter=96` for the hard
+two-coil row.
+
+### Implemented in this lane
+
+- Added `residual_linear_maxiter_policy` to `MirrorSolveOptions` and
+  `OptimizerOptions`.
+  - `adaptive` is the production default.
+  - `fixed` preserves exact user-requested budgets for convergence studies.
+- Added `residual_linear_adaptive_factor`, default `6.0`.
+- Added `axisym_residual_linear_maxiter`, which chooses the effective `lsmr`
+  iteration cap from:
+  - the user-requested base `residual_linear_maxiter`;
+  - the mirror resolution `max(ns,nxi)`;
+  - the reduced system size, which caps the budget.
+- Added residual-linear policy/effective-budget fields to optimizer summaries,
+  mirror output attributes, solve-diagnostic JSON, solver-comparison JSON, and
+  convergence-grid JSON.
+- Kept `examples/mirror_residual_newton_convergence_grid.py` defaulting to
+  `--residual-linear-maxiter-policy fixed`, so budget sweeps remain literal.
+- Updated solver diagnostics and solver comparison examples to use the
+  production adaptive policy by default.
+- Added tests for fixed/adaptive policy behavior and summary reporting.
+
+### Validation result
+
+For the high-resolution two-coil hard row:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/residual_newton_highres_adaptive_policy \
+  --ns-array 9 \
+  --nxi-array 17 \
+  --maxiter-array 12 \
+  --residual-linear-maxiter-array 16 \
+  --residual-linear-maxiter-policy adaptive \
+  --preconditioners radial_xi_tridi
+```
+
+Result:
+
+- requested base `residual_linear_maxiter=16`;
+- policy `adaptive`;
+- effective max `102`;
+- effective last `102`;
+- final residual `2.023006523381e-13`;
+- final `fsq=1.643596543631e-28`;
+- status: `gtol` satisfied.
+
+The residual remains radius-only at the final tolerance scale:
+
+- radius norm `2.023006523381e-13`;
+- lambda norm `0.0`;
+- radius interior-`xi` norm `1.944627215141e-13`;
+- radius cap-adjacent norm `5.576561555067e-14`.
+
+For the regenerated public solver-comparison example:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_solver_comparison.py \
+  --outdir results/mirror/solver_comparison_adaptive
+```
+
+Key residual-Newton results:
+
+- cylinder residual `5.610231716299e-17`, effective inner budget `54`;
+- two-coil residual `2.023006523381e-13`, effective inner budget `102`;
+- sourced manufactured gate residual `3.109010553584e-15`.
+
+### Interpretation
+
+- The previous high-resolution two-coil residual gap was an inner linear-solve
+  budget issue. Adaptive policy closes it from a requested base of `16`.
+- The current production residual-Newton path is now a tight-convergence claim
+  for the vacuum two-coil benchmark at `ns=9,nxi=17`, `gtol=1e-12`,
+  `maxiter=12`.
+- Fixed-budget studies remain available and reproducible by passing
+  `residual_linear_maxiter_policy="fixed"` or the CLI equivalent.
+
+### Next gates
+
+- Add a runtime-conscious adaptive two-coil benchmark gate for CI, likely with
+  a reduced resolution and a separate heavier example artifact for `ns=9,nxi=17`.
+- Run finite-current/helical-pitch residual decomposition under adaptive
+  residual Newton to validate lambda residual behavior.
+- Start the M9 straight-field-line / mirror-Boozer-like diagnostic lane once
+  the finite-current adaptive gate is documented.

@@ -36,6 +36,8 @@ class OptimizerOptions:
     line_search_steps: int = 16
     reduced_coordinate_scaling: str = "geometry"
     residual_linear_maxiter: int = 16
+    residual_linear_maxiter_policy: str = "adaptive"
+    residual_linear_adaptive_factor: float = 6.0
     residual_preconditioner: str = "radial_xi_tridi"
     residual_radial_alpha: float = 0.5
     residual_lambda_alpha: float = 0.5
@@ -75,6 +77,9 @@ class OptimizerRun:
     candidate_energy_improved: bool | None = None
     candidate_positive_radius: bool | None = None
     candidate_positive_jacobian: bool | None = None
+    residual_linear_maxiter_policy: str = ""
+    residual_linear_maxiter_effective_max: int | None = None
+    residual_linear_maxiter_effective_last: int | None = None
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,15 @@ def _residual_preconditioner_key(value: str) -> str:
     if key in {"radial_xi_tridi", "open_xi_tridi", "radial_tridi_xi"}:
         return "radial_xi_tridi"
     raise ValueError(f"unsupported mirror residual preconditioner {value!r}")
+
+
+def _residual_linear_maxiter_policy_key(value: str) -> str:
+    key = str(value).strip().lower().replace("-", "_")
+    if key in {"fixed", "constant", "manual", "off", "false"}:
+        return "fixed"
+    if key in {"adaptive", "auto", "automatic", "resolution"}:
+        return "adaptive"
+    raise ValueError(f"unsupported mirror residual linear maxiter policy {value!r}")
 
 
 def _positive_radius(state: MirrorStateAxisym | MirrorState3D, floor: float = 1.0e-10) -> bool:
@@ -297,6 +311,32 @@ def axisym_reduced_residual_preconditioner(
     if lambda_alpha > 0.0:
         lam_values = _tridiagonal_smooth_zero_dirichlet(lam_values, alpha=lambda_alpha, axis=0)
     return np.concatenate([a_values, lam_values.ravel()])
+
+
+def axisym_residual_linear_maxiter(
+    options: OptimizerOptions,
+    grid: MirrorGrid,
+    *,
+    vector_size: int,
+    residual_norm: float,
+) -> int:
+    """Return the effective LSMR iteration budget for one residual-Newton step."""
+    base = max(1, int(options.residual_linear_maxiter))
+    policy = _residual_linear_maxiter_policy_key(options.residual_linear_maxiter_policy)
+    if policy == "fixed":
+        return base
+
+    factor = float(options.residual_linear_adaptive_factor)
+    if not np.isfinite(factor) or factor <= 0.0:
+        raise ValueError("residual_linear_adaptive_factor must be a finite positive number")
+    target = max(float(options.tolerance), np.finfo(float).eps)
+    residual_norm = float(residual_norm)
+    if not np.isfinite(residual_norm):
+        return min(max(base, int(np.ceil(factor * max(int(grid.ns), int(grid.nxi))))), max(1, int(vector_size)))
+    if residual_norm <= target:
+        return base
+    resolution_budget = int(np.ceil(factor * max(int(grid.ns), int(grid.nxi))))
+    return min(max(base, resolution_budget), max(1, int(vector_size)))
 
 
 def reduced_a_mask_3d(grid: MirrorGrid) -> np.ndarray:
@@ -810,6 +850,9 @@ def _optimizer_run_from_result(
         candidate_positive_jacobian=None
         if candidate_diagnostics is None
         else bool(candidate_diagnostics.positive_jacobian),
+        residual_linear_maxiter_policy=str(getattr(result, "residual_linear_maxiter_policy", "")),
+        residual_linear_maxiter_effective_max=getattr(result, "residual_linear_maxiter_effective_max", None),
+        residual_linear_maxiter_effective_last=getattr(result, "residual_linear_maxiter_effective_last", None),
     )
 
 
@@ -1026,6 +1069,7 @@ def projected_residual_newton_solve(
     status = 0
     message = "maximum iterations reached"
     ftol = float(options.ftol) if options.ftol is not None else float(options.min_step_size)
+    linear_maxiter_history: list[int] = []
 
     for _iteration in range(1, int(options.maxiter) + 1):
         grad_x = reduced_gradient_x(current_x)
@@ -1072,7 +1116,13 @@ def projected_residual_newton_solve(
                 dtype=float,
             )
         rhs = -grad_x * x_scale
-        linear_maxiter = max(1, int(options.residual_linear_maxiter))
+        linear_maxiter = axisym_residual_linear_maxiter(
+            options,
+            grid,
+            vector_size=size,
+            residual_norm=current_step.residual_norm,
+        )
+        linear_maxiter_history.append(linear_maxiter)
         linear_result = lsmr(
             operator,
             rhs,
@@ -1142,6 +1192,9 @@ def projected_residual_newton_solve(
         nfev=nfev,
         njev=njev,
     )
+    result.residual_linear_maxiter_policy = _residual_linear_maxiter_policy_key(options.residual_linear_maxiter_policy)
+    result.residual_linear_maxiter_effective_max = int(max(linear_maxiter_history)) if linear_maxiter_history else None
+    result.residual_linear_maxiter_effective_last = int(linear_maxiter_history[-1]) if linear_maxiter_history else None
     candidate_diagnostics = _candidate_diagnostics(current_step, grid, initial_energy=initial_residual.energy)
     accepted_run = bool(steps and steps[-1].accepted and candidate_diagnostics.accepted)
     if not accepted_run:

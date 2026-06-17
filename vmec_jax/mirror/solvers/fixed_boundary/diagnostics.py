@@ -58,6 +58,9 @@ class FixedBoundaryOptimizerSummary:
     candidate_energy_improved: bool | None = None
     candidate_positive_radius: bool | None = None
     candidate_positive_jacobian: bool | None = None
+    residual_linear_maxiter_policy: str = ""
+    residual_linear_maxiter_effective_max: int | None = None
+    residual_linear_maxiter_effective_last: int | None = None
 
 
 def ensure_finite_pressure_scale(scale: float) -> float:

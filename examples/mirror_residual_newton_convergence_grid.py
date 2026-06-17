@@ -39,6 +39,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--nxi-array", type=str, default="9,17")
     parser.add_argument("--maxiter-array", type=str, default="6,12")
     parser.add_argument("--residual-linear-maxiter-array", type=str, default="16,48")
+    parser.add_argument(
+        "--residual-linear-maxiter-policy",
+        type=str,
+        default="fixed",
+        choices=("fixed", "adaptive"),
+    )
+    parser.add_argument("--residual-linear-adaptive-factor", type=float, default=6.0)
     parser.add_argument("--preconditioners", type=str, default="radial_xi_tridi")
     parser.add_argument("--residual-radial-alpha", type=float, default=0.5)
     parser.add_argument("--residual-lambda-alpha", type=float, default=0.5)
@@ -205,6 +212,8 @@ def _run_one(
     nxi: int,
     maxiter: int,
     residual_linear_maxiter: int,
+    residual_linear_maxiter_policy: str,
+    residual_linear_adaptive_factor: float,
     preconditioner: str,
     residual_radial_alpha: float,
     residual_lambda_alpha: float,
@@ -241,6 +250,8 @@ def _run_one(
             ftol=ftol,
             line_search_steps=line_search_steps,
             residual_linear_maxiter=residual_linear_maxiter,
+            residual_linear_maxiter_policy=residual_linear_maxiter_policy,
+            residual_linear_adaptive_factor=residual_linear_adaptive_factor,
             residual_preconditioner=preconditioner,
             residual_radial_alpha=residual_radial_alpha,
             residual_lambda_alpha=residual_lambda_alpha,
@@ -260,6 +271,14 @@ def _run_one(
         "maxiter": int(maxiter),
         "line_search_steps": int(line_search_steps),
         "residual_linear_maxiter": int(residual_linear_maxiter),
+        "residual_linear_maxiter_policy": str(residual_linear_maxiter_policy),
+        "residual_linear_adaptive_factor": float(residual_linear_adaptive_factor),
+        "residual_linear_maxiter_effective_max": None
+        if summary is None
+        else summary.residual_linear_maxiter_effective_max,
+        "residual_linear_maxiter_effective_last": None
+        if summary is None
+        else summary.residual_linear_maxiter_effective_last,
         "residual_preconditioner": str(preconditioner),
         "residual_radial_alpha": float(residual_radial_alpha),
         "residual_lambda_alpha": float(residual_lambda_alpha),
@@ -606,6 +625,8 @@ def run_case(
     nxi_array: tuple[int, ...] = (9, 17),
     maxiter_array: tuple[int, ...] = (6, 12),
     residual_linear_maxiter_array: tuple[int, ...] = (16, 48),
+    residual_linear_maxiter_policy: str = "fixed",
+    residual_linear_adaptive_factor: float = 6.0,
     preconditioners: tuple[str, ...] = ("radial_xi_tridi",),
     residual_radial_alpha: float = 0.5,
     residual_lambda_alpha: float = 0.5,
@@ -644,6 +665,8 @@ def run_case(
                             nxi=nxi,
                             maxiter=maxiter,
                             residual_linear_maxiter=residual_linear_maxiter,
+                            residual_linear_maxiter_policy=residual_linear_maxiter_policy,
+                            residual_linear_adaptive_factor=residual_linear_adaptive_factor,
                             preconditioner=preconditioner,
                             residual_radial_alpha=residual_radial_alpha,
                             residual_lambda_alpha=residual_lambda_alpha,
@@ -705,6 +728,8 @@ def main(argv: list[str] | None = None) -> int:
             name="residual-linear-maxiter-array",
             minimum=1,
         ),
+        residual_linear_maxiter_policy=args.residual_linear_maxiter_policy,
+        residual_linear_adaptive_factor=args.residual_linear_adaptive_factor,
         preconditioners=_parse_preconditioners(args.preconditioners),
         residual_radial_alpha=args.residual_radial_alpha,
         residual_lambda_alpha=args.residual_lambda_alpha,

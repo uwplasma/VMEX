@@ -61,9 +61,10 @@ iteration counts, residuals, ``fsq``, and plot paths. Pass
 ``--optimizer residual_newton`` to exercise the axisymmetric matrix-free
 residual-Newton path instead of the scaled L-BFGS-B path. The residual-Newton
 path defaults to a VMEC-like reduced-coordinate tridiagonal preconditioner,
-with radial/lambda smoothing and an open-``xi`` radius smoother adapted to the
-mirror cap constraints; pass ``--residual-preconditioner none`` for baseline
-unpreconditioned studies.
+with radial/lambda smoothing, an open-``xi`` radius smoother adapted to the
+mirror cap constraints, and an adaptive inner ``lsmr`` iteration policy; pass
+``--residual-preconditioner none`` for baseline unpreconditioned studies or
+``--residual-linear-maxiter-policy fixed`` for controlled fixed-budget studies.
 
 The root-level ``examples/mirror_manufactured_fixed_boundary.py`` script solves
 a sourced manufactured fixed-boundary problem with a known stationary state. It
@@ -85,4 +86,7 @@ iteration budget, inner ``lsmr`` iteration budget, and preconditioner mode. It
 writes JSON metrics, residual heatmaps/budget plots, preconditioner comparison
 plots, residual-component plots that split radius/lambda and cap/interior
 contributions, and the standard mirror plot bundles for both the best-residual
-row and the highest-resolution, highest-budget row.
+row and the highest-resolution, highest-budget row. Its default policy is
+``fixed`` so the requested ``--residual-linear-maxiter-array`` values remain
+literal; pass ``--residual-linear-maxiter-policy adaptive`` to exercise the
+production adaptive inner budget in the same report.

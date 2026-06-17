@@ -46,6 +46,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--line-search-steps", type=int, default=32)
     parser.add_argument("--residual-linear-maxiter", type=int, default=48)
     parser.add_argument(
+        "--residual-linear-maxiter-policy",
+        type=str,
+        default="adaptive",
+        choices=("fixed", "adaptive"),
+    )
+    parser.add_argument("--residual-linear-adaptive-factor", type=float, default=6.0)
+    parser.add_argument(
         "--residual-preconditioner",
         type=str,
         default="radial_xi_tridi",
@@ -212,6 +219,15 @@ def _fixed_boundary_row(
         "case": str(case_name),
         "solver_scope": "production_fixed_boundary",
         "optimizer": str(optimizer),
+        "residual_linear_maxiter": int(result.options.residual_linear_maxiter),
+        "residual_linear_maxiter_policy": str(result.options.residual_linear_maxiter_policy),
+        "residual_linear_adaptive_factor": float(result.options.residual_linear_adaptive_factor),
+        "residual_linear_maxiter_effective_max": None
+        if summary is None
+        else summary.residual_linear_maxiter_effective_max,
+        "residual_linear_maxiter_effective_last": None
+        if summary is None
+        else summary.residual_linear_maxiter_effective_last,
         "residual_preconditioner": str(result.options.residual_preconditioner),
         "residual_radial_alpha": float(result.options.residual_radial_alpha),
         "residual_lambda_alpha": float(result.options.residual_lambda_alpha),
@@ -251,6 +267,8 @@ def _run_fixed_boundary_case(
     maxiter_newton: int,
     line_search_steps: int,
     residual_linear_maxiter: int,
+    residual_linear_maxiter_policy: str,
+    residual_linear_adaptive_factor: float,
     residual_preconditioner: str,
     residual_radial_alpha: float,
     residual_lambda_alpha: float,
@@ -283,6 +301,8 @@ def _run_fixed_boundary_case(
                 step_size=problem["step_size"],
                 line_search_steps=line_search_steps,
                 residual_linear_maxiter=residual_linear_maxiter,
+                residual_linear_maxiter_policy=residual_linear_maxiter_policy,
+                residual_linear_adaptive_factor=residual_linear_adaptive_factor,
                 residual_preconditioner=residual_preconditioner,
                 residual_radial_alpha=residual_radial_alpha,
                 residual_lambda_alpha=residual_lambda_alpha,
@@ -524,6 +544,8 @@ def run_case(
     maxiter_newton: int = 12,
     line_search_steps: int = 32,
     residual_linear_maxiter: int = 48,
+    residual_linear_maxiter_policy: str = "adaptive",
+    residual_linear_adaptive_factor: float = 6.0,
     residual_preconditioner: str = "radial_xi_tridi",
     residual_radial_alpha: float = 0.5,
     residual_lambda_alpha: float = 0.5,
@@ -568,6 +590,8 @@ def run_case(
             maxiter_newton=maxiter_newton,
             line_search_steps=line_search_steps,
             residual_linear_maxiter=residual_linear_maxiter,
+            residual_linear_maxiter_policy=residual_linear_maxiter_policy,
+            residual_linear_adaptive_factor=residual_linear_adaptive_factor,
             residual_preconditioner=residual_preconditioner,
             residual_radial_alpha=residual_radial_alpha,
             residual_lambda_alpha=residual_lambda_alpha,
@@ -597,6 +621,8 @@ def run_case(
             maxiter_newton=maxiter_newton,
             line_search_steps=line_search_steps,
             residual_linear_maxiter=residual_linear_maxiter,
+            residual_linear_maxiter_policy=residual_linear_maxiter_policy,
+            residual_linear_adaptive_factor=residual_linear_adaptive_factor,
             residual_preconditioner=residual_preconditioner,
             residual_radial_alpha=residual_radial_alpha,
             residual_lambda_alpha=residual_lambda_alpha,
@@ -654,6 +680,8 @@ def main(argv: list[str] | None = None) -> int:
         maxiter_newton=args.maxiter_newton,
         line_search_steps=args.line_search_steps,
         residual_linear_maxiter=args.residual_linear_maxiter,
+        residual_linear_maxiter_policy=args.residual_linear_maxiter_policy,
+        residual_linear_adaptive_factor=args.residual_linear_adaptive_factor,
         residual_preconditioner=args.residual_preconditioner,
         residual_radial_alpha=args.residual_radial_alpha,
         residual_lambda_alpha=args.residual_lambda_alpha,

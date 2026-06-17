@@ -55,6 +55,9 @@ def _summary_from_run(
         candidate_energy_improved=run.candidate_energy_improved,
         candidate_positive_radius=run.candidate_positive_radius,
         candidate_positive_jacobian=run.candidate_positive_jacobian,
+        residual_linear_maxiter_policy=run.residual_linear_maxiter_policy,
+        residual_linear_maxiter_effective_max=run.residual_linear_maxiter_effective_max,
+        residual_linear_maxiter_effective_last=run.residual_linear_maxiter_effective_last,
     )
 
 
