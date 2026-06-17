@@ -12,6 +12,53 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-16 Matrix-Free NESTOR Profile Recommendations
+
+Steps taken:
+
+1. Extended the same-branch NESTOR replay profile policy to emit explicit
+   recommended report settings after dense-vs-matrix-free profiling.
+2. Kept promotion conservative: recommendations choose matrix-free only when
+   the existing mode-count and speedup thresholds pass.
+3. Added tests for promoted and non-promoted recommendation payloads.
+
+Results obtained:
+
+1. A real finite-beta QA profiled smoke report recommended
+   ``same_branch_report_nestor_solve_mode=matrix_free`` with
+   ``same_branch_report_nestor_operator_solver=bicgstab``.
+2. The same report measured dense ``10.03 s`` versus best matrix-free
+   ``1.54 s`` for the branch-local replay profile, a ``6.5x`` speedup.
+3. ``python -m ruff check`` passed for the touched example/test files.
+4. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qs_coil_optimization_smoke.py
+   tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py -q``
+   passed with one expected xfail.
+
+Best next steps:
+
+1. Commit and push the recommendation payload.
+2. Re-check GitHub CI after the push.
+3. Use these report recommendations to configure heavier phase-3 runs, while
+   preserving complete free-boundary solves as the acceptance authority.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999997%.
+- VMEC parity and physics gates: 99.9%.
+- Single-stage coil-only optimization phase 3: 99.975%.
+- CPU/GPU performance: 99.55%; matrix-free promotion now produces explicit
+  reusable settings for follow-on reports/runs.
+- CI/runtime/coverage hygiene: 100% locally for this shard; latest GitHub CI
+  queued after the previous scalar-cache push.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.
+
 ### 2026-06-16 Scalar Same-Branch Replay-Plan Cache
 
 Steps taken:

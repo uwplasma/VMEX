@@ -1075,7 +1075,8 @@ def nestor_profile_policy_from_results(
             "reason": "matrix-free timing is unavailable",
             "mode_count": int(mode_count),
         }
-    dense_best = min(float(item["wall_s"]) for item in dense)
+    dense_best_entry = min(dense, key=lambda item: float(item["wall_s"]))
+    dense_best = float(dense_best_entry["wall_s"])
     mf_best_entry = min(matrix_free, key=lambda item: float(item["wall_s"]))
     mf_best = float(mf_best_entry["wall_s"])
     speedup = dense_best / mf_best if mf_best > 0.0 else np.inf
@@ -1098,6 +1099,15 @@ def nestor_profile_policy_from_results(
         "matrix_free_best_wall_s": mf_best,
         "matrix_free_best_solver": str(mf_best_entry.get("nestor_operator_solver", "unknown")),
         "speedup_dense_over_matrix_free": float(speedup),
+        "recommended_report_options": {
+            "same_branch_report_nestor_solve_mode": "matrix_free" if promote else "dense",
+            "same_branch_report_nestor_operator_solver": str(
+                mf_best_entry.get("nestor_operator_solver", "gmres")
+            )
+            if promote
+            else str(dense_best_entry.get("nestor_operator_solver", "gmres")),
+            "reason": "use promoted matrix-free replay settings" if promote else "keep dense replay settings",
+        },
     }
 
 
