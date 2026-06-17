@@ -254,4 +254,10 @@ def test_root_residual_newton_convergence_grid_runs_without_plots(tmp_path):
     assert row["residual_preconditioner"] == "radial_xi_tridi"
     assert row["residual_linear_maxiter"] == 8
     assert row["final_residual_norm"] >= 0.0
+    assert row["component_norm"] == pytest.approx(row["final_residual_norm"])
+    assert row["component_active_dof"] > 0
+    assert row["residual_a_norm"] >= 0.0
+    assert row["residual_lam_norm"] >= 0.0
+    assert row["residual_a_cap_adjacent_norm"] >= 0.0
+    assert row["residual_lam_interior_xi_norm"] >= 0.0
     assert metrics["histories"][0]["row_id"] == row["row_id"]

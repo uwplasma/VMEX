@@ -3258,3 +3258,116 @@ with high-field end caps and a low-field central well.
   `none`, `radial_tridi`, and `radial_xi_tridi`.
 - Inspect cap-node and end-cap residual components separately if the extended
   high-resolution row stops decreasing before reaching projected `gtol`.
+
+---
+
+## 41. 2026-06-17 high-resolution residual decomposition and budget lane
+
+This lane adds residual component diagnostics to the two-coil residual-Newton
+grid and uses them to decide whether the hard `ns=9,nxi=17` row is limited by
+cap boundary conditions, outer iteration count, or inner matrix-free linear
+solve budget.
+
+### Implemented in this lane
+
+- Extended `examples/mirror_residual_newton_convergence_grid.py` so every row
+  recomputes the final projected AD residual and writes component norms for:
+  - radius residual;
+  - lambda residual;
+  - cap, cap-adjacent, and interior `xi` contributions;
+  - lambda radial-axis, radial-edge, and radial-interior contributions;
+  - maximum absolute projected radius/lambda residuals.
+- Added a residual-component plot to the convergence-grid report.
+- Added smoke coverage that checks the component norm against the solver's
+  final residual norm.
+- Documented the residual-component plot in `examples/mirror/README.md`.
+
+### High-resolution preconditioner result
+
+For `ns=9`, `nxi=17`, `maxiter=12`, `residual_linear_maxiter=48`:
+
+- No preconditioner:
+  - residual `2.433266212e-05`;
+  - `fsq=2.377825084e-12`.
+- Radial/lambda tridiagonal preconditioner:
+  - residual `4.330629175e-06`;
+  - `fsq=7.531867088e-14`.
+- Radial/lambda plus open-`xi` radius preconditioner:
+  - residual `8.183677170e-07`;
+  - `fsq=2.689661527e-15`.
+
+The new residual decomposition shows all projected residual in the radius
+equation for this vacuum axisymmetric two-coil case:
+
+- `radial_xi_tridi` final radius norm: `8.183677170e-07`;
+- lambda norm: `0.0`;
+- radius cap-adjacent norm: `1.256561431e-07`;
+- radius interior-`xi` norm: `8.086632512e-07`.
+
+This makes the cap-boundary hypothesis less likely for this benchmark. The
+dominant remaining residual is in the interior axial radius equation.
+
+### High-resolution budget result
+
+For `ns=9`, `nxi=17`, `radial_xi_tridi`, `gtol=1e-12`, `ftol=1e-12`:
+
+- `maxiter=12`, `residual_linear_maxiter=48`:
+  - residual `8.183677170e-07`;
+  - `fsq=2.689661527e-15`;
+  - status: maximum iterations reached.
+- `maxiter=24`, `residual_linear_maxiter=48`:
+  - residual `6.009149176e-09`;
+  - `fsq=1.450195736e-19`;
+  - status: maximum iterations reached.
+- `maxiter=12`, `residual_linear_maxiter=96`:
+  - residual `5.031504692e-13`;
+  - `fsq=1.016708412e-27`;
+  - status: `gtol` satisfied.
+- `maxiter=24`, `residual_linear_maxiter=96`:
+  - residual `5.031504692e-13`;
+  - `fsq=1.016708412e-27`;
+  - status: `gtol` satisfied.
+
+The high-resolution hard row therefore can reach the requested projected
+`gtol=1e-12`. The primary limitation at `linear=48` is inner linear solve
+budget/conditioning, not the outer residual-Newton formulation and not an
+obvious cap-boundary residual.
+
+### Generated artifacts
+
+- `results/mirror/residual_newton_highres_preconditioners/`
+  - preconditioner comparison plot;
+  - residual history;
+  - residual component plot;
+  - standard mirror plot bundle for the best high-resolution row.
+- `results/mirror/residual_newton_highres_budget_extension/`
+  - budget plot;
+  - residual history;
+  - residual component plot;
+  - standard mirror plot bundles for the best and highest-budget rows.
+
+The rendered plots show the mirror horizontally with `z` as the long axis,
+visible field-line overlays, high `|B|` near both end caps, and a low-field
+central well.
+
+### Interpretation
+
+- The VMEC-like reduced-coordinate tridiagonal preconditioner is effective but
+  the `ns=9,nxi=17` row needs a larger inner `lsmr` budget than the earlier
+  default to reach tight tolerance.
+- Increasing outer iterations helps at fixed `linear=48`, but increasing the
+  inner budget to `96` is the decisive change.
+- The next production-quality solver lane should add adaptive inner linear
+  iteration/tolerance control, using the current residual norm and requested
+  `gtol`, instead of requiring users to manually guess `96`.
+- A cap-aware preconditioner may still be useful for larger or finite-current
+  cases, but it is not the first explanation for this two-coil benchmark.
+
+### Next gates
+
+- Add an adaptive residual-Newton inner solve policy, likely with a default
+  derived from `ns`, `nxi`, current residual norm, and requested `gtol`.
+- Run the same component/budget diagnostics on finite-current/helical-pitch
+  examples where lambda residuals should no longer be identically zero.
+- Promote the high-resolution `linear=96` two-coil row into a benchmark gate,
+  with a runtime-conscious smoke variant for CI.

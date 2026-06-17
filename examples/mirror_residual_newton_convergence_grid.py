@@ -29,6 +29,7 @@ from vmec_jax.mirror import (
     two_coil_on_axis_bz,
     write_mirror_output,
 )
+from vmec_jax.mirror.kernels.forces import axisym_projected_energy_residual
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -138,6 +139,66 @@ def _history_rows(result, *, row_id: str) -> list[dict[str, object]]:
     ]
 
 
+def _norm(values) -> float:
+    values = np.asarray(values, dtype=float)
+    return float(np.sqrt(np.sum(values**2)))
+
+
+def _edge_slices(values: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return cap, cap-adjacent, and interior axial slices for a residual array."""
+    if values.shape[-1] == 1:
+        return values, values[..., :0], values[..., :0]
+    caps = np.concatenate((values[..., :1], values[..., -1:]), axis=-1)
+    if values.shape[-1] <= 2:
+        return caps, values[..., :0], values[..., :0]
+    adjacent = np.concatenate((values[..., 1:2], values[..., -2:-1]), axis=-1)
+    interior = values[..., 2:-2] if values.shape[-1] > 4 else values[..., :0]
+    return caps, adjacent, interior
+
+
+def _residual_component_metrics(result) -> dict[str, object]:
+    residual = axisym_projected_energy_residual(
+        result.state,
+        result.grid,
+        psi_prime=result.psi_prime,
+        i_prime=result.i_prime,
+        pressure=result.pressure,
+        mu0=result.options.mu0,
+    )
+    projected_a = np.asarray(residual.projected_a, dtype=float)
+    projected_lam = np.asarray(residual.projected_lam, dtype=float)
+    a_caps, a_cap_adjacent, a_interior = _edge_slices(projected_a)
+    lam_caps, lam_cap_adjacent, lam_interior = _edge_slices(projected_lam)
+    radial_axis = projected_lam[:1, :]
+    radial_edge = projected_lam[-1:, :]
+    radial_interior = projected_lam[1:-1, :] if projected_lam.shape[0] > 2 else projected_lam[:0, :]
+    total = max(float(residual.norm), np.finfo(float).tiny)
+    a_norm = _norm(projected_a)
+    lam_norm = _norm(projected_lam)
+    return {
+        "component_energy": float(residual.energy),
+        "component_norm": float(residual.norm),
+        "component_fsq": float(residual.fsq),
+        "component_normalized_force": float(residual.normalized_force),
+        "component_active_dof": int(residual.active_dof),
+        "residual_a_norm": a_norm,
+        "residual_lam_norm": lam_norm,
+        "residual_a_fraction": float(a_norm / total),
+        "residual_lam_fraction": float(lam_norm / total),
+        "residual_a_cap_norm": _norm(a_caps),
+        "residual_a_cap_adjacent_norm": _norm(a_cap_adjacent),
+        "residual_a_interior_xi_norm": _norm(a_interior),
+        "residual_lam_cap_norm": _norm(lam_caps),
+        "residual_lam_cap_adjacent_norm": _norm(lam_cap_adjacent),
+        "residual_lam_interior_xi_norm": _norm(lam_interior),
+        "residual_lam_radial_axis_norm": _norm(radial_axis),
+        "residual_lam_radial_edge_norm": _norm(radial_edge),
+        "residual_lam_radial_interior_norm": _norm(radial_interior),
+        "residual_a_max_abs": float(np.max(np.abs(projected_a))) if projected_a.size else 0.0,
+        "residual_lam_max_abs": float(np.max(np.abs(projected_lam))) if projected_lam.size else 0.0,
+    }
+
+
 def _run_one(
     *,
     ns: int,
@@ -228,6 +289,7 @@ def _run_one(
         "min_sqrtg": float(final.min_sqrtg),
         "mirror_ratio": float(final.mirror_ratio),
     }
+    row.update(_residual_component_metrics(result))
     return row, _history_rows(result, row_id=row_id), result
 
 
@@ -403,6 +465,64 @@ def _write_history_plot(
     return path
 
 
+def _write_component_plot(
+    rows: list[dict[str, object]],
+    *,
+    outdir: Path,
+    ns: int,
+    nxi: int,
+    maxiter: int,
+    residual_linear_maxiter: int,
+) -> Path | None:
+    import matplotlib.pyplot as plt
+
+    filtered = _rows_for_filter(
+        rows,
+        ns=ns,
+        nxi=nxi,
+        maxiter=maxiter,
+        residual_linear_maxiter=residual_linear_maxiter,
+    )
+    if not filtered:
+        return None
+    filtered = sorted(filtered, key=lambda row: str(row["residual_preconditioner"]))
+    labels = [str(row["residual_preconditioner"]) for row in filtered]
+    component_keys = (
+        ("a adjacent caps", "residual_a_cap_adjacent_norm"),
+        ("a interior xi", "residual_a_interior_xi_norm"),
+        ("lambda caps", "residual_lam_cap_norm"),
+        ("lambda adjacent caps", "residual_lam_cap_adjacent_norm"),
+        ("lambda interior xi", "residual_lam_interior_xi_norm"),
+    )
+    fig, ax = plt.subplots(figsize=(7.4, 4.4))
+    colors = ("tab:blue", "tab:cyan", "tab:orange", "tab:red", "tab:green")
+    x = np.arange(len(filtered), dtype=float)
+    offsets = np.linspace(-0.3, 0.3, len(component_keys))
+    width = 0.12 if len(filtered) > 1 else 0.08
+    plotted_components = 0
+    for (label, key), color, offset in zip(component_keys, colors, offsets, strict=True):
+        values = np.asarray([max(float(row[key]), 0.0) for row in filtered], dtype=float)
+        positive = values > 0.0
+        if not np.any(positive):
+            continue
+        ax.bar(x[positive] + offset, values[positive], width=width, label=label, color=color)
+        plotted_components += 1
+    totals = np.asarray([max(float(row["final_residual_norm"]), np.finfo(float).tiny) for row in filtered], dtype=float)
+    ax.plot(x, totals, "ko", ms=4, label="total norm")
+    ax.set_yscale("log")
+    ax.set_xticks(np.arange(len(labels)))
+    ax.set_xticklabels(labels, rotation=25, ha="right")
+    ax.set_ylabel("projected residual component norm")
+    ax.set_title(f"residual components, ns={ns}, nxi={nxi}")
+    ax.grid(True, which="both", axis="y", linewidth=0.35, alpha=0.35)
+    ax.legend(fontsize="x-small", ncols=2 if plotted_components > 2 else 1)
+    fig.tight_layout()
+    path = outdir / "residual_newton_convergence_components.png"
+    fig.savefig(path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
 def _write_selected_output(result, *, outdir: Path, label: str) -> dict[str, str]:
     case_dir = outdir / label
     mout = write_mirror_output(case_dir / f"mout_{label}.nc", result, overwrite=True)
@@ -450,6 +570,14 @@ def _write_plots(
         _write_history_plot(
             rows,
             histories,
+            outdir=outdir,
+            ns=max_ns,
+            nxi=max_nxi,
+            maxiter=max_outer,
+            residual_linear_maxiter=max_linear,
+        ),
+        _write_component_plot(
+            rows,
             outdir=outdir,
             ns=max_ns,
             nxi=max_nxi,

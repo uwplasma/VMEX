@@ -82,6 +82,7 @@ cross sections, and residual history.
 The root-level ``examples/mirror_residual_newton_convergence_grid.py`` script
 runs two-coil residual-Newton convergence grids over ``ns``, ``nxi``, outer
 iteration budget, inner ``lsmr`` iteration budget, and preconditioner mode. It
-writes JSON metrics, residual heatmaps/budget plots, and the standard mirror
-plot bundles for both the best-residual row and the highest-resolution,
-highest-budget row.
+writes JSON metrics, residual heatmaps/budget plots, preconditioner comparison
+plots, residual-component plots that split radius/lambda and cap/interior
+contributions, and the standard mirror plot bundles for both the best-residual
+row and the highest-resolution, highest-budget row.
