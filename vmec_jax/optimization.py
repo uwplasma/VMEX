@@ -23,14 +23,15 @@ from .geom import eval_geom
 from .init_guess import initial_guess_from_boundary
 from .namelist import InData, write_indata
 from .modes import ModeTable
-from .optimizers.fixed_boundary.linear_guards import finite_linear_operator_output as _finite_linear_operator_output
-from .optimizers.fixed_boundary.linear_guards import linear_operator_matrix_arg as _linear_operator_matrix_arg
-from .optimizers.fixed_boundary.linear_guards import linear_operator_vector_arg as _linear_operator_vector_arg
+from .optimizers.fixed_boundary.linear_guards import finite_linear_operator_output
+from .optimizers.fixed_boundary.linear_guards import linear_operator_matrix_arg
+from .optimizers.fixed_boundary.linear_guards import linear_operator_vector_arg
 from .optimizers.fixed_boundary.history import ResidualHistoryPolicy
 from .optimizers.fixed_boundary.history import build_run_history_dump
 from .optimizers.fixed_boundary.history import history_entry_from_residuals
 from .optimizers.fixed_boundary.history import monotone_final_wall_time
 from .optimizers.fixed_boundary.history import qs_objective_from_residuals
+from .optimizers.fixed_boundary.matrix_free import build_residual_linear_operator
 from .optimizers.fixed_boundary.scalar_lbfgs import run_lbfgs_adjoint_exact_optimizer
 from .optimizers.fixed_boundary.scalar_trust import run_scalar_trust_exact_optimizer
 from .optimizers.fixed_boundary.scipy_least_squares import run_scipy_dense_exact_optimizer
@@ -38,6 +39,12 @@ from .optimizers.fixed_boundary.scipy_least_squares import run_scipy_matrix_free
 from .profiles import eval_profiles
 from .state import VMECState
 from .static import VMECStatic
+
+# Backwards-compatible private helper names used by older tests and profiling
+# scripts.  Implementations live in optimizers.fixed_boundary.linear_guards.
+_finite_linear_operator_output = finite_linear_operator_output
+_linear_operator_matrix_arg = linear_operator_matrix_arg
+_linear_operator_vector_arg = linear_operator_vector_arg
 
 
 @dataclass(frozen=True)
@@ -3810,210 +3817,12 @@ class FixedBoundaryExactOptimizer:
 
         The returned :class:`scipy.sparse.linalg.LinearOperator` implements
         ``J @ v`` with one forward tangent replay and ``J.T @ w`` with one
-        reverse replay through the same converged VMEC iteration tape.  This is
+        reverse replay through the same converged VMEC iteration tape. This is
         the trust-region counterpart to :meth:`objective_and_gradient_fun` and
         avoids materializing the dense ``n_residuals x n_parameters`` Jacobian.
         """
-        if self._solver_device_name is not None and not self._inside_solver_device_context:
-            return self._run_in_solver_device_context(self.residual_linear_operator, params)
-        try:
-            from scipy.sparse.linalg import LinearOperator
-        except Exception as exc:  # pragma: no cover - optional dependency
-            raise ImportError("residual_linear_operator requires scipy") from exc
 
-        from ._compat import jax, jnp as _jnp
-        from .discrete_adjoint import (
-            checkpoint_tape_state_jvp,
-            checkpoint_tape_state_jvp_columns,
-            checkpoint_tape_state_vjp,
-        )
-        from .state import unpack_state
-
-        t_total = time.perf_counter()
-        params = _jnp.asarray(params, dtype=_jnp.float64)
-        state, payload = self._solve_exact_with_tape(params, return_payload=True)
-        tape = payload["tape"]
-        axis_override = {
-            key: _jnp.asarray(value, dtype=params.dtype) for key, value in payload["axis_override"].items()
-        }
-        packed_final = self._packed_final_from_exact_payload(state, payload)
-
-        def _residuals_from_packed(packed):
-            return self._residuals_fn(unpack_state(packed, self._layout))
-
-        t_setup = time.perf_counter()
-        initial_tangent_cache_key = None
-        initial_tangent_columns = None
-        try:
-            initial_tangent_cache_key = self._initial_tangent_cache_key(params)
-            initial_tangent_columns = (
-                self._initial_tangent_cache.get(initial_tangent_cache_key)
-                if initial_tangent_cache_key is not None
-                else None
-            )
-        except Exception:
-            initial_tangent_cache_key = None
-            initial_tangent_columns = None
-        if initial_tangent_columns is not None:
-            initial_tangent_columns = _jnp.asarray(initial_tangent_columns, dtype=_jnp.float64)
-            initial_linear = None
-            initial_transpose = None
-            self._profile_add("linear_operator_initial_tangents_cache_hit", 0.0)
-        elif self._precompute_linear_operator_initial_tangents_enabled(int(params.size)):
-            self._profile_add("linear_operator_initial_tangents_precompute", 0.0)
-            initial_tangent_columns = _jnp.asarray(
-                self._initial_tangent_columns(
-                    params,
-                    axis_override,
-                    profile_prefix="linear_operator",
-                ),
-                dtype=_jnp.float64,
-            )
-            initial_linear = None
-            initial_transpose = None
-        else:
-            _, initial_linear = jax.linearize(
-                lambda p: self._solver_initial_state_packed_from_params(p, axis_override),
-                params,
-            )
-            initial_transpose = jax.linear_transpose(initial_linear, params)
-            self._profile_add("linear_operator_initial_tangents_cache_miss", 0.0)
-        residuals, residual_linear = jax.linearize(_residuals_from_packed, packed_final)
-        state_cotangent_from_packed = getattr(self._residuals_fn, "_state_cotangent_from_packed", None)
-        residual_cotangent_helper = None
-        if state_cotangent_from_packed is not None:
-            residual_cotangent_key = (
-                "linear_operator_residual_cotangent",
-                int(self._layout.size),
-                int(residuals.size),
-                id(self._residuals_fn),
-            )
-            helper_cache = self._discrete_jacobian_helper_cache.get(residual_cotangent_key)
-            if helper_cache is None:
-
-                @jax.jit
-                def _residual_cotangent_helper(packed_state_arg, cotangent_arg):
-                    return state_cotangent_from_packed(packed_state_arg, self._layout, cotangent_arg)
-
-                helper_cache = {"residual_cotangent": _residual_cotangent_helper}
-                self._discrete_jacobian_helper_cache[residual_cotangent_key] = helper_cache
-            residual_cotangent_helper = helper_cache["residual_cotangent"]
-        residual_vjp = None
-        if state_cotangent_from_packed is None:
-            _, residual_vjp = jax.vjp(_residuals_from_packed, packed_final)
-        residuals_np = np.asarray(residuals, dtype=float)
-        self._remember_exact_residual(self._exact_cache_key(params), residuals_np)
-        self._profile_add("linear_operator_setup", time.perf_counter() - t_setup)
-
-        n_res = int(residuals_np.size)
-        n_params = int(params.size)
-
-        def _matvec(direction):
-            t_mv = time.perf_counter()
-            direction_j = _jnp.asarray(
-                _linear_operator_vector_arg(direction, size=n_params, name="matvec direction"),
-                dtype=params.dtype,
-            )
-            if initial_tangent_columns is not None:
-                initial_tangent = _jnp.tensordot(direction_j, initial_tangent_columns, axes=([0], [0]))
-            else:
-                initial_tangent = initial_linear(direction_j)
-            final_tangent = checkpoint_tape_state_jvp(
-                tape=tape,
-                static=self._static,
-                initial_tangent=initial_tangent,
-                rebuild_preconditioner=True,
-            )
-            out = residual_linear(final_tangent)
-            self._profile_add("linear_operator_matvec", time.perf_counter() - t_mv)
-            return _finite_linear_operator_output(
-                out,
-                profile_add=self._profile_add,
-                profile_name="linear_operator_nonfinite_matvec",
-            )
-
-        def _matmat(directions):
-            t_mm = time.perf_counter()
-            directions_arr = _linear_operator_matrix_arg(
-                directions,
-                rows=n_params,
-                name="matmat directions",
-            )
-            directions_j = _jnp.asarray(directions_arr.T, dtype=params.dtype)
-            if initial_tangent_columns is not None:
-                initial_tangents = _jnp.tensordot(directions_j, initial_tangent_columns, axes=([1], [0]))
-            else:
-                initial_tangents = jax.vmap(initial_linear)(directions_j)
-            final_tangents = checkpoint_tape_state_jvp_columns(
-                tape=tape,
-                static=self._static,
-                initial_tangents=initial_tangents,
-                rebuild_preconditioner=True,
-                column_chunk=self._lasym_replay_column_chunk(int(directions_j.shape[0])),
-            )
-            out_columns = jax.vmap(residual_linear)(final_tangents)
-            self._profile_add("linear_operator_matmat", time.perf_counter() - t_mm)
-            return _finite_linear_operator_output(
-                np.asarray(out_columns, dtype=float).T,
-                profile_add=self._profile_add,
-                profile_name="linear_operator_nonfinite_matmat",
-            )
-
-        def _rmatvec(cotangent):
-            t_rmv = time.perf_counter()
-            cotangent_j = _jnp.asarray(
-                _linear_operator_vector_arg(cotangent, size=n_res, name="rmatvec cotangent"),
-                dtype=_jnp.float64,
-            )
-            t_res_cot = time.perf_counter()
-            if residual_cotangent_helper is not None:
-                final_cotangent = residual_cotangent_helper(packed_final, cotangent_j)
-            else:
-                final_cotangent = residual_vjp(cotangent_j)[0]
-            self._profile_add("linear_operator_residual_vjp", time.perf_counter() - t_res_cot)
-            final_cotangent = _jnp.nan_to_num(final_cotangent, nan=0.0, posinf=0.0, neginf=0.0)
-            t_tape_vjp = time.perf_counter()
-            initial_cotangent = checkpoint_tape_state_vjp(
-                tape=tape,
-                static=self._static,
-                final_cotangent=final_cotangent,
-                rebuild_preconditioner=True,
-            )
-            initial_cotangent = self._profile_async_phase(
-                "linear_operator_tape_vjp",
-                t_tape_vjp,
-                initial_cotangent,
-            )
-            initial_cotangent = _jnp.nan_to_num(initial_cotangent, nan=0.0, posinf=0.0, neginf=0.0)
-            t_initial_transpose = time.perf_counter()
-            # The frozen-axis initial-state map is linear for a fixed flip
-            # branch. Reuse cached tangent columns when available; otherwise
-            # reuse the transpose of the setup linearization instead of tracing
-            # a second VJP through the same initialization graph.
-            if initial_tangent_columns is not None:
-                grad = _jnp.tensordot(initial_tangent_columns, initial_cotangent, axes=([1], [0]))
-                self._profile_add(
-                    "linear_operator_initial_tangent_projection",
-                    time.perf_counter() - t_initial_transpose,
-                )
-            else:
-                grad = initial_transpose(_jnp.asarray(initial_cotangent, dtype=_jnp.float64))[0]
-                self._profile_add("linear_operator_initial_transpose", time.perf_counter() - t_initial_transpose)
-            self._profile_add("linear_operator_rmatvec", time.perf_counter() - t_rmv)
-            return _finite_linear_operator_output(
-                grad,
-                profile_add=self._profile_add,
-                profile_name="linear_operator_nonfinite_rmatvec",
-            )
-
-        self._profile_add("linear_operator_total", time.perf_counter() - t_total)
-        return LinearOperator(
-            shape=(n_res, n_params),
-            matvec=_matvec,
-            rmatvec=_rmatvec,
-            matmat=_matmat,
-            dtype=np.dtype(float),
-        )
+        return build_residual_linear_operator(self, params)
 
     # ── tracked Jacobian for history + cache callbacks ────────────────────────
 
