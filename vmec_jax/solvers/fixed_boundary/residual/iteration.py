@@ -36,13 +36,9 @@ from vmec_jax.solvers.fixed_boundary.residual.config import (
     LIGHT_DUMP_ENVS as _LIGHT_DUMP_ENVS,
     bad_jacobian_tau_tolerance as _bad_jacobian_tau_tolerance,
     normalize_debug_print_mode as _normalize_debug_print_mode,  # noqa: F401 - re-exported for internal helpers/tests.
-    parse_bad_jacobian_config as _parse_bad_jacobian_config,
     resolve_axis_reset_config as _resolve_axis_reset_config,
-    resolve_chunked_scan_config as _resolve_chunked_scan_config,
     resolve_debug_print_config as _resolve_debug_print_config,
-    resolve_dump_history_config as _resolve_dump_history_config,
     resolve_host_profile_setup as _resolve_host_profile_setup,
-    resolve_host_residual_metric_config as _resolve_host_residual_metric_config,
     resolve_nstep_screen as _resolve_nstep_screen,
     resolve_setup_host_enforce as _resolve_setup_host_enforce,
     should_probe_bad_jacobian_state as _should_probe_bad_jacobian_state,
@@ -51,10 +47,8 @@ from vmec_jax.solvers.fixed_boundary.residual.policy import (
     append_residual_iter_history_record as _append_residual_iter_history_record,
     append_residual_iter_terminal_history as _append_residual_iter_terminal_history,
     host_restart_decision as _host_restart_decision,
-    host_update_assembly_policy as _host_update_assembly_policy,
     numpy_preconditioner_apply_policy as _numpy_preconditioner_apply_policy,
-    resolve_light_history as _resolve_light_history,
-    resolve_restart_flags as _resolve_restart_flags,
+    resolve_residual_iter_startup_policy as _resolve_residual_iter_startup_policy,
     residual_iter_history_record as _residual_iter_history_record,
     scan_fallback_decision as _scan_fallback_decision,
     scan_fallback_message as _scan_fallback_message,
@@ -688,7 +682,7 @@ def solve_fixed_boundary_residual_iter(
     def _record_setup_timing(key: str, start: float | None) -> None:
         _runtime_record_setup_timing(_setup_phase_timings, key, start, perf_counter=time.perf_counter)
 
-    opts = validate_residual_iteration_options(
+    startup_policy = _resolve_residual_iter_startup_policy(
         max_iter=max_iter,
         step_size=step_size,
         precompile_only=precompile_only,
@@ -703,125 +697,94 @@ def solve_fixed_boundary_residual_iter(
         strict_update=strict_update,
         jit_precompile=jit_precompile,
         use_scan=use_scan,
-    )
-    max_iter = opts.max_iter
-    step_size = opts.step_size
-    precompile_only = opts.precompile_only
-    host_update_assembly = _host_update_assembly_policy(
-        requested=host_update_assembly,
-        use_scan=opts.use_scan,
+        host_update_assembly=host_update_assembly,
         backend_name=jax.default_backend(),
+        scan_backend_name=_scan_backend_name(),
         state_has_tracer=_tree_has_tracer(state0),
-        allow_accelerator=os.getenv("VMEC_JAX_HOST_UPDATE_ON_ACCELERATOR", "").strip().lower()
-        in ("1", "true", "yes", "on"),
-    ).enabled
-    host_metric_config = _resolve_host_residual_metric_config(
-        backend_name=jax.default_backend(),
-        fsq1_norms_env=os.getenv("VMEC_JAX_HOST_FSQ1_NORMS", "auto"),
-        residual_metrics_env=os.getenv("VMEC_JAX_HOST_RESIDUAL_METRICS", "auto"),
+        env=os.environ,
+        validate_options=validate_residual_iteration_options,
+        resolve_tridi_policies=_resolve_preconditioner_tridi_policies,
+        normalize_adjoint_trace_mode=_normalize_adjoint_trace_mode,
+        normalize_resume_state_mode=_normalize_resume_state_mode,
+        resolve_scan_fallback_policy=_scan_fallback_policy,
+        preconditioner_use_precomputed_tridi=preconditioner_use_precomputed_tridi,
+        preconditioner_use_lax_tridi=preconditioner_use_lax_tridi,
+        adjoint_trace=adjoint_trace,
+        adjoint_trace_mode=adjoint_trace_mode,
+        fsq_total_target=fsq_total_target,
+        light_history=light_history,
+        resume_state_mode=resume_state_mode,
+        use_restart_triggers=use_restart_triggers,
+        use_direct_fallback=use_direct_fallback,
+        vmecpp_restart=vmecpp_restart,
+        verbose_vmec2000_table=verbose_vmec2000_table,
+        stage_prev_fsq=stage_prev_fsq,
+        stage_transition_factor=stage_transition_factor,
+        stage_transition_scale=stage_transition_scale,
+        auto_flip_force=auto_flip_force,
+        jit_forces=jit_forces,
+        heavy_dump_envs=_HEAVY_DUMP_ENVS,
+        light_dump_envs=_LIGHT_DUMP_ENVS,
     )
-    host_fsq1_norms_on_accelerator = host_metric_config.fsq1_norms_on_accelerator
-    host_residual_metrics_on_accelerator = host_metric_config.residual_metrics_on_accelerator
-    adjoint_trace = bool(adjoint_trace)
-    adjoint_trace_mode = _normalize_adjoint_trace_mode(adjoint_trace_mode)
-    (
-        preconditioner_use_precomputed_tridi_policy,
-        preconditioner_use_lax_tridi_policy,
-    ) = _resolve_preconditioner_tridi_policies(
-        use_precomputed=preconditioner_use_precomputed_tridi,
-        use_lax_tridi=preconditioner_use_lax_tridi,
-    )
+    max_iter = startup_policy.max_iter
+    step_size = startup_policy.step_size
+    precompile_only = startup_policy.precompile_only
+    host_update_assembly = startup_policy.host_update_assembly
+    host_fsq1_norms_on_accelerator = startup_policy.host_fsq1_norms_on_accelerator
+    host_residual_metrics_on_accelerator = startup_policy.host_residual_metrics_on_accelerator
+    adjoint_trace = startup_policy.adjoint_trace
+    adjoint_trace_mode = startup_policy.adjoint_trace_mode
+    preconditioner_use_precomputed_tridi_policy = startup_policy.preconditioner_use_precomputed_tridi_policy
+    preconditioner_use_lax_tridi_policy = startup_policy.preconditioner_use_lax_tridi_policy
 
     def _adjoint_trace_array(value):
         return _materialize_adjoint_trace_array(value, mode=adjoint_trace_mode)
 
-    signgs = opts.signgs
-    fsq_total_target = None if fsq_total_target is None else max(0.0, float(fsq_total_target))
-    lambda_update_scale = opts.lambda_update_scale
-    enforce_vmec_lambda_axis = opts.enforce_vmec_lambda_axis
-    vmec2000_control = opts.vmec2000_control
-    badjac_config = _parse_bad_jacobian_config(os.environ)
-    badjac_mode = badjac_config.mode
-    badjac_use_state = badjac_config.use_state
-    dump_ptau_state = badjac_config.dump_ptau_state
-    light_history = _resolve_light_history(light_history, env_value=os.getenv("VMEC_JAX_LIGHT_HISTORY", "0"))
-    resume_state_mode = _normalize_resume_state_mode(resume_state_mode)
-    badjac_state_probe = badjac_config.state_probe
-    badjac_initial_state_probe_iters = int(badjac_config.initial_state_probe_iters)
-    ptau_tol = badjac_config.ptau_tol
-    ptau_tol_rel = badjac_config.ptau_tol_rel
-    reference_mode = opts.reference_mode
-    jit_precompile = opts.jit_precompile
-    restart_flags = _resolve_restart_flags(
-        use_restart_triggers=use_restart_triggers,
-        use_direct_fallback=use_direct_fallback,
-        vmecpp_restart=vmecpp_restart,
-    )
-    use_restart_triggers = restart_flags.use_restart_triggers
-    use_direct_fallback = restart_flags.use_direct_fallback
-    vmecpp_restart = restart_flags.vmecpp_restart
-    verbose_vmec2000_table = bool(verbose_vmec2000_table)
-    # Allow automatic fallback to the non-scan path when scan diverges.
-    # On GPU/TPU, the non-scan fallback uses a Python loop with per-iteration
-    # device→host synchronization, which is catastrophically slow (~74 ms/iter
-    # vs ~4 ms/iter in the scan path). Disable scan fallback by default on
-    # non-CPU backends, unless the user explicitly sets VMEC_JAX_SCAN_FALLBACK=1.
-    scan_fallback_policy = _scan_fallback_policy(
-        backend_name=_scan_backend_name(),
-        enabled_env=os.getenv("VMEC_JAX_SCAN_FALLBACK"),
-        iters_env=os.getenv("VMEC_JAX_SCAN_FALLBACK_ITERS", "50"),
-        badjac_limit_env=os.getenv("VMEC_JAX_SCAN_FALLBACK_BJAC_LIMIT", "10"),
-        fsq_abs_env=os.getenv("VMEC_JAX_SCAN_FALLBACK_FSQ_ABS", "1.0e-2"),
-        accept_frac_env=os.getenv("VMEC_JAX_SCAN_FALLBACK_ACCEPTED_FRAC", "0.5"),
-        fsq_factor_env=os.getenv("VMEC_JAX_SCAN_FALLBACK_FSQ_FACTOR", "50"),
-        improve_env=os.getenv("VMEC_JAX_SCAN_FALLBACK_IMPROVE", "0.1"),
-    )
-    scan_fallback_enabled = scan_fallback_policy.enabled
-    scan_fallback_iters = scan_fallback_policy.iters
-    scan_fallback_badjac_limit = scan_fallback_policy.badjac_limit
-    scan_fallback_fsq_abs = scan_fallback_policy.fsq_abs
-    scan_fallback_accept_frac = scan_fallback_policy.accept_frac
-    scan_fallback_fsq_factor = scan_fallback_policy.fsq_factor
-    scan_fallback_improve = scan_fallback_policy.improve
-    stage_transition_factor = float(stage_transition_factor)
-    stage_transition_scale = float(stage_transition_scale)
-    if stage_transition_factor <= 0.0 or stage_transition_scale <= 0.0:
-        stage_prev_fsq = None
-
-    if use_scan and vmec2000_control and auto_flip_force:
-        auto_flip_force = False
-    jit_forces = bool(jit_forces)
-    use_scan = bool(use_scan)
-    # Default to chunked scan to reduce per-iteration host sync overhead.
-    # Respect explicit non-scan requests (e.g., parity comparators).
-    chunked_scan_config = _resolve_chunked_scan_config(
-        use_scan=bool(use_scan),
-        state_has_tracer=_tree_has_tracer(state0),
-        scan_fallback_enabled=bool(scan_fallback_enabled),
-        chunked_env=os.getenv("VMEC_JAX_VMEC2000_CHUNKED", "1"),
-    )
-    force_chunked_scan = chunked_scan_config.force_chunked_scan
-    scan_fallback_enabled = chunked_scan_config.scan_fallback_enabled
-    differentiating_scan = chunked_scan_config.differentiating_scan
-    limit_dt_from_force = opts.limit_dt_from_force
-    limit_update_rms = opts.limit_update_rms
-    backtracking = opts.backtracking
-    strict_update = opts.strict_update
-    dump_history_config = _resolve_dump_history_config(
-        env=os.environ,
-        jit_forces=bool(jit_forces),
-        light_history=bool(light_history),
-        heavy_dump_envs=_HEAVY_DUMP_ENVS,
-        light_dump_envs=_LIGHT_DUMP_ENVS,
-    )
-    dumps_enabled = dump_history_config.dumps_enabled
-    dump_any = dump_history_config.dump_any
-    if dump_history_config.disabled_jit_for_dumps:
+    signgs = startup_policy.signgs
+    fsq_total_target = startup_policy.fsq_total_target
+    lambda_update_scale = startup_policy.lambda_update_scale
+    enforce_vmec_lambda_axis = startup_policy.enforce_vmec_lambda_axis
+    vmec2000_control = startup_policy.vmec2000_control
+    badjac_mode = startup_policy.badjac_mode
+    badjac_use_state = startup_policy.badjac_use_state
+    dump_ptau_state = startup_policy.dump_ptau_state
+    light_history = startup_policy.light_history
+    resume_state_mode = startup_policy.resume_state_mode
+    badjac_state_probe = startup_policy.badjac_state_probe
+    badjac_initial_state_probe_iters = startup_policy.badjac_initial_state_probe_iters
+    ptau_tol = startup_policy.ptau_tol
+    ptau_tol_rel = startup_policy.ptau_tol_rel
+    reference_mode = startup_policy.reference_mode
+    jit_precompile = startup_policy.jit_precompile
+    use_restart_triggers = startup_policy.use_restart_triggers
+    use_direct_fallback = startup_policy.use_direct_fallback
+    vmecpp_restart = startup_policy.vmecpp_restart
+    verbose_vmec2000_table = startup_policy.verbose_vmec2000_table
+    scan_fallback_enabled = startup_policy.scan_fallback_enabled
+    scan_fallback_iters = startup_policy.scan_fallback_iters
+    scan_fallback_badjac_limit = startup_policy.scan_fallback_badjac_limit
+    scan_fallback_fsq_abs = startup_policy.scan_fallback_fsq_abs
+    scan_fallback_accept_frac = startup_policy.scan_fallback_accept_frac
+    scan_fallback_fsq_factor = startup_policy.scan_fallback_fsq_factor
+    scan_fallback_improve = startup_policy.scan_fallback_improve
+    stage_transition_factor = startup_policy.stage_transition_factor
+    stage_transition_scale = startup_policy.stage_transition_scale
+    stage_prev_fsq = startup_policy.stage_prev_fsq
+    auto_flip_force = startup_policy.auto_flip_force
+    jit_forces = startup_policy.jit_forces
+    use_scan = startup_policy.use_scan
+    force_chunked_scan = startup_policy.force_chunked_scan
+    differentiating_scan = startup_policy.differentiating_scan
+    limit_dt_from_force = startup_policy.limit_dt_from_force
+    limit_update_rms = startup_policy.limit_update_rms
+    backtracking = startup_policy.backtracking
+    strict_update = startup_policy.strict_update
+    dumps_enabled = startup_policy.dumps_enabled
+    dump_any = startup_policy.dump_any
+    if startup_policy.disabled_jit_for_dumps:
         if verbose:
             print("[solve_fixed_boundary_residual_iter] jit_forces disabled (debug dumps enabled)")
-    jit_forces = dump_history_config.jit_forces
-    light_history = dump_history_config.light_history
-    track_history = dump_history_config.track_history
+    track_history = startup_policy.track_history
 
     def _pack_resume_state(base: dict[str, Any], heavy: dict[str, Any] | None = None):
         return _pack_resume_state_record(base=base, heavy=heavy, mode=resume_state_mode)

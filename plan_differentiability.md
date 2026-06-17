@@ -7591,3 +7591,68 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.69%.
+
+## 2026-06-17 Residual Iteration Startup Policy Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted the host-side startup policy block from
+   `solve_fixed_boundary_residual_iter` into
+   `ResidualIterStartupPolicy` and `resolve_residual_iter_startup_policy` in
+   `vmec_jax.solvers.fixed_boundary.residual.policy`.
+2. Moved option validation, host update selection, accelerator residual metric
+   policy, adjoint trace normalization, tridiagonal preconditioner policy,
+   bad-Jacobian environment parsing, restart defaults, scan fallback defaults,
+   chunked-scan/tracer safety, and dump-history/JIT side effects behind one
+   tested immutable policy object.
+3. Added direct unit coverage for accelerator host-update controls, debug-dump
+   side effects, tracer scan safety, stage-transition disabling, objective
+   target normalization, restart defaults, and adjoint/resume mode
+   normalization.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` dropped from 7,790 to 7,685 lines.
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` dropped from 8,404
+  to 8,297 lines.
+- Startup policy is now testable without running a VMEC residual iteration or
+  compiling force kernels, which is the right seam for future branch
+  fingerprint and differentiability-policy reporting.
+- Representative VMEC2000 scan shards still pass after the extraction.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/policy.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_residual_iter_policy.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_policy.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_real_scan_wave10_coverage.py tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_minimal_one_step tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_state_only -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 20`
+
+Best next steps:
+
+1. Commit and push this residual startup-policy tranche.
+2. Continue residual-controller decomposition at the next real seam:
+   VMEC2000 scan setup/run/finalize policy or accepted/rejected update
+   controller state transitions.
+3. Keep each extraction paired with direct helper tests and at least one
+   representative scan/parity shard; do not wait on full CI after every push.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.996%.
+- Solver monolith reduction: 98.36%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.70%.
