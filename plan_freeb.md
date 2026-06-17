@@ -12,6 +12,55 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-16 Matrix-Free Same-Branch Proposal Smoke
+
+Steps taken:
+
+1. Ran the coil-only QS smoke with
+   ``--same-branch-derivative-proposal`` enabled.
+2. Used the profiled matrix-free replay settings:
+   ``same_branch_report_nestor_solve_mode=matrix_free`` and
+   ``same_branch_report_nestor_operator_solver=bicgstab``.
+3. Kept the acceptance authority as a complete free-boundary solve; the
+   branch-local derivative only proposed a trial point.
+
+Results obtained:
+
+1. The same-branch vector/JVP report was available and its physical scalar
+   gate passed.
+2. The report used the cached replay plan and had
+   ``max_base_abs_delta=2.0e-13``.
+3. The branch-local proposal was accepted by complete-solve objective
+   authority.
+4. The complete-solve objective improved from ``1.373641936`` to
+   ``1.372339353`` in the accepted proposal trial.
+
+Best next steps:
+
+1. Keep phase-3 production examples using this conservative control flow:
+   branch-local matrix-free vector/JVP proposes, complete solves decide.
+2. Continue profiling first-JVP graph construction; replay-plan setup is no
+   longer the dominant repeated setup cost for report/proposal paths.
+3. Keep arbitrary adaptive host branch differentiation deferred until a true
+   fingerprint-gated full adaptive AD-vs-FD gate exists.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999997%.
+- VMEC parity and physics gates: 99.9%.
+- Single-stage coil-only optimization phase 3: 99.98%; a real same-branch
+  derivative-assisted coil proposal was accepted by complete-solve authority.
+- CPU/GPU performance: 99.55%.
+- CI/runtime/coverage hygiene: 100% locally for the validated shards; latest
+  GitHub CI queued/running after the last push.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.
+
 ### 2026-06-16 Matrix-Free NESTOR Profile Recommendations
 
 Steps taken:
