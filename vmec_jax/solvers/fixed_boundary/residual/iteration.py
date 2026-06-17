@@ -167,6 +167,7 @@ from vmec_jax.solvers.fixed_boundary.profiles import (
     _pressure_half_mesh_from_indata,
     _s_half_from_full_mesh_s,  # noqa: F401 - re-exported for existing internal tests/importers.
     _vmec_force_flux_profiles,
+    build_wout_like_profiles_from_indata as _build_wout_like_profiles_from_indata,
 )
 from vmec_jax.solvers.fixed_boundary.residual.geometry import (
     _m1_internal_to_physical_pair as _geometry_m1_internal_to_physical_pair,
@@ -789,7 +790,6 @@ def solve_fixed_boundary_residual_iter(
     def _pack_resume_state(base: dict[str, Any], heavy: dict[str, Any] | None = None):
         return _pack_resume_state_record(base=base, heavy=heavy, mode=resume_state_mode)
 
-    from vmec_jax.energy import flux_profiles_from_indata, flux_profiles_from_indata_host_default
     from vmec_jax.static import build_static
     from vmec_jax.boundary import boundary_from_indata
     from vmec_jax.init_guess import (
@@ -973,85 +973,6 @@ def solve_fixed_boundary_residual_iter(
 
     prefer_host_default_profiles = not _tree_has_tracer(state0)
 
-    def _build_wout_like_profiles(s_profile):
-        flux_i = None
-        if bool(prefer_host_default_profiles) and not _tree_has_tracer(s_profile):
-            try:
-                flux_i = flux_profiles_from_indata_host_default(indata, s_profile, signgs=signgs)
-            except Exception:
-                flux_i = None
-        if flux_i is None:
-            flux_i = flux_profiles_from_indata(indata, s_profile, signgs=signgs)
-        chipf_wout_i = jnp.asarray(flux_i.chipf)
-
-        phips_i = jnp.asarray(flux_i.phips)
-        if phips_i.shape[0] >= 1:
-            phips_i = phips_i.at[0].set(0.0)
-
-        from vmec_jax.boundary import boundary_from_indata
-
-        boundary_i = boundary_from_indata(indata, static.modes)
-        r00_i = (
-            float(np.asarray(boundary_i.R_cos)[int(idx00)])
-            if int(idx00) >= 0
-            else float(np.asarray(boundary_i.R_cos)[0])
-        )
-        gamma_i = float(indata.get_float("GAMMA", 0.0))
-        lrfp_i = bool(indata.get_bool("LRFP", False))
-        chips_i = _half_mesh_from_full_mesh(chipf_wout_i) if lrfp_i else None
-        mass_i = _mass_half_mesh_from_indata(
-            indata=indata,
-            s_full=s_profile,
-            phips=phips_i,
-            r00=r00_i,
-            gamma=gamma_i,
-            lrfp=lrfp_i,
-            chips=chips_i,
-        )
-
-        pres_i = _pressure_half_mesh_from_indata(indata=indata, s_full=s_profile)
-        ncurr_i = int(indata.get_int("NCURR", 0))
-        icurv_i = _icurv_full_mesh_from_indata(indata=indata, s_full=s_profile, signgs=signgs)
-        phipf_internal_i, chipf_internal_i, chips_eff_i = _vmec_force_flux_profiles(
-            phipf=jnp.asarray(flux_i.phipf),
-            chipf=chipf_wout_i,
-            signgs=signgs,
-            flux_is_internal=True,
-        )
-
-        wout_like_i = _WoutLikeVmecForces(
-            nfp=int(static.cfg.nfp),
-            mpol=int(static.cfg.mpol),
-            ntor=int(static.cfg.ntor),
-            lasym=bool(static.cfg.lasym),
-            signgs=signgs,
-            phipf=jnp.asarray(flux_i.phipf),
-            phips=phips_i,
-            chipf=chipf_wout_i,
-            pres=pres_i,
-            mass=mass_i,
-            gamma=gamma_i,
-            ncurr=ncurr_i,
-            lcurrent=True,
-            icurv=icurv_i,
-            phipf_internal=phipf_internal_i,
-            chipf_internal=chipf_internal_i,
-            chips_eff=chips_eff_i,
-        )
-        return (
-            flux_i,
-            chipf_wout_i,
-            phips_i,
-            mass_i,
-            pres_i,
-            ncurr_i,
-            icurv_i,
-            phipf_internal_i,
-            chipf_internal_i,
-            chips_eff_i,
-            wout_like_i,
-    )
-
     _profile_numpy_patch = None
     host_profile_setup = _resolve_host_profile_setup(
         backend_name=_scan_backend_name(),
@@ -1071,33 +992,26 @@ def solve_fixed_boundary_residual_iter(
             from vmec_jax.vmec_numpy_forces import _wrap as _np_wrap
 
             s_profile = _np_wrap(np.asarray(s))
-            (
-                flux,
-                chipf_wout,
-                phips,
-                mass,
-                pres,
-                ncurr,
-                icurv,
-                phipf_internal,
-                chipf_internal,
-                chips_eff,
-                wout_like,
-            ) = _build_wout_like_profiles(s_profile)
+            profile_setup = _build_wout_like_profiles_from_indata(
+                indata=indata,
+                static=static,
+                s_profile=s_profile,
+                signgs=signgs,
+                idx00=idx00,
+                prefer_host_default_profiles=prefer_host_default_profiles,
+                s_profile_has_tracer=_tree_has_tracer(s_profile),
+            )
     else:
-        (
-            flux,
-            chipf_wout,
-            phips,
-            mass,
-            pres,
-            ncurr,
-            icurv,
-            phipf_internal,
-            chipf_internal,
-            chips_eff,
-            wout_like,
-        ) = _build_wout_like_profiles(s)
+        profile_setup = _build_wout_like_profiles_from_indata(
+            indata=indata,
+            static=static,
+            s_profile=s,
+            signgs=signgs,
+            idx00=idx00,
+            prefer_host_default_profiles=prefer_host_default_profiles,
+            s_profile_has_tracer=_tree_has_tracer(s),
+        )
+    wout_like = profile_setup.wout_like
 
     trig = getattr(static, "trig_vmec", None)
     if trig is None:

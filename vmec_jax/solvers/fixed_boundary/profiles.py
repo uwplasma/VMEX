@@ -2,10 +2,28 @@
 
 from __future__ import annotations
 
+from typing import Any, NamedTuple
+
 import numpy as np
 
 from ..._compat import jnp
 from ...field import TWOPI, chips_from_wout_chipf
+
+
+class WoutLikeProfileSetup(NamedTuple):
+    """Profiles and minimal WOUT-like metadata consumed by residual kernels."""
+
+    flux: Any
+    chipf_wout: Any
+    phips: Any
+    mass: Any
+    pres: Any
+    ncurr: int
+    icurv: Any
+    phipf_internal: Any
+    chipf_internal: Any
+    chips_eff: Any
+    wout_like: Any
 
 
 def _vmec_force_flux_profiles(*, phipf, chipf, signgs: int, flux_is_internal: bool, iotaf=None, iotas=None):
@@ -106,3 +124,102 @@ def _icurv_full_mesh_from_indata(*, indata, s_full, signgs: int):
     if int(icurv.shape[0]) > 0:
         icurv = icurv.at[0].set(0.0)
     return icurv
+
+
+def build_wout_like_profiles_from_indata(
+    *,
+    indata,
+    static,
+    s_profile,
+    signgs: int,
+    idx00: int,
+    prefer_host_default_profiles: bool,
+    s_profile_has_tracer: bool,
+) -> WoutLikeProfileSetup:
+    """Build VMEC force profiles and the minimal WOUT-like force container.
+
+    Residual kernels need a compact WOUT-like object instead of the full file
+    output structure.  This setup step is deterministic for a given input deck,
+    static grid, and radial mesh, so it belongs outside the residual iteration
+    loop and can be tested independently from the nonlinear controller.
+    """
+
+    from ...boundary import boundary_from_indata
+    from ...energy import flux_profiles_from_indata, flux_profiles_from_indata_host_default
+    from .results import WoutLikeVmecForces
+
+    flux = None
+    if bool(prefer_host_default_profiles) and not bool(s_profile_has_tracer):
+        try:
+            flux = flux_profiles_from_indata_host_default(indata, s_profile, signgs=signgs)
+        except Exception:
+            flux = None
+    if flux is None:
+        flux = flux_profiles_from_indata(indata, s_profile, signgs=signgs)
+    chipf_wout = jnp.asarray(flux.chipf)
+
+    phips = jnp.asarray(flux.phips)
+    if phips.shape[0] >= 1:
+        phips = phips.at[0].set(0.0)
+
+    boundary = boundary_from_indata(indata, static.modes)
+    r00 = (
+        float(np.asarray(boundary.R_cos)[int(idx00)])
+        if int(idx00) >= 0
+        else float(np.asarray(boundary.R_cos)[0])
+    )
+    gamma = float(indata.get_float("GAMMA", 0.0))
+    lrfp = bool(indata.get_bool("LRFP", False))
+    chips = _half_mesh_from_full_mesh(chipf_wout) if lrfp else None
+    mass = _mass_half_mesh_from_indata(
+        indata=indata,
+        s_full=s_profile,
+        phips=phips,
+        r00=r00,
+        gamma=gamma,
+        lrfp=lrfp,
+        chips=chips,
+    )
+
+    pres = _pressure_half_mesh_from_indata(indata=indata, s_full=s_profile)
+    ncurr = int(indata.get_int("NCURR", 0))
+    icurv = _icurv_full_mesh_from_indata(indata=indata, s_full=s_profile, signgs=signgs)
+    phipf_internal, chipf_internal, chips_eff = _vmec_force_flux_profiles(
+        phipf=jnp.asarray(flux.phipf),
+        chipf=chipf_wout,
+        signgs=signgs,
+        flux_is_internal=True,
+    )
+
+    wout_like = WoutLikeVmecForces(
+        nfp=int(static.cfg.nfp),
+        mpol=int(static.cfg.mpol),
+        ntor=int(static.cfg.ntor),
+        lasym=bool(static.cfg.lasym),
+        signgs=int(signgs),
+        phipf=jnp.asarray(flux.phipf),
+        phips=phips,
+        chipf=chipf_wout,
+        pres=pres,
+        mass=mass,
+        gamma=gamma,
+        ncurr=ncurr,
+        lcurrent=True,
+        icurv=icurv,
+        phipf_internal=phipf_internal,
+        chipf_internal=chipf_internal,
+        chips_eff=chips_eff,
+    )
+    return WoutLikeProfileSetup(
+        flux=flux,
+        chipf_wout=chipf_wout,
+        phips=phips,
+        mass=mass,
+        pres=pres,
+        ncurr=ncurr,
+        icurv=icurv,
+        phipf_internal=phipf_internal,
+        chipf_internal=chipf_internal,
+        chips_eff=chips_eff,
+        wout_like=wout_like,
+    )

@@ -7656,3 +7656,63 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.70%.
+
+## 2026-06-17 Residual WOUT-Profile Setup Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved the nested WOUT-like flux/profile assembly out of
+   `solve_fixed_boundary_residual_iter` and into
+   `build_wout_like_profiles_from_indata` in
+   `vmec_jax.solvers.fixed_boundary.profiles`.
+2. Added `WoutLikeProfileSetup` so the helper returns both the intermediate
+   flux/profile arrays and the compact `WoutLikeVmecForces` object consumed by
+   residual kernels.
+3. Preserved the host-default profile fast path and the VMEC conventions for
+   `phips[0]`, mass, pressure, current profiles, and internal flux scaling.
+4. Added a real circular-tokamak fixture test for the aggregate helper.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` dropped from 7,685 to 7,598 lines.
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` dropped from 8,297
+  to 8,211 lines.
+- Profile setup is now a named, independently tested domain function rather
+  than a nested closure in the nonlinear residual controller.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/profiles.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_wave7_coverage.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_wave7_coverage.py::test_wout_like_profile_setup_uses_real_input_profiles tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_minimal_one_step tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_state_only -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_wave7_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 20`
+
+Best next steps:
+
+1. Commit and push this profile-setup tranche.
+2. Continue residual-controller decomposition at the next large seam:
+   scan initial-force/axis-reset preflight or scan postprocess/fallback
+   materialization.
+3. Keep setup helpers in domain modules (`profiles`, `scan`, `residual`) rather
+   than adding generic `solve_*` helper files.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.996%.
+- Solver monolith reduction: 98.46%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.71%.
