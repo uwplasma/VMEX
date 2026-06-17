@@ -7962,6 +7962,71 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.86%.
 
+## 2026-06-17 Fixed-Boundary Workflow Output Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted fixed-boundary workflow printing, stage artifact saving,
+   final-output saving, non-worsening continuation guards, QI stage
+   checkpoint writing, combined-history assembly, JSON conversion, stale-file
+   cleanup, and Boozer surface slicing into
+   `vmec_jax.optimizers.fixed_boundary.workflow_outputs`.
+2. Kept public/private names in `optimization_workflow.py` as wrappers so
+   example scripts, tests, and downstream monkeypatches still target the
+   workflow facade.
+3. Passed runtime dependencies such as `run_fixed_boundary`,
+   `write_wout_from_fixed_boundary_run`, stage-mode normalization, and stage
+   budget calculation into helper implementations to avoid circular imports
+   and preserve test monkeypatch seams.
+
+Results obtained:
+
+- `vmec_jax/optimization_workflow.py` dropped from 3,637 to 3,412 lines.
+- Workflow output and checkpoint behavior is now grouped under the
+  fixed-boundary optimizer domain rather than mixed with objective definitions
+  and stage orchestration.
+- Rerun-WOUT tests continue to patch through `vmec_jax.optimization_workflow`,
+  matching existing user/script behavior.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization_workflow.py vmec_jax/optimizers/fixed_boundary/workflow_outputs.py tests/test_optimization_workflow_unit.py tests/test_optimization_helpers.py tests/test_continuation_exact_history.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_workflow_unit.py tests/test_optimization_helpers.py tests/test_continuation_exact_history.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 20`
+
+Best next steps:
+
+1. Extract objective class families from `optimization_workflow.py` into a
+   fixed-boundary objective-library module, or first split out QI-only
+   objectives if a full objective extraction is too large for one validation
+   tranche.
+2. Continue reducing `solve_fixed_boundary_residual_iter` via controller
+   sub-seams after the workflow facade has fewer mixed responsibilities.
+3. Keep docs updates for the end of this PR, after the API names and module
+   structure settle.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.93%.
+- Differentiability/refactor implementation: 99.999%.
+- Solver monolith reduction: 98.50%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 96.0%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.87%.
+
 ## 2026-06-17 Fixed-Boundary Seed/Input Workflow Extraction
 
 Branch: `codex/differentiability-refactor-plan`.
