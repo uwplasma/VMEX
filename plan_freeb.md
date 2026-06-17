@@ -12,6 +12,85 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-17 Slot-Gated Proposal and Bounded VMEC2000 Rerun
+
+Steps taken:
+
+1. Ran the direct-coil QS example with a current-only same-branch report,
+   matrix-free/BiCGSTAB replay, ``--same-branch-report-rejected-slot-gate``,
+   and ``--same-branch-derivative-proposal``.
+2. Inspected the emitted ``summary.json`` and
+   ``same_branch_complete_solve_report.json`` for branch-local gate evidence.
+3. Re-ran the bounded optional VMEC2000 executable-backed gates that are safe
+   for local validation: the short fixed-boundary stage traces, the bundled
+   LASYM free-boundary fixture, and the W7-X generated-``mgrid`` finite-positive
+   WOUT fixture.
+4. Ran the finite-beta QA direct-coil wrapper with the same current-only
+   derivative proposal and accepted/rejected controller-slot gate.
+5. Ran the four targeted native rejected-slot complete-solve FD comparison
+   tests for scalar, finite-beta, geometry, and mixed/state-only branch traces.
+
+Results obtained:
+
+1. The derivative-assisted trial again reduced the complete-solve objective
+   from ``1.3736419364589705`` to ``1.3723864922091615`` and was accepted only
+   by complete-solve authority.
+2. The accepted/rejected controller-slot gate passed with one fixed rejected
+   controller slot:
+   ``accepted_slots=2``, ``rejected_slots=1``,
+   ``fixed_rejected_controller_slot_present=true``.
+3. The same report kept the current-only fast path active:
+   ``direction_x=[1.0, 0.0]``,
+   ``directional_jvp_fast_path=current_only``, and
+   ``current_only_coil_geometry_source=cached``.
+4. ``VMEC2000_INTEGRATION=1 JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_vmec2000_exec_fast_validation.py::test_fast_vmec2000_stage_trace_validation_cases
+   tests/test_vmec2000_exec_fast_validation.py::test_vmec2000_free_boundary_lasym_true_reaches_vacuum_solve -q``
+   passed.
+5. ``VMEC2000_INTEGRATION=1 JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_essos_coil_parity.py::test_vmec2000_w7x_generated_mgrid_fixture_reaches_active_vacuum_and_finite_wout -q``
+   passed.
+6. The finite-beta QA wrapper reduced the complete-solve objective from
+   ``0.1155242069759394`` to ``0.1155144933759955`` through a complete-solve
+   accepted derivative proposal.  Its branch-local vector report included
+   ``betatotal`` with ``base_abs_delta=1.49e-14`` and AD-vs-FD directional
+   error ``2.31e-13`` while the accepted/rejected slot gate passed with one
+   fixed rejected controller slot.
+7. ``JAX_ENABLE_X64=1 python -m pytest -q`` on
+   ``test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve_fd``,
+   ``test_direct_coil_native_rejected_slot_betatotal_jvp_matches_complete_solve_fd``,
+   ``test_direct_coil_native_rejected_slot_geometry_jvp_matches_complete_solve_fd``,
+   and
+   ``test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matches_complete_solve_fd``
+   passed.  The rejected/bad-Jacobian branch emits expected runtime warnings,
+   but the fingerprint-gated branch-local JVP comparisons pass.
+
+Best next steps:
+
+1. Commit this plan evidence with the next code/doc tranche rather than
+   creating a standalone plan-only commit.
+2. Continue phase-3 polishing only if it improves the user-facing example:
+   complete solves remain acceptance authority, and branch-local derivatives
+   are proposal evidence.
+3. Keep VMEC2000 parity expansion bounded to fixtures that write finite,
+   positive geometry WOUTs.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999999%.
+- VMEC parity and physics gates: 99.92%.
+- Single-stage coil-only optimization phase 3: 99.997%.
+- CPU/GPU performance: 99.60%.
+- CI/runtime/coverage hygiene: 100% locally for this shard; latest GitHub CI
+  still running/queued for the branch head at the time of this entry.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.
+
 ### 2026-06-17 Same-Branch Report Direction Policy
 
 Steps taken:

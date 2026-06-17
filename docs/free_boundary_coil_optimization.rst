@@ -1506,6 +1506,8 @@ to form a safe derivative proposal.
      --nzeta 4 \
      --write-same-branch-report \
      --same-branch-report-mode vector \
+     --same-branch-report-direction current-only \
+     --same-branch-report-rejected-slot-gate \
      --same-branch-derivative-proposal \
      --outdir results/free_boundary_QA_finite_beta_coil_optimization_report
 
@@ -1513,7 +1515,9 @@ The wrapper records the same ``history.json`` and ``summary.json`` schema as
 ``free_boundary_QS_coil_optimization.py`` and adds a
 ``finite_beta_qa_example`` metadata block.  Optional same-branch derivative
 reports remain diagnostics or proposal evidence only; they do not claim exact
-gradients through arbitrary adaptive host branch selection.
+gradients through arbitrary adaptive host branch selection.  The default vector
+keys include ``betatotal`` so finite-beta reports also check a pressure-sensitive
+scalar in the same branch-local AD-vs-FD table.
 
 For the ESSOS Landreman-Paul QA coils, put ESSOS on ``PYTHONPATH`` and use:
 
