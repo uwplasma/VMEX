@@ -15,7 +15,7 @@ from typing import Callable, Sequence
 import numpy as np
 
 from ._compat import jnp
-from .boundary import BoundaryCoeffs
+from .boundary import BoundaryCoeffs, boundary_from_indata
 from .booz_input import BoozXformInputs, booz_xform_inputs_from_state
 from .energy import FluxProfiles, flux_profiles_from_indata
 from .field import signgs_from_sqrtg
@@ -44,6 +44,8 @@ from .optimizers.fixed_boundary.parameterization import indexed_boundary_maps_fr
 from .optimizers.fixed_boundary.parameterization import lift_boundary_params
 from .optimizers.fixed_boundary.parameterization import rebuild_indata_with_resolution
 from .optimizers.fixed_boundary.parameterization import truncate_indata_boundary_modes
+from .optimizers.fixed_boundary.qs_residuals import make_qh_residuals_fn as _make_qh_residuals_fn_impl
+from .optimizers.fixed_boundary.qs_residuals import make_qs_residuals_fn as _make_qs_residuals_fn_impl
 from .optimizers.fixed_boundary.scalar_gradient import exact_objective_and_gradient
 from .optimizers.fixed_boundary.scalar_lbfgs import run_lbfgs_adjoint_exact_optimizer
 from .optimizers.fixed_boundary.scalar_trust import run_scalar_trust_exact_optimizer
@@ -218,11 +220,6 @@ def _pressure_profile_for_static(indata, static: VMECStatic):
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# QH/QA residuals factories
-# ─────────────────────────────────────────────────────────────────────────────
-
-
 def make_qh_residuals_fn(
     static: VMECStatic,
     indata,
@@ -235,171 +232,26 @@ def make_qh_residuals_fn(
     aspect_weight: float = 1.0,
     qs_weight: float = 1.0,
 ) -> Callable:
-    """Build a ``residuals_from_state`` callable for quasi-helical symmetry.
+    """Build a ``residuals_from_state`` callable for quasi-helical symmetry."""
 
-    The returned function takes a :class:`~vmec_jax.state.VMECState` and
-    returns a 1-D residual vector suitable for nonlinear least-squares
-    optimisation.  The residuals are:
-
-    * One aspect-ratio residual: ``aspect_weight * (aspect - target_aspect)``
-    * One QS residual per selected flux surface (from
-      :func:`~vmec_jax.quasisymmetry.quasisymmetry_ratio_residual_from_state`).
-
-    Parameters
-    ----------
-    static:
-        Pre-built :class:`~vmec_jax.static.VMECStatic`.
-    indata:
-        VMEC input namelist object (used to derive flux profiles and for the
-        QS kernel).
-    signgs:
-        Sign of the Jacobian.  Computed automatically from the initial guess
-        when ``None``.
-    helicity_m, helicity_n:
-        Helicity of the target quasi-symmetry.  Default ``(1, -1)`` gives QH.
-    target_aspect:
-        Target aspect ratio.
-    surfaces:
-        Surface coordinates (``s ∈ [0, 1]``) to evaluate quasisymmetry on.
-        Defaults to ``np.arange(0, 1.01, 0.1)``.
-    aspect_weight, qs_weight:
-        Scalar weights applied to the aspect and QS residual blocks.
-    """
-    from .init_guess import initial_guess_from_boundary
-    from .boundary import boundary_from_indata
-    from .modes import nyquist_mode_table_from_grid
-    from .quasisymmetry import (
-        _quasisymmetry_angle_cache,
-        quasisymmetry_ratio_residual_from_state,
+    return _make_qh_residuals_fn_impl(
+        static,
+        indata,
+        signgs=signgs,
+        helicity_m=helicity_m,
+        helicity_n=helicity_n,
+        target_aspect=target_aspect,
+        surfaces=surfaces,
+        aspect_weight=aspect_weight,
+        qs_weight=qs_weight,
+        boundary_from_indata_func=boundary_from_indata,
+        initial_guess_from_boundary_func=initial_guess_from_boundary,
+        eval_geom_func=eval_geom,
+        signgs_from_sqrtg_func=signgs_from_sqrtg,
+        flux_profiles_from_indata_func=flux_profiles_from_indata,
+        pressure_profile_for_static_func=_pressure_profile_for_static,
+        smooth_min_abs_iota_residual_func=smooth_min_abs_iota_residual,
     )
-    from .wout import equilibrium_aspect_ratio_from_state
-
-    if surfaces is None:
-        surfaces = np.arange(0.0, 1.01, 0.1)
-    surfaces = np.asarray(surfaces, dtype=float)
-
-    if signgs is None:
-        try:
-            boundary_init = boundary_from_indata(indata, static.modes)
-            state0 = initial_guess_from_boundary(static, boundary_init, indata)
-            from .geom import eval_geom as _eval_geom
-
-            geom = _eval_geom(state0, static)
-            signgs = int(signgs_from_sqrtg(np.asarray(geom.sqrtg), axis_index=1))
-        except Exception:
-            signgs = 1
-
-    flux = flux_profiles_from_indata(indata, static.s, signgs=signgs)
-    pressure = _pressure_profile_for_static(indata, static)
-    nyq_modes = nyquist_mode_table_from_grid(
-        mpol=int(static.cfg.mpol),
-        ntor=int(static.cfg.ntor),
-        ntheta=int(static.cfg.ntheta),
-        nzeta=int(static.cfg.nzeta),
-    )
-    angle_cache = _quasisymmetry_angle_cache(
-        nfp=int(static.cfg.nfp),
-        xm_nyq=nyq_modes.m,
-        xn_nyq=nyq_modes.n * int(static.cfg.nfp),
-    )
-
-    def _qs_eval_from_state(state: VMECState):
-        return quasisymmetry_ratio_residual_from_state(
-            state=state,
-            static=static,
-            indata=indata,
-            signgs=signgs,
-            flux_local=flux,
-            prof_local={"pressure": pressure},
-            pressure_local=pressure,
-            surfaces=surfaces,
-            helicity_m=helicity_m,
-            helicity_n=helicity_n,
-            angle_cache=angle_cache,
-        )
-
-    def residuals_from_state(state: VMECState) -> jnp.ndarray:
-        aspect = equilibrium_aspect_ratio_from_state(state=state, static=static)
-        qs = _qs_eval_from_state(state)
-        aspect_residual = jnp.asarray([float(aspect_weight) * (aspect - target_aspect)], dtype=jnp.float64)
-        qs_residual = jnp.asarray(qs["residuals1d"], dtype=jnp.float64) * float(qs_weight)
-        return jnp.concatenate([aspect_residual, qs_residual])
-
-    def state_cotangent_operator_from_packed(packed_state, layout):
-        from ._compat import jax, jnp as _jnp
-        from .state import unpack_state
-
-        packed_state = _jnp.asarray(packed_state, dtype=_jnp.float64)
-
-        def _aspect_from_packed(packed):
-            state = unpack_state(packed, layout)
-            aspect = equilibrium_aspect_ratio_from_state(state=state, static=static)
-            return float(aspect_weight) * (aspect - target_aspect)
-
-        def _qs_from_packed(packed):
-            state = unpack_state(packed, layout)
-            qs = _qs_eval_from_state(state)
-            return jnp.asarray(qs["residuals1d"], dtype=jnp.float64) * float(qs_weight)
-
-        _, aspect_vjp = jax.vjp(_aspect_from_packed, packed_state)
-        _, qs_vjp = jax.vjp(_qs_from_packed, packed_state)
-
-        def _apply(residual_cotangent):
-            residual_cotangent = _jnp.asarray(residual_cotangent, dtype=_jnp.float64).reshape(-1)
-            total = _jnp.zeros_like(packed_state)
-            aspect_cot = residual_cotangent[0]
-            total = total + jax.lax.cond(
-                _jnp.any(aspect_cot != 0.0),
-                lambda cot: aspect_vjp(cot)[0],
-                lambda cot: _jnp.zeros_like(packed_state),
-                aspect_cot,
-            )
-            qs_cot = residual_cotangent[1:]
-            total = total + jax.lax.cond(
-                _jnp.any(qs_cot != 0.0),
-                lambda cot: qs_vjp(cot)[0],
-                lambda cot: _jnp.zeros_like(packed_state),
-                qs_cot,
-            )
-            return total
-
-        return _apply
-
-    def state_cotangent_from_packed(packed_state, layout, residual_cotangent):
-        return state_cotangent_operator_from_packed(packed_state, layout)(residual_cotangent)
-
-    def state_objective_value_and_cotangent_from_packed(packed_state, layout):
-        from ._compat import jax, jnp as _jnp
-        from .state import unpack_state
-
-        packed_state = _jnp.asarray(packed_state, dtype=_jnp.float64)
-
-        def _objective(packed):
-            state = unpack_state(packed, layout)
-            aspect = equilibrium_aspect_ratio_from_state(state=state, static=static)
-            aspect_residual = float(aspect_weight) * (aspect - target_aspect)
-            qs = _qs_eval_from_state(state)
-            qs_total = _jnp.asarray(qs["total"], dtype=_jnp.float64) * float(qs_weight) ** 2
-            return 0.5 * aspect_residual * aspect_residual + 0.5 * qs_total
-
-        return jax.value_and_grad(_objective)(packed_state)
-
-    residuals_from_state._n_non_qs = 1
-    residuals_from_state._aspect_target = float(target_aspect)
-    residuals_from_state._aspect_weight = float(aspect_weight)
-    residuals_from_state._objective_family = "qs"
-    residuals_from_state._helicity_m = int(helicity_m)
-    residuals_from_state._helicity_n = int(helicity_n)
-    residuals_from_state._qs_total_from_state = (
-        lambda state: float(_qs_eval_from_state(state)["total"]) * float(qs_weight) ** 2
-    )
-    residuals_from_state._state_cotangent_from_packed = state_cotangent_from_packed
-    residuals_from_state._state_cotangent_operator_from_packed = state_cotangent_operator_from_packed
-    residuals_from_state._state_objective_value_and_cotangent_from_packed = (
-        state_objective_value_and_cotangent_from_packed
-    )
-
-    return residuals_from_state
 
 
 def make_qs_residuals_fn(
@@ -418,275 +270,30 @@ def make_qs_residuals_fn(
     iota_weight: float = 1.0,
     iota_floor_softness: float = 1.0e-3,
 ) -> Callable:
-    """General quasisymmetry residuals factory supporting QH and QA objectives.
+    """General quasisymmetry residuals factory supporting QH and QA objectives."""
 
-    Builds a combined residual vector with optional aspect-ratio and mean-iota
-    targets.  This is the recommended factory for new workflows; use it for QA
-    (``helicity_m=1, helicity_n=0``) or QH (``helicity_m=1, helicity_n=-1``).
-
-    Parameters
-    ----------
-    static:
-        Pre-built :class:`~vmec_jax.static.VMECStatic`.
-    indata:
-        VMEC input namelist (used to derive flux profiles and for the QS kernel).
-    signgs:
-        Sign of the Jacobian.  Computed automatically when ``None``.
-    helicity_m, helicity_n:
-        Helicity of the target quasisymmetry.
-        QA: ``(1, 0)``, QH: ``(1, -1)`` or ``(1, 1)``.
-    target_aspect:
-        If given, adds one aspect-ratio residual
-        ``aspect_weight * (aspect - target_aspect)``.
-    target_iota:
-        If given, adds one mean-iota residual
-        ``iota_weight * (mean_iota - target_iota)``.
-    min_abs_iota:
-        If given and ``target_iota`` is not given, adds one smooth lower-bound
-        residual enforcing ``abs(mean_iota) >= min_abs_iota``.  This is a
-        differentiable softplus hinge, not a hard target.
-    surfaces:
-        Surface coordinates (``s ∈ [0, 1]``) to evaluate quasisymmetry on.
-        Defaults to ``np.arange(0, 1.01, 0.1)``.
-    aspect_weight, qs_weight, iota_weight:
-        Scalar weights applied to the corresponding residual blocks.
-    """
-    from .boundary import boundary_from_indata
-    from .init_guess import initial_guess_from_boundary
-    from .modes import nyquist_mode_table_from_grid
-    from .quasisymmetry import (
-        _quasisymmetry_angle_cache,
-        quasisymmetry_ratio_residual_from_state,
+    return _make_qs_residuals_fn_impl(
+        static,
+        indata,
+        signgs=signgs,
+        helicity_m=helicity_m,
+        helicity_n=helicity_n,
+        target_aspect=target_aspect,
+        target_iota=target_iota,
+        min_abs_iota=min_abs_iota,
+        surfaces=surfaces,
+        aspect_weight=aspect_weight,
+        qs_weight=qs_weight,
+        iota_weight=iota_weight,
+        iota_floor_softness=iota_floor_softness,
+        boundary_from_indata_func=boundary_from_indata,
+        initial_guess_from_boundary_func=initial_guess_from_boundary,
+        eval_geom_func=eval_geom,
+        signgs_from_sqrtg_func=signgs_from_sqrtg,
+        flux_profiles_from_indata_func=flux_profiles_from_indata,
+        pressure_profile_for_static_func=_pressure_profile_for_static,
+        smooth_min_abs_iota_residual_func=smooth_min_abs_iota_residual,
     )
-    from .wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state
-
-    if surfaces is None:
-        surfaces = np.arange(0.0, 1.01, 0.1)
-    surfaces = np.asarray(surfaces, dtype=float)
-
-    if signgs is None:
-        try:
-            boundary_init = boundary_from_indata(indata, static.modes)
-            state0 = initial_guess_from_boundary(static, boundary_init, indata)
-            from .geom import eval_geom as _eval_geom
-
-            geom = _eval_geom(state0, static)
-            signgs = int(signgs_from_sqrtg(np.asarray(geom.sqrtg), axis_index=1))
-        except Exception:
-            signgs = 1
-
-    flux = flux_profiles_from_indata(indata, static.s, signgs=signgs)
-    pressure = _pressure_profile_for_static(indata, static)
-    nyq_modes = nyquist_mode_table_from_grid(
-        mpol=int(static.cfg.mpol),
-        ntor=int(static.cfg.ntor),
-        ntheta=int(static.cfg.ntheta),
-        nzeta=int(static.cfg.nzeta),
-    )
-    angle_cache = _quasisymmetry_angle_cache(
-        nfp=int(static.cfg.nfp),
-        xm_nyq=nyq_modes.m,
-        xn_nyq=nyq_modes.n * int(static.cfg.nfp),
-    )
-    _signgs = signgs
-    _indata = indata
-
-    def _qs_eval_from_state(state: VMECState):
-        return quasisymmetry_ratio_residual_from_state(
-            state=state,
-            static=static,
-            indata=indata,
-            signgs=signgs,
-            flux_local=flux,
-            prof_local={"pressure": pressure},
-            pressure_local=pressure,
-            surfaces=surfaces,
-            helicity_m=helicity_m,
-            helicity_n=helicity_n,
-            angle_cache=angle_cache,
-        )
-
-    def residuals_from_state(state: VMECState) -> jnp.ndarray:
-        parts: list[jnp.ndarray] = []
-
-        if target_aspect is not None:
-            aspect = equilibrium_aspect_ratio_from_state(state=state, static=static)
-            parts.append(jnp.asarray([float(aspect_weight) * (aspect - target_aspect)], dtype=jnp.float64))
-
-        if target_iota is not None or min_abs_iota is not None:
-            _chips, _iotas, iotaf = equilibrium_iota_profiles_from_state(
-                state=state,
-                static=static,
-                indata=_indata,
-                signgs=_signgs,
-            )
-            iotas = jnp.asarray(_iotas, dtype=jnp.float64)
-            mean_iota = jnp.asarray(0.0, dtype=iotas.dtype) if int(iotas.shape[0]) <= 1 else jnp.mean(iotas[1:])
-            if target_iota is not None:
-                iota_residual = mean_iota - target_iota
-            else:
-                iota_residual = smooth_min_abs_iota_residual(
-                    mean_iota,
-                    float(min_abs_iota),
-                    softness=float(iota_floor_softness),
-                )
-            parts.append(jnp.asarray([float(iota_weight) * iota_residual], dtype=jnp.float64))
-
-        qs = _qs_eval_from_state(state)
-        parts.append(jnp.asarray(qs["residuals1d"], dtype=jnp.float64) * float(qs_weight))
-
-        return jnp.concatenate(parts)
-
-    def state_cotangent_operator_from_packed(packed_state, layout):
-        from ._compat import jax, jnp as _jnp
-        from .state import unpack_state
-
-        packed_state = _jnp.asarray(packed_state, dtype=_jnp.float64)
-        blocks: list[tuple[slice | int, Callable, bool]] = []
-        offset = 0
-
-        if target_aspect is not None:
-            block_index = offset
-            offset += 1
-
-            def _aspect_from_packed(packed):
-                state = unpack_state(packed, layout)
-                aspect = equilibrium_aspect_ratio_from_state(state=state, static=static)
-                return float(aspect_weight) * (aspect - target_aspect)
-
-            _, aspect_vjp = jax.vjp(_aspect_from_packed, packed_state)
-            blocks.append((block_index, aspect_vjp, False))
-
-        if target_iota is not None or min_abs_iota is not None:
-            block_index = offset
-            offset += 1
-
-            def _iota_from_packed(packed):
-                state = unpack_state(packed, layout)
-                _chips, _iotas, _iotaf = equilibrium_iota_profiles_from_state(
-                    state=state,
-                    static=static,
-                    indata=_indata,
-                    signgs=_signgs,
-                )
-                del _chips, _iotaf
-                iotas = _jnp.asarray(_iotas, dtype=_jnp.float64)
-                mean_iota = _jnp.asarray(0.0, dtype=iotas.dtype) if int(iotas.shape[0]) <= 1 else _jnp.mean(iotas[1:])
-                if target_iota is not None:
-                    iota_residual = mean_iota - target_iota
-                else:
-                    iota_residual = smooth_min_abs_iota_residual(
-                        mean_iota,
-                        float(min_abs_iota),
-                        softness=float(iota_floor_softness),
-                    )
-                return float(iota_weight) * iota_residual
-
-            _, iota_vjp = jax.vjp(_iota_from_packed, packed_state)
-            blocks.append((block_index, iota_vjp, True))
-
-        qs_slice = slice(offset, None)
-
-        def _qs_from_packed(packed):
-            state = unpack_state(packed, layout)
-            qs = _qs_eval_from_state(state)
-            return _jnp.asarray(qs["residuals1d"], dtype=_jnp.float64) * float(qs_weight)
-
-        _, qs_vjp = jax.vjp(_qs_from_packed, packed_state)
-        blocks.append((qs_slice, qs_vjp, False))
-
-        def _apply(residual_cotangent):
-            residual_cotangent = _jnp.asarray(residual_cotangent, dtype=_jnp.float64).reshape(-1)
-            total = _jnp.zeros_like(packed_state)
-            for selector, vjp_fun, sanitize in blocks:
-                cot = residual_cotangent[selector]
-
-                def _active(cot_block):
-                    contribution = vjp_fun(cot_block)[0]
-                    if sanitize:
-                        # The current-driven iota path has axis/near-axis gauge-null
-                        # cotangent entries. Dense JVP columns are finite there;
-                        # zeroing the null reverse entries gives the matching
-                        # transpose on the boundary-parameter subspace.
-                        contribution = _jnp.nan_to_num(contribution, nan=0.0, posinf=0.0, neginf=0.0)
-                    return contribution
-
-                total = total + jax.lax.cond(
-                    _jnp.any(cot != 0.0),
-                    _active,
-                    lambda cot_block: _jnp.zeros_like(packed_state),
-                    cot,
-                )
-            return total
-
-        return _apply
-
-    def state_cotangent_from_packed(packed_state, layout, residual_cotangent):
-        return state_cotangent_operator_from_packed(packed_state, layout)(residual_cotangent)
-
-    def state_objective_value_and_cotangent_from_packed(packed_state, layout):
-        from ._compat import jax, jnp as _jnp
-        from .state import unpack_state
-
-        packed_state = _jnp.asarray(packed_state, dtype=_jnp.float64)
-
-        def _objective(packed):
-            state = unpack_state(packed, layout)
-            total = _jnp.asarray(0.0, dtype=_jnp.float64)
-            if target_aspect is not None:
-                aspect = equilibrium_aspect_ratio_from_state(state=state, static=static)
-                aspect_residual = float(aspect_weight) * (aspect - target_aspect)
-                total = total + 0.5 * aspect_residual * aspect_residual
-            if target_iota is not None or min_abs_iota is not None:
-                _chips, _iotas, _iotaf = equilibrium_iota_profiles_from_state(
-                    state=state,
-                    static=static,
-                    indata=_indata,
-                    signgs=_signgs,
-                )
-                del _chips, _iotaf
-                iotas = _jnp.asarray(_iotas, dtype=_jnp.float64)
-                mean_iota = _jnp.asarray(0.0, dtype=iotas.dtype) if int(iotas.shape[0]) <= 1 else _jnp.mean(iotas[1:])
-                if target_iota is not None:
-                    iota_residual = mean_iota - target_iota
-                else:
-                    iota_residual = smooth_min_abs_iota_residual(
-                        mean_iota,
-                        float(min_abs_iota),
-                        softness=float(iota_floor_softness),
-                    )
-                iota_residual = float(iota_weight) * iota_residual
-                total = total + 0.5 * iota_residual * iota_residual
-            qs = _qs_eval_from_state(state)
-            qs_total = _jnp.asarray(qs["total"], dtype=_jnp.float64) * float(qs_weight) ** 2
-            return total + 0.5 * qs_total
-
-        value, cotangent = jax.value_and_grad(_objective)(packed_state)
-        if target_iota is not None or min_abs_iota is not None:
-            # Match state_cotangent_operator_from_packed: the current-driven
-            # iota path has gauge-null state entries that can produce NaNs in
-            # reverse mode but do not contribute on the boundary-parameter
-            # tangent subspace.
-            cotangent = _jnp.nan_to_num(cotangent, nan=0.0, posinf=0.0, neginf=0.0)
-        return value, cotangent
-
-    residuals_from_state._n_non_qs = int(target_aspect is not None) + int(
-        target_iota is not None or min_abs_iota is not None
-    )
-    residuals_from_state._aspect_target = None if target_aspect is None else float(target_aspect)
-    residuals_from_state._aspect_weight = float(aspect_weight)
-    residuals_from_state._objective_family = "qs"
-    residuals_from_state._helicity_m = int(helicity_m)
-    residuals_from_state._helicity_n = int(helicity_n)
-    residuals_from_state._qs_total_from_state = (
-        lambda state: float(_qs_eval_from_state(state)["total"]) * float(qs_weight) ** 2
-    )
-    residuals_from_state._state_cotangent_from_packed = state_cotangent_from_packed
-    residuals_from_state._state_cotangent_operator_from_packed = state_cotangent_operator_from_packed
-    residuals_from_state._state_objective_value_and_cotangent_from_packed = (
-        state_objective_value_and_cotangent_from_packed
-    )
-    return residuals_from_state
 
 
 # ─────────────────────────────────────────────────────────────────────────────
