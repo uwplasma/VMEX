@@ -259,7 +259,10 @@ from vmec_jax.solvers.fixed_boundary.results import (
 )
 from vmec_jax.solvers.fixed_boundary.diagnostics.axis_reset import (
     InitialAxisResetDecision as _InitialAxisResetDecision,  # noqa: F401 - re-exported for existing internal tests/importers.
+    bad_jacobian_from_tau_range as _axis_reset_bad_jacobian_from_tau_range,
+    bad_jacobian_ptau_from_minmax as _axis_reset_bad_jacobian_ptau_from_minmax,
     initial_axis_reset_decision as _initial_axis_reset_decision,
+    initial_force_physical_fsq as _axis_reset_initial_force_physical_fsq,
     merge_axis_reset_state as _merge_axis_reset_state,
     reset_axis_from_boundary as _reset_axis_from_boundary_impl,
     write_axis_reset_dump as _write_axis_reset_dump,
@@ -2244,14 +2247,12 @@ def solve_fixed_boundary_residual_iter(
             scan_timing_stats["scan_initial_compute_forces_s"] += time.perf_counter() - float(
                 t_scan_initial_force
             )
-        fsq_phys0_val = None
-        try:
-            fsqr0 = norms0.r1 * norms0.fnorm * gcr2_0
-            fsqz0 = norms0.r1 * norms0.fnorm * gcz2_0
-            fsql0 = norms0.fnormL * gcl2_0
-            fsq_phys0_val = float(np.asarray(fsqr0 + fsqz0 + fsql0))
-        except Exception:
-            fsq_phys0_val = None
+        fsq_phys0_val = _axis_reset_initial_force_physical_fsq(
+            norms=norms0,
+            gcr2=gcr2_0,
+            gcz2=gcz2_0,
+            gcl2=gcl2_0,
+        )
         bad_jacobian0 = False
         if axis_reset_enabled:
             axis_reset_debug = os.getenv("VMEC_JAX_AXIS_RESET_DEBUG", "").strip().lower() not in (
@@ -2264,20 +2265,12 @@ def solve_fixed_boundary_residual_iter(
                 ptau_min0, ptau_max0 = _ptau_minmax_from_k_host(k0)
             except Exception:
                 ptau_min0, ptau_max0 = None, None
-            bad_jacobian_ptau = None
-            if (ptau_min0 is not None) and (ptau_max0 is not None):
-                try:
-                    min_tau_ptau0 = float(np.asarray(ptau_min0))
-                    max_tau_ptau0 = float(np.asarray(ptau_max0))
-                    ptau_scale0 = max(abs(min_tau_ptau0), abs(max_tau_ptau0))
-                    tau_tol_ptau0 = _bad_jacobian_tau_tolerance(
-                        ptau_tol=ptau_tol,
-                        ptau_tol_rel=ptau_tol_rel,
-                        tau_scale=ptau_scale0,
-                    )
-                    bad_jacobian_ptau = (min_tau_ptau0 < -tau_tol_ptau0) and (max_tau_ptau0 > tau_tol_ptau0)
-                except Exception:
-                    bad_jacobian_ptau = None
+            bad_jacobian_ptau = _axis_reset_bad_jacobian_ptau_from_minmax(
+                ptau_min=ptau_min0,
+                ptau_max=ptau_max0,
+                ptau_tol=ptau_tol,
+                ptau_tol_rel=ptau_tol_rel,
+            )
             bad_jacobian_state = False
             if badjac_use_state:
                 try:
@@ -2296,8 +2289,11 @@ def solve_fixed_boundary_residual_iter(
                     min_tau_state0 = float(np.asarray(jnp.min(tau0_use)))
                     max_tau_state0 = float(np.asarray(jnp.max(tau0_use)))
                     tau_scale_state0 = max(abs(min_tau_state0), abs(max_tau_state0))
-                    tau_tol_state0 = max(1.0e-12, 1.0e-2 * tau_scale_state0)
-                    bad_jacobian_state = (min_tau_state0 < -tau_tol_state0) and (max_tau_state0 > tau_tol_state0)
+                    bad_jacobian_state = _axis_reset_bad_jacobian_from_tau_range(
+                        min_tau=min_tau_state0,
+                        max_tau=max_tau_state0,
+                        abs_tol=max(1.0e-12, 1.0e-2 * tau_scale_state0),
+                    )
                 except Exception:
                     bad_jacobian_state = False
 
@@ -4471,11 +4467,12 @@ def solve_fixed_boundary_residual_iter(
                     pass
                 timing_stats["setup_axis_reset_compute_forces"] += time.perf_counter() - float(t_setup_axis_force_start)
             ptau_min0, ptau_max0 = _ptau_minmax_from_k_host(k0)
-            bad_jacobian_ptau = None
-            if (ptau_min0 is not None) and (ptau_max0 is not None):
-                min_tau_ptau = float(np.asarray(ptau_min0))
-                max_tau_ptau = float(np.asarray(ptau_max0))
-                bad_jacobian_ptau = (min_tau_ptau < 0.0) and (max_tau_ptau > 0.0)
+            bad_jacobian_ptau = _axis_reset_bad_jacobian_ptau_from_minmax(
+                ptau_min=ptau_min0,
+                ptau_max=ptau_max0,
+                ptau_tol=0.0,
+                ptau_tol_rel=0.0,
+            )
 
             bad_jacobian_state = False
             min_tau_state = float("nan")
@@ -4495,7 +4492,10 @@ def solve_fixed_boundary_residual_iter(
                 tau0_use = tau0[1:] if int(tau0.shape[0]) > 1 else tau0
                 min_tau_state = float(np.asarray(jnp.min(tau0_use)))
                 max_tau_state = float(np.asarray(jnp.max(tau0_use)))
-                bad_jacobian_state = (min_tau_state < 0.0) and (max_tau_state > 0.0)
+                bad_jacobian_state = _axis_reset_bad_jacobian_from_tau_range(
+                    min_tau=min_tau_state,
+                    max_tau=max_tau_state,
+                )
 
             axis_reset_debug = os.getenv("VMEC_JAX_AXIS_RESET_DEBUG", "").strip().lower() not in (
                 "",
@@ -4503,14 +4503,12 @@ def solve_fixed_boundary_residual_iter(
                 "false",
                 "no",
             )
-            fsq_phys0_val = None
-            try:
-                fsqr0 = _norms0.r1 * _norms0.fnorm * _gcr2_0
-                fsqz0 = _norms0.r1 * _norms0.fnorm * _gcz2_0
-                fsql0 = _norms0.fnormL * _gcl2_0
-                fsq_phys0_val = float(np.asarray(fsqr0 + fsqz0 + fsql0))
-            except Exception:
-                fsq_phys0_val = None
+            fsq_phys0_val = _axis_reset_initial_force_physical_fsq(
+                norms=_norms0,
+                gcr2=_gcr2_0,
+                gcz2=_gcz2_0,
+                gcl2=_gcl2_0,
+            )
 
             axis_reset_decision = _initial_axis_reset_decision(
                 bad_jacobian_ptau=bad_jacobian_ptau,

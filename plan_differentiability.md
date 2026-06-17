@@ -7826,3 +7826,59 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.72%.
+
+## 2026-06-17 Shared Initial Axis-Reset Diagnostics
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added shared initial-axis diagnostic helpers in
+   `vmec_jax.solvers.fixed_boundary.diagnostics.axis_reset`:
+   `initial_force_physical_fsq`, `bad_jacobian_from_tau_range`, and
+   `bad_jacobian_ptau_from_minmax`.
+2. Replaced duplicated scan and non-scan initial-axis physical residual and
+   `ptau`/state-Jacobian sign-change calculations with those helpers.
+3. Added unit tests for physical-FSQ calculation, tolerance-gated tau-range
+   decisions, relative `ptau` tolerance behavior, and missing `ptau` handling.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` dropped from 7,573 to 7,568 lines.
+- Nested `_run_vmec2000_scan` dropped from 1,498 to 1,491 lines.
+- The scan and host initial-axis reset preflights now share the same tested
+  diagnostic primitives, reducing parity drift risk between the two paths.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/diagnostics/axis_reset.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_axis_helpers_more_coverage.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_axis_helpers_more_coverage.py tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_minimal_one_step tests/test_solve_real_scan_wave10_coverage.py::test_vmec2000_scan_full_history_runs_fallback_decision -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 20`
+
+Best next steps:
+
+1. Commit and push this shared axis-reset diagnostic tranche.
+2. Continue to the larger remaining residual-controller seams:
+   preconditioner-cache initialization or accepted/rejected update transition
+   inside `_scan_step`.
+3. Use the shared axis-reset primitives as building blocks before attempting a
+   full scan initial-force/axis-reset preflight extraction.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.996%.
+- Solver monolith reduction: 98.50%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.72%.
