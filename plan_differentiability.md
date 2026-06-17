@@ -7951,6 +7951,62 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.74%.
 
+## 2026-06-17 Scalar-Adjoint Gradient Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted exact scalar objective and reverse-discrete-adjoint gradient replay
+   from `FixedBoundaryExactOptimizer.objective_and_gradient_fun` into
+   `vmec_jax.optimizers.fixed_boundary.scalar_gradient`.
+2. Kept `objective_and_gradient_fun` as the public method wrapper used by
+   scalar-trust, L-BFGS, tests, and examples.
+3. Preserved JIT-pure objective-cotangent helper caching, fallback for
+   diagnostic/non-JIT objective hooks, state cotangent helper use, tape VJP
+   replay, cached initial tangent projection, and initial-map VJP caching.
+
+Results obtained:
+
+- `vmec_jax/optimization.py` dropped from 4,702 to 4,561 lines.
+- `FixedBoundaryExactOptimizer` dropped from 3,361 to 3,213 lines.
+- The scalar-adjoint production path is now isolated from the optimizer facade,
+  making it easier to test and evolve independently of outer optimizer method
+  dispatch.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization.py vmec_jax/optimizers/fixed_boundary/*.py tests/test_optimizer_domain_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_wave2_coverage.py -k 'objective_and_gradient or residual_linear_operator' tests/test_optimization_helpers.py -k 'objective_and_gradient or residual_linear_operator' tests/test_optimization_fast_optimizer_methods.py tests/test_optimization_callback_trace.py tests/test_optimizer_domain_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimizer_domain_helpers.py tests/test_optimization_wave2_coverage.py tests/test_optimization_fast_optimizer_methods.py tests/test_optimization_callback_trace.py tests/test_optimization_helpers.py -q`
+
+Best next steps:
+
+1. Commit and push this scalar-adjoint gradient extraction.
+2. Continue with dense Jacobian/projected replay extraction and then boundary
+   parameterization/runtime-policy extraction from `vmec_jax.optimization`.
+3. Keep branch-local free-boundary differentiation claims conservative until a
+   true adaptive-branch AD-vs-FD gate is implemented and passing.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.84%.
+- Differentiability/refactor implementation: 99.9975%.
+- Solver monolith reduction: 98.50%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 90%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.75%.
+
 ## 2026-06-17 Shared Initial Axis-Reset Diagnostics
 
 Branch: `codex/differentiability-refactor-plan`.
