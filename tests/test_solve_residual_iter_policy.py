@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
+from vmec_jax.solvers.fixed_boundary.options import validate_residual_iteration_options
 from vmec_jax.solvers.fixed_boundary.residual.policy import (
     host_restart_decision,
     host_update_assembly_policy,
     numpy_preconditioner_apply_policy,
     resolve_light_history,
+    resolve_residual_iter_startup_policy,
     resolve_restart_flags,
     scan_fallback_decision,
     scan_fallback_message,
@@ -171,6 +175,127 @@ def test_resolve_restart_flags_applies_legacy_defaults():
     assert not explicit.use_restart_triggers
     assert explicit.use_direct_fallback
     assert not explicit.vmecpp_restart
+
+
+def _startup_policy_for_test(**overrides):
+    kwargs = dict(
+        max_iter=100,
+        step_size=0.9,
+        precompile_only=False,
+        signgs=1,
+        lambda_update_scale=1.0,
+        enforce_vmec_lambda_axis=True,
+        vmec2000_control=False,
+        reference_mode=False,
+        limit_dt_from_force=False,
+        limit_update_rms=False,
+        backtracking=False,
+        strict_update=False,
+        jit_precompile=False,
+        use_scan=False,
+        host_update_assembly=None,
+        backend_name="cpu",
+        scan_backend_name="cpu",
+        state_has_tracer=False,
+        env={},
+        validate_options=validate_residual_iteration_options,
+        resolve_tridi_policies=lambda *, use_precomputed, use_lax_tridi: (
+            False if use_precomputed is None else bool(use_precomputed),
+            False if use_lax_tridi is None else bool(use_lax_tridi),
+        ),
+        normalize_adjoint_trace_mode=lambda mode: str(mode).strip().lower(),
+        normalize_resume_state_mode=lambda mode: "compact" if mode is None else str(mode).strip().lower(),
+        resolve_scan_fallback_policy=lambda **_: SimpleNamespace(
+            enabled=True,
+            iters=50,
+            badjac_limit=10,
+            fsq_abs=1.0e-2,
+            accept_frac=0.5,
+            fsq_factor=50.0,
+            improve=0.1,
+        ),
+        preconditioner_use_precomputed_tridi=None,
+        preconditioner_use_lax_tridi=None,
+        adjoint_trace=False,
+        adjoint_trace_mode="full",
+        fsq_total_target=None,
+        light_history=None,
+        resume_state_mode=None,
+        use_restart_triggers=None,
+        use_direct_fallback=None,
+        vmecpp_restart=False,
+        verbose_vmec2000_table=True,
+        stage_prev_fsq=None,
+        stage_transition_factor=50.0,
+        stage_transition_scale=0.5,
+        auto_flip_force=True,
+        jit_forces=True,
+    )
+    kwargs.update(overrides)
+    return resolve_residual_iter_startup_policy(**kwargs)
+
+
+def test_residual_iter_startup_policy_resolves_env_driven_host_and_dump_controls():
+    policy = _startup_policy_for_test(
+        backend_name="gpu",
+        host_update_assembly=True,
+        env={
+            "VMEC_JAX_HOST_UPDATE_ON_ACCELERATOR": "1",
+            "VMEC_JAX_HOST_FSQ1_NORMS": "off",
+            "VMEC_JAX_HOST_RESIDUAL_METRICS": "on",
+            "VMEC_JAX_LIGHT_HISTORY": "1",
+            "VMEC_JAX_DUMP_XC": "1",
+        },
+    )
+    assert policy.host_update_assembly
+    assert not policy.host_fsq1_norms_on_accelerator
+    assert policy.host_residual_metrics_on_accelerator
+    assert policy.dumps_enabled
+    assert policy.dump_any
+    assert policy.disabled_jit_for_dumps
+    assert not policy.jit_forces
+    assert not policy.light_history
+    assert policy.track_history
+
+
+def test_residual_iter_startup_policy_preserves_scan_branch_safety_rules():
+    policy = _startup_policy_for_test(
+        use_scan=True,
+        vmec2000_control=True,
+        state_has_tracer=True,
+        env={"VMEC_JAX_VMEC2000_CHUNKED": "1"},
+        stage_prev_fsq=2.0,
+        stage_transition_factor=0.0,
+        stage_transition_scale=0.5,
+    )
+    assert policy.use_scan
+    assert policy.vmec2000_control
+    assert not policy.auto_flip_force
+    assert not policy.force_chunked_scan
+    assert policy.differentiating_scan
+    assert not policy.scan_fallback_enabled
+    assert policy.stage_prev_fsq is None
+
+
+def test_residual_iter_startup_policy_normalizes_objective_and_restart_defaults():
+    policy = _startup_policy_for_test(
+        fsq_total_target=-1.0,
+        use_restart_triggers=None,
+        use_direct_fallback=None,
+        vmecpp_restart=True,
+        adjoint_trace=True,
+        adjoint_trace_mode=" COMPACT ",
+        resume_state_mode=" FULL ",
+        preconditioner_use_precomputed_tridi=True,
+    )
+    assert policy.fsq_total_target == 0.0
+    assert policy.use_restart_triggers
+    assert not policy.use_direct_fallback
+    assert policy.vmecpp_restart
+    assert policy.adjoint_trace
+    assert policy.adjoint_trace_mode == "compact"
+    assert policy.resume_state_mode == "full"
+    assert policy.preconditioner_use_precomputed_tridi_policy
 
 
 def test_stage_transition_policy_only_restarts_valid_first_step_growth():

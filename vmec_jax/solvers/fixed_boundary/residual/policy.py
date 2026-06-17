@@ -9,11 +9,19 @@ without creating import cycles.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping, NamedTuple
+from typing import Any, Callable, Mapping, NamedTuple
 
 import numpy as np
 
 from .... import _solve_runtime
+from .config import (
+    HEAVY_DUMP_ENVS,
+    LIGHT_DUMP_ENVS,
+    parse_bad_jacobian_config,
+    resolve_chunked_scan_config,
+    resolve_dump_history_config,
+    resolve_host_residual_metric_config,
+)
 
 
 class HostUpdateAssemblyPolicy(NamedTuple):
@@ -95,6 +103,71 @@ class ScanFallbackDecision(NamedTuple):
     fsq_all_finite: bool
 
 
+@dataclass(frozen=True)
+class ResidualIterStartupPolicy:
+    """Resolved non-numerical options for one residual-iteration solve.
+
+    The large residual loop needs many host-side policy decisions before it can
+    build grids, profiles, and JAX kernels.  Keeping these decisions in one
+    immutable object makes the loop easier to audit and lets tests validate
+    environment-driven behavior without executing the VMEC update loop.
+    """
+
+    max_iter: int
+    step_size: float
+    precompile_only: bool
+    host_update_assembly: bool
+    host_fsq1_norms_on_accelerator: bool
+    host_residual_metrics_on_accelerator: bool
+    adjoint_trace: bool
+    adjoint_trace_mode: str
+    preconditioner_use_precomputed_tridi_policy: bool
+    preconditioner_use_lax_tridi_policy: bool
+    signgs: int
+    fsq_total_target: float | None
+    lambda_update_scale: float
+    enforce_vmec_lambda_axis: bool
+    vmec2000_control: bool
+    badjac_mode: str
+    badjac_use_state: bool
+    dump_ptau_state: bool
+    light_history: bool
+    resume_state_mode: str
+    badjac_state_probe: bool
+    badjac_initial_state_probe_iters: int
+    ptau_tol: float
+    ptau_tol_rel: float
+    reference_mode: bool
+    jit_precompile: bool
+    use_restart_triggers: bool
+    use_direct_fallback: bool
+    vmecpp_restart: bool
+    verbose_vmec2000_table: bool
+    scan_fallback_enabled: bool
+    scan_fallback_iters: int
+    scan_fallback_badjac_limit: int
+    scan_fallback_fsq_abs: float
+    scan_fallback_accept_frac: float
+    scan_fallback_fsq_factor: float
+    scan_fallback_improve: float
+    stage_transition_factor: float
+    stage_transition_scale: float
+    stage_prev_fsq: float | None
+    auto_flip_force: bool
+    jit_forces: bool
+    use_scan: bool
+    force_chunked_scan: bool
+    differentiating_scan: bool
+    limit_dt_from_force: bool
+    limit_update_rms: bool
+    backtracking: bool
+    strict_update: bool
+    dumps_enabled: bool
+    dump_any: bool
+    track_history: bool
+    disabled_jit_for_dumps: bool
+
+
 def scan_fallback_message(decision: ScanFallbackDecision) -> str:
     """Return the user-facing VMEC2000 scan fallback message.
 
@@ -107,6 +180,203 @@ def scan_fallback_message(decision: ScanFallbackDecision) -> str:
         "[solve_fixed_boundary_residual_iter] "
         f"scan fallback -> non-scan ({decision.reason_text})"
         f"{decision.probe_message}"
+    )
+
+
+def resolve_residual_iter_startup_policy(
+    *,
+    max_iter: Any,
+    step_size: Any,
+    precompile_only: Any,
+    signgs: Any,
+    lambda_update_scale: Any,
+    enforce_vmec_lambda_axis: Any,
+    vmec2000_control: Any,
+    reference_mode: Any,
+    limit_dt_from_force: Any,
+    limit_update_rms: Any,
+    backtracking: Any,
+    strict_update: Any,
+    jit_precompile: Any,
+    use_scan: Any,
+    host_update_assembly: bool | None,
+    backend_name: str,
+    scan_backend_name: str,
+    state_has_tracer: bool,
+    env: Mapping[str, str | None],
+    validate_options: Callable[..., Any],
+    resolve_tridi_policies: Callable[..., tuple[bool, bool]],
+    normalize_adjoint_trace_mode: Callable[[str], str],
+    normalize_resume_state_mode: Callable[[str | None], str],
+    resolve_scan_fallback_policy: Callable[..., Any],
+    preconditioner_use_precomputed_tridi: bool | None,
+    preconditioner_use_lax_tridi: bool | None,
+    adjoint_trace: bool,
+    adjoint_trace_mode: str,
+    fsq_total_target: float | None,
+    light_history: bool | None,
+    resume_state_mode: str | None,
+    use_restart_triggers: bool | None,
+    use_direct_fallback: bool | None,
+    vmecpp_restart: bool,
+    verbose_vmec2000_table: bool,
+    stage_prev_fsq: float | None,
+    stage_transition_factor: float,
+    stage_transition_scale: float,
+    auto_flip_force: bool,
+    jit_forces: bool,
+    heavy_dump_envs: tuple[str, ...] = HEAVY_DUMP_ENVS,
+    light_dump_envs: tuple[str, ...] = LIGHT_DUMP_ENVS,
+) -> ResidualIterStartupPolicy:
+    """Resolve host-side startup policy for ``solve_fixed_boundary_residual_iter``.
+
+    The numerical residual iteration should not own stringly-typed environment
+    parsing.  This helper keeps those decisions together while accepting a few
+    callables from the solver layer to avoid cycles with validation and runtime
+    helpers that already have compatibility aliases.
+    """
+
+    opts = validate_options(
+        max_iter=max_iter,
+        step_size=step_size,
+        precompile_only=precompile_only,
+        signgs=signgs,
+        lambda_update_scale=lambda_update_scale,
+        enforce_vmec_lambda_axis=enforce_vmec_lambda_axis,
+        vmec2000_control=vmec2000_control,
+        reference_mode=reference_mode,
+        limit_dt_from_force=limit_dt_from_force,
+        limit_update_rms=limit_update_rms,
+        backtracking=backtracking,
+        strict_update=strict_update,
+        jit_precompile=jit_precompile,
+        use_scan=use_scan,
+    )
+    allow_host_update_on_accelerator = str(env.get("VMEC_JAX_HOST_UPDATE_ON_ACCELERATOR", "")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    host_update = host_update_assembly_policy(
+        requested=host_update_assembly,
+        use_scan=opts.use_scan,
+        backend_name=backend_name,
+        state_has_tracer=state_has_tracer,
+        allow_accelerator=allow_host_update_on_accelerator,
+    ).enabled
+    host_metric_config = resolve_host_residual_metric_config(
+        backend_name=backend_name,
+        fsq1_norms_env=env.get("VMEC_JAX_HOST_FSQ1_NORMS", "auto"),
+        residual_metrics_env=env.get("VMEC_JAX_HOST_RESIDUAL_METRICS", "auto"),
+    )
+    adjoint_trace_mode_resolved = normalize_adjoint_trace_mode(adjoint_trace_mode)
+    (
+        preconditioner_use_precomputed_tridi_policy,
+        preconditioner_use_lax_tridi_policy,
+    ) = resolve_tridi_policies(
+        use_precomputed=preconditioner_use_precomputed_tridi,
+        use_lax_tridi=preconditioner_use_lax_tridi,
+    )
+    badjac_config = parse_bad_jacobian_config(env)
+    light_history_resolved = resolve_light_history(
+        light_history,
+        env_value=str(env.get("VMEC_JAX_LIGHT_HISTORY", "0")),
+    )
+    restart_flags = resolve_restart_flags(
+        use_restart_triggers=use_restart_triggers,
+        use_direct_fallback=use_direct_fallback,
+        vmecpp_restart=vmecpp_restart,
+    )
+    scan_fallback_policy = resolve_scan_fallback_policy(
+        backend_name=scan_backend_name,
+        enabled_env=env.get("VMEC_JAX_SCAN_FALLBACK"),
+        iters_env=str(env.get("VMEC_JAX_SCAN_FALLBACK_ITERS", "50")),
+        badjac_limit_env=str(env.get("VMEC_JAX_SCAN_FALLBACK_BJAC_LIMIT", "10")),
+        fsq_abs_env=str(env.get("VMEC_JAX_SCAN_FALLBACK_FSQ_ABS", "1.0e-2")),
+        accept_frac_env=str(env.get("VMEC_JAX_SCAN_FALLBACK_ACCEPTED_FRAC", "0.5")),
+        fsq_factor_env=str(env.get("VMEC_JAX_SCAN_FALLBACK_FSQ_FACTOR", "50")),
+        improve_env=str(env.get("VMEC_JAX_SCAN_FALLBACK_IMPROVE", "0.1")),
+    )
+
+    stage_transition_factor_resolved = float(stage_transition_factor)
+    stage_transition_scale_resolved = float(stage_transition_scale)
+    stage_prev_fsq_resolved = stage_prev_fsq
+    if stage_transition_factor_resolved <= 0.0 or stage_transition_scale_resolved <= 0.0:
+        stage_prev_fsq_resolved = None
+
+    auto_flip_force_resolved = bool(auto_flip_force)
+    if bool(opts.use_scan) and bool(opts.vmec2000_control) and auto_flip_force_resolved:
+        auto_flip_force_resolved = False
+
+    chunked_scan_config = resolve_chunked_scan_config(
+        use_scan=bool(opts.use_scan),
+        state_has_tracer=state_has_tracer,
+        scan_fallback_enabled=bool(scan_fallback_policy.enabled),
+        chunked_env=env.get("VMEC_JAX_VMEC2000_CHUNKED", "1"),
+    )
+    dump_history_config = resolve_dump_history_config(
+        env=env,
+        jit_forces=bool(jit_forces),
+        light_history=bool(light_history_resolved),
+        heavy_dump_envs=heavy_dump_envs,
+        light_dump_envs=light_dump_envs,
+    )
+
+    return ResidualIterStartupPolicy(
+        max_iter=int(opts.max_iter),
+        step_size=float(opts.step_size),
+        precompile_only=bool(opts.precompile_only),
+        host_update_assembly=bool(host_update),
+        host_fsq1_norms_on_accelerator=bool(host_metric_config.fsq1_norms_on_accelerator),
+        host_residual_metrics_on_accelerator=bool(host_metric_config.residual_metrics_on_accelerator),
+        adjoint_trace=bool(adjoint_trace),
+        adjoint_trace_mode=str(adjoint_trace_mode_resolved),
+        preconditioner_use_precomputed_tridi_policy=bool(preconditioner_use_precomputed_tridi_policy),
+        preconditioner_use_lax_tridi_policy=bool(preconditioner_use_lax_tridi_policy),
+        signgs=int(opts.signgs),
+        fsq_total_target=None if fsq_total_target is None else max(0.0, float(fsq_total_target)),
+        lambda_update_scale=float(opts.lambda_update_scale),
+        enforce_vmec_lambda_axis=bool(opts.enforce_vmec_lambda_axis),
+        vmec2000_control=bool(opts.vmec2000_control),
+        badjac_mode=str(badjac_config.mode),
+        badjac_use_state=bool(badjac_config.use_state),
+        dump_ptau_state=bool(badjac_config.dump_ptau_state),
+        light_history=bool(dump_history_config.light_history),
+        resume_state_mode=normalize_resume_state_mode(resume_state_mode),
+        badjac_state_probe=bool(badjac_config.state_probe),
+        badjac_initial_state_probe_iters=int(badjac_config.initial_state_probe_iters),
+        ptau_tol=float(badjac_config.ptau_tol),
+        ptau_tol_rel=float(badjac_config.ptau_tol_rel),
+        reference_mode=bool(opts.reference_mode),
+        jit_precompile=bool(opts.jit_precompile),
+        use_restart_triggers=bool(restart_flags.use_restart_triggers),
+        use_direct_fallback=bool(restart_flags.use_direct_fallback),
+        vmecpp_restart=bool(restart_flags.vmecpp_restart),
+        verbose_vmec2000_table=bool(verbose_vmec2000_table),
+        scan_fallback_enabled=bool(chunked_scan_config.scan_fallback_enabled),
+        scan_fallback_iters=int(scan_fallback_policy.iters),
+        scan_fallback_badjac_limit=int(scan_fallback_policy.badjac_limit),
+        scan_fallback_fsq_abs=float(scan_fallback_policy.fsq_abs),
+        scan_fallback_accept_frac=float(scan_fallback_policy.accept_frac),
+        scan_fallback_fsq_factor=float(scan_fallback_policy.fsq_factor),
+        scan_fallback_improve=float(scan_fallback_policy.improve),
+        stage_transition_factor=float(stage_transition_factor_resolved),
+        stage_transition_scale=float(stage_transition_scale_resolved),
+        stage_prev_fsq=stage_prev_fsq_resolved,
+        auto_flip_force=bool(auto_flip_force_resolved),
+        jit_forces=bool(dump_history_config.jit_forces),
+        use_scan=bool(opts.use_scan),
+        force_chunked_scan=bool(chunked_scan_config.force_chunked_scan),
+        differentiating_scan=bool(chunked_scan_config.differentiating_scan),
+        limit_dt_from_force=bool(opts.limit_dt_from_force),
+        limit_update_rms=bool(opts.limit_update_rms),
+        backtracking=bool(opts.backtracking),
+        strict_update=bool(opts.strict_update),
+        dumps_enabled=bool(dump_history_config.dumps_enabled),
+        dump_any=bool(dump_history_config.dump_any),
+        track_history=bool(dump_history_config.track_history),
+        disabled_jit_for_dumps=bool(dump_history_config.disabled_jit_for_dumps),
     )
 
 
