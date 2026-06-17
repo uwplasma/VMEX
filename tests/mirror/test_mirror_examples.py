@@ -265,3 +265,45 @@ def test_root_residual_newton_convergence_grid_runs_without_plots(tmp_path):
     assert row["residual_a_cap_adjacent_norm"] >= 0.0
     assert row["residual_lam_interior_xi_norm"] >= 0.0
     assert metrics["histories"][0]["row_id"] == row["row_id"]
+
+
+def test_root_residual_newton_convergence_grid_finite_current_reports_lambda_residual(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_residual_newton_convergence_grid.py",
+            "--outdir",
+            str(tmp_path / "finite_current_convergence_grid"),
+            "--ns-array",
+            "5",
+            "--nxi-array",
+            "9",
+            "--maxiter-array",
+            "1",
+            "--residual-linear-maxiter-array",
+            "8",
+            "--residual-linear-maxiter-policy",
+            "adaptive",
+            "--i-prime",
+            "0.01",
+            "--preconditioners",
+            "radial_xi_tridi",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    path = Path(completed.stdout.strip())
+    metrics = json.loads(path.read_text())
+    assert metrics["case_label"] == "finite_current_two_coil"
+    assert metrics["i_prime_value"] == pytest.approx(0.01)
+    row = metrics["rows"][0]
+    assert row["finite_current"]
+    assert row["i_prime_value"] == pytest.approx(0.01)
+    assert row["twist_proxy_i_prime_over_psi_prime"] > 0.0
+    assert row["residual_lam_norm"] > 0.0
+    assert row["residual_lam_fraction"] > 0.0
+    assert row["residual_linear_maxiter_policy"] == "adaptive"
+    assert row["residual_linear_maxiter_effective_max"] >= 8

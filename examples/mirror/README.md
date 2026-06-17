@@ -89,4 +89,9 @@ contributions, and the standard mirror plot bundles for both the best-residual
 row and the highest-resolution, highest-budget row. Its default policy is
 ``fixed`` so the requested ``--residual-linear-maxiter-array`` values remain
 literal; pass ``--residual-linear-maxiter-policy adaptive`` to exercise the
-production adaptive inner budget in the same report.
+production adaptive inner budget in the same report. Pass ``--i-prime`` with a
+nonzero value to run the same decomposition on a finite-current, pitched-field
+case. Those finite-current runs are diagnostic artifacts for the current
+axisymmetric residual-Newton path: they verify nonzero lambda residual behavior
+and write field-line plots, but tight finite-current convergence remains a
+follow-on solver gate.

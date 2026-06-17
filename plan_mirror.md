@@ -3769,3 +3769,165 @@ new Python test file itself is formatted.
 ### User input needed
 
 No user input is needed for the next lane.
+
+---
+
+## 45. 2026-06-17 M8m finite-current residual decomposition gate
+
+This lane moves the residual-Newton convergence example from the vacuum
+two-coil benchmark into a finite-current, pitched-field diagnostic while
+keeping the CI cost low.  It is a diagnostic gate, not yet a claim that the
+finite-current residual-Newton solve reaches tight tolerances.
+
+### Steps taken
+
+- Extended `examples/mirror_residual_newton_convergence_grid.py` with:
+  - `--i-prime` for finite-current runs;
+  - `--case-label` for stable selected-output folders;
+  - JSON fields for `i_prime_value`, a simple
+    `twist_proxy_i_prime_over_psi_prime`, and a `finite_current` flag.
+- Kept the default case backward compatible: with `--i-prime 0`, selected
+  artifacts still use `best_two_coil_residual_newton` and
+  `highest_budget_two_coil_residual_newton`.
+- Added a finite-current smoke test in `tests/mirror/test_mirror_examples.py`
+  that verifies:
+  - nonzero current is recorded in the JSON schema;
+  - the adaptive residual-linear budget is exercised;
+  - lambda residuals become nonzero in the finite-current case.
+- Updated `examples/mirror/README.md` to document the new finite-current
+  diagnostic mode and its current convergence limitations.
+- Generated a finite-current artifact at:
+  `results/mirror/finite_current_residual_newton_diagnostic/`.
+
+### Results obtained
+
+The diagnostic command was:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/finite_current_residual_newton_diagnostic \
+  --ns-array 5 \
+  --nxi-array 9 \
+  --maxiter-array 12 \
+  --residual-linear-maxiter-array 16 \
+  --residual-linear-maxiter-policy adaptive \
+  --i-prime 0.01 \
+  --case-label finite_current_two_coil \
+  --preconditioners radial_xi_tridi
+```
+
+Key row metrics:
+
+- `optimizer_success`: `False`.
+- `optimizer_accepted`: `True`.
+- `optimizer_nit`: `12`.
+- `optimizer_njev`: `648`.
+- adaptive inner budget effective maximum: `54`.
+- initial residual norm: `9.412907913e-02`.
+- final residual norm: `1.323339293e-03`.
+- final `fsq`: `2.870863745e-08`.
+- final normalized force: `7.447138271e-03`.
+- residual `a` norm: `3.449810942e-04`.
+- residual lambda norm: `1.277581672e-03`.
+- residual lambda fraction: `0.9654226085`.
+- cap lambda norm: `7.111363246e-04`.
+- interior-xi lambda norm: `7.425365658e-04`.
+- twist proxy `i_prime / psi_prime`: `1.716805350`.
+- mirror ratio: `19.88051325`.
+
+Interpretation:
+
+- The finite-current case reduces the residual by about `71x`, but it does
+  not reach tight residual tolerance in this low-resolution, 12-iteration
+  diagnostic run.
+- The remaining residual is lambda dominated, split between cap and interior
+  xi contributions.  This confirms that the finite-current lane is exercising
+  the pitch/lambda physics path rather than silently behaving like the vacuum
+  case.
+- A higher-budget probe at `i_prime=1e-3`, `maxiter=24`, adaptive inner budget
+  factor `6`, reduced the residual to `1.267102629e-04` but remained
+  iteration-limited and was too slow to use as a routine gate.  This reinforces
+  the next-step need for solver-file simplification and stronger finite-current
+  preconditioning before claiming tight finite-current convergence.
+- The rendered figures use horizontal `z` orientation.  Cross sections remain
+  circular and poloidally symmetric in the two-coil benchmark, as expected.
+  Field lines are visible in the B-direction plot and on the 3D boundary plot.
+
+Generated plot bundle:
+
+- `results/mirror/finite_current_residual_newton_diagnostic/residual_newton_convergence_history.png`.
+- `results/mirror/finite_current_residual_newton_diagnostic/residual_newton_convergence_components.png`.
+- `results/mirror/finite_current_residual_newton_diagnostic/residual_newton_convergence_budget.png`.
+- `results/mirror/finite_current_residual_newton_diagnostic/residual_newton_convergence_resolution_heatmap.png`.
+- `results/mirror/finite_current_residual_newton_diagnostic/best_finite_current_two_coil_residual_newton/figures/best_finite_current_two_coil_residual_newton_mirror_boundary_3d.png`.
+- `results/mirror/finite_current_residual_newton_diagnostic/best_finite_current_two_coil_residual_newton/figures/best_finite_current_two_coil_residual_newton_mirror_bfield_boundary.png`.
+- `results/mirror/finite_current_residual_newton_diagnostic/best_finite_current_two_coil_residual_newton/figures/best_finite_current_two_coil_residual_newton_mirror_cross_sections.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+JAX_ENABLE_X64=1 python -m pytest -q \
+  tests/mirror/test_mirror_examples.py::test_root_residual_newton_convergence_grid_finite_current_reports_lambda_residual
+JAX_ENABLE_X64=1 python -m pytest -q \
+  tests/mirror/test_mirror_examples.py::test_root_residual_newton_convergence_grid_runs_without_plots \
+  tests/mirror/test_mirror_examples.py::test_root_residual_newton_convergence_grid_finite_current_reports_lambda_residual
+ruff check examples/mirror_residual_newton_convergence_grid.py tests/mirror/test_mirror_examples.py
+ruff format --check examples/mirror_residual_newton_convergence_grid.py tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 python -m pytest -q tests/mirror tests/test_packaging_metadata.py
+```
+
+Passing results:
+
+- finite-current example smoke: `1 passed`;
+- default plus finite-current convergence-grid slice: `2 passed`;
+- edited-file lint and format checks: passed;
+- full mirror/package smoke: `89 passed, 1 skipped`.
+
+The finite-current diagnostic images were rendered and visually inspected for
+horizontal geometry orientation, field-line visibility, and cross-section
+symmetry.
+
+### File structure and best-practice notes
+
+- The finite-current option lives in the root example that already owns the
+  residual-Newton convergence-grid report, avoiding a duplicate example file.
+- The new CLI arguments are small data knobs and do not change solver APIs.
+- The JSON schema additions are explicit scalar diagnostics, which keeps the
+  result file easy to parse in downstream notebooks and CI checks.
+- The smoke test is intentionally low resolution (`ns=5`, `nxi=9`,
+  `maxiter=1`) so it verifies the finite-current residual path without turning
+  CI into a solve-quality benchmark.
+- Tight finite-current convergence is kept as a solver gate, not papered over
+  in plotting or examples.
+
+### Best next steps
+
+1. Commit and push the M8m finite-current diagnostic update to the draft PR.
+2. Confirm the PR checks stay green after the new example test.
+3. Start M8n: split `optimizers.py` without changing behavior so residual
+   Newton, preconditioners, reduced-state packing, and solver dispatch are
+   easier to test and improve.
+4. After M8n, improve finite-current preconditioning and lambda gauge handling
+   enough to make the `i_prime != 0` residual-Newton case converge to a tight
+   tolerance at low and moderate resolution.
+
+### Completion percentages after M8m
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `82%`.
+- Fixed-boundary axisymmetric solve: `76%`.
+- Residual Newton / preconditioning: `68%`.
+- Two-coil and manufactured validation: `72%`.
+- Finite-current pitch validation: `52%`.
+- Plotting and `vmec --plot` mirror support: `77%`.
+- I/O schema and docs: `69%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `15%`.
+- Free-boundary mirror lane: `5%`.
+- PR merge readiness overall: `62%`.
+
+### User input needed
+
+No user input is needed for the next lane.

@@ -57,6 +57,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--separation", type=float, default=2.0)
     parser.add_argument("--current", type=float, default=1.0e6)
     parser.add_argument("--midplane-radius", type=float, default=0.3)
+    parser.add_argument("--i-prime", type=float, default=0.0)
+    parser.add_argument(
+        "--case-label",
+        type=str,
+        default="",
+        help="Label used for selected output folders; defaults to two_coil or finite_current_two_coil.",
+    )
     parser.add_argument("--perturbation", type=float, default=0.02)
     parser.add_argument("--no-plots", action="store_true")
     return parser
@@ -83,6 +90,15 @@ def _parse_preconditioners(value: str) -> tuple[str, ...]:
     return values
 
 
+def _safe_label(value: str) -> str:
+    label = re.sub(r"[^0-9A-Za-z_]+", "_", str(value).strip().replace("-", "_")).strip("_").lower()
+    return label or "two_coil"
+
+
+def _default_case_label(i_prime: float) -> str:
+    return "finite_current_two_coil" if abs(float(i_prime)) > 0.0 else "two_coil"
+
+
 def _perturbed_initial_state(config: MirrorConfig, boundary, *, amplitude: float) -> MirrorStateAxisym:
     grid = config.build_grid()
     base = MirrorStateAxisym.from_boundary(grid, boundary)
@@ -101,6 +117,7 @@ def _two_coil_problem(
     separation: float,
     current: float,
     midplane_radius: float,
+    i_prime: float,
     perturbation: float,
 ):
     half_separation = 0.5 * float(separation)
@@ -124,9 +141,11 @@ def _two_coil_problem(
         "boundary": boundary,
         "initial_state": _perturbed_initial_state(config, boundary, amplitude=perturbation),
         "psi_prime": PsiPrimeProfile.constant(psi_value),
-        "i_prime": IPrimeProfile.zero(),
+        "i_prime": IPrimeProfile.constant(i_prime) if abs(float(i_prime)) > 0.0 else IPrimeProfile.zero(),
         "pressure": PressureProfile.zero(),
         "psi_value": float(psi_value),
+        "i_prime_value": float(i_prime),
+        "twist_proxy_i_prime_over_psi_prime": float(i_prime) / max(float(psi_value), np.finfo(float).tiny),
     }
 
 
@@ -225,6 +244,7 @@ def _run_one(
     separation: float,
     current: float,
     midplane_radius: float,
+    i_prime: float,
     perturbation: float,
 ):
     problem = _two_coil_problem(
@@ -234,6 +254,7 @@ def _run_one(
         separation=separation,
         current=current,
         midplane_radius=midplane_radius,
+        i_prime=i_prime,
         perturbation=perturbation,
     )
     result = run_mirror_fixed_boundary(
@@ -286,6 +307,9 @@ def _run_one(
         "gtol": float(gtol),
         "ftol": float(ftol),
         "psi_value": float(problem["psi_value"]),
+        "i_prime_value": float(problem["i_prime_value"]),
+        "twist_proxy_i_prime_over_psi_prime": float(problem["twist_proxy_i_prime_over_psi_prime"]),
+        "finite_current": bool(abs(float(problem["i_prime_value"])) > 0.0),
         "trace_steps": int(len(result.trace)),
         "optimizer_nit": int(summary.nit) if summary is not None else 0,
         "optimizer_nfev": int(summary.nfev) if summary is not None else 0,
@@ -558,6 +582,7 @@ def _write_plots(
     best_result,
     reference_result,
     outdir: Path,
+    case_label: str,
 ) -> tuple[list[str], dict[str, dict[str, str]]]:
     outdir.mkdir(parents=True, exist_ok=True)
     default_preconditioner = "radial_xi_tridi"
@@ -607,13 +632,13 @@ def _write_plots(
         if path is not None:
             figures.append(str(path))
     selected_artifacts = {
-        "best_residual": _write_selected_output(best_result, outdir=outdir, label="best_two_coil_residual_newton")
+        "best_residual": _write_selected_output(best_result, outdir=outdir, label=f"best_{case_label}_residual_newton")
     }
     if reference_result is not None and reference_result is not best_result:
         selected_artifacts["highest_budget"] = _write_selected_output(
             reference_result,
             outdir=outdir,
-            label="highest_budget_two_coil_residual_newton",
+            label=f"highest_budget_{case_label}_residual_newton",
         )
     return figures, selected_artifacts
 
@@ -638,10 +663,13 @@ def run_case(
     separation: float = 2.0,
     current: float = 1.0e6,
     midplane_radius: float = 0.3,
+    i_prime: float = 0.0,
+    case_label: str = "",
     perturbation: float = 0.02,
     write_plots: bool = True,
 ) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
+    selected_case_label = _safe_label(case_label or _default_case_label(i_prime))
     rows: list[dict[str, object]] = []
     histories: list[dict[str, object]] = []
     best_result = None
@@ -678,6 +706,7 @@ def run_case(
                             separation=separation,
                             current=current,
                             midplane_radius=midplane_radius,
+                            i_prime=i_prime,
                             perturbation=perturbation,
                         )
                         rows.append(row)
@@ -703,9 +732,12 @@ def run_case(
             best_result=best_result,
             reference_result=reference_result,
             outdir=outdir,
+            case_label=selected_case_label,
         )
 
     payload = {
+        "case_label": selected_case_label,
+        "i_prime_value": float(i_prime),
         "rows": rows,
         "histories": histories,
         "figures": figures,
@@ -741,6 +773,8 @@ def main(argv: list[str] | None = None) -> int:
         separation=args.separation,
         current=args.current,
         midplane_radius=args.midplane_radius,
+        i_prime=args.i_prime,
+        case_label=args.case_label,
         perturbation=args.perturbation,
         write_plots=not args.no_plots,
     )
