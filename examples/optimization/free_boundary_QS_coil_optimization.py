@@ -1048,6 +1048,38 @@ def same_branch_report_mode_count(report: dict[str, Any]) -> int:
         return 0
 
 
+def same_branch_replay_plan_cache(
+    report: dict[str, Any],
+    replay_kwargs: dict[str, Any],
+    *,
+    timing_key: str,
+    scope: str,
+) -> tuple[dict[str, Any] | None, dict[str, Any], float | None]:
+    """Build an accepted-trace replay plan for repeated same-branch reports."""
+
+    from vmec_jax.free_boundary_adjoint import direct_coil_accepted_trace_controller_replay_plan
+
+    try:
+        t0 = time.perf_counter()
+        replay_plan = direct_coil_accepted_trace_controller_replay_plan(
+            tuple(report["base"]["traces"]),
+            static=report["base"]["init"].static,
+            use_preconditioner_policy_segments=bool(
+                replay_kwargs.get("use_preconditioner_policy_segments", False)
+            ),
+            use_segment_preconditioner_controls=bool(
+                replay_kwargs.get("use_segment_preconditioner_controls", False)
+            ),
+            use_stacked_step_controls=bool(replay_kwargs.get("use_stacked_step_controls", False)),
+            use_accepted_only_fast_path=bool(replay_kwargs.get("use_accepted_only_fast_path", True)),
+        )
+        return replay_plan, {"available": True, "timing_key": timing_key, "scope": scope}, float(
+            time.perf_counter() - t0
+        )
+    except Exception as exc:  # pragma: no cover - synthetic tests may omit stackable trace controls.
+        return None, {"available": False, "reason": f"{type(exc).__name__}: {exc}", "scope": scope}, None
+
+
 def nestor_profile_policy_from_results(
     results: list[dict[str, Any]],
     *,
@@ -1314,7 +1346,6 @@ def write_same_branch_validation_report(
 ) -> Path:
     """Write an optional same-branch complete-solve FD report for this example."""
     from vmec_jax.free_boundary_adjoint import (
-        direct_coil_accepted_trace_controller_replay_plan,
         direct_coil_accepted_trace_controller_slot_summary,
         direct_coil_branch_local_scalars_report_from_complete_fd,
         direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax,
@@ -1640,33 +1671,15 @@ def write_same_branch_validation_report(
         and "base" in report
         and scalar_key in report["objective_values"]
     ):
-        scalar_replay_plan: dict[str, Any] | None = None
-        try:
-            t0 = time.perf_counter()
-            scalar_replay_plan = direct_coil_accepted_trace_controller_replay_plan(
-                tuple(report["base"]["traces"]),
-                static=report["base"]["init"].static,
-                use_preconditioner_policy_segments=bool(
-                    replay_kwargs.get("use_preconditioner_policy_segments", False)
-                ),
-                use_segment_preconditioner_controls=bool(
-                    replay_kwargs.get("use_segment_preconditioner_controls", False)
-                ),
-                use_stacked_step_controls=bool(replay_kwargs.get("use_stacked_step_controls", False)),
-                use_accepted_only_fast_path=bool(replay_kwargs.get("use_accepted_only_fast_path", True)),
-            )
-            timings["branch_local_scalar_replay_plan_build_wall_s"] = float(time.perf_counter() - t0)
-            compact_report["branch_local_scalar_replay_plan_cache"] = {
-                "available": True,
-                "timing_key": "branch_local_scalar_replay_plan_build_wall_s",
-                "scope": "scalar replay with unchanged accepted traces and controller policy",
-            }
-        except Exception as exc:  # pragma: no cover - synthetic tests may omit stackable trace controls.
-            compact_report["branch_local_scalar_replay_plan_cache"] = {
-                "available": False,
-                "reason": f"{type(exc).__name__}: {exc}",
-                "scope": "scalar replay with unchanged accepted traces and controller policy",
-            }
+        scalar_replay_plan, scalar_plan_cache, scalar_plan_wall_s = same_branch_replay_plan_cache(
+            report,
+            replay_kwargs,
+            timing_key="branch_local_scalar_replay_plan_build_wall_s",
+            scope="scalar replay with unchanged accepted traces and controller policy",
+        )
+        compact_report["branch_local_scalar_replay_plan_cache"] = scalar_plan_cache
+        if scalar_plan_wall_s is not None:
+            timings["branch_local_scalar_replay_plan_build_wall_s"] = scalar_plan_wall_s
         t0 = time.perf_counter()
         scalar = direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
             params=base_params,
@@ -1722,33 +1735,15 @@ def write_same_branch_validation_report(
     main_vector_replay_plan: dict[str, Any] | None = None
     if same_branch and not replay_mode_count_guard_triggered and mode == "vector" and "base" in report and not missing_vector_keys:
         scalar_keys = vector_keys
-        try:
-            t0 = time.perf_counter()
-            main_vector_replay_plan = direct_coil_accepted_trace_controller_replay_plan(
-                tuple(report["base"]["traces"]),
-                static=report["base"]["init"].static,
-                use_preconditioner_policy_segments=bool(
-                    replay_kwargs.get("use_preconditioner_policy_segments", False)
-                ),
-                use_segment_preconditioner_controls=bool(
-                    replay_kwargs.get("use_segment_preconditioner_controls", False)
-                ),
-                use_stacked_step_controls=bool(replay_kwargs.get("use_stacked_step_controls", False)),
-                use_accepted_only_fast_path=bool(replay_kwargs.get("use_accepted_only_fast_path", True)),
-            )
-            timings["branch_local_vector_replay_plan_build_wall_s"] = float(time.perf_counter() - t0)
-            compact_report["branch_local_vector_replay_plan_cache"] = {
-                "available": True,
-                "timing_key": "branch_local_vector_replay_plan_build_wall_s",
-                "scope": "base vector/profile replays with unchanged accepted traces and controller policy",
-            }
-        except Exception as exc:  # pragma: no cover - synthetic tests may omit stackable trace controls.
-            main_vector_replay_plan = None
-            compact_report["branch_local_vector_replay_plan_cache"] = {
-                "available": False,
-                "reason": f"{type(exc).__name__}: {exc}",
-                "scope": "base vector/profile replays with unchanged accepted traces and controller policy",
-            }
+        main_vector_replay_plan, vector_plan_cache, vector_plan_wall_s = same_branch_replay_plan_cache(
+            report,
+            replay_kwargs,
+            timing_key="branch_local_vector_replay_plan_build_wall_s",
+            scope="base vector/profile replays with unchanged accepted traces and controller policy",
+        )
+        compact_report["branch_local_vector_replay_plan_cache"] = vector_plan_cache
+        if vector_plan_wall_s is not None:
+            timings["branch_local_vector_replay_plan_build_wall_s"] = vector_plan_wall_s
         t0 = time.perf_counter()
         vector = _run_branch_local_vector(
             scalar_keys,

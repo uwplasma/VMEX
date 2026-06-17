@@ -12,6 +12,51 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-16 Same-Branch Replay-Plan Cache Helper Extraction
+
+Steps taken:
+
+1. Extracted the scalar/vector accepted-trace replay-plan cache construction
+   into ``same_branch_replay_plan_cache``.
+2. Kept the helper in the optimization example module to avoid adding another
+   source file while still removing duplicated orchestration code.
+3. Preserved the same conservative fallback behavior for synthetic/incomplete
+   traces.
+
+Results obtained:
+
+1. ``write_same_branch_validation_report`` dropped from ``709`` to ``672``
+   lines.
+2. ``python -m ruff check`` passed for the touched example/test files.
+3. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qs_coil_optimization_smoke.py
+   tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py -q``
+   passed with one expected xfail.
+
+Best next steps:
+
+1. Commit and push this helper extraction.
+2. Continue cold-cost profiling at the next level down: first JVP graph
+   construction and NESTOR operator setup.
+3. Avoid further report-writer growth unless it eliminates duplicated runtime
+   work or strengthens a promotion gate.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999997%.
+- VMEC parity and physics gates: 99.9%.
+- Single-stage coil-only optimization phase 3: 99.98%.
+- CPU/GPU performance: 99.56%.
+- CI/runtime/coverage hygiene: 100% locally for this shard; latest GitHub CI
+  queued/running after the previous push.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.
+
 ### 2026-06-16 Matrix-Free Same-Branch Proposal Smoke
 
 Steps taken:
