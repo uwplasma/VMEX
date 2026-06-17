@@ -7176,3 +7176,67 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.62%.
+
+## 2026-06-17 Strict Momentum Update Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `force_update_rms` as a JAX-visible RMS helper while preserving the
+   existing `host_force_update_rms` scalar wrapper.
+2. Added `momentum_update_jax` so the strict non-JIT JAX momentum update has a
+   named domain seam matching the existing host NumPy update seam.
+3. Collapsed the host/JAX non-JIT strict update branch in
+   `solve_fixed_boundary_residual_iter` so velocity and force blocks are built
+   once, then routed through either host or JAX update assembly.
+4. Removed a duplicated `scan/compute_forces:init` trace wrapper in the
+   VMEC2000 scan setup path.
+5. Added direct unit coverage for the JAX-visible RMS and momentum update
+   helpers, including the historical JAX-branch RMS convention.
+
+Results obtained:
+
+- The residual iteration module dropped from 8,363 lines to 8,343 lines for
+  this tranche.
+- `solve_fixed_boundary_residual_iter` dropped from 7,747 to 7,725 lines.
+- The strict momentum update is now a named numerical seam for future
+  same-branch replay/fingerprint work instead of open-coded block arithmetic.
+- The previous branch head was confirmed green on CI, including combined
+  coverage and Codecov, before this local tranche.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/update.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_residual_iter_update_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_update_helpers.py tests/test_solve_residual_iter_policy.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_real_scan_wave10_coverage.py tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_minimal_one_step tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_state_only -q`
+- `python tools/diagnostics/source_health.py --top 10 --top-functions 15`
+
+Best next steps:
+
+1. Commit and push this strict momentum seam, then monitor CI.
+2. Continue only with named numerical or branch-policy seams that reduce the
+   residual hotspot without adding larger argument lists.
+3. Use the strict momentum seam in future branch-local replay reports where the
+   accepted update path needs a compact, JAX-visible primitive.
+4. Keep arbitrary adaptive branch differentiation unclaimed until a true
+   fingerprint-gated full adaptive AD-vs-central-FD gate passes.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.996%.
+- Solver monolith reduction: 98.22%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 93.2%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.63%.

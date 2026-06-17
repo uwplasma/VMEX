@@ -100,9 +100,11 @@ from vmec_jax.solvers.fixed_boundary.residual.force_payload import (
 )
 from vmec_jax.solvers.fixed_boundary.residual.update import (
     ResidualVelocityBlocks as _ResidualVelocityBlocks,
+    force_update_rms as _force_update_rms,
     host_catastrophic_restart_update as _host_catastrophic_restart_update,
     host_force_update_rms as _host_force_update_rms,
     host_momentum_update_np as _host_momentum_update_np,
+    momentum_update_jax as _momentum_update_jax,
     scale_velocity_blocks as _scale_velocity_blocks,
     zero_velocity_blocks_like as _zero_velocity_blocks_like,
 )
@@ -2356,17 +2358,16 @@ def solve_fixed_boundary_residual_iter(
             scan_timing_stats["scan_setup_s"] += time.perf_counter() - float(scan_total_start)
         t_scan_initial_force = time.perf_counter() if scan_timing_enabled else None
         with _maybe_trace("scan/compute_forces:init"):
-            with _maybe_trace("scan/compute_forces:init"):
-                k0, frzl0, gcr2_0, gcz2_0, gcl2_0, rz_scale0, l_scale0, norms0 = _compute_forces_scan(
-                    state_init,
-                    include_edge=False,
-                    zero_m1=jnp.asarray(1.0, dtype=dtype),
-                    constraint_precond_diag=zero_precond_diag,
-                    constraint_tcon=zero_tcon,
-                    constraint_precond_active=constraint_active_false,
-                    constraint_tcon_active=constraint_active_false,
-                    iter_idx=None,
-                )
+            k0, frzl0, gcr2_0, gcz2_0, gcl2_0, rz_scale0, l_scale0, norms0 = _compute_forces_scan(
+                state_init,
+                include_edge=False,
+                zero_m1=jnp.asarray(1.0, dtype=dtype),
+                constraint_precond_diag=zero_precond_diag,
+                constraint_tcon=zero_tcon,
+                constraint_precond_active=constraint_active_false,
+                constraint_tcon_active=constraint_active_false,
+                iter_idx=None,
+            )
         if scan_timing_enabled and t_scan_initial_force is not None:
             try:
                 if has_jax():
@@ -7216,83 +7217,63 @@ def solve_fixed_boundary_residual_iter(
                 update_rms = None
                 update_rms_preclip = None
                 scl = 1.0
-            elif host_update_assembly:
-                host_update = _host_momentum_update_np(
-                    velocities=_ResidualVelocityBlocks(
-                        vRcc,
-                        vRss,
-                        vRsc,
-                        vRcs,
-                        vZsc,
-                        vZcs,
-                        vZcc,
-                        vZss,
-                        vLsc,
-                        vLcs,
-                        vLcc,
-                        vLss,
-                    ),
-                    forces=_ResidualVelocityBlocks(
-                        frcc_u,
-                        frss_u,
-                        frsc_u,
-                        frcs_u,
-                        fzsc_u,
-                        fzcs_u,
-                        fzcc_u,
-                        fzss_u,
-                        flsc_u,
-                        flcs_u,
-                        flcc_u,
-                        flss_u,
-                    ),
-                    b1=b1,
-                    fac=fac,
-                    force_scale=force_scale,
-                    flip_sign=flip_sign,
-                    dt_eff=dt_eff,
-                    compute_update_rms=need_update_rms,
-                )
-                # Unpack as NumPy array views — no JAX conversion here.
-                (vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss) = (
-                    host_update.velocities
-                )
-                if need_update_rms:
-                    update_rms_j = host_update.update_rms
-                else:
-                    update_rms_j = jnp.asarray(0.0, dtype=jnp.asarray(vRcc).dtype)
             else:
-                vRcc = fac * (b1 * vRcc + force_scale * (flip_sign * jnp.asarray(frcc_u)))
-                vRss = fac * (b1 * vRss + force_scale * (flip_sign * jnp.asarray(frss_u)))
-                vRsc = fac * (b1 * vRsc + force_scale * (flip_sign * jnp.asarray(frsc_u)))
-                vRcs = fac * (b1 * vRcs + force_scale * (flip_sign * jnp.asarray(frcs_u)))
-                vZsc = fac * (b1 * vZsc + force_scale * (flip_sign * jnp.asarray(fzsc_u)))
-                vZcs = fac * (b1 * vZcs + force_scale * (flip_sign * jnp.asarray(fzcs_u)))
-                vZcc = fac * (b1 * vZcc + force_scale * (flip_sign * jnp.asarray(fzcc_u)))
-                vZss = fac * (b1 * vZss + force_scale * (flip_sign * jnp.asarray(fzss_u)))
-                vLsc = fac * (b1 * vLsc + force_scale * (flip_sign * jnp.asarray(flsc_u)))
-                vLcs = fac * (b1 * vLcs + force_scale * (flip_sign * jnp.asarray(flcs_u)))
-                vLcc = fac * (b1 * vLcc + force_scale * (flip_sign * jnp.asarray(flcc_u)))
-                vLss = fac * (b1 * vLss + force_scale * (flip_sign * jnp.asarray(flss_u)))
-                if need_update_rms:
-                    update_rms_j = jnp.sqrt(
-                        jnp.mean(
-                            (dt_eff * vRcc) ** 2
-                            + (dt_eff * vRss) ** 2
-                            + (dt_eff * vRsc) ** 2
-                            + (dt_eff * vRcs) ** 2
-                            + (dt_eff * vZsc) ** 2
-                            + (dt_eff * vZcs) ** 2
-                            + (dt_eff * vZcc) ** 2
-                            + (dt_eff * vZss) ** 2
-                            + (dt_eff * vLsc) ** 2
-                            + (dt_eff * vLcs) ** 2
-                            + (dt_eff * vLcc) ** 2
-                            + (dt_eff * vLss) ** 2
-                        )
+                velocity_blocks = _ResidualVelocityBlocks(
+                    vRcc,
+                    vRss,
+                    vRsc,
+                    vRcs,
+                    vZsc,
+                    vZcs,
+                    vZcc,
+                    vZss,
+                    vLsc,
+                    vLcs,
+                    vLcc,
+                    vLss,
+                )
+                force_blocks = _ResidualVelocityBlocks(
+                    frcc_u,
+                    frss_u,
+                    frsc_u,
+                    frcs_u,
+                    fzsc_u,
+                    fzcs_u,
+                    fzcc_u,
+                    fzss_u,
+                    flsc_u,
+                    flcs_u,
+                    flcc_u,
+                    flss_u,
+                )
+                if host_update_assembly:
+                    update_result = _host_momentum_update_np(
+                        velocities=velocity_blocks,
+                        forces=force_blocks,
+                        b1=b1,
+                        fac=fac,
+                        force_scale=force_scale,
+                        flip_sign=flip_sign,
+                        dt_eff=dt_eff,
+                        compute_update_rms=need_update_rms,
                     )
                 else:
-                    update_rms_j = jnp.asarray(0.0, dtype=jnp.asarray(vRcc).dtype)
+                    update_result = _momentum_update_jax(
+                        velocities=velocity_blocks,
+                        forces=force_blocks,
+                        b1=b1,
+                        fac=fac,
+                        force_scale=force_scale,
+                        flip_sign=flip_sign,
+                        dt_eff=dt_eff,
+                        compute_update_rms=need_update_rms,
+                    )
+                (vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss) = (
+                    update_result.velocities
+                )
+                update_rms_j = (
+                    update_result.update_rms if need_update_rms else jnp.asarray(0.0, dtype=jnp.asarray(vRcc).dtype)
+                )
 
             if not use_jit_strict_update_step:
                 update_rms_host: float | None = None
@@ -7326,21 +7307,20 @@ def solve_fixed_boundary_residual_iter(
                     vLcs = vLcs * scl
                     vLcc = vLcc * scl
                     vLss = vLss * scl
-                    update_rms_j = jnp.sqrt(
-                        jnp.mean(
-                            (dt_eff * vRcc) ** 2
-                            + (dt_eff * vRss) ** 2
-                            + (dt_eff * vRsc) ** 2
-                            + (dt_eff * vRcs) ** 2
-                            + (dt_eff * vZsc) ** 2
-                            + (dt_eff * vZcs) ** 2
-                            + (dt_eff * vZcc) ** 2
-                            + (dt_eff * vZss) ** 2
-                            + (dt_eff * vLsc) ** 2
-                            + (dt_eff * vLcs) ** 2
-                            + (dt_eff * vLcc) ** 2
-                            + (dt_eff * vLss) ** 2
-                        )
+                    update_rms_j = _force_update_rms(
+                        dt_eff,
+                        vRcc,
+                        vRss,
+                        vRsc,
+                        vRcs,
+                        vZsc,
+                        vZcs,
+                        vZcc,
+                        vZss,
+                        vLsc,
+                        vLcs,
+                        vLcc,
+                        vLss,
                     )
                     update_rms_host = float(np.asarray(update_rms_j))
                     update_rms = update_rms_host
