@@ -1749,10 +1749,11 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
         }
 
     calls: list[dict[str, object]] = []
+    replay_plan_sentinel = {"cached_plan": True}
 
     def fake_branch_local_vector(*_args, **kwargs):
         replay_kwargs = dict(kwargs["replay_kwargs"])
-        calls.append(replay_kwargs)
+        calls.append({**replay_kwargs, "_replay_plan": kwargs.get("replay_plan")})
         accept_mask = replay_kwargs.get("accept_mask")
         traces = tuple(replay_kwargs.get("traces", (trace,)))
         if accept_mask is None:
@@ -1839,6 +1840,11 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
     monkeypatch.setattr(freeb_adj, "direct_coil_same_branch_complete_solve_fd_report", fake_report)
     monkeypatch.setattr(
         freeb_adj,
+        "direct_coil_accepted_trace_controller_replay_plan",
+        lambda *_args, **_kwargs: replay_plan_sentinel,
+    )
+    monkeypatch.setattr(
+        freeb_adj,
         "direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax",
         fake_branch_local_vector,
     )
@@ -1853,11 +1859,16 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
 
     report = json.loads(path.read_text())
     assert report["mode_count"] == 144
+    assert report["branch_local_vector_replay_plan_cache"]["available"] is True
     assert len(calls) == 4
     assert calls[0]["nestor_solve_mode"] == "dense"
+    assert calls[0]["_replay_plan"] is replay_plan_sentinel
     assert calls[1]["use_accepted_only_fast_path"] is False
+    assert calls[1]["_replay_plan"] is None
     assert "accept_mask" not in calls[1]
     assert [item.get("step_status", "accepted") for item in calls[1]["traces"]] == ["accepted", "rejected"]
+    assert calls[2]["_replay_plan"] is replay_plan_sentinel
+    assert calls[3]["_replay_plan"] is replay_plan_sentinel
     profiled = {(call["nestor_solve_mode"], call["nestor_operator_solver"]) for call in calls[2:]}
     assert profiled == {("matrix_free", "gmres"), ("matrix_free", "bicgstab")}
 
