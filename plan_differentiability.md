@@ -8027,6 +8027,64 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.87%.
 
+## 2026-06-17 Workflow Facade Output Compatibility Follow-Up
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Validated the new workflow output module against workflow and continuation
+   unit tests.
+2. Fixed the rerun-WOUT monkeypatch seam by injecting
+   `run_fixed_boundary` and `write_wout_from_fixed_boundary_run` from the
+   workflow facade into the implementation helper.
+3. Removed stale imports left behind by the output/checkpoint extraction.
+4. Inspected the fixed-boundary residual-loop module and confirmed the
+   remaining large production seam is now the core host/scan adaptive loop, not
+   isolated diagnostics already covered by existing helper modules.
+
+Results obtained:
+
+- Workflow tests that monkeypatch `vmec_jax.optimization_workflow` rerun
+  functions pass with the extracted implementation.
+- Source-health remains at 3,412 lines for `optimization_workflow.py` and
+  `optimization.py` remains below the top-12 file-size warning list.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization_workflow.py vmec_jax/optimizers/fixed_boundary/workflow_outputs.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_workflow_unit.py tests/test_optimization_helpers.py tests/test_continuation_exact_history.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 20`
+
+Best next steps:
+
+1. Split a QI/objective-library tranche from `optimization_workflow.py` to
+   remove objective definitions from the workflow facade.
+2. If touching the residual-loop monolith next, target a narrow controller
+   helper with strong tests rather than moving scan-loop internals blindly.
+3. Continue committing coherent tranches, but avoid CI polling until enough
+   work has accumulated or a local failure suggests a broader issue.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.93%.
+- Differentiability/refactor implementation: 99.999%.
+- Solver monolith reduction: 98.55%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 96.2%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.875%.
+
 ## 2026-06-17 Fixed-Boundary Seed/Input Workflow Extraction
 
 Branch: `codex/differentiability-refactor-plan`.
