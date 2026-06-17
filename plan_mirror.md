@@ -4280,3 +4280,313 @@ avoided that C-tracer path and completed successfully.
 No user input is needed for the next lane.
 
 ---
+
+---
+
+## 48. 2026-06-17 stellarator-mirror hybrid and ESSOS mirror free-boundary planning lane
+
+This section adds two longer-horizon lanes requested after M8o:
+
+1. A stellarator-mirror hybrid fixed-boundary geometry: a straight-axis mirror
+   whose cross section is a rotating ellipse over one field-period-like axial
+   module, then repeated with mirror/up-down symmetry.
+2. A mirror-specific free-boundary example in which circular coils generated
+   through ESSOS-compatible coil objects provide the vacuum field and
+   `vmec_jax` solves for the mirror LCFS over beta targets of `1%`, `3%`, and
+   `10%`.
+
+These lanes should be added after the current finite-current residual-Newton
+convergence work, because they need reliable 3D fixed-boundary and
+free-boundary infrastructure.  They should not block M8p/M8q unless the
+finite-current solve reveals geometry limitations that the hybrid geometry
+lane would naturally solve.
+
+### Sources and code checked
+
+- Current mirror geometry state:
+  - `vmec_jax/mirror/core/boundary.py`;
+  - `vmec_jax/mirror/core/state.py`;
+  - `vmec_jax/mirror/kernels/geometry.py`.
+- Current external-field and ESSOS bridge:
+  - `vmec_jax/external_fields/coils_jax.py`;
+  - `vmec_jax/external_fields/essos_adapter.py`;
+  - `examples/free_boundary_direct_coils_forward.py`;
+  - `examples/free_boundary_essos_coils_forward.py`;
+  - `examples/free_boundary_essos_coils_beta_scan.py`;
+  - `examples/free_boundary_essos_example_common.py`.
+- ESSOS upstream source, inspected at commit
+  `d9ca5c37dc063f98a0c6b092da6024ba256b4468`:
+  - `README.md`: ESSOS is a JAX coil, particle/field-line tracing, and
+    optimization package with Fourier coil curves and stellarator surfaces;
+  - `essos/coils.py`: `Curves`, `Coils`, `Coils_from_json`,
+    `CreateEquallySpacedCurves`, Fourier DOF convention, symmetry expansion,
+    and JSON serialization;
+  - `essos/surfaces.py`: `SurfaceRZFourier` and B-dot-normal helpers.
+
+### Architecture conclusions
+
+- The current mirror 3D representation is a straight-axis, star-shaped
+  cylindrical-radius model:
+  `r(s, theta, xi) = sqrt(s) * a(s, theta, xi)`.
+- A centered rotating ellipse on a straight axis can be represented exactly in
+  this model by a positive polar radius
+
+  `r_b(theta, xi) = A(xi) B(xi) / sqrt((B(xi) cos(theta-alpha(xi)))^2 + (A(xi) sin(theta-alpha(xi)))^2)`.
+
+- Therefore the first hybrid lane does not need a full Cartesian
+  `X(s,theta,xi),Y(s,theta,xi),Z(s,theta,xi)` surface map if the ellipse stays
+  centered on the linear mirror axis.
+- A later Cartesian transverse-frame map will be needed if the hybrid should
+  support off-axis cross-section centers, non-star-shaped sections, or a curved
+  stellarator axis.
+- The existing ESSOS adapter already consumes the attributes needed from an
+  ESSOS `Coils` object: `dofs_curves`, `dofs_currents`, `currents_scale`,
+  `n_segments`, `nfp`, and `stellsym`.  The mirror free-boundary lane should
+  reuse this bridge rather than adding ESSOS imports to core vmec_jax modules.
+- ESSOS `CreateEquallySpacedCurves` builds toroidal stellarator-style coils.
+  Circular mirror end coils are a different object, so vmec_jax should add a
+  small ESSOS-compatible circular-loop builder and optionally upstream it to
+  ESSOS later.
+
+### Proposed plan insertion
+
+Keep the current plan order through M8p/M8q:
+
+- M8p: higher-budget finite-current residual-Newton convergence study for
+  `radial_xi_lambda_xi_tridi`.
+- M8q: block or Schur-style residual preconditioner if M8p remains
+  iteration-limited.
+- M8r: promote finite-current two-coil convergence only after residual, `fsq`,
+  normalized force, field-line pitch, and cross-section diagnostics converge
+  under resolution refinement.
+
+Add the hybrid and ESSOS lanes after that:
+
+- M13: rotating-ellipse fixed-boundary geometry.
+- M14: stellarator-mirror hybrid fixed-boundary example and diagnostics.
+- M15: mirror free-boundary direct-coil formulation.
+- M16: ESSOS circular-coil mirror beta-scan example at `1%`, `3%`, and `10%`.
+- M17: documentation, plotting, and validation promotion for hybrid/free-boundary
+  mirror examples.
+
+The existing M9-M12 lanes remain valid.  If ordering pressure appears, M13-M17
+can run after M12 because the hybrid/free-boundary work depends on robust
+mirror plotting, output, and solver diagnostics more than on mirror-Boozer-like
+coordinates.
+
+### M13: rotating-ellipse fixed-boundary geometry
+
+Implementation:
+
+- Add a `MirrorBoundary.rotating_ellipse(...)` constructor.
+- Add a focused data container, likely `RotatingEllipseBoundaryParams`, with:
+  - axial semi-major profile `A(xi)`;
+  - axial semi-minor profile `B(xi)`;
+  - rotation profile `alpha(xi)`;
+  - optional throat/cap scale profile for mirror-length modulation;
+  - optional symmetry metadata.
+- Support constant, polynomial, and tabulated/Chebyshev nodal profiles first.
+- Implement the exact polar radius formula in `radius_on_grid_3d`.
+- Keep the first implementation centered on the straight `z` axis.
+- Validate positivity and avoid hidden self-intersections by checking
+  `min(radius)`, `min(sqrtg)`, and cross-section orientation.
+
+Tests:
+
+- Unit tests for exact ellipse radius at `alpha=0`, `alpha=pi/2`, and a
+  tabulated rotation profile.
+- Geometry tests comparing numerical cross-section area against `pi*A*B`.
+- Volume test against `integral pi*A(xi)*B(xi) dz`.
+- Symmetry tests for the requested repeated/up-down operation.
+- Plot tests that render horizontal-`z` 3D geometry with rotating cross-section
+  contours.
+
+Diagnostics and plots:
+
+- 3D boundary colored by `|B|`.
+- Cross sections at several `z` planes showing the ellipse rotation.
+- Rotation-angle profile `alpha(z)`.
+- `min(sqrtg)`, volume, mirror ratio, residual history, and force components.
+
+Acceptance:
+
+- The fixed-boundary solver accepts the rotating-ellipse boundary without
+  negative radius or negative Jacobian.
+- Cross-section plots visibly rotate by the requested field-period angle.
+- Analytic area/volume checks pass at low and moderate resolution.
+
+### M14: stellarator-mirror hybrid fixed-boundary example
+
+Implementation:
+
+- Add a root example, tentatively
+  `examples/mirror_stellarator_hybrid_rotating_ellipse.py`.
+- Use a straight-axis mirror length and one axial field-period-like module.
+- Build a rotating ellipse connected to stronger-field mirror end-cap regions.
+- Add a repeat/symmetry visualization mode:
+  - solve on the fundamental module;
+  - expand repeated modules only for plots and diagnostics unless the solver
+    needs the full repeated domain.
+- Include finite-current settings so field-line pitch is visible.
+
+Tests:
+
+- Low-resolution smoke test with `--no-plots`.
+- Plot-render test for:
+  - 3D geometry;
+  - field-line overlay;
+  - `|B|`;
+  - cross sections;
+  - residual history.
+- Regression JSON schema test for rotation angle, axis length, mirror ratio,
+  finite-current settings, and symmetry metadata.
+
+Acceptance:
+
+- The example writes a `mout_*.nc` file and a full plot bundle.
+- Field lines show both axial mirror propagation and helical/rotating-ellipse
+  pitch.
+- The geometry remains centered on the linear axis unless the user explicitly
+  asks for off-axis cross-section centers.
+
+### M15: mirror free-boundary direct-coil formulation
+
+Implementation:
+
+- Add mirror-specific direct circular coil helpers:
+  - `make_mirror_circular_coil_params`;
+  - `make_symmetric_mirror_end_coils`;
+  - optional ESSOS-compatible object or JSON writer exposing ESSOS-style
+    `dofs_curves`, `dofs_currents`, `currents_scale`, `n_segments`, `nfp`, and
+    `stellsym`.
+- Reuse `CoilFieldParams` and `from_essos_coils` for field sampling.
+- Define mirror-LCFS unknowns in the mirror solver rather than toroidal VMEC
+  `RBC/ZBS` coefficients:
+  - fixed seed from two-coil or rotating-ellipse boundary;
+  - free-boundary update driven by normal-field residual;
+  - positive-radius and positive-Jacobian guards.
+- Start with direct coils only; add mgrid export later only if needed for
+  VMEC2000-style replay.
+- Keep differentiability through coil field sampling; treat the full
+  free-boundary solved-state derivative as a later implicit/adjoint lane.
+
+Tests:
+
+- Circular coil field checks against the existing two-coil analytic field on
+  axis.
+- Direct-coil provider shape, current, and symmetry tests.
+- Dry-run example test that writes inputs/JSON without solving.
+- Low-resolution free-boundary smoke with tiny iteration count once the mirror
+  LCFS update is implemented.
+
+Acceptance:
+
+- Vacuum circular-coil mirror free-boundary run moves the LCFS in the expected
+  direction and reports normal-field residuals.
+- The run writes mirror-native `mout`, not `wout`, unless it intentionally uses
+  the toroidal compatibility path.
+
+### M16: ESSOS circular-coil mirror beta scan
+
+Implementation:
+
+- Add root example, tentatively
+  `examples/mirror_free_boundary_essos_circular_coils_beta_scan.py`.
+- Support beta targets `1`, `3`, and `10` percent by default.
+- Use pressure continuation:
+  - vacuum or near-vacuum seed;
+  - `1%`;
+  - `3%`;
+  - `10%`.
+- Warm-start each beta from the previous accepted LCFS.
+- Write per-beta JSON summaries and one aggregate summary.
+- For each beta, write:
+  - `mout_beta_001.nc`, `mout_beta_003.nc`, `mout_beta_010.nc`;
+  - 3D LCFS with coils;
+  - cross sections;
+  - `|B|`;
+  - residual history;
+  - normal-field residual on the LCFS;
+  - pressure and beta diagnostics.
+
+Diagnostics:
+
+- Requested beta percent.
+- Achieved beta proxy and pressure normalization.
+- Coil current scale and coil geometry scale.
+- LCFS volume, mirror ratio, min radius, min Jacobian.
+- Free-boundary normal-field residual RMS/max.
+- Fixed-boundary force residual/`fsq` after each accepted beta.
+
+Tests:
+
+- Dry-run schema test for default beta list `[1, 3, 10]`.
+- A single low-cost beta smoke with `--betas 1 --maxiter 1 --no-plots`.
+- Optional slow test for the full `[1,3,10]` scan behind an existing slow or
+  physics marker.
+
+Acceptance:
+
+- The `1%` and `3%` cases run reliably at low/moderate resolution.
+- The `10%` case either converges with pressure continuation or reports a
+  clear controlled failure with the last accepted LCFS and residual metrics.
+- Plots show the circular coils, the mirror LCFS, and beta-dependent LCFS
+  changes.
+
+### M17: documentation and promotion
+
+Implementation:
+
+- Document the hybrid boundary formula, symmetry convention, and limitations.
+- Document the free-boundary circular-coil workflow and how it differs from the
+  existing LP-QA toroidal ESSOS examples.
+- Add example README entries with exact commands.
+- Add plan checkpoints and promotion criteria.
+
+Acceptance:
+
+- Docs build with warnings as errors.
+- Root examples have smoke tests.
+- Full examples are reproducible from a clean checkout with optional ESSOS
+  installation.
+
+### Design questions for the user
+
+The following choices would improve the plan, but the implementation can start
+with the default assumptions below if no answer is available immediately.
+
+1. Should the rotating ellipse stay centered on the straight mirror axis, or
+   should the cross-section center be allowed to move off axis?
+   Default: centered on the straight axis.
+2. What should one "field period" mean for the rotating ellipse: `180` degrees,
+   `360` degrees, or a user-selected rotation angle over one mirror module?
+   Default: user-selected, with examples using `180` degrees and `360` degrees.
+3. What exact up/down symmetry should be enforced for the repeated modules?
+   Default: solve one module and generate plot/output repeats by reflecting
+   `z -> -z` while preserving a positive Jacobian and matching ellipse
+   orientation continuously.
+4. Should the hybrid mirror be a finite open mirror with physical end-cap
+   constraints, or a periodic axial module repeated indefinitely for
+   diagnostics?
+   Default: finite open mirror solve, repeated only for visualization.
+5. For the ESSOS circular-coil free-boundary example, should "circular coils
+   put by ESSOS" mean only two or more end coils, or should ESSOS also place
+   body/helical coils around the rotating-ellipse section?
+   Default: two symmetric end coils first; optional body/helical coils later.
+6. Should beta targets `1%`, `3%`, and `10%` mean achieved equilibrium beta
+   (`wp/wb`-style proxy) or nominal pressure input scale?
+   Default: target achieved beta proxy with pressure-scale iteration if needed.
+7. Should the first free-boundary mirror example be direct-coils only, or also
+   generate mgrid files for replay?
+   Default: direct coils first; mgrid export as a compatibility add-on.
+
+### Completion-percentage impact
+
+- Geometry/grids/bases remain `90%` for the current MVP, but the new hybrid
+  geometry lane starts at `10%`.
+- Fixed-boundary 3D mirror solve remains `79%` for current radial boundaries,
+  and starts at `20%` for rotating-ellipse hybrid validation.
+- Free-boundary mirror lane remains `5%`; the ESSOS circular-coil beta scan
+  starts at `0%` until M15 begins.
+- PR merge readiness overall remains `66%` for the current MVP because these
+  are new post-M8 scope additions.
