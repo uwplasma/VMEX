@@ -11,6 +11,7 @@ from vmec_jax.solvers.fixed_boundary.scan.output import (
     vmec2000_scan_full_history_row,
     vmec2000_scan_light_history_row,
     vmec2000_scan_minimal_history_row,
+    vmec2000_scan_residual_result,
     vmec2000_scan_step_result,
     vmec2000_state_only_scan_diagnostics,
     vmec2000_traced_scan_diagnostics,
@@ -408,6 +409,52 @@ def test_scan_output_vmec_control_ignores_accepted_mask():
 
     np.testing.assert_array_equal(out.accepted_mask, np.asarray([True, True, True]))
     np.testing.assert_allclose(out.w_history, np.asarray([5.0, 4.0, 3.0]))
+
+
+def test_vmec2000_scan_residual_result_assembles_public_diagnostics():
+    out = _post(
+        Vmec2000ScanHistories(
+            fsqr=np.asarray([5.0, 0.05]),
+            fsqz=np.asarray([0.0, 0.01]),
+            fsql=np.asarray([0.0, 0.01]),
+            accepted=np.asarray([True, True]),
+            fsqr1=np.asarray([50.0, 0.5]),
+            fsqz1=np.asarray([5.0, 0.1]),
+            fsql1=np.asarray([0.5, 0.1]),
+            zero_m1=np.asarray([1, 0]),
+            include_edge=np.asarray([0, 0]),
+        ),
+        ftol=0.1,
+    )
+    state = SimpleNamespace(label="state")
+
+    result = vmec2000_scan_residual_result(
+        state=state,
+        scan_output=out,
+        ftol=0.1,
+        scan_light=False,
+        scan_minimal=False,
+        scan_use_precomputed=True,
+        scan_use_lax_tridi=False,
+        resume_state_mode="compact",
+        fsq_total_target=None,
+        badjac_use_state=True,
+        badjac_mode="state",
+        badjac_state_probe=True,
+        badjac_initial_state_probe_iters=2,
+        ijacob=3,
+        abort_scan=False,
+        timing_report={"scan_total_s": 1.25},
+    )
+
+    assert result.state is state
+    assert result.n_iter == 2
+    np.testing.assert_allclose(result.w_history, np.asarray([5.0, 0.07]))
+    assert result.diagnostics["vmec2000_scan"] is True
+    assert result.diagnostics["scan_use_precomputed"] is True
+    assert result.diagnostics["badjac_mode"] == "state"
+    assert result.diagnostics["ijacob"] == 3
+    assert result.diagnostics["timing"]["scan_total_s"] == 1.25
 
 
 def test_scan_output_empty_history_reports_infinite_final_residuals():

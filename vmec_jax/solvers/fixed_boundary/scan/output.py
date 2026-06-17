@@ -8,7 +8,7 @@ from typing import Any, Callable, NamedTuple
 import numpy as np
 
 from ...._compat import jnp
-from ..results import ScanCarry
+from ..results import ScanCarry, SolveVmecResidualResult
 
 
 @dataclass(frozen=True)
@@ -152,6 +152,60 @@ class Vmec2000ScanStepResult(NamedTuple):
 
     carry: ScanCarry
     history_row: Any
+
+
+def vmec2000_scan_residual_result(
+    *,
+    state: Any,
+    scan_output: Vmec2000ScanPostprocessResult,
+    ftol: float,
+    scan_light: bool,
+    scan_minimal: bool,
+    scan_use_precomputed: bool,
+    scan_use_lax_tridi: bool,
+    resume_state_mode: str,
+    fsq_total_target: float | None,
+    badjac_use_state: bool,
+    badjac_mode: str,
+    badjac_state_probe: bool,
+    badjac_initial_state_probe_iters: int,
+    ijacob: int,
+    abort_scan: bool,
+    timing_report: dict[str, Any] | None,
+) -> SolveVmecResidualResult:
+    """Assemble the public residual result for a materialized VMEC2000 scan."""
+
+    return SolveVmecResidualResult(
+        state=state,
+        n_iter=int(scan_output.w_history.shape[0]),
+        w_history=np.asarray(scan_output.w_history),
+        fsqr2_history=np.asarray(scan_output.fsqr_history),
+        fsqz2_history=np.asarray(scan_output.fsqz_history),
+        fsql2_history=np.asarray(scan_output.fsql_history),
+        grad_rms_history=np.asarray([], dtype=float),
+        step_history=np.asarray([], dtype=float),
+        diagnostics={
+            "use_scan": True,
+            "vmec2000_scan": True,
+            "scan_path": "vmec2000",
+            "ftol": float(ftol),
+            "requested_ftol": float(ftol),
+            "light_history": bool(scan_light),
+            "scan_minimal": bool(scan_minimal),
+            "scan_use_precomputed": bool(scan_use_precomputed),
+            "scan_use_lax_tridi": bool(scan_use_lax_tridi),
+            "resume_state_mode": str(resume_state_mode),
+            "fsq_total_target": fsq_total_target,
+            "badjac_use_state": bool(badjac_use_state),
+            "badjac_mode": str(badjac_mode),
+            "badjac_state_probe": bool(badjac_state_probe),
+            "badjac_initial_state_probe_iters": int(badjac_initial_state_probe_iters),
+            "ijacob": int(ijacob),
+            "abort_scan": bool(abort_scan),
+            **scan_output.diagnostics,
+            **({"timing": timing_report} if timing_report is not None else {}),
+        },
+    )
 
 
 def vmec2000_scan_minimal_history_row(fsqr: Any, fsqz: Any, fsql: Any) -> tuple[Any, Any, Any]:
