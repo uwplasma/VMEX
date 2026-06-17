@@ -7772,3 +7772,57 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.71%.
+
+## 2026-06-17 VMEC2000 Scan Result Assembly Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `vmec2000_scan_residual_result` to
+   `vmec_jax.solvers.fixed_boundary.scan.output`.
+2. Moved the final `SolveVmecResidualResult` assembly and public VMEC2000 scan
+   diagnostics dictionary out of the nested `_run_vmec2000_scan` function.
+3. Added scan-output tests that verify history arrays, scan flags,
+   bad-Jacobian metadata, and timing diagnostics propagate through the new
+   assembler.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` dropped from 7,586 to 7,573 lines.
+- Nested `_run_vmec2000_scan` dropped from 1,511 to 1,498 lines.
+- VMEC2000 scan materialization now lives next to the existing scan
+  postprocessing logic instead of inside the residual controller.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/scan/output.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_scan_output.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_scan_output.py tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_minimal_one_step tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_state_only -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 20`
+
+Best next steps:
+
+1. Commit and push this scan result assembly extraction.
+2. Continue at a larger controller seam: scan initial-force/axis-reset preflight
+   or the accepted/rejected update transition inside `_scan_step`.
+3. Keep the arbitrary adaptive-branch differentiation claim conservative until
+   the host/JAX controller branch fingerprint gate is explicit.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.996%.
+- Solver monolith reduction: 98.49%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.72%.
