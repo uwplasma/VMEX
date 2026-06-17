@@ -4590,3 +4590,206 @@ with the default assumptions below if no answer is available immediately.
   starts at `0%` until M15 begins.
 - PR merge readiness overall remains `66%` for the current MVP because these
   are new post-M8 scope additions.
+
+---
+
+## 49. 2026-06-17 M8p finite-current high-budget convergence study
+
+This lane answers whether the M8o `radial_xi_lambda_xi_tridi` preconditioner
+can reach tight finite-current residuals by budget alone.  The answer is:
+more inner and outer iterations help substantially, but the solve is still
+iteration-limited and the remaining residual becomes radius/interior-`xi`
+dominated.  M8q should therefore improve the residual-Newton correction, not
+only increase budgets.
+
+### Steps taken
+
+- Ran fixed-budget finite-current residual-Newton grids at `ns=5`, `nxi=9`,
+  `i_prime=0.01`, `residual_xi_alpha=1.0`, and
+  `radial_xi_lambda_xi_tridi`.
+- Separated inner linear budget effects from adaptive policy by using fixed
+  `residual_linear_maxiter` values.
+- Probed:
+  - outer iterations `12`, `24`, `36` with inner budgets `16` and `54`;
+  - outer iterations `24`, `36` with inner budget `96`;
+  - one final outer `48`, inner `96` best-row probe.
+- Regenerated the best-row plot bundle with the same `48 x 96` settings.
+- Visually inspected residual history, residual components, horizontal-`z`
+  3D geometry, field-line overlay, `|B|`, cross sections, and Jacobian plots.
+
+### Results obtained
+
+Baseline comparisons:
+
+- M8m finite-current baseline, `radial_xi_tridi`, adaptive effective inner
+  budget `54`, `maxiter=12`:
+  - final residual: `1.323339292922e-03`;
+  - final `fsq`: `2.870863744577e-08`;
+  - normalized force: `7.447138270591e-03`;
+  - lambda fraction: `0.9654226085`.
+- M8o finite-current lambda-xi mode, adaptive effective inner budget `54`,
+  `maxiter=12`:
+  - final residual: `1.037065207446e-04`;
+  - final `fsq`: `1.763121712288e-10`;
+  - normalized force: `5.836719181237e-04`;
+  - lambda fraction: `0.6464031335`.
+
+M8p fixed-budget rows:
+
+| outer | inner | final residual | final fsq | normalized force | a norm | lambda norm | lambda fraction |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 12 | 16 | `1.956298364328e-02` | `6.273939820120e-06` | `1.089937416914e-01` | `1.172272798243e-02` | `1.566167225034e-02` | `0.800577` |
+| 24 | 16 | `1.226847725838e-02` | `2.467467774418e-06` | `6.875493381846e-02` | `8.555272081116e-03` | `8.793341450072e-03` | `0.716743` |
+| 36 | 16 | `8.866479842778e-03` | `1.288761718072e-06` | `4.978481653739e-02` | `6.382820203061e-03` | `6.154191340687e-03` | `0.694096` |
+| 12 | 54 | `1.037065207446e-04` | `1.763121712288e-10` | `5.836719181237e-04` | `7.912766682054e-05` | `6.703621997469e-05` | `0.646403` |
+| 24 | 54 | `4.332436431347e-05` | `3.077050070764e-11` | `2.438347387145e-04` | `4.331968966621e-05` | `6.364199784527e-07` | `0.014690` |
+| 36 | 54 | `2.236718040228e-05` | `8.201487854887e-12` | `1.258852649564e-04` | `2.235574239952e-05` | `7.152208849730e-07` | `0.031976` |
+| 24 | 96 | `1.972965755648e-06` | `6.381301431084e-14` | `1.110409861971e-05` | `1.971918207663e-06` | `6.428417572186e-08` | `0.032583` |
+| 36 | 96 | `2.099900437462e-07` | `7.228822700417e-16` | `1.181850294481e-06` | `2.099315512719e-07` | `4.956031992477e-09` | `0.023601` |
+| 48 | 96 | `2.931165262408e-08` | `1.408480294352e-17` | `1.649696560286e-07` | `2.930288410965e-08` | `7.169117179445e-10` | `0.024458` |
+
+Interpretation:
+
+- Inner budget `16` is not viable for the finite-current case.
+- Inner budget `54`, matching the earlier adaptive effective budget, removes
+  the worst lambda bottleneck but stalls above `2e-5` by 36 outer iterations.
+- Inner budget `96` improves the residual by two additional orders of
+  magnitude, reaching `2.93e-8` at 48 outer iterations.
+- Even at `48 x 96`, the solve does not reach `gtol=1e-12` or a robust
+  `1e-8` research threshold.
+- The remaining residual is radius dominated, especially interior in `xi`.
+  Lambda smoothing is no longer the main bottleneck.
+- High-budget rows are too expensive for routine CI.  Future CI should keep
+  low-cost schema/path tests, while high-budget convergence remains a
+  documented benchmark command.
+
+Generated artifacts:
+
+- `results/mirror/m8p_lambda_xi_fixed_budget_probe/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8p_lambda_xi_linear96_probe/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8p_lambda_xi_48x96_probe/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8p_lambda_xi_best_plots/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8p_lambda_xi_best_plots/residual_newton_convergence_history.png`.
+- `results/mirror/m8p_lambda_xi_best_plots/residual_newton_convergence_components.png`.
+- `results/mirror/m8p_lambda_xi_best_plots/residual_newton_convergence_budget.png`.
+- `results/mirror/m8p_lambda_xi_best_plots/residual_newton_convergence_resolution_heatmap.png`.
+- `results/mirror/m8p_lambda_xi_best_plots/best_finite_current_lambda_xi_m8p_48x96_residual_newton/figures/best_finite_current_lambda_xi_m8p_48x96_residual_newton_mirror_boundary_3d.png`.
+- `results/mirror/m8p_lambda_xi_best_plots/best_finite_current_lambda_xi_m8p_48x96_residual_newton/figures/best_finite_current_lambda_xi_m8p_48x96_residual_newton_mirror_bfield_boundary.png`.
+- `results/mirror/m8p_lambda_xi_best_plots/best_finite_current_lambda_xi_m8p_48x96_residual_newton/figures/best_finite_current_lambda_xi_m8p_48x96_residual_newton_mirror_bmag_boundary.png`.
+- `results/mirror/m8p_lambda_xi_best_plots/best_finite_current_lambda_xi_m8p_48x96_residual_newton/figures/best_finite_current_lambda_xi_m8p_48x96_residual_newton_mirror_bmag_sxi.png`.
+- `results/mirror/m8p_lambda_xi_best_plots/best_finite_current_lambda_xi_m8p_48x96_residual_newton/figures/best_finite_current_lambda_xi_m8p_48x96_residual_newton_mirror_cross_sections.png`.
+- `results/mirror/m8p_lambda_xi_best_plots/best_finite_current_lambda_xi_m8p_48x96_residual_newton/figures/best_finite_current_lambda_xi_m8p_48x96_residual_newton_mirror_jacobian.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/m8p_lambda_xi_fixed_budget_probe \
+  --ns-array 5 \
+  --nxi-array 9 \
+  --maxiter-array 12,24,36 \
+  --residual-linear-maxiter-array 16,54 \
+  --residual-linear-maxiter-policy fixed \
+  --residual-xi-alpha 1.0 \
+  --i-prime 0.01 \
+  --case-label finite_current_lambda_xi_m8p_fixed_budget \
+  --preconditioners radial_xi_lambda_xi_tridi \
+  --no-plots
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/m8p_lambda_xi_linear96_probe \
+  --ns-array 5 \
+  --nxi-array 9 \
+  --maxiter-array 24,36 \
+  --residual-linear-maxiter-array 96 \
+  --residual-linear-maxiter-policy fixed \
+  --residual-xi-alpha 1.0 \
+  --i-prime 0.01 \
+  --case-label finite_current_lambda_xi_m8p_linear96 \
+  --preconditioners radial_xi_lambda_xi_tridi \
+  --no-plots
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/m8p_lambda_xi_48x96_probe \
+  --ns-array 5 \
+  --nxi-array 9 \
+  --maxiter-array 48 \
+  --residual-linear-maxiter-array 96 \
+  --residual-linear-maxiter-policy fixed \
+  --residual-xi-alpha 1.0 \
+  --i-prime 0.01 \
+  --case-label finite_current_lambda_xi_m8p_48x96 \
+  --preconditioners radial_xi_lambda_xi_tridi \
+  --no-plots
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/m8p_lambda_xi_best_plots \
+  --ns-array 5 \
+  --nxi-array 9 \
+  --maxiter-array 48 \
+  --residual-linear-maxiter-array 96 \
+  --residual-linear-maxiter-policy fixed \
+  --residual-xi-alpha 1.0 \
+  --i-prime 0.01 \
+  --case-label finite_current_lambda_xi_m8p_48x96 \
+  --preconditioners radial_xi_lambda_xi_tridi
+```
+
+Validation:
+
+- The command outputs were parsed from JSON metrics.
+- The best-row plots were visually inspected.
+- The 3D geometry remains horizontal in `z`.
+- Field-line traces render on top of the B-direction arrows.
+- `|B|` remains weakest near the midplane and strongest near the mirror caps.
+- Cross sections remain circular and poloidally symmetric for the two-coil
+  benchmark.
+- The Jacobian is positive in the plotted solution.
+
+No code changed in this lane, so the validation gate is `git diff --check`
+before commit rather than a full test rerun.
+
+### File structure and best-practice notes
+
+- This tranche uses the existing root-level convergence-grid example instead
+  of adding another benchmark script.
+- The generated metrics are benchmark artifacts under `results/`, not source
+  files.
+- The current CLI remains appropriate: low-cost tests should exercise path and
+  schema, while high-budget finite-current convergence should stay explicit.
+- The result directs M8q toward solver quality, not more plotting or CLI
+  scaffolding.
+
+### Best next steps
+
+1. Commit and push the M8p plan/benchmark log.
+2. Start M8q with a radius-focused correction:
+   - first try a stronger radius/interior-`xi` preconditioner that can be
+     tuned separately from lambda smoothing;
+   - if that is insufficient, add a block-structured or Schur-style
+     reduced-residual preconditioner for coupled `a`/lambda updates.
+3. Re-run the same `ns=5`, `nxi=9`, `i_prime=0.01` benchmark and require a
+   meaningful improvement over the `48 x 96` residual `2.93e-8`.
+4. Only after M8q improves convergence per iteration, consider moderate
+   resolution finite-current checks.
+
+### Completion percentages after M8p
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `82%`.
+- Fixed-boundary axisymmetric solve: `80%`.
+- Residual Newton / preconditioning: `76%`.
+- Two-coil and manufactured validation: `74%`.
+- Finite-current pitch validation: `62%`.
+- Plotting and `vmec --plot` mirror support: `78%`.
+- I/O schema and docs: `72%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `15%`.
+- Free-boundary mirror lane: `5%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `0%`.
+- PR merge readiness overall: `67%`.
+
+### User input needed
+
+No user input is needed for M8q; defaults from section 48 remain in force until
+overridden.
