@@ -1073,78 +1073,28 @@ def run_fixed_boundary(
         use_scan = False
     if os.getenv("VMEC_JAX_USE_SCAN", "") not in ("", "0"):
         use_scan = True
-    if solver == "gd":
+    if solver in _driver_solve_helpers.FIXED_BOUNDARY_OPTIMIZER_SOLVERS:
         _ensure_static_profiles()
-        st0 = restart_state_eff if restart_state_eff is not None else _initial_guess_with_optional_nojit(static, bdy)
-        res = solve_fixed_boundary_gd(
-            st0,
-            static,
-            phipf=flux.phipf,
-            chipf=flux.chipf,
-            signgs=signgs,
-            lamscale=flux.lamscale,
+        res = _driver_solve_helpers.run_fixed_boundary_optimizer_solver(
+            solver=solver,
+            restart_state=restart_state_eff,
+            static=static,
+            boundary=bdy,
+            indata=indata,
+            flux=flux,
             pressure=pressure,
-            gamma=gamma,
-            max_iter=int(max_iter),
-            step_size=float(step_size_val),
-            jacobian_penalty=1e3,
-            jit_grad=True,
-            verbose=bool(verbose),
-        )
-    elif solver == "lbfgs":
-        _ensure_static_profiles()
-        st0 = restart_state_eff if restart_state_eff is not None else _initial_guess_with_optional_nojit(static, bdy)
-        res = solve_fixed_boundary_lbfgs(
-            st0,
-            static,
-            phipf=flux.phipf,
-            chipf=flux.chipf,
             signgs=signgs,
-            lamscale=flux.lamscale,
-            pressure=pressure,
             gamma=gamma,
             max_iter=int(max_iter),
             step_size=float(step_size_val),
             history_size=int(history_size),
-            jit_grad=True,
+            gn_damping=gn_damping,
+            gn_cg_tol=gn_cg_tol,
+            gn_cg_maxiter=int(gn_cg_maxiter),
             verbose=bool(verbose),
-        )
-    elif solver == "vmec_lbfgs":
-        from .solve import solve_fixed_boundary_lbfgs_vmec_residual
-        _ensure_static_profiles()
-        st0 = restart_state_eff if restart_state_eff is not None else _initial_guess_with_optional_nojit(static, bdy)
-
-        res = solve_fixed_boundary_lbfgs_vmec_residual(
-            st0,
-            static,
-            indata=indata,
-            signgs=signgs,
-            history_size=int(history_size),
-            max_iter=int(max_iter),
-            step_size=float(step_size_val),
-            jit_grad=True,
-            preconditioner="mode_diag+radial_tridi",
-            precond_exponent=1.0,
-            precond_radial_alpha=0.2,
-            verbose=bool(verbose),
-        )
-    elif solver == "vmec_gn":
-        from .solve import solve_fixed_boundary_gn_vmec_residual
-        _ensure_static_profiles()
-        st0 = restart_state_eff if restart_state_eff is not None else _initial_guess_with_optional_nojit(static, bdy)
-
-        res = solve_fixed_boundary_gn_vmec_residual(
-            st0,
-            static,
-            indata=indata,
-            signgs=signgs,
-            max_iter=int(max_iter),
-            step_size=float(step_size_val),
-            damping=None if gn_damping is None else float(gn_damping),
-            cg_tol=None if gn_cg_tol is None else float(gn_cg_tol),
-            cg_maxiter=int(gn_cg_maxiter),
-            jit_kernels=True,
-            verbose=bool(verbose),
+            initial_guess_func=_initial_guess_with_optional_nojit,
+            solve_fixed_boundary_gd_func=solve_fixed_boundary_gd,
+            solve_fixed_boundary_lbfgs_func=solve_fixed_boundary_lbfgs,
         )
     elif solver == "vmec2000_iter":
         # Stage controls.

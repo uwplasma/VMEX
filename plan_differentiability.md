@@ -7291,3 +7291,64 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.64%.
+
+## 2026-06-17 Fixed-Boundary Optimizer Dispatch Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `FIXED_BOUNDARY_OPTIMIZER_SOLVERS` and
+   `run_fixed_boundary_optimizer_solver` to `vmec_jax.drivers.solve`.
+2. Moved the non-VMEC2000 fixed-boundary optimizer dispatch for `gd`, `lbfgs`,
+   `vmec_lbfgs`, and `vmec_gn` out of the public `run_fixed_boundary` body.
+3. Left the VMEC2000 staged/parity path unchanged; only the simpler optimizer
+   dispatch moved.
+4. Added direct tests with injected fake solver functions to validate unknown
+   solver passthrough, restart-state reuse, and VMEC residual optimizer dispatch.
+
+Results obtained:
+
+- `run_fixed_boundary` dropped from 1,709 to 1,659 lines.
+- The extracted driver seam gives the public driver a clearer branch boundary:
+  optimizer-style fixed-boundary solves are delegated, VMEC2000 staged solves
+  remain in the main parity-sensitive path.
+- GitHub CI for the previous branch head was confirmed green, including
+  combined coverage and Codecov, before this local tranche.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers/solve.py tests/test_driver_policy_helpers.py`
+- `python -m pytest -q tests/test_driver_policy_helpers.py -q`
+- `python -m pytest -q tests/test_driver_api.py tests/test_driver_wave4_coverage.py tests/test_driver_wave12_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 18`
+
+Best next steps:
+
+1. Commit and push this optimizer dispatch extraction, then monitor CI.
+2. Next driver tranche should target either device-reroute setup or finish/stage
+   context construction, but only if the call-site becomes smaller than the
+   helper boundary.
+3. Keep VMEC2000 staged loop extractions conservative because that path carries
+   most parity-sensitive behavior.
+4. Resume free-boundary branch-gate work once driver source-health no longer has
+   an obvious low-risk seam.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.996%.
+- Solver monolith reduction: 98.24%.
+- Free-boundary adjoint monolith reduction: 80%.
+- Driver workflow decomposition: 94.4%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.65%.

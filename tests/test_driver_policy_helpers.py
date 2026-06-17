@@ -328,6 +328,139 @@ def test_initial_guess_with_optional_nojit_skips_numpy_patch_for_tracers_or_env_
     assert patch_calls == []
 
 
+def test_run_fixed_boundary_optimizer_solver_returns_none_for_vmec2000_solver() -> None:
+    assert (
+        driver_solve.run_fixed_boundary_optimizer_solver(
+            solver="vmec2000_iter",
+            restart_state=None,
+            static="static",
+            boundary="boundary",
+            indata=_Input(),
+            flux=SimpleNamespace(phipf="phip", chipf="chip", lamscale="lam"),
+            pressure="pressure",
+            signgs=-1,
+            gamma=0.0,
+            max_iter=3,
+            step_size=0.1,
+            history_size=2,
+            gn_damping=None,
+            gn_cg_tol=None,
+            gn_cg_maxiter=5,
+            verbose=False,
+            initial_guess_func=lambda *_args: pytest.fail("should not build state"),
+            solve_fixed_boundary_gd_func=lambda *_args, **_kwargs: pytest.fail("should not solve"),
+            solve_fixed_boundary_lbfgs_func=lambda *_args, **_kwargs: pytest.fail("should not solve"),
+        )
+        is None
+    )
+
+
+def test_run_fixed_boundary_optimizer_solver_reuses_restart_for_gd() -> None:
+    calls = []
+
+    def gd_solver(state, static, **kwargs):
+        calls.append((state, static, kwargs))
+        return "gd-result"
+
+    result = driver_solve.run_fixed_boundary_optimizer_solver(
+        solver="gd",
+        restart_state="restart-state",
+        static="static",
+        boundary="boundary",
+        indata=_Input(),
+        flux=SimpleNamespace(phipf="phip", chipf="chip", lamscale="lam"),
+        pressure="pressure",
+        signgs=-1,
+        gamma=1.2,
+        max_iter=3,
+        step_size=0.1,
+        history_size=2,
+        gn_damping=None,
+        gn_cg_tol=None,
+        gn_cg_maxiter=5,
+        verbose=True,
+        initial_guess_func=lambda *_args: pytest.fail("restart should skip initial guess"),
+        solve_fixed_boundary_gd_func=gd_solver,
+        solve_fixed_boundary_lbfgs_func=lambda *_args, **_kwargs: pytest.fail("wrong solver"),
+    )
+
+    assert result == "gd-result"
+    assert calls == [
+        (
+            "restart-state",
+            "static",
+            {
+                "phipf": "phip",
+                "chipf": "chip",
+                "signgs": -1,
+                "lamscale": "lam",
+                "pressure": "pressure",
+                "gamma": 1.2,
+                "max_iter": 3,
+                "step_size": 0.1,
+                "jacobian_penalty": 1e3,
+                "jit_grad": True,
+                "verbose": True,
+            },
+        )
+    ]
+
+
+def test_run_fixed_boundary_optimizer_solver_dispatches_vmec_gn_with_initial_guess() -> None:
+    calls = []
+
+    def initial_guess(static, boundary):
+        calls.append(("guess", static, boundary))
+        return "state0"
+
+    def gn_solver(state, static, **kwargs):
+        calls.append(("gn", state, static, kwargs))
+        return "gn-result"
+
+    result = driver_solve.run_fixed_boundary_optimizer_solver(
+        solver="vmec_gn",
+        restart_state=None,
+        static="static",
+        boundary="boundary",
+        indata=_Input(),
+        flux=SimpleNamespace(phipf="phip", chipf="chip", lamscale="lam"),
+        pressure="pressure",
+        signgs=1,
+        gamma=0.0,
+        max_iter=7,
+        step_size=0.25,
+        history_size=4,
+        gn_damping=0.5,
+        gn_cg_tol=1.0e-4,
+        gn_cg_maxiter=11,
+        verbose=False,
+        initial_guess_func=initial_guess,
+        solve_fixed_boundary_gd_func=lambda *_args, **_kwargs: pytest.fail("wrong solver"),
+        solve_fixed_boundary_lbfgs_func=lambda *_args, **_kwargs: pytest.fail("wrong solver"),
+        solve_fixed_boundary_gn_vmec_residual_func=gn_solver,
+    )
+
+    assert result == "gn-result"
+    assert calls[0] == ("guess", "static", "boundary")
+    assert calls[1] == (
+        "gn",
+        "state0",
+        "static",
+        {
+            "indata": calls[1][3]["indata"],
+            "signgs": 1,
+            "max_iter": 7,
+            "step_size": 0.25,
+            "damping": 0.5,
+            "cg_tol": 1.0e-4,
+            "cg_maxiter": 11,
+            "jit_kernels": True,
+            "verbose": False,
+        },
+    )
+    assert isinstance(calls[1][3]["indata"], _Input)
+
+
 def test_driver_io_helpers_print_concise_and_vmec_style_banners() -> None:
     lines: list[str] = []
 
