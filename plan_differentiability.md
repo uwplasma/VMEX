@@ -1,9 +1,11 @@
 # Research-Grade Differentiable VMEC Plan
 
-Status: deferred research lane, not a blocker for the current free-boundary
-phase-2/phase-3 release.
+Status: active umbrella plan and single source of truth for PR #20.
+`plan_freeb.md` remains the detailed free-boundary evidence log.
+`plan.md` and `discrete_adjoint_2506_plan.md` are historical/reference plans
+and should not drive new work unless a specific old result needs to be audited.
 
-Last updated: 2026-06-14.
+Last updated: 2026-06-17.
 
 Repository: `/Users/rogeriojorge/local/vmec_jax`.
 
@@ -26,6 +28,97 @@ The near-term release should remain conservative:
 4. A future differentiable-controller lane can explore fully JAX-visible branch
    selection, but only if it preserves VMEC parity, improves optimization
    robustness, or enables capabilities that the branch-local seam cannot.
+
+## 2026-06-17 Plan Review and Method Decision
+
+Current PR state:
+
+- Draft PR #20, `[codex] Research-grade differentiability refactor umbrella`,
+  is open from `codex/differentiability-refactor-plan` into `main`.
+- Branch head: `94e05da`, `Refactor free-boundary rejected-slot report gate`.
+- GitHub Actions run `27664190749` is green across fast tests, exact shards,
+  slow physics coverage, docs, build, console smoke, parity manifest smoke,
+  combined coverage, and Codecov project/patch gates.
+- The working tree was clean at the start of this review.
+
+Updated method decision:
+
+1. Pure JAX kernels are the default for smooth local residual, geometry,
+   profile, Boozer, stability, and coil-field kernels.
+2. Custom JVP/VJP rules are the default seam for fixed accepted branches,
+   replayed traces, and numerically stable objective wrappers. This matches
+   JAX's supported custom-derivative path for transformable Python functions.
+3. Implicit differentiation is the default target for converged equilibrium
+   roots and fixed-point solves when the linearized solve can be validated
+   against central finite differences and physical scalar gates.
+4. Solver-faithful discrete adjoints are the target for VMEC-style spectral
+   PDE solves. The key lesson from recent spectral-adjoint work is to build
+   adjoint operators from the solver graph/residual structure rather than
+   keeping a large unrolled AD tape.
+5. Matrix-free linear operators are the target for large NESTOR/source
+   responses and large linearized equilibrium systems. Dense materialization is
+   acceptable only below explicit mode-count thresholds and must lose to the
+   matrix-free path in no promoted large-mode gate.
+6. Unrolled AD is diagnostic only for short fixed-budget traces, toy problems,
+   and regression tests. It is not the production strategy for long VMEC solves.
+7. Fully JAX-visible adaptive branch selection remains a research lane, not a
+   production claim. Hard accepted/rejected changes, timestep limiter changes,
+   Jacobian resets, restarts, and fallback selection are nonsmooth branch
+   events. Production derivatives stay fingerprint-gated: if a perturbation
+   changes the branch fingerprint, the derivative is not promoted.
+8. DESC remains the closest architectural reference for a differentiable
+   stellarator code, but vmec_jax must preserve VMEC2000 input/output semantics
+   and parity, so the refactor should not replace VMEC algorithms with DESC
+   algorithms unless an explicit parity gate is added.
+9. JAXopt, Optax, Lineax, and Equinox are design references and optional
+   adapters, not mandatory dependencies. JAXopt's implicit-diff concepts are
+   useful, Optax is useful for optimizer composition, Lineax-style PyTree
+   operators are useful for matrix-free solves, and Equinox-style PyTree modules
+   are useful if filtered transforms become necessary.
+
+Updated code-health audit:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py`: 8404 lines;
+  `solve_fixed_boundary_residual_iter` is 7790 lines. This is the highest-risk
+  maintainability hotspot and the next mandatory refactor tranche.
+- `vmec_jax/optimization.py`: 5545 lines. The next tranche should separate
+  accepted-point replay, derivative policy selection, and public problem API.
+- `vmec_jax/optimization_workflow.py`: 4249 lines. The workflow layer should
+  become a thin pedagogical API, not a second optimizer implementation.
+- `vmec_jax/free_boundary_adjoint.py`: 3829 lines. Continue moving validated
+  pieces into `vmec_jax/solvers/free_boundary/adjoint/` by domain name.
+- `vmec_jax/free_boundary.py`: 3371 lines. Keep provider/runtime/NESTOR seams
+  separate as extraction points become stable.
+- `examples/optimization/free_boundary_QS_coil_optimization.py`: 3000 lines.
+  Keep examples user-facing; move reusable report/proposal logic into package
+  APIs once behavior is validated.
+
+Finite execution plan from this review:
+
+1. Plan consolidation.
+   Exit gate: this file is the canonical plan; docs point here; old plans are
+   marked historical/reference.
+2. Fixed-boundary residual-controller split.
+   Exit gate: extract named controller-policy/state-transition seams from
+   `solve_fixed_boundary_residual_iter` until the largest function is below
+   5000 lines without changing VMEC trace parity.
+3. Derivative-policy unification.
+   Exit gate: one small API selects exact replay, scalar adjoint,
+   matrix-free/JVP, implicit, or finite-difference fallback with explicit
+   validation metadata.
+4. Free-boundary branch-local completion.
+   Exit gate: branch-local accepted/rejected same-fingerprint physical-scalar
+   gates are shared, fast enough for CI shards, and consumed by the coil-only
+   optimization example.
+5. Adaptive-controller research prototype.
+   Exit gate: a JAX-visible adaptive prototype matches the host branch
+   fingerprint on bounded fixtures and passes AD-vs-central-FD for at least one
+   physical scalar. Until then, arbitrary adaptive branch differentiation is
+   explicitly unclaimed.
+6. Documentation and release closure.
+   Exit gate: README/docs describe exactly which derivative seams are promoted,
+   examples use the public APIs, CI stays green, and source-health reports no
+   new root-level helper sprawl.
 
 ## Terms
 
@@ -1015,24 +1108,31 @@ Milestone 6: research-grade differentiable VMEC variant.
 
 ## Current Open-Lane Completion Snapshot
 
-These percentages describe the current main-branch plan state, not the deferred
-research lane:
+These percentages describe the current PR #20 state after the 2026-06-17
+review:
 
 - Direct-coil/free-boundary phase 1: 100%.
-- Full nonlinear free-boundary adjoint phase 2: 99.9999998% for fixed
-  same-branch/fingerprint-gated gates; arbitrary adaptive branch changes remain
-  unclaimed.
-- VMEC parity and physics gates: 99.8%.
-- Single-stage coil-only optimization phase 3: 100% for conservative
-  complete-solve-authoritative examples; future publication-grade arbitrary
-  adaptive derivatives remain deferred.
-- CPU/GPU performance: 99.4%.
-- CI/runtime/coverage hygiene: 100% locally; latest GitHub Actions run must
-  pass after the QI line-count repair.
-- Docs/release hygiene: 100%.
-- QI minimal-seed README artifacts: 97.5% infrastructure/provenance-ready;
-  public promotion depends on current NFP evidence.
-- Deferred differentiable adaptive-controller research lane: 5%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999999% for fixed
+  same-branch/fingerprint-gated accepted/rejected gates; arbitrary adaptive
+  branch changes remain unclaimed.
+- VMEC parity and physics gates: 99.92%.
+- Single-stage coil-only optimization phase 3: 99.997% for conservative
+  complete-solve-authoritative examples that consume validated branch-local
+  proposal reports.
+- CPU/GPU performance: 99.60%; branch-local replay/report paths are improved,
+  but cold exact tape/forward-force cost remains the main unresolved hotspot.
+- CI/runtime/coverage hygiene: 100%; PR #20 run `27664190749` passed all
+  required CI and Codecov gates.
+- Docs/release hygiene: 100% for current claims; pending only the explicit
+  single-plan pointer added in this review.
+- QI minimal-seed README artifacts: 100% for current promoted artifacts.
+- Refactor/source simplification: 72%; major root-level monoliths were split,
+  but `solvers/fixed_boundary/residual/iteration.py`, `optimization.py`,
+  `optimization_workflow.py`, `free_boundary_adjoint.py`, and large validation
+  tests remain above the long-term maintainability budget.
+- Research-grade arbitrary adaptive-branch differentiability: 7%; planned and
+  scoped, but not production-promoted.
+- Overall production-safe differentiability/refactor PR: 98.7%.
 
 ## Decisions Needed Later
 
@@ -1060,6 +1160,75 @@ For future updates, append entries with:
 5. Best next steps.
 6. User decisions needed.
 7. Completion percentages by lane.
+
+## 2026-06-17 Canonical Plan Review
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Reviewed PR #20 status, recent commits, CI results, plan files, docs, and
+   source-health diagnostics.
+2. Rechecked the differentiability strategy against DESC, VMEC-compatible
+   solver constraints, recent spectral-adjoint work, JAX custom derivative
+   rules, JAXopt implicit differentiation, Optax optimizer composition,
+   Lineax-style matrix-free linear operators, and Equinox PyTree patterns.
+3. Promoted this file to the active single source of truth for the
+   differentiability/refactor plan.
+4. Demoted `plan_freeb.md` to a detailed free-boundary evidence log and
+   `plan.md`/`discrete_adjoint_2506_plan.md` to historical/reference plans.
+5. Added a finite execution plan with explicit exit gates for plan
+   consolidation, fixed-boundary residual-controller splitting, derivative
+   policy unification, branch-local free-boundary completion, adaptive-controller
+   research, and docs/release closure.
+
+Results obtained:
+
+- PR #20 is open, draft, mergeable, and clean at `94e05da`.
+- GitHub Actions run `27664190749` is green across required CI and Codecov
+  gates.
+- The next non-negotiable simplification hotspot is
+  `vmec_jax/solvers/fixed_boundary/residual/iteration.py`, especially the
+  7790-line `solve_fixed_boundary_residual_iter` function.
+- The differentiability claim remains conservative: production derivatives are
+  pure-JAX, custom-JVP/VJP, implicit, solver-faithful discrete-adjoint, or
+  matrix-free where validated; arbitrary adaptive branch changes are still
+  research-only.
+
+Tests and commands run:
+
+- `git status --short --branch`
+- `gh pr view 20 --json number,title,state,isDraft,mergeStateStatus,headRefName,baseRefName,statusCheckRollup`
+- `python tools/diagnostics/source_health.py --top 15 --top-functions 15`
+
+Best next steps:
+
+1. Update docs to point to this file as the canonical plan and explain the
+   status of older plan files.
+2. Run a fast docs build to catch broken references.
+3. Commit and push the plan/docs consolidation.
+4. Start the next fixed-boundary residual-controller split, targeting a
+   named, domain-specific state-transition seam with direct tests.
+5. Continue free-boundary branch-local derivative work only with
+   fingerprint-gated physical scalar tests.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999999%.
+- VMEC parity and physics gates: 99.92%.
+- Single-stage coil-only optimization phase 3: 99.997%.
+- CPU/GPU performance: 99.60%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100% for current claims.
+- QI minimal-seed README artifacts: 100%.
+- Refactor/source simplification: 72%.
+- Research-grade arbitrary adaptive-branch differentiability: 7%.
+- Overall production-safe differentiability/refactor PR: 98.7%.
 
 ## 2026-06-14 Umbrella PR and Solver Helper Extractions
 
