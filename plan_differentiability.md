@@ -7884,6 +7884,64 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.79%.
 
+## 2026-06-17 Fixed-Boundary Objective-Term Workflow Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `vmec_jax.optimizers.fixed_boundary.objective_terms` for
+   `StageContext`, objective term containers, objective vector coercion, and
+   generic packed-state residual AD hooks.
+2. Re-exported those names through `optimization_workflow.py` so existing user
+   scripts and tests can keep importing `workflow.ObjectiveTerm`,
+   `workflow.StageContext`, `workflow.QIObjectiveTerm`, and
+   `workflow.residuals_from_objectives`.
+3. Preserved the private compatibility alias `workflow._as_vector` used by
+   tests and diagnostics.
+
+Results obtained:
+
+- `optimization_workflow.py` dropped from 3,787 to 3,637 lines.
+- Objective callback containers and packed-state AD hooks now live in the
+  fixed-boundary optimizer domain instead of the example workflow facade.
+- QI and QS workflow residual paths still share the same generic packed-state
+  VJP hooks.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization_workflow.py vmec_jax/optimizers/fixed_boundary/objective_terms.py tests/test_optimization_workflow_unit.py tests/test_optimization_examples.py tests/test_continuation_stage_inputs.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_workflow_unit.py tests/test_optimization_examples.py tests/test_continuation_stage_inputs.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimizer_domain_helpers.py tests/test_optimization_fast_optimizer_methods.py tests/test_optimization_callback_trace.py tests/test_optimization_helpers.py tests/test_optimization_workflow_unit.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 20`
+
+Best next steps:
+
+1. Commit and push the objective-term extraction.
+2. Extract stage setup into a dependency-injected domain helper so existing
+   workflow monkeypatch seams stay intact.
+3. Start a larger fixed-boundary residual-controller split after the workflow
+   facade is below the warning threshold.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.88%.
+- Differentiability/refactor implementation: 99.998%.
+- Solver monolith reduction: 98.50%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 94.3%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.80%.
+
 ## 2026-06-17 Exact Optimizer Dispatch Decomposition
 
 Branch: `codex/differentiability-refactor-plan`.
