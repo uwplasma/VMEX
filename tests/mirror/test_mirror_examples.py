@@ -217,3 +217,41 @@ def test_root_solver_comparison_example_runs_without_plots(tmp_path):
     assert all(row["final_residual_norm"] >= 0.0 for row in metrics["rows"])
     production_rows = [row for row in metrics["rows"] if row["solver_scope"] == "production_fixed_boundary"]
     assert all(row["residual_preconditioner"] == "radial_xi_tridi" for row in production_rows)
+
+
+def test_root_residual_newton_convergence_grid_runs_without_plots(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_residual_newton_convergence_grid.py",
+            "--outdir",
+            str(tmp_path / "convergence_grid"),
+            "--ns-array",
+            "5",
+            "--nxi-array",
+            "9",
+            "--maxiter-array",
+            "2",
+            "--residual-linear-maxiter-array",
+            "8",
+            "--preconditioners",
+            "radial_xi_tridi",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    path = Path(completed.stdout.strip())
+    metrics = json.loads(path.read_text())
+    assert len(metrics["rows"]) == 1
+    assert len(metrics["histories"]) == 1
+    row = metrics["rows"][0]
+    assert row["ns"] == 5
+    assert row["nxi"] == 9
+    assert row["optimizer"] == "residual_newton"
+    assert row["residual_preconditioner"] == "radial_xi_tridi"
+    assert row["residual_linear_maxiter"] == 8
+    assert row["final_residual_norm"] >= 0.0
+    assert metrics["histories"][0]["row_id"] == row["row_id"]

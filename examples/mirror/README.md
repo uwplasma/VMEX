@@ -17,6 +17,7 @@ python examples/mirror_finite_current_pitch.py --outdir results/mirror/finite_cu
 python examples/mirror_fixed_boundary_solve_diagnostic.py --outdir results/mirror/fixed_boundary_solve_diagnostic
 python examples/mirror_manufactured_fixed_boundary.py --outdir results/mirror/manufactured_fixed_boundary
 python examples/mirror_solver_comparison.py --outdir results/mirror/solver_comparison
+python examples/mirror_residual_newton_convergence_grid.py --outdir results/mirror/residual_newton_convergence_grid
 ```
 
 The physical mirror examples write a mirror-native ``mout_*.nc`` file and,
@@ -77,3 +78,10 @@ manufactured residual-Newton gate in the same JSON/plot report. With plots
 enabled it also writes the standard mirror plot bundle for the residual-Newton
 physical cases, including the 3-D boundary, field-line overlays, ``|B|``,
 cross sections, and residual history.
+
+The root-level ``examples/mirror_residual_newton_convergence_grid.py`` script
+runs two-coil residual-Newton convergence grids over ``ns``, ``nxi``, outer
+iteration budget, inner ``lsmr`` iteration budget, and preconditioner mode. It
+writes JSON metrics, residual heatmaps/budget plots, and the standard mirror
+plot bundles for both the best-residual row and the highest-resolution,
+highest-budget row.

@@ -3182,3 +3182,79 @@ For the regenerated default solver-comparison report at
   are needed to reach projected `gtol` on the two-coil physical benchmark.
 - Add richer solver plots that compare preconditioner modes directly in one
   report if the grid study shows a stable benefit across resolutions.
+
+---
+
+## 40. 2026-06-17 residual-Newton convergence-grid lane
+
+This lane turns the single two-coil residual-Newton/preconditioner benchmark
+into an explicit convergence-grid artifact over resolution and solver budget.
+
+### Implemented in this lane
+
+- Added the root-level `examples/mirror_residual_newton_convergence_grid.py`
+  script.
+- The script runs the analytic two-coil fixed-boundary residual-Newton solve
+  over:
+  - `ns`;
+  - `nxi`;
+  - outer `maxiter`;
+  - inner `residual_linear_maxiter`;
+  - preconditioner mode.
+- The script writes `residual_newton_convergence_grid_metrics.json` containing
+  per-row residuals, `fsq`, optimizer status, iteration counts, and per-row
+  residual histories.
+- With plots enabled it writes:
+  - a final-residual heatmap over `ns` and `nxi`;
+  - a solver-budget plot at the highest `ns,nxi`;
+  - a residual-history plot at the highest `ns,nxi` and largest budgets;
+  - standard mirror `mout`/plot bundles for both the best-residual row and the
+    highest-resolution/highest-budget row.
+- Added root-example smoke coverage for the convergence-grid script.
+- Documented the script in `examples/mirror/README.md`.
+
+### Validation result
+
+For
+`examples/mirror_residual_newton_convergence_grid.py --outdir results/mirror/residual_newton_convergence_grid`
+with the default preconditioner `radial_xi_tridi`:
+
+- `ns=5`, `nxi=9`, `maxiter=6`, `linear=16`:
+  residual `1.127985e-11`, not below `gtol=1e-12`.
+- `ns=5`, `nxi=9`, `maxiter=6`, `linear=48`:
+  residual `1.671645e-16`, reaches `gtol`.
+- `ns=5`, `nxi=17`, `maxiter=6`, `linear=48`:
+  residual `7.011819e-14`, reaches `gtol`.
+- `ns=9`, `nxi=9`, `maxiter=12`, `linear=48`:
+  residual `6.563983e-11`, still above `gtol`.
+- `ns=9`, `nxi=17`, `maxiter=12`, `linear=48`:
+  residual `8.183677e-07`, still above `gtol`.
+
+The best row is `ns=5`, `nxi=9`, `maxiter=6`, `linear=48`.
+The hard reference row is `ns=9`, `nxi=17`, `maxiter=12`, `linear=48`.
+Both selected rows write standard mirror plot bundles. The hard reference row
+still shows horizontal-`z` geometry, visible field-line overlays, and `|B|`
+with high-field end caps and a low-field central well.
+
+### Interpretation
+
+- The convergence grid shows that the new preconditioner can reach tight
+  projected residuals on smaller two-coil grids and on `ns=5,nxi=17`.
+- The `ns=9,nxi=17` case remains the hard benchmark. Increasing the inner
+  `lsmr` budget from `16` to `48` matters more than doubling the outer budget,
+  but the residual is still `8.183677e-07` at `maxiter=12`.
+- The highest-resolution residual history is still decreasing at the final
+  recorded iteration, so the next study should extend the high-resolution row
+  to larger outer and inner budgets before changing physics assumptions.
+- If that extended row still stalls far above `gtol`, the next likely issues
+  are cap-policy conditioning and the absence of a more field-aligned axial
+  preconditioner.
+
+### Next gates
+
+- Run a targeted high-resolution budget extension for `ns=9`, `nxi=17`, with
+  larger `maxiter` and `residual_linear_maxiter` values.
+- Add a preconditioner-mode comparison grid for the high-resolution row only:
+  `none`, `radial_tridi`, and `radial_xi_tridi`.
+- Inspect cap-node and end-cap residual components separately if the extended
+  high-resolution row stops decreasing before reaching projected `gtol`.
