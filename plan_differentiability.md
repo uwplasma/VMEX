@@ -7998,6 +7998,62 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.81%.
 
+## 2026-06-17 Fixed-Boundary QS Residual Factory Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `vmec_jax.optimizers.fixed_boundary.qs_residuals` for the QA/QH/QP
+   quasisymmetry residual factories and their packed-state VJP hooks.
+2. Kept `optimization.py` as the public facade for
+   `make_qh_residuals_fn(...)` and `make_qs_residuals_fn(...)`.
+3. Preserved existing test/profiling monkeypatch seams by passing
+   `optimization.py` dependency globals into the extracted implementation.
+
+Results obtained:
+
+- `optimization.py` dropped from 3,909 to 3,516 lines.
+- Quasisymmetry objective construction is now separated from the exact
+  optimizer class.
+- The custom packed-state cotangent hooks still match the residual vector and
+  remain usable by dense, matrix-free, and scalar-adjoint paths.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization.py vmec_jax/optimizers/fixed_boundary/qs_residuals.py tests/test_optimization_helpers.py tests/test_optimization_wave2_coverage.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_helpers.py -k 'residual_factory or make_qs_residuals_fn or make_qh_residuals_fn' tests/test_optimization_wave2_coverage.py -k 'qh_and_qs_residual' -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_helpers.py tests/test_optimization_wave2_coverage.py tests/test_optimization_callback_trace.py tests/test_optimization_fast_optimizer_methods.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 20`
+
+Best next steps:
+
+1. Commit and push the QS residual factory extraction.
+2. Continue fixed-boundary optimizer decomposition by extracting exact tape
+   cache/profile policy or boundary state construction helpers.
+3. Start reducing the fixed-boundary residual-iteration monolith after
+   optimizer modules are below the source-health warning threshold.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.88%.
+- Differentiability/refactor implementation: 99.998%.
+- Solver monolith reduction: 98.50%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 94.3%.
+- Fixed-boundary optimizer decomposition: 89%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.82%.
+
 ## 2026-06-17 Exact Optimizer Dispatch Decomposition
 
 Branch: `codex/differentiability-refactor-plan`.
