@@ -24621,6 +24621,58 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 100%.
 
+### 2026-06-16 Requested Registry Scalars In Complete-Solve FD Reports
+
+Steps taken:
+
+1. Fixed the same-branch report writer so any requested report vector key that
+   exists in the scalar registry is also evaluated in the complete-solve FD
+   objective payload.
+2. Added a regression test proving a requested registry scalar such as
+   ``betatotal`` is inserted even when the ordinary run summary does not
+   contain that key.
+3. Re-ran the finite-beta QA direct-coil smoke with a vector same-branch report
+   to validate the real wrapper path.
+
+Results obtained:
+
+1. The generated finite-beta same-branch report now includes ``betatotal`` in
+   both complete-solve objective values and branch-local vector/JVP evidence.
+2. On the smoke run, the ``betatotal`` branch-local directional derivative
+   agreed with complete-solve central FD with absolute error
+   ``2.3e-13``.
+3. ``python -m ruff check`` passed for the touched example/test files.
+4. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qs_coil_optimization_smoke.py
+   tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py -q``
+   passed with one expected xfail.
+
+Best next steps:
+
+1. Commit and push this report-correctness fix.
+2. Watch the draft PR CI head after the push.
+3. Continue phase-3 tightening by using the validated vector/JVP report in the
+   small coil-only QS/QA examples while preserving complete solves as the
+   acceptance authority.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999997%; physical scalar
+  report coverage improved, but arbitrary adaptive host branch differentiation
+  remains intentionally unclaimed.
+- VMEC parity and physics gates: 99.9%.
+- Single-stage coil-only optimization phase 3: 99.96%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene: 100% locally for this shard; awaiting GitHub CI
+  for the latest branch head after push.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.
+
 ### 2026-06-16 Finite-Beta Scalar In Same-Branch Coil Reports
 
 Steps taken:

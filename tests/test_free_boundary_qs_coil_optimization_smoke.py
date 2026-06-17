@@ -1553,6 +1553,127 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
     assert vector_gate["physical_scalar_gate"]["same_branch"] is True
 
 
+def test_same_branch_report_writer_adds_requested_registry_scalars_to_complete_fd(tmp_path, monkeypatch):
+    module = _load_example_module()
+    base_params, _metadata = module.make_circle_provider(current_scale=1.0)
+    _x0, variables = module.select_coil_variables(
+        base_params,
+        max_current_vars=1,
+        max_fourier_vars=1,
+    )
+    args = SimpleNamespace(
+        current_step=0.02,
+        dof_step=1.0e-3,
+        target_aspect=6.0,
+        target_iota=0.4,
+        helicity_m=1,
+        helicity_n=0,
+        qs_surfaces="0.25,0.5",
+        qs_ntheta=15,
+        qs_nphi=16,
+        residual_weight=1.0,
+        qs_weight=2.0,
+        aspect_weight=1.0e-2,
+        iota_weight=1.0,
+        same_branch_report_eps=1.0e-4,
+        same_branch_report_mode="vector",
+        same_branch_report_vector_keys="aspect,betatotal",
+        same_branch_report_scalar_key="qs_total",
+        same_branch_report_ad_mode="direct",
+        same_branch_report_max_iter=3,
+        same_branch_report_disable_analytic=True,
+        same_branch_report_freeze_vacuum_field=True,
+        same_branch_report_freeze_bsqvac=True,
+        same_branch_report_nestor_solve_mode="dense",
+        same_branch_report_nestor_operator_solver="gmres",
+        same_branch_report_nestor_operator_tol=1.0e-11,
+        same_branch_report_nestor_operator_atol=1.0e-13,
+        same_branch_report_nestor_operator_maxiter=None,
+        same_branch_report_nestor_operator_restart=None,
+        same_branch_report_replay_max_mode_count=220,
+        same_branch_report_profile_nestor="none",
+        same_branch_report_profile_matrix_free_solvers="gmres,bicgstab",
+        same_branch_report_profile_min_mode_count=96,
+        same_branch_report_profile_min_speedup=1.15,
+        same_branch_report_profile_max_mode_count=220,
+        same_branch_report_rejected_slot_gate=False,
+        vmec_max_iter=2,
+        ftol=1.0e-8,
+        jit_forces=False,
+        activate_fsq=1.0e99,
+    )
+
+    def fake_registry(**_kwargs):
+        return (
+            {
+                "state_norm": lambda _payload: 1.0,
+                "lcfs_boundary_moment": lambda _payload: 0.2,
+                "accepted_bnormal_rms": lambda _payload: 0.3,
+                "betatotal": lambda _payload: 0.025,
+            },
+            {},
+        )
+
+    monkeypatch.setattr(module, "same_branch_scalar_function_registry", fake_registry)
+    monkeypatch.setattr(
+        module,
+        "summarize_run",
+        lambda *_args, **_kwargs: {
+            "residual_proxy": 0.1,
+            "qs_total": 0.4,
+            "aspect": 6.0,
+            "target_aspect": 6.0,
+            "mean_iota": 0.4,
+            "target_iota": 0.4,
+            "free_boundary_bnormal_rms": 0.3,
+            "qs_helicity_m": 1,
+            "qs_helicity_n": 0,
+            "qs_surfaces": [0.25, 0.5],
+        },
+    )
+
+    def fake_report(_input_path, _base_params, *, objective_fn, **_kwargs):
+        payload = {
+            "result": SimpleNamespace(state=object()),
+            "init": SimpleNamespace(static=object(), indata=object(), signgs=1),
+            "params": base_params,
+            "traces": (),
+        }
+        values = objective_fn(payload)
+        assert values["betatotal"] == pytest.approx(0.025)
+        return {
+            "base": {"traces": ()},
+            "branch_compatibility": {
+                "same_branch": False,
+                "plus": {"changed_fields": ("trace",), "max_abs_scalar_delta": 1.0, "max_rel_scalar_delta": 1.0},
+                "minus": {"changed_fields": ("trace",), "max_abs_scalar_delta": 1.0, "max_rel_scalar_delta": 1.0},
+            },
+            "trace_replay_diagnostics": {},
+            "values": {"base": values["objective"], "plus": values["objective"], "minus": values["objective"]},
+            "objective_values": {
+                key: {"base": value, "plus": value, "minus": value, "central_fd_directional": 0.0}
+                for key, value in values.items()
+            },
+            "primary_objective": "objective",
+        }
+
+    import vmec_jax.free_boundary_adjoint as freeb_adj
+
+    monkeypatch.setattr(freeb_adj, "direct_coil_same_branch_complete_solve_fd_report", fake_report)
+
+    path = module.write_same_branch_validation_report(
+        input_path=tmp_path / "input.direct",
+        base_params=base_params,
+        variables=variables,
+        args=args,
+        outdir=tmp_path,
+    )
+
+    report = json.loads(path.read_text())
+    assert report["objective_values"]["betatotal"]["base"] == pytest.approx(0.025)
+    assert report["branch_local_vector_jacobian"]["reason"] == "branch fingerprint is not same-branch compatible"
+
+
 def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypatch):
     pytest.importorskip("jax")
     from vmec_jax._compat import jnp

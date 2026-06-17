@@ -1405,6 +1405,9 @@ def write_same_branch_validation_report(
         }
         if needs_boozer_qs:
             values["boozer_qs_total"] = scalar_value_fns["boozer_qs_total"](payload)
+        for key in sorted(requested_report_keys):
+            if key not in values and key in scalar_value_fns:
+                values[key] = scalar_value_fns[key](payload)
         return values
 
     timings: dict[str, float] = {}
