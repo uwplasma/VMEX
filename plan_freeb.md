@@ -24673,6 +24673,61 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 100%.
 
+### 2026-06-16 Single-Pass Same-Branch Vector Gate Artifacts
+
+Steps taken:
+
+1. Added a small JSON-native payload helper using the same encoder as the
+   single-stage coil optimization report files.
+2. Removed the duplicate
+   ``direct_coil_branch_local_scalars_report_from_complete_fd`` and
+   ``direct_coil_same_branch_physical_scalar_gate_report`` calls in the
+   branch-local vector report path.
+3. Revalidated the finite-beta QA wrapper smoke report to confirm
+   ``betatotal`` remains present in both complete-solve objective values and
+   branch-local vector/gate artifacts.
+
+Results obtained:
+
+1. The vector scalar report and physical scalar gate are now computed once per
+   same-branch vector report and converted to JSON-native payloads at the file
+   boundary.
+2. The real finite-beta smoke report still had a passing vector gate with
+   scalar keys ``aspect``, ``betatotal``, ``lcfs_boundary_moment``,
+   ``mean_iota``, and ``qs_total``.
+3. ``betatotal`` AD-vs-complete-FD absolute error remained
+   ``2.3e-13`` in the smoke report.
+4. ``write_same_branch_validation_report`` dropped from 658 to 645 lines.
+5. ``python -m ruff check`` passed for the touched example/test files.
+6. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qs_coil_optimization_smoke.py
+   tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py -q``
+   passed with one expected xfail.
+
+Best next steps:
+
+1. Commit and push this report-generation refactor.
+2. Continue reducing report/replay cold cost by extracting or memoizing
+   replay-plan setup only where profiler evidence shows duplicated work.
+3. Keep phase-3 examples tied to complete-solve acceptance authority; use the
+   same-branch vector/JVP reports as proposal evidence only.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999997%.
+- VMEC parity and physics gates: 99.9%.
+- Single-stage coil-only optimization phase 3: 99.965%.
+- CPU/GPU performance: 99.46%; duplicated vector-gate report work removed.
+- CI/runtime/coverage hygiene: 100% locally for this shard; awaiting GitHub CI
+  for the latest branch head after push.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.
+
 ### 2026-06-16 Finite-Beta Scalar In Same-Branch Coil Reports
 
 Steps taken:

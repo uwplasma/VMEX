@@ -153,6 +153,12 @@ def _json_default(value: Any) -> Any:
     return str(value)
 
 
+def json_safe_payload(value: Any) -> Any:
+    """Return a JSON-native copy using the same encoding as report files."""
+
+    return json.loads(json.dumps(value, default=_json_default))
+
+
 def write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, default=_json_default) + "\n")
@@ -1718,21 +1724,8 @@ def write_same_branch_validation_report(
                 "differentiates_fixed_accepted_branch": bool(
                     scalars_report.get("differentiates_fixed_accepted_branch", False)
                 ),
-                "scalar_report": direct_coil_branch_local_scalars_report_from_complete_fd(
-                    report,
-                    vector,
-                    scalar_keys=scalar_keys,
-                    rtol=production_rtol,
-                    atol={key: 5.0e-8 for key in scalar_keys},
-                    base_value_atol={key: 2.0e-3 for key in scalar_keys},
-                    json_safe=True,
-                ),
-                "physical_scalar_gate": direct_coil_same_branch_physical_scalar_gate_report(
-                    report,
-                    scalars_report,
-                    scalar_keys=scalar_keys,
-                    json_safe=True,
-                ),
+                "scalar_report": json_safe_payload(scalars_report),
+                "physical_scalar_gate": json_safe_payload(physical_gate),
             }
         except Exception as exc:  # pragma: no cover - report artifacts should not abort the example.
             branch_local_vector_gate = {
