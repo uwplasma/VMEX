@@ -140,6 +140,8 @@ def test_root_fixed_boundary_solve_diagnostic_runs_without_plots(tmp_path):
     assert rows[0]["ns"] == 7
     assert rows[0]["optimizer"] == "lbfgs"
     assert rows[0]["residual_linear_maxiter"] == 16
+    assert rows[0]["residual_preconditioner"] == "radial_xi_tridi"
+    assert rows[0]["residual_xi_alpha"] == pytest.approx(0.2)
     assert rows[0]["optimizer_nit"] <= 2
     assert "optimizer_rejection_reason" in rows[0]
     assert "optimizer_candidate_min_sqrtg" in rows[0]
@@ -213,3 +215,5 @@ def test_root_solver_comparison_example_runs_without_plots(tmp_path):
     assert ("manufactured", "residual_newton", "manufactured_source_validation") in row_keys
     assert len(metrics["histories"]) == len(metrics["rows"])
     assert all(row["final_residual_norm"] >= 0.0 for row in metrics["rows"])
+    production_rows = [row for row in metrics["rows"] if row["solver_scope"] == "production_fixed_boundary"]
+    assert all(row["residual_preconditioner"] == "radial_xi_tridi" for row in production_rows)

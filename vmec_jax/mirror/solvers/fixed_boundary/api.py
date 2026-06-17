@@ -31,6 +31,10 @@ class MirrorSolveOptions:
     line_search_steps: int = 16
     reduced_coordinate_scaling: str = "geometry"
     residual_linear_maxiter: int = 16
+    residual_preconditioner: str = "radial_xi_tridi"
+    residual_radial_alpha: float = 0.5
+    residual_lambda_alpha: float = 0.5
+    residual_xi_alpha: float = 0.2
     pressure_continuation: tuple[float, ...] = (1.0,)
     mu0: float = 4.0e-7 * 3.141592653589793
 
@@ -46,6 +50,10 @@ class MirrorSolveOptions:
             line_search_steps=self.line_search_steps,
             reduced_coordinate_scaling=self.reduced_coordinate_scaling,
             residual_linear_maxiter=self.residual_linear_maxiter,
+            residual_preconditioner=self.residual_preconditioner,
+            residual_radial_alpha=self.residual_radial_alpha,
+            residual_lambda_alpha=self.residual_lambda_alpha,
+            residual_xi_alpha=self.residual_xi_alpha,
             mu0=self.mu0,
         )
 

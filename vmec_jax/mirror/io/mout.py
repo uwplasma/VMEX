@@ -96,6 +96,10 @@ def _attrs_with_result_metadata(result) -> dict[str, str]:
     attrs = dict(MOUT_GLOBAL_ATTRIBUTES)
     attrs["solver_optimizer"] = str(result.options.optimizer)
     attrs["solver_reduced_coordinate_scaling"] = str(result.options.reduced_coordinate_scaling)
+    attrs["solver_residual_preconditioner"] = str(result.options.residual_preconditioner)
+    attrs["solver_residual_radial_alpha"] = str(float(result.options.residual_radial_alpha))
+    attrs["solver_residual_lambda_alpha"] = str(float(result.options.residual_lambda_alpha))
+    attrs["solver_residual_xi_alpha"] = str(float(result.options.residual_xi_alpha))
     attrs["solver_maxiter"] = str(int(result.options.maxiter))
     attrs["pressure_continuation"] = ",".join(str(float(stage)) for stage in result.options.pressure_continuation)
     return attrs

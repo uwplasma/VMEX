@@ -22,6 +22,7 @@ from vmec_jax.mirror.solvers.fixed_boundary.optimizers import (
     axisym_reduced_coordinate_scale,
     axisym_reduced_a_mask,
     axisym_reduced_bounds,
+    axisym_reduced_residual_preconditioner,
     pack_axisym_reduced_state,
     reduced_axisym_energy_and_gradient,
 )
@@ -188,6 +189,32 @@ def test_reduced_coordinate_scaling_matches_reduced_axisym_layout():
         scale[:num_a], np.broadcast_to(boundary_radius[None, :], initial_state.a.shape)[axisym_reduced_a_mask(grid)]
     )
     assert np.allclose(scale[num_a:], np.median(boundary_radius))
+
+
+def test_reduced_residual_preconditioner_preserves_axisym_layout_and_damps_high_frequency_vector():
+    config, grid, boundary, initial_state = _perturbed_cylinder_case()
+    del config
+    vector = pack_axisym_reduced_state(initial_state, grid, boundary)
+    alternating = np.where(np.arange(vector.size) % 2 == 0, 1.0, -1.0)
+
+    identity = axisym_reduced_residual_preconditioner(alternating, grid, kind="none")
+    smoothed = axisym_reduced_residual_preconditioner(
+        alternating,
+        grid,
+        kind="radial_xi_tridi",
+        radial_alpha=0.5,
+        lambda_alpha=0.5,
+        xi_alpha=0.5,
+    )
+
+    assert identity.shape == alternating.shape
+    assert smoothed.shape == alternating.shape
+    assert np.allclose(identity, alternating)
+    assert np.linalg.norm(smoothed) < np.linalg.norm(alternating)
+    with pytest.raises(ValueError, match="expected"):
+        axisym_reduced_residual_preconditioner(alternating[:-1], grid)
+    with pytest.raises(ValueError, match="nonnegative"):
+        axisym_reduced_residual_preconditioner(alternating, grid, radial_alpha=-0.1)
 
 
 def test_lbfgs_solver_uses_reduced_optimizer_and_improves_perturbed_cylinder():

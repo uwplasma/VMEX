@@ -36,6 +36,10 @@ class OptimizerOptions:
     line_search_steps: int = 16
     reduced_coordinate_scaling: str = "geometry"
     residual_linear_maxiter: int = 16
+    residual_preconditioner: str = "radial_xi_tridi"
+    residual_radial_alpha: float = 0.5
+    residual_lambda_alpha: float = 0.5
+    residual_xi_alpha: float = 0.2
     mu0: float = 4.0e-7 * np.pi
 
 
@@ -93,6 +97,17 @@ def _scaling_key(value: str) -> str:
     if key in {"geometry", "vmec", "vmec_like", "diagonal"}:
         return "geometry"
     raise ValueError(f"unsupported mirror reduced-coordinate scaling {value!r}")
+
+
+def _residual_preconditioner_key(value: str) -> str:
+    key = str(value).strip().lower().replace("-", "_")
+    if key in {"none", "identity", "off", "false"}:
+        return "none"
+    if key in {"radial_tridi", "radial", "vmec", "vmec_like"}:
+        return "radial_tridi"
+    if key in {"radial_xi_tridi", "open_xi_tridi", "radial_tridi_xi"}:
+        return "radial_xi_tridi"
+    raise ValueError(f"unsupported mirror residual preconditioner {value!r}")
 
 
 def _positive_radius(state: MirrorStateAxisym | MirrorState3D, floor: float = 1.0e-10) -> bool:
@@ -159,6 +174,51 @@ def _sanitize_scale(scale, *, expected_size: int) -> np.ndarray:
     return scale
 
 
+def _validate_smoothing_alpha(alpha: float, *, name: str) -> float:
+    alpha = float(alpha)
+    if not np.isfinite(alpha) or alpha < 0.0:
+        raise ValueError(f"{name} must be a finite nonnegative number")
+    return alpha
+
+
+def _tridiagonal_smooth_zero_dirichlet(values: np.ndarray, *, alpha: float, axis: int = 0) -> np.ndarray:
+    """Apply a symmetric zero-Dirichlet tridiagonal smoother along one axis."""
+    alpha = _validate_smoothing_alpha(alpha, name="alpha")
+    values = np.asarray(values, dtype=float)
+    if alpha == 0.0 or values.size == 0:
+        return values.copy()
+    moved = np.moveaxis(values, axis, 0)
+    original_shape = moved.shape
+    n = int(original_shape[0])
+    if n == 0:
+        return values.copy()
+    rhs = moved.reshape(n, -1).copy()
+    if n == 1:
+        solved = rhs / (1.0 + 2.0 * alpha)
+        return np.moveaxis(solved.reshape(original_shape), 0, axis)
+
+    lower = np.full(n - 1, -alpha, dtype=float)
+    diag = np.full(n, 1.0 + 2.0 * alpha, dtype=float)
+    upper = np.full(n - 1, -alpha, dtype=float)
+
+    # Thomas elimination for many right-hand sides sharing one SPD tridiagonal matrix.
+    c_prime = np.empty_like(upper)
+    d_prime = np.empty_like(rhs)
+    c_prime[0] = upper[0] / diag[0]
+    d_prime[0] = rhs[0] / diag[0]
+    for row in range(1, n):
+        denom = diag[row] - lower[row - 1] * c_prime[row - 1]
+        if row < n - 1:
+            c_prime[row] = upper[row] / denom
+        d_prime[row] = (rhs[row] - lower[row - 1] * d_prime[row - 1]) / denom
+
+    solved = np.empty_like(rhs)
+    solved[-1] = d_prime[-1]
+    for row in range(n - 2, -1, -1):
+        solved[row] = d_prime[row] - c_prime[row] * solved[row + 1]
+    return np.moveaxis(solved.reshape(original_shape), 0, axis)
+
+
 def axisym_reduced_a_mask(grid: MirrorGrid) -> np.ndarray:
     """Return the independent ``a`` nodes for fixed-boundary axisymmetric solves."""
     mask = np.zeros((grid.ns, grid.nxi), dtype=bool)
@@ -191,6 +251,52 @@ def axisym_reduced_coordinate_scale(
     a_scale = np.broadcast_to(radius_scale[None, :], (grid.ns, grid.nxi))[axisym_reduced_a_mask(grid)]
     lambda_scale = np.full(grid.ns * (grid.nxi - 1), float(np.median(radius_scale)), dtype=float)
     return _sanitize_scale(np.concatenate([a_scale, lambda_scale]), expected_size=vector_size)
+
+
+def axisym_reduced_residual_preconditioner(
+    vector: np.ndarray,
+    grid: MirrorGrid,
+    *,
+    kind: str = "radial_xi_tridi",
+    radial_alpha: float = 0.5,
+    lambda_alpha: float = 0.5,
+    xi_alpha: float = 0.2,
+) -> np.ndarray:
+    """Apply a VMEC-like reduced-coordinate residual preconditioner.
+
+    The mirror reduced vector contains interior radius ``a`` nodes followed by
+    gauge-fixed ``lambda`` nodes.  This applies a symmetric tridiagonal
+    smoother to the reduced coordinates, matching the regular VMEC residual
+    iteration idea of radial tridiagonal preconditioning while respecting the
+    mirror fixed-boundary packing.  The optional ``radial_xi_tridi`` mode also
+    smooths radius updates along the open-ended axial direction with
+    zero-Dirichlet ghost caps.
+    """
+    key = _residual_preconditioner_key(kind)
+    vector = np.asarray(vector, dtype=float).reshape(-1)
+    if key == "none":
+        return vector.copy()
+    radial_alpha = _validate_smoothing_alpha(radial_alpha, name="radial_alpha")
+    lambda_alpha = _validate_smoothing_alpha(lambda_alpha, name="lambda_alpha")
+    xi_alpha = _validate_smoothing_alpha(xi_alpha, name="xi_alpha")
+
+    num_a = int(np.count_nonzero(axisym_reduced_a_mask(grid)))
+    expected_size = num_a + grid.ns * (grid.nxi - 1)
+    if vector.size != expected_size:
+        raise ValueError(f"preconditioner vector has size {vector.size}, expected {expected_size}")
+
+    a_values = vector[:num_a]
+    lam_values = vector[num_a:].reshape(grid.ns, grid.nxi - 1)
+    if num_a:
+        a_values = a_values.reshape(grid.ns - 2, grid.nxi - 2)
+        if radial_alpha > 0.0:
+            a_values = _tridiagonal_smooth_zero_dirichlet(a_values, alpha=radial_alpha, axis=0)
+        if key == "radial_xi_tridi" and xi_alpha > 0.0:
+            a_values = _tridiagonal_smooth_zero_dirichlet(a_values, alpha=xi_alpha, axis=1)
+        a_values = a_values.ravel()
+    if lambda_alpha > 0.0:
+        lam_values = _tridiagonal_smooth_zero_dirichlet(lam_values, alpha=lambda_alpha, axis=0)
+    return np.concatenate([a_values, lam_values.ravel()])
 
 
 def reduced_a_mask_3d(grid: MirrorGrid) -> np.ndarray:
@@ -877,6 +983,7 @@ def projected_residual_newton_solve(
     )
     y = x0 / x_scale
     scale_jax = jnp.asarray(x_scale, dtype=jnp.asarray(x0).dtype)
+    preconditioner_kind = _residual_preconditioner_key(options.residual_preconditioner)
 
     def objective_x(vector):
         return _axisym_reduced_energy_jax(
@@ -937,8 +1044,33 @@ def projected_residual_newton_solve(
             _, hvp = jax.jvp(grad_fun, (x_jax,), (direction_x,))
             return np.asarray(hvp * scale_jax, dtype=float)
 
+        def precondition_y(vector_y):
+            return axisym_reduced_residual_preconditioner(
+                vector_y,
+                grid,
+                kind=preconditioner_kind,
+                radial_alpha=options.residual_radial_alpha,
+                lambda_alpha=options.residual_lambda_alpha,
+                xi_alpha=options.residual_xi_alpha,
+            )
+
         size = int(y.size)
-        operator = LinearOperator((size, size), matvec=matvec_y, rmatvec=matvec_y, dtype=float)
+        if preconditioner_kind == "none":
+            operator = LinearOperator((size, size), matvec=matvec_y, rmatvec=matvec_y, dtype=float)
+        else:
+
+            def matvec_preconditioned(vector_z):
+                return matvec_y(precondition_y(vector_z))
+
+            def rmatvec_preconditioned(vector_y):
+                return precondition_y(matvec_y(vector_y))
+
+            operator = LinearOperator(
+                (size, size),
+                matvec=matvec_preconditioned,
+                rmatvec=rmatvec_preconditioned,
+                dtype=float,
+            )
         rhs = -grad_x * x_scale
         linear_maxiter = max(1, int(options.residual_linear_maxiter))
         linear_result = lsmr(
@@ -949,7 +1081,8 @@ def projected_residual_newton_solve(
             maxiter=linear_maxiter,
         )
         njev += int(linear_result[2])
-        step_y = np.asarray(linear_result[0], dtype=float)
+        step_y_raw = np.asarray(linear_result[0], dtype=float)
+        step_y = step_y_raw if preconditioner_kind == "none" else precondition_y(step_y_raw)
         if not np.all(np.isfinite(step_y)):
             message = "non-finite reduced-Newton step"
             break

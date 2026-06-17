@@ -3064,7 +3064,7 @@ preconditioner layer.
   comparison row. Source-aware gradient/L-BFGS wrappers can be added later if
   they become useful for diagnosing the manufactured problem.
 
-### Default benchmark result
+### Default benchmark result before residual preconditioning
 
 For `examples/mirror_solver_comparison.py --outdir results/mirror/solver_comparison`:
 
@@ -3091,3 +3091,94 @@ For `examples/mirror_solver_comparison.py --outdir results/mirror/solver_compari
 - Add source-aware manufactured gradient/L-BFGS wrappers only if the
   manufactured comparison needs optimizer-level parity beyond the current
   residual-Newton convergence gate.
+
+---
+
+## 39. 2026-06-17 mirror residual preconditioning lane
+
+This lane adds the first VMEC-like reduced-coordinate preconditioner to the
+axisymmetric mirror residual-Newton path.
+
+### Implemented in this lane
+
+- Added `residual_preconditioner`, `residual_radial_alpha`,
+  `residual_lambda_alpha`, and `residual_xi_alpha` to `MirrorSolveOptions` and
+  `OptimizerOptions`.
+- Added `axisym_reduced_residual_preconditioner`.
+  - It respects the mirror reduced-coordinate packing:
+    independent interior radius `a` nodes followed by gauge-fixed `lambda`
+    nodes.
+  - It applies a symmetric tridiagonal zero-Dirichlet smoother to reduced
+    coordinates.
+  - `radial_tridi` applies VMEC-like radial smoothing to `a` and `lambda`.
+  - `radial_xi_tridi` also smooths radius updates along the open axial `xi`
+    direction, using zero ghost caps to respect fixed mirror end-cap
+    constraints.
+- Wired the preconditioner into the residual-Newton `lsmr` solve as a right
+  preconditioner.
+  - The matrix-vector product solves `H_y P z = -g_y`.
+  - The transpose path applies `P H_y` because the smoother is symmetric and
+    the reduced Hessian is symmetric.
+  - The physical trial step remains `step_y = P z`.
+- Promoted the mirror residual-Newton default to
+  `residual_preconditioner="radial_xi_tridi"`,
+  `residual_radial_alpha=0.5`, `residual_lambda_alpha=0.5`, and
+  `residual_xi_alpha=0.2`.
+- Kept `--residual-preconditioner none` and `radial_tridi` available for
+  controlled baseline studies.
+- Wrote the preconditioner settings to mirror output metadata, fixed-boundary
+  diagnostic JSON, and solver-comparison JSON.
+- Added direct unit coverage for the reduced preconditioner layout, identity
+  mode, high-frequency damping, size validation, and alpha validation.
+- Updated the root diagnostic and solver-comparison examples to expose the new
+  controls.
+
+### Validation result
+
+For the two-coil physical diagnostic with `ns=9`, `nxi=17`, `maxiter=12`,
+`line_search_steps=32`, `optimizer=residual_newton`,
+`residual_linear_maxiter=48`, `gtol=1e-12`, and `ftol=1e-12`:
+
+- No preconditioner:
+  - residual `6.78649263e-02 -> 2.43326621e-05`;
+  - `fsq=2.37782508e-12`;
+  - `nit=12`, `njev=576`.
+- Radial/lambda tridiagonal preconditioner:
+  - residual `6.78649263e-02 -> 4.33062917e-06`;
+  - `fsq=7.53186709e-14`;
+  - `nit=12`, `njev=576`.
+- Radial/lambda plus open-`xi` radius preconditioner:
+  - residual `6.78649263e-02 -> 8.18367717e-07`;
+  - `fsq=2.68966153e-15`;
+  - `nit=12`, `njev=576`.
+
+For the regenerated default solver-comparison report at
+`results/mirror/solver_comparison_preconditioned`:
+
+- Cylinder residual Newton reaches `5.610232e-17`.
+- Two-coil residual Newton reaches `8.183677e-07`.
+- The sourced manufactured gate still reaches `3.109011e-15`.
+- The generated plot bundle still renders horizontal-`z` geometry, visible
+  field-line overlays, and `|B|` maps with high-field end caps and a low-field
+  central well.
+
+### Interpretation
+
+- The preconditioner is a real improvement on the two-coil physical benchmark:
+  about `5.6x` better than radial/lambda-only smoothing and about `30x` better
+  than the unpreconditioned residual-Newton solve at the same outer and inner
+  iteration budgets.
+- This still does not prove tight two-coil convergence to `gtol=1e-12`; it
+  lowers the residual floor for the next convergence-grid lane.
+- The implementation is deliberately a reduced-coordinate mirror analogue of
+  regular VMEC's radial tridiagonal residual preconditioning, with the open
+  mirror `xi` cap adaptation kept explicit and tunable.
+
+### Next gates
+
+- Run convergence grids over `ns`, `nxi`, `residual_linear_maxiter`, and
+  `maxiter` with the new default preconditioner.
+- Study whether cap constraints or a better field-aligned axial preconditioner
+  are needed to reach projected `gtol` on the two-coil physical benchmark.
+- Add richer solver plots that compare preconditioner modes directly in one
+  report if the grid study shows a stable benefit across resolutions.

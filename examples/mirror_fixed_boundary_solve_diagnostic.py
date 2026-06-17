@@ -40,6 +40,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--line-search-steps", type=int, default=64)
     parser.add_argument("--optimizer", type=str, default="lbfgs", choices=("lbfgs", "residual_newton"))
     parser.add_argument("--residual-linear-maxiter", type=int, default=16)
+    parser.add_argument(
+        "--residual-preconditioner",
+        type=str,
+        default="radial_xi_tridi",
+        choices=("none", "radial_tridi", "radial_xi_tridi"),
+    )
+    parser.add_argument("--residual-radial-alpha", type=float, default=0.5)
+    parser.add_argument("--residual-lambda-alpha", type=float, default=0.5)
+    parser.add_argument("--residual-xi-alpha", type=float, default=0.2)
     parser.add_argument("--gtol", type=float, default=1.0e-12)
     parser.add_argument("--ftol", type=float, default=1.0e-12)
     parser.add_argument("--coil-radius", type=float, default=0.35)
@@ -80,6 +89,10 @@ def _run_one(
     line_search_steps: int,
     optimizer: str,
     residual_linear_maxiter: int,
+    residual_preconditioner: str,
+    residual_radial_alpha: float,
+    residual_lambda_alpha: float,
+    residual_xi_alpha: float,
     gtol: float,
     ftol: float,
     coil_radius: float,
@@ -120,6 +133,10 @@ def _run_one(
             ftol=ftol,
             line_search_steps=line_search_steps,
             residual_linear_maxiter=residual_linear_maxiter,
+            residual_preconditioner=residual_preconditioner,
+            residual_radial_alpha=residual_radial_alpha,
+            residual_lambda_alpha=residual_lambda_alpha,
+            residual_xi_alpha=residual_xi_alpha,
             mu0=1.0,
         ),
     )
@@ -141,6 +158,10 @@ def _run_one(
         "line_search_steps": int(line_search_steps),
         "optimizer": str(optimizer),
         "residual_linear_maxiter": int(residual_linear_maxiter),
+        "residual_preconditioner": str(residual_preconditioner),
+        "residual_radial_alpha": float(residual_radial_alpha),
+        "residual_lambda_alpha": float(residual_lambda_alpha),
+        "residual_xi_alpha": float(residual_xi_alpha),
         "gtol": float(gtol),
         "ftol": float(ftol),
         "mout": str(mout),
@@ -183,6 +204,10 @@ def run_case(
     line_search_steps: int = 64,
     optimizer: str = "lbfgs",
     residual_linear_maxiter: int = 16,
+    residual_preconditioner: str = "radial_xi_tridi",
+    residual_radial_alpha: float = 0.5,
+    residual_lambda_alpha: float = 0.5,
+    residual_xi_alpha: float = 0.2,
     gtol: float = 1.0e-12,
     ftol: float = 1.0e-12,
     coil_radius: float = 0.35,
@@ -202,6 +227,10 @@ def run_case(
             line_search_steps=line_search_steps,
             optimizer=optimizer,
             residual_linear_maxiter=residual_linear_maxiter,
+            residual_preconditioner=residual_preconditioner,
+            residual_radial_alpha=residual_radial_alpha,
+            residual_lambda_alpha=residual_lambda_alpha,
+            residual_xi_alpha=residual_xi_alpha,
             gtol=gtol,
             ftol=ftol,
             coil_radius=coil_radius,
@@ -228,6 +257,10 @@ def main(argv: list[str] | None = None) -> int:
         line_search_steps=args.line_search_steps,
         optimizer=args.optimizer,
         residual_linear_maxiter=args.residual_linear_maxiter,
+        residual_preconditioner=args.residual_preconditioner,
+        residual_radial_alpha=args.residual_radial_alpha,
+        residual_lambda_alpha=args.residual_lambda_alpha,
+        residual_xi_alpha=args.residual_xi_alpha,
         gtol=args.gtol,
         ftol=args.ftol,
         coil_radius=args.coil_radius,
