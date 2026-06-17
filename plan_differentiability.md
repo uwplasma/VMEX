@@ -7895,6 +7895,62 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.73%.
 
+## 2026-06-17 Matrix-Free Linear Operator Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted matrix-free residual-Jacobian `LinearOperator` construction from
+   `FixedBoundaryExactOptimizer.residual_linear_operator` into
+   `vmec_jax.optimizers.fixed_boundary.matrix_free`.
+2. Kept `FixedBoundaryExactOptimizer.residual_linear_operator` as the public
+   method wrapper so examples/tests can still monkeypatch or call it directly.
+3. Preserved compatibility aliases for older private helper imports from
+   `vmec_jax.optimization` while centralizing the implementation in
+   `optimizers.fixed_boundary.linear_guards`.
+
+Results obtained:
+
+- `vmec_jax/optimization.py` dropped from 4,900 to 4,702 lines.
+- `FixedBoundaryExactOptimizer` dropped from 3,559 to 3,361 lines.
+- Matrix-free JVP/VJP replay, cached initial tangent projection, finite product
+  sanitization, residual cotangent helper caching, and SciPy `LinearOperator`
+  shape behavior now live in a dedicated optimizer-domain module.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization.py vmec_jax/optimizers/fixed_boundary/*.py tests/test_optimizer_domain_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_wave2_coverage.py::test_residual_linear_operator_products_use_tape_and_residual_transposes tests/test_optimization_wave2_coverage.py::test_residual_linear_operator_precomputes_initial_tangents_for_stellsym_cpu tests/test_optimization_helpers.py::test_residual_linear_operator_matvec_and_matmat_are_shape_checked tests/test_optimization_helpers.py::test_residual_linear_operator_sanitizes_nonfinite_products tests/test_optimization_helpers.py::test_residual_linear_operator_reuses_cached_initial_tangents -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimizer_domain_helpers.py tests/test_optimization_wave2_coverage.py tests/test_optimization_fast_optimizer_methods.py tests/test_optimization_callback_trace.py tests/test_optimization_helpers.py -q`
+
+Best next steps:
+
+1. Commit and push this matrix-free linear-operator extraction.
+2. Continue extracting exact scalar objective/gradient replay and dense
+   Jacobian projected-replay helpers from `FixedBoundaryExactOptimizer`.
+3. Keep compatibility facades stable until the draft PR reaches the final
+   package-organization review.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.82%.
+- Differentiability/refactor implementation: 99.997%.
+- Solver monolith reduction: 98.50%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 89%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.74%.
+
 ## 2026-06-17 Shared Initial Axis-Reset Diagnostics
 
 Branch: `codex/differentiability-refactor-plan`.
