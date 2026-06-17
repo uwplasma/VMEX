@@ -966,6 +966,7 @@ def test_nestor_profile_policy_requires_size_and_speedup_thresholds():
     )
     assert slow_matrix_free["promote_matrix_free"] is False
     assert "speedup" in slow_matrix_free["reason"]
+    assert slow_matrix_free["recommended_report_options"]["same_branch_report_nestor_solve_mode"] == "dense"
 
     promoted = module.nestor_profile_policy_from_results(
         [
@@ -983,6 +984,11 @@ def test_nestor_profile_policy_requires_size_and_speedup_thresholds():
     )
     assert promoted["promote_matrix_free"] is True
     assert promoted["matrix_free_best_solver"] == "gmres"
+    assert promoted["recommended_report_options"] == {
+        "same_branch_report_nestor_solve_mode": "matrix_free",
+        "same_branch_report_nestor_operator_solver": "gmres",
+        "reason": "use promoted matrix-free replay settings",
+    }
 
     assert module.parse_profile_matrix_free_solvers("gmres,bicgstab") == ("gmres", "bicgstab")
     with pytest.raises(ValueError, match="unsupported"):
