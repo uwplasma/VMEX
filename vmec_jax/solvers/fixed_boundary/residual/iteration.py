@@ -7295,18 +7295,9 @@ def solve_fixed_boundary_residual_iter(
                 update_rms_preclip = update_rms
                 if bool(limit_update_rms) and np.isfinite(update_rms) and (update_rms > max_update_rms):
                     scl = max_update_rms / max(update_rms, 1e-30)
-                    vRcc = vRcc * scl
-                    vRss = vRss * scl
-                    vRsc = vRsc * scl
-                    vRcs = vRcs * scl
-                    vZsc = vZsc * scl
-                    vZcs = vZcs * scl
-                    vZcc = vZcc * scl
-                    vZss = vZss * scl
-                    vLsc = vLsc * scl
-                    vLcs = vLcs * scl
-                    vLcc = vLcc * scl
-                    vLss = vLss * scl
+                    (vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss) = (
+                        _scale_velocity_blocks(scl, vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss)
+                    )
                     update_rms_j = _force_update_rms(
                         dt_eff,
                         vRcc,
