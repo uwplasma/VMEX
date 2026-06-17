@@ -7411,3 +7411,61 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.66%.
+
+## 2026-06-17 Free-Boundary `bsqvac` Replay Block Consolidation
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted the duplicated direct-coil free-boundary `bsqvac` replay and
+   diagnostic objective logic from the trace-control and stacked-control
+   controller branches into one local `_freeb_bsqvac_replay_terms` helper.
+2. Kept both strict-update paths unchanged: the normal trace path still calls
+   `strict_update_one_step_from_trace`, while the stacked-control path still
+   calls `strict_update_one_step_from_state`.
+3. Preserved dense/matrix-free NESTOR options, vacuum-field freeze options, and
+   state-only replay behavior under the same branch-local gates.
+
+Results obtained:
+
+- `vmec_jax/free_boundary_adjoint.py` dropped from 3,794 to 3,714 lines.
+- `direct_coil_accepted_trace_controller_replay_objective_jax` dropped from
+  733 to 653 lines.
+- The two controller replay paths now share the same external-field replay
+  contract, reducing the chance that future direct-coil or NESTOR diagnostics
+  diverge between trace-control modes.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/free_boundary_adjoint.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_adjoint_helpers_unit.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_branch_trace_mode_keeps_replay_controls_without_raw_force_payload tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_vacuum_field_override_replay_contract -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 18`
+
+Best next steps:
+
+1. Push the two local free-boundary extraction commits now that the previous CI
+   run is green.
+2. Let CI validate the combined branch before starting another free-boundary
+   replay extraction.
+3. Next phase-2 correctness work should target a narrow fingerprint-gated
+   adaptive-slot AD-vs-FD report rather than further cosmetic refactoring.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.77%.
+- Differentiability/refactor implementation: 99.996%.
+- Solver monolith reduction: 98.24%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 94.4%.
+- WOUT diagnostic/profile decomposition: 98.5%.
+- Optimizer workflow decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.67%.
