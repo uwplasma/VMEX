@@ -69,8 +69,12 @@ under ``results/free_boundary_essos_mgrid_forward/`` and
 Current-only derivative proposal smoke
 --------------------------------------
 
-The fastest same-branch derivative-proposal smoke keeps the optimization
-direction current-only.  This lets the branch-local vector/JVP replay reuse
+The fastest same-branch derivative-proposal smoke keeps the report direction
+current-only even when the optimizer still has Fourier coil variables
+available.  The default ``--same-branch-report-direction auto`` does this when
+``--same-branch-derivative-proposal`` is enabled and at least one current
+variable is selected; use ``--same-branch-report-direction current-only`` to
+make the choice explicit.  This lets the branch-local vector/JVP replay reuse
 the fixed coil geometry while the final accept/reject decision still comes
 from a complete free-boundary solve:
 
@@ -79,9 +83,9 @@ from a complete free-boundary solve:
    JAX_ENABLE_X64=1 python examples/optimization/free_boundary_QS_coil_optimization.py \
      --smoke \
      --max-evals 1 \
-     --max-fourier-vars 0 \
      --write-same-branch-report \
      --same-branch-report-mode vector \
+     --same-branch-report-direction current-only \
      --same-branch-report-nestor-solve-mode matrix_free \
      --same-branch-report-nestor-operator-solver bicgstab \
      --same-branch-report-replay-max-mode-count 0 \
@@ -1450,6 +1454,7 @@ final-point derivative evidence for a reviewer-facing artifact.
      --helicity-n 0 \
      --write-same-branch-report \
      --same-branch-report-mode vector \
+     --same-branch-report-direction current-only \
      --same-branch-report-vector-keys aspect,qs_total \
      --same-branch-report-rejected-slot-gate \
      --same-branch-derivative-proposal \

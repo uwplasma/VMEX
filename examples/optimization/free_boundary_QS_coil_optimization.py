@@ -648,17 +648,50 @@ def objective_terms_from_summary(
     }
 
 
-def same_branch_direction_from_variables(variables: list[tuple[str, tuple[int, ...]]]) -> np.ndarray:
-    """Return a mixed current/Fourier validation direction in optimizer space."""
+def same_branch_report_direction_policy(
+    args: argparse.Namespace,
+    variables: list[tuple[str, tuple[int, ...]]],
+) -> tuple[str, str, str]:
+    """Return requested/effective same-branch report direction policy.
+
+    ``auto`` preserves the broad mixed current/Fourier validation direction for
+    ordinary reports, but switches to the current-only direction when a
+    derivative proposal is requested.  That keeps proposal smokes on the fast
+    fixed-coil-geometry JVP path while complete solves still decide acceptance.
+    """
+
+    requested = str(getattr(args, "same_branch_report_direction", "auto")).strip().lower()
+    if requested not in {"auto", "all", "current-only"}:
+        raise ValueError("--same-branch-report-direction must be one of auto, all, current-only")
+    has_current = any(kind == "current" for kind, _index in variables)
+    if requested == "auto":
+        if bool(getattr(args, "same_branch_derivative_proposal", False)) and has_current:
+            return requested, "current-only", "auto selected current-only for derivative-proposal evidence"
+        return requested, "all", "auto selected mixed direction for ordinary same-branch validation"
+    if requested == "current-only" and not has_current:
+        raise ValueError("--same-branch-report-direction=current-only requires at least one selected current variable")
+    return requested, requested, "explicit user selection"
+
+
+def same_branch_direction_from_variables(
+    variables: list[tuple[str, tuple[int, ...]]],
+    *,
+    policy: str = "all",
+) -> np.ndarray:
+    """Return a same-branch validation direction in optimizer space."""
+
+    policy = str(policy).strip().lower()
+    if policy not in {"all", "current-only"}:
+        raise ValueError("same-branch direction policy must be 'all' or 'current-only'")
     direction = np.zeros(len(variables), dtype=float)
     current_index = next((i for i, (kind, _index) in enumerate(variables) if kind == "current"), None)
     fourier_index = next((i for i, (kind, _index) in enumerate(variables) if kind == "fourier_dof"), None)
     if current_index is not None:
         direction[current_index] = 1.0
-    if fourier_index is not None:
+    if policy == "all" and fourier_index is not None:
         direction[fourier_index] = 1.0
     if not np.any(direction):
-        raise ValueError("same-branch validation needs at least one selected coil variable")
+        raise ValueError(f"same-branch validation policy {policy!r} needs at least one matching coil variable")
     return direction
 
 
@@ -1406,7 +1439,10 @@ def write_same_branch_validation_report(
         direct_coil_same_branch_complete_solve_fd_report,
     )
 
-    direction_x = same_branch_direction_from_variables(variables)
+    requested_direction_policy, effective_direction_policy, direction_policy_reason = (
+        same_branch_report_direction_policy(args, variables)
+    )
+    direction_x = same_branch_direction_from_variables(variables, policy=effective_direction_policy)
     direction_params = coil_param_direction_from_variables(
         base_params,
         direction_x,
@@ -1542,6 +1578,11 @@ def write_same_branch_validation_report(
         "input": str(input_path),
         "report_anchor": str(report_anchor),
         "eps": float(args.same_branch_report_eps),
+        "direction_policy": {
+            "requested": requested_direction_policy,
+            "effective": effective_direction_policy,
+            "reason": direction_policy_reason,
+        },
         "direction_x": direction_x.tolist(),
         "direction_variables": [
             variable_manifest
@@ -2175,6 +2216,9 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "xtol": float(args.xtol),
         "ftol": float(args.optimizer_ftol),
     }
+    requested_direction_policy, effective_direction_policy, direction_policy_reason = (
+        same_branch_report_direction_policy(args, variables)
+    )
     same_branch_report_config = {
         "enabled": bool(args.write_same_branch_report),
         "mode": str(args.same_branch_report_mode),
@@ -2192,6 +2236,11 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "eps": float(args.same_branch_report_eps),
         "max_iter": int(args.same_branch_report_max_iter or args.vmec_max_iter),
         "anchor": str(getattr(args, "same_branch_report_anchor", "best")),
+        "direction_policy": {
+            "requested": requested_direction_policy,
+            "effective": effective_direction_policy,
+            "reason": direction_policy_reason,
+        },
         "diagnostic_disable_analytic": bool(getattr(args, "same_branch_report_disable_analytic", False)),
         "diagnostic_freeze_vacuum_field": bool(getattr(args, "same_branch_report_freeze_vacuum_field", False)),
         "diagnostic_freeze_bsqvac": bool(getattr(args, "same_branch_report_freeze_bsqvac", False)),
@@ -2617,6 +2666,18 @@ def build_parser() -> argparse.ArgumentParser:
             "Coil point for --write-same-branch-report. The default validates "
             "the best optimized coil point; 'initial' preserves the older "
             "initial-coil diagnostic."
+        ),
+    )
+    parser.add_argument(
+        "--same-branch-report-direction",
+        choices=("auto", "all", "current-only"),
+        default="auto",
+        help=(
+            "Optimizer-space finite-difference/JVP direction for same-branch reports. "
+            "'all' uses one current and one Fourier coefficient when available. "
+            "'current-only' uses only one current and enables the fixed-coil-geometry "
+            "JVP fast path. 'auto' uses current-only for derivative-proposal reports "
+            "when a current variable is selected, otherwise all."
         ),
     )
     parser.add_argument("--same-branch-report-eps", type=float, default=1.0e-4)

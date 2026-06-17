@@ -12,6 +12,61 @@ Date opened: 2026-05-24
 
 ## Current Release Status
 
+### 2026-06-17 Same-Branch Report Direction Policy
+
+Steps taken:
+
+1. Added ``--same-branch-report-direction`` with ``auto``, ``all``, and
+   ``current-only`` policies to the direct-coil QS optimization example.
+2. Kept the default ``auto`` policy broad for ordinary same-branch validation
+   and current-only for derivative-proposal evidence when a current variable is
+   selected.
+3. Persisted the requested/effective policy and reason in both
+   ``summary.json`` and ``same_branch_complete_solve_report.json``.
+4. Updated the docs so the derivative-proposal smoke no longer disables Fourier
+   variables just to reach the current-only JVP fast path.
+
+Results obtained:
+
+1. ``python -m ruff check`` passed for the touched example/test files.
+2. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qs_coil_optimization_smoke.py
+   tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py -q``
+   passed with one expected xfail.
+3. ``SPHINX_FAST=1 python -m sphinx -q -b html docs
+   /tmp/vmec_jax_docs_fast_direction_policy`` passed.
+4. A real smoke with the default mixed current/Fourier optimization variables
+   and ``--same-branch-derivative-proposal`` recorded
+   ``direction_policy.effective=current-only``, ``direction_x=[1.0, 0.0]``,
+   ``directional_jvp_fast_path=current_only``, and
+   ``current_only_coil_geometry_source=cached``.  The derivative-assisted trial
+   reduced the complete-solve objective from ``1.3736419364589705`` to
+   ``1.3723864922091615`` and was accepted by complete-solve authority.
+
+Best next steps:
+
+1. Commit and push this direction-policy tranche.
+2. Check GitHub CI for the draft PR branch.
+3. Continue the phase-3 path by wiring this branch-local current-only proposal
+   evidence into a small coil-only QA/QS optimization report while keeping
+   complete solves as the only acceptance authority.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999997%.
+- VMEC parity and physics gates: 99.9%.
+- Single-stage coil-only optimization phase 3: 99.992%.
+- CPU/GPU performance: 99.59%.
+- CI/runtime/coverage hygiene: 100% locally for this shard; latest GitHub CI
+  still running for the branch head.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.
+
 ### 2026-06-16 Same-Branch Replay-Plan Cache Helper Extraction
 
 Steps taken:
