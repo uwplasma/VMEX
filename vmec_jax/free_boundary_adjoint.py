@@ -2957,6 +2957,7 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
     include_replay_graph_metadata: bool = True,
     use_replay_plan: bool = True,
     require_active_trace: bool = True,
+    current_only_coil_geometry: Any | None = None,
 ) -> dict[str, Any]:
     """Return production-forward branch-local values and a scalar Jacobian.
 
@@ -3147,6 +3148,7 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
     directional_values = None
     directional_fast_path = "none"
     directional_uses_fixed_coil_geometry = False
+    current_only_geometry_source = "none"
     if direction_params is not None:
         derivative_mode = "directional_jvp"
         current_only_direction = False
@@ -3171,7 +3173,15 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             directional_uses_fixed_coil_geometry = True
             from .external_fields import build_coil_field_geometry, apply_stellarator_symmetry_to_currents
 
-            fixed_gamma, fixed_gamma_dash, _fixed_currents = build_coil_field_geometry(params)
+            if current_only_coil_geometry is None:
+                t0 = time.perf_counter()
+                fixed_gamma, fixed_gamma_dash, _fixed_currents = build_coil_field_geometry(params)
+                timings["current_only_coil_geometry_build_wall_s"] = float(time.perf_counter() - t0)
+                current_only_geometry_source = "built"
+            else:
+                fixed_gamma, fixed_gamma_dash = current_only_coil_geometry[:2]
+                timings["current_only_coil_geometry_build_wall_s"] = 0.0
+                current_only_geometry_source = "cached"
 
             def _fixed_geometry_for_currents(base_currents):
                 expanded_currents = params.current_scale * apply_stellarator_symmetry_to_currents(
@@ -3322,6 +3332,7 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             "replay_ad_mode": ad_mode,
             "directional_jvp_fast_path": directional_fast_path,
             "directional_uses_fixed_coil_geometry": directional_uses_fixed_coil_geometry,
+            "current_only_coil_geometry_source": current_only_geometry_source,
         },
     }
 

@@ -1301,7 +1301,7 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
     _x0, variables = module.select_coil_variables(
         base_params,
         max_current_vars=1,
-        max_fourier_vars=1,
+        max_fourier_vars=0,
     )
     args = SimpleNamespace(
         current_step=0.02,
@@ -1389,6 +1389,7 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
         assert kwargs["include_trace_replay_diagnostics"] is False
         assert kwargs["include_payload"] is False
         assert kwargs["include_replay_graph_metadata"] is False
+        assert kwargs["current_only_coil_geometry"] is not None
         assert kwargs["replay_kwargs"]["state_only_replay"] is True
         assert kwargs["replay_kwargs"]["include_analytic"] is False
         assert kwargs["replay_kwargs"]["include_mode_diagnostics"] is False
@@ -1432,6 +1433,7 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
                 "nestor_operator_restart": 5,
                 "directional_jvp_fast_path": "current_only",
                 "directional_uses_fixed_coil_geometry": True,
+                "current_only_coil_geometry_source": "cached",
             },
             "replay_graph_metadata": {
                 "omitted": True,
@@ -1508,6 +1510,8 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
 
     report = json.loads(path.read_text())
     vector = report["branch_local_vector_jacobian"]
+    assert report["current_only_coil_geometry_cache"]["available"] is True
+    assert report["timings"]["branch_local_current_only_coil_geometry_build_wall_s"] >= 0.0
     assert vector["available"] is True
     assert "fixed accepted branch only" in vector["scope"]
     assert vector["uses_production_forward"] is True
@@ -1532,6 +1536,7 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
     assert vector["replay_option_flags"]["nestor_solve_mode"] == "matrix_free"
     assert vector["replay_option_flags"]["nestor_operator_solver"] == "bicgstab"
     assert vector["replay_option_flags"]["nestor_operator_maxiter"] == 17
+    assert vector["replay_option_flags"]["current_only_coil_geometry_source"] == "cached"
     assert vector["includes_payload"] is False
     assert vector["includes_replay_graph_metadata"] is False
     assert vector["replay_graph_metadata"]["omitted"] is True
@@ -1699,7 +1704,7 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
     _x0, variables = module.select_coil_variables(
         base_params,
         max_current_vars=1,
-        max_fourier_vars=1,
+        max_fourier_vars=0,
     )
     args = SimpleNamespace(
         current_step=0.02,
@@ -1769,7 +1774,14 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
 
     def fake_branch_local_vector(*_args, **kwargs):
         replay_kwargs = dict(kwargs["replay_kwargs"])
-        calls.append({**replay_kwargs, "_replay_plan": kwargs.get("replay_plan")})
+        calls.append(
+            {
+                **replay_kwargs,
+                "_replay_plan": kwargs.get("replay_plan"),
+                "_current_only_coil_geometry": kwargs.get("current_only_coil_geometry"),
+            }
+        )
+        assert kwargs["current_only_coil_geometry"] is not None
         accept_mask = replay_kwargs.get("accept_mask")
         traces = tuple(replay_kwargs.get("traces", (trace,)))
         if accept_mask is None:
@@ -1809,6 +1821,7 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
                 "nestor_operator_restart": replay_kwargs["nestor_operator_restart"],
                 "directional_jvp_fast_path": "current_only",
                 "directional_uses_fixed_coil_geometry": True,
+                "current_only_coil_geometry_source": "cached",
             },
             "replay_graph_metadata": {"omitted": not bool(kwargs["include_replay_graph_metadata"])},
             "replay_branch_metadata": {
@@ -1875,16 +1888,21 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
 
     report = json.loads(path.read_text())
     assert report["mode_count"] == 144
+    assert report["current_only_coil_geometry_cache"]["available"] is True
     assert report["branch_local_vector_replay_plan_cache"]["available"] is True
     assert len(calls) == 4
     assert calls[0]["nestor_solve_mode"] == "dense"
     assert calls[0]["_replay_plan"] is replay_plan_sentinel
+    assert calls[0]["_current_only_coil_geometry"] is not None
     assert calls[1]["use_accepted_only_fast_path"] is False
     assert calls[1]["_replay_plan"] is None
+    assert calls[1]["_current_only_coil_geometry"] is not None
     assert "accept_mask" not in calls[1]
     assert [item.get("step_status", "accepted") for item in calls[1]["traces"]] == ["accepted", "rejected"]
     assert calls[2]["_replay_plan"] is replay_plan_sentinel
     assert calls[3]["_replay_plan"] is replay_plan_sentinel
+    assert calls[2]["_current_only_coil_geometry"] is not None
+    assert calls[3]["_current_only_coil_geometry"] is not None
     profiled = {(call["nestor_solve_mode"], call["nestor_operator_solver"]) for call in calls[2:]}
     assert profiled == {("matrix_free", "gmres"), ("matrix_free", "bicgstab")}
 
@@ -1902,6 +1920,7 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
     assert rejected_gate["controller_slot_summary"]["accepted_slots"] == 1
     assert rejected_gate["controller_slot_summary"]["rejected_slots"] == 1
     assert rejected_gate["replay_option_flags"]["use_accepted_only_fast_path"] is False
+    assert rejected_gate["replay_option_flags"]["current_only_coil_geometry_source"] == "cached"
     assert rejected_gate["replay_branch_metadata"]["status_acceptance_source"] == "trace_step_status"
     assert rejected_gate["replay_branch_metadata"]["status_masks"]["step_status"] == ["accepted", "rejected"]
 
@@ -2059,6 +2078,8 @@ def test_same_branch_report_profile_skips_above_mode_count_cap(tmp_path, monkeyp
     report = json.loads(path.read_text())
     profile = report["nestor_replay_profile"]
     assert len(calls) == 0
+    assert report["current_only_coil_geometry_cache"]["available"] is False
+    assert report["current_only_coil_geometry_cache"]["reason"] == "not requested"
     assert report["same_branch_replay_mode_count_guard"]["triggered"] is True
     assert report["branch_local_vector_jacobian"]["available"] is False
     assert profile["enabled"] is True

@@ -64,7 +64,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from vmec_jax._compat import jax, jnp
 from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_run
-from vmec_jax.external_fields import CoilFieldParams, from_essos_coils
+from vmec_jax.external_fields import CoilFieldParams, build_coil_field_geometry, from_essos_coils
 from vmec_jax.external_fields.coils_jax import coil_current_norm, coil_lengths
 from vmec_jax.finite_beta import finite_beta_scalars_from_state
 from vmec_jax.namelist import read_indata, write_indata
@@ -1080,6 +1080,31 @@ def same_branch_replay_plan_cache(
         return None, {"available": False, "reason": f"{type(exc).__name__}: {exc}", "scope": scope}, None
 
 
+def same_branch_current_only_coil_geometry_cache(
+    params: CoilFieldParams,
+    direction_params: CoilFieldParams,
+) -> tuple[tuple[Any, Any] | None, dict[str, Any], float | None]:
+    """Cache fixed coil geometry when same-branch reports vary currents only."""
+
+    try:
+        direction_dofs = np.asarray(direction_params.base_curve_dofs, dtype=float)
+        if np.any(direction_dofs):
+            return None, {"available": False, "reason": "direction includes coil-shape dofs"}, None
+        t0 = time.perf_counter()
+        gamma, gamma_dash, _currents = build_coil_field_geometry(params)
+        return (
+            (gamma, gamma_dash),
+            {
+                "available": True,
+                "scope": "current-only branch-local vector/profile replays",
+                "timing_key": "branch_local_current_only_coil_geometry_build_wall_s",
+            },
+            float(time.perf_counter() - t0),
+        )
+    except Exception as exc:  # pragma: no cover - defensive; report artifacts should not abort examples.
+        return None, {"available": False, "reason": f"{type(exc).__name__}: {exc}"}, None
+
+
 def nestor_profile_policy_from_results(
     results: list[dict[str, Any]],
     *,
@@ -1519,6 +1544,12 @@ def write_same_branch_validation_report(
         "primary_objective": report["primary_objective"],
     }
     same_branch = bool(report["branch_compatibility"]["same_branch"])
+    current_only_coil_geometry: tuple[Any, Any] | None = None
+    compact_report["current_only_coil_geometry_cache"] = {
+        "available": False,
+        "reason": "not requested",
+        "scope": "current-only branch-local vector/profile replays",
+    }
     branch_local_scalar: dict[str, Any] = {
         "available": False,
         "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
@@ -1591,6 +1622,7 @@ def write_same_branch_validation_report(
         return direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             params=base_params,
             direction_params=direction_params if ad_mode == "direct" else None,
+            current_only_coil_geometry=current_only_coil_geometry,
             complete_payload=report["base"],
             scalar_keys=scalar_keys,
             production_values={key: report_base_values[key] for key in scalar_keys},
@@ -1735,6 +1767,12 @@ def write_same_branch_validation_report(
     main_vector_replay_plan: dict[str, Any] | None = None
     if same_branch and not replay_mode_count_guard_triggered and mode == "vector" and "base" in report and not missing_vector_keys:
         scalar_keys = vector_keys
+        current_only_coil_geometry, current_only_geometry_cache, current_only_geometry_wall_s = (
+            same_branch_current_only_coil_geometry_cache(base_params, direction_params)
+        )
+        compact_report["current_only_coil_geometry_cache"] = current_only_geometry_cache
+        if current_only_geometry_wall_s is not None:
+            timings["branch_local_current_only_coil_geometry_build_wall_s"] = current_only_geometry_wall_s
         main_vector_replay_plan, vector_plan_cache, vector_plan_wall_s = same_branch_replay_plan_cache(
             report,
             replay_kwargs,

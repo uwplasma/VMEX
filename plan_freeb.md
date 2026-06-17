@@ -57,6 +57,69 @@ Completion:
 - Docs/release hygiene: 100%.
 - QI minimal-seed README artifacts: 100%.
 
+### 2026-06-17 Current-Only Coil Geometry Cache for Same-Branch Reports
+
+Steps taken:
+
+1. Added a current-only coil-geometry cache for branch-local vector/JVP
+   same-branch reports in ``free_boundary_QS_coil_optimization.py``.
+2. Passed cached ``gamma``/``gamma_dash`` into
+   ``direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax``
+   so current-only JVP replays avoid rebuilding fixed coil geometry for the
+   main vector report, rejected-slot gate, and NESTOR profile replays.
+3. Kept the cache disabled for scalar reports, replay-mode-count guarded
+   reports, and mixed current+shape directions.
+4. Added JSON provenance via ``current_only_coil_geometry_cache`` and
+   ``current_only_coil_geometry_source`` in replay option flags.
+
+Results obtained:
+
+1. ``python -m ruff check`` passed for the touched example, source helper, and
+   smoke tests.
+2. Targeted vector/report tests passed, including cache reuse through rejected
+   controller-slot and NESTOR profile calls.
+3. ``JAX_ENABLE_X64=1 python -m pytest -q
+   tests/test_free_boundary_qs_coil_optimization_smoke.py
+   tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py -q``
+   passed with 33 pass and 1 expected xfail.
+4. A real finite-beta QA same-branch report with ``--max-fourier-vars 0``
+   produced ``current_only_coil_geometry_cache.available=true``,
+   ``directional_jvp_fast_path=current_only``,
+   ``current_only_coil_geometry_source=cached``, and a passing physical scalar
+   gate.
+5. The same real report with the default mixed current+shape direction
+   correctly left the cache unavailable with reason ``direction includes
+   coil-shape dofs``.
+
+Best next steps:
+
+1. Commit and push this cache/provenance update.
+2. Watch CI for the draft refactor PR head.
+3. Continue the phase-3 production path by wiring the derivative-proposal
+   example to prefer current-only branch-local vector reports when a user asks
+   for proposal evidence, while complete solves remain the acceptance
+   authority.
+4. Profile whether a corresponding shape-geometry partial cache is worthwhile;
+   only promote it if it gives a clear real-run win without weakening AD-vs-FD
+   gates.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999997%.
+- VMEC parity and physics gates: 99.9%.
+- Single-stage coil-only optimization phase 3: 99.98%.
+- CPU/GPU performance: 99.57%; current-only same-branch vector reports now
+  avoid repeated fixed coil-geometry construction.
+- CI/runtime/coverage hygiene: 100% locally for this shard; awaiting GitHub CI
+  for the latest branch head after push.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.
+
 ### 2026-06-16 Matrix-Free Same-Branch Proposal Smoke
 
 Steps taken:
