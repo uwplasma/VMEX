@@ -5613,3 +5613,127 @@ Visual validation:
 
 No user input is needed.  The next lane should convert the successful
 block-dense idea into a scalable block preconditioner/correction.
+
+---
+
+## 55. 2026-06-17 M8v moderate-resolution block-dense benchmark
+
+This lane checked whether the M8u `block_dense_lstsq` correction still works
+at the earlier hard two-coil resolution `ns=9`, `nxi=17`.  No source changes
+were needed.
+
+### Steps taken
+
+- Ran finite-current two-coil `block_dense_lstsq` at:
+  - `ns=9`;
+  - `nxi=17`;
+  - `i_prime=0.01`;
+  - `maxiter=12`;
+  - `residual_linear_maxiter=1` placeholder, because dense/block-dense solves
+    do not use Krylov iteration budgets;
+  - no residual preconditioner.
+- Generated a full plot bundle for the same row.
+- Visually inspected residual history and field-line overlay.
+
+### Results obtained
+
+| quantity | value |
+| --- | ---: |
+| active reduced dof | 249 |
+| final residual | `1.742396273103e-14` |
+| final `fsq` | `1.219254928724e-30` |
+| normalized force | `4.836809658876e-14` |
+| Newton iterations | 5 |
+| optimizer success | true |
+| minimum `sqrt(g)` | `2.997263429136e-03` |
+| mirror ratio | `22.144701631554` |
+
+Interpretation:
+
+- `block_dense_lstsq` reaches tight finite-current convergence at the
+  moderate `ns=9`, `nxi=17` resolution.
+- Runtime remained small for this moderate row, but dense Hessian construction
+  is still not the production large-grid path.
+- This reinforces the next objective: keep the block-correction idea while
+  replacing dense sub-block solves with scalable approximations.
+
+Generated artifacts:
+
+- `results/mirror/m8v_block_dense_ns9_probe/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8v_block_dense_ns9_plots/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8v_block_dense_ns9_plots/residual_newton_convergence_history.png`.
+- `results/mirror/m8v_block_dense_ns9_plots/residual_newton_convergence_components.png`.
+- `results/mirror/m8v_block_dense_ns9_plots/best_finite_current_block_dense_ns9_m8v_residual_newton/figures/best_finite_current_block_dense_ns9_m8v_residual_newton_mirror_boundary_3d.png`.
+- `results/mirror/m8v_block_dense_ns9_plots/best_finite_current_block_dense_ns9_m8v_residual_newton/figures/best_finite_current_block_dense_ns9_m8v_residual_newton_mirror_bfield_boundary.png`.
+- `results/mirror/m8v_block_dense_ns9_plots/best_finite_current_block_dense_ns9_m8v_residual_newton/figures/best_finite_current_block_dense_ns9_m8v_residual_newton_mirror_bmag_sxi.png`.
+- `results/mirror/m8v_block_dense_ns9_plots/best_finite_current_block_dense_ns9_m8v_residual_newton/figures/best_finite_current_block_dense_ns9_m8v_residual_newton_mirror_cross_sections.png`.
+
+### How it was tested
+
+Commands:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/m8v_block_dense_ns9_probe \
+  --ns-array 9 \
+  --nxi-array 17 \
+  --maxiter-array 12 \
+  --residual-linear-maxiter-array 1 \
+  --residual-linear-solver block_dense_lstsq \
+  --residual-linear-maxiter-policy fixed \
+  --i-prime 0.01 \
+  --case-label finite_current_block_dense_ns9_m8v \
+  --preconditioners none \
+  --no-plots
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/m8v_block_dense_ns9_plots \
+  --ns-array 9 \
+  --nxi-array 17 \
+  --maxiter-array 12 \
+  --residual-linear-maxiter-array 1 \
+  --residual-linear-solver block_dense_lstsq \
+  --residual-linear-maxiter-policy fixed \
+  --i-prime 0.01 \
+  --case-label finite_current_block_dense_ns9_m8v \
+  --preconditioners none
+```
+
+Visual validation:
+
+- Residual history reaches below `1e-12` in five Newton iterations.
+- Field-line overlays render on the B-direction plot.
+- Standard horizontal-`z` geometry, `|B|`, and cross-section plots render.
+
+### File structure and best-practice notes
+
+- This is a benchmark/log lane only; no source files changed.
+- The existing convergence-grid example was sufficient.
+
+### Best next steps
+
+1. Commit and push the benchmark log.
+2. Move to a scalable block approximation:
+   - exploit the existing `a`/lambda reduced split;
+   - start with block tridiagonal/tensor-product approximations;
+   - benchmark against both `block_dense_lstsq` and LSMR.
+
+### Completion percentages after M8v
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `87%`.
+- Residual Newton / preconditioning: `89%`.
+- Two-coil and manufactured validation: `82%`.
+- Finite-current pitch validation: `75%`.
+- Plotting and `vmec --plot` mirror support: `79%`.
+- I/O schema and docs: `79%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `15%`.
+- Free-boundary mirror lane: `5%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `0%`.
+- PR merge readiness overall: `76%`.
+
+### User input needed
+
+No user input is needed.
