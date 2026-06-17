@@ -8064,6 +8064,62 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.76%.
 
+## 2026-06-17 Fixed-Boundary Workflow Artifact Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted `FixedBoundaryOptimizationResult`, `OptimizationOutputPaths`,
+   timing-summary extraction, canonical output-path construction, and generic
+   `save_optimization_result` into
+   `vmec_jax.optimizers.fixed_boundary.workflow_artifacts`.
+2. Kept `vmec_jax.optimization_workflow` as the public teaching-workflow facade
+   by importing and re-exporting those names.
+3. Left stage-specific artifact writes and QI stage checkpointing in
+   `optimization_workflow.py` for a later tranche because they depend on local
+   continuation-stage helpers and non-worsening guards.
+
+Results obtained:
+
+- `vmec_jax/optimization_workflow.py` dropped from 4,249 to 4,024 lines.
+- Result properties, timing summaries, canonical path creation, and generic
+  save behavior now have an isolated module and remain import-compatible.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization_workflow.py vmec_jax/optimizers/fixed_boundary/workflow_artifacts.py tests/test_optimization_workflow_unit.py tests/test_optimization_examples.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_workflow_unit.py -k 'result or output_paths or save_optimization_result or timing or checkpoint or combine' tests/test_optimization_examples.py -k 'FixedBoundaryOptimizationResult or save_optimization_result' -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_workflow_unit.py -q`
+
+Best next steps:
+
+1. Commit and push this workflow artifact extraction.
+2. Continue workflow decomposition by moving objective term classes/factories
+   or stage construction into domain modules, keeping `optimization_workflow.py`
+   as the public facade.
+3. Run combined optimizer/workflow shards after the next tranche to catch
+   compatibility regressions across examples.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.88%.
+- Differentiability/refactor implementation: 99.998%.
+- Solver monolith reduction: 98.50%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 92%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.77%.
+
 ## 2026-06-17 Shared Initial Axis-Reset Diagnostics
 
 Branch: `codex/differentiability-refactor-plan`.
