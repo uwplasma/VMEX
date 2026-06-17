@@ -22,7 +22,6 @@ from .field import signgs_from_sqrtg
 from .geom import eval_geom
 from .init_guess import initial_guess_from_boundary
 from .namelist import InData, write_indata
-from .modes import ModeTable
 from .optimizers.fixed_boundary.linear_guards import finite_linear_operator_output
 from .optimizers.fixed_boundary.linear_guards import linear_operator_matrix_arg
 from .optimizers.fixed_boundary.linear_guards import linear_operator_vector_arg
@@ -32,6 +31,18 @@ from .optimizers.fixed_boundary.history import history_entry_from_residuals
 from .optimizers.fixed_boundary.history import monotone_final_wall_time
 from .optimizers.fixed_boundary.history import qs_objective_from_residuals
 from .optimizers.fixed_boundary.matrix_free import build_residual_linear_operator
+from .optimizers.fixed_boundary.parameterization import BoundaryParamSpec
+from .optimizers.fixed_boundary.parameterization import apply_boundary_params
+from .optimizers.fixed_boundary.parameterization import apply_boundary_params_numpy
+from .optimizers.fixed_boundary.parameterization import boundary_param_names
+from .optimizers.fixed_boundary.parameterization import boundary_param_specs
+from .optimizers.fixed_boundary.parameterization import coeff_label
+from .optimizers.fixed_boundary.parameterization import create_x_scale
+from .optimizers.fixed_boundary.parameterization import extend_boundary_for_max_mode
+from .optimizers.fixed_boundary.parameterization import indexed_boundary_maps_from_boundary
+from .optimizers.fixed_boundary.parameterization import lift_boundary_params
+from .optimizers.fixed_boundary.parameterization import rebuild_indata_with_resolution
+from .optimizers.fixed_boundary.parameterization import truncate_indata_boundary_modes
 from .optimizers.fixed_boundary.scalar_gradient import exact_objective_and_gradient
 from .optimizers.fixed_boundary.scalar_lbfgs import run_lbfgs_adjoint_exact_optimizer
 from .optimizers.fixed_boundary.scalar_trust import run_scalar_trust_exact_optimizer
@@ -46,17 +57,26 @@ from .static import VMECStatic
 _finite_linear_operator_output = finite_linear_operator_output
 _linear_operator_matrix_arg = linear_operator_matrix_arg
 _linear_operator_vector_arg = linear_operator_vector_arg
+_apply_boundary_params_numpy = apply_boundary_params_numpy
+_coeff_label = coeff_label
+_indexed_boundary_maps_from_boundary = indexed_boundary_maps_from_boundary
 
-
-@dataclass(frozen=True)
-class BoundaryParamSpec:
-    """Descriptor for a boundary Fourier coefficient parameter."""
-
-    name: str
-    kind: str
-    index: int
-    m: int
-    n: int
+__all__ = [
+    "BoundaryParamSpec",
+    "FixedBoundaryContext",
+    "FixedBoundaryExactOptimizer",
+    "apply_boundary_params",
+    "boundary_param_names",
+    "boundary_param_specs",
+    "create_x_scale",
+    "extend_boundary_for_max_mode",
+    "gauss_newton_least_squares",
+    "lift_boundary_params",
+    "prepare_fixed_boundary_context",
+    "rebuild_indata_with_resolution",
+    "smooth_min_abs_iota_residual",
+    "truncate_indata_boundary_modes",
+]
 
 
 @dataclass(frozen=True)
@@ -97,181 +117,6 @@ def _optimizer_backend_name(solver_device_name: str | None) -> str:
         return "cpu"
 
 
-def _coeff_label(prefix: str, m: int, n: int) -> str:
-    n_str = f"{n:+d}".replace("+", "")
-    return f"{prefix}{m}{n_str}"
-
-
-def extend_boundary_for_max_mode(
-    indata,
-    static: "VMECStatic",
-    boundary: "BoundaryCoeffs",
-    max_mode: int,
-    *,
-    active_max_m: int | None = None,
-    active_max_n: int | None = None,
-    min_mpol: int | None = None,
-    min_ntor: int | None = None,
-    required_mpol: int | None = None,
-    required_ntor: int | None = None,
-) -> tuple:
-    """Extend *indata*, *static*, and *boundary* to support ``max_mode`` DOFs.
-
-    When ``max_mode`` exceeds the modes already present in the VMEC input (i.e.
-    when ``mpol <= max_mode`` or ``ntor < max_mode``), this helper rebuilds the
-    static grid and boundary with a larger mode table — mirroring SIMSOPT's
-    behaviour where ``surf.fixed_range(mmax=max_mode, ...)`` silently unfixes
-    zero-valued harmonics that already exist in the surface's full Fourier grid.
-
-    The returned *boundary* has the same non-zero values as the original, with
-    all new high-mode entries initialised to zero.
-
-    Parameters
-    ----------
-    indata:
-        VMEC namelist input.  *Copied* before modification; the original is
-        untouched.
-    static:
-        Current :class:`~vmec_jax.static.VMECStatic`.  Replaced if extension
-        is needed.
-    boundary:
-        Current boundary coefficients.  Replaced if extension is needed.
-    max_mode:
-        Desired maximum mode number.  By default the extended mode table will
-        have ``mpol = ntor = max(max(mpol_cur, ntor_cur), max(5, max_mode + 2))``
-        so that the VMEC solver resolution (and hence the QS metric
-        normalisation) is independent of *max_mode*.
-    active_max_m, active_max_n:
-        Optional anisotropic active boundary limits.  These keep toroidal-first
-        or poloidal-first probes from re-extending the inactive direction just
-        because the scalar stage ``max_mode`` is large.
-    min_mpol, min_ntor:
-        Optional per-axis minimum floors.  The default preserves the historical
-        ``5`` floor; stage builders pass the already-selected input resolution
-        so an explicit ``VMEC_MPOL/NTOR`` choice is not undone here.
-    required_mpol, required_ntor:
-        Optional explicit VMEC spectral floors for diagnostic sweeps that
-        decouple internal ``MPOL``/``NTOR`` from active boundary mode limits.
-
-    Returns
-    -------
-    tuple
-        ``(new_indata, new_static, new_boundary)`` — identical to the inputs
-        when no extension is required.
-    """
-    from .config import config_from_indata
-    from .static import build_static
-    from .boundary import boundary_from_indata
-    from .namelist import InData
-
-    cur_mpol = int(indata.get_int("MPOL", 6))
-    cur_ntor = int(indata.get_int("NTOR", 0))
-    # Use at least mpol=ntor=5 so the VMEC solver resolution (and hence the
-    # QS metric normalisation) is independent of max_mode.  Without this floor
-    # max_mode=1 would run with mpol=3 and give a different initial QS value
-    # than max_mode=2/3, making cross-mode comparisons misleading.
-    active_m = int(max_mode if active_max_m is None else active_max_m)
-    active_n = int(max_mode if active_max_n is None else active_max_n)
-    mpol_floor = 5 if min_mpol is None else int(min_mpol)
-    ntor_floor = 5 if min_ntor is None else int(min_ntor)
-    need_mpol = max(mpol_floor, active_m + 2)  # VMEC mpol = max_m + 1; add extra headroom
-    need_ntor = max(ntor_floor, active_n + 2)
-    if required_mpol is not None:
-        need_mpol = max(need_mpol, int(required_mpol))
-    if required_ntor is not None:
-        need_ntor = max(need_ntor, int(required_ntor))
-
-    if need_mpol <= cur_mpol and need_ntor <= cur_ntor:
-        return indata, static, boundary  # nothing to do
-
-    new_mpol = max(cur_mpol, need_mpol)
-    new_ntor = max(cur_ntor, need_ntor)
-
-    # Shallow-copy the scalars dict so we don't mutate the caller's indata.
-    new_scalars = dict(indata.scalars)
-    new_scalars["MPOL"] = new_mpol
-    new_scalars["NTOR"] = new_ntor
-    new_indata = InData(
-        scalars=new_scalars,
-        indexed=indata.indexed,
-        source_path=indata.source_path,
-    )
-
-    cfg = config_from_indata(new_indata)
-    new_static = build_static(cfg)
-    new_boundary = boundary_from_indata(new_indata, new_static.modes)
-
-    print(
-        f"  [extend_boundary_for_max_mode] extended mpol {cur_mpol}→{new_mpol}, "
-        f"ntor {cur_ntor}→{new_ntor}  "
-        f"(modes table size: {len(new_static.modes.m)})"
-    )
-    return new_indata, new_static, new_boundary
-
-
-def rebuild_indata_with_resolution(indata, *, mpol: int, ntor: int):
-    """Return a copy of ``indata`` with updated VMEC spectral resolution."""
-    from .namelist import InData
-
-    new_scalars = dict(indata.scalars)
-    new_scalars["MPOL"] = int(mpol)
-    new_scalars["NTOR"] = int(ntor)
-    return InData(
-        scalars=new_scalars,
-        indexed=indata.indexed,
-        source_path=indata.source_path,
-    )
-
-
-def truncate_indata_boundary_modes(
-    indata,
-    *,
-    max_mode: int | None,
-    max_m: int | None = None,
-    max_n: int | None = None,
-):
-    """Return a copy of ``indata`` with inactive boundary modes zeroed.
-
-    VMEC inputs can contain non-zero harmonics outside the active optimization
-    space.  Parameter specs only decide which coefficients are free; they do
-    not alter the fixed coefficients already present in the input.  Use this
-    helper when an optimization should start from the boundary projected onto
-    the active ``m``/``n`` mode rectangle rather than keeping higher harmonics
-    fixed in the background.
-    """
-    from .namelist import InData
-
-    if max_mode is None and max_m is None and max_n is None:
-        return indata
-    if max_m is None:
-        max_m = max_mode
-    if max_n is None:
-        max_n = max_mode
-    if max_m is None or max_n is None:
-        raise ValueError("max_m and max_n must be finite when max_mode is omitted.")
-    m_limit = int(max_m)
-    n_limit = int(max_n)
-    boundary_names = {"RBC", "RBS", "ZBC", "ZBS"}
-    indexed = {}
-    for name, values in indata.indexed.items():
-        upper = str(name).upper()
-        copied = dict(values)
-        if upper in boundary_names:
-            copied = {
-                tuple(key): float(value)
-                for key, value in copied.items()
-                if len(tuple(key)) >= 2
-                and abs(int(tuple(key)[0])) <= n_limit
-                and abs(int(tuple(key)[1])) <= m_limit
-            }
-        indexed[name] = copied
-    return InData(
-        scalars=dict(indata.scalars),
-        indexed=indexed,
-        source_path=indata.source_path,
-    )
-
-
 def smooth_min_abs_iota_residual(
     iota,
     minimum: float,
@@ -297,199 +142,6 @@ def smooth_min_abs_iota_residual(
     smooth_abs_iota = jnp.sqrt(iota * iota + abs_epsilon * abs_epsilon)
     shortfall = minimum - smooth_abs_iota
     return softness * jnp.logaddexp(jnp.asarray(0.0, dtype=iota.dtype), shortfall / softness)
-
-
-def boundary_param_specs(
-    boundary: BoundaryCoeffs,
-    modes: ModeTable,
-    *,
-    max_mode: int | None = None,
-    max_m: int | None = None,
-    max_n: int | None = None,
-    min_coeff: float = 0.0,
-    include: Sequence[str] = ("rc", "zs"),
-    fix: Sequence[str] = ("rc00",),
-    include_axis: bool = False,
-) -> list[BoundaryParamSpec]:
-    """Build parameter specifications for boundary optimization.
-
-    Parameters
-    ----------
-    boundary:
-        Boundary coefficients aligned with ``modes``.
-    modes:
-        Mode table describing (m, n) pairs.
-    max_mode:
-        Convenience limit applied to both ``max_m`` and ``max_n`` when provided.
-    max_m, max_n:
-        Limits for m and n mode numbers. If ``None``, no limit is applied.
-    min_coeff:
-        Minimum absolute coefficient magnitude to include.
-    include:
-        Iterable of coefficient families to include. Supported values are
-        ``"rc"``, ``"rs"``, ``"zc"``, ``"zs"``.
-    fix:
-        Iterable of parameter names to exclude (e.g. ``["rc00"]``).
-    include_axis:
-        If ``True``, include the (m=0,n=0) mode. By default it is excluded.
-    """
-    max_m = max_m if max_m is not None else max_mode
-    max_n = max_n if max_n is not None else max_mode
-    include_set = {item.lower() for item in include}
-    fix_set = {item.lower() for item in fix}
-
-    r_cos = np.asarray(boundary.R_cos)
-    r_sin = np.asarray(boundary.R_sin)
-    z_cos = np.asarray(boundary.Z_cos)
-    z_sin = np.asarray(boundary.Z_sin)
-
-    specs: list[BoundaryParamSpec] = []
-    for k, (m_i, n_i) in enumerate(zip(np.asarray(modes.m), np.asarray(modes.n))):
-        m_i = int(m_i)
-        n_i = int(n_i)
-        if m_i < 0:
-            continue
-        if max_m is not None and abs(m_i) > int(max_m):
-            continue
-        if max_n is not None and abs(n_i) > int(max_n):
-            continue
-
-        if not include_axis and m_i == 0 and n_i == 0:
-            continue
-
-        if "rc" in include_set and abs(float(r_cos[k])) >= float(min_coeff):
-            name = _coeff_label("rc", m_i, n_i)
-            if name.lower() not in fix_set:
-                specs.append(BoundaryParamSpec(name, "rc", k, m_i, n_i))
-        if "rs" in include_set and abs(float(r_sin[k])) >= float(min_coeff):
-            name = _coeff_label("rs", m_i, n_i)
-            if name.lower() not in fix_set:
-                specs.append(BoundaryParamSpec(name, "rs", k, m_i, n_i))
-        if "zc" in include_set and abs(float(z_cos[k])) >= float(min_coeff):
-            name = _coeff_label("zc", m_i, n_i)
-            if name.lower() not in fix_set:
-                specs.append(BoundaryParamSpec(name, "zc", k, m_i, n_i))
-        if "zs" in include_set and abs(float(z_sin[k])) >= float(min_coeff):
-            name = _coeff_label("zs", m_i, n_i)
-            if name.lower() not in fix_set:
-                specs.append(BoundaryParamSpec(name, "zs", k, m_i, n_i))
-
-    return specs
-
-
-def boundary_param_names(specs: Sequence[BoundaryParamSpec]) -> list[str]:
-    """Return the parameter names for a list of specs."""
-    return [spec.name for spec in specs]
-
-
-def lift_boundary_params(
-    source_specs: Sequence[BoundaryParamSpec],
-    source_params,
-    target_specs: Sequence[BoundaryParamSpec],
-) -> np.ndarray:
-    """Lift a parameter vector defined on one boundary basis to another.
-
-    Parameters
-    ----------
-    source_specs:
-        Parameter specification list describing ``source_params``.
-    source_params:
-        1-D parameter vector aligned with ``source_specs``.
-    target_specs:
-        Target parameter specification list.
-
-    Returns
-    -------
-    np.ndarray
-        Parameter vector aligned with ``target_specs``. Parameters present in
-        both lists are copied by name; all others are initialised to zero.
-    """
-    source_vals = {spec.name: float(value) for spec, value in zip(source_specs, np.asarray(source_params, dtype=float))}
-    return np.asarray([source_vals.get(spec.name, 0.0) for spec in target_specs], dtype=float)
-
-
-def apply_boundary_params(
-    boundary: BoundaryCoeffs,
-    specs: Sequence[BoundaryParamSpec],
-    params: jnp.ndarray,
-) -> BoundaryCoeffs:
-    """Apply parameter updates to a boundary coefficient set."""
-    r_cos = jnp.asarray(boundary.R_cos)
-    r_sin = jnp.asarray(boundary.R_sin)
-    z_cos = jnp.asarray(boundary.Z_cos)
-    z_sin = jnp.asarray(boundary.Z_sin)
-
-    for idx, spec in enumerate(specs):
-        if spec.kind == "rc":
-            r_cos = r_cos.at[spec.index].add(params[idx])
-        elif spec.kind == "rs":
-            r_sin = r_sin.at[spec.index].add(params[idx])
-        elif spec.kind == "zc":
-            z_cos = z_cos.at[spec.index].add(params[idx])
-        elif spec.kind == "zs":
-            z_sin = z_sin.at[spec.index].add(params[idx])
-        else:
-            raise ValueError(f"Unknown boundary parameter kind '{spec.kind}'")
-
-    return BoundaryCoeffs(R_cos=r_cos, R_sin=r_sin, Z_cos=z_cos, Z_sin=z_sin)
-
-
-def _apply_boundary_params_numpy(
-    boundary: BoundaryCoeffs,
-    specs: Sequence[BoundaryParamSpec],
-    params: np.ndarray,
-) -> BoundaryCoeffs:
-    """Apply parameter updates on the host for branch/cache-key logic."""
-    params = np.asarray(params, dtype=float).reshape(-1)
-    r_cos = np.asarray(boundary.R_cos, dtype=float).copy()
-    r_sin = np.asarray(boundary.R_sin, dtype=float).copy()
-    z_cos = np.asarray(boundary.Z_cos, dtype=float).copy()
-    z_sin = np.asarray(boundary.Z_sin, dtype=float).copy()
-
-    for idx, spec in enumerate(specs):
-        if idx >= int(params.size):
-            break
-        if spec.kind == "rc":
-            r_cos[spec.index] += float(params[idx])
-        elif spec.kind == "rs":
-            r_sin[spec.index] += float(params[idx])
-        elif spec.kind == "zc":
-            z_cos[spec.index] += float(params[idx])
-        elif spec.kind == "zs":
-            z_sin[spec.index] += float(params[idx])
-        else:
-            raise ValueError(f"Unknown boundary parameter kind '{spec.kind}'")
-
-    return BoundaryCoeffs(R_cos=r_cos, R_sin=r_sin, Z_cos=z_cos, Z_sin=z_sin)
-
-
-def _indexed_boundary_maps_from_boundary(
-    boundary: BoundaryCoeffs,
-    modes: ModeTable,
-) -> dict[str, dict[tuple[int, int], float]]:
-    """Build sparse VMEC namelist boundary maps from dense boundary coefficients."""
-    maps = {"RBC": {}, "RBS": {}, "ZBC": {}, "ZBS": {}}
-    seen: set[tuple[int, int]] = set()
-    m_arr = np.asarray(modes.m, dtype=int)
-    n_arr = np.asarray(modes.n, dtype=int)
-    r_cos = np.asarray(boundary.R_cos, dtype=float)
-    r_sin = np.asarray(boundary.R_sin, dtype=float)
-    z_cos = np.asarray(boundary.Z_cos, dtype=float)
-    z_sin = np.asarray(boundary.Z_sin, dtype=float)
-    for idx, (m_i, n_i) in enumerate(zip(m_arr, n_arr)):
-        m_i = int(m_i)
-        n_i = int(n_i)
-        if m_i < 0:
-            continue
-        key = (n_i, m_i)
-        if key in seen:
-            continue
-        seen.add(key)
-        maps["RBC"][key] = float(r_cos[idx])
-        maps["RBS"][key] = float(r_sin[idx])
-        maps["ZBC"][key] = float(z_cos[idx])
-        maps["ZBS"][key] = float(z_sin[idx])
-    return maps
 
 
 def surface_indices_from_s(
@@ -822,52 +474,6 @@ def gauss_newton_least_squares(
         "x_prev": None if x_prev is None else np.asarray(x_prev, dtype=float),
         "cost_prev": None if cost_prev is None else float(cost_prev),
     }
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Exponential spectral scaling helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def create_x_scale(
-    specs: Sequence[BoundaryParamSpec],
-    *,
-    alpha: float = 1.0,
-) -> np.ndarray:
-    """Compute per-parameter exponential spectral scaling weights.
-
-    Assigns smaller weights to high-mode-number boundary DOFs so that the
-    optimizer penalises large perturbations in fine-scale modes more than in
-    coarse-scale modes.  The weight for parameter *i* is
-
-    .. math::
-
-        w_i = \\exp(-\\alpha \\cdot \\max(|m_i|, |n_i|)) \\;/\\; \\exp(-\\alpha)
-
-    so that the lowest non-trivial mode level (``max(|m|, |n|) = 1``) has
-    weight 1 and higher modes have decreasing weights.
-
-    Parameters
-    ----------
-    specs:
-        Parameter specification list from :func:`boundary_param_specs`.
-    alpha:
-        Decay rate.  Larger values suppress high modes more aggressively.
-        ``alpha=0`` gives equal weights (no scaling).
-
-    Returns
-    -------
-    np.ndarray
-        1-D array of shape ``(len(specs),)`` containing the per-DOF scales.
-        Pass this as ``x_scale`` to
-        :meth:`FixedBoundaryExactOptimizer.run`.
-    """
-    scales = np.empty(len(specs), dtype=float)
-    norm = math.exp(-alpha) if alpha > 0.0 else 1.0
-    for i, spec in enumerate(specs):
-        level = max(abs(spec.m), abs(spec.n))
-        scales[i] = math.exp(-alpha * level) / norm if alpha > 0.0 else 1.0
-    return scales
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -8007,6 +8007,63 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.75%.
 
+## 2026-06-17 Boundary Parameterization Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted fixed-boundary parameterization helpers into
+   `vmec_jax.optimizers.fixed_boundary.parameterization`.
+2. Moved `BoundaryParamSpec`, boundary mode extension/projection helpers,
+   boundary parameter spec/name/lift/update helpers, indexed VMEC boundary-map
+   conversion, and exponential spectral scaling into that domain module.
+3. Kept `vmec_jax.optimization` as a compatibility facade with public re-exports
+   and private aliases used by existing tests/profiling scripts.
+4. Added an explicit `__all__` for the facade so re-exported public names are
+   intentional and lint-clean.
+
+Results obtained:
+
+- `vmec_jax/optimization.py` dropped from 4,561 to 4,151 lines.
+- Public imports such as `from vmec_jax.optimization import boundary_param_specs`
+  remain valid.
+- Existing monkeypatch/test paths for `_apply_boundary_params_numpy`,
+  `_indexed_boundary_maps_from_boundary`, and `_coeff_label` remain valid.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization.py vmec_jax/optimizers/fixed_boundary/parameterization.py tests/test_optimization_helpers.py tests/test_optimization_fast_optimizer_methods.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_helpers.py -k 'boundary_param or apply_boundary or lift_boundary or x_scale or truncate_indata or extend_boundary or indexed_boundary or rebuild_indata' tests/test_optimization_fast_optimizer_methods.py -k 'boundary_param or apply_boundary' tests/test_optimization_wave4_coverage.py -k 'boundary_param or indexed_maps or duplicates' -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimizer_domain_helpers.py tests/test_optimization_helpers.py tests/test_optimization_fast_optimizer_methods.py tests/test_optimization_wave2_coverage.py tests/test_optimization_wave4_coverage.py tests/test_optimization_workflow_unit.py -q`
+
+Best next steps:
+
+1. Commit and push this boundary parameterization extraction.
+2. Continue with optimizer runtime-policy extraction and dense Jacobian
+   projected replay extraction.
+3. Start the analogous large-file cleanup in `optimization_workflow.py` after
+   the core optimizer facade is reduced below the next source-health threshold.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.86%.
+- Differentiability/refactor implementation: 99.998%.
+- Solver monolith reduction: 98.50%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 91%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.76%.
+
 ## 2026-06-17 Shared Initial Axis-Reset Diagnostics
 
 Branch: `codex/differentiability-refactor-plan`.
