@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
-from typing import Callable
+from typing import Any, Callable
+
+
+FIXED_BOUNDARY_OPTIMIZER_SOLVERS = frozenset({"gd", "lbfgs", "vmec_lbfgs", "vmec_gn"})
 
 
 def initial_guess_with_optional_nojit(
@@ -121,3 +124,108 @@ def solve_fixed_boundary_from_boundary(
         verbose=bool(verbose),
     )
     return res.state
+
+
+def run_fixed_boundary_optimizer_solver(
+    *,
+    solver: str,
+    restart_state: Any | None,
+    static: Any,
+    boundary: Any,
+    indata: Any,
+    flux: Any,
+    pressure: Any,
+    signgs: int,
+    gamma: float,
+    max_iter: int,
+    step_size: float,
+    history_size: int,
+    gn_damping: float | None,
+    gn_cg_tol: float | None,
+    gn_cg_maxiter: int,
+    verbose: bool,
+    initial_guess_func: Callable[[Any, Any], Any],
+    solve_fixed_boundary_gd_func: Callable[..., Any],
+    solve_fixed_boundary_lbfgs_func: Callable[..., Any],
+    solve_fixed_boundary_lbfgs_vmec_residual_func: Callable[..., Any] | None = None,
+    solve_fixed_boundary_gn_vmec_residual_func: Callable[..., Any] | None = None,
+) -> Any | None:
+    """Run non-VMEC2000 fixed-boundary optimizer solvers.
+
+    ``run_fixed_boundary`` owns input loading, staging, and VMEC2000 parity
+    policy.  This helper isolates the simpler optimizer dispatch so that the
+    public driver keeps one clear branch: optimizer-style solvers here,
+    VMEC2000-style staged iteration in the main path.
+    """
+
+    solver_lower = str(solver).lower()
+    if solver_lower not in FIXED_BOUNDARY_OPTIMIZER_SOLVERS:
+        return None
+
+    st0 = restart_state if restart_state is not None else initial_guess_func(static, boundary)
+    if solver_lower == "gd":
+        return solve_fixed_boundary_gd_func(
+            st0,
+            static,
+            phipf=flux.phipf,
+            chipf=flux.chipf,
+            signgs=signgs,
+            lamscale=flux.lamscale,
+            pressure=pressure,
+            gamma=gamma,
+            max_iter=int(max_iter),
+            step_size=float(step_size),
+            jacobian_penalty=1e3,
+            jit_grad=True,
+            verbose=bool(verbose),
+        )
+    if solver_lower == "lbfgs":
+        return solve_fixed_boundary_lbfgs_func(
+            st0,
+            static,
+            phipf=flux.phipf,
+            chipf=flux.chipf,
+            signgs=signgs,
+            lamscale=flux.lamscale,
+            pressure=pressure,
+            gamma=gamma,
+            max_iter=int(max_iter),
+            step_size=float(step_size),
+            history_size=int(history_size),
+            jit_grad=True,
+            verbose=bool(verbose),
+        )
+    if solver_lower == "vmec_lbfgs":
+        if solve_fixed_boundary_lbfgs_vmec_residual_func is None:
+            from ..solve import solve_fixed_boundary_lbfgs_vmec_residual as solve_fixed_boundary_lbfgs_vmec_residual_func
+
+        return solve_fixed_boundary_lbfgs_vmec_residual_func(
+            st0,
+            static,
+            indata=indata,
+            signgs=signgs,
+            history_size=int(history_size),
+            max_iter=int(max_iter),
+            step_size=float(step_size),
+            jit_grad=True,
+            preconditioner="mode_diag+radial_tridi",
+            precond_exponent=1.0,
+            precond_radial_alpha=0.2,
+            verbose=bool(verbose),
+        )
+    if solve_fixed_boundary_gn_vmec_residual_func is None:
+        from ..solve import solve_fixed_boundary_gn_vmec_residual as solve_fixed_boundary_gn_vmec_residual_func
+
+    return solve_fixed_boundary_gn_vmec_residual_func(
+        st0,
+        static,
+        indata=indata,
+        signgs=signgs,
+        max_iter=int(max_iter),
+        step_size=float(step_size),
+        damping=None if gn_damping is None else float(gn_damping),
+        cg_tol=None if gn_cg_tol is None else float(gn_cg_tol),
+        cg_maxiter=int(gn_cg_maxiter),
+        jit_kernels=True,
+        verbose=bool(verbose),
+    )
