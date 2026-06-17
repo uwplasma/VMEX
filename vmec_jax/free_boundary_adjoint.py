@@ -1574,20 +1574,13 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
     def _step_control(control: Mapping[str, Any], key: str) -> Any:
         return control["step_controls"][key] if key in control.get("step_controls", {}) else None
 
-    def _branch_for_trace(
+    def _freeb_bsqvac_replay_terms(
         trace: dict[str, Any],
-        state: Any,
+        state_in: Any,
         coil_params: Any,
         control: dict[str, Any],
         replay_context: dict[str, Any] | None,
     ):
-        reset_to_trace_pre = jnp.asarray(control["reset_to_trace_pre"], dtype=bool)
-        state_in = jax.lax.cond(
-            reset_to_trace_pre,
-            lambda _: trace["state_pre"],
-            lambda _: state,
-            operand=None,
-        )
         has_active_freeb_replay = trace.get("freeb_bsqvac_half") is not None and trace.get("freeb_nestor_trace") is not None
         if has_active_freeb_replay:
             if bool(freeze_freeb_bsqvac):
@@ -1659,9 +1652,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
                             include_diagnostics=not bool(state_only_replay),
                             include_mode_diagnostics=bool(include_mode_diagnostics),
                             vac_override=(
-                                _direct_coil_trace_vacuum_field_override(trace)
-                                if bool(freeze_vacuum_field)
-                                else None
+                                _direct_coil_trace_vacuum_field_override(trace) if bool(freeze_vacuum_field) else None
                             ),
                             coil_geometry=coil_geometry,
                             nestor_solve_mode=str(nestor_solve_mode),
@@ -1689,6 +1680,29 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
             bsqvac_objective = jnp.asarray(0.0)
             bsqvac_rms = jnp.asarray(0.0)
             bnormal_rms = jnp.asarray(0.0)
+        return freeb_bsqvac_half, bsqvac_objective, bsqvac_rms, bnormal_rms
+
+    def _branch_for_trace(
+        trace: dict[str, Any],
+        state: Any,
+        coil_params: Any,
+        control: dict[str, Any],
+        replay_context: dict[str, Any] | None,
+    ):
+        reset_to_trace_pre = jnp.asarray(control["reset_to_trace_pre"], dtype=bool)
+        state_in = jax.lax.cond(
+            reset_to_trace_pre,
+            lambda _: trace["state_pre"],
+            lambda _: state,
+            operand=None,
+        )
+        freeb_bsqvac_half, bsqvac_objective, bsqvac_rms, bnormal_rms = _freeb_bsqvac_replay_terms(
+            trace,
+            state_in,
+            coil_params,
+            control,
+            replay_context,
+        )
         with _jax_named_scope("vmec_jax.free_boundary.strict_update_one_step_from_trace"):
             step = strict_update_one_step_from_trace(
                 state_in,
@@ -1732,107 +1746,13 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
             lambda _: state,
             operand=None,
         )
-        has_active_freeb_replay = trace.get("freeb_bsqvac_half") is not None and trace.get("freeb_nestor_trace") is not None
-        if has_active_freeb_replay:
-            if bool(freeze_freeb_bsqvac):
-                freeb_bsqvac_half = jnp.asarray(trace["freeb_bsqvac_half"])
-            else:
-                with _jax_named_scope("vmec_jax.free_boundary.boundary_geometry"):
-                    geometry = free_boundary_boundary_geometry_jax(
-                        state_in,
-                        static,
-                        sample_nzeta=sample_nzeta,
-                    )
-                context = replay_context
-                if context is None or tuple(int(v) for v in geometry["R"].shape) != (
-                    int(context["ntheta"]),
-                    int(context["nzeta"]),
-                ):
-                    with _jax_named_scope("vmec_jax.free_boundary.replay_context"):
-                        context = direct_coil_boundary_replay_context(static, geometry)
-                nestor_axes = _step_control(control, "freeb_nestor_axes")
-                if nestor_axes is None:
-                    with _jax_named_scope("vmec_jax.free_boundary.direct_coil_bsqvac_replay"):
-                        replay = direct_coil_boundary_bsqvac_from_trace_jax(
-                            coil_params,
-                            geometry,
-                            trace,
-                            basis=context["basis"],
-                            tables=context["tables"],
-                            signgs=int(signgs),
-                            nvper=int(context["nvper"]),
-                            wint=jnp.asarray(context["wint"]),
-                            include_analytic=bool(include_analytic),
-                            include_diagnostics=not bool(state_only_replay),
-                            include_mode_diagnostics=bool(include_mode_diagnostics),
-                            freeze_vacuum_field=bool(freeze_vacuum_field),
-                            nestor_solve_mode=str(nestor_solve_mode),
-                            nestor_operator_solver=str(nestor_operator_solver),
-                            nestor_operator_tol=float(nestor_operator_tol),
-                            nestor_operator_atol=float(nestor_operator_atol),
-                            nestor_operator_maxiter=nestor_operator_maxiter,
-                            nestor_operator_restart=nestor_operator_restart,
-                            coil_geometry=coil_geometry,
-                        )
-                else:
-                    with _jax_named_scope("vmec_jax.free_boundary.direct_coil_bsqvac_replay"):
-                        replay = direct_coil_boundary_bsqvac_jax(
-                            coil_params,
-                            R=geometry["R"],
-                            Z=geometry["Z"],
-                            phi=geometry["phi"],
-                            Ru=geometry["Ru"],
-                            Zu=geometry["Zu"],
-                            Rv=geometry["Rv"],
-                            Zv=geometry["Zv"],
-                            ruu=geometry["ruu"],
-                            ruv=geometry["ruv"],
-                            rvv=geometry["rvv"],
-                            zuu=geometry["zuu"],
-                            zuv=geometry["zuv"],
-                            zvv=geometry["zvv"],
-                            basis=context["basis"],
-                            tables=context["tables"],
-                            signgs=int(signgs),
-                            nvper=int(context["nvper"]),
-                            br_add=jnp.asarray(nestor_axes["br_axis"]),
-                            bp_add=jnp.asarray(nestor_axes["bp_axis"]),
-                            bz_add=jnp.asarray(nestor_axes["bz_axis"]),
-                            wint=jnp.asarray(context["wint"]),
-                            include_analytic=bool(include_analytic),
-                            include_diagnostics=not bool(state_only_replay),
-                            include_mode_diagnostics=bool(include_mode_diagnostics),
-                            vac_override=(
-                                _direct_coil_trace_vacuum_field_override(trace)
-                                if bool(freeze_vacuum_field)
-                                else None
-                            ),
-                            coil_geometry=coil_geometry,
-                            nestor_solve_mode=str(nestor_solve_mode),
-                            nestor_operator_solver=str(nestor_operator_solver),
-                            nestor_operator_tol=float(nestor_operator_tol),
-                            nestor_operator_atol=float(nestor_operator_atol),
-                            nestor_operator_maxiter=nestor_operator_maxiter,
-                            nestor_operator_restart=nestor_operator_restart,
-                        )
-                freeb_bsqvac_half = replay["bsqvac"]
-            if bool(state_only_replay):
-                bsqvac_objective = jnp.asarray(0.0)
-                bsqvac_rms = jnp.asarray(0.0)
-                bnormal_rms = jnp.asarray(0.0)
-            elif bool(freeze_freeb_bsqvac):
-                bsqvac_objective = _weighted_half_norm(freeb_bsqvac_half, bsqvac_weight)
-                bsqvac_rms = jnp.sqrt(jnp.mean(jnp.square(jnp.asarray(freeb_bsqvac_half))))
-                bnormal_rms = jnp.asarray(0.0)
-            else:
-                bsqvac_objective = _weighted_half_norm(replay["bsqvac"], bsqvac_weight)
-                bsqvac_rms = jnp.sqrt(jnp.mean(jnp.square(jnp.asarray(replay["bsqvac"]))))
-                bnormal_rms = jnp.sqrt(jnp.mean(jnp.square(jnp.asarray(replay["vac"]["bnormal"]))))
-        else:
-            freeb_bsqvac_half = trace.get("freeb_bsqvac_half", None)
-            bsqvac_objective = jnp.asarray(0.0)
-            bsqvac_rms = jnp.asarray(0.0)
-            bnormal_rms = jnp.asarray(0.0)
+        freeb_bsqvac_half, bsqvac_objective, bsqvac_rms, bnormal_rms = _freeb_bsqvac_replay_terms(
+            trace,
+            state_in,
+            coil_params,
+            control,
+            replay_context,
+        )
         preconditioner_use_precomputed_tridi = trace.get("preconditioner_use_precomputed_tridi")
         preconditioner_use_lax_tridi = trace.get("preconditioner_use_lax_tridi")
         step_step_controls = control["step_controls"]
