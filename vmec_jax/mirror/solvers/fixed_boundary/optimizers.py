@@ -397,6 +397,12 @@ def _optimizer_run_from_result(
         residual_linear_solver=str(getattr(result, "residual_linear_solver", "")),
         residual_linear_maxiter_effective_max=getattr(result, "residual_linear_maxiter_effective_max", None),
         residual_linear_maxiter_effective_last=getattr(result, "residual_linear_maxiter_effective_last", None),
+        residual_linear_istop_last=getattr(result, "residual_linear_istop_last", None),
+        residual_linear_iterations_last=getattr(result, "residual_linear_iterations_last", None),
+        residual_linear_iterations_total=getattr(result, "residual_linear_iterations_total", None),
+        residual_linear_residual_norm_last=getattr(result, "residual_linear_residual_norm_last", None),
+        residual_linear_normal_residual_norm_last=getattr(result, "residual_linear_normal_residual_norm_last", None),
+        residual_linear_condition_estimate_last=getattr(result, "residual_linear_condition_estimate_last", None),
     )
 
 
@@ -535,9 +541,9 @@ def projected_residual_newton_solve(
         raise RuntimeError("optimizer='residual_newton' requires JAX")
     try:
         from scipy.optimize import OptimizeResult
-        from scipy.sparse.linalg import LinearOperator, lsmr
+        from scipy.sparse.linalg import LinearOperator, lsmr, lsqr
     except Exception as exc:  # pragma: no cover
-        raise ImportError("optimizer='residual_newton' requires scipy.sparse.linalg.lsmr") from exc
+        raise ImportError("optimizer='residual_newton' requires scipy.sparse.linalg least-squares solvers") from exc
 
     initial_state = project_axisym_state(state, grid, boundary)
     x0 = pack_axisym_reduced_state(initial_state, grid, boundary)
@@ -616,6 +622,11 @@ def projected_residual_newton_solve(
     message = "maximum iterations reached"
     ftol = float(options.ftol) if options.ftol is not None else float(options.min_step_size)
     linear_maxiter_history: list[int] = []
+    linear_istop_history: list[int] = []
+    linear_iterations_history: list[int] = []
+    linear_residual_norm_history: list[float] = []
+    linear_normal_residual_norm_history: list[float] = []
+    linear_condition_estimate_history: list[float] = []
 
     for _iteration in range(1, int(options.maxiter) + 1):
         grad_x = reduced_gradient_x(current_x)
@@ -687,13 +698,34 @@ def projected_residual_newton_solve(
                 residual_norm=current_step.residual_norm,
             )
             linear_maxiter_history.append(linear_maxiter)
-            linear_result = lsmr(
-                operator,
-                rhs,
-                atol=min(1.0e-10, max(options.tolerance, np.finfo(float).eps)),
-                btol=min(1.0e-10, max(options.tolerance, np.finfo(float).eps)),
-                maxiter=linear_maxiter,
-            )
+            tolerance = min(1.0e-10, max(options.tolerance, np.finfo(float).eps))
+            if linear_solver_kind == "lsqr":
+                linear_result = lsqr(
+                    operator,
+                    rhs,
+                    atol=tolerance,
+                    btol=tolerance,
+                    iter_lim=linear_maxiter,
+                )
+                residual_norm = float(linear_result[3])
+                normal_residual_norm = float(linear_result[7])
+                condition_estimate = float(linear_result[6])
+            else:
+                linear_result = lsmr(
+                    operator,
+                    rhs,
+                    atol=tolerance,
+                    btol=tolerance,
+                    maxiter=linear_maxiter,
+                )
+                residual_norm = float(linear_result[3])
+                normal_residual_norm = float(linear_result[4])
+                condition_estimate = float(linear_result[6])
+            linear_istop_history.append(int(linear_result[1]))
+            linear_iterations_history.append(int(linear_result[2]))
+            linear_residual_norm_history.append(residual_norm)
+            linear_normal_residual_norm_history.append(normal_residual_norm)
+            linear_condition_estimate_history.append(condition_estimate)
             njev += int(linear_result[2])
             step_y_raw = np.asarray(linear_result[0], dtype=float)
             step_y = step_y_raw if preconditioner_kind == "none" else precondition_y(step_y_raw)
@@ -760,6 +792,18 @@ def projected_residual_newton_solve(
     result.residual_linear_solver = linear_solver_kind
     result.residual_linear_maxiter_effective_max = int(max(linear_maxiter_history)) if linear_maxiter_history else None
     result.residual_linear_maxiter_effective_last = int(linear_maxiter_history[-1]) if linear_maxiter_history else None
+    result.residual_linear_istop_last = int(linear_istop_history[-1]) if linear_istop_history else None
+    result.residual_linear_iterations_last = int(linear_iterations_history[-1]) if linear_iterations_history else None
+    result.residual_linear_iterations_total = int(sum(linear_iterations_history)) if linear_iterations_history else None
+    result.residual_linear_residual_norm_last = (
+        float(linear_residual_norm_history[-1]) if linear_residual_norm_history else None
+    )
+    result.residual_linear_normal_residual_norm_last = (
+        float(linear_normal_residual_norm_history[-1]) if linear_normal_residual_norm_history else None
+    )
+    result.residual_linear_condition_estimate_last = (
+        float(linear_condition_estimate_history[-1]) if linear_condition_estimate_history else None
+    )
     candidate_diagnostics = _candidate_diagnostics(current_step, grid, initial_energy=initial_residual.energy)
     accepted_run = bool(steps and steps[-1].accepted and candidate_diagnostics.accepted)
     if not accepted_run:

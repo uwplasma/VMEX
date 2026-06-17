@@ -68,6 +68,12 @@ class OptimizerRun:
     residual_linear_solver: str = ""
     residual_linear_maxiter_effective_max: int | None = None
     residual_linear_maxiter_effective_last: int | None = None
+    residual_linear_istop_last: int | None = None
+    residual_linear_iterations_last: int | None = None
+    residual_linear_iterations_total: int | None = None
+    residual_linear_residual_norm_last: float | None = None
+    residual_linear_normal_residual_norm_last: float | None = None
+    residual_linear_condition_estimate_last: float | None = None
 
 
 @dataclass(frozen=True)

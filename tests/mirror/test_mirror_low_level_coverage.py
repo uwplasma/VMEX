@@ -187,6 +187,7 @@ def test_low_level_field_energy_residual_and_optimizer_guards():
         _residual_linear_maxiter_policy_key("bad")
     with pytest.raises(ValueError):
         _residual_linear_solver_key("bad")
+    assert _residual_linear_solver_key("lsqr") == "lsqr"
     with pytest.raises(ValueError):
         _sanitize_scale([1.0, 2.0], expected_size=3)
     with pytest.raises(ValueError):

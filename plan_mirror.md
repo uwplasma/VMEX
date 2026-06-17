@@ -4975,3 +4975,181 @@ Visual validation:
 No user input is needed.  The next lane should make the matrix-free correction
 approach the dense reference while preserving the dense path as the small-grid
 truth model.
+
+---
+
+## 51. 2026-06-17 M8r matrix-free linear-solver diagnostics and LSQR comparison
+
+This lane explains why the scalable matrix-free residual-Newton path still
+lags the dense reference from M8q.  The key result is that LSMR and LSQR both
+stop by iteration budget (`istop=7`) on the finite-current row.  Removing the
+LSMR condition-limit stop did not change the result.  LSQR is available for
+comparison, but it is not better than LSMR on this benchmark.
+
+### Steps taken
+
+- Probed SciPy LSMR `conlim=0` with a runtime monkey patch before changing
+  source.  The result was identical to the default LSMR row, so condition-limit
+  stopping is not the active bottleneck.
+- Added `residual_linear_solver="lsqr"` as an opt-in matrix-free
+  least-squares solver alongside the existing `lsmr` and dense reference
+  `dense_lstsq` paths.
+- Added compact Krylov diagnostics to optimizer summaries, mirror NetCDF
+  attributes, and root example JSON rows:
+  - last stop code;
+  - actual last and total Krylov iterations;
+  - last linear residual norm;
+  - last normal-equation residual norm;
+  - last condition estimate.
+- Updated the root example CLIs to accept `--residual-linear-solver lsqr`.
+- Updated README and mirror output docs.
+- Ran finite-current `ns=5`, `nxi=9`, `i_prime=0.01` probes for:
+  - LSMR, `24 x 54`;
+  - LSQR, `24 x 54`;
+  - LSMR, `24 x 96`;
+  - one plotted LSMR, `24 x 96`, bundle.
+
+### Results obtained
+
+Finite-current comparison:
+
+| solver | inner budget | final residual | final fsq | normalized force | stop code | last Krylov iterations | condition estimate | status |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `lsmr` | 54 | `4.332436431347e-05` | `3.077050070764e-11` | `2.438347387145e-04` | 7 | 54 | `1.424929436737e+05` | max inner iterations |
+| `lsqr` | 54 | `4.765634337653e-05` | `3.723159121348e-11` | `2.682156327295e-04` | 7 | 54 | `1.150182486564e+06` | max inner iterations |
+| `lsmr` | 96 | `1.972965755648e-06` | `6.381301431084e-14` | `1.110409861971e-05` | 7 | 96 | `5.284961140154e+04` | max inner iterations |
+| `dense_lstsq` | reference | `2.150747940722e-13` | `7.583142138561e-28` | `1.210467906862e-12` | n/a | n/a | n/a | reached `gtol` |
+
+Interpretation:
+
+- LSMR and LSQR are both iteration-budget limited on the finite-current
+  two-coil row.
+- LSQR is slightly worse than LSMR at the same budget and leaves a much larger
+  lambda residual fraction (`0.384954` vs `0.014690`).
+- LSMR at inner budget 96 improves the residual by about `22x` over inner
+  budget 54, but still stops by max inner iterations and remains far from the
+  dense reference.
+- The dense reference did not reveal a nonlinear formulation blocker.  The
+  remaining scalable-solver problem is the quality/cost of the matrix-free
+  linear correction.
+- The next useful work is a better preconditioned linear operator or block
+  correction, not switching to LSQR alone.
+
+Generated artifacts:
+
+- `results/mirror/m8r_lsmr_diagnostics_probe/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8r_lsqr_probe/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8r_lsmr96_diagnostics_probe/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8r_lsmr96_diagnostics_plots/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8r_lsmr96_diagnostics_plots/residual_newton_convergence_history.png`.
+- `results/mirror/m8r_lsmr96_diagnostics_plots/residual_newton_convergence_components.png`.
+- `results/mirror/m8r_lsmr96_diagnostics_plots/residual_newton_convergence_budget.png`.
+- `results/mirror/m8r_lsmr96_diagnostics_plots/best_finite_current_lsmr96_m8r_residual_newton/figures/best_finite_current_lsmr96_m8r_residual_newton_mirror_boundary_3d.png`.
+- `results/mirror/m8r_lsmr96_diagnostics_plots/best_finite_current_lsmr96_m8r_residual_newton/figures/best_finite_current_lsmr96_m8r_residual_newton_mirror_bfield_boundary.png`.
+- `results/mirror/m8r_lsmr96_diagnostics_plots/best_finite_current_lsmr96_m8r_residual_newton/figures/best_finite_current_lsmr96_m8r_residual_newton_mirror_bmag_sxi.png`.
+- `results/mirror/m8r_lsmr96_diagnostics_plots/best_finite_current_lsmr96_m8r_residual_newton/figures/best_finite_current_lsmr96_m8r_residual_newton_mirror_cross_sections.png`.
+
+### How it was tested
+
+Focused pytest gate:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py::test_residual_newton_solver_reaches_tight_residual_for_perturbed_cylinder \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py::test_residual_newton_dense_lstsq_solver_improves_perturbed_cylinder \
+  tests/mirror/test_mirror_low_level_coverage.py \
+  tests/mirror/test_mirror_examples.py::test_root_residual_newton_convergence_grid_runs_without_plots \
+  tests/mirror/test_mirror_examples.py::test_root_residual_newton_convergence_grid_finite_current_reports_lambda_residual \
+  -q
+```
+
+Result: `10 passed in 29.67s`.
+
+Static checks:
+
+```bash
+python -m ruff format --check \
+  vmec_jax/mirror/solvers/fixed_boundary/preconditioners.py \
+  vmec_jax/mirror/solvers/fixed_boundary/types.py \
+  vmec_jax/mirror/solvers/fixed_boundary/diagnostics.py \
+  vmec_jax/mirror/solvers/fixed_boundary/nonlinear.py \
+  vmec_jax/mirror/solvers/fixed_boundary/optimizers.py \
+  vmec_jax/mirror/io/mout.py \
+  examples/mirror_residual_newton_convergence_grid.py \
+  examples/mirror_solver_comparison.py \
+  examples/mirror_fixed_boundary_solve_diagnostic.py \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py \
+  tests/mirror/test_mirror_low_level_coverage.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff check <same files>
+git diff --check
+```
+
+Result: passed.
+
+Benchmarks:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/m8r_lsmr96_diagnostics_plots \
+  --ns-array 5 \
+  --nxi-array 9 \
+  --maxiter-array 24 \
+  --residual-linear-maxiter-array 96 \
+  --residual-linear-maxiter-policy fixed \
+  --residual-linear-solver lsmr \
+  --residual-xi-alpha 1.0 \
+  --i-prime 0.01 \
+  --case-label finite_current_lsmr96_m8r \
+  --preconditioners radial_xi_lambda_xi_tridi
+```
+
+Visual validation:
+
+- Residual history is monotone but stalls above the dense reference.
+- Field-line overlays render on the B-direction plot.
+- The standard horizontal-`z` geometry, `|B|`, and cross-section plots render.
+
+### File structure and best-practice notes
+
+- The solver choice remains one public option, `residual_linear_solver`.
+- The additional diagnostics are scalar summary metadata, not large arrays.
+- LSMR stays the default.  LSQR and dense solves are opt-in comparison paths.
+- The example JSON row schema now records enough linear-solve information to
+  debug convergence without rerunning with SciPy verbosity.
+
+### Best next steps
+
+1. Commit and push the M8r diagnostics/LSQR tranche.
+2. Start M8s with an actual scalable correction improvement:
+   - build a small-grid dense-vs-matrix-free step comparison at each Newton
+     iteration;
+   - inspect whether right preconditioning is worsening the operator spectrum;
+   - try a block diagonal dense-on-coarse or block-Jacobi correction for the
+     reduced `a`/lambda blocks;
+   - compare against the dense step direction, not only final residual.
+3. Once M8s improves the matrix-free step quality, rerun the finite-current
+   plotted benchmark and then move to moderate-resolution checks.
+
+### Completion percentages after M8r
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `84%`.
+- Residual Newton / preconditioning: `84%`.
+- Two-coil and manufactured validation: `79%`.
+- Finite-current pitch validation: `69%`.
+- Plotting and `vmec --plot` mirror support: `78%`.
+- I/O schema and docs: `77%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `15%`.
+- Free-boundary mirror lane: `5%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `0%`.
+- PR merge readiness overall: `71%`.
+
+### User input needed
+
+No user input is needed.  The next lane should compare matrix-free steps
+against the dense reference direction and then implement a better scalable
+linear correction.

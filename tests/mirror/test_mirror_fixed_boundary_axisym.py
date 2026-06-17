@@ -315,6 +315,14 @@ def test_residual_newton_solver_reaches_tight_residual_for_perturbed_cylinder():
     assert summary.nit <= 6
     assert summary.residual_linear_maxiter_policy == "adaptive"
     assert summary.residual_linear_maxiter_effective_max is not None
+    assert summary.residual_linear_solver == "lsmr"
+    assert summary.residual_linear_istop_last is not None
+    assert summary.residual_linear_iterations_last is not None
+    assert summary.residual_linear_iterations_last > 0
+    assert summary.residual_linear_iterations_total is not None
+    assert summary.residual_linear_iterations_total >= summary.residual_linear_iterations_last
+    assert summary.residual_linear_residual_norm_last is not None
+    assert summary.residual_linear_condition_estimate_last is not None
     assert (
         summary.residual_linear_maxiter_effective_max
         == pack_axisym_reduced_state(
@@ -367,6 +375,7 @@ def test_residual_newton_dense_lstsq_solver_improves_perturbed_cylinder():
     assert summary.optimizer == "residual_newton"
     assert summary.residual_linear_solver == "dense_lstsq"
     assert summary.residual_linear_maxiter_effective_max is None
+    assert summary.residual_linear_istop_last is None
     assert result.final_trace.residual_norm < initial_residual.norm
     assert result.final_trace.energy_total < initial_residual.energy
     assert result.final_trace.min_sqrtg > 0.0

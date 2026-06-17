@@ -40,6 +40,8 @@ def _residual_linear_solver_key(value: str) -> str:
     key = str(value).strip().lower().replace("-", "_")
     if key in {"lsmr", "iterative", "matrix_free", "krylov"}:
         return "lsmr"
+    if key in {"lsqr"}:
+        return "lsqr"
     if key in {"dense_lstsq", "dense", "lstsq", "exact", "direct"}:
         return "dense_lstsq"
     raise ValueError(f"unsupported mirror residual linear solver {value!r}")

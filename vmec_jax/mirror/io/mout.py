@@ -115,6 +115,22 @@ def _attrs_with_result_metadata(result) -> dict[str, str]:
             attrs["solver_residual_linear_maxiter_effective_last"] = str(
                 int(summary.residual_linear_maxiter_effective_last)
             )
+        if summary.residual_linear_istop_last is not None:
+            attrs["solver_residual_linear_istop_last"] = str(int(summary.residual_linear_istop_last))
+        if summary.residual_linear_iterations_last is not None:
+            attrs["solver_residual_linear_iterations_last"] = str(int(summary.residual_linear_iterations_last))
+        if summary.residual_linear_iterations_total is not None:
+            attrs["solver_residual_linear_iterations_total"] = str(int(summary.residual_linear_iterations_total))
+        if summary.residual_linear_residual_norm_last is not None:
+            attrs["solver_residual_linear_residual_norm_last"] = str(float(summary.residual_linear_residual_norm_last))
+        if summary.residual_linear_normal_residual_norm_last is not None:
+            attrs["solver_residual_linear_normal_residual_norm_last"] = str(
+                float(summary.residual_linear_normal_residual_norm_last)
+            )
+        if summary.residual_linear_condition_estimate_last is not None:
+            attrs["solver_residual_linear_condition_estimate_last"] = str(
+                float(summary.residual_linear_condition_estimate_last)
+            )
     attrs["pressure_continuation"] = ",".join(str(float(stage)) for stage in result.options.pressure_continuation)
     return attrs
 

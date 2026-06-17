@@ -50,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--residual-linear-solver",
         type=str,
         default="lsmr",
-        choices=("lsmr", "dense_lstsq"),
+        choices=("lsmr", "lsqr", "dense_lstsq"),
         help="Linear solver for each residual-Newton correction; dense_lstsq is intended for small reference grids.",
     )
     parser.add_argument("--preconditioners", type=str, default="radial_xi_tridi")
@@ -310,6 +310,16 @@ def _run_one(
         "residual_linear_maxiter_effective_last": None
         if summary is None
         else summary.residual_linear_maxiter_effective_last,
+        "residual_linear_istop_last": None if summary is None else summary.residual_linear_istop_last,
+        "residual_linear_iterations_last": None if summary is None else summary.residual_linear_iterations_last,
+        "residual_linear_iterations_total": None if summary is None else summary.residual_linear_iterations_total,
+        "residual_linear_residual_norm_last": None if summary is None else summary.residual_linear_residual_norm_last,
+        "residual_linear_normal_residual_norm_last": None
+        if summary is None
+        else summary.residual_linear_normal_residual_norm_last,
+        "residual_linear_condition_estimate_last": None
+        if summary is None
+        else summary.residual_linear_condition_estimate_last,
         "residual_preconditioner": str(preconditioner),
         "residual_radial_alpha": float(residual_radial_alpha),
         "residual_lambda_alpha": float(residual_lambda_alpha),

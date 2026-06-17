@@ -59,6 +59,12 @@ def _summary_from_run(
         residual_linear_solver=run.residual_linear_solver,
         residual_linear_maxiter_effective_max=run.residual_linear_maxiter_effective_max,
         residual_linear_maxiter_effective_last=run.residual_linear_maxiter_effective_last,
+        residual_linear_istop_last=run.residual_linear_istop_last,
+        residual_linear_iterations_last=run.residual_linear_iterations_last,
+        residual_linear_iterations_total=run.residual_linear_iterations_total,
+        residual_linear_residual_norm_last=run.residual_linear_residual_norm_last,
+        residual_linear_normal_residual_norm_last=run.residual_linear_normal_residual_norm_last,
+        residual_linear_condition_estimate_last=run.residual_linear_condition_estimate_last,
     )
 
 
