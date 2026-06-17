@@ -5458,3 +5458,158 @@ Visual validation:
 
 No user input is needed.  The existing preconditioners have been ranked; the
 next work should implement and benchmark a new block correction.
+
+---
+
+## 54. 2026-06-17 M8u block-dense correction reference
+
+This lane adds a first block-correction family.  The new
+`block_dense_lstsq` linear solver builds the dense scaled reduced Hessian like
+the full `dense_lstsq` reference, but solves the reduced radius block and
+lambda block separately.  This is still a small-grid dense reference path, but
+it verifies that an `a`/lambda block correction can reach tight finite-current
+residuals and is therefore a credible target for a later scalable block
+preconditioner.
+
+### Steps taken
+
+- Added `residual_linear_solver="block_dense_lstsq"`.
+- Implemented block-diagonal dense solves in the residual-Newton dense helper:
+  - split reduced variables into radius `a` and lambda blocks using the
+    existing reduced-coordinate layout;
+  - solve each block with `np.linalg.lstsq`;
+  - apply the same optional right-preconditioner transform as the full dense
+    path when requested.
+- Added CLI support in the root mirror examples.
+- Added focused parser and solver tests.
+- Ran a finite-current two-coil benchmark and regenerated the standard plot
+  bundle.
+
+### Results obtained
+
+Finite-current two-coil block-dense row:
+
+| solver | preconditioner | final residual | final fsq | normalized force | Newton iterations | status |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| `block_dense_lstsq` | `none` | `1.386654012023e-15` | `3.152146473869e-32` | `7.804262636706e-15` | 5 | reached `gtol` |
+
+Comparison:
+
+- Full dense M8q row:
+  - residual `2.150747940722e-13`;
+  - `fsq=7.583142138561e-28`;
+  - `nit=5`.
+- Block dense M8u row:
+  - residual `1.386654012023e-15`;
+  - `fsq=3.152146473869e-32`;
+  - `nit=5`.
+
+Interpretation:
+
+- The block-diagonal `a`/lambda correction is sufficient for the small
+  finite-current benchmark and reaches a tighter residual than the full dense
+  reference in this run.
+- This strongly supports pursuing a scalable block preconditioner/block
+  correction rather than only increasing Krylov budgets.
+- The current implementation is an opt-in dense reference path; the next step
+  is to replace dense sub-block solves with scalable approximations.
+
+Generated artifacts:
+
+- `results/mirror/m8u_block_dense_probe/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8u_block_dense_plots/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8u_block_dense_plots/residual_newton_convergence_history.png`.
+- `results/mirror/m8u_block_dense_plots/residual_newton_convergence_components.png`.
+- `results/mirror/m8u_block_dense_plots/residual_newton_convergence_budget.png`.
+- `results/mirror/m8u_block_dense_plots/best_finite_current_block_dense_m8u_residual_newton/figures/best_finite_current_block_dense_m8u_residual_newton_mirror_boundary_3d.png`.
+- `results/mirror/m8u_block_dense_plots/best_finite_current_block_dense_m8u_residual_newton/figures/best_finite_current_block_dense_m8u_residual_newton_mirror_bfield_boundary.png`.
+- `results/mirror/m8u_block_dense_plots/best_finite_current_block_dense_m8u_residual_newton/figures/best_finite_current_block_dense_m8u_residual_newton_mirror_bmag_sxi.png`.
+- `results/mirror/m8u_block_dense_plots/best_finite_current_block_dense_m8u_residual_newton/figures/best_finite_current_block_dense_m8u_residual_newton_mirror_cross_sections.png`.
+
+### How it was tested
+
+Focused pytest gate:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py::test_residual_newton_block_dense_lstsq_solver_improves_perturbed_cylinder \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py::test_residual_newton_dense_lstsq_solver_improves_perturbed_cylinder \
+  tests/mirror/test_mirror_low_level_coverage.py \
+  tests/mirror/test_mirror_examples.py::test_root_residual_newton_convergence_grid_runs_without_plots \
+  -q
+```
+
+Result: `9 passed in 9.97s`.
+
+Static checks:
+
+```bash
+python -m ruff format --check <touched Python files>
+python -m ruff check <touched Python files>
+git diff --check
+```
+
+Result: passed.
+
+Benchmark/plot command:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/m8u_block_dense_plots \
+  --ns-array 5 \
+  --nxi-array 9 \
+  --maxiter-array 24 \
+  --residual-linear-maxiter-array 1 \
+  --residual-linear-solver block_dense_lstsq \
+  --residual-linear-maxiter-policy fixed \
+  --i-prime 0.01 \
+  --case-label finite_current_block_dense_m8u \
+  --preconditioners none
+```
+
+Visual validation:
+
+- Residual history is monotone and reaches below `1e-12`.
+- Field-line overlays render on the B-direction plot.
+- Standard horizontal-`z` geometry, `|B|`, and cross-section plots render.
+- The minimum Jacobian is positive.
+
+### File structure and best-practice notes
+
+- No new file was added.
+- The block correction reuses the existing reduced-coordinate layout and dense
+  helper in `optimizers.py`.
+- The option is explicit and opt-in, preserving the default matrix-free LSMR
+  path.
+
+### Best next steps
+
+1. Commit and push M8u.
+2. Start M8v by making the block correction more scalable:
+   - replace dense block solves with block tridiagonal/tensor-product
+     approximations;
+   - compare block approximation against `block_dense_lstsq`;
+   - require lower dense-step relative error and tight finite-current
+     convergence before making it a production default.
+
+### Completion percentages after M8u
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `86%`.
+- Residual Newton / preconditioning: `88%`.
+- Two-coil and manufactured validation: `81%`.
+- Finite-current pitch validation: `73%`.
+- Plotting and `vmec --plot` mirror support: `79%`.
+- I/O schema and docs: `79%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `15%`.
+- Free-boundary mirror lane: `5%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `0%`.
+- PR merge readiness overall: `75%`.
+
+### User input needed
+
+No user input is needed.  The next lane should convert the successful
+block-dense idea into a scalable block preconditioner/correction.

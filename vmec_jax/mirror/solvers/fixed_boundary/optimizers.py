@@ -595,7 +595,11 @@ def projected_residual_newton_solve(
         )
 
     grad_fun = jax.grad(objective_x)
-    hessian_fun = jax.jacfwd(grad_fun) if linear_solver_kind == "dense_lstsq" or compare_dense_step else None
+    hessian_fun = (
+        jax.jacfwd(grad_fun)
+        if linear_solver_kind in {"dense_lstsq", "block_dense_lstsq"} or compare_dense_step
+        else None
+    )
 
     def x_from_y(vector_y) -> np.ndarray:
         return np.asarray(vector_y, dtype=float) * x_scale
@@ -665,7 +669,7 @@ def projected_residual_newton_solve(
         rhs = -grad_x * x_scale
         size = int(y.size)
 
-        def dense_step_y() -> np.ndarray:
+        def dense_step_y(*, block_diagonal: bool = False) -> np.ndarray:
             assert hessian_fun is not None
             hessian_x = np.asarray(hessian_fun(x_jax), dtype=float)
             jacobian_y = hessian_x * x_scale[:, None] * x_scale[None, :]
@@ -674,15 +678,31 @@ def projected_residual_newton_solve(
                 basis = np.eye(size)
                 preconditioner_matrix = np.column_stack([precondition_y(basis[:, index]) for index in range(size)])
                 jacobian_y = jacobian_y @ preconditioner_matrix
-            step_y_raw, *_ = np.linalg.lstsq(jacobian_y, rhs, rcond=1.0e-12)
+            if block_diagonal:
+                num_a = int(np.count_nonzero(axisym_reduced_a_mask(grid)))
+                step_y_raw = np.zeros(size, dtype=float)
+                if num_a:
+                    step_y_raw[:num_a], *_ = np.linalg.lstsq(
+                        jacobian_y[:num_a, :num_a],
+                        rhs[:num_a],
+                        rcond=1.0e-12,
+                    )
+                if num_a < size:
+                    step_y_raw[num_a:], *_ = np.linalg.lstsq(
+                        jacobian_y[num_a:, num_a:],
+                        rhs[num_a:],
+                        rcond=1.0e-12,
+                    )
+            else:
+                step_y_raw, *_ = np.linalg.lstsq(jacobian_y, rhs, rcond=1.0e-12)
             step_y = np.asarray(step_y_raw, dtype=float)
             if preconditioner_matrix is not None:
                 step_y = np.asarray(preconditioner_matrix @ step_y, dtype=float)
             return step_y
 
-        if linear_solver_kind == "dense_lstsq":
+        if linear_solver_kind in {"dense_lstsq", "block_dense_lstsq"}:
             try:
-                step_y = dense_step_y()
+                step_y = dense_step_y(block_diagonal=linear_solver_kind == "block_dense_lstsq")
             except np.linalg.LinAlgError:
                 message = "dense reduced-Hessian solve failed"
                 break

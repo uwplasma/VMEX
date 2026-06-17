@@ -69,9 +69,12 @@ Pass ``--residual-linear-solver dense_lstsq`` on small grids to use the dense
 reduced Hessian as a reference solve when diagnosing whether the matrix-free
 Krylov correction is limiting convergence, or
 ``--residual-linear-solver lsqr`` to compare the alternate SciPy least-squares
-Krylov iteration against the default ``lsmr`` path. On small matrix-free runs,
-``--residual-compare-dense-step`` also records the dense-reference step norm,
-cosine, and relative error for the last Newton correction.
+Krylov iteration against the default ``lsmr`` path. Pass
+``--residual-linear-solver block_dense_lstsq`` on small grids to solve the
+radius and lambda dense-Hessian blocks separately as a block-correction
+reference. On small matrix-free runs, ``--residual-compare-dense-step`` also
+records the dense-reference step norm, cosine, and relative error for the last
+Newton correction.
 Finite-current diagnostics can also pass
 ``--residual-preconditioner radial_xi_lambda_xi_tridi`` to smooth lambda
 updates along the open axial coordinate when the residual decomposition is
@@ -101,8 +104,9 @@ plots, residual-component plots that split radius/lambda and cap/interior
 contributions, and the standard mirror plot bundles for both the best-residual
 row and the highest-resolution, highest-budget row. It can also run
 ``--residual-linear-solver dense_lstsq`` for small exact-Hessian reference
-rows or ``--residual-linear-solver lsqr`` for LSQR/LSMR comparisons. Its
-default policy is
+rows, ``--residual-linear-solver block_dense_lstsq`` for block-correction
+reference rows, or ``--residual-linear-solver lsqr`` for LSQR/LSMR
+comparisons. Its default policy is
 ``fixed`` so the requested ``--residual-linear-maxiter-array`` values remain
 literal; pass ``--residual-linear-maxiter-policy adaptive`` to exercise the
 production adaptive inner budget in the same report. Pass ``--i-prime`` with a
