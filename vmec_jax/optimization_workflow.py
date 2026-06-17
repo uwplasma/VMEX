@@ -42,10 +42,17 @@ from .optimization import (
     smooth_min_abs_iota_residual,
     truncate_indata_boundary_modes,
 )
+from .optimizers.fixed_boundary.objective_terms import FixedBoundaryObjectiveStage
+from .optimizers.fixed_boundary.objective_terms import ObjectiveTerm
+from .optimizers.fixed_boundary.objective_terms import QIObjectiveTerm
+from .optimizers.fixed_boundary.objective_terms import StageContext
+from .optimizers.fixed_boundary.objective_terms import as_vector
+from .optimizers.fixed_boundary.objective_terms import attach_packed_state_autodiff_hooks as _attach_packed_state_autodiff_hooks
+from .optimizers.fixed_boundary.objective_terms import residuals_from_objectives
+from .optimizers.fixed_boundary.parameterization import rebuild_indata_with_resolution
 from .optimizers.fixed_boundary.seed_inputs import interpolate_indata_boundary
 from .optimizers.fixed_boundary.seed_inputs import prepare_simple_omnigenity_seed_input
 from .optimizers.fixed_boundary.seed_inputs import simple_omnigenity_seed_indata
-from .optimizers.fixed_boundary.parameterization import rebuild_indata_with_resolution
 from .optimizers.fixed_boundary.workflow_artifacts import FixedBoundaryOptimizationResult
 from .optimizers.fixed_boundary.workflow_artifacts import OptimizationOutputPaths
 from .optimizers.fixed_boundary.workflow_artifacts import optimization_output_paths
@@ -71,6 +78,7 @@ enable_x64(True)
 
 
 _LINE_BUFFERING_ENABLED = False
+_as_vector = as_vector
 
 
 def _enable_line_buffered_output() -> None:
@@ -91,65 +99,6 @@ def _enable_line_buffered_output() -> None:
 
 
 @dataclass(frozen=True)
-class StageContext:
-    """Objects needed by objective callbacks for one mode-continuation stage."""
-
-    static: object
-    indata: object
-    boundary_input: object
-    specs: Sequence[BoundaryParamSpec]
-    signgs: int
-    flux: object
-    pressure: object
-
-
-@dataclass(frozen=True)
-class ObjectiveTerm:
-    """One weighted least-squares objective block.
-
-    The callback receives ``(ctx, state)`` and returns a scalar or vector.  The
-    residual minimized by the optimizer is ``weight * (value - target)``.
-    ``weight`` is the internal residual multiplier; public objective tuples use
-    SIMSOPT semantics and are converted to ``sqrt(tuple_weight)`` by
-    :meth:`LeastSquaresProblem.from_tuples`.
-    """
-
-    name: str
-    evaluate: Callable[[StageContext, object], object]
-    target: float | np.ndarray = 0.0
-    weight: float = 1.0
-    total: Callable[[StageContext, object], object] | None = None
-    track_iota: bool = False
-    metadata: dict[str, object] = field(default_factory=dict)
-    prepare: Callable[[StageContext], "ObjectiveTerm"] | None = None
-
-    def residual(self, ctx: StageContext, state) -> object:
-        value = _as_vector(self.evaluate(ctx, state))
-        target = jnp.asarray(self.target, dtype=jnp.float64)
-        if int(target.ndim) == 0:
-            target = jnp.full_like(value, target)
-        else:
-            target = jnp.ravel(target)
-        return float(self.weight) * (value - target)
-
-    def bind(self, ctx: StageContext) -> "ObjectiveTerm":
-        """Return a stage-specialized term when the objective has static setup."""
-
-        return self if self.prepare is None else self.prepare(ctx)
-
-
-@dataclass(frozen=True)
-class FixedBoundaryObjectiveStage:
-    """Prepared optimizer and metadata for one active boundary-mode stage."""
-
-    mode: int
-    ctx: StageContext
-    optimizer: FixedBoundaryExactOptimizer
-    specs: Sequence[BoundaryParamSpec]
-    boundary_input: object
-
-
-@dataclass(frozen=True)
 class BoundaryModeLimits:
     """Boundary-parameter mode limits for one optimization stage.
 
@@ -164,19 +113,6 @@ class BoundaryModeLimits:
     max_m: int | None = None
     max_n: int | None = None
     label: str | None = None
-
-
-@dataclass(frozen=True)
-class QIObjectiveTerm:
-    """One field-quality objective that shares a Boozer/QI field evaluation."""
-
-    name: str
-    evaluate: Callable[[StageContext, object, dict], tuple[object, object]]
-    qi_options: "QuasiIsodynamicOptions | None" = None
-
-    def residual_and_total(self, ctx: StageContext, state, field: dict) -> tuple[object, object]:
-        residuals, total = self.evaluate(ctx, state, field)
-        return _as_vector(residuals), total
 
 
 @dataclass(frozen=True)
@@ -2395,108 +2331,6 @@ def build_fixed_boundary_objective_stage(
     )
 
 
-def residuals_from_objectives(objectives: Sequence[ObjectiveTerm], ctx: StageContext):
-    """Create the state residual callback consumed by ``FixedBoundaryExactOptimizer``."""
-
-    bound_objectives = tuple(term.bind(ctx) for term in objectives)
-
-    def residuals_from_state(state, *, ctx=ctx, objectives=bound_objectives):
-        return jnp.concatenate([term.residual(ctx, state) for term in objectives])
-
-    field_totals = tuple(term.total for term in bound_objectives if term.total is not None)
-    residuals_from_state._n_non_qs = sum(1 for term in bound_objectives if term.total is None)
-    residuals_from_state._qs_total_from_state = (
-        lambda state, ctx=ctx, field_totals=field_totals: float(
-            sum(float(total(ctx, state)) for total in field_totals)
-        )
-        if field_totals
-        else lambda _state: 0.0
-    )
-    family = next(
-        (
-            term.metadata.get("objective_family")
-            for term in bound_objectives
-            if term.metadata.get("objective_family")
-        ),
-        None,
-    )
-    if family is not None:
-        residuals_from_state._objective_family = str(family)
-    helicity_m = next(
-        (term.metadata.get("helicity_m") for term in bound_objectives if "helicity_m" in term.metadata),
-        None,
-    )
-    helicity_n = next(
-        (term.metadata.get("helicity_n") for term in bound_objectives if "helicity_n" in term.metadata),
-        None,
-    )
-    if helicity_m is not None:
-        residuals_from_state._helicity_m = int(helicity_m)
-    if helicity_n is not None:
-        residuals_from_state._helicity_n = int(helicity_n)
-    return _attach_packed_state_autodiff_hooks(residuals_from_state)
-
-
-def _attach_packed_state_autodiff_hooks(residuals_from_state: Callable) -> Callable:
-    """Attach generic packed-state VJP hooks to an objective residual callback.
-
-    The older direct QS residual factories expose custom hooks used by
-    ``FixedBoundaryExactOptimizer`` to avoid rebuilding a generic packed-state
-    residual VJP for every accepted point.  SIMSOPT-style tuple workflows are
-    more flexible, so use a generic hook here: it differentiates the already
-    assembled residual vector with respect to the packed VMEC state.  The
-    optimizer wraps these hooks in cached ``jax.jit`` helpers, so this keeps the
-    flexible tuple API while enabling the matrix-free and scalar-adjoint paths
-    to stay on the same fast accepted-point replay architecture.
-    """
-
-    def _residuals_from_packed(packed_state, layout):
-        from .state import unpack_state
-
-        state = unpack_state(packed_state, layout)
-        return jnp.asarray(residuals_from_state(state), dtype=jnp.float64).reshape(-1)
-
-    def state_cotangent_operator_from_packed(packed_state, layout):
-        from ._compat import jax, jnp as _jnp
-
-        packed_state = _jnp.asarray(packed_state, dtype=_jnp.float64)
-
-        def _packed_residuals(packed):
-            return _residuals_from_packed(packed, layout)
-
-        _, residual_vjp = jax.vjp(_packed_residuals, packed_state)
-
-        def _apply(residual_cotangent):
-            cotangent = _jnp.asarray(residual_cotangent, dtype=_jnp.float64).reshape(-1)
-            state_cotangent = residual_vjp(cotangent)[0]
-            return _jnp.nan_to_num(state_cotangent, nan=0.0, posinf=0.0, neginf=0.0)
-
-        return _apply
-
-    def state_cotangent_from_packed(packed_state, layout, residual_cotangent):
-        return state_cotangent_operator_from_packed(packed_state, layout)(residual_cotangent)
-
-    def state_objective_value_and_cotangent_from_packed(packed_state, layout):
-        from ._compat import jax, jnp as _jnp
-
-        packed_state = _jnp.asarray(packed_state, dtype=_jnp.float64)
-
-        def _objective(packed):
-            residuals = _residuals_from_packed(packed, layout)
-            return 0.5 * _jnp.vdot(residuals, residuals)
-
-        value, cotangent = jax.value_and_grad(_objective)(packed_state)
-        cotangent = _jnp.nan_to_num(cotangent, nan=0.0, posinf=0.0, neginf=0.0)
-        return value, cotangent
-
-    residuals_from_state._state_cotangent_from_packed = state_cotangent_from_packed
-    residuals_from_state._state_cotangent_operator_from_packed = state_cotangent_operator_from_packed
-    residuals_from_state._state_objective_value_and_cotangent_from_packed = (
-        state_objective_value_and_cotangent_from_packed
-    )
-    return residuals_from_state
-
-
 def run_fixed_boundary_objective_optimization(
     *,
     cfg,
@@ -3646,11 +3480,6 @@ def combine_qs_stage_histories(
         out["iota_initial"] = float(combined_entries[0]["iota"])
         out["iota_final"] = float(combined_entries[-1]["iota"])
     return out
-
-
-def _as_vector(value):
-    arr = jnp.asarray(value, dtype=jnp.float64)
-    return arr.reshape((1,)) if int(arr.ndim) == 0 else jnp.ravel(arr)
 
 
 def _as_sequence(value) -> tuple:
