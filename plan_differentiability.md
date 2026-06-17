@@ -7942,6 +7942,62 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.80%.
 
+## 2026-06-17 Fixed-Boundary Gauss-Newton Algorithm Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `vmec_jax.optimizers.fixed_boundary.gauss_newton` for the concrete
+   Gauss-Newton least-squares loop used by fixed-boundary examples and exact
+   optimizer fallback paths.
+2. Re-exported `gauss_newton_least_squares` through `optimization.py` so the
+   public `vj.gauss_newton_least_squares` API and workflow monkeypatch seams
+   stay stable.
+3. Moved the exhausted-Jacobian environment gate with the algorithm it controls.
+
+Results obtained:
+
+- `optimization.py` dropped from 4,167 to 3,909 lines.
+- A standalone numerical optimizer is now separated from the exact VMEC
+  boundary-parameter optimizer class.
+- The `VMEC_JAX_OPT_SKIP_EXHAUSTED_GN_JACOBIAN` behavior remains tested.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization.py vmec_jax/optimizers/fixed_boundary/gauss_newton.py tests/test_optimization_helpers.py tests/test_optimization_callback_trace.py tests/test_optimization_wave4_coverage.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_helpers.py -k 'gauss_newton' tests/test_optimization_callback_trace.py -k 'gauss_newton or exhausted' tests/test_optimization_wave4_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_helpers.py tests/test_optimization_callback_trace.py tests/test_optimization_wave4_coverage.py tests/test_optimization_fast_optimizer_methods.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 20`
+
+Best next steps:
+
+1. Commit and push the Gauss-Newton extraction.
+2. Continue splitting `optimization.py` by moving exact tape/cache policy
+   helpers or QS residual factories into named fixed-boundary modules.
+3. Continue larger residual-controller refactors after the optimizer class
+   falls below the source-health warning threshold.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.88%.
+- Differentiability/refactor implementation: 99.998%.
+- Solver monolith reduction: 98.50%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 94.3%.
+- Fixed-boundary optimizer decomposition: 86%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.81%.
+
 ## 2026-06-17 Exact Optimizer Dispatch Decomposition
 
 Branch: `codex/differentiability-refactor-plan`.
