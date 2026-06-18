@@ -665,6 +665,8 @@ def run_fixed_boundary(
         step_size=step_size,
         indata=indata,
     )
+    stage_results: list[SolveVmecResidualResult] = []
+    stage_statics: list[VMECStatic] = []
 
     def _run_cli_accelerated_budgeted_multigrid(
         *,
@@ -847,11 +849,11 @@ def run_fixed_boundary(
             final_stage_budget=int(max_iter),
         )
 
+    from .modes import vmec_mode_table
+
     # Precompute boundary coefficients without triggering JAX initialization.
     boundary_coeffs = None
     if restart_state_eff is None:
-        from .modes import vmec_mode_table
-
         boundary_modes = vmec_mode_table(cfg.mpol, cfg.ntor)
         boundary_coeffs = boundary_from_indata(indata, boundary_modes)
 
@@ -1012,416 +1014,101 @@ def run_fixed_boundary(
             indata=indata,
         )
 
-        # Run coarse -> fine stages with VMEC `interp.f` interpolation.
-        stage_results: list[SolveVmecResidualResult] = []
-        stage_statics: list[VMECStatic] = []
-        stage_offsets: list[int] = []
-        from .modes import vmec_mode_table
-
-        header_modes = vmec_mode_table(cfg.mpol, cfg.ntor)
-        nmodes_header = int(np.asarray(header_modes.m).size)
-
-        state = restart_state_eff
-        static_prev = None
-        static_final = None
-        resume_state_stage = restart_solver_state
-        multigrid_resume = False
-        if multigrid:
-            # Default to VMEC2000 behavior (reset time-step state per stage).
-            env_resume = os.getenv("VMEC_JAX_MULTIGRID_RESUME", "0")
-            multigrid_resume = env_resume.strip().lower() not in ("", "0", "false", "no")
-
         def _resolve_jit_forces(flag: bool | str, static_i: VMECStatic, niter_i: int) -> bool:
             return _resolve_jit_forces_auto_policy(flag, static_i, niter_i)
 
         env_precompile_stages = os.getenv("VMEC_JAX_PRECOMPILE_STAGES", "0")
         precompile_stages = env_precompile_stages.strip().lower() not in ("", "0", "false", "no")
 
-        prev_stage_fsq = None
-        stage_mode_history: list[str] = []
-        stage_wall_s: list[float] = []
-        stage_solve_total_s: list[float] = []
-        ftol_last = None
-        step_size_last = None
-        for i, (ns_i, niter_i, ftol_i) in enumerate(zip(ns_stages, niter_stages, ftol_stages)):
-            if int(niter_i) <= 0:
-                continue
-            stage_t0 = time.perf_counter()
-            stage_accelerated_mode = bool(accelerated_mode)
-            if (
-                bool(stage_accelerated_mode)
-                and bool(direct_staged_current_driven_3d_cli)
-                and bool(cfg.lasym)
-            ):
-                # LASYM current-driven 3D staged runs remain noticeably more
-                # sensitive in lambda than in geometry. The mixed accelerated
-                # controller was slightly faster here, but it consistently
-                # degraded the final lambda channels versus the conservative
-                # staged baseline. Keep this class fully on the conservative
-                # controller until the lambda mismatch is closed numerically.
-                stage_accelerated_mode = False
-            stage_mode_i = "accelerated" if bool(stage_accelerated_mode) else "parity"
-            stage_mode_history.append("accelerated" if bool(stage_accelerated_mode) else "parity")
-            if verbose:
-                print(
-                    f"  NS = {int(ns_i):4d} NO. FOURIER MODES = {nmodes_header:4d} "
-                    f"FTOLV = {float(ftol_i):10.3E} NITER = {int(niter_i):6d}",
-                    flush=True,
-                )
-                print("  PROCESSOR COUNT - RADIAL:    1", flush=True)
-                print("", flush=True)
-                if bool(cfg.lasym):
-                    print(
-                        "  ITER    FSQR      FSQZ      FSQL    RAX(v=0)  ZAX(v=0)    DELT       WMHD",
-                        flush=True,
-                    )
-                else:
-                    print(
-                        "  ITER    FSQR      FSQZ      FSQL    RAX(v=0)    DELT       WMHD",
-                        flush=True,
-                    )
-
-            cfg_i = replace(cfg, ns=int(ns_i))
-            static_i = _build_static_cfg(cfg_i)
-            scan_mode = bool(use_scan) if bool(stage_accelerated_mode) else False
-            if stage_accelerated_mode and bool(use_scan):
-                # In accelerated mode the default is to use scan (lax.scan is
-                # faster on GPU; on CPU the caller can override via use_scan=False).
-                scan_mode = not bool(cfg_i.lfreeb)
-            if bool(cfg.lasym):
-                # For LASYM fixed-boundary stages, allow scan as a candidate in
-                # the default fast path and let the automatic selector decide
-                # whether the warmed scan route is both safe and worthwhile.
-                lasym_scan_env = os.getenv("VMEC_JAX_LASYM_USE_SCAN", "auto").strip().lower()
-                if lasym_scan_env in ("0", "false", "no", "off"):
-                    scan_mode = False
-                elif lasym_scan_env not in ("", "auto"):
-                    scan_mode = True
-            # Note: scan is now enabled for current_driven_3d_cli on CPU as well.
-            # Benchmarks show lax.scan is faster than the Python-loop NumPy hot-path
-            # (26s cold vs 36s cold for LandremanPaul2021_QA_lowres), with identical
-            # numerical results.
-            scan_mode = _driver_dynamic_scan_helpers.maybe_disable_scan_by_parity_guard(
-                accelerated_mode=bool(accelerated_mode),
-                scan_mode=bool(scan_mode),
-                niter=int(niter_i),
-                state_stage_start=state,
-                static_stage=static_i,
+        staged = _driver_staging_helpers.run_vmec2000_staged_solve(
+            _driver_staging_helpers.Vmec2000StagedSolveContext(
+                input_path=input_path,
+                cfg=cfg,
                 indata=indata,
-                signgs=signgs,
-                ftol=float(ftol_i),
-                step_size=float(step_size_val),
+                solver=solver,
+                solver_mode_eff=str(solver_mode_eff),
+                accelerated_mode=bool(accelerated_mode),
+                performance_mode=bool(performance_mode),
+                use_scan=bool(use_scan),
+                cli_fixed_boundary_mode=bool(cli_fixed_boundary_mode),
+                direct_staged_current_driven_3d_cli=bool(direct_staged_current_driven_3d_cli),
+                multigrid=bool(multigrid),
+                multigrid_user_provided=bool(multigrid_user_provided),
+                accelerated_single_grid_default=bool(accelerated_single_grid_default),
+                direct_external_provider=bool(direct_external_provider),
+                policy_backend=str(policy_backend),
+                stage_transition_heuristic=bool(stage_transition_heuristic),
+                stage_transition_factor=float(stage_transition_factor),
+                stage_transition_scale=float(stage_transition_scale),
+                scan_minimal_default=scan_minimal_default,
+                scan_wout_corrector=scan_wout_corrector,
+                jit_forces=jit_forces,
+                jit_precompile=jit_precompile,
+                precompile_stages=bool(precompile_stages),
                 use_restart_triggers=use_restart_triggers,
                 vmecpp_restart=bool(vmecpp_restart),
-                stage_transition_factor=float(stage_transition_factor),
-                stage_transition_scale=float(stage_transition_scale),
-                scan_minimal_default=scan_minimal_default,
-                jit_forces=jit_forces,
-                resolve_jit_forces=_resolve_jit_forces,
-                solve_fixed_boundary_residual_iter=solve_fixed_boundary_residual_iter,
-                verbose=bool(verbose),
-                getenv=os.getenv,
-            )
-            jit_forces_base = _resolve_jit_forces(jit_forces, static_i, int(niter_i))
-            jit_settings = _resolve_stage_jit_settings(
-                jit_forces_base=bool(jit_forces_base),
-                scan_mode=bool(scan_mode),
-                solver=solver,
-                performance_mode=bool(performance_mode),
-                jit_precompile=jit_precompile,
-            )
-            jit_forces_eff = bool(jit_settings.jit_forces_eff)
-            jit_precompile_eff = bool(jit_settings.jit_precompile_eff)
-            jit_warmup_iters = int(jit_settings.jit_warmup_iters)
-            jit_precompile_noscan = bool(jit_settings.jit_precompile_noscan)
-            jit_warmup_noscan = int(jit_settings.jit_warmup_noscan)
-            if i == 0:
-                if state is None:
-                    if boundary_coeffs is None:
-                        raise ValueError("boundary_coeffs missing; cannot build initial guess")
-                    state = _initial_guess_with_optional_nojit(
-                        static_i,
-                        boundary_coeffs,
-                        force_disable_jit=bool(jit_warmup_iters > 0),
-                    )
-                    _driver_debug_helpers.maybe_dump_xc_init(state=state, static=static_i, label="stage0")
-            else:
-                state = interp_vmec_state(
-                    state,
-                    m=static_prev.modes.m,
-                    n=static_prev.modes.n,
-                    lthreed=bool(static_prev.cfg.lthreed),
-                    lconm1=bool(getattr(static_prev.cfg, "lconm1", True)),
-                    ns_new=int(ns_i),
-                )
-            state_stage_start = state
-            static_prev = static_i
-            static_final = static_i
-
-            stage_offsets.append(sum(int(np.asarray(r.w_history).size) for r in stage_results))
-            vmec2000_ctrl = True
-            stage_prev_fsq = prev_stage_fsq if bool(stage_transition_heuristic) else None
-            stage_light_history = (
-                True
-                if (
-                    bool(performance_mode)
-                    and (not bool(verbose))
-                    and ((not bool(cfg.lfreeb)) or bool(direct_external_provider))
-                )
-                else None
-            )
-            stage_resume_state_mode = "minimal" if stage_accelerated_mode else None
-            is_last_stage = (i == len(ns_stages) - 1)
-            _final_cpu_scan_env = os.getenv("VMEC_JAX_FINAL_STAGE_CPU_SCAN", "1").strip().lower()
-            _final_cpu_scan_disabled = _final_cpu_scan_env in ("0", "false", "no")
-            if (
-                bool(cli_fixed_boundary_mode)
-                and scan_mode
-                and (_default_backend_name() == "cpu")
-                and _final_cpu_scan_disabled
-            ):
-                # lax.scan on CPU CLI is consistently faster than the NumPy
-                # hot-path when the JAX compilation disk cache is warm (which it
-                # is after the first CLI run).  Benchmarks show 2-2.5× speedup
-                # for small cases (circular/shaped tokamak, QH warm-start) and
-                # ~5% speedup for medium cases (QA_lowres NS=50) when using scan.
-                # The scan path also benefits GPU runs maximally (10-100×).
-                # Disable via VMEC_JAX_FINAL_STAGE_CPU_SCAN=0 to revert to the
-                # NumPy hot-path (useful for debugging or first-run profiling).
-                scan_mode = False
-            stage_fsq_total_target = (
-                _accelerated_fsq_total_target_from_ftol(float(ftol_i))
-                if (stage_accelerated_mode and not is_last_stage)
-                else None
-            )
-            stage_host_update_assembly = _host_update_assembly_driver_default(
-                cfg=cfg_i,
-                performance_mode=bool(performance_mode),
-                backend=_default_backend_name(),
-                use_scan=bool(scan_mode),
-            )
-            stage_preconditioner_use_precomputed_tridi = _default_preconditioner_use_precomputed_tridi(
-                cfg=cfg_i,
-                backend=policy_backend,
-                performance_mode=bool(performance_mode),
-                use_scan=bool(scan_mode),
-                direct_external_provider=bool(direct_external_provider),
-            )
-            stage_preconditioner_use_lax_tridi = _default_preconditioner_use_lax_tridi(
-                cfg=cfg_i,
-                backend=policy_backend,
-                performance_mode=bool(performance_mode),
-                use_scan=bool(scan_mode),
-                direct_external_provider=bool(direct_external_provider),
-            )
-            stage_limit_update_rms = False if limit_update_rms is None else bool(limit_update_rms)
-            solve_kwargs = dict(
-                indata=indata,
-                signgs=signgs,
-                ftol=float(ftol_i),
-                max_iter=int(niter_i),
-                step_size=float(step_size_val),
-                include_constraint_force=True,
-                apply_m1_constraints=True,
-                precond_radial_alpha=0.5,
-                precond_lambda_alpha=0.5,
-                mode_diag_exponent=0.0,
-                auto_flip_force=False,
-                divide_by_scalxc_for_update=False,
-                lambda_update_scale=1.0,
-                enforce_vmec_lambda_axis=True,
-                vmec2000_control=vmec2000_ctrl,
-                strict_update=True,
-                backtracking=False,
-                limit_update_rms=stage_limit_update_rms,
-                reference_mode=False,
-                use_restart_triggers=True if use_restart_triggers is None else bool(use_restart_triggers),
-                vmecpp_restart=bool(vmecpp_restart),
-                use_direct_fallback=False,
-                stage_prev_fsq=stage_prev_fsq,
-                stage_transition_factor=float(stage_transition_factor),
-                stage_transition_scale=float(stage_transition_scale),
-                resume_state=resume_state_stage,
-                verbose=bool(verbose),
-                verbose_vmec2000_table=bool(verbose),
-                use_scan=bool(scan_mode),
-                jit_warmup_iters=int(jit_warmup_iters),
-                jit_precompile=bool(jit_precompile_eff),
-                scan_minimal_default=scan_minimal_default,
-                light_history=stage_light_history,
-                resume_state_mode=stage_resume_state_mode,
-                fsq_total_target=stage_fsq_total_target,
-                host_update_assembly=stage_host_update_assembly,
-                preconditioner_use_precomputed_tridi=stage_preconditioner_use_precomputed_tridi,
-                preconditioner_use_lax_tridi=stage_preconditioner_use_lax_tridi,
+                limit_update_rms=limit_update_rms,
                 external_field_provider_kind=external_field_provider_kind,
                 external_field_provider_static=external_field_provider_static_eff,
                 external_field_provider_params=external_field_provider_params,
                 free_boundary_activate_fsq=free_boundary_activate_fsq,
-                return_final_force_payload=True,
-            )
-            scan_mode = _driver_dynamic_scan_helpers.maybe_select_dynamic_scan_mode(
-                cfg=cfg,
-                accelerated_mode=bool(accelerated_mode),
-                performance_mode=bool(performance_mode),
-                scan_mode=bool(scan_mode),
-                vmec2000_control=bool(vmec2000_ctrl),
-                niter=int(niter_i),
-                solve_kwargs=solve_kwargs,
-                state_stage_start=state_stage_start,
-                static_stage=static_i,
-                resume_state_stage=resume_state_stage,
-                jit_forces_base=bool(jit_forces_base),
+                verbose=bool(verbose),
+                signgs=signgs,
+                step_size_val=float(step_size_val),
+                ns_stages=list(ns_stages),
+                niter_stages=list(niter_stages),
+                ftol_stages=list(ftol_stages),
+                niter_stages_input=niter_stages_input,
+                ftol_list_input=ftol_list_input,
+                restart_state_eff=restart_state_eff,
+                restart_solver_state=restart_solver_state,
+                boundary_coeffs=boundary_coeffs,
+                t_start=float(t_start),
+                build_static_cfg=_build_static_cfg,
+                initial_guess_with_optional_nojit=_initial_guess_with_optional_nojit,
+                resolve_jit_forces=_resolve_jit_forces,
+                sanitize_resume_state_for_stage=sanitize_resume_state_for_stage,
+                sanitize_resume_state_for_same_stage=sanitize_resume_state_for_same_stage,
+                interp_vmec_state=interp_vmec_state,
+                mode_table_func=vmec_mode_table,
+                maybe_dump_xc_init=_driver_debug_helpers.maybe_dump_xc_init,
+                maybe_disable_scan_by_parity_guard=_driver_dynamic_scan_helpers.maybe_disable_scan_by_parity_guard,
+                resolve_stage_jit_settings=_resolve_stage_jit_settings,
+                accelerated_fsq_total_target_from_ftol=_accelerated_fsq_total_target_from_ftol,
+                host_update_assembly_driver_default=_host_update_assembly_driver_default,
+                default_preconditioner_use_precomputed_tridi=_default_preconditioner_use_precomputed_tridi,
+                default_preconditioner_use_lax_tridi=_default_preconditioner_use_lax_tridi,
                 solve_fixed_boundary_residual_iter=solve_fixed_boundary_residual_iter,
+                maybe_select_dynamic_scan_mode=_driver_dynamic_scan_helpers.maybe_select_dynamic_scan_mode,
                 dynamic_scan_probe_settings=_dynamic_scan_probe_settings,
                 vmec_histories_match=_vmec_histories_match,
                 vmec_history_relerr=_vmec_history_relerr,
-                verbose=bool(verbose),
-                getenv=os.getenv,
-                deepcopy_func=deepcopy,
-            )
-            solve_kwargs["use_scan"] = bool(scan_mode)
-            _driver_solve_helpers.maybe_precompile_fixed_boundary_stage(
-                enabled=bool(precompile_stages) and bool(jit_forces_eff),
-                state=state,
-                static=static_i,
-                solve_kwargs=solve_kwargs,
-                solve_fixed_boundary_residual_iter_func=solve_fixed_boundary_residual_iter,
-            )
-            run_stage_solve = partial(
-                _driver_solve_helpers.run_fixed_boundary_stage_solve,
-                static=static_i,
-                solve_fixed_boundary_residual_iter_func=solve_fixed_boundary_residual_iter,
-            )
-
-            explicit_stage_monitor = (
-                bool(stage_accelerated_mode)
-                and (niter_stages_input is not None)
-                and int(nstep) > 1
-                and int(i) > 0
-            )
-            explicit_stage_chunk = min(int(niter_i), max(int(indata.get_int("NSTEP", 1)), 200))
-            explicit_stage_target = _accelerated_fsq_total_target_from_ftol(float(ftol_i))
-            explicit_stage_monitor_jit_forces = bool(jit_forces_base)
-
-            res_i, stage_mode_i = _driver_staging_helpers.run_stage_with_optional_explicit_monitor(
-                monitor_enabled=bool(explicit_stage_monitor),
-                stage_mode=str(stage_mode_i),
-                ns=int(ns_i),
-                niter=int(niter_i),
-                ftol=float(ftol_i),
-                explicit_stage_chunk=int(explicit_stage_chunk),
-                explicit_stage_target=float(explicit_stage_target),
-                policy_backend=str(policy_backend),
-                scan_mode=bool(scan_mode),
-                state=state,
-                state_stage_start=state_stage_start,
-                resume_state_stage=resume_state_stage,
-                stage_prev_fsq=stage_prev_fsq,
-                solve_kwargs=solve_kwargs,
-                jit_forces_eff=bool(jit_forces_eff),
-                jit_forces_base=bool(jit_forces_base),
-                explicit_stage_monitor_jit_forces=bool(explicit_stage_monitor_jit_forces),
-                jit_warmup_noscan=int(jit_warmup_noscan),
-                jit_precompile_noscan=bool(jit_precompile_noscan),
-                run_stage_solve=run_stage_solve,
-                sanitize_resume_state_for_same_stage=sanitize_resume_state_for_same_stage,
+                maybe_precompile_fixed_boundary_stage=_driver_solve_helpers.maybe_precompile_fixed_boundary_stage,
+                run_fixed_boundary_stage_solve=_driver_solve_helpers.run_fixed_boundary_stage_solve,
                 result_meets_requested_ftol=_result_meets_requested_ftol,
                 stage_switch_reason_from_progress=_stage_switch_reason_from_progress,
                 merge_stage_chunk_results=_merge_stage_chunk_results,
                 result_with_diag=_result_with_diag,
                 maybe_rerun_scan_abort_stage=_driver_solve_helpers.maybe_rerun_scan_abort_stage,
-                scan_abort_fallback_enabled=(not accelerated_mode) and bool(performance_mode) and bool(scan_mode),
-                verbose=bool(verbose),
+                assemble_multigrid_stage_result=_driver_result_helpers.assemble_multigrid_stage_result,
+                maybe_apply_scan_wout_corrector=_driver_solve_helpers.maybe_apply_scan_wout_corrector,
+                copy_final_force_payload=_copy_final_force_payload,
+                timing_solve_total_s=_timing_solve_total_s,
+                requested_final_ftol=_requested_final_ftol,
+                result_final_residuals=_result_final_residuals,
+                result_hits_total_target=_result_hits_total_target,
+                finalize_fixed_boundary_convergence_result=_driver_result_helpers.finalize_fixed_boundary_convergence_result,
+                print_vmec2000_run_summary=_driver_io_helpers.print_vmec2000_run_summary,
+                default_backend_name=_default_backend_name,
+                deepcopy_func=deepcopy,
+                getenv=os.getenv,
+                perf_counter=time.perf_counter,
             )
-            stage_mode_history[-1] = str(stage_mode_i)
-            stage_wall_s.append(float(time.perf_counter() - stage_t0))
-            try:
-                stage_timing = res_i.diagnostics.get("timing", {})
-            except Exception:
-                stage_timing = {}
-            stage_solve_total_s.append(_timing_solve_total_s(stage_timing))
-            stage_results.append(res_i)
-            stage_statics.append(static_i)
-            try:
-                w_hist = np.asarray(res_i.w_history)
-                prev_stage_fsq = float(w_hist[-1]) if w_hist.size else None
-            except Exception:
-                prev_stage_fsq = None
-            if multigrid_resume and i < (nstep - 1):
-                resume_state_stage = sanitize_resume_state_for_stage(res_i.diagnostics.get("resume_state"))
-            state = stage_results[-1].state
-            static_prev = static_i
-            ftol_last = float(ftol_i)
-            step_size_last = float(step_size_val)
-
-        res = _driver_result_helpers.assemble_multigrid_stage_result(
-            stage_results=stage_results,
-            state=state,
-            solver_mode=str(solver_mode_eff),
-            accelerated_mode=bool(accelerated_mode),
-            multigrid_user_provided=bool(multigrid_user_provided),
-            accelerated_single_grid_default=bool(accelerated_single_grid_default),
-            ns_stages=list(ns_stages),
-            niter_stages=list(niter_stages),
-            ftol_stages=list(ftol_stages),
-            stage_offsets=stage_offsets,
-            stage_mode_history=stage_mode_history,
-            stage_wall_s=stage_wall_s,
-            stage_solve_total_s=stage_solve_total_s,
-            niter_stages_input=niter_stages_input,
         )
-        res = _driver_solve_helpers.maybe_apply_scan_wout_corrector(
-            result=res,
-            stage_results=stage_results,
-            scan_wout_corrector=scan_wout_corrector,
-            accelerated_mode=bool(accelerated_mode),
-            static_prev=static_prev,
-            build_static_func=_build_static_cfg,
-            cfg=cfg,
-            ftol_last=ftol_last,
-            step_size_last=step_size_last,
-            indata=indata,
-            signgs=signgs,
-            use_restart_triggers=use_restart_triggers,
-            vmecpp_restart=bool(vmecpp_restart),
-            stage_transition_factor=float(stage_transition_factor),
-            stage_transition_scale=float(stage_transition_scale),
-            scan_minimal_default=scan_minimal_default,
-            jit_forces=jit_forces,
-            resolve_jit_forces=_resolve_jit_forces,
-            solve_fixed_boundary_residual_iter_func=solve_fixed_boundary_residual_iter,
-            accelerated_fsq_total_target_from_ftol=_accelerated_fsq_total_target_from_ftol,
-            copy_final_force_payload=_copy_final_force_payload,
-            getenv=os.getenv,
-        )
-        final_requested_ftol = _requested_final_ftol(indata=indata, ftol_list_input=ftol_list_input)
-        final_target_fsq = _accelerated_fsq_total_target_from_ftol(float(final_requested_ftol))
-        res = _driver_result_helpers.finalize_fixed_boundary_convergence_result(
-            res,
-            requested_ftol=float(final_requested_ftol),
-            fsq_total_target=float(final_target_fsq),
-            accelerated_mode=bool(accelerated_mode),
-            result_final_residuals=_result_final_residuals,
-            result_meets_requested_ftol=_result_meets_requested_ftol,
-            result_hits_total_target=_result_hits_total_target,
-        )
-        # Use the static from the last executed stage (static_prev) when
-        # available.  This ensures that static.cfg.ns matches the actual
-        # solved state's ns even when the final NS_ARRAY stage is skipped
-        # because the iteration budget (max_iter) was exhausted by earlier
-        # stages — e.g. max_iter=1500 with NITER_ARRAY=[600,1000,1000]
-        # only reaches ns=31, so static_prev.cfg.ns=31 while cfg.ns=50.
-        # Falling back to _build_static_cfg(cfg) when static_prev is None
-        # preserves the existing behavior for single-stage solves.
-        static = static_prev if static_prev is not None else _build_static_cfg(cfg)
-        if verbose and solver == "vmec2000_iter":
-            _driver_io_helpers.print_vmec2000_run_summary(
-                input_path=input_path,
-                result=res,
-                niter_stage=int(niter_i),
-                total_time=time.perf_counter() - t_start,
-            )
+        res = staged.result
+        static = staged.static
+        stage_results = staged.stage_results
+        stage_statics = staged.stage_statics
     else:
         raise ValueError(
             f"Unknown solver: {solver!r} (expected 'gd', 'lbfgs', 'vmec_lbfgs', 'vmec_gn', or 'vmec2000_iter')"

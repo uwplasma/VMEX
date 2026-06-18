@@ -50,6 +50,103 @@ class FixedBoundaryStageRunnerContext:
     accelerated_cli_budgeted_stage_iters: Callable[..., list[int]]
 
 
+@dataclass(frozen=True)
+class Vmec2000StagedSolveContext:
+    """Inputs and hooks for the public VMEC2000-style staged solve path."""
+
+    input_path: Any
+    cfg: Any
+    indata: Any
+    solver: str
+    solver_mode_eff: str
+    accelerated_mode: bool
+    performance_mode: bool
+    use_scan: bool
+    cli_fixed_boundary_mode: bool
+    direct_staged_current_driven_3d_cli: bool
+    multigrid: bool
+    multigrid_user_provided: bool
+    accelerated_single_grid_default: bool
+    direct_external_provider: bool
+    policy_backend: str
+    stage_transition_heuristic: bool
+    stage_transition_factor: float
+    stage_transition_scale: float
+    scan_minimal_default: Any
+    scan_wout_corrector: Any
+    jit_forces: Any
+    jit_precompile: Any
+    precompile_stages: bool
+    use_restart_triggers: Any
+    vmecpp_restart: bool
+    limit_update_rms: Any
+    external_field_provider_kind: Any
+    external_field_provider_static: Any
+    external_field_provider_params: Any
+    free_boundary_activate_fsq: Any
+    verbose: bool
+    signgs: int
+    step_size_val: float
+    ns_stages: list[int]
+    niter_stages: list[int]
+    ftol_stages: list[float]
+    niter_stages_input: Any
+    ftol_list_input: Any
+    restart_state_eff: Any
+    restart_solver_state: Any
+    boundary_coeffs: Any
+    t_start: float
+    build_static_cfg: Callable[[Any], Any]
+    initial_guess_with_optional_nojit: Callable[..., Any]
+    resolve_jit_forces: Callable[..., bool]
+    sanitize_resume_state_for_stage: Callable[[Any], Any]
+    sanitize_resume_state_for_same_stage: Callable[[Any], Any]
+    interp_vmec_state: Callable[..., Any]
+    mode_table_func: Callable[..., Any]
+    maybe_dump_xc_init: Callable[..., None]
+    maybe_disable_scan_by_parity_guard: Callable[..., bool]
+    resolve_stage_jit_settings: Callable[..., Any]
+    accelerated_fsq_total_target_from_ftol: Callable[[float], float]
+    host_update_assembly_driver_default: Callable[..., bool]
+    default_preconditioner_use_precomputed_tridi: Callable[..., bool]
+    default_preconditioner_use_lax_tridi: Callable[..., bool]
+    solve_fixed_boundary_residual_iter: Callable[..., Any]
+    maybe_select_dynamic_scan_mode: Callable[..., bool]
+    dynamic_scan_probe_settings: Callable[..., Any]
+    vmec_histories_match: Callable[..., bool]
+    vmec_history_relerr: Callable[..., float]
+    maybe_precompile_fixed_boundary_stage: Callable[..., None]
+    run_fixed_boundary_stage_solve: Callable[..., Any]
+    result_meets_requested_ftol: Callable[..., bool]
+    stage_switch_reason_from_progress: Callable[..., str | None]
+    merge_stage_chunk_results: Callable[..., Any]
+    result_with_diag: Callable[..., Any]
+    maybe_rerun_scan_abort_stage: Callable[..., Any]
+    assemble_multigrid_stage_result: Callable[..., Any]
+    maybe_apply_scan_wout_corrector: Callable[..., Any]
+    copy_final_force_payload: Callable[..., Any]
+    timing_solve_total_s: Callable[[dict[str, Any]], float]
+    requested_final_ftol: Callable[..., float]
+    result_final_residuals: Callable[..., Any]
+    result_hits_total_target: Callable[..., bool]
+    finalize_fixed_boundary_convergence_result: Callable[..., Any]
+    print_vmec2000_run_summary: Callable[..., None]
+    default_backend_name: Callable[[], str]
+    deepcopy_func: Callable[[Any], Any]
+    getenv: Callable[[str, str], str]
+    perf_counter: Callable[[], float] = time.perf_counter
+
+
+@dataclass(frozen=True)
+class Vmec2000StagedSolveResult:
+    """Result bundle from the VMEC2000 staged solve driver seam."""
+
+    result: Any
+    static: Any
+    stage_results: list[Any]
+    stage_statics: list[Any]
+
+
 def _stage_timing_s(run: Any, timing_solve_total_s: Callable[[dict[str, Any]], float]) -> float:
     try:
         timing = run.result.diagnostics.get("timing", {}) if run.result is not None else {}
@@ -245,6 +342,386 @@ def run_stage_with_optional_explicit_monitor(
     )
     return result, effective_mode
 
+
+def run_vmec2000_staged_solve(ctx: Vmec2000StagedSolveContext) -> Vmec2000StagedSolveResult:
+    """Run the multigrid/single-grid VMEC2000-style staged solve path."""
+
+    nstep = len(ctx.ns_stages)
+    stage_results: list[Any] = []
+    stage_statics: list[Any] = []
+    stage_offsets: list[int] = []
+
+    header_modes = ctx.mode_table_func(ctx.cfg.mpol, ctx.cfg.ntor)
+    nmodes_header = int(np.asarray(header_modes.m).size)
+
+    state = ctx.restart_state_eff
+    static_prev = None
+    resume_state_stage = ctx.restart_solver_state
+    multigrid_resume = False
+    if ctx.multigrid:
+        env_resume = ctx.getenv("VMEC_JAX_MULTIGRID_RESUME", "0")
+        multigrid_resume = env_resume.strip().lower() not in ("", "0", "false", "no")
+
+    prev_stage_fsq = None
+    stage_mode_history: list[str] = []
+    stage_wall_s: list[float] = []
+    stage_solve_total_s: list[float] = []
+    ftol_last = None
+    step_size_last = None
+    last_niter_stage = 0
+
+    for i, (ns_i, niter_i, ftol_i) in enumerate(zip(ctx.ns_stages, ctx.niter_stages, ctx.ftol_stages)):
+        if int(niter_i) <= 0:
+            continue
+        last_niter_stage = int(niter_i)
+        stage_t0 = ctx.perf_counter()
+        stage_accelerated_mode = bool(ctx.accelerated_mode)
+        if bool(stage_accelerated_mode) and bool(ctx.direct_staged_current_driven_3d_cli) and bool(ctx.cfg.lasym):
+            # LASYM current-driven 3D staged runs remain more sensitive in
+            # lambda than geometry. Keep this class on the conservative
+            # controller until the lambda mismatch is closed numerically.
+            stage_accelerated_mode = False
+        stage_mode_i = "accelerated" if bool(stage_accelerated_mode) else "parity"
+        stage_mode_history.append(stage_mode_i)
+        if ctx.verbose:
+            print(
+                f"  NS = {int(ns_i):4d} NO. FOURIER MODES = {nmodes_header:4d} "
+                f"FTOLV = {float(ftol_i):10.3E} NITER = {int(niter_i):6d}",
+                flush=True,
+            )
+            print("  PROCESSOR COUNT - RADIAL:    1", flush=True)
+            print("", flush=True)
+            if bool(ctx.cfg.lasym):
+                print(
+                    "  ITER    FSQR      FSQZ      FSQL    RAX(v=0)  ZAX(v=0)    DELT       WMHD",
+                    flush=True,
+                )
+            else:
+                print(
+                    "  ITER    FSQR      FSQZ      FSQL    RAX(v=0)    DELT       WMHD",
+                    flush=True,
+                )
+
+        cfg_i = replace(ctx.cfg, ns=int(ns_i))
+        static_i = ctx.build_static_cfg(cfg_i)
+        scan_mode = bool(ctx.use_scan) if bool(stage_accelerated_mode) else False
+        if stage_accelerated_mode and bool(ctx.use_scan):
+            scan_mode = not bool(cfg_i.lfreeb)
+        if bool(ctx.cfg.lasym):
+            lasym_scan_env = ctx.getenv("VMEC_JAX_LASYM_USE_SCAN", "auto").strip().lower()
+            if lasym_scan_env in ("0", "false", "no", "off"):
+                scan_mode = False
+            elif lasym_scan_env not in ("", "auto"):
+                scan_mode = True
+        scan_mode = ctx.maybe_disable_scan_by_parity_guard(
+            accelerated_mode=bool(ctx.accelerated_mode),
+            scan_mode=bool(scan_mode),
+            niter=int(niter_i),
+            state_stage_start=state,
+            static_stage=static_i,
+            indata=ctx.indata,
+            signgs=ctx.signgs,
+            ftol=float(ftol_i),
+            step_size=float(ctx.step_size_val),
+            use_restart_triggers=ctx.use_restart_triggers,
+            vmecpp_restart=bool(ctx.vmecpp_restart),
+            stage_transition_factor=float(ctx.stage_transition_factor),
+            stage_transition_scale=float(ctx.stage_transition_scale),
+            scan_minimal_default=ctx.scan_minimal_default,
+            jit_forces=ctx.jit_forces,
+            resolve_jit_forces=ctx.resolve_jit_forces,
+            solve_fixed_boundary_residual_iter=ctx.solve_fixed_boundary_residual_iter,
+            verbose=bool(ctx.verbose),
+            getenv=ctx.getenv,
+        )
+        jit_forces_base = ctx.resolve_jit_forces(ctx.jit_forces, static_i, int(niter_i))
+        jit_settings = ctx.resolve_stage_jit_settings(
+            jit_forces_base=bool(jit_forces_base),
+            scan_mode=bool(scan_mode),
+            solver=ctx.solver,
+            performance_mode=bool(ctx.performance_mode),
+            jit_precompile=ctx.jit_precompile,
+        )
+        jit_forces_eff = bool(jit_settings.jit_forces_eff)
+        jit_precompile_eff = bool(jit_settings.jit_precompile_eff)
+        jit_warmup_iters = int(jit_settings.jit_warmup_iters)
+        jit_precompile_noscan = bool(jit_settings.jit_precompile_noscan)
+        jit_warmup_noscan = int(jit_settings.jit_warmup_noscan)
+        if i == 0:
+            if state is None:
+                if ctx.boundary_coeffs is None:
+                    raise ValueError("boundary_coeffs missing; cannot build initial guess")
+                state = ctx.initial_guess_with_optional_nojit(
+                    static_i,
+                    ctx.boundary_coeffs,
+                    force_disable_jit=bool(jit_warmup_iters > 0),
+                )
+                ctx.maybe_dump_xc_init(state=state, static=static_i, label="stage0")
+        else:
+            state = ctx.interp_vmec_state(
+                state,
+                m=static_prev.modes.m,
+                n=static_prev.modes.n,
+                lthreed=bool(static_prev.cfg.lthreed),
+                lconm1=bool(getattr(static_prev.cfg, "lconm1", True)),
+                ns_new=int(ns_i),
+            )
+        state_stage_start = state
+        static_prev = static_i
+
+        stage_offsets.append(sum(int(np.asarray(r.w_history).size) for r in stage_results))
+        vmec2000_ctrl = True
+        stage_prev_fsq = prev_stage_fsq if bool(ctx.stage_transition_heuristic) else None
+        stage_light_history = (
+            True
+            if (
+                bool(ctx.performance_mode)
+                and (not bool(ctx.verbose))
+                and ((not bool(ctx.cfg.lfreeb)) or bool(ctx.direct_external_provider))
+            )
+            else None
+        )
+        stage_resume_state_mode = "minimal" if stage_accelerated_mode else None
+        is_last_stage = i == len(ctx.ns_stages) - 1
+        final_cpu_scan_env = ctx.getenv("VMEC_JAX_FINAL_STAGE_CPU_SCAN", "1").strip().lower()
+        final_cpu_scan_disabled = final_cpu_scan_env in ("0", "false", "no")
+        if bool(ctx.cli_fixed_boundary_mode) and scan_mode and (ctx.default_backend_name() == "cpu") and final_cpu_scan_disabled:
+            scan_mode = False
+        stage_fsq_total_target = (
+            ctx.accelerated_fsq_total_target_from_ftol(float(ftol_i))
+            if (stage_accelerated_mode and not is_last_stage)
+            else None
+        )
+        stage_host_update_assembly = ctx.host_update_assembly_driver_default(
+            cfg=cfg_i,
+            performance_mode=bool(ctx.performance_mode),
+            backend=ctx.default_backend_name(),
+            use_scan=bool(scan_mode),
+        )
+        stage_preconditioner_use_precomputed_tridi = ctx.default_preconditioner_use_precomputed_tridi(
+            cfg=cfg_i,
+            backend=ctx.policy_backend,
+            performance_mode=bool(ctx.performance_mode),
+            use_scan=bool(scan_mode),
+            direct_external_provider=bool(ctx.direct_external_provider),
+        )
+        stage_preconditioner_use_lax_tridi = ctx.default_preconditioner_use_lax_tridi(
+            cfg=cfg_i,
+            backend=ctx.policy_backend,
+            performance_mode=bool(ctx.performance_mode),
+            use_scan=bool(scan_mode),
+            direct_external_provider=bool(ctx.direct_external_provider),
+        )
+        stage_limit_update_rms = False if ctx.limit_update_rms is None else bool(ctx.limit_update_rms)
+        solve_kwargs = dict(
+            indata=ctx.indata,
+            signgs=ctx.signgs,
+            ftol=float(ftol_i),
+            max_iter=int(niter_i),
+            step_size=float(ctx.step_size_val),
+            include_constraint_force=True,
+            apply_m1_constraints=True,
+            precond_radial_alpha=0.5,
+            precond_lambda_alpha=0.5,
+            mode_diag_exponent=0.0,
+            auto_flip_force=False,
+            divide_by_scalxc_for_update=False,
+            lambda_update_scale=1.0,
+            enforce_vmec_lambda_axis=True,
+            vmec2000_control=vmec2000_ctrl,
+            strict_update=True,
+            backtracking=False,
+            limit_update_rms=stage_limit_update_rms,
+            reference_mode=False,
+            use_restart_triggers=True if ctx.use_restart_triggers is None else bool(ctx.use_restart_triggers),
+            vmecpp_restart=bool(ctx.vmecpp_restart),
+            use_direct_fallback=False,
+            stage_prev_fsq=stage_prev_fsq,
+            stage_transition_factor=float(ctx.stage_transition_factor),
+            stage_transition_scale=float(ctx.stage_transition_scale),
+            resume_state=resume_state_stage,
+            verbose=bool(ctx.verbose),
+            verbose_vmec2000_table=bool(ctx.verbose),
+            use_scan=bool(scan_mode),
+            jit_warmup_iters=int(jit_warmup_iters),
+            jit_precompile=bool(jit_precompile_eff),
+            scan_minimal_default=ctx.scan_minimal_default,
+            light_history=stage_light_history,
+            resume_state_mode=stage_resume_state_mode,
+            fsq_total_target=stage_fsq_total_target,
+            host_update_assembly=stage_host_update_assembly,
+            preconditioner_use_precomputed_tridi=stage_preconditioner_use_precomputed_tridi,
+            preconditioner_use_lax_tridi=stage_preconditioner_use_lax_tridi,
+            external_field_provider_kind=ctx.external_field_provider_kind,
+            external_field_provider_static=ctx.external_field_provider_static,
+            external_field_provider_params=ctx.external_field_provider_params,
+            free_boundary_activate_fsq=ctx.free_boundary_activate_fsq,
+            return_final_force_payload=True,
+        )
+        scan_mode = ctx.maybe_select_dynamic_scan_mode(
+            cfg=ctx.cfg,
+            accelerated_mode=bool(ctx.accelerated_mode),
+            performance_mode=bool(ctx.performance_mode),
+            scan_mode=bool(scan_mode),
+            vmec2000_control=bool(vmec2000_ctrl),
+            niter=int(niter_i),
+            solve_kwargs=solve_kwargs,
+            state_stage_start=state_stage_start,
+            static_stage=static_i,
+            resume_state_stage=resume_state_stage,
+            jit_forces_base=bool(jit_forces_base),
+            solve_fixed_boundary_residual_iter=ctx.solve_fixed_boundary_residual_iter,
+            dynamic_scan_probe_settings=ctx.dynamic_scan_probe_settings,
+            vmec_histories_match=ctx.vmec_histories_match,
+            vmec_history_relerr=ctx.vmec_history_relerr,
+            verbose=bool(ctx.verbose),
+            getenv=ctx.getenv,
+            deepcopy_func=ctx.deepcopy_func,
+        )
+        solve_kwargs["use_scan"] = bool(scan_mode)
+        ctx.maybe_precompile_fixed_boundary_stage(
+            enabled=bool(ctx.precompile_stages) and bool(jit_forces_eff),
+            state=state,
+            static=static_i,
+            solve_kwargs=solve_kwargs,
+            solve_fixed_boundary_residual_iter_func=ctx.solve_fixed_boundary_residual_iter,
+        )
+
+        def run_stage_solve(*, state, solve_kwargs, jit_forces):
+            return ctx.run_fixed_boundary_stage_solve(
+                state=state,
+                static=static_i,
+                solve_kwargs=solve_kwargs,
+                jit_forces=jit_forces,
+                solve_fixed_boundary_residual_iter_func=ctx.solve_fixed_boundary_residual_iter,
+            )
+
+        explicit_stage_monitor = (
+            bool(stage_accelerated_mode)
+            and (ctx.niter_stages_input is not None)
+            and int(nstep) > 1
+            and int(i) > 0
+        )
+        explicit_stage_chunk = min(int(niter_i), max(int(ctx.indata.get_int("NSTEP", 1)), 200))
+        explicit_stage_target = ctx.accelerated_fsq_total_target_from_ftol(float(ftol_i))
+        explicit_stage_monitor_jit_forces = bool(jit_forces_base)
+
+        res_i, stage_mode_i = run_stage_with_optional_explicit_monitor(
+            monitor_enabled=bool(explicit_stage_monitor),
+            stage_mode=str(stage_mode_i),
+            ns=int(ns_i),
+            niter=int(niter_i),
+            ftol=float(ftol_i),
+            explicit_stage_chunk=int(explicit_stage_chunk),
+            explicit_stage_target=float(explicit_stage_target),
+            policy_backend=str(ctx.policy_backend),
+            scan_mode=bool(scan_mode),
+            state=state,
+            state_stage_start=state_stage_start,
+            resume_state_stage=resume_state_stage,
+            stage_prev_fsq=stage_prev_fsq,
+            solve_kwargs=solve_kwargs,
+            jit_forces_eff=bool(jit_forces_eff),
+            jit_forces_base=bool(jit_forces_base),
+            explicit_stage_monitor_jit_forces=bool(explicit_stage_monitor_jit_forces),
+            jit_warmup_noscan=int(jit_warmup_noscan),
+            jit_precompile_noscan=bool(jit_precompile_noscan),
+            run_stage_solve=run_stage_solve,
+            sanitize_resume_state_for_same_stage=ctx.sanitize_resume_state_for_same_stage,
+            result_meets_requested_ftol=ctx.result_meets_requested_ftol,
+            stage_switch_reason_from_progress=ctx.stage_switch_reason_from_progress,
+            merge_stage_chunk_results=ctx.merge_stage_chunk_results,
+            result_with_diag=ctx.result_with_diag,
+            maybe_rerun_scan_abort_stage=ctx.maybe_rerun_scan_abort_stage,
+            scan_abort_fallback_enabled=(not ctx.accelerated_mode) and bool(ctx.performance_mode) and bool(scan_mode),
+            verbose=bool(ctx.verbose),
+        )
+        stage_mode_history[-1] = str(stage_mode_i)
+        stage_wall_s.append(float(ctx.perf_counter() - stage_t0))
+        try:
+            stage_timing = res_i.diagnostics.get("timing", {})
+        except Exception:
+            stage_timing = {}
+        stage_solve_total_s.append(ctx.timing_solve_total_s(stage_timing))
+        stage_results.append(res_i)
+        stage_statics.append(static_i)
+        try:
+            w_hist = np.asarray(res_i.w_history)
+            prev_stage_fsq = float(w_hist[-1]) if w_hist.size else None
+        except Exception:
+            prev_stage_fsq = None
+        if multigrid_resume and i < (nstep - 1):
+            resume_state_stage = ctx.sanitize_resume_state_for_stage(res_i.diagnostics.get("resume_state"))
+        state = stage_results[-1].state
+        static_prev = static_i
+        ftol_last = float(ftol_i)
+        step_size_last = float(ctx.step_size_val)
+
+    res = ctx.assemble_multigrid_stage_result(
+        stage_results=stage_results,
+        state=state,
+        solver_mode=str(ctx.solver_mode_eff),
+        accelerated_mode=bool(ctx.accelerated_mode),
+        multigrid_user_provided=bool(ctx.multigrid_user_provided),
+        accelerated_single_grid_default=bool(ctx.accelerated_single_grid_default),
+        ns_stages=list(ctx.ns_stages),
+        niter_stages=list(ctx.niter_stages),
+        ftol_stages=list(ctx.ftol_stages),
+        stage_offsets=stage_offsets,
+        stage_mode_history=stage_mode_history,
+        stage_wall_s=stage_wall_s,
+        stage_solve_total_s=stage_solve_total_s,
+        niter_stages_input=ctx.niter_stages_input,
+    )
+    res = ctx.maybe_apply_scan_wout_corrector(
+        result=res,
+        stage_results=stage_results,
+        scan_wout_corrector=ctx.scan_wout_corrector,
+        accelerated_mode=bool(ctx.accelerated_mode),
+        static_prev=static_prev,
+        build_static_func=ctx.build_static_cfg,
+        cfg=ctx.cfg,
+        ftol_last=ftol_last,
+        step_size_last=step_size_last,
+        indata=ctx.indata,
+        signgs=ctx.signgs,
+        use_restart_triggers=ctx.use_restart_triggers,
+        vmecpp_restart=bool(ctx.vmecpp_restart),
+        stage_transition_factor=float(ctx.stage_transition_factor),
+        stage_transition_scale=float(ctx.stage_transition_scale),
+        scan_minimal_default=ctx.scan_minimal_default,
+        jit_forces=ctx.jit_forces,
+        resolve_jit_forces=ctx.resolve_jit_forces,
+        solve_fixed_boundary_residual_iter_func=ctx.solve_fixed_boundary_residual_iter,
+        accelerated_fsq_total_target_from_ftol=ctx.accelerated_fsq_total_target_from_ftol,
+        copy_final_force_payload=ctx.copy_final_force_payload,
+        getenv=ctx.getenv,
+    )
+    final_requested_ftol = ctx.requested_final_ftol(indata=ctx.indata, ftol_list_input=ctx.ftol_list_input)
+    final_target_fsq = ctx.accelerated_fsq_total_target_from_ftol(float(final_requested_ftol))
+    res = ctx.finalize_fixed_boundary_convergence_result(
+        res,
+        requested_ftol=float(final_requested_ftol),
+        fsq_total_target=float(final_target_fsq),
+        accelerated_mode=bool(ctx.accelerated_mode),
+        result_final_residuals=ctx.result_final_residuals,
+        result_meets_requested_ftol=ctx.result_meets_requested_ftol,
+        result_hits_total_target=ctx.result_hits_total_target,
+    )
+    static = static_prev if static_prev is not None else ctx.build_static_cfg(ctx.cfg)
+    if ctx.verbose and ctx.solver == "vmec2000_iter":
+        ctx.print_vmec2000_run_summary(
+            input_path=ctx.input_path,
+            result=res,
+            niter_stage=int(last_niter_stage),
+            total_time=ctx.perf_counter() - ctx.t_start,
+        )
+    return Vmec2000StagedSolveResult(
+        result=res,
+        static=static,
+        stage_results=stage_results,
+        stage_statics=stage_statics,
+    )
 
 def run_cli_accelerated_budgeted_multigrid(
     ctx: FixedBoundaryStageRunnerContext,
@@ -489,6 +966,9 @@ def run_cli_explicit_staged_followup(
 
 __all__ = [
     "FixedBoundaryStageRunnerContext",
+    "Vmec2000StagedSolveContext",
+    "Vmec2000StagedSolveResult",
     "run_cli_accelerated_budgeted_multigrid",
     "run_cli_explicit_staged_followup",
+    "run_vmec2000_staged_solve",
 ]
