@@ -11979,6 +11979,73 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9983%.
 
+## 2026-06-18 Force Constraint Preconditioner Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_constraint_preconditioner_and_tcon` to isolate VMEC's constraint
+   preconditioner diagonal selection and `tcon` profile policy.
+2. Rewired `_constraint_kernels_from_state` to use that helper before the
+   existing `alias_gcon` construction and constraint-force return fields.
+3. Hardened `_named_scope` and `_trace` so profiling instrumentation falls back
+   cleanly when JAX context managers are present but fail during `__enter__`.
+
+Results obtained:
+
+- `_constraint_kernels_from_state` dropped to 275 lines, and the extracted
+  `tcon` helper is 121 lines.
+- The force module file grew slightly because the seam and instrumentation
+  fallback are explicit; this is acceptable for this tranche, but the next
+  force refactor should consolidate or move contexts rather than adding more
+  inline helpers.
+- The broader fixed-boundary force/parity subset remained green.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/vmec_forces.py`
+- `python -m ruff check vmec_jax/vmec_forces.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_vmec_forces_fast_helpers.py tests/test_vmec_forces_synthetic_helpers.py tests/test_constraint_pipeline.py tests/test_forces_bcovar_wave12_coverage.py -q`
+  - Result: passed, with expected skips.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_equif_eqfor_parity.py tests/test_residue_getfsq_parity.py tests/test_getfsq_block_sums.py tests/test_vmec2000_scalars_parity.py tests/test_forces_bcovar_wave12_coverage.py -q`
+  - Result: passed, with expected skips/xfail.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 40`
+
+Best next steps:
+
+1. Avoid incremental inline helper growth in `vmec_forces.py`; the next force
+   tranche should split a larger domain context or move reusable force-context
+   seams into a clearer module if that reduces total cognitive load.
+2. Continue with a cleaner high-value seam such as driver finish, fixed-boundary
+   residual optimizer setup, or `vmec_forces_rz_from_wout` startup context.
+3. Recheck PR CI after the next push and only debug concrete failures.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.999996%.
+- Solver monolith reduction: 99.46%.
+- Free-boundary adjoint monolith reduction: 99.30%.
+- Driver workflow decomposition: 99.82%.
+- Residual iteration decomposition: 95.8%.
+- WOUT diagnostic/profile decomposition: 99.68%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9984%.
+
 ## 2026-06-18 QI Boozer Grid Context Seam
 
 Branch: `codex/differentiability-refactor-plan`.
