@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import csv
 import json
 from pathlib import Path
@@ -218,6 +219,14 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     bad_summary_rows["summary_rows"] = metrics["summary_rows"][:-1]
     with pytest.raises(ValueError, match="summary_rows"):
         module["validate_circular_coil_beta_scan_metrics"](bad_summary_rows)
+    bad_summary_value = copy.deepcopy(metrics)
+    bad_summary_value["summary_rows"][0]["baseline_final_fsq"] = -1.0
+    with pytest.raises(ValueError, match="summary row 0 field baseline_final_fsq"):
+        module["validate_circular_coil_beta_scan_metrics"](bad_summary_value)
+    bad_pilot_summary = copy.deepcopy(metrics)
+    bad_pilot_summary["fixed_boundary_baseline_rows"][0]["lcfs_pilot_rows_count"] += 1
+    with pytest.raises(ValueError, match="baseline row 0 field lcfs_pilot_rows_count"):
+        module["validate_circular_coil_beta_scan_metrics"](bad_pilot_summary)
     bad_pilot_total = dict(metrics)
     bad_pilot_total["lcfs_pilot_rows_total"] = metrics["lcfs_pilot_rows_total"] + 1
     with pytest.raises(ValueError, match="lcfs_pilot_rows_total"):
@@ -551,6 +560,13 @@ def test_root_free_boundary_circular_coils_tolerant_fsq_guard_keeps_last_accepte
     assert row["lcfs_pilot_last_accepted_fsq_growth_ratio"] == pytest.approx(first["fsq_growth_ratio"])
     assert row["lcfs_pilot_final_fsq"] == pytest.approx(second["final_fsq"])
     assert row["lcfs_pilot_final_fsq_growth_ratio"] == pytest.approx(second["fsq_growth_ratio"])
+    summary = metrics["summary_rows"][0]
+    assert summary["pilot_status"] == "rejected"
+    assert summary["last_accepted_step"] == 1
+    assert summary["last_accepted_fsq"] == pytest.approx(first["final_fsq"])
+    assert summary["last_accepted_fsq_growth_ratio"] == pytest.approx(first["fsq_growth_ratio"])
+    assert summary["final_trial_fsq"] == pytest.approx(second["final_fsq"])
+    assert summary["final_trial_fsq_growth_ratio"] == pytest.approx(second["fsq_growth_ratio"])
 
 
 def test_root_fixed_boundary_solve_diagnostic_runs_without_plots(tmp_path):

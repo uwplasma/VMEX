@@ -17909,3 +17909,117 @@ Results:
 No user input is needed.
 
 ---
+## 144. Circular-Coil Beta-Scan Schema Consistency Hardening
+
+### Steps taken
+
+- Hardened `validate_circular_coil_beta_scan_metrics` so it now checks:
+  - each baseline row's `lcfs_pilot_rows` value is a JSON array;
+  - per-beta LCFS pilot scalar fields match the nested pilot rows;
+  - compact `summary_rows` match the fixed-boundary baseline rows;
+  - corrupted generated summary values are rejected instead of only checking
+    field presence.
+- Added regression assertions that deliberately corrupt:
+  - a summary-row value;
+  - a per-beta `lcfs_pilot_rows_count` aggregate.
+- Tightened the accepted-then-rejected fsq-guard test so the compact summary
+  row must preserve both:
+  - the last accepted pilot state;
+  - the final rejected trial state.
+- Revalidated the M143 metrics JSON with the hardened validator.
+- Ran targeted and full mirror example test suites.
+
+### Results obtained
+
+- The schema validator now catches stale or hand-edited ESSOS comparison rows
+  that no longer match the detailed nested baseline/pilot rows.
+- The tolerant fsq-guard path is now explicitly covered as:
+  - one accepted pilot update;
+  - one rejected follow-up trial;
+  - `summary_rows[0].last_accepted_*` pointing to the accepted step;
+  - `summary_rows[0].final_trial_*` pointing to the rejected trial.
+- The existing M143 metrics file still validates under the hardened schema:
+  `validated current M143 metrics with hardened schema 0.3 3`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff check examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_examples.py
+
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_fsq_growth_guard_rejects_pilot \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_tolerant_fsq_guard_keeps_last_accepted \
+  -q
+
+python - <<'PY'
+import json, runpy
+from pathlib import Path
+m = json.loads(Path(
+    "results/mirror/free_boundary_circular_coils_m143_schema03_guard1p1/"
+    "free_boundary_circular_coils_metrics.json"
+).read_text())
+mod = runpy.run_path("examples/mirror_free_boundary_circular_coils.py")
+mod["validate_circular_coil_beta_scan_metrics"](m)
+print("validated current M143 metrics with hardened schema",
+      m["metrics_schema_version"], len(m["summary_rows"]))
+PY
+
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py -q
+```
+
+Results:
+
+- Ruff format left both touched files unchanged.
+- Ruff lint passed.
+- Focused free-boundary example tests passed: `3 passed`.
+- Hardened validator accepted the M143 metrics file.
+- Full mirror examples suite passed: `18 passed in 76.91s`.
+
+### File structure and best-practice notes
+
+- The schema contract remains in the root example, which is the single
+  human-facing circular-coil beta-scan entry point.
+- The tests remain in `tests/mirror/test_mirror_examples.py`, next to the
+  existing root-example smoke and guard-path tests.
+- No generated result files were added to git.
+- This is a schema-contract hardening change; it does not alter the physical
+  solve or plotting algorithms.
+
+### Best next steps
+
+1. Commit and push M144.
+2. Add the coupled free-boundary update strategy so LCFS pressure-balance
+   improvement and reduced-equilibrium residual control are handled together.
+3. Run a compact plotted beta-scan after the coupled update is available and
+   compare against the M143 guarded-pilot evidence.
+4. Refresh the draft PR body after the next substantive solver tranche.
+
+### Completion percentages after M144
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `91%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `92%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `92%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `89%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `92%`.
+- PR merge readiness overall: `97%`.
+
+### User input needed
+
+No user input is needed.
+
+---

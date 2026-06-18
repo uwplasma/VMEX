@@ -236,10 +236,13 @@ def validate_circular_coil_beta_scan_metrics(metrics: dict[str, object]) -> None
         if not isinstance(row, dict):
             raise ValueError(f"baseline row {index} must be a JSON object")
         _require_fields(row, CIRCULAR_COIL_BETA_SCAN_ROW_FIELDS, f"baseline row {index}")
+        case_pilot_rows = row.get("lcfs_pilot_rows", [])
+        if not isinstance(case_pilot_rows, list):
+            raise ValueError(f"baseline row {index} lcfs_pilot_rows must be a JSON array")
         status = str(row["lcfs_pilot_status"])
         if status not in CIRCULAR_COIL_BETA_SCAN_PILOT_STATUSES:
             raise ValueError(f"baseline row {index} has unknown lcfs_pilot_status {status!r}")
-        for step_index, pilot in enumerate(row.get("lcfs_pilot_rows", [])):
+        for step_index, pilot in enumerate(case_pilot_rows):
             if not isinstance(pilot, dict):
                 raise ValueError(f"pilot row {index}.{step_index} must be a JSON object")
             _require_fields(pilot, CIRCULAR_COIL_BETA_SCAN_PILOT_ROW_FIELDS, f"pilot row {index}.{step_index}")
@@ -249,6 +252,15 @@ def validate_circular_coil_beta_scan_metrics(metrics: dict[str, object]) -> None
             rejection_reason = pilot.get("rejection_reason")
             if rejection_reason is not None and str(rejection_reason) not in CIRCULAR_COIL_BETA_SCAN_REJECTION_REASONS:
                 raise ValueError(f"pilot row {index}.{step_index} has unknown rejection_reason {rejection_reason!r}")
+        for field, expected_value in _lcfs_pilot_summary(case_pilot_rows).items():
+            if row.get(field) != expected_value:
+                raise ValueError(f"baseline row {index} field {field} does not match nested pilot rows")
+
+    for index, expected_row in enumerate(circular_coil_beta_scan_report_rows(metrics)):
+        report_row = summary_rows[index]
+        for field, expected_value in expected_row.items():
+            if report_row.get(field) != expected_value:
+                raise ValueError(f"summary row {index} field {field} does not match fixed-boundary baseline row")
 
 
 def _require_fields(row: dict[str, object], fields: tuple[str, ...], label: str) -> None:
