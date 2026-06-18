@@ -36,6 +36,10 @@ without coupling it to toroidal VMEC assumptions:
 - WHAM-inspired circular-loop fixture metadata, deterministic vacuum-field
   reference checks, optional ``magpylib`` comparison hooks, and low-resolution
   runnable axisymmetric/nonaxisymmetric examples;
+- a first free-boundary mirror bridge with ESSOS-compatible circular-loop coil
+  parameters, direct-coil external-field sampling on the mirror axis/boundary,
+  and explicit beta-scan case metadata for the planned 1%, 3%, and 10% circular
+  coil studies;
 - a repo-root ``examples/mirror_two_coil_axisym.py`` analytic benchmark that
   builds a fixed boundary from the closed-form on-axis field of two circular
   coils, overlays mirror ``B_z`` against that reference, draws the coils, and
@@ -66,5 +70,6 @@ Current solver status:
 - Open-field pitch diagnostics measure cap-to-cap field-line advance and turns.
   They should not be interpreted as toroidal rotational transform.
 
-Later phases finish differentiable optimization APIs, free-boundary design,
-stellarator-mirror hybrid boundaries, and ESSOS circular-coil beta scans.
+Later phases finish differentiable optimization APIs, free-boundary LCFS
+updates, stellarator-mirror hybrid boundaries, and ESSOS circular-coil beta
+scan examples.

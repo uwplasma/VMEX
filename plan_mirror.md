@@ -6947,3 +6947,156 @@ Result: all checks passed.
 ### User input needed
 
 No user input is needed.
+
+---
+
+## 63. 2026-06-17 M12a mirror free-boundary circular-coil bridge
+
+This lane started the free-boundary mirror path with a tested bridge rather
+than an unvalidated LCFS solve.  The new code builds ESSOS-compatible circular
+coil parameters, samples their external field on mirror grids, and records the
+planned 1%, 3%, and 10% beta scan cases.
+
+### Steps taken
+
+- Added `vmec_jax/mirror/free_boundary.py`.
+- Added `MirrorCircularCoils` for axisymmetric circular-loop mirror coil sets.
+- Added conversion from circular coils to `CoilFieldParams` using the ESSOS
+  Fourier convention:
+  - `x = R cos(2 pi t)`;
+  - `y = R sin(2 pi t)`;
+  - `z = z_center`.
+- Added `MirrorExternalFieldSample`.
+- Added `sample_mirror_axis_external_field`.
+- Added `sample_mirror_boundary_external_field`.
+- Added `MirrorFreeBoundaryBetaCase` and
+  `make_mirror_free_boundary_beta_cases`, defaulting to 1%, 3%, and 10%.
+- Exported the new helpers through `vmec_jax.mirror`.
+- Added a root-level example:
+  `examples/mirror_free_boundary_circular_coils.py`.
+- Updated `examples/mirror/README.md` and mirror docs to describe the bridge as
+  a planning fixture, not a free-boundary LCFS solve.
+- Added tests for:
+  - ESSOS-compatible circular-coil coefficients;
+  - direct-coil on-axis parity against the analytic two-coil field;
+  - mirror boundary field sampling shapes;
+  - default beta-scan metadata;
+  - the new root example's no-plot smoke path.
+
+### Results obtained
+
+Generated example artifacts:
+
+- `results/mirror/m12_free_boundary_circular_coils/free_boundary_circular_coils_metrics.json`.
+- `results/mirror/m12_free_boundary_circular_coils/figures/free_boundary_circular_coils_axis_bz.png`.
+- `results/mirror/m12_free_boundary_circular_coils/figures/free_boundary_circular_coils_boundary_bmag.png`.
+- `results/mirror/m12_free_boundary_circular_coils/figures/free_boundary_circular_coils_geometry.png`.
+
+Example metrics:
+
+| quantity | value |
+| --- | ---: |
+| on-axis `B_z` relative Linf error | `9.098256159668e-16` |
+| minimum axis `|B_z|` | `1.294393812392e-01` |
+| maximum axis `|B_z|` | `1.804391293833e+00` |
+| minimum boundary `|B|` | `1.053675512271e-01` |
+| maximum boundary `|B|` | `1.879005770409e+00` |
+
+Visual validation:
+
+- The on-axis plot overlays the direct-coil bridge and analytic two-coil field.
+- The boundary `|B|` plot is poloidally symmetric for circular coils.
+- The 3-D geometry plot shows the mirror horizontally with `z` as the long axis
+  and circular coils at the caps.
+
+### How it was tested
+
+Focused tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots \
+  tests/test_external_fields_essos_adapter.py \
+  -q
+```
+
+Result: `13 passed in 6.30s`.
+
+Example with plots:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/m12_free_boundary_circular_coils \
+  --ntheta 24 \
+  --nxi 33 \
+  --n-segments 256
+```
+
+Result: metrics and three PNG figures written.
+
+Lint/format/docs/whitespace:
+
+```bash
+python -m ruff check \
+  vmec_jax/mirror/free_boundary.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_examples.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py
+python -m ruff format --check \
+  vmec_jax/mirror/free_boundary.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_examples.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py
+python -m sphinx -W -j auto -b html docs docs/_build/html
+git diff --check
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- The bridge is one mirror-domain module, `vmec_jax/mirror/free_boundary.py`.
+- Existing toroidal external-field code remains the owner of direct-coil
+  Biot-Savart sampling and ESSOS-compatible Fourier conventions.
+- Mirror-specific code only adapts circular mirror coils and mirror grids to
+  that external-field provider interface.
+- The example is root-level because it is a user-facing planning fixture, but
+  it does not write a `mout` file or claim an equilibrium solve.
+
+### Best next steps
+
+1. Commit and push M12a.
+2. Extend the bridge toward the ESSOS lane:
+   - allow loading circular-coil data from an ESSOS-like object or JSON;
+   - write a free-boundary beta-scan driver that records the 1%, 3%, and 10%
+     case setup without claiming LCFS convergence;
+   - add the first LCFS update strategy only after the boundary condition and
+     force-balance target are explicitly defined and tested.
+3. Keep the stellarator-mirror hybrid boundary lane after the current
+   fixed-boundary and circular-coil free-boundary bridge are stable.
+
+### Completion percentages after M12a
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `88%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `84%`.
+- I/O schema and docs: `88%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `18%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `8%`.
+- PR merge readiness overall: `83%`.
+
+### User input needed
+
+No user input is needed.

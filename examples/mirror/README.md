@@ -14,6 +14,7 @@ python examples/mirror/wham_vacuum_boundary.py --outdir results/mirror/wham
 python examples/mirror/nonaxisymmetric_boundary.py --outdir results/mirror/nonaxisymmetric
 python examples/mirror_two_coil_axisym.py --outdir results/mirror/two_coil_axisym
 python examples/mirror_finite_current_pitch.py --outdir results/mirror/finite_current_pitch
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils
 python examples/mirror_fixed_boundary_solve_diagnostic.py --outdir results/mirror/fixed_boundary_solve_diagnostic
 python examples/mirror_manufactured_fixed_boundary.py --outdir results/mirror/manufactured_fixed_boundary
 python examples/mirror_solver_comparison.py --outdir results/mirror/solver_comparison
@@ -52,6 +53,13 @@ and writes a small ``ns``/``nxi`` convergence study.
 The root-level ``examples/mirror_finite_current_pitch.py`` script uses the same
 two-coil fixed boundary with nonzero ``I'`` so the boundary field-line traces
 have visible cap-to-cap pitch.
+
+The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
+free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct
+coil parameters, samples the external field on the mirror axis and side
+boundary, writes the default 1%, 3%, and 10% beta-scan case metadata, and plots
+the coils, boundary, on-axis field comparison, and boundary ``|B|``. It does
+not solve for a free-boundary LCFS yet.
 
 The root-level ``examples/mirror_fixed_boundary_solve_diagnostic.py`` script
 runs an actual L-BFGS fixed-boundary relaxation from a perturbed interior state.

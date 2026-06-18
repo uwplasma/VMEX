@@ -6,6 +6,15 @@ from .core.config import MirrorConfig, MirrorResolution
 from .core.grids import MirrorGrid, make_mirror_grid
 from .core.profiles import IPrimeProfile, PressureProfile, PsiPrimeProfile
 from .core.state import MirrorState3D, MirrorStateAxisym
+from .free_boundary import (
+    MirrorCircularCoils,
+    MirrorExternalFieldSample,
+    MirrorFreeBoundaryBetaCase,
+    make_mirror_free_boundary_beta_cases,
+    mirror_circular_coils_to_direct_params,
+    sample_mirror_axis_external_field,
+    sample_mirror_boundary_external_field,
+)
 from .io.mout import is_mirror_output, load_mirror_output, read_mirror_output, write_mirror_output
 from .io.schema import MirrorOutput
 from .plotting.export import mirror_axisym_slice_to_csv, mirror_output_to_npz, plot_mirror_output
@@ -40,7 +49,10 @@ __all__ = [
     "FixedBoundaryOptimizerSummary",
     "IPrimeProfile",
     "MirrorBoundary",
+    "MirrorCircularCoils",
     "MirrorConfig",
+    "MirrorExternalFieldSample",
+    "MirrorFreeBoundaryBetaCase",
     "MirrorFixedBoundaryResult",
     "MirrorGrid",
     "MirrorOutput",
@@ -57,14 +69,18 @@ __all__ = [
     "load_mirror_output",
     "load_wham_fixture",
     "make_mirror_grid",
+    "make_mirror_free_boundary_beta_cases",
     "mirror_axisym_slice_to_csv",
     "mirror_boundary_from_on_axis_bz",
     "mirror_boundary_from_two_coil_flux_tube",
     "mirror_boundary_from_vacuum_flux_tube",
+    "mirror_circular_coils_to_direct_params",
     "mirror_output_to_npz",
     "plot_mirror_output",
     "read_mirror_output",
     "run_mirror_fixed_boundary",
+    "sample_mirror_axis_external_field",
+    "sample_mirror_boundary_external_field",
     "build_wham_loop_table",
     "on_axis_mirror_ratio",
     "two_coil_field_rz",

@@ -117,6 +117,34 @@ def test_root_finite_current_pitch_example_runs_without_plots(tmp_path):
     assert metrics["field_line_theta_advance_mean"] > 1.0
 
 
+def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_free_boundary_circular_coils.py",
+            "--outdir",
+            str(tmp_path / "free_boundary_circular_coils"),
+            "--ntheta",
+            "8",
+            "--nxi",
+            "11",
+            "--n-segments",
+            "64",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    path = Path(completed.stdout.strip())
+    metrics = json.loads(path.read_text())
+    assert metrics["axis_bz_relative_linf"] < 1.0e-12
+    assert metrics["boundary_bmag_min"] > 0.0
+    assert [case["beta_percent"] for case in metrics["beta_cases"]] == [1.0, 3.0, 10.0]
+    assert metrics["figures"] == {}
+
+
 def test_root_fixed_boundary_solve_diagnostic_runs_without_plots(tmp_path):
     completed = subprocess.run(
         [
