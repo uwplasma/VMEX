@@ -15,7 +15,7 @@ from typing import Any, Sequence
 import numpy as np
 
 from vmec_jax.external_fields import CoilFieldParams, build_coil_field_geometry
-from vmec_jax._compat import jnp
+from vmec_jax._compat import jax, jnp
 from vmec_jax.finite_beta import finite_beta_scalars_from_state
 from vmec_jax.quasi_isodynamic import boozer_output_from_state
 from vmec_jax.quasisymmetry import (
@@ -34,7 +34,9 @@ __all__ = [
     "same_branch_rejected_slot_gate_from_vector_replay",
     "same_branch_replay_plan_cache",
     "same_branch_report_mode_count",
+    "same_branch_scalar_result_summary",
     "same_branch_scalar_function_registry",
+    "same_branch_vector_result_summary",
 ]
 
 
@@ -295,6 +297,149 @@ def same_branch_current_only_coil_geometry_cache(
         )
     except Exception as exc:  # pragma: no cover - defensive; report artifacts should not abort examples.
         return None, {"available": False, "reason": f"{type(exc).__name__}: {exc}"}, None
+
+
+def _vector_jacobian_directional(jacobian: Any, direction: Any, n_outputs: int) -> np.ndarray:
+    """Contract a row-stacked pytree Jacobian with one pytree direction."""
+
+    leaves = jax.tree_util.tree_leaves(
+        jax.tree_util.tree_map(
+            lambda jac_leaf, direction_leaf: jnp.sum(
+                jnp.reshape(jnp.asarray(jac_leaf), (int(n_outputs), -1))
+                * jnp.reshape(jnp.asarray(direction_leaf), (1, -1)),
+                axis=1,
+            ),
+            jacobian,
+            direction,
+        )
+    )
+    if not leaves:
+        return np.zeros(int(n_outputs), dtype=float)
+    total = leaves[0]
+    for leaf in leaves[1:]:
+        total = total + leaf
+    return np.asarray(total, dtype=float)
+
+
+def _controller_slot_summary_from_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Return compact accepted/rejected slot metadata from a replay result."""
+
+    from vmec_jax.free_boundary_adjoint import direct_coil_accepted_trace_controller_slot_summary
+
+    summary = result.get("controller_slot_summary")
+    if isinstance(summary, dict) and summary:
+        return summary
+    metadata = result.get("replay_branch_metadata", {})
+    if isinstance(metadata, dict) and metadata:
+        return direct_coil_accepted_trace_controller_slot_summary(metadata)
+    return {}
+
+
+def _pytree_directional_vdot(gradient: Any, direction: Any) -> float:
+    """Contract one pytree gradient with one pytree direction."""
+
+    leaves = jax.tree_util.tree_leaves(
+        jax.tree_util.tree_map(
+            lambda grad_leaf, direction_leaf: jnp.sum(jnp.asarray(grad_leaf) * jnp.asarray(direction_leaf)),
+            gradient,
+            direction,
+        )
+    )
+    if not leaves:
+        return 0.0
+    total = leaves[0]
+    for leaf in leaves[1:]:
+        total = total + leaf
+    return float(np.asarray(total, dtype=float))
+
+
+def _branch_replay_common_summary(result: dict[str, Any], *, state_only_replay: bool) -> dict[str, Any]:
+    return {
+        "available": True,
+        "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
+        "uses_production_forward": bool(result["uses_production_forward"]),
+        "differentiates_adaptive_controller": bool(result["differentiates_adaptive_controller"]),
+        "differentiates_run_free_boundary": bool(result["differentiates_run_free_boundary"]),
+        "differentiates_fixed_accepted_branch": bool(result["differentiates_fixed_accepted_branch"]),
+        "replay_ad_mode": str(result["replay_ad_mode"]),
+        "production_values_source": str(result.get("production_values_source", "unknown")),
+        "replay_payload_source": str(result.get("replay_payload_source", "unknown")),
+        "includes_payload": bool(result.get("includes_payload", True)),
+        "includes_replay_graph_metadata": bool(result.get("includes_replay_graph_metadata", True)),
+        "state_only_replay": bool(state_only_replay),
+        "replay_option_flags": result["replay_option_flags"],
+        "replay_graph_metadata": result.get("replay_graph_metadata", {}),
+        "replay_branch_metadata": result.get("replay_branch_metadata", {}),
+        "controller_slot_summary": _controller_slot_summary_from_result(result),
+        "timings": {str(key): float(value) for key, value in result.get("timings", {}).items()},
+    }
+
+
+def same_branch_scalar_result_summary(
+    scalar: dict[str, Any],
+    scalar_key: str,
+    *,
+    report: dict[str, Any],
+    direction_params: Any,
+    state_only_replay: bool,
+) -> dict[str, Any]:
+    """Return JSON-ready evidence for one fixed-branch scalar gradient replay."""
+
+    exact_directional = _pytree_directional_vdot(scalar["grad"], direction_params)
+    complete_fd_directional = float(report["objective_values"][scalar_key]["central_fd_directional"])
+    return {
+        **_branch_replay_common_summary(scalar, state_only_replay=state_only_replay),
+        "mode": "scalar",
+        "scalar_key": str(scalar["scalar_key"]),
+        "value": float(scalar["value"]),
+        "replay_value": float(np.asarray(scalar["replay_value"], dtype=float)),
+        "base_abs_delta": float(scalar["base_abs_delta"]),
+        "exact_directional": float(exact_directional),
+        "complete_fd_directional": complete_fd_directional,
+        "abs_error": float(abs(exact_directional - complete_fd_directional)),
+    }
+
+
+def same_branch_vector_result_summary(
+    vector: dict[str, Any],
+    scalar_keys: tuple[str, ...],
+    *,
+    report: dict[str, Any],
+    direction_params: Any,
+    state_only_keys: Sequence[str],
+) -> dict[str, Any]:
+    """Return JSON-ready evidence for one fixed-branch vector/JVP replay."""
+
+    if vector.get("directional_derivatives") is None:
+        directionals = _vector_jacobian_directional(vector["jacobian"], direction_params, len(scalar_keys))
+    else:
+        directionals = [
+            float(np.asarray(vector["directional_derivatives"][key], dtype=float))
+            for key in scalar_keys
+        ]
+    replay_flags = vector.get("replay_option_flags", {})
+    return {
+        **_branch_replay_common_summary(
+            vector,
+            state_only_replay=all(key in state_only_keys for key in scalar_keys),
+        ),
+        "derivative_mode": str(vector.get("derivative_mode", "full_jacobian_vjp")),
+        "scalar_keys": list(scalar_keys),
+        "directional_jvp_fast_path": str(replay_flags.get("directional_jvp_fast_path", "none")),
+        "directional_uses_fixed_coil_geometry": bool(replay_flags.get("directional_uses_fixed_coil_geometry", False)),
+        "max_base_abs_delta": float(vector["max_base_abs_delta"]),
+        "scalars": {
+            key: {
+                "value": float(vector["values"][key]),
+                "replay_value": float(np.asarray(vector["replay_value_map"][key], dtype=float)),
+                "base_abs_delta": float(vector["base_abs_delta"][key]),
+                "exact_directional": float(directionals[index]),
+                "complete_fd_directional": float(report["objective_values"][key]["central_fd_directional"]),
+                "abs_error": float(abs(directionals[index] - report["objective_values"][key]["central_fd_directional"])),
+            }
+            for index, key in enumerate(scalar_keys)
+        },
+    }
 
 
 def nestor_profile_policy_from_results(
