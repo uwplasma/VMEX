@@ -1912,36 +1912,11 @@ def plot_qh_optimization(
     outdir=None,
     show: bool = False,
 ) -> dict:
-    """Generate optimization result plots and return their paths.
+    """Compatibility wrapper that writes the standard optimization plots.
 
-    This compatibility wrapper calls :func:`plot_3d_boundary_comparison`,
-    :func:`plot_bmag_contours`, and :func:`plot_objective_history`.  New
-    examples call those functions directly so users can choose which plots to
-    create for QA/QH/QP/QI or custom objectives.
-
-    Produces three figures:
-
-    * ``boundary_comparison.png``  — 3-D LCFS coloured by |B| (before/after)
-    * ``bmag_surface.png``         — |B| contour lines on LCFS unrolled to (θ, φ)
-    * ``objective_history.png``    — Objective and aspect ratio vs iteration
-
-    Parameters
-    ----------
-    wout_initial_path, wout_final_path:
-        Paths to the initial and final ``wout_*.nc`` files.
-    history_path:
-        Path to the ``history.json`` file produced by
-        :meth:`~vmec_jax.FixedBoundaryExactOptimizer.save_history`.
-    outdir:
-        Directory for saved figures.  Defaults to the directory of *history_path*.
-    show:
-        If ``True``, call ``plt.show()`` after saving.
-
-    Returns
-    -------
-    dict
-        Mapping ``{"boundary_comparison", "bmag_surface", "objective_history"}``
-        to their saved :class:`~pathlib.Path` objects.
+    New examples call :func:`plot_3d_boundary_comparison`,
+    :func:`plot_bmag_contours`, and :func:`plot_objective_history` directly so
+    users can choose the figures they need.
     """
     wout_initial_path = Path(wout_initial_path)
     wout_final_path = Path(wout_final_path)

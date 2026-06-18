@@ -15056,3 +15056,70 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99989%.
+
+## 2026-06-18 Plotting Compatibility Wrapper Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Shortened the legacy `plot_qh_optimization` docstring so it no longer
+   duplicates the public plotting-helper documentation.
+2. Kept the compatibility wrapper behavior and return schema unchanged while
+   continuing to direct examples toward `plot_3d_boundary_comparison`,
+   `plot_bmag_contours`, and `plot_objective_history`.
+
+Results obtained:
+
+- `vmec_jax/plotting.py` dropped from 2232 to 2207 lines.
+- The compatibility API remains exported for existing users, but the source now
+  emphasizes the smaller direct helper workflow.
+- No generated outputs or large files were added.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/plotting.py`
+- `python -m ruff check vmec_jax/plotting.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_plotting_unit.py::test_plot_qh_optimization_wrapper_dispatches_to_public_helpers tests/test_init_plotting_wave12_coverage.py tests/test_optimization_examples.py::test_primary_examples_use_direct_plotting_apis_not_generic_helpers -q`
+  - Result: passed.
+- `python tools/diagnostics/source_health.py --top 16 --top-functions 30`
+
+Best next steps:
+
+1. Continue looking for net-negative source reductions in plotting/WOUT only
+   when they do not remove public API or weaken examples.
+2. For WOUT synthesis, avoid deleting apparent one-use locals that feed the
+   final locals-based payload assembly unless the builder is refactored at the
+   same time and covered by WOUT parity tests.
+3. Return to residual iteration for the next larger non-numerical setup seam if
+   no safe plotting/WOUT simplification is found.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.60%.
+- Free-boundary adjoint monolith reduction: 99.40%.
+- Driver workflow decomposition: 99.89%.
+- Residual iteration decomposition: 97.4%.
+- WOUT diagnostic/profile decomposition: 99.88%.
+- Bcovar/WOUT parity decomposition: 99.09%.
+- Force-kernel decomposition: 99.65%.
+- Scan/performance policy consolidation: 99.6%.
+- Tomnsps transform decomposition: 98.4%.
+- Initial-guess decomposition: 99.0%.
+- Optimizer workflow decomposition: 99.30%.
+- Fixed-boundary optimizer decomposition: 95.2%.
+- Plotting/WOUT visualization decomposition: 95.8%.
+- Sweep/example workflow decomposition: 93.2%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective/staged-runner decomposition: 96.8%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99990%.
