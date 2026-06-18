@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,26 @@ from .jxbforce import _jxbforce_nyquist_limits
 from .nyquist import vmec_wrout_nyquist_synthesis as _vmec_wrout_nyquist_synthesis
 from .parity import undo_bss_scalxc_if_enabled as _undo_bss_scalxc_if_enabled
 
-def compute_bsubs_half_mesh(
+
+@dataclass(frozen=True)
+class _BsubsGeometryChannels:
+    """VMEC even/odd geometry channels needed by the half-mesh bss update."""
+
+    R_even: np.ndarray
+    Z_even: np.ndarray
+    Ru_even: np.ndarray
+    Zu_even: np.ndarray
+    Rv_even: np.ndarray
+    Zv_even: np.ndarray
+    R1: np.ndarray
+    Z1: np.ndarray
+    Ru1: np.ndarray
+    Zu1: np.ndarray
+    Rv1: np.ndarray
+    Zv1: np.ndarray
+
+
+def _bsubs_geometry_channels_from_state(
     *,
     state: VMECState,
     geom_modes,
@@ -30,29 +50,11 @@ def compute_bsubs_half_mesh(
     lconm1: bool,
     lthreed: bool,
     lasym: bool,
-    bsupu: np.ndarray,
-    bsupv: np.ndarray,
     trig,
-    geom: dict[str, Any],
-    jac_half: Any | None = None,
-    force_rs: np.ndarray | None = None,
-    force_zs: np.ndarray | None = None,
-    force_ru12: np.ndarray | None = None,
-    force_zu12: np.ndarray | None = None,
-    apply_m1_constraint: bool = False,
-    apply_scalxc: bool = False,
-) -> np.ndarray:
-    """Compute bsubs on the half mesh using VMEC's bss.f conventions."""
-    if bool(lasym):
-        # LASYM path uses full-interval grids. When force-kernel parity is
-        # supplied (via `geom["pr*"]` populated from symforce), the same
-        # algebra as the VMEC bss.f half-mesh update applies.
-        pass
-
-    # Geometry fields split into even/odd-m components on the full mesh.
-    # VMEC's realspace arrays are built directly from internal coefficients
-    # (which already include the 1/sqrt(s) odd-m scaling), so we keep
-    # apply_scalxc=False to match bss.f inputs.
+    apply_m1_constraint: bool,
+    apply_scalxc: bool,
+) -> _BsubsGeometryChannels:
+    """Build the full-mesh geometry channels used by VMEC's bss.f algebra."""
     m = np.asarray(geom_modes.m, dtype=int)
     mask_even = (m % 2) == 0
     mask_m1 = m == 1
@@ -79,10 +81,6 @@ def compute_bsubs_half_mesh(
 
     coeff_cos_stack = np.stack([Rcos, Zcos], axis=0)
     coeff_sin_stack = np.stack([Rsin, Zsin], axis=0)
-
-    mask_even_f = mask_even.astype(float)
-    mask_m1_f = mask_m1.astype(float)
-    mask_odd_rest_f = mask_odd_rest.astype(float)
 
     def _eval_mask(mask: np.ndarray, *, deriv: str, apply_scalxc_local: bool):
         coeff_cos = coeff_cos_stack * mask[None, None, :]
@@ -120,9 +118,6 @@ def compute_bsubs_half_mesh(
         raise ValueError(f"Unknown deriv {deriv}")
 
     if bool(lasym):
-        # LASYM: VMEC's even/odd realspace fields correspond to cos/sin phase
-        # components (theta parity), not m-parity splits. Build them directly
-        # from the cos/sin coefficient stacks.
         zeros = np.zeros_like(coeff_cos_stack)
         even_base = np.asarray(
             vmec_realspace_synthesis(
@@ -191,9 +186,9 @@ def compute_bsubs_half_mesh(
             )
         )
     else:
-        # Match VMEC/bcovar conventions:
-        # - even components use physical coefficients (no scalxc),
-        # - odd components use internal coefficients (apply scalxc).
+        mask_even_f = mask_even.astype(float)
+        mask_m1_f = mask_m1.astype(float)
+        mask_odd_rest_f = mask_odd_rest.astype(float)
         even_base = np.asarray(_eval_mask(mask_even_f, deriv="base", apply_scalxc_local=False))
         even_t = np.asarray(_eval_mask(mask_even_f, deriv="dtheta", apply_scalxc_local=False))
         even_p = np.asarray(_eval_mask(mask_even_f, deriv="dzeta", apply_scalxc_local=False))
@@ -211,24 +206,74 @@ def compute_bsubs_half_mesh(
         odd_p = odd_m1_p + odd_rest_p
         if odd_base.shape[0] >= 2:
             # VMEC axis convention: copy m=1 odd field from js=2 to js=1.
-            # Axis corresponds to the radial index (js=1 -> index 0).
             odd_base[0] = odd_m1_base[1]
             odd_t[0] = odd_m1_t[1]
             odd_p[0] = odd_m1_p[1]
 
-    R_even = even_base[0]
-    Z_even = even_base[1]
-    Ru_even = even_t[0]
-    Zu_even = even_t[1]
-    Rv_even = even_p[0]
-    Zv_even = even_p[1]
+    return _BsubsGeometryChannels(
+        R_even=even_base[0],
+        Z_even=even_base[1],
+        Ru_even=even_t[0],
+        Zu_even=even_t[1],
+        Rv_even=even_p[0],
+        Zv_even=even_p[1],
+        R1=odd_base[0],
+        Z1=odd_base[1],
+        Ru1=odd_t[0],
+        Zu1=odd_t[1],
+        Rv1=odd_p[0],
+        Zv1=odd_p[1],
+    )
 
-    R1 = odd_base[0]
-    Z1 = odd_base[1]
-    Ru1 = odd_t[0]
-    Zu1 = odd_t[1]
-    Rv1 = odd_p[0]
-    Zv1 = odd_p[1]
+
+def compute_bsubs_half_mesh(
+    *,
+    state: VMECState,
+    geom_modes,
+    s: np.ndarray,
+    lconm1: bool,
+    lthreed: bool,
+    lasym: bool,
+    bsupu: np.ndarray,
+    bsupv: np.ndarray,
+    trig,
+    geom: dict[str, Any],
+    jac_half: Any | None = None,
+    force_rs: np.ndarray | None = None,
+    force_zs: np.ndarray | None = None,
+    force_ru12: np.ndarray | None = None,
+    force_zu12: np.ndarray | None = None,
+    apply_m1_constraint: bool = False,
+    apply_scalxc: bool = False,
+) -> np.ndarray:
+    """Compute bsubs on the half mesh using VMEC's bss.f conventions."""
+    # Geometry fields split into VMEC-compatible full-mesh parity channels.
+    # VMEC's realspace arrays are built directly from internal coefficients
+    # (which already include the 1/sqrt(s) odd-m scaling), so the helper keeps
+    # bss.f scalxc behavior explicit.
+    channels = _bsubs_geometry_channels_from_state(
+        state=state,
+        geom_modes=geom_modes,
+        s=s,
+        lconm1=bool(lconm1),
+        lthreed=bool(lthreed),
+        lasym=bool(lasym),
+        trig=trig,
+        apply_m1_constraint=bool(apply_m1_constraint),
+        apply_scalxc=bool(apply_scalxc),
+    )
+    R_even = channels.R_even
+    Z_even = channels.Z_even
+    Ru_even = channels.Ru_even
+    Zu_even = channels.Zu_even
+    Rv_even = channels.Rv_even
+    Zv_even = channels.Zv_even
+    R1 = channels.R1
+    Z1 = channels.Z1
+    Ru1 = channels.Ru1
+    Zu1 = channels.Zu1
+    Rv1 = channels.Rv1
+    Zv1 = channels.Zv1
 
     s = np.asarray(s, dtype=float)
     if s.shape[0] < 2:
