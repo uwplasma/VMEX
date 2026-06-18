@@ -6829,3 +6829,121 @@ Result: build succeeded.
 ### User input needed
 
 No user input is needed.
+
+---
+
+## 62. 2026-06-17 M11a open-field pitch analysis exports
+
+This lane made the M9 open-field pitch diagnostics available in lightweight
+analysis exports, so downstream scripts can read the same cap-to-cap pitch
+signals that the standard radial plot already displays.
+
+### Steps taken
+
+- Reused `mirror_radial_diagnostics_data` inside
+  `vmec_jax/mirror/plotting/export.py`.
+- Added the following radial arrays to `mirror_output_to_npz`:
+  - `beta`;
+  - `iota_like_twist`;
+  - `field_line_theta_advance`;
+  - `field_line_turns`;
+  - `mean_bmag`;
+  - `magnetic_well_proxy`;
+  - `fsq`;
+  - `normalized_force`.
+- Extended `mirror_axisym_slice_to_csv` so each `(s,xi)` row also carries:
+  - beta;
+  - `I'/Psi'`;
+  - cap-to-cap theta advance;
+  - cap-to-cap turns;
+  - surface-mean `|B|`;
+  - magnetic-well proxy.
+- Updated `docs/mirror/outputs.rst` to document the expanded `.npz` and CSV
+  analysis artifacts.
+- Extended the I/O export test to pin the new keys, radial shapes, and
+  zero-current pitch behavior.
+
+### Results obtained
+
+- `.npz` exports now include the same radial beta/twist/pitch/well quantities
+  shown in the standard diagnostics plot.
+- CSV exports remain a single flat table for simple plotting tools; surface
+  quantities are repeated across each axial point for that surface.
+- Zero-current examples export zero cap-to-cap turns, matching the pitch helper
+  and radial diagnostic plot.
+- No new plot type was introduced in this lane; it exports existing plotted
+  quantities for analysis.
+
+### How it was tested
+
+Focused tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_io.py::test_mirror_output_exports_npz_and_axisym_csv \
+  tests/mirror/test_mirror_plotting.py::test_mirror_plot_data_helpers_expose_numerical_content \
+  -q
+```
+
+Result: `2 passed in 1.37s`.
+
+Full mirror I/O file:
+
+```bash
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_io.py -q
+```
+
+Result: `4 passed in 3.09s`.
+
+Lint/format/docs/whitespace:
+
+```bash
+python -m ruff check \
+  vmec_jax/mirror/plotting/export.py \
+  tests/mirror/test_mirror_io.py
+python -m ruff format --check \
+  vmec_jax/mirror/plotting/export.py \
+  tests/mirror/test_mirror_io.py
+python -m sphinx -W -j auto -b html docs docs/_build/html
+git diff --check
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- No new export module was added.  The high-level export entry points remain in
+  `plotting/export.py`.
+- Derived quantities come from `plotting/diagnostics.py`, keeping pitch
+  calculation in one place.
+- I/O tests own the export-schema checks because `.npz`/CSV are output
+  artifacts, while plotting tests continue to own plot-data helper behavior.
+
+### Best next steps
+
+1. Commit and push this export lane.
+2. Continue fixed-boundary simplification without behavior changes.
+3. Start the free-boundary mirror skeleton with the smallest useful data model:
+   circular coil sets, external-field sampling, and a placeholder LCFS/beta
+   scan driver wired to tests before ESSOS integration.
+
+### Completion percentages after M11a
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `88%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `84%`.
+- I/O schema and docs: `87%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `5%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `0%`.
+- PR merge readiness overall: `82%`.
+
+### User input needed
+
+No user input is needed.

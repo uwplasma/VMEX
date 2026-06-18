@@ -116,11 +116,31 @@ def test_mirror_output_exports_npz_and_axisym_csv(tmp_path):
     csv_path = mirror_axisym_slice_to_csv(output, tmp_path / "mirror_slice.csv")
 
     with np.load(npz_path) as data:
-        assert set(data.files) >= {"s", "xi", "r", "sqrtg", "bmag", "pressure"}
+        assert set(data.files) >= {
+            "s",
+            "xi",
+            "r",
+            "sqrtg",
+            "bmag",
+            "pressure",
+            "beta",
+            "iota_like_twist",
+            "field_line_theta_advance",
+            "field_line_turns",
+            "mean_bmag",
+            "magnetic_well_proxy",
+            "fsq",
+            "normalized_force",
+        }
         assert data["bmag"].shape == output.field.bmag.shape
+        assert data["field_line_turns"].shape == output.s.shape
+        assert np.allclose(data["field_line_turns"], 0.0)
+        assert data["fsq"].shape == output.history.fsq.shape
     table = np.loadtxt(csv_path, delimiter=",", skiprows=1)
     assert table.shape[0] == output.ns * output.nxi
+    assert table.shape[1] == 12
     assert np.all(table[:, 3] >= 0.0)
+    assert np.allclose(table[:, 9], 0.0)
 
 
 def test_mirror_output_detector_uses_schema_for_nonstandard_name(tmp_path):

@@ -10,6 +10,7 @@ from ..io.mout import load_mirror_output
 from ..io.schema import MirrorOutput
 from .bfield import write_mirror_bfield_boundary, write_mirror_bmag_boundary, write_mirror_bmag_sxi
 from .diagnostics import (
+    mirror_radial_diagnostics_data,
     write_mirror_jacobian,
     write_mirror_pressure_profile,
     write_mirror_radial_diagnostics,
@@ -66,6 +67,7 @@ def plot_mirror_output(
 def mirror_output_to_npz(output_or_path, path: str | Path) -> Path:
     """Export core mirror output arrays to ``.npz`` for lightweight inspection."""
     output = _as_output(output_or_path)
+    radial = mirror_radial_diagnostics_data(output)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez(
@@ -78,19 +80,34 @@ def mirror_output_to_npz(output_or_path, path: str | Path) -> Path:
         sqrtg=output.geometry.sqrtg,
         bmag=output.field.bmag,
         pressure=output.profiles.pressure,
+        beta=radial.beta,
+        iota_like_twist=radial.iota_like_twist,
+        field_line_theta_advance=radial.field_line_theta_advance,
+        field_line_turns=radial.field_line_turns,
+        mean_bmag=radial.mean_bmag,
+        magnetic_well_proxy=radial.magnetic_well_proxy,
         residual_norm=output.history.residual_norm,
+        fsq=output.history.fsq,
+        normalized_force=output.history.normalized_force,
         energy_total=output.history.energy_total,
     )
     return path
 
 
 def mirror_axisym_slice_to_csv(output_or_path, path: str | Path) -> Path:
-    """Export the theta-zero axisymmetric slice to CSV columns ``s,xi,z,r,Bmag,sqrtg``."""
+    """Export the theta-zero axisymmetric slice and radial diagnostics to CSV."""
     output = _as_output(output_or_path)
+    radial = mirror_radial_diagnostics_data(output)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     s2, xi2 = np.meshgrid(output.s, output.xi, indexing="ij")
     z2 = np.broadcast_to(output.z[None, :], s2.shape)
+    beta2 = np.broadcast_to(radial.beta[:, None], s2.shape)
+    twist2 = np.broadcast_to(radial.iota_like_twist[:, None], s2.shape)
+    theta_advance2 = np.broadcast_to(radial.field_line_theta_advance[:, None], s2.shape)
+    turns2 = np.broadcast_to(radial.field_line_turns[:, None], s2.shape)
+    mean_bmag2 = np.broadcast_to(radial.mean_bmag[:, None], s2.shape)
+    well2 = np.broadcast_to(radial.magnetic_well_proxy[:, None], s2.shape)
     table = np.column_stack(
         [
             s2.ravel(),
@@ -99,7 +116,17 @@ def mirror_axisym_slice_to_csv(output_or_path, path: str | Path) -> Path:
             output.geometry.r[:, 0, :].ravel(),
             output.field.bmag[:, 0, :].ravel(),
             output.geometry.sqrtg[:, 0, :].ravel(),
+            beta2.ravel(),
+            twist2.ravel(),
+            theta_advance2.ravel(),
+            turns2.ravel(),
+            mean_bmag2.ravel(),
+            well2.ravel(),
         ]
     )
-    np.savetxt(path, table, delimiter=",", header="s,xi,z,r,Bmag,sqrtg", comments="")
+    header = (
+        "s,xi,z,r,Bmag,sqrtg,beta,i_prime_over_psi_prime,"
+        "field_line_theta_advance,field_line_turns,mean_Bmag,magnetic_well_proxy"
+    )
+    np.savetxt(path, table, delimiter=",", header=header, comments="")
     return path

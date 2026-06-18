@@ -41,6 +41,12 @@ residual/force history, and radial diagnostics.  The radial diagnostics show
 both the profile ratio ``I'/Psi'`` and the measured cap-to-cap field-line turns
 as open-field pitch indicators.
 
+The lightweight ``.npz`` and axisymmetric CSV exports include the same radial
+diagnostic profiles: beta, ``I'/Psi'``, cap-to-cap theta advance, cap-to-cap
+turns, mean ``|B|``, and the magnetic-well proxy.  CSV rows repeat those
+surface quantities across each axial point so simple plotting tools can join
+them with ``s,xi,z,r,Bmag,sqrtg`` columns without a separate metadata file.
+
 Mirror ``mout`` files do not currently store toroidal Boozer coordinates or
 toroidal rotational transform.  The open-field pitch diagnostics are defined
 only for the nonperiodic mirror axis between the two caps.
