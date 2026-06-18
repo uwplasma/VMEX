@@ -11523,3 +11523,67 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9975%.
+
+## 2026-06-18 Bcovar Parity Channel Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `BcovarParityChannels` and `_compute_bcovar_parity_channels` to
+   `vmec_jax.vmec_bcovar`.
+2. Moved the even/odd-m parity synthesis, VMEC odd-m axis convention, and
+   lambda odd-channel reconstruction out of
+   `vmec_bcovar_half_mesh_from_wout`.
+3. Kept the half-mesh metric, magnetic-field, pressure, and lambda-force
+   assembly in the parent function so this tranche only changes the parity
+   producer boundary.
+
+Results obtained:
+
+- `vmec_bcovar_half_mesh_from_wout` dropped from 760 to 571 lines.
+- The bcovar path now has two named front-end seams: setup/trig resolution and
+  parity-channel synthesis. This makes future metric and field refactors less
+  risky because they can consume an explicit parity payload.
+- Focused WOUT/bcovar, finite-beta, and physics-parity helper tests remained
+  green.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/vmec_bcovar.py`
+- `python -m ruff check vmec_jax/vmec_bcovar.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_driver_wave10_coverage.py tests/test_physics_parity_helper_gates.py tests/test_finite_beta_helpers_unit.py tests/test_wout_helpers.py -q`
+  - Result: passed, with one skip and the known single-surface JXBFORCE warnings.
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 35`
+
+Best next steps:
+
+1. Split the bcovar metric assembly next: Jacobian, metric even/odd products,
+   half-mesh staggering, and lambda derivative profiles are now the largest
+   coherent block still inside `vmec_bcovar_half_mesh_from_wout`.
+2. After that, split the contravariant-field/current-profile block, which is
+   the remaining source of most bcovar complexity.
+3. Run a broader driver/WOUT shard after the metric block extraction.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.999991%.
+- Solver monolith reduction: 99.46%.
+- Free-boundary adjoint monolith reduction: 99.30%.
+- Driver workflow decomposition: 99.72%.
+- Residual iteration decomposition: 95.8%.
+- WOUT diagnostic/profile decomposition: 99.54%.
+- Bcovar/WOUT parity decomposition: 97.0%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9977%.
