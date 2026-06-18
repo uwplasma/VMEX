@@ -13,6 +13,7 @@ from vmec_jax.mirror import (
     MirrorExternalFieldSample,
     MirrorFreeBoundaryBetaCase,
     MirrorFreeBoundaryCircularCoilScan,
+    MirrorFreeBoundaryLoopState,
     MirrorFreeBoundaryResidual,
     initial_mirror_boundary_from_circular_coil_scan,
     load_mirror_free_boundary_circular_coil_scan,
@@ -24,6 +25,7 @@ from vmec_jax.mirror import (
     mirror_circular_coils_to_direct_params,
     mirror_external_bnormal,
     mirror_external_pressure_balance_response,
+    mirror_free_boundary_guarded_least_squares_loop,
     mirror_free_boundary_least_squares_step,
     mirror_free_boundary_residual,
     mirror_free_boundary_residual_jacobian_finite_difference,
@@ -801,6 +803,133 @@ def test_mirror_free_boundary_residual_jacobian_rejects_varying_vector_shape():
             lambda coefficients: _free_boundary_residual_from_vector([0.0, float(np.asarray(coefficients)[0])]),
             residual=base,
         )
+
+
+def test_mirror_free_boundary_guarded_least_squares_loop_converges_linear_residual():
+    def residual_for(coefficients):
+        return _free_boundary_residual_from_vector([float(np.asarray(coefficients)[0]) - 1.0])
+
+    initial_residual = residual_for([0.0])
+    initial = MirrorFreeBoundaryLoopState(
+        coefficients=np.asarray([0.0]),
+        residual=initial_residual,
+        merit=initial_residual.value,
+        equilibrium_value=1.0,
+    )
+
+    result = mirror_free_boundary_guarded_least_squares_loop(
+        initial,
+        lambda state, coefficients: residual_for(coefficients),
+        max_steps=3,
+        target_merit=1.0e-8,
+        max_relative_step=2.0,
+    )
+
+    assert result.converged is True
+    assert result.accepted_steps == 1
+    assert result.stop_reason == "target_merit"
+    np.testing.assert_allclose(result.final_state.coefficients, [1.0], atol=1.0e-10)
+    assert result.rows[0].accepted is True
+    assert result.rows[0].status == "accepted"
+    assert result.rows[0].merit_improvement_fraction == pytest.approx(1.0)
+
+
+def test_mirror_free_boundary_guarded_least_squares_loop_rejects_merit_increase():
+    def residual_for(coefficients):
+        return _free_boundary_residual_from_vector([float(np.asarray(coefficients)[0]) - 1.0])
+
+    initial_residual = residual_for([0.0])
+    initial = MirrorFreeBoundaryLoopState(
+        coefficients=np.asarray([0.0]),
+        residual=initial_residual,
+        merit=initial_residual.value,
+        equilibrium_value=1.0,
+    )
+
+    def worsening_trial(state, step):
+        return MirrorFreeBoundaryLoopState(
+            coefficients=step.new_coefficients,
+            residual=_free_boundary_residual_from_vector([2.0]),
+            merit=2.0,
+            equilibrium_value=1.0,
+        )
+
+    result = mirror_free_boundary_guarded_least_squares_loop(
+        initial,
+        lambda state, coefficients: residual_for(coefficients),
+        trial_function=worsening_trial,
+        max_steps=2,
+        max_relative_step=2.0,
+    )
+
+    assert result.converged is False
+    assert result.accepted_steps == 0
+    assert result.stop_reason == "rejected_merit_increase"
+    np.testing.assert_allclose(result.final_state.coefficients, initial.coefficients)
+    assert result.rows[0].status == "rejected"
+    assert result.rows[0].rejection_reason == "merit_increase"
+
+
+def test_mirror_free_boundary_guarded_least_squares_loop_rejects_equilibrium_growth():
+    def residual_for(coefficients):
+        return _free_boundary_residual_from_vector([float(np.asarray(coefficients)[0]) - 1.0])
+
+    initial_residual = residual_for([0.0])
+    initial = MirrorFreeBoundaryLoopState(
+        coefficients=np.asarray([0.0]),
+        residual=initial_residual,
+        merit=initial_residual.value,
+        equilibrium_value=1.0,
+    )
+
+    def high_growth_trial(state, step):
+        return MirrorFreeBoundaryLoopState(
+            coefficients=step.new_coefficients,
+            residual=step.trial_residual,
+            merit=0.5 * state.merit,
+            equilibrium_value=3.0,
+        )
+
+    result = mirror_free_boundary_guarded_least_squares_loop(
+        initial,
+        lambda state, coefficients: residual_for(coefficients),
+        trial_function=high_growth_trial,
+        max_steps=2,
+        equilibrium_growth_limit=2.0,
+        max_relative_step=2.0,
+    )
+
+    assert result.accepted_steps == 0
+    assert result.stop_reason == "equilibrium_growth_guard"
+    assert result.rows[0].accepted is False
+    assert result.rows[0].rejection_reason == "equilibrium_growth_guard"
+    assert result.rows[0].equilibrium_growth_ratio == pytest.approx(3.0)
+
+
+def test_mirror_free_boundary_guarded_least_squares_loop_stops_on_unaccepted_ls_step():
+    def nonlinear_residual(state, coefficients):
+        c0 = float(np.asarray(coefficients, dtype=float)[0])
+        return _free_boundary_residual_from_vector([c0 - 1.0 + 100.0 * c0**2])
+
+    initial_residual = nonlinear_residual(None, [0.0])
+    initial = MirrorFreeBoundaryLoopState(
+        coefficients=np.asarray([0.0]),
+        residual=initial_residual,
+        merit=initial_residual.value,
+    )
+
+    result = mirror_free_boundary_guarded_least_squares_loop(
+        initial,
+        nonlinear_residual,
+        max_steps=2,
+        max_relative_step=2.0,
+        line_search_factors=(1.0, 0.5),
+    )
+
+    assert result.accepted_steps == 0
+    assert result.stop_reason == "ls_step_not_accepted"
+    assert result.rows[0].status == "skipped"
+    assert result.rows[0].trial_state is None
 
 
 def test_mirror_lcfs_residual_has_boundary_coefficient_finite_difference_jacobian():

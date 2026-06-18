@@ -168,7 +168,11 @@ public ``mirror_free_boundary_least_squares_step`` helper now adds the first
 line-searched boundary-coefficient step on top of the combined equilibrium plus
 LCFS residual vector. It uses central finite differences so CLI workflows can
 exercise the coupled residual contract before the fully differentiable solve
-path replaces those derivatives with implicit/JAX/adjoint variants.
+path replaces those derivatives with implicit/JAX/adjoint variants. The
+package-level ``mirror_free_boundary_guarded_least_squares_loop`` helper owns
+the reusable repeated-step guard policy through state and trial callbacks,
+while this root example still owns the host-side fixed-boundary trial solve and
+plot/report generation.
 
 The circular-coil beta-scan metrics use the compact schema
 ``mirror_free_boundary_circular_coil_beta_scan`` version ``0.6``. The top-level

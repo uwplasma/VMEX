@@ -273,6 +273,45 @@ class MirrorFreeBoundaryLeastSquaresStep:
 
 
 @dataclass(frozen=True)
+class MirrorFreeBoundaryLoopState:
+    """State passed between guarded free-boundary least-squares steps."""
+
+    coefficients: Any
+    residual: MirrorFreeBoundaryResidual
+    merit: float
+    equilibrium_value: float | None = None
+    payload: Any = None
+
+
+@dataclass(frozen=True)
+class MirrorFreeBoundaryLoopRow:
+    """One attempted step in a guarded free-boundary least-squares loop."""
+
+    step: int
+    state_before: MirrorFreeBoundaryLoopState
+    ls_step: MirrorFreeBoundaryLeastSquaresStep
+    trial_state: MirrorFreeBoundaryLoopState | None
+    accepted: bool
+    status: str
+    rejection_reason: str | None
+    stop_reason: str | None
+    merit_improvement_fraction: float | None
+    equilibrium_growth_ratio: float | None
+
+
+@dataclass(frozen=True)
+class MirrorFreeBoundaryLoopResult:
+    """Result of a guarded free-boundary least-squares loop."""
+
+    initial_state: MirrorFreeBoundaryLoopState
+    final_state: MirrorFreeBoundaryLoopState
+    rows: tuple[MirrorFreeBoundaryLoopRow, ...]
+    accepted_steps: int
+    stop_reason: str | None
+    converged: bool
+
+
+@dataclass(frozen=True)
 class MirrorLCFSUpdateProposal:
     """One damped axisymmetric side-boundary update proposal."""
 
@@ -928,6 +967,196 @@ def mirror_free_boundary_least_squares_step(
         max_relative_step=max_relative_step,
         ridge=ridge,
         rcond=rcond,
+    )
+
+
+def _as_loop_state(value: Any, *, label: str) -> MirrorFreeBoundaryLoopState:
+    if not isinstance(value, MirrorFreeBoundaryLoopState):
+        raise TypeError(f"{label} must be a MirrorFreeBoundaryLoopState")
+    coefficients = np.asarray(value.coefficients, dtype=float).ravel()
+    if coefficients.size == 0:
+        raise ValueError(f"{label}.coefficients must contain at least one value")
+    if not np.all(np.isfinite(coefficients)):
+        raise ValueError(f"{label}.coefficients must be finite")
+    _as_free_boundary_residual(value.residual)
+    merit = float(value.merit)
+    if not np.isfinite(merit) or merit < 0.0:
+        raise ValueError(f"{label}.merit must be finite and nonnegative")
+    equilibrium_value = value.equilibrium_value
+    if equilibrium_value is not None and not np.isfinite(float(equilibrium_value)):
+        raise ValueError(f"{label}.equilibrium_value must be finite when provided")
+    return MirrorFreeBoundaryLoopState(
+        coefficients=coefficients,
+        residual=value.residual,
+        merit=merit,
+        equilibrium_value=None if equilibrium_value is None else float(equilibrium_value),
+        payload=value.payload,
+    )
+
+
+def mirror_free_boundary_guarded_least_squares_loop(
+    initial_state: MirrorFreeBoundaryLoopState,
+    residual_function: Callable[[MirrorFreeBoundaryLoopState, np.ndarray], MirrorFreeBoundaryResidual],
+    *,
+    trial_function: Callable[
+        [MirrorFreeBoundaryLoopState, MirrorFreeBoundaryLeastSquaresStep],
+        MirrorFreeBoundaryLoopState,
+    ]
+    | None = None,
+    max_steps: int = 1,
+    target_merit: float = 0.0,
+    stagnation_rtol: float = 0.0,
+    equilibrium_growth_limit: float = 0.0,
+    equilibrium_growth_reference: float | None = None,
+    finite_difference_step: float = 1.0e-6,
+    damping: float = 1.0,
+    max_relative_step: float = 0.25,
+    ridge: float = 0.0,
+    rcond: float | None = 1.0e-12,
+    line_search_factors: Any = (1.0, 0.5, 0.25, 0.125),
+    accept_tolerance: float = 1.0e-12,
+) -> MirrorFreeBoundaryLoopResult:
+    """Run a guarded loop of free-boundary least-squares updates.
+
+    The residual callback builds the linearized residual around the current
+    state.  The trial callback can then run an expensive realized solve and
+    return the next state.  If no trial callback is supplied, the loop uses the
+    LS trial residual directly, which is useful for small reduced prototypes.
+    """
+
+    current = _as_loop_state(initial_state, label="initial_state")
+    max_steps = int(max_steps)
+    target_merit = float(target_merit)
+    stagnation_rtol = float(stagnation_rtol)
+    equilibrium_growth_limit = float(equilibrium_growth_limit)
+    accept_tolerance = float(accept_tolerance)
+    if max_steps < 1:
+        raise ValueError("max_steps must be at least 1")
+    if target_merit < 0.0:
+        raise ValueError("target_merit must be nonnegative")
+    if stagnation_rtol < 0.0:
+        raise ValueError("stagnation_rtol must be nonnegative")
+    if equilibrium_growth_limit < 0.0:
+        raise ValueError("equilibrium_growth_limit must be nonnegative")
+    if accept_tolerance < 0.0:
+        raise ValueError("accept_tolerance must be nonnegative")
+
+    growth_reference = equilibrium_growth_reference
+    if growth_reference is None:
+        growth_reference = current.equilibrium_value
+    if growth_reference is not None:
+        growth_reference = max(abs(float(growth_reference)), 1.0e-300)
+
+    rows: list[MirrorFreeBoundaryLoopRow] = []
+    final_state = current
+    stop_reason: str | None = None
+    for step_index in range(1, max_steps + 1):
+        state_before = current
+
+        def local_residual_function(coefficients: np.ndarray) -> MirrorFreeBoundaryResidual:
+            return residual_function(state_before, coefficients)
+
+        ls_step = mirror_free_boundary_least_squares_step(
+            state_before.coefficients,
+            local_residual_function,
+            finite_difference_step=finite_difference_step,
+            damping=damping,
+            max_relative_step=max_relative_step,
+            ridge=ridge,
+            rcond=rcond,
+            line_search_factors=line_search_factors,
+            accept_tolerance=accept_tolerance,
+        )
+        if not bool(ls_step.accepted):
+            stop_reason = "ls_step_not_accepted"
+            rows.append(
+                MirrorFreeBoundaryLoopRow(
+                    step=step_index,
+                    state_before=state_before,
+                    ls_step=ls_step,
+                    trial_state=None,
+                    accepted=False,
+                    status="skipped",
+                    rejection_reason="ls_step_not_accepted",
+                    stop_reason=stop_reason,
+                    merit_improvement_fraction=None,
+                    equilibrium_growth_ratio=None,
+                )
+            )
+            break
+
+        if trial_function is None:
+            trial_state = MirrorFreeBoundaryLoopState(
+                coefficients=ls_step.new_coefficients,
+                residual=ls_step.trial_residual,
+                merit=float(ls_step.trial_residual.value),
+                equilibrium_value=state_before.equilibrium_value,
+            )
+        else:
+            trial_state = trial_function(state_before, ls_step)
+        trial_state = _as_loop_state(trial_state, label="trial_state")
+
+        merit_improvement_fraction = float(1.0 - float(trial_state.merit) / max(float(state_before.merit), 1.0e-300))
+        equilibrium_growth_ratio = None
+        if growth_reference is not None and trial_state.equilibrium_value is not None:
+            equilibrium_growth_ratio = float(trial_state.equilibrium_value) / growth_reference
+
+        accepted = True
+        status = "accepted"
+        rejection_reason = None
+        row_stop_reason = None
+        if float(trial_state.merit) > float(state_before.merit) + accept_tolerance:
+            accepted = False
+            status = "rejected"
+            rejection_reason = "merit_increase"
+            row_stop_reason = "rejected_merit_increase"
+        elif (
+            equilibrium_growth_ratio is not None
+            and equilibrium_growth_limit > 0.0
+            and equilibrium_growth_ratio > equilibrium_growth_limit
+        ):
+            accepted = False
+            status = "rejected"
+            rejection_reason = "equilibrium_growth_guard"
+            row_stop_reason = "equilibrium_growth_guard"
+        elif float(trial_state.merit) <= target_merit:
+            row_stop_reason = "target_merit"
+        elif merit_improvement_fraction <= stagnation_rtol:
+            row_stop_reason = "merit_stagnation"
+        elif step_index == max_steps:
+            row_stop_reason = "max_steps"
+
+        rows.append(
+            MirrorFreeBoundaryLoopRow(
+                step=step_index,
+                state_before=state_before,
+                ls_step=ls_step,
+                trial_state=trial_state,
+                accepted=accepted,
+                status=status,
+                rejection_reason=rejection_reason,
+                stop_reason=row_stop_reason,
+                merit_improvement_fraction=merit_improvement_fraction,
+                equilibrium_growth_ratio=equilibrium_growth_ratio,
+            )
+        )
+        if not accepted:
+            stop_reason = row_stop_reason
+            break
+
+        current = trial_state
+        final_state = trial_state
+        if row_stop_reason is not None:
+            stop_reason = row_stop_reason
+            break
+
+    return MirrorFreeBoundaryLoopResult(
+        initial_state=initial_state,
+        final_state=final_state,
+        rows=tuple(rows),
+        accepted_steps=sum(bool(row.accepted) for row in rows),
+        stop_reason=stop_reason,
+        converged=stop_reason == "target_merit",
     )
 
 

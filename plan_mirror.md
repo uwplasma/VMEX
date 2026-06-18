@@ -19594,3 +19594,123 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+---
+## 159. Reusable Guarded Free-Boundary Least-Squares Loop Controller
+
+### Steps taken
+
+- Added package-level guarded loop primitives to
+  `vmec_jax/mirror/free_boundary.py`:
+  - `MirrorFreeBoundaryLoopState`;
+  - `MirrorFreeBoundaryLoopRow`;
+  - `MirrorFreeBoundaryLoopResult`;
+  - `mirror_free_boundary_guarded_least_squares_loop`.
+- Exposed the new loop controller and dataclasses through
+  `vmec_jax.mirror.api` and `vmec_jax.mirror`.
+- Designed the loop API around callbacks:
+  - a residual callback builds the linearized combined residual around the
+    current loop state;
+  - an optional trial callback can run a realized fixed-boundary solve and
+    return the next state;
+  - without a trial callback, the loop uses the LS trial residual directly for
+    reduced/synthetic prototypes.
+- Added guards for:
+  - LS step not accepted;
+  - trial merit increase;
+  - equilibrium-value growth;
+  - target merit;
+  - merit stagnation;
+  - maximum step count.
+- Added synthetic regression tests for:
+  - single-step convergence of a linear residual;
+  - merit-increase rejection while preserving the previous state;
+  - equilibrium-growth rejection;
+  - unaccepted LS-step stopping.
+- Updated `docs/mirror/overview.rst` and `examples/mirror/README.md` to
+  distinguish reusable loop policy from the root example's host-side
+  fixed-boundary trial solve and plot/report generation.
+
+### Results obtained
+
+- The free-boundary loop policy is no longer only embedded in the root
+  circular-coil example. A reusable state/callback controller now exists in the
+  package for reduced prototypes and future coupled solver integration.
+- The controller keeps host-side trial solves outside differentiable residual
+  APIs, matching the plan's separation between fast CLI orchestration and
+  differentiable research kernels.
+- The current root example still owns MOUT writing, realized trial plotting,
+  and schema-specific JSON rows. Wiring that example onto the reusable
+  controller is the next simplification step.
+- No new plot artifact was produced in this tranche because the added behavior
+  is package-level loop policy tested with synthetic residuals. The latest
+  plotted circular-coil loop evidence remains the M157 output under
+  `results/mirror/free_boundary_circular_coils_m157_lsq_loop_plots/`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_free_boundary.py
+python -m ruff check vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_free_boundary.py
+
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_free_boundary.py -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Ruff format/check passed on touched Python files.
+- Mirror free-boundary tests passed: `90 passed in 2.85s`.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- Reusable loop policy now lives with the other free-boundary residual and LS
+  helpers in `vmec_jax/mirror/free_boundary.py`.
+- The public mirror API exports the loop types from the existing
+  `vmec_jax/mirror/api.py` and `vmec_jax/mirror/__init__.py` surfaces.
+- Tests remain in `tests/mirror/test_mirror_free_boundary.py`, beside the
+  existing residual/Jacobian/LS-step coverage.
+- The root circular-coil example is not expanded further in this tranche; the
+  next simplification should adapt `_run_ls_boundary_coupled_loop` to this
+  package controller while preserving its schema and plots.
+
+### Best next steps
+
+1. Commit and push M159.
+2. Refactor the root circular-coil guarded loop to use
+   `mirror_free_boundary_guarded_least_squares_loop` for stop/guard policy.
+3. Re-run the schema `0.6` example tests and one plotted loop smoke after that
+   wiring change.
+4. Then continue toward a true coupled nonlinear free-boundary solve API with a
+   clear differentiability boundary.
+
+### Completion percentages after M159
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `93%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `92%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `98%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
