@@ -9,6 +9,10 @@ from vmec_jax.solvers.fixed_boundary.residual.setup import (
     grid_matches_vmec_static_grid,
     resolve_free_boundary_setup_policy,
 )
+from vmec_jax.solvers.fixed_boundary.residual.state_setup import build_residual_state_setup
+from vmec_jax.config import VMECConfig
+from vmec_jax.state import StateLayout, VMECState
+from vmec_jax.static import build_static
 
 
 def _cfg(**updates):
@@ -23,6 +27,71 @@ def _cfg(**updates):
     }
     values.update(updates)
     return SimpleNamespace(**values)
+
+
+def _small_static_state():
+    cfg = VMECConfig(
+        ns=4,
+        mpol=2,
+        ntor=1,
+        nfp=2,
+        lasym=False,
+        lthreed=True,
+        lconm1=True,
+        ntheta=8,
+        nzeta=4,
+    )
+    static = build_static(cfg)
+    layout = StateLayout(ns=int(cfg.ns), K=int(static.modes.K), lasym=False)
+    base = np.arange(layout.ns * layout.K, dtype=float).reshape(layout.ns, layout.K)
+    state = VMECState(
+        layout=layout,
+        Rcos=base + 1.0,
+        Rsin=base + 2.0,
+        Zcos=base + 3.0,
+        Zsin=base + 4.0,
+        Lcos=base + 5.0,
+        Lsin=base + 6.0,
+    )
+    return static, state
+
+
+def test_build_residual_state_setup_host_path_caches_constants_and_enforces_edge() -> None:
+    static, state0 = _small_static_state()
+    edge_Rcos = np.full(int(static.modes.K), 10.0)
+    edge_Rsin = np.full(int(static.modes.K), 20.0)
+    edge_Zcos = np.full(int(static.modes.K), 30.0)
+    edge_Zsin = np.full(int(static.modes.K), 40.0)
+
+    setup = build_residual_state_setup(
+        state0=state0,
+        static=static,
+        s=np.linspace(0.0, 1.0, int(static.cfg.ns)),
+        edge_Rcos=edge_Rcos,
+        edge_Rsin=edge_Rsin,
+        edge_Zcos=edge_Zcos,
+        edge_Zsin=edge_Zsin,
+        free_boundary_enabled=False,
+        host_update_assembly=True,
+        setup_host_enforce=True,
+        idx00=0,
+        mpol=int(static.cfg.mpol),
+        nrange=2 * int(static.cfg.ntor) + 1,
+        state0_dtype=np.asarray(state0.Rcos).dtype,
+        apply_lambda_axis_rules=lambda state: state,
+        tree_has_tracer=lambda _value: False,
+        has_jax_func=lambda: False,
+    )
+
+    np.testing.assert_allclose(setup.state.Rcos[-1], edge_Rcos)
+    np.testing.assert_allclose(setup.state.Rsin[-1], edge_Rsin)
+    np.testing.assert_allclose(setup.state.Zcos[-1], edge_Zcos)
+    np.testing.assert_allclose(setup.state.Zsin[-1], edge_Zsin)
+    assert setup.precomputed_axis_mask_np.shape == (int(static.modes.K),)
+    assert setup.jnp_zero_m1_0 is None
+    assert setup.zeros_coeff_np.shape == (int(static.cfg.ns), int(static.cfg.mpol), 2 * int(static.cfg.ntor) + 1)
+    assert setup.zeros_dR_np.shape == np.asarray(state0.Rcos).shape
+    assert float(setup.delta_s) == 1.0 / 3.0
 
 
 def test_grid_matches_vmec_static_grid_requires_same_coordinates() -> None:
