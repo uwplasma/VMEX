@@ -18872,3 +18872,154 @@ Results:
 No user input is needed.
 
 ---
+## 153. Circular-Coil Example LS Boundary-Step Diagnostic and Plot
+
+### Steps taken
+
+- Wired `mirror_free_boundary_least_squares_step` into the root-level
+  `examples/mirror_free_boundary_circular_coils.py` example behind
+  `--run-ls-boundary-step`.
+- Added CLI controls for the diagnostic derivative/step settings:
+  - `--ls-boundary-finite-difference-step`;
+  - `--ls-boundary-damping`;
+  - `--ls-boundary-max-relative-step`;
+  - `--ls-boundary-ridge`.
+- Added a compact polynomial boundary basis for the diagnostic:
+  `[r0, a2, a4]`.
+- Added a frozen-interior residual builder for the example mode:
+  - fixed-boundary normalized-force scalar as the equilibrium block;
+  - external coil field resampled on trial polynomial boundaries;
+  - LCFS pressure-balance and external-normal-field residuals normalized
+    through `mirror_lcfs_residual`;
+  - combined vector assembled with `mirror_free_boundary_residual`.
+- Added per-beta `ls_boundary_step` JSON output with:
+  - initial/new coefficients;
+  - raw and limited LS steps;
+  - finite-difference steps;
+  - Jacobian shape;
+  - residual values before/after;
+  - equilibrium and LCFS component values;
+  - tried backtracking factors;
+  - selected factor and acceptance flag;
+  - optional plot path.
+- Bumped the circular-coil metrics schema to version `0.4`.
+- Added schema validation for LS step counts and LS step fields.
+- Added `_write_ls_boundary_step_plot`, which plots combined residual and
+  equilibrium/LCFS component values versus line-search factor.
+- Updated `examples/mirror/README.md` for schema `0.4` and the LS diagnostic.
+- Added an example regression test for `--run-ls-boundary-step`.
+- Regenerated and inspected a one-beta plotted example to verify the LS
+  residual/backtracking plot renders correctly.
+
+### Results obtained
+
+- The one-beta LS smoke run completed:
+  `results/mirror/free_boundary_circular_coils_m153_lsq_smoke/free_boundary_circular_coils_metrics.json`.
+- The plotted one-beta LS run completed:
+  `results/mirror/free_boundary_circular_coils_m153_lsq_plots_sorted/free_boundary_circular_coils_metrics.json`.
+- The rendered LS plot was visually inspected:
+  `results/mirror/free_boundary_circular_coils_m153_lsq_plots_sorted/figures/fixed_boundary_beta_1/free_boundary_circular_coils_beta_1_ls_boundary_step.png`.
+- The smoke metrics reported:
+  - schema version `0.4`;
+  - `ls_boundary_step_requested == true`;
+  - `ls_boundary_step_rows_total == 1`;
+  - Jacobian shape `[23, 3]`;
+  - accepted step with line-search factor `1.0`;
+  - combined residual value decreased from `1.2264846366589521` to
+    `1.1947548991708283`;
+  - frozen equilibrium RMS stayed at `0.16117780636984214`;
+  - LCFS value decreased from `1.004255509280822` to
+    `0.9245964190853178`.
+- The plot shows the residual components versus line-search factor with the
+  selected full step marked by a vertical line.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/free_boundary_circular_coils_m153_lsq_smoke \
+  --betas 1 --ntheta 8 --nxi 11 --n-segments 64 \
+  --run-fixed-boundary-baseline --baseline-maxiter 0 \
+  --run-ls-boundary-step --no-plots
+
+python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/free_boundary_circular_coils_m153_lsq_plots_sorted \
+  --betas 1 --ntheta 8 --nxi 11 --n-segments 64 \
+  --run-fixed-boundary-baseline --baseline-maxiter 0 \
+  --run-ls-boundary-step
+
+python -m ruff format examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff check examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_examples.py
+
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_step_reports_reduction \
+  -q
+
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Example LS smoke run passed.
+- Example LS plotted run passed and the PNG was visually inspected.
+- Ruff format/check passed on touched Python files.
+- Focused example tests passed: `2 passed in 7.24s`.
+- Full mirror example tests passed: `20 passed in 90.63s`.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+- A mistaken Ruff format command that included `examples/mirror/README.md`
+  failed because Ruff tried to parse Markdown as Python; it was rerun correctly
+  on Python files only.
+
+### File structure and best-practice notes
+
+- The package-level LS step remains in `vmec_jax/mirror/free_boundary.py`.
+- The circular-coil example keeps example-specific polynomial fitting,
+  frozen-interior residual construction, schema fields, and plotting private
+  to `examples/mirror_free_boundary_circular_coils.py`.
+- Tests remain in `tests/mirror/test_mirror_examples.py`, close to the other
+  example schema and workflow checks.
+- Documentation for the example lives in `examples/mirror/README.md`.
+- Generated smoke/plot outputs remain under ignored `results/` paths and are
+  not added to git.
+
+### Best next steps
+
+1. Commit and push M153.
+2. Refresh the draft PR body to mention schema `0.4` and the LS boundary-step
+   diagnostic.
+3. Use the LS diagnostic as the bridge to a true coupled solve mode that reruns
+   the fixed-boundary state after each boundary coefficient update instead of
+   freezing the interior.
+4. Check CI later and fix failures if any appear.
+
+### Completion percentages after M153
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `93%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `92%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `96%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `95%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
+
+---

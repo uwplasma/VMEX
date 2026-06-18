@@ -206,9 +206,10 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert metrics["lcfs_pilot_stagnation_rtol"] == 0.0
     assert metrics["lcfs_pilot_fsq_growth_limit"] == 0.0
     assert metrics["lcfs_pilot_stop_reason_counts"] == {"max_steps": 3}
-    assert schema["metrics_schema_version"] == "0.3"
+    assert schema["metrics_schema_version"] == "0.4"
     assert "workflow_status_values" in schema
     assert "free_boundary_status_values" in schema
+    assert "ls_boundary_step_fields" in schema
     assert len(metrics["summary_rows"]) == 3
     assert all(set(schema["report_fields"]).issubset(row) for row in metrics["summary_rows"])
     bad_count = dict(metrics)
@@ -235,9 +236,19 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     bad_stop_counts["lcfs_pilot_stop_reason_counts"] = {"max_steps": 2}
     with pytest.raises(ValueError, match="lcfs_pilot_stop_reason_counts"):
         module["validate_circular_coil_beta_scan_metrics"](bad_stop_counts)
+    bad_ls_total = dict(metrics)
+    bad_ls_total["ls_boundary_step_rows_total"] = metrics["ls_boundary_step_rows_total"] + 1
+    with pytest.raises(ValueError, match="ls_boundary_step_rows_total"):
+        module["validate_circular_coil_beta_scan_metrics"](bad_ls_total)
     assert metrics["axis_bz_relative_linf"] < 1.0e-12
     assert metrics["boundary_bmag_min"] > 0.0
     assert metrics["beta_scan_requested_percent"] == [1.0, 3.0, 10.0]
+    assert metrics["ls_boundary_step_requested"] is False
+    assert metrics["ls_boundary_step_rows_total"] == 0
+    assert metrics["ls_boundary_finite_difference_step"] is None
+    assert metrics["ls_boundary_damping"] is None
+    assert metrics["ls_boundary_max_relative_step"] is None
+    assert metrics["ls_boundary_ridge"] is None
     assert [case["beta_percent"] for case in metrics["beta_cases"]] == [1.0, 3.0, 10.0]
     assert set(schema["top_level_required_fields"]).issubset(metrics)
     assert Path(metrics["summary_csv"]).exists()
@@ -258,6 +269,7 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert all(set(schema["beta_row_required_fields"]).issubset(row) for row in metrics["fixed_boundary_baseline_rows"])
     assert all(Path(row["mout"]).exists() for row in metrics["fixed_boundary_baseline_rows"])
     assert all(row["final_fsq"] >= 0.0 for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(row["ls_boundary_step"] is None for row in metrics["fixed_boundary_baseline_rows"])
     assert all(row["lcfs_external_bnormal_rms"] >= 0.0 for row in metrics["fixed_boundary_baseline_rows"])
     assert all(row["lcfs_pressure_balance_rms"] >= 0.0 for row in metrics["fixed_boundary_baseline_rows"])
     assert all(
@@ -410,6 +422,62 @@ def test_root_free_boundary_circular_coils_strict_bnormal_guard_can_skip_pilot(t
     assert pilot["lcfs_update_allowed_strategies_next"] == ["noop"]
     assert pilot["lcfs_update_rejection_reason_next"] == "normal_field_guard_no_candidate"
     assert pilot["mout"] is None
+
+
+def test_root_free_boundary_circular_coils_ls_boundary_step_reports_reduction(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_free_boundary_circular_coils.py",
+            "--outdir",
+            str(tmp_path / "ls_boundary_step"),
+            "--betas",
+            "1",
+            "--ntheta",
+            "8",
+            "--nxi",
+            "11",
+            "--n-segments",
+            "64",
+            "--run-fixed-boundary-baseline",
+            "--baseline-maxiter",
+            "0",
+            "--run-ls-boundary-step",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    metrics = json.loads(Path(completed.stdout.strip()).read_text())
+    module = _load_root_example("mirror_free_boundary_circular_coils.py")
+    schema = module["circular_coil_beta_scan_schema"]()
+    module["validate_circular_coil_beta_scan_metrics"](metrics)
+    row = metrics["fixed_boundary_baseline_rows"][0]
+    ls_step = row["ls_boundary_step"]
+    selected_rows = [trial for trial in ls_step["trial_rows"] if trial["selected"]]
+
+    assert metrics["metrics_schema_version"] == "0.4"
+    assert metrics["ls_boundary_step_requested"] is True
+    assert metrics["ls_boundary_step_rows_total"] == 1
+    assert metrics["ls_boundary_finite_difference_step"] == 1.0e-5
+    assert metrics["ls_boundary_damping"] == 1.0
+    assert metrics["ls_boundary_max_relative_step"] == 0.1
+    assert metrics["ls_boundary_ridge"] == 1.0e-8
+    assert set(schema["ls_boundary_step_fields"]).issubset(ls_step)
+    assert ls_step["accepted"] is True
+    assert len(ls_step["coefficients_initial"]) == 3
+    assert len(ls_step["coefficients_new"]) == 3
+    assert ls_step["jacobian_shape"][1] == 3
+    assert ls_step["residual_value_after"] <= ls_step["residual_value_before"]
+    assert ls_step["lcfs_value_after"] <= ls_step["lcfs_value_before"]
+    assert ls_step["equilibrium_rms_after"] == pytest.approx(ls_step["equilibrium_rms_before"])
+    assert ls_step["figure"] is None
+    assert len(selected_rows) == 1
+    assert selected_rows[0]["factor"] == pytest.approx(ls_step["line_search_factor"])
+    assert selected_rows[0]["residual_value"] == pytest.approx(ls_step["residual_value_after"])
+    assert row["figures"] == {}
 
 
 def test_root_free_boundary_circular_coils_pilot_stagnation_stops_early(tmp_path):

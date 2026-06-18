@@ -171,14 +171,18 @@ exercise the coupled residual contract before the fully differentiable solve
 path replaces those derivatives with implicit/JAX/adjoint variants.
 
 The circular-coil beta-scan metrics use the compact schema
-``mirror_free_boundary_circular_coil_beta_scan`` version ``0.3``. The top-level
+``mirror_free_boundary_circular_coil_beta_scan`` version ``0.4``. The top-level
 JSON records the workflow status, direct-coil metadata, requested beta list,
-setup JSON path, aggregate pilot counts, figure paths, and
-``fixed_boundary_baseline_rows``. It also embeds ``summary_rows``, the same
-compact baseline/last-accepted/final-trial table written to CSV. Each beta row
-records fixed-boundary residual and LCFS metrics, the selected next LCFS update,
-all candidate-update summaries, per-beta pilot summary fields, and
-``lcfs_pilot_rows``. Each pilot row always
+setup JSON path, aggregate pilot counts, optional LS boundary-step settings,
+figure paths, and ``fixed_boundary_baseline_rows``. It also embeds
+``summary_rows``, the same compact baseline/last-accepted/final-trial table
+written to CSV. Each beta row records fixed-boundary residual and LCFS metrics,
+the selected next LCFS update, all candidate-update summaries, per-beta pilot
+summary fields, optional ``ls_boundary_step`` diagnostics from
+``--run-ls-boundary-step``, and ``lcfs_pilot_rows``. The LS diagnostic fits the
+baseline side boundary to ``[r0, a2, a4]``, evaluates one line-searched
+least-squares step using the combined residual vector, and when plots are
+enabled writes a residual-component/backtracking figure. Each pilot row always
 contains ``accepted``, ``rejection_reason``, ``stop_reason``,
 ``lcfs_merit_improvement_fraction``, final residual/``fsq`` diagnostics when a
 trial solve ran, ``fsq_growth_ratio`` relative to the beta row baseline, and
