@@ -23,7 +23,9 @@ from .toroidal_hybrid import (
 from .driver import (
     ExampleData,
     FixedBoundaryRun,
+    FixedBoundarySolvedState,
     example_paths,
+    fixed_boundary_solved_state,
     load_example,
     load_input,
     load_wout,
@@ -32,6 +34,13 @@ from .driver import (
     residual_scalars_from_state,
     wout_from_fixed_boundary_run,
     write_wout_from_fixed_boundary_run,
+)
+from .implicit import (
+    ImplicitFixedBoundaryOptions,
+    ImplicitLambdaOptions,
+    solve_fixed_boundary_state_implicit,
+    solve_fixed_boundary_state_implicit_vmec_residual,
+    solve_lambda_state_implicit,
 )
 from .boundary import boundary_from_input_convention, boundary_input_from_indata
 from .booz import (
@@ -185,7 +194,9 @@ __all__ = [
     # Driver / solve
     "ExampleData",
     "FixedBoundaryRun",
+    "FixedBoundarySolvedState",
     "example_paths",
+    "fixed_boundary_solved_state",
     "load_example",
     "load_input",
     "load_wout",
@@ -333,6 +344,11 @@ __all__ = [
     "b_cartesian_from_state",
     "signgs_from_sqrtg",
     "flux_profiles_from_indata",
+    "ImplicitLambdaOptions",
+    "ImplicitFixedBoundaryOptions",
+    "solve_lambda_state_implicit",
+    "solve_fixed_boundary_state_implicit",
+    "solve_fixed_boundary_state_implicit_vmec_residual",
     "magnetic_well_from_state",
     "MagneticWell",
     "DMerc",

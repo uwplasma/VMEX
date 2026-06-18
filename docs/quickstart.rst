@@ -284,6 +284,9 @@ Most users should start from the small public API in ``vmec_jax.api``::
       max_iter=10,
       verbose=True,
   )
+  solved = run.solved_state
+  print("converged=", solved.converged, "fsq=", solved.final_fsq)
+
   wout_path = "wout_shaped_tokamak_pressure_vmec_jax.nc"
   wout = vj.write_wout_from_fixed_boundary_run(
       wout_path,

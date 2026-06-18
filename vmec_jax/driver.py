@@ -101,6 +101,58 @@ class FixedBoundaryRun:
     profiles: dict
     signgs: int
 
+    @property
+    def solved_state(self) -> "FixedBoundarySolvedState":
+        """Return a compact convergence summary for the final solved state."""
+        return fixed_boundary_solved_state(self)
+
+
+@dataclass(frozen=True)
+class FixedBoundarySolvedState:
+    """Compact view of a completed fixed-boundary solve.
+
+    This object gives optimization and analysis code the pieces it usually
+    needs: the final state, residual components, convergence flags, and the
+    high-level solver policy.  It deliberately avoids copying histories or
+    other large diagnostic arrays; those remain on ``run.result``.
+    """
+
+    state: any
+    final_fsq: float
+    final_fsqr: float | None
+    final_fsqz: float | None
+    final_fsql: float | None
+    n_iter: int | None
+    converged: bool
+    converged_strict: bool | None
+    ftol: float | None
+    solver_mode: str | None
+    use_scan: bool | None
+    signgs: int
+
+    @property
+    def residuals(self) -> tuple[float, float, float] | None:
+        """Return ``(fsqr, fsqz, fsql)`` when all components are available."""
+        if self.final_fsqr is None or self.final_fsqz is None or self.final_fsql is None:
+            return None
+        return (self.final_fsqr, self.final_fsqz, self.final_fsql)
+
+    def as_diagnostics(self) -> dict[str, object]:
+        """Return a scalar-only diagnostics dictionary for logging or CSV rows."""
+        return {
+            "final_fsq": self.final_fsq,
+            "final_fsqr": self.final_fsqr,
+            "final_fsqz": self.final_fsqz,
+            "final_fsql": self.final_fsql,
+            "n_iter": self.n_iter,
+            "converged": self.converged,
+            "converged_strict": self.converged_strict,
+            "ftol": self.ftol,
+            "solver_mode": self.solver_mode,
+            "use_scan": self.use_scan,
+            "signgs": self.signgs,
+        }
+
 
 def _default_backend_name() -> str:
     try:
@@ -478,6 +530,71 @@ def _result_final_fsq(result) -> float:
     if residuals is not None:
         return float(sum(residuals))
     return float("inf")
+
+
+def _diagnostic_float(diag: dict, *names: str) -> float | None:
+    for name in names:
+        value = diag.get(name, None)
+        if value is None:
+            continue
+        try:
+            value_f = float(value)
+        except Exception:
+            continue
+        if np.isfinite(value_f):
+            return value_f
+    return None
+
+
+def _diagnostic_bool(diag: dict, name: str) -> bool | None:
+    value = diag.get(name, None)
+    if value is None:
+        return None
+    return bool(value)
+
+
+def fixed_boundary_solved_state(run: FixedBoundaryRun) -> FixedBoundarySolvedState:
+    """Build a scalar solved-state summary from ``run_fixed_boundary`` output."""
+    result = getattr(run, "result", None)
+    diag = getattr(result, "diagnostics", {}) or {}
+    residuals = _result_final_residuals(result)
+    if residuals is None:
+        final_fsqr = final_fsqz = final_fsql = None
+    else:
+        final_fsqr, final_fsqz, final_fsql = (float(v) for v in residuals)
+    final_fsq = _result_final_fsq(result)
+    n_iter = getattr(result, "n_iter", None)
+    try:
+        n_iter = int(n_iter) if n_iter is not None else None
+    except Exception:
+        n_iter = None
+    ftol = _diagnostic_float(diag, "ftol", "requested_ftol")
+    converged_strict = _diagnostic_bool(diag, "converged_strict")
+    if converged_strict is not None:
+        converged = bool(converged_strict)
+    else:
+        converged_flag = _diagnostic_bool(diag, "converged")
+        converged = bool(converged_flag) if converged_flag is not None else False
+    use_scan = _diagnostic_bool(diag, "use_scan")
+    if use_scan is None:
+        use_scan = _diagnostic_bool(diag, "vmec2000_scan")
+    solver_mode = diag.get("solver_mode", None)
+    if solver_mode is not None:
+        solver_mode = str(solver_mode)
+    return FixedBoundarySolvedState(
+        state=run.state,
+        final_fsq=float(final_fsq),
+        final_fsqr=final_fsqr,
+        final_fsqz=final_fsqz,
+        final_fsql=final_fsql,
+        n_iter=n_iter,
+        converged=converged,
+        converged_strict=converged_strict,
+        ftol=ftol,
+        solver_mode=solver_mode,
+        use_scan=use_scan,
+        signgs=int(run.signgs),
+    )
 
 
 def _result_meets_requested_ftol(result, *, ftol: float) -> bool:

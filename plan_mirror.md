@@ -13518,3 +13518,108 @@ Results:
 No user input is needed.
 
 ---
+
+## 107. 2026-06-18 M10 public solved-state summary and residual implicit export
+
+### Steps taken
+
+- Added ``FixedBoundarySolvedState`` and ``fixed_boundary_solved_state(run)``
+  to the public driver layer.
+- Added ``FixedBoundaryRun.solved_state`` as a compact scalar summary for
+  completed fixed-boundary solves.
+- Re-exported the residual-based implicit fixed-boundary solver through both
+  public import surfaces:
+  - ``vmec_jax.solve_fixed_boundary_state_implicit_vmec_residual``;
+  - ``vmec_jax.api.solve_fixed_boundary_state_implicit_vmec_residual``.
+- Updated the public API docs and quickstart to describe:
+  - ``run.solved_state`` for lightweight convergence metadata;
+  - the residual implicit path as the solver-consistent differentiable route;
+  - the energy-objective implicit path as the smaller fixed-geometry route;
+  - the CLI path as free to remain faster and non-differentiable.
+- Added focused tests for the solved-state summary and public exports.
+
+### Results obtained
+
+- Optimization and analysis scripts now have a stable, small object containing:
+  - final state;
+  - total and component ``fsq`` values;
+  - convergence flags;
+  - ``ftol``;
+  - solver mode and scan policy when reported;
+  - ``signgs``.
+- Large histories remain on ``run.result`` and are not copied into the summary.
+- The research-grade residual implicit wrapper is now discoverable from the
+  same public import surfaces as the rest of the user-facing API.
+- No generated outputs or figures were added.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check vmec_jax/driver.py vmec_jax/api.py vmec_jax/__init__.py tests/test_driver_implicit_wave11_coverage.py
+python -m ruff format --check vmec_jax/driver.py vmec_jax/api.py vmec_jax/__init__.py tests/test_driver_implicit_wave11_coverage.py
+JAX_ENABLE_X64=1 pytest tests/test_driver_implicit_wave11_coverage.py -q
+python - <<'PY'
+import vmec_jax as vj
+import vmec_jax.api as api
+print(vj.FixedBoundarySolvedState.__name__)
+print(api.solve_fixed_boundary_state_implicit_vmec_residual.__name__)
+PY
+git diff --check
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff format check passed after formatting the changed test file.
+- ``5 passed`` in ``tests/test_driver_implicit_wave11_coverage.py``.
+- Public import smoke printed ``FixedBoundarySolvedState`` and
+  ``solve_fixed_boundary_state_implicit_vmec_residual``.
+- ``git diff --check`` passed.
+
+### File structure and best-practice notes
+
+- The solved-state view lives in ``vmec_jax/driver.py`` beside
+  ``FixedBoundaryRun`` and existing residual helper functions.
+- Public exports are limited to ``vmec_jax/__init__.py`` and
+  ``vmec_jax/api.py``; no new module was introduced.
+- Tests reuse the existing lightweight driver fixture and avoid full physics
+  solves.
+- Documentation changes are concise and live in the public API page and
+  quickstart.
+
+### Best next steps
+
+1. Commit and push M10 public solved-state API cleanup.
+2. Continue M12/M16 free-boundary circular-coil/ESSOS lane by pinning a
+   lightweight beta-scan schema and example contract.
+3. Continue M14 toroidal stellarator-mirror hybrid geometry with the toroidal
+   side-mirror / corner-stellarator fixture after the current fixed-boundary
+   and diagnostics lanes are stable.
+4. Return to the residual implicit path with gradient finite-difference parity
+   tests on a tiny fixed-boundary case before promoting it as production-grade.
+
+### Completion percentages after M107
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `87%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `88%`.
+- I/O schema and docs: `96%`.
+- Differentiable solved-state API: `30%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `68%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `82%`.
+- ESSOS circular-coil mirror beta scan: `53%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---

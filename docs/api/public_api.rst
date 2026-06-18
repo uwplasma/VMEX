@@ -25,6 +25,18 @@ used in the scripts, including ``example_paths``/``load_example`` and
 helpers. Lower-level solver kernels, force assembly routines, and replay
 internals remain submodule-level APIs.
 
+For optimization code that needs only scalar convergence metadata, use
+``run.solved_state`` or ``fixed_boundary_solved_state(run)`` after
+``run_fixed_boundary(...)``.  This returns a compact ``FixedBoundarySolvedState``
+view with the final state, ``fsq`` components, convergence flags, ``ftol``, and
+the high-level solver policy without copying large history arrays.
+
+Differentiable solved-state experiments should use the explicit implicit
+helpers.  ``solve_fixed_boundary_state_implicit_vmec_residual`` is the
+solver-consistent residual path; ``solve_fixed_boundary_state_implicit`` remains
+the energy-objective path for small fixed-geometry studies.  CLI solves can keep
+their faster non-differentiable policies.
+
 Glasser resistive-interchange support is available through the public import
 surface as ``vj.GlasserResistiveInterchange``.  Add it to a least-squares
 problem as an upper-bound penalty with a zero tuple target:

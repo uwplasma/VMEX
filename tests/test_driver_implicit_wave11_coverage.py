@@ -141,6 +141,63 @@ def test_cli_finisher_marks_strict_residual_converged_even_if_solver_flag_is_fal
     assert np.asarray(diag["cli_fixed_boundary_finish_budgets"]).size == 0
 
 
+def test_fixed_boundary_run_solved_state_summary_and_public_exports(monkeypatch, tmp_path: Path) -> None:
+    import vmec_jax as vj
+    import vmec_jax.api as public_api
+
+    _patch_light_driver(monkeypatch)
+    input_path = _basic_input(tmp_path, niter=2)
+
+    def fake_solver(state, static, **_kwargs):
+        return _solve_result(
+            state,
+            fsq=2.5e-14,
+            converged=True,
+            n_iter=3,
+            diagnostics={"converged_strict": True, "solver_mode": "accelerated", "use_scan": False},
+        )
+
+    monkeypatch.setattr(driver, "solve_fixed_boundary_residual_iter", fake_solver)
+    monkeypatch.setattr(solve_module, "solve_fixed_boundary_residual_iter", fake_solver)
+
+    run = driver.run_fixed_boundary(
+        input_path,
+        solver="vmec2000_iter",
+        solver_mode="accelerated",
+        max_iter=4,
+        multigrid=False,
+        verbose=False,
+        use_scan=False,
+        cli_fixed_boundary_mode=False,
+    )
+
+    solved = run.solved_state
+    assert isinstance(solved, driver.FixedBoundarySolvedState)
+    assert driver.fixed_boundary_solved_state(run) == solved
+    assert solved.state is run.state
+    assert solved.final_fsq == pytest.approx(2.5e-14)
+    assert solved.residuals == pytest.approx((2.5e-14, 0.0, 0.0))
+    assert solved.n_iter == 3
+    assert solved.converged is True
+    assert solved.converged_strict is True
+    assert solved.ftol == pytest.approx(1.0e-12)
+    assert solved.solver_mode == "accelerated"
+    assert solved.use_scan is False
+    assert solved.as_diagnostics()["final_fsq"] == pytest.approx(2.5e-14)
+    assert public_api.FixedBoundarySolvedState is driver.FixedBoundarySolvedState
+    assert public_api.fixed_boundary_solved_state(run) == solved
+    assert vj.FixedBoundarySolvedState is driver.FixedBoundarySolvedState
+    assert vj.fixed_boundary_solved_state(run) == solved
+    assert (
+        public_api.solve_fixed_boundary_state_implicit_vmec_residual
+        is implicit.solve_fixed_boundary_state_implicit_vmec_residual
+    )
+    assert (
+        vj.solve_fixed_boundary_state_implicit_vmec_residual
+        is implicit.solve_fixed_boundary_state_implicit_vmec_residual
+    )
+
+
 def test_cli_finisher_records_budget_cap_exhaustion_after_accelerated_and_parity_attempts(
     monkeypatch,
     tmp_path: Path,
