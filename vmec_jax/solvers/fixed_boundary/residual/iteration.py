@@ -363,6 +363,7 @@ from vmec_jax.solvers.fixed_boundary.scan.payload import (
     build_scan_step_fields as _build_scan_step_fields,
     evaluate_scan_step_force as _evaluate_scan_step_force,
     mask_scan_restart_force_payload as _mask_scan_restart_force_payload,  # noqa: F401 - re-exported for internal tests/importers.
+    select_payload_and_build_step_fields as _select_payload_and_build_step_fields,
     select_scan_force_payload as _select_scan_force_payload,
 )
 from vmec_jax.solvers.fixed_boundary.scan.math import (
@@ -2215,50 +2216,32 @@ def solve_fixed_boundary_residual_iter(
 
                 fsq0_prev_post = time_restart.fsq0_prev_post
 
-                def _restart_payload(_):
-                    return _build_restart_preconditioned_scan_payload(
-                        state_post=state_post,
-                        compute_forces_scan_func=_compute_forces_scan,
-                        trace_context=lambda: _maybe_trace("scan/compute_forces:restart"),
-                        zero_m1=zero_m1,
-                        zero_precond_diag=zero_precond_diag,
-                        zero_tcon=zero_tcon,
-                        constraint_active_false=constraint_active_false,
-                        constraint_tcon0=constraint_tcon0,
-                        trig=trig,
-                        s=s,
-                        cfg=cfg,
-                        dtype=dtype,
-                        scan_use_precomputed=bool(scan_use_precomputed),
-                        scan_use_lax_tridi=bool(scan_use_lax_tridi),
-                        lambda_preconditioner_func=_lambda_preconditioner,
-                        rz_norm_func=_rz_norm,
-                        scale_m1_precond_rhs_func=scale_m1_precond_rhs,
-                        w_mode_mn=w_mode_mn,
-                        lambda_update_scale_j=lambda_update_scale_j,
-                        apply_lambda_update_scale=(lambda_update_scale != 1.0),
-                        delta_s=delta_s,
-                        jmax0=jmax0,
-                    )
-
-                def _current_payload(_):
-                    return current_payload_pre
-
-                payload_use = _select_scan_force_payload(
+                payload_step = _select_payload_and_build_step_fields(
                     do_restart=do_restart,
                     use_restart_payload=bool(scan_use_restart_payload),
-                    restart_payload_fn=_restart_payload,
-                    current_payload_fn=_current_payload,
-                    cond=jax.lax.cond,
-                )
-                fsqr = payload_use.fsqr
-                fsqz = payload_use.fsqz
-                fsql = payload_use.fsql
-                fsq1 = payload_use.fsqr1 + payload_use.fsqz1 + payload_use.fsql1
-
-                step_fields = _build_scan_step_fields(
-                    payload=payload_use,
+                    current_payload=current_payload_pre,
                     state_post=state_post,
+                    compute_forces_scan_func=_compute_forces_scan,
+                    restart_trace_context=lambda: _maybe_trace("scan/compute_forces:restart"),
+                    zero_m1=zero_m1,
+                    zero_precond_diag=zero_precond_diag,
+                    zero_tcon=zero_tcon,
+                    constraint_active_false=constraint_active_false,
+                    constraint_tcon0=constraint_tcon0,
+                    trig=trig,
+                    s=s,
+                    cfg=cfg,
+                    dtype=dtype,
+                    scan_use_precomputed=bool(scan_use_precomputed),
+                    scan_use_lax_tridi=bool(scan_use_lax_tridi),
+                    lambda_preconditioner_func=_lambda_preconditioner,
+                    rz_norm_func=_rz_norm,
+                    scale_m1_precond_rhs_func=scale_m1_precond_rhs,
+                    w_mode_mn=w_mode_mn,
+                    lambda_update_scale_j=lambda_update_scale_j,
+                    apply_lambda_update_scale=(lambda_update_scale != 1.0),
+                    delta_s=delta_s,
+                    jmax0=jmax0,
                     velocity_blocks_post=(
                         vRcc_post,
                         vRss_post,
@@ -2275,12 +2258,10 @@ def solve_fixed_boundary_residual_iter(
                     ),
                     inv_tau_post=inv_tau_post,
                     fsq_prev_post=fsq_prev_post,
-                    fsq1=fsq1,
                     time_step_post=time_step_post,
                     iter2=iter2,
                     iter1_post=iter1_post,
                     k_ndamp=k_ndamp,
-                    dtype=dtype,
                     flip_sign=flip_sign0,
                     lasym=bool(cfg.lasym),
                     static=static,
@@ -2297,9 +2278,14 @@ def solve_fixed_boundary_residual_iter(
                     enforce_fixed_boundary_and_axis=_enforce_fixed_boundary_and_axis,
                     apply_vmec_lambda_axis_rules=_apply_vmec_lambda_axis_rules,
                     vmec2000_control=bool(vmec2000_control),
-                    do_restart=do_restart,
                     cond=jax.lax.cond,
                 )
+                payload_use = payload_step.payload
+                step_fields = payload_step.step_fields
+                fsqr = payload_use.fsqr
+                fsqz = payload_use.fsqz
+                fsql = payload_use.fsql
+                fsq1 = payload_step.fsq1
                 accepted = jnp.logical_not(do_restart)
                 fallback_active = carry_adv.fallback_active
                 probe_update = scan_fallback_probe_update(
