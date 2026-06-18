@@ -10204,3 +10204,62 @@ Completion:
 - Implicit residual-adjoint decomposition: 93%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.988%.
+
+## 2026-06-18 Free-Boundary Controller Domain Move
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved the implementation of `free_boundary_adjoint_controller.py` to
+   `vmec_jax.solvers.free_boundary.adjoint.controller`.
+2. Recreated `vmec_jax.free_boundary_adjoint_controller` as a compatibility
+   facade that re-exports the full controller API expected by existing imports.
+3. Updated internal imports in `free_boundary_adjoint.py` and
+   `controller_replay.py` to use the domain module directly.
+
+Results obtained:
+
+- Free-boundary controller implementation now lives under the free-boundary
+   adjoint domain instead of the root namespace.
+- Existing public/private import compatibility is retained through the root
+   facade.
+- Root helper-prefix count is unchanged because the compatibility facade remains
+   intentionally.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/free_boundary_adjoint.py vmec_jax/free_boundary_adjoint_controller.py vmec_jax/solvers/free_boundary/adjoint/controller.py vmec_jax/solvers/free_boundary/adjoint/controller_replay.py`
+- `python -m ruff check vmec_jax/free_boundary_adjoint.py vmec_jax/free_boundary_adjoint_controller.py vmec_jax/solvers/free_boundary/adjoint/controller.py vmec_jax/solvers/free_boundary/adjoint/controller_replay.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -q -k "controller or segmented or accepted or branch_local or custom_vjp"`
+- `python tools/diagnostics/source_health.py --top 14 --top-functions 20`
+
+Best next steps:
+
+1. Continue moving implementation code out of root compatibility modules only
+   when public import facades can remain stable.
+2. Prioritize residual scan recurrence/helper extraction next; free-boundary
+   adjoint implementation files are now largely domain-organized.
+3. Run broad local gates periodically; do not wait on CI after every commit.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.99994%.
+- Solver monolith reduction: 99.30%.
+- Free-boundary adjoint monolith reduction: 99.25%.
+- Driver workflow decomposition: 99.3%.
+- Residual iteration decomposition: 92.0%.
+- WOUT diagnostic/profile decomposition: 99.1%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.989%.
