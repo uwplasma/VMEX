@@ -5740,6 +5740,160 @@ No user input is needed.
 
 ---
 
+## 70. 2026-06-18 M12h slope/cap-aware LCFS update proposal
+
+This tranche fixed the M12g failure mode by making the LCFS radius proposal
+cap-aware.  The proposal now tapers smoothly to zero at the mirror caps and
+can apply a small axial smoothing pass before the candidate boundary is
+constructed.  The default pilot path now accepts the first low-resolution
+candidate on the circular-coil baseline.
+
+### Steps taken
+
+- Extended `MirrorLCFSUpdateProposal` with:
+  - `cap_taper_power`;
+  - `smoothing_passes`.
+- Added `cap_taper_power` and `smoothing_passes` controls to
+  `propose_axisymmetric_mirror_lcfs_update`.
+- Defaulted the proposal to a smooth `sin(pi z_norm)^2` taper and one axial
+  smoothing pass.
+- Exposed the controls in the root circular-coil example:
+  - `--lcfs-update-cap-taper-power`;
+  - `--lcfs-update-smoothing-passes`.
+- Added update metadata to the baseline and pilot JSON rows.
+- Added a synthetic unit test confirming that the cap-tapered update reduces
+  near-cap motion relative to the untapered update while preserving cap radii.
+- Tightened the root example smoke test so the default pilot must be accepted
+  and reduce actual pressure-balance RMS.
+- Updated docs and the mirror examples README.
+
+### Results obtained
+
+Generated artifacts:
+
+- `results/mirror/m12h_cap_tapered_lcfs_pilot/free_boundary_circular_coils_metrics.json`.
+- `results/mirror/m12h_cap_tapered_lcfs_pilot/free_boundary_circular_coils_setup.json`.
+- Three baseline beta-row `mout` files and three pilot-step `mout` files.
+- Standard plot bundles and pilot LCFS diagnostic panels.
+
+Representative beta rows with `baseline_maxiter=0`, one pilot step, 5% radius
+cap, taper power 2, and one smoothing pass:
+
+| beta percent | baseline pressure RMS | predicted RMS | actual pilot RMS | actual change fraction | accepted |
+| ---: | ---: | ---: | ---: | ---: | :---: |
+| 1 | `1.803515365850` | `1.803438138182` | `1.802062059437` | `8.058187031492e-04` | `true` |
+| 3 | `1.803515365850` | `1.803438138182` | `1.802062059437` | `8.058187031492e-04` | `true` |
+| 10 | `1.803515365850` | `1.803438138182` | `1.802062059437` | `8.058187031492e-04` | `true` |
+
+Normal-field diagnostic:
+
+| beta percent | baseline `B_ext.n` RMS | pilot `B_ext.n` RMS |
+| ---: | ---: | ---: |
+| 1 | `7.657346104349e-03` | `1.111535841912e-02` |
+| 3 | `7.657346104349e-03` | `1.111535841912e-02` |
+| 10 | `7.657346104349e-03` | `1.111535841912e-02` |
+
+The cap-aware proposal removes the large M12g cap spikes and produces an
+accepted actual pilot step.  The pressure-balance improvement is small, and
+`B_ext.n` still rises modestly, so the next step should add a combined
+pressure/normal-field merit function instead of accepting only pressure RMS.
+
+Visual validation:
+
+- Inspected the beta-10 pilot-step LCFS panel.  The previous cap spikes are
+  gone, and the pressure-balance curve is smooth through the caps.
+
+### How it was tested
+
+Focused free-boundary and root example tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots \
+  -q
+```
+
+Result: `10 passed in 5.77s`.
+
+Example with plots and accepted pilot outputs:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/m12h_cap_tapered_lcfs_pilot \
+  --ntheta 24 \
+  --nxi 33 \
+  --n-segments 256 \
+  --run-fixed-boundary-baseline \
+  --run-lcfs-pilot \
+  --lcfs-pilot-steps 1 \
+  --baseline-maxiter 0
+```
+
+Result: metrics JSON, setup JSON, six `mout` files, and plot bundles written.
+
+Lint/format/docs/whitespace:
+
+```bash
+python -m ruff check \
+  vmec_jax/mirror/free_boundary.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff format --check \
+  vmec_jax/mirror/free_boundary.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m sphinx -W -j auto -b html docs docs/_build/html
+git diff --check
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- The cap-tapering stays inside the proposal helper because it is part of the
+  candidate boundary construction, not plotting or example-only bookkeeping.
+- The exact untapered update remains available for controlled tests and future
+  analytic comparisons.
+- The pilot acceptance test is now tied to the example default, so future
+  changes cannot silently regress the first accepted LCFS trial.
+
+### Best next steps
+
+1. Commit and push M12h.
+2. Add a combined LCFS merit metric:
+   - pressure-balance RMS;
+   - normalized `B_ext.n` RMS;
+   - optional cap-weighted terms.
+3. Make pilot acceptance use the combined merit instead of pressure alone.
+4. Run two pilot steps with the combined merit and inspect whether both
+   pressure and normal-field diagnostics trend down.
+
+### Completion percentages after M12h
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `85%`.
+- I/O schema and docs: `89%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `46%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `35%`.
+- PR merge readiness overall: `88%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+
 ## 69. 2026-06-18 M12g low-resolution LCFS pilot with actual diagnostics
 
 This tranche added an optional pilot loop to the circular-coil example.  The

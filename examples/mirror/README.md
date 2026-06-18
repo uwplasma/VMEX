@@ -65,7 +65,8 @@ low-resolution fixed-boundary ``mout`` per beta case as a controlled pre-LCFS
 baseline, plus side-boundary normal-field and total-pressure imbalance
 diagnostics against the external coils. It also reports a damped, clipped
 axisymmetric LCFS radius proposal from a finite-difference external magnetic
-pressure response. Pass ``--run-lcfs-pilot`` with
+pressure response, with smooth cap tapering and optional axial smoothing.
+Pass ``--run-lcfs-pilot`` with
 ``--run-fixed-boundary-baseline`` to apply that proposed boundary in one or
 more low-resolution fixed-boundary pilot steps and report actual before/after
 LCFS diagnostics. It does not solve for a free-boundary LCFS yet.

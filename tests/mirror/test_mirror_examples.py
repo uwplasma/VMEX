@@ -171,6 +171,11 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert all(
         isinstance(row["lcfs_pilot_rows"][0]["accepted"], bool) for row in metrics["fixed_boundary_baseline_rows"]
     )
+    assert all(row["lcfs_pilot_rows"][0]["accepted"] for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(
+        row["lcfs_pilot_rows"][0]["lcfs_pressure_balance_rms"] <= row["lcfs_pressure_balance_rms"]
+        for row in metrics["fixed_boundary_baseline_rows"]
+    )
     assert metrics["figures"] == {}
 
 

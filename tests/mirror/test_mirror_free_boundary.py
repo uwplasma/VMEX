@@ -223,6 +223,8 @@ def test_axisymmetric_lcfs_update_reduces_synthetic_pressure_imbalance():
         damping=1.0,
         max_relative_step=0.5,
         preserve_caps=True,
+        cap_taper_power=0.0,
+        smoothing_passes=0,
     )
 
     assert proposal.pressure_balance_rms_predicted < proposal.pressure_balance_rms_before
@@ -230,3 +232,41 @@ def test_axisymmetric_lcfs_update_reduces_synthetic_pressure_imbalance():
     np.testing.assert_allclose(proposal.delta_radius[[0, -1]], 0.0, atol=1.0e-14)
     np.testing.assert_allclose(proposal.new_radius, [1.0, 0.8, 1.1, 0.8, 1.0])
     np.testing.assert_allclose(proposal.boundary.radius(proposal.xi), proposal.new_radius)
+
+
+def test_axisymmetric_lcfs_update_tapers_near_caps():
+    theta = np.asarray([0.0])
+    z = np.linspace(-1.0, 1.0, 9)
+    boundary_r = np.ones((theta.size, z.size))
+    pressure_balance = np.full((theta.size, z.size), 0.2)
+    pressure_balance[:, 0] = 0.0
+    pressure_balance[:, -1] = 0.0
+    diagnostic = SimpleNamespace(
+        theta=theta,
+        z=z,
+        boundary_r=boundary_r,
+        pressure_balance=pressure_balance,
+    )
+
+    untapered = propose_axisymmetric_mirror_lcfs_update(
+        diagnostic,
+        np.ones_like(pressure_balance),
+        damping=1.0,
+        max_relative_step=0.5,
+        preserve_caps=True,
+        cap_taper_power=0.0,
+        smoothing_passes=0,
+    )
+    tapered = propose_axisymmetric_mirror_lcfs_update(
+        diagnostic,
+        np.ones_like(pressure_balance),
+        damping=1.0,
+        max_relative_step=0.5,
+        preserve_caps=True,
+        cap_taper_power=2.0,
+        smoothing_passes=1,
+    )
+
+    assert abs(tapered.delta_radius[1]) < abs(untapered.delta_radius[1])
+    assert abs(tapered.delta_radius[-2]) < abs(untapered.delta_radius[-2])
+    np.testing.assert_allclose(tapered.delta_radius[[0, -1]], 0.0, atol=1.0e-14)

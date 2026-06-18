@@ -56,6 +56,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--baseline-psi-prime", type=float, default=0.01)
     parser.add_argument("--lcfs-update-damping", type=float, default=0.25)
     parser.add_argument("--lcfs-update-max-relative-step", type=float, default=0.05)
+    parser.add_argument("--lcfs-update-cap-taper-power", type=float, default=2.0)
+    parser.add_argument("--lcfs-update-smoothing-passes", type=int, default=1)
     parser.add_argument("--run-lcfs-pilot", action="store_true")
     parser.add_argument("--lcfs-pilot-steps", type=int, default=1)
     parser.add_argument("--no-plots", action="store_true")
@@ -195,6 +197,8 @@ def _run_fixed_boundary_baseline_cases(
     psi_prime_value: float,
     lcfs_update_damping: float,
     lcfs_update_max_relative_step: float,
+    lcfs_update_cap_taper_power: float,
+    lcfs_update_smoothing_passes: int,
     run_lcfs_pilot: bool,
     lcfs_pilot_steps: int,
     write_plots: bool,
@@ -240,6 +244,8 @@ def _run_fixed_boundary_baseline_cases(
             max_relative_step=lcfs_update_max_relative_step,
             radius_floor=1.0e-4,
             preserve_caps=True,
+            cap_taper_power=lcfs_update_cap_taper_power,
+            smoothing_passes=lcfs_update_smoothing_passes,
         )
         pilot_rows: list[dict[str, object]] = []
         accepted_pressure_balance_rms = float(lcfs.pressure_balance_rms)
@@ -271,6 +277,8 @@ def _run_fixed_boundary_baseline_cases(
                     max_relative_step=lcfs_update_max_relative_step,
                     radius_floor=1.0e-4,
                     preserve_caps=True,
+                    cap_taper_power=lcfs_update_cap_taper_power,
+                    smoothing_passes=lcfs_update_smoothing_passes,
                 )
                 pilot_plot_paths: dict[str, str] = {}
                 if write_plots:
@@ -309,6 +317,8 @@ def _run_fixed_boundary_baseline_cases(
                         "lcfs_update_pressure_balance_rms_predicted_next": float(
                             pilot_proposal.pressure_balance_rms_predicted
                         ),
+                        "lcfs_update_cap_taper_power_next": float(pilot_proposal.cap_taper_power),
+                        "lcfs_update_smoothing_passes_next": int(pilot_proposal.smoothing_passes),
                         "lcfs_update_max_relative_delta_radius_next": float(
                             np.max(
                                 np.abs(pilot_proposal.delta_radius) / np.maximum(pilot_proposal.old_radius, 1.0e-300)
@@ -360,6 +370,8 @@ def _run_fixed_boundary_baseline_cases(
                 "lcfs_update_pressure_balance_rms_reduction_fraction": float(
                     1.0 - proposal.pressure_balance_rms_predicted / max(proposal.pressure_balance_rms_before, 1.0e-300)
                 ),
+                "lcfs_update_cap_taper_power": float(proposal.cap_taper_power),
+                "lcfs_update_smoothing_passes": int(proposal.smoothing_passes),
                 "lcfs_update_max_abs_delta_radius": float(np.max(np.abs(proposal.delta_radius))),
                 "lcfs_update_max_relative_delta_radius": float(
                     np.max(np.abs(proposal.delta_radius) / np.maximum(proposal.old_radius, 1.0e-300))
@@ -389,6 +401,8 @@ def run_case(
     baseline_psi_prime: float = 0.01,
     lcfs_update_damping: float = 0.25,
     lcfs_update_max_relative_step: float = 0.05,
+    lcfs_update_cap_taper_power: float = 2.0,
+    lcfs_update_smoothing_passes: int = 1,
     run_lcfs_pilot: bool = False,
     lcfs_pilot_steps: int = 1,
     write_plots: bool = True,
@@ -446,6 +460,8 @@ def run_case(
             psi_prime_value=baseline_psi_prime,
             lcfs_update_damping=lcfs_update_damping,
             lcfs_update_max_relative_step=lcfs_update_max_relative_step,
+            lcfs_update_cap_taper_power=lcfs_update_cap_taper_power,
+            lcfs_update_smoothing_passes=lcfs_update_smoothing_passes,
             run_lcfs_pilot=run_lcfs_pilot,
             lcfs_pilot_steps=lcfs_pilot_steps,
             write_plots=write_plots,
@@ -497,6 +513,8 @@ def main() -> None:
         baseline_psi_prime=args.baseline_psi_prime,
         lcfs_update_damping=args.lcfs_update_damping,
         lcfs_update_max_relative_step=args.lcfs_update_max_relative_step,
+        lcfs_update_cap_taper_power=args.lcfs_update_cap_taper_power,
+        lcfs_update_smoothing_passes=args.lcfs_update_smoothing_passes,
         run_lcfs_pilot=args.run_lcfs_pilot,
         lcfs_pilot_steps=args.lcfs_pilot_steps,
         write_plots=not args.no_plots,

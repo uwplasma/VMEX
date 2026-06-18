@@ -222,6 +222,8 @@ class MirrorLCFSUpdateProposal:
     pressure_balance_rms_predicted: float
     damping: float
     max_relative_step: float
+    cap_taper_power: float
+    smoothing_passes: int
     preserve_caps: bool
     boundary: MirrorBoundary
 
@@ -543,23 +545,32 @@ def propose_axisymmetric_mirror_lcfs_update(
     max_relative_step: float = 0.05,
     radius_floor: float = 1.0e-4,
     preserve_caps: bool = True,
+    cap_taper_power: float = 2.0,
+    smoothing_passes: int = 1,
 ) -> MirrorLCFSUpdateProposal:
     """Return a damped axisymmetric radius proposal from pressure imbalance.
 
     The update is a clipped Newton step for the theta-averaged side-boundary
-    pressure-balance residual.  Cap radii are preserved by default so this can
-    be used before the cap boundary-condition lane is complete.
+    pressure-balance residual.  Cap radii are preserved by default, and the
+    update is tapered smoothly toward the caps to avoid creating large axial
+    side-boundary slopes.
     """
 
     damping = float(damping)
     max_relative_step = float(max_relative_step)
     radius_floor = float(radius_floor)
+    cap_taper_power = float(cap_taper_power)
+    smoothing_passes = int(smoothing_passes)
     if not (0.0 < damping <= 1.0):
         raise ValueError("damping must be in (0, 1]")
     if max_relative_step <= 0.0:
         raise ValueError("max_relative_step must be positive")
     if radius_floor <= 0.0:
         raise ValueError("radius_floor must be positive")
+    if cap_taper_power < 0.0:
+        raise ValueError("cap_taper_power must be nonnegative")
+    if smoothing_passes < 0:
+        raise ValueError("smoothing_passes must be nonnegative")
 
     z = np.asarray(diagnostic.z, dtype=float)
     if z.ndim != 1 or z.size < 2 or not np.all(np.diff(z) > 0.0):
@@ -579,6 +590,14 @@ def propose_axisymmetric_mirror_lcfs_update(
     raw_delta[active] = -residual[active] / response[active]
     limit = max_relative_step * np.maximum(radius, radius_floor)
     delta = np.clip(damping * raw_delta, -limit, limit)
+    if preserve_caps and cap_taper_power > 0.0:
+        normalized_z = (z - z[0]) / (z[-1] - z[0])
+        delta *= np.sin(np.pi * normalized_z) ** cap_taper_power
+    for _ in range(smoothing_passes):
+        if delta.size > 2:
+            smoothed = delta.copy()
+            smoothed[1:-1] = 0.25 * delta[:-2] + 0.5 * delta[1:-1] + 0.25 * delta[2:]
+            delta = np.clip(smoothed, -limit, limit)
     if preserve_caps:
         delta[0] = 0.0
         delta[-1] = 0.0
@@ -599,6 +618,8 @@ def propose_axisymmetric_mirror_lcfs_update(
         pressure_balance_rms_predicted=float(np.sqrt(np.mean(predicted**2))),
         damping=damping,
         max_relative_step=max_relative_step,
+        cap_taper_power=cap_taper_power,
+        smoothing_passes=smoothing_passes,
         preserve_caps=bool(preserve_caps),
         boundary=MirrorBoundary.tabulated_radius(xi, new_radius),
     )
