@@ -207,6 +207,19 @@ class MirrorLCFSDiagnostic:
 
 
 @dataclass(frozen=True)
+class MirrorLCFSMerit:
+    """Dimensionless merit for accepting LCFS pilot updates."""
+
+    value: float
+    pressure_balance_rms: float
+    external_bnormal_rms: float
+    external_bmag_rms: float
+    pressure_scale: float
+    bnormal_scale: float
+    bnormal_weight: float
+
+
+@dataclass(frozen=True)
 class MirrorLCFSUpdateProposal:
     """One damped axisymmetric side-boundary update proposal."""
 
@@ -535,6 +548,40 @@ def mirror_external_pressure_balance_response(
     bmag_plus = np.asarray(plus.bmag, dtype=float)
     bmag_minus = np.asarray(minus.bmag, dtype=float)
     return -(bmag_plus**2 - bmag_minus**2) / (2.0 * float(mu0) * denominator)
+
+
+def mirror_lcfs_merit(
+    diagnostic: MirrorLCFSDiagnostic,
+    *,
+    pressure_scale: float | None = None,
+    bnormal_scale: float | None = None,
+    bnormal_weight: float = 1.0,
+) -> MirrorLCFSMerit:
+    """Return a dimensionless side-boundary merit for LCFS pilot steps."""
+
+    pressure_rms = float(diagnostic.pressure_balance_rms)
+    bnormal_rms = float(diagnostic.external_bnormal_rms)
+    external_bmag_rms = float(np.sqrt(np.mean(np.asarray(diagnostic.external_bmag, dtype=float) ** 2)))
+    pressure_scale = pressure_rms if pressure_scale is None else float(pressure_scale)
+    bnormal_scale = external_bmag_rms if bnormal_scale is None else float(bnormal_scale)
+    bnormal_weight = float(bnormal_weight)
+    if pressure_scale <= 0.0:
+        raise ValueError("pressure_scale must be positive")
+    if bnormal_scale <= 0.0:
+        raise ValueError("bnormal_scale must be positive")
+    if bnormal_weight < 0.0:
+        raise ValueError("bnormal_weight must be nonnegative")
+    pressure_term = pressure_rms / pressure_scale
+    bnormal_term = bnormal_rms / bnormal_scale
+    return MirrorLCFSMerit(
+        value=float(np.sqrt(pressure_term**2 + bnormal_weight * bnormal_term**2)),
+        pressure_balance_rms=pressure_rms,
+        external_bnormal_rms=bnormal_rms,
+        external_bmag_rms=external_bmag_rms,
+        pressure_scale=float(pressure_scale),
+        bnormal_scale=float(bnormal_scale),
+        bnormal_weight=bnormal_weight,
+    )
 
 
 def propose_axisymmetric_mirror_lcfs_update(

@@ -18,6 +18,7 @@ from vmec_jax.mirror import (
     mirror_boundary_from_on_axis_bz,
     mirror_circular_coils_to_direct_params,
     mirror_lcfs_diagnostic,
+    mirror_lcfs_merit,
     propose_axisymmetric_mirror_lcfs_update,
     sample_mirror_axis_external_field,
     sample_mirror_boundary_external_field,
@@ -202,6 +203,21 @@ def test_mirror_lcfs_diagnostic_reports_side_boundary_targets():
     assert diagnostic.external_bnormal_max == pytest.approx(0.0)
     assert diagnostic.pressure_balance_rms == pytest.approx(1.5)
     assert diagnostic.pressure_balance_max == pytest.approx(1.5)
+
+
+def test_mirror_lcfs_merit_combines_pressure_and_normal_field():
+    diagnostic = SimpleNamespace(
+        pressure_balance_rms=2.0,
+        external_bnormal_rms=0.3,
+        external_bmag=np.full((1, 4), 3.0),
+    )
+
+    merit = mirror_lcfs_merit(diagnostic, pressure_scale=2.0, bnormal_scale=3.0, bnormal_weight=4.0)
+
+    assert merit.pressure_balance_rms == pytest.approx(2.0)
+    assert merit.external_bnormal_rms == pytest.approx(0.3)
+    assert merit.external_bmag_rms == pytest.approx(3.0)
+    assert merit.value == pytest.approx(np.sqrt(1.0 + 4.0 * 0.1**2))
 
 
 def test_axisymmetric_lcfs_update_reduces_synthetic_pressure_imbalance():

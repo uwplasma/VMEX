@@ -27,6 +27,7 @@ from vmec_jax.mirror import (
     make_mirror_grid,
     mirror_external_pressure_balance_response,
     mirror_lcfs_diagnostic,
+    mirror_lcfs_merit,
     plot_mirror_output,
     propose_axisymmetric_mirror_lcfs_update,
     run_mirror_fixed_boundary,
@@ -58,6 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lcfs-update-max-relative-step", type=float, default=0.05)
     parser.add_argument("--lcfs-update-cap-taper-power", type=float, default=2.0)
     parser.add_argument("--lcfs-update-smoothing-passes", type=int, default=1)
+    parser.add_argument("--lcfs-merit-bnormal-weight", type=float, default=1.0)
     parser.add_argument("--run-lcfs-pilot", action="store_true")
     parser.add_argument("--lcfs-pilot-steps", type=int, default=1)
     parser.add_argument("--no-plots", action="store_true")
@@ -199,6 +201,7 @@ def _run_fixed_boundary_baseline_cases(
     lcfs_update_max_relative_step: float,
     lcfs_update_cap_taper_power: float,
     lcfs_update_smoothing_passes: int,
+    lcfs_merit_bnormal_weight: float,
     run_lcfs_pilot: bool,
     lcfs_pilot_steps: int,
     write_plots: bool,
@@ -236,6 +239,7 @@ def _run_fixed_boundary_baseline_cases(
         mout = write_mirror_output(mout_path, result)
         output = load_mirror_output(mout)
         lcfs = mirror_lcfs_diagnostic(output, external_sample, mu0=1.0)
+        lcfs_merit = mirror_lcfs_merit(lcfs, bnormal_weight=lcfs_merit_bnormal_weight)
         pressure_response = mirror_external_pressure_balance_response(lcfs, scan.coils, mu0=1.0)
         proposal = propose_axisymmetric_mirror_lcfs_update(
             lcfs,
@@ -248,7 +252,7 @@ def _run_fixed_boundary_baseline_cases(
             smoothing_passes=lcfs_update_smoothing_passes,
         )
         pilot_rows: list[dict[str, object]] = []
-        accepted_pressure_balance_rms = float(lcfs.pressure_balance_rms)
+        accepted_merit_value = float(lcfs_merit.value)
         candidate_boundary = proposal.boundary
         if run_lcfs_pilot:
             for step in range(1, int(lcfs_pilot_steps) + 1):
@@ -269,6 +273,12 @@ def _run_fixed_boundary_baseline_cases(
                     baseline_grid, candidate_boundary, scan.coils
                 )
                 pilot_lcfs = mirror_lcfs_diagnostic(pilot_output, pilot_external_sample, mu0=1.0)
+                pilot_merit = mirror_lcfs_merit(
+                    pilot_lcfs,
+                    pressure_scale=lcfs_merit.pressure_scale,
+                    bnormal_scale=lcfs_merit.bnormal_scale,
+                    bnormal_weight=lcfs_merit_bnormal_weight,
+                )
                 pilot_response = mirror_external_pressure_balance_response(pilot_lcfs, scan.coils, mu0=1.0)
                 pilot_proposal = propose_axisymmetric_mirror_lcfs_update(
                     pilot_lcfs,
@@ -296,7 +306,7 @@ def _run_fixed_boundary_baseline_cases(
                         )
                     )
                 pilot_final = pilot_result.final_trace
-                accepted = bool(pilot_lcfs.pressure_balance_rms <= accepted_pressure_balance_rms)
+                accepted = bool(pilot_merit.value <= accepted_merit_value)
                 pilot_rows.append(
                     {
                         "step": int(step),
@@ -314,6 +324,9 @@ def _run_fixed_boundary_baseline_cases(
                         "lcfs_pressure_balance_rms_change_fraction": float(
                             1.0 - pilot_lcfs.pressure_balance_rms / max(lcfs.pressure_balance_rms, 1.0e-300)
                         ),
+                        "lcfs_merit": float(pilot_merit.value),
+                        "lcfs_merit_change_fraction": float(1.0 - pilot_merit.value / max(lcfs_merit.value, 1.0e-300)),
+                        "lcfs_merit_bnormal_weight": float(pilot_merit.bnormal_weight),
                         "lcfs_update_pressure_balance_rms_predicted_next": float(
                             pilot_proposal.pressure_balance_rms_predicted
                         ),
@@ -329,7 +342,7 @@ def _run_fixed_boundary_baseline_cases(
                 )
                 if not accepted:
                     break
-                accepted_pressure_balance_rms = float(pilot_lcfs.pressure_balance_rms)
+                accepted_merit_value = float(pilot_merit.value)
                 candidate_boundary = pilot_proposal.boundary
         plot_paths: dict[str, str] = {}
         if write_plots:
@@ -364,6 +377,10 @@ def _run_fixed_boundary_baseline_cases(
                 "lcfs_pressure_balance_rms": float(lcfs.pressure_balance_rms),
                 "lcfs_pressure_balance_max": float(lcfs.pressure_balance_max),
                 "lcfs_edge_pressure": float(lcfs.edge_pressure),
+                "lcfs_merit": float(lcfs_merit.value),
+                "lcfs_merit_pressure_scale": float(lcfs_merit.pressure_scale),
+                "lcfs_merit_bnormal_scale": float(lcfs_merit.bnormal_scale),
+                "lcfs_merit_bnormal_weight": float(lcfs_merit.bnormal_weight),
                 "lcfs_pressure_response_min": float(np.min(proposal.pressure_response)),
                 "lcfs_pressure_response_max": float(np.max(proposal.pressure_response)),
                 "lcfs_update_pressure_balance_rms_predicted": float(proposal.pressure_balance_rms_predicted),
@@ -403,6 +420,7 @@ def run_case(
     lcfs_update_max_relative_step: float = 0.05,
     lcfs_update_cap_taper_power: float = 2.0,
     lcfs_update_smoothing_passes: int = 1,
+    lcfs_merit_bnormal_weight: float = 1.0,
     run_lcfs_pilot: bool = False,
     lcfs_pilot_steps: int = 1,
     write_plots: bool = True,
@@ -462,6 +480,7 @@ def run_case(
             lcfs_update_max_relative_step=lcfs_update_max_relative_step,
             lcfs_update_cap_taper_power=lcfs_update_cap_taper_power,
             lcfs_update_smoothing_passes=lcfs_update_smoothing_passes,
+            lcfs_merit_bnormal_weight=lcfs_merit_bnormal_weight,
             run_lcfs_pilot=run_lcfs_pilot,
             lcfs_pilot_steps=lcfs_pilot_steps,
             write_plots=write_plots,
@@ -515,6 +534,7 @@ def main() -> None:
         lcfs_update_max_relative_step=args.lcfs_update_max_relative_step,
         lcfs_update_cap_taper_power=args.lcfs_update_cap_taper_power,
         lcfs_update_smoothing_passes=args.lcfs_update_smoothing_passes,
+        lcfs_merit_bnormal_weight=args.lcfs_merit_bnormal_weight,
         run_lcfs_pilot=args.run_lcfs_pilot,
         lcfs_pilot_steps=args.lcfs_pilot_steps,
         write_plots=not args.no_plots,

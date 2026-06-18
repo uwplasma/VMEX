@@ -5740,6 +5740,157 @@ No user input is needed.
 
 ---
 
+## 71. 2026-06-18 M12i combined LCFS merit and two-step pilot
+
+This tranche added a dimensionless LCFS merit for pilot-step acceptance.  The
+merit combines pressure-balance RMS and normalized side-boundary `B_ext.n` RMS,
+using the baseline pressure RMS and baseline external-field RMS as scales.  The
+pilot now accepts candidates by combined merit rather than pressure RMS alone.
+
+### Steps taken
+
+- Added `MirrorLCFSMerit` and `mirror_lcfs_merit`.
+- Exported the merit helper through the public mirror API.
+- Added `--lcfs-merit-bnormal-weight` to the root circular-coil example.
+- Added baseline and pilot JSON fields for:
+  - combined merit;
+  - pressure scale;
+  - normal-field scale;
+  - normal-field weight;
+  - merit change fraction.
+- Switched pilot acceptance from pressure-only to combined merit.
+- Added a direct unit test for merit normalization.
+- Tightened the root example smoke test so accepted pilots must reduce the
+  combined merit.
+- Updated docs and the mirror examples README.
+
+### Results obtained
+
+Generated artifacts:
+
+- `results/mirror/m12i_combined_merit_pilot/free_boundary_circular_coils_metrics.json`.
+- `results/mirror/m12i_combined_merit_pilot/free_boundary_circular_coils_setup.json`.
+- Three baseline beta-row `mout` files and six pilot-step `mout` files.
+- Nine LCFS diagnostic panels: three baseline, three step-1, three step-2.
+
+Representative two-step rows with `baseline_maxiter=0`, taper power 2, one
+smoothing pass, and normal-field weight 1:
+
+| beta percent | row | merit | pressure RMS | `B_ext.n` RMS | accepted |
+| ---: | :--- | ---: | ---: | ---: | :---: |
+| 1 | baseline | `1.000020371650` | `1.803515365850` | `7.657346104349e-03` | n/a |
+| 1 | step 1 | `0.999237141051` | `1.802062059437` | `1.111535841912e-02` | `true` |
+| 1 | step 2 | `0.998686017484` | `1.801007306558` | `1.484484737831e-02` | `true` |
+
+The 3% and 10% rows have the same geometry diagnostics for this `maxiter=0`
+fixed-boundary pilot because the boundary and external field are shared.
+
+Interpretation:
+
+- The combined merit and pressure-balance RMS decrease over two accepted pilot
+  steps.
+- `B_ext.n` still increases smoothly, so this is not yet a balanced LCFS
+  update.  The next lane should add a normal-field descent term or candidate
+  line search that can reduce both components.
+
+### How it was tested
+
+Focused free-boundary and root example tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots \
+  -q
+```
+
+Result: `11 passed in 4.91s`.
+
+Example with plots and two accepted pilot steps:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/m12i_combined_merit_pilot \
+  --ntheta 24 \
+  --nxi 33 \
+  --n-segments 256 \
+  --run-fixed-boundary-baseline \
+  --run-lcfs-pilot \
+  --lcfs-pilot-steps 2 \
+  --baseline-maxiter 0
+```
+
+Result: metrics JSON, setup JSON, nine `mout` files, and plot bundles written.
+
+Lint/format/docs/whitespace:
+
+```bash
+python -m ruff check \
+  vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff format --check \
+  vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m sphinx -W -j auto -b html docs docs/_build/html
+git diff --check
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- The merit helper lives beside LCFS diagnostics in
+  `vmec_jax/mirror/free_boundary.py` because it is a physics acceptance metric,
+  not example-only presentation.
+- The example owns the pilot loop and row bookkeeping because it is still a
+  workflow diagnostic, not a reusable free-boundary solver.
+- Normalization by external `|B|` keeps the normal-field term dimensionless and
+  prevents small smooth changes from dominating pressure-balance progress.
+
+### Best next steps
+
+1. Commit and push M12i.
+2. Add a normal-field-aware proposal component:
+   - estimate how `B_ext.n` changes under a smooth radius perturbation;
+   - include that response in the candidate direction or line search;
+   - require both pressure RMS and `B_ext.n` RMS not to increase for the
+     default pilot.
+3. Promote the pilot loop into a small reusable helper only if another example
+   or test needs it.
+4. Start the stellarator-mirror hybrid boundary lane after the LCFS pilot can
+   reduce both components on the circular-coil baseline.
+
+### Completion percentages after M12i
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `85%`.
+- I/O schema and docs: `89%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `49%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `38%`.
+- PR merge readiness overall: `88%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+
 ## 70. 2026-06-18 M12h slope/cap-aware LCFS update proposal
 
 This tranche fixed the M12g failure mode by making the LCFS radius proposal

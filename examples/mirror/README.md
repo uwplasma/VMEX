@@ -69,7 +69,9 @@ pressure response, with smooth cap tapering and optional axial smoothing.
 Pass ``--run-lcfs-pilot`` with
 ``--run-fixed-boundary-baseline`` to apply that proposed boundary in one or
 more low-resolution fixed-boundary pilot steps and report actual before/after
-LCFS diagnostics. It does not solve for a free-boundary LCFS yet.
+LCFS diagnostics. Pilot acceptance uses a dimensionless combined merit with
+pressure-balance and normalized normal-field terms. It does not solve for a
+free-boundary LCFS yet.
 
 The root-level ``examples/mirror_fixed_boundary_solve_diagnostic.py`` script
 runs an actual L-BFGS fixed-boundary relaxation from a perturbed interior state.
