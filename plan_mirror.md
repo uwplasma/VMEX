@@ -5740,6 +5740,7 @@ No user input is needed.
 
 ---
 
+
 ## 56. 2026-06-17 M8w matrix-free block LSMR correction
 
 This lane converted the successful M8u/M8v block-dense split into a scalable
@@ -12628,6 +12629,194 @@ Generated ignored files checked:
 - Toroidal stellarator-mirror hybrid lane: `66%`.
 - ESSOS circular-coil mirror beta scan: `53%`.
 - PR merge readiness overall: `92%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+
+## 102. 2026-06-18 M13i direct-initial residual audit and VMEC2000 reset probe
+
+This tranche corrected the toroidal-hybrid residual-parity interpretation from
+"solve-history first row" to a true pre-iteration direct residual diagnostic.
+
+### Steps taken
+
+- Rechecked CI for PR #21:
+  - build and console smoke were passing;
+  - fast-test and docs jobs were still pending, with no concrete failure yet.
+- Inspected VMEC2000 reset support in the local STELLOPT source:
+  - `xvmec2000 input.ext reset=wout_file.nc` is parsed by
+    `Sources/TimeStep/vmec.f`;
+  - `runvmec.f` skips to the final radial grid when `reset_file_name` is
+    present;
+  - `initialize_radial.f` calls `load_xc_from_wout`;
+  - `load_xc_from_wout.f` maps WOUT `rmnc`, `zmns`, and `lmns` into the
+    internal `xc` arrays.
+- Ran ignored reset probes:
+  - VMEC/JAX raw-axis initial WOUT reset;
+  - VMEC/JAX boundary-inferred initial WOUT reset;
+  - deliberately modified reset WOUT;
+  - VMEC2000 final-WOUT reset.
+- Found that VMEC2000's reset mechanism is real:
+  - a deliberately modified reset WOUT changes the run and can crash;
+  - a VMEC2000 final-WOUT reset changes the early residual trace.
+- Found that VMEC/JAX initial WOUT resets reproduce VMEC2000's default trace
+  because the fixed-boundary initialization collapses to the same radial
+  profile after VMEC2000's setup, not because the reset argument is ignored.
+- Computed VMEC/JAX residual scalars directly on initial states:
+  - raw-axis parity initial residual is enormous and is not the VMEC2000-like
+    branch;
+  - boundary-inferred default/accelerated initial residual matches VMEC2000's
+    first `threed1` row.
+- Added new convergence-runner fields:
+  - `direct_initial_residual_requested`;
+  - `direct_initial_residual_source`;
+  - `direct_initial_axis_initialization_policy`;
+  - `direct_initial_fsq`;
+  - `direct_initial_fsqr`;
+  - `direct_initial_fsqz`;
+  - `direct_initial_fsql`;
+  - `direct_initial_*_ratio_vmec2000`;
+  - `direct_initial_error`.
+- Added `--direct-initial-residual` / `--no-direct-initial-residual`.
+- Renamed the solve-history source string to
+  `vmec_jax_solve_history_first_stored_row`.
+- Updated the residual-history plot to show the VMEC/JAX direct initial value
+  as a pre-iteration marker at iteration `-1`.
+- Updated mirror docs and example README to distinguish:
+  - direct pre-iteration VMEC/JAX residuals;
+  - first stored VMEC/JAX solve-history rows;
+  - VMEC2000 first parsed `threed1` rows.
+
+### Results obtained
+
+Direct initial residual parity for the low-resolution accelerated row:
+
+| quantity | VMEC/JAX direct initial | VMEC2000 first `threed1` | ratio |
+| --- | ---: | ---: | ---: |
+| total `fsq` | `8.285359474768e-02` | `8.274000000000e-02` | `1.001372912106` |
+| `fsqr` | `5.296232415964e-02` | `5.290000000000e-02` | `1.001178150466` |
+| `fsqz` | `4.703146208488e-03` | `4.640000000000e-03` | `1.013609096657` |
+| `fsql` | `2.518812437955e-02` | `2.520000000000e-02` | `0.999528745220` |
+
+The same run reports:
+
+- `direct_initial_residual_source =
+  vmec_jax_initial_guess_residual_scalars`;
+- `direct_initial_axis_initialization_policy =
+  boundary_inferred_missing_axis`;
+- `initial_residual_source = vmec_jax_solve_history_first_stored_row`;
+- first stored VMEC/JAX solve-history `fsq = 7.503003199772e-02`;
+- VMEC/JAX best `fsq = 1.116468167248e-02`;
+- VMEC2000 best/final `fsq = 7.770000000000e-03`;
+- VMEC/JAX mean iota `1.280634031113e-02`;
+- VMEC2000 mean iota `7.622815625446e-03`.
+
+Interpretation:
+
+- The earlier M101 ratio of about `0.05` compared different quantities:
+  VMEC/JAX's first stored solve-history row against VMEC2000's first
+  `threed1` row.
+- For the normal boundary-inferred initialization, VMEC/JAX direct residual
+  scalars now match VMEC2000's first row to about `0.14%` in total `fsq`.
+- Strict residual parity should therefore use `direct_initial_*` fields for
+  initialization checks and `*_history` fields for iteration behavior.
+- The remaining mismatch is in solver trajectory and final convergence, not in
+  the direct initial force diagnostic.
+
+Generated ignored artifacts checked:
+
+- `results/toroidal_hybrid_m13i_direct_initial_audit/toroidal_stellarator_mirror_hybrid_convergence.json`.
+- `results/toroidal_hybrid_m13i_direct_initial_audit/toroidal_stellarator_mirror_hybrid_convergence.csv`.
+- `results/toroidal_hybrid_m13i_direct_initial_audit/figures/toroidal_hybrid_fsq_history.png`.
+- `results/toroidal_hybrid_m13i_direct_initial_audit/figures/toroidal_hybrid_convergence.png`.
+- `results/toroidal_hybrid_m13i_direct_initial_audit/figures/toroidal_hybrid_parity_components.png`.
+- `results/toroidal_hybrid_m13i_direct_initial_audit/figures/toroidal_hybrid_profiles.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
+python -m ruff check examples/toroidal_stellarator_mirror_hybrid_convergence.py tests/test_toroidal_hybrid.py
+python -m ruff format --check examples/toroidal_stellarator_mirror_hybrid_convergence.py tests/test_toroidal_hybrid.py
+git diff --check
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  --outdir results/toroidal_hybrid_m13i_direct_initial_audit \
+  --ns-array 7 \
+  --mode-pairs 5:10 \
+  --ntheta-fit 32 \
+  --nzeta-fit 32 \
+  --niter 25 \
+  --ftol 1e-9 \
+  --run-solve \
+  --max-iter 3 \
+  --solver-mode accelerated \
+  --no-use-scan \
+  --run-vmec2000 \
+  --vmec2000-exec /Users/rogeriojorge/bin/xvmec2000 \
+  --vmec2000-timeout-s 120
+```
+
+Results:
+
+- `22 passed` in `tests/test_toroidal_hybrid.py`.
+- Ruff check passed.
+- Ruff format check passed.
+- `git diff --check` passed.
+- The audit command completed successfully.
+- The residual-history, convergence, final-component, and profile plots rendered
+  correctly; the residual-history plot now includes the direct-initial marker.
+
+### File structure and best-practice notes
+
+- The source change stays in the root-level toroidal-hybrid convergence runner
+  because these are reporting semantics, not reusable solver kernels.
+- Tests remain in `tests/test_toroidal_hybrid.py`, including a mocked helper
+  test so CI does not need a real VMEC2000 executable for this schema path.
+- Documentation updates live in `docs/mirror/overview.rst` and
+  `examples/mirror/README.md`.
+- All generated benchmark artifacts remain ignored under `results/`.
+- No committed figures or bulky outputs were added.
+
+### Best next steps
+
+1. Commit and push M13i.
+2. Recheck PR #21 CI later for concrete failures, but do not block on pending
+   jobs.
+3. Move to solver-trajectory parity:
+   - compare VMEC/JAX and VMEC2000 step/update controls after the matched
+     direct initial residual;
+   - focus on why accelerated VMEC/JAX reaches a different final state over the
+     first few iterations.
+4. Then continue the finite completion plan:
+   - M10 differentiable solved-state API cleanup;
+   - M11 mirror-Boozer-like diagnostics;
+   - M12 free-boundary LCFS path;
+   - M13 toroidal stellarator-mirror hybrid convergence;
+   - M16 ESSOS circular-coil beta scan.
+
+### Completion percentages after M102
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `87%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `88%`.
+- I/O schema and docs: `96%`.
+- Differentiable solved-state API: `22%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `68%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `70%`.
+- ESSOS circular-coil mirror beta scan: `53%`.
+- PR merge readiness overall: `93%`.
 
 ### User input needed
 

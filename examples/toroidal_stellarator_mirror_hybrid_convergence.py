@@ -148,6 +148,18 @@ _CSV_COLUMNS = (
     "fsq_total_target",
     "seconds",
     "n_iter",
+    "direct_initial_residual_requested",
+    "direct_initial_residual_source",
+    "direct_initial_axis_initialization_policy",
+    "direct_initial_fsq",
+    "direct_initial_fsqr",
+    "direct_initial_fsqz",
+    "direct_initial_fsql",
+    "direct_initial_fsq_ratio_vmec2000",
+    "direct_initial_fsqr_ratio_vmec2000",
+    "direct_initial_fsqz_ratio_vmec2000",
+    "direct_initial_fsql_ratio_vmec2000",
+    "direct_initial_error",
     "initial_residual_source",
     "initial_fsq",
     "best_fsq",
@@ -259,11 +271,56 @@ def _safe_ratio(numerator: object, denominator: object) -> float | None:
 def _attach_initial_residual_comparison(row: dict[str, object]) -> None:
     """Attach VMEC/JAX-to-VMEC2000 first-row residual ratios when available."""
     row["initial_fsq_ratio_vmec2000"] = _safe_ratio(row.get("initial_fsq"), row.get("vmec2000_initial_fsq"))
+    row["direct_initial_fsq_ratio_vmec2000"] = _safe_ratio(
+        row.get("direct_initial_fsq"),
+        row.get("vmec2000_initial_fsq"),
+    )
     for name in ("fsqr", "fsqz", "fsql"):
         row[f"initial_{name}_ratio_vmec2000"] = _safe_ratio(
             row.get(f"initial_{name}"),
             row.get(f"vmec2000_initial_{name}"),
         )
+        row[f"direct_initial_{name}_ratio_vmec2000"] = _safe_ratio(
+            row.get(f"direct_initial_{name}"),
+            row.get(f"vmec2000_initial_{name}"),
+        )
+
+
+def _compute_direct_initial_residual(
+    input_path: Path,
+    *,
+    solver_mode: str,
+    use_scan: bool | None,
+) -> dict[str, object]:
+    """Evaluate force residual scalars on the VMEC/JAX initial state."""
+    mode = str(solver_mode).strip().lower()
+    run = vj.run_fixed_boundary(
+        input_path,
+        solver="vmec2000_iter",
+        solver_mode=str(solver_mode),
+        use_scan=use_scan,
+        max_iter=1,
+        use_initial_guess=True,
+        cli_fixed_boundary_mode=True,
+        verbose=False,
+    )
+    wout = vj.wout_from_fixed_boundary_run(
+        run,
+        include_fsq=True,
+        fast_bcovar=False if mode == "parity" else True,
+    )
+    fsqr = float(wout.fsqr)
+    fsqz = float(wout.fsqz)
+    fsql = float(wout.fsql)
+    return {
+        "direct_initial_residual_source": "vmec_jax_initial_guess_residual_scalars",
+        "direct_initial_axis_initialization_policy": _vmec_jax_axis_initialization_policy(str(solver_mode)),
+        "direct_initial_fsq": fsqr + fsqz + fsql,
+        "direct_initial_fsqr": fsqr,
+        "direct_initial_fsqz": fsqz,
+        "direct_initial_fsql": fsql,
+        "direct_initial_error": None,
+    }
 
 
 def _write_summary_plot(rows: list[dict[str, object]], *, outdir: Path) -> str:
@@ -303,6 +360,15 @@ def _write_fsq_history_plot(rows: list[dict[str, object]], *, outdir: Path) -> s
     outdir.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(1, 1, figsize=(7.0, 4.2), constrained_layout=True)
     for row in history_rows:
+        direct_initial = row.get("direct_initial_fsq")
+        if direct_initial is not None:
+            ax.semilogy(
+                [-1],
+                [max(float(direct_initial), 1.0e-300)],
+                "*",
+                ms=8,
+                label=f"{row['case']} VMEC/JAX direct initial",
+            )
         history = np.asarray(row.get("fsq_history", []), dtype=float).reshape(-1)
         if history.size:
             ax.semilogy(
@@ -326,7 +392,7 @@ def _write_fsq_history_plot(rows: list[dict[str, object]], *, outdir: Path) -> s
                 ms=3,
                 label=f"{row['case']} VMEC2000",
             )
-    ax.set_xlabel("iteration")
+    ax.set_xlabel("iteration (-1 is VMEC/JAX direct initial)")
     ax.set_ylabel("fsq")
     ax.set_title("Toroidal hybrid residual history")
     ax.grid(True, which="both", alpha=0.25)
@@ -456,6 +522,12 @@ def main() -> None:
     parser.add_argument("--run-solve", action="store_true")
     parser.add_argument("--solver-mode", choices=("default", "parity", "accelerated"), default="accelerated")
     parser.add_argument("--use-scan", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument(
+        "--direct-initial-residual",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="When solving, also evaluate VMEC/JAX residual scalars on the pre-iteration initial state.",
+    )
     parser.add_argument("--run-vmec2000", action="store_true")
     parser.add_argument("--vmec2000-exec", type=str, default="")
     parser.add_argument("--vmec2000-timeout-s", type=float, default=120.0)
@@ -534,6 +606,18 @@ def main() -> None:
                     "requested_ftol": float(args.ftol),
                     "fsq_total_target": None,
                     "seconds": None,
+                    "direct_initial_residual_requested": bool(args.direct_initial_residual),
+                    "direct_initial_residual_source": None,
+                    "direct_initial_axis_initialization_policy": None,
+                    "direct_initial_fsq": None,
+                    "direct_initial_fsqr": None,
+                    "direct_initial_fsqz": None,
+                    "direct_initial_fsql": None,
+                    "direct_initial_fsq_ratio_vmec2000": None,
+                    "direct_initial_fsqr_ratio_vmec2000": None,
+                    "direct_initial_fsqz_ratio_vmec2000": None,
+                    "direct_initial_fsql_ratio_vmec2000": None,
+                    "direct_initial_error": None,
                     "initial_residual_source": None,
                     "initial_fsq": None,
                     "best_fsq": None,
@@ -593,6 +677,17 @@ def main() -> None:
                     "vmec2000_wout": None,
                     "vmec2000_error": None,
                 }
+                if bool(args.run_solve) and bool(args.direct_initial_residual):
+                    try:
+                        row.update(
+                            _compute_direct_initial_residual(
+                                input_path,
+                                solver_mode=str(args.solver_mode),
+                                use_scan=args.use_scan,
+                            )
+                        )
+                    except Exception as exc:
+                        row["direct_initial_error"] = str(exc)
                 if bool(args.run_solve):
                     t0 = perf_counter()
                     run = vj.run_fixed_boundary(
@@ -618,7 +713,7 @@ def main() -> None:
                         fsq_history = np.asarray(run.result.w_history, dtype=float).reshape(-1)
                         row["fsq_history"] = [float(value) for value in fsq_history]
                         row.update(_summarize_fsq_history(fsq_history))
-                        row["initial_residual_source"] = "vmec_jax_solve_history_first_row"
+                        row["initial_residual_source"] = "vmec_jax_solve_history_first_stored_row"
                         for source, history_key, initial_key, final_key, best_key in (
                             ("fsqr2_history", "fsqr_history", "initial_fsqr", "final_fsqr", "best_fsqr"),
                             ("fsqz2_history", "fsqz_history", "initial_fsqz", "final_fsqz", "best_fsqz"),

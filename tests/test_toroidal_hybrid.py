@@ -248,6 +248,10 @@ def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
         row["vmec_jax_axis_initialization_policy"] == "boundary_inferred_missing_axis" for row in summary["rows"]
     )
     assert all(row["vmec2000_initialization_policy"] == "vmec2000_default_input_boundary" for row in summary["rows"])
+    assert all(row["direct_initial_residual_requested"] is True for row in summary["rows"])
+    assert all(row["direct_initial_residual_source"] is None for row in summary["rows"])
+    assert all(row["direct_initial_fsq"] is None for row in summary["rows"])
+    assert all(row["direct_initial_fsq_ratio_vmec2000"] is None for row in summary["rows"])
     assert all(row["initial_residual_source"] is None for row in summary["rows"])
     assert all(row["vmec2000_initial_residual_source"] is None for row in summary["rows"])
     assert all(row["initial_fsq_ratio_vmec2000"] is None for row in summary["rows"])
@@ -261,6 +265,9 @@ def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
     assert csv_row["initialization_policy"] == "vmec_jax_default_input_boundary"
     assert csv_row["vmec_jax_axis_initialization_policy"] == "boundary_inferred_missing_axis"
     assert csv_row["vmec2000_initialization_policy"] == "vmec2000_default_input_boundary"
+    assert csv_row["direct_initial_residual_requested"] == "True"
+    assert csv_row["direct_initial_residual_source"] == ""
+    assert csv_row["direct_initial_fsq_ratio_vmec2000"] == ""
     assert csv_row["initial_residual_source"] == ""
     assert csv_row["vmec2000_initial_residual_source"] == ""
     assert csv_row["initial_fsq_ratio_vmec2000"] == ""
@@ -340,19 +347,69 @@ def test_toroidal_hybrid_axis_initialization_policy_tracks_solver_mode_and_env(m
 def test_toroidal_hybrid_initial_residual_comparison_ratios():
     module = import_module("examples.toroidal_stellarator_mirror_hybrid_convergence")
     row = {
+        "direct_initial_fsq": 3.0,
+        "direct_initial_fsqr": 2.0,
+        "direct_initial_fsqz": 6.0,
+        "direct_initial_fsql": None,
         "initial_fsq": 2.0,
         "vmec2000_initial_fsq": 4.0,
-        "initial_fsqr": 1.0,
         "vmec2000_initial_fsqr": 2.0,
-        "initial_fsqz": 3.0,
         "vmec2000_initial_fsqz": 0.0,
-        "initial_fsql": None,
         "vmec2000_initial_fsql": 5.0,
+        "initial_fsqr": 1.0,
+        "initial_fsqz": 3.0,
+        "initial_fsql": None,
     }
 
     module._attach_initial_residual_comparison(row)
 
+    assert row["direct_initial_fsq_ratio_vmec2000"] == 0.75
+    assert row["direct_initial_fsqr_ratio_vmec2000"] == 1.0
+    assert row["direct_initial_fsqz_ratio_vmec2000"] is None
+    assert row["direct_initial_fsql_ratio_vmec2000"] is None
     assert row["initial_fsq_ratio_vmec2000"] == 0.5
     assert row["initial_fsqr_ratio_vmec2000"] == 0.5
     assert row["initial_fsqz_ratio_vmec2000"] is None
     assert row["initial_fsql_ratio_vmec2000"] is None
+
+
+def test_toroidal_hybrid_direct_initial_residual_helper(monkeypatch, tmp_path: Path):
+    module = import_module("examples.toroidal_stellarator_mirror_hybrid_convergence")
+    calls = {}
+
+    class DummyWout:
+        fsqr = 1.0
+        fsqz = 2.0
+        fsql = 3.0
+
+    def fake_run_fixed_boundary(path, **kwargs):
+        calls["path"] = Path(path)
+        calls["run_kwargs"] = kwargs
+        return object()
+
+    def fake_wout_from_fixed_boundary_run(run, **kwargs):
+        calls["wout_run"] = run
+        calls["wout_kwargs"] = kwargs
+        return DummyWout()
+
+    monkeypatch.setattr(module.vj, "run_fixed_boundary", fake_run_fixed_boundary)
+    monkeypatch.setattr(module.vj, "wout_from_fixed_boundary_run", fake_wout_from_fixed_boundary_run)
+
+    fields = module._compute_direct_initial_residual(
+        tmp_path / "input.case",
+        solver_mode="parity",
+        use_scan=False,
+    )
+
+    assert calls["path"] == tmp_path / "input.case"
+    assert calls["run_kwargs"]["use_initial_guess"] is True
+    assert calls["run_kwargs"]["solver"] == "vmec2000_iter"
+    assert calls["run_kwargs"]["solver_mode"] == "parity"
+    assert calls["run_kwargs"]["use_scan"] is False
+    assert calls["wout_kwargs"] == {"include_fsq": True, "fast_bcovar": False}
+    assert fields["direct_initial_residual_source"] == "vmec_jax_initial_guess_residual_scalars"
+    assert fields["direct_initial_axis_initialization_policy"] == "raw_input_axis_or_zero"
+    assert fields["direct_initial_fsq"] == 6.0
+    assert fields["direct_initial_fsqr"] == 1.0
+    assert fields["direct_initial_fsqz"] == 2.0
+    assert fields["direct_initial_fsql"] == 3.0

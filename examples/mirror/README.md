@@ -92,18 +92,17 @@ enabled and both solvers ran, the example also writes a final
 ``fsqr``/``fsqz``/``fsql`` component comparison. CSV/JSON rows also label the
 VMEC/JAX and VMEC2000 initialization policies used for the comparison, including
 whether VMEC/JAX used the raw input-axis branch or inferred a missing axis from
-the boundary. When both histories exist, the CSV also records whether the
-initial residual came from the VMEC/JAX solve history or VMEC2000's first
-``threed1`` row, plus VMEC/JAX-to-VMEC2000 first-row residual ratios. Current
-VMEC2000 rows compare
-solved outcomes from the same generated input, not identical raw initial
-states: VMEC2000's first parsed ``threed1`` residual components differ from the
-VMEC/JAX initialized residual components. Treat mean-iota agreement as a useful
-regression signal, and reserve strict residual-parity claims for a future
-initialization-matched fixture. For toroidal-hybrid geometry refinement, pass
-``--shape-cases default,sharp`` to scan the default boundary and a sharpened
-side/corner preset in one run; use ``5:10`` or higher ``mpol:ntor`` pairs when
-asserting exact fit for the sharpened preset.
+the boundary. With ``--run-solve`` enabled, ``direct_initial_*`` fields evaluate
+the VMEC/JAX residual on the pre-iteration initial state, while ``initial_*``
+fields are the first stored VMEC/JAX solve-history row. VMEC2000 comparisons
+use the first parsed ``threed1`` row. The direct-initial diagnostic can be
+disabled with ``--no-direct-initial-residual`` for large scans. Treat mean-iota
+and direct-initial residual agreement as useful regression signals, and use the
+history fields to understand convergence after solver startup. For
+toroidal-hybrid geometry refinement, pass ``--shape-cases default,sharp`` to
+scan the default boundary and a sharpened side/corner preset in one run; use
+``5:10`` or higher ``mpol:ntor`` pairs when asserting exact fit for the
+sharpened preset.
 
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
 free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct

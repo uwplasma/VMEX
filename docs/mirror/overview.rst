@@ -85,15 +85,16 @@ Current solver status:
 - Open-field pitch diagnostics measure cap-to-cap field-line advance and turns.
   They should not be interpreted as toroidal rotational transform.
 - Toroidal hybrid VMEC/JAX versus VMEC2000 parity rows currently compare
-  solved outcomes from the same generated ``input.*`` file.  They should not
-  yet be read as identical-initial-state parity: the parsed VMEC2000
-  ``threed1`` first rows start from different residual components than the
-  VMEC/JAX initialized state.  The convergence CSV/JSON rows label the two
-  initialization policies and the VMEC/JAX axis-initialization branch, so this
-  limitation is explicit.  Rows with both histories also report first-row
-  residual sources and VMEC/JAX-to-VMEC2000 initial residual ratios.  Mean-iota
-  agreement is therefore a useful regression signal, while strict
-  force-residual parity still needs an initialization-matched fixture or option.
+  solved outcomes from the same generated ``input.*`` file.  The convergence
+  CSV/JSON rows label the VMEC/JAX and VMEC2000 initialization policies, the
+  VMEC/JAX axis-initialization branch, and two residual-start diagnostics:
+  ``direct_initial_*`` values are VMEC/JAX residual scalars evaluated on the
+  pre-iteration initial state, while ``initial_*`` values are the first stored
+  VMEC/JAX solve-history row.  VMEC2000 comparisons use the first parsed
+  ``threed1`` row.  A low-resolution audit showed the VMEC/JAX
+  boundary-inferred direct initial residual agrees with the VMEC2000 first row
+  to within plotting/diagnostic precision, whereas the raw-axis parity branch
+  is a different, deliberately stricter initialization.
 
 Later phases finish differentiable optimization APIs, production
 free-boundary LCFS solves, toroidal stellarator-mirror hybrid convergence and
