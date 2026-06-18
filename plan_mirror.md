@@ -15146,3 +15146,157 @@ Results:
 No user input is needed.
 
 ---
+## 120. Circular-Coil Higher-Budget Fsq-Guard Evidence
+
+### Steps taken
+
+- Checked PR CI once after pushing M119:
+  - `gh pr checks 21 --watch=false` reported no checks yet for the new branch
+    head, so no failure was available to fix.
+- Ran the circular-coil free-boundary planning fixture with a higher
+  fixed-boundary baseline budget and the strict fsq-growth guard enabled:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/free_boundary_circular_coils_m120_baseline20_fsq_guard \
+  --ntheta 8 --nxi 11 --n-segments 64 \
+  --run-fixed-boundary-baseline --baseline-maxiter 20 \
+  --run-lcfs-pilot --lcfs-pilot-steps 5 \
+  --lcfs-pilot-stagnation-rtol 1e-3 \
+  --lcfs-pilot-fsq-growth-limit 1.0
+```
+
+- Parsed the resulting metrics JSON and rendered the beta-summary, geometry,
+  and 1% residual-history plots for inspection.
+
+### Results obtained
+
+The run completed and wrote:
+
+- `results/mirror/free_boundary_circular_coils_m120_baseline20_fsq_guard/free_boundary_circular_coils_metrics.json`;
+- `70` ignored PNG diagnostics under
+  `results/mirror/free_boundary_circular_coils_m120_baseline20_fsq_guard/figures`.
+
+Schema/status:
+
+- schema: `mirror_free_boundary_circular_coil_beta_scan` version `0.1`;
+- workflow: `lcfs_pilot`;
+- pilot rows: `3`;
+- accepted pilot rows: `0`;
+- skipped pilot rows: `0`;
+- stop-reason counts:
+  `{"rejected_merit_increase": 1, "fsq_growth_guard": 2}`.
+
+Per-beta outcome:
+
+- beta `1%`:
+  - baseline `final_fsq`: `7.181025259848037e-8`;
+  - trial `final_fsq`: `8.975298976238274e-4`;
+  - baseline LCFS merit: `1.0000568856893208`;
+  - trial LCFS merit: `1.0207974121441186`;
+  - status: rejected by `rejected_merit_increase`.
+- beta `3%`:
+  - baseline `final_fsq`: `0.004468220052785157`;
+  - trial `final_fsq`: `0.004709131909718425`;
+  - baseline LCFS merit: `1.0000568856893208`;
+  - trial LCFS merit: `0.7182791913011406`;
+  - status: rejected by `fsq_growth_guard`.
+- beta `10%`:
+  - baseline `final_fsq`: `0.04263091618797516`;
+  - trial `final_fsq`: `0.046665979566329834`;
+  - baseline LCFS merit: `1.0000568856893208`;
+  - trial LCFS merit: `0.7182791913011406`;
+  - status: rejected by `fsq_growth_guard`.
+
+Interpretation:
+
+- Increasing `baseline-maxiter` from `5` to `20` made the 1% baseline much
+  tighter, and the first LCFS pilot proposal no longer improves actual LCFS
+  merit.
+- The 3% and 10% proposals still improve actual LCFS merit, but the strict
+  `final_fsq <= baseline_fsq` guard rejects them because the trial residual
+  grows by about `5.4%` and `9.5%`, respectively.
+- The accepted-only beta summary plot correctly shows only baseline curves,
+  because all pilot trial rows were rejected.
+
+Rendered ignored plots inspected:
+
+- `results/mirror/free_boundary_circular_coils_m120_baseline20_fsq_guard/figures/free_boundary_circular_coils_beta_scan_summary.png`;
+- `results/mirror/free_boundary_circular_coils_m120_baseline20_fsq_guard/figures/free_boundary_circular_coils_geometry.png`;
+- `results/mirror/free_boundary_circular_coils_m120_baseline20_fsq_guard/figures/fixed_boundary_beta_1/free_boundary_circular_coils_beta_1_mirror_residual_history.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+gh pr checks 21 --watch=false
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m120_baseline20_fsq_guard --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 20 --run-lcfs-pilot --lcfs-pilot-steps 5 --lcfs-pilot-stagnation-rtol 1e-3 --lcfs-pilot-fsq-growth-limit 1.0
+python - <<'PY'
+import json
+from pathlib import Path
+path=Path('results/mirror/free_boundary_circular_coils_m120_baseline20_fsq_guard/free_boundary_circular_coils_metrics.json')
+metrics=json.loads(path.read_text())
+print(metrics['metrics_schema'], metrics['metrics_schema_version'])
+print(metrics['lcfs_pilot_stop_reason_counts'])
+for row in metrics['fixed_boundary_baseline_rows']:
+    print(row['beta_percent'], row['lcfs_pilot_status'], row['final_fsq'], row['lcfs_pilot_final_fsq'])
+PY
+find results/mirror/free_boundary_circular_coils_m120_baseline20_fsq_guard/figures -maxdepth 3 -type f -name '*.png' -print | wc -l
+git status --short --ignored=matching results/mirror/free_boundary_circular_coils_m120_baseline20_fsq_guard
+```
+
+Results:
+
+- CI had no reported checks for the newest head at the time of inspection.
+- The example completed successfully.
+- Metrics parsing succeeded.
+- Figure count was `70`.
+- The generated `results/` tree remains ignored by git.
+
+### File structure and best-practice notes
+
+- This was an evidence/logging milestone; no source code changes were needed.
+- The run used the root example and the newly documented schema contract.
+- Output files stayed under ignored `results/` and were not staged.
+- The strict fsq guard is now doing useful work by preventing residual-worse
+  LCFS updates from being reported as accepted free-boundary progress.
+
+### Best next steps
+
+1. Commit and push this evidence log.
+2. Add an explicit `lcfs_fsq_growth_ratio`/`lcfs_pilot_fsq_growth_ratio`
+   diagnostic to beta and pilot rows so downstream tools can distinguish
+   slight residual growth from severe fixed-boundary degradation without
+   recomputing ratios.
+3. Add an optional acceptance mode or proposal-selection diagnostic that
+   separates LCFS-merit improvement from fixed-boundary residual degradation,
+   because the current strict guard rejects high-beta merit improvements that
+   only slightly increase `fsq`.
+4. Then rerun the higher-budget scan with a small tolerated fsq-growth limit
+   such as `1.1` to determine whether 3% and 10% are stable under a pragmatic
+   guard while 1% remains rejected by actual LCFS merit.
+
+### Completion percentages after M120
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `87%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `91%`.
+- I/O schema and docs: `98%`.
+- Differentiable solved-state API: `30%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `83%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `81%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---
