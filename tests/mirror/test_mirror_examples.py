@@ -21,6 +21,11 @@ def _load_run_case(script_name: str):
     return runpy.run_path(str(script))["run_case"]
 
 
+def _load_root_example(script_name: str):
+    script = Path("examples") / script_name
+    return runpy.run_path(str(script))
+
+
 def test_mirror_examples_write_readable_outputs_without_plots(tmp_path):
     cases = [
         ("fixed_cylinder.py", {"maxiter": 1, "write_plots": False}),
@@ -180,6 +185,11 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
 
     path = Path(completed.stdout.strip())
     metrics = json.loads(path.read_text())
+    module = _load_root_example("mirror_free_boundary_circular_coils.py")
+    schema = module["circular_coil_beta_scan_schema"]()
+    module["validate_circular_coil_beta_scan_metrics"](metrics)
+    assert metrics["metrics_schema"] == schema["metrics_schema"]
+    assert metrics["metrics_schema_version"] == schema["metrics_schema_version"]
     assert metrics["workflow_status"] == "lcfs_pilot"
     assert metrics["free_boundary_solve_status"] == "lcfs_pilot_not_converged_free_boundary"
     assert metrics["external_field_provider_kind"] == "direct_coils"
@@ -198,9 +208,11 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert metrics["boundary_bmag_min"] > 0.0
     assert metrics["beta_scan_requested_percent"] == [1.0, 3.0, 10.0]
     assert [case["beta_percent"] for case in metrics["beta_cases"]] == [1.0, 3.0, 10.0]
+    assert set(schema["top_level_required_fields"]).issubset(metrics)
     setup = load_mirror_free_boundary_circular_coil_scan(metrics["setup_json"])
     assert [case.beta_fraction for case in setup.beta_cases] == [0.01, 0.03, 0.10]
     assert len(metrics["fixed_boundary_baseline_rows"]) == 3
+    assert all(set(schema["beta_row_required_fields"]).issubset(row) for row in metrics["fixed_boundary_baseline_rows"])
     assert all(Path(row["mout"]).exists() for row in metrics["fixed_boundary_baseline_rows"])
     assert all(row["final_fsq"] >= 0.0 for row in metrics["fixed_boundary_baseline_rows"])
     assert all(row["lcfs_external_bnormal_rms"] >= 0.0 for row in metrics["fixed_boundary_baseline_rows"])
@@ -255,6 +267,10 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert all(Path(row["lcfs_pilot_rows"][0]["mout"]).exists() for row in metrics["fixed_boundary_baseline_rows"])
     assert all(
         row["lcfs_pilot_rows"][0]["lcfs_pressure_balance_rms"] >= 0.0 for row in metrics["fixed_boundary_baseline_rows"]
+    )
+    assert all(
+        set(schema["pilot_row_required_fields"]).issubset(row["lcfs_pilot_rows"][0])
+        for row in metrics["fixed_boundary_baseline_rows"]
     )
     assert all(
         isinstance(row["lcfs_pilot_rows"][0]["accepted"], bool) for row in metrics["fixed_boundary_baseline_rows"]

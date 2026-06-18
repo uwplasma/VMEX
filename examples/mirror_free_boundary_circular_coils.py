@@ -41,6 +41,140 @@ from vmec_jax.mirror import (
 )
 
 
+CIRCULAR_COIL_BETA_SCAN_SCHEMA = "mirror_free_boundary_circular_coil_beta_scan"
+CIRCULAR_COIL_BETA_SCAN_SCHEMA_VERSION = "0.1"
+CIRCULAR_COIL_BETA_SCAN_TOP_LEVEL_FIELDS = (
+    "metrics_schema",
+    "metrics_schema_version",
+    "workflow_status",
+    "free_boundary_solve_status",
+    "external_field_provider_kind",
+    "coil_format",
+    "coil_radius",
+    "separation",
+    "current",
+    "midplane_radius",
+    "ns",
+    "ntheta",
+    "nxi",
+    "n_segments",
+    "axis_bz_relative_linf",
+    "boundary_bmag_min",
+    "boundary_bmag_max",
+    "setup_json",
+    "beta_scan_requested_percent",
+    "beta_cases",
+    "fixed_boundary_baseline_rows",
+    "figures",
+)
+CIRCULAR_COIL_BETA_SCAN_ROW_FIELDS = (
+    "beta_percent",
+    "beta_fraction",
+    "pressure_scale",
+    "mout",
+    "optimizer",
+    "optimizer_success",
+    "optimizer_nit",
+    "final_residual_norm",
+    "final_fsq",
+    "final_normalized_force",
+    "lcfs_external_bnormal_rms",
+    "lcfs_pressure_balance_rms",
+    "lcfs_merit",
+    "lcfs_update_strategy",
+    "lcfs_update_candidate_summaries",
+    "lcfs_update_allowed_strategies",
+    "lcfs_update_rejection_reason",
+    "lcfs_pilot_status",
+    "lcfs_pilot_rows_count",
+    "lcfs_pilot_accepted_rows",
+    "lcfs_pilot_skipped_rows",
+    "lcfs_pilot_stop_reason",
+    "lcfs_pilot_rows",
+    "figures",
+)
+CIRCULAR_COIL_BETA_SCAN_PILOT_ROW_FIELDS = (
+    "step",
+    "mout",
+    "accepted",
+    "rejection_reason",
+    "stop_reason",
+    "lcfs_merit_improvement_fraction",
+    "final_residual_norm",
+    "final_fsq",
+    "final_normalized_force",
+    "lcfs_external_bnormal_rms",
+    "lcfs_pressure_balance_rms",
+    "lcfs_merit",
+    "lcfs_update_strategy_next",
+    "lcfs_update_candidate_summaries_next",
+    "lcfs_update_allowed_strategies_next",
+    "lcfs_update_rejection_reason_next",
+    "figures",
+)
+CIRCULAR_COIL_BETA_SCAN_PILOT_STATUSES = ("not_requested", "accepted", "rejected", "skipped")
+CIRCULAR_COIL_BETA_SCAN_STOP_REASONS = (
+    "fsq_growth_guard",
+    "max_steps",
+    "merit_stagnation",
+    "noop_candidate",
+    "rejected_merit_increase",
+    "target_merit",
+)
+CIRCULAR_COIL_BETA_SCAN_REJECTION_REASONS = (
+    "fsq_growth_guard",
+    "merit_increase",
+    "noop_candidate_selected",
+    "normal_field_guard_no_candidate",
+)
+
+
+def circular_coil_beta_scan_schema() -> dict[str, object]:
+    """Return the compact JSON contract written by this planning fixture."""
+    return {
+        "metrics_schema": CIRCULAR_COIL_BETA_SCAN_SCHEMA,
+        "metrics_schema_version": CIRCULAR_COIL_BETA_SCAN_SCHEMA_VERSION,
+        "top_level_required_fields": list(CIRCULAR_COIL_BETA_SCAN_TOP_LEVEL_FIELDS),
+        "beta_row_required_fields": list(CIRCULAR_COIL_BETA_SCAN_ROW_FIELDS),
+        "pilot_row_required_fields": list(CIRCULAR_COIL_BETA_SCAN_PILOT_ROW_FIELDS),
+        "pilot_status_values": list(CIRCULAR_COIL_BETA_SCAN_PILOT_STATUSES),
+        "pilot_stop_reasons": list(CIRCULAR_COIL_BETA_SCAN_STOP_REASONS),
+        "pilot_rejection_reasons": list(CIRCULAR_COIL_BETA_SCAN_REJECTION_REASONS),
+    }
+
+
+def validate_circular_coil_beta_scan_metrics(metrics: dict[str, object]) -> None:
+    """Raise ``ValueError`` if the metrics JSON does not follow the schema."""
+    _require_fields(metrics, CIRCULAR_COIL_BETA_SCAN_TOP_LEVEL_FIELDS, "top-level metrics")
+    if metrics["metrics_schema"] != CIRCULAR_COIL_BETA_SCAN_SCHEMA:
+        raise ValueError(f"unexpected metrics schema {metrics['metrics_schema']!r}")
+    if metrics["metrics_schema_version"] != CIRCULAR_COIL_BETA_SCAN_SCHEMA_VERSION:
+        raise ValueError(f"unexpected metrics schema version {metrics['metrics_schema_version']!r}")
+    for index, row in enumerate(metrics.get("fixed_boundary_baseline_rows", [])):
+        if not isinstance(row, dict):
+            raise ValueError(f"baseline row {index} must be a JSON object")
+        _require_fields(row, CIRCULAR_COIL_BETA_SCAN_ROW_FIELDS, f"baseline row {index}")
+        status = str(row["lcfs_pilot_status"])
+        if status not in CIRCULAR_COIL_BETA_SCAN_PILOT_STATUSES:
+            raise ValueError(f"baseline row {index} has unknown lcfs_pilot_status {status!r}")
+        for step_index, pilot in enumerate(row.get("lcfs_pilot_rows", [])):
+            if not isinstance(pilot, dict):
+                raise ValueError(f"pilot row {index}.{step_index} must be a JSON object")
+            _require_fields(pilot, CIRCULAR_COIL_BETA_SCAN_PILOT_ROW_FIELDS, f"pilot row {index}.{step_index}")
+            stop_reason = pilot.get("stop_reason")
+            if stop_reason is not None and str(stop_reason) not in CIRCULAR_COIL_BETA_SCAN_STOP_REASONS:
+                raise ValueError(f"pilot row {index}.{step_index} has unknown stop_reason {stop_reason!r}")
+            rejection_reason = pilot.get("rejection_reason")
+            if rejection_reason is not None and str(rejection_reason) not in CIRCULAR_COIL_BETA_SCAN_REJECTION_REASONS:
+                raise ValueError(f"pilot row {index}.{step_index} has unknown rejection_reason {rejection_reason!r}")
+
+
+def _require_fields(row: dict[str, object], fields: tuple[str, ...], label: str) -> None:
+    missing = [field for field in fields if field not in row]
+    if missing:
+        raise ValueError(f"{label} is missing required fields: {', '.join(missing)}")
+
+
 @dataclass(frozen=True)
 class _LCFSProposalSelection:
     proposal: object
@@ -502,6 +636,7 @@ def _skipped_lcfs_pilot_row(
         "skipped": True,
         "rejection_reason": selection.rejection_reason or "noop_candidate_selected",
         "stop_reason": "noop_candidate",
+        "lcfs_merit_improvement_fraction": None,
         "final_residual_norm": None,
         "final_fsq": None,
         "final_normalized_force": None,
@@ -541,6 +676,8 @@ def _completed_lcfs_pilot_row(
         "mout": str(mout),
         "accepted": bool(accepted),
         "rejection_reason": None,
+        "stop_reason": None,
+        "lcfs_merit_improvement_fraction": None,
         "final_residual_norm": float(final.residual_norm),
         "final_fsq": float(final.fsq),
         "final_normalized_force": float(final.normalized_force),
@@ -972,6 +1109,8 @@ def run_case(
         )
 
     metrics = {
+        "metrics_schema": CIRCULAR_COIL_BETA_SCAN_SCHEMA,
+        "metrics_schema_version": CIRCULAR_COIL_BETA_SCAN_SCHEMA_VERSION,
         **_beta_scan_summary(
             baseline_rows,
             run_fixed_boundary_baseline=run_fixed_boundary_baseline,
@@ -1000,6 +1139,7 @@ def run_case(
         "fixed_boundary_baseline_rows": baseline_rows,
         "figures": figure_paths,
     }
+    validate_circular_coil_beta_scan_metrics(metrics)
     metrics_path = outdir / "free_boundary_circular_coils_metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2) + "\n")
     return metrics_path

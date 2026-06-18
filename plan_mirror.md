@@ -15045,3 +15045,104 @@ Results:
 No user input is needed.
 
 ---
+## 119. Circular-Coil Beta-Scan JSON Contract
+
+### Steps taken
+
+- Added an explicit compact metrics contract to
+  `examples/mirror_free_boundary_circular_coils.py`:
+  - schema name: `mirror_free_boundary_circular_coil_beta_scan`;
+  - schema version: `0.1`;
+  - required top-level, beta-row, and pilot-row field lists;
+  - allowed pilot status, stop-reason, and rejection-reason values.
+- Added `circular_coil_beta_scan_schema()` and
+  `validate_circular_coil_beta_scan_metrics(metrics)` so the example validates
+  its JSON before writing it.
+- Stabilized pilot-row shape by always emitting `stop_reason`,
+  `rejection_reason`, and `lcfs_merit_improvement_fraction`, using `null` when
+  a row is intermediate or a field does not apply.
+- Updated the focused circular-coil example test to call the schema helper and
+  validator, and to assert that the required field sets are present in the
+  emitted JSON.
+- Updated `examples/mirror/README.md` and `docs/mirror/overview.rst` with the
+  schema name/version and the accepted/rejected pilot-row semantics.
+
+### Results obtained
+
+- The circular-coil beta-scan metrics are now easier for ESSOS/downstream tools
+  to consume without defensive missing-key checks.
+- Rejected pilot rows remain in JSON for audit, while plots continue to show
+  accepted pilot-final values only.
+- The contract remains example-scoped; core mirror solver APIs are unchanged.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+python -m ruff format --check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_strict_bnormal_guard_can_skip_pilot tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_pilot_stagnation_stops_early tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_fsq_growth_guard_rejects_pilot -q
+python - <<'PY'
+import runpy
+m = runpy.run_path('examples/mirror_free_boundary_circular_coils.py')
+s = m['circular_coil_beta_scan_schema']()
+print(s['metrics_schema'], s['metrics_schema_version'])
+print(len(s['top_level_required_fields']), len(s['beta_row_required_fields']), len(s['pilot_row_required_fields']))
+PY
+git diff --check
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff format check passed after formatting the example file.
+- `4 passed` in focused circular-coil tests.
+- Schema helper reported version `0.1` and required-field counts
+  `22`, `24`, and `17`.
+- `git diff --check` passed.
+
+### File structure and best-practice notes
+
+- The schema constants live beside the example that writes the JSON, keeping the
+  contract near the workflow that owns it.
+- Validation is simple dictionary/key checking rather than a new dependency or
+  heavyweight schema framework.
+- The emitted JSON stays compact: it carries schema name/version, not a full
+  embedded schema dump.
+- Generated outputs remain ignored under `results/`.
+
+### Best next steps
+
+1. Commit and push M119.
+2. Run a higher-budget circular-coil beta scan with the fsq growth guard
+   enabled to determine whether the 3% and 10% rejected pilot rows become
+   acceptable after better fixed-boundary baseline solves.
+3. If high-beta rows remain rejected, separate LCFS-merit improvement from
+   fixed-boundary residual degradation in the next proposal-selection criterion.
+4. Resume differentiable solved-state/implicit-derivative promotion after the
+   ESSOS-facing beta-scan contract is stable.
+
+### Completion percentages after M119
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `87%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `90%`.
+- I/O schema and docs: `98%`.
+- Differentiable solved-state API: `30%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `82%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `80%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---

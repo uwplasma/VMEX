@@ -155,6 +155,19 @@ pressure-balance RMS, external normal-field RMS, LCFS merit, and final ``fsq``
 before and after pilot updates. This is still an LCFS pilot workflow, not a
 converged free-boundary equilibrium solve.
 
+The circular-coil beta-scan metrics use the compact schema
+``mirror_free_boundary_circular_coil_beta_scan`` version ``0.1``. The top-level
+JSON records the workflow status, direct-coil metadata, requested beta list,
+setup JSON path, aggregate pilot counts, figure paths, and
+``fixed_boundary_baseline_rows``. Each beta row records fixed-boundary residual
+and LCFS metrics, the selected next LCFS update, all candidate-update summaries,
+per-beta pilot summary fields, and ``lcfs_pilot_rows``. Each pilot row always
+contains ``accepted``, ``rejection_reason``, ``stop_reason``,
+``lcfs_merit_improvement_fraction``, final residual/``fsq`` diagnostics when a
+trial solve ran, and the next candidate-update summary. Rejected pilot rows are
+kept in JSON for audit, but the summary plot only draws accepted pilot-final
+values.
+
 The root-level ``examples/mirror_fixed_boundary_solve_diagnostic.py`` script
 runs an actual L-BFGS fixed-boundary relaxation from a perturbed interior state.
 Its default diagnostic uses ``ns_array=31``, ``maxiter=2000``, and explicit
