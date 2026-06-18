@@ -11911,3 +11911,111 @@ and VMEC2000-wrapper paths end to end.
 No user input is needed.
 
 ---
+
+## 96. 2026-06-18 M13g corner-amplitude scan for sharpened side powers
+
+This evidence run scanned corner amplitude at fixed sharpened side/corner
+localization to understand the residual/iota tradeoff before adding more shape
+presets.
+
+### Steps taken
+
+- Ran three short solved rows with:
+  - `side_minor_modulation=0.16`;
+  - `side_elongation=0.35`;
+  - `side_power=2.0`;
+  - `corner_power=2.0`;
+  - `corner_amplitude` in `{0.015, 0.025, 0.035}`.
+- Used `ns=7`, `mpol=5`, `ntor=10`, `max_iter=15`, `NITER_ARRAY=25`,
+  `solver_mode=parity`, and `use_scan=False`.
+- Checked the residual-history plot for the strongest `corner_amplitude=0.035`
+  row.
+- Rechecked PR CI; latest jobs were still pending, so no failure was available
+  to fix.
+
+### Results obtained
+
+Commands used the same pattern, varying only `--corner-amplitude` and `--outdir`:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  --outdir results/toroidal_hybrid_m13g_corner_amp_00XX \
+  --ns-array 7 \
+  --mode-pairs 5:10 \
+  --ntheta-fit 32 \
+  --nzeta-fit 32 \
+  --niter 25 \
+  --ftol 1e-9 \
+  --run-solve \
+  --max-iter 15 \
+  --solver-mode parity \
+  --no-use-scan \
+  --side-minor-modulation 0.16 \
+  --side-elongation 0.35 \
+  --side-power 2.0 \
+  --corner-amplitude 0.0XX \
+  --corner-power 2.0
+```
+
+Scan table:
+
+| corner amplitude | initial `fsq` | best `fsq` | final `fsq` | best iter | mean iota | magnetic well |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `0.015` | `5.940877991923e-04` | `4.821015678261e-05` | `5.749739682032e-05` | `13` | `1.124256826212e-03` | `-5.829802922677e-02` |
+| `0.025` | `8.288639198192e-04` | `7.023760294194e-05` | `7.955666513867e-05` | `13` | `3.155372064713e-03` | `-5.640921636285e-02` |
+| `0.035` | `1.607742077392e-03` | `1.548779377703e-04` | `1.548779377703e-04` | `14` | `6.020835412209e-03` | `-5.802764977093e-02` |
+
+The stronger corner amplitude raises mean iota, but also increases the initial
+and best residual in this short budget.  The `0.015` row is easiest for the
+solver, while `0.025` remains a reasonable compromise for visible corner
+stellarator shaping and low residual.  The `0.035` row is still decreasing but
+is less attractive as a default sharpened preset.
+
+Generated ignored plot checked visually:
+
+- `results/toroidal_hybrid_m13g_corner_amp_0035/figures/toroidal_hybrid_fsq_history.png`.
+
+### How it was tested
+
+The commands above exercised the convergence runner, WOUT writing, and plot
+generation for all three rows.  No source files changed for this evidence run.
+
+### File structure and best-practice notes
+
+- Results stay under ignored `results/`.
+- The plan stores only compact numerical evidence and plot references.
+- No new preset was added yet; evidence suggests keeping `corner_amplitude=0.025`
+  as the current sharp preset until a target iota/residual tradeoff is chosen.
+
+### Best next steps
+
+1. Commit and push this evidence log.
+2. When CI finishes, fix any concrete failures.
+3. Continue M13g with one side-power scan at `corner_amplitude=0.025`.
+4. Start an initialization-matched VMEC2000 parity design note after the next
+   scan, since current residual parity remains initialization limited.
+
+### Completion percentages after M96
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `88%`.
+- I/O schema and docs: `94%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `68%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `58%`.
+- ESSOS circular-coil mirror beta scan: `53%`.
+- PR merge readiness overall: `92%`.
+
+### User input needed
+
+No user input is needed.
+
+---
