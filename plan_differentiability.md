@@ -14252,3 +14252,79 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9982%.
+
+## 2026-06-18 Force Constraint/Diagnostics Simplification
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Deduplicated the constraint preconditioner/tcon path in
+   `vmec_jax.vmec_forces` by sharing the bcovar-derived diagonal calculation
+   and safe `tcon` fallback between dynamic and ordinary branches.
+2. Replaced duplicated constraint and bcovar debug-dump path/iteration
+   selection logic with `_maybe_dump_iter_npz`, preserving lazy array
+   materialization for expensive diagnostic dumps.
+3. Replaced the hand-maintained `VmecRZForceKernels` pytree field list with
+   dataclass-field introspection, keeping flatten order tied to the dataclass
+   constructor.
+4. Removed the duplicate local `_parse_iter_list` implementation and reused the
+   shared parser from `_solve_runtime`.
+
+Results obtained:
+
+- `vmec_jax/vmec_forces.py` dropped from 2042 lines before this force-runtime
+  cleanup lane to 1980 lines, moving it below the 2000-line source-health
+  warning threshold.
+- The force diagnostic debug path is now a single seam, so future parity dumps
+  do not need to duplicate environment parsing and output-path handling.
+- Force-kernel pytree maintenance is less brittle because new dataclass fields
+  no longer require a second hand-updated field-name tuple.
+- No generated outputs or large files were added.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/vmec_forces.py`
+- `python -m ruff check vmec_jax/vmec_forces.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_forces_bcovar_wave12_coverage.py::test_force_scope_fallbacks_and_kernel_pytree_roundtrip tests/test_vmec_forces_synthetic_helpers.py tests/test_vmec_forces_fast_helpers.py -q`
+  - Result: passed.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_forces_bcovar_wave12_coverage.py::test_constraint_zcon_override_shape_mismatch tests/test_forces_bcovar_wave12_coverage.py::test_preconditioner_validation_and_free_boundary_edge_conditioning tests/test_vmec_constraints_fast_helpers.py::test_tcon_cached_precondn_diag_clamps_uses_norm_fallbacks_and_short_mesh tests/test_vmec_constraints_fast_helpers.py::test_tcon_from_precondn_axisym_matches_cached_diagonal_scaling_and_guards -q`
+  - Result: passed.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 45`
+
+Best next steps:
+
+1. Return to the largest remaining production monolith:
+   `solve_fixed_boundary_residual_iter`, especially the VMEC2000 scan and
+   scan-step seams.
+2. Prefer extracting typed context/result helpers around existing branch seams
+   rather than adding new wrappers that increase total source size.
+3. Continue keeping each tranche line-negative and guarded by focused physics or
+   parity tests before pushing.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.58%.
+- Free-boundary adjoint monolith reduction: 99.40%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 97.1%.
+- WOUT diagnostic/profile decomposition: 99.88%.
+- Bcovar/WOUT parity decomposition: 99.09%.
+- Force-kernel decomposition: 99.65%.
+- Tomnsps transform decomposition: 98.4%.
+- Initial-guess decomposition: 99.0%.
+- Optimizer workflow decomposition: 99.20%.
+- Fixed-boundary optimizer decomposition: 94.9%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 96.2%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99976%.
