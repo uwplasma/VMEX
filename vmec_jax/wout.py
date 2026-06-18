@@ -55,6 +55,7 @@ from .io.wout.netcdf import (
 )
 from .io.wout.nyquist import (
     apply_nyquist_half_weight as _apply_nyquist_half_weight,  # noqa: F401 - compatibility export
+    minimal_wout_symmetric_nyquist_coefficients,
     vmec_jxbforce_cos_coeffs as _vmec_jxbforce_cos_coeffs,  # noqa: F401 - compatibility export
     vmec_jxbforce_sin_coeffs as _vmec_jxbforce_sin_coeffs,  # noqa: F401 - compatibility export
     vmec_symforce_antisym as _vmec_symforce_antisym,  # noqa: F401 - compatibility export
@@ -65,7 +66,7 @@ from .io.wout.nyquist import (
     vmec_wrout_nyquist_cos_coeffs as _vmec_wrout_nyquist_cos_coeffs,
     vmec_wrout_nyquist_lasym_loop as _vmec_wrout_nyquist_lasym_loop,
     vmec_wrout_nyquist_sin_coeffs as _vmec_wrout_nyquist_sin_coeffs,
-    vmec_wrout_nyquist_sin_coeffs_loop as _vmec_wrout_nyquist_sin_coeffs_loop,
+    vmec_wrout_nyquist_sin_coeffs_loop as _vmec_wrout_nyquist_sin_coeffs_loop,  # noqa: F401 - compatibility export
     vmec_wrout_nyquist_synthesis as _vmec_wrout_nyquist_synthesis,  # noqa: F401 - compatibility export
 )
 from .io.wout.schema import (
@@ -1169,10 +1170,6 @@ def wout_minimal_from_fixed_boundary(
     zaxis_cc = main_geom.zaxis_cc
     zaxis_cs = main_geom.zaxis_cs
 
-    mnmax_nyq = int(nyq_modes.K)
-    z2 = np.zeros((ns, mnmax_nyq), dtype=float)
-    z1 = np.zeros((ns,), dtype=float)
-
     # Toroidal flux (VMEC `phi`) in physical units.
     phipf_out = phipf_internal * float(2.0 * np.pi * signgs)
     chipf_out = np.asarray(chipf_wout, dtype=float) * float(2.0 * np.pi * signgs)
@@ -1559,43 +1556,32 @@ def wout_minimal_from_fixed_boundary(
             bsubsmns[0, :] = 2.0 * bsubsmns[1, :] - bsubsmns[2, :]
             bsubsmnc[0, :] = 2.0 * bsubsmnc[1, :] - bsubsmnc[2, :]
     else:
-        gmnc = _vmec_wrout_nyquist_cos_coeffs(f=np.asarray(bc.jac.sqrtg), modes=nyq_modes, trig=trig)
-        bsupu_out = np.asarray(bc.bsupu)
-        bsupv_out = np.asarray(bc.bsupv)
-        bsupumnc = _vmec_wrout_nyquist_cos_coeffs(f=bsupu_out, modes=nyq_modes, trig=trig)
-        bsupvmnc = _vmec_wrout_nyquist_cos_coeffs(f=bsupv_out, modes=nyq_modes, trig=trig)
-        bsubumnc = _vmec_wrout_nyquist_cos_coeffs(f=bsubu_out, modes=nyq_modes, trig=trig)
-        bsubvmnc = _vmec_wrout_nyquist_cos_coeffs(f=bsubv_out, modes=nyq_modes, trig=trig)
-        # Default to the vectorized path for performance; the loop-based path is
-        # retained for parity debugging.
         use_loop = os.getenv("VMEC_JAX_WROUT_LOOP", "0") not in ("", "0")
-        if use_loop:
-            bsubsmns = _vmec_wrout_nyquist_sin_coeffs_loop(f=bsubs_full, modes=nyq_modes, trig=trig)
-        else:
-            bsubsmns = _vmec_wrout_nyquist_sin_coeffs(f=bsubs_full, modes=nyq_modes, trig=trig)
-
-        pres_h = np.asarray(pres, dtype=float)[:, None, None]
-        bmag = np.sqrt(2.0 * np.abs(np.asarray(bc.bsq) - pres_h))
-        bmnc = _vmec_wrout_nyquist_cos_coeffs(f=bmag, modes=nyq_modes, trig=trig)
-
-        # Axis values follow wrout.f (set to zero on js=1).
-        if gmnc.shape[0] > 0:
-            gmnc[0, :] = 0.0
-            bsupumnc[0, :] = 0.0
-            bsupvmnc[0, :] = 0.0
-            bsubumnc[0, :] = 0.0
-            bsubvmnc[0, :] = 0.0
-            bmnc[0, :] = 0.0
-
-        gmns = z2.copy()
-        bsupumns = z2.copy()
-        bsupvmns = z2.copy()
-        bsubumns = z2.copy()
-        bsubvmns = z2.copy()
-        bsubsmnc = z2.copy()
-        bmns = z2.copy()
-        if ns > 2:
-            bsubsmns[0, :] = 2.0 * bsubsmns[1, :] - bsubsmns[2, :]
+        sym_nyq = minimal_wout_symmetric_nyquist_coefficients(
+            bc=bc,
+            bsubu_out=np.asarray(bsubu_out, dtype=float),
+            bsubv_out=np.asarray(bsubv_out, dtype=float),
+            bsubs_full=np.asarray(bsubs_full, dtype=float),
+            pres=np.asarray(pres, dtype=float),
+            ns=int(ns),
+            modes=nyq_modes,
+            trig=trig,
+            use_loop=bool(use_loop),
+        )
+        gmnc = sym_nyq.gmnc
+        gmns = sym_nyq.gmns
+        bsupumnc = sym_nyq.bsupumnc
+        bsupumns = sym_nyq.bsupumns
+        bsupvmnc = sym_nyq.bsupvmnc
+        bsupvmns = sym_nyq.bsupvmns
+        bsubumnc = sym_nyq.bsubumnc
+        bsubumns = sym_nyq.bsubumns
+        bsubvmnc = sym_nyq.bsubvmnc
+        bsubvmns = sym_nyq.bsubvmns
+        bsubsmns = sym_nyq.bsubsmns
+        bsubsmnc = sym_nyq.bsubsmnc
+        bmnc = sym_nyq.bmnc
+        bmns = sym_nyq.bmns
     if wout_timing_enabled:
         wout_timing["nyquist_coeffs_s"] = _time.perf_counter() - t0
         t0 = _time.perf_counter()
