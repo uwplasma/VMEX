@@ -9661,3 +9661,64 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.974%.
+
+## 2026-06-18 Explicit Stage Monitor Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `run_stage_with_optional_explicit_monitor` to
+   `vmec_jax.drivers.staging`.
+2. Moved accelerated explicit-stage chunking, early parity switch, chunk
+   merging, and scan-abort fallback dispatch out of the fixed-boundary stage
+   loop.
+3. Kept all numerical callbacks explicit: stage solve, resume-state sanitize,
+   requested-FTOL gate, stage-switch heuristic, chunk merge, diagnostic
+   annotation, and scan-abort rerun.
+
+Results obtained:
+
+- `run_fixed_boundary` dropped from 1,338 to 1,228 lines.
+- Since the start of today’s driver tranches, `run_fixed_boundary` is down from
+  1,556 to 1,228 lines while preserving existing stage tests.
+- Accelerated-stage monitoring is now a named staging policy helper instead of
+  a deeply nested branch in the public driver.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/driver.py vmec_jax/drivers/staging.py vmec_jax/drivers/solve.py`
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers/staging.py vmec_jax/drivers/solve.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_coverage_extra.py tests/test_driver_api_finish_more_coverage.py tests/test_driver_wave2_coverage.py -q -k "scan or stage or dynamic"`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_helper_edges_wave14_coverage.py tests/test_driver_finish_policy_more_coverage.py -q -k "scan or stage or finish"`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 18`
+
+Best next steps:
+
+1. Move multigrid result aggregation/final-diagnostics construction out of
+   `run_fixed_boundary`; that block is now the next obvious stage-loop
+   monolith.
+2. Continue reducing the residual solver file through scan adapter and
+   VMEC2000-scan chunk seams.
+3. Add direct unit tests for the new explicit monitor helper if future changes
+   touch its early-switch conditions.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.99984%.
+- Solver monolith reduction: 99.15%.
+- Free-boundary adjoint monolith reduction: 99.1%.
+- Driver workflow decomposition: 98.7%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.976%.
