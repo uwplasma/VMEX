@@ -687,16 +687,6 @@ class FixedBoundaryExactOptimizer:
         forced = os.getenv("VMEC_JAX_OPT_EXACT_PATH", "").strip().lower()
         if forced in ("scan", "tape"):
             return forced
-        if self._solver_device_name == "cpu":
-            return "tape"
-        if self._solver_device_name in ("gpu", "tpu", "cuda", "rocm"):
-            return "tape"
-        try:
-            backend = str(jax.default_backend()).strip().lower() if jax is not None else "cpu"
-        except Exception:
-            backend = "cpu"
-        if backend in ("gpu", "cuda", "tpu", "rocm"):
-            return "tape"
         return "tape"
 
     def _use_precomputed_tridi_for_exact_tape(self) -> bool | None:
@@ -715,12 +705,7 @@ class FixedBoundaryExactOptimizer:
             return True
         if forced in ("0", "false", "no", "off"):
             return False
-        backend = str(self._solver_device_name or "").strip().lower()
-        if not backend:
-            try:
-                backend = str(jax.default_backend()).strip().lower() if jax is not None else "cpu"
-            except Exception:
-                backend = "cpu"
+        backend = self._exact_tape_backend_name()
         if backend not in ("gpu", "cuda", "tpu", "rocm"):
             return None
         try:
@@ -745,13 +730,7 @@ class FixedBoundaryExactOptimizer:
             return True
         if forced in ("0", "false", "no", "off", "loop", "none"):
             return False
-        backend = str(getattr(self, "_solver_device_name", None) or "").strip().lower()
-        if not backend:
-            try:
-                backend = str(jax.default_backend()).strip().lower() if jax is not None else "cpu"
-            except Exception:
-                backend = "cpu"
-        return backend in ("tpu",)
+        return self._exact_tape_backend_name() in ("tpu",)
 
     def _exact_tape_backend_name(self) -> str:
         """Return the backend name used for exact-tape optimization policy."""
