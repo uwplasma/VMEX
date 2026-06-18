@@ -622,6 +622,38 @@ def test_root_implicit_sensitivity_example_runs_without_plots(tmp_path):
     assert metrics["figures"] == {}
 
 
+def test_root_implicit_solve_benchmark_runs_without_plots(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_implicit_solve_benchmark.py",
+            "--outdir",
+            str(tmp_path / "implicit_solve_benchmark"),
+            "--ns-array",
+            "5",
+            "--nxi-array",
+            "7",
+            "--repeat",
+            "1",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    path = Path(completed.stdout.strip())
+    metrics = json.loads(path.read_text())
+    assert metrics["accepted"]
+    assert metrics["figures"] == {}
+    assert Path(metrics["csv"]).exists()
+    assert {row["method"] for row in metrics["rows"]} == {"dense", "matrix_free_cg"}
+    assert all(row["vector_size"] == 45 for row in metrics["rows"])
+    matrix_free_rows = [row for row in metrics["rows"] if row["method"] == "matrix_free_cg"]
+    assert matrix_free_rows
+    assert max(row["relative_error_vs_dense"] for row in matrix_free_rows) < 1.0e-5
+
+
 def test_root_solver_comparison_example_runs_without_plots(tmp_path):
     completed = subprocess.run(
         [

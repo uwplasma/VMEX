@@ -48,6 +48,10 @@ The test suite also applies the forward wrapper to a tiny converged
 fixed-boundary cylinder with a local state ridge about the solved state. This is
 still not a production differentiable equilibrium solve.
 
+The benchmark example ``examples/mirror_implicit_solve_benchmark.py`` compares
+dense and matrix-free wrapper calls on a small ``ns``/``nxi`` ladder and writes
+JSON, CSV, and optional runtime/memory/error plots under ``results/``.
+
 Next Steps
 ----------
 
@@ -55,8 +59,8 @@ Next Steps
 2. Benchmark the matrix-free CG path on larger reduced grids and compare it
    with a lineax-backed operator if that dependency becomes part of the public
    solver stack.
-3. Benchmark wrapper solves over a small ``ns``/``nxi`` ladder to quantify
-   dense versus matrix-free runtime and memory.
+3. Extend the benchmark ladder after the physical residual conditioning is
+   improved enough for larger low-ridge systems.
 4. Wrap a small converged solved state with a custom implicit derivative rule.
 5. Promote the differentiable API only after it agrees with finite differences
    and the existing fixed-boundary solver diagnostics.

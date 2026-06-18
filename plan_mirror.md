@@ -16533,3 +16533,140 @@ Results:
 No user input is needed.
 
 ---
+## 132. Dense vs Matrix-Free Implicit Solve Benchmark Example
+
+### Steps taken
+
+- Added root-level example `examples/mirror_implicit_solve_benchmark.py`.
+- The example benchmarks the forward implicit wrapper over a small
+  `ns`/`nxi` ladder and compares:
+  - dense reference solves;
+  - matrix-free JAX CG solves;
+  - relative solution error against dense;
+  - relative linear residual;
+  - runtime;
+  - Python-side peak memory from `tracemalloc`.
+- The example writes:
+  - `mirror_implicit_solve_benchmark_metrics.json`;
+  - `mirror_implicit_solve_benchmark.csv`;
+  - optional `figures/mirror_implicit_solve_benchmark.png`.
+- Added the benchmark to `examples/mirror/README.md`.
+- Added a no-plot smoke test that runs the smallest `ns=5`, `nxi=7` row and
+  validates the JSON/CSV output.
+- Updated the differentiability docs to identify this example as the
+  runtime/memory comparison fixture.
+
+### Results obtained
+
+Plotted benchmark command:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 python examples/mirror_implicit_solve_benchmark.py \
+  --ns-array 5,7 \
+  --nxi-array 7 \
+  --repeat 1 \
+  --outdir results/mirror/implicit_solve_benchmark_m132
+```
+
+Rendered ignored plot:
+
+- `results/mirror/implicit_solve_benchmark_m132/figures/mirror_implicit_solve_benchmark.png`.
+
+Metrics from the plotted run:
+
+- `ns=5`, `nxi=7`, vector size `45`:
+  - dense runtime mean: `0.2960055838339031` s;
+  - matrix-free runtime mean: `0.872910083970055` s;
+  - matrix-free relative error vs dense:
+    `8.851680334241526e-09`;
+  - matrix-free relative linear residual:
+    `5.872656576175309e-09`.
+- `ns=7`, `nxi=7`, vector size `67`:
+  - dense runtime mean: `0.30951612489297986` s;
+  - matrix-free runtime mean: `0.855826040962711` s;
+  - matrix-free relative error vs dense:
+    `5.009464861946238e-09`;
+  - matrix-free relative linear residual:
+    `4.134320052901546e-09`.
+
+At these tiny sizes, dense is faster and has lower Python-side peak memory.
+That is expected and useful: dense remains the correctness and small-grid
+reference, while matrix-free is validated for accuracy before larger-grid
+benchmarking.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check examples/mirror_implicit_solve_benchmark.py tests/mirror/test_mirror_examples.py
+python -m ruff format --check examples/mirror_implicit_solve_benchmark.py tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py::test_root_implicit_solve_benchmark_runs_without_plots -q
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 python examples/mirror_implicit_solve_benchmark.py --ns-array 5,7 --nxi-array 7 --repeat 1 --outdir results/mirror/implicit_solve_benchmark_m132
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+python - <<'PY'
+import re
+from pathlib import Path
+text = Path("plan_mirror.md").read_text()
+nums = [int(m.group(1)) for m in re.finditer(r"^## (\\d+)\\.", text, flags=re.M)]
+print("milestones", len(nums), "last", nums[-1], "monotonic", nums == sorted(nums))
+PY
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff format check passed.
+- Benchmark smoke test: `1 passed`.
+- Plotted benchmark completed and wrote accepted metrics.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+- Plan milestone numbering remained monotonic.
+- Visual check: the benchmark plot renders with runtime, Python peak memory,
+  and relative-error panels.
+
+### File structure and best-practice notes
+
+- The benchmark is root-level because it is a user-facing research fixture, like
+  the other mirror benchmark examples.
+- The benchmark uses the public wrapper API rather than internal dense helper
+  calls.
+- Generated JSON/CSV/PNG outputs remain under ignored `results/`.
+- The example keeps memory reporting honest by labeling it as Python-side peak
+  memory; it is not a complete device-memory profiler.
+
+### Best next steps
+
+1. Commit and push M132.
+2. Extend this benchmark only after conditioning/preconditioning is good enough
+   to make larger low-ridge matrix-free rows meaningful.
+3. Return to the non-differentiability lanes with the largest remaining gaps:
+   toroidal hybrid VMEC2000 parity/refinement and circular-coil beta-scan
+   hardening.
+4. Keep the differentiability lane open for a later custom implicit derivative
+   wrapper once the physical solved-state residual conditioning is improved.
+
+### Completion percentages after M132
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `90%`.
+- Fixed-boundary axisymmetric solve: `90%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `92%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `72%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `85%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `85%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---
