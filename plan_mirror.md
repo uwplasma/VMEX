@@ -19247,3 +19247,88 @@ Results:
 No user input is needed.
 
 ---
+## 156. Draft PR Description Synchronization After Realized LS Coupled Trial
+
+### Steps taken
+
+- Updated draft PR #21 body after M155.
+- Changed the detailed-log pointer from section 153 to section 155.
+- Added schema `mirror_free_boundary_circular_coil_beta_scan` version `0.5`.
+- Added the `--run-ls-boundary-coupled-trial` realized fixed-boundary trial
+  status to the PR body.
+- Added the latest validation evidence:
+  - `50 passed in 2.14s` for free-boundary tests;
+  - `21 passed in 94.85s` for mirror example tests;
+  - Sphinx docs build;
+  - Ruff check/format-check;
+  - whitespace check;
+  - plotted realized LS trial evidence under
+    `results/mirror/free_boundary_circular_coils_m155_lsq_coupled_plots/`.
+- Kept the PR in draft state.
+- Verified the remote PR body after editing.
+
+### Results obtained
+
+- Remote PR body verification confirmed:
+  - PR number `21`;
+  - draft state `true`;
+  - body contains `section 155`;
+  - body contains schema version `0.5`;
+  - body contains `--run-ls-boundary-coupled-trial`;
+  - body contains `21 passed in 94.85s`;
+  - body contains `free_boundary_circular_coils_m155_lsq_coupled_plots`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+gh pr edit 21 --body-file /tmp/vmec_mirror_pr_body_m155.md
+gh pr view 21 --json number,isDraft,body,url | python -c '...'
+```
+
+Results:
+
+- PR edit succeeded.
+- PR body verification passed.
+- PR remained draft.
+- The status check rollup for the newest push was not populated yet at the
+  quick check immediately after pushing.
+
+### File structure and best-practice notes
+
+- No source files changed in this tranche.
+- Detailed evidence remains in `plan_mirror.md`; the PR body stays a concise
+  review index.
+- The PR remains draft as requested.
+
+### Best next steps
+
+1. Commit and push M156 plan log.
+2. Extend from one realized LS trial to a guarded multi-step coupled LS loop
+   with `fsq` growth and merit guards.
+3. Check CI later and fix failures if any appear.
+
+### Completion percentages after M156
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `93%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `92%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `97%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `96%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
+
+---
