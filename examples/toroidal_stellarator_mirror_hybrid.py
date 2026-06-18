@@ -168,6 +168,8 @@ def main() -> None:
     parser.add_argument("--side-elongation", type=float, default=0.28)
     parser.add_argument("--corner-amplitude", type=float, default=0.035)
     parser.add_argument("--corner-helicity", type=int, default=1)
+    parser.add_argument("--corner-ellipticity", type=float, default=0.18)
+    parser.add_argument("--corner-rotation", type=float, default=0.35)
     parser.add_argument("--side-power", type=float, default=1.0)
     parser.add_argument("--corner-power", type=float, default=1.0)
     parser.add_argument("--ntheta-fit", type=int, default=64)
@@ -187,6 +189,8 @@ def main() -> None:
         "side_elongation": float(args.side_elongation),
         "corner_amplitude": float(args.corner_amplitude),
         "corner_helicity": int(args.corner_helicity),
+        "corner_ellipticity": float(args.corner_ellipticity),
+        "corner_rotation": float(args.corner_rotation),
         "side_power": float(args.side_power),
         "corner_power": float(args.corner_power),
     }

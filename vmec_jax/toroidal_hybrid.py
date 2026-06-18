@@ -42,6 +42,8 @@ def sample_toroidal_stellarator_mirror_hybrid_boundary(
     side_elongation: float = 0.28,
     corner_amplitude: float = 0.035,
     corner_helicity: int = 1,
+    corner_ellipticity: float = 0.18,
+    corner_rotation: float = 0.35,
     side_power: float = 1.0,
     corner_power: float = 1.0,
 ) -> ToroidalHybridBoundarySamples:
@@ -49,10 +51,11 @@ def sample_toroidal_stellarator_mirror_hybrid_boundary(
 
     The side arcs, at ``zeta = 0`` and ``pi``, are nearly axisymmetric elongated
     cross sections.  The corner arcs, at ``zeta = pi/2`` and ``3*pi/2``, carry a
-    localized ``m=2`` helical perturbation.  ``side_power`` and
-    ``corner_power`` sharpen or broaden those two regions without moving their
-    centers.  The formula is stellarator symmetric, so it can be stored with the
-    usual VMEC ``RBC``/``ZBS`` boundary coefficients.
+    localized finite-mode rotating ellipse plus a small optional ``m=2``
+    helical perturbation.  ``side_power`` and ``corner_power`` sharpen or
+    broaden those two regions without moving their centers.  The formula is
+    stellarator symmetric, so it can be stored with the usual VMEC ``RBC``/``ZBS``
+    boundary coefficients.
     """
     ntheta = int(ntheta)
     nzeta = int(nzeta)
@@ -62,6 +65,12 @@ def sample_toroidal_stellarator_mirror_hybrid_boundary(
         raise ValueError("major_radius must exceed positive minor_radius")
     if int(corner_helicity) < 0:
         raise ValueError("corner_helicity must be nonnegative")
+    corner_ellipticity = float(corner_ellipticity)
+    corner_rotation = float(corner_rotation)
+    if not np.isfinite(corner_ellipticity) or not (0.0 <= corner_ellipticity < 0.95):
+        raise ValueError("corner_ellipticity must be finite and satisfy 0 <= corner_ellipticity < 0.95")
+    if not np.isfinite(corner_rotation):
+        raise ValueError("corner_rotation must be finite")
     side_power = float(side_power)
     corner_power = float(corner_power)
     if not np.isfinite(side_power) or side_power <= 0.0:
@@ -78,10 +87,24 @@ def sample_toroidal_stellarator_mirror_hybrid_boundary(
     axis = float(major_radius) + float(axis_oval) * np.cos(2.0 * zeta2)
     side_minor = float(minor_radius) * (1.0 + float(side_minor_modulation) * side_weight)
     elongation = 1.0 + float(side_elongation) * side_weight
+    corner_shape = corner_ellipticity * corner_weight
+    radial_semiaxis = side_minor * (1.0 + corner_shape)
+    vertical_semiaxis = side_minor * elongation * (1.0 - corner_shape)
+    rotation_harmonic = int(corner_helicity)
+    corner_tilt = corner_rotation * corner_weight * np.sin(float(rotation_harmonic) * zeta2)
     corner_phase = 2.0 * theta2 - float(int(corner_helicity)) * zeta2
 
-    R = axis + side_minor * np.cos(theta2) + float(corner_amplitude) * corner_weight * np.cos(corner_phase)
-    Z = side_minor * elongation * np.sin(theta2) + float(corner_amplitude) * corner_weight * np.sin(corner_phase)
+    R = (
+        axis
+        + radial_semiaxis * np.cos(theta2)
+        - vertical_semiaxis * corner_tilt * np.sin(theta2)
+        + float(corner_amplitude) * corner_weight * np.cos(corner_phase)
+    )
+    Z = (
+        radial_semiaxis * corner_tilt * np.cos(theta2)
+        + vertical_semiaxis * np.sin(theta2)
+        + float(corner_amplitude) * corner_weight * np.sin(corner_phase)
+    )
 
     if float(np.min(R)) <= 0.0:
         raise ValueError("boundary has nonpositive cylindrical R; reduce minor_radius or shaping amplitudes")
@@ -202,8 +225,8 @@ def toroidal_stellarator_mirror_hybrid_metrics(samples: ToroidalHybridBoundarySa
     anisotropy = toroidal_hybrid_cross_section_anisotropy(samples)
     side_weight = np.mean(samples.side_weight, axis=0)
     corner_weight = np.mean(samples.corner_weight, axis=0)
-    side_region = side_weight >= 0.5
-    corner_region = corner_weight >= 0.5
+    side_region = side_weight >= 0.995
+    corner_region = corner_weight >= 0.9
     anisotropy_threshold = 1.0e-14 + 1.0e-8 * float(np.max(anisotropy))
     valid_orientation = anisotropy > anisotropy_threshold
     side_valid = side_region & valid_orientation

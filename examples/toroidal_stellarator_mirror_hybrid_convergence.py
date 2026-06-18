@@ -50,6 +50,8 @@ _SHAPE_CASE_PRESETS = {
         "side_elongation": 0.35,
         "side_power": 2.0,
         "corner_amplitude": 0.025,
+        "corner_ellipticity": 0.22,
+        "corner_rotation": 0.42,
         "corner_power": 2.0,
     },
 }
@@ -92,6 +94,8 @@ def _base_sample_kwargs(args: argparse.Namespace) -> dict[str, float | int]:
         "side_power": float(args.side_power),
         "corner_amplitude": float(args.corner_amplitude),
         "corner_helicity": int(args.corner_helicity),
+        "corner_ellipticity": float(args.corner_ellipticity),
+        "corner_rotation": float(args.corner_rotation),
         "corner_power": float(args.corner_power),
     }
 
@@ -143,6 +147,8 @@ _CSV_COLUMNS = (
     "side_power",
     "corner_amplitude",
     "corner_helicity",
+    "corner_ellipticity",
+    "corner_rotation",
     "corner_power",
     "cross_section_orientation_span",
     "side_orientation_span",
@@ -821,6 +827,8 @@ def main() -> None:
     parser.add_argument("--side-power", type=float, default=1.0)
     parser.add_argument("--corner-amplitude", type=float, default=0.035)
     parser.add_argument("--corner-helicity", type=int, default=1)
+    parser.add_argument("--corner-ellipticity", type=float, default=0.18)
+    parser.add_argument("--corner-rotation", type=float, default=0.35)
     parser.add_argument("--corner-power", type=float, default=1.0)
     parser.add_argument(
         "--shape-cases",
@@ -923,6 +931,8 @@ def main() -> None:
                     "side_power": sample_kwargs["side_power"],
                     "corner_amplitude": sample_kwargs["corner_amplitude"],
                     "corner_helicity": sample_kwargs["corner_helicity"],
+                    "corner_ellipticity": sample_kwargs["corner_ellipticity"],
+                    "corner_rotation": sample_kwargs["corner_rotation"],
                     "corner_power": sample_kwargs["corner_power"],
                     "cross_section_orientation_span": reference_metrics["cross_section_orientation_span"],
                     "side_orientation_span": reference_metrics["side_orientation_span"],

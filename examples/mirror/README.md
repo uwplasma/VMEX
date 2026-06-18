@@ -69,7 +69,7 @@ toroidal boundary coefficients and solver paths.
 
 The root-level ``examples/toroidal_stellarator_mirror_hybrid.py`` script starts
 that toroidal lane. It writes a VMEC-compatible ``input.*`` file whose LCFS has
-mirror-like side arcs and localized stellarator-like corner shaping, writes
+mirror-like side arcs and localized rotating-ellipse stellarator corners, writes
 boundary metrics and plots, including a side/corner weight and principal-axis
 orientation diagnostic, and can optionally run the ordinary toroidal
 fixed-boundary solver with ``--run-solve`` to produce a ``wout_*.nc`` plus
@@ -113,7 +113,7 @@ direct-initial residual agreement as useful regression signals, and use the
 history fields to understand convergence after solver startup. For
 toroidal-hybrid geometry refinement, pass ``--shape-cases default,sharp`` to
 scan the default boundary and a sharpened side/corner preset in one run; use
-``5:10`` or higher ``mpol:ntor`` pairs when asserting exact fit for the
+``5:20`` or higher ``mpol:ntor`` pairs when asserting exact fit for the
 sharpened preset.
 
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
