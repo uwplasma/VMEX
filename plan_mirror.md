@@ -19508,3 +19508,89 @@ Results:
 No user input is needed.
 
 ---
+## 158. Draft PR Description Synchronization After Guarded LS Loop
+
+### Steps taken
+
+- Updated draft PR #21 body after M157.
+- Changed the detailed implementation-log pointer from section 155 to
+  section 157.
+- Updated the free-boundary circular-coil schema reference from version `0.5`
+  to version `0.6`.
+- Marked the guarded multi-step coupled LS loop checklist item complete.
+- Added the latest local validation and coverage-gate evidence:
+  - `86 passed in 2.97s` for mirror free-boundary tests;
+  - `93 passed in 101.07s` for the combined free-boundary plus mirror example
+    coverage run;
+  - estimated combined coverage gate `95.09%` versus the `95.00%` threshold;
+  - Sphinx docs build;
+  - Ruff check/format-check;
+  - whitespace check;
+  - plotted guarded loop evidence under
+    `results/mirror/free_boundary_circular_coils_m157_lsq_loop_plots/`.
+- Kept the PR in draft state.
+- Verified the remote PR body after editing.
+
+### Results obtained
+
+- Remote PR body verification confirmed:
+  - PR number `21`;
+  - draft state `true`;
+  - head SHA `33fd0de13e0b40734e064251d03e16140a890020`;
+  - body contains `section 157`;
+  - body contains schema version `0.6`;
+  - body contains `Guarded multi-step coupled LS loop`;
+  - body contains `95.09%`;
+  - body contains `86 passed in 2.97s`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+gh pr edit 21 --body-file /tmp/vmec_mirror_pr_body_m157.md
+gh pr view 21 --json number,isDraft,headRefOid,body,url | python -c '...'
+```
+
+Results:
+
+- PR edit succeeded.
+- PR body verification passed.
+- PR remained draft.
+
+### File structure and best-practice notes
+
+- No source files changed in this administrative tranche.
+- Detailed implementation evidence remains in `plan_mirror.md`; the PR body
+  stays a concise review index.
+- The PR remains draft as requested.
+
+### Best next steps
+
+1. Commit and push M158 plan log.
+2. Let CI run without actively waiting on every check.
+3. Inspect CI after useful elapsed time and fix any remaining failures.
+4. Continue from the guarded host-side loop toward the true coupled nonlinear
+   mirror free-boundary solve lane.
+
+### Completion percentages after M158
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `93%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `92%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `98%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
