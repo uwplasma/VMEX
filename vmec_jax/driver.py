@@ -1305,146 +1305,36 @@ def run_fixed_boundary(
             explicit_stage_target = _accelerated_fsq_total_target_from_ftol(float(ftol_i))
             explicit_stage_monitor_jit_forces = bool(jit_forces_base)
 
-            if bool(explicit_stage_monitor) and int(explicit_stage_chunk) < int(niter_i):
-                chunk_results: list[SolveVmecResidualResult] = []
-                chunk_state = state
-                chunk_resume_state = resume_state_stage
-                stage_switch_reason = None
-                stage_monitor_used = True
-                stage_monitor_scan = bool(scan_mode) and str(policy_backend).lower() in (
-                    "gpu",
-                    "cuda",
-                    "rocm",
-                    "tpu",
-                )
-                remaining_budget = int(niter_i)
-                stage_first_chunk = True
-
-                chunk_budget = min(int(explicit_stage_chunk), int(remaining_budget))
-                chunk_kwargs = dict(solve_kwargs)
-                chunk_kwargs.update(
-                    {
-                        "max_iter": int(chunk_budget),
-                        "resume_state": chunk_resume_state,
-                        "stage_prev_fsq": stage_prev_fsq if bool(stage_first_chunk) else None,
-                        "use_scan": bool(stage_monitor_scan),
-                        "jit_warmup_iters": int(jit_warmup_noscan),
-                        "jit_precompile": bool(jit_precompile_noscan),
-                    }
-                )
-                res_chunk = run_stage_solve(
-                    state=chunk_state,
-                    solve_kwargs=chunk_kwargs,
-                    jit_forces=bool(explicit_stage_monitor_jit_forces),
-                )
-                chunk_results.append(res_chunk)
-                stage_first_chunk = False
-
-                completed_chunk_iters = min(int(chunk_budget), int(res_chunk.n_iter) + 1)
-                remaining_budget = max(0, int(remaining_budget) - int(completed_chunk_iters))
-                chunk_state = res_chunk.state
-                chunk_resume_state = sanitize_resume_state_for_same_stage(
-                    res_chunk.diagnostics.get("resume_state")
-                )
-
-                strict_chunk = bool(_result_meets_requested_ftol(res_chunk, ftol=float(ftol_i)))
-                if (not bool(strict_chunk)) and int(remaining_budget) > 0:
-                    try:
-                        chunk_w = np.asarray(res_chunk.w_history, dtype=float).reshape(-1)
-                        if chunk_w.size > 0:
-                            stage_switch_reason = _stage_switch_reason_from_progress(
-                                start_total_fsq=float(chunk_w[0]),
-                                best_total_fsq=float(np.min(chunk_w)),
-                                target_total_fsq=float(explicit_stage_target),
-                                chunk_iters=int(completed_chunk_iters),
-                                remaining_budget=int(remaining_budget),
-                            )
-                    except Exception:
-                        stage_switch_reason = None
-
-                if (stage_switch_reason is None) and (not bool(strict_chunk)) and int(remaining_budget) > 0:
-                    tail_kwargs = dict(solve_kwargs)
-                    tail_kwargs.update(
-                        {
-                            "max_iter": int(remaining_budget),
-                            "resume_state": chunk_resume_state,
-                            "stage_prev_fsq": None,
-                            "use_scan": bool(stage_monitor_scan),
-                            "jit_warmup_iters": 0,
-                            "jit_precompile": False,
-                        }
-                    )
-                    res_tail = run_stage_solve(
-                        state=chunk_state,
-                        solve_kwargs=tail_kwargs,
-                        jit_forces=bool(explicit_stage_monitor_jit_forces),
-                    )
-                    chunk_results.append(res_tail)
-                elif (stage_switch_reason is None) and (not bool(strict_chunk)):
-                    stage_switch_reason = "budget_exhausted"
-
-                if stage_switch_reason is not None:
-                    if bool(verbose):
-                        print(
-                            "[vmec_jax] accelerated staged solve cannot meet requested FTOL; "
-                            f"switching stage ns={int(ns_i)} to parity mode "
-                            f"({stage_switch_reason}).",
-                            flush=True,
-                        )
-                    fallback_kwargs = dict(solve_kwargs)
-                    fallback_kwargs.update(
-                        {
-                            "use_scan": False,
-                            "resume_state": resume_state_stage,
-                            "max_iter": int(niter_i),
-                            "jit_warmup_iters": int(jit_warmup_noscan),
-                            "jit_precompile": bool(jit_precompile_noscan),
-                            "light_history": None,
-                            "resume_state_mode": None,
-                            "fsq_total_target": None,
-                            "host_update_assembly": False,
-                        }
-                    )
-                    res_i = run_stage_solve(
-                        state=state_stage_start,
-                        solve_kwargs=fallback_kwargs,
-                        jit_forces=bool(jit_forces_base),
-                    )
-                    res_i = _result_with_diag(
-                        res_i,
-                        accelerated_stage_chunked=bool(stage_monitor_used or len(chunk_results) > 0),
-                        accelerated_stage_early_switch=True,
-                        accelerated_stage_switch_reason=str(stage_switch_reason),
-                        accelerated_stage_probe_chunk_iters=np.asarray(
-                            [int(r.n_iter) + 1 for r in chunk_results],
-                            dtype=int,
-                        ),
-                        accelerated_stage_effective_mode="parity",
-                    )
-                    stage_mode_i = "parity"
-                else:
-                    res_i = _merge_stage_chunk_results(
-                        chunk_results,
-                        mode_i=str(stage_mode_i),
-                    )
-            else:
-                res_i = run_stage_solve(
-                    state=state,
-                    solve_kwargs=solve_kwargs,
-                    jit_forces=bool(jit_forces_eff),
-                )
-                res_i = _driver_solve_helpers.maybe_rerun_scan_abort_stage(
-                    result=res_i,
-                    enabled=(not accelerated_mode) and bool(performance_mode) and bool(scan_mode),
-                    state_stage_start=state_stage_start,
-                    resume_state_stage=resume_state_stage,
-                    solve_kwargs=solve_kwargs,
-                    jit_warmup_noscan=int(jit_warmup_noscan),
-                    jit_precompile_noscan=bool(jit_precompile_noscan),
-                    jit_forces_base=bool(jit_forces_base),
-                    run_stage_solve_func=run_stage_solve,
-                    verbose=bool(verbose),
-                )
+            res_i, stage_mode_i = _driver_staging_helpers.run_stage_with_optional_explicit_monitor(
+                monitor_enabled=bool(explicit_stage_monitor),
+                stage_mode=str(stage_mode_i),
+                ns=int(ns_i),
+                niter=int(niter_i),
+                ftol=float(ftol_i),
+                explicit_stage_chunk=int(explicit_stage_chunk),
+                explicit_stage_target=float(explicit_stage_target),
+                policy_backend=str(policy_backend),
+                scan_mode=bool(scan_mode),
+                state=state,
+                state_stage_start=state_stage_start,
+                resume_state_stage=resume_state_stage,
+                stage_prev_fsq=stage_prev_fsq,
+                solve_kwargs=solve_kwargs,
+                jit_forces_eff=bool(jit_forces_eff),
+                jit_forces_base=bool(jit_forces_base),
+                explicit_stage_monitor_jit_forces=bool(explicit_stage_monitor_jit_forces),
+                jit_warmup_noscan=int(jit_warmup_noscan),
+                jit_precompile_noscan=bool(jit_precompile_noscan),
+                run_stage_solve=run_stage_solve,
+                sanitize_resume_state_for_same_stage=sanitize_resume_state_for_same_stage,
+                result_meets_requested_ftol=_result_meets_requested_ftol,
+                stage_switch_reason_from_progress=_stage_switch_reason_from_progress,
+                merge_stage_chunk_results=_merge_stage_chunk_results,
+                result_with_diag=_result_with_diag,
+                maybe_rerun_scan_abort_stage=_driver_solve_helpers.maybe_rerun_scan_abort_stage,
+                scan_abort_fallback_enabled=(not accelerated_mode) and bool(performance_mode) and bool(scan_mode),
+                verbose=bool(verbose),
+            )
             stage_mode_history[-1] = str(stage_mode_i)
             stage_wall_s.append(float(time.perf_counter() - stage_t0))
             try:
