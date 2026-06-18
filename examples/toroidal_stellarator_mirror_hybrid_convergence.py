@@ -64,6 +64,8 @@ _CSV_COLUMNS = (
     "zbs_count",
     "max_boundary_fit_error",
     "ran_solve",
+    "solver_mode",
+    "use_scan",
     "seconds",
     "n_iter",
     "initial_fsq",
@@ -275,6 +277,8 @@ def main() -> None:
     parser.add_argument("--ntheta-fit", type=int, default=64)
     parser.add_argument("--nzeta-fit", type=int, default=64)
     parser.add_argument("--run-solve", action="store_true")
+    parser.add_argument("--solver-mode", choices=("default", "parity", "accelerated"), default="accelerated")
+    parser.add_argument("--use-scan", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--run-vmec2000", action="store_true")
     parser.add_argument("--vmec2000-exec", type=str, default="")
     parser.add_argument("--vmec2000-timeout-s", type=float, default=120.0)
@@ -332,6 +336,8 @@ def main() -> None:
                 "stellsym_R_error": reference_metrics["stellsym_R_error"],
                 "stellsym_Z_error": reference_metrics["stellsym_Z_error"],
                 "ran_solve": bool(args.run_solve),
+                "solver_mode": str(args.solver_mode),
+                "use_scan": None if args.use_scan is None else bool(args.use_scan),
                 "seconds": None,
                 "initial_fsq": None,
                 "best_fsq": None,
@@ -377,7 +383,8 @@ def main() -> None:
                 run = vj.run_fixed_boundary(
                     input_path,
                     solver="vmec2000_iter",
-                    solver_mode="accelerated",
+                    solver_mode=str(args.solver_mode),
+                    use_scan=args.use_scan,
                     max_iter=int(args.max_iter),
                     cli_fixed_boundary_mode=True,
                     verbose=False,
