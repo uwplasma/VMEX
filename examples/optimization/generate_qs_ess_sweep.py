@@ -1284,6 +1284,44 @@ def _normalize_worker_jax_platforms(value: str | None) -> str | None:
     return ",".join(normalized) if normalized else None
 
 
+def _prepare_qi_boozer_stage(problem_cfg: ProblemConfig, stage_static) -> tuple[object, object, object]:
+    """Prepare optional Boozer constants and surface indices for a QI stage."""
+
+    if problem_cfg.objective_kind != "qi":
+        return None, None, None
+
+    from booz_xform_jax import prepare_booz_xform_constants
+    from vmec_jax.modes import nyquist_mode_table_from_grid, vmec_mode_table
+
+    main_modes = vmec_mode_table(int(stage_static.cfg.mpol), int(stage_static.cfg.ntor))
+    nyq_modes = nyquist_mode_table_from_grid(
+        mpol=int(stage_static.cfg.mpol),
+        ntor=int(stage_static.cfg.ntor),
+        ntheta=int(stage_static.cfg.ntheta),
+        nzeta=int(stage_static.cfg.nzeta),
+    )
+    constants, grids = prepare_booz_xform_constants(
+        nfp=int(stage_static.cfg.nfp),
+        mboz=problem_cfg.qi_mboz,
+        nboz=problem_cfg.qi_nboz,
+        asym=bool(stage_static.cfg.lasym),
+        xm=np.asarray(main_modes.m, dtype=int),
+        xn=np.asarray(main_modes.n * int(stage_static.cfg.nfp), dtype=int),
+        xm_nyq=np.asarray(nyq_modes.m, dtype=int),
+        xn_nyq=np.asarray(nyq_modes.n * int(stage_static.cfg.nfp), dtype=int),
+    )
+    surface_indices = _nearest_half_mesh_indices(
+        problem_cfg.surfaces,
+        n_half=max(int(np.asarray(stage_static.s).shape[0]) - 1, 1),
+    )
+    return constants, grids, surface_indices
+
+
+def _weighted_residual_block(residuals, total, weight: float) -> tuple[object, object]:
+    weight_f = float(weight)
+    return jnp.asarray(residuals, dtype=jnp.float64) * weight_f, weight_f**2 * total
+
+
 def _build_stage(problem_cfg: ProblemConfig, cfg, indata0, max_mode: int, *, solver_device: str | None):
     if bool(problem_cfg.project_input_boundary_to_max_mode):
         indata0 = vj.truncate_indata_boundary_modes(indata0, max_mode=max_mode)
@@ -1307,34 +1345,9 @@ def _build_stage(problem_cfg: ProblemConfig, cfg, indata0, max_mode: int, *, sol
     stage_signgs = int(signgs_from_sqrtg(np.asarray(stage_geom.sqrtg), axis_index=1))
     stage_flux = vj.flux_profiles_from_indata(stage_indata, stage_static.s, signgs=stage_signgs)
     stage_pressure = jnp.zeros_like(jnp.asarray(stage_static.s))
-    qi_booz_constants = None
-    qi_booz_grids = None
-    qi_surface_indices = None
-    if problem_cfg.objective_kind == "qi":
-        from booz_xform_jax import prepare_booz_xform_constants
-        from vmec_jax.modes import nyquist_mode_table_from_grid, vmec_mode_table
-
-        main_modes = vmec_mode_table(int(stage_static.cfg.mpol), int(stage_static.cfg.ntor))
-        nyq_modes = nyquist_mode_table_from_grid(
-            mpol=int(stage_static.cfg.mpol),
-            ntor=int(stage_static.cfg.ntor),
-            ntheta=int(stage_static.cfg.ntheta),
-            nzeta=int(stage_static.cfg.nzeta),
-        )
-        qi_booz_constants, qi_booz_grids = prepare_booz_xform_constants(
-            nfp=int(stage_static.cfg.nfp),
-            mboz=problem_cfg.qi_mboz,
-            nboz=problem_cfg.qi_nboz,
-            asym=bool(stage_static.cfg.lasym),
-            xm=np.asarray(main_modes.m, dtype=int),
-            xn=np.asarray(main_modes.n * int(stage_static.cfg.nfp), dtype=int),
-            xm_nyq=np.asarray(nyq_modes.m, dtype=int),
-            xn_nyq=np.asarray(nyq_modes.n * int(stage_static.cfg.nfp), dtype=int),
-        )
-        qi_surface_indices = _nearest_half_mesh_indices(
-            problem_cfg.surfaces,
-            n_half=max(int(np.asarray(stage_static.s).shape[0]) - 1, 1),
-        )
+    qi_booz_constants, qi_booz_grids, qi_surface_indices = _prepare_qi_boozer_stage(
+        problem_cfg, stage_static
+    )
 
     def stage_qs_eval(state):
         if problem_cfg.objective_kind == "qi":
@@ -1407,10 +1420,7 @@ def _build_stage(problem_cfg: ProblemConfig, cfg, indata0, max_mode: int, *, sol
 
     def qi_field_quality_blocks(state, qi):
         blocks = [
-            (
-                jnp.asarray(qi["residuals1d"], dtype=jnp.float64) * problem_cfg.qs_weight,
-                problem_cfg.qs_weight**2 * qi["total"],
-            )
+            _weighted_residual_block(qi["residuals1d"], qi["total"], problem_cfg.qs_weight)
         ]
         if float(problem_cfg.qi_ceiling_weight) != 0.0:
             qi_total = jnp.asarray(qi["total"], dtype=jnp.float64)
@@ -1424,12 +1434,7 @@ def _build_stage(problem_cfg: ProblemConfig, cfg, indata0, max_mode: int, *, sol
             blocks.append((residual, jnp.sum(residual * residual)))
         if float(problem_cfg.qi_mirror_weight) != 0.0:
             mirror = qi_mirror_objective._evaluate_state(qi_mirror_ctx, state)
-            blocks.append(
-                (
-                    jnp.asarray(mirror["residuals1d"], dtype=jnp.float64) * problem_cfg.qi_mirror_weight,
-                    problem_cfg.qi_mirror_weight**2 * mirror["total"],
-                )
-            )
+            blocks.append(_weighted_residual_block(mirror["residuals1d"], mirror["total"], problem_cfg.qi_mirror_weight))
         if float(problem_cfg.qi_elongation_weight) != 0.0:
             elongation = max_elongation_penalty_from_state(
                 state=state,
@@ -1439,10 +1444,7 @@ def _build_stage(problem_cfg: ProblemConfig, cfg, indata0, max_mode: int, *, sol
                 nphi=problem_cfg.qi_elongation_nphi,
             )
             blocks.append(
-                (
-                    jnp.asarray(elongation["residuals1d"], dtype=jnp.float64) * problem_cfg.qi_elongation_weight,
-                    problem_cfg.qi_elongation_weight**2 * elongation["total"],
-                )
+                _weighted_residual_block(elongation["residuals1d"], elongation["total"], problem_cfg.qi_elongation_weight)
             )
         if float(problem_cfg.qi_lgradb_weight) != 0.0:
             lgradb = lgradb_penalty_from_state(
@@ -1457,12 +1459,7 @@ def _build_stage(problem_cfg: ProblemConfig, cfg, indata0, max_mode: int, *, sol
                 nphi=problem_cfg.qi_lgradb_nphi,
                 smooth_penalty=problem_cfg.qi_lgradb_smooth_penalty,
             )
-            blocks.append(
-                (
-                    jnp.asarray(lgradb["residuals1d"], dtype=jnp.float64) * problem_cfg.qi_lgradb_weight,
-                    problem_cfg.qi_lgradb_weight**2 * lgradb["total"],
-                )
-            )
+            blocks.append(_weighted_residual_block(lgradb["residuals1d"], lgradb["total"], problem_cfg.qi_lgradb_weight))
         return tuple(blocks)
 
     def lgradb_quality_block(state):
@@ -1480,10 +1477,7 @@ def _build_stage(problem_cfg: ProblemConfig, cfg, indata0, max_mode: int, *, sol
             nphi=problem_cfg.lgradb_nphi,
             smooth_penalty=problem_cfg.lgradb_smooth_penalty,
         )
-        return (
-            jnp.asarray(lgradb["residuals1d"], dtype=jnp.float64) * problem_cfg.lgradb_weight,
-            problem_cfg.lgradb_weight**2 * lgradb["total"],
-        )
+        return _weighted_residual_block(lgradb["residuals1d"], lgradb["total"], problem_cfg.lgradb_weight)
 
     def stage_residuals_from_state(state):
         parts = []

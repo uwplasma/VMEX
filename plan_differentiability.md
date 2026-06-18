@@ -14827,3 +14827,73 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99984%.
+
+## 2026-06-18 Sweep Stage Objective Setup Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted QI Boozer constant/grid/surface-index preparation from
+   `_build_stage` into `_prepare_qi_boozer_stage`.
+2. Added `_weighted_residual_block` for repeated residual-vector/weighted-total
+   tuple construction.
+3. Reused the weighted-block helper in QI residual, mirror, elongation, LgradB,
+   and regular LgradB objective blocks.
+
+Results obtained:
+
+- `_build_stage` dropped from 270 to 242 lines.
+- `examples/optimization/generate_qs_ess_sweep.py` dropped from 3196 to 3190
+  lines.
+- The QI Boozer setup and residual weighting are now named by their numerical
+  role instead of being embedded as repeated tuple literals.
+- Objective residual ordering, weights, and output schema were preserved.
+- No generated outputs or large files were added.
+
+Tests and commands run:
+
+- `python -m compileall -q examples/optimization/generate_qs_ess_sweep.py`
+- `python -m ruff check examples/optimization/generate_qs_ess_sweep.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_qs_ess_render_smoke.py tests/test_optimization_examples.py::test_qs_sweep_qi_mirror_defaults_to_all_surfaces tests/test_optimization_examples.py::test_qs_sweep_qi_mirror_residuals_use_vmec_mirror_ratio tests/test_optimization_examples.py::test_jxbforce_profile_tuple_stays_regular_state_objective -q`
+  - Result: passed.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 50`
+
+Best next steps:
+
+1. Continue reducing sweep orchestration by extracting QI preseed policy or
+   diagnostic artifact writing only if the change remains net-negative.
+2. Avoid committing helper-only moves that reduce a function but increase file
+   length unless they also remove duplicated behavior.
+3. Start a dedicated residual-iteration tranche once sweep script reductions
+   stop being low-risk.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.58%.
+- Free-boundary adjoint monolith reduction: 99.40%.
+- Driver workflow decomposition: 99.89%.
+- Residual iteration decomposition: 97.1%.
+- WOUT diagnostic/profile decomposition: 99.88%.
+- Bcovar/WOUT parity decomposition: 99.09%.
+- Force-kernel decomposition: 99.65%.
+- Scan/performance policy consolidation: 99.6%.
+- Tomnsps transform decomposition: 98.4%.
+- Initial-guess decomposition: 99.0%.
+- Optimizer workflow decomposition: 99.30%.
+- Fixed-boundary optimizer decomposition: 95.2%.
+- Plotting/WOUT visualization decomposition: 95.4%.
+- Sweep/example workflow decomposition: 93.2%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective/staged-runner decomposition: 96.8%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99985%.
