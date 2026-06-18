@@ -129,18 +129,29 @@ def test_mirror_output_exports_npz_and_axisym_csv(tmp_path):
             "field_line_turns",
             "mean_bmag",
             "magnetic_well_proxy",
+            "boozer_like_surface_measure",
+            "boozer_like_bmag_average",
+            "boozer_like_surface_mirror_ratio",
+            "boozer_like_bmag_ripple_rms",
+            "boozer_like_contravariant_pitch_mean",
+            "boozer_like_contravariant_pitch_rms",
+            "boozer_like_covariant_pitch_ratio",
+            "boozer_like_magnetic_well_proxy",
             "fsq",
             "normalized_force",
         }
         assert data["bmag"].shape == output.field.bmag.shape
         assert data["field_line_turns"].shape == output.s.shape
         assert np.allclose(data["field_line_turns"], 0.0)
+        assert data["boozer_like_bmag_average"].shape == output.s.shape
+        assert np.all(data["boozer_like_surface_mirror_ratio"] >= 1.0)
         assert data["fsq"].shape == output.history.fsq.shape
     table = np.loadtxt(csv_path, delimiter=",", skiprows=1)
     assert table.shape[0] == output.ns * output.nxi
-    assert table.shape[1] == 12
+    assert table.shape[1] == 20
     assert np.all(table[:, 3] >= 0.0)
     assert np.allclose(table[:, 9], 0.0)
+    assert np.all(table[:, 14] >= 1.0)
 
 
 def test_mirror_output_detector_uses_schema_for_nonstandard_name(tmp_path):

@@ -46,7 +46,8 @@ vmec --plot results/mirror/two_coil_axisym/mout_two_coil_axisym.nc --outdir resu
 For mirror ``mout_*.nc`` files, ``vmec --plot`` writes nested ``r-z`` surfaces,
 cross sections, 3-D boundary ``|B|`` with field-line overlays, boundary field
 direction, ``|B|`` maps, Jacobian, pressure/beta, radial diagnostics, and
-residual/force history plots.
+mirror-Boozer-like surface-average/pitch diagnostics, and residual/force
+history plots.
 
 The root-level ``examples/mirror_two_coil_axisym.py`` script is the first
 analytic benchmark example: it builds a fixed boundary from the closed-form

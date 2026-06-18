@@ -5739,6 +5739,154 @@ Visual validation:
 No user input is needed.
 
 ---
+## 167. Mirror-Boozer-Like Surface Diagnostics in Standard Plot and Export Paths
+
+### Steps taken
+
+- Added `MirrorBoozerLikeDiagnosticsData` and
+  `mirror_boozer_like_diagnostics_data` in
+  `vmec_jax/mirror/plotting/diagnostics.py`.
+- The new helper computes mirror-native, Jacobian-weighted surface diagnostics:
+  - surface measure;
+  - flux-surface averaged, minimum, and maximum `|B|`;
+  - per-surface mirror ratio;
+  - normalized `|B|` ripple RMS;
+  - `I'/Psi'` twist proxy;
+  - cap-to-cap field-line turns;
+  - contravariant pitch mean and RMS;
+  - covariant pitch ratio;
+  - magnetic-well proxy from the Jacobian-weighted `|B|` average.
+- Added `write_mirror_boozer_like_diagnostics` and wired it into the standard
+  `plot_mirror_output` bundle under the key `boozer_like_diagnostics`.
+- Extended lightweight `.npz` and axisymmetric CSV exports with the
+  mirror-Boozer-like profile fields.
+- Exported the new plotting dataclass/helper/writer from
+  `vmec_jax/mirror/plotting/__init__.py`.
+- Updated `docs/mirror/overview.rst`, `docs/mirror/outputs.rst`, and
+  `examples/mirror/README.md` so the standard plot/export documentation names
+  the new diagnostics and explicitly states that these are not toroidal Boozer
+  coordinates.
+
+### Results obtained
+
+- `vmec --plot` and `plot_mirror_output` now produce a six-panel
+  `*_mirror_boozer_like_diagnostics.png` plot for mirror `mout_*.nc` files.
+- The plot shows:
+  - `|B|` surface average/min/max;
+  - mirror ratio and normalized ripple;
+  - open-field pitch from `I'/Psi'` and measured cap-to-cap turns;
+  - contravariant pitch mean/RMS;
+  - covariant pitch proxy;
+  - magnetic-well proxy.
+- Zero-current two-coil smoke shows zero pitch panels, as expected.
+- Finite-current smoke shows visible pitch:
+  - cap-to-cap turns from `0.5416456906746907` to `0.5464761155828083`;
+  - contravariant pitch mean from `1.7111044930933443` to
+    `1.7168053500772373`;
+  - maximum pitch RMS `0.14859708176458764`.
+- Visual plots inspected:
+  - `results/mirror/boozer_like_m167_smoke/figures/two_coil_axisym_mirror_boozer_like_diagnostics.png`;
+  - `results/mirror/boozer_like_m167_finite_current_smoke/figures/finite_current_pitch_mirror_boozer_like_diagnostics.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format vmec_jax/mirror/plotting/diagnostics.py \
+  vmec_jax/mirror/plotting/export.py \
+  vmec_jax/mirror/plotting/__init__.py \
+  tests/mirror/test_mirror_plotting.py \
+  tests/mirror/test_mirror_io.py
+python -m ruff check vmec_jax/mirror/plotting/diagnostics.py \
+  vmec_jax/mirror/plotting/export.py \
+  vmec_jax/mirror/plotting/__init__.py \
+  tests/mirror/test_mirror_plotting.py \
+  tests/mirror/test_mirror_io.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_plotting.py \
+  tests/mirror/test_mirror_io.py -q
+python -m sphinx -W -b html docs docs/_build/html
+JAX_ENABLE_X64=1 python examples/mirror_two_coil_axisym.py \
+  --outdir results/mirror/boozer_like_m167_smoke --ns 5 --nxi 9 --maxiter 2
+JAX_ENABLE_X64=1 python examples/mirror_finite_current_pitch.py \
+  --outdir results/mirror/boozer_like_m167_finite_current_smoke \
+  --ns 5 --nxi 9 --maxiter 2
+python - <<'PY'
+from pathlib import Path
+import numpy as np
+from vmec_jax.mirror.io.mout import load_mirror_output
+from vmec_jax.mirror.plotting.diagnostics import mirror_boozer_like_diagnostics_data
+output = load_mirror_output(Path(
+    "results/mirror/boozer_like_m167_finite_current_smoke/mout_finite_current_pitch.nc"
+))
+data = mirror_boozer_like_diagnostics_data(output)
+print(float(np.min(data.field_line_turns)), float(np.max(data.field_line_turns)))
+print(float(np.min(data.contravariant_pitch_mean)), float(np.max(data.contravariant_pitch_mean)))
+print(float(np.max(data.contravariant_pitch_rms)))
+PY
+git diff --check
+```
+
+Results:
+
+- Ruff format/check passed.
+- Focused plotting and I/O tests passed: `8 passed in 6.30s`.
+- Sphinx docs build passed with warnings treated as errors.
+- Two-coil plotted smoke completed and wrote the new Boozer-like plot.
+- Finite-current plotted smoke completed and wrote the new Boozer-like plot.
+- Direct helper readback from the finite-current MOUT confirmed nonzero pitch
+  profiles.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- Numerical profile construction stays in
+  `vmec_jax/mirror/plotting/diagnostics.py` beside the existing radial,
+  pressure, Jacobian, and residual-history diagnostics.
+- High-level plot/NPZ/CSV wiring stays in `vmec_jax/mirror/plotting/export.py`.
+- Public plotting imports stay centralized in
+  `vmec_jax/mirror/plotting/__init__.py`.
+- Tests are focused in the existing plotting and I/O test modules; no new test
+  file was needed.
+- Generated figures and MOUT files remain under ignored `results/` paths and
+  are not committed.
+- The docs avoid claiming real toroidal Boozer coordinates for open mirrors,
+  which keeps the terminology physically honest while still making the lane
+  useful for profile comparisons.
+
+### Best next steps
+
+1. Commit and push M167.
+2. Re-check PR checks once the queued docs commit has run long enough to expose
+   failures, but do not block on CI if it is still queued.
+3. Continue the Mirror-Boozer-like lane with a compact example/JSON summary
+   that records these profile extrema for two-coil and finite-current cases.
+4. Then move to final merge-readiness cleanup: plan audit, public API audit,
+   docs index audit, and a targeted all-mirror test pass.
+
+### Completion percentages after M167
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `84%`.
+- Plotting and `vmec --plot` mirror support: `96%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `94%`.
+- Mirror-Boozer-like diagnostics: `64%`.
+- Free-boundary mirror lane: `99%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
+
+---
 ## 166. Documented Free-Boundary Derivative-Backend Selection
 
 ### Steps taken

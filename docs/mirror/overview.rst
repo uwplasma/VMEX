@@ -33,8 +33,9 @@ without coupling it to toroidal VMEC assumptions:
   residual Newton;
 - mirror-native ``mout_*.nc`` read/write helpers, plot-data extraction, PNG
   writing, 3D boundary field-vector plots, cap-to-cap field-line overlays,
-  radial beta/open-field-pitch/well-proxy diagnostics, ``.npz``/CSV export
-  helpers, and ``vmec --plot mout_*.nc`` dispatch;
+  radial beta/open-field-pitch/well-proxy diagnostics, mirror-Boozer-like
+  Jacobian-weighted surface-average and pitch-proxy diagnostics, ``.npz``/CSV
+  export helpers, and ``vmec --plot mout_*.nc`` dispatch;
 - WHAM-inspired circular-loop fixture metadata, deterministic vacuum-field
   reference checks, optional ``magpylib`` comparison hooks, and low-resolution
   runnable axisymmetric/nonaxisymmetric examples;

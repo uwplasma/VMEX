@@ -60,6 +60,30 @@ class MirrorRadialDiagnosticsData:
 
 
 @dataclass(frozen=True)
+class MirrorBoozerLikeDiagnosticsData:
+    """Flux-surface averages and pitch proxies for open mirror fields.
+
+    These are not Boozer coordinates. They are mirror-native profile diagnostics
+    that use the same style of quantities, such as flux-surface averaged
+    ``|B|`` and field-line pitch, without assuming toroidal closure.
+    """
+
+    s: np.ndarray
+    surface_measure: np.ndarray
+    bmag_flux_surface_average: np.ndarray
+    bmag_min: np.ndarray
+    bmag_max: np.ndarray
+    surface_mirror_ratio: np.ndarray
+    normalized_bmag_ripple_rms: np.ndarray
+    iota_like_twist: np.ndarray
+    field_line_turns: np.ndarray
+    contravariant_pitch_mean: np.ndarray
+    contravariant_pitch_rms: np.ndarray
+    covariant_pitch_ratio: np.ndarray
+    magnetic_well_proxy: np.ndarray
+
+
+@dataclass(frozen=True)
 class MirrorFieldLinePitchProfileData:
     """Radial cap-to-cap field-line pitch profile."""
 
@@ -82,6 +106,29 @@ def _interp_periodic(theta_nodes, values, theta_value: float) -> float:
     extended_theta = np.concatenate([theta_nodes, theta_nodes[:1] + period])
     extended_values = np.concatenate([values, values[:1]])
     return float(np.interp(theta_wrapped, extended_theta, extended_values))
+
+
+def _radial_gradient(values: np.ndarray, s: np.ndarray) -> np.ndarray:
+    """Return a radial gradient, including the single-surface edge case."""
+    values = np.asarray(values, dtype=float)
+    s = np.asarray(s, dtype=float)
+    if values.size < 2:
+        return np.zeros_like(values)
+    return np.gradient(values, s, edge_order=1)
+
+
+def _surface_quadrature_weights(output: MirrorOutput) -> tuple[np.ndarray, np.ndarray]:
+    """Return normalized Jacobian-weighted surface weights and measures."""
+    theta_xi_weights = np.asarray(output.w_theta, dtype=float)[:, None] * np.asarray(output.w_xi, dtype=float)[None, :]
+    raw_weights = np.asarray(output.geometry.sqrtg, dtype=float) * theta_xi_weights[None, :, :]
+    surface_measure = np.sum(raw_weights, axis=(1, 2))
+    weights = np.divide(
+        raw_weights,
+        surface_measure[:, None, None],
+        out=np.zeros_like(raw_weights),
+        where=np.abs(surface_measure[:, None, None]) > np.finfo(float).tiny,
+    )
+    return weights, surface_measure
 
 
 def mirror_jacobian_data(output_or_path) -> MirrorJacobianData:
@@ -178,7 +225,7 @@ def mirror_radial_diagnostics_data(output_or_path) -> MirrorRadialDiagnosticsDat
             out=np.zeros_like(output.profiles.i_prime),
             where=np.abs(output.profiles.psi_prime) > 0.0,
         )
-    magnetic_well_proxy = -np.gradient(mean_bmag, output.s, edge_order=1)
+    magnetic_well_proxy = -_radial_gradient(mean_bmag, output.s)
     pitch = mirror_field_line_pitch_profile_data(output)
     return MirrorRadialDiagnosticsData(
         s=np.asarray(output.s),
@@ -188,6 +235,75 @@ def mirror_radial_diagnostics_data(output_or_path) -> MirrorRadialDiagnosticsDat
         field_line_turns=pitch.turns_mean,
         mean_bmag=mean_bmag,
         magnetic_well_proxy=magnetic_well_proxy,
+    )
+
+
+def mirror_boozer_like_diagnostics_data(output_or_path) -> MirrorBoozerLikeDiagnosticsData:
+    """Return mirror-native flux-surface diagnostics inspired by Boozer plots.
+
+    Open mirrors do not have toroidal Boozer coordinates or rotational
+    transform. This helper therefore reports Jacobian-weighted surface averages,
+    cap-to-cap field-line turns, and pitch-variation proxies that are useful for
+    comparing mirror equilibria without changing their geometry model.
+    """
+    output = _as_output(output_or_path)
+    weights, surface_measure = _surface_quadrature_weights(output)
+    bmag = np.asarray(output.field.bmag, dtype=float)
+    bmag_average = np.sum(weights * bmag, axis=(1, 2))
+    bmag_min = np.min(bmag, axis=(1, 2))
+    bmag_max = np.max(bmag, axis=(1, 2))
+    surface_mirror_ratio = np.divide(
+        bmag_max,
+        bmag_min,
+        out=np.full_like(bmag_max, np.inf),
+        where=np.abs(bmag_min) > np.finfo(float).tiny,
+    )
+    ripple = np.sqrt(np.sum(weights * (bmag - bmag_average[:, None, None]) ** 2, axis=(1, 2)))
+    normalized_ripple = np.divide(
+        ripple,
+        bmag_average,
+        out=np.zeros_like(ripple),
+        where=np.abs(bmag_average) > np.finfo(float).tiny,
+    )
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        iota_like_twist = np.divide(
+            output.profiles.i_prime,
+            output.profiles.psi_prime,
+            out=np.zeros_like(output.profiles.i_prime),
+            where=np.abs(output.profiles.psi_prime) > 0.0,
+        )
+        local_pitch = np.divide(
+            output.field.b_sup_theta,
+            output.field.b_sup_xi,
+            out=np.zeros_like(output.field.b_sup_theta),
+            where=np.abs(output.field.b_sup_xi) > np.finfo(float).tiny,
+        )
+    pitch_mean = np.sum(weights * local_pitch, axis=(1, 2))
+    pitch_rms = np.sqrt(np.sum(weights * (local_pitch - pitch_mean[:, None, None]) ** 2, axis=(1, 2)))
+    b_cov_theta_average = np.sum(weights * output.field.b_cov_theta, axis=(1, 2))
+    b_cov_xi_average = np.sum(weights * output.field.b_cov_xi, axis=(1, 2))
+    covariant_pitch_ratio = np.divide(
+        b_cov_theta_average,
+        b_cov_xi_average,
+        out=np.zeros_like(b_cov_theta_average),
+        where=np.abs(b_cov_xi_average) > np.finfo(float).tiny,
+    )
+    field_line_turns = mirror_field_line_pitch_profile_data(output).turns_mean
+    return MirrorBoozerLikeDiagnosticsData(
+        s=np.asarray(output.s),
+        surface_measure=surface_measure,
+        bmag_flux_surface_average=bmag_average,
+        bmag_min=bmag_min,
+        bmag_max=bmag_max,
+        surface_mirror_ratio=surface_mirror_ratio,
+        normalized_bmag_ripple_rms=normalized_ripple,
+        iota_like_twist=iota_like_twist,
+        field_line_turns=field_line_turns,
+        contravariant_pitch_mean=pitch_mean,
+        contravariant_pitch_rms=pitch_rms,
+        covariant_pitch_ratio=covariant_pitch_ratio,
+        magnetic_well_proxy=-_radial_gradient(bmag_average, output.s),
     )
 
 
@@ -289,6 +405,55 @@ def write_mirror_radial_diagnostics(output_or_path, *, outdir: str | Path, name:
         ax.set_xlabel("s")
     fig.tight_layout()
     path = outdir / f"{_plot_name(output, name)}_mirror_radial_diagnostics.png"
+    fig.savefig(path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
+def write_mirror_boozer_like_diagnostics(output_or_path, *, outdir: str | Path, name: str | None = None) -> Path:
+    """Write open-mirror flux-surface averages and pitch proxies."""
+    output = _as_output(output_or_path)
+    data = mirror_boozer_like_diagnostics_data(output)
+    plt = _import_matplotlib()
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    fig, axes = plt.subplots(2, 3, figsize=(9, 5.5), sharex=True)
+    axes[0, 0].plot(data.s, data.bmag_flux_surface_average, ".-", label="<|B|>")
+    axes[0, 0].plot(data.s, data.bmag_min, ".--", label="min |B|")
+    axes[0, 0].plot(data.s, data.bmag_max, ".--", label="max |B|")
+    axes[0, 0].set_ylabel("|B|")
+    axes[0, 0].legend(fontsize="x-small")
+
+    axes[0, 1].plot(data.s, data.surface_mirror_ratio, ".-", label="mirror ratio")
+    axes[0, 1].plot(data.s, data.normalized_bmag_ripple_rms, ".-", label="ripple RMS")
+    axes[0, 1].set_ylabel("B variation")
+    axes[0, 1].legend(fontsize="x-small")
+
+    axes[0, 2].plot(data.s, data.iota_like_twist, ".-", label="I'/Psi'")
+    axes[0, 2].plot(data.s, data.field_line_turns, ".-", label="cap turns")
+    axes[0, 2].set_ylabel("twist")
+    axes[0, 2].set_title("open-field pitch")
+    axes[0, 2].legend(fontsize="x-small")
+
+    axes[1, 0].plot(data.s, data.contravariant_pitch_mean, ".-", label="<B^theta/B^xi>")
+    axes[1, 0].plot(data.s, data.contravariant_pitch_rms, ".-", label="pitch RMS")
+    axes[1, 0].set_ylabel("contravariant pitch")
+    axes[1, 0].legend(fontsize="x-small")
+
+    axes[1, 1].plot(data.s, data.covariant_pitch_ratio, ".-")
+    axes[1, 1].set_ylabel("<B_theta>/<B_xi>")
+    axes[1, 1].set_title("covariant pitch proxy")
+
+    axes[1, 2].plot(data.s, data.magnetic_well_proxy, ".-")
+    axes[1, 2].set_ylabel("-d<|B|>/ds")
+    axes[1, 2].set_title("well proxy")
+
+    for ax in axes[-1, :]:
+        ax.set_xlabel("s")
+    fig.suptitle("mirror Boozer-like diagnostics")
+    fig.tight_layout()
+    path = outdir / f"{_plot_name(output, name)}_mirror_boozer_like_diagnostics.png"
     fig.savefig(path, dpi=180, bbox_inches="tight")
     plt.close(fig)
     return path

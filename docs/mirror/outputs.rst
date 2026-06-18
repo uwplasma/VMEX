@@ -37,16 +37,23 @@ Use ``vmec_jax.mirror.write_mirror_output`` and
 The standard plot bundle contains horizontal ``z``-axis geometry, ``r-z`` cross
 sections, boundary ``|B|`` and magnetic-field direction views, cap-to-cap
 field-line overlays, ``|B|`` maps, Jacobian maps, pressure/beta profiles,
-residual/force history, and radial diagnostics.  The radial diagnostics show
-both the profile ratio ``I'/Psi'`` and the measured cap-to-cap field-line turns
-as open-field pitch indicators.
+residual/force history, radial diagnostics, and mirror-Boozer-like profile
+diagnostics.  The radial diagnostics show both the profile ratio ``I'/Psi'``
+and the measured cap-to-cap field-line turns as open-field pitch indicators.
+The mirror-Boozer-like diagnostics use Jacobian-weighted surface averages of
+``|B|``, surface mirror ratio, normalized ``|B|`` ripple, cap-to-cap turns, and
+contravariant/covariant pitch proxies without claiming toroidal Boozer
+coordinates.
 
 The lightweight ``.npz`` and axisymmetric CSV exports include the same radial
 diagnostic profiles: beta, ``I'/Psi'``, cap-to-cap theta advance, cap-to-cap
-turns, mean ``|B|``, and the magnetic-well proxy.  CSV rows repeat those
-surface quantities across each axial point so simple plotting tools can join
-them with ``s,xi,z,r,Bmag,sqrtg`` columns without a separate metadata file.
+turns, mean ``|B|``, the magnetic-well proxy, and the mirror-Boozer-like
+surface-average, ripple, mirror-ratio, pitch, and well-proxy fields.  CSV rows
+repeat those surface quantities across each axial point so simple plotting
+tools can join them with ``s,xi,z,r,Bmag,sqrtg`` columns without a separate
+metadata file.
 
 Mirror ``mout`` files do not currently store toroidal Boozer coordinates or
-toroidal rotational transform.  The open-field pitch diagnostics are defined
-only for the nonperiodic mirror axis between the two caps.
+toroidal rotational transform.  The open-field pitch and mirror-Boozer-like
+diagnostics are defined only for the nonperiodic mirror axis between the two
+caps.

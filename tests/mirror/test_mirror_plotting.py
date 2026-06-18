@@ -22,6 +22,7 @@ from vmec_jax.mirror.io.mout import load_mirror_output
 from vmec_jax.mirror.plotting.bfield import mirror_bfield_boundary_data, mirror_bmag_boundary_data, mirror_bmag_sxi_data
 from vmec_jax.mirror.plotting.bfield import mirror_boundary_field_line_data
 from vmec_jax.mirror.plotting.diagnostics import (
+    mirror_boozer_like_diagnostics_data,
     mirror_field_line_pitch_profile_data,
     mirror_jacobian_data,
     mirror_pressure_profile_data,
@@ -65,6 +66,7 @@ def test_mirror_plot_data_helpers_expose_numerical_content(tmp_path):
     pressure = mirror_pressure_profile_data(output)
     pitch = mirror_field_line_pitch_profile_data(output)
     radial = mirror_radial_diagnostics_data(output)
+    boozer_like = mirror_boozer_like_diagnostics_data(output)
     history = mirror_residual_history_data(output)
 
     assert surfaces.radii.shape == (4, output.nxi)
@@ -85,6 +87,14 @@ def test_mirror_plot_data_helpers_expose_numerical_content(tmp_path):
     assert radial.iota_like_twist.shape == output.s.shape
     assert radial.field_line_turns.shape == output.s.shape
     assert np.allclose(radial.field_line_turns, pitch.turns_mean)
+    assert boozer_like.bmag_flux_surface_average.shape == output.s.shape
+    assert np.all(boozer_like.bmag_min <= boozer_like.bmag_flux_surface_average)
+    assert np.all(boozer_like.bmag_flux_surface_average <= boozer_like.bmag_max)
+    assert np.all(boozer_like.surface_mirror_ratio >= 1.0)
+    assert np.all(boozer_like.normalized_bmag_ripple_rms >= 0.0)
+    assert np.allclose(boozer_like.field_line_turns, pitch.turns_mean)
+    assert np.allclose(boozer_like.contravariant_pitch_mean, 0.0)
+    assert np.allclose(boozer_like.contravariant_pitch_rms, 0.0)
     assert np.allclose(history.residual_norm, output.history.residual_norm)
     assert np.allclose(history.fsq, output.history.fsq)
     assert np.allclose(history.normalized_force, output.history.normalized_force)
@@ -107,6 +117,7 @@ def test_plot_mirror_output_writes_expected_pngs(tmp_path):
         "jacobian",
         "pressure_profile",
         "radial_diagnostics",
+        "boozer_like_diagnostics",
         "residual_history",
     }
     for path in paths.values():
