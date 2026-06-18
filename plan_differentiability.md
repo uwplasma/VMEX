@@ -13367,6 +13367,72 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99965%.
 
+## 2026-06-18 Force Free-Boundary Edge Forcing Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted `_apply_freeb_edge_forcing` from
+   `vmec_forces_rz_from_wout`.
+2. Moved free-boundary `bsqvac` shape validation, VMEC edge-pressure scaling,
+   optional debug dump, and edge-row A-kernel updates into that helper.
+3. Kept the helper private to the force module and left Bcovar, constraint, and
+   R/Z residual algebra unchanged.
+
+Results obtained:
+
+- `vmec_jax/vmec_forces.py` is net negative: 91 insertions, 95 deletions.
+- `vmec_forces_rz_from_wout` dropped from 402 to 308 lines in this tranche.
+- The free-boundary forcing path now has a named seam for future VMEC2000
+  edge-coupling parity tests and finite-beta free-boundary diagnostics.
+- No generated artifacts or large files were added.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/vmec_forces.py`
+- `python -m compileall -q vmec_jax/vmec_forces.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_vmec_forces_synthetic_helpers.py::test_freeb_edge_coupling_synthetic_pressure_scale_and_dump tests/test_vmec_forces_freeb_edge.py -q`
+  - Result: one pass, one expected local skip.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_bcovar_forces_extra_coverage.py::test_forces_indata_profile_fill_passes_flux_and_pressure_coefficients tests/test_vmec_forces_fast_helpers.py -q`
+  - Result: passed.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 40`
+
+Best next steps:
+
+1. Avoid more force extraction until a clearer explicit interface is available
+   for the remaining R/Z kernel assembly block; the current large function is
+   now below several other hotspots.
+2. Move next to `tomnsps_rzl`, `initial_guess_from_boundary`, or
+   `run_fixed_boundary` for a cleaner line-negative tranche.
+3. Keep algorithmic differentiability changes separate from these
+   behavior-preserving source-health commits.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.57%.
+- Free-boundary adjoint monolith reduction: 99.40%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.9%.
+- WOUT diagnostic/profile decomposition: 99.86%.
+- Bcovar/WOUT parity decomposition: 99.08%.
+- Force-kernel decomposition: 99.25%.
+- Optimizer workflow decomposition: 99.19%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 96.2%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9997%.
+
 ## 2026-06-18 Residual Iteration Mode-Alias Cleanup
 
 Branch: `codex/differentiability-refactor-plan`.

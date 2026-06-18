@@ -284,6 +284,96 @@ def _resolve_force_wout_and_pressure(*, wout: Any, indata: Any | None, s: Any):
     )
 
 
+def _apply_freeb_edge_forcing(ctx):
+    """Apply VMEC free-boundary edge pressure/vacuum forcing to A-kernels."""
+
+    ctx = SimpleNamespace(**ctx)
+    armn_e, armn_o, azmn_e, azmn_o = ctx.armn_e, ctx.armn_o, ctx.azmn_e, ctx.azmn_o
+    pr1_0, pr1_1 = ctx.pr1_0, ctx.pr1_1
+    pru_0, pru_1, pzu_0, pzu_1 = ctx.pru_0, ctx.pru_1, ctx.pzu_0, ctx.pzu_1
+    freeb_bsqvac_half = ctx.freeb_bsqvac_half
+    if freeb_bsqvac_half is None:
+        return armn_e, armn_o, azmn_e, azmn_o
+    vac_full = jnp.asarray(freeb_bsqvac_half)
+    if vac_full.shape == pr1_0[-1].shape:
+        vac_edge = vac_full
+    elif vac_full.shape == pr1_0.shape:
+        vac_edge = vac_full[-1]
+    else:
+        raise ValueError(
+            "freeb_bsqvac_half shape mismatch: "
+            f"expected edge {pr1_0[-1].shape} or full {pr1_0.shape}, got {vac_full.shape}"
+        )
+    if vac_edge.shape != pr1_0[-1].shape:
+        raise ValueError(f"freeb_bsqvac_half edge shape mismatch: expected {pr1_0[-1].shape}, got {vac_edge.shape}")
+    pres = jnp.asarray(getattr(ctx.wout, "pres", jnp.zeros((int(ctx.s.shape[0]),), dtype=vac_edge.dtype)))
+    pres_edge = jnp.asarray(pres[-1], dtype=vac_edge.dtype) if pres.ndim > 0 else jnp.asarray(pres, dtype=vac_edge.dtype)
+    if ctx.freeb_pres_scale is not None:
+        pres_edge = jnp.asarray(pres_edge) * jnp.asarray(ctx.freeb_pres_scale, dtype=vac_edge.dtype)
+    elif (ctx.indata is not None) and int(ctx.s.shape[0]) >= 2:
+        try:
+            from .profiles import eval_profiles
+
+            hs_f = float(np.asarray(ctx.s[1] - ctx.s[0], dtype=float))
+            sedge = hs_f * (float(int(ctx.s.shape[0])) - 1.5)
+            p_edge_prof = eval_profiles(ctx.indata, jnp.asarray([sedge], dtype=jnp.asarray(ctx.s).dtype)).get("pressure", None)
+            p_one_prof = eval_profiles(ctx.indata, jnp.asarray([1.0], dtype=jnp.asarray(ctx.s).dtype)).get("pressure", None)
+            if p_edge_prof is not None and p_one_prof is not None:
+                p_edge_val = float(np.asarray(p_edge_prof, dtype=float).reshape(-1)[0])
+                p_one_val = float(np.asarray(p_one_prof, dtype=float).reshape(-1)[0])
+                pres_edge = (
+                    jnp.asarray((p_one_val / p_edge_val) * float(np.asarray(pres_edge, dtype=float)), dtype=vac_edge.dtype)
+                    if p_edge_val != 0.0
+                    else jnp.asarray(p_edge_val, dtype=vac_edge.dtype)
+                )
+        except Exception:
+            pass
+    gcon_edge = vac_edge + pres_edge
+    rbsq_edge = (
+        gcon_edge
+        * (pr1_0[-1] + pr1_1[-1])
+        * jnp.asarray(ctx.ohs, dtype=vac_edge.dtype)
+        * jnp.asarray(float(os.getenv("VMEC_JAX_FREEB_RBSQ_SCALE", "1.0") or 1.0), dtype=vac_edge.dtype)
+    )
+    ru0_edge = jnp.asarray(pru_0[-1]) + jnp.asarray(pru_1[-1])
+    zu0_edge = jnp.asarray(pzu_0[-1]) + jnp.asarray(pzu_1[-1])
+    if ctx.iter_idx is not None:
+        env = os.getenv("VMEC_JAX_DUMP_FREEB_COUPLING", "").strip().lower()
+        if env not in ("", "0", "false", "no"):
+            outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
+            outdir.mkdir(parents=True, exist_ok=True)
+            plasma_bsq_edge = jnp.asarray(ctx.bc.bsq[-1], dtype=vac_edge.dtype)
+            plasma_bsq_edge_extrap = (
+                1.5 * jnp.asarray(ctx.bc.bsq[-1], dtype=vac_edge.dtype) - 0.5 * jnp.asarray(ctx.bc.bsq[-2], dtype=vac_edge.dtype)
+                if int(ctx.bc.bsq.shape[0]) >= 2
+                else plasma_bsq_edge
+            )
+            np.savez(
+                outdir / f"freeb_coupling_iter{int(ctx.iter_idx)}.npz",
+                gcon_edge=np.asarray(gcon_edge),
+                rbsq_edge=np.asarray(rbsq_edge),
+                bsqvac_edge=np.asarray(vac_edge),
+                pres_edge=np.asarray(pres_edge),
+                plasma_bsq_edge=np.asarray(plasma_bsq_edge),
+                plasma_bsq_edge_extrap=np.asarray(plasma_bsq_edge_extrap),
+                dbsq_edge_proxy=np.asarray(jnp.abs(gcon_edge - plasma_bsq_edge_extrap)),
+                pr1_even_edge=np.asarray(pr1_0[-1]),
+                pr1_odd_edge=np.asarray(pr1_1[-1]),
+                pzu0_edge=np.asarray(zu0_edge),
+                pru0_edge=np.asarray(ru0_edge),
+                pzu0_even_edge=np.asarray(pzu_0[-1]),
+                pru0_even_edge=np.asarray(pru_0[-1]),
+                zu0_phys_edge=np.asarray(zu0_edge),
+                ru0_phys_edge=np.asarray(ru0_edge),
+            )
+    return (
+        _add_edge_row(armn_e, zu0_edge * rbsq_edge),
+        _add_edge_row(armn_o, zu0_edge * rbsq_edge),
+        _add_edge_row(azmn_e, -ru0_edge * rbsq_edge),
+        _add_edge_row(azmn_o, -ru0_edge * rbsq_edge),
+    )
+
+
 @tree_util.register_pytree_node_class
 @dataclass(frozen=True)
 class VmecRZForceKernels:
@@ -1177,101 +1267,7 @@ def vmec_forces_rz_from_wout(
 
     _vmec_force_profile_log("assembly_done", assembly_start)
 
-    # Free-boundary edge forcing (VMEC forces.f): add rbsq terms to A-kernels.
-    if freeb_bsqvac_half is not None:
-        vac_full = jnp.asarray(freeb_bsqvac_half)
-        if vac_full.shape == pr1_0[-1].shape:
-            vac_edge = vac_full
-        elif vac_full.shape == pr1_0.shape:
-            vac_edge = vac_full[-1]
-        else:
-            raise ValueError(
-                "freeb_bsqvac_half shape mismatch: "
-                f"expected edge {pr1_0[-1].shape} or full {pr1_0.shape}, got {vac_full.shape}"
-            )
-        if vac_edge.shape != pr1_0[-1].shape:
-            raise ValueError(
-                f"freeb_bsqvac_half edge shape mismatch: expected {pr1_0[-1].shape}, got {vac_edge.shape}"
-            )
-        pres = jnp.asarray(getattr(wout, "pres", jnp.zeros((int(s.shape[0]),), dtype=vac_edge.dtype)))
-        pres_edge = jnp.asarray(pres[-1], dtype=vac_edge.dtype) if pres.ndim > 0 else jnp.asarray(pres, dtype=vac_edge.dtype)
-        if freeb_pres_scale is not None:
-            pres_edge = jnp.asarray(pres_edge) * jnp.asarray(freeb_pres_scale, dtype=vac_edge.dtype)
-        # VMEC funct3d free-boundary pressure coupling uses:
-        #   presf_ns = pmass(hs*(ns-1.5))
-        #   if presf_ns != 0: presf_ns = (pmass(1)/presf_ns) * pres(ns)
-        # This differs from simply taking `pres(ns)` at the edge.
-        elif (indata is not None) and int(s.shape[0]) >= 2:
-            try:
-                from .profiles import eval_profiles
-
-                hs_f = float(np.asarray(s[1] - s[0], dtype=float))
-                sedge = hs_f * (float(int(s.shape[0])) - 1.5)
-                p_edge_prof = eval_profiles(indata, jnp.asarray([sedge], dtype=jnp.asarray(s).dtype)).get("pressure", None)
-                p_one_prof = eval_profiles(indata, jnp.asarray([1.0], dtype=jnp.asarray(s).dtype)).get("pressure", None)
-                if p_edge_prof is not None and p_one_prof is not None:
-                    p_edge_val = float(np.asarray(p_edge_prof, dtype=float).reshape(-1)[0])
-                    p_one_val = float(np.asarray(p_one_prof, dtype=float).reshape(-1)[0])
-                    if p_edge_val != 0.0:
-                        pres_ns_val = float(np.asarray(pres_edge, dtype=float))
-                        pres_edge = jnp.asarray((p_one_val / p_edge_val) * pres_ns_val, dtype=vac_edge.dtype)
-                    else:
-                        pres_edge = jnp.asarray(p_edge_val, dtype=vac_edge.dtype)
-            except Exception:
-                pass
-        gcon_edge = vac_edge + pres_edge
-        rbsq_scale = float(os.getenv("VMEC_JAX_FREEB_RBSQ_SCALE", "1.0") or 1.0)
-        rbsq_edge = (
-            gcon_edge
-            * (pr1_0[-1] + pr1_1[-1])
-            * jnp.asarray(ohs, dtype=vac_edge.dtype)
-            * jnp.asarray(rbsq_scale, dtype=vac_edge.dtype)
-        )
-        # VMEC free-boundary edge terms use physical pzu0/pru0 at js=ns.
-        # In our parity split:
-        #   pru0_phys = pru_even + sqrt(s)*pru_odd_internal
-        #   pzu0_phys = pzu_even + sqrt(s)*pzu_odd_internal
-        # and sqrt(s_edge)=1 on the full-mesh edge.
-        ru0_edge = jnp.asarray(pru_0[-1]) + jnp.asarray(pru_1[-1])
-        zu0_edge = jnp.asarray(pzu_0[-1]) + jnp.asarray(pzu_1[-1])
-        if iter_idx is not None:
-            env = os.getenv("VMEC_JAX_DUMP_FREEB_COUPLING", "").strip().lower()
-            if env not in ("", "0", "false", "no"):
-                outdir = Path(os.getenv("VMEC_JAX_DUMP_DIR", ".")).expanduser().resolve()
-                outdir.mkdir(parents=True, exist_ok=True)
-                plasma_bsq_edge = jnp.asarray(bc.bsq[-1], dtype=vac_edge.dtype)
-                if int(bc.bsq.shape[0]) >= 2:
-                    plasma_bsq_edge_extrap = (
-                        1.5 * jnp.asarray(bc.bsq[-1], dtype=vac_edge.dtype)
-                        - 0.5 * jnp.asarray(bc.bsq[-2], dtype=vac_edge.dtype)
-                    )
-                else:
-                    plasma_bsq_edge_extrap = plasma_bsq_edge
-                dbsq_edge_proxy = jnp.abs(gcon_edge - plasma_bsq_edge_extrap)
-                np.savez(
-                    outdir / f"freeb_coupling_iter{int(iter_idx)}.npz",
-                    gcon_edge=np.asarray(gcon_edge),
-                    rbsq_edge=np.asarray(rbsq_edge),
-                    bsqvac_edge=np.asarray(vac_edge),
-                    pres_edge=np.asarray(pres_edge),
-                    plasma_bsq_edge=np.asarray(plasma_bsq_edge),
-                    plasma_bsq_edge_extrap=np.asarray(plasma_bsq_edge_extrap),
-                    dbsq_edge_proxy=np.asarray(dbsq_edge_proxy),
-                    pr1_even_edge=np.asarray(pr1_0[-1]),
-                    pr1_odd_edge=np.asarray(pr1_1[-1]),
-                    # VMEC funct3d/forces uses physical pzu0/pru0:
-                    # p?u0 = p?u(:,0) + p?u(:,1)*sqrt(s), with sqrt(s_edge)=1.
-                    pzu0_edge=np.asarray(zu0_edge),
-                    pru0_edge=np.asarray(ru0_edge),
-                    pzu0_even_edge=np.asarray(pzu_0[-1]),
-                    pru0_even_edge=np.asarray(pru_0[-1]),
-                    zu0_phys_edge=np.asarray(zu0_edge),
-                    ru0_phys_edge=np.asarray(ru0_edge),
-                )
-        armn_e = _add_edge_row(armn_e, zu0_edge * rbsq_edge)
-        armn_o = _add_edge_row(armn_o, zu0_edge * rbsq_edge)
-        azmn_e = _add_edge_row(azmn_e, -ru0_edge * rbsq_edge)
-        azmn_o = _add_edge_row(azmn_o, -ru0_edge * rbsq_edge)
+    armn_e, armn_o, azmn_e, azmn_o = _apply_freeb_edge_forcing(locals())
 
     # ---------------------------------------------------------------------
     # Constraint force pipeline: compute gcon from ztemp via alias and apply
