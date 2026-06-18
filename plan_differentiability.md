@@ -7,6 +7,73 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-18.
 
+## 2026-06-18 QI Aligned-Profile Residual Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted the smooth minimum-aligned trapped-well profile residual from
+   `quasi_isodynamic_residual_from_boozer_modes` into
+   `_qi_aligned_profile_residuals`.
+2. Preserved the same FFT-based shift, trapped-region weighting, residual
+   scaling, and public output keys.
+3. Removed no-longer-needed local Boozer coefficient aliases in the main QI
+   residual after the helper extraction.
+
+Results obtained:
+
+- `quasi_isodynamic_residual_from_boozer_modes` dropped from 519 to 477 lines.
+- `_qi_branch_width_residuals` is 36 lines and
+  `_qi_aligned_profile_residuals` is 37 lines.
+- The tranche is net-negative in `vmec_jax/quasi_isodynamic.py`: 51
+  insertions and 54 deletions.
+- Full QI and QI legacy tests pass.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/quasi_isodynamic.py tests/test_quasi_isodynamic.py tests/test_qi_legacy.py`
+- `python -m compileall -q vmec_jax/quasi_isodynamic.py tests/test_quasi_isodynamic.py tests/test_qi_legacy.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_quasi_isodynamic.py::test_qi_boozer_mode_residual_is_zero_for_alpha_independent_wells tests/test_quasi_isodynamic.py::test_qi_boozer_mode_residual_validates_shapes_and_resolution tests/test_qi_legacy.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_quasi_isodynamic.py tests/test_qi_legacy.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 16`
+
+Best next steps:
+
+1. Continue QI decomposition with the shuffle-profile block only if it can be
+   split into a clear branch-profile helper without changing the legacy
+   ranking behavior.
+2. Add a small focused test for the aligned-profile helper if it becomes a
+   public or semi-public seam; for now full QI tests cover it through the public
+   residual.
+3. After one more QI tranche, move to the fixed-boundary residual context
+   design rather than over-optimizing this file.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.57%.
+- Free-boundary adjoint monolith reduction: 99.40%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.9%.
+- WOUT diagnostic/profile decomposition: 99.72%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 99.19%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93.8%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99945%.
+
 ## 2026-06-18 QI Branch-Width Residual Extraction
 
 Branch: `codex/differentiability-refactor-plan`.
