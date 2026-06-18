@@ -180,8 +180,19 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
 
     path = Path(completed.stdout.strip())
     metrics = json.loads(path.read_text())
+    assert metrics["workflow_status"] == "lcfs_pilot"
+    assert metrics["free_boundary_solve_status"] == "lcfs_pilot_not_converged_free_boundary"
+    assert metrics["external_field_provider_kind"] == "direct_coils"
+    assert metrics["coil_format"] == "essos_compatible_circular_fourier"
+    assert metrics["fixed_boundary_baseline_count"] == 3
+    assert metrics["lcfs_pilot_requested"] is True
+    assert metrics["lcfs_pilot_steps_requested"] == 1
+    assert metrics["lcfs_pilot_rows_total"] == 3
+    assert metrics["lcfs_pilot_accepted_rows_total"] == 3
+    assert metrics["lcfs_pilot_skipped_rows_total"] == 0
     assert metrics["axis_bz_relative_linf"] < 1.0e-12
     assert metrics["boundary_bmag_min"] > 0.0
+    assert metrics["beta_scan_requested_percent"] == [1.0, 3.0, 10.0]
     assert [case["beta_percent"] for case in metrics["beta_cases"]] == [1.0, 3.0, 10.0]
     setup = load_mirror_free_boundary_circular_coil_scan(metrics["setup_json"])
     assert [case.beta_fraction for case in setup.beta_cases] == [0.01, 0.03, 0.10]
@@ -224,6 +235,15 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
         for row in metrics["fixed_boundary_baseline_rows"]
     )
     assert all(len(row["lcfs_pilot_rows"]) == 1 for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(row["lcfs_pilot_status"] == "accepted" for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(row["lcfs_pilot_rows_count"] == 1 for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(row["lcfs_pilot_accepted_rows"] == 1 for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(row["lcfs_pilot_skipped_rows"] == 0 for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(row["lcfs_pilot_final_merit"] is not None for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(row["lcfs_pilot_best_merit"] is not None for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(
+        row["lcfs_pilot_final_pressure_balance_rms"] is not None for row in metrics["fixed_boundary_baseline_rows"]
+    )
     assert all(Path(row["lcfs_pilot_rows"][0]["mout"]).exists() for row in metrics["fixed_boundary_baseline_rows"])
     assert all(
         row["lcfs_pilot_rows"][0]["lcfs_pressure_balance_rms"] >= 0.0 for row in metrics["fixed_boundary_baseline_rows"]
@@ -272,9 +292,17 @@ def test_root_free_boundary_circular_coils_strict_bnormal_guard_can_skip_pilot(t
     )
 
     metrics = json.loads(Path(completed.stdout.strip()).read_text())
+    assert metrics["workflow_status"] == "lcfs_pilot"
+    assert metrics["lcfs_pilot_rows_total"] == 1
+    assert metrics["lcfs_pilot_accepted_rows_total"] == 0
+    assert metrics["lcfs_pilot_skipped_rows_total"] == 1
     row = metrics["fixed_boundary_baseline_rows"][0]
     pilot = row["lcfs_pilot_rows"][0]
     assert row["lcfs_update_strategy"] == "noop"
+    assert row["lcfs_pilot_status"] == "skipped"
+    assert row["lcfs_pilot_rows_count"] == 1
+    assert row["lcfs_pilot_accepted_rows"] == 0
+    assert row["lcfs_pilot_skipped_rows"] == 1
     assert row["lcfs_update_normal_field_guard"] is True
     assert row["lcfs_update_allowed_strategies"] == ["noop"]
     assert row["lcfs_update_rejection_reason"] == "normal_field_guard_no_candidate"

@@ -214,6 +214,72 @@ def _beta_label(beta_percent: float) -> str:
     return f"{float(beta_percent):g}".replace(".", "p")
 
 
+def _lcfs_pilot_summary(pilot_rows: list[dict[str, object]]) -> dict[str, object]:
+    """Return scalar status fields for a beta-case LCFS pilot sequence."""
+    if not pilot_rows:
+        return {
+            "lcfs_pilot_status": "not_requested",
+            "lcfs_pilot_rows_count": 0,
+            "lcfs_pilot_accepted_rows": 0,
+            "lcfs_pilot_skipped_rows": 0,
+            "lcfs_pilot_final_merit": None,
+            "lcfs_pilot_best_merit": None,
+            "lcfs_pilot_final_pressure_balance_rms": None,
+        }
+    accepted = sum(bool(row.get("accepted", False)) and not bool(row.get("skipped", False)) for row in pilot_rows)
+    skipped = sum(bool(row.get("skipped", False)) for row in pilot_rows)
+    merit_values = [float(row["lcfs_merit"]) for row in pilot_rows if row.get("lcfs_merit") is not None]
+    final = pilot_rows[-1]
+    if bool(final.get("skipped", False)):
+        status = "skipped"
+    elif bool(final.get("accepted", False)):
+        status = "accepted"
+    else:
+        status = "rejected"
+    return {
+        "lcfs_pilot_status": status,
+        "lcfs_pilot_rows_count": len(pilot_rows),
+        "lcfs_pilot_accepted_rows": int(accepted),
+        "lcfs_pilot_skipped_rows": int(skipped),
+        "lcfs_pilot_final_merit": None if final.get("lcfs_merit") is None else float(final["lcfs_merit"]),
+        "lcfs_pilot_best_merit": None if not merit_values else float(min(merit_values)),
+        "lcfs_pilot_final_pressure_balance_rms": None
+        if final.get("lcfs_pressure_balance_rms") is None
+        else float(final["lcfs_pressure_balance_rms"]),
+    }
+
+
+def _beta_scan_summary(
+    baseline_rows: list[dict[str, object]],
+    *,
+    run_fixed_boundary_baseline: bool,
+    run_lcfs_pilot: bool,
+    lcfs_pilot_steps: int,
+) -> dict[str, object]:
+    """Return top-level status fields for the circular-coil beta scan."""
+    pilot_rows = [pilot for row in baseline_rows for pilot in row.get("lcfs_pilot_rows", [])]
+    if run_lcfs_pilot:
+        workflow_status = "lcfs_pilot"
+    elif run_fixed_boundary_baseline:
+        workflow_status = "fixed_boundary_baseline"
+    else:
+        workflow_status = "setup_only"
+    return {
+        "workflow_status": workflow_status,
+        "free_boundary_solve_status": "lcfs_pilot_not_converged_free_boundary" if run_lcfs_pilot else "not_run",
+        "external_field_provider_kind": "direct_coils",
+        "coil_format": "essos_compatible_circular_fourier",
+        "fixed_boundary_baseline_count": len(baseline_rows),
+        "lcfs_pilot_requested": bool(run_lcfs_pilot),
+        "lcfs_pilot_steps_requested": int(lcfs_pilot_steps) if run_lcfs_pilot else 0,
+        "lcfs_pilot_rows_total": len(pilot_rows),
+        "lcfs_pilot_accepted_rows_total": sum(
+            bool(row.get("accepted", False)) and not bool(row.get("skipped", False)) for row in pilot_rows
+        ),
+        "lcfs_pilot_skipped_rows_total": sum(bool(row.get("skipped", False)) for row in pilot_rows),
+    }
+
+
 def _proposal_predicted_metrics(proposal, *, grid, coils, baseline_merit) -> dict[str, object]:
     sample = sample_mirror_boundary_external_field(grid, proposal.boundary, coils)
     boundary_r = proposal.boundary.radius_on_grid_3d(grid)
@@ -627,50 +693,50 @@ def _run_fixed_boundary_baseline_cases(
             )
         summary = result.optimizer_summaries[-1] if result.optimizer_summaries else None
         final = result.final_trace
-        rows.append(
-            {
-                "beta_percent": float(case.beta_percent),
-                "beta_fraction": float(case.beta_fraction),
-                "pressure_scale": float(case.pressure_scale),
-                "mout": str(mout),
-                "optimizer": str(summary.optimizer if summary is not None else "lbfgs"),
-                "optimizer_success": bool(summary.success) if summary is not None else False,
-                "optimizer_nit": int(summary.nit) if summary is not None else 0,
-                "final_residual_norm": float(final.residual_norm),
-                "final_fsq": float(final.fsq),
-                "final_normalized_force": float(final.normalized_force),
-                "min_sqrtg": float(final.min_sqrtg),
-                "mirror_ratio": float(final.mirror_ratio),
-                "lcfs_external_bnormal_rms": float(lcfs.external_bnormal_rms),
-                "lcfs_external_bnormal_max": float(lcfs.external_bnormal_max),
-                "lcfs_pressure_balance_rms": float(lcfs.pressure_balance_rms),
-                "lcfs_pressure_balance_max": float(lcfs.pressure_balance_max),
-                "lcfs_edge_pressure": float(lcfs.edge_pressure),
-                "lcfs_merit": float(lcfs_merit.value),
-                "lcfs_merit_pressure_scale": float(lcfs_merit.pressure_scale),
-                "lcfs_merit_bnormal_scale": float(lcfs_merit.bnormal_scale),
-                "lcfs_merit_bnormal_weight": float(lcfs_merit.bnormal_weight),
-                "lcfs_pressure_response_min": float(np.min(proposal.pressure_response)),
-                "lcfs_pressure_response_max": float(np.max(proposal.pressure_response)),
-                "lcfs_update_pressure_balance_rms_predicted": float(proposal.pressure_balance_rms_predicted),
-                "lcfs_update_strategy": str(proposal.strategy),
-                "lcfs_update_candidate_summaries": proposal_selection.candidate_summaries,
-                "lcfs_update_allowed_strategies": list(proposal_selection.allowed_strategies),
-                "lcfs_update_rejection_reason": proposal_selection.rejection_reason,
-                "lcfs_update_normal_field_guard": bool(lcfs_require_bnormal_nonincrease),
-                "lcfs_update_pressure_balance_rms_reduction_fraction": float(
-                    1.0 - proposal.pressure_balance_rms_predicted / max(proposal.pressure_balance_rms_before, 1.0e-300)
-                ),
-                "lcfs_update_cap_taper_power": float(proposal.cap_taper_power),
-                "lcfs_update_smoothing_passes": int(proposal.smoothing_passes),
-                "lcfs_update_max_abs_delta_radius": float(np.max(np.abs(proposal.delta_radius))),
-                "lcfs_update_max_relative_delta_radius": float(
-                    np.max(np.abs(proposal.delta_radius) / np.maximum(proposal.old_radius, 1.0e-300))
-                ),
-                "lcfs_pilot_rows": pilot_rows,
-                "figures": plot_paths,
-            }
-        )
+        row = {
+            "beta_percent": float(case.beta_percent),
+            "beta_fraction": float(case.beta_fraction),
+            "pressure_scale": float(case.pressure_scale),
+            "mout": str(mout),
+            "optimizer": str(summary.optimizer if summary is not None else "lbfgs"),
+            "optimizer_success": bool(summary.success) if summary is not None else False,
+            "optimizer_nit": int(summary.nit) if summary is not None else 0,
+            "final_residual_norm": float(final.residual_norm),
+            "final_fsq": float(final.fsq),
+            "final_normalized_force": float(final.normalized_force),
+            "min_sqrtg": float(final.min_sqrtg),
+            "mirror_ratio": float(final.mirror_ratio),
+            "lcfs_external_bnormal_rms": float(lcfs.external_bnormal_rms),
+            "lcfs_external_bnormal_max": float(lcfs.external_bnormal_max),
+            "lcfs_pressure_balance_rms": float(lcfs.pressure_balance_rms),
+            "lcfs_pressure_balance_max": float(lcfs.pressure_balance_max),
+            "lcfs_edge_pressure": float(lcfs.edge_pressure),
+            "lcfs_merit": float(lcfs_merit.value),
+            "lcfs_merit_pressure_scale": float(lcfs_merit.pressure_scale),
+            "lcfs_merit_bnormal_scale": float(lcfs_merit.bnormal_scale),
+            "lcfs_merit_bnormal_weight": float(lcfs_merit.bnormal_weight),
+            "lcfs_pressure_response_min": float(np.min(proposal.pressure_response)),
+            "lcfs_pressure_response_max": float(np.max(proposal.pressure_response)),
+            "lcfs_update_pressure_balance_rms_predicted": float(proposal.pressure_balance_rms_predicted),
+            "lcfs_update_strategy": str(proposal.strategy),
+            "lcfs_update_candidate_summaries": proposal_selection.candidate_summaries,
+            "lcfs_update_allowed_strategies": list(proposal_selection.allowed_strategies),
+            "lcfs_update_rejection_reason": proposal_selection.rejection_reason,
+            "lcfs_update_normal_field_guard": bool(lcfs_require_bnormal_nonincrease),
+            "lcfs_update_pressure_balance_rms_reduction_fraction": float(
+                1.0 - proposal.pressure_balance_rms_predicted / max(proposal.pressure_balance_rms_before, 1.0e-300)
+            ),
+            "lcfs_update_cap_taper_power": float(proposal.cap_taper_power),
+            "lcfs_update_smoothing_passes": int(proposal.smoothing_passes),
+            "lcfs_update_max_abs_delta_radius": float(np.max(np.abs(proposal.delta_radius))),
+            "lcfs_update_max_relative_delta_radius": float(
+                np.max(np.abs(proposal.delta_radius) / np.maximum(proposal.old_radius, 1.0e-300))
+            ),
+            "lcfs_pilot_rows": pilot_rows,
+            "figures": plot_paths,
+        }
+        row.update(_lcfs_pilot_summary(pilot_rows))
+        rows.append(row)
     return rows
 
 
@@ -768,6 +834,12 @@ def run_case(
     )
 
     metrics = {
+        **_beta_scan_summary(
+            baseline_rows,
+            run_fixed_boundary_baseline=run_fixed_boundary_baseline,
+            run_lcfs_pilot=run_lcfs_pilot,
+            lcfs_pilot_steps=lcfs_pilot_steps,
+        ),
         "coil_radius": float(coil_radius),
         "separation": float(separation),
         "current": float(current),
@@ -782,6 +854,7 @@ def run_case(
         "boundary_bmag_min": float(np.min(np.asarray(boundary_sample.bmag))),
         "boundary_bmag_max": float(np.max(np.asarray(boundary_sample.bmag))),
         "setup_json": str(setup_path),
+        "beta_scan_requested_percent": [float(case.beta_percent) for case in scan.beta_cases],
         "beta_cases": [case.to_dict() for case in scan.beta_cases],
         "fixed_boundary_baseline_rows": baseline_rows,
         "figures": figure_paths,

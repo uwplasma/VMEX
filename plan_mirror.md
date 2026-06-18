@@ -13623,3 +13623,132 @@ Results:
 No user input is needed.
 
 ---
+
+## 108. 2026-06-18 M12/M16 circular-coil beta-scan metrics contract
+
+### Steps taken
+
+- Added explicit top-level status fields to the root-level
+  ``examples/mirror_free_boundary_circular_coils.py`` metrics JSON:
+  - ``workflow_status``;
+  - ``free_boundary_solve_status``;
+  - ``external_field_provider_kind``;
+  - ``coil_format``;
+  - ``beta_scan_requested_percent``;
+  - fixed-boundary baseline counts;
+  - LCFS pilot requested/row/accepted/skipped counts.
+- Added per-beta-row LCFS pilot summaries:
+  - ``lcfs_pilot_status``;
+  - row/accepted/skipped counts;
+  - final/best pilot merit;
+  - final pilot pressure-balance RMS.
+- Kept the setup JSON honest: it remains a setup-only scan file and tests now
+  assert ``status == "setup_only_no_lcfs_solve"``.
+- Updated mirror docs to describe the workflow/status fields and to keep the
+  wording clear that the current path is an LCFS pilot, not a converged
+  free-boundary equilibrium solve.
+- Ran a plotted low-resolution evidence case under ignored ``results/``.
+
+### Results obtained
+
+- The default 1%, 3%, and 10% beta case contract is now explicit in metrics
+  JSON and tested.
+- Downstream benchmark scripts can distinguish:
+  - setup-only runs;
+  - fixed-boundary baseline runs;
+  - LCFS pilot runs;
+  - accepted, rejected, and skipped pilot steps.
+- Evidence run:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/free_boundary_circular_coils_m108_plotted \
+  --betas 1 \
+  --ntheta 8 \
+  --nxi 11 \
+  --n-segments 64 \
+  --run-fixed-boundary-baseline \
+  --baseline-maxiter 0 \
+  --run-lcfs-pilot \
+  --lcfs-pilot-steps 1
+```
+
+Evidence metrics:
+
+- ``workflow_status = "lcfs_pilot"``;
+- ``free_boundary_solve_status = "lcfs_pilot_not_converged_free_boundary"``;
+- ``beta_scan_requested_percent = [1.0]``;
+- one baseline row and one accepted pilot row.
+
+Rendered ignored plots included:
+
+- ``free_boundary_circular_coils_geometry.png``;
+- ``free_boundary_circular_coils_axis_bz.png``;
+- ``free_boundary_circular_coils_boundary_bmag.png``;
+- fixed-boundary and pilot-step ``|B|``, field-boundary, cross-section,
+  Jacobian, residual, radial-diagnostic, and LCFS-diagnostic figures.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py tests/mirror/test_mirror_free_boundary.py
+python -m ruff format --check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py tests/mirror/test_mirror_free_boundary.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_free_boundary.py tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_strict_bnormal_guard_can_skip_pilot -q
+git diff --check
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff format check passed after formatting the changed example.
+- ``33 passed`` in the focused mirror free-boundary/example tests.
+- ``git diff --check`` passed.
+- Plotted evidence run completed and figures rendered.
+
+### File structure and best-practice notes
+
+- Metrics summarization stays inside the root example because these are
+  example-run bookkeeping fields, not solver kernels.
+- Free-boundary helper tests stay in ``tests/mirror/test_mirror_free_boundary.py``.
+- Example subprocess/schema tests stay in ``tests/mirror/test_mirror_examples.py``.
+- Docs were updated in ``examples/mirror/README.md`` and
+  ``docs/mirror/overview.rst``.
+- Results and figures remain ignored under ``results/`` and are not tracked.
+
+### Best next steps
+
+1. Commit and push M108.
+2. Continue M12/M16 by adding a true circular-coil LCFS iteration loop that can
+   run multiple accepted pilot steps per beta until merit stagnation or a user
+   tolerance is reached.
+3. Add a compact cross-beta plot comparing pressure-balance RMS, normal-field
+   RMS, and merit for the 1%, 3%, and 10% cases.
+4. Continue M14 toroidal side-mirror / corner-stellarator fixture after the
+   free-boundary metrics contract remains stable under CI.
+
+### Completion percentages after M108
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `87%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `88%`.
+- I/O schema and docs: `97%`.
+- Differentiable solved-state API: `30%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `72%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `82%`.
+- ESSOS circular-coil mirror beta scan: `62%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---

@@ -135,7 +135,11 @@ scale/normal-field candidate is selected when it improves merit while satisfying
 the guard, and otherwise the explicit no-op candidate records a skipped pilot
 row. Metrics JSON rows include ``lcfs_update_allowed_strategies`` and
 ``lcfs_update_rejection_reason`` fields so downstream scripts can distinguish
-accepted, rejected, and guard-limited pilot steps. This is still an LCFS pilot
+accepted, rejected, and guard-limited pilot steps. Top-level metrics also
+record ``workflow_status``, ``free_boundary_solve_status``,
+``beta_scan_requested_percent``, ESSOS-compatible direct-coil metadata, and
+aggregate LCFS pilot counts so benchmark scripts can validate that the 1%, 3%,
+and 10% beta cases were actually exercised. This is still an LCFS pilot
 workflow, not a converged free-boundary equilibrium solve.
 
 The root-level ``examples/mirror_fixed_boundary_solve_diagnostic.py`` script

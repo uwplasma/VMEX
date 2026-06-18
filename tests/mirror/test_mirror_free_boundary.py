@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import numpy as np
@@ -216,6 +217,7 @@ def test_mirror_free_boundary_circular_coil_scan_json_roundtrip(tmp_path):
 
     path = write_mirror_free_boundary_circular_coil_scan(tmp_path / "scan.json", scan)
     loaded = load_mirror_free_boundary_circular_coil_scan(path)
+    payload = json.loads(path.read_text())
 
     np.testing.assert_allclose(loaded.coils.radii_m, coils.radii_m)
     np.testing.assert_allclose(loaded.coils.z_centers_m, coils.z_centers_m)
@@ -224,6 +226,7 @@ def test_mirror_free_boundary_circular_coil_scan_json_roundtrip(tmp_path):
     assert loaded.coils.regularization_epsilon == pytest.approx(1.0e-5)
     assert [case.beta_percent for case in loaded.beta_cases] == [1.0, 3.0, 10.0]
     assert [case.pressure_scale for case in loaded.beta_cases] == [4.0, 12.0, 40.0]
+    assert payload["status"] == "setup_only_no_lcfs_solve"
 
 
 def test_initial_mirror_boundary_from_circular_coil_scan_matches_analytic_flux_tube():
