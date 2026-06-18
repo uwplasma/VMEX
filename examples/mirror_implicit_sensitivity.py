@@ -20,9 +20,9 @@ from vmec_jax.mirror import (
     MirrorResolution,
     PressureProfile,
     PsiPrimeProfile,
+    axisym_reduced_implicit_state_sensitivity_jax,
     axisym_reduced_residual_jacobian_jax,
     axisym_reduced_residual_jax,
-    axisym_reduced_residual_linear_solve_jax,
 )
 from vmec_jax.mirror.core.boundary import MirrorBoundary
 from vmec_jax.mirror.core.state import MirrorStateAxisym
@@ -35,6 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--epsilon", type=float, default=1.0e-5)
     parser.add_argument("--state-ridge", type=float, default=1.0e-3)
     parser.add_argument("--root-tol", type=float, default=1.0e-10)
+    parser.add_argument("--solve-method", choices=("dense", "matrix_free_cg"), default="dense")
     parser.add_argument("--no-plots", action="store_true")
     return parser
 
@@ -82,6 +83,7 @@ def run_case(
     epsilon: float = 1.0e-5,
     state_ridge: float = 1.0e-3,
     root_tol: float = 1.0e-10,
+    solve_method: str = "dense",
     write_plots: bool = True,
 ) -> Path:
     if float(epsilon) <= 0.0:
@@ -123,9 +125,9 @@ def run_case(
     )
     source_direction = np.sin(np.linspace(0.1, 1.3, vector.size))
     implicit_sensitivity = np.asarray(
-        axisym_reduced_residual_linear_solve_jax(
+        axisym_reduced_implicit_state_sensitivity_jax(
             vector,
-            source_direction,
+            -source_direction,
             grid,
             boundary,
             psi_prime=psi,
@@ -134,6 +136,9 @@ def run_case(
             source_vector=source0,
             state_ridge=state_ridge,
             reference_vector=vector,
+            solve_method=solve_method,
+            cg_tol=1.0e-10,
+            cg_maxiter=200,
             mu0=1.0,
         )
     )
@@ -200,6 +205,7 @@ def run_case(
         "vector_size": int(vector.size),
         "epsilon": float(epsilon),
         "state_ridge": float(state_ridge),
+        "solve_method": str(solve_method),
         "root_residual_norm": float(np.linalg.norm(root_residual)),
         "perturbed_root_solver_success": bool(solved.success),
         "perturbed_root_success": root_accepted,
@@ -222,6 +228,7 @@ def main() -> None:
         epsilon=args.epsilon,
         state_ridge=args.state_ridge,
         root_tol=args.root_tol,
+        solve_method=args.solve_method,
         write_plots=not args.no_plots,
     )
     print(path)

@@ -10,6 +10,8 @@ from vmec_jax.mirror import (
     MirrorSolveOptions,
     PressureProfile,
     PsiPrimeProfile,
+    axisym_reduced_implicit_adjoint_jax,
+    axisym_reduced_implicit_state_sensitivity_jax,
     axisym_reduced_residual_jacobian_jax,
     axisym_reduced_residual_jax,
     axisym_reduced_residual_linear_solve_jax,
@@ -345,6 +347,42 @@ def test_reduced_jax_residual_and_jacobian_match_gradient_and_jvp():
             )
         )
         np.testing.assert_allclose(matrix_free_solution, dense_reference, rtol=5.0e-6, atol=5.0e-8)
+        wrapper_sensitivity = np.asarray(
+            axisym_reduced_implicit_state_sensitivity_jax(
+                vector,
+                -rhs,
+                grid,
+                boundary,
+                psi_prime=psi,
+                i_prime=current,
+                pressure=pressure,
+                state_ridge=state_ridge,
+                reference_vector=vector,
+                solve_method="matrix_free_cg",
+                cg_tol=1.0e-10,
+                cg_maxiter=200,
+                mu0=1.0,
+            )
+        )
+        wrapper_adjoint = np.asarray(
+            axisym_reduced_implicit_adjoint_jax(
+                vector,
+                rhs,
+                grid,
+                boundary,
+                psi_prime=psi,
+                i_prime=current,
+                pressure=pressure,
+                state_ridge=state_ridge,
+                reference_vector=vector,
+                solve_method="matrix_free_cg",
+                cg_tol=1.0e-10,
+                cg_maxiter=200,
+                mu0=1.0,
+            )
+        )
+        np.testing.assert_allclose(wrapper_sensitivity, dense_reference, rtol=5.0e-6, atol=5.0e-8)
+        np.testing.assert_allclose(wrapper_adjoint, dense_reference, rtol=5.0e-6, atol=5.0e-8)
 
 
 def test_reduced_implicit_sensitivity_matches_manufactured_source_finite_difference():
@@ -394,9 +432,9 @@ def test_reduced_implicit_sensitivity_matches_manufactured_source_finite_differe
     np.testing.assert_allclose(exact_root_residual, 0.0, atol=1.0e-12)
 
     implicit_sensitivity = np.asarray(
-        axisym_reduced_residual_linear_solve_jax(
+        axisym_reduced_implicit_state_sensitivity_jax(
             vector,
-            q,
+            -q,
             grid,
             boundary,
             psi_prime=psi,
@@ -405,6 +443,7 @@ def test_reduced_implicit_sensitivity_matches_manufactured_source_finite_differe
             source_vector=source0,
             state_ridge=state_ridge,
             reference_vector=vector,
+            solve_method="dense",
             mu0=1.0,
         )
     )

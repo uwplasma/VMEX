@@ -16283,3 +16283,136 @@ Results:
 No user input is needed.
 
 ---
+## 130. Reduced Implicit Forward and Adjoint Wrappers
+
+### Steps taken
+
+- Added `axisym_reduced_implicit_state_sensitivity_jax`, a small forward
+  implicit wrapper for
+
+```text
+F_x dx/dp = -F_p
+```
+
+- Added `axisym_reduced_implicit_adjoint_jax`, an adjoint wrapper for
+
+```text
+F_x^T adjoint = dL/dx
+```
+
+- Both wrappers delegate to `axisym_reduced_residual_linear_solve_jax`, so they
+  can use either the dense reference solve or the matrix-free CG method.
+- Updated the manufactured reduced sensitivity test to use the forward wrapper
+  instead of calling the raw linear solve directly.
+- Added wrapper parity checks against the dense reference for both forward
+  sensitivity and adjoint solves on the ridge-stabilized matrix-free test
+  problem.
+- Updated `examples/mirror_implicit_sensitivity.py` to use the forward wrapper
+  and added `--solve-method dense|matrix_free_cg`.
+- Updated mirror differentiability docs and example README text.
+
+### Results obtained
+
+- The differentiability lane now has explicit forward and adjoint implicit
+  helper APIs matching the equations documented in the plan.
+- The root-level implicit-sensitivity example exercises the intended wrapper
+  API, while still preserving the dense tiny-grid reference as the default.
+- The same example now also completes with `--solve-method matrix_free_cg`.
+
+Dense example metrics:
+
+- vector size: `45`;
+- solve method: `dense`;
+- root residual norm: `0.0`;
+- perturbed residual norm: `1.4596461408271606e-15`;
+- relative sensitivity error: `1.30713025011797e-06`;
+- max absolute sensitivity error: `0.0011775265450486572`;
+- accepted: `true`.
+
+Matrix-free example metrics:
+
+- vector size: `45`;
+- solve method: `matrix_free_cg`;
+- root residual norm: `0.0`;
+- perturbed residual norm: `9.751144411077966e-16`;
+- relative sensitivity error: `1.3071302524058876e-06`;
+- max absolute sensitivity error: `0.0011775265453781714`;
+- accepted: `true`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check vmec_jax/mirror/solvers/fixed_boundary/reduced.py vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py tests/mirror/test_mirror_fixed_boundary_axisym.py examples/mirror_implicit_sensitivity.py
+python -m ruff format --check vmec_jax/mirror/solvers/fixed_boundary/reduced.py vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py tests/mirror/test_mirror_fixed_boundary_axisym.py examples/mirror_implicit_sensitivity.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_fixed_boundary_axisym.py::test_reduced_jax_residual_and_jacobian_match_gradient_and_jvp tests/mirror/test_mirror_fixed_boundary_axisym.py::test_reduced_implicit_sensitivity_matches_manufactured_source_finite_difference tests/mirror/test_mirror_examples.py::test_root_implicit_sensitivity_example_runs_without_plots -q
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 python examples/mirror_implicit_sensitivity.py --no-plots --outdir results/mirror/implicit_sensitivity_m130_dense
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 python examples/mirror_implicit_sensitivity.py --solve-method matrix_free_cg --no-plots --outdir results/mirror/implicit_sensitivity_m130_matrix_free
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_fixed_boundary_axisym.py -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+python - <<'PY'
+import re
+from pathlib import Path
+text = Path("plan_mirror.md").read_text()
+nums = [int(m.group(1)) for m in re.finditer(r"^## (\\d+)\\.", text, flags=re.M)]
+print("milestones", len(nums), "last", nums[-1], "monotonic", nums == sorted(nums))
+PY
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff format check passed after formatting the reduced solver module.
+- Focused wrapper and example tests: `3 passed`.
+- Dense no-plot example completed and wrote accepted metrics.
+- Matrix-free no-plot example completed and wrote accepted metrics.
+- Full axisymmetric fixed-boundary test file: `16 passed`.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+- Plan milestone numbering remained monotonic.
+
+### File structure and best-practice notes
+
+- The wrappers stay in the reduced fixed-boundary module because they are thin
+  equation-level helpers around the reduced residual and linear solve.
+- The example now depends on the wrapper API, not a low-level solve primitive.
+- The wrappers do not claim a production differentiable equilibrium solve; they
+  expose the equations needed for the next custom implicit derivative gate.
+- Generated example outputs remain under ignored `results/`.
+
+### Best next steps
+
+1. Commit and push M130.
+2. Add a tiny converged fixed-boundary solved-state validation that uses the
+   wrapper on an actual solver result instead of a manufactured exact root.
+3. Benchmark dense versus matrix-free wrapper calls over a small `ns`/`nxi`
+   grid ladder and record runtime/memory trends under ignored `results/`.
+4. Then decide whether to add a custom implicit derivative wrapper around the
+   solved-state API or keep the explicit helper route until the physical
+   fixed-boundary solve is tighter.
+
+### Completion percentages after M130
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `90%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `87%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `92%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `64%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `85%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `85%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---

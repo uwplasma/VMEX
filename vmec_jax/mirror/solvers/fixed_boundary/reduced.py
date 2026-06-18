@@ -477,6 +477,110 @@ def axisym_reduced_residual_linear_solve_jax(
     return jnp.linalg.solve(matrix, rhs)
 
 
+def axisym_reduced_implicit_state_sensitivity_jax(
+    vector,
+    residual_parameter_derivative,
+    grid: MirrorGrid,
+    boundary: MirrorBoundary,
+    *,
+    psi_prime: PsiPrimeProfile,
+    i_prime: IPrimeProfile,
+    pressure: PressureProfile,
+    source_vector=None,
+    state_ridge: float = 0.0,
+    reference_vector=None,
+    derivative: str = "hessian",
+    ridge: float = 0.0,
+    solve_method: str = "dense",
+    cg_tol: float = 1.0e-8,
+    cg_atol: float = 0.0,
+    cg_maxiter: int | None = None,
+    initial_guess=None,
+    mu0: float = 4.0e-7 * np.pi,
+):
+    """Return ``dx/dp`` from the implicit equation ``F_x dx/dp = -F_p``."""
+    _require_jax()
+    vector = jnp.asarray(vector)
+    residual_parameter_derivative = jnp.asarray(residual_parameter_derivative, dtype=vector.dtype)
+    if residual_parameter_derivative.shape != vector.shape:
+        raise ValueError(
+            "residual_parameter_derivative shape "
+            f"{residual_parameter_derivative.shape} does not match vector shape {vector.shape}"
+        )
+    return axisym_reduced_residual_linear_solve_jax(
+        vector,
+        -residual_parameter_derivative,
+        grid,
+        boundary,
+        psi_prime=psi_prime,
+        i_prime=i_prime,
+        pressure=pressure,
+        source_vector=source_vector,
+        state_ridge=state_ridge,
+        reference_vector=reference_vector,
+        derivative=derivative,
+        ridge=ridge,
+        method=solve_method,
+        cg_tol=cg_tol,
+        cg_atol=cg_atol,
+        cg_maxiter=cg_maxiter,
+        initial_guess=initial_guess,
+        mu0=mu0,
+    )
+
+
+def axisym_reduced_implicit_adjoint_jax(
+    vector,
+    loss_state_gradient,
+    grid: MirrorGrid,
+    boundary: MirrorBoundary,
+    *,
+    psi_prime: PsiPrimeProfile,
+    i_prime: IPrimeProfile,
+    pressure: PressureProfile,
+    source_vector=None,
+    state_ridge: float = 0.0,
+    reference_vector=None,
+    derivative: str = "hessian",
+    ridge: float = 0.0,
+    solve_method: str = "dense",
+    cg_tol: float = 1.0e-8,
+    cg_atol: float = 0.0,
+    cg_maxiter: int | None = None,
+    initial_guess=None,
+    mu0: float = 4.0e-7 * np.pi,
+):
+    """Return the implicit adjoint solving ``F_x.T adjoint = dL/dx``."""
+    _require_jax()
+    vector = jnp.asarray(vector)
+    loss_state_gradient = jnp.asarray(loss_state_gradient, dtype=vector.dtype)
+    if loss_state_gradient.shape != vector.shape:
+        raise ValueError(
+            f"loss_state_gradient shape {loss_state_gradient.shape} does not match vector shape {vector.shape}"
+        )
+    return axisym_reduced_residual_linear_solve_jax(
+        vector,
+        loss_state_gradient,
+        grid,
+        boundary,
+        psi_prime=psi_prime,
+        i_prime=i_prime,
+        pressure=pressure,
+        source_vector=source_vector,
+        state_ridge=state_ridge,
+        reference_vector=reference_vector,
+        derivative=derivative,
+        transpose=True,
+        ridge=ridge,
+        method=solve_method,
+        cg_tol=cg_tol,
+        cg_atol=cg_atol,
+        cg_maxiter=cg_maxiter,
+        initial_guess=initial_guess,
+        mu0=mu0,
+    )
+
+
 def pack_reduced_state_3d(state: MirrorState3D, grid: MirrorGrid, boundary: MirrorBoundary) -> np.ndarray:
     """Pack independent 3D ``a`` nodes and gauge-fixed ``lambda`` nodes."""
     projected = project_state_3d(state, grid, boundary)

@@ -218,10 +218,13 @@ perturbed projected state can reach the requested projected ``gtol``.
 
 The root-level ``examples/mirror_implicit_sensitivity.py`` script is the first
 differentiability example. It manufactures an exact tiny-grid reduced root with
-a linear source and small state ridge, computes the dense implicit sensitivity,
-solves an independently perturbed source problem, and compares the finite
-difference state change against the implicit result. With plots enabled it
-writes a component comparison figure for the reduced sensitivity vector.
+a linear source and small state ridge, computes the sensitivity with the
+forward implicit wrapper, solves an independently perturbed source problem, and
+compares the finite-difference state change against the implicit result. The
+default solve method is the dense reference; pass ``--solve-method
+matrix_free_cg`` to exercise the matrix-free JAX CG path on the same wrapper.
+With plots enabled it writes a component comparison figure for the reduced
+sensitivity vector.
 
 The root-level ``examples/mirror_solver_comparison.py`` script compares the
 production gradient-descent, scaled L-BFGS-B, and residual-Newton paths on
