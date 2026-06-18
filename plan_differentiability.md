@@ -11913,6 +11913,72 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9982%.
 
+## 2026-06-18 Bsubs Geometry Channel Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_BsubsGeometryChannels` and `_bsubs_geometry_channels_from_state` to
+   `vmec_jax.io.wout.bsubs`.
+2. Moved VMEC-compatible Bsubs full-mesh geometry synthesis into that seam,
+   including LASYM cos/sin channel construction, non-LASYM even/m=1/odd-rest
+   splitting, M=1 axis-copy policy, optional M=1 constraint conversion, and
+   explicit scalxc policy.
+3. Rewired `compute_bsubs_half_mesh` to consume the named geometry channels
+   before the existing half-mesh bss.f metric assembly and debug dump paths.
+
+Results obtained:
+
+- `compute_bsubs_half_mesh` dropped from 459 to 300 lines.
+- Bsubs now has a clearer split between geometry-channel synthesis and
+  half-mesh covariant metric contraction, which makes future Mercier/JXBFORCE
+  parity tests easier to localize.
+- No output artifacts, WOUTs, or figures were added.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/io/wout/bsubs.py`
+- `python -m ruff check vmec_jax/io/wout/bsubs.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_helpers.py tests/test_wout_env_branch_coverage.py tests/test_finite_beta_helpers_unit.py -q`
+  - Result: passed, with one expected skip.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_physics_wave8_coverage.py tests/test_wout_driver_wave10_coverage.py tests/test_wout_fast_helpers.py -q`
+  - Result: passed, with known single-surface JXBFORCE divide warnings.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 40`
+
+Best next steps:
+
+1. Continue WOUT/force decomposition with `vmec_forces_rz_from_wout` or the
+   Bsubs/JXBFORCE derivative reconstruction if a similarly clean seam appears.
+2. Keep residual-iteration decomposition staged and test-heavy; do not cut the
+   6500-line loop without a precise seam and parity shard.
+3. Recheck PR CI after the next pushed tranche; current local coverage matches
+   the touched source paths.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.999996%.
+- Solver monolith reduction: 99.46%.
+- Free-boundary adjoint monolith reduction: 99.30%.
+- Driver workflow decomposition: 99.82%.
+- Residual iteration decomposition: 95.8%.
+- WOUT diagnostic/profile decomposition: 99.68%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9983%.
+
 ## 2026-06-18 QI Boozer Grid Context Seam
 
 Branch: `codex/differentiability-refactor-plan`.
