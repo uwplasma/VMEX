@@ -17551,3 +17551,131 @@ Results:
 No user input is needed.
 
 ---
+## 141. Implicit Parameter-Gradient Example and Plot
+
+### Steps taken
+
+- Added root-level example `examples/mirror_implicit_parameter_gradients.py`.
+- The example manufactures a tiny exact reduced root with:
+  - reduced source vector;
+  - pressure-profile coefficients;
+  - current-profile coefficients;
+  - flux-profile coefficients;
+  - polynomial-boundary coefficients `[r0, a2, a4]`.
+- For each selected parameter family it compares:
+  - custom VJP directional derivative;
+  - forward implicit sensitivity contraction;
+  - separately solved finite-difference perturbed root.
+- Added `--families` to run all families or a selected subset.
+- Added `--solve-method dense|matrix_free_cg`.
+- Added optional plotting of directional gradients and finite-difference
+  relative errors.
+- Updated `examples/mirror/README.md`.
+- Added a root example smoke test in `tests/mirror/test_mirror_examples.py`.
+- Rendered the all-family plot and verified it visually.
+
+### Results obtained
+
+- All-family dense example metrics under ignored
+  `results/mirror/implicit_parameter_gradients_m141` were accepted.
+- Reported families:
+  - `source`;
+  - `pressure`;
+  - `current`;
+  - `flux`;
+  - `boundary`.
+- Root residual norm: `0.0`.
+- Custom-VJP vs finite-difference relative errors:
+  - source: `1.193623465135548e-06`;
+  - pressure: `1.0634644962054567e-05`;
+  - current: `4.181993919608112e-12`;
+  - flux: `2.6374914201292236e-05`;
+  - boundary: `2.0710886826395606e-07`.
+- The rendered plot
+  `results/mirror/implicit_parameter_gradients_m141/figures/mirror_implicit_parameter_gradients.png`
+  is readable after switching the directional-gradient panel to a symlog scale.
+- A three-family smoke run under
+  `results/mirror/implicit_parameter_gradients_m141_smoke` was also accepted.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check examples/mirror_implicit_parameter_gradients.py
+python -m ruff format --check examples/mirror_implicit_parameter_gradients.py
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 python \
+  examples/mirror_implicit_parameter_gradients.py \
+  --outdir results/mirror/implicit_parameter_gradients_m141_smoke \
+  --families source,pressure,boundary --no-plots
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 python \
+  examples/mirror_implicit_parameter_gradients.py \
+  --outdir results/mirror/implicit_parameter_gradients_m141 \
+  --solve-method dense
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_examples.py::test_root_implicit_parameter_gradients_example_runs_without_plots -q
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py \
+  -k 'implicit_parameter_gradients or implicit_sensitivity or implicit_solve_benchmark' -q
+python -m ruff format --check examples/mirror_implicit_parameter_gradients.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff check examples/mirror_implicit_parameter_gradients.py \
+  tests/mirror/test_mirror_examples.py
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff Python format check passed.
+- Three-family no-plot smoke run accepted.
+- All-family plotted example run accepted.
+- New root example smoke test: `1 passed`.
+- Related implicit example subset: `3 passed, 15 deselected`.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+- A transient Ruff format command accidentally included
+  `examples/mirror/README.md`; Ruff cannot parse Markdown, so that command is
+  not a valid README check.
+
+### File structure and best-practice notes
+
+- The example is in the repository root `examples/` directory, matching the
+  existing mirror root examples.
+- Generated JSON and figures remain under ignored `results/`.
+- The example reuses public mirror APIs and does not introduce new source
+  abstractions.
+- The plot uses symlog scaling so large source gradients and smaller
+  profile/boundary gradients are visible in one figure.
+
+### Best next steps
+
+1. Commit and push M141.
+2. Update the draft PR body with the completed source/profile/boundary
+   differentiability gates and new example.
+3. Check CI once after the push; fix failures if any are reported.
+4. Resume free-boundary/ESSOS beta-scan convergence cleanup.
+
+### Completion percentages after M141
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `91%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `92%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `92%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `87%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `90%`.
+- PR merge readiness overall: `97%`.
+
+### User input needed
+
+No user input is needed.
+
+---

@@ -230,6 +230,13 @@ matrix_free_cg`` to exercise the matrix-free JAX CG path on the same wrappers.
 With plots enabled it writes a component comparison figure for the reduced
 sensitivity vector.
 
+The root-level ``examples/mirror_implicit_parameter_gradients.py`` script
+extends that differentiability check to source, pressure-profile,
+current-profile, flux-profile, and polynomial-boundary parameters. It compares
+custom VJP directional derivatives against forward sensitivity contractions and
+separately solved finite-difference roots, then writes JSON metrics and an
+optional summary plot.
+
 The root-level ``examples/mirror_implicit_solve_benchmark.py`` script benchmarks
 the same forward implicit wrapper over a small ``ns``/``nxi`` ladder. It writes
 JSON/CSV rows comparing dense and matrix-free JAX CG runtime, Python-side peak

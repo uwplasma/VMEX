@@ -647,6 +647,34 @@ def test_root_implicit_sensitivity_example_runs_without_plots(tmp_path):
     assert metrics["figures"] == {}
 
 
+def test_root_implicit_parameter_gradients_example_runs_without_plots(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_implicit_parameter_gradients.py",
+            "--outdir",
+            str(tmp_path / "implicit_parameter_gradients"),
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    path = Path(completed.stdout.strip())
+    metrics = json.loads(path.read_text())
+    assert metrics["vector_size"] > 0
+    assert metrics["root_residual_norm"] < 1.0e-12
+    assert metrics["families"] == ["source", "pressure", "current", "flux", "boundary"]
+    assert metrics["accepted"]
+    assert metrics["figures"] == {}
+    for row in metrics["rows"]:
+        assert row["accepted"]
+        assert row["perturbed_residual_norm"] < 1.0e-10
+        assert row["custom_vs_forward_relative_error"] < 1.0e-8
+        assert row["custom_vs_finite_difference_relative_error"] < 1.0e-3
+
+
 def test_root_implicit_solve_benchmark_runs_without_plots(tmp_path):
     completed = subprocess.run(
         [
