@@ -205,6 +205,9 @@ from vmec_jax.solvers.fixed_boundary.residual.force_norms import (
     residual_fsq_from_norms as _residual_fsq_from_norms,
     safe_dt_from_force_blocks as _safe_dt_from_force_blocks,
 )
+from vmec_jax.solvers.fixed_boundary.residual.host_diagnostics import (
+    resolve_vmec2000_print_context as _resolve_vmec2000_print_context,
+)
 from vmec_jax.solvers.fixed_boundary.residual import preconditioner_payload as _precond_payload_facade
 from vmec_jax.solvers.fixed_boundary.residual.preconditioner_payload import (
     _ACCEPTED_CONTROL_PAYLOAD_JIT_CACHE,
@@ -3885,82 +3888,22 @@ def solve_fixed_boundary_residual_iter(
     # iteration initializes forces to 1.0). Track that explicitly.
     prev_rz_fsq = 2.0
 
-    debug_print_config = _resolve_debug_print_config(
-        print_env=os.getenv("VMEC_JAX_SCAN_PRINT", "1"),
-        mode_env=os.getenv("VMEC_JAX_SCAN_PRINT_MODE", "debug_print"),
-        ordered_env=os.getenv("VMEC_JAX_SCAN_PRINT_ORDERED", "0"),
+    print_context = _resolve_vmec2000_print_context(
+        cfg=cfg,
+        indata=indata,
+        verbose=bool(verbose),
+        vmec2000_control=bool(vmec2000_control),
+        verbose_vmec2000_table=bool(verbose_vmec2000_table),
+        getenv=os.getenv,
+        resolve_debug_print_config=_resolve_debug_print_config,
+        resolve_nstep_screen=_resolve_nstep_screen,
+        emit_iter_row=_emit_scan_vmec2000_iter_row,
+        should_print_row=_should_print_vmec2000_row,
+        print_row=_print_scan_vmec2000_row,
     )
-    scan_print_mode = debug_print_config.mode
-    scan_print_ordered = debug_print_config.ordered
-    print_live = debug_print_config.print_live
-    _jax_debug = None
-    _io_callback = None
-    if print_live:
-        try:
-            from jax import debug as _jax_debug  # type: ignore[assignment]
-        except Exception:
-            _jax_debug = None
-    if scan_print_mode == "io_callback":
-        try:
-            from jax.experimental import io_callback as _io_callback  # type: ignore[assignment]
-        except Exception:
-            scan_print_mode = _resolve_debug_print_config(
-                print_env="1",
-                mode_env=scan_print_mode,
-                ordered_env="0",
-                io_callback_available=False,
-            ).mode
-            _io_callback = None
-
-    def _print_vmec2000_iter_row(
-        *,
-        iter_idx: int,
-        fsqr: float,
-        fsqz: float,
-        fsql: float,
-        fsqr1: float,
-        fsqz1: float,
-        fsql1: float,
-        delt0r: float,
-        r00: float,
-        w_mhd: float,
-        z00: float | None = None,
-    ) -> None:
-        _emit_scan_vmec2000_iter_row(
-            iter_idx=iter_idx,
-            fsqr=fsqr,
-            fsqz=fsqz,
-            fsql=fsql,
-            delt0r=delt0r,
-            r00=r00,
-            w_mhd=w_mhd,
-            lasym=bool(cfg.lasym),
-            z00=z00,
-            verbose=bool(verbose),
-            vmec2000_control=bool(vmec2000_control),
-            verbose_vmec2000_table=bool(verbose_vmec2000_table),
-            print_live=bool(print_live),
-            scan_print_mode=scan_print_mode,
-            scan_print_ordered=bool(scan_print_ordered),
-            jax_debug=_jax_debug,
-            io_callback=_io_callback,
-            print_row=_print_scan_vmec2000_row,
-        )
-
-    nstep_screen = _resolve_nstep_screen(
-        indata_nstep=int(indata.get_int("NSTEP", 1)) if indata is not None else 1,
-        override_env=os.getenv("VMEC_JAX_NSTEP_OVERRIDE", ""),
-    )
-
-    def _should_print_vmec2000(iter_idx: int, max_iter: int) -> bool:
-        return _should_print_vmec2000_row(
-            iter_idx=iter_idx,
-            max_iter=max_iter,
-            nstep_screen=nstep_screen,
-            verbose=bool(verbose),
-            vmec2000_control=bool(vmec2000_control),
-            verbose_vmec2000_table=bool(verbose_vmec2000_table),
-        )
+    nstep_screen = print_context.nstep_screen
+    _print_vmec2000_iter_row = print_context.print_iter_row
+    _should_print_vmec2000 = print_context.should_print
 
     # VMEC2000 caches 1D preconditioner/norm/tcon updates every `ns4` iterations
     # (vmec_params.f: ns4=25), reusing the cached values between refreshes.

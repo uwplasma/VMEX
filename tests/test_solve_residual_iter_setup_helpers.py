@@ -9,6 +9,7 @@ from vmec_jax.solvers.fixed_boundary.residual.setup import (
     grid_matches_vmec_static_grid,
     resolve_free_boundary_setup_policy,
 )
+from vmec_jax.solvers.fixed_boundary.residual.host_diagnostics import resolve_vmec2000_print_context
 from vmec_jax.solvers.fixed_boundary.residual.ptau import (
     accepted_control_ptau_arrays,
     maybe_dump_jacobian_terms,
@@ -160,6 +161,50 @@ def test_ptau_wrapper_dispatches_and_preserves_call_time_dump_arguments() -> Non
     assert ptau_dump["dump_ptau_env"] == "1"
     assert ptau_dump["dump_dir"] == "/tmp/dump"
     assert ptau_dump["label"] == "probe"
+
+
+def test_resolve_vmec2000_print_context_forwards_rows_and_cadence() -> None:
+    rows = []
+
+    context = resolve_vmec2000_print_context(
+        cfg=SimpleNamespace(lasym=True),
+        indata=SimpleNamespace(get_int=lambda _name, _default: 5),
+        verbose=True,
+        vmec2000_control=True,
+        verbose_vmec2000_table=True,
+        getenv=lambda name, default: {"VMEC_JAX_SCAN_PRINT": "0", "VMEC_JAX_NSTEP_OVERRIDE": "3"}.get(
+            name, default
+        ),
+        resolve_debug_print_config=lambda **_kwargs: SimpleNamespace(
+            mode="debug_print",
+            ordered=False,
+            print_live=False,
+        ),
+        resolve_nstep_screen=lambda **kwargs: int(kwargs["override_env"]),
+        emit_iter_row=lambda **kwargs: rows.append(kwargs),
+        should_print_row=lambda **kwargs: kwargs["iter_idx"] % kwargs["nstep_screen"] == 0,
+        print_row=lambda **_kwargs: None,
+    )
+
+    assert context.nstep_screen == 3
+    assert context.should_print(6, 10)
+    assert not context.should_print(7, 10)
+    context.print_iter_row(
+        iter_idx=6,
+        fsqr=1.0,
+        fsqz=2.0,
+        fsql=3.0,
+        fsqr1=4.0,
+        fsqz1=5.0,
+        fsql1=6.0,
+        delt0r=0.9,
+        r00=1.25,
+        w_mhd=7.0,
+        z00=-0.5,
+    )
+    assert rows[0]["iter_idx"] == 6
+    assert rows[0]["lasym"]
+    assert rows[0]["scan_print_mode"] == "debug_print"
 
 
 def test_grid_matches_vmec_static_grid_requires_same_coordinates() -> None:

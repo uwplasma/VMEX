@@ -9105,3 +9105,62 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.94%.
+
+## 2026-06-18 Residual Host Diagnostics Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted host-side VMEC2000 debug-print setup, optional JAX debug/io
+   callback discovery, NSTEP cadence resolution, row forwarding, and row
+   cadence predicates into
+   `vmec_jax.solvers.fixed_boundary.residual.host_diagnostics`.
+2. Replaced the inline residual-loop debug-print block with a
+   `Vmec2000PrintContext` exposing `print_iter_row` and `should_print`.
+3. Added a direct unit test that validates row forwarding, LASYM propagation,
+   print mode, and cadence decisions.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` dropped from 8,004
+  to 7,947 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 7,493 to 7,433 lines.
+- The extracted host diagnostic module is 119 lines and keeps optional JAX debug
+  imports out of the solver loop body.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/host_diagnostics.py tests/test_solve_residual_iter_setup_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_setup_helpers.py tests/test_solve_residual_iter_config.py tests/test_solve_scan_debug_helpers.py tests/test_scan_helper_edge_gates.py tests/test_solve_diagnostics_io.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_hotpaths.py tests/test_solve_wave4_coverage.py tests/test_solve_additional_branch_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 8 --top-functions 12`
+
+Best next steps:
+
+1. Continue residual-loop reduction with scan-runtime adapters and the remaining
+   simple diagnostic dump wrappers.
+2. Split branch-local free-boundary replay report assembly after residual-loop
+   low-risk seams are complete.
+3. Keep CI polling deferred; run broad local shards after a few more coherent
+   refactor tranches.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.96%.
+- Differentiability/refactor implementation: 99.9997%.
+- Solver monolith reduction: 99.0%.
+- Free-boundary adjoint monolith reduction: 92%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.945%.
