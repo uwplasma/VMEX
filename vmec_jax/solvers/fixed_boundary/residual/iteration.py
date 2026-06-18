@@ -346,6 +346,7 @@ from vmec_jax.solvers.fixed_boundary.optimization.residual_objective import (
     residual_objective_vector as _residual_objective_vector,
 )
 from vmec_jax.solvers.fixed_boundary.scan.output import (
+    finalize_vmec2000_scan_step,
     postprocess_vmec2000_scan_result,
     unpack_vmec2000_scan_histories,
     vmec2000_scan_full_history_row,
@@ -411,7 +412,6 @@ from vmec_jax.solvers.fixed_boundary.scan.runtime import (
 )
 from vmec_jax.solvers.fixed_boundary.scan.time_control import (
     evaluate_scan_time_control_restart,
-    scan_fallback_probe_update,
     scan_restart_transition,
 )
 from vmec_jax.state import VMECState, pack_state, unpack_state
@@ -2286,32 +2286,6 @@ def solve_fixed_boundary_residual_iter(
                 fsqz = payload_use.fsqz
                 fsql = payload_use.fsql
                 fsq1 = payload_step.fsq1
-                accepted = jnp.logical_not(do_restart)
-                fallback_active = carry_adv.fallback_active
-                probe_update = scan_fallback_probe_update(
-                    enabled=scan_fallback_enabled_run,
-                    scan_core=bool(scan_core),
-                    probe_count=carry_adv.probe_count,
-                    probe_bad_jac=carry_adv.probe_bad_jac,
-                    probe_accept=carry_adv.probe_accept,
-                    probe_fsq_start=carry_adv.probe_fsq_start,
-                    probe_fsq_min=carry_adv.probe_fsq_min,
-                    probe_fsq_max=carry_adv.probe_fsq_max,
-                    fallback_active=fallback_active,
-                    abort_scan=carry_adv.abort_scan,
-                    fsq_phys=fsq_phys,
-                    fsq1=fsq1,
-                    bad_jacobian=bad_jacobian,
-                    accepted=accepted,
-                    abort_scan_on_badjac=abort_scan_on_badjac,
-                    fallback_iters=scan_fallback_iters_j,
-                    badjac_limit=scan_fallback_badjac_limit_j,
-                    accept_frac=scan_fallback_accept_frac_j,
-                    fsq_factor=scan_fallback_fsq_factor_j,
-                    fsq_abs=scan_fallback_fsq_abs_j,
-                    improve=scan_fallback_improve_j,
-                    dtype=dtype,
-                )
                 # VMEC prints the updated time-step (post TimeStepControl/restart),
                 # so report the post-update value on this iteration.
                 time_step_report = time_step_post
@@ -2345,15 +2319,26 @@ def solve_fixed_boundary_residual_iter(
                         lambda _: jnp.asarray(0, dtype=jnp.int32),
                         operand=None,
                     )
-                step_result = vmec2000_scan_step_result(
+                step_result = finalize_vmec2000_scan_step(
                     carry_adv=carry_adv,
                     step_fields=step_fields,
                     current_payload=current_payload_pre,
                     selected_payload=payload_use,
-                    probe_update=probe_update,
                     checkpoint_update=checkpoint_update,
-                    vmec2000_control=bool(vmec2000_control),
+                    scan_fallback_enabled_run=scan_fallback_enabled_run,
                     scan_core=bool(scan_core),
+                    fsq_phys=fsq_phys,
+                    fsq1=fsq1,
+                    bad_jacobian=bad_jacobian,
+                    abort_scan_on_badjac=abort_scan_on_badjac,
+                    scan_fallback_iters=scan_fallback_iters_j,
+                    scan_fallback_badjac_limit=scan_fallback_badjac_limit_j,
+                    scan_fallback_accept_frac=scan_fallback_accept_frac_j,
+                    scan_fallback_fsq_factor=scan_fallback_fsq_factor_j,
+                    scan_fallback_fsq_abs=scan_fallback_fsq_abs_j,
+                    scan_fallback_improve=scan_fallback_improve_j,
+                    dtype=dtype,
+                    vmec2000_control=bool(vmec2000_control),
                     do_restart=do_restart,
                     state_only_scan=bool(state_only_scan),
                     scan_minimal=bool(scan_minimal),
@@ -2375,7 +2360,6 @@ def solve_fixed_boundary_residual_iter(
                     time_step_report=time_step_report,
                     zero_m1=zero_m1,
                     include_edge=include_edge,
-                    bad_jacobian=bad_jacobian,
                     min_tau=min_tau,
                     max_tau=max_tau,
                     min_tau_ptau=min_tau_ptau,
