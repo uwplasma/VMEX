@@ -9469,3 +9469,74 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.967%.
+
+## 2026-06-18 Controller Replay Facade and Helper Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `vmec_jax.solvers.free_boundary.adjoint.controller_replay` for the
+   JAX-visible direct-coil accepted-controller replay implementation.
+2. Rewired `vmec_jax.free_boundary_adjoint` to re-export
+   `direct_coil_accepted_trace_controller_replay_objective_jax` from that
+   domain module while preserving existing public imports.
+3. Split the moved controller replay implementation into module-level helpers:
+   replay options, boundary replay context lookup, free-boundary `bsqvac`
+   replay terms, ordinary trace branch replay, stacked-control branch replay,
+   and controller step-function construction.
+4. Kept the branch-local/fingerprint-gated differentiation contract unchanged:
+   this refactor does not claim arbitrary adaptive host-branch
+   differentiability.
+
+Results obtained:
+
+- `vmec_jax/free_boundary_adjoint.py` dropped from 1,924 to roughly 1,270
+  lines and is now a smaller compatibility facade plus report/custom-VJP
+  wrappers.
+- The moved controller replay entry point dropped from 584 to 274 lines.
+- The new helper functions are all below the source-health function threshold
+  except the orchestration entry point, which is now much smaller and has clear
+  next seams.
+- The controller replay implementation is now under the
+  `vmec_jax.solvers.free_boundary.adjoint` namespace instead of the root
+  package facade.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/free_boundary_adjoint.py vmec_jax/solvers/free_boundary/adjoint/controller_replay.py`
+- `python -m ruff check vmec_jax/free_boundary_adjoint.py vmec_jax/solvers/free_boundary/adjoint/controller_replay.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_adjoint_helpers_unit.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py -q -k "branch_local or custom_vjp or complete_solve_fd or same_branch or controller"`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -q -k "branch_local or custom_vjp or same_branch or fingerprint"`
+- `python tools/diagnostics/source_health.py --top 14 --top-functions 20`
+
+Best next steps:
+
+1. Split the remaining controller replay orchestration into runner-selection
+   helpers, especially the stacked-step, preconditioner-policy, and
+   accepted-only branches.
+2. Continue driver simplification by extracting stage attempt assembly from
+   `run_fixed_boundary`.
+3. Continue residual solver decomposition through narrow controller-state
+   seams and source-health gates.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.99981%.
+- Solver monolith reduction: 99.15%.
+- Free-boundary adjoint monolith reduction: 99.1%.
+- Driver workflow decomposition: 97.1%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.970%.
