@@ -146,9 +146,11 @@ aggregate LCFS pilot counts so benchmark scripts can validate that the 1%, 3%,
 and 10% beta cases were actually exercised. Multi-step pilots can stop on an
 explicit target merit with ``--lcfs-pilot-target-merit`` or on small accepted
 merit improvement with ``--lcfs-pilot-stagnation-rtol``; each pilot row records
-a ``stop_reason`` and each beta row records ``lcfs_pilot_stop_reason``. When
-plots are enabled and baseline rows exist, the example also writes a cross-beta
-summary figure comparing
+a ``stop_reason`` and each beta row records ``lcfs_pilot_stop_reason``. Use
+``--lcfs-pilot-fsq-growth-limit`` to reject an otherwise merit-improving pilot
+when its fixed-boundary ``final_fsq`` grows beyond a configured multiple of the
+baseline row. When plots are enabled and baseline rows exist, the example also
+writes a cross-beta summary figure comparing
 pressure-balance RMS, external normal-field RMS, LCFS merit, and final ``fsq``
 before and after pilot updates. This is still an LCFS pilot workflow, not a
 converged free-boundary equilibrium solve.

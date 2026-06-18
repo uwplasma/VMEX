@@ -192,6 +192,7 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert metrics["lcfs_pilot_skipped_rows_total"] == 0
     assert metrics["lcfs_pilot_target_merit"] == 0.0
     assert metrics["lcfs_pilot_stagnation_rtol"] == 0.0
+    assert metrics["lcfs_pilot_fsq_growth_limit"] == 0.0
     assert metrics["lcfs_pilot_stop_reason_counts"] == {"max_steps": 3}
     assert metrics["axis_bz_relative_linf"] < 1.0e-12
     assert metrics["boundary_bmag_min"] > 0.0
@@ -361,6 +362,7 @@ def test_root_free_boundary_circular_coils_pilot_stagnation_stops_early(tmp_path
     row = metrics["fixed_boundary_baseline_rows"][0]
     assert metrics["lcfs_pilot_steps_requested"] == 3
     assert metrics["lcfs_pilot_stagnation_rtol"] == 1.0
+    assert metrics["lcfs_pilot_fsq_growth_limit"] == 0.0
     assert metrics["lcfs_pilot_rows_total"] == 1
     assert metrics["lcfs_pilot_stop_reason_counts"] == {"merit_stagnation": 1}
     assert row["lcfs_pilot_rows_count"] == 1
@@ -369,6 +371,51 @@ def test_root_free_boundary_circular_coils_pilot_stagnation_stops_early(tmp_path
     assert row["lcfs_pilot_best_fsq"] is not None
     assert row["lcfs_pilot_rows"][0]["stop_reason"] == "merit_stagnation"
     assert row["lcfs_pilot_rows"][0]["lcfs_merit_improvement_fraction"] <= 1.0
+
+
+def test_root_free_boundary_circular_coils_fsq_growth_guard_rejects_pilot(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_free_boundary_circular_coils.py",
+            "--outdir",
+            str(tmp_path / "fsq_guard"),
+            "--betas",
+            "3",
+            "--ntheta",
+            "8",
+            "--nxi",
+            "11",
+            "--n-segments",
+            "64",
+            "--run-fixed-boundary-baseline",
+            "--baseline-maxiter",
+            "5",
+            "--run-lcfs-pilot",
+            "--lcfs-pilot-steps",
+            "5",
+            "--lcfs-pilot-fsq-growth-limit",
+            "1.0",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    metrics = json.loads(Path(completed.stdout.strip()).read_text())
+    row = metrics["fixed_boundary_baseline_rows"][0]
+    pilot = row["lcfs_pilot_rows"][0]
+    assert metrics["lcfs_pilot_fsq_growth_limit"] == 1.0
+    assert metrics["lcfs_pilot_rows_total"] == 1
+    assert metrics["lcfs_pilot_accepted_rows_total"] == 0
+    assert metrics["lcfs_pilot_stop_reason_counts"] == {"fsq_growth_guard": 1}
+    assert row["lcfs_pilot_status"] == "rejected"
+    assert row["lcfs_pilot_stop_reason"] == "fsq_growth_guard"
+    assert pilot["accepted"] is False
+    assert pilot["rejection_reason"] == "fsq_growth_guard"
+    assert pilot["stop_reason"] == "fsq_growth_guard"
+    assert pilot["final_fsq"] > row["final_fsq"]
 
 
 def test_root_fixed_boundary_solve_diagnostic_runs_without_plots(tmp_path):

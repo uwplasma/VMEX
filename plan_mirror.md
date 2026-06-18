@@ -14916,3 +14916,132 @@ Results:
 No user input is needed.
 
 ---
+
+## 118. 2026-06-18 M16 circular-coil fsq growth guard
+
+### Steps taken
+
+M117 showed that LCFS merit can improve while fixed-boundary `fsq` worsens for
+higher-beta pilot updates.  I added an optional residual-quality guard so a
+pilot update can be rejected when its fixed-boundary `final_fsq` exceeds a
+configured multiple of the baseline row.
+
+Concretely:
+
+- added `--lcfs-pilot-fsq-growth-limit`;
+- added top-level `lcfs_pilot_fsq_growth_limit`;
+- added `rejection_reason` to completed pilot rows;
+- made the pilot loop reject accepted-merit candidates with
+  `stop_reason = "fsq_growth_guard"` when the guard is enabled and violated;
+- changed the beta summary plot to draw only accepted pilot-final values, so
+  rejected trials are not presented as accepted outcomes;
+- documented the guard in the mirror README and overview;
+- added a focused CLI test for the fsq-growth rejection path.
+
+### Results obtained
+
+Guarded low-resolution pilot run:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/free_boundary_circular_coils_m118_fsq_guard \
+  --ntheta 8 \
+  --nxi 11 \
+  --n-segments 64 \
+  --run-fixed-boundary-baseline \
+  --baseline-maxiter 5 \
+  --run-lcfs-pilot \
+  --lcfs-pilot-steps 5 \
+  --lcfs-pilot-stagnation-rtol 1e-3 \
+  --lcfs-pilot-fsq-growth-limit 1.0
+```
+
+Observed:
+
+- requested pilot steps: `5`;
+- actual pilot rows: `7`;
+- accepted pilot rows: `5`;
+- stop reasons: `{"None": 4, "max_steps": 1, "fsq_growth_guard": 2}`;
+- beta `1%`:
+  - baseline `final_fsq`: `9.927119074706592e-4`;
+  - accepted pilot final `fsq`: `8.507334465997071e-4`;
+  - stop reason: `max_steps`;
+- beta `3%`:
+  - baseline `final_fsq`: `0.004468220052785157`;
+  - rejected trial `final_fsq`: `0.004709131909718425`;
+  - stop reason: `fsq_growth_guard`;
+- beta `10%`:
+  - baseline `final_fsq`: `0.04263091618797516`;
+  - rejected trial `final_fsq`: `0.046665979566329834`;
+  - stop reason: `fsq_growth_guard`.
+
+The accepted-only beta summary plot now shows the 1% accepted pilot outcome and
+leaves the rejected 3%/10% trials out of the pilot-final curves, while the JSON
+retains their rejected trial metrics for audit.
+
+Rendered ignored plot:
+
+- `results/mirror/free_boundary_circular_coils_m118_fsq_guard/figures/free_boundary_circular_coils_beta_scan_summary.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+python -m ruff format --check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_strict_bnormal_guard_can_skip_pilot tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_pilot_stagnation_stops_early tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_fsq_growth_guard_rejects_pilot -q
+git diff --check
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff format check passed.
+- `4 passed` in focused circular-coil tests.
+- `git diff --check` passed.
+- The guarded plotted beta run completed and rendered.
+
+### File structure and best-practice notes
+
+- The guard remains in the example-level pilot workflow; core solver APIs are
+  unchanged.
+- JSON fields remain scalar and explicit so ESSOS/downstream scripts can inspect
+  accepted/rejected decisions.
+- Plot semantics now distinguish accepted pilot outcomes from rejected trial
+  diagnostics.
+- Generated evidence remains ignored under `results/`.
+
+### Best next steps
+
+1. Commit and push M118.
+2. Add a compact documented JSON schema section for the circular-coil beta scan
+   contract.
+3. Run a higher baseline budget for 1%, 3%, and 10% with the fsq guard enabled
+   to see whether higher beta accepts after better fixed-boundary solves.
+4. Then resume differentiable solved-state/implicit derivative promotion.
+
+### Completion percentages after M118
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `87%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `90%`.
+- I/O schema and docs: `97%`.
+- Differentiable solved-state API: `30%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `81%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `78%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---

@@ -89,6 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lcfs-pilot-steps", type=int, default=1)
     parser.add_argument("--lcfs-pilot-target-merit", type=float, default=0.0)
     parser.add_argument("--lcfs-pilot-stagnation-rtol", type=float, default=0.0)
+    parser.add_argument("--lcfs-pilot-fsq-growth-limit", type=float, default=0.0)
     parser.add_argument("--no-plots", action="store_true")
     return parser
 
@@ -226,25 +227,26 @@ def _write_beta_scan_summary_plot(rows: list[dict[str, object]], *, outdir: Path
     def _ordered(name: str) -> np.ndarray:
         return np.asarray([float(rows[index][name]) for index in order], dtype=float)
 
-    def _ordered_optional(name: str) -> np.ndarray:
+    def _ordered_accepted_optional(name: str) -> np.ndarray:
         values = []
         for index in order:
             value = rows[index].get(name)
-            values.append(np.nan if value is None else float(value))
+            accepted = str(rows[index].get("lcfs_pilot_status")) == "accepted"
+            values.append(np.nan if value is None or not accepted else float(value))
         return np.asarray(values, dtype=float)
 
     baseline_pressure = _ordered("lcfs_pressure_balance_rms")
     baseline_bnormal = _ordered("lcfs_external_bnormal_rms")
     baseline_merit = _ordered("lcfs_merit")
     baseline_fsq = _ordered("final_fsq")
-    pilot_pressure = _ordered_optional("lcfs_pilot_final_pressure_balance_rms")
-    pilot_merit = _ordered_optional("lcfs_pilot_final_merit")
-    pilot_fsq = _ordered_optional("lcfs_pilot_final_fsq")
+    pilot_pressure = _ordered_accepted_optional("lcfs_pilot_final_pressure_balance_rms")
+    pilot_merit = _ordered_accepted_optional("lcfs_pilot_final_merit")
+    pilot_fsq = _ordered_accepted_optional("lcfs_pilot_final_fsq")
 
     fig, axes = plt.subplots(4, 1, figsize=(6.6, 8.2), sharex=True)
     axes[0].plot(beta, baseline_pressure, "o-", label="baseline")
     if np.isfinite(pilot_pressure).any():
-        axes[0].plot(beta, pilot_pressure, "s--", label="pilot final")
+        axes[0].plot(beta, pilot_pressure, "s--", label="accepted pilot final")
     axes[0].set_ylabel("pressure RMS")
     axes[0].legend(fontsize="small")
 
@@ -253,13 +255,13 @@ def _write_beta_scan_summary_plot(rows: list[dict[str, object]], *, outdir: Path
 
     axes[2].plot(beta, baseline_merit, "o-", label="baseline")
     if np.isfinite(pilot_merit).any():
-        axes[2].plot(beta, pilot_merit, "s--", label="pilot final")
+        axes[2].plot(beta, pilot_merit, "s--", label="accepted pilot final")
     axes[2].set_ylabel("LCFS merit")
     axes[2].legend(fontsize="small")
 
     axes[3].plot(beta, baseline_fsq, "o-", label="baseline")
     if np.isfinite(pilot_fsq).any():
-        axes[3].plot(beta, pilot_fsq, "s--", label="pilot final")
+        axes[3].plot(beta, pilot_fsq, "s--", label="accepted pilot final")
     axes[3].set_ylabel("final fsq")
     axes[3].set_xlabel("nominal beta (%)")
     axes[3].legend(fontsize="small")
@@ -342,6 +344,7 @@ def _beta_scan_summary(
     lcfs_pilot_steps: int,
     lcfs_pilot_target_merit: float,
     lcfs_pilot_stagnation_rtol: float,
+    lcfs_pilot_fsq_growth_limit: float,
 ) -> dict[str, object]:
     """Return top-level status fields for the circular-coil beta scan."""
     pilot_rows = [pilot for row in baseline_rows for pilot in row.get("lcfs_pilot_rows", [])]
@@ -361,6 +364,7 @@ def _beta_scan_summary(
         "lcfs_pilot_steps_requested": int(lcfs_pilot_steps) if run_lcfs_pilot else 0,
         "lcfs_pilot_target_merit": float(lcfs_pilot_target_merit) if run_lcfs_pilot else None,
         "lcfs_pilot_stagnation_rtol": float(lcfs_pilot_stagnation_rtol) if run_lcfs_pilot else None,
+        "lcfs_pilot_fsq_growth_limit": float(lcfs_pilot_fsq_growth_limit) if run_lcfs_pilot else None,
         "lcfs_pilot_rows_total": len(pilot_rows),
         "lcfs_pilot_accepted_rows_total": sum(
             bool(row.get("accepted", False)) and not bool(row.get("skipped", False)) for row in pilot_rows
@@ -536,6 +540,7 @@ def _completed_lcfs_pilot_row(
         "step": int(step),
         "mout": str(mout),
         "accepted": bool(accepted),
+        "rejection_reason": None,
         "final_residual_norm": float(final.residual_norm),
         "final_fsq": float(final.fsq),
         "final_normalized_force": float(final.normalized_force),
@@ -669,6 +674,7 @@ def _run_fixed_boundary_baseline_cases(
     lcfs_pilot_steps: int,
     lcfs_pilot_target_merit: float,
     lcfs_pilot_stagnation_rtol: float,
+    lcfs_pilot_fsq_growth_limit: float,
     write_plots: bool,
 ) -> list[dict[str, object]]:
     config = MirrorConfig(
@@ -698,6 +704,7 @@ def _run_fixed_boundary_baseline_cases(
             pressure=pressure,
             options=solve_options,
         )
+        baseline_final_fsq = float(result.final_trace.fsq)
         mout_path = outdir / f"mout_free_boundary_circular_coils_beta_{label}.nc"
         if mout_path.exists():
             mout_path.unlink()
@@ -765,7 +772,15 @@ def _run_fixed_boundary_baseline_cases(
                 )
                 pilot_rows.append(pilot_step.row)
                 if not pilot_step.accepted:
+                    pilot_rows[-1]["rejection_reason"] = "merit_increase"
                     pilot_rows[-1]["stop_reason"] = "rejected_merit_increase"
+                    break
+                if float(lcfs_pilot_fsq_growth_limit) > 0.0 and float(pilot_step.row["final_fsq"]) > float(
+                    lcfs_pilot_fsq_growth_limit
+                ) * max(baseline_final_fsq, 1.0e-300):
+                    pilot_rows[-1]["accepted"] = False
+                    pilot_rows[-1]["rejection_reason"] = "fsq_growth_guard"
+                    pilot_rows[-1]["stop_reason"] = "fsq_growth_guard"
                     break
                 merit_improvement_fraction = float(1.0 - pilot_step.merit.value / max(accepted_merit_value, 1.0e-300))
                 pilot_rows[-1]["lcfs_merit_improvement_fraction"] = merit_improvement_fraction
@@ -871,6 +886,7 @@ def run_case(
     lcfs_pilot_steps: int = 1,
     lcfs_pilot_target_merit: float = 0.0,
     lcfs_pilot_stagnation_rtol: float = 0.0,
+    lcfs_pilot_fsq_growth_limit: float = 0.0,
     write_plots: bool = True,
 ) -> Path:
     if run_lcfs_pilot and int(lcfs_pilot_steps) < 1:
@@ -879,6 +895,8 @@ def run_case(
         raise ValueError("lcfs_pilot_target_merit must be nonnegative")
     if float(lcfs_pilot_stagnation_rtol) < 0.0:
         raise ValueError("lcfs_pilot_stagnation_rtol must be nonnegative")
+    if float(lcfs_pilot_fsq_growth_limit) < 0.0:
+        raise ValueError("lcfs_pilot_fsq_growth_limit must be nonnegative")
     outdir.mkdir(parents=True, exist_ok=True)
     grid = make_mirror_grid(
         ns=ns, ntheta=ntheta, nxi=nxi, mpol=max(0, (ntheta - 1) // 2), z_min=-0.5 * separation, z_max=0.5 * separation
@@ -939,6 +957,7 @@ def run_case(
             lcfs_pilot_steps=lcfs_pilot_steps,
             lcfs_pilot_target_merit=lcfs_pilot_target_merit,
             lcfs_pilot_stagnation_rtol=lcfs_pilot_stagnation_rtol,
+            lcfs_pilot_fsq_growth_limit=lcfs_pilot_fsq_growth_limit,
             write_plots=write_plots,
         )
         if run_fixed_boundary_baseline
@@ -960,6 +979,7 @@ def run_case(
             lcfs_pilot_steps=lcfs_pilot_steps,
             lcfs_pilot_target_merit=lcfs_pilot_target_merit,
             lcfs_pilot_stagnation_rtol=lcfs_pilot_stagnation_rtol,
+            lcfs_pilot_fsq_growth_limit=lcfs_pilot_fsq_growth_limit,
         ),
         "coil_radius": float(coil_radius),
         "separation": float(separation),
@@ -1013,6 +1033,7 @@ def main() -> None:
         lcfs_pilot_steps=args.lcfs_pilot_steps,
         lcfs_pilot_target_merit=args.lcfs_pilot_target_merit,
         lcfs_pilot_stagnation_rtol=args.lcfs_pilot_stagnation_rtol,
+        lcfs_pilot_fsq_growth_limit=args.lcfs_pilot_fsq_growth_limit,
         write_plots=not args.no_plots,
     )
     print(path)
