@@ -92,6 +92,10 @@ Current solver status:
   paths.  They expose useful residual, condition, and dense-step comparison
   metrics, but the moderate finite-current row remains lambda dominated and is
   not yet a tight-convergence production claim.
+- Reduced-coordinate implicit sensitivity tests currently use tiny dense
+  validation grids with a manufactured reduced source and small state ridge.
+  These tests validate the residual/Jacobian/linear-solve differentiation
+  machinery; they are not yet a production differentiable equilibrium API.
 - Open-field pitch diagnostics measure cap-to-cap field-line advance and turns.
   They should not be interpreted as toroidal rotational transform.
 - Toroidal hybrid VMEC/JAX versus VMEC2000 parity rows currently compare

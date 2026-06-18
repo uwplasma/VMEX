@@ -293,6 +293,119 @@ def test_reduced_jax_residual_and_jacobian_match_gradient_and_jvp():
     np.testing.assert_allclose((jacobian.T + ridge * identity) @ adjoint_solution, rhs, rtol=1.0e-6, atol=1.0e-7)
 
 
+def test_reduced_implicit_sensitivity_matches_manufactured_source_finite_difference():
+    pytest.importorskip("jax")
+    scipy_optimize = pytest.importorskip("scipy.optimize")
+    config = MirrorConfig(MirrorResolution(ns=5, ntheta=1, nxi=7, mpol=0), z_min=-1.0, z_max=1.0)
+    grid = config.build_grid()
+    boundary = MirrorBoundary.polynomial_radius(r0=0.3, a2=0.04)
+    base = MirrorStateAxisym.from_boundary(grid, boundary)
+    s = grid.s_full[:, None]
+    xi = grid.xi[None, :]
+    state = MirrorStateAxisym(
+        a=base.a * (1.0 + 0.01 * s * (1.0 - s) * (1.0 - xi**2)),
+        lam=0.005 * s * (xi - np.mean(grid.xi)),
+    )
+    psi = PsiPrimeProfile.constant(0.01)
+    current = IPrimeProfile.zero()
+    pressure = PressureProfile.zero()
+    vector = pack_axisym_reduced_state(state, grid, boundary)
+    source0 = np.asarray(
+        axisym_reduced_residual_jax(
+            vector,
+            grid,
+            boundary,
+            psi_prime=psi,
+            i_prime=current,
+            pressure=pressure,
+            mu0=1.0,
+        )
+    )
+    state_ridge = 1.0e-3
+    q = np.sin(np.linspace(0.1, 1.3, vector.size))
+    exact_root_residual = np.asarray(
+        axisym_reduced_residual_jax(
+            vector,
+            grid,
+            boundary,
+            psi_prime=psi,
+            i_prime=current,
+            pressure=pressure,
+            source_vector=source0,
+            state_ridge=state_ridge,
+            reference_vector=vector,
+            mu0=1.0,
+        )
+    )
+    np.testing.assert_allclose(exact_root_residual, 0.0, atol=1.0e-12)
+
+    implicit_sensitivity = np.asarray(
+        axisym_reduced_residual_linear_solve_jax(
+            vector,
+            q,
+            grid,
+            boundary,
+            psi_prime=psi,
+            i_prime=current,
+            pressure=pressure,
+            source_vector=source0,
+            state_ridge=state_ridge,
+            reference_vector=vector,
+            mu0=1.0,
+        )
+    )
+    eps = 1.0e-5
+    source_eps = source0 + eps * q
+
+    def residual(items):
+        return np.asarray(
+            axisym_reduced_residual_jax(
+                items,
+                grid,
+                boundary,
+                psi_prime=psi,
+                i_prime=current,
+                pressure=pressure,
+                source_vector=source_eps,
+                state_ridge=state_ridge,
+                reference_vector=vector,
+                mu0=1.0,
+            )
+        )
+
+    def jacobian(items):
+        return np.asarray(
+            axisym_reduced_residual_jacobian_jax(
+                items,
+                grid,
+                boundary,
+                psi_prime=psi,
+                i_prime=current,
+                pressure=pressure,
+                source_vector=source_eps,
+                state_ridge=state_ridge,
+                reference_vector=vector,
+                mu0=1.0,
+            )
+        )
+
+    solved = scipy_optimize.root(
+        residual,
+        vector + eps * implicit_sensitivity,
+        jac=jacobian,
+        method="hybr",
+        options={"xtol": 1.0e-11, "maxfev": 120},
+    )
+    assert np.linalg.norm(residual(solved.x)) < 1.0e-10
+    finite_difference_sensitivity = (solved.x - vector) / eps
+    np.testing.assert_allclose(
+        finite_difference_sensitivity,
+        implicit_sensitivity,
+        rtol=2.0e-4,
+        atol=2.0e-3,
+    )
+
+
 def test_reduced_coordinate_scaling_matches_reduced_axisym_layout():
     config, grid, boundary, initial_state = _perturbed_cylinder_case()
     del config

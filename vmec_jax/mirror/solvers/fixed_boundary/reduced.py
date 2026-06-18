@@ -199,6 +199,50 @@ def _axisym_reduced_energy_jax(
     )
 
 
+def _axisym_reduced_objective_jax(
+    vector,
+    grid: MirrorGrid,
+    boundary: MirrorBoundary,
+    *,
+    psi_prime: PsiPrimeProfile,
+    i_prime: IPrimeProfile,
+    pressure: PressureProfile,
+    source_vector=None,
+    state_ridge: float = 0.0,
+    reference_vector=None,
+    mu0: float,
+):
+    energy = _axisym_reduced_energy_jax(
+        vector,
+        grid,
+        boundary,
+        psi_prime=psi_prime,
+        i_prime=i_prime,
+        pressure=pressure,
+        mu0=mu0,
+    )
+    if source_vector is None:
+        sourced_energy = energy
+    else:
+        source_vector = jnp.asarray(source_vector, dtype=jnp.asarray(vector).dtype)
+        if source_vector.shape != jnp.asarray(vector).shape:
+            raise ValueError(
+                f"source_vector shape {source_vector.shape} does not match vector shape {jnp.asarray(vector).shape}"
+            )
+        sourced_energy = energy - jnp.vdot(source_vector, vector)
+    if float(state_ridge) == 0.0:
+        return sourced_energy
+    if reference_vector is None:
+        reference_vector = jnp.zeros_like(vector)
+    reference_vector = jnp.asarray(reference_vector, dtype=jnp.asarray(vector).dtype)
+    if reference_vector.shape != jnp.asarray(vector).shape:
+        raise ValueError(
+            f"reference_vector shape {reference_vector.shape} does not match vector shape {jnp.asarray(vector).shape}"
+        )
+    delta = jnp.asarray(vector) - reference_vector
+    return sourced_energy + 0.5 * float(state_ridge) * jnp.vdot(delta, delta)
+
+
 def axisym_reduced_residual_jax(
     vector,
     grid: MirrorGrid,
@@ -207,6 +251,9 @@ def axisym_reduced_residual_jax(
     psi_prime: PsiPrimeProfile,
     i_prime: IPrimeProfile,
     pressure: PressureProfile,
+    source_vector=None,
+    state_ridge: float = 0.0,
+    reference_vector=None,
     mu0: float = 4.0e-7 * np.pi,
 ):
     """Return the differentiable reduced fixed-boundary residual.
@@ -220,13 +267,16 @@ def axisym_reduced_residual_jax(
     vector = jnp.asarray(vector)
 
     def objective(items):
-        return _axisym_reduced_energy_jax(
+        return _axisym_reduced_objective_jax(
             items,
             grid,
             boundary,
             psi_prime=psi_prime,
             i_prime=i_prime,
             pressure=pressure,
+            source_vector=source_vector,
+            state_ridge=state_ridge,
+            reference_vector=reference_vector,
             mu0=mu0,
         )
 
@@ -241,6 +291,9 @@ def axisym_reduced_residual_jacobian_jax(
     psi_prime: PsiPrimeProfile,
     i_prime: IPrimeProfile,
     pressure: PressureProfile,
+    source_vector=None,
+    state_ridge: float = 0.0,
+    reference_vector=None,
     derivative: str = "hessian",
     mu0: float = 4.0e-7 * np.pi,
 ):
@@ -256,13 +309,16 @@ def axisym_reduced_residual_jacobian_jax(
     key = str(derivative).strip().lower().replace("-", "_")
 
     def objective(items):
-        return _axisym_reduced_energy_jax(
+        return _axisym_reduced_objective_jax(
             items,
             grid,
             boundary,
             psi_prime=psi_prime,
             i_prime=i_prime,
             pressure=pressure,
+            source_vector=source_vector,
+            state_ridge=state_ridge,
+            reference_vector=reference_vector,
             mu0=mu0,
         )
 
@@ -288,6 +344,9 @@ def axisym_reduced_residual_linear_solve_jax(
     psi_prime: PsiPrimeProfile,
     i_prime: IPrimeProfile,
     pressure: PressureProfile,
+    source_vector=None,
+    state_ridge: float = 0.0,
+    reference_vector=None,
     derivative: str = "hessian",
     transpose: bool = False,
     ridge: float = 0.0,
@@ -306,6 +365,9 @@ def axisym_reduced_residual_linear_solve_jax(
         psi_prime=psi_prime,
         i_prime=i_prime,
         pressure=pressure,
+        source_vector=source_vector,
+        state_ridge=state_ridge,
+        reference_vector=reference_vector,
         derivative=derivative,
         mu0=mu0,
     )

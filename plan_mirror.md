@@ -15876,3 +15876,94 @@ Results:
 No user input is needed.
 
 ---
+## 126. Manufactured Reduced Implicit Sensitivity Gate
+
+### Steps taken
+
+- Extended the reduced JAX objective/residual with optional validation terms:
+  - `source_vector`, a reduced-coordinate linear source;
+  - `state_ridge`, a small quadratic state regularization;
+  - `reference_vector`, the ridge reference state.
+- These terms let us manufacture an exact tiny-grid root at a chosen state:
+
+```text
+F(x0, source0, reference=x0) = 0
+```
+
+where `source0` is the unforced reduced residual at `x0`.
+- Added a focused test that:
+  - manufactures an exact reduced root;
+  - computes `dx/dp` with the dense implicit solve;
+  - solves a perturbed source problem independently with SciPy root;
+  - compares the finite-difference state change against the implicit
+    sensitivity.
+- Documented that this is a derivative-method validation gate, not yet a
+  physical production differentiable equilibrium API.
+
+### Results obtained
+
+- The manufactured root residual is zero to numerical precision.
+- The perturbed root solve reaches residual below `1e-10`.
+- The finite-difference sensitivity matches the dense implicit sensitivity
+  within the focused test tolerance.
+- The differentiable lane now has a complete tiny-grid validation chain:
+  residual -> Jacobian -> forward/adjoint dense solve -> manufactured
+  sensitivity finite-difference check.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check vmec_jax/mirror/solvers/fixed_boundary/reduced.py tests/mirror/test_mirror_fixed_boundary_axisym.py
+python -m ruff format --check vmec_jax/mirror/solvers/fixed_boundary/reduced.py tests/mirror/test_mirror_fixed_boundary_axisym.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_fixed_boundary_axisym.py::test_reduced_jax_residual_and_jacobian_match_gradient_and_jvp tests/mirror/test_mirror_fixed_boundary_axisym.py::test_reduced_implicit_sensitivity_matches_manufactured_source_finite_difference -q
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff format check passed.
+- Focused differentiability tests: `2 passed`.
+
+### File structure and best-practice notes
+
+- The source/ridge terms are optional and live in the reduced JAX objective only.
+- Existing CLI solvers and examples are unchanged.
+- The manufactured sensitivity test uses `scipy.optimize.root` only as a small
+  independent validation solve.
+- The test uses a tiny grid so dense Jacobians and dense solves remain cheap.
+
+### Best next steps
+
+1. Commit and push M126.
+2. Add a user-facing example or developer doc snippet showing the tiny-grid
+   implicit sensitivity workflow.
+3. Start a lineax or matrix-free variant of the residual linear solve so the
+   same API shape can scale beyond dense validation grids.
+4. Then wrap a small converged fixed-boundary solve with a custom implicit VJP
+   once the linear solve path is selected.
+
+### Completion percentages after M126
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `89%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `84%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `92%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `48%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `85%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `85%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---
