@@ -693,7 +693,15 @@ def projected_residual_newton_solve(
             condition_estimate,
         )
 
-    def solve_block_lsmr_step(*, matvec_y, precondition_y, rhs, tolerance, linear_maxiter):
+    def solve_block_lsmr_step(
+        *,
+        matvec_y,
+        precondition_y,
+        rhs,
+        tolerance,
+        radius_linear_maxiter,
+        lambda_linear_maxiter,
+    ):
         step_y = np.zeros(size, dtype=float)
         block_istops: list[int] = []
         block_iterations: list[int] = []
@@ -706,7 +714,7 @@ def projected_residual_newton_solve(
             vector_full[start:stop] = np.asarray(vector_block, dtype=float)
             return vector_full if preconditioner_kind == "none" else precondition_y(vector_full)
 
-        def solve_block(start: int, stop: int) -> np.ndarray:
+        def solve_block(start: int, stop: int, *, maxiter: int) -> np.ndarray:
             block_size = int(stop - start)
             if block_size <= 0:
                 return np.zeros(size, dtype=float)
@@ -733,7 +741,7 @@ def projected_residual_newton_solve(
                 rhs[start:stop],
                 atol=tolerance,
                 btol=tolerance,
-                maxiter=linear_maxiter,
+                maxiter=maxiter,
             )
             block_istops.append(int(linear_result[1]))
             block_iterations.append(int(linear_result[2]))
@@ -742,8 +750,8 @@ def projected_residual_newton_solve(
             block_condition_estimates.append(float(linear_result[6]))
             return lift_block(np.asarray(linear_result[0], dtype=float), start=start, stop=stop)
 
-        step_y += solve_block(0, num_a_reduced)
-        step_y += solve_block(num_a_reduced, size)
+        step_y += solve_block(0, num_a_reduced, maxiter=radius_linear_maxiter)
+        step_y += solve_block(num_a_reduced, size, maxiter=lambda_linear_maxiter)
         return (
             step_y,
             max(block_istops) if block_istops else 0,
@@ -826,9 +834,14 @@ def projected_residual_newton_solve(
                 vector_size=size,
                 residual_norm=current_step.residual_norm,
             )
-            linear_maxiter_history.append(linear_maxiter)
             tolerance = min(1.0e-10, max(options.tolerance, np.finfo(float).eps))
             if linear_solver_kind == "block_lsmr":
+                lambda_linear_maxiter = (
+                    linear_maxiter
+                    if options.residual_block_lambda_maxiter is None
+                    else max(1, int(options.residual_block_lambda_maxiter))
+                )
+                linear_maxiter_history.append(max(linear_maxiter, lambda_linear_maxiter))
                 (
                     step_y,
                     linear_istop,
@@ -841,9 +854,11 @@ def projected_residual_newton_solve(
                     precondition_y=precondition_y,
                     rhs=rhs,
                     tolerance=tolerance,
-                    linear_maxiter=linear_maxiter,
+                    radius_linear_maxiter=linear_maxiter,
+                    lambda_linear_maxiter=lambda_linear_maxiter,
                 )
             else:
+                linear_maxiter_history.append(linear_maxiter)
                 (
                     step_y,
                     linear_istop,

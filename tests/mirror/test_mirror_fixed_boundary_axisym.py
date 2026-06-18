@@ -453,6 +453,7 @@ def test_residual_newton_block_lsmr_solver_improves_perturbed_cylinder():
             residual_linear_solver="block_lsmr",
             residual_linear_maxiter=24,
             residual_linear_maxiter_policy="fixed",
+            residual_block_lambda_maxiter=32,
             residual_preconditioner="radial_xi_lambda_xi_tridi",
             mu0=1.0,
         ),
@@ -461,7 +462,8 @@ def test_residual_newton_block_lsmr_solver_improves_perturbed_cylinder():
 
     assert summary.accepted
     assert summary.residual_linear_solver == "block_lsmr"
-    assert summary.residual_linear_maxiter_effective_max == 24
+    assert summary.residual_linear_maxiter_effective_max == 32
+    assert summary.residual_linear_maxiter_effective_last == 32
     assert summary.residual_linear_istop_last is not None
     assert summary.residual_linear_iterations_last is not None
     assert summary.residual_linear_iterations_last > 0

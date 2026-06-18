@@ -24,6 +24,7 @@ class OptimizerOptions:
     residual_linear_maxiter: int = 16
     residual_linear_maxiter_policy: str = "adaptive"
     residual_linear_adaptive_factor: float = 6.0
+    residual_block_lambda_maxiter: int | None = None
     residual_linear_solver: str = "lsmr"
     residual_compare_dense_step: bool = False
     residual_preconditioner: str = "radial_xi_tridi"

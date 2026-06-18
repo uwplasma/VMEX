@@ -47,6 +47,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--residual-linear-adaptive-factor", type=float, default=6.0)
     parser.add_argument(
+        "--residual-block-lambda-maxiter",
+        type=int,
+        default=None,
+        help="Optional lambda-block LSMR iteration budget for --residual-linear-solver block_lsmr.",
+    )
+    parser.add_argument(
         "--residual-linear-solver",
         type=str,
         default="lsmr",
@@ -245,6 +251,7 @@ def _run_one(
     residual_linear_maxiter: int,
     residual_linear_maxiter_policy: str,
     residual_linear_adaptive_factor: float,
+    residual_block_lambda_maxiter: int | None,
     residual_linear_solver: str,
     residual_compare_dense_step: bool,
     preconditioner: str,
@@ -287,6 +294,7 @@ def _run_one(
             residual_linear_maxiter=residual_linear_maxiter,
             residual_linear_maxiter_policy=residual_linear_maxiter_policy,
             residual_linear_adaptive_factor=residual_linear_adaptive_factor,
+            residual_block_lambda_maxiter=residual_block_lambda_maxiter,
             residual_linear_solver=residual_linear_solver,
             residual_compare_dense_step=residual_compare_dense_step,
             residual_preconditioner=preconditioner,
@@ -310,6 +318,9 @@ def _run_one(
         "residual_linear_maxiter": int(residual_linear_maxiter),
         "residual_linear_maxiter_policy": str(residual_linear_maxiter_policy),
         "residual_linear_adaptive_factor": float(residual_linear_adaptive_factor),
+        "residual_block_lambda_maxiter": None
+        if residual_block_lambda_maxiter is None
+        else int(residual_block_lambda_maxiter),
         "residual_linear_solver": str(residual_linear_solver),
         "residual_linear_maxiter_effective_max": None
         if summary is None
@@ -751,6 +762,7 @@ def run_case(
     residual_linear_maxiter_array: tuple[int, ...] = (16, 48),
     residual_linear_maxiter_policy: str = "fixed",
     residual_linear_adaptive_factor: float = 6.0,
+    residual_block_lambda_maxiter: int | None = None,
     residual_linear_solver: str = "lsmr",
     residual_compare_dense_step: bool = False,
     preconditioners: tuple[str, ...] = ("radial_xi_tridi",),
@@ -796,6 +808,7 @@ def run_case(
                             residual_linear_maxiter=residual_linear_maxiter,
                             residual_linear_maxiter_policy=residual_linear_maxiter_policy,
                             residual_linear_adaptive_factor=residual_linear_adaptive_factor,
+                            residual_block_lambda_maxiter=residual_block_lambda_maxiter,
                             residual_linear_solver=residual_linear_solver,
                             residual_compare_dense_step=residual_compare_dense_step,
                             preconditioner=preconditioner,
@@ -865,6 +878,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
         residual_linear_maxiter_policy=args.residual_linear_maxiter_policy,
         residual_linear_adaptive_factor=args.residual_linear_adaptive_factor,
+        residual_block_lambda_maxiter=args.residual_block_lambda_maxiter,
         residual_linear_solver=args.residual_linear_solver,
         residual_compare_dense_step=args.residual_compare_dense_step,
         preconditioners=_parse_preconditioners(args.preconditioners),

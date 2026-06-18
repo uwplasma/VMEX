@@ -5740,6 +5740,258 @@ No user input is needed.
 
 ---
 
+## 57. 2026-06-17 M8x split lambda-block budget diagnostic
+
+This lane tested whether the M8w matrix-free split block solver could scale to
+the moderate finite-current row used in M8v (`ns=9`, `nxi=17`) and added a
+small option to focus Krylov work on the lambda block when the residual is
+lambda dominated.
+
+### Steps taken
+
+- Ran a moderate finite-current `block_lsmr` probe at:
+  - `ns=9`;
+  - `nxi=17`;
+  - `I'=0.01`;
+  - `maxiter=12`;
+  - `residual_linear_maxiter=102`;
+  - `radial_xi_lambda_xi_tridi`;
+  - no plots, for timing/quality comparison.
+- Ran a same-budget full LSMR comparison at the same resolution and
+  preconditioner.
+- Ran a higher-budget `block_lsmr` probe with `maxiter=6` and
+  `residual_linear_maxiter=249` for both blocks.
+- Added `residual_block_lambda_maxiter` as an optional solve option:
+  - default `None` preserves current behavior;
+  - only `block_lsmr` uses it;
+  - radius block keeps the standard effective budget;
+  - lambda block can receive a larger explicit budget.
+- Exposed `--residual-block-lambda-maxiter` in
+  `examples/mirror_residual_newton_convergence_grid.py`.
+- Stored the override in convergence-grid JSON rows and in mirror `mout`
+  metadata when used.
+- Updated the block-LSMR unit test to verify that the lambda override changes
+  the recorded effective max budget.
+- Added README guidance for lambda-dominated block-LSMR studies.
+- Ran a moderate split-budget probe with radius budget `102` and lambda budget
+  `249`.
+- Generated a full plotted bundle for the best M8x split-budget moderate row.
+
+### Results obtained
+
+Moderate finite-current two-coil rows, `ns=9`, `nxi=17`, `I'=0.01`:
+
+| row | outer | radius budget | lambda budget | last iterations | final residual | final `fsq` | normalized force |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full LSMR | 12 | 102 | 102 | 102 | `1.158016138481e-02` | `5.385547698721e-07` | `3.171545880611e-02` |
+| block LSMR | 12 | 102 | 102 | 204 | `9.110897547661e-03` | `3.333672856384e-07` | `2.502563842048e-02` |
+| block LSMR | 6 | 249 | 249 | 498 | `3.272284167977e-03` | `4.300338825700e-08` | `9.062380071320e-03` |
+| block LSMR split budget | 6 | 102 | 249 | 351 | `3.126838214005e-03` | `3.926553099020e-08` | `8.661032213469e-03` |
+| M8v block dense reference | 12 | dense | dense | n/a | `1.742396273103e-14` | `1.219254928724e-30` | `4.836809658876e-14` |
+
+Interpretation:
+
+- The current matrix-free Krylov paths do not close the moderate finite-current
+  gap to the block-dense reference.
+- Split block LSMR is modestly better than full LSMR at the same 102 budget,
+  but both are still far from tight convergence.
+- Increasing block budgets helps, but the high-budget matrix-free run remains
+  lambda dominated and expensive.
+- The new split-budget option is useful because it slightly improves the
+  249/249 row while reducing last-step Krylov work from `498` to `351`
+  iterations.
+- This is not enough for research-grade production convergence; the next
+  scalable solver lane should improve the lambda block preconditioner/operator
+  rather than only increasing Krylov budgets.
+
+Best plotted split-budget row:
+
+| quantity | value |
+| --- | ---: |
+| final residual | `3.126838214005e-03` |
+| final `fsq` | `3.926553099020e-08` |
+| normalized force | `8.661032213469e-03` |
+| Newton iterations | 6 |
+| optimizer success | false, maximum iterations reached |
+| residual `a` norm | `5.474244766630e-05` |
+| residual lambda norm | `3.126358981464e-03` |
+| lambda residual fraction | `0.999846735742` |
+| minimum `sqrt(g)` | `2.997247511021e-03` |
+| mirror ratio | `22.174883659076` |
+
+Generated artifacts:
+
+- `results/mirror/m8x_block_lsmr_ns9_probe/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8x_full_lsmr_ns9_probe/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8x_block_lsmr_ns9_inner249_probe/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8x_block_lsmr_ns9_split_budget_probe/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8x_block_lsmr_ns9_split_budget_plots/residual_newton_convergence_grid_metrics.json`.
+- `results/mirror/m8x_block_lsmr_ns9_split_budget_plots/residual_newton_convergence_history.png`.
+- `results/mirror/m8x_block_lsmr_ns9_split_budget_plots/residual_newton_convergence_components.png`.
+- `results/mirror/m8x_block_lsmr_ns9_split_budget_plots/best_finite_current_block_lsmr_ns9_split_budget_m8x_residual_newton/figures/best_finite_current_block_lsmr_ns9_split_budget_m8x_residual_newton_mirror_boundary_3d.png`.
+- `results/mirror/m8x_block_lsmr_ns9_split_budget_plots/best_finite_current_block_lsmr_ns9_split_budget_m8x_residual_newton/figures/best_finite_current_block_lsmr_ns9_split_budget_m8x_residual_newton_mirror_bfield_boundary.png`.
+- `results/mirror/m8x_block_lsmr_ns9_split_budget_plots/best_finite_current_block_lsmr_ns9_split_budget_m8x_residual_newton/figures/best_finite_current_block_lsmr_ns9_split_budget_m8x_residual_newton_mirror_bmag_sxi.png`.
+- `results/mirror/m8x_block_lsmr_ns9_split_budget_plots/best_finite_current_block_lsmr_ns9_split_budget_m8x_residual_newton/figures/best_finite_current_block_lsmr_ns9_split_budget_m8x_residual_newton_mirror_cross_sections.png`.
+
+Visual validation:
+
+- Residual history decreases but stalls above tight convergence.
+- Horizontal-`z` 3-D geometry remains well ordered.
+- `|B|` remains strongest near the end caps and weakest near the central
+  throat.
+- B-direction plot includes visible cap-to-cap field-line traces.
+- Cross sections remain circular and nested.
+
+### How it was tested
+
+Automated tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py::test_residual_newton_block_lsmr_solver_improves_perturbed_cylinder \
+  tests/mirror/test_mirror_examples.py::test_root_residual_newton_convergence_grid_runs_without_plots \
+  tests/mirror/test_mirror_io.py \
+  -q
+```
+
+Result: `6 passed in 19.65s`.
+
+Lint/format/whitespace:
+
+```bash
+python -m ruff check \
+  vmec_jax/mirror/solvers/fixed_boundary/types.py \
+  vmec_jax/mirror/solvers/fixed_boundary/api.py \
+  vmec_jax/mirror/solvers/fixed_boundary/optimizers.py \
+  vmec_jax/mirror/io/mout.py \
+  examples/mirror_residual_newton_convergence_grid.py \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py
+python -m ruff format --check \
+  vmec_jax/mirror/solvers/fixed_boundary/types.py \
+  vmec_jax/mirror/solvers/fixed_boundary/api.py \
+  vmec_jax/mirror/solvers/fixed_boundary/optimizers.py \
+  vmec_jax/mirror/io/mout.py \
+  examples/mirror_residual_newton_convergence_grid.py \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py
+git diff --check
+```
+
+Result: all checks passed.
+
+CLI smoke for the new option:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/m8x_block_lambda_budget_cli_smoke \
+  --ns-array 5 \
+  --nxi-array 9 \
+  --maxiter-array 2 \
+  --residual-linear-maxiter-array 12 \
+  --residual-block-lambda-maxiter 32 \
+  --residual-linear-maxiter-policy fixed \
+  --residual-linear-solver block_lsmr \
+  --preconditioners radial_xi_lambda_xi_tridi \
+  --residual-xi-alpha 1.0 \
+  --i-prime 0.01 \
+  --case-label finite_current_block_lambda_budget_cli_smoke_m8x \
+  --no-plots
+```
+
+Result: metrics row recorded `residual_block_lambda_maxiter=32`,
+`residual_linear_maxiter_effective_max=32`, and positive `sqrt(g)`.
+
+Moderate benchmark commands:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/m8x_block_lsmr_ns9_probe \
+  --ns-array 9 \
+  --nxi-array 17 \
+  --maxiter-array 12 \
+  --residual-linear-maxiter-array 102 \
+  --residual-linear-maxiter-policy fixed \
+  --residual-linear-solver block_lsmr \
+  --residual-xi-alpha 1.0 \
+  --i-prime 0.01 \
+  --case-label finite_current_block_lsmr_ns9_m8x \
+  --preconditioners radial_xi_lambda_xi_tridi \
+  --no-plots
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/m8x_full_lsmr_ns9_probe \
+  --ns-array 9 \
+  --nxi-array 17 \
+  --maxiter-array 12 \
+  --residual-linear-maxiter-array 102 \
+  --residual-linear-maxiter-policy fixed \
+  --residual-linear-solver lsmr \
+  --residual-xi-alpha 1.0 \
+  --i-prime 0.01 \
+  --case-label finite_current_full_lsmr_ns9_m8x \
+  --preconditioners radial_xi_lambda_xi_tridi \
+  --no-plots
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir results/mirror/m8x_block_lsmr_ns9_split_budget_plots \
+  --ns-array 9 \
+  --nxi-array 17 \
+  --maxiter-array 6 \
+  --residual-linear-maxiter-array 102 \
+  --residual-block-lambda-maxiter 249 \
+  --residual-linear-maxiter-policy fixed \
+  --residual-linear-solver block_lsmr \
+  --residual-xi-alpha 1.0 \
+  --i-prime 0.01 \
+  --case-label finite_current_block_lsmr_ns9_split_budget_m8x \
+  --preconditioners radial_xi_lambda_xi_tridi
+```
+
+### File structure and best-practice notes
+
+- `MirrorSolveOptions` and `OptimizerOptions` now carry one optional field,
+  `residual_block_lambda_maxiter`.
+- The field is deliberately narrow: only `block_lsmr` uses it.
+- `optimizers.py` keeps old behavior when the field is `None`.
+- `mout.py` writes the option only when it is set, keeping old output metadata
+  stable.
+- The convergence-grid example is the only CLI currently exposing the option,
+  because this is a diagnostic benchmarking control rather than a general
+  production knob.
+
+### Best next steps
+
+1. Commit and push M8x.
+2. Move from budget control to a better scalable lambda-block correction:
+   - inspect the lambda block spectrum/condition estimates;
+   - test stronger lambda `xi` and radial smoothers only after measuring the
+     block residuals;
+   - consider a small structured lambda-block preconditioner instead of raw
+     LSMR on the Hessian-vector product;
+   - keep block-dense as the correctness reference.
+3. Avoid more blind `ns=9`, `nxi=17` Krylov budget sweeps until the lambda
+   preconditioner/operator is improved.
+
+### Completion percentages after M8x
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `88%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `78%`.
+- Plotting and `vmec --plot` mirror support: `79%`.
+- I/O schema and docs: `80%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `15%`.
+- Free-boundary mirror lane: `5%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `0%`.
+- PR merge readiness overall: `78%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+
 ## 56. 2026-06-17 M8w matrix-free block LSMR correction
 
 This lane converted the successful M8u/M8v block-dense split into a scalable

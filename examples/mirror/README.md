@@ -118,8 +118,11 @@ production adaptive inner budget in the same report. Pass ``--i-prime`` with a
 nonzero value to run the same decomposition on a finite-current, pitched-field
 case. Those finite-current runs are diagnostic artifacts for the current
 axisymmetric residual-Newton path: they verify nonzero lambda residual behavior
-and write field-line plots. JSON rows also include compact iterative
-linear-solve diagnostics such as the stop code, actual iteration count,
-residual norm, normal-equation residual norm, and condition estimate when a
-Krylov solver is used. With ``--residual-compare-dense-step``, rows also
-include dense-reference step comparison metrics.
+and write field-line plots. For lambda-dominated ``block_lsmr`` studies, pass
+``--residual-block-lambda-maxiter`` to give the lambda block a larger Krylov
+budget than the radius block without spending the same iterations on both
+blocks. JSON rows also include compact iterative linear-solve diagnostics such
+as the stop code, actual iteration count, residual norm, normal-equation
+residual norm, and condition estimate when a Krylov solver is used. With
+``--residual-compare-dense-step``, rows also include dense-reference step
+comparison metrics.
