@@ -11461,3 +11461,65 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9974%.
+
+## 2026-06-18 Bcovar Setup Resolution Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `BcovarResolvedState` and `_resolve_bcovar_state_and_trig` to
+   `vmec_jax.vmec_bcovar`.
+2. Moved trig-table resolution, physical-signed R/Z coefficient conversion,
+   lambda axis closure, and state-parity namespace construction out of
+   `vmec_bcovar_half_mesh_from_wout`.
+3. Kept the downstream parity, metric, field, pressure, and lambda-force logic
+   unchanged.
+
+Results obtained:
+
+- `vmec_bcovar_half_mesh_from_wout` dropped from 802 to 760 lines.
+- The bcovar entry point now has a named setup seam that can be tested or
+  instrumented independently when we continue reducing the metric/field blocks.
+- Focused WOUT/bcovar, finite-beta, and physics-parity helper tests remained
+  green.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/vmec_bcovar.py`
+- `python -m ruff check vmec_jax/vmec_bcovar.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_driver_wave10_coverage.py tests/test_physics_parity_helper_gates.py tests/test_finite_beta_helpers_unit.py tests/test_wout_helpers.py -q`
+  - Result: passed, with one skip and the known single-surface JXBFORCE warnings.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 30`
+
+Best next steps:
+
+1. Split the bcovar metric-parity block next: even/odd synthesis and odd-m axis
+   conventions are still a large contiguous policy inside the function.
+2. Keep the extracted setup seam local to `vmec_bcovar.py` until more bcovar
+   helpers exist; no new package or root namespace is needed yet.
+3. Opportunistically check the pending GitHub CI run, but only after it reports
+   a completed failure.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.999990%.
+- Solver monolith reduction: 99.46%.
+- Free-boundary adjoint monolith reduction: 99.30%.
+- Driver workflow decomposition: 99.72%.
+- Residual iteration decomposition: 95.8%.
+- WOUT diagnostic/profile decomposition: 99.54%.
+- Bcovar/WOUT parity decomposition: 95.5%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9975%.

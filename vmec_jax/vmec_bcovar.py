@@ -298,6 +298,78 @@ def _apply_vmec_lambda_axis_closure(
     return _replace_axis_row(Lsin, axis_row)
 
 
+@dataclass(frozen=True)
+class BcovarResolvedState:
+    """State/trig inputs normalized for the VMEC bcovar parity path."""
+
+    s: Any
+    trig: VmecTrigTables
+    ns: int
+    state_parity: Any
+
+
+def _resolve_bcovar_state_and_trig(
+    *,
+    state: Any,
+    static: Any,
+    wout: Any,
+    trig: VmecTrigTables | None,
+    state_physical_signed: tuple[Any, Any, Any, Any] | None,
+) -> BcovarResolvedState:
+    """Resolve trig tables and physical-signed geometry for bcovar."""
+
+    s = jnp.asarray(static.s)
+    if trig is None:
+        trig = getattr(static, "trig_vmec", None)
+    if trig is None:
+        trig = vmec_trig_tables(
+            ntheta=int(static.cfg.ntheta),
+            nzeta=int(static.cfg.nzeta),
+            nfp=int(getattr(wout, "nfp", static.cfg.nfp)),
+            mmax=int(getattr(wout, "mpol", static.cfg.mpol)) - 1,
+            nmax=int(getattr(wout, "ntor", static.cfg.ntor)),
+            lasym=bool(getattr(wout, "lasym", static.cfg.lasym)),
+            dtype=jnp.asarray(state.Rcos).dtype,
+        )
+    ns = int(s.shape[0])
+    if state_physical_signed is None:
+        Rcos_int, Zsin_int, Rsin_int, Zcos_int = vmec_m1_internal_to_physical_signed(
+            Rcos=state.Rcos,
+            Zsin=state.Zsin,
+            Rsin=state.Rsin,
+            Zcos=state.Zcos,
+            modes=static.modes,
+            lthreed=bool(getattr(static.cfg, "lthreed", True)),
+            lasym=bool(getattr(static.cfg, "lasym", False)),
+            lconm1=bool(getattr(static.cfg, "lconm1", True)),
+        )
+    else:
+        Rcos_int, Zsin_int, Rsin_int, Zcos_int = state_physical_signed
+
+    Lsin_force = _apply_vmec_lambda_axis_closure(
+        Lsin=state.Lsin,
+        m_modes=static.modes.m,
+        n_modes=static.modes.n,
+        axis_copy_mask=getattr(static, "lambda_axis_copy_mask", None),
+        lthreed=bool(getattr(static.cfg, "lthreed", False)),
+        ntor=int(getattr(static.cfg, "ntor", 0)),
+    )
+    state_parity = SimpleNamespace(
+        Rcos=jnp.asarray(Rcos_int),
+        Rsin=jnp.asarray(Rsin_int),
+        Zcos=jnp.asarray(Zcos_int),
+        Zsin=jnp.asarray(Zsin_int),
+        Lcos=jnp.asarray(state.Lcos),
+        Lsin=jnp.asarray(Lsin_force),
+    )
+    return BcovarResolvedState(
+        s=s,
+        trig=trig,
+        ns=ns,
+        state_parity=state_parity,
+    )
+
+
 def vmec_bcovar_half_mesh_from_wout(
     *,
     state,
@@ -353,59 +425,17 @@ def vmec_bcovar_half_mesh_from_wout(
         ``use_vmec_synthesis=True``, they are built internally.
     """
     bcovar_start = time.perf_counter()
-    s = jnp.asarray(static.s)
-    if trig is None:
-        trig = getattr(static, "trig_vmec", None)
-    if trig is None:
-        trig = vmec_trig_tables(
-            ntheta=int(static.cfg.ntheta),
-            nzeta=int(static.cfg.nzeta),
-            nfp=int(getattr(wout, "nfp", static.cfg.nfp)),
-            mmax=int(getattr(wout, "mpol", static.cfg.mpol)) - 1,
-            nmax=int(getattr(wout, "ntor", static.cfg.ntor)),
-            lasym=bool(getattr(wout, "lasym", static.cfg.lasym)),
-            dtype=jnp.asarray(state.Rcos).dtype,
-        )
-    ns = int(s.shape[0])
-    # VMEC stores internal coefficients. Undo the m=1 internal constraint for
-    # R/Z before real-space synthesis.
-    if state_physical_signed is None:
-        Rcos_int, Zsin_int, Rsin_int, Zcos_int = vmec_m1_internal_to_physical_signed(
-            Rcos=state.Rcos,
-            Zsin=state.Zsin,
-            Rsin=state.Rsin,
-            Zcos=state.Zcos,
-            modes=static.modes,
-            lthreed=bool(getattr(static.cfg, "lthreed", True)),
-            lasym=bool(getattr(static.cfg, "lasym", False)),
-            lconm1=bool(getattr(static.cfg, "lconm1", True)),
-        )
-    else:
-        Rcos_int, Zsin_int, Rsin_int, Zcos_int = state_physical_signed
-
-    Rcos_geom = jnp.asarray(Rcos_int)
-    Rsin_geom = jnp.asarray(Rsin_int)
-    Zcos_geom = jnp.asarray(Zcos_int)
-    Zsin_geom = jnp.asarray(Zsin_int)
-    Lcos_force = jnp.asarray(state.Lcos)
-    Lsin_force = _apply_vmec_lambda_axis_closure(
-        Lsin=state.Lsin,
-        m_modes=static.modes.m,
-        n_modes=static.modes.n,
-        axis_copy_mask=getattr(static, "lambda_axis_copy_mask", None),
-        lthreed=bool(getattr(static.cfg, "lthreed", False)),
-        ntor=int(getattr(static.cfg, "ntor", 0)),
+    resolved = _resolve_bcovar_state_and_trig(
+        state=state,
+        static=static,
+        wout=wout,
+        trig=trig,
+        state_physical_signed=state_physical_signed,
     )
-    Lsin_force = jnp.asarray(Lsin_force)
-
-    state_parity = SimpleNamespace(
-        Rcos=Rcos_geom,
-        Rsin=Rsin_geom,
-        Zcos=Zcos_geom,
-        Zsin=Zsin_geom,
-        Lcos=Lcos_force,
-        Lsin=Lsin_force,
-    )
+    s = resolved.s
+    trig = resolved.trig
+    ns = resolved.ns
+    state_parity = resolved.state_parity
     _vmec_bcovar_profile_log("setup_done", bcovar_start)
 
     parity_start = time.perf_counter()
