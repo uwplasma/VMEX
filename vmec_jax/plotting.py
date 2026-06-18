@@ -174,6 +174,40 @@ def _basis_from_wout(wout, theta: np.ndarray, zeta: np.ndarray, *, nyq: bool, ph
     return basis
 
 
+def _wout_coeff_pair(
+    wout,
+    primary: str,
+    secondary: str,
+    *,
+    zero_secondary_if_sym: bool = False,
+    dtype=None,
+):
+    first = np.asarray(getattr(wout, primary), dtype=dtype)
+    second = np.asarray(getattr(wout, secondary, np.zeros_like(first)), dtype=dtype)
+    if zero_secondary_if_sym and not bool(getattr(wout, "lasym", False)):
+        second = np.zeros_like(first)
+    return first, second
+
+
+def _wout_coeff_pair_at(
+    wout,
+    primary: str,
+    secondary: str,
+    s_index: int,
+    *,
+    zero_secondary_if_sym: bool = False,
+    dtype=float,
+):
+    first, second = _wout_coeff_pair(
+        wout,
+        primary,
+        secondary,
+        zero_secondary_if_sym=zero_secondary_if_sym,
+        dtype=dtype,
+    )
+    return first[int(s_index)], second[int(s_index)]
+
+
 def bsup_from_wout(
     wout,
     *,
@@ -183,13 +217,8 @@ def bsup_from_wout(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return contravariant components (bsupu, bsupv) on a surface from wout Nyquist data."""
     basis = _basis_from_wout(wout, theta, zeta, nyq=True, physical=False)
-    bsupumnc = np.asarray(wout.bsupumnc)
-    bsupumns = np.asarray(getattr(wout, "bsupumns", np.zeros_like(bsupumnc)))
-    bsupvmnc = np.asarray(wout.bsupvmnc)
-    bsupvmns = np.asarray(getattr(wout, "bsupvmns", np.zeros_like(bsupvmnc)))
-    if not bool(getattr(wout, "lasym", False)):
-        bsupumns = np.zeros_like(bsupumnc)
-        bsupvmns = np.zeros_like(bsupvmnc)
+    bsupumnc, bsupumns = _wout_coeff_pair(wout, "bsupumnc", "bsupumns", zero_secondary_if_sym=True)
+    bsupvmnc, bsupvmns = _wout_coeff_pair(wout, "bsupvmnc", "bsupvmns", zero_secondary_if_sym=True)
     bsupu = np.asarray(eval_fourier(bsupumnc[s_index], bsupumns[s_index], basis))
     bsupv = np.asarray(eval_fourier(bsupvmnc[s_index], bsupvmns[s_index], basis))
     return bsupu, bsupv
@@ -204,13 +233,8 @@ def bsub_from_wout(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return covariant components (bsubu, bsubv) on a surface from wout Nyquist data."""
     basis = _basis_from_wout(wout, theta, zeta, nyq=True, physical=False)
-    bsubumnc = np.asarray(wout.bsubumnc)
-    bsubumns = np.asarray(getattr(wout, "bsubumns", np.zeros_like(bsubumnc)))
-    bsubvmnc = np.asarray(wout.bsubvmnc)
-    bsubvmns = np.asarray(getattr(wout, "bsubvmns", np.zeros_like(bsubvmnc)))
-    if not bool(getattr(wout, "lasym", False)):
-        bsubumns = np.zeros_like(bsubumnc)
-        bsubvmns = np.zeros_like(bsubvmnc)
+    bsubumnc, bsubumns = _wout_coeff_pair(wout, "bsubumnc", "bsubumns", zero_secondary_if_sym=True)
+    bsubvmnc, bsubvmns = _wout_coeff_pair(wout, "bsubvmnc", "bsubvmns", zero_secondary_if_sym=True)
     bsubu = np.asarray(eval_fourier(bsubumnc[s_index], bsubumns[s_index], basis))
     bsubv = np.asarray(eval_fourier(bsubvmnc[s_index], bsubvmns[s_index], basis))
     return bsubu, bsubv
@@ -226,13 +250,8 @@ def surface_rz_from_wout(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return R,Z on a surface from wout Fourier coefficients."""
     basis = _basis_from_wout(wout, theta, zeta, nyq=nyq, physical=False)
-    rmnc = np.asarray(wout.rmnc)
-    rmns = np.asarray(getattr(wout, "rmns", np.zeros_like(rmnc)))
-    zmns = np.asarray(wout.zmns)
-    zmnc = np.asarray(getattr(wout, "zmnc", np.zeros_like(zmns)))
-    if not bool(getattr(wout, "lasym", False)):
-        rmns = np.zeros_like(rmnc)
-        zmnc = np.zeros_like(zmns)
+    rmnc, rmns = _wout_coeff_pair(wout, "rmnc", "rmns", zero_secondary_if_sym=True)
+    zmns, zmnc = _wout_coeff_pair(wout, "zmns", "zmnc", zero_secondary_if_sym=True)
 
     R = np.asarray(eval_fourier(rmnc[s_index], rmns[s_index], basis))
     Z = np.asarray(eval_fourier(zmnc[s_index], zmns[s_index], basis))
@@ -253,13 +272,8 @@ def surface_rz_from_wout_physical(
     `xn` already includes the nfp factor.
     """
     basis = _basis_from_wout(wout, theta, phi, nyq=nyq, physical=True)
-    rmnc = np.asarray(wout.rmnc)
-    rmns = np.asarray(getattr(wout, "rmns", np.zeros_like(rmnc)))
-    zmns = np.asarray(wout.zmns)
-    zmnc = np.asarray(getattr(wout, "zmnc", np.zeros_like(zmns)))
-    if not bool(getattr(wout, "lasym", False)):
-        rmns = np.zeros_like(rmnc)
-        zmnc = np.zeros_like(zmns)
+    rmnc, rmns = _wout_coeff_pair(wout, "rmnc", "rmns", zero_secondary_if_sym=True)
+    zmns, zmnc = _wout_coeff_pair(wout, "zmns", "zmnc", zero_secondary_if_sym=True)
 
     R = np.asarray(eval_fourier(rmnc[s_index], rmns[s_index], basis))
     Z = np.asarray(eval_fourier(zmnc[s_index], zmns[s_index], basis))
@@ -555,10 +569,7 @@ def bmag_from_wout(
 ) -> np.ndarray:
     """Return B magnitude on a surface from wout Nyquist Fourier coefficients."""
     basis = _basis_from_wout(wout, theta, zeta, nyq=True, physical=False)
-    bmnc = np.asarray(wout.bmnc)
-    bmns = np.asarray(getattr(wout, "bmns", np.zeros_like(bmnc)))
-    if not bool(getattr(wout, "lasym", False)):
-        bmns = np.zeros_like(bmnc)
+    bmnc, bmns = _wout_coeff_pair(wout, "bmnc", "bmns", zero_secondary_if_sym=True)
     B = np.asarray(eval_fourier(bmnc[s_index], bmns[s_index], basis))
     return B
 
@@ -572,10 +583,7 @@ def bmag_from_wout_physical(
 ) -> np.ndarray:
     """Return B magnitude on a surface using physical toroidal angle phi."""
     basis = _basis_from_wout(wout, theta, phi, nyq=True, physical=True)
-    bmnc = np.asarray(wout.bmnc)
-    bmns = np.asarray(getattr(wout, "bmns", np.zeros_like(bmnc)))
-    if not bool(getattr(wout, "lasym", False)):
-        bmns = np.zeros_like(bmnc)
+    bmnc, bmns = _wout_coeff_pair(wout, "bmnc", "bmns", zero_secondary_if_sym=True)
     B = np.asarray(eval_fourier(bmnc[s_index], bmns[s_index], basis))
     return B
 
@@ -603,10 +611,7 @@ def vmecplot2_bmag_grid(
     zeta2d, theta2d = np.meshgrid(zeta, theta)
     xm_nyq = np.asarray(wout.xm_nyq, dtype=float)
     xn_nyq = np.asarray(wout.xn_nyq, dtype=float)
-    bmnc = np.asarray(wout.bmnc, dtype=float)[int(s_index)]
-    bmns = np.asarray(getattr(wout, "bmns", np.zeros_like(wout.bmnc)), dtype=float)[int(s_index)]
-    if not bool(getattr(wout, "lasym", False)):
-        bmns = np.zeros_like(bmns)
+    bmnc, bmns = _wout_coeff_pair_at(wout, "bmnc", "bmns", s_index, zero_secondary_if_sym=True)
     angle = xm_nyq[:, None, None] * theta2d[None, :, :] - xn_nyq[:, None, None] * zeta2d[None, :, :]
     B = np.tensordot(bmnc, np.cos(angle), axes=(0, 0)) + np.tensordot(bmns, np.sin(angle), axes=(0, 0))
     return theta, zeta, np.asarray(B)
@@ -625,10 +630,8 @@ def vmecplot2_surface_grid(
     zeta2d, theta2d = np.meshgrid(zeta, theta)
     xm = np.asarray(wout.xm, dtype=float)
     xn = np.asarray(wout.xn, dtype=float)
-    rmnc = np.asarray(wout.rmnc, dtype=float)[int(s_index)]
-    rmns = np.asarray(getattr(wout, "rmns", np.zeros_like(wout.rmnc)), dtype=float)[int(s_index)]
-    zmns = np.asarray(wout.zmns, dtype=float)[int(s_index)]
-    zmnc = np.asarray(getattr(wout, "zmnc", np.zeros_like(wout.zmns)), dtype=float)[int(s_index)]
+    rmnc, rmns = _wout_coeff_pair_at(wout, "rmnc", "rmns", s_index, zero_secondary_if_sym=True)
+    zmns, zmnc = _wout_coeff_pair_at(wout, "zmns", "zmnc", s_index, zero_secondary_if_sym=True)
     angle = xm[:, None, None] * theta2d[None, :, :] - xn[:, None, None] * zeta2d[None, :, :]
     R = np.tensordot(rmnc, np.cos(angle), axes=(0, 0)) + np.tensordot(rmns, np.sin(angle), axes=(0, 0))
     Z = np.tensordot(zmns, np.sin(angle), axes=(0, 0)) + np.tensordot(zmnc, np.cos(angle), axes=(0, 0))
@@ -652,14 +655,9 @@ def vmecplot2_lcfs_3d_grid(
     xn = np.asarray(wout.xn, dtype=float)
     xm_nyq = np.asarray(wout.xm_nyq, dtype=float)
     xn_nyq = np.asarray(wout.xn_nyq, dtype=float)
-    rmnc = np.asarray(wout.rmnc, dtype=float)[int(s_index)]
-    rmns = np.asarray(getattr(wout, "rmns", np.zeros_like(wout.rmnc)), dtype=float)[int(s_index)]
-    zmns = np.asarray(wout.zmns, dtype=float)[int(s_index)]
-    zmnc = np.asarray(getattr(wout, "zmnc", np.zeros_like(wout.zmns)), dtype=float)[int(s_index)]
-    bmnc = np.asarray(wout.bmnc, dtype=float)[int(s_index)]
-    bmns = np.asarray(getattr(wout, "bmns", np.zeros_like(wout.bmnc)), dtype=float)[int(s_index)]
-    if not bool(getattr(wout, "lasym", False)):
-        bmns = np.zeros_like(bmns)
+    rmnc, rmns = _wout_coeff_pair_at(wout, "rmnc", "rmns", s_index, zero_secondary_if_sym=True)
+    zmns, zmnc = _wout_coeff_pair_at(wout, "zmns", "zmnc", s_index, zero_secondary_if_sym=True)
+    bmnc, bmns = _wout_coeff_pair_at(wout, "bmnc", "bmns", s_index, zero_secondary_if_sym=True)
 
     angle = xm[:, None, None] * theta2d[None, :, :] - xn[:, None, None] * phi2d[None, :, :]
     R = np.tensordot(rmnc, np.cos(angle), axes=(0, 0)) + np.tensordot(rmns, np.sin(angle), axes=(0, 0))
@@ -2046,12 +2044,9 @@ def plot_wout(
     xn = np.asarray(wout.xn, dtype=float)
     xm_nyq = np.asarray(wout.xm_nyq, dtype=float)
     xn_nyq = np.asarray(wout.xn_nyq, dtype=float)
-    rmnc = np.asarray(wout.rmnc, dtype=float)
-    zmns = np.asarray(wout.zmns, dtype=float)
-    bmnc = np.asarray(wout.bmnc, dtype=float)
-    rmns = np.asarray(wout.rmns, dtype=float) if lasym else np.zeros_like(rmnc)
-    zmnc = np.asarray(wout.zmnc, dtype=float) if lasym else np.zeros_like(rmnc)
-    bmns = np.asarray(wout.bmns, dtype=float) if lasym else np.zeros_like(bmnc)
+    rmnc, rmns = _wout_coeff_pair(wout, "rmnc", "rmns", zero_secondary_if_sym=True, dtype=float)
+    zmns, zmnc = _wout_coeff_pair(wout, "zmns", "zmnc", zero_secondary_if_sym=True, dtype=float)
+    bmnc, bmns = _wout_coeff_pair(wout, "bmnc", "bmns", zero_secondary_if_sym=True, dtype=float)
 
     raxis_cc = np.asarray(wout.raxis_cc, dtype=float)
     raxis_cs = np.asarray(wout.raxis_cs, dtype=float)

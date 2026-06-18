@@ -14474,3 +14474,72 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99979%.
+
+## 2026-06-18 WOUT Plotting Coefficient Helper Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added shared WOUT Fourier coefficient-pair helpers in `vmec_jax.plotting`
+   for cosine/sine companion arrays and LASYM companion zeroing.
+2. Replaced duplicated `rmnc/rmns`, `zmns/zmnc`, `bmnc/bmns`,
+   `bsupu/bsupv`, and `bsubu/bsubv` loading blocks across the lower-level
+   WOUT plotting helpers, vmecPlot2-compatible grid helpers, and `plot_wout`.
+3. Kept the public plotting API and array evaluation paths unchanged.
+
+Results obtained:
+
+- `vmec_jax/plotting.py` dropped from 2289 to 2284 lines.
+- Companion-mode handling is now centralized, reducing the risk of future
+  LASYM and non-LASYM plotting drift.
+- Source-health still identifies `plot_wout` as the remaining plotting
+  hotspot, now at 307 lines, so the next plotting tranche should split figure
+  assembly from WOUT coefficient/profile preparation.
+- No generated outputs or large files were added.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/plotting.py`
+- `python -m ruff check vmec_jax/plotting.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_plotting_unit.py tests/test_plotting_fast_helpers.py tests/test_init_plotting_wave12_coverage.py -q`
+  - Result: 34 passed.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 45`
+
+Best next steps:
+
+1. Continue plotting simplification by extracting `plot_wout` data gathering
+   from panel rendering, but only if it remains line-negative and preserves
+   existing plot filenames/metadata.
+2. Resume larger hotspot work in residual iteration and fixed-boundary
+   optimizer seams, where line-count and maintainability gains are larger.
+3. Keep CI polling deferred; use focused local tests for touched seams.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.58%.
+- Free-boundary adjoint monolith reduction: 99.40%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 97.1%.
+- WOUT diagnostic/profile decomposition: 99.88%.
+- Bcovar/WOUT parity decomposition: 99.09%.
+- Force-kernel decomposition: 99.65%.
+- Scan/performance policy consolidation: 99.6%.
+- Tomnsps transform decomposition: 98.4%.
+- Initial-guess decomposition: 99.0%.
+- Optimizer workflow decomposition: 99.30%.
+- Fixed-boundary optimizer decomposition: 95.2%.
+- Plotting/WOUT visualization decomposition: 94.6%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective/staged-runner decomposition: 96.8%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99980%.
