@@ -11349,3 +11349,156 @@ Result: no whitespace errors.
 No user input is needed.
 
 ---
+
+## 92. 2026-06-18 M13g controlled toroidal-hybrid side/corner shaping
+
+This tranche started M13g by making the toroidal hybrid boundary generator more
+controllable without changing the ordinary toroidal VMEC solve path.
+
+### Steps taken
+
+- Added `side_power` and `corner_power` localization controls to
+  `sample_toroidal_stellarator_mirror_hybrid_boundary`.
+- Kept the localization weights nonnegative before applying fractional powers,
+  so exploratory noninteger powers are numerically well defined.
+- Exposed and recorded the existing/new shaping controls in the root examples:
+  - `side_minor_modulation`;
+  - `side_elongation`;
+  - `side_power`;
+  - `corner_amplitude`;
+  - `corner_helicity`;
+  - `corner_power`.
+- Added the same controls to the convergence runner and CSV/JSON output.
+- Extended tests so exact boundary roundtrips use integer powers with adequate
+  `ntor`, while broader exploratory shaping remains allowed.
+
+### Results obtained
+
+Sharpened side/corner smoke command:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/toroidal_stellarator_mirror_hybrid.py \
+  --outdir results/toroidal_hybrid_m13g_shape_smoke \
+  --nfp 2 \
+  --mpol 5 \
+  --ntor 10 \
+  --ns 7 \
+  --niter 20 \
+  --ftol 1e-9 \
+  --major-radius 1.15 \
+  --minor-radius 0.18 \
+  --axis-oval 0.10 \
+  --side-minor-modulation 0.16 \
+  --side-elongation 0.35 \
+  --side-power 2.0 \
+  --corner-amplitude 0.025 \
+  --corner-helicity 1 \
+  --corner-power 2.0 \
+  --ntheta-fit 32 \
+  --nzeta-fit 32 \
+  --run-solve \
+  --max-iter 2
+```
+
+Geometry metrics:
+
+| metric | value |
+| :--- | ---: |
+| `min_R` | `8.638915637183e-01` |
+| `max_R` | `1.458800000000e+00` |
+| `max_abs_Z` | `2.818800000000e-01` |
+| `stellsym_R_error` | `6.661338147751e-16` |
+| `stellsym_Z_error` | `1.942890293094e-16` |
+| `side_r_span_mean` | `4.176000000000e-01` |
+| `corner_r_span_mean` | `3.722168725634e-01` |
+| `RBC` count | `12` |
+| `ZBS` count | `14` |
+
+Generated ignored plots checked visually:
+
+- `results/toroidal_hybrid_m13g_shape_smoke/figures/toroidal_hybrid_lcfs_3d.png`;
+- `results/toroidal_hybrid_m13g_shape_smoke/figures/toroidal_hybrid_cross_sections.png`;
+- `results/toroidal_hybrid_m13g_shape_smoke/figures/wout/toroidal_stellarator_mirror_hybrid_VMEC_3Dplot.png`;
+- `results/toroidal_hybrid_m13g_shape_smoke/figures/wout/toroidal_stellarator_mirror_hybrid_poloidal_plot.png`.
+
+The LCFS plot is nonblank and shows sharpened corner localization.  The cross
+section plot cleanly separates mirror-like side arcs from stellarator-like
+corner arcs.
+
+### How it was tested
+
+Focused tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/test_toroidal_hybrid.py \
+  tests/mirror/test_mirror_free_boundary.py -q
+```
+
+Result: `49 passed in 4.19s`.
+
+Lint and format:
+
+```bash
+python -m ruff check \
+  vmec_jax/toroidal_hybrid.py \
+  examples/toroidal_stellarator_mirror_hybrid.py \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py \
+  tests/mirror/test_mirror_free_boundary.py
+python -m ruff format --check \
+  vmec_jax/toroidal_hybrid.py \
+  examples/toroidal_stellarator_mirror_hybrid.py \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py \
+  tests/mirror/test_mirror_free_boundary.py
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- Geometry controls stay in `vmec_jax/toroidal_hybrid.py`, the single source
+  module for VMEC-compatible toroidal hybrid boundary generation.
+- Root examples expose parameters through CLI flags and record them in
+  JSON/CSV, so validation runs are reproducible.
+- No generated figures, WOUT files, or caches were staged; outputs remain under
+  ignored `results/`.
+- The change remains compatible with the ordinary toroidal VMEC/JAX
+  fixed-boundary solver and its existing solver modes.
+
+### Best next steps
+
+1. Commit and push M13g shaping controls.
+2. Run a low-cost convergence grid for the sharpened `side_power=2`,
+   `corner_power=2`, `ntor=10` case and compare residual history with the
+   default shape.
+3. Add a parameter-scan helper for side/corner powers and amplitudes that
+   scores positivity, fit error, best `fsq`, and mean iota.
+4. Recheck the PR CI state after the coverage-fix commits have had time to
+   start and finish.
+
+### Completion percentages after M92
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `88%`.
+- I/O schema and docs: `94%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `68%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `49%`.
+- ESSOS circular-coil mirror beta scan: `53%`.
+- PR merge readiness overall: `92%`.
+
+### User input needed
+
+No user input is needed.
+
+---

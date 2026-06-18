@@ -63,6 +63,15 @@ _CSV_COLUMNS = (
     "rbc_count",
     "zbs_count",
     "max_boundary_fit_error",
+    "major_radius",
+    "minor_radius",
+    "axis_oval",
+    "side_minor_modulation",
+    "side_elongation",
+    "side_power",
+    "corner_amplitude",
+    "corner_helicity",
+    "corner_power",
     "ran_solve",
     "solver_mode",
     "use_scan",
@@ -330,6 +339,15 @@ def main() -> None:
     parser.add_argument("--niter", type=int, default=80)
     parser.add_argument("--ftol", type=float, default=1.0e-9)
     parser.add_argument("--max-iter", type=int, default=3)
+    parser.add_argument("--major-radius", type=float, default=1.15)
+    parser.add_argument("--minor-radius", type=float, default=0.18)
+    parser.add_argument("--axis-oval", type=float, default=0.10)
+    parser.add_argument("--side-minor-modulation", type=float, default=0.10)
+    parser.add_argument("--side-elongation", type=float, default=0.28)
+    parser.add_argument("--side-power", type=float, default=1.0)
+    parser.add_argument("--corner-amplitude", type=float, default=0.035)
+    parser.add_argument("--corner-helicity", type=int, default=1)
+    parser.add_argument("--corner-power", type=float, default=1.0)
     parser.add_argument("--ntheta-fit", type=int, default=64)
     parser.add_argument("--nzeta-fit", type=int, default=64)
     parser.add_argument("--run-solve", action="store_true")
@@ -346,9 +364,21 @@ def main() -> None:
     ns_values = _parse_ints(args.ns_array)
     mode_pairs = _parse_mode_pairs(args.mode_pairs)
     vmec2000_exec = Path(args.vmec2000_exec).expanduser() if str(args.vmec2000_exec).strip() else None
+    sample_kwargs = {
+        "major_radius": float(args.major_radius),
+        "minor_radius": float(args.minor_radius),
+        "axis_oval": float(args.axis_oval),
+        "side_minor_modulation": float(args.side_minor_modulation),
+        "side_elongation": float(args.side_elongation),
+        "side_power": float(args.side_power),
+        "corner_amplitude": float(args.corner_amplitude),
+        "corner_helicity": int(args.corner_helicity),
+        "corner_power": float(args.corner_power),
+    }
     samples = sample_toroidal_stellarator_mirror_hybrid_boundary(
         ntheta=int(args.ntheta_fit),
         nzeta=int(args.nzeta_fit),
+        **sample_kwargs,
     )
     reference_metrics = toroidal_stellarator_mirror_hybrid_metrics(samples)
     rows: list[dict[str, object]] = []
@@ -367,6 +397,7 @@ def main() -> None:
                 ns_array=int(ns),
                 niter_array=int(args.niter),
                 ftol_array=float(args.ftol),
+                **sample_kwargs,
             )
             input_path = case_dir / "input.toroidal_stellarator_mirror_hybrid"
             write_indata(input_path, indata)
@@ -388,6 +419,15 @@ def main() -> None:
                 "rbc_count": len(indata.indexed.get("RBC", {})),
                 "zbs_count": len(indata.indexed.get("ZBS", {})),
                 "max_boundary_fit_error": max_fit_error,
+                "major_radius": sample_kwargs["major_radius"],
+                "minor_radius": sample_kwargs["minor_radius"],
+                "axis_oval": sample_kwargs["axis_oval"],
+                "side_minor_modulation": sample_kwargs["side_minor_modulation"],
+                "side_elongation": sample_kwargs["side_elongation"],
+                "side_power": sample_kwargs["side_power"],
+                "corner_amplitude": sample_kwargs["corner_amplitude"],
+                "corner_helicity": sample_kwargs["corner_helicity"],
+                "corner_power": sample_kwargs["corner_power"],
                 "min_R": reference_metrics["min_R"],
                 "stellsym_R_error": reference_metrics["stellsym_R_error"],
                 "stellsym_Z_error": reference_metrics["stellsym_Z_error"],
@@ -563,6 +603,7 @@ def main() -> None:
             rows.append(row)
 
     summary = {
+        "sample_parameters": sample_kwargs,
         "rows": rows,
         "csv": _write_rows_csv(rows, outdir=outdir),
         "figures": {},

@@ -38,9 +38,41 @@ def test_toroidal_hybrid_boundary_is_stellarator_symmetric_and_corner_localized(
     assert corner_m2 > 0.5 * side_m2
 
 
+def test_toroidal_hybrid_localization_powers_sharpen_side_and_corner_regions():
+    base = sample_toroidal_stellarator_mirror_hybrid_boundary(ntheta=32, nzeta=32)
+    sharp = sample_toroidal_stellarator_mirror_hybrid_boundary(
+        ntheta=32,
+        nzeta=32,
+        side_power=3.0,
+        corner_power=3.0,
+    )
+    metrics = toroidal_stellarator_mirror_hybrid_metrics(sharp)
+
+    assert metrics["stellsym_R_error"] < 1.0e-13
+    assert metrics["stellsym_Z_error"] < 1.0e-13
+    assert sharp.side_weight.max() == pytest.approx(1.0)
+    assert sharp.corner_weight.max() == pytest.approx(1.0)
+    assert sharp.side_weight.mean() < base.side_weight.mean()
+    assert sharp.corner_weight.mean() < base.corner_weight.mean()
+
+
 def test_toroidal_hybrid_indata_roundtrips_and_reconstructs_samples(tmp_path: Path):
-    samples = sample_toroidal_stellarator_mirror_hybrid_boundary(ntheta=32, nzeta=32)
-    indata = toroidal_stellarator_mirror_hybrid_indata(nfp=2, mpol=5, ntor=4, ntheta_fit=32, nzeta_fit=32)
+    sample_kwargs = {
+        "side_minor_modulation": 0.16,
+        "side_elongation": 0.35,
+        "side_power": 2.0,
+        "corner_amplitude": 0.025,
+        "corner_power": 2.0,
+    }
+    samples = sample_toroidal_stellarator_mirror_hybrid_boundary(ntheta=32, nzeta=32, **sample_kwargs)
+    indata = toroidal_stellarator_mirror_hybrid_indata(
+        nfp=2,
+        mpol=5,
+        ntor=10,
+        ntheta_fit=32,
+        nzeta_fit=32,
+        **sample_kwargs,
+    )
 
     input_path = tmp_path / "input.hybrid"
     write_indata(input_path, indata)
@@ -51,7 +83,7 @@ def test_toroidal_hybrid_indata_roundtrips_and_reconstructs_samples(tmp_path: Pa
     np.testing.assert_allclose(reconstructed.Z, samples.Z, rtol=0.0, atol=1.0e-12)
     assert read_back.get_int("NFP") == 2
     assert read_back.get_int("MPOL") == 5
-    assert read_back.get_int("NTOR") == 4
+    assert read_back.get_int("NTOR") == 10
     assert "RBS" not in read_back.indexed
     assert "ZBC" not in read_back.indexed
 
@@ -73,6 +105,8 @@ def test_toroidal_hybrid_indata_roundtrips_and_reconstructs_samples(tmp_path: Pa
             },
             "nonpositive cylindrical R",
         ),
+        ({"side_power": 0.0}, "side_power"),
+        ({"corner_power": np.inf}, "corner_power"),
     ],
 )
 def test_toroidal_hybrid_boundary_rejects_invalid_geometry(kwargs, match):
@@ -137,6 +171,18 @@ def test_toroidal_hybrid_example_runs_without_plots(tmp_path: Path):
             "32",
             "--nzeta-fit",
             "32",
+            "--ntor",
+            "10",
+            "--side-minor-modulation",
+            "0.16",
+            "--side-elongation",
+            "0.35",
+            "--side-power",
+            "2.0",
+            "--corner-amplitude",
+            "0.025",
+            "--corner-power",
+            "2.0",
             "--no-plots",
         ],
         check=True,
@@ -153,6 +199,12 @@ def test_toroidal_hybrid_example_runs_without_plots(tmp_path: Path):
     assert metrics["stellsym_Z_error"] < 1.0e-13
     assert metrics["rbc_count"] > 3
     assert metrics["zbs_count"] > 3
+    assert metrics["sample_parameters"]["side_minor_modulation"] == 0.16
+    assert metrics["sample_parameters"]["side_elongation"] == 0.35
+    assert metrics["ntor"] == 10
+    assert metrics["sample_parameters"]["side_power"] == 2.0
+    assert metrics["sample_parameters"]["corner_amplitude"] == 0.025
+    assert metrics["sample_parameters"]["corner_power"] == 2.0
 
 
 def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
@@ -167,11 +219,15 @@ def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
             "--ns-array",
             "7,9",
             "--mode-pairs",
-            "5:4",
+            "5:10",
             "--ntheta-fit",
             "32",
             "--nzeta-fit",
             "32",
+            "--side-power",
+            "2.0",
+            "--corner-power",
+            "2.0",
             "--no-plots",
         ],
         check=True,
@@ -189,6 +245,8 @@ def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
     assert all(row["fsq_history"] == [] for row in summary["rows"])
     assert all(row["max_boundary_fit_error"] < 1.0e-12 for row in summary["rows"])
     assert [row["ns"] for row in summary["rows"]] == [7, 9]
+    assert summary["sample_parameters"]["side_power"] == 2.0
+    assert summary["sample_parameters"]["corner_power"] == 2.0
 
 
 def test_toroidal_hybrid_convergence_history_summary_uses_iteration_labels():

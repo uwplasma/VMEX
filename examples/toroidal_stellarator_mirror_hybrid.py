@@ -123,8 +123,12 @@ def main() -> None:
     parser.add_argument("--major-radius", type=float, default=1.15)
     parser.add_argument("--minor-radius", type=float, default=0.18)
     parser.add_argument("--axis-oval", type=float, default=0.10)
+    parser.add_argument("--side-minor-modulation", type=float, default=0.10)
+    parser.add_argument("--side-elongation", type=float, default=0.28)
     parser.add_argument("--corner-amplitude", type=float, default=0.035)
     parser.add_argument("--corner-helicity", type=int, default=1)
+    parser.add_argument("--side-power", type=float, default=1.0)
+    parser.add_argument("--corner-power", type=float, default=1.0)
     parser.add_argument("--ntheta-fit", type=int, default=64)
     parser.add_argument("--nzeta-fit", type=int, default=64)
     parser.add_argument("--run-solve", action="store_true", help="Run vmec_jax after writing the input file.")
@@ -138,8 +142,12 @@ def main() -> None:
         "major_radius": float(args.major_radius),
         "minor_radius": float(args.minor_radius),
         "axis_oval": float(args.axis_oval),
+        "side_minor_modulation": float(args.side_minor_modulation),
+        "side_elongation": float(args.side_elongation),
         "corner_amplitude": float(args.corner_amplitude),
         "corner_helicity": int(args.corner_helicity),
+        "side_power": float(args.side_power),
+        "corner_power": float(args.corner_power),
     }
     samples = sample_toroidal_stellarator_mirror_hybrid_boundary(
         ntheta=int(args.ntheta_fit),
@@ -169,6 +177,7 @@ def main() -> None:
             "ntor": int(args.ntor),
             "rbc_count": len(indata.indexed.get("RBC", {})),
             "zbs_count": len(indata.indexed.get("ZBS", {})),
+            "sample_parameters": sample_kwargs,
             "figures": {},
         }
     )

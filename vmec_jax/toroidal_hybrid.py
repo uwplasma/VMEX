@@ -42,14 +42,17 @@ def sample_toroidal_stellarator_mirror_hybrid_boundary(
     side_elongation: float = 0.28,
     corner_amplitude: float = 0.035,
     corner_helicity: int = 1,
+    side_power: float = 1.0,
+    corner_power: float = 1.0,
 ) -> ToroidalHybridBoundarySamples:
     """Sample a toroidal hybrid LCFS over one field period.
 
     The side arcs, at ``zeta = 0`` and ``pi``, are nearly axisymmetric elongated
     cross sections.  The corner arcs, at ``zeta = pi/2`` and ``3*pi/2``, carry a
-    localized ``m=2`` helical perturbation.  The formula is stellarator
-    symmetric, so it can be stored with the usual VMEC ``RBC``/``ZBS`` boundary
-    coefficients.
+    localized ``m=2`` helical perturbation.  ``side_power`` and
+    ``corner_power`` sharpen or broaden those two regions without moving their
+    centers.  The formula is stellarator symmetric, so it can be stored with the
+    usual VMEC ``RBC``/``ZBS`` boundary coefficients.
     """
     ntheta = int(ntheta)
     nzeta = int(nzeta)
@@ -59,13 +62,19 @@ def sample_toroidal_stellarator_mirror_hybrid_boundary(
         raise ValueError("major_radius must exceed positive minor_radius")
     if int(corner_helicity) < 0:
         raise ValueError("corner_helicity must be nonnegative")
+    side_power = float(side_power)
+    corner_power = float(corner_power)
+    if not np.isfinite(side_power) or side_power <= 0.0:
+        raise ValueError("side_power must be finite and positive")
+    if not np.isfinite(corner_power) or corner_power <= 0.0:
+        raise ValueError("corner_power must be finite and positive")
 
     theta = np.linspace(0.0, 2.0 * np.pi, ntheta, endpoint=False)
     zeta = np.linspace(0.0, 2.0 * np.pi, nzeta, endpoint=False)
     theta2, zeta2 = np.meshgrid(theta, zeta, indexing="ij")
 
-    side_weight = np.cos(zeta2) ** 2
-    corner_weight = np.sin(zeta2) ** 2
+    side_weight = np.clip(np.cos(zeta2) ** 2, 0.0, 1.0) ** side_power
+    corner_weight = np.clip(np.sin(zeta2) ** 2, 0.0, 1.0) ** corner_power
     axis = float(major_radius) + float(axis_oval) * np.cos(2.0 * zeta2)
     side_minor = float(minor_radius) * (1.0 + float(side_minor_modulation) * side_weight)
     elongation = 1.0 + float(side_elongation) * side_weight
