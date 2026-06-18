@@ -203,6 +203,70 @@ def merge_stage_chunk_results(
     return copy_final_force_payload(out, last)
 
 
+def assemble_multigrid_stage_result(
+    *,
+    stage_results: list[SolveVmecResidualResult],
+    state: object,
+    solver_mode: str,
+    accelerated_mode: bool,
+    multigrid_user_provided: bool,
+    accelerated_single_grid_default: bool,
+    ns_stages: list[int],
+    niter_stages: list[int],
+    ftol_stages: list[float],
+    stage_offsets: list[int],
+    stage_mode_history: list[str],
+    stage_wall_s: list[float],
+    stage_solve_total_s: list[float],
+    niter_stages_input: object,
+) -> SolveVmecResidualResult:
+    """Assemble the public result for a completed fixed-boundary multigrid run."""
+
+    last = stage_results[-1]
+    diag = dict(last.diagnostics)
+    diag["solver_mode"] = str(solver_mode)
+    diag["accelerated_mode"] = bool(accelerated_mode)
+    diag["accelerated_scan"] = bool(accelerated_mode) and bool(diag.get("use_scan", False))
+    diag["multigrid_user_provided"] = bool(multigrid_user_provided)
+    diag["accelerated_single_grid_default"] = bool(accelerated_single_grid_default)
+    diag["multigrid_ns_stages"] = np.asarray(ns_stages, dtype=int)
+    diag["multigrid_niter_stages"] = np.asarray(niter_stages, dtype=int)
+    diag["multigrid_ftol_stages"] = np.asarray(ftol_stages, dtype=float)
+    diag["multigrid_stage_offsets"] = np.asarray(stage_offsets, dtype=int)
+    diag["multigrid_stage_modes"] = np.asarray(stage_mode_history, dtype=object)
+    diag["multigrid_stage_wall_s"] = np.asarray(stage_wall_s, dtype=float)
+    diag["multigrid_stage_solve_total_s"] = np.asarray(stage_solve_total_s, dtype=float)
+    try:
+        final_stage_niter = int(last.n_iter)
+        final_stage_budget = int(niter_stages[-1]) if niter_stages else 0
+        if niter_stages_input is not None:
+            exhausted = bool(final_stage_niter + 1 >= final_stage_budget)
+        else:
+            exhausted = bool(final_stage_niter >= final_stage_budget)
+        diag["multigrid_final_stage_niter_exhausted"] = exhausted
+    except Exception:
+        diag["multigrid_final_stage_niter_exhausted"] = False
+
+    for key in STAGE_CHUNK_DIAG_KEYS:
+        if any(key in r.diagnostics for r in stage_results):
+            diag[key] = np.concatenate(
+                [np.asarray(r.diagnostics.get(key, np.zeros((0,), dtype=float))) for r in stage_results]
+            )
+
+    out = SolveVmecResidualResult(
+        state=state,
+        n_iter=int(sum(int(r.n_iter) + 1 for r in stage_results) - 1),
+        w_history=cat_result_history(stage_results, "w_history"),
+        fsqr2_history=cat_result_history(stage_results, "fsqr2_history"),
+        fsqz2_history=cat_result_history(stage_results, "fsqz2_history"),
+        fsql2_history=cat_result_history(stage_results, "fsql2_history"),
+        grad_rms_history=cat_result_history(stage_results, "grad_rms_history"),
+        step_history=cat_result_history(stage_results, "step_history"),
+        diagnostics=diag,
+    )
+    return copy_final_force_payload(out, last)
+
+
 def stage_switch_reason_from_progress(
     *,
     start_total_fsq: float,
