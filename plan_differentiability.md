@@ -11787,3 +11787,67 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9980%.
+
+## 2026-06-18 Driver Startup Context Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_FixedBoundaryStartupContext` and
+   `_resolve_fixed_boundary_startup_context` to `vmec_jax.driver`.
+2. Moved the front of `run_fixed_boundary` into this explicit startup seam:
+   x64/cache setup, input loading, first-pass solver policy, restart/WOUT
+   normalization, solver-device recursive routing, and axis-inference policy.
+3. Rewired `run_fixed_boundary` to read the resolved startup fields from the
+   context and continue with the existing stage-policy, solve, and finish logic.
+
+Results obtained:
+
+- `run_fixed_boundary` dropped from 772 to 707 lines.
+- The public driver now starts from a named startup context rather than mixing
+  environment/device policy, restart normalization, and solver routing in the
+  main workflow.
+- No output artifacts or large files were added.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/driver.py`
+- `python -m ruff check vmec_jax/driver.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_api.py tests/test_driver_policy_helpers.py tests/test_driver_implicit_wave11_coverage.py tests/test_solve_options.py -q`
+  - Result: passed, with known fixed-boundary warning messages in the small
+    optimized-controller smoke case.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 30`
+
+Best next steps:
+
+1. Continue reducing `run_fixed_boundary` by extracting stage/finish context
+   construction if a clean seam remains.
+2. If the driver seam becomes too coupled, switch to `compute_mercier` or the
+   fixed-boundary residual optimizer helpers before attempting the 6500-line
+   residual iteration loop.
+3. Recheck PR CI opportunistically after the next pushed tranche, but do not
+   block on pending shards unless a failure appears.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.999995%.
+- Solver monolith reduction: 99.46%.
+- Free-boundary adjoint monolith reduction: 99.30%.
+- Driver workflow decomposition: 99.82%.
+- Residual iteration decomposition: 95.8%.
+- WOUT diagnostic/profile decomposition: 99.54%.
+- Bcovar/WOUT parity decomposition: 98.0%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 95%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9981%.

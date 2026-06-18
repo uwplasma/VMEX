@@ -159,6 +159,29 @@ class FixedBoundaryRun:
     signgs: int
 
 
+@dataclass(frozen=True)
+class _FixedBoundaryStartupContext:
+    """Resolved startup policy and restart state for one fixed-boundary run."""
+
+    cfg: VMECConfig
+    indata: Any
+    requested_solver_device: str
+    policy_backend: str
+    initial_policy: Any
+    solver_mode_explicit: bool
+    solver_mode_eff: str
+    accelerated_mode: bool
+    performance_mode: bool
+    use_scan: bool
+    cli_fixed_boundary_mode: bool
+    restart_state: Any | None
+    restart_wout: Any | None
+    restart_solver_state: dict | None
+    solver_lower: str
+    axis_infer_missing: bool
+    routed_run: Any | None
+
+
 def _default_backend_name() -> str:
     try:
         import jax
@@ -381,6 +404,175 @@ def _sanitize_resume_state_for_driver_same_stage(resume_state, *, step_size, ind
     )
 
 
+def _resolve_fixed_boundary_startup_context(
+    *,
+    input_path,
+    solver,
+    solver_mode,
+    max_iter,
+    step_size,
+    history_size,
+    gn_damping,
+    gn_cg_tol,
+    gn_cg_maxiter,
+    use_initial_guess,
+    vmec_project,
+    use_restart_triggers,
+    vmecpp_restart,
+    use_direct_fallback,
+    multigrid,
+    multigrid_use_input_niter,
+    verbose,
+    jit_forces,
+    jit_precompile,
+    use_scan,
+    performance_mode,
+    scan_wout_corrector,
+    stage_transition_heuristic,
+    stage_transition_factor,
+    stage_transition_scale,
+    grid,
+    ns_override,
+    restart_state,
+    restart_wout_path,
+    restart_solver_state,
+    cli_fixed_boundary_mode,
+    solver_device,
+    auto_cli_fixed_boundary_mode,
+    solver_device_context_active,
+    run_fixed_boundary_func,
+) -> _FixedBoundaryStartupContext:
+    """Resolve input, device, restart, and first-pass policy for the driver."""
+    try:
+        from ._compat import enable_x64
+
+        enable_x64(True)
+    except Exception:
+        pass
+    requested_solver_device = _requested_solver_device_name(solver_device)
+    policy_backend = _policy_backend_for_requested_device(
+        requested_solver_device=requested_solver_device,
+        default_backend=_default_backend_name(),
+    )
+    if not bool(solver_device_context_active):
+        from ._compat import _default_compilation_cache_dir
+
+        _driver_runtime_helpers.maybe_enable_compilation_cache(
+            accelerator_requested=str(policy_backend).strip().lower() in ("gpu", "cuda", "rocm", "tpu"),
+            default_compilation_cache_dir=_default_compilation_cache_dir,
+            path_cls=Path,
+        )
+    cfg, indata = load_config(str(input_path))
+    initial_policy = _resolve_initial_fixed_boundary_policy(
+        requested_solver_device=requested_solver_device,
+        policy_backend=policy_backend,
+        indata=indata,
+        cfg=cfg,
+        solver=solver,
+        solver_mode=solver_mode,
+        performance_mode=bool(performance_mode),
+        use_scan=use_scan,
+        verbose=bool(verbose),
+        grid=grid,
+        cli_fixed_boundary_mode=bool(cli_fixed_boundary_mode),
+        auto_cli_fixed_boundary_mode=bool(auto_cli_fixed_boundary_mode),
+        default_non_autodiff_policy_func=_default_non_autodiff_solver_policy_for_backend,
+        default_use_scan_func=_default_use_scan_for_backend,
+    )
+    restart_context = _driver_runtime_helpers.resolve_restart_context(
+        cfg=cfg,
+        restart_state=restart_state,
+        restart_wout_path=restart_wout_path,
+        restart_solver_state=restart_solver_state,
+        ns_override=ns_override,
+        read_wout_func=read_wout,
+        state_from_wout_func=state_from_wout,
+        replace_func=replace,
+        path_cls=Path,
+    )
+    cfg = restart_context.cfg
+    restart_state_eff = restart_context.restart_state
+    restart_solver_state_eff = restart_context.restart_solver_state
+    solver_lower = str(solver).lower()
+    performance_mode_eff = bool(initial_policy.performance_mode)
+    accelerated_mode = bool(initial_policy.accelerated_mode)
+    cli_fixed_boundary_mode_eff = bool(initial_policy.cli_fixed_boundary_mode)
+    axis_infer_missing = _resolve_axis_infer_missing_policy(
+        solver_lower=solver_lower,
+        performance_mode=performance_mode_eff,
+    )
+    routed_run = _driver_solve_helpers.maybe_run_fixed_boundary_in_solver_device_context(
+        input_path=input_path,
+        solver_device=solver_device,
+        solver_device_context_active=bool(solver_device_context_active),
+        cfg=cfg,
+        indata=indata,
+        solver_lower=solver_lower,
+        cli_fixed_boundary_mode=cli_fixed_boundary_mode_eff,
+        accelerated_mode=accelerated_mode,
+        restart_state_present=(restart_state_eff is not None) or (restart_wout_path is not None),
+        restart_solver_state_present=restart_solver_state_eff is not None,
+        recursive_run_kwargs={
+            "solver": solver,
+            "solver_mode": str(initial_policy.solver_mode_eff),
+            "max_iter": max_iter,
+            "step_size": step_size,
+            "history_size": int(history_size),
+            "gn_damping": gn_damping,
+            "gn_cg_tol": gn_cg_tol,
+            "gn_cg_maxiter": int(gn_cg_maxiter),
+            "use_initial_guess": bool(use_initial_guess),
+            "vmec_project": bool(vmec_project),
+            "use_restart_triggers": use_restart_triggers,
+            "vmecpp_restart": bool(vmecpp_restart),
+            "use_direct_fallback": use_direct_fallback,
+            "multigrid": multigrid,
+            "multigrid_use_input_niter": bool(multigrid_use_input_niter),
+            "verbose": bool(verbose),
+            "jit_forces": jit_forces,
+            "jit_precompile": jit_precompile,
+            "use_scan": bool(initial_policy.use_scan),
+            "performance_mode": performance_mode_eff,
+            "scan_wout_corrector": scan_wout_corrector,
+            "stage_transition_heuristic": stage_transition_heuristic,
+            "stage_transition_factor": float(stage_transition_factor),
+            "stage_transition_scale": float(stage_transition_scale),
+            "grid": grid,
+            "ns_override": ns_override,
+            "restart_state": restart_state,
+            "restart_wout_path": restart_wout_path,
+            "restart_solver_state": restart_solver_state_eff,
+            "cli_fixed_boundary_mode": cli_fixed_boundary_mode_eff,
+            "_auto_cli_fixed_boundary_mode": bool(auto_cli_fixed_boundary_mode),
+        },
+        run_fixed_boundary_func=run_fixed_boundary_func,
+        replace_func=replace,
+        as_list_like_func=_as_list_like,
+        default_backend_name_func=_default_backend_name,
+        resolve_solver_device_name_func=_resolve_fixed_boundary_solver_device_name,
+        getenv=os.getenv,
+    )
+    return _FixedBoundaryStartupContext(
+        cfg=cfg,
+        indata=indata,
+        requested_solver_device=requested_solver_device,
+        policy_backend=policy_backend,
+        initial_policy=initial_policy,
+        solver_mode_explicit=bool(initial_policy.solver_mode_explicit),
+        solver_mode_eff=str(initial_policy.solver_mode_eff),
+        accelerated_mode=accelerated_mode,
+        performance_mode=performance_mode_eff,
+        use_scan=bool(initial_policy.use_scan),
+        cli_fixed_boundary_mode=cli_fixed_boundary_mode_eff,
+        restart_state=restart_state_eff,
+        restart_wout=restart_context.restart_wout,
+        restart_solver_state=restart_solver_state_eff,
+        solver_lower=solver_lower,
+        axis_infer_missing=bool(axis_infer_missing),
+        routed_run=routed_run,
+    )
+
+
 def run_fixed_boundary(
     input_path: str | Path,
     *,
@@ -493,126 +685,61 @@ def run_fixed_boundary(
     FixedBoundaryRun
         Shared run container for both fixed-boundary and free-boundary solves.
     """
-    # Default to 64-bit for VMEC parity; users can opt out via JAX_ENABLE_X64=0.
-    try:
-        from ._compat import enable_x64
-
-        enable_x64(True)
-    except Exception:
-        pass
-    requested_solver_device = _requested_solver_device_name(solver_device)
-    policy_backend = _policy_backend_for_requested_device(
-        requested_solver_device=requested_solver_device,
-        default_backend=_default_backend_name(),
-    )
-    if not bool(_solver_device_context_active):
-        from ._compat import _default_compilation_cache_dir
-
-        _driver_runtime_helpers.maybe_enable_compilation_cache(
-            accelerator_requested=str(policy_backend).strip().lower() in ("gpu", "cuda", "rocm", "tpu"),
-            default_compilation_cache_dir=_default_compilation_cache_dir,
-            path_cls=Path,
-        )
-    cfg, indata = load_config(str(input_path))
-    initial_policy = _resolve_initial_fixed_boundary_policy(
-        requested_solver_device=requested_solver_device,
-        policy_backend=policy_backend,
-        indata=indata,
-        cfg=cfg,
+    startup = _resolve_fixed_boundary_startup_context(
+        input_path=input_path,
         solver=solver,
         solver_mode=solver_mode,
-        performance_mode=bool(performance_mode),
-        use_scan=use_scan,
+        max_iter=max_iter,
+        step_size=step_size,
+        history_size=int(history_size),
+        gn_damping=gn_damping,
+        gn_cg_tol=gn_cg_tol,
+        gn_cg_maxiter=int(gn_cg_maxiter),
+        use_initial_guess=bool(use_initial_guess),
+        vmec_project=bool(vmec_project),
+        use_restart_triggers=use_restart_triggers,
+        vmecpp_restart=bool(vmecpp_restart),
+        use_direct_fallback=use_direct_fallback,
+        multigrid=multigrid,
+        multigrid_use_input_niter=bool(multigrid_use_input_niter),
         verbose=bool(verbose),
+        jit_forces=jit_forces,
+        jit_precompile=jit_precompile,
+        use_scan=use_scan,
+        performance_mode=bool(performance_mode),
+        scan_wout_corrector=scan_wout_corrector,
+        stage_transition_heuristic=stage_transition_heuristic,
+        stage_transition_factor=float(stage_transition_factor),
+        stage_transition_scale=float(stage_transition_scale),
         grid=grid,
-        cli_fixed_boundary_mode=bool(cli_fixed_boundary_mode),
-        auto_cli_fixed_boundary_mode=bool(_auto_cli_fixed_boundary_mode),
-        default_non_autodiff_policy_func=_default_non_autodiff_solver_policy_for_backend,
-        default_use_scan_func=_default_use_scan_for_backend,
-    )
-    solver_mode_explicit = bool(initial_policy.solver_mode_explicit)
-    solver_mode_eff = str(initial_policy.solver_mode_eff)
-    accelerated_mode = bool(initial_policy.accelerated_mode)
-    performance_mode = bool(initial_policy.performance_mode)
-    use_scan = bool(initial_policy.use_scan)
-    cli_fixed_boundary_mode = bool(initial_policy.cli_fixed_boundary_mode)
-    restart_context = _driver_runtime_helpers.resolve_restart_context(
-        cfg=cfg,
+        ns_override=ns_override,
         restart_state=restart_state,
         restart_wout_path=restart_wout_path,
         restart_solver_state=restart_solver_state,
-        ns_override=ns_override,
-        read_wout_func=read_wout,
-        state_from_wout_func=state_from_wout,
-        replace_func=replace,
-        path_cls=Path,
-    )
-    cfg = restart_context.cfg
-    restart_state_eff = restart_context.restart_state
-    restart_wout = restart_context.restart_wout
-    restart_solver_state = restart_context.restart_solver_state
-    solver_lower = str(solver).lower()
-    # VMEC starts from the input axis coefficients and only recomputes the
-    # axis (guess_axis) after a bad-Jacobian trigger. For vmec2000_iter we
-    # follow that behavior by default and allow opt-in axis inference via env.
-    axis_infer_missing = _resolve_axis_infer_missing_policy(
-        solver_lower=solver_lower,
-        performance_mode=bool(performance_mode),
-    )
-
-    routed_run = _driver_solve_helpers.maybe_run_fixed_boundary_in_solver_device_context(
-        input_path=input_path,
-        solver_device=solver_device,
-        solver_device_context_active=bool(_solver_device_context_active),
-        cfg=cfg,
-        indata=indata,
-        solver_lower=solver_lower,
         cli_fixed_boundary_mode=bool(cli_fixed_boundary_mode),
-        accelerated_mode=bool(accelerated_mode),
-        restart_state_present=(restart_state_eff is not None) or (restart_wout_path is not None),
-        restart_solver_state_present=restart_solver_state is not None,
-        recursive_run_kwargs={
-            "solver": solver,
-            "solver_mode": solver_mode_eff,
-            "max_iter": max_iter,
-            "step_size": step_size,
-            "history_size": int(history_size),
-            "gn_damping": gn_damping,
-            "gn_cg_tol": gn_cg_tol,
-            "gn_cg_maxiter": int(gn_cg_maxiter),
-            "use_initial_guess": bool(use_initial_guess),
-            "vmec_project": bool(vmec_project),
-            "use_restart_triggers": use_restart_triggers,
-            "vmecpp_restart": bool(vmecpp_restart),
-            "use_direct_fallback": use_direct_fallback,
-            "multigrid": multigrid,
-            "multigrid_use_input_niter": bool(multigrid_use_input_niter),
-            "verbose": bool(verbose),
-            "jit_forces": jit_forces,
-            "jit_precompile": jit_precompile,
-            "use_scan": bool(use_scan),
-            "performance_mode": bool(performance_mode),
-            "scan_wout_corrector": scan_wout_corrector,
-            "stage_transition_heuristic": stage_transition_heuristic,
-            "stage_transition_factor": float(stage_transition_factor),
-            "stage_transition_scale": float(stage_transition_scale),
-            "grid": grid,
-            "ns_override": ns_override,
-            "restart_state": restart_state,
-            "restart_wout_path": restart_wout_path,
-            "restart_solver_state": restart_solver_state,
-            "cli_fixed_boundary_mode": bool(cli_fixed_boundary_mode),
-            "_auto_cli_fixed_boundary_mode": bool(_auto_cli_fixed_boundary_mode),
-        },
+        solver_device=solver_device,
+        auto_cli_fixed_boundary_mode=bool(_auto_cli_fixed_boundary_mode),
+        solver_device_context_active=bool(_solver_device_context_active),
         run_fixed_boundary_func=run_fixed_boundary,
-        replace_func=replace,
-        as_list_like_func=_as_list_like,
-        default_backend_name_func=_default_backend_name,
-        resolve_solver_device_name_func=_resolve_fixed_boundary_solver_device_name,
-        getenv=os.getenv,
     )
-    if routed_run is not None:
-        return routed_run
+    if startup.routed_run is not None:
+        return startup.routed_run
+    cfg = startup.cfg
+    indata = startup.indata
+    requested_solver_device = startup.requested_solver_device
+    policy_backend = startup.policy_backend
+    initial_policy = startup.initial_policy
+    solver_mode_explicit = startup.solver_mode_explicit
+    solver_mode_eff = startup.solver_mode_eff
+    accelerated_mode = startup.accelerated_mode
+    performance_mode = startup.performance_mode
+    use_scan = startup.use_scan
+    cli_fixed_boundary_mode = startup.cli_fixed_boundary_mode
+    restart_state_eff = startup.restart_state
+    restart_wout = startup.restart_wout
+    restart_solver_state = startup.restart_solver_state
+    solver_lower = startup.solver_lower
+    axis_infer_missing = startup.axis_infer_missing
     if grid is None and solver_lower in ("vmec_lbfgs", "vmec_gn", "vmec2000_iter"):
         from .vmec_tomnsp import vmec_angle_grid
 
