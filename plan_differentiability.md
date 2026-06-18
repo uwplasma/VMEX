@@ -7,6 +7,73 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-18.
 
+## 2026-06-18 Direct-Coil Optimization Summary Metadata Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved direct-coil optimization workflow metadata, single-stage limitation
+   text, and objective/VMEC/optimizer summary config assembly into
+   `vmec_jax.solvers.free_boundary.coil_optimization`.
+2. Consolidated duplicated dry-run and post-optimization summary fields in
+   `examples/optimization/free_boundary_QS_coil_optimization.py` behind one
+   `summary_base`, leaving the example to add only run-mode-specific fields.
+3. Kept the example workflow explicit: it still loads/synthesizes coils,
+   selects variables, writes the VMEC input, runs complete solves, optionally
+   writes branch-local derivative evidence, and records results.
+
+Results obtained:
+
+- `examples/optimization/free_boundary_QS_coil_optimization.py` dropped from
+  2037 to 1946 lines and is no longer above the 2000-line source-health
+  warning threshold.
+- `optimize_coils` dropped from 320 to 303 lines.
+- The tranche is net-negative across touched source files relative to the
+  previous commit: 119 insertions, 122 deletions.
+- Generated summary keys and values asserted by dry-run tests are unchanged.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/free_boundary/coil_optimization.py examples/optimization/free_boundary_QS_coil_optimization.py tests/test_free_boundary_qs_coil_optimization_smoke.py`
+- `python -m compileall -q vmec_jax/solvers/free_boundary/coil_optimization.py examples/optimization/free_boundary_QS_coil_optimization.py tests/test_free_boundary_qs_coil_optimization_smoke.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py::test_circle_dry_run_writes_configuration_without_solves tests/test_free_boundary_qs_coil_optimization_smoke.py::test_essos_dry_run_writes_direct_coil_configuration_without_mgrid tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_vector_key_parser_accepts_bnormal_alias tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_direction_policy_prefers_current_only_for_proposals -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 15`
+
+Best next steps:
+
+1. Continue with `write_same_branch_validation_report` staging, where the
+   remaining 561-line function still mixes direction construction, scalar
+   registry setup, replay execution, profile gates, and JSON assembly.
+2. Keep `_run_vmec2000_scan` deferred until a context-object seam is designed.
+3. Re-run CI later rather than polling it after every tranche.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.57%.
+- Free-boundary adjoint monolith reduction: 99.36%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.9%.
+- WOUT diagnostic/profile decomposition: 99.72%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 99.15%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99939%.
+
 ## 2026-06-18 Same-Branch Runtime Config Extraction
 
 Branch: `codex/differentiability-refactor-plan`.

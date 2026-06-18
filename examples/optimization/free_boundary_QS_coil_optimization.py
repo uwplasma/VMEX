@@ -74,8 +74,11 @@ from vmec_jax.quasisymmetry import (
 )
 from vmec_jax.solvers.free_boundary.coil_optimization import (
     DEFAULT_SAME_BRANCH_VECTOR_KEYS,
+    SINGLE_STAGE_LIMITATIONS,
     STATE_ONLY_SAME_BRANCH_KEYS,
     SUPPORTED_SAME_BRANCH_VECTOR_KEYS,
+    direct_coil_optimization_workflow_metadata,
+    direct_coil_qs_summary_configs,
     nestor_profile_policy_from_results,
     parse_float_list,
     parse_same_branch_vector_keys,
@@ -101,41 +104,8 @@ DEFAULT_INPUT = REPO_ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lo
 DEFAULT_OUTDIR = REPO_ROOT / "results" / "free_boundary_QS_coil_optimization"
 DEFAULT_ESSOS_COIL_JSON = "ESSOS_biot_savart_LandremanPaulQA.json"
 DEFAULT_FREE_BOUNDARY_PHIEDGE = -0.025
-SINGLE_STAGE_LIMITATIONS = [
-    "The QS term is a VMEC-state quasisymmetry-ratio residual, not a Boozer-space exact-adjoint objective.",
-    "Production full-loop direct-coil free-boundary adjoints are not promoted yet.",
-    "ESSOS and VMEC2000 generated-mgrid comparisons remain optional external-asset diagnostics.",
-]
-
-
 class SkipExample(RuntimeError):
     """Raised when optional external assets needed by the example are absent."""
-
-
-def direct_coil_optimization_workflow_metadata() -> dict[str, Any]:
-    """Return the pedagogic workflow contract recorded in summary artifacts."""
-
-    return {
-        "flow": "single_stage_direct_coil_no_mgrid",
-        "field_backend": "direct_coils",
-        "workflow_steps": [
-            "load or synthesize direct coils",
-            "select coil-current and coil-Fourier optimization variables",
-            "write VMEC input with MGRID_FILE='DIRECT_COILS'",
-            "run complete free-boundary solves with direct JAX Biot-Savart sampling",
-            "score VMEC residual, VMEC-state QS residual, aspect, and mean-iota terms",
-        ],
-        "optimized_dofs": "coil currents and selected coil Fourier coefficients only",
-        "plasma_boundary_optimized": False,
-        "python_provider_required": True,
-        "uses_mgrid_file": False,
-        "mgrid_compatibility_example": str(REPO_ROOT / "examples" / "free_boundary_essos_mgrid_forward.py"),
-        "vmec_input_replay": (
-            "MGRID_FILE='DIRECT_COILS' is a vmec_jax Python-provider tag. "
-            "Run this optimization script, or call run_free_boundary with CoilFieldParams, "
-            "so the solver receives the direct-coil provider."
-        ),
-    }
 
 
 def _json_default(value: Any) -> Any:
@@ -1287,7 +1257,7 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
 
     outdir = args.outdir.resolve()
     outdir.mkdir(parents=True, exist_ok=True)
-    workflow = direct_coil_optimization_workflow_metadata()
+    workflow = direct_coil_optimization_workflow_metadata(REPO_ROOT)
     input_path = make_free_boundary_indata(
         args.input,
         outdir / "input.direct_coil_qs",
@@ -1303,83 +1273,39 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         phiedge=float(args.phiedge),
     )
 
-    objective_model = {
-        "description": "Deterministic direct-coil free-boundary objective with VMEC residual, QS, aspect, and iota terms.",
-        "qs_note": (
-            "The QS term is evaluated from the accepted VMEC state. Full coil-to-Boozer/QS exact "
-            "gradients through adaptive free-boundary branch selection remain a separate promotion gate."
-        ),
-        "helicity_m": int(args.helicity_m),
-        "helicity_n": int(args.helicity_n),
-        "qs_surfaces": parse_float_list(str(args.qs_surfaces)),
-        "qs_ntheta": int(args.qs_ntheta),
-        "qs_nphi": int(args.qs_nphi),
-        "target_aspect": float(args.target_aspect),
-        "target_iota": float(args.target_iota),
-        "residual_weight": float(args.residual_weight),
-        "qs_weight": float(args.qs_weight),
-        "aspect_weight": float(args.aspect_weight),
-        "iota_weight": float(args.iota_weight),
-        "failure_objective": float(args.failure_objective),
-    }
-    vmec_config = {
-        "input_template": args.input,
-        "generated_input": input_path,
-        "external_field_provider_kind": "direct_coils",
-        "mgrid_file": "DIRECT_COILS",
-        "uses_generated_mgrid": False,
-        "python_provider_required": True,
-        "uses_mgrid_file": False,
-        "vmec_input_replay": workflow["vmec_input_replay"],
-        "mgrid_compatibility_example": workflow["mgrid_compatibility_example"],
-        "vmec_max_iter": int(args.vmec_max_iter),
-        "ftol": float(args.ftol),
-        "ns": int(args.ns),
-        "mpol": int(args.mpol),
-        "ntor": int(args.ntor),
-        "nzeta": int(args.nzeta),
-        "beta_percent": float(args.beta),
-        "pressure_profile": str(args.pressure_profile),
-        "pressure_scale": float(args.pressure_scale),
-        "phiedge": float(args.phiedge),
-        "activate_fsq": float(args.activate_fsq),
-        "jit_forces": bool(args.jit_forces),
-    }
-    optimizer_config = {
-        "method": "Powell",
-        "max_iter": int(args.max_iter),
-        "max_evals": int(args.max_evals),
-        "xtol": float(args.xtol),
-        "ftol": float(args.optimizer_ftol),
-    }
+    objective_model, vmec_config, optimizer_config = direct_coil_qs_summary_configs(
+        args,
+        input_path=input_path,
+        workflow=workflow,
+    )
     same_branch_report_config, same_branch_derivative_proposal_config = same_branch_report_runtime_configs(
         args,
         variables,
     )
+    summary_base = {
+        "phase": "single-stage-direct-coil-validation",
+        "flow": workflow["flow"],
+        "workflow": workflow,
+        "scope": "deterministic coil-only direct-coil free-boundary QS optimization example",
+        "plasma_boundary_optimized": False,
+        "single_stage_limitations": SINGLE_STAGE_LIMITATIONS,
+        "optimized_variables": variable_manifest,
+        "objective_model": objective_model,
+        "provider": provider_metadata,
+        "baseline_coils": coil_diagnostics(base_params),
+        "vmec_config": vmec_config,
+        "optimizer_config": optimizer_config,
+        "same_branch_report_config": same_branch_report_config,
+        "same_branch_derivative_proposal_config": same_branch_derivative_proposal_config,
+        "input": input_path,
+        "outdir": outdir,
+        "history_json": outdir / "history.json",
+        "best_wout": outdir / "wout_best_direct_coil_qs.nc",
+    }
     history: list[dict[str, Any]] = []
     best: dict[str, Any] | None = None
     if bool(args.dry_run):
-        summary = {
-            "phase": "single-stage-direct-coil-validation",
-            "flow": workflow["flow"],
-            "workflow": workflow,
-            "scope": "deterministic coil-only direct-coil free-boundary QS optimization example",
-            "dry_run": True,
-            "plasma_boundary_optimized": False,
-            "single_stage_limitations": SINGLE_STAGE_LIMITATIONS,
-            "optimized_variables": variable_manifest,
-            "objective_model": objective_model,
-            "provider": provider_metadata,
-            "baseline_coils": coil_diagnostics(base_params),
-            "vmec_config": vmec_config,
-            "optimizer_config": optimizer_config,
-            "same_branch_report_config": same_branch_report_config,
-            "same_branch_derivative_proposal_config": same_branch_derivative_proposal_config,
-            "input": input_path,
-            "outdir": outdir,
-            "history_json": outdir / "history.json",
-            "best_wout": outdir / "wout_best_direct_coil_qs.nc",
-        }
+        summary = {**summary_base, "dry_run": True}
         write_json(outdir / "summary.json", summary)
         print("Flow: single-stage direct-coil/no-mgrid optimization; only coil variables are selected.")
         print(f"Dry run: wrote {outdir / 'summary.json'} without running VMEC or the optimizer.")
@@ -1479,23 +1405,8 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     summary = {
-        "phase": "single-stage-direct-coil-validation",
-        "flow": workflow["flow"],
-        "workflow": workflow,
-        "scope": "deterministic coil-only direct-coil free-boundary QS optimization example",
+        **summary_base,
         "dry_run": False,
-        "plasma_boundary_optimized": False,
-        "single_stage_limitations": SINGLE_STAGE_LIMITATIONS,
-        "optimized_variables": variable_manifest,
-        "objective_model": objective_model,
-        "provider": provider_metadata,
-        "baseline_coils": coil_diagnostics(base_params),
-        "vmec_config": vmec_config,
-        "optimizer_config": optimizer_config,
-        "same_branch_report_config": same_branch_report_config,
-        "same_branch_derivative_proposal_config": same_branch_derivative_proposal_config,
-        "input": input_path,
-        "outdir": outdir,
         "optimizer": {
             "method": "Powell",
             "success": bool(optimizer_result.success),
@@ -1506,8 +1417,6 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
             "x": np.asarray(optimizer_result.x, dtype=float),
         },
         "best": best,
-        "history_json": outdir / "history.json",
-        "best_wout": outdir / "wout_best_direct_coil_qs.nc",
     }
     if bool(args.write_same_branch_report):
         report_best_before_derivative_proposal = best
