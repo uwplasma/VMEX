@@ -18461,3 +18461,107 @@ Results:
 No user input is needed.
 
 ---
+## 149. Array LCFS Diagnostic and Boundary-Coefficient Residual Jacobian Check
+
+### Steps taken
+
+- Factored `mirror_lcfs_diagnostic` through a new
+  `mirror_lcfs_diagnostic_from_arrays` helper.
+- Kept the existing output-object diagnostic API as a wrapper, so examples and
+  existing callers continue to work.
+- Exported `mirror_lcfs_diagnostic_from_arrays` through `vmec_jax.mirror.api`
+  and `vmec_jax.mirror`.
+- Added a parity assertion showing the array helper matches the output-object
+  diagnostic for the same boundary, field, and pressure inputs.
+- Added a finite-difference LCFS residual Jacobian check with respect to
+  polynomial boundary coefficients `(r0, a2, a4)`.
+
+### Results obtained
+
+- The free-boundary residual block can now be evaluated directly from arrays,
+  which makes boundary-parameter Jacobian checks and future coupled residual
+  assembly simpler.
+- The finite-difference test verifies that the residual vector has a finite,
+  nonzero boundary-coefficient Jacobian and that the column-wise Jacobian
+  agrees with an independent directional finite difference to finite-difference
+  precision.
+- Public import check for `mirror_lcfs_diagnostic_from_arrays` passed.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_free_boundary.py
+python -m ruff check vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_free_boundary.py
+
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py::test_mirror_lcfs_diagnostic_reports_side_boundary_targets \
+  tests/mirror/test_mirror_free_boundary.py::test_mirror_lcfs_residual_has_boundary_coefficient_finite_difference_jacobian \
+  -q
+
+python - <<'PY'
+from vmec_jax.mirror import mirror_lcfs_diagnostic_from_arrays
+print(callable(mirror_lcfs_diagnostic_from_arrays))
+PY
+
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_free_boundary.py -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Ruff format/check passed.
+- Focused diagnostic/Jacobian tests passed: `2 passed`.
+- Public import check printed `True`.
+- Full free-boundary tests passed: `33 passed in 1.96s`.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The array diagnostic helper lives beside the output-object LCFS diagnostic in
+  `vmec_jax/mirror/free_boundary.py`.
+- Public exports remain centralized through the existing mirror API files.
+- The finite-difference Jacobian test lives in the free-boundary test module,
+  next to the residual-vector and LCFS candidate tests.
+- No generated result files were added.
+
+### Best next steps
+
+1. Commit and push M149.
+2. Assemble the first prototype residual vector that combines reduced
+   equilibrium residual components with `mirror_lcfs_residual` boundary
+   components.
+3. Add a small least-squares solve over boundary coefficients after the
+   residual assembly has finite-difference coverage.
+4. Check CI later and fix failures if reported.
+
+### Completion percentages after M149
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `91%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `92%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `92%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `93%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `94%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
+
+---

@@ -452,24 +452,26 @@ def initial_mirror_boundary_from_circular_coil_scan(
     )
 
 
-def mirror_lcfs_diagnostic(
-    output: Any, external_sample: MirrorExternalFieldSample, *, mu0: float = 1.0
+def mirror_lcfs_diagnostic_from_arrays(
+    *,
+    theta: Any,
+    z: Any,
+    boundary_r: Any,
+    edge_internal_bmag: Any,
+    external_sample: MirrorExternalFieldSample,
+    edge_pressure: float,
+    mu0: float = 1.0,
 ) -> MirrorLCFSDiagnostic:
-    """Return side-boundary normal-field and total-pressure diagnostics.
+    """Return LCFS diagnostics from arrays sampled on the side boundary."""
 
-    The diagnostic target is intentionally local to the side boundary.  It
-    gives later LCFS update work a tested quantity to reduce without pretending
-    that the current fixed-boundary baseline is already a free-boundary solve.
-    """
-
-    theta = np.asarray(output.theta, dtype=float)
-    z = np.asarray(output.z, dtype=float)
-    boundary_r = np.asarray(output.geometry.boundary_r, dtype=float)
+    theta = np.asarray(theta, dtype=float)
+    z = np.asarray(z, dtype=float)
+    boundary_r = np.asarray(boundary_r, dtype=float)
     if boundary_r.shape != (theta.size, z.size):
         raise ValueError(f"boundary_r must have shape {(theta.size, z.size)}, got {boundary_r.shape}")
     if z.size < 2:
         raise ValueError("at least two axial nodes are required for LCFS diagnostics")
-    edge_internal_bmag = np.asarray(output.field.bmag[-1], dtype=float)
+    edge_internal_bmag = np.asarray(edge_internal_bmag, dtype=float)
     external_br = np.asarray(external_sample.br, dtype=float)
     external_bz = np.asarray(external_sample.bz, dtype=float)
     external_bmag = np.asarray(external_sample.bmag, dtype=float)
@@ -484,9 +486,9 @@ def mirror_lcfs_diagnostic(
         raise ValueError("internal edge |B| must have shape (ntheta, nxi)")
     if float(mu0) <= 0.0:
         raise ValueError("mu0 must be positive")
+    edge_pressure = float(edge_pressure)
 
     external_bnormal, dr_dz = mirror_external_bnormal(boundary_r, z, external_sample, return_dr_dz=True)
-    edge_pressure = float(np.asarray(output.profiles.pressure, dtype=float)[-1])
     pressure_balance = edge_pressure + (edge_internal_bmag**2 - external_bmag**2) / (2.0 * float(mu0))
     return MirrorLCFSDiagnostic(
         theta=theta,
@@ -502,6 +504,27 @@ def mirror_lcfs_diagnostic(
         internal_bmag=edge_internal_bmag,
         external_bmag=external_bmag,
         edge_pressure=edge_pressure,
+    )
+
+
+def mirror_lcfs_diagnostic(
+    output: Any, external_sample: MirrorExternalFieldSample, *, mu0: float = 1.0
+) -> MirrorLCFSDiagnostic:
+    """Return side-boundary normal-field and total-pressure diagnostics.
+
+    The diagnostic target is intentionally local to the side boundary.  It
+    gives later LCFS update work a tested quantity to reduce without pretending
+    that the current fixed-boundary baseline is already a free-boundary solve.
+    """
+
+    return mirror_lcfs_diagnostic_from_arrays(
+        theta=output.theta,
+        z=output.z,
+        boundary_r=output.geometry.boundary_r,
+        edge_internal_bmag=np.asarray(output.field.bmag)[-1],
+        external_sample=external_sample,
+        edge_pressure=float(np.asarray(output.profiles.pressure, dtype=float)[-1]),
+        mu0=mu0,
     )
 
 

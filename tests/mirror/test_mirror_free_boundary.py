@@ -21,6 +21,7 @@ from vmec_jax.mirror import (
     mirror_external_bnormal,
     mirror_external_pressure_balance_response,
     mirror_lcfs_diagnostic,
+    mirror_lcfs_diagnostic_from_arrays,
     mirror_lcfs_merit,
     mirror_lcfs_residual,
     propose_axisymmetric_mirror_lcfs_update,
@@ -286,10 +287,21 @@ def test_mirror_lcfs_diagnostic_reports_side_boundary_targets():
     )
 
     diagnostic = mirror_lcfs_diagnostic(output, sample, mu0=1.0)
+    diagnostic_from_arrays = mirror_lcfs_diagnostic_from_arrays(
+        theta=theta,
+        z=z,
+        boundary_r=boundary_r,
+        edge_internal_bmag=internal_bmag[-1],
+        external_sample=sample,
+        edge_pressure=0.0,
+        mu0=1.0,
+    )
 
     np.testing.assert_allclose(diagnostic.boundary_dr_dz, 0.0, atol=1.0e-14)
     np.testing.assert_allclose(diagnostic.external_bnormal, 0.0, atol=1.0e-14)
     np.testing.assert_allclose(diagnostic.pressure_balance, 1.5)
+    np.testing.assert_allclose(diagnostic_from_arrays.external_bnormal, diagnostic.external_bnormal)
+    np.testing.assert_allclose(diagnostic_from_arrays.pressure_balance, diagnostic.pressure_balance)
     assert diagnostic.external_bnormal_rms == pytest.approx(0.0)
     assert diagnostic.external_bnormal_max == pytest.approx(0.0)
     assert diagnostic.pressure_balance_rms == pytest.approx(1.5)
@@ -366,6 +378,70 @@ def test_mirror_lcfs_residual_vector_matches_merit_components():
     assert residual.value == pytest.approx(merit.value)
     assert residual.pressure_balance_rms == pytest.approx(diagnostic.pressure_balance_rms)
     assert residual.external_bnormal_rms == pytest.approx(diagnostic.external_bnormal_rms)
+
+
+def test_mirror_lcfs_residual_has_boundary_coefficient_finite_difference_jacobian():
+    theta = np.asarray([0.0])
+    z = np.linspace(-1.0, 1.0, 7)
+    xi = z.copy()
+    br = 0.1 * z[None, :]
+    bz = np.ones((theta.size, z.size))
+    external_sample = MirrorExternalFieldSample(
+        r=np.ones((theta.size, z.size)),
+        theta=np.broadcast_to(theta[:, None], (theta.size, z.size)),
+        z=np.broadcast_to(z[None, :], (theta.size, z.size)),
+        br=br,
+        btheta=np.zeros_like(bz),
+        bz=bz,
+        bmag=np.sqrt(br**2 + bz**2),
+    )
+    edge_internal_bmag = np.ones((theta.size, z.size))
+
+    def residual_vector(coefficients):
+        r0, a2, a4 = np.asarray(coefficients, dtype=float)
+        boundary_r = r0 * (1.0 + a2 * xi**2 + a4 * xi**4)[None, :]
+        sample = MirrorExternalFieldSample(
+            r=boundary_r,
+            theta=external_sample.theta,
+            z=external_sample.z,
+            br=external_sample.br,
+            btheta=external_sample.btheta,
+            bz=external_sample.bz,
+            bmag=external_sample.bmag,
+        )
+        diagnostic = mirror_lcfs_diagnostic_from_arrays(
+            theta=theta,
+            z=z,
+            boundary_r=boundary_r,
+            edge_internal_bmag=edge_internal_bmag,
+            external_sample=sample,
+            edge_pressure=0.0,
+            mu0=1.0,
+        )
+        return mirror_lcfs_residual(
+            diagnostic,
+            pressure_scale=1.0,
+            bnormal_scale=1.0,
+            bnormal_weight=1.0,
+        ).vector
+
+    coefficients = np.asarray([0.3, 0.08, -0.02])
+    step = 1.0e-6
+    jacobian = np.column_stack(
+        [
+            (residual_vector(coefficients + step * basis) - residual_vector(coefficients - step * basis)) / (2.0 * step)
+            for basis in np.eye(coefficients.size)
+        ]
+    )
+    direction = np.asarray([0.02, -0.03, 0.01])
+    directional = (
+        residual_vector(coefficients + step * direction) - residual_vector(coefficients - step * direction)
+    ) / (2.0 * step)
+
+    assert jacobian.shape == (2 * z.size, coefficients.size)
+    assert np.all(np.isfinite(jacobian))
+    assert np.linalg.norm(jacobian) > 0.0
+    np.testing.assert_allclose(jacobian @ direction, directional, rtol=1.0e-7, atol=5.0e-10)
 
 
 @pytest.mark.parametrize(
