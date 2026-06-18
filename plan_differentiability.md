@@ -74,6 +74,70 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9987%.
 
+## 2026-06-18 Residual Iteration Timing Runtime Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved the non-scan residual-iteration timing accumulator defaults out of
+   `solve_fixed_boundary_residual_iter` and into
+   `_new_residual_iter_timing_stats` in
+   `vmec_jax.solvers.fixed_boundary.residual.runtime`.
+2. Kept setup-phase timings explicit by passing the already-collected setup
+   timing dictionary into the new helper.
+3. Added unit coverage that verifies setup-phase values are preserved and
+   runtime counters start at zero.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` dropped from 6471 to 6411 lines.
+- `iteration.py` dropped from 6997 to 6938 lines.
+- Timing key names and report behavior remain unchanged; this is a pure
+  ownership/simplicity refactor.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/runtime.py vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/runtime.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_residual_iter_runtime_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_runtime_helpers.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_solve_real_scan_wave10_coverage.py tests/test_solve_wave7_coverage.py -q`
+  - Result: passed.
+- `python tools/diagnostics/source_health.py --top 10 --top-functions 12`
+
+Best next steps:
+
+1. Commit/push this timing-runtime seam.
+2. Continue residual iteration decomposition through existing domain modules
+   before adding new files: preconditioner cache state, host history channels,
+   or VMEC2000 scan branch selection.
+3. Avoid extracting the full nested scan function until the required context
+   object can be designed without hiding the solver dependencies.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.999997%.
+- Solver monolith reduction: 99.50%.
+- Free-boundary adjoint monolith reduction: 99.35%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 99.72%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 98.9%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9988%.
+
 Repository: `/Users/rogeriojorge/local/vmec_jax`.
 
 ## Executive Summary

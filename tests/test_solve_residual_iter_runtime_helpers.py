@@ -13,6 +13,7 @@ from vmec_jax.solvers.fixed_boundary.residual.runtime import (
     _maybe_dump_ptau,
     _maybe_print_nonscan_state_debug,
     _nonscan_state_debug_payload,
+    _new_residual_iter_timing_stats,
     _ptau_dump_enabled,
     _record_compute_force_timing,
     _record_setup_timing,
@@ -84,6 +85,23 @@ def test_setup_timing_helpers_initialize_and_accumulate():
     assert timings["setup_freeb_policy"] == 2.5
     assert _record_setup_timing(timings, "setup_freeb_policy", 20.0, perf_counter=lambda: 21.0)
     assert timings["setup_freeb_policy"] == 3.5
+
+
+def test_new_residual_iter_timing_stats_preserves_setup_phase_values():
+    setup = _initial_setup_phase_timings()
+    setup["setup_freeb_policy"] = 1.25
+    setup["setup_update_constants"] = 0.5
+
+    stats = _new_residual_iter_timing_stats(setup)
+
+    assert stats["setup_freeb_policy"] == pytest.approx(1.25)
+    assert stats["setup_update_constants"] == pytest.approx(0.5)
+    assert stats["setup_total"] == pytest.approx(0.0)
+    assert stats["iterations"] == 0
+    assert stats["compute_forces_calls"] == 0
+    assert stats["compute_forces"] == pytest.approx(0.0)
+    assert stats["iteration_control_fsq1_payload_get"] == pytest.approx(0.0)
+    assert stats["finalize_residual_device_get"] == pytest.approx(0.0)
 
 
 def test_ptau_dump_enabled_requires_env_and_directory():

@@ -336,6 +336,74 @@ def _initial_setup_phase_timings() -> dict[str, float]:
     return {key: 0.0 for key in _SETUP_PHASE_KEYS}
 
 
+_RESIDUAL_ITER_TIMING_DEFAULTS: dict[str, float | int] = {
+    "setup_total": 0.0,
+    "setup_axis_reset": 0.0,
+    "setup_axis_reset_compute_forces": 0.0,
+    "iteration_loop": 0.0,
+    "iteration_prepare": 0.0,
+    "iteration_residual_metrics": 0.0,
+    "iteration_control": 0.0,
+    "iteration_control_fsq1": 0.0,
+    "iteration_control_fsq1_precond_norm": 0.0,
+    "iteration_control_fsq1_scalar_build": 0.0,
+    "iteration_control_fsq1_payload_get": 0.0,
+    "iteration_control_fsq1_direct_get": 0.0,
+    "iteration_control_badjac": 0.0,
+    "iteration_control_badjac_ptau_get": 0.0,
+    "iteration_control_badjac_state_jacobian": 0.0,
+    "iteration_control_vmec_time": 0.0,
+    "iteration_control_restart": 0.0,
+    "iteration_control_evolve": 0.0,
+    "iteration_post_update": 0.0,
+    "iteration_loop_unattributed": 0.0,
+    "finalize": 0.0,
+    "compute_forces": 0.0,
+    "compute_forces_first": 0.0,
+    "compute_forces_rest": 0.0,
+    "compute_forces_calls": 0,
+    "compute_forces_main": 0.0,
+    "compute_forces_main_calls": 0,
+    "compute_forces_auto_flip": 0.0,
+    "compute_forces_auto_flip_calls": 0,
+    "compute_forces_trial": 0.0,
+    "compute_forces_trial_calls": 0,
+    "compute_forces_backtracking": 0.0,
+    "compute_forces_backtracking_calls": 0,
+    "preconditioner": 0.0,
+    "precond_apply": 0.0,
+    "precond_mode_scale": 0.0,
+    "precond_refresh_seed": 0.0,
+    "precond_refresh_calls": 0,
+    "precond_reassemble_calls": 0,
+    "precond_cache_hit_count": 0,
+    "precond_refresh_seed_reuse_count": 0,
+    "update": 0.0,
+    "update_state": 0.0,
+    "update_state_ready": 0.0,
+    "update_trace_build": 0.0,
+    "update_trace_finalize": 0.0,
+    "finalize_nestor_recompute": 0.0,
+    "finalize_residual_recompute": 0.0,
+    "finalize_residual_device_get": 0.0,
+    "finalize_diag_build": 0.0,
+    "precond_refresh": 0.0,
+    "iterations": 0,
+}
+
+
+def _new_residual_iter_timing_stats(
+    setup_phase_timings: dict[str, float] | None = None,
+) -> dict[str, float | int]:
+    """Return the timing accumulator used by ``solve_fixed_boundary_residual_iter``."""
+
+    stats = dict(_RESIDUAL_ITER_TIMING_DEFAULTS)
+    phase_timings = _initial_setup_phase_timings() if setup_phase_timings is None else setup_phase_timings
+    for key in _SETUP_PHASE_KEYS:
+        stats[key] = float(phase_timings.get(key, 0.0))
+    return stats
+
+
 def _setup_timer_start(*, timing_enabled: bool, perf_counter: Callable[[], float]) -> float | None:
     """Return a setup timer start value only when timing is enabled."""
 
