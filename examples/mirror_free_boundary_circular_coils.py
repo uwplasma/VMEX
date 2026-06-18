@@ -49,6 +49,15 @@ class _LCFSProposalSelection:
     rejection_reason: str | None
 
 
+@dataclass(frozen=True)
+class _LCFSPilotStepResult:
+    row: dict[str, object]
+    lcfs: object
+    merit: object
+    selection: _LCFSProposalSelection
+    accepted: bool
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--outdir", type=Path, default=Path("results/mirror/free_boundary_circular_coils"))
@@ -391,6 +400,99 @@ def _completed_lcfs_pilot_row(
     return row
 
 
+def _run_lcfs_pilot_step(
+    *,
+    step: int,
+    outdir: Path,
+    label: str,
+    config,
+    boundary,
+    grid,
+    coils,
+    psi_prime_value: float,
+    pressure,
+    solve_options,
+    reference_lcfs,
+    reference_merit,
+    accepted_merit_value: float,
+    lcfs_merit_bnormal_weight: float,
+    lcfs_proposal_mode: str,
+    lcfs_update_damping: float,
+    lcfs_update_max_relative_step: float,
+    lcfs_update_cap_taper_power: float,
+    lcfs_update_smoothing_passes: int,
+    lcfs_require_bnormal_nonincrease: bool,
+    write_plots: bool,
+) -> _LCFSPilotStepResult:
+    result = run_mirror_fixed_boundary(
+        config,
+        boundary,
+        psi_prime=PsiPrimeProfile.constant(float(psi_prime_value)),
+        i_prime=IPrimeProfile.zero(),
+        pressure=pressure,
+        options=solve_options,
+    )
+    mout_path = outdir / f"mout_free_boundary_circular_coils_beta_{label}_lcfs_step_{step}.nc"
+    if mout_path.exists():
+        mout_path.unlink()
+    mout = write_mirror_output(mout_path, result)
+    output = load_mirror_output(mout)
+    external_sample = sample_mirror_boundary_external_field(grid, boundary, coils)
+    lcfs = mirror_lcfs_diagnostic(output, external_sample, mu0=1.0)
+    merit = mirror_lcfs_merit(
+        lcfs,
+        pressure_scale=reference_merit.pressure_scale,
+        bnormal_scale=reference_merit.bnormal_scale,
+        bnormal_weight=lcfs_merit_bnormal_weight,
+    )
+    pressure_response = mirror_external_pressure_balance_response(lcfs, coils, mu0=1.0)
+    selection = _select_lcfs_proposal(
+        lcfs=lcfs,
+        pressure_response=pressure_response,
+        grid=grid,
+        coils=coils,
+        external_sample=external_sample,
+        baseline_merit=reference_merit,
+        mode=lcfs_proposal_mode,
+        damping=lcfs_update_damping,
+        max_relative_step=lcfs_update_max_relative_step,
+        cap_taper_power=lcfs_update_cap_taper_power,
+        smoothing_passes=lcfs_update_smoothing_passes,
+        require_bnormal_nonincrease=lcfs_require_bnormal_nonincrease,
+    )
+    plot_paths: dict[str, str] = {}
+    if write_plots:
+        figure_dir = outdir / "figures" / f"fixed_boundary_beta_{label}_lcfs_step_{step}"
+        plot_paths = {name: str(path) for name, path in plot_mirror_output(mout, outdir=figure_dir).items()}
+        plot_paths["lcfs_diagnostic"] = str(
+            _write_lcfs_diagnostic_plot(
+                lcfs,
+                selection.proposal,
+                outdir=figure_dir,
+                name=f"free_boundary_circular_coils_beta_{label}_lcfs_step_{step}",
+            )
+        )
+    accepted = bool(merit.value <= accepted_merit_value)
+    return _LCFSPilotStepResult(
+        row=_completed_lcfs_pilot_row(
+            step=step,
+            mout=mout,
+            result=result,
+            lcfs=lcfs,
+            merit=merit,
+            reference_lcfs=reference_lcfs,
+            reference_merit=reference_merit,
+            next_selection=selection,
+            accepted=accepted,
+            figures=plot_paths,
+        ),
+        lcfs=lcfs,
+        merit=merit,
+        selection=selection,
+        accepted=accepted,
+    )
+
+
 def _run_fixed_boundary_baseline_cases(
     *,
     outdir: Path,
@@ -479,84 +581,38 @@ def _run_fixed_boundary_baseline_cases(
                         )
                     )
                     break
-                pilot_result = run_mirror_fixed_boundary(
-                    config,
-                    candidate_boundary,
-                    psi_prime=PsiPrimeProfile.constant(float(psi_prime_value)),
-                    i_prime=IPrimeProfile.zero(),
-                    pressure=pressure,
-                    options=solve_options,
-                )
-                pilot_mout_path = outdir / f"mout_free_boundary_circular_coils_beta_{label}_lcfs_step_{step}.nc"
-                if pilot_mout_path.exists():
-                    pilot_mout_path.unlink()
-                pilot_mout = write_mirror_output(pilot_mout_path, pilot_result)
-                pilot_output = load_mirror_output(pilot_mout)
-                pilot_external_sample = sample_mirror_boundary_external_field(
-                    baseline_grid, candidate_boundary, scan.coils
-                )
-                pilot_lcfs = mirror_lcfs_diagnostic(pilot_output, pilot_external_sample, mu0=1.0)
-                pilot_merit = mirror_lcfs_merit(
-                    pilot_lcfs,
-                    pressure_scale=lcfs_merit.pressure_scale,
-                    bnormal_scale=lcfs_merit.bnormal_scale,
-                    bnormal_weight=lcfs_merit_bnormal_weight,
-                )
-                pilot_response = mirror_external_pressure_balance_response(pilot_lcfs, scan.coils, mu0=1.0)
-                pilot_selection = _select_lcfs_proposal(
-                    lcfs=pilot_lcfs,
-                    pressure_response=pilot_response,
+                pilot_step = _run_lcfs_pilot_step(
+                    step=step,
+                    outdir=outdir,
+                    label=label,
+                    config=config,
+                    boundary=candidate_boundary,
                     grid=baseline_grid,
                     coils=scan.coils,
-                    external_sample=pilot_external_sample,
-                    baseline_merit=lcfs_merit,
-                    mode=lcfs_proposal_mode,
-                    damping=lcfs_update_damping,
-                    max_relative_step=lcfs_update_max_relative_step,
-                    cap_taper_power=lcfs_update_cap_taper_power,
-                    smoothing_passes=lcfs_update_smoothing_passes,
-                    require_bnormal_nonincrease=lcfs_require_bnormal_nonincrease,
+                    psi_prime_value=psi_prime_value,
+                    pressure=pressure,
+                    solve_options=solve_options,
+                    reference_lcfs=lcfs,
+                    reference_merit=lcfs_merit,
+                    accepted_merit_value=accepted_merit_value,
+                    lcfs_merit_bnormal_weight=lcfs_merit_bnormal_weight,
+                    lcfs_proposal_mode=lcfs_proposal_mode,
+                    lcfs_update_damping=lcfs_update_damping,
+                    lcfs_update_max_relative_step=lcfs_update_max_relative_step,
+                    lcfs_update_cap_taper_power=lcfs_update_cap_taper_power,
+                    lcfs_update_smoothing_passes=lcfs_update_smoothing_passes,
+                    lcfs_require_bnormal_nonincrease=lcfs_require_bnormal_nonincrease,
+                    write_plots=write_plots,
                 )
-                pilot_proposal = pilot_selection.proposal
-                pilot_plot_paths: dict[str, str] = {}
-                if write_plots:
-                    pilot_figure_dir = outdir / "figures" / f"fixed_boundary_beta_{label}_lcfs_step_{step}"
-                    pilot_plot_paths = {
-                        name: str(path)
-                        for name, path in plot_mirror_output(pilot_mout, outdir=pilot_figure_dir).items()
-                    }
-                    pilot_plot_paths["lcfs_diagnostic"] = str(
-                        _write_lcfs_diagnostic_plot(
-                            pilot_lcfs,
-                            pilot_proposal,
-                            outdir=pilot_figure_dir,
-                            name=f"free_boundary_circular_coils_beta_{label}_lcfs_step_{step}",
-                        )
-                    )
-                pilot_final = pilot_result.final_trace
-                accepted = bool(pilot_merit.value <= accepted_merit_value)
-                pilot_rows.append(
-                    _completed_lcfs_pilot_row(
-                        step=step,
-                        mout=pilot_mout,
-                        result=pilot_result,
-                        lcfs=pilot_lcfs,
-                        merit=pilot_merit,
-                        reference_lcfs=lcfs,
-                        reference_merit=lcfs_merit,
-                        next_selection=pilot_selection,
-                        accepted=accepted,
-                        figures=pilot_plot_paths,
-                    )
-                )
-                if not accepted:
+                pilot_rows.append(pilot_step.row)
+                if not pilot_step.accepted:
                     break
-                accepted_merit_value = float(pilot_merit.value)
-                current_lcfs = pilot_lcfs
-                current_merit = pilot_merit
-                candidate_proposal = pilot_proposal
-                candidate_boundary = pilot_proposal.boundary
-                candidate_selection = pilot_selection
+                accepted_merit_value = float(pilot_step.merit.value)
+                current_lcfs = pilot_step.lcfs
+                current_merit = pilot_step.merit
+                candidate_proposal = pilot_step.selection.proposal
+                candidate_boundary = candidate_proposal.boundary
+                candidate_selection = pilot_step.selection
         plot_paths: dict[str, str] = {}
         if write_plots:
             figure_dir = outdir / "figures" / f"fixed_boundary_beta_{label}"

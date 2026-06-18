@@ -9222,3 +9222,127 @@ Result: all checks passed.
 No user input is needed.
 
 ---
+
+## 78. 2026-06-18 M12p one-step LCFS pilot helper
+
+This tranche extracted the actual one-step LCFS pilot execution from the
+root circular-coil example loop.  The main beta-case loop now delegates the
+candidate fixed-boundary solve, `mout` write/reload, external-field resampling,
+LCFS diagnostic, merit evaluation, next-candidate selection, optional plot
+generation, and completed row construction to one helper.
+
+### Steps taken
+
+- Added `_LCFSPilotStepResult`.
+- Added `_run_lcfs_pilot_step`.
+- Replaced the in-loop pilot solve/write/reload/sample/diagnose/select/plot
+  block with one helper call.
+- Kept skipped-row handling separate so no-op/guarded cases remain explicit.
+- Ran a no-plot three-step strict mixed beta-10 probe after the extraction.
+
+### Results obtained
+
+Generated artifact:
+
+- `results/mirror/m12p_one_step_helper_probe/free_boundary_circular_coils_metrics.json`.
+
+Strict mixed beta-10 three-step helper probe:
+
+| row | merit | pressure RMS | `B_ext.n` RMS | accepted |
+| :--- | ---: | ---: | ---: | :---: |
+| baseline | `1.000020371650` | `1.803515365850` | `7.657346104349e-03` | n/a |
+| step 1 | `0.782835620661` | `1.411809156436` | `7.655747922838e-03` | `true` |
+| step 2 | `0.594625153775` | `1.072354482550` | `7.615656217692e-03` | `true` |
+| step 3 | `0.431268555842` | `0.777718985048` | `7.442445773682e-03` | `true` |
+
+The state handoff through `_LCFSPilotStepResult` preserves the monotonic
+three-step strict mixed behavior from M12n/M12o.
+
+### How it was tested
+
+Focused root example tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_strict_bnormal_guard_can_skip_pilot \
+  -q
+```
+
+Result: `2 passed in 7.10s`.
+
+Three-step strict mixed helper probe:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/m12p_one_step_helper_probe \
+  --betas 10 \
+  --ntheta 24 \
+  --nxi 33 \
+  --n-segments 256 \
+  --run-fixed-boundary-baseline \
+  --run-lcfs-pilot \
+  --lcfs-pilot-steps 3 \
+  --baseline-maxiter 0 \
+  --lcfs-require-bnormal-nonincrease \
+  --no-plots
+```
+
+Result: metrics JSON written with three accepted pilot rows.
+
+Lint/format:
+
+```bash
+python -m ruff check \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff format --check \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_examples.py
+```
+
+Result: both checks passed.
+
+### File structure and best-practice notes
+
+- The helper is still private to the example because it performs file I/O,
+  plotting, and provider-specific external-field sampling.
+- The main loop now owns orchestration while `_run_lcfs_pilot_step` owns the
+  repeated one-step workflow.
+- The next clean boundary is to move the baseline row assembly into a helper
+  or promote the pilot-step pieces into a small internal module once a second
+  free-boundary example needs them.
+
+### Best next steps
+
+1. Commit and push M12p.
+2. Update the mirror example README and docs with the current strict mixed
+   pilot workflow and new guard metadata fields.
+3. Start the stellarator-mirror hybrid boundary lane:
+   - rotating ellipse segment over one field period;
+   - linear mirror-axis segment;
+   - smooth connection and up-down symmetric repetition;
+   - root example and geometry plots.
+
+### Completion percentages after M12p
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `87%`.
+- I/O schema and docs: `90%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `67%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `53%`.
+- PR merge readiness overall: `90%`.
+
+### User input needed
+
+No user input is needed.
+
+---
