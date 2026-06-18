@@ -9,6 +9,7 @@ from typing import Any, Callable
 __all__ = [
     "NumpyForceFastPath",
     "compute_forces_jit_cache_key",
+    "maybe_precompile_residual_force_kernels",
     "prepare_numpy_force_fast_path",
     "select_compute_forces_callable",
 ]
@@ -193,3 +194,134 @@ def prepare_numpy_force_fast_path(
         wout_like=wout_like,
         compute_forces_np=compute_forces_np,
     )
+
+
+def maybe_precompile_residual_force_kernels(
+    *,
+    jit_forces: bool,
+    jit_precompile: bool,
+    has_jax_func: Callable[[], bool],
+    jax_module: Any,
+    jnp_module: Any,
+    compute_forces_np: Callable[..., Any] | None,
+    compute_forces: Callable[..., Any],
+    state0: Any,
+    dtype_state: Any,
+    zero_precond_diag: Any,
+    zero_tcon: Any,
+    constraint_active_false: Any,
+    backtracking: bool,
+    reference_mode: bool,
+    use_direct_fallback: bool,
+    strict_update: bool,
+    jit_strict_update_enabled: bool,
+    host_update_assembly: bool,
+    limit_dt_from_force: bool,
+    limit_update_rms: bool,
+    tree_has_tracer_func: Callable[[Any], bool],
+    track_history: bool,
+    verbose: bool,
+    adjoint_trace: bool,
+    adjoint_trace_mode: str,
+    strict_update_step_jit_func: Callable[..., Any],
+    static: Any,
+    divide_by_scalxc_for_update: bool,
+    free_boundary_enabled: bool,
+    step_size: float,
+    initial_flip_sign: float,
+) -> None:
+    """Optionally precompile residual force and strict-update kernels.
+
+    All compile failures are intentionally swallowed to preserve the previous
+    best-effort precompile behavior.
+    """
+
+    if not (bool(jit_forces) and bool(jit_precompile) and has_jax_func() and (jax_module is not None)):
+        return
+    if compute_forces_np is not None:
+        return
+    try:
+        zero_m1_pre = jnp_module.asarray(1.0, dtype=dtype_state)
+        for include_edge_flag in (False, True):
+            compute_forces.lower(
+                state0,
+                include_edge=include_edge_flag,
+                zero_m1=zero_m1_pre,
+                constraint_precond_diag=zero_precond_diag,
+                constraint_tcon=zero_tcon,
+                constraint_precond_active=constraint_active_false,
+                constraint_tcon_active=constraint_active_false,
+                iter_idx=None,
+            ).compile()
+    except Exception:
+        pass
+
+    need_trial_eval_precompile = bool(backtracking) or bool(reference_mode) or bool(use_direct_fallback)
+    use_strict_update_precompile = (
+        bool(strict_update)
+        and bool(jit_strict_update_enabled)
+        and (not bool(host_update_assembly))
+        and (not bool(limit_dt_from_force))
+        and (not bool(limit_update_rms))
+        and (not bool(need_trial_eval_precompile))
+        and (not tree_has_tracer_func(state0))
+    )
+    if not use_strict_update_precompile:
+        return
+    try:
+        velocity_shape_pre = (
+            int(jnp_module.asarray(state0.Rcos).shape[0]),
+            int(static.cfg.mpol),
+            int(static.cfg.ntor) + 1,
+        )
+        zero_update_pre = jnp_module.zeros(velocity_shape_pre, dtype=dtype_state)
+        need_update_rms_precompile = (
+            bool(limit_update_rms)
+            or bool(track_history)
+            or bool(verbose)
+            or bool(backtracking)
+            or (bool(adjoint_trace) and adjoint_trace_mode == "full")
+        )
+        step_fn_pre = strict_update_step_jit_func(
+            static,
+            limit_update_rms=False,
+            need_update_rms=need_update_rms_precompile,
+            divide_by_scalxc_for_update=bool(divide_by_scalxc_for_update),
+            enforce_edge=not bool(free_boundary_enabled),
+        )
+        scalar_pre = jnp_module.asarray(1.0, dtype=dtype_state)
+        step_fn_pre.lower(
+            state0,
+            jnp_module.asarray(float(step_size), dtype=dtype_state),
+            scalar_pre,
+            scalar_pre,
+            jnp_module.asarray(float(step_size), dtype=dtype_state),
+            jnp_module.asarray(float(initial_flip_sign), dtype=dtype_state),
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            zero_update_pre,
+            jnp_module.asarray(1.0e-3 if bool(reference_mode) else 5.0e-3, dtype=dtype_state),
+        ).compile()
+    except Exception:
+        pass
