@@ -94,7 +94,10 @@ solved outcomes from the same generated input, not identical raw initial
 states: VMEC2000's first parsed ``threed1`` residual components differ from the
 VMEC/JAX initialized residual components. Treat mean-iota agreement as a useful
 regression signal, and reserve strict residual-parity claims for a future
-initialization-matched fixture.
+initialization-matched fixture. For toroidal-hybrid geometry refinement, pass
+``--shape-cases default,sharp`` to scan the default boundary and a sharpened
+side/corner preset in one run; use ``5:10`` or higher ``mpol:ntor`` pairs when
+asserting exact fit for the sharpened preset.
 
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
 free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct

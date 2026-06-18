@@ -245,8 +245,47 @@ def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
     assert all(row["fsq_history"] == [] for row in summary["rows"])
     assert all(row["max_boundary_fit_error"] < 1.0e-12 for row in summary["rows"])
     assert [row["ns"] for row in summary["rows"]] == [7, 9]
-    assert summary["sample_parameters"]["side_power"] == 2.0
-    assert summary["sample_parameters"]["corner_power"] == 2.0
+    assert summary["shape_cases"][0]["sample_parameters"]["side_power"] == 2.0
+    assert summary["shape_cases"][0]["sample_parameters"]["corner_power"] == 2.0
+
+
+def test_toroidal_hybrid_convergence_example_scans_shape_cases_without_solve(tmp_path: Path):
+    env = dict(os.environ)
+    env["PYTHONPATH"] = f"{Path.cwd()}{os.pathsep}{env.get('PYTHONPATH', '')}"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/toroidal_stellarator_mirror_hybrid_convergence.py",
+            "--outdir",
+            str(tmp_path / "hybrid_shape_scan"),
+            "--ns-array",
+            "7",
+            "--mode-pairs",
+            "5:10",
+            "--ntheta-fit",
+            "32",
+            "--nzeta-fit",
+            "32",
+            "--shape-cases",
+            "default,sharp",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+
+    summary_path = Path(completed.stdout.strip())
+    summary = json.loads(summary_path.read_text())
+    rows = summary["rows"]
+    assert [case["name"] for case in summary["shape_cases"]] == ["default", "sharp"]
+    assert [row["shape_case"] for row in rows] == ["default", "sharp"]
+    assert [row["case"] for row in rows] == ["default_ns007_mpol05_ntor10", "sharp_ns007_mpol05_ntor10"]
+    assert rows[0]["side_power"] == 1.0
+    assert rows[1]["side_power"] == 2.0
+    assert rows[1]["corner_power"] == 2.0
+    assert all(row["max_boundary_fit_error"] < 1.0e-12 for row in rows)
 
 
 def test_toroidal_hybrid_convergence_history_summary_uses_iteration_labels():
@@ -261,3 +300,6 @@ def test_toroidal_hybrid_convergence_history_summary_uses_iteration_labels():
     assert summary["best_iter"] == 7
     assert summary["fsq_reduction"] == 1.5
     assert summary["final_fsq"] == 5.0
+    assert module._parse_shape_cases("default, sharp") == ["default", "sharp"]
+    with pytest.raises(ValueError, match="unknown shape"):
+        module._parse_shape_cases("unknown")

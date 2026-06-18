@@ -41,6 +41,54 @@ def _parse_mode_pairs(text: str) -> list[tuple[int, int]]:
     return pairs
 
 
+_SHAPE_CASE_PRESETS = {
+    "default": {},
+    "sharp": {
+        "side_minor_modulation": 0.16,
+        "side_elongation": 0.35,
+        "side_power": 2.0,
+        "corner_amplitude": 0.025,
+        "corner_power": 2.0,
+    },
+}
+
+
+def _parse_shape_cases(text: str) -> list[str]:
+    names = [item.strip() for item in str(text).split(",") if item.strip()]
+    unknown = [name for name in names if name not in _SHAPE_CASE_PRESETS]
+    if unknown:
+        choices = ", ".join(sorted(_SHAPE_CASE_PRESETS))
+        raise ValueError(f"unknown shape case(s) {unknown}; choices are {choices}")
+    return names
+
+
+def _base_sample_kwargs(args: argparse.Namespace) -> dict[str, float | int]:
+    return {
+        "major_radius": float(args.major_radius),
+        "minor_radius": float(args.minor_radius),
+        "axis_oval": float(args.axis_oval),
+        "side_minor_modulation": float(args.side_minor_modulation),
+        "side_elongation": float(args.side_elongation),
+        "side_power": float(args.side_power),
+        "corner_amplitude": float(args.corner_amplitude),
+        "corner_helicity": int(args.corner_helicity),
+        "corner_power": float(args.corner_power),
+    }
+
+
+def _shape_case_kwargs(args: argparse.Namespace) -> list[tuple[str, dict[str, float | int]]]:
+    base = _base_sample_kwargs(args)
+    names = _parse_shape_cases(args.shape_cases)
+    if not names:
+        return [("custom", base)]
+    cases = []
+    for name in names:
+        kwargs = dict(base)
+        kwargs.update(_SHAPE_CASE_PRESETS[name])
+        cases.append((name, kwargs))
+    return cases
+
+
 def _import_matplotlib():
     try:
         mpl_cache = Path(tempfile.gettempdir()) / "vmec_jax_mplconfig"
@@ -57,6 +105,7 @@ def _import_matplotlib():
 
 _CSV_COLUMNS = (
     "case",
+    "shape_case",
     "ns",
     "mpol",
     "ntor",
@@ -326,8 +375,9 @@ def _write_parity_component_plot(rows: list[dict[str, object]], *, outdir: Path)
     return str(path)
 
 
-def _row_case_name(*, ns: int, mpol: int, ntor: int) -> str:
-    return f"ns{int(ns):03d}_mpol{int(mpol):02d}_ntor{int(ntor):02d}"
+def _row_case_name(*, ns: int, mpol: int, ntor: int, shape_case: str = "custom") -> str:
+    base = f"ns{int(ns):03d}_mpol{int(mpol):02d}_ntor{int(ntor):02d}"
+    return base if shape_case == "custom" else f"{shape_case}_{base}"
 
 
 def main() -> None:
@@ -348,6 +398,12 @@ def main() -> None:
     parser.add_argument("--corner-amplitude", type=float, default=0.035)
     parser.add_argument("--corner-helicity", type=int, default=1)
     parser.add_argument("--corner-power", type=float, default=1.0)
+    parser.add_argument(
+        "--shape-cases",
+        type=str,
+        default="",
+        help="Comma-separated preset shape cases to scan; choices: default,sharp. Empty uses the explicit CLI shape.",
+    )
     parser.add_argument("--ntheta-fit", type=int, default=64)
     parser.add_argument("--nzeta-fit", type=int, default=64)
     parser.add_argument("--run-solve", action="store_true")
@@ -364,246 +420,244 @@ def main() -> None:
     ns_values = _parse_ints(args.ns_array)
     mode_pairs = _parse_mode_pairs(args.mode_pairs)
     vmec2000_exec = Path(args.vmec2000_exec).expanduser() if str(args.vmec2000_exec).strip() else None
-    sample_kwargs = {
-        "major_radius": float(args.major_radius),
-        "minor_radius": float(args.minor_radius),
-        "axis_oval": float(args.axis_oval),
-        "side_minor_modulation": float(args.side_minor_modulation),
-        "side_elongation": float(args.side_elongation),
-        "side_power": float(args.side_power),
-        "corner_amplitude": float(args.corner_amplitude),
-        "corner_helicity": int(args.corner_helicity),
-        "corner_power": float(args.corner_power),
-    }
-    samples = sample_toroidal_stellarator_mirror_hybrid_boundary(
-        ntheta=int(args.ntheta_fit),
-        nzeta=int(args.nzeta_fit),
-        **sample_kwargs,
-    )
-    reference_metrics = toroidal_stellarator_mirror_hybrid_metrics(samples)
+    shape_cases = _shape_case_kwargs(args)
     rows: list[dict[str, object]] = []
 
-    for ns in ns_values:
-        for mpol, ntor in mode_pairs:
-            case = _row_case_name(ns=ns, mpol=mpol, ntor=ntor)
-            case_dir = outdir / case
-            case_dir.mkdir(parents=True, exist_ok=True)
-            indata = toroidal_stellarator_mirror_hybrid_indata(
-                nfp=int(args.nfp),
-                mpol=int(mpol),
-                ntor=int(ntor),
-                ntheta_fit=int(args.ntheta_fit),
-                nzeta_fit=int(args.nzeta_fit),
-                ns_array=int(ns),
-                niter_array=int(args.niter),
-                ftol_array=float(args.ftol),
-                **sample_kwargs,
-            )
-            input_path = case_dir / "input.toroidal_stellarator_mirror_hybrid"
-            write_indata(input_path, indata)
-            fitted = evaluate_toroidal_hybrid_indata_boundary(
-                indata,
-                ntheta=int(args.ntheta_fit),
-                nzeta=int(args.nzeta_fit),
-            )
-            max_fit_error = max(
-                float(np.max(np.abs(fitted.R - samples.R))),
-                float(np.max(np.abs(fitted.Z - samples.Z))),
-            )
-            row: dict[str, object] = {
-                "case": case,
-                "ns": int(ns),
-                "mpol": int(mpol),
-                "ntor": int(ntor),
-                "input": str(input_path),
-                "rbc_count": len(indata.indexed.get("RBC", {})),
-                "zbs_count": len(indata.indexed.get("ZBS", {})),
-                "max_boundary_fit_error": max_fit_error,
-                "major_radius": sample_kwargs["major_radius"],
-                "minor_radius": sample_kwargs["minor_radius"],
-                "axis_oval": sample_kwargs["axis_oval"],
-                "side_minor_modulation": sample_kwargs["side_minor_modulation"],
-                "side_elongation": sample_kwargs["side_elongation"],
-                "side_power": sample_kwargs["side_power"],
-                "corner_amplitude": sample_kwargs["corner_amplitude"],
-                "corner_helicity": sample_kwargs["corner_helicity"],
-                "corner_power": sample_kwargs["corner_power"],
-                "min_R": reference_metrics["min_R"],
-                "stellsym_R_error": reference_metrics["stellsym_R_error"],
-                "stellsym_Z_error": reference_metrics["stellsym_Z_error"],
-                "ran_solve": bool(args.run_solve),
-                "solver_mode": str(args.solver_mode),
-                "use_scan": None if args.use_scan is None else bool(args.use_scan),
-                "requested_ftol": float(args.ftol),
-                "fsq_total_target": None,
-                "seconds": None,
-                "initial_fsq": None,
-                "best_fsq": None,
-                "best_iter": None,
-                "fsq_reduction": None,
-                "final_fsq": None,
-                "initial_fsqr": None,
-                "initial_fsqz": None,
-                "initial_fsql": None,
-                "final_fsqr": None,
-                "final_fsqz": None,
-                "final_fsql": None,
-                "best_fsqr": None,
-                "best_fsqz": None,
-                "best_fsql": None,
-                "converged": None,
-                "converged_strict": None,
-                "converged_by_total_fsq": None,
-                "n_iter": None,
-                "aspect": None,
-                "mean_iota": None,
-                "magnetic_well": None,
-                "fsq_history": [],
-                "fsqr_history": [],
-                "fsqz_history": [],
-                "fsql_history": [],
-                "wout": None,
-                "ran_vmec2000": bool(args.run_vmec2000),
-                "vmec2000_returncode": None,
-                "vmec2000_runtime_s": None,
-                "vmec2000_n_rows": None,
-                "vmec2000_initial_fsq": None,
-                "vmec2000_best_fsq": None,
-                "vmec2000_best_iter": None,
-                "vmec2000_fsq_reduction": None,
-                "vmec2000_final_fsq": None,
-                "vmec2000_initial_fsqr": None,
-                "vmec2000_initial_fsqz": None,
-                "vmec2000_initial_fsql": None,
-                "vmec2000_final_fsqr": None,
-                "vmec2000_final_fsqz": None,
-                "vmec2000_final_fsql": None,
-                "vmec2000_aspect": None,
-                "vmec2000_mean_iota": None,
-                "vmec2000_iter_history": [],
-                "vmec2000_fsq_history": [],
-                "vmec2000_fsqr_history": [],
-                "vmec2000_fsqz_history": [],
-                "vmec2000_fsql_history": [],
-                "vmec2000_threed1": None,
-                "vmec2000_wout": None,
-                "vmec2000_error": None,
-            }
-            if bool(args.run_solve):
-                t0 = perf_counter()
-                run = vj.run_fixed_boundary(
-                    input_path,
-                    solver="vmec2000_iter",
-                    solver_mode=str(args.solver_mode),
-                    use_scan=args.use_scan,
-                    max_iter=int(args.max_iter),
-                    cli_fixed_boundary_mode=True,
-                    verbose=False,
+    for shape_case, sample_kwargs in shape_cases:
+        samples = sample_toroidal_stellarator_mirror_hybrid_boundary(
+            ntheta=int(args.ntheta_fit),
+            nzeta=int(args.nzeta_fit),
+            **sample_kwargs,
+        )
+        reference_metrics = toroidal_stellarator_mirror_hybrid_metrics(samples)
+        for ns in ns_values:
+            for mpol, ntor in mode_pairs:
+                case = _row_case_name(ns=ns, mpol=mpol, ntor=ntor, shape_case=shape_case)
+                case_dir = outdir / case
+                case_dir.mkdir(parents=True, exist_ok=True)
+                indata = toroidal_stellarator_mirror_hybrid_indata(
+                    nfp=int(args.nfp),
+                    mpol=int(mpol),
+                    ntor=int(ntor),
+                    ntheta_fit=int(args.ntheta_fit),
+                    nzeta_fit=int(args.nzeta_fit),
+                    ns_array=int(ns),
+                    niter_array=int(args.niter),
+                    ftol_array=float(args.ftol),
+                    **sample_kwargs,
                 )
-                row["seconds"] = float(perf_counter() - t0)
-                diag = dict(run.result.diagnostics) if run.result is not None else {}
-                row["converged"] = bool(diag.get("converged", False))
-                row["converged_strict"] = bool(diag.get("converged_strict", False))
-                row["converged_by_total_fsq"] = bool(diag.get("converged_by_total_fsq", False))
-                if diag.get("requested_ftol") is not None:
-                    row["requested_ftol"] = float(diag["requested_ftol"])
-                if diag.get("fsq_total_target") is not None:
-                    row["fsq_total_target"] = float(diag["fsq_total_target"])
-                row["n_iter"] = int(getattr(run.result, "n_iter", -1)) if run.result is not None else None
-                if run.result is not None and getattr(run.result, "w_history", None) is not None:
-                    fsq_history = np.asarray(run.result.w_history, dtype=float).reshape(-1)
-                    row["fsq_history"] = [float(value) for value in fsq_history]
-                    row.update(_summarize_fsq_history(fsq_history))
-                    for source, history_key, initial_key, final_key, best_key in (
-                        ("fsqr2_history", "fsqr_history", "initial_fsqr", "final_fsqr", "best_fsqr"),
-                        ("fsqz2_history", "fsqz_history", "initial_fsqz", "final_fsqz", "best_fsqz"),
-                        ("fsql2_history", "fsql_history", "initial_fsql", "final_fsql", "best_fsql"),
-                    ):
-                        component = np.asarray(getattr(run.result, source, []), dtype=float).reshape(-1)
-                        row[history_key] = [float(value) for value in component]
-                        if component.size:
-                            row[initial_key] = float(component[0])
-                            row[final_key] = float(component[-1])
-                            best_iter = row.get("best_iter")
-                            if best_iter is not None and 0 <= int(best_iter) < component.size:
-                                row[best_key] = float(component[int(best_iter)])
-                try:
-                    row["aspect"] = float(vj.equilibrium_aspect_ratio_from_state(state=run.state, static=run.static))
-                except Exception:
-                    row["aspect"] = None
-                try:
-                    _chips, iotas, _iotaf = vj.equilibrium_iota_profiles_from_state(
-                        state=run.state,
-                        static=run.static,
-                        indata=run.indata,
-                        signgs=int(run.signgs),
+                input_path = case_dir / "input.toroidal_stellarator_mirror_hybrid"
+                write_indata(input_path, indata)
+                fitted = evaluate_toroidal_hybrid_indata_boundary(
+                    indata,
+                    ntheta=int(args.ntheta_fit),
+                    nzeta=int(args.nzeta_fit),
+                )
+                max_fit_error = max(
+                    float(np.max(np.abs(fitted.R - samples.R))),
+                    float(np.max(np.abs(fitted.Z - samples.Z))),
+                )
+                row: dict[str, object] = {
+                    "case": case,
+                    "shape_case": shape_case,
+                    "ns": int(ns),
+                    "mpol": int(mpol),
+                    "ntor": int(ntor),
+                    "input": str(input_path),
+                    "rbc_count": len(indata.indexed.get("RBC", {})),
+                    "zbs_count": len(indata.indexed.get("ZBS", {})),
+                    "max_boundary_fit_error": max_fit_error,
+                    "major_radius": sample_kwargs["major_radius"],
+                    "minor_radius": sample_kwargs["minor_radius"],
+                    "axis_oval": sample_kwargs["axis_oval"],
+                    "side_minor_modulation": sample_kwargs["side_minor_modulation"],
+                    "side_elongation": sample_kwargs["side_elongation"],
+                    "side_power": sample_kwargs["side_power"],
+                    "corner_amplitude": sample_kwargs["corner_amplitude"],
+                    "corner_helicity": sample_kwargs["corner_helicity"],
+                    "corner_power": sample_kwargs["corner_power"],
+                    "min_R": reference_metrics["min_R"],
+                    "stellsym_R_error": reference_metrics["stellsym_R_error"],
+                    "stellsym_Z_error": reference_metrics["stellsym_Z_error"],
+                    "ran_solve": bool(args.run_solve),
+                    "solver_mode": str(args.solver_mode),
+                    "use_scan": None if args.use_scan is None else bool(args.use_scan),
+                    "requested_ftol": float(args.ftol),
+                    "fsq_total_target": None,
+                    "seconds": None,
+                    "initial_fsq": None,
+                    "best_fsq": None,
+                    "best_iter": None,
+                    "fsq_reduction": None,
+                    "final_fsq": None,
+                    "initial_fsqr": None,
+                    "initial_fsqz": None,
+                    "initial_fsql": None,
+                    "final_fsqr": None,
+                    "final_fsqz": None,
+                    "final_fsql": None,
+                    "best_fsqr": None,
+                    "best_fsqz": None,
+                    "best_fsql": None,
+                    "converged": None,
+                    "converged_strict": None,
+                    "converged_by_total_fsq": None,
+                    "n_iter": None,
+                    "aspect": None,
+                    "mean_iota": None,
+                    "magnetic_well": None,
+                    "fsq_history": [],
+                    "fsqr_history": [],
+                    "fsqz_history": [],
+                    "fsql_history": [],
+                    "wout": None,
+                    "ran_vmec2000": bool(args.run_vmec2000),
+                    "vmec2000_returncode": None,
+                    "vmec2000_runtime_s": None,
+                    "vmec2000_n_rows": None,
+                    "vmec2000_initial_fsq": None,
+                    "vmec2000_best_fsq": None,
+                    "vmec2000_best_iter": None,
+                    "vmec2000_fsq_reduction": None,
+                    "vmec2000_final_fsq": None,
+                    "vmec2000_initial_fsqr": None,
+                    "vmec2000_initial_fsqz": None,
+                    "vmec2000_initial_fsql": None,
+                    "vmec2000_final_fsqr": None,
+                    "vmec2000_final_fsqz": None,
+                    "vmec2000_final_fsql": None,
+                    "vmec2000_aspect": None,
+                    "vmec2000_mean_iota": None,
+                    "vmec2000_iter_history": [],
+                    "vmec2000_fsq_history": [],
+                    "vmec2000_fsqr_history": [],
+                    "vmec2000_fsqz_history": [],
+                    "vmec2000_fsql_history": [],
+                    "vmec2000_threed1": None,
+                    "vmec2000_wout": None,
+                    "vmec2000_error": None,
+                }
+                if bool(args.run_solve):
+                    t0 = perf_counter()
+                    run = vj.run_fixed_boundary(
+                        input_path,
+                        solver="vmec2000_iter",
+                        solver_mode=str(args.solver_mode),
+                        use_scan=args.use_scan,
+                        max_iter=int(args.max_iter),
+                        cli_fixed_boundary_mode=True,
+                        verbose=False,
                     )
-                    row["mean_iota"] = float(np.nanmean(np.asarray(iotas, dtype=float)))
-                except Exception:
-                    row["mean_iota"] = None
-                try:
-                    row["magnetic_well"] = float(
-                        vj.magnetic_well_from_state(
+                    row["seconds"] = float(perf_counter() - t0)
+                    diag = dict(run.result.diagnostics) if run.result is not None else {}
+                    row["converged"] = bool(diag.get("converged", False))
+                    row["converged_strict"] = bool(diag.get("converged_strict", False))
+                    row["converged_by_total_fsq"] = bool(diag.get("converged_by_total_fsq", False))
+                    if diag.get("requested_ftol") is not None:
+                        row["requested_ftol"] = float(diag["requested_ftol"])
+                    if diag.get("fsq_total_target") is not None:
+                        row["fsq_total_target"] = float(diag["fsq_total_target"])
+                    row["n_iter"] = int(getattr(run.result, "n_iter", -1)) if run.result is not None else None
+                    if run.result is not None and getattr(run.result, "w_history", None) is not None:
+                        fsq_history = np.asarray(run.result.w_history, dtype=float).reshape(-1)
+                        row["fsq_history"] = [float(value) for value in fsq_history]
+                        row.update(_summarize_fsq_history(fsq_history))
+                        for source, history_key, initial_key, final_key, best_key in (
+                            ("fsqr2_history", "fsqr_history", "initial_fsqr", "final_fsqr", "best_fsqr"),
+                            ("fsqz2_history", "fsqz_history", "initial_fsqz", "final_fsqz", "best_fsqz"),
+                            ("fsql2_history", "fsql_history", "initial_fsql", "final_fsql", "best_fsql"),
+                        ):
+                            component = np.asarray(getattr(run.result, source, []), dtype=float).reshape(-1)
+                            row[history_key] = [float(value) for value in component]
+                            if component.size:
+                                row[initial_key] = float(component[0])
+                                row[final_key] = float(component[-1])
+                                best_iter = row.get("best_iter")
+                                if best_iter is not None and 0 <= int(best_iter) < component.size:
+                                    row[best_key] = float(component[int(best_iter)])
+                    try:
+                        row["aspect"] = float(
+                            vj.equilibrium_aspect_ratio_from_state(state=run.state, static=run.static)
+                        )
+                    except Exception:
+                        row["aspect"] = None
+                    try:
+                        _chips, iotas, _iotaf = vj.equilibrium_iota_profiles_from_state(
                             state=run.state,
                             static=run.static,
                             indata=run.indata,
                             signgs=int(run.signgs),
                         )
-                    )
-                except Exception:
-                    row["magnetic_well"] = None
-                wout_path = case_dir / "wout_toroidal_stellarator_mirror_hybrid.nc"
-                vj.write_wout_from_fixed_boundary_run(wout_path, run, include_fsq=True)
-                row["wout"] = str(wout_path)
-            if bool(args.run_vmec2000):
-                try:
-                    vmec2000 = run_xvmec2000(
-                        input_path,
-                        exec_path=vmec2000_exec,
-                        workdir=case_dir / "vmec2000",
-                        timeout_s=float(args.vmec2000_timeout_s),
-                        keep_workdir=True,
-                    )
-                    row["vmec2000_returncode"] = int(vmec2000.returncode)
-                    row["vmec2000_runtime_s"] = float(vmec2000.runtime_s)
-                    row["vmec2000_threed1"] = str(vmec2000.threed1_path) if vmec2000.threed1_path is not None else None
-                    vmec2000_wouts = sorted(vmec2000.workdir.glob("wout*.nc"))
-                    row["vmec2000_wout"] = str(vmec2000_wouts[0]) if vmec2000_wouts else None
-                    if vmec2000_wouts:
-                        try:
-                            vmec2000_wout = read_wout(vmec2000_wouts[0])
-                            row["vmec2000_final_fsqr"] = float(vmec2000_wout.fsqr)
-                            row["vmec2000_final_fsqz"] = float(vmec2000_wout.fsqz)
-                            row["vmec2000_final_fsql"] = float(vmec2000_wout.fsql)
-                            row["vmec2000_aspect"] = float(vmec2000_wout.aspect)
-                            row["vmec2000_mean_iota"] = float(np.nanmean(np.asarray(vmec2000_wout.iotas, dtype=float)))
-                        except Exception:
-                            pass
-                    vmec2000_rows = flatten_threed1(vmec2000.stages)
-                    row["vmec2000_n_rows"] = len(vmec2000_rows)
-                    if vmec2000_rows:
-                        vmec2000_iters = np.asarray([item.it for item in vmec2000_rows], dtype=int)
-                        vmec2000_fsq = threed1_fsq_total(vmec2000_rows)
-                        row["vmec2000_iter_history"] = [int(value) for value in vmec2000_iters]
-                        row["vmec2000_fsq_history"] = [float(value) for value in vmec2000_fsq]
-                        vmec2000_summary = _summarize_fsq_history(vmec2000_fsq, iterations=vmec2000_iters)
-                        row["vmec2000_initial_fsq"] = vmec2000_summary["initial_fsq"]
-                        row["vmec2000_best_fsq"] = vmec2000_summary["best_fsq"]
-                        row["vmec2000_best_iter"] = vmec2000_summary["best_iter"]
-                        row["vmec2000_fsq_reduction"] = vmec2000_summary["fsq_reduction"]
-                        row["vmec2000_final_fsq"] = vmec2000_summary["final_fsq"]
-                        row["vmec2000_fsqr_history"] = [float(item.fsqr) for item in vmec2000_rows]
-                        row["vmec2000_fsqz_history"] = [float(item.fsqz) for item in vmec2000_rows]
-                        row["vmec2000_fsql_history"] = [float(item.fsql) for item in vmec2000_rows]
-                        row["vmec2000_initial_fsqr"] = float(vmec2000_rows[0].fsqr)
-                        row["vmec2000_initial_fsqz"] = float(vmec2000_rows[0].fsqz)
-                        row["vmec2000_initial_fsql"] = float(vmec2000_rows[0].fsql)
-                except Exception as exc:
-                    row["vmec2000_error"] = str(exc)
-            rows.append(row)
+                        row["mean_iota"] = float(np.nanmean(np.asarray(iotas, dtype=float)))
+                    except Exception:
+                        row["mean_iota"] = None
+                    try:
+                        row["magnetic_well"] = float(
+                            vj.magnetic_well_from_state(
+                                state=run.state,
+                                static=run.static,
+                                indata=run.indata,
+                                signgs=int(run.signgs),
+                            )
+                        )
+                    except Exception:
+                        row["magnetic_well"] = None
+                    wout_path = case_dir / "wout_toroidal_stellarator_mirror_hybrid.nc"
+                    vj.write_wout_from_fixed_boundary_run(wout_path, run, include_fsq=True)
+                    row["wout"] = str(wout_path)
+                if bool(args.run_vmec2000):
+                    try:
+                        vmec2000 = run_xvmec2000(
+                            input_path,
+                            exec_path=vmec2000_exec,
+                            workdir=case_dir / "vmec2000",
+                            timeout_s=float(args.vmec2000_timeout_s),
+                            keep_workdir=True,
+                        )
+                        row["vmec2000_returncode"] = int(vmec2000.returncode)
+                        row["vmec2000_runtime_s"] = float(vmec2000.runtime_s)
+                        row["vmec2000_threed1"] = (
+                            str(vmec2000.threed1_path) if vmec2000.threed1_path is not None else None
+                        )
+                        vmec2000_wouts = sorted(vmec2000.workdir.glob("wout*.nc"))
+                        row["vmec2000_wout"] = str(vmec2000_wouts[0]) if vmec2000_wouts else None
+                        if vmec2000_wouts:
+                            try:
+                                vmec2000_wout = read_wout(vmec2000_wouts[0])
+                                row["vmec2000_final_fsqr"] = float(vmec2000_wout.fsqr)
+                                row["vmec2000_final_fsqz"] = float(vmec2000_wout.fsqz)
+                                row["vmec2000_final_fsql"] = float(vmec2000_wout.fsql)
+                                row["vmec2000_aspect"] = float(vmec2000_wout.aspect)
+                                row["vmec2000_mean_iota"] = float(
+                                    np.nanmean(np.asarray(vmec2000_wout.iotas, dtype=float))
+                                )
+                            except Exception:
+                                pass
+                        vmec2000_rows = flatten_threed1(vmec2000.stages)
+                        row["vmec2000_n_rows"] = len(vmec2000_rows)
+                        if vmec2000_rows:
+                            vmec2000_iters = np.asarray([item.it for item in vmec2000_rows], dtype=int)
+                            vmec2000_fsq = threed1_fsq_total(vmec2000_rows)
+                            row["vmec2000_iter_history"] = [int(value) for value in vmec2000_iters]
+                            row["vmec2000_fsq_history"] = [float(value) for value in vmec2000_fsq]
+                            vmec2000_summary = _summarize_fsq_history(vmec2000_fsq, iterations=vmec2000_iters)
+                            row["vmec2000_initial_fsq"] = vmec2000_summary["initial_fsq"]
+                            row["vmec2000_best_fsq"] = vmec2000_summary["best_fsq"]
+                            row["vmec2000_best_iter"] = vmec2000_summary["best_iter"]
+                            row["vmec2000_fsq_reduction"] = vmec2000_summary["fsq_reduction"]
+                            row["vmec2000_final_fsq"] = vmec2000_summary["final_fsq"]
+                            row["vmec2000_fsqr_history"] = [float(item.fsqr) for item in vmec2000_rows]
+                            row["vmec2000_fsqz_history"] = [float(item.fsqz) for item in vmec2000_rows]
+                            row["vmec2000_fsql_history"] = [float(item.fsql) for item in vmec2000_rows]
+                            row["vmec2000_initial_fsqr"] = float(vmec2000_rows[0].fsqr)
+                            row["vmec2000_initial_fsqz"] = float(vmec2000_rows[0].fsqz)
+                            row["vmec2000_initial_fsql"] = float(vmec2000_rows[0].fsql)
+                    except Exception as exc:
+                        row["vmec2000_error"] = str(exc)
+                rows.append(row)
 
     summary = {
-        "sample_parameters": sample_kwargs,
+        "shape_cases": [{"name": name, "sample_parameters": kwargs} for name, kwargs in shape_cases],
         "rows": rows,
         "csv": _write_rows_csv(rows, outdir=outdir),
         "figures": {},

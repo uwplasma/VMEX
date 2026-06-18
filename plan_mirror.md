@@ -11634,3 +11634,120 @@ changed for this evidence run.
 No user input is needed.
 
 ---
+
+## 94. 2026-06-18 M13g shape-case scan helper
+
+This tranche made the M13g side/corner parameter scan reproducible from one
+command instead of repeated manual convergence-runner invocations.
+
+### Steps taken
+
+- Added `--shape-cases` to
+  `examples/toroidal_stellarator_mirror_hybrid_convergence.py`.
+- Added two initial shape presets:
+  - `default`: the current baseline shape;
+  - `sharp`: the section 92 sharpened side/corner shape.
+- Added `shape_case` to row names and CSV output so multi-shape runs do not
+  overwrite case directories.
+- Added tests for:
+  - preset parsing;
+  - unknown preset rejection;
+  - no-solve `default,sharp` scan output;
+  - exact low-mode fit for both presets with `mpol=5`, `ntor=10`.
+- Updated `examples/mirror/README.md` with the new option and the `ntor`
+  caveat for exact sharpened-preset fits.
+
+### Results obtained
+
+Shape-case smoke command:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  --outdir results/toroidal_hybrid_m13g_shape_cases_smoke \
+  --ns-array 7 \
+  --mode-pairs 5:10 \
+  --ntheta-fit 32 \
+  --nzeta-fit 32 \
+  --shape-cases default,sharp
+```
+
+Rows:
+
+| case | shape | fit error | side power | corner power | `RBC` | `ZBS` |
+| :--- | :--- | ---: | ---: | ---: | ---: | ---: |
+| `default_ns007_mpol05_ntor10` | `default` | `6.661338147751e-16` | `1.0` | `1.0` | `8` | `8` |
+| `sharp_ns007_mpol05_ntor10` | `sharp` | `8.881784197001e-16` | `2.0` | `2.0` | `12` | `14` |
+
+Generated ignored plot:
+
+- `results/toroidal_hybrid_m13g_shape_cases_smoke/figures/toroidal_hybrid_convergence.png`.
+
+### How it was tested
+
+Focused tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/test_toroidal_hybrid.py \
+  tests/mirror/test_mirror_free_boundary.py -q
+```
+
+Result: `50 passed in 4.89s`.
+
+Lint, format, and whitespace:
+
+```bash
+python -m ruff check \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py
+python -m ruff format --check \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py
+git diff --check
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- The scan helper extends the existing convergence runner instead of adding a
+  separate script.
+- Case directories include the shape preset name, avoiding accidental
+  overwrites in multi-shape runs.
+- Shape presets are small dictionaries next to the parser helpers, keeping the
+  source file simple and easy to extend.
+- Generated scan products remain ignored under `results/`.
+
+### Best next steps
+
+1. Commit and push the shape-case scan helper.
+2. Run a short solved `--shape-cases default,sharp` scan with plots to produce
+   one table and one residual plot for both presets together.
+3. If the sharpened row remains slightly better, add a VMEC2000 parity row for
+   the sharpened preset at `ns=7`, `mpol=5`, `ntor=10`.
+4. Recheck PR CI once GitHub starts reporting checks for the latest head.
+
+### Completion percentages after M94
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `88%`.
+- I/O schema and docs: `94%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `68%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `54%`.
+- ESSOS circular-coil mirror beta scan: `53%`.
+- PR merge readiness overall: `92%`.
+
+### User input needed
+
+No user input is needed.
+
+---
