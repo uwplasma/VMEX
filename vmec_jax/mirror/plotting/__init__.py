@@ -9,9 +9,11 @@ from .bfield import (
     write_mirror_bmag_sxi,
 )
 from .diagnostics import (
+    MirrorFieldLinePitchProfileData,
     MirrorJacobianData,
     MirrorPressureProfileData,
     MirrorResidualHistoryData,
+    mirror_field_line_pitch_profile_data,
     mirror_jacobian_data,
     mirror_pressure_profile_data,
     mirror_residual_history_data,
@@ -37,6 +39,7 @@ __all__ = [
     "MirrorBmagSXiData",
     "MirrorBoundary3DData",
     "MirrorCrossSectionsData",
+    "MirrorFieldLinePitchProfileData",
     "MirrorJacobianData",
     "MirrorPressureProfileData",
     "MirrorResidualHistoryData",
@@ -46,6 +49,7 @@ __all__ = [
     "mirror_bmag_sxi_data",
     "mirror_boundary_3d_data",
     "mirror_cross_sections_data",
+    "mirror_field_line_pitch_profile_data",
     "mirror_jacobian_data",
     "mirror_output_to_npz",
     "mirror_pressure_profile_data",

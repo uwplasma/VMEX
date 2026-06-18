@@ -11,6 +11,7 @@ import pytest
 
 from vmec_jax.mirror import load_mirror_output
 from vmec_jax.mirror.plotting.bfield import mirror_boundary_field_line_data
+from vmec_jax.mirror.plotting.diagnostics import mirror_field_line_pitch_profile_data
 
 pytestmark = pytest.mark.mirror
 
@@ -105,12 +106,14 @@ def test_root_finite_current_pitch_example_runs_without_plots(tmp_path):
     output = load_mirror_output(mout)
     metrics = json.loads((mout.parent / "finite_current_pitch_metrics.json").read_text())
     lines = mirror_boundary_field_line_data(output, num_lines=2)
+    pitch = mirror_field_line_pitch_profile_data(output, num_lines=2)
     theta_advance = lines.theta[:, -1] - lines.theta[:, 0]
     assert output.ntheta == 1
     assert output.diagnostics.min_sqrtg > 0.0
     assert output.diagnostics.active_force_dof > 0
     assert output.profiles.i_prime[0] > 0.0
     assert np.min(theta_advance) > 1.0
+    assert np.min(pitch.turns_mean) > 0.0
     assert metrics["field_line_theta_advance_mean"] > 1.0
 
 

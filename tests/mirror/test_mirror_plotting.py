@@ -22,6 +22,7 @@ from vmec_jax.mirror.io.mout import load_mirror_output
 from vmec_jax.mirror.plotting.bfield import mirror_bfield_boundary_data, mirror_bmag_boundary_data, mirror_bmag_sxi_data
 from vmec_jax.mirror.plotting.bfield import mirror_boundary_field_line_data
 from vmec_jax.mirror.plotting.diagnostics import (
+    mirror_field_line_pitch_profile_data,
     mirror_jacobian_data,
     mirror_pressure_profile_data,
     mirror_radial_diagnostics_data,
@@ -62,6 +63,7 @@ def test_mirror_plot_data_helpers_expose_numerical_content(tmp_path):
     cross_sections = mirror_cross_sections_data(output, num_sections=3, num_surfaces=4, ntheta_axisym=10)
     jacobian = mirror_jacobian_data(output)
     pressure = mirror_pressure_profile_data(output)
+    pitch = mirror_field_line_pitch_profile_data(output)
     radial = mirror_radial_diagnostics_data(output)
     history = mirror_residual_history_data(output)
 
@@ -77,8 +79,12 @@ def test_mirror_plot_data_helpers_expose_numerical_content(tmp_path):
     assert cross_sections.y.shape == cross_sections.x.shape
     assert jacobian.min_sqrtg == pytest.approx(float(np.min(jacobian.sqrtg)))
     assert np.allclose(pressure.pressure, output.profiles.pressure)
+    assert pitch.turns_mean.shape == output.s.shape
+    assert np.allclose(pitch.turns_mean, 0.0)
     assert radial.mean_bmag.shape == output.s.shape
     assert radial.iota_like_twist.shape == output.s.shape
+    assert radial.field_line_turns.shape == output.s.shape
+    assert np.allclose(radial.field_line_turns, pitch.turns_mean)
     assert np.allclose(history.residual_norm, output.history.residual_norm)
     assert np.allclose(history.fsq, output.history.fsq)
     assert np.allclose(history.normalized_force, output.history.normalized_force)

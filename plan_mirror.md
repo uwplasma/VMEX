@@ -6578,3 +6578,155 @@ Result: all checks passed.
 ### User input needed
 
 No user input is needed.
+
+---
+
+## 60. 2026-06-17 M9 open-field pitch diagnostics
+
+This lane added the first mirror straight-field-line/Boozer-like diagnostic:
+a radial cap-to-cap field-line pitch profile.  It is deliberately named as an
+open-field pitch diagnostic, not toroidal rotational transform.
+
+### Steps taken
+
+- Added `MirrorFieldLinePitchProfileData`.
+- Added `mirror_field_line_pitch_profile_data(output, num_lines=6)`.
+- The new helper traces field lines on every radial surface using
+  `dtheta/dxi = B^theta / B^xi` and reports:
+  - mean cap-to-cap theta advance;
+  - min/max cap-to-cap theta advance;
+  - mean cap-to-cap turns.
+- Extended `MirrorRadialDiagnosticsData` with:
+  - `field_line_theta_advance`;
+  - `field_line_turns`.
+- Updated the standard radial diagnostics plot to show both:
+  - `I'/Psi'` profile proxy;
+  - measured cap-to-cap field-line turns.
+- Exported the new helper through `vmec_jax.mirror.plotting`.
+- Updated plotting and finite-current example tests.
+- Regenerated the finite-current pitch example with plots.
+
+### Results obtained
+
+Finite-current pitch example:
+
+| quantity | value |
+| --- | ---: |
+| mean boundary theta advance | `3.433610700154` |
+| mean boundary turns | `0.546476115583` |
+| `I'/Psi'` profile proxy mean | `1.716805350077` |
+| final residual | `5.937093692157e-02` |
+| final `fsq` | `6.980016140486e-06` |
+| normalized force | `1.113139548331e-01` |
+| minimum `sqrt(g)` | `3.228109210942e-03` |
+| mirror output mirror ratio | `14.072058315583` |
+
+Generated artifacts:
+
+- `results/mirror/m9_field_line_pitch/mout_finite_current_pitch.nc`.
+- `results/mirror/m9_field_line_pitch/finite_current_pitch_metrics.json`.
+- `results/mirror/m9_field_line_pitch/figures/finite_current_pitch_mirror_radial_diagnostics.png`.
+- `results/mirror/m9_field_line_pitch/figures/finite_current_pitch_mirror_bfield_boundary.png`.
+- `results/mirror/m9_field_line_pitch/figures/finite_current_pitch_mirror_boundary_3d.png`.
+- `results/mirror/m9_field_line_pitch/figures/finite_current_pitch_mirror_bmag_sxi.png`.
+- `results/mirror/m9_field_line_pitch/figures/finite_current_pitch_mirror_cross_sections.png`.
+- `results/mirror/m9_field_line_pitch/figures/finite_current_pitch_theta_advance.png`.
+
+Visual validation:
+
+- The radial diagnostics plot now shows cap-to-cap field-line turns alongside
+  `I'/Psi'`.
+- The boundary B-direction plot still shows visible cap-to-cap field-line
+  traces.
+- Horizontal-`z` geometry and `|B|` plots render through the standard bundle.
+
+### How it was tested
+
+Automated tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_plotting.py \
+  tests/mirror/test_mirror_examples.py::test_root_finite_current_pitch_example_runs_without_plots \
+  -q
+```
+
+Result: `5 passed in 6.11s`.
+
+Focused tests before the full plotting file:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_plotting.py::test_mirror_plot_data_helpers_expose_numerical_content \
+  tests/mirror/test_mirror_examples.py::test_root_finite_current_pitch_example_runs_without_plots \
+  -q
+```
+
+Result: `2 passed in 2.68s`.
+
+Lint/format/whitespace:
+
+```bash
+python -m ruff check \
+  vmec_jax/mirror/plotting/diagnostics.py \
+  vmec_jax/mirror/plotting/__init__.py \
+  tests/mirror/test_mirror_plotting.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff format --check \
+  vmec_jax/mirror/plotting/diagnostics.py \
+  vmec_jax/mirror/plotting/__init__.py \
+  tests/mirror/test_mirror_plotting.py \
+  tests/mirror/test_mirror_examples.py
+git diff --check
+```
+
+Result: all checks passed.
+
+Example command:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_finite_current_pitch.py \
+  --outdir results/mirror/m9_field_line_pitch \
+  --maxiter 0
+```
+
+### File structure and best-practice notes
+
+- The new pitch profile lives in `plotting/diagnostics.py` because it is a
+  diagnostic derived from output arrays, not a solver dependency.
+- `plotting/bfield.py` still owns physical boundary field-line traces used for
+  3-D visualization.
+- The diagnostic is open-field and cap-to-cap; docs and labels avoid calling
+  it toroidal iota.
+
+### Best next steps
+
+1. Commit and push M9.
+2. Add the pitch profile to any downstream CSV/NPZ export if needed for
+   analysis scripts.
+3. Start the finite M10/M11 cleanup:
+   - document dense/block-dense as correctness references;
+   - document matrix-free block LSMR as diagnostic;
+   - ensure mirror docs mention cap-to-cap pitch rather than toroidal iota.
+4. Then move to the planned free-boundary/hybrid lanes.
+
+### Completion percentages after M9
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `88%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `81%`.
+- Plotting and `vmec --plot` mirror support: `82%`.
+- I/O schema and docs: `80%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `35%`.
+- Free-boundary mirror lane: `5%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `0%`.
+- PR merge readiness overall: `80%`.
+
+### User input needed
+
+No user input is needed.

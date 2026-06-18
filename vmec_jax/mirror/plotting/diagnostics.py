@@ -53,12 +53,35 @@ class MirrorRadialDiagnosticsData:
     s: np.ndarray
     beta: np.ndarray
     iota_like_twist: np.ndarray
+    field_line_theta_advance: np.ndarray
+    field_line_turns: np.ndarray
     mean_bmag: np.ndarray
     magnetic_well_proxy: np.ndarray
 
 
+@dataclass(frozen=True)
+class MirrorFieldLinePitchProfileData:
+    """Radial cap-to-cap field-line pitch profile."""
+
+    s: np.ndarray
+    theta_advance_mean: np.ndarray
+    theta_advance_min: np.ndarray
+    theta_advance_max: np.ndarray
+    turns_mean: np.ndarray
+
+
 def _as_output(output_or_path) -> MirrorOutput:
     return output_or_path if isinstance(output_or_path, MirrorOutput) else load_mirror_output(output_or_path)
+
+
+def _interp_periodic(theta_nodes, values, theta_value: float) -> float:
+    theta_nodes = np.asarray(theta_nodes, dtype=float)
+    values = np.asarray(values, dtype=float)
+    period = 2.0 * np.pi
+    theta_wrapped = float(np.mod(theta_value, period))
+    extended_theta = np.concatenate([theta_nodes, theta_nodes[:1] + period])
+    extended_values = np.concatenate([values, values[:1]])
+    return float(np.interp(theta_wrapped, extended_theta, extended_values))
 
 
 def mirror_jacobian_data(output_or_path) -> MirrorJacobianData:
@@ -99,6 +122,44 @@ def mirror_residual_history_data(output_or_path) -> MirrorResidualHistoryData:
     )
 
 
+def mirror_field_line_pitch_profile_data(output_or_path, *, num_lines: int = 6) -> MirrorFieldLinePitchProfileData:
+    """Return cap-to-cap field-line pitch on each radial surface.
+
+    This is an open-field-line diagnostic: it measures how much a traced line
+    advances in poloidal angle between the two mirror caps.  It is not a
+    toroidal rotational transform.
+    """
+    output = _as_output(output_or_path)
+    num_lines = max(1, int(num_lines))
+    theta_nodes = np.asarray(output.theta, dtype=float)
+    xi = np.asarray(output.xi, dtype=float)
+    start_theta = np.linspace(0.0, 2.0 * np.pi, num_lines, endpoint=False)
+    theta_advance = np.zeros((output.ns, num_lines), dtype=float)
+    btheta_all = np.asarray(output.field.b_sup_theta, dtype=float)
+    bxi_all = np.asarray(output.field.b_sup_xi, dtype=float)
+
+    for surface_index in range(output.ns):
+        theta_lines = np.zeros((num_lines, output.nxi), dtype=float)
+        theta_lines[:, 0] = start_theta
+        btheta = btheta_all[surface_index]
+        bxi = bxi_all[surface_index]
+        for line_index in range(num_lines):
+            for k in range(output.nxi - 1):
+                numerator = _interp_periodic(theta_nodes, btheta[:, k], theta_lines[line_index, k])
+                denominator = _interp_periodic(theta_nodes, bxi[:, k], theta_lines[line_index, k])
+                slope = 0.0 if abs(denominator) <= np.finfo(float).tiny else numerator / denominator
+                theta_lines[line_index, k + 1] = theta_lines[line_index, k] + slope * (xi[k + 1] - xi[k])
+        theta_advance[surface_index] = theta_lines[:, -1] - theta_lines[:, 0]
+
+    return MirrorFieldLinePitchProfileData(
+        s=np.asarray(output.s),
+        theta_advance_mean=np.mean(theta_advance, axis=1),
+        theta_advance_min=np.min(theta_advance, axis=1),
+        theta_advance_max=np.max(theta_advance, axis=1),
+        turns_mean=np.mean(theta_advance, axis=1) / (2.0 * np.pi),
+    )
+
+
 def mirror_radial_diagnostics_data(output_or_path) -> MirrorRadialDiagnosticsData:
     """Return radial diagnostics for open-ended mirror outputs.
 
@@ -118,10 +179,13 @@ def mirror_radial_diagnostics_data(output_or_path) -> MirrorRadialDiagnosticsDat
             where=np.abs(output.profiles.psi_prime) > 0.0,
         )
     magnetic_well_proxy = -np.gradient(mean_bmag, output.s, edge_order=1)
+    pitch = mirror_field_line_pitch_profile_data(output)
     return MirrorRadialDiagnosticsData(
         s=np.asarray(output.s),
         beta=np.asarray(output.profiles.beta),
         iota_like_twist=twist,
+        field_line_theta_advance=pitch.theta_advance_mean,
+        field_line_turns=pitch.turns_mean,
         mean_bmag=mean_bmag,
         magnetic_well_proxy=magnetic_well_proxy,
     )
@@ -211,9 +275,11 @@ def write_mirror_radial_diagnostics(output_or_path, *, outdir: str | Path, name:
     fig, axes = plt.subplots(2, 2, figsize=(7, 5), sharex=True)
     axes[0, 0].plot(data.s, data.beta, ".-")
     axes[0, 0].set_ylabel("beta")
-    axes[0, 1].plot(data.s, data.iota_like_twist, ".-")
-    axes[0, 1].set_ylabel("I'/Psi'")
-    axes[0, 1].set_title("open-field twist proxy")
+    axes[0, 1].plot(data.s, data.iota_like_twist, ".-", label="I'/Psi'")
+    axes[0, 1].plot(data.s, data.field_line_turns, ".-", label="cap-to-cap turns")
+    axes[0, 1].set_ylabel("twist")
+    axes[0, 1].set_title("open-field pitch")
+    axes[0, 1].legend(fontsize="x-small")
     axes[1, 0].plot(data.s, data.mean_bmag, ".-")
     axes[1, 0].set_ylabel("<|B|>")
     axes[1, 1].plot(data.s, data.magnetic_well_proxy, ".-")
