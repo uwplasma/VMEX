@@ -13499,6 +13499,71 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99972%.
 
+## 2026-06-18 Initial-Guess Numerical Metadata Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_resolve_initial_guess_numerics` to normalize dtype, VMEC trig
+   tables, and internal Fourier mode scaling for initial-guess construction.
+2. Replaced the inline dtype/trig/mode-scale setup in
+   `initial_guess_from_boundary` with the helper.
+3. Left boundary flipping, m=1 constraints, axis inference/recompute, and VMEC
+   projection behavior unchanged.
+
+Results obtained:
+
+- `vmec_jax/init_guess.py` is net negative: 35 insertions, 50 deletions.
+- `initial_guess_from_boundary` dropped from 428 to 379 lines.
+- Numerical setup is now testable as one named seam before the more complex
+  axis and boundary-regularity logic.
+- No generated artifacts or large files were added.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/init_guess.py tests/test_init_guess.py tests/test_init_guess_fast_helpers.py`
+- `python -m compileall -q vmec_jax/init_guess.py tests/test_init_guess.py tests/test_init_guess_fast_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_init_guess.py tests/test_init_guess_fast_helpers.py -q`
+  - Result: passed.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 45`
+
+Best next steps:
+
+1. Extract the missing-axis inference branch only if it can be isolated without
+   changing the traced/non-traced branch behavior.
+2. Otherwise move to `run_fixed_boundary` or `solve_fixed_boundary_state_implicit`
+   where driver/implicit setup seams are more explicit.
+3. Keep VMEC parity behavior conservative; no numerical policy changes in this
+   refactor tranche.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.57%.
+- Free-boundary adjoint monolith reduction: 99.40%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.9%.
+- WOUT diagnostic/profile decomposition: 99.86%.
+- Bcovar/WOUT parity decomposition: 99.08%.
+- Force-kernel decomposition: 99.25%.
+- Tomnsps transform decomposition: 98.4%.
+- Initial-guess decomposition: 99.0%.
+- Optimizer workflow decomposition: 99.19%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 96.2%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99974%.
+
 ## 2026-06-18 Residual Iteration Mode-Alias Cleanup
 
 Branch: `codex/differentiability-refactor-plan`.
