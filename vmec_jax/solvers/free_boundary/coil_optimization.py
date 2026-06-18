@@ -40,6 +40,8 @@ __all__ = [
     "same_branch_complete_fd_report_metadata",
     "same_branch_rejected_slot_gate_from_vector_replay",
     "same_branch_replay_plan_cache",
+    "same_branch_replay_mode_count_guard",
+    "same_branch_replay_options_from_args",
     "same_branch_report_direction_policy",
     "same_branch_report_runtime_configs",
     "same_branch_report_mode_count",
@@ -321,6 +323,36 @@ def same_branch_complete_fd_report_metadata(
         "objective_values": report["objective_values"],
         "primary_objective": report["primary_objective"],
     }
+
+
+def same_branch_replay_options_from_args(args: Any) -> dict[str, Any]:
+    """Return branch-local replay options shared by scalar/vector report paths."""
+
+    return {"use_stacked_step_controls": True, "use_accepted_only_fast_path": True,
+            "jit_preconditioner_apply": not bool(getattr(args, "same_branch_report_disable_jit_preconditioner", False)),
+            "include_analytic": not bool(getattr(args, "same_branch_report_disable_analytic", False)),
+            "include_mode_diagnostics": False,
+            "nestor_solve_mode": str(getattr(args, "same_branch_report_nestor_solve_mode", "dense")),
+            "nestor_operator_solver": str(getattr(args, "same_branch_report_nestor_operator_solver", "gmres")),
+            "nestor_operator_tol": float(getattr(args, "same_branch_report_nestor_operator_tol", 1.0e-11)),
+            "nestor_operator_atol": float(getattr(args, "same_branch_report_nestor_operator_atol", 1.0e-13)),
+            "nestor_operator_maxiter": getattr(args, "same_branch_report_nestor_operator_maxiter", None),
+            "nestor_operator_restart": getattr(args, "same_branch_report_nestor_operator_restart", None),
+            "freeze_vacuum_field": bool(getattr(args, "same_branch_report_freeze_vacuum_field", False)),
+            "freeze_freeb_bsqvac": bool(getattr(args, "same_branch_report_freeze_bsqvac", False))}
+
+
+def same_branch_replay_mode_count_guard(mode_count: int, replay_max_mode_count: int) -> tuple[bool, str, dict[str, Any]]:
+    """Return the replay mode-count guard state and JSON metadata."""
+
+    triggered = int(replay_max_mode_count) > 0 and int(mode_count) > int(replay_max_mode_count)
+    reason = (
+        f"mode_count {int(mode_count)} exceeds replay cap {int(replay_max_mode_count)}; "
+        "set --same-branch-report-replay-max-mode-count 0 to disable this guard"
+    )
+    return bool(triggered), reason, {"enabled": int(replay_max_mode_count) > 0, "triggered": bool(triggered),
+                                     "mode_count": int(mode_count), "max_mode_count": int(replay_max_mode_count),
+                                     "reason": reason if triggered else "not triggered"}
 
 
 def same_branch_scalar_function_registry(
