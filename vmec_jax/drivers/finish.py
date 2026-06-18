@@ -86,6 +86,40 @@ def _empty_finish_diagnostics(diag: dict, *, converged: bool, strict: bool, tota
     return diag
 
 
+def _run_full_parity_fallback(ctx: FixedBoundaryFinishContext, *, max_fallback_budget: int, multigrid: Any) -> Any:
+    """Run the conservative full-parity CLI fallback with one shared policy."""
+    return ctx.run_fixed_boundary(
+        ctx.input_path,
+        solver="vmec2000_iter",
+        solver_mode="parity",
+        max_iter=int(max_fallback_budget),
+        step_size=ctx.step_size,
+        history_size=int(ctx.history_size),
+        gn_damping=ctx.gn_damping,
+        gn_cg_tol=ctx.gn_cg_tol,
+        gn_cg_maxiter=int(ctx.gn_cg_maxiter),
+        use_initial_guess=False,
+        vmec_project=bool(ctx.vmec_project),
+        use_restart_triggers=ctx.use_restart_triggers,
+        vmecpp_restart=bool(ctx.vmecpp_restart),
+        use_direct_fallback=ctx.use_direct_fallback,
+        multigrid=multigrid,
+        multigrid_use_input_niter=bool(ctx.multigrid_use_input_niter),
+        verbose=bool(ctx.verbose),
+        jit_forces=ctx.jit_forces,
+        jit_precompile=ctx.jit_precompile,
+        use_scan=False,
+        performance_mode=False,
+        scan_wout_corrector=ctx.scan_wout_corrector,
+        stage_transition_heuristic=ctx.stage_transition_heuristic,
+        stage_transition_factor=float(ctx.stage_transition_factor),
+        stage_transition_scale=float(ctx.stage_transition_scale),
+        grid=ctx.grid,
+        cli_fixed_boundary_mode=False,
+        _auto_cli_fixed_boundary_mode=False,
+    )
+
+
 def maybe_finish_cli_fixed_boundary_run(
     run_in: Any,
     *,
@@ -332,36 +366,7 @@ def maybe_finish_cli_fixed_boundary_run(
 
         if not bool(ctx.result_meets_requested_ftol(best_run.result, ftol=float(requested_ftol))):
             fallback_used = True
-            fallback = ctx.run_fixed_boundary(
-                ctx.input_path,
-                solver="vmec2000_iter",
-                solver_mode="parity",
-                max_iter=int(max_fallback_budget),
-                step_size=ctx.step_size,
-                history_size=int(ctx.history_size),
-                gn_damping=ctx.gn_damping,
-                gn_cg_tol=ctx.gn_cg_tol,
-                gn_cg_maxiter=int(ctx.gn_cg_maxiter),
-                use_initial_guess=False,
-                vmec_project=bool(ctx.vmec_project),
-                use_restart_triggers=ctx.use_restart_triggers,
-                vmecpp_restart=bool(ctx.vmecpp_restart),
-                use_direct_fallback=ctx.use_direct_fallback,
-                multigrid=True,
-                multigrid_use_input_niter=bool(ctx.multigrid_use_input_niter),
-                verbose=bool(ctx.verbose),
-                jit_forces=ctx.jit_forces,
-                jit_precompile=ctx.jit_precompile,
-                use_scan=False,
-                performance_mode=False,
-                scan_wout_corrector=ctx.scan_wout_corrector,
-                stage_transition_heuristic=ctx.stage_transition_heuristic,
-                stage_transition_factor=float(ctx.stage_transition_factor),
-                stage_transition_scale=float(ctx.stage_transition_scale),
-                grid=ctx.grid,
-                cli_fixed_boundary_mode=False,
-                _auto_cli_fixed_boundary_mode=False,
-            )
+            fallback = _run_full_parity_fallback(ctx, max_fallback_budget=int(max_fallback_budget), multigrid=True)
             fallback_fsq = float(ctx.result_final_fsq(fallback.result))
             fallback_conv = bool(ctx.result_meets_requested_ftol(fallback.result, ftol=float(requested_ftol)))
             if fallback_conv or fallback_fsq < best_fsq:
@@ -461,35 +466,10 @@ def maybe_finish_cli_fixed_boundary_run(
         and not bool(multigrid_niter_exhausted)
     ):
         fallback_used = True
-        fallback = ctx.run_fixed_boundary(
-            ctx.input_path,
-            solver="vmec2000_iter",
-            solver_mode="parity",
-            max_iter=int(max_fallback_budget),
-            step_size=ctx.step_size,
-            history_size=int(ctx.history_size),
-            gn_damping=ctx.gn_damping,
-            gn_cg_tol=ctx.gn_cg_tol,
-            gn_cg_maxiter=int(ctx.gn_cg_maxiter),
-            use_initial_guess=False,
-            vmec_project=bool(ctx.vmec_project),
-            use_restart_triggers=ctx.use_restart_triggers,
-            vmecpp_restart=bool(ctx.vmecpp_restart),
-            use_direct_fallback=ctx.use_direct_fallback,
+        fallback = _run_full_parity_fallback(
+            ctx,
+            max_fallback_budget=int(max_fallback_budget),
             multigrid=ctx.multigrid if bool(ctx.multigrid_user_provided) else None,
-            multigrid_use_input_niter=bool(ctx.multigrid_use_input_niter),
-            verbose=bool(ctx.verbose),
-            jit_forces=ctx.jit_forces,
-            jit_precompile=ctx.jit_precompile,
-            use_scan=False,
-            performance_mode=False,
-            scan_wout_corrector=ctx.scan_wout_corrector,
-            stage_transition_heuristic=ctx.stage_transition_heuristic,
-            stage_transition_factor=float(ctx.stage_transition_factor),
-            stage_transition_scale=float(ctx.stage_transition_scale),
-            grid=ctx.grid,
-            cli_fixed_boundary_mode=False,
-            _auto_cli_fixed_boundary_mode=False,
         )
         fallback_fsq = float(ctx.result_final_fsq(fallback.result))
         fallback_conv = bool(ctx.result_meets_requested_ftol(fallback.result, ftol=float(requested_ftol)))

@@ -12046,6 +12046,66 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9984%.
 
+## 2026-06-18 CLI Finish Full-Parity Fallback Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_run_full_parity_fallback` to `vmec_jax.drivers.finish`.
+2. Replaced the two duplicated conservative full-parity fallback calls in
+   `maybe_finish_cli_fixed_boundary_run` with the shared helper.
+3. Kept the two call-site policies explicit only where they differ: forced
+   multigrid for partial staged recovery and user/default multigrid for the
+   final accelerated fallback.
+
+Results obtained:
+
+- `maybe_finish_cli_fixed_boundary_run` dropped from 455 to 401 lines.
+- Full-parity CLI fallback arguments now live in one audited helper, reducing
+  drift risk between the partial and final fallback paths.
+- No solver numerics or output artifact behavior changed.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/drivers/finish.py`
+- `python -m ruff check vmec_jax/drivers/finish.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_api.py tests/test_driver_policy_helpers.py tests/test_solve_finish_cache_more_coverage.py -q`
+  - Result: passed, with known small optimized-controller runtime warnings.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 40`
+
+Best next steps:
+
+1. Continue with either the remaining CLI finish diagnostic packaging or a
+   higher-impact fixed-boundary optimizer setup split.
+2. Keep avoiding generated artifacts; this branch remains source/test/docs only.
+3. Recheck PR CI later for concrete failures, not pending status churn.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.999996%.
+- Solver monolith reduction: 99.46%.
+- Free-boundary adjoint monolith reduction: 99.30%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 95.8%.
+- WOUT diagnostic/profile decomposition: 99.68%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9985%.
+
 ## 2026-06-18 QI Boozer Grid Context Seam
 
 Branch: `codex/differentiability-refactor-plan`.
