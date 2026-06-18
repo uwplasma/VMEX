@@ -3018,6 +3018,52 @@ def solve_fixed_boundary_residual_iter(
     bad_jacobian_history: list[int] = []
     grad_rms_history = []
     step_history = []
+
+    _history_record_lists = {
+        "step_history": step_history,
+        "dt_eff_history": dt_eff_history,
+        "update_rms_history": update_rms_history,
+        "w_curr_history": w_curr_history,
+        "w_try_history": w_try_history,
+        "w_try_ratio_history": w_try_ratio_history,
+        "restart_path_history": restart_path_history,
+        "step_status_history": step_status_history,
+        "restart_reason_history": restart_reason_history,
+        "pre_restart_reason_history": pre_restart_reason_history,
+        "time_step_history": time_step_history,
+        "res0_history": res0_history,
+        "res1_history": res1_history,
+        "fsq_prev_history": fsq_prev_history,
+        "bad_growth_streak_history": bad_growth_streak_history,
+        "iter1_history": iter1_history,
+        "iter2_history": iter2_history,
+        "grad_rms_history": grad_rms_history,
+        "free_boundary_enabled": free_boundary_enabled,
+        "freeb_ivac_history": freeb_ivac_history,
+        "freeb_ivacskip_history": freeb_ivacskip_history,
+        "freeb_full_update_history": freeb_full_update_history,
+    }
+    _terminal_history_lists = {
+        "step_status_history": step_status_history,
+        "restart_reason_history": restart_reason_history,
+        "pre_restart_reason_history": pre_restart_reason_history,
+        "time_step_history": time_step_history,
+        "res0_history": res0_history,
+        "res1_history": res1_history,
+        "fsq_prev_history": fsq_prev_history,
+        "bad_growth_streak_history": bad_growth_streak_history,
+        "iter1_history": iter1_history,
+        "iter2_history": iter2_history,
+        "grad_rms_history": grad_rms_history,
+        "free_boundary_enabled": free_boundary_enabled,
+        "freeb_ivac_history": freeb_ivac_history,
+        "freeb_ivacskip_history": freeb_ivacskip_history,
+        "freeb_full_update_history": freeb_full_update_history,
+        "freeb_nestor_reused_history": freeb_nestor_reused_history,
+        "freeb_nestor_solve_time_history": freeb_nestor_solve_time_history,
+        "freeb_nestor_sample_time_history": freeb_nestor_sample_time_history,
+    }
+
     r00_last = float("nan")
     z00_last = float("nan")
     wb_last = float("nan")
@@ -4980,31 +5026,7 @@ def solve_fixed_boundary_residual_iter(
                         freeb_ivac=freeb_ivac,
                         freeb_ivacskip=freeb_ivacskip,
                     )
-                    _append_residual_iter_history_record(
-                        rec,
-                        step_history=step_history,
-                        dt_eff_history=dt_eff_history,
-                        update_rms_history=update_rms_history,
-                        w_curr_history=w_curr_history,
-                        w_try_history=w_try_history,
-                        w_try_ratio_history=w_try_ratio_history,
-                        restart_path_history=restart_path_history,
-                        step_status_history=step_status_history,
-                        restart_reason_history=restart_reason_history,
-                        pre_restart_reason_history=pre_restart_reason_history,
-                        time_step_history=time_step_history,
-                        res0_history=res0_history,
-                        res1_history=res1_history,
-                        fsq_prev_history=fsq_prev_history,
-                        bad_growth_streak_history=bad_growth_streak_history,
-                        iter1_history=iter1_history,
-                        iter2_history=iter2_history,
-                        grad_rms_history=grad_rms_history,
-                        free_boundary_enabled=free_boundary_enabled,
-                        freeb_ivac_history=freeb_ivac_history,
-                        freeb_ivacskip_history=freeb_ivacskip_history,
-                        freeb_full_update_history=freeb_full_update_history,
-                    )
+                    _append_residual_iter_history_record(rec, **_history_record_lists)
                 if verbose and not (bool(vmec2000_control) and bool(verbose_vmec2000_table)):
                     print(
                         f"[solve_fixed_boundary_residual_iter] converged: "
@@ -5391,31 +5413,7 @@ def solve_fixed_boundary_residual_iter(
                             freeb_ivac=freeb_ivac,
                             freeb_ivacskip=freeb_ivacskip,
                         )
-                        _append_residual_iter_history_record(
-                            rec,
-                            step_history=step_history,
-                            dt_eff_history=dt_eff_history,
-                            update_rms_history=update_rms_history,
-                            w_curr_history=w_curr_history,
-                            w_try_history=w_try_history,
-                            w_try_ratio_history=w_try_ratio_history,
-                            restart_path_history=restart_path_history,
-                            step_status_history=step_status_history,
-                            restart_reason_history=restart_reason_history,
-                            pre_restart_reason_history=pre_restart_reason_history,
-                            time_step_history=time_step_history,
-                            res0_history=res0_history,
-                            res1_history=res1_history,
-                            fsq_prev_history=fsq_prev_history,
-                            bad_growth_streak_history=bad_growth_streak_history,
-                            iter1_history=iter1_history,
-                            iter2_history=iter2_history,
-                            grad_rms_history=grad_rms_history,
-                            free_boundary_enabled=free_boundary_enabled,
-                            freeb_ivac_history=freeb_ivac_history,
-                            freeb_ivacskip_history=freeb_ivacskip_history,
-                            freeb_full_update_history=freeb_full_update_history,
-                        )
+                        _append_residual_iter_history_record(rec, **_history_record_lists)
                     _pop_iteration_histories()
                     prev_rz_fsq = prev_rz_fsq_before
                     skip_time_control = True
@@ -5545,31 +5543,7 @@ def solve_fixed_boundary_residual_iter(
                         freeb_ivac=freeb_ivac,
                         freeb_ivacskip=freeb_ivacskip,
                     )
-                    _append_residual_iter_history_record(
-                        rec,
-                        step_history=step_history,
-                        dt_eff_history=dt_eff_history,
-                        update_rms_history=update_rms_history,
-                        w_curr_history=w_curr_history,
-                        w_try_history=w_try_history,
-                        w_try_ratio_history=w_try_ratio_history,
-                        restart_path_history=restart_path_history,
-                        step_status_history=step_status_history,
-                        restart_reason_history=restart_reason_history,
-                        pre_restart_reason_history=pre_restart_reason_history,
-                        time_step_history=time_step_history,
-                        res0_history=res0_history,
-                        res1_history=res1_history,
-                        fsq_prev_history=fsq_prev_history,
-                        bad_growth_streak_history=bad_growth_streak_history,
-                        iter1_history=iter1_history,
-                        iter2_history=iter2_history,
-                        grad_rms_history=grad_rms_history,
-                        free_boundary_enabled=free_boundary_enabled,
-                        freeb_ivac_history=freeb_ivac_history,
-                        freeb_ivacskip_history=freeb_ivacskip_history,
-                        freeb_full_update_history=freeb_full_update_history,
-                    )
+                    _append_residual_iter_history_record(rec, **_history_record_lists)
                 if verbose:
                     if bool(vmec2000_control) and bool(verbose_vmec2000_table):
                         # VMEC does not print rejected restart steps.
@@ -6710,29 +6684,12 @@ def solve_fixed_boundary_residual_iter(
                 fsqr=fsqr_f,
                 fsqz=fsqz_f,
                 fsql=fsql_f,
-                step_status_history=step_status_history,
-                restart_reason_history=restart_reason_history,
-                pre_restart_reason_history=pre_restart_reason_history,
-                time_step_history=time_step_history,
-                res0_history=res0_history,
-                res1_history=res1_history,
-                fsq_prev_history=fsq_prev_history,
-                bad_growth_streak_history=bad_growth_streak_history,
-                iter1_history=iter1_history,
-                iter2_history=iter2_history,
-                grad_rms_history=grad_rms_history,
-                free_boundary_enabled=free_boundary_enabled,
                 freeb_ivac=freeb_ivac,
                 freeb_ivacskip=freeb_ivacskip,
                 freeb_reused=freeb_reused,
                 freeb_solve_time=freeb_solve_time,
                 freeb_sample_time=freeb_sample_time,
-                freeb_ivac_history=freeb_ivac_history,
-                freeb_ivacskip_history=freeb_ivacskip_history,
-                freeb_full_update_history=freeb_full_update_history,
-                freeb_nestor_reused_history=freeb_nestor_reused_history,
-                freeb_nestor_solve_time_history=freeb_nestor_solve_time_history,
-                freeb_nestor_sample_time_history=freeb_nestor_sample_time_history,
+                **_terminal_history_lists,
             )
         # VMEC eqsolve behavior: when `ivac==1`, print turn-on and promote to
         # `ivac=2` for subsequent iterations.

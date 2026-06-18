@@ -11980,6 +11980,76 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9988%.
 
+## 2026-06-18 Residual Iteration History Append Plumbing
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Consolidated the repeated residual-iteration history append keyword blocks
+   into two local history-list dictionaries.
+2. Replaced three non-terminal history append call sites with calls to the
+   existing `_append_residual_iter_history_record` helper using the shared
+   channel map.
+3. Replaced the terminal history append call-site boilerplate with the existing
+   `_append_residual_iter_terminal_history` helper plus the shared terminal
+   channel map.
+
+Results obtained:
+
+- Net source reduction for this tranche: 50 insertions and 93 deletions
+  (`-43` LOC) in `vmec_jax/solvers/fixed_boundary/residual/iteration.py`.
+- Residual iteration file length dropped from 7040 to 6997 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 6514 to 6471 lines.
+- History alignment remains owned by the existing policy helper functions; the
+  refactor only removes repeated call-site plumbing.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+  - Result: passed.
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+  - Result: passed.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_additional_helpers.py::test_append_residual_iter_history_record_keeps_all_channels_aligned tests/test_solve_additional_helpers.py::test_append_residual_iter_history_record_skips_free_boundary_channels_when_disabled tests/test_solve_additional_helpers.py::test_append_residual_iter_terminal_history_records_free_boundary_channels tests/test_solve_additional_helpers.py::test_append_residual_iter_terminal_history_skips_free_boundary_and_clamps_grad -q`
+  - Result: passed.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_finish_cache_more_coverage.py tests/test_solve_wave7_coverage.py tests/test_solve_additional_helpers.py tests/test_end_to_end_vmec_residual_gn.py -q`
+  - Result: passed (`91 passed, 1 skipped`).
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 35`
+
+Best next steps:
+
+1. Continue with isolated, table-driven I/O simplification in WOUT NetCDF
+   writing, which has roundtrip tests and avoids numerical output formulas.
+2. Return to residual-loop scan/fallback plumbing only after identifying a seam
+   that reduces more than it adds and has direct tests.
+3. Keep generated outputs and figures out of commits; this refactor remains
+   source/test/plan only.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.999997%.
+- Solver monolith reduction: 99.49%.
+- Free-boundary adjoint monolith reduction: 99.30%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.2%.
+- WOUT diagnostic/profile decomposition: 99.68%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 98.9%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9989%.
+
 ## 2026-06-18 Optimizer Dependency Default Cleanup
 
 Branch: `codex/differentiability-refactor-plan`.
