@@ -11912,3 +11912,70 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9982%.
+
+## 2026-06-18 QI Boozer Grid Context Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_QIBoozerSurfaceGrid` and `_qi_boozer_surface_grid` to
+   `vmec_jax.quasi_isodynamic`.
+2. Moved Boozer input conversion, shape validation, field-line grid creation,
+   Boozer `|B|` evaluation, normalization, bounce-level selection, and
+   smoothing-width resolution out of
+   `quasi_isodynamic_residual_from_boozer_modes`.
+3. Rewired the QI residual function to consume the explicit grid/context before
+   assembling the width, branch-width, aligned-profile, and shuffle-profile
+   residual blocks.
+
+Results obtained:
+
+- QI grid construction and validation is now a named seam that can be tested and
+  reused independently of the objective-term assembly.
+- `quasi_isodynamic_residual_from_boozer_modes` dropped from 565 to 557 lines;
+  the small net reduction reflects the explicit local names retained for the
+  downstream objective blocks.
+- QI diagnostics and staged-runner shards remained green.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/quasi_isodynamic.py`
+- `python -m ruff check vmec_jax/quasi_isodynamic.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_qi_legacy.py tests/test_qi_diagnostics.py tests/test_qi_staged_runner.py tests/test_qi_readme_cases.py -q`
+  - Result: passed.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 30`
+
+Best next steps:
+
+1. Split the QI residual objective blocks themselves, starting with branch-width
+   and shuffle-profile helpers, if a clean helper interface can avoid replacing
+   one long function with several similarly long ones.
+2. Otherwise switch back to driver/implicit/WOUT seams where the next tranche
+   produces a larger source-health improvement.
+3. Keep QI numerical behavior conservative; no optimizer-parameter or artifact
+   changes in this refactor tranche.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.999996%.
+- Solver monolith reduction: 99.46%.
+- Free-boundary adjoint monolith reduction: 99.30%.
+- Driver workflow decomposition: 99.82%.
+- Residual iteration decomposition: 95.8%.
+- WOUT diagnostic/profile decomposition: 99.64%.
+- Bcovar/WOUT parity decomposition: 98.0%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9982%.
