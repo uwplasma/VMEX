@@ -9,6 +9,12 @@ from vmec_jax.solvers.fixed_boundary.residual.setup import (
     grid_matches_vmec_static_grid,
     resolve_free_boundary_setup_policy,
 )
+from vmec_jax.solvers.fixed_boundary.residual.ptau import (
+    accepted_control_ptau_arrays,
+    maybe_dump_jacobian_terms,
+    maybe_dump_ptau,
+    ptau_minmax,
+)
 from vmec_jax.solvers.fixed_boundary.residual.state_setup import build_residual_state_setup
 from vmec_jax.config import VMECConfig
 from vmec_jax.state import StateLayout, VMECState
@@ -92,6 +98,68 @@ def test_build_residual_state_setup_host_path_caches_constants_and_enforces_edge
     assert setup.zeros_coeff_np.shape == (int(static.cfg.ns), int(static.cfg.mpol), 2 * int(static.cfg.ntor) + 1)
     assert setup.zeros_dR_np.shape == np.asarray(state0.Rcos).shape
     assert float(setup.delta_s) == 1.0 / 3.0
+
+
+def test_ptau_wrapper_dispatches_and_preserves_call_time_dump_arguments() -> None:
+    ptau_context = SimpleNamespace(pshalf_np=np.asarray([1.0, 2.0]), ohs_scalar=3.0, pshalf_jax="pj", ohs_jax="oj", s="s")
+    host_calls = []
+    jax_calls = []
+
+    host_result = ptau_minmax(
+        "kernel",
+        ptau_context=ptau_context,
+        has_jax_func=lambda: False,
+        compute_jit="jit",
+        pshalf_from_s_jax=lambda *_args, **_kwargs: None,
+        ptau_minmax_host_func=lambda *args, **kwargs: host_calls.append((args, kwargs)) or (-1.0, 2.0),
+        ptau_minmax_jax_func=lambda *args, **kwargs: jax_calls.append((args, kwargs)) or (-3.0, 4.0),
+    )
+    assert host_result == (-1.0, 2.0)
+    assert host_calls[0][1]["compute_jit"] == "jit"
+    assert host_calls[0][1]["pshalf_jax"] == "pj"
+    assert not jax_calls
+
+    jax_result = ptau_minmax(
+        "kernel",
+        ptau_context=ptau_context,
+        has_jax_func=lambda: True,
+        compute_jit="jit",
+        pshalf_from_s_jax=lambda *_args, **_kwargs: "ps",
+        ptau_minmax_host_func=lambda *args, **kwargs: host_calls.append((args, kwargs)) or (-1.0, 2.0),
+        ptau_minmax_jax_func=lambda *args, **kwargs: jax_calls.append((args, kwargs)) or (-3.0, 4.0),
+    )
+    assert jax_result == (-3.0, 4.0)
+    assert jax_calls[-1][1]["s"] == "s"
+
+    assert accepted_control_ptau_arrays("k", kernel_arrays_from_k=lambda _k: None) is None
+    assert accepted_control_ptau_arrays("k", kernel_arrays_from_k=lambda _k: (np.ones((1,)),)) is None
+    arrays = accepted_control_ptau_arrays("k", kernel_arrays_from_k=lambda _k: (np.ones((2,)),))
+    assert arrays is not None
+
+    jacobian_dump = {}
+    maybe_dump_jacobian_terms(k="k", s="s", iter_idx=7, dump_func=lambda **kwargs: jacobian_dump.update(kwargs))
+    assert jacobian_dump == {"k": "k", "s": "s", "iter_idx": 7}
+
+    ptau_dump = {}
+    maybe_dump_ptau(
+        iter_idx=8,
+        ptau_min=-1.0,
+        ptau_max=2.0,
+        tau_min_state=None,
+        tau_max_state=3.0,
+        badjac_ptau=True,
+        badjac_state=False,
+        badjac_used=True,
+        mode="host",
+        label="probe",
+        getenv=lambda name, default: {"VMEC_JAX_DUMP_PTAU": "1", "VMEC_JAX_DUMP_DIR": "/tmp/dump"}.get(
+            name, default
+        ),
+        dump_func=lambda **kwargs: ptau_dump.update(kwargs),
+    )
+    assert ptau_dump["dump_ptau_env"] == "1"
+    assert ptau_dump["dump_dir"] == "/tmp/dump"
+    assert ptau_dump["label"] == "probe"
 
 
 def test_grid_matches_vmec_static_grid_requires_same_coordinates() -> None:
