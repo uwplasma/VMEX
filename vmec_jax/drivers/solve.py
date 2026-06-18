@@ -231,6 +231,123 @@ def run_fixed_boundary_optimizer_solver(
     )
 
 
+def run_fixed_boundary_stage_solve(
+    *,
+    state: Any,
+    static: Any,
+    solve_kwargs: dict[str, Any],
+    jit_forces: bool,
+    solve_fixed_boundary_residual_iter_func: Callable[..., Any],
+) -> Any:
+    """Run one VMEC2000-style stage with the requested JIT policy."""
+
+    if not bool(jit_forces):
+        try:
+            import jax
+
+            with jax.disable_jit():
+                return solve_fixed_boundary_residual_iter_func(
+                    state,
+                    static,
+                    jit_forces=False,
+                    **solve_kwargs,
+                )
+        except Exception:
+            return solve_fixed_boundary_residual_iter_func(
+                state,
+                static,
+                jit_forces=False,
+                **solve_kwargs,
+            )
+    return solve_fixed_boundary_residual_iter_func(
+        state,
+        static,
+        jit_forces=True,
+        **solve_kwargs,
+    )
+
+
+def maybe_precompile_fixed_boundary_stage(
+    *,
+    enabled: bool,
+    state: Any,
+    static: Any,
+    solve_kwargs: dict[str, Any],
+    solve_fixed_boundary_residual_iter_func: Callable[..., Any],
+) -> None:
+    """Optionally precompile a single-stage VMEC2000 iteration."""
+
+    if not bool(enabled):
+        return
+    try:
+        precompile_kwargs = dict(solve_kwargs)
+        precompile_kwargs.update(
+            {
+                "precompile_only": True,
+                "verbose": False,
+                "verbose_vmec2000_table": False,
+                "jit_warmup_iters": 0,
+                "jit_precompile": True,
+                "max_iter": 1,
+            }
+        )
+        solve_fixed_boundary_residual_iter_func(
+            state,
+            static,
+            jit_forces=True,
+            **precompile_kwargs,
+        )
+    except Exception:
+        return
+
+
+def maybe_rerun_scan_abort_stage(
+    *,
+    result: Any,
+    enabled: bool,
+    state_stage_start: Any,
+    resume_state_stage: Any,
+    solve_kwargs: dict[str, Any],
+    jit_warmup_noscan: int,
+    jit_precompile_noscan: bool,
+    jit_forces_base: bool,
+    run_stage_solve_func: Callable[..., Any],
+    verbose: bool,
+    print_func: Callable[..., None] = print,
+) -> Any:
+    """Rerun a bad scan stage in non-scan parity mode when requested."""
+
+    if not bool(enabled):
+        return result
+    try:
+        if not (
+            bool(result.diagnostics.get("vmec2000_scan", False))
+            and bool(result.diagnostics.get("abort_scan", False))
+        ):
+            return result
+        if bool(verbose):
+            print_func(
+                "[vmec_jax] scan abort detected; rerunning stage in parity mode.",
+                flush=True,
+            )
+        solve_kwargs_fallback = dict(solve_kwargs)
+        solve_kwargs_fallback.update(
+            {
+                "use_scan": False,
+                "resume_state": resume_state_stage,
+                "jit_warmup_iters": int(jit_warmup_noscan),
+                "jit_precompile": bool(jit_precompile_noscan),
+            }
+        )
+        return run_stage_solve_func(
+            state=state_stage_start,
+            solve_kwargs=solve_kwargs_fallback,
+            jit_forces=bool(jit_forces_base),
+        )
+    except Exception:
+        return result
+
+
 def maybe_run_fixed_boundary_in_solver_device_context(
     *,
     input_path: Any,
