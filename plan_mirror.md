@@ -5740,6 +5740,132 @@ No user input is needed.
 
 ---
 
+## 89. 2026-06-18 M13f.4 initial residual component fields
+
+This tranche made the initialization difference explicit in the toroidal hybrid
+parity rows by recording initial residual components for VMEC/JAX and VMEC2000.
+
+### Steps taken
+
+- Added VMEC/JAX row fields:
+  - `initial_fsqr`;
+  - `initial_fsqz`;
+  - `initial_fsql`.
+- Added VMEC2000 `threed1` row fields:
+  - `vmec2000_initial_fsqr`;
+  - `vmec2000_initial_fsqz`;
+  - `vmec2000_initial_fsql`.
+- Kept these fields in the CSV export so initialization comparisons are table
+  driven.
+
+### Results obtained
+
+Schema smoke:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  --outdir results/toroidal_stellarator_mirror_hybrid_initial_components_m13j \
+  --ns-array 7 \
+  --mode-pairs 5:4 \
+  --ntheta-fit 32 \
+  --nzeta-fit 32 \
+  --niter 20 \
+  --ftol 1e-12 \
+  --run-solve \
+  --max-iter 5 \
+  --solver-mode parity \
+  --no-use-scan \
+  --run-vmec2000 \
+  --vmec2000-exec /Users/rogeriojorge/bin/xvmec2000 \
+  --no-plots
+```
+
+Result:
+
+| component | VMEC/JAX initial | VMEC2000 initial |
+| :--- | ---: | ---: |
+| total `fsq` | `1.101895164557e-02` | `7.091000000000e-02` |
+| `fsqr` | `5.710626825885e-03` | `4.280000000000e-02` |
+| `fsqz` | `3.739018993131e-03` | `5.310000000000e-03` |
+| `fsql` | `1.569305826559e-03` | `2.280000000000e-02` |
+
+For this generated toroidal hybrid input, VMEC/JAX starts from a lower residual
+than VMEC2000's first printed `threed1` row.  Most of the initial gap is in the
+radial and lambda components.  This supports treating future parity differences
+as an initialization/stopping-convention issue before changing the hybrid
+boundary model.
+
+### How it was tested
+
+Focused tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
+```
+
+Result: `5 passed in 1.95s`.
+
+Lint and format:
+
+```bash
+python -m ruff check \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py
+python -m ruff format --check \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py
+```
+
+Result: all checks passed and both files were formatted.
+
+Docs and whitespace:
+
+```bash
+python -m sphinx -W -j auto -b html docs docs/_build/html
+git diff --check
+```
+
+Result: docs built successfully and no whitespace errors were found.
+
+### File structure and best-practice notes
+
+- The fields are schema additions to the convergence workflow only.
+- No core solver behavior changed.
+- Generated validation output remains ignored under `results/`.
+
+### Best next steps
+
+1. Commit and push this initialization-component schema update.
+2. Add one concise initialization-parity note to the root example or docs after
+   running the next mode-pair parity row.
+3. Proceed to M13g geometry refinement once parity behavior is documented
+   across `mpol=5,ntor=4` and `mpol=6,ntor=5`.
+
+### Completion percentages after M89
+
+- Geometry/grids/bases: `93%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `88%`.
+- I/O schema and docs: `93%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `67%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `43%`.
+- ESSOS circular-coil mirror beta scan: `53%`.
+- PR merge readiness overall: `92%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+
 ## 88. 2026-06-18 M13f.3 parity component plot and ns=9 parity row
 
 This tranche added a side-by-side final residual component plot for VMEC/JAX

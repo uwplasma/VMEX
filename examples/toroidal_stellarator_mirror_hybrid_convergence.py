@@ -75,6 +75,9 @@ _CSV_COLUMNS = (
     "best_iter",
     "fsq_reduction",
     "final_fsq",
+    "initial_fsqr",
+    "initial_fsqz",
+    "initial_fsql",
     "final_fsqr",
     "final_fsqz",
     "final_fsql",
@@ -96,6 +99,9 @@ _CSV_COLUMNS = (
     "vmec2000_best_iter",
     "vmec2000_fsq_reduction",
     "vmec2000_final_fsq",
+    "vmec2000_initial_fsqr",
+    "vmec2000_initial_fsqz",
+    "vmec2000_initial_fsql",
     "vmec2000_final_fsqr",
     "vmec2000_final_fsqz",
     "vmec2000_final_fsql",
@@ -396,6 +402,9 @@ def main() -> None:
                 "best_iter": None,
                 "fsq_reduction": None,
                 "final_fsq": None,
+                "initial_fsqr": None,
+                "initial_fsqz": None,
+                "initial_fsql": None,
                 "final_fsqr": None,
                 "final_fsqz": None,
                 "final_fsql": None,
@@ -423,6 +432,9 @@ def main() -> None:
                 "vmec2000_best_iter": None,
                 "vmec2000_fsq_reduction": None,
                 "vmec2000_final_fsq": None,
+                "vmec2000_initial_fsqr": None,
+                "vmec2000_initial_fsqz": None,
+                "vmec2000_initial_fsql": None,
                 "vmec2000_final_fsqr": None,
                 "vmec2000_final_fsqz": None,
                 "vmec2000_final_fsql": None,
@@ -462,14 +474,15 @@ def main() -> None:
                     fsq_history = np.asarray(run.result.w_history, dtype=float).reshape(-1)
                     row["fsq_history"] = [float(value) for value in fsq_history]
                     row.update(_summarize_fsq_history(fsq_history))
-                    for source, history_key, final_key, best_key in (
-                        ("fsqr2_history", "fsqr_history", "final_fsqr", "best_fsqr"),
-                        ("fsqz2_history", "fsqz_history", "final_fsqz", "best_fsqz"),
-                        ("fsql2_history", "fsql_history", "final_fsql", "best_fsql"),
+                    for source, history_key, initial_key, final_key, best_key in (
+                        ("fsqr2_history", "fsqr_history", "initial_fsqr", "final_fsqr", "best_fsqr"),
+                        ("fsqz2_history", "fsqz_history", "initial_fsqz", "final_fsqz", "best_fsqz"),
+                        ("fsql2_history", "fsql_history", "initial_fsql", "final_fsql", "best_fsql"),
                     ):
                         component = np.asarray(getattr(run.result, source, []), dtype=float).reshape(-1)
                         row[history_key] = [float(value) for value in component]
                         if component.size:
+                            row[initial_key] = float(component[0])
                             row[final_key] = float(component[-1])
                             best_iter = row.get("best_iter")
                             if best_iter is not None and 0 <= int(best_iter) < component.size:
@@ -542,6 +555,9 @@ def main() -> None:
                         row["vmec2000_fsqr_history"] = [float(item.fsqr) for item in vmec2000_rows]
                         row["vmec2000_fsqz_history"] = [float(item.fsqz) for item in vmec2000_rows]
                         row["vmec2000_fsql_history"] = [float(item.fsql) for item in vmec2000_rows]
+                        row["vmec2000_initial_fsqr"] = float(vmec2000_rows[0].fsqr)
+                        row["vmec2000_initial_fsqz"] = float(vmec2000_rows[0].fsqz)
+                        row["vmec2000_initial_fsql"] = float(vmec2000_rows[0].fsql)
                 except Exception as exc:
                     row["vmec2000_error"] = str(exc)
             rows.append(row)
