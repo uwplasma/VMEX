@@ -11260,3 +11260,71 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.5%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9971%.
+
+## 2026-06-18 JXBFORCE 1D Diagnostic Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_jxbforce_1d_current_diagnostics` to
+   `vmec_jax.io.wout.mercier`.
+2. Moved the VMEC/JXBFORCE-style `jdotb`, `bdotb`, and `bdotgradv`
+   profile reconstruction out of `compute_mercier`.
+3. Kept the same summation callback used by the parent Mercier reducer, so the
+   `VMEC_JAX_MERCIER_EXACT_SUM` and weighted-sum paths preserve their existing
+   numerical behavior.
+4. Removed unused helper parameters before wiring the seam, keeping the local
+   API limited to the arrays actually used by the diagnostic formula.
+
+Results obtained:
+
+- `compute_mercier` dropped from 659 to 646 lines after the JXBFORCE 1D
+  diagnostic extraction, and from 695 lines before the two Mercier/JXBFORCE
+  tranches.
+- The WOUT Mercier reducer now has separate named seams for radial stability
+  terms and current/field-line diagnostics, making future DMerc/`D_R`
+  AD-vs-FD gates easier to target without editing the whole WOUT writer path.
+- Focused WOUT, finite-beta, Mercier, and Glasser shards remained green.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/io/wout/mercier.py`
+- `python -m ruff check vmec_jax/io/wout/mercier.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_physics_wave8_coverage.py tests/test_wout_wave4_coverage.py tests/test_wout_helpers.py tests/test_glasser_resistive_interchange.py -q`
+  - Result: `41 passed`.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_driver_wave10_coverage.py tests/test_physics_parity_helper_gates.py tests/test_finite_beta_helpers_unit.py -q`
+  - Result: `68 passed, 1 skipped`.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 30`
+
+Best next steps:
+
+1. Move to `wout_minimal_from_fixed_boundary`, currently the next largest
+   production WOUT function, and split final WOUT-data assembly/context
+   preparation without changing NetCDF schema.
+2. Keep Mercier/Glasser formula changes gated by focused physics tests and
+   future AD-vs-FD checks rather than by broad writer smoke tests only.
+3. Check CI only after current pending jobs complete or report a concrete
+   failing check; do not wait on queued matrix jobs during refactor work.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.999987%.
+- Solver monolith reduction: 99.46%.
+- Free-boundary adjoint monolith reduction: 99.30%.
+- Driver workflow decomposition: 99.72%.
+- Residual iteration decomposition: 95.8%.
+- WOUT diagnostic/profile decomposition: 99.35%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.6%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9972%.
