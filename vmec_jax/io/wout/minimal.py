@@ -13,6 +13,8 @@ from typing import Any, Mapping, NamedTuple
 
 import numpy as np
 
+from ..._compat import has_jax, jax
+from ...namelist import InData
 from ...vmec_parity import vmec_m1_internal_to_physical_signed_host
 
 
@@ -53,6 +55,139 @@ class WoutMinimalRuntimeOptions(NamedTuple):
     timing_enabled: bool
     light: bool
     fast_bcovar: bool
+
+
+class WoutBcovarPayload(NamedTuple):
+    """Force/bcovar state needed by minimal WOUT assembly."""
+
+    bc: Any
+    k_force: Any | None
+    indata_wout: Any
+
+
+def env_enabled(value: str | None, *, false_values: tuple[str, ...] = ("", "0", "false", "no")) -> bool:
+    """Return whether a VMEC-JAX environment toggle should be considered enabled."""
+
+    if value is None:
+        return False
+    return value.strip().lower() not in false_values
+
+
+def device_get_if_available(value: Any) -> Any:
+    """Host-materialize a JAX pytree when JAX is available, otherwise return it."""
+
+    if has_jax():
+        try:
+            return jax.device_get(value)
+        except Exception:
+            pass
+    return value
+
+
+def attach_force_payload_geometry(geom: dict[str, Any], k_force: Any) -> Any:
+    """Attach VMEC force-kernel geometry channels and return the bcovar payload."""
+
+    geom["pr1_even"] = np.asarray(k_force.pr1_even, dtype=float)
+    geom["pr1_odd"] = np.asarray(k_force.pr1_odd, dtype=float)
+    geom["pz1_even"] = np.asarray(k_force.pz1_even, dtype=float)
+    geom["pz1_odd"] = np.asarray(k_force.pz1_odd, dtype=float)
+    geom["pru_even"] = np.asarray(k_force.pru_even, dtype=float)
+    geom["pru_odd"] = np.asarray(k_force.pru_odd, dtype=float)
+    geom["pzu_even"] = np.asarray(k_force.pzu_even, dtype=float)
+    geom["pzu_odd"] = np.asarray(k_force.pzu_odd, dtype=float)
+    geom["prv_even"] = np.asarray(k_force.prv_even, dtype=float)
+    geom["prv_odd"] = np.asarray(k_force.prv_odd, dtype=float)
+    geom["pzv_even"] = np.asarray(k_force.pzv_even, dtype=float)
+    geom["pzv_odd"] = np.asarray(k_force.pzv_odd, dtype=float)
+    return k_force.bc
+
+
+def indata_for_wout_force_path(indata: Any, *, force_iequi1: bool) -> Any:
+    """Return the input deck used for WOUT force diagnostics."""
+
+    if not bool(force_iequi1):
+        return indata
+    try:
+        out = InData(
+            scalars=dict(indata.scalars),
+            indexed=dict(indata.indexed),
+            source_path=indata.source_path,
+        )
+        out.scalars["IEQUI"] = 1
+        return out
+    except Exception:
+        return indata
+
+
+def prepare_wout_bcovar_payload(
+    *,
+    state: Any,
+    static: Any,
+    indata: Any,
+    wout_like: Any,
+    pres: np.ndarray,
+    geom: dict[str, Any],
+    force_payload_override: Any,
+    fast_bcovar: bool,
+    timing_enabled: bool,
+    timing: dict[str, float],
+    vmec_bcovar_half_mesh_from_wout_func: Any,
+    vmec_forces_rz_from_wout_func: Any,
+    numpy_module_patch_func: Any,
+) -> WoutBcovarPayload:
+    """Resolve the force/bcovar source used by minimal WOUT diagnostics."""
+
+    if timing_enabled:
+        import time as _time
+
+        t0 = _time.perf_counter()
+
+    force_iequi1 = env_enabled(os.getenv("VMEC_JAX_WOUT_FORCE_IEQUI1", "0"))
+    indata_wout = indata_for_wout_force_path(indata, force_iequi1=bool(force_iequi1))
+    reuse_final_bcovar = env_enabled(
+        os.getenv("VMEC_JAX_WOUT_REUSE_FINAL_BCOVAR", ""),
+        false_values=("", "0", "false", "no", "off"),
+    )
+
+    k_force = None
+    if force_payload_override is not None and (reuse_final_bcovar or not fast_bcovar) and (not force_iequi1):
+        k_force = device_get_if_available(force_payload_override)
+        bc = attach_force_payload_geometry(geom, k_force)
+    elif fast_bcovar:
+        with numpy_module_patch_func():
+            bc = vmec_bcovar_half_mesh_from_wout_func(
+                state=state,
+                static=static,
+                wout=wout_like,
+                pres=pres,
+                use_wout_bsup=False,
+                use_wout_bsub_for_lambda=False,
+                use_wout_bmag_for_bsq=False,
+                use_vmec_synthesis=True,
+                trig=None,
+            )
+        bc = device_get_if_available(bc)
+    else:
+        wout_force_vmec_synth = env_enabled(os.getenv("VMEC_JAX_WOUT_FORCE_VMEC_SYNTH", ""))
+        k_force = vmec_forces_rz_from_wout_func(
+            state=state,
+            static=static,
+            wout=wout_like,
+            indata=indata_wout,
+            use_wout_bsup=False,
+            use_vmec_synthesis=wout_force_vmec_synth,
+            trig=None,
+        )
+        k_force = device_get_if_available(k_force)
+        bc = attach_force_payload_geometry(geom, k_force)
+
+    if timing_enabled:
+        timing["forces_bcovar_s"] = _time.perf_counter() - t0
+    return WoutBcovarPayload(
+        bc=bc,
+        k_force=k_force,
+        indata_wout=indata_wout,
+    )
 
 
 def minimal_wout_runtime_options_from_env(environ: Mapping[str, str] | None = None) -> WoutMinimalRuntimeOptions:

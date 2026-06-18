@@ -10032,3 +10032,62 @@ Completion:
 - Implicit residual-adjoint decomposition: 91%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.985%.
+
+## 2026-06-18 WOUT Passive Bcovar Payload Helper Move
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved WOUT bcovar/force payload helpers from root `vmec_jax.wout` into
+   `vmec_jax.io.wout.minimal`.
+2. Added `WoutBcovarPayload`, `prepare_wout_bcovar_payload`,
+   `attach_force_payload_geometry`, `indata_for_wout_force_path`,
+   `env_enabled`, and `device_get_if_available` to the WOUT minimal helper
+   module.
+3. Preserved the private compatibility aliases in `wout.py` so existing tests
+   and internal diagnostic imports continue to work.
+
+Results obtained:
+
+- Removed 143 lines of passive helper implementation from root `wout.py`.
+- Kept the parity-sensitive `wout_minimal_from_fixed_boundary` diagnostic body
+   unchanged.
+- WOUT helper behavior for final-bcovar reuse, forced BSS, and source filtering
+   remains covered by focused tests.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/wout.py vmec_jax/io/wout/minimal.py`
+- `python -m ruff check vmec_jax/wout.py vmec_jax/io/wout/minimal.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_fast_helpers.py tests/test_wout_env_branch_coverage.py::test_reuse_final_bcovar_env_uses_payload_even_on_fast_path tests/test_wout_env_branch_coverage.py::test_forced_bss_uses_symforced_force_kernel_arrays tests/test_wout_driver_wave10_coverage.py::test_wout_minimal_bsub_source_filter_branches tests/test_wout_driver_wave10_coverage.py::test_wout_minimal_equif_correction_and_raw_filter_branch -q`
+- `python tools/diagnostics/source_health.py --top 14 --top-functions 20`
+
+Best next steps:
+
+1. Split the WOUT BSS source-policy block into `io.wout.minimal`, then stop
+   WOUT refactoring before Nyquist/Mercier parity-sensitive blocks.
+2. Return to residual scan axis-reset/preconditioner setup after the WOUT BSS
+   split.
+3. Keep broad local gates batched; do not block on GitHub CI polling.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.99991%.
+- Solver monolith reduction: 99.30%.
+- Free-boundary adjoint monolith reduction: 99.1%.
+- Driver workflow decomposition: 99.3%.
+- Residual iteration decomposition: 92.0%.
+- WOUT diagnostic/profile decomposition: 99.0%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 91%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.986%.
