@@ -1120,7 +1120,6 @@ def vmec_bcovar_half_mesh_from_wout(
 
     # Full-mesh LU parity pieces (odd is VMEC-internal 1/sqrt(s) representation).
     # VMEC uses the internal phipf (= signgs*phipf/(2π)) in the LU definition.
-    lu0 = (lamscale * parity.Lt_even) + jnp.asarray(phipf_internal)[:, None, None]
     lu1 = lamscale * Lu1
 
     # lvv on half mesh: phipog * gvv (bcovar.f uses phipog == 1/sqrtg).

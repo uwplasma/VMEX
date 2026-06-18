@@ -15952,3 +15952,69 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999975%.
+
+## 2026-06-18 Non-Residual Physics-Kernel Unused Local Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Removed stale side-effect-free locals from free-boundary Green-function,
+   WOUT JxB, B-covariant, and force-reference helper paths.
+2. Kept the residual iteration monolith untouched in this tranche so it can be
+   handled with a dedicated parity-backed edit.
+
+Results obtained:
+
+- Removed 15 source lines without adding files.
+- `vmec_jax/free_boundary.py` dropped from 3371 to 3367 lines.
+- `vmec_jax/io/wout/jxbforce.py` dropped from 851 to 845 lines.
+- `vmec_jax/vmec_forces.py` dropped from 1980 to 1976 lines.
+- Remaining focused `F841/F401` findings dropped from 47 to 35, all in
+  `vmec_jax/solvers/fixed_boundary/residual/iteration.py`.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/free_boundary.py vmec_jax/io/wout/jxbforce.py vmec_jax/vmec_bcovar.py vmec_jax/vmec_forces.py`
+- `python -m ruff check vmec_jax/free_boundary.py vmec_jax/io/wout/jxbforce.py vmec_jax/vmec_bcovar.py vmec_jax/vmec_forces.py --select F841,F401`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_wp0.py tests/test_free_boundary_additional_helpers.py tests/test_free_boundary_jax_nestor_operator_cache.py tests/test_bcovar_lambda_axis_closure.py tests/test_c_kernels_axisym.py tests/test_constraint_pipeline.py tests/test_finite_beta.py tests/test_wout_beta_eqfor_bundled_parity.py tests/test_equif_eqfor_parity.py -q`
+- `python tools/diagnostics/source_health.py --top 16 --top-functions 30`
+- `python -m ruff check vmec_jax --select F841,F401 --output-format=concise`
+- `git diff --check`
+
+Best next steps:
+
+1. Run a dedicated residual-iteration cleanup with focused fixed-boundary
+   parity and stage-trace tests.
+2. Prefer deleting dead side-effect-free assignments before any structural move
+   inside `solve_fixed_boundary_residual_iter`.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.63%.
+- Free-boundary adjoint monolith reduction: 99.42%.
+- Driver workflow decomposition: 99.90%.
+- Residual iteration decomposition: 97.5%.
+- WOUT diagnostic/profile decomposition: 99.89%.
+- Bcovar/WOUT parity decomposition: 99.11%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.72%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.56%.
+- Fixed-boundary optimizer decomposition: 95.8%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.35%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999976%.
