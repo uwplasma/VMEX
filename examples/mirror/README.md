@@ -176,7 +176,10 @@ plot/report generation. For reduced residual-vector prototypes that are already
 pure JAX functions of boundary parameters,
 ``mirror_free_boundary_residual_vector_jacobian_jax`` provides forward,
 reverse, or automatic JAX Jacobian selection beside the host-side finite
-difference helper.
+difference helper. ``mirror_free_boundary_residual_vector_least_squares_step``
+uses the same vector residual contract and can choose the
+``finite_difference`` or ``jax`` Jacobian backend for one damped, line-searched
+step.
 
 The circular-coil beta-scan metrics use the compact schema
 ``mirror_free_boundary_circular_coil_beta_scan`` version ``0.6``. The top-level

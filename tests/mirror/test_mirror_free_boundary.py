@@ -29,7 +29,9 @@ from vmec_jax.mirror import (
     mirror_free_boundary_least_squares_step,
     mirror_free_boundary_residual,
     mirror_free_boundary_residual_jacobian_finite_difference,
+    mirror_free_boundary_residual_vector_jacobian_finite_difference,
     mirror_free_boundary_residual_vector_jacobian_jax,
+    mirror_free_boundary_residual_vector_least_squares_step,
     mirror_lcfs_diagnostic,
     mirror_lcfs_diagnostic_from_arrays,
     mirror_lcfs_merit,
@@ -872,6 +874,122 @@ def test_mirror_free_boundary_residual_vector_jacobian_jax_rejects_invalid_outpu
         mirror_free_boundary_residual_vector_jacobian_jax([1.0], lambda items: items, mode="bad")
     with pytest.raises(ValueError, match="non-finite"):
         mirror_free_boundary_residual_vector_jacobian_jax([1.0], lambda items: jnp.asarray([jnp.nan]))
+
+
+def _linear_reduced_residual_vector(coefficients):
+    target = np.asarray([0.4, -0.2])
+    matrix = np.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [2.0, -1.0]])
+    return matrix @ (np.asarray(coefficients, dtype=float) - target)
+
+
+def test_mirror_free_boundary_residual_vector_jacobian_finite_difference_matches_linear_model():
+    coefficients = np.asarray([0.1, 0.3])
+    vector, jacobian, steps = mirror_free_boundary_residual_vector_jacobian_finite_difference(
+        coefficients,
+        _linear_reduced_residual_vector,
+        finite_difference_step=1.0e-6,
+    )
+
+    expected_jacobian = np.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [2.0, -1.0]])
+    np.testing.assert_allclose(vector, _linear_reduced_residual_vector(coefficients))
+    np.testing.assert_allclose(jacobian, expected_jacobian, rtol=1.0e-10, atol=1.0e-10)
+    np.testing.assert_allclose(steps, [1.0e-6, 1.0e-6])
+
+
+def test_mirror_free_boundary_residual_vector_least_squares_step_supports_fd_and_jax_backends():
+    jnp = pytest.importorskip("jax.numpy")
+    enable_x64(True)
+
+    def jax_residual(coefficients):
+        target = jnp.asarray([0.4, -0.2])
+        matrix = jnp.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [2.0, -1.0]])
+        return matrix @ (coefficients - target)
+
+    coefficients = np.asarray([0.1, 0.3])
+    fd_step = mirror_free_boundary_residual_vector_least_squares_step(
+        coefficients,
+        _linear_reduced_residual_vector,
+        jacobian_backend="finite_difference",
+        max_relative_step=2.0,
+        line_search_factors=(1.0, 0.5),
+    )
+    jax_step = mirror_free_boundary_residual_vector_least_squares_step(
+        coefficients,
+        jax_residual,
+        jacobian_backend="jax",
+        jax_mode="auto",
+        max_relative_step=2.0,
+        line_search_factors=(1.0, 0.5),
+    )
+
+    assert fd_step.accepted is True
+    assert jax_step.accepted is True
+    assert fd_step.jacobian_backend == "finite_difference"
+    assert jax_step.jacobian_backend == "jax"
+    assert fd_step.line_search_factor == pytest.approx(1.0)
+    assert jax_step.line_search_factor == pytest.approx(1.0)
+    np.testing.assert_allclose(fd_step.new_coefficients, [0.4, -0.2], rtol=1.0e-10, atol=1.0e-10)
+    np.testing.assert_allclose(jax_step.new_coefficients, fd_step.new_coefficients, rtol=1.0e-10, atol=1.0e-10)
+    np.testing.assert_allclose(jax_step.jacobian, fd_step.jacobian, rtol=1.0e-10, atol=1.0e-10)
+    assert jax_step.trial_value < 1.0e-10
+
+
+def test_mirror_free_boundary_residual_vector_least_squares_step_rejects_worse_trials():
+    def nonlinear_residual(coefficients):
+        c0 = float(np.asarray(coefficients, dtype=float)[0])
+        return np.asarray([c0 - 1.0 + 100.0 * c0**2])
+
+    step = mirror_free_boundary_residual_vector_least_squares_step(
+        np.asarray([0.0]),
+        nonlinear_residual,
+        max_relative_step=2.0,
+        line_search_factors=(1.0, 0.5),
+    )
+
+    assert step.accepted is False
+    assert step.line_search_factor == pytest.approx(0.0)
+    np.testing.assert_allclose(step.new_coefficients, [0.0])
+    np.testing.assert_allclose(step.trial_vector, step.residual_vector)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"coefficients": []}, "coefficients"),
+        ({"coefficients": [np.inf]}, "finite"),
+        ({"finite_difference_step": 0.0}, "finite_difference_step"),
+        ({"damping": 0.0}, "damping"),
+        ({"max_relative_step": 0.0}, "max_relative_step"),
+        ({"ridge": -1.0}, "ridge"),
+        ({"accept_tolerance": -1.0}, "accept_tolerance"),
+        ({"line_search_factors": ()}, "line_search_factors"),
+        ({"line_search_factors": (1.0, -0.5)}, "line_search_factors"),
+        ({"jacobian_backend": "bad"}, "jacobian_backend"),
+    ],
+)
+def test_mirror_free_boundary_residual_vector_least_squares_step_rejects_invalid_inputs(kwargs, match):
+    coefficients = kwargs.pop("coefficients", [0.0, 0.0])
+
+    with pytest.raises(ValueError, match=match):
+        mirror_free_boundary_residual_vector_least_squares_step(
+            coefficients,
+            _linear_reduced_residual_vector,
+            **kwargs,
+        )
+
+
+def test_mirror_free_boundary_residual_vector_jacobian_finite_difference_rejects_bad_outputs():
+    with pytest.raises(ValueError, match="at least one"):
+        mirror_free_boundary_residual_vector_jacobian_finite_difference([1.0], lambda items: np.asarray([]))
+    with pytest.raises(ValueError, match="non-finite"):
+        mirror_free_boundary_residual_vector_jacobian_finite_difference([1.0], lambda items: np.asarray([np.nan]))
+
+    def changing_shape(coefficients):
+        value = float(np.asarray(coefficients)[0])
+        return np.asarray([value]) if value >= 0.0 else np.asarray([value, value])
+
+    with pytest.raises(ValueError, match="fixed shape"):
+        mirror_free_boundary_residual_vector_jacobian_finite_difference([0.0], changing_shape)
 
 
 def test_mirror_free_boundary_guarded_least_squares_loop_converges_linear_residual():

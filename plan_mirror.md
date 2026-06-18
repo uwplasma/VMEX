@@ -20028,3 +20028,105 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+---
+## 163. Reduced Vector Least-Squares Step With Finite-Difference or JAX Jacobian Backend
+
+### Steps taken
+
+- Added `MirrorFreeBoundaryVectorLeastSquaresStep` to
+  `vmec_jax/mirror/free_boundary.py`.
+- Added `mirror_free_boundary_residual_vector_jacobian_finite_difference` for
+  central-difference residual-vector Jacobians.
+- Added `mirror_free_boundary_residual_vector_least_squares_step`, a damped
+  line-searched reduced free-boundary LS step that can use:
+  - `jacobian_backend="finite_difference"`;
+  - `jacobian_backend="jax"` with `jax_mode="auto"`, `"forward"`, or
+    `"reverse"`.
+- Exported the new dataclass and helpers through `vmec_jax.mirror.api` and the
+  flat `vmec_jax.mirror` namespace.
+- Added analytic tests for:
+  - finite-difference vector-Jacobian correctness on a linear model;
+  - finite-difference and JAX backend agreement for one LS step;
+  - rejected worse-trial line search behavior;
+  - invalid coefficient, backend, line-search, and residual-vector outputs.
+- Updated `docs/mirror/overview.rst` and `examples/mirror/README.md` to mention
+  the selectable reduced LS backend.
+
+### Results obtained
+
+- Reduced free-boundary prototypes can now use the same damped, line-searched
+  LS semantics with either host-side finite differences or JAX autodiff.
+- The host-side circular-coil example remains on its tested combined-residual
+  route, while pure JAX residual-vector prototypes now have a first-class
+  update path that is easier to benchmark and replace with implicit/adjoint
+  derivatives later.
+- No new plot artifact was produced in this tranche because the added behavior
+  is a numerical derivative/update helper with analytic unit-test comparisons.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_free_boundary.py
+python -m ruff check vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_free_boundary.py
+
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_free_boundary.py -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Ruff format/check passed on touched Python files.
+- Mirror free-boundary tests passed: `108 passed in 3.61s`.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The reduced vector LS helper lives beside the existing combined-residual LS
+  helper in `vmec_jax/mirror/free_boundary.py`.
+- The function is intentionally vector-function based, keeping it independent
+  of host-side MOUT writing, example plotting, and dataclass residual assembly.
+- The API exposes the derivative backend explicitly, which supports future
+  benchmarking of finite differences, forward/reverse autodiff,
+  implicit-differentiation, and adjoint routes without changing example
+  orchestration.
+
+### Best next steps
+
+1. Commit and push M163.
+2. Add a small benchmark/example comparing finite-difference, forward-JAX, and
+   reverse-JAX reduced LS steps on a low-dimensional mirror free-boundary
+   residual.
+3. Use that benchmark to decide the default derivative route for reduced
+   differentiable free-boundary prototypes.
+4. Check CI once the current run has useful completed jobs.
+
+### Completion percentages after M163
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `93%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `93%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `98%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
