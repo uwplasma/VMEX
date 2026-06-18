@@ -18,6 +18,7 @@ from vmec_jax.mirror import (
     mirror_boundary_from_on_axis_bz,
     mirror_circular_coils_to_direct_params,
     mirror_external_bnormal,
+    mirror_external_pressure_balance_response,
     mirror_lcfs_diagnostic,
     mirror_lcfs_merit,
     propose_axisymmetric_mirror_lcfs_update,
@@ -58,6 +59,84 @@ def test_mirror_circular_coils_build_essos_compatible_direct_params():
     assert params.stellsym is False
     assert params.regularization_epsilon == 1.0e-6
     assert params.chunk_size == 17
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        (
+            {
+                "radii_m": [[0.3]],
+                "z_centers_m": [0.0],
+                "currents_a": [1.0],
+            },
+            "one-dimensional",
+        ),
+        (
+            {
+                "radii_m": [0.3, 0.4],
+                "z_centers_m": [0.0],
+                "currents_a": [1.0, 1.0],
+            },
+            "same shape",
+        ),
+        (
+            {
+                "radii_m": [],
+                "z_centers_m": [],
+                "currents_a": [],
+            },
+            "at least one",
+        ),
+        (
+            {
+                "radii_m": [0.0],
+                "z_centers_m": [0.0],
+                "currents_a": [1.0],
+            },
+            "positive",
+        ),
+        (
+            {
+                "radii_m": [0.3],
+                "z_centers_m": [0.0],
+                "currents_a": [1.0],
+                "n_segments": 7,
+            },
+            "at least 8",
+        ),
+        (
+            {
+                "radii_m": [0.3],
+                "z_centers_m": [0.0],
+                "currents_a": [1.0],
+                "regularization_epsilon": -1.0,
+            },
+            "nonnegative",
+        ),
+        (
+            {
+                "radii_m": [0.3],
+                "z_centers_m": [0.0],
+                "currents_a": [1.0],
+                "chunk_size": 0,
+            },
+            "chunk_size",
+        ),
+    ],
+)
+def test_mirror_circular_coils_reject_invalid_inputs(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        MirrorCircularCoils(**kwargs)
+
+
+def test_mirror_circular_coils_reject_nonpositive_symmetric_pair_separation():
+    with pytest.raises(ValueError, match="separation_m"):
+        MirrorCircularCoils.symmetric_pair(
+            coil_radius_m=0.35,
+            separation_m=0.0,
+            current_a=1.0e6,
+        )
 
 
 def test_mirror_axis_direct_circular_coils_match_analytic_two_coil_field():
@@ -117,6 +196,8 @@ def test_mirror_free_boundary_beta_cases_default_to_requested_scan_points():
 
     with pytest.raises(ValueError, match="nonnegative"):
         make_mirror_free_boundary_beta_cases((-1.0,))
+    with pytest.raises(ValueError, match="pressure_scale_for_one_percent"):
+        make_mirror_free_boundary_beta_cases(pressure_scale_for_one_percent=0.0)
 
 
 def test_mirror_free_boundary_circular_coil_scan_json_roundtrip(tmp_path):
@@ -244,6 +325,41 @@ def test_mirror_lcfs_merit_combines_pressure_and_normal_field():
     assert merit.external_bnormal_rms == pytest.approx(0.3)
     assert merit.external_bmag_rms == pytest.approx(3.0)
     assert merit.value == pytest.approx(np.sqrt(1.0 + 4.0 * 0.1**2))
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"pressure_scale": 0.0}, "pressure_scale"),
+        ({"bnormal_scale": 0.0}, "bnormal_scale"),
+        ({"bnormal_weight": -1.0}, "bnormal_weight"),
+    ],
+)
+def test_mirror_lcfs_merit_rejects_invalid_scales(kwargs, match):
+    diagnostic = SimpleNamespace(
+        pressure_balance_rms=2.0,
+        external_bnormal_rms=0.3,
+        external_bmag=np.full((1, 4), 3.0),
+    )
+
+    with pytest.raises(ValueError, match=match):
+        mirror_lcfs_merit(diagnostic, **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"mu0": 0.0}, "mu0"),
+        ({"radius_step_fraction": 0.0}, "radius_step_fraction"),
+        ({"radius_step_min": 0.0}, "radius_step_min"),
+        ({"radius_floor": 0.0}, "radius_floor"),
+    ],
+)
+def test_mirror_external_pressure_balance_response_rejects_invalid_steps(kwargs, match):
+    diagnostic = SimpleNamespace()
+
+    with pytest.raises(ValueError, match=match):
+        mirror_external_pressure_balance_response(diagnostic, provider_params=None, **kwargs)
 
 
 def test_axisymmetric_lcfs_update_reduces_synthetic_pressure_imbalance():

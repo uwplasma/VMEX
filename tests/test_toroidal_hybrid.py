@@ -8,9 +8,12 @@ import sys
 from importlib import import_module
 
 import numpy as np
+import pytest
 
 from vmec_jax.namelist import read_indata, write_indata
+import vmec_jax.toroidal_hybrid as toroidal_hybrid
 from vmec_jax.toroidal_hybrid import (
+    ToroidalHybridBoundarySamples,
     evaluate_toroidal_hybrid_indata_boundary,
     sample_toroidal_stellarator_mirror_hybrid_boundary,
     toroidal_stellarator_mirror_hybrid_indata,
@@ -51,6 +54,74 @@ def test_toroidal_hybrid_indata_roundtrips_and_reconstructs_samples(tmp_path: Pa
     assert read_back.get_int("NTOR") == 4
     assert "RBS" not in read_back.indexed
     assert "ZBC" not in read_back.indexed
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"ntheta": 7}, "at least 8"),
+        ({"minor_radius": 0.0}, "major_radius"),
+        ({"major_radius": 0.1, "minor_radius": 0.2}, "major_radius"),
+        ({"corner_helicity": -1}, "nonnegative"),
+        (
+            {
+                "major_radius": 0.3,
+                "minor_radius": 0.29,
+                "axis_oval": -0.2,
+                "side_minor_modulation": 0.3,
+                "corner_amplitude": 0.1,
+            },
+            "nonpositive cylindrical R",
+        ),
+    ],
+)
+def test_toroidal_hybrid_boundary_rejects_invalid_geometry(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        sample_toroidal_stellarator_mirror_hybrid_boundary(**kwargs)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"nfp": 0}, "nfp"),
+        ({"mpol": 2}, "mpol"),
+        ({"ntor": 2}, "ntor"),
+        ({"ntor": 3, "corner_helicity": 2}, "ntor"),
+    ],
+)
+def test_toroidal_hybrid_indata_rejects_invalid_mode_extent(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        toroidal_stellarator_mirror_hybrid_indata(**kwargs)
+
+
+def test_toroidal_hybrid_indata_rejects_non_stellarator_symmetric_samples(monkeypatch):
+    def asymmetric_samples(*, ntheta, nzeta, **_kwargs):
+        theta = np.linspace(0.0, 2.0 * np.pi, int(ntheta), endpoint=False)
+        zeta = np.linspace(0.0, 2.0 * np.pi, int(nzeta), endpoint=False)
+        theta2, zeta2 = np.meshgrid(theta, zeta, indexing="ij")
+        return ToroidalHybridBoundarySamples(
+            theta=theta,
+            zeta=zeta,
+            R=1.2 + 0.05 * np.cos(theta2) + 0.01 * np.sin(theta2 + zeta2),
+            Z=0.12 * np.sin(theta2),
+            side_weight=np.cos(zeta2) ** 2,
+            corner_weight=np.sin(zeta2) ** 2,
+        )
+
+    monkeypatch.setattr(
+        toroidal_hybrid,
+        "sample_toroidal_stellarator_mirror_hybrid_boundary",
+        asymmetric_samples,
+    )
+
+    with pytest.raises(ValueError, match="not stellarator symmetric"):
+        toroidal_hybrid.toroidal_stellarator_mirror_hybrid_indata(
+            mpol=4,
+            ntor=4,
+            ntheta_fit=32,
+            nzeta_fit=32,
+            coeff_tol=1.0e-14,
+        )
 
 
 def test_toroidal_hybrid_example_runs_without_plots(tmp_path: Path):
