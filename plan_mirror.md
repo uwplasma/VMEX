@@ -5740,6 +5740,162 @@ No user input is needed.
 
 ---
 
+## 69. 2026-06-18 M12g low-resolution LCFS pilot with actual diagnostics
+
+This tranche added an optional pilot loop to the circular-coil example.  The
+pilot applies the proposed axisymmetric radius boundary, reruns the
+fixed-boundary solve at low resolution, recomputes the LCFS diagnostics, and
+records whether the actual pressure-balance RMS improved.  Non-improving
+trials are rejected and the pilot does not advance them to the next step.
+
+### Steps taken
+
+- Added `--run-lcfs-pilot` and `--lcfs-pilot-steps` to
+  `examples/mirror_free_boundary_circular_coils.py`.
+- Added `--lcfs-update-damping` and
+  `--lcfs-update-max-relative-step` controls.
+- For each beta row, the optional pilot now:
+  - applies the proposal boundary from M12f;
+  - reruns the existing fixed-boundary solver on that proposed boundary;
+  - writes a pilot-step `mout`;
+  - resamples the external field on the proposed boundary;
+  - recomputes side-boundary `B_ext.n` and total-pressure imbalance;
+  - writes a standard plot bundle and pilot LCFS diagnostic plot;
+  - records an `accepted` flag and stops advancing if actual pressure-balance
+    RMS does not improve.
+- Extended the root example smoke test to exercise one pilot step at
+  `maxiter=0` and verify that pilot `mout` and acceptance metadata are written.
+- Updated docs and the mirror examples README.
+
+### Results obtained
+
+Generated artifacts:
+
+- `results/mirror/m12g_lcfs_pilot_actual/free_boundary_circular_coils_metrics.json`.
+- `results/mirror/m12g_lcfs_pilot_actual/free_boundary_circular_coils_setup.json`.
+- Three baseline beta-row `mout` files and three pilot-step `mout` files.
+- Sixty-nine PNGs, including baseline and pilot LCFS diagnostic panels.
+
+Representative beta rows with `baseline_maxiter=0`, one pilot step, and a 5%
+relative radius cap:
+
+| beta percent | baseline pressure RMS | predicted RMS | actual pilot RMS | actual change fraction | accepted |
+| ---: | ---: | ---: | ---: | ---: | :---: |
+| 1 | `1.803515365850` | `1.797531697147` | `3.109631442303` | `-7.242056825156e-01` | `false` |
+| 3 | `1.803515365850` | `1.797531697147` | `3.109631442303` | `-7.242056825156e-01` | `false` |
+| 10 | `1.803515365850` | `1.797531697147` | `3.109631442303` | `-7.242056825156e-01` | `false` |
+
+Normal-field diagnostic:
+
+| beta percent | baseline `B_ext.n` RMS | pilot `B_ext.n` RMS |
+| ---: | ---: | ---: |
+| 1 | `7.657346104349e-03` | `4.164859674186e-01` |
+| 3 | `7.657346104349e-03` | `4.164859674186e-01` |
+| 10 | `7.657346104349e-03` | `4.164859674186e-01` |
+
+The pilot result is intentionally logged as a negative result: the pressure-only
+linearized proposal predicts a small improvement, but the actual fixed-boundary
+rerun worsens the pressure-balance diagnostic and creates large `B_ext.n`
+near the caps.  The next update must be slope/cap aware, not just local
+external magnetic-pressure aware.
+
+Visual validation:
+
+- Inspected the beta-10 pilot-step LCFS panel.  The plot shows strong
+  normal-field spikes near the caps after the proposed boundary is applied.
+- Pixel-stat checks reported all pilot LCFS diagnostic PNGs nonblank.
+
+### How it was tested
+
+Focused free-boundary and root example tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots \
+  -q
+```
+
+Result: `9 passed in 5.07s`.
+
+Example with plots and pilot outputs:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/m12g_lcfs_pilot_actual \
+  --ntheta 24 \
+  --nxi 33 \
+  --n-segments 256 \
+  --run-fixed-boundary-baseline \
+  --run-lcfs-pilot \
+  --lcfs-pilot-steps 1 \
+  --baseline-maxiter 0
+```
+
+Result: metrics JSON, setup JSON, six `mout` files, and 69 PNGs written.
+
+Lint/format/docs/whitespace:
+
+```bash
+python -m ruff check \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff format --check \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_examples.py
+python -m sphinx -W -j auto -b html docs docs/_build/html
+git diff --check
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- The pilot remains in the root example because it is a workflow diagnostic,
+  not yet a reusable free-boundary solver.
+- It reuses the existing fixed-boundary solver, `mout` writer, plot bundle,
+  and LCFS diagnostic helper rather than creating a parallel output path.
+- The rejection flag prevents a known-worse radius candidate from being
+  silently advanced in multi-step pilot runs.
+- The negative result is retained in the metrics and plan because it identifies
+  the missing slope/cap term needed for a robust LCFS updater.
+
+### Best next steps
+
+1. Commit and push M12g.
+2. Add slope/cap-aware update controls:
+   - smooth or solve for radius updates in a Chebyshev basis;
+   - constrain `dr/dz` near caps;
+   - penalize predicted `B_ext.n`, not only pressure balance;
+   - preserve equal cap conditions explicitly.
+3. Add a synthetic test where a slope-aware update reduces both pressure
+   balance and normal-field residual.
+4. Re-run the M12g pilot with the slope-aware proposal and require actual
+   acceptance before increasing pilot steps or beta resolution.
+
+### Completion percentages after M12g
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `85%`.
+- I/O schema and docs: `89%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `42%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `32%`.
+- PR merge readiness overall: `87%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+
 ## 68. 2026-06-18 M12f conservative axisymmetric LCFS update proposal
 
 This tranche added the first tested LCFS radius proposal.  It is not a full

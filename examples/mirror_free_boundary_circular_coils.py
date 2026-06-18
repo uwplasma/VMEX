@@ -54,6 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--run-fixed-boundary-baseline", action="store_true")
     parser.add_argument("--baseline-maxiter", type=int, default=0)
     parser.add_argument("--baseline-psi-prime", type=float, default=0.01)
+    parser.add_argument("--lcfs-update-damping", type=float, default=0.25)
+    parser.add_argument("--lcfs-update-max-relative-step", type=float, default=0.05)
+    parser.add_argument("--run-lcfs-pilot", action="store_true")
+    parser.add_argument("--lcfs-pilot-steps", type=int, default=1)
     parser.add_argument("--no-plots", action="store_true")
     return parser
 
@@ -189,6 +193,10 @@ def _run_fixed_boundary_baseline_cases(
     scan,
     maxiter: int,
     psi_prime_value: float,
+    lcfs_update_damping: float,
+    lcfs_update_max_relative_step: float,
+    run_lcfs_pilot: bool,
+    lcfs_pilot_steps: int,
     write_plots: bool,
 ) -> list[dict[str, object]]:
     config = MirrorConfig(
@@ -208,13 +216,15 @@ def _run_fixed_boundary_baseline_cases(
     rows = []
     for case in scan.beta_cases:
         label = _beta_label(case.beta_percent)
+        pressure = PressureProfile.polynomial([case.pressure_scale, -case.pressure_scale], gamma=2.0)
+        solve_options = MirrorSolveOptions(optimizer="lbfgs", maxiter=int(maxiter), tolerance=1.0e-10, mu0=1.0)
         result = run_mirror_fixed_boundary(
             config,
             boundary,
             psi_prime=PsiPrimeProfile.constant(float(psi_prime_value)),
             i_prime=IPrimeProfile.zero(),
-            pressure=PressureProfile.polynomial([case.pressure_scale, -case.pressure_scale], gamma=2.0),
-            options=MirrorSolveOptions(optimizer="lbfgs", maxiter=int(maxiter), tolerance=1.0e-10, mu0=1.0),
+            pressure=pressure,
+            options=solve_options,
         )
         mout_path = outdir / f"mout_free_boundary_circular_coils_beta_{label}.nc"
         if mout_path.exists():
@@ -226,11 +236,91 @@ def _run_fixed_boundary_baseline_cases(
         proposal = propose_axisymmetric_mirror_lcfs_update(
             lcfs,
             pressure_response,
-            damping=0.25,
-            max_relative_step=0.05,
+            damping=lcfs_update_damping,
+            max_relative_step=lcfs_update_max_relative_step,
             radius_floor=1.0e-4,
             preserve_caps=True,
         )
+        pilot_rows: list[dict[str, object]] = []
+        accepted_pressure_balance_rms = float(lcfs.pressure_balance_rms)
+        candidate_boundary = proposal.boundary
+        if run_lcfs_pilot:
+            for step in range(1, int(lcfs_pilot_steps) + 1):
+                pilot_result = run_mirror_fixed_boundary(
+                    config,
+                    candidate_boundary,
+                    psi_prime=PsiPrimeProfile.constant(float(psi_prime_value)),
+                    i_prime=IPrimeProfile.zero(),
+                    pressure=pressure,
+                    options=solve_options,
+                )
+                pilot_mout_path = outdir / f"mout_free_boundary_circular_coils_beta_{label}_lcfs_step_{step}.nc"
+                if pilot_mout_path.exists():
+                    pilot_mout_path.unlink()
+                pilot_mout = write_mirror_output(pilot_mout_path, pilot_result)
+                pilot_output = load_mirror_output(pilot_mout)
+                pilot_external_sample = sample_mirror_boundary_external_field(
+                    baseline_grid, candidate_boundary, scan.coils
+                )
+                pilot_lcfs = mirror_lcfs_diagnostic(pilot_output, pilot_external_sample, mu0=1.0)
+                pilot_response = mirror_external_pressure_balance_response(pilot_lcfs, scan.coils, mu0=1.0)
+                pilot_proposal = propose_axisymmetric_mirror_lcfs_update(
+                    pilot_lcfs,
+                    pilot_response,
+                    damping=lcfs_update_damping,
+                    max_relative_step=lcfs_update_max_relative_step,
+                    radius_floor=1.0e-4,
+                    preserve_caps=True,
+                )
+                pilot_plot_paths: dict[str, str] = {}
+                if write_plots:
+                    pilot_figure_dir = outdir / "figures" / f"fixed_boundary_beta_{label}_lcfs_step_{step}"
+                    pilot_plot_paths = {
+                        name: str(path)
+                        for name, path in plot_mirror_output(pilot_mout, outdir=pilot_figure_dir).items()
+                    }
+                    pilot_plot_paths["lcfs_diagnostic"] = str(
+                        _write_lcfs_diagnostic_plot(
+                            pilot_lcfs,
+                            pilot_proposal,
+                            outdir=pilot_figure_dir,
+                            name=f"free_boundary_circular_coils_beta_{label}_lcfs_step_{step}",
+                        )
+                    )
+                pilot_final = pilot_result.final_trace
+                accepted = bool(pilot_lcfs.pressure_balance_rms <= accepted_pressure_balance_rms)
+                pilot_rows.append(
+                    {
+                        "step": int(step),
+                        "mout": str(pilot_mout),
+                        "accepted": accepted,
+                        "final_residual_norm": float(pilot_final.residual_norm),
+                        "final_fsq": float(pilot_final.fsq),
+                        "final_normalized_force": float(pilot_final.normalized_force),
+                        "min_sqrtg": float(pilot_final.min_sqrtg),
+                        "mirror_ratio": float(pilot_final.mirror_ratio),
+                        "lcfs_external_bnormal_rms": float(pilot_lcfs.external_bnormal_rms),
+                        "lcfs_external_bnormal_max": float(pilot_lcfs.external_bnormal_max),
+                        "lcfs_pressure_balance_rms": float(pilot_lcfs.pressure_balance_rms),
+                        "lcfs_pressure_balance_max": float(pilot_lcfs.pressure_balance_max),
+                        "lcfs_pressure_balance_rms_change_fraction": float(
+                            1.0 - pilot_lcfs.pressure_balance_rms / max(lcfs.pressure_balance_rms, 1.0e-300)
+                        ),
+                        "lcfs_update_pressure_balance_rms_predicted_next": float(
+                            pilot_proposal.pressure_balance_rms_predicted
+                        ),
+                        "lcfs_update_max_relative_delta_radius_next": float(
+                            np.max(
+                                np.abs(pilot_proposal.delta_radius) / np.maximum(pilot_proposal.old_radius, 1.0e-300)
+                            )
+                        ),
+                        "figures": pilot_plot_paths,
+                    }
+                )
+                if not accepted:
+                    break
+                accepted_pressure_balance_rms = float(pilot_lcfs.pressure_balance_rms)
+                candidate_boundary = pilot_proposal.boundary
         plot_paths: dict[str, str] = {}
         if write_plots:
             figure_dir = outdir / "figures" / f"fixed_boundary_beta_{label}"
@@ -274,6 +364,7 @@ def _run_fixed_boundary_baseline_cases(
                 "lcfs_update_max_relative_delta_radius": float(
                     np.max(np.abs(proposal.delta_radius) / np.maximum(proposal.old_radius, 1.0e-300))
                 ),
+                "lcfs_pilot_rows": pilot_rows,
                 "figures": plot_paths,
             }
         )
@@ -296,8 +387,14 @@ def run_case(
     run_fixed_boundary_baseline: bool = False,
     baseline_maxiter: int = 0,
     baseline_psi_prime: float = 0.01,
+    lcfs_update_damping: float = 0.25,
+    lcfs_update_max_relative_step: float = 0.05,
+    run_lcfs_pilot: bool = False,
+    lcfs_pilot_steps: int = 1,
     write_plots: bool = True,
 ) -> Path:
+    if run_lcfs_pilot and int(lcfs_pilot_steps) < 1:
+        raise ValueError("lcfs_pilot_steps must be at least 1 when run_lcfs_pilot is enabled")
     outdir.mkdir(parents=True, exist_ok=True)
     grid = make_mirror_grid(
         ns=ns, ntheta=ntheta, nxi=nxi, mpol=max(0, (ntheta - 1) // 2), z_min=-0.5 * separation, z_max=0.5 * separation
@@ -347,6 +444,10 @@ def run_case(
             scan=scan,
             maxiter=baseline_maxiter,
             psi_prime_value=baseline_psi_prime,
+            lcfs_update_damping=lcfs_update_damping,
+            lcfs_update_max_relative_step=lcfs_update_max_relative_step,
+            run_lcfs_pilot=run_lcfs_pilot,
+            lcfs_pilot_steps=lcfs_pilot_steps,
             write_plots=write_plots,
         )
         if run_fixed_boundary_baseline
@@ -394,6 +495,10 @@ def main() -> None:
         run_fixed_boundary_baseline=args.run_fixed_boundary_baseline,
         baseline_maxiter=args.baseline_maxiter,
         baseline_psi_prime=args.baseline_psi_prime,
+        lcfs_update_damping=args.lcfs_update_damping,
+        lcfs_update_max_relative_step=args.lcfs_update_max_relative_step,
+        run_lcfs_pilot=args.run_lcfs_pilot,
+        lcfs_pilot_steps=args.lcfs_pilot_steps,
         write_plots=not args.no_plots,
     )
     print(path)
