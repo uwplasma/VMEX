@@ -1700,11 +1700,6 @@ def wout_minimal_from_fixed_boundary(
 
     # Current profile metadata for VMECPlot2.
     current_metadata = _wout_current_profile_metadata_from_indata(indata)
-    ac = current_metadata.ac
-    ac_aux_s = current_metadata.ac_aux_s
-    ac_aux_f = current_metadata.ac_aux_f
-    pcurr_type = current_metadata.pcurr_type
-    piota_type = current_metadata.piota_type
 
     scalar_diag = compute_minimal_wout_scalar_diagnostics(
         ns=int(ns),
@@ -1750,23 +1745,6 @@ def wout_minimal_from_fixed_boundary(
         compute_mercier_func=_compute_mercier,
         glasser_from_wout_mercier_terms_func=_glasser_from_wout_mercier_terms,
     )
-    betatotal = scalar_diag.betatotal
-    betapol = scalar_diag.betapol
-    betator = scalar_diag.betator
-    betaxis = scalar_diag.betaxis
-    ctor = scalar_diag.ctor
-    DMerc = scalar_diag.DMerc
-    Dshear = scalar_diag.Dshear
-    Dcurr = scalar_diag.Dcurr
-    Dwell = scalar_diag.Dwell
-    Dgeod = scalar_diag.Dgeod
-    D_R = scalar_diag.D_R
-    H_glasser = scalar_diag.H_glasser
-    glasser_correction = scalar_diag.glasser_correction
-    glasser_shear_valid = scalar_diag.glasser_shear_valid
-    jdotb = scalar_diag.jdotb
-    bdotb = scalar_diag.bdotb
-    bdotgradv = scalar_diag.bdotgradv
 
     # vmec_jax writes VMEC++-style diagnostic wout files for non-converged runs:
     # preserve every field computed from the last state and mark solver status.
@@ -1780,9 +1758,7 @@ def wout_minimal_from_fixed_boundary(
         "off",
     )
     if (not bool(converged)) and bool(zero_beta_nonconv):
-        betatotal = 0.0
-        betapol = 0.0
-        betator = 0.0
+        scalar_diag = scalar_diag._replace(betatotal=0.0, betapol=0.0, betator=0.0)
 
     # Convert internal lambda coefficients to VMEC wout convention.
     from .field import lamscale_from_phips
