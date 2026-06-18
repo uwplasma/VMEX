@@ -8846,3 +8846,66 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.91%.
+
+## 2026-06-18 Fixed-Boundary Stage Policy Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted fixed-boundary stage-policy ownership from
+   `vmec_jax.optimization_workflow` into
+   `vmec_jax.optimizers.fixed_boundary.stage_policy`.
+2. Moved `BoundaryModeLimits`, QS/repeated stage schedules, stage-budget
+   selection, and boundary-mode stage normalization/labels into the new pure
+   policy module.
+3. Preserved the public workflow facade by importing the same names from
+   `optimization_workflow`.
+4. Kept the workflow-level `rebuild_for_optimization_resolution` wrapper in
+   place because it remains the monkeypatch seam used by existing examples and
+   tests.
+
+Results obtained:
+
+- `vmec_jax/optimization_workflow.py` dropped from 2,074 lines to 1,950 lines.
+- The new `stage_policy` module is 120 lines and contains only pure stage
+  schedule/normalization logic.
+- Source-health now reports the remaining largest production target as
+  `vmec_jax/solvers/fixed_boundary/residual/iteration.py`, with
+  `optimization_workflow.py` below the 2,000-line warning threshold.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization_workflow.py vmec_jax/optimizers/fixed_boundary/stage_policy.py tests/test_optimization_helpers.py tests/test_optimization_examples.py tests/test_optimization_workflow_unit.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_helpers.py -k 'stage_modes or stage_budget or boundary_mode_limits or rebuild_for_optimization_resolution' tests/test_optimization_examples.py -k 'stage_policy or stage_modes or mode_limit' tests/test_optimization_workflow_unit.py::test_workflow_mode_limit_seed_and_summary_guard_branches -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_workflow_unit.py tests/test_optimization_helpers.py tests/test_optimization_examples.py tests/test_optimization_workflow_qi_objectives_more_coverage.py tests/test_augmented_lagrangian.py -q`
+- `python tools/diagnostics/source_health.py --top 15 --top-functions 25`
+
+Best next steps:
+
+1. Commit and push this stage-policy split.
+2. Move to the fixed-boundary residual iteration monolith next, starting with
+   a low-risk extraction of pure bookkeeping/configuration helpers rather than
+   changing the numerical update path.
+3. Continue preserving public imports and physics gates while reducing the
+   largest files in coherent tranches.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.96%.
+- Differentiability/refactor implementation: 99.9995%.
+- Solver monolith reduction: 98.55%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.92%.
