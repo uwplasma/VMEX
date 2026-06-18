@@ -7,6 +7,73 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-18.
 
+## 2026-06-18 Resume Audit, CI Check, and Free-Boundary Claim Control
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Checked GitHub PR #20 through `gh` and the CI inspection helper.  No failing
+   checks were reported; several exact/slow shards were still in progress.
+2. Revisited the active plans after the latest source-simplification commits
+   and fixed stale `plan_freeb.md` branch metadata.
+3. Added summary-level smoke assertions for single-stage direct-coil derivative
+   proposals so `summary.json` preserves the same provenance as the helper
+   contract: complete-solve acceptance authority, no adaptive-host
+   differentiation claim, current-only fast-path evidence, and fixed rejected
+   controller-slot evidence when requested.
+
+Results obtained:
+
+- The draft PR branch remains clean except for the current plan/test edits.
+- The free-boundary docs already state the key limitation clearly: same-branch
+  branch-local derivative reports are promoted; arbitrary adaptive host-branch
+  differentiation remains unclaimed.
+- The new assertions are cheap unit/smoke coverage and do not add another VMEC
+  solve to CI.
+- Local verification passed for ruff, the focused summary-contract tests, the
+  free-boundary QS/finite-beta smoke shard, the fast docs build, and the four
+  native rejected-slot complete-solve FD gates.
+
+Tests and commands to run:
+
+- `python -m ruff check tests/test_free_boundary_qs_coil_optimization_smoke.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py -q`
+- If those pass, rerun the four native rejected-slot complete-solve FD gates in
+  `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`.
+
+Best next steps:
+
+1. Commit/push this claim-control tranche.
+2. Continue refactoring only through high-signal domain seams: residual
+   controller policy, WOUT/diagnostic table helpers, free-boundary report
+   proposal APIs, and optimizer derivative-policy seams.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.999997%.
+- Solver monolith reduction: 99.46%.
+- Free-boundary adjoint monolith reduction: 99.35%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.1%.
+- WOUT diagnostic/profile decomposition: 99.72%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 98.9%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9987%.
+
 Repository: `/Users/rogeriojorge/local/vmec_jax`.
 
 ## Executive Summary

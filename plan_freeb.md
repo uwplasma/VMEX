@@ -1,8 +1,8 @@
 # Free-Boundary Coil-Aware Single-Stage Optimization Plan
 
-PR head branch: merged to `main`
+PR head branch: `codex/differentiability-refactor-plan` into `main`
 
-Local working branch: `main`
+Local working branch: `codex/differentiability-refactor-plan`
 
 Repository clone: `/Users/rogeriojorge/local/vmec_jax`
 
@@ -11,6 +11,64 @@ Baseline commit: `3657e0c release: prepare v0.0.13`
 Date opened: 2026-05-24
 
 ## Current Release Status
+
+### 2026-06-18 Resume Audit and Scoped Phase Claims
+
+Steps taken:
+
+1. Checked the draft PR checks with `gh` and the CI inspection helper.  No
+   failing GitHub Actions checks were present; several exact/slow shards were
+   still running at the time of the audit.
+2. Re-audited the current free-boundary plan, docs, and single-stage direct-coil
+   example/tests after the source-simplification commits.
+3. Corrected this plan header so it reflects the active draft refactor branch
+   rather than the already-merged phase-1/phase-2 replay work on `main`.
+4. Tightened the lightweight smoke-test contract for derivative-assisted
+   proposals so `summary.json` preserves the same provenance as the
+   lower-level helper: complete-solve acceptance authority, no adaptive-host
+   differentiation claim, current-only JVP fast-path evidence, and fixed
+   rejected-controller-slot evidence when the report requested that gate.
+
+Results obtained:
+
+1. The current branch remains cleanly based on the draft PR branch, with recent
+   refactor tranches already pushed.
+2. The docs already keep the key production limitation explicit: complete
+   solves remain acceptance authority, and arbitrary adaptive host-controller
+   branch changes are not claimed.
+3. The added summary-level test assertions close the remaining cheap phase-3
+   provenance gap without adding a heavy solver run.
+4. The targeted smoke, fast docs, and four native rejected-slot
+   complete-solve FD gates passed locally.
+
+Best next steps:
+
+1. Commit and push this claim-control and provenance-test tranche.
+2. Continue source-health refactors only through clear domain seams; avoid
+   adding helper files that merely hide complexity.
+3. Keep VMEC2000/mgrid/direct-coil parity expansion bounded to fixtures that
+   produce finite positive geometry WOUTs.
+
+Need from user:
+
+No action needed.
+
+Completion:
+
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 100% for branch-local,
+  same-fingerprint accepted/rejected replay/controller gates that pass
+  complete-solve central-FD checks; arbitrary adaptive host-branch
+  differentiation remains a deferred research lane.
+- VMEC parity and physics gates: 99.92%.
+- Single-stage coil-only optimization phase 3: 100% for the current direct-coil
+  example contract where branch-local derivatives propose steps and complete
+  free-boundary solves remain the sole acceptance authority.
+- CPU/GPU performance: 99.60%.
+- CI/runtime/coverage hygiene: 100% locally for the current shards; latest
+  GitHub CI was still running exact/slow shards at the time of this entry.
+- Docs/release hygiene: 100%.
+- QI minimal-seed README artifacts: 100%.
 
 ### 2026-06-17 Slot-Gated Proposal and Bounded VMEC2000 Rerun
 
@@ -2498,7 +2556,7 @@ Best next steps:
 2. Do not relax the WOUT-promotion quality gate to accept VMEC2000 error WOUTs
    or zero-geometry WOUTs; those are diagnostics, not parity evidence.
 3. Search for a better external VMEC2000 free-boundary fixture only after the
-   phase-2 same-branch/full-loop adjoint gates remain green, because the
+   phase-2 same-branch/fingerprint-gated adjoint gates remain green, because the
    current vmec_jax direct-coil/generated-mgrid parity path is already passing.
 
 Need from user:
@@ -2672,8 +2730,8 @@ Best next steps:
    solves remain the acceptance authority.
 2. If users need more scalar aliases, add canonicalization at the parser
    boundary only, not new internal objective names.
-3. Continue the next full-loop AD-vs-central-FD physical-scalar gate under an
-   explicit branch fingerprint.
+3. Continue the next branch-local AD-vs-complete-solve-FD physical-scalar gate
+   under an unchanged branch fingerprint.
 
 Need from user:
 

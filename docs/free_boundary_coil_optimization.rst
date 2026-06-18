@@ -139,7 +139,8 @@ to git.
 Boozer/QS diagnostics are the intended promotion target for this lane, but the
 current implementation keeps the single-stage optimization example on a cheap
 VMEC residual plus VMEC-state ``qs_total``, aspect, and mean-iota proxy until
-complete Boozer/QS full-loop gradient checks pass.
+same-branch, fingerprint-gated Boozer/QS derivative checks pass against
+complete-solve finite differences.
 
 Reviewer-facing validation plots for this lane are committed only as compressed
 summary panels. Generated WOUTs, magnetic grids, PDFs, and full-resolution raw
@@ -314,7 +315,8 @@ The reviewer-facing status of this ladder is:
        VMEC residual plus VMEC-state ``qs_total``, aspect, and mean-iota proxy
        instead of Boozer/QS gradients.
      - Add Boozer/QS diagnostics to the complete-solve objective and validate
-       coil-current and coil-geometry gradients against finite differences.
+       same-branch, fingerprint-gated coil-current and coil-geometry
+       derivatives against complete-solve finite differences.
 
 In short, rungs 1--6 validate the mathematical and operator pieces needed for a
 production adjoint, rung 7 validates complete-solve finite response plus
@@ -903,12 +905,13 @@ synchronize JAX arrays before recording device-ready timings, so they are
 suitable for distinguishing Python dispatch, XLA compilation, and CPU/GPU
 execution costs in local profiling.
 The report also writes ``same_branch_report_config`` in ``summary.json`` so the
-artifact remains self-describing.  Its derivative contract is fixed accepted
-branch only; it does not differentiate adaptive host branch selection, rejected
-step selection, resets, or branch changes unless the explicit fingerprint
-remains compatible.  If the complete-solve finite-difference branch fingerprint
-is not same-branch compatible, the example records the incompatibility and skips
-branch-local AD instead of reporting an invalid derivative.
+artifact remains self-describing.  Its derivative contract is fixed
+recorded-branch replay only; it does not differentiate changes in adaptive host
+branch selection.  Rejected-slot and reset effects are replay evidence only
+when the explicit fingerprint remains compatible.  If the complete-solve
+finite-difference branch fingerprint is not same-branch compatible, the example
+records the incompatibility and skips branch-local AD instead of reporting an
+invalid derivative.
 
 Run the dependency-light direct-coil forward example from the repository root.
 This path constructs a synthetic circular ``CoilFieldParams`` object directly in
@@ -2010,7 +2013,8 @@ Next Implementation Steps
   realistic ESSOS/high-beta full-solve finite-difference checks, then promote
   the optional xfail.
 - Replace the phase-1 coil-only optimization proxy with a Boozer/QS objective
-  once the complete direct-coil free-boundary loop has validated gradients.
+  once same-branch, fingerprint-gated Boozer/QS derivatives pass against
+  complete-solve finite differences.
 - Promote the VMEC2000 generated-``mgrid`` comparison after the direct/mgrid
   trace discrepancy is bounded.
 - Replace the dense validation vacuum-adjoint primitive with the production
