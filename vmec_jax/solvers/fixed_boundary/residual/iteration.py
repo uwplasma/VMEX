@@ -410,6 +410,7 @@ from vmec_jax.solvers.fixed_boundary.scan.runtime import (
     get_or_build_scan_runner as _get_or_build_scan_runner,
     resolve_scan_runtime_hooks_from_env as _resolve_scan_runtime_hooks_from_env,
     run_chunked_scan as _run_chunked_scan,
+    run_nonchunked_scan as _run_nonchunked_scan,
     run_scan_preflight_step as _run_scan_preflight_step,
     scan_trace_context_or_null as _scan_trace_context_or_null,
 )
@@ -2508,73 +2509,33 @@ def solve_fixed_boundary_residual_iter(
             carry_final = chunked_result.carry_final
             hist = chunked_result.history
         else:
-            runner, cache_status = _get_scan_runner(int(max_iter_tail) if int(max_iter_tail) > 0 else int(max_iter_scan))
-            if preflight_iters > 0:
-                # Preflight the first iteration separately to avoid XLA aliasing
-                # issues in the initial tomnsps pass.  Accelerator runs may use
-                # a cached one-step runner to avoid a slow host-side force pass.
-                carry_pre = carry_init
-                jit_preflight = _scan_jit_preflight_enabled(
-                    env_value=os.getenv("VMEC_JAX_SCAN_JIT_PREFLIGHT"),
-                    backend_name=_scan_backend_name(),
-                    scan_differentiated=bool(scan_differentiated),
-                ) and (not bool(scan_collect_print))
-                preflight = _run_scan_preflight_step(
-                    carry_pre,
-                    iter_offset_preflight=iter_offset_preflight,
-                    jit_preflight=bool(jit_preflight),
-                    get_scan_runner=_get_scan_runner,
-                    scan_step=_scan_step,
-                    scan_timing_enabled=bool(scan_timing_enabled),
-                    scan_timing_stats=scan_timing_stats,
-                    block_scan_value=scan_device_runtime.block_value,
-                    perf_counter=time.perf_counter,
-                    jnp_module=jnp,
-                    jax_module=jax,
-                )
-                carry_pre = preflight.carry
-                hist_pre = preflight.history_row
-                if (
-                    scan_fallback_enabled_run
-                    and int(scan_fallback_iters) > 0
-                    and int(preflight_iters) >= int(scan_fallback_iters)
-                ):
-                    carry_pre = carry_pre._replace(fallback_active=jnp.asarray(False))
-                if max_iter_tail > 0:
-                    it_seq = jnp.arange(preflight_iters, int(max_iter_scan), dtype=jnp.int32)
-                    if axis_reset_repeat:
-                        carry_pre = carry_pre._replace(iter_offset=jnp.asarray(iter_offset0, dtype=jnp.int32))
-                    t_device = time.perf_counter() if scan_timing_enabled else None
-                    carry_final, hist_tail = runner(carry_pre, it_seq)
-                    if scan_timing_enabled and t_device is not None:
-                        carry_final, hist_tail = scan_device_runtime.ready(
-                            t_device,
-                            (carry_final, hist_tail),
-                            cache_status=cache_status,
-                        )
-                    if state_only_scan:
-                        hist = None
-                    else:
-                        hist = jax.tree_util.tree_map(
-                            lambda a, b: jnp.concatenate([a[None], b], axis=0),
-                            hist_pre,
-                            hist_tail,
-                        )
-                else:
-                    carry_final = carry_pre
-                    hist = None if state_only_scan else jax.tree_util.tree_map(lambda a: a[None], hist_pre)
-            else:
-                it_seq = jnp.arange(int(max_iter_scan), dtype=jnp.int32)
-                t_device = time.perf_counter() if scan_timing_enabled else None
-                carry_final, hist = runner(carry_init, it_seq)
-                if scan_timing_enabled and t_device is not None:
-                    carry_final, hist = scan_device_runtime.ready(
-                        t_device,
-                        (carry_final, hist),
-                        cache_status=cache_status,
-                    )
-                if state_only_scan:
-                    hist = None
+            nonchunked_result = _run_nonchunked_scan(
+                carry_init,
+                max_iter_scan=int(max_iter_scan),
+                max_iter_tail=int(max_iter_tail),
+                preflight_iters=int(preflight_iters),
+                iter_offset_preflight=int(iter_offset_preflight),
+                axis_reset_repeat=bool(axis_reset_repeat),
+                iter_offset0=int(iter_offset0),
+                get_scan_runner=_get_scan_runner,
+                scan_step=_scan_step,
+                scan_jit_preflight_enabled_func=_scan_jit_preflight_enabled,
+                scan_jit_preflight_env=os.getenv("VMEC_JAX_SCAN_JIT_PREFLIGHT"),
+                backend_name=_scan_backend_name(),
+                scan_differentiated=bool(scan_differentiated),
+                scan_collect_print=bool(scan_collect_print),
+                scan_timing_enabled=bool(scan_timing_enabled),
+                scan_timing_stats=scan_timing_stats,
+                scan_device_runtime=scan_device_runtime,
+                perf_counter=time.perf_counter,
+                state_only_scan=bool(state_only_scan),
+                scan_fallback_enabled_run=bool(scan_fallback_enabled_run),
+                scan_fallback_iters=int(scan_fallback_iters),
+                jnp_module=jnp,
+                jax_module=jax,
+            )
+            carry_final = nonchunked_result.carry_final
+            hist = nonchunked_result.history
         scan_postprocess_start = time.perf_counter() if scan_timing_enabled else None
         if state_only_scan:
             traced = _tree_has_tracer(carry_final.state)

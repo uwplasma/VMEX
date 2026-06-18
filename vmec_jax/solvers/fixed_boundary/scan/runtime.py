@@ -45,6 +45,13 @@ class ChunkedScanRunResult(NamedTuple):
     history: Any
 
 
+class NonChunkedScanRunResult(NamedTuple):
+    """Materialized result from a single-runner VMEC scan run."""
+
+    carry_final: Any
+    history: Any
+
+
 def _env_value(env: Mapping[str, str | None], name: str, default: str = "") -> str:
     value = env.get(name, default)
     return default if value is None else str(value)
@@ -429,3 +436,98 @@ def run_chunked_scan(
     if abort_scan_host:
         carry_final = carry_final._replace(abort_scan=jnp_module.asarray(True))
     return ChunkedScanRunResult(carry_final=carry_final, history=hist)
+
+
+def run_nonchunked_scan(
+    carry_init,
+    *,
+    max_iter_scan: int,
+    max_iter_tail: int,
+    preflight_iters: int,
+    iter_offset_preflight: int,
+    axis_reset_repeat: bool,
+    iter_offset0: int,
+    get_scan_runner: Callable[[int], tuple[Any, str]],
+    scan_step: Callable[[Any, Any], tuple[Any, Any]],
+    scan_jit_preflight_enabled_func: Callable[..., bool],
+    scan_jit_preflight_env: str | None,
+    backend_name: str,
+    scan_differentiated: bool,
+    scan_collect_print: bool,
+    scan_timing_enabled: bool,
+    scan_timing_stats: dict[str, Any],
+    scan_device_runtime: Any,
+    perf_counter: Callable[[], float],
+    state_only_scan: bool,
+    scan_fallback_enabled_run: bool,
+    scan_fallback_iters: int,
+    jnp_module,
+    jax_module,
+) -> NonChunkedScanRunResult:
+    """Run a VMEC scan with one cached runner and optional one-step preflight."""
+
+    runner, cache_status = get_scan_runner(int(max_iter_tail) if int(max_iter_tail) > 0 else int(max_iter_scan))
+    if int(preflight_iters) > 0:
+        carry_pre = carry_init
+        jit_preflight = scan_jit_preflight_enabled_func(
+            env_value=scan_jit_preflight_env,
+            backend_name=str(backend_name),
+            scan_differentiated=bool(scan_differentiated),
+        ) and (not bool(scan_collect_print))
+        preflight = run_scan_preflight_step(
+            carry_pre,
+            iter_offset_preflight=int(iter_offset_preflight),
+            jit_preflight=bool(jit_preflight),
+            get_scan_runner=get_scan_runner,
+            scan_step=scan_step,
+            scan_timing_enabled=bool(scan_timing_enabled),
+            scan_timing_stats=scan_timing_stats,
+            block_scan_value=scan_device_runtime.block_value,
+            perf_counter=perf_counter,
+            jnp_module=jnp_module,
+            jax_module=jax_module,
+        )
+        carry_pre = preflight.carry
+        hist_pre = preflight.history_row
+        if (
+            bool(scan_fallback_enabled_run)
+            and int(scan_fallback_iters) > 0
+            and int(preflight_iters) >= int(scan_fallback_iters)
+        ):
+            carry_pre = carry_pre._replace(fallback_active=jnp_module.asarray(False))
+        if int(max_iter_tail) > 0:
+            it_seq = jnp_module.arange(preflight_iters, int(max_iter_scan), dtype=jnp_module.int32)
+            if bool(axis_reset_repeat):
+                carry_pre = carry_pre._replace(iter_offset=jnp_module.asarray(iter_offset0, dtype=jnp_module.int32))
+            t_device = perf_counter() if bool(scan_timing_enabled) else None
+            carry_final, hist_tail = runner(carry_pre, it_seq)
+            if bool(scan_timing_enabled) and t_device is not None:
+                carry_final, hist_tail = scan_device_runtime.ready(
+                    t_device,
+                    (carry_final, hist_tail),
+                    cache_status=cache_status,
+                )
+            if bool(state_only_scan):
+                hist = None
+            else:
+                hist = jax_module.tree_util.tree_map(
+                    lambda a, b: jnp_module.concatenate([a[None], b], axis=0),
+                    hist_pre,
+                    hist_tail,
+                )
+        else:
+            carry_final = carry_pre
+            hist = None if bool(state_only_scan) else jax_module.tree_util.tree_map(lambda a: a[None], hist_pre)
+    else:
+        it_seq = jnp_module.arange(int(max_iter_scan), dtype=jnp_module.int32)
+        t_device = perf_counter() if bool(scan_timing_enabled) else None
+        carry_final, hist = runner(carry_init, it_seq)
+        if bool(scan_timing_enabled) and t_device is not None:
+            carry_final, hist = scan_device_runtime.ready(
+                t_device,
+                (carry_final, hist),
+                cache_status=cache_status,
+            )
+        if bool(state_only_scan):
+            hist = None
+    return NonChunkedScanRunResult(carry_final=carry_final, history=hist)
