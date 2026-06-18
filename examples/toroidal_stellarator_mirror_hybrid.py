@@ -216,6 +216,9 @@ def main() -> None:
     metrics = toroidal_stellarator_mirror_hybrid_metrics(samples)
     metrics.update(
         {
+            "hybrid_fixture_kind": "toroidal_stellarator_mirror_hybrid",
+            "final_hybrid_target_kind": "toroidal_stellarator_mirror_hybrid",
+            "production_hybrid_claim": False,
             "input": str(input_path),
             "nfp": int(args.nfp),
             "mpol": int(args.mpol),

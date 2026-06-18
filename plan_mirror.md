@@ -5739,6 +5739,125 @@ Visual validation:
 No user input is needed.
 
 ---
+## 171. Straight-Axis Hybrid Fixture Closure as Support Scope
+
+### Steps taken
+
+- Audited the straight-axis hybrid fixture against the corrected user target
+  that the final stellarator-mirror hybrid remains toroidal.
+- Kept `examples/mirror_stellarator_hybrid_boundary.py` as a straight-axis,
+  open-ended support fixture rather than a production hybrid target.
+- Added explicit machine-readable labels to the straight-axis example metrics:
+  - `hybrid_fixture_kind = "straight_axis_open_mirror_support_fixture"`;
+  - `final_hybrid_target_kind = "toroidal_stellarator_mirror_hybrid"`;
+  - `production_hybrid_claim = false`;
+  - a short `hybrid_scope_note`.
+- Added matching target labels to
+  `examples/toroidal_stellarator_mirror_hybrid.py` metrics.
+- Updated tests so both straight-axis and toroidal example metrics assert the
+  new scope labels.
+- Updated the mirror example README and mirror overview docs to state that the
+  straight-axis fixture is a support fixture and that the final hybrid target
+  is the toroidal lane.
+
+### Results obtained
+
+- The straight-axis hybrid lane is no longer an ambiguous open production lane.
+  It is closed as a support fixture for boundary, solver, and plotting stress
+  tests.
+- The toroidal hybrid lane remains the authoritative final hybrid target.
+- Low-resolution plotted smoke outputs confirmed both metrics labels and plots:
+  - straight-axis fixture:
+    `results/mirror/hybrid_label_m171_straight_axis_smoke/stellarator_hybrid_boundary_metrics.json`;
+  - toroidal fixture:
+    `results/toroidal_stellarator_mirror_hybrid_m171_label_smoke/toroidal_stellarator_mirror_hybrid_metrics.json`.
+- Visual plots inspected:
+  - `results/mirror/hybrid_label_m171_straight_axis_smoke/figures/stellarator_hybrid_boundary_mirror_boundary_3d.png`;
+  - `results/toroidal_stellarator_mirror_hybrid_m171_label_smoke/figures/toroidal_hybrid_lcfs_3d.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format --check examples/mirror_stellarator_hybrid_boundary.py \
+  examples/toroidal_stellarator_mirror_hybrid.py \
+  tests/mirror/test_mirror_examples.py \
+  tests/test_toroidal_hybrid.py
+python -m ruff check examples/mirror_stellarator_hybrid_boundary.py \
+  examples/toroidal_stellarator_mirror_hybrid.py \
+  tests/mirror/test_mirror_examples.py \
+  tests/test_toroidal_hybrid.py
+python -m sphinx -W -b html docs docs/_build/html
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_examples.py::test_root_stellarator_hybrid_boundary_example_runs_without_plots \
+  -q
+JAX_ENABLE_X64=1 pytest \
+  tests/test_toroidal_hybrid.py::test_toroidal_hybrid_example_runs_without_plots \
+  -q
+JAX_ENABLE_X64=1 python examples/mirror_stellarator_hybrid_boundary.py \
+  --outdir results/mirror/hybrid_label_m171_straight_axis_smoke \
+  --ns 5 --ntheta 13 --nxi 17 --mpol 4 --maxiter 0
+PYTHONPATH=/Users/rogeriojorge/local/vmec_mirror \
+  python examples/toroidal_stellarator_mirror_hybrid.py \
+  --outdir results/toroidal_stellarator_mirror_hybrid_m171_label_smoke \
+  --ntheta-fit 32 --nzeta-fit 32 --ntor 6
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
+```
+
+Results:
+
+- Ruff format/check passed.
+- Sphinx docs build passed with warnings treated as errors.
+- Straight-axis hybrid example test passed: `1 passed in 1.98s`.
+- Toroidal hybrid example test passed: `1 passed in 1.07s`.
+- Plotted straight-axis and toroidal hybrid smokes completed.
+- Full toroidal hybrid tests passed: `26 passed in 3.72s`.
+
+### File structure and best-practice notes
+
+- The straight-axis support fixture remains in the mirror examples because it
+  exercises open-ended mirror plotting and 3D boundary handling.
+- The toroidal target remains in the root toroidal hybrid example and
+  `vmec_jax.toroidal_hybrid`, reusing ordinary VMEC/JAX toroidal boundary and
+  solver paths.
+- The new scope labels are data fields, not prose-only documentation, so
+  downstream scripts can distinguish support fixtures from final target lanes.
+- Generated smoke outputs remain under ignored `results/` paths.
+
+### Best next steps
+
+1. Commit and push M171.
+2. Refresh the PR body if needed to mention that the straight-axis hybrid lane
+   is closed as a support fixture.
+3. Continue final plan closure with the final free-boundary nonlinear solve
+   status and remaining known limitations.
+4. Re-check CI after enough time has passed for the latest workflow to expose
+   actionable failures.
+
+### Completion percentages after M171
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `90%`.
+- Finite-current pitch validation: `86%`.
+- Plotting and `vmec --plot` mirror support: `97%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `94%`.
+- Mirror-Boozer-like diagnostics: `83%`.
+- Free-boundary mirror lane: `99%`.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `99%`.
+
+### User input needed
+
+No user input is needed.
+
+---
 ## 170. Draft PR Body Synchronization After Boozer-Like Diagnostics Audit
 
 ### Steps taken

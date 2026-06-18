@@ -69,7 +69,8 @@ first straight-axis hybrid geometry fixture. It keeps the mirror axis straight
 in ``z`` while a central elliptical cross-section rotates by one
 field-period-like angle and tapers smoothly into circular mirror end sections.
 The metrics JSON reports end circularity, midplane theta variation, up-down
-symmetry error, residual/force diagnostics, and standard plot paths. The final
+symmetry error, residual/force diagnostics, standard plot paths, and explicit
+``hybrid_fixture_kind``/``final_hybrid_target_kind`` labels. The final
 stellarator-mirror hybrid target is a separate toroidal lane: mirror-like side
 arcs connected through stellarator-like corner arcs using ordinary VMEC/JAX
 toroidal boundary coefficients and solver paths.

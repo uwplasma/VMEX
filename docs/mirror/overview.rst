@@ -75,9 +75,10 @@ without coupling it to toroidal VMEC assumptions:
   finite-current pitch, implicit-sensitivity, and fixed-boundary
   solve-diagnostic examples with standard mirror plot bundles or targeted
   validation figures;
-- a first repo-root straight-axis hybrid fixed-boundary fixture that uses a
-  central rotating elliptical cross-section, smooth tapering into circular
-  mirror end sections, and standard geometry/field plots;
+- a first repo-root straight-axis hybrid fixed-boundary support fixture that
+  uses a central rotating elliptical cross-section, smooth tapering into
+  circular mirror end sections, standard geometry/field plots, and explicit
+  metrics labels pointing to the toroidal hybrid lane as the final target;
 - a first repo-root toroidal stellarator-mirror hybrid input fixture that writes
   ordinary VMEC ``RBC``/``ZBS`` boundary coefficients, with mirror-like side
   arcs, localized rotating-ellipse stellarator corners, and side/corner

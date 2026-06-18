@@ -227,6 +227,9 @@ def test_toroidal_hybrid_example_runs_without_plots(tmp_path: Path):
     metrics = json.loads(metrics_path.read_text())
     assert Path(metrics["input"]).exists()
     assert metrics["figures"] == {}
+    assert metrics["hybrid_fixture_kind"] == "toroidal_stellarator_mirror_hybrid"
+    assert metrics["final_hybrid_target_kind"] == "toroidal_stellarator_mirror_hybrid"
+    assert metrics["production_hybrid_claim"] is False
     assert metrics["stellsym_R_error"] < 1.0e-13
     assert metrics["stellsym_Z_error"] < 1.0e-13
     assert metrics["rbc_count"] > 3

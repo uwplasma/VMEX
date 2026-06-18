@@ -117,6 +117,14 @@ def run_case(
     if write_plots:
         figure_paths = {name: str(path) for name, path in plot_mirror_output(mout, outdir=outdir / "figures").items()}
     metrics = {
+        "hybrid_fixture_kind": "straight_axis_open_mirror_support_fixture",
+        "final_hybrid_target_kind": "toroidal_stellarator_mirror_hybrid",
+        "production_hybrid_claim": False,
+        "hybrid_scope_note": (
+            "This straight-axis open-ended fixture is retained as a boundary, "
+            "solver, and plotting stress test. The final stellarator-mirror "
+            "hybrid target is the separate toroidal VMEC-compatible lane."
+        ),
         "mout": str(mout),
         "r0": float(r0),
         "a2": float(a2),

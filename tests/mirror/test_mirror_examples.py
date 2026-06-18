@@ -198,6 +198,9 @@ def test_root_stellarator_hybrid_boundary_example_runs_without_plots(tmp_path):
     metrics = json.loads((mout.parent / "stellarator_hybrid_boundary_metrics.json").read_text())
     assert output.ntheta == 13
     assert output.diagnostics.min_sqrtg > 0.0
+    assert metrics["hybrid_fixture_kind"] == "straight_axis_open_mirror_support_fixture"
+    assert metrics["final_hybrid_target_kind"] == "toroidal_stellarator_mirror_hybrid"
+    assert metrics["production_hybrid_claim"] is False
     assert metrics["mirror_end_theta_variation_max"] < 1.0e-12
     assert metrics["midplane_theta_variation"] > 0.01
     assert metrics["hybrid_symmetry_error"] < 1.0e-12
