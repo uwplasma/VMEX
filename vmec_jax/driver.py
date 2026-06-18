@@ -1282,56 +1282,18 @@ def run_fixed_boundary(
                 deepcopy_func=deepcopy,
             )
             solve_kwargs["use_scan"] = bool(scan_mode)
-            if bool(precompile_stages) and bool(jit_forces_eff):
-                try:
-                    precompile_kwargs = dict(solve_kwargs)
-                    precompile_kwargs.update(
-                        {
-                            "precompile_only": True,
-                            "verbose": False,
-                            "verbose_vmec2000_table": False,
-                            "jit_warmup_iters": 0,
-                            "jit_precompile": True,
-                            "max_iter": 1,
-                        }
-                    )
-                    solve_fixed_boundary_residual_iter(
-                        state,
-                        static_i,
-                        jit_forces=True,
-                        **precompile_kwargs,
-                    )
-                except Exception:
-                    pass
-            def _run_stage_solve(
-                *,
-                state_i,
-                kwargs_i: dict,
-                jit_forces_flag: bool,
-            ) -> SolveVmecResidualResult:
-                if not bool(jit_forces_flag):
-                    try:
-                        import jax
-                        with jax.disable_jit():
-                            return solve_fixed_boundary_residual_iter(
-                                state_i,
-                                static_i,
-                                jit_forces=False,
-                                **kwargs_i,
-                            )
-                    except Exception:
-                        return solve_fixed_boundary_residual_iter(
-                            state_i,
-                            static_i,
-                            jit_forces=False,
-                            **kwargs_i,
-                        )
-                return solve_fixed_boundary_residual_iter(
-                    state_i,
-                    static_i,
-                    jit_forces=True,
-                    **kwargs_i,
-                )
+            _driver_solve_helpers.maybe_precompile_fixed_boundary_stage(
+                enabled=bool(precompile_stages) and bool(jit_forces_eff),
+                state=state,
+                static=static_i,
+                solve_kwargs=solve_kwargs,
+                solve_fixed_boundary_residual_iter_func=solve_fixed_boundary_residual_iter,
+            )
+            run_stage_solve = partial(
+                _driver_solve_helpers.run_fixed_boundary_stage_solve,
+                static=static_i,
+                solve_fixed_boundary_residual_iter_func=solve_fixed_boundary_residual_iter,
+            )
 
             explicit_stage_monitor = (
                 bool(stage_accelerated_mode)
@@ -1370,10 +1332,10 @@ def run_fixed_boundary(
                         "jit_precompile": bool(jit_precompile_noscan),
                     }
                 )
-                res_chunk = _run_stage_solve(
-                    state_i=chunk_state,
-                    kwargs_i=chunk_kwargs,
-                    jit_forces_flag=bool(explicit_stage_monitor_jit_forces),
+                res_chunk = run_stage_solve(
+                    state=chunk_state,
+                    solve_kwargs=chunk_kwargs,
+                    jit_forces=bool(explicit_stage_monitor_jit_forces),
                 )
                 chunk_results.append(res_chunk)
                 stage_first_chunk = False
@@ -1412,10 +1374,10 @@ def run_fixed_boundary(
                             "jit_precompile": False,
                         }
                     )
-                    res_tail = _run_stage_solve(
-                        state_i=chunk_state,
-                        kwargs_i=tail_kwargs,
-                        jit_forces_flag=bool(explicit_stage_monitor_jit_forces),
+                    res_tail = run_stage_solve(
+                        state=chunk_state,
+                        solve_kwargs=tail_kwargs,
+                        jit_forces=bool(explicit_stage_monitor_jit_forces),
                     )
                     chunk_results.append(res_tail)
                 elif (stage_switch_reason is None) and (not bool(strict_chunk)):
@@ -1443,10 +1405,10 @@ def run_fixed_boundary(
                             "host_update_assembly": False,
                         }
                     )
-                    res_i = _run_stage_solve(
-                        state_i=state_stage_start,
-                        kwargs_i=fallback_kwargs,
-                        jit_forces_flag=bool(jit_forces_base),
+                    res_i = run_stage_solve(
+                        state=state_stage_start,
+                        solve_kwargs=fallback_kwargs,
+                        jit_forces=bool(jit_forces_base),
                     )
                     res_i = _result_with_diag(
                         res_i,
@@ -1466,39 +1428,23 @@ def run_fixed_boundary(
                         mode_i=str(stage_mode_i),
                     )
             else:
-                res_i = _run_stage_solve(
-                    state_i=state,
-                    kwargs_i=solve_kwargs,
-                    jit_forces_flag=bool(jit_forces_eff),
+                res_i = run_stage_solve(
+                    state=state,
+                    solve_kwargs=solve_kwargs,
+                    jit_forces=bool(jit_forces_eff),
                 )
-                # Auto-fast fallback: if scan hits a bad-Jacobian path, rerun the stage
-                # in the parity-safe non-scan mode.
-                if (not accelerated_mode) and bool(performance_mode) and bool(scan_mode):
-                    try:
-                        if bool(res_i.diagnostics.get("vmec2000_scan", False)) and bool(
-                            res_i.diagnostics.get("abort_scan", False)
-                        ):
-                            if bool(verbose):
-                                print(
-                                    "[vmec_jax] scan abort detected; rerunning stage in parity mode.",
-                                    flush=True,
-                                )
-                            solve_kwargs_fallback = dict(solve_kwargs)
-                            solve_kwargs_fallback.update(
-                                {
-                                    "use_scan": False,
-                                    "resume_state": resume_state_stage,
-                                    "jit_warmup_iters": int(jit_warmup_noscan),
-                                    "jit_precompile": bool(jit_precompile_noscan),
-                                }
-                            )
-                            res_i = _run_stage_solve(
-                                state_i=state_stage_start,
-                                kwargs_i=solve_kwargs_fallback,
-                                jit_forces_flag=bool(jit_forces_base),
-                            )
-                    except Exception:
-                        pass
+                res_i = _driver_solve_helpers.maybe_rerun_scan_abort_stage(
+                    result=res_i,
+                    enabled=(not accelerated_mode) and bool(performance_mode) and bool(scan_mode),
+                    state_stage_start=state_stage_start,
+                    resume_state_stage=resume_state_stage,
+                    solve_kwargs=solve_kwargs,
+                    jit_warmup_noscan=int(jit_warmup_noscan),
+                    jit_precompile_noscan=bool(jit_precompile_noscan),
+                    jit_forces_base=bool(jit_forces_base),
+                    run_stage_solve_func=run_stage_solve,
+                    verbose=bool(verbose),
+                )
             stage_mode_history[-1] = str(stage_mode_i)
             stage_wall_s.append(float(time.perf_counter() - stage_t0))
             try:

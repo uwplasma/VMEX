@@ -9600,3 +9600,64 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.972%.
+
+## 2026-06-18 Driver Stage Solve Execution Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `run_fixed_boundary_stage_solve` to `vmec_jax.drivers.solve` for the
+   per-stage VMEC2000 solve call, including the no-JIT context fallback.
+2. Added `maybe_precompile_fixed_boundary_stage` for the optional one-step
+   stage precompile path.
+3. Added `maybe_rerun_scan_abort_stage` for the auto-fast scan-abort fallback
+   rerun in parity-safe non-scan mode.
+4. Rewired the fixed-boundary stage loop to call these helpers through a
+   per-stage partial instead of defining a nested local solver wrapper.
+
+Results obtained:
+
+- `run_fixed_boundary` dropped from 1,392 to 1,338 lines.
+- Stage-loop code now delegates execution details to `drivers.solve` and keeps
+  policy decisions visible at the call sites.
+- The solver callback remains injectable, preserving existing tests and
+  monkeypatch seams.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/driver.py vmec_jax/drivers/solve.py`
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers/solve.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_coverage_extra.py tests/test_driver_api_finish_more_coverage.py tests/test_driver_wave2_coverage.py -q -k "scan or stage or dynamic"`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_helper_edges_wave14_coverage.py tests/test_driver_finish_policy_more_coverage.py -q -k "scan or stage or finish"`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 18`
+
+Best next steps:
+
+1. Extract explicit accelerated-stage monitor chunking from the stage loop into
+   `drivers.staging` or `drivers.solve`, leaving the main loop with a single
+   "run stage with optional monitor" call.
+2. Continue reducing `run_fixed_boundary` toward a readable orchestration
+   function rather than a solver-policy monolith.
+3. Keep residual-core refactors separate from driver orchestration refactors
+   to avoid mixing numerical and workflow risk.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.99983%.
+- Solver monolith reduction: 99.15%.
+- Free-boundary adjoint monolith reduction: 99.1%.
+- Driver workflow decomposition: 98.2%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.974%.
