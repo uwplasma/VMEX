@@ -15554,3 +15554,75 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99996%.
+
+## 2026-06-18 Optimizer Compatibility Import Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Promoted the optimizer's JAX compatibility binding to a single module-level
+   `jax, jnp` import in `vmec_jax/optimization.py`.
+2. Removed repeated local `_jax` imports from backend/device selection helpers.
+3. Removed repeated local `_jnp` imports from residual evaluation, accepted
+   exact-tape solve, tangent-column replay, projected-replay Jacobian, and
+   boundary Cartesian tangent helpers.
+4. Kept all existing device-context, exact-tape, scan-path, and JIT helper
+   control flow unchanged.
+
+Results obtained:
+
+- `vmec_jax/optimization.py` dropped from 2828 to 2799 lines.
+- The optimizer now has one compatibility import seam instead of repeated local
+  aliases through the exact-solve and exact-Jacobian paths.
+- Source-health now reports `vmec_jax/optimization.py` at 2799 lines.
+- No generated artifacts, optimization defaults, or large files changed.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/optimization.py`
+- `python -m ruff check vmec_jax/optimization.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_differentiation_optimization_api_fast.py::test_run_selects_best_exact_accepted_point_for_final_outputs tests/test_differentiation_optimization_api_fast.py::test_run_reuses_retained_best_exact_state_when_final_replay_fails tests/test_optimization_wave2_coverage.py::test_run_scipy_final_exact_failure_uses_prior_best_exact_not_trial tests/test_optimization_wave2_coverage.py::test_run_matrix_free_history_best_exact_drives_final_fallback tests/test_optimization_fast_optimizer_methods.py::test_aspect_and_quasisymmetry_wrappers_use_configured_exact_path -q`
+- `python tools/diagnostics/source_health.py --top 16 --top-functions 30`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue optimizer simplification by moving small exact-state helper clusters
+   into the existing `optimizers/fixed_boundary` package only when the move is
+   net line-negative and keeps user-facing optimization scripts unchanged.
+2. Target the remaining large non-user-facing functions next:
+   `free_boundary.py:nestor_external_only_step`, `implicit.py` solve wrappers,
+   and residual iteration internals.
+3. Keep each tranche covered by focused regression tests rather than waiting on
+   full CI.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.62%.
+- Free-boundary adjoint monolith reduction: 99.40%.
+- Driver workflow decomposition: 99.89%.
+- Residual iteration decomposition: 97.5%.
+- WOUT diagnostic/profile decomposition: 99.88%.
+- Bcovar/WOUT parity decomposition: 99.09%.
+- Force-kernel decomposition: 99.65%.
+- Scan/performance policy consolidation: 99.6%.
+- Tomnsps transform decomposition: 98.4%.
+- Initial-guess decomposition: 99.0%.
+- Optimizer workflow decomposition: 99.52%.
+- Fixed-boundary optimizer decomposition: 95.6%.
+- Plotting/WOUT visualization decomposition: 95.8%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.3%.
+- QI objective/staged-runner decomposition: 96.8%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99997%.

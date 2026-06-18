@@ -14,7 +14,7 @@ from typing import Callable, Sequence
 
 import numpy as np
 
-from ._compat import jnp
+from ._compat import jax, jnp
 from .boundary import BoundaryCoeffs, boundary_from_indata
 from .booz_input import BoozXformInputs, booz_xform_inputs_from_state
 from .energy import FluxProfiles, flux_profiles_from_indata
@@ -566,9 +566,7 @@ class FixedBoundaryExactOptimizer:
         if name in ("", "none", "auto", "default"):
             return None
         try:
-            from ._compat import jax as _jax
-
-            current_backend = str(_jax.default_backend()).strip().lower() if _jax is not None else ""
+            current_backend = str(jax.default_backend()).strip().lower() if jax is not None else ""
         except Exception:
             current_backend = ""
         aliases = {
@@ -694,9 +692,7 @@ class FixedBoundaryExactOptimizer:
         if self._solver_device_name in ("gpu", "tpu", "cuda", "rocm"):
             return "tape"
         try:
-            from ._compat import jax as _jax
-
-            backend = str(_jax.default_backend()).strip().lower() if _jax is not None else "cpu"
+            backend = str(jax.default_backend()).strip().lower() if jax is not None else "cpu"
         except Exception:
             backend = "cpu"
         if backend in ("gpu", "cuda", "tpu", "rocm"):
@@ -722,9 +718,7 @@ class FixedBoundaryExactOptimizer:
         backend = str(self._solver_device_name or "").strip().lower()
         if not backend:
             try:
-                from ._compat import jax as _jax
-
-                backend = str(_jax.default_backend()).strip().lower() if _jax is not None else "cpu"
+                backend = str(jax.default_backend()).strip().lower() if jax is not None else "cpu"
             except Exception:
                 backend = "cpu"
         if backend not in ("gpu", "cuda", "tpu", "rocm"):
@@ -754,9 +748,7 @@ class FixedBoundaryExactOptimizer:
         backend = str(getattr(self, "_solver_device_name", None) or "").strip().lower()
         if not backend:
             try:
-                from ._compat import jax as _jax
-
-                backend = str(_jax.default_backend()).strip().lower() if _jax is not None else "cpu"
+                backend = str(jax.default_backend()).strip().lower() if jax is not None else "cpu"
             except Exception:
                 backend = "cpu"
         return backend in ("tpu",)
@@ -768,9 +760,7 @@ class FixedBoundaryExactOptimizer:
         if backend:
             return backend
         try:
-            from ._compat import jax as _jax
-
-            return str(_jax.default_backend()).strip().lower() if _jax is not None else "cpu"
+            return str(jax.default_backend()).strip().lower() if jax is not None else "cpu"
         except Exception:
             return "cpu"
 
@@ -790,14 +780,12 @@ class FixedBoundaryExactOptimizer:
         if self._solver_device_name is None:
             return nullcontext()
         try:
-            from ._compat import jax as _jax
-
-            if _jax is None:
+            if jax is None:
                 return nullcontext()
-            devices = _jax.devices(self._solver_device_name)
+            devices = jax.devices(self._solver_device_name)
             if not devices:
                 return nullcontext()
-            return _jax.default_device(devices[0])
+            return jax.default_device(devices[0])
         except Exception:
             return nullcontext()
 
@@ -805,12 +793,10 @@ class FixedBoundaryExactOptimizer:
         if self._solver_device_name is None:
             return value
         try:
-            from ._compat import jax as _jax
-
-            if _jax is None:
+            if jax is None:
                 return value
-            device = _jax.devices(self._solver_device_name)[0]
-            jax_array_type = _jax.Array
+            device = jax.devices(self._solver_device_name)[0]
+            jax_array_type = jax.Array
         except Exception:
             return value
 
@@ -818,7 +804,7 @@ class FixedBoundaryExactOptimizer:
             if obj is None or isinstance(obj, (str, bytes, int, float, complex, bool)):
                 return obj
             if isinstance(obj, (np.ndarray, jax_array_type)):
-                return _jax.device_put(obj, device)
+                return jax.device_put(obj, device)
             if is_dataclass(obj) and not isinstance(obj, type):
                 return replace(
                     obj,
@@ -925,11 +911,9 @@ class FixedBoundaryExactOptimizer:
         if flag in ("", "0", "false", "no", "off"):
             return residuals_fn
 
-        from ._compat import jax, jnp as _jnp
-
         @jax.jit
         def _eval(state):
-            return _jnp.asarray(residuals_fn(state), dtype=_jnp.float64)
+            return jnp.asarray(residuals_fn(state), dtype=jnp.float64)
 
         return _eval
 
@@ -1007,7 +991,6 @@ class FixedBoundaryExactOptimizer:
         if not self._use_jit_initial_state():
             return None
         try:
-            from ._compat import jax, jnp as _jnp
             from .init_guess import initial_guess_from_boundary as _ig
             from .state import pack_state, unpack_state
         except Exception:
@@ -1035,13 +1018,13 @@ class FixedBoundaryExactOptimizer:
                         vmec_project=True,
                         axis_override=axis_override,
                     )
-                return _jnp.asarray(pack_state(state), dtype=_jnp.float64)
+                return jnp.asarray(pack_state(state), dtype=jnp.float64)
 
             helper = _packed_initial_state
             self._initial_state_packed_helper = helper
 
         try:
-            packed = helper(_jnp.asarray(params, dtype=_jnp.float64))
+            packed = helper(jnp.asarray(params, dtype=jnp.float64))
             if self._sync_initial_state_projection_enabled():
                 packed = jax.block_until_ready(packed)
             return unpack_state(packed, self._layout)
@@ -1205,7 +1188,6 @@ class FixedBoundaryExactOptimizer:
                 return_payload=return_payload,
                 jvp_only=jvp_only,
             )
-        from ._compat import jnp as _jnp
         from .discrete_adjoint import build_residual_checkpoint_tape_direct
         from .init_guess import extract_axis_override_from_state
         from .state import unpack_state
@@ -1245,7 +1227,7 @@ class FixedBoundaryExactOptimizer:
             self._profile_add("exact_tape_build_jvp_only", tape_build_wall_s)
         self._profile_exact_tape_solver_timing(tape, tape_build_wall_s)
         t_unpack = time.perf_counter()
-        packed_final = _jnp.asarray(tape.final_packed_state, dtype=_jnp.float64)
+        packed_final = jnp.asarray(tape.final_packed_state, dtype=jnp.float64)
         state = unpack_state(packed_final, self._layout)
         payload = {"tape": tape, "axis_override": axis_override, "packed_final": packed_final}
         self._exact_cache.clear()
@@ -1261,7 +1243,6 @@ class FixedBoundaryExactOptimizer:
     def _packed_final_from_exact_payload(self, state, payload):
         """Return the accepted packed state already carried by an exact tape payload."""
 
-        from ._compat import jnp as _jnp
         from .state import pack_state
 
         packed = None
@@ -1272,7 +1253,7 @@ class FixedBoundaryExactOptimizer:
                 packed = getattr(tape, "final_packed_state", None)
         if packed is None:
             packed = pack_state(state)
-        return _jnp.asarray(packed, dtype=_jnp.float64)
+        return jnp.asarray(packed, dtype=jnp.float64)
 
     # ── public residual / Jacobian interface ──────────────────────────────────
 
@@ -1324,13 +1305,12 @@ class FixedBoundaryExactOptimizer:
 
     def _state_and_tangent_columns(self, params, *, profile_prefix: str):
         """Return accepted-point state and packed tangent columns as JAX arrays."""
-        from ._compat import jnp as _jnp
         from .discrete_adjoint import checkpoint_tape_state_jvp_columns
 
-        params = _jnp.asarray(params, dtype=_jnp.float64)
+        params = jnp.asarray(params, dtype=jnp.float64)
         state, payload = self._solve_exact_with_tape_for_jvp(params)
         if int(params.size) == 0:
-            empty = _jnp.zeros((0, int(self._layout.size)), dtype=_jnp.float64)
+            empty = jnp.zeros((0, int(self._layout.size)), dtype=jnp.float64)
             return state, empty
 
         initial_tangents = self._initial_tangent_columns(
@@ -1368,11 +1348,10 @@ class FixedBoundaryExactOptimizer:
 
     def _initial_tangent_columns(self, params, axis_override, *, profile_prefix: str):
         """Return cached packed initial-state tangents for boundary parameters."""
-        from ._compat import jax, jnp as _jnp
 
-        params = _jnp.asarray(params, dtype=_jnp.float64)
+        params = jnp.asarray(params, dtype=jnp.float64)
         if int(params.size) == 0:
-            return _jnp.zeros((0, int(self._layout.size)), dtype=_jnp.float64)
+            return jnp.zeros((0, int(self._layout.size)), dtype=jnp.float64)
 
         t_initial = time.perf_counter()
         t_key = time.perf_counter()
@@ -1385,7 +1364,7 @@ class FixedBoundaryExactOptimizer:
         if initial_tangents is None:
             self._profile_add(f"{profile_prefix}_initial_tangents_cache_miss", 0.0)
             axis_override = {
-                key: _jnp.asarray(value, dtype=params.dtype) for key, value in axis_override.items()
+                key: jnp.asarray(value, dtype=params.dtype) for key, value in axis_override.items()
             }
 
             t_linearize = time.perf_counter()
@@ -1399,7 +1378,7 @@ class FixedBoundaryExactOptimizer:
             )
             if int(params.size) == 1:
                 t_jvp = time.perf_counter()
-                initial_tangents = initial_state_linear(_jnp.ones_like(params))[None, :]
+                initial_tangents = initial_state_linear(jnp.ones_like(params))[None, :]
                 initial_tangents = self._profile_async_phase(
                     f"{profile_prefix}_initial_tangents_single_jvp",
                     t_jvp,
@@ -1438,7 +1417,6 @@ class FixedBoundaryExactOptimizer:
         same ``state_pre`` point rather than at the raw initial-guess state.
         """
 
-        from ._compat import jnp as _jnp
         from .init_guess import initial_guess_from_boundary as _ig
         from .solve import (
             _apply_vmec_lambda_axis_rules_to_state,
@@ -1457,16 +1435,16 @@ class FixedBoundaryExactOptimizer:
         )
         modes = getattr(self._static, "modes", None)
         if modes is None:
-            return _jnp.asarray(pack_state(state0), dtype=_jnp.float64)
+            return jnp.asarray(pack_state(state0), dtype=jnp.float64)
 
         idx00 = _mode00_index(modes)
         state0 = _enforce_fixed_boundary_and_axis(
             state0,
             self._static,
-            edge_Rcos=_jnp.asarray(state0.Rcos)[-1, :],
-            edge_Rsin=_jnp.asarray(state0.Rsin)[-1, :],
-            edge_Zcos=_jnp.asarray(state0.Zcos)[-1, :],
-            edge_Zsin=_jnp.asarray(state0.Zsin)[-1, :],
+            edge_Rcos=jnp.asarray(state0.Rcos)[-1, :],
+            edge_Rsin=jnp.asarray(state0.Rsin)[-1, :],
+            edge_Zcos=jnp.asarray(state0.Zcos)[-1, :],
+            edge_Zsin=jnp.asarray(state0.Zsin)[-1, :],
             enforce_edge=True,
             enforce_lambda_axis=True,
             idx00=idx00,
@@ -1477,17 +1455,16 @@ class FixedBoundaryExactOptimizer:
             host_update_assembly=False,
             idx00=idx00,
         )
-        return _jnp.asarray(pack_state(state0), dtype=_jnp.float64)
+        return jnp.asarray(pack_state(state0), dtype=jnp.float64)
 
     def _initial_tangent_directions(self, params, *, profile_prefix: str):
         """Return cached identity directions used for dense initial-state JVPs."""
-        from ._compat import jnp as _jnp
 
         if not hasattr(self, "_initial_tangent_direction_cache"):
             self._initial_tangent_direction_cache = {}
-        dtype = _jnp.asarray(params).dtype
+        dtype = jnp.asarray(params).dtype
         backend = _optimizer_backend_name(getattr(self, "_solver_device_name", None))
-        cache_key = (int(_jnp.asarray(params).size), str(dtype), backend)
+        cache_key = (int(jnp.asarray(params).size), str(dtype), backend)
         directions = self._initial_tangent_direction_cache.get(cache_key)
         if directions is not None:
             self._profile_add(f"{profile_prefix}_initial_tangents_eye_cache_hit", 0.0)
@@ -1495,7 +1472,7 @@ class FixedBoundaryExactOptimizer:
 
         self._profile_add(f"{profile_prefix}_initial_tangents_eye_cache_miss", 0.0)
         t_eye = time.perf_counter()
-        directions = _jnp.eye(cache_key[0], dtype=dtype)
+        directions = jnp.eye(cache_key[0], dtype=dtype)
         self._initial_tangent_direction_cache[cache_key] = directions
         self._profile_add(f"{profile_prefix}_initial_tangents_eye", time.perf_counter() - t_eye)
         return directions
@@ -1582,11 +1559,10 @@ class FixedBoundaryExactOptimizer:
         # chunking would be active.
         if os.environ.get("VMEC_JAX_REPLAY_COLUMN_CHUNK") is not None:
             return None
-        from ._compat import jnp as _jnp
 
         auto_chunk = _replay_column_chunk_default(
             tape=tape,
-            tangents=_jnp.asarray(initial_tangents),
+            tangents=jnp.asarray(initial_tangents),
         )
         if auto_chunk is not None and int(params_size) > int(auto_chunk):
             return None
@@ -1629,12 +1605,12 @@ class FixedBoundaryExactOptimizer:
 
         @jax.jit
         def _fused_project(initial_tangents, packed_state, stacked_base_carries_in, stacked_traces_in):
-            tangents = _jnp.asarray(initial_tangents)
+            tangents = jnp.asarray(initial_tangents)
             carry0 = jax.tree_util.tree_map(lambda x: x[0], stacked_base_carries_in)
 
             def _zeros_like(arr):
-                arr = _jnp.asarray(arr)
-                return _jnp.zeros((tangents.shape[0],) + arr.shape, dtype=arr.dtype)
+                arr = jnp.asarray(arr)
+                return jnp.zeros((tangents.shape[0],) + arr.shape, dtype=arr.dtype)
 
             carry_tangents0 = (tangents,) + tuple(_zeros_like(arr) for arr in carry0[1:])
             final_carry_tangents = run_scan(
@@ -1655,7 +1631,6 @@ class FixedBoundaryExactOptimizer:
     def _jacobian_fun_projected_replay(self, params, exact_param_key, *, t_total: float) -> np.ndarray:
         """Dense exact Jacobian path that avoids synchronizing full state tangents."""
 
-        from ._compat import jax, jnp as _jnp
         from .discrete_adjoint import checkpoint_tape_state_jvp_columns
         from .state import unpack_state
 
@@ -1673,7 +1648,7 @@ class FixedBoundaryExactOptimizer:
             )
             residuals = helper_cache["residual_tangent_jacobian"](
                 packed_final,
-                _jnp.zeros((0, int(self._layout.size)), dtype=_jnp.float64),
+                jnp.zeros((0, int(self._layout.size)), dtype=jnp.float64),
             )[0]
             residuals = jax.block_until_ready(residuals)
             self._last_jacobian_residual = np.asarray(residuals, dtype=float)
@@ -1745,7 +1720,7 @@ class FixedBoundaryExactOptimizer:
                     final_tangents_chunk,
                 )
                 jac_blocks.append(jac_chunk)
-            jac = _jnp.concatenate(jac_blocks, axis=1)
+            jac = jnp.concatenate(jac_blocks, axis=1)
             residuals, jac = self._profile_blocking_phase(
                 "jacobian_chunked_projected_replay_projection_total",
                 t_replay,
@@ -1799,11 +1774,9 @@ class FixedBoundaryExactOptimizer:
         self._last_jacobian_source = "exact_tape_replay"
         exact_param_key = self._exact_cache_key(params)
         if self._scan_exact_path == "scan":
-            from ._compat import jnp as _jnp
-
             helpers = self._scan_exact_helpers()
             t0 = time.perf_counter()
-            residuals, jac = helpers["residual_and_jacobian"](_jnp.asarray(params, dtype=_jnp.float64))
+            residuals, jac = helpers["residual_and_jacobian"](jnp.asarray(params, dtype=jnp.float64))
             self._last_jacobian_residual = np.asarray(residuals, dtype=float)
             self._remember_exact_residual(exact_param_key, self._last_jacobian_residual)
             # Avoid a second accepted-point scan solve when the history metrics
@@ -1816,7 +1789,6 @@ class FixedBoundaryExactOptimizer:
             self._last_jacobian_source = "scan_exact_replay"
             self._profile_add("scan_jacobian_total", time.perf_counter() - t0)
             return out
-        from ._compat import jax, jnp as _jnp
         from .state import pack_state, unpack_state
 
         t_total = time.perf_counter()
@@ -1830,7 +1802,7 @@ class FixedBoundaryExactOptimizer:
             self._profile_add("jacobian_total", time.perf_counter() - t_total)
             return np.asarray(jac_cached, dtype=float).copy()
 
-        params = _jnp.asarray(params, dtype=_jnp.float64)
+        params = jnp.asarray(params, dtype=jnp.float64)
         if self._projected_replay_residuals_enabled(int(params.size)):
             return self._jacobian_fun_projected_replay(params, exact_param_key, t_total=t_total)
 
@@ -1838,7 +1810,7 @@ class FixedBoundaryExactOptimizer:
             params,
             profile_prefix="jacobian",
         )
-        packed_final = _jnp.asarray(pack_state(state), dtype=_jnp.float64)
+        packed_final = jnp.asarray(pack_state(state), dtype=jnp.float64)
 
         def _residuals_from_packed(packed):
             return self._residuals_fn(unpack_state(packed, self._layout))
@@ -1909,18 +1881,17 @@ class FixedBoundaryExactOptimizer:
                 static,
                 s_index=s_index,
             )
-        from ._compat import jax, jnp as _jnp
         from .field import b_cartesian_from_state
         from .state import pack_state, unpack_state
 
         if static is None:
             static = self._static
-        params = _jnp.asarray(params, dtype=_jnp.float64)
+        params = jnp.asarray(params, dtype=jnp.float64)
         state, state_tangents = self._state_and_tangent_columns(
             params,
             profile_prefix="b_cartesian_tangent",
         )
-        packed_final = _jnp.asarray(pack_state(state), dtype=_jnp.float64)
+        packed_final = jnp.asarray(pack_state(state), dtype=jnp.float64)
 
         def _field_from_packed(packed):
             state_arg = unpack_state(packed, self._layout)
@@ -1931,12 +1902,12 @@ class FixedBoundaryExactOptimizer:
                 signgs=self._signgs,
                 s_index=s_index,
             )
-            return _jnp.ravel(field)
+            return jnp.ravel(field)
 
         field_flat, field_linear = jax.linearize(_field_from_packed, packed_final)
         nparams = int(params.size)
         if nparams == 0:
-            columns = _jnp.zeros((0, field_flat.size), dtype=field_flat.dtype)
+            columns = jnp.zeros((0, field_flat.size), dtype=field_flat.dtype)
         else:
             columns = jax.vmap(field_linear)(state_tangents)
 
