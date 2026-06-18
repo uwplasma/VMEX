@@ -172,7 +172,11 @@ path replaces those derivatives with implicit/JAX/adjoint variants. The
 package-level ``mirror_free_boundary_guarded_least_squares_loop`` helper owns
 the reusable repeated-step guard policy through state and trial callbacks,
 while this root example still owns the host-side fixed-boundary trial solve and
-plot/report generation.
+plot/report generation. For reduced residual-vector prototypes that are already
+pure JAX functions of boundary parameters,
+``mirror_free_boundary_residual_vector_jacobian_jax`` provides forward,
+reverse, or automatic JAX Jacobian selection beside the host-side finite
+difference helper.
 
 The circular-coil beta-scan metrics use the compact schema
 ``mirror_free_boundary_circular_coil_beta_scan`` version ``0.6``. The top-level

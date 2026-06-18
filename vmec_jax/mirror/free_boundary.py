@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 import numpy as np
 
-from vmec_jax._compat import jnp
+from vmec_jax._compat import jax, jnp
 from vmec_jax.external_fields import CoilFieldParams, sample_external_field_cylindrical
 
 from .core.boundary import MirrorBoundary
@@ -855,6 +855,54 @@ def mirror_free_boundary_residual_jacobian_finite_difference(
             raise ValueError("residual_function must return vectors with a fixed shape")
         jacobian[:, index] = (plus_vector - minus_vector) / (2.0 * step)
     return base, jacobian, steps
+
+
+def mirror_free_boundary_residual_vector_jacobian_jax(
+    coefficients: Any,
+    residual_vector_function: Callable[[Any], Any],
+    *,
+    mode: str = "auto",
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return a JAX Jacobian for a differentiable residual-vector function.
+
+    This helper is for reduced free-boundary prototypes whose residual can be
+    written as a pure JAX vector function of boundary parameters.  Host-side
+    CLI workflows with file I/O or fixed-boundary trial solves should keep using
+    finite differences or an adjoint/implicit wrapper around the differentiable
+    pieces.
+    """
+
+    if jax is None:
+        raise ImportError("JAX is required for mirror_free_boundary_residual_vector_jacobian_jax")
+    coefficients = jnp.asarray(coefficients).ravel()
+    if int(coefficients.size) == 0:
+        raise ValueError("coefficients must contain at least one value")
+    if not np.all(np.isfinite(np.asarray(coefficients, dtype=float))):
+        raise ValueError("coefficients must be finite")
+
+    def vector_function(items):
+        return jnp.ravel(jnp.asarray(residual_vector_function(items)))
+
+    vector = vector_function(coefficients)
+    if int(vector.size) == 0:
+        raise ValueError("residual_vector_function must return at least one value")
+    mode = str(mode).lower()
+    if mode == "auto":
+        mode = "forward" if int(coefficients.size) <= int(vector.size) else "reverse"
+    if mode in ("forward", "fwd", "jacfwd"):
+        jacobian = jax.jacfwd(vector_function)(coefficients)
+    elif mode in ("reverse", "rev", "jacrev"):
+        jacobian = jax.jacrev(vector_function)(coefficients)
+    else:
+        raise ValueError("mode must be 'auto', 'forward', or 'reverse'")
+
+    vector_np = np.asarray(vector, dtype=float)
+    jacobian_np = np.asarray(jacobian, dtype=float)
+    if not np.all(np.isfinite(vector_np)):
+        raise ValueError("residual_vector_function returned non-finite values")
+    if not np.all(np.isfinite(jacobian_np)):
+        raise ValueError("residual_vector_function Jacobian is non-finite")
+    return vector_np, jacobian_np
 
 
 def mirror_free_boundary_least_squares_step(

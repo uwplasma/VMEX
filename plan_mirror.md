@@ -19926,3 +19926,105 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+---
+## 162. JAX Residual-Vector Jacobian Helper for Free-Boundary Prototypes
+
+### Steps taken
+
+- Added `mirror_free_boundary_residual_vector_jacobian_jax` to
+  `vmec_jax/mirror/free_boundary.py`.
+- Exported it through `vmec_jax.mirror.api` and the flat `vmec_jax.mirror`
+  namespace.
+- The helper accepts a pure JAX residual-vector callback and returns:
+  - the residual vector at the supplied coefficients;
+  - the dense Jacobian with respect to those coefficients.
+- Added derivative-mode selection:
+  - `mode="forward"` uses `jax.jacfwd`;
+  - `mode="reverse"` uses `jax.jacrev`;
+  - `mode="auto"` chooses forward mode when parameter count is no larger than
+    residual-vector length, otherwise reverse mode.
+- Added validation for empty/nonfinite coefficients, empty/nonfinite residual
+  vectors, nonfinite Jacobians, and invalid modes.
+- Added tests comparing forward, reverse, and automatic JAX Jacobians against
+  an analytic nonlinear residual-vector model.
+- Updated `docs/mirror/overview.rst` and `examples/mirror/README.md` to note
+  that pure-JAX reduced residual prototypes can use the JAX Jacobian helper
+  beside the host-side finite-difference helper.
+
+### Results obtained
+
+- The free-boundary lane now has both:
+  - host-side finite-difference Jacobians for CLI/example workflows with file
+    I/O or realized fixed-boundary trials;
+  - JAX forward/reverse Jacobians for differentiable reduced residual-vector
+    prototypes.
+- This is a direct step toward the derivative-strategy plan without forcing
+  the current host-side circular-coil example to be differentiable end to end.
+- No new plot artifact was produced in this tranche because the added behavior
+  is a derivative helper with analytic unit-test comparisons.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_free_boundary.py
+python -m ruff check vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_free_boundary.py
+
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_free_boundary.py -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Ruff format/check passed on touched Python files.
+- Mirror free-boundary tests passed: `94 passed in 3.53s`.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The derivative helper lives beside the existing finite-difference residual
+  Jacobian helper in `vmec_jax/mirror/free_boundary.py`.
+- The API is deliberately vector-function based, so it does not require
+  differentiating through `MirrorFreeBoundaryResidual` dataclass construction or
+  host-side trial solves.
+- The helper is small and explicit about mode selection, which makes it easier
+  to compare against future implicit/adjoint implementations.
+
+### Best next steps
+
+1. Commit and push M162.
+2. Add a reduced free-boundary least-squares step path that can use either the
+   finite-difference Jacobian or the new JAX Jacobian helper.
+3. Benchmark forward vs reverse mode on a small reduced mirror residual and
+   document when each path is appropriate.
+4. Re-check CI once the latest pushed checks are available.
+
+### Completion percentages after M162
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `93%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `93%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `98%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.

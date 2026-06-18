@@ -29,6 +29,7 @@ from vmec_jax.mirror import (
     mirror_free_boundary_least_squares_step,
     mirror_free_boundary_residual,
     mirror_free_boundary_residual_jacobian_finite_difference,
+    mirror_free_boundary_residual_vector_jacobian_jax,
     mirror_lcfs_diagnostic,
     mirror_lcfs_diagnostic_from_arrays,
     mirror_lcfs_merit,
@@ -803,6 +804,74 @@ def test_mirror_free_boundary_residual_jacobian_rejects_varying_vector_shape():
             lambda coefficients: _free_boundary_residual_from_vector([0.0, float(np.asarray(coefficients)[0])]),
             residual=base,
         )
+
+
+def test_mirror_free_boundary_residual_vector_jacobian_jax_matches_analytic_model():
+    jnp = pytest.importorskip("jax.numpy")
+    enable_x64(True)
+
+    def residual_vector(coefficients):
+        c0, c1 = coefficients
+        return jnp.asarray([c0 + 2.0 * c1, c0 * c1, jnp.sin(c0)])
+
+    coefficients = np.asarray([0.3, -0.4])
+    expected_vector = np.asarray(
+        [coefficients[0] + 2.0 * coefficients[1], coefficients[0] * coefficients[1], np.sin(coefficients[0])]
+    )
+    expected_jacobian = np.asarray(
+        [
+            [1.0, 2.0],
+            [coefficients[1], coefficients[0]],
+            [np.cos(coefficients[0]), 0.0],
+        ]
+    )
+
+    vector_fwd, jacobian_fwd = mirror_free_boundary_residual_vector_jacobian_jax(
+        coefficients,
+        residual_vector,
+        mode="forward",
+    )
+    vector_rev, jacobian_rev = mirror_free_boundary_residual_vector_jacobian_jax(
+        coefficients,
+        residual_vector,
+        mode="reverse",
+    )
+    vector_auto, jacobian_auto = mirror_free_boundary_residual_vector_jacobian_jax(
+        coefficients,
+        residual_vector,
+        mode="auto",
+    )
+
+    np.testing.assert_allclose(vector_fwd, expected_vector, rtol=1.0e-12, atol=1.0e-12)
+    np.testing.assert_allclose(jacobian_fwd, expected_jacobian, rtol=1.0e-12, atol=1.0e-12)
+    np.testing.assert_allclose(vector_rev, vector_fwd, rtol=1.0e-12, atol=1.0e-12)
+    np.testing.assert_allclose(jacobian_rev, jacobian_fwd, rtol=1.0e-12, atol=1.0e-12)
+    np.testing.assert_allclose(vector_auto, vector_fwd, rtol=1.0e-12, atol=1.0e-12)
+    np.testing.assert_allclose(jacobian_auto, jacobian_fwd, rtol=1.0e-12, atol=1.0e-12)
+
+
+@pytest.mark.parametrize(
+    ("coefficients", "match"),
+    [
+        ([], "coefficients"),
+        ([np.inf], "finite"),
+    ],
+)
+def test_mirror_free_boundary_residual_vector_jacobian_jax_rejects_invalid_coefficients(coefficients, match):
+    pytest.importorskip("jax")
+    with pytest.raises(ValueError, match=match):
+        mirror_free_boundary_residual_vector_jacobian_jax(coefficients, lambda items: items)
+
+
+def test_mirror_free_boundary_residual_vector_jacobian_jax_rejects_invalid_outputs():
+    jnp = pytest.importorskip("jax.numpy")
+
+    with pytest.raises(ValueError, match="at least one"):
+        mirror_free_boundary_residual_vector_jacobian_jax([1.0], lambda items: jnp.asarray([]))
+    with pytest.raises(ValueError, match="mode"):
+        mirror_free_boundary_residual_vector_jacobian_jax([1.0], lambda items: items, mode="bad")
+    with pytest.raises(ValueError, match="non-finite"):
+        mirror_free_boundary_residual_vector_jacobian_jax([1.0], lambda items: jnp.asarray([jnp.nan]))
 
 
 def test_mirror_free_boundary_guarded_least_squares_loop_converges_linear_residual():
