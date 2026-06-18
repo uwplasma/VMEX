@@ -64,7 +64,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from vmec_jax._compat import jax, jnp
 from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_run
-from vmec_jax.external_fields import CoilFieldParams, build_coil_field_geometry, from_essos_coils
+from vmec_jax.external_fields import CoilFieldParams, from_essos_coils
 from vmec_jax.external_fields.coils_jax import coil_current_norm, coil_lengths
 from vmec_jax.finite_beta import finite_beta_scalars_from_state
 from vmec_jax.namelist import read_indata, write_indata
@@ -76,9 +76,13 @@ from vmec_jax.quasisymmetry import (
     quasisymmetry_ratio_residual_from_state,
 )
 from vmec_jax.solvers.free_boundary.coil_optimization import (
+    nestor_profile_policy_from_results,
+    same_branch_current_only_coil_geometry_cache,
     same_branch_derivative_gate_evidence as same_branch_derivative_gate_evidence,
     same_branch_derivative_proposal_from_report as same_branch_derivative_proposal_from_report,
     same_branch_derivative_proposals_from_report,
+    same_branch_replay_plan_cache,
+    same_branch_report_mode_count,
 )
 from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state
 
@@ -790,136 +794,6 @@ def same_branch_report_anchor_params(
         ),
         "best",
     )
-
-
-def same_branch_report_mode_count(report: dict[str, Any]) -> int:
-    """Return the VMEC Fourier mode count for report-size policy decisions."""
-
-    try:
-        static = report["base"]["init"].static
-        return int(np.asarray(static.modes.m).size)
-    except Exception:
-        return 0
-
-
-def same_branch_replay_plan_cache(
-    report: dict[str, Any],
-    replay_kwargs: dict[str, Any],
-    *,
-    timing_key: str,
-    scope: str,
-) -> tuple[dict[str, Any] | None, dict[str, Any], float | None]:
-    """Build an accepted-trace replay plan for repeated same-branch reports."""
-
-    from vmec_jax.free_boundary_adjoint import direct_coil_accepted_trace_controller_replay_plan
-
-    try:
-        t0 = time.perf_counter()
-        replay_plan = direct_coil_accepted_trace_controller_replay_plan(
-            tuple(report["base"]["traces"]),
-            static=report["base"]["init"].static,
-            use_preconditioner_policy_segments=bool(
-                replay_kwargs.get("use_preconditioner_policy_segments", False)
-            ),
-            use_segment_preconditioner_controls=bool(
-                replay_kwargs.get("use_segment_preconditioner_controls", False)
-            ),
-            use_stacked_step_controls=bool(replay_kwargs.get("use_stacked_step_controls", False)),
-            use_accepted_only_fast_path=bool(replay_kwargs.get("use_accepted_only_fast_path", True)),
-        )
-        return replay_plan, {"available": True, "timing_key": timing_key, "scope": scope}, float(
-            time.perf_counter() - t0
-        )
-    except Exception as exc:  # pragma: no cover - synthetic tests may omit stackable trace controls.
-        return None, {"available": False, "reason": f"{type(exc).__name__}: {exc}", "scope": scope}, None
-
-
-def same_branch_current_only_coil_geometry_cache(
-    params: CoilFieldParams,
-    direction_params: CoilFieldParams,
-) -> tuple[tuple[Any, Any] | None, dict[str, Any], float | None]:
-    """Cache fixed coil geometry when same-branch reports vary currents only."""
-
-    try:
-        direction_dofs = np.asarray(direction_params.base_curve_dofs, dtype=float)
-        if np.any(direction_dofs):
-            return None, {"available": False, "reason": "direction includes coil-shape dofs"}, None
-        t0 = time.perf_counter()
-        gamma, gamma_dash, _currents = build_coil_field_geometry(params)
-        return (
-            (gamma, gamma_dash),
-            {
-                "available": True,
-                "scope": "current-only branch-local vector/profile replays",
-                "timing_key": "branch_local_current_only_coil_geometry_build_wall_s",
-            },
-            float(time.perf_counter() - t0),
-        )
-    except Exception as exc:  # pragma: no cover - defensive; report artifacts should not abort examples.
-        return None, {"available": False, "reason": f"{type(exc).__name__}: {exc}"}, None
-
-
-def nestor_profile_policy_from_results(
-    results: list[dict[str, Any]],
-    *,
-    mode_count: int,
-    min_mode_count: int,
-    min_speedup: float,
-) -> dict[str, Any]:
-    """Decide whether matrix-free NESTOR should be promoted for this report."""
-
-    dense = [item for item in results if item.get("nestor_solve_mode") == "dense" and item.get("available")]
-    matrix_free = [
-        item
-        for item in results
-        if item.get("nestor_solve_mode") == "matrix_free" and item.get("available")
-    ]
-    if not dense:
-        return {
-            "promote_matrix_free": False,
-            "reason": "dense baseline timing is unavailable",
-            "mode_count": int(mode_count),
-        }
-    if not matrix_free:
-        return {
-            "promote_matrix_free": False,
-            "reason": "matrix-free timing is unavailable",
-            "mode_count": int(mode_count),
-        }
-    dense_best_entry = min(dense, key=lambda item: float(item["wall_s"]))
-    dense_best = float(dense_best_entry["wall_s"])
-    mf_best_entry = min(matrix_free, key=lambda item: float(item["wall_s"]))
-    mf_best = float(mf_best_entry["wall_s"])
-    speedup = dense_best / mf_best if mf_best > 0.0 else np.inf
-    if int(mode_count) < int(min_mode_count):
-        reason = f"mode_count {int(mode_count)} below threshold {int(min_mode_count)}"
-        promote = False
-    elif speedup < float(min_speedup):
-        reason = f"matrix-free speedup {speedup:.3g} below threshold {float(min_speedup):.3g}"
-        promote = False
-    else:
-        reason = "matrix-free is faster beyond the configured mode-count and speedup thresholds"
-        promote = True
-    return {
-        "promote_matrix_free": bool(promote),
-        "reason": reason,
-        "mode_count": int(mode_count),
-        "min_mode_count": int(min_mode_count),
-        "min_speedup": float(min_speedup),
-        "dense_best_wall_s": dense_best,
-        "matrix_free_best_wall_s": mf_best,
-        "matrix_free_best_solver": str(mf_best_entry.get("nestor_operator_solver", "unknown")),
-        "speedup_dense_over_matrix_free": float(speedup),
-        "recommended_report_options": {
-            "same_branch_report_nestor_solve_mode": "matrix_free" if promote else "dense",
-            "same_branch_report_nestor_operator_solver": str(
-                mf_best_entry.get("nestor_operator_solver", "gmres")
-            )
-            if promote
-            else str(dense_best_entry.get("nestor_operator_solver", "gmres")),
-            "reason": "use promoted matrix-free replay settings" if promote else "keep dense replay settings",
-        },
-    }
 
 
 def parse_profile_matrix_free_solvers(value: str | Sequence[str] | None) -> tuple[str, ...]:
