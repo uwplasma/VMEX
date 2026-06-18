@@ -19023,3 +19023,89 @@ Results:
 No user input is needed.
 
 ---
+## 154. Draft PR Description Synchronization After LS Example Diagnostic
+
+### Steps taken
+
+- Updated draft PR #21 body after M153.
+- Changed the detailed-log pointer from section 150 to section 153.
+- Added schema `mirror_free_boundary_circular_coil_beta_scan` version `0.4`.
+- Added `mirror_free_boundary_least_squares_step` and the
+  `--run-ls-boundary-step` circular-coil example diagnostic to the PR status.
+- Added the latest validation evidence:
+  - `50 passed in 2.14s` for free-boundary tests;
+  - `20 passed in 90.63s` for mirror example tests;
+  - Sphinx docs build;
+  - Ruff check/format-check;
+  - whitespace check;
+  - plotted LS evidence under
+    `results/mirror/free_boundary_circular_coils_m153_lsq_plots_sorted/`.
+- Kept the PR in draft state.
+- Verified the remote PR body after editing.
+
+### Results obtained
+
+- Remote PR body verification confirmed:
+  - PR number `21`;
+  - draft state `true`;
+  - body contains `section 153`;
+  - body contains schema version `0.4`;
+  - body contains `mirror_free_boundary_least_squares_step`;
+  - body contains `20 passed in 90.63s`;
+  - body contains `free_boundary_circular_coils_m153_lsq_plots_sorted`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+gh pr edit 21 --body-file /tmp/vmec_mirror_pr_body_m153.md
+gh pr view 21 --json number,isDraft,body,url | python -c '...'
+```
+
+Results:
+
+- PR edit succeeded.
+- PR body verification passed.
+- PR remained draft.
+- The latest CI run for commit `52852139` was queued/in progress at the
+  status check and had no reported failures in the rollup.
+
+### File structure and best-practice notes
+
+- No source files changed in this tranche.
+- Detailed evidence remains in `plan_mirror.md`; the PR body stays a concise
+  review index.
+- The PR remains draft as requested.
+
+### Best next steps
+
+1. Commit and push M154 plan log.
+2. Build the next free-boundary tranche: a true coupled diagnostic mode that
+   evaluates LS-selected boundary coefficient updates by rerunning the
+   fixed-boundary solve, not only by freezing the interior state.
+3. Check CI later and fix failures if any appear.
+
+### Completion percentages after M154
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `93%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `92%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `96%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `95%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
+
+---
