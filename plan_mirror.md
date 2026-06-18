@@ -17342,3 +17342,103 @@ Results:
 No user input is needed.
 
 ---
+## 139. Flux-Profile Differentiability Coverage and Test Simplification
+
+### Steps taken
+
+- Replaced the current-profile custom-VJP regression with a parameterized
+  profile-coefficient test.
+- The parameterized test now covers:
+  - `i_prime` / current coefficients;
+  - `psi_prime` / flux coefficients.
+- Kept the same validation gates for each profile:
+  - forward and reverse residual profile Jacobians agree;
+  - custom VJP gradient matches `-F_p.T @ adjoint`;
+  - custom VJP directional derivative matches the forward sensitivity
+    contraction;
+  - dense and matrix-free profile sensitivities agree;
+  - directional derivative matches a separately solved perturbed-root finite
+    difference.
+- Fixed the new `psi_prime` finite-difference closure to use the perturbed flux
+  profile in both residual and Jacobian callbacks.
+- Updated `docs/mirror/differentiability.rst` to say pressure, current, and
+  flux profile coefficients are now covered.
+
+### Results obtained
+
+- The generic profile API now has explicit regression coverage for all three
+  supported profile families:
+  - pressure;
+  - current / `i_prime`;
+  - flux / `psi_prime`.
+- The test file avoids a third copied test body by parameterizing the current
+  and flux cases.
+- Full fixed-boundary axisymmetric mirror tests pass with the added flux gate:
+  `21 passed`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check tests/mirror/test_mirror_fixed_boundary_axisym.py
+python -m ruff format --check tests/mirror/test_mirror_fixed_boundary_axisym.py
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py::test_reduced_pressure_custom_vjp_matches_adjoint_and_perturbed_root \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py::test_reduced_profile_custom_vjp_matches_adjoint_and_perturbed_root -q
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_fixed_boundary_axisym.py -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff Python format check passed.
+- Focused pressure/profile differentiability tests: `3 passed`.
+- Full fixed-boundary axisymmetric mirror test file: `21 passed`.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- No new source API was needed; this tranche validates the generic profile API
+  introduced in M138.
+- The profile test is parameterized instead of duplicated, which keeps the test
+  body easier to maintain as more profile families are added.
+- No generated artifacts were added.
+
+### Best next steps
+
+1. Commit and push M139.
+2. Reassess boundary-parameter differentiation: the remaining differentiability
+   gap is boundary coefficients, which may need an explicit coefficient wrapper
+   rather than making every boundary object a JAX pytree.
+3. Resume free-boundary/ESSOS beta-scan convergence cleanup if boundary
+   differentiation is deferred to a final polishing tranche.
+4. Update the PR description after the next substantial tranche so the
+   differentiability status is no longer stale.
+
+### Completion percentages after M139
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `90%`.
+- Fixed-boundary axisymmetric solve: `90%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `92%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `87%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `87%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `90%`.
+- PR merge readiness overall: `97%`.
+
+### User input needed
+
+No user input is needed.
+
+---

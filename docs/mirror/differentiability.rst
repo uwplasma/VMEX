@@ -63,8 +63,8 @@ matrix-free Hessian-vector path, and explicit forward/adjoint implicit wrappers.
 The test suite also validates the custom reverse-mode source wrapper against
 the explicit adjoint and a separately solved perturbed root, then applies the
 forward wrapper to a tiny converged fixed-boundary cylinder with a local state
-ridge about the solved state. Additional gates validate pressure- and
-current-profile coefficient Jacobians, forward sensitivities, and custom VJPs
+ridge about the solved state. Additional gates validate pressure-, current-,
+and flux-profile coefficient Jacobians, forward sensitivities, and custom VJPs
 against separately solved perturbed roots. These are the first differentiable
 solved-state contracts, but only for reduced axisymmetric source and profile
 coefficient perturbations.

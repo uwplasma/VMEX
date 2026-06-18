@@ -882,7 +882,19 @@ def test_reduced_pressure_custom_vjp_matches_adjoint_and_perturbed_root():
     )
 
 
-def test_reduced_current_profile_custom_vjp_matches_adjoint_and_perturbed_root():
+@pytest.mark.parametrize(
+    ("profile", "profile_alias", "profile_coefficients", "profile_direction"),
+    [
+        ("i_prime", "current", np.asarray([0.03, -0.01], dtype=float), np.asarray([0.4, -0.3], dtype=float)),
+        ("psi_prime", "flux", np.asarray([0.01, 0.002], dtype=float), np.asarray([0.3, -0.2], dtype=float)),
+    ],
+)
+def test_reduced_profile_custom_vjp_matches_adjoint_and_perturbed_root(
+    profile,
+    profile_alias,
+    profile_coefficients,
+    profile_direction,
+):
     jax = pytest.importorskip("jax")
     jnp = pytest.importorskip("jax.numpy")
     scipy_optimize = pytest.importorskip("scipy.optimize")
@@ -896,9 +908,12 @@ def test_reduced_current_profile_custom_vjp_matches_adjoint_and_perturbed_root()
         a=base.a * (1.0 + 0.01 * s * (1.0 - s) * (1.0 - xi**2)),
         lam=0.005 * s * (xi - np.mean(grid.xi)),
     )
-    psi = PsiPrimeProfile.constant(0.01)
-    current_coefficients = np.asarray([0.03, -0.01], dtype=float)
-    current = IPrimeProfile(coefficients=current_coefficients)
+    if profile == "psi_prime":
+        psi = PsiPrimeProfile(coefficients=profile_coefficients)
+        current = IPrimeProfile.zero()
+    else:
+        psi = PsiPrimeProfile.constant(0.01)
+        current = IPrimeProfile(coefficients=profile_coefficients)
     pressure = PressureProfile.zero()
     vector = pack_axisym_reduced_state(state, grid, boundary)
     source0 = np.asarray(
@@ -929,13 +944,13 @@ def test_reduced_current_profile_custom_vjp_matches_adjoint_and_perturbed_root()
     )
     np.testing.assert_allclose(exact_root_residual, 0.0, atol=1.0e-12)
 
-    current_jacobian = np.asarray(
+    profile_jacobian = np.asarray(
         axisym_reduced_residual_profile_jacobian_jax(
             vector,
-            current_coefficients,
+            profile_coefficients,
             grid,
             boundary,
-            profile="i_prime",
+            profile=profile,
             psi_prime=psi,
             i_prime=current,
             pressure=pressure,
@@ -946,13 +961,13 @@ def test_reduced_current_profile_custom_vjp_matches_adjoint_and_perturbed_root()
             mu0=1.0,
         )
     )
-    current_jacobian_reverse = np.asarray(
+    profile_jacobian_reverse = np.asarray(
         axisym_reduced_residual_profile_jacobian_jax(
             vector,
-            current_coefficients,
+            profile_coefficients,
             grid,
             boundary,
-            profile="current",
+            profile=profile_alias,
             psi_prime=psi,
             i_prime=current,
             pressure=pressure,
@@ -963,18 +978,18 @@ def test_reduced_current_profile_custom_vjp_matches_adjoint_and_perturbed_root()
             mu0=1.0,
         )
     )
-    assert current_jacobian.shape == (vector.size, current_coefficients.size)
-    np.testing.assert_allclose(current_jacobian_reverse, current_jacobian, rtol=1.0e-8, atol=1.0e-10)
+    assert profile_jacobian.shape == (vector.size, profile_coefficients.size)
+    np.testing.assert_allclose(profile_jacobian_reverse, profile_jacobian, rtol=1.0e-8, atol=1.0e-10)
 
     loss_weights = np.cos(np.linspace(0.2, 1.5, vector.size))
 
-    def loss_for_current(coefficients):
+    def loss_for_profile(coefficients):
         solved_state = axisym_reduced_implicit_profile_state_jax(
             jnp.asarray(vector),
             coefficients,
             grid,
             boundary,
-            profile="i_prime",
+            profile=profile,
             psi_prime=psi,
             i_prime=current,
             pressure=pressure,
@@ -986,7 +1001,7 @@ def test_reduced_current_profile_custom_vjp_matches_adjoint_and_perturbed_root()
         )
         return jnp.vdot(jnp.asarray(loss_weights, dtype=solved_state.dtype), solved_state)
 
-    custom_vjp_gradient = np.asarray(jax.grad(loss_for_current)(jnp.asarray(current_coefficients)))
+    custom_vjp_gradient = np.asarray(jax.grad(loss_for_profile)(jnp.asarray(profile_coefficients)))
     adjoint = np.asarray(
         axisym_reduced_implicit_adjoint_jax(
             vector,
@@ -1003,16 +1018,16 @@ def test_reduced_current_profile_custom_vjp_matches_adjoint_and_perturbed_root()
             mu0=1.0,
         )
     )
-    explicit_current_gradient = -current_jacobian.T @ adjoint
-    np.testing.assert_allclose(custom_vjp_gradient, explicit_current_gradient, rtol=1.0e-8, atol=1.0e-10)
+    explicit_profile_gradient = -profile_jacobian.T @ adjoint
+    np.testing.assert_allclose(custom_vjp_gradient, explicit_profile_gradient, rtol=1.0e-8, atol=1.0e-10)
 
-    current_sensitivity = np.asarray(
+    profile_sensitivity = np.asarray(
         axisym_reduced_implicit_profile_sensitivity_jax(
             vector,
-            current_coefficients,
+            profile_coefficients,
             grid,
             boundary,
-            profile="i_prime",
+            profile=profile,
             psi_prime=psi,
             i_prime=current,
             pressure=pressure,
@@ -1023,13 +1038,13 @@ def test_reduced_current_profile_custom_vjp_matches_adjoint_and_perturbed_root()
             mu0=1.0,
         )
     )
-    current_sensitivity_matrix_free = np.asarray(
+    profile_sensitivity_matrix_free = np.asarray(
         axisym_reduced_implicit_profile_sensitivity_jax(
             vector,
-            current_coefficients,
+            profile_coefficients,
             grid,
             boundary,
-            profile="i_prime",
+            profile=profile,
             psi_prime=psi,
             i_prime=current,
             pressure=pressure,
@@ -1042,17 +1057,18 @@ def test_reduced_current_profile_custom_vjp_matches_adjoint_and_perturbed_root()
             mu0=1.0,
         )
     )
-    np.testing.assert_allclose(current_sensitivity_matrix_free, current_sensitivity, rtol=5.0e-6, atol=5.0e-8)
-    current_direction = np.asarray([0.4, -0.3], dtype=float)
+    np.testing.assert_allclose(profile_sensitivity_matrix_free, profile_sensitivity, rtol=5.0e-6, atol=5.0e-8)
     np.testing.assert_allclose(
-        float(np.vdot(custom_vjp_gradient, current_direction)),
-        float(np.vdot(loss_weights, current_sensitivity @ current_direction)),
+        float(np.vdot(custom_vjp_gradient, profile_direction)),
+        float(np.vdot(loss_weights, profile_sensitivity @ profile_direction)),
         rtol=1.0e-8,
         atol=1.0e-10,
     )
 
     eps = 1.0e-5
-    current_eps = IPrimeProfile(coefficients=current_coefficients + eps * current_direction)
+    perturbed_coefficients = profile_coefficients + eps * profile_direction
+    psi_eps = PsiPrimeProfile(coefficients=perturbed_coefficients) if profile == "psi_prime" else psi
+    current_eps = IPrimeProfile(coefficients=perturbed_coefficients) if profile == "i_prime" else current
 
     def residual(items):
         return np.asarray(
@@ -1060,7 +1076,7 @@ def test_reduced_current_profile_custom_vjp_matches_adjoint_and_perturbed_root()
                 items,
                 grid,
                 boundary,
-                psi_prime=psi,
+                psi_prime=psi_eps,
                 i_prime=current_eps,
                 pressure=pressure,
                 source_vector=source0,
@@ -1076,7 +1092,7 @@ def test_reduced_current_profile_custom_vjp_matches_adjoint_and_perturbed_root()
                 items,
                 grid,
                 boundary,
-                psi_prime=psi,
+                psi_prime=psi_eps,
                 i_prime=current_eps,
                 pressure=pressure,
                 source_vector=source0,
@@ -1088,7 +1104,7 @@ def test_reduced_current_profile_custom_vjp_matches_adjoint_and_perturbed_root()
 
     solved = scipy_optimize.root(
         residual,
-        vector + eps * (current_sensitivity @ current_direction),
+        vector + eps * (profile_sensitivity @ profile_direction),
         jac=jacobian,
         method="hybr",
         options={"xtol": 1.0e-11, "maxfev": 120},
@@ -1096,7 +1112,7 @@ def test_reduced_current_profile_custom_vjp_matches_adjoint_and_perturbed_root()
     assert np.linalg.norm(residual(solved.x)) < 1.0e-10
     finite_difference_directional = float(np.vdot(loss_weights, (solved.x - vector) / eps))
     np.testing.assert_allclose(
-        float(np.vdot(custom_vjp_gradient, current_direction)),
+        float(np.vdot(custom_vjp_gradient, profile_direction)),
         finite_difference_directional,
         rtol=2.0e-4,
         atol=2.0e-4,
