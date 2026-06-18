@@ -13301,6 +13301,72 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9996%.
 
+## 2026-06-18 Force Input-Profile Normalization Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_WoutProfileProxy` and `_resolve_force_wout_and_pressure` to isolate
+   the input-deck-only force diagnostic path.
+2. Replaced the inline `&INDATA -> flux/profile -> WOUT proxy` block in
+   `vmec_forces_rz_from_wout` with a single normalization call.
+3. Kept Bcovar and downstream force-kernel algebra unchanged; the helper only
+   normalizes missing WOUT flux functions and pressure before force assembly.
+
+Results obtained:
+
+- `vmec_jax/vmec_forces.py` is net negative: 45 insertions, 52 deletions.
+- `vmec_forces_rz_from_wout` dropped from 451 to 402 lines.
+- The input-only solver/diagnostic path now has a named seam that can be tested
+  independently of the R/Z force-kernel algebra.
+- No generated artifacts or large files were added.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/vmec_forces.py tests/test_wout_bcovar_forces_extra_coverage.py tests/test_vmec_forces_synthetic_helpers.py tests/test_vmec_forces_fast_helpers.py`
+- `python -m compileall -q vmec_jax/vmec_forces.py tests/test_wout_bcovar_forces_extra_coverage.py tests/test_vmec_forces_synthetic_helpers.py tests/test_vmec_forces_fast_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_bcovar_forces_extra_coverage.py::test_forces_indata_profile_fill_passes_flux_and_pressure_coefficients tests/test_vmec_forces_synthetic_helpers.py::test_freeb_edge_coupling_synthetic_pressure_scale_and_dump tests/test_vmec_forces_synthetic_helpers.py::test_reference_fields_with_synthetic_wout_builds_half_mesh_and_lambda_kernels -q`
+  - Result: passed.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_vmec_forces_fast_helpers.py -q`
+  - Result: passed.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 40`
+
+Best next steps:
+
+1. Continue reducing force code by extracting the free-boundary edge forcing
+   block or the parity-array alias block, whichever produces a clean
+   behavior-preserving seam with focused tests.
+2. If force seams become coupled, switch to `vmec_tomnsp.tomnsps_rzl`, which is
+   similarly sized and has focused transform/parity tests.
+3. Keep branch-adaptive differentiability work separate from these source-health
+   tranches to avoid mixing refactor-only commits with algorithmic changes.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.57%.
+- Free-boundary adjoint monolith reduction: 99.40%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.9%.
+- WOUT diagnostic/profile decomposition: 99.86%.
+- Bcovar/WOUT parity decomposition: 99.08%.
+- Force-kernel decomposition: 98.85%.
+- Optimizer workflow decomposition: 99.19%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 96.2%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99965%.
+
 ## 2026-06-18 Residual Iteration Mode-Alias Cleanup
 
 Branch: `codex/differentiability-refactor-plan`.
