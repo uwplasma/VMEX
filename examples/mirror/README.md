@@ -85,7 +85,9 @@ iota and Mercier ``DWell`` profile figures. Pass ``--run-vmec2000`` to run the
 same generated inputs through the local VMEC2000 executable and record parsed
 ``threed1`` residual histories beside the VMEC/JAX rows. Use
 ``--solver-mode parity --no-use-scan`` for the closest VMEC2000-control
-comparison, or keep the default accelerated mode for the fast CLI path.
+comparison, or keep the default accelerated mode for the fast CLI path. The
+CSV records requested ``ftol``, VMEC/JAX strict and total-``fsq`` convergence
+flags, and VMEC2000 WOUT residual components when available.
 
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
 free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct

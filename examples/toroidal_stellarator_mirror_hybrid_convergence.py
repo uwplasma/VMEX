@@ -66,6 +66,8 @@ _CSV_COLUMNS = (
     "ran_solve",
     "solver_mode",
     "use_scan",
+    "requested_ftol",
+    "fsq_total_target",
     "seconds",
     "n_iter",
     "initial_fsq",
@@ -80,6 +82,8 @@ _CSV_COLUMNS = (
     "best_fsqz",
     "best_fsql",
     "converged",
+    "converged_strict",
+    "converged_by_total_fsq",
     "aspect",
     "mean_iota",
     "magnetic_well",
@@ -92,6 +96,11 @@ _CSV_COLUMNS = (
     "vmec2000_best_iter",
     "vmec2000_fsq_reduction",
     "vmec2000_final_fsq",
+    "vmec2000_final_fsqr",
+    "vmec2000_final_fsqz",
+    "vmec2000_final_fsql",
+    "vmec2000_aspect",
+    "vmec2000_mean_iota",
     "input",
     "wout",
     "vmec2000_wout",
@@ -338,6 +347,8 @@ def main() -> None:
                 "ran_solve": bool(args.run_solve),
                 "solver_mode": str(args.solver_mode),
                 "use_scan": None if args.use_scan is None else bool(args.use_scan),
+                "requested_ftol": float(args.ftol),
+                "fsq_total_target": None,
                 "seconds": None,
                 "initial_fsq": None,
                 "best_fsq": None,
@@ -351,6 +362,8 @@ def main() -> None:
                 "best_fsqz": None,
                 "best_fsql": None,
                 "converged": None,
+                "converged_strict": None,
+                "converged_by_total_fsq": None,
                 "n_iter": None,
                 "aspect": None,
                 "mean_iota": None,
@@ -369,6 +382,11 @@ def main() -> None:
                 "vmec2000_best_iter": None,
                 "vmec2000_fsq_reduction": None,
                 "vmec2000_final_fsq": None,
+                "vmec2000_final_fsqr": None,
+                "vmec2000_final_fsqz": None,
+                "vmec2000_final_fsql": None,
+                "vmec2000_aspect": None,
+                "vmec2000_mean_iota": None,
                 "vmec2000_iter_history": [],
                 "vmec2000_fsq_history": [],
                 "vmec2000_fsqr_history": [],
@@ -392,6 +410,12 @@ def main() -> None:
                 row["seconds"] = float(perf_counter() - t0)
                 diag = dict(run.result.diagnostics) if run.result is not None else {}
                 row["converged"] = bool(diag.get("converged", False))
+                row["converged_strict"] = bool(diag.get("converged_strict", False))
+                row["converged_by_total_fsq"] = bool(diag.get("converged_by_total_fsq", False))
+                if diag.get("requested_ftol") is not None:
+                    row["requested_ftol"] = float(diag["requested_ftol"])
+                if diag.get("fsq_total_target") is not None:
+                    row["fsq_total_target"] = float(diag["fsq_total_target"])
                 row["n_iter"] = int(getattr(run.result, "n_iter", -1)) if run.result is not None else None
                 if run.result is not None and getattr(run.result, "w_history", None) is not None:
                     fsq_history = np.asarray(run.result.w_history, dtype=float).reshape(-1)
@@ -451,6 +475,16 @@ def main() -> None:
                     row["vmec2000_threed1"] = str(vmec2000.threed1_path) if vmec2000.threed1_path is not None else None
                     vmec2000_wouts = sorted(vmec2000.workdir.glob("wout*.nc"))
                     row["vmec2000_wout"] = str(vmec2000_wouts[0]) if vmec2000_wouts else None
+                    if vmec2000_wouts:
+                        try:
+                            vmec2000_wout = read_wout(vmec2000_wouts[0])
+                            row["vmec2000_final_fsqr"] = float(vmec2000_wout.fsqr)
+                            row["vmec2000_final_fsqz"] = float(vmec2000_wout.fsqz)
+                            row["vmec2000_final_fsql"] = float(vmec2000_wout.fsql)
+                            row["vmec2000_aspect"] = float(vmec2000_wout.aspect)
+                            row["vmec2000_mean_iota"] = float(np.nanmean(np.asarray(vmec2000_wout.iotas, dtype=float)))
+                        except Exception:
+                            pass
                     vmec2000_rows = flatten_threed1(vmec2000.stages)
                     row["vmec2000_n_rows"] = len(vmec2000_rows)
                     if vmec2000_rows:

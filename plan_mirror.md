@@ -5740,6 +5740,143 @@ No user input is needed.
 
 ---
 
+## 87. 2026-06-18 M13f.2 convergence-target and VMEC2000 component fields
+
+This tranche made the toroidal hybrid parity rows more self-explanatory by
+recording the convergence target fields and VMEC2000 WOUT component residuals
+directly in the CSV/JSON output.
+
+### Steps taken
+
+- Added row fields:
+  - `requested_ftol`;
+  - `fsq_total_target`;
+  - `converged_strict`;
+  - `converged_by_total_fsq`.
+- Added VMEC2000 WOUT-derived fields:
+  - `vmec2000_final_fsqr`;
+  - `vmec2000_final_fsqz`;
+  - `vmec2000_final_fsql`;
+  - `vmec2000_aspect`;
+  - `vmec2000_mean_iota`.
+- Updated `examples/mirror/README.md`.
+
+### Results obtained
+
+Schema smoke:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  --outdir results/toroidal_stellarator_mirror_hybrid_schema_smoke_m13h \
+  --ns-array 7 \
+  --mode-pairs 5:4 \
+  --ntheta-fit 32 \
+  --nzeta-fit 32 \
+  --niter 20 \
+  --ftol 1e-12 \
+  --run-solve \
+  --max-iter 5 \
+  --solver-mode parity \
+  --no-use-scan \
+  --run-vmec2000 \
+  --vmec2000-exec /Users/rogeriojorge/bin/xvmec2000 \
+  --no-plots
+```
+
+Result:
+
+| field | value |
+| :--- | ---: |
+| `requested_ftol` | `1.0e-12` |
+| `fsq_total_target` | `None` |
+| `converged` | `false` |
+| `converged_strict` | `false` |
+| `converged_by_total_fsq` | `false` |
+| VMEC/JAX final `fsq` | `8.301471170622e-03` |
+| VMEC2000 final `fsq` | `7.770000000000e-03` |
+| VMEC2000 final `fsqr` | `4.432781063259e-03` |
+| VMEC2000 final `fsqz` | `2.310638399457e-03` |
+| VMEC2000 final `fsql` | `1.028225492522e-03` |
+| VMEC2000 mean iota | `1.000535474965e-02` |
+
+The `fsq_total_target` is intentionally `None` in parity mode; it is an
+accelerated-mode stopping field.  The strict convergence flag therefore
+continues to track the requested `ftol` convention.
+
+### How it was tested
+
+Focused tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
+```
+
+Result: `5 passed in 1.89s`.
+
+Lint and format:
+
+```bash
+python -m ruff check \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py
+python -m ruff format --check \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py
+```
+
+Result: all checks passed and both files were formatted.
+
+Docs and whitespace:
+
+```bash
+python -m sphinx -W -j auto -b html docs docs/_build/html
+git diff --check
+```
+
+Result: docs built successfully and no whitespace errors were found.
+
+### File structure and best-practice notes
+
+- The runner now carries enough schema to compare stopping rules without
+  re-opening WOUT files by hand.
+- VMEC2000 WOUT parsing reuses `vmec_jax.wout.read_wout`.
+- The added fields are optional and empty unless the relevant solve path runs.
+
+### Best next steps
+
+1. Commit and push the schema update.
+2. Run the `ns=9` parity row now that the row schema is complete.
+3. Add a compact parity-summary plot or table for VMEC/JAX versus VMEC2000
+   final residual components when both are present.
+4. Return to the toroidal hybrid geometry parameterization after the parity
+   summary identifies whether residual differences are solver-control or
+   geometry-resolution limited.
+
+### Completion percentages after M87
+
+- Geometry/grids/bases: `93%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `88%`.
+- I/O schema and docs: `93%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `67%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `40%`.
+- ESSOS circular-coil mirror beta scan: `53%`.
+- PR merge readiness overall: `92%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+
 ## 86. 2026-06-18 M13f.1 VMEC/JAX solver-mode controls in convergence runner
 
 This tranche exposed solver controls in the toroidal hybrid convergence runner
