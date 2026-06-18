@@ -581,6 +581,84 @@ def axisym_reduced_implicit_adjoint_jax(
     )
 
 
+def axisym_reduced_implicit_source_state_jax(
+    solved_vector,
+    source_vector,
+    grid: MirrorGrid,
+    boundary: MirrorBoundary,
+    *,
+    psi_prime: PsiPrimeProfile,
+    i_prime: IPrimeProfile,
+    pressure: PressureProfile,
+    state_ridge: float = 0.0,
+    reference_vector=None,
+    derivative: str = "hessian",
+    ridge: float = 0.0,
+    solve_method: str = "dense",
+    cg_tol: float = 1.0e-8,
+    cg_atol: float = 0.0,
+    cg_maxiter: int | None = None,
+    initial_guess=None,
+    mu0: float = 4.0e-7 * np.pi,
+):
+    """Return a solved reduced state with an implicit VJP for its source.
+
+    ``solved_vector`` is expected to already satisfy
+    ``F(solved_vector, source_vector) = 0``.  The primal call returns that
+    vector unchanged; reverse-mode differentiation with respect to
+    ``source_vector`` uses the adjoint equation
+    ``F_x.T adjoint = dL/dx``.  This avoids differentiating through a host-side
+    nonlinear optimizer while keeping downstream source-gradient checks in JAX.
+
+    Gradients with respect to ``solved_vector`` are intentionally zero because
+    it acts as a cached result of the root solve.  Use
+    ``axisym_reduced_implicit_state_sensitivity_jax`` when an explicit forward
+    tangent is needed.
+    """
+    _require_jax()
+    solved_vector = jnp.asarray(solved_vector)
+    source_vector = jnp.asarray(source_vector, dtype=solved_vector.dtype)
+    if source_vector.shape != solved_vector.shape:
+        raise ValueError(
+            f"source_vector shape {source_vector.shape} does not match solved_vector shape {solved_vector.shape}"
+        )
+
+    @jax.custom_vjp
+    def solved_state_from_source(root, source):
+        del source
+        return root
+
+    def solved_state_from_source_fwd(root, source):
+        return root, (root, source)
+
+    def solved_state_from_source_bwd(residual_data, cotangent):
+        root, source = residual_data
+        adjoint = axisym_reduced_implicit_adjoint_jax(
+            root,
+            cotangent,
+            grid,
+            boundary,
+            psi_prime=psi_prime,
+            i_prime=i_prime,
+            pressure=pressure,
+            source_vector=source,
+            state_ridge=state_ridge,
+            reference_vector=reference_vector,
+            derivative=derivative,
+            ridge=ridge,
+            solve_method=solve_method,
+            cg_tol=cg_tol,
+            cg_atol=cg_atol,
+            cg_maxiter=cg_maxiter,
+            initial_guess=initial_guess,
+            mu0=mu0,
+        )
+        return jnp.zeros_like(root), adjoint
+
+    solved_state_from_source.defvjp(solved_state_from_source_fwd, solved_state_from_source_bwd)
+    return solved_state_from_source(solved_vector, source_vector)
+
+
 def pack_reduced_state_3d(state: MirrorState3D, grid: MirrorGrid, boundary: MirrorBoundary) -> np.ndarray:
     """Pack independent 3D ``a`` nodes and gauge-fixed ``lambda`` nodes."""
     projected = project_state_3d(state, grid, boundary)

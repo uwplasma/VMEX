@@ -641,6 +641,8 @@ def test_root_implicit_sensitivity_example_runs_without_plots(tmp_path):
     assert metrics["perturbed_root_success"]
     assert metrics["perturbed_residual_norm"] < 1.0e-10
     assert metrics["relative_error"] < 1.0e-3
+    assert metrics["custom_vjp_adjoint_relative_error"] < 1.0e-8
+    assert metrics["custom_vjp_directional_relative_error"] < 1.0e-3
     assert metrics["accepted"]
     assert metrics["figures"] == {}
 

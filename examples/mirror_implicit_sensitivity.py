@@ -9,6 +9,8 @@ import sys
 
 import numpy as np
 from scipy import optimize
+import jax
+import jax.numpy as jnp
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -20,6 +22,8 @@ from vmec_jax.mirror import (
     MirrorResolution,
     PressureProfile,
     PsiPrimeProfile,
+    axisym_reduced_implicit_adjoint_jax,
+    axisym_reduced_implicit_source_state_jax,
     axisym_reduced_implicit_state_sensitivity_jax,
     axisym_reduced_residual_jacobian_jax,
     axisym_reduced_residual_jax,
@@ -142,6 +146,49 @@ def run_case(
             mu0=1.0,
         )
     )
+    loss_weights = np.cos(np.linspace(0.2, 1.5, vector.size))
+
+    def loss_for_source(source):
+        solved_state = axisym_reduced_implicit_source_state_jax(
+            jnp.asarray(vector),
+            source,
+            grid,
+            boundary,
+            psi_prime=psi,
+            i_prime=current,
+            pressure=pressure,
+            state_ridge=state_ridge,
+            reference_vector=vector,
+            solve_method=solve_method,
+            cg_tol=1.0e-10,
+            cg_maxiter=200,
+            mu0=1.0,
+        )
+        return jnp.vdot(jnp.asarray(loss_weights, dtype=solved_state.dtype), solved_state)
+
+    custom_vjp_source_gradient = np.asarray(jax.grad(loss_for_source)(jnp.asarray(source0)))
+    explicit_adjoint = np.asarray(
+        axisym_reduced_implicit_adjoint_jax(
+            vector,
+            loss_weights,
+            grid,
+            boundary,
+            psi_prime=psi,
+            i_prime=current,
+            pressure=pressure,
+            source_vector=source0,
+            state_ridge=state_ridge,
+            reference_vector=vector,
+            solve_method=solve_method,
+            cg_tol=1.0e-10,
+            cg_maxiter=200,
+            mu0=1.0,
+        )
+    )
+    adjoint_difference = custom_vjp_source_gradient - explicit_adjoint
+    custom_vjp_adjoint_relative_error = float(
+        np.linalg.norm(adjoint_difference) / max(np.linalg.norm(explicit_adjoint), np.finfo(float).tiny)
+    )
     source_eps = source0 + float(epsilon) * source_direction
 
     def residual(items):
@@ -188,8 +235,19 @@ def run_case(
     difference = finite_difference_sensitivity - implicit_sensitivity
     relative_error = float(np.linalg.norm(difference) / max(np.linalg.norm(implicit_sensitivity), np.finfo(float).tiny))
     max_abs_error = float(np.max(np.abs(difference)))
+    custom_vjp_directional = float(np.vdot(custom_vjp_source_gradient, source_direction))
+    finite_difference_directional = float(np.vdot(loss_weights, finite_difference_sensitivity))
+    custom_vjp_directional_relative_error = float(
+        abs(custom_vjp_directional - finite_difference_directional)
+        / max(abs(finite_difference_directional), np.finfo(float).tiny)
+    )
     root_accepted = bool(perturbed_residual_norm < float(root_tol))
-    accepted = bool(root_accepted and relative_error < 1.0e-3)
+    accepted = bool(
+        root_accepted
+        and relative_error < 1.0e-3
+        and custom_vjp_adjoint_relative_error < 1.0e-8
+        and custom_vjp_directional_relative_error < 1.0e-3
+    )
     figures: dict[str, str] = {}
     if write_plots:
         figures["components"] = str(
@@ -213,6 +271,10 @@ def run_case(
         "perturbed_residual_norm": perturbed_residual_norm,
         "relative_error": relative_error,
         "max_abs_error": max_abs_error,
+        "custom_vjp_adjoint_relative_error": custom_vjp_adjoint_relative_error,
+        "custom_vjp_directional": custom_vjp_directional,
+        "finite_difference_directional": finite_difference_directional,
+        "custom_vjp_directional_relative_error": custom_vjp_directional_relative_error,
         "accepted": accepted,
         "figures": figures,
     }

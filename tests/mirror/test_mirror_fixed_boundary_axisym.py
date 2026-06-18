@@ -11,6 +11,7 @@ from vmec_jax.mirror import (
     PressureProfile,
     PsiPrimeProfile,
     axisym_reduced_implicit_adjoint_jax,
+    axisym_reduced_implicit_source_state_jax,
     axisym_reduced_implicit_state_sensitivity_jax,
     axisym_reduced_residual_jacobian_jax,
     axisym_reduced_residual_jax,
@@ -496,6 +497,165 @@ def test_reduced_implicit_sensitivity_matches_manufactured_source_finite_differe
         implicit_sensitivity,
         rtol=2.0e-4,
         atol=2.0e-3,
+    )
+
+
+def test_reduced_custom_vjp_source_state_matches_adjoint_and_perturbed_root():
+    jax = pytest.importorskip("jax")
+    jnp = pytest.importorskip("jax.numpy")
+    scipy_optimize = pytest.importorskip("scipy.optimize")
+    config = MirrorConfig(MirrorResolution(ns=5, ntheta=1, nxi=7, mpol=0), z_min=-1.0, z_max=1.0)
+    grid = config.build_grid()
+    boundary = MirrorBoundary.polynomial_radius(r0=0.3, a2=0.04)
+    base = MirrorStateAxisym.from_boundary(grid, boundary)
+    s = grid.s_full[:, None]
+    xi = grid.xi[None, :]
+    state = MirrorStateAxisym(
+        a=base.a * (1.0 + 0.01 * s * (1.0 - s) * (1.0 - xi**2)),
+        lam=0.005 * s * (xi - np.mean(grid.xi)),
+    )
+    psi = PsiPrimeProfile.constant(0.01)
+    current = IPrimeProfile.zero()
+    pressure = PressureProfile.zero()
+    vector = pack_axisym_reduced_state(state, grid, boundary)
+    source0 = np.asarray(
+        axisym_reduced_residual_jax(
+            vector,
+            grid,
+            boundary,
+            psi_prime=psi,
+            i_prime=current,
+            pressure=pressure,
+            mu0=1.0,
+        )
+    )
+    state_ridge = 1.0e-3
+    exact_root_residual = np.asarray(
+        axisym_reduced_residual_jax(
+            vector,
+            grid,
+            boundary,
+            psi_prime=psi,
+            i_prime=current,
+            pressure=pressure,
+            source_vector=source0,
+            state_ridge=state_ridge,
+            reference_vector=vector,
+            mu0=1.0,
+        )
+    )
+    np.testing.assert_allclose(exact_root_residual, 0.0, atol=1.0e-12)
+
+    loss_weights = np.cos(np.linspace(0.2, 1.5, vector.size))
+
+    def loss_for_source(source):
+        solved_state = axisym_reduced_implicit_source_state_jax(
+            jnp.asarray(vector),
+            source,
+            grid,
+            boundary,
+            psi_prime=psi,
+            i_prime=current,
+            pressure=pressure,
+            state_ridge=state_ridge,
+            reference_vector=vector,
+            solve_method="dense",
+            mu0=1.0,
+        )
+        return jnp.vdot(jnp.asarray(loss_weights, dtype=solved_state.dtype), solved_state)
+
+    custom_vjp_gradient = np.asarray(jax.grad(loss_for_source)(jnp.asarray(source0)))
+    explicit_adjoint = np.asarray(
+        axisym_reduced_implicit_adjoint_jax(
+            vector,
+            loss_weights,
+            grid,
+            boundary,
+            psi_prime=psi,
+            i_prime=current,
+            pressure=pressure,
+            source_vector=source0,
+            state_ridge=state_ridge,
+            reference_vector=vector,
+            solve_method="dense",
+            mu0=1.0,
+        )
+    )
+    np.testing.assert_allclose(custom_vjp_gradient, explicit_adjoint, rtol=1.0e-8, atol=1.0e-10)
+
+    source_direction = np.sin(np.linspace(0.1, 1.3, vector.size))
+    explicit_forward = np.asarray(
+        axisym_reduced_implicit_state_sensitivity_jax(
+            vector,
+            -source_direction,
+            grid,
+            boundary,
+            psi_prime=psi,
+            i_prime=current,
+            pressure=pressure,
+            source_vector=source0,
+            state_ridge=state_ridge,
+            reference_vector=vector,
+            solve_method="dense",
+            mu0=1.0,
+        )
+    )
+    np.testing.assert_allclose(
+        float(np.vdot(custom_vjp_gradient, source_direction)),
+        float(np.vdot(loss_weights, explicit_forward)),
+        rtol=1.0e-8,
+        atol=1.0e-10,
+    )
+
+    eps = 1.0e-5
+    source_eps = source0 + eps * source_direction
+
+    def residual(items):
+        return np.asarray(
+            axisym_reduced_residual_jax(
+                items,
+                grid,
+                boundary,
+                psi_prime=psi,
+                i_prime=current,
+                pressure=pressure,
+                source_vector=source_eps,
+                state_ridge=state_ridge,
+                reference_vector=vector,
+                mu0=1.0,
+            )
+        )
+
+    def jacobian(items):
+        return np.asarray(
+            axisym_reduced_residual_jacobian_jax(
+                items,
+                grid,
+                boundary,
+                psi_prime=psi,
+                i_prime=current,
+                pressure=pressure,
+                source_vector=source_eps,
+                state_ridge=state_ridge,
+                reference_vector=vector,
+                mu0=1.0,
+            )
+        )
+
+    solved = scipy_optimize.root(
+        residual,
+        vector + eps * explicit_forward,
+        jac=jacobian,
+        method="hybr",
+        options={"xtol": 1.0e-11, "maxfev": 120},
+    )
+    assert np.linalg.norm(residual(solved.x)) < 1.0e-10
+    finite_difference_directional = float(np.vdot(loss_weights, (solved.x - vector) / eps))
+    np.testing.assert_allclose(
+        float(np.vdot(custom_vjp_gradient, source_direction)),
+        finite_difference_directional,
+        rtol=2.0e-4,
+        atol=2.0e-4,
     )
 
 

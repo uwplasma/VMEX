@@ -26,6 +26,10 @@ only:
   implicit equation ``F_x dx/dp = -F_p``.
 - ``axisym_reduced_implicit_adjoint_jax`` solves the adjoint equation
   ``F_x.T adjoint = dL/dx``.
+- ``axisym_reduced_implicit_source_state_jax`` returns a cached converged
+  reduced state with a custom reverse-mode derivative with respect to a linear
+  reduced source. The primal call does not run an optimizer; the VJP uses the
+  same implicit adjoint solve as ``axisym_reduced_implicit_adjoint_jax``.
 
 These functions are intended as method gates for implicit differentiation:
 
@@ -44,9 +48,11 @@ an independently solved perturbed source problem.
 
 This validates the residual, Jacobian, dense linear-solve machinery, first
 matrix-free Hessian-vector path, and explicit forward/adjoint implicit wrappers.
-The test suite also applies the forward wrapper to a tiny converged
-fixed-boundary cylinder with a local state ridge about the solved state. This is
-still not a production differentiable equilibrium solve.
+The test suite also validates the custom reverse-mode source wrapper against
+the explicit adjoint and a separately solved perturbed root, then applies the
+forward wrapper to a tiny converged fixed-boundary cylinder with a local state
+ridge about the solved state. This is the first differentiable solved-state
+contract, but only for reduced axisymmetric source perturbations.
 
 The benchmark example ``examples/mirror_implicit_solve_benchmark.py`` compares
 dense and matrix-free wrapper calls on a small ``ns``/``nxi`` ladder and writes
@@ -61,6 +67,9 @@ Next Steps
    solver stack.
 3. Extend the benchmark ladder after the physical residual conditioning is
    improved enough for larger low-ridge systems.
-4. Wrap a small converged solved state with a custom implicit derivative rule.
-5. Promote the differentiable API only after it agrees with finite differences
-   and the existing fixed-boundary solver diagnostics.
+4. Extend the custom implicit wrapper from linear reduced sources to physical
+   parameters such as boundary coefficients, pressure coefficients, and current
+   profile coefficients.
+5. Promote the differentiable API only after those physical-parameter
+   derivatives agree with finite differences and the existing fixed-boundary
+   solver diagnostics.

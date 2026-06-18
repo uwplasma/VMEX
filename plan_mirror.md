@@ -16965,3 +16965,155 @@ Results:
 No user input is needed.
 
 ---
+## 136. Reduced Source Custom-VJP Solved-State Wrapper
+
+### Steps taken
+
+- Added `axisym_reduced_implicit_source_state_jax`.
+- The new API treats the supplied reduced vector as a cached converged
+  solution of `F(x, source) = 0`.
+- Its primal call returns that vector unchanged.
+- Its reverse-mode derivative with respect to `source_vector` solves the same
+  implicit adjoint equation used by
+  `axisym_reduced_implicit_adjoint_jax`.
+- Gradients with respect to the cached solved vector are intentionally zero so
+  downstream users do not accidentally differentiate through a host-side
+  optimizer loop.
+- Exported the wrapper through `vmec_jax.mirror.api` and
+  `vmec_jax.mirror`.
+- Added a focused unit test that checks:
+  - `jax.grad` through the custom VJP matches the explicit adjoint;
+  - the directional source gradient matches the explicit forward sensitivity;
+  - the same directional derivative matches a separately solved perturbed root.
+- Extended `examples/mirror_implicit_sensitivity.py` so the root-level example
+  reports:
+  - custom-VJP adjoint relative error;
+  - custom-VJP directional derivative;
+  - finite-difference directional derivative;
+  - custom-VJP directional relative error.
+- Updated `docs/mirror/differentiability.rst` and
+  `examples/mirror/README.md` to describe the cached-state contract.
+
+### Results obtained
+
+- The differentiability lane now has the first custom reverse-mode solved-state
+  contract.
+- This is still reduced-coordinate, axisymmetric, and source-parameter only;
+  physical parameter derivatives remain the next differentiability promotion.
+- Dense and matrix-free example runs both accepted the new custom-VJP checks.
+- Dense plotted example metrics:
+  - `accepted`: `true`;
+  - `solve_method`: `dense`;
+  - root residual norm: `0.0`;
+  - perturbed residual norm: `1.4596461408271606e-15`;
+  - forward sensitivity relative error: `1.30713025011797e-06`;
+  - custom-VJP adjoint relative error: `0.0`;
+  - custom-VJP directional relative error: `1.989642776759042e-06`.
+- Matrix-free example metrics:
+  - `accepted`: `true`;
+  - `solve_method`: `matrix_free_cg`;
+  - root residual norm: `0.0`;
+  - perturbed residual norm: `9.751144411077966e-16`;
+  - forward sensitivity relative error: `1.3071302524058876e-06`;
+  - custom-VJP adjoint relative error: `0.0`;
+  - custom-VJP directional relative error: `1.9896427732953227e-06`.
+- The dense example plot rendered correctly at
+  `results/mirror/implicit_sensitivity_m136/figures/mirror_implicit_sensitivity_components.png`
+  and remains ignored.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format --check vmec_jax/mirror/solvers/fixed_boundary/reduced.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  examples/mirror_implicit_sensitivity.py \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff check vmec_jax/mirror/solvers/fixed_boundary/reduced.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  examples/mirror_implicit_sensitivity.py \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py \
+  tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py::test_reduced_custom_vjp_source_state_matches_adjoint_and_perturbed_root -q
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_examples.py::test_root_implicit_sensitivity_example_runs_without_plots -q
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_fixed_boundary_axisym.py -q
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_examples.py -k 'implicit_sensitivity or implicit_solve_benchmark' -q
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 python \
+  examples/mirror_implicit_sensitivity.py \
+  --outdir results/mirror/implicit_sensitivity_m136 --solve-method dense
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 python \
+  examples/mirror_implicit_sensitivity.py \
+  --outdir results/mirror/implicit_sensitivity_m136_matrix_free \
+  --solve-method matrix_free_cg --no-plots
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Ruff format check passed.
+- Ruff lint passed.
+- New custom-VJP unit test: `1 passed`.
+- Root implicit sensitivity example smoke test: `1 passed`.
+- Full fixed-boundary axisymmetric mirror test file: `18 passed`.
+- Implicit sensitivity / solve benchmark example subset:
+  `2 passed, 15 deselected`.
+- Dense plotted example run succeeded.
+- Matrix-free no-plot example run succeeded.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The custom VJP lives next to the existing reduced residual, linear solve,
+  forward sensitivity, and adjoint wrappers in
+  `vmec_jax/mirror/solvers/fixed_boundary/reduced.py`.
+- Public exports stay centralized through `vmec_jax/mirror/api.py` and
+  `vmec_jax/mirror/__init__.py`.
+- The root example remains in `examples/` because it is a user-facing
+  validation workflow.
+- Tests stay in the existing mirror fixed-boundary and example test files; no
+  reference data files were added.
+- Generated metrics and figures stay under ignored `results/`.
+- The API is intentionally explicit about cached solved states so the research
+  path does not trace long SciPy/CLI optimizer loops.
+
+### Best next steps
+
+1. Commit and push M136.
+2. Extend implicit differentiation from the reduced linear source to one
+   physical parameter family, starting with pressure-profile coefficients or
+   boundary-radius coefficients on tiny grids.
+3. Add a small benchmark comparing custom-VJP reverse gradients against forward
+   sensitivity contractions for several source directions.
+4. Continue free-boundary and ESSOS beta-scan convergence work after the
+   differentiability source wrapper is committed.
+
+### Completion percentages after M136
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `90%`.
+- Fixed-boundary axisymmetric solve: `90%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `92%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `79%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `87%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `90%`.
+- PR merge readiness overall: `96%`.
+
+### User input needed
+
+No user input is needed.
+
+---
