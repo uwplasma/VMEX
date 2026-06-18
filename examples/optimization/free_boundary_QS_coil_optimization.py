@@ -62,7 +62,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from vmec_jax._compat import jax, jnp
+from vmec_jax._compat import jnp
 from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_run
 from vmec_jax.external_fields import CoilFieldParams, from_essos_coils
 from vmec_jax.external_fields.coils_jax import coil_current_norm, coil_lengths
@@ -82,7 +82,9 @@ from vmec_jax.solvers.free_boundary.coil_optimization import (
     same_branch_rejected_slot_gate_from_vector_replay,
     same_branch_replay_plan_cache,
     same_branch_report_mode_count,
+    same_branch_scalar_result_summary,
     same_branch_scalar_function_registry,
+    same_branch_vector_result_summary,
 )
 from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state
 
@@ -729,46 +731,6 @@ def coil_param_direction_from_variables(
     return base_params.with_arrays(base_curve_dofs=jnp.asarray(dofs), base_currents=jnp.asarray(currents))
 
 
-def _vector_jacobian_directional(jacobian: Any, direction: Any, n_outputs: int) -> np.ndarray:
-    """Contract a row-stacked pytree Jacobian with one pytree direction."""
-
-    leaves = jax.tree_util.tree_leaves(
-        jax.tree_util.tree_map(
-            lambda jac_leaf, direction_leaf: jnp.sum(
-                jnp.reshape(jnp.asarray(jac_leaf), (int(n_outputs), -1))
-                * jnp.reshape(jnp.asarray(direction_leaf), (1, -1)),
-                axis=1,
-            ),
-            jacobian,
-            direction,
-        )
-    )
-    if not leaves:
-        return np.zeros(int(n_outputs), dtype=float)
-    total = leaves[0]
-    for leaf in leaves[1:]:
-        total = total + leaf
-    return np.asarray(total, dtype=float)
-
-
-def _pytree_directional_vdot(gradient: Any, direction: Any) -> float:
-    """Contract one pytree gradient with one pytree direction."""
-
-    leaves = jax.tree_util.tree_leaves(
-        jax.tree_util.tree_map(
-            lambda grad_leaf, direction_leaf: jnp.sum(jnp.asarray(grad_leaf) * jnp.asarray(direction_leaf)),
-            gradient,
-            direction,
-        )
-    )
-    if not leaves:
-        return 0.0
-    total = leaves[0]
-    for leaf in leaves[1:]:
-        total = total + leaf
-    return float(np.asarray(total, dtype=float))
-
-
 def same_branch_report_anchor_params(
     base_params: CoilFieldParams,
     best: dict[str, Any] | None,
@@ -807,7 +769,6 @@ def write_same_branch_validation_report(
 ) -> Path:
     """Write an optional same-branch complete-solve FD report for this example."""
     from vmec_jax.free_boundary_adjoint import (
-        direct_coil_accepted_trace_controller_slot_summary,
         direct_coil_branch_local_scalars_report_from_complete_fd,
         direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax,
         direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax,
@@ -1081,62 +1042,14 @@ def write_same_branch_validation_report(
             include_replay_graph_metadata=include_replay_graph_metadata,
         )
 
-    def _controller_slot_summary_from_result(result: dict[str, Any]) -> dict[str, Any]:
-        summary = result.get("controller_slot_summary")
-        if isinstance(summary, dict) and summary:
-            return summary
-        metadata = result.get("replay_branch_metadata", {})
-        if isinstance(metadata, dict) and metadata:
-            return direct_coil_accepted_trace_controller_slot_summary(metadata)
-        return {}
-
     def _summarize_vector_result(vector: dict[str, Any], scalar_keys: tuple[str, ...]) -> dict[str, Any]:
-        if vector.get("directional_derivatives") is None:
-            directionals = _vector_jacobian_directional(vector["jacobian"], direction_params, len(scalar_keys))
-        else:
-            directionals = [
-                float(np.asarray(vector["directional_derivatives"][key], dtype=float))
-                for key in scalar_keys
-            ]
-        return {
-            "available": True,
-            "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
-            "uses_production_forward": bool(vector["uses_production_forward"]),
-            "differentiates_adaptive_controller": bool(vector["differentiates_adaptive_controller"]),
-            "differentiates_run_free_boundary": bool(vector["differentiates_run_free_boundary"]),
-            "differentiates_fixed_accepted_branch": bool(vector["differentiates_fixed_accepted_branch"]),
-            "replay_ad_mode": str(vector["replay_ad_mode"]),
-            "derivative_mode": str(vector.get("derivative_mode", "full_jacobian_vjp")),
-            "scalar_keys": list(scalar_keys),
-            "production_values_source": str(vector.get("production_values_source", "unknown")),
-            "replay_payload_source": str(vector.get("replay_payload_source", "unknown")),
-            "includes_payload": bool(vector.get("includes_payload", True)),
-            "includes_replay_graph_metadata": bool(vector.get("includes_replay_graph_metadata", True)),
-            "state_only_replay": bool(all(key in STATE_ONLY_SAME_BRANCH_KEYS for key in scalar_keys)),
-            "directional_jvp_fast_path": str(
-                vector.get("replay_option_flags", {}).get("directional_jvp_fast_path", "none")
-            ),
-            "directional_uses_fixed_coil_geometry": bool(
-                vector.get("replay_option_flags", {}).get("directional_uses_fixed_coil_geometry", False)
-            ),
-            "replay_option_flags": vector["replay_option_flags"],
-            "replay_graph_metadata": vector.get("replay_graph_metadata", {}),
-            "replay_branch_metadata": vector.get("replay_branch_metadata", {}),
-            "controller_slot_summary": _controller_slot_summary_from_result(vector),
-            "max_base_abs_delta": float(vector["max_base_abs_delta"]),
-            "timings": {str(key): float(value) for key, value in vector.get("timings", {}).items()},
-            "scalars": {
-                key: {
-                    "value": float(vector["values"][key]),
-                    "replay_value": float(np.asarray(vector["replay_value_map"][key], dtype=float)),
-                    "base_abs_delta": float(vector["base_abs_delta"][key]),
-                    "exact_directional": float(directionals[index]),
-                    "complete_fd_directional": float(report["objective_values"][key]["central_fd_directional"]),
-                    "abs_error": float(abs(directionals[index] - report["objective_values"][key]["central_fd_directional"])),
-                }
-                for index, key in enumerate(scalar_keys)
-            },
-        }
+        return same_branch_vector_result_summary(
+            vector,
+            scalar_keys,
+            report=report,
+            direction_params=direction_params,
+            state_only_keys=STATE_ONLY_SAME_BRANCH_KEYS,
+        )
     if mode in {"scalar", "vector"} and replay_mode_count_guard_triggered:
         branch_local_scalar["reason"] = replay_mode_count_guard_reason
         branch_local_vector["reason"] = replay_mode_count_guard_reason
@@ -1176,34 +1089,14 @@ def write_same_branch_validation_report(
         scalar_timings = {str(key): float(value) for key, value in scalar.get("timings", {}).items()}
         for key, value in scalar_timings.items():
             timings[f"branch_local_scalar_{key}"] = value
-        exact_directional = _pytree_directional_vdot(scalar["grad"], direction_params)
-        branch_local_scalar = {
-            "available": True,
-            "scope": "fixed accepted branch only; does not differentiate adaptive host branch selection",
-            "mode": mode,
-            "uses_production_forward": bool(scalar["uses_production_forward"]),
-            "differentiates_adaptive_controller": bool(scalar["differentiates_adaptive_controller"]),
-            "differentiates_run_free_boundary": bool(scalar["differentiates_run_free_boundary"]),
-            "differentiates_fixed_accepted_branch": bool(scalar["differentiates_fixed_accepted_branch"]),
-            "replay_ad_mode": str(scalar["replay_ad_mode"]),
-            "scalar_key": str(scalar["scalar_key"]),
-            "production_values_source": str(scalar.get("production_values_source", "unknown")),
-            "replay_payload_source": str(scalar.get("replay_payload_source", "unknown")),
-            "includes_payload": bool(scalar.get("includes_payload", True)),
-            "includes_replay_graph_metadata": bool(scalar.get("includes_replay_graph_metadata", True)),
-            "state_only_replay": bool(scalar_uses_state_only_replay),
-            "replay_option_flags": scalar["replay_option_flags"],
-            "replay_graph_metadata": scalar.get("replay_graph_metadata", {}),
-            "replay_branch_metadata": scalar.get("replay_branch_metadata", {}),
-            "controller_slot_summary": _controller_slot_summary_from_result(scalar),
-            "value": float(scalar["value"]),
-            "replay_value": float(np.asarray(scalar["replay_value"], dtype=float)),
-            "base_abs_delta": float(scalar["base_abs_delta"]),
-            "exact_directional": float(exact_directional),
-            "complete_fd_directional": float(report["objective_values"][scalar_key]["central_fd_directional"]),
-            "abs_error": float(abs(exact_directional - report["objective_values"][scalar_key]["central_fd_directional"])),
-            "timings": scalar_timings,
-        }
+        branch_local_scalar = same_branch_scalar_result_summary(
+            scalar,
+            scalar_key,
+            report=report,
+            direction_params=direction_params,
+            state_only_replay=scalar_uses_state_only_replay,
+        )
+        branch_local_scalar["mode"] = mode
     missing_vector_keys = tuple(key for key in vector_keys if key not in report["objective_values"])
     if mode == "vector" and missing_vector_keys:
         branch_local_vector["reason"] = f"missing complete-solve objective value(s): {missing_vector_keys}"

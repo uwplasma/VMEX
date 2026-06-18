@@ -1328,7 +1328,9 @@ def test_same_branch_report_writer_records_branch_local_scalar_gradient(tmp_path
 
     report = json.loads(path.read_text())
     scalar = report["branch_local_scalar_gradient"]
-    expected_directional = module._pytree_directional_vdot(grad, direction_params)
+    from vmec_jax.solvers.free_boundary.coil_optimization import _pytree_directional_vdot
+
+    expected_directional = _pytree_directional_vdot(grad, direction_params)
     assert scalar["available"] is True
     assert "fixed accepted branch only" in scalar["scope"]
     assert scalar["mode"] == "scalar"
