@@ -6448,3 +6448,133 @@ JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
 ### User input needed
 
 No user input is needed.
+
+---
+
+## 59. 2026-06-17 M8z linear-helper extraction and rejected Helmholtz prototype
+
+This lane simplified the residual-Newton optimizer file and checked one
+structured lambda-preconditioner idea.  The preconditioner idea was rejected
+and not retained; the file-structure refactor was retained.
+
+### Steps taken
+
+- Prototyped a local, uncommitted separable 2-D Helmholtz smoother for the
+  lambda block.
+- Tested it on the same moderate finite-current row used in M8x/M8y.
+- Removed the Helmholtz prototype because it was worse than the existing
+  sequential tridiagonal lambda smoother.
+- Extracted matrix-free residual-Newton linear correction helpers from
+  `optimizers.py` into `vmec_jax/mirror/solvers/fixed_boundary/linear.py`.
+- Added a small `ResidualLinearSolve` dataclass so full Krylov and block-LSMR
+  corrections share one return shape and one history-bookkeeping path.
+- Kept SciPy sparse least-squares imports lazy inside `linear.py`.
+
+### Results obtained
+
+Rejected Helmholtz prototype:
+
+| row | final residual at iteration 3 | final `fsq` | last condition estimate |
+| --- | ---: | ---: | ---: |
+| existing tridi alpha 2 / xi 2 | `2.924857182997e-03` | `3.435658450173e-08` | `1.313407914284e+05` |
+| local Helmholtz alpha 2 / xi 2 | `5.247110193978e-03` | `1.105709453323e-07` | `1.768718650231e+05` |
+| local Helmholtz alpha 8 / xi 8 | `3.607063204332e-03` | `5.225263036162e-08` | `6.241977553168e+05` |
+
+Interpretation:
+
+- The tested separable Helmholtz inverse did not beat the existing sequential
+  tridiagonal smoother.
+- The alpha-8 Helmholtz row improved over alpha-2 Helmholtz but remained worse
+  than the M8y tridiagonal alpha-2 row and had a worse condition estimate.
+- The prototype was not committed.  Its temporary result files are local
+  investigation artifacts, not part of the reproducible public interface.
+
+File-size impact:
+
+| file | before | after |
+| --- | ---: | ---: |
+| `optimizers.py` | 1121 lines | 992 lines |
+| `linear.py` | n/a | 169 lines |
+
+### How it was tested
+
+Automated tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py::test_residual_newton_block_lsmr_solver_improves_perturbed_cylinder \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py::test_residual_newton_solver_reaches_tight_residual_for_perturbed_cylinder \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py::test_residual_newton_dense_lstsq_solver_improves_perturbed_cylinder \
+  tests/mirror/test_mirror_low_level_coverage.py::test_low_level_field_energy_residual_and_optimizer_guards \
+  -q
+```
+
+Result: `4 passed in 29.94s`.
+
+Broader nearby tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_fixed_boundary_axisym.py \
+  tests/mirror/test_mirror_examples.py::test_root_residual_newton_convergence_grid_runs_without_plots \
+  -q
+```
+
+Result: `15 passed in 41.91s`.
+
+Lint/format/whitespace:
+
+```bash
+python -m ruff format \
+  vmec_jax/mirror/solvers/fixed_boundary/linear.py \
+  vmec_jax/mirror/solvers/fixed_boundary/optimizers.py
+python -m ruff check \
+  vmec_jax/mirror/solvers/fixed_boundary/linear.py \
+  vmec_jax/mirror/solvers/fixed_boundary/optimizers.py
+git diff --check
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- `linear.py` now owns reduced linear correction mechanics and diagnostics.
+- `optimizers.py` remains the nonlinear residual-Newton driver and no longer
+  carries the full/block Krylov operator construction bodies inline.
+- No public API changes were made in this lane.
+- The rejected Helmholtz prototype was removed to avoid adding an unhelpful
+  solver mode.
+
+### Best next steps
+
+1. Commit and push M8z.
+2. Continue lambda-block work from measured evidence:
+   - keep the sequential tridiagonal alpha-2 benchmark as the current best
+     matrix-free moderate row;
+   - do not reintroduce the tested Helmholtz smoother unless a different
+     operator form is justified;
+   - look next at block residual scaling, line-search damping, or hybrid
+     dense/matrix-free reference strategies.
+3. Start preparing the M9 mirror straight-field-line/Boozer-like diagnostic
+   lane once fixed-boundary solver notes are current.
+
+### Completion percentages after M8z
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `88%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `78%`.
+- Plotting and `vmec --plot` mirror support: `79%`.
+- I/O schema and docs: `80%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `15%`.
+- Free-boundary mirror lane: `5%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `0%`.
+- PR merge readiness overall: `78%`.
+
+### User input needed
+
+No user input is needed.
