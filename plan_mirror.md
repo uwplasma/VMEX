@@ -14407,3 +14407,125 @@ Results:
 No user input is needed.
 
 ---
+
+## 114. 2026-06-18 M14 toroidal hybrid 80-row VMEC2000 parity check
+
+### Steps taken
+
+M113 showed that the 25-row VMEC/JAX parity run stopped above VMEC2000's
+80-row residual depth.  I reran the exact same upgraded rotating-ellipse
+toroidal hybrid input with an 80-row VMEC/JAX parity budget, still using
+`--no-use-scan`, `--no-cli-finish`, `--nstep 1`, and `--run-vmec2000`.
+
+### Results obtained
+
+Command run:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  --outdir results/toroidal_hybrid_m114_parity80 \
+  --ns-array 7 \
+  --mode-pairs 5:20 \
+  --ntheta-fit 64 \
+  --nzeta-fit 64 \
+  --shape-cases default \
+  --run-solve \
+  --max-iter 80 \
+  --nstep 1 \
+  --solver-mode parity \
+  --no-use-scan \
+  --no-cli-finish \
+  --run-vmec2000 \
+  --vmec2000-timeout-s 120
+```
+
+Observed:
+
+- VMEC/JAX first stored `fsq`: `0.10777007753805128`;
+- VMEC2000 first `threed1` `fsq`: `0.1078`;
+- first-row ratio VMEC/JAX / VMEC2000: `0.9997224261414774`;
+- VMEC/JAX best/final `fsq`: `6.115607296842458e-6` at stored row `79`;
+- VMEC2000 best/final `fsq`: `6.116e-6` at row `80`;
+- VMEC/JAX residual reduction: `17622.14x`;
+- VMEC2000 residual reduction: `17625.90x`;
+- overlapping `fsq` history ratio range: about `0.99787` to `1.00217`;
+- VMEC/JAX final residual components:
+  - `fsqr = 2.583901389127433e-6`;
+  - `fsqz = 2.685812049486272e-6`;
+  - `fsql = 8.458938582287532e-7`;
+- VMEC2000 final residual components:
+  - `fsqr = 2.5839013890856746e-6`;
+  - `fsqz = 2.6858120494979713e-6`;
+  - `fsql = 8.458938582274209e-7`;
+- VMEC/JAX mean iota: `0.014891808649244371`;
+- VMEC2000 mean iota: `0.01489180864924554`.
+
+The conclusion is positive: the upgraded toroidal hybrid fixture follows the
+VMEC2000 residual trajectory and final residual components when given the same
+80-row parity budget.  The M113 25-row gap was an iteration-budget difference,
+not a solver divergence.
+
+Rendered ignored plots:
+
+- `results/toroidal_hybrid_m114_parity80/figures/toroidal_hybrid_fsq_history.png`;
+- `results/toroidal_hybrid_m114_parity80/figures/toroidal_hybrid_parity_components.png`;
+- `results/toroidal_hybrid_m114_parity80/figures/toroidal_hybrid_profiles.png`.
+
+### How it was tested
+
+This was a no-code evidence tranche.  The code at the previous commit had
+already passed:
+
+```bash
+python -m ruff check examples/toroidal_stellarator_mirror_hybrid_convergence.py tests/test_toroidal_hybrid.py
+python -m ruff format --check examples/toroidal_stellarator_mirror_hybrid_convergence.py tests/test_toroidal_hybrid.py
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
+git diff --check
+```
+
+The new evidence run completed with VMEC2000 return code `0`, parsed `80`
+`threed1` rows, and produced the parity figures listed above.
+
+### File structure and best-practice notes
+
+- No source changes were needed.
+- Evidence remains under ignored `results/`.
+- The plan entry records the exact command and metrics so the parity result is
+  reproducible without committing large output files.
+
+### Best next steps
+
+1. Commit and push the M114 plan evidence.
+2. Run the accelerated CLI path on the same fixture with a tighter convergence
+   target and compare runtime/residual against the parity path.
+3. Add a compact CI-safe test or example assertion around the upgraded fixture's
+   exact geometry/diagnostic contracts only, not the VMEC2000 executable run.
+4. Continue the circular-coil finite-beta/free-boundary lane with finite-beta
+   baselines and LCFS pilot tolerance/stagnation logic.
+5. Resume differentiable solved-state work once the fixed-boundary evidence
+   matrix is stable.
+
+### Completion percentages after M114
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `87%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `90%`.
+- I/O schema and docs: `97%`.
+- Differentiable solved-state API: `30%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `74%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `94%`.
+- ESSOS circular-coil mirror beta scan: `66%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---
