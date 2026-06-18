@@ -7,6 +7,8 @@ from typing import Any, Callable
 import os
 import time
 
+import numpy as np
+
 
 def maybe_select_dynamic_scan_mode(
     *,
@@ -161,3 +163,123 @@ def maybe_select_dynamic_scan_mode(
                 flush=True,
             )
     return selected_scan
+
+
+def maybe_disable_scan_by_parity_guard(
+    *,
+    accelerated_mode: bool,
+    scan_mode: bool,
+    niter: int,
+    state_stage_start: Any,
+    static_stage: Any,
+    indata: Any,
+    signgs: int,
+    ftol: float,
+    step_size: float,
+    use_restart_triggers: bool | None,
+    vmecpp_restart: bool,
+    stage_transition_factor: float,
+    stage_transition_scale: float,
+    scan_minimal_default: bool | None,
+    jit_forces: Any,
+    resolve_jit_forces: Callable[[Any, Any, int], bool],
+    solve_fixed_boundary_residual_iter: Callable[..., Any],
+    verbose: bool,
+    print_func: Callable[..., None] = print,
+    getenv: Callable[[str, str], str] = os.getenv,
+) -> bool:
+    """Optionally disable scan when a short parity probe diverges.
+
+    This guard is deliberately conservative and only runs when explicitly
+    enabled through ``VMEC_JAX_SCAN_PARITY_GUARD``. It compares a short scan and
+    non-scan VMEC2000-style prefix and returns ``False`` if the histories differ
+    or if the probe itself fails.
+    """
+
+    scan_guard_env = getenv("VMEC_JAX_SCAN_PARITY_GUARD", "0").strip().lower()
+    scan_guard_enabled = scan_guard_env not in ("", "0", "false", "no")
+    if bool(accelerated_mode) or (not bool(scan_mode)) or (not bool(scan_guard_enabled)) or int(niter) < 3:
+        return bool(scan_mode)
+
+    probe_iters = min(10, int(niter))
+    try:
+        guard_rtol = float(getenv("VMEC_JAX_SCAN_GUARD_RTOL", "1e-3"))
+        guard_atol = float(getenv("VMEC_JAX_SCAN_GUARD_ATOL", "1e-12"))
+        probe_kwargs = dict(
+            indata=indata,
+            signgs=signgs,
+            ftol=float(ftol),
+            max_iter=int(probe_iters),
+            step_size=float(step_size),
+            include_constraint_force=True,
+            apply_m1_constraints=True,
+            precond_radial_alpha=0.5,
+            precond_lambda_alpha=0.5,
+            mode_diag_exponent=0.0,
+            auto_flip_force=False,
+            divide_by_scalxc_for_update=False,
+            lambda_update_scale=1.0,
+            enforce_vmec_lambda_axis=True,
+            vmec2000_control=True,
+            strict_update=True,
+            backtracking=False,
+            reference_mode=False,
+            use_restart_triggers=True if use_restart_triggers is None else bool(use_restart_triggers),
+            vmecpp_restart=bool(vmecpp_restart),
+            use_direct_fallback=False,
+            stage_prev_fsq=None,
+            stage_transition_factor=float(stage_transition_factor),
+            stage_transition_scale=float(stage_transition_scale),
+            resume_state=None,
+            verbose=False,
+            verbose_vmec2000_table=False,
+            jit_precompile=False,
+            jit_warmup_iters=0,
+            scan_minimal_default=scan_minimal_default,
+        )
+        res_probe_scan = solve_fixed_boundary_residual_iter(
+            state_stage_start,
+            static_stage,
+            jit_forces=resolve_jit_forces(jit_forces, static_stage, int(probe_iters)),
+            use_scan=True,
+            **probe_kwargs,
+        )
+        res_probe_direct = solve_fixed_boundary_residual_iter(
+            state_stage_start,
+            static_stage,
+            jit_forces=resolve_jit_forces(jit_forces, static_stage, int(probe_iters)),
+            use_scan=False,
+            **probe_kwargs,
+        )
+        fsqr_scan = np.asarray(res_probe_scan.fsqr2_history)
+        fsqz_scan = np.asarray(res_probe_scan.fsqz2_history)
+        fsql_scan = np.asarray(res_probe_scan.fsql2_history)
+        fsqr_ref = np.asarray(res_probe_direct.fsqr2_history)
+        fsqz_ref = np.asarray(res_probe_direct.fsqz2_history)
+        fsql_ref = np.asarray(res_probe_direct.fsql2_history)
+        mismatch = False
+        if fsqr_scan.size == fsqr_ref.size == probe_iters:
+            if not np.allclose(fsqr_scan, fsqr_ref, rtol=guard_rtol, atol=guard_atol):
+                mismatch = True
+            if not np.allclose(fsqz_scan, fsqz_ref, rtol=guard_rtol, atol=guard_atol):
+                mismatch = True
+            if not np.allclose(fsql_scan, fsql_ref, rtol=guard_rtol, atol=guard_atol):
+                mismatch = True
+        else:
+            mismatch = True
+        if mismatch:
+            if bool(verbose):
+                print_func(
+                    "[vmec_jax] scan parity guard: disabling scan for this stage (probe mismatch)",
+                    flush=True,
+                )
+            return False
+    except Exception as exc:
+        if bool(verbose):
+            print_func(
+                f"[vmec_jax] scan parity guard probe failed ({type(exc).__name__}); "
+                "using non-scan for this stage.",
+                flush=True,
+            )
+        return False
+    return bool(scan_mode)

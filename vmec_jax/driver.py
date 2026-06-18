@@ -1102,93 +1102,27 @@ def run_fixed_boundary(
             # Benchmarks show lax.scan is faster than the Python-loop NumPy hot-path
             # (26s cold vs 36s cold for LandremanPaul2021_QA_lowres), with identical
             # numerical results.
-            # Optional scan-parity guard: probe a few iterations and disable scan
-            # if it diverges from the non-scan VMEC2000 path.
-            scan_guard_default = "0"
-            scan_guard_env = os.getenv("VMEC_JAX_SCAN_PARITY_GUARD", scan_guard_default).strip().lower()
-            scan_guard_enabled = scan_guard_env not in ("", "0", "false", "no")
-            if (not accelerated_mode) and scan_mode and scan_guard_enabled and int(niter_i) >= 3:
-                probe_iters = min(10, int(niter_i))
-                try:
-                    guard_rtol = float(os.getenv("VMEC_JAX_SCAN_GUARD_RTOL", "1e-3"))
-                    guard_atol = float(os.getenv("VMEC_JAX_SCAN_GUARD_ATOL", "1e-12"))
-                    probe_kwargs = dict(
-                        indata=indata,
-                        signgs=signgs,
-                        ftol=float(ftol_i),
-                        max_iter=int(probe_iters),
-                        step_size=float(step_size_val),
-                        include_constraint_force=True,
-                        apply_m1_constraints=True,
-                        precond_radial_alpha=0.5,
-                        precond_lambda_alpha=0.5,
-                        mode_diag_exponent=0.0,
-                        auto_flip_force=False,
-                        divide_by_scalxc_for_update=False,
-                        lambda_update_scale=1.0,
-                        enforce_vmec_lambda_axis=True,
-                        vmec2000_control=True,
-                        strict_update=True,
-                        backtracking=False,
-                        reference_mode=False,
-                        use_restart_triggers=True if use_restart_triggers is None else bool(use_restart_triggers),
-                        vmecpp_restart=bool(vmecpp_restart),
-                        use_direct_fallback=False,
-                        stage_prev_fsq=None,
-                        stage_transition_factor=float(stage_transition_factor),
-                        stage_transition_scale=float(stage_transition_scale),
-                        resume_state=None,
-                        verbose=False,
-                        verbose_vmec2000_table=False,
-                        jit_precompile=False,
-                        jit_warmup_iters=0,
-                        scan_minimal_default=scan_minimal_default,
-                    )
-                    res_probe_scan = solve_fixed_boundary_residual_iter(
-                        state,
-                        static_i,
-                        jit_forces=_resolve_jit_forces(jit_forces, static_i, int(probe_iters)),
-                        use_scan=True,
-                        **probe_kwargs,
-                    )
-                    res_probe_direct = solve_fixed_boundary_residual_iter(
-                        state,
-                        static_i,
-                        jit_forces=_resolve_jit_forces(jit_forces, static_i, int(probe_iters)),
-                        use_scan=False,
-                        **probe_kwargs,
-                    )
-                    fsqr_scan = np.asarray(res_probe_scan.fsqr2_history)
-                    fsqz_scan = np.asarray(res_probe_scan.fsqz2_history)
-                    fsql_scan = np.asarray(res_probe_scan.fsql2_history)
-                    fsqr_ref = np.asarray(res_probe_direct.fsqr2_history)
-                    fsqz_ref = np.asarray(res_probe_direct.fsqz2_history)
-                    fsql_ref = np.asarray(res_probe_direct.fsql2_history)
-                    mismatch = False
-                    if fsqr_scan.size == fsqr_ref.size == probe_iters:
-                        if not np.allclose(fsqr_scan, fsqr_ref, rtol=guard_rtol, atol=guard_atol):
-                            mismatch = True
-                        if not np.allclose(fsqz_scan, fsqz_ref, rtol=guard_rtol, atol=guard_atol):
-                            mismatch = True
-                        if not np.allclose(fsql_scan, fsql_ref, rtol=guard_rtol, atol=guard_atol):
-                            mismatch = True
-                    else:
-                        mismatch = True
-                    if mismatch:
-                        scan_mode = False
-                        if bool(verbose):
-                            print(
-                                "[vmec_jax] scan parity guard: disabling scan for this stage (probe mismatch)",
-                                flush=True,
-                            )
-                except Exception as exc:
-                    # If probe fails, fall back to the safe (non-scan) path.
-                    scan_mode = False
-                    if bool(verbose):
-                        print(
-                            f"[vmec_jax] scan parity guard probe failed ({type(exc).__name__}); using non-scan for this stage.",
-                            flush=True,
-                        )
+            scan_mode = _driver_dynamic_scan_helpers.maybe_disable_scan_by_parity_guard(
+                accelerated_mode=bool(accelerated_mode),
+                scan_mode=bool(scan_mode),
+                niter=int(niter_i),
+                state_stage_start=state,
+                static_stage=static_i,
+                indata=indata,
+                signgs=signgs,
+                ftol=float(ftol_i),
+                step_size=float(step_size_val),
+                use_restart_triggers=use_restart_triggers,
+                vmecpp_restart=bool(vmecpp_restart),
+                stage_transition_factor=float(stage_transition_factor),
+                stage_transition_scale=float(stage_transition_scale),
+                scan_minimal_default=scan_minimal_default,
+                jit_forces=jit_forces,
+                resolve_jit_forces=_resolve_jit_forces,
+                solve_fixed_boundary_residual_iter=solve_fixed_boundary_residual_iter,
+                verbose=bool(verbose),
+                getenv=os.getenv,
+            )
             jit_forces_base = _resolve_jit_forces(jit_forces, static_i, int(niter_i))
             jit_settings = _resolve_stage_jit_settings(
                 jit_forces_base=bool(jit_forces_base),
