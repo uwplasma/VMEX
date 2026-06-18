@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -7,6 +9,7 @@ from vmec_jax._compat import enable_x64
 from vmec_jax.mirror import (
     MirrorBoundary,
     MirrorCircularCoils,
+    MirrorExternalFieldSample,
     initial_mirror_boundary_from_circular_coil_scan,
     load_mirror_free_boundary_circular_coil_scan,
     make_mirror_free_boundary_beta_cases,
@@ -14,6 +17,7 @@ from vmec_jax.mirror import (
     make_mirror_grid,
     mirror_boundary_from_on_axis_bz,
     mirror_circular_coils_to_direct_params,
+    mirror_lcfs_diagnostic,
     sample_mirror_axis_external_field,
     sample_mirror_boundary_external_field,
     two_coil_on_axis_bz,
@@ -163,3 +167,37 @@ def test_initial_mirror_boundary_from_circular_coil_scan_matches_analytic_flux_t
     expected = mirror_boundary_from_on_axis_bz(0.5 * midplane_bz * midplane_radius**2, grid.z, analytic_bz)
 
     np.testing.assert_allclose(boundary.radius_on_grid(grid), expected.radius_on_grid(grid), rtol=1.0e-12)
+
+
+def test_mirror_lcfs_diagnostic_reports_side_boundary_targets():
+    theta = np.asarray([0.0])
+    z = np.linspace(-1.0, 1.0, 5)
+    boundary_r = np.full((theta.size, z.size), 0.25)
+    internal_bmag = np.full((2, theta.size, z.size), 2.0)
+    external_bmag = np.ones_like(boundary_r)
+    output = SimpleNamespace(
+        theta=theta,
+        z=z,
+        geometry=SimpleNamespace(boundary_r=boundary_r),
+        field=SimpleNamespace(bmag=internal_bmag),
+        profiles=SimpleNamespace(pressure=np.asarray([0.2, 0.0])),
+    )
+    sample = MirrorExternalFieldSample(
+        r=boundary_r,
+        theta=theta,
+        z=z,
+        br=np.zeros_like(boundary_r),
+        btheta=np.zeros_like(boundary_r),
+        bz=np.ones_like(boundary_r),
+        bmag=external_bmag,
+    )
+
+    diagnostic = mirror_lcfs_diagnostic(output, sample, mu0=1.0)
+
+    np.testing.assert_allclose(diagnostic.boundary_dr_dz, 0.0, atol=1.0e-14)
+    np.testing.assert_allclose(diagnostic.external_bnormal, 0.0, atol=1.0e-14)
+    np.testing.assert_allclose(diagnostic.pressure_balance, 1.5)
+    assert diagnostic.external_bnormal_rms == pytest.approx(0.0)
+    assert diagnostic.external_bnormal_max == pytest.approx(0.0)
+    assert diagnostic.pressure_balance_rms == pytest.approx(1.5)
+    assert diagnostic.pressure_balance_max == pytest.approx(1.5)

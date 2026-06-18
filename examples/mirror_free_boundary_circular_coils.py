@@ -22,8 +22,10 @@ from vmec_jax.mirror import (
     PressureProfile,
     PsiPrimeProfile,
     initial_mirror_boundary_from_circular_coil_scan,
+    load_mirror_output,
     make_mirror_free_boundary_circular_coil_scan,
     make_mirror_grid,
+    mirror_lcfs_diagnostic,
     plot_mirror_output,
     run_mirror_fixed_boundary,
     sample_mirror_axis_external_field,
@@ -133,6 +135,36 @@ def _write_geometry_plot(grid, boundary, coils: MirrorCircularCoils, *, outdir: 
     return path
 
 
+def _write_lcfs_diagnostic_plot(diagnostic, *, outdir: Path, name: str) -> Path:
+    import matplotlib.pyplot as plt
+
+    outdir.mkdir(parents=True, exist_ok=True)
+    z = np.asarray(diagnostic.z)
+    theta = np.asarray(diagnostic.theta)
+    bnormal = np.asarray(diagnostic.external_bnormal)
+    pressure_balance = np.asarray(diagnostic.pressure_balance)
+    fig, axes = plt.subplots(2, 1, figsize=(6.8, 5.2), sharex=True)
+    if theta.size == 1:
+        axes[0].plot(z, bnormal[0], "o-", markersize=3.0)
+        axes[1].plot(z, pressure_balance[0], "o-", markersize=3.0)
+    else:
+        mesh0 = axes[0].pcolormesh(z, theta, bnormal, shading="auto")
+        fig.colorbar(mesh0, ax=axes[0], label="B_ext . n")
+        mesh1 = axes[1].pcolormesh(z, theta, pressure_balance, shading="auto")
+        fig.colorbar(mesh1, ax=axes[1], label="pressure balance")
+    axes[0].axhline(0.0, color="k", linewidth=0.8, alpha=0.6)
+    axes[1].axhline(0.0, color="k", linewidth=0.8, alpha=0.6)
+    axes[0].set_ylabel("B_ext . n")
+    axes[1].set_ylabel("p_edge + (B_int^2 - B_ext^2)/(2 mu0)")
+    axes[1].set_xlabel("z")
+    axes[0].set_title("LCFS target diagnostic")
+    fig.tight_layout()
+    path = outdir / f"{name}_lcfs_diagnostic.png"
+    fig.savefig(path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
 def _beta_label(beta_percent: float) -> str:
     return f"{float(beta_percent):g}".replace(".", "p")
 
@@ -152,6 +184,15 @@ def _run_fixed_boundary_baseline_cases(
         z_min=float(grid.z[0]),
         z_max=float(grid.z[-1]),
     )
+    baseline_grid = make_mirror_grid(
+        ns=grid.ns,
+        ntheta=1,
+        nxi=grid.nxi,
+        mpol=0,
+        z_min=float(grid.z[0]),
+        z_max=float(grid.z[-1]),
+    )
+    external_sample = sample_mirror_boundary_external_field(baseline_grid, boundary, scan.coils)
     rows = []
     for case in scan.beta_cases:
         label = _beta_label(case.beta_percent)
@@ -167,10 +208,15 @@ def _run_fixed_boundary_baseline_cases(
         if mout_path.exists():
             mout_path.unlink()
         mout = write_mirror_output(mout_path, result)
+        output = load_mirror_output(mout)
+        lcfs = mirror_lcfs_diagnostic(output, external_sample, mu0=1.0)
         plot_paths: dict[str, str] = {}
         if write_plots:
             figure_dir = outdir / "figures" / f"fixed_boundary_beta_{label}"
             plot_paths = {name: str(path) for name, path in plot_mirror_output(mout, outdir=figure_dir).items()}
+            plot_paths["lcfs_diagnostic"] = str(
+                _write_lcfs_diagnostic_plot(lcfs, outdir=figure_dir, name=f"free_boundary_circular_coils_beta_{label}")
+            )
         summary = result.optimizer_summaries[-1] if result.optimizer_summaries else None
         final = result.final_trace
         rows.append(
@@ -187,6 +233,11 @@ def _run_fixed_boundary_baseline_cases(
                 "final_normalized_force": float(final.normalized_force),
                 "min_sqrtg": float(final.min_sqrtg),
                 "mirror_ratio": float(final.mirror_ratio),
+                "lcfs_external_bnormal_rms": float(lcfs.external_bnormal_rms),
+                "lcfs_external_bnormal_max": float(lcfs.external_bnormal_max),
+                "lcfs_pressure_balance_rms": float(lcfs.pressure_balance_rms),
+                "lcfs_pressure_balance_max": float(lcfs.pressure_balance_max),
+                "lcfs_edge_pressure": float(lcfs.edge_pressure),
                 "figures": plot_paths,
             }
         )

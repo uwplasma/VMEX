@@ -40,7 +40,8 @@ without coupling it to toroidal VMEC assumptions:
   parameters, direct-coil external-field sampling on the mirror axis/boundary,
   reusable JSON setup export, initial fixed-boundary flux-tube construction
   from sampled on-axis fields, and optional low-resolution fixed-boundary
-  baseline outputs for the planned 1%, 3%, and 10% circular coil studies;
+  baseline outputs plus side-boundary normal-field and total-pressure
+  imbalance diagnostics for the planned 1%, 3%, and 10% circular coil studies;
 - a repo-root ``examples/mirror_two_coil_axisym.py`` analytic benchmark that
   builds a fixed boundary from the closed-form on-axis field of two circular
   coils, overlays mirror ``B_z`` against that reference, draws the coils, and

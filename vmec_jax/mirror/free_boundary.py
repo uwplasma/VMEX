@@ -187,6 +187,25 @@ class MirrorFreeBoundaryCircularCoilScan:
         )
 
 
+@dataclass(frozen=True)
+class MirrorLCFSDiagnostic:
+    """Side-boundary diagnostic for future mirror free-boundary updates."""
+
+    theta: Any
+    z: Any
+    boundary_r: Any
+    boundary_dr_dz: Any
+    external_bnormal: Any
+    external_bnormal_rms: float
+    external_bnormal_max: float
+    pressure_balance: Any
+    pressure_balance_rms: float
+    pressure_balance_max: float
+    internal_bmag: Any
+    external_bmag: Any
+    edge_pressure: float
+
+
 def mirror_circular_coils_to_direct_params(coils: MirrorCircularCoils) -> CoilFieldParams:
     """Convert circular mirror coils to ESSOS-convention Fourier coil params."""
 
@@ -378,4 +397,62 @@ def initial_mirror_boundary_from_circular_coil_scan(
         axis_sample.bz,
         midplane_radius=midplane_radius,
         radius_floor=radius_floor,
+    )
+
+
+def mirror_lcfs_diagnostic(
+    output: Any, external_sample: MirrorExternalFieldSample, *, mu0: float = 1.0
+) -> MirrorLCFSDiagnostic:
+    """Return side-boundary normal-field and total-pressure diagnostics.
+
+    The diagnostic target is intentionally local to the side boundary.  It
+    gives later LCFS update work a tested quantity to reduce without pretending
+    that the current fixed-boundary baseline is already a free-boundary solve.
+    """
+
+    theta = np.asarray(output.theta, dtype=float)
+    z = np.asarray(output.z, dtype=float)
+    boundary_r = np.asarray(output.geometry.boundary_r, dtype=float)
+    if boundary_r.shape != (theta.size, z.size):
+        raise ValueError(f"boundary_r must have shape {(theta.size, z.size)}, got {boundary_r.shape}")
+    if z.size < 2:
+        raise ValueError("at least two axial nodes are required for LCFS diagnostics")
+    edge_internal_bmag = np.asarray(output.field.bmag[-1], dtype=float)
+    external_br = np.asarray(external_sample.br, dtype=float)
+    external_bz = np.asarray(external_sample.bz, dtype=float)
+    external_bmag = np.asarray(external_sample.bmag, dtype=float)
+    expected_shape = boundary_r.shape
+    if (
+        external_br.shape != expected_shape
+        or external_bz.shape != expected_shape
+        or external_bmag.shape != expected_shape
+    ):
+        raise ValueError("external field sample must have shape (ntheta, nxi)")
+    if edge_internal_bmag.shape != expected_shape:
+        raise ValueError("internal edge |B| must have shape (ntheta, nxi)")
+    if float(mu0) <= 0.0:
+        raise ValueError("mu0 must be positive")
+
+    edge_order = 2 if z.size > 2 else 1
+    dr_dz = np.gradient(boundary_r, z, axis=-1, edge_order=edge_order)
+    normal_scale = np.sqrt(1.0 + dr_dz**2)
+    normal_r = 1.0 / normal_scale
+    normal_z = -dr_dz / normal_scale
+    external_bnormal = external_br * normal_r + external_bz * normal_z
+    edge_pressure = float(np.asarray(output.profiles.pressure, dtype=float)[-1])
+    pressure_balance = edge_pressure + (edge_internal_bmag**2 - external_bmag**2) / (2.0 * float(mu0))
+    return MirrorLCFSDiagnostic(
+        theta=theta,
+        z=z,
+        boundary_r=boundary_r,
+        boundary_dr_dz=dr_dz,
+        external_bnormal=external_bnormal,
+        external_bnormal_rms=float(np.sqrt(np.mean(external_bnormal**2))),
+        external_bnormal_max=float(np.max(np.abs(external_bnormal))),
+        pressure_balance=pressure_balance,
+        pressure_balance_rms=float(np.sqrt(np.mean(pressure_balance**2))),
+        pressure_balance_max=float(np.max(np.abs(pressure_balance))),
+        internal_bmag=edge_internal_bmag,
+        external_bmag=external_bmag,
+        edge_pressure=edge_pressure,
     )

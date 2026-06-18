@@ -150,6 +150,8 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert len(metrics["fixed_boundary_baseline_rows"]) == 3
     assert all(Path(row["mout"]).exists() for row in metrics["fixed_boundary_baseline_rows"])
     assert all(row["final_fsq"] >= 0.0 for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(row["lcfs_external_bnormal_rms"] >= 0.0 for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(row["lcfs_pressure_balance_rms"] >= 0.0 for row in metrics["fixed_boundary_baseline_rows"])
     assert metrics["figures"] == {}
 
 

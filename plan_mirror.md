@@ -5740,6 +5740,161 @@ No user input is needed.
 
 ---
 
+## 67. 2026-06-18 M12e LCFS target diagnostic for circular-coil mirror baselines
+
+This tranche turned the fixed-boundary beta-scan baseline into a measurable
+pre-LCFS target.  It still does not update the LCFS, but each beta row now
+reports side-boundary normal-field error and total-pressure imbalance against
+the external circular-coil field.
+
+### Steps taken
+
+- Added `MirrorLCFSDiagnostic` and `mirror_lcfs_diagnostic`.
+- Exported the diagnostic through the public `vmec_jax.mirror` API.
+- Extended the root `examples/mirror_free_boundary_circular_coils.py` example
+  so each optional fixed-boundary beta baseline:
+  - reloads the written `mout`;
+  - samples the external circular-coil field on the same axisymmetric boundary
+    grid;
+  - computes external `B . n` and total-pressure imbalance on the side
+    boundary;
+  - writes scalar diagnostic metrics to the JSON row;
+  - writes a `*_lcfs_diagnostic.png` panel when plots are enabled.
+- Added a direct unit test for the LCFS diagnostic on a cylindrical side
+  boundary with axial external field.
+- Extended the root example smoke test so the baseline rows must include the
+  LCFS diagnostic metrics.
+- Updated mirror docs and the mirror examples README.
+
+### Results obtained
+
+Generated artifacts:
+
+- `results/mirror/m12e_lcfs_diagnostic/free_boundary_circular_coils_metrics.json`.
+- `results/mirror/m12e_lcfs_diagnostic/free_boundary_circular_coils_setup.json`.
+- Three beta-row `mout` files under `results/mirror/m12e_lcfs_diagnostic/`.
+- Thirty-six PNGs, including one `*_lcfs_diagnostic.png` panel per beta case.
+
+Representative beta-baseline rows with `baseline_maxiter=0`:
+
+| beta percent | residual | `fsq` | `B_ext.n` RMS | pressure-balance RMS |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | `1.884728113343e-01` | `9.372559528304e-05` | `7.657346104349e-03` | `1.803515365850` |
+| 3 | `4.011165408143e-01` | `4.245236921236e-04` | `7.657346104349e-03` | `1.803515365850` |
+| 10 | `1.237976350530e+00` | `4.043761067210e-03` | `7.657346104349e-03` | `1.803515365850` |
+
+The LCFS imbalance is intentionally nonzero for these rows because the
+boundary is still the analytic fixed flux-tube initializer.  These scalars are
+the target for the next boundary-update lane.
+
+Visual validation:
+
+- Inspected the beta-10 `*_lcfs_diagnostic.png` panel; it is nonblank and
+  shows signed side-boundary `B_ext.n` plus total-pressure imbalance versus
+  horizontal `z`.
+- Inspected the beta-10 3-D boundary plot; it keeps the mirror horizontal with
+  `z` as the long axis.
+- A pixel-stat smoke check reported all first inspected PNGs nonblank.
+
+### How it was tested
+
+Focused free-boundary and root example tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots \
+  -q
+```
+
+Result: `8 passed in 5.12s`.
+
+Example with plots and baseline outputs:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/m12e_lcfs_diagnostic \
+  --ntheta 24 \
+  --nxi 33 \
+  --n-segments 256 \
+  --run-fixed-boundary-baseline \
+  --baseline-maxiter 0
+```
+
+Result: metrics JSON, setup JSON, three `mout` files, and 36 PNGs written.
+
+Lint/format/docs/whitespace:
+
+```bash
+python -m ruff check \
+  vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff format --check \
+  vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m sphinx -W -j auto -b html docs docs/_build/html
+git diff --check
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- The diagnostic lives in `vmec_jax/mirror/free_boundary.py` with the other
+  circular-coil bridge helpers because it compares a mirror output to external
+  coil samples.
+- It is intentionally NumPy-side: this is a fast CLI/example diagnostic, not
+  yet the differentiable LCFS update kernel.
+- The root example owns the diagnostic plot because the plot is workflow
+  specific and uses the beta-scan row labels.
+- The public API exports the dataclass and function so later free-boundary
+  drivers can reuse the same measured target.
+
+### Best next steps
+
+1. Commit and push M12e.
+2. Add the first conservative axisymmetric LCFS update proposal:
+   - use the sign of the pressure-balance residual to propose a radius update;
+   - preserve positive radius and cap constraints;
+   - keep a small damping/line-search parameter;
+   - report before/after `B_ext.n` and pressure-balance diagnostics.
+3. Add a small standalone test that one damped update reduces the pressure
+   imbalance for a synthetic axisymmetric target.
+4. Only after that, connect the update loop to beta-scan rows and decide
+   whether the LCFS updater remains CLI-fast NumPy or gets a differentiable
+   JAX variant.
+
+### Completion percentages after M12e
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `85%`.
+- I/O schema and docs: `89%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `35%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `25%`.
+- PR merge readiness overall: `86%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+
 ## 56. 2026-06-17 M8w matrix-free block LSMR correction
 
 This lane converted the successful M8u/M8v block-dense split into a scalable
