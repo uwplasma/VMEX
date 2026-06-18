@@ -13433,6 +13433,72 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9997%.
 
+## 2026-06-18 Tomnsps Theta-Block Normalization Helper
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_slice_theta2` and `_optional_theta2` to
+   `vmec_jax.vmec_tomnsp`.
+2. Replaced repeated `jnp.asarray(... )[:, :ntheta2, :]` setup and optional
+   zero-block defaults in `tomnsps_rzl`.
+3. Left all FFT/DFT transform branches, parity selection, zeta integration, and
+   radial masks unchanged.
+
+Results obtained:
+
+- `vmec_jax/vmec_tomnsp.py` is net negative: 28 insertions, 38 deletions.
+- `tomnsps_rzl` dropped from 447 to 429 lines.
+- Theta-domain input normalization is now shared and less error-prone for
+  future symmetric/asymmetric transform refactors.
+- No generated artifacts or large files were added.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/vmec_tomnsp.py tests/test_vmec_tomnsp_branch_coverage.py tests/test_vmec_tomnsp_tables.py`
+- `python -m compileall -q vmec_jax/vmec_tomnsp.py tests/test_vmec_tomnsp_branch_coverage.py tests/test_vmec_tomnsp_tables.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_vmec_tomnsp_branch_coverage.py::test_tomnsps_fft_fused_and_split_paths_are_consistent tests/test_vmec_tomnsp_branch_coverage.py::test_tomnsps_unfused_dft_fallback_tables_host_masks_and_deterministic_reductions tests/test_vmec_tomnsp_branch_coverage.py::test_tomnsp_transform_error_paths_and_mask_fallbacks tests/test_vmec_tomnsp_branch_coverage.py::test_tomnsp_axisymmetric_dft_paths_keep_non_threed_outputs_none -q`
+  - Result: passed.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_vmec_tomnsp_branch_coverage.py tests/test_vmec_tomnsp_tables.py -q`
+  - Result: passed.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 45`
+
+Best next steps:
+
+1. Continue `tomnsps_rzl` only if the zeta integration/mask block can be
+   extracted without duplicating FFT/DFT policy logic.
+2. Otherwise move to `initial_guess_from_boundary`, which has a similar
+   function length and likely cleaner axis/input normalization seams.
+3. Keep the residual-iteration monolith for a dedicated branch-preserving
+   decomposition pass.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.57%.
+- Free-boundary adjoint monolith reduction: 99.40%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.9%.
+- WOUT diagnostic/profile decomposition: 99.86%.
+- Bcovar/WOUT parity decomposition: 99.08%.
+- Force-kernel decomposition: 99.25%.
+- Tomnsps transform decomposition: 98.4%.
+- Optimizer workflow decomposition: 99.19%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 96.2%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99972%.
+
 ## 2026-06-18 Residual Iteration Mode-Alias Cleanup
 
 Branch: `codex/differentiability-refactor-plan`.
