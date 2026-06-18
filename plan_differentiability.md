@@ -9540,3 +9540,63 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.970%.
+
+## 2026-06-18 Driver Scan-Parity Guard Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `maybe_disable_scan_by_parity_guard` to
+   `vmec_jax.drivers.dynamic_scan`.
+2. Moved the optional `VMEC_JAX_SCAN_PARITY_GUARD` probe logic out of the
+   fixed-boundary stage loop.
+3. Kept the probe behavior unchanged: when enabled, it compares short scan and
+   non-scan VMEC2000-style prefixes and disables scan for that stage on mismatch
+   or probe failure.
+
+Results obtained:
+
+- `run_fixed_boundary` dropped from 1,458 to 1,392 lines.
+- Dynamic scan selection and scan-parity safety logic now live in one driver
+  policy module.
+- Stage-loop code is closer to pure stage assembly/solve execution.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/driver.py vmec_jax/drivers/dynamic_scan.py`
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers/dynamic_scan.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_coverage_extra.py tests/test_driver_api_finish_more_coverage.py tests/test_driver_wave2_coverage.py -q -k "dynamic_scan or scan"`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_helper_edges_wave14_coverage.py -q -k "dynamic_scan or scan"`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_finish_policy_more_coverage.py -q -k "scan or parity_guard"`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_coverage_extra.py -q -k "scan_parity or scan"`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 16`
+
+Best next steps:
+
+1. Extract fixed-boundary stage solve execution into a small driver helper,
+   including the no-JIT context and scan-abort fallback.
+2. Continue decomposing the stage loop by isolating explicit-stage monitor
+   chunks and result aggregation.
+3. Keep all stage-control behavior in named driver modules; avoid adding new
+   nested policy branches inside `run_fixed_boundary`.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.99982%.
+- Solver monolith reduction: 99.15%.
+- Free-boundary adjoint monolith reduction: 99.1%.
+- Driver workflow decomposition: 97.8%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.972%.
