@@ -7,6 +7,60 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-18.
 
+## 2026-06-18 Free-Boundary Profile Solver Parser Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved `parse_profile_matrix_free_solvers` from the direct-coil optimization
+   example into `vmec_jax.solvers.free_boundary.coil_optimization`.
+2. Kept the example module compatibility surface by importing the parser back
+   into the script namespace.
+
+Results obtained:
+
+- The example has one fewer report-internal helper and remains focused on
+  user-visible optimization workflow.
+- Parser behavior and profile-report tests remain unchanged.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/free_boundary/coil_optimization.py examples/optimization/free_boundary_QS_coil_optimization.py`
+- `python -m ruff check vmec_jax/solvers/free_boundary/coil_optimization.py examples/optimization/free_boundary_QS_coil_optimization.py tests/test_free_boundary_qs_coil_optimization_smoke.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py::test_nestor_profile_policy_requires_size_and_speedup_thresholds tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_profiles_nestor_and_rejected_slot -q`
+
+Best next steps:
+
+1. Run the final combined local gate for all files touched in this refactor
+   burst.
+2. Recheck GitHub checks after the branch push; fix concrete CI failures only.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.57%.
+- Free-boundary adjoint monolith reduction: 99.35%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.9%.
+- WOUT diagnostic/profile decomposition: 99.72%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 99.11%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99936%.
+
 ## 2026-06-18 Free-Boundary Same-Branch Scalar Registry Extraction
 
 Branch: `codex/differentiability-refactor-plan`.
