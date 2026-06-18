@@ -9411,3 +9411,61 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.965%.
+
+## 2026-06-18 Driver Dynamic-Scan Policy Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `vmec_jax.drivers.dynamic_scan` to own the dynamic scan-selection
+   probe used by VMEC2000-style fixed-boundary stages.
+2. Replaced the inline probe block in `run_fixed_boundary` with a single
+   call to `maybe_select_dynamic_scan_mode`, passing the same solver state,
+   history-comparison callbacks, environment reader, and deep-copy hook.
+3. Kept the user-facing verbose diagnostics unchanged, including mismatch and
+   scan/non-scan timing messages.
+
+Results obtained:
+
+- `run_fixed_boundary` dropped from 1,556 to 1,458 lines.
+- Dynamic scan policy is now a named driver module instead of another nested
+  block inside the public driver.
+- No solver math changed; this is orchestration-only.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/driver.py vmec_jax/drivers/dynamic_scan.py`
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers/dynamic_scan.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_coverage_extra.py tests/test_driver_api_finish_more_coverage.py tests/test_driver_wave2_coverage.py -q -k "dynamic_scan"`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_helper_edges_wave14_coverage.py -q -k "dynamic_scan"`
+- `python tools/diagnostics/source_health.py --top 14 --top-functions 18`
+
+Best next steps:
+
+1. Extract stage solve attempt assembly from `run_fixed_boundary`, keeping the
+   actual stage loop in place until a narrower state-machine seam is tested.
+2. Move the accepted-controller replay objective out of
+   `free_boundary_adjoint.py` or split its internal branch/replay terms into a
+   smaller module-level helper.
+3. Continue residual solver reduction through safe adapter/controller seams.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.99979%.
+- Solver monolith reduction: 99.15%.
+- Free-boundary adjoint monolith reduction: 98%.
+- Driver workflow decomposition: 97.1%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.967%.
