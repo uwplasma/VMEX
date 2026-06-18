@@ -19843,3 +19843,86 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+---
+## 161. Draft PR Description Synchronization After Reusable Loop Wiring
+
+### Steps taken
+
+- Updated draft PR #21 body after M159/M160.
+- Changed the detailed implementation-log pointer from section 157 to
+  section 160.
+- Added PR-body language that the guarded circular-coil loop is now backed by
+  reusable state/callback loop policy from `vmec_jax.mirror.free_boundary`.
+- Updated latest validation evidence:
+  - `90 passed in 2.85s` for mirror free-boundary tests;
+  - `22 passed in 96.84s` for full mirror example tests;
+  - retained the prior combined coverage estimate `95.09%` versus the `95.00%`
+    coverage gate;
+  - plotted controller-loop evidence under
+    `results/mirror/free_boundary_circular_coils_m160_controller_loop_plots/`.
+- Kept the PR in draft state.
+- Verified the remote PR body after editing.
+
+### Results obtained
+
+- Remote PR body verification confirmed:
+  - PR number `21`;
+  - draft state `true`;
+  - head SHA `98e393be779000e62df215f24a217905527dae06`;
+  - body contains `section 160`;
+  - body contains reusable loop policy wording;
+  - body contains `90 passed in 2.85s`;
+  - body contains `22 passed in 96.84s`;
+  - body contains `free_boundary_circular_coils_m160_controller_loop_plots`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+gh pr view 21 --json body -q .body > /tmp/vmec_mirror_pr_body_current.md
+gh pr edit 21 --body-file /tmp/vmec_mirror_pr_body_current.md
+gh pr view 21 --json number,isDraft,headRefOid,body,url | python -c '...'
+```
+
+Results:
+
+- PR edit succeeded.
+- PR body verification passed.
+- PR remained draft.
+
+### File structure and best-practice notes
+
+- No source files changed in this administrative tranche.
+- The PR body remains a concise review index, with detailed implementation
+  evidence in `plan_mirror.md`.
+
+### Best next steps
+
+1. Commit and push M161 plan log.
+2. Check CI after enough elapsed time for useful status.
+3. Continue toward the true coupled nonlinear free-boundary solve API and
+   derivative strategy.
+
+### Completion percentages after M161
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `93%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `92%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `98%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
