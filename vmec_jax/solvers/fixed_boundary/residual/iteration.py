@@ -382,6 +382,7 @@ from vmec_jax.solvers.fixed_boundary.scan.math import (
 )
 from vmec_jax.solvers.fixed_boundary.scan.debug import (
     dump_vmec2000_scan_ptau_rows as _dump_vmec2000_scan_ptau_rows,
+    emit_live_scan_vmec2000_row as _emit_live_scan_vmec2000_row,
     emit_vmec2000_post_scan_rows as _emit_vmec2000_post_scan_rows,
     maybe_debug_scan_force_first_iter as _maybe_debug_scan_force_first_iter,
     maybe_debug_scan_state_iter as _maybe_debug_scan_state_iter,
@@ -2289,36 +2290,23 @@ def solve_fixed_boundary_residual_iter(
                 # VMEC prints the updated time-step (post TimeStepControl/restart),
                 # so report the post-update value on this iteration.
                 time_step_report = time_step_post
-                if print_in_scan:
-
-                    def _do_print(_):
-                        _emit_scan_vmec2000_iter_row(
-                            iter_idx=iter2,
-                            fsqr=fsqr,
-                            fsqz=fsqz,
-                            fsql=fsql,
-                            delt0r=time_step_report,
-                            r00=r00_j,
-                            w_mhd=w_mhd,
-                            lasym=False,
-                            verbose=True,
-                            vmec2000_control=True,
-                            verbose_vmec2000_table=True,
-                            print_live=True,
-                            scan_print_mode=scan_print_mode,
-                            scan_print_ordered=bool(scan_print_ordered),
-                            jax_debug=scan_jax_debug,
-                            io_callback=_io_callback,
-                            print_row=_print_scan_vmec2000_row,
-                        )
-                        return jnp.asarray(0, dtype=jnp.int32)
-
-                    _ = jax.lax.cond(
-                        sample_vmec,
-                        _do_print,
-                        lambda _: jnp.asarray(0, dtype=jnp.int32),
-                        operand=None,
-                    )
+                _ = _emit_live_scan_vmec2000_row(
+                    enabled=print_in_scan,
+                    sample_vmec=sample_vmec,
+                    iter_idx=iter2,
+                    fsqr=fsqr,
+                    fsqz=fsqz,
+                    fsql=fsql,
+                    delt0r=time_step_report,
+                    r00=r00_j,
+                    w_mhd=w_mhd,
+                    scan_print_mode=scan_print_mode,
+                    scan_print_ordered=bool(scan_print_ordered),
+                    jax_debug=scan_jax_debug,
+                    io_callback=_io_callback,
+                    cond=jax.lax.cond,
+                    print_row=_print_scan_vmec2000_row,
+                )
                 step_result = finalize_vmec2000_scan_step(
                     carry_adv=carry_adv,
                     step_fields=step_fields,

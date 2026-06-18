@@ -10700,3 +10700,70 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9945%.
+
+## 2026-06-18 Scan Live-Print Emission Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `emit_live_scan_vmec2000_row` to
+   `vmec_jax.solvers.fixed_boundary.scan.debug`.
+2. Moved the live scan-row `lax.cond` callback wrapper out of `_advance_step`
+   while preserving the existing VMEC2000 row emitter and print-row callback.
+3. Added a direct unit test covering disabled and enabled live-row wrapper
+   paths.
+4. Rewired the residual scan loop to call the scan-debug helper.
+
+Results obtained:
+
+- `_advance_step` no longer owns print callback plumbing.
+- `iteration.py` dropped from 7319 to 7307 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 6798 to 6785 lines.
+- `_run_vmec2000_scan` dropped from 1212 to 1199 lines.
+- `_scan_step` dropped from 430 to 417 lines.
+- `_advance_step` dropped from 414 to 401 lines.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/scan/debug.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_scan_debug_helpers.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/scan/debug.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_scan_debug_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_scan_debug_helpers.py -q`
+  - Result: `26 passed`.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_minimal_one_step tests/test_solve_wave7_coverage.py::test_residual_iter_vmec2000_scan_state_only tests/test_resume_state.py::test_accelerated_resume_state_is_minimal_and_restartable tests/test_solve_performance_instrumentation.py::test_accelerated_scan_timing_is_opt_in_and_path_labeled -q`
+  - Result: `4 passed`.
+- `JAX_ENABLE_X64=1 VMEC_JAX_SKIP_PY311_COVERAGE_ONLY=1 xargs python -m pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --durations=20 < /tmp/driver-solve-discrete.args`
+  - Result: `996 passed, 30 skipped`.
+- `python tools/diagnostics/source_health.py --top 18 --top-functions 24`
+
+Best next steps:
+
+1. Move from `_advance_step` micro-extractions to the scan setup/preflight and
+   scan-runner orchestration blocks, because the inner step is now mostly
+   orchestration.
+2. Keep the next extraction coarse enough to reduce source complexity
+   materially; avoid one-line shuffles.
+3. Re-run driver and free-boundary shards after the next coarse scan-runner
+   move.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.999974%.
+- Solver monolith reduction: 99.40%.
+- Free-boundary adjoint monolith reduction: 99.30%.
+- Driver workflow decomposition: 99.3%.
+- Residual iteration decomposition: 94.2%.
+- WOUT diagnostic/profile decomposition: 99.1%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.995%.
