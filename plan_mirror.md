@@ -13752,3 +13752,113 @@ Results:
 No user input is needed.
 
 ---
+
+## 109. 2026-06-18 M16 circular-coil cross-beta LCFS summary plot
+
+### Steps taken
+
+- Added a cross-beta summary plot to
+  ``examples/mirror_free_boundary_circular_coils.py``.
+- The plot compares, by requested nominal beta:
+  - side-boundary pressure-balance RMS;
+  - external normal-field RMS;
+  - LCFS merit;
+  - baseline versus final accepted pilot values when pilot rows exist.
+- Wired the plot into top-level ``metrics["figures"]["beta_scan_summary"]``
+  only when plots are enabled and baseline rows exist.
+- Updated mirror docs to mention the optional cross-beta LCFS metrics plot.
+- Ran a plotted low-resolution 1%, 3%, and 10% beta evidence scan under
+  ignored ``results/``.
+
+### Results obtained
+
+Evidence command:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/free_boundary_circular_coils_m109_beta_summary \
+  --ntheta 8 \
+  --nxi 11 \
+  --n-segments 64 \
+  --run-fixed-boundary-baseline \
+  --baseline-maxiter 0 \
+  --run-lcfs-pilot \
+  --lcfs-pilot-steps 1
+```
+
+Evidence metrics:
+
+- requested beta points: ``[1.0, 3.0, 10.0]``;
+- three baseline rows;
+- three accepted pilot rows;
+- top-level ``beta_scan_summary`` figure path recorded.
+
+The low-resolution zero-iteration evidence plot is intentionally flat across
+beta because this pilot holds the baseline shape and edge pressure fixed.  That
+visible flatness is useful: it shows the next physics step should run actual
+finite-beta fixed-boundary iterations or a multi-step LCFS loop before treating
+the beta trend as physical.
+
+Rendered ignored plot:
+
+- ``results/mirror/free_boundary_circular_coils_m109_beta_summary/figures/free_boundary_circular_coils_beta_scan_summary.png``.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py tests/mirror/test_mirror_free_boundary.py
+python -m ruff format --check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py tests/mirror/test_mirror_free_boundary.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_strict_bnormal_guard_can_skip_pilot -q
+git diff --check
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff format check passed.
+- ``2 passed`` in focused example tests.
+- ``git diff --check`` passed.
+- Plotted 1/3/10 beta evidence run completed and the summary figure rendered.
+
+### File structure and best-practice notes
+
+- The plot helper stays inside the root example because it summarizes example
+  metrics, not reusable solver state.
+- Generated plots remain ignored under ``results/``.
+- Docs remain in ``examples/mirror/README.md`` and ``docs/mirror/overview.rst``.
+
+### Best next steps
+
+1. Commit and push M109.
+2. Run finite-beta fixed-boundary baseline iterations for the 1%, 3%, and 10%
+   cases and check whether the cross-beta plot develops a physical trend.
+3. Add a multi-step LCFS pilot loop tolerance/stagnation criterion instead of
+   a fixed number of requested pilot steps.
+4. Continue M14 toroidal side-mirror / corner-stellarator fixture.
+
+### Completion percentages after M109
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `87%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `89%`.
+- I/O schema and docs: `97%`.
+- Differentiable solved-state API: `30%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `74%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `82%`.
+- ESSOS circular-coil mirror beta scan: `66%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---

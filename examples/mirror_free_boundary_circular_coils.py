@@ -210,6 +210,63 @@ def _write_lcfs_diagnostic_plot(diagnostic, proposal=None, *, outdir: Path, name
     return path
 
 
+def _write_beta_scan_summary_plot(rows: list[dict[str, object]], *, outdir: Path) -> Path:
+    """Plot baseline and pilot LCFS metrics across requested beta cases."""
+    import matplotlib.pyplot as plt
+
+    if not rows:
+        raise ValueError("at least one beta row is required")
+    outdir.mkdir(parents=True, exist_ok=True)
+    beta = np.asarray([float(row["beta_percent"]) for row in rows], dtype=float)
+    order = np.argsort(beta)
+    beta = beta[order]
+
+    def _ordered(name: str) -> np.ndarray:
+        return np.asarray([float(rows[index][name]) for index in order], dtype=float)
+
+    def _ordered_optional(name: str) -> np.ndarray:
+        values = []
+        for index in order:
+            value = rows[index].get(name)
+            values.append(np.nan if value is None else float(value))
+        return np.asarray(values, dtype=float)
+
+    baseline_pressure = _ordered("lcfs_pressure_balance_rms")
+    baseline_bnormal = _ordered("lcfs_external_bnormal_rms")
+    baseline_merit = _ordered("lcfs_merit")
+    pilot_pressure = _ordered_optional("lcfs_pilot_final_pressure_balance_rms")
+    pilot_merit = _ordered_optional("lcfs_pilot_final_merit")
+
+    fig, axes = plt.subplots(3, 1, figsize=(6.6, 6.8), sharex=True)
+    axes[0].plot(beta, baseline_pressure, "o-", label="baseline")
+    if np.isfinite(pilot_pressure).any():
+        axes[0].plot(beta, pilot_pressure, "s--", label="pilot final")
+    axes[0].set_ylabel("pressure RMS")
+    axes[0].legend(fontsize="small")
+
+    axes[1].plot(beta, baseline_bnormal, "o-", color="tab:green")
+    axes[1].set_ylabel("B_ext . n RMS")
+
+    axes[2].plot(beta, baseline_merit, "o-", label="baseline")
+    if np.isfinite(pilot_merit).any():
+        axes[2].plot(beta, pilot_merit, "s--", label="pilot final")
+    axes[2].set_ylabel("LCFS merit")
+    axes[2].set_xlabel("nominal beta (%)")
+    axes[2].legend(fontsize="small")
+
+    for ax in axes:
+        finite_positive = [line.get_ydata() for line in ax.lines if np.all(np.asarray(line.get_ydata()) > 0.0)]
+        if finite_positive:
+            ax.set_yscale("log")
+        ax.grid(True, alpha=0.3)
+    fig.suptitle("circular-coil mirror beta scan LCFS metrics", y=0.995)
+    fig.tight_layout()
+    path = outdir / "free_boundary_circular_coils_beta_scan_summary.png"
+    fig.savefig(path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
 def _beta_label(beta_percent: float) -> str:
     return f"{float(beta_percent):g}".replace(".", "p")
 
@@ -832,6 +889,13 @@ def run_case(
         if run_fixed_boundary_baseline
         else []
     )
+    if write_plots and baseline_rows:
+        figure_paths["beta_scan_summary"] = str(
+            _write_beta_scan_summary_plot(
+                baseline_rows,
+                outdir=outdir / "figures",
+            )
+        )
 
     metrics = {
         **_beta_scan_summary(
