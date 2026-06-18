@@ -74,6 +74,9 @@ from vmec_jax.solvers.fixed_boundary.residual.setup import (
     grid_matches_vmec_static_grid as _grid_matches_vmec_static_grid,
     resolve_free_boundary_setup_policy as _resolve_free_boundary_setup_policy,
 )
+from vmec_jax.solvers.fixed_boundary.residual.state_setup import (
+    build_residual_state_setup as _build_residual_state_setup,
+)
 from vmec_jax.solvers.fixed_boundary.residual.finalize import (
     attach_residual_iter_timing_diagnostics as _attach_residual_iter_timing_diagnostics,
     build_residual_iter_resume_state_payload as _build_residual_iter_resume_state_payload,
@@ -202,7 +205,14 @@ from vmec_jax.solvers.fixed_boundary.residual.force_norms import (
     residual_fsq_from_norms as _residual_fsq_from_norms,
     safe_dt_from_force_blocks as _safe_dt_from_force_blocks,
 )
-from vmec_jax.solvers.fixed_boundary.preconditioning import payload as _precond_payload_helpers
+from vmec_jax.solvers.fixed_boundary.residual import preconditioner_payload as _precond_payload_facade
+from vmec_jax.solvers.fixed_boundary.residual.preconditioner_payload import (
+    _ACCEPTED_CONTROL_PAYLOAD_JIT_CACHE,
+    _PRECOND_APPLY_PAYLOAD_JIT_CACHE,
+    _PRECOND_OUTPUT_PAYLOAD_JIT_CACHE,
+    _PRECOND_OUTPUT_SCALE_JIT_CACHE,
+    _STRICT_UPDATE_STEP_JIT_CACHE,
+)
 from vmec_jax.solvers.fixed_boundary.optimization.tolerances import (
     dtype_eps as _dtype_eps,  # noqa: F401 - re-exported for existing internal tests/importers.
     dtype_tiny as _dtype_tiny,
@@ -392,12 +402,6 @@ from vmec_jax.vmec_tomnsp import TomnspsRZL
 
 _SCAN_RUNNER_CACHE: OrderedDict[tuple, Any] = OrderedDict()
 _COMPUTE_FORCES_CACHE: OrderedDict[tuple, Any] = OrderedDict()
-_STRICT_UPDATE_STEP_JIT_CACHE = _precond_payload_helpers.STRICT_UPDATE_STEP_JIT_CACHE
-_PRECOND_OUTPUT_SCALE_JIT_CACHE = _precond_payload_helpers.PRECOND_OUTPUT_SCALE_JIT_CACHE
-_PRECOND_OUTPUT_PAYLOAD_JIT_CACHE = _precond_payload_helpers.PRECOND_OUTPUT_PAYLOAD_JIT_CACHE
-_PRECOND_APPLY_PAYLOAD_JIT_CACHE = _precond_payload_helpers.PRECOND_APPLY_PAYLOAD_JIT_CACHE
-_ACCEPTED_CONTROL_PAYLOAD_JIT_CACHE = _precond_payload_helpers.ACCEPTED_CONTROL_PAYLOAD_JIT_CACHE
-
 
 _HostRestartDecision = _residual_iter_policy.HostRestartDecision
 _ResidualIterHistoryRecord = _residual_iter_policy.ResidualIterHistoryRecord
@@ -409,150 +413,31 @@ _mn_sin_to_signed_physical_batch = _geometry_mn_sin_to_signed_physical_batch
 _rz_norm_np = _geometry_rz_norm_np
 
 
-def _strict_update_step_jit(
-    static,
-    *,
-    limit_update_rms: bool,
-    need_update_rms: bool,
-    divide_by_scalxc_for_update: bool,
-    enforce_edge: bool = True,
-):
-    if not has_jax():
-        return None
-    return _precond_payload_helpers.strict_update_step_jit(
-        static,
-        limit_update_rms=limit_update_rms,
-        need_update_rms=need_update_rms,
-        divide_by_scalxc_for_update=divide_by_scalxc_for_update,
-        enforce_edge=enforce_edge,
-    )
+def _strict_update_step_jit(*args, **kwargs):
+    return _precond_payload_facade._strict_update_step_jit(*args, has_jax_func=has_jax, **kwargs)
 
 
-def _preconditioner_output_scaling_jit(*, apply_lambda_update_scale: bool):
-    if not has_jax():
-        return None
-    return _precond_payload_helpers.preconditioner_output_scaling_jit(
-        apply_lambda_update_scale=apply_lambda_update_scale
-    )
+def _preconditioner_output_scaling_jit(*args, **kwargs):
+    return _precond_payload_facade._preconditioner_output_scaling_jit(*args, has_jax_func=has_jax, **kwargs)
 
 
-def _preconditioner_output_payload_jit(
-    *,
-    apply_lambda_update_scale: bool,
-    vmec2000_control: bool,
-    lconm1: bool,
-):
-    if not has_jax():
-        return None
-    return _precond_payload_helpers.preconditioner_output_payload_jit(
-        apply_lambda_update_scale=apply_lambda_update_scale,
-        vmec2000_control=vmec2000_control,
-        lconm1=lconm1,
-        scaling_func=_preconditioner_output_scaling_jit,
-    )
+def _preconditioner_output_payload_jit(*args, **kwargs):
+    return _precond_payload_facade._preconditioner_output_payload_jit(*args, has_jax_func=has_jax, **kwargs)
 
 
-def _preconditioner_apply_payload_jit(
-    *,
-    jmax: int,
-    lthreed: bool,
-    lasym: bool,
-    use_precomputed: bool,
-    use_lax_tridi: bool,
-    has_lax_t: bool,
-    has_frss: bool,
-    has_fzcs: bool,
-    has_frsc: bool,
-    has_frcs: bool,
-    has_fzcc: bool,
-    has_fzss: bool,
-    has_flcs: bool,
-    has_flcc: bool,
-    has_flss: bool,
-    apply_lambda_update_scale: bool,
-    vmec2000_control: bool,
-    lconm1: bool,
-    include_control_ptau: bool,
-):
-    if not has_jax():
-        return None
-    return _precond_payload_helpers.preconditioner_apply_payload_jit(
-        jmax=jmax,
-        lthreed=lthreed,
-        lasym=lasym,
-        use_precomputed=use_precomputed,
-        use_lax_tridi=use_lax_tridi,
-        has_lax_t=has_lax_t,
-        has_frss=has_frss,
-        has_fzcs=has_fzcs,
-        has_frsc=has_frsc,
-        has_frcs=has_frcs,
-        has_fzcc=has_fzcc,
-        has_fzss=has_fzss,
-        has_flcs=has_flcs,
-        has_flcc=has_flcc,
-        has_flss=has_flss,
-        apply_lambda_update_scale=apply_lambda_update_scale,
-        vmec2000_control=vmec2000_control,
-        lconm1=lconm1,
-        include_control_ptau=include_control_ptau,
-    )
+def _preconditioner_apply_payload_jit(*args, **kwargs):
+    return _precond_payload_facade._preconditioner_apply_payload_jit(*args, has_jax_func=has_jax, **kwargs)
 
 
 def _accepted_control_payload_jit():
-    if not has_jax():
-        return None
-    return _precond_payload_helpers.accepted_control_payload_jit()
+    return _precond_payload_facade._accepted_control_payload_jit(has_jax_func=has_jax)
 
 
-def _preconditioner_apply_payload_fused(
-    *,
-    frzl_in: TomnspsRZL,
-    mats: dict[str, Any],
-    jmax: int,
-    cfg,
-    lam_prec,
-    w_mode_mn,
-    lambda_update_scale_j,
-    f_norm1,
-    delta_s,
-    s,
-    use_precomputed: bool | None,
-    use_lax_tridi: bool | None,
-    apply_lambda_update_scale: bool,
-    vmec2000_control: bool,
-    lconm1: bool,
-    include_control_ptau: bool = False,
-    control_ptau_arrays: tuple[Any, ...] | None = None,
-    control_ptau_pshalf: Any = None,
-    control_ptau_ohs: Any = None,
-):
-    return _precond_payload_helpers.preconditioner_apply_payload_fused(
-        frzl_in=frzl_in,
-        mats=mats,
-        jmax=jmax,
-        cfg=cfg,
-        lam_prec=lam_prec,
-        w_mode_mn=w_mode_mn,
-        lambda_update_scale_j=lambda_update_scale_j,
-        f_norm1=f_norm1,
-        delta_s=delta_s,
-        s=s,
-        use_precomputed=use_precomputed,
-        use_lax_tridi=use_lax_tridi,
-        apply_lambda_update_scale=apply_lambda_update_scale,
-        vmec2000_control=vmec2000_control,
-        lconm1=lconm1,
-        include_control_ptau=include_control_ptau,
-        control_ptau_arrays=control_ptau_arrays,
-        control_ptau_pshalf=control_ptau_pshalf,
-        control_ptau_ohs=control_ptau_ohs,
-        apply_payload_jit_func=_preconditioner_apply_payload_jit,
-    )
+def _preconditioner_apply_payload_fused(*args, **kwargs):
+    return _precond_payload_facade._preconditioner_apply_payload_fused(*args, **kwargs)
 
 
-_ptau_compute_jit = _precond_payload_helpers.ptau_compute_jit
-
+_ptau_compute_jit = _precond_payload_facade._ptau_compute_jit
 
 _hash_array_bytes = _solve_runtime._hash_array_bytes
 _tree_has_tracer = _solve_runtime._tree_has_tracer
@@ -1924,82 +1809,35 @@ def solve_fixed_boundary_residual_iter(
 
     def _rz_norm(state: VMECState) -> Any:
         return _mode_context.rz_norm(state)
-    # Precompute axis mask for _enforce_fixed_boundary_and_axis_np (avoids 7000+
-    # _axis_m0_mask JAX dispatches per solve — saves ~0.5s real).
-    if bool(host_update_assembly) or bool(setup_host_enforce):
-        if getattr(static, "m_is_m0", None) is not None:
-            _precomputed_axis_mask_np = np.asarray(static.m_is_m0, dtype=_state0_dtype)
-        else:
-            _precomputed_axis_mask_np = (np.asarray(static.modes.m) == 0).astype(_state0_dtype)
-    else:
-        _precomputed_axis_mask_np = None
-    # Cache JAX scalar constants used every iteration (avoids 7000+
-    # jnp.asarray dispatches for zero_m1 and constraint_precond_active).
-    if host_update_assembly and has_jax():
-        if _tree_has_tracer(state0):
-            _jnp_state_dtype = jnp.asarray(state0.Rcos).dtype
-            _jnp_zero_m1_0 = jnp.asarray(0.0, dtype=_jnp_state_dtype)  # zero_m1_val=0
-            _jnp_zero_m1_1 = jnp.asarray(1.0, dtype=_jnp_state_dtype)  # zero_m1_val=1
-            _jnp_true_bool = jnp.asarray(True, dtype=bool)
-            _jnp_false_bool = jnp.asarray(False, dtype=bool)
-        else:
-            _jnp_state_dtype = np.asarray(state0.Rcos).dtype
-            _jnp_zero_m1_0 = np.asarray(0.0, dtype=_jnp_state_dtype)  # zero_m1_val=0
-            _jnp_zero_m1_1 = np.asarray(1.0, dtype=_jnp_state_dtype)  # zero_m1_val=1
-            _jnp_true_bool = np.asarray(True, dtype=bool)
-            _jnp_false_bool = np.asarray(False, dtype=bool)
-    else:
-        _jnp_state_dtype = None
-        _jnp_zero_m1_0 = _jnp_zero_m1_1 = None
-        _jnp_true_bool = _jnp_false_bool = None
-    # Pre-allocate zero-filled arrays for mode-diag and state-update host paths.
-    # Reused every iteration instead of np.zeros_like (avoids 9+ allocations/iter).
-    if host_update_assembly:
-        # Shape for force arrays (ns, mpol, nrange) — used in mode-diag scaling.
-        _coeff_shape_np = (int(np.asarray(state0.Rcos).shape[0]), mpol, nrange)
-        _zeros_coeff_np = np.zeros(_coeff_shape_np, dtype=_state0_dtype)
-        # Shape for dR/dZ/dL arrays (ns, K) — used when lasym=False for zeros.
-        _zeros_dR_np = np.zeros_like(np.asarray(state0.Rcos))
-    if bool(host_update_assembly) and (not _tree_has_tracer(s)) and (not _tree_has_tracer(state0.Rcos)):
-        s_np = np.asarray(s)
-        delta_s = (
-            np.asarray(s_np[1] - s_np[0], dtype=_state0_dtype)
-            if int(s_np.shape[0]) > 1
-            else np.asarray(1.0, dtype=_state0_dtype)
-        )
-    else:
-        delta_s = (
-            jnp.asarray(s[1] - s[0], dtype=jnp.asarray(state0.Rcos).dtype)
-            if int(jnp.asarray(s).shape[0]) > 1
-            else jnp.asarray(1.0, dtype=jnp.asarray(state0.Rcos).dtype)
-        )
-
-    if bool(host_update_assembly) or bool(setup_host_enforce):
-        state = _enforce_fixed_boundary_and_axis_np(
-            state0,
-            static,
-            edge_Rcos=edge_Rcos,
-            edge_Rsin=edge_Rsin,
-            edge_Zcos=edge_Zcos,
-            edge_Zsin=edge_Zsin,
-            enforce_edge=not bool(free_boundary_enabled),
-            enforce_lambda_axis=True,
-            idx00=idx00,
-            precomputed_axis_mask=_precomputed_axis_mask_np,
-        )
-    else:
-        state = _enforce_fixed_boundary_and_axis(
-            state0,
-            static,
-            edge_Rcos=edge_Rcos,
-            edge_Rsin=edge_Rsin,
-            edge_Zcos=edge_Zcos,
-            edge_Zsin=edge_Zsin,
-            enforce_edge=not bool(free_boundary_enabled),
-            enforce_lambda_axis=True,
-            idx00=idx00,
-        )
-    state = _apply_vmec_lambda_axis_rules(state)
+    state_setup = _build_residual_state_setup(
+        state0=state0,
+        static=static,
+        s=s,
+        edge_Rcos=edge_Rcos,
+        edge_Rsin=edge_Rsin,
+        edge_Zcos=edge_Zcos,
+        edge_Zsin=edge_Zsin,
+        free_boundary_enabled=bool(free_boundary_enabled),
+        host_update_assembly=bool(host_update_assembly),
+        setup_host_enforce=bool(setup_host_enforce),
+        idx00=idx00,
+        mpol=mpol,
+        nrange=nrange,
+        state0_dtype=_state0_dtype,
+        apply_lambda_axis_rules=_apply_vmec_lambda_axis_rules,
+        tree_has_tracer=_tree_has_tracer,
+        has_jax_func=has_jax,
+    )
+    state = state_setup.state
+    _precomputed_axis_mask_np = state_setup.precomputed_axis_mask_np
+    _jnp_state_dtype = state_setup.jnp_state_dtype
+    _jnp_zero_m1_0 = state_setup.jnp_zero_m1_0
+    _jnp_zero_m1_1 = state_setup.jnp_zero_m1_1
+    _jnp_true_bool = state_setup.jnp_true_bool
+    _jnp_false_bool = state_setup.jnp_false_bool
+    _zeros_coeff_np = state_setup.zeros_coeff_np
+    _zeros_dR_np = state_setup.zeros_dR_np
+    delta_s = state_setup.delta_s
 
     ftol = float(indata.get_float("FTOL", 1e-13)) if ftol is None else float(ftol)
     gamma = float(indata.get_float("GAMMA", 0.0))

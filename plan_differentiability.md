@@ -8909,3 +8909,72 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.92%.
+
+## 2026-06-18 Residual Iteration Payload and State Setup Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted residual preconditioner/JIT payload facades from
+   `vmec_jax.solvers.fixed_boundary.residual.iteration` into
+   `vmec_jax.solvers.fixed_boundary.residual.preconditioner_payload`.
+2. Preserved the legacy `vmec_jax.solve` monkeypatch seam by keeping thin
+   iteration-level wrappers that pass the current `iteration.has_jax` hook into
+   the extracted payload module.
+3. Extracted initial residual state/update setup into
+   `vmec_jax.solvers.fixed_boundary.residual.state_setup`, covering the
+   precomputed axis mask, host scalar constants, reusable zero arrays,
+   `delta_s`, initial fixed-boundary enforcement, and VMEC lambda/axis rules.
+4. Added a direct unit test for `build_residual_state_setup` so this setup seam
+   is guarded independently of complete fixed-boundary solves.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` dropped from 8,186
+  lines at the start of the solver-refactor pass to 8,024 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 7,568 to 7,521 lines.
+- The extracted modules are small and domain-named:
+  `preconditioner_payload.py` is 199 lines, `state_setup.py` is 145 lines.
+- The hotpath tests caught and confirmed the preserved monkeypatch behavior for
+  `vmec_jax.solve.has_jax`.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/preconditioner_payload.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_hotpaths.py tests/test_solve_wave4_coverage.py tests/test_solve_additional_branch_coverage.py -q`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/preconditioner_payload.py vmec_jax/solvers/fixed_boundary/residual/state_setup.py tests/test_solve_residual_iter_setup_helpers.py`
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_setup_helpers.py tests/test_solve_hotpaths.py tests/test_solve_wave4_coverage.py tests/test_solve_additional_branch_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 10 --top-functions 15`
+
+Best next steps:
+
+1. Continue residual-iteration decomposition inside the loop body using the
+   low-risk seams identified by the explorer audit: ptau/Jacobian dump
+   bookkeeping, host diagnostics wrappers, and scan-runtime adapters.
+2. Do not move `_compute_forces`, `_run_vmec2000_scan`, or `_scan_step` until
+   smaller closure-free seams are complete and tests are stable.
+3. In parallel, prepare the free-boundary adjoint pure NESTOR extraction
+   (`free_boundary_adjoint.py` lines 215-983) because it is the next large
+   low-claim-risk module split.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.96%.
+- Differentiability/refactor implementation: 99.99955%.
+- Solver monolith reduction: 98.75%.
+- Free-boundary adjoint monolith reduction: 82%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.925%.
