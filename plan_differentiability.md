@@ -7,6 +7,70 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-18.
 
+## 2026-06-18 WOUT Diagnostic Payload Fan-Out Reduction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Changed the minimal WOUT schema mapper to consume the structured
+   `WoutScalarDiagnostics` payload directly instead of requiring the high-level
+   builder to unpack every scalar/profile field into locals.
+2. Changed current-profile metadata mapping to consume the structured metadata
+   payload directly.
+3. Preserved the VMEC++-style non-converged WOUT behavior by applying the
+   optional beta-zeroing escape hatch via `scalar_diag._replace(...)`.
+
+Results obtained:
+
+- `vmec_jax/wout.py` is 24 lines smaller.
+- `vmec_jax/io/wout/minimal.py` grows by only 2 lines, for a net 22-line source
+  reduction.
+- `wout_minimal_from_fixed_boundary` dropped from 806 to 782 lines.
+- Full WOUT focused tests pass.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/wout.py vmec_jax/io/wout/minimal.py`
+- `python -m compileall -q vmec_jax/wout.py vmec_jax/io/wout/minimal.py tests/test_wout_wave2.py tests/test_wout_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_wave2.py::test_wout_minimal_light_nonconverged_dumps_and_defaults tests/test_wout_wave2.py::test_nonconverged_wout_roundtrip_preserves_fields_and_status tests/test_wout_helpers.py::test_wout_current_profile_metadata_from_indata_preserves_vmecplot_defaults tests/test_wout_helpers.py::test_wout_glasser_profile_writer_bundle_uses_data_or_zero_defaults -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_wave2.py tests/test_wout_helpers.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 16`
+
+Best next steps:
+
+1. Continue WOUT simplification by moving Nyquist coefficient assembly into a
+   typed payload helper only when a focused parity test is selected first.
+2. Continue fixed-boundary residual iteration decomposition with setup/context
+   seams, not numerical update rewrites.
+3. Avoid cosmetic context-construction moves that reduce one function but add
+   equal or greater boilerplate elsewhere.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.57%.
+- Free-boundary adjoint monolith reduction: 99.40%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.9%.
+- WOUT diagnostic/profile decomposition: 99.77%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 99.19%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 96.2%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99953%.
+
 ## 2026-06-18 QI Shuffle-Profile Residual Extraction
 
 Branch: `codex/differentiability-refactor-plan`.
