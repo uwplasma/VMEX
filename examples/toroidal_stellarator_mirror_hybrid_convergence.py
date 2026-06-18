@@ -270,6 +270,47 @@ def _write_profile_plots(rows: list[dict[str, object]], *, outdir: Path) -> str 
     return str(path)
 
 
+def _write_parity_component_plot(rows: list[dict[str, object]], *, outdir: Path) -> str | None:
+    parity_rows = [
+        row
+        for row in rows
+        if row.get("final_fsqr") is not None
+        and row.get("vmec2000_final_fsqr") is not None
+        and row.get("vmec2000_final_fsqz") is not None
+        and row.get("vmec2000_final_fsql") is not None
+    ]
+    if not parity_rows:
+        return None
+    plt = _import_matplotlib()
+    outdir.mkdir(parents=True, exist_ok=True)
+    fig, axes = plt.subplots(
+        1,
+        len(parity_rows),
+        figsize=(max(5.0, 4.4 * len(parity_rows)), 4.0),
+        squeeze=False,
+        constrained_layout=True,
+    )
+    components = ("fsqr", "fsqz", "fsql")
+    x = np.arange(len(components), dtype=float)
+    width = 0.36
+    for ax, row in zip(axes.ravel(), parity_rows, strict=False):
+        jax_values = np.asarray([float(row[f"final_{name}"]) for name in components], dtype=float)
+        vmec_values = np.asarray([float(row[f"vmec2000_final_{name}"]) for name in components], dtype=float)
+        ax.bar(x - width / 2.0, np.maximum(jax_values, 1.0e-300), width=width, label="VMEC/JAX")
+        ax.bar(x + width / 2.0, np.maximum(vmec_values, 1.0e-300), width=width, label="VMEC2000")
+        ax.set_yscale("log")
+        ax.set_xticks(x)
+        ax.set_xticklabels(components)
+        ax.set_ylabel("final residual component")
+        ax.set_title(str(row["case"]))
+        ax.grid(True, axis="y", which="both", alpha=0.25)
+        ax.legend(loc="best", fontsize=8)
+    path = outdir / "toroidal_hybrid_parity_components.png"
+    fig.savefig(path, dpi=180)
+    plt.close(fig)
+    return str(path)
+
+
 def _row_case_name(*, ns: int, mpol: int, ntor: int) -> str:
     return f"ns{int(ns):03d}_mpol{int(mpol):02d}_ntor{int(ntor):02d}"
 
@@ -518,6 +559,9 @@ def main() -> None:
         profile_plot = _write_profile_plots(rows, outdir=outdir / "figures")
         if profile_plot is not None:
             summary["figures"]["profiles"] = profile_plot
+        parity_plot = _write_parity_component_plot(rows, outdir=outdir / "figures")
+        if parity_plot is not None:
+            summary["figures"]["parity_components"] = parity_plot
 
     summary_path = outdir / "toroidal_stellarator_mirror_hybrid_convergence.json"
     summary_path.write_text(json.dumps(summary, indent=2) + "\n")

@@ -87,7 +87,9 @@ same generated inputs through the local VMEC2000 executable and record parsed
 ``--solver-mode parity --no-use-scan`` for the closest VMEC2000-control
 comparison, or keep the default accelerated mode for the fast CLI path. The
 CSV records requested ``ftol``, VMEC/JAX strict and total-``fsq`` convergence
-flags, and VMEC2000 WOUT residual components when available.
+flags, and VMEC2000 WOUT residual components when available. When plots are
+enabled and both solvers ran, the example also writes a final
+``fsqr``/``fsqz``/``fsql`` component comparison.
 
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
 free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct
