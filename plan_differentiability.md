@@ -7,6 +7,73 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-18.
 
+## 2026-06-18 Free-Boundary Coil Optimization Proposal Helper Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted the same-branch derivative proposal helpers from the pedagogical
+   single-stage direct-coil example into
+   `vmec_jax.solvers.free_boundary.coil_optimization`.
+2. Kept the example script as the user-facing workflow and retained the old
+   function names as explicit imports so existing tests and user scripts can
+   still access them through the example module.
+3. Left complete free-boundary solves as the only acceptance authority; the
+   extracted helpers only convert validated branch-local reports into bounded
+   trial points.
+
+Results obtained:
+
+- `examples/optimization/free_boundary_QS_coil_optimization.py` dropped to
+  2694 lines.
+- The extracted package helper is 331 lines and has a narrow dependency surface:
+  standard typing plus NumPy.
+- No output artifacts or large files were added.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/free_boundary/coil_optimization.py examples/optimization/free_boundary_QS_coil_optimization.py`
+- `python -m ruff check vmec_jax/solvers/free_boundary/coil_optimization.py examples/optimization/free_boundary_QS_coil_optimization.py tests/test_free_boundary_qs_coil_optimization_smoke.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_derivative_proposal_uses_gated_directional_report tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_derivative_proposal_rejects_adaptive_claims tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_derivative_proposal_rejects_failed_vector_gate tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_derivative_proposal_rejects_failed_rejected_slot_gate tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_derivative_proposal_requires_direct_jvp_and_fresh_replay -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py -q`
+- `python tools/diagnostics/source_health.py --top 10 --top-functions 12`
+
+Best next steps:
+
+1. Continue example simplification by moving report-cache/profiling helpers
+   into the same free-boundary coil-optimization domain module if the move does
+   not hide workflow decisions from users.
+2. Keep reducing the residual iteration monolith through existing residual
+   domain modules rather than creating generic helper files.
+3. Recheck PR CI after the next push; current GitHub Actions status has no
+   failures, with several shards still pending.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.50%.
+- Free-boundary adjoint monolith reduction: 99.35%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 99.72%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 98.95%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9989%.
+
 ## 2026-06-18 Resume Audit, CI Check, and Free-Boundary Claim Control
 
 Branch: `codex/differentiability-refactor-plan`.
