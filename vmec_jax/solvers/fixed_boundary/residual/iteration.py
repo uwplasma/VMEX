@@ -72,6 +72,7 @@ from vmec_jax.solvers.fixed_boundary.residual.runtime import (
 )
 from vmec_jax.solvers.fixed_boundary.residual.setup import (
     build_residual_cache_keys as _build_residual_cache_keys,
+    free_boundary_pressure_edge_scale as _free_boundary_pressure_edge_scale,
     grid_matches_vmec_static_grid as _grid_matches_vmec_static_grid,
     resolve_free_boundary_setup_policy as _resolve_free_boundary_setup_policy,
 )
@@ -810,23 +811,11 @@ def solve_fixed_boundary_residual_iter(
     )
     lambda_axis_copy_mask = jnp.asarray(axis_copy_mask_np, dtype=jnp.asarray(state0.Rcos).dtype)
     s = jnp.asarray(static.s)
-    freeb_pres_scale = None
-    if bool(free_boundary_enabled) and (indata is not None) and int(s.shape[0]) >= 2:
-        try:
-            from vmec_jax.profiles import eval_profiles
-
-            hs_f = float(np.asarray(s[1] - s[0], dtype=float))
-            sedge = hs_f * (float(int(s.shape[0])) - 1.5)
-            prof_edge = eval_profiles(indata, np.asarray([sedge], dtype=float))
-            prof_one = eval_profiles(indata, np.asarray([1.0], dtype=float))
-            p_edge = float(np.asarray(prof_edge.get("pressure", np.asarray([0.0], dtype=float))).reshape(-1)[0])
-            p_one = float(np.asarray(prof_one.get("pressure", np.asarray([0.0], dtype=float))).reshape(-1)[0])
-            if p_edge != 0.0:
-                freeb_pres_scale = p_one / p_edge
-            else:
-                freeb_pres_scale = 0.0
-        except Exception:
-            freeb_pres_scale = None
+    freeb_pres_scale = _free_boundary_pressure_edge_scale(
+        free_boundary_enabled=bool(free_boundary_enabled),
+        indata=indata,
+        s=s,
+    )
     dtype_state = jnp.asarray(state0.Rcos).dtype
     zero_precond_diag = (
         jnp.zeros((int(s.shape[0]),), dtype=dtype_state),

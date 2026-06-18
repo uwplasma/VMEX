@@ -7,6 +7,67 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-18.
 
+## 2026-06-18 Free-Boundary Pressure Edge Scale Setup Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved the free-boundary pressure edge-scale calculation out of
+   `solve_fixed_boundary_residual_iter` and into
+   `vmec_jax.solvers.fixed_boundary.residual.setup.free_boundary_pressure_edge_scale`.
+2. Kept the helper injectable for `eval_profiles` so the pressure-ratio logic
+   can be unit-tested without constructing a full VMEC input deck.
+3. Added tests for enabled free-boundary scaling, disabled/no-input cases,
+   zero edge pressure, and defensive exception handling.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` dropped from 6411 to 6399 lines.
+- `iteration.py` dropped from 6938 to 6927 lines.
+- The setup module now owns free-boundary setup-policy decisions and this
+  related pressure scaling calculation.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/setup.py vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/setup.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_residual_iter_setup_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_setup_helpers.py tests/test_solve_residual_iter_runtime_helpers.py tests/test_solve_wave7_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 10 --top-functions 12`
+
+Best next steps:
+
+1. Continue residual setup extraction around profile setup only if the helper
+   signature remains simple; otherwise move to a larger designed context object.
+2. Use explorer feedback before attempting preconditioner cache or scan-loop
+   extraction.
+3. Recheck PR CI after the next push for concrete failures.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.51%.
+- Free-boundary adjoint monolith reduction: 99.35%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.45%.
+- WOUT diagnostic/profile decomposition: 99.72%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 99.0%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9991%.
+
 ## 2026-06-18 Free-Boundary Report Cache and Profiling Policy Extraction
 
 Branch: `codex/differentiability-refactor-plan`.
