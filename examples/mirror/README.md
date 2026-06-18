@@ -63,8 +63,9 @@ sampled on-axis field, and plots the coils, boundary, on-axis field comparison,
 and boundary ``|B|``. Pass ``--run-fixed-boundary-baseline`` to write one
 low-resolution fixed-boundary ``mout`` per beta case as a controlled pre-LCFS
 baseline, plus side-boundary normal-field and total-pressure imbalance
-diagnostics against the external coils. It does not solve for a free-boundary
-LCFS yet.
+diagnostics against the external coils. It also reports a damped, clipped
+axisymmetric LCFS radius proposal from a finite-difference external magnetic
+pressure response. It does not solve for a free-boundary LCFS yet.
 
 The root-level ``examples/mirror_fixed_boundary_solve_diagnostic.py`` script
 runs an actual L-BFGS fixed-boundary relaxation from a perturbed interior state.

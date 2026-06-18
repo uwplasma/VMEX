@@ -152,6 +152,14 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert all(row["final_fsq"] >= 0.0 for row in metrics["fixed_boundary_baseline_rows"])
     assert all(row["lcfs_external_bnormal_rms"] >= 0.0 for row in metrics["fixed_boundary_baseline_rows"])
     assert all(row["lcfs_pressure_balance_rms"] >= 0.0 for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(
+        row["lcfs_update_pressure_balance_rms_predicted"] <= row["lcfs_pressure_balance_rms"]
+        for row in metrics["fixed_boundary_baseline_rows"]
+    )
+    assert all(
+        row["lcfs_update_max_relative_delta_radius"] <= 0.05 + 1.0e-14
+        for row in metrics["fixed_boundary_baseline_rows"]
+    )
     assert metrics["figures"] == {}
 
 

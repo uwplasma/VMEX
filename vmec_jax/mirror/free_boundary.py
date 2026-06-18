@@ -206,6 +206,26 @@ class MirrorLCFSDiagnostic:
     edge_pressure: float
 
 
+@dataclass(frozen=True)
+class MirrorLCFSUpdateProposal:
+    """One damped axisymmetric side-boundary update proposal."""
+
+    z: Any
+    xi: Any
+    old_radius: Any
+    new_radius: Any
+    delta_radius: Any
+    pressure_response: Any
+    pressure_balance_before: Any
+    pressure_balance_predicted: Any
+    pressure_balance_rms_before: float
+    pressure_balance_rms_predicted: float
+    damping: float
+    max_relative_step: float
+    preserve_caps: bool
+    boundary: MirrorBoundary
+
+
 def mirror_circular_coils_to_direct_params(coils: MirrorCircularCoils) -> CoilFieldParams:
     """Convert circular mirror coils to ESSOS-convention Fourier coil params."""
 
@@ -455,4 +475,130 @@ def mirror_lcfs_diagnostic(
         internal_bmag=edge_internal_bmag,
         external_bmag=external_bmag,
         edge_pressure=edge_pressure,
+    )
+
+
+def mirror_external_pressure_balance_response(
+    diagnostic: MirrorLCFSDiagnostic,
+    provider_params: Any,
+    *,
+    provider_kind: str = "direct_coils",
+    provider_static: Any | None = None,
+    radius_step_fraction: float = 1.0e-3,
+    radius_step_min: float = 1.0e-5,
+    radius_floor: float = 1.0e-6,
+    mu0: float = 1.0,
+) -> np.ndarray:
+    """Estimate ``d(pressure_balance)/dr`` from external magnetic pressure.
+
+    This keeps the internal fixed-boundary equilibrium frozen and only measures
+    how the external coil magnetic pressure changes when the side boundary is
+    moved radially.  The resulting response is suitable for a damped first
+    LCFS proposal, not for claiming a converged free-boundary equilibrium.
+    """
+
+    if float(mu0) <= 0.0:
+        raise ValueError("mu0 must be positive")
+    if float(radius_step_fraction) <= 0.0:
+        raise ValueError("radius_step_fraction must be positive")
+    if float(radius_step_min) <= 0.0:
+        raise ValueError("radius_step_min must be positive")
+    if float(radius_floor) <= 0.0:
+        raise ValueError("radius_floor must be positive")
+
+    radius = np.asarray(diagnostic.boundary_r, dtype=float)
+    step = np.maximum(float(radius_step_fraction) * np.maximum(radius, float(radius_floor)), float(radius_step_min))
+    r_plus = radius + step
+    r_minus = np.maximum(radius - step, float(radius_floor))
+    denominator = r_plus - r_minus
+    if np.any(denominator <= 0.0):
+        raise ValueError("finite-difference radius step collapsed")
+
+    plus = _sample_field(
+        r=jnp.asarray(r_plus),
+        theta=jnp.asarray(diagnostic.theta),
+        z=jnp.asarray(diagnostic.z),
+        provider_params=provider_params,
+        provider_kind=provider_kind,
+        provider_static=provider_static,
+    )
+    minus = _sample_field(
+        r=jnp.asarray(r_minus),
+        theta=jnp.asarray(diagnostic.theta),
+        z=jnp.asarray(diagnostic.z),
+        provider_params=provider_params,
+        provider_kind=provider_kind,
+        provider_static=provider_static,
+    )
+    bmag_plus = np.asarray(plus.bmag, dtype=float)
+    bmag_minus = np.asarray(minus.bmag, dtype=float)
+    return -(bmag_plus**2 - bmag_minus**2) / (2.0 * float(mu0) * denominator)
+
+
+def propose_axisymmetric_mirror_lcfs_update(
+    diagnostic: MirrorLCFSDiagnostic,
+    pressure_response: Any,
+    *,
+    damping: float = 0.25,
+    max_relative_step: float = 0.05,
+    radius_floor: float = 1.0e-4,
+    preserve_caps: bool = True,
+) -> MirrorLCFSUpdateProposal:
+    """Return a damped axisymmetric radius proposal from pressure imbalance.
+
+    The update is a clipped Newton step for the theta-averaged side-boundary
+    pressure-balance residual.  Cap radii are preserved by default so this can
+    be used before the cap boundary-condition lane is complete.
+    """
+
+    damping = float(damping)
+    max_relative_step = float(max_relative_step)
+    radius_floor = float(radius_floor)
+    if not (0.0 < damping <= 1.0):
+        raise ValueError("damping must be in (0, 1]")
+    if max_relative_step <= 0.0:
+        raise ValueError("max_relative_step must be positive")
+    if radius_floor <= 0.0:
+        raise ValueError("radius_floor must be positive")
+
+    z = np.asarray(diagnostic.z, dtype=float)
+    if z.ndim != 1 or z.size < 2 or not np.all(np.diff(z) > 0.0):
+        raise ValueError("diagnostic z nodes must be a strictly increasing one-dimensional array")
+    radius = np.mean(np.asarray(diagnostic.boundary_r, dtype=float), axis=0)
+    residual = np.mean(np.asarray(diagnostic.pressure_balance, dtype=float), axis=0)
+    response = np.asarray(pressure_response, dtype=float)
+    if response.shape == np.asarray(diagnostic.boundary_r).shape:
+        response = np.mean(response, axis=0)
+    elif response.shape != radius.shape:
+        raise ValueError("pressure_response must have shape (ntheta, nxi) or (nxi,)")
+    if not (np.all(np.isfinite(radius)) and np.all(np.isfinite(residual)) and np.all(np.isfinite(response))):
+        raise ValueError("LCFS update inputs must be finite")
+
+    raw_delta = np.zeros_like(radius)
+    active = np.abs(response) > np.finfo(float).eps
+    raw_delta[active] = -residual[active] / response[active]
+    limit = max_relative_step * np.maximum(radius, radius_floor)
+    delta = np.clip(damping * raw_delta, -limit, limit)
+    if preserve_caps:
+        delta[0] = 0.0
+        delta[-1] = 0.0
+    new_radius = np.maximum(radius + delta, radius_floor)
+    delta = new_radius - radius
+    predicted = residual + response * delta
+    xi = 2.0 * (z - z[0]) / (z[-1] - z[0]) - 1.0
+    return MirrorLCFSUpdateProposal(
+        z=z,
+        xi=xi,
+        old_radius=radius,
+        new_radius=new_radius,
+        delta_radius=delta,
+        pressure_response=response,
+        pressure_balance_before=residual,
+        pressure_balance_predicted=predicted,
+        pressure_balance_rms_before=float(np.sqrt(np.mean(residual**2))),
+        pressure_balance_rms_predicted=float(np.sqrt(np.mean(predicted**2))),
+        damping=damping,
+        max_relative_step=max_relative_step,
+        preserve_caps=bool(preserve_caps),
+        boundary=MirrorBoundary.tabulated_radius(xi, new_radius),
     )

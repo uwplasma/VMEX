@@ -5740,6 +5740,167 @@ No user input is needed.
 
 ---
 
+## 68. 2026-06-18 M12f conservative axisymmetric LCFS update proposal
+
+This tranche added the first tested LCFS radius proposal.  It is not a full
+free-boundary solve: the fixed-boundary equilibrium is kept frozen, the
+external magnetic-pressure response is estimated by radial finite differences
+of the circular-coil field, and a damped/clipped axisymmetric radius update is
+proposed from the local pressure-balance residual.
+
+### Steps taken
+
+- Added `MirrorLCFSUpdateProposal`.
+- Added `mirror_external_pressure_balance_response` to estimate
+  `d(pressure_balance)/dr` from external-coil magnetic pressure.
+- Added `propose_axisymmetric_mirror_lcfs_update`:
+  - theta-averages the diagnostic residual and response;
+  - applies a damped Newton-like radius step;
+  - clips the update by maximum relative radius movement;
+  - preserves cap radii by default;
+  - returns a tabulated `MirrorBoundary` proposal.
+- Exported the new dataclass and helpers through the public mirror API.
+- Extended `examples/mirror_free_boundary_circular_coils.py` so each beta row
+  records:
+  - pressure-response min/max;
+  - predicted post-update pressure-balance RMS;
+  - predicted reduction fraction;
+  - max absolute and relative radius movement.
+- Updated the LCFS diagnostic plot to overlay the predicted pressure-balance
+  curve from the damped update.
+- Added a synthetic unit test showing that a known pressure response produces
+  a reduced pressure-balance residual while preserving cap radii.
+- Updated docs and the mirror examples README.
+
+### Results obtained
+
+Generated artifacts:
+
+- `results/mirror/m12f_lcfs_update_proposal/free_boundary_circular_coils_metrics.json`.
+- `results/mirror/m12f_lcfs_update_proposal/free_boundary_circular_coils_setup.json`.
+- Three beta-row `mout` files under `results/mirror/m12f_lcfs_update_proposal/`.
+- Thirty-six PNGs, including one LCFS diagnostic panel per beta case with the
+  predicted-update overlay.
+
+Representative beta-baseline rows with `baseline_maxiter=0` and a 5% radius
+move cap:
+
+| beta percent | pressure-balance RMS | predicted RMS | reduction fraction | max relative radius step |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | `1.803515365850` | `1.797531697147` | `3.317780827395e-03` | `5.000000000000e-02` |
+| 3 | `1.803515365850` | `1.797531697147` | `3.317780827395e-03` | `5.000000000000e-02` |
+| 10 | `1.803515365850` | `1.797531697147` | `3.317780827395e-03` | `5.000000000000e-02` |
+
+The predicted improvement is small because this is a conservative one-step
+linearized proposal with cap radii held fixed.  It is a useful monotonicity
+check, not a convergence claim.
+
+Visual validation:
+
+- Inspected the beta-10 LCFS panel and confirmed that the predicted-update
+  curve overlays the before curve without plotting errors.
+- Pixel-stat checks reported all LCFS diagnostic PNGs nonblank.
+
+### How it was tested
+
+Focused free-boundary and root example tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots \
+  -q
+```
+
+Result: `9 passed in 5.04s`.
+
+Example with plots and update proposal outputs:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/m12f_lcfs_update_proposal \
+  --ntheta 24 \
+  --nxi 33 \
+  --n-segments 256 \
+  --run-fixed-boundary-baseline \
+  --baseline-maxiter 0
+```
+
+Result: metrics JSON, setup JSON, three `mout` files, and 36 PNGs written.
+
+Lint/format/docs/whitespace:
+
+```bash
+python -m ruff check \
+  vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff format --check \
+  vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m sphinx -W -j auto -b html docs docs/_build/html
+git diff --check
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- The response and proposal helpers stay in `vmec_jax/mirror/free_boundary.py`
+  next to the circular-coil bridge; they need both the mirror side-boundary
+  diagnostic and the external-field provider.
+- The helper returns a normal `MirrorBoundary`, so later fixed-boundary
+  warm-start or LCFS loops can reuse the existing solver entrypoint.
+- The update is explicit about its linearized assumptions and keeps the cap
+  constraint simple until the cap-boundary-condition lane is implemented.
+- The tests avoid an expensive solve for the monotonicity invariant and use
+  the root example smoke test for end-to-end circular-coil wiring.
+
+### Best next steps
+
+1. Commit and push M12f.
+2. Add a one- or two-step beta-row LCFS pilot loop:
+   - apply the proposal boundary;
+   - rerun the fixed-boundary solve from that new boundary at low resolution;
+   - resample the external field;
+   - report actual, not only predicted, diagnostic changes.
+3. Add cap-condition diagnostics:
+   - fixed equal cap radii;
+   - optional equal cap `B_ext.n`/pressure-balance reporting;
+   - explicit warning if caps dominate the imbalance.
+4. Only after the pilot shows actual diagnostic reduction, promote the loop
+   into an example option and decide on JAX differentiable equivalents.
+
+### Completion percentages after M12f
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `85%`.
+- I/O schema and docs: `89%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `40%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `30%`.
+- PR merge readiness overall: `87%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+
 ## 67. 2026-06-18 M12e LCFS target diagnostic for circular-coil mirror baselines
 
 This tranche turned the fixed-boundary beta-scan baseline into a measurable

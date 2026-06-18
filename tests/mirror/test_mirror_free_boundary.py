@@ -18,6 +18,7 @@ from vmec_jax.mirror import (
     mirror_boundary_from_on_axis_bz,
     mirror_circular_coils_to_direct_params,
     mirror_lcfs_diagnostic,
+    propose_axisymmetric_mirror_lcfs_update,
     sample_mirror_axis_external_field,
     sample_mirror_boundary_external_field,
     two_coil_on_axis_bz,
@@ -201,3 +202,31 @@ def test_mirror_lcfs_diagnostic_reports_side_boundary_targets():
     assert diagnostic.external_bnormal_max == pytest.approx(0.0)
     assert diagnostic.pressure_balance_rms == pytest.approx(1.5)
     assert diagnostic.pressure_balance_max == pytest.approx(1.5)
+
+
+def test_axisymmetric_lcfs_update_reduces_synthetic_pressure_imbalance():
+    theta = np.asarray([0.0])
+    z = np.linspace(-1.0, 1.0, 5)
+    boundary_r = np.ones((theta.size, z.size))
+    pressure_balance = np.asarray([[0.0, 0.2, -0.1, 0.2, 0.0]])
+    diagnostic = SimpleNamespace(
+        theta=theta,
+        z=z,
+        boundary_r=boundary_r,
+        pressure_balance=pressure_balance,
+    )
+    pressure_response = np.ones_like(pressure_balance)
+
+    proposal = propose_axisymmetric_mirror_lcfs_update(
+        diagnostic,
+        pressure_response,
+        damping=1.0,
+        max_relative_step=0.5,
+        preserve_caps=True,
+    )
+
+    assert proposal.pressure_balance_rms_predicted < proposal.pressure_balance_rms_before
+    np.testing.assert_allclose(proposal.pressure_balance_predicted, 0.0, atol=1.0e-14)
+    np.testing.assert_allclose(proposal.delta_radius[[0, -1]], 0.0, atol=1.0e-14)
+    np.testing.assert_allclose(proposal.new_radius, [1.0, 0.8, 1.1, 0.8, 1.0])
+    np.testing.assert_allclose(proposal.boundary.radius(proposal.xi), proposal.new_radius)

@@ -25,8 +25,10 @@ from vmec_jax.mirror import (
     load_mirror_output,
     make_mirror_free_boundary_circular_coil_scan,
     make_mirror_grid,
+    mirror_external_pressure_balance_response,
     mirror_lcfs_diagnostic,
     plot_mirror_output,
+    propose_axisymmetric_mirror_lcfs_update,
     run_mirror_fixed_boundary,
     sample_mirror_axis_external_field,
     sample_mirror_boundary_external_field,
@@ -135,7 +137,7 @@ def _write_geometry_plot(grid, boundary, coils: MirrorCircularCoils, *, outdir: 
     return path
 
 
-def _write_lcfs_diagnostic_plot(diagnostic, *, outdir: Path, name: str) -> Path:
+def _write_lcfs_diagnostic_plot(diagnostic, proposal=None, *, outdir: Path, name: str) -> Path:
     import matplotlib.pyplot as plt
 
     outdir.mkdir(parents=True, exist_ok=True)
@@ -146,7 +148,15 @@ def _write_lcfs_diagnostic_plot(diagnostic, *, outdir: Path, name: str) -> Path:
     fig, axes = plt.subplots(2, 1, figsize=(6.8, 5.2), sharex=True)
     if theta.size == 1:
         axes[0].plot(z, bnormal[0], "o-", markersize=3.0)
-        axes[1].plot(z, pressure_balance[0], "o-", markersize=3.0)
+        axes[1].plot(z, pressure_balance[0], "o-", markersize=3.0, label="before")
+        if proposal is not None:
+            axes[1].plot(
+                np.asarray(proposal.z),
+                np.asarray(proposal.pressure_balance_predicted),
+                "s--",
+                markersize=3.0,
+                label="predicted update",
+            )
     else:
         mesh0 = axes[0].pcolormesh(z, theta, bnormal, shading="auto")
         fig.colorbar(mesh0, ax=axes[0], label="B_ext . n")
@@ -158,6 +168,8 @@ def _write_lcfs_diagnostic_plot(diagnostic, *, outdir: Path, name: str) -> Path:
     axes[1].set_ylabel("p_edge + (B_int^2 - B_ext^2)/(2 mu0)")
     axes[1].set_xlabel("z")
     axes[0].set_title("LCFS target diagnostic")
+    if proposal is not None and theta.size == 1:
+        axes[1].legend(fontsize="small")
     fig.tight_layout()
     path = outdir / f"{name}_lcfs_diagnostic.png"
     fig.savefig(path, dpi=180, bbox_inches="tight")
@@ -210,12 +222,26 @@ def _run_fixed_boundary_baseline_cases(
         mout = write_mirror_output(mout_path, result)
         output = load_mirror_output(mout)
         lcfs = mirror_lcfs_diagnostic(output, external_sample, mu0=1.0)
+        pressure_response = mirror_external_pressure_balance_response(lcfs, scan.coils, mu0=1.0)
+        proposal = propose_axisymmetric_mirror_lcfs_update(
+            lcfs,
+            pressure_response,
+            damping=0.25,
+            max_relative_step=0.05,
+            radius_floor=1.0e-4,
+            preserve_caps=True,
+        )
         plot_paths: dict[str, str] = {}
         if write_plots:
             figure_dir = outdir / "figures" / f"fixed_boundary_beta_{label}"
             plot_paths = {name: str(path) for name, path in plot_mirror_output(mout, outdir=figure_dir).items()}
             plot_paths["lcfs_diagnostic"] = str(
-                _write_lcfs_diagnostic_plot(lcfs, outdir=figure_dir, name=f"free_boundary_circular_coils_beta_{label}")
+                _write_lcfs_diagnostic_plot(
+                    lcfs,
+                    proposal,
+                    outdir=figure_dir,
+                    name=f"free_boundary_circular_coils_beta_{label}",
+                )
             )
         summary = result.optimizer_summaries[-1] if result.optimizer_summaries else None
         final = result.final_trace
@@ -238,6 +264,16 @@ def _run_fixed_boundary_baseline_cases(
                 "lcfs_pressure_balance_rms": float(lcfs.pressure_balance_rms),
                 "lcfs_pressure_balance_max": float(lcfs.pressure_balance_max),
                 "lcfs_edge_pressure": float(lcfs.edge_pressure),
+                "lcfs_pressure_response_min": float(np.min(proposal.pressure_response)),
+                "lcfs_pressure_response_max": float(np.max(proposal.pressure_response)),
+                "lcfs_update_pressure_balance_rms_predicted": float(proposal.pressure_balance_rms_predicted),
+                "lcfs_update_pressure_balance_rms_reduction_fraction": float(
+                    1.0 - proposal.pressure_balance_rms_predicted / max(proposal.pressure_balance_rms_before, 1.0e-300)
+                ),
+                "lcfs_update_max_abs_delta_radius": float(np.max(np.abs(proposal.delta_radius))),
+                "lcfs_update_max_relative_delta_radius": float(
+                    np.max(np.abs(proposal.delta_radius) / np.maximum(proposal.old_radius, 1.0e-300))
+                ),
                 "figures": plot_paths,
             }
         )
