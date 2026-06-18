@@ -89,6 +89,8 @@ from vmec_jax.solvers.free_boundary.coil_optimization import (
     same_branch_derivative_proposal_from_report as same_branch_derivative_proposal_from_report,
     same_branch_derivative_proposals_from_report,
     same_branch_rejected_slot_gate_from_vector_replay,
+    same_branch_replay_mode_count_guard,
+    same_branch_replay_options_from_args,
     same_branch_replay_plan_cache,
     same_branch_report_direction_policy,
     same_branch_report_mode_count,
@@ -823,11 +825,8 @@ def write_same_branch_validation_report(
     )
     same_branch = bool(report["branch_compatibility"]["same_branch"])
     current_only_coil_geometry: tuple[Any, Any] | None = None
-    compact_report["current_only_coil_geometry_cache"] = {
-        "available": False,
-        "reason": "not requested",
-        "scope": "current-only branch-local vector/profile replays",
-    }
+    compact_report["current_only_coil_geometry_cache"] = {"available": False, "reason": "not requested",
+                                                          "scope": "current-only branch-local vector/profile replays"}
     branch_scope = "fixed accepted branch only; does not differentiate adaptive host branch selection"
     branch_local_scalar: dict[str, Any] = {"available": False, "scope": branch_scope, "mode": mode, "replay_ad_mode": ad_mode, "same_branch": same_branch,
                                            "reason": "not requested" if mode != "scalar" else "branch fingerprint is not same-branch compatible"}
@@ -844,33 +843,14 @@ def write_same_branch_validation_report(
     replay_payload = {"init": report["base"]["init"]} if isinstance(report.get("base"), dict) and "init" in report["base"] else None
     scalar_uses_state_only_replay = scalar_key in STATE_ONLY_SAME_BRANCH_KEYS
     vector_uses_state_only_replay = all(key in STATE_ONLY_SAME_BRANCH_KEYS for key in vector_keys)
-    replay_kwargs = {
-        "use_stacked_step_controls": True,
-        "use_accepted_only_fast_path": True,
-        "jit_preconditioner_apply": not bool(getattr(args, "same_branch_report_disable_jit_preconditioner", False)),
-        "include_analytic": not bool(getattr(args, "same_branch_report_disable_analytic", False)),
-        "include_mode_diagnostics": False,
-        "nestor_solve_mode": str(getattr(args, "same_branch_report_nestor_solve_mode", "dense")),
-        "nestor_operator_solver": str(getattr(args, "same_branch_report_nestor_operator_solver", "gmres")),
-        "nestor_operator_tol": float(getattr(args, "same_branch_report_nestor_operator_tol", 1.0e-11)),
-        "nestor_operator_atol": float(getattr(args, "same_branch_report_nestor_operator_atol", 1.0e-13)),
-        "nestor_operator_maxiter": getattr(args, "same_branch_report_nestor_operator_maxiter", None),
-        "nestor_operator_restart": getattr(args, "same_branch_report_nestor_operator_restart", None),
-        "freeze_vacuum_field": bool(getattr(args, "same_branch_report_freeze_vacuum_field", False)),
-        "freeze_freeb_bsqvac": bool(getattr(args, "same_branch_report_freeze_bsqvac", False)),
-    }
+    replay_kwargs = same_branch_replay_options_from_args(args)
     mode_count = same_branch_report_mode_count(report)
     compact_report["mode_count"] = int(mode_count)
     replay_max_mode_count = int(getattr(args, "same_branch_report_replay_max_mode_count", 220))
-    replay_mode_count_guard_triggered = replay_max_mode_count > 0 and int(mode_count) > replay_max_mode_count
-    replay_mode_count_guard_reason = (
-        f"mode_count {int(mode_count)} exceeds replay cap {replay_max_mode_count}; "
-        "set --same-branch-report-replay-max-mode-count 0 to disable this guard"
+    replay_mode_count_guard_triggered, replay_mode_count_guard_reason, replay_guard = (
+        same_branch_replay_mode_count_guard(mode_count, replay_max_mode_count)
     )
-    compact_report["same_branch_replay_mode_count_guard"] = {"enabled": replay_max_mode_count > 0,
-                                                             "triggered": bool(replay_mode_count_guard_triggered),
-                                                             "mode_count": int(mode_count), "max_mode_count": replay_max_mode_count,
-                                                             "reason": replay_mode_count_guard_reason if replay_mode_count_guard_triggered else "not triggered"}
+    compact_report["same_branch_replay_mode_count_guard"] = replay_guard
 
     def _run_branch_local_vector(
         scalar_keys: tuple[str, ...],
@@ -986,16 +966,8 @@ def write_same_branch_validation_report(
             timings[f"branch_local_vector_{key}"] = value
         branch_local_vector = _summarize_vector_result(vector, scalar_keys)
         main_vector_summary = branch_local_vector
-        production_rtol = {
-            key: (
-                2.0e-2
-                if key == "qs_total"
-                else 1.0e-2
-                if key == "accepted_bnormal_rms"
-                else 5.0e-3
-            )
-            for key in scalar_keys
-        }
+        production_rtol = {key: 2.0e-2 if key == "qs_total" else 1.0e-2 if key == "accepted_bnormal_rms" else 5.0e-3
+                           for key in scalar_keys}
         try:
             scalars_report = direct_coil_branch_local_scalars_report_from_complete_fd(
                 report,
@@ -1010,18 +982,13 @@ def write_same_branch_validation_report(
                 scalars_report,
                 scalar_keys=scalar_keys,
             )
-            branch_local_vector_gate = {
-                "available": True,
-                "passed": bool(physical_gate.get("passed", False)),
-                "scope": "same-branch production-forward vector/JVP physical-scalar gate",
-                "differentiates_adaptive_controller": False,
-                "differentiates_run_free_boundary": False,
-                "differentiates_fixed_accepted_branch": bool(
-                    scalars_report.get("differentiates_fixed_accepted_branch", False)
-                ),
-                "scalar_report": json_safe_payload(scalars_report),
-                "physical_scalar_gate": json_safe_payload(physical_gate),
-            }
+            branch_local_vector_gate = {"available": True, "passed": bool(physical_gate.get("passed", False)),
+                                        "scope": "same-branch production-forward vector/JVP physical-scalar gate",
+                                        "differentiates_adaptive_controller": False,
+                                        "differentiates_run_free_boundary": False,
+                                        "differentiates_fixed_accepted_branch": bool(scalars_report.get("differentiates_fixed_accepted_branch", False)),
+                                        "scalar_report": json_safe_payload(scalars_report),
+                                        "physical_scalar_gate": json_safe_payload(physical_gate)}
         except Exception as exc:  # pragma: no cover - report artifacts should not abort the example.
             branch_local_vector_gate = {
                 "available": False,

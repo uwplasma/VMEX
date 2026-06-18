@@ -7,6 +7,68 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-18.
 
+## 2026-06-18 Same-Branch Replay Setup Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved same-branch replay option construction and replay mode-count guard
+   metadata into `vmec_jax.solvers.free_boundary.coil_optimization`.
+2. Kept the actual branch-local scalar/vector replay calls, NESTOR profiling,
+   and complete-solve acceptance authority in the example report writer.
+3. Reduced report-writer JSON boilerplate around current-only coil geometry,
+   production tolerance defaults, and vector-gate summary construction.
+
+Results obtained:
+
+- `write_same_branch_validation_report` dropped from 515 to 480 lines.
+- The tranche is net-negative across touched source files: 49 insertions and
+  50 deletions.
+- Same-branch scalar/vector report behavior and NESTOR profile gates remain
+  covered by focused tests.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/free_boundary/coil_optimization.py examples/optimization/free_boundary_QS_coil_optimization.py tests/test_free_boundary_qs_coil_optimization_smoke.py`
+- `python -m compileall -q vmec_jax/solvers/free_boundary/coil_optimization.py examples/optimization/free_boundary_QS_coil_optimization.py tests/test_free_boundary_qs_coil_optimization_smoke.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_writer_records_branch_local_scalar_gradient tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_writer_records_branch_local_vector_jacobian tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_profiles_nestor_and_rejected_slot tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_profile_skips_above_mode_count_cap -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 15`
+
+Best next steps:
+
+1. Continue report-writer staging around NESTOR profile case/result assembly.
+2. Keep the VMEC/free-boundary numerical calls unchanged until each extracted
+   seam has direct report-test coverage.
+3. Continue source-health work on larger monoliths after this free-boundary
+   example/report lane stops yielding low-risk reductions.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.57%.
+- Free-boundary adjoint monolith reduction: 99.38%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.9%.
+- WOUT diagnostic/profile decomposition: 99.72%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 99.17%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99941%.
+
 ## 2026-06-18 Same-Branch Compact Report Metadata Extraction
 
 Branch: `codex/differentiability-refactor-plan`.
