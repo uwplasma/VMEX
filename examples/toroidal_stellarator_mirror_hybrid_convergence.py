@@ -52,6 +52,9 @@ _SHAPE_CASE_PRESETS = {
     },
 }
 
+_VMEC_JAX_INITIALIZATION_POLICY = "vmec_jax_default_input_boundary"
+_VMEC2000_INITIALIZATION_POLICY = "vmec2000_default_input_boundary"
+
 
 def _parse_shape_cases(text: str) -> list[str]:
     names = [item.strip() for item in str(text).split(",") if item.strip()]
@@ -121,6 +124,7 @@ _CSV_COLUMNS = (
     "corner_amplitude",
     "corner_helicity",
     "corner_power",
+    "initialization_policy",
     "ran_solve",
     "solver_mode",
     "use_scan",
@@ -149,6 +153,7 @@ _CSV_COLUMNS = (
     "mean_iota",
     "magnetic_well",
     "ran_vmec2000",
+    "vmec2000_initialization_policy",
     "vmec2000_returncode",
     "vmec2000_runtime_s",
     "vmec2000_n_rows",
@@ -476,6 +481,7 @@ def main() -> None:
                     "corner_amplitude": sample_kwargs["corner_amplitude"],
                     "corner_helicity": sample_kwargs["corner_helicity"],
                     "corner_power": sample_kwargs["corner_power"],
+                    "initialization_policy": _VMEC_JAX_INITIALIZATION_POLICY,
                     "min_R": reference_metrics["min_R"],
                     "stellsym_R_error": reference_metrics["stellsym_R_error"],
                     "stellsym_Z_error": reference_metrics["stellsym_Z_error"],
@@ -512,6 +518,7 @@ def main() -> None:
                     "fsql_history": [],
                     "wout": None,
                     "ran_vmec2000": bool(args.run_vmec2000),
+                    "vmec2000_initialization_policy": _VMEC2000_INITIALIZATION_POLICY,
                     "vmec2000_returncode": None,
                     "vmec2000_runtime_s": None,
                     "vmec2000_n_rows": None,

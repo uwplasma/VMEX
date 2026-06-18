@@ -89,7 +89,9 @@ comparison, or keep the default accelerated mode for the fast CLI path. The
 CSV records requested ``ftol``, VMEC/JAX strict and total-``fsq`` convergence
 flags, and VMEC2000 WOUT residual components when available. When plots are
 enabled and both solvers ran, the example also writes a final
-``fsqr``/``fsqz``/``fsql`` component comparison. Current VMEC2000 rows compare
+``fsqr``/``fsqz``/``fsql`` component comparison. CSV/JSON rows also label the
+VMEC/JAX and VMEC2000 initialization policies used for the comparison. Current
+VMEC2000 rows compare
 solved outcomes from the same generated input, not identical raw initial
 states: VMEC2000's first parsed ``threed1`` residual components differ from the
 VMEC/JAX initialized residual components. Treat mean-iota agreement as a useful

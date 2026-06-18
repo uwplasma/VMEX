@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import os
 from pathlib import Path
@@ -242,11 +243,17 @@ def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
     assert Path(summary["csv"]).exists()
     assert summary["figures"] == {}
     assert all(not row["ran_solve"] for row in summary["rows"])
+    assert all(row["initialization_policy"] == "vmec_jax_default_input_boundary" for row in summary["rows"])
+    assert all(row["vmec2000_initialization_policy"] == "vmec2000_default_input_boundary" for row in summary["rows"])
     assert all(row["fsq_history"] == [] for row in summary["rows"])
     assert all(row["max_boundary_fit_error"] < 1.0e-12 for row in summary["rows"])
     assert [row["ns"] for row in summary["rows"]] == [7, 9]
     assert summary["shape_cases"][0]["sample_parameters"]["side_power"] == 2.0
     assert summary["shape_cases"][0]["sample_parameters"]["corner_power"] == 2.0
+    with Path(summary["csv"]).open(newline="") as file_obj:
+        csv_row = next(csv.DictReader(file_obj))
+    assert csv_row["initialization_policy"] == "vmec_jax_default_input_boundary"
+    assert csv_row["vmec2000_initialization_policy"] == "vmec2000_default_input_boundary"
 
 
 def test_toroidal_hybrid_convergence_example_scans_shape_cases_without_solve(tmp_path: Path):

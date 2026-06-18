@@ -12134,3 +12134,163 @@ generation for all three rows.  No source files changed for this evidence run.
 No user input is needed.
 
 ---
+
+## 98. 2026-06-18 stopped-work audit, CI checkpoint, and finite completion plan
+
+This tranche restarted from the stopped midpoint, checked the PR state, and
+converted the next work from open-ended scans into a finite milestone order.
+It also made the toroidal-hybrid parity rows explicitly label their
+initialization policies, so current VMEC/JAX-versus-VMEC2000 comparisons are
+less likely to be read as matched-initial-state residual parity.
+
+### Steps taken
+
+- Checked the local tree and PR state:
+  - branch: `codex/mirror-geometry`;
+  - draft PR: `#21`, `[codex] Add mirror geometry infrastructure`;
+  - local tree clean except ignored caches, docs build output, and `results/`.
+- Checked CI with `gh pr checks 21 --watch=false`.
+  - The latest run had no actionable failure at this checkpoint.
+  - `Docs (full guide)` had passed.
+  - Most fast-test, coverage, build, console-smoke, and parity-smoke jobs were
+    still pending.
+- Reviewed the changed-file footprint against `origin/main`.
+  - Mirror code is isolated under `vmec_jax/mirror/`.
+  - Repo-root mirror and toroidal-hybrid examples live under `examples/`.
+  - Mirror docs live under `docs/mirror/` plus the root example README.
+  - Tests are concentrated in `tests/mirror/` plus focused public API and
+    toroidal-hybrid tests.
+- Reviewed existing differentiability and solver infrastructure:
+  - `vmec_jax/implicit.py` already provides custom-VJP fixed-boundary solved
+    state wrappers, including a VMEC-residual path.
+  - `vmec_jax/discrete_adjoint.py` and `solve.py` already support the
+    discrete-adjoint trace/replay lane.
+  - `run_fixed_boundary` already has a fast CLI/API path with host-update and
+    performance-mode controls.
+  - The mirror fixed-boundary API is separate and currently host-oriented; it
+    should reuse the same differentiability policy instead of adding a third
+    adjoint architecture.
+- Added explicit toroidal-hybrid convergence row fields:
+  - `initialization_policy`;
+  - `vmec2000_initialization_policy`.
+- Updated tests and docs so JSON/CSV output and user-facing documentation name
+  the policy labels.
+
+### Results obtained
+
+The runner now writes:
+
+- `initialization_policy = vmec_jax_default_input_boundary`;
+- `vmec2000_initialization_policy = vmec2000_default_input_boundary`.
+
+These labels are deliberately modest.  They document the current state:
+VMEC/JAX and VMEC2000 are run from the same generated input file, but not yet
+from a proven identical raw residual state.  Therefore:
+
+- mean-iota and solved-profile agreement remain useful regression signals;
+- strict `fsq` component parity remains an initialization-matched future gate.
+
+### Finite completion plan from here
+
+1. CI gate and PR hygiene:
+   - check CI periodically, not continuously;
+   - fix concrete failures immediately when they appear;
+   - keep ignored `results/`, `docs/_build/`, and caches out of commits.
+2. M13h toroidal-hybrid matched-parity lane:
+   - keep the current policy labels;
+   - add a raw-initialization audit fixture that writes enough initial-state
+     metadata to compare VMEC/JAX and VMEC2000 residuals honestly;
+   - only then add matched-initial-state parity rows if the source paths expose
+     a defensible shared initialization.
+3. M10 differentiable solved-state lane:
+   - reuse `vmec_jax/implicit.py` and `discrete_adjoint.py`;
+   - expose only stable public helpers through `vmec_jax/api.py`;
+   - benchmark unrolled, implicit/custom-VJP, and discrete-adjoint modes on
+     small fixed-boundary cases before promoting a mirror differentiable API;
+   - keep fast CLI solves host/performance-oriented and separate from
+     differentiable research APIs.
+4. M8/M9 mirror fixed-boundary production lane:
+   - continue reducing residual-Newton complexity only where it removes real
+     duplication;
+   - finish finite-current benchmark rows with residual decomposition,
+     field-line pitch, `|B|`, iota-like open-field diagnostics, and magnetic
+     well proxy plots;
+   - retain dense/block-dense references as low-resolution truth checks.
+5. M12 ESSOS/free-boundary circular-coil lane:
+   - keep the example lightweight in the repo;
+   - run ignored beta-scan outputs for 1%, 3%, and 10%;
+   - compare LCFS pilot updates against external-coil normal-field and pressure
+     merit before claiming a free-boundary solve.
+6. M14 toroidal stellarator-mirror hybrid lane:
+   - remain toroidal, with mirror-like side arcs and stellarator-like corners;
+   - improve visualization and convergence studies with standard VMEC plots,
+     cross sections, residual histories, iota, magnetic well, and VMEC2000
+     comparison rows;
+   - use GPU/office runs only for heavier convergence studies that would slow
+     the local loop.
+7. Documentation and simplification gate:
+   - keep the public file structure shallow and domain-based;
+   - move only stable user workflows into docs;
+   - preserve pedagogical docstrings/comments and remove stale scaffolds before
+     the final review.
+8. Final merge-readiness gate:
+   - run focused local tests after each tranche;
+   - run full relevant test suites before marking the draft PR ready;
+   - review generated figures manually from ignored result folders, not as
+     committed artifacts unless a compressed reference is truly needed.
+
+### How it was tested
+
+```bash
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
+python -m ruff check examples/toroidal_stellarator_mirror_hybrid_convergence.py tests/test_toroidal_hybrid.py
+python -m ruff format --check examples/toroidal_stellarator_mirror_hybrid_convergence.py tests/test_toroidal_hybrid.py
+git diff --check
+```
+
+The section-ordering check is also part of this tranche because the plan is the
+single active log.
+
+### File structure and best-practice notes
+
+- The source change stays in the existing convergence runner rather than
+  creating a new reporting module.
+- The test change extends the existing toroidal-hybrid smoke coverage.
+- Documentation changes are limited to the existing mirror overview and example
+  README.
+- No result files or figures are committed.
+- The differentiability plan explicitly reuses existing VMEC/JAX implicit and
+  discrete-adjoint infrastructure instead of introducing another solver
+  differentiation stack.
+
+### Best next steps
+
+1. Commit and push this schema/docs tranche.
+2. Recheck CI once for concrete failures.
+3. Start M13h by inspecting VMEC/JAX and VMEC2000 initial-state construction
+   paths, then add the smallest raw-initialization audit artifact that can be
+   tested cheaply.
+
+### Completion percentages after M98
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `88%`.
+- I/O schema and docs: `94%`.
+- Differentiable solved-state API: `22%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `68%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `62%`.
+- ESSOS circular-coil mirror beta scan: `53%`.
+- PR merge readiness overall: `92%`.
+
+### User input needed
+
+No user input is needed.
+
+---
