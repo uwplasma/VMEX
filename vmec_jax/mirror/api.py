@@ -10,10 +10,14 @@ from .free_boundary import (
     MirrorCircularCoils,
     MirrorExternalFieldSample,
     MirrorFreeBoundaryBetaCase,
+    MirrorFreeBoundaryCircularCoilScan,
+    load_mirror_free_boundary_circular_coil_scan,
     make_mirror_free_boundary_beta_cases,
+    make_mirror_free_boundary_circular_coil_scan,
     mirror_circular_coils_to_direct_params,
     sample_mirror_axis_external_field,
     sample_mirror_boundary_external_field,
+    write_mirror_free_boundary_circular_coil_scan,
 )
 from .io.mout import is_mirror_output, load_mirror_output, read_mirror_output, write_mirror_output
 from .io.schema import MirrorOutput
@@ -53,6 +57,7 @@ __all__ = [
     "MirrorConfig",
     "MirrorExternalFieldSample",
     "MirrorFreeBoundaryBetaCase",
+    "MirrorFreeBoundaryCircularCoilScan",
     "MirrorFixedBoundaryResult",
     "MirrorGrid",
     "MirrorOutput",
@@ -67,9 +72,11 @@ __all__ = [
     "circular_loop_on_axis_bz",
     "is_mirror_output",
     "load_mirror_output",
+    "load_mirror_free_boundary_circular_coil_scan",
     "load_wham_fixture",
     "make_mirror_grid",
     "make_mirror_free_boundary_beta_cases",
+    "make_mirror_free_boundary_circular_coil_scan",
     "mirror_axisym_slice_to_csv",
     "mirror_boundary_from_on_axis_bz",
     "mirror_boundary_from_two_coil_flux_tube",
@@ -90,4 +97,5 @@ __all__ = [
     "wham_reference_field",
     "wham_vacuum_field_rz",
     "write_mirror_output",
+    "write_mirror_free_boundary_circular_coil_scan",
 ]

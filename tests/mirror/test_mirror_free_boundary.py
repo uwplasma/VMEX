@@ -7,12 +7,15 @@ from vmec_jax._compat import enable_x64
 from vmec_jax.mirror import (
     MirrorBoundary,
     MirrorCircularCoils,
+    load_mirror_free_boundary_circular_coil_scan,
     make_mirror_free_boundary_beta_cases,
+    make_mirror_free_boundary_circular_coil_scan,
     make_mirror_grid,
     mirror_circular_coils_to_direct_params,
     sample_mirror_axis_external_field,
     sample_mirror_boundary_external_field,
     two_coil_on_axis_bz,
+    write_mirror_free_boundary_circular_coil_scan,
 )
 
 pytestmark = pytest.mark.mirror
@@ -100,3 +103,29 @@ def test_mirror_free_boundary_beta_cases_default_to_requested_scan_points():
 
     with pytest.raises(ValueError, match="nonnegative"):
         make_mirror_free_boundary_beta_cases((-1.0,))
+
+
+def test_mirror_free_boundary_circular_coil_scan_json_roundtrip(tmp_path):
+    coils = MirrorCircularCoils.symmetric_pair(
+        coil_radius_m=0.4,
+        separation_m=1.6,
+        current_a=9.0e5,
+        n_segments=96,
+        regularization_epsilon=1.0e-5,
+    )
+    scan = make_mirror_free_boundary_circular_coil_scan(
+        coils,
+        beta_percent=(1.0, 3.0, 10.0),
+        pressure_scale_for_one_percent=4.0,
+    )
+
+    path = write_mirror_free_boundary_circular_coil_scan(tmp_path / "scan.json", scan)
+    loaded = load_mirror_free_boundary_circular_coil_scan(path)
+
+    np.testing.assert_allclose(loaded.coils.radii_m, coils.radii_m)
+    np.testing.assert_allclose(loaded.coils.z_centers_m, coils.z_centers_m)
+    np.testing.assert_allclose(loaded.coils.currents_a, coils.currents_a)
+    assert loaded.coils.n_segments == 96
+    assert loaded.coils.regularization_epsilon == pytest.approx(1.0e-5)
+    assert [case.beta_percent for case in loaded.beta_cases] == [1.0, 3.0, 10.0]
+    assert [case.pressure_scale for case in loaded.beta_cases] == [4.0, 12.0, 40.0]

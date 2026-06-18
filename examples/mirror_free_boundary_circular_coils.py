@@ -15,12 +15,13 @@ if str(ROOT) not in sys.path:
 
 from vmec_jax.mirror import (
     MirrorCircularCoils,
-    make_mirror_free_boundary_beta_cases,
+    make_mirror_free_boundary_circular_coil_scan,
     make_mirror_grid,
     mirror_boundary_from_on_axis_bz,
     sample_mirror_axis_external_field,
     sample_mirror_boundary_external_field,
     two_coil_on_axis_bz,
+    write_mirror_free_boundary_circular_coil_scan,
 )
 
 
@@ -158,9 +159,14 @@ def run_case(
     boundary_sample = sample_mirror_boundary_external_field(grid, boundary, coils)
     direct_bz = np.asarray(axis_sample.bz, dtype=float)
     relative_error = np.max(np.abs(direct_bz - analytic_bz) / np.maximum(np.abs(analytic_bz), np.finfo(float).tiny))
-    beta_cases = make_mirror_free_boundary_beta_cases(
+    scan = make_mirror_free_boundary_circular_coil_scan(
+        coils,
         betas,
         pressure_scale_for_one_percent=pressure_scale_one_percent,
+    )
+    setup_path = write_mirror_free_boundary_circular_coil_scan(
+        outdir / "free_boundary_circular_coils_setup.json",
+        scan,
     )
 
     figure_paths: dict[str, str] = {}
@@ -184,7 +190,8 @@ def run_case(
         "axis_bz_max": float(np.max(np.abs(direct_bz))),
         "boundary_bmag_min": float(np.min(np.asarray(boundary_sample.bmag))),
         "boundary_bmag_max": float(np.max(np.asarray(boundary_sample.bmag))),
-        "beta_cases": [case.__dict__ for case in beta_cases],
+        "setup_json": str(setup_path),
+        "beta_cases": [case.to_dict() for case in scan.beta_cases],
         "figures": figure_paths,
     }
     metrics_path = outdir / "free_boundary_circular_coils_metrics.json"

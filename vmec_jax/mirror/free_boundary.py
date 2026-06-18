@@ -8,6 +8,8 @@ grids so later lanes can build LCFS and beta-scan drivers on tested pieces.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -87,6 +89,31 @@ class MirrorCircularCoils:
 
         return mirror_circular_coils_to_direct_params(self)
 
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-friendly representation."""
+
+        return {
+            "radii_m": self.radii_m.tolist(),
+            "z_centers_m": self.z_centers_m.tolist(),
+            "currents_a": self.currents_a.tolist(),
+            "n_segments": int(self.n_segments),
+            "regularization_epsilon": float(self.regularization_epsilon),
+            "chunk_size": self.chunk_size,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "MirrorCircularCoils":
+        """Build circular coils from a JSON-friendly mapping."""
+
+        return cls(
+            radii_m=data["radii_m"],
+            z_centers_m=data["z_centers_m"],
+            currents_a=data["currents_a"],
+            n_segments=int(data.get("n_segments", 128)),
+            regularization_epsilon=float(data.get("regularization_epsilon", 0.0)),
+            chunk_size=data.get("chunk_size"),
+        )
+
 
 @dataclass(frozen=True)
 class MirrorExternalFieldSample:
@@ -108,6 +135,55 @@ class MirrorFreeBoundaryBetaCase:
     beta_percent: float
     beta_fraction: float
     pressure_scale: float
+
+    def to_dict(self) -> dict[str, float]:
+        """Return a JSON-friendly representation."""
+
+        return {
+            "beta_percent": float(self.beta_percent),
+            "beta_fraction": float(self.beta_fraction),
+            "pressure_scale": float(self.pressure_scale),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "MirrorFreeBoundaryBetaCase":
+        """Build a beta case from a JSON-friendly mapping."""
+
+        beta_percent = float(data["beta_percent"])
+        beta_fraction = float(data.get("beta_fraction", 0.01 * beta_percent))
+        pressure_scale = float(data["pressure_scale"])
+        return cls(beta_percent=beta_percent, beta_fraction=beta_fraction, pressure_scale=pressure_scale)
+
+
+@dataclass(frozen=True)
+class MirrorFreeBoundaryCircularCoilScan:
+    """Serializable setup for circular-coil mirror beta scans."""
+
+    coils: MirrorCircularCoils
+    beta_cases: tuple[MirrorFreeBoundaryBetaCase, ...]
+
+    def __post_init__(self) -> None:
+        if not self.beta_cases:
+            raise ValueError("at least one beta case is required")
+        object.__setattr__(self, "beta_cases", tuple(self.beta_cases))
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-friendly representation."""
+
+        return {
+            "coils": self.coils.to_dict(),
+            "beta_cases": [case.to_dict() for case in self.beta_cases],
+            "status": "setup_only_no_lcfs_solve",
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "MirrorFreeBoundaryCircularCoilScan":
+        """Build a scan setup from a JSON-friendly mapping."""
+
+        return cls(
+            coils=MirrorCircularCoils.from_dict(data["coils"]),
+            beta_cases=tuple(MirrorFreeBoundaryBetaCase.from_dict(case) for case in data["beta_cases"]),
+        )
 
 
 def mirror_circular_coils_to_direct_params(coils: MirrorCircularCoils) -> CoilFieldParams:
@@ -226,3 +302,38 @@ def make_mirror_free_boundary_beta_cases(
             )
         )
     return tuple(cases)
+
+
+def make_mirror_free_boundary_circular_coil_scan(
+    coils: MirrorCircularCoils,
+    beta_percent: tuple[float, ...] = (1.0, 3.0, 10.0),
+    *,
+    pressure_scale_for_one_percent: float = 1.0,
+) -> MirrorFreeBoundaryCircularCoilScan:
+    """Return a serializable circular-coil beta-scan setup."""
+
+    return MirrorFreeBoundaryCircularCoilScan(
+        coils=coils,
+        beta_cases=make_mirror_free_boundary_beta_cases(
+            beta_percent,
+            pressure_scale_for_one_percent=pressure_scale_for_one_percent,
+        ),
+    )
+
+
+def write_mirror_free_boundary_circular_coil_scan(
+    path: str | Path,
+    scan: MirrorFreeBoundaryCircularCoilScan,
+) -> Path:
+    """Write a circular-coil beta-scan setup to JSON."""
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(scan.to_dict(), indent=2) + "\n")
+    return path
+
+
+def load_mirror_free_boundary_circular_coil_scan(path: str | Path) -> MirrorFreeBoundaryCircularCoilScan:
+    """Load a circular-coil beta-scan setup from JSON."""
+
+    return MirrorFreeBoundaryCircularCoilScan.from_dict(json.loads(Path(path).read_text()))

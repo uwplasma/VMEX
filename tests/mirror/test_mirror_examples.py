@@ -9,7 +9,7 @@ import sys
 import numpy as np
 import pytest
 
-from vmec_jax.mirror import load_mirror_output
+from vmec_jax.mirror import load_mirror_free_boundary_circular_coil_scan, load_mirror_output
 from vmec_jax.mirror.plotting.bfield import mirror_boundary_field_line_data
 from vmec_jax.mirror.plotting.diagnostics import mirror_field_line_pitch_profile_data
 
@@ -142,6 +142,8 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert metrics["axis_bz_relative_linf"] < 1.0e-12
     assert metrics["boundary_bmag_min"] > 0.0
     assert [case["beta_percent"] for case in metrics["beta_cases"]] == [1.0, 3.0, 10.0]
+    setup = load_mirror_free_boundary_circular_coil_scan(metrics["setup_json"])
+    assert [case.beta_fraction for case in setup.beta_cases] == [0.01, 0.03, 0.10]
     assert metrics["figures"] == {}
 
 

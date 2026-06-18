@@ -7100,3 +7100,142 @@ Result: all checks passed.
 ### User input needed
 
 No user input is needed.
+
+---
+
+## 64. 2026-06-17 M12b circular-coil beta-scan setup JSON
+
+This lane made the M12a circular-coil bridge reusable by adding a serializable
+scan setup artifact.  The setup records circular coil geometry, currents,
+direct-coil quadrature settings, and the 1%, 3%, and 10% beta cases without
+claiming a free-boundary LCFS solve.
+
+### Steps taken
+
+- Added JSON-friendly `to_dict`/`from_dict` methods for `MirrorCircularCoils`.
+- Added JSON-friendly `to_dict`/`from_dict` methods for
+  `MirrorFreeBoundaryBetaCase`.
+- Added `MirrorFreeBoundaryCircularCoilScan`.
+- Added `make_mirror_free_boundary_circular_coil_scan`.
+- Added `write_mirror_free_boundary_circular_coil_scan`.
+- Added `load_mirror_free_boundary_circular_coil_scan`.
+- Exported the scan setup helpers through `vmec_jax.mirror`.
+- Updated `examples/mirror_free_boundary_circular_coils.py` to write
+  `free_boundary_circular_coils_setup.json`.
+- Updated the example README and mirror overview docs.
+- Added JSON roundtrip tests and extended the root example smoke test to load
+  the generated setup JSON.
+
+### Results obtained
+
+Generated example artifacts:
+
+- `results/mirror/m12b_free_boundary_circular_coil_setup/free_boundary_circular_coils_metrics.json`.
+- `results/mirror/m12b_free_boundary_circular_coil_setup/free_boundary_circular_coils_setup.json`.
+- `results/mirror/m12b_free_boundary_circular_coil_setup/figures/free_boundary_circular_coils_axis_bz.png`.
+- `results/mirror/m12b_free_boundary_circular_coil_setup/figures/free_boundary_circular_coils_boundary_bmag.png`.
+- `results/mirror/m12b_free_boundary_circular_coil_setup/figures/free_boundary_circular_coils_geometry.png`.
+
+The setup JSON contains:
+
+- two circular coils at `z = -1.0` and `z = 1.0`;
+- radius `0.35`;
+- currents `1.0e6`;
+- `n_segments = 256`;
+- beta cases at 1%, 3%, and 10%;
+- `status = "setup_only_no_lcfs_solve"`.
+
+Example metrics remained unchanged from the bridge validation:
+
+| quantity | value |
+| --- | ---: |
+| on-axis `B_z` relative Linf error | `9.098256159668e-16` |
+| minimum boundary `|B|` | `1.053675512271e-01` |
+| maximum boundary `|B|` | `1.879005770409e+00` |
+
+### How it was tested
+
+Focused tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots \
+  -q
+```
+
+Result: `6 passed in 3.61s`.
+
+Example with plots and setup JSON:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/m12b_free_boundary_circular_coil_setup \
+  --ntheta 24 \
+  --nxi 33 \
+  --n-segments 256
+```
+
+Result: setup JSON, metrics JSON, and three PNG figures written.
+
+Lint/format/docs/whitespace:
+
+```bash
+python -m ruff format \
+  vmec_jax/mirror/free_boundary.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_examples.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py
+python -m ruff check \
+  vmec_jax/mirror/free_boundary.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_examples.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py
+python -m sphinx -W -j auto -b html docs docs/_build/html
+git diff --check
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- The setup serializer stays beside the bridge in `vmec_jax/mirror/free_boundary.py`.
+- The JSON artifact is intentionally plain and small so ESSOS or future scripts
+  can generate it without importing the full solve stack.
+- The status flag makes the current limitation explicit: setup only, no LCFS
+  solve yet.
+
+### Best next steps
+
+1. Commit and push M12b.
+2. Add a setup-to-fixed-boundary initializer:
+   - use the sampled on-axis vacuum field to build an initial flux-tube
+     boundary;
+   - attach one beta case at a time;
+   - run the existing fixed-boundary solve as the controlled pre-LCFS baseline.
+3. Only then add a free-boundary LCFS update target.
+
+### Completion percentages after M12b
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `84%`.
+- Fixed-boundary axisymmetric solve: `88%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `84%`.
+- I/O schema and docs: `88%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `22%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `12%`.
+- PR merge readiness overall: `84%`.
+
+### User input needed
+
+No user input is needed.
