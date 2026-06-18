@@ -13862,3 +13862,119 @@ Results:
 No user input is needed.
 
 ---
+
+## 110. 2026-06-18 M14 toroidal hybrid orientation diagnostics
+
+### Steps taken
+
+The toroidal stellarator-mirror hybrid lane needed a sharper diagnostic for the
+user's clarified geometry target: toroidal sides should remain mirror-like while
+corner regions carry the stellarator rotation.  I added a cross-section
+principal-axis orientation diagnostic and threaded it through the public API,
+metrics, example plots, tests, and docs.
+
+Concretely:
+
+- added `toroidal_hybrid_cross_section_orientation(samples)` in
+  `vmec_jax/toroidal_hybrid.py`;
+- added metric fields for total, side-region, and corner-region orientation
+  spans plus side/corner weight overlap;
+- exported the helper through both `vmec_jax` lazy exports and
+  `vmec_jax.api`;
+- added `toroidal_hybrid_region_orientation.png` to the repo-root toroidal
+  hybrid example;
+- extended the focused toroidal hybrid test to require flat mirror-side
+  orientation and nonzero corner orientation;
+- updated the mirror README and docs overview.
+
+### Results obtained
+
+The evidence run used:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/toroidal_stellarator_mirror_hybrid.py \
+  --outdir results/toroidal_hybrid_m110_orientation \
+  --ntheta-fit 64 \
+  --nzeta-fit 64 \
+  --ntor 10
+```
+
+Observed diagnostic values:
+
+- `cross_section_orientation_span`: `0.2127248186850288`;
+- `side_orientation_span`: `1.5543122344752192e-15`;
+- `corner_orientation_span`: `0.2127248186850288`;
+- `side_corner_weight_overlap_max`: `0.25`.
+
+This confirms the current fixture has essentially constant side orientation and
+localized corner rotation, matching the clarified toroidal hybrid intent.
+
+Rendered ignored plot:
+
+- `results/toroidal_hybrid_m110_orientation/figures/toroidal_hybrid_region_orientation.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check vmec_jax/toroidal_hybrid.py vmec_jax/api.py vmec_jax/__init__.py examples/toroidal_stellarator_mirror_hybrid.py tests/test_toroidal_hybrid.py
+python -m ruff format --check vmec_jax/toroidal_hybrid.py vmec_jax/api.py vmec_jax/__init__.py examples/toroidal_stellarator_mirror_hybrid.py tests/test_toroidal_hybrid.py
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
+git diff --check
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff format check passed.
+- `22 passed` in `tests/test_toroidal_hybrid.py`.
+- `git diff --check` passed.
+- The plotted example run completed and the orientation figure rendered.
+
+### File structure and best-practice notes
+
+- The reusable geometry diagnostic stays in `vmec_jax/toroidal_hybrid.py`, next
+  to the sampler and metrics it evaluates.
+- Public API plumbing is limited to `vmec_jax/api.py` and `vmec_jax/__init__.py`.
+- The plot remains example-local because it is an evidence/diagnostic plot, not
+  a solver primitive.
+- Tests remain focused in `tests/test_toroidal_hybrid.py`.
+- Generated evidence remains under ignored `results/`.
+
+### Best next steps
+
+1. Commit and push M110.
+2. Add the same orientation diagnostics to the toroidal hybrid convergence
+   example so solver traces can be interpreted by region.
+3. Run a finite fixed-boundary toroidal hybrid solve at low resolution and
+   record residual, solved-state metrics, and orientation preservation.
+4. Continue the free-boundary circular-coil lane with finite-beta baseline
+   iterations and a tolerance/stagnation LCFS pilot loop.
+5. Keep moving toward the differentiable solved-state/implicit-derivative lane
+   once the residual solve is sufficiently benchmarked.
+
+### Completion percentages after M110
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `87%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `89%`.
+- I/O schema and docs: `97%`.
+- Differentiable solved-state API: `30%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `74%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `86%`.
+- ESSOS circular-coil mirror beta scan: `66%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---

@@ -14,6 +14,7 @@ import vmec_jax as vj
 from vmec_jax.namelist import write_indata
 from vmec_jax.toroidal_hybrid import (
     sample_toroidal_stellarator_mirror_hybrid_boundary,
+    toroidal_hybrid_cross_section_orientation,
     toroidal_stellarator_mirror_hybrid_indata,
     toroidal_stellarator_mirror_hybrid_metrics,
 )
@@ -104,6 +105,26 @@ def _write_boundary_plots(samples, *, outdir: Path, nfp: int) -> dict[str, str]:
     fig.savefig(path, dpi=180)
     plt.close(fig)
     paths["cross_sections"] = str(path)
+
+    orientation = toroidal_hybrid_cross_section_orientation(samples)
+    side_weight = np.mean(samples.side_weight, axis=0)
+    corner_weight = np.mean(samples.corner_weight, axis=0)
+    fig, ax0 = plt.subplots(1, 1, figsize=(6.8, 4.2), constrained_layout=True)
+    ax0.plot(samples.zeta, orientation, color="tab:purple", lw=1.8, label="ellipse orientation")
+    ax0.set_xlabel("zeta")
+    ax0.set_ylabel("principal-axis angle")
+    ax1 = ax0.twinx()
+    ax1.plot(samples.zeta, side_weight, "--", color="tab:blue", lw=1.4, label="side weight")
+    ax1.plot(samples.zeta, corner_weight, "--", color="tab:red", lw=1.4, label="corner weight")
+    ax1.set_ylabel("region weight")
+    lines0, labels0 = ax0.get_legend_handles_labels()
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    ax0.legend(lines0 + lines1, labels0 + labels1, loc="best", fontsize="small")
+    ax0.set_title("Mirror-side and stellarator-corner regions")
+    path = outdir / "toroidal_hybrid_region_orientation.png"
+    fig.savefig(path, dpi=180)
+    plt.close(fig)
+    paths["region_orientation"] = str(path)
     return paths
 
 

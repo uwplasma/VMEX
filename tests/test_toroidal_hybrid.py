@@ -17,12 +17,16 @@ from vmec_jax.toroidal_hybrid import (
     ToroidalHybridBoundarySamples,
     evaluate_toroidal_hybrid_indata_boundary,
     sample_toroidal_stellarator_mirror_hybrid_boundary,
+    toroidal_hybrid_cross_section_orientation,
     toroidal_stellarator_mirror_hybrid_indata,
     toroidal_stellarator_mirror_hybrid_metrics,
 )
 
 
 def test_toroidal_hybrid_boundary_is_stellarator_symmetric_and_corner_localized():
+    import vmec_jax as vj
+    import vmec_jax.api as public_api
+
     samples = sample_toroidal_stellarator_mirror_hybrid_boundary(ntheta=32, nzeta=32)
     metrics = toroidal_stellarator_mirror_hybrid_metrics(samples)
 
@@ -31,12 +35,21 @@ def test_toroidal_hybrid_boundary_is_stellarator_symmetric_and_corner_localized(
     assert metrics["stellsym_Z_error"] < 1.0e-13
     assert metrics["corner_weight_max"] == 1.0
     assert metrics["side_weight_max"] == 1.0
+    assert metrics["side_orientation_span"] < 1.0e-12
+    assert metrics["corner_orientation_span"] > 0.05
+    assert metrics["side_corner_weight_overlap_max"] <= 0.25 + 1.0e-14
 
     side_cols = [0, samples.zeta.size // 2]
     corner_cols = [samples.zeta.size // 4, (3 * samples.zeta.size) // 4]
     side_m2 = np.mean(np.abs(samples.R[:, side_cols] - np.mean(samples.R[:, side_cols], axis=0)))
     corner_m2 = np.mean(np.abs(samples.R[:, corner_cols] - np.mean(samples.R[:, corner_cols], axis=0)))
     assert corner_m2 > 0.5 * side_m2
+
+    orientation = toroidal_hybrid_cross_section_orientation(samples)
+    assert orientation.shape == samples.zeta.shape
+    assert np.ptp(orientation) == pytest.approx(metrics["cross_section_orientation_span"])
+    assert vj.toroidal_hybrid_cross_section_orientation is toroidal_hybrid_cross_section_orientation
+    assert public_api.toroidal_hybrid_cross_section_orientation is toroidal_hybrid_cross_section_orientation
 
 
 def test_toroidal_hybrid_localization_powers_sharpen_side_and_corner_regions():

@@ -198,6 +198,11 @@ def toroidal_stellarator_mirror_hybrid_metrics(samples: ToroidalHybridBoundarySa
     corner_cols = [samples.zeta.size // 4, (3 * samples.zeta.size) // 4]
     side_r_span = float(np.mean(np.ptp(samples.R[:, side_cols], axis=0)))
     corner_r_span = float(np.mean(np.ptp(samples.R[:, corner_cols], axis=0)))
+    orientation = toroidal_hybrid_cross_section_orientation(samples)
+    side_weight = np.mean(samples.side_weight, axis=0)
+    corner_weight = np.mean(samples.corner_weight, axis=0)
+    side_region = side_weight >= 0.5
+    corner_region = corner_weight >= 0.5
     return {
         "min_R": float(np.min(samples.R)),
         "max_R": float(np.max(samples.R)),
@@ -208,7 +213,30 @@ def toroidal_stellarator_mirror_hybrid_metrics(samples: ToroidalHybridBoundarySa
         "corner_r_span_mean": corner_r_span,
         "corner_weight_max": float(np.max(samples.corner_weight)),
         "side_weight_max": float(np.max(samples.side_weight)),
+        "cross_section_orientation_span": float(np.ptp(orientation)),
+        "side_orientation_span": float(np.ptp(orientation[side_region])) if np.any(side_region) else 0.0,
+        "corner_orientation_span": float(np.ptp(orientation[corner_region])) if np.any(corner_region) else 0.0,
+        "side_corner_weight_overlap_max": float(np.max(side_weight * corner_weight)),
     }
+
+
+def toroidal_hybrid_cross_section_orientation(samples: ToroidalHybridBoundarySamples) -> np.ndarray:
+    """Return the unwrapped principal-axis angle of each sampled cross section."""
+    R = np.asarray(samples.R, dtype=float)
+    Z = np.asarray(samples.Z, dtype=float)
+    if R.shape != Z.shape:
+        raise ValueError("R and Z samples must have the same shape")
+    if R.ndim != 2 or R.shape[0] < 3 or R.shape[1] < 1:
+        raise ValueError("R and Z samples must have shape (ntheta, nzeta)")
+    angles = []
+    for col in range(R.shape[1]):
+        r = R[:, col] - float(np.mean(R[:, col]))
+        z = Z[:, col] - float(np.mean(Z[:, col]))
+        rr = float(np.mean(r * r))
+        zz = float(np.mean(z * z))
+        rz = float(np.mean(r * z))
+        angles.append(0.5 * np.arctan2(2.0 * rz, rr - zz))
+    return 0.5 * np.unwrap(2.0 * np.asarray(angles, dtype=float))
 
 
 def evaluate_toroidal_hybrid_indata_boundary(

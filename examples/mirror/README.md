@@ -70,7 +70,8 @@ toroidal boundary coefficients and solver paths.
 The root-level ``examples/toroidal_stellarator_mirror_hybrid.py`` script starts
 that toroidal lane. It writes a VMEC-compatible ``input.*`` file whose LCFS has
 mirror-like side arcs and localized stellarator-like corner shaping, writes
-boundary metrics and plots, and can optionally run the ordinary toroidal
+boundary metrics and plots, including a side/corner weight and principal-axis
+orientation diagnostic, and can optionally run the ordinary toroidal
 fixed-boundary solver with ``--run-solve`` to produce a ``wout_*.nc`` plus
 standard VMEC plots.
 

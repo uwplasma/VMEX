@@ -63,7 +63,7 @@ without coupling it to toroidal VMEC assumptions:
   mirror end sections, and standard geometry/field plots;
 - a first repo-root toroidal stellarator-mirror hybrid input fixture that writes
   ordinary VMEC ``RBC``/``ZBS`` boundary coefficients, with mirror-like side
-  arcs and stellarator-like corner arcs;
+  arcs, stellarator-like corner arcs, and side/corner orientation diagnostics;
 - focused tests for node ordering, polynomial exactness, interpolation, filtering,
   theta orthogonality, analytic axisymmetric geometry, field identities, and
   analytic energy, gradient checks, Hessian symmetry, MMS stationarity, I/O

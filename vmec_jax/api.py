@@ -17,6 +17,7 @@ from .toroidal_hybrid import (
     ToroidalHybridBoundarySamples,
     evaluate_toroidal_hybrid_indata_boundary,
     sample_toroidal_stellarator_mirror_hybrid_boundary,
+    toroidal_hybrid_cross_section_orientation,
     toroidal_stellarator_mirror_hybrid_indata,
     toroidal_stellarator_mirror_hybrid_metrics,
 )
@@ -213,6 +214,7 @@ __all__ = [
     "ToroidalHybridBoundarySamples",
     "evaluate_toroidal_hybrid_indata_boundary",
     "sample_toroidal_stellarator_mirror_hybrid_boundary",
+    "toroidal_hybrid_cross_section_orientation",
     "toroidal_stellarator_mirror_hybrid_indata",
     "toroidal_stellarator_mirror_hybrid_metrics",
     "booz_xform_inputs_from_state",
