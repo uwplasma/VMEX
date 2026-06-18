@@ -5739,6 +5739,122 @@ Visual validation:
 No user input is needed.
 
 ---
+## 169. Public API and Docs Index Merge-Readiness Audit
+
+### Steps taken
+
+- Ran a full `tests/mirror` pass at the start of the merge-readiness audit.
+- Audited `vmec_jax/mirror/api.py`, `vmec_jax/mirror/__init__.py`, and
+  `vmec_jax/mirror/plotting/__init__.py` for the new mirror-Boozer-like
+  helpers.
+- Promoted the new Boozer-like diagnostics through the main mirror public API:
+  - `MirrorBoozerLikeDiagnosticsData`;
+  - `mirror_boozer_like_diagnostics_data`;
+  - `mirror_boozer_like_summary_metrics`;
+  - `write_mirror_boozer_like_diagnostics`.
+- Added a public-import assertion in `tests/mirror/test_mirror_plotting.py`.
+- Updated `docs/mirror/index.rst` so the mirror documentation index names the
+  cap-to-cap pitch and mirror-Boozer-like diagnostic lane and fixes stale
+  wording in the experimental warning.
+- Ran a second full `tests/mirror` pass after the API/doc/test patch so the
+  final evidence matches the current worktree.
+
+### Results obtained
+
+- `vmec_jax.mirror` and `vmec_jax.mirror.api` now expose the same
+  mirror-Boozer-like public helper names.
+- A lightweight import audit confirmed every `vmec_jax.mirror.__all__` and
+  `vmec_jax.mirror.api.__all__` name exists and the new top-level helpers are
+  the same objects as their `api` exports.
+- The mirror docs index now matches the current diagnostic surface.
+- Current-state full mirror suite passed.
+
+### How it was tested
+
+Commands run:
+
+```bash
+JAX_ENABLE_X64=1 pytest tests/mirror -q
+python -m ruff format --check vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_plotting.py
+python -m ruff check vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_plotting.py
+python -m sphinx -W -b html docs docs/_build/html
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_plotting.py -q
+python - <<'PY'
+import vmec_jax.mirror as mirror
+import vmec_jax.mirror.api as api
+for module in (mirror, api):
+    missing = [name for name in module.__all__ if not hasattr(module, name)]
+    if missing:
+        raise SystemExit(f"{module.__name__} missing {missing}")
+for name in [
+    "MirrorBoozerLikeDiagnosticsData",
+    "mirror_boozer_like_diagnostics_data",
+    "mirror_boozer_like_summary_metrics",
+    "write_mirror_boozer_like_diagnostics",
+]:
+    assert getattr(mirror, name) is getattr(api, name)
+print("mirror_public_api_ok")
+PY
+JAX_ENABLE_X64=1 pytest tests/mirror -q
+```
+
+Results:
+
+- First broad mirror suite passed: `218 passed, 1 skipped in 194.09s`.
+- Ruff format/check passed on the API/test patch.
+- Sphinx docs build passed with warnings treated as errors.
+- Focused plotting/API test passed: `4 passed in 5.17s`.
+- Public API consistency check printed `mirror_public_api_ok`.
+- Current-state broad mirror suite passed:
+  `218 passed, 1 skipped in 191.77s`.
+
+### File structure and best-practice notes
+
+- The numerical implementation remains in the plotting diagnostics module.
+- The top-level mirror API now exposes the user-facing data/helper/writer names
+  without moving implementation code.
+- The docs index remains concise and points readers to the existing overview,
+  outputs, and differentiability pages rather than adding another near-empty
+  page.
+- No generated results were committed.
+
+### Best next steps
+
+1. Commit and push M169.
+2. Refresh the draft PR body so reviewers see the M167-M169 diagnostics/API
+   work and current full mirror-suite result.
+3. Re-check GitHub checks after the latest head has jobs attached.
+4. Continue final plan closure with a concise remaining-gap audit across:
+   straight-axis hybrid fixture, final free-boundary solve status, and PR
+   readiness.
+
+### Completion percentages after M169
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `90%`.
+- Finite-current pitch validation: `86%`.
+- Plotting and `vmec --plot` mirror support: `97%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `94%`.
+- Mirror-Boozer-like diagnostics: `82%`.
+- Free-boundary mirror lane: `99%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `99%`.
+
+### User input needed
+
+No user input is needed.
+
+---
 ## 168. Boozer-Like Summary Metrics in Two-Coil and Finite-Current Examples
 
 ### Steps taken

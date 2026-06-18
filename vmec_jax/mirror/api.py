@@ -52,6 +52,12 @@ from .free_boundary import (
 )
 from .io.mout import is_mirror_output, load_mirror_output, read_mirror_output, write_mirror_output
 from .io.schema import MirrorOutput
+from .plotting.diagnostics import (
+    MirrorBoozerLikeDiagnosticsData,
+    mirror_boozer_like_diagnostics_data,
+    mirror_boozer_like_summary_metrics,
+    write_mirror_boozer_like_diagnostics,
+)
 from .plotting.export import mirror_axisym_slice_to_csv, mirror_output_to_npz, plot_mirror_output
 from .solvers.fixed_boundary.api import (
     FixedBoundaryOptimizerSummary,
@@ -103,6 +109,7 @@ __all__ = [
     "FixedBoundaryOptimizerSummary",
     "IPrimeProfile",
     "MirrorBoundary",
+    "MirrorBoozerLikeDiagnosticsData",
     "MirrorCircularCoils",
     "MirrorConfig",
     "MirrorExternalFieldSample",
@@ -156,6 +163,8 @@ __all__ = [
     "make_mirror_free_boundary_beta_cases",
     "make_mirror_free_boundary_circular_coil_scan",
     "mirror_axisym_slice_to_csv",
+    "mirror_boozer_like_diagnostics_data",
+    "mirror_boozer_like_summary_metrics",
     "mirror_boundary_from_external_axis_field",
     "mirror_boundary_from_on_axis_bz",
     "mirror_boundary_from_two_coil_flux_tube",
@@ -195,5 +204,6 @@ __all__ = [
     "wham_reference_field",
     "wham_vacuum_field_rz",
     "write_mirror_output",
+    "write_mirror_boozer_like_diagnostics",
     "write_mirror_free_boundary_circular_coil_scan",
 ]

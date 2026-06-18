@@ -13,6 +13,7 @@ from vmec_jax.mirror import (
     MirrorSolveOptions,
     PressureProfile,
     PsiPrimeProfile,
+    mirror_boozer_like_summary_metrics as public_mirror_boozer_like_summary_metrics,
     plot_mirror_output,
     run_mirror_fixed_boundary,
     write_mirror_output,
@@ -101,6 +102,7 @@ def test_mirror_plot_data_helpers_expose_numerical_content(tmp_path):
         float(np.max(boozer_like.surface_mirror_ratio))
     )
     assert boozer_summary["boozer_like_field_line_turns_mean"] == pytest.approx(0.0)
+    assert public_mirror_boozer_like_summary_metrics(output) == boozer_summary
     assert np.allclose(history.residual_norm, output.history.residual_norm)
     assert np.allclose(history.fsq, output.history.fsq)
     assert np.allclose(history.normalized_force, output.history.normalized_force)
