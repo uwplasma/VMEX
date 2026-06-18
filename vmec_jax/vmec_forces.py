@@ -1271,8 +1271,6 @@ def vmec_forces_rz_from_wout_reference_fields(
     dtype = jnp.asarray(state.Rcos).dtype
     mask_m1 = jnp.asarray(m_modes == 1, dtype=dtype)
     mask_odd_rest = jnp.asarray((m_modes % 2 == 1) & (m_modes != 1), dtype=dtype)
-    mask_odd = jnp.asarray((m_modes % 2) == 1, dtype=dtype)
-    mask_even = jnp.asarray((m_modes % 2) == 0, dtype=dtype)
 
     def _odd_internal_vmec(*, coeff_cos, coeff_sin, eval_fn):
         phys_m1 = eval_fn(coeff_cos * mask_m1, coeff_sin * mask_m1, static.basis, coeffs_internal=True)
@@ -1294,7 +1292,6 @@ def vmec_forces_rz_from_wout_reference_fields(
     Zu1 = _odd_internal_vmec(coeff_cos=state.Zcos, coeff_sin=state.Zsin, eval_fn=eval_fourier_dtheta)
     Rv1 = _odd_internal_vmec(coeff_cos=state.Rcos, coeff_sin=state.Rsin, eval_fn=eval_fourier_dzeta_phys)
     Zv1 = _odd_internal_vmec(coeff_cos=state.Zcos, coeff_sin=state.Zsin, eval_fn=eval_fourier_dzeta_phys)
-    Lu1 = _odd_internal_vmec_lambda(coeff_cos=state.Lcos, coeff_sin=state.Lsin, eval_fn=eval_fourier_dtheta)
     Lv1 = _odd_internal_vmec_lambda(coeff_cos=state.Lcos, coeff_sin=state.Lsin, eval_fn=eval_fourier_dzeta_phys)
 
     pr1_0, pr1_1 = jnp.asarray(parity.R_even), jnp.asarray(R1)
@@ -1475,7 +1472,6 @@ def vmec_forces_rz_from_wout_reference_fields(
     # stored wout bsubu/bsubv fields by averaging to the full mesh. This avoids
     # re-deriving bsubv_e from lambda derivatives, which can amplify small
     # discrepancies in the reference path.
-    ns = int(s.shape[0])
     bsubu_e = _avg_forward_half_to_int_or_zero(bsubu)
     bsubv_e = _avg_forward_half_to_int_or_zero(bsubv)
 

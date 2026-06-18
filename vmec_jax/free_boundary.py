@@ -1189,7 +1189,6 @@ def _vmec_nonsingular_gsource_from_bexni(
     snr = float(signgs) * R * Zu
     snv = float(signgs) * (Ru * Zv - Rv * Zu)
     snz = -float(signgs) * R * Ru
-    drv = -(R * snr + Z * snz)
     guu_b = Ru * Ru + Zu * Zu
     guv_b = (Ru * Rv + Zu * Zv) * onp * 2.0
     gvv_b = (Rv * Rv + Zv * Zv + R * R) * onp2
@@ -1224,13 +1223,10 @@ def _vmec_nonsingular_gsource_from_bexni(
         iuoff = nuv_full - nv * iskip
 
         gsave = rzb2[ip] + rzb2 - 2.0 * Z[ip] * Z
-        dsave = drv[ip] + Z * snz[ip]
         delgr = np.zeros((nuv_full,), dtype=float)
         for kp in range(nvper):
             xper = xip * cosper[kp] - yip * sinper[kp]
             yper = yip * cosper[kp] + xip * sinper[kp]
-            sxsave = (snr[ip] * xper - snv[ip] * yper) / R[ip]
-            sysave = (snr[ip] * yper + snv[ip] * xper) / R[ip]
             base = gsave - 2.0 * (xper * rcosuv + yper * rsinuv)
             if kp == 0 or nv == 1:
                 tidx_u = idx_all + iuoff
