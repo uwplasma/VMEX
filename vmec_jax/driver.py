@@ -616,8 +616,6 @@ def run_fixed_boundary(
     _auto_cli_fixed_boundary_mode: bool = True,
     _solver_device_context_active: bool = False,
 ):
-    t_start = time.perf_counter()
-    max_iter_overridden = max_iter is not _MAX_ITER_SENTINEL
     """Run a vmec_jax solve from an ``input.*`` file.
 
     This is the main public driver and remains backward compatible with older
@@ -685,6 +683,8 @@ def run_fixed_boundary(
     FixedBoundaryRun
         Shared run container for both fixed-boundary and free-boundary solves.
     """
+    t_start = time.perf_counter()
+    max_iter_overridden = max_iter is not _MAX_ITER_SENTINEL
     startup = _resolve_fixed_boundary_startup_context(
         input_path=input_path,
         solver=solver,
@@ -795,19 +795,6 @@ def run_fixed_boundary(
     stage_results: list[SolveVmecResidualResult] = []
     stage_statics: list[VMECStatic] = []
 
-    def _run_cli_accelerated_budgeted_multigrid(
-        *,
-        ns_stage_list: list[int],
-        warm_start_budget: int,
-        final_stage_budget: int,
-    ):
-        return _driver_staging_helpers.run_cli_accelerated_budgeted_multigrid(
-            _stage_runner_context(),
-            ns_stage_list=ns_stage_list,
-            warm_start_budget=int(warm_start_budget),
-            final_stage_budget=int(final_stage_budget),
-        )
-
     def _run_cli_explicit_staged_followup(
         *,
         ns_stage_list: list[int],
@@ -836,12 +823,6 @@ def run_fixed_boundary(
             performance_mode_override=performance_mode_override,
             policy_name=str(policy_name),
         )
-
-    def _finish_stage_results():
-        try:
-            return stage_results
-        except NameError:
-            return ()
 
     def _stage_runner_context() -> _driver_staging_helpers.FixedBoundaryStageRunnerContext:
         return _driver_staging_helpers.FixedBoundaryStageRunnerContext(
@@ -874,12 +855,6 @@ def run_fixed_boundary(
             timing_solve_total_s=_timing_solve_total_s,
             accelerated_cli_budgeted_stage_iters=_accelerated_cli_budgeted_stage_iters,
         )
-
-    def _finish_stage_statics():
-        try:
-            return stage_statics
-        except NameError:
-            return ()
 
     def _finish_context() -> _driver_finish_helpers.FixedBoundaryFinishContext:
         return _driver_finish_helpers.FixedBoundaryFinishContext(
@@ -921,8 +896,8 @@ def run_fixed_boundary(
             accelerated_single_grid_default=bool(accelerated_single_grid_default),
             run_fixed_boundary=run_fixed_boundary,
             run_cli_explicit_staged_followup=_run_cli_explicit_staged_followup,
-            get_stage_results=_finish_stage_results,
-            get_stage_statics=_finish_stage_statics,
+            get_stage_results=lambda: stage_results,
+            get_stage_statics=lambda: stage_statics,
             sanitize_resume_state_for_stage=sanitize_resume_state_for_stage,
             solve_fixed_boundary_residual_iter=solve_fixed_boundary_residual_iter,
             default_backend_name=_default_backend_name,
@@ -970,7 +945,8 @@ def run_fixed_boundary(
 
     if bool(cli_budgeted_multigrid_requested):
         budget_total = _accelerated_cli_budgeted_total_iters(total_budget=int(max_iter), ns_stages=ns_stages)
-        return _run_cli_accelerated_budgeted_multigrid(
+        return _driver_staging_helpers.run_cli_accelerated_budgeted_multigrid(
+            _stage_runner_context(),
             ns_stage_list=list(ns_stages),
             warm_start_budget=int(budget_total),
             final_stage_budget=int(max_iter),
