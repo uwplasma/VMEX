@@ -9838,3 +9838,72 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.980%.
+
+## 2026-06-18 Residual Scan Runtime and Active Adjoint Routing Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `Vmec2000ScanRuntimeSetup` and `build_vmec2000_scan_runtime_setup`
+   to `vmec_jax.solvers.fixed_boundary.residual.scan_adapters`.
+2. Moved VMEC2000 scan guard validation, scan setup policy resolution,
+   timing/device runtime setup, print/time-control hooks, resume-field
+   initialization, convergence predicate setup, and scan force-callable
+   selection out of the residual iteration loop.
+3. Replaced the active residual-adjoint solver routing in `implicit.py` with
+   the existing `solve_active_residual_adjoint_linearized` helper.
+4. Extended the helper with optional profiling callbacks so existing backward
+   profile stage names remain available for dense, BiCGStab, lineax, and CG
+   routes.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter._run_vmec2000_scan` dropped from about
+  1,438 to 1,404 lines without changing the scan recurrence itself.
+- `solve_fixed_boundary_state_implicit_vmec_residual` dropped from about 864 to
+  788 lines, and active adjoint route selection now lives in a dedicated tested
+  helper.
+- The residual scan setup seam is now explicit and can be further decomposed
+  into axis-reset/preconditioner-cache helpers without touching scan math.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/implicit.py vmec_jax/implicit_residual_adjoint_helpers.py vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/scan_adapters.py`
+- `python -m ruff check vmec_jax/implicit.py vmec_jax/implicit_residual_adjoint_helpers.py vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/scan_adapters.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_coverage_extra.py tests/test_driver_api_finish_more_coverage.py tests/test_driver_wave2_coverage.py -q -k "scan or vmec2000 or dynamic"`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_helper_edges_wave14_coverage.py tests/test_driver_finish_policy_more_coverage.py -q -k "scan or vmec2000"`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_implicit_residual_adjoint_helpers.py tests/test_implicit_wave12_coverage.py::test_vmec_residual_custom_vjp_routes_active_direct_bicgstab tests/test_implicit_wave12_coverage.py::test_vmec_residual_custom_vjp_routes_active_lineax_success tests/test_implicit_wave12_coverage.py::test_vmec_residual_custom_vjp_active_cg_and_full_cg_fallbacks tests/test_implicit_helpers.py::test_fixed_boundary_residual_implicit_primal_matches_default_control_path -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_implicit_helpers.py tests/test_implicit_wave12_coverage.py tests/test_implicit_more_coverage.py tests/test_implicit_sensitivity_fast_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 14 --top-functions 20`
+
+Best next steps:
+
+1. Split the residual iteration force/JIT setup and HLO dump probes identified
+   by the residual explorer, preserving compute-force cache behavior.
+2. Continue residual scan decomposition with initial axis-reset and
+   preconditioner-cache preparation only after the new runtime setup seam is
+   stable.
+3. Defer WOUT Nyquist/Mercier decomposition until after implicit/residual seams
+   are smaller, because WOUT parity blocks are more output-sensitive.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.99988%.
+- Solver monolith reduction: 99.2%.
+- Free-boundary adjoint monolith reduction: 99.1%.
+- Driver workflow decomposition: 99.3%.
+- Residual iteration decomposition: 90.5%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 91%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.982%.

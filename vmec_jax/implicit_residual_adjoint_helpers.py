@@ -7,6 +7,7 @@ construct a full VMEC state.  They operate only on supplied linear maps.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import time
 from typing import Any, Callable
 
 import numpy as np
@@ -110,8 +111,18 @@ def solve_active_residual_adjoint_linearized(
     bicgstab_solve: Callable[..., tuple[Any, Any]] | None = None,
     lineax_solve: Callable[..., tuple[Any, bool, Any]] | None = None,
     jacobian_columns: Callable[..., Any] = linear_map_jacobian_columns,
+    profile_log: Callable[..., None] | None = None,
+    time_module: Any = time,
 ) -> ActiveResidualAdjointSolveResult:
     """Route the active residual adjoint solve across dense/direct/fallback paths."""
+
+    def _start():
+        return time_module.perf_counter() if profile_log is not None else None
+
+    def _log(stage: str, start: float | None = None, **extra) -> None:
+        if profile_log is not None:
+            profile_log(stage, start, **extra)
+
     active_is_square = validate_active_adjoint_shapes(residual_star_active, b_active, x_active_star)
     active_mode = select_active_adjoint_mode(
         residual_adjoint_mode,
@@ -120,6 +131,7 @@ def solve_active_residual_adjoint_linearized(
 
     if active_mode.use_chunked_active:
         chunk_size = default_jac_chunk_size(x_active_star, jac_chunk_size)
+        dense_start = _start()
         J_active = jacobian_columns(
             residual_jvp_active,
             input_size=int(x_active_star.shape[0]),
@@ -127,6 +139,13 @@ def solve_active_residual_adjoint_linearized(
             dtype=jnp.asarray(x_active_star).dtype,
             chunk_size=chunk_size,
         )
+        _log(
+            "active_dense_jacobian_done",
+            dense_start,
+            chunk_size=chunk_size,
+            jac_shape=tuple(int(x) for x in J_active.shape),
+        )
+        solve_start = _start()
         lam = dense_adjoint_from_jacobian(
             J_active,
             b_active,
@@ -135,6 +154,7 @@ def solve_active_residual_adjoint_linearized(
             dense_transpose_lstsq_host=dense_transpose_lstsq_host,
             is_traced=is_traced,
         )
+        _log("active_dense_solve_done", solve_start)
         return ActiveResidualAdjointSolveResult(lam=lam, route="dense")
 
     if active_mode.use_direct_stellsym and bicgstab_solve is not None:
@@ -142,6 +162,7 @@ def solve_active_residual_adjoint_linearized(
             residual_vjp_active,
             damping=float(damping),
         )
+        direct_solve_start = _start()
         lam, info = bicgstab_solve(
             JT_active,
             b_active,
@@ -149,10 +170,12 @@ def solve_active_residual_adjoint_linearized(
             atol=0.0,
             maxiter=int(cg_max_iter),
         )
+        _log("direct_bicgstab_done", direct_solve_start, info=str(info))
         if info is None:
             return ActiveResidualAdjointSolveResult(lam=lam, route="bicgstab", info=info)
 
     if active_mode.use_lineax_active and lineax_solve is not None:
+        direct_solve_start = _start()
         JT_active_lineax = make_damped_transpose_map(
             residual_vjp_active,
             damping=float(damping),
@@ -163,6 +186,18 @@ def solve_active_residual_adjoint_linearized(
             tol=float(cg_tol),
             max_iter=int(cg_max_iter),
         )
+        num_steps = stats.get("num_steps") if isinstance(stats, dict) else None
+        if num_steps is not None:
+            try:
+                num_steps = int(np.asarray(jax.device_get(num_steps)))
+            except Exception:
+                num_steps = None
+        _log(
+            "direct_lineax_done",
+            direct_solve_start,
+            success=bool(success),
+            num_steps=num_steps,
+        )
         if bool(success):
             return ActiveResidualAdjointSolveResult(lam=lam, route="lineax", info=stats)
 
@@ -172,5 +207,7 @@ def solve_active_residual_adjoint_linearized(
         damping=float(damping),
     )
     rhs_active = active_normal_rhs(residual_jvp_active, b_active)
+    cg_start = _start()
     lam = cg_solve(Hvp_active, rhs_active, tol=float(cg_tol), max_iter=int(cg_max_iter))
+    _log("active_cg_done", cg_start)
     return ActiveResidualAdjointSolveResult(lam=lam, route="cg")

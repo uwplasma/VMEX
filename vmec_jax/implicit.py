@@ -27,16 +27,10 @@ import numpy as np
 
 from ._compat import has_jax, jax, jnp
 from .implicit_adjoint_helpers import (
-    active_normal_rhs,
-    default_jac_chunk_size,
-    dense_adjoint_from_jacobian,
     full_active_keep_indices,
-    make_active_normal_map,
-    make_damped_transpose_map,
     make_full_normal_map,
     pack_stellsym_feasible_state as _pack_stellsym_feasible_state,
     pack_stellsym_reduced_state as _pack_stellsym_reduced_state,
-    select_active_adjoint_mode,
     select_active_packing_strategy,
     stellsym_feasible_indices as _stellsym_feasible_indices,  # noqa: F401 - compatibility export
     stellsym_feasible_indices_np as _stellsym_feasible_indices_np,
@@ -45,12 +39,12 @@ from .implicit_adjoint_helpers import (
     stellsym_structural_active_keep_indices as _stellsym_structural_active_keep_indices,  # noqa: F401 - compatibility export
     update_stellsym_feasible_state as _update_stellsym_feasible_state,
     update_stellsym_reduced_state as _update_stellsym_reduced_state,
-    validate_active_adjoint_shapes,
     validate_full_adjoint_shapes,
 )
 from .implicit_residual_adjoint_helpers import (
     lineax_bicgstab_solve as _lineax_bicgstab_solve_impl,
     linear_map_jacobian_columns as _linear_map_jacobian_columns_impl,
+    solve_active_residual_adjoint_linearized as _solve_active_residual_adjoint_linearized,
 )
 
 try:
@@ -1708,116 +1702,40 @@ def solve_fixed_boundary_state_implicit_vmec_residual(
                 active_linearize_start,
                 residual_size=int(np.prod(np.shape(residual_star_active))),
             )
-            active_is_square = validate_active_adjoint_shapes(residual_star_active, b_active, x_active_star)
-            active_mode = select_active_adjoint_mode(
-                residual_adjoint_mode,
-                active_is_square=active_is_square,
-            )
-            use_chunked_active = active_mode.use_chunked_active
-            use_lineax_active = active_mode.use_lineax_active
-            use_direct_stellsym = active_mode.use_direct_stellsym
 
-            if use_chunked_active:
-                chunk_size = default_jac_chunk_size(
-                    x_active_star,
-                    getattr(implicit, "jac_chunk_size", None),
-                )
-                dense_start = time.perf_counter()
-                J_active = _linear_map_jacobian_columns(
-                    residual_jvp_active,
-                    input_size=int(x_active_star.shape[0]),
-                    output_size=int(np.prod(np.shape(residual_star_active))),
-                    dtype=jnp.asarray(x_active_star).dtype,
-                    chunk_size=chunk_size,
-                )
-                _vmec_backward_profile_log(
-                    "active_dense_jacobian_done",
-                    dense_start,
-                    chunk_size=chunk_size,
-                    jac_shape=tuple(int(x) for x in J_active.shape),
-                )
-                solve_start = time.perf_counter()
-                damping = jnp.asarray(float(implicit.damping), dtype=J_active.dtype)
-                lam = dense_adjoint_from_jacobian(
-                    J_active,
-                    b_active,
-                    damping=damping,
-                    mode=residual_adjoint_mode,
-                    dense_transpose_lstsq_host=_dense_transpose_lstsq_host,
-                    is_traced=_is_traced,
-                )
-                _vmec_backward_profile_log("active_dense_solve_done", solve_start)
-                result = _boundary_param_vjp_active(lam)
-                _vmec_backward_profile_log("bwd_done_chunked", bwd_start)
-                return result
-
-            if use_direct_stellsym:
+            def _active_bicgstab_solve(*args, **kwargs):
                 from jax.scipy.sparse.linalg import bicgstab
 
-                JT_active = make_damped_transpose_map(
-                    residual_vjp_active,
-                    damping=float(implicit.damping),
-                )
-                direct_solve_start = time.perf_counter()
-                lam, info = bicgstab(
-                    JT_active,
-                    b_active,
-                    tol=float(implicit.cg_tol),
-                    atol=0.0,
-                    maxiter=int(implicit.cg_max_iter),
-                )
-                _vmec_backward_profile_log("direct_bicgstab_done", direct_solve_start, info=str(info))
-                if info is None:
-                    result = _boundary_param_vjp_active(lam)
-                    _vmec_backward_profile_log("bwd_done_direct", bwd_start)
-                    return result
+                return bicgstab(*args, **kwargs)
 
-            if use_lineax_active:
-                direct_solve_start = time.perf_counter()
-                JT_active_lineax = make_damped_transpose_map(
-                    residual_vjp_active,
-                    damping=float(implicit.damping),
-                )
-
-                lam, success, stats = _lineax_bicgstab_solve(
-                    JT_active_lineax,
-                    b_active,
-                    tol=float(implicit.cg_tol),
-                    max_iter=int(implicit.cg_max_iter),
-                )
-                num_steps = stats.get("num_steps") if isinstance(stats, dict) else None
-                if num_steps is not None:
-                    try:
-                        num_steps = int(np.asarray(jax.device_get(num_steps)))
-                    except Exception:
-                        num_steps = None
-                _vmec_backward_profile_log(
-                    "direct_lineax_done",
-                    direct_solve_start,
-                    success=bool(success),
-                    num_steps=num_steps,
-                )
-                if bool(success):
-                    result = _boundary_param_vjp_active(lam)
-                    _vmec_backward_profile_log("bwd_done_lineax", bwd_start)
-                    return result
-
-            # Solve the same damped least-squares adjoint system as the dense
-            # reference path, but matrix-free:
-            #   argmin_lam ||J^T lam - b||^2 + damping ||lam||^2
-            # whose normal equations are
-            #   (J J^T + damping I) lam = J b.
-            Hvp_active = make_active_normal_map(
+            active_adjoint_result = _solve_active_residual_adjoint_linearized(
                 residual_jvp_active,
                 residual_vjp_active,
+                residual_star_active=residual_star_active,
+                b_active=b_active,
+                x_active_star=x_active_star,
+                residual_adjoint_mode=residual_adjoint_mode,
                 damping=float(implicit.damping),
+                cg_tol=float(implicit.cg_tol),
+                cg_max_iter=int(implicit.cg_max_iter),
+                jac_chunk_size=getattr(implicit, "jac_chunk_size", None),
+                dense_transpose_lstsq_host=_dense_transpose_lstsq_host,
+                is_traced=_is_traced,
+                cg_solve=_cg_solve,
+                bicgstab_solve=_active_bicgstab_solve,
+                lineax_solve=_lineax_bicgstab_solve,
+                jacobian_columns=_linear_map_jacobian_columns,
+                profile_log=_vmec_backward_profile_log,
+                time_module=time,
             )
-            rhs_active = active_normal_rhs(residual_jvp_active, b_active)
-            cg_start = time.perf_counter()
-            lam = _cg_solve(Hvp_active, rhs_active, tol=float(implicit.cg_tol), max_iter=int(implicit.cg_max_iter))
-            _vmec_backward_profile_log("active_cg_done", cg_start)
-            result = _boundary_param_vjp_active(lam)
-            _vmec_backward_profile_log("bwd_done_active", bwd_start)
+            result = _boundary_param_vjp_active(active_adjoint_result.lam)
+            done_stage = {
+                "dense": "bwd_done_chunked",
+                "bicgstab": "bwd_done_direct",
+                "lineax": "bwd_done_lineax",
+                "cg": "bwd_done_active",
+            }.get(active_adjoint_result.route, "bwd_done_active")
+            _vmec_backward_profile_log(done_stage, bwd_start)
             return result
 
         def _boundary_param_vjp_full(lam):

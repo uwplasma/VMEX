@@ -211,6 +211,7 @@ from vmec_jax.solvers.fixed_boundary.residual.scan_adapters import (
     ScanDeviceRuntime,
     ScanTimeControlDumper,
     ScanVmec2000PrintContext,
+    build_vmec2000_scan_runtime_setup as _build_vmec2000_scan_runtime_setup,
     scan_m1_preconditioner_rhs as _scan_m1_preconditioner_rhs,
 )
 from vmec_jax.solvers.fixed_boundary.residual import preconditioner_payload as _precond_payload_facade
@@ -1840,36 +1841,17 @@ def solve_fixed_boundary_residual_iter(
     _record_setup_timing("setup_update_constants", _t_setup_update_constants)
 
     def _run_vmec2000_scan(state_init: VMECState) -> SolveVmecResidualResult:
-        scan_timing_enabled = _scan_timing_enabled(os.getenv("VMEC_JAX_TIMING", ""))
-        scan_timing_stats = _new_scan_timing_stats()
-        scan_total_start = time.perf_counter() if scan_timing_enabled else None
-        scan_device_runtime = ScanDeviceRuntime(
-            scan_timing_enabled=bool(scan_timing_enabled),
-            stats=scan_timing_stats,
-            perf_counter=time.perf_counter,
-            block_until_ready=jax.block_until_ready,
-            tree_map=jax.tree_util.tree_map,
-            record_ready=_record_scan_device_ready,
-        )
-
-        _validate_vmec2000_scan_guards(
-            backtracking=bool(backtracking),
-            limit_dt_from_force=bool(limit_dt_from_force),
-            limit_update_rms=bool(limit_update_rms),
-            use_direct_fallback=bool(use_direct_fallback),
-            reference_mode=bool(reference_mode),
-            strict_update=bool(strict_update),
-            auto_flip_force=bool(auto_flip_force),
-        )
-
-        scan_differentiated = _tree_has_tracer(state_init)
-        scan_setup = _resolve_vmec2000_scan_setup(
+        scan_runtime = _build_vmec2000_scan_runtime_setup(
             env=os.environ,
+            state_init=state_init,
+            indata=indata,
+            cfg=cfg,
+            mpol=mpol,
+            nrange=nrange,
+            resume_state=resume_state,
             state_only=bool(state_only),
-            scan_differentiated=bool(scan_differentiated),
             scan_fallback_enabled=bool(scan_fallback_enabled),
             force_chunked_scan=bool(force_chunked_scan),
-            indata_nstep=int(indata.get_int("NSTEP", 1)) if indata is not None else 1,
             preconditioner_use_precomputed_tridi=preconditioner_use_precomputed_tridi,
             preconditioner_use_lax_tridi=preconditioner_use_lax_tridi,
             verbose=bool(verbose),
@@ -1879,19 +1861,58 @@ def solve_fixed_boundary_residual_iter(
             scan_minimal_default=scan_minimal_default,
             dump_any=bool(dump_any),
             fsq_total_target=fsq_total_target,
-            backend_name=_scan_backend_name(),
+            axis_reset_done=bool(axis_reset_done),
+            lmove_axis=bool(lmove_axis),
+            step_size=float(step_size),
+            initial_flip_sign=float(initial_flip_sign),
+            ftol=float(ftol),
+            jit_forces=bool(jit_forces),
+            compute_forces=_compute_forces,
+            compute_forces_impl=_compute_forces_impl,
+            scan_timing_enabled_func=_scan_timing_enabled,
+            new_scan_timing_stats_func=_new_scan_timing_stats,
+            scan_backend_name_func=_scan_backend_name,
+            tree_has_tracer_func=_tree_has_tracer,
+            validate_vmec2000_scan_guards_func=_validate_vmec2000_scan_guards,
+            resolve_vmec2000_scan_setup_func=_resolve_vmec2000_scan_setup,
+            default_vmec2000_controller_constants_func=_default_vmec2000_controller_constants,
+            resolve_scan_runtime_hooks_from_env_func=_resolve_scan_runtime_hooks_from_env,
+            scan_jit_forces_enabled_func=_scan_jit_forces_enabled,
+            scan_trace_context_or_null_func=_scan_trace_context_or_null,
+            initialize_scan_resume_state_func=_initialize_scan_resume_state,
+            scan_m1_preconditioner_rhs_func=_scan_m1_preconditioner_rhs,
+            scale_m1_precond_rhs_from_mats_func=_scale_m1_precond_rhs_from_mats,
+            converged_func=_runtime_converged_residuals_scan_fast,
+            record_scan_device_ready_func=_record_scan_device_ready,
+            has_jax_func=has_jax,
+            jax_module=jax,
+            jnp_module=jnp,
+            time_module=time,
+            backtracking=bool(backtracking),
+            limit_dt_from_force=bool(limit_dt_from_force),
+            limit_update_rms=bool(limit_update_rms),
+            use_direct_fallback=bool(use_direct_fallback),
+            reference_mode=bool(reference_mode),
+            strict_update=bool(strict_update),
+            auto_flip_force=bool(auto_flip_force),
         )
-        state_only_scan = scan_setup.state_only_scan
-        scan_fallback_enabled_run = scan_setup.scan_fallback_enabled_run
-        force_chunked_scan_run = scan_setup.force_chunked_scan_run
-        controller_constants = _default_vmec2000_controller_constants()
+
+        scan_timing_enabled = scan_runtime.timing_enabled
+        scan_timing_stats = scan_runtime.timing_stats
+        scan_total_start = scan_runtime.total_start
+        scan_device_runtime = scan_runtime.device_runtime
+        scan_setup = scan_runtime.setup
+        state_only_scan = scan_runtime.state_only_scan
+        scan_fallback_enabled_run = scan_runtime.scan_fallback_enabled_run
+        force_chunked_scan_run = scan_runtime.force_chunked_scan_run
+        controller_constants = scan_runtime.controller_constants
         k_preconditioner_update_interval = controller_constants.preconditioner_update_interval
         restart_badjac_factor = controller_constants.restart_badjac_factor
         restart_badprog_factor = controller_constants.restart_badprog_factor
         vmec2000_fact = controller_constants.vmec2000_fact
-        iter_offset0 = 0
-        nstep_screen = scan_setup.nstep_screen
-        scan_options = scan_setup.options
+        iter_offset0 = scan_runtime.iter_offset0
+        nstep_screen = scan_runtime.nstep_screen
+        scan_options = scan_runtime.options
         scan_print_ordered = scan_options.scan_print_ordered
         scan_light = scan_options.scan_light
         scan_minimal = scan_options.scan_minimal
@@ -1908,88 +1929,34 @@ def solve_fixed_boundary_residual_iter(
         # selected at Python level (Python loop), so this overhead is avoided.
         # Default: use restart payload on CPU only; skip it on GPU/TPU.
         scan_use_restart_payload = scan_options.scan_use_restart_payload
-        scan_hooks = _resolve_scan_runtime_hooks_from_env(
-            os.environ,
-            print_in_scan=scan_options.print_in_scan,
-            scan_print_mode=scan_options.scan_print_mode,
-            scan_trace=scan_options.scan_trace,
-        )
-        dump_timecontrol_scan = scan_hooks.dump_timecontrol_scan
-        scan_timecontrol_callback = scan_hooks.timecontrol_callback
-        _timecontrol_path = scan_hooks.timecontrol_path
-        _io_callback = scan_hooks.io_callback
-        chunked_print = scan_options.chunked_print
-        print_in_scan = scan_hooks.print_in_scan
-        scan_print_mode = scan_hooks.scan_print_mode
-        scan_trace = scan_hooks.scan_trace
-        _jax_debug = scan_hooks.jax_debug
-        _jax_debug_print = scan_hooks.jax_debug_print
+        scan_hooks = scan_runtime.hooks
+        dump_timecontrol_scan = scan_runtime.dump_timecontrol_scan
+        scan_timecontrol_callback = scan_runtime.timecontrol_callback
+        _timecontrol_path = scan_runtime.timecontrol_path
+        _io_callback = scan_runtime.io_callback
+        chunked_print = scan_runtime.chunked_print
+        print_in_scan = scan_runtime.print_in_scan
+        scan_print_mode = scan_runtime.scan_print_mode
+        scan_trace = scan_runtime.scan_trace
+        _jax_debug = scan_runtime.jax_debug
+        _jax_debug_print = scan_runtime.jax_debug_print
 
         def _maybe_trace(label: str):
-            return _scan_trace_context_or_null(scan_hooks, label)
-        if resume_state is not None:
-            try:
-                iter_offset0 = int(resume_state.get("iter_offset", iter_offset0))
-            except Exception:
-                pass
-        axis_reset_enabled = bool(vmec2000_control) and (not axis_reset_done) and bool(lmove_axis)
-        axis_reset_repeat = False
+            return scan_runtime.maybe_trace(label)
 
-        scan_print_context = ScanVmec2000PrintContext(
-            nstep_screen=int(nstep_screen),
-            lasym=bool(cfg.lasym),
-            verbose=bool(verbose),
-            vmec2000_control=bool(vmec2000_control),
-            verbose_vmec2000_table=bool(verbose_vmec2000_table),
-        )
-
-        dtype = jnp.asarray(state_init.Rcos).dtype
-        scan_timecontrol_dumper = ScanTimeControlDumper(
-            enabled=bool(dump_timecontrol_scan),
-            timecontrol_callback=scan_timecontrol_callback,
-            timecontrol_path=_timecontrol_path,
-            jax_module=jax,
-            jnp_module=jnp,
-        )
-
-        time_step0 = jnp.asarray(float(step_size), dtype=dtype)
-        flip_sign0 = jnp.asarray(float(initial_flip_sign), dtype=dtype)
-        ftol_j = jnp.asarray(float(ftol), dtype=dtype)
-        fsq_total_target_j = None
-        if fsq_total_target is not None:
-            fsq_total_target_j = jnp.asarray(float(fsq_total_target), dtype=dtype)
-
-        scan_converged = ScanConvergencePredicate(
-            ftol=ftol_j,
-            fsq_total_target=fsq_total_target_j,
-            converged_func=_runtime_converged_residuals_scan_fast,
-        )
-
+        axis_reset_enabled = scan_runtime.axis_reset_enabled
+        axis_reset_repeat = scan_runtime.axis_reset_repeat
+        scan_print_context = scan_runtime.print_context
+        dtype = scan_runtime.dtype
+        scan_timecontrol_dumper = scan_runtime.timecontrol_dumper
+        time_step0 = scan_runtime.time_step0
+        flip_sign0 = scan_runtime.flip_sign0
+        scan_converged = scan_runtime.converged
         k_ndamp = controller_constants.ndamp
-        scan_resume0 = _initialize_scan_resume_state(
-            resume_state,
-            dtype=dtype,
-            velocity_shape=(int(state_init.Rcos.shape[0]), mpol, nrange),
-            k_ndamp=k_ndamp,
-            time_step_default=time_step0,
-            flip_sign_default=flip_sign0,
-            state_checkpoint_default=state_init,
-        )
-        flip_sign0 = scan_resume0.flip_sign
-
-        scale_m1_precond_rhs = partial(
-            _scan_m1_preconditioner_rhs,
-            cfg=cfg,
-            scale_m1_precond_rhs_from_mats=_scale_m1_precond_rhs_from_mats,
-        )
-
-        # Avoid nested JIT inside the scan by default; allow opt-in for testing.
-        # Some cases benefit from a separately-jitted force kernel.
-        scan_jit_env = os.getenv("VMEC_JAX_SCAN_JIT_FORCES")
-        jit_forces_scan = _scan_jit_forces_enabled(env_value=scan_jit_env, jit_forces=bool(jit_forces))
-        _compute_forces_scan = _compute_forces if jit_forces_scan else _compute_forces_impl
-        if scan_timing_enabled and scan_total_start is not None:
-            scan_timing_stats["scan_setup_s"] += time.perf_counter() - float(scan_total_start)
+        scan_resume0 = scan_runtime.resume_fields
+        scale_m1_precond_rhs = scan_runtime.scale_m1_precond_rhs
+        jit_forces_scan = scan_runtime.jit_forces_scan
+        _compute_forces_scan = scan_runtime.compute_forces_scan
         t_scan_initial_force = time.perf_counter() if scan_timing_enabled else None
         with _maybe_trace("scan/compute_forces:init"):
             k0, frzl0, gcr2_0, gcz2_0, gcl2_0, rz_scale0, l_scale0, norms0 = _compute_forces_scan(
