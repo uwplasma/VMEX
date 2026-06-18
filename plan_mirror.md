@@ -16873,3 +16873,95 @@ Results:
 No user input is needed.
 
 ---
+## 135. Draft PR Description Synchronization
+
+### Steps taken
+
+- Updated draft PR #21 body on GitHub.
+- Replaced the stale statement that detailed logs only ran through section 83
+  with the current section 134 state.
+- Updated the PR contents list to include:
+  - reduced implicit differentiability gates;
+  - matrix-free CG and dense-vs-CG benchmark example;
+  - circular-coil beta-scan schema `0.3` with embedded `summary_rows`;
+  - VMEC2000 parity evidence for the toroidal hybrid fixture.
+- Updated the PR checklist so partially complete lanes are explicit:
+  - reduced differentiability gates are complete as method gates;
+  - production differentiable solved-state API remains open;
+  - circular-coil LCFS pilot workflow is complete as a planning fixture;
+  - converged free-boundary mirror solve remains open.
+- Kept the PR in draft state.
+
+### Results obtained
+
+- PR #21 now matches the current repository and plan status.
+- Remote verification confirmed:
+  - PR number `21`;
+  - draft state `true`;
+  - body contains `section 134`;
+  - body contains schema `0.3`;
+  - body contains `M13f`;
+  - body contains the latest local validation section.
+
+### How it was tested
+
+Commands run:
+
+```bash
+gh pr edit 21 --body-file /tmp/vmec_mirror_pr_body.md
+gh pr view 21 --json number,isDraft,body,url | python -c '...'
+git diff --check
+python - <<'PY'
+import re
+from pathlib import Path
+text = Path("plan_mirror.md").read_text()
+nums = [int(m.group(1)) for m in re.finditer(r"^## (\\d+)\\.", text, flags=re.M)]
+print("milestones", len(nums), "last", nums[-1], "monotonic", nums == sorted(nums))
+PY
+```
+
+Results:
+
+- PR edit succeeded.
+- PR body verification passed.
+- Whitespace check passed.
+- Plan milestone numbering remained monotonic.
+
+### File structure and best-practice notes
+
+- No source code changed in this tranche.
+- The PR body remains a concise index; detailed evidence stays in
+  `plan_mirror.md`.
+- The PR remains draft as requested.
+
+### Best next steps
+
+1. Commit and push M135 plan log.
+2. Continue with final open-lane cleanup and inspect CI only when checks appear
+   or fail.
+3. Prioritize any CI failures over new feature work if GitHub starts reporting
+   failing checks.
+
+### Completion percentages after M135
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `90%`.
+- Fixed-boundary axisymmetric solve: `90%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `92%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `72%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `87%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `90%`.
+- PR merge readiness overall: `96%`.
+
+### User input needed
+
+No user input is needed.
+
+---
