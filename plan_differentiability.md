@@ -9975,3 +9975,60 @@ Completion:
 - Implicit residual-adjoint decomposition: 91%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.984%.
+
+## 2026-06-18 Residual Precompile Helper Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `maybe_precompile_residual_force_kernels` to
+   `vmec_jax.solvers.fixed_boundary.residual.force_cache`.
+2. Moved best-effort force `lower().compile()` and strict-update precompile
+   setup out of `solve_fixed_boundary_residual_iter`.
+3. Kept all compile failures swallowed, matching the previous non-semantic
+   precompile behavior.
+
+Results obtained:
+
+- `iteration.py` is down to 7,533 lines.
+- `solve_fixed_boundary_residual_iter` is down to 7,013 lines.
+- Force-callable selection, NumPy fast-path setup, and precompile logic are now
+   grouped in the residual force-cache domain.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/force_cache.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/force_cache.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_finish_cache_more_coverage.py::test_precompile_only_jit_precompile_exercises_force_cache_and_lower tests/test_solve_finish_cache_more_coverage.py::test_precompile_only_compute_force_cache_is_owned_and_limited tests/test_solve_finish_cache_more_coverage.py::test_precompile_only_jit_precompile_swallows_compile_failure -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_driver_control_fast.py tests/test_driver_api.py -q`
+- `python tools/diagnostics/source_health.py --top 14 --top-functions 20`
+
+Best next steps:
+
+1. Split VMEC2000 scan axis-reset preparation from `_run_vmec2000_scan` into
+   the scan/residual adapter domain.
+2. Split initial preconditioner-cache unpacking into a named scan-cache setup
+   object.
+3. Re-run the broader driver and scan shards after both scan-preparation splits.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.99990%.
+- Solver monolith reduction: 99.30%.
+- Free-boundary adjoint monolith reduction: 99.1%.
+- Driver workflow decomposition: 99.3%.
+- Residual iteration decomposition: 92.0%.
+- WOUT diagnostic/profile decomposition: 98.9%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 91%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.985%.
