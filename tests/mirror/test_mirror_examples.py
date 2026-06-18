@@ -117,6 +117,41 @@ def test_root_finite_current_pitch_example_runs_without_plots(tmp_path):
     assert metrics["field_line_theta_advance_mean"] > 1.0
 
 
+def test_root_stellarator_hybrid_boundary_example_runs_without_plots(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_stellarator_hybrid_boundary.py",
+            "--outdir",
+            str(tmp_path / "hybrid"),
+            "--ns",
+            "5",
+            "--ntheta",
+            "13",
+            "--nxi",
+            "17",
+            "--mpol",
+            "4",
+            "--maxiter",
+            "0",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    mout = Path(completed.stdout.strip())
+    output = load_mirror_output(mout)
+    metrics = json.loads((mout.parent / "stellarator_hybrid_boundary_metrics.json").read_text())
+    assert output.ntheta == 13
+    assert output.diagnostics.min_sqrtg > 0.0
+    assert metrics["mirror_end_theta_variation_max"] < 1.0e-12
+    assert metrics["midplane_theta_variation"] > 0.01
+    assert metrics["hybrid_symmetry_error"] < 1.0e-12
+    assert metrics["figures"] == {}
+
+
 def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     completed = subprocess.run(
         [

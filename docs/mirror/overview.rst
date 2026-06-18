@@ -47,7 +47,8 @@ without coupling it to toroidal VMEC assumptions:
   actual before/after diagnostics with a combined pressure/normal-field merit
   and normal-field-aware candidate selection between local, shape-preserving
   scale, normal-field-slope, mixed scale/normal-field, and no-op updates, plus
-  an optional strict normal-field guard;
+  an optional strict normal-field guard that records allowed strategies and
+  no-op rejection reasons in JSON output;
 - a repo-root ``examples/mirror_two_coil_axisym.py`` analytic benchmark that
   builds a fixed boundary from the closed-form on-axis field of two circular
   coils, overlays mirror ``B_z`` against that reference, draws the coils, and
@@ -55,6 +56,10 @@ without coupling it to toroidal VMEC assumptions:
 - repo-root residual-Newton, solver-comparison, manufactured fixed-boundary,
   finite-current pitch, and fixed-boundary solve-diagnostic examples with
   standard mirror plot bundles;
+- a first repo-root stellarator-mirror hybrid fixed-boundary fixture that uses
+  a straight mirror axis, a central rotating elliptical cross-section, smooth
+  tapering into circular mirror end sections, and standard geometry/field
+  plots;
 - focused tests for node ordering, polynomial exactness, interpolation, filtering,
   theta orthogonality, analytic axisymmetric geometry, field identities, and
   analytic energy, gradient checks, Hessian symmetry, MMS stationarity, I/O
@@ -78,6 +83,6 @@ Current solver status:
 - Open-field pitch diagnostics measure cap-to-cap field-line advance and turns.
   They should not be interpreted as toroidal rotational transform.
 
-Later phases finish differentiable optimization APIs, free-boundary LCFS
-updates, stellarator-mirror hybrid boundaries, and ESSOS circular-coil beta
-scan examples.
+Later phases finish differentiable optimization APIs, production
+free-boundary LCFS solves, higher-fidelity stellarator-mirror hybrid
+coordinates, and ESSOS circular-coil beta scan examples.

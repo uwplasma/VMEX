@@ -59,6 +59,45 @@ def test_cosine_modulated_boundary_geometry_matches_analytic_metrics():
     assert np.isclose(geom.volume, expected_volume, atol=3.0e-13, rtol=3.0e-13)
 
 
+def test_rotating_ellipse_mirror_hybrid_boundary_is_symmetric_and_circular_at_ends():
+    boundary = MirrorBoundary.rotating_ellipse_mirror_hybrid(
+        r0=0.31,
+        a2=0.12,
+        epsilon=0.18,
+        rotation_angle=np.pi,
+        stellarator_fraction=0.55,
+    )
+    xi = np.linspace(-1.0, 1.0, 9)
+    theta = np.linspace(0.0, 2.0 * np.pi, 17, endpoint=False)
+
+    radius = boundary.radius(xi, theta=theta)
+    symmetric = boundary.radius(-xi[::-1], theta=-theta)[:, ::-1]
+
+    assert boundary.is_axisymmetric is False
+    assert np.all(radius > 0.0)
+    np.testing.assert_allclose(radius, symmetric, rtol=1.0e-14, atol=1.0e-14)
+    np.testing.assert_allclose(radius[:, 0], radius[0, 0], rtol=1.0e-14, atol=1.0e-14)
+    np.testing.assert_allclose(radius[:, -1], radius[0, -1], rtol=1.0e-14, atol=1.0e-14)
+    assert np.ptp(radius[:, xi.size // 2]) > 0.05
+
+
+def test_rotating_ellipse_mirror_hybrid_geometry_has_positive_jacobian():
+    grid = _grid(ns=7, ntheta=21, nxi=25, mpol=5, length=1.2)
+    boundary = MirrorBoundary.rotating_ellipse_mirror_hybrid(
+        r0=0.28,
+        a2=0.08,
+        epsilon=0.12,
+        rotation_angle=np.pi,
+        stellarator_fraction=0.65,
+    )
+    state = MirrorState3D.from_boundary(grid, boundary)
+    geom = evaluate_geometry_3d(state, grid)
+
+    np.testing.assert_allclose(geom.r[-1], boundary.radius_on_grid_3d(grid))
+    assert np.all(geom.sqrtg > 0.0)
+    assert geom.volume > 0.0
+
+
 def test_3d_constraints_fix_boundary_ends_axis_and_lambda_gauge():
     grid = _grid(ns=7, ntheta=13, nxi=17, mpol=4, length=1.0)
     boundary = MirrorBoundary.cosine_modulated_radius(r0=0.32, a2=-0.08, a4=0.03, epsilon=0.06, theta_mode=2)
@@ -97,5 +136,7 @@ def test_3d_field_and_energy_reduce_to_axisymmetric_case():
     pressure = PressureProfile.polynomial([12.0, -6.0], gamma=2.0)
 
     assert np.allclose(field_3d.bmag, field_axisym.bmag[:, None, :])
-    assert np.isclose(magnetic_energy_3d(field_3d, geom_3d, grid), magnetic_energy_axisym(field_axisym, geom_axisym, grid))
+    assert np.isclose(
+        magnetic_energy_3d(field_3d, geom_3d, grid), magnetic_energy_axisym(field_axisym, geom_axisym, grid)
+    )
     assert np.isclose(pressure_energy_3d(pressure, geom_3d, grid), pressure_energy_axisym(pressure, geom_axisym, grid))

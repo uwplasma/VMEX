@@ -20,6 +20,8 @@ class MirrorBoundary:
     a4: float = 0.0
     epsilon: float = 0.0
     theta_mode: int = 0
+    rotation_angle: float = 0.0
+    stellarator_fraction: float = 1.0
     xi: np.ndarray | None = None
     radius_values: np.ndarray | None = None
 
@@ -85,6 +87,46 @@ class MirrorBoundary:
             theta_mode=theta_mode,
         )
 
+    @classmethod
+    def rotating_ellipse_mirror_hybrid(
+        cls,
+        *,
+        r0: float,
+        a2: float = 0.0,
+        a4: float = 0.0,
+        epsilon: float = 0.12,
+        rotation_angle: float = np.pi,
+        stellarator_fraction: float = 0.6,
+    ) -> "MirrorBoundary":
+        """Return a straight-axis mirror with a central rotating ellipse.
+
+        The elliptical deformation is strongest at the midplane, rotates by
+        ``rotation_angle`` across the active central segment, and tapers
+        smoothly to circular mirror end sections.  The profile is up-down
+        symmetric in the sense that ``r(theta, xi) = r(-theta, -xi)``.
+        """
+
+        r0 = float(r0)
+        epsilon = float(epsilon)
+        stellarator_fraction = float(stellarator_fraction)
+        if r0 <= 0.0:
+            raise ValueError("r0 must be positive")
+        if abs(epsilon) >= 1.0:
+            raise ValueError("abs(epsilon) must be less than one so the boundary stays positive")
+        if not (0.0 < stellarator_fraction <= 1.0):
+            raise ValueError("stellarator_fraction must be in (0, 1]")
+        if not np.isfinite(rotation_angle):
+            raise ValueError("rotation_angle must be finite")
+        return cls(
+            kind="rotating_ellipse_mirror_hybrid",
+            r0=r0,
+            a2=float(a2),
+            a4=float(a4),
+            epsilon=epsilon,
+            rotation_angle=float(rotation_angle),
+            stellarator_fraction=stellarator_fraction,
+        )
+
     @property
     def is_axisymmetric(self) -> bool:
         """Return whether this boundary is independent of theta."""
@@ -92,13 +134,26 @@ class MirrorBoundary:
 
     def _axial_radius(self, xi, *, dtype: Any | None = None) -> np.ndarray:
         xi = np.asarray(xi, dtype=dtype or float)
-        if self.kind in {"polynomial_radius", "cosine_modulated_radius"}:
+        if self.kind in {"polynomial_radius", "cosine_modulated_radius", "rotating_ellipse_mirror_hybrid"}:
             radius = float(self.r0) * (1.0 + self.a2 * xi**2 + self.a4 * xi**4)
         elif self.kind == "tabulated_radius":
             radius = interpolate_chebyshev_values(self.radius_values, self.xi, xi)
         else:
             raise ValueError(f"unsupported mirror boundary kind {self.kind!r}")
         return np.asarray(radius, dtype=dtype or float)
+
+    def _rotating_ellipse_factor(self, theta, xi, *, dtype: Any | None = None) -> np.ndarray:
+        xi = np.asarray(xi, dtype=dtype or float)
+        theta = np.asarray(theta, dtype=dtype or float)
+        normalized = np.abs(xi) / float(self.stellarator_fraction)
+        envelope = np.where(normalized < 1.0, (1.0 - normalized**2) ** 2, 0.0)
+        ellipticity = float(self.epsilon) * envelope
+        phase = 0.5 * float(self.rotation_angle) * np.clip(xi / float(self.stellarator_fraction), -1.0, 1.0)
+        major = 1.0 + ellipticity
+        minor = 1.0 - ellipticity
+        alpha = theta[:, None] - phase[None, :]
+        denominator = np.sqrt((minor[None, :] * np.cos(alpha)) ** 2 + (major[None, :] * np.sin(alpha)) ** 2)
+        return major[None, :] * minor[None, :] / denominator
 
     def radius(self, xi, *, theta=None, dtype: Any | None = None) -> np.ndarray:
         """Evaluate the boundary radius on axial nodes."""
@@ -108,6 +163,10 @@ class MirrorBoundary:
                 raise ValueError("theta nodes are required for a nonaxisymmetric boundary")
             theta = np.asarray(theta, dtype=dtype or float)
             radius = (1.0 + self.epsilon * np.cos(self.theta_mode * theta[:, None])) * radius[None, :]
+        elif self.kind == "rotating_ellipse_mirror_hybrid":
+            if theta is None:
+                raise ValueError("theta nodes are required for a rotating-ellipse hybrid boundary")
+            radius = radius[None, :] * self._rotating_ellipse_factor(theta, xi, dtype=dtype)
         radius = np.asarray(radius, dtype=dtype or float)
         if np.any(radius <= 0.0):
             raise ValueError("boundary radius must be positive on the requested grid")

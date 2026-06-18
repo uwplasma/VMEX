@@ -17,6 +17,7 @@ python examples/mirror_finite_current_pitch.py --outdir results/mirror/finite_cu
 python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils
 python examples/mirror_fixed_boundary_solve_diagnostic.py --outdir results/mirror/fixed_boundary_solve_diagnostic
 python examples/mirror_manufactured_fixed_boundary.py --outdir results/mirror/manufactured_fixed_boundary
+python examples/mirror_stellarator_hybrid_boundary.py --outdir results/mirror/stellarator_hybrid_boundary
 python examples/mirror_solver_comparison.py --outdir results/mirror/solver_comparison
 python examples/mirror_residual_newton_convergence_grid.py --outdir results/mirror/residual_newton_convergence_grid
 ```
@@ -54,6 +55,13 @@ The root-level ``examples/mirror_finite_current_pitch.py`` script uses the same
 two-coil fixed boundary with nonzero ``I'`` so the boundary field-line traces
 have visible cap-to-cap pitch.
 
+The root-level ``examples/mirror_stellarator_hybrid_boundary.py`` script is the
+first fixed-boundary stellarator-mirror hybrid geometry fixture. It keeps the
+mirror axis straight in ``z`` while a central elliptical cross-section rotates
+by one field-period angle and tapers smoothly into circular mirror end
+sections. The metrics JSON reports end circularity, midplane theta variation,
+up-down symmetry error, residual/force diagnostics, and standard plot paths.
+
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
 free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct
 coil parameters, samples the external field on the mirror axis and side
@@ -63,23 +71,22 @@ sampled on-axis field, and plots the coils, boundary, on-axis field comparison,
 and boundary ``|B|``. Pass ``--run-fixed-boundary-baseline`` to write one
 low-resolution fixed-boundary ``mout`` per beta case as a controlled pre-LCFS
 baseline, plus side-boundary normal-field and total-pressure imbalance
-diagnostics against the external coils. It also reports a damped, clipped
-axisymmetric LCFS radius proposal from a finite-difference external magnetic
-pressure response, with smooth cap tapering and optional axial smoothing.
-Pass ``--run-lcfs-pilot`` with
-``--run-fixed-boundary-baseline`` to apply that proposed boundary in one or
-more low-resolution fixed-boundary pilot steps and report actual before/after
-LCFS diagnostics. Pilot acceptance uses a dimensionless combined merit with
-pressure-balance and normalized normal-field terms. It does not solve for a
-free-boundary LCFS yet.
-The default ``--lcfs-proposal-mode best_predicted`` compares the local
-pressure-update candidate with shape-preserving scale, normal-field-slope,
-mixed scale/normal-field, and no-op candidates and uses the candidate with
-lower predicted combined merit.
-Pass ``--lcfs-require-bnormal-nonincrease`` to enable a stricter guard that
-uses the mixed search when it can improve merit without increasing predicted
-normal-field RMS, otherwise falling back to an explicit no-op and skipped
-pilot row.
+diagnostics against the external coils.
+
+With ``--run-lcfs-pilot`` and ``--run-fixed-boundary-baseline``, the example
+applies low-resolution candidate LCFS updates and reports actual before/after
+diagnostics. The default ``--lcfs-proposal-mode best_predicted`` scores local
+pressure, shape-preserving scale, normal-field-slope, mixed
+scale/normal-field, and no-op candidates using a dimensionless merit with
+pressure-balance and normalized normal-field terms. Pass
+``--lcfs-require-bnormal-nonincrease`` to enable a stricter guard: candidates
+that increase exact coil-resampled ``B_ext.n`` RMS are filtered out, the mixed
+scale/normal-field candidate is selected when it improves merit while satisfying
+the guard, and otherwise the explicit no-op candidate records a skipped pilot
+row. Metrics JSON rows include ``lcfs_update_allowed_strategies`` and
+``lcfs_update_rejection_reason`` fields so downstream scripts can distinguish
+accepted, rejected, and guard-limited pilot steps. This is still an LCFS pilot
+workflow, not a converged free-boundary equilibrium solve.
 
 The root-level ``examples/mirror_fixed_boundary_solve_diagnostic.py`` script
 runs an actual L-BFGS fixed-boundary relaxation from a perturbed interior state.

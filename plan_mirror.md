@@ -9346,3 +9346,153 @@ Result: both checks passed.
 No user input is needed.
 
 ---
+
+## 79. 2026-06-18 M13a strict mixed docs and first hybrid boundary fixture
+
+This tranche updated the user-facing free-boundary documentation for the
+current strict mixed LCFS pilot workflow and started the stellarator-mirror
+hybrid lane with a tested straight-axis rotating-ellipse boundary fixture.
+
+### Steps taken
+
+- Updated the mirror examples README with:
+  - strict mixed pilot behavior;
+  - exact `B_ext.n` guard semantics;
+  - `lcfs_update_allowed_strategies`;
+  - `lcfs_update_rejection_reason`.
+- Updated mirror docs/index wording so the current first hybrid fixture is no
+  longer described as entirely planned work.
+- Added `MirrorBoundary.rotating_ellipse_mirror_hybrid`.
+- Added a root example:
+  - `examples/mirror_stellarator_hybrid_boundary.py`.
+- Added tests for:
+  - hybrid boundary positivity and up-down symmetry;
+  - circular mirror end sections;
+  - positive-Jacobian 3D geometry;
+  - root example smoke coverage and metrics JSON.
+- Ran the plotted hybrid example and visually checked 3D/cross-section plots.
+
+### Results obtained
+
+Generated artifacts:
+
+- `results/mirror/m13a_stellarator_hybrid_boundary/mout_stellarator_hybrid_boundary.nc`.
+- `results/mirror/m13a_stellarator_hybrid_boundary/stellarator_hybrid_boundary_metrics.json`.
+- `results/mirror/m13a_stellarator_hybrid_boundary/figures/stellarator_hybrid_boundary_mirror_boundary_3d.png`.
+- `results/mirror/m13a_stellarator_hybrid_boundary/figures/stellarator_hybrid_boundary_mirror_cross_sections.png`.
+
+Hybrid plotted example metrics:
+
+| quantity | value |
+| :--- | ---: |
+| radius min | `0.264199369638` |
+| radius max | `0.336000000000` |
+| mirror-end theta variation max | `5.551115123126e-17` |
+| midplane theta variation | `7.180063036192e-02` |
+| up-down symmetry error | `0.0` |
+| min `sqrt(g)` | `4.188078415030e-02` |
+| mirror ratio | `1.617536892278` |
+| final `fsq` | `1.084111294800e-08` |
+
+Interpretation:
+
+- The first hybrid fixture keeps a straight mirror axis and implements the
+  requested hybrid shape at the side-boundary level.
+- The central stellarator-like segment has a rotating elliptical cross-section.
+- The deformation tapers smoothly to circular mirror end sections.
+- The boundary satisfies `r(theta, xi) = r(-theta, -xi)` on the check grid,
+  providing the intended up-down symmetry for this straight-axis first cut.
+- Higher-fidelity hybrid coordinates with a curved/rotating magnetic axis
+  remain a later lane.
+
+### How it was tested
+
+Focused boundary/example tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_geometry_3d.py::test_rotating_ellipse_mirror_hybrid_boundary_is_symmetric_and_circular_at_ends \
+  tests/mirror/test_mirror_geometry_3d.py::test_rotating_ellipse_mirror_hybrid_geometry_has_positive_jacobian \
+  tests/mirror/test_mirror_examples.py::test_root_stellarator_hybrid_boundary_example_runs_without_plots \
+  -q
+```
+
+Result: `3 passed in 1.83s`.
+
+Plotted hybrid example:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_stellarator_hybrid_boundary.py \
+  --outdir results/mirror/m13a_stellarator_hybrid_boundary \
+  --ns 7 \
+  --ntheta 25 \
+  --nxi 33 \
+  --mpol 6 \
+  --maxiter 0
+```
+
+Result: `mout`, metrics JSON, and 10 standard mirror figures written.  The
+3D boundary and cross-section plots were opened and visually checked.
+
+Lint/format/docs/whitespace:
+
+```bash
+python -m ruff check \
+  vmec_jax/mirror/core/boundary.py \
+  examples/mirror_stellarator_hybrid_boundary.py \
+  tests/mirror/test_mirror_geometry_3d.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff format --check \
+  vmec_jax/mirror/core/boundary.py \
+  examples/mirror_stellarator_hybrid_boundary.py \
+  tests/mirror/test_mirror_geometry_3d.py \
+  tests/mirror/test_mirror_examples.py
+python -m sphinx -W -j auto -b html docs docs/_build/html
+git diff --check
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- The hybrid shape is a `MirrorBoundary` classmethod because it is a reusable
+  fixed-boundary parameterization.
+- The root example owns workflow-specific metrics and plotting, matching the
+  existing root fixed-boundary examples.
+- The first hybrid cut stays within the existing straight-axis radial-boundary
+  representation, avoiding premature curved-axis coordinate changes.
+
+### Best next steps
+
+1. Commit and push M13a.
+2. Add a hybrid example README/doc note with the precise straight-axis
+   limitation and the planned curved-axis follow-up.
+3. Add a small parameter scan over `epsilon`/`rotation_angle` to verify
+   positive Jacobian and visual quality before using this boundary in solver
+   convergence studies.
+4. Then continue toward the higher-fidelity stellarator-mirror hybrid lane:
+   smooth axis connection, repeated field-period construction, and fixed/free
+   boundary examples.
+
+### Completion percentages after M13a
+
+- Geometry/grids/bases: `92%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `88%`.
+- I/O schema and docs: `91%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `67%`.
+- Stellarator-mirror hybrid lane: `22%`.
+- ESSOS circular-coil mirror beta scan: `53%`.
+- PR merge readiness overall: `91%`.
+
+### User input needed
+
+No user input is needed.
+
+---
