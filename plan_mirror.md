@@ -5740,6 +5740,232 @@ No user input is needed.
 
 ---
 
+## 82. 2026-06-18 M13d toroidal hybrid convergence runner
+
+This tranche added the first repeatable convergence harness for the toroidal
+stellarator-mirror hybrid fixture.  The harness stays on the ordinary
+toroidal VMEC/JAX input, solver, WOUT, and profile-diagnostic path; it is not a
+mirror-native open-ended solve.
+
+### Steps taken
+
+- Checked PR #21 CI with the GitHub Actions helper:
+  - no failing checks were detected for the latest pushed commit at the time of
+    this audit;
+  - the branch remained draft and mergeable.
+- Added `examples/toroidal_stellarator_mirror_hybrid_convergence.py`.
+- Added a focused smoke test in `tests/test_toroidal_hybrid.py` that runs the
+  convergence example without solves or plots.
+- Updated `examples/mirror/README.md` with the new root example command and
+  diagnostic outputs.
+- Extended the run-solve rows to record:
+  - runtime;
+  - iteration count;
+  - final `fsq`;
+  - convergence flag;
+  - aspect ratio from the ordinary WOUT helper;
+  - mean iota from the ordinary VMEC/JAX iota-profile helper;
+  - magnetic-well proxy from the ordinary finite-beta helper;
+  - the generated `wout_toroidal_stellarator_mirror_hybrid.nc` path.
+
+### Results obtained
+
+No generated results were committed.  Local ignored artifacts were written
+under `results/` only for validation.
+
+No-solve convergence plot run:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  --outdir results/toroidal_stellarator_mirror_hybrid_convergence_m13d_plot \
+  --ns-array 7,9 \
+  --mode-pairs 5:4 \
+  --ntheta-fit 32 \
+  --nzeta-fit 32
+```
+
+Result:
+
+- wrote a JSON summary and
+  `figures/toroidal_hybrid_convergence.png`;
+- the plotted fit errors were at machine precision for the two rows.
+
+One-iteration solve smoke:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  --outdir results/toroidal_stellarator_mirror_hybrid_convergence_m13d_solve_smoke2 \
+  --ns-array 7 \
+  --mode-pairs 5:4 \
+  --ntheta-fit 32 \
+  --nzeta-fit 32 \
+  --niter 3 \
+  --run-solve \
+  --max-iter 1 \
+  --no-plots
+```
+
+Result for `ns007_mpol05_ntor04`:
+
+| quantity | value |
+| :--- | ---: |
+| max boundary fit error | `6.661338147751e-16` |
+| runtime | `6.688981666 s` |
+| VMEC/JAX iterations | `1` |
+| final `fsq` | `1.222006074808e-02` |
+| converged | `false` |
+| aspect | `5.661074062196` |
+| mean iota | `2.768637859473e-02` |
+| magnetic-well proxy | `-1.686348206555e-02` |
+
+The false convergence flag is expected for a deliberate one-iteration smoke
+row.
+
+### How it was tested
+
+Focused tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
+```
+
+Result: `4 passed in 1.93s`.
+
+Lint and format checks:
+
+```bash
+python -m ruff check \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py
+python -m ruff format --check \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py
+```
+
+Result: all checks passed; both Python files were already formatted.
+
+Documentation:
+
+```bash
+python -m sphinx -W -j auto -b html docs docs/_build/html
+```
+
+Result: build succeeded.
+
+Whitespace:
+
+```bash
+git diff --check
+```
+
+Result: no whitespace errors.
+
+### File structure and best-practice notes
+
+- The convergence runner is a separate root example because it is a workflow
+  script, not a reusable physics kernel.
+- It reuses `vmec_jax.toroidal_hybrid` for boundary construction and the
+  ordinary `run_fixed_boundary`/`write_wout_from_fixed_boundary_run` path for
+  solves.
+- It writes generated files below user-selected output directories, with the
+  documented default under ignored `results/`.
+- The CI-facing test exercises the cheap no-solve path, while real solve rows
+  remain opt-in through `--run-solve`.
+
+### Finite plan from here
+
+M13e: toroidal hybrid solve convergence.
+
+- Run a low-resolution matrix over `ns`, `mpol`, and `ntor` with
+  `--run-solve`, initially with modest iteration budgets.
+- Add optional CSV export for convergence rows so longer local/GPU runs can be
+  compared without hand-parsing JSON.
+- Add iota and magnetic-well plots when solve rows are present.
+- Keep the committed code light and keep generated plots/results out of git.
+
+M13f: VMEC2000 parity for the toroidal hybrid input.
+
+- Run local VMEC2000 on at least one generated low-resolution input.
+- Compare convergence status, `fsq`, boundary coefficients, aspect, iota, and
+  available WOUT scalar/profile diagnostics against VMEC/JAX.
+- Log runtime and memory where practical.
+
+M13g: toroidal hybrid geometry refinement.
+
+- Replace the first analytic side/corner weighting with a more physically
+  controlled parameterization:
+  - mirror-like toroidal side arcs;
+  - stellarator-like corner arcs;
+  - smooth periodic connection;
+  - up-down symmetry by default;
+  - optional helicity and corner-width controls.
+- Keep the parameterization VMEC-compatible and differentiable.
+
+M10/M13h: differentiable solved-state path.
+
+- Keep fast CLI examples on NumPy/SciPy/host-side loops when that is the
+  better runtime path.
+- For research-grade derivatives, add a solved-state API based on implicit
+  differentiation or adjoint/custom linear-solve differentiation instead of
+  differentiating through long nonlinear iteration histories.
+- Reuse the regular toroidal solver's preconditioning, residual normalization,
+  line-search, and profile helpers wherever possible.
+
+M16: ESSOS circular-coil free-boundary beta scan.
+
+- Keep the open-ended mirror LCFS pilot separate from the toroidal hybrid lane.
+- Build the default `1%`, `3%`, and `10%` beta scan through the existing
+  ESSOS-compatible circular-loop bridge.
+- Promote only validated setup scripts, summaries, and compressed illustrative
+  figures to docs; keep run directories ignored.
+
+Documentation cleanup:
+
+- Update the PR body after each major section so GitHub does not lag the local
+  plan.
+- Keep `docs/mirror/` and `examples/mirror/README.md` synchronized with source
+  status and known limitations.
+- Prefer compact source modules and pedagogical docstrings over one-off helper
+  proliferation.
+
+### Best next steps
+
+1. Commit and push M13d.
+2. Refresh the PR body so it reflects sections 80-82.
+3. Add CSV export and solved-row profile plots to the toroidal hybrid
+   convergence runner.
+4. Run the first modest `--run-solve` grid locally, then move longer rows to
+   the office GPU/VMEC2000 environment.
+5. Start VMEC2000 parity on the generated toroidal-hybrid input.
+
+### Completion percentages after M82
+
+- Geometry/grids/bases: `93%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `88%`.
+- I/O schema and docs: `92%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `67%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `24%`.
+- ESSOS circular-coil mirror beta scan: `53%`.
+- PR merge readiness overall: `92%`.
+
+### User input needed
+
+No user input is needed.  The current default toroidal hybrid interpretation is
+mirror-like side arcs connected by stellarator-like corner arcs in a closed
+toroidal VMEC geometry.
+
+---
+
 ## 56. 2026-06-17 M8w matrix-free block LSMR correction
 
 This lane converted the successful M8u/M8v block-dense split into a scalable

@@ -81,3 +81,37 @@ def test_toroidal_hybrid_example_runs_without_plots(tmp_path: Path):
     assert metrics["stellsym_Z_error"] < 1.0e-13
     assert metrics["rbc_count"] > 3
     assert metrics["zbs_count"] > 3
+
+
+def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
+    env = dict(os.environ)
+    env["PYTHONPATH"] = f"{Path.cwd()}{os.pathsep}{env.get('PYTHONPATH', '')}"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/toroidal_stellarator_mirror_hybrid_convergence.py",
+            "--outdir",
+            str(tmp_path / "hybrid_convergence"),
+            "--ns-array",
+            "7,9",
+            "--mode-pairs",
+            "5:4",
+            "--ntheta-fit",
+            "32",
+            "--nzeta-fit",
+            "32",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        env=env,
+        text=True,
+    )
+
+    summary_path = Path(completed.stdout.strip())
+    summary = json.loads(summary_path.read_text())
+    assert len(summary["rows"]) == 2
+    assert summary["figures"] == {}
+    assert all(not row["ran_solve"] for row in summary["rows"])
+    assert all(row["max_boundary_fit_error"] < 1.0e-12 for row in summary["rows"])
+    assert [row["ns"] for row in summary["rows"]] == [7, 9]

@@ -19,6 +19,7 @@ python examples/mirror_fixed_boundary_solve_diagnostic.py --outdir results/mirro
 python examples/mirror_manufactured_fixed_boundary.py --outdir results/mirror/manufactured_fixed_boundary
 python examples/mirror_stellarator_hybrid_boundary.py --outdir results/mirror/stellarator_hybrid_boundary
 python examples/toroidal_stellarator_mirror_hybrid.py --outdir results/toroidal_stellarator_mirror_hybrid
+python examples/toroidal_stellarator_mirror_hybrid_convergence.py --outdir results/toroidal_stellarator_mirror_hybrid_convergence
 python examples/mirror_solver_comparison.py --outdir results/mirror/solver_comparison
 python examples/mirror_residual_newton_convergence_grid.py --outdir results/mirror/residual_newton_convergence_grid
 ```
@@ -72,6 +73,13 @@ mirror-like side arcs and localized stellarator-like corner shaping, writes
 boundary metrics and plots, and can optionally run the ordinary toroidal
 fixed-boundary solver with ``--run-solve`` to produce a ``wout_*.nc`` plus
 standard VMEC plots.
+
+The companion ``examples/toroidal_stellarator_mirror_hybrid_convergence.py``
+script scans ``ns`` and ``mpol:ntor`` pairs for the same generated toroidal
+hybrid input. By default it writes a lightweight JSON boundary-fit report; pass
+``--run-solve`` to run the ordinary fixed-boundary driver for each row and
+record runtime, iteration count, final ``fsq``, convergence status, aspect,
+mean iota, magnetic-well proxy, and a ``wout_*.nc``.
 
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
 free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct
