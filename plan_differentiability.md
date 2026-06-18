@@ -15123,3 +15123,73 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99990%.
+
+## 2026-06-18 Optimizer Exact-State Helper Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `FixedBoundaryExactOptimizer._solve_exact_state` as the single
+   scan-vs-tape accepted-point solve selector.
+2. Replaced repeated scan/tape ternaries in aspect-ratio, QS-objective, initial
+   evaluation, and final exact-output reconstruction paths.
+3. Preserved the tape-path payload return used by the initial evaluation and
+   kept the scan path state-only/cache behavior unchanged.
+
+Results obtained:
+
+- `vmec_jax/optimization.py` dropped from 2844 to 2830 lines.
+- Accepted-point final-output code now uses one named exact-state seam, making
+  future branch-local replay and scalar-adjoint work easier to audit.
+- No optimizer method selection, residual/Jacobian math, or final best-exact
+  selection policy changed.
+- No generated outputs or large files were added.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/optimization.py`
+- `python -m ruff check vmec_jax/optimization.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_differentiation_optimization_api_fast.py::test_run_selects_best_exact_accepted_point_for_final_outputs tests/test_differentiation_optimization_api_fast.py::test_run_reuses_retained_best_exact_state_when_final_replay_fails tests/test_optimization_wave2_coverage.py::test_run_scipy_final_exact_failure_uses_prior_best_exact_not_trial tests/test_optimization_wave2_coverage.py::test_run_lbfgs_history_best_exact_drives_final_fallback tests/test_optimization_wave2_coverage.py::test_run_matrix_free_history_best_exact_drives_final_fallback tests/test_optimization_fast_optimizer_methods.py::test_aspect_and_quasisymmetry_wrappers_use_configured_exact_path -q`
+  - Result: passed.
+- `python tools/diagnostics/source_health.py --top 16 --top-functions 30`
+
+Best next steps:
+
+1. Continue optimizer orchestration cleanup around method dispatch or final
+   history assembly only if it remains behavior-preserving and testable with
+   fast exact-output/cache tests.
+2. Avoid changing exact residual/Jacobian replay internals in the same tranche
+   unless a dedicated AD-vs-FD gate is selected.
+3. Re-run source-health after each tranche and prefer edits that reduce both
+   total lines and function lengths.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.60%.
+- Free-boundary adjoint monolith reduction: 99.40%.
+- Driver workflow decomposition: 99.89%.
+- Residual iteration decomposition: 97.4%.
+- WOUT diagnostic/profile decomposition: 99.88%.
+- Bcovar/WOUT parity decomposition: 99.09%.
+- Force-kernel decomposition: 99.65%.
+- Scan/performance policy consolidation: 99.6%.
+- Tomnsps transform decomposition: 98.4%.
+- Initial-guess decomposition: 99.0%.
+- Optimizer workflow decomposition: 99.45%.
+- Fixed-boundary optimizer decomposition: 95.4%.
+- Plotting/WOUT visualization decomposition: 95.8%.
+- Sweep/example workflow decomposition: 93.2%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective/staged-runner decomposition: 96.8%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99991%.

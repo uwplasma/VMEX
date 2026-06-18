@@ -1181,6 +1181,15 @@ class FixedBoundaryExactOptimizer:
             return self._run_in_solver_device_context(self._solve_scan_exact_state, params)
         return solve_scan_exact_state(self, params)
 
+    def _solve_exact_state(self, params, *, return_payload: bool = False):
+        """Run the selected accepted-point exact solve."""
+        if self._scan_exact_path == "scan":
+            state = self._solve_scan_exact_state(params)
+            return (state, None) if return_payload else state
+        if return_payload:
+            return self._solve_exact_with_tape(params, return_payload=True)
+        return self._solve_exact_with_tape(params)
+
     def _solve_exact_with_tape(self, params, *, return_payload: bool = False, jvp_only: bool = False):
         """Run exact solve + build adjoint tape, with caching."""
         if self._solver_device_name is not None and not self._inside_solver_device_context:
@@ -2069,11 +2078,7 @@ class FixedBoundaryExactOptimizer:
         """Return the aspect ratio at *params* (uses exact solve cache)."""
         from .wout import equilibrium_aspect_ratio_from_state
 
-        state = (
-            self._solve_scan_exact_state(params)
-            if self._scan_exact_path == "scan"
-            else self._solve_exact_with_tape(params)
-        )
+        state = self._solve_exact_state(params)
         return float(np.asarray(equilibrium_aspect_ratio_from_state(state=state, static=self._static)))
 
     def _qs_from_res(self, res: np.ndarray) -> float:
@@ -2177,11 +2182,7 @@ class FixedBoundaryExactOptimizer:
 
     def quasisymmetry_objective(self, params) -> float:
         """Return the total QS objective at *params*."""
-        state = (
-            self._solve_scan_exact_state(params)
-            if self._scan_exact_path == "scan"
-            else self._solve_exact_with_tape(params)
-        )
+        state = self._solve_exact_state(params)
         res = self._evaluate_residuals_from_state(state)
         return self._qs_total_from_state(state, res)
 
@@ -2383,10 +2384,7 @@ class FixedBoundaryExactOptimizer:
         """Evaluate and record the exact initial point for an optimization run."""
 
         res0 = self.residual_fun(params0_arr)
-        if self._scan_exact_path == "scan":
-            state0 = self._solve_scan_exact_state(params0_arr)
-        else:
-            state0, _ = self._solve_exact_with_tape(params0_arr, return_payload=True)
+        state0, _ = self._solve_exact_state(params0_arr, return_payload=True)
         entry0 = self._history_entry_from_state_or_residual(
             state0,
             res0,
@@ -2475,11 +2473,7 @@ class FixedBoundaryExactOptimizer:
         state_final = self._cached_exact_state(result["x"])
         if state_final is None:
             try:
-                state_final = (
-                    self._solve_scan_exact_state(result["x"])
-                    if self._scan_exact_path == "scan"
-                    else self._solve_exact_with_tape(result["x"])
-                )
+                state_final = self._solve_exact_state(result["x"])
             except Exception as exc:
                 if best_exact_params is not None and best_exact_residual is not None and np.isfinite(best_exact_cost):
                     selected_best_exact = True
@@ -2490,11 +2484,7 @@ class FixedBoundaryExactOptimizer:
                     if state_final is None:
                         state_final = best_exact_state
                     if state_final is None:
-                        state_final = (
-                            self._solve_scan_exact_state(result["x"])
-                            if self._scan_exact_path == "scan"
-                            else self._solve_exact_with_tape(result["x"])
-                        )
+                        state_final = self._solve_exact_state(result["x"])
                 else:
                     raise RuntimeError(
                         "Final exact accepted-point solve failed and no prior exact "
@@ -2539,11 +2529,7 @@ class FixedBoundaryExactOptimizer:
                 state_final = best_exact_state
             if state_final is None:
                 try:
-                    state_final = (
-                        self._solve_scan_exact_state(result["x"])
-                        if self._scan_exact_path == "scan"
-                        else self._solve_exact_with_tape(result["x"])
-                    )
+                    state_final = self._solve_exact_state(result["x"])
                 except Exception as exc:
                     raise RuntimeError(
                         "Best exact accepted point was selected for final output, "
