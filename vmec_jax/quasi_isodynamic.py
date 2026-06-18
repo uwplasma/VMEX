@@ -20,7 +20,8 @@ Goodman et al. omnigenity workflow, while remaining differentiable.
 
 from __future__ import annotations
 
-from typing import Iterable
+from dataclasses import dataclass
+from typing import Any, Iterable
 
 import numpy as np
 
@@ -98,6 +99,117 @@ def _nearest_half_mesh_indices(surfaces: Iterable[float], *, n_half: int) -> np.
     surf = np.asarray(list(surfaces), dtype=float)
     s_half = 0.5 * (np.arange(int(n_half), dtype=float) + np.arange(1, int(n_half) + 1, dtype=float)) / float(n_half)
     return np.asarray([int(np.argmin(np.abs(s_half - value))) for value in surf], dtype=np.int32)
+
+
+@dataclass(frozen=True)
+class _QIBoozerSurfaceGrid:
+    """Validated Boozer data and smooth-QI sampling grid."""
+
+    bmnc_b: Any
+    xm_b: Any
+    xn_b: Any
+    iota_b: Any
+    nfp: int
+    nphi: int
+    nalpha: int
+    n_bounce: int
+    nsurf: int
+    weights_arr: Any
+    dtype: Any
+    phi0: Any
+    phi1: Any
+    phi: Any
+    alpha: Any
+    bmag: Any
+    bnorm: Any
+    levels: Any
+    level_count: int
+    eps: Any
+
+
+def _qi_boozer_surface_grid(
+    *,
+    bmnc_b,
+    xm_b,
+    xn_b,
+    iota_b,
+    nfp: int,
+    weights,
+    nphi: int,
+    nalpha: int,
+    n_bounce: int,
+    include_bounce_endpoints: bool,
+    softness: float,
+    phimin: float,
+) -> _QIBoozerSurfaceGrid:
+    """Validate Boozer inputs and evaluate normalized ``|B|`` on field lines."""
+    bmnc_b = jnp.asarray(bmnc_b, dtype=jnp.float64)
+    xm_b = jnp.asarray(xm_b, dtype=jnp.float64)
+    xn_b = jnp.asarray(xn_b, dtype=jnp.float64)
+    iota_b = jnp.asarray(iota_b, dtype=jnp.float64)
+    nfp = int(nfp)
+    nphi = int(nphi)
+    nalpha = int(nalpha)
+    n_bounce = int(n_bounce)
+    if bmnc_b.ndim != 2:
+        raise ValueError(f"bmnc_b must have shape (nsurf, nmodes), got {bmnc_b.shape}")
+    if int(bmnc_b.shape[1]) != int(xm_b.shape[0]) or int(xm_b.shape[0]) != int(xn_b.shape[0]):
+        raise ValueError("Boozer mode arrays must have the same mode dimension as bmnc_b")
+    if int(iota_b.shape[0]) != int(bmnc_b.shape[0]):
+        raise ValueError("iota_b must have one value per Boozer surface")
+    if nphi < 4 or nalpha < 2 or n_bounce < 2:
+        raise ValueError("QI residual requires nphi >= 4, nalpha >= 2, and n_bounce >= 2")
+
+    nsurf = int(bmnc_b.shape[0])
+    weights_arr = _as_weight_array(weights, nsurf)
+    if int(weights_arr.shape[0]) != nsurf:
+        raise ValueError("weights must have the same length as the number of Boozer surfaces")
+
+    dtype = bmnc_b.dtype
+    phi0 = jnp.asarray(float(phimin), dtype=dtype)
+    phi1 = phi0 + jnp.asarray(2.0 * np.pi / nfp, dtype=dtype)
+    phi = jnp.linspace(phi0, phi1, nphi, endpoint=True, dtype=dtype)
+    alpha = jnp.linspace(0.0, 2.0 * jnp.pi, nalpha, endpoint=False, dtype=dtype)
+
+    theta = alpha[None, None, :] + iota_b[:, None, None] * phi[None, :, None]
+    angle = theta[:, :, :, None] * xm_b[None, None, None, :] - phi[None, :, None, None] * xn_b[
+        None, None, None, :
+    ]
+    bmag = jnp.sum(bmnc_b[:, None, None, :] * jnp.cos(angle), axis=-1)
+
+    bmin = jnp.min(bmag, axis=(1, 2), keepdims=True)
+    bmax = jnp.max(bmag, axis=(1, 2), keepdims=True)
+    denom = jnp.maximum(bmax - bmin, jnp.asarray(jnp.finfo(dtype).tiny, dtype=dtype))
+    bnorm = (bmag - bmin) / denom
+
+    if bool(include_bounce_endpoints):
+        levels = jnp.linspace(0.0, 1.0, n_bounce, endpoint=True, dtype=dtype)
+    else:
+        levels = jnp.linspace(0.0, 1.0, n_bounce + 2, endpoint=True, dtype=dtype)[1:-1]
+    eps = jnp.maximum(jnp.asarray(float(softness), dtype=dtype), jnp.asarray(jnp.finfo(dtype).eps, dtype=dtype))
+
+    return _QIBoozerSurfaceGrid(
+        bmnc_b=bmnc_b,
+        xm_b=xm_b,
+        xn_b=xn_b,
+        iota_b=iota_b,
+        nfp=nfp,
+        nphi=nphi,
+        nalpha=nalpha,
+        n_bounce=n_bounce,
+        nsurf=nsurf,
+        weights_arr=weights_arr,
+        dtype=dtype,
+        phi0=phi0,
+        phi1=phi1,
+        phi=phi,
+        alpha=alpha,
+        bmag=bmag,
+        bnorm=bnorm,
+        levels=levels,
+        level_count=int(levels.shape[0]),
+        eps=eps,
+    )
 
 
 def mirror_ratio_penalty_from_boozer_modes(
@@ -645,51 +757,43 @@ def quasi_isodynamic_residual_from_boozer_modes(
     """
     _require_jax()
 
-    bmnc_b = jnp.asarray(bmnc_b, dtype=jnp.float64)
-    xm_b = jnp.asarray(xm_b, dtype=jnp.float64)
-    xn_b = jnp.asarray(xn_b, dtype=jnp.float64)
-    iota_b = jnp.asarray(iota_b, dtype=jnp.float64)
-    nfp = int(nfp)
-    nphi = int(nphi)
-    nalpha = int(nalpha)
-    n_bounce = int(n_bounce)
-    if bmnc_b.ndim != 2:
-        raise ValueError(f"bmnc_b must have shape (nsurf, nmodes), got {bmnc_b.shape}")
-    if int(bmnc_b.shape[1]) != int(xm_b.shape[0]) or int(xm_b.shape[0]) != int(xn_b.shape[0]):
-        raise ValueError("Boozer mode arrays must have the same mode dimension as bmnc_b")
-    if int(iota_b.shape[0]) != int(bmnc_b.shape[0]):
-        raise ValueError("iota_b must have one value per Boozer surface")
-    if nphi < 4 or nalpha < 2 or n_bounce < 2:
+    if int(nphi) < 4 or int(nalpha) < 2 or int(n_bounce) < 2:
         raise ValueError("QI residual requires nphi >= 4, nalpha >= 2, and n_bounce >= 2")
     if shuffle_profile_nphi_out is not None and int(shuffle_profile_nphi_out) < 4:
         raise ValueError("shuffle_profile_nphi_out must be >= 4 when supplied")
-
-    nsurf = int(bmnc_b.shape[0])
-    weights_arr = _as_weight_array(weights, nsurf)
-    if int(weights_arr.shape[0]) != nsurf:
-        raise ValueError("weights must have the same length as the number of Boozer surfaces")
-
-    dtype = bmnc_b.dtype
-    phi0 = jnp.asarray(float(phimin), dtype=dtype)
-    phi1 = phi0 + jnp.asarray(2.0 * np.pi / nfp, dtype=dtype)
-    phi = jnp.linspace(phi0, phi1, nphi, endpoint=True, dtype=dtype)
-    alpha = jnp.linspace(0.0, 2.0 * jnp.pi, nalpha, endpoint=False, dtype=dtype)
-
-    theta = alpha[None, None, :] + iota_b[:, None, None] * phi[None, :, None]
-    angle = theta[:, :, :, None] * xm_b[None, None, None, :] - phi[None, :, None, None] * xn_b[None, None, None, :]
-    bmag = jnp.sum(bmnc_b[:, None, None, :] * jnp.cos(angle), axis=-1)
-
-    bmin = jnp.min(bmag, axis=(1, 2), keepdims=True)
-    bmax = jnp.max(bmag, axis=(1, 2), keepdims=True)
-    denom = jnp.maximum(bmax - bmin, jnp.asarray(jnp.finfo(dtype).tiny, dtype=dtype))
-    bnorm = (bmag - bmin) / denom
-
-    if bool(include_bounce_endpoints):
-        levels = jnp.linspace(0.0, 1.0, n_bounce, endpoint=True, dtype=dtype)
-    else:
-        levels = jnp.linspace(0.0, 1.0, n_bounce + 2, endpoint=True, dtype=dtype)[1:-1]
-    level_count = int(levels.shape[0])
-    eps = jnp.maximum(jnp.asarray(float(softness), dtype=dtype), jnp.asarray(jnp.finfo(dtype).eps, dtype=dtype))
+    qi_grid = _qi_boozer_surface_grid(
+        bmnc_b=bmnc_b,
+        xm_b=xm_b,
+        xn_b=xn_b,
+        iota_b=iota_b,
+        nfp=int(nfp),
+        weights=weights,
+        nphi=int(nphi),
+        nalpha=int(nalpha),
+        n_bounce=int(n_bounce),
+        include_bounce_endpoints=bool(include_bounce_endpoints),
+        softness=float(softness),
+        phimin=float(phimin),
+    )
+    bmnc_b = qi_grid.bmnc_b
+    xm_b = qi_grid.xm_b
+    xn_b = qi_grid.xn_b
+    iota_b = qi_grid.iota_b
+    nfp = qi_grid.nfp
+    nphi = qi_grid.nphi
+    nalpha = qi_grid.nalpha
+    nsurf = qi_grid.nsurf
+    weights_arr = qi_grid.weights_arr
+    dtype = qi_grid.dtype
+    phi0 = qi_grid.phi0
+    phi1 = qi_grid.phi1
+    phi = qi_grid.phi
+    alpha = qi_grid.alpha
+    bmag = qi_grid.bmag
+    bnorm = qi_grid.bnorm
+    levels = qi_grid.levels
+    level_count = qi_grid.level_count
+    eps = qi_grid.eps
     occupancy = jax_sigmoid((levels[None, None, None, :] - bnorm[:, :, :, None]) / eps)
 
     # Mean over the uniformly sampled toroidal interval. This is proportional
