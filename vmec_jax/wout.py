@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
 import numpy as np
 
 from ._compat import has_jax, jax, jnp
 from .modes import vmec_mode_table
 from .modes import nyquist_mode_table_from_grid
-from .namelist import InData
 from .state import VMECState
 from .fourier import eval_fourier
 from .vmec_parity import vmec_m1_internal_to_physical_signed
@@ -35,11 +34,16 @@ from .io.wout import parity as _wout_parity_helpers
 from .io.wout import state as _wout_state_helpers
 from .io.wout.minimal import (
     WoutMinimalVmecLike,
+    attach_force_payload_geometry,
     build_main_geometry_coefficients,
     build_minimal_wout_data_kwargs,
+    device_get_if_available,
+    env_enabled,
+    indata_for_wout_force_path,
     lbsubs_from_indata_and_env,
     minimal_wout_runtime_options_from_env,
     pressure_profiles_from_mass_vp,
+    prepare_wout_bcovar_payload,
     prepare_profile_payload,
 )
 from .io.wout.netcdf import (
@@ -130,147 +134,11 @@ def _vmec_wint_from_trig_jax(trig):
     return w_theta[:, None] * jnp.ones((nzeta,), dtype=w_theta.dtype)[None, :]
 
 
-def _bcovar_from_force_payload_with_geometry(geom: dict[str, Any], k_force) -> Any:
-    """Attach VMEC force-kernel geometry channels and return the bcovar payload.
-
-    ``wout_minimal_from_fixed_boundary`` can reuse force kernels produced at the
-    final solve point or recompute them for output.  Both paths must populate
-    the same VMEC ``pr*/pz*`` geometry channels before the Mercier/JXBFORCE
-    reducers run, so keep that copy in one place.
-    """
-
-    geom["pr1_even"] = np.asarray(k_force.pr1_even, dtype=float)
-    geom["pr1_odd"] = np.asarray(k_force.pr1_odd, dtype=float)
-    geom["pz1_even"] = np.asarray(k_force.pz1_even, dtype=float)
-    geom["pz1_odd"] = np.asarray(k_force.pz1_odd, dtype=float)
-    geom["pru_even"] = np.asarray(k_force.pru_even, dtype=float)
-    geom["pru_odd"] = np.asarray(k_force.pru_odd, dtype=float)
-    geom["pzu_even"] = np.asarray(k_force.pzu_even, dtype=float)
-    geom["pzu_odd"] = np.asarray(k_force.pzu_odd, dtype=float)
-    geom["prv_even"] = np.asarray(k_force.prv_even, dtype=float)
-    geom["prv_odd"] = np.asarray(k_force.prv_odd, dtype=float)
-    geom["pzv_even"] = np.asarray(k_force.pzv_even, dtype=float)
-    geom["pzv_odd"] = np.asarray(k_force.pzv_odd, dtype=float)
-    return k_force.bc
-
-
-class _WoutBcovarPayload(NamedTuple):
-    """Force/bcovar state needed by minimal WOUT assembly."""
-
-    bc: Any
-    k_force: Any | None
-    indata_wout: Any
-
-
-def _env_enabled(value: str | None, *, false_values: tuple[str, ...] = ("", "0", "false", "no")) -> bool:
-    """Return whether a VMEC-JAX environment toggle should be considered enabled."""
-
-    if value is None:
-        return False
-    return value.strip().lower() not in false_values
-
-
-def _device_get_if_available(value: Any) -> Any:
-    """Host-materialize a JAX pytree when JAX is available, otherwise return it."""
-
-    if has_jax():
-        try:
-            return jax.device_get(value)
-        except Exception:
-            pass
-    return value
-
-
-def _indata_for_wout_force_path(indata: Any, *, force_iequi1: bool) -> Any:
-    """Return the input deck used for WOUT force diagnostics.
-
-    Output diagnostics normally follow the same ``IEQUI`` path used by the run.
-    ``VMEC_JAX_WOUT_FORCE_IEQUI1`` is retained as an explicit debug override.
-    """
-
-    if not bool(force_iequi1):
-        return indata
-    try:
-        out = InData(
-            scalars=dict(indata.scalars),
-            indexed=dict(indata.indexed),
-            source_path=indata.source_path,
-        )
-        out.scalars["IEQUI"] = 1
-        return out
-    except Exception:
-        return indata
-
-
-def _prepare_wout_bcovar_payload(
-    *,
-    state: VMECState,
-    static,
-    indata,
-    wout_like,
-    pres: np.ndarray,
-    geom: dict[str, Any],
-    force_payload_override,
-    fast_bcovar: bool,
-    timing_enabled: bool,
-    timing: dict[str, float],
-    vmec_bcovar_half_mesh_from_wout_func,
-    vmec_forces_rz_from_wout_func,
-    numpy_module_patch_func,
-) -> _WoutBcovarPayload:
-    """Resolve the force/bcovar source used by minimal WOUT diagnostics."""
-
-    if timing_enabled:
-        import time as _time
-
-        t0 = _time.perf_counter()
-
-    force_iequi1 = _env_enabled(os.getenv("VMEC_JAX_WOUT_FORCE_IEQUI1", "0"))
-    indata_wout = _indata_for_wout_force_path(indata, force_iequi1=bool(force_iequi1))
-    reuse_final_bcovar = _env_enabled(
-        os.getenv("VMEC_JAX_WOUT_REUSE_FINAL_BCOVAR", ""),
-        false_values=("", "0", "false", "no", "off"),
-    )
-
-    k_force = None
-    if force_payload_override is not None and (reuse_final_bcovar or not fast_bcovar) and (not force_iequi1):
-        k_force = _device_get_if_available(force_payload_override)
-        bc = _bcovar_from_force_payload_with_geometry(geom, k_force)
-    elif fast_bcovar:
-        with numpy_module_patch_func():
-            bc = vmec_bcovar_half_mesh_from_wout_func(
-                state=state,
-                static=static,
-                wout=wout_like,
-                pres=pres,
-                use_wout_bsup=False,
-                use_wout_bsub_for_lambda=False,
-                use_wout_bmag_for_bsq=False,
-                use_vmec_synthesis=True,
-                trig=None,
-            )
-        bc = _device_get_if_available(bc)
-    else:
-        wout_force_vmec_synth = _env_enabled(os.getenv("VMEC_JAX_WOUT_FORCE_VMEC_SYNTH", ""))
-        k_force = vmec_forces_rz_from_wout_func(
-            state=state,
-            static=static,
-            wout=wout_like,
-            indata=indata_wout,
-            use_wout_bsup=False,
-            use_vmec_synthesis=wout_force_vmec_synth,
-            trig=None,
-        )
-        k_force = _device_get_if_available(k_force)
-        bc = _bcovar_from_force_payload_with_geometry(geom, k_force)
-
-    if timing_enabled:
-        timing["forces_bcovar_s"] = _time.perf_counter() - t0
-    return _WoutBcovarPayload(
-        bc=bc,
-        k_force=k_force,
-        indata_wout=indata_wout,
-    )
+_bcovar_from_force_payload_with_geometry = attach_force_payload_geometry
+_device_get_if_available = device_get_if_available
+_env_enabled = env_enabled
+_indata_for_wout_force_path = indata_for_wout_force_path
+_prepare_wout_bcovar_payload = prepare_wout_bcovar_payload
 
 
 def equilibrium_aspect_ratio_from_state(*, state: VMECState, static) -> Any:
