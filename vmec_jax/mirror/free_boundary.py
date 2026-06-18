@@ -220,6 +220,22 @@ class MirrorLCFSMerit:
 
 
 @dataclass(frozen=True)
+class MirrorLCFSResidual:
+    """Normalized LCFS residual vector for coupled free-boundary solves."""
+
+    vector: Any
+    pressure_component: Any
+    bnormal_component: Any
+    value: float
+    pressure_balance_rms: float
+    external_bnormal_rms: float
+    external_bmag_rms: float
+    pressure_scale: float
+    bnormal_scale: float
+    bnormal_weight: float
+
+
+@dataclass(frozen=True)
 class MirrorLCFSUpdateProposal:
     """One damped axisymmetric side-boundary update proposal."""
 
@@ -576,14 +592,14 @@ def mirror_external_pressure_balance_response(
     return -(bmag_plus**2 - bmag_minus**2) / (2.0 * float(mu0) * denominator)
 
 
-def mirror_lcfs_merit(
+def mirror_lcfs_residual(
     diagnostic: MirrorLCFSDiagnostic,
     *,
     pressure_scale: float | None = None,
     bnormal_scale: float | None = None,
     bnormal_weight: float = 1.0,
-) -> MirrorLCFSMerit:
-    """Return a dimensionless side-boundary merit for LCFS pilot steps."""
+) -> MirrorLCFSResidual:
+    """Return the normalized LCFS residual vector used by coupled solves."""
 
     pressure_rms = float(diagnostic.pressure_balance_rms)
     bnormal_rms = float(diagnostic.external_bnormal_rms)
@@ -597,16 +613,49 @@ def mirror_lcfs_merit(
         raise ValueError("bnormal_scale must be positive")
     if bnormal_weight < 0.0:
         raise ValueError("bnormal_weight must be nonnegative")
-    pressure_term = pressure_rms / pressure_scale
-    bnormal_term = bnormal_rms / bnormal_scale
-    return MirrorLCFSMerit(
-        value=float(np.sqrt(pressure_term**2 + bnormal_weight * bnormal_term**2)),
+    pressure_balance = np.asarray(getattr(diagnostic, "pressure_balance", pressure_rms), dtype=float)
+    external_bnormal = np.asarray(getattr(diagnostic, "external_bnormal", bnormal_rms), dtype=float)
+    pressure_component = pressure_balance / pressure_scale
+    bnormal_component = np.sqrt(bnormal_weight) * external_bnormal / bnormal_scale
+    vector = np.concatenate([pressure_component.ravel(), bnormal_component.ravel()])
+    value = float(np.sqrt(np.mean(pressure_component**2) + np.mean(bnormal_component**2)))
+    return MirrorLCFSResidual(
+        vector=vector,
+        pressure_component=pressure_component,
+        bnormal_component=bnormal_component,
+        value=value,
         pressure_balance_rms=pressure_rms,
         external_bnormal_rms=bnormal_rms,
         external_bmag_rms=external_bmag_rms,
         pressure_scale=float(pressure_scale),
         bnormal_scale=float(bnormal_scale),
+        bnormal_weight=float(bnormal_weight),
+    )
+
+
+def mirror_lcfs_merit(
+    diagnostic: MirrorLCFSDiagnostic,
+    *,
+    pressure_scale: float | None = None,
+    bnormal_scale: float | None = None,
+    bnormal_weight: float = 1.0,
+) -> MirrorLCFSMerit:
+    """Return a dimensionless side-boundary merit for LCFS pilot steps."""
+
+    residual = mirror_lcfs_residual(
+        diagnostic,
+        pressure_scale=pressure_scale,
+        bnormal_scale=bnormal_scale,
         bnormal_weight=bnormal_weight,
+    )
+    return MirrorLCFSMerit(
+        value=residual.value,
+        pressure_balance_rms=residual.pressure_balance_rms,
+        external_bnormal_rms=residual.external_bnormal_rms,
+        external_bmag_rms=residual.external_bmag_rms,
+        pressure_scale=residual.pressure_scale,
+        bnormal_scale=residual.bnormal_scale,
+        bnormal_weight=residual.bnormal_weight,
     )
 
 

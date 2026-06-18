@@ -46,10 +46,12 @@ without coupling it to toroidal VMEC assumptions:
   imbalance diagnostics and a damped, cap-tapered axisymmetric radius-update
   proposal for the planned 1%, 3%, and 10% circular coil studies, including
   optional low-resolution pilot steps that apply the proposal and report
-  actual before/after diagnostics with a combined pressure/normal-field merit
+  actual before/after diagnostics with a combined pressure/normal-field merit,
+  the corresponding normalized LCFS residual vector for future coupled solves,
   and normal-field-aware candidate selection between local, shape-preserving
-  scale, normal-field-slope, mixed scale/normal-field, and no-op updates, plus
-  an optional strict normal-field guard that records allowed strategies,
+  scale, normal-field-slope, mixed scale/normal-field, no-op, and realized
+  coupled trial-scoring updates, plus an optional strict normal-field guard
+  that records allowed strategies,
   no-op rejection reasons, workflow status, requested beta-scan points, and
   aggregate pilot counts and stop reasons in JSON output, with optional
   target-merit/stagnation stop criteria, an optional fixed-boundary ``fsq``

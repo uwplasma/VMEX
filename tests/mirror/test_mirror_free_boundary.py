@@ -22,6 +22,7 @@ from vmec_jax.mirror import (
     mirror_external_pressure_balance_response,
     mirror_lcfs_diagnostic,
     mirror_lcfs_merit,
+    mirror_lcfs_residual,
     propose_axisymmetric_mirror_lcfs_update,
     propose_axisymmetric_mirror_lcfs_scale_update,
     propose_axisymmetric_mirror_lcfs_noop_update,
@@ -328,6 +329,43 @@ def test_mirror_lcfs_merit_combines_pressure_and_normal_field():
     assert merit.external_bnormal_rms == pytest.approx(0.3)
     assert merit.external_bmag_rms == pytest.approx(3.0)
     assert merit.value == pytest.approx(np.sqrt(1.0 + 4.0 * 0.1**2))
+
+
+def test_mirror_lcfs_residual_vector_matches_merit_components():
+    pressure_balance = np.asarray([[3.0, 4.0, 0.0]])
+    external_bnormal = np.asarray([[0.5, -0.5, 1.0]])
+    diagnostic = SimpleNamespace(
+        pressure_balance=pressure_balance,
+        pressure_balance_rms=float(np.sqrt(np.mean(pressure_balance**2))),
+        external_bnormal=external_bnormal,
+        external_bnormal_rms=float(np.sqrt(np.mean(external_bnormal**2))),
+        external_bmag=np.full_like(pressure_balance, 2.0),
+    )
+
+    residual = mirror_lcfs_residual(
+        diagnostic,
+        pressure_scale=5.0,
+        bnormal_scale=2.0,
+        bnormal_weight=4.0,
+    )
+    merit = mirror_lcfs_merit(
+        diagnostic,
+        pressure_scale=5.0,
+        bnormal_scale=2.0,
+        bnormal_weight=4.0,
+    )
+
+    expected_pressure = pressure_balance / 5.0
+    expected_bnormal = external_bnormal
+    np.testing.assert_allclose(residual.pressure_component, expected_pressure)
+    np.testing.assert_allclose(residual.bnormal_component, expected_bnormal)
+    np.testing.assert_allclose(
+        residual.vector,
+        np.concatenate([expected_pressure.ravel(), expected_bnormal.ravel()]),
+    )
+    assert residual.value == pytest.approx(merit.value)
+    assert residual.pressure_balance_rms == pytest.approx(diagnostic.pressure_balance_rms)
+    assert residual.external_bnormal_rms == pytest.approx(diagnostic.external_bnormal_rms)
 
 
 @pytest.mark.parametrize(

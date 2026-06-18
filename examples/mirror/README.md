@@ -160,7 +160,10 @@ baseline row. When plots are enabled and baseline rows exist, the example also
 writes a cross-beta summary figure comparing
 pressure-balance RMS, external normal-field RMS, LCFS merit, and final ``fsq``
 before and after pilot updates. This is still an LCFS pilot workflow, not a
-converged free-boundary equilibrium solve.
+converged free-boundary equilibrium solve. The public
+``mirror_lcfs_residual`` helper returns the normalized pressure-balance and
+external-normal-field residual vector behind the scalar LCFS merit, which is
+the target vector for the next true coupled free-boundary solve lane.
 
 The circular-coil beta-scan metrics use the compact schema
 ``mirror_free_boundary_circular_coil_beta_scan`` version ``0.3``. The top-level

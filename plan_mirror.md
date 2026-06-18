@@ -18276,3 +18276,112 @@ Results:
 No user input is needed.
 
 ---
+## 147. Public LCFS Residual Vector for Coupled Free-Boundary Solves
+
+### Steps taken
+
+- Added `MirrorLCFSResidual` to `vmec_jax.mirror.free_boundary`.
+- Added `mirror_lcfs_residual`, which returns:
+  - normalized pressure-balance residual components;
+  - normalized external-normal-field residual components;
+  - one concatenated residual vector;
+  - the same scalar value used by `mirror_lcfs_merit`;
+  - the scales and RMS diagnostics used for normalization.
+- Reimplemented `mirror_lcfs_merit` as a scalar wrapper around the residual
+  helper while preserving compatibility with diagnostics that only expose RMS
+  values.
+- Exported `MirrorLCFSResidual` and `mirror_lcfs_residual` through
+  `vmec_jax.mirror.api` and `vmec_jax.mirror`.
+- Added a component-level test comparing residual vector entries against the
+  expected pressure and normal-field components.
+- Updated `docs/mirror/overview.rst` and `examples/mirror/README.md` so the
+  residual-vector path is discoverable.
+
+### Results obtained
+
+- The free-boundary lane now has a package-level vector residual target for the
+  next true coupled solve, rather than only scalar merit values and pilot
+  candidate reports.
+- `mirror_lcfs_merit` still returns the same scalar value and continues to work
+  for the existing minimal RMS-only diagnostic tests.
+- Public import check passed:
+  `from vmec_jax.mirror import MirrorLCFSResidual, mirror_lcfs_residual`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_free_boundary.py
+python -m ruff check vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_free_boundary.py
+
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py::test_mirror_lcfs_merit_combines_pressure_and_normal_field \
+  tests/mirror/test_mirror_free_boundary.py::test_mirror_lcfs_residual_vector_matches_merit_components \
+  tests/mirror/test_mirror_free_boundary.py::test_mirror_lcfs_merit_rejects_invalid_scales \
+  -q
+
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_free_boundary.py -q
+python -m sphinx -W -b html docs docs/_build/html
+python - <<'PY'
+from vmec_jax.mirror import MirrorLCFSResidual, mirror_lcfs_residual
+print(MirrorLCFSResidual.__name__, callable(mirror_lcfs_residual))
+PY
+git diff --check
+```
+
+Results:
+
+- Ruff format/check passed.
+- Focused residual/merit tests passed: `5 passed`.
+- Full free-boundary tests passed: `32 passed in 1.85s`.
+- Public import check printed `MirrorLCFSResidual True`.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The residual helper lives beside the existing LCFS diagnostic/merit helpers in
+  `vmec_jax/mirror/free_boundary.py`.
+- Public exports are centralized through the existing mirror API files.
+- The test is in `tests/mirror/test_mirror_free_boundary.py`, next to the LCFS
+  merit and candidate-update tests.
+- No generated output files were added.
+
+### Best next steps
+
+1. Commit and push M147.
+2. Use `mirror_lcfs_residual` as the boundary-condition block in the first true
+   coupled free-boundary solve prototype.
+3. Add boundary-parameter finite-difference or implicit Jacobian checks for the
+   LCFS residual block before coupling it to the reduced equilibrium residual.
+4. Re-run the circular-coil beta scan once a coupled residual solve can update
+   boundary coefficients directly.
+
+### Completion percentages after M147
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `91%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `92%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `92%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `92%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `94%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
+
+---
