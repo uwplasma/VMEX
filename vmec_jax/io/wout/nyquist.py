@@ -8,9 +8,30 @@ the Fourier parity utilities.
 
 from __future__ import annotations
 
+from typing import Any, NamedTuple
+
 import numpy as np
 
 from vmec_jax.modes import ModeTable
+
+
+class SymmetricNyquistCoefficientPayload(NamedTuple):
+    """Nyquist coefficients for a stellarator-symmetric WOUT output block."""
+
+    gmnc: np.ndarray
+    gmns: np.ndarray
+    bsupumnc: np.ndarray
+    bsupumns: np.ndarray
+    bsupvmnc: np.ndarray
+    bsupvmns: np.ndarray
+    bsubumnc: np.ndarray
+    bsubumns: np.ndarray
+    bsubvmnc: np.ndarray
+    bsubvmns: np.ndarray
+    bsubsmns: np.ndarray
+    bsubsmnc: np.ndarray
+    bmnc: np.ndarray
+    bmns: np.ndarray
 
 
 def apply_nyquist_half_weight(
@@ -110,6 +131,73 @@ def vmec_wrout_nyquist_cos_coeffs(
     dmult = np.where((m == 0) | (n == 0), 2.0 * dmult, dmult)
     coeff = coeff * dmult[None, :]
     return np.asarray(coeff, dtype=float)
+
+
+def minimal_wout_symmetric_nyquist_coefficients(
+    *,
+    bc: Any,
+    bsubu_out: np.ndarray,
+    bsubv_out: np.ndarray,
+    bsubs_full: np.ndarray,
+    pres: np.ndarray,
+    ns: int,
+    modes: ModeTable,
+    trig: Any,
+    use_loop: bool,
+) -> SymmetricNyquistCoefficientPayload:
+    """Return VMEC ``wrout`` Nyquist coefficients for ``LASYM = F``."""
+
+    z2 = np.zeros((int(ns), int(modes.K)), dtype=float)
+    gmnc = vmec_wrout_nyquist_cos_coeffs(f=np.asarray(bc.jac.sqrtg), modes=modes, trig=trig)
+    bsupu_out = np.asarray(bc.bsupu)
+    bsupv_out = np.asarray(bc.bsupv)
+    bsupumnc = vmec_wrout_nyquist_cos_coeffs(f=bsupu_out, modes=modes, trig=trig)
+    bsupvmnc = vmec_wrout_nyquist_cos_coeffs(f=bsupv_out, modes=modes, trig=trig)
+    bsubumnc = vmec_wrout_nyquist_cos_coeffs(f=bsubu_out, modes=modes, trig=trig)
+    bsubvmnc = vmec_wrout_nyquist_cos_coeffs(f=bsubv_out, modes=modes, trig=trig)
+    if use_loop:
+        bsubsmns = vmec_wrout_nyquist_sin_coeffs_loop(f=bsubs_full, modes=modes, trig=trig)
+    else:
+        bsubsmns = vmec_wrout_nyquist_sin_coeffs(f=bsubs_full, modes=modes, trig=trig)
+
+    pres_h = np.asarray(pres, dtype=float)[:, None, None]
+    bmag = np.sqrt(2.0 * np.abs(np.asarray(bc.bsq) - pres_h))
+    bmnc = vmec_wrout_nyquist_cos_coeffs(f=bmag, modes=modes, trig=trig)
+
+    if gmnc.shape[0] > 0:
+        gmnc[0, :] = 0.0
+        bsupumnc[0, :] = 0.0
+        bsupvmnc[0, :] = 0.0
+        bsubumnc[0, :] = 0.0
+        bsubvmnc[0, :] = 0.0
+        bmnc[0, :] = 0.0
+
+    gmns = z2.copy()
+    bsupumns = z2.copy()
+    bsupvmns = z2.copy()
+    bsubumns = z2.copy()
+    bsubvmns = z2.copy()
+    bsubsmnc = z2.copy()
+    bmns = z2.copy()
+    if ns > 2:
+        bsubsmns[0, :] = 2.0 * bsubsmns[1, :] - bsubsmns[2, :]
+
+    return SymmetricNyquistCoefficientPayload(
+        gmnc=gmnc,
+        gmns=gmns,
+        bsupumnc=bsupumnc,
+        bsupumns=bsupumns,
+        bsupvmnc=bsupvmnc,
+        bsupvmns=bsupvmns,
+        bsubumnc=bsubumnc,
+        bsubumns=bsubumns,
+        bsubvmnc=bsubvmnc,
+        bsubvmns=bsubvmns,
+        bsubsmns=bsubsmns,
+        bsubsmnc=bsubsmnc,
+        bmnc=bmnc,
+        bmns=bmns,
+    )
 
 
 def vmec_symoutput_split(

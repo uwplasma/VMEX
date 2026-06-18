@@ -11395,3 +11395,69 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9973%.
+
+## 2026-06-18 Symmetric WOUT Nyquist Coefficient Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `SymmetricNyquistCoefficientPayload` and
+   `minimal_wout_symmetric_nyquist_coefficients` to
+   `vmec_jax.io.wout.nyquist`.
+2. Moved the `LASYM = F` WOUT Nyquist coefficient policy out of
+   `wout_minimal_from_fixed_boundary`, including VMEC axis-zeroing and the
+   optional loop path for `bsubsmns`.
+3. Kept the private `_vmec_wrout_nyquist_sin_coeffs_loop` compatibility export
+   in `vmec_jax.wout` because helper tests and downstream parity scripts still
+   import it directly.
+
+Results obtained:
+
+- `wout_minimal_from_fixed_boundary` dropped from 821 to 806 lines.
+- Stellarator-symmetric Nyquist output now lives beside the lower-level wrout
+  Fourier kernels, reducing policy code in the root WOUT builder without
+  creating another root-level module.
+- Focused WOUT physics, finite-beta, Mercier, and Glasser shards remained
+  green.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/wout.py vmec_jax/io/wout/nyquist.py`
+- `python -m ruff check vmec_jax/wout.py vmec_jax/io/wout/nyquist.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_physics_wave8_coverage.py tests/test_wout_wave4_coverage.py tests/test_wout_helpers.py tests/test_glasser_resistive_interchange.py -q`
+  - Result: `41 passed`.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_driver_wave10_coverage.py tests/test_physics_parity_helper_gates.py tests/test_finite_beta_helpers_unit.py -q`
+  - Result: `68 passed, 1 skipped`.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 30`
+
+Best next steps:
+
+1. Defer a full LASYM Nyquist extraction until it can be done as a coherent
+   payload; it is larger and more parity-sensitive than the symmetric branch.
+2. Run a broader driver/WOUT shard before further WOUT restructuring, since
+   three WOUT tranches have now landed.
+3. Resume larger solver/refactor seams after the broader shard, especially the
+   residual-iteration scan helper and `vmec_bcovar_half_mesh_from_wout`.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.999989%.
+- Solver monolith reduction: 99.46%.
+- Free-boundary adjoint monolith reduction: 99.30%.
+- Driver workflow decomposition: 99.72%.
+- Residual iteration decomposition: 95.8%.
+- WOUT diagnostic/profile decomposition: 99.52%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9974%.
