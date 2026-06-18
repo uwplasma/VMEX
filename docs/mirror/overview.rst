@@ -48,6 +48,8 @@ without coupling it to toroidal VMEC assumptions:
   optional low-resolution pilot steps that apply the proposal and report
   actual before/after diagnostics with a combined pressure/normal-field merit,
   the corresponding normalized LCFS residual vector for future coupled solves,
+  a combined equilibrium-plus-LCFS residual assembly helper for least-squares
+  prototypes,
   and normal-field-aware candidate selection between local, shape-preserving
   scale, normal-field-slope, mixed scale/normal-field, no-op, and realized
   coupled trial-scoring updates, plus an optional strict normal-field guard

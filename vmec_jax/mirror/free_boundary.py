@@ -236,6 +236,21 @@ class MirrorLCFSResidual:
 
 
 @dataclass(frozen=True)
+class MirrorFreeBoundaryResidual:
+    """Combined residual vector for mirror free-boundary solve prototypes."""
+
+    vector: Any
+    equilibrium_component: Any
+    lcfs_component: Any
+    value: float
+    equilibrium_rms: float
+    lcfs_value: float
+    equilibrium_scale: float
+    equilibrium_weight: float
+    lcfs_weight: float
+
+
+@dataclass(frozen=True)
 class MirrorLCFSUpdateProposal:
     """One damped axisymmetric side-boundary update proposal."""
 
@@ -679,6 +694,53 @@ def mirror_lcfs_merit(
         pressure_scale=residual.pressure_scale,
         bnormal_scale=residual.bnormal_scale,
         bnormal_weight=residual.bnormal_weight,
+    )
+
+
+def mirror_free_boundary_residual(
+    equilibrium_residual: Any,
+    lcfs_residual: MirrorLCFSResidual,
+    *,
+    equilibrium_scale: float | None = None,
+    equilibrium_weight: float = 1.0,
+    lcfs_weight: float = 1.0,
+) -> MirrorFreeBoundaryResidual:
+    """Combine equilibrium and LCFS blocks for free-boundary least squares."""
+
+    equilibrium = np.asarray(equilibrium_residual, dtype=float).ravel()
+    if equilibrium.size == 0:
+        raise ValueError("equilibrium_residual must contain at least one value")
+    if not np.all(np.isfinite(equilibrium)):
+        raise ValueError("equilibrium_residual must be finite")
+    equilibrium_rms = float(np.sqrt(np.mean(equilibrium**2)))
+    equilibrium_scale = equilibrium_rms if equilibrium_scale is None else float(equilibrium_scale)
+    equilibrium_weight = float(equilibrium_weight)
+    lcfs_weight = float(lcfs_weight)
+    if equilibrium_scale <= 0.0:
+        raise ValueError("equilibrium_scale must be positive")
+    if equilibrium_weight < 0.0:
+        raise ValueError("equilibrium_weight must be nonnegative")
+    if lcfs_weight < 0.0:
+        raise ValueError("lcfs_weight must be nonnegative")
+    lcfs_vector = np.asarray(lcfs_residual.vector, dtype=float).ravel()
+    if lcfs_vector.size == 0:
+        raise ValueError("lcfs_residual.vector must contain at least one value")
+    if not np.all(np.isfinite(lcfs_vector)):
+        raise ValueError("lcfs_residual.vector must be finite")
+    equilibrium_component = np.sqrt(equilibrium_weight) * equilibrium / equilibrium_scale
+    lcfs_component = np.sqrt(lcfs_weight) * lcfs_vector
+    vector = np.concatenate([equilibrium_component, lcfs_component])
+    value = float(np.sqrt(np.mean(equilibrium_component**2) + np.mean(lcfs_component**2)))
+    return MirrorFreeBoundaryResidual(
+        vector=vector,
+        equilibrium_component=equilibrium_component,
+        lcfs_component=lcfs_component,
+        value=value,
+        equilibrium_rms=equilibrium_rms,
+        lcfs_value=float(lcfs_residual.value),
+        equilibrium_scale=float(equilibrium_scale),
+        equilibrium_weight=equilibrium_weight,
+        lcfs_weight=lcfs_weight,
     )
 
 

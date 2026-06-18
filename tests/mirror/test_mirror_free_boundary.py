@@ -20,6 +20,7 @@ from vmec_jax.mirror import (
     mirror_circular_coils_to_direct_params,
     mirror_external_bnormal,
     mirror_external_pressure_balance_response,
+    mirror_free_boundary_residual,
     mirror_lcfs_diagnostic,
     mirror_lcfs_diagnostic_from_arrays,
     mirror_lcfs_merit,
@@ -378,6 +379,64 @@ def test_mirror_lcfs_residual_vector_matches_merit_components():
     assert residual.value == pytest.approx(merit.value)
     assert residual.pressure_balance_rms == pytest.approx(diagnostic.pressure_balance_rms)
     assert residual.external_bnormal_rms == pytest.approx(diagnostic.external_bnormal_rms)
+
+
+def test_mirror_free_boundary_residual_combines_equilibrium_and_lcfs_blocks():
+    diagnostic = SimpleNamespace(
+        pressure_balance=np.asarray([[1.0, -1.0]]),
+        pressure_balance_rms=1.0,
+        external_bnormal=np.asarray([[0.25, -0.25]]),
+        external_bnormal_rms=0.25,
+        external_bmag=np.ones((1, 2)),
+    )
+    lcfs = mirror_lcfs_residual(
+        diagnostic,
+        pressure_scale=2.0,
+        bnormal_scale=1.0,
+        bnormal_weight=4.0,
+    )
+    equilibrium = np.asarray([2.0, -4.0, 1.0])
+
+    combined = mirror_free_boundary_residual(
+        equilibrium,
+        lcfs,
+        equilibrium_scale=2.0,
+        equilibrium_weight=4.0,
+        lcfs_weight=9.0,
+    )
+
+    expected_equilibrium = 2.0 * equilibrium / 2.0
+    expected_lcfs = 3.0 * lcfs.vector
+    np.testing.assert_allclose(combined.equilibrium_component, expected_equilibrium)
+    np.testing.assert_allclose(combined.lcfs_component, expected_lcfs)
+    np.testing.assert_allclose(combined.vector, np.concatenate([expected_equilibrium, expected_lcfs]))
+    assert combined.value == pytest.approx(np.sqrt(np.mean(expected_equilibrium**2) + np.mean(expected_lcfs**2)))
+    assert combined.equilibrium_rms == pytest.approx(np.sqrt(np.mean(equilibrium**2)))
+    assert combined.lcfs_value == pytest.approx(lcfs.value)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"equilibrium_residual": [], "equilibrium_scale": 1.0}, "equilibrium_residual"),
+        ({"equilibrium_residual": [1.0], "equilibrium_scale": 0.0}, "equilibrium_scale"),
+        ({"equilibrium_residual": [1.0], "equilibrium_weight": -1.0}, "equilibrium_weight"),
+        ({"equilibrium_residual": [1.0], "lcfs_weight": -1.0}, "lcfs_weight"),
+    ],
+)
+def test_mirror_free_boundary_residual_rejects_invalid_inputs(kwargs, match):
+    diagnostic = SimpleNamespace(
+        pressure_balance=np.asarray([[1.0]]),
+        pressure_balance_rms=1.0,
+        external_bnormal=np.asarray([[0.0]]),
+        external_bnormal_rms=0.0,
+        external_bmag=np.ones((1, 1)),
+    )
+    lcfs = mirror_lcfs_residual(diagnostic, pressure_scale=1.0, bnormal_scale=1.0)
+    equilibrium = kwargs.pop("equilibrium_residual")
+
+    with pytest.raises(ValueError, match=match):
+        mirror_free_boundary_residual(equilibrium, lcfs, **kwargs)
 
 
 def test_mirror_lcfs_residual_has_boundary_coefficient_finite_difference_jacobian():

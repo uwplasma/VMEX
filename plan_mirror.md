@@ -18565,3 +18565,110 @@ Results:
 No user input is needed.
 
 ---
+## 150. Combined Equilibrium and LCFS Residual Assembly Helper
+
+### Steps taken
+
+- Added `MirrorFreeBoundaryResidual` to `vmec_jax.mirror.free_boundary`.
+- Added `mirror_free_boundary_residual`, which combines:
+  - a reduced-equilibrium residual vector;
+  - a normalized `MirrorLCFSResidual` boundary-condition vector;
+  - independent equilibrium and LCFS block weights;
+  - an explicit equilibrium residual scale.
+- Exported `MirrorFreeBoundaryResidual` and
+  `mirror_free_boundary_residual` through `vmec_jax.mirror.api` and
+  `vmec_jax.mirror`.
+- Added tests for:
+  - equilibrium and LCFS block scaling;
+  - concatenated vector layout;
+  - scalar combined residual value;
+  - invalid empty residuals, scales, and negative weights.
+- Updated the mirror overview to mention the combined residual assembly helper.
+
+### Results obtained
+
+- The free-boundary lane now has the first package-level residual assembly
+  helper for true coupled solve prototypes.
+- The helper does not solve the coupled nonlinear problem yet; it provides the
+  vector layout and normalization contract needed by a future least-squares or
+  Newton solve.
+- Public import check passed:
+  `from vmec_jax.mirror import MirrorFreeBoundaryResidual, mirror_free_boundary_residual`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_free_boundary.py
+python -m ruff check vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_free_boundary.py
+
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py::test_mirror_free_boundary_residual_combines_equilibrium_and_lcfs_blocks \
+  tests/mirror/test_mirror_free_boundary.py::test_mirror_free_boundary_residual_rejects_invalid_inputs \
+  -q
+
+python - <<'PY'
+from vmec_jax.mirror import MirrorFreeBoundaryResidual, mirror_free_boundary_residual
+print(MirrorFreeBoundaryResidual.__name__, callable(mirror_free_boundary_residual))
+PY
+
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_free_boundary.py -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Ruff format/check passed.
+- Focused combined-residual tests passed: `5 passed`.
+- Public import check printed `MirrorFreeBoundaryResidual True`.
+- Full free-boundary tests passed: `38 passed in 2.04s`.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The combined residual helper lives in `vmec_jax/mirror/free_boundary.py`
+  beside the LCFS residual and diagnostic helpers.
+- Public exports stay centralized in the mirror API files.
+- Tests remain in `tests/mirror/test_mirror_free_boundary.py` with the other
+  free-boundary residual and candidate checks.
+- No generated result files were added.
+
+### Best next steps
+
+1. Commit and push M150.
+2. Build a small least-squares prototype that uses
+   `mirror_free_boundary_residual` with polynomial boundary coefficients.
+3. Add a plotted diagnostic for combined residual components once the
+   least-squares prototype exists.
+4. Refresh the PR body after the next solver-prototype tranche.
+
+### Completion percentages after M150
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `92%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `92%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `92%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `94%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `94%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
+
+---
