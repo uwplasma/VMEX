@@ -213,6 +213,14 @@ from vmec_jax.solvers.fixed_boundary.residual.preconditioner_payload import (
     _PRECOND_OUTPUT_SCALE_JIT_CACHE,
     _STRICT_UPDATE_STEP_JIT_CACHE,
 )
+from vmec_jax.solvers.fixed_boundary.residual.ptau import (
+    accepted_control_ptau_arrays as _accepted_control_ptau_arrays_helper,
+    maybe_dump_jacobian_terms as _maybe_dump_jacobian_terms_helper,
+    maybe_dump_ptau as _maybe_dump_ptau_helper,
+    ptau_minmax as _ptau_minmax_helper,
+    ptau_minmax_from_k_host as _ptau_minmax_from_k_host_helper,
+    ptau_minmax_from_k_jax as _ptau_minmax_from_k_jax_helper,
+)
 from vmec_jax.solvers.fixed_boundary.optimization.tolerances import (
     dtype_eps as _dtype_eps,  # noqa: F401 - re-exported for existing internal tests/importers.
     dtype_tiny as _dtype_tiny,
@@ -1011,69 +1019,41 @@ def solve_fixed_boundary_residual_iter(
     )
     _record_setup_timing("setup_ptau_constants", _t_setup_ptau_constants)
 
-    def _ptau_minmax_from_k_host(k) -> tuple[Any | None, Any | None]:
-        """Compute VMEC `ptau` min/max on the host for controller decisions."""
-        return _scan_math_ptau_minmax_from_k_host(
-            k,
-            pshalf=_ptau_context.pshalf_np,
-            ohs=float(_ptau_context.ohs_scalar) if _ptau_context.ohs_scalar is not None else 0.0,
-            compute_jit=_ptau_compute_jit,
-            pshalf_jax=_ptau_context.pshalf_jax,
-            ohs_jax=_ptau_context.ohs_jax,
-        )
-
-    def _ptau_minmax_from_k_jax(k):
-        return _scan_math_ptau_minmax_from_k_jax(
-            k,
-            s=_ptau_context.s,
-            pshalf_from_s_jax=_pshalf_from_s_jax,
-        )
-
-    def _ptau_minmax(k):
-        if has_jax():
-            return _ptau_minmax_from_k_jax(k)
-        return _ptau_minmax_from_k_host(k)
-
-    def _accepted_control_ptau_arrays(k) -> tuple[Any, ...] | None:
-        arrays = _scan_math_kernel_arrays_from_k(k)
-        if arrays is None:
-            return None
-        try:
-            ns = int(getattr(arrays[0], "shape", (0,))[0])
-        except Exception:
-            return None
-        return arrays if ns >= 2 else None
-
-    def _maybe_dump_jacobian_terms(*, k, iter_idx: int) -> None:
-        _maybe_dump_jacobian_terms_record(k=k, s=s, iter_idx=iter_idx)
-
-    def _maybe_dump_ptau(
-        *,
-        iter_idx: int,
-        ptau_min: float,
-        ptau_max: float,
-        tau_min_state: float | None,
-        tau_max_state: float | None,
-        badjac_ptau: bool | None,
-        badjac_state: bool | None,
-        badjac_used: bool,
-        mode: str,
-        label: str,
-    ) -> None:
-        _runtime_maybe_dump_ptau(
-            iter_idx=iter_idx,
-            ptau_min=ptau_min,
-            ptau_max=ptau_max,
-            tau_min_state=tau_min_state,
-            tau_max_state=tau_max_state,
-            badjac_ptau=badjac_ptau,
-            badjac_state=badjac_state,
-            badjac_used=badjac_used,
-            mode=mode,
-            label=label,
-            dump_ptau_env=os.getenv("VMEC_JAX_DUMP_PTAU", ""),
-            dump_dir=os.getenv("VMEC_JAX_DUMP_DIR", ""),
-        )
+    _ptau_minmax_from_k_host = partial(
+        _ptau_minmax_from_k_host_helper,
+        ptau_context=_ptau_context,
+        compute_jit=_ptau_compute_jit,
+        ptau_minmax_host_func=_scan_math_ptau_minmax_from_k_host,
+    )
+    _ptau_minmax_from_k_jax = partial(
+        _ptau_minmax_from_k_jax_helper,
+        ptau_context=_ptau_context,
+        pshalf_from_s_jax=_pshalf_from_s_jax,
+        ptau_minmax_jax_func=_scan_math_ptau_minmax_from_k_jax,
+    )
+    _ptau_minmax = partial(
+        _ptau_minmax_helper,
+        ptau_context=_ptau_context,
+        has_jax_func=has_jax,
+        compute_jit=_ptau_compute_jit,
+        pshalf_from_s_jax=_pshalf_from_s_jax,
+        ptau_minmax_host_func=_scan_math_ptau_minmax_from_k_host,
+        ptau_minmax_jax_func=_scan_math_ptau_minmax_from_k_jax,
+    )
+    _accepted_control_ptau_arrays = partial(
+        _accepted_control_ptau_arrays_helper,
+        kernel_arrays_from_k=_scan_math_kernel_arrays_from_k,
+    )
+    _maybe_dump_jacobian_terms = partial(
+        _maybe_dump_jacobian_terms_helper,
+        s=s,
+        dump_func=_maybe_dump_jacobian_terms_record,
+    )
+    _maybe_dump_ptau = partial(
+        _maybe_dump_ptau_helper,
+        getenv=os.getenv,
+        dump_func=_runtime_maybe_dump_ptau,
+    )
 
     def _lambda_preconditioner(bc, *, return_faclam: bool = False, return_debug: bool = False):
         lam_r0scale = float(getattr(trig, "r0scale", 1.0)) if trig is not None else 1.0

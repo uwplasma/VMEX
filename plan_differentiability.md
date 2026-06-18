@@ -9047,3 +9047,61 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.935%.
+
+## 2026-06-18 Residual Ptau Bookkeeping Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted ptau host/JAX dispatch, accepted-controller ptau array filtering,
+   Jacobian-term dump forwarding, and ptau dump forwarding into
+   `vmec_jax.solvers.fixed_boundary.residual.ptau`.
+2. Replaced loop-local ptau closures with `partial`-bound helpers so dump
+   environment variables are still read at call time without keeping the logic
+   inline in `solve_fixed_boundary_residual_iter`.
+3. Added direct unit coverage for the ptau wrapper dispatch and dump forwarding
+   behavior.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` dropped from 8,024
+  to 8,004 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 7,521 to 7,493 lines.
+- The extracted `ptau.py` module is 141 lines and is covered by fast unit
+  tests plus the existing scan math/runtime diagnostics shards.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/ptau.py tests/test_solve_residual_iter_setup_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_setup_helpers.py tests/test_solve_scan_math_helpers.py tests/test_solve_residual_iter_runtime_helpers.py tests/test_solve_diagnostics_io.py tests/test_solve_hotpaths.py tests/test_solve_wave4_coverage.py tests/test_solve_additional_branch_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 8 --top-functions 12`
+
+Best next steps:
+
+1. Continue residual-loop reduction with host diagnostics/VMEC row print
+   wrappers or scan-runtime adapters, avoiding `_scan_step` itself for now.
+2. Start test-file decomposition for the two largest free-boundary test files
+   once production monolith reductions are stable.
+3. Keep full adaptive branch differentiation conservative until the planned
+   fingerprint-gated adaptive AD-vs-FD gate exists.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.96%.
+- Differentiability/refactor implementation: 99.99965%.
+- Solver monolith reduction: 98.9%.
+- Free-boundary adjoint monolith reduction: 92%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.94%.

@@ -1,0 +1,141 @@
+"""Ptau/Jacobian bookkeeping for residual-iteration controllers."""
+
+from __future__ import annotations
+
+from typing import Any, Callable
+
+
+def ptau_minmax_from_k_host(
+    k: Any,
+    *,
+    ptau_context: Any,
+    compute_jit: Callable[..., Any],
+    ptau_minmax_host_func: Callable[..., tuple[Any | None, Any | None]],
+) -> tuple[Any | None, Any | None]:
+    """Compute VMEC ``ptau`` min/max on the host for controller decisions."""
+
+    return ptau_minmax_host_func(
+        k,
+        pshalf=ptau_context.pshalf_np,
+        ohs=float(ptau_context.ohs_scalar) if ptau_context.ohs_scalar is not None else 0.0,
+        compute_jit=compute_jit,
+        pshalf_jax=ptau_context.pshalf_jax,
+        ohs_jax=ptau_context.ohs_jax,
+    )
+
+
+def ptau_minmax_from_k_jax(
+    k: Any,
+    *,
+    ptau_context: Any,
+    pshalf_from_s_jax: Callable[..., Any],
+    ptau_minmax_jax_func: Callable[..., Any],
+) -> Any:
+    """Compute VMEC ``ptau`` min/max on the active JAX path."""
+
+    return ptau_minmax_jax_func(
+        k,
+        s=ptau_context.s,
+        pshalf_from_s_jax=pshalf_from_s_jax,
+    )
+
+
+def ptau_minmax(
+    k: Any,
+    *,
+    ptau_context: Any,
+    has_jax_func: Callable[[], bool],
+    compute_jit: Callable[..., Any],
+    pshalf_from_s_jax: Callable[..., Any],
+    ptau_minmax_host_func: Callable[..., tuple[Any | None, Any | None]],
+    ptau_minmax_jax_func: Callable[..., Any],
+) -> Any:
+    """Dispatch ptau min/max computation to the current host/JAX path."""
+
+    if has_jax_func():
+        return ptau_minmax_from_k_jax(
+            k,
+            ptau_context=ptau_context,
+            pshalf_from_s_jax=pshalf_from_s_jax,
+            ptau_minmax_jax_func=ptau_minmax_jax_func,
+        )
+    return ptau_minmax_from_k_host(
+        k,
+        ptau_context=ptau_context,
+        compute_jit=compute_jit,
+        ptau_minmax_host_func=ptau_minmax_host_func,
+    )
+
+
+def accepted_control_ptau_arrays(
+    k: Any,
+    *,
+    kernel_arrays_from_k: Callable[[Any], tuple[Any, ...] | None],
+) -> tuple[Any, ...] | None:
+    """Return kernel arrays only when there are enough radial points for ptau."""
+
+    arrays = kernel_arrays_from_k(k)
+    if arrays is None:
+        return None
+    try:
+        ns = int(getattr(arrays[0], "shape", (0,))[0])
+    except Exception:
+        return None
+    return arrays if ns >= 2 else None
+
+
+def maybe_dump_jacobian_terms(
+    *,
+    k: Any,
+    s: Any,
+    iter_idx: int,
+    dump_func: Callable[..., None],
+) -> None:
+    """Best-effort Jacobian-term dump wrapper."""
+
+    dump_func(k=k, s=s, iter_idx=iter_idx)
+
+
+def maybe_dump_ptau(
+    *,
+    iter_idx: int,
+    ptau_min: float,
+    ptau_max: float,
+    tau_min_state: float | None,
+    tau_max_state: float | None,
+    badjac_ptau: bool | None,
+    badjac_state: bool | None,
+    badjac_used: bool,
+    mode: str,
+    label: str,
+    getenv: Callable[[str, str], str],
+    dump_func: Callable[..., None],
+    dump_ptau_env_name: str = "VMEC_JAX_DUMP_PTAU",
+    dump_dir_env_name: str = "VMEC_JAX_DUMP_DIR",
+) -> None:
+    """Best-effort ptau dump wrapper with call-time environment values."""
+
+    dump_func(
+        iter_idx=iter_idx,
+        ptau_min=ptau_min,
+        ptau_max=ptau_max,
+        tau_min_state=tau_min_state,
+        tau_max_state=tau_max_state,
+        badjac_ptau=badjac_ptau,
+        badjac_state=badjac_state,
+        badjac_used=badjac_used,
+        mode=mode,
+        label=label,
+        dump_ptau_env=getenv(dump_ptau_env_name, ""),
+        dump_dir=getenv(dump_dir_env_name, ""),
+    )
+
+
+__all__ = [
+    "accepted_control_ptau_arrays",
+    "maybe_dump_jacobian_terms",
+    "maybe_dump_ptau",
+    "ptau_minmax",
+    "ptau_minmax_from_k_host",
+    "ptau_minmax_from_k_jax",
+]
