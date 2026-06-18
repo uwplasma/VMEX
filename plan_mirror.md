@@ -5739,6 +5739,108 @@ Visual validation:
 No user input is needed.
 
 ---
+## 170. Draft PR Body Synchronization After Boozer-Like Diagnostics Audit
+
+### Steps taken
+
+- Updated draft PR #21 body after M167-M169.
+- Changed the detailed implementation-log pointer from section 164 to
+  section 169.
+- Updated the current-content summary to include mirror-Boozer-like
+  surface-average/pitch diagnostic plots and compact JSON summary metrics.
+- Marked the Mirror-Boozer-like diagnostics checklist item complete in the PR
+  body for the plot, export, public API, and example JSON summary paths.
+- Replaced the latest-validation command block with the current full
+  `tests/mirror` pass, Sphinx, ruff, public API consistency, and whitespace
+  checks.
+- Added the current full mirror-suite result:
+  `218 passed, 1 skipped in 191.77s`.
+- Added the public API consistency check result `mirror_public_api_ok`.
+- Added plotted Boozer-like smoke evidence paths from M168.
+- Re-checked PR state and CI status after the latest push.
+
+### Results obtained
+
+- PR body verification confirmed:
+  - PR number `21`;
+  - draft state `true`;
+  - head SHA `a15ad6f9719f8285d527c33ef0a4f3ecde4f88eb`;
+  - body contains `section 169`;
+  - body contains the checked Mirror-Boozer-like checklist item;
+  - body contains `218 passed, 1 skipped in 191.77s`;
+  - body contains `mirror_public_api_ok`;
+  - body contains the M168 Boozer-like finite-current plot path.
+- GitHub checks are attached to the latest head and running. The nonblocking
+  snapshot showed `Parity Manifest Smoke (dry-run)` passing, `Physics Full
+  (manual/nightly)` skipped as configured, and the remaining standard jobs in
+  progress.
+
+### How it was tested
+
+Commands run:
+
+```bash
+gh pr view 21 --repo uwplasma/vmec_jax --json body -q .body > /tmp/vmec_mirror_pr_body_current.md
+python - <<'OUTERPY'
+# edit PR body text in /tmp
+OUTERPY
+gh pr edit 21 --repo uwplasma/vmec_jax --body-file /tmp/vmec_mirror_pr_body_current.md
+gh pr view 21 --repo uwplasma/vmec_jax --json number,isDraft,headRefOid,mergeStateStatus,body,url > /tmp/vmec_mirror_pr_view.json
+python - <<'PY'
+# verify required body markers
+PY
+gh pr checks 21 --repo uwplasma/vmec_jax --json name,state,bucket,startedAt,completedAt,link
+git status -sb
+```
+
+Results:
+
+- PR edit succeeded.
+- PR body verification passed.
+- PR remained draft.
+- Worktree was clean before this plan-only M170 log.
+
+### File structure and best-practice notes
+
+- No source files changed in this administrative tranche.
+- The PR body remains a concise review index while detailed evidence stays in
+  `plan_mirror.md`.
+- CI was sampled once after jobs attached; the workflow is intentionally not
+  being polled continuously.
+
+### Best next steps
+
+1. Commit and push M170 plan log.
+2. Continue final plan closure with the remaining-gap audit:
+   - straight-axis hybrid fixture lane;
+   - final free-boundary nonlinear solve status;
+   - final PR readiness and known limitations.
+3. Re-check CI after additional implementation or after enough time has passed
+   to make a failure actionable.
+
+### Completion percentages after M170
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `90%`.
+- Finite-current pitch validation: `86%`.
+- Plotting and `vmec --plot` mirror support: `97%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `94%`.
+- Mirror-Boozer-like diagnostics: `83%`.
+- Free-boundary mirror lane: `99%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `99%`.
+
+### User input needed
+
+No user input is needed.
+
+---
 ## 169. Public API and Docs Index Merge-Readiness Audit
 
 ### Steps taken
