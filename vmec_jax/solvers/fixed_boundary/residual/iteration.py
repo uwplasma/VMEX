@@ -361,6 +361,7 @@ from vmec_jax.solvers.fixed_boundary.scan.payload import (
     build_initial_preconditioner_cache as _build_initial_preconditioner_cache,
     build_restart_preconditioned_scan_payload as _build_restart_preconditioned_scan_payload,
     build_scan_step_fields as _build_scan_step_fields,
+    evaluate_scan_step_force as _evaluate_scan_step_force,
     mask_scan_restart_force_payload as _mask_scan_restart_force_payload,  # noqa: F401 - re-exported for internal tests/importers.
     select_scan_force_payload as _select_scan_force_payload,
 )
@@ -1959,90 +1960,46 @@ def solve_fixed_boundary_residual_iter(
                 )
 
             def _advance_step(carry_adv: _ScanCarry):
-                iter2 = jnp.asarray(it + 1, dtype=jnp.int32) + jnp.asarray(carry_adv.iter_offset, dtype=jnp.int32)
-                fsq_prev_before = carry_adv.fsq_prev
-                fsq0_prev_before = carry_adv.fsq0_prev
-                skip_timecontrol = carry_adv.skip_timecontrol
-                iter_since_restart = iter2 - carry_adv.iter1
-                time_step_report = carry_adv.time_step
-                # VMEC `constrain_m1`: zero gcz(m=1) on the first global
-                # iteration, and again when the previous fsqz drops below the tolerance.
-                zero_m1 = jnp.where(
-                    (iter2 < 2) | (carry_adv.fsqz_prev < 1.0e-6),
-                    jnp.asarray(1.0, dtype=dtype),
-                    jnp.asarray(0.0, dtype=dtype),
-                )
-                prev_rz_fsq = carry_adv.fsqr_prev_phys + carry_adv.fsqz_prev_phys
-                include_edge = (iter_since_restart < 50) & (prev_rz_fsq < jnp.asarray(1.0e-6, dtype=prev_rz_fsq.dtype))
-
-                precond_age = iter2 - carry_adv.iter1
-                need_periodic_precond_update = (
-                    (precond_age > 0)
-                    & ((precond_age % k_preconditioner_update_interval) == 0)
-                )
-                need_bcovar_update = (
-                    (~carry_adv.cache_valid)
-                    | carry_adv.force_bcovar_update
-                    | need_periodic_precond_update
-                )
-                use_cached_precond = carry_adv.cache_valid & (~need_bcovar_update)
-                constraint_precond_diag = _tree_select(
-                    use_cached_precond, carry_adv.cache_precond_diag, zero_precond_diag
-                )
-                constraint_tcon_override = jnp.where(use_cached_precond, carry_adv.cache_tcon, zero_tcon)
-                constraint_precond_active = use_cached_precond
-                constraint_tcon_active = use_cached_precond
-
-                with _maybe_trace("scan/compute_forces"):
-                    k, frzl, gcr2, gcz2, gcl2, rz_scale, l_scale, norms_current = _compute_forces_scan(
-                        carry_adv.state,
-                        include_edge=False,
-                        zero_m1=zero_m1,
-                        constraint_precond_diag=constraint_precond_diag,
-                        constraint_tcon=constraint_tcon_override,
-                        constraint_precond_active=constraint_precond_active,
-                        constraint_tcon_active=constraint_tcon_active,
-                        iter_idx=None,
-                    )
-                norms_used = jax.lax.cond(
-                    use_cached_precond,
-                    lambda _: carry_adv.cache_norms,
-                    lambda _: norms_current,
-                    operand=None,
-                )
-                fsqr = norms_used.r1 * norms_used.fnorm * gcr2
-                fsqz = norms_used.r1 * norms_used.fnorm * gcz2
-                fsql = norms_used.fnormL * gcl2
-                _maybe_debug_scan_force_first_iter(
-                    enabled=bool(scan_debug_force) and (_jax_debug_print is not None),
-                    iter2=iter2,
-                    frzl=frzl,
-                    carry_state=carry_adv.state,
-                    use_cached_precond=use_cached_precond,
-                    need_bcovar_update=need_bcovar_update,
-                    norms_used=norms_used,
-                    gcr2=gcr2,
-                    gcz2=gcz2,
-                    fsqr=fsqr,
-                    fsqz=fsqz,
-                    jnp_module=jnp,
+                force_eval = _evaluate_scan_step_force(
+                    carry_adv=carry_adv,
+                    it=it,
+                    dtype=dtype,
+                    k_preconditioner_update_interval=k_preconditioner_update_interval,
+                    zero_precond_diag=zero_precond_diag,
+                    zero_tcon=zero_tcon,
+                    compute_forces_scan=_compute_forces_scan,
+                    scan_converged=scan_converged,
+                    tree_select=_tree_select,
                     cond=jax.lax.cond,
+                    trace_context=lambda: _maybe_trace("scan/compute_forces"),
+                    scan_debug_force_enabled=bool(scan_debug_force),
+                    scan_debug_iter=int(scan_debug_iter),
+                    debug_force_first_iter=_maybe_debug_scan_force_first_iter,
+                    debug_state_iter=_maybe_debug_scan_state_iter,
                     debug_print=_jax_debug_print,
                 )
-                _maybe_debug_scan_state_iter(
-                    scan_debug_iter=int(scan_debug_iter),
-                    iter2=iter2,
-                    carry_adv=carry_adv,
-                    use_cached_precond=use_cached_precond,
-                    need_bcovar_update=need_bcovar_update,
-                    norms_used=norms_used,
-                    gcr2=gcr2,
-                    gcz2=gcz2,
-                    gcl2=gcl2,
-                    jnp_module=jnp,
-                    cond=jax.lax.cond,
-                )
-                conv_now = scan_converged(fsqr, fsqz, fsql)
+                iter2 = force_eval.iter2
+                fsq_prev_before = force_eval.fsq_prev_before
+                fsq0_prev_before = force_eval.fsq0_prev_before
+                skip_timecontrol = force_eval.skip_timecontrol
+                time_step_report = force_eval.time_step_report
+                zero_m1 = force_eval.zero_m1
+                include_edge = force_eval.include_edge
+                need_bcovar_update = force_eval.need_bcovar_update
+                use_cached_precond = force_eval.use_cached_precond
+                k = force_eval.kernels
+                frzl = force_eval.frzl
+                gcr2 = force_eval.gcr2
+                gcz2 = force_eval.gcz2
+                gcl2 = force_eval.gcl2
+                rz_scale = force_eval.rz_scale
+                l_scale = force_eval.l_scale
+                norms_current = force_eval.norms_current
+                norms_used = force_eval.norms_used
+                fsqr = force_eval.fsqr
+                fsqz = force_eval.fsqz
+                fsql = force_eval.fsql
+                conv_now = force_eval.conv_now
                 # Scalars for VMEC-style screen output (sampled on NSTEP cadence + convergence).
                 sample_vmec = (iter2 <= 1) | (iter2 >= int(max_iter)) | ((iter2 % nstep_screen) == 0) | conv_now
                 sample_vmec = sample_vmec & jnp.asarray(scan_collect_scalars, dtype=bool)
