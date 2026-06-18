@@ -20130,3 +20130,131 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+---
+## 164. Reduced Vector LS Backend Benchmark Example and Plots
+
+### Steps taken
+
+- Added root example
+  `examples/mirror_free_boundary_vector_ls_benchmark.py`.
+- The example compares one reduced mirror free-boundary residual-vector LS step
+  across four derivative routes:
+  - `finite_difference`;
+  - `jax_forward`;
+  - `jax_reverse`;
+  - `jax_auto`.
+- The reduced residual uses polynomial side-boundary coefficients
+  `[r0, a2, a4]`, a target radius profile, and a slope residual term on a
+  compact `xi` grid.
+- Added compact metrics schema
+  `mirror_free_boundary_vector_ls_benchmark` version `0.1`.
+- Added `validate_vector_ls_benchmark_metrics` for downstream and test-side
+  schema validation.
+- Added optional plots:
+  - backend residual/error/runtime summary;
+  - target/initial/updated radius profiles.
+- Added a root example regression test that runs the benchmark with
+  `--no-plots`, validates the metrics schema, and checks finite-difference/JAX
+  backend agreement.
+- Updated the mirror example README and docs in M163 for the reduced LS
+  backend path.
+
+### Results obtained
+
+- The no-plot smoke run completed:
+  `results/mirror/free_boundary_vector_ls_benchmark_m164_smoke/mirror_free_boundary_vector_ls_benchmark_metrics.json`.
+- The plotted run completed:
+  `results/mirror/free_boundary_vector_ls_benchmark_m164_plots/mirror_free_boundary_vector_ls_benchmark_metrics.json`.
+- Plotted run metrics reported:
+  - schema version `0.1`;
+  - all four derivative routes accepted the full line-search factor `1.0`;
+  - residual RMS decreased from `0.23213479614173216` to about
+    `0.0410754553836`;
+  - coefficient error decreased to about `0.06472162613`;
+  - finite-difference, JAX forward, JAX reverse, and JAX auto produced matching
+    updated coefficients to test tolerance.
+- Generated and visually inspected:
+  - `results/mirror/free_boundary_vector_ls_benchmark_m164_plots/figures/mirror_free_boundary_vector_ls_backend_summary.png`;
+  - `results/mirror/free_boundary_vector_ls_benchmark_m164_plots/figures/mirror_free_boundary_vector_ls_radius_profiles.png`.
+- The summary plot shows residual/error agreement across backends and runtime
+  differences. The radius-profile plot shows the initial profile moving toward
+  the target profile after one reduced LS step.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format examples/mirror_free_boundary_vector_ls_benchmark.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff check examples/mirror_free_boundary_vector_ls_benchmark.py \
+  tests/mirror/test_mirror_examples.py
+
+python examples/mirror_free_boundary_vector_ls_benchmark.py \
+  --outdir results/mirror/free_boundary_vector_ls_benchmark_m164_smoke \
+  --nxi 9 --no-plots
+
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_vector_ls_benchmark_runs_without_plots \
+  -q
+
+python examples/mirror_free_boundary_vector_ls_benchmark.py \
+  --outdir results/mirror/free_boundary_vector_ls_benchmark_m164_plots \
+  --nxi 17
+
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_free_boundary.py -q
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- New benchmark example no-plot smoke passed.
+- New benchmark example plotted smoke passed and generated PNG outputs.
+- Focused benchmark example test passed: `1 passed in 2.09s`.
+- Mirror free-boundary tests passed: `108 passed in 3.53s`.
+- Full mirror example tests passed: `23 passed in 98.10s`.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The benchmark is a root `examples/` script because it is a user-facing
+  derivative-route comparison for the free-boundary lane.
+- Generated plots/metrics remain under ignored `results/` paths and are not
+  committed.
+- The example is deliberately reduced and pure-JAX-compatible, so it can guide
+  derivative-route selection without conflating host-side MOUT writing or
+  realized fixed-boundary trial solves.
+
+### Best next steps
+
+1. Commit and push M164.
+2. Refresh the draft PR body for the new reduced vector LS backend benchmark.
+3. Use the benchmark evidence to set a documented default derivative route for
+   reduced free-boundary prototypes.
+4. Check CI after the latest push has useful completed jobs.
+
+### Completion percentages after M164
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `93%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `93%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `99%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.

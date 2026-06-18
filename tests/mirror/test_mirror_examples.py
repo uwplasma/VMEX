@@ -124,6 +124,47 @@ def test_root_finite_current_pitch_example_runs_without_plots(tmp_path):
     assert metrics["field_line_theta_advance_mean"] > 1.0
 
 
+def test_root_free_boundary_vector_ls_benchmark_runs_without_plots(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_free_boundary_vector_ls_benchmark.py",
+            "--outdir",
+            str(tmp_path / "vector_ls_benchmark"),
+            "--nxi",
+            "9",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    metrics = json.loads(Path(completed.stdout.strip()).read_text())
+    module = _load_root_example("mirror_free_boundary_vector_ls_benchmark.py")
+    module["validate_vector_ls_benchmark_metrics"](metrics)
+    rows = {row["name"]: row for row in metrics["rows"]}
+
+    assert metrics["metrics_schema_version"] == "0.1"
+    assert set(rows) == {"finite_difference", "jax_forward", "jax_reverse", "jax_auto"}
+    assert metrics["figures"] == {}
+    assert all(row["accepted"] for row in rows.values())
+    assert all(row["line_search_factor"] == pytest.approx(1.0) for row in rows.values())
+    np.testing.assert_allclose(
+        rows["jax_forward"]["coefficients_new"],
+        rows["finite_difference"]["coefficients_new"],
+        rtol=1.0e-9,
+        atol=1.0e-9,
+    )
+    np.testing.assert_allclose(
+        rows["jax_reverse"]["coefficients_new"],
+        rows["jax_forward"]["coefficients_new"],
+        rtol=1.0e-12,
+        atol=1.0e-12,
+    )
+    assert all(row["residual_reduction_fraction"] > 0.0 for row in rows.values())
+
+
 def test_root_stellarator_hybrid_boundary_example_runs_without_plots(tmp_path):
     completed = subprocess.run(
         [
