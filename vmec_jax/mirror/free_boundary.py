@@ -1024,3 +1024,55 @@ def propose_axisymmetric_mirror_lcfs_mixed_update(
         boundary=MirrorBoundary.tabulated_radius(scale.xi, new_radius),
         strategy="mixed_scale_bnormal",
     )
+
+
+def propose_axisymmetric_mirror_lcfs_candidate_set(
+    diagnostic: MirrorLCFSDiagnostic,
+    external_sample: MirrorExternalFieldSample,
+    pressure_response: Any,
+    *,
+    damping: float = 0.25,
+    max_relative_step: float = 0.05,
+    radius_floor: float = 1.0e-4,
+    preserve_caps: bool = True,
+    cap_taper_power: float = 2.0,
+    smoothing_passes: int = 1,
+    bnormal_weight: float = 1.0,
+) -> tuple[MirrorLCFSUpdateProposal, ...]:
+    """Return the standard axisymmetric LCFS proposal candidates."""
+
+    local = propose_axisymmetric_mirror_lcfs_update(
+        diagnostic,
+        pressure_response,
+        damping=damping,
+        max_relative_step=max_relative_step,
+        radius_floor=radius_floor,
+        preserve_caps=preserve_caps,
+        cap_taper_power=cap_taper_power,
+        smoothing_passes=smoothing_passes,
+    )
+    scale = propose_axisymmetric_mirror_lcfs_scale_update(
+        diagnostic,
+        pressure_response,
+        max_relative_step=max_relative_step,
+        radius_floor=radius_floor,
+    )
+    bnormal = propose_axisymmetric_mirror_lcfs_bnormal_update(
+        diagnostic,
+        external_sample,
+        pressure_response,
+        max_relative_step=max_relative_step,
+        radius_floor=radius_floor,
+        smoothing_passes=smoothing_passes,
+    )
+    mixed = propose_axisymmetric_mirror_lcfs_mixed_update(
+        diagnostic,
+        external_sample,
+        pressure_response,
+        max_relative_step=max_relative_step,
+        radius_floor=radius_floor,
+        smoothing_passes=smoothing_passes,
+        bnormal_weight=bnormal_weight,
+    )
+    noop = propose_axisymmetric_mirror_lcfs_noop_update(diagnostic, pressure_response)
+    return (local, scale, bnormal, mixed, noop)

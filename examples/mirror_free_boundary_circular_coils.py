@@ -30,11 +30,7 @@ from vmec_jax.mirror import (
     mirror_lcfs_diagnostic,
     mirror_lcfs_merit,
     plot_mirror_output,
-    propose_axisymmetric_mirror_lcfs_update,
-    propose_axisymmetric_mirror_lcfs_scale_update,
-    propose_axisymmetric_mirror_lcfs_noop_update,
-    propose_axisymmetric_mirror_lcfs_bnormal_update,
-    propose_axisymmetric_mirror_lcfs_mixed_update,
+    propose_axisymmetric_mirror_lcfs_candidate_set,
     run_mirror_fixed_boundary,
     sample_mirror_axis_external_field,
     sample_mirror_boundary_external_field,
@@ -235,53 +231,33 @@ def _select_lcfs_proposal(
     smoothing_passes: int,
     require_bnormal_nonincrease: bool,
 ):
-    local = propose_axisymmetric_mirror_lcfs_update(
-        lcfs,
-        pressure_response,
-        damping=damping,
-        max_relative_step=max_relative_step,
-        radius_floor=1.0e-4,
-        preserve_caps=True,
-        cap_taper_power=cap_taper_power,
-        smoothing_passes=smoothing_passes,
+    candidates = list(
+        propose_axisymmetric_mirror_lcfs_candidate_set(
+            lcfs,
+            external_sample,
+            pressure_response,
+            damping=damping,
+            max_relative_step=max_relative_step,
+            radius_floor=1.0e-4,
+            preserve_caps=True,
+            cap_taper_power=cap_taper_power,
+            smoothing_passes=smoothing_passes,
+            bnormal_weight=baseline_merit.bnormal_weight,
+        )
     )
-    scale = propose_axisymmetric_mirror_lcfs_scale_update(
-        lcfs,
-        pressure_response,
-        max_relative_step=max_relative_step,
-        radius_floor=1.0e-4,
-    )
-    bnormal = propose_axisymmetric_mirror_lcfs_bnormal_update(
-        lcfs,
-        external_sample,
-        pressure_response,
-        max_relative_step=max_relative_step,
-        radius_floor=1.0e-4,
-        smoothing_passes=smoothing_passes,
-    )
-    mixed = propose_axisymmetric_mirror_lcfs_mixed_update(
-        lcfs,
-        external_sample,
-        pressure_response,
-        max_relative_step=max_relative_step,
-        radius_floor=1.0e-4,
-        smoothing_passes=smoothing_passes,
-        bnormal_weight=baseline_merit.bnormal_weight,
-    )
-    noop = propose_axisymmetric_mirror_lcfs_noop_update(lcfs, pressure_response)
-    candidates = [local, scale, bnormal, mixed, noop]
     summaries = [
         _proposal_predicted_metrics(candidate, grid=grid, coils=coils, baseline_merit=baseline_merit)
         for candidate in candidates
     ]
-    if mode == "local":
-        return local, summaries
-    if mode == "scale":
-        return scale, summaries
-    if mode == "bnormal":
-        return bnormal, summaries
-    if mode == "mixed":
-        return mixed, summaries
+    mode_to_strategy = {
+        "local": "local_pressure",
+        "scale": "scale_pressure",
+        "bnormal": "bnormal_slope",
+        "mixed": "mixed_scale_bnormal",
+    }
+    if mode in mode_to_strategy:
+        strategy = mode_to_strategy[mode]
+        return next(candidate for candidate in candidates if candidate.strategy == strategy), summaries
     allowed = np.ones(len(summaries), dtype=bool)
     if require_bnormal_nonincrease:
         baseline_bnormal = float(baseline_merit.external_bnormal_rms)

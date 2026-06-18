@@ -8945,3 +8945,139 @@ Result: all checks passed.
 No user input is needed.
 
 ---
+
+## 76. 2026-06-18 M12n LCFS candidate-set helper and strict mixed probe
+
+This tranche started the pilot-loop simplification work by extracting the
+standard LCFS proposal construction into one reusable helper.  The root
+free-boundary example still owns exact coil-resampled scoring and actual
+fixed-boundary pilot solves, but it no longer repeats the local/scale/bnormal/
+mixed/no-op proposal construction at each pilot step.
+
+### Steps taken
+
+- Added `propose_axisymmetric_mirror_lcfs_candidate_set`.
+- Exported the helper through the public mirror API.
+- Simplified `_select_lcfs_proposal` in the root circular-coil example to:
+  - build the standard candidate tuple once;
+  - score every candidate with exact coil-resampled `B_ext.n`;
+  - map explicit modes to strategy names;
+  - apply the strict normal-field guard over the scored candidates.
+- Added unit coverage for the standard candidate order.
+- Ran a three-step strict mixed beta-10 probe to check whether repeated pilot
+  steps remain monotonic before moving more loop logic into helpers.
+
+### Results obtained
+
+Generated artifacts:
+
+- `results/mirror/m12n_mixed_lcfs_three_step_probe/free_boundary_circular_coils_metrics.json`.
+
+Strict mixed beta-10 three-step probe:
+
+| row | merit | pressure RMS | `B_ext.n` RMS | accepted |
+| :--- | ---: | ---: | ---: | :---: |
+| baseline | `1.000020371650` | `1.803515365850` | `7.657346104349e-03` | n/a |
+| step 1 | `0.782835620661` | `1.411809156436` | `7.655747922838e-03` | `true` |
+| step 2 | `0.594625153775` | `1.072354482550` | `7.615656217692e-03` | `true` |
+| step 3 | `0.431268555842` | `0.777718985048` | `7.442445773682e-03` | `true` |
+
+The repeated strict mixed pilot stays monotonic in combined merit and keeps the
+side-boundary normal field nonincreasing across all accepted steps.
+
+### How it was tested
+
+Focused free-boundary and root example tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_strict_bnormal_guard_can_skip_pilot \
+  -q
+```
+
+Result: `18 passed in 8.94s`.
+
+Three-step strict mixed probe:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/m12n_mixed_lcfs_three_step_probe \
+  --betas 10 \
+  --ntheta 24 \
+  --nxi 33 \
+  --n-segments 256 \
+  --run-fixed-boundary-baseline \
+  --run-lcfs-pilot \
+  --lcfs-pilot-steps 3 \
+  --baseline-maxiter 0 \
+  --lcfs-require-bnormal-nonincrease \
+  --no-plots
+```
+
+Result: metrics JSON written with three accepted pilot rows.
+
+Lint/format/whitespace:
+
+```bash
+python -m ruff check \
+  vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff format --check \
+  vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+git diff --check
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- Candidate construction now has one public entry point in
+  `vmec_jax/mirror/free_boundary.py`.
+- Exact candidate scoring stays in the root example because it depends on the
+  chosen coil provider and grid used by that workflow.
+- The helper returns existing `MirrorLCFSUpdateProposal` objects, preserving the
+  downstream JSON and plotting schema.
+
+### Best next steps
+
+1. Commit and push M12n.
+2. Extract exact candidate scoring into a small helper that returns the chosen
+   proposal, candidate summaries, and guard status.
+3. Then extract pilot row creation so skipped, rejected, and accepted rows are
+   generated through one tested path.
+4. Add a plotted three-step strict mixed run after the helper extraction so the
+   multi-step convergence row has figures, not only JSON.
+
+### Completion percentages after M12n
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `86%`.
+- I/O schema and docs: `90%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `63%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `50%`.
+- PR merge readiness overall: `90%`.
+
+### User input needed
+
+No user input is needed.
+
+---
