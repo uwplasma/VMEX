@@ -279,6 +279,43 @@ def axisym_reduced_residual_jacobian_jax(
     raise ValueError("derivative must be 'hessian', 'forward', or 'reverse'")
 
 
+def axisym_reduced_residual_linear_solve_jax(
+    vector,
+    rhs,
+    grid: MirrorGrid,
+    boundary: MirrorBoundary,
+    *,
+    psi_prime: PsiPrimeProfile,
+    i_prime: IPrimeProfile,
+    pressure: PressureProfile,
+    derivative: str = "hessian",
+    transpose: bool = False,
+    ridge: float = 0.0,
+    mu0: float = 4.0e-7 * np.pi,
+):
+    """Solve a dense reduced residual linear system for validation grids.
+
+    This is the small-grid reference solve used to validate implicit
+    differentiation formulas.  It intentionally forms the dense Jacobian; large
+    production solves should use a matrix-free or structured linear solver.
+    """
+    jacobian = axisym_reduced_residual_jacobian_jax(
+        vector,
+        grid,
+        boundary,
+        psi_prime=psi_prime,
+        i_prime=i_prime,
+        pressure=pressure,
+        derivative=derivative,
+        mu0=mu0,
+    )
+    matrix = jacobian.T if bool(transpose) else jacobian
+    rhs = jnp.asarray(rhs, dtype=matrix.dtype)
+    if float(ridge) != 0.0:
+        matrix = matrix + float(ridge) * jnp.eye(matrix.shape[0], dtype=matrix.dtype)
+    return jnp.linalg.solve(matrix, rhs)
+
+
 def pack_reduced_state_3d(state: MirrorState3D, grid: MirrorGrid, boundary: MirrorBoundary) -> np.ndarray:
     """Pack independent 3D ``a`` nodes and gauge-fixed ``lambda`` nodes."""
     projected = project_state_3d(state, grid, boundary)

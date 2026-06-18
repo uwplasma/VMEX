@@ -43,7 +43,11 @@ from .solvers.fixed_boundary.api import (
     MirrorSolveOptions,
     run_mirror_fixed_boundary,
 )
-from .solvers.fixed_boundary.reduced import axisym_reduced_residual_jacobian_jax, axisym_reduced_residual_jax
+from .solvers.fixed_boundary.reduced import (
+    axisym_reduced_residual_jacobian_jax,
+    axisym_reduced_residual_jax,
+    axisym_reduced_residual_linear_solve_jax,
+)
 from .validation.coils import (
     circular_loop_field_rz,
     circular_loop_on_axis_bz,
@@ -89,6 +93,7 @@ __all__ = [
     "ThetaFourierBasis",
     "axisym_reduced_residual_jacobian_jax",
     "axisym_reduced_residual_jax",
+    "axisym_reduced_residual_linear_solve_jax",
     "circular_loop_field_rz",
     "circular_loop_on_axis_bz",
     "initial_mirror_boundary_from_circular_coil_scan",

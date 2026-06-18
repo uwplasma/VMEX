@@ -23,8 +23,8 @@ without coupling it to toroidal VMEC assumptions:
   kernels, and magnetic/pressure energy integrals;
 - differentiable axisymmetric energy wrappers, projected residuals,
   reduced-coordinate residual/Jacobian utilities for implicit-differentiation
-  work, manufactured-solution source helpers, and gradient/Hessian validation
-  gates;
+  work, dense reduced linear solves for tiny forward/adjoint validation grids,
+  manufactured-solution source helpers, and gradient/Hessian validation gates;
 - fixed-boundary projected-gradient, scaled L-BFGS-B, dense/block-dense
   residual-Newton reference solves, and matrix-free residual-Newton diagnostics
   with pressure-continuation trace diagnostics;

@@ -12,6 +12,7 @@ from vmec_jax.mirror import (
     PsiPrimeProfile,
     axisym_reduced_residual_jacobian_jax,
     axisym_reduced_residual_jax,
+    axisym_reduced_residual_linear_solve_jax,
     run_mirror_fixed_boundary,
 )
 from vmec_jax.mirror.core.boundary import MirrorBoundary
@@ -257,6 +258,39 @@ def test_reduced_jax_residual_and_jacobian_match_gradient_and_jvp():
         (jnp.asarray(direction),),
     )
     np.testing.assert_allclose(jacobian @ direction, np.asarray(residual_jvp), rtol=1.0e-6, atol=1.0e-7)
+
+    ridge = 1.0e-8
+    identity = np.eye(vector.size)
+    rhs = np.cos(np.linspace(0.0, 1.0, vector.size))
+    forward_solution = np.asarray(
+        axisym_reduced_residual_linear_solve_jax(
+            vector,
+            rhs,
+            grid,
+            boundary,
+            psi_prime=psi,
+            i_prime=current,
+            pressure=pressure,
+            ridge=ridge,
+            mu0=1.0,
+        )
+    )
+    adjoint_solution = np.asarray(
+        axisym_reduced_residual_linear_solve_jax(
+            vector,
+            rhs,
+            grid,
+            boundary,
+            psi_prime=psi,
+            i_prime=current,
+            pressure=pressure,
+            transpose=True,
+            ridge=ridge,
+            mu0=1.0,
+        )
+    )
+    np.testing.assert_allclose((jacobian + ridge * identity) @ forward_solution, rhs, rtol=1.0e-6, atol=1.0e-7)
+    np.testing.assert_allclose((jacobian.T + ridge * identity) @ adjoint_solution, rhs, rtol=1.0e-6, atol=1.0e-7)
 
 
 def test_reduced_coordinate_scaling_matches_reduced_axisym_layout():

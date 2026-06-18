@@ -15787,3 +15787,92 @@ Results:
 No user input is needed.
 
 ---
+## 125. Dense Reduced Implicit Linear Solve Helper
+
+### Steps taken
+
+- Added `axisym_reduced_residual_linear_solve_jax(...)` in
+  `vmec_jax/mirror/solvers/fixed_boundary/reduced.py`.
+- The helper forms the dense reduced residual Jacobian and solves either:
+  - `J dx = rhs` for forward sensitivities; or
+  - `J.T adjoint = rhs` for reverse/adjoint sensitivities.
+- Added an optional scalar `ridge` regularization for tiny validation grids.
+- Exported the helper through `vmec_jax.mirror.api` and `vmec_jax.mirror`.
+- Extended the reduced-coordinate test to verify both forward and transpose
+  solves against the dense matrix equations.
+- Updated the mirror overview docs.
+
+### Results obtained
+
+- The differentiable lane now has three explicit small-grid reference pieces:
+  - reduced residual `F(x, p)`;
+  - residual Jacobian `dF/dx`;
+  - dense primal/transpose linear solves.
+- This is enough to validate implicit-differentiation formulas before adding a
+  scalable lineax/matrix-free implementation.
+- The helper is intentionally labeled and documented as a validation-grid path,
+  not a production large-grid solver.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check vmec_jax/mirror/solvers/fixed_boundary/reduced.py vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py tests/mirror/test_mirror_fixed_boundary_axisym.py
+python -m ruff format --check vmec_jax/mirror/solvers/fixed_boundary/reduced.py vmec_jax/mirror/api.py vmec_jax/mirror/__init__.py tests/mirror/test_mirror_fixed_boundary_axisym.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_fixed_boundary_axisym.py::test_reduced_jax_residual_and_jacobian_match_gradient_and_jvp -q
+python - <<'PY'
+from vmec_jax.mirror import axisym_reduced_residual_linear_solve_jax
+print(axisym_reduced_residual_linear_solve_jax.__name__)
+PY
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff format check passed.
+- Focused reduced-coordinate test: `1 passed`.
+- Public import returned `axisym_reduced_residual_linear_solve_jax`.
+
+### File structure and best-practice notes
+
+- The dense solve helper lives beside the residual/Jacobian it uses.
+- The public API surface remains narrow and axisymmetric-specific.
+- No CLI solver behavior changed.
+- This keeps fast host-side examples separate from differentiable JAX building
+  blocks, matching the plan's performance/differentiability split.
+
+### Best next steps
+
+1. Commit and push M125.
+2. Add a tiny manufactured implicit sensitivity test:
+   compare dense implicit `dx/dp` against finite differences of a solved
+   low-dimensional state.
+3. Add a short docs note explaining when to use dense validation solves versus
+   future lineax/matrix-free adjoints.
+4. Then implement the first custom implicit derivative wrapper around a
+   converged small-grid solved state.
+
+### Completion percentages after M125
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `88%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `92%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `42%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `85%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `85%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---
