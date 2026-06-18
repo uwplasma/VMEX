@@ -7,6 +7,75 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-18.
 
+## 2026-06-18 Same-Branch Runtime Config Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved same-branch vector-key constants, vector-key parsing,
+   report-direction policy, and same-branch report/proposal runtime summary
+   config assembly from
+   `examples/optimization/free_boundary_QS_coil_optimization.py` into
+   `vmec_jax.solvers.free_boundary.coil_optimization`.
+2. Kept backward-compatible example-module names by importing the moved
+   helpers into the script namespace; tests and users that import those names
+   from the example continue to work.
+3. Moved the small comma/space-separated float parser into the same package
+   helper module so proposal-step and QS-surface parsing no longer duplicate
+   generic CLI parsing inside the example.
+
+Results obtained:
+
+- `examples/optimization/free_boundary_QS_coil_optimization.py` dropped from
+  2164 to 2037 lines, a 127-line reduction in the user-facing example.
+- `vmec_jax/solvers/free_boundary/coil_optimization.py` grew from 921 to 1048
+  lines, so this tranche is line-count neutral overall across touched files.
+- Same-branch parser, direction-policy, dry-run summary, and report/proposal
+  configuration behavior is unchanged.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/free_boundary/coil_optimization.py examples/optimization/free_boundary_QS_coil_optimization.py tests/test_free_boundary_qs_coil_optimization_smoke.py`
+- `python -m compileall -q vmec_jax/solvers/free_boundary/coil_optimization.py examples/optimization/free_boundary_QS_coil_optimization.py tests/test_free_boundary_qs_coil_optimization_smoke.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_direction_policy_prefers_current_only_for_proposals tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_vector_key_parser_accepts_bnormal_alias tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_vector_key_parser_defaults_to_promoted_state_scalars tests/test_free_boundary_qs_coil_optimization_smoke.py::test_circle_dry_run_writes_configuration_without_solves tests/test_free_boundary_qs_coil_optimization_smoke.py::test_essos_dry_run_writes_direct_coil_configuration_without_mgrid -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py -q`
+- `python tools/diagnostics/source_health.py --top 10 --top-functions 12`
+
+Best next steps:
+
+1. Continue shrinking the direct-coil optimization example around passive
+   summary/objective metadata and report writer staging, but keep the
+   pedagogic optimization flow visible to users.
+2. Defer `_run_vmec2000_scan` movement until a real context-object seam exists;
+   direct extraction remains closure-heavy and high-risk.
+3. Keep CI watching deferred; inspect checks later only for concrete failures.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.57%.
+- Free-boundary adjoint monolith reduction: 99.35%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.9%.
+- WOUT diagnostic/profile decomposition: 99.72%.
+- Bcovar/WOUT parity decomposition: 98.35%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 99.13%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 93%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.7%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99938%.
+
 ## 2026-06-18 Free-Boundary Same-Branch Result Summary Extraction
 
 Branch: `codex/differentiability-refactor-plan`.

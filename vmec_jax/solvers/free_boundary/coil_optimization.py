@@ -25,7 +25,10 @@ from vmec_jax.quasisymmetry import (
 from vmec_jax.wout import equilibrium_aspect_ratio_from_state, equilibrium_iota_profiles_from_state
 
 __all__ = [
+    "DEFAULT_SAME_BRANCH_VECTOR_KEYS", "STATE_ONLY_SAME_BRANCH_KEYS", "SUPPORTED_SAME_BRANCH_VECTOR_KEYS",
     "nestor_profile_policy_from_results",
+    "parse_float_list",
+    "parse_same_branch_vector_keys",
     "parse_profile_matrix_free_solvers",
     "same_branch_current_only_coil_geometry_cache",
     "same_branch_derivative_gate_evidence",
@@ -33,11 +36,25 @@ __all__ = [
     "same_branch_derivative_proposals_from_report",
     "same_branch_rejected_slot_gate_from_vector_replay",
     "same_branch_replay_plan_cache",
+    "same_branch_report_direction_policy",
+    "same_branch_report_runtime_configs",
     "same_branch_report_mode_count",
     "same_branch_scalar_result_summary",
     "same_branch_scalar_function_registry",
     "same_branch_vector_result_summary",
 ]
+
+
+DEFAULT_SAME_BRANCH_VECTOR_KEYS = ("aspect", "qs_total", "mean_iota", "lcfs_boundary_moment")
+SUPPORTED_SAME_BRANCH_VECTOR_KEYS = DEFAULT_SAME_BRANCH_VECTOR_KEYS + (
+    "state_norm",
+    "boozer_qs_total",
+    "accepted_bnormal_rms",
+    "betatotal",
+)
+STATE_ONLY_SAME_BRANCH_KEYS = tuple(
+    key for key in SUPPORTED_SAME_BRANCH_VECTOR_KEYS if key != "accepted_bnormal_rms"
+)
 
 
 def parse_profile_matrix_free_solvers(value: str | Sequence[str] | None) -> tuple[str, ...]:
@@ -54,6 +71,116 @@ def parse_profile_matrix_free_solvers(value: str | Sequence[str] | None) -> tupl
     if unsupported:
         raise ValueError(f"unsupported matrix-free NESTOR solver(s): {unsupported}")
     return solvers or ("gmres", "bicgstab")
+
+
+def parse_same_branch_vector_keys(value: str | Sequence[str] | None) -> tuple[str, ...]:
+    """Parse branch-local vector report scalar keys from a small CLI option."""
+
+    if value is None:
+        keys = DEFAULT_SAME_BRANCH_VECTOR_KEYS
+    elif isinstance(value, str):
+        keys = tuple(part.strip() for part in value.replace(",", " ").split() if part.strip())
+    else:
+        keys = tuple(str(part).strip() for part in value if str(part).strip())
+    keys = tuple("accepted_bnormal_rms" if key == "bnormal_rms" else key for key in keys)
+    if not keys:
+        raise ValueError("expected at least one same-branch vector scalar key")
+    unsupported = tuple(key for key in keys if key not in SUPPORTED_SAME_BRANCH_VECTOR_KEYS)
+    if unsupported:
+        supported = ", ".join(SUPPORTED_SAME_BRANCH_VECTOR_KEYS)
+        raise ValueError(f"Unsupported same-branch vector scalar key(s) {unsupported}; supported keys: {supported}")
+    return keys
+
+
+def parse_float_list(text: str) -> list[float]:
+    """Parse comma/space-separated floats from a small CLI option."""
+    values = [float(part) for part in str(text).replace(",", " ").split() if part]
+    if not values:
+        raise ValueError("expected at least one floating-point value")
+    return values
+
+
+def same_branch_report_direction_policy(
+    args: Any,
+    variables: list[tuple[str, tuple[int, ...]]],
+) -> tuple[str, str, str]:
+    """Return requested/effective same-branch report direction policy."""
+
+    requested = str(getattr(args, "same_branch_report_direction", "auto")).strip().lower()
+    if requested not in {"auto", "all", "current-only"}:
+        raise ValueError("--same-branch-report-direction must be one of auto, all, current-only")
+    has_current = any(kind == "current" for kind, _index in variables)
+    if requested == "auto":
+        if bool(getattr(args, "same_branch_derivative_proposal", False)) and has_current:
+            return requested, "current-only", "auto selected current-only for derivative-proposal evidence"
+        return requested, "all", "auto selected mixed direction for ordinary same-branch validation"
+    if requested == "current-only" and not has_current:
+        raise ValueError("--same-branch-report-direction=current-only requires at least one selected current variable")
+    return requested, requested, "explicit user selection"
+
+
+def same_branch_report_runtime_configs(
+    args: Any,
+    variables: list[tuple[str, tuple[int, ...]]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Return summary configs for same-branch reports and derivative proposals."""
+
+    requested, effective, reason = same_branch_report_direction_policy(args, variables)
+    proposal_steps_text = str(getattr(args, "same_branch_proposal_steps", "")).strip()
+    proposal_steps = (
+        parse_float_list(proposal_steps_text)
+        if proposal_steps_text
+        else [float(getattr(args, "same_branch_proposal_step"))]
+    )
+    report_config = {
+        "enabled": bool(getattr(args, "write_same_branch_report", False)),
+        "mode": str(getattr(args, "same_branch_report_mode", "vector")),
+        "ad_mode": str(getattr(args, "same_branch_report_ad_mode", "direct")),
+        "vector_keys": list(parse_same_branch_vector_keys(getattr(args, "same_branch_report_vector_keys", None))),
+        "default_derivative_detail": "direct vector JVP for several physical scalars"
+        if str(getattr(args, "same_branch_report_mode", "vector")) == "vector"
+        and str(getattr(args, "same_branch_report_ad_mode", "direct")) == "direct"
+        else "user-selected report mode",
+        "contract": (
+            "production-forward values plus fixed accepted-branch replay derivatives; "
+            "does not differentiate adaptive host branch selection"
+        ),
+        "eps": float(getattr(args, "same_branch_report_eps")),
+        "max_iter": int(getattr(args, "same_branch_report_max_iter") or getattr(args, "vmec_max_iter")),
+        "anchor": str(getattr(args, "same_branch_report_anchor", "best")),
+        "direction_policy": {"requested": requested, "effective": effective, "reason": reason},
+        "diagnostic_disable_analytic": bool(getattr(args, "same_branch_report_disable_analytic", False)),
+        "diagnostic_freeze_vacuum_field": bool(getattr(args, "same_branch_report_freeze_vacuum_field", False)),
+        "diagnostic_freeze_bsqvac": bool(getattr(args, "same_branch_report_freeze_bsqvac", False)),
+        "nestor_solve_mode": str(getattr(args, "same_branch_report_nestor_solve_mode", "dense")),
+        "nestor_operator_solver": str(getattr(args, "same_branch_report_nestor_operator_solver", "gmres")),
+        "nestor_operator_tol": float(getattr(args, "same_branch_report_nestor_operator_tol", 1.0e-11)),
+        "nestor_operator_atol": float(getattr(args, "same_branch_report_nestor_operator_atol", 1.0e-13)),
+        "nestor_operator_maxiter": getattr(args, "same_branch_report_nestor_operator_maxiter", None),
+        "nestor_operator_restart": getattr(args, "same_branch_report_nestor_operator_restart", None),
+        "replay_max_mode_count": int(getattr(args, "same_branch_report_replay_max_mode_count", 220)),
+        "profile_nestor": str(getattr(args, "same_branch_report_profile_nestor", "none")),
+        "profile_matrix_free_solvers": list(
+            parse_profile_matrix_free_solvers(getattr(args, "same_branch_report_profile_matrix_free_solvers", None))
+        ),
+        "profile_min_mode_count": int(getattr(args, "same_branch_report_profile_min_mode_count", 96)),
+        "profile_min_speedup": float(getattr(args, "same_branch_report_profile_min_speedup", 1.15)),
+        "profile_max_mode_count": int(getattr(args, "same_branch_report_profile_max_mode_count", 220)),
+        "rejected_slot_gate": bool(getattr(args, "same_branch_report_rejected_slot_gate", False)),
+    }
+    proposal_config = {
+        "enabled": bool(getattr(args, "same_branch_derivative_proposal", False)),
+        "requires_same_branch_report": True,
+        "requires_report_mode": "vector",
+        "requires_report_ad_mode": "direct for JVP-only proposal; custom_vjp is report-only",
+        "scope": "one fixed-accepted-branch directional proposal followed by a normal complete-solve objective evaluation",
+        "step_size": float(getattr(args, "same_branch_proposal_step")),
+        "step_sizes": proposal_steps,
+        "max_trials": int(getattr(args, "same_branch_proposal_max_trials")),
+        "max_base_abs_delta": float(getattr(args, "same_branch_proposal_max_base_delta")),
+        "differentiates_adaptive_controller": False,
+    }
+    return report_config, proposal_config
 
 
 def same_branch_report_mode_count(report: dict[str, Any]) -> int:

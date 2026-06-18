@@ -54,7 +54,7 @@ from pathlib import Path
 import sys
 import time
 from types import SimpleNamespace
-from typing import Any, Sequence
+from typing import Any
 
 import numpy as np
 
@@ -73,7 +73,12 @@ from vmec_jax.quasisymmetry import (
     quasisymmetry_ratio_residual_from_state,
 )
 from vmec_jax.solvers.free_boundary.coil_optimization import (
+    DEFAULT_SAME_BRANCH_VECTOR_KEYS,
+    STATE_ONLY_SAME_BRANCH_KEYS,
+    SUPPORTED_SAME_BRANCH_VECTOR_KEYS,
     nestor_profile_policy_from_results,
+    parse_float_list,
+    parse_same_branch_vector_keys,
     parse_profile_matrix_free_solvers,
     same_branch_current_only_coil_geometry_cache,
     same_branch_derivative_gate_evidence as same_branch_derivative_gate_evidence,
@@ -81,7 +86,9 @@ from vmec_jax.solvers.free_boundary.coil_optimization import (
     same_branch_derivative_proposals_from_report,
     same_branch_rejected_slot_gate_from_vector_replay,
     same_branch_replay_plan_cache,
+    same_branch_report_direction_policy,
     same_branch_report_mode_count,
+    same_branch_report_runtime_configs,
     same_branch_scalar_result_summary,
     same_branch_scalar_function_registry,
     same_branch_vector_result_summary,
@@ -94,29 +101,6 @@ DEFAULT_INPUT = REPO_ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lo
 DEFAULT_OUTDIR = REPO_ROOT / "results" / "free_boundary_QS_coil_optimization"
 DEFAULT_ESSOS_COIL_JSON = "ESSOS_biot_savart_LandremanPaulQA.json"
 DEFAULT_FREE_BOUNDARY_PHIEDGE = -0.025
-DEFAULT_SAME_BRANCH_VECTOR_KEYS = ("aspect", "qs_total", "mean_iota", "lcfs_boundary_moment")
-SUPPORTED_SAME_BRANCH_VECTOR_KEYS = (
-    "state_norm",
-    "aspect",
-    "mean_iota",
-    "qs_total",
-    "boozer_qs_total",
-    "lcfs_boundary_moment",
-    "accepted_bnormal_rms",
-    "betatotal",
-)
-SAME_BRANCH_VECTOR_KEY_ALIASES = {
-    "bnormal_rms": "accepted_bnormal_rms",
-}
-STATE_ONLY_SAME_BRANCH_KEYS = (
-    "state_norm",
-    "aspect",
-    "mean_iota",
-    "qs_total",
-    "boozer_qs_total",
-    "lcfs_boundary_moment",
-    "betatotal",
-)
 SINGLE_STAGE_LIMITATIONS = [
     "The QS term is a VMEC-state quasisymmetry-ratio residual, not a Boozer-space exact-adjoint objective.",
     "Production full-loop direct-coil free-boundary adjoints are not promoted yet.",
@@ -434,35 +418,6 @@ def array_history(value: Any) -> list[float]:
         return []
 
 
-def parse_float_list(text: str) -> list[float]:
-    """Parse comma/space-separated floats from a small CLI option."""
-
-    cleaned = str(text).replace(",", " ")
-    values = [float(part) for part in cleaned.split() if part]
-    if not values:
-        raise ValueError("expected at least one floating-point value")
-    return values
-
-
-def parse_same_branch_vector_keys(value: str | Sequence[str] | None) -> tuple[str, ...]:
-    """Parse branch-local vector report scalar keys from a small CLI option."""
-
-    if value is None:
-        keys = DEFAULT_SAME_BRANCH_VECTOR_KEYS
-    elif isinstance(value, str):
-        keys = tuple(part.strip() for part in value.replace(",", " ").split() if part.strip())
-    else:
-        keys = tuple(str(part).strip() for part in value if str(part).strip())
-    keys = tuple(SAME_BRANCH_VECTOR_KEY_ALIASES.get(key, key) for key in keys)
-    if not keys:
-        raise ValueError("expected at least one same-branch vector scalar key")
-    unsupported = tuple(key for key in keys if key not in SUPPORTED_SAME_BRANCH_VECTOR_KEYS)
-    if unsupported:
-        supported = ", ".join(SUPPORTED_SAME_BRANCH_VECTOR_KEYS)
-        raise ValueError(f"Unsupported same-branch vector scalar key(s) {unsupported}; supported keys: {supported}")
-    return keys
-
-
 def run_direct_free_boundary(
     input_path: Path,
     params: CoilFieldParams,
@@ -657,31 +612,6 @@ def objective_terms_from_summary(
         },
         "missing_unweighted_terms": missing_terms,
     }
-
-
-def same_branch_report_direction_policy(
-    args: argparse.Namespace,
-    variables: list[tuple[str, tuple[int, ...]]],
-) -> tuple[str, str, str]:
-    """Return requested/effective same-branch report direction policy.
-
-    ``auto`` preserves the broad mixed current/Fourier validation direction for
-    ordinary reports, but switches to the current-only direction when a
-    derivative proposal is requested.  That keeps proposal smokes on the fast
-    fixed-coil-geometry JVP path while complete solves still decide acceptance.
-    """
-
-    requested = str(getattr(args, "same_branch_report_direction", "auto")).strip().lower()
-    if requested not in {"auto", "all", "current-only"}:
-        raise ValueError("--same-branch-report-direction must be one of auto, all, current-only")
-    has_current = any(kind == "current" for kind, _index in variables)
-    if requested == "auto":
-        if bool(getattr(args, "same_branch_derivative_proposal", False)) and has_current:
-            return requested, "current-only", "auto selected current-only for derivative-proposal evidence"
-        return requested, "all", "auto selected mixed direction for ordinary same-branch validation"
-    if requested == "current-only" and not has_current:
-        raise ValueError("--same-branch-report-direction=current-only requires at least one selected current variable")
-    return requested, requested, "explicit user selection"
 
 
 def same_branch_direction_from_variables(
@@ -1422,67 +1352,10 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
         "xtol": float(args.xtol),
         "ftol": float(args.optimizer_ftol),
     }
-    requested_direction_policy, effective_direction_policy, direction_policy_reason = (
-        same_branch_report_direction_policy(args, variables)
+    same_branch_report_config, same_branch_derivative_proposal_config = same_branch_report_runtime_configs(
+        args,
+        variables,
     )
-    same_branch_report_config = {
-        "enabled": bool(args.write_same_branch_report),
-        "mode": str(args.same_branch_report_mode),
-        "ad_mode": str(args.same_branch_report_ad_mode),
-        "vector_keys": list(parse_same_branch_vector_keys(getattr(args, "same_branch_report_vector_keys", None))),
-        "default_derivative_detail": (
-            "direct vector JVP for several physical scalars"
-            if str(args.same_branch_report_mode) == "vector" and str(args.same_branch_report_ad_mode) == "direct"
-            else "user-selected report mode"
-        ),
-        "contract": (
-            "production-forward values plus fixed accepted-branch replay derivatives; "
-            "does not differentiate adaptive host branch selection"
-        ),
-        "eps": float(args.same_branch_report_eps),
-        "max_iter": int(args.same_branch_report_max_iter or args.vmec_max_iter),
-        "anchor": str(getattr(args, "same_branch_report_anchor", "best")),
-        "direction_policy": {
-            "requested": requested_direction_policy,
-            "effective": effective_direction_policy,
-            "reason": direction_policy_reason,
-        },
-        "diagnostic_disable_analytic": bool(getattr(args, "same_branch_report_disable_analytic", False)),
-        "diagnostic_freeze_vacuum_field": bool(getattr(args, "same_branch_report_freeze_vacuum_field", False)),
-        "diagnostic_freeze_bsqvac": bool(getattr(args, "same_branch_report_freeze_bsqvac", False)),
-        "nestor_solve_mode": str(getattr(args, "same_branch_report_nestor_solve_mode", "dense")),
-        "nestor_operator_solver": str(getattr(args, "same_branch_report_nestor_operator_solver", "gmres")),
-        "nestor_operator_tol": float(getattr(args, "same_branch_report_nestor_operator_tol", 1.0e-11)),
-        "nestor_operator_atol": float(getattr(args, "same_branch_report_nestor_operator_atol", 1.0e-13)),
-        "nestor_operator_maxiter": getattr(args, "same_branch_report_nestor_operator_maxiter", None),
-        "nestor_operator_restart": getattr(args, "same_branch_report_nestor_operator_restart", None),
-        "replay_max_mode_count": int(getattr(args, "same_branch_report_replay_max_mode_count", 220)),
-        "profile_nestor": str(getattr(args, "same_branch_report_profile_nestor", "none")),
-        "profile_matrix_free_solvers": list(
-            parse_profile_matrix_free_solvers(getattr(args, "same_branch_report_profile_matrix_free_solvers", None))
-        ),
-        "profile_min_mode_count": int(getattr(args, "same_branch_report_profile_min_mode_count", 96)),
-        "profile_min_speedup": float(getattr(args, "same_branch_report_profile_min_speedup", 1.15)),
-        "profile_max_mode_count": int(getattr(args, "same_branch_report_profile_max_mode_count", 220)),
-        "rejected_slot_gate": bool(getattr(args, "same_branch_report_rejected_slot_gate", False)),
-    }
-    same_branch_derivative_proposal_config = {
-        "enabled": bool(args.same_branch_derivative_proposal),
-        "requires_same_branch_report": True,
-        "requires_report_mode": "vector",
-        "requires_report_ad_mode": "direct for JVP-only proposal; custom_vjp is report-only",
-        "scope": (
-            "one fixed-accepted-branch directional proposal followed by a "
-            "normal complete-solve objective evaluation"
-        ),
-        "step_size": float(args.same_branch_proposal_step),
-        "step_sizes": parse_float_list(str(args.same_branch_proposal_steps))
-        if str(args.same_branch_proposal_steps).strip()
-        else [float(args.same_branch_proposal_step)],
-        "max_trials": int(args.same_branch_proposal_max_trials),
-        "max_base_abs_delta": float(args.same_branch_proposal_max_base_delta),
-        "differentiates_adaptive_controller": False,
-    }
     history: list[dict[str, Any]] = []
     best: dict[str, Any] | None = None
     if bool(args.dry_run):
