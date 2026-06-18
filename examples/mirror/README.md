@@ -149,9 +149,9 @@ merit improvement with ``--lcfs-pilot-stagnation-rtol``; each pilot row records
 a ``stop_reason`` and each beta row records ``lcfs_pilot_stop_reason``. When
 plots are enabled and baseline rows exist, the example also writes a cross-beta
 summary figure comparing
-pressure-balance RMS, external normal-field RMS, and LCFS merit before and
-after pilot updates. This is still an LCFS pilot workflow, not a converged
-free-boundary equilibrium solve.
+pressure-balance RMS, external normal-field RMS, LCFS merit, and final ``fsq``
+before and after pilot updates. This is still an LCFS pilot workflow, not a
+converged free-boundary equilibrium solve.
 
 The root-level ``examples/mirror_fixed_boundary_solve_diagnostic.py`` script
 runs an actual L-BFGS fixed-boundary relaxation from a perturbed interior state.

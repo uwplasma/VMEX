@@ -236,10 +236,12 @@ def _write_beta_scan_summary_plot(rows: list[dict[str, object]], *, outdir: Path
     baseline_pressure = _ordered("lcfs_pressure_balance_rms")
     baseline_bnormal = _ordered("lcfs_external_bnormal_rms")
     baseline_merit = _ordered("lcfs_merit")
+    baseline_fsq = _ordered("final_fsq")
     pilot_pressure = _ordered_optional("lcfs_pilot_final_pressure_balance_rms")
     pilot_merit = _ordered_optional("lcfs_pilot_final_merit")
+    pilot_fsq = _ordered_optional("lcfs_pilot_final_fsq")
 
-    fig, axes = plt.subplots(3, 1, figsize=(6.6, 6.8), sharex=True)
+    fig, axes = plt.subplots(4, 1, figsize=(6.6, 8.2), sharex=True)
     axes[0].plot(beta, baseline_pressure, "o-", label="baseline")
     if np.isfinite(pilot_pressure).any():
         axes[0].plot(beta, pilot_pressure, "s--", label="pilot final")
@@ -253,8 +255,14 @@ def _write_beta_scan_summary_plot(rows: list[dict[str, object]], *, outdir: Path
     if np.isfinite(pilot_merit).any():
         axes[2].plot(beta, pilot_merit, "s--", label="pilot final")
     axes[2].set_ylabel("LCFS merit")
-    axes[2].set_xlabel("nominal beta (%)")
     axes[2].legend(fontsize="small")
+
+    axes[3].plot(beta, baseline_fsq, "o-", label="baseline")
+    if np.isfinite(pilot_fsq).any():
+        axes[3].plot(beta, pilot_fsq, "s--", label="pilot final")
+    axes[3].set_ylabel("final fsq")
+    axes[3].set_xlabel("nominal beta (%)")
+    axes[3].legend(fontsize="small")
 
     for ax in axes:
         finite_positive = [line.get_ydata() for line in ax.lines if np.all(np.asarray(line.get_ydata()) > 0.0)]
@@ -284,11 +292,15 @@ def _lcfs_pilot_summary(pilot_rows: list[dict[str, object]]) -> dict[str, object
             "lcfs_pilot_final_merit": None,
             "lcfs_pilot_best_merit": None,
             "lcfs_pilot_final_pressure_balance_rms": None,
+            "lcfs_pilot_final_fsq": None,
+            "lcfs_pilot_best_fsq": None,
+            "lcfs_pilot_final_normalized_force": None,
             "lcfs_pilot_stop_reason": None,
         }
     accepted = sum(bool(row.get("accepted", False)) and not bool(row.get("skipped", False)) for row in pilot_rows)
     skipped = sum(bool(row.get("skipped", False)) for row in pilot_rows)
     merit_values = [float(row["lcfs_merit"]) for row in pilot_rows if row.get("lcfs_merit") is not None]
+    fsq_values = [float(row["final_fsq"]) for row in pilot_rows if row.get("final_fsq") is not None]
     final = pilot_rows[-1]
     if bool(final.get("skipped", False)):
         status = "skipped"
@@ -306,6 +318,11 @@ def _lcfs_pilot_summary(pilot_rows: list[dict[str, object]]) -> dict[str, object
         "lcfs_pilot_final_pressure_balance_rms": None
         if final.get("lcfs_pressure_balance_rms") is None
         else float(final["lcfs_pressure_balance_rms"]),
+        "lcfs_pilot_final_fsq": None if final.get("final_fsq") is None else float(final["final_fsq"]),
+        "lcfs_pilot_best_fsq": None if not fsq_values else float(min(fsq_values)),
+        "lcfs_pilot_final_normalized_force": None
+        if final.get("final_normalized_force") is None
+        else float(final["final_normalized_force"]),
         "lcfs_pilot_stop_reason": final.get("stop_reason"),
     }
 

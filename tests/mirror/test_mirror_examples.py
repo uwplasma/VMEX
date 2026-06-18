@@ -245,6 +245,9 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert all(row["lcfs_pilot_final_merit"] is not None for row in metrics["fixed_boundary_baseline_rows"])
     assert all(row["lcfs_pilot_best_merit"] is not None for row in metrics["fixed_boundary_baseline_rows"])
     assert all(row["lcfs_pilot_stop_reason"] == "max_steps" for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(row["lcfs_pilot_final_fsq"] is not None for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(row["lcfs_pilot_best_fsq"] is not None for row in metrics["fixed_boundary_baseline_rows"])
+    assert all(row["lcfs_pilot_final_normalized_force"] is not None for row in metrics["fixed_boundary_baseline_rows"])
     assert all(
         row["lcfs_pilot_final_pressure_balance_rms"] is not None for row in metrics["fixed_boundary_baseline_rows"]
     )
@@ -362,6 +365,8 @@ def test_root_free_boundary_circular_coils_pilot_stagnation_stops_early(tmp_path
     assert metrics["lcfs_pilot_stop_reason_counts"] == {"merit_stagnation": 1}
     assert row["lcfs_pilot_rows_count"] == 1
     assert row["lcfs_pilot_stop_reason"] == "merit_stagnation"
+    assert row["lcfs_pilot_final_fsq"] is not None
+    assert row["lcfs_pilot_best_fsq"] is not None
     assert row["lcfs_pilot_rows"][0]["stop_reason"] == "merit_stagnation"
     assert row["lcfs_pilot_rows"][0]["lcfs_merit_improvement_fraction"] <= 1.0
 

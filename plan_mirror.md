@@ -14780,3 +14780,139 @@ Results:
 No user input is needed.
 
 ---
+
+## 117. 2026-06-18 M16 circular-coil realistic pilot and final-fsq trend
+
+### Steps taken
+
+I ran the circular-coil beta scan with a more realistic pilot stagnation
+tolerance and added fixed-boundary residual information to the beta summary.
+This makes the free-boundary pilot more honest: LCFS merit can improve while the
+underlying fixed-boundary residual worsens, and the plot now shows both.
+
+Concretely:
+
+- added `lcfs_pilot_final_fsq`, `lcfs_pilot_best_fsq`, and
+  `lcfs_pilot_final_normalized_force` to per-beta summaries;
+- added a fourth `final fsq` panel to
+  `free_boundary_circular_coils_beta_scan_summary.png`;
+- updated tests to require the new pilot `fsq` summary fields;
+- updated mirror docs/README to name the final-`fsq` summary panel.
+
+### Results obtained
+
+Realistic low-resolution pilot run:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 \
+  python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/free_boundary_circular_coils_m117_pilot_rtol \
+  --ntheta 8 \
+  --nxi 11 \
+  --n-segments 64 \
+  --run-fixed-boundary-baseline \
+  --baseline-maxiter 5 \
+  --run-lcfs-pilot \
+  --lcfs-pilot-steps 5 \
+  --lcfs-pilot-stagnation-rtol 1e-3
+```
+
+Observed:
+
+- workflow: `lcfs_pilot`;
+- baseline beta rows: `3`;
+- requested pilot steps: `5`;
+- actual pilot rows: `15`;
+- accepted pilot rows: `15`;
+- skipped pilot rows: `0`;
+- stop reasons: `{"None": 12, "max_steps": 3}`;
+- beta `1%`:
+  - baseline `final_fsq`: `9.927119074706592e-4`;
+  - pilot final `fsq`: `8.507334465997071e-4`;
+  - pilot best `fsq`: `8.285450166810463e-4`;
+  - pilot final merit: `0.04135630008705599`;
+  - pilot final pressure RMS: `0.060082322237203306`;
+- beta `3%`:
+  - baseline `final_fsq`: `0.004468220052785157`;
+  - pilot final `fsq`: `0.006353407728010569`;
+  - pilot best `fsq`: `0.004709131909718425`;
+  - pilot final merit: `0.03604071048265542`;
+  - pilot final pressure RMS: `0.060082322237203306`;
+- beta `10%`:
+  - baseline `final_fsq`: `0.04263091618797516`;
+  - pilot final `fsq`: `0.06789198818929472`;
+  - pilot best `fsq`: `0.046665979566329834`;
+  - pilot final merit: `0.03604071048265542`;
+  - pilot final pressure RMS: `0.060082322237203306`.
+
+Interpretation: the LCFS pilot strongly reduces pressure-balance/merit metrics,
+but at this low resolution and with only five baseline iterations it can worsen
+the fixed-boundary residual for the higher-beta cases.  That is exactly why the
+plot now includes final `fsq`; the next free-boundary step should couple LCFS
+updates to a residual-quality gate or rerun fixed-boundary baselines longer.
+
+Rendered ignored plot:
+
+- `results/mirror/free_boundary_circular_coils_m117_pilot_rtol/figures/free_boundary_circular_coils_beta_scan_summary.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+python -m ruff format --check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_strict_bnormal_guard_can_skip_pilot tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_pilot_stagnation_stops_early -q
+git diff --check
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff format check passed.
+- `3 passed` in focused circular-coil tests.
+- `git diff --check` passed.
+- The plotted realistic pilot run completed and rendered.
+
+### File structure and best-practice notes
+
+- Plot expansion stays inside the root example; no core solver APIs changed.
+- Summary fields are plain JSON scalars so ESSOS/downstream scripts can consume
+  them without loading `mout` files.
+- Generated evidence remains ignored under `results/`.
+
+### Best next steps
+
+1. Commit and push M117.
+2. Add an optional LCFS acceptance guard on fixed-boundary residual quality, for
+   example requiring pilot `final_fsq <= baseline final_fsq * factor`.
+3. Re-run the 1%, 3%, and 10% beta scan with that residual-quality gate and a
+   longer baseline solve budget.
+4. Promote the circular-coil beta scan JSON contract into docs for ESSOS
+   integration.
+5. Return to differentiable solved-state/implicit derivatives once free-boundary
+   pilot gates are explicit.
+
+### Completion percentages after M117
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `87%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `90%`.
+- I/O schema and docs: `97%`.
+- Differentiable solved-state API: `30%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `79%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `75%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---

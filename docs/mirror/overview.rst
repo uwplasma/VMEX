@@ -50,8 +50,8 @@ without coupling it to toroidal VMEC assumptions:
   an optional strict normal-field guard that records allowed strategies,
   no-op rejection reasons, workflow status, requested beta-scan points, and
   aggregate pilot counts and stop reasons in JSON output, with optional
-  target-merit/stagnation stop criteria and a cross-beta LCFS metrics summary
-  plot;
+  target-merit/stagnation stop criteria and a cross-beta LCFS/final-``fsq``
+  metrics summary plot;
 - a repo-root ``examples/mirror_two_coil_axisym.py`` analytic benchmark that
   builds a fixed boundary from the closed-form on-axis field of two circular
   coils, overlays mirror ``B_z`` against that reference, draws the coils, and
