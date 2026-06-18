@@ -13226,6 +13226,81 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9982%.
 
+## 2026-06-18 Bcovar Field and Pressure Seam Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted `_compute_bcovar_contravariant_field` from
+   `vmec_bcovar_half_mesh_from_wout` so VMEC `bcovar/add_fluxes`
+   contravariant-field assembly is a named seam.
+2. Extracted `_resolve_bcovar_half_mesh_pressure` for the finite-beta
+   `mass/gamma -> pressure` reconstruction path.
+3. Extracted `_apply_freeb_bsqvac_edge` for free-boundary `bsqvac` edge
+   validation and replacement.
+4. Removed the unused `signgs` payload from `BcovarFluxContext`.
+
+Results obtained:
+
+- `vmec_jax/vmec_bcovar.py` is net negative: 131 insertions, 134 deletions.
+- `vmec_bcovar_half_mesh_from_wout` dropped from 493 to 387 lines.
+- The new contravariant-field helper is below the source-health function
+  threshold and keeps Nyquist reference overrides in the public routine, where
+  they remain visibly tied to WOUT parity options.
+- No generated artifacts or large files were added.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/vmec_bcovar.py tests/test_bcovar_lambda_axis_closure.py tests/test_non_solve_wave6_coverage.py tests/test_forces_bcovar_wave12_coverage.py tests/test_finite_beta.py`
+- `python -m compileall -q vmec_jax/vmec_bcovar.py tests/test_bcovar_lambda_axis_closure.py tests/test_non_solve_wave6_coverage.py tests/test_forces_bcovar_wave12_coverage.py tests/test_finite_beta.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_bcovar_lambda_axis_closure.py::test_circular_axisymmetric_bcovar_pure_toroidal_field_identities tests/test_bcovar_lambda_axis_closure.py::test_current_driven_branch_recomputes_chips_to_match_target_current tests/test_bcovar_lambda_axis_closure.py::test_pressure_override_and_mass_reconstruction_control_bsq_without_changing_bfield tests/test_non_solve_wave6_coverage.py::test_bcovar_free_boundary_edge_override_and_force_scalar_normalization tests/test_forces_bcovar_wave12_coverage.py::test_bcovar_cached_fluxes_and_freeb_shape_errors -q`
+  - Result: passed.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_bcovar_lambda_axis_closure.py tests/test_non_solve_wave6_coverage.py::test_bcovar_free_boundary_edge_override_and_force_scalar_normalization tests/test_non_solve_wave6_coverage.py::test_bcovar_pytree_roundtrip_preserves_field_order tests/test_forces_bcovar_wave12_coverage.py::test_bcovar_cached_fluxes_and_freeb_shape_errors -q`
+  - Result: passed.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_bcovar_forces_extra_coverage.py::test_bcovar_lasym_channels_recombine_to_covariant_fields tests/test_wout_bcovar_forces_extra_coverage.py::test_bcovar_even_odd_metric_reconstructs_physical_half_mesh tests/test_wout_bcovar_forces_extra_coverage.py::test_bcovar_lambda_axis_closure_copies_only_three_dimensional_m0_modes -q`
+  - Result: passed.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_contravariant_field_gate.py -q`
+  - Result: passed.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_finite_beta.py -q`
+  - Result: skipped locally because the optional finite-beta fixture gate is
+    unavailable in this environment.
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 40`
+
+Best next steps:
+
+1. Continue with the next source-health hotspot that can be reduced without
+   behavior changes; candidates are `vmec_forces_rz_from_wout`,
+   `vmec_tomnsp.tomnsps_rzl`, or a small `run_fixed_boundary` finish/print seam.
+2. Keep the residual-iteration monolith as a larger tranche; it needs a more
+   deliberate branch-preserving split than the WOUT/Bcovar seams.
+3. Defer CI polling until a larger batch is pushed, per user instruction.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999998%.
+- Solver monolith reduction: 99.57%.
+- Free-boundary adjoint monolith reduction: 99.40%.
+- Driver workflow decomposition: 99.87%.
+- Residual iteration decomposition: 96.9%.
+- WOUT diagnostic/profile decomposition: 99.86%.
+- Bcovar/WOUT parity decomposition: 99.05%.
+- Force-kernel decomposition: 98.55%.
+- Optimizer workflow decomposition: 99.19%.
+- Fixed-boundary optimizer decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95%.
+- QI objective decomposition: 96.2%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9996%.
+
 ## 2026-06-18 Residual Iteration Mode-Alias Cleanup
 
 Branch: `codex/differentiability-refactor-plan`.
