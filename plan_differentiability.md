@@ -8978,3 +8978,72 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.925%.
+
+## 2026-06-18 Free-Boundary NESTOR and Projected-Mode Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted dense mode-space vacuum reconstruction into
+   `vmec_jax.solvers.free_boundary.adjoint.mode_solve`.
+2. Extracted projected-mode fixed-point validation helpers into
+   `vmec_jax.solvers.free_boundary.adjoint.projected_modes`, while keeping a
+   facade wrapper for the public directional-check function so monkeypatches of
+   `pytree_directional_derivative_check_jax` still work through
+   `vmec_jax.free_boundary_adjoint`.
+3. Extracted the pure JAX VMEC/NESTOR nonsingular, analytic, and dense
+   mode-solve assembly into
+   `vmec_jax.solvers.free_boundary.adjoint.vmec_nestor`.
+4. Preserved public compatibility imports from `vmec_jax.free_boundary_adjoint`
+   for dense mode solves, VMEC/NESTOR helpers, and projected-mode helpers.
+
+Results obtained:
+
+- `vmec_jax/free_boundary_adjoint.py` dropped from 3,714 lines to 2,734 lines.
+- `free_boundary_adjoint.py` no longer appears in the source-health top-10
+  oversized files.
+- The current strongest free-boundary differentiability claims remain
+  unchanged: this is a module split of pure NESTOR/projected validation helpers,
+  not a new production adaptive-loop exact-adjoint claim.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/free_boundary_adjoint.py vmec_jax/solvers/free_boundary/adjoint/mode_solve.py vmec_jax/solvers/free_boundary/adjoint/projected_modes.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py -q -k "dense_mode_vacuum_solve or projected_mode_fixed_point"`
+- `python -m ruff check vmec_jax/free_boundary_adjoint.py vmec_jax/solvers/free_boundary/adjoint/mode_solve.py vmec_jax/solvers/free_boundary/adjoint/projected_modes.py vmec_jax/solvers/free_boundary/adjoint/vmec_nestor.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py -q -k "dense_mode_vacuum_solve or dense_vmec_nestor_mode_solve or matrix_free_mode_operator or projected_mode_fixed_point"`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_adjoint_helpers_unit.py tests/test_free_boundary_jax_nestor_operator_cache.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -q -k "direct_coil_trace_fingerprint_detects_control_branch_changes or direct_coil_branch_trace_mode_keeps_replay_controls_without_raw_force_payload or direct_coil_vacuum_field_override_replay_contract"`
+- `python tools/diagnostics/source_health.py --top 10 --top-functions 15`
+
+Best next steps:
+
+1. Continue free-boundary adjoint reduction by splitting common branch-local
+   replay preparation and report assembly, while preserving conservative claim
+   flags.
+2. Continue residual iteration decomposition inside
+   `solve_fixed_boundary_residual_iter` using ptau/Jacobian dump bookkeeping
+   and host diagnostics wrappers.
+3. Defer production adaptive-loop differentiation claims until the planned
+   fingerprint-gated adaptive AD-vs-FD gate exists.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.96%.
+- Differentiability/refactor implementation: 99.9996%.
+- Solver monolith reduction: 98.75%.
+- Free-boundary adjoint monolith reduction: 92%.
+- Driver workflow decomposition: 96.4%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.935%.
