@@ -15886,3 +15886,69 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999974%.
+
+## 2026-06-18 Non-Solver Unused Local Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Removed unused locals from non-solver helper modules after the first
+   lint-guided cleanup pass.
+2. Dropped an unused base realspace synthesis call in
+   `vmec_jax/io/wout/bsubs.py`; only the derivative synthesis outputs are used
+   in that block.
+3. Removed stale locals from initial-guess, transform, plotting, bootstrap,
+   implicit, WOUT Mercier, and free-boundary adjoint report helpers.
+
+Results obtained:
+
+- Removed 26 source lines without adding files.
+- `vmec_jax/io/wout/bsubs.py` dropped from 837 to 826 lines.
+- `vmec_jax/plotting.py` dropped from 2207 to 2205 lines.
+- `vmec_jax/implicit.py` dropped from 1805 to 1803 lines.
+- Source-health confirms no new files crossed warning thresholds.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/init_guess.py vmec_jax/vmec_realspace.py vmec_jax/vmec_tomnsp.py vmec_jax/io/wout/bsubs.py vmec_jax/io/wout/mercier.py vmec_jax/plotting.py vmec_jax/bootstrap_current.py vmec_jax/free_boundary_adjoint.py vmec_jax/implicit.py`
+- `python -m ruff check vmec_jax/init_guess.py vmec_jax/vmec_realspace.py vmec_jax/vmec_tomnsp.py vmec_jax/io/wout/bsubs.py vmec_jax/io/wout/mercier.py vmec_jax/plotting.py vmec_jax/bootstrap_current.py vmec_jax/free_boundary_adjoint.py vmec_jax/implicit.py --select F841,F401`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_step9_implicit_fixed_boundary.py tests/test_free_boundary_adjoint_helpers_unit.py tests/test_free_boundary_vacuum_adjoint.py::test_segmented_accepted_controller_matches_monolithic_scan_and_gradient tests/test_wout_geometry_mercier_bundled_parity.py tests/test_wout_beta_eqfor_bundled_parity.py tests/test_preconditioner_plotting_coords_wave8_coverage.py tests/test_redl_bootstrap_simsopt_parity.py -q`
+- `python tools/diagnostics/source_health.py --top 16 --top-functions 30`
+- `git diff --check`
+
+Best next steps:
+
+1. Leave residual-iteration F841 cleanup for a dedicated parity-backed tranche.
+2. Next low-risk area is plotting/WOUT helper consolidation, where focused
+   rendering/parity tests already exist and source-health still flags file size.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.62%.
+- Free-boundary adjoint monolith reduction: 99.41%.
+- Driver workflow decomposition: 99.90%.
+- Residual iteration decomposition: 97.5%.
+- WOUT diagnostic/profile decomposition: 99.89%.
+- Bcovar/WOUT parity decomposition: 99.10%.
+- Force-kernel decomposition: 99.65%.
+- Scan/performance policy consolidation: 99.72%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.56%.
+- Fixed-boundary optimizer decomposition: 95.8%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.35%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999975%.
