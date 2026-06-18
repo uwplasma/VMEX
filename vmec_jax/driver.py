@@ -77,9 +77,7 @@ _result_meets_requested_ftol = _driver_policy_helpers.result_meets_requested_fto
 _sanitize_minimal_resume_state_for_finish = _driver_policy_helpers.sanitize_minimal_resume_state_for_finish
 _sanitize_resume_state_for_grid_change = _driver_policy_helpers.sanitize_resume_state_for_grid_change
 _sanitize_resume_state_for_same_grid = _driver_policy_helpers.sanitize_resume_state_for_same_grid
-_STAGE_CHUNK_DIAG_KEYS = _driver_result_helpers.STAGE_CHUNK_DIAG_KEYS
 _aggregate_stage_chunk_timing = _driver_result_helpers.aggregate_stage_chunk_timing
-_cat_result_history = _driver_result_helpers.cat_result_history
 _copy_final_force_payload = _driver_result_helpers.copy_final_force_payload
 _merge_stage_chunk_results = _driver_result_helpers.merge_stage_chunk_results
 _result_with_diag = _driver_result_helpers.result_with_diag
@@ -1356,94 +1354,22 @@ def run_fixed_boundary(
             ftol_last = float(ftol_i)
             step_size_last = float(step_size_val)
 
-        diag = dict(stage_results[-1].diagnostics)
-        diag["solver_mode"] = str(solver_mode_eff)
-        diag["accelerated_mode"] = bool(accelerated_mode)
-        diag["accelerated_scan"] = bool(accelerated_mode) and bool(diag.get("use_scan", False))
-        diag["multigrid_user_provided"] = bool(multigrid_user_provided)
-        diag["accelerated_single_grid_default"] = bool(accelerated_single_grid_default)
-        diag["multigrid_ns_stages"] = np.asarray(ns_stages, dtype=int)
-        diag["multigrid_niter_stages"] = np.asarray(niter_stages, dtype=int)
-        diag["multigrid_ftol_stages"] = np.asarray(ftol_stages, dtype=float)
-        diag["multigrid_stage_offsets"] = np.asarray(stage_offsets, dtype=int)
-        diag["multigrid_stage_modes"] = np.asarray(stage_mode_history, dtype=object)
-        diag["multigrid_stage_wall_s"] = np.asarray(stage_wall_s, dtype=float)
-        diag["multigrid_stage_solve_total_s"] = np.asarray(stage_solve_total_s, dtype=float)
-        # Record whether the final stage exhausted its NITER budget (matches
-        # xvmec2000 behavior: terminate normally when NITER is reached).
-        # n_iter is 0-indexed (999 means 1000 iterations completed).
-        # The +1 correction is only applied when NITER_ARRAY was explicitly provided
-        # by the user (niter_stages_input is not None); when the per-stage budget is
-        # derived from a single NITER value, exhausting it doesn't constitute a
-        # "EXECUTION TERMINATED NORMALLY" signal and the parity finisher should still
-        # run if convergence hasn't been reached.
-        try:
-            _final_stage_niter = int(stage_results[-1].n_iter)
-            _final_stage_budget = int(niter_stages[-1]) if niter_stages else 0
-            if niter_stages_input is not None:
-                # NITER_ARRAY was explicitly given: use 0-indexed check
-                _exhausted = bool(_final_stage_niter + 1 >= _final_stage_budget)
-            else:
-                # Budget derived from NITER (one value per stage): use plain >=
-                _exhausted = bool(_final_stage_niter >= _final_stage_budget)
-            diag["multigrid_final_stage_niter_exhausted"] = _exhausted
-        except Exception:
-            diag["multigrid_final_stage_niter_exhausted"] = False
-
-        # Concatenate the common history keys that are useful for parity debugging.
-        for k in (
-            "step_status_history",
-            "restart_reason_history",
-            "pre_restart_reason_history",
-            "time_step_history",
-            "res0_history",
-            "res1_history",
-            "fsq_prev_history",
-            "bad_growth_streak_history",
-            "iter1_history",
-            "bcovar_update_history",
-            "include_edge_history",
-            "zero_m1_history",
-            "dt_eff_history",
-            "update_rms_history",
-            "w_curr_history",
-            "w_try_history",
-            "w_try_ratio_history",
-            "restart_path_history",
-            "min_tau_history",
-            "max_tau_history",
-            "bad_jacobian_history",
-            "fsq1_history",
-            "fsqr1_history",
-            "fsqz1_history",
-            "fsql1_history",
-            "r00_history",
-            "z00_history",
-            "wb_history",
-            "wp_history",
-            "w_vmec_history",
-            "rz_norm_history",
-            "f_norm1_history",
-            "gcr2_p_history",
-            "gcz2_p_history",
-            "gcl2_p_history",
-        ):
-            if any(k in r.diagnostics for r in stage_results):
-                diag[k] = np.concatenate(
-                    [np.asarray(r.diagnostics.get(k, np.zeros((0,), dtype=float))) for r in stage_results]
-                )
-
-        res = _copy_final_force_payload(SolveVmecResidualResult(
+        res = _driver_result_helpers.assemble_multigrid_stage_result(
+            stage_results=stage_results,
             state=state,
-            n_iter=int(sum(int(r.n_iter) + 1 for r in stage_results) - 1),
-            w_history=_cat_result_history(stage_results, "w_history"),
-            fsqr2_history=_cat_result_history(stage_results, "fsqr2_history"),
-            fsqz2_history=_cat_result_history(stage_results, "fsqz2_history"),
-            fsql2_history=_cat_result_history(stage_results, "fsql2_history"),
-            grad_rms_history=_cat_result_history(stage_results, "grad_rms_history"),
-            step_history=_cat_result_history(stage_results, "step_history"),
-            diagnostics=diag,
-        ), stage_results[-1])
+            solver_mode=str(solver_mode_eff),
+            accelerated_mode=bool(accelerated_mode),
+            multigrid_user_provided=bool(multigrid_user_provided),
+            accelerated_single_grid_default=bool(accelerated_single_grid_default),
+            ns_stages=list(ns_stages),
+            niter_stages=list(niter_stages),
+            ftol_stages=list(ftol_stages),
+            stage_offsets=stage_offsets,
+            stage_mode_history=stage_mode_history,
+            stage_wall_s=stage_wall_s,
+            stage_solve_total_s=stage_solve_total_s,
+            niter_stages_input=niter_stages_input,
+        )
         # Optional scan corrector: run a single non-scan VMEC2000 step to
         # re-anchor the final state before writing wout outputs.
         try:

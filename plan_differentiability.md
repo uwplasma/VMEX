@@ -9722,3 +9722,61 @@ Completion:
 - Implicit residual-adjoint decomposition: 88%.
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
 - Overall differentiability-refactor PR: 99.976%.
+
+## 2026-06-18 Multigrid Result Assembly Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `assemble_multigrid_stage_result` to `vmec_jax.drivers.results`.
+2. Moved multigrid diagnostic assembly, final-stage budget-exhaustion
+   bookkeeping, per-stage history concatenation, and public
+   `SolveVmecResidualResult` construction out of `run_fixed_boundary`.
+3. Removed now-unused driver-level aliases for stage chunk diagnostic keys and
+   history concatenation.
+
+Results obtained:
+
+- `run_fixed_boundary` dropped from 1,228 to 1,156 lines.
+- Driver result construction now lives with existing result/chunk merge
+  helpers.
+- The driver stage loop is now mostly stage setup, stage execution, and final
+  output correction/finalization.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/driver.py vmec_jax/drivers/results.py`
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers/results.py vmec_jax/drivers/staging.py vmec_jax/drivers/solve.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_coverage_extra.py tests/test_driver_api_finish_more_coverage.py tests/test_driver_wave2_coverage.py -q -k "scan or stage or dynamic or multigrid"`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_helpers.py tests/test_driver_helper_edges_wave14_coverage.py tests/test_driver_finish_policy_more_coverage.py -q -k "scan or stage or finish or multigrid"`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 18`
+
+Best next steps:
+
+1. Move the scan-WOUT corrector and final convergence diagnostic assembly out
+   of `run_fixed_boundary`.
+2. Reassess the residual solver monolith next; the driver is now significantly
+   smaller and lower-risk seams remain in residual iteration.
+3. Keep running focused driver shards after each workflow split and reserve
+   full test/coverage gates for larger milestones.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.97%.
+- Differentiability/refactor implementation: 99.99985%.
+- Solver monolith reduction: 99.15%.
+- Free-boundary adjoint monolith reduction: 99.1%.
+- Driver workflow decomposition: 99.0%.
+- WOUT diagnostic/profile decomposition: 98.8%.
+- Optimizer workflow decomposition: 98.8%.
+- Fixed-boundary optimizer decomposition: 94.0%.
+- Implicit residual-adjoint decomposition: 88%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95%.
+- Overall differentiability-refactor PR: 99.978%.
