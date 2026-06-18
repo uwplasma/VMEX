@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 import runpy
@@ -209,6 +210,16 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert metrics["beta_scan_requested_percent"] == [1.0, 3.0, 10.0]
     assert [case["beta_percent"] for case in metrics["beta_cases"]] == [1.0, 3.0, 10.0]
     assert set(schema["top_level_required_fields"]).issubset(metrics)
+    assert Path(metrics["summary_csv"]).exists()
+    with Path(metrics["summary_csv"]).open(newline="") as stream:
+        report_rows = list(csv.DictReader(stream))
+    assert [float(row["beta_percent"]) for row in report_rows] == [1.0, 3.0, 10.0]
+    assert report_rows[0]["baseline_final_fsq"] == str(metrics["fixed_boundary_baseline_rows"][0]["final_fsq"])
+    assert report_rows[0]["pilot_status"] == metrics["fixed_boundary_baseline_rows"][0]["lcfs_pilot_status"]
+    assert report_rows[0]["last_accepted_step"] == "1"
+    assert report_rows[0]["last_accepted_fsq"] == str(
+        metrics["fixed_boundary_baseline_rows"][0]["lcfs_pilot_last_accepted_fsq"]
+    )
     setup = load_mirror_free_boundary_circular_coil_scan(metrics["setup_json"])
     assert [case.beta_fraction for case in setup.beta_cases] == [0.01, 0.03, 0.10]
     assert len(metrics["fixed_boundary_baseline_rows"]) == 3

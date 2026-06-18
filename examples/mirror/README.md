@@ -168,7 +168,13 @@ trial solve ran, ``fsq_growth_ratio`` relative to the beta row baseline, and
 the next candidate-update summary. Each beta row also reports final/best pilot
 ``fsq`` growth ratios plus ``lcfs_pilot_last_accepted_*`` fields. Rejected
 pilot rows are kept in JSON for audit, but the summary plot draws the last
-accepted pilot state when a later trial is rejected.
+accepted pilot state when a later trial is rejected. The same run also writes
+``free_boundary_circular_coils_beta_scan_summary.csv`` with baseline,
+last-accepted, and final-trial columns for quick ESSOS comparison reports. Use
+``--lcfs-pilot-fsq-growth-limit 1.0`` as a strict residual-regression
+diagnostic; at the current low resolution, ``1.1`` is the pragmatic tolerance
+that keeps the first accepted 3% and 10% pilot updates while still rejecting the
+next residual-growing trial.
 
 The root-level ``examples/mirror_fixed_boundary_solve_diagnostic.py`` script
 runs an actual L-BFGS fixed-boundary relaxation from a perturbed interior state.

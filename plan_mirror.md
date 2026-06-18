@@ -15553,3 +15553,128 @@ Results:
 No user input is needed.
 
 ---
+
+## 123. Circular-Coil Beta-Scan CSV Report
+
+### Steps taken
+
+- Added a lightweight CSV report helper to
+  `examples/mirror_free_boundary_circular_coils.py`:
+  - `circular_coil_beta_scan_report_rows(metrics)`;
+  - `_write_beta_scan_report_csv(path, rows)`.
+- Added `summary_csv` to the top-level metrics contract.
+- Added `report_fields` to `circular_coil_beta_scan_schema()`.
+- The example now writes
+  `free_boundary_circular_coils_beta_scan_summary.csv` next to the metrics JSON.
+- Updated focused tests to read the CSV and check that it mirrors the JSON beta
+  rows.
+- Updated `examples/mirror/README.md` and `docs/mirror/overview.rst` to
+  describe the CSV report and the current strict/tolerant fsq-guard usage.
+
+### Results obtained
+
+- The JSON remains the authoritative audit record with nested pilot rows.
+- The CSV gives ESSOS/report scripts a compact table with one row per beta and
+  columns for:
+  - baseline residual/LCFS values;
+  - pilot status and accepted-row count;
+  - last accepted pilot state;
+  - final trial state, which may be rejected.
+- This makes strict-vs-tolerant fsq-guard comparisons easier without flattening
+  JSON ad hoc in external scripts.
+
+Lightweight evidence command:
+
+```bash
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/free_boundary_circular_coils_m123_csv_report \
+  --ntheta 8 --nxi 11 --n-segments 64 \
+  --run-fixed-boundary-baseline --baseline-maxiter 5 \
+  --run-lcfs-pilot --lcfs-pilot-steps 2 \
+  --lcfs-pilot-fsq-growth-limit 1.1 --no-plots
+```
+
+The CSV had `3` rows and `20` fields:
+
+- beta `1%`: `pilot_status=accepted`, `pilot_accepted_rows=2`,
+  `last_accepted_step=2`, `last_accepted_fsq_growth_ratio=0.8554750612791036`;
+- beta `3%`: `pilot_status=rejected`, `pilot_accepted_rows=1`,
+  `last_accepted_step=1`, `last_accepted_fsq_growth_ratio=1.0539167395712978`,
+  final trial `fsq_growth_ratio=1.1236410160141437`;
+- beta `10%`: `pilot_status=rejected`, `pilot_accepted_rows=1`,
+  `last_accepted_step=1`, `last_accepted_fsq_growth_ratio=1.0946511062666966`,
+  final trial `fsq_growth_ratio=1.2003050324215168`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+python -m ruff format --check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_tolerant_fsq_guard_keeps_last_accepted -q
+python - <<'PY'
+import runpy
+m=runpy.run_path('examples/mirror_free_boundary_circular_coils.py')
+s=m['circular_coil_beta_scan_schema']()
+print('summary_csv required', 'summary_csv' in s['top_level_required_fields'])
+print('report fields', len(s['report_fields']))
+PY
+python -m ruff format examples/mirror_free_boundary_circular_coils.py
+PYTHONPATH=.:$PYTHONPATH JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m123_csv_report --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-lcfs-pilot --lcfs-pilot-steps 2 --lcfs-pilot-fsq-growth-limit 1.1 --no-plots
+git diff --check
+```
+
+Results:
+
+- Ruff lint passed.
+- Ruff format check passed after formatting the example file.
+- Targeted tests: `2 passed`.
+- Schema helper confirmed `summary_csv` is required and the report has `20`
+  fields.
+- The no-plot CSV evidence run completed and wrote the expected report.
+- `git diff --check` passed.
+
+### File structure and best-practice notes
+
+- The CSV helper is kept beside the example and schema constants because it is
+  a reporting view of that example's metrics, not a core solver data model.
+- The report is standard-library `csv` only; no new dependency was added.
+- Generated CSV/JSON evidence remains ignored under `results/`.
+- The added test covers the user-facing file emitted by the script rather than
+  only testing the helper in isolation.
+
+### Best next steps
+
+1. Commit and push M123.
+2. Revisit the differentiable solved-state lane now that the circular-coil
+   ESSOS reporting contract is stable enough for handoff.
+3. Define the smallest implicit-solve API that can return a converged mirror
+   state and a custom derivative rule without differentiating through long CLI
+   loops.
+4. Keep the CLI examples on fast NumPy/SciPy paths for runtime/memory, with
+   differentiable JAX APIs exposed separately for optimization.
+
+### Completion percentages after M123
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `87%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `92%`.
+- I/O schema and docs: `99%`.
+- Differentiable solved-state API: `30%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `85%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `85%`.
+- PR merge readiness overall: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---

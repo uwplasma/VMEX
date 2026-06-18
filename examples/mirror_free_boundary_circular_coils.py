@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -62,6 +63,7 @@ CIRCULAR_COIL_BETA_SCAN_TOP_LEVEL_FIELDS = (
     "boundary_bmag_min",
     "boundary_bmag_max",
     "setup_json",
+    "summary_csv",
     "beta_scan_requested_percent",
     "beta_cases",
     "fixed_boundary_baseline_rows",
@@ -136,6 +138,28 @@ CIRCULAR_COIL_BETA_SCAN_REJECTION_REASONS = (
     "noop_candidate_selected",
     "normal_field_guard_no_candidate",
 )
+CIRCULAR_COIL_BETA_SCAN_REPORT_FIELDS = (
+    "beta_percent",
+    "baseline_final_fsq",
+    "baseline_final_normalized_force",
+    "baseline_lcfs_merit",
+    "baseline_pressure_balance_rms",
+    "baseline_external_bnormal_rms",
+    "pilot_status",
+    "pilot_accepted_rows",
+    "pilot_stop_reason",
+    "last_accepted_step",
+    "last_accepted_fsq",
+    "last_accepted_fsq_growth_ratio",
+    "last_accepted_lcfs_merit",
+    "last_accepted_pressure_balance_rms",
+    "last_accepted_normalized_force",
+    "final_trial_fsq",
+    "final_trial_fsq_growth_ratio",
+    "final_trial_lcfs_merit",
+    "final_trial_pressure_balance_rms",
+    "final_trial_normalized_force",
+)
 
 
 def circular_coil_beta_scan_schema() -> dict[str, object]:
@@ -149,6 +173,7 @@ def circular_coil_beta_scan_schema() -> dict[str, object]:
         "pilot_status_values": list(CIRCULAR_COIL_BETA_SCAN_PILOT_STATUSES),
         "pilot_stop_reasons": list(CIRCULAR_COIL_BETA_SCAN_STOP_REASONS),
         "pilot_rejection_reasons": list(CIRCULAR_COIL_BETA_SCAN_REJECTION_REASONS),
+        "report_fields": list(CIRCULAR_COIL_BETA_SCAN_REPORT_FIELDS),
     }
 
 
@@ -182,6 +207,48 @@ def _require_fields(row: dict[str, object], fields: tuple[str, ...], label: str)
     missing = [field for field in fields if field not in row]
     if missing:
         raise ValueError(f"{label} is missing required fields: {', '.join(missing)}")
+
+
+def circular_coil_beta_scan_report_rows(metrics: dict[str, object]) -> list[dict[str, object]]:
+    """Return compact table rows for beta-scan reports and ESSOS comparisons."""
+    rows = []
+    for row in metrics.get("fixed_boundary_baseline_rows", []):
+        if not isinstance(row, dict):
+            continue
+        rows.append(
+            {
+                "beta_percent": row.get("beta_percent"),
+                "baseline_final_fsq": row.get("final_fsq"),
+                "baseline_final_normalized_force": row.get("final_normalized_force"),
+                "baseline_lcfs_merit": row.get("lcfs_merit"),
+                "baseline_pressure_balance_rms": row.get("lcfs_pressure_balance_rms"),
+                "baseline_external_bnormal_rms": row.get("lcfs_external_bnormal_rms"),
+                "pilot_status": row.get("lcfs_pilot_status"),
+                "pilot_accepted_rows": row.get("lcfs_pilot_accepted_rows"),
+                "pilot_stop_reason": row.get("lcfs_pilot_stop_reason"),
+                "last_accepted_step": row.get("lcfs_pilot_last_accepted_step"),
+                "last_accepted_fsq": row.get("lcfs_pilot_last_accepted_fsq"),
+                "last_accepted_fsq_growth_ratio": row.get("lcfs_pilot_last_accepted_fsq_growth_ratio"),
+                "last_accepted_lcfs_merit": row.get("lcfs_pilot_last_accepted_merit"),
+                "last_accepted_pressure_balance_rms": row.get("lcfs_pilot_last_accepted_pressure_balance_rms"),
+                "last_accepted_normalized_force": row.get("lcfs_pilot_last_accepted_normalized_force"),
+                "final_trial_fsq": row.get("lcfs_pilot_final_fsq"),
+                "final_trial_fsq_growth_ratio": row.get("lcfs_pilot_final_fsq_growth_ratio"),
+                "final_trial_lcfs_merit": row.get("lcfs_pilot_final_merit"),
+                "final_trial_pressure_balance_rms": row.get("lcfs_pilot_final_pressure_balance_rms"),
+                "final_trial_normalized_force": row.get("lcfs_pilot_final_normalized_force"),
+            }
+        )
+    return rows
+
+
+def _write_beta_scan_report_csv(path: Path, rows: list[dict[str, object]]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=CIRCULAR_COIL_BETA_SCAN_REPORT_FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
+    return path
 
 
 @dataclass(frozen=True)
@@ -1153,6 +1220,7 @@ def run_case(
             )
         )
 
+    summary_csv_path = outdir / "free_boundary_circular_coils_beta_scan_summary.csv"
     metrics = {
         "metrics_schema": CIRCULAR_COIL_BETA_SCAN_SCHEMA,
         "metrics_schema_version": CIRCULAR_COIL_BETA_SCAN_SCHEMA_VERSION,
@@ -1179,12 +1247,14 @@ def run_case(
         "boundary_bmag_min": float(np.min(np.asarray(boundary_sample.bmag))),
         "boundary_bmag_max": float(np.max(np.asarray(boundary_sample.bmag))),
         "setup_json": str(setup_path),
+        "summary_csv": str(summary_csv_path),
         "beta_scan_requested_percent": [float(case.beta_percent) for case in scan.beta_cases],
         "beta_cases": [case.to_dict() for case in scan.beta_cases],
         "fixed_boundary_baseline_rows": baseline_rows,
         "figures": figure_paths,
     }
     validate_circular_coil_beta_scan_metrics(metrics)
+    _write_beta_scan_report_csv(summary_csv_path, circular_coil_beta_scan_report_rows(metrics))
     metrics_path = outdir / "free_boundary_circular_coils_metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2) + "\n")
     return metrics_path
