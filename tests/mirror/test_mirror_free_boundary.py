@@ -31,6 +31,7 @@ from vmec_jax.mirror import (
     mirror_free_boundary_residual_jacobian_finite_difference,
     mirror_free_boundary_residual_vector_jacobian_finite_difference,
     mirror_free_boundary_residual_vector_jacobian_jax,
+    mirror_free_boundary_residual_vector_least_squares_solve,
     mirror_free_boundary_residual_vector_least_squares_step,
     mirror_lcfs_diagnostic,
     mirror_lcfs_diagnostic_from_arrays,
@@ -972,6 +973,89 @@ def test_mirror_free_boundary_residual_vector_least_squares_step_rejects_invalid
 
     with pytest.raises(ValueError, match=match):
         mirror_free_boundary_residual_vector_least_squares_step(
+            coefficients,
+            _linear_reduced_residual_vector,
+            **kwargs,
+        )
+
+
+def test_mirror_free_boundary_residual_vector_least_squares_solve_converges_linear_model():
+    result = mirror_free_boundary_residual_vector_least_squares_solve(
+        np.asarray([0.1, 0.3]),
+        _linear_reduced_residual_vector,
+        max_steps=4,
+        target_residual=1.0e-10,
+        max_relative_step=2.0,
+        line_search_factors=(1.0, 0.5),
+    )
+
+    assert result.converged is True
+    assert result.stop_reason == "target_residual"
+    assert result.accepted_steps == 1
+    assert len(result.rows) == 1
+    assert result.rows[0].accepted is True
+    assert result.rows[0].stop_reason == "target_residual"
+    assert result.final_residual_value < 1.0e-10
+    np.testing.assert_allclose(result.final_coefficients, [0.4, -0.2], rtol=1.0e-10, atol=1.0e-10)
+
+
+def test_mirror_free_boundary_residual_vector_least_squares_solve_reports_rejected_step():
+    def nonlinear_residual(coefficients):
+        c0 = float(np.asarray(coefficients, dtype=float)[0])
+        return np.asarray([c0 - 1.0 + 100.0 * c0**2])
+
+    result = mirror_free_boundary_residual_vector_least_squares_solve(
+        np.asarray([0.0]),
+        nonlinear_residual,
+        max_steps=3,
+        target_residual=1.0e-12,
+        max_relative_step=2.0,
+        line_search_factors=(1.0, 0.5),
+    )
+
+    assert result.converged is False
+    assert result.stop_reason == "ls_step_not_accepted"
+    assert result.accepted_steps == 0
+    assert len(result.rows) == 1
+    assert result.rows[0].accepted is False
+    assert result.rows[0].stop_reason == "ls_step_not_accepted"
+    np.testing.assert_allclose(result.final_coefficients, [0.0])
+
+
+def test_mirror_free_boundary_residual_vector_least_squares_solve_stops_on_stagnation():
+    result = mirror_free_boundary_residual_vector_least_squares_solve(
+        np.asarray([0.1, 0.3]),
+        _linear_reduced_residual_vector,
+        max_steps=4,
+        target_residual=1.0e-16,
+        stagnation_rtol=0.5,
+        damping=0.01,
+        max_relative_step=2.0,
+        line_search_factors=(1.0, 0.5),
+    )
+
+    assert result.converged is False
+    assert result.stop_reason == "stagnation"
+    assert result.accepted_steps == 1
+    assert result.rows[0].improvement_fraction is not None
+    assert result.rows[0].stop_reason == "stagnation"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"coefficients": []}, "coefficients"),
+        ({"coefficients": [np.nan]}, "finite"),
+        ({"max_steps": -1}, "max_steps"),
+        ({"target_residual": -1.0}, "target_residual"),
+        ({"stagnation_rtol": -1.0}, "stagnation_rtol"),
+    ],
+)
+def test_mirror_free_boundary_residual_vector_least_squares_solve_rejects_invalid_inputs(kwargs, match):
+    coefficients = kwargs.pop("coefficients", [0.0, 0.0])
+
+    with pytest.raises(ValueError, match=match):
+        mirror_free_boundary_residual_vector_least_squares_solve(
             coefficients,
             _linear_reduced_residual_vector,
             **kwargs,

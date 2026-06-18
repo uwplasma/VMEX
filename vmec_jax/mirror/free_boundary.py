@@ -297,6 +297,33 @@ class MirrorFreeBoundaryVectorLeastSquaresStep:
 
 
 @dataclass(frozen=True)
+class MirrorFreeBoundaryVectorLeastSquaresSolveRow:
+    """One row from a reduced residual-vector least-squares solve loop."""
+
+    step: int
+    ls_step: MirrorFreeBoundaryVectorLeastSquaresStep
+    residual_value_before: float
+    residual_value_after: float
+    accepted: bool
+    improvement_fraction: float | None
+    stop_reason: str | None
+
+
+@dataclass(frozen=True)
+class MirrorFreeBoundaryVectorLeastSquaresSolveResult:
+    """Result of a reduced residual-vector least-squares solve loop."""
+
+    initial_coefficients: Any
+    final_coefficients: Any
+    initial_residual_value: float
+    final_residual_value: float
+    rows: tuple[MirrorFreeBoundaryVectorLeastSquaresSolveRow, ...]
+    accepted_steps: int
+    stop_reason: str
+    converged: bool
+
+
+@dataclass(frozen=True)
 class MirrorFreeBoundaryLoopState:
     """State passed between guarded free-boundary least-squares steps."""
 
@@ -1091,6 +1118,132 @@ def mirror_free_boundary_residual_vector_least_squares_step(
         max_relative_step=max_relative_step,
         ridge=ridge,
         rcond=rcond,
+    )
+
+
+def mirror_free_boundary_residual_vector_least_squares_solve(
+    coefficients: Any,
+    residual_vector_function: Callable[[Any], Any],
+    *,
+    max_steps: int = 8,
+    target_residual: float = 1.0e-10,
+    stagnation_rtol: float = 0.0,
+    jacobian_backend: str = "finite_difference",
+    jax_mode: str = "auto",
+    finite_difference_step: float = 1.0e-6,
+    damping: float = 1.0,
+    max_relative_step: float = 0.25,
+    ridge: float = 0.0,
+    rcond: float | None = 1.0e-12,
+    line_search_factors: Any = (1.0, 0.5, 0.25, 0.125),
+    accept_tolerance: float = 1.0e-12,
+) -> MirrorFreeBoundaryVectorLeastSquaresSolveResult:
+    """Solve a reduced free-boundary residual-vector problem by guarded LS steps.
+
+    This nonlinear loop is for compact residual-vector prototypes. It does not
+    run host-side fixed-boundary trial solves; those remain in the circular-coil
+    CLI workflow until the full coupled residual path is promoted.
+    """
+
+    coefficients = np.asarray(coefficients, dtype=float).ravel()
+    if coefficients.size == 0:
+        raise ValueError("coefficients must contain at least one value")
+    if not np.all(np.isfinite(coefficients)):
+        raise ValueError("coefficients must be finite")
+    max_steps = int(max_steps)
+    target_residual = float(target_residual)
+    stagnation_rtol = float(stagnation_rtol)
+    if max_steps < 0:
+        raise ValueError("max_steps must be nonnegative")
+    if target_residual < 0.0:
+        raise ValueError("target_residual must be nonnegative")
+    if stagnation_rtol < 0.0:
+        raise ValueError("stagnation_rtol must be nonnegative")
+
+    current_coefficients = coefficients.copy()
+    initial_vector = _residual_vector_numpy(residual_vector_function, current_coefficients)
+    current_value = float(np.sqrt(np.mean(initial_vector**2)))
+    initial_value = current_value
+    rows: list[MirrorFreeBoundaryVectorLeastSquaresSolveRow] = []
+    accepted_steps = 0
+    stop_reason = "target_residual" if current_value <= target_residual else "max_steps"
+    converged = current_value <= target_residual
+
+    for step_index in range(1, max_steps + 1):
+        if current_value <= target_residual:
+            stop_reason = "target_residual"
+            converged = True
+            break
+        ls_step = mirror_free_boundary_residual_vector_least_squares_step(
+            current_coefficients,
+            residual_vector_function,
+            jacobian_backend=jacobian_backend,
+            jax_mode=jax_mode,
+            finite_difference_step=finite_difference_step,
+            damping=damping,
+            max_relative_step=max_relative_step,
+            ridge=ridge,
+            rcond=rcond,
+            line_search_factors=line_search_factors,
+            accept_tolerance=accept_tolerance,
+        )
+        if not bool(ls_step.accepted):
+            stop_reason = "ls_step_not_accepted"
+            rows.append(
+                MirrorFreeBoundaryVectorLeastSquaresSolveRow(
+                    step=step_index,
+                    ls_step=ls_step,
+                    residual_value_before=current_value,
+                    residual_value_after=ls_step.trial_value,
+                    accepted=False,
+                    improvement_fraction=None,
+                    stop_reason=stop_reason,
+                )
+            )
+            converged = current_value <= target_residual
+            break
+
+        denominator = max(abs(current_value), np.finfo(float).tiny)
+        improvement_fraction = float((current_value - ls_step.trial_value) / denominator)
+        current_coefficients = np.asarray(ls_step.new_coefficients, dtype=float).ravel()
+        current_value = float(ls_step.trial_value)
+        accepted_steps += 1
+        row_stop_reason: str | None = None
+        if current_value <= target_residual:
+            stop_reason = "target_residual"
+            row_stop_reason = stop_reason
+            converged = True
+        elif stagnation_rtol > 0.0 and improvement_fraction <= stagnation_rtol:
+            stop_reason = "stagnation"
+            row_stop_reason = stop_reason
+            converged = False
+        elif step_index == max_steps:
+            stop_reason = "max_steps"
+            row_stop_reason = stop_reason
+            converged = False
+        rows.append(
+            MirrorFreeBoundaryVectorLeastSquaresSolveRow(
+                step=step_index,
+                ls_step=ls_step,
+                residual_value_before=float(ls_step.residual_value),
+                residual_value_after=current_value,
+                accepted=True,
+                improvement_fraction=improvement_fraction,
+                stop_reason=row_stop_reason,
+            )
+        )
+        if row_stop_reason is not None:
+            break
+
+    return MirrorFreeBoundaryVectorLeastSquaresSolveResult(
+        initial_coefficients=coefficients,
+        final_coefficients=current_coefficients,
+        initial_residual_value=initial_value,
+        final_residual_value=current_value,
+        rows=tuple(rows),
+        accepted_steps=accepted_steps,
+        stop_reason=stop_reason,
+        converged=bool(converged),
     )
 
 

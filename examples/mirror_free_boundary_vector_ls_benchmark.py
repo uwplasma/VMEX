@@ -15,11 +15,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from vmec_jax._compat import enable_x64, jnp
-from vmec_jax.mirror import mirror_free_boundary_residual_vector_least_squares_step
+from vmec_jax.mirror import (
+    mirror_free_boundary_residual_vector_least_squares_solve,
+    mirror_free_boundary_residual_vector_least_squares_step,
+)
 
 
 VECTOR_LS_BENCHMARK_SCHEMA = "mirror_free_boundary_vector_ls_benchmark"
-VECTOR_LS_BENCHMARK_SCHEMA_VERSION = "0.1"
+VECTOR_LS_BENCHMARK_SCHEMA_VERSION = "0.2"
 VECTOR_LS_BENCHMARK_ROW_FIELDS = (
     "name",
     "jacobian_backend",
@@ -40,6 +43,20 @@ VECTOR_LS_BENCHMARK_ROW_FIELDS = (
     "jacobian_shape",
     "wall_time_s",
 )
+VECTOR_LS_BENCHMARK_SOLVE_ROW_FIELDS = (
+    "name",
+    "jacobian_backend",
+    "jax_mode",
+    "converged",
+    "stop_reason",
+    "accepted_steps",
+    "initial_residual_value",
+    "final_residual_value",
+    "residual_history",
+    "coefficient_error_final",
+    "coefficients_final",
+    "wall_time_s",
+)
 
 
 def validate_vector_ls_benchmark_metrics(metrics: dict[str, object]) -> None:
@@ -58,6 +75,7 @@ def validate_vector_ls_benchmark_metrics(metrics: dict[str, object]) -> None:
         "target_radius",
         "initial_radius",
         "rows",
+        "solve_rows",
         "best_backend_by_residual",
         "best_backend_by_time",
         "figures",
@@ -89,6 +107,23 @@ def validate_vector_ls_benchmark_metrics(metrics: dict[str, object]) -> None:
             raise ValueError(f"row {index} did not reduce the coefficient error")
     if row_names != names:
         raise ValueError("row names do not match derivative backend cases")
+    solve_rows = metrics["solve_rows"]
+    if not isinstance(solve_rows, list) or len(solve_rows) != len(_case_specs()):
+        raise ValueError("solve_rows must contain one entry per derivative backend")
+    solve_row_names = set()
+    for index, row in enumerate(solve_rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"solve row {index} must be a JSON object")
+        missing_row = set(VECTOR_LS_BENCHMARK_SOLVE_ROW_FIELDS).difference(row)
+        if missing_row:
+            raise ValueError(f"solve row {index} missing fields: {sorted(missing_row)}")
+        solve_row_names.add(str(row["name"]))
+        if not bool(row["converged"]):
+            raise ValueError(f"solve row {index} did not converge")
+        if float(row["final_residual_value"]) > float(row["initial_residual_value"]):
+            raise ValueError(f"solve row {index} did not reduce residual")
+    if solve_row_names != names:
+        raise ValueError("solve row names do not match derivative backend cases")
     if metrics["best_backend_by_residual"] not in names:
         raise ValueError("best_backend_by_residual is not a known backend row")
     if metrics["best_backend_by_time"] not in names:
@@ -162,6 +197,30 @@ def _row_from_step(
     }
 
 
+def _row_from_solve(
+    *, name: str, backend: str, jax_mode: str, result, elapsed_s: float, target_coefficients
+) -> dict[str, object]:
+    coefficient_error_final = float(
+        np.linalg.norm(np.asarray(result.final_coefficients) - np.asarray(target_coefficients))
+    )
+    residual_history = [float(result.initial_residual_value)]
+    residual_history.extend(float(row.residual_value_after) for row in result.rows)
+    return {
+        "name": name,
+        "jacobian_backend": backend,
+        "jax_mode": jax_mode if backend == "jax" else None,
+        "converged": bool(result.converged),
+        "stop_reason": str(result.stop_reason),
+        "accepted_steps": int(result.accepted_steps),
+        "initial_residual_value": float(result.initial_residual_value),
+        "final_residual_value": float(result.final_residual_value),
+        "residual_history": residual_history,
+        "coefficient_error_final": coefficient_error_final,
+        "coefficients_final": [float(value) for value in np.asarray(result.final_coefficients)],
+        "wall_time_s": float(elapsed_s),
+    }
+
+
 def _write_plots(metrics: dict[str, object], *, outdir: Path) -> dict[str, str]:
     import matplotlib.pyplot as plt
 
@@ -207,7 +266,25 @@ def _write_plots(metrics: dict[str, object], *, outdir: Path) -> dict[str, str]:
     radius_path = figure_dir / "mirror_free_boundary_vector_ls_radius_profiles.png"
     fig.savefig(radius_path, dpi=180, bbox_inches="tight")
     plt.close(fig)
-    return {"summary": str(summary_path), "radius_profiles": str(radius_path)}
+
+    fig, ax = plt.subplots(figsize=(7.0, 4.4))
+    for row in metrics["solve_rows"]:
+        history = np.asarray(row["residual_history"], dtype=float)
+        ax.semilogy(np.arange(history.size), np.maximum(history, 1.0e-300), ".-", label=row["name"])
+    ax.set_xlabel("solve step")
+    ax.set_ylabel("residual RMS")
+    ax.set_title("reduced vector LS solve convergence")
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(fontsize="small")
+    fig.tight_layout()
+    solve_path = figure_dir / "mirror_free_boundary_vector_ls_solve_residual_history.png"
+    fig.savefig(solve_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return {
+        "summary": str(summary_path),
+        "radius_profiles": str(radius_path),
+        "solve_residual_history": str(solve_path),
+    }
 
 
 def run_case(
@@ -234,6 +311,7 @@ def run_case(
     initial_coefficients = np.asarray([0.24, 0.02, 0.04], dtype=float)
     residual = _make_residual_function(xi=xi, target_coefficients=target_coefficients, slope_weight=slope_weight)
     rows = []
+    solve_rows = []
     for name, backend, jax_mode in _case_specs():
         start = perf_counter()
         step = mirror_free_boundary_residual_vector_least_squares_step(
@@ -256,6 +334,29 @@ def run_case(
                 target_coefficients=target_coefficients,
             )
         )
+        start = perf_counter()
+        solve = mirror_free_boundary_residual_vector_least_squares_solve(
+            initial_coefficients,
+            residual,
+            jacobian_backend=backend,
+            jax_mode=jax_mode,
+            finite_difference_step=finite_difference_step,
+            max_relative_step=max_relative_step,
+            max_steps=8,
+            target_residual=1.0e-10,
+            line_search_factors=(1.0, 0.5, 0.25),
+        )
+        elapsed_s = perf_counter() - start
+        solve_rows.append(
+            _row_from_solve(
+                name=name,
+                backend=backend,
+                jax_mode=jax_mode,
+                result=solve,
+                elapsed_s=elapsed_s,
+                target_coefficients=target_coefficients,
+            )
+        )
 
     best_by_residual = min(rows, key=lambda row: (float(row["residual_value_after"]), float(row["wall_time_s"])))
     best_by_time = min(rows, key=lambda row: float(row["wall_time_s"]))
@@ -272,6 +373,7 @@ def run_case(
         "target_radius": [float(value) for value in _radius_from_coefficients(target_coefficients, xi)],
         "initial_radius": [float(value) for value in _radius_from_coefficients(initial_coefficients, xi)],
         "rows": rows,
+        "solve_rows": solve_rows,
         "best_backend_by_residual": best_by_residual["name"],
         "best_backend_by_time": best_by_time["name"],
         "figures": {},

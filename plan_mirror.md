@@ -5739,6 +5739,148 @@ Visual validation:
 No user input is needed.
 
 ---
+## 172. Reduced Free-Boundary Residual-Vector Nonlinear Solve Loop
+
+### Steps taken
+
+- Added a reusable reduced residual-vector nonlinear least-squares solve loop:
+  `mirror_free_boundary_residual_vector_least_squares_solve`.
+- Added result dataclasses:
+  - `MirrorFreeBoundaryVectorLeastSquaresSolveRow`;
+  - `MirrorFreeBoundaryVectorLeastSquaresSolveResult`.
+- The loop reuses `mirror_free_boundary_residual_vector_least_squares_step` and
+  records each accepted or rejected step.
+- The loop now has explicit stop reasons:
+  - `target_residual`;
+  - `ls_step_not_accepted`;
+  - `stagnation`;
+  - `max_steps`.
+- Exported the new solve-loop API through `vmec_jax.mirror.api` and
+  `vmec_jax.mirror`.
+- Extended `examples/mirror_free_boundary_vector_ls_benchmark.py`:
+  - schema version `0.2`;
+  - per-backend `solve_rows`;
+  - solve convergence validation;
+  - new plotted solve residual-history figure.
+- Updated docs in `docs/mirror/overview.rst` and `examples/mirror/README.md`.
+- Added focused tests for convergence, rejected steps, stagnation, invalid
+  inputs, public API export, and benchmark schema `0.2`.
+
+### Results obtained
+
+- Reduced residual-vector prototypes can now run an actual nonlinear LS solve
+  loop instead of only a one-step diagnostic.
+- Plotted benchmark run:
+  `results/mirror/free_boundary_vector_ls_benchmark_m172_solve_loop_plots/mirror_free_boundary_vector_ls_benchmark_metrics.json`.
+- Benchmark schema `0.2` rows showed all derivative backends converged:
+  - finite difference: `target_residual`, `2` accepted steps,
+    final residual `1.415619462786164e-12`;
+  - JAX forward: `target_residual`, `2` accepted steps,
+    final residual `3.003608781755996e-17`;
+  - JAX reverse: `target_residual`, `2` accepted steps,
+    final residual `3.003608781755996e-17`;
+  - JAX auto: `target_residual`, `2` accepted steps,
+    final residual `3.003608781755996e-17`.
+- New plot visually inspected:
+  `results/mirror/free_boundary_vector_ls_benchmark_m172_solve_loop_plots/figures/mirror_free_boundary_vector_ls_solve_residual_history.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_vector_ls_benchmark.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff check vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_vector_ls_benchmark.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_free_boundary.py -q
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_vector_ls_benchmark_runs_without_plots \
+  -q
+python -m sphinx -W -b html docs docs/_build/html
+JAX_ENABLE_X64=1 python examples/mirror_free_boundary_vector_ls_benchmark.py \
+  --outdir results/mirror/free_boundary_vector_ls_benchmark_m172_solve_loop_plots \
+  --nxi 17
+python - <<'PY'
+import vmec_jax.mirror as mirror
+import vmec_jax.mirror.api as api
+for module in (mirror, api):
+    missing = [name for name in module.__all__ if not hasattr(module, name)]
+    if missing:
+        raise SystemExit(f"{module.__name__} missing {missing}")
+for name in [
+    "MirrorFreeBoundaryVectorLeastSquaresSolveResult",
+    "MirrorFreeBoundaryVectorLeastSquaresSolveRow",
+    "mirror_free_boundary_residual_vector_least_squares_solve",
+]:
+    assert getattr(mirror, name) is getattr(api, name)
+print("mirror_public_api_ok")
+PY
+git diff --check
+```
+
+Results:
+
+- Ruff format/check passed.
+- Full mirror free-boundary test module passed: `116 passed in 3.61s`.
+- Focused benchmark example test passed: `1 passed in 2.17s`.
+- Sphinx docs build passed with warnings treated as errors.
+- Plotted benchmark completed and wrote the solve residual-history figure.
+- Public API consistency check printed `mirror_public_api_ok`.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The solve loop lives in `vmec_jax/mirror/free_boundary.py` beside the
+  existing one-step reduced vector LS helper.
+- The root benchmark example remains the user-facing derivative-backend and
+  solve-loop comparison artifact.
+- The loop is deliberately reduced-residual-vector scoped. Host-side realized
+  fixed-boundary circular-coil trials still use the guarded callback loop until
+  the full coupled free-boundary residual becomes a promoted differentiable
+  solver path.
+- Generated plots/metrics remain under ignored `results/` paths.
+
+### Best next steps
+
+1. Commit and push M172.
+2. Refresh the draft PR body after this solve-loop promotion.
+3. Re-check CI after the latest head has jobs attached.
+4. Continue final known-limitations audit and decide whether the PR can move
+   from draft after one final full local/CI pass.
+
+### Completion percentages after M172
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `90%`.
+- Finite-current pitch validation: `86%`.
+- Plotting and `vmec --plot` mirror support: `97%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `95%`.
+- Mirror-Boozer-like diagnostics: `83%`.
+- Free-boundary mirror lane: `99%` overall, with reduced residual-vector
+  nonlinear solve scope complete.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `99%`.
+
+### User input needed
+
+No user input is needed.
+
+---
 ## 171. Straight-Axis Hybrid Fixture Closure as Support Scope
 
 ### Steps taken

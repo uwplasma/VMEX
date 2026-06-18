@@ -196,7 +196,10 @@ parameters is no larger than the residual-vector length, and reverse mode for
 smaller residual or scalar-like targets. The benchmark
 ``examples/mirror_free_boundary_vector_ls_benchmark.py`` compares the finite
 difference, JAX forward, JAX reverse, and JAX automatic routes on the same
-reduced free-boundary residual contract.
+reduced free-boundary residual contract. The public
+``mirror_free_boundary_residual_vector_least_squares_solve`` helper repeats
+that reduced residual-vector step with target-residual, rejected-step,
+stagnation, and max-step stop reasons for compact nonlinear prototypes.
 
 The circular-coil beta-scan metrics use the compact schema
 ``mirror_free_boundary_circular_coil_beta_scan`` version ``0.6``. The top-level

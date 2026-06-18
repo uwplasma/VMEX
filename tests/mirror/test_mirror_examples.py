@@ -148,12 +148,16 @@ def test_root_free_boundary_vector_ls_benchmark_runs_without_plots(tmp_path):
     module = _load_root_example("mirror_free_boundary_vector_ls_benchmark.py")
     module["validate_vector_ls_benchmark_metrics"](metrics)
     rows = {row["name"]: row for row in metrics["rows"]}
+    solve_rows = {row["name"]: row for row in metrics["solve_rows"]}
 
-    assert metrics["metrics_schema_version"] == "0.1"
+    assert metrics["metrics_schema_version"] == "0.2"
     assert set(rows) == {"finite_difference", "jax_forward", "jax_reverse", "jax_auto"}
+    assert set(solve_rows) == set(rows)
     assert metrics["figures"] == {}
     assert all(row["accepted"] for row in rows.values())
+    assert all(row["converged"] for row in solve_rows.values())
     assert all(row["line_search_factor"] == pytest.approx(1.0) for row in rows.values())
+    assert all(row["stop_reason"] == "target_residual" for row in solve_rows.values())
     np.testing.assert_allclose(
         rows["jax_forward"]["coefficients_new"],
         rows["finite_difference"]["coefficients_new"],
@@ -167,6 +171,12 @@ def test_root_free_boundary_vector_ls_benchmark_runs_without_plots(tmp_path):
         atol=1.0e-12,
     )
     assert all(row["residual_reduction_fraction"] > 0.0 for row in rows.values())
+    np.testing.assert_allclose(
+        solve_rows["jax_auto"]["coefficients_final"],
+        solve_rows["finite_difference"]["coefficients_final"],
+        rtol=1.0e-9,
+        atol=1.0e-9,
+    )
 
 
 def test_root_stellarator_hybrid_boundary_example_runs_without_plots(tmp_path):

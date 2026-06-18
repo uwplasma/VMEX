@@ -52,9 +52,11 @@ without coupling it to toroidal VMEC assumptions:
   a combined equilibrium-plus-LCFS residual assembly helper for least-squares
   prototypes, and a finite-difference, line-searched least-squares boundary
   coefficient step, a reduced residual-vector least-squares step that can use
-  either finite-difference or JAX Jacobians for differentiable prototypes, plus
-  a reusable state/callback guarded least-squares loop and guarded realized
-  fixed-boundary trial loop for the first true coupled-solve iterations,
+  either finite-difference or JAX Jacobians for differentiable prototypes, a
+  reduced residual-vector nonlinear least-squares solve loop with explicit
+  target/rejection/stagnation/max-step stop reasons, plus a reusable
+  state/callback guarded least-squares loop and guarded realized fixed-boundary
+  trial loop for the first true coupled-solve iterations,
   and normal-field-aware candidate selection between local, shape-preserving
   scale, normal-field-slope, mixed scale/normal-field, no-op, and realized
   coupled trial-scoring updates, plus an optional strict normal-field guard
