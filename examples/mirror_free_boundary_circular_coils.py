@@ -34,6 +34,7 @@ from vmec_jax.mirror import (
     propose_axisymmetric_mirror_lcfs_scale_update,
     propose_axisymmetric_mirror_lcfs_noop_update,
     propose_axisymmetric_mirror_lcfs_bnormal_update,
+    propose_axisymmetric_mirror_lcfs_mixed_update,
     run_mirror_fixed_boundary,
     sample_mirror_axis_external_field,
     sample_mirror_boundary_external_field,
@@ -66,7 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lcfs-merit-bnormal-weight", type=float, default=1.0)
     parser.add_argument(
         "--lcfs-proposal-mode",
-        choices=("best_predicted", "local", "scale", "bnormal"),
+        choices=("best_predicted", "local", "scale", "bnormal", "mixed"),
         default="best_predicted",
     )
     parser.add_argument("--lcfs-require-bnormal-nonincrease", action="store_true")
@@ -183,7 +184,7 @@ def _write_lcfs_diagnostic_plot(diagnostic, proposal=None, *, outdir: Path, name
     axes[0].axhline(0.0, color="k", linewidth=0.8, alpha=0.6)
     axes[1].axhline(0.0, color="k", linewidth=0.8, alpha=0.6)
     axes[0].set_ylabel("B_ext . n")
-    axes[1].set_ylabel("p_edge + (B_int^2 - B_ext^2)/(2 mu0)")
+    axes[1].set_ylabel("pressure balance")
     axes[1].set_xlabel("z")
     axes[0].set_title("LCFS target diagnostic")
     if proposal is not None and theta.size == 1:
@@ -258,8 +259,17 @@ def _select_lcfs_proposal(
         radius_floor=1.0e-4,
         smoothing_passes=smoothing_passes,
     )
+    mixed = propose_axisymmetric_mirror_lcfs_mixed_update(
+        lcfs,
+        external_sample,
+        pressure_response,
+        max_relative_step=max_relative_step,
+        radius_floor=1.0e-4,
+        smoothing_passes=smoothing_passes,
+        bnormal_weight=baseline_merit.bnormal_weight,
+    )
     noop = propose_axisymmetric_mirror_lcfs_noop_update(lcfs, pressure_response)
-    candidates = [local, scale, bnormal, noop]
+    candidates = [local, scale, bnormal, mixed, noop]
     summaries = [
         _proposal_predicted_metrics(candidate, grid=grid, coils=coils, baseline_merit=baseline_merit)
         for candidate in candidates
@@ -270,6 +280,8 @@ def _select_lcfs_proposal(
         return scale, summaries
     if mode == "bnormal":
         return bnormal, summaries
+    if mode == "mixed":
+        return mixed, summaries
     allowed = np.ones(len(summaries), dtype=bool)
     if require_bnormal_nonincrease:
         baseline_bnormal = float(baseline_merit.external_bnormal_rms)

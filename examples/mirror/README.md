@@ -73,11 +73,13 @@ LCFS diagnostics. Pilot acceptance uses a dimensionless combined merit with
 pressure-balance and normalized normal-field terms. It does not solve for a
 free-boundary LCFS yet.
 The default ``--lcfs-proposal-mode best_predicted`` compares the local
-pressure-update candidate with shape-preserving scale, normal-field-slope, and
-no-op candidates and uses the candidate with lower predicted combined merit.
+pressure-update candidate with shape-preserving scale, normal-field-slope,
+mixed scale/normal-field, and no-op candidates and uses the candidate with
+lower predicted combined merit.
 Pass ``--lcfs-require-bnormal-nonincrease`` to enable a stricter guard that
-adds an explicit no-op candidate and skips the pilot when every nonzero
-candidate would increase predicted normal-field RMS.
+uses the mixed search when it can improve merit without increasing predicted
+normal-field RMS, otherwise falling back to an explicit no-op and skipped
+pilot row.
 
 The root-level ``examples/mirror_fixed_boundary_solve_diagnostic.py`` script
 runs an actual L-BFGS fixed-boundary relaxation from a perturbed interior state.

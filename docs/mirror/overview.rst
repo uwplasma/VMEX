@@ -45,9 +45,9 @@ without coupling it to toroidal VMEC assumptions:
   proposal for the planned 1%, 3%, and 10% circular coil studies, including
   optional low-resolution pilot steps that apply the proposal and report
   actual before/after diagnostics with a combined pressure/normal-field merit
-  and normal-field-aware candidate selection between local and shape-preserving
-  scale updates, normal-field-slope updates, and no-op fallback, plus an
-  optional strict normal-field guard;
+  and normal-field-aware candidate selection between local, shape-preserving
+  scale, normal-field-slope, mixed scale/normal-field, and no-op updates, plus
+  an optional strict normal-field guard;
 - a repo-root ``examples/mirror_two_coil_axisym.py`` analytic benchmark that
   builds a fixed boundary from the closed-form on-axis field of two circular
   coils, overlays mirror ``B_z`` against that reference, draws the coils, and

@@ -24,6 +24,7 @@ from vmec_jax.mirror import (
     propose_axisymmetric_mirror_lcfs_scale_update,
     propose_axisymmetric_mirror_lcfs_noop_update,
     propose_axisymmetric_mirror_lcfs_bnormal_update,
+    propose_axisymmetric_mirror_lcfs_mixed_update,
     sample_mirror_axis_external_field,
     sample_mirror_boundary_external_field,
     two_coil_on_axis_bz,
@@ -391,3 +392,42 @@ def test_axisymmetric_lcfs_bnormal_update_reduces_synthetic_normal_field():
     assert proposal.strategy == "bnormal_slope"
     assert float(np.sqrt(np.mean(after**2))) < 1.0e-12
     assert float(np.sqrt(np.mean(after**2))) < float(np.sqrt(np.mean(before**2)))
+
+
+def test_axisymmetric_lcfs_mixed_update_improves_pressure_without_increasing_normal_field():
+    theta = np.asarray([0.0])
+    z = np.linspace(-1.0, 1.0, 9)
+    boundary_r = np.ones((theta.size, z.size))
+    pressure_balance = np.full_like(boundary_r, 0.2)
+    br = 0.1 * z[None, :]
+    sample = MirrorExternalFieldSample(
+        r=boundary_r,
+        theta=theta,
+        z=z,
+        br=br,
+        btheta=np.zeros_like(boundary_r),
+        bz=np.ones_like(boundary_r),
+        bmag=np.sqrt(1.0 + br**2),
+    )
+    diagnostic = SimpleNamespace(
+        theta=theta,
+        z=z,
+        boundary_r=boundary_r,
+        pressure_balance=pressure_balance,
+    )
+    before = mirror_external_bnormal(boundary_r, z, sample)
+
+    proposal = propose_axisymmetric_mirror_lcfs_mixed_update(
+        diagnostic,
+        sample,
+        np.ones_like(boundary_r),
+        scale_fractions=(1.0,),
+        bnormal_fractions=(1.0,),
+        max_relative_step=0.5,
+        smoothing_passes=0,
+    )
+    after = mirror_external_bnormal(proposal.new_radius[None, :], z, sample)
+
+    assert proposal.strategy == "mixed_scale_bnormal"
+    assert proposal.pressure_balance_rms_predicted < proposal.pressure_balance_rms_before
+    assert float(np.sqrt(np.mean(after**2))) <= float(np.sqrt(np.mean(before**2))) + 1.0e-14

@@ -8775,3 +8775,173 @@ Result: all checks passed.
 No user input is needed.
 
 ---
+## 75. 2026-06-18 M12m mixed scale/normal-field LCFS candidate
+
+This tranche added a two-direction LCFS proposal that combines the smooth
+pressure scale direction with the field-line-slope direction.  The goal is to
+move beyond pure pressure or pure normal-field candidates and find small
+updates that improve combined merit while satisfying a strict normal-field
+nonincrease guard.
+
+### Steps taken
+
+- Added `propose_axisymmetric_mirror_lcfs_mixed_update`.
+- Exported the helper through the public mirror API.
+- Added `--lcfs-proposal-mode mixed` to the root circular-coil example.
+- Updated `best_predicted` candidate selection so it now compares:
+  - local pressure update;
+  - shape-preserving scale update;
+  - normal-field-slope update;
+  - mixed scale/normal-field update;
+  - no-op.
+- Tightened the LCFS diagnostic plot label so the two-panel plot no longer has
+  overlapping y-axis text.
+- Added a synthetic unit test that verifies the mixed update improves pressure
+  balance without increasing side-boundary normal field.
+- Updated docs and the mirror examples README.
+
+### Results obtained
+
+Generated artifacts:
+
+- `results/mirror/m12m_mixed_lcfs_strict_pilot/free_boundary_circular_coils_metrics.json`.
+- `results/mirror/m12m_mixed_lcfs_strict_pilot/figures/fixed_boundary_beta_10_lcfs_step_1/free_boundary_circular_coils_beta_10_lcfs_step_1_lcfs_diagnostic.png`.
+- `results/mirror/m12m_mixed_lcfs_strict_pilot/figures/fixed_boundary_beta_10/free_boundary_circular_coils_beta_10_mirror_boundary_3d.png`.
+
+Strict-guard beta-10 candidate summary:
+
+| candidate | predicted merit | predicted pressure RMS | predicted `B_ext.n` RMS |
+| :--- | ---: | ---: | ---: |
+| local pressure | `1.000000106` | `1.803438138` | `1.1115358e-02` |
+| scale pressure | `0.996004406` | `1.796260719` | `8.783073e-03` |
+| normal-field slope | `1.004048383` | `1.810804122` | `4.486880e-03` |
+| mixed scale/normal-field | `0.997007531` | `1.798081565` | `7.655748e-03` |
+| no-op | `1.000020372` | `1.803515366` | `7.657346e-03` |
+
+With `--lcfs-require-bnormal-nonincrease`, the strict guard now selects
+`mixed_scale_bnormal` instead of `noop`.  The actual low-resolution pilot solve
+is accepted:
+
+| row | merit | pressure RMS | `B_ext.n` RMS | accepted |
+| :--- | ---: | ---: | ---: | :---: |
+| baseline | `1.000020371650` | `1.803515365850` | `7.657346104349e-03` | n/a |
+| mixed pilot step 1 | `0.782835620661` | `1.411809156436` | `7.655747922838e-03` | `true` |
+
+Interpretation:
+
+- A small mixed direction resolves the pressure/normal-field tension seen in
+  M12k-M12l for this beta-10 circular-coil baseline.
+- The pure scale candidate still has lower unconstrained predicted merit, but
+  it violates strict normal-field nonincrease.
+- The pure normal-field-slope candidate reduces `B_ext.n` more strongly but is
+  pressure-limited.
+- The next useful step is to move the repeated pilot bookkeeping out of the
+  root example into a reusable LCFS pilot-step helper.
+
+### How it was tested
+
+Focused free-boundary and root example tests:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_strict_bnormal_guard_can_skip_pilot \
+  -q
+```
+
+Result: `17 passed in 9.14s`.
+
+Strict-guard plotted example:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py \
+  --outdir results/mirror/m12m_mixed_lcfs_strict_pilot \
+  --betas 10 \
+  --ntheta 24 \
+  --nxi 33 \
+  --n-segments 256 \
+  --run-fixed-boundary-baseline \
+  --run-lcfs-pilot \
+  --lcfs-pilot-steps 1 \
+  --baseline-maxiter 0 \
+  --lcfs-require-bnormal-nonincrease
+```
+
+Result: metrics JSON, setup JSON, baseline and pilot `mout` files, and plot
+bundles written.  The LCFS diagnostic and 3D boundary plots were opened and
+visually checked.
+
+Lint/format/docs/whitespace:
+
+```bash
+python -m ruff check \
+  vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff format --check \
+  vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_circular_coils.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m sphinx -W -j auto -b html docs docs/_build/html
+git diff --check
+```
+
+Result: all checks passed.
+
+### File structure and best-practice notes
+
+- The mixed direction lives in `vmec_jax/mirror/free_boundary.py` because it is
+  reusable proposal logic, not just example bookkeeping.
+- The root example still owns exact coil-resampled candidate scoring and pilot
+  rows while the LCFS loop is still a diagnostic workflow.
+- The mixed candidate reuses the existing `MirrorLCFSUpdateProposal` structure,
+  so plotting, JSON summaries, and pilot execution need no special-case
+  downstream code.
+- Plot cleanup stayed local to the root example LCFS diagnostic plot; the
+  broader mirror plotting module remains unchanged.
+
+### Best next steps
+
+1. Commit and push M12m.
+2. Extract the repeated LCFS pilot bookkeeping from
+   `examples/mirror_free_boundary_circular_coils.py` into a small reusable
+   helper:
+   - candidate construction;
+   - exact candidate scoring;
+   - strict guard/no-op handling;
+   - accepted/rejected pilot-row metadata.
+3. Add a lightweight convergence row over `lcfs_pilot_steps=1,2,3` for the
+   strict mixed beta-10 case to confirm monotonic merit behavior before
+   promoting the workflow beyond the example.
+4. Resume the stellarator-mirror hybrid boundary lane after the free-boundary
+   pilot loop is factored and tested.
+
+### Completion percentages after M12m
+
+- Geometry/grids/bases: `90%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `89%`.
+- Residual Newton / preconditioning: `91%`.
+- Two-coil and manufactured validation: `83%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `86%`.
+- I/O schema and docs: `90%`.
+- Differentiable solved-state API: `20%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `61%`.
+- Stellarator-mirror hybrid lane: `10%`.
+- ESSOS circular-coil mirror beta scan: `48%`.
+- PR merge readiness overall: `90%`.
+
+### User input needed
+
+No user input is needed.
+
+---

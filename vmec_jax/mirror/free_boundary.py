@@ -900,3 +900,127 @@ def propose_axisymmetric_mirror_lcfs_bnormal_update(
         boundary=MirrorBoundary.tabulated_radius(xi, new_radius),
         strategy="bnormal_slope",
     )
+
+
+def propose_axisymmetric_mirror_lcfs_mixed_update(
+    diagnostic: MirrorLCFSDiagnostic,
+    external_sample: MirrorExternalFieldSample,
+    pressure_response: Any,
+    *,
+    scale_fractions: Any = (0.25, 0.5, 0.75, 1.0),
+    bnormal_fractions: Any = (0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0),
+    max_relative_step: float = 0.05,
+    radius_floor: float = 1.0e-4,
+    slope_limit: float = 5.0,
+    smoothing_passes: int = 1,
+    bnormal_weight: float = 1.0,
+    bnormal_nonincrease_tolerance: float = 1.0e-14,
+) -> MirrorLCFSUpdateProposal:
+    """Search a small scale/normal-field basis for an LCFS radius proposal.
+
+    The search combines the smooth pressure scale direction with the
+    field-line-slope direction and keeps the best locally predicted candidate
+    that improves the combined pressure/normal-field merit without increasing
+    ``B_ext.n``.  If no locally valid candidate exists, the best mixed
+    candidate is still returned so callers can score it against an explicit
+    no-op fallback using their preferred field model.
+    """
+
+    scale_values = np.asarray(tuple(scale_fractions), dtype=float)
+    bnormal_values = np.asarray(tuple(bnormal_fractions), dtype=float)
+    if scale_values.ndim != 1 or scale_values.size == 0:
+        raise ValueError("scale_fractions must be a nonempty one-dimensional sequence")
+    if bnormal_values.ndim != 1 or bnormal_values.size == 0:
+        raise ValueError("bnormal_fractions must be a nonempty one-dimensional sequence")
+    if not np.all(np.isfinite(scale_values)) or np.any(scale_values <= 0.0):
+        raise ValueError("scale_fractions must be finite and positive")
+    if not np.all(np.isfinite(bnormal_values)) or np.any(bnormal_values <= 0.0):
+        raise ValueError("bnormal_fractions must be finite and positive")
+    bnormal_weight = float(bnormal_weight)
+    if bnormal_weight < 0.0:
+        raise ValueError("bnormal_weight must be nonnegative")
+    tolerance = float(bnormal_nonincrease_tolerance)
+    if tolerance < 0.0:
+        raise ValueError("bnormal_nonincrease_tolerance must be nonnegative")
+
+    scale = propose_axisymmetric_mirror_lcfs_scale_update(
+        diagnostic,
+        pressure_response,
+        max_relative_step=max_relative_step,
+        radius_floor=radius_floor,
+    )
+    bnormal = propose_axisymmetric_mirror_lcfs_bnormal_update(
+        diagnostic,
+        external_sample,
+        pressure_response,
+        max_relative_step=max_relative_step,
+        radius_floor=radius_floor,
+        slope_limit=slope_limit,
+        smoothing_passes=smoothing_passes,
+    )
+    z = scale.z
+    radius = scale.old_radius
+    residual = scale.pressure_balance_before
+    response = scale.pressure_response
+    boundary_shape = np.asarray(diagnostic.boundary_r).shape
+    current_bnormal = mirror_external_bnormal(np.broadcast_to(radius[None, :], boundary_shape), z, external_sample)
+    baseline_pressure_rms = float(np.sqrt(np.mean(residual**2)))
+    baseline_bnormal_rms = float(np.sqrt(np.mean(np.asarray(current_bnormal, dtype=float) ** 2)))
+    external_bmag_scale = float(np.sqrt(np.mean(np.asarray(external_sample.bmag, dtype=float) ** 2)))
+    pressure_scale = max(baseline_pressure_rms, np.finfo(float).tiny)
+    bnormal_scale = max(external_bmag_scale, np.finfo(float).tiny)
+    baseline_score = float(
+        np.sqrt(
+            (baseline_pressure_rms / pressure_scale) ** 2 + bnormal_weight * (baseline_bnormal_rms / bnormal_scale) ** 2
+        )
+    )
+    limit = float(max_relative_step) * np.maximum(radius, float(radius_floor))
+    best_allowed: tuple[float, float, np.ndarray, np.ndarray, float, float] | None = None
+    best_any: tuple[float, float, np.ndarray, np.ndarray, float, float] | None = None
+    for scale_fraction in scale_values:
+        for bnormal_fraction in bnormal_values:
+            delta = scale_fraction * scale.delta_radius + bnormal_fraction * bnormal.delta_radius
+            delta = np.clip(delta, -limit, limit)
+            new_radius = np.maximum(radius + delta, float(radius_floor))
+            delta = new_radius - radius
+            predicted_pressure = residual + response * delta
+            pressure_rms = float(np.sqrt(np.mean(predicted_pressure**2)))
+            bnormal_predicted = mirror_external_bnormal(
+                np.broadcast_to(new_radius[None, :], boundary_shape),
+                z,
+                external_sample,
+            )
+            bnormal_rms = float(np.sqrt(np.mean(np.asarray(bnormal_predicted, dtype=float) ** 2)))
+            score = float(
+                np.sqrt((pressure_rms / pressure_scale) ** 2 + bnormal_weight * (bnormal_rms / bnormal_scale) ** 2)
+            )
+            row = (score, bnormal_rms, new_radius, predicted_pressure, float(scale_fraction), float(bnormal_fraction))
+            if best_any is None or row[:2] < best_any[:2]:
+                best_any = row
+            if bnormal_rms <= baseline_bnormal_rms + tolerance and score <= baseline_score + tolerance:
+                if best_allowed is None or row[:2] < best_allowed[:2]:
+                    best_allowed = row
+
+    if best_any is None:
+        raise ValueError("at least one mixed LCFS candidate is required")
+    _, _, new_radius, predicted, scale_fraction, _bnormal_fraction = best_allowed or best_any
+    delta = new_radius - radius
+    return MirrorLCFSUpdateProposal(
+        z=z,
+        xi=scale.xi,
+        old_radius=radius,
+        new_radius=new_radius,
+        delta_radius=delta,
+        pressure_response=response,
+        pressure_balance_before=residual,
+        pressure_balance_predicted=predicted,
+        pressure_balance_rms_before=baseline_pressure_rms,
+        pressure_balance_rms_predicted=float(np.sqrt(np.mean(predicted**2))),
+        damping=scale_fraction,
+        max_relative_step=float(max_relative_step),
+        cap_taper_power=0.0,
+        smoothing_passes=int(smoothing_passes),
+        preserve_caps=False,
+        boundary=MirrorBoundary.tabulated_radius(scale.xi, new_radius),
+        strategy="mixed_scale_bnormal",
+    )
