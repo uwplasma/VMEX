@@ -8,12 +8,101 @@ bounded retry/fallback bookkeeping without changing public behavior.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import numpy as np
 
 from vmec_jax._solve_runtime import _dataclass_from_namespace
+
+
+@dataclass
+class FinishAttemptLog:
+    """Bookkeeping for CLI finish retry attempts."""
+
+    budgets: list[int] = field(default_factory=list)
+    fsq: list[float] = field(default_factory=list)
+    converged: list[bool] = field(default_factory=list)
+    modes: list[str] = field(default_factory=list)
+
+    def record(
+        self,
+        ctx: "FixedBoundaryFinishContext",
+        trial: Any,
+        *,
+        requested_ftol: float,
+        budget_i: int,
+        mode_i: str,
+    ) -> tuple[float, bool]:
+        trial_fsq = float(ctx.result_final_fsq(trial.result))
+        trial_conv = bool(ctx.result_meets_requested_ftol(trial.result, ftol=float(requested_ftol)))
+        self.budgets.append(int(budget_i))
+        self.fsq.append(float(trial_fsq))
+        self.converged.append(bool(trial_conv))
+        self.modes.append(str(mode_i))
+        return trial_fsq, trial_conv
+
+
+@dataclass
+class FinishBudgetTracker:
+    """Apply the optional explicit ``max_iter`` cap across finish attempts."""
+
+    cap: int | None
+    used: int = 0
+
+    def bounded(self, requested: int) -> int:
+        if self.cap is None:
+            return int(requested)
+        remaining = int(self.cap) - int(self.used)
+        return 0 if remaining <= 0 else min(int(requested), int(remaining))
+
+    def add(self, budget: int) -> None:
+        self.used += int(budget)
+
+
+@dataclass(frozen=True)
+class StagedFollowupDiagnostics:
+    """Diagnostics copied from an explicit staged followup run."""
+
+    used: bool = False
+    policy: str = ""
+    ns: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=int))
+    niter: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=int))
+    modes: np.ndarray = field(default_factory=lambda: np.asarray([], dtype=object))
+    fsq: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=float))
+    wall_s: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=float))
+    solve_total_s: np.ndarray = field(default_factory=lambda: np.zeros((0,), dtype=float))
+
+    @classmethod
+    def from_run(cls, run: Any, *, policy: str) -> "StagedFollowupDiagnostics":
+        diag = dict(run.result.diagnostics)
+        return cls(
+            used=True,
+            policy=str(policy),
+            ns=np.asarray(diag.get("cli_staged_followup_stage_ns", []), dtype=int),
+            niter=np.asarray(diag.get("cli_staged_followup_stage_niter", []), dtype=int),
+            modes=np.asarray(diag.get("cli_staged_followup_stage_modes", []), dtype=object),
+            fsq=np.asarray(diag.get("cli_staged_followup_stage_fsq", []), dtype=float),
+            wall_s=np.asarray(diag.get("cli_staged_followup_stage_wall_s", []), dtype=float),
+            solve_total_s=np.asarray(diag.get("cli_staged_followup_stage_solve_total_s", []), dtype=float),
+        )
+
+
+@dataclass(frozen=True)
+class FinishDiagnosticInputs:
+    """Explicit inputs needed to stamp CLI finish diagnostics on the selected run."""
+
+    ctx: "FixedBoundaryFinishContext"
+    best_run: Any
+    requested_ftol: float
+    target_fsq: float
+    base_diag: dict[str, Any]
+    initial_policy: str
+    partial_fallback_used: bool
+    fallback_used: bool
+    staged_followup: StagedFollowupDiagnostics
+    attempt_log: FinishAttemptLog
+    finish_budget: FinishBudgetTracker
 
 
 @dataclass(frozen=True)
@@ -126,23 +215,115 @@ def _run_full_parity_fallback(ctx: FixedBoundaryFinishContext, *, max_fallback_b
     )
 
 
-def _finish_run_with_diagnostics(ns: dict[str, Any]) -> Any:
+def _run_finish_attempt(
+    ctx: FixedBoundaryFinishContext,
+    *,
+    best_run: Any,
+    target_fsq: float,
+    budget_i: int,
+    mode_i: str,
+    use_scan_i: bool,
+    performance_mode_i: bool,
+) -> Any:
+    """Run one state-only finish attempt from the current best equilibrium."""
+
+    static_i = best_run.static
+    mode_i_l = str(mode_i).strip().lower()
+    scan_minimal_default_i = True if (bool(performance_mode_i) and (not bool(ctx.verbose))) else None
+    host_update_assembly_i = ctx.host_update_assembly_driver_default(
+        cfg=static_i.cfg,
+        performance_mode=bool(performance_mode_i),
+        backend=ctx.default_backend_name(),
+        use_scan=bool(use_scan_i),
+    )
+    preconditioner_use_precomputed_tridi_i = ctx.default_preconditioner_use_precomputed_tridi(
+        cfg=static_i.cfg,
+        backend=ctx.policy_backend,
+        performance_mode=bool(performance_mode_i),
+        use_scan=bool(use_scan_i),
+        direct_external_provider=bool(ctx.direct_external_provider),
+    )
+    preconditioner_use_lax_tridi_i = ctx.default_preconditioner_use_lax_tridi(
+        cfg=static_i.cfg,
+        backend=ctx.policy_backend,
+        performance_mode=bool(performance_mode_i),
+        use_scan=bool(use_scan_i),
+        direct_external_provider=bool(ctx.direct_external_provider),
+    )
+    if ctx.step_size is ctx.step_size_sentinel or ctx.step_size is None:
+        step_size_finish = float(ctx.indata.get_float("DELT", 5e-3))
+    else:
+        step_size_finish = float(ctx.step_size)
+    finish_fsq_total_target = float(target_fsq) if mode_i_l == "accelerated" else None
+    finish_resume_state_mode = "minimal" if mode_i_l == "accelerated" else "full"
+    res_i = ctx.solve_fixed_boundary_residual_iter(
+        best_run.state,
+        static_i,
+        indata=ctx.indata,
+        signgs=best_run.signgs,
+        ftol=float(ctx.indata.get_float("FTOL", 1.0e-13)),
+        max_iter=int(budget_i),
+        step_size=float(step_size_finish),
+        include_constraint_force=True,
+        apply_m1_constraints=True,
+        precond_radial_alpha=0.5,
+        precond_lambda_alpha=0.5,
+        mode_diag_exponent=0.0,
+        auto_flip_force=False,
+        divide_by_scalxc_for_update=False,
+        lambda_update_scale=1.0,
+        enforce_vmec_lambda_axis=True,
+        vmec2000_control=True,
+        strict_update=True,
+        backtracking=False,
+        reference_mode=False,
+        use_restart_triggers=True if ctx.use_restart_triggers is None else bool(ctx.use_restart_triggers),
+        vmecpp_restart=bool(ctx.vmecpp_restart),
+        stage_prev_fsq=None,
+        stage_transition_factor=float(ctx.stage_transition_factor),
+        stage_transition_scale=float(ctx.stage_transition_scale),
+        use_direct_fallback=ctx.use_direct_fallback,
+        # CLI finish attempts deliberately restart from the current
+        # equilibrium state only. Reusing nonlinear-controller caches was
+        # materially less robust on the hard staged inputs.
+        resume_state=None,
+        verbose=False,
+        verbose_vmec2000_table=False,
+        jit_precompile=False,
+        jit_warmup_iters=0,
+        use_scan=bool(use_scan_i),
+        scan_minimal_default=scan_minimal_default_i,
+        light_history=True,
+        resume_state_mode=finish_resume_state_mode,
+        fsq_total_target=finish_fsq_total_target,
+        host_update_assembly=host_update_assembly_i,
+        preconditioner_use_precomputed_tridi=preconditioner_use_precomputed_tridi_i,
+        preconditioner_use_lax_tridi=preconditioner_use_lax_tridi_i,
+        return_final_force_payload=True,
+        jit_forces=ctx.resolve_jit_forces_auto_policy(ctx.jit_forces, static_i, int(budget_i)),
+    )
+    return replace(best_run, state=res_i.state, result=res_i)
+
+
+def _finish_run_with_diagnostics(info: FinishDiagnosticInputs) -> Any:
     """Attach CLI finish diagnostics to the selected fixed-boundary run."""
 
-    ctx = ns["ctx"]
-    best_run = ns["best_run"]
-    requested_ftol = float(ns["requested_ftol"])
-    target_fsq = float(ns["target_fsq"])
+    ctx = info.ctx
+    best_run = info.best_run
+    requested_ftol = float(info.requested_ftol)
+    target_fsq = float(info.target_fsq)
     final_residuals = ctx.result_final_residuals(best_run.result)
     strict_converged = bool(ctx.result_meets_requested_ftol(best_run.result, ftol=requested_ftol))
     total_converged = bool(ctx.result_hits_total_target(best_run.result, fsq_total_target=target_fsq))
-    finish_budget_cap = ns["finish_budget_cap"]
-    diag = dict(ns["base_diag"])
+    attempt_log = info.attempt_log
+    finish_budget = info.finish_budget
+    staged_followup = info.staged_followup
+    diag = dict(info.base_diag)
     diag.update(best_run.result.diagnostics)
     diag["solver_mode"] = str(ctx.solver_mode_eff)
     diag["accelerated_mode"] = bool(ctx.accelerated_mode)
     diag["cli_fixed_boundary_mode"] = True
-    diag["cli_fixed_boundary_initial_policy"] = str(ns["initial_policy"])
+    diag["cli_fixed_boundary_initial_policy"] = str(info.initial_policy)
     diag["requested_ftol"] = requested_ftol
     if final_residuals is not None:
         diag["final_fsqr"] = float(final_residuals[0])
@@ -151,26 +332,26 @@ def _finish_run_with_diagnostics(ns: dict[str, Any]) -> Any:
     diag["converged"] = bool(strict_converged)
     diag["converged_strict"] = bool(strict_converged)
     diag["converged_by_total_fsq"] = bool(total_converged)
-    diag["cli_fixed_boundary_partial_parity_fallback"] = bool(ns["partial_fallback_used"])
-    diag["cli_fixed_boundary_finish_budgets"] = np.asarray(ns["attempt_budgets"], dtype=int)
-    diag["cli_fixed_boundary_finish_fsq"] = np.asarray(ns["attempt_fsq"], dtype=float)
-    diag["cli_fixed_boundary_finish_converged"] = np.asarray(ns["attempt_converged"], dtype=bool)
-    diag["cli_fixed_boundary_finish_modes"] = np.asarray(ns["attempt_modes"])
-    diag["cli_fixed_boundary_finish_budget_cap"] = -1 if finish_budget_cap is None else int(finish_budget_cap)
+    diag["cli_fixed_boundary_partial_parity_fallback"] = bool(info.partial_fallback_used)
+    diag["cli_fixed_boundary_finish_budgets"] = np.asarray(attempt_log.budgets, dtype=int)
+    diag["cli_fixed_boundary_finish_fsq"] = np.asarray(attempt_log.fsq, dtype=float)
+    diag["cli_fixed_boundary_finish_converged"] = np.asarray(attempt_log.converged, dtype=bool)
+    diag["cli_fixed_boundary_finish_modes"] = np.asarray(attempt_log.modes)
+    diag["cli_fixed_boundary_finish_budget_cap"] = -1 if finish_budget.cap is None else int(finish_budget.cap)
     diag["cli_fixed_boundary_finish_budget_exhausted"] = bool(
-        (finish_budget_cap is not None)
-        and int(ns["finish_budget_used"]) >= int(finish_budget_cap)
+        (finish_budget.cap is not None)
+        and int(finish_budget.used) >= int(finish_budget.cap)
         and not bool(strict_converged)
     )
-    diag["cli_fixed_boundary_full_parity_fallback"] = bool(ns["fallback_used"])
-    diag["cli_fixed_boundary_staged_followup_used"] = bool(ns["staged_followup_used"])
-    diag["cli_fixed_boundary_staged_followup_policy"] = str(ns["staged_followup_policy"])
-    diag["cli_fixed_boundary_staged_followup_ns"] = ns["staged_followup_ns"]
-    diag["cli_fixed_boundary_staged_followup_niter"] = ns["staged_followup_niter"]
-    diag["cli_fixed_boundary_staged_followup_modes"] = ns["staged_followup_modes"]
-    diag["cli_fixed_boundary_staged_followup_fsq"] = ns["staged_followup_fsq"]
-    diag["cli_fixed_boundary_staged_followup_wall_s"] = ns["staged_followup_wall_s"]
-    diag["cli_fixed_boundary_staged_followup_solve_total_s"] = ns["staged_followup_solve_total_s"]
+    diag["cli_fixed_boundary_full_parity_fallback"] = bool(info.fallback_used)
+    diag["cli_fixed_boundary_staged_followup_used"] = bool(staged_followup.used)
+    diag["cli_fixed_boundary_staged_followup_policy"] = str(staged_followup.policy)
+    diag["cli_fixed_boundary_staged_followup_ns"] = staged_followup.ns
+    diag["cli_fixed_boundary_staged_followup_niter"] = staged_followup.niter
+    diag["cli_fixed_boundary_staged_followup_modes"] = staged_followup.modes
+    diag["cli_fixed_boundary_staged_followup_fsq"] = staged_followup.fsq
+    diag["cli_fixed_boundary_staged_followup_wall_s"] = staged_followup.wall_s
+    diag["cli_fixed_boundary_staged_followup_solve_total_s"] = staged_followup.solve_total_s
     diag["multigrid_user_provided"] = bool(ctx.multigrid_user_provided)
     diag["accelerated_single_grid_default"] = bool(ctx.accelerated_single_grid_default)
     if bool(ctx.accelerated_mode):
@@ -233,98 +414,10 @@ def maybe_finish_cli_fixed_boundary_run(
 
     best_run = run_in
     best_fsq = float(ctx.result_final_fsq(run_in.result))
-    attempt_budgets: list[int] = []
-    attempt_fsq: list[float] = []
-    attempt_converged: list[bool] = []
-    attempt_modes: list[str] = []
+    attempt_log = FinishAttemptLog()
     fallback_used = False
     partial_fallback_used = False
-    staged_followup_used = False
-    staged_followup_policy = ""
-    staged_followup_ns = np.zeros((0,), dtype=int)
-    staged_followup_niter = np.zeros((0,), dtype=int)
-    staged_followup_modes = np.asarray([], dtype=object)
-    staged_followup_fsq = np.zeros((0,), dtype=float)
-    staged_followup_wall_s = np.zeros((0,), dtype=float)
-    staged_followup_solve_total_s = np.zeros((0,), dtype=float)
-
-    def _run_finish_attempt(*, budget_i: int, mode_i: str, use_scan_i: bool, performance_mode_i: bool):
-        static_i = best_run.static
-        mode_i_l = str(mode_i).strip().lower()
-        scan_minimal_default_i = True if (bool(performance_mode_i) and (not bool(ctx.verbose))) else None
-        host_update_assembly_i = ctx.host_update_assembly_driver_default(
-            cfg=static_i.cfg,
-            performance_mode=bool(performance_mode_i),
-            backend=ctx.default_backend_name(),
-            use_scan=bool(use_scan_i),
-        )
-        preconditioner_use_precomputed_tridi_i = ctx.default_preconditioner_use_precomputed_tridi(
-            cfg=static_i.cfg,
-            backend=ctx.policy_backend,
-            performance_mode=bool(performance_mode_i),
-            use_scan=bool(use_scan_i),
-            direct_external_provider=bool(ctx.direct_external_provider),
-        )
-        preconditioner_use_lax_tridi_i = ctx.default_preconditioner_use_lax_tridi(
-            cfg=static_i.cfg,
-            backend=ctx.policy_backend,
-            performance_mode=bool(performance_mode_i),
-            use_scan=bool(use_scan_i),
-            direct_external_provider=bool(ctx.direct_external_provider),
-        )
-        if ctx.step_size is ctx.step_size_sentinel or ctx.step_size is None:
-            step_size_finish = float(ctx.indata.get_float("DELT", 5e-3))
-        else:
-            step_size_finish = float(ctx.step_size)
-        finish_fsq_total_target = float(target_fsq) if mode_i_l == "accelerated" else None
-        finish_resume_state_mode = "minimal" if mode_i_l == "accelerated" else "full"
-        res_i = ctx.solve_fixed_boundary_residual_iter(
-            best_run.state,
-            static_i,
-            indata=ctx.indata,
-            signgs=best_run.signgs,
-            ftol=float(ctx.indata.get_float("FTOL", 1.0e-13)),
-            max_iter=int(budget_i),
-            step_size=float(step_size_finish),
-            include_constraint_force=True,
-            apply_m1_constraints=True,
-            precond_radial_alpha=0.5,
-            precond_lambda_alpha=0.5,
-            mode_diag_exponent=0.0,
-            auto_flip_force=False,
-            divide_by_scalxc_for_update=False,
-            lambda_update_scale=1.0,
-            enforce_vmec_lambda_axis=True,
-            vmec2000_control=True,
-            strict_update=True,
-            backtracking=False,
-            reference_mode=False,
-            use_restart_triggers=True if ctx.use_restart_triggers is None else bool(ctx.use_restart_triggers),
-            vmecpp_restart=bool(ctx.vmecpp_restart),
-            stage_prev_fsq=None,
-            stage_transition_factor=float(ctx.stage_transition_factor),
-            stage_transition_scale=float(ctx.stage_transition_scale),
-            use_direct_fallback=ctx.use_direct_fallback,
-            # CLI finish attempts deliberately restart from the current
-            # equilibrium state only. Reusing nonlinear-controller caches was
-            # materially less robust on the hard staged inputs.
-            resume_state=None,
-            verbose=False,
-            verbose_vmec2000_table=False,
-            jit_precompile=False,
-            jit_warmup_iters=0,
-            use_scan=bool(use_scan_i),
-            scan_minimal_default=scan_minimal_default_i,
-            light_history=True,
-            resume_state_mode=finish_resume_state_mode,
-            fsq_total_target=finish_fsq_total_target,
-            host_update_assembly=host_update_assembly_i,
-            preconditioner_use_precomputed_tridi=preconditioner_use_precomputed_tridi_i,
-            preconditioner_use_lax_tridi=preconditioner_use_lax_tridi_i,
-            return_final_force_payload=True,
-            jit_forces=ctx.resolve_jit_forces_auto_policy(ctx.jit_forces, static_i, int(budget_i)),
-        )
-        return replace(best_run, state=res_i.state, result=res_i)
+    staged_followup_diag = StagedFollowupDiagnostics()
 
     if staged_input and bool(ctx.accelerated_mode) and str(initial_policy) == "single_grid":
         missed_target = not bool(ctx.result_meets_requested_ftol(best_run.result, ftol=float(requested_ftol)))
@@ -338,21 +431,7 @@ def maybe_finish_cli_fixed_boundary_run(
                 ftol_stage_list=explicit_ftol_stages,
                 policy_name="input_multigrid",
             )
-            staged_followup_used = True
-            staged_followup_policy = "input_multigrid"
-            staged_diag = dict(staged_followup.result.diagnostics)
-            staged_followup_ns = np.asarray(staged_diag.get("cli_staged_followup_stage_ns", []), dtype=int)
-            staged_followup_niter = np.asarray(staged_diag.get("cli_staged_followup_stage_niter", []), dtype=int)
-            staged_followup_modes = np.asarray(staged_diag.get("cli_staged_followup_stage_modes", []), dtype=object)
-            staged_followup_fsq = np.asarray(staged_diag.get("cli_staged_followup_stage_fsq", []), dtype=float)
-            staged_followup_wall_s = np.asarray(
-                staged_diag.get("cli_staged_followup_stage_wall_s", []),
-                dtype=float,
-            )
-            staged_followup_solve_total_s = np.asarray(
-                staged_diag.get("cli_staged_followup_stage_solve_total_s", []),
-                dtype=float,
-            )
+            staged_followup_diag = StagedFollowupDiagnostics.from_run(staged_followup, policy="input_multigrid")
             staged_fsq_val = float(ctx.result_final_fsq(staged_followup.result))
             staged_conv = bool(ctx.result_meets_requested_ftol(staged_followup.result, ftol=float(requested_ftol)))
             if staged_conv or (staged_fsq_val < float(best_fsq)):
@@ -420,47 +499,40 @@ def maybe_finish_cli_fixed_boundary_run(
                 best_fsq = float(fallback_fsq)
 
     improvement_floor = np.finfo(float).eps * max(1.0, abs(float(best_fsq)), abs(float(target_fsq)))
-    finish_budget_cap = int(max_fallback_budget) if bool(ctx.max_iter_overridden) else None
-    finish_budget_used = 0
+    finish_budget = FinishBudgetTracker(cap=int(max_fallback_budget) if bool(ctx.max_iter_overridden) else None)
     accelerated_finish_uses_scan = False if ctx.use_scan is False else True
-
-    def _bounded_finish_budget(requested: int) -> int:
-        if finish_budget_cap is None:
-            return int(requested)
-        remaining = int(finish_budget_cap) - int(finish_budget_used)
-        return 0 if remaining <= 0 else min(int(requested), int(remaining))
-
-    def _record_finish_attempt(trial: Any, *, budget_i: int, mode_i: str) -> tuple[float, bool]:
-        trial_fsq = float(ctx.result_final_fsq(trial.result))
-        trial_conv = bool(ctx.result_meets_requested_ftol(trial.result, ftol=float(requested_ftol)))
-        attempt_budgets.append(int(budget_i))
-        attempt_fsq.append(float(trial_fsq))
-        attempt_converged.append(bool(trial_conv))
-        attempt_modes.append(str(mode_i))
-        return trial_fsq, trial_conv
 
     if (
         bool(ctx.accelerated_mode)
         and str(initial_policy) == "single_grid"
-        and (not bool(staged_followup_used))
+        and (not bool(staged_followup_diag.used))
         and not bool(ctx.result_meets_requested_ftol(best_run.result, ftol=float(requested_ftol)))
     ):
         accel_budget_i = int(base_total_budget)
         accel_budget_used = 0
         while int(accel_budget_i) >= 1 and int(accel_budget_used) < int(max_fallback_budget):
-            budget_this = _bounded_finish_budget(accel_budget_i)
+            budget_this = finish_budget.bounded(accel_budget_i)
             if int(budget_this) <= 0:
                 break
             prev_best_fsq = float(best_fsq)
             trial = _run_finish_attempt(
+                ctx,
+                best_run=best_run,
+                target_fsq=target_fsq,
                 budget_i=budget_this,
                 mode_i="accelerated",
                 use_scan_i=bool(accelerated_finish_uses_scan),
                 performance_mode_i=True,
             )
-            trial_fsq, trial_conv = _record_finish_attempt(trial, budget_i=budget_this, mode_i="accelerated")
+            trial_fsq, trial_conv = attempt_log.record(
+                ctx,
+                trial,
+                requested_ftol=requested_ftol,
+                budget_i=budget_this,
+                mode_i="accelerated",
+            )
             accel_budget_used += int(budget_this)
-            finish_budget_used += int(budget_this)
+            finish_budget.add(budget_this)
             improved = trial_conv or (float(trial_fsq) < float(prev_best_fsq - improvement_floor))
             if improved:
                 best_run = trial
@@ -478,18 +550,27 @@ def maybe_finish_cli_fixed_boundary_run(
     ):
         budget_i = int(base_total_budget)
         while int(budget_i) >= 1:
-            budget_this = _bounded_finish_budget(budget_i)
+            budget_this = finish_budget.bounded(budget_i)
             if int(budget_this) <= 0:
                 break
             prev_best_fsq = float(best_fsq)
             trial = _run_finish_attempt(
+                ctx,
+                best_run=best_run,
+                target_fsq=target_fsq,
                 budget_i=budget_this,
                 mode_i="parity",
                 use_scan_i=False,
                 performance_mode_i=False,
             )
-            trial_fsq, trial_conv = _record_finish_attempt(trial, budget_i=budget_this, mode_i="parity")
-            finish_budget_used += int(budget_this)
+            trial_fsq, trial_conv = attempt_log.record(
+                ctx,
+                trial,
+                requested_ftol=requested_ftol,
+                budget_i=budget_this,
+                mode_i="parity",
+            )
+            finish_budget.add(budget_this)
             improved = trial_conv or (float(trial_fsq) < float(prev_best_fsq - improvement_floor))
             if improved:
                 best_run = trial
@@ -521,4 +602,18 @@ def maybe_finish_cli_fixed_boundary_run(
             best_run = fallback
             best_fsq = float(fallback_fsq)
 
-    return _finish_run_with_diagnostics(locals())
+    return _finish_run_with_diagnostics(
+        FinishDiagnosticInputs(
+            ctx=ctx,
+            best_run=best_run,
+            requested_ftol=float(requested_ftol),
+            target_fsq=float(target_fsq),
+            base_diag=base_diag,
+            initial_policy=str(initial_policy),
+            partial_fallback_used=bool(partial_fallback_used),
+            fallback_used=bool(fallback_used),
+            staged_followup=staged_followup_diag,
+            attempt_log=attempt_log,
+            finish_budget=finish_budget,
+        )
+    )

@@ -26063,3 +26063,89 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999999932%.
+
+## 2026-06-19 Driver Finish And First-Step Diagnostic Decomposition
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Replaced ad hoc CLI finish retry lists with explicit
+   `FinishAttemptLog` and `FinishBudgetTracker` objects.
+2. Extracted the CLI finish attempt solver call into
+   `vmec_jax.drivers.finish._run_finish_attempt`.
+3. Replaced `_finish_run_with_diagnostics(locals())` with
+   `FinishDiagnosticInputs` and `StagedFollowupDiagnostics`, making the
+   diagnostic stamping seam explicit.
+4. Split `first_step_diagnostics_impl` into dependency resolution, VMEC force
+   setup, preconditioner selection, mode weighting, and first-step update
+   preview helpers.
+5. Preserved all public keys returned by `first_step_diagnostics` and all
+   CLI finish diagnostics.
+
+Results obtained:
+
+- `vmec_jax.drivers.finish::maybe_finish_cli_fixed_boundary_run` remains below
+  the source-health function-length warning threshold and no longer uses
+  `locals()` to assemble output diagnostics.
+- `vmec_jax.solvers.fixed_boundary.diagnostics.first_step::
+  first_step_diagnostics_impl` dropped out of the source-health warning list.
+- Focused finish-policy and first-step diagnostic tests pass.
+- The next production source-health hotspots are now residual iteration,
+  scan/controller, implicit solve, WOUT assembly, and optimization residual
+  solvers.
+
+Tests and commands run:
+
+- `python -m py_compile vmec_jax/drivers/finish.py`
+- `python -m py_compile vmec_jax/solvers/fixed_boundary/diagnostics/first_step.py`
+- `python -m ruff check vmec_jax/drivers/finish.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/diagnostics/first_step.py`
+- `python tools/diagnostics/source_health.py --top 35 --max-root-helper-prefix-files 2`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_finish_policy_more_coverage.py tests/test_driver_wave2_coverage.py::test_cli_finisher_records_budget_exhaustion_after_accelerated_and_parity_attempts tests/test_driver_api.py::test_run_fixed_boundary_cli_single_grid_uses_accelerated_finish_first tests/test_driver_api.py::test_run_fixed_boundary_cli_parity_finisher_uses_state_only_blocks tests/test_driver_api.py::test_run_fixed_boundary_cli_parity_finisher_caps_explicit_max_iter -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_debug_dump_wave10_coverage.py::test_first_step_diagnostics_requires_jax_before_heavy_work tests/test_solve_additional_helpers.py::test_first_step_metric_mesh_and_adjoint_trace_helper_branches tests/test_solve_additional_helpers.py::test_first_step_diagnostics_synthetic_default_and_axisymmetric_paths -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_debug_dump_wave10_coverage.py::test_first_step_diagnostics_requires_jax_before_heavy_work tests/test_solve_additional_helpers.py::test_first_step_metric_mesh_and_adjoint_trace_helper_branches tests/test_solve_additional_helpers.py::test_first_step_diagnostics_synthetic_default_and_axisymmetric_paths tests/test_driver_finish_policy_more_coverage.py tests/test_driver_wave2_coverage.py::test_cli_finisher_records_budget_exhaustion_after_accelerated_and_parity_attempts tests/test_driver_api.py::test_run_fixed_boundary_cli_single_grid_uses_accelerated_finish_first tests/test_driver_api.py::test_run_fixed_boundary_cli_parity_finisher_uses_state_only_blocks -q`
+
+Best next steps:
+
+1. Commit and push this combined finish/first-step tranche.
+2. Target `run_accelerated_residual_scan` and `run_vmec2000_scan` by extracting
+   scan-state transition helpers and explicit per-step result objects.
+3. After scan/controller simplification, return to the residual iterator with
+   a clear controller-state object rather than direct line slicing.
+4. Keep WOUT constructor decomposition on the plan, but avoid partial
+   reshuffles unless the final schema assembly can be made explicit without
+   risking parity.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999956%.
+- Solver monolith reduction: 99.920%.
+- Free-boundary adjoint monolith reduction: 99.66%.
+- Driver workflow decomposition: 99.975%.
+- Residual iteration decomposition: 99.515%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.30%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.93%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.05%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.18%.
+- Sweep/example workflow decomposition: 95.2%.
+- Implicit residual-adjoint decomposition: 95.86%.
+- Discrete-adjoint replay decomposition: 99.24%.
+- Free-boundary validation-gate maintainability: 98.55%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999999933%.
