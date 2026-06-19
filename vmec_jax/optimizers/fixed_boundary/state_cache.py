@@ -163,6 +163,131 @@ def remember_best_exact_point(
         optimizer._best_exact_state = best_state
 
 
+def final_history_wall_time(optimizer) -> float:
+    """Return a final history timestamp that never goes backwards."""
+
+    final_wall_time_s = float(time.perf_counter() - optimizer._wall_t0)
+    history = getattr(optimizer, "_history", None)
+    if history:
+        final_wall_time_s = max(final_wall_time_s, float(history[-1].get("wall_time_s", 0.0)))
+    return final_wall_time_s
+
+
+def evaluate_and_record_final_exact_point(
+    optimizer,
+    result: dict,
+    *,
+    selected_best_exact: bool,
+):
+    """Select the final exact accepted point and append its history entry.
+
+    Final artifacts must come from an exact accepted solve.  If the optimizer's
+    nominal final point cannot be reconstructed, or if a prior exact accepted
+    point has a lower exact cost, use that best exact point instead of a
+    relaxed trial solve.
+    """
+
+    best_exact_params = getattr(optimizer, "_best_exact_params", None)
+    best_exact_state = getattr(optimizer, "_best_exact_state", None)
+    best_exact_residual = getattr(optimizer, "_best_exact_residual", None)
+    best_exact_cost = float(getattr(optimizer, "_best_exact_cost", math.inf))
+
+    final_key = optimizer._exact_cache_key(result["x"])
+    res_final = optimizer._cached_exact_residual(cache_key=final_key)
+    if (
+        res_final is None
+        and best_exact_params is not None
+        and best_exact_residual is not None
+        and final_key == optimizer._exact_cache_key(best_exact_params)
+    ):
+        res_final = np.asarray(best_exact_residual, dtype=float).reshape(-1)
+        optimizer._remember_exact_residual(final_key, res_final)
+
+    state_final = optimizer._cached_exact_state(result["x"])
+    if state_final is None:
+        try:
+            state_final = optimizer._solve_exact_state(result["x"])
+        except Exception as exc:
+            if best_exact_params is not None and best_exact_residual is not None and np.isfinite(best_exact_cost):
+                selected_best_exact = True
+                result["x"] = np.asarray(best_exact_params, dtype=float).copy()
+                final_key = optimizer._exact_cache_key(result["x"])
+                res_final = np.asarray(best_exact_residual, dtype=float).reshape(-1)
+                state_final = optimizer._best_exact_state_or_solve(result["x"], best_exact_state)
+            else:
+                raise RuntimeError(
+                    "Final exact accepted-point solve failed and no prior exact "
+                    "accepted point is available for final output."
+                ) from exc
+
+    if state_final is not None:
+        optimizer._remember_exact_state(final_key, state_final)
+
+    final_wall_time_s = final_history_wall_time(optimizer)
+    entry_final = optimizer._history_entry_from_state_or_residual(
+        state_final,
+        res_final,
+        wall_time_s=final_wall_time_s,
+        cache_key=final_key,
+    )
+    cost_final = float(entry_final["cost"])
+    qs_total_final = float(entry_final["qs_objective"])
+    aspect_final = float(entry_final["aspect"])
+
+    exact_improvement_tol = max(
+        1.0e-14,
+        1.0e-9
+        * max(
+            1.0,
+            abs(cost_final) if np.isfinite(cost_final) else 1.0,
+            abs(best_exact_cost) if np.isfinite(best_exact_cost) else 1.0,
+        ),
+    )
+    if (
+        best_exact_params is not None
+        and best_exact_residual is not None
+        and np.isfinite(best_exact_cost)
+        and (not np.isfinite(cost_final) or best_exact_cost < cost_final - exact_improvement_tol)
+    ):
+        selected_best_exact = True
+        result["x"] = np.asarray(best_exact_params, dtype=float).copy()
+        final_key = optimizer._exact_cache_key(result["x"])
+        res_final = np.asarray(best_exact_residual, dtype=float).reshape(-1)
+        try:
+            state_final = optimizer._best_exact_state_or_solve(result["x"], best_exact_state)
+        except Exception as exc:
+            raise RuntimeError(
+                "Best exact accepted point was selected for final output, "
+                "but its exact state could not be reconstructed."
+            ) from exc
+        final_wall_time_s = final_history_wall_time(optimizer)
+        entry_final = optimizer._history_entry_from_state_or_residual(
+            state_final,
+            res_final,
+            wall_time_s=final_wall_time_s,
+            cache_key=final_key,
+        )
+        cost_final = float(entry_final["cost"])
+        qs_total_final = float(entry_final["qs_objective"])
+        aspect_final = float(entry_final["aspect"])
+
+    if state_final is not None:
+        optimizer._remember_exact_state(final_key, state_final)
+
+    result["cost"] = float(cost_final)
+    result["objective"] = float(2.0 * cost_final)
+    optimizer._history.append(entry_final)
+    return (
+        state_final,
+        entry_final,
+        cost_final,
+        qs_total_final,
+        aspect_final,
+        final_wall_time_s,
+        selected_best_exact,
+    )
+
+
 def cached_exact_residual(optimizer, params=None, *, cache_key: bytes | None = None) -> np.ndarray | None:
     """Return a same-point exact residual if already available."""
 

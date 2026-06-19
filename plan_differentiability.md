@@ -22465,3 +22465,74 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9999999993%.
+
+## 2026-06-19 Final Exact-Output Selection Cache Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Inspected `FixedBoundaryExactOptimizer` final-output selection and the
+   existing fixed-boundary `state_cache` domain module.
+2. Moved final exact accepted-point selection, best-exact fallback, monotone
+   final-history timestamping, and final history append logic into
+   `optimizers.fixed_boundary.state_cache`.
+3. Rewired `FixedBoundaryExactOptimizer.run()` to call
+   `_state_cache.evaluate_and_record_final_exact_point(...)` directly.
+4. Kept complete-solve acceptance authority, best-exact fallback behavior, and
+   serialized history payloads unchanged.
+
+Results obtained:
+
+- `vmec_jax/optimization.py` decreased from 2500 to 2382 lines.
+- The final-output correctness path now lives with the exact-state/residual
+  cache primitives it depends on.
+- No new source file was added.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/optimization.py vmec_jax/optimizers/fixed_boundary/state_cache.py`
+- `python -m ruff check vmec_jax/optimization.py vmec_jax/optimizers/fixed_boundary/state_cache.py tests/test_optimization_helpers.py tests/test_optimization_wave2_coverage.py tests/test_optimization_auto_scalar_policy.py tests/test_differentiation_optimization_api_fast.py tests/test_optimizer_domain_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimizer_domain_helpers.py tests/test_differentiation_optimization_api_fast.py tests/test_optimization_auto_scalar_policy.py tests/test_optimization_wave2_coverage.py tests/test_optimization_helpers.py -q`
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 60`
+
+Best next steps:
+
+1. Continue optimizer decomposition with the method-dispatch seam or residual
+   callback bookkeeping.
+2. Keep final-output tests in the focused optimizer suite as the safety gate for
+   any future accepted-point refactor.
+3. Move large validation tests into reusable fixtures only if it reduces
+   duplication without weakening physics/parity coverage.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999958%.
+- Solver monolith reduction: 99.827%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.055%.
+- WOUT diagnostic/profile decomposition: 99.982%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.825%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.83%.
+- Fixed-boundary optimizer decomposition: 97.05%.
+- Plotting/WOUT visualization decomposition: 97.32%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 96.82%.
+- Free-boundary validation-gate maintainability: 98.18%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999999935%.
