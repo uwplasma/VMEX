@@ -23024,3 +23024,105 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+---
+## 192. Circular-Coil Free-Boundary Plot Coverage
+
+### Steps taken
+
+- Audited `examples/mirror_free_boundary_circular_coils.py` and the existing
+  free-boundary root-example tests after M191.
+- Identified that the circular-coil beta-scan workflow had extensive no-plot
+  schema and guard coverage, but no automated check for the plotted top-level
+  coil/axis/boundary/beta-summary figures or per-beta baseline/pilot plot
+  bundles.
+- Ran a plotted low-resolution 1%, 3%, and 10% beta-scan probe with fixed
+  boundary baselines, one LCFS pilot step per beta, and direct circular coils.
+- Added a plotted smoke test that validates the metrics schema, checks the
+  top-level figure set, and verifies representative nonblank baseline and pilot
+  mirror/LCFS diagnostic plots for the 1% beta row.
+
+### Results obtained
+
+- The ESSOS-compatible circular-coil free-boundary diagnostic lane now has
+  automated coverage for its main plotted beta-scan report artifacts.
+- The test still uses the lightweight diagnostic/pilot settings already used by
+  the no-plot schema test, so it does not promote the lane to a converged
+  production free-boundary solver claim.
+- The coverage directly checks the 1%, 3%, and 10% beta request, the LCFS pilot
+  row count, top-level plots, and representative baseline/pilot plot bundles.
+
+### How it was tested
+
+Commands run:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_free_boundary_circular_coils.py \
+  --outdir /tmp/mirror_free_boundary_circular_coils_plot_probe \
+  --ntheta 8 \
+  --nxi 11 \
+  --n-segments 64 \
+  --run-fixed-boundary-baseline \
+  --baseline-maxiter 0 \
+  --run-lcfs-pilot \
+  --lcfs-pilot-steps 1
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_runs_without_plots \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_example_writes_nonblank_plots -q
+python -m ruff check tests/mirror/test_mirror_examples.py
+python -m ruff format --check tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest tests/mirror -q
+```
+
+Results:
+
+- The temporary probe wrote top-level axis, boundary, geometry, and beta-summary
+  figures plus baseline and LCFS-pilot mirror plot bundles for 1%, 3%, and 10%
+  beta cases; inspected PNGs were nonblank.
+- Focused circular-coil beta-scan tests passed: `2 passed in 14.27s`.
+- Ruff check and format check passed.
+- Full mirror suite passed: `240 passed, 1 skipped in 270.90s`.
+
+### File structure and best-practice notes
+
+- The new coverage stays in `tests/mirror/test_mirror_examples.py`, beside the
+  existing circular-coil beta-scan schema test.
+- It reuses the existing metrics validator and nonblank-image helper rather
+  than adding image baselines.
+- Generated plots remain in pytest temporary directories or ignored result
+  paths, keeping the repository light.
+- The example keeps ESSOS-compatible coil metadata and diagnostic LCFS pilot
+  reporting separate from the future production free-boundary nonlinear solver.
+
+### Best next steps
+
+1. Commit and push M192.
+2. Update the draft PR body with section 192 and the `240 passed, 1 skipped`
+   full mirror-suite result.
+3. Inspect only failed CI jobs after the push.
+4. Continue the final audit with toroidal-hybrid convergence/readiness and a
+   full docs/readiness synchronization pass before considering undrafting.
+
+### Completion percentages after M192
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99%` overall, with circular-coil beta-scan plots
+  and reduced residual-vector benchmark plots covered.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `96%`.
+- ESSOS circular-coil mirror beta scan: `99%`.
+- Public API/source simplification: `100%` for the mirror package initializer.
+- PR merge readiness overall: `99%`.
+
+### User input needed
+
+No user input is needed.

@@ -551,6 +551,55 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert metrics["figures"] == {}
 
 
+def test_root_free_boundary_circular_coils_example_writes_nonblank_plots(tmp_path):
+    image = pytest.importorskip("matplotlib.image")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_free_boundary_circular_coils.py",
+            "--outdir",
+            str(tmp_path / "free_boundary_circular_coils_plots"),
+            "--ntheta",
+            "8",
+            "--nxi",
+            "11",
+            "--n-segments",
+            "64",
+            "--run-fixed-boundary-baseline",
+            "--baseline-maxiter",
+            "0",
+            "--run-lcfs-pilot",
+            "--lcfs-pilot-steps",
+            "1",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    metrics = json.loads(Path(completed.stdout.strip()).read_text())
+    module = _load_root_example("mirror_free_boundary_circular_coils.py")
+    module["validate_circular_coil_beta_scan_metrics"](metrics)
+    assert metrics["workflow_status"] == "lcfs_pilot"
+    assert metrics["fixed_boundary_baseline_count"] == 3
+    assert metrics["lcfs_pilot_rows_total"] == 3
+    assert metrics["beta_scan_requested_percent"] == [1.0, 3.0, 10.0]
+    assert set(metrics["figures"]) == {"axis_bz", "boundary_bmag", "geometry", "beta_scan_summary"}
+    for path in metrics["figures"].values():
+        _assert_nonblank_image(path, image)
+
+    row = metrics["fixed_boundary_baseline_rows"][0]
+    pilot = row["lcfs_pilot_rows"][0]
+    assert row["beta_percent"] == pytest.approx(1.0)
+    assert row["lcfs_pilot_status"] == "accepted"
+    assert pilot["accepted"] is True
+    assert row["figures"]
+    assert pilot["figures"]
+    for figures in [row["figures"], pilot["figures"]]:
+        for key in ["boundary_3d", "bfield_boundary", "lcfs_diagnostic", "boozer_like_diagnostics"]:
+            _assert_nonblank_image(figures[key], image)
+
+
 def test_root_free_boundary_circular_coils_strict_bnormal_guard_can_skip_pilot(tmp_path):
     completed = subprocess.run(
         [
