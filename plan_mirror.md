@@ -5738,6 +5738,7 @@ Visual validation:
 
 No user input is needed.
 
+
 ---
 ## 56. 2026-06-17 M8w matrix-free block LSMR correction
 
@@ -22603,6 +22604,116 @@ Results:
 - I/O schema and docs: `100%`.
 - Differentiable solved-state API: `96%`.
 - Mirror-Boozer-like diagnostics: `93%`.
+- Free-boundary mirror lane: `99%` overall, with reduced residual-vector
+  nonlinear solve scope complete and benchmark plots covered.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `96%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- Public API/source simplification: `100%` for the mirror package initializer.
+- PR merge readiness overall: `99%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+## 188. Finite-Current Convergence-Grid Plot Coverage
+
+### Steps taken
+
+- Audited the finite-current residual-Newton convergence-grid path after M187
+  promoted the two-coil analytic plot coverage.
+- Ran a temporary plotted finite-current convergence-grid probe with
+  `i_prime=0.01`, the `radial_xi_lambda_xi_tridi` preconditioner, adaptive
+  inner iteration budgets, and `residual_xi_alpha=1.0`.
+- Confirmed the example writes the same four convergence/report plots as the
+  vacuum two-coil grid plus a selected best-row finite-current mirror plot
+  bundle.
+- Added a focused plotted smoke test for the finite-current convergence-grid
+  path.  The test checks the finite-current/lambda-residual JSON contract,
+  nonblank convergence figures, positive selected-output cap-to-cap pitch, and
+  representative nonblank 3D, field-direction, radial, and mirror-Boozer-like
+  selected-row plots.
+
+### Results obtained
+
+- The finite-current pitch lane now has automated coverage for the plotted
+  residual-Newton convergence-grid artifacts, not only the no-plot lambda
+  residual row.
+- The selected best-row finite-current output is loaded back from MOUT and
+  checked through `mirror_field_line_pitch_profile_data`, so the plot test is
+  tied to a physical positive-pitch diagnostic rather than only to file
+  existence.
+- This strengthens the “supported diagnostic” claim for finite-current pitch
+  and mirror-Boozer-like reporting without changing the solver or promoting the
+  lambda-dominated finite-current residual-Newton row to a production
+  tight-convergence claim.
+
+### How it was tested
+
+Commands run:
+
+```bash
+JAX_ENABLE_X64=1 python examples/mirror_residual_newton_convergence_grid.py \
+  --outdir /tmp/mirror_finite_current_convergence_plot_probe \
+  --ns-array 5 \
+  --nxi-array 9 \
+  --maxiter-array 1 \
+  --residual-linear-maxiter-array 8 \
+  --residual-linear-maxiter-policy adaptive \
+  --i-prime 0.01 \
+  --preconditioners radial_xi_lambda_xi_tridi \
+  --residual-xi-alpha 1.0
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_examples.py::test_root_residual_newton_convergence_grid_finite_current_reports_lambda_residual \
+  tests/mirror/test_mirror_examples.py::test_root_residual_newton_convergence_grid_finite_current_writes_nonblank_plots -q
+python -m ruff check tests/mirror/test_mirror_examples.py
+python -m ruff format --check tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest tests/mirror -q
+```
+
+Results:
+
+- The temporary probe wrote four convergence-grid plots and eleven selected
+  best-row finite-current mirror plots; inspected PNGs were nonblank.
+- Focused finite-current convergence-grid tests passed: `2 passed in 13.94s`.
+- Ruff check and format check passed.
+- Full mirror suite passed: `236 passed, 1 skipped in 234.89s`.
+
+### File structure and best-practice notes
+
+- The new test remains in `tests/mirror/test_mirror_examples.py`, next to the
+  existing finite-current no-plot convergence-grid test.
+- It reuses the shared nonblank-image helper and existing public pitch-data
+  loader, avoiding new image-baseline files or binary repository artifacts.
+- Generated figures remain in pytest temporary directories or ignored result
+  paths.
+- The finite-current example and convergence-grid runner remain in the
+  repository-root `examples/` folder, while plotting and pitch calculations
+  stay in `vmec_jax/mirror/plotting/`.
+
+### Best next steps
+
+1. Commit and push M188.
+2. Update the draft PR body with section 188 and the `236 passed, 1 skipped`
+   full mirror-suite result.
+3. Inspect only failed CI jobs after the push.
+4. Continue the final audit by checking whether the readiness matrix and docs
+   now accurately state the finite-current/Boozer-like diagnostic scope, then
+   move to the next remaining non-100% lane.
+
+### Completion percentages after M188
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `94%`.
+- Residual Newton / preconditioning: `95%`.
+- Two-coil and manufactured validation: `94%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `96%`.
+- Mirror-Boozer-like diagnostics: `94%`.
 - Free-boundary mirror lane: `99%` overall, with reduced residual-vector
   nonlinear solve scope complete and benchmark plots covered.
 - Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.

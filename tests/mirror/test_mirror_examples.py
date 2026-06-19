@@ -1431,3 +1431,66 @@ def test_root_residual_newton_convergence_grid_finite_current_reports_lambda_res
     assert row["residual_linear_maxiter_effective_max"] >= 8
     assert row["residual_linear_iterations_last"] is not None
     assert row["residual_compare_dense_step"] is False
+
+
+def test_root_residual_newton_convergence_grid_finite_current_writes_nonblank_plots(tmp_path):
+    image = pytest.importorskip("matplotlib.image")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_residual_newton_convergence_grid.py",
+            "--outdir",
+            str(tmp_path / "finite_current_convergence_grid_plots"),
+            "--ns-array",
+            "5",
+            "--nxi-array",
+            "9",
+            "--maxiter-array",
+            "1",
+            "--residual-linear-maxiter-array",
+            "8",
+            "--residual-linear-maxiter-policy",
+            "adaptive",
+            "--i-prime",
+            "0.01",
+            "--preconditioners",
+            "radial_xi_lambda_xi_tridi",
+            "--residual-xi-alpha",
+            "1.0",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    metrics = json.loads(Path(completed.stdout.strip()).read_text())
+    assert metrics["case_label"] == "finite_current_two_coil"
+    assert metrics["i_prime_value"] == pytest.approx(0.01)
+    figure_names = {Path(path).name for path in metrics["figures"]}
+    assert figure_names == {
+        "residual_newton_convergence_resolution_heatmap.png",
+        "residual_newton_convergence_budget.png",
+        "residual_newton_convergence_history.png",
+        "residual_newton_convergence_components.png",
+    }
+    for path in metrics["figures"]:
+        _assert_nonblank_image(path, image)
+
+    row = metrics["rows"][0]
+    assert row["finite_current"]
+    assert row["residual_lam_norm"] > 0.0
+    assert row["residual_lam_fraction"] > 0.0
+    assert row["twist_proxy_i_prime_over_psi_prime"] > 0.0
+
+    best = metrics["selected_artifacts"]["best_residual"]
+    output = load_mirror_output(best["mout"])
+    pitch = mirror_field_line_pitch_profile_data(output, num_lines=2)
+    assert np.min(pitch.turns_mean) > 0.0
+    figure_dir = Path(best["figures"])
+    for name in [
+        "best_finite_current_two_coil_residual_newton_mirror_boundary_3d.png",
+        "best_finite_current_two_coil_residual_newton_mirror_bfield_boundary.png",
+        "best_finite_current_two_coil_residual_newton_mirror_boozer_like_diagnostics.png",
+        "best_finite_current_two_coil_residual_newton_mirror_radial_diagnostics.png",
+    ]:
+        _assert_nonblank_image(figure_dir / name, image)
