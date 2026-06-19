@@ -261,6 +261,364 @@ def initial_free_boundary_state(cfg: VMECConfig) -> FreeBoundaryRuntimeState:
     )
 
 
+def _external_field_provider(
+    *,
+    static: Any,
+    provider_kind_raw: str | None,
+) -> tuple[str, bool, MGridData | None]:
+    """Resolve the free-boundary external-field source."""
+
+    provider_kind = "mgrid" if provider_kind_raw is None else str(provider_kind_raw).strip().lower()
+    use_mgrid = provider_kind in ("", "mgrid", "legacy_mgrid")
+    if not use_mgrid:
+        return f"provider:{provider_kind}", False, None
+
+    meta = getattr(static, "mgrid_metadata", None)
+    if meta is None:
+        raise ValueError("missing_mgrid_metadata")
+    mgrid_path = str(getattr(meta, "path", "")).strip()
+    if not mgrid_path:
+        raise ValueError("missing_mgrid_path")
+
+    mgrid = _MGRID_FIELD_CACHE.get(mgrid_path)
+    if mgrid is None:
+        loaded = load_mgrid(mgrid_path, load_fields=True)
+        if not isinstance(loaded, MGridData):  # pragma: no cover
+            raise TypeError("load_mgrid(load_fields=True) must return MGridData")
+        mgrid = loaded
+        _MGRID_FIELD_CACHE[mgrid_path] = mgrid
+    return mgrid_path, True, mgrid
+
+
+def _freeb_physical_coefficients(*, state: Any, static: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Return free-boundary geometry coefficients after VMEC m=1 conversion."""
+
+    if os.getenv("VMEC_JAX_FREEB_DISABLE_M1_CONVERSION", "").strip().lower() in ("1", "true", "yes"):
+        return (
+            np.asarray(state.Rcos),
+            np.asarray(state.Zsin),
+            np.asarray(state.Rsin),
+            np.asarray(state.Zcos),
+        )
+
+    from .vmec_parity import vmec_m1_internal_to_physical_signed_host
+
+    return vmec_m1_internal_to_physical_signed_host(
+        Rcos=np.asarray(state.Rcos),
+        Zsin=np.asarray(state.Zsin),
+        Rsin=np.asarray(state.Rsin),
+        Zcos=np.asarray(state.Zcos),
+        modes=static.modes,
+        lthreed=bool(getattr(static.cfg, "lthreed", True)),
+        lasym=bool(getattr(static.cfg, "lasym", False)),
+        lconm1=bool(getattr(static.cfg, "lconm1", True)),
+    )
+
+
+def _freeb_boundary_geometry(
+    *,
+    Rcos_phys: np.ndarray,
+    Zsin_phys: np.ndarray,
+    Rsin_phys: np.ndarray,
+    Zcos_phys: np.ndarray,
+    static: Any,
+    trig: Any,
+    setup: _FreeBoundarySampleSetup,
+) -> dict[str, np.ndarray]:
+    """Synthesize boundary geometry and modal second derivatives."""
+
+    boundary_cos = np.stack([np.asarray(Rcos_phys)[-1:, :], np.asarray(Zcos_phys)[-1:, :]], axis=0)
+    boundary_sin = np.stack([np.asarray(Rsin_phys)[-1:, :], np.asarray(Zsin_phys)[-1:, :]], axis=0)
+    boundary_all = _vmec_realspace_synthesis_multi_host(
+        coeff_cos=boundary_cos,
+        coeff_sin=boundary_sin,
+        modes=static.modes,
+        trig=trig,
+        derivs=("base", "dtheta", "dzeta"),
+    )
+    second_cos = boundary_cos[:, None, :, :] * setup.second_facs[None, :, :, :]
+    second_sin = boundary_sin[:, None, :, :] * setup.second_facs[None, :, :, :]
+    second_all = np.asarray(
+        _vmec_realspace_synthesis_multi_host(
+            coeff_cos=second_cos,
+            coeff_sin=second_sin,
+            modes=static.modes,
+            trig=trig,
+            derivs=("base",),
+        )[0]
+    )
+    return {
+        "R": np.asarray(boundary_all[0][0, 0]),
+        "Ru": np.asarray(boundary_all[1][0, 0]),
+        "Rv": np.asarray(boundary_all[2][0, 0]),
+        "Z": np.asarray(boundary_all[0][1, 0]),
+        "Zu": np.asarray(boundary_all[1][1, 0]),
+        "Zv": np.asarray(boundary_all[2][1, 0]),
+        "Ruu": np.asarray(second_all[0, 0, 0]),
+        "Ruv": np.asarray(second_all[0, 1, 0]),
+        "Rvv": np.asarray(second_all[0, 2, 0]),
+        "Zuu": np.asarray(second_all[1, 0, 0]),
+        "Zuv": np.asarray(second_all[1, 1, 0]),
+        "Zvv": np.asarray(second_all[1, 2, 0]),
+    }
+
+
+def _sample_external_provider_field(
+    *,
+    provider_kind: str,
+    use_mgrid_provider: bool,
+    mgrid: MGridData | None,
+    external_field_provider_static: Any,
+    external_field_provider_params: Any,
+    R: np.ndarray,
+    Z: np.ndarray,
+    phi_grid: np.ndarray,
+    extcur_eff: tuple[float, ...],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Sample either a VMEC mgrid or a direct external-field provider."""
+
+    if use_mgrid_provider:
+        if mgrid is None:  # pragma: no cover
+            raise ValueError("missing_mgrid_data")
+        return interpolate_mgrid_bfield(
+            mgrid,
+            r=R,
+            z=Z,
+            phi=phi_grid,
+            extcur=extcur_eff,
+            use_vmec_kv=True,
+        )
+
+    from .external_fields import sample_external_field_cylindrical
+
+    return tuple(
+        np.asarray(arr, dtype=float)
+        for arr in sample_external_field_cylindrical(
+            provider_kind,
+            external_field_provider_static,
+            external_field_provider_params,
+            R,
+            Z,
+            phi_grid,
+        )
+    )
+
+
+def _freeb_synthesize_axis_pair(
+    *,
+    Rcos_phys: np.ndarray,
+    Zsin_phys: np.ndarray,
+    Rsin_phys: np.ndarray,
+    Zcos_phys: np.ndarray,
+    static: Any,
+    trig: Any,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fallback axis reconstruction from the axis Fourier coefficients."""
+
+    from .vmec_realspace import vmec_realspace_synthesis
+
+    axis_r = np.asarray(
+        vmec_realspace_synthesis(
+            coeff_cos=np.asarray(Rcos_phys)[:1, :],
+            coeff_sin=np.asarray(Rsin_phys)[:1, :],
+            modes=static.modes,
+            trig=trig,
+            coeffs_internal=True,
+        )[0, 0, :]
+    )
+    axis_z = np.asarray(
+        vmec_realspace_synthesis(
+            coeff_cos=np.asarray(Zcos_phys)[:1, :],
+            coeff_sin=np.asarray(Zsin_phys)[:1, :],
+            modes=static.modes,
+            trig=trig,
+            coeffs_internal=True,
+        )[0, 0, :]
+    )
+    return axis_r, axis_z
+
+
+def _freeb_axis_from_vmec_pr1(*, state: Any, static: Any, trig: Any, axis_mode: str) -> tuple[np.ndarray, np.ndarray] | None:
+    """VMEC-exact stellarator-symmetric raxis/zaxis reconstruction."""
+
+    if bool(getattr(static.cfg, "lasym", False)) or axis_mode not in ("vmec_pr1", "pr1_vmec", "vmec"):
+        return None
+    try:
+        from .vmec_parity import signed_maps_from_modes, _signed_to_mn_cos_host, _signed_to_mn_sin_host
+
+        maps = signed_maps_from_modes(static.modes)
+        rcc, _rss = _signed_to_mn_cos_host(np.asarray(state.Rcos), maps=maps)
+        _zsc, zcs = _signed_to_mn_sin_host(np.asarray(state.Zsin), maps=maps)
+        rcc_js1 = np.asarray(rcc[0], dtype=float)
+        zcs_js1 = np.asarray(zcs[0], dtype=float)
+        even_m = (np.arange(rcc_js1.shape[0], dtype=int) % 2) == 0
+        rmncc_n = np.sum(rcc_js1[even_m, :], axis=0)
+        zmncs_n = np.sum(zcs_js1[even_m, :], axis=0)
+        nrange = int(rmncc_n.shape[0])
+        return (
+            np.asarray(np.asarray(trig.cosnv, dtype=float)[:, :nrange] @ rmncc_n, dtype=float),
+            np.asarray(np.asarray(trig.sinnv, dtype=float)[:, :nrange] @ zmncs_n, dtype=float),
+        )
+    except Exception:
+        return None
+
+
+def _freeb_axis_from_parity(
+    *,
+    Rcos_phys: np.ndarray,
+    Zsin_phys: np.ndarray,
+    Rsin_phys: np.ndarray,
+    Zcos_phys: np.ndarray,
+    static: Any,
+    trig: Any,
+    setup: _FreeBoundarySampleSetup,
+    dump_scalpot_enabled: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, np.ndarray | None] | None:
+    """Recover axis arrays from VMEC parity channels when requested."""
+
+    try:
+        from .vmec_realspace import vmec_realspace_synthesis
+
+        axis_apply_scalxc = _env_truthy("VMEC_JAX_FREEB_AXIS_PARITY_SCALXC")
+        coeff_cos = np.stack([np.asarray(Rcos_phys), np.asarray(Zcos_phys)], axis=0) * setup.even_m_mask
+        coeff_sin = np.stack([np.asarray(Rsin_phys), np.asarray(Zsin_phys)], axis=0) * setup.even_m_mask
+        parity_even = np.asarray(
+            vmec_realspace_synthesis(
+                coeff_cos=coeff_cos,
+                coeff_sin=coeff_sin,
+                modes=static.modes,
+                trig=trig,
+                coeffs_internal=True,
+                apply_scalxc=bool(axis_apply_scalxc),
+            ),
+            dtype=float,
+        )
+        axis_r = np.asarray(parity_even[0, 0, 0, :], dtype=float)
+        axis_z = np.asarray(parity_even[1, 0, 0, :], dtype=float)
+        return (
+            axis_r,
+            axis_z,
+            np.asarray(axis_r, dtype=float) if dump_scalpot_enabled else None,
+            np.asarray(axis_z, dtype=float) if dump_scalpot_enabled else None,
+        )
+    except Exception:
+        return None
+
+
+def _freeb_axis_arrays(
+    *,
+    state: Any,
+    static: Any,
+    trig: Any,
+    setup: _FreeBoundarySampleSetup,
+    Rcos_phys: np.ndarray,
+    Zsin_phys: np.ndarray,
+    Rsin_phys: np.ndarray,
+    Zcos_phys: np.ndarray,
+    axis_override: tuple[np.ndarray, np.ndarray] | None,
+    nzeta: int,
+    dump_scalpot_enabled: bool,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, np.ndarray | None, np.ndarray | None, np.ndarray | None]:
+    """Choose VMEC-aligned magnetic-axis arrays for the plasma-current field."""
+
+    axis_mode = os.getenv("VMEC_JAX_FREEB_AXIS_MODE", "vmec_pr1").strip().lower()
+    axis_r_parity = axis_z_parity = None
+    axis_pair: tuple[np.ndarray, np.ndarray] | None = None
+    if axis_override is not None:
+        try:
+            axis_r_o = np.asarray(axis_override[0], dtype=float).reshape(-1)
+            axis_z_o = np.asarray(axis_override[1], dtype=float).reshape(-1)
+            if axis_r_o.size == int(nzeta) and axis_z_o.size == int(nzeta):
+                axis_pair = (axis_r_o, axis_z_o)
+        except Exception:
+            axis_pair = None
+
+    vmec_pair = _freeb_axis_from_vmec_pr1(state=state, static=static, trig=trig, axis_mode=axis_mode)
+    if vmec_pair is not None:
+        # Preserve legacy order: VMEC-pr1 reconstruction supersedes a supplied
+        # override unless the axis mode explicitly disables the vmec_pr1 path.
+        axis_pair = vmec_pair
+    if axis_pair is None and _env_truthy("VMEC_JAX_FREEB_AXIS_FROM_PARITY", default=True):
+        parity = _freeb_axis_from_parity(
+            Rcos_phys=Rcos_phys,
+            Zsin_phys=Zsin_phys,
+            Rsin_phys=Rsin_phys,
+            Zcos_phys=Zcos_phys,
+            static=static,
+            trig=trig,
+            setup=setup,
+            dump_scalpot_enabled=bool(dump_scalpot_enabled),
+        )
+        if parity is not None:
+            axis_pair = (parity[0], parity[1])
+            axis_r_parity, axis_z_parity = parity[2], parity[3]
+    if axis_pair is None:
+        axis_pair = _freeb_synthesize_axis_pair(
+            Rcos_phys=Rcos_phys,
+            Zsin_phys=Zsin_phys,
+            Rsin_phys=Rsin_phys,
+            Zcos_phys=Zcos_phys,
+            static=static,
+            trig=trig,
+        )
+
+    axis_r_full = axis_z_full = None
+    if dump_scalpot_enabled:
+        axis_r_full, axis_z_full = _freeb_synthesize_axis_pair(
+            Rcos_phys=Rcos_phys,
+            Zsin_phys=Zsin_phys,
+            Rsin_phys=Rsin_phys,
+            Zcos_phys=Zcos_phys,
+            static=static,
+            trig=trig,
+        )
+    return axis_pair[0], axis_pair[1], axis_r_full, axis_z_full, axis_r_parity, axis_z_parity
+
+
+def _freeb_axis_current_field(
+    *,
+    R: np.ndarray,
+    Z: np.ndarray,
+    phi_grid: np.ndarray,
+    axis_r: np.ndarray,
+    axis_z: np.ndarray,
+    static: Any,
+    plascur: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return the plasma-axis current contribution, with VMEC fallback policy."""
+
+    axis_field_mode = os.getenv("VMEC_JAX_FREEB_AXIS_FIELD_MODE", "vmec_filament").strip().lower()
+    if axis_field_mode in ("simple", "legacy"):
+        return _axis_current_field_simple(
+            R=R,
+            Z=Z,
+            phi=phi_grid,
+            axis_r=axis_r,
+            axis_z=axis_z,
+            nfp=int(static.cfg.nfp),
+            plascur=float(plascur),
+        )
+    try:
+        return _axis_current_field_vmec_filament(
+            R=R,
+            Z=Z,
+            axis_r=axis_r,
+            axis_z=axis_z,
+            nfp=int(static.cfg.nfp),
+            plascur=float(plascur),
+        )
+    except Exception:
+        return _axis_current_field_simple(
+            R=R,
+            Z=Z,
+            phi=phi_grid,
+            axis_r=axis_r,
+            axis_z=axis_z,
+            nfp=int(static.cfg.nfp),
+            plascur=float(plascur),
+        )
+
+
 def _sample_external_boundary_arrays(
     *,
     state: Any,
@@ -274,33 +632,13 @@ def _sample_external_boundary_arrays(
 ) -> ExternalBoundarySample:
     """Return full boundary arrays for mgrid or direct-provider sampling."""
 
-    from .vmec_parity import vmec_m1_internal_to_physical_signed_host
-    from .vmec_realspace import (
-        vmec_realspace_synthesis,
-    )
     timing: dict[str, float] = {}
     t_total = time.perf_counter()
     t_phase = t_total
-    provider_kind = "mgrid" if external_field_provider_kind is None else str(external_field_provider_kind).strip().lower()
-    use_mgrid_provider = provider_kind in ("", "mgrid", "legacy_mgrid")
-    meta = getattr(static, "mgrid_metadata", None)
-    mgrid = None
-    if use_mgrid_provider:
-        if meta is None:
-            raise ValueError("missing_mgrid_metadata")
-        mgrid_path = str(getattr(meta, "path", "")).strip()
-        if not mgrid_path:
-            raise ValueError("missing_mgrid_path")
-
-        mgrid = _MGRID_FIELD_CACHE.get(mgrid_path)
-        if mgrid is None:
-            loaded = load_mgrid(mgrid_path, load_fields=True)
-            if not isinstance(loaded, MGridData):  # pragma: no cover
-                raise TypeError("load_mgrid(load_fields=True) must return MGridData")
-            mgrid = loaded
-            _MGRID_FIELD_CACHE[mgrid_path] = mgrid
-    else:
-        mgrid_path = f"provider:{provider_kind}"
+    mgrid_path, use_mgrid_provider, mgrid = _external_field_provider(
+        static=static,
+        provider_kind_raw=external_field_provider_kind,
+    )
     extcur_eff = tuple(extcur) if extcur is not None else tuple(getattr(static, "free_boundary_extcur", ()) or ())
 
     sample_nzeta = 1 if (not bool(getattr(static.cfg, "lthreed", True))) else int(static.cfg.nzeta)
@@ -312,246 +650,66 @@ def _sample_external_boundary_arrays(
 
     # Apply VMEC m=1 internal->physical conversion before free-boundary
     # sampling. This matches the convert_sym/convert_asym path feeding NESTOR.
-    if os.getenv("VMEC_JAX_FREEB_DISABLE_M1_CONVERSION", "").strip().lower() in ("1", "true", "yes"):
-        Rcos_phys = np.asarray(state.Rcos)
-        Zsin_phys = np.asarray(state.Zsin)
-        Rsin_phys = np.asarray(state.Rsin)
-        Zcos_phys = np.asarray(state.Zcos)
-    else:
-        Rcos_phys, Zsin_phys, Rsin_phys, Zcos_phys = vmec_m1_internal_to_physical_signed_host(
-            Rcos=np.asarray(state.Rcos),
-            Zsin=np.asarray(state.Zsin),
-            Rsin=np.asarray(state.Rsin),
-            Zcos=np.asarray(state.Zcos),
-            modes=static.modes,
-            lthreed=bool(getattr(static.cfg, "lthreed", True)),
-            lasym=bool(getattr(static.cfg, "lasym", False)),
-            lconm1=bool(getattr(static.cfg, "lconm1", True)),
-        )
-
-    r_boundary = np.asarray(Rcos_phys)[-1:, :]
-    rs_boundary = np.asarray(Rsin_phys)[-1:, :]
-    zc_boundary = np.asarray(Zcos_phys)[-1:, :]
-    zs_boundary = np.asarray(Zsin_phys)[-1:, :]
-
-    boundary_cos = np.stack([r_boundary, zc_boundary], axis=0)
-    boundary_sin = np.stack([rs_boundary, zs_boundary], axis=0)
-    boundary_all = _vmec_realspace_synthesis_multi_host(
-        coeff_cos=boundary_cos,
-        coeff_sin=boundary_sin,
-        modes=static.modes,
-        trig=trig,
-        derivs=("base", "dtheta", "dzeta"),
-    )
-    R = np.asarray(boundary_all[0][0, 0])
-    Ru = np.asarray(boundary_all[1][0, 0])
-    Rv = np.asarray(boundary_all[2][0, 0])
-    Z = np.asarray(boundary_all[0][1, 0])
-    Zu = np.asarray(boundary_all[1][1, 0])
-    Zv = np.asarray(boundary_all[2][1, 0])
+    Rcos_phys, Zsin_phys, Rsin_phys, Zcos_phys = _freeb_physical_coefficients(state=state, static=static)
     # VMEC surface.f uses exact modal second derivatives. Reconstruct those
     # directly from boundary Fourier coefficients (instead of finite/spectral
     # differencing sampled R,Z) for matrix-side parity in analyt/fouri/scalpot.
-    rcos_b = np.asarray(Rcos_phys, dtype=float)[-1:, :]
-    rsin_b = np.asarray(Rsin_phys, dtype=float)[-1:, :]
-    zcos_b = np.asarray(Zcos_phys, dtype=float)[-1:, :]
-    zsin_b = np.asarray(Zsin_phys, dtype=float)[-1:, :]
-
-    second_cos = np.stack([rcos_b, zcos_b], axis=0)[:, None, :, :] * setup.second_facs[None, :, :, :]
-    second_sin = np.stack([rsin_b, zsin_b], axis=0)[:, None, :, :] * setup.second_facs[None, :, :, :]
-    second_all = np.asarray(
-        _vmec_realspace_synthesis_multi_host(
-            coeff_cos=second_cos,
-            coeff_sin=second_sin,
-            modes=static.modes,
-            trig=trig,
-            derivs=("base",),
-        )[0]
+    geom = _freeb_boundary_geometry(
+        Rcos_phys=Rcos_phys,
+        Zsin_phys=Zsin_phys,
+        Rsin_phys=Rsin_phys,
+        Zcos_phys=Zcos_phys,
+        static=static,
+        trig=trig,
+        setup=setup,
     )
-    Ruu = np.asarray(second_all[0, 0, 0])
-    Ruv = np.asarray(second_all[0, 1, 0])
-    Rvv = np.asarray(second_all[0, 2, 0])
-    Zuu = np.asarray(second_all[1, 0, 0])
-    Zuv = np.asarray(second_all[1, 1, 0])
-    Zvv = np.asarray(second_all[1, 2, 0])
+    R, Ru, Rv = geom["R"], geom["Ru"], geom["Rv"]
+    Z, Zu, Zv = geom["Z"], geom["Zu"], geom["Zv"]
     timing["boundary_geometry_time_s"] = max(0.0, time.perf_counter() - t_phase)
     t_phase = time.perf_counter()
 
     nzeta = int(R.shape[1])
     phi_grid = setup.phi_grid
 
-    if use_mgrid_provider:
-        br_mgrid, bp_mgrid, bz_mgrid = interpolate_mgrid_bfield(
-            mgrid,
-            r=R,
-            z=Z,
-            phi=phi_grid,
-            extcur=extcur_eff,
-            use_vmec_kv=True,
-        )
-    else:
-        from .external_fields import sample_external_field_cylindrical
-
-        br_mgrid, bp_mgrid, bz_mgrid = sample_external_field_cylindrical(
-            provider_kind,
-            external_field_provider_static,
-            external_field_provider_params,
-            R,
-            Z,
-            phi_grid,
-        )
-        br_mgrid = np.asarray(br_mgrid, dtype=float)
-        bp_mgrid = np.asarray(bp_mgrid, dtype=float)
-        bz_mgrid = np.asarray(bz_mgrid, dtype=float)
+    br_mgrid, bp_mgrid, bz_mgrid = _sample_external_provider_field(
+        provider_kind=external_field_provider_kind or "mgrid",
+        use_mgrid_provider=use_mgrid_provider,
+        mgrid=mgrid,
+        external_field_provider_static=external_field_provider_static,
+        external_field_provider_params=external_field_provider_params,
+        R=R,
+        Z=Z,
+        phi_grid=phi_grid,
+        extcur_eff=extcur_eff,
+    )
     timing["external_field_time_s"] = max(0.0, time.perf_counter() - t_phase)
     t_phase = time.perf_counter()
     # VMEC funct3d sets:
     #   raxis_nestor(1:nzeta) = pr1(1:nzeta,1,0)
     #   zaxis_nestor(1:nzeta) = pz1(1:nzeta,1,0)
     # where parity index 0 is the even-m channel.
-    axis_mode = os.getenv("VMEC_JAX_FREEB_AXIS_MODE", "vmec_pr1").strip().lower()
-    axis_from_parity_env = os.getenv("VMEC_JAX_FREEB_AXIS_FROM_PARITY", "1").strip().lower()
-    axis_from_parity = axis_from_parity_env not in ("", "0", "false", "no")
-    axis_ready = False
-    axis_r_parity = None
-    axis_z_parity = None
-
-    # VMEC updates raxis_nestor/zaxis_nestor from current pr1/pz1 parity
-    # channels before entering vacuum_par. When available from the previous
-    # force assembly pass, reuse them directly to keep turn-on-window cadence
-    # aligned without an extra geometry pass.
-    if axis_override is not None:
-        try:
-            axis_r_o = np.asarray(axis_override[0], dtype=float).reshape(-1)
-            axis_z_o = np.asarray(axis_override[1], dtype=float).reshape(-1)
-            if axis_r_o.size == nzeta and axis_z_o.size == nzeta:
-                axis_r = axis_r_o
-                axis_z = axis_z_o
-                axis_ready = True
-        except Exception:
-            axis_ready = False
-
-    # VMEC-exact shortcut for lasym=False:
-    # pr1(:,1,0) uses only rmncc at theta=0; pz1(:,1,0) uses only zmncs.
-    if (not bool(getattr(static.cfg, "lasym", False))) and axis_mode in ("vmec_pr1", "pr1_vmec", "vmec"):
-        try:
-            from .vmec_parity import signed_maps_from_modes, _signed_to_mn_cos_host, _signed_to_mn_sin_host
-
-            maps = signed_maps_from_modes(static.modes)
-            rcc, _rss = _signed_to_mn_cos_host(np.asarray(state.Rcos), maps=maps)
-            _zsc, zcs = _signed_to_mn_sin_host(np.asarray(state.Zsin), maps=maps)
-            rcc_js1 = np.asarray(rcc[0], dtype=float)  # (mpol, ntor+1)
-            zcs_js1 = np.asarray(zcs[0], dtype=float)  # (mpol, ntor+1)
-            even_m = (np.arange(rcc_js1.shape[0], dtype=int) % 2) == 0
-            rmncc_n = np.sum(rcc_js1[even_m, :], axis=0)
-            zmncs_n = np.sum(zcs_js1[even_m, :], axis=0)
-            nrange = int(rmncc_n.shape[0])
-            cosnv = np.asarray(trig.cosnv, dtype=float)[:, :nrange]
-            sinnv = np.asarray(trig.sinnv, dtype=float)[:, :nrange]
-            axis_r = np.asarray(cosnv @ rmncc_n, dtype=float)
-            axis_z = np.asarray(sinnv @ zmncs_n, dtype=float)
-            axis_ready = True
-        except Exception:
-            axis_ready = False
-
-    if (not axis_ready) and axis_from_parity:
-        try:
-            axis_scalxc_env = os.getenv("VMEC_JAX_FREEB_AXIS_PARITY_SCALXC", "0").strip().lower()
-            axis_apply_scalxc = axis_scalxc_env not in ("", "0", "false", "no")
-            coeff_cos = np.stack([np.asarray(Rcos_phys), np.asarray(Zcos_phys)], axis=0) * setup.even_m_mask
-            coeff_sin = np.stack([np.asarray(Rsin_phys), np.asarray(Zsin_phys)], axis=0) * setup.even_m_mask
-            parity_even = np.asarray(
-                vmec_realspace_synthesis(
-                    coeff_cos=coeff_cos,
-                    coeff_sin=coeff_sin,
-                    modes=static.modes,
-                    trig=trig,
-                    coeffs_internal=True,
-                    apply_scalxc=bool(axis_apply_scalxc),
-                ),
-                dtype=float,
-            )
-            axis_r = np.asarray(parity_even[0, 0, 0, :], dtype=float)
-            axis_z = np.asarray(parity_even[1, 0, 0, :], dtype=float)
-            if dump_scalpot_enabled:
-                axis_r_parity = np.asarray(axis_r, dtype=float)
-                axis_z_parity = np.asarray(axis_z, dtype=float)
-            axis_ready = True
-        except Exception:
-            axis_ready = False
-
-    if not axis_ready:
-        # Conservative fallback: direct synthesis from axis coefficients.
-        axis_r = np.asarray(
-            vmec_realspace_synthesis(
-                coeff_cos=np.asarray(Rcos_phys)[:1, :],
-                coeff_sin=np.asarray(Rsin_phys)[:1, :],
-                modes=static.modes,
-                trig=trig,
-                coeffs_internal=True,
-            )[0, 0, :]
-        )
-        axis_z = np.asarray(
-            vmec_realspace_synthesis(
-                coeff_cos=np.asarray(Zcos_phys)[:1, :],
-                coeff_sin=np.asarray(Zsin_phys)[:1, :],
-                modes=static.modes,
-                trig=trig,
-                coeffs_internal=True,
-            )[0, 0, :]
-        )
-    axis_r_full = None
-    axis_z_full = None
-    if dump_scalpot_enabled:
-        axis_r_full = np.asarray(
-            vmec_realspace_synthesis(
-                coeff_cos=np.asarray(Rcos_phys)[:1, :],
-                coeff_sin=np.asarray(Rsin_phys)[:1, :],
-                modes=static.modes,
-                trig=trig,
-                coeffs_internal=True,
-            )[0, 0, :]
-        )
-        axis_z_full = np.asarray(
-            vmec_realspace_synthesis(
-                coeff_cos=np.asarray(Zcos_phys)[:1, :],
-                coeff_sin=np.asarray(Zsin_phys)[:1, :],
-                modes=static.modes,
-                trig=trig,
-                coeffs_internal=True,
-            )[0, 0, :]
-        )
-    axis_field_mode = os.getenv("VMEC_JAX_FREEB_AXIS_FIELD_MODE", "vmec_filament").strip().lower()
-    if axis_field_mode in ("simple", "legacy"):
-        br_axis, bp_axis, bz_axis = _axis_current_field_simple(
-            R=R,
-            Z=Z,
-            phi=phi_grid,
-            axis_r=axis_r,
-            axis_z=axis_z,
-            nfp=int(static.cfg.nfp),
-            plascur=float(plascur),
-        )
-    else:
-        try:
-            br_axis, bp_axis, bz_axis = _axis_current_field_vmec_filament(
-                R=R,
-                Z=Z,
-                axis_r=axis_r,
-                axis_z=axis_z,
-                nfp=int(static.cfg.nfp),
-                plascur=float(plascur),
-            )
-        except Exception:
-            br_axis, bp_axis, bz_axis = _axis_current_field_simple(
-                R=R,
-                Z=Z,
-                phi=phi_grid,
-                axis_r=axis_r,
-                axis_z=axis_z,
-                nfp=int(static.cfg.nfp),
-                plascur=float(plascur),
-            )
+    axis_r, axis_z, axis_r_full, axis_z_full, axis_r_parity, axis_z_parity = _freeb_axis_arrays(
+        state=state,
+        static=static,
+        trig=trig,
+        setup=setup,
+        Rcos_phys=Rcos_phys,
+        Zsin_phys=Zsin_phys,
+        Rsin_phys=Rsin_phys,
+        Zcos_phys=Zcos_phys,
+        axis_override=axis_override,
+        nzeta=nzeta,
+        dump_scalpot_enabled=bool(dump_scalpot_enabled),
+    )
+    br_axis, bp_axis, bz_axis = _freeb_axis_current_field(
+        R=R,
+        Z=Z,
+        phi_grid=phi_grid,
+        axis_r=axis_r,
+        axis_z=axis_z,
+        static=static,
+        plascur=float(plascur),
+    )
     timing["axis_field_time_s"] = max(0.0, time.perf_counter() - t_phase)
     t_phase = time.perf_counter()
     br = np.asarray(br_mgrid, dtype=float) + np.asarray(br_axis, dtype=float)
@@ -594,12 +752,12 @@ def _sample_external_boundary_arrays(
         axis_z_full=np.asarray(axis_z_full, dtype=float),
         axis_r_parity=None if axis_r_parity is None else np.asarray(axis_r_parity, dtype=float),
         axis_z_parity=None if axis_z_parity is None else np.asarray(axis_z_parity, dtype=float),
-        ruu=Ruu,
-        ruv=Ruv,
-        rvv=Rvv,
-        zuu=Zuu,
-        zuv=Zuv,
-        zvv=Zvv,
+        ruu=geom["Ruu"],
+        ruv=geom["Ruv"],
+        rvv=geom["Rvv"],
+        zuu=geom["Zuu"],
+        zuv=geom["Zuv"],
+        zvv=geom["Zvv"],
         timing=timing,
     )
 
