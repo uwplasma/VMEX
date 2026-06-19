@@ -122,7 +122,11 @@ history fields to understand convergence after solver startup. For
 toroidal-hybrid geometry refinement, pass ``--shape-cases default,sharp`` to
 scan the default boundary and a sharpened side/corner preset in one run; use
 ``5:20`` or higher ``mpol:ntor`` pairs when asserting exact fit for the
-sharpened preset.
+sharpened preset. Pass ``--resolution-preset smoke``, ``promotion``, or
+``target`` to use a named no-solve ladder. The ``target`` preset expands to
+``ns = 7,9,15`` and ``mpol:ntor = 5:20,6:24`` and labels rows as target-ladder
+inputs without claiming production convergence until solved/parity evidence is
+added.
 
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
 free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct

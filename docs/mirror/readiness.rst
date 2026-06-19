@@ -104,7 +104,8 @@ Current Scope
      - The repo-root example writes ordinary VMEC boundary coefficients with
        mirror-like side arcs and stellarator-like corners, plus convergence and
        VMEC2000 parity diagnostics at the current low-resolution fixture.
-       Promotion requires a final convergence study over the target resolution
+       The convergence runner has named smoke, promotion, and target no-solve
+       ladders.  Promotion requires solved/parity evidence over the target
        ladder.
    * - Anisotropic pressure, kinetic closures, sheath/end physics
      - deferred

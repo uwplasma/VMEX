@@ -317,7 +317,13 @@ def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
     assert len(summary["rows"]) == 2
     assert Path(summary["csv"]).exists()
     assert summary["figures"] == {}
+    assert summary["resolution_preset"] == "manual"
+    assert summary["target_resolution_ladder"] is False
+    assert summary["target_resolution_promotion_claim"] is False
     assert all(not row["ran_solve"] for row in summary["rows"])
+    assert all(row["resolution_preset"] == "manual" for row in summary["rows"])
+    assert all(row["target_resolution_ladder"] is False for row in summary["rows"])
+    assert all(row["target_resolution_promotion_claim"] is False for row in summary["rows"])
     assert all(row["cli_finish"] is True for row in summary["rows"])
     assert all(row["nstep"] == 25 for row in summary["rows"])
     assert all(row["full_solver_diagnostics"] is False for row in summary["rows"])
@@ -357,6 +363,9 @@ def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
     with Path(summary["csv"]).open(newline="") as file_obj:
         csv_row = next(csv.DictReader(file_obj))
     assert csv_row["initialization_policy"] == "vmec_jax_default_input_boundary"
+    assert csv_row["resolution_preset"] == "manual"
+    assert csv_row["target_resolution_ladder"] == "False"
+    assert csv_row["target_resolution_promotion_claim"] == "False"
     assert csv_row["cli_finish"] == "True"
     assert csv_row["nstep"] == "25"
     assert csv_row["full_solver_diagnostics"] == "False"
@@ -376,6 +385,47 @@ def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
     assert float(csv_row["max_orientation_fit_error"]) < 1.0e-12
     assert 0.8 < float(csv_row["orientation_fit_valid_fraction"]) <= 1.0
     assert float(csv_row["fitted_valid_corner_orientation_span"]) > 0.05
+
+
+def test_toroidal_hybrid_convergence_example_target_preset_without_solve(tmp_path: Path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/toroidal_stellarator_mirror_hybrid_convergence.py",
+            "--outdir",
+            str(tmp_path / "hybrid_target_preset"),
+            "--resolution-preset",
+            "target",
+            "--ntheta-fit",
+            "64",
+            "--nzeta-fit",
+            "64",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    summary = json.loads(Path(completed.stdout.strip()).read_text())
+    rows = summary["rows"]
+    assert summary["resolution_preset"] == "target"
+    assert summary["target_resolution_ladder"] is True
+    assert summary["target_resolution_promotion_claim"] is False
+    assert len(rows) == 6
+    assert sorted({row["ns"] for row in rows}) == [7, 9, 15]
+    assert sorted({(row["mpol"], row["ntor"]) for row in rows}) == [(5, 20), (6, 24)]
+    assert all(row["resolution_preset"] == "target" for row in rows)
+    assert all(row["target_resolution_ladder"] is True for row in rows)
+    assert all(row["target_resolution_promotion_claim"] is False for row in rows)
+    assert all(row["ran_solve"] is False for row in rows)
+    assert all(row["max_boundary_fit_error"] < 1.0e-12 for row in rows)
+    with Path(summary["csv"]).open(newline="") as file_obj:
+        csv_rows = list(csv.DictReader(file_obj))
+    assert len(csv_rows) == len(rows)
+    assert {row["resolution_preset"] for row in csv_rows} == {"target"}
+    assert {row["target_resolution_ladder"] for row in csv_rows} == {"True"}
+    assert {row["target_resolution_promotion_claim"] for row in csv_rows} == {"False"}
 
 
 def test_toroidal_hybrid_convergence_example_writes_nonblank_no_solve_plots(tmp_path: Path):

@@ -23589,3 +23589,120 @@ No user input is needed for the next implementation lane.  A review decision is
 still needed before undrafting: keep the production free-boundary and
 target-resolution hybrid convergence lanes deferred, or continue them in this
 PR.
+---
+## 197. Toroidal Hybrid Target Resolution Presets
+
+### Steps taken
+
+- Audited the toroidal stellarator-mirror hybrid convergence runner after the
+  adaptive free-boundary LS tranche.
+- Added named `--resolution-preset` choices to
+  `examples/toroidal_stellarator_mirror_hybrid_convergence.py`:
+  - `manual`: preserve the existing `--ns-array` and `--mode-pairs` behavior;
+  - `smoke`: low-cost no-solve ladder for geometry/plotting checks;
+  - `promotion`: moderate no-solve ladder before expensive solved rows;
+  - `target`: target no-solve ladder for the final solved/parity convergence
+    campaign.
+- Defined the current target ladder as
+  `ns = 7,9,15` and `mpol:ntor = 5:20,6:24`.
+- Added row and summary metadata:
+  - `resolution_preset`;
+  - `target_resolution_ladder`;
+  - `target_resolution_promotion_claim`.
+- Kept `target_resolution_promotion_claim` false.  The preset creates the
+  finite target ladder, but production promotion still requires solved/parity
+  evidence over that ladder.
+- Added a no-solve target-preset test that verifies row count, `ns` values,
+  mode pairs, CSV metadata, exact boundary fit, and no production claim.
+- Updated `examples/mirror/README.md`, `docs/mirror/readiness.rst`, and
+  `docs/mirror/overview.rst` to point to the named target ladder.
+
+### Results obtained
+
+- The toroidal hybrid target-resolution lane now has an explicit, runnable,
+  finite ladder rather than only a prose TODO.
+- Downstream scripts can distinguish ordinary manual scans from target-ladder
+  inputs and can see that target-resolution promotion remains unclaimed.
+- The existing manual/default behavior remains covered and unchanged for
+  current no-solve tests.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py
+python -m py_compile examples/toroidal_stellarator_mirror_hybrid_convergence.py
+python -m ruff check \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py
+JAX_ENABLE_X64=1 pytest \
+  tests/test_toroidal_hybrid.py::test_toroidal_hybrid_convergence_example_runs_without_solve \
+  tests/test_toroidal_hybrid.py::test_toroidal_hybrid_convergence_example_target_preset_without_solve \
+  tests/test_toroidal_hybrid.py::test_toroidal_hybrid_convergence_example_writes_nonblank_no_solve_plots -q
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Ruff formatting made no changes.
+- Syntax compilation passed.
+- Ruff lint passed.
+- Focused preset tests passed: `3 passed in 3.38s`.
+- Full toroidal-hybrid tests passed: `29 passed in 7.45s`.
+- Sphinx docs build passed with warnings as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The preset metadata lives beside the convergence runner because it is runner
+  configuration, not a new physics model.
+- The CSV/JSON schema gets explicit target-ladder booleans instead of relying
+  on file names or comments.
+- The target preset is no-solve by default, so it adds no heavy generated
+  artifacts and keeps final solved/parity runs opt-in.
+
+### Best next steps
+
+1. Commit and push M197.
+2. Update the draft PR body with section 197 and the toroidal-hybrid validation
+   result.
+3. Inspect only failed CI jobs after the push.
+4. Use the `target` preset for the next solved/parity campaign, ideally on the
+   office GPU/VMEC2000 environment, and record convergence/residual trends
+   without committing generated result trees.
+
+### Completion percentages after M197
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.3%` overall for the current diagnostic/reduced
+  solver scope, with production LCFS convergence still explicitly deferred.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `97.5%`, with a finite target
+  ladder now explicit and solved/parity target-ladder evidence still pending.
+- ESSOS circular-coil mirror beta scan: `99%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.3%`, pending GitHub checks and explicit
+  review decision on deferred production lanes.
+
+### User input needed
+
+No user input is needed for local implementation.  Access to the office
+GPU/VMEC2000 environment will be useful for the target-preset solved/parity
+campaign.
+
+---

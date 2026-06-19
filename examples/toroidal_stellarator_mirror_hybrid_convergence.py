@@ -60,6 +60,32 @@ _SHAPE_CASE_PRESETS = {
         "corner_power": 2.0,
     },
 }
+_RESOLUTION_PRESETS = {
+    "manual": {
+        "description": "Use --ns-array and --mode-pairs exactly as provided.",
+        "ns_array": None,
+        "mode_pairs": None,
+        "target_resolution_ladder": False,
+    },
+    "smoke": {
+        "description": "Low-cost geometry and plotting smoke ladder.",
+        "ns_array": (7, 9),
+        "mode_pairs": ((5, 20),),
+        "target_resolution_ladder": False,
+    },
+    "promotion": {
+        "description": "Moderate no-solve promotion ladder before expensive solved rows.",
+        "ns_array": (7, 9, 15),
+        "mode_pairs": ((5, 20),),
+        "target_resolution_ladder": False,
+    },
+    "target": {
+        "description": "Target no-solve ladder for the final solved/parity convergence campaign.",
+        "ns_array": (7, 9, 15),
+        "mode_pairs": ((5, 20), (6, 24)),
+        "target_resolution_ladder": True,
+    },
+}
 
 _VMEC_JAX_INITIALIZATION_POLICY = "vmec_jax_default_input_boundary"
 _VMEC2000_INITIALIZATION_POLICY = "vmec2000_default_input_boundary"
@@ -74,6 +100,15 @@ def _parse_shape_cases(text: str) -> list[str]:
         choices = ", ".join(sorted(_SHAPE_CASE_PRESETS))
         raise ValueError(f"unknown shape case(s) {unknown}; choices are {choices}")
     return names
+
+
+def _resolution_preset(name: str) -> dict[str, object]:
+    key = str(name).strip().lower()
+    try:
+        return dict(_RESOLUTION_PRESETS[key])
+    except KeyError as exc:
+        choices = ", ".join(sorted(_RESOLUTION_PRESETS))
+        raise ValueError(f"unknown resolution preset {name!r}; choices are {choices}") from exc
 
 
 def _vmec_jax_axis_initialization_policy(solver_mode: str) -> str:
@@ -135,6 +170,9 @@ def _import_matplotlib():
 _CSV_COLUMNS = (
     "case",
     "shape_case",
+    "resolution_preset",
+    "target_resolution_ladder",
+    "target_resolution_promotion_claim",
     "ns",
     "mpol",
     "ntor",
@@ -827,6 +865,12 @@ def main() -> None:
     parser.add_argument("--outdir", type=str, default="results/toroidal_stellarator_mirror_hybrid_convergence")
     parser.add_argument("--ns-array", type=str, default="9,15")
     parser.add_argument("--mode-pairs", type=str, default="5:4")
+    parser.add_argument(
+        "--resolution-preset",
+        choices=tuple(sorted(_RESOLUTION_PRESETS)),
+        default="manual",
+        help="Named ns/mode-pair ladder. Use manual to honor --ns-array and --mode-pairs.",
+    )
     parser.add_argument("--nfp", type=int, default=2)
     parser.add_argument("--niter", type=int, default=80)
     parser.add_argument(
@@ -885,8 +929,13 @@ def main() -> None:
 
     outdir = Path(args.outdir).expanduser().resolve()
     outdir.mkdir(parents=True, exist_ok=True)
-    ns_values = _parse_ints(args.ns_array)
-    mode_pairs = _parse_mode_pairs(args.mode_pairs)
+    resolution_preset = _resolution_preset(args.resolution_preset)
+    if args.resolution_preset == "manual":
+        ns_values = _parse_ints(args.ns_array)
+        mode_pairs = _parse_mode_pairs(args.mode_pairs)
+    else:
+        ns_values = list(resolution_preset["ns_array"])
+        mode_pairs = list(resolution_preset["mode_pairs"])
     vmec2000_exec = Path(args.vmec2000_exec).expanduser() if str(args.vmec2000_exec).strip() else None
     shape_cases = _shape_case_kwargs(args)
     rows: list[dict[str, object]] = []
@@ -931,6 +980,9 @@ def main() -> None:
                 row: dict[str, object] = {
                     "case": case,
                     "shape_case": shape_case,
+                    "resolution_preset": str(args.resolution_preset),
+                    "target_resolution_ladder": bool(resolution_preset["target_resolution_ladder"]),
+                    "target_resolution_promotion_claim": False,
                     "ns": int(ns),
                     "mpol": int(mpol),
                     "ntor": int(ntor),
@@ -1241,6 +1293,10 @@ def main() -> None:
 
     summary = {
         "shape_cases": [{"name": name, "sample_parameters": kwargs} for name, kwargs in shape_cases],
+        "resolution_preset": str(args.resolution_preset),
+        "resolution_preset_description": str(resolution_preset["description"]),
+        "target_resolution_ladder": bool(resolution_preset["target_resolution_ladder"]),
+        "target_resolution_promotion_claim": False,
         "rows": rows,
         "csv": _write_rows_csv(rows, outdir=outdir),
         "figures": {},

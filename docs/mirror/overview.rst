@@ -142,7 +142,10 @@ Current solver status:
   solver step controls.  The same convergence rows also record target and fitted
   side/corner orientation spans, covariance anisotropy ranges, and valid-axis
   fractions so low-mode boundary fits can be audited before interpreting
-  residual trends.
+  residual trends.  ``--resolution-preset target`` writes the current target
+  no-solve ladder, ``ns = 7,9,15`` and ``mpol:ntor = 5:20,6:24``, while keeping
+  the target-resolution production claim false until solved/parity evidence is
+  added.
 
 Later phases finish production differentiable optimization APIs, production
 free-boundary LCFS solves, and target-resolution toroidal stellarator-mirror
