@@ -42,13 +42,11 @@ from vmec_jax.solvers.fixed_boundary.residual.policy import (
     append_residual_iter_history_record as _append_residual_iter_history_record,
     append_residual_iter_terminal_history as _append_residual_iter_terminal_history,
     host_restart_decision as _host_restart_decision,
+    new_residual_iter_histories as _new_residual_iter_histories,
     numpy_preconditioner_apply_policy as _numpy_preconditioner_apply_policy,
     pop_residual_iter_rollback_histories as _pop_residual_iter_rollback_histories,
     resolve_residual_iter_startup_policy as _resolve_residual_iter_startup_policy,
-    residual_iter_history_diagnostics as _residual_iter_history_diagnostics,
-    residual_iter_history_list_maps as _residual_iter_history_list_maps,
     residual_iter_history_record as _residual_iter_history_record,
-    residual_iter_rollback_history_lists as _residual_iter_rollback_history_lists,
     scan_fallback_decision as _scan_fallback_decision,
     scan_fallback_message as _scan_fallback_message,
     vmec2000_time_control_decision as _vmec2000_time_control_decision,
@@ -1344,18 +1342,18 @@ def solve_fixed_boundary_residual_iter(
         block_until_ready=jax.block_until_ready if has_jax() else None,
     )
 
-    w_history, fsqr2_history, fsqz2_history, fsql2_history = ([] for _ in range(4))
-    r00_history, z00_history, wb_history, wp_history, w_vmec_history = ([] for _ in range(5))
-    fsqr1_history, fsqz1_history, fsql1_history, fsq1_history = ([] for _ in range(4))
-    rz_norm_history, f_norm1_history, gcr2_p_history, gcz2_p_history, gcl2_p_history = (
-        [] for _ in range(5)
-    )
-    step_status_history, restart_reason_history, pre_restart_reason_history = ([] for _ in range(3))
-    time_step_history, res0_history, res1_history, fsq_prev_history = ([] for _ in range(4))
-    bad_growth_streak_history, iter1_history, iter2_history = ([] for _ in range(3))
-    include_edge_history, zero_m1_history = ([] for _ in range(2))
-    freeb_ivac_history, freeb_ivacskip_history, freeb_full_update_history = ([] for _ in range(3))
+    history_lists = _new_residual_iter_histories()
     (
+        (w_history, fsqr2_history, fsqz2_history, fsql2_history),
+        (r00_history, z00_history, wb_history, wp_history, w_vmec_history),
+        (fsqr1_history, fsqz1_history, fsql1_history, fsq1_history),
+        (rz_norm_history, f_norm1_history, gcr2_p_history, gcz2_p_history, gcl2_p_history),
+        (step_status_history, restart_reason_history, pre_restart_reason_history),
+        (time_step_history, res0_history, res1_history, fsq_prev_history),
+        (bad_growth_streak_history, iter1_history, iter2_history),
+        (include_edge_history, zero_m1_history),
+        (freeb_ivac_history, freeb_ivacskip_history, freeb_full_update_history),
+        (
         freeb_nestor_reused_history,
         freeb_nestor_source_reused_history,
         freeb_nestor_provider_allows_source_reuse_history,
@@ -1368,13 +1366,12 @@ def solve_fixed_boundary_residual_iter(
         freeb_nestor_trial_solve_time_history,
         freeb_nestor_trial_sample_time_history,
         freeb_nestor_trial_failed_history,
-    ) = ([] for _ in range(12))
-    dt_eff_history, update_rms_history, w_curr_history, w_try_history, w_try_ratio_history = (
-        [] for _ in range(5)
-    )
-    restart_path_history, adjoint_step_trace_history = ([] for _ in range(2))
-    min_tau_history, max_tau_history, bad_jacobian_history = ([] for _ in range(3))
-    grad_rms_history, step_history = ([] for _ in range(2))
+        ),
+        (dt_eff_history, update_rms_history, w_curr_history, w_try_history, w_try_ratio_history),
+        (restart_path_history, adjoint_step_trace_history),
+        (min_tau_history, max_tau_history, bad_jacobian_history),
+        (grad_rms_history, step_history),
+    ) = history_lists.solver_alias_groups()
 
     def _append_badjac_history(min_tau_value: float, max_tau_value: float, bad_flag: bool) -> None:
         if track_history:
@@ -1382,8 +1379,10 @@ def solve_fixed_boundary_residual_iter(
             max_tau_history.append(float(max_tau_value))
             bad_jacobian_history.append(int(bool(bad_flag)))
 
-    _history_record_lists, _terminal_history_lists = _residual_iter_history_list_maps(
-        locals(),
+    _history_record_lists = history_lists.record_lists(
+        free_boundary_enabled=bool(free_boundary_enabled),
+    )
+    _terminal_history_lists = history_lists.terminal_lists(
         free_boundary_enabled=bool(free_boundary_enabled),
     )
 
@@ -1534,8 +1533,8 @@ def solve_fixed_boundary_residual_iter(
             cache_prec_lam_debug,
         ) = _empty_preconditioner_cache_snapshot()
 
-    bcovar_update_history: list[int] = []
-    _rollback_history_lists = _residual_iter_rollback_history_lists(locals())
+    bcovar_update_history = history_lists["bcovar_update_history"]
+    _rollback_history_lists = history_lists.rollback_lists()
     iter_offset = 0
 
     if resume_state is not None:
@@ -4321,7 +4320,7 @@ def solve_fixed_boundary_residual_iter(
         residual_fsq_from_norms_func=_residual_fsq_from_norms,
         device_get_floats_func=_device_get_floats,
         residual_convergence_flags_func=_residual_convergence_flags,
-        residual_iter_history_diagnostics_func=_residual_iter_history_diagnostics,
+        residual_iter_history_diagnostics_func=lambda _namespace: history_lists.diagnostics(),
         attach_free_boundary_diagnostics=_attach_freeb_diag,
         return_final_force_payload=bool(return_final_force_payload),
     )

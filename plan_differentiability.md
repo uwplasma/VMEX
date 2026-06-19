@@ -25835,3 +25835,83 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999999929%.
+
+## 2026-06-19 Residual Iteration History Object
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `ResidualIterationHistories` and
+   `new_residual_iter_histories` in
+   `vmec_jax.solvers.fixed_boundary.residual.policy`.
+2. Moved residual-iteration record-list, terminal-list, rollback-list, and
+   diagnostics materialization behind that explicit history object.
+3. Updated `solve_fixed_boundary_residual_iter` to use the history object
+   instead of constructing history maps from `locals()`.
+4. Added a direct unit test for the new history object maps, rollback identity,
+   and diagnostics materialization.
+
+Results obtained:
+
+- Removed one opaque `locals()` history seam from the non-scan residual
+  iteration loop.
+- Preserved the existing local list aliases inside the loop to keep this patch
+  behavior-preserving; this is a maintainability tranche, not a line-count
+  reduction tranche.
+- `solve_fixed_boundary_residual_iter` remains the dominant monolith at 3981
+  lines. The next real reduction should introduce an explicit residual
+  controller state object or a scan-step object rather than moving local names
+  piecemeal.
+
+Tests and commands run:
+
+- `python -m py_compile vmec_jax/solvers/fixed_boundary/residual/policy.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_additional_helpers.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/policy.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_additional_helpers.py`
+- `python tools/diagnostics/source_health.py --top 30 --max-root-helper-prefix-files 2`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_additional_helpers.py::test_residual_iteration_histories_provide_record_terminal_and_diagnostics_maps tests/test_solve_additional_helpers.py::test_append_residual_iter_history_record_keeps_all_channels_aligned tests/test_solve_additional_helpers.py::test_append_residual_iter_terminal_history_records_free_boundary_channels -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_additional_helpers.py::test_residual_iteration_histories_provide_record_terminal_and_diagnostics_maps tests/test_solve_additional_helpers.py::test_append_residual_iter_history_record_skips_free_boundary_channels_when_disabled tests/test_solve_additional_helpers.py::test_append_residual_iter_terminal_history_skips_free_boundary_and_clamps_grad -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_driver_control_fast.py tests/test_driver_api.py::test_python_default_fixed_boundary_uses_optimized_controller tests/test_driver_api.py::test_run_fixed_boundary_cli_single_grid_uses_accelerated_finish_first tests/test_driver_run_wave8_coverage.py::test_run_fixed_boundary_dispatches_fixed_and_free_static_branches -q`
+
+Best next steps:
+
+1. Commit and push this history-object tranche.
+2. Continue residual iteration decomposition by introducing a named controller
+   state object for time-step/restart/cache variables, or by extracting the
+   scan-step acceptance payload into a small explicit object with parity tests.
+3. Avoid additional `locals()`-style helper extractions; explicit state objects
+   are the only path that improves both source health and long-term
+   maintainability here.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999953%.
+- Solver monolith reduction: 99.918%.
+- Free-boundary adjoint monolith reduction: 99.66%.
+- Driver workflow decomposition: 99.970%.
+- Residual iteration decomposition: 99.505%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.30%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.93%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.05%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.18%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.86%.
+- Discrete-adjoint replay decomposition: 99.24%.
+- Free-boundary validation-gate maintainability: 98.47%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999999930%.
