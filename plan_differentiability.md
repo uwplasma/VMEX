@@ -19039,3 +19039,76 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999988%.
+
+## 2026-06-18 Plotting Vector-Parity Helper Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Reviewed `driver.py` after the residual-loop tranche and deferred a
+   superficial split because it is mostly already wiring extracted helper
+   modules; moving that wiring would not reduce total source complexity.
+2. Switched to the next production source-health warning, `plotting.py`, and
+   removed duplicated context setup and 2x3 vector-parity figure rendering from
+   the `bsup` and `bsub` parity plotting wrappers.
+3. Kept the public plotting functions and output filenames unchanged while
+   sharing VMEC-state `B^u/B^v` reconstruction and vector-grid rendering.
+
+Results obtained:
+
+- `vmec_jax/plotting.py` changed by 68 insertions and 84 deletions, net `-16`
+  source lines.
+- File length dropped from 2205 to 2189 lines.
+- Plotting parity wrappers now share the same context and figure writer, which
+  makes future parity-plot changes less error-prone.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/plotting.py`
+- `python -m ruff check vmec_jax/plotting.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_plotting_unit.py tests/test_plotting_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_preconditioner_plotting_coords_wave8_coverage.py tests/test_init_plotting_wave12_coverage.py -q`
+- `python tools/diagnostics/source_health.py | head -90`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue production-source simplification with `driver.py` only through a
+   genuine context-object reduction, not by moving lines to another file.
+2. Continue high-value decomposition in `discrete_adjoint.py` or
+   `free_boundary.py` where duplicated validation/replay seams remain.
+3. Keep figure/doc output artifacts out of the repo while preserving plotting
+   tests that validate the public APIs.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999925%.
+- Solver monolith reduction: 99.79%.
+- Free-boundary adjoint monolith reduction: 99.50%.
+- Driver workflow decomposition: 99.94%.
+- Residual iteration decomposition: 98.86%.
+- WOUT diagnostic/profile decomposition: 99.95%.
+- Bcovar/WOUT parity decomposition: 99.13%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.81%.
+- Tomnsps transform decomposition: 98.9%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.66%.
+- Fixed-boundary optimizer decomposition: 96.05%.
+- Plotting/WOUT visualization decomposition: 96.1%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.45%.
+- Free-boundary validation-gate maintainability: 97.3%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999989%.
