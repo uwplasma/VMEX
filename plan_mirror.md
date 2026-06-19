@@ -23215,3 +23215,97 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+---
+## 194. Final Local Audit Checkpoint
+
+### Steps taken
+
+- Ran a final local audit pass after the M187-M193 plot-coverage and
+  documentation synchronization tranches.
+- Verified the git worktree was clean at the latest pushed head before the
+  audit plan update.
+- Checked that `plan_mirror.md` remains strictly ordered through M193.
+- Checked the largest tracked files to confirm the recent work did not add
+  generated result blobs or large binary plot outputs to the repository.
+- Ran the combined mirror plus toroidal-hybrid local validation suite.
+
+### Results obtained
+
+- The combined local validation covers the mirror package tests and toroidal
+  hybrid tests together after the added plotted smoke coverage.
+- Repository-light audit showed the largest tracked files are pre-existing docs
+  assets/plans and source files; the recent generated plots stayed in `/tmp`,
+  pytest temporary directories, ignored `results/`, or ignored docs build
+  output.
+- The plan remains ordered and the branch is still a draft PR branch.
+
+### How it was tested
+
+Commands run:
+
+```bash
+git status -sb
+git log --oneline -8
+git ls-files -z | xargs -0 du -k | sort -nr | head -20
+python - <<'PY'
+from pathlib import Path
+import re
+text = Path('plan_mirror.md').read_text()
+nums = [int(m.group(1)) for m in re.finditer(r'^## (\\d+)\\. ', text, flags=re.M)]
+print('sections', len(nums), 'last', nums[-8:])
+print('ordered', all(b == a + 1 for a, b in zip(nums, nums[1:])))
+PY
+JAX_ENABLE_X64=1 pytest tests/mirror tests/test_toroidal_hybrid.py -q
+```
+
+Results:
+
+- Worktree was clean before this plan-only audit log.
+- Plan ordering check reported sections ordered through M193.
+- Largest tracked files were existing docs figures/plans/source files; no new
+  generated result artifacts were tracked.
+- Combined mirror plus toroidal-hybrid validation passed:
+  `268 passed, 1 skipped in 277.69s`.
+
+### File structure and best-practice notes
+
+- This checkpoint is a plan-only audit entry.
+- It does not change source, docs, tests, or tracked artifacts.
+- The recent plot tests continue to use temporary directories and nonblank
+  image checks instead of committed reference images.
+
+### Best next steps
+
+1. Commit and push M194.
+2. Update the draft PR body with section 194 and the combined validation result.
+3. Inspect only failed CI jobs after the push.
+4. Leave the PR draft until GitHub checks finish cleanly and the user decides
+   whether the explicitly deferred production lanes should remain deferred or
+   be pursued in this branch.
+
+### Completion percentages after M194
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99%` overall, with diagnostic scope documented.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `97%`.
+- ESSOS circular-coil mirror beta scan: `99%`.
+- Public API/source simplification: `100%` for the mirror package initializer.
+- PR merge readiness overall: `99%`, pending GitHub checks and explicit review
+  decision on deferred production lanes.
+
+### User input needed
+
+No user input is needed for the current draft scope.  A review decision is
+needed before undrafting: keep the production free-boundary and target-resolution
+hybrid convergence lanes deferred, or continue them in this PR.
