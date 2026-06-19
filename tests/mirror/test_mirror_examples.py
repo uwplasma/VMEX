@@ -384,7 +384,7 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert metrics["lcfs_pilot_stagnation_rtol"] == 0.0
     assert metrics["lcfs_pilot_fsq_growth_limit"] == 0.0
     assert metrics["lcfs_pilot_stop_reason_counts"] == {"max_steps": 3}
-    assert schema["metrics_schema_version"] == "0.9"
+    assert schema["metrics_schema_version"] == "0.10"
     assert "workflow_status_values" in schema
     assert "free_boundary_status_values" in schema
     assert "ls_boundary_step_fields" in schema
@@ -449,6 +449,7 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert metrics["ls_boundary_ridge"] is None
     assert metrics["ls_boundary_ridge_candidates"] is None
     assert metrics["ls_boundary_polynomial_degree"] is None
+    assert metrics["ls_boundary_realized_retry_factors"] is None
     assert [case["beta_percent"] for case in metrics["beta_cases"]] == [1.0, 3.0, 10.0]
     assert set(schema["top_level_required_fields"]).issubset(metrics)
     assert Path(metrics["summary_csv"]).exists()
@@ -588,6 +589,7 @@ def test_root_free_boundary_circular_coils_summary_reports_converged_free_bounda
         "ls_boundary_ridge": 1.0e-8,
         "ls_boundary_ridge_candidates": None,
         "ls_boundary_polynomial_degree": 4,
+        "ls_boundary_realized_retry_factors": (1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625),
     }
 
     pilot_summary = beta_summary(
@@ -788,7 +790,7 @@ def test_root_free_boundary_circular_coils_ls_boundary_step_reports_reduction(tm
     ls_step = row["ls_boundary_step"]
     selected_rows = [trial for trial in ls_step["trial_rows"] if trial["selected"]]
 
-    assert metrics["metrics_schema_version"] == "0.9"
+    assert metrics["metrics_schema_version"] == "0.10"
     assert metrics["ls_boundary_step_requested"] is True
     assert metrics["ls_boundary_coupled_trial_requested"] is False
     assert metrics["ls_boundary_step_rows_total"] == 1
@@ -799,7 +801,10 @@ def test_root_free_boundary_circular_coils_ls_boundary_step_reports_reduction(tm
     assert metrics["ls_boundary_ridge"] == 1.0e-8
     assert metrics["ls_boundary_ridge_candidates"] == [0.0, 1.0e-8, 1.0e-4]
     assert metrics["ls_boundary_polynomial_degree"] == 4
+    assert metrics["ls_boundary_realized_retry_factors"] is None
     assert set(schema["ls_boundary_step_fields"]).issubset(ls_step)
+    assert ls_step["realized_retry_rows"] == []
+    assert ls_step["realized_retry_selected_factor"] is None
     assert ls_step["accepted"] is True
     assert len(ls_step["coefficients_initial"]) == 3
     assert len(ls_step["coefficients_new"]) == 3
@@ -857,7 +862,7 @@ def test_root_free_boundary_circular_coils_high_order_ls_boundary_step_rejects_i
     ls_step = metrics["fixed_boundary_baseline_rows"][0]["ls_boundary_step"]
     selected_rows = [trial for trial in ls_step["trial_rows"] if trial["selected"]]
 
-    assert metrics["metrics_schema_version"] == "0.9"
+    assert metrics["metrics_schema_version"] == "0.10"
     assert metrics["ls_boundary_polynomial_degree"] == 6
     assert len(ls_step["coefficients_initial"]) == 4
     assert len(ls_step["coefficients_new"]) == 4
@@ -905,7 +910,7 @@ def test_root_free_boundary_circular_coils_ls_boundary_coupled_trial_reports_rea
     ls_step = row["ls_boundary_step"]
     trial = ls_step["coupled_trial"]
 
-    assert metrics["metrics_schema_version"] == "0.9"
+    assert metrics["metrics_schema_version"] == "0.10"
     assert metrics["ls_boundary_step_requested"] is True
     assert metrics["ls_boundary_coupled_trial_requested"] is True
     assert metrics["ls_boundary_step_rows_total"] == 1
@@ -913,6 +918,7 @@ def test_root_free_boundary_circular_coils_ls_boundary_coupled_trial_reports_rea
     assert set(schema["ls_boundary_coupled_trial_fields"]).issubset(trial)
     assert ls_step["accepted"] is True
     assert trial["status"] == "accepted"
+    assert trial["realized_retry_factor"] == pytest.approx(ls_step["line_search_factor"])
     assert trial["accepted_by_merit"] is True
     assert trial["rejection_reason"] is None
     assert Path(trial["mout"]).exists()
@@ -962,11 +968,12 @@ def test_root_free_boundary_circular_coils_ls_boundary_coupled_loop_reports_guar
     loop_rows = row["ls_boundary_coupled_loop_rows"]
     first, second = loop_rows
 
-    assert metrics["metrics_schema_version"] == "0.9"
+    assert metrics["metrics_schema_version"] == "0.10"
     assert metrics["workflow_status"] == "ls_boundary_coupled_loop"
     assert metrics["free_boundary_solve_status"] == "ls_boundary_coupled_loop_not_converged_free_boundary"
     assert metrics["ls_boundary_coupled_loop_requested"] is True
     assert metrics["ls_boundary_polynomial_degree"] == 4
+    assert metrics["ls_boundary_realized_retry_factors"] == [1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625]
     assert metrics["ls_boundary_coupled_loop_steps_requested"] == 2
     assert metrics["ls_boundary_coupled_loop_rows_total"] == 2
     assert metrics["ls_boundary_coupled_loop_accepted_rows_total"] == 1
@@ -988,7 +995,15 @@ def test_root_free_boundary_circular_coils_ls_boundary_coupled_loop_reports_guar
     assert first["lcfs_merit_ratio"] <= 1.0
     assert Path(first["mout"]).exists()
     assert first["ls_boundary_step"]["accepted"] is True
+    assert first["ls_boundary_step"]["realized_retry_selected_factor"] == pytest.approx(
+        first["ls_boundary_step"]["line_search_factor"]
+    )
+    assert len(first["ls_boundary_step"]["realized_retry_rows"]) == 1
+    assert first["ls_boundary_step"]["realized_retry_rows"][0]["selected"] is True
     assert first["ls_boundary_step"]["coupled_trial"]["status"] == "accepted"
+    assert first["ls_boundary_step"]["coupled_trial"]["realized_retry_factor"] == pytest.approx(
+        first["ls_boundary_step"]["line_search_factor"]
+    )
     assert second["status"] == "skipped"
     assert second["accepted"] is False
     assert second["rejection_reason"] == "ls_step_not_accepted"
@@ -996,6 +1011,7 @@ def test_root_free_boundary_circular_coils_ls_boundary_coupled_loop_reports_guar
     assert second["mout"] is None
     assert second["ls_boundary_step"]["accepted"] is False
     assert second["ls_boundary_step"]["coupled_trial"] is None
+    assert second["ls_boundary_step"]["realized_retry_rows"] == []
 
 
 def test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_convergence(tmp_path):
@@ -1040,6 +1056,7 @@ def test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_con
     assert metrics["ls_boundary_coupled_loop_stop_reason_counts"] == {"target_merit": 3}
     assert metrics["ls_boundary_coupled_loop_rows_total"] == 3
     assert metrics["ls_boundary_coupled_loop_accepted_rows_total"] == 3
+    assert metrics["ls_boundary_realized_retry_factors"] == [1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625]
     for row in metrics["fixed_boundary_baseline_rows"]:
         assert row["ls_boundary_coupled_loop_status"] == "accepted"
         assert row["ls_boundary_coupled_loop_stop_reason"] == "target_merit"
@@ -1048,6 +1065,9 @@ def test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_con
         assert row["ls_boundary_coupled_loop_final_fsq_growth_ratio"] <= 1.5
         assert len(row["ls_boundary_coupled_loop_rows"]) == 1
         assert row["ls_boundary_coupled_loop_rows"][0]["accepted"] is True
+        step = row["ls_boundary_coupled_loop_rows"][0]["ls_boundary_step"]
+        assert step["realized_retry_selected_factor"] == pytest.approx(step["line_search_factor"])
+        assert step["realized_retry_rows"][0]["selected"] is True
 
 
 def test_root_free_boundary_circular_coils_pilot_stagnation_stops_early(tmp_path):

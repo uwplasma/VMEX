@@ -25107,7 +25107,6 @@ Results:
 ### User input needed
 
 No user input is needed for the next technical step.
-
 ---
 ## 209. Stricter Free-Boundary Target-Merit Smoke
 
@@ -25577,6 +25576,136 @@ Results:
 - Public API/source simplification: `100%` for the current mirror package
   structure.
 - PR merge readiness overall: `99.89%`, pending production free-boundary LCFS
+  decision/evidence, broader differentiable solved-state promotion, final
+  checks, and review decision on deferred lanes.
+
+### User input needed
+
+No user input is needed for the next technical step.
+
+---
+## 213. Free-Boundary Realized-Retry Coupled Loop
+
+### Steps taken
+
+- Added loop-level realized retry/downranking to the root circular-coil
+  free-boundary example.  The coupled LS loop now tries smaller realized
+  boundary-step factors before rejecting a step whose fixed-boundary solve
+  worsens the current LCFS merit.
+- Added `--ls-boundary-realized-retry-factors` with the default ladder
+  `[1, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625]`.
+- Bumped the circular-coil beta-scan metrics schema from `0.9` to `0.10`.
+- Added JSON diagnostics for `ls_boundary_realized_retry_factors`,
+  `realized_retry_rows`, `realized_retry_selected_factor`, and
+  `realized_retry_factor`, so every accepted or rejected realized trial remains
+  auditable.
+- Kept the shared guarded least-squares loop unchanged; the retry policy stays
+  in the example-level fixed-boundary callback where MOUT files, LCFS merit, and
+  expensive realized solves are available.
+
+### Results obtained
+
+- The existing target-merit `0.2` low-resolution regression remains converged
+  for beta `1%`, `3%`, and `10%`.
+- The new default retry ladder improves the stricter `target_merit = 0.1`
+  probe but does not close it yet:
+  - schema: `0.10`;
+  - retry factors:
+    `[1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625]`;
+  - workflow status:
+    `ls_boundary_coupled_loop_not_converged_free_boundary`;
+  - stop reasons: `{"None": 10, "rejected_merit_increase": 1,
+    "ls_step_not_accepted": 2}`;
+  - total loop rows: `13`; accepted rows: `10`.
+- Per-beta low-resolution default retry results for `baseline_maxiter = 5`,
+  `max_relative_step = 0.05`, `fsq_growth_limit = 1.5`, and
+  `max_steps = 12`:
+  - beta `1%`: accepted `4` steps, last accepted merit
+    `0.11218420163031764`, then rejected a worsening realized trial;
+  - beta `3%`: accepted `3` steps, last accepted merit
+    `0.15747611986027676`, then hit `ls_step_not_accepted`;
+  - beta `10%`: accepted `3` steps, last accepted merit
+    `0.15747611986027676`, then hit `ls_step_not_accepted`.
+- A smaller step cap (`0.025`) was also tested with the same deep retry ladder
+  and was worse for beta `1%`; it ended with last accepted merit
+  `0.1726691911657199`, so the default remains `0.05` for this lane.
+- The remaining limiter is no longer only realized-trial merit increase.  The
+  beta `3%` and `10%` cases now plateau because the frozen scalar LS step itself
+  becomes unaccepted near merit `0.157`, so the next productive step is a
+  reduced residual-vector/nonlinear policy rather than more realized retries.
+
+### How it was tested
+
+```bash
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m213_default_retry_target010 --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 12 --ls-boundary-coupled-loop-target-merit 0.1 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.05 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_realized_retry_target01_deep_step025 --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 12 --ls-boundary-coupled-loop-target-merit 0.1 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.025 --ls-boundary-realized-retry-factors 1,0.5,0.25,0.125,0.0625,0.03125,0.015625 --no-plots
+python -m pytest tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_step_reports_reduction tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_coupled_trial_reports_realized_solve tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_coupled_loop_reports_guarded_steps tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_convergence -q
+python -m pytest tests/mirror/test_mirror_examples.py -q
+python -m pytest tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_coupled_loop_reports_guarded_steps tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_convergence -q
+python -m ruff check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+python -m ruff format --check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Focused schema/LS tests passed before formatting: `4 passed in 15.55s`.
+- Full root mirror example tests passed before formatting: `37 passed in
+  187.97s`.
+- Post-format focused coupled-loop smoke passed: `2 passed in 8.60s`.
+- Ruff check and Ruff format check passed for the touched files.
+- Sphinx docs build passed with warnings as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The implementation remains localized to
+  `examples/mirror_free_boundary_circular_coils.py`, preserving the shared
+  `vmec_jax.mirror.free_boundary` loop API.
+- The retry logic is kept close to the realized fixed-boundary solve because it
+  depends on MOUT file generation, LCFS merit, and fsq-growth guards rather than
+  only on a differentiable reduced residual.
+- The metrics schema exposes both the policy and per-step outcomes, which keeps
+  the example reproducible and makes failed convergence runs diagnosable.
+- Tests remain in `tests/mirror/test_mirror_examples.py` because this is a
+  root-example CLI/schema contract.
+- Generated probe outputs remain under ignored `results/mirror/...` paths; no
+  result files or figures were added to the repository.
+
+### Best next steps
+
+1. Commit and push this M213 tranche, update the draft PR body, and snapshot
+   failed checks later without blocking on still-running jobs.
+2. Move the free-boundary production lane from scalar combined-residual LS to a
+   reduced residual-vector solve policy for the boundary coefficients, with
+   explicit residual-vector merit, line search, and rank/conditioning
+   diagnostics.
+3. Once the reduced-vector policy beats the local `0.157` plateau, run heavier
+   `ns`/`nxi` and beta ladders on `ssh office` and compare runtime/memory before
+   promoting the result as a production free-boundary solve.
+
+### Completion percentages after M213
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.67%` overall for the diagnostic/reduced solver
+  scope; realized retry closes the immediate merit-increase failure mode but
+  production LCFS convergence below `0.1` remains open.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `99.9%`.
+- ESSOS circular-coil mirror beta scan: `99.5%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.90%`, pending production free-boundary LCFS
   decision/evidence, broader differentiable solved-state promotion, final
   checks, and review decision on deferred lanes.
 
