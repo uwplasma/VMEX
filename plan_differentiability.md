@@ -21313,3 +21313,72 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999987%.
+
+## 2026-06-19 Trace Fingerprint Replay-Graph Split
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Continued splitting
+   `test_direct_coil_trace_fingerprint_detects_control_branch_changes`.
+2. Extracted step-policy, axis-shape, boundary-shape, and replay-graph
+   metadata assertions into `_assert_direct_coil_trace_replay_graph_contracts`.
+3. Returned the synthetic axis traces from the helper so later branch-metadata
+   and JVP scaffolding checks still use the same fixtures.
+
+Results obtained:
+
+- `test_direct_coil_trace_fingerprint_detects_control_branch_changes`
+  decreased from 729 to 662 lines.
+- The split preserves the same replay-graph expected values and JSON-safety
+  checks.
+
+Tests and commands run:
+
+- `python -m compileall -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `python -m ruff check tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes -q`
+- `python tools/diagnostics/source_health.py --top 8`
+- `git diff --check`
+
+Best next steps:
+
+1. Split the same fingerprint test one more time around branch metadata/status
+   masks or around the synthetic physical/adaptive scalar gates.
+2. Then return to production-code monoliths; the validation test is now below
+   `driver.py`/`wout.py` in function length.
+3. Keep running focused selectors after each split because this file encodes
+   exact free-boundary branch-local validation contracts.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999462%.
+- Solver monolith reduction: 99.825%.
+- Free-boundary adjoint monolith reduction: 99.54%.
+- Driver workflow decomposition: 99.945%.
+- Residual iteration decomposition: 99.04%.
+- WOUT diagnostic/profile decomposition: 99.979%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.82%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.74%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 96.80%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.69%.
+- Free-boundary validation-gate maintainability: 98.18%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999988%.
