@@ -2967,8 +2967,7 @@ def _nestor_step_diagnostics(ctx: dict[str, Any]) -> dict[str, Any]:
                 out[f"sample_{key}"] = float(value)
             except Exception:
                 pass
-    cache = ctx["cache"]
-    if isinstance(cache, NestorVmecLikeCache):
+    if isinstance(cache := ctx["cache"], NestorVmecLikeCache):
         out.update({"physical_matrix_lu_built": bool(cache.matrix_lu is not None), "mode_matrix_lu_built": bool(cache.mode_matrix_lu is not None)})
     return out
 
@@ -3006,8 +3005,6 @@ def nestor_external_only_step(
     if runtime_cache is None and runtime is not None and hasattr(runtime, "poisson"):
         # Backward compatibility with older runtime state shape.
         runtime_cache = getattr(runtime, "poisson")
-        if runtime_mode == "spectral_poisson_external_only":
-            runtime_mode = "spectral_poisson_external_only"
 
     force_rhs_reuse = _env_truthy("VMEC_JAX_FREEB_REUSE_RHS_UPDATE", default=True)
 
@@ -3033,11 +3030,10 @@ def nestor_external_only_step(
     ntheta, nzeta = sample.R.shape
     selected_mode, mode_reason = _select_nestor_mode(ntheta=ntheta, nzeta=nzeta)
     provider_kind = "mgrid" if external_field_provider_kind is None else str(external_field_provider_kind).strip().lower()
-    provider_allows_source_reuse = provider_kind in ("", "mgrid", "legacy_mgrid")
-    if isinstance(external_field_provider_static, dict) and bool(
-        external_field_provider_static.get("allow_source_reuse", False)
-    ):
-        provider_allows_source_reuse = True
+    provider_allows_source_reuse = provider_kind in ("", "mgrid", "legacy_mgrid") or (
+        isinstance(external_field_provider_static, dict)
+        and bool(external_field_provider_static.get("allow_source_reuse", False))
+    )
 
     if ivacskip is not None:
         reuse_step = (int(ivacskip) != 0 and runtime is not None)
@@ -3045,7 +3041,6 @@ def nestor_external_only_step(
         reuse_step = (int(ivac) != 1 and runtime is not None)
 
     rhs_mode = os.getenv("VMEC_JAX_FREEB_RHS_MODE", "bnormal_unit").strip().lower()
-    ntheta, nzeta = sample.R.shape
     wint_vmec = _vmec_boundary_wint(static=static, ntheta=int(ntheta), nzeta=int(nzeta))
     gsource_bexni = -np.asarray(sample.vac_ext.bnormal, dtype=float) * np.asarray(wint_vmec, dtype=float) * ((2.0 * np.pi) ** 2)
     gsource_vmec = np.asarray(gsource_bexni, dtype=float)
