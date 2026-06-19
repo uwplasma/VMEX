@@ -93,9 +93,10 @@ Current Scope
        coupled-loop smoke reaches target merit for the default 1%, 3%, and 10%
        beta rows to ``target_merit=0.2`` with ``baseline_maxiter=5``, a ``0.05``
        relative boundary-step cap, and an explicit ``fsq`` growth guard.  The
-       LS boundary diagnostic records its even-polynomial degree and safely
-       rejects nonpositive high-order trial boundaries.  This is not yet a
-       converged production free-boundary equilibrium solver.
+       LS boundary diagnostic records its even-polynomial degree, selected
+       ridge candidate, and Jacobian conditioning, and safely rejects
+       nonpositive high-order trial boundaries.  This is not yet a converged
+       production free-boundary equilibrium solver.
    * - ESSOS beta-scan fixture
      - diagnostic
      - The 1%, 3%, and 10% beta cases share a compact JSON/CSV schema with

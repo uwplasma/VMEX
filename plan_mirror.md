@@ -25462,3 +25462,124 @@ Results:
 ### User input needed
 
 No user input is needed for the next technical step.
+
+---
+## 212. Free-Boundary Ridge-Candidate Diagnostics
+
+### Steps taken
+
+- Exposed the existing `mirror_free_boundary_least_squares_step` ridge-candidate
+  selection in the root circular-coil free-boundary example through
+  `--ls-boundary-ridge-candidates`.
+- Added top-level metrics for `ls_boundary_ridge_candidates` and added LS-step
+  diagnostics for selected ridge, tried ridge candidates, Jacobian rank,
+  nullity, condition number, singular values, and predicted/actual reduction
+  fractions.
+- Bumped the circular-coil beta-scan schema from `0.8` to `0.9`.
+- Updated the focused root-example regression so the default degree-4 LS step
+  exercises explicit ridge candidates (`0,1e-8,1e-4`) and confirms selected
+  ridge `0.0`.
+- Probed whether adaptive ridge candidates improve the `target_merit = 0.1`
+  coupled-loop failure mode from M210/M211.
+
+### Results obtained
+
+- Schema `0.9` now records the ridge-candidate policy used by the root example.
+- The default one-step LS diagnostic remains accepted and residual reducing:
+  - explicit top-level candidates: `[0.0, 1e-08, 0.0001]`;
+  - selected step ridge: `0.0`;
+  - residual decreased from `1.2264846366589521` to
+    `1.1947548991708283`.
+- Adaptive ridge candidates did not close the all-beta `target_merit = 0.1`
+  coupled-loop target at step cap `0.05`:
+  - stop reasons: `{"None": 3, "rejected_merit_increase": 3}`;
+  - each beta row accepted the first update and rejected the second realized
+    fixed-boundary trial after selecting ridge `1.0`;
+  - final rejected merits were about `2.04` for beta `1%` and `1.70` for beta
+    `3%` and `10%`.
+- Adaptive ridge candidates with the smaller `0.025` step cap also did not
+  converge:
+  - stop reasons: `{"None": 6, "rejected_merit_increase": 3}`;
+  - beta `1%` accepted two steps and reached last-accepted merit
+    `0.18671607201455725`;
+  - beta `3%` and `10%` accepted two steps and reached last-accepted merit
+    `0.16987427873260283`;
+  - the rejected third step selected ridge `1.0`.
+- These probes show that ridge-candidate selection is useful diagnostic
+  plumbing, but the next production move should not be a heavier run of the
+  same scalar LS policy.  The remaining limiter is the mismatch between frozen
+  LS prediction and realized fixed-boundary LCFS merit after the first accepted
+  update.
+
+### How it was tested
+
+```bash
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m212_ridge_schema_smoke --betas 1 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 0 --run-ls-boundary-step --ls-boundary-ridge-candidates 0,1e-8,1e-4 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m212_ridge_candidates_target010 --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 8 --ls-boundary-coupled-loop-target-merit 0.1 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.05 --ls-boundary-ridge-candidates 0,1e-8,1e-6,1e-4,1e-2,1 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m212_ridge_candidates_target010_step0025 --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 8 --ls-boundary-coupled-loop-target-merit 0.1 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.025 --ls-boundary-ridge-candidates 0,1e-8,1e-6,1e-4,1e-2,1 --no-plots
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_step_reports_reduction tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_high_order_ls_boundary_step_rejects_invalid_trials tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_convergence tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_summary_reports_converged_free_boundary_statuses -q
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py -q
+python -m ruff check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Focused ridge/schema tests passed: `4 passed in 11.42s`.
+- Full root mirror example tests passed: `37 passed in 187.05s`.
+- Ruff passed for the touched example/test files.
+- Sphinx docs build passed with warnings as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The implementation stays localized to
+  `examples/mirror_free_boundary_circular_coils.py` and uses the already-tested
+  ridge-candidate support in `vmec_jax.mirror.free_boundary`.
+- Tests stay in `tests/mirror/test_mirror_examples.py`, because this is a
+  root-example CLI/schema contract.
+- Docs in `examples/mirror/README.md`, `docs/mirror/overview.rst`, and
+  `docs/mirror/readiness.rst` now describe ridge-candidate and conditioning
+  diagnostics.
+- Generated probe outputs remain under ignored `results/mirror/...` paths.
+
+### Best next steps
+
+1. Commit and push this M212 tranche, update the draft PR body, and snapshot
+   failed checks.
+2. Avoid spending office/GPU time on a heavier copy of this exact adaptive-ridge
+   scalar-LS policy, since local probes show it does not improve the realized
+   `0.1` target limiter.
+3. Implement the next policy at the callback/loop level: reject or down-rank LS
+   proposals whose realized trial merit increases, then retry the same loop
+   step with a smaller line-search factor or alternate candidate before
+   terminating the beta row.
+
+### Completion percentages after M212
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.64%` overall for the diagnostic/reduced solver
+  scope; ridge-candidate diagnostics are wired and tested, but production LCFS
+  convergence below `0.1` remains open.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `99.9%`.
+- ESSOS circular-coil mirror beta scan: `99.45%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.89%`, pending production free-boundary LCFS
+  decision/evidence, broader differentiable solved-state promotion, final
+  checks, and review decision on deferred lanes.
+
+### User input needed
+
+No user input is needed for the next technical step.

@@ -52,7 +52,7 @@ from vmec_jax.mirror import (
 
 
 CIRCULAR_COIL_BETA_SCAN_SCHEMA = "mirror_free_boundary_circular_coil_beta_scan"
-CIRCULAR_COIL_BETA_SCAN_SCHEMA_VERSION = "0.8"
+CIRCULAR_COIL_BETA_SCAN_SCHEMA_VERSION = "0.9"
 CIRCULAR_COIL_BETA_SCAN_LS_LINE_SEARCH_FACTORS = (1.0, 0.5, 0.25, 0.125)
 CIRCULAR_COIL_BETA_SCAN_TOP_LEVEL_FIELDS = (
     "metrics_schema",
@@ -93,6 +93,7 @@ CIRCULAR_COIL_BETA_SCAN_TOP_LEVEL_FIELDS = (
     "ls_boundary_damping",
     "ls_boundary_max_relative_step",
     "ls_boundary_ridge",
+    "ls_boundary_ridge_candidates",
     "ls_boundary_polynomial_degree",
     "ls_boundary_step_rows_total",
     "ls_boundary_coupled_trial_requested",
@@ -161,9 +162,17 @@ CIRCULAR_COIL_BETA_SCAN_LS_STEP_FIELDS = (
     "limited_step",
     "finite_difference_steps",
     "jacobian_shape",
+    "jacobian_rank",
+    "jacobian_nullity",
+    "jacobian_condition",
+    "jacobian_singular_values",
+    "ridge",
+    "ridge_candidates",
     "residual_value_before",
     "residual_value_after",
     "predicted_value",
+    "predicted_reduction_fraction",
+    "actual_reduction_fraction",
     "equilibrium_rms_before",
     "equilibrium_rms_after",
     "lcfs_value_before",
@@ -557,6 +566,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ls-boundary-damping", type=float, default=1.0)
     parser.add_argument("--ls-boundary-max-relative-step", type=float, default=0.1)
     parser.add_argument("--ls-boundary-ridge", type=float, default=1.0e-8)
+    parser.add_argument("--ls-boundary-ridge-candidates", type=str, default="")
     parser.add_argument("--ls-boundary-polynomial-degree", type=int, default=4)
     parser.add_argument("--no-plots", action="store_true")
     return parser
@@ -955,9 +965,17 @@ def _ls_boundary_step_summary_from_step(
         "limited_step": [float(value) for value in step.limited_step],
         "finite_difference_steps": [float(value) for value in step.finite_difference_steps],
         "jacobian_shape": [int(value) for value in step.jacobian.shape],
+        "jacobian_rank": int(step.jacobian_rank),
+        "jacobian_nullity": int(step.jacobian_nullity),
+        "jacobian_condition": float(step.jacobian_condition),
+        "jacobian_singular_values": [float(value) for value in step.jacobian_singular_values],
+        "ridge": float(step.ridge),
+        "ridge_candidates": [float(value) for value in step.ridge_candidates],
         "residual_value_before": float(step.residual.value),
         "residual_value_after": float(step.trial_residual.value),
         "predicted_value": float(step.predicted_value),
+        "predicted_reduction_fraction": step.predicted_reduction_fraction,
+        "actual_reduction_fraction": step.actual_reduction_fraction,
         "equilibrium_rms_before": float(step.residual.equilibrium_rms),
         "equilibrium_rms_after": float(step.trial_residual.equilibrium_rms),
         "lcfs_value_before": float(step.residual.lcfs_value),
@@ -984,6 +1002,7 @@ def _run_ls_boundary_step(
     damping: float,
     max_relative_step: float,
     ridge: float,
+    ridge_candidates: tuple[float, ...] | None,
     polynomial_degree: int,
     write_plots: bool,
     figure_dir: Path,
@@ -1006,6 +1025,7 @@ def _run_ls_boundary_step(
         damping=damping,
         max_relative_step=max_relative_step,
         ridge=ridge,
+        ridge_candidates=ridge_candidates,
         line_search_factors=CIRCULAR_COIL_BETA_SCAN_LS_LINE_SEARCH_FACTORS,
     )
     return _ls_boundary_step_summary_from_step(
@@ -1131,6 +1151,7 @@ def _run_ls_boundary_coupled_loop(
     damping: float,
     max_relative_step: float,
     ridge: float,
+    ridge_candidates: tuple[float, ...] | None,
     polynomial_degree: int,
     write_plots: bool,
 ) -> list[dict[str, object]]:
@@ -1235,6 +1256,7 @@ def _run_ls_boundary_coupled_loop(
         damping=damping,
         max_relative_step=max_relative_step,
         ridge=ridge,
+        ridge_candidates=ridge_candidates,
         line_search_factors=CIRCULAR_COIL_BETA_SCAN_LS_LINE_SEARCH_FACTORS,
     )
 
@@ -1427,6 +1449,7 @@ def _beta_scan_summary(
     ls_boundary_damping: float,
     ls_boundary_max_relative_step: float,
     ls_boundary_ridge: float,
+    ls_boundary_ridge_candidates: tuple[float, ...] | None,
     ls_boundary_polynomial_degree: int,
 ) -> dict[str, object]:
     """Return top-level status fields for the circular-coil beta scan."""
@@ -1489,6 +1512,9 @@ def _beta_scan_summary(
         "ls_boundary_damping": float(ls_boundary_damping) if ls_requested else None,
         "ls_boundary_max_relative_step": float(ls_boundary_max_relative_step) if ls_requested else None,
         "ls_boundary_ridge": float(ls_boundary_ridge) if ls_requested else None,
+        "ls_boundary_ridge_candidates": [float(value) for value in ls_boundary_ridge_candidates]
+        if ls_requested and ls_boundary_ridge_candidates is not None
+        else None,
         "ls_boundary_polynomial_degree": int(ls_boundary_polynomial_degree) if ls_requested else None,
         "ls_boundary_step_rows_total": len(ls_rows),
         "ls_boundary_coupled_trial_requested": bool(run_ls_boundary_coupled_trial),
@@ -2003,6 +2029,7 @@ def _run_fixed_boundary_baseline_cases(
     ls_boundary_damping: float,
     ls_boundary_max_relative_step: float,
     ls_boundary_ridge: float,
+    ls_boundary_ridge_candidates: tuple[float, ...] | None,
     ls_boundary_polynomial_degree: int,
     write_plots: bool,
 ) -> list[dict[str, object]]:
@@ -2183,6 +2210,7 @@ def _run_fixed_boundary_baseline_cases(
                 damping=ls_boundary_damping,
                 max_relative_step=ls_boundary_max_relative_step,
                 ridge=ls_boundary_ridge,
+                ridge_candidates=ls_boundary_ridge_candidates,
                 polynomial_degree=ls_boundary_polynomial_degree,
                 write_plots=write_plots,
                 figure_dir=outdir / "figures" / f"fixed_boundary_beta_{label}",
@@ -2229,6 +2257,7 @@ def _run_fixed_boundary_baseline_cases(
                 damping=ls_boundary_damping,
                 max_relative_step=ls_boundary_max_relative_step,
                 ridge=ls_boundary_ridge,
+                ridge_candidates=ls_boundary_ridge_candidates,
                 polynomial_degree=ls_boundary_polynomial_degree,
                 write_plots=write_plots,
             )
@@ -2323,6 +2352,7 @@ def run_case(
     ls_boundary_damping: float = 1.0,
     ls_boundary_max_relative_step: float = 0.1,
     ls_boundary_ridge: float = 1.0e-8,
+    ls_boundary_ridge_candidates: tuple[float, ...] | None = None,
     ls_boundary_polynomial_degree: int = 4,
     write_plots: bool = True,
 ) -> Path:
@@ -2354,6 +2384,13 @@ def run_case(
         raise ValueError("ls_boundary_max_relative_step must be positive")
     if float(ls_boundary_ridge) < 0.0:
         raise ValueError("ls_boundary_ridge must be nonnegative")
+    if ls_boundary_ridge_candidates is not None:
+        candidates = tuple(float(value) for value in ls_boundary_ridge_candidates)
+        if not candidates:
+            raise ValueError("ls_boundary_ridge_candidates must be nonempty when provided")
+        if any(value < 0.0 for value in candidates):
+            raise ValueError("ls_boundary_ridge_candidates must be nonnegative")
+        ls_boundary_ridge_candidates = candidates
     _even_polynomial_powers(ls_boundary_polynomial_degree)
     outdir.mkdir(parents=True, exist_ok=True)
     grid = make_mirror_grid(
@@ -2428,6 +2465,7 @@ def run_case(
             ls_boundary_damping=ls_boundary_damping,
             ls_boundary_max_relative_step=ls_boundary_max_relative_step,
             ls_boundary_ridge=ls_boundary_ridge,
+            ls_boundary_ridge_candidates=ls_boundary_ridge_candidates,
             ls_boundary_polynomial_degree=ls_boundary_polynomial_degree,
             write_plots=write_plots,
         )
@@ -2465,6 +2503,7 @@ def run_case(
             ls_boundary_damping=ls_boundary_damping,
             ls_boundary_max_relative_step=ls_boundary_max_relative_step,
             ls_boundary_ridge=ls_boundary_ridge,
+            ls_boundary_ridge_candidates=ls_boundary_ridge_candidates,
             ls_boundary_polynomial_degree=ls_boundary_polynomial_degree,
         ),
         "coil_radius": float(coil_radius),
@@ -2538,6 +2577,9 @@ def main() -> None:
         ls_boundary_damping=args.ls_boundary_damping,
         ls_boundary_max_relative_step=args.ls_boundary_max_relative_step,
         ls_boundary_ridge=args.ls_boundary_ridge,
+        ls_boundary_ridge_candidates=(
+            None if not args.ls_boundary_ridge_candidates.strip() else _parse_float_list(args.ls_boundary_ridge_candidates)
+        ),
         ls_boundary_polynomial_degree=args.ls_boundary_polynomial_degree,
         write_plots=not args.no_plots,
     )

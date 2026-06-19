@@ -384,7 +384,7 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert metrics["lcfs_pilot_stagnation_rtol"] == 0.0
     assert metrics["lcfs_pilot_fsq_growth_limit"] == 0.0
     assert metrics["lcfs_pilot_stop_reason_counts"] == {"max_steps": 3}
-    assert schema["metrics_schema_version"] == "0.8"
+    assert schema["metrics_schema_version"] == "0.9"
     assert "workflow_status_values" in schema
     assert "free_boundary_status_values" in schema
     assert "ls_boundary_step_fields" in schema
@@ -447,6 +447,7 @@ def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     assert metrics["ls_boundary_damping"] is None
     assert metrics["ls_boundary_max_relative_step"] is None
     assert metrics["ls_boundary_ridge"] is None
+    assert metrics["ls_boundary_ridge_candidates"] is None
     assert metrics["ls_boundary_polynomial_degree"] is None
     assert [case["beta_percent"] for case in metrics["beta_cases"]] == [1.0, 3.0, 10.0]
     assert set(schema["top_level_required_fields"]).issubset(metrics)
@@ -585,6 +586,7 @@ def test_root_free_boundary_circular_coils_summary_reports_converged_free_bounda
         "ls_boundary_damping": 1.0,
         "ls_boundary_max_relative_step": 0.1,
         "ls_boundary_ridge": 1.0e-8,
+        "ls_boundary_ridge_candidates": None,
         "ls_boundary_polynomial_degree": 4,
     }
 
@@ -769,6 +771,8 @@ def test_root_free_boundary_circular_coils_ls_boundary_step_reports_reduction(tm
             "--baseline-maxiter",
             "0",
             "--run-ls-boundary-step",
+            "--ls-boundary-ridge-candidates",
+            "0,1e-8,1e-4",
             "--no-plots",
         ],
         check=True,
@@ -784,7 +788,7 @@ def test_root_free_boundary_circular_coils_ls_boundary_step_reports_reduction(tm
     ls_step = row["ls_boundary_step"]
     selected_rows = [trial for trial in ls_step["trial_rows"] if trial["selected"]]
 
-    assert metrics["metrics_schema_version"] == "0.8"
+    assert metrics["metrics_schema_version"] == "0.9"
     assert metrics["ls_boundary_step_requested"] is True
     assert metrics["ls_boundary_coupled_trial_requested"] is False
     assert metrics["ls_boundary_step_rows_total"] == 1
@@ -793,12 +797,21 @@ def test_root_free_boundary_circular_coils_ls_boundary_step_reports_reduction(tm
     assert metrics["ls_boundary_damping"] == 1.0
     assert metrics["ls_boundary_max_relative_step"] == 0.1
     assert metrics["ls_boundary_ridge"] == 1.0e-8
+    assert metrics["ls_boundary_ridge_candidates"] == [0.0, 1.0e-8, 1.0e-4]
     assert metrics["ls_boundary_polynomial_degree"] == 4
     assert set(schema["ls_boundary_step_fields"]).issubset(ls_step)
     assert ls_step["accepted"] is True
     assert len(ls_step["coefficients_initial"]) == 3
     assert len(ls_step["coefficients_new"]) == 3
     assert ls_step["jacobian_shape"][1] == 3
+    assert ls_step["jacobian_rank"] >= 1
+    assert ls_step["jacobian_nullity"] >= 0
+    assert ls_step["jacobian_condition"] >= 1.0
+    assert len(ls_step["jacobian_singular_values"]) == 3
+    assert ls_step["ridge"] == pytest.approx(0.0)
+    assert ls_step["ridge_candidates"] == [0.0, 1.0e-8, 1.0e-4]
+    assert ls_step["predicted_reduction_fraction"] is not None
+    assert ls_step["actual_reduction_fraction"] is not None
     assert ls_step["residual_value_after"] <= ls_step["residual_value_before"]
     assert ls_step["lcfs_value_after"] <= ls_step["lcfs_value_before"]
     assert ls_step["equilibrium_rms_after"] == pytest.approx(ls_step["equilibrium_rms_before"])
@@ -844,11 +857,12 @@ def test_root_free_boundary_circular_coils_high_order_ls_boundary_step_rejects_i
     ls_step = metrics["fixed_boundary_baseline_rows"][0]["ls_boundary_step"]
     selected_rows = [trial for trial in ls_step["trial_rows"] if trial["selected"]]
 
-    assert metrics["metrics_schema_version"] == "0.8"
+    assert metrics["metrics_schema_version"] == "0.9"
     assert metrics["ls_boundary_polynomial_degree"] == 6
     assert len(ls_step["coefficients_initial"]) == 4
     assert len(ls_step["coefficients_new"]) == 4
     assert ls_step["jacobian_shape"][1] == 4
+    assert ls_step["ridge_candidates"] == [1.0e-8]
     assert ls_step["accepted"] is False
     assert ls_step["line_search_factor"] == 0.0
     assert len(selected_rows) == 1
@@ -891,7 +905,7 @@ def test_root_free_boundary_circular_coils_ls_boundary_coupled_trial_reports_rea
     ls_step = row["ls_boundary_step"]
     trial = ls_step["coupled_trial"]
 
-    assert metrics["metrics_schema_version"] == "0.8"
+    assert metrics["metrics_schema_version"] == "0.9"
     assert metrics["ls_boundary_step_requested"] is True
     assert metrics["ls_boundary_coupled_trial_requested"] is True
     assert metrics["ls_boundary_step_rows_total"] == 1
@@ -948,7 +962,7 @@ def test_root_free_boundary_circular_coils_ls_boundary_coupled_loop_reports_guar
     loop_rows = row["ls_boundary_coupled_loop_rows"]
     first, second = loop_rows
 
-    assert metrics["metrics_schema_version"] == "0.8"
+    assert metrics["metrics_schema_version"] == "0.9"
     assert metrics["workflow_status"] == "ls_boundary_coupled_loop"
     assert metrics["free_boundary_solve_status"] == "ls_boundary_coupled_loop_not_converged_free_boundary"
     assert metrics["ls_boundary_coupled_loop_requested"] is True
