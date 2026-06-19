@@ -79,6 +79,7 @@ from vmec_jax.solvers.fixed_boundary.residual.state_setup import (
 from vmec_jax.solvers.fixed_boundary.residual.finalize import (
     attach_residual_iter_timing_diagnostics as _attach_residual_iter_timing_diagnostics,
     build_residual_iter_resume_state_from_namespace as _build_residual_iter_resume_state_from_namespace,
+    final_free_boundary_residual_reports_from_namespace as _final_free_boundary_residual_reports_from_namespace,
     finalize_residual_iter_result as _finalize_residual_iter_result,
     precompile_only_residual_iter_result as _precompile_only_residual_iter_result,
     vmec2000_state_only_scan_result as _vmec2000_state_only_scan_result,
@@ -5981,106 +5982,16 @@ def solve_fixed_boundary_residual_iter(
             timing_stats["iteration_post_update"] += time.perf_counter() - float(t_iteration_post_update_start)
 
     t_finalize_start = time.perf_counter() if timing_enabled else None
-    final_fsqr_report = float(fsqr_f)
-    final_fsqz_report = float(fsqz_f)
-    final_fsql_report = float(fsql_f)
-    final_residual_recomputed = False
-    final_pre_update_fsqr = float(fsqr_f)
-    final_pre_update_fsqz = float(fsqz_f)
-    final_pre_update_fsql = float(fsql_f)
-    final_nestor_model = str(freeb_last_model)
-    final_nestor_diagnostics = dict(freeb_last_diagnostics)
-    final_vacuum_stub = not bool(str(final_nestor_model).strip() and str(final_nestor_model) != "none")
-    final_bsqvac_half_current = freeb_bsqvac_half_current
-    final_nestor_recompute_attempted = False
-    final_nestor_recompute_failed = False
-    final_nestor_sample_time_s = 0.0
-    final_nestor_solve_time_s = 0.0
-    if bool(free_boundary_enabled and freeb_couple_edge) and not final_vacuum_stub:
-        final_nestor_recompute_attempted = True
-        t_finalize_nestor_recompute_start = time.perf_counter() if timing_enabled else None
-        try:
-            nestor_final, _freeb_nestor_runtime_final = nestor_external_only_step(
-                state=state,
-                static=static,
-                ivac=1,
-                ivacskip=0,
-                iter_idx=None,
-                runtime=freeb_nestor_runtime,
-                extcur=tuple(getattr(static, "free_boundary_extcur", ()) or ()),
-                plascur=float(freeb_plascur),
-                external_field_provider_kind=external_field_provider_kind,
-                external_field_provider_static=external_field_provider_static,
-                external_field_provider_params=external_field_provider_params,
-            )
-            final_nestor_sample_time_s = float(getattr(nestor_final, "sample_time_s", 0.0))
-            final_nestor_solve_time_s = float(getattr(nestor_final, "solve_time_s", 0.0))
-            final_nestor_model = str(getattr(nestor_final, "model", final_nestor_model))
-            diag_final = getattr(nestor_final, "diagnostics", None)
-            if isinstance(diag_final, dict):
-                final_nestor_diagnostics = dict(diag_final)
-            bsqvac_edge_final = np.asarray(nestor_final.vac_total.bsqvac, dtype=float)
-            if (
-                bsqvac_edge_final.ndim == 2
-                and int(bsqvac_edge_final.shape[1]) == 1
-                and int(getattr(static.cfg, "nzeta", 1)) > 1
-            ):
-                bsqvac_edge_final = np.repeat(bsqvac_edge_final, int(static.cfg.nzeta), axis=1)
-            final_bsqvac_half_current = bsqvac_edge_final
-            final_vacuum_stub = False
-        except Exception:
-            final_nestor_recompute_failed = True
-            final_bsqvac_half_current = freeb_bsqvac_half_current
-        finally:
-            if timing_enabled and t_finalize_nestor_recompute_start is not None:
-                timing_stats["finalize_nestor_recompute"] += (
-                    time.perf_counter() - float(t_finalize_nestor_recompute_start)
-                )
-    if bool(free_boundary_enabled) and final_bsqvac_half_current is not None:
-        t_finalize_residual_recompute_start = time.perf_counter() if timing_enabled else None
-        try:
-            _, _, gcr2_final, gcz2_final, gcl2_final, _, _, norms_final = _compute_forces_iter(
-                state,
-                include_edge=bool(include_edge),
-                include_edge_residual=True,
-                zero_m1=zero_m1,
-                freeb_bsqvac_half=final_bsqvac_half_current,
-                constraint_precond_diag=constraint_precond_diag,
-                constraint_tcon=constraint_tcon_override,
-                constraint_precond_active=constraint_precond_active,
-                constraint_tcon_active=constraint_tcon_active,
-                iter2=last_iter2,
-            )
-            fsqr_final, fsqz_final, fsql_final = _residual_fsq_from_norms(
-                norms_final,
-                gcr2=gcr2_final,
-                gcz2=gcz2_final,
-                gcl2=gcl2_final,
-            )
-            t_finalize_residual_get_start = time.perf_counter() if timing_enabled else None
-            final_fsqr_report, final_fsqz_report, final_fsql_report = _device_get_floats(
-                fsqr_final,
-                fsqz_final,
-                fsql_final,
-            )
-            if timing_enabled and t_finalize_residual_get_start is not None:
-                timing_stats["finalize_residual_device_get"] += (
-                    time.perf_counter() - float(t_finalize_residual_get_start)
-                )
-            final_residual_recomputed = True
-        except Exception:
-            final_fsqr_report = float(fsqr_f)
-            final_fsqz_report = float(fsqz_f)
-            final_fsql_report = float(fsql_f)
-        finally:
-            if timing_enabled and t_finalize_residual_recompute_start is not None:
-                timing_stats["finalize_residual_recompute"] += (
-                    time.perf_counter() - float(t_finalize_residual_recompute_start)
-                )
+    final_freeb = _final_free_boundary_residual_reports_from_namespace(
+        locals(),
+        nestor_external_only_step_func=nestor_external_only_step,
+        residual_fsq_from_norms_func=_residual_fsq_from_norms,
+        device_get_floats_func=_device_get_floats,
+    )
     converged_strict_final, converged_total_final, _ = _residual_convergence_flags(
-        fsqr=final_fsqr_report,
-        fsqz=final_fsqz_report,
-        fsql=final_fsql_report,
+        fsqr=final_freeb["final_fsqr_report"],
+        fsqz=final_freeb["final_fsqz_report"],
+        fsql=final_freeb["final_fsql_report"],
         ftol=ftol,
         fsq_total_target=fsq_total_target,
     )
@@ -6100,13 +6011,13 @@ def solve_fixed_boundary_residual_iter(
         "converged": bool(converged),
         "converged_strict": bool(converged_strict_final),
         "converged_by_total_fsq": bool(converged_total_final),
-        "final_fsqr": float(final_fsqr_report),
-        "final_fsqz": float(final_fsqz_report),
-        "final_fsql": float(final_fsql_report),
-        "pre_update_final_fsqr": float(final_pre_update_fsqr),
-        "pre_update_final_fsqz": float(final_pre_update_fsqz),
-        "pre_update_final_fsql": float(final_pre_update_fsql),
-        "final_residual_recomputed_on_accepted_state": bool(final_residual_recomputed),
+        "final_fsqr": float(final_freeb["final_fsqr_report"]),
+        "final_fsqz": float(final_freeb["final_fsqz_report"]),
+        "final_fsql": float(final_freeb["final_fsql_report"]),
+        "pre_update_final_fsqr": float(fsqr_f),
+        "pre_update_final_fsqz": float(fsqz_f),
+        "pre_update_final_fsql": float(fsql_f),
+        "final_residual_recomputed_on_accepted_state": bool(final_freeb["final_residual_recomputed"]),
         "badjac_use_state": bool(badjac_use_state),
         "badjac_mode": badjac_mode,
         "badjac_state_probe": bool(badjac_state_probe),
@@ -6126,15 +6037,15 @@ def solve_fixed_boundary_residual_iter(
             "ivac": int(freeb_ivac),
             "ivacskip": int(freeb_ivacskip),
             "couple_edge": bool(freeb_couple_edge),
-            "nestor_model": str(final_nestor_model),
-            "vacuum_stub": bool(final_vacuum_stub),
+            "nestor_model": str(final_freeb["final_nestor_model"]),
+            "vacuum_stub": bool(final_freeb["final_vacuum_stub"]),
             "activate_fsq": None if free_boundary_activate_fsq is None else float(free_boundary_activate_fsq),
             "plascur": float(freeb_plascur),
-            "last_nestor_diagnostics": dict(final_nestor_diagnostics),
-            "final_nestor_recompute_attempted": bool(final_nestor_recompute_attempted),
-            "final_nestor_recompute_failed": bool(final_nestor_recompute_failed),
-            "final_nestor_sample_time_s": float(final_nestor_sample_time_s),
-            "final_nestor_solve_time_s": float(final_nestor_solve_time_s),
+            "last_nestor_diagnostics": dict(final_freeb["final_nestor_diagnostics"]),
+            "final_nestor_recompute_attempted": bool(final_freeb["final_nestor_recompute_attempted"]),
+            "final_nestor_recompute_failed": bool(final_freeb["final_nestor_recompute_failed"]),
+            "final_nestor_sample_time_s": float(final_freeb["final_nestor_sample_time_s"]),
+            "final_nestor_solve_time_s": float(final_freeb["final_nestor_solve_time_s"]),
         },
     }
     diag = _attach_residual_iter_timing_diagnostics(

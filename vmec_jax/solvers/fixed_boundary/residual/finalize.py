@@ -120,6 +120,94 @@ def build_residual_iter_resume_state_from_namespace(
     )
 
 
+def final_free_boundary_residual_reports_from_namespace(
+    namespace: Mapping[str, Any],
+    *,
+    nestor_external_only_step_func: Callable[..., Any],
+    residual_fsq_from_norms_func: Callable[..., Any],
+    device_get_floats_func: Callable[..., tuple[float, ...]],
+) -> dict[str, Any]:
+    """Return final accepted-state free-boundary residual report fields."""
+
+    ns = namespace
+    clock = time.perf_counter
+    timing_stats, timing_enabled = ns["timing_stats"], bool(ns["timing_enabled"])
+    final_bsqvac_half_current = ns["freeb_bsqvac_half_current"]
+    report = {
+        "final_fsqr_report": float(ns["fsqr_f"]),
+        "final_fsqz_report": float(ns["fsqz_f"]),
+        "final_fsql_report": float(ns["fsql_f"]),
+        "final_residual_recomputed": False,
+        "final_nestor_model": str(ns["freeb_last_model"]),
+        "final_nestor_diagnostics": dict(ns["freeb_last_diagnostics"]),
+        "final_nestor_recompute_attempted": False,
+        "final_nestor_recompute_failed": False,
+        "final_nestor_sample_time_s": 0.0,
+        "final_nestor_solve_time_s": 0.0,
+    }
+    report["final_vacuum_stub"] = not bool(
+        str(report["final_nestor_model"]).strip() and str(report["final_nestor_model"]) != "none"
+    )
+    if bool(ns["free_boundary_enabled"] and ns["freeb_couple_edge"]) and not report["final_vacuum_stub"]:
+        report["final_nestor_recompute_attempted"] = True
+        start = clock() if timing_enabled else None
+        try:
+            nestor_final, _runtime = nestor_external_only_step_func(
+                state=ns["state"], static=ns["static"], ivac=1, ivacskip=0, iter_idx=None,
+                runtime=ns["freeb_nestor_runtime"], extcur=tuple(getattr(ns["static"], "free_boundary_extcur", ()) or ()),
+                plascur=float(ns["freeb_plascur"]),
+                external_field_provider_kind=ns["external_field_provider_kind"],
+                external_field_provider_static=ns["external_field_provider_static"],
+                external_field_provider_params=ns["external_field_provider_params"],
+            )
+            report["final_nestor_sample_time_s"] = float(getattr(nestor_final, "sample_time_s", 0.0))
+            report["final_nestor_solve_time_s"] = float(getattr(nestor_final, "solve_time_s", 0.0))
+            report["final_nestor_model"] = str(getattr(nestor_final, "model", report["final_nestor_model"]))
+            diag_final = getattr(nestor_final, "diagnostics", None)
+            if isinstance(diag_final, dict):
+                report["final_nestor_diagnostics"] = dict(diag_final)
+            bsqvac_edge_final = np.asarray(nestor_final.vac_total.bsqvac, dtype=float)
+            if (
+                bsqvac_edge_final.ndim == 2 and int(bsqvac_edge_final.shape[1]) == 1 and int(getattr(ns["static"].cfg, "nzeta", 1)) > 1
+            ):
+                bsqvac_edge_final = np.repeat(bsqvac_edge_final, int(ns["static"].cfg.nzeta), axis=1)
+            final_bsqvac_half_current = bsqvac_edge_final
+            report["final_vacuum_stub"] = False
+        except Exception:
+            report["final_nestor_recompute_failed"] = True
+            final_bsqvac_half_current = ns["freeb_bsqvac_half_current"]
+        finally:
+            if timing_enabled and start is not None:
+                timing_stats["finalize_nestor_recompute"] += clock() - float(start)
+    if bool(ns["free_boundary_enabled"]) and final_bsqvac_half_current is not None:
+        start = clock() if timing_enabled else None
+        try:
+            _, _, gcr2_final, gcz2_final, gcl2_final, _, _, norms_final = ns["_compute_forces_iter"](
+                ns["state"], include_edge=bool(ns["include_edge"]), include_edge_residual=True,
+                zero_m1=ns["zero_m1"], freeb_bsqvac_half=final_bsqvac_half_current,
+                constraint_precond_diag=ns["constraint_precond_diag"], constraint_tcon=ns["constraint_tcon_override"],
+                constraint_precond_active=ns["constraint_precond_active"],
+                constraint_tcon_active=ns["constraint_tcon_active"],
+                iter2=ns["last_iter2"],
+            )
+            fsqr_final, fsqz_final, fsql_final = residual_fsq_from_norms_func(
+                norms_final, gcr2=gcr2_final, gcz2=gcz2_final, gcl2=gcl2_final,
+            )
+            get_start = clock() if timing_enabled else None
+            report["final_fsqr_report"], report["final_fsqz_report"], report["final_fsql_report"] = device_get_floats_func(fsqr_final, fsqz_final, fsql_final)
+            if timing_enabled and get_start is not None:
+                timing_stats["finalize_residual_device_get"] += clock() - float(get_start)
+            report["final_residual_recomputed"] = True
+        except Exception:
+            report["final_fsqr_report"] = float(ns["fsqr_f"])
+            report["final_fsqz_report"] = float(ns["fsqz_f"])
+            report["final_fsql_report"] = float(ns["fsql_f"])
+        finally:
+            if timing_enabled and start is not None:
+                timing_stats["finalize_residual_recompute"] += clock() - float(start)
+    return report
+
+
 def finalize_residual_iter_result(
     *,
     result_type: type,
