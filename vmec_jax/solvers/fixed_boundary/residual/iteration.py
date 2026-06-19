@@ -456,10 +456,8 @@ def solve_fixed_boundary_residual_iter(
     if not has_jax():
         raise ImportError("solve_fixed_boundary_residual_iter requires JAX (jax + jaxlib)")
 
-    timing_env = os.getenv("VMEC_JAX_TIMING", "").strip().lower()
-    timing_enabled = timing_env not in ("", "0", "false", "no")
-    timing_detail_env = os.getenv("VMEC_JAX_TIMING_DETAIL", "").strip().lower()
-    timing_detail_enabled = timing_enabled and timing_detail_env not in ("", "0", "false", "no")
+    timing_enabled = _runtime_env_enabled(os.getenv("VMEC_JAX_TIMING", ""))
+    timing_detail_enabled = timing_enabled and _runtime_env_enabled(os.getenv("VMEC_JAX_TIMING_DETAIL", ""))
     _setup_phase_timings = _initial_setup_phase_timings()
     state0_has_tracer = _tree_has_tracer(state0)
 
@@ -978,12 +976,7 @@ def solve_fixed_boundary_residual_iter(
         iter_idx: int | None = None,
     ):
         scan_debug_force_enabled = os.getenv("VMEC_JAX_SCAN_DEBUG_FORCE", "") not in ("", "0")
-        dump_hlo_force_tomnsps = os.getenv("VMEC_JAX_DUMP_HLO_FORCE_TOMNSPS", "").strip().lower() not in (
-            "",
-            "0",
-            "false",
-            "no",
-        )
+        dump_hlo_force_tomnsps = _runtime_env_enabled(os.getenv("VMEC_JAX_DUMP_HLO_FORCE_TOMNSPS", ""))
 
         def _dump_force_tomnsps_hlo(*, label, fn, args, kwargs) -> None:
             _maybe_dump_hlo_kernel(
@@ -1507,7 +1500,7 @@ def solve_fixed_boundary_residual_iter(
             lmove_axis=bool(lmove_axis),
             debug_enabled=(
                 bool(axis_reset_enabled)
-                and os.getenv("VMEC_JAX_AXIS_RESET_DEBUG", "").strip().lower() not in ("", "0", "false", "no")
+                and _runtime_env_enabled(os.getenv("VMEC_JAX_AXIS_RESET_DEBUG", ""))
             ),
             ptau_minmax_from_k_host=_ptau_minmax_from_k_host,
             vmec_half_mesh_jacobian_from_state_func=vmec_half_mesh_jacobian_from_state,
@@ -1728,12 +1721,7 @@ def solve_fixed_boundary_residual_iter(
                 fsq1 = fsqr1 + fsqz1 + fsql1
 
                 fsq0 = fsqr + fsqz + fsql
-                use_state_jac = os.getenv("VMEC_JAX_SCAN_JAC_FROM_STATE", "0").strip().lower() not in (
-                    "",
-                    "0",
-                    "false",
-                    "no",
-                )
+                use_state_jac = _runtime_env_enabled(os.getenv("VMEC_JAX_SCAN_JAC_FROM_STATE", "0"))
                 use_apply_payload_fusion = False
                 ptau_min, ptau_max = _ptau_minmax(k) if bool(vmec2000_control) else (None, None)
 
@@ -2339,8 +2327,7 @@ def solve_fixed_boundary_residual_iter(
         if profile_start_iter is not None:
             profile_dir = str(Path(profile_dir_env) / f"window_{profile_window}")
             profile_active = True
-    perfetto_env = os.getenv("VMEC_JAX_PROFILE_PERFETTO", "1")
-    profile_perfetto = perfetto_env.strip().lower() not in ("", "0", "false", "no")
+    profile_perfetto = _runtime_env_enabled(os.getenv("VMEC_JAX_PROFILE_PERFETTO", "1"))
 
     timing_stats = _runtime_new_residual_iter_timing_stats(_setup_phase_timings)
 
@@ -2701,7 +2688,7 @@ def solve_fixed_boundary_residual_iter(
                 axis_reset_always_3d=bool(axis_reset_always_3d),
                 vmec2000_control=True,
                 lmove_axis=True,
-                debug_enabled=os.getenv("VMEC_JAX_AXIS_RESET_DEBUG", "").strip().lower() not in ("", "0", "false", "no"),
+                debug_enabled=_runtime_env_enabled(os.getenv("VMEC_JAX_AXIS_RESET_DEBUG", "")),
                 state_check_on_missing_ptau=True,
                 ptau_minmax_from_k_host=_ptau_minmax_from_k_host,
                 vmec_half_mesh_jacobian_from_state_func=vmec_half_mesh_jacobian_from_state,

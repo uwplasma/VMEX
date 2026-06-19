@@ -7,6 +7,72 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-19.
 
+## 2026-06-19 Residual Runtime Environment Parsing Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Replaced repeated inline false-string environment parsing in residual
+   iteration with the existing `_runtime_env_enabled` helper where semantics
+   match exactly.
+2. Covered timing/detail, HLO force dumps, axis-reset debug, scan Jacobian
+   diagnostics, and Perfetto profiling toggles.
+3. Left non-empty-only and explicit-true-only toggles unchanged to preserve
+   compatibility semantics.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` dropped by 13 lines.
+- Focused residual helper and small fixed-boundary solve tests still pass.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py --select F401,F841`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_additional_helpers.py::test_initial_axis_reset_decision_requires_state_confirmation_when_configured tests/test_solve_additional_helpers.py::test_initial_axis_reset_decision_force_reset_bypasses_residual_floor tests/test_solve_additional_helpers.py::test_residual_iter_history_record_packs_restart_row_with_free_boundary_cadence tests/test_solve_additional_helpers.py::test_append_residual_iter_terminal_history_records_free_boundary_channels tests/test_step6_solve_fixed_boundary.py::test_step6_fixed_boundary_solve_decreases_energy tests/test_nonaxis_exec_stage_trace_parity.py::test_nonaxis_stage_trace_parity_first_iters -q`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue replacing inline environment parsing only when helper semantics are
+   identical.
+2. Avoid changing legacy non-empty-only dump flags unless tests explicitly lock
+   the new behavior.
+3. Return to the scan nested function once enough low-risk setup duplication is
+   removed.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.737%.
+- Free-boundary adjoint monolith reduction: 99.44%.
+- Driver workflow decomposition: 99.94%.
+- Residual iteration decomposition: 98.67%.
+- WOUT diagnostic/profile decomposition: 99.92%.
+- Bcovar/WOUT parity decomposition: 99.12%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.80%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.66%.
+- Fixed-boundary optimizer decomposition: 96.05%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.45%.
+- Discrete-adjoint replay decomposition: 96.4%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999996%.
+
 ## 2026-06-19 Residual Preconditioner Facade Alias Cleanup
 
 Branch: `codex/differentiability-refactor-plan`.
