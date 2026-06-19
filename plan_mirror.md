@@ -24118,3 +24118,150 @@ JSON files.  No generated result files were copied into the git repository.
 No user input is needed for the next remote campaign.  Disk space on office is
 still tight, so the next runs should keep `--no-plots` unless plots are needed
 for a specific diagnostic row.
+
+---
+## 201. Compact Aggregation for Split Toroidal-Hybrid Target Campaigns
+
+### Steps taken
+
+- Added a compact aggregation mode to the root convergence runner:
+  `examples/toroidal_stellarator_mirror_hybrid_convergence.py --aggregate-json`.
+- Reused the existing row CSV writer and plot writers instead of introducing a
+  separate postprocessing script or new public package surface.
+- Added aggregate metadata:
+  - schema label `toroidal_stellarator_mirror_hybrid_convergence_aggregate.v1`;
+  - source JSON list and per-source row summaries;
+  - duplicate-case replacement tracking;
+  - aggregate row counts, VMEC2000 return-code counts, convergence counts, and
+    residual-range metrics;
+  - `aggregate_source_json` row provenance, including in the compact CSV.
+- Updated `examples/mirror/README.md` and `docs/mirror/overview.rst` with the
+  new split-campaign aggregation workflow.
+- Added a regression test that builds two synthetic target chunks, replaces one
+  duplicate case from the later chunk, verifies sorted aggregate rows, verifies
+  compact metrics, and checks CSV provenance.
+- Pulled the pushed branch on `office` and aggregated the existing three
+  six-row target chunks without plots.
+
+### Results obtained
+
+Local implementation result:
+
+- The convergence example can now merge existing chunk JSONs without rerunning
+  VMEC/JAX or VMEC2000.
+- The same code path can regenerate plots from stored row histories when plots
+  are requested, but target campaign aggregation can stay very small with
+  `--no-plots`.
+
+Office target aggregate result:
+
+- Aggregate JSON:
+  `/home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_aggregate_m201/toroidal_stellarator_mirror_hybrid_convergence_aggregate.json`
+- Aggregate CSV:
+  `/home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_aggregate_m201/toroidal_stellarator_mirror_hybrid_convergence.csv`
+- Result-tree size: `92K`.
+- Source JSON count: `3`.
+- Case count: `6`.
+- Duplicate cases replaced: none.
+- VMEC/JAX solved rows: `6`.
+- VMEC2000 rows: `6`.
+- VMEC2000 return-code-zero rows: `6`.
+- VMEC/JAX converged rows: `0`.
+- VMEC/JAX strict-converged rows: `0`.
+- Direct-initial VMEC/JAX / VMEC2000 initial `fsq` ratio range:
+  `1.002122976587009` to `1.006374048260763`.
+- VMEC/JAX best `fsq` range:
+  `0.023020570375674353` to `0.06708267139943355`.
+- VMEC/JAX final `fsq` range:
+  `0.03769366816533995` to `0.12092504641171972`.
+- VMEC2000 final `fsq` range:
+  `0.00797` to `0.02212`.
+- Office `/home` remained tight at about `15G` free, so the compact aggregate
+  path is useful for continued evidence gathering.
+
+### How it was tested
+
+Local checks:
+
+```bash
+python -m ruff check examples/toroidal_stellarator_mirror_hybrid_convergence.py tests/test_toroidal_hybrid.py
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py::test_toroidal_hybrid_convergence_example_aggregates_chunk_jsons -q
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Ruff passed.
+- Focused aggregate regression passed: `1 passed in 0.79s`.
+- Full toroidal-hybrid tests passed: `31 passed in 9.36s`.
+- Sphinx docs build passed with warnings as errors.
+- Whitespace check passed.
+
+Remote aggregation command:
+
+```bash
+ssh office 'cd /home/rjorge/local/vmec_mirror && PYTHONPATH=$PWD /home/rjorge/venvs/vmec_jax_gpu/bin/python examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  --outdir /home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_aggregate_m201 \
+  --aggregate-json \
+    /home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_ns007_chunk_vmec2000/toroidal_stellarator_mirror_hybrid_convergence.json \
+    /home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_ns009_chunk_vmec2000/toroidal_stellarator_mirror_hybrid_convergence.json \
+    /home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_ns015_chunk_vmec2000/toroidal_stellarator_mirror_hybrid_convergence.json \
+  --no-plots'
+```
+
+### File structure and best-practice notes
+
+- The aggregation mode lives in the existing convergence example because it is
+  an example/reporting workflow, not a new equilibrium algorithm.
+- Existing CSV/plot helpers are reused, reducing duplicate plotting and row
+  serialization code.
+- The source package API remains unchanged; no new public import surface was
+  added for a campaign-specific postprocessor.
+- Tests live with the rest of the toroidal-hybrid tests in
+  `tests/test_toroidal_hybrid.py`.
+- Documentation updates are in the existing mirror overview and examples README
+  where users already learn the target-ladder workflow.
+- Generated remote outputs stay under ignored `results/` directories and were
+  not copied into the repository.
+
+### Best next steps
+
+1. Commit and push this M201 plan entry and update the draft PR body.
+2. Inspect only failed CI jobs after the push.
+3. Run a larger-iteration target diagnostic campaign for the `mpol:ntor=5:20`
+   target rows with `--full-solver-diagnostics`, `--nstep 1`, and `--no-plots`.
+4. Aggregate that larger campaign with the new `--aggregate-json` path and use
+   the step-status, restart-reason, and `dt_eff` histories to decide whether
+   the remaining gap to VMEC2000 is iteration budget, initialization, line-search
+   policy, or solver/preconditioner behavior.
+
+### Completion percentages after M201
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.3%` overall for the current diagnostic/reduced
+  solver scope, with production LCFS convergence still explicitly deferred.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `98.7%`, with split target-campaign
+  aggregation now repeatable and office six-row target evidence summarized in a
+  compact artifact; full target-ladder convergence evidence remains pending.
+- ESSOS circular-coil mirror beta scan: `99%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.5%`, pending GitHub checks and explicit
+  review decision on deferred production lanes.
+
+### User input needed
+
+No user input is needed.  The next campaign should remain plot-free until a
+specific diagnostic row needs figures, because office disk space is still tight.
