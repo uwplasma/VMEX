@@ -2,12 +2,205 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
 from vmec_jax.solvers.fixed_boundary.results import SolveVmecResidualResult
 from vmec_jax.state import VMECState
+
+
+@dataclass(frozen=True)
+class AcceleratedScanWeightedBlocks:
+    """Mode-weighted force blocks used by one accelerated scan update."""
+
+    frcc: Any
+    frss: Any
+    fzsc: Any
+    fzcs: Any
+    flsc: Any
+    flcs: Any
+    frsc: Any
+    frcs: Any
+    fzcc: Any
+    fzss: Any
+    flcc: Any
+    flss: Any
+
+
+def _accelerated_scan_cache_key(
+    *,
+    static_key: Any,
+    wout_key: Any,
+    edge_value_key: Any,
+    max_iter: int,
+    step_size: float,
+    initial_flip_sign: float,
+    lambda_update_scale: float,
+    precond_radial_alpha: float,
+    precond_lambda_alpha: float,
+    apply_m1_constraints: bool,
+    jit_forces: bool,
+) -> tuple[Any, ...]:
+    """Return the cache key for the compiled accelerated scan runner."""
+
+    return (
+        "scan_v1",
+        static_key,
+        wout_key,
+        edge_value_key,
+        int(max_iter),
+        float(step_size),
+        float(initial_flip_sign),
+        float(lambda_update_scale),
+        float(precond_radial_alpha),
+        float(precond_lambda_alpha),
+        bool(apply_m1_constraints),
+        bool(jit_forces),
+    )
+
+
+def _weighted_optional_scan_block(*, frzl: Any, name: str, like: Any, w_mode_mn: Any, jnp_module: Any) -> Any:
+    value = getattr(frzl, name, None)
+    base = jnp_module.asarray(value) if value is not None else jnp_module.zeros_like(like)
+    return base * w_mode_mn[None, :, :]
+
+
+def _accelerated_scan_weighted_blocks(
+    *,
+    frzl: Any,
+    rz_scale: Any,
+    l_scale: Any,
+    w_mode_mn: Any,
+    precond_radial_alpha: float,
+    precond_lambda_alpha: float,
+    lambda_update_scale: float,
+    lambda_update_scale_j: Any,
+    apply_radial_tridi_batched: Any,
+    jnp_module: Any,
+) -> AcceleratedScanWeightedBlocks:
+    """Precondition and mode-weight one residual payload inside the scan."""
+
+    frss_in = (frzl.frss if frzl.frss is not None else jnp_module.zeros_like(frzl.frcc)) * rz_scale[:, None, None]
+    fzcs_in = (frzl.fzcs if frzl.fzcs is not None else jnp_module.zeros_like(frzl.fzsc)) * rz_scale[:, None, None]
+    frcc, frss, fzsc, fzcs = apply_radial_tridi_batched(
+        [
+            frzl.frcc * rz_scale[:, None, None],
+            frss_in,
+            frzl.fzsc * rz_scale[:, None, None],
+            fzcs_in,
+        ],
+        precond_radial_alpha,
+    )
+    flcs_in = (frzl.flcs if frzl.flcs is not None else jnp_module.zeros_like(frzl.flsc)) * l_scale[:, None, None]
+    flsc, flcs = apply_radial_tridi_batched(
+        [
+            frzl.flsc * l_scale[:, None, None],
+            flcs_in,
+        ],
+        precond_lambda_alpha,
+    )
+
+    frcc_u = frcc * w_mode_mn[None, :, :]
+    frss_u = frss * w_mode_mn[None, :, :]
+    fzsc_u = fzsc * w_mode_mn[None, :, :]
+    fzcs_u = fzcs * w_mode_mn[None, :, :]
+    flsc_u = flsc * w_mode_mn[None, :, :]
+    flcs_u = flcs * w_mode_mn[None, :, :]
+    blocks = AcceleratedScanWeightedBlocks(
+        frcc=frcc_u,
+        frss=frss_u,
+        fzsc=fzsc_u,
+        fzcs=fzcs_u,
+        flsc=flsc_u,
+        flcs=flcs_u,
+        frsc=_weighted_optional_scan_block(frzl=frzl, name="frsc", like=frcc_u, w_mode_mn=w_mode_mn, jnp_module=jnp_module),
+        frcs=_weighted_optional_scan_block(frzl=frzl, name="frcs", like=frcc_u, w_mode_mn=w_mode_mn, jnp_module=jnp_module),
+        fzcc=_weighted_optional_scan_block(frzl=frzl, name="fzcc", like=fzsc_u, w_mode_mn=w_mode_mn, jnp_module=jnp_module),
+        fzss=_weighted_optional_scan_block(frzl=frzl, name="fzss", like=fzsc_u, w_mode_mn=w_mode_mn, jnp_module=jnp_module),
+        flcc=_weighted_optional_scan_block(frzl=frzl, name="flcc", like=flsc_u, w_mode_mn=w_mode_mn, jnp_module=jnp_module),
+        flss=_weighted_optional_scan_block(frzl=frzl, name="flss", like=flsc_u, w_mode_mn=w_mode_mn, jnp_module=jnp_module),
+    )
+    if lambda_update_scale == 1.0:
+        return blocks
+    return AcceleratedScanWeightedBlocks(
+        frcc=blocks.frcc,
+        frss=blocks.frss,
+        fzsc=blocks.fzsc,
+        fzcs=blocks.fzcs,
+        flsc=blocks.flsc * lambda_update_scale_j,
+        flcs=blocks.flcs * lambda_update_scale_j,
+        frsc=blocks.frsc,
+        frcs=blocks.frcs,
+        fzcc=blocks.fzcc,
+        fzss=blocks.fzss,
+        flcc=blocks.flcc * lambda_update_scale_j,
+        flss=blocks.flss * lambda_update_scale_j,
+    )
+
+
+def _accelerated_scan_state_update(
+    *,
+    state_i: Any,
+    static: Any,
+    cfg: Any,
+    blocks: AcceleratedScanWeightedBlocks,
+    time_step_j: Any,
+    flip_sign_j: Any,
+    free_boundary_enabled: bool,
+    edge_Rcos: Any,
+    edge_Rsin: Any,
+    edge_Zcos: Any,
+    edge_Zsin: Any,
+    idx00: int,
+    mode_context: Any,
+    mn_cos_to_signed_physical: Any,
+    mn_sin_to_signed_physical: Any,
+    mn_cos_to_signed_physical_lambda: Any,
+    enforce_fixed_boundary_and_axis: Any,
+    apply_vmec_lambda_axis_rules: Any,
+    jnp_module: Any,
+) -> VMECState:
+    """Apply one accelerated scan update and re-enforce VMEC boundary rules."""
+
+    dR = (time_step_j * flip_sign_j) * mn_cos_to_signed_physical(blocks.frcc, blocks.frss)
+    sin_updates = mode_context.mn_sin_to_signed_batch(
+        jnp_module.stack([blocks.fzsc, blocks.flsc], axis=0),
+        jnp_module.stack([blocks.fzcs, blocks.flcs], axis=0),
+    )
+    dZ = (time_step_j * flip_sign_j) * sin_updates[0]
+    dL = (time_step_j * flip_sign_j) * sin_updates[1]
+    if bool(cfg.lasym):
+        dR_sin = (time_step_j * flip_sign_j) * mn_sin_to_signed_physical(blocks.frsc, blocks.frcs)
+        dZ_cos = (time_step_j * flip_sign_j) * mn_cos_to_signed_physical(blocks.fzcc, blocks.fzss)
+        dL_cos = (time_step_j * flip_sign_j) * mn_cos_to_signed_physical_lambda(blocks.flcc, blocks.flss)
+    else:
+        dR_sin = jnp_module.zeros_like(dR)
+        dZ_cos = jnp_module.zeros_like(dR)
+        dL_cos = jnp_module.zeros_like(dR)
+
+    state_new = VMECState(
+        layout=state_i.layout,
+        Rcos=jnp_module.asarray(state_i.Rcos) + dR,
+        Rsin=jnp_module.asarray(state_i.Rsin) + dR_sin,
+        Zcos=jnp_module.asarray(state_i.Zcos) + dZ_cos,
+        Zsin=jnp_module.asarray(state_i.Zsin) + dZ,
+        Lcos=jnp_module.asarray(state_i.Lcos) + dL_cos,
+        Lsin=jnp_module.asarray(state_i.Lsin) + dL,
+    )
+    state_new = enforce_fixed_boundary_and_axis(
+        state_new,
+        static,
+        edge_Rcos=edge_Rcos,
+        edge_Rsin=edge_Rsin,
+        edge_Zcos=edge_Zcos,
+        edge_Zsin=edge_Zsin,
+        enforce_edge=not bool(free_boundary_enabled),
+        enforce_lambda_axis=True,
+        idx00=idx00,
+    )
+    return apply_vmec_lambda_axis_rules(state_new)
 
 
 def run_accelerated_residual_scan(
@@ -99,19 +292,18 @@ def run_accelerated_residual_scan(
 
     include_edge_scan = False
     compute_forces_scan = compute_forces if jit_forces else compute_forces_impl
-    scan_cache_key = (
-        "scan_v1",
-        static_key,
-        wout_key,
-        edge_value_key,
-        int(max_iter),
-        float(step_size),
-        float(initial_flip_sign),
-        float(lambda_update_scale),
-        float(precond_radial_alpha),
-        float(precond_lambda_alpha),
-        bool(apply_m1_constraints),
-        bool(jit_forces),
+    scan_cache_key = _accelerated_scan_cache_key(
+        static_key=static_key,
+        wout_key=wout_key,
+        edge_value_key=edge_value_key,
+        max_iter=int(max_iter),
+        step_size=float(step_size),
+        initial_flip_sign=float(initial_flip_sign),
+        lambda_update_scale=float(lambda_update_scale),
+        precond_radial_alpha=float(precond_radial_alpha),
+        precond_lambda_alpha=float(precond_lambda_alpha),
+        apply_m1_constraints=bool(apply_m1_constraints),
+        jit_forces=bool(jit_forces),
     )
     if scan_timing_enabled and scan_total_start is not None:
         scan_timing_stats["scan_setup_s"] += perf_counter() - float(scan_total_start)
@@ -137,112 +329,39 @@ def run_accelerated_residual_scan(
                 zero_m1=zero_m1,
                 iter_idx=None,
             )
-            frss_in = (frzl.frss if frzl.frss is not None else jnp_module.zeros_like(frzl.frcc)) * rz_scale[
-                :, None, None
-            ]
-            fzcs_in = (frzl.fzcs if frzl.fzcs is not None else jnp_module.zeros_like(frzl.fzsc)) * rz_scale[
-                :, None, None
-            ]
-            frcc, frss, fzsc, fzcs = apply_radial_tridi_batched(
-                [
-                    frzl.frcc * rz_scale[:, None, None],
-                    frss_in,
-                    frzl.fzsc * rz_scale[:, None, None],
-                    fzcs_in,
-                ],
-                precond_radial_alpha,
+            blocks = _accelerated_scan_weighted_blocks(
+                frzl=frzl,
+                rz_scale=rz_scale,
+                l_scale=l_scale,
+                w_mode_mn=w_mode_mn,
+                precond_radial_alpha=float(precond_radial_alpha),
+                precond_lambda_alpha=float(precond_lambda_alpha),
+                lambda_update_scale=float(lambda_update_scale),
+                lambda_update_scale_j=lambda_update_scale_j,
+                apply_radial_tridi_batched=apply_radial_tridi_batched,
+                jnp_module=jnp_module,
             )
-            flcs_in = (frzl.flcs if frzl.flcs is not None else jnp_module.zeros_like(frzl.flsc)) * l_scale[
-                :, None, None
-            ]
-            flsc, flcs = apply_radial_tridi_batched(
-                [
-                    frzl.flsc * l_scale[:, None, None],
-                    flcs_in,
-                ],
-                precond_lambda_alpha,
-            )
-
-            frcc_u = frcc * w_mode_mn[None, :, :]
-            frss_u = frss * w_mode_mn[None, :, :]
-            fzsc_u = fzsc * w_mode_mn[None, :, :]
-            fzcs_u = fzcs * w_mode_mn[None, :, :]
-            flsc_u = flsc * w_mode_mn[None, :, :]
-            flcs_u = flcs * w_mode_mn[None, :, :]
-            frsc_u = (
-                jnp_module.asarray(getattr(frzl, "frsc", None))
-                if getattr(frzl, "frsc", None) is not None
-                else jnp_module.zeros_like(frcc_u)
-            ) * w_mode_mn[None, :, :]
-            frcs_u = (
-                jnp_module.asarray(getattr(frzl, "frcs", None))
-                if getattr(frzl, "frcs", None) is not None
-                else jnp_module.zeros_like(frcc_u)
-            ) * w_mode_mn[None, :, :]
-            fzcc_u = (
-                jnp_module.asarray(getattr(frzl, "fzcc", None))
-                if getattr(frzl, "fzcc", None) is not None
-                else jnp_module.zeros_like(fzsc_u)
-            ) * w_mode_mn[None, :, :]
-            fzss_u = (
-                jnp_module.asarray(getattr(frzl, "fzss", None))
-                if getattr(frzl, "fzss", None) is not None
-                else jnp_module.zeros_like(fzsc_u)
-            ) * w_mode_mn[None, :, :]
-            flcc_u = (
-                jnp_module.asarray(getattr(frzl, "flcc", None))
-                if getattr(frzl, "flcc", None) is not None
-                else jnp_module.zeros_like(flsc_u)
-            ) * w_mode_mn[None, :, :]
-            flss_u = (
-                jnp_module.asarray(getattr(frzl, "flss", None))
-                if getattr(frzl, "flss", None) is not None
-                else jnp_module.zeros_like(flsc_u)
-            ) * w_mode_mn[None, :, :]
-
-            if lambda_update_scale != 1.0:
-                flsc_u = flsc_u * lambda_update_scale_j
-                flcs_u = flcs_u * lambda_update_scale_j
-                flcc_u = flcc_u * lambda_update_scale_j
-                flss_u = flss_u * lambda_update_scale_j
-
-            dR = (time_step_j * flip_sign_j) * mn_cos_to_signed_physical(frcc_u, frss_u)
-            sin_updates = mode_context.mn_sin_to_signed_batch(
-                jnp_module.stack([fzsc_u, flsc_u], axis=0),
-                jnp_module.stack([fzcs_u, flcs_u], axis=0),
-            )
-            dZ = (time_step_j * flip_sign_j) * sin_updates[0]
-            dL = (time_step_j * flip_sign_j) * sin_updates[1]
-            if bool(cfg.lasym):
-                dR_sin = (time_step_j * flip_sign_j) * mn_sin_to_signed_physical(frsc_u, frcs_u)
-                dZ_cos = (time_step_j * flip_sign_j) * mn_cos_to_signed_physical(fzcc_u, fzss_u)
-                dL_cos = (time_step_j * flip_sign_j) * mn_cos_to_signed_physical_lambda(flcc_u, flss_u)
-            else:
-                dR_sin = jnp_module.zeros_like(dR)
-                dZ_cos = jnp_module.zeros_like(dR)
-                dL_cos = jnp_module.zeros_like(dR)
-
-            state_new = VMECState(
-                layout=state_i.layout,
-                Rcos=jnp_module.asarray(state_i.Rcos) + dR,
-                Rsin=jnp_module.asarray(state_i.Rsin) + dR_sin,
-                Zcos=jnp_module.asarray(state_i.Zcos) + dZ_cos,
-                Zsin=jnp_module.asarray(state_i.Zsin) + dZ,
-                Lcos=jnp_module.asarray(state_i.Lcos) + dL_cos,
-                Lsin=jnp_module.asarray(state_i.Lsin) + dL,
-            )
-            state_new = enforce_fixed_boundary_and_axis(
-                state_new,
-                static,
+            state_new = _accelerated_scan_state_update(
+                state_i=state_i,
+                static=static,
+                cfg=cfg,
+                blocks=blocks,
+                time_step_j=time_step_j,
+                flip_sign_j=flip_sign_j,
+                free_boundary_enabled=bool(free_boundary_enabled),
                 edge_Rcos=edge_Rcos,
                 edge_Rsin=edge_Rsin,
                 edge_Zcos=edge_Zcos,
                 edge_Zsin=edge_Zsin,
-                enforce_edge=not bool(free_boundary_enabled),
-                enforce_lambda_axis=True,
-                idx00=idx00,
+                idx00=int(idx00),
+                mode_context=mode_context,
+                mn_cos_to_signed_physical=mn_cos_to_signed_physical,
+                mn_sin_to_signed_physical=mn_sin_to_signed_physical,
+                mn_cos_to_signed_physical_lambda=mn_cos_to_signed_physical_lambda,
+                enforce_fixed_boundary_and_axis=enforce_fixed_boundary_and_axis,
+                apply_vmec_lambda_axis_rules=apply_vmec_lambda_axis_rules,
+                jnp_module=jnp_module,
             )
-            state_new = apply_vmec_lambda_axis_rules(state_new)
             conv_now = scan_converged(fsqr, fsqz, fsql)
             conv_iter_new = jnp_module.where(
                 (converged_iter < 0) & conv_now,

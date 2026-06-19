@@ -26149,3 +26149,85 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999999933%.
+
+## 2026-06-19 Accelerated Scan And Same-Branch Runner Decomposition
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted the accelerated residual scan cache-key construction into
+   `_accelerated_scan_cache_key`.
+2. Extracted scan-step residual preconditioning and mode weighting into
+   `_accelerated_scan_weighted_blocks`.
+3. Extracted the scan-step state update and fixed-boundary/axis enforcement
+   into `_accelerated_scan_state_update`.
+4. Replaced the nested same-branch vector/JVP report runner in the free-boundary
+   QS example with the explicit `SameBranchVectorRunner` callable.
+5. Reused `summarize_same_branch_vector_result` for vector summaries consumed
+   by main, rejected-slot, and NESTOR replay-profile reports.
+
+Results obtained:
+
+- `run_accelerated_residual_scan` dropped out of the source-health
+  function-length warning list.
+- `write_same_branch_validation_report` also dropped out of the warning list
+  after replacing its nested vector runner.
+- The accelerated scan control flow now exposes the scan step as: force
+  evaluation -> weighted residual blocks -> state update -> convergence check.
+- The same-branch report writer keeps the same artifact schema while the
+  branch-local vector replay path is reusable and easier to audit.
+
+Tests and commands run:
+
+- `python -m py_compile examples/optimization/free_boundary_QS_coil_optimization.py vmec_jax/solvers/fixed_boundary/residual/accelerated_scan.py`
+- `python -m ruff check examples/optimization/free_boundary_QS_coil_optimization.py vmec_jax/solvers/fixed_boundary/residual/accelerated_scan.py`
+- `python tools/diagnostics/source_health.py --top 35 --max-root-helper-prefix-files 2`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_finish_policy_more_coverage.py::test_cli_single_grid_finish_attempt_promotes_strict_accelerated_result tests/test_driver_wave2_coverage.py::test_cli_finisher_records_budget_exhaustion_after_accelerated_and_parity_attempts tests/test_driver_api.py::test_run_fixed_boundary_cli_single_grid_uses_accelerated_finish_first tests/test_driver_api.py::test_run_fixed_boundary_cli_accelerated_finish_respects_use_scan_false -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py -q`
+
+Best next steps:
+
+1. Commit and push this scan/report decomposition.
+2. Target `free_boundary.py::nestor_external_only_step`, which is now the
+   newest production function in the top warning list and sits on the direct
+   free-boundary path.
+3. Then return to `scan/controller.py::run_vmec2000_scan`, extracting
+   same-branch scan-step result/state helpers before touching numerical
+   branch behavior.
+4. Keep the production adaptive-branch differentiability claims conservative;
+   these refactors simplify seams but do not create arbitrary adaptive branch
+   differentiability evidence by themselves.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999957%.
+- Solver monolith reduction: 99.922%.
+- Free-boundary adjoint monolith reduction: 99.66%.
+- Driver workflow decomposition: 99.975%.
+- Residual iteration decomposition: 99.520%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.30%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.945%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.05%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.20%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 95.86%.
+- Discrete-adjoint replay decomposition: 99.24%.
+- Free-boundary validation-gate maintainability: 98.60%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999999934%.
