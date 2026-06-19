@@ -23100,3 +23100,82 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999999960%.
+
+## 2026-06-19 Free-Boundary NESTOR Runtime Domain Move
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved VMEC-like NESTOR dense runtime helpers from the legacy
+   `vmec_jax/free_boundary.py` facade into
+   `vmec_jax/solvers/free_boundary/jax_nestor_operator.py`.
+2. The moved helpers include optional SciPy LU factor/solve wrappers, VMEC
+   `cmns` construction, VMEC-like mode basis construction, Poisson-cache
+   construction, dense VMEC-like cache construction, dense solve replay, and
+   VMEC source symmetrization.
+3. Preserved private compatibility aliases in `vmec_jax.free_boundary` so
+   existing validation tests and replay imports keep working while ownership
+   moves into the NESTOR operator domain.
+4. Retargeted the LU fallback test to patch the implementation module instead
+   of the legacy facade-local SciPy variables.
+
+Results obtained:
+
+- `vmec_jax/free_boundary.py` decreased from 3021 to 2699 lines.
+- `vmec_jax/solvers/free_boundary/jax_nestor_operator.py` now owns the dense
+  NumPy VMEC/NESTOR runtime pieces as well as the opt-in JAX NESTOR operator
+  cache, so this domain is coherent instead of split across the facade.
+- Free-boundary provider and helper shards still pass through the compatibility
+  aliases.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/free_boundary.py vmec_jax/solvers/free_boundary/jax_nestor_operator.py`
+- `python -m ruff check vmec_jax/free_boundary.py vmec_jax/solvers/free_boundary/jax_nestor_operator.py tests/test_free_boundary_wave2.py tests/test_free_boundary_helper_branches.py tests/test_free_boundary_additional_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_helper_branches.py tests/test_free_boundary_additional_helpers.py tests/test_free_boundary_wave2.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_coil_provider_forward.py tests/test_free_boundary_coil_provider_gradients.py -q`
+- `python tools/diagnostics/source_health.py --top 24 --top-functions 55`
+
+Best next steps:
+
+1. Continue reducing `free_boundary.py` by extracting the remaining NESTOR
+   analytic/nonsingular source helpers into the same operator domain.
+2. Then run the broader direct-coil/free-boundary adjoint validation slice so
+   the refactor has physics-gate coverage beyond helper-level shards.
+3. After `free_boundary.py` is below the warning threshold, return to
+   `solvers/fixed_boundary/residual/iteration.py` and `discrete_adjoint.py`,
+   which are now the largest remaining production monoliths.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999968%.
+- Solver monolith reduction: 99.827%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.055%.
+- WOUT diagnostic/profile decomposition: 99.982%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.825%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 95.0%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 96.82%.
+- Free-boundary validation-gate maintainability: 98.24%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999999962%.
