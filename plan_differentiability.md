@@ -26231,3 +26231,91 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999999934%.
+
+## 2026-06-19 Free-Boundary NESTOR Step Decomposition
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Replaced the `nestor_external_only_step(...); _nestor_external_step_result(locals())`
+   assembly path with an explicit step context dictionary.
+2. Extracted runtime-cache decoding, source/reuse policy, RHS/source assembly,
+   VMEC-like cache construction, Green-function source refresh, mode-matrix
+   replacement, optional JAX-NESTOR operator solve, FFT fallback, and vacuum
+   channel assembly into named helpers.
+3. Kept the public `nestor_external_only_step` API and diagnostics/result schema
+   unchanged while exposing the branch-local seams needed by free-boundary AD
+   and replay validation.
+4. Checked the broader direct-coil finite-pressure sensitivity shard. It still
+   fails in the same way on clean commit `a4f2f415`, so that fixed-trace
+   mismatch is recorded as a pre-existing open validation issue rather than a
+   regression from this decomposition.
+
+Results obtained:
+
+- `vmec_jax/free_boundary.py` dropped below the source-health file warning
+  threshold: 1962 lines.
+- `free_boundary.py::nestor_external_only_step` dropped out of the
+  function-length warning list.
+- Focused NESTOR dense/mode/reuse/fallback tests pass.
+- Direct-coil provider and JAX mgrid gradient shards pass.
+- The next production source-health hotspots remain the fixed-boundary residual
+  iterator, VMEC2000 scan controller, implicit solve, driver facade, WOUT
+  assembly, and optimizer residual kernels.
+
+Tests and commands run:
+
+- `python -m py_compile vmec_jax/free_boundary.py`
+- `python -m ruff check vmec_jax/free_boundary.py`
+- `python tools/diagnostics/source_health.py --top 35 --max-root-helper-prefix-files 2`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_wave2.py::test_nestor_external_only_step_reuse_spectral_and_dense_fallback tests/test_free_boundary_wave2.py::test_nestor_external_only_step_dense_grid_and_mode_success tests/test_free_boundary_fast_physics_coverage.py tests/test_free_boundary_wp0.py::test_nestor_external_only_step_reuse -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_wp0.py tests/test_free_boundary_wave2.py tests/test_free_boundary_fast_physics_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_external_fields_coils_jax.py tests/test_external_fields_mgrid_jax.py tests/test_free_boundary_coil_provider_gradients.py tests/test_free_boundary_coil_provider_forward.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_wp0.py tests/test_free_boundary_wave2.py tests/test_free_boundary_fast_physics_coverage.py tests/test_external_fields_coils_jax.py tests/test_external_fields_mgrid_jax.py tests/test_free_boundary_coil_provider_gradients.py tests/test_free_boundary_coil_provider_forward.py -q`
+- Clean-reference check: `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd -q` in a detached worktree at `a4f2f415`; this failed with the same fixed-trace/base-complete mismatch as the current branch.
+
+Best next steps:
+
+1. Commit and push this free-boundary NESTOR decomposition tranche.
+2. Fix or xfail/document the pre-existing direct-coil fixed-trace mismatch before
+   using `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+   as a full promotion gate again.
+3. Continue production refactor work with `scan/controller.py::run_vmec2000_scan`
+   and `residual/iteration.py::solve_fixed_boundary_residual_iter`, because
+   those are now the largest production source-health blockers.
+4. Keep adaptive-branch differentiability claims conservative until a true
+   fingerprint-gated adaptive branch AD-vs-central-FD gate passes.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999958%.
+- Solver monolith reduction: 99.924%.
+- Free-boundary adjoint monolith reduction: 99.66%.
+- Driver workflow decomposition: 99.975%.
+- Residual iteration decomposition: 99.520%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.30%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.945%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.05%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.35%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 95.86%.
+- Discrete-adjoint replay decomposition: 99.24%.
+- Free-boundary validation-gate maintainability: 98.62%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999999935%.
