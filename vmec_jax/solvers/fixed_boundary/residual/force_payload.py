@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, Mapping, NamedTuple
 
+import numpy as np
+
 from ...._compat import jnp
 from .payload_blocks import (
     residual_force_payload_after_m1_scalxc,
@@ -17,7 +19,9 @@ __all__ = [
     "ResidualForceMetricPayload",
     "ResidualForcePayloadResult",
     "ResidualForceEvaluationResult",
+    "build_strict_update_adjoint_trace_entry",
     "evaluate_residual_force_from_state",
+    "finalize_strict_update_adjoint_trace_entry",
     "force_z_channel_square_sums",
     "maybe_debug_force_z_channel_square_sums",
     "metric_force_payload_after_edge_policy",
@@ -28,6 +32,9 @@ __all__ = [
     "resolve_residual_force_mask_pack",
     "make_residual_force_evaluator",
 ]
+
+_TRACE_VELOCITY_NAMES = ("Rcc", "Rss", "Zsc", "Zcs", "Lsc", "Lcs", "Rsc", "Rcs", "Zcc", "Zss", "Lcc", "Lss")
+_TRACE_TOMNSP_NAMES = ("frcc", "frss", "fzsc", "fzcs", "flsc", "flcs", "frsc", "frcs", "fzcc", "fzss", "flcc", "flss")
 
 
 class ResidualForceMetricPayload(NamedTuple):
@@ -60,6 +67,124 @@ class ResidualForceEvaluationResult(NamedTuple):
     rz_scale: Any
     l_scale: Any
     norms: Any
+
+
+def _materialize_trace(value: Any, *, materialize_func: Callable[..., Any], mode: str) -> Any:
+    return materialize_func(value, mode=mode)
+
+
+def _optional_trace(value: Any, *, materialize_func: Callable[..., Any], mode: str) -> Any | None:
+    return None if value is None else _materialize_trace(value, materialize_func=materialize_func, mode=mode)
+
+
+def _trace_named_arrays(prefix: str, items, *, suffix: str = "") -> dict[str, Any]:
+    return {f"{prefix}{name}{suffix}": None if value is None else np.asarray(value) for name, value in items}
+
+
+def _trace_velocity_adjoint(ns: dict[str, Any], suffix: str, *, materialize_func: Callable[..., Any], mode: str) -> dict[str, Any]:
+    return {f"v{name}{suffix}": _materialize_trace(ns[f"v{name}"], materialize_func=materialize_func, mode=mode) for name in _TRACE_VELOCITY_NAMES}
+
+
+def _trace_velocity_arrays(ns: dict[str, Any], suffix: str) -> dict[str, Any]:
+    return {f"v{name}{suffix}": np.asarray(ns[f"v{name}"]) for name in _TRACE_VELOCITY_NAMES}
+
+
+def build_strict_update_adjoint_trace_entry(
+    ns: dict[str, Any],
+    *,
+    materialize_func: Callable[..., Any],
+    adjoint_trace_mode: str,
+) -> dict[str, Any]:
+    """Build accepted-branch trace inputs before applying a strict update."""
+
+    trace = lambda value: _materialize_trace(value, materialize_func=materialize_func, mode=adjoint_trace_mode)
+    optional = lambda value: _optional_trace(value, materialize_func=materialize_func, mode=adjoint_trace_mode)
+    constraint_precond_diag = ns["constraint_precond_diag"]
+    trace_entry: dict[str, Any] = {
+        "branch": "strict_update",
+        "state_pre": ns["state_backup"],
+        "force_state_pre": ns["force_state_pre_current"],
+        "max_update_rms_pre": float(ns["max_update_rms"]),
+        "max_coeff_delta_rms_pre": float(ns["max_coeff_delta_rms"]),
+        "divide_by_scalxc_for_update": bool(ns["divide_by_scalxc_for_update"]),
+        "lambda_update_scale": float(ns["lambda_update_scale"]),
+        "apply_lforbal": bool(ns["apply_lforbal"]),
+        "apply_m1_constraints": bool(ns["apply_m1_constraints"]),
+        "include_edge_residual": bool(ns["include_edge_residual"]),
+        "vmec2000_control": bool(ns["vmec2000_control"]),
+        "limit_dt_from_force": bool(ns["limit_dt_from_force"]),
+        "signgs": int(ns["signgs"]),
+        "zero_m1": trace(ns["zero_m1"]),
+        "wout_like": ns["wout_like"],
+        "trig": ns["trig"],
+        "w_mode_mn": trace(ns["w_mode_mn"]),
+        "precond_jmax": int(ns["jmax"]),
+        "preconditioner_use_precomputed_tridi": bool(ns["preconditioner_use_precomputed_tridi_policy"]),
+        "preconditioner_use_lax_tridi": bool(ns["preconditioner_use_lax_tridi_policy"]),
+        "inv_tau_before": trace(ns["inv_tau"]),
+        "fsq_prev_before": float(ns["fsq_prev_before"]),
+        "reset_inv_tau": bool(ns["iter2"] == ns["iter1"]),
+        "constraint_cache_update": bool(ns["need_bcovar_update"]),
+        "precond_cache_update": bool(ns["preconditioner_cache_update_trace"]),
+        "freeb_bsqvac_half": optional(ns["freeb_bsqvac_half_current"]),
+        "freeb_pres_scale": None if ns["freeb_pres_scale"] is None else float(ns["freeb_pres_scale"]),
+        "freeb_plascur": float(ns["freeb_plascur"]),
+        "freeb_plascur_for_bsqvac": float(ns["freeb_plascur_for_bsqvac"]),
+        "freeb_nestor_trace": ns["freeb_nestor_trace_current"],
+        "constraint_rcon0": optional(ns["constraint_rcon0_current"]),
+        "constraint_zcon0": optional(ns["constraint_zcon0_current"]),
+        "constraint_tcon0": None if ns["constraint_tcon0"] is None else float(ns["constraint_tcon0"]),
+        "constraint_precond_diag": None if constraint_precond_diag is None else tuple(trace(x) for x in constraint_precond_diag),
+        "constraint_tcon": optional(ns["constraint_tcon_override"]),
+        "constraint_precond_active": trace(ns["constraint_precond_active"]),
+        "constraint_tcon_active": trace(ns["constraint_tcon_active"]),
+        "lam_prec": np.asarray(ns["lam_prec"]),
+        "precond_mats": ns["mats"],
+    }
+    trace_entry.update(_trace_velocity_adjoint(ns, "_before", materialize_func=materialize_func, mode=adjoint_trace_mode))
+    if adjoint_trace_mode == "full":
+        trace_entry.update(_trace_named_arrays("frzl_", ((name, getattr(ns["frzl"], name, None)) for name in _TRACE_TOMNSP_NAMES)))
+        trace_entry.update(_trace_named_arrays("frzl_rz_", ((name, getattr(ns["frzl_rz"], name, None)) for name in _TRACE_TOMNSP_NAMES)))
+        trace_entry.update(_trace_named_arrays("", ((name, ns[name]) for name in (
+            "frcc_u", "frss_u", "fzsc_u", "fzcs_u", "flsc_u", "flcs_u", "frsc_u", "frcs_u", "fzcc_u", "fzss_u", "flcc_u", "flss_u"
+        ))))
+    return trace_entry
+
+
+def finalize_strict_update_adjoint_trace_entry(
+    trace_entry: dict[str, Any],
+    ns: dict[str, Any],
+    *,
+    adjoint_trace_mode: str,
+) -> None:
+    """Attach post-update values to an accepted-branch trace entry in place."""
+
+    trace_entry.update({
+        "step_status": str(ns["step_status"]),
+        "restart_reason": str(ns["restart_reason"]),
+        "restart_path": str(ns["restart_path"]),
+        "time_step": float(ns["time_step"]),
+        "flip_sign": float(ns["flip_sign"]),
+        "limit_update_rms": bool(ns["limit_update_rms"]),
+    })
+    if adjoint_trace_mode in {"full", "branch"}:
+        trace_entry.update({
+            "dt_eff": float(ns["dt_eff"]),
+            "b1": float(ns["b1"]),
+            "fac": float(ns["fac"]),
+            "force_scale": float(ns["force_scale"]),
+            "state_post": ns["state"],
+        })
+    if adjoint_trace_mode == "full":
+        trace_entry.update({
+            "w_curr": float(ns["w_curr"]),
+            "w_try": float(ns["w_try"]),
+            "w_try_ratio": float(ns["w_try_ratio"]),
+            "update_rms_preclip": None if ns["update_rms_preclip"] is None else float(ns["update_rms_preclip"]),
+            "update_rms_postclip": None if ns["update_rms"] is None else float(ns["update_rms"]),
+            "update_rms_scale": float(ns["scl"]),
+        })
+        trace_entry.update(_trace_velocity_arrays(ns, "_after"))
 
 
 def force_z_channel_square_sums(frzl: TomnspsRZL) -> tuple[Any, Any]:
