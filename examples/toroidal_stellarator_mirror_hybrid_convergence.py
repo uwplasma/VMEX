@@ -241,13 +241,23 @@ _CSV_COLUMNS = (
     "full_solver_diagnostics",
     "diagnostic_light_history",
     "diagnostic_resume_state_mode",
+    "diagnostic_scan_path",
+    "diagnostic_scan_minimal",
+    "diagnostic_scan_light",
+    "diagnostic_scan_use_precomputed",
+    "diagnostic_scan_use_lax_tridi",
     "diagnostic_stage_modes",
     "diagnostic_stage_niter",
     "diagnostic_stage_offsets",
     "diagnostic_step_history_size",
+    "diagnostic_time_step_history_size",
     "diagnostic_step_status_counts",
     "diagnostic_restart_reason_counts",
     "diagnostic_bcovar_updates",
+    "diagnostic_initial_time_step",
+    "diagnostic_final_time_step",
+    "diagnostic_min_time_step",
+    "diagnostic_max_time_step",
     "diagnostic_initial_bcovar_update",
     "diagnostic_final_dt_eff",
     "diagnostic_max_update_rms",
@@ -507,10 +517,12 @@ def _solver_diagnostic_fields(diag: dict[str, object], *, fallback_size: int) ->
     w_curr = _diag_float_list(diag, "w_curr_history")
     w_try = _diag_float_list(diag, "w_try_history")
     w_try_ratio = _diag_float_list(diag, "w_try_ratio_history")
+    time_step = _diag_float_list(diag, "time_step_history")
     terminal_size = max(
         len(step_status),
         len(restart_reason),
         len(pre_restart_reason),
+        len(time_step),
         len(dt_eff),
         len(update_rms),
         len(w_curr),
@@ -532,6 +544,11 @@ def _solver_diagnostic_fields(diag: dict[str, object], *, fallback_size: int) ->
         "diagnostic_resume_state_mode": None
         if diag.get("resume_state_mode") is None
         else str(diag.get("resume_state_mode")),
+        "diagnostic_scan_path": None if diag.get("scan_path") is None else str(diag.get("scan_path")),
+        "diagnostic_scan_minimal": _diag_optional_bool(diag, "scan_minimal"),
+        "diagnostic_scan_light": _diag_optional_bool(diag, "light_history"),
+        "diagnostic_scan_use_precomputed": _diag_optional_bool(diag, "scan_use_precomputed"),
+        "diagnostic_scan_use_lax_tridi": _diag_optional_bool(diag, "scan_use_lax_tridi"),
         "diagnostic_stage_modes": stage_modes,
         "diagnostic_stage_niter": stage_niter,
         "diagnostic_stage_offsets": stage_offsets,
@@ -540,6 +557,8 @@ def _solver_diagnostic_fields(diag: dict[str, object], *, fallback_size: int) ->
         "diagnostic_step_status_history": step_status,
         "diagnostic_restart_reason_history": restart_reason,
         "diagnostic_pre_restart_reason_history": pre_restart_reason,
+        "diagnostic_time_step_history": time_step,
+        "diagnostic_time_step_history_size": int(len(time_step)),
         "diagnostic_dt_eff_history": dt_eff,
         "diagnostic_update_rms_history": update_rms,
         "diagnostic_w_curr_history": w_curr,
@@ -549,6 +568,10 @@ def _solver_diagnostic_fields(diag: dict[str, object], *, fallback_size: int) ->
         "diagnostic_step_status_counts": _counts_json(step_status),
         "diagnostic_restart_reason_counts": _counts_json(restart_reason),
         "diagnostic_bcovar_updates": int(sum(1 for value in bcovar if int(value) != 0)),
+        "diagnostic_initial_time_step": None if not time_step else float(time_step[0]),
+        "diagnostic_final_time_step": None if not time_step else float(time_step[-1]),
+        "diagnostic_min_time_step": None if not time_step else float(np.nanmin(time_step)),
+        "diagnostic_max_time_step": None if not time_step else float(np.nanmax(time_step)),
         "diagnostic_initial_bcovar_update": None if not bcovar else bool(int(bcovar[0])),
         "diagnostic_final_dt_eff": None if not dt_eff else float(dt_eff[-1]),
         "diagnostic_max_update_rms": None if not update_rms else float(np.nanmax(update_rms)),
@@ -756,6 +779,7 @@ def _write_step_diagnostic_plot(rows: list[dict[str, object]], *, outdir: Path) 
         row
         for row in rows
         if row.get("diagnostic_dt_eff_history")
+        or row.get("diagnostic_time_step_history")
         or row.get("diagnostic_update_rms_history")
         or row.get("diagnostic_w_try_ratio_history")
     ]
@@ -768,7 +792,13 @@ def _write_step_diagnostic_plot(rows: list[dict[str, object]], *, outdir: Path) 
         label = str(row["case"])
         iters = np.asarray(row.get("diagnostic_step_iter_history", []), dtype=int).reshape(-1)
         for ax, key, ylabel in (
-            (axes[0], "diagnostic_dt_eff_history", "dt effective"),
+            (
+                axes[0],
+                "diagnostic_dt_eff_history"
+                if row.get("diagnostic_dt_eff_history")
+                else "diagnostic_time_step_history",
+                "dt effective / scan dt",
+            ),
             (axes[1], "diagnostic_update_rms_history", "update RMS"),
             (axes[2], "diagnostic_w_try_ratio_history", "trial/current fsq"),
         ):
@@ -1243,6 +1273,11 @@ def main() -> None:
                     "full_solver_diagnostics": bool(args.full_solver_diagnostics),
                     "diagnostic_light_history": None,
                     "diagnostic_resume_state_mode": None,
+                    "diagnostic_scan_path": None,
+                    "diagnostic_scan_minimal": None,
+                    "diagnostic_scan_light": None,
+                    "diagnostic_scan_use_precomputed": None,
+                    "diagnostic_scan_use_lax_tridi": None,
                     "diagnostic_stage_modes": [],
                     "diagnostic_stage_niter": [],
                     "diagnostic_stage_offsets": [],
@@ -1251,6 +1286,8 @@ def main() -> None:
                     "diagnostic_step_status_history": [],
                     "diagnostic_restart_reason_history": [],
                     "diagnostic_pre_restart_reason_history": [],
+                    "diagnostic_time_step_history": [],
+                    "diagnostic_time_step_history_size": 0,
                     "diagnostic_dt_eff_history": [],
                     "diagnostic_update_rms_history": [],
                     "diagnostic_w_curr_history": [],
@@ -1260,6 +1297,10 @@ def main() -> None:
                     "diagnostic_step_status_counts": {},
                     "diagnostic_restart_reason_counts": {},
                     "diagnostic_bcovar_updates": 0,
+                    "diagnostic_initial_time_step": None,
+                    "diagnostic_final_time_step": None,
+                    "diagnostic_min_time_step": None,
+                    "diagnostic_max_time_step": None,
                     "diagnostic_initial_bcovar_update": None,
                     "diagnostic_final_dt_eff": None,
                     "diagnostic_max_update_rms": None,

@@ -111,7 +111,8 @@ use the first parsed ``threed1`` row. The direct-initial diagnostic can be
 disabled with ``--no-direct-initial-residual`` for large scans. Pass
 ``--nstep 1`` when running ``--run-vmec2000`` to make VMEC2000 print every
 iteration into ``threed1``; pass ``--full-solver-diagnostics`` to keep full
-VMEC/JAX terminal step histories and write the step-diagnostics plot. Add
+VMEC/JAX terminal step histories or scan time-step histories and write the
+step-diagnostics plot. Add
 ``--no-cli-finish`` when the goal is raw VMEC-style trajectory parity rather
 than the faster CLI finish/fallback policy. The residual-history plot then
 aligns VMEC/JAX and VMEC2000 by actual iteration labels.

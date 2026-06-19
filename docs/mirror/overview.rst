@@ -139,7 +139,9 @@ Current solver status:
   is a different, deliberately stricter initialization.  Use ``--nstep 1`` and
   ``--full-solver-diagnostics`` and ``--no-cli-finish`` in the toroidal-hybrid
   convergence example when comparing full VMEC-style iteration trajectories and
-  solver step controls.  The same convergence rows also record target and fitted
+  solver step controls; accelerated scan rows report scan time-step histories
+  when terminal step-status histories are not produced.  The same convergence
+  rows also record target and fitted
   side/corner orientation spans, covariance anisotropy ranges, and valid-axis
   fractions so low-mode boundary fits can be audited before interpreting
   residual trends.  ``--resolution-preset target`` writes the current target

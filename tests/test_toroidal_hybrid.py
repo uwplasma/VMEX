@@ -734,6 +734,7 @@ def test_toroidal_hybrid_convergence_history_summary_uses_iteration_labels():
     assert diag_fields["diagnostic_stage_modes"] == ["accelerated"]
     assert diag_fields["diagnostic_step_iter_history"] == [1, 2]
     assert diag_fields["diagnostic_step_history_size"] == 2
+    assert diag_fields["diagnostic_time_step_history_size"] == 0
     assert diag_fields["diagnostic_step_status_counts"] == {"accepted": 2}
     assert diag_fields["diagnostic_restart_reason_counts"] == {"none": 1, "bad_progress": 1}
     assert diag_fields["diagnostic_bcovar_updates"] == 1
@@ -751,6 +752,32 @@ def test_toroidal_hybrid_convergence_history_summary_uses_iteration_labels():
     assert diag_fields["diagnostic_initial_axis_reset_state_tau_min"] == -0.5
     assert diag_fields["diagnostic_initial_axis_reset_state_tau_max"] == 1.5
     assert diag_fields["diagnostic_initial_axis_reset_error"] is None
+    scan_diag_fields = module._solver_diagnostic_fields(
+        {
+            "light_history": False,
+            "resume_state_mode": "minimal",
+            "scan_path": "vmec2000",
+            "scan_minimal": False,
+            "scan_use_precomputed": True,
+            "scan_use_lax_tridi": False,
+            "time_step_history": np.asarray([0.2, 0.1, 0.05], dtype=float),
+        },
+        fallback_size=3,
+    )
+    assert scan_diag_fields["diagnostic_light_history"] is False
+    assert scan_diag_fields["diagnostic_scan_path"] == "vmec2000"
+    assert scan_diag_fields["diagnostic_scan_minimal"] is False
+    assert scan_diag_fields["diagnostic_scan_light"] is False
+    assert scan_diag_fields["diagnostic_scan_use_precomputed"] is True
+    assert scan_diag_fields["diagnostic_scan_use_lax_tridi"] is False
+    assert scan_diag_fields["diagnostic_step_history_size"] == 3
+    assert scan_diag_fields["diagnostic_step_iter_history"] == [1, 2, 3]
+    assert scan_diag_fields["diagnostic_time_step_history"] == [0.2, 0.1, 0.05]
+    assert scan_diag_fields["diagnostic_time_step_history_size"] == 3
+    assert scan_diag_fields["diagnostic_initial_time_step"] == 0.2
+    assert scan_diag_fields["diagnostic_final_time_step"] == 0.05
+    assert scan_diag_fields["diagnostic_min_time_step"] == 0.05
+    assert scan_diag_fields["diagnostic_max_time_step"] == 0.2
     assert module._csv_cell({"accepted": 2}) == '{"accepted": 2}'
     samples = sample_toroidal_stellarator_mirror_hybrid_boundary(ntheta=32, nzeta=32)
     orientation_fit = module._orientation_fit_diagnostics(samples, samples)
