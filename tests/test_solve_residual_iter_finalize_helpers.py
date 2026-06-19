@@ -7,6 +7,7 @@ from vmec_jax.solvers.fixed_boundary.residual.finalize import (
     attach_residual_iter_timing_diagnostics,
     build_residual_iter_resume_state_from_namespace,
     build_residual_iter_resume_state_payload,
+    finalize_residual_iter_from_namespace,
     finalize_residual_iter_result,
     vmec2000_state_only_scan_result,
     vmec2000_traced_scan_result,
@@ -214,6 +215,89 @@ def test_finalize_residual_iter_result_attaches_free_boundary_and_force_payload(
     assert result.diagnostics["attached"] is True
     assert getattr(result, "_final_force_payload") is payload
     np.testing.assert_allclose(result.w_history, [0.0, 1.0, 2.0])
+
+
+def test_finalize_residual_iter_from_namespace_builds_diagnostics_and_result() -> None:
+    def attach(result):
+        result.diagnostics["attached"] = True
+        return result
+
+    def convergence_flags(*, fsqr, fsqz, fsql, ftol, fsq_total_target):
+        assert fsq_total_target is None
+        return fsqr <= ftol and fsqz <= ftol and fsql <= ftol, False, fsqr + fsqz + fsql
+
+    payload = object()
+    namespace = {
+        "timing_enabled": False,
+        "timing_stats": _timing_stats(),
+        "timing_detail_enabled": False,
+        "t_iteration_loop_start": None,
+        "_solve_wall_start": 0.0,
+        "freeb_bsqvac_half_current": None,
+        "fsqr_f": 1.0e-8,
+        "fsqz_f": 2.0e-8,
+        "fsql_f": 3.0e-8,
+        "freeb_last_model": "none",
+        "freeb_last_diagnostics": {},
+        "free_boundary_enabled": False,
+        "freeb_couple_edge": False,
+        "ftol": 1.0e-7,
+        "gamma": 1.0,
+        "step_size": 0.9,
+        "precond_radial_alpha": 0.5,
+        "precond_lambda_alpha": 0.25,
+        "strict_update": True,
+        "reference_mode": False,
+        "use_restart_triggers": True,
+        "use_direct_fallback": False,
+        "max_update_rms": 5.0e-3,
+        "converged": True,
+        "badjac_use_state": False,
+        "badjac_mode": "ptau",
+        "badjac_state_probe": False,
+        "badjac_initial_state_probe_iters": 0,
+        "light_history": False,
+        "resume_state_mode": "none",
+        "fsq_total_target": None,
+        "ijacob": 0,
+        "bad_resets": 0,
+        "iter1": 1,
+        "res0": 0.0,
+        "freeb_nvacskip": 1,
+        "freeb_nvskip0": 1,
+        "freeb_ivac": -1,
+        "freeb_ivacskip": 0,
+        "free_boundary_activate_fsq": None,
+        "freeb_plascur": 0.0,
+        "state": "state",
+        "w_history": [0.0, 1.0],
+        "fsqr2_history": [1.0e-8],
+        "fsqz2_history": [2.0e-8],
+        "fsql2_history": [3.0e-8],
+        "grad_rms_history": [4.0e-8],
+        "step_history": [0.1],
+        "k": payload,
+    }
+
+    result = finalize_residual_iter_from_namespace(
+        namespace,
+        result_type=SolveVmecResidualResult,
+        nestor_external_only_step_func=lambda **_: (_ for _ in ()).throw(AssertionError("unused")),
+        residual_fsq_from_norms_func=lambda *_, **__: (_ for _ in ()).throw(AssertionError("unused")),
+        device_get_floats_func=lambda *values: tuple(float(v) for v in values),
+        residual_convergence_flags_func=convergence_flags,
+        residual_iter_history_diagnostics_func=lambda ns: {"history_marker": len(ns["w_history"])},
+        attach_free_boundary_diagnostics=attach,
+        return_final_force_payload=True,
+    )
+
+    assert result.state == "state"
+    assert result.diagnostics["attached"] is True
+    assert result.diagnostics["history_marker"] == 2
+    assert result.diagnostics["converged_strict"] is True
+    assert result.diagnostics["free_boundary"]["enabled"] is False
+    assert result.diagnostics["resume_state"] is None
+    assert getattr(result, "_final_force_payload") is payload
 
 
 def test_vmec2000_state_only_scan_result_builds_empty_history_result() -> None:
