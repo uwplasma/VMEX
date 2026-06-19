@@ -956,7 +956,7 @@ def test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_con
             "--ls-boundary-coupled-loop-steps",
             "4",
             "--ls-boundary-coupled-loop-target-merit",
-            "0.5",
+            "0.2",
             "--ls-boundary-coupled-loop-fsq-growth-limit",
             "1.5",
             "--ls-boundary-max-relative-step",
@@ -980,7 +980,7 @@ def test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_con
         assert row["ls_boundary_coupled_loop_status"] == "accepted"
         assert row["ls_boundary_coupled_loop_stop_reason"] == "target_merit"
         assert row["ls_boundary_coupled_loop_accepted_rows"] == 1
-        assert row["ls_boundary_coupled_loop_final_merit"] <= 0.5
+        assert row["ls_boundary_coupled_loop_final_merit"] <= 0.2
         assert row["ls_boundary_coupled_loop_final_fsq_growth_ratio"] <= 1.5
         assert len(row["ls_boundary_coupled_loop_rows"]) == 1
         assert row["ls_boundary_coupled_loop_rows"][0]["accepted"] is True

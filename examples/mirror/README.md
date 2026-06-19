@@ -249,7 +249,7 @@ updates with target-merit, stagnation, and ``fsq`` growth guards; loop rows
 record each LS step, realized trial, acceptance decision, stop reason, and
 optional per-step plots. A low-resolution smoke run with
 ``--baseline-maxiter 5``, ``--ls-boundary-max-relative-step 0.05``,
-``--ls-boundary-coupled-loop-target-merit 0.5``, and
+``--ls-boundary-coupled-loop-target-merit 0.2``, and
 ``--ls-boundary-coupled-loop-fsq-growth-limit 1.5`` reaches the converged
 ``free_boundary_solve_status`` for the default 1%, 3%, and 10% beta rows, with
 final LCFS merit around ``0.17``-``0.19``. This is diagnostic target-merit

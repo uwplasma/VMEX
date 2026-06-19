@@ -25223,3 +25223,124 @@ Results:
 ### User input needed
 
 No user input is needed for the next technical step.
+
+---
+## 210. Free-Boundary Target-Merit Tightening Ladder
+
+### Steps taken
+
+- Started the next free-boundary ladder from the successful M209 policy instead
+  of adding another loose smoke.
+- Re-ran the default `1%`, `3%`, and `10%` beta rows with
+  `baseline_maxiter = 5`, `fsq_growth_limit = 1.5`, and a `0.05` relative
+  boundary-step cap while tightening the target merit.
+- Confirmed that `target_merit = 0.25` converges for all three beta rows.
+- Probed `target_merit = 0.1` with `0.05`, `0.025`, and one-beta `0.01`
+  relative step caps to identify the next limiter.
+- Tightened the checked root-example regression and docs from
+  `target_merit = 0.5` to `target_merit = 0.2`, which is the strongest
+  stable all-beta smoke found in this tranche with the existing reduced LS
+  policy.
+
+### Results obtained
+
+- `target_merit = 0.25`, step cap `0.05` converged all rows in one accepted
+  realized LS step:
+  - stop reasons: `{"target_merit": 3}`;
+  - beta `1%`: final merit `0.19063313209183086`, final `fsq` growth
+    `0.7773221173331294`;
+  - beta `3%`: final merit `0.17309591864275267`, final `fsq` growth
+    `1.2395923444173464`;
+  - beta `10%`: final merit `0.17309591864275267`, final `fsq` growth
+    `1.3772021485879213`.
+- `target_merit = 0.2`, step cap `0.05` also converged all rows with the same
+  one-step realized metrics, so the regression can safely enforce the tighter
+  target.
+- `target_merit = 0.1`, step cap `0.05` did not converge:
+  - stop reasons: `{"None": 3, "rejected_merit_increase": 3}`;
+  - each beta row accepted one update, then rejected the next realized solve
+    because LCFS merit increased.
+- `target_merit = 0.1`, step cap `0.025` improved the multi-step trajectory but
+  still did not converge:
+  - stop reasons: `{"None": 8, "rejected_merit_increase": 3}`;
+  - beta `1%` accepted two steps and reached last-accepted merit
+    `0.18671607201455725`;
+  - beta `3%` and `10%` accepted three steps and reached last-accepted merit
+    `0.1573370227729231`.
+- A one-beta `1%` run with step cap `0.01` was worse, accepting one step to
+  merit `0.49502933154908396` before a merit-increase rejection.
+- The next limiter is therefore not simply an oversized step cap.  Tighter
+  production LCFS targets likely need a better reduced boundary parametrization
+  or a promoted residual-vector nonlinear solve policy, not just smaller scalar
+  steps.
+
+### How it was tested
+
+```bash
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m210_target025_step005 --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 8 --ls-boundary-coupled-loop-target-merit 0.25 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.05 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m210_target010_step005 --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 8 --ls-boundary-coupled-loop-target-merit 0.1 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.05 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m210_target010_step0025 --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 8 --ls-boundary-coupled-loop-target-merit 0.1 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.025 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m210_beta1_target010_step001 --betas 1 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 12 --ls-boundary-coupled-loop-target-merit 0.1 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.01 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m210_target020_step005 --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 8 --ls-boundary-coupled-loop-target-merit 0.2 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.05 --no-plots
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_convergence -q
+python -m ruff check tests/mirror/test_mirror_examples.py examples/mirror_free_boundary_circular_coils.py
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- The tightened root-example regression passed: `1 passed in 5.46s`.
+- Ruff passed for the touched free-boundary example/test files.
+- Sphinx docs build passed with warnings as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The test update stays in `tests/mirror/test_mirror_examples.py`, where the
+  root free-boundary example contract is already tested end to end.
+- The source example schema did not need another version bump because the JSON
+  contract is unchanged; only the verified target became tighter.
+- Documentation changes are limited to `examples/mirror/README.md`,
+  `docs/mirror/overview.rst`, and `docs/mirror/readiness.rst`.
+- Ladder outputs remain in ignored `results/mirror/...` directories, keeping
+  the repository light.
+
+### Best next steps
+
+1. Commit and push this M210 tranche, then update the draft PR body and snapshot
+   failed checks.
+2. Convert the `0.1` failure evidence into the next implementation step: either
+   expand the polynomial boundary basis beyond `[r0, a2, a4]`, or wire the
+   existing residual-vector nonlinear solve into the realized coupled loop so
+   that accepted steps can continue after the first scalar-LS update.
+3. Run a modest `ns`/`nxi` ladder after that policy change to separate
+   discretization error from parametrization/line-search limits.
+
+### Completion percentages after M210
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.6%` overall for the diagnostic/reduced solver
+  scope; checked all-beta target merit is now `0.2`, while production LCFS
+  convergence below `0.1` remains open.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `99.9%`.
+- ESSOS circular-coil mirror beta scan: `99.35%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.87%`, pending production free-boundary LCFS
+  decision/evidence, broader differentiable solved-state promotion, final
+  checks, and review decision on deferred lanes.
+
+### User input needed
+
+No user input is needed for the next technical step.
