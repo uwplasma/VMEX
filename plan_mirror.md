@@ -24561,3 +24561,84 @@ Results:
 ### User input needed
 
 No user input is needed for the next audit pass.
+
+---
+## 204. Deferred-Lane Wording Cleanup
+
+### Steps taken
+
+- Continued the final audit after M203, focusing on wording for lanes that
+  remain planned or diagnostic.
+- Updated `docs/mirror/index.rst` so the warning no longer says promoted
+  toroidal hybrid convergence studies are still pending.  It now names the
+  actual remaining work: production free-boundary solves, anisotropic pressure,
+  strict-component target checks, broader hybrid convergence studies, and the
+  final differentiable implicit-solve API.
+- Cleaned a repeated phrase in `docs/mirror/overview.rst` while preserving the
+  scan/CLI-finish diagnostic description and target-ladder caveat.
+
+### Results obtained
+
+- Current mirror docs now separate:
+  - target-ladder total-`fsq` evidence, which is present;
+  - strict-component target checks, which remain optional/future promotion work;
+  - production free-boundary LCFS solves, which remain planned work;
+  - differentiable full-equilibrium APIs, which remain planned work.
+- Focused stale-wording search over `docs/mirror`, `examples/mirror`,
+  `vmec_jax`, and `tests` returned no current-doc matches for old target-pending
+  language.
+
+### How it was tested
+
+```bash
+rg -n "promoted toroidal hybrid convergence studies|target-resolution production claim false|until solved/parity evidence|target-ladder convergence evidence remains pending|full target-ladder convergence evidence remains pending|no-solve ladder|solved/parity evidence is added|target-resolution hybrid convergence lanes deferred" docs/mirror examples/mirror vmec_jax tests --glob '!docs/_build/**'
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Focused stale-wording search returned no matches.
+- Sphinx docs build passed with warnings as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- This was a docs-only cleanup.
+- No generated outputs were tracked.
+
+### Best next steps
+
+1. Commit and push this M204 plan entry.
+2. Update the draft PR body section count to 204.
+3. Snapshot PR checks.
+4. Run one final worktree/source audit for uncommitted files, generated outputs,
+   and any obvious stale checklist text before deciding whether more code work
+   remains.
+
+### Completion percentages after M204
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.3%` overall for the current diagnostic/reduced
+  solver scope, with production LCFS convergence still explicitly planned.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `99.5%`.
+- ESSOS circular-coil mirror beta scan: `99%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.7%`, pending GitHub checks, final worktree
+  audit, and explicit review decision on deferred production
+  free-boundary/strict-component lanes.
+
+### User input needed
+
+No user input is needed.
