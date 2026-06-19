@@ -348,6 +348,13 @@ _scan_fallback_policy = _solve_runtime._scan_fallback_policy
 _residual_convergence_flags = _solve_runtime._residual_convergence_flags
 
 
+def _edge_bsqvac_from_nestor(nestor_result, static) -> np.ndarray:
+    bsqvac_edge = np.asarray(nestor_result.vac_total.bsqvac, dtype=float)
+    if bsqvac_edge.ndim == 2 and int(bsqvac_edge.shape[1]) == 1 and int(getattr(static.cfg, "nzeta", 1)) > 1:
+        bsqvac_edge = np.repeat(bsqvac_edge, int(static.cfg.nzeta), axis=1)
+    return bsqvac_edge
+
+
 def _scan_chunk_settings(
     *,
     max_iter_scan: int,
@@ -2896,13 +2903,7 @@ def solve_fixed_boundary_residual_iter(
                             freeb_nestor_bnormal_rms_history.append(float("nan"))
                             freeb_nestor_gsource_rms_history.append(float("nan"))
                             freeb_nestor_bsqvac_rms_history.append(float("nan"))
-                        bsqvac_edge = np.asarray(nestor_res.vac_total.bsqvac, dtype=float)
-                        if (
-                            bsqvac_edge.ndim == 2
-                            and int(bsqvac_edge.shape[1]) == 1
-                            and int(getattr(static.cfg, "nzeta", 1)) > 1
-                        ):
-                            bsqvac_edge = np.repeat(bsqvac_edge, int(static.cfg.nzeta), axis=1)
+                        bsqvac_edge = _edge_bsqvac_from_nestor(nestor_res, static)
                         # Only the edge slice is consumed by the force kernels.
                         # Keep this as a 2D edge field so the GPU path does not
                         # re-transfer a mostly-zero `(ns, ntheta, nzeta)` array
@@ -2973,14 +2974,7 @@ def solve_fixed_boundary_residual_iter(
                     freeb_nestor_trial_solve_time_history.append(float(getattr(nestor_trial, "solve_time_s", 0.0)))
                     freeb_nestor_trial_sample_time_history.append(float(getattr(nestor_trial, "sample_time_s", 0.0)))
                     freeb_nestor_trial_failed_history.append(0)
-                    bsqvac_edge_trial = np.asarray(nestor_trial.vac_total.bsqvac, dtype=float)
-                    if (
-                        bsqvac_edge_trial.ndim == 2
-                        and int(bsqvac_edge_trial.shape[1]) == 1
-                        and int(getattr(static.cfg, "nzeta", 1)) > 1
-                    ):
-                        bsqvac_edge_trial = np.repeat(bsqvac_edge_trial, int(static.cfg.nzeta), axis=1)
-                    return bsqvac_edge_trial
+                    return _edge_bsqvac_from_nestor(nestor_trial, static)
                 except Exception:
                     freeb_nestor_trial_reused_history.append(0)
                     freeb_nestor_trial_solve_time_history.append(0.0)
