@@ -63,6 +63,15 @@ from vmec_jax.mirror.validation.coils import (
 pytestmark = pytest.mark.mirror
 
 
+def test_mirror_public_namespace_reexports_api_contract():
+    import vmec_jax.mirror as mirror
+    import vmec_jax.mirror.api as api
+
+    assert mirror.__all__ == api.__all__
+    for name in api.__all__:
+        assert getattr(mirror, name) is getattr(api, name)
+
+
 def test_basis_convenience_methods_and_fourier_guards():
     axial = ChebyshevLobattoBasis.from_num_nodes(5)
     values = axial.nodes**2

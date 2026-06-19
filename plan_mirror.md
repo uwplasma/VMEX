@@ -21795,3 +21795,89 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+---
+## 180. Mirror Public Namespace Single-Source Simplification
+
+### Steps taken
+
+- Simplified `vmec_jax/mirror/__init__.py` so it re-exports
+  `vmec_jax.mirror.api` directly and imports `api.__all__` as the package
+  `__all__`.
+- Removed the duplicated 100-item public export list from the package
+  initializer.
+- Added a focused test that `vmec_jax.mirror.__all__` is exactly
+  `vmec_jax.mirror.api.__all__` and that every exported object is the same
+  object in both namespaces.
+
+### Results obtained
+
+- The mirror public namespace now has a single source of truth for exported
+  symbols.
+- Future public API additions only need to update `api.py`, reducing file
+  churn and drift risk in `__init__.py`.
+- The initializer is now four lines instead of a long duplicated import and
+  `__all__` block.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format vmec_jax/mirror/__init__.py tests/mirror/test_mirror_low_level_coverage.py
+python -m ruff check vmec_jax/mirror/__init__.py tests/mirror/test_mirror_low_level_coverage.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_low_level_coverage.py -q
+JAX_ENABLE_X64=1 pytest tests/mirror -q
+git diff --check
+```
+
+Results:
+
+- Ruff format left both files unchanged.
+- Ruff check passed.
+- Focused low-level mirror coverage passed: `7 passed in 2.32s`.
+- Full mirror suite passed on the updated head: `230 passed, 1 skipped in
+  203.66s`.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- This is a source simplification, not a public API change: all names still
+  come from `vmec_jax.mirror.api` and are re-exported at `vmec_jax.mirror`.
+- The new test is in `tests/mirror/test_mirror_low_level_coverage.py`, where
+  other low-level guard and key-normalization tests already live.
+- No generated output files or figures were added to the repository.
+
+### Best next steps
+
+1. Commit and push M180.
+2. Update the draft PR body validation note to include the `230 passed,
+   1 skipped` full mirror-suite result and namespace simplification.
+3. Re-check CI after the latest push has had time to finish, inspecting only
+   failed jobs.
+4. Continue the completion audit with finite-current validation and final PR
+   readiness checks.
+
+### Completion percentages after M180
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `93%`.
+- Residual Newton / preconditioning: `94%`.
+- Two-coil and manufactured validation: `92%`.
+- Finite-current pitch validation: `87%`.
+- Plotting and `vmec --plot` mirror support: `97%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `95%`.
+- Mirror-Boozer-like diagnostics: `88%`.
+- Free-boundary mirror lane: `99%` overall, with reduced residual-vector
+  nonlinear solve scope complete.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- Public API/source simplification: `100%` for the mirror package initializer.
+- PR merge readiness overall: `99%`.
+
+### User input needed
+
+No user input is needed.
