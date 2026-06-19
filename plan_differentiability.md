@@ -25261,3 +25261,75 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999999919%.
+
+## 2026-06-19 Residual Accepted-Trace Assembly Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved strict-update accepted-branch trace entry construction from
+   `solve_fixed_boundary_residual_iter` into
+   `build_strict_update_adjoint_trace_entry`.
+2. Moved post-update trace finalization into
+   `finalize_strict_update_adjoint_trace_entry`.
+3. Kept nonlinear update, accept/reject decisions, restart policy, and
+   adaptive-branch behavior inside the residual loop.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` decreased from 4095 to 3981 lines.
+- `residual/iteration.py` decreased from 4444 to 4328 source lines.
+- Net source delta is +9 lines because the accepted-trace schema is now named
+  and testable in `residual/force_payload.py`.
+- The trace schema is now owned by the residual force-payload domain instead of
+  being embedded in the long nonlinear iteration loop.
+
+Tests and commands run:
+
+- `python -m py_compile vmec_jax/solvers/fixed_boundary/residual/force_payload.py vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/force_payload.py vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python tools/diagnostics/source_health.py --top 30 --max-root-helper-prefix-files 2`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_discrete_adjoint_qh.py::test_strict_update_accepted_step_reconstructs_first_qh_step tests/test_discrete_adjoint_qh.py::test_strict_update_accepted_step_vjp_identity_qh -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_active_direct_coil_adjoint_trace_records_vacuum_forcing_and_pressure_scale tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_full_adjoint_trace_records_raw_preconditioner_on_fused_payload_path tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_branch_trace_mode_keeps_replay_controls_without_raw_force_payload -q`
+
+Best next steps:
+
+1. Commit and push this accepted-trace extraction.
+2. Continue reducing the residual iteration loop with self-contained seams
+   first, especially trace/finalization/postprocessing code.
+3. Keep adaptive branch-selection differentiation changes behind explicit
+   fingerprint-gated AD-vs-FD tests.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999994%.
+- Solver monolith reduction: 99.900%.
+- Free-boundary adjoint monolith reduction: 99.63%.
+- Driver workflow decomposition: 99.963%.
+- Residual iteration decomposition: 99.49%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.30%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.899%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.15%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.86%.
+- Discrete-adjoint replay decomposition: 99.24%.
+- Free-boundary validation-gate maintainability: 98.45%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999999922%.

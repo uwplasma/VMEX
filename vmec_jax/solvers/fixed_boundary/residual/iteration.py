@@ -90,7 +90,9 @@ from vmec_jax.solvers.fixed_boundary.residual.force_cache import (
     select_compute_forces_callable as _select_compute_forces_callable,
 )
 from vmec_jax.solvers.fixed_boundary.residual.force_payload import (
+    build_strict_update_adjoint_trace_entry as _build_strict_update_adjoint_trace_entry,
     evaluate_residual_force_from_state as _evaluate_residual_force_from_state,  # noqa: F401 - compatibility alias for tests/internal users.
+    finalize_strict_update_adjoint_trace_entry as _finalize_strict_update_adjoint_trace_entry,
     make_residual_force_evaluator as _make_residual_force_evaluator,
 )
 from vmec_jax.solvers.fixed_boundary.residual.update import (
@@ -280,10 +282,6 @@ _m1_internal_to_physical_pair = _geometry_m1_internal_to_physical_pair
 _mn_sin_to_signed_physical_batch = _geometry_mn_sin_to_signed_physical_batch
 _rz_norm_np = _geometry_rz_norm_np
 
-_TRACE_VELOCITY_NAMES = ("Rcc", "Rss", "Zsc", "Zcs", "Lsc", "Lcs", "Rsc", "Rcs", "Zcc", "Zss", "Lcc", "Lss")
-_TRACE_TOMNSP_NAMES = ("frcc", "frss", "fzsc", "fzcs", "flsc", "flcs", "frsc", "frcs", "fzcc", "fzss", "flcc", "flss")
-
-
 _strict_update_step_jit = partial(_precond_payload_facade._strict_update_step_jit, has_jax_func=has_jax)
 _preconditioner_output_scaling_jit = partial(
     _precond_payload_facade._preconditioner_output_scaling_jit,
@@ -467,21 +465,6 @@ def solve_fixed_boundary_residual_iter(
     adjoint_trace_mode = startup_policy.adjoint_trace_mode
     preconditioner_use_precomputed_tridi_policy = startup_policy.preconditioner_use_precomputed_tridi_policy
     preconditioner_use_lax_tridi_policy = startup_policy.preconditioner_use_lax_tridi_policy
-
-    def _adjoint_trace_array(value):
-        return _materialize_adjoint_trace_array(value, mode=adjoint_trace_mode)
-
-    def _optional_adjoint_trace_array(value):
-        return None if value is None else _adjoint_trace_array(value)
-
-    def _trace_named_arrays(prefix: str, items, *, suffix: str = "") -> dict[str, Any]:
-        return {f"{prefix}{name}{suffix}": None if value is None else np.asarray(value) for name, value in items}
-
-    def _trace_velocity_adjoint(ns: dict[str, Any], suffix: str) -> dict[str, Any]:
-        return {f"v{name}{suffix}": _adjoint_trace_array(ns[f"v{name}"]) for name in _TRACE_VELOCITY_NAMES}
-
-    def _trace_velocity_arrays(ns: dict[str, Any], suffix: str) -> dict[str, Any]:
-        return {f"v{name}{suffix}": np.asarray(ns[f"v{name}"]) for name in _TRACE_VELOCITY_NAMES}
 
     signgs = startup_policy.signgs
     fsq_total_target = startup_policy.fsq_total_target
@@ -3697,81 +3680,11 @@ def solve_fixed_boundary_residual_iter(
             state_backup = state
             t_trace_build_start = time.perf_counter() if timing_enabled and adjoint_trace else None
             if adjoint_trace:
-                constraint_precond_diag_trace = (
-                    None
-                    if constraint_precond_diag is None
-                    else tuple(_adjoint_trace_array(x) for x in constraint_precond_diag)
+                trace_entry = _build_strict_update_adjoint_trace_entry(
+                    locals(),
+                    materialize_func=_materialize_adjoint_trace_array,
+                    adjoint_trace_mode=adjoint_trace_mode,
                 )
-                trace_entry: dict[str, Any] = {
-                    "branch": "strict_update",
-                    "state_pre": state_backup,
-                    "force_state_pre": force_state_pre_current,
-                    "max_update_rms_pre": float(max_update_rms),
-                    "max_coeff_delta_rms_pre": float(max_coeff_delta_rms),
-                    "divide_by_scalxc_for_update": bool(divide_by_scalxc_for_update),
-                    "lambda_update_scale": float(lambda_update_scale),
-                    "apply_lforbal": bool(apply_lforbal),
-                    "apply_m1_constraints": bool(apply_m1_constraints),
-                    "include_edge_residual": bool(include_edge_residual),
-                    "vmec2000_control": bool(vmec2000_control),
-                    "limit_dt_from_force": bool(limit_dt_from_force),
-                    "signgs": int(signgs),
-                    "zero_m1": _adjoint_trace_array(zero_m1),
-                    "wout_like": wout_like,
-                    "trig": trig,
-                    "w_mode_mn": _adjoint_trace_array(w_mode_mn),
-                    "precond_jmax": int(jmax),
-                    "preconditioner_use_precomputed_tridi": bool(preconditioner_use_precomputed_tridi_policy),
-                    "preconditioner_use_lax_tridi": bool(preconditioner_use_lax_tridi_policy),
-                    "inv_tau_before": _adjoint_trace_array(inv_tau),
-                    "fsq_prev_before": float(fsq_prev_before),
-                    "reset_inv_tau": bool(iter2 == iter1),
-                    "constraint_cache_update": bool(need_bcovar_update),
-                    "precond_cache_update": bool(preconditioner_cache_update_trace),
-                    "freeb_bsqvac_half": _optional_adjoint_trace_array(freeb_bsqvac_half_current),
-                    "freeb_pres_scale": None if freeb_pres_scale is None else float(freeb_pres_scale),
-                    "freeb_plascur": float(freeb_plascur),
-                    "freeb_plascur_for_bsqvac": float(freeb_plascur_for_bsqvac),
-                    "freeb_nestor_trace": freeb_nestor_trace_current,
-                    "constraint_rcon0": _optional_adjoint_trace_array(constraint_rcon0_current),
-                    "constraint_zcon0": _optional_adjoint_trace_array(constraint_zcon0_current),
-                    "constraint_tcon0": None if constraint_tcon0 is None else float(constraint_tcon0),
-                    "constraint_precond_diag": constraint_precond_diag_trace,
-                    "constraint_tcon": _optional_adjoint_trace_array(constraint_tcon_override),
-                    "constraint_precond_active": _adjoint_trace_array(constraint_precond_active),
-                    "constraint_tcon_active": _adjoint_trace_array(constraint_tcon_active),
-                    "lam_prec": np.asarray(lam_prec),
-                    "precond_mats": mats,
-                }
-                trace_entry.update(_trace_velocity_adjoint(locals(), "_before"))
-                if adjoint_trace_mode == "full":
-                    trace_entry.update(
-                        _trace_named_arrays("frzl_", ((name, getattr(frzl, name, None)) for name in _TRACE_TOMNSP_NAMES))
-                    )
-                    trace_entry.update(
-                        _trace_named_arrays(
-                            "frzl_rz_", ((name, getattr(frzl_rz, name, None)) for name in _TRACE_TOMNSP_NAMES)
-                        )
-                    )
-                    trace_entry.update(
-                        _trace_named_arrays(
-                            "",
-                            (
-                                ("frcc_u", frcc_u),
-                                ("frss_u", frss_u),
-                                ("fzsc_u", fzsc_u),
-                                ("fzcs_u", fzcs_u),
-                                ("flsc_u", flsc_u),
-                                ("flcs_u", flcs_u),
-                                ("frsc_u", frsc_u),
-                                ("frcs_u", frcs_u),
-                                ("fzcc_u", fzcc_u),
-                                ("fzss_u", fzss_u),
-                                ("flcc_u", flcc_u),
-                                ("flss_u", flss_u),
-                            ),
-                        )
-                    )
             if timing_enabled and t_trace_build_start is not None:
                 timing_stats["update_trace_build"] += time.perf_counter() - float(t_trace_build_start)
             t_state_update_start = time.perf_counter() if timing_enabled else None
@@ -4222,40 +4135,11 @@ def solve_fixed_boundary_residual_iter(
                 timing_stats["update_state"] += t_state_update_ready_done - float(t_state_update_start)
             t_trace_finalize_start = time.perf_counter() if timing_enabled and adjoint_trace else None
             if adjoint_trace:
-                trace_entry.update(
-                    {
-                        "step_status": str(step_status),
-                        "restart_reason": str(restart_reason),
-                        "restart_path": str(restart_path),
-                        "time_step": float(time_step),
-                        "flip_sign": float(flip_sign),
-                        "limit_update_rms": bool(limit_update_rms),
-                    }
+                _finalize_strict_update_adjoint_trace_entry(
+                    trace_entry,
+                    locals(),
+                    adjoint_trace_mode=adjoint_trace_mode,
                 )
-                if adjoint_trace_mode in {"full", "branch"}:
-                    trace_entry.update(
-                        {
-                            "dt_eff": float(dt_eff),
-                            "b1": float(b1),
-                            "fac": float(fac),
-                            "force_scale": float(force_scale),
-                            "state_post": state,
-                        }
-                    )
-                if adjoint_trace_mode == "full":
-                    trace_entry.update(
-                        {
-                            "w_curr": float(w_curr),
-                            "w_try": float(w_try),
-                            "w_try_ratio": float(w_try_ratio),
-                            "update_rms_preclip": None if update_rms_preclip is None else float(update_rms_preclip),
-                            "update_rms_postclip": None if update_rms is None else float(update_rms),
-                            "update_rms_scale": float(scl),
-                        }
-                    )
-                    trace_entry.update(
-                        _trace_velocity_arrays(locals(), "_after")
-                    )
                 adjoint_step_trace_history.append(trace_entry)
             if timing_enabled and t_trace_finalize_start is not None:
                 timing_stats["update_trace_finalize"] += time.perf_counter() - float(t_trace_finalize_start)
