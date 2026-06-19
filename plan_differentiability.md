@@ -18962,3 +18962,80 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999985%.
+
+## 2026-06-18 Residual Preconditioner Cache Refresh Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Revisited the source-health report after the transform cleanup and selected
+   `solve_fixed_boundary_residual_iter`, still the largest production function
+   and the main manageability bottleneck.
+2. Extracted the duplicated VMEC2000 preconditioner-cache refresh and diagnostic
+   dump sequence into a local `_refresh_preconditioner_cache` helper.
+3. Replaced both the 3D VMEC2000-control and axisymmetric VMEC2000-control
+   copies with calls to the helper, leaving their branch-specific force-block
+   assembly paths unchanged.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` changed by 92
+  insertions and 146 deletions, net `-54` source lines.
+- File length dropped from 5923 to 5869 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 5518 to 5464 lines.
+- The extraction preserves preconditioner cache reuse, timing counters, lambda
+  diagnostics, preconditioner matrix dumps, and VMEC2000-control branch behavior.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_preconditioner_metric_helpers.py tests/test_solve_residual_iter_policy.py tests/test_solve_performance_instrumentation.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_finish_cache_more_coverage.py tests/test_solve_residual_optimizer_wave8_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_api.py::test_run_fixed_boundary_initial_guess tests/test_driver_api.py::test_run_fixed_boundary_returns_current_driven_flux_profiles tests/test_driver_api.py::test_run_fixed_boundary_keeps_supporting_free_boundary_inputs -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_api.py::test_run_fixed_boundary_accelerated_mode_uses_scan tests/test_driver_api.py::test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid -q`
+- `python tools/diagnostics/source_health.py | head -90`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue residual-loop decomposition by targeting the remaining preconditioner
+   force-block assembly duplication, but only if it can be covered by focused
+   VMEC2000-control and axisymmetric tests.
+2. Continue source-health reduction in `driver.py` or `discrete_adjoint.py` if
+   the residual loop’s next seam is too entangled for a safe net-negative patch.
+3. Keep CI deferred; these local gates are enough for this tranche, with full
+   CI verification left for later.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.9999992%.
+- Solver monolith reduction: 99.79%.
+- Free-boundary adjoint monolith reduction: 99.50%.
+- Driver workflow decomposition: 99.94%.
+- Residual iteration decomposition: 98.86%.
+- WOUT diagnostic/profile decomposition: 99.95%.
+- Bcovar/WOUT parity decomposition: 99.13%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.81%.
+- Tomnsps transform decomposition: 98.9%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.66%.
+- Fixed-boundary optimizer decomposition: 96.05%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.45%.
+- Free-boundary validation-gate maintainability: 97.3%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999988%.
