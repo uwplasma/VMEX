@@ -19993,3 +19993,74 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999969%.
+
+## 2026-06-19 Plot Output Directory Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Re-ran source-health and confirmed `plotting.py` remains a production
+   warning after the previous axis-evaluation cleanup.
+2. Added `_ensure_plot_outdir` to centralize repeated `Path(...)` conversion
+   and `mkdir(parents=True, exist_ok=True)` behavior.
+3. Replaced duplicate output-directory setup in VMEC, Boozer, objective-history,
+   optimization, and wout plotting wrappers.
+4. Left example-output helpers unchanged where they already encode a separate
+   examples/outputs path policy.
+
+Results obtained:
+
+- `vmec_jax/plotting.py` changed by 17 insertions and 36 deletions, net `-19`
+  source lines.
+- The file decreased from 2179 to 2160 lines.
+- Public plotting behavior is unchanged, but output-directory policy now has one
+  implementation for ordinary plotting wrappers.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/plotting.py`
+- `python -m ruff check vmec_jax/plotting.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_plotting_fast_helpers.py tests/test_plotting_unit.py tests/test_plotting_helpers.py -q`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue plotting cleanup only if another line-negative wrapper seam exists;
+   otherwise target larger production hotspots.
+2. Next high-value source-health lanes are residual iteration, free-boundary
+   NESTOR, discrete-adjoint replay, and optimizer dispatch.
+3. Use GPU/office only for changes that affect execution, replay, or
+   performance paths; this plotting tranche is fully CPU-testable.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999410%.
+- Solver monolith reduction: 99.79%.
+- Free-boundary adjoint monolith reduction: 99.51%.
+- Driver workflow decomposition: 99.945%.
+- Residual iteration decomposition: 98.88%.
+- WOUT diagnostic/profile decomposition: 99.965%.
+- Bcovar/WOUT parity decomposition: 99.14%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.81%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.71%.
+- Fixed-boundary optimizer decomposition: 96.18%.
+- Plotting/WOUT visualization decomposition: 96.80%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.58%.
+- Free-boundary validation-gate maintainability: 97.45%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999970%.
