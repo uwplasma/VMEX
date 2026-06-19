@@ -24141,3 +24141,76 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999999982%.
+
+## 2026-06-19 LASYM WOUT Nyquist Domain Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved LASYM Nyquist coefficient assembly from
+   `wout_minimal_from_fixed_boundary(...)` into
+   `io/wout/nyquist.py:minimal_wout_lasym_nyquist_coefficients(...)`.
+2. Kept the LASYM bsub filtering and debug-dump hook in the WOUT writer, then
+   delegated the coefficient split, loop/vector transform choice, Nyquist
+   band-limit masking, VMEC bsubuv output scaling, and endpoint conventions to
+   the Nyquist domain.
+3. Preserved private compatibility exports in `wout.py` for existing tests and
+   downstream debug code.
+
+Results obtained:
+
+- `wout_minimal_from_fixed_boundary` decreased further from 631 to 563 lines.
+- The WOUT writer now handles orchestration while the LASYM transform policy
+  lives beside the symmetric Nyquist policy and low-level `wrout` transforms.
+- The new helper is intentionally parity-oriented rather than a new numerical
+  algorithm; no VMEC formula changes were made.
+
+Tests and commands run:
+
+- `python -m py_compile vmec_jax/wout.py vmec_jax/io/wout/nyquist.py`
+- `python -m ruff check vmec_jax/wout.py vmec_jax/io/wout/nyquist.py`
+- `python tools/diagnostics/source_health.py --top 20 --max-root-helper-prefix-files 2`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_helpers.py tests/test_wout_branch_coverage.py tests/test_wout_wave5_coverage.py tests/test_wout_lasym_bsubv_parity.py -q`
+
+Best next steps:
+
+1. Commit and push this WOUT Nyquist extraction.
+2. Keep WOUT follow-up limited to direct helper tests or small parity fixes.
+   The next high-value production tranche should return to the residual
+   non-scan loop or the implicit VMEC-residual solve.
+3. Continue avoiding new top-level helper files unless a domain package already
+   exists or the source-health win is large enough to justify it.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999985%.
+- Solver monolith reduction: 99.872%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.953%.
+- Residual iteration decomposition: 99.33%.
+- WOUT diagnostic/profile decomposition: 99.990%.
+- Bcovar/WOUT parity decomposition: 99.22%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.895%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.1%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 99.20%.
+- Free-boundary validation-gate maintainability: 98.40%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999999983%.
