@@ -452,6 +452,8 @@ def _jxbforce_filter_with_bsubs_derivs_loop(
 
                 for k in range(nzeta):
                     for j in range(nt2):
+                        tsini1 = sinmui[j, m] * cosnv[k, n] * dnorm1
+                        tsini2 = cosmui[j, m] * sinnv[k, n] * dnorm1
                         tcosi1 = cosmui[j, m] * cosnv[k, n] * dnorm1
                         tcosi2 = sinmui[j, m] * sinnv[k, n] * dnorm1
                         vbs = bsubs_s[j, k]

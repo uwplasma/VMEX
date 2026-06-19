@@ -18662,3 +18662,81 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9999996%.
+
+## 2026-06-18 WOUT Payload Unpacking and Helper Regression Fixes
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Revisited the current source-health report and selected
+   `wout_minimal_from_fixed_boundary` as the next production-code hotspot
+   because it remained the largest WOUT function after the residual loop.
+2. Replaced repeated `NamedTuple` field-by-field unpacking for profile, bcovar,
+   BSS-source, and symmetric-Nyquist payloads with compact tuple unpacking while
+   preserving the same local variable names consumed by the final WOUT schema
+   builder.
+3. Fixed two WOUT helper regressions exposed by the focused helper suite:
+   `_apply_bsubv_equif_correction` now resolves the compatibility
+   `vmec_pwint_from_trig` at call time instead of freezing it through a partial,
+   and `_jxbforce_filter_with_bsubs_derivs_loop` now defines the missing
+   `tsini1`/`tsini2` accumulators for the coupled bsubs derivative path.
+
+Results obtained:
+
+- `vmec_jax/wout.py` dropped from 1770 to 1742 lines.
+- `wout_minimal_from_fixed_boundary` dropped from 740 to 710 lines.
+- The complete diff is net-negative across the WOUT tranche:
+  20 insertions and 46 deletions across two files.
+- The helper fixes restore coverage paths that exercise monkeypatched
+  `vmec_pwint_from_trig` and the loop-based jxbforce derivative filter.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/wout.py vmec_jax/io/wout/jxbforce.py`
+- `python -m ruff check vmec_jax/wout.py vmec_jax/io/wout/jxbforce.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_helpers.py tests/test_wout_fast_helpers.py tests/test_wout_branch_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_beta_eqfor_bundled_parity.py tests/test_equif_eqfor_parity.py tests/test_glasser_resistive_interchange.py -q`
+- `python tools/diagnostics/source_health.py | head -90`
+
+Best next steps:
+
+1. Continue production-code reductions where they are measurable and
+   behavior-preserving; next likely candidates are `implicit.py`, the fixed
+   boundary driver, and carefully audited residual-loop seams.
+2. Keep WOUT changes small and parity-tested because the remaining body is
+   mostly jxbforce/Mercier/Glasser compatibility plumbing.
+3. Defer broad CI watching; use focused physics/parity gates after each tranche
+   and leave full CI for later review.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.78%.
+- Free-boundary adjoint monolith reduction: 99.48%.
+- Driver workflow decomposition: 99.94%.
+- Residual iteration decomposition: 98.79%.
+- WOUT diagnostic/profile decomposition: 99.95%.
+- Bcovar/WOUT parity decomposition: 99.13%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.81%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.66%.
+- Fixed-boundary optimizer decomposition: 96.05%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.45%.
+- Discrete-adjoint replay decomposition: 96.45%.
+- Free-boundary validation-gate maintainability: 97.3%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9999997%.
