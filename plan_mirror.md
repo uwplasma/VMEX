@@ -23706,3 +23706,111 @@ GPU/VMEC2000 environment will be useful for the target-preset solved/parity
 campaign.
 
 ---
+## 198. Toroidal Hybrid Target Campaign Case Filtering
+
+### Steps taken
+
+- Continued the toroidal hybrid target-resolution lane after adding the named
+  target preset in M197.
+- Added `--case-filter` to
+  `examples/toroidal_stellarator_mirror_hybrid_convergence.py`.
+- The filter accepts comma-separated shell patterns matched against generated
+  case names, for example `*ns015*`.
+- Added helper functions for parsing and matching case filters.
+- Added a guard that raises an error when filters select no rows, avoiding
+  empty target-campaign reports.
+- Added top-level summary metadata `case_filters` so filtered target runs are
+  auditable.
+- Added a filtered target-preset test that verifies `*ns015*` selects the two
+  target rows with `mpol:ntor = 5:20,6:24`.
+- Updated the examples README and mirror overview to document case filtering
+  for splitting the target campaign across machines.
+
+### Results obtained
+
+- The target-resolution campaign can now be partitioned without editing the
+  runner or committing generated result trees.
+- The no-solve target ladder remains explicit, and filtered reports preserve
+  enough metadata to reconstruct which subset was run.
+- The target-resolution production claim remains false until solved/parity
+  evidence is produced over the target ladder.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py
+python -m py_compile examples/toroidal_stellarator_mirror_hybrid_convergence.py
+python -m ruff check \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_toroidal_hybrid.py
+JAX_ENABLE_X64=1 pytest \
+  tests/test_toroidal_hybrid.py::test_toroidal_hybrid_convergence_example_target_preset_without_solve \
+  tests/test_toroidal_hybrid.py::test_toroidal_hybrid_convergence_example_filters_target_preset_cases \
+  tests/test_toroidal_hybrid.py::test_toroidal_hybrid_convergence_history_summary_uses_iteration_labels -q
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Ruff formatting made no changes.
+- Syntax compilation passed.
+- Ruff lint passed.
+- Focused target/filter tests passed: `3 passed in 2.40s`.
+- Full toroidal-hybrid tests passed: `30 passed in 8.71s`.
+- Sphinx docs build passed with warnings as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- Case filtering stays in the root convergence runner because it is campaign
+  orchestration, not core physics code.
+- The filter uses standard shell-pattern matching on generated case names,
+  keeping scripts simple and easy to reproduce in terminal logs.
+- The runner still writes results only under user-selected output directories;
+  no generated outputs or figures are tracked.
+
+### Best next steps
+
+1. Commit and push M198.
+2. Update the draft PR body with section 198 and the `30 passed` toroidal
+   validation result.
+3. Inspect only failed CI jobs after the push.
+4. Use `--resolution-preset target --case-filter ... --run-solve` on the
+   office VMEC2000/GPU environment to start collecting solved/parity rows.
+
+### Completion percentages after M198
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.3%` overall for the current diagnostic/reduced
+  solver scope, with production LCFS convergence still explicitly deferred.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `98%`, with target-ladder and
+  target-campaign partitioning now explicit and solved/parity target evidence
+  still pending.
+- ESSOS circular-coil mirror beta scan: `99%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.4%`, pending GitHub checks and explicit
+  review decision on deferred production lanes.
+
+### User input needed
+
+No user input is needed for local implementation.  Office VMEC2000/GPU access
+is the next useful external resource for target-ladder solved/parity runs.
+
+---

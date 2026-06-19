@@ -428,6 +428,38 @@ def test_toroidal_hybrid_convergence_example_target_preset_without_solve(tmp_pat
     assert {row["target_resolution_promotion_claim"] for row in csv_rows} == {"False"}
 
 
+def test_toroidal_hybrid_convergence_example_filters_target_preset_cases(tmp_path: Path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/toroidal_stellarator_mirror_hybrid_convergence.py",
+            "--outdir",
+            str(tmp_path / "hybrid_target_filtered"),
+            "--resolution-preset",
+            "target",
+            "--case-filter",
+            "*ns015*",
+            "--ntheta-fit",
+            "64",
+            "--nzeta-fit",
+            "64",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    summary = json.loads(Path(completed.stdout.strip()).read_text())
+    rows = summary["rows"]
+    assert summary["resolution_preset"] == "target"
+    assert summary["case_filters"] == ["*ns015*"]
+    assert len(rows) == 2
+    assert {row["ns"] for row in rows} == {15}
+    assert sorted((row["mpol"], row["ntor"]) for row in rows) == [(5, 20), (6, 24)]
+    assert all("ns015" in row["case"] for row in rows)
+
+
 def test_toroidal_hybrid_convergence_example_writes_nonblank_no_solve_plots(tmp_path: Path):
     image = pytest.importorskip("matplotlib.image")
     completed = subprocess.run(
@@ -515,6 +547,9 @@ def test_toroidal_hybrid_convergence_history_summary_uses_iteration_labels():
     assert summary["fsq_reduction"] == 1.5
     assert summary["final_fsq"] == 5.0
     assert module._parse_shape_cases("default, sharp") == ["default", "sharp"]
+    assert module._parse_case_filters("a*, b") == ("a*", "b")
+    assert module._case_matches_filters("sharp_ns015_mpol05_ntor20", ("*ns015*",))
+    assert not module._case_matches_filters("sharp_ns009_mpol05_ntor20", ("*ns015*",))
     np.testing.assert_array_equal(
         module._row_history_iterations({"iter_history": [3, 5, 9]}, 3),
         np.asarray([3, 5, 9]),

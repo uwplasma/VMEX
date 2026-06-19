@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import fnmatch
 import json
 import os
 from pathlib import Path
@@ -33,6 +34,14 @@ from vmec_jax.wout import read_wout
 
 def _parse_ints(text: str) -> list[int]:
     return [int(item.strip()) for item in str(text).split(",") if item.strip()]
+
+
+def _parse_case_filters(text: str) -> tuple[str, ...]:
+    return tuple(item.strip() for item in str(text).split(",") if item.strip())
+
+
+def _case_matches_filters(case: str, filters: tuple[str, ...]) -> bool:
+    return not filters or any(fnmatch.fnmatchcase(case, pattern) for pattern in filters)
 
 
 def _parse_mode_pairs(text: str) -> list[tuple[int, int]]:
@@ -871,6 +880,12 @@ def main() -> None:
         default="manual",
         help="Named ns/mode-pair ladder. Use manual to honor --ns-array and --mode-pairs.",
     )
+    parser.add_argument(
+        "--case-filter",
+        type=str,
+        default="",
+        help="Comma-separated shell patterns for generated case names, for example '*ns015*' or 'sharp_*'.",
+    )
     parser.add_argument("--nfp", type=int, default=2)
     parser.add_argument("--niter", type=int, default=80)
     parser.add_argument(
@@ -938,6 +953,7 @@ def main() -> None:
         mode_pairs = list(resolution_preset["mode_pairs"])
     vmec2000_exec = Path(args.vmec2000_exec).expanduser() if str(args.vmec2000_exec).strip() else None
     shape_cases = _shape_case_kwargs(args)
+    case_filters = _parse_case_filters(args.case_filter)
     rows: list[dict[str, object]] = []
 
     for shape_case, sample_kwargs in shape_cases:
@@ -950,6 +966,8 @@ def main() -> None:
         for ns in ns_values:
             for mpol, ntor in mode_pairs:
                 case = _row_case_name(ns=ns, mpol=mpol, ntor=ntor, shape_case=shape_case)
+                if not _case_matches_filters(case, case_filters):
+                    continue
                 case_dir = outdir / case
                 case_dir.mkdir(parents=True, exist_ok=True)
                 indata = toroidal_stellarator_mirror_hybrid_indata(
@@ -1291,12 +1309,16 @@ def main() -> None:
                 _attach_initial_residual_comparison(row)
                 rows.append(row)
 
+    if not rows:
+        raise ValueError("case_filter selected no toroidal hybrid rows")
+
     summary = {
         "shape_cases": [{"name": name, "sample_parameters": kwargs} for name, kwargs in shape_cases],
         "resolution_preset": str(args.resolution_preset),
         "resolution_preset_description": str(resolution_preset["description"]),
         "target_resolution_ladder": bool(resolution_preset["target_resolution_ladder"]),
         "target_resolution_promotion_claim": False,
+        "case_filters": list(case_filters),
         "rows": rows,
         "csv": _write_rows_csv(rows, outdir=outdir),
         "figures": {},
