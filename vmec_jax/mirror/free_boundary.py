@@ -270,6 +270,12 @@ class MirrorFreeBoundaryLeastSquaresStep:
     max_relative_step: float
     ridge: float
     rcond: float | None
+    jacobian_rank: int = 0
+    jacobian_nullity: int = 0
+    jacobian_condition: float = float("nan")
+    jacobian_singular_values: Any = ()
+    predicted_reduction_fraction: float | None = None
+    actual_reduction_fraction: float | None = None
 
 
 @dataclass(frozen=True)
@@ -294,6 +300,14 @@ class MirrorFreeBoundaryVectorLeastSquaresStep:
     max_relative_step: float
     ridge: float
     rcond: float | None
+    finite_difference_steps: Any = ()
+    selected_jax_mode: str | None = None
+    jacobian_rank: int = 0
+    jacobian_nullity: int = 0
+    jacobian_condition: float = float("nan")
+    jacobian_singular_values: Any = ()
+    predicted_reduction_fraction: float | None = None
+    actual_reduction_fraction: float | None = None
 
 
 @dataclass(frozen=True)
@@ -867,6 +881,28 @@ def _as_free_boundary_residual(value: Any) -> MirrorFreeBoundaryResidual:
     return value
 
 
+def _rms(vector: Any) -> float:
+    vector = np.asarray(vector, dtype=float).ravel()
+    return float(np.sqrt(np.mean(vector**2)))
+
+
+def _reduction_fraction(before: float, after: float) -> float:
+    return float(1.0 - float(after) / max(abs(float(before)), np.finfo(float).tiny))
+
+
+def _jacobian_diagnostics(jacobian: Any, *, n_parameters: int) -> tuple[int, int, float, np.ndarray]:
+    matrix = np.asarray(jacobian, dtype=float)
+    singular_values = np.linalg.svd(matrix, compute_uv=False)
+    rank = int(np.linalg.matrix_rank(matrix))
+    nullity = max(0, int(n_parameters) - rank)
+    if singular_values.size == 0 or rank < min(matrix.shape):
+        condition = np.inf
+    else:
+        smallest = float(singular_values[-1])
+        condition = np.inf if smallest <= 0.0 else float(singular_values[0] / smallest)
+    return rank, nullity, float(condition), singular_values
+
+
 def mirror_free_boundary_residual_jacobian_finite_difference(
     coefficients: Any,
     residual_function: Callable[[np.ndarray], MirrorFreeBoundaryResidual],
@@ -908,6 +944,17 @@ def mirror_free_boundary_residual_jacobian_finite_difference(
     return base, jacobian, steps
 
 
+def _resolve_jax_jacobian_mode(mode: str, *, n_parameters: int, n_residuals: int) -> str:
+    mode = str(mode).lower()
+    if mode == "auto":
+        mode = "forward" if int(n_parameters) <= int(n_residuals) else "reverse"
+    if mode in ("forward", "fwd", "jacfwd"):
+        return "forward"
+    if mode in ("reverse", "rev", "jacrev"):
+        return "reverse"
+    raise ValueError("mode must be 'auto', 'forward', or 'reverse'")
+
+
 def mirror_free_boundary_residual_vector_jacobian_jax(
     coefficients: Any,
     residual_vector_function: Callable[[Any], Any],
@@ -937,15 +984,15 @@ def mirror_free_boundary_residual_vector_jacobian_jax(
     vector = vector_function(coefficients)
     if int(vector.size) == 0:
         raise ValueError("residual_vector_function must return at least one value")
-    mode = str(mode).lower()
-    if mode == "auto":
-        mode = "forward" if int(coefficients.size) <= int(vector.size) else "reverse"
-    if mode in ("forward", "fwd", "jacfwd"):
+    mode = _resolve_jax_jacobian_mode(
+        mode,
+        n_parameters=int(coefficients.size),
+        n_residuals=int(vector.size),
+    )
+    if mode == "forward":
         jacobian = jax.jacfwd(vector_function)(coefficients)
-    elif mode in ("reverse", "rev", "jacrev"):
+    elif mode == "reverse":
         jacobian = jax.jacrev(vector_function)(coefficients)
-    else:
-        raise ValueError("mode must be 'auto', 'forward', or 'reverse'")
 
     vector_np = np.asarray(vector, dtype=float)
     jacobian_np = np.asarray(jacobian, dtype=float)
@@ -1019,11 +1066,15 @@ def mirror_free_boundary_residual_vector_least_squares_step(
     if not np.all(np.isfinite(coefficients)):
         raise ValueError("coefficients must be finite")
     backend = str(jacobian_backend).lower()
+    finite_difference_steps: np.ndarray = np.asarray((), dtype=float)
+    selected_jax_mode: str | None = None
     if backend in ("finite_difference", "finite-difference", "fd"):
-        residual_vector, jacobian, _steps = mirror_free_boundary_residual_vector_jacobian_finite_difference(
-            coefficients,
-            residual_vector_function,
-            finite_difference_step=finite_difference_step,
+        residual_vector, jacobian, finite_difference_steps = (
+            mirror_free_boundary_residual_vector_jacobian_finite_difference(
+                coefficients,
+                residual_vector_function,
+                finite_difference_step=finite_difference_step,
+            )
         )
         backend = "finite_difference"
     elif backend in ("jax", "ad", "automatic"):
@@ -1031,6 +1082,11 @@ def mirror_free_boundary_residual_vector_least_squares_step(
             coefficients,
             residual_vector_function,
             mode=jax_mode,
+        )
+        selected_jax_mode = _resolve_jax_jacobian_mode(
+            jax_mode,
+            n_parameters=int(coefficients.size),
+            n_residuals=int(residual_vector.size),
         )
         backend = "jax"
     else:
@@ -1063,12 +1119,16 @@ def mirror_free_boundary_residual_vector_least_squares_step(
     raw_step, *_ = np.linalg.lstsq(lhs, rhs, rcond=rcond)
     if not np.all(np.isfinite(raw_step)):
         raise ValueError("least-squares step is not finite")
+    jacobian_rank, jacobian_nullity, jacobian_condition, singular_values = _jacobian_diagnostics(
+        jacobian,
+        n_parameters=int(coefficients.size),
+    )
 
     step_limit = max_relative_step * np.maximum(1.0, np.abs(coefficients))
     limited_step = np.clip(damping * raw_step, -step_limit, step_limit)
     predicted_vector = residual_vector + jacobian @ limited_step
-    residual_value = float(np.sqrt(np.mean(residual_vector**2)))
-    predicted_value = float(np.sqrt(np.mean(predicted_vector**2)))
+    residual_value = _rms(residual_vector)
+    predicted_value = _rms(predicted_vector)
 
     best_factor = float(factors[0])
     best_coefficients = coefficients + best_factor * limited_step
@@ -1098,6 +1158,8 @@ def mirror_free_boundary_residual_vector_least_squares_step(
         best_factor = 0.0
         best_vector = residual_vector
         best_value = residual_value
+    predicted_reduction = _reduction_fraction(residual_value, predicted_value)
+    actual_reduction = _reduction_fraction(residual_value, best_value)
 
     return MirrorFreeBoundaryVectorLeastSquaresStep(
         coefficients=coefficients,
@@ -1118,6 +1180,14 @@ def mirror_free_boundary_residual_vector_least_squares_step(
         max_relative_step=max_relative_step,
         ridge=ridge,
         rcond=rcond,
+        finite_difference_steps=finite_difference_steps,
+        selected_jax_mode=selected_jax_mode,
+        jacobian_rank=jacobian_rank,
+        jacobian_nullity=jacobian_nullity,
+        jacobian_condition=jacobian_condition,
+        jacobian_singular_values=singular_values,
+        predicted_reduction_fraction=predicted_reduction,
+        actual_reduction_fraction=actual_reduction,
     )
 
 
@@ -1306,11 +1376,15 @@ def mirror_free_boundary_least_squares_step(
     raw_step, *_ = np.linalg.lstsq(lhs, rhs, rcond=rcond)
     if not np.all(np.isfinite(raw_step)):
         raise ValueError("least-squares step is not finite")
+    jacobian_rank, jacobian_nullity, jacobian_condition, singular_values = _jacobian_diagnostics(
+        jacobian,
+        n_parameters=int(coefficients.size),
+    )
 
     step_limit = max_relative_step * np.maximum(1.0, np.abs(coefficients))
     limited_step = np.clip(damping * raw_step, -step_limit, step_limit)
     predicted_vector = vector + jacobian @ limited_step
-    predicted_value = float(np.sqrt(np.mean(predicted_vector**2)))
+    predicted_value = _rms(predicted_vector)
 
     best_factor = float(factors[0])
     best_coefficients = coefficients + best_factor * limited_step
@@ -1339,6 +1413,8 @@ def mirror_free_boundary_least_squares_step(
         best_coefficients = coefficients.copy()
         best_factor = 0.0
         best_residual = residual
+    predicted_reduction = _reduction_fraction(float(residual.value), predicted_value)
+    actual_reduction = _reduction_fraction(float(residual.value), float(best_residual.value))
 
     return MirrorFreeBoundaryLeastSquaresStep(
         coefficients=coefficients,
@@ -1357,6 +1433,12 @@ def mirror_free_boundary_least_squares_step(
         max_relative_step=max_relative_step,
         ridge=ridge,
         rcond=rcond,
+        jacobian_rank=jacobian_rank,
+        jacobian_nullity=jacobian_nullity,
+        jacobian_condition=jacobian_condition,
+        jacobian_singular_values=singular_values,
+        predicted_reduction_fraction=predicted_reduction,
+        actual_reduction_fraction=actual_reduction,
     )
 
 

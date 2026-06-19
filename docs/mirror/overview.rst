@@ -54,7 +54,9 @@ without coupling it to toroidal VMEC assumptions:
   coefficient step, a reduced residual-vector least-squares step that can use
   either finite-difference or JAX Jacobians for differentiable prototypes, a
   reduced residual-vector nonlinear least-squares solve loop with explicit
-  target/rejection/stagnation/max-step stop reasons, plus a reusable
+  target/rejection/stagnation/max-step stop reasons and per-step Jacobian
+  rank, nullity, condition, singular-value, selected-JAX-mode, and
+  predicted/actual reduction diagnostics, plus a reusable
   state/callback guarded least-squares loop and guarded realized fixed-boundary
   trial loop for the first true coupled-solve iterations,
   and normal-field-aware candidate selection between local, shape-preserving
@@ -104,7 +106,9 @@ Automatic mode uses forward differentiation when the number of boundary
 parameters is no larger than the residual-vector length, and reverse
 differentiation for smaller residual or scalar-like targets.  The
 ``examples/mirror_free_boundary_vector_ls_benchmark.py`` example records the
-backend comparison used to keep that guidance tested.
+backend comparison, selected mode, rank/nullity, conditioning, singular values,
+and predicted-versus-actual residual reduction used to keep that guidance
+tested.
 
 Current solver status:
 

@@ -669,6 +669,10 @@ def test_mirror_free_boundary_least_squares_step_reduces_linear_combined_residua
     np.testing.assert_allclose(step.predicted_vector, 0.0, atol=1.0e-10)
     assert step.trial_residual.value < 1.0e-10
     assert step.trial_residual.value < step.residual.value
+    assert step.jacobian_rank == 2
+    assert step.jacobian_nullity == 0
+    assert np.isfinite(step.jacobian_condition)
+    assert step.actual_reduction_fraction > 0.0
 
 
 def test_mirror_free_boundary_least_squares_step_backtracks_nonlinear_residual():
@@ -933,6 +937,63 @@ def test_mirror_free_boundary_residual_vector_least_squares_step_supports_fd_and
     np.testing.assert_allclose(jax_step.new_coefficients, fd_step.new_coefficients, rtol=1.0e-10, atol=1.0e-10)
     np.testing.assert_allclose(jax_step.jacobian, fd_step.jacobian, rtol=1.0e-10, atol=1.0e-10)
     assert jax_step.trial_value < 1.0e-10
+    assert fd_step.selected_jax_mode is None
+    assert jax_step.selected_jax_mode == "forward"
+    assert fd_step.jacobian_rank == 2
+    assert fd_step.jacobian_nullity == 0
+    assert np.isfinite(fd_step.jacobian_condition)
+    assert fd_step.jacobian_condition >= 1.0
+    assert np.asarray(fd_step.jacobian_singular_values).shape == (2,)
+    np.testing.assert_allclose(fd_step.finite_difference_steps, [1.0e-6, 1.0e-6])
+    assert jax_step.finite_difference_steps.size == 0
+    assert fd_step.predicted_reduction_fraction > 0.0
+    assert fd_step.actual_reduction_fraction > 0.0
+
+
+def test_mirror_free_boundary_residual_vector_least_squares_step_reports_rank_deficiency():
+    def rank_deficient_residual(coefficients):
+        c0, c1 = np.asarray(coefficients, dtype=float)
+        value = c0 + c1 - 1.0
+        return np.asarray([value, 2.0 * value])
+
+    step = mirror_free_boundary_residual_vector_least_squares_step(
+        np.asarray([0.0, 0.0]),
+        rank_deficient_residual,
+        max_relative_step=2.0,
+        line_search_factors=(1.0, 0.5),
+    )
+
+    assert step.accepted is True
+    assert step.jacobian_rank == 1
+    assert step.jacobian_nullity == 1
+    assert np.isinf(step.jacobian_condition)
+    np.testing.assert_allclose(step.new_coefficients, [0.5, 0.5], rtol=1.0e-10, atol=1.0e-10)
+    assert step.actual_reduction_fraction > 0.999999
+
+
+def test_mirror_free_boundary_residual_vector_least_squares_step_auto_uses_reverse_for_small_residual():
+    jnp = pytest.importorskip("jax.numpy")
+    enable_x64(True)
+
+    def scalar_like_residual(coefficients):
+        target = jnp.asarray([0.25, -0.15, 0.05])
+        return jnp.asarray([jnp.sum(coefficients - target)])
+
+    step = mirror_free_boundary_residual_vector_least_squares_step(
+        np.asarray([0.0, 0.0, 0.0]),
+        scalar_like_residual,
+        jacobian_backend="jax",
+        jax_mode="auto",
+        max_relative_step=2.0,
+        line_search_factors=(1.0, 0.5),
+    )
+
+    assert step.accepted is True
+    assert step.selected_jax_mode == "reverse"
+    assert step.jacobian_rank == 1
+    assert step.jacobian_nullity == 2
+    assert np.isfinite(step.jacobian_condition)
+    assert step.actual_reduction_fraction > 0.999999
 
 
 def test_mirror_free_boundary_residual_vector_least_squares_step_rejects_worse_trials():

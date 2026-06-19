@@ -22,17 +22,20 @@ from vmec_jax.mirror import (
 
 
 VECTOR_LS_BENCHMARK_SCHEMA = "mirror_free_boundary_vector_ls_benchmark"
-VECTOR_LS_BENCHMARK_SCHEMA_VERSION = "0.2"
+VECTOR_LS_BENCHMARK_SCHEMA_VERSION = "0.3"
 VECTOR_LS_BENCHMARK_ROW_FIELDS = (
     "name",
     "jacobian_backend",
     "jax_mode",
+    "selected_jax_mode",
     "accepted",
     "line_search_factor",
     "residual_value_before",
     "residual_value_after",
     "residual_reduction_fraction",
     "predicted_value",
+    "predicted_reduction_fraction",
+    "actual_reduction_fraction",
     "coefficient_error_before",
     "coefficient_error_after",
     "coefficient_error_reduction_fraction",
@@ -40,19 +43,28 @@ VECTOR_LS_BENCHMARK_ROW_FIELDS = (
     "coefficients_new",
     "raw_step",
     "limited_step",
+    "finite_difference_steps",
     "jacobian_shape",
+    "jacobian_rank",
+    "jacobian_nullity",
+    "jacobian_condition",
+    "jacobian_singular_values",
     "wall_time_s",
 )
 VECTOR_LS_BENCHMARK_SOLVE_ROW_FIELDS = (
     "name",
     "jacobian_backend",
     "jax_mode",
+    "selected_jax_mode_history",
     "converged",
     "stop_reason",
     "accepted_steps",
     "initial_residual_value",
     "final_residual_value",
     "residual_history",
+    "jacobian_rank_history",
+    "jacobian_nullity_history",
+    "jacobian_condition_history",
     "coefficient_error_final",
     "coefficients_final",
     "wall_time_s",
@@ -105,6 +117,12 @@ def validate_vector_ls_benchmark_metrics(metrics: dict[str, object]) -> None:
             raise ValueError(f"row {index} did not reduce the residual")
         if float(row["coefficient_error_after"]) > float(row["coefficient_error_before"]):
             raise ValueError(f"row {index} did not reduce the coefficient error")
+        if int(row["jacobian_rank"]) <= 0:
+            raise ValueError(f"row {index} has a nonpositive Jacobian rank")
+        if int(row["jacobian_nullity"]) < 0:
+            raise ValueError(f"row {index} has a negative Jacobian nullity")
+        if float(row["jacobian_condition"]) < 1.0:
+            raise ValueError(f"row {index} has an invalid Jacobian condition")
     if row_names != names:
         raise ValueError("row names do not match derivative backend cases")
     solve_rows = metrics["solve_rows"]
@@ -122,6 +140,8 @@ def validate_vector_ls_benchmark_metrics(metrics: dict[str, object]) -> None:
             raise ValueError(f"solve row {index} did not converge")
         if float(row["final_residual_value"]) > float(row["initial_residual_value"]):
             raise ValueError(f"solve row {index} did not reduce residual")
+        if not row["jacobian_rank_history"]:
+            raise ValueError(f"solve row {index} is missing Jacobian rank history")
     if solve_row_names != names:
         raise ValueError("solve row names do not match derivative backend cases")
     if metrics["best_backend_by_residual"] not in names:
@@ -183,6 +203,8 @@ def _row_from_step(
         "residual_value_after": float(step.trial_value),
         "residual_reduction_fraction": float(1.0 - step.trial_value / max(step.residual_value, 1.0e-300)),
         "predicted_value": float(step.predicted_value),
+        "predicted_reduction_fraction": float(step.predicted_reduction_fraction),
+        "actual_reduction_fraction": float(step.actual_reduction_fraction),
         "coefficient_error_before": coefficient_error_before,
         "coefficient_error_after": coefficient_error_after,
         "coefficient_error_reduction_fraction": float(
@@ -192,7 +214,13 @@ def _row_from_step(
         "coefficients_new": [float(value) for value in np.asarray(step.new_coefficients)],
         "raw_step": [float(value) for value in np.asarray(step.raw_step)],
         "limited_step": [float(value) for value in np.asarray(step.limited_step)],
+        "finite_difference_steps": [float(value) for value in np.asarray(step.finite_difference_steps)],
         "jacobian_shape": [int(value) for value in np.asarray(step.jacobian).shape],
+        "selected_jax_mode": step.selected_jax_mode,
+        "jacobian_rank": int(step.jacobian_rank),
+        "jacobian_nullity": int(step.jacobian_nullity),
+        "jacobian_condition": float(step.jacobian_condition),
+        "jacobian_singular_values": [float(value) for value in np.asarray(step.jacobian_singular_values)],
         "wall_time_s": float(elapsed_s),
     }
 
@@ -205,16 +233,24 @@ def _row_from_solve(
     )
     residual_history = [float(result.initial_residual_value)]
     residual_history.extend(float(row.residual_value_after) for row in result.rows)
+    rank_history = [int(row.ls_step.jacobian_rank) for row in result.rows]
+    nullity_history = [int(row.ls_step.jacobian_nullity) for row in result.rows]
+    condition_history = [float(row.ls_step.jacobian_condition) for row in result.rows]
+    selected_jax_mode_history = [row.ls_step.selected_jax_mode for row in result.rows]
     return {
         "name": name,
         "jacobian_backend": backend,
         "jax_mode": jax_mode if backend == "jax" else None,
+        "selected_jax_mode_history": selected_jax_mode_history,
         "converged": bool(result.converged),
         "stop_reason": str(result.stop_reason),
         "accepted_steps": int(result.accepted_steps),
         "initial_residual_value": float(result.initial_residual_value),
         "final_residual_value": float(result.final_residual_value),
         "residual_history": residual_history,
+        "jacobian_rank_history": rank_history,
+        "jacobian_nullity_history": nullity_history,
+        "jacobian_condition_history": condition_history,
         "coefficient_error_final": coefficient_error_final,
         "coefficients_final": [float(value) for value in np.asarray(result.final_coefficients)],
         "wall_time_s": float(elapsed_s),

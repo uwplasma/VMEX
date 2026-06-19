@@ -84,8 +84,10 @@ Current Scope
      - diagnostic
      - ESSOS-compatible circular coils, external-field sampling, LCFS residual
        vectors, candidate updates, guarded pilot loops, and reduced
-       residual-vector least-squares solves are available, with plotted beta
-       scan and reduced-vector benchmark evidence.  This is not a converged
+       residual-vector least-squares solves are available, with explicit
+       Jacobian rank, nullity, conditioning, selected JAX mode, predicted
+       reduction, and actual reduction diagnostics.  Plotted beta-scan and
+       reduced-vector benchmark evidence are present.  This is not a converged
        production free-boundary equilibrium solver.
    * - ESSOS beta-scan fixture
      - diagnostic
@@ -124,6 +126,11 @@ current rule is:
 - use JAX reverse mode for smaller residual vectors or scalar-like targets;
 - keep dense solves as the tiny-grid correctness reference before promoting a
   matrix-free or external linear-operator backend.
+
+Reduced free-boundary least-squares rows record the selected derivative mode,
+rank/nullity, condition number, singular values, and predicted versus realized
+residual reduction so rank-deficient boundary parameterizations are visible in
+the JSON before they are coupled to expensive fixed-boundary trial solves.
 
 Review Gate Before Undrafting
 -----------------------------

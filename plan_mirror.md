@@ -23309,3 +23309,149 @@ Results:
 No user input is needed for the current draft scope.  A review decision is
 needed before undrafting: keep the production free-boundary and target-resolution
 hybrid convergence lanes deferred, or continue them in this PR.
+
+---
+## 195. Free-Boundary Reduced-LS Conditioning Diagnostics
+
+### Steps taken
+
+- Audited the remaining open production/free-boundary lane after the M194
+  checkpoint and confirmed that the current circular-coil path is intentionally
+  diagnostic, while the reduced residual-vector least-squares path is the right
+  place to add solver-grade method evidence without overclaiming a production
+  LCFS equilibrium solver.
+- Added explicit least-squares diagnostics to
+  `vmec_jax/mirror/free_boundary.py`:
+  - Jacobian rank;
+  - Jacobian nullity;
+  - Jacobian condition number;
+  - Jacobian singular values;
+  - selected JAX differentiation mode after `jax_mode="auto"` resolution;
+  - finite-difference step sizes;
+  - predicted and actual residual-reduction fractions.
+- Applied the same rank/nullity/conditioning diagnostics to the combined
+  `MirrorFreeBoundaryLeastSquaresStep` used by the host-side coupled
+  circular-coil bridge.
+- Updated the repo-root vector-LS benchmark schema from
+  `mirror_free_boundary_vector_ls_benchmark` version `0.2` to `0.3`, and
+  exported the new diagnostics in both one-step rows and nonlinear solve rows.
+- Added tests for full-rank finite-difference/JAX behavior, rank-deficient
+  boundary parameterizations, and JAX automatic reverse-mode selection for a
+  scalar-like residual.
+- Updated `docs/mirror/readiness.rst`, `docs/mirror/overview.rst`, and
+  `examples/mirror/README.md` so the documented derivative policy and
+  free-boundary bridge status mention the new conditioning and backend-mode
+  diagnostics.
+
+### Results obtained
+
+- Reduced free-boundary residual-vector solves now expose enough matrix
+  diagnostics to catch rank-deficient or poorly conditioned boundary
+  parameterizations before they are coupled to expensive fixed-boundary trial
+  solves.
+- The JAX `auto` derivative path now reports the concrete selected mode:
+  forward for parameter counts no larger than residual length, and reverse for
+  scalar-like or shorter residual vectors.
+- The benchmark JSON now carries the same diagnostics that the code records,
+  keeping plotted and non-plotted example outputs useful for method audits.
+- The free-boundary circular-coil lane remains correctly labeled as diagnostic:
+  this tranche improves method visibility and validation evidence, but does not
+  claim a converged production free-boundary equilibrium solve.
+
+### How it was tested
+
+Commands run:
+
+```bash
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py::test_mirror_free_boundary_least_squares_step_reduces_linear_combined_residual \
+  tests/mirror/test_mirror_free_boundary.py::test_mirror_free_boundary_residual_vector_least_squares_step_supports_fd_and_jax_backends \
+  tests/mirror/test_mirror_free_boundary.py::test_mirror_free_boundary_residual_vector_least_squares_step_reports_rank_deficiency \
+  tests/mirror/test_mirror_free_boundary.py::test_mirror_free_boundary_residual_vector_least_squares_step_auto_uses_reverse_for_small_residual \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_vector_ls_benchmark_runs_without_plots -q
+python -m ruff format \
+  vmec_jax/mirror/free_boundary.py \
+  examples/mirror_free_boundary_vector_ls_benchmark.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff check \
+  vmec_jax/mirror/free_boundary.py \
+  examples/mirror_free_boundary_vector_ls_benchmark.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_vector_ls_benchmark_runs_without_plots \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_vector_ls_benchmark_writes_nonblank_plots -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+JAX_ENABLE_X64=1 pytest tests/mirror tests/test_toroidal_hybrid.py -q
+```
+
+Results:
+
+- Focused new diagnostic tests passed: `5 passed in 2.42s`.
+- Ruff formatting made no changes.
+- Ruff lint passed.
+- Free-boundary plus vector-LS example coverage passed:
+  `120 passed in 8.02s`.
+- Sphinx docs build passed with warnings as errors.
+- Whitespace check passed.
+- Combined mirror plus toroidal-hybrid validation passed:
+  `270 passed, 1 skipped in 280.30s`.
+
+### File structure and best-practice notes
+
+- The implementation stays in the existing compact free-boundary bridge module
+  instead of introducing a new solver package before the coupled LCFS residual
+  path is promoted.
+- The public dataclasses are extended append-only, preserving existing call
+  sites while making solver diagnostics available to examples and downstream
+  scripts.
+- The root benchmark remains the executable audit artifact for reduced
+  free-boundary derivative backends; generated plots remain in temporary or
+  ignored output directories.
+- Documentation keeps the line between research-grade fixed-boundary pieces,
+  validated reduced free-boundary methods, and deferred production
+  free-boundary equilibrium solves explicit.
+
+### Best next steps
+
+1. Commit and push M195.
+2. Update the draft PR body with section 195 and the `270 passed, 1 skipped`
+   validation result.
+3. Inspect only failed CI jobs after the push.
+4. Continue the remaining finite lanes from the readiness matrix:
+   production free-boundary LCFS promotion, target-resolution toroidal hybrid
+   convergence, and final review decision on explicitly deferred production
+   scopes.
+
+### Completion percentages after M195
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.2%` overall for the current diagnostic/reduced
+  solver scope, with production LCFS convergence still explicitly deferred.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `97%`, pending target-resolution
+  convergence promotion.
+- ESSOS circular-coil mirror beta scan: `99%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.2%`, pending GitHub checks and explicit
+  review decision on deferred production lanes.
+
+### User input needed
+
+No user input is needed for the next implementation lane.  A review decision is
+still needed before undrafting: keep the production free-boundary and
+target-resolution hybrid convergence lanes deferred, or continue them in this
+PR.
