@@ -238,6 +238,19 @@ _CSV_COLUMNS = (
     "solver_mode",
     "use_scan",
     "cli_finish",
+    "cli_fixed_boundary_mode",
+    "cli_fixed_boundary_initial_policy",
+    "cli_fixed_boundary_finish_attempts",
+    "cli_fixed_boundary_finish_budgets",
+    "cli_fixed_boundary_finish_fsq",
+    "cli_fixed_boundary_finish_converged",
+    "cli_fixed_boundary_finish_modes",
+    "cli_fixed_boundary_finish_best_fsq",
+    "cli_fixed_boundary_finish_budget_cap",
+    "cli_fixed_boundary_finish_budget_exhausted",
+    "cli_fixed_boundary_full_parity_fallback",
+    "cli_fixed_boundary_partial_parity_fallback",
+    "cli_fixed_boundary_staged_followup_used",
     "full_solver_diagnostics",
     "diagnostic_light_history",
     "diagnostic_resume_state_mode",
@@ -489,8 +502,19 @@ def _diag_str_list(diag: dict[str, object], key: str) -> list[str]:
     return [str(value) for value in values]
 
 
+def _diag_bool_list(diag: dict[str, object], key: str) -> list[bool]:
+    values = np.asarray(diag.get(key, []), dtype=bool).reshape(-1)
+    return [bool(value) for value in values]
+
+
 def _diag_optional_bool(diag: dict[str, object], key: str) -> bool | None:
     return None if key not in diag or diag.get(key) is None else bool(diag.get(key))
+
+
+def _diag_optional_int(diag: dict[str, object], key: str) -> int | None:
+    if key not in diag or diag.get(key) is None:
+        return None
+    return int(diag[key])
 
 
 def _diag_optional_float(diag: dict[str, object], key: str) -> float | None:
@@ -505,6 +529,46 @@ def _counts_json(values: list[str]) -> dict[str, int]:
     for value in values:
         counts[str(value)] = counts.get(str(value), 0) + 1
     return counts
+
+
+def _cli_finish_diagnostic_fields(diag: dict[str, object]) -> dict[str, object]:
+    budgets = _diag_int_list(diag, "cli_fixed_boundary_finish_budgets")
+    fsq = _diag_float_list(diag, "cli_fixed_boundary_finish_fsq")
+    converged = _diag_bool_list(diag, "cli_fixed_boundary_finish_converged")
+    modes = _diag_str_list(diag, "cli_fixed_boundary_finish_modes")
+    finite_fsq = [value for value in fsq if np.isfinite(float(value))]
+    return {
+        "cli_fixed_boundary_mode": _diag_optional_bool(diag, "cli_fixed_boundary_mode"),
+        "cli_fixed_boundary_initial_policy": None
+        if diag.get("cli_fixed_boundary_initial_policy") is None
+        else str(diag.get("cli_fixed_boundary_initial_policy")),
+        "cli_fixed_boundary_finish_attempts": max(len(budgets), len(fsq), len(converged), len(modes)),
+        "cli_fixed_boundary_finish_budgets": budgets,
+        "cli_fixed_boundary_finish_fsq": fsq,
+        "cli_fixed_boundary_finish_converged": converged,
+        "cli_fixed_boundary_finish_modes": modes,
+        "cli_fixed_boundary_finish_best_fsq": None if not finite_fsq else float(min(finite_fsq)),
+        "cli_fixed_boundary_finish_budget_cap": _diag_optional_int(
+            diag,
+            "cli_fixed_boundary_finish_budget_cap",
+        ),
+        "cli_fixed_boundary_finish_budget_exhausted": _diag_optional_bool(
+            diag,
+            "cli_fixed_boundary_finish_budget_exhausted",
+        ),
+        "cli_fixed_boundary_full_parity_fallback": _diag_optional_bool(
+            diag,
+            "cli_fixed_boundary_full_parity_fallback",
+        ),
+        "cli_fixed_boundary_partial_parity_fallback": _diag_optional_bool(
+            diag,
+            "cli_fixed_boundary_partial_parity_fallback",
+        ),
+        "cli_fixed_boundary_staged_followup_used": _diag_optional_bool(
+            diag,
+            "cli_fixed_boundary_staged_followup_used",
+        ),
+    }
 
 
 def _solver_diagnostic_fields(diag: dict[str, object], *, fallback_size: int) -> dict[str, object]:
@@ -1270,6 +1334,19 @@ def main() -> None:
                     "solver_mode": str(args.solver_mode),
                     "use_scan": None if args.use_scan is None else bool(args.use_scan),
                     "cli_finish": bool(args.cli_finish),
+                    "cli_fixed_boundary_mode": None,
+                    "cli_fixed_boundary_initial_policy": None,
+                    "cli_fixed_boundary_finish_attempts": 0,
+                    "cli_fixed_boundary_finish_budgets": [],
+                    "cli_fixed_boundary_finish_fsq": [],
+                    "cli_fixed_boundary_finish_converged": [],
+                    "cli_fixed_boundary_finish_modes": [],
+                    "cli_fixed_boundary_finish_best_fsq": None,
+                    "cli_fixed_boundary_finish_budget_cap": None,
+                    "cli_fixed_boundary_finish_budget_exhausted": None,
+                    "cli_fixed_boundary_full_parity_fallback": None,
+                    "cli_fixed_boundary_partial_parity_fallback": None,
+                    "cli_fixed_boundary_staged_followup_used": None,
                     "full_solver_diagnostics": bool(args.full_solver_diagnostics),
                     "diagnostic_light_history": None,
                     "diagnostic_resume_state_mode": None,
@@ -1424,6 +1501,7 @@ def main() -> None:
                         row["requested_ftol"] = float(diag["requested_ftol"])
                     if diag.get("fsq_total_target") is not None:
                         row["fsq_total_target"] = float(diag["fsq_total_target"])
+                    row.update(_cli_finish_diagnostic_fields(diag))
                     row["n_iter"] = int(getattr(run.result, "n_iter", -1)) if run.result is not None else None
                     best_component_index = None
                     fsq_history = np.zeros((0,), dtype=float)

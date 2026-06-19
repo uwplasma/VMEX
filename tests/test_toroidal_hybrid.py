@@ -778,6 +778,34 @@ def test_toroidal_hybrid_convergence_history_summary_uses_iteration_labels():
     assert scan_diag_fields["diagnostic_final_time_step"] == 0.05
     assert scan_diag_fields["diagnostic_min_time_step"] == 0.05
     assert scan_diag_fields["diagnostic_max_time_step"] == 0.2
+    cli_finish_fields = module._cli_finish_diagnostic_fields(
+        {
+            "cli_fixed_boundary_mode": True,
+            "cli_fixed_boundary_initial_policy": "boundary_inferred_missing_axis",
+            "cli_fixed_boundary_finish_budgets": np.asarray([20, 40], dtype=int),
+            "cli_fixed_boundary_finish_fsq": np.asarray([1.0e-4, 2.0e-8], dtype=float),
+            "cli_fixed_boundary_finish_converged": np.asarray([False, True], dtype=bool),
+            "cli_fixed_boundary_finish_modes": np.asarray(["accelerated", "parity"], dtype=object),
+            "cli_fixed_boundary_finish_budget_cap": 80,
+            "cli_fixed_boundary_finish_budget_exhausted": False,
+            "cli_fixed_boundary_full_parity_fallback": True,
+            "cli_fixed_boundary_partial_parity_fallback": False,
+            "cli_fixed_boundary_staged_followup_used": True,
+        }
+    )
+    assert cli_finish_fields["cli_fixed_boundary_mode"] is True
+    assert cli_finish_fields["cli_fixed_boundary_initial_policy"] == "boundary_inferred_missing_axis"
+    assert cli_finish_fields["cli_fixed_boundary_finish_attempts"] == 2
+    assert cli_finish_fields["cli_fixed_boundary_finish_budgets"] == [20, 40]
+    assert cli_finish_fields["cli_fixed_boundary_finish_fsq"] == [1.0e-4, 2.0e-8]
+    assert cli_finish_fields["cli_fixed_boundary_finish_converged"] == [False, True]
+    assert cli_finish_fields["cli_fixed_boundary_finish_modes"] == ["accelerated", "parity"]
+    assert cli_finish_fields["cli_fixed_boundary_finish_best_fsq"] == 2.0e-8
+    assert cli_finish_fields["cli_fixed_boundary_finish_budget_cap"] == 80
+    assert cli_finish_fields["cli_fixed_boundary_finish_budget_exhausted"] is False
+    assert cli_finish_fields["cli_fixed_boundary_full_parity_fallback"] is True
+    assert cli_finish_fields["cli_fixed_boundary_partial_parity_fallback"] is False
+    assert cli_finish_fields["cli_fixed_boundary_staged_followup_used"] is True
     assert module._csv_cell({"accepted": 2}) == '{"accepted": 2}'
     samples = sample_toroidal_stellarator_mirror_hybrid_boundary(ntheta=32, nzeta=32)
     orientation_fit = module._orientation_fit_diagnostics(samples, samples)

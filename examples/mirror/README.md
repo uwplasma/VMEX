@@ -115,7 +115,9 @@ VMEC/JAX terminal step histories or scan time-step histories and write the
 step-diagnostics plot. Add
 ``--no-cli-finish`` when the goal is raw VMEC-style trajectory parity rather
 than the faster CLI finish/fallback policy. The residual-history plot then
-aligns VMEC/JAX and VMEC2000 by actual iteration labels.
+aligns VMEC/JAX and VMEC2000 by actual iteration labels. Rows also expose CLI
+finish budgets, finish residuals, finish modes, and fallback flags so a compact
+fast-path result is not mistaken for a raw fixed-iteration trajectory.
 ``initial_fsq_ratio_direct_initial`` records how far the first stored VMEC/JAX
 history row is from the pre-iteration direct residual. Treat mean-iota and
 direct-initial residual agreement as useful regression signals, and use the
