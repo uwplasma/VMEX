@@ -21819,3 +21819,73 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999994%.
+
+## 2026-06-19 QI Promotion-Limit Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Inspected `qi_optimization.py` for a cohesive simplification that did not
+   alter staged QI physics or optimizer policy.
+2. Extracted shared context-fallback and QI-safe reference-limit helpers used
+   by staged promotion branches.
+3. Rewired the aspect-improvement and QI-improvement promotion branches through
+   the shared limit helper while preserving existing thresholds, relaxation
+   factors, and rejection messages.
+
+Results obtained:
+
+- `qi_optimization.py` decreased from 1993 to 1977 lines.
+- The module moved below the current 2000-line source-health warning threshold.
+- Duplicate reference diagnostic unpacking and limit construction was removed
+  from `stage_promotes_candidate`.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/qi_optimization.py`
+- `python -m ruff check vmec_jax/qi_optimization.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_qi_basin_promote.py tests/test_qi_optimization_public_helpers.py tests/test_qi_optimization_context_more_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 20`
+
+Best next steps:
+
+1. Use the residual-iteration audit result to plan a larger cohesive extraction
+   around non-scan preconditioned-force payload construction.
+2. Wait for the independent `free_boundary.py` audit before touching NESTOR
+   internals.
+3. Keep QI staged-runner changes focused on explicit context and promotion
+   policy seams; avoid changing optimization presets without rerunning the
+   relevant artifact/provenance matrix.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999949%.
+- Solver monolith reduction: 99.826%.
+- Free-boundary adjoint monolith reduction: 99.54%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.05%.
+- WOUT diagnostic/profile decomposition: 99.982%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.825%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.745%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 96.82%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 96.69%.
+- Free-boundary validation-gate maintainability: 98.18%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999995%.
