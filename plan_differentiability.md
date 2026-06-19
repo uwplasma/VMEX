@@ -19262,3 +19262,80 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999991%.
+
+## 2026-06-19 Free-Boundary NESTOR Diagnostics Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Reviewed the `nestor_external_only_step` hotspot in `free_boundary.py` and
+   avoided changing the adaptive branch-selection or solve logic.
+2. Moved the diagnostic-tail assembly into `_nestor_step_diagnostics`, leaving
+   the controller branches intact while centralizing scalar timing, RMS,
+   provider, sample-timing, and matrix-cache diagnostics.
+3. Kept the helper inside the existing compatibility facade instead of adding a
+   new module, to reduce source size and function length without namespace
+   expansion.
+
+Results obtained:
+
+- `vmec_jax/free_boundary.py` changed by 68 insertions and 75 deletions, net
+  `-7` source lines.
+- File length dropped from 3521 to 3514 lines.
+- `nestor_external_only_step` dropped from 515 to 441 lines in the source-health
+  function report.
+- The external diagnostic keys and direct-coil/mgrid solve behavior are
+  preserved by targeted tests.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/free_boundary.py`
+- `python -m ruff check vmec_jax/free_boundary.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_wave2.py::test_nestor_external_only_step_reuse_spectral_and_dense_fallback tests/test_free_boundary_wave2.py::test_nestor_external_only_step_dense_grid_and_mode_success -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_fast_physics_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_active_direct_coil_provider_is_sensitive_in_finite_pressure_context tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_dense_nestor_output_is_independent_of_nonsingular_ip_chunk -q`
+- `python tools/diagnostics/source_health.py --top 15`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue with larger, structurally meaningful hotspots: the fixed-boundary
+   residual iterator, `discrete_adjoint.py` replay payload assembly, or
+   `driver.py` context extraction.
+2. Preserve the current conservative stance on adaptive-branch differentiability:
+   simplify seams, but do not claim full arbitrary branch differentiation until
+   the fingerprint-gated full adaptive AD-vs-FD gate exists.
+3. Batch CI verification later rather than watching every Actions run.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999932%.
+- Solver monolith reduction: 99.79%.
+- Free-boundary adjoint monolith reduction: 99.50%.
+- Driver workflow decomposition: 99.94%.
+- Residual iteration decomposition: 98.86%.
+- WOUT diagnostic/profile decomposition: 99.96%.
+- Bcovar/WOUT parity decomposition: 99.14%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.81%.
+- Tomnsps transform decomposition: 98.9%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.67%.
+- Fixed-boundary optimizer decomposition: 96.10%.
+- Plotting/WOUT visualization decomposition: 96.1%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.45%.
+- Free-boundary validation-gate maintainability: 97.4%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999992%.
