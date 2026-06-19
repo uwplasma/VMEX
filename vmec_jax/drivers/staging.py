@@ -49,6 +49,14 @@ class FixedBoundaryStageRunnerContext:
     timing_solve_total_s: Callable[[dict[str, Any]], float]
     accelerated_cli_budgeted_stage_iters: Callable[..., list[int]]
 
+    @classmethod
+    def from_namespace(cls, namespace: dict[str, Any], /, **overrides: Any) -> "FixedBoundaryStageRunnerContext":
+        names = [field.name for field in fields(cls)]
+        try:
+            return cls(**{name: overrides[name] if name in overrides else namespace[name] for name in names})
+        except KeyError as exc:
+            raise KeyError(f"Missing fixed-boundary stage-runner context field: {exc.args[0]}") from exc
+
 
 @dataclass(frozen=True)
 class Vmec2000StagedSolveContext:
@@ -138,13 +146,11 @@ class Vmec2000StagedSolveContext:
 
     @classmethod
     def from_namespace(cls, namespace: dict[str, Any], /, **overrides: Any) -> "Vmec2000StagedSolveContext":
-        """Build the staged-solve context from resolved driver locals."""
-
         names = [field.name for field in fields(cls)]
-        missing = [name for name in names if name not in overrides and name not in namespace]
-        if missing:
-            raise KeyError(f"Missing VMEC2000 staged-solve context fields: {', '.join(missing)}")
-        return cls(**{name: overrides[name] if name in overrides else namespace[name] for name in names})
+        try:
+            return cls(**{name: overrides[name] if name in overrides else namespace[name] for name in names})
+        except KeyError as exc:
+            raise KeyError(f"Missing VMEC2000 staged-solve context field: {exc.args[0]}") from exc
 
 
 @dataclass(frozen=True)

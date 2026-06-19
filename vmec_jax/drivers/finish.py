@@ -8,7 +8,7 @@ bounded retry/fallback bookkeeping without changing public behavior.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from typing import Any
 
 import numpy as np
@@ -72,6 +72,14 @@ class FixedBoundaryFinishContext:
     result_hits_total_target: Callable[..., bool]
     result_meets_requested_ftol: Callable[..., bool]
     sanitize_minimal_resume_state_for_finish: Callable[[Any], Any]
+
+    @classmethod
+    def from_namespace(cls, namespace: dict[str, Any], /, **overrides: Any) -> "FixedBoundaryFinishContext":
+        names = [field.name for field in fields(cls)]
+        try:
+            return cls(**{name: overrides[name] if name in overrides else namespace[name] for name in names})
+        except KeyError as exc:
+            raise KeyError(f"Missing fixed-boundary finish context field: {exc.args[0]}") from exc
 
 
 def _empty_finish_diagnostics(diag: dict, *, converged: bool, strict: bool, total: bool) -> dict:

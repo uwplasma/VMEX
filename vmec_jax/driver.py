@@ -799,27 +799,20 @@ def run_fixed_boundary(
         )
 
     def _stage_runner_context() -> _driver_staging_helpers.FixedBoundaryStageRunnerContext:
-        return _driver_staging_helpers.FixedBoundaryStageRunnerContext(
-            input_path=input_path,
-            cfg=cfg,
-            step_size=step_size,
+        _ = (
+            input_path, cfg, step_size, gn_damping, gn_cg_tol, use_restart_triggers, use_direct_fallback, jit_forces,
+            jit_precompile, scan_wout_corrector, stage_transition_heuristic, grid,
+        )
+        return _driver_staging_helpers.FixedBoundaryStageRunnerContext.from_namespace(
+            locals(),
             history_size=int(history_size),
-            gn_damping=gn_damping,
-            gn_cg_tol=gn_cg_tol,
             gn_cg_maxiter=int(gn_cg_maxiter),
             vmec_project=bool(vmec_project),
-            use_restart_triggers=use_restart_triggers,
             vmecpp_restart=bool(vmecpp_restart),
-            use_direct_fallback=use_direct_fallback,
             verbose=bool(verbose),
-            jit_forces=jit_forces,
-            jit_precompile=jit_precompile,
             use_scan=bool(use_scan),
-            scan_wout_corrector=scan_wout_corrector,
-            stage_transition_heuristic=stage_transition_heuristic,
             stage_transition_factor=float(stage_transition_factor),
             stage_transition_scale=float(stage_transition_scale),
-            grid=grid,
             solver_mode_eff=str(solver_mode_eff),
             cli_fixed_boundary_finish_enabled=bool(cli_fixed_boundary_finish_enabled),
             run_fixed_boundary=run_fixed_boundary,
@@ -831,40 +824,29 @@ def run_fixed_boundary(
         )
 
     def _finish_context() -> _driver_finish_helpers.FixedBoundaryFinishContext:
-        return _driver_finish_helpers.FixedBoundaryFinishContext(
-            input_path=input_path,
-            cfg=cfg,
-            indata=indata,
+        _ = (
+            input_path, cfg, indata, ftol_list_input, ns_list_input, niter_list_input, step_size,
+            gn_damping, gn_cg_tol, use_restart_triggers, use_direct_fallback, jit_forces, jit_precompile, use_scan,
+            scan_wout_corrector, stage_transition_heuristic, grid,
+        )
+        return _driver_finish_helpers.FixedBoundaryFinishContext.from_namespace(
+            locals(),
             solver_mode_eff=str(solver_mode_eff),
             accelerated_mode=bool(accelerated_mode),
-            ftol_list_input=ftol_list_input,
-            ns_list_input=ns_list_input,
-            niter_list_input=niter_list_input,
             deferred_staged_current_driven_3d_cli=bool(deferred_staged_current_driven_3d_cli),
             max_iter=int(max_iter),
             max_iter_overridden=bool(max_iter_overridden),
-            step_size=step_size,
             step_size_sentinel=_STEP_SIZE_SENTINEL,
             history_size=int(history_size),
-            gn_damping=gn_damping,
-            gn_cg_tol=gn_cg_tol,
             gn_cg_maxiter=int(gn_cg_maxiter),
             vmec_project=bool(vmec_project),
-            use_restart_triggers=use_restart_triggers,
             vmecpp_restart=bool(vmecpp_restart),
-            use_direct_fallback=use_direct_fallback,
             multigrid=bool(multigrid),
             multigrid_use_input_niter=bool(multigrid_use_input_niter),
             multigrid_user_provided=bool(multigrid_user_provided),
             verbose=bool(verbose),
-            jit_forces=jit_forces,
-            jit_precompile=jit_precompile,
-            use_scan=use_scan,
-            scan_wout_corrector=scan_wout_corrector,
-            stage_transition_heuristic=stage_transition_heuristic,
             stage_transition_factor=float(stage_transition_factor),
             stage_transition_scale=float(stage_transition_scale),
-            grid=grid,
             policy_backend=str(policy_backend),
             direct_external_provider=bool(direct_external_provider),
             accelerated_single_grid_default=bool(accelerated_single_grid_default),
