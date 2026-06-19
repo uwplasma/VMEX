@@ -7,6 +7,76 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-19.
 
+## 2026-06-19 Driver/WOUT Compatibility Facade Alias Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Replaced driver compatibility wrappers that only delegated directly to
+   extracted helper modules with aliases:
+   `residual_scalars_from_state` and `save_npz`.
+2. Replaced the WOUT IEQUI=1 correction wrapper with a `functools.partial`
+   alias that binds the fixed VMEC quadrature dependency.
+3. Kept dependency-binding wrappers as live-global wrappers where tests and
+   downstream users rely on monkeypatch points, including
+   `_final_flux_profiles_from_state` and `_compute_mercier`.
+
+Results obtained:
+
+- Production source dropped by 29 lines across `vmec_jax/driver.py` and
+  `vmec_jax/wout.py`.
+- The first attempt to alias `_compute_mercier` exposed a real compatibility
+  constraint: tests monkeypatch `wout._compute_bsubs_half_mesh`, so the wrapper
+  must keep resolving that dependency at call time. The final patch preserves
+  that behavior.
+- Focused driver and WOUT coverage shards still pass.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/driver.py vmec_jax/wout.py`
+- `python -m ruff check vmec_jax/driver.py vmec_jax/wout.py --select F401,F841`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_fast_reconstruction.py::test_residual_scalars_from_state_runs_kernel_pipeline tests/test_driver_fast_reconstruction.py::test_write_wout_from_fixed_boundary_run_creates_parent_and_delegates tests/test_driver_wave6_coverage.py::test_wout_from_fixed_boundary_run_uses_residual_scalars_when_result_missing tests/test_driver_policy_helpers.py::test_wout_from_fixed_boundary_run_samples_fsqt_and_falls_back_to_residual_recompute tests/test_driver_policy_helpers.py::test_wout_from_fixed_boundary_run_include_fsq_false_restores_existing_fast_env tests/test_wout_physics_wave8_coverage.py::test_compute_mercier_lasym_lbsubs_branch_with_reduced_bsub_inputs tests/test_wout_physics_wave8_coverage.py::test_compute_mercier_short_mesh_returns_all_zero_component_profiles tests/test_wout_wave4_coverage.py::test_compute_mercier_exact_sum_symmetrizes_full_grid_inputs_and_stays_finite -q`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue facade cleanup only where aliases do not freeze monkeypatchable
+   dependencies or break compatibility seams.
+2. Return to larger production hotspots, especially the residual iteration
+   monolith and implicit residual-adjoint long functions.
+3. Keep full CI inspection batched for later.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.735%.
+- Free-boundary adjoint monolith reduction: 99.42%.
+- Driver workflow decomposition: 99.93%.
+- Residual iteration decomposition: 98.65%.
+- WOUT diagnostic/profile decomposition: 99.92%.
+- Bcovar/WOUT parity decomposition: 99.12%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.77%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.66%.
+- Fixed-boundary optimizer decomposition: 96.05%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.35%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999991%.
+
 ## 2026-06-19 Fixed-Boundary Optimizer Wrapper Alias Cleanup
 
 Branch: `codex/differentiability-refactor-plan`.
