@@ -1829,7 +1829,67 @@ def _assert_native_rejected_adaptive_gate(
     assert adaptive_gate["status_derived_rejected_controller_slot_present"] is True
     assert adaptive_gate["differentiates_adaptive_controller"] is False
     assert adaptive_gate["differentiates_run_free_boundary"] is False
-    return adaptive_gate
+
+
+def _assert_same_branch_physical_and_adaptive_scalar_gates(
+    complete_report: dict,
+    scalars_report: dict,
+    *,
+    scalar_keys: tuple[str, ...],
+    base_fingerprint: dict,
+):
+    from vmec_jax.free_boundary_adjoint import (
+        direct_coil_adaptive_full_loop_same_branch_gate_report,
+        direct_coil_same_branch_physical_scalar_gate_report,
+    )
+
+    physical_scalar_gate = direct_coil_same_branch_physical_scalar_gate_report(
+        complete_report, scalars_report, scalar_keys=scalar_keys
+    )
+    assert physical_scalar_gate["passed"], physical_scalar_gate
+    assert physical_scalar_gate["scalar_keys"] == scalar_keys
+    assert physical_scalar_gate["controller_slot_summary"]["accepted_slots"] >= 1
+    assert physical_scalar_gate["controller_slot_summary"]["rejected_slots"] == 0
+    assert physical_scalar_gate["replay_gate"]["passed"] is True
+    for key, expected in (
+        ("contract", "same-branch complete-solve physical-scalar AD-vs-FD gate"),
+        ("same_branch", True),
+        ("differentiates_adaptive_controller", False),
+    ):
+        assert physical_scalar_gate[key] == expected
+    adaptive_full_loop_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
+        complete_report, scalars_report, scalar_keys=scalar_keys
+    )
+    assert adaptive_full_loop_gate["passed"], adaptive_full_loop_gate
+    assert set(adaptive_full_loop_gate["branch_fingerprints"]) == {"base", "plus", "minus"}
+    assert set(adaptive_full_loop_gate["residual_branch_fingerprints"]) == {"base", "plus", "minus"}
+    assert adaptive_full_loop_gate["branch_fingerprints"]["base"]["n_steps"] == base_fingerprint["n_steps"]
+    assert adaptive_full_loop_gate["branch_fingerprints"]["base"]["n_freeb_steps"] == base_fingerprint["n_freeb_steps"]
+    assert adaptive_full_loop_gate["controller_slot_summary"]["accepted_slots"] >= 1
+    assert adaptive_full_loop_gate["controller_slot_summary"]["rejected_slots"] == 0
+    for key, expected in (
+        ("contract", "same-branch adaptive full-loop seam report"),
+        ("ad_vs_fd_gate", "complete-loop central FD vs branch-local stacked replay custom VJP"),
+        ("adaptive_loop_scope", "fingerprint-gated branch-local accepted/rejected replay slots"),
+        ("differentiates_adaptive_controller", False),
+        ("differentiates_run_free_boundary", False),
+        ("fingerprint_gated", True),
+        ("same_branch", True),
+        ("same_accepted_trace_branch", True),
+        ("same_residual_branch", True),
+        ("same_full_loop_branch_fingerprint", True),
+        ("same_residual_branch_fingerprint", True),
+        ("same_stacked_step_policy_branch", True),
+        ("used_stacked_step_controls", True),
+        ("requires_fixed_rejected_controller_slot", False),
+        ("fixed_rejected_controller_slot_present", False),
+    ):
+        assert adaptive_full_loop_gate[key] == expected
+    for report_fn in (
+        direct_coil_adaptive_full_loop_same_branch_gate_report,
+        direct_coil_same_branch_physical_scalar_gate_report,
+    ):
+        json.dumps(report_fn(complete_report, scalars_report, scalar_keys=scalar_keys, json_safe=True), allow_nan=False)
 
 
 def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
@@ -2230,72 +2290,11 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         assert scalars_report["passed"], scalars_report
         assert scalars_report["replay_option_flags"]["use_stacked_step_controls"] is True
         assert scalars_report["replay_option_flags"]["use_accepted_only_fast_path"] is True
-        physical_scalar_gate = direct_coil_same_branch_physical_scalar_gate_report(
+        _assert_same_branch_physical_and_adaptive_scalar_gates(
             complete_report,
             scalars_report,
             scalar_keys=tuple(replay_scalar_fns),
-        )
-        assert physical_scalar_gate["passed"], physical_scalar_gate
-        assert physical_scalar_gate["contract"] == "same-branch complete-solve physical-scalar AD-vs-FD gate"
-        assert physical_scalar_gate["same_branch"] is True
-        assert physical_scalar_gate["differentiates_adaptive_controller"] is False
-        assert physical_scalar_gate["scalar_keys"] == tuple(replay_scalar_fns)
-        assert physical_scalar_gate["controller_slot_summary"]["accepted_slots"] >= 1
-        assert physical_scalar_gate["controller_slot_summary"]["rejected_slots"] == 0
-        assert physical_scalar_gate["replay_gate"]["passed"] is True
-        adaptive_full_loop_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
-            complete_report,
-            scalars_report,
-            scalar_keys=tuple(replay_scalar_fns),
-        )
-        assert adaptive_full_loop_gate["passed"], adaptive_full_loop_gate
-        assert adaptive_full_loop_gate["contract"] == "same-branch adaptive full-loop seam report"
-        assert (
-            adaptive_full_loop_gate["ad_vs_fd_gate"]
-            == "complete-loop central FD vs branch-local stacked replay custom VJP"
-        )
-        assert (
-            adaptive_full_loop_gate["adaptive_loop_scope"]
-            == "fingerprint-gated branch-local accepted/rejected replay slots"
-        )
-        assert adaptive_full_loop_gate["differentiates_adaptive_controller"] is False
-        assert adaptive_full_loop_gate["differentiates_run_free_boundary"] is False
-        assert adaptive_full_loop_gate["fingerprint_gated"] is True
-        assert adaptive_full_loop_gate["same_branch"] is True
-        assert adaptive_full_loop_gate["same_accepted_trace_branch"] is True
-        assert adaptive_full_loop_gate["same_residual_branch"] is True
-        assert adaptive_full_loop_gate["same_full_loop_branch_fingerprint"] is True
-        assert adaptive_full_loop_gate["same_residual_branch_fingerprint"] is True
-        assert set(adaptive_full_loop_gate["branch_fingerprints"]) == {"base", "plus", "minus"}
-        assert set(adaptive_full_loop_gate["residual_branch_fingerprints"]) == {"base", "plus", "minus"}
-        assert adaptive_full_loop_gate["branch_fingerprints"]["base"]["n_steps"] == base_fingerprint["n_steps"]
-        assert (
-            adaptive_full_loop_gate["branch_fingerprints"]["base"]["n_freeb_steps"]
-            == base_fingerprint["n_freeb_steps"]
-        )
-        assert adaptive_full_loop_gate["same_stacked_step_policy_branch"] is True
-        assert adaptive_full_loop_gate["used_stacked_step_controls"] is True
-        assert adaptive_full_loop_gate["requires_fixed_rejected_controller_slot"] is False
-        assert adaptive_full_loop_gate["fixed_rejected_controller_slot_present"] is False
-        assert adaptive_full_loop_gate["controller_slot_summary"]["accepted_slots"] >= 1
-        assert adaptive_full_loop_gate["controller_slot_summary"]["rejected_slots"] == 0
-        json.dumps(
-            direct_coil_adaptive_full_loop_same_branch_gate_report(
-                complete_report,
-                scalars_report,
-                scalar_keys=tuple(replay_scalar_fns),
-                json_safe=True,
-            ),
-            allow_nan=False,
-        )
-        json.dumps(
-            direct_coil_same_branch_physical_scalar_gate_report(
-                complete_report,
-                scalars_report,
-                scalar_keys=tuple(replay_scalar_fns),
-                json_safe=True,
-            ),
-            allow_nan=False,
+            base_fingerprint=base_fingerprint,
         )
         if check_fixed_rejected_controller_mask_gate:
             rejected_trace = deepcopy(base_traces[-1])
@@ -2887,7 +2886,7 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
         base_value_atol={"aspect": 2.0e-3, "state_norm": 2.0e-3, "qs_total": 2.0e-3},
     )
     assert scalars_report["passed"], scalars_report
-    adaptive_gate = _assert_native_rejected_adaptive_gate(
+    _assert_native_rejected_adaptive_gate(
         complete_report,
         scalars_report,
         scalar_keys=("aspect", "state_norm", "qs_total"),
@@ -3014,7 +3013,7 @@ def test_direct_coil_native_rejected_slot_betatotal_jvp_matches_complete_solve_f
         base_value_atol={"betatotal": 2.0e-3},
     )
     assert scalars_report["passed"], scalars_report
-    adaptive_gate = _assert_native_rejected_adaptive_gate(
+    _assert_native_rejected_adaptive_gate(
         complete_report,
         scalars_report,
         scalar_keys=("betatotal",),
@@ -3169,7 +3168,7 @@ def test_direct_coil_native_rejected_slot_geometry_jvp_matches_complete_solve_fd
         base_value_atol={"aspect": 2.0e-3, "state_norm": 2.0e-3, "qs_total": 2.0e-3},
     )
     assert scalars_report["passed"], scalars_report
-    adaptive_gate = _assert_native_rejected_adaptive_gate(
+    _assert_native_rejected_adaptive_gate(
         complete_report,
         scalars_report,
         scalar_keys=("aspect", "state_norm", "qs_total"),
@@ -3316,7 +3315,7 @@ def test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matc
         base_value_atol={"aspect": 2.0e-3, "qs_total": 2.0e-3, "lcfs_boundary_moment": 2.0e-3},
     )
     assert scalars_report["passed"], scalars_report
-    adaptive_gate = _assert_native_rejected_adaptive_gate(
+    _assert_native_rejected_adaptive_gate(
         complete_report,
         scalars_report,
         scalar_keys=("aspect", "qs_total", "lcfs_boundary_moment"),

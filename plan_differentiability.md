@@ -20503,3 +20503,77 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999976%.
+
+## 2026-06-19 Same-Branch Physical Scalar Gate Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Continued the direct-coil validation-gate cleanup after the rejected-slot
+   helper tranche.
+2. Added `_assert_same_branch_physical_and_adaptive_scalar_gates` so the large
+   same-branch custom-VJP helper no longer inlines the full physical-scalar and
+   adaptive seam report assertions.
+3. Preserved the same JSON-safe report checks, branch-fingerprint checks, and
+   conservative scope assertions: this gate still validates branch-local replay
+   against complete-loop central FD under an unchanged fingerprint, and still
+   does not claim arbitrary adaptive-controller differentiation.
+
+Results obtained:
+
+- The direct-coil validation file is net `-1` line for this tranche after
+  helper tightening.
+- `_assert_direct_coil_same_branch_custom_vjp_matches_complete_fd` decreased
+  from 870 to 809 lines, reducing one of the largest function-length hotspots.
+- The file is now 4816 lines, and the helper contract is centralized for future
+  scalar gates.
+
+Tests and commands run:
+
+- `python -m compileall -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `python -m ruff check tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_fd tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_lasym_fixed_trace_custom_vjp_matches_complete_solve_fd_on_same_branch -q`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue reducing the direct-coil validation file by extracting repeated
+   synthetic trace-fingerprint setup in
+   `test_direct_coil_trace_fingerprint_detects_control_branch_changes`.
+2. After one more validation-file tranche, return to production hotspots:
+   residual iteration, `free_boundary.py`, and `discrete_adjoint.py`.
+3. Keep GPU/office reserved for runtime-affecting changes; this tranche is
+   validation scaffolding only.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999448%.
+- Solver monolith reduction: 99.80%.
+- Free-boundary adjoint monolith reduction: 99.51%.
+- Driver workflow decomposition: 99.945%.
+- Residual iteration decomposition: 98.93%.
+- WOUT diagnostic/profile decomposition: 99.975%.
+- Bcovar/WOUT parity decomposition: 99.15%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.82%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.74%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 96.80%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.62%.
+- Free-boundary validation-gate maintainability: 97.90%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999977%.
