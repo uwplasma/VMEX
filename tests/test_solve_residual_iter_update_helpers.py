@@ -5,6 +5,7 @@ import pytest
 
 from vmec_jax.solvers.fixed_boundary.residual.update import (
     ResidualVelocityBlocks,
+    backtracking_momentum_search,
     force_update_rms,
     host_catastrophic_restart_update,
     host_force_update_rms,
@@ -134,6 +135,73 @@ def test_force_update_rms_is_jax_visible_and_matches_host_wrapper() -> None:
 
     assert np.asarray(got).shape == ()
     assert float(np.asarray(got)) == pytest.approx(host_force_update_rms(scale, *blocks))
+
+
+def test_backtracking_momentum_search_accepts_first_good_trial() -> None:
+    velocities = _blocks(offset=0.0, scale=0.0)
+    forces = ResidualVelocityBlocks(*(np.ones((2, 3)) for _ in range(12)))
+
+    def delta_tuple_from_blocks(dt, transforms, *blocks):
+        return tuple(float(dt) * np.asarray(block) for block in blocks)
+
+    def candidate_state_from_delta_tuple(deltas, **_kwargs):
+        return float(np.mean(deltas[0]))
+
+    result = backtracking_momentum_search(
+        state=0.0,
+        velocities=velocities,
+        forces=forces,
+        time_step=0.2,
+        step_size=0.2,
+        b1=0.0,
+        fac=1.0,
+        flip_sign=1.0,
+        w_curr=1.0,
+        delta_transforms=(),
+        delta_tuple_from_blocks=delta_tuple_from_blocks,
+        candidate_state_from_delta_tuple=candidate_state_from_delta_tuple,
+        freeb_bsqvac_half_for_trial_state=lambda state: None,
+        trial_residual_total=lambda _state, _bsqvac: 1.0,
+    )
+
+    assert result.accepted
+    assert result.step_status == "momentum"
+    assert result.dt_eff == pytest.approx(0.2)
+    assert result.state == pytest.approx(0.04)
+    for block in result.velocities:
+        np.testing.assert_allclose(block, 0.2)
+    assert result.update_rms == pytest.approx(host_force_update_rms(0.2, *result.velocities))
+
+
+def test_backtracking_momentum_search_rejects_and_damps_velocity() -> None:
+    velocities = ResidualVelocityBlocks(*(2.0 * np.ones((2, 3)) for _ in range(12)))
+    forces = ResidualVelocityBlocks(*(np.ones((2, 3)) for _ in range(12)))
+
+    result = backtracking_momentum_search(
+        state="old-state",
+        velocities=velocities,
+        forces=forces,
+        time_step=0.4,
+        step_size=0.4,
+        b1=1.0,
+        fac=1.0,
+        flip_sign=1.0,
+        w_curr=1.0,
+        delta_transforms=(),
+        delta_tuple_from_blocks=lambda dt, transforms, *blocks: blocks,
+        candidate_state_from_delta_tuple=lambda deltas, **_kwargs: "trial-state",
+        freeb_bsqvac_half_for_trial_state=lambda state: None,
+        trial_residual_total=lambda _state, _bsqvac: float("inf"),
+        max_backtracks=2,
+    )
+
+    assert not result.accepted
+    assert result.step_status == "rejected"
+    assert result.state == "old-state"
+    assert result.dt_eff == pytest.approx(0.1)
+    assert result.update_rms == pytest.approx(0.0)
+    for block in result.velocities:
+        np.testing.assert_allclose(block, 1.0)
 
 
 def test_free_boundary_control_module_reexports_velocity_helpers() -> None:
