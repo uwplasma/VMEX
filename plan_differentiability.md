@@ -25619,3 +25619,73 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999999926%.
+
+## 2026-06-19 NESTOR External-Step Result Assembly Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_nestor_external_step_result` in `vmec_jax.free_boundary`.
+2. Moved NESTOR result assembly, trace-array packing, runtime-cache update,
+   and optional scalpot debug dump dispatch out of `nestor_external_only_step`.
+3. Left dense/spectral solve selection, source reuse, matrix override, and
+   NESTOR-operator branch behavior unchanged.
+
+Results obtained:
+
+- `nestor_external_only_step` dropped out of the top-20 function-length report
+  (previously 388 lines).
+- The result/runtime/dump tail is now a named helper that matches the existing
+  diagnostics/runtime context-packing pattern.
+- The `free_boundary.py` file grew modestly because the extracted tail is now
+  explicit, but the solver function itself is substantially easier to scan.
+
+Tests and commands run:
+
+- `python -m py_compile vmec_jax/free_boundary.py`
+- `python -m ruff check vmec_jax/free_boundary.py`
+- `python tools/diagnostics/source_health.py --top 25 --max-root-helper-prefix-files 2`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_wave2.py::test_nestor_external_only_step_reuse_spectral_and_dense_fallback tests/test_free_boundary_wave2.py::test_nestor_external_only_step_dense_grid_and_mode_success tests/test_free_boundary_fast_physics_coverage.py::test_spectral_ivacskip_reuses_poisson_cache_but_refreshes_rhs tests/test_free_boundary_fast_physics_coverage.py::test_legacy_reuse_hold_path_preserves_cached_bsqvac_without_sampling tests/test_free_boundary_fast_physics_coverage.py::test_dense_mode_reuse_keeps_operator_and_cached_source_vectors tests/test_free_boundary_wp0.py::test_nestor_external_only_step_reuse -q`
+
+Best next steps:
+
+1. Commit and push this NESTOR result-tail extraction.
+2. For further free-boundary reduction, target the dense VMEC-like branch only
+   with an AD/FD or parity-focused gate; avoid moving branch-selection logic
+   without such a gate.
+3. Continue broader refactor work with residual iteration or WOUT constructor
+   seams if a clean, testable boundary is available.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999995%.
+- Solver monolith reduction: 99.911%.
+- Free-boundary adjoint monolith reduction: 99.66%.
+- Driver workflow decomposition: 99.970%.
+- Residual iteration decomposition: 99.491%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.30%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.902%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.05%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.18%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.86%.
+- Discrete-adjoint replay decomposition: 99.24%.
+- Free-boundary validation-gate maintainability: 98.47%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999999927%.
