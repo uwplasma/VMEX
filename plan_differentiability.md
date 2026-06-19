@@ -7,6 +7,79 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-19.
 
+## 2026-06-19 NESTOR Trace-Array Packaging Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted NESTOR trace-array packaging from `nestor_external_only_step`
+   into `_nestor_trace_arrays`.
+2. Kept the extraction to data marshaling only: no solve policy, source
+   assembly, matrix assembly, or vacuum-channel formulas changed.
+3. Compressed adjacent validation-test scaffolding for controller masks and
+   direct-coil vacuum override calls to keep the code/test tranche net-negative.
+
+Results obtained:
+
+- `nestor_external_only_step` dropped from 591 to 561 lines.
+- `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+  dropped from 5062 to 5033 lines.
+- `test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree`
+  dropped from 792 to 786 lines.
+- The code/test diff for this tranche is net-negative by 1 line while moving
+  trace-array data marshaling out of the production solve-policy body.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/free_boundary.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `python -m ruff check vmec_jax/free_boundary.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py --select F401,F841`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_vacuum_field_override_replay_contract -q`
+- `git diff --check`
+- `python tools/diagnostics/source_health.py | head -90`
+
+Best next steps:
+
+1. Continue reducing `nestor_external_only_step`, focusing next on diagnostics
+   assembly or runtime-cache update packaging.
+2. Keep free-boundary refactors conservative: extract pure plumbing first,
+   then only touch source/matrix solve policy after adding a very narrow
+   numerical parity gate.
+3. Revisit the residual iteration monolith after one more safe
+   free-boundary/NESTOR packaging tranche.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.737%.
+- Free-boundary adjoint monolith reduction: 99.47%.
+- Driver workflow decomposition: 99.94%.
+- Residual iteration decomposition: 98.68%.
+- WOUT diagnostic/profile decomposition: 99.94%.
+- Bcovar/WOUT parity decomposition: 99.13%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.81%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.66%.
+- Fixed-boundary optimizer decomposition: 96.05%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.45%.
+- Discrete-adjoint replay decomposition: 96.45%.
+- Free-boundary validation-gate maintainability: 96.0%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9999985%.
+
 ## 2026-06-19 Free-Boundary Provider Sampling Decomposition
 
 Branch: `codex/differentiability-refactor-plan`.

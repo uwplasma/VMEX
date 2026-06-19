@@ -4365,20 +4365,14 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
             rtol=5.0e-12,
             atol=5.0e-12,
         )
-    np.testing.assert_array_equal(np.asarray(controller_replay["history"]["accepted"]), np.asarray([True, True]))
-    np.testing.assert_array_equal(np.asarray(controller_replay["history"]["rejected"]), np.asarray([False, False]))
-    np.testing.assert_array_equal(
-        np.asarray(controller_replay["controls"]["step_index"]),
-        np.asarray([0, 1]),
-    )
-    np.testing.assert_array_equal(
-        np.asarray(controller_replay["controls"]["reset_to_trace_pre"]),
-        np.asarray([False, False]),
-    )
-    np.testing.assert_array_equal(
-        np.asarray(controller_replay["controls"]["has_active_freeb_replay"]),
-        np.asarray([True, True]),
-    )
+    for container, name, expected in (
+        (controller_replay["history"], "accepted", [True, True]),
+        (controller_replay["history"], "rejected", [False, False]),
+        (controller_replay["controls"], "step_index", [0, 1]),
+        (controller_replay["controls"], "reset_to_trace_pre", [False, False]),
+        (controller_replay["controls"], "has_active_freeb_replay", [True, True]),
+    ):
+        np.testing.assert_array_equal(np.asarray(container[name]), np.asarray(expected))
     np.testing.assert_allclose(
         np.asarray(controller_replay["controls"]["step_scalars"]["dt_eff"]),
         np.asarray([_trace_scalar_value(trace0["dt_eff"]), _trace_scalar_value(trace1["dt_eff"])]),
@@ -4712,21 +4706,10 @@ def test_direct_coil_vacuum_field_override_replay_contract(monkeypatch: pytest.M
     )
 
     grid = jnp.ones(shape)
+    grid_kwargs = dict.fromkeys(("R", "Z", "phi", "Ru", "Zu", "Rv", "Zv", "ruu", "ruv", "rvv", "zuu", "zuv", "zvv"), grid)
     out = freeb_adj.direct_coil_boundary_bsqvac_jax(
         params=None,
-        R=grid,
-        Z=grid,
-        phi=grid,
-        Ru=grid,
-        Zu=grid,
-        Rv=grid,
-        Zv=grid,
-        ruu=grid,
-        ruv=grid,
-        rvv=grid,
-        zuu=grid,
-        zuv=grid,
-        zvv=grid,
+        **grid_kwargs,
         basis={},
         tables={},
         signgs=1,
@@ -4747,19 +4730,7 @@ def test_direct_coil_vacuum_field_override_replay_contract(monkeypatch: pytest.M
 
     out_no_diag = freeb_adj.direct_coil_boundary_bsqvac_jax(
         params=None,
-        R=grid,
-        Z=grid,
-        phi=grid,
-        Ru=grid,
-        Zu=grid,
-        Rv=grid,
-        Zv=grid,
-        ruu=grid,
-        ruv=grid,
-        rvv=grid,
-        zuu=grid,
-        zuv=grid,
-        zvv=grid,
+        **grid_kwargs,
         basis={},
         tables={},
         signgs=1,
