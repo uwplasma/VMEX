@@ -26090,3 +26090,177 @@ arguments described above. They wrote ignored outputs under:
 ### User input needed
 
 No user input is needed for the next technical step.
+
+---
+## 217. Adaptive Free-Boundary Polynomial-Degree Candidates
+
+### Steps taken
+
+- Implemented the M216 adaptive boundary-basis policy in the root
+  circular-coil free-boundary example.
+- Bumped the circular-coil beta-scan metrics schema from `0.12` to `0.13`.
+- Added `--ls-boundary-polynomial-degree-candidates` as an optional ordered
+  list of even polynomial degrees.
+- Preserved the default path: with no candidates, the workflow still runs only
+  the primary `--ls-boundary-polynomial-degree` value, which defaults to
+  degree 4.
+- Normalized candidate lists by prepending the primary degree, validating each
+  candidate as even and at least 4, and de-duplicating while preserving order.
+- Added per-LS-step and per-loop-row `polynomial_degree` metadata.
+- Added per-beta coupled-loop fields:
+  - `ls_boundary_coupled_loop_polynomial_degree_candidates`;
+  - `ls_boundary_coupled_loop_selected_polynomial_degree`;
+  - `ls_boundary_coupled_loop_degree_attempts`.
+- Added compact per-degree attempt summaries recording whether the attempt was
+  selected, whether it reached `target_merit`, row counts, accepted-row counts,
+  status, stop reason, final merit, best merit, and final `fsq` growth ratio.
+- Updated tests, the root mirror README, and the mirror overview docs for
+  schema `0.13`.
+- Committed and pushed the implementation as
+  `1ae79679 Add adaptive free-boundary degree candidates`.
+- Synced `ssh office` to commit `1ae7967` and ran the planned GPU ladder with
+  degree candidates `4,8`, `max_steps = 16`, and `inner_solve_steps = 2`.
+
+### Results obtained
+
+Local schema/target probe:
+
+- Path:
+  `results/mirror/free_boundary_circular_coils_m217_candidate_schema_target010/free_boundary_circular_coils_metrics.json`.
+- Schema: `0.13`.
+- Top-level candidates: `[4, 8]`.
+- Status: `ls_boundary_coupled_loop_converged_free_boundary`.
+- Total loop rows: `27`.
+- Accepted loop rows: `27`.
+- Stop counts: `{"None": 24, "target_merit": 3}`.
+- All local beta rows reached the target with degree 4:
+  - beta `1%`: final merit `0.06384411952516199`, final `fsq` growth ratio
+    `0.896415118862783`;
+  - beta `3%`: final merit `0.04728522927730968`, final `fsq` growth ratio
+    `1.2387301734323382`;
+  - beta `10%`: final merit `0.04728522927730968`, final `fsq` growth ratio
+    `1.3791437736624717`.
+
+Office GPU/JAX environment:
+
+- Host: `pop-os`.
+- JAX: `0.6.2`.
+- Devices: two CUDA GPUs.
+
+Office ladder outputs are ignored under:
+
+- `results/mirror/free_boundary_circular_coils_m217_office_degree_candidates_ladder/ns7_nxi11/`;
+- `results/mirror/free_boundary_circular_coils_m217_office_degree_candidates_ladder/ns9_nxi15/`;
+- `results/mirror/free_boundary_circular_coils_m217_office_degree_candidates_ladder/ns11_nxi17/`.
+
+Office ladder results:
+
+| ns | nxi | status | selected degrees by beta | final merits by beta | final `fsq` growth by beta | rows accepted/total | time | max RSS |
+| ---: | ---: | --- | --- | --- | --- | ---: | ---: | ---: |
+| 7 | 11 | converged | `4, 4, 4` | `0.06384412004281963`, `0.047285219537912024`, `0.047285219537912024` | `0.8964151189416624`, `1.2387301801701402`, `1.3791437828469788` | `27/27` | `2:31.00` | `1167560 KiB` |
+| 9 | 15 | converged | `8, 4, 4` | `0.05857709842407309`, `0.09227264626028128`, `0.09227264626028128` | `0.4097269802258028`, `0.9589199825813057`, `1.0802471599641668` | `15/15` | `2:14.10` | `1167984 KiB` |
+| 11 | 17 | converged | `4, 4, 4` | `0.0632243695944156`, `0.05918247235266881`, `0.05918247235266881` | `0.5808542112890316`, `1.1896540934085293`, `1.4153653091743588` | `37/37` | `4:31.12` | `1169604 KiB` |
+
+Key interpretation:
+
+- The M216 diagnosis was correct.  At `(ns, nxi) = (9, 15)`, beta `1%`
+  first tried degree 4, missed the target, then degree 8 reached
+  `target_merit` in one accepted realized step.
+- Degree 8 was not used where degree 4 already worked, preserving the stable
+  lower-order path for beta `3%`, beta `10%`, and the `(11, 17)` rows.
+- The `(11, 17)` beta `3%` and `10%` rows converged with the planned
+  `max_steps = 16` budget and degree 4.
+- All three office resolution rows now converge all requested beta rows below
+  `target_merit = 0.1` while staying under the configured `fsq` growth guard
+  of `1.5`.
+
+### How it was tested
+
+Local checks:
+
+```bash
+python -m pytest tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_summary_reports_converged_free_boundary_statuses tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_polynomial_degree_candidate_helpers tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_step_reports_reduction tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_high_order_ls_boundary_step_rejects_invalid_trials tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_coupled_trial_reports_realized_solve tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_coupled_loop_reports_guarded_steps tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_coupled_loop_reports_inner_solve_rows tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_convergence -q
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m217_candidate_schema_target010 --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 12 --ls-boundary-coupled-loop-target-merit 0.1 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.05 --ls-boundary-inner-solve-steps 2 --ls-boundary-polynomial-degree-candidates 4,8 --no-plots
+python -m pytest tests/mirror/test_mirror_examples.py -q
+python -m ruff check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+python -m ruff format --check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+python -m sphinx -W -j auto -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Focused free-boundary tests: `8 passed in 65.68s`.
+- Full root mirror example tests: `39 passed in 238.23s`.
+- Ruff check: passed.
+- Ruff format check: passed after formatting.
+- Sphinx warning-as-error docs build: passed.
+- Whitespace check: passed.
+
+Office command shape:
+
+```bash
+ssh office 'cd ~/local/vmec_mirror && git fetch origin codex/mirror-geometry && git merge --ff-only origin/codex/mirror-geometry'
+ssh office 'cd ~/local/vmec_mirror && python3 examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m217_office_degree_candidates_ladder/ns7_nxi11 --betas 1,3,10 --ns 7 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 16 --ls-boundary-coupled-loop-target-merit 0.1 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.05 --ls-boundary-inner-solve-steps 2 --ls-boundary-polynomial-degree-candidates 4,8 --no-plots'
+```
+
+The same command pattern was run for `(ns, nxi) = (9, 15)` and `(11, 17)`,
+with `/usr/bin/time -v` capturing wall time and maximum resident set size.
+
+### File structure and best-practice notes
+
+- The adaptive degree policy is localized to
+  `examples/mirror_free_boundary_circular_coils.py`, which already owns the
+  host-side CLI workflow, fixed-boundary trial solves, and JSON/CSV reports.
+- Core mirror solver APIs remain unchanged. This avoids mixing a host-side
+  diagnostic policy into the differentiable solver package before the pure-JAX
+  free-boundary API is promoted.
+- Metrics remain explicit and auditable: top-level JSON records the effective
+  candidate list, each beta row records the selected degree and all attempted
+  degree summaries, and each LS step/loop row records its actual degree.
+- Tests remain in `tests/mirror/test_mirror_examples.py` because this is a
+  root-example CLI/schema contract.
+- Documentation is updated in both the root mirror README and the Sphinx mirror
+  overview.
+- Generated local and office metrics remain under ignored `results/` paths;
+  no result figures or NetCDF files are tracked.
+
+### Best next steps
+
+1. Commit and push this M217 plan update.
+2. Update the draft PR body with schema `0.13`, the adaptive degree policy, and
+   the office ladder evidence.
+3. Check the latest PR CI after it has had enough time to run; fix any failures
+   only if they appear.
+4. Start the final merge-readiness audit against the full plan:
+   - confirm there are no unlogged code paths or generated artifacts;
+   - re-check the docs and user-facing examples for stale schema wording;
+   - review deferred lanes and decide whether they are truly post-PR follow-up
+     or still required before the draft PR can be marked ready.
+
+### Completion percentages after M217
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.9%`; adaptive polynomial-degree fallback and
+  the office resolution ladder now converge all requested beta rows below the
+  reduced circular-coil target merit.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `99.9%`.
+- ESSOS circular-coil mirror beta scan: `99.9%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.96%`, pending plan-update commit, PR-body
+  refresh, final CI review, and final merge-readiness audit.
+
+### User input needed
+
+No user input is needed for the next technical step.
