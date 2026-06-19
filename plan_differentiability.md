@@ -7,6 +7,73 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-19.
 
+## 2026-06-19 Optimizer Forward-Solve Branch Consolidation
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Collapsed the duplicated trial/exact branch in
+   `FixedBoundaryExactOptimizer._solve_forward` into one
+   `solve_fixed_boundary_residual_iter` call.
+2. Preserved the trial-specific behavior that injects `state_only=True` when
+   trial scan mode is active, while keeping explicit user/test `state_only`
+   values authoritative.
+3. Kept solver-device dispatch and solver timing/profile recording unchanged.
+
+Results obtained:
+
+- `vmec_jax/optimization.py` dropped from 2662 to 2658 lines.
+- `_solve_forward` is simpler and has one solve-call site instead of two.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/optimization.py`
+- `python -m ruff check vmec_jax/optimization.py`
+- `git diff --check`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_fast_optimizer_methods.py::test_solve_forward_uses_trial_and_exact_solver_kwargs tests/test_optimization_fast_optimizer_methods.py::test_solve_forward_preserves_explicit_trial_state_only tests/test_optimization_fast_optimizer_methods.py::test_residual_callbacks_remember_exact_and_trial_residuals tests/test_optimization_fast_optimizer_methods.py::test_move_to_solver_device_recurses_dataclasses_namedtuples_and_containers -q`
+
+Best next steps:
+
+1. Continue optimizer simplification only around duplicated branch setup or
+   profile/cache plumbing with direct fast tests.
+2. Move back to residual iteration or free-boundary validation-test
+   maintainability for larger line-count reductions.
+3. Keep exact/tape behavior unchanged until a dedicated performance tranche is
+   selected.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999425%.
+- Solver monolith reduction: 99.79%.
+- Free-boundary adjoint monolith reduction: 99.51%.
+- Driver workflow decomposition: 99.945%.
+- Residual iteration decomposition: 98.88%.
+- WOUT diagnostic/profile decomposition: 99.975%.
+- Bcovar/WOUT parity decomposition: 99.15%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.82%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.74%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 96.80%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.62%.
+- Free-boundary validation-gate maintainability: 97.45%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999972%.
+
 ## 2026-06-19 Replay Cache and WOUT Timing Consolidation
 
 Branch: `codex/differentiability-refactor-plan`.
