@@ -208,6 +208,22 @@ def _wout_coeff_pair_at(
     return first[int(s_index)], second[int(s_index)]
 
 
+def _surface_rz_from_wout_grid(wout, *, theta, toroidal, s_index: int, nyq: bool, physical: bool):
+    basis = _basis_from_wout(wout, theta, toroidal, nyq=nyq, physical=physical)
+    rmnc, rmns = _wout_coeff_pair(wout, "rmnc", "rmns", zero_secondary_if_sym=True)
+    zmns, zmnc = _wout_coeff_pair(wout, "zmns", "zmnc", zero_secondary_if_sym=True)
+    return (
+        np.asarray(eval_fourier(rmnc[s_index], rmns[s_index], basis)),
+        np.asarray(eval_fourier(zmnc[s_index], zmns[s_index], basis)),
+    )
+
+
+def _bmag_from_wout_grid(wout, *, theta, toroidal, s_index: int, physical: bool):
+    basis = _basis_from_wout(wout, theta, toroidal, nyq=True, physical=physical)
+    bmnc, bmns = _wout_coeff_pair(wout, "bmnc", "bmns", zero_secondary_if_sym=True)
+    return np.asarray(eval_fourier(bmnc[s_index], bmns[s_index], basis))
+
+
 def bsup_from_wout(
     wout,
     *,
@@ -249,13 +265,7 @@ def surface_rz_from_wout(
     nyq: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return R,Z on a surface from wout Fourier coefficients."""
-    basis = _basis_from_wout(wout, theta, zeta, nyq=nyq, physical=False)
-    rmnc, rmns = _wout_coeff_pair(wout, "rmnc", "rmns", zero_secondary_if_sym=True)
-    zmns, zmnc = _wout_coeff_pair(wout, "zmns", "zmnc", zero_secondary_if_sym=True)
-
-    R = np.asarray(eval_fourier(rmnc[s_index], rmns[s_index], basis))
-    Z = np.asarray(eval_fourier(zmnc[s_index], zmns[s_index], basis))
-    return R, Z
+    return _surface_rz_from_wout_grid(wout, theta=theta, toroidal=zeta, s_index=s_index, nyq=nyq, physical=False)
 
 
 def surface_rz_from_wout_physical(
@@ -271,13 +281,7 @@ def surface_rz_from_wout_physical(
     This matches vmecPlot2's convention: phase = m*theta - xn*phi, where
     `xn` already includes the nfp factor.
     """
-    basis = _basis_from_wout(wout, theta, phi, nyq=nyq, physical=True)
-    rmnc, rmns = _wout_coeff_pair(wout, "rmnc", "rmns", zero_secondary_if_sym=True)
-    zmns, zmnc = _wout_coeff_pair(wout, "zmns", "zmnc", zero_secondary_if_sym=True)
-
-    R = np.asarray(eval_fourier(rmnc[s_index], rmns[s_index], basis))
-    Z = np.asarray(eval_fourier(zmnc[s_index], zmns[s_index], basis))
-    return R, Z
+    return _surface_rz_from_wout_grid(wout, theta=theta, toroidal=phi, s_index=s_index, nyq=nyq, physical=True)
 
 
 def surface_rz_from_state(
@@ -568,10 +572,7 @@ def bmag_from_wout(
     s_index: int,
 ) -> np.ndarray:
     """Return B magnitude on a surface from wout Nyquist Fourier coefficients."""
-    basis = _basis_from_wout(wout, theta, zeta, nyq=True, physical=False)
-    bmnc, bmns = _wout_coeff_pair(wout, "bmnc", "bmns", zero_secondary_if_sym=True)
-    B = np.asarray(eval_fourier(bmnc[s_index], bmns[s_index], basis))
-    return B
+    return _bmag_from_wout_grid(wout, theta=theta, toroidal=zeta, s_index=s_index, physical=False)
 
 
 def bmag_from_wout_physical(
@@ -582,10 +583,7 @@ def bmag_from_wout_physical(
     s_index: int,
 ) -> np.ndarray:
     """Return B magnitude on a surface using physical toroidal angle phi."""
-    basis = _basis_from_wout(wout, theta, phi, nyq=True, physical=True)
-    bmnc, bmns = _wout_coeff_pair(wout, "bmnc", "bmns", zero_secondary_if_sym=True)
-    B = np.asarray(eval_fourier(bmnc[s_index], bmns[s_index], basis))
-    return B
+    return _bmag_from_wout_grid(wout, theta=theta, toroidal=phi, s_index=s_index, physical=True)
 
 
 def vmecplot2_bmag_grid(

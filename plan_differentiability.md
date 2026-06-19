@@ -21745,3 +21745,77 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999993%.
+
+## 2026-06-19 WOUT Plotting Grid Deduplication
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Reviewed the pending `plotting.py` cleanup left from the previous work
+   chunk.
+2. Added shared private helpers for WOUT surface and |B| grid evaluation.
+3. Rewired the VMEC-angle and physical-angle public helpers through those
+   shared helpers without changing their public API or coordinate semantics.
+
+Results obtained:
+
+- `plotting.py` decreased from 2160 to 2158 lines.
+- Duplicate Fourier coefficient/basis assembly for VMEC and physical
+  coordinates was removed.
+- No new source files or public namespaces were added.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/plotting.py`
+- `python -m ruff check vmec_jax/plotting.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_plotting_fast_helpers.py tests/test_plotting_helpers.py tests/test_plotting_unit.py tests/test_driver_wout_wave9_coverage.py -q`
+
+Notes:
+
+- An obsolete selector for `tests/test_plotting.py` failed before tests ran;
+  valid plotting test files were used immediately after that.
+- This tranche intentionally avoided broader plotting API changes because the
+  goal was to reduce duplication while preserving existing README/docs figure
+  generation behavior.
+
+Best next steps:
+
+1. Continue line-negative refactoring on cohesive seams only.
+2. Prioritize the remaining large files by domain: residual iteration,
+   free-boundary validation gates, sweep/example workflows, and QI staged
+   optimization.
+3. Keep GPU/office work for heavy performance or optimization validation; this
+   tranche did not require GPU resources.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999475%.
+- Solver monolith reduction: 99.826%.
+- Free-boundary adjoint monolith reduction: 99.54%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.05%.
+- WOUT diagnostic/profile decomposition: 99.982%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.825%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.745%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 96.82%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 96.69%.
+- Free-boundary validation-gate maintainability: 98.18%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999994%.
