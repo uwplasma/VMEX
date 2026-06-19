@@ -923,6 +923,9 @@ class FixedBoundaryExactOptimizer:
     _remember_exact_residual = _state_cache.remember_exact_residual
     _remember_exact_jacobian = _state_cache.remember_exact_jacobian
     _remember_best_exact_point = _state_cache.remember_best_exact_point
+    _reset_run_state = _state_cache.reset_run_state
+    _attach_run_private_payload = _state_cache.attach_run_private_payload
+    _initial_run_evaluation = _state_cache.initial_run_evaluation
 
     def _exact_history_accepts(self, cost: float) -> bool:
         """Return whether an exact callback row should enter accepted history."""
@@ -2035,60 +2038,6 @@ class FixedBoundaryExactOptimizer:
             json.dump(result["_history_dump"], f, indent=2)
         print(f"  Wrote {path}")
 
-    def _reset_run_state(self, *, trace_callbacks: bool | None, iota_fn) -> None:
-        """Reset mutable per-run caches, traces, and accepted-point bookkeeping."""
-
-        self._history = []
-        self._profile = {}
-        self._trial_residual_cache.clear()
-        self._exact_jacobian_cache = getattr(self, "_exact_jacobian_cache", {})
-        self._exact_jacobian_cache.clear()
-        self._callback_trace_enabled = bool(
-            self._env_bool_override("VMEC_JAX_OPT_TRACE_CALLBACKS") if trace_callbacks is None else trace_callbacks
-        )
-        self._callback_trace = []
-        self._callback_point_ids = {}
-        self._callback_previous_key = None
-        self._wall_t0 = time.perf_counter()
-        self._iota_fn = iota_fn
-        self._best_exact_params = self._best_exact_state = self._best_exact_residual = None
-        self._best_exact_cost = math.inf
-        self._exact_history_rejected_count = 0
-
-    def _attach_run_private_payload(
-        self,
-        result: dict,
-        *,
-        state_initial,
-        state_final,
-        history_dump: dict,
-    ) -> dict:
-        """Attach non-serializable state/profile payloads used by examples."""
-
-        result["_state_initial"] = state_initial
-        result["_state_final"] = state_final
-        result["_profile"] = self._profile_dump()
-        result["_history_dump"] = history_dump
-        return result
-
-    def _initial_run_evaluation(self, params0_arr: np.ndarray):
-        """Evaluate and record the exact initial point for an optimization run."""
-
-        res0 = self.residual_fun(params0_arr)
-        state0, _ = self._solve_exact_state(params0_arr, return_payload=True)
-        entry0 = self._history_entry_from_state_or_residual(
-            state0,
-            res0,
-            wall_time_s=0.0,
-            cache_key=self._exact_cache_key(params0_arr),
-        )
-        cost0 = float(entry0["cost"])
-        qs_total0 = float(entry0["qs_objective"])
-        aspect0 = float(entry0["aspect"])
-        self._history.append(entry0)
-        self._remember_best_exact_point(params0_arr, res0, cost0, state=state0)
-        return res0, state0, entry0, cost0, qs_total0, aspect0
-
     def _record_cached_exact_history_entry(
         self,
         params,
@@ -2162,7 +2111,7 @@ class FixedBoundaryExactOptimizer:
         scalar_cost_only_trials_used: bool | None = None
 
         # ── initial evaluation ──────────────────────────────────────────────
-        res0, state0, entry0, cost0, qs_total0, aspect0 = self._initial_run_evaluation(params0_arr)
+        state0, entry0, cost0, qs_total0, aspect0 = self._initial_run_evaluation(params0_arr)
 
         # ── outer least-squares loop ────────────────────────────────────────
         method_requested = str(method).strip().lower().replace("-", "_")

@@ -288,6 +288,63 @@ def evaluate_and_record_final_exact_point(
     )
 
 
+def reset_run_state(optimizer, *, trace_callbacks: bool | None, iota_fn) -> None:
+    """Reset mutable per-run caches, traces, and accepted-point bookkeeping."""
+
+    optimizer._history = []
+    optimizer._profile = {}
+    optimizer._trial_residual_cache.clear()
+    optimizer._exact_jacobian_cache = getattr(optimizer, "_exact_jacobian_cache", {})
+    optimizer._exact_jacobian_cache.clear()
+    optimizer._callback_trace_enabled = bool(
+        optimizer._env_bool_override("VMEC_JAX_OPT_TRACE_CALLBACKS") if trace_callbacks is None else trace_callbacks
+    )
+    optimizer._callback_trace = []
+    optimizer._callback_point_ids = {}
+    optimizer._callback_previous_key = None
+    optimizer._wall_t0 = time.perf_counter()
+    optimizer._iota_fn = iota_fn
+    optimizer._best_exact_params = optimizer._best_exact_state = optimizer._best_exact_residual = None
+    optimizer._best_exact_cost = math.inf
+    optimizer._exact_history_rejected_count = 0
+
+
+def attach_run_private_payload(
+    optimizer,
+    result: dict,
+    *,
+    state_initial,
+    state_final,
+    history_dump: dict,
+) -> dict:
+    """Attach non-serializable state/profile payloads used by examples."""
+
+    result["_state_initial"] = state_initial
+    result["_state_final"] = state_final
+    result["_profile"] = optimizer._profile_dump()
+    result["_history_dump"] = history_dump
+    return result
+
+
+def initial_run_evaluation(optimizer, params0_arr: np.ndarray):
+    """Evaluate and record the exact initial point for an optimization run."""
+
+    residual0 = optimizer.residual_fun(params0_arr)
+    state0, _ = optimizer._solve_exact_state(params0_arr, return_payload=True)
+    entry0 = optimizer._history_entry_from_state_or_residual(
+        state0,
+        residual0,
+        wall_time_s=0.0,
+        cache_key=optimizer._exact_cache_key(params0_arr),
+    )
+    cost0 = float(entry0["cost"])
+    qs_total0 = float(entry0["qs_objective"])
+    aspect0 = float(entry0["aspect"])
+    optimizer._history.append(entry0)
+    optimizer._remember_best_exact_point(params0_arr, residual0, cost0, state=state0)
+    return state0, entry0, cost0, qs_total0, aspect0
+
+
 def cached_exact_residual(optimizer, params=None, *, cache_key: bytes | None = None) -> np.ndarray | None:
     """Return a same-point exact residual if already available."""
 
