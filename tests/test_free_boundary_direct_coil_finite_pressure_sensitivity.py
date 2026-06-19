@@ -4269,6 +4269,9 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     def assert_state_close(left, right, *, rtol: float = 5.0e-12, atol: float = 5.0e-12) -> None:
         np.testing.assert_allclose(np.asarray(pack_state(left["state"])), np.asarray(pack_state(right["state"])), rtol=rtol, atol=atol)
 
+    def assert_array_equal(container, name, expected) -> None:
+        np.testing.assert_array_equal(np.asarray(container[name]), np.asarray(expected))
+
     replay = accepted_replay_objective()
     assert {"state", "bsqvac", "force"}.issubset(replay["objective_components"])
     assert np.isfinite(float(replay["objective"]))
@@ -4294,7 +4297,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         (controller_replay["controls"], "reset_to_trace_pre", [False, False]),
         (controller_replay["controls"], "has_active_freeb_replay", [True, True]),
     ):
-        np.testing.assert_array_equal(np.asarray(container[name]), np.asarray(expected))
+        assert_array_equal(container, name, expected)
     np.testing.assert_allclose(
         np.asarray(controller_replay["controls"]["step_scalars"]["dt_eff"]),
         np.asarray([_trace_scalar_value(trace0["dt_eff"]), _trace_scalar_value(trace1["dt_eff"])]),
@@ -4518,18 +4521,9 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     )
     assert not padded_controller_replay["used_accepted_only_fast_path"]
     assert padded_controller_replay["accepted_only_fast_path_segments"] == (False,)
-    np.testing.assert_array_equal(
-        np.asarray(padded_controller_replay["history"]["active"]),
-        np.asarray([True, True, False]),
-    )
-    np.testing.assert_array_equal(
-        np.asarray(padded_controller_replay["history"]["accepted"]),
-        np.asarray([True, True, False]),
-    )
-    np.testing.assert_array_equal(
-        np.asarray(padded_controller_replay["controls"]["reset_to_trace_pre"]),
-        np.asarray([False, False, True]),
-    )
+    assert_array_equal(padded_controller_replay["history"], "active", [True, True, False])
+    assert_array_equal(padded_controller_replay["history"], "accepted", [True, True, False])
+    assert_array_equal(padded_controller_replay["controls"], "reset_to_trace_pre", [False, False, True])
     assert padded_controller_replay["preconditioner_policy_n_segments"] == 1
     assert [
         (segment["start"], segment["stop"], segment["n_steps"])
