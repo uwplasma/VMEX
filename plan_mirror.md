@@ -26368,3 +26368,124 @@ Results:
 ### User input needed
 
 No user input is needed for the next technical step.
+
+---
+## 219. Final Explicit Review-Gate Closure
+
+### Steps taken
+
+- Completed the explicit review-gate audit from `docs/mirror/readiness.rst`.
+- Verified the local branch was clean at `60294e14` before this plan-only log.
+- Verified PR #21 was still draft, with merge state `CLEAN`, and with the PR
+  body pointing to section 218.
+- Verified the plan was monotonic through section 218 before adding this
+  closure section.
+- Verified no untracked files were present and no tracked generated `results/`,
+  `docs/_build`, `__pycache__`, or `.pyc` files were present.
+- Verified the full local mirror test suite passed.
+- Verified docs, stale-public-wording search, scoped format, whitespace, and
+  repository-wide Ruff check evidence.
+- Verified GitHub CI on head `60294e14` completed successfully, including the
+  combined coverage gate and Codecov checks. `Physics Full (manual/nightly)`
+  was skipped as expected.
+
+### Results obtained
+
+The explicit review gate in `docs/mirror/readiness.rst` is satisfied:
+
+1. Full local mirror test suite passes.
+2. Sphinx docs build with warnings as errors.
+3. Draft PR body points to the latest implementation-log section available at
+   that head and states the final CI/review-gate audit is green.
+4. Generated example outputs remain ignored; no generated-output drift is
+   tracked.
+5. GitHub checks have no failing jobs.
+
+Current support status:
+
+- The PR remains draft pending user review, matching the original instruction
+  to keep the mirror PR draft until the end of the plan and review/merge only
+  at the end.
+- The free-boundary circular-coil path remains accurately labeled as a
+  diagnostic/prototype workflow, not a final differentiable production
+  free-boundary solver.
+- Deferred physics items remain explicitly scoped as deferred in the readiness
+  matrix rather than being treated as hidden blockers for this draft PR.
+
+### How it was tested
+
+Commands and evidence:
+
+```bash
+python -m pytest tests/mirror -q
+python -m sphinx -W -j auto -b html docs docs/_build/html
+python -m ruff check .
+python -m ruff check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+python -m ruff format --check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+git diff --check
+git ls-files --others --exclude-standard
+git ls-files | rg '(^results/|docs/_build|__pycache__|\\.pyc$)' || true
+gh pr view 21 --repo uwplasma/vmec_jax --json statusCheckRollup
+```
+
+Results:
+
+- Full local mirror suite: `253 passed, 1 skipped in 334.42s`.
+- Sphinx warning-as-error docs build: passed.
+- Repository-wide Ruff check: passed.
+- Scoped Ruff format check for touched Python files: passed.
+- Whitespace check: passed.
+- Untracked-file audit: no output.
+- Tracked generated-output audit: no output.
+- GitHub CI at `60294e14`: all checks successful except
+  `Physics Full (manual/nightly)`, which was skipped by design.
+- Codecov patch and project checks: successful.
+
+The repository-wide Ruff format check was intentionally not used as a gate:
+it reports 319 pre-existing files outside the mirror tranche would be
+reformatted.  Formatting the whole repository here would create unrelated
+metadata churn, so the applicable gate remains the scoped format check for
+the files touched in this lane.
+
+### File structure and best-practice notes
+
+- This is a plan-only closure log.
+- No source, docs, tests, generated outputs, or PR code paths changed in this
+  section.
+- The plan remains the detailed audit trail; the PR body remains the concise
+  reviewer-facing summary.
+
+### Best next steps
+
+1. Commit and push this final plan-only closure log.
+2. Refresh the PR body so it points to section 219.
+3. Re-check CI on the final pushed head. Because this is a plan-only commit,
+   no source behavior is expected to change, but the latest head still needs
+   green external checks before the goal can be declared complete.
+4. Keep PR #21 draft unless the user asks to undraft or merge it.
+
+### Completion percentages after M219
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.9%`.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `99.9%`.
+- ESSOS circular-coil mirror beta scan: `99.9%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.99%`, pending only CI on this final
+  plan-only head and the user's decision to keep reviewing, undraft, or merge.
+
+### User input needed
+
+No user input is needed for the CI re-check. User input is only needed for the
+review/undraft/merge decision.
