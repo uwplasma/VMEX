@@ -22,7 +22,7 @@ from .energy import FluxProfiles, flux_profiles_from_indata
 from .field import signgs_from_sqrtg
 from .geom import eval_geom
 from .init_guess import initial_guess_from_boundary
-from .namelist import InData, write_indata
+from .namelist import write_indata
 from .optimizers.fixed_boundary.linear_guards import (
     finite_linear_operator_output, linear_operator_matrix_arg, linear_operator_vector_arg,
 )
@@ -846,39 +846,13 @@ class FixedBoundaryExactOptimizer:
         rec["count"] = int(rec["count"]) + 1
         rec["wall_time_s"] = float(rec["wall_time_s"]) + float(value)
 
-    def _profile_solver_free_boundary_timing(self, diagnostics, *, profile_prefix: str) -> None:
-        return _profiling.profile_solver_free_boundary_timing(self, diagnostics, profile_prefix=profile_prefix)
-
-    def _profile_solver_timing(
-        self,
-        diagnostics,
-        *,
-        profile_prefix: str,
-        phase_wall_s: float,
-        unattributed_name: str | None,
-    ) -> float:
-        return _profiling.profile_solver_timing(
-            self,
-            diagnostics,
-            profile_prefix=profile_prefix,
-            phase_wall_s=phase_wall_s,
-            unattributed_name=unattributed_name,
-        )
-
-    def _profile_exact_tape_solver_timing(self, tape, tape_build_wall_s: float) -> None:
-        return _profiling.profile_exact_tape_solver_timing(self, tape, tape_build_wall_s)
-
-    def _profile_dump(self) -> dict[str, dict[str, float | int]]:
-        return _profiling.profile_dump(self)
-
-    def _sync_replay_timing_enabled(self) -> bool:
-        return _profiling.sync_replay_timing_enabled()
-
-    def _profile_async_phase(self, name: str, start: float, value):
-        return _profiling.profile_async_phase(self, name, start, value)
-
-    def _profile_blocking_phase(self, name: str, start: float, value):
-        return _profiling.profile_blocking_phase(self, name, start, value)
+    _profile_solver_free_boundary_timing = _profiling.profile_solver_free_boundary_timing
+    _profile_solver_timing = _profiling.profile_solver_timing
+    _profile_exact_tape_solver_timing = _profiling.profile_exact_tape_solver_timing
+    _profile_dump = _profiling.profile_dump
+    _sync_replay_timing_enabled = staticmethod(_profiling.sync_replay_timing_enabled)
+    _profile_async_phase = _profiling.profile_async_phase
+    _profile_blocking_phase = _profiling.profile_blocking_phase
 
     def _make_residuals_eval_fn(self, residuals_fn: Callable) -> Callable:
         """Return the non-differentiating residual evaluator used by callbacks."""
@@ -896,8 +870,7 @@ class FixedBoundaryExactOptimizer:
         fn = getattr(self, "_residuals_eval_fn", self._residuals_fn)
         return np.asarray(fn(state), dtype=float)
 
-    def _callback_point_id(self, cache_key: bytes) -> int:
-        return _state_cache.callback_point_id(self, cache_key)
+    _callback_point_id = _state_cache.callback_point_id
 
     def _trace_callback_event(
         self,
@@ -936,11 +909,8 @@ class FixedBoundaryExactOptimizer:
             "summary": {key: {"count": counts[key], "wall_time_s": wall_time[key]} for key in sorted(counts)},
         }
 
-    def _exact_cache_key(self, params) -> bytes:
-        return _state_cache.exact_cache_key(params)
-
-    def _remember_initial_state(self, params, state: VMECState) -> None:
-        return _state_cache.remember_initial_state(self, params, state)
+    _exact_cache_key = staticmethod(_state_cache.exact_cache_key)
+    _remember_initial_state = _state_cache.remember_initial_state
 
     def _initial_state_from_params(self, params, *, profile_name: str) -> VMECState:
         return _state_cache.initial_state_from_params(
@@ -1012,27 +982,11 @@ class FixedBoundaryExactOptimizer:
         flag = os.getenv("VMEC_JAX_OPT_SYNC_INITIAL_STATE", "").strip().lower()
         return flag in ("1", "true", "yes", "on")
 
-    def _remember_exact_state(self, cache_key: bytes, state: VMECState) -> None:
-        return _state_cache.remember_exact_state(self, cache_key, state)
-
-    def _state_matches_params(self, state: VMECState, params) -> bool:
-        return _state_cache.state_matches_params(self, state, params)
-
-    def _remember_exact_residual(self, cache_key: bytes, residual: np.ndarray) -> None:
-        return _state_cache.remember_exact_residual(self, cache_key, residual)
-
-    def _remember_exact_jacobian(self, cache_key: bytes, jacobian: np.ndarray, residual: np.ndarray) -> None:
-        return _state_cache.remember_exact_jacobian(self, cache_key, jacobian, residual)
-
-    def _remember_best_exact_point(
-        self,
-        params,
-        residual: np.ndarray,
-        cost: float | None = None,
-        *,
-        state: VMECState | None = None,
-    ) -> None:
-        return _state_cache.remember_best_exact_point(self, params, residual, cost, state=state)
+    _remember_exact_state = _state_cache.remember_exact_state
+    _state_matches_params = _state_cache.state_matches_params
+    _remember_exact_residual = _state_cache.remember_exact_residual
+    _remember_exact_jacobian = _state_cache.remember_exact_jacobian
+    _remember_best_exact_point = _state_cache.remember_best_exact_point
 
     def _exact_history_accepts(self, cost: float) -> bool:
         """Return whether an exact callback row should enter accepted history."""
@@ -1045,40 +999,16 @@ class FixedBoundaryExactOptimizer:
         tol = max(1.0e-14, 1.0e-9 * max(1.0, abs(best_cost), abs(float(cost))))
         return float(cost) <= best_cost + tol
 
-    def _cached_exact_residual(
-        self,
-        params=None,
-        *,
-        cache_key: bytes | None = None,
-    ) -> np.ndarray | None:
-        return _state_cache.cached_exact_residual(self, params, cache_key=cache_key)
-
-    def _cached_exact_state(self, params):
-        return _state_cache.cached_exact_state(self, params)
-
-    def _cached_trial_residual(self, params) -> np.ndarray | None:
-        return _state_cache.cached_trial_residual(self, params)
-
-    def _remember_trial_residual(self, params, residual: np.ndarray) -> None:
-        return _state_cache.remember_trial_residual(self, params, residual)
-
-    def _boundary_from_params(self, params):
-        return _state_cache.boundary_from_params(self, params)
-
-    def _boundary_from_params_numpy(self, params) -> BoundaryCoeffs:
-        return _state_cache.boundary_from_params_numpy(self, params)
-
-    def _boundary_input_from_params(self, params) -> BoundaryCoeffs:
-        return _state_cache.boundary_input_from_params(self, params)
-
-    def _initial_tangent_cache_key(self, params):
-        return _state_cache.initial_tangent_cache_key(self, params)
-
-    def _indata_from_params(self, params) -> InData:
-        return _state_cache.indata_from_params(self, params)
-
-    def _base_params_vector(self) -> np.ndarray:
-        return _state_cache.base_params_vector(self)
+    _cached_exact_residual = _state_cache.cached_exact_residual
+    _cached_exact_state = _state_cache.cached_exact_state
+    _cached_trial_residual = _state_cache.cached_trial_residual
+    _remember_trial_residual = _state_cache.remember_trial_residual
+    _boundary_from_params = _state_cache.boundary_from_params
+    _boundary_from_params_numpy = _state_cache.boundary_from_params_numpy
+    _boundary_input_from_params = _state_cache.boundary_input_from_params
+    _initial_tangent_cache_key = _state_cache.initial_tangent_cache_key
+    _indata_from_params = _state_cache.indata_from_params
+    _base_params_vector = _state_cache.base_params_vector
 
     def _solve_forward(self, params, *, trial: bool = False):
         """Run a forward equilibrium solve."""
@@ -1311,15 +1241,9 @@ class FixedBoundaryExactOptimizer:
         )
         return state, final_tangents
 
-    def _solve_exact_with_tape_for_jvp(self, params):
-        """Build an exact tape optimized for forward tangent-column replay."""
-        return solve_exact_with_tape_for_jvp(self, params)
-
-    def _jvp_only_exact_tape_enabled(self) -> bool:
-        return jvp_only_exact_tape_enabled(self)
-
-    def _jvp_only_basepoint_carries_enabled(self) -> bool:
-        return jvp_only_basepoint_carries_enabled(self)
+    _solve_exact_with_tape_for_jvp = solve_exact_with_tape_for_jvp
+    _jvp_only_exact_tape_enabled = jvp_only_exact_tape_enabled
+    _jvp_only_basepoint_carries_enabled = jvp_only_basepoint_carries_enabled
 
     def _initial_tangent_columns(self, params, axis_override, *, profile_prefix: str):
         """Return cached packed initial-state tangents for boundary parameters."""
@@ -1452,23 +1376,12 @@ class FixedBoundaryExactOptimizer:
         self._profile_add(f"{profile_prefix}_initial_tangents_eye", time.perf_counter() - t_eye)
         return directions
 
-    def _lasym_replay_column_chunk(self, n_params: int) -> int | None:
-        return lasym_replay_column_chunk(self, n_params)
-
-    def _precompute_linear_operator_initial_tangents_enabled(self, n_params: int) -> bool:
-        return precompute_linear_operator_initial_tangents_enabled(self, n_params)
-
-    def _scalar_gradient_initial_tangents_enabled(self, n_params: int) -> bool:
-        return scalar_gradient_initial_tangents_enabled(self, n_params)
-
-    def _projected_replay_residuals_enabled(self, n_params: int | None = None) -> bool:
-        return projected_replay_residuals_enabled(self, n_params)
-
-    def _fused_projected_replay_enabled(self) -> bool:
-        return fused_projected_replay_enabled()
-
-    def _chunked_projected_replay_projection_enabled(self, column_chunk: int | None, n_params: int) -> bool:
-        return chunked_projected_replay_projection_enabled(self, column_chunk, n_params)
+    _lasym_replay_column_chunk = lasym_replay_column_chunk
+    _precompute_linear_operator_initial_tangents_enabled = precompute_linear_operator_initial_tangents_enabled
+    _scalar_gradient_initial_tangents_enabled = scalar_gradient_initial_tangents_enabled
+    _projected_replay_residuals_enabled = projected_replay_residuals_enabled
+    _fused_projected_replay_enabled = staticmethod(fused_projected_replay_enabled)
+    _chunked_projected_replay_projection_enabled = chunked_projected_replay_projection_enabled
 
     def _discrete_jacobian_residual_helper(self, params_size: int, residuals_from_packed, *, jax):
         """Return cached residual/Jacobian projection helper for packed tangents."""
