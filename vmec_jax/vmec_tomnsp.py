@@ -715,6 +715,10 @@ def _select_mparity(a_even, a_odd, mask_even: jnp.ndarray):
     return jnp.where(mask, a_even, a_odd)
 
 
+def _select_mparity_pairs(mask_even: jnp.ndarray, *pairs):
+    return tuple(_select_mparity(pair[0], pair[1], mask_even) for pair in pairs)
+
+
 def _slice_theta2(a, nt2: int):
     return jnp.asarray(a)[:, : int(nt2), :]
 
@@ -1015,19 +1019,6 @@ def tomnsps_rzl(
     w9 = blmn_sin
     w10 = -clmn_cos
 
-    w1_e, w1_o = w1[0], w1[1]
-    w2_e, w2_o = w2[0], w2[1]
-    w3_e, w3_o = w3[0], w3[1]
-    w4_e, w4_o = w4[0], w4[1]
-    w5_e, w5_o = w5[0], w5[1]
-    w6_e, w6_o = w6[0], w6[1]
-    w7_e, w7_o = w7[0], w7[1]
-    w8_e, w8_o = w8[0], w8[1]
-    w9_e, w9_o = w9[0], w9[1]
-    w10_e, w10_o = w10[0], w10[1]
-    w11_e, w11_o = w11[0], w11[1]
-    w12_e, w12_o = w12[0], w12[1]
-
     # Select parity per m (mparity = mod(m,2)).
     mask_even = None
     if masks is not None:
@@ -1037,18 +1028,9 @@ def tomnsps_rzl(
                 mask_even = jnp.asarray(masks.mask_even, dtype=jnp.asarray(armn_even).dtype)
     if mask_even is None:
         mask_even = _mparity_mask(mpol, dtype=jnp.asarray(armn_even).dtype)
-    w1 = _select_mparity(w1_e, w1_o, mask_even)
-    w2 = _select_mparity(w2_e, w2_o, mask_even)
-    w3 = _select_mparity(w3_e, w3_o, mask_even)
-    w4 = _select_mparity(w4_e, w4_o, mask_even)
-    w5 = _select_mparity(w5_e, w5_o, mask_even)
-    w6 = _select_mparity(w6_e, w6_o, mask_even)
-    w7 = _select_mparity(w7_e, w7_o, mask_even)
-    w8 = _select_mparity(w8_e, w8_o, mask_even)
-    w9 = _select_mparity(w9_e, w9_o, mask_even)
-    w10 = _select_mparity(w10_e, w10_o, mask_even)
-    w11 = _select_mparity(w11_e, w11_o, mask_even)
-    w12 = _select_mparity(w12_e, w12_o, mask_even)
+    w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12 = _select_mparity_pairs(
+        mask_even, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12
+    )
 
     lthreed = bool(ntor > 0)
 
@@ -1414,32 +1396,10 @@ def tomnspa_rzl(
     w11 = blmn_cos
     w12 = -clmn_sin
 
-    w1_e, w1_o = w1[0], w1[1]
-    w2_e, w2_o = w2[0], w2[1]
-    w3_e, w3_o = w3[0], w3[1]
-    w4_e, w4_o = w4[0], w4[1]
-    w5_e, w5_o = w5[0], w5[1]
-    w6_e, w6_o = w6[0], w6[1]
-    w7_e, w7_o = w7[0], w7[1]
-    w8_e, w8_o = w8[0], w8[1]
-    w9_e, w9_o = w9[0], w9[1]
-    w10_e, w10_o = w10[0], w10[1]
-    w11_e, w11_o = w11[0], w11[1]
-    w12_e, w12_o = w12[0], w12[1]
-
     mask_even = _mparity_mask(mpol, dtype=jnp.asarray(armn_even).dtype)
-    w1 = _select_mparity(w1_e, w1_o, mask_even)
-    w2 = _select_mparity(w2_e, w2_o, mask_even)
-    w3 = _select_mparity(w3_e, w3_o, mask_even)
-    w4 = _select_mparity(w4_e, w4_o, mask_even)
-    w5 = _select_mparity(w5_e, w5_o, mask_even)
-    w6 = _select_mparity(w6_e, w6_o, mask_even)
-    w7 = _select_mparity(w7_e, w7_o, mask_even)
-    w8 = _select_mparity(w8_e, w8_o, mask_even)
-    w9 = _select_mparity(w9_e, w9_o, mask_even)
-    w10 = _select_mparity(w10_e, w10_o, mask_even)
-    w11 = _select_mparity(w11_e, w11_o, mask_even)
-    w12 = _select_mparity(w12_e, w12_o, mask_even)
+    w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12 = _select_mparity_pairs(
+        mask_even, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12
+    )
 
     lthreed = bool(ntor > 0)
     use_zeta_fused = bool(lthreed) and bool(_TOMNSPA_ZETA_FUSED)

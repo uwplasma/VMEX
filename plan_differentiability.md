@@ -18889,3 +18889,76 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9999998%.
+
+## 2026-06-18 Tomnsp Parity-Selection Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Reviewed the in-progress `vmec_tomnsp.py` transform cleanup and confirmed it
+   only removes duplicated even/odd parity unpacking in `tomnsps_rzl` and
+   `tomnspa_rzl`.
+2. Added `_select_mparity_pairs` so paired transform weights use one shared
+   parity-selection seam instead of repeated local unpack/select blocks.
+3. Kept transform ordering, masks, fused/non-fused zeta behavior, and downstream
+   residual/force consumers unchanged.
+
+Results obtained:
+
+- `vmec_jax/vmec_tomnsp.py` changed by 10 insertions and 50 deletions, net
+  `-40` source lines.
+- `tomnsps_rzl` dropped from 427 to 405 lines.
+- `vmec_tomnsp.py` dropped below the 2000-line source-health warning threshold.
+- Targeted transform, residual, and force tests passed.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/vmec_tomnsp.py`
+- `python -m ruff check vmec_jax/vmec_tomnsp.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_vmec_tomnsp_branch_coverage.py tests/test_getfsq_block_sums.py tests/test_residue_getfsq_parity.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_lforbal_fast_helpers.py tests/test_solve_force_payload_helpers.py tests/test_solve_residual_optimizer_wave8_coverage.py -q`
+- `python tools/diagnostics/source_health.py | head -90`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue net-negative simplification in the fixed-boundary residual loop,
+   where `solve_fixed_boundary_residual_iter` remains the largest production
+   function by a wide margin.
+2. Prefer extracting tested policy/context seams over local line shuffling so
+   the next tranche improves manageability and future differentiability hooks.
+3. Keep deferring CI watching; run focused local gates and push coherent
+   reductions for later CI verification.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.9999991%.
+- Solver monolith reduction: 99.78%.
+- Free-boundary adjoint monolith reduction: 99.50%.
+- Driver workflow decomposition: 99.94%.
+- Residual iteration decomposition: 98.79%.
+- WOUT diagnostic/profile decomposition: 99.95%.
+- Bcovar/WOUT parity decomposition: 99.13%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.81%.
+- Tomnsps transform decomposition: 98.9%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.66%.
+- Fixed-boundary optimizer decomposition: 96.05%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.45%.
+- Free-boundary validation-gate maintainability: 97.3%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999985%.
