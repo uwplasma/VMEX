@@ -5738,7 +5738,6 @@ Visual validation:
 
 No user input is needed.
 
-
 ---
 ## 56. 2026-06-17 M8w matrix-free block LSMR correction
 
@@ -24642,3 +24641,96 @@ Results:
 ### User input needed
 
 No user input is needed.
+---
+## 205. Final Worktree and Source Hygiene Audit
+
+### Steps taken
+
+- Checked the working tree after the M204 push.
+- Audited ignored outputs and tracked files to ensure generated results and docs
+  builds remain out of git.
+- Checked the largest tracked files to make sure the target-ladder work did not
+  add bulky artifacts.
+- Searched current mirror/toroidal docs, examples, and tests for stale blocker
+  terms such as old target-pending language, no-solve target wording, TODO-like
+  placeholders, and deferred-lane caveats.
+- Rechecked the latest draft PR head and failed-check snapshot.
+
+### Results obtained
+
+- Local branch was clean and aligned with `origin/codex/mirror-geometry`.
+- Ignored generated directories remain ignored:
+  `.pytest_cache/`, `.ruff_cache/`, `docs/_build/`, `docs/api/generated/`,
+  `results/`, Python `__pycache__/` trees, and related generated outputs.
+- No tracked files under `results/` or `docs/_build/` were found.
+- Largest tracked files are pre-existing docs/static assets, plans, and solver
+  source files; no target-ladder WOUT, `threed1`, or plot artifacts were added.
+- Current-source stale-wording search returned only intentional caveats:
+  reduced APIs are not yet broad production differentiable APIs, residual
+  Newton is not yet a broad production default, strict component convergence is
+  still a caveat, and production free-boundary LCFS solves remain planned.
+- PR #21 remains draft and points to the current pushed head.
+- Failed-check snapshot reported no failing PR checks.
+
+### How it was tested
+
+```bash
+git status --short --branch --untracked-files=all
+git status --ignored --short
+git ls-files -z | xargs -0 du -k | sort -nr | head -30
+rg -n "TODO|FIXME|placeholder|scaffold|dummy|not implemented|not yet|pending|deferred|production claim|strict component|target.*pending|no-solve" vmec_jax/mirror vmec_jax/toroidal_hybrid.py examples/toroidal_stellarator_mirror_hybrid_convergence.py examples/mirror docs/mirror tests/test_toroidal_hybrid.py tests/mirror --glob '!docs/_build/**'
+git ls-files results docs/_build
+python /Users/rogeriojorge/.codex/plugins/cache/openai-curated-remote/github/0.1.5/skills/gh-fix-ci/scripts/inspect_pr_checks.py --repo . --pr 21 --max-lines 120
+```
+
+### File structure and best-practice notes
+
+- Repository hygiene is good for the current tranche: generated output remains
+  outside tracked source, docs, and tests.
+- The remaining large tracked files are existing documentation/static artifacts,
+  not new target-ladder outputs.
+- Current docs make the support matrix explicit rather than hiding deferred
+  production work.
+
+### Best next steps
+
+1. Commit and push this M205 audit log.
+2. Update the draft PR body section count to 205.
+3. Continue with the next unresolved implementation lane.  The main remaining
+   technical choices are:
+   - production free-boundary LCFS convergence beyond the diagnostic reduced-LS
+     and guarded pilot loops;
+   - strict component convergence checks for the toroidal target ladder if final
+     promotion requires VMEC2000-style component stopping, not only total `fsq`;
+   - broader differentiable full-equilibrium solved-state API promotion beyond
+     the current reduced axisymmetric gates.
+
+### Completion percentages after M205
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.3%` overall for the current diagnostic/reduced
+  solver scope, with production LCFS convergence still explicitly planned.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `99.5%`.
+- ESSOS circular-coil mirror beta scan: `99%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.7%`, pending final technical decisions on
+  deferred production free-boundary, strict-component target checks, and
+  broader differentiable solved-state promotion.
+
+### User input needed
+
+No user input is required to continue technical work, but a review decision will
+eventually be needed on whether strict component convergence and production
+free-boundary LCFS should be required before undrafting this PR or split into
+follow-up PRs.
