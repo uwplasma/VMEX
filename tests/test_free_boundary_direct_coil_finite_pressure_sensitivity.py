@@ -396,29 +396,18 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
         use_accepted_only_fast_path=False,
         json_safe=True,
     )
-    assert replay_graph["contract"] == "fixed accepted-branch replay graph metadata"
-    assert replay_graph["n_steps"] == 2
-    assert replay_graph["accepted_steps"] == 1
-    assert replay_graph["rejected_steps"] == 1
-    assert replay_graph["done_markers"] == 0
-    assert replay_graph["state_resets"] == 0
-    assert replay_graph["free_boundary_trace_steps"] == 2
-    assert replay_graph["active_free_boundary_replay_steps"] == 1
-    assert replay_graph["step_policy_n_segments"] == 2
-    assert replay_graph["preconditioner_policy_n_segments"] == 1
-    assert replay_graph["boundary_shapes"] == [[2, 3]]
-    assert replay_graph["bsqvac_half_shapes"] == [[2, 3]]
-    assert replay_graph["nestor_axis_shapes"] == [[2, 3]]
-    assert replay_graph["inferred_boundary_shape"] == [2, 3]
-    assert replay_graph["sample_nzeta"] == 3
-    assert replay_graph["nfp"] == 3
-    assert replay_graph["mpol"] == 4
-    assert replay_graph["ntor"] == 2
-    assert replay_graph["lasym"] is True
-    assert replay_graph["nvper"] == 3
-    assert replay_graph["include_analytic"] is False
-    assert replay_graph["use_stacked_step_controls"] is False
-    assert replay_graph["use_accepted_only_fast_path"] is False
+    expected_replay_graph = {
+        "contract": "fixed accepted-branch replay graph metadata",
+        "n_steps": 2, "accepted_steps": 1, "rejected_steps": 1, "done_markers": 0, "state_resets": 0,
+        "free_boundary_trace_steps": 2, "active_free_boundary_replay_steps": 1,
+        "step_policy_n_segments": 2, "preconditioner_policy_n_segments": 1,
+        "boundary_shapes": [[2, 3]], "bsqvac_half_shapes": [[2, 3]], "nestor_axis_shapes": [[2, 3]],
+        "inferred_boundary_shape": [2, 3], "sample_nzeta": 3,
+        "nfp": 3, "mpol": 4, "ntor": 2, "lasym": True, "nvper": 3,
+        "include_analytic": False, "use_stacked_step_controls": False, "use_accepted_only_fast_path": False,
+    }
+    for key, value in expected_replay_graph.items():
+        assert replay_graph[key] == value
     assert "signature_repr" not in replay_graph["step_policy_segment_summary"][0]
     assert "signature_repr" not in replay_graph["preconditioner_policy_segment_summary"][0]
     json.dumps(replay_graph, allow_nan=False)
