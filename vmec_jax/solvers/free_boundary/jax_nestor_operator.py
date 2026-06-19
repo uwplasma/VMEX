@@ -8,6 +8,15 @@ from typing import Any
 
 import numpy as np
 
+from .types import ExternalBoundarySample, NestorPoissonCache, NestorVmecLikeCache
+
+try:  # pragma: no cover - optional dependency
+    from scipy.linalg import lu_factor as _SCIPY_LU_FACTOR  # type: ignore
+    from scipy.linalg import lu_solve as _SCIPY_LU_SOLVE  # type: ignore
+except Exception:  # pragma: no cover - SciPy is optional at runtime
+    _SCIPY_LU_FACTOR = None
+    _SCIPY_LU_SOLVE = None
+
 
 JAX_NESTOR_BASIS_KEYS = (
     "lasym",
@@ -35,6 +44,311 @@ JAX_NESTOR_BASIS_KEYS = (
 )
 
 FREEB_JAX_NESTOR_OPERATOR_FN_CACHE: dict[tuple[Any, ...], Any] = {}
+
+
+def dense_lu_factor(matrix: np.ndarray) -> Any | None:
+    if _SCIPY_LU_FACTOR is None:
+        return None
+    try:
+        return _SCIPY_LU_FACTOR(np.asarray(matrix, dtype=float))
+    except Exception:
+        return None
+
+
+def dense_lu_solve(lu_fac: Any | None, matrix: np.ndarray, rhs: np.ndarray) -> np.ndarray:
+    rhs_arr = np.asarray(rhs, dtype=float)
+    if lu_fac is not None and _SCIPY_LU_SOLVE is not None:
+        try:
+            return np.asarray(_SCIPY_LU_SOLVE(lu_fac, rhs_arr), dtype=float)
+        except Exception:
+            pass
+    return np.asarray(np.linalg.solve(np.asarray(matrix, dtype=float), rhs_arr), dtype=float)
+
+
+def build_vmec_cmns(*, mf: int, nf: int, onp: float) -> np.ndarray:
+    """VMEC precal.f cmns(l,m,n) coefficients for the n>=0 block."""
+
+    mf = max(0, int(mf))
+    nf = max(0, int(nf))
+    lmax = mf + nf
+    cmn = np.zeros((lmax + 1, mf + 1, nf + 1), dtype=float)
+    for m in range(mf + 1):
+        for n in range(nf + 1):
+            jmn = m + n
+            imn = m - n
+            kmn = abs(imn)
+            smn = (jmn + kmn) // 2
+            f1 = 1.0
+            f2 = 1.0
+            f3 = 1.0
+            for i in range(1, kmn + 1):
+                f1 *= float(smn + 1 - i)
+                f2 *= float(i)
+            for l in range(kmn, jmn + 1, 2):
+                cmn[l, m, n] = (f1 / (f2 * f3)) * ((-1.0) ** ((l - imn) // 2))
+                f1 = f1 * 0.25 * float((jmn + l + 2) * (jmn - l))
+                f2 = f2 * 0.5 * float(l + 2 + kmn)
+                f3 = f3 * 0.5 * float(l + 2 - kmn)
+
+    alp = 2.0 * np.pi * float(onp)
+    cmns = np.zeros_like(cmn)
+    if mf >= 1 and nf >= 1:
+        cmns[:, 1 : mf + 1, 1 : nf + 1] = (
+            0.5
+            * alp
+            * (
+                cmn[:, 1 : mf + 1, 1 : nf + 1]
+                + cmn[:, :mf, 1 : nf + 1]
+                + cmn[:, 1 : mf + 1, :nf]
+                + cmn[:, :mf, :nf]
+            )
+        )
+    if mf >= 1:
+        cmns[:, 1 : mf + 1, 0] = 0.5 * alp * (cmn[:, 1 : mf + 1, 0] + cmn[:, :mf, 0])
+    if nf >= 1:
+        cmns[:, 0, 1 : nf + 1] = 0.5 * alp * (cmn[:, 0, 1 : nf + 1] + cmn[:, 0, :nf])
+    cmns[:, 0, 0] = 0.5 * alp * (cmn[:, 0, 0] + cmn[:, 0, 0])
+    return cmns
+
+
+def build_vmec_mode_basis(
+    *,
+    ntheta: int,
+    nzeta: int,
+    nfp: int,
+    mf: int,
+    nf: int,
+    lasym: bool,
+    wint: np.ndarray,
+) -> dict[str, Any]:
+    """Build VMEC-like mode tables and weighted sin/cos basis arrays."""
+
+    ntheta = int(ntheta)
+    nzeta = int(nzeta)
+    nfp = max(1, int(nfp))
+    mf = max(0, int(mf))
+    nf = max(0, int(nf))
+    lasym = bool(lasym)
+
+    pi2 = 2.0 * np.pi
+    if lasym:
+        nu_full = int(ntheta)
+    else:
+        nu_full = max(int(ntheta), 2 * (int(ntheta) - 1))
+    theta = (pi2 / float(max(1, nu_full))) * np.arange(ntheta, dtype=float)
+    zeta = (pi2 / float(max(1, nzeta))) * np.arange(nzeta, dtype=float)
+    th_grid = np.broadcast_to(theta[:, None], (ntheta, nzeta))
+    ze_grid = np.broadcast_to(zeta[None, :], (ntheta, nzeta))
+    th = th_grid.reshape(-1)
+    ze = ze_grid.reshape(-1)
+
+    w = np.asarray(wint, dtype=float).reshape(-1)
+    if w.size != th.size:
+        w = np.full((th.size,), 1.0 / float(max(1, th.size)), dtype=float)
+
+    mvals: list[int] = []
+    nvals: list[int] = []
+    for n in range(-nf, nf + 1):
+        for m in range(0, mf + 1):
+            mvals.append(int(m))
+            nvals.append(int(n))
+    xmpot = np.asarray(mvals, dtype=np.int64)
+    n_raw = np.asarray(nvals, dtype=np.int64)
+    xnpot = np.asarray(n_raw * nfp, dtype=np.int64)
+    mnpd = int(xmpot.size)
+    mnpd2 = int(mnpd * (2 if lasym else 1))
+
+    phase = (xmpot[None, :] * th[:, None]) - (n_raw[None, :] * ze[:, None])
+    sin_phase = np.sin(phase)
+    cos_phase = np.cos(phase)
+    weight = ((pi2 * pi2) * w)[:, None]
+    sinmni = weight * sin_phase
+    cosmni = weight * cos_phase
+
+    idx = np.arange(th.size, dtype=np.int64)
+    lt = idx // max(1, nzeta)
+    lz = idx % max(1, nzeta)
+    if lasym or (nu_full == ntheta):
+        lt_m = (ntheta - lt) % max(1, ntheta)
+    else:
+        lt_m_full = (nu_full - lt) % max(1, nu_full)
+        lt_m = np.minimum(lt_m_full, (nu_full - lt_m_full) % max(1, nu_full))
+    lz_m = (nzeta - lz) % max(1, nzeta)
+    imirr = (lt_m * nzeta + lz_m).astype(np.int64)
+    nuv_full = int(max(1, nu_full) * max(1, nzeta))
+    idx_full = np.arange(nuv_full, dtype=np.int64)
+    ku_full = idx_full // max(1, nzeta)
+    kv_full = idx_full % max(1, nzeta)
+    ku_m_full = (nu_full - ku_full) % max(1, nu_full)
+    kv_m_full = (nzeta - kv_full) % max(1, nzeta)
+    imirr_full = (ku_m_full * nzeta + kv_m_full).astype(np.int64)
+
+    mn0 = 0
+    for j in range(mnpd):
+        if int(xmpot[j]) == 0 and int(n_raw[j]) == 0:
+            mn0 = int(j)
+            break
+
+    return {
+        "xmpot": xmpot,
+        "xnpot": xnpot,
+        "n_raw": n_raw,
+        "sin_phase": sin_phase,
+        "cos_phase": cos_phase,
+        "sinmni": sinmni,
+        "cosmni": cosmni,
+        "wint": w,
+        "imirr": imirr,
+        "imirr_full": imirr_full,
+        "mnpd": mnpd,
+        "mnpd2": mnpd2,
+        "nuv3": int(th.size),
+        "nuv_full": nuv_full,
+        "mn0": mn0,
+        "onp": 1.0 / float(nfp),
+        "nfp": nfp,
+        "mf": mf,
+        "nf": nf,
+        "nu_full": int(nu_full),
+        "lasym": lasym,
+        "theta": th,
+        "zeta": ze,
+        "cmns": build_vmec_cmns(mf=mf, nf=nf, onp=1.0 / float(nfp)),
+    }
+
+
+def build_poisson_cache(*, ntheta: int, nzeta: int) -> NestorPoissonCache:
+    """Build spectral Laplacian eigenvalues on a periodic ``(theta,zeta)`` grid."""
+
+    ntheta = int(ntheta)
+    nzeta = int(nzeta)
+    ku = 2.0 * np.pi * np.fft.fftfreq(ntheta)
+    kv = 2.0 * np.pi * np.fft.fftfreq(nzeta)
+    ku2 = ku[:, None] * ku[:, None]
+    kv2 = kv[None, :] * kv[None, :]
+    lam = ku2 + kv2
+    lam[0, 0] = 1.0
+    return NestorPoissonCache(ntheta=ntheta, nzeta=nzeta, lam=lam)
+
+
+def build_vmec_like_cache(
+    sample: ExternalBoundarySample,
+    *,
+    alpha: float,
+    dist_eps: float,
+    rhs_floor: float,
+    diag_coeff: float,
+    row_sum_zero: bool,
+    singular_diag_scale: float,
+    nfp: int,
+    mf: int,
+    nf: int,
+    lasym: bool,
+    wint_vmec: np.ndarray | None = None,
+    factor_physical_matrix: bool = True,
+) -> NestorVmecLikeCache:
+    """Build a dense boundary-integral-like operator on the VMEC angular grid."""
+
+    R = np.asarray(sample.R, dtype=float)
+    Z = np.asarray(sample.Z, dtype=float)
+    ntheta, nzeta = R.shape
+    npts = int(ntheta * nzeta)
+    phi_grid = np.asarray(sample.phi, dtype=float)
+    if phi_grid.shape != R.shape:
+        phi_grid = np.broadcast_to(phi_grid, R.shape)
+    x = R * np.cos(phi_grid)
+    y = R * np.sin(phi_grid)
+    coords = np.stack([x, y, Z], axis=-1).reshape(npts, 3)
+    det = np.asarray(sample.vac_ext.det_guv, dtype=float)
+    w = np.sqrt(np.maximum(np.abs(det), 0.0)).reshape(npts)
+    w_sum = float(np.sum(w))
+    if not np.isfinite(w_sum) or w_sum <= rhs_floor:
+        w = np.full((npts,), 1.0 / float(max(1, npts)), dtype=float)
+    else:
+        w = w / w_sum
+
+    diff = coords[:, None, :] - coords[None, :, :]
+    dist = np.sqrt(np.sum(diff * diff, axis=-1) + float(dist_eps) ** 2)
+    invdist = np.where(dist > 0.0, 1.0 / dist, 0.0)
+    np.fill_diagonal(invdist, 0.0)
+
+    kernel = (invdist * w[None, :]) / (4.0 * np.pi)
+    if bool(row_sum_zero):
+        row_sum = np.sum(kernel, axis=1)
+        kernel[np.arange(npts), np.arange(npts)] -= row_sum
+
+    diag_extra = np.zeros((npts,), dtype=float)
+    if float(singular_diag_scale) != 0.0:
+        dist_nodiag = np.asarray(dist, dtype=float).copy()
+        np.fill_diagonal(dist_nodiag, np.inf)
+        h = np.minimum(np.min(dist_nodiag, axis=1), 1.0 / float(max(1, npts)))
+        h = np.maximum(h, float(dist_eps))
+        diag_extra = (float(singular_diag_scale) / (4.0 * np.pi)) * (w / h)
+
+    matrix = float(alpha) * kernel
+    matrix[np.arange(npts), np.arange(npts)] += float(diag_coeff) + diag_extra
+    rhs_scale = np.where(w > rhs_floor, w, rhs_floor)
+
+    wint_use = np.asarray(wint_vmec, dtype=float) if wint_vmec is not None else np.asarray(w, dtype=float).reshape(ntheta, nzeta)
+    mode_basis = build_vmec_mode_basis(
+        ntheta=ntheta,
+        nzeta=nzeta,
+        nfp=int(nfp),
+        mf=int(mf),
+        nf=int(nf),
+        lasym=bool(lasym),
+        wint=np.asarray(wint_use, dtype=float),
+    )
+    sinmni = np.asarray(mode_basis["sinmni"], dtype=float)
+    cosmni = np.asarray(mode_basis["cosmni"], dtype=float)
+    B = np.concatenate([sinmni, cosmni], axis=1) if bool(lasym) else sinmni
+    mode_matrix = B.T @ (matrix @ B)
+    mnpd = int(mode_basis["mnpd"])
+    if mnpd > 0:
+        pi3 = float(4.0 * (np.pi**3))
+        mode_matrix[:mnpd, :mnpd][np.diag_indices(mnpd)] += pi3
+        if bool(lasym):
+            mode_matrix[mnpd:, mnpd:][np.diag_indices(mnpd)] += pi3
+            mn0 = int(mode_basis["mn0"])
+            if 0 <= mn0 < mnpd:
+                mode_matrix[mnpd + mn0, mnpd + mn0] += pi3
+
+    return NestorVmecLikeCache(
+        ntheta=ntheta,
+        nzeta=nzeta,
+        matrix=matrix,
+        rhs_scale=rhs_scale,
+        mode_basis=mode_basis,
+        mode_matrix=mode_matrix,
+        matrix_lu=dense_lu_factor(matrix) if bool(factor_physical_matrix) else None,
+        mode_matrix_lu=dense_lu_factor(mode_matrix),
+    )
+
+
+def solve_vmec_like_dense(rhs: np.ndarray, cache: NestorVmecLikeCache) -> np.ndarray:
+    rhs_flat = np.asarray(rhs, dtype=float).reshape(-1) * np.asarray(cache.rhs_scale, dtype=float)
+    phi_flat = dense_lu_solve(cache.matrix_lu, np.asarray(cache.matrix, dtype=float), rhs_flat)
+    phi = phi_flat.reshape(int(cache.ntheta), int(cache.nzeta))
+    phi = phi - float(np.mean(phi))
+    return phi
+
+
+def vmec_source_from_gsource(*, gsource: np.ndarray, basis: dict[str, Any]) -> np.ndarray:
+    """VMEC fouri.f source symmetrization from gsource."""
+
+    gsrc = np.asarray(gsource, dtype=float).reshape(-1)
+    onp = float(basis["onp"])
+    nuv3 = int(basis.get("nuv3", gsrc.size))
+    nuv_full = int(basis.get("nuv_full", nuv3))
+    if bool(basis["lasym"]):
+        src = onp * gsrc[:nuv3]
+    elif gsrc.size >= nuv_full and "imirr_full" in basis:
+        imirr_full = np.asarray(basis["imirr_full"], dtype=np.int64)
+        src = 0.5 * onp * (gsrc[:nuv3] - gsrc[imirr_full[:nuv3]])
+    else:
+        imirr = np.asarray(basis["imirr"], dtype=np.int64)
+        src = 0.5 * onp * (gsrc[:nuv3] - gsrc[imirr[:nuv3]])
+    return np.asarray(src, dtype=float)
 
 
 def env_truthy(name: str, default: bool = False) -> bool:
@@ -330,7 +644,13 @@ def solve_vmec_like_mode_with_jax_nestor_operator(
 __all__ = [
     "FREEB_JAX_NESTOR_OPERATOR_FN_CACHE",
     "JAX_NESTOR_BASIS_KEYS",
+    "build_poisson_cache",
+    "build_vmec_cmns",
+    "build_vmec_like_cache",
+    "build_vmec_mode_basis",
     "compact_jax_nestor_basis",
+    "dense_lu_factor",
+    "dense_lu_solve",
     "digest_array_for_cache",
     "env_truthy",
     "jax_nestor_input_signature",
@@ -338,5 +658,7 @@ __all__ = [
     "jax_nestor_operator_guard",
     "jitted_jax_nestor_operator",
     "mapping_cache_signature",
+    "solve_vmec_like_dense",
     "solve_vmec_like_mode_with_jax_nestor_operator",
+    "vmec_source_from_gsource",
 ]
