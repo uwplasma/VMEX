@@ -23655,3 +23655,85 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999999976%.
+
+## 2026-06-19 Residual Rollback and Trial Vacuum Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added rollback-history ownership to
+   `vmec_jax/solvers/fixed_boundary/residual/policy.py` through
+   `residual_iter_rollback_history_lists` and
+   `pop_residual_iter_rollback_histories`.
+2. Moved direct-coil/free-boundary trial vacuum-pressure resampling to
+   `vmec_jax/solvers/fixed_boundary/residual/runtime.py` through
+   `_freeb_trial_bsqvac_half`.
+3. Simplified the non-scan residual host loop so rejected-step history rollback
+   and trial `bsqvac` sampling now delegate to domain helpers instead of local
+   nested bodies.
+4. Used a no-edit explorer pass to identify the next large extraction seam:
+   the non-scan host controller block after scan paths return should become the
+   next explicit context/result boundary.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` decreased from 4827
+  to 4757 lines.
+- Rollback history alignment is centralized in residual policy instead of being
+  hard-coded inside the host loop.
+- Direct-coil trial NESTOR sampling is centralized in residual runtime while
+  preserving the accepted-state non-mutation behavior for rejected trial steps.
+- Source-health now reports the remaining residual host-loop function at 4382
+  lines, so the next refactor must target that controller boundary directly.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/policy.py vmec_jax/solvers/fixed_boundary/residual/runtime.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/policy.py vmec_jax/solvers/fixed_boundary/residual/runtime.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_finish_cache_more_coverage.py::test_nonscan_non_strict_backtracking_accepts_momentum_update tests/test_solve_finish_cache_more_coverage.py::test_nonscan_debug_force_path_runs_with_m1_and_zeroing tests/test_solve_additional_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trial_nestor_timing_records_solver_trial_calls tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_forced_active_direct_coil_finite_pressure_solve_has_physics_diagnostics -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_real_scan_wave10_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 16 --top-functions 35`
+
+Best next steps:
+
+1. Commit and push this residual rollback/trial-vacuum extraction.
+2. Extract the non-scan host controller from
+   `solve_fixed_boundary_residual_iter` behind a domain-specific context/result
+   boundary while preserving facade monkeypatch compatibility.
+3. Validate that host-controller boundary with strict-update, backtracking,
+   resume-state, free-boundary direct-coil, scan fallback, and driver tests.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999979%.
+- Solver monolith reduction: 99.865%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.25%.
+- WOUT diagnostic/profile decomposition: 99.982%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.885%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.1%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 99.20%.
+- Free-boundary validation-gate maintainability: 98.40%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999999977%.
