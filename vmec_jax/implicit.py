@@ -19,6 +19,7 @@ implicit-function machinery.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 import os
 import time
 from typing import Any, Callable, Tuple
@@ -117,6 +118,16 @@ def _vmec_keep_all_active_enabled() -> bool:
 
 def _vmec_disable_reduced_active_enabled() -> bool:
     return _env_flag_enabled("VMEC_JAX_IMPLICIT_DISABLE_REDUCED_ACTIVE")
+
+
+def _contains_jax_tracer(*xs) -> bool:
+    return any(isinstance(x, jax.core.Tracer) for x in xs)
+
+
+def _jax_bicgstab_solve(*args, **kwargs):
+    from jax.scipy.sparse.linalg import bicgstab
+
+    return bicgstab(*args, **kwargs)
 
 
 def _dense_transpose_lstsq_host(J, b, damping):
@@ -854,19 +865,7 @@ def solve_fixed_boundary_state_implicit(
         return pack_state(g)
 
     def _solve(phipf, chipf, pressure, lamscale, *, edge_Rcos, edge_Rsin, edge_Zcos, edge_Zsin):
-        def _is_traced(x):
-            return isinstance(x, jax.core.Tracer)
-
-        traced = (
-            _is_traced(phipf)
-            or _is_traced(chipf)
-            or _is_traced(pressure)
-            or _is_traced(lamscale)
-            or _is_traced(edge_Rcos)
-            or _is_traced(edge_Rsin)
-            or _is_traced(edge_Zcos)
-            or _is_traced(edge_Zsin)
-        )
+        traced = _contains_jax_tracer(phipf, chipf, pressure, lamscale, edge_Rcos, edge_Rsin, edge_Zcos, edge_Zsin)
         solver_use = solver
         if traced and solver_use != "gd":
             solver_use = "gd"
@@ -1194,8 +1193,7 @@ def solve_fixed_boundary_state_implicit_vmec_residual(
             idx00=idx00,
         )
 
-    def _project_state(st):
-        return _mask_grad_for_constraints(st, static, idx00=idx00, mask_lambda_axis=True)
+    _project_state = partial(_mask_grad_for_constraints, static=static, idx00=idx00, mask_lambda_axis=True)
 
     def _residual_vec(state, zero_m1_zforce, eRcos, eRsin, eZcos, eZsin, *, project_stellsym: bool = False):
         return _vmec_residual_vector_from_state(
@@ -1236,14 +1234,10 @@ def solve_fixed_boundary_state_implicit_vmec_residual(
         ftol=ftol,
     )
 
-    def _solve_host(eRcos, eRsin, eZcos, eZsin):
-        return _solve_vmec_residual_host_from_boundary(eRcos, eRsin, eZcos, eZsin, host_solve_settings)
-
-    def _is_traced(*xs):
-        return any(isinstance(x, jax.core.Tracer) for x in xs)
+    _solve_host = partial(_solve_vmec_residual_host_from_boundary, settings=host_solve_settings)
 
     def _solve(eRcos, eRsin, eZcos, eZsin):
-        traced = _is_traced(eRcos, eRsin, eZcos, eZsin)
+        traced = _contains_jax_tracer(eRcos, eRsin, eZcos, eZsin)
         if traced:
             out_shape = (
                 jax.ShapeDtypeStruct((int(host_solve_settings.state_layout.size),), jnp.asarray(state0_c.Rcos).dtype),
@@ -1254,16 +1248,11 @@ def solve_fixed_boundary_state_implicit_vmec_residual(
         x_flat, zero_m1 = _solve_host(eRcos, eRsin, eZcos, eZsin)
         return unpack_state(jnp.asarray(x_flat), host_solve_settings.state_layout), jnp.asarray(zero_m1)
 
-    if not _is_traced(edge_Rcos_use, edge_Rsin_use, edge_Zcos_use, edge_Zsin_use):
+    if not _contains_jax_tracer(edge_Rcos_use, edge_Rsin_use, edge_Zcos_use, edge_Zsin_use):
         x_flat, _zero_m1 = _solve_host(edge_Rcos_use, edge_Rsin_use, edge_Zcos_use, edge_Zsin_use)
         return unpack_state(jnp.asarray(x_flat), host_solve_settings.state_layout)
 
     residual_tangent_mode = str(getattr(implicit, "residual_tangent_mode", "opaque")).strip().lower()
-
-    def _active_bicgstab_solve(*args, **kwargs):
-        from jax.scipy.sparse.linalg import bicgstab
-
-        return bicgstab(*args, **kwargs)
 
     def _state_tangent_from_boundary_tangent(
         st_star,
@@ -1416,7 +1405,7 @@ def solve_fixed_boundary_state_implicit_vmec_residual(
             cg_max_iter=int(implicit.cg_max_iter),
             jac_chunk_size=getattr(implicit, "jac_chunk_size", None),
             cg_solve=_cg_solve,
-            bicgstab_solve=_active_bicgstab_solve,
+            bicgstab_solve=_jax_bicgstab_solve,
             lineax_solve=_lineax_bicgstab_solve,
             jacobian_columns=_linear_map_jacobian_columns,
         )
@@ -1717,9 +1706,9 @@ def solve_fixed_boundary_state_implicit_vmec_residual(
                 cg_max_iter=int(implicit.cg_max_iter),
                 jac_chunk_size=getattr(implicit, "jac_chunk_size", None),
                 dense_transpose_lstsq_host=_dense_transpose_lstsq_host,
-                is_traced=_is_traced,
+                is_traced=_contains_jax_tracer,
                 cg_solve=_cg_solve,
-                bicgstab_solve=_active_bicgstab_solve,
+                bicgstab_solve=_jax_bicgstab_solve,
                 lineax_solve=_lineax_bicgstab_solve,
                 jacobian_columns=_linear_map_jacobian_columns,
                 profile_log=_vmec_backward_profile_log,
