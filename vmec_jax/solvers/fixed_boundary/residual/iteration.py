@@ -96,6 +96,7 @@ from vmec_jax.solvers.fixed_boundary.residual.force_payload import (
 )
 from vmec_jax.solvers.fixed_boundary.residual.update import (
     ResidualVelocityBlocks as _ResidualVelocityBlocks,
+    backtracking_momentum_search as _backtracking_momentum_search,
     force_update_rms as _force_update_rms,
     host_catastrophic_restart_update as _host_catastrophic_restart_update,
     host_force_update_rms as _host_force_update_rms,
@@ -5506,117 +5507,39 @@ def solve_fixed_boundary_residual_iter(
                 w_try_ratio_history.append(float(w_try_ratio))
                 restart_path_history.append(str(restart_path))
         else:
-            accepted = False
-            step_status = "rejected"
-            step_factor = 1.0
-            vRcc_best, vRss_best = vRcc, vRss
-            vZsc_best, vZcs_best = vZsc, vZcs
-            vLsc_best, vLcs_best = vLsc, vLcs
-            vRsc_best, vRcs_best = vRsc, vRcs
-            vZcc_best, vZss_best = vZcc, vZss
-            vLcc_best, vLss_best = vLcc, vLss
-            state_best = state
-            dt_eff = float(time_step)
-            update_rms = 0.0
             w_curr = fsqr_f + fsqz_f + fsql_f
-
-            for _bt in range(6):
-                dt_try = time_step * step_factor
-                vRcc_try = fac * (b1 * vRcc + dt_try * (flip_sign * jnp.asarray(frcc_u)))
-                vRss_try = fac * (b1 * vRss + dt_try * (flip_sign * jnp.asarray(frss_u)))
-                vRsc_try = fac * (b1 * vRsc + dt_try * (flip_sign * jnp.asarray(frsc_u)))
-                vRcs_try = fac * (b1 * vRcs + dt_try * (flip_sign * jnp.asarray(frcs_u)))
-                vZsc_try = fac * (b1 * vZsc + dt_try * (flip_sign * jnp.asarray(fzsc_u)))
-                vZcs_try = fac * (b1 * vZcs + dt_try * (flip_sign * jnp.asarray(fzcs_u)))
-                vZcc_try = fac * (b1 * vZcc + dt_try * (flip_sign * jnp.asarray(fzcc_u)))
-                vZss_try = fac * (b1 * vZss + dt_try * (flip_sign * jnp.asarray(fzss_u)))
-                vLsc_try = fac * (b1 * vLsc + dt_try * (flip_sign * jnp.asarray(flsc_u)))
-                vLcs_try = fac * (b1 * vLcs + dt_try * (flip_sign * jnp.asarray(flcs_u)))
-                vLcc_try = fac * (b1 * vLcc + dt_try * (flip_sign * jnp.asarray(flcc_u)))
-                vLss_try = fac * (b1 * vLss + dt_try * (flip_sign * jnp.asarray(flss_u)))
-
-                state_try = _candidate_state_from_delta_tuple(
-                    _delta_tuple_from_blocks(
-                        dt_try,
-                        _internal_delta_transforms,
-                        vRcc_try,
-                        vRss_try,
-                        vRsc_try,
-                        vRcs_try,
-                        vZsc_try,
-                        vZcs_try,
-                        vZcc_try,
-                        vZss_try,
-                        vLsc_try,
-                        vLcs_try,
-                        vLcc_try,
-                        vLss_try,
-                    ),
-                    use_numpy_arrays=False,
-                    use_numpy_enforce=False,
-                )
-                freeb_bsqvac_half_trial = _freeb_bsqvac_half_for_trial_state(state_try)
-                w_try = _trial_residual_total(
-                    state_try,
+            non_strict_update = _backtracking_momentum_search(
+                state=state,
+                velocities=_ResidualVelocityBlocks(
+                    vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss
+                ),
+                forces=_ResidualVelocityBlocks(
+                    frcc_u, frss_u, frsc_u, frcs_u, fzsc_u, fzcs_u, fzcc_u, fzss_u, flsc_u, flcs_u, flcc_u, flss_u
+                ),
+                time_step=float(time_step),
+                step_size=float(step_size),
+                b1=float(b1),
+                fac=float(fac),
+                flip_sign=float(flip_sign),
+                w_curr=float(w_curr),
+                delta_transforms=_internal_delta_transforms,
+                delta_tuple_from_blocks=_delta_tuple_from_blocks,
+                candidate_state_from_delta_tuple=_candidate_state_from_delta_tuple,
+                freeb_bsqvac_half_for_trial_state=_freeb_bsqvac_half_for_trial_state,
+                trial_residual_total=lambda candidate_state, freeb_bsqvac_half_trial: _trial_residual_total(
+                    candidate_state,
                     freeb_bsqvac_half_trial,
                     zero_m1_value=zero_m1,
                     timing_label="backtracking",
-                )
-                if np.isfinite(w_try) and (w_try <= 1.05 * w_curr):
-                    accepted = True
-                    step_status = "momentum"
-                    state_best = state_try
-                    vRcc_best, vRss_best = vRcc_try, vRss_try
-                    vZsc_best, vZcs_best = vZsc_try, vZcs_try
-                    vLsc_best, vLcs_best = vLsc_try, vLcs_try
-                    vRsc_best, vRcs_best = vRsc_try, vRcs_try
-                    vZcc_best, vZss_best = vZcc_try, vZss_try
-                    vLcc_best, vLss_best = vLcc_try, vLss_try
-                    dt_eff = float(dt_try)
-                    update_rms = _host_force_update_rms(
-                        dt_try,
-                        vRcc_try,
-                        vRss_try,
-                        vRsc_try,
-                        vRcs_try,
-                        vZsc_try,
-                        vZcs_try,
-                        vZcc_try,
-                        vZss_try,
-                        vLsc_try,
-                        vLcs_try,
-                        vLcc_try,
-                        vLss_try,
-                    )
-                    break
-                step_factor *= 0.5
-
-            state = state_best
-            vRcc, vRss = vRcc_best, vRss_best
-            vZsc, vZcs = vZsc_best, vZcs_best
-            vLsc, vLcs = vLsc_best, vLcs_best
-            vRsc, vRcs = vRsc_best, vRcs_best
-            vZcc, vZss = vZcc_best, vZss_best
-            vLcc, vLss = vLcc_best, vLss_best
-            if not accepted:
-                # No acceptable update was found; damp velocity to avoid runaway.
-                (
-                    vRcc,
-                    vRss,
-                    vRsc,
-                    vRcs,
-                    vZsc,
-                    vZcs,
-                    vZcc,
-                    vZss,
-                    vLsc,
-                    vLcs,
-                    vLcc,
-                    vLss,
-                ) = _scale_velocity_blocks(0.5, vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss)
-                dt_eff = float(step_size * step_factor)
-                update_rms = 0.0
-                step_status = "rejected"
+                ),
+            )
+            state = non_strict_update.state
+            (vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss) = (
+                non_strict_update.velocities
+            )
+            dt_eff = non_strict_update.dt_eff
+            update_rms = non_strict_update.update_rms
+            step_status = non_strict_update.step_status
             timing_stats["iterations"] += 1
             if track_history:
                 restart_reason = "none"

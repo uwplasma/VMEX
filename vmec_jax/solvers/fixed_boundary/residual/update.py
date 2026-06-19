@@ -48,6 +48,17 @@ class HostCatastrophicRestartUpdate(NamedTuple):
     update_rms: float
 
 
+class BacktrackingMomentumSearchResult(NamedTuple):
+    """Result of the non-strict host backtracking momentum search."""
+
+    state: Any
+    velocities: ResidualVelocityBlocks
+    dt_eff: float
+    update_rms: float
+    step_status: str
+    accepted: bool
+
+
 def zero_velocity_blocks_like(*blocks):
     """Return zeroed velocity blocks with each input block's shape and dtype."""
 
@@ -206,6 +217,75 @@ def host_catastrophic_restart_update(
         fsq0_prev=float(fsq0_prev_before),
         inv_tau=[0.15 / float(time_step_next)] * int(k_ndamp),
         update_rms=0.0,
+    )
+
+
+def backtracking_momentum_search(
+    *,
+    state: Any,
+    velocities: ResidualVelocityBlocks,
+    forces: ResidualVelocityBlocks,
+    time_step: float,
+    step_size: float,
+    b1: float,
+    fac: float,
+    flip_sign: float,
+    w_curr: float,
+    delta_transforms: tuple,
+    delta_tuple_from_blocks: Any,
+    candidate_state_from_delta_tuple: Any,
+    freeb_bsqvac_half_for_trial_state: Any,
+    trial_residual_total: Any,
+    max_backtracks: int = 6,
+    accept_ratio: float = 1.05,
+) -> BacktrackingMomentumSearchResult:
+    """Try non-strict momentum updates, halving the step until residual growth is acceptable."""
+
+    accepted = False
+    step_status = "rejected"
+    step_factor = 1.0
+    best_state = state
+    best_velocities = velocities
+    dt_eff = float(time_step)
+    update_rms = 0.0
+
+    for _ in range(int(max_backtracks)):
+        dt_try = float(time_step) * step_factor
+        trial_velocities = ResidualVelocityBlocks(
+            *(
+                fac * (b1 * velocity + dt_try * (flip_sign * jnp.asarray(force)))
+                for velocity, force in zip(velocities, forces)
+            )
+        )
+        state_try = candidate_state_from_delta_tuple(
+            delta_tuple_from_blocks(dt_try, delta_transforms, *trial_velocities),
+            use_numpy_arrays=False,
+            use_numpy_enforce=False,
+        )
+        freeb_bsqvac_half_trial = freeb_bsqvac_half_for_trial_state(state_try)
+        w_try = trial_residual_total(state_try, freeb_bsqvac_half_trial)
+        if np.isfinite(w_try) and (w_try <= float(accept_ratio) * float(w_curr)):
+            accepted = True
+            step_status = "momentum"
+            best_state = state_try
+            best_velocities = trial_velocities
+            dt_eff = float(dt_try)
+            update_rms = host_force_update_rms(dt_try, *trial_velocities)
+            break
+        step_factor *= 0.5
+
+    if not accepted:
+        best_velocities = ResidualVelocityBlocks(*scale_velocity_blocks(0.5, *best_velocities))
+        dt_eff = float(step_size) * step_factor
+        update_rms = 0.0
+
+    return BacktrackingMomentumSearchResult(
+        state=best_state,
+        velocities=best_velocities,
+        dt_eff=float(dt_eff),
+        update_rms=float(update_rms),
+        step_status=step_status,
+        accepted=bool(accepted),
     )
 
 

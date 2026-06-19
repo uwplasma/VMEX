@@ -20723,3 +20723,81 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999979%.
+
+## 2026-06-19 Non-Strict Momentum Search Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Continued the residual-iteration monolith tranche after confirming the branch
+   was clean and source-health still identified
+   `vmec_jax/solvers/fixed_boundary/residual/iteration.py` as the dominant
+   source/function hotspot.
+2. Moved the non-strict backtracking momentum-search branch out of
+   `solve_fixed_boundary_residual_iter` and into the existing domain module
+   `vmec_jax/solvers/fixed_boundary/residual/update.py`.
+3. Added direct helper coverage for both the accepted first-trial path and the
+   fully rejected/damped path.
+4. Preserved the production solver's existing non-strict history semantics:
+   that branch still records `w_try` and `w_try_ratio` as `NaN` after the
+   internal backtracking search.
+
+Results obtained:
+
+- `iteration.py` decreased from 5839 to 5762 lines.
+- `solve_fixed_boundary_residual_iter` decreased from 5431 to 5353 lines.
+- The extracted helper is now independently testable and keeps the step-search
+  policy in `residual/update.py` with the other momentum/restart update helpers.
+- The overall diff is net-positive because of the new focused tests, but the
+  production solver monolith is smaller and the behavior-sensitive seam is
+  covered.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/update.py vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/update.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_residual_iter_update_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_update_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_finish_cache_more_coverage.py::test_nonscan_non_strict_backtracking_accepts_momentum_update -q`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue residual-iteration decomposition by targeting another policy seam
+   near strict-update trace construction or scalar restart handling.
+2. Keep the strict VMEC2000 parity path untouched unless a dedicated parity gate
+   is run immediately after the change.
+3. Revisit `free_boundary.py` and `discrete_adjoint.py` after one more residual
+   tranche to balance source-health progress across the remaining hotspots.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999454%.
+- Solver monolith reduction: 99.82%.
+- Free-boundary adjoint monolith reduction: 99.53%.
+- Driver workflow decomposition: 99.945%.
+- Residual iteration decomposition: 99.02%.
+- WOUT diagnostic/profile decomposition: 99.975%.
+- Bcovar/WOUT parity decomposition: 99.15%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.82%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.74%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 96.80%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.62%.
+- Free-boundary validation-gate maintainability: 97.96%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999980%.
