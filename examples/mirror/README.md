@@ -175,7 +175,7 @@ accepted, rejected, and guard-limited pilot steps. Top-level metrics also
 record ``workflow_status``, ``free_boundary_solve_status``,
 ``beta_scan_requested_percent``, ESSOS-compatible direct-coil metadata, and
 aggregate LCFS pilot counts so benchmark scripts can validate that the 1%, 3%,
-and 10% beta cases were actually exercised. As of schema version ``0.12``,
+and 10% beta cases were actually exercised. As of schema version ``0.13``,
 ``free_boundary_solve_status`` can distinguish not-run, converged, and
 not-converged pilot or coupled-loop workflows; convergence requires every
 requested beta row to stop on ``target_merit``. Multi-step pilots can stop on an
@@ -229,10 +229,11 @@ parameterizations are visible before they are used in expensive coupled
 fixed-boundary trials.
 
 The circular-coil beta-scan metrics use the compact schema
-``mirror_free_boundary_circular_coil_beta_scan`` version ``0.12``. The top-level
+``mirror_free_boundary_circular_coil_beta_scan`` version ``0.13``. The top-level
 JSON records the workflow status, direct-coil metadata, requested beta list,
 setup JSON path, aggregate pilot counts, optional LS boundary-step settings,
-LS ridge-candidate settings, the LS boundary polynomial degree, the
+LS ridge-candidate settings, the LS boundary polynomial degree, the optional
+ordered ``--ls-boundary-polynomial-degree-candidates`` list, the
 ``--ls-boundary-inner-solve-steps`` setting, figure paths, and
 ``fixed_boundary_baseline_rows``. It also embeds
 ``summary_rows``, the same compact baseline/last-accepted/final-trial table
@@ -254,7 +255,11 @@ fixed-boundary solve on the LS-selected polynomial boundary and record realized
 ``--run-ls-boundary-coupled-loop`` to repeat realized LS-selected boundary
 updates with target-merit, stagnation, and ``fsq`` growth guards; loop rows
 record each LS step, realized trial, acceptance decision, stop reason, and
-optional per-step plots. The loop normally follows the one-step line-search
+optional per-step plots. When polynomial-degree candidates are supplied, each
+beta row tries them in order, stops at the first attempt that reaches
+``target_merit``, and otherwise keeps the attempt with the lowest realized LCFS
+merit. The JSON records the candidate list, selected degree, and compact
+per-degree attempt summaries. The loop normally follows the one-step line-search
 update. When ``--ls-boundary-inner-solve-steps`` is greater than 1, the example
 also runs the reduced residual-vector nonlinear LS solver on the frozen
 residual before each realized fixed-boundary trial. The realized selector keeps

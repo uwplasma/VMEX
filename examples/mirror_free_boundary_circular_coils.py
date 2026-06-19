@@ -53,7 +53,7 @@ from vmec_jax.mirror import (
 
 
 CIRCULAR_COIL_BETA_SCAN_SCHEMA = "mirror_free_boundary_circular_coil_beta_scan"
-CIRCULAR_COIL_BETA_SCAN_SCHEMA_VERSION = "0.12"
+CIRCULAR_COIL_BETA_SCAN_SCHEMA_VERSION = "0.13"
 CIRCULAR_COIL_BETA_SCAN_LS_LINE_SEARCH_FACTORS = (1.0, 0.5, 0.25, 0.125)
 CIRCULAR_COIL_BETA_SCAN_LS_REALIZED_RETRY_FACTORS = (1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625)
 CIRCULAR_COIL_BETA_SCAN_TOP_LEVEL_FIELDS = (
@@ -97,6 +97,7 @@ CIRCULAR_COIL_BETA_SCAN_TOP_LEVEL_FIELDS = (
     "ls_boundary_ridge",
     "ls_boundary_ridge_candidates",
     "ls_boundary_polynomial_degree",
+    "ls_boundary_polynomial_degree_candidates",
     "ls_boundary_accept_tolerance",
     "ls_boundary_inner_solve_steps",
     "ls_boundary_realized_retry_factors",
@@ -146,6 +147,9 @@ CIRCULAR_COIL_BETA_SCAN_ROW_FIELDS = (
     "lcfs_pilot_last_accepted_normalized_force",
     "lcfs_pilot_rows",
     "ls_boundary_step",
+    "ls_boundary_coupled_loop_polynomial_degree_candidates",
+    "ls_boundary_coupled_loop_selected_polynomial_degree",
+    "ls_boundary_coupled_loop_degree_attempts",
     "ls_boundary_coupled_loop_status",
     "ls_boundary_coupled_loop_rows_count",
     "ls_boundary_coupled_loop_accepted_rows",
@@ -161,6 +165,7 @@ CIRCULAR_COIL_BETA_SCAN_ROW_FIELDS = (
 CIRCULAR_COIL_BETA_SCAN_LS_STEP_FIELDS = (
     "accepted",
     "candidate_source",
+    "polynomial_degree",
     "line_search_factor",
     "coefficients_initial",
     "coefficients_new",
@@ -233,6 +238,7 @@ CIRCULAR_COIL_BETA_SCAN_LS_COUPLED_TRIAL_FIELDS = (
 )
 CIRCULAR_COIL_BETA_SCAN_LS_COUPLED_LOOP_ROW_FIELDS = (
     "step",
+    "polynomial_degree",
     "status",
     "accepted",
     "rejection_reason",
@@ -313,6 +319,7 @@ CIRCULAR_COIL_BETA_SCAN_REPORT_FIELDS = (
     "last_accepted_lcfs_merit",
     "last_accepted_pressure_balance_rms",
     "last_accepted_normalized_force",
+    "ls_boundary_selected_polynomial_degree",
     "final_trial_fsq",
     "final_trial_fsq_growth_ratio",
     "final_trial_lcfs_merit",
@@ -520,6 +527,9 @@ def circular_coil_beta_scan_report_rows(metrics: dict[str, object]) -> list[dict
                 "last_accepted_lcfs_merit": row.get("lcfs_pilot_last_accepted_merit"),
                 "last_accepted_pressure_balance_rms": row.get("lcfs_pilot_last_accepted_pressure_balance_rms"),
                 "last_accepted_normalized_force": row.get("lcfs_pilot_last_accepted_normalized_force"),
+                "ls_boundary_selected_polynomial_degree": row.get(
+                    "ls_boundary_coupled_loop_selected_polynomial_degree"
+                ),
                 "final_trial_fsq": row.get("lcfs_pilot_final_fsq"),
                 "final_trial_fsq_growth_ratio": row.get("lcfs_pilot_final_fsq_growth_ratio"),
                 "final_trial_lcfs_merit": row.get("lcfs_pilot_final_merit"),
@@ -603,6 +613,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ls-boundary-ridge", type=float, default=1.0e-8)
     parser.add_argument("--ls-boundary-ridge-candidates", type=str, default="")
     parser.add_argument("--ls-boundary-polynomial-degree", type=int, default=4)
+    parser.add_argument("--ls-boundary-polynomial-degree-candidates", type=str, default="")
     parser.add_argument("--ls-boundary-accept-tolerance", type=float, default=1.0e-4)
     parser.add_argument("--ls-boundary-inner-solve-steps", type=int, default=1)
     parser.add_argument(
@@ -616,6 +627,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _parse_float_list(value: str) -> tuple[float, ...]:
     return tuple(float(item) for item in str(value).replace(",", " ").split() if item.strip())
+
+
+def _parse_int_list(value: str) -> tuple[int, ...]:
+    return tuple(int(item) for item in str(value).replace(",", " ").split() if item.strip())
 
 
 def _write_axis_plot(z, direct_bz, analytic_bz, *, outdir: Path) -> Path:
@@ -803,6 +818,26 @@ def _even_polynomial_powers(degree: int) -> np.ndarray:
     if degree < 4 or degree % 2:
         raise ValueError("ls_boundary_polynomial_degree must be an even integer >= 4")
     return np.arange(0, degree + 1, 2, dtype=int)
+
+
+def _polynomial_degree_candidates(
+    primary_degree: int,
+    candidate_degrees: tuple[int, ...] | None,
+) -> tuple[int, ...]:
+    """Return validated, de-duplicated even polynomial degrees to try in order."""
+
+    degrees: list[int] = []
+    for degree in (int(primary_degree), *(candidate_degrees or ())):
+        degree = int(degree)
+        _even_polynomial_powers(degree)
+        if degree not in degrees:
+            degrees.append(degree)
+    return tuple(degrees)
+
+
+def _polynomial_degree_from_coefficients(coefficients) -> int:
+    coefficients = np.asarray(coefficients, dtype=float).ravel()
+    return int(2 * max(coefficients.size - 1, 0))
 
 
 def _fit_polynomial_boundary_coefficients(grid, boundary, *, degree: int = 4) -> np.ndarray:
@@ -1001,6 +1036,7 @@ def _ls_boundary_step_summary_from_step(
     new_radius = _polynomial_boundary_from_coefficients(step.new_coefficients, grid=grid).radius_on_grid(grid)
     summary: dict[str, object] = {
         "accepted": bool(step.accepted),
+        "polynomial_degree": _polynomial_degree_from_coefficients(step.coefficients),
         "line_search_factor": float(step.line_search_factor),
         "coefficients_initial": [float(value) for value in step.coefficients],
         "coefficients_new": [float(value) for value in step.new_coefficients],
@@ -1713,6 +1749,7 @@ def _run_ls_boundary_coupled_loop(
             stop_reason = "fsq_growth_guard"
         row: dict[str, object] = {
             "step": int(loop_row.step),
+            "polynomial_degree": int(polynomial_degree),
             "status": str(loop_row.status),
             "accepted": bool(loop_row.accepted),
             "rejection_reason": rejection_reason,
@@ -1860,6 +1897,43 @@ def _ls_boundary_coupled_loop_summary(loop_rows: list[dict[str, object]]) -> dic
     }
 
 
+def _ls_boundary_coupled_loop_best_merit(loop_rows: list[dict[str, object]]) -> float | None:
+    merit_values = [float(row["lcfs_merit"]) for row in loop_rows if row.get("lcfs_merit") is not None]
+    return None if not merit_values else float(min(merit_values))
+
+
+def _ls_boundary_coupled_loop_reached_target(loop_rows: list[dict[str, object]]) -> bool:
+    return bool(loop_rows) and loop_rows[-1].get("stop_reason") == "target_merit"
+
+
+def _ls_boundary_degree_attempt_summary(
+    *,
+    degree: int,
+    loop_rows: list[dict[str, object]],
+) -> dict[str, object]:
+    """Return a compact audit row for one polynomial-degree loop attempt."""
+
+    summary = _ls_boundary_coupled_loop_summary(loop_rows)
+    return {
+        "polynomial_degree": int(degree),
+        "selected": False,
+        "reached_target": _ls_boundary_coupled_loop_reached_target(loop_rows),
+        "rows_count": int(summary["ls_boundary_coupled_loop_rows_count"]),
+        "accepted_rows": int(summary["ls_boundary_coupled_loop_accepted_rows"]),
+        "status": summary["ls_boundary_coupled_loop_status"],
+        "stop_reason": summary["ls_boundary_coupled_loop_stop_reason"],
+        "final_merit": summary["ls_boundary_coupled_loop_final_merit"],
+        "best_merit": _ls_boundary_coupled_loop_best_merit(loop_rows),
+        "final_fsq_growth_ratio": summary["ls_boundary_coupled_loop_final_fsq_growth_ratio"],
+    }
+
+
+def _ls_boundary_attempt_rank(attempt: dict[str, object]) -> tuple[int, float]:
+    best_merit = attempt.get("best_merit")
+    merit_value = np.inf if best_merit is None else float(best_merit)
+    return (0 if bool(attempt.get("reached_target", False)) else 1, merit_value)
+
+
 def _counts_json(values: list[str]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for value in values:
@@ -1889,6 +1963,7 @@ def _beta_scan_summary(
     ls_boundary_ridge: float,
     ls_boundary_ridge_candidates: tuple[float, ...] | None,
     ls_boundary_polynomial_degree: int,
+    ls_boundary_polynomial_degree_candidates: tuple[int, ...],
     ls_boundary_accept_tolerance: float,
     ls_boundary_inner_solve_steps: int,
     ls_boundary_realized_retry_factors: tuple[float, ...] | None,
@@ -1955,6 +2030,9 @@ def _beta_scan_summary(
         if ls_requested and ls_boundary_ridge_candidates is not None
         else None,
         "ls_boundary_polynomial_degree": int(ls_boundary_polynomial_degree) if ls_requested else None,
+        "ls_boundary_polynomial_degree_candidates": [int(value) for value in ls_boundary_polynomial_degree_candidates]
+        if ls_requested
+        else None,
         "ls_boundary_accept_tolerance": float(ls_boundary_accept_tolerance) if ls_requested else None,
         "ls_boundary_inner_solve_steps": int(ls_boundary_inner_solve_steps) if ls_requested else None,
         "ls_boundary_realized_retry_factors": [float(value) for value in ls_boundary_realized_retry_factors]
@@ -2475,6 +2553,7 @@ def _run_fixed_boundary_baseline_cases(
     ls_boundary_ridge: float,
     ls_boundary_ridge_candidates: tuple[float, ...] | None,
     ls_boundary_polynomial_degree: int,
+    ls_boundary_polynomial_degree_candidates: tuple[int, ...],
     ls_boundary_accept_tolerance: float,
     ls_boundary_inner_solve_steps: int,
     ls_boundary_realized_retry_factors: tuple[float, ...] | None,
@@ -2494,6 +2573,7 @@ def _run_fixed_boundary_baseline_cases(
         z_max=float(grid.z[-1]),
     )
     external_sample = sample_mirror_boundary_external_field(baseline_grid, boundary, scan.coils)
+    degree_candidates = tuple(int(degree) for degree in ls_boundary_polynomial_degree_candidates)
     rows = []
     for case in scan.beta_cases:
         label = _beta_label(case.beta_percent)
@@ -2682,36 +2762,56 @@ def _run_fixed_boundary_baseline_cases(
             if ls_boundary_step["figure"] is not None:
                 plot_paths["ls_boundary_step"] = str(ls_boundary_step["figure"])
         ls_boundary_coupled_loop_rows: list[dict[str, object]] = []
+        ls_boundary_coupled_loop_degree_attempts: list[dict[str, object]] = []
+        ls_boundary_coupled_loop_selected_degree: int | None = None
         if run_ls_boundary_coupled_loop:
-            ls_boundary_coupled_loop_rows = _run_ls_boundary_coupled_loop(
-                outdir=outdir,
-                label=label,
-                config=config,
-                grid=baseline_grid,
-                initial_boundary=boundary,
-                initial_output=output,
-                initial_final=final,
-                coils=scan.coils,
-                psi_prime_value=psi_prime_value,
-                pressure=pressure,
-                solve_options=solve_options,
-                baseline_final_fsq=baseline_final_fsq,
-                reference_merit=lcfs_merit,
-                max_steps=ls_boundary_coupled_loop_steps,
-                target_merit=ls_boundary_coupled_loop_target_merit,
-                stagnation_rtol=ls_boundary_coupled_loop_stagnation_rtol,
-                fsq_growth_limit=ls_boundary_coupled_loop_fsq_growth_limit,
-                finite_difference_step=ls_boundary_finite_difference_step,
-                damping=ls_boundary_damping,
-                max_relative_step=ls_boundary_max_relative_step,
-                ridge=ls_boundary_ridge,
-                ridge_candidates=ls_boundary_ridge_candidates,
-                polynomial_degree=ls_boundary_polynomial_degree,
-                accept_tolerance=ls_boundary_accept_tolerance,
-                inner_solve_steps=ls_boundary_inner_solve_steps,
-                realized_retry_factors=ls_boundary_realized_retry_factors,
-                write_plots=write_plots,
-            )
+            selected_attempt_index: int | None = None
+            for degree in degree_candidates:
+                attempt_label = label if len(degree_candidates) == 1 else f"{label}_deg{degree}"
+                attempt_rows = _run_ls_boundary_coupled_loop(
+                    outdir=outdir,
+                    label=attempt_label,
+                    config=config,
+                    grid=baseline_grid,
+                    initial_boundary=boundary,
+                    initial_output=output,
+                    initial_final=final,
+                    coils=scan.coils,
+                    psi_prime_value=psi_prime_value,
+                    pressure=pressure,
+                    solve_options=solve_options,
+                    baseline_final_fsq=baseline_final_fsq,
+                    reference_merit=lcfs_merit,
+                    max_steps=ls_boundary_coupled_loop_steps,
+                    target_merit=ls_boundary_coupled_loop_target_merit,
+                    stagnation_rtol=ls_boundary_coupled_loop_stagnation_rtol,
+                    fsq_growth_limit=ls_boundary_coupled_loop_fsq_growth_limit,
+                    finite_difference_step=ls_boundary_finite_difference_step,
+                    damping=ls_boundary_damping,
+                    max_relative_step=ls_boundary_max_relative_step,
+                    ridge=ls_boundary_ridge,
+                    ridge_candidates=ls_boundary_ridge_candidates,
+                    polynomial_degree=degree,
+                    accept_tolerance=ls_boundary_accept_tolerance,
+                    inner_solve_steps=ls_boundary_inner_solve_steps,
+                    realized_retry_factors=ls_boundary_realized_retry_factors,
+                    write_plots=write_plots,
+                )
+                attempt_summary = _ls_boundary_degree_attempt_summary(degree=degree, loop_rows=attempt_rows)
+                ls_boundary_coupled_loop_degree_attempts.append(attempt_summary)
+                if selected_attempt_index is None or _ls_boundary_attempt_rank(
+                    attempt_summary
+                ) < _ls_boundary_attempt_rank(ls_boundary_coupled_loop_degree_attempts[selected_attempt_index]):
+                    selected_attempt_index = len(ls_boundary_coupled_loop_degree_attempts) - 1
+                    ls_boundary_coupled_loop_rows = attempt_rows
+                    ls_boundary_coupled_loop_selected_degree = int(degree)
+                if bool(attempt_summary["reached_target"]):
+                    selected_attempt_index = len(ls_boundary_coupled_loop_degree_attempts) - 1
+                    ls_boundary_coupled_loop_rows = attempt_rows
+                    ls_boundary_coupled_loop_selected_degree = int(degree)
+                    break
+            if selected_attempt_index is not None:
+                ls_boundary_coupled_loop_degree_attempts[selected_attempt_index]["selected"] = True
         summary = result.optimizer_summaries[-1] if result.optimizer_summaries else None
         row = {
             "beta_percent": float(case.beta_percent),
@@ -2754,6 +2854,11 @@ def _run_fixed_boundary_baseline_cases(
             ),
             "lcfs_pilot_rows": pilot_rows,
             "ls_boundary_step": ls_boundary_step,
+            "ls_boundary_coupled_loop_polynomial_degree_candidates": list(degree_candidates)
+            if run_ls_boundary_coupled_loop
+            else [],
+            "ls_boundary_coupled_loop_selected_polynomial_degree": ls_boundary_coupled_loop_selected_degree,
+            "ls_boundary_coupled_loop_degree_attempts": ls_boundary_coupled_loop_degree_attempts,
             "ls_boundary_coupled_loop_rows": ls_boundary_coupled_loop_rows,
             "figures": plot_paths,
         }
@@ -2805,6 +2910,7 @@ def run_case(
     ls_boundary_ridge: float = 1.0e-8,
     ls_boundary_ridge_candidates: tuple[float, ...] | None = None,
     ls_boundary_polynomial_degree: int = 4,
+    ls_boundary_polynomial_degree_candidates: tuple[int, ...] | None = None,
     ls_boundary_accept_tolerance: float = 1.0e-4,
     ls_boundary_inner_solve_steps: int = 1,
     ls_boundary_realized_retry_factors: tuple[float, ...] | None = CIRCULAR_COIL_BETA_SCAN_LS_REALIZED_RETRY_FACTORS,
@@ -2854,7 +2960,11 @@ def run_case(
         if any(value <= 0.0 or not np.isfinite(value) for value in retry_factors):
             raise ValueError("ls_boundary_realized_retry_factors must be finite and positive")
         ls_boundary_realized_retry_factors = retry_factors
-    _even_polynomial_powers(ls_boundary_polynomial_degree)
+    ls_boundary_polynomial_degree_candidates = _polynomial_degree_candidates(
+        ls_boundary_polynomial_degree,
+        ls_boundary_polynomial_degree_candidates,
+    )
+    ls_boundary_polynomial_degree = int(ls_boundary_polynomial_degree_candidates[0])
     outdir.mkdir(parents=True, exist_ok=True)
     grid = make_mirror_grid(
         ns=ns, ntheta=ntheta, nxi=nxi, mpol=max(0, (ntheta - 1) // 2), z_min=-0.5 * separation, z_max=0.5 * separation
@@ -2930,6 +3040,7 @@ def run_case(
             ls_boundary_ridge=ls_boundary_ridge,
             ls_boundary_ridge_candidates=ls_boundary_ridge_candidates,
             ls_boundary_polynomial_degree=ls_boundary_polynomial_degree,
+            ls_boundary_polynomial_degree_candidates=ls_boundary_polynomial_degree_candidates,
             ls_boundary_accept_tolerance=ls_boundary_accept_tolerance,
             ls_boundary_inner_solve_steps=ls_boundary_inner_solve_steps,
             ls_boundary_realized_retry_factors=ls_boundary_realized_retry_factors,
@@ -2971,6 +3082,7 @@ def run_case(
             ls_boundary_ridge=ls_boundary_ridge,
             ls_boundary_ridge_candidates=ls_boundary_ridge_candidates,
             ls_boundary_polynomial_degree=ls_boundary_polynomial_degree,
+            ls_boundary_polynomial_degree_candidates=ls_boundary_polynomial_degree_candidates,
             ls_boundary_accept_tolerance=ls_boundary_accept_tolerance,
             ls_boundary_inner_solve_steps=ls_boundary_inner_solve_steps,
             ls_boundary_realized_retry_factors=ls_boundary_realized_retry_factors,
@@ -3052,6 +3164,11 @@ def main() -> None:
             else _parse_float_list(args.ls_boundary_ridge_candidates)
         ),
         ls_boundary_polynomial_degree=args.ls_boundary_polynomial_degree,
+        ls_boundary_polynomial_degree_candidates=(
+            None
+            if not args.ls_boundary_polynomial_degree_candidates.strip()
+            else _parse_int_list(args.ls_boundary_polynomial_degree_candidates)
+        ),
         ls_boundary_accept_tolerance=args.ls_boundary_accept_tolerance,
         ls_boundary_inner_solve_steps=args.ls_boundary_inner_solve_steps,
         ls_boundary_realized_retry_factors=(
