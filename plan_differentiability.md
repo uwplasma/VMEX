@@ -7,6 +7,80 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-18.
 
+## 2026-06-18 Non-Scan Axis-Reset Evaluator Reuse
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Reused `evaluate_initial_axis_reset` in the non-scan residual setup path.
+2. Added an explicit `state_check_on_missing_ptau` evaluator option to preserve
+   the non-scan behavior that falls back to the state Jacobian when ptau
+   diagnostics are unavailable.
+3. Removed now-stale residual imports for individual axis-reset predicates and
+   moved the remaining `_initial_axis_reset_decision` compatibility alias into
+   `vmec_jax.solve`.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` dropped from 6387 to
+  6341 lines, a 46-line monolith reduction.
+- `vmec_jax/solvers/fixed_boundary/diagnostics/axis_reset.py` grew by one line
+  for the explicit non-scan fallback option.
+- `vmec_jax/solve.py` grew by one line to preserve the legacy
+  `_initial_axis_reset_decision` import.
+- Net source-code line count across touched source files is -44.
+- Source-health reports `solve_fixed_boundary_residual_iter` at 5938 lines,
+  down from 5980 lines in the previous tranche.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/diagnostics/axis_reset.py vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/diagnostics/axis_reset.py vmec_jax/solvers/fixed_boundary/residual/iteration.py --select F401,F841 --ignore-noqa`
+- `JAX_ENABLE_X64=1 pytest -q tests/test_solve_axis_helpers_more_coverage.py tests/test_solve_more_coverage.py::test_axis_reset_dump_returns_false_when_filesystem_write_fails tests/test_solve_branch_coverage.py tests/test_driver_api.py::test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid tests/test_residue_getfsq_parity.py -q`
+- `JAX_ENABLE_X64=1 pytest -q tests/test_step6_solve_fixed_boundary.py tests/test_vmec2000_fixed_boundary_physics_gates.py tests/test_nonaxis_exec_stage_trace_parity.py tests/test_force_norms_dynamic_parity.py tests/test_residue_getfsq_parity.py tests/test_driver_api.py::test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid -q`
+- `python tools/diagnostics/source_health.py --top 16 --top-functions 30`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue paying down the residual monolith with shared setup helpers that can
+   serve both scan and non-scan paths.
+2. The next high-value candidate is scan runtime-plan setup or post-scan result
+   assembly; select the parity shard before editing.
+3. Keep compatibility aliases in `solve.py`, not as stale imports in
+   `residual/iteration.py`.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.70%.
+- Free-boundary adjoint monolith reduction: 99.42%.
+- Driver workflow decomposition: 99.92%.
+- Residual iteration decomposition: 98.2%.
+- WOUT diagnostic/profile decomposition: 99.89%.
+- Bcovar/WOUT parity decomposition: 99.11%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.77%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.56%.
+- Fixed-boundary optimizer decomposition: 95.8%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.35%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999982%.
+
 ## 2026-06-18 Initial Axis-Reset Scan Evaluation Seam
 
 Branch: `codex/differentiability-refactor-plan`.

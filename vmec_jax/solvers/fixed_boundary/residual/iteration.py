@@ -198,11 +198,7 @@ from vmec_jax.solvers.fixed_boundary.results import (
     SolveVmecResidualResult,
 )
 from vmec_jax.solvers.fixed_boundary.diagnostics.axis_reset import (
-    bad_jacobian_from_tau_range as _axis_reset_bad_jacobian_from_tau_range,
-    bad_jacobian_ptau_from_minmax as _axis_reset_bad_jacobian_ptau_from_minmax,
     evaluate_initial_axis_reset as _evaluate_initial_axis_reset,
-    initial_axis_reset_decision as _initial_axis_reset_decision,
-    initial_force_physical_fsq as _axis_reset_initial_force_physical_fsq,
     reset_axis_from_boundary as _reset_axis_from_boundary_impl,
 )
 from vmec_jax.solvers.free_boundary.control import (
@@ -2757,74 +2753,32 @@ def solve_fixed_boundary_residual_iter(
                 except Exception:
                     pass
                 timing_stats["setup_axis_reset_compute_forces"] += time.perf_counter() - float(t_setup_axis_force_start)
-            ptau_min0, ptau_max0 = _ptau_minmax_from_k_host(k0)
-            bad_jacobian_ptau = _axis_reset_bad_jacobian_ptau_from_minmax(
-                ptau_min=ptau_min0,
-                ptau_max=ptau_max0,
-                ptau_tol=0.0,
-                ptau_tol_rel=0.0,
-            )
-
-            bad_jacobian_state = False
-            min_tau_state = float("nan")
-            max_tau_state = float("nan")
-            if badjac_use_state or (bad_jacobian_ptau is None):
-                jac0 = vmec_half_mesh_jacobian_from_state(
-                    state=state,
-                    modes=static.modes,
-                    trig=trig,
-                    s=s,
-                    lconm1=bool(getattr(static.cfg, "lconm1", True)),
-                    lthreed=bool(getattr(static.cfg, "lthreed", True)),
-                    mask_even=getattr(static, "m_is_even", None),
-                    mask_odd=getattr(static, "m_is_odd", None),
-                )
-                tau0 = jnp.asarray(jac0.tau)
-                tau0_use = tau0[1:] if int(tau0.shape[0]) > 1 else tau0
-                min_tau_state = float(np.asarray(jnp.min(tau0_use)))
-                max_tau_state = float(np.asarray(jnp.max(tau0_use)))
-                bad_jacobian_state = _axis_reset_bad_jacobian_from_tau_range(
-                    min_tau=min_tau_state,
-                    max_tau=max_tau_state,
-                )
-
-            axis_reset_debug = os.getenv("VMEC_JAX_AXIS_RESET_DEBUG", "").strip().lower() not in (
-                "",
-                "0",
-                "false",
-                "no",
-            )
-            fsq_phys0_val = _axis_reset_initial_force_physical_fsq(
+            axis_reset_eval = _evaluate_initial_axis_reset(
+                axis_reset_enabled=True,
                 norms=_norms0,
                 gcr2=_gcr2_0,
                 gcz2=_gcz2_0,
                 gcl2=_gcl2_0,
-            )
-
-            axis_reset_decision = _initial_axis_reset_decision(
-                bad_jacobian_ptau=bad_jacobian_ptau,
-                bad_jacobian_state=bad_jacobian_state,
-                badjac_use_state=badjac_use_state,
-                fsq_phys=fsq_phys0_val,
+                k=k0,
+                state=state,
+                static=static,
+                trig=trig,
+                s=s,
+                badjac_use_state=bool(badjac_use_state),
+                ptau_tol=0.0,
+                ptau_tol_rel=0.0,
                 axis_reset_fsq_min=axis_reset_fsq_min,
-                force_axis_reset=force_axis_reset,
-                axis_reset_always_3d=axis_reset_always_3d,
-                lthreed=bool(getattr(cfg, "lthreed", True)),
+                force_axis_reset=bool(force_axis_reset),
+                axis_reset_always_3d=bool(axis_reset_always_3d),
+                vmec2000_control=True,
+                lmove_axis=True,
+                debug_enabled=os.getenv("VMEC_JAX_AXIS_RESET_DEBUG", "").strip().lower() not in ("", "0", "false", "no"),
+                state_check_on_missing_ptau=True,
+                ptau_minmax_from_k_host=_ptau_minmax_from_k_host,
+                vmec_half_mesh_jacobian_from_state_func=vmec_half_mesh_jacobian_from_state,
             )
-            bad_jacobian0 = axis_reset_decision.bad_jacobian
-            if axis_reset_debug:
-                try:
-                    fsq_debug_val = float("nan") if fsq_phys0_val is None else float(fsq_phys0_val)
-                    print(
-                        "[axis_reset] fsq0="
-                        f"{fsq_debug_val:.6e} "
-                        f"axis_reset_fsq_min={axis_reset_fsq_min:.3e} "
-                        f"badjac_ptau={bad_jacobian_ptau} badjac_state={bad_jacobian_state} "
-                        f"badjac_used={bad_jacobian0}",
-                        flush=True,
-                    )
-                except Exception:
-                    pass
+            axis_reset_decision = axis_reset_eval.decision
+            bad_jacobian0 = bool(axis_reset_decision.bad_jacobian)
 
             force_axis_reset_init = axis_reset_decision.force_reset
             if axis_reset_decision.reset:
