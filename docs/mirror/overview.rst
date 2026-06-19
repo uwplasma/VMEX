@@ -64,7 +64,9 @@ without coupling it to toroidal VMEC assumptions:
   scale, normal-field-slope, mixed scale/normal-field, no-op, and realized
   coupled trial-scoring updates, top-level free-boundary status values that can
   distinguish target-merit convergence from non-converged pilot or coupled-loop
-  runs, plus an optional strict normal-field guard
+  runs, a low-resolution target-merit smoke that converges the default 1%, 3%,
+  and 10% beta rows with an explicit ``fsq`` growth guard, plus an optional
+  strict normal-field guard
   that records allowed strategies,
   no-op rejection reasons, workflow status, requested beta-scan points, and
   aggregate pilot counts and stop reasons in JSON output, with optional

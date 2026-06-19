@@ -89,8 +89,10 @@ Current Scope
        reduction, actual reduction, and optional adaptive ridge-candidate
        diagnostics.  Beta-scan status values can now represent target-merit
        convergence when every requested beta row reaches it.  Plotted beta-scan
-       and reduced-vector benchmark evidence are present, but this is not yet
-       a converged production free-boundary equilibrium solver.
+       and reduced-vector benchmark evidence are present, and a low-resolution
+       coupled-loop smoke reaches target merit for the default 1%, 3%, and 10%
+       beta rows with an explicit ``fsq`` growth guard.  This is not yet a
+       converged production free-boundary equilibrium solver.
    * - ESSOS beta-scan fixture
      - diagnostic
      - The 1%, 3%, and 10% beta cases share a compact JSON/CSV schema with

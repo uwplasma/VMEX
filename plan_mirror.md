@@ -25001,3 +25001,109 @@ No user input is needed for the next technical step.  A later review decision
 is still needed on whether production free-boundary LCFS convergence and broad
 differentiable full-equilibrium APIs must be in this PR or split into follow-up
 PRs after the mirror/toroidal-hybrid foundation is reviewed.
+
+---
+## 208. Low-Resolution Free-Boundary Target-Merit Smoke
+
+### Steps taken
+
+- Probed the local circular-coil coupled LS loop at low resolution for the
+  default 1%, 3%, and 10% beta cases.
+- Found that a single accepted coupled-loop step reduces the normalized LCFS
+  merit from about `1.0000568856893208` to `0.48021241738262876`.
+- Added an end-to-end mirror-example regression using
+  `--ls-boundary-coupled-loop-target-merit 0.5` and
+  `--ls-boundary-coupled-loop-fsq-growth-limit 2.0`.
+- Updated `examples/mirror/README.md`, `docs/mirror/overview.rst`, and
+  `docs/mirror/readiness.rst` to document the smoke as target-merit evidence,
+  not production LCFS convergence.
+
+### Results obtained
+
+- The low-resolution local run for beta `1,3,10` now reports:
+  - `free_boundary_solve_status =
+    ls_boundary_coupled_loop_converged_free_boundary`;
+  - `ls_boundary_coupled_loop_stop_reason_counts = {"target_merit": 3}`;
+  - `ls_boundary_coupled_loop_rows_total = 3`;
+  - `ls_boundary_coupled_loop_accepted_rows_total = 3`.
+- Per-beta final coupled-loop metrics from the probe:
+  - beta `1%`: final merit `0.48021241738262876`, final `fsq` growth
+    `0.8804859565965772`;
+  - beta `3%`: final merit `0.48021241738262876`, final `fsq` growth
+    `1.6156779649703508`;
+  - beta `10%`: final merit `0.48021241738262876`, final `fsq` growth
+    `1.8474777725175542`.
+- This closes the schema/wiring gap for converged status and gives a checked
+  low-resolution target-merit smoke.  It does not close the production
+  free-boundary LCFS lane, because the target is loose, the fixed-boundary
+  baseline uses `maxiter = 0`, and the grid is deliberately small.
+
+### How it was tested
+
+```bash
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m208_probe --betas 1 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 0 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 4 --ls-boundary-coupled-loop-target-merit 0.0 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m208_target05_probe --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 0 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 4 --ls-boundary-coupled-loop-target-merit 0.5 --no-plots
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_convergence -q
+python -m ruff check tests/mirror/test_mirror_examples.py examples/mirror_free_boundary_circular_coils.py
+python -m sphinx -W -b html docs docs/_build/html
+```
+
+Results:
+
+- The one-beta diagnostic probe showed the first accepted coupled-loop step
+  reaches merit `0.48021241738262876`, then a second LS step is rejected when
+  the target is left at zero.
+- The three-beta target-smoke probe reached target merit for all three beta
+  rows with `fsq` growth below the explicit `2.0` guard.
+- New end-to-end pytest passed: `1 passed in 3.71s`, and again after docs
+  updates: `1 passed in 3.38s`.
+- Ruff passed for the touched free-boundary example/test files.
+- Sphinx docs build passed with warnings as errors.
+
+### File structure and best-practice notes
+
+- The new check lives in `tests/mirror/test_mirror_examples.py` because it is
+  an end-to-end root-example schema/status contract.
+- Generated smoke outputs remain under ignored `results/mirror/...` paths.
+- The docs avoid over-claiming: this is explicitly a low-resolution
+  target-merit smoke, not the production free-boundary LCFS solve.
+
+### Best next steps
+
+1. Commit and push this M208 tranche.
+2. Update the draft PR body to section 208 and snapshot failed checks.
+3. Convert the low-resolution smoke into a stricter free-boundary ladder:
+   increase baseline `maxiter`, tighten target merit below `0.5`, and reduce
+   the `fsq` growth limit while checking whether all beta rows still converge.
+4. If the stricter ladder stalls, use the existing LS diagnostics to decide
+   whether the next implementation step should be better boundary
+   parameterization, a different ridge/line-search policy, or a differentiable
+   reduced residual-vector backend for the free-boundary loop.
+
+### Completion percentages after M208
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.45%` overall for the diagnostic/reduced
+  solver scope; low-resolution target-merit smoke is present, but production
+  LCFS convergence remains open.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `99.9%`.
+- ESSOS circular-coil mirror beta scan: `99.2%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.84%`, pending stricter free-boundary LCFS
+  evidence/decision, broader differentiable solved-state promotion, final
+  checks, and review decision on deferred lanes.
+
+### User input needed
+
+No user input is needed for the next technical step.

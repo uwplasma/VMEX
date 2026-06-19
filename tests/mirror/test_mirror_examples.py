@@ -934,6 +934,56 @@ def test_root_free_boundary_circular_coils_ls_boundary_coupled_loop_reports_guar
     assert second["ls_boundary_step"]["coupled_trial"] is None
 
 
+def test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_convergence(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_free_boundary_circular_coils.py",
+            "--outdir",
+            str(tmp_path / "ls_boundary_coupled_loop_target"),
+            "--betas",
+            "1,3,10",
+            "--ntheta",
+            "8",
+            "--nxi",
+            "11",
+            "--n-segments",
+            "64",
+            "--run-fixed-boundary-baseline",
+            "--baseline-maxiter",
+            "0",
+            "--run-ls-boundary-coupled-loop",
+            "--ls-boundary-coupled-loop-steps",
+            "4",
+            "--ls-boundary-coupled-loop-target-merit",
+            "0.5",
+            "--ls-boundary-coupled-loop-fsq-growth-limit",
+            "2.0",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    metrics = json.loads(Path(completed.stdout.strip()).read_text())
+    module = _load_root_example("mirror_free_boundary_circular_coils.py")
+    module["validate_circular_coil_beta_scan_metrics"](metrics)
+
+    assert metrics["free_boundary_solve_status"] == "ls_boundary_coupled_loop_converged_free_boundary"
+    assert metrics["ls_boundary_coupled_loop_stop_reason_counts"] == {"target_merit": 3}
+    assert metrics["ls_boundary_coupled_loop_rows_total"] == 3
+    assert metrics["ls_boundary_coupled_loop_accepted_rows_total"] == 3
+    for row in metrics["fixed_boundary_baseline_rows"]:
+        assert row["ls_boundary_coupled_loop_status"] == "accepted"
+        assert row["ls_boundary_coupled_loop_stop_reason"] == "target_merit"
+        assert row["ls_boundary_coupled_loop_accepted_rows"] == 1
+        assert row["ls_boundary_coupled_loop_final_merit"] <= 0.5
+        assert row["ls_boundary_coupled_loop_final_fsq_growth_ratio"] <= 2.0
+        assert len(row["ls_boundary_coupled_loop_rows"]) == 1
+        assert row["ls_boundary_coupled_loop_rows"][0]["accepted"] is True
+
+
 def test_root_free_boundary_circular_coils_pilot_stagnation_stops_early(tmp_path):
     completed = subprocess.run(
         [
