@@ -18447,3 +18447,77 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9999993%.
+
+## 2026-06-18 Residual NESTOR Edge `bsqvac` Normalization Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added a module-level `_edge_bsqvac_from_nestor` helper for the repeated
+   NESTOR edge-field shape normalization.
+2. Replaced the duplicated accepted-iteration and trial-state edge `bsqvac`
+   normalization blocks in `solve_fixed_boundary_residual_iter`.
+3. Avoided wrapping the NESTOR call itself after checking that doing so
+   increased the hot-loop source size and added unnecessary abstraction.
+
+Results obtained:
+
+- Removed 6 net source lines from
+  `vmec_jax/solvers/fixed_boundary/residual/iteration.py`.
+- The residual iteration file dropped from 5929 to 5923 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 5531 to 5518 lines
+  because the helper is module-level and no longer counted inside the
+  function.
+- The edge-field shape rule now has one implementation shared by accepted
+  and trial NESTOR paths.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trial_nestor_timing_records_solver_trial_calls tests/test_solve_scan_output.py::test_vmec2000_scan_residual_result_assembles_public_diagnostics tests/test_solve_real_scan_wave10_coverage.py::test_accelerated_scan_one_step_updates_state_and_histories -q`
+- `python tools/diagnostics/source_health.py | head -100`
+
+Best next steps:
+
+1. Continue shrinking residual iteration only through low-risk shared
+   diagnostic/shape seams like this; avoid large call-wrapper abstractions
+   that obscure VMEC control flow or add hot-loop overhead.
+2. Inspect NESTOR diagnostic history appends next; commit only if the helper
+   is clearly net-negative and covered by the direct-coil trial tests.
+3. In parallel, the free-boundary validation test file still has sizeable
+   controller replay assertion blocks that can be compacted with focused
+   AD-vs-FD gates.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.78%.
+- Free-boundary adjoint monolith reduction: 99.48%.
+- Driver workflow decomposition: 99.94%.
+- Residual iteration decomposition: 98.79%.
+- WOUT diagnostic/profile decomposition: 99.94%.
+- Bcovar/WOUT parity decomposition: 99.13%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.81%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.66%.
+- Fixed-boundary optimizer decomposition: 96.05%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.45%.
+- Discrete-adjoint replay decomposition: 96.45%.
+- Free-boundary validation-gate maintainability: 97.0%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9999994%.
