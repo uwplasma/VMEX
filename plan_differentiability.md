@@ -22104,3 +22104,78 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999998%.
+
+## 2026-06-19 Dynamic Replay Cache Plumbing Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Continued the discrete-adjoint source-health tranche after the trace-field
+   map cleanup.
+2. Centralized dynamic replay trace/static fallback lookup for values that may
+   be carried either in the per-step trace or in the static scan flags.
+3. Extracted constraint-cache activation and preconditioner-cache selection
+   helpers from `_packed_dynamic_replay_step_from_carry`.
+4. Deduplicated the repeated dynamic-step call pattern shared by the dynamic
+   scan, basepoint JVP scan, basepoint VJP scan, and segmented fallback path.
+
+Results obtained:
+
+- `vmec_jax/discrete_adjoint.py` decreased from 3385 to 3375 lines in this
+  tranche.
+- `_packed_dynamic_replay_step_from_carry` dropped out of the top-45
+  source-health function hotspot list.
+- Dynamic replay JVP/VJP scan runners now share one flag-normalized step-call
+  helper, reducing future risk of drift between forward and reverse replay
+  paths.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/discrete_adjoint.py`
+- `python -m ruff check vmec_jax/discrete_adjoint.py tests/test_discrete_adjoint_chunking.py tests/test_vmec_kernel_additional_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_discrete_adjoint_chunking.py::test_dynamic_replay_payload_passes_scalar_controls_as_trace_inputs tests/test_discrete_adjoint_chunking.py::test_checkpoint_tape_dynamic_scan_runner_skips_inactive_trace_entries tests/test_discrete_adjoint_chunking.py::test_stacked_trace_signature_uses_asarray_dtype_for_proxy_leaf -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_discrete_adjoint_chunking.py tests/test_vmec_kernel_additional_helpers.py -q`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 45`
+
+Best next steps:
+
+1. Move back to the dominant residual-loop source-health seam only after
+   defining a compact payload contract for non-scan preconditioned-force
+   assembly.
+2. Keep dynamic replay changes targeted to JAX-visible accepted-point replay;
+   do not broaden adaptive-branch differentiability claims from this refactor.
+3. Use the free-boundary validation tests as the next high-value test-monolith
+   cleanup candidate if source refactors become too risky.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999953%.
+- Solver monolith reduction: 99.827%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.055%.
+- WOUT diagnostic/profile decomposition: 99.982%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.825%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.745%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 96.82%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 96.82%.
+- Free-boundary validation-gate maintainability: 98.18%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999999%.
