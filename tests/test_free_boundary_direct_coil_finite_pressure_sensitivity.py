@@ -52,6 +52,12 @@ LPQA_COILS = _find_lpqa_coils()
 pytestmark = pytest.mark.skipif(not has_jax(), reason="direct-coil finite-pressure sensitivity tests require JAX")
 
 
+def _assert_errors_contain(report: dict, *snippets: str) -> None:
+    errors = report["errors"]
+    for snippet in snippets:
+        assert any(snippet in error for error in errors)
+
+
 def _circle_coil_params(*, current: float = 3.0e7, radius: float = 1.8, n_segments: int = 96) -> CoilFieldParams:
     from vmec_jax._compat import jnp
 
@@ -525,17 +531,20 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     mismatch_synthetic_report["trace_replay_diagnostics"]["minus"] = "missing"
     mismatch_gate = direct_coil_same_branch_replay_gate_report(mismatch_synthetic_report)
     assert not mismatch_gate["passed"]
-    assert any("base: missing branch fingerprint" in error for error in mismatch_gate["errors"])
-    assert any("plus: n_steps mismatch" in error for error in mismatch_gate["errors"])
-    assert any("plus: fingerprint n_steps mismatch" in error for error in mismatch_gate["errors"])
-    assert any("plus: fingerprint n_freeb_steps mismatch" in error for error in mismatch_gate["errors"])
-    assert any("plus: freeb_sizes mismatch" in error for error in mismatch_gate["errors"])
-    assert any("plus: mask 'active' has shape" in error for error in mismatch_gate["errors"])
-    assert any("plus: no accepted active free-boundary replay slots" in error for error in mismatch_gate["errors"])
-    assert any("plus: scalar controls are not stackable" in error for error in mismatch_gate["errors"])
-    assert any("plus: array controls are not stackable" in error for error in mismatch_gate["errors"])
-    assert any("plus: no preconditioner policy segments" in error for error in mismatch_gate["errors"])
-    assert any("minus: missing replay diagnostics" in error for error in mismatch_gate["errors"])
+    _assert_errors_contain(
+        mismatch_gate,
+        "base: missing branch fingerprint",
+        "plus: n_steps mismatch",
+        "plus: fingerprint n_steps mismatch",
+        "plus: fingerprint n_freeb_steps mismatch",
+        "plus: freeb_sizes mismatch",
+        "plus: mask 'active' has shape",
+        "plus: no accepted active free-boundary replay slots",
+        "plus: scalar controls are not stackable",
+        "plus: array controls are not stackable",
+        "plus: no preconditioner policy segments",
+        "minus: missing replay diagnostics",
+    )
 
     from vmec_jax.free_boundary_adjoint import (
         _block_until_ready_for_timing,
@@ -627,8 +636,7 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
         require_fixed_rejected_controller_slot=True,
     )
     assert not missing_rejected_slot_gate["passed"]
-    assert any("fixed rejected controller slot" in error for error in missing_rejected_slot_gate["errors"])
-    assert any("accepted-only fast path" in error for error in missing_rejected_slot_gate["errors"])
+    _assert_errors_contain(missing_rejected_slot_gate, "fixed rejected controller slot", "accepted-only fast path")
     missing_complete_loop_rejected_slot_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
         physical_synthetic_report,
         physical_scalars_report,
@@ -637,14 +645,14 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     assert not missing_complete_loop_rejected_slot_gate["passed"]
     assert missing_complete_loop_rejected_slot_gate["requires_complete_loop_rejected_controller_slot"] is True
     assert missing_complete_loop_rejected_slot_gate["complete_loop_rejected_controller_slot_present"] is False
-    assert any("complete-loop branch fingerprints" in error for error in missing_complete_loop_rejected_slot_gate["errors"])
+    _assert_errors_contain(missing_complete_loop_rejected_slot_gate, "complete-loop branch fingerprints")
     missing_status_rejected_slot_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
         physical_synthetic_report,
         physical_scalars_report,
         require_status_derived_rejected_controller_slot=True,
     )
     assert not missing_status_rejected_slot_gate["passed"]
-    assert any("trace step_status" in error for error in missing_status_rejected_slot_gate["errors"])
+    _assert_errors_contain(missing_status_rejected_slot_gate, "trace step_status")
     unstacked_allowed_scalars_report = deepcopy(physical_scalars_report)
     unstacked_allowed_scalars_report["replay_option_flags"] = {"use_stacked_step_controls": False}
     unstacked_allowed_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
@@ -699,31 +707,48 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
         scalar_keys=("aspect", "accepted_bnormal_rms", "missing", "missing_objective"),
     )
     assert not bad_physical_gate["passed"]
-    assert any("replay gate failed" in error for error in bad_physical_gate["errors"])
-    assert any("not same-branch" in error for error in bad_physical_gate["errors"])
-    assert any("accepted-trace branch fingerprint changed" in error for error in bad_physical_gate["errors"])
-    assert any("residual-controller branch fingerprint changed" in error for error in bad_physical_gate["errors"])
-    assert any("missing scalar report" in error for error in bad_physical_gate["errors"])
-    assert any("missing complete-solve objective values" in error for error in bad_physical_gate["errors"])
-    assert any("non-finite complete-solve FD" in error for error in bad_physical_gate["errors"])
-    assert any("non-finite custom-VJP" in error for error in bad_physical_gate["errors"])
+    _assert_errors_contain(
+        bad_physical_gate,
+        "replay gate failed",
+        "not same-branch",
+        "accepted-trace branch fingerprint changed",
+        "residual-controller branch fingerprint changed",
+        "missing scalar report",
+        "missing complete-solve objective values",
+        "non-finite complete-solve FD",
+        "non-finite custom-VJP",
+    )
     bad_adaptive_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
         bad_physical_report,
         bad_physical_scalars_report,
         scalar_keys=("aspect", "accepted_bnormal_rms", "missing", "missing_objective"),
     )
     assert not bad_adaptive_gate["passed"]
-    assert any("stacked step-control replay was not used" in error for error in bad_adaptive_gate["errors"])
-    assert any("stacked step-policy branch changed" in error for error in bad_adaptive_gate["errors"])
-    assert any("base: no accepted step-policy segments" in error for error in bad_adaptive_gate["errors"])
-    assert any("minus: missing complete-solve payload" in error for error in bad_adaptive_gate["errors"])
-    assert any("physical scalar gate:" in error for error in bad_adaptive_gate["errors"])
+    _assert_errors_contain(
+        bad_adaptive_gate,
+        "stacked step-control replay was not used",
+        "stacked step-policy branch changed",
+        "base: no accepted step-policy segments",
+        "minus: missing complete-solve payload",
+        "physical scalar gate:",
+    )
 
-    with pytest.raises(ValueError, match="input_path and params"):
-        direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
+    def scalar_call(**kwargs):
+        return direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
             scalar_fn=lambda payload: {"objective": 0.0},
             replay_scalar_fn=lambda replay, payload: 0.0,
+            **kwargs,
         )
+
+    def scalars_call(**kwargs):
+        return direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
+            scalar_fn=lambda payload: {"objective": 0.0},
+            replay_scalar_fns={"objective": lambda replay, payload: 0.0},
+            **kwargs,
+        )
+
+    with pytest.raises(ValueError, match="input_path and params"):
+        scalar_call()
     with pytest.raises(ValueError, match="replay_scalar_fns"):
         direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             params={},
@@ -732,58 +757,38 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
             replay_scalar_fns={},
         )
     with pytest.raises(ValueError, match="input_path and params"):
-        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
-            scalar_fn=lambda payload: {"objective": 0.0},
-            replay_scalar_fns={"objective": lambda replay, payload: 0.0},
-        )
-    with pytest.raises(ValueError, match="params must be supplied"):
-        direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
-            complete_payload={"traces": (), "init": object()},
-            scalar_fn=lambda payload: {"objective": 0.0},
-            replay_scalar_fn=lambda replay, payload: 0.0,
-        )
-    with pytest.raises(ValueError, match="no accepted traces"):
-        direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
-            params={},
-            complete_payload={"traces": (), "init": object()},
-            scalar_fn=lambda payload: {"objective": 0.0},
-            replay_scalar_fn=lambda replay, payload: 0.0,
-        )
-    with pytest.raises(ValueError, match="no accepted traces"):
-        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
-            params={},
-            complete_payload={"traces": (), "init": object()},
-            scalar_fn=lambda payload: {"objective": 0.0},
-            replay_scalar_fns={"objective": lambda replay, payload: 0.0},
-        )
-    with pytest.raises(RuntimeError, match="no active free-boundary trace"):
-        direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
-            params={},
-            complete_payload={"traces": ({"freeb_bsqvac_half": None},), "init": object()},
-            scalar_fn=lambda payload: {"objective": 0.0},
-            replay_scalar_fn=lambda replay, payload: 0.0,
-        )
-    with pytest.raises(RuntimeError, match="no active free-boundary trace"):
-        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
-            params={},
-            complete_payload={"traces": ({"freeb_bsqvac_half": None},), "init": object()},
-            scalar_fn=lambda payload: {"objective": 0.0},
-            replay_scalar_fns={"objective": lambda replay, payload: 0.0},
-        )
-    with pytest.raises(ValueError, match="initialization result"):
-        direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
-            params={},
-            complete_payload={"traces": ({"freeb_bsqvac_half": np.ones(1)},)},
-            scalar_fn=lambda payload: {"objective": 0.0},
-            replay_scalar_fn=lambda replay, payload: 0.0,
-        )
-    with pytest.raises(ValueError, match="initialization result"):
-        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
-            params={},
-            complete_payload={"traces": ({"freeb_bsqvac_half": np.ones(1)},)},
-            scalar_fn=lambda payload: {"objective": 0.0},
-            replay_scalar_fns={"objective": lambda replay, payload: 0.0},
-        )
+        scalars_call()
+    for call, error_type, match, kwargs in (
+        (scalar_call, ValueError, "params must be supplied", {"complete_payload": {"traces": (), "init": object()}}),
+        (scalar_call, ValueError, "no accepted traces", {"params": {}, "complete_payload": {"traces": (), "init": object()}}),
+        (scalars_call, ValueError, "no accepted traces", {"params": {}, "complete_payload": {"traces": (), "init": object()}}),
+        (
+            scalar_call,
+            RuntimeError,
+            "no active free-boundary trace",
+            {"params": {}, "complete_payload": {"traces": ({"freeb_bsqvac_half": None},), "init": object()}},
+        ),
+        (
+            scalars_call,
+            RuntimeError,
+            "no active free-boundary trace",
+            {"params": {}, "complete_payload": {"traces": ({"freeb_bsqvac_half": None},), "init": object()}},
+        ),
+        (
+            scalar_call,
+            ValueError,
+            "initialization result",
+            {"params": {}, "complete_payload": {"traces": ({"freeb_bsqvac_half": np.ones(1)},)}},
+        ),
+        (
+            scalars_call,
+            ValueError,
+            "initialization result",
+            {"params": {}, "complete_payload": {"traces": ({"freeb_bsqvac_half": np.ones(1)},)}},
+        ),
+    ):
+        with pytest.raises(error_type, match=match):
+            call(**kwargs)
     invalid_mode_payload = {
         "params": {},
         "init": SimpleNamespace(static=None, signgs=1),
@@ -795,27 +800,14 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
             },
         ),
     }
-    with pytest.raises(ValueError, match="replay_ad_mode"):
-        direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
-            complete_payload=invalid_mode_payload,
-            scalar_fn=lambda payload: {"objective": 0.0},
-            replay_scalar_fn=lambda replay, payload: 0.0,
-            replay_ad_mode="invalid",
-        )
-    with pytest.raises(ValueError, match="replay_ad_mode"):
-        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
-            complete_payload=invalid_mode_payload,
-            scalar_fn=lambda payload: {"objective": 0.0},
-            replay_scalar_fns={"objective": lambda replay, payload: 0.0},
-            replay_ad_mode="invalid",
-        )
+    for call in (scalar_call, scalars_call):
+        with pytest.raises(ValueError, match="replay_ad_mode"):
+            call(complete_payload=invalid_mode_payload, replay_ad_mode="invalid")
     with pytest.raises(ValueError, match="direction_params"):
-        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
+        scalars_call(
             params={},
             direction_params={},
             complete_payload=invalid_mode_payload,
-            scalar_fn=lambda payload: {"objective": 0.0},
-            replay_scalar_fns={"objective": lambda replay, payload: 0.0},
             replay_ad_mode="custom_vjp",
         )
 
@@ -1050,23 +1042,8 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     assert same_json["compatible"]
     assert same_json["reference"]["precond_jmax"] == [2, 2]
 
-    field_only_change = dict(trace0)
-    field_only_change["freeb_bsqvac_half"] = np.ones((2, 3)) * 99.0
-    same_branch = direct_coil_accepted_trace_fingerprint_delta(
-        [trace0, trace1],
-        [field_only_change, trace1],
-    )
-    assert same_branch["compatible"]
-
     status_change = dict(trace1)
     status_change["step_status"] = "restart_bad_progress"
-    rejected_slot_branch = direct_coil_accepted_trace_fingerprint_delta(
-        [trace0, trace1],
-        [trace0, status_change],
-    )
-    assert not rejected_slot_branch["compatible"]
-    assert "step_status" in rejected_slot_branch["changed_fields"]
-    assert "accept_mask" in rejected_slot_branch["changed_fields"]
     status_json = direct_coil_accepted_trace_fingerprint_delta_summary(
         [trace0, trace1],
         [trace0, status_change],
@@ -1074,24 +1051,6 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     json.dumps(status_json, allow_nan=False)
     assert status_json["candidate"]["step_status"] == ["accepted", "restart_bad_progress"]
     assert status_json["candidate"]["accept_mask"] == [1, 0]
-
-    control_change = dict(trace0)
-    control_change["fac"] = np.asarray(0.7)
-    different_branch = direct_coil_accepted_trace_fingerprint_delta(
-        [trace0, trace1],
-        [control_change, trace1],
-    )
-    assert not different_branch["compatible"]
-    assert "scalars.fac" in different_branch["changed_fields"]
-
-    b1_change = dict(trace0)
-    b1_change["b1"] = np.asarray(0.25)
-    different_b1 = direct_coil_accepted_trace_fingerprint_delta(
-        [trace0, trace1],
-        [b1_change, trace1],
-    )
-    assert not different_b1["compatible"]
-    assert "scalars.b1" in different_b1["changed_fields"]
 
     preconditioner_policy_change = dict(trace0)
     preconditioner_policy_change["preconditioner_use_lax_tridi"] = False
@@ -1103,39 +1062,28 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
         (1, 2, 1),
         (2, 3, 1),
     ]
-    different_preconditioner_policy = direct_coil_accepted_trace_fingerprint_delta(
-        [trace0, trace1],
-        [preconditioner_policy_change, trace1],
-    )
-    assert not different_preconditioner_policy["compatible"]
-    assert "flags.preconditioner_use_lax_tridi" in different_preconditioner_policy["changed_fields"]
 
-    preconditioner_jmax_change = dict(trace0)
-    preconditioner_jmax_change["precond_jmax"] = 3
-    different_preconditioner_jmax = direct_coil_accepted_trace_fingerprint_delta(
-        [trace0, trace1],
-        [preconditioner_jmax_change, trace1],
-    )
-    assert not different_preconditioner_jmax["compatible"]
-    assert "precond_jmax" in different_preconditioner_jmax["changed_fields"]
-
-    preconditioner_shape_change = dict(trace0)
-    preconditioner_shape_change["precond_mats"] = {"ar": np.ones((3, 3)), "br": z + 7.0}
-    different_preconditioner_shape = direct_coil_accepted_trace_fingerprint_delta(
-        [trace0, trace1],
-        [preconditioner_shape_change, trace1],
-    )
-    assert not different_preconditioner_shape["compatible"]
-    assert "precond_mats_shapes" in different_preconditioner_shape["changed_fields"]
-
-    size_change = dict(trace0)
-    size_change["freeb_bsqvac_half"] = np.ones((3, 3))
-    different_shape = direct_coil_accepted_trace_fingerprint_delta(
-        [trace0, trace1],
-        [size_change, trace1],
-    )
-    assert not different_shape["compatible"]
-    assert "freeb_sizes" in different_shape["changed_fields"]
+    for trace_index, updates, compatible, changed_fields in (
+        (0, {"freeb_bsqvac_half": np.ones((2, 3)) * 99.0}, True, ()),
+        (1, {"step_status": "restart_bad_progress"}, False, ("step_status", "accept_mask")),
+        (0, {"fac": np.asarray(0.7)}, False, ("scalars.fac",)),
+        (0, {"b1": np.asarray(0.25)}, False, ("scalars.b1",)),
+        (
+            0,
+            {"preconditioner_use_lax_tridi": False},
+            False,
+            ("flags.preconditioner_use_lax_tridi",),
+        ),
+        (0, {"precond_jmax": 3}, False, ("precond_jmax",)),
+        (0, {"precond_mats": {"ar": np.ones((3, 3)), "br": z + 7.0}}, False, ("precond_mats_shapes",)),
+        (0, {"freeb_bsqvac_half": np.ones((3, 3))}, False, ("freeb_sizes",)),
+    ):
+        candidate = [dict(trace0), dict(trace1)]
+        candidate[trace_index].update(updates)
+        delta = direct_coil_accepted_trace_fingerprint_delta([trace0, trace1], candidate)
+        assert delta["compatible"] is compatible
+        for field in changed_fields:
+            assert field in delta["changed_fields"]
 
 
 def _relative_rms_delta(a, b) -> float:
