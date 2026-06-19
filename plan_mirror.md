@@ -21467,3 +21467,83 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+---
+## 176. Final Local Mirror Test Pass After Readiness Sync
+
+### Steps taken
+
+- Ran the full local mirror test suite after the readiness matrix and PR-body
+  synchronization commits.
+- Re-checked the worktree after the test run.
+- Sampled PR #21 checks once after the latest pushed head.
+
+### Results obtained
+
+- The full local mirror suite passed:
+  - `226 passed, 1 skipped in 191.51s`.
+- The worktree was clean after the test run.
+- CI failure inspection found no failing checks at the sampled PR head.
+- The sampled check list showed:
+  - `Parity Manifest Smoke (dry-run)` passed;
+  - `Console Script Smoke` passed;
+  - `Fast Tests (py3.12)` passed;
+  - `Physics Full (manual/nightly)` skipped as configured;
+  - standard docs/build/remaining fast/physics-smoke jobs still in progress or
+    queued.
+
+### How it was tested
+
+Commands run:
+
+```bash
+JAX_ENABLE_X64=1 pytest tests/mirror -q
+git status -sb
+python /Users/rogeriojorge/.codex/plugins/cache/openai-curated-remote/github/0.1.5/skills/gh-fix-ci/scripts/inspect_pr_checks.py --repo . --pr 21 --json
+gh pr checks 21 --repo uwplasma/vmec_jax --json name,state,bucket,startedAt,completedAt,link
+```
+
+Results:
+
+- Pytest completed successfully with `226 passed, 1 skipped in 191.51s`.
+- The worktree was clean.
+- CI failure inspection printed `PR #21: no failing checks detected.`
+
+### File structure and best-practice notes
+
+- No files changed during the test run before this plan-only log.
+- The test result is recorded in the plan rather than adding generated output
+  artifacts to the repository.
+- CI was sampled once and not continuously polled.
+
+### Best next steps
+
+1. Commit and push M176.
+2. Update the draft PR body validation note to include the `226 passed,
+   1 skipped` mirror-suite result.
+3. Perform a requirement-by-requirement completion audit against the plan,
+   source, docs, examples, PR body, and CI state.
+4. Fix any audit or CI failures that are concrete and actionable.
+
+### Completion percentages after M176
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `90%`.
+- Finite-current pitch validation: `86%`.
+- Plotting and `vmec --plot` mirror support: `97%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `95%`.
+- Mirror-Boozer-like diagnostics: `83%`.
+- Free-boundary mirror lane: `99%` overall, with reduced residual-vector
+  nonlinear solve scope complete.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `99%`.
+
+### User input needed
+
+No user input is needed.
