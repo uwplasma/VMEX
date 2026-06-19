@@ -215,6 +215,76 @@ def _vmec_freeb_plascur_from_bcovar(
     return float(fallback)
 
 
+def _freeb_trial_bsqvac_half(
+    candidate_state: Any,
+    *,
+    free_boundary_enabled: bool,
+    freeb_couple_edge: bool,
+    freeb_bsqvac_half_current: Any,
+    external_field_provider_kind: str | None,
+    external_field_provider_static: Any,
+    external_field_provider_params: Any,
+    freeb_ivac_effective: int,
+    freeb_nestor_runtime: Any,
+    static: Any,
+    iter2: int,
+    freeb_plascur: float,
+    env_freeb_raise: bool,
+    nestor_external_only_step_func: Callable[..., Any],
+    edge_bsqvac_from_nestor_func: Callable[..., Any],
+    trial_reused_history: list[int],
+    trial_solve_time_history: list[float],
+    trial_sample_time_history: list[float],
+    trial_failed_history: list[int],
+) -> Any:
+    """Return candidate-state vacuum pressure for free-boundary trial scoring."""
+
+    if not bool(free_boundary_enabled and freeb_couple_edge):
+        return freeb_bsqvac_half_current
+    if freeb_bsqvac_half_current is None:
+        return None
+    provider_kind_trial = (
+        "mgrid"
+        if external_field_provider_kind is None
+        else str(external_field_provider_kind).strip().lower()
+    )
+    if provider_kind_trial in ("", "mgrid", "legacy_mgrid"):
+        return freeb_bsqvac_half_current
+    if isinstance(external_field_provider_static, dict) and not bool(
+        external_field_provider_static.get("resample_trial_bsqvac", True)
+    ):
+        return freeb_bsqvac_half_current
+    if int(freeb_ivac_effective) < 1:
+        return freeb_bsqvac_half_current
+    try:
+        nestor_trial, _runtime_trial = nestor_external_only_step_func(
+            state=candidate_state,
+            static=static,
+            ivac=1,
+            ivacskip=0,
+            iter_idx=int(iter2),
+            runtime=freeb_nestor_runtime,
+            extcur=tuple(getattr(static, "free_boundary_extcur", ()) or ()),
+            plascur=float(freeb_plascur),
+            external_field_provider_kind=external_field_provider_kind,
+            external_field_provider_static=external_field_provider_static,
+            external_field_provider_params=external_field_provider_params,
+        )
+        trial_reused_history.append(1 if bool(getattr(nestor_trial, "reused", False)) else 0)
+        trial_solve_time_history.append(float(getattr(nestor_trial, "solve_time_s", 0.0)))
+        trial_sample_time_history.append(float(getattr(nestor_trial, "sample_time_s", 0.0)))
+        trial_failed_history.append(0)
+        return edge_bsqvac_from_nestor_func(nestor_trial, static)
+    except Exception:
+        trial_reused_history.append(0)
+        trial_solve_time_history.append(0.0)
+        trial_sample_time_history.append(0.0)
+        trial_failed_history.append(1)
+        if env_freeb_raise:
+            raise
+        return freeb_bsqvac_half_current
+
+
 def _scan_print_uses_debug_print(*, scan_print_mode: str, debug_print_fn: Any) -> bool:
     return str(scan_print_mode) == "debug_print" and debug_print_fn is not None
 

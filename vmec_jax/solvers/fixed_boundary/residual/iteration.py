@@ -43,10 +43,12 @@ from vmec_jax.solvers.fixed_boundary.residual.policy import (
     append_residual_iter_terminal_history as _append_residual_iter_terminal_history,
     host_restart_decision as _host_restart_decision,
     numpy_preconditioner_apply_policy as _numpy_preconditioner_apply_policy,
+    pop_residual_iter_rollback_histories as _pop_residual_iter_rollback_histories,
     resolve_residual_iter_startup_policy as _resolve_residual_iter_startup_policy,
     residual_iter_history_diagnostics as _residual_iter_history_diagnostics,
     residual_iter_history_list_maps as _residual_iter_history_list_maps,
     residual_iter_history_record as _residual_iter_history_record,
+    residual_iter_rollback_history_lists as _residual_iter_rollback_history_lists,
     scan_fallback_decision as _scan_fallback_decision,
     scan_fallback_message as _scan_fallback_message,
     vmec2000_time_control_decision as _vmec2000_time_control_decision,
@@ -55,6 +57,7 @@ from vmec_jax.solvers.fixed_boundary.residual.runtime import (
     _attach_free_boundary_external_field_diag as _runtime_attach_free_boundary_external_field_diag,
     _converged_residuals_scan_fast as _runtime_converged_residuals_scan_fast,
     _device_get_floats,
+    _freeb_trial_bsqvac_half as _runtime_freeb_trial_bsqvac_half,
     _initial_setup_phase_timings,
     _maybe_dump_ptau as _runtime_maybe_dump_ptau,
     _maybe_print_nonscan_state_debug,
@@ -1669,6 +1672,7 @@ def solve_fixed_boundary_residual_iter(
         ) = _empty_preconditioner_cache_snapshot()
 
     bcovar_update_history: list[int] = []
+    _rollback_history_lists = _residual_iter_rollback_history_lists(locals())
     iter_offset = 0
 
     if resume_state is not None:
@@ -1779,58 +1783,7 @@ def solve_fixed_boundary_residual_iter(
         )
 
     def _pop_iteration_histories() -> None:
-        def _pop(hist):
-            if hist:
-                hist.pop()
-
-        for h in (
-            include_edge_history,
-            zero_m1_history,
-            bcovar_update_history,
-            w_history,
-            fsqr2_history,
-            fsqz2_history,
-            fsql2_history,
-            r00_history,
-            z00_history,
-            wb_history,
-            wp_history,
-            w_vmec_history,
-            rz_norm_history,
-            f_norm1_history,
-            gcr2_p_history,
-            gcz2_p_history,
-            gcl2_p_history,
-            fsq1_history,
-            fsqr1_history,
-            fsqz1_history,
-            fsql1_history,
-            min_tau_history,
-            max_tau_history,
-            bad_jacobian_history,
-            step_history,
-            dt_eff_history,
-            update_rms_history,
-            w_curr_history,
-            w_try_history,
-            w_try_ratio_history,
-            restart_path_history,
-            step_status_history,
-            restart_reason_history,
-            pre_restart_reason_history,
-            time_step_history,
-            res0_history,
-            res1_history,
-            fsq_prev_history,
-            bad_growth_streak_history,
-            iter1_history,
-            iter2_history,
-            freeb_ivac_history,
-            freeb_ivacskip_history,
-            freeb_full_update_history,
-            grad_rms_history,
-        ):
-            _pop(h)
+        _pop_residual_iter_rollback_histories(_rollback_history_lists)
 
     _maybe_dump_time_control = _maybe_dump_time_control_record
     _dump_time_control_trace = _dump_time_control_trace_record
@@ -2158,50 +2111,27 @@ def solve_fixed_boundary_residual_iter(
                 rejected trials cannot mutate the accepted runtime state.
                 """
 
-                if not bool(free_boundary_enabled and freeb_couple_edge):
-                    return freeb_bsqvac_half_current
-                if freeb_bsqvac_half_current is None:
-                    return None
-                provider_kind_trial = (
-                    "mgrid"
-                    if external_field_provider_kind is None
-                    else str(external_field_provider_kind).strip().lower()
+                return _runtime_freeb_trial_bsqvac_half(
+                    candidate_state,
+                    free_boundary_enabled=bool(free_boundary_enabled),
+                    freeb_couple_edge=bool(freeb_couple_edge),
+                    freeb_bsqvac_half_current=freeb_bsqvac_half_current,
+                    external_field_provider_kind=external_field_provider_kind,
+                    external_field_provider_static=external_field_provider_static,
+                    external_field_provider_params=external_field_provider_params,
+                    freeb_ivac_effective=int(freeb_ivac_effective),
+                    freeb_nestor_runtime=freeb_nestor_runtime,
+                    static=static,
+                    iter2=int(iter2),
+                    freeb_plascur=float(freeb_plascur),
+                    env_freeb_raise=bool(_env_freeb_raise),
+                    nestor_external_only_step_func=nestor_external_only_step,
+                    edge_bsqvac_from_nestor_func=_edge_bsqvac_from_nestor,
+                    trial_reused_history=freeb_nestor_trial_reused_history,
+                    trial_solve_time_history=freeb_nestor_trial_solve_time_history,
+                    trial_sample_time_history=freeb_nestor_trial_sample_time_history,
+                    trial_failed_history=freeb_nestor_trial_failed_history,
                 )
-                if provider_kind_trial in ("", "mgrid", "legacy_mgrid"):
-                    return freeb_bsqvac_half_current
-                if isinstance(external_field_provider_static, dict) and not bool(
-                    external_field_provider_static.get("resample_trial_bsqvac", True)
-                ):
-                    return freeb_bsqvac_half_current
-                if int(freeb_ivac_effective) < 1:
-                    return freeb_bsqvac_half_current
-                try:
-                    nestor_trial, _runtime_trial = nestor_external_only_step(
-                        state=candidate_state,
-                        static=static,
-                        ivac=1,
-                        ivacskip=0,
-                        iter_idx=int(iter2),
-                        runtime=freeb_nestor_runtime,
-                        extcur=tuple(getattr(static, "free_boundary_extcur", ()) or ()),
-                        plascur=float(freeb_plascur),
-                        external_field_provider_kind=external_field_provider_kind,
-                        external_field_provider_static=external_field_provider_static,
-                        external_field_provider_params=external_field_provider_params,
-                    )
-                    freeb_nestor_trial_reused_history.append(1 if bool(getattr(nestor_trial, "reused", False)) else 0)
-                    freeb_nestor_trial_solve_time_history.append(float(getattr(nestor_trial, "solve_time_s", 0.0)))
-                    freeb_nestor_trial_sample_time_history.append(float(getattr(nestor_trial, "sample_time_s", 0.0)))
-                    freeb_nestor_trial_failed_history.append(0)
-                    return _edge_bsqvac_from_nestor(nestor_trial, static)
-                except Exception:
-                    freeb_nestor_trial_reused_history.append(0)
-                    freeb_nestor_trial_solve_time_history.append(0.0)
-                    freeb_nestor_trial_sample_time_history.append(0.0)
-                    freeb_nestor_trial_failed_history.append(1)
-                    if _env_freeb_raise:
-                        raise
-                    return freeb_bsqvac_half_current
 
             def _trial_residual_total(
                 candidate_state: VMECState,

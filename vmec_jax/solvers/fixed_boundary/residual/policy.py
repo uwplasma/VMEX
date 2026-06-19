@@ -103,6 +103,20 @@ _RESIDUAL_ITER_TERMINAL_HISTORY_KEYS = _RESIDUAL_ITER_HISTORY_RECORD_KEYS[7:] + 
     "freeb_nestor_reused_history freeb_nestor_solve_time_history freeb_nestor_sample_time_history"
 ).split()
 
+_RESIDUAL_ITER_ROLLBACK_HISTORY_KEYS = (
+    "include_edge_history zero_m1_history bcovar_update_history "
+    "w_history fsqr2_history fsqz2_history fsql2_history "
+    "r00_history z00_history wb_history wp_history w_vmec_history "
+    "rz_norm_history f_norm1_history gcr2_p_history gcz2_p_history gcl2_p_history "
+    "fsq1_history fsqr1_history fsqz1_history fsql1_history "
+    "min_tau_history max_tau_history bad_jacobian_history step_history "
+    "dt_eff_history update_rms_history w_curr_history w_try_history w_try_ratio_history "
+    "restart_path_history step_status_history restart_reason_history pre_restart_reason_history "
+    "time_step_history res0_history res1_history fsq_prev_history "
+    "bad_growth_streak_history iter1_history iter2_history "
+    "freeb_ivac_history freeb_ivacskip_history freeb_full_update_history grad_rms_history"
+).split()
+
 
 def residual_iter_history_list_maps(
     namespace: Mapping[str, Any],
@@ -116,6 +130,20 @@ def residual_iter_history_list_maps(
     record_lists["free_boundary_enabled"] = bool(free_boundary_enabled)
     terminal_lists["free_boundary_enabled"] = bool(free_boundary_enabled)
     return record_lists, terminal_lists
+
+
+def residual_iter_rollback_history_lists(namespace: Mapping[str, Any]) -> tuple[list[Any], ...]:
+    """Return host-loop history lists that must roll back on retry/restart."""
+
+    return tuple(namespace[key] for key in _RESIDUAL_ITER_ROLLBACK_HISTORY_KEYS)
+
+
+def pop_residual_iter_rollback_histories(histories: tuple[list[Any], ...]) -> None:
+    """Pop one optimistic history row from every aligned residual history list."""
+
+    for hist in histories:
+        if hist:
+            hist.pop()
 
 
 _RESIDUAL_ITER_OBJECT_HISTORY_DIAGNOSTICS = (
