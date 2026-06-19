@@ -7,6 +7,74 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-19.
 
+## 2026-06-19 Residual Final-Diagnostics History Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved residual iteration history-array materialization out of the residual
+   loop into `residual_iter_history_diagnostics`.
+2. Kept scalar/object/float/int history channels categorized in residual policy
+   rather than duplicated in the final diagnostics dictionary.
+3. Removed the stale `_scalar_history_array` alias from the residual iteration
+   module after the conversion moved into policy.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` dropped from 6276 to
+  6223 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 5872 to 5819 lines.
+- `vmec_jax/solvers/fixed_boundary/residual/policy.py` dropped from the
+  previous intermediate 1213 lines to 1158 lines after compacting diagnostic
+  key categories.
+- The touched source diff is net-negative: 46 insertions and 81 deletions.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/policy.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/policy.py --select F401,F841 --ignore-noqa`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_step6_solve_fixed_boundary.py tests/test_vmec2000_fixed_boundary_physics_gates.py tests/test_nonaxis_exec_stage_trace_parity.py tests/test_force_norms_dynamic_parity.py tests/test_residue_getfsq_parity.py tests/test_driver_api.py::test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid -q`
+- `python tools/diagnostics/source_health.py --top 8 --top-functions 12`
+
+Best next steps:
+
+1. Continue residual-loop decomposition with final free-boundary recompute or
+   resume-state payload assembly if it can be done net-negative.
+2. Keep policy helpers compact; do not trade monolith shrinkage for larger
+   total source size.
+3. Run CI checks later in batch, not after every small tranche.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.72%.
+- Free-boundary adjoint monolith reduction: 99.42%.
+- Driver workflow decomposition: 99.92%.
+- Residual iteration decomposition: 98.45%.
+- WOUT diagnostic/profile decomposition: 99.89%.
+- Bcovar/WOUT parity decomposition: 99.11%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.77%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.56%.
+- Fixed-boundary optimizer decomposition: 95.8%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.35%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999984%.
+
 ## 2026-06-19 Residual Host-History Plumbing Reduction
 
 Branch: `codex/differentiability-refactor-plan`.

@@ -92,34 +92,16 @@ class ResidualIterHistoryRecord(NamedTuple):
 
 
 _RESIDUAL_ITER_HISTORY_RECORD_KEYS = (
-    "step_history",
-    "dt_eff_history",
-    "update_rms_history",
-    "w_curr_history",
-    "w_try_history",
-    "w_try_ratio_history",
-    "restart_path_history",
-    "step_status_history",
-    "restart_reason_history",
-    "pre_restart_reason_history",
-    "time_step_history",
-    "res0_history",
-    "res1_history",
-    "fsq_prev_history",
-    "bad_growth_streak_history",
-    "iter1_history",
-    "iter2_history",
-    "grad_rms_history",
-    "freeb_ivac_history",
-    "freeb_ivacskip_history",
-    "freeb_full_update_history",
-)
+    "step_history dt_eff_history update_rms_history w_curr_history w_try_history w_try_ratio_history "
+    "restart_path_history step_status_history restart_reason_history pre_restart_reason_history "
+    "time_step_history res0_history res1_history fsq_prev_history bad_growth_streak_history "
+    "iter1_history iter2_history grad_rms_history freeb_ivac_history freeb_ivacskip_history "
+    "freeb_full_update_history"
+).split()
 
 _RESIDUAL_ITER_TERMINAL_HISTORY_KEYS = _RESIDUAL_ITER_HISTORY_RECORD_KEYS[7:] + (
-    "freeb_nestor_reused_history",
-    "freeb_nestor_solve_time_history",
-    "freeb_nestor_sample_time_history",
-)
+    "freeb_nestor_reused_history freeb_nestor_solve_time_history freeb_nestor_sample_time_history"
+).split()
 
 
 def residual_iter_history_list_maps(
@@ -134,6 +116,42 @@ def residual_iter_history_list_maps(
     record_lists["free_boundary_enabled"] = bool(free_boundary_enabled)
     terminal_lists["free_boundary_enabled"] = bool(free_boundary_enabled)
     return record_lists, terminal_lists
+
+
+_RESIDUAL_ITER_OBJECT_HISTORY_DIAGNOSTICS = (
+    "step_status_history restart_reason_history pre_restart_reason_history restart_path_history"
+).split()
+_RESIDUAL_ITER_FLOAT_HISTORY_DIAGNOSTICS = (
+    "time_step_history res0_history res1_history fsq_prev_history dt_eff_history w_curr_history "
+    "w_try_history w_try_ratio_history min_tau_history max_tau_history r00_history z00_history "
+    "wb_history wp_history w_vmec_history freeb_nestor_bnormal_rms_history "
+    "freeb_nestor_gsource_rms_history freeb_nestor_bsqvac_rms_history freeb_nestor_solve_time_history "
+    "freeb_nestor_sample_time_history freeb_nestor_trial_solve_time_history "
+    "freeb_nestor_trial_sample_time_history"
+).split()
+_RESIDUAL_ITER_INT_HISTORY_DIAGNOSTICS = (
+    "bad_growth_streak_history iter1_history iter2_history bcovar_update_history include_edge_history "
+    "zero_m1_history bad_jacobian_history freeb_ivac_history freeb_ivacskip_history "
+    "freeb_full_update_history freeb_nestor_reused_history freeb_nestor_source_reused_history "
+    "freeb_nestor_provider_allows_source_reuse_history freeb_nestor_trial_reused_history "
+    "freeb_nestor_trial_failed_history"
+).split()
+_RESIDUAL_ITER_SCALAR_HISTORY_DIAGNOSTICS = (
+    "update_rms_history fsq1_history fsqr1_history fsqz1_history fsql1_history rz_norm_history "
+    "f_norm1_history gcr2_p_history gcz2_p_history gcl2_p_history"
+).split()
+
+
+def residual_iter_history_diagnostics(namespace: Mapping[str, Any]) -> dict[str, Any]:
+    """Materialize residual iteration history lists for the result diagnostics."""
+
+    diag: dict[str, Any] = {"adjoint_step_trace": namespace["adjoint_step_trace_history"]}
+    diag.update({key: np.asarray(namespace[key], dtype=object) for key in _RESIDUAL_ITER_OBJECT_HISTORY_DIAGNOSTICS})
+    diag.update({key: np.asarray(namespace[key], dtype=float) for key in _RESIDUAL_ITER_FLOAT_HISTORY_DIAGNOSTICS})
+    diag.update({key: np.asarray(namespace[key], dtype=int) for key in _RESIDUAL_ITER_INT_HISTORY_DIAGNOSTICS})
+    scalar_history_array = _solve_runtime._scalar_history_array
+    diag.update({key: scalar_history_array(namespace[key]) for key in _RESIDUAL_ITER_SCALAR_HISTORY_DIAGNOSTICS})
+    return diag
 
 
 class ScanFallbackDecision(NamedTuple):
