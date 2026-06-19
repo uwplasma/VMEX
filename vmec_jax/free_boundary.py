@@ -1332,6 +1332,502 @@ def _nestor_external_step_result(ctx_in: dict[str, Any]) -> tuple[NestorSolveRes
     return res, runtime_next
 
 
+def _nestor_runtime_context(runtime: NestorRuntimeState | None) -> dict[str, Any]:
+    """Decode current NESTOR runtime cache with backward-compatible field names."""
+
+    runtime_cache = None if runtime is None else getattr(runtime, "operator_cache", None)
+    runtime_mode = (
+        "spectral_poisson_external_only"
+        if runtime is None
+        else str(getattr(runtime, "mode", "spectral_poisson_external_only"))
+    )
+    if runtime_cache is None and runtime is not None and hasattr(runtime, "poisson"):
+        # Backward compatibility with older runtime state shape.
+        runtime_cache = getattr(runtime, "poisson")
+    return {
+        "runtime_cache": runtime_cache,
+        "runtime_mode": runtime_mode,
+        "runtime_source_cache_iter": -1 if runtime is None else int(getattr(runtime, "source_cache_iter", -1)),
+        "runtime_gsource_cached": None if runtime is None else getattr(runtime, "gsource_cached", None),
+        "runtime_source_sym_cached": None if runtime is None else getattr(runtime, "source_sym_cached", None),
+        "runtime_bvec_nonsing_cached": None if runtime is None else getattr(runtime, "bvec_nonsing_cached", None),
+    }
+
+
+def _nestor_provider_allows_source_reuse(
+    *,
+    provider_kind: str,
+    provider_static: Any,
+) -> bool:
+    return provider_kind in ("", "mgrid", "legacy_mgrid") or (
+        isinstance(provider_static, dict) and bool(provider_static.get("allow_source_reuse", False))
+    )
+
+
+def _nestor_reuse_step(
+    *,
+    ivac: int,
+    ivacskip: int | None,
+    runtime: NestorRuntimeState | None,
+) -> bool:
+    if ivacskip is not None:
+        return int(ivacskip) != 0 and runtime is not None
+    return int(ivac) != 1 and runtime is not None
+
+
+def _nestor_rhs_and_source(
+    *,
+    sample: ExternalBoundarySample,
+    static: Any,
+    reuse_step: bool,
+    provider_allows_source_reuse: bool,
+    runtime_gsource_cached: Any,
+) -> dict[str, Any]:
+    ntheta, nzeta = sample.R.shape
+    rhs_mode = os.getenv("VMEC_JAX_FREEB_RHS_MODE", "bnormal_unit").strip().lower()
+    wint_vmec = _vmec_boundary_wint(static=static, ntheta=int(ntheta), nzeta=int(nzeta))
+    gsource_bexni = -np.asarray(sample.vac_ext.bnormal, dtype=float) * np.asarray(wint_vmec, dtype=float) * (
+        (2.0 * np.pi) ** 2
+    )
+    gsource_vmec = np.asarray(gsource_bexni, dtype=float)
+    source_reused = bool(reuse_step and provider_allows_source_reuse and runtime_gsource_cached is not None)
+    if source_reused:
+        gsource_vmec = np.asarray(runtime_gsource_cached, dtype=float)
+
+    if rhs_mode in ("unit", "unit_normal", "bnormal_unit"):
+        rhs = -np.asarray(sample.vac_ext.bnormal_unit, dtype=float)
+        rhs_mode = "bnormal_unit"
+    elif rhs_mode in ("bexni", "vmec_bexni", "bnormal_wint"):
+        rhs = np.asarray(gsource_bexni, dtype=float)
+        rhs_mode = "bexni"
+    else:
+        # VMEC scalpot source uses B·dS (non-unit normal) channels.
+        rhs = -np.asarray(sample.vac_ext.bnormal, dtype=float)
+        rhs_mode = "bnormal"
+
+    return {
+        "rhs_mode": rhs_mode,
+        "wint_vmec": wint_vmec,
+        "gsource_bexni": gsource_bexni,
+        "gsource_vmec": gsource_vmec,
+        "source_reused": source_reused,
+        "rhs": rhs,
+    }
+
+
+def _initial_nestor_solve_context() -> dict[str, Any]:
+    return {
+        "potvac": None,
+        "bvec_mode": None,
+        "bvec_mode_nonsing": None,
+        "bvec_mode_analytic": None,
+        "grpmn_nonsing": None,
+        "grpmn_analytic": None,
+        "grpmn_total": None,
+        "amatrix_mode_pre": None,
+        "amatrix_mode_from_grpmn": None,
+        "matrix_override_applied": False,
+        "jax_nestor_operator_applied": False,
+        "jax_nestor_operator_reason": "disabled",
+        "jax_nestor_operator_jitted": False,
+        "jax_nestor_operator_cache_hit": False,
+        "jax_nestor_operator_time_s": 0.0,
+        "cache_build_time_s": 0.0,
+        "source_time_s": 0.0,
+        "bvec_time_s": 0.0,
+        "matrix_time_s": 0.0,
+        "linear_solve_time_s": 0.0,
+        "vacuum_channels_time_s": 0.0,
+    }
+
+
+def _prepare_nestor_external_step_context(
+    *,
+    state: Any,
+    static: Any,
+    ivac: int,
+    ivacskip: int | None = None,
+    iter_idx: int | None = None,
+    runtime: NestorRuntimeState | None = None,
+    extcur: tuple[float, ...] | None = None,
+    plascur: float = 0.0,
+    axis_override: tuple[np.ndarray, np.ndarray] | None = None,
+    external_field_provider_kind: str | None = None,
+    external_field_provider_static: Any = None,
+    external_field_provider_params: Any = None,
+    collect_trace_arrays: bool = False,
+) -> dict[str, Any]:
+    t0 = time.perf_counter()
+    sample = _sample_external_boundary_arrays(
+        state=state,
+        static=static,
+        extcur=extcur,
+        plascur=float(plascur),
+        axis_override=axis_override,
+        external_field_provider_kind=external_field_provider_kind,
+        external_field_provider_static=external_field_provider_static,
+        external_field_provider_params=external_field_provider_params,
+    )
+    sample_time = max(0.0, time.perf_counter() - t0)
+    ntheta, nzeta = sample.R.shape
+    selected_mode, mode_reason = _select_nestor_mode(ntheta=ntheta, nzeta=nzeta)
+    provider_kind = "mgrid" if external_field_provider_kind is None else str(external_field_provider_kind).strip().lower()
+    provider_allows_source_reuse = _nestor_provider_allows_source_reuse(
+        provider_kind=provider_kind,
+        provider_static=external_field_provider_static,
+    )
+    runtime_ctx = _nestor_runtime_context(runtime)
+    reuse_step = _nestor_reuse_step(ivac=int(ivac), ivacskip=ivacskip, runtime=runtime)
+    source_ctx = _nestor_rhs_and_source(
+        sample=sample,
+        static=static,
+        reuse_step=reuse_step,
+        provider_allows_source_reuse=provider_allows_source_reuse,
+        runtime_gsource_cached=runtime_ctx["runtime_gsource_cached"],
+    )
+    used_mode = selected_mode
+    if mode_reason not in ("forced_fast", "forced_vmec_like", "auto_vmec_like"):
+        used_mode = f"{selected_mode}_fallback:{mode_reason}"
+
+    # On ivacskip reuse, emulate VMEC2000 scalpot behavior by reusing the cached
+    # operator while refreshing the source term / solve.
+    mode_for_step = runtime_ctx["runtime_mode"] if reuse_step else used_mode
+    if reuse_step and runtime_ctx["runtime_cache"] is None:
+        mode_for_step = used_mode
+
+    ctx = {
+        **runtime_ctx,
+        **source_ctx,
+        **_initial_nestor_solve_context(),
+        "state": state,
+        "static": static,
+        "ivac": int(ivac),
+        "iter_idx": iter_idx,
+        "runtime": runtime,
+        "plascur": float(plascur),
+        "external_field_provider_static": external_field_provider_static,
+        "external_field_provider_params": external_field_provider_params,
+        "collect_trace_arrays": bool(collect_trace_arrays),
+        "sample": sample,
+        "sample_time": sample_time,
+        "ntheta": int(ntheta),
+        "nzeta": int(nzeta),
+        "provider_kind": provider_kind,
+        "provider_allows_source_reuse": provider_allows_source_reuse,
+        "reuse_step": reuse_step,
+        "used_mode": used_mode,
+        "mode_for_step": mode_for_step,
+        "cache": runtime_ctx["runtime_cache"],
+        "ts": time.perf_counter(),
+    }
+    return ctx
+
+
+def _ensure_vmec_like_cache_for_nestor_step(ctx: dict[str, Any]) -> dict[str, Any]:
+    sample = ctx["sample"]
+    static = ctx["static"]
+    cache = ctx["cache"]
+    ntheta = int(ctx["ntheta"])
+    nzeta = int(ctx["nzeta"])
+    reuse_step = bool(ctx["reuse_step"])
+    dense_solve_mode = os.getenv("VMEC_JAX_FREEB_DENSE_SOLVE_MODE", "mode").strip().lower()
+    refresh_operator_on_reuse = bool(reuse_step and not ctx["provider_allows_source_reuse"])
+    if (
+        not isinstance(cache, NestorVmecLikeCache)
+        or int(cache.ntheta) != ntheta
+        or int(cache.nzeta) != nzeta
+        or not reuse_step
+        or refresh_operator_on_reuse
+    ):
+        t_phase = time.perf_counter()
+        cache = _build_vmec_like_cache(
+            sample,
+            alpha=_as_float_env("VMEC_JAX_FREEB_VMEC_LIKE_ALPHA", 1.0),
+            dist_eps=_as_float_env("VMEC_JAX_FREEB_VMEC_LIKE_DIST_EPS", 1.0e-8),
+            rhs_floor=_as_float_env("VMEC_JAX_FREEB_VMEC_LIKE_RHS_FLOOR", 1.0e-14),
+            diag_coeff=_as_float_env("VMEC_JAX_FREEB_VMEC_LIKE_DIAG_COEFF", 0.5),
+            row_sum_zero=_as_int_env("VMEC_JAX_FREEB_VMEC_LIKE_ROW_SUM_ZERO", 1) != 0,
+            singular_diag_scale=_as_float_env("VMEC_JAX_FREEB_VMEC_LIKE_SINGULAR_DIAG_SCALE", 1.0),
+            nfp=max(1, int(getattr(static.cfg, "nfp", 1))),
+            mf=max(0, int(getattr(static.cfg, "mpol", 1)) + 1),
+            nf=max(0, int(getattr(static.cfg, "ntor", 0))),
+            lasym=bool(getattr(static.cfg, "lasym", False)),
+            wint_vmec=np.asarray(ctx["wint_vmec"], dtype=float),
+            factor_physical_matrix=dense_solve_mode not in ("mode", "vmec_mode", "fouri_mode"),
+        )
+        ctx["cache_build_time_s"] += max(0.0, time.perf_counter() - t_phase)
+    return {
+        "cache": cache,
+        "dense_solve_mode": dense_solve_mode,
+        "refresh_operator_on_reuse": refresh_operator_on_reuse,
+    }
+
+
+def _vmec_like_greenf_source_terms(ctx: dict[str, Any]) -> dict[str, Any]:
+    sample = ctx["sample"]
+    static = ctx["static"]
+    cache = ctx["cache"]
+    use_greenf_source = _freeb_use_greenf_source(int(getattr(static.cfg, "ntor", 0)))
+    experimental_fouri_matrix = _env_truthy("VMEC_JAX_FREEB_EXPERIMENTAL_FOURI_MATRIX", default=True)
+    refresh_source_on_reuse = bool(ctx["reuse_step"] and not ctx["provider_allows_source_reuse"])
+    nzeta_surf = int(np.asarray(sample.R).shape[1])
+    nvper_greenf = 64 if nzeta_surf == 1 else max(1, int(getattr(static.cfg, "nfp", 1)))
+    if use_greenf_source and ((not ctx["reuse_step"]) or refresh_source_on_reuse) and cache.mode_basis is not None:
+        try:
+            t_phase = time.perf_counter()
+            if experimental_fouri_matrix:
+                ctx["gsource_vmec"], ctx["grpmn_nonsing"] = _vmec_nonsingular_terms_from_bexni(
+                    sample=sample,
+                    basis=cache.mode_basis,
+                    bexni=np.asarray(ctx["gsource_bexni"], dtype=float),
+                    signgs=int(getattr(static, "signgs", -1)),
+                    nvper=nvper_greenf,
+                )
+            else:
+                ctx["gsource_vmec"] = _vmec_nonsingular_gsource_from_bexni(
+                    sample=sample,
+                    basis=cache.mode_basis,
+                    bexni=np.asarray(ctx["gsource_bexni"], dtype=float),
+                    signgs=int(getattr(static, "signgs", -1)),
+                    nvper=nvper_greenf,
+                )
+                ctx["grpmn_nonsing"] = None
+            ctx["source_time_s"] += max(0.0, time.perf_counter() - t_phase)
+        except Exception:
+            ctx["gsource_vmec"] = np.asarray(ctx["gsource_bexni"], dtype=float)
+            ctx["grpmn_nonsing"] = None
+    return {
+        "use_greenf_source": use_greenf_source,
+        "experimental_fouri_matrix": experimental_fouri_matrix,
+        "refresh_source_on_reuse": refresh_source_on_reuse,
+        "nvper_greenf": nvper_greenf,
+    }
+
+
+def _maybe_replace_mode_matrix_from_grpmn(
+    *,
+    ctx: dict[str, Any],
+    experimental_fouri_matrix: bool,
+    refresh_operator_on_reuse: bool,
+) -> None:
+    cache = ctx["cache"]
+    if not (((not ctx["reuse_step"]) or refresh_operator_on_reuse) and experimental_fouri_matrix and ctx["grpmn_nonsing"] is not None):
+        return
+    ctx["grpmn_total"] = np.asarray(ctx["grpmn_nonsing"], dtype=float)
+    if ctx["grpmn_analytic"] is not None:
+        ctx["grpmn_total"] = ctx["grpmn_total"] + np.asarray(ctx["grpmn_analytic"], dtype=float)
+    try:
+        ctx["amatrix_mode_pre"] = None if cache.mode_matrix is None else np.asarray(cache.mode_matrix, dtype=float)
+        t_phase = time.perf_counter()
+        ctx["amatrix_mode_from_grpmn"] = _vmec_mode_matrix_from_grpmn(
+            grpmn=ctx["grpmn_total"],
+            basis=cache.mode_basis,
+        )
+        ctx["cache"] = replace(
+            cache,
+            mode_matrix=np.asarray(ctx["amatrix_mode_from_grpmn"], dtype=float),
+            mode_matrix_lu=_dense_lu_factor(np.asarray(ctx["amatrix_mode_from_grpmn"], dtype=float)),
+        )
+        ctx["matrix_time_s"] += max(0.0, time.perf_counter() - t_phase)
+        ctx["matrix_override_applied"] = True
+    except Exception:
+        pass
+
+
+def _maybe_solve_with_jax_nestor_operator(
+    *,
+    ctx: dict[str, Any],
+    use_greenf_source: bool,
+    experimental_fouri_matrix: bool,
+    add_analytic: bool,
+    nvper_greenf: int,
+) -> bool:
+    if not _env_truthy("VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR", False):
+        return False
+    sample = ctx["sample"]
+    static = ctx["static"]
+    cache = ctx["cache"]
+    ctx["jax_nestor_operator_reason"] = "requested"
+    if not (use_greenf_source and experimental_fouri_matrix):
+        ctx["jax_nestor_operator_reason"] = "requires_greenf_fouri_matrix"
+        return False
+    if ctx["reuse_step"] and ctx["provider_allows_source_reuse"]:
+        ctx["jax_nestor_operator_reason"] = "skip_cached_reuse_step"
+        return False
+    ok, reason = _jax_nestor_operator_guard(sample=sample, basis=cache.mode_basis)
+    ctx["jax_nestor_operator_reason"] = reason
+    if not ok:
+        return False
+    try:
+        t_phase = time.perf_counter()
+        (
+            phi,
+            potvac,
+            rhs_mode_eff,
+            amatrix_mode_from_grpmn,
+            grpmn_total,
+            gsource_vmec,
+            jax_operator_jitted,
+            jax_operator_cache_hit,
+        ) = _solve_vmec_like_mode_with_jax_nestor_operator(
+            sample=sample,
+            basis=cache.mode_basis,
+            bexni=np.asarray(ctx["gsource_bexni"], dtype=float),
+            signgs=int(getattr(static, "signgs", -1)),
+            nvper=nvper_greenf,
+            include_analytic=add_analytic,
+        )
+        ctx["jax_nestor_operator_time_s"] += max(0.0, time.perf_counter() - t_phase)
+        ctx["phi"] = phi
+        ctx["potvac"] = potvac
+        ctx["bvec_mode"] = np.asarray(rhs_mode_eff, dtype=float)
+        ctx["amatrix_mode_pre"] = None if cache.mode_matrix is None else np.asarray(cache.mode_matrix, dtype=float)
+        ctx["amatrix_mode_from_grpmn"] = amatrix_mode_from_grpmn
+        ctx["grpmn_total"] = grpmn_total
+        ctx["gsource_vmec"] = gsource_vmec
+        ctx["cache"] = replace(
+            cache,
+            mode_matrix=np.asarray(amatrix_mode_from_grpmn, dtype=float),
+            mode_matrix_lu=_dense_lu_factor(np.asarray(amatrix_mode_from_grpmn, dtype=float)),
+        )
+        ctx["matrix_override_applied"] = True
+        ctx["jax_nestor_operator_applied"] = True
+        ctx["jax_nestor_operator_jitted"] = bool(jax_operator_jitted)
+        ctx["jax_nestor_operator_cache_hit"] = bool(jax_operator_cache_hit)
+        ctx["jax_nestor_operator_reason"] = "applied"
+        return True
+    except Exception as exc:
+        detail = str(exc).strip() or type(exc).__name__
+        ctx["jax_nestor_operator_reason"] = f"failed:{detail}"
+        return False
+
+
+def _solve_vmec_like_mode_nestor_step(
+    *,
+    ctx: dict[str, Any],
+    use_greenf_source: bool,
+    experimental_fouri_matrix: bool,
+    refresh_operator_on_reuse: bool,
+    nvper_greenf: int,
+) -> None:
+    cache = ctx["cache"]
+    rhs_mode_eff = None
+    if cache.mode_basis is not None:
+        if ctx["reuse_step"] and ctx["provider_allows_source_reuse"] and ctx["runtime_bvec_nonsing_cached"] is not None:
+            ctx["bvec_mode_nonsing"] = np.asarray(ctx["runtime_bvec_nonsing_cached"], dtype=float)
+        else:
+            t_phase = time.perf_counter()
+            ctx["bvec_mode_nonsing"] = _vmec_bvec_from_gsource(
+                gsource=np.asarray(ctx["gsource_vmec"], dtype=float),
+                basis=cache.mode_basis,
+            )
+            ctx["bvec_time_s"] += max(0.0, time.perf_counter() - t_phase)
+        rhs_mode_eff = np.asarray(ctx["bvec_mode_nonsing"], dtype=float)
+        add_analytic = _env_truthy("VMEC_JAX_FREEB_ADD_ANALYTIC_BVEC", default=True)
+        if add_analytic:
+            t_phase = time.perf_counter()
+            ctx["bvec_mode_analytic"], ctx["grpmn_analytic"] = _vmec_analytic_terms_from_geometry(
+                sample=ctx["sample"],
+                basis=cache.mode_basis,
+                bexni=np.asarray(ctx["gsource_bexni"], dtype=float),
+                signgs=int(getattr(ctx["static"], "signgs", -1)),
+            )
+            rhs_mode_eff = rhs_mode_eff + np.asarray(ctx["bvec_mode_analytic"], dtype=float)
+            ctx["bvec_time_s"] += max(0.0, time.perf_counter() - t_phase)
+        _maybe_replace_mode_matrix_from_grpmn(
+            ctx=ctx,
+            experimental_fouri_matrix=experimental_fouri_matrix,
+            refresh_operator_on_reuse=refresh_operator_on_reuse,
+        )
+        if _maybe_solve_with_jax_nestor_operator(
+            ctx=ctx,
+            use_greenf_source=use_greenf_source,
+            experimental_fouri_matrix=experimental_fouri_matrix,
+            add_analytic=add_analytic,
+            nvper_greenf=nvper_greenf,
+        ):
+            return
+    t_phase = time.perf_counter()
+    ctx["phi"], ctx["potvac"], ctx["bvec_mode"] = _solve_vmec_like_mode_from_gsource(
+        cache=ctx["cache"],
+        gsource=np.asarray(ctx["gsource_vmec"], dtype=float),
+        rhs_mode=rhs_mode_eff,
+    )
+    ctx["linear_solve_time_s"] += max(0.0, time.perf_counter() - t_phase)
+
+
+def _solve_vmec_like_nestor_step(ctx: dict[str, Any]) -> None:
+    cache_ctx = _ensure_vmec_like_cache_for_nestor_step(ctx)
+    ctx.update(cache_ctx)
+    cache = ctx["cache"]
+    source_policy = _vmec_like_greenf_source_terms(ctx)
+    if ctx["dense_solve_mode"] in ("mode", "vmec_mode", "fouri_mode"):
+        _solve_vmec_like_mode_nestor_step(
+            ctx=ctx,
+            use_greenf_source=source_policy["use_greenf_source"],
+            experimental_fouri_matrix=source_policy["experimental_fouri_matrix"],
+            refresh_operator_on_reuse=ctx["refresh_operator_on_reuse"],
+            nvper_greenf=source_policy["nvper_greenf"],
+        )
+        if cache.mode_basis is not None:
+            t_phase = time.perf_counter()
+            ctx["vac_total"] = _vacuum_channels_from_sample_potvac(
+                sample=ctx["sample"],
+                basis=ctx["cache"].mode_basis,
+                potvac=np.asarray(ctx["potvac"], dtype=float),
+            )
+            ctx["vacuum_channels_time_s"] += max(0.0, time.perf_counter() - t_phase)
+        else:
+            _solve_nestor_vacuum_channels_from_phi(ctx)
+    else:
+        t_phase = time.perf_counter()
+        ctx["phi"] = _solve_vmec_like_dense(ctx["rhs"], ctx["cache"])
+        ctx["linear_solve_time_s"] += max(0.0, time.perf_counter() - t_phase)
+        _solve_nestor_vacuum_channels_from_phi(ctx)
+    ctx["used_mode"] = ctx["mode_for_step"]
+
+
+def _solve_nestor_vacuum_channels_from_phi(ctx: dict[str, Any]) -> None:
+    t_phase = time.perf_counter()
+    ctx["vac_total"] = _vacuum_channels_from_sample_phi(ctx["sample"], ctx["phi"])
+    ctx["vacuum_channels_time_s"] += max(0.0, time.perf_counter() - t_phase)
+
+
+def _solve_nestor_fft_step(ctx: dict[str, Any]) -> None:
+    cache = ctx["cache"]
+    if (
+        not isinstance(cache, NestorPoissonCache)
+        or int(cache.ntheta) != int(ctx["ntheta"])
+        or int(cache.nzeta) != int(ctx["nzeta"])
+    ):
+        t_phase = time.perf_counter()
+        cache = _build_poisson_cache(ntheta=int(ctx["ntheta"]), nzeta=int(ctx["nzeta"]))
+        ctx["cache_build_time_s"] += max(0.0, time.perf_counter() - t_phase)
+    ctx["cache"] = cache
+    t_phase = time.perf_counter()
+    ctx["phi"] = _solve_periodic_poisson_fft(ctx["rhs"], cache)
+    ctx["linear_solve_time_s"] += max(0.0, time.perf_counter() - t_phase)
+    _solve_nestor_vacuum_channels_from_phi(ctx)
+    ctx["used_mode"] = ctx["mode_for_step"]
+
+
+def _solve_nestor_external_step(ctx: dict[str, Any]) -> None:
+    if _is_dense_mode(ctx["mode_for_step"]):
+        try:
+            _solve_vmec_like_nestor_step(ctx)
+        except Exception:
+            t_phase = time.perf_counter()
+            ctx["cache"] = _build_poisson_cache(ntheta=int(ctx["ntheta"]), nzeta=int(ctx["nzeta"]))
+            ctx["cache_build_time_s"] += max(0.0, time.perf_counter() - t_phase)
+            t_phase = time.perf_counter()
+            ctx["phi"] = _solve_periodic_poisson_fft(ctx["rhs"], ctx["cache"])
+            ctx["linear_solve_time_s"] += max(0.0, time.perf_counter() - t_phase)
+            _solve_nestor_vacuum_channels_from_phi(ctx)
+            ctx["used_mode"] = "spectral_poisson_external_only_fallback:dense_failed"
+    else:
+        _solve_nestor_fft_step(ctx)
+
+
 def nestor_external_only_step(
     *,
     state: Any,
@@ -1348,314 +1844,34 @@ def nestor_external_only_step(
     external_field_provider_params: Any = None,
     collect_trace_arrays: bool = False,
 ) -> tuple[NestorSolveResult, NestorRuntimeState]:
-    """Simplified NESTOR-style update/reuse with ivacskip-compatible behavior.
+    """Simplified NESTOR-style update/reuse with ivacskip-compatible behavior."""
 
-    - `ivac==1`: full update (sample + spectral Poisson solve)
-    - `ivac!=1`: reuse previous solution if available
-    """
-
-    runtime_cache = None if runtime is None else getattr(runtime, "operator_cache", None)
-    runtime_mode = "spectral_poisson_external_only" if runtime is None else str(
-        getattr(runtime, "mode", "spectral_poisson_external_only")
-    )
-    runtime_source_cache_iter = -1 if runtime is None else int(getattr(runtime, "source_cache_iter", -1))
-    runtime_gsource_cached = None if runtime is None else getattr(runtime, "gsource_cached", None)
-    runtime_source_sym_cached = None if runtime is None else getattr(runtime, "source_sym_cached", None)
-    runtime_bvec_nonsing_cached = None if runtime is None else getattr(runtime, "bvec_nonsing_cached", None)
-    if runtime_cache is None and runtime is not None and hasattr(runtime, "poisson"):
-        # Backward compatibility with older runtime state shape.
-        runtime_cache = getattr(runtime, "poisson")
-
+    runtime_ctx = _nestor_runtime_context(runtime)
     force_rhs_reuse = _env_truthy("VMEC_JAX_FREEB_REUSE_RHS_UPDATE", default=True)
-
     if int(ivac) != 1 and runtime is not None and not force_rhs_reuse:
         return _nestor_legacy_fast_reuse(
             runtime=runtime,
-            runtime_cache=runtime_cache,
-            runtime_mode=runtime_mode,
+            runtime_cache=runtime_ctx["runtime_cache"],
+            runtime_mode=runtime_ctx["runtime_mode"],
         )
 
-    t0 = time.perf_counter()
-    sample = _sample_external_boundary_arrays(
+    ctx = _prepare_nestor_external_step_context(
         state=state,
         static=static,
+        ivac=int(ivac),
+        ivacskip=ivacskip,
+        iter_idx=iter_idx,
+        runtime=runtime,
         extcur=extcur,
         plascur=float(plascur),
         axis_override=axis_override,
         external_field_provider_kind=external_field_provider_kind,
         external_field_provider_static=external_field_provider_static,
         external_field_provider_params=external_field_provider_params,
+        collect_trace_arrays=collect_trace_arrays,
     )
-    sample_time = max(0.0, time.perf_counter() - t0)
-    ntheta, nzeta = sample.R.shape
-    selected_mode, mode_reason = _select_nestor_mode(ntheta=ntheta, nzeta=nzeta)
-    provider_kind = "mgrid" if external_field_provider_kind is None else str(external_field_provider_kind).strip().lower()
-    provider_allows_source_reuse = provider_kind in ("", "mgrid", "legacy_mgrid") or (
-        isinstance(external_field_provider_static, dict)
-        and bool(external_field_provider_static.get("allow_source_reuse", False))
-    )
-
-    if ivacskip is not None:
-        reuse_step = (int(ivacskip) != 0 and runtime is not None)
-    else:
-        reuse_step = (int(ivac) != 1 and runtime is not None)
-
-    rhs_mode = os.getenv("VMEC_JAX_FREEB_RHS_MODE", "bnormal_unit").strip().lower()
-    wint_vmec = _vmec_boundary_wint(static=static, ntheta=int(ntheta), nzeta=int(nzeta))
-    gsource_bexni = -np.asarray(sample.vac_ext.bnormal, dtype=float) * np.asarray(wint_vmec, dtype=float) * ((2.0 * np.pi) ** 2)
-    gsource_vmec = np.asarray(gsource_bexni, dtype=float)
-    source_reused = bool(reuse_step and provider_allows_source_reuse and runtime_gsource_cached is not None)
-    if source_reused:
-        gsource_vmec = np.asarray(runtime_gsource_cached, dtype=float)
-    if rhs_mode in ("unit", "unit_normal", "bnormal_unit"):
-        rhs = -np.asarray(sample.vac_ext.bnormal_unit, dtype=float)
-        rhs_mode = "bnormal_unit"
-    elif rhs_mode in ("bexni", "vmec_bexni", "bnormal_wint"):
-        rhs = np.asarray(gsource_bexni, dtype=float)
-        rhs_mode = "bexni"
-    else:
-        # VMEC scalpot source uses B·dS (non-unit normal) channels.
-        rhs = -np.asarray(sample.vac_ext.bnormal, dtype=float)
-        rhs_mode = "bnormal"
-    ts = time.perf_counter()
-    used_mode = selected_mode
-    if mode_reason not in ("forced_fast", "forced_vmec_like", "auto_vmec_like"):
-        used_mode = f"{selected_mode}_fallback:{mode_reason}"
-    cache: Any = runtime_cache
-
-    # On ivacskip reuse, emulate VMEC2000 scalpot behavior by reusing the cached
-    # operator while refreshing the source term / solve.
-    mode_for_step = runtime_mode if reuse_step else used_mode
-    if reuse_step and runtime_cache is None:
-        mode_for_step = used_mode
-    potvac = bvec_mode = bvec_mode_nonsing = bvec_mode_analytic = None
-    grpmn_nonsing = grpmn_analytic = grpmn_total = None
-    amatrix_mode_pre = amatrix_mode_from_grpmn = None
-    matrix_override_applied = jax_nestor_operator_applied = False
-    jax_nestor_operator_reason = "disabled"
-    jax_nestor_operator_jitted = jax_nestor_operator_cache_hit = False
-    jax_nestor_operator_time_s = 0.0
-    cache_build_time_s = source_time_s = bvec_time_s = matrix_time_s = 0.0
-    linear_solve_time_s = vacuum_channels_time_s = 0.0
-
-    if _is_dense_mode(mode_for_step):
-        alpha = _as_float_env("VMEC_JAX_FREEB_VMEC_LIKE_ALPHA", 1.0)
-        dist_eps = _as_float_env("VMEC_JAX_FREEB_VMEC_LIKE_DIST_EPS", 1.0e-8)
-        rhs_floor = _as_float_env("VMEC_JAX_FREEB_VMEC_LIKE_RHS_FLOOR", 1.0e-14)
-        diag_coeff = _as_float_env("VMEC_JAX_FREEB_VMEC_LIKE_DIAG_COEFF", 0.5)
-        row_sum_zero = _as_int_env("VMEC_JAX_FREEB_VMEC_LIKE_ROW_SUM_ZERO", 1) != 0
-        singular_diag_scale = _as_float_env("VMEC_JAX_FREEB_VMEC_LIKE_SINGULAR_DIAG_SCALE", 1.0)
-        dense_solve_mode = os.getenv("VMEC_JAX_FREEB_DENSE_SOLVE_MODE", "mode").strip().lower()
-        refresh_operator_on_reuse = bool(reuse_step and not provider_allows_source_reuse)
-        try:
-            if (
-                not isinstance(cache, NestorVmecLikeCache)
-                or int(cache.ntheta) != int(ntheta)
-                or int(cache.nzeta) != int(nzeta)
-                or not reuse_step
-                or refresh_operator_on_reuse
-            ):
-                t_phase = time.perf_counter()
-                cache = _build_vmec_like_cache(
-                    sample,
-                    alpha=alpha,
-                    dist_eps=dist_eps,
-                    rhs_floor=rhs_floor,
-                    diag_coeff=diag_coeff,
-                    row_sum_zero=row_sum_zero,
-                    singular_diag_scale=singular_diag_scale,
-                    nfp=max(1, int(getattr(static.cfg, "nfp", 1))),
-                    mf=max(0, int(getattr(static.cfg, "mpol", 1)) + 1),
-                    nf=max(0, int(getattr(static.cfg, "ntor", 0))),
-                    lasym=bool(getattr(static.cfg, "lasym", False)),
-                    wint_vmec=np.asarray(wint_vmec, dtype=float),
-                    factor_physical_matrix=dense_solve_mode not in ("mode", "vmec_mode", "fouri_mode"),
-                )
-                cache_build_time_s += max(0.0, time.perf_counter() - t_phase)
-            use_greenf_source = _freeb_use_greenf_source(int(getattr(static.cfg, "ntor", 0)))
-            # Default to Fortran-equivalent matrix assembly from grpmn (fouri
-            # path). Can be disabled via VMEC_JAX_FREEB_EXPERIMENTAL_FOURI_MATRIX=0
-            # for diagnostics.
-            experimental_fouri_matrix = _env_truthy("VMEC_JAX_FREEB_EXPERIMENTAL_FOURI_MATRIX", default=True)
-            refresh_source_on_reuse = bool(reuse_step and not provider_allows_source_reuse)
-            if use_greenf_source and ((not reuse_step) or refresh_source_on_reuse) and cache.mode_basis is not None:
-                nzeta_surf = int(np.asarray(sample.R).shape[1])
-                nvper_greenf = 64 if nzeta_surf == 1 else max(1, int(getattr(static.cfg, "nfp", 1)))
-                try:
-                    t_phase = time.perf_counter()
-                    if experimental_fouri_matrix:
-                        gsource_vmec, grpmn_nonsing = _vmec_nonsingular_terms_from_bexni(
-                            sample=sample,
-                            basis=cache.mode_basis,
-                            bexni=np.asarray(gsource_bexni, dtype=float),
-                            signgs=int(getattr(static, "signgs", -1)),
-                            nvper=nvper_greenf,
-                        )
-                    else:
-                        gsource_vmec = _vmec_nonsingular_gsource_from_bexni(
-                            sample=sample,
-                            basis=cache.mode_basis,
-                            bexni=np.asarray(gsource_bexni, dtype=float),
-                            signgs=int(getattr(static, "signgs", -1)),
-                            nvper=nvper_greenf,
-                        )
-                        grpmn_nonsing = None
-                    source_time_s += max(0.0, time.perf_counter() - t_phase)
-                except Exception:
-                    gsource_vmec = np.asarray(gsource_bexni, dtype=float)
-                    grpmn_nonsing = None
-            if dense_solve_mode in ("mode", "vmec_mode", "fouri_mode"):
-                rhs_mode_eff = None
-                jax_operator_solved = False
-                if cache.mode_basis is not None:
-                    if reuse_step and provider_allows_source_reuse and runtime_bvec_nonsing_cached is not None:
-                        bvec_mode_nonsing = np.asarray(runtime_bvec_nonsing_cached, dtype=float)
-                    else:
-                        t_phase = time.perf_counter()
-                        bvec_mode_nonsing = _vmec_bvec_from_gsource(
-                            gsource=np.asarray(gsource_vmec, dtype=float),
-                            basis=cache.mode_basis,
-                        )
-                        bvec_time_s += max(0.0, time.perf_counter() - t_phase)
-                    rhs_mode_eff = np.asarray(bvec_mode_nonsing, dtype=float)
-                    add_analytic = _env_truthy("VMEC_JAX_FREEB_ADD_ANALYTIC_BVEC", default=True)
-                    if add_analytic:
-                        t_phase = time.perf_counter()
-                        bvec_mode_analytic, grpmn_analytic = _vmec_analytic_terms_from_geometry(
-                            sample=sample,
-                            basis=cache.mode_basis,
-                            bexni=np.asarray(gsource_bexni, dtype=float),
-                            signgs=int(getattr(static, "signgs", -1)),
-                        )
-                        rhs_mode_eff = rhs_mode_eff + np.asarray(bvec_mode_analytic, dtype=float)
-                        bvec_time_s += max(0.0, time.perf_counter() - t_phase)
-                    if ((not reuse_step) or refresh_operator_on_reuse) and experimental_fouri_matrix and (grpmn_nonsing is not None):
-                        grpmn_total = np.asarray(grpmn_nonsing, dtype=float)
-                        if grpmn_analytic is not None:
-                            grpmn_total = grpmn_total + np.asarray(grpmn_analytic, dtype=float)
-                        try:
-                            amatrix_mode_pre = (
-                                None if cache.mode_matrix is None else np.asarray(cache.mode_matrix, dtype=float)
-                            )
-                            t_phase = time.perf_counter()
-                            amatrix_mode_from_grpmn = _vmec_mode_matrix_from_grpmn(
-                                grpmn=grpmn_total,
-                                basis=cache.mode_basis,
-                            )
-                            cache = replace(
-                                cache,
-                                mode_matrix=np.asarray(amatrix_mode_from_grpmn, dtype=float),
-                                mode_matrix_lu=_dense_lu_factor(np.asarray(amatrix_mode_from_grpmn, dtype=float)),
-                            )
-                            matrix_time_s += max(0.0, time.perf_counter() - t_phase)
-                            matrix_override_applied = True
-                        except Exception:
-                            pass
-                    if _env_truthy("VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR", False):
-                        jax_nestor_operator_reason = "requested"
-                        if not (use_greenf_source and experimental_fouri_matrix):
-                            jax_nestor_operator_reason = "requires_greenf_fouri_matrix"
-                        elif reuse_step and provider_allows_source_reuse:
-                            jax_nestor_operator_reason = "skip_cached_reuse_step"
-                        else:
-                            ok, reason = _jax_nestor_operator_guard(sample=sample, basis=cache.mode_basis)
-                            jax_nestor_operator_reason = reason
-                            if ok:
-                                try:
-                                    t_phase = time.perf_counter()
-                                    (
-                                        phi,
-                                        potvac,
-                                        rhs_mode_eff,
-                                        amatrix_mode_from_grpmn,
-                                        grpmn_total,
-                                        gsource_vmec,
-                                        jax_operator_jitted,
-                                        jax_operator_cache_hit,
-                                    ) = _solve_vmec_like_mode_with_jax_nestor_operator(
-                                        sample=sample,
-                                        basis=cache.mode_basis,
-                                        bexni=np.asarray(gsource_bexni, dtype=float),
-                                        signgs=int(getattr(static, "signgs", -1)),
-                                        nvper=nvper_greenf,
-                                        include_analytic=add_analytic,
-                                    )
-                                    jax_nestor_operator_time_s += max(0.0, time.perf_counter() - t_phase)
-                                    bvec_mode = np.asarray(rhs_mode_eff, dtype=float)
-                                    amatrix_mode_pre = (
-                                        None if cache.mode_matrix is None else np.asarray(cache.mode_matrix, dtype=float)
-                                    )
-                                    cache = replace(
-                                        cache,
-                                        mode_matrix=np.asarray(amatrix_mode_from_grpmn, dtype=float),
-                                        mode_matrix_lu=_dense_lu_factor(np.asarray(amatrix_mode_from_grpmn, dtype=float)),
-                                    )
-                                    matrix_override_applied = True
-                                    jax_nestor_operator_applied = True
-                                    jax_nestor_operator_jitted = bool(jax_operator_jitted)
-                                    jax_nestor_operator_cache_hit = bool(jax_operator_cache_hit)
-                                    jax_nestor_operator_reason = "applied"
-                                    jax_operator_solved = True
-                                except Exception as exc:
-                                    detail = str(exc).strip() or type(exc).__name__
-                                    jax_nestor_operator_reason = f"failed:{detail}"
-                if not jax_operator_solved:
-                    t_phase = time.perf_counter()
-                    phi, potvac, bvec_mode = _solve_vmec_like_mode_from_gsource(
-                        cache=cache,
-                        gsource=np.asarray(gsource_vmec, dtype=float),
-                        rhs_mode=rhs_mode_eff,
-                    )
-                    linear_solve_time_s += max(0.0, time.perf_counter() - t_phase)
-                if cache.mode_basis is not None:
-                    t_phase = time.perf_counter()
-                    vac_total = _vacuum_channels_from_sample_potvac(
-                        sample=sample,
-                        basis=cache.mode_basis,
-                        potvac=np.asarray(potvac, dtype=float),
-                    )
-                    vacuum_channels_time_s += max(0.0, time.perf_counter() - t_phase)
-                else:
-                    t_phase = time.perf_counter()
-                    vac_total = _vacuum_channels_from_sample_phi(sample, phi)
-                    vacuum_channels_time_s += max(0.0, time.perf_counter() - t_phase)
-            else:
-                t_phase = time.perf_counter()
-                phi = _solve_vmec_like_dense(rhs, cache)
-                linear_solve_time_s += max(0.0, time.perf_counter() - t_phase)
-                t_phase = time.perf_counter()
-                vac_total = _vacuum_channels_from_sample_phi(sample, phi)
-                vacuum_channels_time_s += max(0.0, time.perf_counter() - t_phase)
-            used_mode = mode_for_step
-        except Exception:
-            t_phase = time.perf_counter()
-            cache = _build_poisson_cache(ntheta=ntheta, nzeta=nzeta)
-            cache_build_time_s += max(0.0, time.perf_counter() - t_phase)
-            t_phase = time.perf_counter()
-            phi = _solve_periodic_poisson_fft(rhs, cache)
-            linear_solve_time_s += max(0.0, time.perf_counter() - t_phase)
-            t_phase = time.perf_counter()
-            vac_total = _vacuum_channels_from_sample_phi(sample, phi)
-            vacuum_channels_time_s += max(0.0, time.perf_counter() - t_phase)
-            used_mode = "spectral_poisson_external_only_fallback:dense_failed"
-    else:
-        if (
-            not isinstance(cache, NestorPoissonCache)
-            or int(cache.ntheta) != int(ntheta)
-            or int(cache.nzeta) != int(nzeta)
-        ):
-            t_phase = time.perf_counter()
-            cache = _build_poisson_cache(ntheta=ntheta, nzeta=nzeta)
-            cache_build_time_s += max(0.0, time.perf_counter() - t_phase)
-        t_phase = time.perf_counter()
-        phi = _solve_periodic_poisson_fft(rhs, cache)
-        linear_solve_time_s += max(0.0, time.perf_counter() - t_phase)
-        t_phase = time.perf_counter()
-        vac_total = _vacuum_channels_from_sample_phi(sample, phi)
-        vacuum_channels_time_s += max(0.0, time.perf_counter() - t_phase)
-        used_mode = mode_for_step
-
-    return _nestor_external_step_result(locals())
+    _solve_nestor_external_step(ctx)
+    return _nestor_external_step_result(ctx)
 
 
 def sample_external_vacuum_diagnostics(
