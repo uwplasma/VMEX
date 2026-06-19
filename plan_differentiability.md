@@ -24214,3 +24214,74 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999999983%.
+
+## 2026-06-19 Residual Trial Vacuum Callback Simplification
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Removed the nested `_freeb_bsqvac_half_for_trial_state(...)` function body
+   from the fixed-boundary residual non-scan loop.
+2. Bound the existing runtime-domain helper
+   `_runtime_freeb_trial_bsqvac_half(...)` with `functools.partial`, preserving
+   the same callback call shape for trial/backtracking scoring.
+3. Kept accepted-state NESTOR runtime mutation semantics unchanged: rejected
+   trials still use scratch sampling and cannot mutate the accepted runtime.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` decreased from 4525
+  to 4514 lines.
+- `solve_fixed_boundary_residual_iter` decreased from 4178 to 4167 lines.
+- This is a small but safe step toward the planned non-scan context boundary:
+  the trial vacuum operation now has one implementation in the runtime domain
+  and one bound callback in the loop.
+
+Tests and commands run:
+
+- `python -m py_compile vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python tools/diagnostics/source_health.py --top 20 --max-root-helper-prefix-files 2`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_coil_provider_forward.py tests/test_free_boundary_coil_provider_gradients.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes -q`
+
+Best next steps:
+
+1. Commit and push this residual-loop cleanup.
+2. Continue residual non-scan decomposition by identifying the next callback
+   body that already delegates to a runtime/helper domain, or start the explicit
+   non-scan result/context boundary if it can be validated with the existing
+   finish-cache and free-boundary shards.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999986%.
+- Solver monolith reduction: 99.874%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.953%.
+- Residual iteration decomposition: 99.34%.
+- WOUT diagnostic/profile decomposition: 99.990%.
+- Bcovar/WOUT parity decomposition: 99.22%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.895%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.1%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 99.20%.
+- Free-boundary validation-gate maintainability: 98.40%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999999984%.

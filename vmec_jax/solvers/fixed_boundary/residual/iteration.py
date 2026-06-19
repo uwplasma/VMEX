@@ -1953,38 +1953,27 @@ def solve_fixed_boundary_residual_iter(
                     freeb_solve_time = 0.0
                     freeb_sample_time = 0.0
 
-            def _freeb_bsqvac_half_for_trial_state(candidate_state: VMECState):
-                """Return a non-mutating direct-provider vacuum field for trials.
-
-                Legacy mgrid runs keep VMEC's committed ivac/ivacskip cadence.
-                Direct coil providers need candidate-state sampling during
-                trial/backtracking scoring so the trial boundary is not scored
-                against stale pre-update vacuum source data. The scratch
-                runtime returned by NESTOR is intentionally discarded so
-                rejected trials cannot mutate the accepted runtime state.
-                """
-
-                return _runtime_freeb_trial_bsqvac_half(
-                    candidate_state,
-                    free_boundary_enabled=bool(free_boundary_enabled),
-                    freeb_couple_edge=bool(freeb_couple_edge),
-                    freeb_bsqvac_half_current=freeb_bsqvac_half_current,
-                    external_field_provider_kind=external_field_provider_kind,
-                    external_field_provider_static=external_field_provider_static,
-                    external_field_provider_params=external_field_provider_params,
-                    freeb_ivac_effective=int(freeb_ivac_effective),
-                    freeb_nestor_runtime=freeb_nestor_runtime,
-                    static=static,
-                    iter2=int(iter2),
-                    freeb_plascur=float(freeb_plascur),
-                    env_freeb_raise=bool(_env_freeb_raise),
-                    nestor_external_only_step_func=nestor_external_only_step,
-                    edge_bsqvac_from_nestor_func=_edge_bsqvac_from_nestor,
-                    trial_reused_history=freeb_nestor_trial_reused_history,
-                    trial_solve_time_history=freeb_nestor_trial_solve_time_history,
-                    trial_sample_time_history=freeb_nestor_trial_sample_time_history,
-                    trial_failed_history=freeb_nestor_trial_failed_history,
-                )
+            _freeb_bsqvac_half_for_trial_state = partial(
+                _runtime_freeb_trial_bsqvac_half,
+                free_boundary_enabled=bool(free_boundary_enabled),
+                freeb_couple_edge=bool(freeb_couple_edge),
+                freeb_bsqvac_half_current=freeb_bsqvac_half_current,
+                external_field_provider_kind=external_field_provider_kind,
+                external_field_provider_static=external_field_provider_static,
+                external_field_provider_params=external_field_provider_params,
+                freeb_ivac_effective=int(freeb_ivac_effective),
+                freeb_nestor_runtime=freeb_nestor_runtime,
+                static=static,
+                iter2=int(iter2),
+                freeb_plascur=float(freeb_plascur),
+                env_freeb_raise=bool(_env_freeb_raise),
+                nestor_external_only_step_func=nestor_external_only_step,
+                edge_bsqvac_from_nestor_func=_edge_bsqvac_from_nestor,
+                trial_reused_history=freeb_nestor_trial_reused_history,
+                trial_solve_time_history=freeb_nestor_trial_solve_time_history,
+                trial_sample_time_history=freeb_nestor_trial_sample_time_history,
+                trial_failed_history=freeb_nestor_trial_failed_history,
+            )
 
             def _trial_residual_total(
                 candidate_state: VMECState,
