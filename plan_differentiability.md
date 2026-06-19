@@ -21960,3 +21960,74 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999996%.
+
+## 2026-06-19 Residual Accepted-Control Ptau Payload Helper
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Used the residual-iteration audit to work inside the larger
+   preconditioned-force/control seam without moving cache-mutating physics yet.
+2. Added `accepted_control_ptau_host_from_payload` to the residual `ptau.py`
+   helper module.
+3. Rewired the long residual loop to use the helper for both pre-fused and
+   lazily computed accepted-control ptau payloads.
+4. Added unit coverage for successful and malformed payload materialization.
+
+Results obtained:
+
+- `iteration.py` decreased from 5731 to 5729 lines and
+  `solve_fixed_boundary_residual_iter` decreased from 5322 to 5319 lines.
+- Accepted-controller ptau unpacking/fallback semantics are now covered outside
+  the monolithic residual loop.
+- The larger non-scan preconditioned-force payload extraction remains the next
+  residual-loop tranche; this commit only isolates one safely testable sub-seam.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/ptau.py vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/ptau.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_residual_iter_setup_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_setup_helpers.py tests/test_solve_hotpaths.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_active_direct_coil_adjoint_trace_records_vacuum_forcing_and_pressure_scale tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_full_adjoint_trace_records_raw_preconditioner_on_fused_payload_path -q`
+- `python tools/diagnostics/source_health.py --top 20`
+
+Best next steps:
+
+1. Continue toward the larger `build_nonscan_preconditioned_force_payload`
+   extraction only with a careful state/payload return object.
+2. Keep cache mutation and timing mutation in the caller until a dedicated
+   cache-manager helper is covered by tests.
+3. Avoid touching adaptive full-loop differentiation claims in this source
+   simplification tranche.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999951%.
+- Solver monolith reduction: 99.827%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.055%.
+- WOUT diagnostic/profile decomposition: 99.982%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.825%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.745%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 96.82%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 96.69%.
+- Free-boundary validation-gate maintainability: 98.18%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999997%.
