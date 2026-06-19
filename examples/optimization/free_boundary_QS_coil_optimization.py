@@ -1348,8 +1348,9 @@ def optimize_coils(args: argparse.Namespace) -> dict[str, Any]:
     return summary
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+def add_provider_options(parser: argparse.ArgumentParser) -> None:
+    """Add input/direct-coil provider options."""
+
     parser.add_argument("--smoke", action="store_true", help="Use tiny defaults for a fast direct-coil QS smoke.")
     parser.add_argument(
         "--dry-run",
@@ -1380,6 +1381,11 @@ def build_parser() -> argparse.ArgumentParser:
             "unchunked and ESSOS runs use 256. Use 0 to disable chunking explicitly."
         ),
     )
+
+
+def add_solver_optimizer_options(parser: argparse.ArgumentParser) -> None:
+    """Add VMEC inner-solve and outer optimizer options."""
+
     parser.add_argument("--max-iter", type=int, default=None, help="Outer Powell optimizer iterations.")
     parser.add_argument("--max-evals", type=int, default=None, help="Maximum objective evaluations.")
     parser.add_argument("--vmec-max-iter", type=int, default=None, help="Inner free-boundary VMEC iterations.")
@@ -1419,6 +1425,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-fourier-vars", type=int, default=1)
     parser.add_argument("--current-step", type=float, default=0.02)
     parser.add_argument("--dof-step", type=float, default=1.0e-3)
+
+
+def add_qs_objective_options(parser: argparse.ArgumentParser) -> None:
+    """Add QS objective, target, and weight options."""
+
     parser.add_argument("--target-aspect", type=float, default=6.0)
     parser.add_argument("--target-iota", type=float, default=0.4)
     parser.add_argument(
@@ -1463,6 +1474,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--aspect-weight", type=float, default=1.0e-2)
     parser.add_argument("--iota-weight", type=float, default=1.0)
     parser.add_argument("--failure-objective", type=float, default=1.0e30)
+
+
+def add_same_branch_report_core_options(parser: argparse.ArgumentParser) -> None:
+    """Add opt-in same-branch validation report options."""
+
     parser.add_argument(
         "--write-same-branch-report",
         action="store_true",
@@ -1530,6 +1546,11 @@ def build_parser() -> argparse.ArgumentParser:
             "the full-history path."
         ),
     )
+
+
+def add_same_branch_replay_options(parser: argparse.ArgumentParser) -> None:
+    """Add accepted-branch replay and NESTOR/source response options."""
+
     parser.add_argument(
         "--same-branch-report-ad-mode",
         choices=("direct", "custom_vjp"),
@@ -1624,6 +1645,11 @@ def build_parser() -> argparse.ArgumentParser:
             "Use 0 to disable the guard on larger-memory machines."
         ),
     )
+
+
+def add_same_branch_profile_options(parser: argparse.ArgumentParser) -> None:
+    """Add optional replay profiling and controller-slot gates."""
+
     parser.add_argument(
         "--same-branch-report-profile-nestor",
         choices=("none", "dense-vs-matrix-free"),
@@ -1669,6 +1695,11 @@ def build_parser() -> argparse.ArgumentParser:
             "host branch selection."
         ),
     )
+
+
+def add_same_branch_proposal_options(parser: argparse.ArgumentParser) -> None:
+    """Add derivative-proposal options driven by same-branch reports."""
+
     parser.add_argument(
         "--same-branch-report-max-iter",
         type=int,
@@ -1719,6 +1750,17 @@ def build_parser() -> argparse.ArgumentParser:
             "branch-local derivative evidence stale and skip the proposal."
         ),
     )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_provider_options(parser)
+    add_solver_optimizer_options(parser)
+    add_qs_objective_options(parser)
+    add_same_branch_report_core_options(parser)
+    add_same_branch_replay_options(parser)
+    add_same_branch_profile_options(parser)
+    add_same_branch_proposal_options(parser)
     return parser
 
 

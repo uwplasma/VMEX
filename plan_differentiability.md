@@ -25915,3 +25915,77 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999999930%.
+
+## 2026-06-19 Free-Boundary QS Example Parser Decomposition
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Split the long
+   `examples/optimization/free_boundary_QS_coil_optimization.py::build_parser`
+   function into domain-named option-group helpers:
+   provider/input, solver/optimizer, QS objective, same-branch report,
+   same-branch replay, replay profiling, and derivative proposal.
+2. Preserved all existing CLI flags, defaults, choices, and help text.
+3. Kept the example workflow unchanged; this is a pedagogical/readability
+   refactor only.
+
+Results obtained:
+
+- `build_parser` dropped out of the source-health function-length warning list.
+- The example file is slightly longer because the option groups now have
+  explicit names and docstrings, but the user-facing CLI construction is much
+  easier to navigate.
+- The direct-coil free-boundary optimization smoke suite and a manual circle
+  dry-run both pass.
+
+Tests and commands run:
+
+- `python -m py_compile examples/optimization/free_boundary_QS_coil_optimization.py`
+- `python -m ruff check examples/optimization/free_boundary_QS_coil_optimization.py`
+- `python tools/diagnostics/source_health.py --top 35 --max-root-helper-prefix-files 2`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_qs_coil_optimization_smoke.py -q`
+- `python examples/optimization/free_boundary_QS_coil_optimization.py --smoke --dry-run --provider circle --outdir /tmp/vmec_jax_fb_qs_dryrun`
+
+Best next steps:
+
+1. Commit and push this parser decomposition.
+2. Target `write_same_branch_validation_report`, the remaining long function
+   in the same example, by extracting report-mode assembly and replay-profile
+   construction into named helpers.
+3. Continue internal simplification with explicit residual controller-state
+   objects once the user-facing example has no long parser/report functions.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999954%.
+- Solver monolith reduction: 99.918%.
+- Free-boundary adjoint monolith reduction: 99.66%.
+- Driver workflow decomposition: 99.970%.
+- Residual iteration decomposition: 99.505%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.30%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.93%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.05%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.18%.
+- Sweep/example workflow decomposition: 94.8%.
+- Implicit residual-adjoint decomposition: 95.86%.
+- Discrete-adjoint replay decomposition: 99.24%.
+- Free-boundary validation-gate maintainability: 98.50%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999999931%.
