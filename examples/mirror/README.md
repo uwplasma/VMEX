@@ -175,7 +175,7 @@ accepted, rejected, and guard-limited pilot steps. Top-level metrics also
 record ``workflow_status``, ``free_boundary_solve_status``,
 ``beta_scan_requested_percent``, ESSOS-compatible direct-coil metadata, and
 aggregate LCFS pilot counts so benchmark scripts can validate that the 1%, 3%,
-and 10% beta cases were actually exercised. As of schema version ``0.9``,
+and 10% beta cases were actually exercised. As of schema version ``0.12``,
 ``free_boundary_solve_status`` can distinguish not-run, converged, and
 not-converged pilot or coupled-loop workflows; convergence requires every
 requested beta row to stop on ``target_merit``. Multi-step pilots can stop on an
@@ -229,10 +229,11 @@ parameterizations are visible before they are used in expensive coupled
 fixed-boundary trials.
 
 The circular-coil beta-scan metrics use the compact schema
-``mirror_free_boundary_circular_coil_beta_scan`` version ``0.9``. The top-level
+``mirror_free_boundary_circular_coil_beta_scan`` version ``0.12``. The top-level
 JSON records the workflow status, direct-coil metadata, requested beta list,
 setup JSON path, aggregate pilot counts, optional LS boundary-step settings,
-LS ridge-candidate settings, the LS boundary polynomial degree, figure paths, and
+LS ridge-candidate settings, the LS boundary polynomial degree, the
+``--ls-boundary-inner-solve-steps`` setting, figure paths, and
 ``fixed_boundary_baseline_rows``. It also embeds
 ``summary_rows``, the same compact baseline/last-accepted/final-trial table
 written to CSV. Each beta row records fixed-boundary residual and LCFS metrics,
@@ -253,13 +254,24 @@ fixed-boundary solve on the LS-selected polynomial boundary and record realized
 ``--run-ls-boundary-coupled-loop`` to repeat realized LS-selected boundary
 updates with target-merit, stagnation, and ``fsq`` growth guards; loop rows
 record each LS step, realized trial, acceptance decision, stop reason, and
-optional per-step plots. A low-resolution smoke run with
+optional per-step plots. The loop normally follows the one-step line-search
+update. When ``--ls-boundary-inner-solve-steps`` is greater than 1, the example
+also runs the reduced residual-vector nonlinear LS solver on the frozen
+residual before each realized fixed-boundary trial. The realized selector keeps
+the line-search candidate when it passes the loop guards and uses the inner
+solve as a fallback when the line-search path stalls. Step rows record
+``inner_solve_rows``, selected ridge diagnostics, residual history, and whether
+the realized trial used the inner-solve candidate.
+
+A low-resolution target-merit run with
 ``--baseline-maxiter 5``, ``--ls-boundary-max-relative-step 0.05``,
-``--ls-boundary-coupled-loop-target-merit 0.2``, and
-``--ls-boundary-coupled-loop-fsq-growth-limit 1.5`` reaches the converged
+``--ls-boundary-coupled-loop-target-merit 0.1``,
+``--ls-boundary-coupled-loop-fsq-growth-limit 1.5``, and
+``--ls-boundary-inner-solve-steps 2`` reaches the converged
 ``free_boundary_solve_status`` for the default 1%, 3%, and 10% beta rows, with
-final LCFS merit around ``0.17``-``0.19``. This is diagnostic target-merit
-evidence, not the final production free-boundary LCFS convergence claim. Each
+final LCFS merit around ``0.064`` for 1% beta and ``0.047`` for 3% and 10%
+beta in the local test grid. This is reduced circular-coil diagnostic evidence,
+not a full promoted production free-boundary LCFS solver. Each
 pilot row always
 contains ``accepted``, ``rejection_reason``, ``stop_reason``,
 ``lcfs_merit_improvement_fraction``, final residual/``fsq`` diagnostics when a

@@ -36,6 +36,7 @@ from vmec_jax.mirror import (
     mirror_free_boundary_guarded_least_squares_loop,
     mirror_free_boundary_least_squares_step,
     mirror_free_boundary_residual,
+    mirror_free_boundary_residual_vector_least_squares_solve,
     mirror_lcfs_diagnostic,
     mirror_lcfs_diagnostic_from_arrays,
     mirror_lcfs_merit,
@@ -52,7 +53,7 @@ from vmec_jax.mirror import (
 
 
 CIRCULAR_COIL_BETA_SCAN_SCHEMA = "mirror_free_boundary_circular_coil_beta_scan"
-CIRCULAR_COIL_BETA_SCAN_SCHEMA_VERSION = "0.11"
+CIRCULAR_COIL_BETA_SCAN_SCHEMA_VERSION = "0.12"
 CIRCULAR_COIL_BETA_SCAN_LS_LINE_SEARCH_FACTORS = (1.0, 0.5, 0.25, 0.125)
 CIRCULAR_COIL_BETA_SCAN_LS_REALIZED_RETRY_FACTORS = (1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625)
 CIRCULAR_COIL_BETA_SCAN_TOP_LEVEL_FIELDS = (
@@ -97,6 +98,7 @@ CIRCULAR_COIL_BETA_SCAN_TOP_LEVEL_FIELDS = (
     "ls_boundary_ridge_candidates",
     "ls_boundary_polynomial_degree",
     "ls_boundary_accept_tolerance",
+    "ls_boundary_inner_solve_steps",
     "ls_boundary_realized_retry_factors",
     "ls_boundary_step_rows_total",
     "ls_boundary_coupled_trial_requested",
@@ -158,6 +160,7 @@ CIRCULAR_COIL_BETA_SCAN_ROW_FIELDS = (
 )
 CIRCULAR_COIL_BETA_SCAN_LS_STEP_FIELDS = (
     "accepted",
+    "candidate_source",
     "line_search_factor",
     "coefficients_initial",
     "coefficients_new",
@@ -182,10 +185,35 @@ CIRCULAR_COIL_BETA_SCAN_LS_STEP_FIELDS = (
     "lcfs_value_after",
     "max_relative_radius_change",
     "trial_rows",
+    "inner_solve_steps_requested",
+    "inner_solve_rows",
+    "inner_solve_accepted_steps",
+    "inner_solve_stop_reason",
+    "inner_solve_initial_residual_value",
+    "inner_solve_final_residual_value",
+    "inner_solve_selected",
     "coupled_trial",
     "realized_retry_rows",
     "realized_retry_selected_factor",
     "figure",
+)
+CIRCULAR_COIL_BETA_SCAN_LS_INNER_SOLVE_ROW_FIELDS = (
+    "step",
+    "accepted",
+    "stop_reason",
+    "residual_value_before",
+    "residual_value_after",
+    "improvement_fraction",
+    "line_search_factor",
+    "ridge",
+    "ridge_candidates",
+    "jacobian_rank",
+    "jacobian_nullity",
+    "jacobian_condition",
+    "predicted_value",
+    "predicted_reduction_fraction",
+    "actual_reduction_fraction",
+    "coefficients_new",
 )
 CIRCULAR_COIL_BETA_SCAN_LS_COUPLED_TRIAL_FIELDS = (
     "status",
@@ -302,6 +330,7 @@ def circular_coil_beta_scan_schema() -> dict[str, object]:
         "beta_row_required_fields": list(CIRCULAR_COIL_BETA_SCAN_ROW_FIELDS),
         "pilot_row_required_fields": list(CIRCULAR_COIL_BETA_SCAN_PILOT_ROW_FIELDS),
         "ls_boundary_step_fields": list(CIRCULAR_COIL_BETA_SCAN_LS_STEP_FIELDS),
+        "ls_boundary_inner_solve_row_fields": list(CIRCULAR_COIL_BETA_SCAN_LS_INNER_SOLVE_ROW_FIELDS),
         "ls_boundary_coupled_trial_fields": list(CIRCULAR_COIL_BETA_SCAN_LS_COUPLED_TRIAL_FIELDS),
         "ls_boundary_coupled_loop_row_fields": list(CIRCULAR_COIL_BETA_SCAN_LS_COUPLED_LOOP_ROW_FIELDS),
         "pilot_status_values": list(CIRCULAR_COIL_BETA_SCAN_PILOT_STATUSES),
@@ -575,6 +604,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ls-boundary-ridge-candidates", type=str, default="")
     parser.add_argument("--ls-boundary-polynomial-degree", type=int, default=4)
     parser.add_argument("--ls-boundary-accept-tolerance", type=float, default=1.0e-4)
+    parser.add_argument("--ls-boundary-inner-solve-steps", type=int, default=1)
     parser.add_argument(
         "--ls-boundary-realized-retry-factors",
         type=str,
@@ -995,6 +1025,14 @@ def _ls_boundary_step_summary_from_step(
         "lcfs_value_after": float(step.trial_residual.lcfs_value),
         "max_relative_radius_change": float(np.max(np.abs(new_radius - old_radius) / np.maximum(old_radius, 1.0e-300))),
         "trial_rows": trial_rows,
+        "inner_solve_steps_requested": 1,
+        "inner_solve_rows": [],
+        "inner_solve_accepted_steps": 0,
+        "inner_solve_stop_reason": None,
+        "inner_solve_initial_residual_value": None,
+        "inner_solve_final_residual_value": None,
+        "inner_solve_selected": False,
+        "candidate_source": "line_search",
         "coupled_trial": None,
         "realized_retry_rows": [],
         "realized_retry_selected_factor": None,
@@ -1185,6 +1223,96 @@ def _local_reduction_fraction(before: float, after: float) -> float | None:
     return float(1.0 - after / before)
 
 
+def _optional_float(value) -> float | None:
+    return None if value is None else float(value)
+
+
+def _ls_boundary_inner_solve_row_summary(row) -> dict[str, object]:
+    """Return a compact JSON row from one reduced residual-vector LS step."""
+
+    step = row.ls_step
+    return {
+        "step": int(row.step),
+        "accepted": bool(row.accepted),
+        "stop_reason": row.stop_reason,
+        "residual_value_before": float(row.residual_value_before),
+        "residual_value_after": float(row.residual_value_after),
+        "improvement_fraction": _optional_float(row.improvement_fraction),
+        "line_search_factor": float(step.line_search_factor),
+        "ridge": float(step.ridge),
+        "ridge_candidates": [float(value) for value in step.ridge_candidates],
+        "jacobian_rank": int(step.jacobian_rank),
+        "jacobian_nullity": int(step.jacobian_nullity),
+        "jacobian_condition": float(step.jacobian_condition),
+        "predicted_value": float(step.predicted_value),
+        "predicted_reduction_fraction": _optional_float(step.predicted_reduction_fraction),
+        "actual_reduction_fraction": _optional_float(step.actual_reduction_fraction),
+        "coefficients_new": [float(value) for value in step.new_coefficients],
+    }
+
+
+def _annotate_inner_solve_summary(
+    summary: dict[str, object],
+    *,
+    solve_result,
+    steps_requested: int,
+    selected: bool,
+) -> dict[str, object]:
+    """Return ``summary`` with reduced residual-vector inner-solve diagnostics."""
+
+    annotated = dict(summary)
+    annotated.update(
+        {
+            "inner_solve_steps_requested": int(steps_requested),
+            "inner_solve_rows": [_ls_boundary_inner_solve_row_summary(row) for row in solve_result.rows],
+            "inner_solve_accepted_steps": int(solve_result.accepted_steps),
+            "inner_solve_stop_reason": solve_result.stop_reason,
+            "inner_solve_initial_residual_value": float(solve_result.initial_residual_value),
+            "inner_solve_final_residual_value": float(solve_result.final_residual_value),
+            "inner_solve_selected": bool(selected),
+        }
+    )
+    return annotated
+
+
+def _ls_boundary_step_summary_with_candidate_coefficients(
+    summary: dict[str, object],
+    *,
+    step,
+    coefficients_new,
+    residual,
+    grid,
+    accept_tolerance: float,
+    candidate_source: str,
+    line_search_factor: float,
+) -> dict[str, object]:
+    """Return an LS summary whose trial fields match arbitrary coefficients."""
+
+    coefficients = np.asarray(step.coefficients, dtype=float)
+    candidate_coefficients = np.asarray(coefficients_new, dtype=float).ravel()
+    old_radius = _polynomial_boundary_from_coefficients(coefficients, grid=grid).radius_on_grid(grid)
+    new_radius = _polynomial_boundary_from_coefficients(candidate_coefficients, grid=grid).radius_on_grid(grid)
+    candidate_summary = dict(summary)
+    candidate_summary.update(
+        {
+            "accepted": bool(residual.value <= step.residual.value + float(accept_tolerance)),
+            "candidate_source": str(candidate_source),
+            "line_search_factor": float(line_search_factor),
+            "coefficients_new": [float(value) for value in candidate_coefficients],
+            "residual_value_after": float(residual.value),
+            "actual_reduction_fraction": _local_reduction_fraction(float(step.residual.value), float(residual.value)),
+            "equilibrium_rms_after": float(residual.equilibrium_rms),
+            "lcfs_value_after": float(residual.lcfs_value),
+            "max_relative_radius_change": float(
+                np.max(np.abs(new_radius - old_radius) / np.maximum(old_radius, 1.0e-300))
+            ),
+            "trial_rows": [dict(row, selected=False) for row in summary["trial_rows"]],
+            "coupled_trial": None,
+        }
+    )
+    return candidate_summary
+
+
 def _ls_boundary_step_summary_with_realized_factor(
     summary: dict[str, object],
     *,
@@ -1232,6 +1360,7 @@ def _ls_boundary_step_summary_with_realized_factor(
     candidate_summary.update(
         {
             "accepted": bool(residual.value <= step.residual.value + float(accept_tolerance)),
+            "candidate_source": "line_search",
             "line_search_factor": factor,
             "coefficients_new": [float(value) for value in candidate_coefficients],
             "residual_value_after": float(residual.value),
@@ -1274,6 +1403,7 @@ def _run_ls_boundary_coupled_loop(
     ridge_candidates: tuple[float, ...] | None,
     polynomial_degree: int,
     accept_tolerance: float,
+    inner_solve_steps: int,
     realized_retry_factors: tuple[float, ...] | None,
     write_plots: bool,
 ) -> list[dict[str, object]]:
@@ -1302,7 +1432,7 @@ def _run_ls_boundary_coupled_loop(
             final_trace=state.payload.final,
             reference_merit=reference_merit,
         )
-        return _ls_boundary_step_summary_from_step(
+        summary = _ls_boundary_step_summary_from_step(
             step=step,
             residual_function=residual_function,
             grid=grid,
@@ -1312,6 +1442,8 @@ def _run_ls_boundary_coupled_loop(
             figure_dir=outdir / "figures" / f"fixed_boundary_beta_{label}_ls_loop_step_{step_index}",
             name=f"free_boundary_circular_coils_beta_{step_label}",
         )
+        summary["inner_solve_steps_requested"] = int(inner_solve_steps)
+        return summary
 
     step_summaries: dict[int, dict[str, object]] = {}
 
@@ -1319,31 +1451,96 @@ def _run_ls_boundary_coupled_loop(
         step_index = len(step_summaries) + 1
         step_label = f"{label}_ls_loop_step_{step_index}"
         base_summary = step_summary_for(step_index, state, step)
+        start_coefficients = np.asarray(step.coefficients, dtype=float)
+        inner_direction: np.ndarray | None = None
+        if int(inner_solve_steps) > 1:
+
+            def residual_vector_function(coefficients):
+                return np.asarray(residual_for_state(state, coefficients).vector, dtype=float).ravel()
+
+            inner_result = mirror_free_boundary_residual_vector_least_squares_solve(
+                start_coefficients,
+                residual_vector_function,
+                max_steps=int(inner_solve_steps),
+                target_residual=0.0,
+                finite_difference_step=finite_difference_step,
+                damping=damping,
+                max_relative_step=max_relative_step,
+                ridge=ridge,
+                ridge_candidates=ridge_candidates,
+                line_search_factors=CIRCULAR_COIL_BETA_SCAN_LS_LINE_SEARCH_FACTORS,
+                accept_tolerance=accept_tolerance,
+            )
+            inner_residual = residual_for_state(state, inner_result.final_coefficients)
+            inner_selected = bool(inner_result.accepted_steps) and bool(
+                inner_residual.value <= step.residual.value + float(accept_tolerance)
+            )
+            base_summary = _annotate_inner_solve_summary(
+                base_summary,
+                solve_result=inner_result,
+                steps_requested=int(inner_solve_steps),
+                selected=False,
+            )
+            if inner_selected:
+                inner_direction = np.asarray(inner_result.final_coefficients, dtype=float) - start_coefficients
         candidate_rows: list[dict[str, object]] = []
         selected_summary: dict[str, object] | None = None
         selected_trial: dict[str, object] | None = None
         selected_residual = None
         selected_factor: float | None = None
+        selected_source: str | None = None
         best_summary: dict[str, object] | None = None
         best_trial: dict[str, object] | None = None
         best_residual = None
         best_factor: float | None = None
+        best_source: str | None = None
+        candidate_specs: list[tuple[str, float, np.ndarray]] = []
         for factor in _candidate_realized_retry_factors(step.line_search_factor, realized_retry_factors):
-            candidate_coefficients = np.asarray(step.coefficients, dtype=float) + factor * np.asarray(
-                step.limited_step,
-                dtype=float,
+            candidate_specs.append(
+                (
+                    "line_search",
+                    float(factor),
+                    start_coefficients + float(factor) * np.asarray(step.limited_step, dtype=float),
+                )
             )
+        if inner_direction is None:
+            exhaustive_candidates = False
+        else:
+            exhaustive_candidates = True
+            for factor in _candidate_realized_retry_factors(1.0, realized_retry_factors):
+                candidate_specs.append(
+                    (
+                        "inner_solve",
+                        float(factor),
+                        start_coefficients + float(factor) * inner_direction,
+                    )
+                )
+        for candidate_source, factor, candidate_coefficients in candidate_specs:
             candidate_residual = residual_for_state(state, candidate_coefficients)
-            candidate_summary = _ls_boundary_step_summary_with_realized_factor(
-                base_summary,
-                step=step,
-                factor=factor,
-                residual=candidate_residual,
-                grid=grid,
-                accept_tolerance=accept_tolerance,
-            )
+            if candidate_source == "line_search":
+                candidate_summary = _ls_boundary_step_summary_with_realized_factor(
+                    base_summary,
+                    step=step,
+                    factor=factor,
+                    residual=candidate_residual,
+                    grid=grid,
+                    accept_tolerance=accept_tolerance,
+                )
+            else:
+                candidate_summary = _ls_boundary_step_summary_with_candidate_coefficients(
+                    base_summary,
+                    step=step,
+                    coefficients_new=candidate_coefficients,
+                    residual=candidate_residual,
+                    grid=grid,
+                    accept_tolerance=accept_tolerance,
+                    candidate_source=candidate_source,
+                    line_search_factor=factor,
+                )
             trial_label = (
-                step_label if np.isclose(factor, step.line_search_factor) else f"{step_label}_f{_factor_label(factor)}"
+                step_label
+                if inner_direction is None and np.isclose(factor, step.line_search_factor)
+                else f"{step_label}_{candidate_source}_f{_factor_label(factor)}"
             )
             trial = _run_ls_boundary_coupled_trial(
                 step_summary=candidate_summary,
@@ -1371,6 +1568,7 @@ def _run_ls_boundary_coupled_loop(
             candidate_rows.append(
                 {
                     "factor": float(factor),
+                    "candidate_source": candidate_source,
                     "selected": False,
                     "status": trial["status"],
                     "accepted_by_loop_merit": bool(loop_merit_ok),
@@ -1391,18 +1589,36 @@ def _run_ls_boundary_coupled_loop(
                 best_trial = trial
                 best_residual = candidate_residual
                 best_factor = float(factor)
+                best_source = candidate_source
             if loop_merit_ok and loop_growth_ok:
-                selected_summary = candidate_summary
-                selected_trial = trial
-                selected_residual = candidate_residual
-                selected_factor = float(factor)
-                break
+                if candidate_source == "line_search":
+                    selected_summary = candidate_summary
+                    selected_trial = trial
+                    selected_residual = candidate_residual
+                    selected_factor = float(factor)
+                    selected_source = candidate_source
+                    break
+                if selected_trial is None or float(trial["lcfs_merit"]) < float(selected_trial["lcfs_merit"]):
+                    selected_summary = candidate_summary
+                    selected_trial = trial
+                    selected_residual = candidate_residual
+                    selected_factor = float(factor)
+                    selected_source = candidate_source
+                if not exhaustive_candidates:
+                    break
         if selected_trial is None:
             selected_summary = best_summary
             selected_trial = best_trial
             selected_residual = best_residual
             selected_factor = best_factor
-        if selected_summary is None or selected_trial is None or selected_residual is None or selected_factor is None:
+            selected_source = best_source
+        if (
+            selected_summary is None
+            or selected_trial is None
+            or selected_residual is None
+            or selected_factor is None
+            or selected_source is None
+        ):
             selected_summary = base_summary
             selected_summary["coupled_trial"] = None
             step_summaries[step_index] = selected_summary
@@ -1414,7 +1630,10 @@ def _run_ls_boundary_coupled_loop(
                 payload=state.payload,
             )
         for row in candidate_rows:
-            row["selected"] = bool(np.isclose(float(row["factor"]), selected_factor))
+            row["selected"] = bool(
+                row["candidate_source"] == selected_source and np.isclose(float(row["factor"]), selected_factor)
+            )
+        selected_summary["inner_solve_selected"] = selected_source == "inner_solve"
         selected_summary["coupled_trial"] = selected_trial
         selected_summary["realized_retry_rows"] = candidate_rows
         selected_summary["realized_retry_selected_factor"] = float(selected_factor)
@@ -1671,6 +1890,7 @@ def _beta_scan_summary(
     ls_boundary_ridge_candidates: tuple[float, ...] | None,
     ls_boundary_polynomial_degree: int,
     ls_boundary_accept_tolerance: float,
+    ls_boundary_inner_solve_steps: int,
     ls_boundary_realized_retry_factors: tuple[float, ...] | None,
 ) -> dict[str, object]:
     """Return top-level status fields for the circular-coil beta scan."""
@@ -1736,6 +1956,7 @@ def _beta_scan_summary(
         else None,
         "ls_boundary_polynomial_degree": int(ls_boundary_polynomial_degree) if ls_requested else None,
         "ls_boundary_accept_tolerance": float(ls_boundary_accept_tolerance) if ls_requested else None,
+        "ls_boundary_inner_solve_steps": int(ls_boundary_inner_solve_steps) if ls_requested else None,
         "ls_boundary_realized_retry_factors": [float(value) for value in ls_boundary_realized_retry_factors]
         if run_ls_boundary_coupled_loop and ls_boundary_realized_retry_factors is not None
         else None,
@@ -2255,6 +2476,7 @@ def _run_fixed_boundary_baseline_cases(
     ls_boundary_ridge_candidates: tuple[float, ...] | None,
     ls_boundary_polynomial_degree: int,
     ls_boundary_accept_tolerance: float,
+    ls_boundary_inner_solve_steps: int,
     ls_boundary_realized_retry_factors: tuple[float, ...] | None,
     write_plots: bool,
 ) -> list[dict[str, object]]:
@@ -2486,6 +2708,7 @@ def _run_fixed_boundary_baseline_cases(
                 ridge_candidates=ls_boundary_ridge_candidates,
                 polynomial_degree=ls_boundary_polynomial_degree,
                 accept_tolerance=ls_boundary_accept_tolerance,
+                inner_solve_steps=ls_boundary_inner_solve_steps,
                 realized_retry_factors=ls_boundary_realized_retry_factors,
                 write_plots=write_plots,
             )
@@ -2583,6 +2806,7 @@ def run_case(
     ls_boundary_ridge_candidates: tuple[float, ...] | None = None,
     ls_boundary_polynomial_degree: int = 4,
     ls_boundary_accept_tolerance: float = 1.0e-4,
+    ls_boundary_inner_solve_steps: int = 1,
     ls_boundary_realized_retry_factors: tuple[float, ...] | None = CIRCULAR_COIL_BETA_SCAN_LS_REALIZED_RETRY_FACTORS,
     write_plots: bool = True,
 ) -> Path:
@@ -2616,6 +2840,8 @@ def run_case(
         raise ValueError("ls_boundary_ridge must be nonnegative")
     if float(ls_boundary_accept_tolerance) < 0.0:
         raise ValueError("ls_boundary_accept_tolerance must be nonnegative")
+    if int(ls_boundary_inner_solve_steps) < 1:
+        raise ValueError("ls_boundary_inner_solve_steps must be at least 1")
     if ls_boundary_ridge_candidates is not None:
         candidates = tuple(float(value) for value in ls_boundary_ridge_candidates)
         if not candidates:
@@ -2705,6 +2931,7 @@ def run_case(
             ls_boundary_ridge_candidates=ls_boundary_ridge_candidates,
             ls_boundary_polynomial_degree=ls_boundary_polynomial_degree,
             ls_boundary_accept_tolerance=ls_boundary_accept_tolerance,
+            ls_boundary_inner_solve_steps=ls_boundary_inner_solve_steps,
             ls_boundary_realized_retry_factors=ls_boundary_realized_retry_factors,
             write_plots=write_plots,
         )
@@ -2745,6 +2972,7 @@ def run_case(
             ls_boundary_ridge_candidates=ls_boundary_ridge_candidates,
             ls_boundary_polynomial_degree=ls_boundary_polynomial_degree,
             ls_boundary_accept_tolerance=ls_boundary_accept_tolerance,
+            ls_boundary_inner_solve_steps=ls_boundary_inner_solve_steps,
             ls_boundary_realized_retry_factors=ls_boundary_realized_retry_factors,
         ),
         "coil_radius": float(coil_radius),
@@ -2825,6 +3053,7 @@ def main() -> None:
         ),
         ls_boundary_polynomial_degree=args.ls_boundary_polynomial_degree,
         ls_boundary_accept_tolerance=args.ls_boundary_accept_tolerance,
+        ls_boundary_inner_solve_steps=args.ls_boundary_inner_solve_steps,
         ls_boundary_realized_retry_factors=(
             None
             if not args.ls_boundary_realized_retry_factors.strip()

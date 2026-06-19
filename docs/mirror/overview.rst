@@ -65,8 +65,9 @@ without coupling it to toroidal VMEC assumptions:
   coupled trial-scoring updates, top-level free-boundary status values that can
   distinguish target-merit convergence from non-converged pilot or coupled-loop
   runs, a low-resolution target-merit smoke that converges the default 1%, 3%,
-  and 10% beta rows to ``target_merit=0.2`` with ``baseline_maxiter=5``, a
-  ``0.05`` relative boundary step cap, and an explicit ``fsq`` growth guard,
+  and 10% beta rows to ``target_merit=0.1`` with ``baseline_maxiter=5``, a
+  ``0.05`` relative boundary step cap, an explicit ``fsq`` growth guard, and a
+  two-step reduced residual-vector inner-solve fallback,
   recorded LS polynomial degree and ridge-candidate diagnostics with safe
   rejection of nonpositive high-order trial boundaries, plus an optional strict
   normal-field guard

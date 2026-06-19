@@ -25833,3 +25833,122 @@ Results:
 ### User input needed
 
 No user input is needed for the next technical step.
+
+---
+## 215. Free-Boundary Inner Residual-Vector Fallback
+
+### Steps taken
+
+- Promoted the existing reduced residual-vector nonlinear least-squares solve
+  into the root circular-coil free-boundary workflow as an opt-in inner solve.
+- Bumped the circular-coil beta-scan schema from `0.11` to `0.12`.
+- Added `--ls-boundary-inner-solve-steps` and recorded it in the top-level JSON
+  metrics.
+- Added per-step `inner_solve_rows`, selected ridge diagnostics, residual
+  history, and realized candidate-source reporting to the LS boundary step
+  summary.
+- Kept the old line-search path as the first choice. When the line-search
+  candidate passes the realized merit and `fsq` guards, it is selected exactly
+  as before. When it stalls, the workflow evaluates the frozen residual-vector
+  inner-solve candidate and its realized retry ladder.
+- Updated the root mirror README and mirror overview docs to describe schema
+  `0.12`, the inner-solve fallback policy, and the stricter low-resolution
+  `target_merit = 0.1` command.
+- Tightened the target-merit regression test from `0.2` to `0.1` with
+  `--ls-boundary-inner-solve-steps 2`.
+
+### Results obtained
+
+- The default behavior remains conservative because
+  `--ls-boundary-inner-solve-steps` defaults to `1`.
+- With `--ls-boundary-inner-solve-steps 2`, the local low-resolution 1%, 3%,
+  and 10% circular-coil beta scan now reaches the `0.1` target for every beta
+  row:
+  - workflow status: `ls_boundary_coupled_loop_converged_free_boundary`;
+  - schema: `0.12`;
+  - total loop rows: `27`;
+  - accepted loop rows: `27`;
+  - stop reasons: `{"None": 24, "target_merit": 3}`.
+- Per-beta final local results for `baseline_maxiter = 5`,
+  `max_relative_step = 0.05`, `fsq_growth_limit = 1.5`,
+  `max_steps = 12`, and `inner_solve_steps = 2`:
+  - beta `1%`: final merit `0.06384411952516199`, final `fsq` growth ratio
+    `0.896415118862783`;
+  - beta `3%`: final merit `0.04728522927730968`, final `fsq` growth ratio
+    `1.2387301734323382`;
+  - beta `10%`: final merit `0.04728522927730968`, final `fsq` growth ratio
+    `1.3791437736624717`.
+- A first greedy policy that always preferred the inner solve was rejected:
+  beta `3%` and `10%` converged, but beta `1%` stalled around `0.1267`. The
+  adopted line-search-first fallback preserves the old stable path and uses the
+  inner solve only when needed.
+
+### How it was tested
+
+```bash
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m215_inner_solve2_target010 --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 12 --ls-boundary-coupled-loop-target-merit 0.1 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.05 --ls-boundary-inner-solve-steps 2 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m215_inner_solve2_compare_target010 --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 12 --ls-boundary-coupled-loop-target-merit 0.1 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.05 --ls-boundary-inner-solve-steps 2 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m215_inner_fallback_target010 --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 12 --ls-boundary-coupled-loop-target-merit 0.1 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.05 --ls-boundary-inner-solve-steps 2 --no-plots
+python -m pytest tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_step_reports_reduction tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_coupled_trial_reports_realized_solve tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_coupled_loop_reports_guarded_steps tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_coupled_loop_reports_inner_solve_rows tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_convergence -q
+```
+
+Results:
+
+- Focused coupled-loop tests passed with the stricter target gate:
+  `5 passed in 63.29s`.
+- The final local target probe converged all three beta rows below `0.1`.
+
+### File structure and best-practice notes
+
+- Core solver APIs remain unchanged; the new policy is localized to the
+  root-level example that already owns host-side fixed-boundary trial solves and
+  report generation.
+- The implementation reuses
+  `mirror_free_boundary_residual_vector_least_squares_solve` instead of adding
+  a second nonlinear LS implementation.
+- Metrics are explicit and reproducible: the JSON records the requested inner
+  solve count, per-step reduced solve rows, realized candidate source, retry
+  ladder, and selected candidate.
+- Tests stay in `tests/mirror/test_mirror_examples.py` because this is a
+  root-example CLI/schema contract.
+- Generated probe outputs remain under ignored `results/mirror/...` paths.
+
+### Best next steps
+
+1. Run the full root mirror example test file, Ruff, Sphinx, whitespace, and
+   plan-order checks for this tranche.
+2. Commit and push M215, then update the draft PR body with the new schema and
+   target-merit evidence.
+3. Use `ssh office` for a heavier `ns`/`nxi` and beta-resolution ladder with
+   `--ls-boundary-inner-solve-steps 2`, including runtime and memory accounting.
+4. Start promoting the same residual-vector solve policy toward the broader
+   differentiable free-boundary API, where pure JAX residuals can use
+   `jacobian_backend="jax"` and implicit/adjoint differentiation instead of
+   host-side finite differences.
+
+### Completion percentages after M215
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.82%`; the low-resolution ESSOS-compatible
+  circular-coil beta scan now has local target-merit evidence below `0.1`, with
+  heavier resolution/runtime validation still needed.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `99.9%`.
+- ESSOS circular-coil mirror beta scan: `99.75%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.94%`, pending full local gates, heavier
+  office validation, final CI review, and review decision on deferred lanes.
+
+### User input needed
+
+No user input is needed for the next technical step.
