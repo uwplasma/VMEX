@@ -128,6 +128,41 @@ def test_root_finite_current_pitch_example_runs_without_plots(tmp_path):
     assert metrics["boozer_like_contravariant_pitch_rms_max"] >= 0.0
 
 
+def test_root_finite_current_pitch_example_writes_nonblank_field_line_plots(tmp_path):
+    image = pytest.importorskip("matplotlib.image")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/mirror_finite_current_pitch.py",
+            "--outdir",
+            str(tmp_path / "finite_current_pitch_plots"),
+            "--ns",
+            "5",
+            "--nxi",
+            "9",
+            "--maxiter",
+            "0",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    mout = Path(completed.stdout.strip())
+    figure_dir = mout.parent / "figures"
+    for name in [
+        "finite_current_pitch_theta_advance.png",
+        "finite_current_pitch_geometry_coils_field_lines.png",
+        "finite_current_pitch_mirror_boozer_like_diagnostics.png",
+    ]:
+        path = figure_dir / name
+        assert path.exists()
+        assert path.stat().st_size > 4096
+        pixels = image.imread(path)
+        assert pixels.ndim in (2, 3)
+        assert float(np.std(pixels)) > 0.0
+
+
 def test_root_free_boundary_vector_ls_benchmark_runs_without_plots(tmp_path):
     completed = subprocess.run(
         [

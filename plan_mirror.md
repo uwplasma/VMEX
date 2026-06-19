@@ -21881,3 +21881,86 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+---
+## 181. Finite-Current Field-Line Plot Coverage
+
+### Steps taken
+
+- Added a plotted smoke test for `examples/mirror_finite_current_pitch.py`.
+- The test runs a low-resolution finite-current case with plots enabled and
+  checks the custom theta-advance plot, geometry/coils/field-line plot, and
+  mirror-Boozer-like diagnostic plot.
+- The test verifies each PNG exists, has nontrivial file size, can be read by
+  Matplotlib, and is nonblank.
+
+### Results obtained
+
+- The finite-current pitch lane now has direct test coverage for both no-plot
+  numerical metrics and plotted field-line artifacts.
+- The field-line visibility requirement is protected by a cheap automated test
+  instead of relying only on manual plot inspection.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format tests/mirror/test_mirror_examples.py
+python -m ruff check tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py::test_root_finite_current_pitch_example_writes_nonblank_field_line_plots -q
+JAX_ENABLE_X64=1 pytest tests/mirror -q
+git diff --check
+```
+
+Results:
+
+- Ruff format left the file unchanged.
+- Ruff check passed.
+- Focused finite-current plot smoke test passed: `1 passed in 3.46s`.
+- Full mirror suite passed on the updated head: `231 passed, 1 skipped in
+  205.23s`.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The new test stays in `tests/mirror/test_mirror_examples.py` with the other
+  root-example smoke tests.
+- It uses the existing ignored/temp output flow and does not add any generated
+  figures to the repository.
+- The test asserts image content generically rather than encoding brittle pixel
+  snapshots.
+
+### Best next steps
+
+1. Commit and push M181.
+2. Update the draft PR body validation note to include the `231 passed,
+   1 skipped` full mirror-suite result and finite-current plot coverage.
+3. Re-check CI after the latest push has had time to finish, inspecting only
+   failed jobs.
+4. Continue final completion audit and decide whether the remaining non-100%
+   lanes are explicit future work or require another closure tranche.
+
+### Completion percentages after M181
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `93%`.
+- Residual Newton / preconditioning: `94%`.
+- Two-coil and manufactured validation: `92%`.
+- Finite-current pitch validation: `92%`.
+- Plotting and `vmec --plot` mirror support: `98%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `95%`.
+- Mirror-Boozer-like diagnostics: `89%`.
+- Free-boundary mirror lane: `99%` overall, with reduced residual-vector
+  nonlinear solve scope complete.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- Public API/source simplification: `100%` for the mirror package initializer.
+- PR merge readiness overall: `99%`.
+
+### User input needed
+
+No user input is needed.
