@@ -24265,3 +24265,208 @@ ssh office 'cd /home/rjorge/local/vmec_mirror && PYTHONPATH=$PWD /home/rjorge/ve
 
 No user input is needed.  The next campaign should remain plot-free until a
 specific diagnostic row needs figures, because office disk space is still tight.
+
+---
+## 202. Target-Ladder 80-Iteration Convergence and Solver Reporting Audit
+
+### Steps taken
+
+- Ran the next target-ladder diagnostic campaign on office for the
+  `mpol:ntor=5:20` rows with:
+  - `--resolution-preset target`;
+  - `--case-filter "*mpol05_ntor20"`;
+  - `--run-solve`;
+  - `--max-iter 20`;
+  - `--niter 80`;
+  - `--nstep 1`;
+  - `--ftol 1e-8`;
+  - `--full-solver-diagnostics`;
+  - `--run-vmec2000`;
+  - `--no-plots`.
+- Found that the accelerated VMEC/JAX path was using the scan backend, where
+  terminal `step_status_history` is absent and scan histories are omitted when
+  `scan_minimal=True`.
+- Updated the convergence runner to export scan-backend diagnostics:
+  `diagnostic_scan_path`, scan minimal/light flags, scan preconditioner flags,
+  scan time-step histories, and compact time-step scalar summaries.
+- Ran a one-row `ns007_mpol05_ntor20` full-scan diagnostic with
+  `VMEC_JAX_SCAN_MINIMAL=0` to verify actual scan time-step reporting.
+- Found that the 80-iteration CLI path can collapse the stored solve history to
+  the best final CLI-finished state, so the row needed explicit CLI finish
+  metadata.
+- Updated the convergence runner to export CLI finish diagnostics:
+  finish attempt counts, budgets, modes, finish residuals, best finish residual,
+  budget caps, budget-exhaustion flags, and parity/staged-fallback flags.
+- Added `vmec_jax_total_fsq_converged_rows` to aggregate metrics so compact
+  split-campaign reports distinguish total-`fsq` convergence from strict
+  component convergence.
+- Ran the full target ladder at the named target resolution in two chunks:
+  - `*mpol05_ntor20` for `ns=7,9,15`;
+  - `*mpol06_ntor24` for `ns=7,9,15`;
+  both with `--max-iter 80`, `--niter 80`, `--nstep 1`, `--ftol 1e-8`,
+  `--run-vmec2000`, and `--no-plots`.
+- Aggregated the two 80-iteration chunks into a six-row compact target report.
+
+### Results obtained
+
+20-iteration diagnostic result for the `5:20` target rows:
+
+- VMEC/JAX final `fsq` range after 20 iterations:
+  `5.158289885665352e-05` to `8.469592699488549e-05`.
+- VMEC2000 final `fsq` range after 80 rows:
+  `6.116e-06` to `1.2370000000000002e-05`.
+- VMEC/JAX did not reach the total target in this 20-iteration diagnostic
+  campaign.
+- The full-scan one-row diagnostic with `VMEC_JAX_SCAN_MINIMAL=0` captured
+  `20` scan time-step entries for `ns007_mpol05_ntor20`; all were `0.9`, so
+  the accelerated scan path was not reducing the scan time step for that row.
+
+80-iteration target-ladder result:
+
+- Aggregate JSON:
+  `/home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_iter80_aggregate_m210/toroidal_stellarator_mirror_hybrid_convergence_aggregate.json`
+- Aggregate CSV:
+  `/home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_iter80_aggregate_m210/toroidal_stellarator_mirror_hybrid_convergence.csv`
+- Aggregate result-tree size: `124K`.
+- Case count: `6`.
+- Duplicate cases replaced: none.
+- VMEC/JAX solved rows: `6`.
+- VMEC/JAX rows converged by total `fsq`: `6`.
+- VMEC/JAX strict-converged rows: `0`.
+- VMEC2000 rows: `6`.
+- VMEC2000 return-code-zero rows: `6`.
+- VMEC/JAX final `fsq` range:
+  `2.182503700046272e-08` to `2.5155529421439975e-08`.
+- Requested total target:
+  `3.0000000000000004e-08`.
+- VMEC2000 final `fsq` range:
+  `6.116e-06` to `2.491e-05`.
+- Direct-initial VMEC/JAX / VMEC2000 initial `fsq` ratio range:
+  `1.002122976587009` to `1.006374048260763`.
+- Every row used two accelerated CLI finish attempts with budgets `[80, 80]`,
+  finish budget cap `160`, and `cli_fixed_boundary_full_parity_fallback=False`.
+- The finish-budget-exhausted flag is `True` for these rows because both
+  accelerated finish attempts consumed the allowed budget, even though the best
+  finish residual is below the total-`fsq` target.
+- Representative row results:
+  - `ns007_mpol05_ntor20`: final `fsq=2.2295870282622656e-08`;
+  - `ns007_mpol06_ntor24`: final `fsq=2.5155529421439975e-08`;
+  - `ns009_mpol05_ntor20`: final `fsq=2.2241775184847447e-08`;
+  - `ns009_mpol06_ntor24`: final `fsq=2.246120598788413e-08`;
+  - `ns015_mpol05_ntor20`: final `fsq=2.182503700046272e-08`;
+  - `ns015_mpol06_ntor24`: final `fsq=2.4705205119777944e-08`.
+
+### Interpretation
+
+- The full named target ladder now has office GPU/VMEC2000 evidence for
+  VMEC/JAX total-`fsq` convergence at `ftol=1e-8`.
+- This is materially stronger than the M200 three-iteration short audit: the
+  target rows are no longer only plumbing/parity checks.
+- The strict component convergence flags remain false, so this is a
+  total-`fsq` convergence result using the fast CLI policy, not a claim that all
+  strict VMEC2000-style component stopping criteria are identical.
+- VMEC/JAX reaches a much smaller total `fsq` than VMEC2000 at row 80 for these
+  generated target cases, while direct-initial residual parity remains within
+  about `0.2%` to `0.6%`.
+- The new CLI finish fields are necessary for interpreting these rows because
+  the final compact VMEC/JAX history is the best CLI-finished state, not a raw
+  80-point trajectory.
+
+### How it was tested
+
+Local checks after reporting changes:
+
+```bash
+python -m ruff check examples/toroidal_stellarator_mirror_hybrid_convergence.py tests/test_toroidal_hybrid.py
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py::test_toroidal_hybrid_convergence_history_summary_uses_iteration_labels -q
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py::test_toroidal_hybrid_convergence_example_aggregates_chunk_jsons -q
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Ruff passed.
+- Focused solver/CLI diagnostic helper test passed: `1 passed in 0.22s`.
+- Focused aggregate metric test passed: `1 passed in 0.79s`.
+- Full toroidal-hybrid tests passed: `31 passed in 9.17s`.
+- Sphinx docs build passed with warnings as errors.
+- Whitespace check passed.
+
+Representative 80-iteration office command pattern:
+
+```bash
+ssh office 'cd /home/rjorge/local/vmec_mirror && PYTHONPATH=$PWD JAX_ENABLE_X64=1 CUDA_VISIBLE_DEVICES=0 /home/rjorge/venvs/vmec_jax_gpu/bin/python examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  --outdir /home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_mpol05_iter80_m207 \
+  --resolution-preset target \
+  --case-filter "*mpol05_ntor20" \
+  --ntheta-fit 64 \
+  --nzeta-fit 64 \
+  --run-solve \
+  --max-iter 80 \
+  --niter 80 \
+  --nstep 1 \
+  --ftol 1e-8 \
+  --run-vmec2000 \
+  --vmec2000-exec /home/rjorge/vmec2000/_skbuild/linux-x86_64-3.11/cmake-install/bin/xvmec \
+  --vmec2000-timeout-s 240 \
+  --no-plots'
+```
+
+The same pattern was run for `*mpol06_ntor24`, then both JSONs were aggregated
+with `--aggregate-json`.  Generated outputs remain on office under ignored
+`results/` directories and were not copied into the git repository.
+
+### File structure and best-practice notes
+
+- The new reporting fields stay in the existing target-convergence example
+  because they describe run evidence rather than new solver APIs.
+- The source package API remains unchanged.
+- The code reuses the same compact row/CSV/aggregate structure, so split
+  campaigns remain easy to inspect without copying WOUT or `threed1` trees.
+- Tests are colocated with existing toroidal-hybrid example tests.
+- Docs were updated in `examples/mirror/README.md` and `docs/mirror/overview.rst`
+  to clarify scan diagnostics and CLI finish interpretation.
+
+### Best next steps
+
+1. Commit and push this M202 plan entry.
+2. Update the draft PR body with the six-row 80-iteration target result.
+3. Inspect only failed PR checks after the push.
+4. Run a final review audit focused on deferred lanes and docs/readiness wording:
+   the toroidal target total-`fsq` lane is now substantially complete, while
+   strict component convergence and production free-boundary LCFS convergence
+   should remain explicitly labeled.
+5. Optionally generate a small representative plot bundle for one converged
+   target row if review needs visual evidence, but keep it out of git unless a
+   compressed artifact is explicitly wanted.
+
+### Completion percentages after M202
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.3%` overall for the current diagnostic/reduced
+  solver scope, with production LCFS convergence still explicitly deferred.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `99.4%`, with all six named target
+  rows converged by total `fsq` at `ftol=1e-8` on office and VMEC2000 parity
+  outputs present; strict component convergence remains a caveat.
+- ESSOS circular-coil mirror beta scan: `99%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.6%`, pending GitHub checks, final audit, and
+  explicit review decision on deferred production free-boundary/strict-component
+  lanes.
+
+### User input needed
+
+No user input is needed for the final audit and cleanup pass.
