@@ -5739,851 +5739,6 @@ Visual validation:
 No user input is needed.
 
 ---
-## 172. Reduced Free-Boundary Residual-Vector Nonlinear Solve Loop
-
-### Steps taken
-
-- Added a reusable reduced residual-vector nonlinear least-squares solve loop:
-  `mirror_free_boundary_residual_vector_least_squares_solve`.
-- Added result dataclasses:
-  - `MirrorFreeBoundaryVectorLeastSquaresSolveRow`;
-  - `MirrorFreeBoundaryVectorLeastSquaresSolveResult`.
-- The loop reuses `mirror_free_boundary_residual_vector_least_squares_step` and
-  records each accepted or rejected step.
-- The loop now has explicit stop reasons:
-  - `target_residual`;
-  - `ls_step_not_accepted`;
-  - `stagnation`;
-  - `max_steps`.
-- Exported the new solve-loop API through `vmec_jax.mirror.api` and
-  `vmec_jax.mirror`.
-- Extended `examples/mirror_free_boundary_vector_ls_benchmark.py`:
-  - schema version `0.2`;
-  - per-backend `solve_rows`;
-  - solve convergence validation;
-  - new plotted solve residual-history figure.
-- Updated docs in `docs/mirror/overview.rst` and `examples/mirror/README.md`.
-- Added focused tests for convergence, rejected steps, stagnation, invalid
-  inputs, public API export, and benchmark schema `0.2`.
-
-### Results obtained
-
-- Reduced residual-vector prototypes can now run an actual nonlinear LS solve
-  loop instead of only a one-step diagnostic.
-- Plotted benchmark run:
-  `results/mirror/free_boundary_vector_ls_benchmark_m172_solve_loop_plots/mirror_free_boundary_vector_ls_benchmark_metrics.json`.
-- Benchmark schema `0.2` rows showed all derivative backends converged:
-  - finite difference: `target_residual`, `2` accepted steps,
-    final residual `1.415619462786164e-12`;
-  - JAX forward: `target_residual`, `2` accepted steps,
-    final residual `3.003608781755996e-17`;
-  - JAX reverse: `target_residual`, `2` accepted steps,
-    final residual `3.003608781755996e-17`;
-  - JAX auto: `target_residual`, `2` accepted steps,
-    final residual `3.003608781755996e-17`.
-- New plot visually inspected:
-  `results/mirror/free_boundary_vector_ls_benchmark_m172_solve_loop_plots/figures/mirror_free_boundary_vector_ls_solve_residual_history.png`.
-
-### How it was tested
-
-Commands run:
-
-```bash
-python -m ruff format vmec_jax/mirror/free_boundary.py \
-  vmec_jax/mirror/api.py \
-  vmec_jax/mirror/__init__.py \
-  examples/mirror_free_boundary_vector_ls_benchmark.py \
-  tests/mirror/test_mirror_free_boundary.py \
-  tests/mirror/test_mirror_examples.py
-python -m ruff check vmec_jax/mirror/free_boundary.py \
-  vmec_jax/mirror/api.py \
-  vmec_jax/mirror/__init__.py \
-  examples/mirror_free_boundary_vector_ls_benchmark.py \
-  tests/mirror/test_mirror_free_boundary.py \
-  tests/mirror/test_mirror_examples.py
-JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_free_boundary.py -q
-JAX_ENABLE_X64=1 pytest \
-  tests/mirror/test_mirror_examples.py::test_root_free_boundary_vector_ls_benchmark_runs_without_plots \
-  -q
-python -m sphinx -W -b html docs docs/_build/html
-JAX_ENABLE_X64=1 python examples/mirror_free_boundary_vector_ls_benchmark.py \
-  --outdir results/mirror/free_boundary_vector_ls_benchmark_m172_solve_loop_plots \
-  --nxi 17
-python - <<'PY'
-import vmec_jax.mirror as mirror
-import vmec_jax.mirror.api as api
-for module in (mirror, api):
-    missing = [name for name in module.__all__ if not hasattr(module, name)]
-    if missing:
-        raise SystemExit(f"{module.__name__} missing {missing}")
-for name in [
-    "MirrorFreeBoundaryVectorLeastSquaresSolveResult",
-    "MirrorFreeBoundaryVectorLeastSquaresSolveRow",
-    "mirror_free_boundary_residual_vector_least_squares_solve",
-]:
-    assert getattr(mirror, name) is getattr(api, name)
-print("mirror_public_api_ok")
-PY
-git diff --check
-```
-
-Results:
-
-- Ruff format/check passed.
-- Full mirror free-boundary test module passed: `116 passed in 3.61s`.
-- Focused benchmark example test passed: `1 passed in 2.17s`.
-- Sphinx docs build passed with warnings treated as errors.
-- Plotted benchmark completed and wrote the solve residual-history figure.
-- Public API consistency check printed `mirror_public_api_ok`.
-- Whitespace check passed.
-
-### File structure and best-practice notes
-
-- The solve loop lives in `vmec_jax/mirror/free_boundary.py` beside the
-  existing one-step reduced vector LS helper.
-- The root benchmark example remains the user-facing derivative-backend and
-  solve-loop comparison artifact.
-- The loop is deliberately reduced-residual-vector scoped. Host-side realized
-  fixed-boundary circular-coil trials still use the guarded callback loop until
-  the full coupled free-boundary residual becomes a promoted differentiable
-  solver path.
-- Generated plots/metrics remain under ignored `results/` paths.
-
-### Best next steps
-
-1. Commit and push M172.
-2. Refresh the draft PR body after this solve-loop promotion.
-3. Re-check CI after the latest head has jobs attached.
-4. Continue final known-limitations audit and decide whether the PR can move
-   from draft after one final full local/CI pass.
-
-### Completion percentages after M172
-
-- Geometry/grids/bases: `94%`.
-- Field/energy/residual kernels: `93%`.
-- Fixed-boundary axisymmetric solve: `91%`.
-- Residual Newton / preconditioning: `92%`.
-- Two-coil and manufactured validation: `90%`.
-- Finite-current pitch validation: `86%`.
-- Plotting and `vmec --plot` mirror support: `97%`.
-- I/O schema and docs: `100%`.
-- Differentiable solved-state API: `95%`.
-- Mirror-Boozer-like diagnostics: `83%`.
-- Free-boundary mirror lane: `99%` overall, with reduced residual-vector
-  nonlinear solve scope complete.
-- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
-- Toroidal stellarator-mirror hybrid lane: `95%`.
-- ESSOS circular-coil mirror beta scan: `97%`.
-- PR merge readiness overall: `99%`.
-
-### User input needed
-
-No user input is needed.
-
----
-## 171. Straight-Axis Hybrid Fixture Closure as Support Scope
-
-### Steps taken
-
-- Audited the straight-axis hybrid fixture against the corrected user target
-  that the final stellarator-mirror hybrid remains toroidal.
-- Kept `examples/mirror_stellarator_hybrid_boundary.py` as a straight-axis,
-  open-ended support fixture rather than a production hybrid target.
-- Added explicit machine-readable labels to the straight-axis example metrics:
-  - `hybrid_fixture_kind = "straight_axis_open_mirror_support_fixture"`;
-  - `final_hybrid_target_kind = "toroidal_stellarator_mirror_hybrid"`;
-  - `production_hybrid_claim = false`;
-  - a short `hybrid_scope_note`.
-- Added matching target labels to
-  `examples/toroidal_stellarator_mirror_hybrid.py` metrics.
-- Updated tests so both straight-axis and toroidal example metrics assert the
-  new scope labels.
-- Updated the mirror example README and mirror overview docs to state that the
-  straight-axis fixture is a support fixture and that the final hybrid target
-  is the toroidal lane.
-
-### Results obtained
-
-- The straight-axis hybrid lane is no longer an ambiguous open production lane.
-  It is closed as a support fixture for boundary, solver, and plotting stress
-  tests.
-- The toroidal hybrid lane remains the authoritative final hybrid target.
-- Low-resolution plotted smoke outputs confirmed both metrics labels and plots:
-  - straight-axis fixture:
-    `results/mirror/hybrid_label_m171_straight_axis_smoke/stellarator_hybrid_boundary_metrics.json`;
-  - toroidal fixture:
-    `results/toroidal_stellarator_mirror_hybrid_m171_label_smoke/toroidal_stellarator_mirror_hybrid_metrics.json`.
-- Visual plots inspected:
-  - `results/mirror/hybrid_label_m171_straight_axis_smoke/figures/stellarator_hybrid_boundary_mirror_boundary_3d.png`;
-  - `results/toroidal_stellarator_mirror_hybrid_m171_label_smoke/figures/toroidal_hybrid_lcfs_3d.png`.
-
-### How it was tested
-
-Commands run:
-
-```bash
-python -m ruff format --check examples/mirror_stellarator_hybrid_boundary.py \
-  examples/toroidal_stellarator_mirror_hybrid.py \
-  tests/mirror/test_mirror_examples.py \
-  tests/test_toroidal_hybrid.py
-python -m ruff check examples/mirror_stellarator_hybrid_boundary.py \
-  examples/toroidal_stellarator_mirror_hybrid.py \
-  tests/mirror/test_mirror_examples.py \
-  tests/test_toroidal_hybrid.py
-python -m sphinx -W -b html docs docs/_build/html
-JAX_ENABLE_X64=1 pytest \
-  tests/mirror/test_mirror_examples.py::test_root_stellarator_hybrid_boundary_example_runs_without_plots \
-  -q
-JAX_ENABLE_X64=1 pytest \
-  tests/test_toroidal_hybrid.py::test_toroidal_hybrid_example_runs_without_plots \
-  -q
-JAX_ENABLE_X64=1 python examples/mirror_stellarator_hybrid_boundary.py \
-  --outdir results/mirror/hybrid_label_m171_straight_axis_smoke \
-  --ns 5 --ntheta 13 --nxi 17 --mpol 4 --maxiter 0
-PYTHONPATH=/Users/rogeriojorge/local/vmec_mirror \
-  python examples/toroidal_stellarator_mirror_hybrid.py \
-  --outdir results/toroidal_stellarator_mirror_hybrid_m171_label_smoke \
-  --ntheta-fit 32 --nzeta-fit 32 --ntor 6
-JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
-```
-
-Results:
-
-- Ruff format/check passed.
-- Sphinx docs build passed with warnings treated as errors.
-- Straight-axis hybrid example test passed: `1 passed in 1.98s`.
-- Toroidal hybrid example test passed: `1 passed in 1.07s`.
-- Plotted straight-axis and toroidal hybrid smokes completed.
-- Full toroidal hybrid tests passed: `26 passed in 3.72s`.
-
-### File structure and best-practice notes
-
-- The straight-axis support fixture remains in the mirror examples because it
-  exercises open-ended mirror plotting and 3D boundary handling.
-- The toroidal target remains in the root toroidal hybrid example and
-  `vmec_jax.toroidal_hybrid`, reusing ordinary VMEC/JAX toroidal boundary and
-  solver paths.
-- The new scope labels are data fields, not prose-only documentation, so
-  downstream scripts can distinguish support fixtures from final target lanes.
-- Generated smoke outputs remain under ignored `results/` paths.
-
-### Best next steps
-
-1. Commit and push M171.
-2. Refresh the PR body if needed to mention that the straight-axis hybrid lane
-   is closed as a support fixture.
-3. Continue final plan closure with the final free-boundary nonlinear solve
-   status and remaining known limitations.
-4. Re-check CI after enough time has passed for the latest workflow to expose
-   actionable failures.
-
-### Completion percentages after M171
-
-- Geometry/grids/bases: `94%`.
-- Field/energy/residual kernels: `93%`.
-- Fixed-boundary axisymmetric solve: `91%`.
-- Residual Newton / preconditioning: `92%`.
-- Two-coil and manufactured validation: `90%`.
-- Finite-current pitch validation: `86%`.
-- Plotting and `vmec --plot` mirror support: `97%`.
-- I/O schema and docs: `100%`.
-- Differentiable solved-state API: `94%`.
-- Mirror-Boozer-like diagnostics: `83%`.
-- Free-boundary mirror lane: `99%`.
-- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
-- Toroidal stellarator-mirror hybrid lane: `95%`.
-- ESSOS circular-coil mirror beta scan: `97%`.
-- PR merge readiness overall: `99%`.
-
-### User input needed
-
-No user input is needed.
-
----
-## 170. Draft PR Body Synchronization After Boozer-Like Diagnostics Audit
-
-### Steps taken
-
-- Updated draft PR #21 body after M167-M169.
-- Changed the detailed implementation-log pointer from section 164 to
-  section 169.
-- Updated the current-content summary to include mirror-Boozer-like
-  surface-average/pitch diagnostic plots and compact JSON summary metrics.
-- Marked the Mirror-Boozer-like diagnostics checklist item complete in the PR
-  body for the plot, export, public API, and example JSON summary paths.
-- Replaced the latest-validation command block with the current full
-  `tests/mirror` pass, Sphinx, ruff, public API consistency, and whitespace
-  checks.
-- Added the current full mirror-suite result:
-  `218 passed, 1 skipped in 191.77s`.
-- Added the public API consistency check result `mirror_public_api_ok`.
-- Added plotted Boozer-like smoke evidence paths from M168.
-- Re-checked PR state and CI status after the latest push.
-
-### Results obtained
-
-- PR body verification confirmed:
-  - PR number `21`;
-  - draft state `true`;
-  - head SHA `a15ad6f9719f8285d527c33ef0a4f3ecde4f88eb`;
-  - body contains `section 169`;
-  - body contains the checked Mirror-Boozer-like checklist item;
-  - body contains `218 passed, 1 skipped in 191.77s`;
-  - body contains `mirror_public_api_ok`;
-  - body contains the M168 Boozer-like finite-current plot path.
-- GitHub checks are attached to the latest head and running. The nonblocking
-  snapshot showed `Parity Manifest Smoke (dry-run)` passing, `Physics Full
-  (manual/nightly)` skipped as configured, and the remaining standard jobs in
-  progress.
-
-### How it was tested
-
-Commands run:
-
-```bash
-gh pr view 21 --repo uwplasma/vmec_jax --json body -q .body > /tmp/vmec_mirror_pr_body_current.md
-python - <<'OUTERPY'
-# edit PR body text in /tmp
-OUTERPY
-gh pr edit 21 --repo uwplasma/vmec_jax --body-file /tmp/vmec_mirror_pr_body_current.md
-gh pr view 21 --repo uwplasma/vmec_jax --json number,isDraft,headRefOid,mergeStateStatus,body,url > /tmp/vmec_mirror_pr_view.json
-python - <<'PY'
-# verify required body markers
-PY
-gh pr checks 21 --repo uwplasma/vmec_jax --json name,state,bucket,startedAt,completedAt,link
-git status -sb
-```
-
-Results:
-
-- PR edit succeeded.
-- PR body verification passed.
-- PR remained draft.
-- Worktree was clean before this plan-only M170 log.
-
-### File structure and best-practice notes
-
-- No source files changed in this administrative tranche.
-- The PR body remains a concise review index while detailed evidence stays in
-  `plan_mirror.md`.
-- CI was sampled once after jobs attached; the workflow is intentionally not
-  being polled continuously.
-
-### Best next steps
-
-1. Commit and push M170 plan log.
-2. Continue final plan closure with the remaining-gap audit:
-   - straight-axis hybrid fixture lane;
-   - final free-boundary nonlinear solve status;
-   - final PR readiness and known limitations.
-3. Re-check CI after additional implementation or after enough time has passed
-   to make a failure actionable.
-
-### Completion percentages after M170
-
-- Geometry/grids/bases: `94%`.
-- Field/energy/residual kernels: `93%`.
-- Fixed-boundary axisymmetric solve: `91%`.
-- Residual Newton / preconditioning: `92%`.
-- Two-coil and manufactured validation: `90%`.
-- Finite-current pitch validation: `86%`.
-- Plotting and `vmec --plot` mirror support: `97%`.
-- I/O schema and docs: `100%`.
-- Differentiable solved-state API: `94%`.
-- Mirror-Boozer-like diagnostics: `83%`.
-- Free-boundary mirror lane: `99%`.
-- Straight-axis hybrid fixture lane: `25%`.
-- Toroidal stellarator-mirror hybrid lane: `95%`.
-- ESSOS circular-coil mirror beta scan: `97%`.
-- PR merge readiness overall: `99%`.
-
-### User input needed
-
-No user input is needed.
-
----
-## 169. Public API and Docs Index Merge-Readiness Audit
-
-### Steps taken
-
-- Ran a full `tests/mirror` pass at the start of the merge-readiness audit.
-- Audited `vmec_jax/mirror/api.py`, `vmec_jax/mirror/__init__.py`, and
-  `vmec_jax/mirror/plotting/__init__.py` for the new mirror-Boozer-like
-  helpers.
-- Promoted the new Boozer-like diagnostics through the main mirror public API:
-  - `MirrorBoozerLikeDiagnosticsData`;
-  - `mirror_boozer_like_diagnostics_data`;
-  - `mirror_boozer_like_summary_metrics`;
-  - `write_mirror_boozer_like_diagnostics`.
-- Added a public-import assertion in `tests/mirror/test_mirror_plotting.py`.
-- Updated `docs/mirror/index.rst` so the mirror documentation index names the
-  cap-to-cap pitch and mirror-Boozer-like diagnostic lane and fixes stale
-  wording in the experimental warning.
-- Ran a second full `tests/mirror` pass after the API/doc/test patch so the
-  final evidence matches the current worktree.
-
-### Results obtained
-
-- `vmec_jax.mirror` and `vmec_jax.mirror.api` now expose the same
-  mirror-Boozer-like public helper names.
-- A lightweight import audit confirmed every `vmec_jax.mirror.__all__` and
-  `vmec_jax.mirror.api.__all__` name exists and the new top-level helpers are
-  the same objects as their `api` exports.
-- The mirror docs index now matches the current diagnostic surface.
-- Current-state full mirror suite passed.
-
-### How it was tested
-
-Commands run:
-
-```bash
-JAX_ENABLE_X64=1 pytest tests/mirror -q
-python -m ruff format --check vmec_jax/mirror/api.py \
-  vmec_jax/mirror/__init__.py \
-  tests/mirror/test_mirror_plotting.py
-python -m ruff check vmec_jax/mirror/api.py \
-  vmec_jax/mirror/__init__.py \
-  tests/mirror/test_mirror_plotting.py
-python -m sphinx -W -b html docs docs/_build/html
-JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_plotting.py -q
-python - <<'PY'
-import vmec_jax.mirror as mirror
-import vmec_jax.mirror.api as api
-for module in (mirror, api):
-    missing = [name for name in module.__all__ if not hasattr(module, name)]
-    if missing:
-        raise SystemExit(f"{module.__name__} missing {missing}")
-for name in [
-    "MirrorBoozerLikeDiagnosticsData",
-    "mirror_boozer_like_diagnostics_data",
-    "mirror_boozer_like_summary_metrics",
-    "write_mirror_boozer_like_diagnostics",
-]:
-    assert getattr(mirror, name) is getattr(api, name)
-print("mirror_public_api_ok")
-PY
-JAX_ENABLE_X64=1 pytest tests/mirror -q
-```
-
-Results:
-
-- First broad mirror suite passed: `218 passed, 1 skipped in 194.09s`.
-- Ruff format/check passed on the API/test patch.
-- Sphinx docs build passed with warnings treated as errors.
-- Focused plotting/API test passed: `4 passed in 5.17s`.
-- Public API consistency check printed `mirror_public_api_ok`.
-- Current-state broad mirror suite passed:
-  `218 passed, 1 skipped in 191.77s`.
-
-### File structure and best-practice notes
-
-- The numerical implementation remains in the plotting diagnostics module.
-- The top-level mirror API now exposes the user-facing data/helper/writer names
-  without moving implementation code.
-- The docs index remains concise and points readers to the existing overview,
-  outputs, and differentiability pages rather than adding another near-empty
-  page.
-- No generated results were committed.
-
-### Best next steps
-
-1. Commit and push M169.
-2. Refresh the draft PR body so reviewers see the M167-M169 diagnostics/API
-   work and current full mirror-suite result.
-3. Re-check GitHub checks after the latest head has jobs attached.
-4. Continue final plan closure with a concise remaining-gap audit across:
-   straight-axis hybrid fixture, final free-boundary solve status, and PR
-   readiness.
-
-### Completion percentages after M169
-
-- Geometry/grids/bases: `94%`.
-- Field/energy/residual kernels: `93%`.
-- Fixed-boundary axisymmetric solve: `91%`.
-- Residual Newton / preconditioning: `92%`.
-- Two-coil and manufactured validation: `90%`.
-- Finite-current pitch validation: `86%`.
-- Plotting and `vmec --plot` mirror support: `97%`.
-- I/O schema and docs: `100%`.
-- Differentiable solved-state API: `94%`.
-- Mirror-Boozer-like diagnostics: `82%`.
-- Free-boundary mirror lane: `99%`.
-- Straight-axis hybrid fixture lane: `25%`.
-- Toroidal stellarator-mirror hybrid lane: `95%`.
-- ESSOS circular-coil mirror beta scan: `97%`.
-- PR merge readiness overall: `99%`.
-
-### User input needed
-
-No user input is needed.
-
----
-## 168. Boozer-Like Summary Metrics in Two-Coil and Finite-Current Examples
-
-### Steps taken
-
-- Added `mirror_boozer_like_summary_metrics` beside the profile-data helper in
-  `vmec_jax/mirror/plotting/diagnostics.py`.
-- Exported the summary helper from `vmec_jax/mirror/plotting/__init__.py`.
-- Wired the summary metrics into:
-  - `examples/mirror_two_coil_axisym.py`;
-  - `examples/mirror_finite_current_pitch.py`.
-- Updated example tests so the no-plot smoke paths assert the new JSON fields.
-- Updated the example README to note that no-plot benchmark metrics retain the
-  mirror-Boozer-like surface-average, ripple, mirror-ratio, pitch, and
-  well-proxy summaries.
-
-### Results obtained
-
-- The two-coil and finite-current root example JSON files now include compact
-  scalar summaries:
-  - surface-averaged `|B|` min/max;
-  - global `|B|` min/max;
-  - surface mirror-ratio min/max;
-  - maximum normalized `|B|` ripple RMS;
-  - `I'/Psi'` mean/min/max;
-  - field-line turns mean/min/max;
-  - contravariant pitch mean range and pitch-RMS maximum;
-  - covariant pitch-ratio range;
-  - magnetic-well-proxy range.
-- Low-resolution plotted smoke values:
-  - two-coil vacuum:
-    - `boozer_like_surface_mirror_ratio_max = 15.450964869176072`;
-    - `boozer_like_field_line_turns_mean = 0.0`;
-    - `boozer_like_contravariant_pitch_rms_max = 0.0`;
-    - `boozer_like_bmag_ripple_rms_max = 1.0785093792282217`;
-  - finite current:
-    - `boozer_like_surface_mirror_ratio_max = 13.940071600691715`;
-    - `boozer_like_field_line_turns_mean = 0.5430244027554318`;
-    - `boozer_like_contravariant_pitch_rms_max = 0.14859708176458764`;
-    - `boozer_like_bmag_ripple_rms_max = 1.0645886648294252`.
-- Generated plotted smoke figures:
-  - `results/mirror/boozer_like_m168_two_coil_smoke/figures/two_coil_axisym_mirror_boozer_like_diagnostics.png`;
-  - `results/mirror/boozer_like_m168_finite_current_smoke/figures/finite_current_pitch_mirror_boozer_like_diagnostics.png`.
-
-### How it was tested
-
-Commands run:
-
-```bash
-python -m ruff format vmec_jax/mirror/plotting/diagnostics.py \
-  vmec_jax/mirror/plotting/__init__.py \
-  examples/mirror_two_coil_axisym.py \
-  examples/mirror_finite_current_pitch.py \
-  tests/mirror/test_mirror_plotting.py \
-  tests/mirror/test_mirror_examples.py
-python -m ruff check vmec_jax/mirror/plotting/diagnostics.py \
-  vmec_jax/mirror/plotting/__init__.py \
-  examples/mirror_two_coil_axisym.py \
-  examples/mirror_finite_current_pitch.py \
-  tests/mirror/test_mirror_plotting.py \
-  tests/mirror/test_mirror_examples.py
-JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_plotting.py \
-  tests/mirror/test_mirror_examples.py::test_root_two_coil_axisym_example_runs_without_plots \
-  tests/mirror/test_mirror_examples.py::test_root_finite_current_pitch_example_runs_without_plots \
-  -q
-python -m sphinx -W -b html docs docs/_build/html
-JAX_ENABLE_X64=1 python examples/mirror_two_coil_axisym.py \
-  --outdir results/mirror/boozer_like_m168_two_coil_smoke \
-  --ns 5 --nxi 9 --maxiter 2
-JAX_ENABLE_X64=1 python examples/mirror_finite_current_pitch.py \
-  --outdir results/mirror/boozer_like_m168_finite_current_smoke \
-  --ns 5 --nxi 9 --maxiter 2
-```
-
-Results:
-
-- Ruff format/check passed.
-- Focused tests passed: `6 passed in 7.78s`.
-- Sphinx docs build passed with warnings treated as errors.
-- Both plotted smokes completed and wrote the new diagnostic figures.
-- JSON metric readback confirmed the expected zero-pitch and finite-pitch
-  behavior.
-
-### File structure and best-practice notes
-
-- The scalar summary helper reuses `mirror_boozer_like_diagnostics_data` rather
-  than duplicating profile logic in examples.
-- Existing example metrics JSON files were extended in place; no new root
-  artifact type was introduced.
-- Tests live in existing plotting/example suites and check both low-level
-  helper output and user-facing JSON fields.
-- Generated MOUT/PNG/JSON smoke outputs remain under ignored `results/` paths.
-
-### Best next steps
-
-1. Commit and push M168.
-2. Re-check PR checks later, after GitHub attaches jobs for the latest head.
-3. Continue final open lanes with a merge-readiness audit:
-   - public mirror API/export audit;
-   - docs index and README audit;
-   - targeted full `tests/mirror` pass;
-   - PR body refresh to point reviewers to M168 and the remaining known gaps.
-
-### Completion percentages after M168
-
-- Geometry/grids/bases: `94%`.
-- Field/energy/residual kernels: `93%`.
-- Fixed-boundary axisymmetric solve: `91%`.
-- Residual Newton / preconditioning: `92%`.
-- Two-coil and manufactured validation: `90%`.
-- Finite-current pitch validation: `86%`.
-- Plotting and `vmec --plot` mirror support: `96%`.
-- I/O schema and docs: `100%`.
-- Differentiable solved-state API: `94%`.
-- Mirror-Boozer-like diagnostics: `74%`.
-- Free-boundary mirror lane: `99%`.
-- Straight-axis hybrid fixture lane: `25%`.
-- Toroidal stellarator-mirror hybrid lane: `95%`.
-- ESSOS circular-coil mirror beta scan: `97%`.
-- PR merge readiness overall: `98%`.
-
-### User input needed
-
-No user input is needed.
-
----
-## 167. Mirror-Boozer-Like Surface Diagnostics in Standard Plot and Export Paths
-
-### Steps taken
-
-- Added `MirrorBoozerLikeDiagnosticsData` and
-  `mirror_boozer_like_diagnostics_data` in
-  `vmec_jax/mirror/plotting/diagnostics.py`.
-- The new helper computes mirror-native, Jacobian-weighted surface diagnostics:
-  - surface measure;
-  - flux-surface averaged, minimum, and maximum `|B|`;
-  - per-surface mirror ratio;
-  - normalized `|B|` ripple RMS;
-  - `I'/Psi'` twist proxy;
-  - cap-to-cap field-line turns;
-  - contravariant pitch mean and RMS;
-  - covariant pitch ratio;
-  - magnetic-well proxy from the Jacobian-weighted `|B|` average.
-- Added `write_mirror_boozer_like_diagnostics` and wired it into the standard
-  `plot_mirror_output` bundle under the key `boozer_like_diagnostics`.
-- Extended lightweight `.npz` and axisymmetric CSV exports with the
-  mirror-Boozer-like profile fields.
-- Exported the new plotting dataclass/helper/writer from
-  `vmec_jax/mirror/plotting/__init__.py`.
-- Updated `docs/mirror/overview.rst`, `docs/mirror/outputs.rst`, and
-  `examples/mirror/README.md` so the standard plot/export documentation names
-  the new diagnostics and explicitly states that these are not toroidal Boozer
-  coordinates.
-
-### Results obtained
-
-- `vmec --plot` and `plot_mirror_output` now produce a six-panel
-  `*_mirror_boozer_like_diagnostics.png` plot for mirror `mout_*.nc` files.
-- The plot shows:
-  - `|B|` surface average/min/max;
-  - mirror ratio and normalized ripple;
-  - open-field pitch from `I'/Psi'` and measured cap-to-cap turns;
-  - contravariant pitch mean/RMS;
-  - covariant pitch proxy;
-  - magnetic-well proxy.
-- Zero-current two-coil smoke shows zero pitch panels, as expected.
-- Finite-current smoke shows visible pitch:
-  - cap-to-cap turns from `0.5416456906746907` to `0.5464761155828083`;
-  - contravariant pitch mean from `1.7111044930933443` to
-    `1.7168053500772373`;
-  - maximum pitch RMS `0.14859708176458764`.
-- Visual plots inspected:
-  - `results/mirror/boozer_like_m167_smoke/figures/two_coil_axisym_mirror_boozer_like_diagnostics.png`;
-  - `results/mirror/boozer_like_m167_finite_current_smoke/figures/finite_current_pitch_mirror_boozer_like_diagnostics.png`.
-
-### How it was tested
-
-Commands run:
-
-```bash
-python -m ruff format vmec_jax/mirror/plotting/diagnostics.py \
-  vmec_jax/mirror/plotting/export.py \
-  vmec_jax/mirror/plotting/__init__.py \
-  tests/mirror/test_mirror_plotting.py \
-  tests/mirror/test_mirror_io.py
-python -m ruff check vmec_jax/mirror/plotting/diagnostics.py \
-  vmec_jax/mirror/plotting/export.py \
-  vmec_jax/mirror/plotting/__init__.py \
-  tests/mirror/test_mirror_plotting.py \
-  tests/mirror/test_mirror_io.py
-JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_plotting.py \
-  tests/mirror/test_mirror_io.py -q
-python -m sphinx -W -b html docs docs/_build/html
-JAX_ENABLE_X64=1 python examples/mirror_two_coil_axisym.py \
-  --outdir results/mirror/boozer_like_m167_smoke --ns 5 --nxi 9 --maxiter 2
-JAX_ENABLE_X64=1 python examples/mirror_finite_current_pitch.py \
-  --outdir results/mirror/boozer_like_m167_finite_current_smoke \
-  --ns 5 --nxi 9 --maxiter 2
-python - <<'PY'
-from pathlib import Path
-import numpy as np
-from vmec_jax.mirror.io.mout import load_mirror_output
-from vmec_jax.mirror.plotting.diagnostics import mirror_boozer_like_diagnostics_data
-output = load_mirror_output(Path(
-    "results/mirror/boozer_like_m167_finite_current_smoke/mout_finite_current_pitch.nc"
-))
-data = mirror_boozer_like_diagnostics_data(output)
-print(float(np.min(data.field_line_turns)), float(np.max(data.field_line_turns)))
-print(float(np.min(data.contravariant_pitch_mean)), float(np.max(data.contravariant_pitch_mean)))
-print(float(np.max(data.contravariant_pitch_rms)))
-PY
-git diff --check
-```
-
-Results:
-
-- Ruff format/check passed.
-- Focused plotting and I/O tests passed: `8 passed in 6.30s`.
-- Sphinx docs build passed with warnings treated as errors.
-- Two-coil plotted smoke completed and wrote the new Boozer-like plot.
-- Finite-current plotted smoke completed and wrote the new Boozer-like plot.
-- Direct helper readback from the finite-current MOUT confirmed nonzero pitch
-  profiles.
-- Whitespace check passed.
-
-### File structure and best-practice notes
-
-- Numerical profile construction stays in
-  `vmec_jax/mirror/plotting/diagnostics.py` beside the existing radial,
-  pressure, Jacobian, and residual-history diagnostics.
-- High-level plot/NPZ/CSV wiring stays in `vmec_jax/mirror/plotting/export.py`.
-- Public plotting imports stay centralized in
-  `vmec_jax/mirror/plotting/__init__.py`.
-- Tests are focused in the existing plotting and I/O test modules; no new test
-  file was needed.
-- Generated figures and MOUT files remain under ignored `results/` paths and
-  are not committed.
-- The docs avoid claiming real toroidal Boozer coordinates for open mirrors,
-  which keeps the terminology physically honest while still making the lane
-  useful for profile comparisons.
-
-### Best next steps
-
-1. Commit and push M167.
-2. Re-check PR checks once the queued docs commit has run long enough to expose
-   failures, but do not block on CI if it is still queued.
-3. Continue the Mirror-Boozer-like lane with a compact example/JSON summary
-   that records these profile extrema for two-coil and finite-current cases.
-4. Then move to final merge-readiness cleanup: plan audit, public API audit,
-   docs index audit, and a targeted all-mirror test pass.
-
-### Completion percentages after M167
-
-- Geometry/grids/bases: `94%`.
-- Field/energy/residual kernels: `93%`.
-- Fixed-boundary axisymmetric solve: `91%`.
-- Residual Newton / preconditioning: `92%`.
-- Two-coil and manufactured validation: `89%`.
-- Finite-current pitch validation: `84%`.
-- Plotting and `vmec --plot` mirror support: `96%`.
-- I/O schema and docs: `100%`.
-- Differentiable solved-state API: `94%`.
-- Mirror-Boozer-like diagnostics: `64%`.
-- Free-boundary mirror lane: `99%`.
-- Straight-axis hybrid fixture lane: `25%`.
-- Toroidal stellarator-mirror hybrid lane: `95%`.
-- ESSOS circular-coil mirror beta scan: `97%`.
-- PR merge readiness overall: `98%`.
-
-### User input needed
-
-No user input is needed.
-
----
-## 166. Documented Free-Boundary Derivative-Backend Selection
-
-### Steps taken
-
-- Re-checked the active repository and draft PR state after resuming:
-  - branch `codex/mirror-geometry`;
-  - PR #21 still draft;
-  - head SHA `3372029339498762d82c639d63fb685a1438cd39`;
-  - GitHub reported all current checks passing, including the combined coverage
-    gate, docs, fast tests, physics smoke, build, and Codecov statuses.
-- Confirmed that `/Users/rogeriojorge/local/vmec_mirror/plan_mirror.md` is the
-  active single plan; the original Downloads attachment is stale.
-- Added user-facing derivative-route guidance to the mirror example README.
-- Added matching Sphinx overview guidance for free-boundary derivative backend
-  selection.
-
-### Results obtained
-
-- The documented default is now explicit:
-  - use finite-difference Jacobians for current host-side CLI loops that call
-    fixed-boundary trial solves, write MOUT files, or use plotting/report
-    callbacks;
-  - use `jacobian_backend="jax"` with `jax_mode="auto"` for reduced residual
-    vector prototypes that are already pure JAX functions of boundary
-    parameters;
-  - automatic JAX mode uses forward differentiation when the number of boundary
-    parameters is no larger than the residual-vector length and reverse
-    differentiation for smaller residual or scalar-like targets.
-- The docs now point to `examples/mirror_free_boundary_vector_ls_benchmark.py`
-  as the benchmark that compares finite-difference, JAX forward, JAX reverse,
-  and JAX automatic derivative routes.
-
-### How it was tested
-
-Commands run:
-
-```bash
-gh pr view 21 --repo uwplasma/vmec_jax --json number,title,isDraft,headRefName,headRefOid,baseRefName,mergeStateStatus,url
-gh pr checks 21 --repo uwplasma/vmec_jax --json name,state,bucket,startedAt,completedAt,link
-python -m sphinx -W -b html docs docs/_build/html
-git diff --check
-```
-
-Results:
-
-- PR state check confirmed draft PR #21 on the expected branch and SHA.
-- GitHub checks were all passing on the current head; the manual/nightly full
-  physics job was skipped as configured.
-- Sphinx docs build passed with warnings treated as errors.
-- Whitespace check passed.
-
-### File structure and best-practice notes
-
-- `examples/mirror/README.md` now carries practical example-level guidance for
-  derivative backend choice.
-- `docs/mirror/overview.rst` carries the same policy at package-doc level.
-- No generated benchmark outputs or figures were committed.
-- The documentation separates fast CLI runtime concerns from the differentiable
-  pure-JAX residual-vector path, matching the source structure in
-  `vmec_jax/mirror/free_boundary.py`.
-
-### Best next steps
-
-1. Commit and push M166.
-2. Refresh the PR body to mention the derivative-backend policy if the body
-   does not already point reviewers to section 166.
-3. Continue the next open implementation lane, prioritizing the
-   Mirror-Boozer-like diagnostics lane because it remains the lowest-completion
-   source lane.
-
-### Completion percentages after M166
-
-- Geometry/grids/bases: `94%`.
-- Field/energy/residual kernels: `93%`.
-- Fixed-boundary axisymmetric solve: `91%`.
-- Residual Newton / preconditioning: `92%`.
-- Two-coil and manufactured validation: `89%`.
-- Finite-current pitch validation: `82%`.
-- Plotting and `vmec --plot` mirror support: `93%`.
-- I/O schema and docs: `100%`.
-- Differentiable solved-state API: `94%`.
-- Mirror-Boozer-like diagnostics: `36%`.
-- Free-boundary mirror lane: `99%`.
-- Straight-axis hybrid fixture lane: `25%`.
-- Toroidal stellarator-mirror hybrid lane: `95%`.
-- ESSOS circular-coil mirror beta scan: `97%`.
-- PR merge readiness overall: `98%`.
-
-### User input needed
-
-No user input is needed.
-
----
 ## 56. 2026-06-17 M8w matrix-free block LSMR correction
 
 This lane converted the successful M8u/M8v block-dense split into a scalable
@@ -21182,6 +20337,944 @@ Results:
 - Toroidal stellarator-mirror hybrid lane: `95%`.
 - ESSOS circular-coil mirror beta scan: `97%`.
 - PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
+---
+## 166. Documented Free-Boundary Derivative-Backend Selection
+
+### Steps taken
+
+- Re-checked the active repository and draft PR state after resuming:
+  - branch `codex/mirror-geometry`;
+  - PR #21 still draft;
+  - head SHA `3372029339498762d82c639d63fb685a1438cd39`;
+  - GitHub reported all current checks passing, including the combined coverage
+    gate, docs, fast tests, physics smoke, build, and Codecov statuses.
+- Confirmed that `/Users/rogeriojorge/local/vmec_mirror/plan_mirror.md` is the
+  active single plan; the original Downloads attachment is stale.
+- Added user-facing derivative-route guidance to the mirror example README.
+- Added matching Sphinx overview guidance for free-boundary derivative backend
+  selection.
+
+### Results obtained
+
+- The documented default is now explicit:
+  - use finite-difference Jacobians for current host-side CLI loops that call
+    fixed-boundary trial solves, write MOUT files, or use plotting/report
+    callbacks;
+  - use `jacobian_backend="jax"` with `jax_mode="auto"` for reduced residual
+    vector prototypes that are already pure JAX functions of boundary
+    parameters;
+  - automatic JAX mode uses forward differentiation when the number of boundary
+    parameters is no larger than the residual-vector length and reverse
+    differentiation for smaller residual or scalar-like targets.
+- The docs now point to `examples/mirror_free_boundary_vector_ls_benchmark.py`
+  as the benchmark that compares finite-difference, JAX forward, JAX reverse,
+  and JAX automatic derivative routes.
+
+### How it was tested
+
+Commands run:
+
+```bash
+gh pr view 21 --repo uwplasma/vmec_jax --json number,title,isDraft,headRefName,headRefOid,baseRefName,mergeStateStatus,url
+gh pr checks 21 --repo uwplasma/vmec_jax --json name,state,bucket,startedAt,completedAt,link
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- PR state check confirmed draft PR #21 on the expected branch and SHA.
+- GitHub checks were all passing on the current head; the manual/nightly full
+  physics job was skipped as configured.
+- Sphinx docs build passed with warnings treated as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- `examples/mirror/README.md` now carries practical example-level guidance for
+  derivative backend choice.
+- `docs/mirror/overview.rst` carries the same policy at package-doc level.
+- No generated benchmark outputs or figures were committed.
+- The documentation separates fast CLI runtime concerns from the differentiable
+  pure-JAX residual-vector path, matching the source structure in
+  `vmec_jax/mirror/free_boundary.py`.
+
+### Best next steps
+
+1. Commit and push M166.
+2. Refresh the PR body to mention the derivative-backend policy if the body
+   does not already point reviewers to section 166.
+3. Continue the next open implementation lane, prioritizing the
+   Mirror-Boozer-like diagnostics lane because it remains the lowest-completion
+   source lane.
+
+### Completion percentages after M166
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `82%`.
+- Plotting and `vmec --plot` mirror support: `93%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `94%`.
+- Mirror-Boozer-like diagnostics: `36%`.
+- Free-boundary mirror lane: `99%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+## 167. Mirror-Boozer-Like Surface Diagnostics in Standard Plot and Export Paths
+
+### Steps taken
+
+- Added `MirrorBoozerLikeDiagnosticsData` and
+  `mirror_boozer_like_diagnostics_data` in
+  `vmec_jax/mirror/plotting/diagnostics.py`.
+- The new helper computes mirror-native, Jacobian-weighted surface diagnostics:
+  - surface measure;
+  - flux-surface averaged, minimum, and maximum `|B|`;
+  - per-surface mirror ratio;
+  - normalized `|B|` ripple RMS;
+  - `I'/Psi'` twist proxy;
+  - cap-to-cap field-line turns;
+  - contravariant pitch mean and RMS;
+  - covariant pitch ratio;
+  - magnetic-well proxy from the Jacobian-weighted `|B|` average.
+- Added `write_mirror_boozer_like_diagnostics` and wired it into the standard
+  `plot_mirror_output` bundle under the key `boozer_like_diagnostics`.
+- Extended lightweight `.npz` and axisymmetric CSV exports with the
+  mirror-Boozer-like profile fields.
+- Exported the new plotting dataclass/helper/writer from
+  `vmec_jax/mirror/plotting/__init__.py`.
+- Updated `docs/mirror/overview.rst`, `docs/mirror/outputs.rst`, and
+  `examples/mirror/README.md` so the standard plot/export documentation names
+  the new diagnostics and explicitly states that these are not toroidal Boozer
+  coordinates.
+
+### Results obtained
+
+- `vmec --plot` and `plot_mirror_output` now produce a six-panel
+  `*_mirror_boozer_like_diagnostics.png` plot for mirror `mout_*.nc` files.
+- The plot shows:
+  - `|B|` surface average/min/max;
+  - mirror ratio and normalized ripple;
+  - open-field pitch from `I'/Psi'` and measured cap-to-cap turns;
+  - contravariant pitch mean/RMS;
+  - covariant pitch proxy;
+  - magnetic-well proxy.
+- Zero-current two-coil smoke shows zero pitch panels, as expected.
+- Finite-current smoke shows visible pitch:
+  - cap-to-cap turns from `0.5416456906746907` to `0.5464761155828083`;
+  - contravariant pitch mean from `1.7111044930933443` to
+    `1.7168053500772373`;
+  - maximum pitch RMS `0.14859708176458764`.
+- Visual plots inspected:
+  - `results/mirror/boozer_like_m167_smoke/figures/two_coil_axisym_mirror_boozer_like_diagnostics.png`;
+  - `results/mirror/boozer_like_m167_finite_current_smoke/figures/finite_current_pitch_mirror_boozer_like_diagnostics.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format vmec_jax/mirror/plotting/diagnostics.py \
+  vmec_jax/mirror/plotting/export.py \
+  vmec_jax/mirror/plotting/__init__.py \
+  tests/mirror/test_mirror_plotting.py \
+  tests/mirror/test_mirror_io.py
+python -m ruff check vmec_jax/mirror/plotting/diagnostics.py \
+  vmec_jax/mirror/plotting/export.py \
+  vmec_jax/mirror/plotting/__init__.py \
+  tests/mirror/test_mirror_plotting.py \
+  tests/mirror/test_mirror_io.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_plotting.py \
+  tests/mirror/test_mirror_io.py -q
+python -m sphinx -W -b html docs docs/_build/html
+JAX_ENABLE_X64=1 python examples/mirror_two_coil_axisym.py \
+  --outdir results/mirror/boozer_like_m167_smoke --ns 5 --nxi 9 --maxiter 2
+JAX_ENABLE_X64=1 python examples/mirror_finite_current_pitch.py \
+  --outdir results/mirror/boozer_like_m167_finite_current_smoke \
+  --ns 5 --nxi 9 --maxiter 2
+python - <<'PY'
+from pathlib import Path
+import numpy as np
+from vmec_jax.mirror.io.mout import load_mirror_output
+from vmec_jax.mirror.plotting.diagnostics import mirror_boozer_like_diagnostics_data
+output = load_mirror_output(Path(
+    "results/mirror/boozer_like_m167_finite_current_smoke/mout_finite_current_pitch.nc"
+))
+data = mirror_boozer_like_diagnostics_data(output)
+print(float(np.min(data.field_line_turns)), float(np.max(data.field_line_turns)))
+print(float(np.min(data.contravariant_pitch_mean)), float(np.max(data.contravariant_pitch_mean)))
+print(float(np.max(data.contravariant_pitch_rms)))
+PY
+git diff --check
+```
+
+Results:
+
+- Ruff format/check passed.
+- Focused plotting and I/O tests passed: `8 passed in 6.30s`.
+- Sphinx docs build passed with warnings treated as errors.
+- Two-coil plotted smoke completed and wrote the new Boozer-like plot.
+- Finite-current plotted smoke completed and wrote the new Boozer-like plot.
+- Direct helper readback from the finite-current MOUT confirmed nonzero pitch
+  profiles.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- Numerical profile construction stays in
+  `vmec_jax/mirror/plotting/diagnostics.py` beside the existing radial,
+  pressure, Jacobian, and residual-history diagnostics.
+- High-level plot/NPZ/CSV wiring stays in `vmec_jax/mirror/plotting/export.py`.
+- Public plotting imports stay centralized in
+  `vmec_jax/mirror/plotting/__init__.py`.
+- Tests are focused in the existing plotting and I/O test modules; no new test
+  file was needed.
+- Generated figures and MOUT files remain under ignored `results/` paths and
+  are not committed.
+- The docs avoid claiming real toroidal Boozer coordinates for open mirrors,
+  which keeps the terminology physically honest while still making the lane
+  useful for profile comparisons.
+
+### Best next steps
+
+1. Commit and push M167.
+2. Re-check PR checks once the queued docs commit has run long enough to expose
+   failures, but do not block on CI if it is still queued.
+3. Continue the Mirror-Boozer-like lane with a compact example/JSON summary
+   that records these profile extrema for two-coil and finite-current cases.
+4. Then move to final merge-readiness cleanup: plan audit, public API audit,
+   docs index audit, and a targeted all-mirror test pass.
+
+### Completion percentages after M167
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `89%`.
+- Finite-current pitch validation: `84%`.
+- Plotting and `vmec --plot` mirror support: `96%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `94%`.
+- Mirror-Boozer-like diagnostics: `64%`.
+- Free-boundary mirror lane: `99%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+## 168. Boozer-Like Summary Metrics in Two-Coil and Finite-Current Examples
+
+### Steps taken
+
+- Added `mirror_boozer_like_summary_metrics` beside the profile-data helper in
+  `vmec_jax/mirror/plotting/diagnostics.py`.
+- Exported the summary helper from `vmec_jax/mirror/plotting/__init__.py`.
+- Wired the summary metrics into:
+  - `examples/mirror_two_coil_axisym.py`;
+  - `examples/mirror_finite_current_pitch.py`.
+- Updated example tests so the no-plot smoke paths assert the new JSON fields.
+- Updated the example README to note that no-plot benchmark metrics retain the
+  mirror-Boozer-like surface-average, ripple, mirror-ratio, pitch, and
+  well-proxy summaries.
+
+### Results obtained
+
+- The two-coil and finite-current root example JSON files now include compact
+  scalar summaries:
+  - surface-averaged `|B|` min/max;
+  - global `|B|` min/max;
+  - surface mirror-ratio min/max;
+  - maximum normalized `|B|` ripple RMS;
+  - `I'/Psi'` mean/min/max;
+  - field-line turns mean/min/max;
+  - contravariant pitch mean range and pitch-RMS maximum;
+  - covariant pitch-ratio range;
+  - magnetic-well-proxy range.
+- Low-resolution plotted smoke values:
+  - two-coil vacuum:
+    - `boozer_like_surface_mirror_ratio_max = 15.450964869176072`;
+    - `boozer_like_field_line_turns_mean = 0.0`;
+    - `boozer_like_contravariant_pitch_rms_max = 0.0`;
+    - `boozer_like_bmag_ripple_rms_max = 1.0785093792282217`;
+  - finite current:
+    - `boozer_like_surface_mirror_ratio_max = 13.940071600691715`;
+    - `boozer_like_field_line_turns_mean = 0.5430244027554318`;
+    - `boozer_like_contravariant_pitch_rms_max = 0.14859708176458764`;
+    - `boozer_like_bmag_ripple_rms_max = 1.0645886648294252`.
+- Generated plotted smoke figures:
+  - `results/mirror/boozer_like_m168_two_coil_smoke/figures/two_coil_axisym_mirror_boozer_like_diagnostics.png`;
+  - `results/mirror/boozer_like_m168_finite_current_smoke/figures/finite_current_pitch_mirror_boozer_like_diagnostics.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format vmec_jax/mirror/plotting/diagnostics.py \
+  vmec_jax/mirror/plotting/__init__.py \
+  examples/mirror_two_coil_axisym.py \
+  examples/mirror_finite_current_pitch.py \
+  tests/mirror/test_mirror_plotting.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff check vmec_jax/mirror/plotting/diagnostics.py \
+  vmec_jax/mirror/plotting/__init__.py \
+  examples/mirror_two_coil_axisym.py \
+  examples/mirror_finite_current_pitch.py \
+  tests/mirror/test_mirror_plotting.py \
+  tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_plotting.py \
+  tests/mirror/test_mirror_examples.py::test_root_two_coil_axisym_example_runs_without_plots \
+  tests/mirror/test_mirror_examples.py::test_root_finite_current_pitch_example_runs_without_plots \
+  -q
+python -m sphinx -W -b html docs docs/_build/html
+JAX_ENABLE_X64=1 python examples/mirror_two_coil_axisym.py \
+  --outdir results/mirror/boozer_like_m168_two_coil_smoke \
+  --ns 5 --nxi 9 --maxiter 2
+JAX_ENABLE_X64=1 python examples/mirror_finite_current_pitch.py \
+  --outdir results/mirror/boozer_like_m168_finite_current_smoke \
+  --ns 5 --nxi 9 --maxiter 2
+```
+
+Results:
+
+- Ruff format/check passed.
+- Focused tests passed: `6 passed in 7.78s`.
+- Sphinx docs build passed with warnings treated as errors.
+- Both plotted smokes completed and wrote the new diagnostic figures.
+- JSON metric readback confirmed the expected zero-pitch and finite-pitch
+  behavior.
+
+### File structure and best-practice notes
+
+- The scalar summary helper reuses `mirror_boozer_like_diagnostics_data` rather
+  than duplicating profile logic in examples.
+- Existing example metrics JSON files were extended in place; no new root
+  artifact type was introduced.
+- Tests live in existing plotting/example suites and check both low-level
+  helper output and user-facing JSON fields.
+- Generated MOUT/PNG/JSON smoke outputs remain under ignored `results/` paths.
+
+### Best next steps
+
+1. Commit and push M168.
+2. Re-check PR checks later, after GitHub attaches jobs for the latest head.
+3. Continue final open lanes with a merge-readiness audit:
+   - public mirror API/export audit;
+   - docs index and README audit;
+   - targeted full `tests/mirror` pass;
+   - PR body refresh to point reviewers to M168 and the remaining known gaps.
+
+### Completion percentages after M168
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `90%`.
+- Finite-current pitch validation: `86%`.
+- Plotting and `vmec --plot` mirror support: `96%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `94%`.
+- Mirror-Boozer-like diagnostics: `74%`.
+- Free-boundary mirror lane: `99%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `98%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+## 169. Public API and Docs Index Merge-Readiness Audit
+
+### Steps taken
+
+- Ran a full `tests/mirror` pass at the start of the merge-readiness audit.
+- Audited `vmec_jax/mirror/api.py`, `vmec_jax/mirror/__init__.py`, and
+  `vmec_jax/mirror/plotting/__init__.py` for the new mirror-Boozer-like
+  helpers.
+- Promoted the new Boozer-like diagnostics through the main mirror public API:
+  - `MirrorBoozerLikeDiagnosticsData`;
+  - `mirror_boozer_like_diagnostics_data`;
+  - `mirror_boozer_like_summary_metrics`;
+  - `write_mirror_boozer_like_diagnostics`.
+- Added a public-import assertion in `tests/mirror/test_mirror_plotting.py`.
+- Updated `docs/mirror/index.rst` so the mirror documentation index names the
+  cap-to-cap pitch and mirror-Boozer-like diagnostic lane and fixes stale
+  wording in the experimental warning.
+- Ran a second full `tests/mirror` pass after the API/doc/test patch so the
+  final evidence matches the current worktree.
+
+### Results obtained
+
+- `vmec_jax.mirror` and `vmec_jax.mirror.api` now expose the same
+  mirror-Boozer-like public helper names.
+- A lightweight import audit confirmed every `vmec_jax.mirror.__all__` and
+  `vmec_jax.mirror.api.__all__` name exists and the new top-level helpers are
+  the same objects as their `api` exports.
+- The mirror docs index now matches the current diagnostic surface.
+- Current-state full mirror suite passed.
+
+### How it was tested
+
+Commands run:
+
+```bash
+JAX_ENABLE_X64=1 pytest tests/mirror -q
+python -m ruff format --check vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_plotting.py
+python -m ruff check vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  tests/mirror/test_mirror_plotting.py
+python -m sphinx -W -b html docs docs/_build/html
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_plotting.py -q
+python - <<'PY'
+import vmec_jax.mirror as mirror
+import vmec_jax.mirror.api as api
+for module in (mirror, api):
+    missing = [name for name in module.__all__ if not hasattr(module, name)]
+    if missing:
+        raise SystemExit(f"{module.__name__} missing {missing}")
+for name in [
+    "MirrorBoozerLikeDiagnosticsData",
+    "mirror_boozer_like_diagnostics_data",
+    "mirror_boozer_like_summary_metrics",
+    "write_mirror_boozer_like_diagnostics",
+]:
+    assert getattr(mirror, name) is getattr(api, name)
+print("mirror_public_api_ok")
+PY
+JAX_ENABLE_X64=1 pytest tests/mirror -q
+```
+
+Results:
+
+- First broad mirror suite passed: `218 passed, 1 skipped in 194.09s`.
+- Ruff format/check passed on the API/test patch.
+- Sphinx docs build passed with warnings treated as errors.
+- Focused plotting/API test passed: `4 passed in 5.17s`.
+- Public API consistency check printed `mirror_public_api_ok`.
+- Current-state broad mirror suite passed:
+  `218 passed, 1 skipped in 191.77s`.
+
+### File structure and best-practice notes
+
+- The numerical implementation remains in the plotting diagnostics module.
+- The top-level mirror API now exposes the user-facing data/helper/writer names
+  without moving implementation code.
+- The docs index remains concise and points readers to the existing overview,
+  outputs, and differentiability pages rather than adding another near-empty
+  page.
+- No generated results were committed.
+
+### Best next steps
+
+1. Commit and push M169.
+2. Refresh the draft PR body so reviewers see the M167-M169 diagnostics/API
+   work and current full mirror-suite result.
+3. Re-check GitHub checks after the latest head has jobs attached.
+4. Continue final plan closure with a concise remaining-gap audit across:
+   straight-axis hybrid fixture, final free-boundary solve status, and PR
+   readiness.
+
+### Completion percentages after M169
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `90%`.
+- Finite-current pitch validation: `86%`.
+- Plotting and `vmec --plot` mirror support: `97%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `94%`.
+- Mirror-Boozer-like diagnostics: `82%`.
+- Free-boundary mirror lane: `99%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `99%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+## 170. Draft PR Body Synchronization After Boozer-Like Diagnostics Audit
+
+### Steps taken
+
+- Updated draft PR #21 body after M167-M169.
+- Changed the detailed implementation-log pointer from section 164 to
+  section 169.
+- Updated the current-content summary to include mirror-Boozer-like
+  surface-average/pitch diagnostic plots and compact JSON summary metrics.
+- Marked the Mirror-Boozer-like diagnostics checklist item complete in the PR
+  body for the plot, export, public API, and example JSON summary paths.
+- Replaced the latest-validation command block with the current full
+  `tests/mirror` pass, Sphinx, ruff, public API consistency, and whitespace
+  checks.
+- Added the current full mirror-suite result:
+  `218 passed, 1 skipped in 191.77s`.
+- Added the public API consistency check result `mirror_public_api_ok`.
+- Added plotted Boozer-like smoke evidence paths from M168.
+- Re-checked PR state and CI status after the latest push.
+
+### Results obtained
+
+- PR body verification confirmed:
+  - PR number `21`;
+  - draft state `true`;
+  - head SHA `a15ad6f9719f8285d527c33ef0a4f3ecde4f88eb`;
+  - body contains `section 169`;
+  - body contains the checked Mirror-Boozer-like checklist item;
+  - body contains `218 passed, 1 skipped in 191.77s`;
+  - body contains `mirror_public_api_ok`;
+  - body contains the M168 Boozer-like finite-current plot path.
+- GitHub checks are attached to the latest head and running. The nonblocking
+  snapshot showed `Parity Manifest Smoke (dry-run)` passing, `Physics Full
+  (manual/nightly)` skipped as configured, and the remaining standard jobs in
+  progress.
+
+### How it was tested
+
+Commands run:
+
+```bash
+gh pr view 21 --repo uwplasma/vmec_jax --json body -q .body > /tmp/vmec_mirror_pr_body_current.md
+python - <<'OUTERPY'
+# edit PR body text in /tmp
+OUTERPY
+gh pr edit 21 --repo uwplasma/vmec_jax --body-file /tmp/vmec_mirror_pr_body_current.md
+gh pr view 21 --repo uwplasma/vmec_jax --json number,isDraft,headRefOid,mergeStateStatus,body,url > /tmp/vmec_mirror_pr_view.json
+python - <<'PY'
+# verify required body markers
+PY
+gh pr checks 21 --repo uwplasma/vmec_jax --json name,state,bucket,startedAt,completedAt,link
+git status -sb
+```
+
+Results:
+
+- PR edit succeeded.
+- PR body verification passed.
+- PR remained draft.
+- Worktree was clean before this plan-only M170 log.
+
+### File structure and best-practice notes
+
+- No source files changed in this administrative tranche.
+- The PR body remains a concise review index while detailed evidence stays in
+  `plan_mirror.md`.
+- CI was sampled once after jobs attached; the workflow is intentionally not
+  being polled continuously.
+
+### Best next steps
+
+1. Commit and push M170 plan log.
+2. Continue final plan closure with the remaining-gap audit:
+   - straight-axis hybrid fixture lane;
+   - final free-boundary nonlinear solve status;
+   - final PR readiness and known limitations.
+3. Re-check CI after additional implementation or after enough time has passed
+   to make a failure actionable.
+
+### Completion percentages after M170
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `90%`.
+- Finite-current pitch validation: `86%`.
+- Plotting and `vmec --plot` mirror support: `97%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `94%`.
+- Mirror-Boozer-like diagnostics: `83%`.
+- Free-boundary mirror lane: `99%`.
+- Straight-axis hybrid fixture lane: `25%`.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `99%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+## 171. Straight-Axis Hybrid Fixture Closure as Support Scope
+
+### Steps taken
+
+- Audited the straight-axis hybrid fixture against the corrected user target
+  that the final stellarator-mirror hybrid remains toroidal.
+- Kept `examples/mirror_stellarator_hybrid_boundary.py` as a straight-axis,
+  open-ended support fixture rather than a production hybrid target.
+- Added explicit machine-readable labels to the straight-axis example metrics:
+  - `hybrid_fixture_kind = "straight_axis_open_mirror_support_fixture"`;
+  - `final_hybrid_target_kind = "toroidal_stellarator_mirror_hybrid"`;
+  - `production_hybrid_claim = false`;
+  - a short `hybrid_scope_note`.
+- Added matching target labels to
+  `examples/toroidal_stellarator_mirror_hybrid.py` metrics.
+- Updated tests so both straight-axis and toroidal example metrics assert the
+  new scope labels.
+- Updated the mirror example README and mirror overview docs to state that the
+  straight-axis fixture is a support fixture and that the final hybrid target
+  is the toroidal lane.
+
+### Results obtained
+
+- The straight-axis hybrid lane is no longer an ambiguous open production lane.
+  It is closed as a support fixture for boundary, solver, and plotting stress
+  tests.
+- The toroidal hybrid lane remains the authoritative final hybrid target.
+- Low-resolution plotted smoke outputs confirmed both metrics labels and plots:
+  - straight-axis fixture:
+    `results/mirror/hybrid_label_m171_straight_axis_smoke/stellarator_hybrid_boundary_metrics.json`;
+  - toroidal fixture:
+    `results/toroidal_stellarator_mirror_hybrid_m171_label_smoke/toroidal_stellarator_mirror_hybrid_metrics.json`.
+- Visual plots inspected:
+  - `results/mirror/hybrid_label_m171_straight_axis_smoke/figures/stellarator_hybrid_boundary_mirror_boundary_3d.png`;
+  - `results/toroidal_stellarator_mirror_hybrid_m171_label_smoke/figures/toroidal_hybrid_lcfs_3d.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format --check examples/mirror_stellarator_hybrid_boundary.py \
+  examples/toroidal_stellarator_mirror_hybrid.py \
+  tests/mirror/test_mirror_examples.py \
+  tests/test_toroidal_hybrid.py
+python -m ruff check examples/mirror_stellarator_hybrid_boundary.py \
+  examples/toroidal_stellarator_mirror_hybrid.py \
+  tests/mirror/test_mirror_examples.py \
+  tests/test_toroidal_hybrid.py
+python -m sphinx -W -b html docs docs/_build/html
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_examples.py::test_root_stellarator_hybrid_boundary_example_runs_without_plots \
+  -q
+JAX_ENABLE_X64=1 pytest \
+  tests/test_toroidal_hybrid.py::test_toroidal_hybrid_example_runs_without_plots \
+  -q
+JAX_ENABLE_X64=1 python examples/mirror_stellarator_hybrid_boundary.py \
+  --outdir results/mirror/hybrid_label_m171_straight_axis_smoke \
+  --ns 5 --ntheta 13 --nxi 17 --mpol 4 --maxiter 0
+PYTHONPATH=/Users/rogeriojorge/local/vmec_mirror \
+  python examples/toroidal_stellarator_mirror_hybrid.py \
+  --outdir results/toroidal_stellarator_mirror_hybrid_m171_label_smoke \
+  --ntheta-fit 32 --nzeta-fit 32 --ntor 6
+JAX_ENABLE_X64=1 pytest tests/test_toroidal_hybrid.py -q
+```
+
+Results:
+
+- Ruff format/check passed.
+- Sphinx docs build passed with warnings treated as errors.
+- Straight-axis hybrid example test passed: `1 passed in 1.98s`.
+- Toroidal hybrid example test passed: `1 passed in 1.07s`.
+- Plotted straight-axis and toroidal hybrid smokes completed.
+- Full toroidal hybrid tests passed: `26 passed in 3.72s`.
+
+### File structure and best-practice notes
+
+- The straight-axis support fixture remains in the mirror examples because it
+  exercises open-ended mirror plotting and 3D boundary handling.
+- The toroidal target remains in the root toroidal hybrid example and
+  `vmec_jax.toroidal_hybrid`, reusing ordinary VMEC/JAX toroidal boundary and
+  solver paths.
+- The new scope labels are data fields, not prose-only documentation, so
+  downstream scripts can distinguish support fixtures from final target lanes.
+- Generated smoke outputs remain under ignored `results/` paths.
+
+### Best next steps
+
+1. Commit and push M171.
+2. Refresh the PR body if needed to mention that the straight-axis hybrid lane
+   is closed as a support fixture.
+3. Continue final plan closure with the final free-boundary nonlinear solve
+   status and remaining known limitations.
+4. Re-check CI after enough time has passed for the latest workflow to expose
+   actionable failures.
+
+### Completion percentages after M171
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `90%`.
+- Finite-current pitch validation: `86%`.
+- Plotting and `vmec --plot` mirror support: `97%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `94%`.
+- Mirror-Boozer-like diagnostics: `83%`.
+- Free-boundary mirror lane: `99%`.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `99%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+## 172. Reduced Free-Boundary Residual-Vector Nonlinear Solve Loop
+
+### Steps taken
+
+- Added a reusable reduced residual-vector nonlinear least-squares solve loop:
+  `mirror_free_boundary_residual_vector_least_squares_solve`.
+- Added result dataclasses:
+  - `MirrorFreeBoundaryVectorLeastSquaresSolveRow`;
+  - `MirrorFreeBoundaryVectorLeastSquaresSolveResult`.
+- The loop reuses `mirror_free_boundary_residual_vector_least_squares_step` and
+  records each accepted or rejected step.
+- The loop now has explicit stop reasons:
+  - `target_residual`;
+  - `ls_step_not_accepted`;
+  - `stagnation`;
+  - `max_steps`.
+- Exported the new solve-loop API through `vmec_jax.mirror.api` and
+  `vmec_jax.mirror`.
+- Extended `examples/mirror_free_boundary_vector_ls_benchmark.py`:
+  - schema version `0.2`;
+  - per-backend `solve_rows`;
+  - solve convergence validation;
+  - new plotted solve residual-history figure.
+- Updated docs in `docs/mirror/overview.rst` and `examples/mirror/README.md`.
+- Added focused tests for convergence, rejected steps, stagnation, invalid
+  inputs, public API export, and benchmark schema `0.2`.
+
+### Results obtained
+
+- Reduced residual-vector prototypes can now run an actual nonlinear LS solve
+  loop instead of only a one-step diagnostic.
+- Plotted benchmark run:
+  `results/mirror/free_boundary_vector_ls_benchmark_m172_solve_loop_plots/mirror_free_boundary_vector_ls_benchmark_metrics.json`.
+- Benchmark schema `0.2` rows showed all derivative backends converged:
+  - finite difference: `target_residual`, `2` accepted steps,
+    final residual `1.415619462786164e-12`;
+  - JAX forward: `target_residual`, `2` accepted steps,
+    final residual `3.003608781755996e-17`;
+  - JAX reverse: `target_residual`, `2` accepted steps,
+    final residual `3.003608781755996e-17`;
+  - JAX auto: `target_residual`, `2` accepted steps,
+    final residual `3.003608781755996e-17`.
+- New plot visually inspected:
+  `results/mirror/free_boundary_vector_ls_benchmark_m172_solve_loop_plots/figures/mirror_free_boundary_vector_ls_solve_residual_history.png`.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_vector_ls_benchmark.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m ruff check vmec_jax/mirror/free_boundary.py \
+  vmec_jax/mirror/api.py \
+  vmec_jax/mirror/__init__.py \
+  examples/mirror_free_boundary_vector_ls_benchmark.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_free_boundary.py -q
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_vector_ls_benchmark_runs_without_plots \
+  -q
+python -m sphinx -W -b html docs docs/_build/html
+JAX_ENABLE_X64=1 python examples/mirror_free_boundary_vector_ls_benchmark.py \
+  --outdir results/mirror/free_boundary_vector_ls_benchmark_m172_solve_loop_plots \
+  --nxi 17
+python - <<'PY'
+import vmec_jax.mirror as mirror
+import vmec_jax.mirror.api as api
+for module in (mirror, api):
+    missing = [name for name in module.__all__ if not hasattr(module, name)]
+    if missing:
+        raise SystemExit(f"{module.__name__} missing {missing}")
+for name in [
+    "MirrorFreeBoundaryVectorLeastSquaresSolveResult",
+    "MirrorFreeBoundaryVectorLeastSquaresSolveRow",
+    "mirror_free_boundary_residual_vector_least_squares_solve",
+]:
+    assert getattr(mirror, name) is getattr(api, name)
+print("mirror_public_api_ok")
+PY
+git diff --check
+```
+
+Results:
+
+- Ruff format/check passed.
+- Full mirror free-boundary test module passed: `116 passed in 3.61s`.
+- Focused benchmark example test passed: `1 passed in 2.17s`.
+- Sphinx docs build passed with warnings treated as errors.
+- Plotted benchmark completed and wrote the solve residual-history figure.
+- Public API consistency check printed `mirror_public_api_ok`.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The solve loop lives in `vmec_jax/mirror/free_boundary.py` beside the
+  existing one-step reduced vector LS helper.
+- The root benchmark example remains the user-facing derivative-backend and
+  solve-loop comparison artifact.
+- The loop is deliberately reduced-residual-vector scoped. Host-side realized
+  fixed-boundary circular-coil trials still use the guarded callback loop until
+  the full coupled free-boundary residual becomes a promoted differentiable
+  solver path.
+- Generated plots/metrics remain under ignored `results/` paths.
+
+### Best next steps
+
+1. Commit and push M172.
+2. Refresh the draft PR body after this solve-loop promotion.
+3. Re-check CI after the latest head has jobs attached.
+4. Continue final known-limitations audit and decide whether the PR can move
+   from draft after one final full local/CI pass.
+
+### Completion percentages after M172
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `90%`.
+- Finite-current pitch validation: `86%`.
+- Plotting and `vmec --plot` mirror support: `97%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `95%`.
+- Mirror-Boozer-like diagnostics: `83%`.
+- Free-boundary mirror lane: `99%` overall, with reduced residual-vector
+  nonlinear solve scope complete.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `99%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+## 173. Draft PR Body Synchronization After Reduced Solve Loop
+
+### Steps taken
+
+- Updated draft PR #21 body after M172.
+- Changed the implementation-log pointer from section 169 to section 172.
+- Added PR-body wording for the reduced residual-vector nonlinear solve loop
+  and the benchmark solve residual-history plot.
+- Added a checked checklist item for the reduced residual-vector nonlinear LS
+  solve loop.
+- Added latest validation evidence:
+  - `116 passed in 3.61s` for the mirror free-boundary test module;
+  - M172 plotted solve-loop evidence under
+    `results/mirror/free_boundary_vector_ls_benchmark_m172_solve_loop_plots/`.
+- Verified the PR body markers.
+- Sampled GitHub checks once after jobs attached to the latest head.
+
+### Results obtained
+
+- PR body verification confirmed:
+  - PR number `21`;
+  - draft state `true`;
+  - head SHA `d664e0e0557066eb5e9e338943f94f66dd9ffd9a`;
+  - body contains `section 172`;
+  - body contains the reduced solve-loop checklist item;
+  - body contains `116 passed in 3.61s`;
+  - body contains the M172 solve-loop plot path.
+- GitHub checks are attached and running. The sampled status showed:
+  - `Parity Manifest Smoke (dry-run)` passed;
+  - `Physics Full (manual/nightly)` skipped as configured;
+  - standard docs/build/fast/physics-smoke jobs in progress or queued.
+
+### How it was tested
+
+Commands run:
+
+```bash
+gh pr view 21 --repo uwplasma/vmec_jax --json body -q .body > /tmp/vmec_mirror_pr_body_current.md
+python - <<'PY'
+# update PR body text in /tmp
+PY
+gh pr edit 21 --repo uwplasma/vmec_jax --body-file /tmp/vmec_mirror_pr_body_current.md
+gh pr view 21 --repo uwplasma/vmec_jax --json number,isDraft,headRefOid,mergeStateStatus,body,url > /tmp/vmec_mirror_pr_view.json
+python - <<'PY'
+# verify required PR body markers
+PY
+gh pr checks 21 --repo uwplasma/vmec_jax --json name,state,bucket,startedAt,completedAt,link
+git status -sb
+```
+
+Results:
+
+- PR edit succeeded.
+- PR body verification passed.
+- PR remained draft.
+- Worktree was clean before this plan-only M173 log.
+
+### File structure and best-practice notes
+
+- No source files changed in this administrative tranche.
+- The PR body remains a review index; detailed evidence stays in
+  `plan_mirror.md`.
+- CI was sampled once and not continuously polled.
+
+### Best next steps
+
+1. Commit and push M173 plan log.
+2. Continue final known-limitations audit and remaining PR-readiness cleanup.
+3. Re-check CI after enough time has elapsed for failures to be actionable.
+
+### Completion percentages after M173
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `93%`.
+- Fixed-boundary axisymmetric solve: `91%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `90%`.
+- Finite-current pitch validation: `86%`.
+- Plotting and `vmec --plot` mirror support: `97%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `95%`.
+- Mirror-Boozer-like diagnostics: `83%`.
+- Free-boundary mirror lane: `99%` overall, with reduced residual-vector
+  nonlinear solve scope complete.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `95%`.
+- ESSOS circular-coil mirror beta scan: `97%`.
+- PR merge readiness overall: `99%`.
 
 ### User input needed
 
