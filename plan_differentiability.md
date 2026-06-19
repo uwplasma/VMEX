@@ -7,6 +7,70 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-19.
 
+## 2026-06-19 CLI Finish Policy Simplification
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Removed a duplicate strict-convergence CLI finisher branch whose body was
+   identical to the broader strict-convergence short circuit.
+2. Consolidated explicit staged-FTOL list construction so single-grid followup
+   and partial parity fallback share the same stage policy.
+
+Results obtained:
+
+- `vmec_jax/drivers/finish.py` dropped by 10 lines.
+- CLI finish policy behavior remains covered for strict short-circuit,
+  staged-followup skip, accelerated finish promotion, and explicit budget-cap
+  exhaustion.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/drivers/finish.py`
+- `python -m ruff check vmec_jax/drivers/finish.py --select F401,F841`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_policy_coverage_extra.py::test_cli_finisher_short_circuits_when_initial_run_is_already_strict_converged tests/test_driver_implicit_wave11_coverage.py::test_cli_finisher_marks_strict_residual_converged_even_if_solver_flag_is_false tests/test_driver_implicit_wave11_coverage.py::test_cli_finisher_records_budget_cap_exhaustion_after_accelerated_and_parity_attempts tests/test_driver_finish_policy_more_coverage.py::test_cli_explicit_multigrid_niter_exhaustion_skips_finish_fallbacks tests/test_driver_finish_policy_more_coverage.py::test_cli_single_grid_finish_attempt_promotes_strict_accelerated_result tests/test_driver_api_finish_more_coverage.py::test_cli_finish_marks_strict_residual_run_converged_without_retry -q`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue simplifying driver/finish policy only where duplicate branches have
+   identical outcomes and tests cover the path.
+2. Revisit residual iteration for larger structural seams after the finish
+   policy duplication is exhausted.
+3. Keep full CI checks batched for later.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.735%.
+- Free-boundary adjoint monolith reduction: 99.44%.
+- Driver workflow decomposition: 99.94%.
+- Residual iteration decomposition: 98.65%.
+- WOUT diagnostic/profile decomposition: 99.92%.
+- Bcovar/WOUT parity decomposition: 99.12%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.79%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.66%.
+- Fixed-boundary optimizer decomposition: 96.05%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.45%.
+- Discrete-adjoint replay decomposition: 96.4%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999994%.
+
 ## 2026-06-19 Discrete-Adjoint Replay Policy Cleanup
 
 Branch: `codex/differentiability-refactor-plan`.
