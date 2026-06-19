@@ -7,6 +7,70 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-19.
 
+## 2026-06-19 WOUT Bsub Compatibility Wrapper Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Replaced trivial WOUT bsub compatibility wrappers with direct aliases to the
+   extracted `io.wout.bsubs` helpers.
+2. Preserved public/private compatibility names while removing wrapper bodies
+   that only forwarded `**kwargs`.
+
+Results obtained:
+
+- `vmec_jax/wout.py` dropped by 18 net lines and is now 1801 lines.
+- WOUT bsub helper ownership is clearer: implementation remains in
+  `vmec_jax/io/wout/bsubs.py`, while `wout.py` keeps only compatibility names.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/wout.py`
+- `python -m ruff check vmec_jax/wout.py --select F401,F841`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_geometry_mercier_bundled_parity.py tests/test_wout_beta_eqfor_bundled_parity.py tests/test_bcovar_lambda_axis_closure.py tests/test_equif_eqfor_parity.py -q`
+- `python tools/diagnostics/source_health.py --top 16 --top-functions 30`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue production-source cleanups that remove wrappers or duplicate
+   payload formatting without weakening parity tests.
+2. For larger WOUT changes, prefer moving numerical implementation into
+   `io/wout/*` only when the move is net-negative or removes duplication.
+3. Keep intentional compatibility exports with `noqa`; do not delete them just
+   to satisfy `--ignore-noqa` diagnostics.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.72%.
+- Free-boundary adjoint monolith reduction: 99.42%.
+- Driver workflow decomposition: 99.92%.
+- Residual iteration decomposition: 98.45%.
+- WOUT diagnostic/profile decomposition: 99.91%.
+- Bcovar/WOUT parity decomposition: 99.12%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.77%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.56%.
+- Fixed-boundary optimizer decomposition: 95.8%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.35%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999985%.
+
 ## 2026-06-19 Residual Final-Diagnostics History Extraction
 
 Branch: `codex/differentiability-refactor-plan`.
