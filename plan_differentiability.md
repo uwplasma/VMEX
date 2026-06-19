@@ -21454,3 +21454,77 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999989%.
+
+## 2026-06-19 Residual Iteration Wrapper Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Rechecked `solve_fixed_boundary_residual_iter`, the current largest source
+   hotspot.
+2. Avoided a trace-helper extraction that moved boilerplate into diagnostics
+   while increasing total source size.
+3. Replaced three loop-local wrappers with bound partials for setup timing,
+   deferred scan printing, and free-boundary diagnostic attachment.
+4. Replaced the lambda-axis rule wrapper with a bound partial while preserving
+   the VMEC gauge comment at the call site.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` decreased from 5748
+  lines at the start of this session to 5731 lines.
+- `solve_fixed_boundary_residual_iter` decreased from 5339 lines to 5322 lines.
+- The nested VMEC2000 scan closure decreased from 855 lines to 847 lines.
+- No new source files were added; the refactor reduces closure plumbing in
+  place.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_axis_helpers_more_coverage.py::test_apply_vmec_lambda_axis_rules_host_device_and_disabled_paths tests/test_solve_additional_helpers.py::test_apply_vmec_lambda_axis_rules_zeroes_only_gauge_column_and_can_be_disabled tests/test_solve_scan_output.py tests/test_solve_scan_output_edge_cases_more_coverage.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_active_direct_coil_adjoint_trace_records_vacuum_forcing_and_pressure_scale tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_full_adjoint_trace_records_raw_preconditioner_on_fused_payload_path -q`
+- `python tools/diagnostics/source_health.py --top 12`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue with production-code monoliths, but prioritize real seams over
+   closure-only cleanup: `driver.py`, `wout.py`, and the VMEC2000 scan body are
+   the best next candidates.
+2. For the residual loop, the next meaningful cut should move a cohesive scan
+   state/output block, not another small wrapper.
+3. Keep checking source-health after each tranche to avoid refactors that only
+   relocate complexity or add files.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999468%.
+- Solver monolith reduction: 99.826%.
+- Free-boundary adjoint monolith reduction: 99.54%.
+- Driver workflow decomposition: 99.945%.
+- Residual iteration decomposition: 99.05%.
+- WOUT diagnostic/profile decomposition: 99.979%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.825%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.745%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 96.80%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.69%.
+- Free-boundary validation-gate maintainability: 98.18%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999990%.

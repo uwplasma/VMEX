@@ -472,11 +472,8 @@ def solve_fixed_boundary_residual_iter(
     _setup_phase_timings = _initial_setup_phase_timings()
     state0_has_tracer = _tree_has_tracer(state0)
 
-    def _setup_timer_start() -> float | None:
-        return _runtime_setup_timer_start(timing_enabled=bool(timing_enabled), perf_counter=time.perf_counter)
-
-    def _record_setup_timing(key: str, start: float | None) -> None:
-        _runtime_record_setup_timing(_setup_phase_timings, key, start, perf_counter=time.perf_counter)
+    _setup_timer_start = partial(_runtime_setup_timer_start, timing_enabled=bool(timing_enabled), perf_counter=time.perf_counter)
+    _record_setup_timing = partial(_runtime_record_setup_timing, _setup_phase_timings, perf_counter=time.perf_counter)
 
     startup_policy = _resolve_residual_iter_startup_policy(
         max_iter=max_iter,
@@ -654,16 +651,15 @@ def solve_fixed_boundary_residual_iter(
     jit_strict_update_enabled = _freeb_policy.jit_strict_update_enabled
     _record_setup_timing("setup_freeb_policy", _t_setup_freeb_policy)
 
-    def _attach_freeb_diag(res: SolveVmecResidualResult) -> SolveVmecResidualResult:
-        return _runtime_attach_free_boundary_external_field_diag(
-            res,
-            free_boundary_enabled=free_boundary_enabled,
-            external_field_provider_kind=external_field_provider_kind,
-            freeb_sample_external=freeb_sample_external,
-            sample_external_field_func=_sample_free_boundary_external_field,
-            static=static,
-            result_type=SolveVmecResidualResult,
-        )
+    _attach_freeb_diag = partial(
+        _runtime_attach_free_boundary_external_field_diag,
+        free_boundary_enabled=free_boundary_enabled,
+        external_field_provider_kind=external_field_provider_kind,
+        freeb_sample_external=freeb_sample_external,
+        sample_external_field_func=_sample_free_boundary_external_field,
+        static=static,
+        result_type=SolveVmecResidualResult,
+    )
 
     _t_setup_boundary_profiles = _setup_timer_start()
     idx00 = _mode00_index(static.modes)
@@ -696,19 +692,14 @@ def solve_fixed_boundary_residual_iter(
     axis_reset_always_3d = axis_reset_config.axis_reset_always_3d
     axis_reset_fsq_min = axis_reset_config.axis_reset_fsq_min
 
-    def _apply_vmec_lambda_axis_rules(st: VMECState) -> VMECState:
-        """Enforce VMEC lambda gauge without mutating stored axis coefficients.
-
-        VMEC applies the m=0 lambda axis-closure during real-space synthesis
-        (totzsps) but does not overwrite the stored `xc` coefficients. Keep
-        the state axis row intact and only enforce the (m,n)=(0,0) gauge here.
-        """
-        return _apply_vmec_lambda_axis_rules_to_state(
-            st,
-            enforce_vmec_lambda_axis=enforce_vmec_lambda_axis,
-            host_update_assembly=host_update_assembly,
-            idx00=idx00,
-        )
+    # VMEC applies the m=0 lambda axis-closure during real-space synthesis
+    # without overwriting stored axis coefficients; only enforce the gauge here.
+    _apply_vmec_lambda_axis_rules = partial(
+        _apply_vmec_lambda_axis_rules_to_state,
+        enforce_vmec_lambda_axis=enforce_vmec_lambda_axis,
+        host_update_assembly=host_update_assembly,
+        idx00=idx00,
+    )
 
     axis_reset_coeffs = None
 
@@ -2068,24 +2059,16 @@ def solve_fixed_boundary_residual_iter(
                 perf_counter=time.perf_counter,
             )
 
-        def _emit_scan_prints(
-            *,
-            hist_np,
-            it_start: int,
-            max_iter_local: int,
-        ) -> bool:
-            return _emit_scan_debug_prints(
-                hist_np=hist_np,
-                it_start=it_start,
-                max_iter_local=max_iter_local,
-                scan_minimal=bool(scan_minimal),
-                scan_light=bool(scan_light),
-                ftol=float(ftol),
-                fsq_total_target=fsq_total_target,
-                iter_offset0=int(iter_offset0),
-                should_print=scan_print_context.should_print,
-                print_row=scan_print_context.print_row,
-            )
+        _emit_scan_prints = partial(
+            _emit_scan_debug_prints,
+            scan_minimal=bool(scan_minimal),
+            scan_light=bool(scan_light),
+            ftol=float(ftol),
+            fsq_total_target=fsq_total_target,
+            iter_offset0=int(iter_offset0),
+            should_print=scan_print_context.should_print,
+            print_row=scan_print_context.print_row,
+        )
 
         if scan_timing_enabled and scan_run_setup_start is not None:
             scan_timing_stats["scan_run_setup_s"] += time.perf_counter() - float(scan_run_setup_start)
