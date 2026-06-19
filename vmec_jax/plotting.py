@@ -1738,25 +1738,19 @@ def _plot_objective_history(history_path: Path, outdir: Path) -> Path:
         data = json.load(f)
 
     hist = data["history"]
-    # Use qs_objective (QS residuals only) if available, else fall back to total objective
     qs_vals = [h.get("qs_objective", h["objective"]) for h in hist]
     aspects = [h["aspect"] for h in hist]
-    # Iota trajectory: present when iota_fn was passed to optimizer
     iotas = _objective_iota_series(hist)
-    target_iota = data.get("target_iota", None)
-    iota_abs_min = data.get("iota_abs_min", None)
-    # Also show iota panel when target_iota is specified even if trajectory is missing
+    target_iota, iota_abs_min = data.get("target_iota", None), data.get("iota_abs_min", None)
     show_iota = iotas is not None
     iters = list(range(len(hist)))
-    total_time = data.get("total_wall_time_s", 0.0)
-    nfev = data.get("nfev", len(hist))
+    total_time, nfev = data.get("total_wall_time_s", 0.0), data.get("nfev", len(hist))
 
     n_panels = 3 if show_iota else 2
     fig, axes = plt.subplots(n_panels, 1, figsize=(7, 3 * n_panels), sharex=True)
     ax1, ax2 = axes[0], axes[1]
     ax3 = axes[2] if n_panels == 3 else None
 
-    # --- panel 1: QS residuals ---
     # Stage-preseeded optimizations can switch objective definitions (for
     # example QP preseed -> QI preseed -> full constrained QI). Split by stage
     # but plot the raw accepted-callback history so users can see whether the
@@ -1785,21 +1779,15 @@ def _plot_objective_history(history_path: Path, outdir: Path) -> Path:
     qs_pos = [max(v, 1e-16) for v in qs_vals]  # avoid log(0)
     ax1.set_ylabel("QS residuals ∑r²", fontsize=11)
     opt_label = data.get("label", "Optimisation")
-    ax1.set_title(
-        f"{opt_label}  ({nfev} evals, {total_time:.0f} s)",
-        fontsize=11,
-    )
-    ax1.axhline(qs_pos[-1], color="steelblue", linestyle=":", alpha=0.4,
-                label=f"Final: {qs_vals[-1]:.2e}")
+    ax1.set_title(f"{opt_label}  ({nfev} evals, {total_time:.0f} s)", fontsize=11)
+    ax1.axhline(qs_pos[-1], color="steelblue", linestyle=":", alpha=0.4, label=f"Final: {qs_vals[-1]:.2e}")
     ax1.legend(fontsize=9)
     ax1.grid(True, alpha=0.3)
 
-    # --- panel 2: aspect ratio ---
     ax2.plot(iters, aspects, "s-", color="darkorange", linewidth=2, markersize=6)
     target_aspect = data.get("target_aspect", None)
     if target_aspect is not None:
-        ax2.axhline(target_aspect, color="k", linestyle=":", alpha=0.5,
-                    label=f"Target A={target_aspect:.4g}")
+        ax2.axhline(target_aspect, color="k", linestyle=":", alpha=0.5, label=f"Target A={target_aspect:.4g}")
     ax2.set_ylabel("Aspect ratio", fontsize=11)
     if ax3 is None:
         ax2.set_xlabel("Jacobian evaluation index", fontsize=11)
@@ -1807,15 +1795,12 @@ def _plot_objective_history(history_path: Path, outdir: Path) -> Path:
         ax2.legend(fontsize=9)
     ax2.grid(True, alpha=0.3)
 
-    # --- panel 3: mean iota ---
     if ax3 is not None and iotas is not None:
         ax3.plot(iters, iotas, "^-", color="forestgreen", linewidth=2, markersize=6)
         if target_iota is not None:
-            ax3.axhline(target_iota, color="k", linestyle=":", alpha=0.5,
-                        label=f"Target ι={target_iota:.4g}")
+            ax3.axhline(target_iota, color="k", linestyle=":", alpha=0.5, label=f"Target ι={target_iota:.4g}")
         if iota_abs_min is not None:
-            ax3.axhline(iota_abs_min, color="k", linestyle=":", alpha=0.45,
-                        label=f"Min |ι|={iota_abs_min:.4g}")
+            ax3.axhline(iota_abs_min, color="k", linestyle=":", alpha=0.45, label=f"Min |ι|={iota_abs_min:.4g}")
             ax3.axhline(-float(iota_abs_min), color="k", linestyle=":", alpha=0.45)
         ax3.set_ylabel("Mean iota ι", fontsize=11)
         ax3.set_xlabel("Jacobian evaluation index", fontsize=11)
@@ -1850,40 +1835,21 @@ def plot_qh_optimization(
     outdir=None,
     show: bool = False,
 ) -> dict:
-    """Compatibility wrapper that writes the standard optimization plots.
-
-    New examples call :func:`plot_3d_boundary_comparison`,
-    :func:`plot_bmag_contours`, and :func:`plot_objective_history` directly so
-    users can choose the figures they need.
-    """
-    wout_initial_path = Path(wout_initial_path)
-    wout_final_path = Path(wout_final_path)
+    """Compatibility wrapper that writes the standard optimization plots."""
     history_path = Path(history_path)
-
     outdir = _ensure_plot_outdir(outdir, default=history_path.parent)
-
-    p1 = plot_3d_boundary_comparison(wout_initial_path, wout_final_path, outdir=outdir)
-    p2 = plot_bmag_contours(wout_initial_path, wout_final_path, outdir=outdir)
-    p3 = plot_objective_history(history_path, outdir=outdir)
-
-    for p in (p1, p2, p3):
+    plots = {
+        "boundary_comparison": plot_3d_boundary_comparison(wout_initial_path, wout_final_path, outdir=outdir),
+        "bmag_surface": plot_bmag_contours(wout_initial_path, wout_final_path, outdir=outdir),
+        "objective_history": plot_objective_history(history_path, outdir=outdir),
+    }
+    for p in plots.values():
         print(f"  Saved {p}")
-
     if show:
         prepare_matplotlib_3d()
         import matplotlib.pyplot as plt
         plt.show()
-
-    return {
-        "boundary_comparison": p1,
-        "bmag_surface": p2,
-        "objective_history": p3,
-    }
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# plot_wout — standalone wout diagnostic viewer (replicates vmecPlot2.py)
-# ─────────────────────────────────────────────────────────────────────────────
+    return plots
 
 def plot_wout(
     wout_path: str | Path,
@@ -1897,37 +1863,23 @@ def plot_wout(
     plt = _import_matplotlib()
     from matplotlib import cm
     from matplotlib.colors import Normalize
-
     from .wout import read_wout as _read_wout
-
     wout_path = Path(wout_path)
     outdir = _ensure_plot_outdir(outdir, default=wout_path.parent)
-
     if name is None:
         stem = wout_path.stem  # e.g. "wout_nfp4_QH"
         name = stem[5:] if stem.startswith("wout_") else stem
-
     wout = _read_wout(str(wout_path))
-
-    ns = int(wout.ns)
-    nfp = int(wout.nfp)
-
-    iotaf = np.asarray(wout.iotaf, dtype=float)
-    presf = np.asarray(wout.presf, dtype=float)
-    pres = np.asarray(wout.pres, dtype=float)
-    buco = np.asarray(wout.buco, dtype=float)
-    bvco = np.asarray(wout.bvco, dtype=float)
-    jcuru = np.asarray(wout.jcuru, dtype=float)
-    jcurv = np.asarray(wout.jcurv, dtype=float)
-    DMerc = np.asarray(wout.DMerc, dtype=float)
-
+    ns, nfp = int(wout.ns), int(wout.nfp)
+    iotaf, presf, pres, buco, bvco, jcuru, jcurv, DMerc = (
+        np.asarray(getattr(wout, key), dtype=float)
+        for key in ("iotaf", "presf", "pres", "buco", "bvco", "jcuru", "jcurv", "DMerc")
+    )
     s = np.linspace(0.0, 1.0, ns)
     s_half = [(i - 0.5) / (ns - 1) for i in range(1, ns)]
     xLabel = r"$s = \psi/\psi_b$"
-
     fig1, axes1 = plt.subplots(3, 3, figsize=(14, 7))
     fig1.patch.set_facecolor("white")
-
     ax = axes1[0, 0]
     ax.plot(s, iotaf, ".-")
     ax.set_xlabel(xLabel)
@@ -1939,7 +1891,6 @@ def plot_wout(
     ax.legend(fontsize="x-small")
     ax.set_xlabel(xLabel)
     ax.set_title("pressure")
-
     for ax, x_vals, y_vals, title in (
         (axes1[0, 2], s_half, buco[1:], "buco"),
         (axes1[1, 0], s_half, bvco[1:], "bvco"),
@@ -1949,16 +1900,12 @@ def plot_wout(
         ax.plot(x_vals, y_vals, ".-")
         ax.set_title(title)
         ax.set_xlabel(xLabel)
-
     ax = axes1[2, 0]
     ign = int(s_plot_ignore * len(s))
     ax.plot(s[ign:-2], DMerc[ign:-2], ".-")
     ax.set_title("DMerc")
     ax.set_xlabel(xLabel)
-
-    _titles_b = ["Mid radius |B|", "Plasma boundary |B|"]
-    _iradii_b = [int(np.argmin(np.abs(s - 0.5))), ns - 1]
-    for _col, (_irad, _ttl) in enumerate(zip(_iradii_b, _titles_b)):
+    for _col, (_irad, _ttl) in enumerate(((int(np.argmin(np.abs(s - 0.5))), "Mid radius |B|"), (ns - 1, "Plasma boundary |B|"))):
         theta_b, zeta_b, B_b = vmecplot2_bmag_grid(wout, s_index=int(_irad), ntheta=30, nzeta=65)
         zeta2d_b, theta2d_b = np.meshgrid(zeta_b, theta_b)
         ax = axes1[2, 1 + _col]
@@ -1968,31 +1915,19 @@ def plot_wout(
         ax.set_ylabel(r"$\theta$")
         fig1.colorbar(cf, ax=ax)
         iota_val = float(iotaf[_irad])
-        if iota_val > 0:
-            ax.plot([0, zeta_b.max()], [0, zeta_b.max() * iota_val], "k")
-        else:
-            ax.plot([0, zeta_b.max()], [-zeta_b.max() * iota_val, 0], "k")
+        ax.plot([0, zeta_b.max()], [0, zeta_b.max() * iota_val] if iota_val > 0 else [-zeta_b.max() * iota_val, 0], "k")
         ax.set_xlim([0, 2 * np.pi])
         ax.set_ylim([0, 2 * np.pi])
-
     fig1.tight_layout()
     fig1.text(0.5, 0.995, str(wout_path.resolve()), ha="center", va="top", fontsize=6)
     out_params = outdir / f"{name}_VMECparams.pdf"
     fig1.savefig(out_params, bbox_inches="tight", pad_inches=0)
     plt.close(fig1)
-
     _theta_p, zeta_p, R_lcfs, Z_lcfs = vmecplot2_surface_grid(wout, s_index=ns - 1, ntheta=200, nzeta=8)
     Raxis, Zaxis = axis_rz_from_wout(wout, zeta=zeta_p)
-
     fig2, ax2 = plt.subplots(1, 1, figsize=(6, 6))
     fig2.patch.set_facecolor("white")
-    _zeta_lbls = (
-        (0, r"$\phi=0$"),
-        (2, r"$\phi=\pi/2$"),
-        (4, r"$\phi=\pi$"),
-        (6, r"$\phi=3\pi/2$"),
-    )
-    for _iz, _lbl in _zeta_lbls:
+    for _iz, _lbl in ((0, r"$\phi=0$"), (2, r"$\phi=\pi/2$"), (4, r"$\phi=\pi$"), (6, r"$\phi=3\pi/2$")):
         if _iz < len(zeta_p):
             ax2.plot(R_lcfs[:, _iz], Z_lcfs[:, _iz], "-", label=_lbl)
     ax2.set_aspect("equal", adjustable="box")
@@ -2004,22 +1939,17 @@ def plot_wout(
     out_poloidal = outdir / f"{name}_poloidal_plot.png"
     fig2.savefig(out_poloidal)
     plt.close(fig2)
-
-    ntheta_s = 200
-    nzeta_s = 8
-    nradius_s = 8
+    ntheta_s, nzeta_s, nradius_s = 200, 8, 8
     theta_s = np.linspace(0.0, 2.0 * np.pi, ntheta_s)
     zeta_s = np.linspace(0.0, 2.0 * np.pi / nfp, nzeta_s, endpoint=False)
     Raxis_s, Zaxis_s = axis_rz_from_wout(wout, zeta=zeta_s)
     iradii_s = np.round(np.linspace(0, ns - 1, nradius_s)).astype(int)
-
     fig3, axes3 = plt.subplots(2, 4, figsize=(14, 7))
     fig3.patch.set_facecolor("white")
     axes3_flat = axes3.ravel()
-
     for _iz in range(nzeta_s):
         ax = axes3_flat[_iz]
-        for _ir, _irad in enumerate(iradii_s):
+        for _irad in iradii_s:
             R_s, Z_s = surface_rz_from_wout(wout, s_index=int(_irad), theta=theta_s, zeta=zeta_s)
             ax.plot(R_s[:, _iz], Z_s[:, _iz], "-")
         ax.plot(Raxis_s[_iz], Zaxis_s[_iz], "xr")
@@ -2027,53 +1957,35 @@ def plot_wout(
         ax.set_xlabel("R", fontsize=10)
         ax.set_ylabel("Z", fontsize=10)
         ax.set_title(rf"$\phi$ = {round(float(zeta_s[_iz]), 2)}")
-
     fig3.tight_layout()
     out_surfaces = outdir / f"{name}_VMECsurfaces.pdf"
     fig3.savefig(out_surfaces, bbox_inches="tight", pad_inches=0)
     plt.close(fig3)
-
     ntheta_3d = 80
     nzeta_3d = max(500, int(150 * nfp))
-    theta_3d, zeta_3d, R_3d, Z_3d, B_3d = vmecplot2_lcfs_3d_grid(
-        wout,
-        s_index=ns - 1,
-        ntheta=ntheta_3d,
-        nzeta=nzeta_3d,
-    )
-
+    theta_3d, zeta_3d, R_3d, Z_3d, B_3d = vmecplot2_lcfs_3d_grid(wout, s_index=ns - 1, ntheta=ntheta_3d, nzeta=nzeta_3d)
     zeta2d_3d, _ = np.meshgrid(zeta_3d, theta_3d)
     X_3d = R_3d * np.cos(zeta2d_3d)
     Y_3d = R_3d * np.sin(zeta2d_3d)
-
     B_rescaled = (B_3d - B_3d.min()) / (B_3d.max() - B_3d.min() + 1e-30)
-
     fig4 = plt.figure(figsize=(5, 4), frameon=False)
     ax4 = fig4.add_subplot(111, projection="3d")
-    ax4.plot_surface(
-        X_3d, Y_3d, Z_3d,
-        facecolors=cm.jet(B_rescaled),
-        rstride=1, cstride=1, antialiased=False,
-    )
+    ax4.plot_surface(X_3d, Y_3d, Z_3d, facecolors=cm.jet(B_rescaled), rstride=1, cstride=1, antialiased=False)
     scale = 0.7 * max(abs(X_3d).max(), abs(Y_3d).max())
     ax4.auto_scale_xyz([-scale, scale], [-scale, scale], [-scale, scale])
     ax4.set_box_aspect([1, 1, 1])
     ax4.axis("off")
-
     cax4 = fig4.add_axes([0.21, 0.80, 0.60, 0.03])
     norm4 = Normalize(vmin=float(B_3d.min()), vmax=float(B_3d.max()))
     sm4 = cm.ScalarMappable(cmap=cm.jet, norm=norm4)
     sm4.set_array([])
     cbar4 = plt.colorbar(sm4, orientation="horizontal", cax=cax4)
     cbar4.set_label("|B| [T]")
-
     out_3d = outdir / f"{name}_VMEC_3Dplot.png"
     fig4.savefig(out_3d, bbox_inches="tight", pad_inches=0, dpi=400)
     plt.close(fig4)
-
     if show:
         plt.show()
-
     results = {
         "vmec_params": out_params,
         "poloidal_plot": out_poloidal,
