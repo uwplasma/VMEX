@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from dataclasses import dataclass
+from typing import Callable, Sequence
 
 import numpy as np
 
 from vmec_jax._compat import jnp
-from vmec_jax.boundary import boundary_from_indata
-from vmec_jax.energy import flux_profiles_from_indata
+from vmec_jax.boundary import BoundaryCoeffs, boundary_from_indata
+from vmec_jax.booz_input import BoozXformInputs, booz_xform_inputs_from_state
+from vmec_jax.energy import FluxProfiles, flux_profiles_from_indata
 from vmec_jax.field import signgs_from_sqrtg
 from vmec_jax.geom import eval_geom
 from vmec_jax.init_guess import initial_guess_from_boundary
@@ -18,6 +20,100 @@ import vmec_jax.quasisymmetry as quasisymmetry_module
 from vmec_jax.state import VMECState
 from vmec_jax.static import VMECStatic
 import vmec_jax.wout as wout_module
+
+
+@dataclass(frozen=True)
+class FixedBoundaryContext:
+    """Bundled inputs for repeated fixed-boundary solves."""
+
+    st_guess: VMECState
+    signgs: int
+    flux: FluxProfiles
+    pressure: jnp.ndarray
+    booz_inputs: BoozXformInputs
+
+
+def smooth_min_abs_iota_residual(
+    iota,
+    minimum: float,
+    *,
+    softness: float = 1.0e-3,
+    abs_epsilon: float = 1.0e-12,
+):
+    """Smooth residual for the differentiable constraint ``abs(iota) >= minimum``."""
+
+    iota = jnp.asarray(iota, dtype=jnp.float64)
+    minimum = jnp.asarray(minimum, dtype=iota.dtype)
+    softness = jnp.maximum(
+        jnp.asarray(softness, dtype=iota.dtype),
+        jnp.asarray(1.0e-15, dtype=iota.dtype),
+    )
+    abs_epsilon = jnp.asarray(abs_epsilon, dtype=iota.dtype)
+    smooth_abs_iota = jnp.sqrt(iota * iota + abs_epsilon * abs_epsilon)
+    shortfall = minimum - smooth_abs_iota
+    return softness * jnp.logaddexp(jnp.asarray(0.0, dtype=iota.dtype), shortfall / softness)
+
+
+def surface_indices_from_s(
+    s_half: np.ndarray,
+    surfaces: Sequence[int | float],
+) -> tuple[list[int], np.ndarray]:
+    """Map surface requests to half-mesh indices."""
+    indices: list[int] = []
+    for val in surfaces:
+        if isinstance(val, float) and 0.0 <= val <= 1.0:
+            indices.append(int(np.argmin(np.abs(s_half - val))))
+        else:
+            indices.append(int(val) - 1)
+    return indices, s_half[np.asarray(indices)]
+
+
+def surface_indices_from_static(
+    static: VMECStatic,
+    surfaces: Sequence[int | float],
+) -> tuple[list[int], np.ndarray]:
+    """Map surface requests to indices using a VMEC static object."""
+    s_half = 0.5 * (np.asarray(static.s[:-1]) + np.asarray(static.s[1:]))
+    return surface_indices_from_s(s_half, surfaces)
+
+
+def parse_surface_list(text: str) -> list[float | int]:
+    """Parse a comma-separated surface list into floats or one-based indices."""
+    items: list[float | int] = []
+    for raw in text.split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        items.append(float(raw) if any(ch in raw for ch in (".", "e", "E")) else int(raw))
+    return items
+
+
+def prepare_fixed_boundary_context(
+    *,
+    static: VMECStatic,
+    indata,
+    boundary: BoundaryCoeffs,
+    vmec_project: bool = False,
+) -> FixedBoundaryContext:
+    """Precompute common fixed-boundary inputs for optimization loops."""
+    st_guess = initial_guess_from_boundary(static, boundary, indata, vmec_project=vmec_project)
+    geom = eval_geom(st_guess, static)
+    signgs = signgs_from_sqrtg(np.asarray(geom.sqrtg), axis_index=1)
+    flux = flux_profiles_from_indata(indata, static.s, signgs=signgs)
+    pressure = _pressure_profile_for_static(indata, static)
+    booz_inputs = booz_xform_inputs_from_state(
+        state=st_guess,
+        static=static,
+        indata=indata,
+        signgs=signgs,
+    )
+    return FixedBoundaryContext(
+        st_guess=st_guess,
+        signgs=signgs,
+        flux=flux,
+        pressure=pressure,
+        booz_inputs=booz_inputs,
+    )
 
 
 def _pressure_profile_for_static(indata, static: VMECStatic):
@@ -75,16 +171,28 @@ def make_qs_residuals_fn(
     qs_weight: float = 1.0,
     iota_weight: float = 1.0,
     iota_floor_softness: float = 1.0e-3,
-    boundary_from_indata_func=boundary_from_indata,
-    initial_guess_from_boundary_func=initial_guess_from_boundary,
-    eval_geom_func=eval_geom,
-    signgs_from_sqrtg_func=signgs_from_sqrtg,
-    flux_profiles_from_indata_func=flux_profiles_from_indata,
-    pressure_profile_for_static_func=_pressure_profile_for_static,
+    boundary_from_indata_func=None,
+    initial_guess_from_boundary_func=None,
+    eval_geom_func=None,
+    signgs_from_sqrtg_func=None,
+    flux_profiles_from_indata_func=None,
+    pressure_profile_for_static_func=None,
     smooth_min_abs_iota_residual_func=None,
 ) -> Callable:
     """General quasisymmetry residual factory supporting QH, QA, and QP."""
 
+    if boundary_from_indata_func is None:
+        boundary_from_indata_func = boundary_from_indata
+    if initial_guess_from_boundary_func is None:
+        initial_guess_from_boundary_func = initial_guess_from_boundary
+    if eval_geom_func is None:
+        eval_geom_func = eval_geom
+    if signgs_from_sqrtg_func is None:
+        signgs_from_sqrtg_func = signgs_from_sqrtg
+    if flux_profiles_from_indata_func is None:
+        flux_profiles_from_indata_func = flux_profiles_from_indata
+    if pressure_profile_for_static_func is None:
+        pressure_profile_for_static_func = _pressure_profile_for_static
     if surfaces is None:
         surfaces = np.arange(0.0, 1.01, 0.1)
     surfaces = np.asarray(surfaces, dtype=float)
@@ -115,7 +223,7 @@ def make_qs_residuals_fn(
     _indata = indata
 
     if smooth_min_abs_iota_residual_func is None:
-        from vmec_jax.optimization import smooth_min_abs_iota_residual as smooth_min_abs_iota_residual_func
+        smooth_min_abs_iota_residual_func = smooth_min_abs_iota_residual
 
     def _qs_eval_from_state(state: VMECState):
         return quasisymmetry_module.quasisymmetry_ratio_residual_from_state(

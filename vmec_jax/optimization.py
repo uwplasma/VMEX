@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from contextlib import ExitStack, nullcontext
-from dataclasses import dataclass, fields, is_dataclass, replace
+from dataclasses import fields, is_dataclass, replace
 import json
 import math
 import os
@@ -16,9 +16,8 @@ import numpy as np
 
 from . import _compat as _compat_module
 from ._compat import jax, jnp
-from .boundary import BoundaryCoeffs, boundary_from_indata
-from .booz_input import BoozXformInputs, booz_xform_inputs_from_state
-from .energy import FluxProfiles, flux_profiles_from_indata
+from .boundary import BoundaryCoeffs
+from .energy import flux_profiles_from_indata
 from .field import signgs_from_sqrtg
 from .geom import eval_geom
 from .init_guess import initial_guess_from_boundary
@@ -43,8 +42,17 @@ from .optimizers.fixed_boundary.parameterization import (
     lift_boundary_params, rebuild_indata_with_resolution, truncate_indata_boundary_modes,
 )
 from .optimizers.fixed_boundary import profiling as _profiling
-from .optimizers.fixed_boundary.qs_residuals import make_qh_residuals_fn as _make_qh_residuals_fn_impl
-from .optimizers.fixed_boundary.qs_residuals import make_qs_residuals_fn as _make_qs_residuals_fn_impl
+from .optimizers.fixed_boundary.qs_residuals import (
+    FixedBoundaryContext,  # noqa: F401 - public re-export
+    _pressure_profile_for_static,  # noqa: F401 - private compatibility re-export
+    make_qh_residuals_fn,  # noqa: F401 - public re-export
+    make_qs_residuals_fn,  # noqa: F401 - public re-export
+    parse_surface_list,  # noqa: F401 - public re-export
+    prepare_fixed_boundary_context,  # noqa: F401 - public re-export
+    smooth_min_abs_iota_residual,  # noqa: F401 - public re-export
+    surface_indices_from_s,  # noqa: F401 - public re-export
+    surface_indices_from_static,  # noqa: F401 - public re-export
+)
 from .optimizers.fixed_boundary.replay_policy import (
     chunked_projected_replay_projection_enabled, fused_projected_replay_enabled,
     lasym_replay_column_chunk, optimizer_backend_name,
@@ -58,7 +66,6 @@ from .optimizers.fixed_boundary.scipy_least_squares import (
     run_scipy_dense_exact_optimizer, run_scipy_matrix_free_exact_optimizer,
 )
 from .optimizers.fixed_boundary import state_cache as _state_cache
-from .profiles import eval_profiles
 from .state import VMECState
 from .static import VMECStatic
 
@@ -72,32 +79,12 @@ _coeff_label = coeff_label
 _indexed_boundary_maps_from_boundary = indexed_boundary_maps_from_boundary
 
 __all__ = [
-    "BoundaryParamSpec",
-    "FixedBoundaryContext",
-    "FixedBoundaryExactOptimizer",
-    "apply_boundary_params",
-    "boundary_param_names",
-    "boundary_param_specs",
-    "create_x_scale",
-    "extend_boundary_for_max_mode",
-    "gauss_newton_least_squares",
-    "lift_boundary_params",
-    "prepare_fixed_boundary_context",
-    "rebuild_indata_with_resolution",
-    "smooth_min_abs_iota_residual",
-    "truncate_indata_boundary_modes",
+    "BoundaryParamSpec", "FixedBoundaryContext", "FixedBoundaryExactOptimizer",
+    "apply_boundary_params", "boundary_param_names", "boundary_param_specs",
+    "create_x_scale", "extend_boundary_for_max_mode", "gauss_newton_least_squares",
+    "lift_boundary_params", "prepare_fixed_boundary_context", "rebuild_indata_with_resolution",
+    "smooth_min_abs_iota_residual", "truncate_indata_boundary_modes",
 ]
-
-
-@dataclass(frozen=True)
-class FixedBoundaryContext:
-    """Bundled inputs for repeated fixed-boundary solves."""
-
-    st_guess: VMECState
-    signgs: int
-    flux: FluxProfiles
-    pressure: jnp.ndarray
-    booz_inputs: BoozXformInputs
 
 
 def _optimizer_backend_name(solver_device_name: str | None) -> str:
@@ -105,186 +92,6 @@ def _optimizer_backend_name(solver_device_name: str | None) -> str:
 
     return optimizer_backend_name(solver_device_name)
 
-
-def smooth_min_abs_iota_residual(
-    iota,
-    minimum: float,
-    *,
-    softness: float = 1.0e-3,
-    abs_epsilon: float = 1.0e-12,
-):
-    """Smooth residual for the differentiable constraint ``abs(iota) >= minimum``.
-
-    The returned residual is approximately zero when ``abs(iota)`` is above the
-    requested lower bound and approximately ``minimum - abs(iota)`` below it.
-    A softplus shortfall avoids the non-differentiable kink of a hard hinge,
-    which is important when this term is used inside exact JAX Jacobians.
-    """
-
-    iota = jnp.asarray(iota, dtype=jnp.float64)
-    minimum = jnp.asarray(minimum, dtype=iota.dtype)
-    softness = jnp.maximum(
-        jnp.asarray(softness, dtype=iota.dtype),
-        jnp.asarray(1.0e-15, dtype=iota.dtype),
-    )
-    abs_epsilon = jnp.asarray(abs_epsilon, dtype=iota.dtype)
-    smooth_abs_iota = jnp.sqrt(iota * iota + abs_epsilon * abs_epsilon)
-    shortfall = minimum - smooth_abs_iota
-    return softness * jnp.logaddexp(jnp.asarray(0.0, dtype=iota.dtype), shortfall / softness)
-
-
-def surface_indices_from_s(
-    s_half: np.ndarray,
-    surfaces: Sequence[int | float],
-) -> tuple[list[int], np.ndarray]:
-    """Map surface requests to half-mesh indices."""
-    indices: list[int] = []
-    for val in surfaces:
-        if isinstance(val, float) and 0.0 <= val <= 1.0:
-            indices.append(int(np.argmin(np.abs(s_half - val))))
-        else:
-            indices.append(int(val) - 1)
-    return indices, s_half[np.asarray(indices)]
-
-
-def surface_indices_from_static(
-    static: VMECStatic,
-    surfaces: Sequence[int | float],
-) -> tuple[list[int], np.ndarray]:
-    """Map surface requests to indices using a VMEC static object."""
-    s_half = 0.5 * (np.asarray(static.s[:-1]) + np.asarray(static.s[1:]))
-    return surface_indices_from_s(s_half, surfaces)
-
-
-def parse_surface_list(text: str) -> list[float | int]:
-    """Parse a comma-separated surface list into floats/ints.
-
-    Integers are treated as 1-based indices; floats in [0, 1] are treated as
-    normalized toroidal flux ``s`` values.
-    """
-    items: list[float | int] = []
-    for raw in text.split(","):
-        raw = raw.strip()
-        if not raw:
-            continue
-        if any(ch in raw for ch in (".", "e", "E")):
-            items.append(float(raw))
-        else:
-            items.append(int(raw))
-    return items
-
-
-def prepare_fixed_boundary_context(
-    *,
-    static: VMECStatic,
-    indata,
-    boundary: BoundaryCoeffs,
-    vmec_project: bool = False,
-) -> FixedBoundaryContext:
-    """Precompute common fixed-boundary inputs for optimization loops."""
-    st_guess = initial_guess_from_boundary(static, boundary, indata, vmec_project=vmec_project)
-    geom = eval_geom(st_guess, static)
-    signgs = signgs_from_sqrtg(np.asarray(geom.sqrtg), axis_index=1)
-    flux = flux_profiles_from_indata(indata, static.s, signgs=signgs)
-    pressure = _pressure_profile_for_static(indata, static)
-    booz_inputs = booz_xform_inputs_from_state(
-        state=st_guess,
-        static=static,
-        indata=indata,
-        signgs=signgs,
-    )
-    return FixedBoundaryContext(
-        st_guess=st_guess,
-        signgs=signgs,
-        flux=flux,
-        pressure=pressure,
-        booz_inputs=booz_inputs,
-    )
-
-
-def _pressure_profile_for_static(indata, static: VMECStatic):
-    """Evaluate the VMEC pressure profile on the optimization radial mesh."""
-    prof = eval_profiles(indata, jnp.asarray(static.s))
-    return jnp.asarray(
-        prof.get("pressure", jnp.zeros_like(jnp.asarray(static.s))),
-        dtype=jnp.asarray(static.s).dtype,
-    )
-
-
-def make_qh_residuals_fn(
-    static: VMECStatic,
-    indata,
-    *,
-    signgs: int | None = None,
-    helicity_m: int = 1,
-    helicity_n: int = -1,
-    target_aspect: float = 7.0,
-    surfaces=None,
-    aspect_weight: float = 1.0,
-    qs_weight: float = 1.0,
-) -> Callable:
-    """Build a ``residuals_from_state`` callable for quasi-helical symmetry."""
-
-    return _make_qh_residuals_fn_impl(
-        static,
-        indata,
-        signgs=signgs,
-        helicity_m=helicity_m,
-        helicity_n=helicity_n,
-        target_aspect=target_aspect,
-        surfaces=surfaces,
-        aspect_weight=aspect_weight,
-        qs_weight=qs_weight,
-        boundary_from_indata_func=boundary_from_indata,
-        initial_guess_from_boundary_func=initial_guess_from_boundary,
-        eval_geom_func=eval_geom,
-        signgs_from_sqrtg_func=signgs_from_sqrtg,
-        flux_profiles_from_indata_func=flux_profiles_from_indata,
-        pressure_profile_for_static_func=_pressure_profile_for_static,
-        smooth_min_abs_iota_residual_func=smooth_min_abs_iota_residual,
-    )
-
-
-def make_qs_residuals_fn(
-    static: VMECStatic,
-    indata,
-    *,
-    signgs: int | None = None,
-    helicity_m: int = 1,
-    helicity_n: int = 0,
-    target_aspect: float | None = None,
-    target_iota: float | None = None,
-    min_abs_iota: float | None = None,
-    surfaces=None,
-    aspect_weight: float = 1.0,
-    qs_weight: float = 1.0,
-    iota_weight: float = 1.0,
-    iota_floor_softness: float = 1.0e-3,
-) -> Callable:
-    """General quasisymmetry residuals factory supporting QH and QA objectives."""
-
-    return _make_qs_residuals_fn_impl(
-        static,
-        indata,
-        signgs=signgs,
-        helicity_m=helicity_m,
-        helicity_n=helicity_n,
-        target_aspect=target_aspect,
-        target_iota=target_iota,
-        min_abs_iota=min_abs_iota,
-        surfaces=surfaces,
-        aspect_weight=aspect_weight,
-        qs_weight=qs_weight,
-        iota_weight=iota_weight,
-        iota_floor_softness=iota_floor_softness,
-        boundary_from_indata_func=boundary_from_indata,
-        initial_guess_from_boundary_func=initial_guess_from_boundary,
-        eval_geom_func=eval_geom,
-        signgs_from_sqrtg_func=signgs_from_sqrtg,
-        flux_profiles_from_indata_func=flux_profiles_from_indata,
-        pressure_profile_for_static_func=_pressure_profile_for_static,
-        smooth_min_abs_iota_residual_func=smooth_min_abs_iota_residual,
-    )
 
 class FixedBoundaryExactOptimizer:
     """Exact fixed-boundary optimizer built on VMEC solves and AD callbacks.
