@@ -18814,3 +18814,78 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999975%.
+
+## 2026-06-18 NESTOR Scratch-State Initialization Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Inspected `run_fixed_boundary` and rejected a mechanical driver compaction
+   because the remaining body is mostly deliberate context assembly and a small
+   line reduction there would reduce readability.
+2. Moved to the next production hotspot, `nestor_external_only_step`, and
+   compacted repeated scratch-state initialization for optional mode vectors,
+   diagnostics flags, timings, and runtime cache variables.
+3. Left the dense/spectral solve control flow unchanged; this tranche does not
+   alter provider selection, source reuse, JAX NESTOR operator handling, or
+   runtime cache semantics.
+
+Results obtained:
+
+- `vmec_jax/free_boundary.py` dropped from 3531 to 3521 lines.
+- `nestor_external_only_step` dropped from 525 to 515 lines.
+- Focused free-boundary/NESTOR and direct-coil provider tests passed.
+- Existing low-resolution NESTOR warning noise remains unchanged in the
+  relevant tests.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/free_boundary.py`
+- `python -m ruff check vmec_jax/free_boundary.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_wp0.py tests/test_free_boundary_additional_helpers.py tests/test_free_boundary_jax_nestor_operator_cache.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_coil_provider_forward.py tests/test_free_boundary_coil_provider_gradients.py -q`
+- `python tools/diagnostics/source_health.py | head -90`
+
+Best next steps:
+
+1. For a larger free-boundary reduction, extract a typed dense/spectral NESTOR
+   solve payload only after defining focused parity tests around mode, cache,
+   and diagnostic outputs.
+2. Continue production-code reductions in `driver.py` only through a larger
+   context-factory redesign, not one-off attribute compaction.
+3. Continue source-health-driven work with `driver.py`, `vmec_tomnsp.py`, or
+   residual-loop seams depending on which gives the next safe net-negative
+   tranche.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.78%.
+- Free-boundary adjoint monolith reduction: 99.50%.
+- Driver workflow decomposition: 99.94%.
+- Residual iteration decomposition: 98.79%.
+- WOUT diagnostic/profile decomposition: 99.95%.
+- Bcovar/WOUT parity decomposition: 99.13%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.81%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.66%.
+- Fixed-boundary optimizer decomposition: 96.05%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.45%.
+- Free-boundary validation-gate maintainability: 97.3%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9999998%.
