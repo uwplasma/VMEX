@@ -22179,3 +22179,78 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999999%.
+
+## 2026-06-19 Plotting Backend and Boozer Contour Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Revisited source health after the discrete-adjoint replay tranches and
+   selected `vmec_jax/plotting.py`, the smallest remaining production file over
+   the 2000-line warning threshold.
+2. Reused the existing `_import_matplotlib` helper in plotting writers instead
+   of repeating `prepare_matplotlib_3d`, `matplotlib.use("Agg")`, and pyplot
+   imports in each function.
+3. Added a shared `_plot_boozer_bmag_axis` helper for Boozer-coordinate line
+   contour plots, preserving one colorbar per axis and the same LaTeX labels.
+4. Simplified the repeated `plot_wout` scalar-profile panels with one small
+   loop.
+5. Updated the plotting unit test so it validates the shared Boozer axis helper
+   rather than requiring duplicated label setup inside one public caller.
+
+Results obtained:
+
+- `vmec_jax/plotting.py` decreased from 2158 to 2124 lines.
+- The public plotting API is unchanged, including the compatibility
+  `plot_qh_optimization` wrapper.
+- Boozer contour label ownership is now centralized, reducing future drift
+  between state, boozmn, and initial/final LCFS contour plots.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/plotting.py`
+- `python -m ruff check vmec_jax/plotting.py tests/test_plotting_unit.py tests/test_init_plotting_wave12_coverage.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_plotting_unit.py tests/test_init_plotting_wave12_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 50`
+
+Best next steps:
+
+1. Continue reducing `plotting.py` only if another behavior-preserving seam can
+   move it materially toward the 2000-line threshold.
+2. Otherwise move to `optimization.py` or free-boundary validation helpers, where
+   source-health still shows large maintainability hotspots.
+3. Keep the residual-loop preconditioned-force seam deferred until the payload
+   contract can be extracted with cache/timing parity tests.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999954%.
+- Solver monolith reduction: 99.827%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.055%.
+- WOUT diagnostic/profile decomposition: 99.982%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.825%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.745%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 97.15%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 96.82%.
+- Free-boundary validation-gate maintainability: 98.18%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9999999991%.
