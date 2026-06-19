@@ -57,6 +57,24 @@ class WoutMinimalRuntimeOptions(NamedTuple):
     fast_bcovar: bool
 
 
+class WoutMinimalFieldOptions(NamedTuple):
+    """Environment-derived switches for Bsub/Mercier field-output assembly."""
+
+    mercier_bsub_source: str
+    mercier_use_bsube: bool
+    disable_bsubv_equif_corr: bool
+    apply_bss_scalxc: bool
+    skip_bsub_filter: bool
+    filter_from_raw: bool
+    use_lasym_loop: bool
+    lasym_filter: bool
+    lasym_filter_use_parity_channels: bool
+    symmetric_wrout_loop: bool
+    mercier_use_wrout_bsubuv: bool
+    bsub_filter_use_bc_parity: bool
+    zero_nonconverged_beta: bool
+
+
 class WoutBcovarPayload(NamedTuple):
     """Force/bcovar state needed by minimal WOUT assembly."""
 
@@ -329,12 +347,9 @@ def minimal_wout_runtime_options_from_env(environ: Mapping[str, str] | None = No
     """Resolve passive WOUT runtime switches from environment variables."""
 
     env = os.environ if environ is None else environ
-    timing_env = env.get("VMEC_JAX_WOUT_TIMING", "").strip().lower()
-    light_env = env.get("VMEC_JAX_WOUT_LIGHT", "").strip().lower()
-    fast_bcovar_env = env.get("VMEC_JAX_WOUT_FAST_BCOVAR", "").strip().lower()
-    timing_enabled = timing_env not in ("", "0", "false", "no")
-    light = light_env not in ("", "0", "false", "no")
-    fast_bcovar = fast_bcovar_env not in ("0", "false", "no", "off")
+    timing_enabled = env_enabled(env.get("VMEC_JAX_WOUT_TIMING", ""))
+    light = env_enabled(env.get("VMEC_JAX_WOUT_LIGHT", ""))
+    fast_bcovar = env_enabled(env.get("VMEC_JAX_WOUT_FAST_BCOVAR", ""), false_values=("0", "false", "no", "off"))
     if light:
         fast_bcovar = True
     return WoutMinimalRuntimeOptions(
@@ -344,13 +359,58 @@ def minimal_wout_runtime_options_from_env(environ: Mapping[str, str] | None = No
     )
 
 
+def minimal_wout_field_options_from_env(
+    environ: Mapping[str, str] | None = None,
+    *,
+    wout_light: bool = False,
+) -> WoutMinimalFieldOptions:
+    """Resolve Bsub/Mercier field-output switches from environment variables."""
+
+    env = os.environ if environ is None else environ
+    strict_lasym_loop = env_enabled(
+        env.get("VMEC_JAX_WROUT_LASYM_STRICT", ""),
+        false_values=("", "0", "false", "no"),
+    )
+    return WoutMinimalFieldOptions(
+        mercier_bsub_source=env.get("VMEC_JAX_MERCIER_BSUB_SOURCE", "").strip().lower(),
+        mercier_use_bsube=env_enabled(env.get("VMEC_JAX_MERCIER_USE_BSUBE", "0"), false_values=("", "0")),
+        disable_bsubv_equif_corr=env_enabled(
+            env.get("VMEC_JAX_DISABLE_BSUBV_EQUI_CORR", "1"),
+            false_values=("", "0"),
+        ),
+        apply_bss_scalxc=env_enabled(env.get("VMEC_JAX_BSS_APPLY_SCALXC", "1"), false_values=("", "0")),
+        skip_bsub_filter=bool(wout_light)
+        or env_enabled(env.get("VMEC_JAX_SKIP_BSUB_FILTER", ""), false_values=("", "0")),
+        filter_from_raw=env_enabled(env.get("VMEC_JAX_MERCIER_FILTER_FROM_RAW", "0"), false_values=("", "0")),
+        use_lasym_loop=bool(strict_lasym_loop)
+        or env_enabled(env.get("VMEC_JAX_WROUT_LASYM_LOOP", "0"), false_values=("", "0", "false", "no")),
+        lasym_filter=env_enabled(env.get("VMEC_JAX_WROUT_LASYM_FILTER", "1"), false_values=("", "0")),
+        lasym_filter_use_parity_channels=env_enabled(
+            env.get("VMEC_JAX_LASYM_FILTER_USE_PARITY_CHANNELS", "0"),
+            false_values=("", "0", "false", "no"),
+        ),
+        symmetric_wrout_loop=env_enabled(env.get("VMEC_JAX_WROUT_LOOP", "0"), false_values=("", "0")),
+        mercier_use_wrout_bsubuv=env_enabled(
+            env.get("VMEC_JAX_MERCIER_USE_WROUT_BSUBUV", ""),
+            false_values=("", "0"),
+        ),
+        bsub_filter_use_bc_parity=env_enabled(
+            env.get("VMEC_JAX_BSUB_FILTER_USE_BC_PARITY", "0"),
+            false_values=("", "0", "false", "no"),
+        ),
+        zero_nonconverged_beta=env_enabled(
+            env.get("VMEC_JAX_WOUT_ZERO_NONCONVERGED_BETA", ""),
+            false_values=("", "0", "false", "no", "off"),
+        ),
+    )
+
+
 def lbsubs_from_indata_and_env(indata: Any, environ: Mapping[str, str] | None = None) -> bool:
     """Resolve VMEC ``LBSUBS`` output policy with the debug env override."""
 
     env = os.environ if environ is None else environ
     lbsubs = bool(getattr(indata, "get_bool", lambda *_args, **_kwargs: False)("LBSUBS", False))
-    override = env.get("VMEC_JAX_ENABLE_BSUBS_CORR", "").strip().lower()
-    if override not in ("", "0", "false", "no"):
+    if env_enabled(env.get("VMEC_JAX_ENABLE_BSUBS_CORR", "")):
         lbsubs = True
     return bool(lbsubs)
 

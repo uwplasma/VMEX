@@ -43,6 +43,7 @@ from .io.wout.minimal import (
     env_enabled,
     indata_for_wout_force_path,
     lbsubs_from_indata_and_env,
+    minimal_wout_field_options_from_env,
     minimal_wout_runtime_options_from_env,
     pressure_profiles_from_mass_vp,
     prepare_wout_bss_source_payload,
@@ -1006,6 +1007,15 @@ def write_wout(path: str | Path, wout: WoutData, *, overwrite: bool = False) -> 
         print_func=print,
     )
 
+
+def _zero_first_surface(*arrays: np.ndarray) -> None:
+    """Apply VMEC wrout's zero-axis convention to coefficient arrays in-place."""
+
+    for arr in arrays:
+        if arr.shape[0] > 0:
+            arr[0, :] = 0.0
+
+
 def wout_minimal_from_fixed_boundary(
     *,
     path: str | Path,
@@ -1050,6 +1060,7 @@ def wout_minimal_from_fixed_boundary(
     wout_timing_enabled = runtime_options.timing_enabled
     wout_light = runtime_options.light
     wout_fast_bcovar = runtime_options.fast_bcovar
+    field_options = minimal_wout_field_options_from_env(wout_light=bool(wout_light))
     wout_timing: dict[str, float] = {}
     t_wout_total_start = None
     if wout_timing_enabled:
@@ -1286,14 +1297,14 @@ def wout_minimal_from_fixed_boundary(
     # fields. Keep both paths explicit to match VMEC output.
     bsubu_diag = bsubu_out
     bsubv_diag = bsubv_out
-    bsub_src = os.getenv("VMEC_JAX_MERCIER_BSUB_SOURCE", "").strip().lower()
+    bsub_src = field_options.mercier_bsub_source
     if bsub_src in {"bsubu_e", "bsubu_e_scaled", "bsubu"}:
         u_name = bsub_src
         v_name = bsub_src.replace("bsubu", "bsubv")
         if hasattr(bc, u_name) and hasattr(bc, v_name):
             bsubu_diag = np.asarray(getattr(bc, u_name), dtype=float)
             bsubv_diag = np.asarray(getattr(bc, v_name), dtype=float)
-    elif os.getenv("VMEC_JAX_MERCIER_USE_BSUBE", "0") not in ("", "0"):
+    elif field_options.mercier_use_bsube:
         if hasattr(bc, "bsubu_e") and hasattr(bc, "bsubv_e"):
             bsubu_diag = np.asarray(getattr(bc, "bsubu_e"), dtype=float)
             bsubv_diag = np.asarray(getattr(bc, "bsubv_e"), dtype=float)
@@ -1302,7 +1313,7 @@ def wout_minimal_from_fixed_boundary(
     # time, regardless of the runtime IEQUI used in iterations.
     iequi = 1
     # VMEC parity: keep the raw bsubv path by default for Mercier/jdotb parity.
-    disable_equif_corr = os.getenv("VMEC_JAX_DISABLE_BSUBV_EQUI_CORR", "1") not in ("", "0")
+    disable_equif_corr = field_options.disable_bsubv_equif_corr
     if (iequi == 1) and (not disable_equif_corr) and getattr(bc, "bsubv_e", None) is not None:
         bsubv_diag = _apply_bsubv_equif_correction(
             bsubv=bsubv_diag,
@@ -1328,7 +1339,7 @@ def wout_minimal_from_fixed_boundary(
         force_zs=zs_bss,
         force_ru12=ru12_bss,
         force_zu12=zu12_bss,
-        apply_scalxc=os.getenv("VMEC_JAX_BSS_APPLY_SCALXC", "1") not in ("", "0"),
+        apply_scalxc=field_options.apply_bss_scalxc,
     )
     if wout_timing_enabled:
         wout_timing["bsubs_half_s"] = _time.perf_counter() - t0
@@ -1349,28 +1360,15 @@ def wout_minimal_from_fixed_boundary(
         bsubs_full[-1] = 2.0 * bsubs_full[-1] - bsubs_full[-2]
 
     # JXBFORCE applies a low-pass filter on bsubu/bsubv using (mpol-1, ntor).
-    skip_bsub_filter = os.getenv("VMEC_JAX_SKIP_BSUB_FILTER", "") not in ("", "0")
-    if wout_light:
-        skip_bsub_filter = True
-    filter_from_raw = os.getenv("VMEC_JAX_MERCIER_FILTER_FROM_RAW", "0") not in ("", "0")
+    skip_bsub_filter = field_options.skip_bsub_filter
+    filter_from_raw = field_options.filter_from_raw
 
     if wout_timing_enabled:
         t0 = _time.perf_counter()
     if bool(lasym):
-        strict_lasym_loop = os.getenv("VMEC_JAX_WROUT_LASYM_STRICT", "") not in ("", "0", "false", "no")
-        if strict_lasym_loop:
-            use_lasym_loop = True
-        else:
-            # Default to vectorized LASYM Nyquist transforms. The explicit
-            # loop path is retained for parity debugging via env toggle.
-            use_lasym_loop = os.getenv("VMEC_JAX_WROUT_LASYM_LOOP", "0") not in ("", "0", "false", "no")
-        if (not skip_bsub_filter) and (os.getenv("VMEC_JAX_WROUT_LASYM_FILTER", "1") not in ("", "0")):
-            use_parity_channels = os.getenv("VMEC_JAX_LASYM_FILTER_USE_PARITY_CHANNELS", "0") not in (
-                "",
-                "0",
-                "false",
-                "no",
-            )
+        use_lasym_loop = field_options.use_lasym_loop
+        if (not skip_bsub_filter) and field_options.lasym_filter:
+            use_parity_channels = field_options.lasym_filter_use_parity_channels
             bsubu_even_filter = getattr(bc, "bsubu_parity_even", None) if use_parity_channels else None
             bsubu_odd_filter = getattr(bc, "bsubu_parity_odd", None) if use_parity_channels else None
             bsubv_even_filter = getattr(bc, "bsubv_parity_even", None) if use_parity_channels else None
@@ -1502,25 +1500,13 @@ def wout_minimal_from_fixed_boundary(
             bsubvmns=bsubvmns,
         )
 
-        if gmnc.shape[0] > 0:
-            gmnc[0, :] = 0.0
-            bmnc[0, :] = 0.0
-            bsubumnc[0, :] = 0.0
-            bsubvmnc[0, :] = 0.0
-            bsupumnc[0, :] = 0.0
-            bsupvmnc[0, :] = 0.0
-        if gmns.shape[0] > 0:
-            gmns[0, :] = 0.0
-            bmns[0, :] = 0.0
-            bsubumns[0, :] = 0.0
-            bsubvmns[0, :] = 0.0
-            bsupumns[0, :] = 0.0
-            bsupvmns[0, :] = 0.0
+        _zero_first_surface(gmnc, bmnc, bsubumnc, bsubvmnc, bsupumnc, bsupvmnc)
+        _zero_first_surface(gmns, bmns, bsubumns, bsubvmns, bsupumns, bsupvmns)
         if (not use_lasym_loop) and (ns > 2):
             bsubsmns[0, :] = 2.0 * bsubsmns[1, :] - bsubsmns[2, :]
             bsubsmnc[0, :] = 2.0 * bsubsmnc[1, :] - bsubsmnc[2, :]
     else:
-        use_loop = os.getenv("VMEC_JAX_WROUT_LOOP", "0") not in ("", "0")
+        use_loop = field_options.symmetric_wrout_loop
         sym_nyq = minimal_wout_symmetric_nyquist_coefficients(
             bc=bc,
             bsubu_out=np.asarray(bsubu_out, dtype=float),
@@ -1556,7 +1542,7 @@ def wout_minimal_from_fixed_boundary(
     # the real-space (bsubu/bsubv) fields.
     bsubu_phys = None
     bsubv_phys = None
-    if os.getenv("VMEC_JAX_MERCIER_USE_WROUT_BSUBUV", "") not in ("", "0"):
+    if field_options.mercier_use_wrout_bsubuv:
         from .fourier import build_helical_basis
         from .vmec_tomnsp import vmec_angle_grid
 
@@ -1590,7 +1576,7 @@ def wout_minimal_from_fixed_boundary(
             _psh = _pshalf_from_s(np.asarray(s, dtype=float))[:, None, None]
             if _psh.shape[0] > 1:
                 _psh[0] = _psh[1]
-            use_bc_parity = os.getenv("VMEC_JAX_BSUB_FILTER_USE_BC_PARITY", "0") not in ("", "0", "false", "no")
+            use_bc_parity = field_options.bsub_filter_use_bc_parity
             if use_bc_parity and getattr(bc, "bsubu_parity_even", None) is not None:
                 bsubu_even = np.asarray(getattr(bc, "bsubu_parity_even"), dtype=float)
                 bsubv_even = np.asarray(getattr(bc, "bsubv_parity_even"), dtype=float)
@@ -1631,9 +1617,7 @@ def wout_minimal_from_fixed_boundary(
     if not bool(lasym):
         bsubumnc = _vmec_wrout_nyquist_cos_coeffs(f=bsubu_out, modes=nyq_modes, trig=trig)
         bsubvmnc = _vmec_wrout_nyquist_cos_coeffs(f=bsubv_out, modes=nyq_modes, trig=trig)
-        if bsubumnc.shape[0] > 0:
-            bsubumnc[0, :] = 0.0
-            bsubvmnc[0, :] = 0.0
+        _zero_first_surface(bsubumnc, bsubvmnc)
     if wout_timing_enabled:
         wout_timing["bsub_coeffs_s"] = _time.perf_counter() - t_bsub_coeffs
     # Keep bsubsmns from the direct bsubs_half computation (wrout.f). The
@@ -1714,13 +1698,7 @@ def wout_minimal_from_fixed_boundary(
     # preserve every field computed from the last state and mark solver status.
     # Keep an explicit legacy escape hatch for tests/comparisons that require
     # VMEC2000's non-converged beta zeroing behavior.
-    zero_beta_nonconv = os.getenv("VMEC_JAX_WOUT_ZERO_NONCONVERGED_BETA", "").strip().lower() not in (
-        "",
-        "0",
-        "false",
-        "no",
-        "off",
-    )
+    zero_beta_nonconv = field_options.zero_nonconverged_beta
     if (not bool(converged)) and bool(zero_beta_nonconv):
         scalar_diag = scalar_diag._replace(betatotal=0.0, betapol=0.0, betator=0.0)
 

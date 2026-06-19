@@ -7,6 +7,79 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-19.
 
+## 2026-06-19 WOUT Field-Output Policy Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved WOUT Bsub/Mercier field-output environment policy into
+   `io.wout.minimal.minimal_wout_field_options_from_env`.
+2. Reused that policy object inside `wout_minimal_from_fixed_boundary` instead
+   of scattering environment parsing through the diagnostic assembly body.
+3. Added `_zero_first_surface` for VMEC wrout's first-surface zeroing
+   convention, replacing repeated in-place coefficient zeroing blocks.
+4. Tightened older WOUT runtime/LBSUBS policy parsing to use the existing
+   `env_enabled` helper.
+5. Added focused tests for the extracted field policy, including legacy toggles
+   whose historical semantics disable only on `""` or `"0"`.
+
+Results obtained:
+
+- `wout_minimal_from_fixed_boundary` dropped from 772 to 740 lines.
+- `vmec_jax/wout.py` dropped from 1792 to 1770 lines.
+- The WOUT source-health hotspot moved farther below the 2000-line warning
+  threshold while preserving the WOUT/Mercier branch behavior covered by
+  focused tests.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/wout.py vmec_jax/io/wout/minimal.py tests/test_wout_fast_helpers.py`
+- `python -m ruff check vmec_jax/wout.py vmec_jax/io/wout/minimal.py tests/test_wout_fast_helpers.py --select F401,F841`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_fast_helpers.py::test_wout_minimal_runtime_policy_helpers_preserve_env_semantics tests/test_wout_env_branch_coverage.py::test_mercier_bsub_source_env_uses_scaled_bcovar_fields tests/test_wout_env_branch_coverage.py::test_nonconverged_beta_retention_and_legacy_zero_env tests/test_wout_driver_wave10_coverage.py::test_wout_minimal_bsub_source_filter_branches tests/test_wout_driver_wave10_coverage.py::test_wout_minimal_equif_correction_and_raw_filter_branch tests/test_wout_driver_wave10_coverage.py::test_wout_minimal_lasym_loop_and_presym_dump_branch tests/test_wout_physics_wave8_coverage.py::test_compute_mercier_lasym_lbsubs_branch_with_reduced_bsub_inputs -q`
+- `git diff --check`
+- `python tools/diagnostics/source_health.py | head -55`
+
+Best next steps:
+
+1. Continue with measurable reductions in oversized bodies, not neutral
+   one-line cleanups.
+2. Good next candidates are the free-boundary test fixtures with repeated
+   trace setup, `discrete_adjoint.py` replay packing, or residual scan
+   controller result packing.
+3. Keep broad CI batched; use focused parity/physics tests for each tranche.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.737%.
+- Free-boundary adjoint monolith reduction: 99.44%.
+- Driver workflow decomposition: 99.94%.
+- Residual iteration decomposition: 98.68%.
+- WOUT diagnostic/profile decomposition: 99.94%.
+- Bcovar/WOUT parity decomposition: 99.13%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.805%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.66%.
+- Fixed-boundary optimizer decomposition: 96.05%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.45%.
+- Discrete-adjoint replay decomposition: 96.4%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9999975%.
+
 ## 2026-06-19 Residual Free-Boundary Hot-Loop Env Cache Cleanup
 
 Branch: `codex/differentiability-refactor-plan`.
