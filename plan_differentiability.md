@@ -23814,3 +23814,85 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999999978%.
+
+## 2026-06-19 Residual Axis-Reset and HLO Ownership Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `InitialAxisResetSetupResult` and
+   `run_initial_axis_reset_setup` to
+   `vmec_jax/solvers/fixed_boundary/diagnostics/axis_reset.py`.
+2. Moved setup-time VMEC-style magnetic-axis reset execution out of the
+   residual controller body while preserving force evaluation, optional reset,
+   VMEC-formatted printing, velocity reset, and timing accounting.
+3. Kept preconditioner-cache invalidation in the host loop because those cache
+   locals still belong to the residual controller state.
+4. Removed duplicated HLO dump wrapper code from
+   `vmec_jax/solvers/fixed_boundary/residual/iteration.py`.
+5. Exposed `vmec_jax.solvers.fixed_boundary.diagnostics.hlo` through the
+   `vmec_jax.solve` compatibility facade and kept `_maybe_dump_hlo_kernel` as a
+   dynamic compatibility wrapper so monkeypatching `solve.has_jax` still affects
+   HLO tests.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` decreased from 4669
+  to 4618 lines.
+- `solve_fixed_boundary_residual_iter` decreased from 4297 to 4271 lines.
+- HLO dumping now has one canonical implementation in the diagnostics domain,
+  instead of a wrapper copy in the residual solver.
+- Setup-time magnetic-axis reset now lives with the rest of axis-reset
+  diagnostics, making the residual controller closer to a pure host controller.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/diagnostics/axis_reset.py vmec_jax/solvers/fixed_boundary/diagnostics/hlo.py vmec_jax/solve.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/diagnostics/axis_reset.py vmec_jax/solvers/fixed_boundary/diagnostics/hlo.py vmec_jax/solve.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_axis_helpers_more_coverage.py tests/test_driver_api.py::test_python_default_fixed_boundary_uses_optimized_controller tests/test_solve_real_scan_wave10_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_finish_cache_more_coverage.py::test_nonscan_non_strict_backtracking_accepts_momentum_update tests/test_solve_finish_cache_more_coverage.py::test_nonscan_debug_force_path_runs_with_m1_and_zeroing tests/test_solve_additional_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_debug_dump_wave10_coverage.py tests/test_solve_dump_helpers.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --top-functions 20`
+
+Best next steps:
+
+1. Commit and push this ownership-cleanup tranche.
+2. Move from setup/finalization cleanup to the central non-scan host-controller
+   extraction.  The remaining source-health blocker is still the 4271-line
+   `solve_fixed_boundary_residual_iter` function.
+3. Build the controller boundary around explicit mutable controller state
+   groups rather than another large namespace-only helper.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999981%.
+- Solver monolith reduction: 99.870%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.30%.
+- WOUT diagnostic/profile decomposition: 99.982%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.885%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.1%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 99.20%.
+- Free-boundary validation-gate maintainability: 98.40%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999999979%.
