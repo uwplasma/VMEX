@@ -23770,6 +23770,7 @@ Tests and commands run:
 - `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_finish_cache_more_coverage.py::test_nonscan_non_strict_backtracking_accepts_momentum_update tests/test_solve_finish_cache_more_coverage.py::test_nonscan_debug_force_path_runs_with_m1_and_zeroing tests/test_solve_additional_helpers.py -q`
 - `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trial_nestor_timing_records_solver_trial_calls tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_forced_active_direct_coil_finite_pressure_solve_has_physics_diagnostics -q`
 - `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_real_scan_wave10_coverage.py tests/test_solve_residual_iter_finalize_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_finalize_helpers.py -q`
 - `python tools/diagnostics/source_health.py --top 16 --top-functions 35`
 
 Best next steps:
