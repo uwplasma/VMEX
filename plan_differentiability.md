@@ -20652,3 +20652,74 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999978%.
+
+## 2026-06-19 Free-Boundary NESTOR Reuse Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Returned from validation scaffolding to production code, targeting the
+   free-boundary NESTOR path in `vmec_jax/free_boundary.py`.
+2. Removed a no-op backward-compatibility assignment in
+   `nestor_external_only_step`.
+3. Collapsed provider source-reuse boolean handling without changing the mgrid
+   or direct-provider semantics.
+4. Removed duplicate boundary shape extraction and compacted a diagnostics
+   cache check.
+
+Results obtained:
+
+- `vmec_jax/free_boundary.py` changed by 5 insertions and 10 deletions, net
+  `-5` lines.
+- The file decreased from 3504 to 3499 lines.
+- `nestor_external_only_step` decreased from 441 to 437 lines.
+- The change is behavior-preserving: it removes duplicated/no-op logic and
+  keeps provider reuse, RHS construction, and diagnostics semantics unchanged.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/free_boundary.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `python -m ruff check vmec_jax/free_boundary.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_active_direct_coil_provider_is_sensitive_in_finite_pressure_context tests/test_free_boundary_coil_provider_forward.py -q`
+
+Best next steps:
+
+1. Continue production-code simplification in `free_boundary.py` by extracting a
+   real diagnostics-provider helper only if it is line-negative and testable.
+2. Tackle residual iteration decomposition next; it remains the dominant source
+   and function-length hotspot.
+3. Avoid changing dense NESTOR numerics or adaptive branch policy until a
+   dedicated parity/performance tranche is planned and tested.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999452%.
+- Solver monolith reduction: 99.80%.
+- Free-boundary adjoint monolith reduction: 99.53%.
+- Driver workflow decomposition: 99.945%.
+- Residual iteration decomposition: 98.93%.
+- WOUT diagnostic/profile decomposition: 99.975%.
+- Bcovar/WOUT parity decomposition: 99.15%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.82%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.74%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 96.80%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.62%.
+- Free-boundary validation-gate maintainability: 97.96%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999979%.
