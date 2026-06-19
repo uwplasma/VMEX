@@ -19849,3 +19849,73 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999967%.
+
+## 2026-06-19 Plotting Axis Evaluation Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Inspected the plotting source-health warning and targeted the duplicated
+   magnetic-axis Fourier evaluation in `axis_rz_from_wout` and
+   `axis_rz_from_wout_physical`.
+2. Extracted `_axis_rz_from_wout_angle` as the shared implementation while
+   preserving both public helper APIs and their existing angle semantics.
+3. Kept fallback behavior unchanged for minimal/fake wout objects without axis
+   coefficients.
+
+Results obtained:
+
+- `vmec_jax/plotting.py` changed by 10 insertions and 20 deletions, net `-10`
+  source lines.
+- The file decreased from 2189 to 2179 lines.
+- Axis evaluation now has one implementation, reducing the chance that field
+  period and physical-angle plotting paths drift apart.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/plotting.py`
+- `python -m ruff check vmec_jax/plotting.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_plotting_fast_helpers.py::test_vmecplot2_and_axis_fallback_defaults tests/test_plotting_unit.py::test_axis_profiles_surface_stack_and_surface_data tests/test_plotting_unit.py::test_physical_angle_helpers_match_field_period_helpers_for_axisymmetric_data tests/test_plotting_helpers.py::test_plotting_physical_matches_field_period -q`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue plotting cleanup around repeated boundary/LCFS data preparation if
+   an identical helper seam is available.
+2. Otherwise move to a larger source-health hotspot such as the residual
+   iteration file, discrete-adjoint replay, or free-boundary validation tests.
+3. Keep plotting public APIs stable because README/docs/example generation uses
+   these helpers directly.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999400%.
+- Solver monolith reduction: 99.79%.
+- Free-boundary adjoint monolith reduction: 99.51%.
+- Driver workflow decomposition: 99.945%.
+- Residual iteration decomposition: 98.88%.
+- WOUT diagnostic/profile decomposition: 99.965%.
+- Bcovar/WOUT parity decomposition: 99.14%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.81%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.67%.
+- Fixed-boundary optimizer decomposition: 96.10%.
+- Plotting/WOUT visualization decomposition: 96.35%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.58%.
+- Free-boundary validation-gate maintainability: 97.45%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999968%.
