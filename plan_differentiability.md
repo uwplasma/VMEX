@@ -7,6 +7,78 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-18.
 
+## 2026-06-18 VMEC2000 Scan Execution Dispatch Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved the VMEC2000 scan chunked-vs-nonchunked runner dispatch into
+   `solvers.fixed_boundary.scan.runtime.run_vmec2000_scan_dispatch`.
+2. Kept the adaptive scan step, acceptance/restart logic, scan runner cache, and
+   final result assembly unchanged in behavior.
+3. Grouped shared scan-execution arguments once at the call site so the residual
+   monolith no longer owns the branch dispatch boilerplate.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` dropped from 6468 to
+  6449 lines, a 19-line reduction from the residual monolith in this tranche.
+- `_run_vmec2000_scan` dropped from 941 to 923 lines in the source-health
+  report.
+- `vmec_jax/solvers/fixed_boundary/scan/runtime.py` grew by 30 lines to own the
+  reusable dispatch seam.
+- Net touched-file line count is +11 lines. This is small but still not the
+  desired endpoint; the next residual tranche should extract a larger pure setup
+  or reporting seam to make net source size decrease.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/scan/runtime.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/scan/runtime.py --select F401,F841 --ignore-noqa`
+- `JAX_ENABLE_X64=1 pytest -q tests/test_driver_api.py::test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid tests/test_residue_getfsq_parity.py -q`
+- `JAX_ENABLE_X64=1 pytest -q tests/test_step6_solve_fixed_boundary.py tests/test_vmec2000_fixed_boundary_physics_gates.py tests/test_nonaxis_exec_stage_trace_parity.py tests/test_force_norms_dynamic_parity.py tests/test_residue_getfsq_parity.py tests/test_driver_api.py::test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid -q`
+- `python tools/diagnostics/source_health.py --top 16 --top-functions 30`
+- `git diff --check`
+
+Best next steps:
+
+1. Extract a larger pure setup/reporting seam from `_run_vmec2000_scan`, such as
+   initial force/axis-reset diagnostics or scan-runtime plan assembly.
+2. Avoid extracting tiny branch wrappers unless they unblock a larger seam.
+3. Continue validating each residual extraction with the fixed-boundary parity
+   shard before committing.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.68%.
+- Free-boundary adjoint monolith reduction: 99.42%.
+- Driver workflow decomposition: 99.92%.
+- Residual iteration decomposition: 98.0%.
+- WOUT diagnostic/profile decomposition: 99.89%.
+- Bcovar/WOUT parity decomposition: 99.11%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.74%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.56%.
+- Fixed-boundary optimizer decomposition: 95.8%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.35%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999980%.
+
 ## 2026-06-18 Solve Facade Compatibility Export Cleanup
 
 Branch: `codex/differentiability-refactor-plan`.

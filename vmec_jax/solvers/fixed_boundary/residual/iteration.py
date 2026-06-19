@@ -292,9 +292,8 @@ from vmec_jax.solvers.fixed_boundary.scan.planning import (
 from vmec_jax.solvers.fixed_boundary.scan.runtime import (
     get_or_build_scan_runner as _get_or_build_scan_runner,
     resolve_scan_runtime_hooks_from_env as _resolve_scan_runtime_hooks_from_env,
-    run_chunked_scan as _run_chunked_scan,
-    run_nonchunked_scan as _run_nonchunked_scan,
     scan_trace_context_or_null as _scan_trace_context_or_null,
+    run_vmec2000_scan_dispatch as _run_vmec2000_scan_dispatch,
 )
 from vmec_jax.solvers.fixed_boundary.scan.time_control import (
     evaluate_scan_time_control_restart,
@@ -2186,72 +2185,54 @@ def solve_fixed_boundary_residual_iter(
         if scan_timing_enabled and scan_run_setup_start is not None:
             scan_timing_stats["scan_run_setup_s"] += time.perf_counter() - float(scan_run_setup_start)
         carry_init = carry0._replace(state=state_init, state_checkpoint=state_init)
-        if chunked_print:
-            need_print = bool(scan_collect_print)
-            chunked_result = _run_chunked_scan(
-                carry_init,
-                max_iter=int(max_iter),
-                max_iter_scan=int(max_iter_scan),
-                nstep_screen=int(nstep_screen),
-                need_print=bool(need_print),
-                lthreed=bool(cfg.lthreed),
-                spectral_mode_count=int(ncoeff),
-                scan_chunk_settings_func=_scan_chunk_settings,
-                scan_jit_preflight_enabled_func=_scan_jit_preflight_enabled,
-                scan_jit_preflight_env=os.getenv("VMEC_JAX_SCAN_JIT_PREFLIGHT"),
-                backend_name=_scan_backend_name(),
-                scan_differentiated=bool(scan_differentiated),
-                preflight_iters=int(preflight_iters),
-                iter_offset_preflight=int(iter_offset_preflight),
-                axis_reset_repeat=bool(axis_reset_repeat),
-                iter_offset0=int(iter_offset0),
-                get_scan_runner=_get_scan_runner,
-                scan_step=_scan_step,
-                scan_timing_enabled=bool(scan_timing_enabled),
-                scan_timing_stats=scan_timing_stats,
-                scan_device_runtime=scan_device_runtime,
-                perf_counter=time.perf_counter,
-                state_only_scan=bool(state_only_scan),
-                scan_fallback_enabled_run=bool(scan_fallback_enabled_run),
-                scan_fallback_iters=int(scan_fallback_iters),
-                scan_fallback_fsq_abs=float(scan_fallback_fsq_abs),
-                dtype=dtype,
-                emit_scan_prints=_emit_scan_prints,
-                tree_has_tracer=_tree_has_tracer,
-                jnp_module=jnp,
-                jax_module=jax,
-                np_module=np,
-            )
-            carry_final = chunked_result.carry_final
-            hist = chunked_result.history
-        else:
-            nonchunked_result = _run_nonchunked_scan(
-                carry_init,
-                max_iter_scan=int(max_iter_scan),
-                max_iter_tail=int(max_iter_tail),
-                preflight_iters=int(preflight_iters),
-                iter_offset_preflight=int(iter_offset_preflight),
-                axis_reset_repeat=bool(axis_reset_repeat),
-                iter_offset0=int(iter_offset0),
-                get_scan_runner=_get_scan_runner,
-                scan_step=_scan_step,
-                scan_jit_preflight_enabled_func=_scan_jit_preflight_enabled,
-                scan_jit_preflight_env=os.getenv("VMEC_JAX_SCAN_JIT_PREFLIGHT"),
-                backend_name=_scan_backend_name(),
-                scan_differentiated=bool(scan_differentiated),
-                scan_collect_print=bool(scan_collect_print),
-                scan_timing_enabled=bool(scan_timing_enabled),
-                scan_timing_stats=scan_timing_stats,
-                scan_device_runtime=scan_device_runtime,
-                perf_counter=time.perf_counter,
-                state_only_scan=bool(state_only_scan),
-                scan_fallback_enabled_run=bool(scan_fallback_enabled_run),
-                scan_fallback_iters=int(scan_fallback_iters),
-                jnp_module=jnp,
-                jax_module=jax,
-            )
-            carry_final = nonchunked_result.carry_final
-            hist = nonchunked_result.history
+        scan_dispatch_common = {
+            "scan_jit_preflight_enabled_func": _scan_jit_preflight_enabled,
+            "scan_jit_preflight_env": os.getenv("VMEC_JAX_SCAN_JIT_PREFLIGHT"),
+            "backend_name": _scan_backend_name(),
+            "scan_differentiated": bool(scan_differentiated),
+            "preflight_iters": int(preflight_iters),
+            "iter_offset_preflight": int(iter_offset_preflight),
+            "axis_reset_repeat": bool(axis_reset_repeat),
+            "iter_offset0": int(iter_offset0),
+            "get_scan_runner": _get_scan_runner,
+            "scan_step": _scan_step,
+            "scan_timing_enabled": bool(scan_timing_enabled),
+            "scan_timing_stats": scan_timing_stats,
+            "scan_device_runtime": scan_device_runtime,
+            "perf_counter": time.perf_counter,
+            "state_only_scan": bool(state_only_scan),
+            "scan_fallback_enabled_run": bool(scan_fallback_enabled_run),
+            "scan_fallback_iters": int(scan_fallback_iters),
+            "jnp_module": jnp,
+            "jax_module": jax,
+        }
+        scan_dispatch = _run_vmec2000_scan_dispatch(
+            carry_init,
+            chunked_print=bool(chunked_print),
+            chunked_kwargs={
+                **scan_dispatch_common,
+                "max_iter": int(max_iter),
+                "max_iter_scan": int(max_iter_scan),
+                "nstep_screen": int(nstep_screen),
+                "need_print": bool(scan_collect_print),
+                "lthreed": bool(cfg.lthreed),
+                "spectral_mode_count": int(ncoeff),
+                "scan_chunk_settings_func": _scan_chunk_settings,
+                "scan_fallback_fsq_abs": float(scan_fallback_fsq_abs),
+                "dtype": dtype,
+                "emit_scan_prints": _emit_scan_prints,
+                "tree_has_tracer": _tree_has_tracer,
+                "np_module": np,
+            },
+            nonchunked_kwargs={
+                **scan_dispatch_common,
+                "max_iter_scan": int(max_iter_scan),
+                "max_iter_tail": int(max_iter_tail),
+                "scan_collect_print": bool(scan_collect_print),
+            },
+        )
+        carry_final = scan_dispatch.carry_final
+        hist = scan_dispatch.history
         return finalize_vmec2000_scan_run(
             carry_final=carry_final,
             history=hist,
