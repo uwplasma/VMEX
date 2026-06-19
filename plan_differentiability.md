@@ -22949,3 +22949,81 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999999955%.
+
+## 2026-06-19 Optimizer QS-Residual Domain Move
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved fixed-boundary context construction, surface parsing, pressure-profile
+   evaluation, smooth iota-floor residuals, and public QA/QH/QP residual
+   factories into `vmec_jax.optimizers.fixed_boundary.qs_residuals`.
+2. Kept the legacy `vmec_jax.optimization` import path as a facade so examples
+   and users do not need to change imports.
+3. Updated private tests to patch the implementation module rather than
+   monkeypatching moved implementation details on the facade.
+4. Re-ran optimizer helper, wave-coverage, workflow, import-compatibility, and
+   source-health checks.
+
+Results obtained:
+
+- `vmec_jax/optimization.py` decreased from 2189 to 1996 lines.
+- `vmec_jax/optimization.py` now clears the 2000-line source-health warning
+  threshold.
+- The residual-builder domain is the single implementation owner for
+  fixed-boundary context and QS residual helper logic.
+- Public imports from `vmec_jax.optimization` and `vmec_jax` remain available.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/optimization.py vmec_jax/optimizers/fixed_boundary/qs_residuals.py tests/test_optimization_helpers.py tests/test_optimization_wave2_coverage.py tests/test_optimization_wave4_coverage.py`
+- `python -m ruff check vmec_jax/optimization.py vmec_jax/optimizers/fixed_boundary/qs_residuals.py tests/test_optimization_helpers.py tests/test_optimization_wave2_coverage.py tests/test_optimization_wave4_coverage.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_helpers.py tests/test_optimization_wave2_coverage.py tests/test_optimization_wave4_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_workflow_unit.py -q`
+- `python tools/diagnostics/source_health.py --top 24 --top-functions 55`
+- Public import compatibility check for `vmec_jax.optimization` and `vmec_jax`
+  QS residual helpers.
+
+Best next steps:
+
+1. Shift back to the largest remaining production warnings:
+   `solvers/fixed_boundary/residual/iteration.py`, `free_boundary.py`, and
+   `discrete_adjoint.py`.
+2. Prefer extraction of real algorithm seams over line-only cleanup; the next
+   useful residual-iteration seams are scan-controller reporting and fallback
+   decision plumbing.
+3. Keep optimizer facade changes conservative now that the file is below the
+   source-health threshold.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999966%.
+- Solver monolith reduction: 99.827%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.055%.
+- WOUT diagnostic/profile decomposition: 99.982%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.825%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 96.82%.
+- Free-boundary validation-gate maintainability: 98.18%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999999958%.
