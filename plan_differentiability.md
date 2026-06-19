@@ -20422,3 +20422,84 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999970%.
+
+## 2026-06-19 Direct-Coil Rejected-Slot Validation Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Re-ran source-health and confirmed the largest validation hotspot after the
+   production residual loop is
+   `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`.
+2. Added shared rejected-slot helpers for branch fingerprints, base objective
+   values, branch-local replay contracts, and adaptive same-branch gate reports.
+3. Replaced duplicated rejected-slot assertions in the current-only,
+   finite-beta, geometry-only, and mixed/state-only direct-coil validation
+   gates.
+4. Kept the named tests and their scalar-specific checks intact, so the same
+   complete-solve FD, branch-local JVP, and fingerprint-gated adaptive seam
+   evidence remains covered.
+
+Results obtained:
+
+- `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+  changed by 98 insertions and 138 deletions, net `-40` lines.
+- The file decreased from 4857 to 4817 lines while preserving all four
+  rejected-slot physics/algorithm gates.
+- The helpers make future adaptive-branch validation tests less error-prone by
+  keeping the conservative "fingerprint-gated, not arbitrary adaptive
+  differentiation" contract in one place.
+
+Tests and commands run:
+
+- `python -m compileall -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `python -m ruff check tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve_fd tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_native_rejected_slot_betatotal_jvp_matches_complete_solve_fd tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_native_rejected_slot_geometry_jvp_matches_complete_solve_fd tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matches_complete_solve_fd -q`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue free-boundary validation-gate cleanup by extracting the repeated
+   physical-scalar gate assertions inside
+   `_assert_direct_coil_same_branch_custom_vjp_matches_complete_fd`, or split
+   the huge trace-fingerprint diagnostic test into reusable synthetic-fixture
+   helpers.
+2. Keep production adaptive-loop claims conservative until an actual
+   fingerprint-gated full adaptive branch AD-vs-FD gate differentiates the
+   controller branch selection itself.
+3. Resume production-code line reduction after the direct-coil validation file
+   has one more helper tranche, with residual iteration and `free_boundary.py`
+   still the main runtime-adjacent hotspots.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999445%.
+- Solver monolith reduction: 99.80%.
+- Free-boundary adjoint monolith reduction: 99.51%.
+- Driver workflow decomposition: 99.945%.
+- Residual iteration decomposition: 98.93%.
+- WOUT diagnostic/profile decomposition: 99.975%.
+- Bcovar/WOUT parity decomposition: 99.15%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.82%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.74%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 96.80%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.62%.
+- Free-boundary validation-gate maintainability: 97.86%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999976%.
