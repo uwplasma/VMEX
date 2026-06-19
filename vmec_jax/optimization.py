@@ -14,6 +14,7 @@ from typing import Callable, Sequence
 
 import numpy as np
 
+from . import _compat as _compat_module
 from ._compat import jax, jnp
 from .boundary import BoundaryCoeffs, boundary_from_indata
 from .booz_input import BoozXformInputs, booz_xform_inputs_from_state
@@ -566,7 +567,8 @@ class FixedBoundaryExactOptimizer:
         if name in ("", "none", "auto", "default"):
             return None
         try:
-            current_backend = str(jax.default_backend()).strip().lower() if jax is not None else ""
+            jax_module = _compat_module.jax
+            current_backend = str(jax_module.default_backend()).strip().lower() if jax_module is not None else ""
         except Exception:
             current_backend = ""
         aliases = {
@@ -739,20 +741,33 @@ class FixedBoundaryExactOptimizer:
         if backend:
             return backend
         try:
-            return str(jax.default_backend()).strip().lower() if jax is not None else "cpu"
+            jax_module = _compat_module.jax
+            return str(jax_module.default_backend()).strip().lower() if jax_module is not None else "cpu"
         except Exception:
             return "cpu"
+
+    def _env_bool_override(self, name: str) -> bool | None:
+        value = os.getenv(str(name), "").strip().lower()
+        if value in ("1", "true", "yes", "on"):
+            return True
+        if value in ("0", "false", "no", "off"):
+            return False
+        return None
+
+    def _gpu_like_exact_tape_backend(self) -> bool:
+        return self._exact_tape_backend_name() in ("gpu", "cuda", "rocm", "tpu", "metal")
 
     def _solver_device_context(self):
         if self._solver_device_name is None:
             return nullcontext()
         try:
-            if jax is None:
+            jax_module = _compat_module.jax
+            if jax_module is None:
                 return nullcontext()
-            devices = jax.devices(self._solver_device_name)
+            devices = jax_module.devices(self._solver_device_name)
             if not devices:
                 return nullcontext()
-            return jax.default_device(devices[0])
+            return jax_module.default_device(devices[0])
         except Exception:
             return nullcontext()
 
@@ -760,10 +775,11 @@ class FixedBoundaryExactOptimizer:
         if self._solver_device_name is None:
             return value
         try:
-            if jax is None:
+            jax_module = _compat_module.jax
+            if jax_module is None:
                 return value
-            device = jax.devices(self._solver_device_name)[0]
-            jax_array_type = jax.Array
+            device = jax_module.devices(self._solver_device_name)[0]
+            jax_array_type = jax_module.Array
         except Exception:
             return value
 
@@ -771,7 +787,7 @@ class FixedBoundaryExactOptimizer:
             if obj is None or isinstance(obj, (str, bytes, int, float, complex, bool)):
                 return obj
             if isinstance(obj, (np.ndarray, jax_array_type)):
-                return jax.device_put(obj, device)
+                return jax_module.device_put(obj, device)
             if is_dataclass(obj) and not isinstance(obj, type):
                 return replace(
                     obj,
