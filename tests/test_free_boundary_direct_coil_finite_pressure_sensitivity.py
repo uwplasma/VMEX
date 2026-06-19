@@ -4016,31 +4016,35 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     )
     for key in ("frcc_u", "frss_u", "fzsc_u", "fzcs_u", "flsc_u", "flcs_u"):
         np.testing.assert_allclose(np.asarray(traced_force[key]), np.asarray(trace[key]), rtol=0.0, atol=0.0)
-    exact_step = strict_update_accepted_step(
-        trace["state_pre"],
-        init.static,
-        dt_eff=trace["dt_eff"],
-        b1=trace["b1"],
-        fac=trace["fac"],
-        force_scale=trace["force_scale"],
-        flip_sign=trace["flip_sign"],
-        vRcc_before=trace["vRcc_before"],
-        vRss_before=trace["vRss_before"],
-        vZsc_before=trace["vZsc_before"],
-        vZcs_before=trace["vZcs_before"],
-        vLsc_before=trace["vLsc_before"],
-        vLcs_before=trace["vLcs_before"],
-        frcc_u=trace["frcc_u"],
-        frss_u=trace["frss_u"],
-        fzsc_u=trace["fzsc_u"],
-        fzcs_u=trace["fzcs_u"],
-        flsc_u=trace["flsc_u"],
-        flcs_u=trace["flcs_u"],
-        max_update_rms=trace["max_update_rms_pre"],
-        limit_update_rms=trace["limit_update_rms"],
-        divide_by_scalxc_for_update=trace["divide_by_scalxc_for_update"],
-        enforce_edge=False,
-    )
+
+    def accepted_step_from_trace(trace_payload, *, state_pre=None):
+        return strict_update_accepted_step(
+            trace_payload["state_pre"] if state_pre is None else state_pre,
+            init.static,
+            dt_eff=trace_payload["dt_eff"],
+            b1=trace_payload["b1"],
+            fac=trace_payload["fac"],
+            force_scale=trace_payload["force_scale"],
+            flip_sign=trace_payload["flip_sign"],
+            vRcc_before=trace_payload["vRcc_before"],
+            vRss_before=trace_payload["vRss_before"],
+            vZsc_before=trace_payload["vZsc_before"],
+            vZcs_before=trace_payload["vZcs_before"],
+            vLsc_before=trace_payload["vLsc_before"],
+            vLcs_before=trace_payload["vLcs_before"],
+            frcc_u=trace_payload["frcc_u"],
+            frss_u=trace_payload["frss_u"],
+            fzsc_u=trace_payload["fzsc_u"],
+            fzcs_u=trace_payload["fzcs_u"],
+            flsc_u=trace_payload["flsc_u"],
+            flcs_u=trace_payload["flcs_u"],
+            max_update_rms=trace_payload["max_update_rms_pre"],
+            limit_update_rms=trace_payload["limit_update_rms"],
+            divide_by_scalxc_for_update=trace_payload["divide_by_scalxc_for_update"],
+            enforce_edge=False,
+        )
+
+    exact_step = accepted_step_from_trace(trace)
     np.testing.assert_allclose(
         np.asarray(pack_state(exact_step["state_post"])),
         np.asarray(pack_state(trace["state_post"])),
@@ -4169,31 +4173,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     assert not truncated_branch["compatible"]
     assert "n_steps" in truncated_branch["changed_fields"]
 
-    first_step = strict_update_accepted_step(
-        trace0["state_pre"],
-        init.static,
-        dt_eff=trace0["dt_eff"],
-        b1=trace0["b1"],
-        fac=trace0["fac"],
-        force_scale=trace0["force_scale"],
-        flip_sign=trace0["flip_sign"],
-        vRcc_before=trace0["vRcc_before"],
-        vRss_before=trace0["vRss_before"],
-        vZsc_before=trace0["vZsc_before"],
-        vZcs_before=trace0["vZcs_before"],
-        vLsc_before=trace0["vLsc_before"],
-        vLcs_before=trace0["vLcs_before"],
-        frcc_u=trace0["frcc_u"],
-        frss_u=trace0["frss_u"],
-        fzsc_u=trace0["fzsc_u"],
-        fzcs_u=trace0["fzcs_u"],
-        flsc_u=trace0["flsc_u"],
-        flcs_u=trace0["flcs_u"],
-        max_update_rms=trace0["max_update_rms_pre"],
-        limit_update_rms=trace0["limit_update_rms"],
-        divide_by_scalxc_for_update=trace0["divide_by_scalxc_for_update"],
-        enforce_edge=False,
-    )
+    first_step = accepted_step_from_trace(trace0)
     replayed_state1 = first_step["state_post"]
     np.testing.assert_allclose(
         np.asarray(pack_state(replayed_state1)),
