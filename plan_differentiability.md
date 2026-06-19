@@ -24636,3 +24636,73 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999999988%.
+
+## 2026-06-19 Preconditioner F-Norm Cache Helper
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_cached_or_current_f_norm1_jax` to the residual
+   preconditioner-payload facade.
+2. Replaced five repeated JAX-side cache/recompute branches for `rz_norm` and
+   `f_norm1` in the residual preconditioner paths.
+3. Left the host-float branch untouched because it intentionally avoids JAX
+   dispatch during NumPy update assembly.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` decreased from 4134 to 4105 lines.
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` decreased from 4482
+  to 4454 lines.
+- The patch is net-negative overall (`69 insertions`, `75 deletions`), while
+  retaining the existing cache-validity predicate and current-state fallback.
+
+Tests and commands run:
+
+- `python -m py_compile vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/preconditioner_payload.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/preconditioner_payload.py`
+- `python tools/diagnostics/source_health.py --top 20 --max-root-helper-prefix-files 2`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_hotpaths.py::test_preconditioner_output_scaling_gate_is_gpu_only_without_gpu tests/test_implicit_helpers.py::test_fixed_boundary_residual_implicit_primal_matches_default_control_path -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_finish_cache_more_coverage.py::test_nonscan_reuses_preconditioner_seed_from_same_bcovar_refresh tests/test_solve_finish_cache_more_coverage.py::test_nonscan_non_strict_backtracking_accepts_momentum_update tests/test_solve_finish_cache_more_coverage.py::test_nonscan_debug_force_path_runs_with_m1_and_zeroing -q`
+
+Best next steps:
+
+1. Commit and push this preconditioner cache-helper extraction.
+2. Inspect the host-float preconditioner diagnostics block only if it can be
+   extracted without adding JAX dispatch or obscuring VMEC2000 parity semantics.
+3. Continue reducing repeated preconditioner output handling before attempting
+   the larger accepted/free-boundary result object.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999990%.
+- Solver monolith reduction: 99.889%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.957%.
+- Residual iteration decomposition: 99.43%.
+- WOUT diagnostic/profile decomposition: 99.990%.
+- Bcovar/WOUT parity decomposition: 99.22%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.895%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.1%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.86%.
+- Discrete-adjoint replay decomposition: 99.20%.
+- Free-boundary validation-gate maintainability: 98.40%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999999989%.

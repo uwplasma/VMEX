@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, NamedTuple
 
-from vmec_jax._compat import has_jax
+from vmec_jax._compat import has_jax, jnp
 from vmec_jax.solvers.fixed_boundary.preconditioning import payload as _payload
 from vmec_jax.vmec_tomnsp import TomnspsRZL
 
@@ -201,6 +201,28 @@ def _split_preconditioner_apply_payload(payload):
         return payload
     pre_blocks, update_blocks, diag = payload
     return pre_blocks, update_blocks, diag, None
+
+
+def _cached_or_current_f_norm1_jax(
+    *,
+    vmec2000_control: bool,
+    vmec2000_cache_valid: bool,
+    need_bcovar_update: bool,
+    cache_rz_norm: Any,
+    cache_f_norm1: Any,
+    state: Any,
+    rz_norm_func: Callable[[Any], Any],
+):
+    if (
+        bool(vmec2000_control)
+        and bool(vmec2000_cache_valid)
+        and (not bool(need_bcovar_update))
+        and (cache_rz_norm is not None)
+        and (cache_f_norm1 is not None)
+    ):
+        return jnp.asarray(cache_rz_norm), jnp.asarray(cache_f_norm1)
+    rz_norm = rz_norm_func(state)
+    return rz_norm, jnp.where(rz_norm != 0.0, 1.0 / rz_norm, jnp.asarray(float("inf"), dtype=rz_norm.dtype))
 
 
 def refresh_preconditioner_cache_runtime(

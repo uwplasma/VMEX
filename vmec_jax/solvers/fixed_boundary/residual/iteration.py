@@ -299,6 +299,7 @@ _preconditioner_apply_payload_jit = partial(
 )
 _accepted_control_payload_jit = partial(_precond_payload_facade._accepted_control_payload_jit, has_jax_func=has_jax)
 _preconditioner_apply_payload_fused = _precond_payload_facade._preconditioner_apply_payload_fused
+_cached_or_current_f_norm1_jax = _precond_payload_facade._cached_or_current_f_norm1_jax
 _split_preconditioner_apply_payload = _precond_payload_facade._split_preconditioner_apply_payload
 
 
@@ -2407,21 +2408,15 @@ def solve_fixed_boundary_residual_iter(
                 )
                 frzl_rhs = _apply_vmec_scale_m1_precond_rhs(frzl, mats)
                 if use_apply_payload_fusion:
-                    if (
-                        bool(vmec2000_control)
-                        and bool(vmec2000_cache_valid)
-                        and (not bool(need_bcovar_update))
-                        and (cache_rz_norm is not None)
-                        and (cache_f_norm1 is not None)
-                    ):
-                        f_norm1 = jnp.asarray(cache_f_norm1)
-                    else:
-                        rz_norm = _rz_norm(state)
-                        f_norm1 = jnp.where(
-                            rz_norm != 0.0,
-                            1.0 / rz_norm,
-                            jnp.asarray(float("inf"), dtype=rz_norm.dtype),
-                        )
+                    _, f_norm1 = _cached_or_current_f_norm1_jax(
+                        vmec2000_control=bool(vmec2000_control),
+                        vmec2000_cache_valid=bool(vmec2000_cache_valid),
+                        need_bcovar_update=bool(need_bcovar_update),
+                        cache_rz_norm=cache_rz_norm,
+                        cache_f_norm1=cache_f_norm1,
+                        state=state,
+                        rz_norm_func=_rz_norm,
+                    )
                     _precond_payload = _preconditioner_apply_payload_fused(
                         frzl_in=frzl_rhs,
                         mats=mats,
@@ -2502,22 +2497,15 @@ def solve_fixed_boundary_residual_iter(
                         _preconditioner_output_blocks_np(frzl_rz=frzl_rz, lam_prec=lam_prec)
                     )
                 elif (not use_apply_payload_fusion) and use_fused_precond_output_scaling:
-                    if (
-                        bool(vmec2000_control)
-                        and bool(vmec2000_cache_valid)
-                        and (not bool(need_bcovar_update))
-                        and (cache_rz_norm is not None)
-                        and (cache_f_norm1 is not None)
-                    ):
-                        rz_norm = jnp.asarray(cache_rz_norm)
-                        f_norm1 = jnp.asarray(cache_f_norm1)
-                    else:
-                        rz_norm = _rz_norm(state)
-                        f_norm1 = jnp.where(
-                            rz_norm != 0.0,
-                            1.0 / rz_norm,
-                            jnp.asarray(float("inf"), dtype=rz_norm.dtype),
-                        )
+                    rz_norm, f_norm1 = _cached_or_current_f_norm1_jax(
+                        vmec2000_control=bool(vmec2000_control),
+                        vmec2000_cache_valid=bool(vmec2000_cache_valid),
+                        need_bcovar_update=bool(need_bcovar_update),
+                        cache_rz_norm=cache_rz_norm,
+                        cache_f_norm1=cache_f_norm1,
+                        state=state,
+                        rz_norm_func=_rz_norm,
+                    )
                     payload_outputs = _preconditioner_output_payload_jit(
                         apply_lambda_update_scale=(lambda_update_scale != 1.0),
                         vmec2000_control=bool(vmec2000_control),
@@ -2569,21 +2557,15 @@ def solve_fixed_boundary_residual_iter(
                 )
                 frzl_rhs = _apply_vmec_scale_m1_precond_rhs(frzl, mats) if bool(getattr(cfg, "lasym", False)) else frzl
                 if use_apply_payload_fusion:
-                    if (
-                        bool(vmec2000_control)
-                        and bool(vmec2000_cache_valid)
-                        and (not bool(need_bcovar_update))
-                        and (cache_rz_norm is not None)
-                        and (cache_f_norm1 is not None)
-                    ):
-                        f_norm1 = jnp.asarray(cache_f_norm1)
-                    else:
-                        rz_norm = _rz_norm(state)
-                        f_norm1 = jnp.where(
-                            rz_norm != 0.0,
-                            1.0 / rz_norm,
-                            jnp.asarray(float("inf"), dtype=rz_norm.dtype),
-                        )
+                    _, f_norm1 = _cached_or_current_f_norm1_jax(
+                        vmec2000_control=bool(vmec2000_control),
+                        vmec2000_cache_valid=bool(vmec2000_cache_valid),
+                        need_bcovar_update=bool(need_bcovar_update),
+                        cache_rz_norm=cache_rz_norm,
+                        cache_f_norm1=cache_f_norm1,
+                        state=state,
+                        rz_norm_func=_rz_norm,
+                    )
                     _precond_payload = _preconditioner_apply_payload_fused(
                         frzl_in=frzl_rhs,
                         mats=mats,
@@ -2664,22 +2646,15 @@ def solve_fixed_boundary_residual_iter(
                         _preconditioner_output_blocks_np(frzl_rz=frzl_rz, lam_prec=lam_prec)
                     )
                 elif (not use_apply_payload_fusion) and use_fused_precond_output_scaling:
-                    if (
-                        bool(vmec2000_control)
-                        and bool(vmec2000_cache_valid)
-                        and (not bool(need_bcovar_update))
-                        and (cache_rz_norm is not None)
-                        and (cache_f_norm1 is not None)
-                    ):
-                        rz_norm = jnp.asarray(cache_rz_norm)
-                        f_norm1 = jnp.asarray(cache_f_norm1)
-                    else:
-                        rz_norm = _rz_norm(state)
-                        f_norm1 = jnp.where(
-                            rz_norm != 0.0,
-                            1.0 / rz_norm,
-                            jnp.asarray(float("inf"), dtype=rz_norm.dtype),
-                        )
+                    rz_norm, f_norm1 = _cached_or_current_f_norm1_jax(
+                        vmec2000_control=bool(vmec2000_control),
+                        vmec2000_cache_valid=bool(vmec2000_cache_valid),
+                        need_bcovar_update=bool(need_bcovar_update),
+                        cache_rz_norm=cache_rz_norm,
+                        cache_f_norm1=cache_f_norm1,
+                        state=state,
+                        rz_norm_func=_rz_norm,
+                    )
                     payload_outputs = _preconditioner_output_payload_jit(
                         apply_lambda_update_scale=(lambda_update_scale != 1.0),
                         vmec2000_control=bool(vmec2000_control),
@@ -2951,18 +2926,15 @@ def solve_fixed_boundary_residual_iter(
                 fsql1 = fsql1_safe
             else:
                 # JAX path: set rz_norm and f_norm1 from cache or recompute.
-                if (
-                    bool(vmec2000_control)
-                    and bool(vmec2000_cache_valid)
-                    and (not bool(need_bcovar_update))
-                    and (cache_rz_norm is not None)
-                    and (cache_f_norm1 is not None)
-                ):
-                    rz_norm = jnp.asarray(cache_rz_norm)
-                    f_norm1 = jnp.asarray(cache_f_norm1)
-                else:
-                    rz_norm = _rz_norm(state)
-                    f_norm1 = jnp.where(rz_norm != 0.0, 1.0 / rz_norm, jnp.asarray(float("inf"), dtype=rz_norm.dtype))
+                rz_norm, f_norm1 = _cached_or_current_f_norm1_jax(
+                    vmec2000_control=bool(vmec2000_control),
+                    vmec2000_cache_valid=bool(vmec2000_cache_valid),
+                    need_bcovar_update=bool(need_bcovar_update),
+                    cache_rz_norm=cache_rz_norm,
+                    cache_f_norm1=cache_f_norm1,
+                    state=state,
+                    rz_norm_func=_rz_norm,
+                )
                 # Avoid inf*0 -> NaN in late-converged iterations when rz_norm=0 and
                 # gcx2 terms are exactly zero. VMEC treats these channels as zero.
                 finite_fnorm1 = jnp.isfinite(f_norm1)
