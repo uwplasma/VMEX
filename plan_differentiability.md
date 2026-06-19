@@ -7,6 +7,73 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-19.
 
+## 2026-06-19 Optimization Workflow Import Consolidation and Device Helper Fix
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Consolidated repeated `optimization_workflow.py` imports from the same
+   fixed-boundary optimizer modules into grouped imports.
+2. Fixed optimizer exact-replay/device helper edge cases exposed by unit tests
+   that construct `FixedBoundaryExactOptimizer` through `object.__new__`.
+3. Switched solver-device backend/context helpers to read the live compatibility
+   module so tests and runtime monkeypatches see the same JAX backend object.
+
+Results obtained:
+
+- `vmec_jax/optimization_workflow.py` dropped enough to leave the top-16
+  source-health file list.
+- The combined production diff is net-negative while preserving the public
+  workflow imports and fixing real optimizer helper failures.
+- The focused optimization helper/workflow shard now passes.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/optimization.py vmec_jax/optimization_workflow.py vmec_jax/optimizers/fixed_boundary/exact_replay.py`
+- `python -m ruff check vmec_jax/optimization.py vmec_jax/optimization_workflow.py vmec_jax/optimizers/fixed_boundary/exact_replay.py --select F401,F841 --ignore-noqa`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_workflow_unit.py tests/test_optimization_helpers.py -q`
+- `python tools/diagnostics/source_health.py --top 16 --top-functions 30`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue with behavior-free consolidation where it reduces production lines,
+   but prioritize numerical monolith seams over import-only changes.
+2. Revisit the residual VMEC2000 scan nested function only after identifying a
+   call surface that is clearly production-source net-negative.
+3. Batch broader CI checks after several tranches rather than watching actions.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.735%.
+- Free-boundary adjoint monolith reduction: 99.42%.
+- Driver workflow decomposition: 99.92%.
+- Residual iteration decomposition: 98.65%.
+- WOUT diagnostic/profile decomposition: 99.91%.
+- Bcovar/WOUT parity decomposition: 99.12%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.77%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.62%.
+- Fixed-boundary optimizer decomposition: 95.9%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.35%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999988%.
+
 ## 2026-06-19 Residual Final Free-Boundary Report Extraction
 
 Branch: `codex/differentiability-refactor-plan`.

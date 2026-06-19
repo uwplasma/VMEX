@@ -34,58 +34,36 @@ from .optimization import (
     smooth_min_abs_iota_residual,
     truncate_indata_boundary_modes,
 )
-from .optimizers.fixed_boundary.objective_terms import FixedBoundaryObjectiveStage
-from .optimizers.fixed_boundary.objective_terms import ObjectiveTerm
-from .optimizers.fixed_boundary.objective_terms import QIObjectiveTerm
-from .optimizers.fixed_boundary.objective_terms import StageContext
-from .optimizers.fixed_boundary.objective_terms import as_vector
-from .optimizers.fixed_boundary.objective_terms import attach_packed_state_autodiff_hooks as _attach_packed_state_autodiff_hooks
-from .optimizers.fixed_boundary.objective_terms import residuals_from_objectives
-from .optimizers.fixed_boundary.qi_objectives import BoozerBTarget
-from .optimizers.fixed_boundary.qi_objectives import LgradB
-from .optimizers.fixed_boundary.qi_objectives import MaxElongation
-from .optimizers.fixed_boundary.qi_objectives import MirrorRatio
-from .optimizers.fixed_boundary.qi_objectives import QuasiIsodynamicOptions
-from .optimizers.fixed_boundary.qi_objectives import QuasiIsodynamicResidual
-from .optimizers.fixed_boundary.qi_objectives import QuasiIsodynamicResidualCeiling
-from .optimizers.fixed_boundary.qi_objectives import VMECMirrorRatio
-from .optimizers.fixed_boundary.qi_objectives import boozer_b_target_from_wout
-from .optimizers.fixed_boundary.qi_objectives import lgradb_objective
-from .optimizers.fixed_boundary.qi_objectives import qi_boozer_b_target_objective
-from .optimizers.fixed_boundary.qi_objectives import qi_lgradb_objective
-from .optimizers.fixed_boundary.qi_objectives import qi_max_elongation_constraint
-from .optimizers.fixed_boundary.qi_objectives import qi_max_elongation_objective
-from .optimizers.fixed_boundary.qi_objectives import qi_mirror_ratio_constraint
-from .optimizers.fixed_boundary.qi_objectives import qi_mirror_ratio_objective
-from .optimizers.fixed_boundary.qi_objectives import qi_residual_ceiling_objective
-from .optimizers.fixed_boundary.qi_objectives import quasi_isodynamic_field_objective
-from .optimizers.fixed_boundary.finite_beta_objectives import BDotB
-from .optimizers.fixed_boundary.finite_beta_objectives import BDotGradV
-from .optimizers.fixed_boundary.finite_beta_objectives import BVector
-from .optimizers.fixed_boundary.finite_beta_objectives import BetaTotal
-from .optimizers.fixed_boundary.finite_beta_objectives import DMerc
-from .optimizers.fixed_boundary.finite_beta_objectives import GlasserResistiveInterchange
-from .optimizers.fixed_boundary.finite_beta_objectives import JDotB
-from .optimizers.fixed_boundary.finite_beta_objectives import JVector
-from .optimizers.fixed_boundary.finite_beta_objectives import MagneticWell
-from .optimizers.fixed_boundary.finite_beta_objectives import RedlBootstrapMismatch
-from .optimizers.fixed_boundary.finite_beta_objectives import ToroidalCurrent
-from .optimizers.fixed_boundary.finite_beta_objectives import ToroidalCurrentGradient
-from .optimizers.fixed_boundary.finite_beta_objectives import VolavgB
+from .optimizers.fixed_boundary.objective_terms import (
+    FixedBoundaryObjectiveStage, ObjectiveTerm, QIObjectiveTerm, StageContext,
+    as_vector, attach_packed_state_autodiff_hooks as _attach_packed_state_autodiff_hooks,
+    residuals_from_objectives,
+)
+from .optimizers.fixed_boundary.qi_objectives import (
+    BoozerBTarget, LgradB, MaxElongation, MirrorRatio, QuasiIsodynamicOptions,
+    QuasiIsodynamicResidual, QuasiIsodynamicResidualCeiling, VMECMirrorRatio,
+    boozer_b_target_from_wout, lgradb_objective, qi_boozer_b_target_objective,
+    qi_lgradb_objective, qi_max_elongation_constraint, qi_max_elongation_objective,
+    qi_mirror_ratio_constraint, qi_mirror_ratio_objective, qi_residual_ceiling_objective,
+    quasi_isodynamic_field_objective,
+)
+from .optimizers.fixed_boundary.finite_beta_objectives import (
+    BDotB, BDotGradV, BVector, BetaTotal, DMerc, GlasserResistiveInterchange,
+    JDotB, JVector, MagneticWell, RedlBootstrapMismatch, ToroidalCurrent,
+    ToroidalCurrentGradient, VolavgB,
+)
 from .optimizers.fixed_boundary.parameterization import rebuild_indata_with_resolution
 from .optimizers.fixed_boundary.seed_inputs import interpolate_indata_boundary
 from .optimizers.fixed_boundary.seed_inputs import prepare_simple_omnigenity_seed_input
 from .optimizers.fixed_boundary.seed_inputs import simple_omnigenity_seed_indata
-from .optimizers.fixed_boundary.stage_policy import BoundaryModeLimits
-from .optimizers.fixed_boundary.stage_policy import describe_boundary_mode_limits
-from .optimizers.fixed_boundary.stage_policy import normalize_boundary_mode_limits
-from .optimizers.fixed_boundary.stage_policy import qs_stage_budget
-from .optimizers.fixed_boundary.stage_policy import qs_stage_modes
-from .optimizers.fixed_boundary.stage_policy import repeated_stage_modes
-from .optimizers.fixed_boundary.workflow_artifacts import FixedBoundaryOptimizationResult
-from .optimizers.fixed_boundary.workflow_artifacts import OptimizationOutputPaths
-from .optimizers.fixed_boundary.workflow_artifacts import optimization_output_paths
-from .optimizers.fixed_boundary.workflow_artifacts import save_optimization_result
+from .optimizers.fixed_boundary.stage_policy import (
+    BoundaryModeLimits, describe_boundary_mode_limits, normalize_boundary_mode_limits,
+    qs_stage_budget, qs_stage_modes, repeated_stage_modes,
+)
+from .optimizers.fixed_boundary.workflow_artifacts import (
+    FixedBoundaryOptimizationResult, OptimizationOutputPaths,
+    optimization_output_paths, save_optimization_result,
+)
 from .optimizers.fixed_boundary import workflow_outputs as _workflow_outputs
 from .modes import nyquist_mode_table_from_grid, vmec_mode_table
 from .quasi_isodynamic import (
