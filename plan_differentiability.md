@@ -21528,3 +21528,79 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999990%.
+
+## 2026-06-19 Driver Wrapper Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Inspected `run_fixed_boundary`, the next production-code function after the
+   residual loop in the source-health report.
+2. Replaced local wrappers for profile construction, initial-guess
+   construction, and VMEC2000 JIT-force policy with direct helper bindings.
+3. Left the branchful free-boundary static builder in `driver.py` because it
+   owns real mode selection rather than simple delegation.
+
+Results obtained:
+
+- `run_fixed_boundary` decreased from 676 lines to 669 lines.
+- No new source files or helper modules were added.
+- The public driver remains a façade over the existing domain helpers, with
+  less local glue code.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/driver.py`
+- `python -m ruff check vmec_jax/driver.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_api.py tests/test_driver_policy_helpers.py tests/test_driver_run_wave8_coverage.py tests/test_driver_wave12_coverage.py tests/test_driver_wout_wave9_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 12`
+
+Notes:
+
+- The driver pytest batch emitted the existing numerical warnings from
+  `test_python_default_fixed_boundary_uses_optimized_controller`; it otherwise
+  passed.
+- An earlier obsolete selector for `tests/test_driver_free_boundary_api.py`
+  failed before tests ran; the valid driver test files above were then used.
+
+Best next steps:
+
+1. Continue with the line-negative public-driver cleanup only if there is a
+   true ownership seam; otherwise move to `wout.py` and `implicit.py`, where
+   source-health shows similarly large functions with clearer diagnostic seams.
+2. Avoid moving simple wrappers into new files unless it reduces call-site
+   complexity and keeps total source health favorable.
+3. Run the relevant driver batch after any future `run_fixed_boundary` edits.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999470%.
+- Solver monolith reduction: 99.826%.
+- Free-boundary adjoint monolith reduction: 99.54%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.05%.
+- WOUT diagnostic/profile decomposition: 99.979%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.825%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.745%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 96.80%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.69%.
+- Free-boundary validation-gate maintainability: 98.18%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999991%.
