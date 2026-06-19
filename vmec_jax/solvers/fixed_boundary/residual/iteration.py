@@ -316,28 +316,21 @@ _mn_sin_to_signed_physical_batch = _geometry_mn_sin_to_signed_physical_batch
 _rz_norm_np = _geometry_rz_norm_np
 
 
-def _strict_update_step_jit(*args, **kwargs):
-    return _precond_payload_facade._strict_update_step_jit(*args, has_jax_func=has_jax, **kwargs)
-
-
-def _preconditioner_output_scaling_jit(*args, **kwargs):
-    return _precond_payload_facade._preconditioner_output_scaling_jit(*args, has_jax_func=has_jax, **kwargs)
-
-
-def _preconditioner_output_payload_jit(*args, **kwargs):
-    return _precond_payload_facade._preconditioner_output_payload_jit(*args, has_jax_func=has_jax, **kwargs)
-
-
-def _preconditioner_apply_payload_jit(*args, **kwargs):
-    return _precond_payload_facade._preconditioner_apply_payload_jit(*args, has_jax_func=has_jax, **kwargs)
-
-
-def _accepted_control_payload_jit():
-    return _precond_payload_facade._accepted_control_payload_jit(has_jax_func=has_jax)
-
-
-def _preconditioner_apply_payload_fused(*args, **kwargs):
-    return _precond_payload_facade._preconditioner_apply_payload_fused(*args, **kwargs)
+_strict_update_step_jit = partial(_precond_payload_facade._strict_update_step_jit, has_jax_func=has_jax)
+_preconditioner_output_scaling_jit = partial(
+    _precond_payload_facade._preconditioner_output_scaling_jit,
+    has_jax_func=has_jax,
+)
+_preconditioner_output_payload_jit = partial(
+    _precond_payload_facade._preconditioner_output_payload_jit,
+    has_jax_func=has_jax,
+)
+_preconditioner_apply_payload_jit = partial(
+    _precond_payload_facade._preconditioner_apply_payload_jit,
+    has_jax_func=has_jax,
+)
+_accepted_control_payload_jit = partial(_precond_payload_facade._accepted_control_payload_jit, has_jax_func=has_jax)
+_preconditioner_apply_payload_fused = _precond_payload_facade._preconditioner_apply_payload_fused
 
 
 _ptau_compute_jit = _precond_payload_facade._ptau_compute_jit

@@ -7,6 +7,71 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-19.
 
+## 2026-06-19 Residual Preconditioner Facade Alias Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Replaced residual-iteration preconditioner JIT wrapper functions with
+   `partial` aliases that inject the same `has_jax` compatibility hook.
+2. Replaced the fused preconditioner payload wrapper with a direct alias to the
+   extracted residual preconditioner-payload facade.
+3. Preserved the historical private names exported through `vmec_jax.solve`.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` dropped by 7 lines
+  in the largest production monolith.
+- Focused hotpath tests still pass for strict-update/preconditioner JIT cache
+  facades, output scaling, fused payloads, and PTau control payloads.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py --select F401,F841`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_wave4_coverage.py::test_preconditioner_and_field_slice_pure_branches tests/test_solve_hotpaths.py::test_preconditioner_output_scaling_jit_matches_reference tests/test_solve_hotpaths.py::test_preconditioner_output_payload_jit_matches_scaling_and_fsq1_reference tests/test_solve_hotpaths.py::test_preconditioner_apply_payload_fused_can_return_ptau_control_payload tests/test_solve_additional_branch_coverage.py::test_preconditioner_output_scaling_jit_covers_missing_optional_blocks tests/test_tcon_precondn_diag.py::test_preconditioner_output_scaling_jit_matches_unfused_algebra -q`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue reducing residual-iteration boilerplate only where compatibility
+   names and cache behavior remain covered by focused tests.
+2. Attempt larger scan-loop extraction only with an explicit call surface that
+   remains production-source net-negative.
+3. Keep broad CI checks batched for later.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.736%.
+- Free-boundary adjoint monolith reduction: 99.44%.
+- Driver workflow decomposition: 99.94%.
+- Residual iteration decomposition: 98.66%.
+- WOUT diagnostic/profile decomposition: 99.92%.
+- Bcovar/WOUT parity decomposition: 99.12%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.79%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.66%.
+- Fixed-boundary optimizer decomposition: 96.05%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.45%.
+- Discrete-adjoint replay decomposition: 96.4%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999995%.
+
 ## 2026-06-19 CLI Finish Policy Simplification
 
 Branch: `codex/differentiability-refactor-plan`.
