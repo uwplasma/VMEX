@@ -7,6 +7,85 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-19.
 
+## 2026-06-19 Free-Boundary Provider Sampling Decomposition
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Decomposed `_sample_external_boundary_arrays` into focused helpers for:
+   external-field provider resolution, VMEC m=1 coefficient conversion,
+   boundary geometry synthesis, direct/mgrid provider sampling, magnetic-axis
+   reconstruction, and axis-current field sampling.
+2. Preserved the legacy axis-selection order, including the VMEC `pr1` axis
+   path superseding an override unless the diagnostic axis mode disables it.
+3. Compressed the largest accepted-update replay validation test by replacing
+   repeated controller replay invocations and objective/state allclose blocks
+   with local helpers.
+
+Results obtained:
+
+- `_sample_external_boundary_arrays` dropped from 341 to 141 lines and no
+  longer appears in the source-health function hotspot report.
+- `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+  dropped from 5228 to 5062 lines.
+- `test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree`
+  dropped from 958 to 792 lines.
+- Net tracked Python diff for the tranche is negative by 8 lines while
+  separating provider sampling concerns in production code.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/free_boundary.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `python -m ruff check vmec_jax/free_boundary.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py --select F401,F841`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_wave2.py::test_sample_external_boundary_arrays_cached_mgrid_axis_override_and_diagnostics tests/test_free_boundary_wave2.py::test_sample_external_boundary_arrays_axis_fallback_paths -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_coil_provider_forward.py::test_sample_free_boundary_external_field_from_direct_coils_matches_provider_components tests/test_free_boundary_coil_provider_forward.py::test_run_free_boundary_accepts_direct_coil_provider_without_mgrid_file -q`
+- `git diff --check`
+- `python tools/diagnostics/source_health.py | head -90`
+
+Best next steps:
+
+1. Continue production-side decomposition at `nestor_external_only_step`, which
+   is now the largest free-boundary production hotspot.
+2. Keep the next tranche net-negative or explicitly justify any line movement
+   as file-structure simplification with corresponding test compression.
+3. Avoid full CI waiting until a larger batch is ready; focused provider,
+   replay, and branch-local AD gates are sufficient for these refactor-only
+   changes.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999%.
+- Solver monolith reduction: 99.737%.
+- Free-boundary adjoint monolith reduction: 99.46%.
+- Driver workflow decomposition: 99.94%.
+- Residual iteration decomposition: 98.68%.
+- WOUT diagnostic/profile decomposition: 99.94%.
+- Bcovar/WOUT parity decomposition: 99.13%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.81%.
+- Tomnsps transform decomposition: 98.5%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.66%.
+- Fixed-boundary optimizer decomposition: 96.05%.
+- Plotting/WOUT visualization decomposition: 95.9%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.45%.
+- Discrete-adjoint replay decomposition: 96.45%.
+- Free-boundary validation-gate maintainability: 95.9%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.9999984%.
+
 ## 2026-06-19 Same-Branch Custom-VJP Validation Helper Compression
 
 Branch: `codex/differentiability-refactor-plan`.

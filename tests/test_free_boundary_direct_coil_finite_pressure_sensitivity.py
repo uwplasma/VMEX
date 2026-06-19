@@ -4301,58 +4301,63 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         atol=1.0e-11,
     )
 
-    replay = direct_coil_accepted_trace_replay_objective_jax(
-        base_params,
-        trace0["state_pre"],
-        static=init.static,
-        traces=[trace0, trace1],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
-    )
+    traces01 = [trace0, trace1]
+
+    def accepted_replay_objective(**kwargs):
+        return direct_coil_accepted_trace_replay_objective_jax(
+            base_params,
+            trace0["state_pre"],
+            static=init.static,
+            traces=traces01,
+            signgs=int(init.signgs),
+            state_weight=1.0,
+            bsqvac_weight=1.0e-12,
+            force_weight=0.0,
+            enforce_edge=False,
+            **kwargs,
+        )
+
+    def controller_replay_objective(
+        *,
+        params: CoilFieldParams = base_params,
+        start_state: Any | None = None,
+        traces: list[dict[str, Any]] | None = None,
+        **kwargs,
+    ):
+        state_weight = kwargs.pop("state_weight", 1.0)
+        bsqvac_weight = kwargs.pop("bsqvac_weight", 1.0e-12)
+        force_weight = kwargs.pop("force_weight", 0.0)
+        enforce_edge = kwargs.pop("enforce_edge", False)
+        return direct_coil_accepted_trace_controller_replay_objective_jax(
+            params,
+            trace0["state_pre"] if start_state is None else start_state,
+            static=init.static,
+            traces=traces01 if traces is None else traces,
+            signgs=int(init.signgs),
+            state_weight=state_weight,
+            bsqvac_weight=bsqvac_weight,
+            force_weight=force_weight,
+            enforce_edge=enforce_edge,
+            **kwargs,
+        )
+
+    def assert_objective_close(left, right, *, rtol: float = 2.0e-12, atol: float = 1.0e-12) -> None:
+        np.testing.assert_allclose(np.asarray(left["objective"]), np.asarray(right["objective"]), rtol=rtol, atol=atol)
+
+    def assert_state_close(left, right, *, rtol: float = 5.0e-12, atol: float = 5.0e-12) -> None:
+        np.testing.assert_allclose(np.asarray(pack_state(left["state"])), np.asarray(pack_state(right["state"])), rtol=rtol, atol=atol)
+
+    replay = accepted_replay_objective()
     assert {"state", "bsqvac", "force"}.issubset(replay["objective_components"])
     assert np.isfinite(float(replay["objective"]))
-    controller_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        trace0["state_pre"],
-        static=init.static,
-        traces=[trace0, trace1],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
-    )
-    fallback_controller_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        trace0["state_pre"],
-        static=init.static,
-        traces=[trace0, trace1],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
-        use_accepted_only_fast_path=False,
-    )
+    controller_replay = controller_replay_objective()
+    fallback_controller_replay = controller_replay_objective(use_accepted_only_fast_path=False)
     assert controller_replay["used_accepted_only_fast_path"]
     assert controller_replay["accepted_only_fast_path_segments"] == (True,)
     assert not fallback_controller_replay["used_accepted_only_fast_path"]
     assert fallback_controller_replay["accepted_only_fast_path_segments"] == (False,)
-    np.testing.assert_allclose(
-        np.asarray(controller_replay["objective"]),
-        np.asarray(fallback_controller_replay["objective"]),
-        rtol=2.0e-12,
-        atol=1.0e-12,
-    )
-    np.testing.assert_allclose(
-        np.asarray(pack_state(controller_replay["state"])),
-        np.asarray(pack_state(fallback_controller_replay["state"])),
-        rtol=5.0e-12,
-        atol=5.0e-12,
-    )
+    assert_objective_close(controller_replay, fallback_controller_replay)
+    assert_state_close(controller_replay, fallback_controller_replay)
     for key in ("active", "accepted", "rejected", "done", "state_reset", "force", "bsqvac"):
         np.testing.assert_allclose(
             np.asarray(controller_replay["history"][key]),
@@ -4423,40 +4428,10 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         )
         for segment in controller_replay["preconditioner_policy_segment_summary"]
     ] == [(0, 2, 2, 0, 2, 0)]
-    np.testing.assert_allclose(
-        np.asarray(controller_replay["objective"]),
-        np.asarray(replay["objective"]),
-        rtol=2.0e-12,
-        atol=1.0e-12,
-    )
-    np.testing.assert_allclose(
-        np.asarray(pack_state(controller_replay["state"])),
-        np.asarray(pack_state(replay["state"])),
-        rtol=5.0e-12,
-        atol=5.0e-12,
-    )
-    segmented_controller_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        trace0["state_pre"],
-        static=init.static,
-        traces=[trace0, trace1],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
-        use_preconditioner_policy_segments=True,
-    )
-    segmented_fallback_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        trace0["state_pre"],
-        static=init.static,
-        traces=[trace0, trace1],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
+    assert_objective_close(controller_replay, replay)
+    assert_state_close(controller_replay, replay)
+    segmented_controller_replay = controller_replay_objective(use_preconditioner_policy_segments=True)
+    segmented_fallback_replay = controller_replay_objective(
         use_preconditioner_policy_segments=True,
         use_accepted_only_fast_path=False,
     )
@@ -4465,46 +4440,11 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     assert segmented_controller_replay["used_accepted_only_fast_path"]
     assert segmented_controller_replay["accepted_only_fast_path_segments"] == (True,)
     assert segmented_fallback_replay["accepted_only_fast_path_segments"] == (False,)
-    np.testing.assert_allclose(
-        np.asarray(segmented_controller_replay["objective"]),
-        np.asarray(controller_replay["objective"]),
-        rtol=2.0e-12,
-        atol=1.0e-12,
-    )
-    np.testing.assert_allclose(
-        np.asarray(pack_state(segmented_controller_replay["state"])),
-        np.asarray(pack_state(controller_replay["state"])),
-        rtol=5.0e-12,
-        atol=5.0e-12,
-    )
-    np.testing.assert_allclose(
-        np.asarray(segmented_controller_replay["objective"]),
-        np.asarray(segmented_fallback_replay["objective"]),
-        rtol=2.0e-12,
-        atol=1.0e-12,
-    )
-    stacked_controller_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        trace0["state_pre"],
-        static=init.static,
-        traces=[trace0, trace1],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
-        use_stacked_step_controls=True,
-    )
-    stacked_fallback_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        trace0["state_pre"],
-        static=init.static,
-        traces=[trace0, trace1],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
+    assert_objective_close(segmented_controller_replay, controller_replay)
+    assert_state_close(segmented_controller_replay, controller_replay)
+    assert_objective_close(segmented_controller_replay, segmented_fallback_replay)
+    stacked_controller_replay = controller_replay_objective(use_stacked_step_controls=True)
+    stacked_fallback_replay = controller_replay_objective(
         use_stacked_step_controls=True,
         use_accepted_only_fast_path=False,
     )
@@ -4514,12 +4454,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     assert stacked_controller_replay["used_accepted_only_fast_path"]
     assert stacked_controller_replay["accepted_only_fast_path_segments"] == (True,) * len(step_segments)
     assert stacked_fallback_replay["accepted_only_fast_path_segments"] == (False,) * len(step_segments)
-    np.testing.assert_allclose(
-        np.asarray(stacked_controller_replay["objective"]),
-        np.asarray(controller_replay["objective"]),
-        rtol=2.0e-12,
-        atol=1.0e-12,
-    )
+    assert_objective_close(stacked_controller_replay, controller_replay)
     stacked_plan = direct_coil_accepted_trace_controller_replay_plan(
         [trace0, trace1],
         static=init.static,
@@ -4527,36 +4462,16 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     )
     assert stacked_plan["segment_source"] == "step_policy"
     assert stacked_plan["accepted_only_fast_path_segments"] == (True,) * len(step_segments)
-    stacked_plan_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        trace0["state_pre"],
-        static=init.static,
-        traces=[trace0, trace1],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
+    stacked_plan_replay = controller_replay_objective(
         use_stacked_step_controls=True,
         replay_plan=stacked_plan,
     )
     assert stacked_plan_replay["used_stacked_step_controls"]
-    np.testing.assert_allclose(
-        np.asarray(stacked_plan_replay["objective"]),
-        np.asarray(stacked_controller_replay["objective"]),
-        rtol=2.0e-12,
-        atol=1.0e-12,
-    )
-    stacked_state_only_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        trace0["state_pre"],
-        static=init.static,
-        traces=[trace0, trace1],
-        signgs=int(init.signgs),
+    assert_objective_close(stacked_plan_replay, stacked_controller_replay)
+    stacked_state_only_replay = controller_replay_objective(
         state_weight=0.0,
         bsqvac_weight=0.0,
         force_weight=0.0,
-        enforce_edge=False,
         use_stacked_step_controls=True,
         replay_plan=stacked_plan,
         state_only_replay=True,
@@ -4564,37 +4479,20 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     assert stacked_state_only_replay["used_stacked_step_controls"]
     assert stacked_state_only_replay["used_state_only_replay"] is True
     assert stacked_state_only_replay["history"] == {}
-    np.testing.assert_allclose(
-        np.asarray(pack_state(stacked_state_only_replay["state"])),
-        np.asarray(pack_state(stacked_controller_replay["state"])),
-        rtol=5.0e-12,
-        atol=5.0e-12,
-    )
-    frozen_vacuum_field_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        trace0["state_pre"],
-        static=init.static,
-        traces=[trace0, trace1],
-        signgs=int(init.signgs),
+    assert_state_close(stacked_state_only_replay, stacked_controller_replay)
+    frozen_vacuum_field_replay = controller_replay_objective(
         state_weight=0.0,
         bsqvac_weight=0.0,
         force_weight=0.0,
-        enforce_edge=False,
         use_stacked_step_controls=True,
         replay_plan=stacked_plan,
         state_only_replay=True,
         freeze_vacuum_field=True,
     )
-    frozen_bsqvac_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        trace0["state_pre"],
-        static=init.static,
-        traces=[trace0, trace1],
-        signgs=int(init.signgs),
+    frozen_bsqvac_replay = controller_replay_objective(
         state_weight=0.0,
         bsqvac_weight=0.0,
         force_weight=0.0,
-        enforce_edge=False,
         use_stacked_step_controls=True,
         replay_plan=stacked_plan,
         state_only_replay=True,
@@ -4606,16 +4504,11 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     assert np.isfinite(float(jnp.linalg.norm(pack_state(frozen_bsqvac_replay["state"]))))
 
     def full_replay_state_norm(params: CoilFieldParams):
-        replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-            params,
-            trace0["state_pre"],
-            static=init.static,
-            traces=[trace0, trace1],
-            signgs=int(init.signgs),
+        replay = controller_replay_objective(
+            params=params,
             state_weight=0.0,
             bsqvac_weight=0.0,
             force_weight=0.0,
-            enforce_edge=False,
             use_stacked_step_controls=True,
             replay_plan=stacked_plan,
             include_replay_aux=False,
@@ -4623,16 +4516,11 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         return jnp.linalg.norm(pack_state(replay["state"]))
 
     def state_only_replay_state_norm(params: CoilFieldParams):
-        replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-            params,
-            trace0["state_pre"],
-            static=init.static,
-            traces=[trace0, trace1],
-            signgs=int(init.signgs),
+        replay = controller_replay_objective(
+            params=params,
             state_weight=0.0,
             bsqvac_weight=0.0,
             force_weight=0.0,
-            enforce_edge=False,
             use_stacked_step_controls=True,
             replay_plan=stacked_plan,
             include_replay_aux=False,
@@ -4644,18 +4532,8 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     state_only_value, state_only_jvp = jax.jvp(state_only_replay_state_norm, (base_params,), (direction,))
     np.testing.assert_allclose(state_only_value, full_value, rtol=5.0e-12, atol=5.0e-12)
     np.testing.assert_allclose(state_only_jvp, full_jvp, rtol=5.0e-12, atol=5.0e-12)
-    np.testing.assert_allclose(
-        np.asarray(pack_state(stacked_controller_replay["state"])),
-        np.asarray(pack_state(controller_replay["state"])),
-        rtol=5.0e-12,
-        atol=5.0e-12,
-    )
-    np.testing.assert_allclose(
-        np.asarray(stacked_controller_replay["objective"]),
-        np.asarray(stacked_fallback_replay["objective"]),
-        rtol=2.0e-12,
-        atol=1.0e-12,
-    )
+    assert_state_close(stacked_controller_replay, controller_replay)
+    assert_objective_close(stacked_controller_replay, stacked_fallback_replay)
     for key in ("active", "accepted", "rejected", "done", "state_reset"):
         np.testing.assert_array_equal(
             np.asarray(segmented_controller_replay["history"][key]),
@@ -4677,38 +4555,17 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         (segment["start"], segment["stop"], segment["n_steps"])
         for segment in direct_coil_accepted_trace_step_policy_segments([axis_reference_trace, axis_changed_trace])
     ] == [(0, 2, 2)]
-    axis_reference_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        axis_reference_trace["state_pre"],
-        static=init.static,
+    axis_reference_replay = controller_replay_objective(
+        start_state=axis_reference_trace["state_pre"],
         traces=[axis_reference_trace, axis_reference_trace],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
     )
-    axis_changed_controller_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        axis_reference_trace["state_pre"],
-        static=init.static,
+    axis_changed_controller_replay = controller_replay_objective(
+        start_state=axis_reference_trace["state_pre"],
         traces=[axis_reference_trace, axis_changed_trace],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
     )
-    axis_changed_stacked_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        axis_reference_trace["state_pre"],
-        static=init.static,
+    axis_changed_stacked_replay = controller_replay_objective(
+        start_state=axis_reference_trace["state_pre"],
         traces=[axis_reference_trace, axis_changed_trace],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
         use_stacked_step_controls=True,
     )
     assert axis_changed_stacked_replay["used_stacked_step_controls"]
@@ -4726,18 +4583,8 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
             rtol=5.0e-12,
             atol=5.0e-12,
         )
-    np.testing.assert_allclose(
-        np.asarray(axis_changed_stacked_replay["objective"]),
-        np.asarray(axis_changed_controller_replay["objective"]),
-        rtol=5.0e-12,
-        atol=5.0e-12,
-    )
-    np.testing.assert_allclose(
-        np.asarray(pack_state(axis_changed_stacked_replay["state"])),
-        np.asarray(pack_state(axis_changed_controller_replay["state"])),
-        rtol=5.0e-12,
-        atol=5.0e-12,
-    )
+    assert_objective_close(axis_changed_stacked_replay, axis_changed_controller_replay, rtol=5.0e-12, atol=5.0e-12)
+    assert_state_close(axis_changed_stacked_replay, axis_changed_controller_replay)
 
     static_changed_trace = dict(trace1)
     static_changed_trace["include_edge_residual"] = not bool(trace1["include_edge_residual"])
@@ -4748,16 +4595,8 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     padded_bad_trace = dict(trace1)
     padded_bad_trace["dt_eff"] = _trace_scalar_value(trace1["dt_eff"]) * 10.0
     padded_bad_trace["force_scale"] = _trace_scalar_value(trace1["force_scale"]) * 10.0
-    padded_controller_replay = direct_coil_accepted_trace_controller_replay_objective_jax(
-        base_params,
-        trace0["state_pre"],
-        static=init.static,
+    padded_controller_replay = controller_replay_objective(
         traces=[trace0, trace1, padded_bad_trace],
-        signgs=int(init.signgs),
-        state_weight=1.0,
-        bsqvac_weight=1.0e-12,
-        force_weight=0.0,
-        enforce_edge=False,
         accept_mask=np.asarray([True, True, False]),
         done_mask=np.asarray([False, True, False]),
     )
@@ -4792,12 +4631,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         )
         for segment in padded_controller_replay["preconditioner_policy_segment_summary"]
     ] == [(0, 3, 2, 1, 1, 3, 1)]
-    np.testing.assert_allclose(
-        np.asarray(padded_controller_replay["objective"]),
-        np.asarray(controller_replay["objective"]),
-        rtol=2.0e-12,
-        atol=1.0e-12,
-    )
+    assert_objective_close(padded_controller_replay, controller_replay)
 
 
 @pytest.mark.py311_coverage_only
