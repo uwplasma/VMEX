@@ -23814,3 +23814,168 @@ No user input is needed for local implementation.  Office VMEC2000/GPU access
 is the next useful external resource for target-ladder solved/parity runs.
 
 ---
+## 199. Office GPU Toroidal Hybrid Target Probe
+
+### Steps taken
+
+- Probed the `office` SSH environment non-interactively.
+- Confirmed the host is reachable and has two NVIDIA RTX A4000 GPUs visible to
+  JAX through `/home/rjorge/venvs/vmec_jax_gpu/bin/python`.
+- Confirmed the VMEC2000 executable path:
+  `/home/rjorge/vmec2000/_skbuild/linux-x86_64-3.11/cmake-install/bin/xvmec`.
+- Created a fresh shallow clone of the draft PR branch at
+  `/home/rjorge/local/vmec_mirror` to avoid touching dirty existing remote
+  worktrees.
+- Ran the target preset in no-solve filtered mode for `*ns015*`.
+- Ran a one-row target-ladder VMEC/JAX solved smoke for
+  `*ns007_mpol05_ntor20` with `max_iter=1`, `NITER_ARRAY=5`, `NSTEP=1`,
+  and no plots.
+- Ran the same one-row target-ladder probe with VMEC2000 enabled and a
+  60-second VMEC2000 timeout.
+
+### Results obtained
+
+- Remote branch checkout is clean at PR head `eca789b`.
+- JAX sees two CUDA devices on office.
+- The no-solve target filtered command wrote:
+  `/home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_probe_no_solve/toroidal_stellarator_mirror_hybrid_convergence.json`.
+- The one-row VMEC/JAX solved smoke wrote:
+  `/home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_probe_solve/toroidal_stellarator_mirror_hybrid_convergence.json`.
+- Compact VMEC/JAX solved-smoke metrics:
+  - case: `ns007_mpol05_ntor20`;
+  - `ran_solve=True`;
+  - `target_resolution_ladder=True`;
+  - `target_resolution_promotion_claim=False`;
+  - solve seconds: `26.041028084233403`;
+  - `n_iter=1`;
+  - `initial_fsq=0.01730447046657486`;
+  - `final_fsq=0.01730447046657486`;
+  - `direct_initial_fsq=0.10843912042391801`;
+  - `initial_fsq_ratio_direct_initial=0.15957774647126405`;
+  - converged flags all false.
+- The one-row VMEC/JAX plus VMEC2000 parity probe wrote:
+  `/home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_probe_vmec2000/toroidal_stellarator_mirror_hybrid_convergence.json`.
+- Compact parity-probe metrics:
+  - case: `ns007_mpol05_ntor20`;
+  - `ran_solve=True`;
+  - `ran_vmec2000=True`;
+  - VMEC/JAX solve seconds: `4.816137593239546`;
+  - VMEC/JAX `n_iter=1`;
+  - VMEC/JAX `initial_fsq=0.01730447046657486`;
+  - VMEC/JAX `final_fsq=0.01730447046657486`;
+  - VMEC2000 return code: `0`;
+  - VMEC2000 runtime seconds: `1.5839644763618708`;
+  - VMEC2000 parsed rows: `5`;
+  - VMEC2000 initial total `fsq=0.1078`;
+  - VMEC2000 final total `fsq=0.041170000000000005`;
+  - `initial_fsq_ratio_vmec2000=0.16052384477342171`;
+  - `direct_initial_fsq_ratio_vmec2000=1.0059287608897773`;
+  - `vmec2000_error=None`.
+
+### Interpretation
+
+- The office target-ladder workflow is viable: the branch runs from a fresh
+  clone, JAX uses GPU devices, and VMEC2000 runs successfully through the
+  convergence runner.
+- The direct-initial VMEC/JAX residual agrees with the VMEC2000 first row to
+  about `0.6%` on this target-ladder probe, matching the intended parity-audit
+  signal.
+- This is not a target-resolution convergence claim.  It is a one-row,
+  one-iteration feasibility probe that verifies campaign plumbing and records
+  initial parity behavior.
+
+### How it was tested
+
+Commands run on office through SSH:
+
+```bash
+ssh office 'hostname; nvidia-smi --query-gpu=name --format=csv,noheader'
+ssh office 'git clone --depth=1 --branch codex/mirror-geometry https://github.com/uwplasma/vmec_jax.git /home/rjorge/local/vmec_mirror'
+ssh office 'cd /home/rjorge/local/vmec_mirror && PYTHONPATH=$PWD /home/rjorge/venvs/vmec_jax_gpu/bin/python examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  --outdir /home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_probe_no_solve \
+  --resolution-preset target \
+  --case-filter "*ns015*" \
+  --ntheta-fit 64 \
+  --nzeta-fit 64 \
+  --no-plots'
+ssh office 'cd /home/rjorge/local/vmec_mirror && PYTHONPATH=$PWD /home/rjorge/venvs/vmec_jax_gpu/bin/python examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  --outdir /home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_probe_solve \
+  --resolution-preset target \
+  --case-filter "*ns007_mpol05_ntor20" \
+  --ntheta-fit 64 \
+  --nzeta-fit 64 \
+  --run-solve \
+  --max-iter 1 \
+  --niter 5 \
+  --nstep 1 \
+  --ftol 1e-6 \
+  --no-plots'
+ssh office 'cd /home/rjorge/local/vmec_mirror && PYTHONPATH=$PWD /home/rjorge/venvs/vmec_jax_gpu/bin/python examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  --outdir /home/rjorge/local/vmec_mirror/results/toroidal_hybrid_target_probe_vmec2000 \
+  --resolution-preset target \
+  --case-filter "*ns007_mpol05_ntor20" \
+  --ntheta-fit 64 \
+  --nzeta-fit 64 \
+  --run-solve \
+  --max-iter 1 \
+  --niter 5 \
+  --nstep 1 \
+  --ftol 1e-6 \
+  --run-vmec2000 \
+  --vmec2000-exec /home/rjorge/vmec2000/_skbuild/linux-x86_64-3.11/cmake-install/bin/xvmec \
+  --vmec2000-timeout-s 60 \
+  --no-plots'
+```
+
+All three runner commands completed successfully.  Generated results stayed on
+the office host under ignored `results/` directories and were not copied into
+the repository.
+
+### File structure and best-practice notes
+
+- This is a plan-only evidence checkpoint.
+- The remote clone is separate from existing dirty worktrees.
+- The local repository remains light: no remote result JSON, WOUT, threed1, or
+  plot outputs were committed.
+
+### Best next steps
+
+1. Commit and push M199.
+2. Update the draft PR body with section 199 and the one-row office parity
+   probe result.
+3. Inspect only failed CI jobs after the push.
+4. Run the full target preset on office in filtered chunks, starting with:
+   `--resolution-preset target --case-filter '*ns007*' --run-solve
+   --run-vmec2000 --nstep 1 --full-solver-diagnostics`, then proceed through
+   `*ns009*` and `*ns015*` if runtime and disk remain acceptable.
+
+### Completion percentages after M199
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.3%` overall for the current diagnostic/reduced
+  solver scope, with production LCFS convergence still explicitly deferred.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `98.2%`, with target-ladder
+  workflow, filtering, and one-row solved/parity feasibility verified; full
+  target-ladder convergence evidence remains pending.
+- ESSOS circular-coil mirror beta scan: `99%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.4%`, pending GitHub checks and explicit
+  review decision on deferred production lanes.
+
+### User input needed
+
+No user input is needed for the next remote target-ladder chunks, but disk
+space on office is tight (`/home` was 99% used during the probe), so large
+plotted or full-history campaigns should be run in filtered chunks and cleaned
+up after extracting compact metrics.
