@@ -2824,6 +2824,64 @@ def _solve_vmec_like_mode_with_jax_nestor_operator(
     )
 
 
+def _nestor_trace_arrays(
+    *,
+    sample: ExternalBoundarySample,
+    vac_total: VacuumBoundaryFields,
+    gsource_vmec: np.ndarray,
+    potvac: np.ndarray | None,
+    bvec_mode: np.ndarray | None,
+    bvec_mode_nonsing: np.ndarray | None,
+    bvec_mode_analytic: np.ndarray | None,
+    grpmn_nonsing: np.ndarray | None,
+    grpmn_analytic: np.ndarray | None,
+    grpmn_total: np.ndarray | None,
+    amatrix_mode_from_grpmn: np.ndarray | None,
+    cache: Any,
+) -> dict[str, Any]:
+    """Pack optional NESTOR trace arrays without cluttering solve policy code."""
+    out = {
+        name: np.asarray(getattr(sample, name), dtype=float)
+        for name in ("R", "Z", "phi", "Ru", "Zu", "Rv", "Zv", "br", "bp", "bz")
+    }
+    out.update(
+        {
+            name: np.asarray(value, dtype=float)
+            for name, value in {
+                "br_mgrid": sample.br_mgrid,
+                "bp_mgrid": sample.bp_mgrid,
+                "bz_mgrid": sample.bz_mgrid,
+                "br_axis": sample.br_axis,
+                "bp_axis": sample.bp_axis,
+                "bz_axis": sample.bz_axis,
+                "bu_ext": sample.vac_ext.bu,
+                "bv_ext": sample.vac_ext.bv,
+                "bnormal": sample.vac_ext.bnormal,
+                "g_uu": sample.vac_ext.g_uu,
+                "g_uv": sample.vac_ext.g_uv,
+                "g_vv": sample.vac_ext.g_vv,
+                "bsqvac": vac_total.bsqvac,
+                "gsource_vmec": gsource_vmec,
+            }.items()
+        }
+    )
+    for name, value in {
+        "potvac": potvac,
+        "bvec_mode": bvec_mode,
+        "bvec_mode_nonsing": bvec_mode_nonsing,
+        "bvec_mode_analytic": bvec_mode_analytic,
+        "grpmn_nonsing": grpmn_nonsing,
+        "grpmn_analytic": grpmn_analytic,
+        "grpmn_total": grpmn_total,
+        "mode_matrix": amatrix_mode_from_grpmn,
+    }.items():
+        if value is not None:
+            out[name] = np.asarray(value, dtype=float)
+    if "mode_matrix" not in out and isinstance(cache, NestorVmecLikeCache) and cache.mode_matrix is not None:
+        out["mode_matrix"] = np.asarray(cache.mode_matrix, dtype=float)
+    return out
+
+
 def nestor_external_only_step(
     *,
     state: Any,
@@ -3280,50 +3338,20 @@ def nestor_external_only_step(
 
     trace_arrays = None
     if bool(collect_trace_arrays):
-        trace_arrays = {
-            "R": np.asarray(sample.R, dtype=float),
-            "Z": np.asarray(sample.Z, dtype=float),
-            "phi": np.asarray(sample.phi, dtype=float),
-            "Ru": np.asarray(sample.Ru, dtype=float),
-            "Zu": np.asarray(sample.Zu, dtype=float),
-            "Rv": np.asarray(sample.Rv, dtype=float),
-            "Zv": np.asarray(sample.Zv, dtype=float),
-            "br": np.asarray(sample.br, dtype=float),
-            "bp": np.asarray(sample.bp, dtype=float),
-            "bz": np.asarray(sample.bz, dtype=float),
-            "br_mgrid": np.asarray(sample.br_mgrid, dtype=float),
-            "bp_mgrid": np.asarray(sample.bp_mgrid, dtype=float),
-            "bz_mgrid": np.asarray(sample.bz_mgrid, dtype=float),
-            "br_axis": np.asarray(sample.br_axis, dtype=float),
-            "bp_axis": np.asarray(sample.bp_axis, dtype=float),
-            "bz_axis": np.asarray(sample.bz_axis, dtype=float),
-            "bu_ext": np.asarray(sample.vac_ext.bu, dtype=float),
-            "bv_ext": np.asarray(sample.vac_ext.bv, dtype=float),
-            "bnormal": np.asarray(sample.vac_ext.bnormal, dtype=float),
-            "g_uu": np.asarray(sample.vac_ext.g_uu, dtype=float),
-            "g_uv": np.asarray(sample.vac_ext.g_uv, dtype=float),
-            "g_vv": np.asarray(sample.vac_ext.g_vv, dtype=float),
-            "bsqvac": np.asarray(vac_total.bsqvac, dtype=float),
-            "gsource_vmec": np.asarray(gsource_vmec, dtype=float),
-        }
-        if potvac is not None:
-            trace_arrays["potvac"] = np.asarray(potvac, dtype=float)
-        if bvec_mode is not None:
-            trace_arrays["bvec_mode"] = np.asarray(bvec_mode, dtype=float)
-        if bvec_mode_nonsing is not None:
-            trace_arrays["bvec_mode_nonsing"] = np.asarray(bvec_mode_nonsing, dtype=float)
-        if bvec_mode_analytic is not None:
-            trace_arrays["bvec_mode_analytic"] = np.asarray(bvec_mode_analytic, dtype=float)
-        if grpmn_nonsing is not None:
-            trace_arrays["grpmn_nonsing"] = np.asarray(grpmn_nonsing, dtype=float)
-        if grpmn_analytic is not None:
-            trace_arrays["grpmn_analytic"] = np.asarray(grpmn_analytic, dtype=float)
-        if grpmn_total is not None:
-            trace_arrays["grpmn_total"] = np.asarray(grpmn_total, dtype=float)
-        if amatrix_mode_from_grpmn is not None:
-            trace_arrays["mode_matrix"] = np.asarray(amatrix_mode_from_grpmn, dtype=float)
-        elif isinstance(cache, NestorVmecLikeCache) and cache.mode_matrix is not None:
-            trace_arrays["mode_matrix"] = np.asarray(cache.mode_matrix, dtype=float)
+        trace_arrays = _nestor_trace_arrays(
+            sample=sample,
+            vac_total=vac_total,
+            gsource_vmec=gsource_vmec,
+            potvac=potvac,
+            bvec_mode=bvec_mode,
+            bvec_mode_nonsing=bvec_mode_nonsing,
+            bvec_mode_analytic=bvec_mode_analytic,
+            grpmn_nonsing=grpmn_nonsing,
+            grpmn_analytic=grpmn_analytic,
+            grpmn_total=grpmn_total,
+            amatrix_mode_from_grpmn=amatrix_mode_from_grpmn,
+            cache=cache,
+        )
 
     res = NestorSolveResult(
         vac_total=vac_total,
