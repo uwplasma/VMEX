@@ -7,7 +7,6 @@ It is meant for regression comparisons against VMEC2000 outputs.
 from __future__ import annotations
 
 import os
-from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -395,10 +394,13 @@ def _synthesize_wout_geometry_from_state(
     return geom
 
 
-_apply_bsubv_equif_correction = partial(
-    _wout_diagnostics.apply_bsubv_equif_correction,
-    vmec_pwint_from_trig_func=vmec_pwint_from_trig,
-)
+def _apply_bsubv_equif_correction(*, bsubv: np.ndarray, bsubv_e: np.ndarray, trig) -> np.ndarray:
+    return _wout_diagnostics.apply_bsubv_equif_correction(
+        bsubv=bsubv,
+        bsubv_e=bsubv_e,
+        trig=trig,
+        vmec_pwint_from_trig_func=vmec_pwint_from_trig,
+    )
 
 
 _compute_bsubs_half_mesh = _wout_bsubs_helpers.compute_bsubs_half_mesh
@@ -1126,15 +1128,7 @@ def wout_minimal_from_fixed_boundary(
         equilibrium_iota_profiles_from_state_func=equilibrium_iota_profiles_from_state,
         chipf_from_chips_func=_chipf_from_chips,
     )
-    flux = profile_payload.flux
-    chipf_wout = profile_payload.chipf_wout
-    pres = profile_payload.pres
-    mass = profile_payload.mass
-    ncurr = profile_payload.ncurr
-    iotas = profile_payload.iotas
-    iotaf = profile_payload.iotaf
-    gamma = profile_payload.gamma
-    phipf_internal = profile_payload.phipf_internal
+    (flux, chipf_wout, _, pres, _, mass, ncurr, iotas, iotaf, gamma, phipf_internal) = profile_payload
 
     lconm1 = bool(getattr(cfg, "lconm1", True))
     main_geom = build_main_geometry_coefficients(
@@ -1190,9 +1184,7 @@ def wout_minimal_from_fixed_boundary(
         vmec_forces_rz_from_wout_func=vmec_forces_rz_from_wout,
         numpy_module_patch_func=_numpy_module_patch,
     )
-    bc = bcovar_payload.bc
-    k_force = bcovar_payload.k_force
-    indata_wout = bcovar_payload.indata_wout
+    bc, k_force, indata_wout = bcovar_payload
 
     def _force_sym(arr, kind: str):
         arr_np = np.asarray(arr, dtype=float)
@@ -1219,21 +1211,11 @@ def wout_minimal_from_fixed_boundary(
         force_sym_func=_force_sym,
         vmec_forces_rz_from_wout_func=vmec_forces_rz_from_wout,
     )
-    use_force_bss = bss_payload.use_force_bss
-    k_force = bss_payload.k_force
-    bsupu_bss = bss_payload.bsupu
-    bsupv_bss = bss_payload.bsupv
-    ru12_bss = bss_payload.ru12
-    zu12_bss = bss_payload.zu12
-    rs_bss = bss_payload.rs
-    zs_bss = bss_payload.zs
-    crmn_e_sym = bss_payload.crmn_e_sym
-    czmn_e_sym = bss_payload.czmn_e_sym
-    bzmn_e_sym = bss_payload.bzmn_e_sym
-    brmn_e_sym = bss_payload.brmn_e_sym
-    azmn_e_sym = bss_payload.azmn_e_sym
-    armn_e_sym = bss_payload.armn_e_sym
-    geom_bss = bss_payload.geom
+    (
+        use_force_bss, k_force, bsupu_bss, bsupv_bss, ru12_bss, zu12_bss,
+        rs_bss, zs_bss, crmn_e_sym, czmn_e_sym, bzmn_e_sym, brmn_e_sym,
+        azmn_e_sym, armn_e_sym, geom_bss,
+    ) = bss_payload
     _wout_debug_helpers.dump_bsub_parity_if_requested(s=np.asarray(s, dtype=float), bc=bc)
     _wout_debug_helpers.dump_bsubh_if_requested(s=np.asarray(s, dtype=float), bsupu=bsupu_bss, bsupv=bsupv_bss, bc=bc)
 
@@ -1518,20 +1500,10 @@ def wout_minimal_from_fixed_boundary(
             trig=trig,
             use_loop=bool(use_loop),
         )
-        gmnc = sym_nyq.gmnc
-        gmns = sym_nyq.gmns
-        bsupumnc = sym_nyq.bsupumnc
-        bsupumns = sym_nyq.bsupumns
-        bsupvmnc = sym_nyq.bsupvmnc
-        bsupvmns = sym_nyq.bsupvmns
-        bsubumnc = sym_nyq.bsubumnc
-        bsubumns = sym_nyq.bsubumns
-        bsubvmnc = sym_nyq.bsubvmnc
-        bsubvmns = sym_nyq.bsubvmns
-        bsubsmns = sym_nyq.bsubsmns
-        bsubsmnc = sym_nyq.bsubsmnc
-        bmnc = sym_nyq.bmnc
-        bmns = sym_nyq.bmns
+        (
+            gmnc, gmns, bsupumnc, bsupumns, bsupvmnc, bsupvmns, bsubumnc,
+            bsubumns, bsubvmnc, bsubvmns, bsubsmns, bsubsmnc, bmnc, bmns,
+        ) = sym_nyq
     if wout_timing_enabled:
         wout_timing["nyquist_coeffs_s"] = _time.perf_counter() - t0
         t0 = _time.perf_counter()
