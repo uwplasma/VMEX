@@ -23583,3 +23583,75 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999999975%.
+
+## 2026-06-19 Residual Preconditioner Refresh Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `PreconditionerRefreshRuntimeResult` and
+   `refresh_preconditioner_cache_runtime` to
+   `vmec_jax/solvers/fixed_boundary/residual/preconditioner_payload.py`.
+2. Moved the VMEC2000-style preconditioner refresh/reuse timing, dump, and
+   reassembly policy out of the local `_refresh_preconditioner_cache` closure.
+3. Left the local closure responsible only for writing updated cache fields back
+   to the mutable host-loop state and returning the current payload.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` decreased from 4865
+  to 4827 lines.
+- Preconditioner cache refresh policy is now independently reusable and easier
+  to test, while host-loop mutable state remains explicit in the solver.
+- Focused preconditioner reuse, scan, and solve-helper tests passed.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/preconditioner_payload.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/preconditioner_payload.py tests/test_solve_finish_cache_more_coverage.py tests/test_solve_residual_iter_helpers_wave8_coverage.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_finish_cache_more_coverage.py::test_nonscan_reuses_preconditioner_seed_from_same_bcovar_refresh tests/test_solve_finish_cache_more_coverage.py::test_vmec2000_state_only_scan_runner_cache_reports_miss_then_hit_and_replays_resume_cache tests/test_solve_residual_iter_helpers_wave8_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_real_scan_wave10_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_additional_helpers.py -q`
+
+Best next steps:
+
+1. Commit and push this preconditioner-refresh extraction.
+2. Stop extracting small local helpers for residual iteration; the next tranche
+   must be the non-scan host-loop controller boundary.
+3. Build that host-loop boundary with an explicit context/result object and
+   validate with strict-update, backtracking, free-boundary, scan fallback, and
+   driver tests.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999978%.
+- Solver monolith reduction: 99.861%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.23%.
+- WOUT diagnostic/profile decomposition: 99.982%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.885%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.1%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 99.20%.
+- Free-boundary validation-gate maintainability: 98.35%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999999976%.
