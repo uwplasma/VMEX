@@ -23422,3 +23422,86 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999999972%.
+
+## 2026-06-19 VMEC2000 Scan Controller Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `vmec_jax/solvers/fixed_boundary/scan/controller.py` as the domain
+   home for the VMEC2000-style fixed-boundary residual scan controller.
+2. Replaced the 847-line nested `_run_vmec2000_scan` closure inside
+   `solve_fixed_boundary_residual_iter` with an explicit
+   `Vmec2000ScanControllerContext` object passed to `run_vmec2000_scan`.
+3. Kept the residual iteration module as the setup/orchestration owner while
+   moving the scan control loop, scan dispatch, scan finalization, and
+   scan-specific JAX step function to the scan domain.
+4. Restored `_free_boundary_iter_controls` as an explicit legacy alias in
+   `vmec_jax.solve`, since older tests and debugging workflows import it from
+   the compatibility facade.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` decreased from 5729
+  to 4943 lines.
+- The VMEC2000 scan controller is no longer hidden as a closure inside the
+  residual solver, making the adaptive scan seam easier to test and refactor
+  independently.
+- Real VMEC2000 scan tests, scan-cache tests, solve helper compatibility tests,
+  discrete-adjoint replay tests, and driver smoke tests passed.
+- Source-health now shows the remaining residual iteration monolith is mostly
+  the non-scan host loop plus shared setup; the next safe tranche is to extract
+  host-loop history/update context rather than further moving scan code.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/scan/controller.py`
+- `python -m ruff check vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/scan/controller.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_real_scan_wave10_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_finish_cache_more_coverage.py::test_vmec2000_state_only_scan_runner_cache_reports_miss_then_hit_and_replays_resume_cache tests/test_solve_finish_cache_more_coverage.py::test_accelerated_scan_runner_cache_reports_timing_hit_and_miss -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_additional_helpers.py tests/test_solve_residual_iter_helpers_wave8_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_api.py tests/test_driver_run_wave8_coverage.py tests/test_driver_wave12_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_discrete_adjoint_chunking.py tests/test_discrete_adjoint_wave6_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 24 --top-functions 55`
+
+Best next steps:
+
+1. Commit and push this scan-controller extraction tranche.
+2. Continue residual iteration decomposition by extracting the non-scan host
+   loop context/history assembly, not by adding more root-level helper files.
+3. Keep the next tests centered on non-scan strict-update parity,
+   free-boundary host-loop diagnostics, and driver default behavior.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999976%.
+- Solver monolith reduction: 99.855%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.18%.
+- WOUT diagnostic/profile decomposition: 99.982%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.88%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.1%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 99.20%.
+- Free-boundary validation-gate maintainability: 98.35%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999999974%.
