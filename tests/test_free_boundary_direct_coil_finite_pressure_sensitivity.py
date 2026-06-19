@@ -2068,6 +2068,17 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     assert set(complete_report["objective_values"]) == expected_objective_value_keys
     complete_fd = float(complete_report["values"]["central_fd_directional"])
 
+    def directional_grad(objective):
+        grad = jax.grad(objective)(base_params)
+        return sum(
+            jnp.vdot(grad_leaf, direction_leaf)
+            for grad_leaf, direction_leaf in zip(
+                jax.tree_util.tree_leaves(grad),
+                jax.tree_util.tree_leaves(direction),
+                strict=True,
+            )
+        )
+
     def custom_objective(params: CoilFieldParams):
         return direct_coil_fixed_trace_custom_vjp_objective_jax(
             params,
@@ -2081,15 +2092,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             enforce_edge=False,
         )
 
-    grad = jax.grad(custom_objective)(base_params)
-    exact = sum(
-        jnp.vdot(grad_leaf, direction_leaf)
-        for grad_leaf, direction_leaf in zip(
-            jax.tree_util.tree_leaves(grad),
-            jax.tree_util.tree_leaves(direction),
-            strict=True,
-        )
-    )
+    exact = directional_grad(custom_objective)
     base_complete = state_norm_objective(base_result.state)
     base_fixed_trace = float(np.asarray(custom_objective(base_params)))
     assert abs(base_fixed_trace - base_complete) < 2.0e-3
@@ -2112,15 +2115,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                 enforce_edge=False,
             )
 
-        controller_grad = jax.grad(controller_custom_objective)(base_params)
-        controller_exact = sum(
-            jnp.vdot(grad_leaf, direction_leaf)
-            for grad_leaf, direction_leaf in zip(
-                jax.tree_util.tree_leaves(controller_grad),
-                jax.tree_util.tree_leaves(direction),
-                strict=True,
-            )
-        )
+        controller_exact = directional_grad(controller_custom_objective)
         base_controller_trace = float(np.asarray(controller_custom_objective(base_params)))
         assert abs(base_controller_trace - base_complete) < 2.0e-3
         np.testing.assert_allclose(controller_exact, complete_fd, rtol=2.0e-3, atol=1.0e-8)
@@ -2141,15 +2136,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                 use_preconditioner_policy_segments=True,
             )
 
-        segmented_controller_grad = jax.grad(segmented_controller_custom_objective)(base_params)
-        segmented_controller_exact = sum(
-            jnp.vdot(grad_leaf, direction_leaf)
-            for grad_leaf, direction_leaf in zip(
-                jax.tree_util.tree_leaves(segmented_controller_grad),
-                jax.tree_util.tree_leaves(direction),
-                strict=True,
-            )
-        )
+        segmented_controller_exact = directional_grad(segmented_controller_custom_objective)
         base_segmented_controller_trace = float(np.asarray(segmented_controller_custom_objective(base_params)))
         assert abs(base_segmented_controller_trace - base_complete) < 2.0e-3
         np.testing.assert_allclose(segmented_controller_exact, complete_fd, rtol=2.0e-3, atol=1.0e-8)
