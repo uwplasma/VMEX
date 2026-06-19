@@ -67,7 +67,8 @@ without coupling it to toroidal VMEC assumptions:
   runs, a low-resolution target-merit smoke that converges the default 1%, 3%,
   and 10% beta rows to ``target_merit=0.2`` with ``baseline_maxiter=5``, a
   ``0.05`` relative boundary step cap, and an explicit ``fsq`` growth guard,
-  plus an optional strict normal-field guard
+  recorded LS polynomial degree with safe rejection of nonpositive high-order
+  trial boundaries, plus an optional strict normal-field guard
   that records allowed strategies,
   no-op rejection reasons, workflow status, requested beta-scan points, and
   aggregate pilot counts and stop reasons in JSON output, with optional

@@ -25344,3 +25344,121 @@ Results:
 ### User input needed
 
 No user input is needed for the next technical step.
+
+---
+## 211. Free-Boundary High-Order Boundary Diagnostic
+
+### Steps taken
+
+- Added `--ls-boundary-polynomial-degree` to the root circular-coil
+  free-boundary example so the LS boundary diagnostic can use even polynomial
+  bases beyond the original `[r0, a2, a4]` path.
+- Kept the default degree at `4`, preserving the existing behavior and
+  regression evidence.
+- For degrees above `4`, converted the even polynomial values on the mirror
+  axial grid into a tabulated axisymmetric `MirrorBoundary`, avoiding a core
+  `MirrorBoundary` API expansion for this diagnostic path.
+- Added a local invalid-boundary penalty residual so nonpositive high-order
+  trial radii are reported as large finite LS residuals and rejected by the
+  existing line search instead of crashing the example.
+- Bumped the circular-coil beta-scan metrics schema from `0.7` to `0.8` and
+  recorded `ls_boundary_polynomial_degree` in the top-level metrics whenever
+  the LS boundary diagnostic or coupled loop is requested.
+- Tested degree `6` as a possible way to push the all-beta coupled loop below
+  the `target_merit = 0.1` limiter found in M210.
+
+### Results obtained
+
+- The degree-4 default path still accepts the one-step LS boundary diagnostic
+  and reduces the combined residual.
+- The degree-6 one-step diagnostic no longer crashes when high-order trial
+  coefficients produce nonpositive radii.  The invalid full step is represented
+  by a large finite residual (`> 1e5` in the test), factor `0.0` is selected,
+  and the LS step is marked unaccepted.
+- Degree-6 coupled-loop probe for `target_merit = 0.1`, step cap `0.05`,
+  `baseline_maxiter = 5`, and `fsq_growth_limit = 1.5` did not improve the
+  production-lane limiter:
+  - `free_boundary_solve_status =
+    ls_boundary_coupled_loop_not_converged_free_boundary`;
+  - stop reasons: `{"ls_step_not_accepted": 3}`;
+  - all default beta rows skipped at the first LS step.
+- This rules out "just add a higher even polynomial degree" as the next
+  production free-boundary fix for the current low-resolution circular-coil
+  setup.  The next useful step is still a better reduced nonlinear solve policy
+  or explicit regularization/mode selection, not blindly adding more boundary
+  modes.
+
+### How it was tested
+
+```bash
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m211_degree6_smoke --betas 1 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 0 --run-ls-boundary-step --ls-boundary-polynomial-degree 6 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m211_degree6_step005 --betas 1 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 0 --run-ls-boundary-step --ls-boundary-polynomial-degree 6 --ls-boundary-max-relative-step 0.05 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m211_degree6_step0025 --betas 1 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 0 --run-ls-boundary-step --ls-boundary-polynomial-degree 6 --ls-boundary-max-relative-step 0.025 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m211_degree6_step001 --betas 1 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 0 --run-ls-boundary-step --ls-boundary-polynomial-degree 6 --ls-boundary-max-relative-step 0.01 --no-plots
+python examples/mirror_free_boundary_circular_coils.py --outdir results/mirror/free_boundary_circular_coils_m211_degree6_target010_step005 --betas 1,3,10 --ntheta 8 --nxi 11 --n-segments 64 --run-fixed-boundary-baseline --baseline-maxiter 5 --run-ls-boundary-coupled-loop --ls-boundary-coupled-loop-steps 8 --ls-boundary-coupled-loop-target-merit 0.1 --ls-boundary-coupled-loop-fsq-growth-limit 1.5 --ls-boundary-max-relative-step 0.05 --ls-boundary-polynomial-degree 6 --no-plots
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_ls_boundary_step_reports_reduction tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_high_order_ls_boundary_step_rejects_invalid_trials tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_coupled_loop_reports_target_merit_convergence tests/mirror/test_mirror_examples.py::test_root_free_boundary_circular_coils_summary_reports_converged_free_boundary_statuses -q
+JAX_ENABLE_X64=1 pytest tests/mirror/test_mirror_examples.py -q
+python -m ruff check examples/mirror_free_boundary_circular_coils.py tests/mirror/test_mirror_examples.py
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+```
+
+Results:
+
+- Focused schema/LS tests passed: `4 passed in 11.68s`.
+- Full root mirror example tests passed: `37 passed in 187.10s`.
+- Ruff passed for the touched example/test files.
+- Sphinx docs build passed with warnings as errors.
+- Whitespace check passed.
+
+### File structure and best-practice notes
+
+- The implementation remains localized to
+  `examples/mirror_free_boundary_circular_coils.py`; the core
+  `MirrorBoundary` API stays unchanged.
+- The high-order branch uses the existing `MirrorBoundary.tabulated_radius`
+  path, which is already validated for positive axisymmetric side boundaries.
+- Invalid high-order trial radii are rejected through a finite residual penalty
+  in the CLI diagnostic layer, preserving the physical positive-radius
+  invariant in the core boundary class.
+- Tests stay in `tests/mirror/test_mirror_examples.py` because this is an
+  end-to-end root-example schema and workflow contract.
+- Generated probe outputs remain in ignored `results/mirror/...` directories.
+
+### Best next steps
+
+1. Commit and push this M211 tranche, update the draft PR body, and snapshot
+   failed checks.
+2. Move from scalar LS boundary updates toward a reduced residual-vector
+   nonlinear policy for the realized coupled loop, likely with explicit
+   ridge-candidate selection and mode filtering before each expensive trial.
+3. Use `ssh office` for heavier beta/`ns`/`nxi` ladders once the next local
+   policy improves the `target_merit = 0.1` failure mode.
+
+### Completion percentages after M211
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.62%` overall for the diagnostic/reduced solver
+  scope; high-order boundary diagnostics are safe and recorded, but they do not
+  close production LCFS convergence below `0.1`.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `99.9%`.
+- ESSOS circular-coil mirror beta scan: `99.4%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.88%`, pending production free-boundary LCFS
+  decision/evidence, broader differentiable solved-state promotion, final
+  checks, and review decision on deferred lanes.
+
+### User input needed
+
+No user input is needed for the next technical step.

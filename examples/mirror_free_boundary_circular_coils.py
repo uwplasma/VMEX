@@ -22,6 +22,7 @@ from vmec_jax.mirror import (
     MirrorCircularCoils,
     MirrorConfig,
     MirrorFreeBoundaryLoopState,
+    MirrorLCFSResidual,
     MirrorResolution,
     MirrorSolveOptions,
     PressureProfile,
@@ -51,7 +52,7 @@ from vmec_jax.mirror import (
 
 
 CIRCULAR_COIL_BETA_SCAN_SCHEMA = "mirror_free_boundary_circular_coil_beta_scan"
-CIRCULAR_COIL_BETA_SCAN_SCHEMA_VERSION = "0.7"
+CIRCULAR_COIL_BETA_SCAN_SCHEMA_VERSION = "0.8"
 CIRCULAR_COIL_BETA_SCAN_LS_LINE_SEARCH_FACTORS = (1.0, 0.5, 0.25, 0.125)
 CIRCULAR_COIL_BETA_SCAN_TOP_LEVEL_FIELDS = (
     "metrics_schema",
@@ -92,6 +93,7 @@ CIRCULAR_COIL_BETA_SCAN_TOP_LEVEL_FIELDS = (
     "ls_boundary_damping",
     "ls_boundary_max_relative_step",
     "ls_boundary_ridge",
+    "ls_boundary_polynomial_degree",
     "ls_boundary_step_rows_total",
     "ls_boundary_coupled_trial_requested",
     "ls_boundary_coupled_trial_rows_total",
@@ -555,6 +557,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ls-boundary-damping", type=float, default=1.0)
     parser.add_argument("--ls-boundary-max-relative-step", type=float, default=0.1)
     parser.add_argument("--ls-boundary-ridge", type=float, default=1.0e-8)
+    parser.add_argument("--ls-boundary-polynomial-degree", type=int, default=4)
     parser.add_argument("--no-plots", action="store_true")
     return parser
 
@@ -743,27 +746,77 @@ def _write_beta_scan_summary_plot(rows: list[dict[str, object]], *, outdir: Path
     return path
 
 
-def _fit_polynomial_boundary_coefficients(grid, boundary) -> np.ndarray:
-    """Fit ``r0 * (1 + a2*xi**2 + a4*xi**4)`` to an axisymmetric boundary."""
+def _even_polynomial_powers(degree: int) -> np.ndarray:
+    degree = int(degree)
+    if degree < 4 or degree % 2:
+        raise ValueError("ls_boundary_polynomial_degree must be an even integer >= 4")
+    return np.arange(0, degree + 1, 2, dtype=int)
+
+
+def _fit_polynomial_boundary_coefficients(grid, boundary, *, degree: int = 4) -> np.ndarray:
+    """Fit ``r0 * (1 + a2*xi**2 + a4*xi**4 + ...)`` to a side boundary."""
 
     xi = np.asarray(grid.xi, dtype=float)
     radius = np.asarray(boundary.radius_on_grid(grid), dtype=float)
-    basis = np.column_stack([np.ones_like(xi), xi**2, xi**4])
+    powers = _even_polynomial_powers(degree)
+    basis = np.column_stack([xi**power for power in powers])
     linear_coefficients, *_ = np.linalg.lstsq(basis, radius, rcond=1.0e-12)
     r0 = float(linear_coefficients[0])
     if r0 <= 0.0:
         r0 = float(np.mean(radius))
-    return np.asarray([r0, linear_coefficients[1] / r0, linear_coefficients[2] / r0], dtype=float)
+    return np.asarray([r0, *(value / r0 for value in linear_coefficients[1:])], dtype=float)
 
 
-def _polynomial_boundary_from_coefficients(coefficients) -> MirrorBoundary:
+def _polynomial_boundary_from_coefficients(coefficients, *, grid=None) -> MirrorBoundary:
     coefficients = np.asarray(coefficients, dtype=float).ravel()
-    if coefficients.size != 3:
-        raise ValueError("polynomial boundary coefficients must be [r0, a2, a4]")
-    return MirrorBoundary.polynomial_radius(
-        r0=float(coefficients[0]),
-        a2=float(coefficients[1]),
-        a4=float(coefficients[2]),
+    if coefficients.size < 3:
+        raise ValueError("polynomial boundary coefficients must contain at least [r0, a2, a4]")
+    if coefficients.size == 3:
+        return MirrorBoundary.polynomial_radius(
+            r0=float(coefficients[0]),
+            a2=float(coefficients[1]),
+            a4=float(coefficients[2]),
+        )
+    if grid is None:
+        raise ValueError("grid is required for polynomial boundary coefficients beyond a4")
+    xi = np.asarray(grid.xi, dtype=float)
+    radius = np.full_like(xi, float(coefficients[0]), dtype=float)
+    for index, value in enumerate(coefficients[1:], start=1):
+        radius += float(coefficients[0]) * float(value) * xi ** (2 * index)
+    return MirrorBoundary.tabulated_radius(xi, radius)
+
+
+def _invalid_boundary_penalty_residual(
+    *,
+    edge_shape: tuple[int, ...],
+    equilibrium_value: float,
+    equilibrium_scale: float,
+    pressure_scale: float,
+    bnormal_scale: float,
+    bnormal_weight: float,
+) -> object:
+    """Return a large same-shaped residual for rejected high-order boundaries."""
+
+    penalty = 1.0e6
+    bnormal_norm = np.sqrt(bnormal_weight) if bnormal_weight > 0.0 else 1.0
+    pressure_component = np.full(edge_shape, penalty, dtype=float)
+    bnormal_component = np.full(edge_shape, penalty, dtype=float)
+    lcfs_residual = MirrorLCFSResidual(
+        vector=np.concatenate([pressure_component.ravel(), bnormal_component.ravel()]),
+        pressure_component=pressure_component,
+        bnormal_component=bnormal_component,
+        value=float(penalty),
+        pressure_balance_rms=float(penalty * pressure_scale),
+        external_bnormal_rms=float(penalty * bnormal_scale / bnormal_norm),
+        external_bmag_rms=1.0,
+        pressure_scale=float(pressure_scale),
+        bnormal_scale=float(bnormal_scale),
+        bnormal_weight=float(bnormal_weight),
+    )
+    return mirror_free_boundary_residual(
+        np.asarray([equilibrium_value]),
+        lcfs_residual,
+        equilibrium_scale=equilibrium_scale,
     )
 
 
@@ -825,7 +878,19 @@ def _build_ls_boundary_residual_function(
     bnormal_weight = float(reference_merit.bnormal_weight)
 
     def residual_function(items: np.ndarray):
-        trial_boundary = _polynomial_boundary_from_coefficients(items)
+        try:
+            trial_boundary = _polynomial_boundary_from_coefficients(items, grid=grid)
+        except ValueError as exc:
+            if "radius" not in str(exc):
+                raise
+            return _invalid_boundary_penalty_residual(
+                edge_shape=edge_internal_bmag.shape,
+                equilibrium_value=equilibrium_value,
+                equilibrium_scale=equilibrium_scale,
+                pressure_scale=pressure_scale,
+                bnormal_scale=bnormal_scale,
+                bnormal_weight=bnormal_weight,
+            )
         boundary_r = trial_boundary.radius_on_grid_3d(grid)
         external_sample = sample_mirror_boundary_external_field(grid, trial_boundary, coils)
         diagnostic = mirror_lcfs_diagnostic_from_arrays(
@@ -879,8 +944,8 @@ def _ls_boundary_step_summary_from_step(
             }
         )
 
-    old_radius = _polynomial_boundary_from_coefficients(step.coefficients).radius_on_grid(grid)
-    new_radius = _polynomial_boundary_from_coefficients(step.new_coefficients).radius_on_grid(grid)
+    old_radius = _polynomial_boundary_from_coefficients(step.coefficients, grid=grid).radius_on_grid(grid)
+    new_radius = _polynomial_boundary_from_coefficients(step.new_coefficients, grid=grid).radius_on_grid(grid)
     summary: dict[str, object] = {
         "accepted": bool(step.accepted),
         "line_search_factor": float(step.line_search_factor),
@@ -919,13 +984,14 @@ def _run_ls_boundary_step(
     damping: float,
     max_relative_step: float,
     ridge: float,
+    polynomial_degree: int,
     write_plots: bool,
     figure_dir: Path,
     name: str,
 ) -> dict[str, object]:
     """Run one diagnostic LS update over polynomial side-boundary coefficients."""
 
-    coefficients = _fit_polynomial_boundary_coefficients(grid, boundary)
+    coefficients = _fit_polynomial_boundary_coefficients(grid, boundary, degree=polynomial_degree)
     residual_function = _build_ls_boundary_residual_function(
         grid=grid,
         coils=coils,
@@ -987,7 +1053,7 @@ def _run_ls_boundary_coupled_trial(
             "figures": {},
         }
 
-    trial_boundary = _polynomial_boundary_from_coefficients(step_summary["coefficients_new"])
+    trial_boundary = _polynomial_boundary_from_coefficients(step_summary["coefficients_new"], grid=grid)
     result = run_mirror_fixed_boundary(
         config,
         trial_boundary,
@@ -1065,6 +1131,7 @@ def _run_ls_boundary_coupled_loop(
     damping: float,
     max_relative_step: float,
     ridge: float,
+    polynomial_degree: int,
     write_plots: bool,
 ) -> list[dict[str, object]]:
     """Run a guarded multi-step coupled LS boundary loop."""
@@ -1124,7 +1191,7 @@ def _run_ls_boundary_coupled_loop(
         )
         step_summary["coupled_trial"] = trial
         step_summaries[step_index] = step_summary
-        trial_boundary = _polynomial_boundary_from_coefficients(step_summary["coefficients_new"])
+        trial_boundary = _polynomial_boundary_from_coefficients(step_summary["coefficients_new"], grid=grid)
         trial_output = load_mirror_output(str(trial["mout"]))
         trial_final = SimpleNamespace(normalized_force=float(trial["final_normalized_force"]))
         return MirrorFreeBoundaryLoopState(
@@ -1135,7 +1202,11 @@ def _run_ls_boundary_coupled_loop(
             payload=payload_for(trial_boundary, trial_output, trial_final),
         )
 
-    initial_coefficients = _fit_polynomial_boundary_coefficients(grid, initial_boundary)
+    initial_coefficients = _fit_polynomial_boundary_coefficients(
+        grid,
+        initial_boundary,
+        degree=polynomial_degree,
+    )
     initial_residual_function = _build_ls_boundary_residual_function(
         grid=grid,
         coils=coils,
@@ -1356,10 +1427,12 @@ def _beta_scan_summary(
     ls_boundary_damping: float,
     ls_boundary_max_relative_step: float,
     ls_boundary_ridge: float,
+    ls_boundary_polynomial_degree: int,
 ) -> dict[str, object]:
     """Return top-level status fields for the circular-coil beta scan."""
     pilot_rows = [pilot for row in baseline_rows for pilot in row.get("lcfs_pilot_rows", [])]
     ls_rows = [row for row in baseline_rows if row.get("ls_boundary_step") is not None]
+    ls_requested = bool(run_ls_boundary_step or run_ls_boundary_coupled_loop)
     ls_trial_rows = [
         row["ls_boundary_step"]["coupled_trial"]
         for row in ls_rows
@@ -1412,12 +1485,11 @@ def _beta_scan_summary(
         "lcfs_pilot_skipped_rows_total": sum(bool(row.get("skipped", False)) for row in pilot_rows),
         "lcfs_pilot_stop_reason_counts": _counts_json([str(row.get("stop_reason")) for row in pilot_rows]),
         "ls_boundary_step_requested": bool(run_ls_boundary_step),
-        "ls_boundary_finite_difference_step": float(ls_boundary_finite_difference_step)
-        if run_ls_boundary_step
-        else None,
-        "ls_boundary_damping": float(ls_boundary_damping) if run_ls_boundary_step else None,
-        "ls_boundary_max_relative_step": float(ls_boundary_max_relative_step) if run_ls_boundary_step else None,
-        "ls_boundary_ridge": float(ls_boundary_ridge) if run_ls_boundary_step else None,
+        "ls_boundary_finite_difference_step": float(ls_boundary_finite_difference_step) if ls_requested else None,
+        "ls_boundary_damping": float(ls_boundary_damping) if ls_requested else None,
+        "ls_boundary_max_relative_step": float(ls_boundary_max_relative_step) if ls_requested else None,
+        "ls_boundary_ridge": float(ls_boundary_ridge) if ls_requested else None,
+        "ls_boundary_polynomial_degree": int(ls_boundary_polynomial_degree) if ls_requested else None,
         "ls_boundary_step_rows_total": len(ls_rows),
         "ls_boundary_coupled_trial_requested": bool(run_ls_boundary_coupled_trial),
         "ls_boundary_coupled_trial_rows_total": len(ls_trial_rows),
@@ -1931,6 +2003,7 @@ def _run_fixed_boundary_baseline_cases(
     ls_boundary_damping: float,
     ls_boundary_max_relative_step: float,
     ls_boundary_ridge: float,
+    ls_boundary_polynomial_degree: int,
     write_plots: bool,
 ) -> list[dict[str, object]]:
     config = MirrorConfig(
@@ -2110,6 +2183,7 @@ def _run_fixed_boundary_baseline_cases(
                 damping=ls_boundary_damping,
                 max_relative_step=ls_boundary_max_relative_step,
                 ridge=ls_boundary_ridge,
+                polynomial_degree=ls_boundary_polynomial_degree,
                 write_plots=write_plots,
                 figure_dir=outdir / "figures" / f"fixed_boundary_beta_{label}",
                 name=f"free_boundary_circular_coils_beta_{label}",
@@ -2155,6 +2229,7 @@ def _run_fixed_boundary_baseline_cases(
                 damping=ls_boundary_damping,
                 max_relative_step=ls_boundary_max_relative_step,
                 ridge=ls_boundary_ridge,
+                polynomial_degree=ls_boundary_polynomial_degree,
                 write_plots=write_plots,
             )
         summary = result.optimizer_summaries[-1] if result.optimizer_summaries else None
@@ -2248,6 +2323,7 @@ def run_case(
     ls_boundary_damping: float = 1.0,
     ls_boundary_max_relative_step: float = 0.1,
     ls_boundary_ridge: float = 1.0e-8,
+    ls_boundary_polynomial_degree: int = 4,
     write_plots: bool = True,
 ) -> Path:
     if run_lcfs_pilot and int(lcfs_pilot_steps) < 1:
@@ -2278,6 +2354,7 @@ def run_case(
         raise ValueError("ls_boundary_max_relative_step must be positive")
     if float(ls_boundary_ridge) < 0.0:
         raise ValueError("ls_boundary_ridge must be nonnegative")
+    _even_polynomial_powers(ls_boundary_polynomial_degree)
     outdir.mkdir(parents=True, exist_ok=True)
     grid = make_mirror_grid(
         ns=ns, ntheta=ntheta, nxi=nxi, mpol=max(0, (ntheta - 1) // 2), z_min=-0.5 * separation, z_max=0.5 * separation
@@ -2351,6 +2428,7 @@ def run_case(
             ls_boundary_damping=ls_boundary_damping,
             ls_boundary_max_relative_step=ls_boundary_max_relative_step,
             ls_boundary_ridge=ls_boundary_ridge,
+            ls_boundary_polynomial_degree=ls_boundary_polynomial_degree,
             write_plots=write_plots,
         )
         if run_fixed_boundary_baseline
@@ -2387,6 +2465,7 @@ def run_case(
             ls_boundary_damping=ls_boundary_damping,
             ls_boundary_max_relative_step=ls_boundary_max_relative_step,
             ls_boundary_ridge=ls_boundary_ridge,
+            ls_boundary_polynomial_degree=ls_boundary_polynomial_degree,
         ),
         "coil_radius": float(coil_radius),
         "separation": float(separation),
@@ -2459,6 +2538,7 @@ def main() -> None:
         ls_boundary_damping=args.ls_boundary_damping,
         ls_boundary_max_relative_step=args.ls_boundary_max_relative_step,
         ls_boundary_ridge=args.ls_boundary_ridge,
+        ls_boundary_polynomial_degree=args.ls_boundary_polynomial_degree,
         write_plots=not args.no_plots,
     )
     print(path)

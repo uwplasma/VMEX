@@ -175,7 +175,7 @@ accepted, rejected, and guard-limited pilot steps. Top-level metrics also
 record ``workflow_status``, ``free_boundary_solve_status``,
 ``beta_scan_requested_percent``, ESSOS-compatible direct-coil metadata, and
 aggregate LCFS pilot counts so benchmark scripts can validate that the 1%, 3%,
-and 10% beta cases were actually exercised. As of schema version ``0.7``,
+and 10% beta cases were actually exercised. As of schema version ``0.8``,
 ``free_boundary_solve_status`` can distinguish not-run, converged, and
 not-converged pilot or coupled-loop workflows; convergence requires every
 requested beta row to stop on ``target_merit``. Multi-step pilots can stop on an
@@ -229,18 +229,22 @@ parameterizations are visible before they are used in expensive coupled
 fixed-boundary trials.
 
 The circular-coil beta-scan metrics use the compact schema
-``mirror_free_boundary_circular_coil_beta_scan`` version ``0.7``. The top-level
+``mirror_free_boundary_circular_coil_beta_scan`` version ``0.8``. The top-level
 JSON records the workflow status, direct-coil metadata, requested beta list,
 setup JSON path, aggregate pilot counts, optional LS boundary-step settings,
-figure paths, and ``fixed_boundary_baseline_rows``. It also embeds
+the LS boundary polynomial degree, figure paths, and
+``fixed_boundary_baseline_rows``. It also embeds
 ``summary_rows``, the same compact baseline/last-accepted/final-trial table
 written to CSV. Each beta row records fixed-boundary residual and LCFS metrics,
 the selected next LCFS update, all candidate-update summaries, per-beta pilot
 summary fields, optional ``ls_boundary_step`` diagnostics from
 ``--run-ls-boundary-step``, and ``lcfs_pilot_rows``. The LS diagnostic fits the
-baseline side boundary to ``[r0, a2, a4]``, evaluates one line-searched
-least-squares step using the combined residual vector, and when plots are
-enabled writes a residual-component/backtracking figure. Pass
+baseline side boundary to an even polynomial ``[r0, a2, a4, ...]`` through
+``--ls-boundary-polynomial-degree``. Degree 4 preserves the original
+``[r0, a2, a4]`` path; higher degrees use a tabulated axisymmetric boundary for
+the realized trial. The diagnostic evaluates one line-searched least-squares
+step using the combined residual vector, and when plots are enabled writes a
+residual-component/backtracking figure. Pass
 ``--run-ls-boundary-coupled-trial`` with ``--run-ls-boundary-step`` to rerun the
 fixed-boundary solve on the LS-selected polynomial boundary and record realized
 ``fsq``, normalized force, LCFS merit ratio, and optional trial plots. Pass
