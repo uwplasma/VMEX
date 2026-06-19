@@ -267,6 +267,28 @@ def test_wout_minimal_runtime_policy_helpers_preserve_env_semantics() -> None:
         is True
     )
 
+    field_opts = wout_minimal_helpers.minimal_wout_field_options_from_env(
+        {
+            "VMEC_JAX_MERCIER_BSUB_SOURCE": "BSUBU_E",
+            "VMEC_JAX_MERCIER_USE_BSUBE": "false",
+            "VMEC_JAX_DISABLE_BSUBV_EQUI_CORR": "0",
+            "VMEC_JAX_WROUT_LOOP": "false",
+            "VMEC_JAX_MERCIER_USE_WROUT_BSUBUV": "false",
+            "VMEC_JAX_WOUT_ZERO_NONCONVERGED_BETA": "off",
+        }
+    )
+    assert field_opts.mercier_bsub_source == "bsubu_e"
+    assert field_opts.mercier_use_bsube is True  # legacy: only "" and "0" disable this flag
+    assert field_opts.disable_bsubv_equif_corr is False
+    assert field_opts.symmetric_wrout_loop is True  # legacy: "false" is enabled for this old toggle
+    assert field_opts.mercier_use_wrout_bsubuv is True  # legacy: "false" is enabled for this old toggle
+    assert field_opts.zero_nonconverged_beta is False
+
+    light_opts = wout_minimal_helpers.minimal_wout_field_options_from_env({}, wout_light=True)
+    assert light_opts.apply_bss_scalxc is True
+    assert light_opts.lasym_filter is True
+    assert light_opts.skip_bsub_filter is True
+
 
 def test_pressure_profiles_from_mass_vp_matches_vmec_full_mesh_edges() -> None:
     pres, presf = wout_minimal_helpers.pressure_profiles_from_mass_vp(
