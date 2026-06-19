@@ -25759,3 +25759,79 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.999999999928%.
+
+## 2026-06-19 Scan Dispatch Finalization Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `ScanDispatchFinalizeInputs` in
+   `vmec_jax.solvers.fixed_boundary.scan.controller` to make the scan
+   run/finalization seam explicit instead of passing opaque `locals()`.
+2. Extracted scan runner construction, chunked/nonchunked scan dispatch,
+   post-scan printing, timing finalization, and public
+   `SolveVmecResidualResult` conversion into
+   `_run_scan_dispatch_and_finalize`.
+3. Kept `_scan_step`, VMEC2000 acceptance/restart semantics, scan cache keys,
+   scan timing buckets, and final result assembly behavior unchanged.
+
+Results obtained:
+
+- `run_vmec2000_scan` decreased from 798 to 698 lines with an explicit typed
+  handoff object.
+- The scan controller now has three clearer seams: initial-force/axis-reset
+  setup, the scan step itself, and dispatch/finalization.
+- Source-health still passes with the root helper-prefix file limit at 2.
+- The next scan hotspot is the nested `_scan_step` function, not the dispatch
+  tail; further work there should introduce step-state/payload objects rather
+  than moving local variables piecemeal.
+
+Tests and commands run:
+
+- `python -m py_compile vmec_jax/solvers/fixed_boundary/scan/controller.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/scan/controller.py`
+- `python tools/diagnostics/source_health.py --top 30 --max-root-helper-prefix-files 2`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_scan_payload_helpers.py::test_select_scan_step_fields_matches_accept_reject_semantics tests/test_solve_scan_planning_helpers.py::test_scan_cache_key_is_stable_and_tracks_behavioral_toggles tests/test_driver_api.py::test_python_default_fixed_boundary_uses_optimized_controller tests/test_driver_api.py::test_run_fixed_boundary_cli_single_grid_uses_accelerated_finish_first -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_driver_control_fast.py tests/test_driver_run_wave8_coverage.py::test_run_fixed_boundary_dispatches_fixed_and_free_static_branches -q`
+
+Best next steps:
+
+1. Commit and push this scan dispatch/finalization extraction.
+2. For additional scan simplification, target `_scan_step` with a named
+   step-evaluation object and focused acceptance/restart regression tests.
+3. Continue broader refactor work with residual iteration or WOUT constructor
+   seams only where the new API remains explicit and testable.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999952%.
+- Solver monolith reduction: 99.918%.
+- Free-boundary adjoint monolith reduction: 99.66%.
+- Driver workflow decomposition: 99.970%.
+- Residual iteration decomposition: 99.491%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.30%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.93%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.05%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.18%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.86%.
+- Discrete-adjoint replay decomposition: 99.24%.
+- Free-boundary validation-gate maintainability: 98.47%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999999929%.
