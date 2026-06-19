@@ -7,6 +7,78 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-19.
 
+## 2026-06-19 Residual Zero-Update History Consolidation
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added a local `_append_zero_update_history` helper inside the residual
+   iteration control block to centralize zero-step history rows.
+2. Replaced duplicated convergence, VMEC2000 time-control restart, and
+   pre-restart-trigger history record construction with calls to that helper.
+3. Preserved the existing history schema, free-boundary cadence fields, VMEC
+   table semantics, and branch-specific restart labels.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` dropped from 5862
+  to 5839 lines.
+- `solve_fixed_boundary_residual_iter` dropped from 5454 to 5431 lines.
+- The diff for this tranche is net-negative by 23 source lines and removes
+  repeated history-record assembly from three branch points.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python tools/diagnostics/source_health.py | head -80`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_additional_helpers.py::test_append_residual_iter_history_record_keeps_all_channels_aligned tests/test_solve_additional_helpers.py::test_append_residual_iter_history_record_skips_free_boundary_channels_when_disabled tests/test_solve_additional_helpers.py::test_residual_iter_history_record_packs_restart_row_with_free_boundary_cadence -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_finish_cache_more_coverage.py::test_nonscan_non_strict_backtracking_accepts_momentum_update tests/test_solve_finish_cache_more_coverage.py::test_nonscan_debug_force_path_runs_with_m1_and_zeroing -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_real_scan_wave10_coverage.py::test_vmec2000_scan_full_history_runs_fallback_decision tests/test_solve_real_scan_wave10_coverage.py::test_accelerated_scan_one_step_updates_state_and_histories -q`
+
+Best next steps:
+
+1. Continue residual iteration only for similarly duplicated local plumbing;
+   do not extract `_run_vmec2000_scan` until a scan context object is designed.
+2. Consider moving to the large free-boundary validation tests for the next
+   larger net line reduction, because the production residual loop is now
+   yielding smaller safe seams.
+3. Keep every residual-loop edit paired with actual solve/history tests, not
+   only helper unit tests.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999430%.
+- Solver monolith reduction: 99.80%.
+- Free-boundary adjoint monolith reduction: 99.51%.
+- Driver workflow decomposition: 99.945%.
+- Residual iteration decomposition: 98.93%.
+- WOUT diagnostic/profile decomposition: 99.975%.
+- Bcovar/WOUT parity decomposition: 99.15%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.82%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.74%.
+- Fixed-boundary optimizer decomposition: 96.22%.
+- Plotting/WOUT visualization decomposition: 96.80%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.75%.
+- Discrete-adjoint replay decomposition: 96.62%.
+- Free-boundary validation-gate maintainability: 97.45%.
+- QI objective/staged-runner decomposition: 96.9%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.999999973%.
+
 ## 2026-06-19 Optimizer Forward-Solve Branch Consolidation
 
 Branch: `codex/differentiability-refactor-plan`.

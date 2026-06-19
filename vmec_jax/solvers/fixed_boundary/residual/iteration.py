@@ -4267,6 +4267,43 @@ def solve_fixed_boundary_residual_iter(
                     precond_diag_host = _device_get_floats(fsqr1_safe, fsqz1_safe, fsql1_safe)
                 return precond_diag_host
 
+            def _append_zero_update_history(
+                *,
+                restart_path: str,
+                step_status: str,
+                restart_reason: str,
+                pre_restart_reason: str,
+                time_step_value: float,
+            ) -> None:
+                if not track_history:
+                    return
+                rec = _residual_iter_history_record(
+                    step=0.0,
+                    dt_eff=0.0,
+                    update_rms=0.0,
+                    w_curr=fsqr_f + fsqz_f + fsql_f,
+                    w_try=float("nan"),
+                    w_try_ratio=float("nan"),
+                    restart_path=restart_path,
+                    step_status=step_status,
+                    restart_reason=restart_reason,
+                    pre_restart_reason=pre_restart_reason,
+                    time_step=time_step_value,
+                    res0=res0,
+                    res1=res1,
+                    fsq_prev=fsq_prev,
+                    bad_growth_streak=bad_growth_streak,
+                    iter1=iter1,
+                    iter2=iter2,
+                    fsqr=fsqr_f,
+                    fsqz=fsqz_f,
+                    fsql=fsql_f,
+                    free_boundary_enabled=free_boundary_enabled,
+                    freeb_ivac=freeb_ivac,
+                    freeb_ivacskip=freeb_ivacskip,
+                )
+                _append_residual_iter_history_record(rec, **_history_record_lists)
+
             if track_history:
                 rz_norm_history.append(rz_norm)
                 f_norm1_history.append(f_norm1)
@@ -4279,36 +4316,16 @@ def solve_fixed_boundary_residual_iter(
                 fsql1_history.append(fsql1_safe)
 
             if converged_physical:
-                if track_history:
-                    # Keep per-iteration history channels length-aligned with
-                    # fsqr/fsqz/fsql when convergence happens before the update
-                    # block. VMEC's table still reports DELT on this row.
-                    rec = _residual_iter_history_record(
-                        step=0.0,
-                        dt_eff=0.0,
-                        update_rms=0.0,
-                        w_curr=fsqr_f + fsqz_f + fsql_f,
-                        w_try=float("nan"),
-                        w_try_ratio=float("nan"),
-                        restart_path="converged",
-                        step_status="converged",
-                        restart_reason="none",
-                        pre_restart_reason="none",
-                        time_step=time_step,
-                        res0=res0,
-                        res1=res1,
-                        fsq_prev=fsq_prev,
-                        bad_growth_streak=bad_growth_streak,
-                        iter1=iter1,
-                        iter2=iter2,
-                        fsqr=fsqr_f,
-                        fsqz=fsqz_f,
-                        fsql=fsql_f,
-                        free_boundary_enabled=free_boundary_enabled,
-                        freeb_ivac=freeb_ivac,
-                        freeb_ivacskip=freeb_ivacskip,
-                    )
-                    _append_residual_iter_history_record(rec, **_history_record_lists)
+                # Keep per-iteration history channels length-aligned with
+                # fsqr/fsqz/fsql when convergence happens before the update
+                # block. VMEC's table still reports DELT on this row.
+                _append_zero_update_history(
+                    restart_path="converged",
+                    step_status="converged",
+                    restart_reason="none",
+                    pre_restart_reason="none",
+                    time_step_value=time_step,
+                )
                 if verbose and not (bool(vmec2000_control) and bool(verbose_vmec2000_table)):
                     print(
                         f"[solve_fixed_boundary_residual_iter] converged: "
@@ -4660,33 +4677,13 @@ def solve_fixed_boundary_residual_iter(
                     inv_tau = [0.15 / time_step] * k_ndamp
                     _clear_preconditioner_cache_locals()
                     force_bcovar_update = True
-                    if track_history:
-                        rec = _residual_iter_history_record(
-                            step=0.0,
-                            dt_eff=0.0,
-                            update_rms=0.0,
-                            w_curr=fsqr_f + fsqz_f + fsql_f,
-                            w_try=float("nan"),
-                            w_try_ratio=float("nan"),
-                            restart_path="vmec2000_bad_jacobian" if irst_tc == 2 else "vmec2000_time_control",
-                            step_status=step_status,
-                            restart_reason=restart_reason,
-                            pre_restart_reason=pre_restart_reason,
-                            time_step=time_step,
-                            res0=res0,
-                            res1=res1,
-                            fsq_prev=fsq_prev,
-                            bad_growth_streak=bad_growth_streak,
-                            iter1=iter1,
-                            iter2=iter2,
-                            fsqr=fsqr_f,
-                            fsqz=fsqz_f,
-                            fsql=fsql_f,
-                            free_boundary_enabled=free_boundary_enabled,
-                            freeb_ivac=freeb_ivac,
-                            freeb_ivacskip=freeb_ivacskip,
-                        )
-                        _append_residual_iter_history_record(rec, **_history_record_lists)
+                    _append_zero_update_history(
+                        restart_path="vmec2000_bad_jacobian" if irst_tc == 2 else "vmec2000_time_control",
+                        step_status=step_status,
+                        restart_reason=restart_reason,
+                        pre_restart_reason=pre_restart_reason,
+                        time_step_value=time_step,
+                    )
                     _pop_iteration_histories()
                     prev_rz_fsq = prev_rz_fsq_before
                     skip_time_control = True
@@ -4790,33 +4787,13 @@ def solve_fixed_boundary_residual_iter(
                 _clear_preconditioner_cache_locals()
                 if bool(vmec2000_control):
                     force_bcovar_update = True
-                if track_history:
-                    rec = _residual_iter_history_record(
-                        step=0.0,
-                        dt_eff=0.0,
-                        update_rms=0.0,
-                        w_curr=fsqr_f + fsqz_f + fsql_f,
-                        w_try=float("nan"),
-                        w_try_ratio=float("nan"),
-                        restart_path="pre_restart_trigger",
-                        step_status=step_status,
-                        restart_reason=pre_restart_reason,
-                        pre_restart_reason=pre_restart_reason,
-                        time_step=time_step_iter,
-                        res0=res0,
-                        res1=res1,
-                        fsq_prev=fsq_prev,
-                        bad_growth_streak=bad_growth_streak,
-                        iter1=iter1,
-                        iter2=iter2,
-                        fsqr=fsqr_f,
-                        fsqz=fsqz_f,
-                        fsql=fsql_f,
-                        free_boundary_enabled=free_boundary_enabled,
-                        freeb_ivac=freeb_ivac,
-                        freeb_ivacskip=freeb_ivacskip,
-                    )
-                    _append_residual_iter_history_record(rec, **_history_record_lists)
+                _append_zero_update_history(
+                    restart_path="pre_restart_trigger",
+                    step_status=step_status,
+                    restart_reason=pre_restart_reason,
+                    pre_restart_reason=pre_restart_reason,
+                    time_step_value=time_step_iter,
+                )
                 if verbose:
                     if bool(vmec2000_control) and bool(verbose_vmec2000_table):
                         # VMEC does not print rejected restart steps.
