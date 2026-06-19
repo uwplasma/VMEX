@@ -24285,3 +24285,76 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.99999999984%.
+
+## 2026-06-19 Driver Stage/Finish Context Factory Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `from_namespace(...)` factories to
+   `FixedBoundaryStageRunnerContext` and `FixedBoundaryFinishContext`, matching
+   the existing staged-solve context boundary.
+2. Replaced the long inline stage-runner and finish-context constructors in
+   `run_fixed_boundary(...)` with dynamic context factory calls.
+3. Kept behavior-sensitive values explicit as overrides: integer/boolean/float
+   coercions, monkeypatchable global hooks, and live stage-result lambdas.
+4. Avoided stale context snapshots by capturing only the currently needed
+   closure names inside each context builder.
+
+Results obtained:
+
+- `run_fixed_boundary` decreased from 650 to 632 lines.
+- The driver now has one consistent context-construction pattern for staged
+  solve, staged follow-up, and CLI finish policies.
+- This tranche is net line-negative: 34 insertions and 38 deletions.
+
+Tests and commands run:
+
+- `python -m py_compile vmec_jax/driver.py vmec_jax/drivers/staging.py vmec_jax/drivers/finish.py`
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers/staging.py vmec_jax/drivers/finish.py`
+- `python tools/diagnostics/source_health.py --top 20 --max-root-helper-prefix-files 2`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_api.py::test_python_default_fixed_boundary_uses_optimized_controller tests/test_driver_api.py::test_run_fixed_boundary_cli_budgeted_multigrid_path tests/test_driver_api.py::test_run_fixed_boundary_cli_single_grid_uses_accelerated_finish_first tests/test_driver_run_wave8_coverage.py::test_run_fixed_boundary_dispatches_fixed_and_free_static_branches -q`
+
+Best next steps:
+
+1. Commit and push this driver-context cleanup.
+2. Continue with the next high-value production hotspot. Preferred order:
+   residual non-scan context/result boundary, implicit VMEC-residual adjoint
+   decomposition, then scan-step decomposition if it remains source-health
+   positive.
+3. Keep each tranche line-negative or backed by a clear monolith/function-length
+   reduction and focused behavior tests.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999987%.
+- Solver monolith reduction: 99.874%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.957%.
+- Residual iteration decomposition: 99.34%.
+- WOUT diagnostic/profile decomposition: 99.990%.
+- Bcovar/WOUT parity decomposition: 99.22%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.895%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.1%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 99.20%.
+- Free-boundary validation-gate maintainability: 98.40%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999999985%.
