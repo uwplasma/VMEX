@@ -843,6 +843,47 @@ def _line_contour_levels(values: np.ndarray, *, count: int = 25) -> np.ndarray:
     return np.linspace(vmin, vmax, int(count))
 
 
+def _parity_plot_context(input_path: str | Path, wout_path: str | Path, s_index: int | None):
+    cfg, indata = load_config(str(input_path))
+    wout = read_wout(wout_path)
+    static = build_static(cfg)
+    state = state_from_wout(wout)
+    s_idx = int(wout.ns) - 1 if s_index is None else int(s_index)
+    theta = np.asarray(static.grid.theta)
+    zeta = np.asarray(static.grid.zeta)
+    return cfg, indata, wout, static, state, s_idx, theta, zeta, _case_from_input_path(input_path)
+
+
+def _state_bsup_components_from_wout_flux(wout, state, static):
+    geom = eval_geom(state, static)
+    lamscale = float(np.asarray(lamscale_from_phips(np.asarray(wout.phips), np.asarray(static.s))))
+    bsupu, bsupv = bsup_from_geom(
+        geom,
+        phipf=np.asarray(wout.phipf),
+        chipf=np.asarray(wout.chipf),
+        nfp=int(static.cfg.nfp),
+        signgs=int(getattr(wout, "signgs", 1)),
+        lamscale=lamscale,
+        flux_is_internal=False,
+    )
+    return geom, bsupu, bsupv
+
+
+def _write_vector_parity_grid(plt, *, components, family: str, case: str, outdir: Path, extent) -> Path:
+    fig, axes = plt.subplots(2, 3, figsize=(12, 7), constrained_layout=True)
+    for row, (ref, jax_data, label) in enumerate(components):
+        for col, (data, title) in enumerate([(ref, "wout"), (jax_data, "vmec_jax"), (jax_data - ref, "diff")]):
+            ax = axes[row, col]
+            im = ax.imshow(data, origin="lower", aspect="auto", extent=extent)
+            ax.set_title(f"{label} {title}")
+            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    fig.suptitle(f"{family} parity ({case})")
+    outpath = outdir / f"{family}_parity.png"
+    fig.savefig(outpath, dpi=150)
+    plt.close(fig)
+    return outpath
+
+
 _BOOZER_PHI_LABEL = r"Boozer toroidal angle $\phi_{B}$ (rad)"
 _BOOZER_THETA_LABEL = r"Boozer poloidal angle $\theta_{B}$ (rad)"
 
@@ -908,13 +949,9 @@ def write_bmag_parity_figures(
 ) -> Path:
     """Write magnetic-field-magnitude parity figures for wout vs vmec_jax."""
     plt = _import_matplotlib()
-    cfg, indata = load_config(str(input_path))
-    wout = read_wout(wout_path)
-    static = build_static(cfg)
-    state = state_from_wout(wout)
-    s_idx = int(wout.ns) - 1 if s_index is None else int(s_index)
-    theta = np.asarray(static.grid.theta)
-    zeta = np.asarray(static.grid.zeta)
+    _cfg, indata, wout, static, state, s_idx, theta, zeta, case = _parity_plot_context(
+        input_path, wout_path, s_index
+    )
 
     B_ref = bmag_from_wout(wout, theta=theta, zeta=zeta, s_index=s_idx)
     phi = zeta / float(max(1, int(static.cfg.nfp)))
@@ -939,7 +976,6 @@ def write_bmag_parity_figures(
         ax.set_title(title)
         fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
-    case = _case_from_input_path(input_path)
     fig.suptitle(f"|B| parity ({case})")
 
     outdir = _default_example_outdir("bmag_parity", case, outdir)
@@ -959,51 +995,25 @@ def write_bsup_parity_figures(
 ) -> Path:
     """Write (bsupu, bsupv) parity figures comparing wout vs vmec_jax geometry."""
     plt = _import_matplotlib()
-    cfg, _indata = load_config(str(input_path))
-    wout = read_wout(wout_path)
-    static = build_static(cfg)
-    state = state_from_wout(wout)
-    s_idx = int(wout.ns) - 1 if s_index is None else int(s_index)
-    theta = np.asarray(static.grid.theta)
-    zeta = np.asarray(static.grid.zeta)
+    _cfg, _indata, wout, static, state, s_idx, theta, zeta, case = _parity_plot_context(
+        input_path, wout_path, s_index
+    )
 
     bsupu_ref, bsupv_ref = bsup_from_wout(wout, theta=theta, zeta=zeta, s_index=s_idx)
-
-    geom = eval_geom(state, static)
-    lamscale = float(np.asarray(lamscale_from_phips(np.asarray(wout.phips), np.asarray(static.s))))
-    bsupu_full, bsupv_full = bsup_from_geom(
-        geom,
-        phipf=np.asarray(wout.phipf),
-        chipf=np.asarray(wout.chipf),
-        nfp=int(static.cfg.nfp),
-        signgs=int(getattr(wout, "signgs", 1)),
-        lamscale=lamscale,
-        flux_is_internal=False,
-    )
+    _geom, bsupu_full, bsupv_full = _state_bsup_components_from_wout_flux(wout, state, static)
     bsupu_jax = np.asarray(bsupu_full)[s_idx]
     bsupv_jax = np.asarray(bsupv_full)[s_idx]
 
-    case = _case_from_input_path(input_path)
     outdir = _default_example_outdir("bsup_parity", case, outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-
-    extent = _extent_from_grids(theta, zeta)
-    fig, axes = plt.subplots(2, 3, figsize=(12, 7), constrained_layout=True)
-    for row, (ref, jax, label) in enumerate(
-        [(bsupu_ref, bsupu_jax, "bsupu"), (bsupv_ref, bsupv_jax, "bsupv")]
-    ):
-        diff = jax - ref
-        for col, (data, title) in enumerate([(ref, "wout"), (jax, "vmec_jax"), (diff, "diff")]):
-            ax = axes[row, col]
-            im = ax.imshow(data, origin="lower", aspect="auto", extent=extent)
-            ax.set_title(f"{label} {title}")
-            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-
-    fig.suptitle(f"bsup parity ({case})")
-    outpath = outdir / "bsup_parity.png"
-    fig.savefig(outpath, dpi=150)
-    plt.close(fig)
-    return outpath
+    return _write_vector_parity_grid(
+        plt,
+        components=[(bsupu_ref, bsupu_jax, "bsupu"), (bsupv_ref, bsupv_jax, "bsupv")],
+        family="bsup",
+        case=case,
+        outdir=outdir,
+        extent=_extent_from_grids(theta, zeta),
+    )
 
 
 def write_bsub_parity_figures(
@@ -1015,52 +1025,26 @@ def write_bsub_parity_figures(
 ) -> Path:
     """Write (bsubu, bsubv) parity figures comparing wout vs vmec_jax geometry."""
     plt = _import_matplotlib()
-    cfg, _indata = load_config(str(input_path))
-    wout = read_wout(wout_path)
-    static = build_static(cfg)
-    state = state_from_wout(wout)
-    s_idx = int(wout.ns) - 1 if s_index is None else int(s_index)
-    theta = np.asarray(static.grid.theta)
-    zeta = np.asarray(static.grid.zeta)
+    _cfg, _indata, wout, static, state, s_idx, theta, zeta, case = _parity_plot_context(
+        input_path, wout_path, s_index
+    )
 
     bsubu_ref, bsubv_ref = bsub_from_wout(wout, theta=theta, zeta=zeta, s_index=s_idx)
-
-    geom = eval_geom(state, static)
-    lamscale = float(np.asarray(lamscale_from_phips(np.asarray(wout.phips), np.asarray(static.s))))
-    bsupu_full, bsupv_full = bsup_from_geom(
-        geom,
-        phipf=np.asarray(wout.phipf),
-        chipf=np.asarray(wout.chipf),
-        nfp=int(static.cfg.nfp),
-        signgs=int(getattr(wout, "signgs", 1)),
-        lamscale=lamscale,
-        flux_is_internal=False,
-    )
+    geom, bsupu_full, bsupv_full = _state_bsup_components_from_wout_flux(wout, state, static)
     bsubu_full, bsubv_full = bsub_from_bsup(geom, bsupu_full, bsupv_full)
     bsubu_jax = np.asarray(bsubu_full)[s_idx]
     bsubv_jax = np.asarray(bsubv_full)[s_idx]
 
-    case = _case_from_input_path(input_path)
     outdir = _default_example_outdir("bsub_parity", case, outdir)
     outdir.mkdir(parents=True, exist_ok=True)
-
-    extent = _extent_from_grids(theta, zeta)
-    fig, axes = plt.subplots(2, 3, figsize=(12, 7), constrained_layout=True)
-    for row, (ref, jax, label) in enumerate(
-        [(bsubu_ref, bsubu_jax, "bsubu"), (bsubv_ref, bsubv_jax, "bsubv")]
-    ):
-        diff = jax - ref
-        for col, (data, title) in enumerate([(ref, "wout"), (jax, "vmec_jax"), (diff, "diff")]):
-            ax = axes[row, col]
-            im = ax.imshow(data, origin="lower", aspect="auto", extent=extent)
-            ax.set_title(f"{label} {title}")
-            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-
-    fig.suptitle(f"bsub parity ({case})")
-    outpath = outdir / "bsub_parity.png"
-    fig.savefig(outpath, dpi=150)
-    plt.close(fig)
-    return outpath
+    return _write_vector_parity_grid(
+        plt,
+        components=[(bsubu_ref, bsubu_jax, "bsubu"), (bsubv_ref, bsubv_jax, "bsubv")],
+        family="bsub",
+        case=case,
+        outdir=outdir,
+        extent=_extent_from_grids(theta, zeta),
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
