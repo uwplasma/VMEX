@@ -1050,6 +1050,9 @@ def _aggregate_metrics(rows: list[dict[str, object]]) -> dict[str, object]:
         ),
         "vmec_jax_converged_rows": sum(1 for row in rows if bool(row.get("converged"))),
         "vmec_jax_strict_converged_rows": sum(1 for row in rows if bool(row.get("converged_strict"))),
+        "vmec_jax_total_fsq_converged_rows": sum(
+            1 for row in rows if bool(row.get("converged_by_total_fsq"))
+        ),
         "direct_initial_fsq_ratio_vmec2000_min": direct_ratio["min"],
         "direct_initial_fsq_ratio_vmec2000_max": direct_ratio["max"],
         "best_fsq_min": best_fsq["min"],

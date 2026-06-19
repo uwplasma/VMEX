@@ -481,6 +481,7 @@ def test_toroidal_hybrid_convergence_example_aggregates_chunk_jsons(tmp_path: Pa
                         "ntor": 20,
                         "ran_solve": True,
                         "ran_vmec2000": True,
+                        "converged_by_total_fsq": True,
                         "vmec2000_returncode": 0,
                         "direct_initial_fsq_ratio_vmec2000": 1.006,
                         "best_fsq": 0.04,
@@ -499,6 +500,7 @@ def test_toroidal_hybrid_convergence_example_aggregates_chunk_jsons(tmp_path: Pa
                         "ntor": 20,
                         "ran_solve": True,
                         "ran_vmec2000": True,
+                        "converged_by_total_fsq": False,
                         "vmec2000_returncode": 1,
                         "direct_initial_fsq_ratio_vmec2000": 9.0,
                         "best_fsq": 9.0,
@@ -529,6 +531,7 @@ def test_toroidal_hybrid_convergence_example_aggregates_chunk_jsons(tmp_path: Pa
                         "ntor": 20,
                         "ran_solve": True,
                         "ran_vmec2000": True,
+                        "converged_by_total_fsq": True,
                         "vmec2000_returncode": 0,
                         "direct_initial_fsq_ratio_vmec2000": 1.002,
                         "best_fsq": 0.03,
@@ -547,6 +550,7 @@ def test_toroidal_hybrid_convergence_example_aggregates_chunk_jsons(tmp_path: Pa
                         "ntor": 24,
                         "ran_solve": True,
                         "ran_vmec2000": True,
+                        "converged_by_total_fsq": False,
                         "vmec2000_returncode": 0,
                         "direct_initial_fsq_ratio_vmec2000": 1.004,
                         "best_fsq": 0.06,
@@ -592,6 +596,7 @@ def test_toroidal_hybrid_convergence_example_aggregates_chunk_jsons(tmp_path: Pa
     assert metrics["row_count"] == 3
     assert metrics["ran_solve_rows"] == 3
     assert metrics["vmec2000_returncode_zero_rows"] == 3
+    assert metrics["vmec_jax_total_fsq_converged_rows"] == 2
     assert metrics["direct_initial_fsq_ratio_vmec2000_min"] == pytest.approx(1.002)
     assert metrics["direct_initial_fsq_ratio_vmec2000_max"] == pytest.approx(1.006)
     assert metrics["best_fsq_min"] == pytest.approx(0.03)
