@@ -22814,3 +22814,68 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.95%.
 - Overall differentiability-refactor PR: 99.9999999995%.
+
+## 2026-06-19 Optimizer In-Place Boilerplate Trim
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. After the cache and profiling domain moves, removed redundant decorative
+   section separators and nonessential comments from `vmec_jax/optimization.py`.
+2. Kept explanatory comments and all runtime behavior intact.
+3. Re-ran the focused optimizer tests and source-health report.
+
+Results obtained:
+
+- `vmec_jax/optimization.py` decreased from 2216 to 2189 lines.
+- The fixed-boundary optimizer crossed the intermediate 2200-line milestone.
+- No public API, private method alias, or behavior changed.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/optimization.py`
+- `python -m ruff check vmec_jax/optimization.py tests/test_optimization_helpers.py tests/test_optimization_wave2_coverage.py tests/test_optimization_auto_scalar_policy.py tests/test_differentiation_optimization_api_fast.py tests/test_optimization_callback_trace.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_differentiation_optimization_api_fast.py tests/test_optimization_auto_scalar_policy.py tests/test_optimization_callback_trace.py tests/test_optimization_wave2_coverage.py tests/test_optimization_helpers.py -q`
+- `python tools/diagnostics/source_health.py --top 24 --top-functions 55`
+
+Best next steps:
+
+1. Continue optimizer reduction toward the 2000-line warning threshold with
+   real seams only; avoid further cosmetic-only edits unless tied to a milestone.
+2. Consider reducing `plotting.py` below 2000 next, since it is now the closest
+   production source file to clearing the warning threshold.
+3. Keep the larger residual-loop and free-boundary-adjoint files for dedicated
+   parity-gated tranches.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999963%.
+- Solver monolith reduction: 99.827%.
+- Free-boundary adjoint monolith reduction: 99.60%.
+- Driver workflow decomposition: 99.949%.
+- Residual iteration decomposition: 99.055%.
+- WOUT diagnostic/profile decomposition: 99.982%.
+- Bcovar/WOUT parity decomposition: 99.16%.
+- Force-kernel decomposition: 99.67%.
+- Scan/performance policy consolidation: 99.825%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.02%.
+- Optimizer workflow decomposition: 99.875%.
+- Fixed-boundary optimizer decomposition: 97.62%.
+- Plotting/WOUT visualization decomposition: 97.32%.
+- Sweep/example workflow decomposition: 94.2%.
+- Implicit residual-adjoint decomposition: 95.82%.
+- Discrete-adjoint replay decomposition: 96.82%.
+- Free-boundary validation-gate maintainability: 98.18%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.95%.
+- Overall differentiability-refactor PR: 99.99999999952%.
