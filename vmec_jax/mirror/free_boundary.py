@@ -270,6 +270,7 @@ class MirrorFreeBoundaryLeastSquaresStep:
     max_relative_step: float
     ridge: float
     rcond: float | None
+    ridge_candidates: Any = ()
     jacobian_rank: int = 0
     jacobian_nullity: int = 0
     jacobian_condition: float = float("nan")
@@ -301,6 +302,7 @@ class MirrorFreeBoundaryVectorLeastSquaresStep:
     ridge: float
     rcond: float | None
     finite_difference_steps: Any = ()
+    ridge_candidates: Any = ()
     selected_jax_mode: str | None = None
     jacobian_rank: int = 0
     jacobian_nullity: int = 0
@@ -903,6 +905,37 @@ def _jacobian_diagnostics(jacobian: Any, *, n_parameters: int) -> tuple[int, int
     return rank, nullity, float(condition), singular_values
 
 
+def _ridge_candidate_values(ridge: float, ridge_candidates: Any | None) -> np.ndarray:
+    ridge = float(ridge)
+    if ridge < 0.0:
+        raise ValueError("ridge must be nonnegative")
+    if ridge_candidates is None:
+        candidates = np.asarray([ridge], dtype=float)
+    else:
+        candidates = np.asarray(tuple(ridge_candidates), dtype=float)
+        if candidates.ndim != 1 or candidates.size == 0:
+            raise ValueError("ridge_candidates must be a nonempty one-dimensional sequence")
+        if not np.all(np.isfinite(candidates)) or np.any(candidates < 0.0):
+            raise ValueError("ridge_candidates must be finite and nonnegative")
+    return candidates
+
+
+def _ridge_lstsq_step(
+    jacobian: np.ndarray, residual_vector: np.ndarray, *, ridge: float, rcond: float | None
+) -> np.ndarray:
+    ridge = float(ridge)
+    if ridge > 0.0:
+        lhs = np.vstack([jacobian, np.sqrt(ridge) * np.eye(jacobian.shape[1])])
+        rhs = np.concatenate([-residual_vector, np.zeros(jacobian.shape[1])])
+    else:
+        lhs = jacobian
+        rhs = -residual_vector
+    raw_step, *_ = np.linalg.lstsq(lhs, rhs, rcond=rcond)
+    if not np.all(np.isfinite(raw_step)):
+        raise ValueError("least-squares step is not finite")
+    return raw_step
+
+
 def mirror_free_boundary_residual_jacobian_finite_difference(
     coefficients: Any,
     residual_function: Callable[[np.ndarray], MirrorFreeBoundaryResidual],
@@ -1054,6 +1087,7 @@ def mirror_free_boundary_residual_vector_least_squares_step(
     damping: float = 1.0,
     max_relative_step: float = 0.25,
     ridge: float = 0.0,
+    ridge_candidates: Any | None = None,
     rcond: float | None = 1.0e-12,
     line_search_factors: Any = (1.0, 0.5, 0.25, 0.125),
     accept_tolerance: float = 1.0e-12,
@@ -1100,8 +1134,7 @@ def mirror_free_boundary_residual_vector_least_squares_step(
         raise ValueError("damping must be positive")
     if max_relative_step <= 0.0:
         raise ValueError("max_relative_step must be positive")
-    if ridge < 0.0:
-        raise ValueError("ridge must be nonnegative")
+    ridge_values = _ridge_candidate_values(ridge, ridge_candidates)
     if accept_tolerance < 0.0:
         raise ValueError("accept_tolerance must be nonnegative")
     factors = np.asarray(tuple(line_search_factors), dtype=float)
@@ -1110,54 +1143,85 @@ def mirror_free_boundary_residual_vector_least_squares_step(
     if not np.all(np.isfinite(factors)) or np.any(factors <= 0.0):
         raise ValueError("line_search_factors must be finite and positive")
 
-    if ridge > 0.0:
-        lhs = np.vstack([jacobian, np.sqrt(ridge) * np.eye(coefficients.size)])
-        rhs = np.concatenate([-residual_vector, np.zeros(coefficients.size)])
-    else:
-        lhs = jacobian
-        rhs = -residual_vector
-    raw_step, *_ = np.linalg.lstsq(lhs, rhs, rcond=rcond)
-    if not np.all(np.isfinite(raw_step)):
-        raise ValueError("least-squares step is not finite")
     jacobian_rank, jacobian_nullity, jacobian_condition, singular_values = _jacobian_diagnostics(
         jacobian,
         n_parameters=int(coefficients.size),
     )
-
-    step_limit = max_relative_step * np.maximum(1.0, np.abs(coefficients))
-    limited_step = np.clip(damping * raw_step, -step_limit, step_limit)
-    predicted_vector = residual_vector + jacobian @ limited_step
     residual_value = _rms(residual_vector)
-    predicted_value = _rms(predicted_vector)
 
-    best_factor = float(factors[0])
-    best_coefficients = coefficients + best_factor * limited_step
-    best_vector = _residual_vector_numpy(residual_vector_function, best_coefficients)
-    best_value = float(np.sqrt(np.mean(best_vector**2)))
-    accepted = best_value <= residual_value + accept_tolerance
-    for factor in factors[1:]:
-        trial_coefficients = coefficients + float(factor) * limited_step
-        trial_vector = _residual_vector_numpy(residual_vector_function, trial_coefficients)
-        trial_value = float(np.sqrt(np.mean(trial_vector**2)))
-        trial_accepted = trial_value <= residual_value + accept_tolerance
-        if trial_accepted and not accepted:
-            best_factor = float(factor)
-            best_coefficients = trial_coefficients
-            best_vector = trial_vector
-            best_value = trial_value
-            accepted = True
-        elif trial_accepted == accepted and trial_value < best_value:
-            best_factor = float(factor)
-            best_coefficients = trial_coefficients
-            best_vector = trial_vector
-            best_value = trial_value
-            accepted = trial_accepted
+    selected: dict[str, Any] | None = None
+    for candidate_ridge in ridge_values:
+        raw_step = _ridge_lstsq_step(jacobian, residual_vector, ridge=float(candidate_ridge), rcond=rcond)
+        step_limit = max_relative_step * np.maximum(1.0, np.abs(coefficients))
+        limited_step = np.clip(damping * raw_step, -step_limit, step_limit)
+        predicted_vector = residual_vector + jacobian @ limited_step
+        predicted_value = _rms(predicted_vector)
 
-    if not accepted:
-        best_coefficients = coefficients.copy()
-        best_factor = 0.0
-        best_vector = residual_vector
-        best_value = residual_value
+        best_factor = float(factors[0])
+        best_coefficients = coefficients + best_factor * limited_step
+        best_vector = _residual_vector_numpy(residual_vector_function, best_coefficients)
+        best_value = _rms(best_vector)
+        accepted = best_value <= residual_value + accept_tolerance
+        for factor in factors[1:]:
+            trial_coefficients = coefficients + float(factor) * limited_step
+            trial_vector = _residual_vector_numpy(residual_vector_function, trial_coefficients)
+            trial_value = _rms(trial_vector)
+            trial_accepted = trial_value <= residual_value + accept_tolerance
+            if trial_accepted and not accepted:
+                best_factor = float(factor)
+                best_coefficients = trial_coefficients
+                best_vector = trial_vector
+                best_value = trial_value
+                accepted = True
+            elif trial_accepted == accepted and trial_value < best_value:
+                best_factor = float(factor)
+                best_coefficients = trial_coefficients
+                best_vector = trial_vector
+                best_value = trial_value
+                accepted = trial_accepted
+
+        if not accepted:
+            best_coefficients = coefficients.copy()
+            best_factor = 0.0
+            best_vector = residual_vector
+            best_value = residual_value
+
+        candidate = {
+            "ridge": float(candidate_ridge),
+            "raw_step": raw_step,
+            "limited_step": limited_step,
+            "predicted_vector": predicted_vector,
+            "predicted_value": predicted_value,
+            "line_search_factor": best_factor,
+            "new_coefficients": best_coefficients,
+            "trial_vector": best_vector,
+            "trial_value": best_value,
+            "accepted": bool(accepted),
+        }
+        if selected is None:
+            selected = candidate
+        elif bool(candidate["accepted"]) and not bool(selected["accepted"]):
+            selected = candidate
+        elif bool(candidate["accepted"]) == bool(selected["accepted"]):
+            if float(candidate["trial_value"]) < float(selected["trial_value"]):
+                selected = candidate
+            elif np.isclose(float(candidate["trial_value"]), float(selected["trial_value"])) and float(
+                candidate["ridge"]
+            ) < float(selected["ridge"]):
+                selected = candidate
+
+    if selected is None:
+        raise RuntimeError("ridge candidate selection failed")
+    raw_step = selected["raw_step"]
+    limited_step = selected["limited_step"]
+    predicted_vector = selected["predicted_vector"]
+    predicted_value = float(selected["predicted_value"])
+    best_factor = float(selected["line_search_factor"])
+    best_coefficients = selected["new_coefficients"]
+    best_vector = selected["trial_vector"]
+    best_value = float(selected["trial_value"])
+    accepted = bool(selected["accepted"])
+    selected_ridge = float(selected["ridge"])
     predicted_reduction = _reduction_fraction(residual_value, predicted_value)
     actual_reduction = _reduction_fraction(residual_value, best_value)
 
@@ -1178,9 +1242,10 @@ def mirror_free_boundary_residual_vector_least_squares_step(
         jacobian_backend=backend,
         damping=damping,
         max_relative_step=max_relative_step,
-        ridge=ridge,
+        ridge=selected_ridge,
         rcond=rcond,
         finite_difference_steps=finite_difference_steps,
+        ridge_candidates=ridge_values,
         selected_jax_mode=selected_jax_mode,
         jacobian_rank=jacobian_rank,
         jacobian_nullity=jacobian_nullity,
@@ -1204,6 +1269,7 @@ def mirror_free_boundary_residual_vector_least_squares_solve(
     damping: float = 1.0,
     max_relative_step: float = 0.25,
     ridge: float = 0.0,
+    ridge_candidates: Any | None = None,
     rcond: float | None = 1.0e-12,
     line_search_factors: Any = (1.0, 0.5, 0.25, 0.125),
     accept_tolerance: float = 1.0e-12,
@@ -1253,6 +1319,7 @@ def mirror_free_boundary_residual_vector_least_squares_solve(
             damping=damping,
             max_relative_step=max_relative_step,
             ridge=ridge,
+            ridge_candidates=ridge_candidates,
             rcond=rcond,
             line_search_factors=line_search_factors,
             accept_tolerance=accept_tolerance,
@@ -1325,6 +1392,7 @@ def mirror_free_boundary_least_squares_step(
     damping: float = 1.0,
     max_relative_step: float = 0.25,
     ridge: float = 0.0,
+    ridge_candidates: Any | None = None,
     rcond: float | None = 1.0e-12,
     line_search_factors: Any = (1.0, 0.5, 0.25, 0.125),
     accept_tolerance: float = 1.0e-12,
@@ -1351,8 +1419,7 @@ def mirror_free_boundary_least_squares_step(
         raise ValueError("damping must be positive")
     if max_relative_step <= 0.0:
         raise ValueError("max_relative_step must be positive")
-    if ridge < 0.0:
-        raise ValueError("ridge must be nonnegative")
+    ridge_values = _ridge_candidate_values(ridge, ridge_candidates)
     if accept_tolerance < 0.0:
         raise ValueError("accept_tolerance must be nonnegative")
     factors = np.asarray(tuple(line_search_factors), dtype=float)
@@ -1367,52 +1434,83 @@ def mirror_free_boundary_least_squares_step(
         finite_difference_step=finite_difference_step,
     )
     vector = np.asarray(residual.vector, dtype=float).ravel()
-    if ridge > 0.0:
-        lhs = np.vstack([jacobian, np.sqrt(ridge) * np.eye(coefficients.size)])
-        rhs = np.concatenate([-vector, np.zeros(coefficients.size)])
-    else:
-        lhs = jacobian
-        rhs = -vector
-    raw_step, *_ = np.linalg.lstsq(lhs, rhs, rcond=rcond)
-    if not np.all(np.isfinite(raw_step)):
-        raise ValueError("least-squares step is not finite")
     jacobian_rank, jacobian_nullity, jacobian_condition, singular_values = _jacobian_diagnostics(
         jacobian,
         n_parameters=int(coefficients.size),
     )
 
-    step_limit = max_relative_step * np.maximum(1.0, np.abs(coefficients))
-    limited_step = np.clip(damping * raw_step, -step_limit, step_limit)
-    predicted_vector = vector + jacobian @ limited_step
-    predicted_value = _rms(predicted_vector)
+    selected: dict[str, Any] | None = None
+    for candidate_ridge in ridge_values:
+        raw_step = _ridge_lstsq_step(jacobian, vector, ridge=float(candidate_ridge), rcond=rcond)
+        step_limit = max_relative_step * np.maximum(1.0, np.abs(coefficients))
+        limited_step = np.clip(damping * raw_step, -step_limit, step_limit)
+        predicted_vector = vector + jacobian @ limited_step
+        predicted_value = _rms(predicted_vector)
 
-    best_factor = float(factors[0])
-    best_coefficients = coefficients + best_factor * limited_step
-    best_residual = _as_free_boundary_residual(residual_function(best_coefficients))
-    best_value = float(best_residual.value)
-    accepted = best_value <= float(residual.value) + accept_tolerance
-    for factor in factors[1:]:
-        trial_coefficients = coefficients + float(factor) * limited_step
-        trial_residual = _as_free_boundary_residual(residual_function(trial_coefficients))
-        trial_value = float(trial_residual.value)
-        trial_accepted = trial_value <= float(residual.value) + accept_tolerance
-        if trial_accepted and not accepted:
-            best_factor = float(factor)
-            best_coefficients = trial_coefficients
-            best_residual = trial_residual
-            best_value = trial_value
-            accepted = True
-        elif trial_accepted == accepted and trial_value < best_value:
-            best_factor = float(factor)
-            best_coefficients = trial_coefficients
-            best_residual = trial_residual
-            best_value = trial_value
-            accepted = trial_accepted
+        best_factor = float(factors[0])
+        best_coefficients = coefficients + best_factor * limited_step
+        best_residual = _as_free_boundary_residual(residual_function(best_coefficients))
+        best_value = float(best_residual.value)
+        accepted = best_value <= float(residual.value) + accept_tolerance
+        for factor in factors[1:]:
+            trial_coefficients = coefficients + float(factor) * limited_step
+            trial_residual = _as_free_boundary_residual(residual_function(trial_coefficients))
+            trial_value = float(trial_residual.value)
+            trial_accepted = trial_value <= float(residual.value) + accept_tolerance
+            if trial_accepted and not accepted:
+                best_factor = float(factor)
+                best_coefficients = trial_coefficients
+                best_residual = trial_residual
+                best_value = trial_value
+                accepted = True
+            elif trial_accepted == accepted and trial_value < best_value:
+                best_factor = float(factor)
+                best_coefficients = trial_coefficients
+                best_residual = trial_residual
+                best_value = trial_value
+                accepted = trial_accepted
 
-    if not accepted:
-        best_coefficients = coefficients.copy()
-        best_factor = 0.0
-        best_residual = residual
+        if not accepted:
+            best_coefficients = coefficients.copy()
+            best_factor = 0.0
+            best_residual = residual
+            best_value = float(residual.value)
+
+        candidate = {
+            "ridge": float(candidate_ridge),
+            "raw_step": raw_step,
+            "limited_step": limited_step,
+            "predicted_vector": predicted_vector,
+            "predicted_value": predicted_value,
+            "line_search_factor": best_factor,
+            "new_coefficients": best_coefficients,
+            "trial_residual": best_residual,
+            "trial_value": best_value,
+            "accepted": bool(accepted),
+        }
+        if selected is None:
+            selected = candidate
+        elif bool(candidate["accepted"]) and not bool(selected["accepted"]):
+            selected = candidate
+        elif bool(candidate["accepted"]) == bool(selected["accepted"]):
+            if float(candidate["trial_value"]) < float(selected["trial_value"]):
+                selected = candidate
+            elif np.isclose(float(candidate["trial_value"]), float(selected["trial_value"])) and float(
+                candidate["ridge"]
+            ) < float(selected["ridge"]):
+                selected = candidate
+
+    if selected is None:
+        raise RuntimeError("ridge candidate selection failed")
+    raw_step = selected["raw_step"]
+    limited_step = selected["limited_step"]
+    predicted_vector = selected["predicted_vector"]
+    predicted_value = float(selected["predicted_value"])
+    best_factor = float(selected["line_search_factor"])
+    best_coefficients = selected["new_coefficients"]
+    best_residual = selected["trial_residual"]
+    accepted = bool(selected["accepted"])
+    selected_ridge = float(selected["ridge"])
     predicted_reduction = _reduction_fraction(float(residual.value), predicted_value)
     actual_reduction = _reduction_fraction(float(residual.value), float(best_residual.value))
 
@@ -1431,8 +1529,9 @@ def mirror_free_boundary_least_squares_step(
         accepted=accepted,
         damping=damping,
         max_relative_step=max_relative_step,
-        ridge=ridge,
+        ridge=selected_ridge,
         rcond=rcond,
+        ridge_candidates=ridge_values,
         jacobian_rank=jacobian_rank,
         jacobian_nullity=jacobian_nullity,
         jacobian_condition=jacobian_condition,
@@ -1484,6 +1583,7 @@ def mirror_free_boundary_guarded_least_squares_loop(
     damping: float = 1.0,
     max_relative_step: float = 0.25,
     ridge: float = 0.0,
+    ridge_candidates: Any | None = None,
     rcond: float | None = 1.0e-12,
     line_search_factors: Any = (1.0, 0.5, 0.25, 0.125),
     accept_tolerance: float = 1.0e-12,
@@ -1535,6 +1635,7 @@ def mirror_free_boundary_guarded_least_squares_loop(
             damping=damping,
             max_relative_step=max_relative_step,
             ridge=ridge,
+            ridge_candidates=ridge_candidates,
             rcond=rcond,
             line_search_factors=line_search_factors,
             accept_tolerance=accept_tolerance,

@@ -22,7 +22,7 @@ from vmec_jax.mirror import (
 
 
 VECTOR_LS_BENCHMARK_SCHEMA = "mirror_free_boundary_vector_ls_benchmark"
-VECTOR_LS_BENCHMARK_SCHEMA_VERSION = "0.3"
+VECTOR_LS_BENCHMARK_SCHEMA_VERSION = "0.4"
 VECTOR_LS_BENCHMARK_ROW_FIELDS = (
     "name",
     "jacobian_backend",
@@ -43,6 +43,8 @@ VECTOR_LS_BENCHMARK_ROW_FIELDS = (
     "coefficients_new",
     "raw_step",
     "limited_step",
+    "ridge",
+    "ridge_candidates",
     "finite_difference_steps",
     "jacobian_shape",
     "jacobian_rank",
@@ -62,6 +64,8 @@ VECTOR_LS_BENCHMARK_SOLVE_ROW_FIELDS = (
     "initial_residual_value",
     "final_residual_value",
     "residual_history",
+    "ridge_history",
+    "ridge_candidates_history",
     "jacobian_rank_history",
     "jacobian_nullity_history",
     "jacobian_condition_history",
@@ -123,6 +127,10 @@ def validate_vector_ls_benchmark_metrics(metrics: dict[str, object]) -> None:
             raise ValueError(f"row {index} has a negative Jacobian nullity")
         if float(row["jacobian_condition"]) < 1.0:
             raise ValueError(f"row {index} has an invalid Jacobian condition")
+        if float(row["ridge"]) < 0.0:
+            raise ValueError(f"row {index} has a negative selected ridge")
+        if not row["ridge_candidates"]:
+            raise ValueError(f"row {index} is missing ridge candidates")
     if row_names != names:
         raise ValueError("row names do not match derivative backend cases")
     solve_rows = metrics["solve_rows"]
@@ -142,6 +150,10 @@ def validate_vector_ls_benchmark_metrics(metrics: dict[str, object]) -> None:
             raise ValueError(f"solve row {index} did not reduce residual")
         if not row["jacobian_rank_history"]:
             raise ValueError(f"solve row {index} is missing Jacobian rank history")
+        if not row["ridge_history"]:
+            raise ValueError(f"solve row {index} is missing ridge history")
+        if not row["ridge_candidates_history"]:
+            raise ValueError(f"solve row {index} is missing ridge candidate history")
     if solve_row_names != names:
         raise ValueError("solve row names do not match derivative backend cases")
     if metrics["best_backend_by_residual"] not in names:
@@ -214,6 +226,8 @@ def _row_from_step(
         "coefficients_new": [float(value) for value in np.asarray(step.new_coefficients)],
         "raw_step": [float(value) for value in np.asarray(step.raw_step)],
         "limited_step": [float(value) for value in np.asarray(step.limited_step)],
+        "ridge": float(step.ridge),
+        "ridge_candidates": [float(value) for value in np.asarray(step.ridge_candidates)],
         "finite_difference_steps": [float(value) for value in np.asarray(step.finite_difference_steps)],
         "jacobian_shape": [int(value) for value in np.asarray(step.jacobian).shape],
         "selected_jax_mode": step.selected_jax_mode,
@@ -236,6 +250,10 @@ def _row_from_solve(
     rank_history = [int(row.ls_step.jacobian_rank) for row in result.rows]
     nullity_history = [int(row.ls_step.jacobian_nullity) for row in result.rows]
     condition_history = [float(row.ls_step.jacobian_condition) for row in result.rows]
+    ridge_history = [float(row.ls_step.ridge) for row in result.rows]
+    ridge_candidates_history = [
+        [float(value) for value in np.asarray(row.ls_step.ridge_candidates)] for row in result.rows
+    ]
     selected_jax_mode_history = [row.ls_step.selected_jax_mode for row in result.rows]
     return {
         "name": name,
@@ -248,6 +266,8 @@ def _row_from_solve(
         "initial_residual_value": float(result.initial_residual_value),
         "final_residual_value": float(result.final_residual_value),
         "residual_history": residual_history,
+        "ridge_history": ridge_history,
+        "ridge_candidates_history": ridge_candidates_history,
         "jacobian_rank_history": rank_history,
         "jacobian_nullity_history": nullity_history,
         "jacobian_condition_history": condition_history,

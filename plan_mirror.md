@@ -23455,3 +23455,137 @@ No user input is needed for the next implementation lane.  A review decision is
 still needed before undrafting: keep the production free-boundary and
 target-resolution hybrid convergence lanes deferred, or continue them in this
 PR.
+
+---
+## 196. Free-Boundary Adaptive Ridge Candidate Selection
+
+### Steps taken
+
+- Continued the free-boundary production-readiness lane after M195 by turning
+  the new least-squares conditioning diagnostics into a small robustness
+  improvement.
+- Added optional `ridge_candidates` support to the reduced residual-vector
+  least-squares step and solve loop.
+- Added the same optional `ridge_candidates` support to the combined
+  equilibrium-plus-LCFS least-squares step and the guarded free-boundary loop.
+- Kept the existing scalar `ridge` API as the default path.  When
+  `ridge_candidates` is provided, each candidate solves a Tikhonov-augmented
+  linearized least-squares system, applies the usual damping and line search,
+  and keeps the best accepted trial.  Ties prefer the smaller ridge.
+- Extended step diagnostics and the repo-root vector-LS benchmark schema to
+  record the selected ridge and tried ridge candidates.
+- Added tests showing that an unregularized nonlinear LS update can be rejected
+  while an adaptive nonzero ridge candidate accepts a smaller residual-reducing
+  step.
+- Updated the readiness docs, mirror overview, and examples README to describe
+  adaptive ridge candidates as part of the reduced/diagnostic free-boundary
+  solver path.
+
+### Results obtained
+
+- Reduced and combined free-boundary LS helpers can now recover from an
+  over-aggressive unregularized Newton-like step by selecting a regularized
+  ridge candidate.
+- The selected ridge is visible in the dataclass result, nonlinear solve rows,
+  and vector-LS benchmark JSON.
+- The benchmark schema is now `mirror_free_boundary_vector_ls_benchmark`
+  version `0.4`.
+- The circular-coil free-boundary lane remains correctly scoped as diagnostic:
+  this improves reduced solver robustness and method auditability, but does not
+  claim a production converged LCFS free-boundary equilibrium solve.
+
+### How it was tested
+
+Commands run:
+
+```bash
+python -m ruff format \
+  vmec_jax/mirror/free_boundary.py \
+  examples/mirror_free_boundary_vector_ls_benchmark.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+python -m py_compile \
+  vmec_jax/mirror/free_boundary.py \
+  examples/mirror_free_boundary_vector_ls_benchmark.py
+python -m ruff check \
+  vmec_jax/mirror/free_boundary.py \
+  examples/mirror_free_boundary_vector_ls_benchmark.py \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py::test_mirror_free_boundary_least_squares_step_selects_adaptive_ridge_candidate \
+  tests/mirror/test_mirror_free_boundary.py::test_mirror_free_boundary_residual_vector_least_squares_step_selects_adaptive_ridge_candidate \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_vector_ls_benchmark_runs_without_plots -q
+JAX_ENABLE_X64=1 pytest \
+  tests/mirror/test_mirror_free_boundary.py \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_vector_ls_benchmark_runs_without_plots \
+  tests/mirror/test_mirror_examples.py::test_root_free_boundary_vector_ls_benchmark_writes_nonblank_plots -q
+python -m sphinx -W -b html docs docs/_build/html
+git diff --check
+JAX_ENABLE_X64=1 pytest tests/mirror tests/test_toroidal_hybrid.py -q
+```
+
+Results:
+
+- Ruff formatting reformatted `vmec_jax/mirror/free_boundary.py`.
+- Syntax compilation passed.
+- Ruff lint passed.
+- Focused adaptive-ridge tests passed: `3 passed in 2.25s`.
+- Free-boundary plus vector-LS example coverage passed:
+  `126 passed in 7.92s`.
+- Sphinx docs build passed with warnings as errors.
+- Whitespace check passed.
+- Combined mirror plus toroidal-hybrid validation passed:
+  `276 passed, 1 skipped in 279.23s`.
+
+### File structure and best-practice notes
+
+- The adaptive ridge logic stays inside the existing free-boundary bridge
+  module because it is shared by the reduced vector path, the combined
+  residual path, and the guarded loop.  A package split should wait until the
+  coupled LCFS residual is promoted beyond diagnostic scope.
+- The public dataclasses are extended append-only with `ridge_candidates`,
+  preserving existing call sites while recording the selected regularization
+  policy.
+- The benchmark schema carries method diagnostics instead of committed result
+  images; generated plots still live in temporary or ignored output trees.
+
+### Best next steps
+
+1. Commit and push M196.
+2. Update the draft PR body with section 196 and the `276 passed, 1 skipped`
+   validation result.
+3. Inspect only failed CI jobs after the push.
+4. Continue with the remaining finite lanes: either promote the circular-coil
+   bridge toward a true coupled LCFS residual solve, or move to the
+   target-resolution toroidal hybrid convergence ladder.
+
+### Completion percentages after M196
+
+- Geometry/grids/bases: `94%`.
+- Field/energy/residual kernels: `95%`.
+- Fixed-boundary axisymmetric solve: `96%`.
+- Residual Newton / preconditioning: `96%`.
+- Two-coil and manufactured validation: `95%`.
+- Finite-current pitch validation: `94%`.
+- Plotting and `vmec --plot` mirror support: `99%`.
+- I/O schema and docs: `100%`.
+- Differentiable solved-state API: `97%`.
+- Mirror-Boozer-like diagnostics: `94%`.
+- Free-boundary mirror lane: `99.3%` overall for the current diagnostic/reduced
+  solver scope, with production LCFS convergence still explicitly deferred.
+- Straight-axis hybrid support fixture lane: `100%` for support-fixture scope.
+- Toroidal stellarator-mirror hybrid lane: `97%`, pending target-resolution
+  convergence promotion.
+- ESSOS circular-coil mirror beta scan: `99%`.
+- Public API/source simplification: `100%` for the current mirror package
+  structure.
+- PR merge readiness overall: `99.3%`, pending GitHub checks and explicit
+  review decision on deferred production lanes.
+
+### User input needed
+
+No user input is needed for the next implementation lane.  A review decision is
+still needed before undrafting: keep the production free-boundary and
+target-resolution hybrid convergence lanes deferred, or continue them in this
+PR.

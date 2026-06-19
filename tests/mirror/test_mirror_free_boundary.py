@@ -738,6 +738,32 @@ def test_mirror_free_boundary_least_squares_step_rejects_all_worse_trials_with_r
     np.testing.assert_allclose(step.trial_residual.vector, step.residual.vector)
 
 
+def test_mirror_free_boundary_least_squares_step_selects_adaptive_ridge_candidate():
+    def nonlinear_residual(coefficients):
+        c0 = float(np.asarray(coefficients, dtype=float)[0])
+        return _free_boundary_residual_from_vector([c0 - 1.0 + 100.0 * c0**2])
+
+    unregularized = mirror_free_boundary_least_squares_step(
+        np.asarray([0.0]),
+        nonlinear_residual,
+        max_relative_step=2.0,
+        line_search_factors=(1.0,),
+    )
+    adaptive = mirror_free_boundary_least_squares_step(
+        np.asarray([0.0]),
+        nonlinear_residual,
+        max_relative_step=2.0,
+        ridge_candidates=(0.0, 100.0),
+        line_search_factors=(1.0,),
+    )
+
+    assert unregularized.accepted is False
+    assert adaptive.accepted is True
+    assert adaptive.ridge == pytest.approx(100.0)
+    np.testing.assert_allclose(adaptive.ridge_candidates, [0.0, 100.0])
+    assert adaptive.trial_residual.value < adaptive.residual.value
+
+
 @pytest.mark.parametrize(
     ("kwargs", "match"),
     [
@@ -747,6 +773,8 @@ def test_mirror_free_boundary_least_squares_step_rejects_all_worse_trials_with_r
         ({"damping": 0.0}, "damping"),
         ({"max_relative_step": 0.0}, "max_relative_step"),
         ({"ridge": -1.0}, "ridge"),
+        ({"ridge_candidates": ()}, "ridge_candidates"),
+        ({"ridge_candidates": (-1.0,)}, "ridge_candidates"),
         ({"accept_tolerance": -1.0}, "accept_tolerance"),
         ({"line_search_factors": ()}, "line_search_factors"),
         ({"line_search_factors": (1.0, -0.5)}, "line_search_factors"),
@@ -1014,6 +1042,32 @@ def test_mirror_free_boundary_residual_vector_least_squares_step_rejects_worse_t
     np.testing.assert_allclose(step.trial_vector, step.residual_vector)
 
 
+def test_mirror_free_boundary_residual_vector_least_squares_step_selects_adaptive_ridge_candidate():
+    def nonlinear_residual(coefficients):
+        c0 = float(np.asarray(coefficients, dtype=float)[0])
+        return np.asarray([c0 - 1.0 + 100.0 * c0**2])
+
+    unregularized = mirror_free_boundary_residual_vector_least_squares_step(
+        np.asarray([0.0]),
+        nonlinear_residual,
+        max_relative_step=2.0,
+        line_search_factors=(1.0,),
+    )
+    adaptive = mirror_free_boundary_residual_vector_least_squares_step(
+        np.asarray([0.0]),
+        nonlinear_residual,
+        max_relative_step=2.0,
+        ridge_candidates=(0.0, 100.0),
+        line_search_factors=(1.0,),
+    )
+
+    assert unregularized.accepted is False
+    assert adaptive.accepted is True
+    assert adaptive.ridge == pytest.approx(100.0)
+    np.testing.assert_allclose(adaptive.ridge_candidates, [0.0, 100.0])
+    assert adaptive.trial_value < adaptive.residual_value
+
+
 @pytest.mark.parametrize(
     ("kwargs", "match"),
     [
@@ -1023,6 +1077,8 @@ def test_mirror_free_boundary_residual_vector_least_squares_step_rejects_worse_t
         ({"damping": 0.0}, "damping"),
         ({"max_relative_step": 0.0}, "max_relative_step"),
         ({"ridge": -1.0}, "ridge"),
+        ({"ridge_candidates": ()}, "ridge_candidates"),
+        ({"ridge_candidates": (-1.0,)}, "ridge_candidates"),
         ({"accept_tolerance": -1.0}, "accept_tolerance"),
         ({"line_search_factors": ()}, "line_search_factors"),
         ({"line_search_factors": (1.0, -0.5)}, "line_search_factors"),

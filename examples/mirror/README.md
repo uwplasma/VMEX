@@ -201,9 +201,10 @@ reduced free-boundary residual contract. The public
 that reduced residual-vector step with target-residual, rejected-step,
 stagnation, and max-step stop reasons for compact nonlinear prototypes. Step
 and solve rows report the selected JAX mode, Jacobian rank, nullity,
-conditioning, singular values, and predicted versus realized residual reduction
-so poorly conditioned boundary parameterizations are visible before they are
-used in expensive coupled fixed-boundary trials.
+conditioning, singular values, selected ridge candidate, and predicted versus
+realized residual reduction so poorly conditioned or over-aggressive boundary
+parameterizations are visible before they are used in expensive coupled
+fixed-boundary trials.
 
 The circular-coil beta-scan metrics use the compact schema
 ``mirror_free_boundary_circular_coil_beta_scan`` version ``0.6``. The top-level

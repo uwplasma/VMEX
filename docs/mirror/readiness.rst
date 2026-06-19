@@ -86,9 +86,10 @@ Current Scope
        vectors, candidate updates, guarded pilot loops, and reduced
        residual-vector least-squares solves are available, with explicit
        Jacobian rank, nullity, conditioning, selected JAX mode, predicted
-       reduction, and actual reduction diagnostics.  Plotted beta-scan and
-       reduced-vector benchmark evidence are present.  This is not a converged
-       production free-boundary equilibrium solver.
+       reduction, actual reduction, and optional adaptive ridge-candidate
+       diagnostics.  Plotted beta-scan and reduced-vector benchmark evidence
+       are present.  This is not a converged production free-boundary
+       equilibrium solver.
    * - ESSOS beta-scan fixture
      - diagnostic
      - The 1%, 3%, and 10% beta cases share a compact JSON/CSV schema with
@@ -128,9 +129,10 @@ current rule is:
   matrix-free or external linear-operator backend.
 
 Reduced free-boundary least-squares rows record the selected derivative mode,
-rank/nullity, condition number, singular values, and predicted versus realized
-residual reduction so rank-deficient boundary parameterizations are visible in
-the JSON before they are coupled to expensive fixed-boundary trial solves.
+rank/nullity, condition number, singular values, selected ridge candidate, and
+predicted versus realized residual reduction so rank-deficient or
+over-aggressive boundary parameterizations are visible in the JSON before they
+are coupled to expensive fixed-boundary trial solves.
 
 Review Gate Before Undrafting
 -----------------------------

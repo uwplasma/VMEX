@@ -232,7 +232,7 @@ def test_root_free_boundary_vector_ls_benchmark_runs_without_plots(tmp_path):
     rows = {row["name"]: row for row in metrics["rows"]}
     solve_rows = {row["name"]: row for row in metrics["solve_rows"]}
 
-    assert metrics["metrics_schema_version"] == "0.3"
+    assert metrics["metrics_schema_version"] == "0.4"
     assert set(rows) == {"finite_difference", "jax_forward", "jax_reverse", "jax_auto"}
     assert set(solve_rows) == set(rows)
     assert metrics["figures"] == {}
@@ -261,8 +261,12 @@ def test_root_free_boundary_vector_ls_benchmark_runs_without_plots(tmp_path):
     assert all(row["jacobian_nullity"] == 0 for row in rows.values())
     assert all(row["jacobian_condition"] >= 1.0 for row in rows.values())
     assert all(row["actual_reduction_fraction"] > 0.0 for row in rows.values())
+    assert all(row["ridge"] == pytest.approx(0.0) for row in rows.values())
+    assert all(row["ridge_candidates"] == [0.0] for row in rows.values())
     assert set(solve_rows["jax_auto"]["selected_jax_mode_history"]) == {"forward"}
     assert all(row["jacobian_rank_history"] for row in solve_rows.values())
+    assert all(row["ridge_history"] for row in solve_rows.values())
+    assert all(row["ridge_candidates_history"] for row in solve_rows.values())
     np.testing.assert_allclose(
         solve_rows["jax_auto"]["coefficients_final"],
         solve_rows["finite_difference"]["coefficients_final"],

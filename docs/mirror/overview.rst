@@ -56,7 +56,8 @@ without coupling it to toroidal VMEC assumptions:
   reduced residual-vector nonlinear least-squares solve loop with explicit
   target/rejection/stagnation/max-step stop reasons and per-step Jacobian
   rank, nullity, condition, singular-value, selected-JAX-mode, and
-  predicted/actual reduction diagnostics, plus a reusable
+  predicted/actual reduction diagnostics, optional adaptive ridge-candidate
+  selection, plus a reusable
   state/callback guarded least-squares loop and guarded realized fixed-boundary
   trial loop for the first true coupled-solve iterations,
   and normal-field-aware candidate selection between local, shape-preserving
@@ -107,8 +108,8 @@ parameters is no larger than the residual-vector length, and reverse
 differentiation for smaller residual or scalar-like targets.  The
 ``examples/mirror_free_boundary_vector_ls_benchmark.py`` example records the
 backend comparison, selected mode, rank/nullity, conditioning, singular values,
-and predicted-versus-actual residual reduction used to keep that guidance
-tested.
+selected ridge, and predicted-versus-actual residual reduction used to keep
+that guidance tested.
 
 Current solver status:
 
