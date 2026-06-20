@@ -9,13 +9,17 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import time
 from typing import Any, Mapping, NamedTuple
 
 import numpy as np
 
 from ..._compat import has_jax, jax
+from ...integrals import cumrect_s_halfmesh
+from ...modes import nyquist_mode_table_from_grid, vmec_mode_table
 from ...namelist import InData
 from ...vmec_parity import vmec_m1_internal_to_physical_signed_host
+from ...vmec_tomnsp import vmec_trig_tables
 
 
 class WoutMainGeometryCoefficients(NamedTuple):
@@ -101,6 +105,113 @@ class WoutBssSourcePayload(NamedTuple):
     azmn_e_sym: np.ndarray | None
     armn_e_sym: np.ndarray | None
     geom: dict[str, Any]
+
+
+class WoutMinimalCorePayload(NamedTuple):
+    """Input, mode, profile, and geometry setup for minimal WOUT assembly."""
+
+    cfg: Any
+    ns: int
+    mpol: int
+    ntor: int
+    nfp: int
+    lasym: bool
+    runtime_options: WoutMinimalRuntimeOptions
+    wout_timing_enabled: bool
+    wout_light: bool
+    wout_fast_bcovar: bool
+    field_options: WoutMinimalFieldOptions
+    converged: bool
+    lbsubs: bool
+    main_modes: Any
+    nyq_modes: Any
+    trig: Any
+    geom: dict[str, Any]
+    s: np.ndarray
+    flux: Any
+    chipf_wout: np.ndarray
+    pres: np.ndarray
+    mass: np.ndarray
+    ncurr: int
+    iotas: np.ndarray
+    iotaf: np.ndarray
+    gamma: float
+    phipf_internal: np.ndarray
+    lconm1: bool
+    main_geom: WoutMainGeometryCoefficients
+    phipf_out: np.ndarray
+    chipf_out: np.ndarray
+    phi: np.ndarray
+    wout_like: Any
+
+
+class WoutForceSourcePayload(NamedTuple):
+    """Bcovar and BSS source arrays used by WOUT field diagnostics."""
+
+    bc: Any
+    k_force: Any | None
+    indata_wout: Any
+    use_force_bss: bool
+    bsupu_bss: np.ndarray
+    bsupv_bss: np.ndarray
+    ru12_bss: np.ndarray | None
+    zu12_bss: np.ndarray | None
+    rs_bss: np.ndarray | None
+    zs_bss: np.ndarray | None
+    crmn_e_sym: np.ndarray | None
+    czmn_e_sym: np.ndarray | None
+    bzmn_e_sym: np.ndarray | None
+    brmn_e_sym: np.ndarray | None
+    azmn_e_sym: np.ndarray | None
+    armn_e_sym: np.ndarray | None
+    geom_bss: dict[str, Any]
+
+
+class WoutDerivedProfilePayload(NamedTuple):
+    """Radial profiles and global geometry scalars derived from bcovar."""
+
+    vp: np.ndarray
+    wb: float
+    wp: float
+    volume: float
+    volume_p: float
+    betatotal: float
+    pres: np.ndarray
+    presf: np.ndarray
+    wint: np.ndarray
+    Aminor_p: float
+    Rmajor_p: float
+    aspect: float
+
+
+class WoutNyquistFieldPayload(NamedTuple):
+    """Nyquist field-output coefficients and diagnostic real-space fields."""
+
+    bsupu_out: np.ndarray
+    bsupv_out: np.ndarray
+    bsubu_out: np.ndarray
+    bsubv_out: np.ndarray
+    bsubu_raw: np.ndarray
+    bsubv_raw: np.ndarray
+    bsubu_diag: np.ndarray
+    bsubv_diag: np.ndarray
+    bsubu_phys: np.ndarray | None
+    bsubv_phys: np.ndarray | None
+    bsubs_full: np.ndarray
+    gmnc: np.ndarray
+    gmns: np.ndarray
+    bsupumnc: np.ndarray
+    bsupumns: np.ndarray
+    bsupvmnc: np.ndarray
+    bsupvmns: np.ndarray
+    bsubumnc: np.ndarray
+    bsubumns: np.ndarray
+    bsubvmnc: np.ndarray
+    bsubvmns: np.ndarray
+    bsubsmns: np.ndarray
+    bsubsmnc: np.ndarray
+    bmnc: np.ndarray
+    bmns: np.ndarray
 
 
 def select_bsubuv_diagnostic_fields(
@@ -1013,6 +1124,576 @@ class WoutMinimalVmecLike:
         )
         self.mass = np.asarray(mass)
         self.gamma = float(gamma)
+
+
+def prepare_minimal_wout_core_payload(
+    *,
+    state: Any,
+    static: Any,
+    indata: Any,
+    signgs: int,
+    converged: bool | None,
+    flux_override: Any | None,
+    profiles_override: dict | None,
+    runtime_options: WoutMinimalRuntimeOptions,
+    field_options: WoutMinimalFieldOptions,
+    synthesize_geometry_func: Any,
+    timing: dict[str, float],
+    equilibrium_iota_profiles_from_state_func: Any,
+    chipf_from_chips_func: Any,
+    icurv_full_mesh_from_indata_func: Any,
+) -> WoutMinimalCorePayload:
+    """Prepare the passive state needed before WOUT diagnostic assembly.
+
+    The root WOUT constructor still orchestrates physics diagnostics and file
+    schema assembly. This helper owns deterministic input/mode/profile setup so
+    those pieces stay in the WOUT domain package instead of the compatibility
+    facade.
+    """
+
+    cfg = static.cfg
+    ns = int(cfg.ns)
+    mpol = int(cfg.mpol)
+    ntor = int(cfg.ntor)
+    nfp = int(cfg.nfp)
+    lasym = bool(cfg.lasym)
+    wout_timing_enabled = bool(runtime_options.timing_enabled)
+    wout_light = bool(runtime_options.light)
+    wout_fast_bcovar = bool(runtime_options.fast_bcovar)
+    converged_out = True if converged is None else bool(converged)
+
+    lbsubs = lbsubs_from_indata_and_env(indata)
+    main_modes = vmec_mode_table(mpol, ntor)
+    if int(main_modes.K) != int(state.layout.K):
+        raise ValueError("state mode count does not match vmec_mode_table(mpol,ntor)")
+
+    nyq_modes = nyquist_mode_table_from_grid(
+        mpol=mpol,
+        ntor=ntor,
+        ntheta=int(cfg.ntheta),
+        nzeta=int(cfg.nzeta),
+    )
+    mmax_nyq = int(np.max(nyq_modes.m)) if int(nyq_modes.K) > 0 else 0
+    nmax_nyq = int(np.max(np.abs(nyq_modes.n))) if int(nyq_modes.K) > 0 else 0
+    mmax_base = max(int(mpol) - 1, mmax_nyq)
+    nmax_base = max(int(ntor), nmax_nyq)
+
+    t0 = time.perf_counter() if wout_timing_enabled else None
+    trig = vmec_trig_tables(
+        ntheta=int(cfg.ntheta),
+        nzeta=int(cfg.nzeta),
+        nfp=int(nfp),
+        mmax=int(mmax_base),
+        nmax=int(nmax_base),
+        lasym=bool(lasym),
+        dtype=np.asarray(state.Rcos).dtype,
+    )
+    if t0 is not None:
+        timing["trig_tables_s"] = time.perf_counter() - t0
+
+    geom = synthesize_geometry_func(
+        state=state,
+        static=static,
+        trig=trig,
+        light=bool(wout_light),
+        timing_enabled=bool(wout_timing_enabled),
+        timing=timing,
+    )
+
+    s = np.asarray(static.s)
+    profile_payload = prepare_profile_payload(
+        state=state,
+        static=static,
+        indata=indata,
+        modes=main_modes,
+        s=s,
+        ns=int(ns),
+        signgs=int(signgs),
+        flux_override=flux_override,
+        profiles_override=profiles_override,
+        equilibrium_iota_profiles_from_state_func=equilibrium_iota_profiles_from_state_func,
+        chipf_from_chips_func=chipf_from_chips_func,
+    )
+    (flux, chipf_wout, _, pres, _, mass, ncurr, iotas, iotaf, gamma, phipf_internal) = profile_payload
+
+    lconm1 = bool(getattr(cfg, "lconm1", True))
+    main_geom = build_main_geometry_coefficients(
+        state=state,
+        modes=main_modes,
+        ntor=int(ntor),
+        lasym=bool(lasym),
+        lconm1=bool(lconm1),
+    )
+
+    phipf_out = np.asarray(phipf_internal, dtype=float) * float(2.0 * np.pi * signgs)
+    chipf_out = np.asarray(chipf_wout, dtype=float) * float(2.0 * np.pi * signgs)
+    phi = np.asarray(cumrect_s_halfmesh(phipf_out, s))
+    wout_like = WoutMinimalVmecLike(
+        flux=flux,
+        chipf=np.asarray(chipf_wout),
+        iotaf=np.asarray(iotaf),
+        iotas=np.asarray(iotas),
+        signgs=int(signgs),
+        nfp=int(nfp),
+        mpol=int(mpol),
+        ntor=int(ntor),
+        lasym=bool(lasym),
+        ncurr=int(ncurr),
+        mass=np.asarray(mass),
+        gamma=float(gamma),
+        indata=indata,
+        s_full=np.asarray(s, dtype=float),
+        icurv_full_mesh_from_indata_func=icurv_full_mesh_from_indata_func,
+    )
+
+    return WoutMinimalCorePayload(
+        cfg=cfg,
+        ns=int(ns),
+        mpol=int(mpol),
+        ntor=int(ntor),
+        nfp=int(nfp),
+        lasym=bool(lasym),
+        runtime_options=runtime_options,
+        wout_timing_enabled=bool(wout_timing_enabled),
+        wout_light=bool(wout_light),
+        wout_fast_bcovar=bool(wout_fast_bcovar),
+        field_options=field_options,
+        converged=bool(converged_out),
+        lbsubs=bool(lbsubs),
+        main_modes=main_modes,
+        nyq_modes=nyq_modes,
+        trig=trig,
+        geom=geom,
+        s=np.asarray(s),
+        flux=flux,
+        chipf_wout=np.asarray(chipf_wout),
+        pres=np.asarray(pres),
+        mass=np.asarray(mass),
+        ncurr=int(ncurr),
+        iotas=np.asarray(iotas),
+        iotaf=np.asarray(iotaf),
+        gamma=float(gamma),
+        phipf_internal=np.asarray(phipf_internal),
+        lconm1=bool(lconm1),
+        main_geom=main_geom,
+        phipf_out=np.asarray(phipf_out),
+        chipf_out=np.asarray(chipf_out),
+        phi=np.asarray(phi),
+        wout_like=wout_like,
+    )
+
+
+def prepare_minimal_wout_force_sources(
+    *,
+    state: Any,
+    static: Any,
+    indata: Any,
+    wout_like: Any,
+    pres: np.ndarray,
+    geom: dict[str, Any],
+    force_payload_override: Any,
+    fast_bcovar: bool,
+    timing_enabled: bool,
+    timing: dict[str, float],
+    lasym: bool,
+    trig: Any,
+    vmec_bcovar_half_mesh_from_wout_func: Any,
+    vmec_forces_rz_from_wout_func: Any,
+    numpy_module_patch_func: Any,
+    force_sym_func: Any,
+    dump_bsub_parity_func: Any,
+    dump_bsubh_func: Any,
+) -> WoutForceSourcePayload:
+    """Resolve bcovar/BSS sources before Nyquist field-output assembly."""
+
+    bcovar_payload = prepare_wout_bcovar_payload(
+        state=state,
+        static=static,
+        indata=indata,
+        wout_like=wout_like,
+        pres=pres,
+        geom=geom,
+        force_payload_override=force_payload_override,
+        fast_bcovar=bool(fast_bcovar),
+        timing_enabled=bool(timing_enabled),
+        timing=timing,
+        vmec_bcovar_half_mesh_from_wout_func=vmec_bcovar_half_mesh_from_wout_func,
+        vmec_forces_rz_from_wout_func=vmec_forces_rz_from_wout_func,
+        numpy_module_patch_func=numpy_module_patch_func,
+    )
+    bc, k_force, indata_wout = bcovar_payload
+    bss_payload = prepare_wout_bss_source_payload(
+        state=state,
+        static=static,
+        indata_wout=indata_wout,
+        wout_like=wout_like,
+        bc=bc,
+        k_force=k_force,
+        trig=trig,
+        geom=geom,
+        lasym=bool(lasym),
+        force_sym_func=force_sym_func,
+        vmec_forces_rz_from_wout_func=vmec_forces_rz_from_wout_func,
+    )
+    (
+        use_force_bss,
+        k_force,
+        bsupu_bss,
+        bsupv_bss,
+        ru12_bss,
+        zu12_bss,
+        rs_bss,
+        zs_bss,
+        crmn_e_sym,
+        czmn_e_sym,
+        bzmn_e_sym,
+        brmn_e_sym,
+        azmn_e_sym,
+        armn_e_sym,
+        geom_bss,
+    ) = bss_payload
+    dump_bsub_parity_func(bc=bc)
+    dump_bsubh_func(bsupu=bsupu_bss, bsupv=bsupv_bss, bc=bc)
+    return WoutForceSourcePayload(
+        bc=bc,
+        k_force=k_force,
+        indata_wout=indata_wout,
+        use_force_bss=bool(use_force_bss),
+        bsupu_bss=np.asarray(bsupu_bss, dtype=float),
+        bsupv_bss=np.asarray(bsupv_bss, dtype=float),
+        ru12_bss=ru12_bss,
+        zu12_bss=zu12_bss,
+        rs_bss=rs_bss,
+        zs_bss=zs_bss,
+        crmn_e_sym=crmn_e_sym,
+        czmn_e_sym=czmn_e_sym,
+        bzmn_e_sym=bzmn_e_sym,
+        brmn_e_sym=brmn_e_sym,
+        azmn_e_sym=azmn_e_sym,
+        armn_e_sym=armn_e_sym,
+        geom_bss=geom_bss,
+    )
+
+
+def compute_minimal_wout_derived_profiles(
+    *,
+    bc: Any,
+    trig: Any,
+    s: np.ndarray,
+    signgs: int,
+    mass: np.ndarray,
+    gamma: float,
+    geom: dict[str, Any],
+    vmec_force_norms_from_bcovar_dynamic_func: Any,
+    vmec_wint_from_trig_func: Any,
+    compute_aspectratio_func: Any,
+) -> WoutDerivedProfilePayload:
+    """Compute radial force norms, pressure profiles, and aspect ratio."""
+
+    norms = vmec_force_norms_from_bcovar_dynamic_func(
+        bc=bc,
+        trig=trig,
+        s=s,
+        signgs=int(signgs),
+    )
+    norms = device_get_if_available(norms)
+    vp = np.asarray(norms.vp, dtype=float)
+    wb = float(np.asarray(norms.wb))
+    wp = float(np.asarray(norms.wp))
+    volume = float(np.asarray(norms.volume))
+    betatotal = (wp / wb) if wb != 0.0 else 0.0
+    pres, presf = pressure_profiles_from_mass_vp(mass=mass, vp=vp, gamma=gamma)
+    wint = vmec_wint_from_trig_func(trig)
+    Aminor_p, Rmajor_p, aspect, volume_p, _ = compute_aspectratio_func(
+        R=np.asarray(geom["R"]),
+        Zu=np.asarray(geom["Zu"]),
+        wint=wint,
+    )
+    return WoutDerivedProfilePayload(
+        vp=np.asarray(vp, dtype=float),
+        wb=float(wb),
+        wp=float(wp),
+        volume=float(volume),
+        volume_p=float(volume_p),
+        betatotal=float(betatotal),
+        pres=np.asarray(pres, dtype=float),
+        presf=np.asarray(presf, dtype=float),
+        wint=np.asarray(wint, dtype=float),
+        Aminor_p=float(Aminor_p),
+        Rmajor_p=float(Rmajor_p),
+        aspect=float(aspect),
+    )
+
+
+def prepare_minimal_wout_nyquist_fields(
+    *,
+    state: Any,
+    static: Any,
+    cfg: Any,
+    bc: Any,
+    k_force: Any | None,
+    use_force_bss: bool,
+    bsupu_bss: np.ndarray,
+    bsupv_bss: np.ndarray,
+    ru12_bss: np.ndarray | None,
+    zu12_bss: np.ndarray | None,
+    rs_bss: np.ndarray | None,
+    zs_bss: np.ndarray | None,
+    crmn_e_sym: np.ndarray | None,
+    czmn_e_sym: np.ndarray | None,
+    geom_bss: dict[str, Any],
+    field_options: WoutMinimalFieldOptions,
+    trig: Any,
+    nyq_modes: Any,
+    pres: np.ndarray,
+    s: np.ndarray,
+    mpol: int,
+    ntor: int,
+    nfp: int,
+    ns: int,
+    lasym: bool,
+    timing_enabled: bool,
+    timing: dict[str, float],
+    force_sym_func: Any,
+    apply_bsubv_equif_correction_func: Any,
+    compute_bsubs_half_mesh_func: Any,
+    bsubs_full_mesh_for_wrout_func: Any,
+    filter_lasym_loop_func: Any,
+    filter_symmetric_loop_func: Any,
+    filter_symmetric_parity_func: Any,
+    pshalf_from_s_func: Any,
+    lasym_nyquist_coefficients_func: Any,
+    symmetric_nyquist_coefficients_func: Any,
+    nyquist_cos_coeffs_func: Any,
+    zero_first_surface_func: Any,
+    eval_fourier_func: Any,
+    build_helical_basis_func: Any,
+    vmec_angle_grid_func: Any,
+    dump_bsub_sources_func: Any,
+    dump_bsub_pre_sym_func: Any,
+    dump_bsub_parity_inputs_func: Any,
+) -> WoutNyquistFieldPayload:
+    """Assemble WOUT Nyquist fields and selected Bsub diagnostics."""
+
+    t0 = time.perf_counter() if timing_enabled else None
+    bsupu_out = np.asarray(bc.bsupu)
+    bsupv_out = np.asarray(bc.bsupv)
+    if use_force_bss and (k_force is not None):
+        if hasattr(k_force, "crmn_e") and hasattr(k_force, "czmn_e"):
+            if crmn_e_sym is None:
+                crmn_e_sym = force_sym_func(k_force.crmn_e, "crs")
+            if czmn_e_sym is None:
+                czmn_e_sym = force_sym_func(k_force.czmn_e, "czs")
+            bsupu_out = crmn_e_sym
+            bsupv_out = czmn_e_sym
+
+    bsubu_out = np.asarray(bc.bsubu).copy()
+    bsubv_out = np.asarray(bc.bsubv).copy()
+    bsubu_raw = bsubu_out.copy()
+    bsubv_raw = bsubv_out.copy()
+    bsubv_lasym_asym_source = None
+    bsubv_lasym_asym_filter_u = None
+    if bool(lasym) and hasattr(bc, "bsubv_e"):
+        bsubv_lasym_asym_source = apply_bsubv_equif_correction_func(
+            bsubv=np.asarray(getattr(bc, "bsubv"), dtype=float),
+            bsubv_e=np.asarray(getattr(bc, "bsubv_e"), dtype=float),
+            trig=trig,
+        )
+    dump_bsub_sources_func(bc=bc)
+
+    bsubu_diag, bsubv_diag = select_bsubuv_diagnostic_fields(
+        bc=bc,
+        bsubu_out=bsubu_out,
+        bsubv_out=bsubv_out,
+        field_options=field_options,
+        trig=trig,
+        apply_bsubv_equif_correction_func=apply_bsubv_equif_correction_func,
+    )
+    t_bsubs = time.perf_counter() if timing_enabled else None
+    bsubs_half = compute_bsubs_half_mesh_func(
+        state=state,
+        geom_modes=static.modes,
+        s=np.asarray(s, dtype=float),
+        lconm1=bool(getattr(cfg, "lconm1", True)),
+        lthreed=bool(ntor > 0),
+        lasym=bool(lasym),
+        bsupu=bsupu_bss,
+        bsupv=bsupv_bss,
+        trig=trig,
+        geom=geom_bss,
+        jac_half=bc.jac,
+        force_rs=rs_bss,
+        force_zs=zs_bss,
+        force_ru12=ru12_bss,
+        force_zu12=zu12_bss,
+        apply_scalxc=field_options.apply_bss_scalxc,
+    )
+    if t_bsubs is not None:
+        timing["bsubs_half_s"] = time.perf_counter() - t_bsubs
+    bsubs_full = bsubs_full_mesh_for_wrout_func(bsubs_half=bsubs_half)
+
+    skip_bsub_filter = field_options.skip_bsub_filter
+    if bool(lasym):
+        use_lasym_loop = field_options.use_lasym_loop
+        if (not skip_bsub_filter) and field_options.lasym_filter:
+            use_parity_channels = field_options.lasym_filter_use_parity_channels
+            bsubu_even_filter = getattr(bc, "bsubu_parity_even", None) if use_parity_channels else None
+            bsubu_odd_filter = getattr(bc, "bsubu_parity_odd", None) if use_parity_channels else None
+            bsubv_even_filter = getattr(bc, "bsubv_parity_even", None) if use_parity_channels else None
+            bsubv_odd_filter = getattr(bc, "bsubv_parity_odd", None) if use_parity_channels else None
+            if bsubv_lasym_asym_source is not None:
+                bsubv_lasym_asym_filter_u = np.asarray(bsubu_out, dtype=float).copy()
+            bsubu_out, bsubv_out = filter_lasym_loop_func(
+                bsubu=np.asarray(bsubu_out, dtype=float),
+                bsubv=np.asarray(bsubv_out, dtype=float),
+                trig=trig,
+                mmax_force=max(int(mpol) - 1, 0),
+                nmax_force=int(ntor),
+                s=np.asarray(s, dtype=float),
+                bsubu_even=None if bsubu_even_filter is None else np.asarray(bsubu_even_filter, dtype=float),
+                bsubu_odd=None if bsubu_odd_filter is None else np.asarray(bsubu_odd_filter, dtype=float),
+                bsubv_even=None if bsubv_even_filter is None else np.asarray(bsubv_even_filter, dtype=float),
+                bsubv_odd=None if bsubv_odd_filter is None else np.asarray(bsubv_odd_filter, dtype=float),
+            )
+            if bsubv_lasym_asym_source is not None:
+                _, bsubv_lasym_asym_source = filter_lasym_loop_func(
+                    bsubu=np.asarray(bsubv_lasym_asym_filter_u, dtype=float),
+                    bsubv=np.asarray(bsubv_lasym_asym_source, dtype=float),
+                    trig=trig,
+                    mmax_force=max(int(mpol) - 1, 0),
+                    nmax_force=int(ntor),
+                    s=np.asarray(s, dtype=float),
+                    bsubu_even=None,
+                    bsubu_odd=None,
+                    bsubv_even=None,
+                    bsubv_odd=None,
+                )
+            bsubu_diag = np.asarray(bsubu_out, dtype=float)
+            bsubv_diag = np.asarray(bsubv_out, dtype=float)
+        dump_bsub_pre_sym_func(
+            trig=trig,
+            bsubu=bsubu_out,
+            bsubv=bsubv_out,
+            bsupu=bsupu_out,
+            bsupv=bsupv_out,
+            bsubs=bsubs_full,
+        )
+        nyq = lasym_nyquist_coefficients_func(
+            bc=bc,
+            bsubu_out=np.asarray(bsubu_out, dtype=float),
+            bsubv_out=np.asarray(bsubv_out, dtype=float),
+            bsupu_out=np.asarray(bsupu_out, dtype=float),
+            bsupv_out=np.asarray(bsupv_out, dtype=float),
+            bsubs_full=np.asarray(bsubs_full, dtype=float),
+            bsubv_asym_source=bsubv_lasym_asym_source,
+            pres=np.asarray(pres, dtype=float),
+            ns=int(ns),
+            mpol=int(mpol),
+            ntor=int(ntor),
+            modes=nyq_modes,
+            trig=trig,
+            use_loop=bool(use_lasym_loop),
+        )
+    else:
+        nyq = symmetric_nyquist_coefficients_func(
+            bc=bc,
+            bsubu_out=np.asarray(bsubu_out, dtype=float),
+            bsubv_out=np.asarray(bsubv_out, dtype=float),
+            bsubs_full=np.asarray(bsubs_full, dtype=float),
+            pres=np.asarray(pres, dtype=float),
+            ns=int(ns),
+            modes=nyq_modes,
+            trig=trig,
+            use_loop=bool(field_options.symmetric_wrout_loop),
+        )
+    (
+        gmnc,
+        gmns,
+        bsupumnc,
+        bsupumns,
+        bsupvmnc,
+        bsupvmns,
+        bsubumnc,
+        bsubumns,
+        bsubvmnc,
+        bsubvmns,
+        bsubsmns,
+        bsubsmnc,
+        bmnc,
+        bmns,
+    ) = nyq
+    if t0 is not None:
+        timing["nyquist_coeffs_s"] = time.perf_counter() - t0
+
+    bsubu_phys = None
+    bsubv_phys = None
+    if field_options.mercier_use_wrout_bsubuv:
+        grid_nyq = vmec_angle_grid_func(
+            ntheta=int(cfg.ntheta),
+            nzeta=int(cfg.nzeta),
+            nfp=int(nfp),
+            lasym=bool(lasym),
+        )
+        basis_nyq = build_helical_basis_func(nyq_modes, grid_nyq, cache=True)
+        bsubu_phys = np.asarray(eval_fourier_func(bsubumnc, bsubumns, basis_nyq))
+        bsubv_phys = np.asarray(eval_fourier_func(bsubvmnc, bsubvmns, basis_nyq))
+
+    t_bsub_filter = time.perf_counter() if timing_enabled else None
+    if (not bool(lasym)) and (not skip_bsub_filter):
+        bsubu_diag, bsubv_diag = filter_symmetric_bsubuv_diagnostics_for_wout(
+            bsubu_diag=bsubu_diag,
+            bsubv_diag=bsubv_diag,
+            bc=bc,
+            trig=trig,
+            field_options=field_options,
+            mpol=int(mpol),
+            ntor=int(ntor),
+            s=np.asarray(s, dtype=float),
+            pshalf_from_s_func=pshalf_from_s_func,
+            filter_loop_func=filter_symmetric_loop_func,
+            filter_parity_func=filter_symmetric_parity_func,
+            dump_parity_inputs_func=dump_bsub_parity_inputs_func,
+        )
+    if t_bsub_filter is not None:
+        timing["bsub_filter_s"] = time.perf_counter() - t_bsub_filter
+
+    bsubu_out = np.asarray(bsubu_diag, dtype=float)
+    bsubv_out = np.asarray(bsubv_diag, dtype=float)
+    t_bsub_coeffs = time.perf_counter() if timing_enabled else None
+    if not bool(lasym):
+        bsubumnc = nyquist_cos_coeffs_func(f=bsubu_out, modes=nyq_modes, trig=trig)
+        bsubvmnc = nyquist_cos_coeffs_func(f=bsubv_out, modes=nyq_modes, trig=trig)
+        zero_first_surface_func(bsubumnc, bsubvmnc)
+    if t_bsub_coeffs is not None:
+        timing["bsub_coeffs_s"] = time.perf_counter() - t_bsub_coeffs
+
+    return WoutNyquistFieldPayload(
+        bsupu_out=np.asarray(bsupu_out),
+        bsupv_out=np.asarray(bsupv_out),
+        bsubu_out=np.asarray(bsubu_out),
+        bsubv_out=np.asarray(bsubv_out),
+        bsubu_raw=np.asarray(bsubu_raw),
+        bsubv_raw=np.asarray(bsubv_raw),
+        bsubu_diag=np.asarray(bsubu_diag),
+        bsubv_diag=np.asarray(bsubv_diag),
+        bsubu_phys=bsubu_phys,
+        bsubv_phys=bsubv_phys,
+        bsubs_full=np.asarray(bsubs_full),
+        gmnc=np.asarray(gmnc),
+        gmns=np.asarray(gmns),
+        bsupumnc=np.asarray(bsupumnc),
+        bsupumns=np.asarray(bsupumns),
+        bsupvmnc=np.asarray(bsupvmnc),
+        bsupvmns=np.asarray(bsupvmns),
+        bsubumnc=np.asarray(bsubumnc),
+        bsubumns=np.asarray(bsubumns),
+        bsubvmnc=np.asarray(bsubvmnc),
+        bsubvmns=np.asarray(bsubvmns),
+        bsubsmns=np.asarray(bsubsmns),
+        bsubsmnc=np.asarray(bsubsmnc),
+        bmnc=np.asarray(bmnc),
+        bmns=np.asarray(bmns),
+    )
 
 
 def build_minimal_wout_data_kwargs(
