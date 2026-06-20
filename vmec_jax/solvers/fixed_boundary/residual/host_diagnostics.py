@@ -194,6 +194,68 @@ def evaluate_vmec2000_time_control(
     return tc
 
 
+def dump_residual_evolve_trace(
+    *,
+    dump_evolve_trace: Callable[..., None],
+    iter2: int,
+    iter1: int,
+    stage: str,
+    fsq1: float,
+    fsq_prev: float,
+    time_step: float,
+    dtau: float,
+    b1: float,
+    fac: float,
+    state: Any,
+    velocities: Any,
+    forces: Any | None = None,
+) -> None:
+    """Route residual evolve traces through compact velocity/force blocks."""
+
+    kwargs = {
+        "iter2": int(iter2),
+        "iter1": int(iter1),
+        "stage": str(stage),
+        "fsq1_val": float(fsq1),
+        "fsq_prev_val": float(fsq_prev),
+        "time_step_val": float(time_step),
+        "dtau_val": float(dtau),
+        "b1_val": float(b1),
+        "fac_val": float(fac),
+        "state_val": state,
+        "vRcc_val": velocities.rcc,
+        "vRss_val": velocities.rss,
+        "vRsc_val": velocities.rsc,
+        "vRcs_val": velocities.rcs,
+        "vZsc_val": velocities.zsc,
+        "vZcs_val": velocities.zcs,
+        "vZcc_val": velocities.zcc,
+        "vZss_val": velocities.zss,
+        "vLsc_val": velocities.lsc,
+        "vLcs_val": velocities.lcs,
+        "vLcc_val": velocities.lcc,
+        "vLss_val": velocities.lss,
+    }
+    if forces is not None:
+        kwargs.update(
+            {
+                "frcc_val": forces.rcc,
+                "frss_val": forces.rss,
+                "frsc_val": forces.rsc,
+                "frcs_val": forces.rcs,
+                "fzsc_val": forces.zsc,
+                "fzcs_val": forces.zcs,
+                "fzcc_val": forces.zcc,
+                "fzss_val": forces.zss,
+                "flsc_val": forces.lsc,
+                "flcs_val": forces.lcs,
+                "flcc_val": forces.lcc,
+                "flss_val": forces.lss,
+            }
+        )
+    dump_evolve_trace(**kwargs)
+
+
 def sample_vmec_iteration_scalars(
     *,
     need_scalar: bool,
@@ -428,6 +490,7 @@ def print_residual_iteration_update_status(
 __all__ = [
     "Vmec2000PrintContext",
     "VmecIterationScalars",
+    "dump_residual_evolve_trace",
     "evaluate_vmec2000_time_control",
     "print_compact_converged_status",
     "print_compact_physical_residual_status",
