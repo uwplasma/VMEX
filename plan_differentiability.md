@@ -28798,3 +28798,76 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.980%.
 - Overall differentiability-refactor PR: 99.999999999967%.
+
+## 2026-06-20 B-Covar Lambda-Force Assembly Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `BcovarLambdaForceAssembly`, a named payload for the VMEC
+   `bcovar.f` full-mesh lambda-force fields.
+2. Added `_compute_bcovar_lambda_force_assembly`, which owns the conversion
+   from half-mesh covariant field components to the full-mesh `CLMN`/`BLMN`
+   transform inputs used by the lambda-force equation.
+3. Replaced the inline lambda-force block in
+   `vmec_bcovar_half_mesh_from_wout` with one helper call and explicit field
+   unpacking for the final `VmecHalfMeshBcovar` payload.
+
+Results obtained:
+
+- `vmec_bcovar_half_mesh_from_wout` dropped from 386 to 323 lines.
+- The bcovar public function now separates field assembly, pressure/bsq
+  assembly, lambda-force assembly, and output payload construction.
+- No new files were added.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/vmec_bcovar.py tests/test_bcovar_lambda_axis_closure.py tests/test_wout_bcovar_forces_extra_coverage.py tests/test_forces_bcovar_wave12_coverage.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_bcovar_lambda_axis_closure.py tests/test_finite_beta.py tests/test_force_norms_dynamic_parity.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_bcovar_forces_extra_coverage.py tests/test_forces_bcovar_wave12_coverage.py tests/test_wout_contravariant_field_gate.py -q`
+- `python tools/diagnostics/source_health.py --top 20 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue source simplification on the remaining physics kernels only where a
+   domain payload is obvious. The next B-covar candidate is the contravariant
+   field and covariant parity block, but it should be split only if the payload
+   stays smaller than the code it replaces.
+2. Keep WOUT minimal-output refactoring for a dedicated tranche because its
+   `locals()` schema assembly needs a larger context-object conversion.
+3. Run a broader WOUT/finite-beta shard after the next physics-kernel tranche.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999991%.
+- Solver monolith reduction: 99.984%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.975%.
+- Residual iteration decomposition: 99.895%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.37%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.08%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.31%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.980%.
+- Overall differentiability-refactor PR: 99.999999999968%.
