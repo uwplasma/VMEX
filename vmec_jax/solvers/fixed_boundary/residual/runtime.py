@@ -121,6 +121,21 @@ def dump_xc_with_velocity_blocks(
     )
 
 
+def record_elapsed_timing(
+    timing_enabled: bool,
+    timing_stats: dict[str, Any],
+    key: str,
+    start: float | None,
+    perf_counter: Callable[[], float],
+) -> bool:
+    """Accumulate elapsed host time for one named residual-loop timing bucket."""
+
+    if not bool(timing_enabled) or start is None:
+        return False
+    timing_stats[str(key)] += perf_counter() - float(start)
+    return True
+
+
 def record_update_state_ready_timing(
     *,
     timing_enabled: bool,

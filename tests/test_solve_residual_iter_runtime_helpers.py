@@ -25,6 +25,7 @@ from vmec_jax.solvers.fixed_boundary.residual.runtime import (
     _setup_timer_start,
     _vmec_freeb_plascur_from_bcovar,
     dump_xc_with_velocity_blocks,
+    record_elapsed_timing,
     record_update_state_ready_timing,
     record_update_total_timing,
     resolve_free_boundary_iteration_controls,
@@ -91,6 +92,17 @@ def test_setup_timing_helpers_initialize_and_accumulate():
     assert timings["setup_freeb_policy"] == 2.5
     assert _record_setup_timing(timings, "setup_freeb_policy", 20.0, perf_counter=lambda: 21.0)
     assert timings["setup_freeb_policy"] == 3.5
+
+
+def test_record_elapsed_timing_accumulates_named_bucket_without_touching_disabled_clock() -> None:
+    stats = {"bucket": 1.0}
+
+    assert record_elapsed_timing(True, stats, "bucket", 2.0, lambda: 2.75)
+    assert stats["bucket"] == pytest.approx(1.75)
+
+    assert not record_elapsed_timing(False, stats, "bucket", 2.0, lambda: pytest.fail("disabled timing"))
+    assert not record_elapsed_timing(True, stats, "bucket", None, lambda: pytest.fail("missing start"))
+    assert stats["bucket"] == pytest.approx(1.75)
 
 
 def test_new_residual_iter_timing_stats_preserves_setup_phase_values():
