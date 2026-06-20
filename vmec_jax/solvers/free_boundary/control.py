@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any, Callable, NamedTuple
 
 import numpy as np
 
@@ -95,6 +96,168 @@ def free_boundary_turnon_resets_iter1_immediately(*, lthreed: bool, lasym: bool)
     """Return whether turn-on should immediately reset ``iter1`` for cadence."""
 
     return (not bool(lthreed)) or (not bool(lasym))
+
+
+class FreeBoundaryNestorIterationResult(NamedTuple):
+    """External-vacuum coupling state for one residual-loop iteration."""
+
+    bsqvac_half_current: Any
+    runtime: Any
+    trace_arrays: Any
+    reused: bool
+    solve_time: float
+    sample_time: float
+    last_model: str
+    last_diagnostics: dict[str, Any]
+    ivac: int
+    ivac_effective: int
+    controls_cached: tuple[int, int, int] | None
+
+
+def free_boundary_nestor_iteration_coupling(
+    *,
+    free_boundary_enabled: bool,
+    freeb_couple_edge: bool,
+    state: Any,
+    static: Any,
+    freeb_ivac: int,
+    freeb_ivacskip: int,
+    iter2: int,
+    freeb_nestor_runtime: Any,
+    freeb_plascur: float,
+    external_field_provider_kind: str | None,
+    external_field_provider_static: Any,
+    external_field_provider_params: Any,
+    collect_trace_arrays: bool,
+    freeb_turnon_iter: bool,
+    freeb_ivac_effective: int,
+    freeb_nvacskip: int,
+    controls_cached: tuple[int, int, int] | None,
+    last_model: str,
+    last_diagnostics: dict[str, Any],
+    env_freeb_raise: bool,
+    nestor_external_only_step_func: Callable[..., Any],
+    edge_bsqvac_from_nestor_func: Callable[..., Any],
+    source_reused_history: list[int],
+    provider_allows_source_reuse_history: list[int],
+    bnormal_rms_history: list[float],
+    gsource_rms_history: list[float],
+    bsqvac_rms_history: list[float],
+) -> FreeBoundaryNestorIterationResult:
+    """Run the VMEC-style free-boundary external-vacuum step when active."""
+
+    bsqvac_half_current = None
+    trace_arrays = None
+    reused = False
+    solve_time = 0.0
+    sample_time = 0.0
+    runtime_out = freeb_nestor_runtime
+    model = str(last_model)
+    diagnostics = dict(last_diagnostics)
+    ivac = int(freeb_ivac)
+    ivac_effective = int(freeb_ivac_effective)
+    controls = controls_cached
+
+    if not bool(free_boundary_enabled and freeb_couple_edge):
+        return FreeBoundaryNestorIterationResult(
+            bsqvac_half_current,
+            freeb_nestor_runtime,
+            trace_arrays,
+            reused,
+            solve_time,
+            sample_time,
+            model,
+            diagnostics,
+            ivac,
+            ivac_effective,
+            controls,
+        )
+
+    try:
+        # VMEC enters NESTOR once control is active (`ivac >= 0`); vacuum.f
+        # promotes ivac=0 -> 1 internally on the first turn-on.
+        if ivac < 0:
+            return FreeBoundaryNestorIterationResult(
+                bsqvac_half_current,
+                freeb_nestor_runtime,
+                trace_arrays,
+                reused,
+                solve_time,
+                sample_time,
+                model,
+                diagnostics,
+                ivac,
+                ivac_effective,
+                controls,
+            )
+        nestor_res, runtime_out = nestor_external_only_step_func(
+            state=state,
+            static=static,
+            ivac=ivac,
+            ivacskip=int(freeb_ivacskip),
+            iter_idx=int(iter2),
+            runtime=freeb_nestor_runtime,
+            extcur=tuple(getattr(static, "free_boundary_extcur", ()) or ()),
+            plascur=float(freeb_plascur),
+            external_field_provider_kind=external_field_provider_kind,
+            external_field_provider_static=external_field_provider_static,
+            external_field_provider_params=external_field_provider_params,
+            collect_trace_arrays=bool(collect_trace_arrays),
+        )
+        model = str(getattr(nestor_res, "model", "spectral_poisson_external_only"))
+        reused = bool(getattr(nestor_res, "reused", False))
+        solve_time = float(getattr(nestor_res, "solve_time_s", 0.0))
+        sample_time = float(getattr(nestor_res, "sample_time_s", 0.0))
+        trace_arrays = getattr(nestor_res, "trace_arrays", None)
+        diag_nestor = getattr(nestor_res, "diagnostics", None)
+        if isinstance(diag_nestor, dict):
+            diagnostics = dict(diag_nestor)
+            source_reused_history.append(1 if bool(diag_nestor.get("source_reused", False)) else 0)
+            provider_allows_source_reuse_history.append(
+                1 if bool(diag_nestor.get("provider_allows_source_reuse", False)) else 0
+            )
+            for key, history in (
+                ("bnormal_rms", bnormal_rms_history),
+                ("gsource_rms", gsource_rms_history),
+                ("bsqvac_rms", bsqvac_rms_history),
+            ):
+                try:
+                    history.append(float(diag_nestor.get(key, float("nan"))))
+                except Exception:
+                    history.append(float("nan"))
+        else:
+            source_reused_history.append(0)
+            provider_allows_source_reuse_history.append(0)
+            bnormal_rms_history.append(float("nan"))
+            gsource_rms_history.append(float("nan"))
+            bsqvac_rms_history.append(float("nan"))
+        bsqvac_half_current = edge_bsqvac_from_nestor_func(nestor_res, static)
+        if freeb_turnon_iter:
+            ivac = 1
+            ivac_effective = 1
+            controls = (ivac, int(freeb_ivacskip), int(freeb_nvacskip))
+    except Exception:
+        if env_freeb_raise:
+            raise
+        bsqvac_half_current = None
+        trace_arrays = None
+        reused = False
+        solve_time = 0.0
+        sample_time = 0.0
+
+    return FreeBoundaryNestorIterationResult(
+        bsqvac_half_current,
+        runtime_out,
+        trace_arrays,
+        reused,
+        solve_time,
+        sample_time,
+        model,
+        diagnostics,
+        ivac,
+        ivac_effective,
+        controls,
+    )
 
 
 _zero_velocity_blocks_like = zero_velocity_blocks_like

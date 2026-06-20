@@ -59,6 +59,76 @@ class BacktrackingMomentumSearchResult(NamedTuple):
     accepted: bool
 
 
+class InitialResidualVelocityState(NamedTuple):
+    """Initial residual-loop velocity memory and conservative update caps."""
+
+    velocities: ResidualVelocityBlocks
+    max_coeff_delta_rms: float
+    max_update_rms: float
+
+
+def initial_residual_velocity_state(
+    *,
+    state: Any,
+    mpol: int,
+    nrange: int,
+    host_update_assembly: bool,
+    reference_mode: bool,
+) -> InitialResidualVelocityState:
+    """Create VMEC residual-loop velocity memory with host/JAX array parity."""
+
+    velocity_shape = (int(state.Rcos.shape[0]), int(mpol), int(nrange))
+    if bool(host_update_assembly) and (not _tree_has_tracer(state.Rcos)):
+        v_rcc = np.zeros(velocity_shape, dtype=np.asarray(state.Rcos).dtype)
+    else:
+        v_rcc = jnp.zeros(velocity_shape, dtype=jnp.asarray(state.Rcos).dtype)
+    (
+        v_rss,
+        v_zsc,
+        v_zcs,
+        v_lsc,
+        v_lcs,
+        v_rsc,
+        v_rcs,
+        v_zcc,
+        v_zss,
+        v_lcc,
+        v_lss,
+    ) = zero_velocity_blocks_like(
+        v_rcc,
+        v_rcc,
+        v_rcc,
+        v_rcc,
+        v_rcc,
+        v_rcc,
+        v_rcc,
+        v_rcc,
+        v_rcc,
+        v_rcc,
+        v_rcc,
+    )
+    max_coeff_delta_rms = 5e-6 if bool(reference_mode) else 1e-5
+    max_update_rms = 1e-3 if bool(reference_mode) else 5e-3
+    return InitialResidualVelocityState(
+        ResidualVelocityBlocks(
+            v_rcc,
+            v_rss,
+            v_rsc,
+            v_rcs,
+            v_zsc,
+            v_zcs,
+            v_zcc,
+            v_zss,
+            v_lsc,
+            v_lcs,
+            v_lcc,
+            v_lss,
+        ),
+        max_coeff_delta_rms,
+        max_update_rms,
+    )
+
+
 def candidate_state_from_deltas(
     *,
     state: Any,

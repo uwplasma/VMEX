@@ -64,6 +64,7 @@ from vmec_jax.solvers.fixed_boundary.residual.runtime import (
     _record_setup_timing as _runtime_record_setup_timing,
     _setup_timer_start as _runtime_setup_timer_start,
     _vmec_freeb_plascur_from_bcovar as _runtime_vmec_freeb_plascur_from_bcovar,
+    resolve_residual_profile_window as _resolve_residual_profile_window,
 )
 from vmec_jax.solvers.fixed_boundary.residual.accelerated_scan import (
     run_accelerated_residual_scan as _run_accelerated_residual_scan,
@@ -103,6 +104,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     host_catastrophic_restart_update as _host_catastrophic_restart_update,
     host_force_update_rms as _host_force_update_rms,
     host_momentum_update_np as _host_momentum_update_np,
+    initial_residual_velocity_state as _initial_residual_velocity_state,
     momentum_update_jax as _momentum_update_jax,
     scale_velocity_blocks as _scale_velocity_blocks,
     zero_velocity_blocks_like as _zero_velocity_blocks_like,
@@ -209,6 +211,7 @@ from vmec_jax.solvers.fixed_boundary.diagnostics.axis_reset import (
 )
 from vmec_jax.solvers.free_boundary.control import (
     free_boundary_iter_controls_vmec as _free_boundary_iter_controls_vmec,
+    free_boundary_nestor_iteration_coupling as _free_boundary_nestor_iteration_coupling,
     free_boundary_prev_rz_fsq_next as _free_boundary_prev_rz_fsq_next,
     free_boundary_should_damp_constraint_baseline as _free_boundary_should_damp_constraint_baseline,
     free_boundary_turnon_resets_iter1_immediately as _free_boundary_turnon_resets_iter1_immediately,
@@ -1240,26 +1243,14 @@ def solve_fixed_boundary_residual_iter(
         state = scan_outcome.state
         resume_state = scan_outcome.resume_state
 
-    profile_window = os.getenv("VMEC_JAX_PROFILE_WINDOW", "").strip().lower()
-    profile_dir_env = os.getenv("VMEC_JAX_PROFILE_DIR", "").strip()
-    profile_started = False
-    profile_active = False
-    profile_start_iter = None
-    profile_dir = ""
-    if profile_window and profile_dir_env:
-        if profile_window in ("pre", "iter1", "1"):
-            profile_start_iter = 1
-        else:
-            window_str = profile_window
-            if window_str.startswith("iter"):
-                window_str = window_str[4:]
-            try:
-                profile_start_iter = max(1, int(window_str))
-            except Exception:
-                profile_start_iter = None
-        if profile_start_iter is not None:
-            profile_dir = str(Path(profile_dir_env) / f"window_{profile_window}")
-            profile_active = True
+    profile_window_config = _resolve_residual_profile_window(
+        profile_window_env=os.getenv("VMEC_JAX_PROFILE_WINDOW", ""),
+        profile_dir_env=os.getenv("VMEC_JAX_PROFILE_DIR", ""),
+    )
+    profile_started = profile_window_config.started
+    profile_active = profile_window_config.active
+    profile_start_iter = profile_window_config.start_iter
+    profile_dir = profile_window_config.directory
     profile_perfetto = _runtime_env_enabled(os.getenv("VMEC_JAX_PROFILE_PERFETTO", "1"))
 
     timing_stats = _runtime_new_residual_iter_timing_stats(_setup_phase_timings)
@@ -1329,30 +1320,30 @@ def solve_fixed_boundary_residual_iter(
     inv_tau = [0.15 / time_step] * k_ndamp
     fsq_prev = 1.0
     fsq0_prev = 1.0
-    velocity_shape = (int(state.Rcos.shape[0]), mpol, nrange)
-    if bool(host_update_assembly) and (not _tree_has_tracer(state.Rcos)):
-        vRcc = np.zeros(velocity_shape, dtype=np.asarray(state.Rcos).dtype)
-    else:
-        vRcc = jnp.zeros(velocity_shape, dtype=jnp.asarray(state.Rcos).dtype)
+    _initial_velocity = _initial_residual_velocity_state(
+        state=state,
+        mpol=mpol,
+        nrange=nrange,
+        host_update_assembly=bool(host_update_assembly),
+        reference_mode=bool(reference_mode),
+    )
     (
+        vRcc,
         vRss,
-        vZsc,
-        vZcs,
-        vLsc,
-        vLcs,
         vRsc,
         vRcs,
+        vZsc,
+        vZcs,
         vZcc,
         vZss,
+        vLsc,
+        vLcs,
         vLcc,
         vLss,
-    ) = _zero_velocity_blocks_like(vRcc, vRcc, vRcc, vRcc, vRcc, vRcc, vRcc, vRcc, vRcc, vRcc, vRcc)
+    ) = _initial_velocity.velocities
     flip_sign = float(initial_flip_sign)
-    max_coeff_delta_rms = 1e-5
-    max_update_rms = 5e-3
-    if bool(reference_mode):
-        max_coeff_delta_rms = 5e-6
-        max_update_rms = 1e-3
+    max_coeff_delta_rms = _initial_velocity.max_coeff_delta_rms
+    max_update_rms = _initial_velocity.max_update_rms
     ijacob = 0
     bad_resets = 0
     iter1 = 1
@@ -1790,79 +1781,46 @@ def solve_fixed_boundary_residual_iter(
             freeb_solve_time = 0.0
             freeb_sample_time = 0.0
             freeb_plascur_for_bsqvac = float(freeb_plascur)
-            if bool(free_boundary_enabled and freeb_couple_edge):
-                try:
-                    # VMEC free-boundary path in funct3d only enters NESTOR
-                    # once control is active (`ivac >= 0`), with `vacuum.f`
-                    # promoting ivac=0 -> 1 internally on first turn-on.
-                    if int(freeb_ivac) >= 0:
-                        nestor_res, freeb_nestor_runtime = nestor_external_only_step(
-                            state=state,
-                            static=static,
-                            ivac=int(freeb_ivac),
-                            ivacskip=int(freeb_ivacskip),
-                            iter_idx=int(iter2),
-                            runtime=freeb_nestor_runtime,
-                            extcur=tuple(getattr(static, "free_boundary_extcur", ()) or ()),
-                            plascur=float(freeb_plascur),
-                            external_field_provider_kind=external_field_provider_kind,
-                            external_field_provider_static=external_field_provider_static,
-                            external_field_provider_params=external_field_provider_params,
-                            collect_trace_arrays=bool(adjoint_trace and adjoint_trace_mode in {"full", "branch"}),
-                        )
-                        freeb_last_model = str(getattr(nestor_res, "model", "spectral_poisson_external_only"))
-                        freeb_reused = bool(getattr(nestor_res, "reused", False))
-                        freeb_solve_time = float(getattr(nestor_res, "solve_time_s", 0.0))
-                        freeb_sample_time = float(getattr(nestor_res, "sample_time_s", 0.0))
-                        diag_nestor = getattr(nestor_res, "diagnostics", None)
-                        freeb_nestor_trace_current = getattr(nestor_res, "trace_arrays", None)
-                        if isinstance(diag_nestor, dict):
-                            freeb_last_diagnostics = dict(diag_nestor)
-                            freeb_nestor_source_reused_history.append(
-                                1 if bool(diag_nestor.get("source_reused", False)) else 0
-                            )
-                            freeb_nestor_provider_allows_source_reuse_history.append(
-                                1 if bool(diag_nestor.get("provider_allows_source_reuse", False)) else 0
-                            )
-                            for _key, _hist in (
-                                ("bnormal_rms", freeb_nestor_bnormal_rms_history),
-                                ("gsource_rms", freeb_nestor_gsource_rms_history),
-                                ("bsqvac_rms", freeb_nestor_bsqvac_rms_history),
-                            ):
-                                try:
-                                    _hist.append(float(diag_nestor.get(_key, float("nan"))))
-                                except Exception:
-                                    _hist.append(float("nan"))
-                        else:
-                            freeb_nestor_source_reused_history.append(0)
-                            freeb_nestor_provider_allows_source_reuse_history.append(0)
-                            freeb_nestor_bnormal_rms_history.append(float("nan"))
-                            freeb_nestor_gsource_rms_history.append(float("nan"))
-                            freeb_nestor_bsqvac_rms_history.append(float("nan"))
-                        bsqvac_edge = _edge_bsqvac_from_nestor(nestor_res, static)
-                        # Only the edge slice is consumed by the force kernels.
-                        # Keep this as a 2D edge field so the GPU path does not
-                        # re-transfer a mostly-zero `(ns, ntheta, nzeta)` array
-                        # on every free-boundary iteration.
-                        freeb_bsqvac_half_current = bsqvac_edge
-                        if freeb_turnon_iter:
-                            # VMEC promotes ivac=0 -> 1 inside vacuum.f before
-                            # the same-iteration funct3d restart on turn-on.
-                            freeb_ivac = 1
-                            freeb_ivac_effective = 1
-                            freeb_controls_cached = (
-                                int(freeb_ivac),
-                                int(freeb_ivacskip),
-                                int(freeb_nvacskip),
-                            )
-                except Exception:
-                    if _env_freeb_raise:
-                        raise
-                    freeb_bsqvac_half_current = None
-                    freeb_nestor_trace_current = None
-                    freeb_reused = False
-                    freeb_solve_time = 0.0
-                    freeb_sample_time = 0.0
+            freeb_coupling = _free_boundary_nestor_iteration_coupling(
+                free_boundary_enabled=bool(free_boundary_enabled),
+                freeb_couple_edge=bool(freeb_couple_edge),
+                state=state,
+                static=static,
+                freeb_ivac=int(freeb_ivac),
+                freeb_ivacskip=int(freeb_ivacskip),
+                iter2=int(iter2),
+                freeb_nestor_runtime=freeb_nestor_runtime,
+                freeb_plascur=float(freeb_plascur),
+                external_field_provider_kind=external_field_provider_kind,
+                external_field_provider_static=external_field_provider_static,
+                external_field_provider_params=external_field_provider_params,
+                collect_trace_arrays=bool(adjoint_trace and adjoint_trace_mode in {"full", "branch"}),
+                freeb_turnon_iter=bool(freeb_turnon_iter),
+                freeb_ivac_effective=int(freeb_ivac_effective),
+                freeb_nvacskip=int(freeb_nvacskip),
+                controls_cached=freeb_controls_cached,
+                last_model=freeb_last_model,
+                last_diagnostics=freeb_last_diagnostics,
+                env_freeb_raise=bool(_env_freeb_raise),
+                nestor_external_only_step_func=nestor_external_only_step,
+                edge_bsqvac_from_nestor_func=_edge_bsqvac_from_nestor,
+                source_reused_history=freeb_nestor_source_reused_history,
+                provider_allows_source_reuse_history=freeb_nestor_provider_allows_source_reuse_history,
+                bnormal_rms_history=freeb_nestor_bnormal_rms_history,
+                gsource_rms_history=freeb_nestor_gsource_rms_history,
+                bsqvac_rms_history=freeb_nestor_bsqvac_rms_history,
+            )
+            freeb_bsqvac_half_current = freeb_coupling.bsqvac_half_current
+            freeb_nestor_runtime = freeb_coupling.runtime
+            freeb_nestor_trace_current = freeb_coupling.trace_arrays
+            freeb_reused = freeb_coupling.reused
+            freeb_solve_time = freeb_coupling.solve_time
+            freeb_sample_time = freeb_coupling.sample_time
+            freeb_last_model = freeb_coupling.last_model
+            freeb_last_diagnostics = freeb_coupling.last_diagnostics
+            freeb_ivac = freeb_coupling.ivac
+            freeb_ivac_effective = freeb_coupling.ivac_effective
+            freeb_controls_cached = freeb_coupling.controls_cached
 
             _freeb_bsqvac_half_for_trial_state = partial(
                 _runtime_freeb_trial_bsqvac_half,

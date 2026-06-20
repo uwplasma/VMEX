@@ -3,11 +3,53 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 import numpy as np
 
 from ...._compat import jax as _jax
+
+
+class ResidualProfileWindow(NamedTuple):
+    """Host-side profiling window requested for one residual solve."""
+
+    started: bool
+    active: bool
+    start_iter: int | None
+    directory: str
+
+
+def resolve_residual_profile_window(
+    *,
+    profile_window_env: str,
+    profile_dir_env: str,
+    path_type: type[Path] = Path,
+) -> ResidualProfileWindow:
+    """Parse residual-loop profiling env vars without touching JAX values."""
+
+    profile_window = str(profile_window_env).strip().lower()
+    profile_dir = str(profile_dir_env).strip()
+    if not (profile_window and profile_dir):
+        return ResidualProfileWindow(False, False, None, "")
+
+    if profile_window in ("pre", "iter1", "1"):
+        start_iter = 1
+    else:
+        window_str = profile_window
+        if window_str.startswith("iter"):
+            window_str = window_str[4:]
+        try:
+            start_iter = max(1, int(window_str))
+        except Exception:
+            start_iter = None
+    if start_iter is None:
+        return ResidualProfileWindow(False, False, None, "")
+    return ResidualProfileWindow(
+        False,
+        True,
+        int(start_iter),
+        str(path_type(profile_dir) / f"window_{profile_window}"),
+    )
 
 
 def _device_get_floats(*vals: Any, jax_module: Any | None = None) -> tuple[float, ...]:

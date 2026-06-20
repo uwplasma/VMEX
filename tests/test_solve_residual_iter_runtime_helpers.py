@@ -24,6 +24,7 @@ from vmec_jax.solvers.fixed_boundary.residual.runtime import (
     _scan_print_uses_io_callback,
     _setup_timer_start,
     _vmec_freeb_plascur_from_bcovar,
+    resolve_residual_profile_window,
 )
 
 
@@ -102,6 +103,24 @@ def test_new_residual_iter_timing_stats_preserves_setup_phase_values():
     assert stats["compute_forces"] == pytest.approx(0.0)
     assert stats["iteration_control_fsq1_payload_get"] == pytest.approx(0.0)
     assert stats["finalize_residual_device_get"] == pytest.approx(0.0)
+
+
+def test_resolve_residual_profile_window_parses_iteration_windows():
+    disabled = resolve_residual_profile_window(profile_window_env="", profile_dir_env="/tmp/prof")
+    assert disabled.started is False
+    assert disabled.active is False
+    assert disabled.start_iter is None
+    assert disabled.directory == ""
+
+    active = resolve_residual_profile_window(profile_window_env="iter12", profile_dir_env="/tmp/prof")
+    assert active.started is False
+    assert active.active is True
+    assert active.start_iter == 12
+    assert active.directory.endswith("window_iter12")
+
+    invalid = resolve_residual_profile_window(profile_window_env="iterbad", profile_dir_env="/tmp/prof")
+    assert invalid.active is False
+    assert invalid.start_iter is None
 
 
 def test_ptau_dump_enabled_requires_env_and_directory():
