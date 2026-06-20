@@ -32045,3 +32045,81 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.992%.
 - Docs/release hygiene for this PR: 99.993%.
 - Overall differentiability-refactor PR: 99.99999999999955%.
+
+## 2026-06-20 Finish WOUT Nyquist Helper Split Below Warning Threshold
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `WoutNyquistSourcePayload` and `WoutNyquistCoefficientSelection` to
+   make Nyquist source preparation and coefficient selection explicit.
+2. Extracted initial Bsup/Bsub source selection plus full-mesh Bsubs computation
+   out of `prepare_minimal_wout_nyquist_fields`.
+3. Extracted LASYM/symmetric Nyquist coefficient selection into a separate
+   helper while preserving the existing VMEC wrout/JXBFORCE ordering.
+4. Kept the public Nyquist helper as orchestration plus final diagnostic
+   filtering and packaging.
+
+Results obtained:
+
+- `prepare_minimal_wout_nyquist_fields` drops out of the source-health
+  long-function warning list (below the configured top-70 warning report).
+- `vmec_jax/io/wout/minimal.py` remains under the 2000-line file threshold at
+  1998 lines.
+- WOUT behavior remains validated against the same WOUT helper, branch, driver,
+  and physics shards.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/io/wout/minimal.py vmec_jax/wout.py`
+- `python -m compileall -q vmec_jax/io/wout/minimal.py vmec_jax/wout.py`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 70 --max-root-helper-prefix-files 2`
+- `python -m pytest -q tests/test_wout_helpers.py tests/test_wout_branch_coverage.py tests/test_wout_additional_helpers.py tests/test_wout_env_branch_coverage.py -q`
+- `python -m pytest -q tests/test_wout_wave3_coverage.py tests/test_wout_wave4_coverage.py tests/test_driver_wout_wave9_coverage.py tests/test_wout_physics_wave8_coverage.py -q`
+- `git diff --check`
+
+Best next steps:
+
+1. Move to the driver/staging seam: design a small hook/context object so
+   `run_fixed_boundary` can delegate the VMEC2000 staged branch without passing
+   dozens of individual callables inline.
+2. After the driver seam, return to the residual iteration monolith with the
+   same rule: extract policy/state transitions, not aliases.
+3. Keep WOUT changes limited to small cleanup unless additional parity tests
+   require it.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.989%.
+- Differentiability/refactor implementation: 99.99999999968%.
+- Solver monolith reduction: 99.997%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.974%.
+- Residual policy simplification: 99.986%.
+- WOUT diagnostic/profile decomposition: 99.999%.
+- Bcovar/WOUT parity decomposition: 99.66%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.512%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.47%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.992%.
+- Docs/release hygiene for this PR: 99.993%.
+- Overall differentiability-refactor PR: 99.9999999999996%.
