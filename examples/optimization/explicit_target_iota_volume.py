@@ -2,9 +2,8 @@
 
 This example differentiates *through* the inner VMEC iterations (no implicit
 solve). It is intentionally similar to the implicit example for comparison.
-For the recovered exact fixed-resolution QH route, see
-``qh_fixed_resolution_exact.py`` instead of using this comparison example as a
-production optimization template.
+For the maintained QH optimization workflow, see ``QH_optimization.py`` instead
+of using this comparison example as a production optimization template.
 """
 
 from __future__ import annotations

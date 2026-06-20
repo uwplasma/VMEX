@@ -5,8 +5,7 @@ holding the major-radius mode R00 fixed. The equilibrium solve uses the
 implicit fixed-boundary solver so gradients do not backpropagate through the
 inner iterations.
 
-For the exact discrete-adjoint fixed-resolution quasisymmetry route used in the
-current QH optimization work, see ``qh_fixed_resolution_exact.py``.
+For the maintained QH optimization workflow, see ``QH_optimization.py``.
 """
 
 from __future__ import annotations

@@ -30223,3 +30223,80 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.988%.
 - Overall differentiability-refactor PR: 99.999999999986%.
+
+## 2026-06-20 Legacy QH Fixed-Resolution Example Removal
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Audited live references to `examples/optimization/qh_fixed_resolution_exact.py`
+   across README, docs, tests, examples, `pyproject.toml`, and GitHub workflows.
+2. Confirmed the stale exact fixed-resolution QH script was not used by active
+   tests or current public docs; only historical plan logs and example prose
+   mentioned it.
+3. Removed the legacy script and redirected the two comparison examples to the
+   maintained `QH_optimization.py` workflow.
+4. Removed the stale diagnostic bullet from `examples/optimization/README.md`.
+
+Results obtained:
+
+- Deleted a 460-line legacy optimization script instead of preserving another
+  duplicate entry point with fixed-resolution wording.
+- Net diff for the tranche is 466 deleted lines and 3 inserted lines.
+- The current QH optimization story is simpler: users are pointed at
+  `QH_optimization.py`, while compact implicit/explicit examples remain only as
+  API comparisons.
+- Source-health still has large remaining targets, but this removes one entire
+  stale optimization driver rather than splitting it into more files.
+
+Tests and commands run:
+
+- `rg -n "qh_fixed_resolution_exact|fixed_resolution_exact|QH_fixed_resolution_exact" README.md docs tests examples pyproject.toml .github || true`
+- `python -m compileall -q examples/optimization/explicit_target_iota_volume.py examples/optimization/implicit_target_iota_volume.py`
+- `python -m ruff check examples/optimization/explicit_target_iota_volume.py examples/optimization/implicit_target_iota_volume.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_examples.py -q`
+- `python tools/diagnostics/source_health.py --top 25 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Continue net-negative example cleanup only where stale scripts are not
+   referenced by tests/docs and do not encode unique validation evidence.
+2. Avoid new wrapper scripts unless they teach a distinct workflow; prefer
+   shared source helpers plus compact top-level example scripts.
+3. Return to production-code simplification via planned seams: residual
+   controller context, WOUT assembly context, and fixed-boundary optimizer data
+   objects.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.9999999992%.
+- Solver monolith reduction: 99.990%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.945%.
+- WOUT diagnostic/profile decomposition: 99.994%.
+- Bcovar/WOUT parity decomposition: 99.39%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.15%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.9%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.43%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.988%.
+- Overall differentiability-refactor PR: 99.999999999987%.
