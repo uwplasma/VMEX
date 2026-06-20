@@ -6,6 +6,7 @@ import pytest
 from vmec_jax.solvers.fixed_boundary.residual.update import (
     ResidualVelocityBlocks,
     backtracking_momentum_search,
+    direct_force_fallback_trial,
     force_update_rms,
     host_catastrophic_restart_update,
     host_force_update_rms,
@@ -226,6 +227,35 @@ def test_backtracking_momentum_search_rejects_and_damps_velocity() -> None:
     assert result.update_rms == pytest.approx(0.0)
     for block in result.velocities:
         np.testing.assert_allclose(block, 1.0)
+
+
+def test_direct_force_fallback_trial_caps_step_and_reports_residual() -> None:
+    forces = ResidualVelocityBlocks(*(np.full((2, 3), idx + 1.0) for idx in range(12)))
+    force_rms = host_force_update_rms(1.0, *forces)
+    expected_dt = max(min(0.1, 0.05 / force_rms), 1.0e-12)
+
+    def delta_tuple_from_blocks(dt, transforms, *blocks):
+        return tuple(float(dt) * np.asarray(block) for block in blocks)
+
+    def candidate_state_from_delta_tuple(deltas, **_kwargs):
+        return float(np.mean(deltas[0]))
+
+    result = direct_force_fallback_trial(
+        forces=forces,
+        dt_eff=1.0,
+        max_update_rms=0.05,
+        flip_sign=-1.0,
+        delta_transforms=(),
+        delta_tuple_from_blocks=delta_tuple_from_blocks,
+        candidate_state_from_delta_tuple=candidate_state_from_delta_tuple,
+        freeb_bsqvac_half_for_trial_state=lambda state: ("bsq", state),
+        trial_residual_total=lambda state, bsq: state + bsq[1] + 2.0,
+    )
+
+    assert result.dt_eff == pytest.approx(expected_dt)
+    assert result.state == pytest.approx(-expected_dt)
+    assert result.residual == pytest.approx(2.0 - 2.0 * expected_dt)
+    assert result.update_rms == pytest.approx(host_force_update_rms(expected_dt, *forces))
 
 
 def test_free_boundary_control_module_reexports_velocity_helpers() -> None:
