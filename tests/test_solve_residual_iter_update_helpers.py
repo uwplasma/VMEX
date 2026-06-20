@@ -8,6 +8,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     ResidualVelocityBlocks,
     backtracking_momentum_search,
     controller_state_after_catastrophic_restart_update,
+    controller_state_after_initial_axis_reset_update,
     controller_state_after_pre_restart_update,
     controller_state_after_vmec2000_time_control_restart_update,
     controller_state_from_namespace,
@@ -18,6 +19,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     force_update_rms,
     host_catastrophic_restart_update,
     host_force_update_rms,
+    host_initial_axis_reset_update,
     host_momentum_update_np,
     host_pre_restart_trigger_update,
     host_vmec2000_time_control_restart_update,
@@ -315,6 +317,36 @@ def test_controller_state_applies_restart_update_payloads() -> None:
     assert after_catastrophic.bad_resets == 5
     assert after_catastrophic.bad_growth_streak == state.bad_growth_streak
     assert after_catastrophic.huge_force_restart_count == state.huge_force_restart_count
+
+
+def test_initial_axis_reset_update_preserves_vmec_retry_scalars() -> None:
+    base = initial_residual_controller_state(
+        step_size=0.3,
+        k_ndamp=2,
+        initial_flip_sign=-1.0,
+        state_checkpoint="old-checkpoint",
+    )._replace(fsq_prev=8.0, fsq0_prev=7.0, res0=0.5, res1=0.25)
+    update = host_initial_axis_reset_update(
+        state_checkpoint="new-checkpoint",
+        time_step=base.time_step,
+        iter2=1,
+        prev_rz_fsq_before=0.125,
+        k_ndamp=2,
+    )
+
+    got = controller_state_after_initial_axis_reset_update(base, update)
+
+    assert got.time_step == pytest.approx(0.3)
+    assert got.inv_tau == [0.5, 0.5]
+    assert got.iter1 == 1
+    assert got.ijacob == 1
+    assert got.prev_rz_fsq == pytest.approx(0.125)
+    assert got.bad_growth_streak == 0
+    assert got.state_checkpoint == "new-checkpoint"
+    assert got.fsq_prev == pytest.approx(8.0)
+    assert got.fsq0_prev == pytest.approx(7.0)
+    assert got.res0 == pytest.approx(0.5)
+    assert got.res1 == pytest.approx(0.25)
 
 
 def test_vmec2000_time_control_restart_update_preserves_restart_iter_semantics() -> None:

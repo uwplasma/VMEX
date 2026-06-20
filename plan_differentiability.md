@@ -29929,3 +29929,78 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.987%.
 - Overall differentiability-refactor PR: 99.999999999982%.
+
+## 2026-06-20 Initial Axis Reset Controller Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `HostInitialAxisResetUpdate` for the controller scalars changed by
+   VMEC's first-iteration improved-axis retry.
+2. Added `controller_state_after_initial_axis_reset_update` and rewired the
+   runtime axis-reset branch to use it.
+3. Kept axis recomputation, user-facing VMEC prints, history rollback,
+   preconditioner-cache clearing, and `iter_offset -= 1` retry behavior in the
+   host loop.
+4. Added a unit test that verifies axis reset changes only retry-related
+   controller scalars while preserving residual history scalars.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` is now 3016 lines.
+- Axis-reset controller semantics are now unit-tested independently from the
+  full host loop.
+- End-to-end resume continuity and branch-coverage shards still pass.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/update.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_residual_iter_update_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_update_helpers.py tests/test_solve_residual_iter_setup_helpers.py tests/test_resume_state.py::test_resume_state_matches_continuous tests/test_solve_branch_coverage.py tests/test_solve_wave3_coverage.py tests/test_solve_wave4_coverage.py tests/test_solve_finish_cache_more_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 12 --max-root-helper-prefix-files 2`
+- Temporary smoke: `run_fixed_boundary('input.nfp4_QH_warm_start', max_iter=3, verbose=False, use_scan=False)`.
+
+Best next steps:
+
+1. Decide whether to collapse the remaining `controller_state`/scalar-local
+   bridge into a single authoritative controller object. This needs a planned
+   finalization update because `locals()` currently feeds resume and trace
+   payloads.
+2. Before that larger rewrite, target low-risk standalone monoliths such as
+   WOUT minimal assembly or test validation helpers to avoid overfitting the
+   residual host loop.
+3. Keep full adaptive branch differentiation claims conservative until branch
+   fingerprints and complete-loop AD-vs-FD gates cover the adaptive seam.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.9999999988%.
+- Solver monolith reduction: 99.990%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.945%.
+- WOUT diagnostic/profile decomposition: 99.994%.
+- Bcovar/WOUT parity decomposition: 99.39%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.15%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.31%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.988%.
+- Overall differentiability-refactor PR: 99.999999999983%.

@@ -104,6 +104,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     candidate_state_from_deltas as _candidate_state_from_deltas_helper,
     candidate_state_from_delta_tuple as _candidate_state_from_delta_tuple_helper,
     controller_state_after_catastrophic_restart_update as _controller_state_after_catastrophic_restart_update,
+    controller_state_after_initial_axis_reset_update as _controller_after_axis_reset,
     controller_state_after_pre_restart_update as _controller_state_after_pre_restart_update,
     controller_state_after_vmec2000_time_control_restart_update as _controller_state_after_vmec2000_time_control_restart_update,
     controller_state_from_namespace as _controller_state_from_namespace,
@@ -112,6 +113,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     delta_tuple_from_blocks as _delta_tuple_from_blocks_helper,
     direct_force_fallback_trial as _direct_force_fallback_trial,
     host_catastrophic_restart_update as _host_catastrophic_restart_update,
+    host_initial_axis_reset_update as _host_axis_reset_update,
     host_pre_restart_trigger_update as _host_pre_restart_trigger_update,
     host_vmec2000_time_control_restart_update as _host_vmec2000_time_control_restart_update,
     initial_residual_controller_state as _initial_residual_controller_state,
@@ -2787,18 +2789,16 @@ def solve_fixed_boundary_residual_iter(
                         if axis_reset_coeffs is not None:
                             raxis_cc, _raxis_cs, _zaxis_cc, zaxis_cs = axis_reset_coeffs
                             _print_scan_axis_guess(raxis_cc, zaxis_cs)
-                    state_checkpoint = state
+                    axis_reset_update = _host_axis_reset_update(
+                        state, float(time_step), int(iter2), float(prev_rz_fsq_before), int(k_ndamp)
+                    )
+                    current_controller = _controller_state_from_namespace(locals())
+                    _set_controller_state(_controller_after_axis_reset(current_controller, axis_reset_update))
                     _zero_primary_velocity_blocks()
-                    time_step = float(time_step)
-                    ijacob = 1
                     axis_reset_done = True
-                    iter1 = iter2
                     freeb_controls_cached = None
-                    bad_growth_streak = 0
-                    inv_tau = [0.15 / time_step] * k_ndamp
                     _clear_preconditioner_cache_locals()
                     _pop_iteration_histories()
-                    prev_rz_fsq = prev_rz_fsq_before
                     # VMEC restarts the iteration after axis reset without
                     # advancing the iteration counter. Emulate that by
                     # repeating iter2==1 on the next loop pass.
