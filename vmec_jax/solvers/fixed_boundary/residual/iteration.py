@@ -1592,6 +1592,13 @@ def solve_fixed_boundary_residual_iter(
         nonlocal vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss
         vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss = blocks
 
+    def _zero_all_velocity_blocks() -> None:
+        _set_velocity_blocks(_ResidualVelocityBlocks(*_zero_velocity_blocks_like(*_current_velocity_blocks())))
+
+    def _zero_primary_velocity_blocks() -> None:
+        nonlocal vRcc, vRss, vZsc, vZcs, vLsc, vLcs
+        vRcc, vRss, vZsc, vZcs, vLsc, vLcs = _zero_velocity_blocks_like(vRcc, vRss, vZsc, vZcs, vLsc, vLcs)
+
     def _current_force_blocks() -> _ResidualVelocityBlocks:
         return _ResidualVelocityBlocks(
             frcc_u, frss_u, frsc_u, frcs_u, fzsc_u, fzcs_u, fzcc_u, fzss_u, flsc_u, flcs_u, flcc_u, flss_u
@@ -2142,20 +2149,7 @@ def solve_fixed_boundary_residual_iter(
                 # free-boundary turn-on solve, keeping the cached ns4 blocks
                 # intact across the same-iteration retry.
                 state = state_checkpoint
-                (
-                    vRcc,
-                    vRss,
-                    vZsc,
-                    vZcs,
-                    vLsc,
-                    vLcs,
-                    vRsc,
-                    vRcs,
-                    vZcc,
-                    vZss,
-                    vLcc,
-                    vLss,
-                ) = _zero_velocity_blocks_like(vRcc, vRss, vZsc, vZcs, vLsc, vLcs, vRsc, vRcs, vZcc, vZss, vLcc, vLss)
+                _zero_all_velocity_blocks()
                 time_step_report_hold = float(time_step)
                 ijacob += 1
                 if _free_boundary_turnon_resets_iter1_immediately(
@@ -3121,9 +3115,7 @@ def solve_fixed_boundary_residual_iter(
                             raxis_cc, _raxis_cs, _zaxis_cc, zaxis_cs = axis_reset_coeffs
                             _print_scan_axis_guess(raxis_cc, zaxis_cs)
                     state_checkpoint = state
-                    vRcc, vRss, vZsc, vZcs, vLsc, vLcs = _zero_velocity_blocks_like(
-                        vRcc, vRss, vZsc, vZcs, vLsc, vLcs
-                    )
+                    _zero_primary_velocity_blocks()
                     time_step = float(time_step)
                     ijacob = 1
                     axis_reset_done = True
@@ -3182,22 +3174,7 @@ def solve_fixed_boundary_residual_iter(
                 if tc.restart:
                     pre_restart_reason = tc.pre_restart_reason
                     state = state_checkpoint
-                    (
-                        vRcc,
-                        vRss,
-                        vZsc,
-                        vZcs,
-                        vLsc,
-                        vLcs,
-                        vRsc,
-                        vRcs,
-                        vZcc,
-                        vZss,
-                        vLcc,
-                        vLss,
-                    ) = _zero_velocity_blocks_like(
-                        vRcc, vRss, vZsc, vZcs, vLsc, vLcs, vRsc, vRcs, vZcc, vZss, vLcc, vLss
-                    )
+                    _zero_all_velocity_blocks()
                     # VMEC2000 `restart_iter`: irst=2 (bad-jac) -> dt*0.9,
                     # irst=3 (time-control) -> dt/1.03.
                     if irst_tc == 2:
@@ -3286,20 +3263,7 @@ def solve_fixed_boundary_residual_iter(
                 vLcc_before = vLcc
                 vLss_before = vLss
                 state = state_checkpoint
-                (
-                    vRcc,
-                    vRss,
-                    vZsc,
-                    vZcs,
-                    vLsc,
-                    vLcs,
-                    vRsc,
-                    vRcs,
-                    vZcc,
-                    vZss,
-                    vLcc,
-                    vLss,
-                ) = _zero_velocity_blocks_like(vRcc, vRss, vZsc, vZcs, vLsc, vLcs, vRsc, vRcs, vZcc, vZss, vLcc, vLss)
+                _zero_all_velocity_blocks()
                 pre_restart_update = _host_pre_restart_trigger_update(
                     pre_restart_reason=pre_restart_reason,
                     huge_initial_forces=bool(huge_initial_forces),
@@ -3758,33 +3722,7 @@ def solve_fixed_boundary_residual_iter(
                     )
                     if np.isfinite(w_dir) and (w_dir <= 1.5 * max(w_curr, 1e-30)):
                         state = state_dir
-                        (
-                            vRcc,
-                            vRss,
-                            vZsc,
-                            vZcs,
-                            vLsc,
-                            vLcs,
-                            vRsc,
-                            vRcs,
-                            vZcc,
-                            vZss,
-                            vLcc,
-                            vLss,
-                        ) = _zero_velocity_blocks_like(
-                            vRcc,
-                            vRss,
-                            vZsc,
-                            vZcs,
-                            vLsc,
-                            vLcs,
-                            vRsc,
-                            vRcs,
-                            vZcc,
-                            vZss,
-                            vLcc,
-                            vLss,
-                        )
+                        _zero_all_velocity_blocks()
                         step_status = "fallback_direct"
                         restart_reason = "none"
                         huge_force_restart_count = 0
@@ -3810,9 +3748,7 @@ def solve_fixed_boundary_residual_iter(
                 if catastrophic_restart:
                     # Roll back state and zero velocity.
                     state = state_backup
-                    vRcc, vRss, vZsc, vZcs, vLsc, vLcs = _zero_velocity_blocks_like(
-                        vRcc, vRss, vZsc, vZcs, vLsc, vLcs
-                    )
+                    _zero_primary_velocity_blocks()
                     restart_update = _host_catastrophic_restart_update(
                         probe_bad_jacobian=bool(probe_bad_jacobian),
                         w_try=float(w_try),
