@@ -131,6 +131,32 @@ class SolveVmecResidualResult:
     diagnostics: Dict[str, Any]
 
 
+def solve_vmec_residual_result_from_history(
+    *,
+    state: VMECState,
+    w_history,
+    fsqr2_history,
+    fsqz2_history,
+    fsql2_history,
+    grad_rms_history,
+    step_history,
+    diagnostics: Dict[str, Any],
+) -> SolveVmecResidualResult:
+    """Build a residual-optimizer result from Python histories."""
+
+    return SolveVmecResidualResult(
+        state=state,
+        n_iter=len(w_history) - 1,
+        w_history=np.asarray(w_history, dtype=float),
+        fsqr2_history=np.asarray(fsqr2_history, dtype=float),
+        fsqz2_history=np.asarray(fsqz2_history, dtype=float),
+        fsql2_history=np.asarray(fsql2_history, dtype=float),
+        grad_rms_history=np.asarray(grad_rms_history, dtype=float),
+        step_history=np.asarray(step_history, dtype=float),
+        diagnostics=diagnostics,
+    )
+
+
 class ScanCarry(NamedTuple):
     state: VMECState
     time_step: Any
