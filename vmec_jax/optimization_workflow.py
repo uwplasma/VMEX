@@ -924,89 +924,48 @@ def run_fixed_boundary_objective_optimization(
             solver_device=solver_device,
             exact_path=exact_path,
         )
-        x_scale = (
-            create_x_scale(stage.specs, alpha=float(ess_alpha))
-            if bool(use_ess)
-            else np.ones(len(stage.specs), dtype=float)
-        )
-        # Each continuation stage is built from the previous stage's optimized
-        # VMEC input, so the new optimization vector starts at zero increment.
-        # This avoids reintroducing higher modes from the original deck when a
-        # lower-mode stage intentionally projected them out.
-        params0 = np.zeros(len(stage.specs), dtype=float)
-        nfev = qs_stage_budget(
-            stage_mode=int(stage_limits.mode),
-            max_mode=int(max_mode),
-            max_nfev=int(max_nfev),
-            continuation_nfev=int(continuation_nfev),
-        )
         iota_fn = (
             (lambda state, ctx=stage.ctx: float(mean_iota(ctx, state)))
             if objectives_track_iota(objectives, target_iota=target_iota) or iota_abs_min is not None
             else None
         )
-
-        if int(stage_limits.mode) == int(max_mode):
-            print_qs_problem_summary(
-                method=method,
-                max_nfev=nfev,
-                use_mode_continuation=use_mode_continuation,
-                use_ess=use_ess,
-                ess_alpha=ess_alpha,
-                objectives=objectives,
-                specs=stage.specs,
-                x_scale=np.asarray(x_scale, dtype=float),
-                optimizer=stage.optimizer,
-                params0=params0,
-            )
-        else:
-            print(
-                "Stage "
-                f"{describe_boundary_mode_limits(stage_limits)} continuation seed "
-                f"(budget={nfev}) ..."
-            )
-
-        result = stage.optimizer.run(
-            params0,
+        params0, result = _run_objective_stage_and_save(
+            stage=stage,
+            stage_limits=stage_limits,
+            stage_index=stage_index,
+            max_mode=max_mode,
+            max_nfev=max_nfev,
+            continuation_nfev=continuation_nfev,
             method=method,
-            max_nfev=nfev,
             ftol=ftol,
             gtol=gtol,
             xtol=xtol,
-            x_scale=x_scale,
-            verbose=1 if int(stage_limits.mode) == int(max_mode) else 0,
+            output_dir=output_dir,
+            use_mode_continuation=use_mode_continuation,
+            use_ess=use_ess,
+            ess_alpha=ess_alpha,
+            objectives=objectives,
             iota_fn=iota_fn,
             target_iota=target_iota,
             target_aspect=target_aspect,
+            iota_abs_min=iota_abs_min,
             scipy_tr_solver=scipy_tr_solver,
             scipy_lsmr_maxiter=scipy_lsmr_maxiter,
             lbfgs_step_bound=lbfgs_step_bound,
             scalar_step_bound=scalar_step_bound,
             scalar_cost_only_trials=scalar_cost_only_trials,
-        )
-        if iota_abs_min is not None:
-            result["_history_dump"]["iota_abs_min"] = float(iota_abs_min)
-        save_qs_stage_artifacts(
-            stage_dir=output_dir / f"stage_{stage_index:02d}_{describe_boundary_mode_limits(stage_limits)}",
-            optimizer=stage.optimizer,
-            params_initial=params0,
-            params_final=result["x"],
-            result=result,
-            save_inputs=save_stage_inputs,
-            save_wouts=save_stage_wouts,
+            save_stage_inputs=save_stage_inputs,
+            save_stage_wouts=save_stage_wouts,
             save_rerun_wouts=save_rerun_wouts,
         )
-        attempted_record = (int(stage_limits.mode), stage.optimizer, params0, result)
-        stage_records.append(attempted_record)
-        accepted_record = _select_nonworsening_stage_record(
-            attempted_record,
-            accepted_stage_records,
-            stage_label=describe_boundary_mode_limits(stage_limits),
+        current_indata = _record_accepted_stage(
+            stage_records=stage_records,
+            accepted_stage_records=accepted_stage_records,
+            stage_limits=stage_limits,
+            optimizer=stage.optimizer,
+            params0=params0,
+            result=result,
         )
-        if accepted_record is attempted_record:
-            accepted_stage_records.append(accepted_record)
-        _accepted_mode, accepted_optimizer, _accepted_params0, accepted_result = accepted_record
-        current_indata = accepted_optimizer._indata_from_params(accepted_result["x"])
         current_cfg = config_from_indata(current_indata)
 
     final_optimizer = accepted_stage_records[-1][1]
@@ -1360,86 +1319,47 @@ def run_quasi_isodynamic_objective_optimization(
             solver_device=solver_device,
             exact_path=exact_path,
         )
-        x_scale = (
-            create_x_scale(stage.specs, alpha=float(ess_alpha))
-            if bool(use_ess)
-            else np.ones(len(stage.specs), dtype=float)
-        )
-        # The stage input already contains the previous optimized boundary.
-        # New modes therefore start from their deck values (usually zero after
-        # projection) and all active coefficients are represented as increments.
-        params0 = np.zeros(len(stage.specs), dtype=float)
-        nfev = qs_stage_budget(
-            stage_mode=int(stage_limits.mode),
-            max_mode=int(max_mode),
-            max_nfev=int(max_nfev),
-            continuation_nfev=int(continuation_nfev),
-        )
         iota_fn = (
             (lambda state, ctx=stage.ctx: float(mean_iota(ctx, state)))
             if objectives_track_iota(scalar_objectives) or iota_abs_min is not None
             else None
         )
-        if int(stage_limits.mode) == int(max_mode):
-            print_qs_problem_summary(
-                method=method,
-                max_nfev=nfev,
-                use_mode_continuation=use_mode_continuation,
-                use_ess=use_ess,
-                ess_alpha=ess_alpha,
-                objectives=scalar_objectives,
-                specs=stage.specs,
-                x_scale=np.asarray(x_scale, dtype=float),
-                optimizer=stage.optimizer,
-                params0=params0,
-            )
-            print("QI field objectives:")
-            for term in qi_objectives:
-                print(f"  - {term.name}")
-        else:
-            print(
-                "Stage "
-                f"{describe_boundary_mode_limits(stage_limits)} continuation seed "
-                f"(budget={nfev}) ..."
-            )
-
-        result = stage.optimizer.run(
-            params0,
+        params0, result = _run_objective_stage_and_save(
+            stage=stage,
+            stage_limits=stage_limits,
+            stage_index=stage_index,
+            max_mode=max_mode,
+            max_nfev=max_nfev,
+            continuation_nfev=continuation_nfev,
             method=method,
-            max_nfev=nfev,
             ftol=ftol,
             gtol=gtol,
             xtol=xtol,
-            x_scale=x_scale,
-            verbose=1 if int(stage_limits.mode) == int(max_mode) else 0,
+            output_dir=output_dir,
+            use_mode_continuation=use_mode_continuation,
+            use_ess=use_ess,
+            ess_alpha=ess_alpha,
+            objectives=scalar_objectives,
+            qi_objectives=qi_objectives,
             iota_fn=iota_fn,
             target_aspect=target_aspect,
+            iota_abs_min=iota_abs_min,
             scipy_tr_solver=scipy_tr_solver,
             scipy_lsmr_maxiter=scipy_lsmr_maxiter,
             lbfgs_step_bound=lbfgs_step_bound,
             scalar_step_bound=scalar_step_bound,
             scalar_cost_only_trials=scalar_cost_only_trials,
+            save_stage_inputs=save_stage_inputs,
+            save_stage_wouts=save_stage_wouts,
         )
-        if iota_abs_min is not None:
-            result["_history_dump"]["iota_abs_min"] = float(iota_abs_min)
-        save_qs_stage_artifacts(
-            stage_dir=output_dir / f"stage_{stage_index:02d}_{describe_boundary_mode_limits(stage_limits)}",
+        current_indata = _record_accepted_stage(
+            stage_records=stage_records,
+            accepted_stage_records=accepted_stage_records,
+            stage_limits=stage_limits,
             optimizer=stage.optimizer,
-            params_initial=params0,
-            params_final=result["x"],
+            params0=params0,
             result=result,
-            save_inputs=save_stage_inputs,
-            save_wouts=save_stage_wouts,
         )
-        attempted_record = (int(stage_limits.mode), stage.optimizer, params0, result)
-        stage_records.append(attempted_record)
-        accepted_record = _select_nonworsening_stage_record(
-            attempted_record,
-            accepted_stage_records,
-            stage_label=describe_boundary_mode_limits(stage_limits),
-        )
-        if accepted_record is attempted_record:
-            accepted_stage_records.append(accepted_record)
         write_qi_workflow_stage_checkpoint(
             output_dir=output_dir,
             stage_dir=output_dir / f"stage_{stage_index:02d}_{describe_boundary_mode_limits(stage_limits)}",
@@ -1449,8 +1369,6 @@ def run_quasi_isodynamic_objective_optimization(
             completed_stage_modes=[record[0] for record in stage_records],
             requested_stage_modes=normalized_stage_modes,
         )
-        _accepted_mode, accepted_optimizer, _accepted_params0, accepted_result = accepted_record
-        current_indata = accepted_optimizer._indata_from_params(accepted_result["x"])
         current_cfg = config_from_indata(current_indata)
 
     final_optimizer = accepted_stage_records[-1][1]
@@ -1708,6 +1626,84 @@ def _select_nonworsening_stage_record(
         accepted_stage_records,
         stage_label=stage_label,
     )
+
+
+def _run_objective_stage_and_save(
+    *,
+    stage: FixedBoundaryObjectiveStage,
+    stage_limits,
+    stage_index: int,
+    max_mode: int,
+    max_nfev: int,
+    continuation_nfev: int,
+    output_dir: Path,
+    use_mode_continuation: bool,
+    use_ess: bool,
+    ess_alpha: float,
+    objectives: Sequence[ObjectiveTerm],
+    qi_objectives: Sequence[QIObjectiveTerm] = (),
+    iota_abs_min: float | None = None,
+    save_stage_inputs: bool = True,
+    save_stage_wouts: bool = False,
+    save_rerun_wouts: bool = False,
+    **run_kwargs,
+):
+    x_scale = create_x_scale(stage.specs, alpha=float(ess_alpha)) if bool(use_ess) else np.ones(len(stage.specs))
+    params0 = np.zeros(len(stage.specs), dtype=float)
+    nfev = qs_stage_budget(
+        stage_mode=int(stage_limits.mode),
+        max_mode=max_mode,
+        max_nfev=max_nfev,
+        continuation_nfev=continuation_nfev,
+    )
+    is_final_stage = int(stage_limits.mode) == int(max_mode)
+    if is_final_stage:
+        print_qs_problem_summary(
+            method=run_kwargs["method"],
+            max_nfev=nfev,
+            use_mode_continuation=use_mode_continuation,
+            use_ess=use_ess,
+            ess_alpha=ess_alpha,
+            objectives=objectives,
+            specs=stage.specs,
+            x_scale=np.asarray(x_scale, dtype=float),
+            optimizer=stage.optimizer,
+            params0=params0,
+        )
+        if qi_objectives:
+            print("QI field objectives:")
+            for term in qi_objectives:
+                print(f"  - {term.name}")
+    else:
+        print("Stage " f"{describe_boundary_mode_limits(stage_limits)} continuation seed " f"(budget={nfev}) ...")
+    result = stage.optimizer.run(params0, max_nfev=nfev, x_scale=x_scale, verbose=1 if is_final_stage else 0, **run_kwargs)
+    if iota_abs_min is not None:
+        result["_history_dump"]["iota_abs_min"] = float(iota_abs_min)
+    save_qs_stage_artifacts(
+        stage_dir=output_dir / f"stage_{stage_index:02d}_{describe_boundary_mode_limits(stage_limits)}",
+        optimizer=stage.optimizer,
+        params_initial=params0,
+        params_final=result["x"],
+        result=result,
+        save_inputs=save_stage_inputs,
+        save_wouts=save_stage_wouts,
+        save_rerun_wouts=save_rerun_wouts,
+    )
+    return params0, result
+
+
+def _record_accepted_stage(*, stage_records: list, accepted_stage_records: list, stage_limits, optimizer, params0, result):
+    attempted_record = (int(stage_limits.mode), optimizer, params0, result)
+    stage_records.append(attempted_record)
+    accepted_record = _select_nonworsening_stage_record(
+        attempted_record,
+        accepted_stage_records,
+        stage_label=describe_boundary_mode_limits(stage_limits),
+    )
+    if accepted_record is attempted_record:
+        accepted_stage_records.append(accepted_record)
+    _accepted_mode, accepted_optimizer, _accepted_params0, accepted_result = accepted_record
+    return accepted_optimizer._indata_from_params(accepted_result["x"])
 
 
 def write_qi_workflow_stage_checkpoint(

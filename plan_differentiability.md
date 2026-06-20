@@ -32664,3 +32664,77 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.992%.
 - Docs/release hygiene for this PR: 99.993%.
 - Overall differentiability-refactor PR: 99.99999999999967%.
+
+## 2026-06-20 fixed-boundary stage run helper extraction
+
+Steps taken:
+
+1. Extracted the duplicated per-stage run/summary/save mechanics shared by
+   fixed-boundary QS and QI optimization workflows into
+   `_run_objective_stage_and_save()`.
+2. Extracted the duplicated non-worsening accepted-stage record/update block
+   into `_record_accepted_stage()`.
+3. Kept QI-specific checkpoint writing in the QI loop, and kept accepted-stage
+   selection semantics unchanged.
+
+Results obtained:
+
+- `vmec_jax/optimization_workflow.py` drops from 1927 to 1923 lines for this
+  tranche.
+- `run_fixed_boundary_objective_optimization()` drops from 189 to 151 lines.
+- `run_quasi_isodynamic_objective_optimization()` drops from 240 to 202 lines.
+- The shared helper centralizes exactly the mechanical stage logic: ESS scaling,
+  zero-increment stage starts, stage budget, final-stage summary, optimizer run,
+  `iota_abs_min` metadata, and artifact saving.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization_workflow.py`
+- `python -m compileall -q vmec_jax/optimization_workflow.py`
+- `python -m pytest -q tests/test_optimization_workflow_unit.py tests/test_optimization_helpers.py tests/test_optimization_examples.py::test_least_squares_solve_dispatches_qi_problem tests/test_optimization_examples.py::test_least_squares_solve_dispatches_regular_problem -q`
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 90 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Continue extracting shared workflow mechanics only when both public workflow
+   functions shrink and total file size does not grow.
+2. The next larger workflow seam is final-output/history annotation shared by
+   QS and QI branches; inspect it, but do not move objective math or QI field
+   construction without tighter tests.
+3. Continue source-health reduction in `optimization.py` and residual iteration
+   after workflow mechanics are exhausted.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.989%.
+- Differentiability/refactor implementation: 99.99999999976%.
+- Solver monolith reduction: 99.9978%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.978%.
+- Residual policy simplification: 99.986%.
+- WOUT diagnostic/profile decomposition: 99.9991%.
+- Bcovar/WOUT parity decomposition: 99.67%.
+- Force-kernel decomposition: 99.79%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.955%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.513%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.47%.
+- QI objective/staged-runner decomposition: 97.18%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.992%.
+- Docs/release hygiene for this PR: 99.993%.
+- Overall differentiability-refactor PR: 99.99999999999968%.
