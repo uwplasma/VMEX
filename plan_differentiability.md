@@ -7,6 +7,74 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-20.
 
+## 2026-06-20 Review-Readiness Audit
+
+Current branch: `codex/differentiability-refactor-plan`.
+
+This section is the reviewer-facing checklist for the draft PR. Historical log
+entries below remain useful evidence, but this checklist controls current
+implementation work.
+
+Audit scope:
+
+1. Plan ownership: `plan_differentiability.md` is the active umbrella plan and
+   single source of truth. `plan_freeb.md` is a closed free-boundary evidence
+   log, while `plan.md` and `discrete_adjoint_2506_plan.md` are historical
+   references.
+2. Source structure: keep domain names (`drivers`, `io/wout`, `solvers`,
+   `optimizers`, `external_fields`) instead of adding generic `solve_*` or
+   `driver_*` files. New files are justified only when they remove coupling
+   across a real domain boundary.
+3. Line-count target: `residual/iteration.py` remains the only production file
+   above the 2000-line warning threshold. The next refactor tranches should
+   reduce that file through natural seams: startup policy plumbing,
+   update/fallback assembly, scan handoff, and trace-building inputs.
+4. Differentiability claim boundary: fixed-boundary residual, implicit,
+   discrete-adjoint, branch-local replay, and same-fingerprint free-boundary
+   derivative reports are promoted where AD-vs-FD gates exist. Arbitrary
+   differentiation through adaptive host branch changes remains explicitly
+   unclaimed.
+5. Parity claim boundary: default fixed-boundary and mgrid/free-boundary paths
+   must preserve VMEC2000-compatible input/output semantics. Direct-coil
+   free-boundary paths are research lanes and must keep complete solves as the
+   acceptance authority unless a new gate proves otherwise.
+6. Documentation rule: user docs should describe what is differentiable now,
+   what remains a research lane, how to reproduce validation/optimization
+   examples, and where to change user-facing optimization parameters. Generated
+   WOUTs, mgrids, raw sweep outputs, and uncompressed figures stay out of git.
+7. Test rule: every promoted refactor gets a focused local test covering the
+   affected domain plus `ruff`, `compileall`, `source_health`, and repository
+   size checks when structure or docs change.
+
+Audit results:
+
+- README install, quick-start, `vmec --doctor`, `vmec --test`, Boozer, spline
+  profile, and direct-coil research-lane wording are current and conservative.
+- `docs/code_structure.rst` correctly names this file as the active source of
+  truth and names `plan_freeb.md` as a closed evidence log.
+- `docs/free_boundary_coil_optimization.rst` keeps the free-boundary derivative
+  language branch-local and fingerprint-gated; it does not overclaim arbitrary
+  adaptive host-loop differentiability.
+- `docs/testing_strategy.rst` and `docs/validation.rst` document the required
+  95% coverage gate, fetched VMEC2000 fixtures, optional executable-backed
+  VMEC2000 parity, and repository-size policy.
+- Repository size is within the current gate: tracked size is about `29.39 MiB`
+  with no tracked file above `2 MiB`.
+- PR #20 is open as a single draft umbrella PR and mergeable; current CI is in
+  progress after the latest pushed refactor commits, with docs/build/parity
+  smoke already green at audit time.
+
+Finite steps remaining before marking PR #20 review-ready:
+
+1. Finish one or two more net-negative `residual/iteration.py` tranches without
+   adding new generic files.
+2. Run the focused residual-loop suites plus the two CI buckets previously
+   reproduced locally (`driver-solve-discrete`, `wout-booz-plot-profiles`).
+3. Run source-health and repository-size audits and record their outputs.
+4. Poll CI once after a meaningful delay and fix only real failures.
+5. Keep the PR in draft until those checks are green and the plan percentages
+   below are updated one final time.
+
 ## 2026-06-20 Residual Startup Policy Namespace Reduction
 
 Branch: `codex/differentiability-refactor-plan`.
@@ -4143,7 +4211,7 @@ Examples and docs:
   solves as acceptance authority and optional same-branch derivative reports.
 - `docs/free_boundary_coil_optimization.rst`: current free-boundary claims and
   limitations.
-- `plan_freeb.md`: current phase-1/phase-2/phase-3 execution log.
+- `plan_freeb.md`: closed phase-1/phase-2/phase-3 free-boundary evidence log.
 
 ## Architecture Goals
 
