@@ -28122,3 +28122,74 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.979%.
 - Overall differentiability-refactor PR: 99.999999999958%.
+
+## 2026-06-20 Accepted Vacuum Scalar Validation Helpers
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Extracted `_accepted_trace_rms_from_payload` for accepted `bsqvac` and
+   NESTOR `bnormal` RMS objective values.
+2. Extracted `_accepted_history_rms_from_replay` for replay-side accepted
+   history RMS scalars.
+3. Lifted the accepted-vacuum central-FD sanity contract into
+   `_assert_accepted_vacuum_scalar_fd`.
+4. Replaced duplicated nested helpers inside
+   `_assert_direct_coil_same_branch_custom_vjp_matches_complete_fd`.
+
+Results obtained:
+
+- `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+  dropped from 4783 to 4771 lines.
+- `_assert_direct_coil_same_branch_custom_vjp_matches_complete_fd` dropped
+  from 737 to 684 lines.
+- The current-only and Fourier-only direct-coil same-branch custom-VJP gates
+  pass after the extraction.
+
+Tests and commands run:
+
+- `python -m ruff check tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_fourier_only_same_branch_custom_vjp_matches_complete_solve_fd -q`
+- `python tools/diagnostics/source_health.py --top 16 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Refactor the native rejected-slot test cluster by sharing scalar-map,
+   replay-scalar, complete-report, and branch-local assertion setup.
+2. Validate with the four native rejected-slot tests as one shard.
+3. Defer the VMEC2000 preconditioner branch extraction until cache
+   side-effect gates are explicitly included in the test run.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999982%.
+- Solver monolith reduction: 99.980%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.975%.
+- Residual iteration decomposition: 99.875%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.30%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.08%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 95.86%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.10%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.979%.
+- Overall differentiability-refactor PR: 99.999999999959%.

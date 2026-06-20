@@ -1199,6 +1199,47 @@ def _qs_total_from_state(state, static, indata, signgs):
     return qs["total"]
 
 
+def _accepted_trace_rms_from_payload(payload, *, trace_key: str | None = None, nestor_key: str | None = None) -> float:
+    values = []
+    for trace in payload["traces"]:
+        if trace.get("freeb_bsqvac_half") is None:
+            continue
+        if nestor_key is None:
+            if trace_key is None or trace.get(trace_key) is None:
+                continue
+            value = trace[trace_key]
+        else:
+            nestor_trace = trace.get("freeb_nestor_trace")
+            if not isinstance(nestor_trace, dict) or nestor_trace.get(nestor_key) is None:
+                continue
+            value = nestor_trace[nestor_key]
+        values.append(float(np.sqrt(np.mean(np.square(np.asarray(value, dtype=float))))))
+    return float(np.mean(values)) if values else 0.0
+
+
+def _accepted_history_rms_from_replay(replay, history_key: str) -> object:
+    from vmec_jax._compat import jnp
+
+    history = jnp.asarray(replay["history"][history_key])
+    accepted = jnp.asarray(replay["history"]["accepted"], dtype=history.dtype)
+    active = jnp.asarray(replay["controls"]["has_active_freeb_replay"], dtype=history.dtype)
+    weights = accepted * active
+    denom = jnp.maximum(jnp.sum(weights), jnp.asarray(1.0, dtype=weights.dtype))
+    return jnp.sum(weights * history) / denom
+
+
+def _assert_accepted_vacuum_scalar_fd(values: dict[str, float], *, require_positive_slope: bool) -> None:
+    assert values["base"] > 0.0
+    assert np.isfinite(float(values["plus"]))
+    assert np.isfinite(float(values["minus"]))
+    assert np.isfinite(float(values["central_fd_directional"]))
+    if require_positive_slope:
+        assert values["plus"] > values["minus"]
+        assert values["central_fd_directional"] > 0.0
+    else:
+        assert abs(float(values["central_fd_directional"])) > 1.0e-12
+
+
 def _assert_full_solve_wout_sanity(run, wout_path: Path) -> None:
     from vmec_jax.driver import load_wout, write_wout_from_fixed_boundary_run
 
@@ -2037,59 +2078,6 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         idx00 = int(idx[0]) if idx.size else 0
         return jnp.asarray(state.Rcos)[0, idx00]
 
-    def accepted_bsqvac_rms_from_payload(payload) -> float:
-        values = [
-            float(np.sqrt(np.mean(np.square(np.asarray(trace["freeb_bsqvac_half"], dtype=float)))))
-            for trace in payload["traces"]
-            if trace.get("freeb_bsqvac_half") is not None
-        ]
-        if not values:
-            return 0.0
-        return float(np.mean(values))
-
-    def accepted_bnormal_rms_from_payload(payload) -> float:
-        values = [
-            float(np.sqrt(np.mean(np.square(np.asarray(trace["freeb_nestor_trace"]["bnormal"], dtype=float)))))
-            for trace in payload["traces"]
-            if trace.get("freeb_bsqvac_half") is not None
-            and isinstance(trace.get("freeb_nestor_trace"), dict)
-            and trace["freeb_nestor_trace"].get("bnormal") is not None
-        ]
-        if not values:
-            return 0.0
-        return float(np.mean(values))
-
-    def accepted_bnormal_rms_from_replay(replay) -> object:
-        accepted = jnp.asarray(replay["history"]["accepted"], dtype=jnp.asarray(replay["history"]["bnormal_rms"]).dtype)
-        active = jnp.asarray(
-            replay["controls"]["has_active_freeb_replay"],
-            dtype=jnp.asarray(replay["history"]["bnormal_rms"]).dtype,
-        )
-        weights = accepted * active
-        denom = jnp.maximum(jnp.sum(weights), jnp.asarray(1.0, dtype=weights.dtype))
-        return jnp.sum(weights * jnp.asarray(replay["history"]["bnormal_rms"])) / denom
-
-    def accepted_bsqvac_rms_from_replay(replay) -> object:
-        accepted = jnp.asarray(replay["history"]["accepted"], dtype=jnp.asarray(replay["history"]["bsqvac_rms"]).dtype)
-        active = jnp.asarray(
-            replay["controls"]["has_active_freeb_replay"],
-            dtype=jnp.asarray(replay["history"]["bsqvac_rms"]).dtype,
-        )
-        weights = accepted * active
-        denom = jnp.maximum(jnp.sum(weights), jnp.asarray(1.0, dtype=weights.dtype))
-        return jnp.sum(weights * jnp.asarray(replay["history"]["bsqvac_rms"])) / denom
-
-    def assert_accepted_vacuum_scalar_fd(values: dict[str, float]) -> None:
-        assert values["base"] > 0.0
-        assert np.isfinite(float(values["plus"]))
-        assert np.isfinite(float(values["minus"]))
-        assert np.isfinite(float(values["central_fd_directional"]))
-        if require_positive_accepted_vacuum_scalar_slope:
-            assert values["plus"] > values["minus"]
-            assert values["central_fd_directional"] > 0.0
-        else:
-            assert abs(float(values["central_fd_directional"])) > 1.0e-12
-
     eps = 1.0e-4
     complete_report = direct_coil_same_branch_complete_solve_fd_report(
         input_path,
@@ -2110,8 +2098,8 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                     np.asarray(_lcfs_boundary_moment_from_state(payload["result"].state, payload["init"].static))
                 ),
                 "axis_R": float(np.asarray(axis_R_from_state(payload["result"].state, payload["init"].static))),
-                "accepted_bnormal_rms": accepted_bnormal_rms_from_payload(payload),
-                "accepted_bsqvac_rms": accepted_bsqvac_rms_from_payload(payload),
+                "accepted_bnormal_rms": _accepted_trace_rms_from_payload(payload, nestor_key="bnormal"),
+                "accepted_bsqvac_rms": _accepted_trace_rms_from_payload(payload, trace_key="freeb_bsqvac_half"),
             },
             **(
                 {
@@ -2297,11 +2285,11 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             rtol_by_key["qs_total"] = 2.0e-2
             atol_by_key["qs_total"] = 1.0e-8
         if check_accepted_bsqvac_rms_scalar:
-            replay_scalar_fns["accepted_bsqvac_rms"] = lambda replay, _payload: accepted_bsqvac_rms_from_replay(replay)
+            replay_scalar_fns["accepted_bsqvac_rms"] = lambda replay, _payload: _accepted_history_rms_from_replay(replay, "bsqvac_rms")
             rtol_by_key["accepted_bsqvac_rms"] = 1.0e-2
             atol_by_key["accepted_bsqvac_rms"] = 1.0e-8
         if check_accepted_bnormal_rms_scalar:
-            replay_scalar_fns["accepted_bnormal_rms"] = lambda replay, _payload: accepted_bnormal_rms_from_replay(replay)
+            replay_scalar_fns["accepted_bnormal_rms"] = lambda replay, _payload: _accepted_history_rms_from_replay(replay, "bnormal_rms")
             rtol_by_key["accepted_bnormal_rms"] = 1.0e-2
             atol_by_key["accepted_bnormal_rms"] = 1.0e-8
         scalars_report = direct_coil_same_branch_controller_scalars_custom_vjp_report(
@@ -2461,8 +2449,8 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                         payload["init"].indata,
                         payload["init"].signgs,
                     ),
-                    "accepted_bnormal_rms": accepted_bnormal_rms_from_payload(payload),
-                    "accepted_bsqvac_rms": accepted_bsqvac_rms_from_payload(payload),
+                    "accepted_bnormal_rms": _accepted_trace_rms_from_payload(payload, nestor_key="bnormal"),
+                    "accepted_bsqvac_rms": _accepted_trace_rms_from_payload(payload, trace_key="freeb_bsqvac_half"),
                 }
 
             vector_scalar_keys = tuple(replay_scalar_fns)
@@ -2660,7 +2648,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert moment_report["base_abs_delta"] < 2.0e-3
         if check_accepted_bsqvac_rms_scalar:
             bsqvac_values = complete_report["objective_values"]["accepted_bsqvac_rms"]
-            assert_accepted_vacuum_scalar_fd(bsqvac_values)
+            _assert_accepted_vacuum_scalar_fd(bsqvac_values, require_positive_slope=require_positive_accepted_vacuum_scalar_slope)
             bsqvac_report = scalars_report["scalar_reports"]["accepted_bsqvac_rms"]
             assert bsqvac_report["passed"], bsqvac_report
             assert bsqvac_report["same_branch"] is True
@@ -2668,7 +2656,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             assert bsqvac_report["base_abs_delta"] < 2.0e-3
         if check_accepted_bnormal_rms_scalar:
             bnormal_values = complete_report["objective_values"]["accepted_bnormal_rms"]
-            assert_accepted_vacuum_scalar_fd(bnormal_values)
+            _assert_accepted_vacuum_scalar_fd(bnormal_values, require_positive_slope=require_positive_accepted_vacuum_scalar_slope)
             bnormal_report = scalars_report["scalar_reports"]["accepted_bnormal_rms"]
             assert bnormal_report["passed"], bnormal_report
             assert bnormal_report["same_branch"] is True
@@ -2695,13 +2683,13 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         assert moment_report["base_abs_delta"] < 2.0e-3
     elif check_accepted_bsqvac_rms_scalar:
         bsqvac_values = complete_report["objective_values"]["accepted_bsqvac_rms"]
-        assert_accepted_vacuum_scalar_fd(bsqvac_values)
+        _assert_accepted_vacuum_scalar_fd(bsqvac_values, require_positive_slope=require_positive_accepted_vacuum_scalar_slope)
         bsqvac_report = direct_coil_same_branch_controller_scalar_custom_vjp_report(
             complete_report,
             base_params,
             direction,
             scalar_key="accepted_bsqvac_rms",
-            replay_scalar_fn=lambda replay, _payload: accepted_bsqvac_rms_from_replay(replay),
+            replay_scalar_fn=lambda replay, _payload: _accepted_history_rms_from_replay(replay, "bsqvac_rms"),
             eps=eps,
             rtol=1.0e-2,
             atol=1.0e-8,
@@ -2713,13 +2701,13 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         assert bsqvac_report["base_abs_delta"] < 2.0e-3
     elif check_accepted_bnormal_rms_scalar:
         bnormal_values = complete_report["objective_values"]["accepted_bnormal_rms"]
-        assert_accepted_vacuum_scalar_fd(bnormal_values)
+        _assert_accepted_vacuum_scalar_fd(bnormal_values, require_positive_slope=require_positive_accepted_vacuum_scalar_slope)
         bnormal_report = direct_coil_same_branch_controller_scalar_custom_vjp_report(
             complete_report,
             base_params,
             direction,
             scalar_key="accepted_bnormal_rms",
-            replay_scalar_fn=lambda replay, _payload: accepted_bnormal_rms_from_replay(replay),
+            replay_scalar_fn=lambda replay, _payload: _accepted_history_rms_from_replay(replay, "bnormal_rms"),
             eps=eps,
             rtol=1.0e-2,
             atol=1.0e-8,
