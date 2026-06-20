@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict
 import numpy as np
 
 from ..results import SolveVmecResidualResult
+from ..results import solve_vmec_residual_result_from_history as _solve_vmec_residual_result_from_history
 from ..options import validate_residual_lbfgs_options as _validate_residual_lbfgs_options
 from ..preconditioning.operators import apply_preconditioner as _apply_preconditioner
 from .constraints import enforce_fixed_boundary_and_axis as _enforce_fixed_boundary_and_axis
@@ -17,6 +18,7 @@ from .quasi_newton import ensure_descent_direction as _ensure_descent_direction
 from .quasi_newton import lbfgs_curvature_tolerance as _lbfgs_curvature_tolerance
 from .quasi_newton import lbfgs_two_loop_direction as _lbfgs_two_loop_direction
 from .residual_context import prepare_residual_force_context as _prepare_residual_force_context
+from .residual_context import residual_terms_from_force_context as _residual_terms_from_force_context
 from .residual_objective import assemble_residual_objective_terms as _assemble_residual_objective_terms
 from .tolerances import resolve_grad_tol as _resolve_grad_tol
 from ...._compat import has_jax as _has_jax
@@ -142,65 +144,32 @@ def solve_fixed_boundary_lbfgs_vmec_residual_impl(
     )
     idx00 = residual_context.idx00
     signgs = residual_context.signgs
-    s = residual_context.s
-    wout_like = residual_context.wout_like
-    trig = residual_context.trig
-    constraint_tcon0 = residual_context.constraint_tcon0
-    apply_lforbal = residual_context.apply_lforbal
     ftol_target = residual_context.ftol_target
     edge_Rcos = residual_context.edge_Rcos
     edge_Rsin = residual_context.edge_Rsin
     edge_Zcos = residual_context.edge_Zcos
     edge_Zsin = residual_context.edge_Zsin
-    mask_pack = residual_context.mask_pack
-
-    from ....vmec_forces import vmec_forces_rz_from_wout, vmec_residual_internal_from_kernels
-    from ....vmec_residue import (
-        vmec_force_norms_from_bcovar_dynamic,
-    )
 
     objective_scale_f = float(objective_scale) if objective_scale is not None else None
 
     def _build_terms_fn(scale: float | None):
         def _fsq2_terms_and_jacmin(state: VMECState, zero_m1_zforce: Any):
-            k = vmec_forces_rz_from_wout(
+            terms, jac_min = _residual_terms_from_force_context(
+                context=residual_context,
                 state=state,
                 static=static,
-                wout=wout_like,
-                indata=None,
-                constraint_tcon0=constraint_tcon0,
-                use_vmec_synthesis=True,
-                trig=trig,
-            )
-            rzl = vmec_residual_internal_from_kernels(
-                k,
-                cfg_ntheta=int(static.cfg.ntheta),
-                cfg_nzeta=int(static.cfg.nzeta),
-                wout=wout_like,
-                trig=trig,
-                apply_lforbal=apply_lforbal,
-                include_edge=False,
-                masks=mask_pack,
-            )
-            norms = vmec_force_norms_from_bcovar_dynamic(bc=k.bc, trig=trig, s=s, signgs=signgs)
-            terms = assemble_residual_objective_terms_func(
-                frzl=rzl,
-                norms=norms,
-                s=s,
+                zero_m1_zforce=zero_m1_zforce,
                 w_rz=w_rz,
                 w_l=w_l,
-                zero_m1_zforce=zero_m1_zforce,
-                lconm1=bool(getattr(static.cfg, "lconm1", True)),
                 apply_m1_constraints=bool(apply_m1_constraints),
                 zero_m1_after_m1_constraints=False,
                 include_edge=False,
-                apply_scalxc=True,
                 zero_edge_rz_blocks=False,
                 objective_scale=scale,
+                assemble_residual_objective_terms_func=assemble_residual_objective_terms_func,
+                compute_jac_min=True,
+                jnp_module=jnp_module,
             )
-
-            jac = signgs * jnp_module.asarray(k.bc.jac.sqrtg)
-            jac_min = jnp_module.min(jac) if jac.shape[0] <= 1 else jnp_module.min(jac[1:, :, :])
             return terms.fsqr2, terms.fsqz2, terms.fsql2, terms.w, jac_min
 
         return _fsq2_terms_and_jacmin
@@ -419,14 +388,13 @@ def solve_fixed_boundary_lbfgs_vmec_residual_impl(
         "grad_tol": None if grad_tol_eff is None else float(grad_tol_eff),
         "zero_m1_fsqz_thresh": float(zero_m1_fsqz_target),
     }
-    return SolveVmecResidualResult(
+    return _solve_vmec_residual_result_from_history(
         state=state,
-        n_iter=len(w_history) - 1,
-        w_history=np.asarray(w_history, dtype=float),
-        fsqr2_history=np.asarray(fsqr2_history, dtype=float),
-        fsqz2_history=np.asarray(fsqz2_history, dtype=float),
-        fsql2_history=np.asarray(fsql2_history, dtype=float),
-        grad_rms_history=np.asarray(grad_rms_history, dtype=float),
-        step_history=np.asarray(step_history, dtype=float),
+        w_history=w_history,
+        fsqr2_history=fsqr2_history,
+        fsqz2_history=fsqz2_history,
+        fsql2_history=fsql2_history,
+        grad_rms_history=grad_rms_history,
+        step_history=step_history,
         diagnostics=diag,
     )

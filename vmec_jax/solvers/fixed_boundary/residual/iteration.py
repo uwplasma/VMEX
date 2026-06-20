@@ -294,8 +294,16 @@ _m1_internal_to_physical_pair = _geometry_m1_internal_to_physical_pair
 _mn_sin_to_signed_physical_batch = _geometry_mn_sin_to_signed_physical_batch
 _rz_norm_np = _geometry_rz_norm_np
 
-_strict_update_step_jit = partial(_precond_payload_facade._strict_update_step_jit, has_jax_func=has_jax)
-_accepted_control_payload_jit = partial(_precond_payload_facade._accepted_control_payload_jit, has_jax_func=has_jax)
+def _strict_update_step_jit(*args, **kwargs):
+    kwargs.setdefault("has_jax_func", has_jax)
+    return _precond_payload_facade._strict_update_step_jit(*args, **kwargs)
+
+
+def _accepted_control_payload_jit(*args, **kwargs):
+    kwargs.setdefault("has_jax_func", has_jax)
+    return _precond_payload_facade._accepted_control_payload_jit(*args, **kwargs)
+
+
 _cached_or_current_f_norm1_jax = _precond_payload_facade._cached_or_current_f_norm1_jax
 
 _ptau_compute_jit = _precond_payload_facade._ptau_compute_jit

@@ -200,3 +200,83 @@ def prepare_residual_force_context(
         edge_Zsin=jnp_module.asarray(state0.Zsin)[-1, :],
         mask_pack=getattr(static, "tomnsps_masks", None),
     )
+
+
+def residual_terms_from_force_context(
+    *,
+    context: ResidualForceContext,
+    state,
+    static,
+    zero_m1_zforce: Any,
+    w_rz: float,
+    w_l: float,
+    apply_m1_constraints: bool,
+    zero_m1_after_m1_constraints: bool,
+    include_edge: bool,
+    zero_edge_rz_blocks: bool,
+    objective_scale: float | None,
+    assemble_residual_objective_terms_func: Callable[..., Any] | None = None,
+    compute_jac_min: bool = False,
+    jnp_module: Any | None = None,
+) -> tuple[Any, Any | None]:
+    """Evaluate VMEC residual objective terms from a prepared force context.
+
+    L-BFGS and Gauss-Newton use different step policies, but the physics work is
+    the same: build VMEC force kernels, convert them to residual blocks, compute
+    VMEC normalization factors, then assemble the weighted objective terms.
+    Keeping that seam here avoids policy-specific copies drifting apart.
+    """
+
+    if jnp_module is None:
+        jnp_module = jnp
+    if assemble_residual_objective_terms_func is None:
+        from .residual_objective import assemble_residual_objective_terms as assemble_residual_objective_terms_func
+    from ....vmec_forces import vmec_forces_rz_from_wout, vmec_residual_internal_from_kernels
+    from ....vmec_residue import vmec_force_norms_from_bcovar_dynamic
+
+    kernels = vmec_forces_rz_from_wout(
+        state=state,
+        static=static,
+        wout=context.wout_like,
+        indata=None,
+        constraint_tcon0=context.constraint_tcon0,
+        use_vmec_synthesis=True,
+        trig=context.trig,
+    )
+    rzl = vmec_residual_internal_from_kernels(
+        kernels,
+        cfg_ntheta=int(static.cfg.ntheta),
+        cfg_nzeta=int(static.cfg.nzeta),
+        wout=context.wout_like,
+        trig=context.trig,
+        apply_lforbal=context.apply_lforbal,
+        include_edge=False,
+        masks=context.mask_pack,
+    )
+    norms = vmec_force_norms_from_bcovar_dynamic(
+        bc=kernels.bc,
+        trig=context.trig,
+        s=context.s,
+        signgs=context.signgs,
+    )
+    terms = assemble_residual_objective_terms_func(
+        frzl=rzl,
+        norms=norms,
+        s=context.s,
+        w_rz=w_rz,
+        w_l=w_l,
+        zero_m1_zforce=zero_m1_zforce,
+        lconm1=bool(getattr(static.cfg, "lconm1", True)),
+        apply_m1_constraints=bool(apply_m1_constraints),
+        zero_m1_after_m1_constraints=bool(zero_m1_after_m1_constraints),
+        include_edge=bool(include_edge),
+        apply_scalxc=True,
+        zero_edge_rz_blocks=bool(zero_edge_rz_blocks),
+        objective_scale=objective_scale,
+    )
+
+    jac_min = None
+    if compute_jac_min:
+        jac = context.signgs * jnp_module.asarray(kernels.bc.jac.sqrtg)
+        jac_min = jnp_module.min(jac) if jac.shape[0] <= 1 else jnp_module.min(jac[1:, :, :])
+    return terms, jac_min

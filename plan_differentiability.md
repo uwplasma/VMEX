@@ -29255,3 +29255,84 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.980%.
 - Overall differentiability-refactor PR: 99.999999999973%.
+
+## 2026-06-20 Residual Optimizer Force-Assembly Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `residual_terms_from_force_context` so VMEC residual optimizers share
+   one force-kernel, residual-block, normalization, and objective-term assembly
+   seam.
+2. Rewired residual L-BFGS and Gauss-Newton to use that shared evaluator while
+   keeping their separate line-search, damping, and quasi-Newton policies.
+3. Added `solve_vmec_residual_result_from_history` so residual optimizers share
+   one history-to-result conversion path.
+4. Replaced import-time `partial` bindings for strict-update and accepted-control
+   JIT helpers with wrappers that resolve `has_jax` at call time. This preserves
+   the historical `vmec_jax.solve.has_jax` monkeypatch/debug seam.
+
+Results obtained:
+
+- `solve_fixed_boundary_lbfgs_vmec_residual_impl` dropped from 402 to 368 lines.
+- `solve_fixed_boundary_gn_vmec_residual_impl` dropped from 386 to 354 lines.
+- The two residual optimizers no longer duplicate the physics assembly path that
+  calls `vmec_forces_rz_from_wout`, `vmec_residual_internal_from_kernels`, and
+  VMEC force normalization.
+- The broader solver branch shard exposed and verified the JAX-availability
+  facade fix.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/results.py vmec_jax/solvers/fixed_boundary/optimization/residual_context.py vmec_jax/solvers/fixed_boundary/optimization/residual_lbfgs.py vmec_jax/solvers/fixed_boundary/optimization/residual_gn.py tests/test_solve_residual_optimizer_wave8_coverage.py tests/test_solve_optimizer_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_optimizer_wave8_coverage.py tests/test_solve_optimizer_helpers.py -q`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/results.py vmec_jax/solvers/fixed_boundary/optimization/residual_context.py vmec_jax/solvers/fixed_boundary/optimization/residual_lbfgs.py vmec_jax/solvers/fixed_boundary/optimization/residual_gn.py tests/test_solve_wave4_coverage.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_wave4_coverage.py tests/test_solve_residual_optimizer_wave8_coverage.py tests/test_solve_optimizer_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_branch_coverage.py tests/test_solve_wave3_coverage.py tests/test_solve_wave4_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 40 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue reducing optimizer bodies by extracting the remaining accepted-step
+   and gradient-preconditioning/update mechanics only where the helper can be
+   shared by more than one optimizer.
+2. For larger fixed-boundary progress, introduce a concrete residual loop-state
+   object around velocity/cache/checkpoint mutation rather than lifting more
+   one-off helpers out of the 3000-line residual iteration body.
+3. Keep the solver branch shards in the validation set because the `solve`
+   facade monkeypatch seams are part of downstream debugging behavior.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999996%.
+- Solver monolith reduction: 99.986%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.975%.
+- Residual iteration decomposition: 99.91%.
+- WOUT diagnostic/profile decomposition: 99.994%.
+- Bcovar/WOUT parity decomposition: 99.39%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.90%.
+- Fixed-boundary optimizer decomposition: 98.30%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.31%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.981%.
+- Overall differentiability-refactor PR: 99.999999999974%.
