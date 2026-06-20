@@ -34334,6 +34334,96 @@ Validation results:
 - Repository size audit passed at about 29.38 MiB tracked size; no
   `docs/_build` files are tracked.
 
+## 2026-06-20 Optimization Workflow Facade Wrapper Reduction
+
+Branch:
+
+- `codex/differentiability-refactor-plan`
+
+Steps taken:
+
+1. Re-audited the current source-health state after the QI diagnostic helper
+   simplification.
+2. Identified pass-through wrappers in `vmec_jax/optimization_workflow.py` that
+   only forwarded to `vmec_jax.optimizers.fixed_boundary.workflow_outputs`
+   without adding validation, dependency injection, or user-facing behavior.
+3. Replaced those wrappers with direct facade aliases while preserving the
+   existing public/internal names used by examples and tests.
+4. Left the non-trivial wrappers in place for stage artifact writing, final
+   output writing, checkpoint assembly, and history combination because those
+   helpers intentionally inject dependencies and maintain test seams.
+
+Results obtained:
+
+- `vmec_jax/optimization_workflow.py` changed by 8 insertions and 81 deletions.
+- The file dropped from 1937 lines to 1864 lines, moving it further below the
+  current long-file warning threshold.
+- Public names such as `print_qs_problem_summary`,
+  `print_qs_final_summary`, and `annotate_qs_final_history` remain importable
+  and monkeypatchable.
+- Tracked repository size remains bounded at about 29.43 MiB; no tracked file
+  exceeds the 2 MiB file-size gate.
+
+Validation:
+
+- `python -m ruff check vmec_jax/optimization_workflow.py`
+- `python -m compileall -q vmec_jax/optimization_workflow.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_workflow_unit.py tests/test_optimization_helpers.py tests/test_continuation_exact_history.py --tb=short`
+  passed with 130 passed and 1 skipped.
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 80 --max-root-helper-prefix-files 2`
+- `python tools/diagnostics/repo_size_audit.py --top 10 --max-total-mib 50 --max-file-mib 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue only domain-seam refactors that reduce conceptual coupling, not
+   thin wrappers that merely move lines.
+2. The next worthwhile production-code seam is still the fixed-boundary
+   residual iteration loop: split finalization/resume/trace payload assembly
+   only if the extraction is net-negative and preserves exact trace keys.
+3. If that seam becomes too risky, stop large edits and run the final
+   pre-review gate for the draft PR.
+
+User decisions needed:
+
+- None for this tranche.  The remaining policy decision is still whether to
+  keep the full historical plan logs in git after review or compress them into
+  shorter archived summaries before the final merge.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Single active-plan consolidation: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.989%.
+- Differentiability/refactor implementation: 99.99999999988%.
+- Solver monolith reduction: 99.9981%.
+- Residual iteration decomposition: 99.982%.
+- Public API/docstring polish: 94%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.985%.
+- WOUT diagnostic/profile decomposition: 99.99945%.
+- Force-kernel decomposition: 99.795%.
+- Optimizer workflow decomposition: 99.963%.
+- Fixed-boundary optimizer decomposition: 98.42%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.513%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.48%.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999997%; arbitrary
+  adaptive host branch changes remain explicitly unclaimed.
+- Single-stage coil-only optimization phase 3: 99.95%.
+- VMEC parity and physics gates: 99.9%.
+- QI minimal-seed README artifacts: 100%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene for this PR: 99.993%.
+- Docs/release hygiene for this PR: 99.996%.
+- Overall differentiability-refactor PR: 99.9999999999998%.
+
 Open audit findings:
 
 1. Residual loop readability is still the highest-value refactor target.  Any

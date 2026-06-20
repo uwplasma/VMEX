@@ -26,7 +26,6 @@ from .field import signgs_from_sqrtg
 from .geom import eval_geom
 from .init_guess import initial_guess_from_boundary
 from .optimization import (
-    BoundaryParamSpec,
     FixedBoundaryExactOptimizer,
     boundary_param_specs,
     create_x_scale,
@@ -1546,48 +1545,8 @@ def least_squares_solve(
     )
 
 
-def print_qs_problem_summary(
-    *,
-    method: str,
-    max_nfev: int,
-    use_mode_continuation: bool,
-    use_ess: bool,
-    ess_alpha: float,
-    objectives: Sequence[ObjectiveTerm],
-    specs: Sequence[BoundaryParamSpec],
-    x_scale: np.ndarray,
-    optimizer,
-    params0,
-) -> None:
-    """Print the assembled fixed-boundary least-squares problem summary."""
-
-    return _workflow_outputs.print_qs_problem_summary(
-        method=method,
-        max_nfev=max_nfev,
-        use_mode_continuation=use_mode_continuation,
-        use_ess=use_ess,
-        ess_alpha=ess_alpha,
-        objectives=objectives,
-        specs=specs,
-        x_scale=x_scale,
-        optimizer=optimizer,
-        params0=params0,
-    )
-
-
-def print_qs_final_summary(
-    result: dict,
-    *,
-    target_iota: float | None = None,
-    iota_abs_min: float | None = None,
-) -> None:
-    """Print final fixed-boundary optimization diagnostics."""
-
-    return _workflow_outputs.print_qs_final_summary(
-        result,
-        target_iota=target_iota,
-        iota_abs_min=iota_abs_min,
-    )
+print_qs_problem_summary = _workflow_outputs.print_qs_problem_summary
+print_qs_final_summary = _workflow_outputs.print_qs_final_summary
 
 
 def save_qs_stage_artifacts(
@@ -1617,21 +1576,8 @@ def save_qs_stage_artifacts(
     )
 
 
-def _result_objective_final(result) -> float:
-    return _workflow_outputs.result_objective_final(result)
-
-
-def _select_nonworsening_stage_record(
-    attempted_record,
-    accepted_stage_records,
-    *,
-    stage_label: str,
-):
-    return _workflow_outputs.select_nonworsening_stage_record(
-        attempted_record,
-        accepted_stage_records,
-        stage_label=stage_label,
-    )
+_result_objective_final = _workflow_outputs.result_objective_final
+_select_nonworsening_stage_record = _workflow_outputs.select_nonworsening_stage_record
 
 
 def _run_objective_stage_and_save(
@@ -1768,23 +1714,7 @@ def save_qs_final_outputs(
     )
 
 
-def annotate_qs_final_history(
-    final_result: dict,
-    *,
-    label: str,
-    target_aspect: float | None = None,
-    target_iota: float | None = None,
-    iota_abs_min: float | None = None,
-) -> None:
-    """Attach final target metadata to an optimization history dictionary."""
-
-    return _workflow_outputs.annotate_qs_final_history(
-        final_result,
-        label=label,
-        target_aspect=target_aspect,
-        target_iota=target_iota,
-        iota_abs_min=iota_abs_min,
-    )
+annotate_qs_final_history = _workflow_outputs.annotate_qs_final_history
 
 
 def combine_qs_stage_histories(
@@ -1840,8 +1770,7 @@ def _qi_options_stage_kwargs(qi_options: QuasiIsodynamicOptions) -> dict[str, ob
     }
 
 
-def _remove_stale(path: Path) -> None:
-    return _workflow_outputs.remove_stale(path)
+_remove_stale = _workflow_outputs.remove_stale
 
 
 def _stage_mode_checkpoint_descriptor(stage_mode) -> dict[str, object]:
@@ -1851,12 +1780,10 @@ def _stage_mode_checkpoint_descriptor(stage_mode) -> dict[str, object]:
     )
 
 
-def _write_json_atomic(path: Path, payload: object) -> None:
-    return _workflow_outputs.write_json_atomic(path, payload)
+_write_json_atomic = _workflow_outputs.write_json_atomic
 
 
-def _json_safe(value):
-    return _workflow_outputs.json_safe(value)
+_json_safe = _workflow_outputs.json_safe
 
 
 __all__ = [
