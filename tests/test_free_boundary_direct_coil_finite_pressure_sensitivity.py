@@ -1151,6 +1151,33 @@ def _trace_scalar_value(value: object) -> float:
     return float(np.asarray(value).reshape(-1)[0])
 
 
+def _lcfs_boundary_moment_from_state(state, static):
+    from vmec_jax._compat import jnp
+    from vmec_jax.free_boundary_adjoint import free_boundary_boundary_geometry_jax
+
+    geometry = free_boundary_boundary_geometry_jax(state, static)
+    R = jnp.asarray(geometry["R"])
+    Z = jnp.asarray(geometry["Z"])
+    return jnp.mean((R - 1.0) * (R - 1.0) + Z * Z)
+
+
+def _qs_total_from_state(state, static, indata, signgs):
+    from vmec_jax.quasisymmetry import quasisymmetry_ratio_residual_from_state
+
+    qs = quasisymmetry_ratio_residual_from_state(
+        state=state,
+        static=static,
+        indata=indata,
+        signgs=int(signgs),
+        surfaces=[0.5],
+        helicity_m=1,
+        helicity_n=0,
+        ntheta=7,
+        nphi=8,
+    )
+    return qs["total"]
+
+
 def _assert_full_solve_wout_sanity(run, wout_path: Path) -> None:
     from vmec_jax.driver import load_wout, write_wout_from_fixed_boundary_run
 
@@ -1970,7 +1997,6 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         direct_coil_branch_local_scalars_report_from_complete_fd,
         direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax,
         direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax,
-        free_boundary_boundary_geometry_jax,
         direct_coil_same_branch_physical_scalar_gate_report,
         direct_coil_same_branch_controller_scalar_custom_vjp_report,
         direct_coil_same_branch_controller_scalars_custom_vjp_report,
@@ -1980,7 +2006,6 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
     )
     from vmec_jax.state import pack_state
     from vmec_jax.wout import equilibrium_aspect_ratio_from_state
-    from vmec_jax.quasisymmetry import quasisymmetry_ratio_residual_from_state
 
     def state_norm_objective(state) -> float:
         packed = np.asarray(pack_state(state), dtype=float)
@@ -1990,26 +2015,6 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
         idx = np.where((np.asarray(static.modes.m) == 0) & (np.asarray(static.modes.n) == 0))[0]
         idx00 = int(idx[0]) if idx.size else 0
         return jnp.asarray(state.Rcos)[0, idx00]
-
-    def lcfs_boundary_moment(state, static):
-        geometry = free_boundary_boundary_geometry_jax(state, static)
-        R = jnp.asarray(geometry["R"])
-        Z = jnp.asarray(geometry["Z"])
-        return jnp.mean((R - 1.0) * (R - 1.0) + Z * Z)
-
-    def qs_total_from_state(state, static, indata, signgs):
-        qs = quasisymmetry_ratio_residual_from_state(
-            state=state,
-            static=static,
-            indata=indata,
-            signgs=int(signgs),
-            surfaces=[0.5],
-            helicity_m=1,
-            helicity_n=0,
-            ntheta=7,
-            nphi=8,
-        )
-        return qs["total"]
 
     def accepted_bsqvac_rms_from_payload(payload) -> float:
         values = [
@@ -2081,7 +2086,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                     )
                 ),
                 "lcfs_boundary_moment": float(
-                    np.asarray(lcfs_boundary_moment(payload["result"].state, payload["init"].static))
+                    np.asarray(_lcfs_boundary_moment_from_state(payload["result"].state, payload["init"].static))
                 ),
                 "axis_R": float(np.asarray(axis_R_from_state(payload["result"].state, payload["init"].static))),
                 "accepted_bnormal_rms": accepted_bnormal_rms_from_payload(payload),
@@ -2091,7 +2096,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                 {
                     "qs_total": float(
                         np.asarray(
-                            qs_total_from_state(
+                            _qs_total_from_state(
                                 payload["result"].state,
                                 payload["init"].static,
                                 payload["init"].indata,
@@ -2255,14 +2260,14 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             rtol_by_key["axis_R"] = 5.0e-3
             atol_by_key["axis_R"] = 5.0e-8
         if check_boundary_moment_scalar:
-            replay_scalar_fns["lcfs_boundary_moment"] = lambda replay, payload: lcfs_boundary_moment(
+            replay_scalar_fns["lcfs_boundary_moment"] = lambda replay, payload: _lcfs_boundary_moment_from_state(
                 replay["state"],
                 payload["init"].static,
             )
             rtol_by_key["lcfs_boundary_moment"] = 5.0e-3
             atol_by_key["lcfs_boundary_moment"] = 5.0e-8
         if check_qs_total_scalar:
-            replay_scalar_fns["qs_total"] = lambda replay, payload: qs_total_from_state(
+            replay_scalar_fns["qs_total"] = lambda replay, payload: _qs_total_from_state(
                 replay["state"],
                 payload["init"].static,
                 payload["init"].indata,
@@ -2428,8 +2433,8 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
                 return {
                     "aspect": aspect_objective_from_state(payload["result"].state),
                     "axis_R": axis_R_from_state(payload["result"].state, payload["init"].static),
-                    "lcfs_boundary_moment": lcfs_boundary_moment(payload["result"].state, payload["init"].static),
-                    "qs_total": qs_total_from_state(
+                    "lcfs_boundary_moment": _lcfs_boundary_moment_from_state(payload["result"].state, payload["init"].static),
+                    "qs_total": _qs_total_from_state(
                         payload["result"].state,
                         payload["init"].static,
                         payload["init"].indata,
@@ -2654,7 +2659,7 @@ def _assert_direct_coil_same_branch_custom_vjp_matches_complete_fd(
             base_params,
             direction,
             scalar_key="lcfs_boundary_moment",
-            replay_scalar_fn=lambda replay, payload: lcfs_boundary_moment(
+            replay_scalar_fn=lambda replay, payload: _lcfs_boundary_moment_from_state(
                 replay["state"],
                 payload["init"].static,
             ),
@@ -3190,9 +3195,7 @@ def test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matc
         direct_coil_branch_local_scalars_report_from_complete_fd,
         direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax,
         direct_coil_same_branch_complete_solve_fd_report,
-        free_boundary_boundary_geometry_jax,
     )
-    from vmec_jax.quasisymmetry import quasisymmetry_ratio_residual_from_state
     from vmec_jax.wout import equilibrium_aspect_ratio_from_state
 
     enable_x64(True)
@@ -3221,26 +3224,6 @@ def test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matc
             base_currents=base_currents * (1.0 + current_fraction * float(scale)),
         )
 
-    def lcfs_boundary_moment(state, static):
-        geometry = free_boundary_boundary_geometry_jax(state, static)
-        R = jnp.asarray(geometry["R"])
-        Z = jnp.asarray(geometry["Z"])
-        return jnp.mean((R - 1.0) * (R - 1.0) + Z * Z)
-
-    def qs_total(state, payload):
-        qs = quasisymmetry_ratio_residual_from_state(
-            state=state,
-            static=payload["init"].static,
-            indata=payload["init"].indata,
-            signgs=int(payload["init"].signgs),
-            surfaces=[0.5],
-            helicity_m=1,
-            helicity_n=0,
-            ntheta=7,
-            nphi=8,
-        )
-        return qs["total"]
-
     def scalar_map(payload):
         state = payload["result"].state
         return {
@@ -3248,8 +3231,8 @@ def test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matc
                 state=state,
                 static=payload["init"].static,
             ),
-            "qs_total": qs_total(state, payload),
-            "lcfs_boundary_moment": lcfs_boundary_moment(state, payload["init"].static),
+            "qs_total": _qs_total_from_state(state, payload["init"].static, payload["init"].indata, payload["init"].signgs),
+            "lcfs_boundary_moment": _lcfs_boundary_moment_from_state(state, payload["init"].static),
         }
 
     solve_kwargs = {
@@ -3278,8 +3261,13 @@ def test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matc
             state=replay["state"],
             static=payload["init"].static,
         ),
-        "qs_total": lambda replay, payload: qs_total(replay["state"], payload),
-        "lcfs_boundary_moment": lambda replay, payload: lcfs_boundary_moment(
+        "qs_total": lambda replay, payload: _qs_total_from_state(
+            replay["state"],
+            payload["init"].static,
+            payload["init"].indata,
+            payload["init"].signgs,
+        ),
+        "lcfs_boundary_moment": lambda replay, payload: _lcfs_boundary_moment_from_state(
             replay["state"],
             payload["init"].static,
         ),

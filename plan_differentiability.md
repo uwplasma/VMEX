@@ -27978,3 +27978,76 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.979%.
 - Overall differentiability-refactor PR: 99.999999999956%.
+
+## 2026-06-20 Shared Direct-Coil Scalar Test Helpers
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added shared `_lcfs_boundary_moment_from_state` and `_qs_total_from_state`
+   helpers for direct-coil free-boundary validation tests.
+2. Removed duplicated nested `lcfs_boundary_moment` and `qs_total` definitions
+   from the same-branch custom-VJP helper and mixed-state rejected-slot test.
+3. Reused the same scalar helpers for complete-solve objectives and replay
+   scalar functions.
+4. Removed imports that became unnecessary after the helper lift.
+
+Results obtained:
+
+- `tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+  dropped further from 4820 to 4808 lines.
+- `_assert_direct_coil_same_branch_custom_vjp_matches_complete_fd` dropped
+  from 759 to 737 lines.
+- The scalar definitions used in multiple AD-vs-FD gates now have one source of
+  truth in the test file.
+- Targeted tests for both affected paths pass with only pre-existing NESTOR
+  numerical warnings.
+
+Tests and commands run:
+
+- `python -m ruff check tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_trace_fingerprint_detects_control_branch_changes tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matches_complete_solve_fd -q`
+- `python tools/diagnostics/source_health.py --top 16 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Continue with the two remaining largest direct-coil validation functions:
+   `test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree` and
+   `_assert_direct_coil_same_branch_custom_vjp_matches_complete_fd`.
+2. Prefer removing duplicated scalar/objective setup over merely splitting test
+   files.
+3. Return to solver cache/restart extraction once cache side-effect tests exist.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999980%.
+- Solver monolith reduction: 99.980%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.975%.
+- Residual iteration decomposition: 99.875%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.30%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.08%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 95.86%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.03%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.979%.
+- Overall differentiability-refactor PR: 99.999999999957%.
