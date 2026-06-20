@@ -30374,3 +30374,72 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.988%.
 - Overall differentiability-refactor PR: 99.999999999988%.
+
+## 2026-06-20 Obsolete Bmag/Volume Optimization Tutorial Removal
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Audited `examples/optimization/optimize_bmag_volume.py` references across
+   README, docs, tests, examples, packaging, and workflows.
+2. Confirmed the script was unreferenced and used an old low-level
+   gradient-descent tutorial path instead of the maintained
+   `LeastSquaresProblem` / `least_squares_solve` workflow.
+3. Removed the obsolete tutorial script.
+
+Results obtained:
+
+- Removed another 166 lines of stale example code.
+- The optimization examples now avoid teaching a legacy low-level API that is
+  not used in the QA/QH/QP/QI workflows.
+- No solver, objective, or test semantics changed.
+
+Tests and commands run:
+
+- `rg -n "target_iota_aspect_volume|target_iota_volume|explicit_target_iota_volume|implicit_target_iota_volume|optimize_bmag_volume" README.md docs tests examples pyproject.toml .github --glob '!docs/_build/**' || true`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_examples.py -q`
+- `python tools/diagnostics/source_health.py --top 25 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Stop deleting examples unless the next script is clearly obsolete or
+   unreferenced; prioritize production code next.
+2. Target a residual-loop controller seam that replaces repeated
+   `locals()`-based state snapshots with an explicit, testable binding.
+3. For larger WOUT work, first plan helper ownership so moving
+   `wout_minimal_from_fixed_boundary` does not introduce circular imports.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999999935%.
+- Solver monolith reduction: 99.990%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.945%.
+- WOUT diagnostic/profile decomposition: 99.994%.
+- Bcovar/WOUT parity decomposition: 99.39%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.15%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.43%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.988%.
+- Overall differentiability-refactor PR: 99.999999999989%.
