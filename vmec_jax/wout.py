@@ -14,8 +14,6 @@ from typing import Any
 import numpy as np
 
 from ._compat import has_jax, jax, jnp
-from .modes import vmec_mode_table
-from .modes import nyquist_mode_table_from_grid
 from .state import VMECState
 from .fourier import eval_fourier
 from .vmec_parity import vmec_m1_internal_to_physical_signed
@@ -34,23 +32,18 @@ from .io.wout import mercier as _wout_mercier
 from .io.wout import parity as _wout_parity_helpers
 from .io.wout import state as _wout_state_helpers
 from .io.wout.minimal import (
-    WoutMinimalVmecLike,
     attach_force_payload_geometry,
-    build_main_geometry_coefficients,
     build_minimal_wout_data_kwargs,
+    compute_minimal_wout_derived_profiles,
     compute_minimal_wout_scalar_diagnostics,
     device_get_if_available,
     env_enabled,
-    filter_symmetric_bsubuv_diagnostics_for_wout,
     indata_for_wout_force_path,
-    lbsubs_from_indata_and_env,
     minimal_wout_field_options_from_env,
     minimal_wout_runtime_options_from_env,
-    pressure_profiles_from_mass_vp,
-    prepare_wout_bss_source_payload,
-    prepare_wout_bcovar_payload,
-    prepare_profile_payload,
-    select_bsubuv_diagnostic_fields,
+    prepare_minimal_wout_core_payload,
+    prepare_minimal_wout_force_sources,
+    prepare_minimal_wout_nyquist_fields,
 )
 from .io.wout.netcdf import (
     read_wout_payload,
@@ -182,7 +175,6 @@ _bcovar_from_force_payload_with_geometry = attach_force_payload_geometry
 _device_get_if_available = device_get_if_available
 _env_enabled = env_enabled
 _indata_for_wout_force_path = indata_for_wout_force_path
-_prepare_wout_bcovar_payload = prepare_wout_bcovar_payload
 
 
 def equilibrium_aspect_ratio_from_state(*, state: VMECState, static) -> Any:
@@ -549,17 +541,8 @@ def wout_minimal_from_fixed_boundary(
       These can be filled in later once the full VMEC nyquist output path is
       fully ported end-to-end.
     """
-    from .integrals import cumrect_s_halfmesh
-    from .vmec_tomnsp import vmec_trig_tables
     from .vmec_bcovar import vmec_bcovar_half_mesh_from_wout
     from .vmec_residue import vmec_force_norms_from_bcovar_dynamic
-
-    cfg = static.cfg
-    ns = int(cfg.ns)
-    mpol = int(cfg.mpol)
-    ntor = int(cfg.ntor)
-    nfp = int(cfg.nfp)
-    lasym = bool(cfg.lasym)
 
     runtime_options = minimal_wout_runtime_options_from_env()
     wout_timing_enabled = runtime_options.timing_enabled
@@ -569,99 +552,59 @@ def wout_minimal_from_fixed_boundary(
     wout_timing: dict[str, float] = {}
     t_wout_total_start = _timing_start(bool(wout_timing_enabled))
 
-    converged = True if converged is None else bool(converged)
-
-    lbsubs = lbsubs_from_indata_and_env(indata)
-
-    main_modes = vmec_mode_table(mpol, ntor)
-    if int(main_modes.K) != int(state.layout.K):
-        raise ValueError("state mode count does not match vmec_mode_table(mpol,ntor)")
-
-    nyq_modes = nyquist_mode_table_from_grid(
-        mpol=mpol,
-        ntor=ntor,
-        ntheta=int(cfg.ntheta),
-        nzeta=int(cfg.nzeta),
-    )
-
-    mmax_nyq = int(np.max(nyq_modes.m)) if int(nyq_modes.K) > 0 else 0
-    nmax_nyq = int(np.max(np.abs(nyq_modes.n))) if int(nyq_modes.K) > 0 else 0
-    mmax_base = max(int(mpol) - 1, mmax_nyq)
-    nmax_base = max(int(ntor), nmax_nyq)
-    t0 = _timing_start(bool(wout_timing_enabled))
-    trig = vmec_trig_tables(
-        ntheta=int(cfg.ntheta),
-        nzeta=int(cfg.nzeta),
-        nfp=int(nfp),
-        mmax=int(mmax_base),
-        nmax=int(nmax_base),
-        lasym=bool(lasym),
-        dtype=np.asarray(state.Rcos).dtype,
-    )
-    _record_timing(wout_timing, "trig_tables_s", t0)
-
-    geom = _synthesize_wout_geometry_from_state(
-        state=state,
-        static=static,
-        trig=trig,
-        light=bool(wout_light),
-        timing_enabled=bool(wout_timing_enabled),
-        timing=wout_timing,
-    )
-
-    # Flux and profiles on VMEC half mesh.
-    s = np.asarray(static.s)
-    profile_payload = prepare_profile_payload(
+    core = prepare_minimal_wout_core_payload(
         state=state,
         static=static,
         indata=indata,
-        modes=main_modes,
-        s=s,
-        ns=int(ns),
         signgs=int(signgs),
+        converged=converged,
         flux_override=flux_override,
         profiles_override=profiles_override,
+        runtime_options=runtime_options,
+        field_options=field_options,
+        synthesize_geometry_func=_synthesize_wout_geometry_from_state,
+        timing=wout_timing,
         equilibrium_iota_profiles_from_state_func=equilibrium_iota_profiles_from_state,
         chipf_from_chips_func=_chipf_from_chips,
-    )
-    (flux, chipf_wout, _, pres, _, mass, ncurr, iotas, iotaf, gamma, phipf_internal) = profile_payload
-
-    lconm1 = bool(getattr(cfg, "lconm1", True))
-    main_geom = build_main_geometry_coefficients(
-        state=state,
-        modes=main_modes,
-        ntor=int(ntor),
-        lasym=bool(lasym),
-        lconm1=bool(lconm1),
-    )
-
-    # Toroidal flux (VMEC `phi`) in physical units.
-    phipf_out = phipf_internal * float(2.0 * np.pi * signgs)
-    chipf_out = np.asarray(chipf_wout, dtype=float) * float(2.0 * np.pi * signgs)
-    phi = np.asarray(cumrect_s_halfmesh(phipf_out, s))
-
-    # Build VMEC parity grids for Nyquist outputs.
-    wout_like = WoutMinimalVmecLike(
-        flux=flux,
-        chipf=np.asarray(chipf_wout),
-        iotaf=np.asarray(iotaf),
-        iotas=np.asarray(iotas),
-        signgs=int(signgs),
-        nfp=int(nfp),
-        mpol=int(mpol),
-        ntor=int(ntor),
-        lasym=bool(lasym),
-        ncurr=int(ncurr),
-        mass=np.asarray(mass),
-        gamma=float(gamma),
-        indata=indata,
-        s_full=np.asarray(s, dtype=float),
         icurv_full_mesh_from_indata_func=_icurv_full_mesh_from_indata,
     )
+    cfg = core.cfg
+    ns = core.ns
+    mpol = core.mpol
+    ntor = core.ntor
+    nfp = core.nfp
+    lasym = core.lasym
+    runtime_options = core.runtime_options
+    wout_timing_enabled = core.wout_timing_enabled
+    wout_light = core.wout_light
+    wout_fast_bcovar = core.wout_fast_bcovar
+    field_options = core.field_options
+    converged = core.converged
+    lbsubs = core.lbsubs
+    main_modes = core.main_modes
+    nyq_modes = core.nyq_modes
+    trig = core.trig
+    geom = core.geom
+    s = core.s
+    flux = core.flux
+    chipf_wout = core.chipf_wout
+    pres = core.pres
+    mass = core.mass
+    ncurr = core.ncurr
+    iotas = core.iotas
+    iotaf = core.iotaf
+    gamma = core.gamma
+    phipf_internal = core.phipf_internal
+    lconm1 = core.lconm1
+    main_geom = core.main_geom
+    phipf_out = core.phipf_out
+    chipf_out = core.chipf_out
+    phi = core.phi
+    wout_like = core.wout_like
     from .vmec_forces import vmec_forces_rz_from_wout
     from .vmec_numpy_forces import _numpy_module_patch
 
-    bcovar_payload = _prepare_wout_bcovar_payload(
+    force_sources = prepare_minimal_wout_force_sources(
         state=state,
         static=static,
         indata=indata,
@@ -669,270 +612,126 @@ def wout_minimal_from_fixed_boundary(
         pres=pres,
         geom=geom,
         force_payload_override=force_payload_override,
-        fast_bcovar=bool(wout_fast_bcovar),
-        timing_enabled=bool(wout_timing_enabled),
+        fast_bcovar=wout_fast_bcovar,
+        timing_enabled=wout_timing_enabled,
         timing=wout_timing,
+        lasym=lasym,
+        trig=trig,
         vmec_bcovar_half_mesh_from_wout_func=vmec_bcovar_half_mesh_from_wout,
         vmec_forces_rz_from_wout_func=vmec_forces_rz_from_wout,
         numpy_module_patch_func=_numpy_module_patch,
-    )
-    bc, k_force, indata_wout = bcovar_payload
-
-    bss_payload = prepare_wout_bss_source_payload(
-        state=state,
-        static=static,
-        indata_wout=indata_wout,
-        wout_like=wout_like,
-        bc=bc,
-        k_force=k_force,
-        trig=trig,
-        geom=geom,
-        lasym=bool(lasym),
         force_sym_func=lambda arr, kind: _force_sym_for_wout(
             arr,
             trig=trig,
             lasym=bool(lasym),
             kind=kind,
         ),
-        vmec_forces_rz_from_wout_func=vmec_forces_rz_from_wout,
+        dump_bsub_parity_func=lambda *, bc: _wout_debug_helpers.dump_bsub_parity_if_requested(
+            s=np.asarray(s, dtype=float),
+            bc=bc,
+        ),
+        dump_bsubh_func=lambda *, bsupu, bsupv, bc: _wout_debug_helpers.dump_bsubh_if_requested(
+            s=np.asarray(s, dtype=float),
+            bsupu=bsupu,
+            bsupv=bsupv,
+            bc=bc,
+        ),
     )
     (
-        use_force_bss, k_force, bsupu_bss, bsupv_bss, ru12_bss, zu12_bss,
-        rs_bss, zs_bss, crmn_e_sym, czmn_e_sym, bzmn_e_sym, brmn_e_sym,
-        azmn_e_sym, armn_e_sym, geom_bss,
-    ) = bss_payload
-    _wout_debug_helpers.dump_bsub_parity_if_requested(s=np.asarray(s, dtype=float), bc=bc)
-    _wout_debug_helpers.dump_bsubh_if_requested(s=np.asarray(s, dtype=float), bsupu=bsupu_bss, bsupv=bsupv_bss, bc=bc)
+        bc, k_force, indata_wout, use_force_bss, bsupu_bss, bsupv_bss,
+        ru12_bss, zu12_bss, rs_bss, zs_bss, crmn_e_sym, czmn_e_sym,
+        bzmn_e_sym, brmn_e_sym, azmn_e_sym, armn_e_sym, geom_bss,
+    ) = force_sources
 
-    # Derived 1D profiles and scalars.
-    norms = vmec_force_norms_from_bcovar_dynamic(bc=bc, trig=trig, s=s, signgs=int(signgs))
-    if has_jax():
-        try:
-            norms = jax.device_get(norms)
-        except Exception:
-            pass
-    vp = np.asarray(norms.vp, dtype=float)
-    wb = float(np.asarray(norms.wb))
-    wp = float(np.asarray(norms.wp))
-    volume = float(np.asarray(norms.volume))
-    volume_p = volume * float(4.0 * np.pi**2)
-    betatotal = (wp / wb) if wb != 0.0 else 0.0
-
-    pres, presf = pressure_profiles_from_mass_vp(mass=mass, vp=vp, gamma=gamma)
-
-    wint = _vmec_wint_from_trig(trig)
-    Aminor_p, Rmajor_p, aspect, volume_p, _ = _compute_aspectratio(
-        R=np.asarray(geom["R"]),
-        Zu=np.asarray(geom["Zu"]),
-        wint=wint,
-    )
-
-    # Nyquist Fourier coefficients for fields stored in wout.
-    bsupu_out = np.asarray(bc.bsupu)
-    bsupv_out = np.asarray(bc.bsupv)
-    if use_force_bss and (k_force is not None):
-        if hasattr(k_force, "crmn_e") and hasattr(k_force, "czmn_e"):
-            if crmn_e_sym is None:
-                crmn_e_sym = _force_sym(k_force.crmn_e, "crs")
-            if czmn_e_sym is None:
-                czmn_e_sym = _force_sym(k_force.czmn_e, "czs")
-            bsupu_out = crmn_e_sym
-            bsupv_out = czmn_e_sym
-    bsubu_out = np.asarray(bc.bsubu).copy()
-    bsubv_out = np.asarray(bc.bsubv).copy()
-    bsubu_raw = bsubu_out.copy()
-    bsubv_raw = bsubv_out.copy()
-    bsubv_lasym_asym_source = None
-    bsubv_lasym_asym_filter_u = None
-    if bool(lasym) and hasattr(bc, "bsubv_e"):
-        # VMEC fileout forces IEQUI=1 before wrout. Diagnostics show only the
-        # LASYM bsubv sine output channel follows this corrected half-mesh IEQUI
-        # source; keep the existing raw channels for bsubvmnc/bsubu parity.
-        bsubv_lasym_asym_source = _apply_bsubv_equif_correction(
-            bsubv=np.asarray(getattr(bc, "bsubv"), dtype=float),
-            bsubv_e=np.asarray(getattr(bc, "bsubv_e"), dtype=float),
-            trig=trig,
-        )
-    _wout_debug_helpers.dump_bsub_sources_if_requested(bc=bc)
-
-    # VMEC wrout.f uses the *raw* bsubu/bsubv for Fourier output (bsubumnc/etc).
-    # JXBFORCE-style diagnostics (jdotb/Mercier) use the selected diagnostic
-    # source, including VMEC's output-time IEQUI=1 correction.
-    bsubu_diag, bsubv_diag = select_bsubuv_diagnostic_fields(
+    derived = compute_minimal_wout_derived_profiles(
         bc=bc,
-        bsubu_out=bsubu_out,
-        bsubv_out=bsubv_out,
+        trig=trig,
+        s=s,
+        signgs=int(signgs),
+        mass=mass,
+        gamma=float(gamma),
+        geom=geom,
+        vmec_force_norms_from_bcovar_dynamic_func=vmec_force_norms_from_bcovar_dynamic,
+        vmec_wint_from_trig_func=_vmec_wint_from_trig,
+        compute_aspectratio_func=_compute_aspectratio,
+    )
+    vp = derived.vp
+    wb = derived.wb
+    wp = derived.wp
+    volume = derived.volume
+    volume_p = derived.volume_p
+    betatotal = derived.betatotal
+    pres = derived.pres
+    presf = derived.presf
+    wint = derived.wint
+    Aminor_p = derived.Aminor_p
+    Rmajor_p = derived.Rmajor_p
+    aspect = derived.aspect
+
+    from .fourier import build_helical_basis
+    from .vmec_tomnsp import vmec_angle_grid
+
+    nyquist_fields = prepare_minimal_wout_nyquist_fields(
+        state=state,
+        static=static,
+        cfg=cfg,
+        bc=bc,
+        k_force=k_force,
+        use_force_bss=use_force_bss,
+        bsupu_bss=bsupu_bss,
+        bsupv_bss=bsupv_bss,
+        ru12_bss=ru12_bss,
+        zu12_bss=zu12_bss,
+        rs_bss=rs_bss,
+        zs_bss=zs_bss,
+        crmn_e_sym=crmn_e_sym,
+        czmn_e_sym=czmn_e_sym,
+        geom_bss=geom_bss,
         field_options=field_options,
         trig=trig,
-        apply_bsubv_equif_correction_func=_apply_bsubv_equif_correction,
-    )
-    t0 = _timing_start(bool(wout_timing_enabled))
-    bsubs_half = _compute_bsubs_half_mesh(
-        state=state,
-        geom_modes=static.modes,
-        s=np.asarray(s, dtype=float),
-        lconm1=bool(getattr(cfg, "lconm1", True)),
-        lthreed=bool(ntor > 0),
-        lasym=bool(lasym),
-        bsupu=bsupu_bss,
-        bsupv=bsupv_bss,
-        trig=trig,
-        geom=geom_bss,
-        jac_half=bc.jac,
-        force_rs=rs_bss,
-        force_zs=zs_bss,
-        force_ru12=ru12_bss,
-        force_zu12=zu12_bss,
-        apply_scalxc=field_options.apply_bss_scalxc,
-    )
-    _record_timing(wout_timing, "bsubs_half_s", t0)
-    bsubs_full = _bsubs_full_mesh_for_wrout(bsubs_half=bsubs_half)
-
-    # JXBFORCE applies a low-pass filter on bsubu/bsubv using (mpol-1, ntor).
-    skip_bsub_filter = field_options.skip_bsub_filter
-
-    t0 = _timing_start(bool(wout_timing_enabled))
-    if bool(lasym):
-        use_lasym_loop = field_options.use_lasym_loop
-        if (not skip_bsub_filter) and field_options.lasym_filter:
-            use_parity_channels = field_options.lasym_filter_use_parity_channels
-            bsubu_even_filter = getattr(bc, "bsubu_parity_even", None) if use_parity_channels else None
-            bsubu_odd_filter = getattr(bc, "bsubu_parity_odd", None) if use_parity_channels else None
-            bsubv_even_filter = getattr(bc, "bsubv_parity_even", None) if use_parity_channels else None
-            bsubv_odd_filter = getattr(bc, "bsubv_parity_odd", None) if use_parity_channels else None
-            if bsubv_lasym_asym_source is not None:
-                bsubv_lasym_asym_filter_u = np.asarray(bsubu_out, dtype=float).copy()
-            bsubu_out, bsubv_out = _filter_bsubuv_jxbforce_lasym_loop(
-                bsubu=np.asarray(bsubu_out, dtype=float),
-                bsubv=np.asarray(bsubv_out, dtype=float),
-                trig=trig,
-                mmax_force=max(int(mpol) - 1, 0),
-                nmax_force=int(ntor),
-                s=np.asarray(s, dtype=float),
-                bsubu_even=None if bsubu_even_filter is None else np.asarray(bsubu_even_filter, dtype=float),
-                bsubu_odd=None if bsubu_odd_filter is None else np.asarray(bsubu_odd_filter, dtype=float),
-                bsubv_even=None if bsubv_even_filter is None else np.asarray(bsubv_even_filter, dtype=float),
-                bsubv_odd=None if bsubv_odd_filter is None else np.asarray(bsubv_odd_filter, dtype=float),
-            )
-            if bsubv_lasym_asym_source is not None:
-                _, bsubv_lasym_asym_source = _filter_bsubuv_jxbforce_lasym_loop(
-                    bsubu=np.asarray(bsubv_lasym_asym_filter_u, dtype=float),
-                    bsubv=np.asarray(bsubv_lasym_asym_source, dtype=float),
-                    trig=trig,
-                    mmax_force=max(int(mpol) - 1, 0),
-                    nmax_force=int(ntor),
-                    s=np.asarray(s, dtype=float),
-                    bsubu_even=None,
-                    bsubu_odd=None,
-                    bsubv_even=None,
-                    bsubv_odd=None,
-                )
-            bsubu_diag = np.asarray(bsubu_out, dtype=float)
-            bsubv_diag = np.asarray(bsubv_out, dtype=float)
-        _wout_debug_helpers.dump_bsub_pre_sym_if_requested(
+        nyq_modes=nyq_modes,
+        pres=pres,
+        s=s,
+        mpol=int(mpol),
+        ntor=int(ntor),
+        nfp=int(nfp),
+        ns=int(ns),
+        lasym=lasym,
+        timing_enabled=wout_timing_enabled,
+        timing=wout_timing,
+        force_sym_func=lambda arr, kind: _force_sym_for_wout(
+            arr,
             trig=trig,
-            bsubu=bsubu_out,
-            bsubv=bsubv_out,
-            bsupu=bsupu_out,
-            bsupv=bsupv_out,
-            bsubs=bsubs_full,
-        )
-        lasym_nyq = minimal_wout_lasym_nyquist_coefficients(
-            bc=bc,
-            bsubu_out=np.asarray(bsubu_out, dtype=float),
-            bsubv_out=np.asarray(bsubv_out, dtype=float),
-            bsupu_out=np.asarray(bsupu_out, dtype=float),
-            bsupv_out=np.asarray(bsupv_out, dtype=float),
-            bsubs_full=np.asarray(bsubs_full, dtype=float),
-            bsubv_asym_source=bsubv_lasym_asym_source,
-            pres=np.asarray(pres, dtype=float),
-            ns=int(ns),
-            mpol=int(mpol),
-            ntor=int(ntor),
-            modes=nyq_modes,
-            trig=trig,
-            use_loop=bool(use_lasym_loop),
-        )
-        (
-            gmnc, gmns, bsupumnc, bsupumns, bsupvmnc, bsupvmns, bsubumnc,
-            bsubumns, bsubvmnc, bsubvmns, bsubsmns, bsubsmnc, bmnc, bmns,
-        ) = lasym_nyq
-    else:
-        use_loop = field_options.symmetric_wrout_loop
-        sym_nyq = minimal_wout_symmetric_nyquist_coefficients(
-            bc=bc,
-            bsubu_out=np.asarray(bsubu_out, dtype=float),
-            bsubv_out=np.asarray(bsubv_out, dtype=float),
-            bsubs_full=np.asarray(bsubs_full, dtype=float),
-            pres=np.asarray(pres, dtype=float),
-            ns=int(ns),
-            modes=nyq_modes,
-            trig=trig,
-            use_loop=bool(use_loop),
-        )
-        (
-            gmnc, gmns, bsupumnc, bsupumns, bsupvmnc, bsupvmns, bsubumnc,
-            bsubumns, bsubvmnc, bsubvmns, bsubsmns, bsubsmnc, bmnc, bmns,
-        ) = sym_nyq
-    _record_timing(wout_timing, "nyquist_coeffs_s", t0)
-    t0 = _timing_start(bool(wout_timing_enabled))
-
-    # Optional debug path: reconstruct physical real-space fields from the
-    # Nyquist coefficients. This is *not* required for the default Mercier/jdotb
-    # pipeline, which follows VMEC2000's jxbforce discretization directly on
-    # the real-space (bsubu/bsubv) fields.
-    bsubu_phys = None
-    bsubv_phys = None
-    if field_options.mercier_use_wrout_bsubuv:
-        from .fourier import build_helical_basis
-        from .vmec_tomnsp import vmec_angle_grid
-
-        grid_nyq = vmec_angle_grid(
-            ntheta=int(cfg.ntheta),
-            nzeta=int(cfg.nzeta),
-            nfp=int(nfp),
             lasym=bool(lasym),
-        )
-        basis_nyq = build_helical_basis(nyq_modes, grid_nyq, cache=True)
-        bsubu_phys = np.asarray(eval_fourier(bsubumnc, bsubumns, basis_nyq))
-        bsubv_phys = np.asarray(eval_fourier(bsubvmnc, bsubvmns, basis_nyq))
-    t_bsub_filter = _timing_start(bool(wout_timing_enabled))
-    if (not bool(lasym)) and (not skip_bsub_filter):
-        bsubu_diag, bsubv_diag = filter_symmetric_bsubuv_diagnostics_for_wout(
-            bsubu_diag=bsubu_diag,
-            bsubv_diag=bsubv_diag,
-            bc=bc,
-            trig=trig,
-            field_options=field_options,
-            mpol=int(mpol),
-            ntor=int(ntor),
-            s=np.asarray(s, dtype=float),
-            pshalf_from_s_func=_pshalf_from_s,
-            filter_loop_func=_filter_bsubuv_jxbforce_loop,
-            filter_parity_func=_filter_bsubuv_jxbforce_parity,
-            dump_parity_inputs_func=_wout_debug_helpers.dump_bsub_parity_inputs_if_requested,
-        )
-    _record_timing(wout_timing, "bsub_filter_s", t_bsub_filter)
-    # Match VMEC wrout: bsubu/bsubv Fourier output uses the jxbforce-filtered
-    # fields, not the raw bcovar fields.
-    bsubu_out = np.asarray(bsubu_diag, dtype=float)
-    bsubv_out = np.asarray(bsubv_diag, dtype=float)
-    t_bsub_coeffs = _timing_start(bool(wout_timing_enabled))
-    if not bool(lasym):
-        bsubumnc = _vmec_wrout_nyquist_cos_coeffs(f=bsubu_out, modes=nyq_modes, trig=trig)
-        bsubvmnc = _vmec_wrout_nyquist_cos_coeffs(f=bsubv_out, modes=nyq_modes, trig=trig)
-        _zero_first_surface(bsubumnc, bsubvmnc)
-    _record_timing(wout_timing, "bsub_coeffs_s", t_bsub_coeffs)
-    # Keep bsubsmns from the direct bsubs_half computation (wrout.f). The
-    # Nyquist-reconstructed path is used only for consistency checks.
+            kind=kind,
+        ),
+        apply_bsubv_equif_correction_func=_apply_bsubv_equif_correction,
+        compute_bsubs_half_mesh_func=_compute_bsubs_half_mesh,
+        bsubs_full_mesh_for_wrout_func=_bsubs_full_mesh_for_wrout,
+        filter_lasym_loop_func=_filter_bsubuv_jxbforce_lasym_loop,
+        filter_symmetric_loop_func=_filter_bsubuv_jxbforce_loop,
+        filter_symmetric_parity_func=_filter_bsubuv_jxbforce_parity,
+        pshalf_from_s_func=_pshalf_from_s,
+        lasym_nyquist_coefficients_func=minimal_wout_lasym_nyquist_coefficients,
+        symmetric_nyquist_coefficients_func=minimal_wout_symmetric_nyquist_coefficients,
+        nyquist_cos_coeffs_func=_vmec_wrout_nyquist_cos_coeffs,
+        zero_first_surface_func=_zero_first_surface,
+        eval_fourier_func=eval_fourier,
+        build_helical_basis_func=build_helical_basis,
+        vmec_angle_grid_func=vmec_angle_grid,
+        dump_bsub_sources_func=_wout_debug_helpers.dump_bsub_sources_if_requested,
+        dump_bsub_pre_sym_func=_wout_debug_helpers.dump_bsub_pre_sym_if_requested,
+        dump_bsub_parity_inputs_func=_wout_debug_helpers.dump_bsub_parity_inputs_if_requested,
+    )
+    t0 = _timing_start(bool(wout_timing_enabled))
 
     if wout_light:
         buco, bvco, jcuru, jcurv, equif = (np.zeros((ns,), dtype=float) for _ in range(5))
     else:
         t_equif = _timing_start(bool(wout_timing_enabled))
         buco, bvco, jcuru, jcurv, equif = _compute_equif_wout(
-            bsubu=bsubu_out,
-            bsubv=bsubv_out,
+            bsubu=nyquist_fields.bsubu_out,
+            bsubv=nyquist_fields.bsubv_out,
             pres=pres,
             vp=vp,
             phipf=np.asarray(flux.phipf, dtype=float),
@@ -974,12 +773,12 @@ def wout_minimal_from_fixed_boundary(
         zs_bss=zs_bss,
         ru12_bss=ru12_bss,
         zu12_bss=zu12_bss,
-        bsubu_diag=np.asarray(bsubu_diag, dtype=float),
-        bsubv_diag=np.asarray(bsubv_diag, dtype=float),
-        bsubu_raw=np.asarray(bsubu_raw, dtype=float),
-        bsubv_raw=np.asarray(bsubv_raw, dtype=float),
-        bsubu_phys=bsubu_phys,
-        bsubv_phys=bsubv_phys,
+        bsubu_diag=np.asarray(nyquist_fields.bsubu_diag, dtype=float),
+        bsubv_diag=np.asarray(nyquist_fields.bsubv_diag, dtype=float),
+        bsubu_raw=np.asarray(nyquist_fields.bsubu_raw, dtype=float),
+        bsubv_raw=np.asarray(nyquist_fields.bsubv_raw, dtype=float),
+        bsubu_phys=nyquist_fields.bsubu_phys,
+        bsubv_phys=nyquist_fields.bsubv_phys,
         indata=indata,
         timing_enabled=bool(wout_timing_enabled),
         timing=wout_timing,
@@ -1025,23 +824,25 @@ def wout_minimal_from_fixed_boundary(
     _wout_debug_helpers.dump_wrout_modes_if_requested(
         ns=int(ns),
         nyq_modes=nyq_modes,
-        gmnc=gmnc,
-        gmns=gmns,
-        bmnc=bmnc,
-        bmns=bmns,
-        bsubumnc=bsubumnc,
-        bsubumns=bsubumns,
-        bsubvmnc=bsubvmnc,
-        bsubvmns=bsubvmns,
-        bsubsmnc=bsubsmnc,
-        bsubsmns=bsubsmns,
-        bsupumnc=bsupumnc,
-        bsupumns=bsupumns,
-        bsupvmnc=bsupvmnc,
-        bsupvmns=bsupvmns,
+        gmnc=nyquist_fields.gmnc,
+        gmns=nyquist_fields.gmns,
+        bmnc=nyquist_fields.bmnc,
+        bmns=nyquist_fields.bmns,
+        bsubumnc=nyquist_fields.bsubumnc,
+        bsubumns=nyquist_fields.bsubumns,
+        bsubvmnc=nyquist_fields.bsubvmnc,
+        bsubvmns=nyquist_fields.bsubvmns,
+        bsubsmnc=nyquist_fields.bsubsmnc,
+        bsubsmns=nyquist_fields.bsubsmns,
+        bsupumnc=nyquist_fields.bsupumnc,
+        bsupumns=nyquist_fields.bsupumns,
+        bsupvmnc=nyquist_fields.bsupvmnc,
+        bsupvmns=nyquist_fields.bsupvmns,
     )
 
-    wout = WoutData(**build_minimal_wout_data_kwargs(locals(), path=path, converged=bool(converged)))
+    wout_context = dict(locals())
+    wout_context.update(nyquist_fields._asdict())
+    wout = WoutData(**build_minimal_wout_data_kwargs(wout_context, path=path, converged=bool(converged)))
 
     if wout_timing_enabled:
         _wout_debug_helpers.print_wout_timing_if_requested(
