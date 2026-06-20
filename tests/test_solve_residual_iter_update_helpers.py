@@ -10,6 +10,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     host_catastrophic_restart_update,
     host_force_update_rms,
     host_momentum_update_np,
+    initial_residual_velocity_state,
     momentum_update_jax,
     scale_velocity_blocks,
     zero_velocity_blocks_like,
@@ -19,6 +20,28 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
 def _blocks(*, offset: float, scale: float = 1.0) -> ResidualVelocityBlocks:
     base = np.arange(6.0, dtype=float).reshape(2, 3)
     return ResidualVelocityBlocks(*(scale * (base + offset + float(idx)) for idx in range(12)))
+
+
+def test_initial_residual_velocity_state_sets_caps_and_block_shapes() -> None:
+    class State:
+        Rcos = np.zeros((4, 2, 3), dtype=np.float64)
+
+    init = initial_residual_velocity_state(
+        state=State(),
+        mpol=5,
+        nrange=7,
+        host_update_assembly=True,
+        reference_mode=True,
+    )
+
+    assert init.max_coeff_delta_rms == pytest.approx(5.0e-6)
+    assert init.max_update_rms == pytest.approx(1.0e-3)
+    assert len(init.velocities) == 12
+    for block in init.velocities:
+        assert isinstance(block, np.ndarray)
+        assert block.shape == (4, 5, 7)
+        assert block.dtype == np.float64
+        np.testing.assert_allclose(block, 0.0)
 
 
 def test_host_momentum_update_np_matches_strict_update_formula_and_rms() -> None:

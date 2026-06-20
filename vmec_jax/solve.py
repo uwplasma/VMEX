@@ -19,7 +19,6 @@ _COMPAT_MODULE_NAMES = (
     "vmec_jax.state",
     "vmec_jax.vmec_forces",
     "vmec_jax.vmec_residue",
-    "vmec_jax._solve_runtime",
     "vmec_jax.solvers.fixed_boundary.jit_cache",
     "vmec_jax.solvers.fixed_boundary.options",
     "vmec_jax.solvers.fixed_boundary.profiles",
@@ -64,10 +63,12 @@ _COMPAT_MODULES = tuple(importlib.import_module(name) for name in _COMPAT_MODULE
 _MODULE_BY_NAME = {module.__name__: module for module in _COMPAT_MODULES}
 _iteration = importlib.import_module("vmec_jax.solvers.fixed_boundary.residual.iteration")
 _fixed_boundary_api = importlib.import_module("vmec_jax.solvers.fixed_boundary.api")
+_solve_runtime_module = importlib.import_module("vmec_jax._solve_runtime")
 _MODULE_BY_NAME.update(
     {
         _iteration.__name__: _iteration,
         _fixed_boundary_api.__name__: _fixed_boundary_api,
+        _solve_runtime_module.__name__: _solve_runtime_module,
     }
 )
 
@@ -93,6 +94,7 @@ _LEGACY_ALIASES = {
     "_scale_mode_slice": ("vmec_jax.solvers.fixed_boundary.optimization.constraints", "scale_mode_slice"),
     "_scale_mode_slice_np": ("vmec_jax.solvers.fixed_boundary.optimization.constraints", "scale_mode_slice_np"),
     "_sm_sp_from_s_np": ("vmec_jax.solvers.fixed_boundary.preconditioning.operators", "sm_sp_from_s_np"),
+    "_scalar_history_array": ("vmec_jax._solve_runtime", "_scalar_history_array"),
     "_vmec2000_scan_options_from_env": ("vmec_jax.solvers.fixed_boundary.residual.policy", "vmec2000_scan_options_from_env"),
     "_vmec_scale_m1_factors_from_mats": ("vmec_jax.solvers.fixed_boundary.preconditioning.operators", "vmec_scale_m1_factors_from_mats"),
     "_vmec_scale_m1_factors_from_mats_np": ("vmec_jax.solvers.fixed_boundary.preconditioning.operators", "vmec_scale_m1_factors_from_mats_np"),
