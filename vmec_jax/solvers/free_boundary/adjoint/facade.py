@@ -1,3 +1,4 @@
+# ruff: noqa: F401
 """Adjoint scaffolding for free-boundary vacuum solves.
 
 Phase 1 intentionally keeps this module small and explicit.  It validates the
@@ -187,74 +188,56 @@ class _CurrentOnlyDirectionalJVPConfig(NamedTuple):
     geometry_source: str
 
 
-__all__ = [
-    "_finite_difference_jacobian",
-    "dense_fixed_point_solve_jax",
-    "dense_nonlinear_solve_jax",
-    "dense_mode_vacuum_solve_jax",
-    "dense_vmec_nestor_mode_solve_jax",
-    "dense_vacuum_residual",
-    "dense_vacuum_solve_jax",
-    "mode_matrix_from_grpmn_jax",
-    "mode_matrix_matvec_from_grpmn_jax",
-    "mode_operator_vacuum_solve_jax",
-    "mode_rhs_from_gsource_jax",
-    "vmec_analytic_terms_from_geometry_jax",
-    "vmec_nonsingular_terms_from_bexni_jax",
-    "vmec_source_from_gsource_jax",
-    "direct_coil_boundary_bnormal_rms_jax",
-    "direct_coil_boundary_bsqvac_from_trace_jax",
-    "direct_coil_boundary_bsqvac_jax",
-    "direct_coil_boundary_replay_context",
-    "direct_coil_boundary_replay_context_for_shape",
-    "free_boundary_boundary_geometry_jax",
-    "vacuum_boundary_fields_from_cylindrical_jax",
-    "vacuum_boundary_fields_from_mode_coeffs_jax",
-    "direct_coil_accepted_trace_branch_metadata",
-    "direct_coil_accepted_trace_array_controls_jax",
-    "direct_coil_accepted_trace_controller_slot_summary",
-    "accepted_trace_effective_state_pre",
-    "direct_coil_accepted_trace_controller_custom_vjp_scalars_jax",
-    "direct_coil_accepted_trace_controller_replay_plan",
-    "direct_coil_accepted_trace_fingerprint",
-    "direct_coil_accepted_trace_fingerprint_delta",
-    "direct_coil_accepted_trace_fingerprint_delta_summary",
-    "direct_coil_accepted_trace_preconditioner_controls_jax",
-    "direct_coil_accepted_trace_replay_objective_jax",
-    "direct_coil_accepted_trace_replay_graph_metadata",
-    "direct_coil_accepted_trace_scalar_controls_jax",
-    "direct_coil_accepted_trace_status_masks",
-    "direct_coil_accepted_trace_step_controls_jax",
-    "direct_coil_accepted_trace_step_policy_segments",
-    "direct_coil_boundary_replay_context_for_shape",
-    "direct_coil_complete_solve_trace",
-    "direct_coil_adaptive_full_loop_same_branch_gate_report",
-    "direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax",
-    "direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax",
-    "direct_coil_branch_local_scalars_report_from_complete_fd",
-    "direct_coil_projected_mode_fixed_point_jax",
-    "direct_coil_projected_mode_fixed_point_objective_jax",
-    "direct_coil_projected_mode_fixed_point_directional_check_jax",
-    "direct_coil_same_branch_physical_scalar_gate_report",
-    "direct_coil_same_branch_replay_gate_report",
-    "direct_coil_same_branch_complete_solve_fd_report",
-    "direct_coil_same_branch_controller_scalars_custom_vjp_report",
-    "free_boundary_adjoint_trace_replay_diagnostics",
-    "jax_visible_accepted_only_nonlinear_controller_jax",
-    "jax_visible_accepted_nonlinear_controller_directional_check_jax",
-    "jax_visible_accepted_nonlinear_controller_jax",
-    "jax_visible_masked_nonlinear_controller_directional_check_jax",
-    "jax_visible_masked_nonlinear_controller_jax",
-    "jax_visible_nonlinear_controller_directional_check_jax",
-    "jax_visible_nonlinear_controller_jax",
-    "jax_visible_segmented_accepted_nonlinear_controller_jax",
-    "jax_visible_segmented_state_only_accepted_nonlinear_controller_jax",
-    "jax_visible_state_only_accepted_nonlinear_controller_jax",
-    "jax_visible_state_only_accepted_only_nonlinear_controller_jax",
-    "jax_visible_unrolled_state_only_accepted_only_nonlinear_controller_jax",
-    "jax_visible_unrolled_accepted_only_nonlinear_controller_jax",
-    "pytree_directional_derivative_check_jax",
-]
+__all__ = """
+_finite_difference_jacobian
+accepted_trace_effective_state_pre
+dense_fixed_point_solve_jax dense_mode_vacuum_solve_jax dense_nonlinear_solve_jax
+dense_vacuum_residual dense_vacuum_solve_jax dense_vmec_nestor_mode_solve_jax
+direct_coil_accepted_trace_array_controls_jax
+direct_coil_accepted_trace_branch_metadata
+direct_coil_accepted_trace_controller_custom_vjp_scalars_jax
+direct_coil_accepted_trace_controller_replay_plan
+direct_coil_accepted_trace_controller_slot_summary
+direct_coil_accepted_trace_fingerprint direct_coil_accepted_trace_fingerprint_delta
+direct_coil_accepted_trace_fingerprint_delta_summary
+direct_coil_accepted_trace_preconditioner_controls_jax
+direct_coil_accepted_trace_replay_graph_metadata
+direct_coil_accepted_trace_replay_objective_jax
+direct_coil_accepted_trace_scalar_controls_jax direct_coil_accepted_trace_status_masks
+direct_coil_accepted_trace_step_controls_jax
+direct_coil_accepted_trace_step_policy_segments
+direct_coil_adaptive_full_loop_same_branch_gate_report
+direct_coil_boundary_bnormal_rms_jax direct_coil_boundary_bsqvac_from_trace_jax
+direct_coil_boundary_bsqvac_jax direct_coil_boundary_replay_context
+direct_coil_boundary_replay_context_for_shape
+direct_coil_branch_local_scalars_report_from_complete_fd direct_coil_complete_solve_trace
+direct_coil_projected_mode_fixed_point_directional_check_jax
+direct_coil_projected_mode_fixed_point_jax
+direct_coil_projected_mode_fixed_point_objective_jax
+direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax
+direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax
+direct_coil_same_branch_complete_solve_fd_report
+direct_coil_same_branch_controller_scalars_custom_vjp_report
+direct_coil_same_branch_physical_scalar_gate_report direct_coil_same_branch_replay_gate_report
+free_boundary_adjoint_trace_replay_diagnostics free_boundary_boundary_geometry_jax
+jax_visible_accepted_nonlinear_controller_directional_check_jax
+jax_visible_accepted_nonlinear_controller_jax
+jax_visible_accepted_only_nonlinear_controller_jax
+jax_visible_masked_nonlinear_controller_directional_check_jax
+jax_visible_masked_nonlinear_controller_jax
+jax_visible_nonlinear_controller_directional_check_jax jax_visible_nonlinear_controller_jax
+jax_visible_segmented_accepted_nonlinear_controller_jax
+jax_visible_segmented_state_only_accepted_nonlinear_controller_jax
+jax_visible_state_only_accepted_nonlinear_controller_jax
+jax_visible_state_only_accepted_only_nonlinear_controller_jax
+jax_visible_unrolled_accepted_only_nonlinear_controller_jax
+jax_visible_unrolled_state_only_accepted_only_nonlinear_controller_jax
+mode_matrix_from_grpmn_jax mode_matrix_matvec_from_grpmn_jax
+mode_operator_vacuum_solve_jax mode_rhs_from_gsource_jax
+pytree_directional_derivative_check_jax vacuum_boundary_fields_from_cylindrical_jax
+vacuum_boundary_fields_from_mode_coeffs_jax vmec_analytic_terms_from_geometry_jax
+vmec_nonsingular_terms_from_bexni_jax vmec_source_from_gsource_jax
+""".split()
 
 _trace_scalar = _trace_fingerprint.trace_scalar
 _trace_bool = _trace_fingerprint.trace_bool
