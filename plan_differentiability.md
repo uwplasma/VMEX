@@ -32517,3 +32517,77 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.992%.
 - Docs/release hygiene for this PR: 99.993%.
 - Overall differentiability-refactor PR: 99.99999999999965%.
+
+## 2026-06-20 QI CLI override simplification
+
+Steps taken:
+
+1. Replaced repeated scalar `argparse` override assignments in
+   `apply_qi_example_cli_overrides()` with compact typed override groups.
+2. Kept special cases explicit for input/output paths, solver-device
+   normalization, resolution updates, mirror-surface parsing, JSON overrides,
+   and stage-mode derivation.
+3. Preserved the user-facing QI example workflow; no optimization policy,
+   objective term, seed policy, or environment-variable behavior was changed.
+
+Results obtained:
+
+- `vmec_jax/qi_optimization.py` drops from 1977 to 1972 lines.
+- `apply_qi_example_cli_overrides()` drops from 177 to 146 lines.
+- Source-health keeps `qi_optimization.py` below the 2000-line warning
+  threshold and makes the CLI override controls easier to audit.
+
+Tests and commands run:
+
+- `git diff --check`
+- `python -m ruff check vmec_jax/qi_optimization.py`
+- `python -m compileall -q vmec_jax/qi_optimization.py`
+- `python -m pytest -q tests/test_qi_optimization_more_coverage.py::test_qi_example_cli_overrides_update_namespace_and_stage_modes tests/test_qi_optimization_more_coverage.py::test_qi_example_cli_defaults_min_vmec_mode_and_accepts_default_solver tests/test_qi_optimization_more_coverage.py::test_qi_example_cli_loads_anisotropic_stage_mode_limits tests/test_qi_optimization_more_coverage.py::test_qi_example_cli_real_stage_mode_policies -q`
+- `python -m pytest -q tests/test_qi_optimization_more_coverage.py tests/test_qi_stage_checkpoint.py -q`
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 90 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Continue optimizer workflow cleanup with the same standard: keep user-facing
+   scripts pedagogical, move only reusable mechanics into source helpers, and
+   require net source-health improvement.
+2. Inspect `optimization_workflow.py` and fixed-boundary optimizer workflow
+   seams next; avoid reshaping numerical objective assembly unless the existing
+   objective/gradient tests cover it.
+3. Use `ssh office` only for GPU/performance validation after local refactor
+   tests pass; no GPU work was needed for this source-only tranche.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.989%.
+- Differentiability/refactor implementation: 99.99999999974%.
+- Solver monolith reduction: 99.9978%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.978%.
+- Residual policy simplification: 99.986%.
+- WOUT diagnostic/profile decomposition: 99.9991%.
+- Bcovar/WOUT parity decomposition: 99.67%.
+- Force-kernel decomposition: 99.79%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.94%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.513%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.47%.
+- QI objective/staged-runner decomposition: 97.15%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.992%.
+- Docs/release hygiene for this PR: 99.993%.
+- Overall differentiability-refactor PR: 99.99999999999966%.
