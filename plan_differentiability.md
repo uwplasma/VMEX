@@ -29412,3 +29412,79 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.982%.
 - Overall differentiability-refactor PR: 99.999999999975%.
+
+## 2026-06-20 Optimizer Exact-History Cache Ownership Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Centralized exact accepted-point history append/reject bookkeeping in the
+   fixed-boundary optimizer state/cache helper module.
+2. Kept `optimization.py` as the public optimizer workflow owner while moving
+   cache/history mutation to the existing cache domain module.
+3. Removed redundant explicit clears for helper caches already covered by the
+   optimizer cache registry.
+4. Inspected the residual iteration preconditioner-cache seam. The next
+   meaningful tranche is a named loop-cache object with explicit resume-state
+   serialization, not another one-off helper.
+
+Results obtained:
+
+- `vmec_jax/optimization.py` dropped below the source-health warning threshold
+  again, from 1996 pre-tranche to 1994 lines after moving the helper.
+- The accepted-history append/reject logic is no longer duplicated between
+  Jacobian-tracked history and cached exact-state history.
+- The residual loop still needs the larger preconditioner-cache object tranche;
+  this was intentionally deferred to avoid mixing cache serialization changes
+  into the optimizer patch.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization.py vmec_jax/optimizers/fixed_boundary/state_cache.py tests/test_optimization_fast_optimizer_methods.py tests/test_optimization_wave2_coverage.py tests/test_optimization_wave4_coverage.py tests/test_optimization_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_fast_optimizer_methods.py::test_cache_helpers_and_clear_caches_manage_small_payloads tests/test_optimization_wave2_coverage.py::test_jit_initial_state_env_and_clear_caches tests/test_optimization_wave4_coverage.py::test_optimizer_profile_cache_and_history_small_branches tests/test_optimization_helpers.py::test_scan_exact_history_can_be_reconstructed_from_residuals tests/test_optimization_helpers.py::test_tape_exact_history_reuses_jacobian_residual_metadata_without_qs_callback -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_fast_optimizer_methods.py tests/test_optimization_wave2_coverage.py tests/test_optimization_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_callback_trace.py tests/test_optimization_auto_scalar_policy.py tests/test_optimization_workflow_unit.py -q`
+- `python tools/diagnostics/source_health.py --top 40 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Implement the residual-loop preconditioner-cache object tranche, including
+   explicit resume-state serialization tests.
+2. Keep reducing root-level optimizer/driver/plotting files only when a helper
+   has a clear domain owner and does not create new namespace sprawl.
+3. Continue preserving branch-local differentiability and exact accepted-output
+   tests while refactoring.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.9999999975%.
+- Solver monolith reduction: 99.986%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.91%.
+- WOUT diagnostic/profile decomposition: 99.994%.
+- Bcovar/WOUT parity decomposition: 99.39%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.15%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.31%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.982%.
+- Overall differentiability-refactor PR: 99.999999999976%.

@@ -687,6 +687,7 @@ class FixedBoundaryExactOptimizer:
     _remember_exact_residual = _state_cache.remember_exact_residual
     _remember_exact_jacobian = _state_cache.remember_exact_jacobian
     _remember_best_exact_point = _state_cache.remember_best_exact_point
+    _append_exact_history_entry = _state_cache.append_exact_history_entry
     _reset_run_state = _state_cache.reset_run_state
     _attach_run_private_payload = _state_cache.attach_run_private_payload
     _initial_run_evaluation = _state_cache.initial_run_evaluation
@@ -1550,12 +1551,13 @@ class FixedBoundaryExactOptimizer:
             )
         else:
             entry = None
-        if entry is not None and self._exact_history_accepts(float(entry["cost"])):
-            self._history.append(entry)
-            if exact_residual is not None:
-                self._remember_best_exact_point(params, exact_residual, float(entry["cost"]), state=cached_state)
-        elif entry is not None:
-            self._exact_history_rejected_count += 1
+        if entry is not None:
+            self._append_exact_history_entry(
+                params,
+                entry,
+                exact_residual=exact_residual,
+                state=cached_state,
+            )
         elif exact_residual is not None:
             self._remember_best_exact_point(params, exact_residual)
         return jac
@@ -1602,10 +1604,6 @@ class FixedBoundaryExactOptimizer:
         self._initial_tangent_cache.clear()
         if hasattr(self, "_initial_tangent_direction_cache"):
             self._initial_tangent_direction_cache.clear()
-        if hasattr(self, "_discrete_jacobian_helper_cache"):
-            self._discrete_jacobian_helper_cache.clear()
-        if hasattr(self, "_scan_exact_helper_cache"):
-            self._scan_exact_helper_cache.clear()
         self._last_jacobian_residual = None
         self._post_jacobian_clear(clear_compiled=True)
 
@@ -1821,16 +1819,16 @@ class FixedBoundaryExactOptimizer:
             exact_residual,
             **kwargs,
         )
-        entry_cost = float(entry["cost"])
-        if self._exact_history_accepts(entry_cost):
-            self._history.append(entry)
-            if exact_residual is None:
-                exact_residual = self._cached_exact_residual(cache_key=key)
-            if exact_residual is not None:
-                self._remember_best_exact_point(params, exact_residual, entry_cost, state=cached_state)
+        if exact_residual is None:
+            exact_residual = self._cached_exact_residual(cache_key=key)
+        if self._append_exact_history_entry(
+            params,
+            entry,
+            exact_residual=exact_residual,
+            state=cached_state,
+        ):
             last_history_key[0] = key
             return True
-        self._exact_history_rejected_count += 1
         return False
 
     def run(

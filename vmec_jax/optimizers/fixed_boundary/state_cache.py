@@ -163,6 +163,26 @@ def remember_best_exact_point(
         optimizer._best_exact_state = best_state
 
 
+def append_exact_history_entry(
+    optimizer,
+    params,
+    entry: dict,
+    *,
+    exact_residual: np.ndarray | None,
+    state: VMECState | None,
+) -> bool:
+    """Append or reject one exact accepted-point history entry."""
+
+    entry_cost = float(entry["cost"])
+    if not optimizer._exact_history_accepts(entry_cost):
+        optimizer._exact_history_rejected_count += 1
+        return False
+    optimizer._history.append(entry)
+    if exact_residual is not None:
+        optimizer._remember_best_exact_point(params, exact_residual, entry_cost, state=state)
+    return True
+
+
 def final_history_wall_time(optimizer) -> float:
     """Return a final history timestamp that never goes backwards."""
 
