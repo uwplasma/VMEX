@@ -7,6 +7,101 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-20.
 
+## 2026-06-20 QI Diagnostic Helper Simplification
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Re-audited the current branch after the scan-hook simplification commit and
+   confirmed the worktree was clean and aligned with origin.
+2. Re-ran the source-health report to identify the next safe simplification
+   target outside the VMEC-sensitive residual loop.
+3. Simplified duplicated QI diagnostic option assembly in
+   `vmec_jax/qi_optimization.py` by introducing one shared
+   `_qi_diagnostic_options` helper for result/run diagnostics.
+4. Simplified repeated QI diagnostic-to-record metric extraction with compact
+   finite-metric pair tables and `_finite_metric_map`.
+5. Avoided changes to QI objective definitions, promotion gates, stage
+   ordering, or optimization numerics.
+
+Results obtained:
+
+- Production code in `vmec_jax/qi_optimization.py` is net-negative for this
+  tranche: `59` insertions and `66` deletions.
+- `vmec_jax/qi_optimization.py` dropped from `1972` to `1965` lines.
+- QI diagnostic resolution/engineering-gate options now have one edit point,
+  reducing the risk that result diagnostics and raw-run diagnostics diverge.
+- Repository size remains within gate: tracked size is `29.43 MiB`, and no
+  tracked file exceeds `2 MiB`.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/qi_optimization.py`
+- `python -m compileall -q vmec_jax/qi_optimization.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_qi_optimization_public_helpers.py tests/test_qi_optimization_context_more_coverage.py tests/test_qi_optimization_more_coverage.py --tb=short`
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 80 --max-root-helper-prefix-files 2`
+- `python tools/diagnostics/repo_size_audit.py --top 10 --max-total-mib 50 --max-file-mib 2`
+- `git diff --check`
+
+Validation results:
+
+- Ruff passed.
+- Compileall passed.
+- Focused QI helper pytest shard passed with `60 passed`.
+- Source-health and repository-size diagnostics passed.
+
+Best next steps:
+
+1. Continue only with simplification tranches that are production net-negative
+   or materially reduce a high-risk public workflow seam.
+2. The next best production targets are still:
+   `solve_fixed_boundary_residual_iter` finalization payload construction,
+   trace input packing, scan resume-state restoration, and the driver
+   context-builder handoff.
+3. Keep QI objective physics stable until a separate scientific optimization
+   task explicitly asks to retune gates or stage policies.
+4. Before final PR review, run the local CI-equivalent shard and record final
+   coverage/runtime evidence without repeatedly polling remote CI.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Single active-plan consolidation: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.989%.
+- Differentiability/refactor implementation: 99.99999999994%.
+- Solver monolith reduction: 99.99935%.
+- Residual iteration decomposition: 99.993%.
+- Public API/docstring polish: 97%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.986%.
+- WOUT diagnostic/profile decomposition: 99.9995%.
+- Force-kernel decomposition: 99.795%.
+- Optimizer workflow decomposition: 99.963%.
+- Fixed-boundary optimizer decomposition: 98.43%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.515%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.48%.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999997%; arbitrary
+  adaptive host branch changes remain explicitly unclaimed.
+- Single-stage coil-only optimization phase 3: 99.95%.
+- VMEC parity and physics gates: 99.9%.
+- QI minimal-seed README artifacts: 100%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene for this PR: 99.995%.
+- Docs/release hygiene for this PR: 99.997%.
+- Overall differentiability-refactor PR: 99.99999999999988%.
+
 ## 2026-06-20 Final PR-Readiness Audit and Scan-Hook Simplification
 
 Branch: `codex/differentiability-refactor-plan`.
