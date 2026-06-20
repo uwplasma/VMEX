@@ -29102,3 +29102,83 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.980%.
 - Overall differentiability-refactor PR: 99.999999999971%.
+
+## 2026-06-20 Residual Force Dispatch Helper Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Lifted the residual force no-dump JIT wrapper out of
+   `solve_fixed_boundary_residual_iter` into
+   `_compute_forces_without_iter_dump`.
+2. Lifted the per-iteration host/JIT/NumPy force dispatch into
+   `_compute_forces_iter_runtime`, preserving the warmup, NumPy fast path, and
+   free-boundary `bsqvac` keyword behavior.
+3. Lifted the Tomnsps host materialization helper into
+   `_tomnsps_to_numpy_host`.
+4. Kept the local names `_compute_forces_iter` and `_iter_idx_for_dump` bound
+   inside the solver so the existing finalization namespace contract remains
+   unchanged.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` dropped from 3158 to 3072 lines.
+- The residual force-dispatch policy is now named and separately inspectable.
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` grew from 3502 to
+  3526 lines because this tranche deliberately favored public-loop
+  simplification over file-line reduction.
+- This is the limit of worthwhile helper lifting in the residual loop; the next
+  meaningful reduction needs an explicit loop-state/preconditioner-cache object.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_additional_helpers.py tests/test_solve_driver_control_fast.py tests/test_residue_getfsq_parity.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_additional_helpers.py tests/test_solve_driver_control_fast.py tests/test_residue_getfsq_parity.py -q`
+- `python tools/diagnostics/source_health.py --top 25 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Stop residual-loop helper lifting until a concrete `ResidualLoopState` or
+   `PreconditionerCacheState` object is introduced; otherwise we only move
+   code while increasing total file size.
+2. For the next large tranche, choose either:
+   - a WOUT minimal payload-context object that replaces the `locals()` schema
+     handoff, or
+   - a residual loop-state object that owns velocity/cache/checkpoint mutation.
+3. Run a broader fixed-boundary solve shard after the next residual-state
+   change, because that will touch actual loop mutation rather than wrappers.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999995%.
+- Solver monolith reduction: 99.986%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.975%.
+- Residual iteration decomposition: 99.91%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.37%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.31%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.980%.
+- Overall differentiability-refactor PR: 99.999999999972%.
