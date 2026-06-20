@@ -106,6 +106,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     host_catastrophic_restart_update as _host_catastrophic_restart_update,
     host_force_update_rms as _host_force_update_rms,
     host_momentum_update_np as _host_momentum_update_np,
+    host_pre_restart_trigger_update as _host_pre_restart_trigger_update,
     initial_residual_velocity_state as _initial_residual_velocity_state,
     momentum_update_jax as _momentum_update_jax,
     scale_velocity_blocks as _scale_velocity_blocks,
@@ -169,6 +170,7 @@ from vmec_jax.solvers.fixed_boundary.residual.force_norms import (
     safe_dt_from_force_blocks as _safe_dt_from_force_blocks,
 )
 from vmec_jax.solvers.fixed_boundary.residual.host_diagnostics import (
+    dump_residual_evolve_trace as _dump_residual_evolve_trace,
     evaluate_vmec2000_time_control as _evaluate_vmec2000_time_control,
     print_compact_converged_status as _print_compact_converged_status,
     print_compact_physical_residual_status as _print_compact_physical_residual_status,
@@ -3286,31 +3288,34 @@ def solve_fixed_boundary_residual_iter(
                     vLcc,
                     vLss,
                 ) = _zero_velocity_blocks_like(vRcc, vRss, vZsc, vZcs, vLsc, vLcs, vRsc, vRcs, vZcc, vZss, vLcc, vLss)
-                if pre_restart_reason == "bad_jacobian":
-                    time_step = max(restart_badjac_factor * time_step, 1e-12)
-                    ijacob += 1
-                    step_status = "restart_bad_jacobian"
-                elif pre_restart_reason == "stage_transition":
-                    time_step = max(time_step * stage_transition_scale, 1e-12)
-                    step_status = "restart_stage_transition"
-                else:
-                    time_step = max(time_step / restart_badprog_factor, 1e-12)
-                    step_status = "restart_bad_progress"
-                if bool(huge_initial_forces) and (pre_restart_reason == "bad_jacobian"):
-                    huge_force_restart_count += 1
-                else:
-                    huge_force_restart_count = 0
-                if ijacob in (25, 50):
-                    scale = 0.98 if ijacob < 50 else 0.96
-                    time_step = max(scale * float(step_size), 1e-12)
-                time_step_iter = float(time_step)
-                bad_resets += 1
-                iter1 = iter2
+                pre_restart_update = _host_pre_restart_trigger_update(
+                    pre_restart_reason=pre_restart_reason,
+                    huge_initial_forces=bool(huge_initial_forces),
+                    huge_force_restart_count=int(huge_force_restart_count),
+                    time_step=float(time_step),
+                    restart_badjac_factor=float(restart_badjac_factor),
+                    restart_badprog_factor=float(restart_badprog_factor),
+                    stage_transition_scale=float(stage_transition_scale),
+                    step_size=float(step_size),
+                    ijacob=int(ijacob),
+                    bad_resets=int(bad_resets),
+                    iter2=int(iter2),
+                    fsq_prev_before=float(fsq_prev_before),
+                    fsq0_prev_before=float(fsq0_prev_before),
+                    k_ndamp=int(k_ndamp),
+                )
+                time_step = pre_restart_update.time_step
+                time_step_iter = pre_restart_update.time_step_iter
+                ijacob = pre_restart_update.ijacob
+                step_status = pre_restart_update.step_status
+                huge_force_restart_count = pre_restart_update.huge_force_restart_count
+                bad_resets = pre_restart_update.bad_resets
+                iter1 = pre_restart_update.iter1
                 freeb_controls_cached = None
                 bad_growth_streak = 0
-                fsq_prev = fsq_prev_before
-                fsq0_prev = fsq0_prev_before
-                inv_tau = [0.15 / time_step] * k_ndamp
+                fsq_prev = pre_restart_update.fsq_prev
+                fsq0_prev = pre_restart_update.fsq0_prev
+                inv_tau = pre_restart_update.inv_tau
                 _clear_preconditioner_cache_locals()
                 if bool(vmec2000_control):
                     force_bcovar_update = True
@@ -3386,41 +3391,24 @@ def solve_fixed_boundary_residual_iter(
         dtau = time_step * otav / 2.0
         b1 = 1.0 - dtau
         fac = 1.0 / (1.0 + dtau)
-        _dump_evolve_trace(
+        _dump_residual_evolve_trace(
+            dump_evolve_trace=_dump_evolve_trace,
             iter2=int(iter2),
             iter1=int(iter1),
             stage="pre",
-            fsq1_val=float(fsq1),
-            fsq_prev_val=float(fsq_prev_before),
-            time_step_val=float(time_step),
-            dtau_val=float(dtau),
-            b1_val=float(b1),
-            fac_val=float(fac),
-            state_val=state,
-            vRcc_val=vRcc,
-            vRss_val=vRss,
-            vZsc_val=vZsc,
-            vZcs_val=vZcs,
-            vLsc_val=vLsc,
-            vLcs_val=vLcs,
-            vRsc_val=vRsc,
-            vRcs_val=vRcs,
-            vZcc_val=vZcc,
-            vZss_val=vZss,
-            vLcc_val=vLcc,
-            vLss_val=vLss,
-            frcc_val=frcc_u,
-            frss_val=frss_u,
-            fzsc_val=fzsc_u,
-            fzcs_val=fzcs_u,
-            flsc_val=flsc_u,
-            flcs_val=flcs_u,
-            frsc_val=frsc_u,
-            frcs_val=frcs_u,
-            fzcc_val=fzcc_u,
-            fzss_val=fzss_u,
-            flcc_val=flcc_u,
-            flss_val=flss_u,
+            fsq1=float(fsq1),
+            fsq_prev=float(fsq_prev_before),
+            time_step=float(time_step),
+            dtau=float(dtau),
+            b1=float(b1),
+            fac=float(fac),
+            state=state,
+            velocities=_ResidualVelocityBlocks(
+                vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss
+            ),
+            forces=_ResidualVelocityBlocks(
+                frcc_u, frss_u, frsc_u, frcs_u, fzsc_u, fzcs_u, fzcc_u, fzss_u, flsc_u, flcs_u, flcc_u, flss_u
+            ),
         )
 
         if timing_enabled and t_iteration_control_evolve_start is not None:
@@ -3956,41 +3944,24 @@ def solve_fixed_boundary_residual_iter(
                 w_try_ratio_history.append(float("nan"))
                 restart_path_history.append("non_strict")
         t_iteration_post_update_start = time.perf_counter() if timing_enabled else None
-        _dump_evolve_trace(
+        _dump_residual_evolve_trace(
+            dump_evolve_trace=_dump_evolve_trace,
             iter2=int(iter2),
             iter1=int(iter1),
             stage="post",
-            fsq1_val=float(fsq1),
-            fsq_prev_val=float(fsq_prev_before),
-            time_step_val=float(time_step),
-            dtau_val=float(dtau),
-            b1_val=float(b1),
-            fac_val=float(fac),
-            state_val=state,
-            vRcc_val=vRcc,
-            vRss_val=vRss,
-            vZsc_val=vZsc,
-            vZcs_val=vZcs,
-            vLsc_val=vLsc,
-            vLcs_val=vLcs,
-            vRsc_val=vRsc,
-            vRcs_val=vRcs,
-            vZcc_val=vZcc,
-            vZss_val=vZss,
-            vLcc_val=vLcc,
-            vLss_val=vLss,
-            frcc_val=frcc_u,
-            frss_val=frss_u,
-            fzsc_val=fzsc_u,
-            fzcs_val=fzcs_u,
-            flsc_val=flsc_u,
-            flcs_val=flcs_u,
-            frsc_val=frsc_u,
-            frcs_val=frcs_u,
-            fzcc_val=fzcc_u,
-            fzss_val=fzss_u,
-            flcc_val=flcc_u,
-            flss_val=flss_u,
+            fsq1=float(fsq1),
+            fsq_prev=float(fsq_prev_before),
+            time_step=float(time_step),
+            dtau=float(dtau),
+            b1=float(b1),
+            fac=float(fac),
+            state=state,
+            velocities=_ResidualVelocityBlocks(
+                vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss
+            ),
+            forces=_ResidualVelocityBlocks(
+                frcc_u, frss_u, frsc_u, frcs_u, fzsc_u, fzcs_u, fzcc_u, fzss_u, flsc_u, flcs_u, flcc_u, flss_u
+            ),
         )
         _maybe_dump_xc(
             state=state,

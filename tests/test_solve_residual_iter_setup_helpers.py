@@ -11,6 +11,7 @@ from vmec_jax.solvers.fixed_boundary.residual.setup import (
     resolve_free_boundary_setup_policy,
 )
 from vmec_jax.solvers.fixed_boundary.residual.host_diagnostics import (
+    dump_residual_evolve_trace,
     evaluate_vmec2000_time_control,
     print_compact_converged_status,
     print_compact_physical_residual_status,
@@ -19,6 +20,7 @@ from vmec_jax.solvers.fixed_boundary.residual.host_diagnostics import (
     resolve_vmec2000_print_context,
     sample_vmec_iteration_scalars,
 )
+from vmec_jax.solvers.fixed_boundary.residual.update import ResidualVelocityBlocks
 from vmec_jax.solvers.fixed_boundary.residual.ptau import (
     accepted_control_ptau_arrays,
     accepted_control_ptau_host_from_payload,
@@ -513,6 +515,37 @@ def test_evaluate_vmec2000_time_control_emits_restart_sequence() -> None:
             "time_step": 0.9,
         }
     ]
+
+
+def test_dump_residual_evolve_trace_maps_velocity_and_force_blocks() -> None:
+    rows = []
+    velocities = ResidualVelocityBlocks(*(f"v{idx}" for idx in range(12)))
+    forces = ResidualVelocityBlocks(*(f"f{idx}" for idx in range(12)))
+
+    dump_residual_evolve_trace(
+        dump_evolve_trace=lambda **kwargs: rows.append(kwargs),
+        iter2=7,
+        iter1=3,
+        stage="post",
+        fsq1=1.0,
+        fsq_prev=2.0,
+        time_step=0.9,
+        dtau=0.1,
+        b1=0.8,
+        fac=0.7,
+        state="state",
+        velocities=velocities,
+        forces=forces,
+    )
+
+    row = rows[0]
+    assert row["iter2"] == 7
+    assert row["stage"] == "post"
+    assert row["state_val"] == "state"
+    assert row["vRcc_val"] == "v0"
+    assert row["vLss_val"] == "v11"
+    assert row["frcc_val"] == "f0"
+    assert row["flss_val"] == "f11"
 
 
 def test_scan_adapter_contexts_delegate_runtime_and_scan_contracts() -> None:

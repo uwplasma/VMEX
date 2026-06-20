@@ -10,6 +10,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     host_catastrophic_restart_update,
     host_force_update_rms,
     host_momentum_update_np,
+    host_pre_restart_trigger_update,
     initial_residual_velocity_state,
     momentum_update_jax,
     scale_velocity_blocks,
@@ -315,5 +316,103 @@ def test_host_catastrophic_restart_update_applies_vmec_reset_milestone_scale() -
     )
 
     assert update.ijacob == 25
+    np.testing.assert_allclose(update.time_step, 0.98 * 0.05)
+    np.testing.assert_allclose(update.inv_tau, [0.15 / (0.98 * 0.05)])
+
+
+def test_host_pre_restart_trigger_update_handles_bad_jacobian_and_huge_force_streak() -> None:
+    update = host_pre_restart_trigger_update(
+        pre_restart_reason="bad_jacobian",
+        huge_initial_forces=True,
+        huge_force_restart_count=2,
+        time_step=0.2,
+        restart_badjac_factor=0.9,
+        restart_badprog_factor=1.03,
+        stage_transition_scale=0.5,
+        step_size=0.1,
+        ijacob=3,
+        bad_resets=4,
+        iter2=12,
+        fsq_prev_before=1.25,
+        fsq0_prev_before=2.5,
+        k_ndamp=3,
+    )
+
+    assert update.step_status == "restart_bad_jacobian"
+    assert update.ijacob == 4
+    assert update.bad_resets == 5
+    assert update.iter1 == 12
+    assert update.huge_force_restart_count == 3
+    np.testing.assert_allclose(update.time_step, 0.18)
+    np.testing.assert_allclose(update.time_step_iter, 0.18)
+    np.testing.assert_allclose(update.fsq_prev, 1.25)
+    np.testing.assert_allclose(update.fsq0_prev, 2.5)
+    np.testing.assert_allclose(update.inv_tau, [0.15 / 0.18] * 3)
+
+
+def test_host_pre_restart_trigger_update_handles_stage_transition_and_bad_progress() -> None:
+    stage = host_pre_restart_trigger_update(
+        pre_restart_reason="stage_transition",
+        huge_initial_forces=True,
+        huge_force_restart_count=9,
+        time_step=0.2,
+        restart_badjac_factor=0.9,
+        restart_badprog_factor=1.03,
+        stage_transition_scale=0.5,
+        step_size=0.1,
+        ijacob=3,
+        bad_resets=4,
+        iter2=12,
+        fsq_prev_before=1.25,
+        fsq0_prev_before=2.5,
+        k_ndamp=2,
+    )
+    assert stage.step_status == "restart_stage_transition"
+    assert stage.ijacob == 3
+    assert stage.huge_force_restart_count == 0
+    np.testing.assert_allclose(stage.time_step, 0.1)
+    np.testing.assert_allclose(stage.inv_tau, [1.5] * 2)
+
+    bad_progress = host_pre_restart_trigger_update(
+        pre_restart_reason="bad_progress",
+        huge_initial_forces=False,
+        huge_force_restart_count=9,
+        time_step=0.103,
+        restart_badjac_factor=0.9,
+        restart_badprog_factor=1.03,
+        stage_transition_scale=0.5,
+        step_size=0.1,
+        ijacob=3,
+        bad_resets=4,
+        iter2=12,
+        fsq_prev_before=1.25,
+        fsq0_prev_before=2.5,
+        k_ndamp=2,
+    )
+    assert bad_progress.step_status == "restart_bad_progress"
+    np.testing.assert_allclose(bad_progress.time_step, 0.1)
+    np.testing.assert_allclose(bad_progress.inv_tau, [1.5] * 2)
+
+
+def test_host_pre_restart_trigger_update_applies_vmec_milestone_scale() -> None:
+    update = host_pre_restart_trigger_update(
+        pre_restart_reason="bad_jacobian",
+        huge_initial_forces=False,
+        huge_force_restart_count=0,
+        time_step=0.2,
+        restart_badjac_factor=0.9,
+        restart_badprog_factor=1.03,
+        stage_transition_scale=0.5,
+        step_size=0.05,
+        ijacob=24,
+        bad_resets=0,
+        iter2=25,
+        fsq_prev_before=1.0,
+        fsq0_prev_before=1.0,
+        k_ndamp=1,
+    )
+
+    assert update.ijacob == 25
+    assert update.step_status == "restart_bad_jacobian"
     np.testing.assert_allclose(update.time_step, 0.98 * 0.05)
     np.testing.assert_allclose(update.inv_tau, [0.15 / (0.98 * 0.05)])

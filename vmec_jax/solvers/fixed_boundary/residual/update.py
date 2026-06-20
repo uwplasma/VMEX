@@ -48,6 +48,21 @@ class HostCatastrophicRestartUpdate(NamedTuple):
     update_rms: float
 
 
+class HostPreRestartTriggerUpdate(NamedTuple):
+    """Scalar state after a host-loop pre-restart trigger."""
+
+    time_step: float
+    time_step_iter: float
+    ijacob: int
+    step_status: str
+    bad_resets: int
+    iter1: int
+    fsq_prev: float
+    fsq0_prev: float
+    inv_tau: list[float]
+    huge_force_restart_count: int
+
+
 class BacktrackingMomentumSearchResult(NamedTuple):
     """Result of the non-strict host backtracking momentum search."""
 
@@ -410,6 +425,61 @@ def host_catastrophic_restart_update(
     )
 
 
+def host_pre_restart_trigger_update(
+    *,
+    pre_restart_reason: str,
+    huge_initial_forces: bool,
+    huge_force_restart_count: int,
+    time_step: float,
+    restart_badjac_factor: float,
+    restart_badprog_factor: float,
+    stage_transition_scale: float,
+    step_size: float,
+    ijacob: int,
+    bad_resets: int,
+    iter2: int,
+    fsq_prev_before: float,
+    fsq0_prev_before: float,
+    k_ndamp: int,
+) -> HostPreRestartTriggerUpdate:
+    """Return scalar updates for the pre-state-update restart path."""
+
+    reason = str(pre_restart_reason)
+    ijacob_next = int(ijacob)
+    if reason == "bad_jacobian":
+        time_step_next = max(float(restart_badjac_factor) * float(time_step), 1.0e-12)
+        ijacob_next += 1
+        step_status = "restart_bad_jacobian"
+    elif reason == "stage_transition":
+        time_step_next = max(float(time_step) * float(stage_transition_scale), 1.0e-12)
+        step_status = "restart_stage_transition"
+    else:
+        time_step_next = max(float(time_step) / float(restart_badprog_factor), 1.0e-12)
+        step_status = "restart_bad_progress"
+
+    if bool(huge_initial_forces) and reason == "bad_jacobian":
+        huge_force_restart_count_next = int(huge_force_restart_count) + 1
+    else:
+        huge_force_restart_count_next = 0
+
+    if ijacob_next in (25, 50):
+        scale = 0.98 if ijacob_next < 50 else 0.96
+        time_step_next = max(scale * float(step_size), 1.0e-12)
+
+    return HostPreRestartTriggerUpdate(
+        time_step=float(time_step_next),
+        time_step_iter=float(time_step_next),
+        ijacob=int(ijacob_next),
+        step_status=step_status,
+        bad_resets=int(bad_resets) + 1,
+        iter1=int(iter2),
+        fsq_prev=float(fsq_prev_before),
+        fsq0_prev=float(fsq0_prev_before),
+        inv_tau=[0.15 / float(time_step_next)] * int(k_ndamp),
+        huge_force_restart_count=int(huge_force_restart_count_next),
+    )
+
+
 def backtracking_momentum_search(
     *,
     state: Any,
@@ -481,9 +551,11 @@ def backtracking_momentum_search(
 
 _ResidualVelocityBlocks = ResidualVelocityBlocks
 _HostCatastrophicRestartUpdate = HostCatastrophicRestartUpdate
+_HostPreRestartTriggerUpdate = HostPreRestartTriggerUpdate
 _zero_velocity_blocks_like = zero_velocity_blocks_like
 _scale_velocity_blocks = scale_velocity_blocks
 _host_force_update_rms = host_force_update_rms
 _momentum_update_jax = momentum_update_jax
 _host_momentum_update_np = host_momentum_update_np
 _host_catastrophic_restart_update = host_catastrophic_restart_update
+_host_pre_restart_trigger_update = host_pre_restart_trigger_update
