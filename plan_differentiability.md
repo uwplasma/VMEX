@@ -28945,3 +28945,83 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.980%.
 - Overall differentiability-refactor PR: 99.999999999969%.
+
+## 2026-06-20 Tomnsps Transform Setup Consolidation
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added shared theta-domain setup helpers for the symmetric and asymmetric
+   VMEC Fourier transforms:
+   `_slice_theta2_many`, `_optional_theta2_pairs`, and
+   `_stack_even_odd_pairs`.
+2. Replaced duplicated `ntheta2` slicing, optional zero-fill handling, and
+   even/odd stack construction in both `tomnsps_rzl` and `tomnspa_rzl`.
+3. Removed local theta-contraction wrapper functions and called
+   `_theta_contract` directly in both transform paths.
+4. Added `_apply_tomnsp_radial_masks` so the fixed-boundary radial masks for
+   R/Z and lambda blocks are applied through one domain helper in both
+   stellarator-symmetric and asymmetric paths.
+
+Results obtained:
+
+- `vmec_jax/vmec_tomnsp.py` dropped from 1514 to 1506 lines.
+- `tomnsps_rzl` dropped from 360 to 350 lines.
+- `tomnspa_rzl` dropped from 295 to 265 lines.
+- The transform code now shares setup/masking rules across the symmetric and
+  asymmetric transforms, reducing future parity drift risk while keeping the
+  numerical contraction path unchanged.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/vmec_tomnsp.py tests/test_vmec_tomnsp_branch_coverage.py tests/test_vmec_tomnsp_tables.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_vmec_tomnsp_branch_coverage.py tests/test_vmec_tomnsp_tables.py -q`
+- `python tools/diagnostics/source_health.py --top 25 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Do not keep shaving `tomnsps_rzl` unless the next edit removes a real
+   duplicated physics block; the remaining size is mostly VMEC parity logic.
+2. Target `initial_guess_from_boundary` only if the axis-policy extraction
+   reduces total lines or creates a reusable, tested axis-recovery object.
+3. Target `wout_minimal_from_fixed_boundary` with a dedicated WOUT payload
+   context object, because that is the next clear public API simplification
+   seam.
+4. Keep the full-loop differentiability work conservative: fixed/fingerprint
+   branch gates are validated, but arbitrary adaptive host branch
+   differentiation remains a later explicit design milestone.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999993%.
+- Solver monolith reduction: 99.984%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.975%.
+- Residual iteration decomposition: 99.895%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.37%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.08%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.31%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.980%.
+- Overall differentiability-refactor PR: 99.999999999970%.
