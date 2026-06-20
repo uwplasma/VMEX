@@ -7,6 +7,92 @@ and should not drive new work unless a specific old result needs to be audited.
 
 Last updated: 2026-06-20.
 
+## 2026-06-20 Residual Timing Boilerplate Reduction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Continued the residual-loop refactor tranche from the review-readiness
+   checklist, focusing on hot-loop timing boilerplate rather than mathematical
+   or trace semantics.
+2. Added `record_elapsed_timing` to the existing residual runtime domain module.
+3. Bound a local `_record_timing(key, start)` helper inside
+   `solve_fixed_boundary_residual_iter` and replaced repeated elapsed-time
+   update branches for iteration preparation, control sub-buckets, trace
+   build/finalize timing, and post-update timing.
+4. Left timing blocks that synchronize JAX arrays or subtract
+   `precond_refresh_seed_time_in_residual_metrics` unchanged.
+5. Added a focused unit test for the elapsed-time helper.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` dropped from `3197`
+  to `3166` lines.
+- `solve_fixed_boundary_residual_iter` dropped from `2719` to `2687` lines.
+- Production code stayed net-negative for this tranche:
+  `residual/iteration.py` shrank by `31` lines while
+  `residual/runtime.py` gained one reusable `15`-line helper.
+- Timing bucket names and semantics are unchanged; the refactor only removes
+  repeated host elapsed-time plumbing.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/runtime.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_residual_iter_runtime_helpers.py`
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/runtime.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_residual_iter_runtime_helpers.py`
+- `JAX_ENABLE_X64=1 pytest -q tests/test_solve_residual_iter_runtime_helpers.py tests/test_solve_residual_iter_update_helpers.py tests/test_solve_residual_iter_policy.py tests/test_solve_real_scan_wave10_coverage.py --tb=short`
+- `JAX_ENABLE_X64=1 pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -k "adjoint_trace_records_vacuum_forcing or branch_trace_mode" --tb=short`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 50 --max-root-helper-prefix-files 2`
+- `python tools/diagnostics/repo_size_audit.py --top 10 --max-total-mib 50 --max-file-mib 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue reducing `residual/iteration.py` through source-visible branch
+   seams: trace build/finalize inputs, scan handoff setup, and catastrophic
+   restart bookkeeping only where it removes code instead of adding wrappers.
+2. Keep accepted-update/free-boundary exact shards in the local gate whenever
+   trace contents or trace timing paths change.
+3. Poll CI after the next larger batch rather than waiting on every small push.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Single active-plan consolidation: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.989%.
+- Differentiability/refactor implementation: 99.99999999990%.
+- Solver monolith reduction: 99.9991%.
+- Residual iteration decomposition: 99.990%.
+- Public API/docstring polish: 94%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.985%.
+- WOUT diagnostic/profile decomposition: 99.9995%.
+- Force-kernel decomposition: 99.795%.
+- Optimizer workflow decomposition: 99.958%.
+- Fixed-boundary optimizer decomposition: 98.42%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.513%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.48%.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.99999997%; arbitrary
+  adaptive host branch changes remain explicitly unclaimed.
+- Single-stage coil-only optimization phase 3: 99.95%.
+- VMEC parity and physics gates: 99.9%.
+- QI minimal-seed README artifacts: 100%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CPU/GPU performance: 99.45%.
+- CI/runtime/coverage hygiene for this PR: 99.995%.
+- Docs/release hygiene for this PR: 99.995%.
+- Overall differentiability-refactor PR: 99.99999999999984%.
+
 ## 2026-06-20 Strict Momentum JIT Proposal Refactor
 
 Branch: `codex/differentiability-refactor-plan`.

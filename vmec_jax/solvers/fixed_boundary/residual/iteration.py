@@ -63,6 +63,7 @@ from vmec_jax.solvers.fixed_boundary.residual.runtime import (
     _setup_timer_start as _runtime_setup_timer_start,
     _vmec_freeb_plascur_from_bcovar as _runtime_vmec_freeb_plascur_from_bcovar,
     dump_xc_with_velocity_blocks as _dump_xc_with_velocity_blocks,
+    record_elapsed_timing as _record_elapsed_timing,
     record_update_state_ready_timing as _record_update_state_ready_timing,
     record_update_total_timing as _record_update_total_timing,
     resolve_free_boundary_iteration_controls as _runtime_resolve_free_boundary_iteration_controls,
@@ -1157,6 +1158,12 @@ def solve_fixed_boundary_residual_iter(
     profile_perfetto = _runtime_env_enabled(os.getenv("VMEC_JAX_PROFILE_PERFETTO", "1"))
 
     timing_stats = _runtime_new_residual_iter_timing_stats(_setup_phase_timings)
+    _record_timing = partial(
+        _record_elapsed_timing,
+        bool(timing_enabled),
+        timing_stats,
+        perf_counter=time.perf_counter,
+    )
 
     _record_compute_force_timing = partial(
         _runtime_record_compute_force_timing,
@@ -1730,8 +1737,7 @@ def solve_fixed_boundary_residual_iter(
                     except Exception:
                         profile_active = False
 
-            if timing_enabled and t_iteration_prepare_start is not None:
-                timing_stats["iteration_prepare"] += time.perf_counter() - float(t_iteration_prepare_start)
+            _record_timing("iteration_prepare", t_iteration_prepare_start)
             t_compute_start = time.perf_counter() if timing_enabled else None
             k, frzl, gcr2, gcz2, gcl2, rz_scale, l_scale, norms_current = _compute_forces_iter(
                 state,
@@ -2280,10 +2286,7 @@ def solve_fixed_boundary_residual_iter(
                     fsql1_safe,
                     fsq1,
                 ) = jax_channels
-            if timing_enabled and t_fsq1_precond_norm_start is not None:
-                timing_stats["iteration_control_fsq1_precond_norm"] += time.perf_counter() - float(
-                    t_fsq1_precond_norm_start
-                )
+            _record_timing("iteration_control_fsq1_precond_norm", t_fsq1_precond_norm_start)
             if _env_dump_lam not in ("", "0") and frzl_lam_pre is None:
                 gcr2_raw, gcz2_raw, gcl2_raw = vmec_gcx2_from_tomnsps(
                     frzl=frzl,
@@ -2309,10 +2312,7 @@ def solve_fixed_boundary_residual_iter(
                     fsq1_j = fsq1_safe
                 else:
                     fsq1_j = fsq1
-                if timing_enabled and t_fsq1_scalar_build_start is not None:
-                    timing_stats["iteration_control_fsq1_scalar_build"] += time.perf_counter() - float(
-                        t_fsq1_scalar_build_start
-                    )
+                _record_timing("iteration_control_fsq1_scalar_build", t_fsq1_scalar_build_start)
                 use_control_payload = (
                     (not bool(converged_physical))
                     and (bool(reference_mode) or bool(vmec2000_control))
@@ -2340,8 +2340,7 @@ def solve_fixed_boundary_residual_iter(
                 fsq1 = control_payload.fsq1
                 accepted_control_ptau_host = control_payload.accepted_control_ptau_host
                 control_payload_used = control_payload.control_payload_used
-            if timing_enabled and t_iteration_control_fsq1_start is not None:
-                timing_stats["iteration_control_fsq1"] += time.perf_counter() - float(t_iteration_control_fsq1_start)
+            _record_timing("iteration_control_fsq1", t_iteration_control_fsq1_start)
             precond_diag_host: tuple[float, float, float] | None = None
 
             def _precond_diag_floats() -> tuple[float, float, float]:
@@ -2412,8 +2411,7 @@ def solve_fixed_boundary_residual_iter(
                     fsql=fsql_f,
                     target=float(fsq_total_target) if fsq_total_target is not None else float(ftol),
                 )
-                if timing_enabled and t_iteration_control_start is not None:
-                    timing_stats["iteration_control"] += time.perf_counter() - float(t_iteration_control_start)
+                if _record_timing("iteration_control", t_iteration_control_start):
                     t_iteration_control_start = None
                 _print_residual_iteration_update_status(
                     verbose=bool(verbose),
@@ -2454,10 +2452,7 @@ def solve_fixed_boundary_residual_iter(
                     if ptau_min is not None and ptau_max is not None:
                         t_badjac_ptau_get_start = time.perf_counter() if timing_enabled else None
                         min_tau_ptau, max_tau_ptau = _device_get_floats(ptau_min, ptau_max)
-                        if timing_enabled and t_badjac_ptau_get_start is not None:
-                            timing_stats["iteration_control_badjac_ptau_get"] += time.perf_counter() - float(
-                                t_badjac_ptau_get_start
-                            )
+                        _record_timing("iteration_control_badjac_ptau_get", t_badjac_ptau_get_start)
                 ptau_decision = None
                 if min_tau_ptau is not None and max_tau_ptau is not None:
                     ptau_decision = _bad_jacobian_tau_decision(
@@ -2499,10 +2494,7 @@ def solve_fixed_boundary_residual_iter(
                         jnp_module=jnp,
                         numpy_patch_context=_hot_numpy_patch,
                     )
-                    if timing_enabled and t_badjac_state_jacobian_start is not None:
-                        timing_stats["iteration_control_badjac_state_jacobian"] += time.perf_counter() - float(
-                            t_badjac_state_jacobian_start
-                        )
+                    _record_timing("iteration_control_badjac_state_jacobian", t_badjac_state_jacobian_start)
                     state_decision = _bad_jacobian_tau_decision(
                         min_tau=min_tau_state,
                         max_tau=max_tau_state,
@@ -2600,15 +2592,9 @@ def solve_fixed_boundary_residual_iter(
                     # repeating iter2==1 on the next loop pass.
                     if iter2 == 1:
                         iter_offset -= 1
-                    if timing_enabled and t_iteration_control_badjac_start is not None:
-                        timing_stats["iteration_control_badjac"] += time.perf_counter() - float(
-                            t_iteration_control_badjac_start
-                        )
+                    _record_timing("iteration_control_badjac", t_iteration_control_badjac_start)
                     continue
-            if timing_enabled and t_iteration_control_badjac_start is not None:
-                timing_stats["iteration_control_badjac"] += time.perf_counter() - float(
-                    t_iteration_control_badjac_start
-                )
+            _record_timing("iteration_control_badjac", t_iteration_control_badjac_start)
 
             # VMEC-style time-step control: VMEC2000's `TimeStepControl` + `restart_iter`.
             t_iteration_control_vmec_time_start = time.perf_counter() if timing_enabled else None
@@ -2671,15 +2657,9 @@ def solve_fixed_boundary_residual_iter(
                     _pop_iteration_histories()
                     prev_rz_fsq = prev_rz_fsq_before
                     skip_time_control = True
-                    if timing_enabled and t_iteration_control_vmec_time_start is not None:
-                        timing_stats["iteration_control_vmec_time"] += time.perf_counter() - float(
-                            t_iteration_control_vmec_time_start
-                        )
+                    _record_timing("iteration_control_vmec_time", t_iteration_control_vmec_time_start)
                     continue
-            if timing_enabled and t_iteration_control_vmec_time_start is not None:
-                timing_stats["iteration_control_vmec_time"] += time.perf_counter() - float(
-                    t_iteration_control_vmec_time_start
-                )
+            _record_timing("iteration_control_vmec_time", t_iteration_control_vmec_time_start)
 
             # --- time-step control trackers + optional restart triggers ---
             t_iteration_control_restart_start = time.perf_counter() if timing_enabled else None
@@ -2769,16 +2749,10 @@ def solve_fixed_boundary_residual_iter(
                 _pop_iteration_histories()
                 prev_rz_fsq = prev_rz_fsq_before
                 skip_time_control = True
-                if timing_enabled and t_iteration_control_restart_start is not None:
-                    timing_stats["iteration_control_restart"] += time.perf_counter() - float(
-                        t_iteration_control_restart_start
-                    )
+                _record_timing("iteration_control_restart", t_iteration_control_restart_start)
                 continue
 
-            if timing_enabled and t_iteration_control_restart_start is not None:
-                timing_stats["iteration_control_restart"] += time.perf_counter() - float(
-                    t_iteration_control_restart_start
-                )
+            _record_timing("iteration_control_restart", t_iteration_control_restart_start)
             break
         if profile_started and (profile_start_iter is not None) and (iter2 == profile_start_iter):
             if has_jax():
@@ -2827,10 +2801,8 @@ def solve_fixed_boundary_residual_iter(
             forces=force_blocks,
         )
 
-        if timing_enabled and t_iteration_control_evolve_start is not None:
-            timing_stats["iteration_control_evolve"] += time.perf_counter() - float(t_iteration_control_evolve_start)
-        if timing_enabled and t_iteration_control_start is not None:
-            timing_stats["iteration_control"] += time.perf_counter() - float(t_iteration_control_start)
+        _record_timing("iteration_control_evolve", t_iteration_control_evolve_start)
+        if _record_timing("iteration_control", t_iteration_control_start):
             t_iteration_control_start = None
         t_update_start = time.perf_counter() if timing_enabled else None
         if bool(strict_update):
@@ -2845,8 +2817,7 @@ def solve_fixed_boundary_residual_iter(
                     materialize_func=_materialize_adjoint_trace_array,
                     adjoint_trace_mode=adjoint_trace_mode,
                 )
-            if timing_enabled and t_trace_build_start is not None:
-                timing_stats["update_trace_build"] += time.perf_counter() - float(t_trace_build_start)
+            _record_timing("update_trace_build", t_trace_build_start)
             t_state_update_start = time.perf_counter() if timing_enabled else None
             dt_eff = float(time_step)
             if bool(limit_dt_from_force):
@@ -3046,8 +3017,7 @@ def solve_fixed_boundary_residual_iter(
                     adjoint_trace_mode=adjoint_trace_mode,
                 )
                 adjoint_step_trace_history.append(trace_entry)
-            if timing_enabled and t_trace_finalize_start is not None:
-                timing_stats["update_trace_finalize"] += time.perf_counter() - float(t_trace_finalize_start)
+            _record_timing("update_trace_finalize", t_trace_finalize_start)
             _record_update_total_timing(
                 timing_enabled=bool(timing_enabled),
                 timing_stats=timing_stats,
@@ -3181,8 +3151,7 @@ def solve_fixed_boundary_residual_iter(
                 print(f"\n  VACUUM PRESSURE TURNED ON AT {int(iter2):4d} ITERATIONS\n", flush=True)
             freeb_ivac = int(freeb_ivac) + 1
         skip_time_control = False
-        if timing_enabled and t_iteration_post_update_start is not None:
-            timing_stats["iteration_post_update"] += time.perf_counter() - float(t_iteration_post_update_start)
+        _record_timing("iteration_post_update", t_iteration_post_update_start)
 
     return _finalize_residual_iter_from_namespace(
         locals(),
