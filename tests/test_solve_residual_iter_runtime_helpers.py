@@ -24,6 +24,7 @@ from vmec_jax.solvers.fixed_boundary.residual.runtime import (
     _scan_print_uses_io_callback,
     _setup_timer_start,
     _vmec_freeb_plascur_from_bcovar,
+    resolve_free_boundary_iteration_controls,
     resolve_residual_profile_window,
 )
 
@@ -121,6 +122,104 @@ def test_resolve_residual_profile_window_parses_iteration_windows():
     invalid = resolve_residual_profile_window(profile_window_env="iterbad", profile_dir_env="/tmp/prof")
     assert invalid.active is False
     assert invalid.start_iter is None
+
+
+def test_resolve_free_boundary_iteration_controls_disabled_skips_trace() -> None:
+    trace_calls = []
+
+    out = resolve_free_boundary_iteration_controls(
+        free_boundary_enabled=False,
+        controls_cached=None,
+        iter2=5,
+        iter1=1,
+        ivac=-1,
+        ivacskip=0,
+        nvacskip=3,
+        nvskip0=3,
+        prev_rz_fsq=float("nan"),
+        activate_fsq=None,
+        iter_controls_func=lambda **_kwargs: pytest.fail("disabled path should not call controls"),
+        dump_freeb_control_trace=lambda **kwargs: trace_calls.append(kwargs),
+    )
+
+    assert out.ivac == -1
+    assert out.ivacskip == 0
+    assert out.nvacskip == 3
+    assert out.controls_cached is None
+    assert out.turnon_iter is False
+    assert out.ivac_effective == -1
+    assert trace_calls == []
+
+
+def test_resolve_free_boundary_iteration_controls_computes_and_caches_turnon() -> None:
+    control_calls = []
+    trace_calls = []
+
+    def iter_controls_func(**kwargs):
+        control_calls.append(kwargs)
+        return 0, 0, 4
+
+    out = resolve_free_boundary_iteration_controls(
+        free_boundary_enabled=True,
+        controls_cached=None,
+        iter2=7,
+        iter1=3,
+        ivac=-1,
+        ivacskip=0,
+        nvacskip=2,
+        nvskip0=2,
+        prev_rz_fsq=float("nan"),
+        activate_fsq=1.0e-6,
+        iter_controls_func=iter_controls_func,
+        dump_freeb_control_trace=lambda **kwargs: trace_calls.append(kwargs),
+    )
+
+    assert out.ivac == 0
+    assert out.ivacskip == 0
+    assert out.nvacskip == 4
+    assert out.controls_cached == (0, 0, 4)
+    assert out.turnon_iter is True
+    assert out.ivac_effective == 1
+    assert control_calls[0]["fsq_rz_prev"] == pytest.approx(1.0)
+    assert trace_calls == [
+        {
+            "iter2": 7,
+            "iter1": 3,
+            "ivac": 0,
+            "ivacskip": 0,
+            "nvacskip": 4,
+            "fsq_rz_prev": 1.0,
+            "cached": False,
+        }
+    ]
+
+
+def test_resolve_free_boundary_iteration_controls_reuses_cached_values() -> None:
+    trace_calls = []
+
+    out = resolve_free_boundary_iteration_controls(
+        free_boundary_enabled=True,
+        controls_cached=(2, 5, 8),
+        iter2=9,
+        iter1=4,
+        ivac=1,
+        ivacskip=0,
+        nvacskip=3,
+        nvskip0=3,
+        prev_rz_fsq=0.25,
+        activate_fsq=None,
+        iter_controls_func=lambda **_kwargs: pytest.fail("cached path should not call controls"),
+        dump_freeb_control_trace=lambda **kwargs: trace_calls.append(kwargs),
+    )
+
+    assert out.ivac == 2
+    assert out.ivacskip == 5
+    assert out.nvacskip == 8
+    assert out.controls_cached == (2, 5, 8)
+    assert out.turnon_iter is False
+    assert out.ivac_effective == 2
+    assert trace_calls[0]["cached"] is True
+    assert trace_calls[0]["fsq_rz_prev"] == pytest.approx(0.25)
 
 
 def test_ptau_dump_enabled_requires_env_and_directory():

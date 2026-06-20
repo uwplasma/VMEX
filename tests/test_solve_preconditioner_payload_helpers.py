@@ -12,6 +12,7 @@ from vmec_jax.solvers.fixed_boundary.residual.preconditioner_payload import (
     host_preconditioned_residual_scalar_channels,
     jax_preconditioned_residual_scalar_channels,
     materialize_accepted_control_payload,
+    refresh_preconditioner_cache_state_runtime,
     seed_preconditioner_cache_from_bcovar_update,
 )
 from vmec_jax.vmec_tomnsp import TomnspsRZL
@@ -250,6 +251,73 @@ def test_seed_preconditioner_cache_from_bcovar_update_lasym_skips_1d_seed() -> N
     assert cache.prec_lam_prec is None
     assert cache.prec_rz_mats is None
     np.testing.assert_allclose(cache.f_norm1, 0.2)
+
+
+def test_refresh_preconditioner_cache_state_runtime_updates_cache_fields() -> None:
+    cache = PreconditionerCacheState()
+    cache.valid = True
+    cache.prec_lam_prec = "old-lam"
+    cache.prec_faclam = "old-fac"
+    cache.prec_lam_debug = "old-debug"
+    cache.prec_rz_mats = "old-mats"
+    cache.prec_rz_jmax = 2
+    decision = SimpleNamespace(
+        need_prec_refresh=False,
+        can_reuse_bcovar_seeded_precond=False,
+        need_prec_reassemble=False,
+    )
+
+    def update_preconditioner_cache_func(**kwargs):
+        assert kwargs["vmec2000_cache_valid"] is True
+        assert kwargs["cache_prec_lam_prec"] == "old-lam"
+        return SimpleNamespace(
+            decision=decision,
+            lam_prec="new-lam",
+            mats={"new": True},
+            jmax=4,
+            faclam_dump=None,
+            lam_debug=None,
+            cache_prec_lam_prec="cache-lam",
+            cache_prec_faclam="cache-fac",
+            cache_prec_lam_debug="cache-debug",
+            cache_prec_rz_mats={"cache": True},
+            cache_prec_rz_jmax=4,
+        )
+
+    out = refresh_preconditioner_cache_state_runtime(
+        SimpleNamespace(bc="bc"),
+        cache=cache,
+        iter2=3,
+        cfg=SimpleNamespace(),
+        static=SimpleNamespace(),
+        env_dump_lam="0",
+        env_dump_lamcal="0",
+        timing_enabled=False,
+        timing_stats={},
+        perf_counter=lambda: 0.0,
+        block_until_ready=None,
+        tree_has_tracer=lambda _value: False,
+        update_preconditioner_cache_func=update_preconditioner_cache_func,
+        can_reassemble_func=lambda **_kwargs: False,
+        lambda_preconditioner_func=lambda **_kwargs: "unused",
+        rz_preconditioner_matrices_func=lambda **_kwargs: "unused",
+        maybe_dump_lam_prec=lambda **_kwargs: None,
+        maybe_dump_precond_mats=lambda **_kwargs: None,
+        maybe_dump_lamcal=lambda **_kwargs: None,
+        need_bcovar_update=False,
+        precond_cache_seeded_from_bcovar_update=False,
+        precond_expected_jmax=4,
+        precond_jmax_override=None,
+        preconditioner_use_precomputed_tridi=True,
+        preconditioner_use_lax_tridi=False,
+    )
+
+    assert out == ("new-lam", {"new": True}, 4, False, False, False)
+    assert cache.prec_lam_prec == "cache-lam"
+    assert cache.prec_faclam == "cache-fac"
+    assert cache.prec_lam_debug == "cache-debug"
+    assert cache.prec_rz_mats == {"cache": True}
+    assert cache.prec_rz_jmax == 4
 
 
 def test_materialize_accepted_control_payload_uses_existing_payload() -> None:
