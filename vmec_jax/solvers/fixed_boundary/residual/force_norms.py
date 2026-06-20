@@ -12,6 +12,25 @@ from ...._compat import jnp
 from .payload_blocks import ForceBlocks
 
 
+def force_blocks_from_update_order(blocks) -> ForceBlocks:
+    """Map update/velocity channel order to force-norm channel order."""
+
+    return ForceBlocks(
+        frcc=blocks.rcc,
+        frss=blocks.rss,
+        fzsc=blocks.zsc,
+        fzcs=blocks.zcs,
+        flsc=blocks.lsc,
+        flcs=blocks.lcs,
+        frsc=blocks.rsc,
+        frcs=blocks.rcs,
+        fzcc=blocks.zcc,
+        fzss=blocks.zss,
+        flcc=blocks.lcc,
+        flss=blocks.lss,
+    )
+
+
 def mode_weight_force_blocks_np(
     blocks: ForceBlocks,
     *,

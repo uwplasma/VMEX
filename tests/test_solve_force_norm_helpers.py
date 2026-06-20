@@ -6,10 +6,12 @@ import numpy as np
 
 from vmec_jax._compat import jnp
 from vmec_jax.solvers.fixed_boundary.residual.force_norms import (
+    force_blocks_from_update_order,
     mode_weight_force_blocks_jax,
     residual_fsq_from_norms,
 )
 from vmec_jax.solvers.fixed_boundary.residual.payload_blocks import ForceBlocks
+from vmec_jax.solvers.fixed_boundary.residual.update import ResidualVelocityBlocks
 
 
 def test_residual_fsq_from_norms_matches_vmec_scalar_products() -> None:
@@ -53,6 +55,27 @@ def test_residual_fsq_from_norms_preserves_jax_array_inputs_and_solve_alias() ->
         np.testing.assert_allclose(np.asarray(actual), expected)
     for actual, expected in zip(alias, got):
         np.testing.assert_allclose(np.asarray(actual), np.asarray(expected))
+
+
+def test_force_blocks_from_update_order_maps_named_channels() -> None:
+    blocks = ResidualVelocityBlocks(*(f"b{idx}" for idx in range(12)))
+
+    got = force_blocks_from_update_order(blocks)
+
+    assert got == ForceBlocks(
+        frcc="b0",
+        frss="b1",
+        fzsc="b4",
+        fzcs="b5",
+        flsc="b8",
+        flcs="b9",
+        frsc="b2",
+        frcs="b3",
+        fzcc="b6",
+        fzss="b7",
+        flcc="b10",
+        flss="b11",
+    )
 
 
 def test_mode_weight_force_blocks_jax_scales_all_channels_and_zero_fills_optional_blocks() -> None:
