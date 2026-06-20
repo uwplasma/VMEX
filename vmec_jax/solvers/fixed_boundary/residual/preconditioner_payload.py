@@ -1040,6 +1040,83 @@ def refresh_preconditioner_cache_runtime(
     )
 
 
+def refresh_preconditioner_cache_state_runtime(
+    k: Any,
+    *,
+    cache: Any,
+    iter2: int,
+    cfg: Any,
+    static: Any,
+    env_dump_lam: str,
+    env_dump_lamcal: str,
+    timing_enabled: bool,
+    timing_stats: dict[str, Any],
+    perf_counter: Callable[[], float],
+    block_until_ready: Callable[[Any], Any] | None,
+    tree_has_tracer: Callable[[Any], bool],
+    update_preconditioner_cache_func: Callable[..., Any],
+    can_reassemble_func: Callable[..., bool],
+    lambda_preconditioner_func: Callable[..., Any],
+    rz_preconditioner_matrices_func: Callable[..., Any],
+    maybe_dump_lam_prec: Callable[..., None],
+    maybe_dump_precond_mats: Callable[..., None],
+    maybe_dump_lamcal: Callable[..., None],
+    need_bcovar_update: bool,
+    precond_cache_seeded_from_bcovar_update: bool,
+    precond_expected_jmax: int,
+    precond_jmax_override: int | None,
+    preconditioner_use_precomputed_tridi: bool | None,
+    preconditioner_use_lax_tridi: bool | None,
+) -> tuple[Any, dict[str, Any], int, bool, bool, bool]:
+    """Refresh/reuse cache and write the mutable cache fields in one domain seam."""
+
+    refresh = refresh_preconditioner_cache_runtime(
+        k=k,
+        cfg=cfg,
+        static=static,
+        iter2=int(iter2),
+        env_dump_lam=env_dump_lam,
+        env_dump_lamcal=env_dump_lamcal,
+        timing_enabled=bool(timing_enabled),
+        timing_stats=timing_stats,
+        perf_counter=perf_counter,
+        block_until_ready=block_until_ready,
+        tree_has_tracer=tree_has_tracer,
+        update_preconditioner_cache_func=update_preconditioner_cache_func,
+        can_reassemble_func=can_reassemble_func,
+        lambda_preconditioner_func=lambda_preconditioner_func,
+        rz_preconditioner_matrices_func=rz_preconditioner_matrices_func,
+        maybe_dump_lam_prec=maybe_dump_lam_prec,
+        maybe_dump_precond_mats=maybe_dump_precond_mats,
+        maybe_dump_lamcal=maybe_dump_lamcal,
+        vmec2000_cache_valid=bool(cache.valid),
+        need_bcovar_update=bool(need_bcovar_update),
+        precond_cache_seeded_from_bcovar_update=bool(precond_cache_seeded_from_bcovar_update),
+        precond_expected_jmax=int(precond_expected_jmax),
+        precond_jmax_override=precond_jmax_override,
+        preconditioner_use_precomputed_tridi=preconditioner_use_precomputed_tridi,
+        preconditioner_use_lax_tridi=preconditioner_use_lax_tridi,
+        cache_prec_lam_prec=cache.prec_lam_prec,
+        cache_prec_faclam=cache.prec_faclam,
+        cache_prec_lam_debug=cache.prec_lam_debug,
+        cache_prec_rz_mats=cache.prec_rz_mats,
+        cache_prec_rz_jmax=cache.prec_rz_jmax,
+    )
+    cache.prec_lam_prec = refresh.cache_prec_lam_prec
+    cache.prec_faclam = refresh.cache_prec_faclam
+    cache.prec_lam_debug = refresh.cache_prec_lam_debug
+    cache.prec_rz_mats = refresh.cache_prec_rz_mats
+    cache.prec_rz_jmax = refresh.cache_prec_rz_jmax
+    return (
+        refresh.lam_prec,
+        refresh.mats,
+        refresh.jmax,
+        refresh.need_lam_prec,
+        refresh.need_lamcal,
+        refresh.cache_update_trace,
+    )
+
+
 _ptau_compute_jit = _payload.ptau_compute_jit
 
 
@@ -1062,4 +1139,5 @@ __all__ = [
     "PreconditionerRefreshRuntimeResult",
     "Vmec2000PreconditionerApplyResult",
     "refresh_preconditioner_cache_runtime",
+    "refresh_preconditioner_cache_state_runtime",
 ]

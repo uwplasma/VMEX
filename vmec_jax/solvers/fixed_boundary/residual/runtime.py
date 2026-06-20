@@ -19,6 +19,79 @@ class ResidualProfileWindow(NamedTuple):
     directory: str
 
 
+class FreeBoundaryIterationControls(NamedTuple):
+    """VMEC free-boundary cadence values for one residual iteration."""
+
+    ivac: int
+    ivacskip: int
+    nvacskip: int
+    controls_cached: tuple[int, int, int] | None
+    turnon_iter: bool
+    ivac_effective: int
+
+
+def resolve_free_boundary_iteration_controls(
+    *,
+    free_boundary_enabled: bool,
+    controls_cached: tuple[int, int, int] | None,
+    iter2: int,
+    iter1: int,
+    ivac: int,
+    ivacskip: int,
+    nvacskip: int,
+    nvskip0: int,
+    prev_rz_fsq: float,
+    activate_fsq: float | None,
+    iter_controls_func: Callable[..., tuple[int, int, int]],
+    dump_freeb_control_trace: Callable[..., None],
+) -> FreeBoundaryIterationControls:
+    """Resolve and trace VMEC's free-boundary `ivac/ivacskip` cadence."""
+
+    if not bool(free_boundary_enabled):
+        return FreeBoundaryIterationControls(
+            int(ivac),
+            int(ivacskip),
+            int(nvacskip),
+            controls_cached,
+            False,
+            int(ivac),
+        )
+
+    fsq_rz_prev = float(prev_rz_fsq) if np.isfinite(prev_rz_fsq) else 1.0
+    controls_cached_before = controls_cached is not None
+    if controls_cached is None:
+        ivac, ivacskip, nvacskip = iter_controls_func(
+            iter2=int(iter2),
+            iter1=int(iter1),
+            ivac=int(ivac),
+            nvacskip=int(nvacskip),
+            nvskip0=int(nvskip0),
+            fsq_rz_prev=float(fsq_rz_prev),
+            activate_fsq=activate_fsq,
+        )
+        controls_cached = (int(ivac), int(ivacskip), int(nvacskip))
+    else:
+        ivac, ivacskip, nvacskip = controls_cached
+    dump_freeb_control_trace(
+        iter2=int(iter2),
+        iter1=int(iter1),
+        ivac=int(ivac),
+        ivacskip=int(ivacskip),
+        nvacskip=int(nvacskip),
+        fsq_rz_prev=float(fsq_rz_prev),
+        cached=bool(controls_cached_before),
+    )
+    turnon_iter = int(ivac) == 0 and int(ivacskip) == 0
+    return FreeBoundaryIterationControls(
+        int(ivac),
+        int(ivacskip),
+        int(nvacskip),
+        controls_cached,
+        bool(turnon_iter),
+        1 if turnon_iter else int(ivac),
+    )
+
+
 def resolve_residual_profile_window(
     *,
     profile_window_env: str,

@@ -67,6 +67,7 @@ from vmec_jax.solvers.fixed_boundary.residual.runtime import (
     _record_setup_timing as _runtime_record_setup_timing,
     _setup_timer_start as _runtime_setup_timer_start,
     _vmec_freeb_plascur_from_bcovar as _runtime_vmec_freeb_plascur_from_bcovar,
+    resolve_free_boundary_iteration_controls as _runtime_resolve_free_boundary_iteration_controls,
     resolve_residual_profile_window as _resolve_residual_profile_window,
 )
 from vmec_jax.solvers.fixed_boundary.residual.accelerated_scan import (
@@ -1429,8 +1430,9 @@ def solve_fixed_boundary_residual_iter(
     )
 
     def _refresh_preconditioner_cache(k, *, iter2: int):
-        refresh = _precond_payload_facade.refresh_preconditioner_cache_runtime(
-            k=k,
+        return _precond_payload_facade.refresh_preconditioner_cache_state_runtime(
+            k,
+            cache=precond_cache,
             cfg=cfg,
             static=static,
             iter2=int(iter2),
@@ -1448,31 +1450,12 @@ def solve_fixed_boundary_residual_iter(
             maybe_dump_lam_prec=_maybe_dump_lam_prec,
             maybe_dump_precond_mats=_maybe_dump_precond_mats,
             maybe_dump_lamcal=_maybe_dump_lamcal,
-            vmec2000_cache_valid=bool(precond_cache.valid),
             need_bcovar_update=bool(need_bcovar_update),
             precond_cache_seeded_from_bcovar_update=bool(precond_cache_seeded_from_bcovar_update),
             precond_expected_jmax=int(precond_expected_jmax),
             precond_jmax_override=precond_jmax_override,
             preconditioner_use_precomputed_tridi=preconditioner_use_precomputed_tridi_policy,
             preconditioner_use_lax_tridi=preconditioner_use_lax_tridi_policy,
-            cache_prec_lam_prec=precond_cache.prec_lam_prec,
-            cache_prec_faclam=precond_cache.prec_faclam,
-            cache_prec_lam_debug=precond_cache.prec_lam_debug,
-            cache_prec_rz_mats=precond_cache.prec_rz_mats,
-            cache_prec_rz_jmax=precond_cache.prec_rz_jmax,
-        )
-        precond_cache.prec_lam_prec = refresh.cache_prec_lam_prec
-        precond_cache.prec_faclam = refresh.cache_prec_faclam
-        precond_cache.prec_lam_debug = refresh.cache_prec_lam_debug
-        precond_cache.prec_rz_mats = refresh.cache_prec_rz_mats
-        precond_cache.prec_rz_jmax = refresh.cache_prec_rz_jmax
-        return (
-            refresh.lam_prec,
-            refresh.mats,
-            refresh.jmax,
-            refresh.need_lam_prec,
-            refresh.need_lamcal,
-            refresh.cache_update_trace,
         )
 
     def _pop_iteration_histories() -> None:
@@ -1612,45 +1595,30 @@ def solve_fixed_boundary_residual_iter(
             pre_restart_reason = "none"
             if time_step_report_hold is None:
                 time_step_report_hold = float(time_step)
-            if free_boundary_enabled:
-                # Keep free-boundary cadence fixed for this `iter2` across
-                # retry/restart passes in the inner while-loop.
-                fsq_rz_prev = float(prev_rz_fsq) if np.isfinite(prev_rz_fsq) else 1.0
-                controls_cached_before = freeb_controls_cached is not None
-                if freeb_controls_cached is None:
-                    freeb_ivac, freeb_ivacskip, freeb_nvacskip = _free_boundary_iter_controls_vmec(
-                        iter2=int(iter2),
-                        iter1=int(iter1),
-                        ivac=int(freeb_ivac),
-                        nvacskip=int(freeb_nvacskip),
-                        nvskip0=int(freeb_nvskip0),
-                        fsq_rz_prev=float(fsq_rz_prev),
-                        activate_fsq=free_boundary_activate_fsq,
-                    )
-                    freeb_controls_cached = (
-                        int(freeb_ivac),
-                        int(freeb_ivacskip),
-                        int(freeb_nvacskip),
-                    )
-                else:
-                    freeb_ivac, freeb_ivacskip, freeb_nvacskip = freeb_controls_cached
-                _dump_freeb_control_trace(
-                    iter2=int(iter2),
-                    iter1=int(iter1),
-                    ivac=int(freeb_ivac),
-                    ivacskip=int(freeb_ivacskip),
-                    nvacskip=int(freeb_nvacskip),
-                    fsq_rz_prev=float(fsq_rz_prev),
-                    cached=bool(controls_cached_before),
-                )
             # VMEC vacuum.f promotes ivac=0 -> 1 inside the vacuum solve.
             # Keep both values: pre-vacuum (`freeb_ivac`) for cadence/calls,
             # and post-vacuum effective (`freeb_ivac_effective`) for force/
             # residue gating in this same iteration.
-            freeb_turnon_iter = bool(free_boundary_enabled) and (int(freeb_ivac) == 0) and (int(freeb_ivacskip) == 0)
-            freeb_ivac_effective = int(freeb_ivac)
-            if freeb_turnon_iter:
-                freeb_ivac_effective = 1
+            freeb_control = _runtime_resolve_free_boundary_iteration_controls(
+                free_boundary_enabled=bool(free_boundary_enabled),
+                controls_cached=freeb_controls_cached,
+                iter2=int(iter2),
+                iter1=int(iter1),
+                ivac=int(freeb_ivac),
+                ivacskip=int(freeb_ivacskip),
+                nvacskip=int(freeb_nvacskip),
+                nvskip0=int(freeb_nvskip0),
+                prev_rz_fsq=float(prev_rz_fsq),
+                activate_fsq=free_boundary_activate_fsq,
+                iter_controls_func=_free_boundary_iter_controls_vmec,
+                dump_freeb_control_trace=_dump_freeb_control_trace,
+            )
+            freeb_ivac = freeb_control.ivac
+            freeb_ivacskip = freeb_control.ivacskip
+            freeb_nvacskip = freeb_control.nvacskip
+            freeb_controls_cached = freeb_control.controls_cached
+            freeb_turnon_iter = freeb_control.turnon_iter
+            freeb_ivac_effective = freeb_control.ivac_effective
             if vmec2000_control:
                 # VMEC2000 `constrain_m1` logic (residue.f90):
                 #   zero gcz(m=1) if (fsqz_prev < 1e-6) OR (iter2 < 2).
