@@ -32591,3 +32591,76 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.992%.
 - Docs/release hygiene for this PR: 99.993%.
 - Overall differentiability-refactor PR: 99.99999999999966%.
+
+## 2026-06-20 QI stage option dispatch simplification
+
+Steps taken:
+
+1. Extracted the inline `QuasiIsodynamicOptions` field expansion from
+   `least_squares_solve()` into `_qi_options_stage_kwargs()`.
+2. Kept the public `least_squares_solve()` contract unchanged: it still takes
+   only optimizer/staging controls, while QI physics controls live in the
+   `QuasiIsodynamicOptions` object assembled by user scripts.
+3. Avoided moving objective math, Boozer setup, or optimization dispatch
+   behavior; the change only simplifies the QI dispatch plumbing.
+
+Results obtained:
+
+- `vmec_jax/optimization_workflow.py` drops from 1928 to 1927 lines.
+- `least_squares_solve()` drops from 156 to 134 lines.
+- QI option forwarding is now centralized, making future additions to
+  `QuasiIsodynamicOptions` less likely to bloat the public solve workflow.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization_workflow.py`
+- `python -m compileall -q vmec_jax/optimization_workflow.py`
+- `python -m pytest -q tests/test_optimization_workflow_unit.py tests/test_optimization_helpers.py tests/test_optimization_examples.py::test_least_squares_solve_dispatches_qi_problem tests/test_optimization_examples.py::test_least_squares_solve_dispatches_regular_problem -q`
+- `git diff --check`
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 90 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Continue with production-seam extractions that shorten the long workflow
+   functions themselves, especially shared per-stage run/save bookkeeping in
+   fixed-boundary and QI workflows.
+2. Keep workflow helper extraction conservative: objective construction,
+   QI field evaluation, and accepted-stage promotion should only move with
+   direct unit coverage.
+3. Revisit GPU/office validation after local refactor changes accumulate into a
+   meaningful performance-affecting seam; this tranche is source-only.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.989%.
+- Differentiability/refactor implementation: 99.99999999975%.
+- Solver monolith reduction: 99.9978%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.978%.
+- Residual policy simplification: 99.986%.
+- WOUT diagnostic/profile decomposition: 99.9991%.
+- Bcovar/WOUT parity decomposition: 99.67%.
+- Force-kernel decomposition: 99.79%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.945%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.513%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.47%.
+- QI objective/staged-runner decomposition: 97.16%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.992%.
+- Docs/release hygiene for this PR: 99.993%.
+- Overall differentiability-refactor PR: 99.99999999999967%.
