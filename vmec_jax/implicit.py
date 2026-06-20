@@ -229,6 +229,119 @@ class _VmecResidualHostSolveSettings:
     ftol: float | None
 
 
+@dataclass(frozen=True)
+class _FixedBoundaryEnergySolveSettings:
+    """Host/differentiable solve policy for the energy-based implicit wrapper."""
+
+    state0_c: VMECState
+    static: Any
+    signgs_i: int
+    solver: str
+    gamma: float
+    jacobian_penalty: float
+    max_iter: int
+    step_size: float
+    history_size: int
+    grad_tol: float | None
+    max_backtracks: int
+    bt_factor: float
+    preconditioner: str
+    precond_exponent: float
+    precond_radial_alpha: float
+    implicit_converge_tol: float | None
+
+
+def _fixed_boundary_energy_converged(res: Any, *, implicit_converge_tol: float | None) -> bool:
+    """Infer whether the primal energy solve is accurate enough for implicit AD."""
+
+    grad_hist = getattr(res, "grad_rms_history", None)
+    if grad_hist is None or len(grad_hist) == 0:
+        return False
+    try:
+        if implicit_converge_tol is not None:
+            tol_check = float(implicit_converge_tol)
+        else:
+            diagnostics = getattr(res, "diagnostics", {})
+            tol_check = diagnostics.get("grad_tol") if hasattr(diagnostics, "get") else None
+            tol_check = None if tol_check is None else float(tol_check)
+        return bool((tol_check is not None) and (float(grad_hist[-1]) < float(tol_check)))
+    except Exception:
+        return False
+
+
+def _solve_fixed_boundary_energy_primal(
+    settings: _FixedBoundaryEnergySolveSettings,
+    *,
+    phipf,
+    chipf,
+    pressure,
+    lamscale,
+    edge_Rcos,
+    edge_Rsin,
+    edge_Zcos,
+    edge_Zsin,
+) -> tuple[VMECState, bool]:
+    """Run the primal fixed-boundary energy solve used by the custom VJP."""
+
+    traced = _contains_jax_tracer(phipf, chipf, pressure, lamscale, edge_Rcos, edge_Rsin, edge_Zcos, edge_Zsin)
+    solver_use = settings.solver
+    if traced and solver_use != "gd":
+        solver_use = "gd"
+    common_kwargs = dict(
+        phipf=phipf,
+        chipf=chipf,
+        signgs=int(settings.signgs_i),
+        lamscale=lamscale,
+        edge_Rcos=edge_Rcos,
+        edge_Rsin=edge_Rsin,
+        edge_Zcos=edge_Zcos,
+        edge_Zsin=edge_Zsin,
+        pressure=pressure,
+        gamma=float(settings.gamma),
+        max_iter=int(settings.max_iter),
+        step_size=float(settings.step_size),
+        grad_tol=None if settings.grad_tol is None else float(settings.grad_tol),
+        max_backtracks=int(settings.max_backtracks),
+        bt_factor=float(settings.bt_factor),
+        preconditioner=str(settings.preconditioner),
+        precond_exponent=float(settings.precond_exponent),
+        precond_radial_alpha=float(settings.precond_radial_alpha),
+        verbose=False,
+    )
+    if solver_use == "gd":
+        res = solve_fixed_boundary_gd(
+            settings.state0_c,
+            settings.static,
+            jacobian_penalty=float(settings.jacobian_penalty),
+            differentiable=traced,
+            jit_grad=traced,
+            **common_kwargs,
+        )
+    else:
+        res = solve_fixed_boundary_lbfgs(
+            settings.state0_c,
+            settings.static,
+            history_size=int(settings.history_size),
+            **common_kwargs,
+        )
+        if int(getattr(res, "n_iter", 0)) <= 0:
+            # L-BFGS failed to find a decreasing step; fall back to a more
+            # conservative GD run to keep implicit gradients meaningful.
+            fallback_kwargs = dict(common_kwargs)
+            fallback_kwargs["max_iter"] = max(50, int(settings.max_iter))
+            fallback_kwargs["step_size"] = min(0.2, float(settings.step_size) * 0.2)
+            res = solve_fixed_boundary_gd(
+                settings.state0_c,
+                settings.static,
+                jacobian_penalty=float(settings.jacobian_penalty),
+                **fallback_kwargs,
+            )
+    return res.state, _fixed_boundary_energy_converged(
+        res,
+        implicit_converge_tol=settings.implicit_converge_tol,
+    )
+
+
 def _build_vmec_residual_setup(*, state0_c: VMECState, static, indata, signgs_i: int, idx00: int) -> _VmecResidualSetup:
     """Build profile, force, and structural residual metadata for implicit VMEC residual AD."""
     from .boundary import boundary_from_indata
@@ -864,106 +977,37 @@ def solve_fixed_boundary_state_implicit(
         g = _mask_grad_for_constraints(g, static, idx00=idx00)
         return pack_state(g)
 
-    def _solve(phipf, chipf, pressure, lamscale, *, edge_Rcos, edge_Rsin, edge_Zcos, edge_Zsin):
-        traced = _contains_jax_tracer(phipf, chipf, pressure, lamscale, edge_Rcos, edge_Rsin, edge_Zcos, edge_Zsin)
-        solver_use = solver
-        if traced and solver_use != "gd":
-            solver_use = "gd"
+    solve_settings = _FixedBoundaryEnergySolveSettings(
+        state0_c=state0_c,
+        static=static,
+        signgs_i=signgs_i,
+        solver=solver,
+        gamma=gamma,
+        jacobian_penalty=jacobian_penalty,
+        max_iter=int(max_iter),
+        step_size=float(step_size),
+        history_size=int(history_size),
+        grad_tol=grad_tol,
+        max_backtracks=int(max_backtracks),
+        bt_factor=float(bt_factor),
+        preconditioner=str(preconditioner),
+        precond_exponent=float(precond_exponent),
+        precond_radial_alpha=float(precond_radial_alpha),
+        implicit_converge_tol=implicit_converge_tol,
+    )
 
-        if solver_use == "gd":
-            res = solve_fixed_boundary_gd(
-                state0_c,
-                static,
-                phipf=phipf,
-                chipf=chipf,
-                signgs=signgs_i,
-                lamscale=lamscale,
-                edge_Rcos=edge_Rcos,
-                edge_Rsin=edge_Rsin,
-                edge_Zcos=edge_Zcos,
-                edge_Zsin=edge_Zsin,
-                pressure=pressure,
-                gamma=gamma,
-                jacobian_penalty=jacobian_penalty,
-                max_iter=int(max_iter),
-                step_size=float(step_size),
-                grad_tol=None if grad_tol is None else float(grad_tol),
-                max_backtracks=int(max_backtracks),
-                bt_factor=float(bt_factor),
-                preconditioner=str(preconditioner),
-                precond_exponent=float(precond_exponent),
-                precond_radial_alpha=float(precond_radial_alpha),
-                differentiable=traced,
-                jit_grad=traced,
-                verbose=False,
-            )
-        else:
-            res = solve_fixed_boundary_lbfgs(
-                state0_c,
-                static,
-                phipf=phipf,
-                chipf=chipf,
-                signgs=signgs_i,
-                lamscale=lamscale,
-                edge_Rcos=edge_Rcos,
-                edge_Rsin=edge_Rsin,
-                edge_Zcos=edge_Zcos,
-                edge_Zsin=edge_Zsin,
-                pressure=pressure,
-                gamma=gamma,
-                history_size=int(history_size),
-                max_iter=int(max_iter),
-                step_size=float(step_size),
-                grad_tol=None if grad_tol is None else float(grad_tol),
-                max_backtracks=int(max_backtracks),
-                bt_factor=float(bt_factor),
-                preconditioner=str(preconditioner),
-                precond_exponent=float(precond_exponent),
-                precond_radial_alpha=float(precond_radial_alpha),
-                verbose=False,
-            )
-            if int(getattr(res, "n_iter", 0)) <= 0:
-                # L-BFGS failed to find a decreasing step; fall back to a more
-                # conservative GD run to keep implicit gradients meaningful.
-                max_iter_fb = max(50, int(max_iter))
-                step_size_fb = min(0.2, float(step_size) * 0.2)
-                res = solve_fixed_boundary_gd(
-                    state0_c,
-                    static,
-                    phipf=phipf,
-                    chipf=chipf,
-                    signgs=signgs_i,
-                    lamscale=lamscale,
-                    edge_Rcos=edge_Rcos,
-                    edge_Rsin=edge_Rsin,
-                    edge_Zcos=edge_Zcos,
-                    edge_Zsin=edge_Zsin,
-                    pressure=pressure,
-                    gamma=gamma,
-                    jacobian_penalty=jacobian_penalty,
-                    max_iter=max_iter_fb,
-                    step_size=step_size_fb,
-                    grad_tol=None if grad_tol is None else float(grad_tol),
-                    max_backtracks=int(max_backtracks),
-                    bt_factor=float(bt_factor),
-                    preconditioner=str(preconditioner),
-                    precond_exponent=float(precond_exponent),
-                    precond_radial_alpha=float(precond_radial_alpha),
-                    verbose=False,
-                )
-        grad_hist = getattr(res, "grad_rms_history", None)
-        converged = False
-        if grad_hist is not None and len(grad_hist) > 0:
-            try:
-                if implicit_converge_tol is not None:
-                    tol_check = float(implicit_converge_tol)
-                else:
-                    tol_check = getattr(getattr(res, "diagnostics", {}), "get", lambda *_args, **_kwargs: None)("grad_tol")
-                    tol_check = None if tol_check is None else float(tol_check)
-                converged = bool((tol_check is not None) and (float(grad_hist[-1]) < float(tol_check)))
-            except Exception:
-                converged = False
-        return res.state, converged
+    def _solve(phipf, chipf, pressure, lamscale, *, edge_Rcos, edge_Rsin, edge_Zcos, edge_Zsin):
+        return _solve_fixed_boundary_energy_primal(
+            solve_settings,
+            phipf=phipf,
+            chipf=chipf,
+            pressure=pressure,
+            lamscale=lamscale,
+            edge_Rcos=edge_Rcos,
+            edge_Rsin=edge_Rsin,
+            edge_Zcos=edge_Zcos,
+            edge_Zsin=edge_Zsin,
+        )
 
     @jax.custom_vjp
     def _solve_cust(phipf, chipf, pressure, lamscale, edge_Rcos, edge_Rsin, edge_Zcos, edge_Zsin):

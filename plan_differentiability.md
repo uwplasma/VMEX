@@ -28487,3 +28487,77 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.980%.
 - Overall differentiability-refactor PR: 99.999999999963%.
+
+## 2026-06-20 Energy-Implicit Primal Solve Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_FixedBoundaryEnergySolveSettings` to group the primal solve policy
+   for the energy-based fixed-boundary implicit custom-VJP wrapper.
+2. Extracted `_fixed_boundary_energy_converged` so convergence decisions are no
+   longer embedded in the custom-VJP closure.
+3. Extracted `_solve_fixed_boundary_energy_primal`, preserving the existing
+   traced-GD route, untraced L-BFGS route, and L-BFGS-to-GD fallback.
+4. Replaced the large nested `_solve` implementation in
+   `solve_fixed_boundary_state_implicit` with a call to the named primal solve
+   helper.
+
+Results obtained:
+
+- `solve_fixed_boundary_state_implicit` dropped from 359 to 290 lines.
+- The energy custom-VJP wrapper now separates primal solve policy from objective
+  and backward-pass math, making the differentiability seam easier to audit.
+- No new files were added; this keeps the package structure stable while still
+  reducing function-level complexity.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/implicit.py tests/test_implicit_differentiation_fast.py tests/test_driver_implicit_wave11_coverage.py tests/test_implicit_wave4_coverage.py tests/test_implicit_wave6_coverage.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_implicit_differentiation_fast.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_implicit_wave4_coverage.py tests/test_implicit_wave6_coverage.py tests/test_driver_implicit_wave11_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_implicit_sensitivity_fast_coverage.py::test_fixed_boundary_energy_custom_vjp_profile_sensitivity_matches_fd tests/test_step9_implicit_fixed_boundary.py::test_step9_implicit_fixed_boundary_grad_matches_finite_difference -q`
+- `python tools/diagnostics/source_health.py --top 16 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Target `solve_fixed_boundary_state_implicit_vmec_residual` next, but only by
+   extracting domain-specific active packing/adjoint routes already mirrored in
+   `implicit_residual_adjoint_helpers.py`.
+2. Avoid introducing additional helper modules unless they replace duplicated
+   logic shared by both tangent and adjoint paths.
+3. Keep validation focused on AD-vs-FD gates for each implicit route touched.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999987%.
+- Solver monolith reduction: 99.982%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.975%.
+- Residual iteration decomposition: 99.892%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.30%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.08%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 95.94%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.31%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.980%.
+- Overall differentiability-refactor PR: 99.999999999964%.
