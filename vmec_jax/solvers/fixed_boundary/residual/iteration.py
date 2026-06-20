@@ -1184,13 +1184,7 @@ def solve_fixed_boundary_residual_iter(
     )
 
     history_lists = _new_residual_iter_histories()
-    w_history, fsqr2_history, fsqz2_history, fsql2_history = history_lists.many(
-        "w_history", "fsqr2_history", "fsqz2_history", "fsql2_history"
-    )
-    r00_history, z00_history, wb_history, wp_history, w_vmec_history = history_lists.many(
-        "r00_history", "z00_history", "wb_history", "wp_history", "w_vmec_history"
-    )
-    include_edge_history, zero_m1_history = history_lists.many("include_edge_history", "zero_m1_history")
+    fsqz2_history = history_lists["fsqz2_history"]
     (
         freeb_nestor_source_reused_history,
         freeb_nestor_provider_allows_source_reuse_history,
@@ -1213,7 +1207,6 @@ def solve_fixed_boundary_residual_iter(
         "freeb_nestor_trial_failed_history",
     )
     adjoint_step_trace_history = history_lists["adjoint_step_trace_history"]
-    grad_rms_history, step_history = history_lists.many("grad_rms_history", "step_history")
 
     r00_last = float("nan")
     z00_last = float("nan")
@@ -1337,7 +1330,6 @@ def solve_fixed_boundary_residual_iter(
     cache_constraint_rcon0 = None
     cache_constraint_zcon0 = None
 
-    bcovar_update_history = history_lists["bcovar_update_history"]
     _rollback_history_lists = history_lists.rollback_lists()
     iter_offset = 0
 
@@ -1566,7 +1558,7 @@ def solve_fixed_boundary_residual_iter(
             else:
                 include_edge = bool(iter_since_restart < 50) and (float(prev_rz_fsq) < 1e-6)
             if track_history:
-                include_edge_history.append(int(bool(include_edge)))
+                history_lists["include_edge_history"].append(int(bool(include_edge)))
             # Residual transform edge handling:
             # VMEC tomnsp_mod uses jmax=ns once free-boundary vacuum is on
             # (ivac >= 1), independent of residue's `jedge` scalar gating.
@@ -1587,7 +1579,7 @@ def solve_fixed_boundary_residual_iter(
             # `zero_m1` originates from host control flow, so keep the history
             # without forcing an unnecessary device synchronization.
             if track_history:
-                zero_m1_history.append(int(zero_m1_val > 0.5))
+                history_lists["zero_m1_history"].append(int(zero_m1_val > 0.5))
 
             need_bcovar_update = bool(vmec2000_control) and (
                 (not bool(precond_cache.valid))
@@ -1597,7 +1589,7 @@ def solve_fixed_boundary_residual_iter(
             precond_cache_seeded_from_bcovar_update = False
             precond_refresh_seed_time_in_residual_metrics = 0.0
             force_bcovar_update = False
-            bcovar_update_history.append(int(bool(need_bcovar_update)))
+            history_lists["bcovar_update_history"].append(int(bool(need_bcovar_update)))
 
             use_cached_precond = (
                 bool(vmec2000_control) and bool(precond_cache.valid) and (not bool(need_bcovar_update))
@@ -1945,10 +1937,6 @@ def solve_fixed_boundary_residual_iter(
                 preserve_turnon_restart=bool(free_boundary_enabled) and bool(cfg.lthreed),
             )
 
-            w_history.append(fsq0_curr)
-            fsqr2_history.append(fsqr_f)
-            fsqz2_history.append(fsqz_f)
-            fsql2_history.append(fsql_f)
             # VMEC printout uses r00 = r1(1,0): axis R at theta=0, zeta=0,
             # evaluated in real space after scalxc (see funct3d.f).
             # For parity diagnostics, sample these scalars on VMEC's screen cadence.
@@ -1982,12 +1970,11 @@ def solve_fixed_boundary_residual_iter(
             wb_last = vmec_scalars.wb
             wp_last = vmec_scalars.wp
             w_vmec_last = vmec_scalars.w_vmec
-            if track_history:
-                r00_history.append(r00_last)
-                z00_history.append(z00_last)
-                wb_history.append(wb_last)
-                wp_history.append(wp_last)
-                w_vmec_history.append(w_vmec_last)
+            history_lists.append_physical_sample(
+                track_history=bool(track_history),
+                fsq=(fsq0_curr, fsqr_f, fsqz_f, fsql_f),
+                vmec_scalars=vmec_scalars,
+            )
 
             _print_compact_physical_residual_status(
                 verbose=bool(verbose),

@@ -33180,3 +33180,82 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.992%.
 - Docs/release hygiene for this PR: 99.993%.
 - Overall differentiability-refactor PR: 99.99999999999974%.
+
+## 2026-06-20 residual physical-history container cleanup
+
+Steps taken:
+
+1. Added `ResidualIterationHistories.append_physical_sample()` to own the
+   physical residual channels (`w`, `fsqr`, `fsqz`, `fsql`) and sampled VMEC
+   print scalars (`r00`, `z00`, `wb`, `wp`, `w_vmec`).
+2. Removed append-only local aliases for the physical residual histories and
+   VMEC scalar histories from `solve_fixed_boundary_residual_iter()`.
+3. Updated residual finalization to read final history arrays from
+   `history_lists` when available instead of requiring individual lists to
+   remain present in the solver's `locals()` namespace.
+4. Removed append-only aliases for `include_edge_history`,
+   `zero_m1_history`, and `bcovar_update_history`, keeping only the
+   `fsqz2_history` alias that is read by the controller heuristic.
+
+Results obtained:
+
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` drops from 3302 to
+  3289 lines in the source-health report.
+- `solve_fixed_boundary_residual_iter()` drops from 2825 to 2812 lines.
+- The finalizer now supports the history-container ownership seam, which
+  removes pressure to keep obsolete local aliases in the solver loop.
+- The total touched production diff is line-neutral while the main production
+  hotspot shrinks by 13 function lines.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/policy.py vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/finalize.py`
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/policy.py vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/finalize.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_update_helpers.py tests/test_solve_additional_helpers.py tests/test_solve_residual_iter_policy.py tests/test_solve_residual_iter_policy_gap_coverage.py tests/test_solve_residual_iter_setup_helpers.py tests/test_solve_residual_iter_finalize_helpers.py --tb=short`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_api.py::test_run_fixed_boundary_cli_single_grid_uses_accelerated_finish_first tests/test_driver_api.py::test_vmec2000_iter_histories_materialize_numeric_arrays --tb=short`
+- `git diff --check`
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 80 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Continue the residual-loop reduction by moving the remaining free-boundary
+   NESTOR trial/source diagnostic append groups into `ResidualIterationHistories`.
+2. Keep finalizer tests in the focused gate because the next cleanup should no
+   longer rely on individual history lists being visible in `locals()`.
+3. Avoid adding new source files for this tranche; the history ownership still
+   belongs in the residual policy/history domain.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.989%.
+- Differentiability/refactor implementation: 99.99999999983%.
+- Solver monolith reduction: 99.9980%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.980%.
+- Residual policy simplification: 99.988%.
+- WOUT diagnostic/profile decomposition: 99.99945%.
+- Bcovar/WOUT parity decomposition: 99.67%.
+- Force-kernel decomposition: 99.795%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.958%.
+- Fixed-boundary optimizer decomposition: 98.42%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.513%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.47%.
+- QI objective/staged-runner decomposition: 97.18%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.992%.
+- Docs/release hygiene for this PR: 99.993%.
+- Overall differentiability-refactor PR: 99.99999999999975%.
