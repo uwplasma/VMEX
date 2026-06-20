@@ -74,6 +74,15 @@ class BacktrackingMomentumSearchResult(NamedTuple):
     accepted: bool
 
 
+class DirectForceFallbackTrial(NamedTuple):
+    """One direct-force fallback proposal before a catastrophic restart."""
+
+    state: Any
+    dt_eff: float
+    update_rms: float
+    residual: float
+
+
 class InitialResidualVelocityState(NamedTuple):
     """Initial residual-loop velocity memory and conservative update caps."""
 
@@ -549,9 +558,54 @@ def backtracking_momentum_search(
     )
 
 
+def direct_force_fallback_trial(
+    *,
+    forces: ResidualVelocityBlocks,
+    dt_eff: float,
+    max_update_rms: float,
+    flip_sign: float,
+    delta_transforms: tuple,
+    delta_tuple_from_blocks: Any,
+    candidate_state_from_delta_tuple: Any,
+    freeb_bsqvac_half_for_trial_state: Any,
+    trial_residual_total: Any,
+) -> DirectForceFallbackTrial:
+    """Build one small no-momentum force proposal for the strict restart path.
+
+    The caller remains responsible for accepting/rejecting the proposal.  That
+    keeps branch status and history bookkeeping local to the residual loop while
+    making the pure proposal calculation testable.
+    """
+
+    dt_direct = max(0.1 * float(dt_eff), 1.0e-12)
+    force_rms = host_force_update_rms(1.0, *forces)
+    if np.isfinite(force_rms) and force_rms > 0.0:
+        dt_cap = float(max_update_rms) / max(force_rms, 1.0e-30)
+        dt_direct = max(min(dt_direct, float(dt_cap)), 1.0e-12)
+
+    state = candidate_state_from_delta_tuple(
+        delta_tuple_from_blocks(
+            dt_direct,
+            delta_transforms,
+            *(float(flip_sign) * block for block in forces),
+        ),
+        use_numpy_arrays=False,
+        use_numpy_enforce=False,
+    )
+    freeb_bsqvac_half = freeb_bsqvac_half_for_trial_state(state)
+    residual = trial_residual_total(state, freeb_bsqvac_half)
+    return DirectForceFallbackTrial(
+        state=state,
+        dt_eff=float(dt_direct),
+        update_rms=host_force_update_rms(dt_direct, *forces),
+        residual=float(residual),
+    )
+
+
 _ResidualVelocityBlocks = ResidualVelocityBlocks
 _HostCatastrophicRestartUpdate = HostCatastrophicRestartUpdate
 _HostPreRestartTriggerUpdate = HostPreRestartTriggerUpdate
+_DirectForceFallbackTrial = DirectForceFallbackTrial
 _zero_velocity_blocks_like = zero_velocity_blocks_like
 _scale_velocity_blocks = scale_velocity_blocks
 _host_force_update_rms = host_force_update_rms
@@ -559,3 +613,4 @@ _momentum_update_jax = momentum_update_jax
 _host_momentum_update_np = host_momentum_update_np
 _host_catastrophic_restart_update = host_catastrophic_restart_update
 _host_pre_restart_trigger_update = host_pre_restart_trigger_update
+_direct_force_fallback_trial = direct_force_fallback_trial

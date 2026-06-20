@@ -102,9 +102,9 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     candidate_state_from_deltas as _candidate_state_from_deltas_helper,
     candidate_state_from_delta_tuple as _candidate_state_from_delta_tuple_helper,
     delta_tuple_from_blocks as _delta_tuple_from_blocks_helper,
+    direct_force_fallback_trial as _direct_force_fallback_trial,
     force_update_rms as _force_update_rms,
     host_catastrophic_restart_update as _host_catastrophic_restart_update,
-    host_force_update_rms as _host_force_update_rms,
     host_momentum_update_np as _host_momentum_update_np,
     host_pre_restart_trigger_update as _host_pre_restart_trigger_update,
     initial_residual_velocity_state as _initial_residual_velocity_state,
@@ -3675,51 +3675,24 @@ def solve_fixed_boundary_residual_iter(
                     # Try a small direct-force step (no momentum memory) before
                     # a full restart. This is an experimental parity path.
                     clear_cache_after_catastrophic = bool(vmec2000_control)
-                    dt_direct = max(0.1 * dt_eff, 1e-12)
-                    force_rms = _host_force_update_rms(
-                        1.0,
-                        frcc_u,
-                        frss_u,
-                        frsc_u,
-                        frcs_u,
-                        fzsc_u,
-                        fzcs_u,
-                        fzcc_u,
-                        fzss_u,
-                        flsc_u,
-                        flcs_u,
-                        flcc_u,
-                        flss_u,
-                    )
-                    if np.isfinite(force_rms) and force_rms > 0.0:
-                        dt_cap = max_update_rms / max(force_rms, 1e-30)
-                        dt_direct = max(min(dt_direct, float(dt_cap)), 1e-12)
-                    state_dir = _candidate_state_from_delta_tuple(
-                        _delta_tuple_from_blocks(
-                            dt_direct,
-                            _internal_delta_transforms,
-                            flip_sign * frcc_u,
-                            flip_sign * frss_u,
-                            flip_sign * frsc_u,
-                            flip_sign * frcs_u,
-                            flip_sign * fzsc_u,
-                            flip_sign * fzcs_u,
-                            flip_sign * fzcc_u,
-                            flip_sign * fzss_u,
-                            flip_sign * flsc_u,
-                            flip_sign * flcs_u,
-                            flip_sign * flcc_u,
-                            flip_sign * flss_u,
+                    fallback_trial = _direct_force_fallback_trial(
+                        forces=_current_force_blocks(),
+                        dt_eff=float(dt_eff),
+                        max_update_rms=float(max_update_rms),
+                        flip_sign=float(flip_sign),
+                        delta_transforms=_internal_delta_transforms,
+                        delta_tuple_from_blocks=_delta_tuple_from_blocks,
+                        candidate_state_from_delta_tuple=_candidate_state_from_delta_tuple,
+                        freeb_bsqvac_half_for_trial_state=_freeb_bsqvac_half_for_trial_state,
+                        trial_residual_total=lambda candidate_state, freeb_bsqvac_half_trial: _trial_residual_total(
+                            candidate_state,
+                            freeb_bsqvac_half_trial,
+                            zero_m1_value=zero_m1,
                         ),
-                        use_numpy_arrays=False,
-                        use_numpy_enforce=False,
                     )
-                    freeb_bsqvac_half_dir = _freeb_bsqvac_half_for_trial_state(state_dir)
-                    w_dir = _trial_residual_total(
-                        state_dir,
-                        freeb_bsqvac_half_dir,
-                        zero_m1_value=zero_m1,
-                    )
+                    dt_direct = fallback_trial.dt_eff
+                    state_dir = fallback_trial.state
+                    w_dir = fallback_trial.residual
                     if np.isfinite(w_dir) and (w_dir <= 1.5 * max(w_curr, 1e-30)):
                         state = state_dir
                         _zero_all_velocity_blocks()
@@ -3727,21 +3700,7 @@ def solve_fixed_boundary_residual_iter(
                         restart_reason = "none"
                         huge_force_restart_count = 0
                         restart_path = "fallback_direct"
-                        update_rms = _host_force_update_rms(
-                            dt_direct,
-                            frcc_u,
-                            frss_u,
-                            frsc_u,
-                            frcs_u,
-                            fzsc_u,
-                            fzcs_u,
-                            fzcc_u,
-                            fzss_u,
-                            flsc_u,
-                            flcs_u,
-                            flcc_u,
-                            flss_u,
-                        )
+                        update_rms = fallback_trial.update_rms
                         if adjoint_trace:
                             trace_entry["fallback_direct_dt"] = float(dt_direct)
                         catastrophic_restart = False
