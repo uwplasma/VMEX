@@ -40,6 +40,7 @@ from vmec_jax.solvers.free_boundary.adjoint.replay_plan import (
 from vmec_jax.solvers.free_boundary.adjoint.runtime import jax_named_scope as _runtime_jax_named_scope
 from vmec_jax.solvers.free_boundary.adjoint.trace_controls import (
     accepted_trace_segment_is_unconditionally_accepted as _accepted_trace_segment_is_unconditionally_accepted,
+    accepted_trace_effective_state_pre,
 )
 
 
@@ -232,9 +233,10 @@ def _branch_for_trace(
     from vmec_jax.discrete_adjoint import strict_update_one_step_from_trace
 
     reset_to_trace_pre = jnp.asarray(control["reset_to_trace_pre"], dtype=bool)
+    reset_state = accepted_trace_effective_state_pre(trace)
     state_in = jax.lax.cond(
         reset_to_trace_pre,
-        lambda _: trace["state_pre"],
+        lambda _: reset_state,
         lambda _: state,
         operand=None,
     )
@@ -287,7 +289,9 @@ def _branch_from_stacked_controls(
     if "step_preconditioner" not in control:
         raise ValueError("stacked step replay requires stackable preconditioner controls")
     reset_to_trace_pre = jnp.asarray(control["reset_to_trace_pre"], dtype=bool)
-    stacked_state_pre = _step_control(control, "state_pre")
+    stacked_state_pre = _step_control(control, "force_state_pre")
+    if stacked_state_pre is None:
+        stacked_state_pre = _step_control(control, "state_pre")
     if stacked_state_pre is None:
         raise ValueError("stacked step replay requires state_pre controls")
     state_in = jax.lax.cond(
