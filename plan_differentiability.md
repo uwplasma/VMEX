@@ -26393,3 +26393,86 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.96%.
 - Overall differentiability-refactor PR: 99.999999999936%.
+
+## 2026-06-19 Direct-Coil Effective Trace State Replay Fix
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Diagnosed the remaining direct-coil finite-pressure sensitivity failure after
+   the NESTOR refactor. The failing replay traces were momentum/restart
+   accepted steps where `state_pre` is a controller checkpoint, while
+   `force_state_pre` is the state actually used by the recorded accepted force
+   update.
+2. Added `accepted_trace_effective_state_pre(trace)` in
+   `trace_controls.py`, using `force_state_pre` when present and falling back
+   to `state_pre` otherwise.
+3. Routed accepted-trace reset detection, direct-coil accepted replay, and
+   controller replay through the effective pre-state.
+4. Exported the helper through `vmec_jax.free_boundary_adjoint` and updated the
+   direct-coil accepted-update AD-vs-FD gate so its manual replay checks use the
+   same production accepted-state semantics.
+
+Results obtained:
+
+- The previously failing current-only same-branch custom-VJP gate passes.
+- The full direct-coil finite-pressure sensitivity shard passes again:
+  27 passed, 1 skipped.
+- The fix keeps branch claims conservative: it corrects fixed accepted-branch
+  replay semantics and does not claim arbitrary adaptive branch
+  differentiability.
+
+Tests and commands run:
+
+- `python -m py_compile vmec_jax/solvers/free_boundary/adjoint/trace_controls.py vmec_jax/solvers/free_boundary/adjoint/complete_solve_reports.py vmec_jax/solvers/free_boundary/adjoint/controller_replay.py`
+- `python -m ruff check vmec_jax/solvers/free_boundary/adjoint/trace_controls.py vmec_jax/solvers/free_boundary/adjoint/complete_solve_reports.py vmec_jax/solvers/free_boundary/adjoint/controller_replay.py`
+- `python -m py_compile vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py`
+- `python -m ruff check vmec_jax/free_boundary_adjoint.py tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py vmec_jax/solvers/free_boundary/adjoint/trace_controls.py vmec_jax/solvers/free_boundary/adjoint/complete_solve_reports.py vmec_jax/solvers/free_boundary/adjoint/controller_replay.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -q`
+- `python tools/diagnostics/source_health.py --top 35 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Commit and push this accepted-state replay correctness tranche.
+2. Continue the scan-controller decomposition with an explicit
+   `ScanStepContext`/step executor for `_scan_step` and `_advance_step`.
+3. Then split the fixed-boundary residual iterator around scan, non-scan
+   fallback, and result promotion.
+4. Keep adaptive full-loop differentiation conservative until a true
+   fingerprint-gated adaptive branch AD-vs-central-FD gate exists.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999960%.
+- Solver monolith reduction: 99.926%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.975%.
+- Residual iteration decomposition: 99.520%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.30%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.950%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.05%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.35%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 95.86%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 98.90%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.96%.
+- Overall differentiability-refactor PR: 99.999999999937%.

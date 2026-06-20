@@ -11,9 +11,22 @@ from vmec_jax._compat import jnp
 from vmec_jax.state import pack_state
 
 
+def accepted_trace_effective_state_pre(trace: Mapping[str, Any]) -> Any:
+    """Return the state actually used by the recorded accepted update.
+
+    Momentum/restart traces can keep ``state_pre`` as a controller checkpoint
+    while computing the accepted update from ``force_state_pre``.  Replays must
+    use ``force_state_pre`` when it is present to reconstruct the production
+    accepted state exactly.
+    """
+
+    force_state_pre = trace.get("force_state_pre")
+    return force_state_pre if force_state_pre is not None else trace.get("state_pre")
+
+
 def _accepted_trace_state_reset_between(prev_trace: dict[str, Any], trace: dict[str, Any]) -> bool:
     prev_post = prev_trace.get("state_post")
-    next_pre = trace.get("state_pre")
+    next_pre = accepted_trace_effective_state_pre(trace)
     if prev_post is None or next_pre is None:
         return False
     try:

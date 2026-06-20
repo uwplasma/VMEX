@@ -30,6 +30,7 @@ from vmec_jax.solvers.free_boundary.adjoint.replay_plan import (
 )
 from vmec_jax.solvers.free_boundary.adjoint.runtime import jax_named_scope as _runtime_jax_named_scope
 from vmec_jax.solvers.free_boundary.adjoint.trace_controls import _accepted_trace_reset_flags
+from vmec_jax.solvers.free_boundary.adjoint.trace_controls import accepted_trace_effective_state_pre
 from vmec_jax.solvers.free_boundary.adjoint.trace_stack import (
     direct_coil_accepted_trace_array_controls_jax,
     direct_coil_accepted_trace_preconditioner_controls_jax,
@@ -101,7 +102,7 @@ def direct_coil_accepted_trace_replay_objective_jax(
             # VMEC free-boundary turn-on/restart control can reset the working
             # state between accepted trace entries. Preserve that fixed host
             # control transition instead of incorrectly chaining state_post.
-            state = trace["state_pre"]
+            state = accepted_trace_effective_state_pre(trace)
         has_active_freeb_replay = trace.get("freeb_bsqvac_half") is not None and trace.get("freeb_nestor_trace") is not None
         if has_active_freeb_replay:
             with _jax_named_scope("vmec_jax.free_boundary.boundary_geometry"):

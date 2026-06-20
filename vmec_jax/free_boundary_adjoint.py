@@ -49,6 +49,7 @@ from .solvers.free_boundary.adjoint.pytrees import (
 from .solvers.free_boundary.adjoint.trace_controls import (
     _accepted_trace_reset_flags,  # noqa: F401 - compatibility alias for tests/internal users.
     accepted_trace_effective_controller_masks as _accepted_trace_effective_controller_masks,  # noqa: F401 - compatibility alias.
+    accepted_trace_effective_state_pre,
     accepted_trace_segment_is_unconditionally_accepted as _accepted_trace_segment_is_unconditionally_accepted,  # noqa: F401 - compatibility alias.
     direct_coil_accepted_trace_controller_controls_jax,  # noqa: F401 - compatibility alias.
     direct_coil_accepted_trace_status_masks,
@@ -202,6 +203,7 @@ __all__ = [
     "direct_coil_accepted_trace_branch_metadata",
     "direct_coil_accepted_trace_array_controls_jax",
     "direct_coil_accepted_trace_controller_slot_summary",
+    "accepted_trace_effective_state_pre",
     "direct_coil_accepted_trace_controller_custom_vjp_scalars_jax",
     "direct_coil_accepted_trace_controller_replay_plan",
     "direct_coil_accepted_trace_fingerprint",

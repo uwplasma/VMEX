@@ -3705,6 +3705,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     from vmec_jax.free_boundary_adjoint import (
         direct_coil_accepted_trace_controller_replay_objective_jax,
         direct_coil_accepted_trace_controller_replay_plan,
+        accepted_trace_effective_state_pre,
         direct_coil_accepted_trace_fingerprint,
         direct_coil_accepted_trace_fingerprint_delta,
         direct_coil_accepted_trace_step_controls_jax,
@@ -3940,7 +3941,8 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
             enforce_edge=False,
         )
 
-    exact_step = accepted_step_from_trace(trace)
+    effective_state_pre = accepted_trace_effective_state_pre(trace)
+    exact_step = accepted_step_from_trace(trace, state_pre=effective_state_pre)
     np.testing.assert_allclose(
         np.asarray(pack_state(exact_step["state_post"])),
         np.asarray(pack_state(trace["state_post"])),
@@ -3950,7 +3952,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
 
     def objective(params: CoilFieldParams):
         out = strict_update_one_step_from_state(
-            trace["state_pre"],
+            effective_state_pre,
             init.static,
             wout_like=trace["wout_like"],
             trig=trace["trig"],
@@ -4003,10 +4005,10 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     assert abs(fd) > 1.0e-16
     np.testing.assert_allclose(exact, fd, rtol=3.0e-3, atol=1.0e-10)
 
-    flat0 = jnp.asarray(pack_state(trace["state_pre"]))
+    flat0 = jnp.asarray(pack_state(effective_state_pre))
 
     def state_replay_objective(flat_state):
-        state = unpack_state(flat_state, trace["state_pre"].layout)
+        state = unpack_state(flat_state, effective_state_pre.layout)
         geometry = free_boundary_boundary_geometry_jax(state, init.static)
         state_context = direct_coil_boundary_replay_context(init.static, geometry)
         state_replay = direct_coil_boundary_bsqvac_from_trace_jax(
@@ -4069,7 +4071,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     assert not truncated_branch["compatible"]
     assert "n_steps" in truncated_branch["changed_fields"]
 
-    first_step = accepted_step_from_trace(trace0)
+    first_step = accepted_step_from_trace(trace0, state_pre=accepted_trace_effective_state_pre(trace0))
     replayed_state1 = first_step["state_post"]
     np.testing.assert_allclose(
         np.asarray(pack_state(replayed_state1)),
@@ -4079,7 +4081,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     )
     np.testing.assert_allclose(
         np.asarray(pack_state(replayed_state1)),
-        np.asarray(pack_state(trace1["state_pre"])),
+        np.asarray(pack_state(accepted_trace_effective_state_pre(trace1))),
         rtol=1.0e-13,
         atol=1.0e-13,
     )
@@ -4124,7 +4126,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
     def accepted_replay_objective(**kwargs):
         return direct_coil_accepted_trace_replay_objective_jax(
             base_params,
-            trace0["state_pre"],
+            accepted_trace_effective_state_pre(trace0),
             static=init.static,
             traces=traces01,
             signgs=int(init.signgs),
@@ -4148,7 +4150,7 @@ def test_direct_coil_accepted_update_replay_ad_matches_fd_for_coil_pytree(
         enforce_edge = kwargs.pop("enforce_edge", False)
         return direct_coil_accepted_trace_controller_replay_objective_jax(
             params,
-            trace0["state_pre"] if start_state is None else start_state,
+            accepted_trace_effective_state_pre(trace0) if start_state is None else start_state,
             static=init.static,
             traces=traces01 if traces is None else traces,
             signgs=int(init.signgs),
