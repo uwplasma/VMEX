@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -10,6 +12,12 @@ import numpy as np
 __all__ = [
     "FreeBoundarySetupPolicy",
     "ResidualCacheKeys",
+    "ResidualProfileSetup",
+    "ResidualPtauBindings",
+    "ResidualStaticGridSetup",
+    "build_residual_profile_setup",
+    "build_residual_ptau_bindings",
+    "build_residual_static_grid_setup",
     "build_residual_cache_keys",
     "free_boundary_pressure_edge_scale",
     "grid_matches_vmec_static_grid",
@@ -47,6 +55,31 @@ class ResidualCacheKeys:
     edge_value_key: Any
 
 
+@dataclass(frozen=True)
+class ResidualStaticGridSetup:
+    """Static object after enforcing VMEC's internal angle grid."""
+
+    static: Any
+    cfg: Any
+
+
+@dataclass(frozen=True)
+class ResidualProfileSetup:
+    """Flux-profile and trigonometric context for one residual solve."""
+
+    wout_like: Any
+    trig: Any
+
+
+@dataclass(frozen=True)
+class ResidualPtauBindings:
+    """Bound ptau helpers used by VMEC2000 controller logic."""
+
+    minmax_from_k_host: Any
+    minmax: Any
+    accepted_control_arrays: Any
+
+
 def _truthy_env(value: str | None) -> bool:
     return str(value or "").strip().lower() not in _FALSE_STRINGS
 
@@ -66,6 +99,137 @@ def grid_matches_vmec_static_grid(current_grid: Any, vmec_grid: Any) -> bool:
         )
     except Exception:
         return False
+
+
+def build_residual_static_grid_setup(
+    *,
+    static: Any,
+    build_static_func: Any,
+    vmec_angle_grid_func: Any,
+) -> ResidualStaticGridSetup:
+    """Rebuild static data on VMEC's internal force grid when needed."""
+
+    cfg = static.cfg
+    grid_vmec = vmec_angle_grid_func(
+        ntheta=int(cfg.ntheta),
+        nzeta=int(cfg.nzeta),
+        nfp=int(cfg.nfp),
+        lasym=bool(cfg.lasym),
+    )
+    if not grid_matches_vmec_static_grid(static.grid, grid_vmec):
+        static = build_static_func(
+            cfg,
+            grid=grid_vmec,
+            mgrid_metadata=getattr(static, "mgrid_metadata", None),
+            free_boundary_extcur=getattr(static, "free_boundary_extcur", None),
+        )
+    return ResidualStaticGridSetup(static=static, cfg=static.cfg)
+
+
+def build_residual_profile_setup(
+    *,
+    indata: Any,
+    static: Any,
+    s: Any,
+    signgs: int,
+    idx00: int,
+    state0: Any,
+    state0_has_tracer: bool,
+    host_update_assembly: bool,
+    host_profile_setup: bool,
+    build_wout_like_profiles_func: Any,
+    resolve_residual_trig_func: Any,
+    vmec_trig_tables_func: Any,
+    tree_has_tracer_func: Any,
+    jnp_module: Any,
+) -> ResidualProfileSetup:
+    """Build profile data and VMEC-grid trig tables for the residual loop."""
+
+    profile_numpy_patch = None
+    if bool(host_update_assembly) or bool(host_profile_setup):
+        try:
+            from vmec_jax.vmec_numpy_forces import _numpy_module_patch as profile_numpy_patch
+        except Exception:
+            profile_numpy_patch = None
+    if bool(state0_has_tracer):
+        profile_numpy_patch = None
+
+    with profile_numpy_patch() if profile_numpy_patch is not None else nullcontext():
+        s_profile = s
+        if profile_numpy_patch is not None:
+            from vmec_jax.vmec_numpy_forces import _wrap as _np_wrap
+
+            s_profile = _np_wrap(np.asarray(s))
+        profile_setup = build_wout_like_profiles_func(
+            indata=indata,
+            static=static,
+            s_profile=s_profile,
+            signgs=signgs,
+            idx00=idx00,
+            prefer_host_default_profiles=not bool(state0_has_tracer),
+            s_profile_has_tracer=tree_has_tracer_func(s_profile),
+        )
+
+    trig = resolve_residual_trig_func(
+        state0=state0,
+        static=static,
+        wout_like=profile_setup.wout_like,
+        vmec_trig_tables_func=vmec_trig_tables_func,
+        jnp_module=jnp_module,
+    )
+    return ResidualProfileSetup(wout_like=profile_setup.wout_like, trig=trig)
+
+
+def build_residual_ptau_bindings(
+    *,
+    s: Any,
+    has_jax_value: bool,
+    s_has_tracer: bool,
+    pshalf_from_s_np_func: Any,
+    pshalf_from_s_jax_func: Any,
+    build_context_func: Any,
+    compute_jit_func: Any,
+    ptau_minmax_host_helper: Any,
+    ptau_minmax_helper: Any,
+    scan_ptau_minmax_host_func: Any,
+    scan_ptau_minmax_jax_func: Any,
+    accepted_control_ptau_arrays_helper: Any,
+    scan_kernel_arrays_from_k_func: Any,
+    has_jax_func: Any,
+) -> ResidualPtauBindings:
+    """Bind ptau min/max helpers once during residual-solve setup."""
+
+    context = build_context_func(
+        s,
+        has_jax=bool(has_jax_value),
+        s_has_tracer=bool(s_has_tracer),
+        pshalf_from_s_np=pshalf_from_s_np_func,
+        pshalf_from_s_jax=pshalf_from_s_jax_func,
+    )
+    minmax_from_k_host = partial(
+        ptau_minmax_host_helper,
+        ptau_context=context,
+        compute_jit=compute_jit_func,
+        ptau_minmax_host_func=scan_ptau_minmax_host_func,
+    )
+    minmax = partial(
+        ptau_minmax_helper,
+        ptau_context=context,
+        has_jax_func=has_jax_func,
+        compute_jit=compute_jit_func,
+        pshalf_from_s_jax=pshalf_from_s_jax_func,
+        ptau_minmax_host_func=scan_ptau_minmax_host_func,
+        ptau_minmax_jax_func=scan_ptau_minmax_jax_func,
+    )
+    accepted_control_arrays = partial(
+        accepted_control_ptau_arrays_helper,
+        kernel_arrays_from_k=scan_kernel_arrays_from_k_func,
+    )
+    return ResidualPtauBindings(
+        minmax_from_k_host=minmax_from_k_host,
+        minmax=minmax,
+        accepted_control_arrays=accepted_control_arrays,
+    )
 
 
 def resolve_free_boundary_setup_policy(

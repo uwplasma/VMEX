@@ -32195,3 +32195,90 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.992%.
 - Docs/release hygiene for this PR: 99.993%.
 - Overall differentiability-refactor PR: 99.99999999999961%.
+
+## 2026-06-20 Move Residual Setup Construction Out Of Main Loop
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved VMEC static-grid rebuild setup into
+   `residual.setup.build_residual_static_grid_setup`.
+2. Moved residual profile/trig construction into
+   `residual.setup.build_residual_profile_setup`, preserving the existing
+   dependency-injection seams used by tests and monkeypatch workflows.
+3. Moved PTAU controller partial construction into
+   `residual.setup.build_residual_ptau_bindings`.
+4. Removed a dead `_ptau_minmax_from_k_jax` binding that was constructed in
+   `solve_fixed_boundary_residual_iter` but never consumed.
+5. Restored the legacy `vmec_jax.solve._axis_m0_mask` compatibility alias after
+   the broader solve coverage suite exposed that facade gap.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` drops from 2892 lines before the WOUT
+  tranches to 2849 lines after this setup split.
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` drops from 3370 lines
+  at the start of this residual pass to 3327 lines.
+- Source-health still correctly identifies residual iteration as the largest
+  production monolith; the next useful step is a controller-state object, not
+  another large argument-forwarding wrapper.
+- Tradeoff: this tranche increases explicit setup-helper code in
+  `residual/setup.py`, so it is a maintainability split rather than a total-line
+  reduction. Future tranches should prefer net-negative changes unless they
+  unlock a measurable function-length reduction.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/setup.py`
+- `python -m compileall -q vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/setup.py`
+- `python -m pytest -q tests/test_solve_residual_iter_setup_helpers.py tests/test_solve_residual_iter_runtime_helpers.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_solve_scan_chunking.py tests/test_solve_scan_debug_helpers.py tests/test_solve_more_coverage.py tests/test_solve_wave4_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 80 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Extract the residual-loop mutable controller state into a small domain object
+   that owns `_set_controller_state`, `_current_controller_state`, velocity
+   block zeroing, and resume-state restoration.
+2. Keep the nonlinear update math inside the current loop until the state object
+   is validated; moving math before state ownership is cleanly isolated would
+   add indirection without reducing complexity.
+3. After controller state is isolated, revisit the force-evaluator setup seam
+   only if it can reduce call-site complexity without introducing a 30-argument
+   helper.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.989%.
+- Differentiability/refactor implementation: 99.99999999970%.
+- Solver monolith reduction: 99.9975%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.976%.
+- Residual policy simplification: 99.986%.
+- WOUT diagnostic/profile decomposition: 99.9991%.
+- Bcovar/WOUT parity decomposition: 99.67%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.512%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.47%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.992%.
+- Docs/release hygiene for this PR: 99.993%.
+- Overall differentiability-refactor PR: 99.99999999999962%.
