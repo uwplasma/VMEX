@@ -1565,29 +1565,7 @@ def least_squares_solve(
             output_dir=vmec.output_dir,
             label=label,
             use_mode_continuation=use_mode_continuation,
-            surfaces=qi_options.surfaces,
-            mboz=qi_options.mboz,
-            nboz=qi_options.nboz,
-            nphi=qi_options.nphi,
-            nalpha=qi_options.nalpha,
-            n_bounce=qi_options.n_bounce,
-            include_bounce_endpoints=qi_options.include_bounce_endpoints,
-            softness=qi_options.softness,
-            width_weight=qi_options.width_weight,
-            branch_width_weight=qi_options.branch_width_weight,
-            branch_width_softness=qi_options.branch_width_softness,
-            profile_weight=qi_options.profile_weight,
-            shuffle_profile_weight=qi_options.shuffle_profile_weight,
-            shuffle_profile_softness=qi_options.shuffle_profile_softness,
-            shuffle_profile_nphi_out=qi_options.shuffle_profile_nphi_out,
-            weighted_shuffle_profile_weight=qi_options.weighted_shuffle_profile_weight,
-            weighted_shuffle_profile_softness=qi_options.weighted_shuffle_profile_softness,
-            aligned_profile_weight=qi_options.aligned_profile_weight,
-            aligned_profile_softness=qi_options.aligned_profile_softness,
-            aligned_profile_trap_level=qi_options.aligned_profile_trap_level,
-            aligned_profile_trap_softness=qi_options.aligned_profile_trap_softness,
-            phimin=qi_options.phimin,
-            jit_booz=qi_options.jit_booz,
+            **_qi_options_stage_kwargs(qi_options),
             target_aspect=target_aspect,
             iota_abs_min=iota_abs_min,
             include=vmec.include,
@@ -1829,6 +1807,27 @@ def _target_is_zero(target) -> bool:
 def _metadata_float(metadata: dict[str, object], key: str) -> float | None:
     value = metadata.get(key)
     return None if value is None else float(value)
+
+
+def _qi_options_stage_kwargs(qi_options: QuasiIsodynamicOptions) -> dict[str, object]:
+    return {
+        "surfaces": qi_options.surfaces, "mboz": qi_options.mboz, "nboz": qi_options.nboz,
+        "nphi": qi_options.nphi, "nalpha": qi_options.nalpha, "n_bounce": qi_options.n_bounce,
+        "include_bounce_endpoints": qi_options.include_bounce_endpoints,
+        "softness": qi_options.softness, "width_weight": qi_options.width_weight,
+        "branch_width_weight": qi_options.branch_width_weight,
+        "branch_width_softness": qi_options.branch_width_softness,
+        "profile_weight": qi_options.profile_weight, "shuffle_profile_weight": qi_options.shuffle_profile_weight,
+        "shuffle_profile_softness": qi_options.shuffle_profile_softness,
+        "shuffle_profile_nphi_out": qi_options.shuffle_profile_nphi_out,
+        "weighted_shuffle_profile_weight": qi_options.weighted_shuffle_profile_weight,
+        "weighted_shuffle_profile_softness": qi_options.weighted_shuffle_profile_softness,
+        "aligned_profile_weight": qi_options.aligned_profile_weight,
+        "aligned_profile_softness": qi_options.aligned_profile_softness,
+        "aligned_profile_trap_level": qi_options.aligned_profile_trap_level,
+        "aligned_profile_trap_softness": qi_options.aligned_profile_trap_softness,
+        "phimin": qi_options.phimin, "jit_booz": qi_options.jit_booz,
+    }
 
 
 def _remove_stale(path: Path) -> None:
