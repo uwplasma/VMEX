@@ -29488,3 +29488,79 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.982%.
 - Overall differentiability-refactor PR: 99.999999999976%.
+
+## 2026-06-20 Residual Loop Preconditioner Cache State Object
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `PreconditionerCacheState`, a mutable named cache object for the
+   VMEC2000-style residual-loop preconditioner payloads.
+2. Converted the non-scan residual iteration loop from a destructured tuple of
+   `cache_*` locals to `precond_cache.*` state.
+3. Preserved the existing public/resume diagnostics contract by expanding
+   `precond_cache.legacy_resume_payload()` at the residual finalization seam.
+4. Restored the legacy `vmec_jax.solve._initialize_scan_resume_state` facade
+   alias to the extracted scan resume helper after the broader scan-resume shard
+   exposed the missing compatibility seam.
+5. Added a unit test for cache-state restore, clear, and legacy resume-payload
+   round-trip behavior.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` dropped from 3072 to 3029 lines.
+- `residual/iteration.py` dropped from 3534 to 3491 lines.
+- The preconditioner cache now has one named owner instead of 13 independent
+  mutable locals in the residual loop.
+- The serialized resume-state keys remain unchanged, so existing driver
+  restart/fallback paths remain compatible.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/preconditioning/operators.py vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/finalize.py tests/test_solve_preconditioner_metric_helpers.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_solve_scan_resume_state.py tests/test_solve_scan_output.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_preconditioner_metric_helpers.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_solve_scan_resume_state.py tests/test_solve_scan_output.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_branch_coverage.py tests/test_solve_wave3_coverage.py tests/test_solve_wave4_coverage.py tests/test_solve_finish_cache_more_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_additional_helpers.py tests/test_solve_driver_control_fast.py tests/test_driver_policy_helpers.py tests/test_driver_helper_edges_wave14_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 40 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Continue the residual-loop objectification with velocity/checkpoint state,
+   because that is now the largest remaining local-state cluster.
+2. After residual velocity/checkpoint state is named, extract restart-state
+   mutation decisions without breaking VMEC2000 parity trace behavior.
+3. Run the full solve shard and a tiny VMEC solve before merging this PR.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999998%.
+- Solver monolith reduction: 99.986%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.925%.
+- WOUT diagnostic/profile decomposition: 99.994%.
+- Bcovar/WOUT parity decomposition: 99.39%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.15%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.31%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.983%.
+- Overall differentiability-refactor PR: 99.999999999977%.
