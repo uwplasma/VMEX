@@ -1978,77 +1978,35 @@ def solve_fixed_boundary_residual_iter(
                 l_scale = precond_cache.l_scale
             preconditioner_cache_update_trace = False
             if bool(vmec2000_control) and bool(need_bcovar_update):
-                if constraint_tcon0 is None or float(constraint_tcon0) == 0.0:
-                    precond_cache.precond_diag = None
-                    precond_cache.tcon = jnp.zeros((int(s.shape[0]),), dtype=jnp.asarray(state.Rcos).dtype)
-                else:
-                    from vmec_jax.vmec_constraints import precondn_diag_axd1_from_bcovar
-
-                    if host_update_assembly and (not _tree_has_tracer(k)) and (not _tree_has_tracer(s)):
-                        from vmec_jax.vmec_numpy_forces import _numpy_module_patch as _hot_numpy_patch
-
-                        with _hot_numpy_patch():
-                            ard1, azd1 = precondn_diag_axd1_from_bcovar(
-                                trig=trig,
-                                s=s,
-                                bsq=k.bc.bsq,
-                                r12=k.bc.jac.r12,
-                                sqrtg=k.bc.jac.sqrtg,
-                                ru12=k.bc.jac.ru12,
-                                zu12=k.bc.jac.zu12,
-                            )
-                    else:
-                        ard1, azd1 = precondn_diag_axd1_from_bcovar(
-                            trig=trig,
-                            s=s,
-                            bsq=k.bc.bsq,
-                            r12=k.bc.jac.r12,
-                            sqrtg=k.bc.jac.sqrtg,
-                            ru12=k.bc.jac.ru12,
-                            zu12=k.bc.jac.zu12,
-                        )
-                    precond_cache.precond_diag = (ard1, azd1)
-                    precond_cache.tcon = np.asarray(k.tcon) if host_update_assembly else jnp.asarray(k.tcon)
-                precond_cache.norms = norms_used
-                precond_cache.rz_scale = rz_scale
-                precond_cache.l_scale = l_scale
-                if host_update_assembly:
-                    # NumPy path: avoids JAX dispatch + XLA blocking for fnorm1.
-                    precond_cache.rz_norm = _rz_norm_np(state)  # Python float
-                    precond_cache.f_norm1 = (
-                        (1.0 / precond_cache.rz_norm) if precond_cache.rz_norm != 0.0 else float("inf")
-                    )
-                else:
-                    precond_cache.rz_norm = _rz_norm(state)
-                    precond_cache.f_norm1 = jnp.where(
-                        jnp.asarray(precond_cache.rz_norm) != 0.0,
-                        1.0 / jnp.asarray(precond_cache.rz_norm),
-                        jnp.asarray(float("inf"), dtype=jnp.asarray(precond_cache.rz_norm).dtype),
-                    )
-                if not bool(cfg.lasym):
-                    t_precond_refresh_seed_start = time.perf_counter() if timing_enabled else None
-                    precond_cache.prec_lam_prec = _lambda_preconditioner(k.bc)
-                    precond_cache.prec_faclam = None
-                    precond_cache.prec_lam_debug = None
-                    mats, _jmin, jmax = _rz_preconditioner_matrices_local(
-                        bc=k.bc,
-                        k=k,
-                        jmax_override=precond_jmax_override,
-                        use_precomputed=preconditioner_use_precomputed_tridi_policy,
-                        use_lax_tridi=preconditioner_use_lax_tridi_policy,
-                    )
-                    precond_cache.prec_rz_mats = mats
-                    precond_cache.prec_rz_jmax = None if _tree_has_tracer(k) else int(jmax)
-                    precond_cache_seeded_from_bcovar_update = precond_cache.prec_rz_jmax is not None
-                    preconditioner_cache_update_trace = True
-                    if timing_enabled and t_precond_refresh_seed_start is not None:
-                        seed_dt = time.perf_counter() - float(t_precond_refresh_seed_start)
-                        precond_refresh_seed_time_in_residual_metrics += seed_dt
-                        timing_stats["precond_refresh_seed"] += seed_dt
-                        timing_stats["precond_refresh"] += seed_dt
-                        timing_stats["preconditioner"] += seed_dt
-                        timing_stats["precond_refresh_calls"] = int(timing_stats["precond_refresh_calls"]) + 1
-                precond_cache.valid = True
+                seed_result = _precond_payload_facade.seed_preconditioner_cache_from_bcovar_update(
+                    cache=precond_cache,
+                    k=k,
+                    state=state,
+                    trig=trig,
+                    s=s,
+                    cfg=cfg,
+                    norms_used=norms_used,
+                    rz_scale=rz_scale,
+                    l_scale=l_scale,
+                    constraint_tcon0=constraint_tcon0,
+                    zero_tcon=zero_tcon,
+                    host_update_assembly=bool(host_update_assembly),
+                    timing_enabled=bool(timing_enabled),
+                    timing_stats=timing_stats,
+                    perf_counter=time.perf_counter,
+                    tree_has_tracer=_tree_has_tracer,
+                    rz_norm_np=_rz_norm_np,
+                    rz_norm_func=_rz_norm,
+                    lambda_preconditioner_func=_lambda_preconditioner,
+                    rz_preconditioner_matrices_func=_rz_preconditioner_matrices_local,
+                    precond_jmax_override=precond_jmax_override,
+                    preconditioner_use_precomputed_tridi=preconditioner_use_precomputed_tridi_policy,
+                    preconditioner_use_lax_tridi=preconditioner_use_lax_tridi_policy,
+                    jnp_module=jnp,
+                )
+                preconditioner_cache_update_trace = seed_result.cache_update_trace
+                precond_cache_seeded_from_bcovar_update = seed_result.seeded_from_bcovar_update
+                precond_refresh_seed_time_in_residual_metrics += seed_result.seed_time_in_residual_metrics
             if host_update_assembly or use_host_residual_metrics:
                 # fsqr/fsqz/fsql are already Python floats from the NumPy path above.
                 fsqr_f, fsqz_f, fsql_f = fsqr, fsqz, fsql

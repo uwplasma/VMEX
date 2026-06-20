@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
+from vmec_jax.solvers.fixed_boundary.preconditioning.operators import PreconditionerCacheState
 from vmec_jax.solvers.fixed_boundary.residual import preconditioner_payload as payload_mod
 from vmec_jax.solvers.fixed_boundary.residual.preconditioner_payload import (
     apply_vmec2000_preconditioner_runtime,
     host_preconditioned_residual_scalar_channels,
     jax_preconditioned_residual_scalar_channels,
     materialize_accepted_control_payload,
+    seed_preconditioner_cache_from_bcovar_update,
 )
 from vmec_jax.vmec_tomnsp import TomnspsRZL
 
@@ -151,6 +155,101 @@ def test_jax_preconditioned_residual_scalar_channels_uses_cached_norm_and_safe_s
     assert float(out.fsqz1_safe) == 2.0
     assert float(out.fsql1_safe) == 4.5
     assert float(out.fsq1) == 7.5
+
+
+def test_seed_preconditioner_cache_from_bcovar_update_builds_vmec2000_seed() -> None:
+    stats = {
+        "precond_refresh_seed": 0.0,
+        "precond_refresh": 0.0,
+        "preconditioner": 0.0,
+        "precond_refresh_calls": 0,
+    }
+    cache = PreconditionerCacheState()
+    matrix_calls = []
+
+    out = seed_preconditioner_cache_from_bcovar_update(
+        cache=cache,
+        k=SimpleNamespace(bc="bc", tcon=np.asarray([0.25])),
+        state=SimpleNamespace(Rcos=np.asarray([1.0])),
+        trig="trig",
+        s=np.linspace(0.0, 1.0, 3),
+        cfg=SimpleNamespace(lasym=False),
+        norms_used="norms",
+        rz_scale="rz-scale",
+        l_scale="l-scale",
+        constraint_tcon0=0.0,
+        zero_tcon=np.asarray([0.0, 0.0, 0.0]),
+        host_update_assembly=True,
+        timing_enabled=True,
+        timing_stats=stats,
+        perf_counter=iter([10.0, 10.25]).__next__,
+        tree_has_tracer=lambda _value: False,
+        rz_norm_np=lambda _state: 4.0,
+        rz_norm_func=lambda _state: pytest.fail("host path should use rz_norm_np"),
+        lambda_preconditioner_func=lambda bc: np.asarray(2.0) if bc == "bc" else pytest.fail("wrong bc"),
+        rz_preconditioner_matrices_func=lambda **kwargs: matrix_calls.append(kwargs) or ("mats", 0, 2),
+        precond_jmax_override=None,
+        preconditioner_use_precomputed_tridi=True,
+        preconditioner_use_lax_tridi=False,
+        jnp_module=np,
+    )
+
+    assert out.cache_update_trace is True
+    assert out.seeded_from_bcovar_update is True
+    assert out.seed_time_in_residual_metrics == pytest.approx(0.25)
+    assert cache.valid is True
+    assert cache.precond_diag is None
+    np.testing.assert_allclose(cache.tcon, np.zeros(3))
+    assert cache.norms == "norms"
+    assert cache.rz_scale == "rz-scale"
+    assert cache.l_scale == "l-scale"
+    assert cache.rz_norm == 4.0
+    assert cache.f_norm1 == 0.25
+    np.testing.assert_allclose(cache.prec_lam_prec, 2.0)
+    assert cache.prec_rz_mats == "mats"
+    assert cache.prec_rz_jmax == 2
+    assert matrix_calls[0]["use_precomputed"] is True
+    assert matrix_calls[0]["use_lax_tridi"] is False
+    assert stats["precond_refresh_calls"] == 1
+
+
+def test_seed_preconditioner_cache_from_bcovar_update_lasym_skips_1d_seed() -> None:
+    cache = PreconditionerCacheState()
+
+    out = seed_preconditioner_cache_from_bcovar_update(
+        cache=cache,
+        k=SimpleNamespace(bc="bc", tcon=np.asarray([0.25])),
+        state=SimpleNamespace(Rcos=np.asarray([1.0])),
+        trig="trig",
+        s=np.linspace(0.0, 1.0, 3),
+        cfg=SimpleNamespace(lasym=True),
+        norms_used="norms",
+        rz_scale="rz-scale",
+        l_scale="l-scale",
+        constraint_tcon0=0.0,
+        zero_tcon=np.asarray([0.0, 0.0, 0.0]),
+        host_update_assembly=False,
+        timing_enabled=False,
+        timing_stats={},
+        perf_counter=lambda: 0.0,
+        tree_has_tracer=lambda _value: False,
+        rz_norm_np=lambda _state: pytest.fail("device path should use rz_norm_func"),
+        rz_norm_func=lambda _state: np.asarray(5.0),
+        lambda_preconditioner_func=lambda _bc: pytest.fail("lasym path should not seed 1D lambda preconditioner"),
+        rz_preconditioner_matrices_func=lambda **_kwargs: pytest.fail("lasym path should not seed 1D R/Z matrices"),
+        precond_jmax_override=None,
+        preconditioner_use_precomputed_tridi=None,
+        preconditioner_use_lax_tridi=None,
+        jnp_module=np,
+    )
+
+    assert out.cache_update_trace is False
+    assert out.seeded_from_bcovar_update is False
+    assert out.seed_time_in_residual_metrics == 0.0
+    assert cache.valid is True
+    assert cache.prec_lam_prec is None
+    assert cache.prec_rz_mats is None
+    np.testing.assert_allclose(cache.f_norm1, 0.2)
 
 
 def test_materialize_accepted_control_payload_uses_existing_payload() -> None:
