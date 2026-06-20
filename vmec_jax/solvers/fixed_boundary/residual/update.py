@@ -252,6 +252,56 @@ class HostVmec2000TimeControlRestartUpdate(NamedTuple):
     inv_tau: list[float]
 
 
+class HostInitialAxisResetUpdate(NamedTuple):
+    """Controller scalars after VMEC's first-iteration axis reset."""
+
+    time_step: float
+    ijacob: int
+    iter1: int
+    inv_tau: list[float]
+    prev_rz_fsq: float
+    bad_growth_streak: int
+    state_checkpoint: Any
+
+
+def host_initial_axis_reset_update(
+    state_checkpoint: Any,
+    time_step: float,
+    iter2: int,
+    prev_rz_fsq_before: float,
+    k_ndamp: int,
+) -> HostInitialAxisResetUpdate:
+    """Return controller scalars for VMEC's initial-axis retry branch."""
+
+    dt = float(time_step)
+    return HostInitialAxisResetUpdate(
+        time_step=dt,
+        ijacob=1,
+        iter1=int(iter2),
+        inv_tau=[0.15 / dt] * int(k_ndamp),
+        prev_rz_fsq=float(prev_rz_fsq_before),
+        bad_growth_streak=0,
+        state_checkpoint=state_checkpoint,
+    )
+
+
+def controller_state_after_initial_axis_reset_update(
+    state: ResidualControllerState,
+    update: HostInitialAxisResetUpdate,
+) -> ResidualControllerState:
+    """Apply VMEC initial-axis retry scalars to controller state."""
+
+    return state._replace(
+        time_step=float(update.time_step),
+        inv_tau=list(update.inv_tau),
+        iter1=int(update.iter1),
+        ijacob=int(update.ijacob),
+        prev_rz_fsq=float(update.prev_rz_fsq),
+        bad_growth_streak=int(update.bad_growth_streak),
+        state_checkpoint=update.state_checkpoint,
+    )
+
+
 def host_vmec2000_time_control_restart_update(
     *,
     irst: int,
