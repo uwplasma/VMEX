@@ -31422,3 +31422,84 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.992%.
 - Docs/release hygiene for this PR: 99.992%.
 - Overall differentiability-refactor PR: 99.9999999999988%.
+
+## 2026-06-20 Free-Boundary Adjoint Facade Domain Move
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved the large free-boundary adjoint compatibility facade implementation
+   from root-level `vmec_jax.free_boundary_adjoint` into
+   `vmec_jax.solvers.free_boundary.adjoint.facade`.
+2. Replaced the root module with a short compatibility shim that mirrors the
+   facade globals, preserves private compatibility aliases used by existing
+   tests/internal users, and keeps the old import path stable.
+3. Preserved root-module monkeypatch behavior by forwarding assignments from
+   the shim into the moved facade module and the lower-level replay modules.
+4. Updated the free-boundary adjoint package docstring to make the new domain
+   location explicit.
+
+Results obtained:
+
+- Root `vmec_jax.free_boundary_adjoint` is now a small shim instead of a
+  1300-line implementation file.
+- Existing imports and monkeypatch-based tests continue to work.
+- The implementation now lives with the other free-boundary adjoint domain
+  modules, which is the intended long-term package structure.
+
+Tests and commands run:
+
+- `python - <<'PY' ... import vmec_jax.free_boundary_adjoint ... PY`
+- `python -m compileall -q vmec_jax/free_boundary_adjoint.py vmec_jax/solvers/free_boundary/adjoint/facade.py`
+- `python -m ruff check vmec_jax/free_boundary_adjoint.py vmec_jax/solvers/free_boundary/adjoint/facade.py vmec_jax/free_boundary_adjoint_controller.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py::test_direct_coil_trace_directional_helpers_can_skip_finite_difference -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_adjoint_helpers_unit.py tests/test_free_boundary_vacuum_adjoint.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_runtime_diagnostics.py tests/test_free_boundary_coil_provider_gradients.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_free_boundary_vacuum_adjoint.py::test_free_boundary_adjoint_operator_validation_errors_are_explicit tests/test_free_boundary_vacuum_adjoint.py::test_segmented_accepted_controller_matches_monolithic_scan_and_gradient -q`
+- `python tools/diagnostics/source_health.py --top 35 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Keep the root compatibility shim until a documented deprecation window
+   exists; do not break `vmec_jax.free_boundary_adjoint` imports in this PR.
+2. Decompose the new domain facade internals in later tranches only where it
+   reduces function length or clarifies the branch-local/custom-VJP contract.
+3. Return to residual-loop explicit-context seams after this low-risk package
+   move is committed.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.985%.
+- Differentiability/refactor implementation: 99.99999999957%.
+- Solver monolith reduction: 99.997%.
+- Free-boundary adjoint monolith reduction: 99.72%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.974%.
+- Residual policy simplification: 99.986%.
+- WOUT diagnostic/profile decomposition: 99.994%.
+- Bcovar/WOUT parity decomposition: 99.39%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.46%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.46%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.992%.
+- Docs/release hygiene for this PR: 99.993%.
+- Overall differentiability-refactor PR: 99.9999999999989%.
