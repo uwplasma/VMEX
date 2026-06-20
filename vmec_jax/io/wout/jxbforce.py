@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from .diagnostics import pshalf_from_s as _pshalf_from_s
+from .nyquist import vmec_symoutput_expand as _vmec_symoutput_expand
 
 
 def _jxbforce_nyquist_limits(trig) -> tuple[int, int]:
@@ -20,6 +21,506 @@ def _jxbforce_nyquist_limits(trig) -> tuple[int, int]:
     mnyq = max(ntheta2 - 1, 0)
     nnyq = max(nzeta // 2, 0)
     return mnyq, nnyq
+
+
+def _solve_jxbforce_collocation(A: np.ndarray, rhs: np.ndarray) -> np.ndarray | None:
+    try:
+        return np.linalg.solve(A, rhs)
+    except np.linalg.LinAlgError:
+        try:
+            sol, *_ = np.linalg.lstsq(A, rhs, rcond=None)
+            return sol
+        except np.linalg.LinAlgError:
+            return None
+
+
+def _jxbforce_getbsubs_coeffs_lasym_false(
+    *,
+    frho: np.ndarray,
+    bsupu: np.ndarray,
+    bsupv: np.ndarray,
+    trig,
+    nfp: int,
+) -> np.ndarray | None:
+    """Solve VMEC getbsubs collocation system for the stellarator-symmetric branch."""
+
+    frho = np.asarray(frho, dtype=float)
+    bsupu = np.asarray(bsupu, dtype=float)
+    bsupv = np.asarray(bsupv, dtype=float)
+
+    nt2 = int(trig.ntheta2)
+    nzeta = int(np.asarray(trig.cosnv).shape[0])
+    mmax = max(nt2 - 1, 0)
+    nmax = max(nzeta // 2, 0)
+    if frho.shape != (nt2, nzeta):
+        return None
+    if bsupu.shape != (nt2, nzeta) or bsupv.shape != (nt2, nzeta):
+        return None
+
+    nmax1 = max(0, nmax - 1)
+    itotal = nt2 * nzeta - 2 * nmax1
+    if itotal <= 0:
+        return None
+
+    cosmu = np.asarray(trig.cosmu, dtype=float)[:nt2, : mmax + 1]
+    sinmu = np.asarray(trig.sinmu, dtype=float)[:nt2, : mmax + 1]
+    cosnv = np.asarray(trig.cosnv, dtype=float)[:, : nmax + 1]
+    sinnv = np.asarray(trig.sinnv, dtype=float)[:, : nmax + 1]
+
+    A = np.zeros((itotal, itotal), dtype=float)
+    rhs = np.zeros((itotal,), dtype=float)
+    row = 0
+    z_skip_start = (nzeta // 2) + 1
+
+    for i in range(nt2):
+        for k in range(nzeta):
+            if (i == 0 or i == nt2 - 1) and (k >= z_skip_start):
+                continue
+            if row >= itotal:
+                return None
+            rhs[row] = frho[i, k]
+            col = 0
+            bu = bsupu[i, k]
+            bv = bsupv[i, k]
+            for m in range(mmax + 1):
+                dm = float(m) * bu
+                for n in range(nmax + 1):
+                    ccmn = cosmu[i, m] * cosnv[k, n]
+                    ssmn = sinmu[i, m] * sinnv[k, n]
+                    dn = float(n * nfp) * bv
+                    termsc = dm * ccmn - dn * ssmn
+                    termcs = -dm * ssmn + dn * ccmn
+                    if n == 0 or n == nmax:
+                        if m > 0:
+                            A[row, col] = termsc
+                            col += 1
+                        elif n == 0:
+                            A[row, col] = bv
+                            col += 1
+                        else:
+                            A[row, col] = termcs
+                            col += 1
+                    elif m == 0 or m == mmax:
+                        A[row, col] = termcs
+                        col += 1
+                    else:
+                        A[row, col] = termsc
+                        col += 1
+                        A[row, col] = termcs
+                        col += 1
+            if col != itotal:
+                return None
+            row += 1
+
+    if row != itotal:
+        return None
+
+    sol = _solve_jxbforce_collocation(A, rhs)
+    if sol is None:
+        return None
+
+    coeff = np.zeros((mmax + 1, 2 * nmax + 1), dtype=float)
+    off = nmax
+    idx = 0
+    for m in range(mmax + 1):
+        for n in range(nmax + 1):
+            if n == 0 or n == nmax:
+                if m > 0:
+                    coeff[m, off + n] = sol[idx]
+                    idx += 1
+                elif n == 0:
+                    coeff[m, off + n] = sol[idx]
+                    idx += 1
+                else:
+                    coeff[m, off - n] = sol[idx]
+                    idx += 1
+            elif m == 0 or m == mmax:
+                coeff[m, off - n] = sol[idx]
+                idx += 1
+            else:
+                coeff[m, off + n] = sol[idx]
+                idx += 1
+                coeff[m, off - n] = sol[idx]
+                idx += 1
+    if idx != itotal:
+        return None
+    return coeff
+
+
+def _jxbforce_getbsubs_coeffs_lasym_true(
+    *,
+    frho: np.ndarray,
+    bsupu: np.ndarray,
+    bsupv: np.ndarray,
+    trig,
+    nfp: int,
+) -> np.ndarray | None:
+    """Solve VMEC getbsubs collocation system for the LASYM branch."""
+
+    frho = np.asarray(frho, dtype=float)
+    bsupu = np.asarray(bsupu, dtype=float)
+    bsupv = np.asarray(bsupv, dtype=float)
+
+    ntheta3 = int(getattr(trig, "ntheta3", 0))
+    ntheta2 = int(getattr(trig, "ntheta2", 0))
+    nzeta = int(np.asarray(trig.cosnv).shape[0])
+    mmax = max(ntheta2 - 1, 0)
+    nmax = max(nzeta // 2, 0)
+    if frho.shape != (ntheta3, nzeta):
+        return None
+    if bsupu.shape != (ntheta3, nzeta) or bsupv.shape != (ntheta3, nzeta):
+        return None
+
+    itotal = ntheta3 * nzeta
+    if itotal <= 0:
+        return None
+
+    cosmu = np.asarray(trig.cosmu, dtype=float)[:ntheta3, : mmax + 1]
+    sinmu = np.asarray(trig.sinmu, dtype=float)[:ntheta3, : mmax + 1]
+    cosnv = np.asarray(trig.cosnv, dtype=float)[:, : nmax + 1]
+    sinnv = np.asarray(trig.sinnv, dtype=float)[:, : nmax + 1]
+
+    A = np.zeros((itotal, itotal), dtype=float)
+    rhs = np.zeros((itotal,), dtype=float)
+    row = 0
+
+    for i in range(ntheta3):
+        for j in range(nzeta):
+            rhs[row] = frho[i, j]
+            col = 0
+            bu = bsupu[i, j]
+            bv = bsupv[i, j]
+            for m in range(mmax + 1):
+                dm = float(m) * bu
+                for n in range(nmax + 1):
+                    if (m == 0) and (n == 0):
+                        continue
+                    if col >= itotal:
+                        return None
+                    ccmn = cosmu[i, m] * cosnv[j, n]
+                    ssmn = sinmu[i, m] * sinnv[j, n]
+                    dn = float(n * nfp) * bv
+                    termsc = dm * ccmn - dn * ssmn
+                    termcs = -dm * ssmn + dn * ccmn
+                    if n == 0 or n == nmax:
+                        if m > 0:
+                            A[row, col] = termsc
+                            col += 1
+                        elif n == 0:
+                            A[row, col] = bv
+                            col += 1
+                        else:
+                            A[row, col] = termcs
+                            col += 1
+                    elif m == 0 or m == mmax:
+                        A[row, col] = termcs
+                        col += 1
+                    else:
+                        A[row, col] = termsc
+                        col += 1
+                        A[row, col] = termcs
+                        col += 1
+
+                    if (m == 0) and (n == 0 or n == nmax):
+                        continue
+                    if col >= itotal:
+                        return None
+                    csmn = cosmu[i, m] * sinnv[j, n]
+                    scmn = sinmu[i, m] * cosnv[j, n]
+                    termcc = -dm * scmn - dn * csmn
+                    termss = dm * csmn + dn * scmn
+                    if (n == 0 or n == nmax) or (m == 0 or m == mmax):
+                        A[row, col] = termcc
+                        col += 1
+                    else:
+                        A[row, col] = termcc
+                        col += 1
+                        A[row, col] = termss
+                        col += 1
+            if col != itotal:
+                return None
+            row += 1
+
+    if row != itotal:
+        return None
+
+    sol = _solve_jxbforce_collocation(A, rhs)
+    if sol is None:
+        return None
+
+    coeff = np.zeros((mmax + 1, 2 * nmax + 1, 2), dtype=float)
+    off = nmax
+    idx = 0
+    for m in range(mmax + 1):
+        for n in range(nmax + 1):
+            if (m == 0) and (n == 0):
+                continue
+            if idx >= itotal:
+                break
+            if n == 0 or n == nmax:
+                if m > 0:
+                    coeff[m, off + n, 0] = sol[idx]
+                    idx += 1
+                elif n == 0:
+                    coeff[m, off + n, 0] = sol[idx]
+                    idx += 1
+                else:
+                    coeff[m, off - n, 0] = sol[idx]
+                    idx += 1
+            elif m == 0 or m == mmax:
+                coeff[m, off - n, 0] = sol[idx]
+                idx += 1
+            else:
+                coeff[m, off + n, 0] = sol[idx]
+                idx += 1
+                coeff[m, off - n, 0] = sol[idx]
+                idx += 1
+
+            if (m == 0) and (n == 0 or n == nmax):
+                continue
+            if idx >= itotal:
+                break
+            if (n == 0 or n == nmax) or (m == 0 or m == mmax):
+                coeff[m, off + n, 1] = sol[idx]
+                idx += 1
+            else:
+                coeff[m, off + n, 1] = sol[idx]
+                idx += 1
+                coeff[m, off - n, 1] = sol[idx]
+                idx += 1
+    return coeff
+
+
+def _jxbforce_float_arrays(*arrays: np.ndarray) -> tuple[np.ndarray, ...]:
+    return tuple(np.asarray(arr, dtype=float) for arr in arrays)
+
+
+def _jxbforce_trig_slices(trig, *, nt2: int, mnyq: int, nnyq: int) -> tuple[np.ndarray, ...]:
+    return (
+        np.asarray(trig.cosmu, dtype=float)[:nt2, : mnyq + 1],
+        np.asarray(trig.sinmu, dtype=float)[:nt2, : mnyq + 1],
+        np.asarray(trig.cosmum, dtype=float)[:nt2, : mnyq + 1],
+        np.asarray(trig.sinmum, dtype=float)[:nt2, : mnyq + 1],
+        np.asarray(trig.cosnv, dtype=float)[:, : nnyq + 1],
+        np.asarray(trig.sinnv, dtype=float)[:, : nnyq + 1],
+        np.asarray(trig.cosnvn, dtype=float)[:, : nnyq + 1],
+        np.asarray(trig.sinnvn, dtype=float)[:, : nnyq + 1],
+    )
+
+
+def _jxbforce_apply_bsubs_correction_lasym_false(
+    *,
+    bsubu: np.ndarray,
+    bsubv: np.ndarray,
+    bsubs: np.ndarray,
+    bsubsu: np.ndarray,
+    bsubsv: np.ndarray,
+    bsupu: np.ndarray,
+    bsupv: np.ndarray,
+    sqrtg: np.ndarray,
+    pres: np.ndarray,
+    vp: np.ndarray,
+    hs: float,
+    signgs: float,
+    trig,
+    nfp: int,
+    sum_w,
+    getbsubs_coeffs_func=None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Mirror VMEC jxbforce corrected-bsubs pass for lasym=False."""
+
+    bsubu, bsubv, bsubs, bsubsu, bsubsv, bsupu, bsupv, sqrtg, pres, vp = _jxbforce_float_arrays(
+        bsubu, bsubv, bsubs, bsubsu, bsubsv, bsupu, bsupv, sqrtg, pres, vp
+    )
+    getbsubs_coeffs = getbsubs_coeffs_func or _jxbforce_getbsubs_coeffs_lasym_false
+
+    ns, nt2, nzeta = bsubu.shape
+    if ns < 3 or hs == 0.0:
+        return bsubs, bsubsu, bsubsv
+
+    ohs = 1.0 / hs
+    mnyq, nnyq = _jxbforce_nyquist_limits(trig)
+    cosmu, sinmu, cosmum, sinmum, cosnv, sinnv, cosnvn, sinnvn = _jxbforce_trig_slices(
+        trig, nt2=nt2, mnyq=mnyq, nnyq=nnyq
+    )
+
+    for js in range(1, ns - 1):
+        jxb = 0.5 * (sqrtg[js] + sqrtg[js + 1])
+        bsupu1 = 0.5 * (bsupu[js] * sqrtg[js] + bsupu[js + 1] * sqrtg[js + 1])
+        bsupv1 = 0.5 * (bsupv[js] * sqrtg[js] + bsupv[js + 1] * sqrtg[js + 1])
+
+        brho = ohs * (bsupu1 * (bsubu[js + 1] - bsubu[js]) + bsupv1 * (bsubv[js + 1] - bsubv[js]))
+        brho = brho + (pres[js + 1] - pres[js]) * ohs * jxb
+
+        brho00 = float(sum_w(brho))
+        vden = 0.5 * (vp[js] + vp[js + 1])
+        if vden != 0.0:
+            brho = brho - signgs * jxb * (brho00 / vden)
+
+        coeff = getbsubs_coeffs(frho=brho, bsupu=bsupu1, bsupv=bsupv1, trig=trig, nfp=int(nfp))
+        if coeff is None:
+            continue
+
+        bsubs_s = np.zeros((nt2, nzeta), dtype=float)
+        bsubsu_s = np.zeros((nt2, nzeta), dtype=float)
+        bsubsv_s = np.zeros((nt2, nzeta), dtype=float)
+        off = nnyq
+
+        for m in range(mnyq + 1):
+            for n in range(nnyq + 1):
+                c1 = coeff[m, off + n]
+                c2 = 0.0 if n == 0 else coeff[m, off - n]
+                for k in range(nzeta):
+                    for j in range(nt2):
+                        tsin1 = sinmu[j, m] * cosnv[k, n]
+                        tsin2 = cosmu[j, m] * sinnv[k, n]
+                        bsubs_s[j, k] += tsin1 * c1 + tsin2 * c2
+
+                        tcosm1 = cosmum[j, m] * cosnv[k, n]
+                        tcosm2 = sinmum[j, m] * sinnv[k, n]
+                        bsubsu_s[j, k] += tcosm1 * c1 + tcosm2 * c2
+
+                        tcosn1 = sinmu[j, m] * sinnvn[k, n]
+                        tcosn2 = cosmu[j, m] * cosnvn[k, n]
+                        bsubsv_s[j, k] += tcosn1 * c1 + tcosn2 * c2
+
+        bsubs[js] = bsubs_s
+        bsubsu[js] = bsubsu_s
+        bsubsv[js] = bsubsv_s
+
+    if ns > 2:
+        bsubs[0] = 2.0 * bsubs[1] - bsubs[2]
+        bsubs[-1] = 2.0 * bsubs[-1] - bsubs[-2]
+    return bsubs, bsubsu, bsubsv
+
+
+def _jxbforce_apply_bsubs_correction_lasym_true(
+    *,
+    bsubu: np.ndarray,
+    bsubv: np.ndarray,
+    bsubs: np.ndarray,
+    bsubsu: np.ndarray,
+    bsubsv: np.ndarray,
+    bsupu: np.ndarray,
+    bsupv: np.ndarray,
+    sqrtg: np.ndarray,
+    pres: np.ndarray,
+    vp: np.ndarray,
+    hs: float,
+    signgs: float,
+    trig,
+    nfp: int,
+    sum_w,
+    getbsubs_coeffs_func=None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Mirror VMEC jxbforce corrected-bsubs pass for lasym=True."""
+    bsubu, bsubv, bsubs, bsubsu, bsubsv, bsupu, bsupv, sqrtg, pres, vp = _jxbforce_float_arrays(
+        bsubu, bsubv, bsubs, bsubsu, bsubsv, bsupu, bsupv, sqrtg, pres, vp
+    )
+    getbsubs_coeffs = getbsubs_coeffs_func or _jxbforce_getbsubs_coeffs_lasym_true
+
+    ns, nt2, nzeta = bsubu.shape
+    nt3 = int(getattr(trig, "ntheta3", nt2))
+    if nt3 < nt2:
+        nt3 = nt2
+    if ns < 3 or hs == 0.0:
+        return bsubs, bsubsu, bsubsv
+
+    ohs = 1.0 / hs
+    mnyq, nnyq = _jxbforce_nyquist_limits(trig)
+    cosmu, sinmu, cosmum, sinmum, cosnv, sinnv, cosnvn, sinnvn = _jxbforce_trig_slices(
+        trig, nt2=nt2, mnyq=mnyq, nnyq=nnyq
+    )
+
+    if bsubu.shape[1] == nt3:
+        bsubu_full = bsubu
+        bsubv_full = bsubv
+    else:
+        bsubu_full = _vmec_symoutput_expand(sym=bsubu, asym=None, trig=trig)
+        bsubv_full = _vmec_symoutput_expand(sym=bsubv, asym=None, trig=trig)
+
+    if bsupu.shape[1] == nt3:
+        bsupu_full = bsupu
+        bsupv_full = bsupv
+    else:
+        bsupu_full = _vmec_symoutput_expand(sym=bsupu[:, :nt2, :], asym=None, trig=trig)
+        bsupv_full = _vmec_symoutput_expand(sym=bsupv[:, :nt2, :], asym=None, trig=trig)
+
+    if sqrtg.shape[1] == nt3:
+        sqrtg_full = sqrtg
+    else:
+        sqrtg_full = _vmec_symoutput_expand(sym=sqrtg[:, :nt2, :], asym=None, trig=trig)
+
+    if bsubs.shape[1] == nt3:
+        bsubs_out = bsubs.copy()
+    else:
+        bsubs_out = np.zeros((ns, nt3, nzeta), dtype=float)
+    bsubsu_out = np.zeros((ns, nt3, nzeta), dtype=float)
+    bsubsv_out = np.zeros((ns, nt3, nzeta), dtype=float)
+
+    for js in range(1, ns - 1):
+        jxb = 0.5 * (sqrtg_full[js] + sqrtg_full[js + 1])
+        bsupu1 = 0.5 * (bsupu_full[js] * sqrtg_full[js] + bsupu_full[js + 1] * sqrtg_full[js + 1])
+        bsupv1 = 0.5 * (bsupv_full[js] * sqrtg_full[js] + bsupv_full[js + 1] * sqrtg_full[js + 1])
+
+        brho_full = ohs * (
+            bsupu1 * (bsubu_full[js + 1] - bsubu_full[js]) + bsupv1 * (bsubv_full[js + 1] - bsubv_full[js])
+        )
+        brho_full = brho_full + (pres[js + 1] - pres[js]) * ohs * jxb
+        brho00 = float(sum_w(brho_full))
+        vden = 0.5 * (vp[js] + vp[js + 1])
+        if vden != 0.0:
+            brho_full = brho_full - signgs * jxb * (brho00 / vden)
+
+        coeff = getbsubs_coeffs(frho=brho_full, bsupu=bsupu1, bsupv=bsupv1, trig=trig, nfp=int(nfp))
+        if coeff is None:
+            continue
+
+        bsubs_s = np.zeros((nt2, nzeta), dtype=float)
+        bsubsu_s = np.zeros((nt2, nzeta), dtype=float)
+        bsubsv_s = np.zeros((nt2, nzeta), dtype=float)
+        bsubs_a = np.zeros((nt2, nzeta), dtype=float)
+        bsubsu_a = np.zeros((nt2, nzeta), dtype=float)
+        bsubsv_a = np.zeros((nt2, nzeta), dtype=float)
+        off = nnyq
+
+        for m in range(mnyq + 1):
+            for n in range(nnyq + 1):
+                c1 = coeff[m, off + n, 0]
+                c2 = 0.0 if n == 0 else coeff[m, off - n, 0]
+                c3 = coeff[m, off + n, 1]
+                c4 = 0.0 if n == 0 else coeff[m, off - n, 1]
+                for k in range(nzeta):
+                    for j in range(nt2):
+                        tsin1 = sinmu[j, m] * cosnv[k, n]
+                        tsin2 = cosmu[j, m] * sinnv[k, n]
+                        bsubs_s[j, k] += tsin1 * c1 + tsin2 * c2
+                        tcosm1 = cosmum[j, m] * cosnv[k, n]
+                        tcosm2 = sinmum[j, m] * sinnv[k, n]
+                        bsubsu_s[j, k] += tcosm1 * c1 + tcosm2 * c2
+                        tcosn1 = sinmu[j, m] * sinnvn[k, n]
+                        tcosn2 = cosmu[j, m] * cosnvn[k, n]
+                        bsubsv_s[j, k] += tcosn1 * c1 + tcosn2 * c2
+
+                        tcos1 = cosmu[j, m] * cosnv[k, n]
+                        tcos2 = sinmu[j, m] * sinnv[k, n]
+                        bsubs_a[j, k] += tcos1 * c3 + tcos2 * c4
+                        tsinm1 = sinmum[j, m] * cosnv[k, n]
+                        tsinm2 = cosmum[j, m] * sinnv[k, n]
+                        bsubsu_a[j, k] += tsinm1 * c3 + tsinm2 * c4
+                        tsinn1 = cosmu[j, m] * sinnvn[k, n]
+                        tsinn2 = sinmu[j, m] * cosnvn[k, n]
+                        bsubsv_a[j, k] += tsinn1 * c3 + tsinn2 * c4
+
+        bsubs_full = _vmec_symoutput_expand(sym=bsubs_a[None, ...], asym=bsubs_s[None, ...], trig=trig)[0]
+        bsubs_out[js] = bsubs_full
+        bsubsu_out[js] = _vmec_symoutput_expand(sym=bsubsu_s[None, ...], asym=bsubsu_a[None, ...], trig=trig)[0]
+        bsubsv_out[js] = _vmec_symoutput_expand(sym=bsubsv_s[None, ...], asym=bsubsv_a[None, ...], trig=trig)[0]
+
+    if ns > 2:
+        bsubs_out[0] = 2.0 * bsubs_out[1] - bsubs_out[2]
+        bsubs_out[-1] = 2.0 * bsubs_out[-1] - bsubs_out[-2]
+    return bsubs_out, bsubsu_out, bsubsv_out
 
 
 
