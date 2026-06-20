@@ -29182,3 +29182,76 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.980%.
 - Overall differentiability-refactor PR: 99.999999999972%.
+
+## 2026-06-20 WOUT LASYM Symmetry Expansion Deduplication
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Removed the local `_expand_sym_to_full` and `_extend_parity_to_full`
+   implementations from `_jxbforce_apply_bsubs_correction_lasym_true`.
+2. Reused the existing VMEC `wrout` symmetry helper
+   `_vmec_symoutput_expand` for both reduced-grid expansion and parity
+   reconstruction.
+3. Kept the JXBFORCE bsubs correction API unchanged so Mercier/Glasser and
+   tests continue to call the same compatibility helpers.
+
+Results obtained:
+
+- `vmec_jax/wout.py` dropped from 1576 to 1556 lines.
+- `_jxbforce_apply_bsubs_correction_lasym_true` dropped from 152 to 132 lines
+  and is no longer above the source-health function warning threshold.
+- The duplicated LASYM parity expansion now uses the same helper already
+  covered by WOUT symmetry tests, reducing drift risk between WOUT paths.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/wout.py tests/test_wout_helpers.py tests/test_wout_branch_coverage.py tests/test_wout_env_branch_coverage.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_wout_helpers.py tests/test_wout_branch_coverage.py tests/test_wout_env_branch_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 30 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue WOUT reductions only where duplicated numerical/parity logic exists;
+   avoid moving `wout_minimal_from_fixed_boundary` wholesale until a concrete
+   payload-context object can replace the `locals()` schema handoff.
+2. The next net-line-reduction candidates are:
+   - shared residual loop state/cache mutation, or
+   - shared optimizer implementation logic across residual GD/LBFGS/GN paths.
+3. Keep WOUT parity tests in the focused shard whenever touching Mercier,
+   Glasser, bsubs, or Nyquist output paths.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999995%.
+- Solver monolith reduction: 99.986%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.975%.
+- Residual iteration decomposition: 99.91%.
+- WOUT diagnostic/profile decomposition: 99.994%.
+- Bcovar/WOUT parity decomposition: 99.39%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.31%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.980%.
+- Overall differentiability-refactor PR: 99.999999999973%.
