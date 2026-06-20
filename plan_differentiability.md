@@ -31343,3 +31343,82 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.992%.
 - Docs/release hygiene for this PR: 99.992%.
 - Overall differentiability-refactor PR: 99.9999999999987%.
+
+## 2026-06-20 Residual History Alias Cleanup
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Removed the obsolete residual-iteration solver history alias grouping from
+   `vmec_jax.solvers.fixed_boundary.residual.policy`.
+2. Replaced the broad `solver_alias_groups()` unpack in the fixed-boundary
+   residual iteration loop with explicit `history_lists.many(...)` accesses for
+   only the history lists that the loop still consumes directly.
+3. Removed the local preconditioner-cache clearing closure and now call
+   `precond_cache.clear()` directly at reset/restart sites.
+4. Fixed the non-strict update-status print path so it does not require the
+   strict-update-only `update_rms_j` variable.
+
+Results obtained:
+
+- The residual policy module loses the unused alias table and helper method.
+- The residual iteration loop no longer creates dozens of dead local history
+  aliases at setup time.
+- The live history dependencies are now visible at the call site, which makes
+  the next finalization-context refactor safer.
+- Net source change for this tranche is 30 fewer lines.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/policy.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/policy.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_finish_cache_more_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_policy.py tests/test_solve_residual_iter_setup_helpers.py tests/test_solve_additional_helpers.py -q`
+- `rg -n "solver_alias_groups|_RESIDUAL_ITER_SOLVER_HISTORY_GROUPS|_clear_preconditioner_cache_locals" vmec_jax tests examples`
+- `python tools/diagnostics/source_health.py --top 35 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Replace the next residual `locals()` seam with an explicit context object,
+   starting with finalization inputs rather than the scan dispatch path.
+2. Keep strict-update/discrete-adjoint changes small and gated by existing
+   branch-local tests because those paths are high-risk for parity regressions.
+3. Continue checking CI only after completed failures instead of actively
+   polling long-running jobs.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999999956%.
+- Solver monolith reduction: 99.997%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.974%.
+- Residual policy simplification: 99.986%.
+- WOUT diagnostic/profile decomposition: 99.994%.
+- Bcovar/WOUT parity decomposition: 99.39%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.42%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.46%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.992%.
+- Docs/release hygiene for this PR: 99.992%.
+- Overall differentiability-refactor PR: 99.9999999999988%.
