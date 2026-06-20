@@ -783,6 +783,196 @@ def _vmec_residual_state_tangent_from_boundary_tangent(
     )
 
 
+def _vmec_residual_boundary_cotangent_from_active_adjoint(
+    *,
+    static: Any,
+    idx00: int | None,
+    implicit: ImplicitFixedBoundaryOptions,
+    residual_adjoint_mode: str,
+    bwd_start: float,
+    st_star: VMECState,
+    zero_m1_star: Any,
+    eRcos_star: Any,
+    eRsin_star: Any,
+    eZcos_star: Any,
+    eZsin_star: Any,
+    ct_state: VMECState,
+    stationarity_state_func: Callable[..., VMECState],
+    boundary_param_vjp_result_func: Callable[[float, Any], tuple[Any, Any, Any, Any]],
+) -> tuple[Any, Any, Any, Any]:
+    """Active-coordinate residual adjoint for boundary-row cotangents."""
+
+    active_setup_start = time.perf_counter()
+    rz_idx_np, lam_idx_np, ns_active, K_active = _stellsym_feasible_indices_np(
+        static,
+        idx00=idx00,
+        mask_lambda_axis=True,
+    )
+    rz_idx = jnp.asarray(rz_idx_np, dtype=jnp.int32)
+    lam_idx = jnp.asarray(lam_idx_np, dtype=jnp.int32)
+    st_active_ref = _stop_gradient_tree(st_star)
+    active_packing_strategy = select_active_packing_strategy(keep_all_active=_vmec_keep_all_active_enabled())
+
+    if active_packing_strategy == "full":
+        b_active_full = _pack_stellsym_feasible_state(ct_state, rz_idx=rz_idx, lam_idx=lam_idx)
+        active_keep_idx = full_active_keep_indices(b_active_full, dtype=jnp.int32)
+        x_active_star_full = _pack_stellsym_feasible_state(st_star, rz_idx=rz_idx, lam_idx=lam_idx)
+        x_active_star = jnp.take(x_active_star_full, active_keep_idx)
+        b_active = jnp.take(b_active_full, active_keep_idx)
+        active_full_size = int(np.shape(b_active_full)[0])
+
+        def pack_grad_active(grad_state):
+            grad_active_full = _pack_stellsym_feasible_state(grad_state, rz_idx=rz_idx, lam_idx=lam_idx)
+            return jnp.take(grad_active_full, active_keep_idx)
+
+        def stationarity_fun_active(x_active):
+            x_active_full = x_active_star_full.at[active_keep_idx].set(
+                x_active,
+                indices_are_sorted=True,
+                unique_indices=True,
+            )
+            st_active = _update_stellsym_feasible_state(
+                st_active_ref,
+                x_active_full,
+                rz_idx=rz_idx,
+                lam_idx=lam_idx,
+                ns=ns_active,
+                K=K_active,
+            )
+            return pack_grad_active(
+                stationarity_state_func(
+                    st_active,
+                    zero_m1_star,
+                    eRcos_star,
+                    eRsin_star,
+                    eZcos_star,
+                    eZsin_star,
+                )
+            )
+    else:
+        z_idx = _stellsym_reduced_z_indices(rz_idx=rz_idx_np, K=int(K_active), idx00=idx00)
+        lam_sc_idx, lam_cs_idx, lam_maps = _stellsym_lambda_mn_indices(
+            static,
+            idx00=idx00,
+            mask_lambda_axis=True,
+        )
+        x_active_star = _pack_stellsym_reduced_state(
+            st_active_ref,
+            rz_idx=rz_idx,
+            z_idx=z_idx,
+            lam_sc_idx=lam_sc_idx,
+            lam_cs_idx=lam_cs_idx,
+            lam_maps=lam_maps,
+        )
+        b_active = _pack_stellsym_reduced_state(
+            ct_state,
+            rz_idx=rz_idx,
+            z_idx=z_idx,
+            lam_sc_idx=lam_sc_idx,
+            lam_cs_idx=lam_cs_idx,
+            lam_maps=lam_maps,
+        )
+        active_full_size = int(np.shape(b_active)[0])
+
+        def pack_grad_active(grad_state):
+            return _pack_stellsym_reduced_state(
+                grad_state,
+                rz_idx=rz_idx,
+                z_idx=z_idx,
+                lam_sc_idx=lam_sc_idx,
+                lam_cs_idx=lam_cs_idx,
+                lam_maps=lam_maps,
+            )
+
+        def stationarity_fun_active(x_active):
+            st_active = _update_stellsym_reduced_state(
+                st_active_ref,
+                x_active,
+                rz_idx=rz_idx,
+                z_idx=z_idx,
+                lam_sc_idx=lam_sc_idx,
+                lam_cs_idx=lam_cs_idx,
+                lam_maps=lam_maps,
+                ns=ns_active,
+                K=K_active,
+            )
+            return pack_grad_active(
+                stationarity_state_func(
+                    st_active,
+                    zero_m1_star,
+                    eRcos_star,
+                    eRsin_star,
+                    eZcos_star,
+                    eZsin_star,
+                )
+            )
+
+    _vmec_backward_profile_log(
+        "active_setup_done",
+        active_setup_start,
+        active_size=int(np.shape(b_active)[0]),
+        active_full_size=active_full_size,
+        residual_mode=residual_adjoint_mode,
+    )
+
+    def boundary_param_vjp_active(lam):
+        vjp_start = time.perf_counter()
+
+        def G_params(eRcos, eRsin, eZcos, eZsin):
+            return pack_grad_active(
+                stationarity_state_func(
+                    st_star,
+                    zero_m1_star,
+                    eRcos,
+                    eRsin,
+                    eZcos,
+                    eZsin,
+                )
+            )
+
+        _, vjp_fun = jax.vjp(G_params, eRcos_star, eRsin_star, eZcos_star, eZsin_star)
+        return boundary_param_vjp_result_func(vjp_start, vjp_fun(jnp.asarray(lam)))
+
+    active_linearize_start = time.perf_counter()
+    residual_star_active, residual_jvp_active = jax.linearize(stationarity_fun_active, x_active_star)
+    residual_vjp_active = jax.linear_transpose(residual_jvp_active, x_active_star)
+    _vmec_backward_profile_log(
+        "active_linearize_done",
+        active_linearize_start,
+        residual_size=int(np.prod(np.shape(residual_star_active))),
+    )
+
+    active_adjoint_result = _solve_active_residual_adjoint_linearized(
+        residual_jvp_active,
+        residual_vjp_active,
+        residual_star_active=residual_star_active,
+        b_active=b_active,
+        x_active_star=x_active_star,
+        residual_adjoint_mode=residual_adjoint_mode,
+        damping=float(implicit.damping),
+        cg_tol=float(implicit.cg_tol),
+        cg_max_iter=int(implicit.cg_max_iter),
+        jac_chunk_size=getattr(implicit, "jac_chunk_size", None),
+        dense_transpose_lstsq_host=_dense_transpose_lstsq_host,
+        is_traced=_contains_jax_tracer,
+        cg_solve=_cg_solve,
+        bicgstab_solve=_jax_bicgstab_solve,
+        lineax_solve=_lineax_bicgstab_solve,
+        jacobian_columns=_linear_map_jacobian_columns,
+        profile_log=_vmec_backward_profile_log,
+        time_module=time,
+    )
+    result = boundary_param_vjp_active(active_adjoint_result.lam)
+    done_stage = {
+        "dense": "bwd_done_chunked",
+        "bicgstab": "bwd_done_direct",
+        "lineax": "bwd_done_lineax",
+        "cg": "bwd_done_active",
+    }.get(active_adjoint_result.route, "bwd_done_active")
+    _vmec_backward_profile_log(done_stage, bwd_start)
+    return result
+
+
 def _boundary_edge_rows_vjp(boundary_edge_rows_func: Callable[..., tuple[Any, Any, Any, Any]], residual_edges, ct_state):
     """Apply the VJP of the boundary-edge projection to an output-state cotangent."""
     eRcos_star, eRsin_star, eZcos_star, eZsin_star = residual_edges
@@ -1581,199 +1771,22 @@ def solve_fixed_boundary_state_implicit_vmec_residual(
 
         residual_adjoint_mode = str(getattr(implicit, "residual_adjoint_mode", "auto")).strip().lower()
         if (not bool(static.cfg.lasym)) and (not _vmec_disable_reduced_active_enabled()):
-            active_setup_start = time.perf_counter()
-            rz_idx_np, lam_idx_np, ns_active, K_active = _stellsym_feasible_indices_np(
-                static,
+            return _vmec_residual_boundary_cotangent_from_active_adjoint(
+                static=static,
                 idx00=idx00,
-                mask_lambda_axis=True,
-            )
-            rz_idx = jnp.asarray(rz_idx_np, dtype=jnp.int32)
-            lam_idx = jnp.asarray(lam_idx_np, dtype=jnp.int32)
-            active_packing_strategy = select_active_packing_strategy(
-                keep_all_active=_vmec_keep_all_active_enabled()
-            )
-            if active_packing_strategy == "full":
-                b_active_full = _pack_stellsym_feasible_state(ct_state, rz_idx=rz_idx, lam_idx=lam_idx)
-                active_keep_idx = full_active_keep_indices(b_active_full, dtype=jnp.int32)
-                st_active_ref = _stop_gradient_tree(st_star)
-                x_active_star_full = _pack_stellsym_feasible_state(st_star, rz_idx=rz_idx, lam_idx=lam_idx)
-                x_active_star = jnp.take(x_active_star_full, active_keep_idx)
-                b_active = jnp.take(b_active_full, active_keep_idx)
-
-                _vmec_backward_profile_log(
-                    "active_setup_done",
-                    active_setup_start,
-                    active_size=int(np.shape(b_active)[0]),
-                    active_full_size=int(np.shape(b_active_full)[0]),
-                    residual_mode=residual_adjoint_mode,
-                )
-
-                def stationarity_fun_active(x_active):
-                    x_active_full = x_active_star_full.at[active_keep_idx].set(
-                        x_active,
-                        indices_are_sorted=True,
-                        unique_indices=True,
-                    )
-                    st_active = _update_stellsym_feasible_state(
-                        st_active_ref,
-                        x_active_full,
-                        rz_idx=rz_idx,
-                        lam_idx=lam_idx,
-                        ns=ns_active,
-                        K=K_active,
-                    )
-                    grad_state = _stationarity_state(
-                        st_active,
-                        zero_m1_star,
-                        eRcos_star,
-                        eRsin_star,
-                        eZcos_star,
-                        eZsin_star,
-                    )
-                    grad_active_full = _pack_stellsym_feasible_state(grad_state, rz_idx=rz_idx, lam_idx=lam_idx)
-                    return jnp.take(grad_active_full, active_keep_idx)
-
-                def _boundary_param_vjp_active(lam):
-                    vjp_start = time.perf_counter()
-
-                    def G_params(eRcos, eRsin, eZcos, eZsin):
-                        grad_state = _stationarity_state(
-                            st_star,
-                            zero_m1_star,
-                            eRcos,
-                            eRsin,
-                            eZcos,
-                            eZsin,
-                        )
-                        grad_active_full = _pack_stellsym_feasible_state(grad_state, rz_idx=rz_idx, lam_idx=lam_idx)
-                        return jnp.take(grad_active_full, active_keep_idx)
-
-                    _, vjp_fun = jax.vjp(G_params, eRcos_star, eRsin_star, eZcos_star, eZsin_star)
-                    return _boundary_param_vjp_result(vjp_start, vjp_fun(jnp.asarray(lam)))
-            else:
-                z_idx = _stellsym_reduced_z_indices(rz_idx=rz_idx_np, K=int(K_active), idx00=idx00)
-                lam_sc_idx, lam_cs_idx, lam_maps = _stellsym_lambda_mn_indices(
-                    static,
-                    idx00=idx00,
-                    mask_lambda_axis=True,
-                )
-                st_active_ref = _stop_gradient_tree(st_star)
-                x_active_star = _pack_stellsym_reduced_state(
-                    st_active_ref,
-                    rz_idx=rz_idx,
-                    z_idx=z_idx,
-                    lam_sc_idx=lam_sc_idx,
-                    lam_cs_idx=lam_cs_idx,
-                    lam_maps=lam_maps,
-                )
-                b_active = _pack_stellsym_reduced_state(
-                    ct_state,
-                    rz_idx=rz_idx,
-                    z_idx=z_idx,
-                    lam_sc_idx=lam_sc_idx,
-                    lam_cs_idx=lam_cs_idx,
-                    lam_maps=lam_maps,
-                )
-
-                _vmec_backward_profile_log(
-                    "active_setup_done",
-                    active_setup_start,
-                    active_size=int(np.shape(b_active)[0]),
-                    active_full_size=int(np.shape(b_active)[0]),
-                    residual_mode=residual_adjoint_mode,
-                )
-
-                def stationarity_fun_active(x_active):
-                    st_active = _update_stellsym_reduced_state(
-                        st_active_ref,
-                        x_active,
-                        rz_idx=rz_idx,
-                        z_idx=z_idx,
-                        lam_sc_idx=lam_sc_idx,
-                        lam_cs_idx=lam_cs_idx,
-                        lam_maps=lam_maps,
-                        ns=ns_active,
-                        K=K_active,
-                    )
-                    grad_state = _stationarity_state(
-                        st_active,
-                        zero_m1_star,
-                        eRcos_star,
-                        eRsin_star,
-                        eZcos_star,
-                        eZsin_star,
-                    )
-                    return _pack_stellsym_reduced_state(
-                        grad_state,
-                        rz_idx=rz_idx,
-                        z_idx=z_idx,
-                        lam_sc_idx=lam_sc_idx,
-                        lam_cs_idx=lam_cs_idx,
-                        lam_maps=lam_maps,
-                    )
-
-                def _boundary_param_vjp_active(lam):
-                    vjp_start = time.perf_counter()
-
-                    def G_params(eRcos, eRsin, eZcos, eZsin):
-                        grad_state = _stationarity_state(
-                            st_star,
-                            zero_m1_star,
-                            eRcos,
-                            eRsin,
-                            eZcos,
-                            eZsin,
-                        )
-                        return _pack_stellsym_reduced_state(
-                            grad_state,
-                            rz_idx=rz_idx,
-                            z_idx=z_idx,
-                            lam_sc_idx=lam_sc_idx,
-                            lam_cs_idx=lam_cs_idx,
-                            lam_maps=lam_maps,
-                        )
-
-                    _, vjp_fun = jax.vjp(G_params, eRcos_star, eRsin_star, eZcos_star, eZsin_star)
-                    return _boundary_param_vjp_result(vjp_start, vjp_fun(jnp.asarray(lam)))
-
-            active_linearize_start = time.perf_counter()
-            residual_star_active, residual_jvp_active = jax.linearize(stationarity_fun_active, x_active_star)
-            residual_vjp_active = jax.linear_transpose(residual_jvp_active, x_active_star)
-            _vmec_backward_profile_log(
-                "active_linearize_done",
-                active_linearize_start,
-                residual_size=int(np.prod(np.shape(residual_star_active))),
-            )
-
-            active_adjoint_result = _solve_active_residual_adjoint_linearized(
-                residual_jvp_active,
-                residual_vjp_active,
-                residual_star_active=residual_star_active,
-                b_active=b_active,
-                x_active_star=x_active_star,
+                implicit=implicit,
                 residual_adjoint_mode=residual_adjoint_mode,
-                damping=float(implicit.damping),
-                cg_tol=float(implicit.cg_tol),
-                cg_max_iter=int(implicit.cg_max_iter),
-                jac_chunk_size=getattr(implicit, "jac_chunk_size", None),
-                dense_transpose_lstsq_host=_dense_transpose_lstsq_host,
-                is_traced=_contains_jax_tracer,
-                cg_solve=_cg_solve,
-                bicgstab_solve=_jax_bicgstab_solve,
-                lineax_solve=_lineax_bicgstab_solve,
-                jacobian_columns=_linear_map_jacobian_columns,
-                profile_log=_vmec_backward_profile_log,
-                time_module=time,
+                bwd_start=bwd_start,
+                st_star=st_star,
+                zero_m1_star=zero_m1_star,
+                eRcos_star=eRcos_star,
+                eRsin_star=eRsin_star,
+                eZcos_star=eZcos_star,
+                eZsin_star=eZsin_star,
+                ct_state=ct_state,
+                stationarity_state_func=_stationarity_state,
+                boundary_param_vjp_result_func=_boundary_param_vjp_result,
             )
-            result = _boundary_param_vjp_active(active_adjoint_result.lam)
-            done_stage = {
-                "dense": "bwd_done_chunked",
-                "bicgstab": "bwd_done_direct",
-                "lineax": "bwd_done_lineax",
-                "cg": "bwd_done_active",
-            }.get(active_adjoint_result.route, "bwd_done_active")
-            _vmec_backward_profile_log(done_stage, bwd_start)
-            return result
 
         def _boundary_param_vjp_full(lam):
             vjp_start = time.perf_counter()

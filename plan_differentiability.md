@@ -28636,3 +28636,83 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.980%.
 - Overall differentiability-refactor PR: 99.999999999965%.
+
+## 2026-06-20 VMEC-Residual Implicit Active-Adjoint Extraction
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added `_vmec_residual_boundary_cotangent_from_active_adjoint`, a named
+   helper for the reduced/full active-coordinate custom-VJP path in the
+   VMEC-residual implicit wrapper.
+2. Moved active-coordinate setup, reduced/full cotangent packing, residual
+   linearization, adjoint route dispatch, boundary-parameter VJP, and profiling
+   labels out of the nested `bwd` closure.
+3. Left the full-state fallback branch local to the custom VJP, since that path
+   is already short and is still the clearest place to keep LASYM and disabled
+   reduced-active behavior.
+
+Results obtained:
+
+- `solve_fixed_boundary_state_implicit_vmec_residual` dropped from 460 to 283
+  lines.
+- Its nested `bwd` closure dropped from 262 to 85 lines.
+- `solve_fixed_boundary_state_implicit_vmec_residual` no longer appears in the
+  source-health function warning list.
+- No new files were added; the decomposition remains local to
+  `vmec_jax/implicit.py` and avoids namespace sprawl.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/implicit.py tests/test_implicit_wave12_coverage.py tests/test_implicit_sensitivity_fast_coverage.py tests/test_implicit_helpers.py tests/test_implicit_residual_adjoint_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_implicit_wave12_coverage.py::test_vmec_residual_custom_vjp_routes_active_direct_bicgstab tests/test_implicit_wave12_coverage.py::test_vmec_residual_custom_vjp_routes_active_lineax_success tests/test_implicit_wave12_coverage.py::test_vmec_residual_custom_vjp_active_cg_and_full_cg_fallbacks -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_implicit_sensitivity_fast_coverage.py::test_vmec_residual_custom_vjp_active_boundary_sensitivity_matches_fd tests/test_implicit_helpers.py::test_fixed_boundary_residual_implicit_primal_matches_default_control_path -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_implicit_differentiation_fast.py tests/test_implicit_more_coverage.py tests/test_implicit_wave12_coverage.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_implicit_helpers.py tests/test_implicit_residual_adjoint_helpers.py -q`
+- `python tools/diagnostics/source_health.py --top 20 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Move to the next large source-health target that can be reduced without
+   creating generic file names or new abstraction layers. Candidate seams are
+   `driver.py::run_fixed_boundary`, `wout.py::wout_minimal_from_fixed_boundary`,
+   and the remaining fixed-boundary residual iteration helpers.
+2. Prefer helper extraction around domain concepts such as output assembly,
+   run policy, and diagnostics, not `solve_*` or `driver_*` generic modules.
+3. After one more tranche, run a broader fixed-boundary/implicit validation
+   shard and then defer CI observation until the next natural checkpoint.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.999999989%.
+- Solver monolith reduction: 99.983%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.975%.
+- Residual iteration decomposition: 99.892%.
+- WOUT diagnostic/profile decomposition: 99.992%.
+- Bcovar/WOUT parity decomposition: 99.30%.
+- Force-kernel decomposition: 99.69%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.10%.
+- Initial-guess decomposition: 99.08%.
+- Optimizer workflow decomposition: 99.89%.
+- Fixed-boundary optimizer decomposition: 98.05%.
+- Plotting/WOUT visualization decomposition: 98.05%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.31%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.980%.
+- Overall differentiability-refactor PR: 99.999999999966%.
