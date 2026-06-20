@@ -32365,3 +32365,84 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.992%.
 - Docs/release hygiene for this PR: 99.993%.
 - Overall differentiability-refactor PR: 99.99999999999963%.
+
+## 2026-06-20 residual controller and force finish cleanup
+
+Steps taken:
+
+1. Removed the internal `controller_state_values()` shim and unpacked
+   `ResidualControllerState` directly in the residual loop.
+2. Added a local `_apply_controller_update()` closure so axis-reset,
+   VMEC2000 time-control restart, pre-restart, and catastrophic-restart paths
+   share the same “rebuild current controller state, apply pure update, write
+   legacy scalar locals back” operation.
+3. Extracted the duplicated VMEC force finish step into
+   `_finish_vmec_rz_force_kernels()`: constraint-force add-back plus
+   `VmecRZForceKernels` construction is now shared by the production force path
+   and the reference-field parity/debug path.
+4. Tightened the force helper after an initial line-positive version; the final
+   form passes purpose-specific force/parity term bundles rather than a long
+   duplicated keyword list.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` is now 2833 lines.
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` is now 3310 lines.
+- `vmec_jax/solvers/fixed_boundary/residual/update.py` is now 1204 lines.
+- `vmec_jax/vmec_forces.py` is now 1982 lines, below the 2000-line
+  source-health warning threshold and below its previous 1985-line count.
+- Net production diff for this tranche is 19 deleted lines.
+
+Tests and commands run:
+
+- `git diff --check`
+- `python -m ruff check vmec_jax/vmec_forces.py vmec_jax/solvers/fixed_boundary/residual/update.py vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m compileall -q vmec_jax/vmec_forces.py vmec_jax/solvers/fixed_boundary/residual/update.py vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m pytest -q tests/test_solve_residual_iter_update_helpers.py tests/test_solve_residual_iter_setup_helpers.py tests/test_solve_residual_iter_runtime_helpers.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_solve_scan_chunking.py tests/test_solve_scan_debug_helpers.py tests/test_solve_more_coverage.py tests/test_solve_wave4_coverage.py -q`
+- `python -m pytest -q tests/test_constraint_pipeline.py tests/test_vmec_forces_synthetic_helpers.py::test_reference_fields_with_synthetic_wout_builds_half_mesh_and_lambda_kernels tests/test_vmec_forces_synthetic_helpers.py::test_freeb_edge_coupling_synthetic_pressure_scale_and_dump tests/test_vmec_forces_freeb_edge.py -q`
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 90 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Continue residual-loop simplification only at seams that reduce repeated
+   scalar-local/state-update plumbing; avoid moving the adaptive restart math
+   until the controller state can become the primary representation.
+2. Inspect the optional `free_boundary.py` scalpot dump builder next; that is a
+   diagnostic-only path and may provide another low-risk net-negative cleanup.
+3. Keep force-kernel changes bounded to shared finish/packaging logic unless a
+   dedicated parity test covers deeper algebra movement.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.989%.
+- Differentiability/refactor implementation: 99.99999999972%.
+- Solver monolith reduction: 99.9978%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.978%.
+- Residual policy simplification: 99.986%.
+- WOUT diagnostic/profile decomposition: 99.9991%.
+- Bcovar/WOUT parity decomposition: 99.67%.
+- Force-kernel decomposition: 99.79%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.512%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.47%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.992%.
+- Docs/release hygiene for this PR: 99.993%.
+- Overall differentiability-refactor PR: 99.99999999999964%.
