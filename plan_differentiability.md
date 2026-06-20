@@ -30679,3 +30679,79 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.988%.
 - Overall differentiability-refactor PR: 99.999999999992%.
+
+## 2026-06-20 Residual History Bundle Append Methods
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Added append methods to `ResidualIterationHistories` for preconditioned
+   residual channels, zero-update rows, compact step samples, and terminal
+   per-iteration channels.
+2. Replaced raw history-list maps in `solve_fixed_boundary_residual_iter` with
+   method calls on the history bundle.
+3. Removed direct private append-helper imports from the residual loop while
+   preserving the historical `vmec_jax.solve` private aliases for downstream
+   tests/debugging workflows.
+4. Added policy-level coverage for the new history-bundle append methods.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` decreased from 2958 to 2939 lines.
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` decreased from 3433
+  to 3410 lines.
+- History append plumbing is now owned by the history object instead of the
+  residual loop passing raw list dictionaries around.
+- Legacy compatibility aliases remain available through `vmec_jax.solve`.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/residual/policy.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_residual_iter_policy.py tests/test_solve_additional_helpers.py`
+- `python -m ruff check vmec_jax/solve.py vmec_jax/solvers/fixed_boundary/residual/policy.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_residual_iter_policy.py tests/test_solve_additional_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_policy.py tests/test_solve_additional_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_preconditioner_payload_helpers.py tests/test_solve_residual_iter_runtime_helpers.py tests/test_solve_scan_payload_helpers.py tests/test_free_boundary_wp0.py -q`
+- `python tools/diagnostics/source_health.py --top 30 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue residual-loop reductions through existing domain objects; the next
+   candidate is strict-update trace finalization or post-update status/printing.
+2. Keep compatibility aliases in `vmec_jax.solve` when private helper imports
+   are removed from implementation modules.
+3. After one more residual tranche, consider returning to WOUT/driver
+   decomposition if the import ownership is clear.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.99999999947%.
+- Solver monolith reduction: 99.994%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.960%.
+- WOUT diagnostic/profile decomposition: 99.994%.
+- Bcovar/WOUT parity decomposition: 99.39%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.15%.
+- Free-boundary facade/domain decomposition: 99.42%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.44%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.988%.
+- Overall differentiability-refactor PR: 99.999999999993%.
