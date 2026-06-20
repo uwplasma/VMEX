@@ -13,6 +13,7 @@ from .runtime import (
     _build_resume_state_base,
     _format_residual_iter_timing_message,
 )
+from .update import velocity_blocks_legacy_payload
 
 _EMPTY_HISTORY_KEYS = ("w_history", "fsqr2_history", "fsqz2_history", "fsql2_history", "grad_rms_history", "step_history")
 _RESUME_BASE_KEYS = (
@@ -114,6 +115,8 @@ def build_residual_iter_resume_state_from_namespace(
             **namespace["precond_cache"].legacy_resume_payload(),
             **dict(namespace),
         }
+    if "velocity_blocks" in namespace:
+        namespace = {**velocity_blocks_legacy_payload(namespace["velocity_blocks"]), **dict(namespace)}
     base_kwargs = {key: namespace[key] for key in _RESUME_BASE_KEYS}
     heavy = None
     if mode == "full":

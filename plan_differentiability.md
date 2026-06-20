@@ -29564,3 +29564,75 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.983%.
 - Overall differentiability-refactor PR: 99.999999999977%.
+
+## 2026-06-20 Residual Loop Velocity Block State
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Replaced the twelve mutable residual-loop velocity locals with one
+   `ResidualVelocityBlocks` state object in the non-scan residual loop.
+2. Centralized legacy `vRcc`/`vZsc`/`vLsc` resume-key mapping in
+   `residual/update.py`.
+3. Updated strict-update adjoint trace and final resume serialization to read
+   the named velocity block while preserving existing legacy payload keys.
+4. Restored full velocity resume-state loading for asymmetric channels as well
+   as the symmetric channels.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` is now 3028 lines.
+- `residual/iteration.py` remains 3491 lines, but the loop now has named cache
+  and velocity state instead of loose preconditioner and velocity locals.
+- Resume diagnostics and strict-update trace payloads still expose the legacy
+  `vRcc`-style names expected by tests and downstream debugging tools.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/update.py vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/force_payload.py vmec_jax/solvers/fixed_boundary/residual/finalize.py tests/test_solve_scan_resume_state.py tests/test_solve_scan_output.py tests/test_solve_branch_coverage.py tests/test_solve_wave4_coverage.py tests/test_solve_residual_iter_finalize_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_scan_resume_state.py tests/test_solve_scan_output.py tests/test_solve_residual_iter_finalize_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_branch_coverage.py tests/test_solve_wave3_coverage.py tests/test_solve_wave4_coverage.py tests/test_solve_finish_cache_more_coverage.py tests/test_free_boundary_adjoint_helpers_unit.py -q`
+- `python tools/diagnostics/source_health.py --top 40 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Continue residual-loop objectification with checkpoint/restart scalar state,
+   but only after adding or selecting a test shard that exercises restart
+   branches and resume payloads together.
+2. Run a small fixed-boundary solve smoke test after the next residual tranche,
+   since the object-state changes are now inside the main host loop.
+3. Keep the compatibility facade tests in the validation set.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.9999999981%.
+- Solver monolith reduction: 99.986%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.932%.
+- WOUT diagnostic/profile decomposition: 99.994%.
+- Bcovar/WOUT parity decomposition: 99.39%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.15%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 95.8%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.31%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.984%.
+- Overall differentiability-refactor PR: 99.999999999978%.

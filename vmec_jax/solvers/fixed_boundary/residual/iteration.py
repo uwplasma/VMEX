@@ -109,6 +109,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     initial_residual_velocity_state as _initial_residual_velocity_state,
     strict_momentum_update_proposal as _strict_momentum_update_proposal,
     strict_trial_evaluation as _strict_trial_evaluation,
+    velocity_blocks_from_resume_state as _velocity_blocks_from_resume_state,
     zero_velocity_blocks_like as _zero_velocity_blocks_like,
 )
 from vmec_jax.field import TWOPI
@@ -1282,20 +1283,7 @@ def solve_fixed_boundary_residual_iter(
         host_update_assembly=bool(host_update_assembly),
         reference_mode=bool(reference_mode),
     )
-    (
-        vRcc,
-        vRss,
-        vRsc,
-        vRcs,
-        vZsc,
-        vZcs,
-        vZcc,
-        vZss,
-        vLsc,
-        vLcs,
-        vLcc,
-        vLss,
-    ) = _initial_velocity.velocities
+    velocity_blocks = _initial_velocity.velocities
     flip_sign = float(initial_flip_sign)
     max_coeff_delta_rms = _initial_velocity.max_coeff_delta_rms
     max_update_rms = _initial_velocity.max_update_rms
@@ -1397,12 +1385,11 @@ def solve_fixed_boundary_residual_iter(
 
         if "vRcc" in resume_state:
             _as_velocity = np.asarray if bool(host_update_assembly) else jnp.asarray
-            vRcc = _as_velocity(resume_state["vRcc"])
-            vRss = _as_velocity(resume_state.get("vRss", vRss))
-            vZsc = _as_velocity(resume_state.get("vZsc", vZsc))
-            vZcs = _as_velocity(resume_state.get("vZcs", vZcs))
-            vLsc = _as_velocity(resume_state.get("vLsc", vLsc))
-            vLcs = _as_velocity(resume_state.get("vLcs", vLcs))
+            velocity_blocks = _velocity_blocks_from_resume_state(
+                resume_state,
+                velocity_blocks,
+                as_velocity=_as_velocity,
+            )
 
         state_checkpoint = resume_state.get("state_checkpoint", state)
         precond_cache.update_from_resume_state(resume_state)
@@ -1480,18 +1467,26 @@ def solve_fixed_boundary_residual_iter(
     _dump_evolve_trace = partial(_maybe_dump_evolve_trace_record, static=static)
 
     def _current_velocity_blocks() -> _ResidualVelocityBlocks:
-        return _ResidualVelocityBlocks(vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss)
+        return velocity_blocks
 
     def _set_velocity_blocks(blocks: _ResidualVelocityBlocks) -> None:
-        nonlocal vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss
-        vRcc, vRss, vRsc, vRcs, vZsc, vZcs, vZcc, vZss, vLsc, vLcs, vLcc, vLss = blocks
+        nonlocal velocity_blocks
+        velocity_blocks = blocks
 
     def _zero_all_velocity_blocks() -> None:
         _set_velocity_blocks(_ResidualVelocityBlocks(*_zero_velocity_blocks_like(*_current_velocity_blocks())))
 
     def _zero_primary_velocity_blocks() -> None:
-        nonlocal vRcc, vRss, vZsc, vZcs, vLsc, vLcs
-        vRcc, vRss, vZsc, vZcs, vLsc, vLcs = _zero_velocity_blocks_like(vRcc, vRss, vZsc, vZcs, vLsc, vLcs)
+        nonlocal velocity_blocks
+        rcc, rss, zsc, zcs, lsc, lcs = _zero_velocity_blocks_like(
+            velocity_blocks.rcc,
+            velocity_blocks.rss,
+            velocity_blocks.zsc,
+            velocity_blocks.zcs,
+            velocity_blocks.lsc,
+            velocity_blocks.lcs,
+        )
+        velocity_blocks = velocity_blocks._replace(rcc=rcc, rss=rss, zsc=zsc, zcs=zcs, lsc=lsc, lcs=lcs)
 
     def _current_force_blocks() -> _ResidualVelocityBlocks:
         return _ResidualVelocityBlocks(
@@ -1506,7 +1501,14 @@ def solve_fixed_boundary_residual_iter(
         axis_reset_done=bool(axis_reset_done),
         ijacob=int(ijacob),
         state_checkpoint=state_checkpoint,
-        velocities=(vRcc, vRss, vZsc, vZcs, vLsc, vLcs),
+        velocities=(
+            velocity_blocks.rcc,
+            velocity_blocks.rss,
+            velocity_blocks.zsc,
+            velocity_blocks.zcs,
+            velocity_blocks.lsc,
+            velocity_blocks.lcs,
+        ),
         res0=float(res0),
         res1=float(res1),
         prev_rz_fsq=float(prev_rz_fsq),
@@ -1543,7 +1545,14 @@ def solve_fixed_boundary_residual_iter(
     axis_reset_done = bool(axis_setup.axis_reset_done)
     ijacob = int(axis_setup.ijacob)
     state_checkpoint = axis_setup.state_checkpoint
-    vRcc, vRss, vZsc, vZcs, vLsc, vLcs = axis_setup.velocities
+    velocity_blocks = velocity_blocks._replace(
+        rcc=axis_setup.velocities[0],
+        rss=axis_setup.velocities[1],
+        zsc=axis_setup.velocities[2],
+        zcs=axis_setup.velocities[3],
+        lsc=axis_setup.velocities[4],
+        lcs=axis_setup.velocities[5],
+    )
     res0 = float(axis_setup.res0)
     res1 = float(axis_setup.res1)
     prev_rz_fsq = float(axis_setup.prev_rz_fsq)
@@ -2914,18 +2923,7 @@ def solve_fixed_boundary_residual_iter(
 
             if use_restart_triggers and pre_restart_reason != "none":
                 state_before_restart = state
-                vRcc_before = vRcc
-                vRss_before = vRss
-                vZsc_before = vZsc
-                vZcs_before = vZcs
-                vLsc_before = vLsc
-                vLcs_before = vLcs
-                vRsc_before = vRsc
-                vRcs_before = vRcs
-                vZcc_before = vZcc
-                vZss_before = vZss
-                vLcc_before = vLcc
-                vLss_before = vLss
+                velocity_blocks_before = velocity_blocks
                 state = state_checkpoint
                 _zero_all_velocity_blocks()
                 pre_restart_update = _host_pre_restart_trigger_update(
@@ -2978,18 +2976,18 @@ def solve_fixed_boundary_residual_iter(
                 )
                 _maybe_dump_xc(
                     state=state_before_restart,
-                    vRcc=vRcc_before,
-                    vRss=vRss_before,
-                    vZsc=vZsc_before,
-                    vZcs=vZcs_before,
-                    vLsc=vLsc_before,
-                    vLcs=vLcs_before,
-                    vRsc=vRsc_before,
-                    vRcs=vRcs_before,
-                    vZcc=vZcc_before,
-                    vZss=vZss_before,
-                    vLcc=vLcc_before,
-                    vLss=vLss_before,
+                    vRcc=velocity_blocks_before.rcc,
+                    vRss=velocity_blocks_before.rss,
+                    vZsc=velocity_blocks_before.zsc,
+                    vZcs=velocity_blocks_before.zcs,
+                    vLsc=velocity_blocks_before.lsc,
+                    vLcs=velocity_blocks_before.lcs,
+                    vRsc=velocity_blocks_before.rsc,
+                    vRcs=velocity_blocks_before.rcs,
+                    vZcc=velocity_blocks_before.zcc,
+                    vZss=velocity_blocks_before.zss,
+                    vLcc=velocity_blocks_before.lcc,
+                    vLss=velocity_blocks_before.lss,
                     static=static,
                     iter_idx=int(iter2),
                 )
@@ -3125,18 +3123,18 @@ def solve_fixed_boundary_residual_iter(
                     fac,
                     force_scale,
                     flip_sign,
-                    vRcc,
-                    vRss,
-                    vZsc,
-                    vZcs,
-                    vLsc,
-                    vLcs,
-                    vRsc,
-                    vRcs,
-                    vZcc,
-                    vZss,
-                    vLcc,
-                    vLss,
+                    velocity_blocks.rcc,
+                    velocity_blocks.rss,
+                    velocity_blocks.zsc,
+                    velocity_blocks.zcs,
+                    velocity_blocks.lsc,
+                    velocity_blocks.lcs,
+                    velocity_blocks.rsc,
+                    velocity_blocks.rcs,
+                    velocity_blocks.zcc,
+                    velocity_blocks.zss,
+                    velocity_blocks.lcc,
+                    velocity_blocks.lss,
                     frcc_u,
                     frss_u,
                     fzsc_u,
@@ -3152,22 +3150,24 @@ def solve_fixed_boundary_residual_iter(
                     max_update_rms,
                 )
                 state_try = step_out["state_post"]
-                vRcc = step_out["vRcc_after"]
-                vRss = step_out["vRss_after"]
-                vZsc = step_out["vZsc_after"]
-                vZcs = step_out["vZcs_after"]
-                vLsc = step_out["vLsc_after"]
-                vLcs = step_out["vLcs_after"]
-                vRsc = step_out["vRsc_after"]
-                vRcs = step_out["vRcs_after"]
-                vZcc = step_out["vZcc_after"]
-                vZss = step_out["vZss_after"]
-                vLcc = step_out["vLcc_after"]
-                vLss = step_out["vLss_after"]
+                velocity_blocks = _ResidualVelocityBlocks(
+                    step_out["vRcc_after"],
+                    step_out["vRss_after"],
+                    step_out["vRsc_after"],
+                    step_out["vRcs_after"],
+                    step_out["vZsc_after"],
+                    step_out["vZcs_after"],
+                    step_out["vZcc_after"],
+                    step_out["vZss_after"],
+                    step_out["vLsc_after"],
+                    step_out["vLcs_after"],
+                    step_out["vLcc_after"],
+                    step_out["vLss_after"],
+                )
                 update_rms_j = (
                     step_out["update_rms_postclip"]
                     if need_update_rms
-                    else jnp.asarray(0.0, dtype=jnp.asarray(vRcc).dtype)
+                    else jnp.asarray(0.0, dtype=jnp.asarray(velocity_blocks.rcc).dtype)
                 )
                 update_rms = None
                 update_rms_preclip = None
@@ -3406,18 +3406,18 @@ def solve_fixed_boundary_residual_iter(
         )
         _maybe_dump_xc(
             state=state,
-            vRcc=vRcc,
-            vRss=vRss,
-            vZsc=vZsc,
-            vZcs=vZcs,
-            vLsc=vLsc,
-            vLcs=vLcs,
-            vRsc=vRsc,
-            vRcs=vRcs,
-            vZcc=vZcc,
-            vZss=vZss,
-            vLcc=vLcc,
-            vLss=vLss,
+            vRcc=velocity_blocks.rcc,
+            vRss=velocity_blocks.rss,
+            vZsc=velocity_blocks.zsc,
+            vZcs=velocity_blocks.zcs,
+            vLsc=velocity_blocks.lsc,
+            vLcs=velocity_blocks.lcs,
+            vRsc=velocity_blocks.rsc,
+            vRcs=velocity_blocks.rcs,
+            vZcc=velocity_blocks.zcc,
+            vZss=velocity_blocks.zss,
+            vLcc=velocity_blocks.lcc,
+            vLss=velocity_blocks.lss,
             static=static,
             iter_idx=int(iter2),
         )

@@ -12,6 +12,7 @@ from .payload_blocks import (
     residual_force_payload_m1_scalxc_stages,
     zero_edge_rz_force_blocks,
 )
+from .update import velocity_blocks_legacy_payload
 from ....vmec_residue import vmec_gcx2_from_tomnsps
 from ....vmec_tomnsp import TomnspsRZL
 
@@ -81,12 +82,22 @@ def _trace_named_arrays(prefix: str, items, *, suffix: str = "") -> dict[str, An
     return {f"{prefix}{name}{suffix}": None if value is None else np.asarray(value) for name, value in items}
 
 
+def _trace_velocity_values(ns: dict[str, Any]) -> dict[str, Any]:
+    blocks = ns.get("velocity_blocks")
+    if blocks is not None:
+        return {key[1:]: value for key, value in velocity_blocks_legacy_payload(blocks).items()}
+    return {name: ns[f"v{name}"] for name in _TRACE_VELOCITY_NAMES}
+
+
 def _trace_velocity_adjoint(ns: dict[str, Any], suffix: str, *, materialize_func: Callable[..., Any], mode: str) -> dict[str, Any]:
-    return {f"v{name}{suffix}": _materialize_trace(ns[f"v{name}"], materialize_func=materialize_func, mode=mode) for name in _TRACE_VELOCITY_NAMES}
+    return {
+        f"v{name}{suffix}": _materialize_trace(value, materialize_func=materialize_func, mode=mode)
+        for name, value in _trace_velocity_values(ns).items()
+    }
 
 
 def _trace_velocity_arrays(ns: dict[str, Any], suffix: str) -> dict[str, Any]:
-    return {f"v{name}{suffix}": np.asarray(ns[f"v{name}"]) for name in _TRACE_VELOCITY_NAMES}
+    return {f"v{name}{suffix}": np.asarray(value) for name, value in _trace_velocity_values(ns).items()}
 
 
 def build_strict_update_adjoint_trace_entry(
