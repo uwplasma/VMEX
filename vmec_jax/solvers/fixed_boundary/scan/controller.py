@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from functools import partial
 import os
 import time
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -323,6 +323,21 @@ class ScanStepContext:
     flip_sign0: Any
 
 
+class ScanStepPreparedPayload(NamedTuple):
+    """Force, residual, and bad-Jacobian data prepared for one scan step."""
+
+    force_eval: Any
+    current_payload: Any
+    sample_vmec: Any
+    r00: Any
+    z00: Any
+    w_mhd: Any
+    fsq0: Any
+    fsq1: Any
+    tau_decision: Any
+    use_apply_payload_fusion: bool
+
+
 def _build_vmec2000_scan_runtime(ctx: Vmec2000ScanControllerContext, state_init: VMECState) -> Any:
     """Resolve runtime/JIT/print settings for the VMEC2000-style scan."""
 
@@ -421,8 +436,12 @@ def _hold_vmec2000_scan_step(step_ctx: ScanStepContext, carry_hold: _ScanCarry) 
     )
 
 
-def _advance_vmec2000_scan_step(step_ctx: ScanStepContext, carry_adv: _ScanCarry, it: Any) -> Any:
-    """Advance one active VMEC2000 scan step."""
+def _prepare_vmec2000_scan_step_payload(
+    step_ctx: ScanStepContext,
+    carry_adv: _ScanCarry,
+    it: Any,
+) -> ScanStepPreparedPayload:
+    """Prepare force, residual, and bad-Jacobian inputs for one scan step."""
 
     ctx = step_ctx.ctx
     cfg = ctx.cfg
@@ -430,7 +449,6 @@ def _advance_vmec2000_scan_step(step_ctx: ScanStepContext, carry_adv: _ScanCarry
     scan_runtime = step_ctx.scan_runtime
     scan_options = step_ctx.scan_options
     constants = step_ctx.controller_constants
-    fallback_controls = step_ctx.fallback_controls
     force_eval = _evaluate_scan_step_force(
         carry_adv=carry_adv,
         it=it,
@@ -516,7 +534,6 @@ def _advance_vmec2000_scan_step(step_ctx: ScanStepContext, carry_adv: _ScanCarry
     fsqz1 = current_payload_pre.fsqz1
     fsql1 = current_payload_pre.fsql1
     fsq1 = fsqr1 + fsqz1 + fsql1
-
     fsq0 = fsqr + fsqz + fsql
     use_state_jac = ctx._runtime_env_enabled(os.getenv("VMEC_JAX_SCAN_JAC_FROM_STATE", "0"))
     use_apply_payload_fusion = False
@@ -543,6 +560,49 @@ def _advance_vmec2000_scan_step(step_ctx: ScanStepContext, carry_adv: _ScanCarry
         vmec_half_mesh_jacobian_from_state_func=ctx.vmec_half_mesh_jacobian_from_state,
         cond=jax.lax.cond,
     )
+
+    return ScanStepPreparedPayload(
+        force_eval=force_eval,
+        current_payload=current_payload_pre,
+        sample_vmec=sample_vmec,
+        r00=r00_j,
+        z00=z00_j,
+        w_mhd=w_mhd,
+        fsq0=fsq0,
+        fsq1=fsq1,
+        tau_decision=tau_decision,
+        use_apply_payload_fusion=use_apply_payload_fusion,
+    )
+
+
+def _advance_vmec2000_scan_step(step_ctx: ScanStepContext, carry_adv: _ScanCarry, it: Any) -> Any:
+    """Advance one active VMEC2000 scan step."""
+
+    ctx = step_ctx.ctx
+    cfg = ctx.cfg
+    dtype = step_ctx.dtype
+    scan_runtime = step_ctx.scan_runtime
+    scan_options = step_ctx.scan_options
+    constants = step_ctx.controller_constants
+    fallback_controls = step_ctx.fallback_controls
+    prepared = _prepare_vmec2000_scan_step_payload(step_ctx, carry_adv, it)
+    force_eval = prepared.force_eval
+    current_payload_pre = prepared.current_payload
+    tau_decision = prepared.tau_decision
+    iter2 = force_eval.iter2
+    fsq_prev_before = force_eval.fsq_prev_before
+    fsq0_prev_before = force_eval.fsq0_prev_before
+    skip_timecontrol = force_eval.skip_timecontrol
+    zero_m1 = force_eval.zero_m1
+    include_edge = force_eval.include_edge
+    fsqr = force_eval.fsqr
+    fsqz = force_eval.fsqz
+    fsql = force_eval.fsql
+    fsqr1 = current_payload_pre.fsqr1
+    fsqz1 = current_payload_pre.fsqz1
+    fsql1 = current_payload_pre.fsql1
+    fsq0 = prepared.fsq0
+    fsq1 = prepared.fsq1
     bad_jacobian = tau_decision.bad_jacobian
     min_tau = tau_decision.min_tau
     max_tau = tau_decision.max_tau
@@ -570,7 +630,7 @@ def _advance_vmec2000_scan_step(step_ctx: ScanStepContext, carry_adv: _ScanCarry
         skip_timecontrol=skip_timecontrol,
         vmec2000_control=bool(ctx.vmec2000_control),
         reference_mode=bool(ctx.reference_mode),
-        use_apply_payload_fusion=bool(use_apply_payload_fusion),
+        use_apply_payload_fusion=bool(prepared.use_apply_payload_fusion),
         dump_timecontrol_scan=bool(step_ctx.scan_runtime.dump_timecontrol_scan),
         scan_timecontrol_dumper=step_ctx.scan_timecontrol_dumper,
         vmec2000_fact=constants.vmec2000_fact,
@@ -695,14 +755,14 @@ def _advance_vmec2000_scan_step(step_ctx: ScanStepContext, carry_adv: _ScanCarry
     time_step_report = time_step_post
     _ = _emit_live_scan_vmec2000_row(
         enabled=step_ctx.print_in_scan,
-        sample_vmec=sample_vmec,
+        sample_vmec=prepared.sample_vmec,
         iter_idx=iter2,
         fsqr=fsqr,
         fsqz=fsqz,
         fsql=fsql,
         delt0r=time_step_report,
-        r00=r00_j,
-        w_mhd=w_mhd,
+        r00=prepared.r00,
+        w_mhd=prepared.w_mhd,
         scan_print_mode=step_ctx.scan_print_mode,
         scan_print_ordered=bool(scan_options.scan_print_ordered),
         jax_debug=scan_runtime.jax_debug,
@@ -744,10 +804,10 @@ def _advance_vmec2000_scan_step(step_ctx: ScanStepContext, carry_adv: _ScanCarry
         ijacob_post=ijacob_post,
         bad_resets_post=bad_resets_post,
         bad_growth_post=bad_growth_post,
-        r00=r00_j,
-        z00=z00_j,
-        w_mhd=w_mhd,
-        conv_now=conv_now,
+        r00=prepared.r00,
+        z00=prepared.z00,
+        w_mhd=prepared.w_mhd,
+        conv_now=force_eval.conv_now,
         time_step_report=time_step_report,
         zero_m1=zero_m1,
         include_edge=include_edge,
