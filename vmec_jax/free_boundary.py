@@ -950,16 +950,15 @@ def _maybe_dump_scalpot_jax(
             out["bvec_mode_sin"] = np.asarray(bv[:mnpd], dtype=float)
             if bool(basis["lasym"]) and bv.size >= 2 * mnpd:
                 out["bvec_mode_cos"] = np.asarray(bv[mnpd : 2 * mnpd], dtype=float)
-            if bvec_mode_nonsing is not None:
-                bvn = np.asarray(bvec_mode_nonsing, dtype=float).reshape(-1)
-                out["bvec_mode_nonsing_sin"] = np.asarray(bvn[:mnpd], dtype=float)
-                if bool(basis["lasym"]) and bvn.size >= 2 * mnpd:
-                    out["bvec_mode_nonsing_cos"] = np.asarray(bvn[mnpd : 2 * mnpd], dtype=float)
-            if bvec_mode_analytic is not None:
-                bva = np.asarray(bvec_mode_analytic, dtype=float).reshape(-1)
-                out["bvec_mode_analytic_sin"] = np.asarray(bva[:mnpd], dtype=float)
-                if bool(basis["lasym"]) and bva.size >= 2 * mnpd:
-                    out["bvec_mode_analytic_cos"] = np.asarray(bva[mnpd : 2 * mnpd], dtype=float)
+            for prefix, value in (
+                ("bvec_mode_nonsing", bvec_mode_nonsing),
+                ("bvec_mode_analytic", bvec_mode_analytic),
+            ):
+                if value is not None:
+                    vec = np.asarray(value, dtype=float).reshape(-1)
+                    out[f"{prefix}_sin"] = np.asarray(vec[:mnpd], dtype=float)
+                    if bool(basis["lasym"]) and vec.size >= 2 * mnpd:
+                        out[f"{prefix}_cos"] = np.asarray(vec[mnpd : 2 * mnpd], dtype=float)
 
             if cache.mode_matrix is not None:
                 out["amatrix_mode"] = np.asarray(cache.mode_matrix, dtype=float)
@@ -972,16 +971,15 @@ def _maybe_dump_scalpot_jax(
                     B = sinmni
                 A = np.asarray(cache.matrix, dtype=float)
                 out["amatrix_mode"] = B.T @ (A @ B)
-            if amatrix_mode_pre is not None:
-                out["amatrix_mode_pre"] = np.asarray(amatrix_mode_pre, dtype=float)
-            if amatrix_mode_from_grpmn is not None:
-                out["amatrix_mode_from_grpmn"] = np.asarray(amatrix_mode_from_grpmn, dtype=float)
-            if grpmn_nonsing is not None:
-                out["grpmn_nonsing"] = np.asarray(grpmn_nonsing, dtype=float)
-            if grpmn_analytic is not None:
-                out["grpmn_analytic"] = np.asarray(grpmn_analytic, dtype=float)
-            if grpmn_total is not None:
-                out["grpmn_total"] = np.asarray(grpmn_total, dtype=float)
+            for key, value in {
+                "amatrix_mode_pre": amatrix_mode_pre,
+                "amatrix_mode_from_grpmn": amatrix_mode_from_grpmn,
+                "grpmn_nonsing": grpmn_nonsing,
+                "grpmn_analytic": grpmn_analytic,
+                "grpmn_total": grpmn_total,
+            }.items():
+                if value is not None:
+                    out[key] = np.asarray(value, dtype=float)
         except Exception:
             pass
     elif isinstance(cache, NestorPoissonCache):

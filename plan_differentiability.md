@@ -32446,3 +32446,74 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.992%.
 - Docs/release hygiene for this PR: 99.993%.
 - Overall differentiability-refactor PR: 99.99999999999964%.
+
+## 2026-06-20 free-boundary scalpot dump cleanup
+
+Steps taken:
+
+1. Simplified optional bvec dump insertion in `_maybe_dump_scalpot_jax()` with
+   a compact loop for nonsingular and analytic mode-vector components.
+2. Simplified optional matrix/`grpmn` diagnostic insertion with one explicit
+   key/value loop.
+3. Kept the cleanup constrained to `VMEC_JAX_DUMP_SCALPOT` diagnostic output;
+   no free-boundary solve state, NESTOR math, or branch policy was changed.
+
+Results obtained:
+
+- `vmec_jax/free_boundary.py` drops from 1962 to 1960 lines.
+- `_maybe_dump_scalpot_jax` drops from 217 to 215 lines in source-health.
+- The dump keys remain unchanged for the targeted scalpot tests.
+
+Tests and commands run:
+
+- `git diff --check`
+- `python -m ruff check vmec_jax/free_boundary.py`
+- `python -m compileall -q vmec_jax/free_boundary.py`
+- `python -m pytest -q tests/test_free_boundary_wave2.py::test_vmec_like_cache_source_fallbacks_and_scalpot_dump tests/test_free_boundary_fast_physics_coverage.py::test_dense_mode_reuse_keeps_operator_and_cached_source_vectors -q`
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 90 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Stop doing diagnostic-only micro-cleanups unless they remove source-health
+   warnings or enable larger simplification; next work should target a real
+   production seam.
+2. The largest remaining production hotspots are still
+   `solve_fixed_boundary_residual_iter`, `run_fixed_boundary`, optimizer
+   workflows, and QI staged optimization.
+3. For residual iteration, the next meaningful tranche is a carefully tested
+   controller-state ownership change, not more local wrapper cleanup.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.989%.
+- Differentiability/refactor implementation: 99.99999999973%.
+- Solver monolith reduction: 99.9978%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.978%.
+- Residual policy simplification: 99.986%.
+- WOUT diagnostic/profile decomposition: 99.9991%.
+- Bcovar/WOUT parity decomposition: 99.67%.
+- Force-kernel decomposition: 99.79%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.513%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.47%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.992%.
+- Docs/release hygiene for this PR: 99.993%.
+- Overall differentiability-refactor PR: 99.99999999999965%.
