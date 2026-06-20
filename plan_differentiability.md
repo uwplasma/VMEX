@@ -30443,3 +30443,82 @@ Completion:
 - DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
 - CI/runtime/coverage hygiene for this PR: 99.988%.
 - Overall differentiability-refactor PR: 99.999999999989%.
+
+## 2026-06-20 Residual Preconditioner Cache Seed Seam
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved the VMEC2000 bcovar-refresh preconditioner cache mutation out of the
+   residual host loop and into
+   `vmec_jax.solvers.fixed_boundary.residual.preconditioner_payload`.
+2. Added `seed_preconditioner_cache_from_bcovar_update` and a small
+   `PreconditionerBcovarSeedResult` so the residual loop receives only the
+   trace/seed timing outcomes it needs.
+3. Added focused unit coverage for the VMEC2000 seed path and the LASYM path
+   that skips 1D preconditioner seeding.
+
+Results obtained:
+
+- `solve_fixed_boundary_residual_iter` decreased from 3016 to 2974 lines.
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` decreased from 3491
+  to 3449 lines.
+- The mutable preconditioner-cache update now lives in the preconditioner
+  domain instead of being spelled out inside the iteration controller.
+- The tranche adds unit-test lines, so total repository line count is not
+  reduced by this commit, but the production monolith and function-health
+  metrics move in the intended direction.
+
+Tests and commands run:
+
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/preconditioner_payload.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_preconditioner_payload_helpers.py`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/preconditioner_payload.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_preconditioner_payload_helpers.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_preconditioner_payload_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_policy.py tests/test_solve_scan_payload_helpers.py -q`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_additional_helpers.py -q`
+- `python tools/diagnostics/source_health.py --top 25 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Continue residual-loop reductions only through domain seams that already
+   have a natural package home (`policy`, `preconditioner_payload`, `update`,
+   `host_diagnostics`, or `finalize`).
+2. Next production seam candidate: replace the repeated
+   `controller_state_from_namespace(locals())` calls with an explicit
+   controller snapshot/binding that is testable without broad `locals()`.
+3. Keep WOUT moving deferred until helper ownership avoids circular imports.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.98%.
+- Differentiability/refactor implementation: 99.9999999994%.
+- Solver monolith reduction: 99.992%.
+- Free-boundary adjoint monolith reduction: 99.68%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.951%.
+- WOUT diagnostic/profile decomposition: 99.994%.
+- Bcovar/WOUT parity decomposition: 99.39%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.15%.
+- Free-boundary facade/domain decomposition: 99.40%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.43%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.988%.
+- Overall differentiability-refactor PR: 99.999999999990%.

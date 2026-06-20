@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, NamedTuple
 
+import numpy as np
+
 from vmec_jax._compat import has_jax, jnp
 from vmec_jax.solvers.fixed_boundary.preconditioning import payload as _payload
 from vmec_jax.solvers.fixed_boundary.residual.payload_blocks import (
@@ -41,6 +43,14 @@ class PreconditionerRefreshRuntimeResult(NamedTuple):
     cache_prec_lam_debug: Any
     cache_prec_rz_mats: Any
     cache_prec_rz_jmax: Any
+
+
+class PreconditionerBcovarSeedResult(NamedTuple):
+    """Result of seeding the residual preconditioner cache from bcovar fields."""
+
+    cache_update_trace: bool
+    seeded_from_bcovar_update: bool
+    seed_time_in_residual_metrics: float
 
 
 class AcceptedControlPayloadMaterialization(NamedTuple):
@@ -417,6 +427,127 @@ def materialize_accepted_control_payload(
         fsq1,
         accepted_control_ptau_host,
         False,
+    )
+
+
+def seed_preconditioner_cache_from_bcovar_update(
+    *,
+    cache: Any,
+    k: Any,
+    state: Any,
+    trig: Any,
+    s: Any,
+    cfg: Any,
+    norms_used: Any,
+    rz_scale: Any,
+    l_scale: Any,
+    constraint_tcon0: float | None,
+    zero_tcon: Any,
+    host_update_assembly: bool,
+    timing_enabled: bool,
+    timing_stats: dict[str, Any],
+    perf_counter: Callable[[], float],
+    tree_has_tracer: Callable[[Any], bool],
+    rz_norm_np: Callable[[Any], float],
+    rz_norm_func: Callable[[Any], Any],
+    lambda_preconditioner_func: Callable[[Any], Any],
+    rz_preconditioner_matrices_func: Callable[..., Any],
+    precond_jmax_override: int | None,
+    preconditioner_use_precomputed_tridi: bool | None,
+    preconditioner_use_lax_tridi: bool | None,
+    jnp_module: Any = jnp,
+) -> PreconditionerBcovarSeedResult:
+    """Seed VMEC2000 preconditioner cache entries after a bcovar refresh.
+
+    VMEC updates the constraint diagonal, tcon profile, norms, and 1D
+    preconditioner payloads together when the bcovar fields are refreshed. This
+    helper keeps that mutable cache update in the preconditioner domain instead
+    of spelling it out in the residual host loop.
+    """
+
+    if constraint_tcon0 is None or float(constraint_tcon0) == 0.0:
+        cache.precond_diag = None
+        cache.tcon = zero_tcon
+    else:
+        from vmec_jax.vmec_constraints import precondn_diag_axd1_from_bcovar
+
+        use_numpy_patch = (
+            bool(host_update_assembly)
+            and (not tree_has_tracer(k))
+            and (not tree_has_tracer(s))
+        )
+        if use_numpy_patch:
+            from vmec_jax.vmec_numpy_forces import _numpy_module_patch
+
+            with _numpy_module_patch():
+                ard1, azd1 = precondn_diag_axd1_from_bcovar(
+                    trig=trig,
+                    s=s,
+                    bsq=k.bc.bsq,
+                    r12=k.bc.jac.r12,
+                    sqrtg=k.bc.jac.sqrtg,
+                    ru12=k.bc.jac.ru12,
+                    zu12=k.bc.jac.zu12,
+                )
+        else:
+            ard1, azd1 = precondn_diag_axd1_from_bcovar(
+                trig=trig,
+                s=s,
+                bsq=k.bc.bsq,
+                r12=k.bc.jac.r12,
+                sqrtg=k.bc.jac.sqrtg,
+                ru12=k.bc.jac.ru12,
+                zu12=k.bc.jac.zu12,
+            )
+        cache.precond_diag = (ard1, azd1)
+        cache.tcon = np.asarray(k.tcon) if host_update_assembly else jnp_module.asarray(k.tcon)
+
+    cache.norms = norms_used
+    cache.rz_scale = rz_scale
+    cache.l_scale = l_scale
+    if host_update_assembly:
+        cache.rz_norm = rz_norm_np(state)
+        cache.f_norm1 = (1.0 / cache.rz_norm) if cache.rz_norm != 0.0 else float("inf")
+    else:
+        cache.rz_norm = rz_norm_func(state)
+        cache.f_norm1 = jnp_module.where(
+            jnp_module.asarray(cache.rz_norm) != 0.0,
+            1.0 / jnp_module.asarray(cache.rz_norm),
+            jnp_module.asarray(float("inf"), dtype=jnp_module.asarray(cache.rz_norm).dtype),
+        )
+
+    cache_update_trace = False
+    seeded_from_bcovar_update = False
+    seed_time_in_residual_metrics = 0.0
+    if not bool(cfg.lasym):
+        t_precond_refresh_seed_start = perf_counter() if timing_enabled else None
+        cache.prec_lam_prec = lambda_preconditioner_func(k.bc)
+        cache.prec_faclam = None
+        cache.prec_lam_debug = None
+        mats, _jmin, jmax = rz_preconditioner_matrices_func(
+            bc=k.bc,
+            k=k,
+            jmax_override=precond_jmax_override,
+            use_precomputed=preconditioner_use_precomputed_tridi,
+            use_lax_tridi=preconditioner_use_lax_tridi,
+        )
+        cache.prec_rz_mats = mats
+        cache.prec_rz_jmax = None if tree_has_tracer(k) else int(jmax)
+        seeded_from_bcovar_update = cache.prec_rz_jmax is not None
+        cache_update_trace = True
+        if timing_enabled and t_precond_refresh_seed_start is not None:
+            seed_dt = perf_counter() - float(t_precond_refresh_seed_start)
+            seed_time_in_residual_metrics += seed_dt
+            timing_stats["precond_refresh_seed"] += seed_dt
+            timing_stats["precond_refresh"] += seed_dt
+            timing_stats["preconditioner"] += seed_dt
+            timing_stats["precond_refresh_calls"] = int(timing_stats["precond_refresh_calls"]) + 1
+    cache.valid = True
+
+    return PreconditionerBcovarSeedResult(
+        cache_update_trace=cache_update_trace,
+        seeded_from_bcovar_update=seeded_from_bcovar_update,
+        seed_time_in_residual_metrics=seed_time_in_residual_metrics,
     )
 
 
@@ -926,6 +1057,8 @@ __all__ = [
     "_ptau_compute_jit",
     "_strict_update_step_jit",
     "apply_vmec2000_preconditioner_runtime",
+    "seed_preconditioner_cache_from_bcovar_update",
+    "PreconditionerBcovarSeedResult",
     "PreconditionerRefreshRuntimeResult",
     "Vmec2000PreconditionerApplyResult",
     "refresh_preconditioner_cache_runtime",
