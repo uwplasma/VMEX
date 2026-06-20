@@ -621,6 +621,19 @@ def _finite_or_none(value):
     return out if np.isfinite(out) else None
 
 
+_QI_PREFILTER_METRIC_PAIRS = tuple(
+    (key, key) for key in "qi_smooth_total qi_legacy_total qi_mirror_ratio_max qi_max_elongation mean_iota aspect".split()
+)
+_QI_REFERENCE_RECORD_METRIC_PAIRS = tuple(
+    item.split(":") for item in "smooth_qi:qi_smooth_total legacy_qi:qi_legacy_total mirror:qi_mirror_ratio_max "
+    "elongation:qi_max_elongation mean_iota:mean_iota aspect:aspect aspect_relative_error:aspect_relative_error".split()
+)
+
+
+def _finite_metric_map(diagnostics: dict, pairs) -> dict:
+    return {out_key: _finite_or_none(diagnostics.get(in_key)) for out_key, in_key in pairs}
+
+
 def _parse_float_sequence(value, *, name):
     """Parse a comma/space separated sequence used by subprocess wrappers."""
 
@@ -787,6 +800,42 @@ def _partial_diagnostics_from_history(history: dict, diagnostics: dict) -> dict:
     return out
 
 
+_QI_DIAGNOSTIC_OPTION_ATTRS = (
+    "include_bounce_endpoints softness width_weight branch_width_weight branch_width_softness profile_weight "
+    "shuffle_profile_weight shuffle_profile_softness shuffle_profile_nphi_out weighted_shuffle_profile_weight "
+    "weighted_shuffle_profile_softness aligned_profile_weight aligned_profile_softness aligned_profile_trap_level "
+    "aligned_profile_trap_softness"
+).split()
+
+
+def _qi_diagnostic_options(
+    *,
+    ctx: QIOptimizationContext | None,
+    mirror_threshold,
+    mirror_surface_index,
+    max_elongation,
+    resolution=None,
+):
+    """Build the shared Boozer/QI diagnostic options for result and run audits."""
+
+    qi_options = _ctx(ctx, "qi_options")
+    resolution = resolution or {}
+    copied_options = {name: getattr(qi_options, name) for name in _QI_DIAGNOSTIC_OPTION_ATTRS}
+    return vj.QIDiagnosticOptions(
+        surfaces=_ctx(ctx, "surfaces"),
+        mboz=_resolution_value(resolution, "mboz", qi_options.mboz),
+        nboz=_resolution_value(resolution, "nboz", qi_options.nboz),
+        nphi=_resolution_value(resolution, "nphi", qi_options.nphi),
+        nalpha=_resolution_value(resolution, "nalpha", qi_options.nalpha),
+        n_bounce=_resolution_value(resolution, "n_bounce", qi_options.n_bounce),
+        phimin=float(qi_options.phimin),
+        mirror_threshold=float(mirror_threshold),
+        mirror_surface_index=mirror_surface_index,
+        elongation_threshold=float(max_elongation),
+        **copied_options,
+    )
+
+
 def save_raw_seed_initial_artifacts(input_file, input_out, wout_out, *, ctx: QIOptimizationContext | None = None):
     """Save the unpreconditioned VMEC input deck and its solved WOUT."""
 
@@ -913,14 +962,7 @@ def run_basin_prefilter(input_file, output_dir, config, *, ctx: QIOptimizationCo
                 prof_local={"pressure": stage.ctx.pressure},
                 pressure_local=stage.ctx.pressure,
             )
-            metrics = {
-                "qi_smooth_total": _finite_or_none(diagnostics.get("qi_smooth_total")),
-                "qi_legacy_total": _finite_or_none(diagnostics.get("qi_legacy_total")),
-                "qi_mirror_ratio_max": _finite_or_none(diagnostics.get("qi_mirror_ratio_max")),
-                "qi_max_elongation": _finite_or_none(diagnostics.get("qi_max_elongation")),
-                "mean_iota": _finite_or_none(diagnostics.get("mean_iota")),
-                "aspect": _finite_or_none(diagnostics.get("aspect")),
-            }
+            metrics = _finite_metric_map(diagnostics, _QI_PREFILTER_METRIC_PAIRS)
             record["metrics"] = metrics
             record["diagnostics"] = diagnostics
             record["prefilter_score"] = basin_prefilter_score(metrics, targets, config)
@@ -967,37 +1009,15 @@ def qi_diagnostics_for_result(
     legacy_qi_max=None,
     ctx: QIOptimizationContext | None = None,
 ):
-    qi_options = _ctx(ctx, "qi_options")
     surfaces = _ctx(ctx, "surfaces")
     smooth_qi_max = _ctx(ctx, "qi_gate_smooth_max") if smooth_qi_max is None else float(smooth_qi_max)
     legacy_qi_max = _ctx(ctx, "qi_gate_legacy_max") if legacy_qi_max is None else float(legacy_qi_max)
     opt = stage_result.final_optimizer
-    diagnostic_options = vj.QIDiagnosticOptions(
-        surfaces=surfaces,
-        mboz=qi_options.mboz,
-        nboz=qi_options.nboz,
-        nphi=qi_options.nphi,
-        nalpha=qi_options.nalpha,
-        n_bounce=qi_options.n_bounce,
-        include_bounce_endpoints=qi_options.include_bounce_endpoints,
-        softness=qi_options.softness,
-        width_weight=qi_options.width_weight,
-        branch_width_weight=qi_options.branch_width_weight,
-        branch_width_softness=qi_options.branch_width_softness,
-        profile_weight=qi_options.profile_weight,
-        shuffle_profile_weight=qi_options.shuffle_profile_weight,
-        shuffle_profile_softness=qi_options.shuffle_profile_softness,
-        shuffle_profile_nphi_out=qi_options.shuffle_profile_nphi_out,
-        weighted_shuffle_profile_weight=qi_options.weighted_shuffle_profile_weight,
-        weighted_shuffle_profile_softness=qi_options.weighted_shuffle_profile_softness,
-        aligned_profile_weight=qi_options.aligned_profile_weight,
-        aligned_profile_softness=qi_options.aligned_profile_softness,
-        aligned_profile_trap_level=qi_options.aligned_profile_trap_level,
-        aligned_profile_trap_softness=qi_options.aligned_profile_trap_softness,
-        phimin=float(qi_options.phimin),
+    diagnostic_options = _qi_diagnostic_options(
+        ctx=ctx,
         mirror_threshold=mirror_threshold,
         mirror_surface_index=mirror_surface_index,
-        elongation_threshold=_ctx(ctx, "max_elongation"),
+        max_elongation=_ctx(ctx, "max_elongation"),
     )
     diagnostics = vj.qi_diagnostics_from_state(
         state=stage_result.final_state,
@@ -1036,36 +1056,15 @@ def qi_diagnostics_for_run(
 ):
     """Independent QI diagnostics for a raw fixed-boundary VMEC run."""
 
-    qi_options = _ctx(ctx, "qi_options")
     surfaces = _ctx(ctx, "surfaces")
     smooth_qi_max = _ctx(ctx, "qi_gate_smooth_max") if smooth_qi_max is None else float(smooth_qi_max)
     legacy_qi_max = _ctx(ctx, "qi_gate_legacy_max") if legacy_qi_max is None else float(legacy_qi_max)
-    diagnostic_options = vj.QIDiagnosticOptions(
-        surfaces=surfaces,
-        mboz=_resolution_value(resolution or {}, "mboz", qi_options.mboz),
-        nboz=_resolution_value(resolution or {}, "nboz", qi_options.nboz),
-        nphi=_resolution_value(resolution or {}, "nphi", qi_options.nphi),
-        nalpha=_resolution_value(resolution or {}, "nalpha", qi_options.nalpha),
-        n_bounce=_resolution_value(resolution or {}, "n_bounce", qi_options.n_bounce),
-        include_bounce_endpoints=qi_options.include_bounce_endpoints,
-        softness=qi_options.softness,
-        width_weight=qi_options.width_weight,
-        branch_width_weight=qi_options.branch_width_weight,
-        branch_width_softness=qi_options.branch_width_softness,
-        profile_weight=qi_options.profile_weight,
-        shuffle_profile_weight=qi_options.shuffle_profile_weight,
-        shuffle_profile_softness=qi_options.shuffle_profile_softness,
-        shuffle_profile_nphi_out=qi_options.shuffle_profile_nphi_out,
-        weighted_shuffle_profile_weight=qi_options.weighted_shuffle_profile_weight,
-        weighted_shuffle_profile_softness=qi_options.weighted_shuffle_profile_softness,
-        aligned_profile_weight=qi_options.aligned_profile_weight,
-        aligned_profile_softness=qi_options.aligned_profile_softness,
-        aligned_profile_trap_level=qi_options.aligned_profile_trap_level,
-        aligned_profile_trap_softness=qi_options.aligned_profile_trap_softness,
-        phimin=float(qi_options.phimin),
-        mirror_threshold=float(mirror_threshold),
+    diagnostic_options = _qi_diagnostic_options(
+        ctx=ctx,
+        mirror_threshold=mirror_threshold,
         mirror_surface_index=mirror_surface_index,
-        elongation_threshold=float(max_elongation),
+        max_elongation=max_elongation,
+        resolution=resolution,
     )
     diagnostics = vj.qi_diagnostics_from_state(
         state=run.state,
@@ -1381,13 +1380,7 @@ def run_boundary_reference_preconditioner(input_file, output_dir, config, *, ctx
                 "wout": str(wout_out),
                 "score": score,
                 "selected": False,
-                "smooth_qi": _finite_or_none(diagnostics.get("qi_smooth_total")),
-                "legacy_qi": _finite_or_none(diagnostics.get("qi_legacy_total")),
-                "mirror": _finite_or_none(diagnostics.get("qi_mirror_ratio_max")),
-                "elongation": _finite_or_none(diagnostics.get("qi_max_elongation")),
-                "mean_iota": _finite_or_none(diagnostics.get("mean_iota")),
-                "aspect": _finite_or_none(diagnostics.get("aspect")),
-                "aspect_relative_error": _finite_or_none(diagnostics.get("aspect_relative_error")),
+                **_finite_metric_map(diagnostics, _QI_REFERENCE_RECORD_METRIC_PAIRS),
                 "qi_seed_gate_passed": bool(diagnostics.get("qi_seed_gate_passed")),
                 "qi_engineering_gate_passed": bool(diagnostics.get("qi_engineering_gate_passed")),
                 "failure_reasons": list(diagnostics.get("qi_failure_reasons", [])),
