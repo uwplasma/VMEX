@@ -94,6 +94,7 @@ _LEGACY_ALIASES = {
         "vmec_jax.solvers.fixed_boundary.residual.policy",
         "append_zero_update_history_record",
     ),
+    "_axis_m0_mask": ("vmec_jax.solvers.fixed_boundary.optimization.constraints", "axis_m0_mask"),
     "_enforce_field_rows": ("vmec_jax.solvers.fixed_boundary.optimization.constraints", "enforce_field_rows"),
     "_enforce_field_rows_np": ("vmec_jax.solvers.fixed_boundary.optimization.constraints", "enforce_field_rows_np"),
     "_enforce_lambda_gauge": ("vmec_jax.solvers.fixed_boundary.optimization.constraints", "enforce_lambda_gauge"),

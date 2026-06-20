@@ -14,7 +14,6 @@ implementation uses gradient descent with a simple backtracking line search.
 
 from __future__ import annotations
 
-from contextlib import nullcontext
 from collections import OrderedDict
 from functools import partial
 import time
@@ -73,9 +72,11 @@ from vmec_jax.solvers.fixed_boundary.residual.accelerated_scan import (
     run_accelerated_residual_scan as _run_accelerated_residual_scan,
 )
 from vmec_jax.solvers.fixed_boundary.residual.setup import (
+    build_residual_profile_setup as _build_residual_profile_setup,
+    build_residual_ptau_bindings as _build_residual_ptau_bindings,
     build_residual_cache_keys as _build_residual_cache_keys,
+    build_residual_static_grid_setup as _build_residual_static_grid_setup,
     free_boundary_pressure_edge_scale as _free_boundary_pressure_edge_scale,
-    grid_matches_vmec_static_grid as _grid_matches_vmec_static_grid,
     resolve_free_boundary_setup_policy as _resolve_free_boundary_setup_policy,
 )
 from vmec_jax.solvers.fixed_boundary.residual.state_setup import (
@@ -206,7 +207,6 @@ from vmec_jax.solvers.fixed_boundary.residual.ptau import (
     maybe_dump_ptau as _maybe_dump_ptau_helper,
     ptau_minmax as _ptau_minmax_helper,
     ptau_minmax_from_k_host as _ptau_minmax_from_k_host_helper,
-    ptau_minmax_from_k_jax as _ptau_minmax_from_k_jax_helper,
     state_tau_minmax_from_vmec_state as _state_tau_minmax_from_vmec_state,
 )
 from vmec_jax.solvers.fixed_boundary.optimization.constraints import (
@@ -658,27 +658,16 @@ def solve_fixed_boundary_residual_iter(
     from vmec_jax.vmec_tomnsp import TomnspsRZL, vmec_angle_grid, vmec_trig_tables
     from vmec_jax.free_boundary import NestorRuntimeState, nestor_external_only_step
 
-    # VMEC2000 evaluates the force kernels on VMEC's internal
-    # angle grid. In particular, when `lasym=False`, VMEC uses a reduced theta
-    # grid (stellarator symmetry) for the force pipeline. Rebuild `static`
-    # using `vmec_angle_grid(...)` so the force terms do not mix full-grid and
-    # VMEC-grid arrays (which triggers broadcasting errors and parity drift).
+    # VMEC2000 evaluates force kernels on VMEC's internal angle grid. Rebuild
+    # static data when the caller supplied a plotting/full-grid object.
     _t_setup_static_grid = _setup_timer_start()
-    cfg = static.cfg
-    grid_vmec = vmec_angle_grid(
-        ntheta=int(cfg.ntheta),
-        nzeta=int(cfg.nzeta),
-        nfp=int(cfg.nfp),
-        lasym=bool(cfg.lasym),
+    static_grid_setup = _build_residual_static_grid_setup(
+        static=static,
+        build_static_func=build_static,
+        vmec_angle_grid_func=vmec_angle_grid,
     )
-    reuse_static = _grid_matches_vmec_static_grid(static.grid, grid_vmec)
-    if not reuse_static:
-        static = build_static(
-            cfg,
-            grid=grid_vmec,
-            mgrid_metadata=getattr(static, "mgrid_metadata", None),
-            free_boundary_extcur=getattr(static, "free_boundary_extcur", None),
-        )
+    static = static_grid_setup.static
+    cfg = static_grid_setup.cfg
     _record_setup_timing("setup_static_grid_rebuild", _t_setup_static_grid)
     # Free-boundary control + coupling path:
     # VMEC-style ivac/ivacskip cadence with edge bsqvac coupling.
@@ -789,51 +778,33 @@ def solve_fixed_boundary_residual_iter(
             axis_reset_coeffs = coeffs
         return st_out
 
-    prefer_host_default_profiles = not state0_has_tracer
-
-    _profile_numpy_patch = None
     host_profile_setup = _resolve_host_profile_setup(
         backend_name=_scan_backend_name(),
         profile_setup_env=os.getenv("VMEC_JAX_HOST_PROFILE_SETUP", "auto"),
     )
-    if (
-        (bool(host_update_assembly) or bool(host_profile_setup))
-        and has_jax()
-        and (not state0_has_tracer)
-    ):
-        try:
-            from vmec_jax.vmec_numpy_forces import _numpy_module_patch as _profile_numpy_patch
-        except Exception:
-            _profile_numpy_patch = None
     try:
-        with _profile_numpy_patch() if _profile_numpy_patch is not None else nullcontext():
-            s_profile = s
-            if _profile_numpy_patch is not None:
-                from vmec_jax.vmec_numpy_forces import _wrap as _np_wrap
-
-                s_profile = _np_wrap(np.asarray(s))
-            profile_setup = _build_wout_like_profiles_from_indata(
-                indata=indata,
-                static=static,
-                s_profile=s_profile,
-                signgs=signgs,
-                idx00=idx00,
-                prefer_host_default_profiles=prefer_host_default_profiles,
-                s_profile_has_tracer=_tree_has_tracer(s_profile),
+        profile_setup = _build_residual_profile_setup(
+            indata=indata,
+            static=static,
+            s=s,
+            signgs=signgs,
+            idx00=idx00,
+            state0=state0,
+            state0_has_tracer=bool(state0_has_tracer),
+            host_update_assembly=bool(host_update_assembly),
+            host_profile_setup=bool(host_profile_setup) and has_jax(),
+            build_wout_like_profiles_func=_build_wout_like_profiles_from_indata,
+            resolve_residual_trig_func=_residual_force_context_helpers.resolve_residual_trig,
+            vmec_trig_tables_func=vmec_trig_tables,
+            tree_has_tracer_func=_tree_has_tracer,
+            jnp_module=jnp,
         )
     except Exception:
         if bool(precompile_only):
             return _precompile_only_residual_iter_result(result_type=SolveVmecResidualResult, state=state0)
         raise
     wout_like = profile_setup.wout_like
-
-    trig = _residual_force_context_helpers.resolve_residual_trig(
-        state0=state0,
-        static=static,
-        wout_like=wout_like,
-        vmec_trig_tables_func=vmec_trig_tables,
-        jnp_module=jnp,
-    )
+    trig = profile_setup.trig
     _record_setup_timing("setup_boundary_profiles", _t_setup_boundary_profiles)
     idx00 = _mode00_index(static.modes)
     _state_dtype = jnp.asarray(state0.Rcos).dtype if state0_has_tracer else np.asarray(state0.Rcos).dtype
@@ -885,40 +856,26 @@ def solve_fixed_boundary_residual_iter(
     _record_setup_timing("setup_cache_key_hash", _t_setup_cache_key_hash)
 
     _t_setup_ptau_constants = _setup_timer_start()
-    _ptau_context = _build_ptau_minmax_context(
-        s,
-        has_jax=has_jax(),
+    _ptau_bindings = _build_residual_ptau_bindings(
+        s=s,
+        has_jax_value=has_jax(),
         s_has_tracer=_tree_has_tracer(s),
-        pshalf_from_s_np=_pshalf_from_s_np,
-        pshalf_from_s_jax=_pshalf_from_s_jax,
-    )
-    _record_setup_timing("setup_ptau_constants", _t_setup_ptau_constants)
-
-    _ptau_minmax_from_k_host = partial(
-        _ptau_minmax_from_k_host_helper,
-        ptau_context=_ptau_context,
-        compute_jit=_ptau_compute_jit,
-        ptau_minmax_host_func=_scan_math_ptau_minmax_from_k_host,
-    )
-    _ptau_minmax_from_k_jax = partial(
-        _ptau_minmax_from_k_jax_helper,
-        ptau_context=_ptau_context,
-        pshalf_from_s_jax=_pshalf_from_s_jax,
-        ptau_minmax_jax_func=_scan_math_ptau_minmax_from_k_jax,
-    )
-    _ptau_minmax = partial(
-        _ptau_minmax_helper,
-        ptau_context=_ptau_context,
+        pshalf_from_s_np_func=_pshalf_from_s_np,
+        pshalf_from_s_jax_func=_pshalf_from_s_jax,
+        build_context_func=_build_ptau_minmax_context,
+        compute_jit_func=_ptau_compute_jit,
+        ptau_minmax_host_helper=_ptau_minmax_from_k_host_helper,
+        ptau_minmax_helper=_ptau_minmax_helper,
+        scan_ptau_minmax_host_func=_scan_math_ptau_minmax_from_k_host,
+        scan_ptau_minmax_jax_func=_scan_math_ptau_minmax_from_k_jax,
+        accepted_control_ptau_arrays_helper=_accepted_control_ptau_arrays_helper,
+        scan_kernel_arrays_from_k_func=_scan_math_kernel_arrays_from_k,
         has_jax_func=has_jax,
-        compute_jit=_ptau_compute_jit,
-        pshalf_from_s_jax=_pshalf_from_s_jax,
-        ptau_minmax_host_func=_scan_math_ptau_minmax_from_k_host,
-        ptau_minmax_jax_func=_scan_math_ptau_minmax_from_k_jax,
     )
-    _accepted_control_ptau_arrays = partial(
-        _accepted_control_ptau_arrays_helper,
-        kernel_arrays_from_k=_scan_math_kernel_arrays_from_k,
-    )
+    _ptau_minmax_from_k_host = _ptau_bindings.minmax_from_k_host
+    _ptau_minmax = _ptau_bindings.minmax
+    _accepted_control_ptau_arrays = _ptau_bindings.accepted_control_arrays
+    _record_setup_timing("setup_ptau_constants", _t_setup_ptau_constants)
     _maybe_dump_jacobian_terms = partial(
         _maybe_dump_jacobian_terms_helper,
         s=s,
