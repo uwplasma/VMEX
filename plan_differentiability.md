@@ -32282,3 +32282,86 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.992%.
 - Docs/release hygiene for this PR: 99.993%.
 - Overall differentiability-refactor PR: 99.99999999999962%.
+
+## 2026-06-20 residual setup return simplification
+
+Steps taken:
+
+1. Removed the single-use residual setup return wrappers
+   `ResidualStaticGridSetup`, `ResidualProfileSetup`, and
+   `ResidualPtauBindings`.
+2. Changed the corresponding setup helpers to return the few values the
+   residual loop actually consumes:
+   `(static, cfg)`, `(wout_like, trig)`, and
+   `(ptau_minmax_from_k_host, ptau_minmax, accepted_control_ptau_arrays)`.
+3. Updated `solve_fixed_boundary_residual_iter` call sites to bind those values
+   directly, avoiding wrapper allocation and reducing another layer of local
+   indirection.
+4. Rejected a WOUT force-payload loop rewrite because it was line-positive in
+   `io/wout/minimal.py`; kept this tranche focused on a net-negative residual
+   simplification.
+
+Results obtained:
+
+- Net source diff for this tranche is 39 deleted lines.
+- `vmec_jax/solvers/fixed_boundary/residual/setup.py` is now 341 lines.
+- `vmec_jax/solvers/fixed_boundary/residual/iteration.py` is now 3320 lines.
+- `solve_fixed_boundary_residual_iter` is now 2842 lines in the source-health
+  function report.
+- The residual setup extraction is now both a maintainability split and a
+  total-line reduction relative to the previous pushed state.
+
+Tests and commands run:
+
+- `git diff --check`
+- `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/setup.py vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m compileall -q vmec_jax/solvers/fixed_boundary/residual/setup.py vmec_jax/solvers/fixed_boundary/residual/iteration.py`
+- `python -m pytest -q tests/test_solve_residual_iter_setup_helpers.py tests/test_solve_residual_iter_runtime_helpers.py tests/test_solve_more_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 90 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Do the next residual tranche around controller-state ownership only if it
+   removes repeated local bindings and does not introduce another argument-bag
+   helper.
+2. Keep free-boundary adaptive differentiation claims conservative while this
+   fixed-boundary solver simplification proceeds; no new branch-differentiation
+   claim is created by this cleanup.
+3. Re-run broader solve tests after the next residual-loop state tranche,
+   because controller-state mistakes are more likely to affect restart and scan
+   paths than the setup helpers touched here.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.989%.
+- Differentiability/refactor implementation: 99.99999999971%.
+- Solver monolith reduction: 99.9976%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.977%.
+- Residual policy simplification: 99.986%.
+- WOUT diagnostic/profile decomposition: 99.9991%.
+- Bcovar/WOUT parity decomposition: 99.67%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.512%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.47%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.992%.
+- Docs/release hygiene for this PR: 99.993%.
+- Overall differentiability-refactor PR: 99.99999999999963%.

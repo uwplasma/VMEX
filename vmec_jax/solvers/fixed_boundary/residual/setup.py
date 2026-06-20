@@ -12,9 +12,6 @@ import numpy as np
 __all__ = [
     "FreeBoundarySetupPolicy",
     "ResidualCacheKeys",
-    "ResidualProfileSetup",
-    "ResidualPtauBindings",
-    "ResidualStaticGridSetup",
     "build_residual_profile_setup",
     "build_residual_ptau_bindings",
     "build_residual_static_grid_setup",
@@ -55,31 +52,6 @@ class ResidualCacheKeys:
     edge_value_key: Any
 
 
-@dataclass(frozen=True)
-class ResidualStaticGridSetup:
-    """Static object after enforcing VMEC's internal angle grid."""
-
-    static: Any
-    cfg: Any
-
-
-@dataclass(frozen=True)
-class ResidualProfileSetup:
-    """Flux-profile and trigonometric context for one residual solve."""
-
-    wout_like: Any
-    trig: Any
-
-
-@dataclass(frozen=True)
-class ResidualPtauBindings:
-    """Bound ptau helpers used by VMEC2000 controller logic."""
-
-    minmax_from_k_host: Any
-    minmax: Any
-    accepted_control_arrays: Any
-
-
 def _truthy_env(value: str | None) -> bool:
     return str(value or "").strip().lower() not in _FALSE_STRINGS
 
@@ -106,7 +78,7 @@ def build_residual_static_grid_setup(
     static: Any,
     build_static_func: Any,
     vmec_angle_grid_func: Any,
-) -> ResidualStaticGridSetup:
+) -> tuple[Any, Any]:
     """Rebuild static data on VMEC's internal force grid when needed."""
 
     cfg = static.cfg
@@ -123,7 +95,7 @@ def build_residual_static_grid_setup(
             mgrid_metadata=getattr(static, "mgrid_metadata", None),
             free_boundary_extcur=getattr(static, "free_boundary_extcur", None),
         )
-    return ResidualStaticGridSetup(static=static, cfg=static.cfg)
+    return static, static.cfg
 
 
 def build_residual_profile_setup(
@@ -142,7 +114,7 @@ def build_residual_profile_setup(
     vmec_trig_tables_func: Any,
     tree_has_tracer_func: Any,
     jnp_module: Any,
-) -> ResidualProfileSetup:
+) -> tuple[Any, Any]:
     """Build profile data and VMEC-grid trig tables for the residual loop."""
 
     profile_numpy_patch = None
@@ -177,7 +149,7 @@ def build_residual_profile_setup(
         vmec_trig_tables_func=vmec_trig_tables_func,
         jnp_module=jnp_module,
     )
-    return ResidualProfileSetup(wout_like=profile_setup.wout_like, trig=trig)
+    return profile_setup.wout_like, trig
 
 
 def build_residual_ptau_bindings(
@@ -196,7 +168,7 @@ def build_residual_ptau_bindings(
     accepted_control_ptau_arrays_helper: Any,
     scan_kernel_arrays_from_k_func: Any,
     has_jax_func: Any,
-) -> ResidualPtauBindings:
+) -> tuple[Any, Any, Any]:
     """Bind ptau min/max helpers once during residual-solve setup."""
 
     context = build_context_func(
@@ -225,11 +197,7 @@ def build_residual_ptau_bindings(
         accepted_control_ptau_arrays_helper,
         kernel_arrays_from_k=scan_kernel_arrays_from_k_func,
     )
-    return ResidualPtauBindings(
-        minmax_from_k_host=minmax_from_k_host,
-        minmax=minmax,
-        accepted_control_arrays=accepted_control_arrays,
-    )
+    return minmax_from_k_host, minmax, accepted_control_arrays
 
 
 def resolve_free_boundary_setup_policy(

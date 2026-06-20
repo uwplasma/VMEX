@@ -661,13 +661,11 @@ def solve_fixed_boundary_residual_iter(
     # VMEC2000 evaluates force kernels on VMEC's internal angle grid. Rebuild
     # static data when the caller supplied a plotting/full-grid object.
     _t_setup_static_grid = _setup_timer_start()
-    static_grid_setup = _build_residual_static_grid_setup(
+    static, cfg = _build_residual_static_grid_setup(
         static=static,
         build_static_func=build_static,
         vmec_angle_grid_func=vmec_angle_grid,
     )
-    static = static_grid_setup.static
-    cfg = static_grid_setup.cfg
     _record_setup_timing("setup_static_grid_rebuild", _t_setup_static_grid)
     # Free-boundary control + coupling path:
     # VMEC-style ivac/ivacskip cadence with edge bsqvac coupling.
@@ -783,7 +781,7 @@ def solve_fixed_boundary_residual_iter(
         profile_setup_env=os.getenv("VMEC_JAX_HOST_PROFILE_SETUP", "auto"),
     )
     try:
-        profile_setup = _build_residual_profile_setup(
+        wout_like, trig = _build_residual_profile_setup(
             indata=indata,
             static=static,
             s=s,
@@ -803,8 +801,6 @@ def solve_fixed_boundary_residual_iter(
         if bool(precompile_only):
             return _precompile_only_residual_iter_result(result_type=SolveVmecResidualResult, state=state0)
         raise
-    wout_like = profile_setup.wout_like
-    trig = profile_setup.trig
     _record_setup_timing("setup_boundary_profiles", _t_setup_boundary_profiles)
     idx00 = _mode00_index(static.modes)
     _state_dtype = jnp.asarray(state0.Rcos).dtype if state0_has_tracer else np.asarray(state0.Rcos).dtype
@@ -856,7 +852,7 @@ def solve_fixed_boundary_residual_iter(
     _record_setup_timing("setup_cache_key_hash", _t_setup_cache_key_hash)
 
     _t_setup_ptau_constants = _setup_timer_start()
-    _ptau_bindings = _build_residual_ptau_bindings(
+    _ptau_minmax_from_k_host, _ptau_minmax, _accepted_control_ptau_arrays = _build_residual_ptau_bindings(
         s=s,
         has_jax_value=has_jax(),
         s_has_tracer=_tree_has_tracer(s),
@@ -872,9 +868,6 @@ def solve_fixed_boundary_residual_iter(
         scan_kernel_arrays_from_k_func=_scan_math_kernel_arrays_from_k,
         has_jax_func=has_jax,
     )
-    _ptau_minmax_from_k_host = _ptau_bindings.minmax_from_k_host
-    _ptau_minmax = _ptau_bindings.minmax
-    _accepted_control_ptau_arrays = _ptau_bindings.accepted_control_arrays
     _record_setup_timing("setup_ptau_constants", _t_setup_ptau_constants)
     _maybe_dump_jacobian_terms = partial(
         _maybe_dump_jacobian_terms_helper,
