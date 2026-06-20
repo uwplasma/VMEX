@@ -229,6 +229,16 @@ class WoutNyquistSourcePayload(NamedTuple):
     bsubs_full: np.ndarray
 
 
+class WoutNyquistCoefficientSelection(NamedTuple):
+    """Selected Nyquist coefficients and filtered Bsub diagnostics."""
+
+    nyq: tuple[Any, ...]
+    bsubu_out: np.ndarray
+    bsubv_out: np.ndarray
+    bsubu_diag: np.ndarray
+    bsubv_diag: np.ndarray
+
+
 def select_bsubuv_diagnostic_fields(
     *,
     bc: Any,
@@ -1592,6 +1602,117 @@ def _build_nyquist_field_payload(
     )
 
 
+def _select_nyquist_coefficients(
+    *,
+    sources: WoutNyquistSourcePayload,
+    bc: Any,
+    k_force: Any | None,
+    field_options: WoutMinimalFieldOptions,
+    trig: Any,
+    nyq_modes: Any,
+    pres: np.ndarray,
+    s: np.ndarray,
+    mpol: int,
+    ntor: int,
+    ns: int,
+    lasym: bool,
+    force_sym_func: Any,
+    filter_lasym_loop_func: Any,
+    lasym_nyquist_coefficients_func: Any,
+    symmetric_nyquist_coefficients_func: Any,
+    dump_bsub_pre_sym_func: Any,
+) -> WoutNyquistCoefficientSelection:
+    """Apply VMEC wrout filtering and select Nyquist coefficient arrays."""
+
+    bsupu_out = np.asarray(sources.bsupu_out)
+    bsupv_out = np.asarray(sources.bsupv_out)
+    bsubu_out = np.asarray(sources.bsubu_out)
+    bsubv_out = np.asarray(sources.bsubv_out)
+    bsubu_diag = np.asarray(sources.bsubu_diag)
+    bsubv_diag = np.asarray(sources.bsubv_diag)
+    bsubv_lasym_asym_source = sources.bsubv_lasym_asym_source
+    if bool(lasym):
+        use_lasym_loop = field_options.use_lasym_loop
+        if (not field_options.skip_bsub_filter) and field_options.lasym_filter:
+            use_parity_channels = field_options.lasym_filter_use_parity_channels
+            bsubu_even_filter = getattr(bc, "bsubu_parity_even", None) if use_parity_channels else None
+            bsubu_odd_filter = getattr(bc, "bsubu_parity_odd", None) if use_parity_channels else None
+            bsubv_even_filter = getattr(bc, "bsubv_parity_even", None) if use_parity_channels else None
+            bsubv_odd_filter = getattr(bc, "bsubv_parity_odd", None) if use_parity_channels else None
+            bsubv_lasym_asym_filter_u = np.asarray(bsubu_out, dtype=float).copy()
+            bsubu_out, bsubv_out = filter_lasym_loop_func(
+                bsubu=np.asarray(bsubu_out, dtype=float),
+                bsubv=np.asarray(bsubv_out, dtype=float),
+                trig=trig,
+                mmax_force=max(int(mpol) - 1, 0),
+                nmax_force=int(ntor),
+                s=np.asarray(s, dtype=float),
+                bsubu_even=None if bsubu_even_filter is None else np.asarray(bsubu_even_filter, dtype=float),
+                bsubu_odd=None if bsubu_odd_filter is None else np.asarray(bsubu_odd_filter, dtype=float),
+                bsubv_even=None if bsubv_even_filter is None else np.asarray(bsubv_even_filter, dtype=float),
+                bsubv_odd=None if bsubv_odd_filter is None else np.asarray(bsubv_odd_filter, dtype=float),
+            )
+            if bsubv_lasym_asym_source is not None:
+                _, bsubv_lasym_asym_source = filter_lasym_loop_func(
+                    bsubu=np.asarray(bsubv_lasym_asym_filter_u, dtype=float),
+                    bsubv=np.asarray(bsubv_lasym_asym_source, dtype=float),
+                    trig=trig,
+                    mmax_force=max(int(mpol) - 1, 0),
+                    nmax_force=int(ntor),
+                    s=np.asarray(s, dtype=float),
+                    bsubu_even=None,
+                    bsubu_odd=None,
+                    bsubv_even=None,
+                    bsubv_odd=None,
+                )
+            bsubu_diag = np.asarray(bsubu_out, dtype=float)
+            bsubv_diag = np.asarray(bsubv_out, dtype=float)
+        dump_bsub_pre_sym_func(
+            trig=trig,
+            bsubu=bsubu_out,
+            bsubv=bsubv_out,
+            bsupu=bsupu_out,
+            bsupv=bsupv_out,
+            bsubs=sources.bsubs_full,
+        )
+        nyq = lasym_nyquist_coefficients_func(
+            bc=bc,
+            bsubu_out=np.asarray(bsubu_out, dtype=float),
+            bsubv_out=np.asarray(bsubv_out, dtype=float),
+            bsupu_out=np.asarray(bsupu_out, dtype=float),
+            bsupv_out=np.asarray(bsupv_out, dtype=float),
+            bsubs_full=np.asarray(sources.bsubs_full, dtype=float),
+            bsubv_asym_source=bsubv_lasym_asym_source,
+            pres=np.asarray(pres, dtype=float),
+            ns=int(ns),
+            mpol=int(mpol),
+            ntor=int(ntor),
+            modes=nyq_modes,
+            trig=trig,
+            use_loop=bool(use_lasym_loop),
+        )
+    else:
+        nyq = symmetric_nyquist_coefficients_func(
+            bc=bc,
+            bsubu_out=np.asarray(bsubu_out, dtype=float),
+            bsubv_out=np.asarray(bsubv_out, dtype=float),
+            bsubs_full=np.asarray(sources.bsubs_full, dtype=float),
+            pres=np.asarray(pres, dtype=float),
+            ns=int(ns),
+            modes=nyq_modes,
+            trig=trig,
+            use_loop=bool(field_options.symmetric_wrout_loop),
+        )
+
+    return WoutNyquistCoefficientSelection(
+        nyq=tuple(nyq),
+        bsubu_out=np.asarray(bsubu_out),
+        bsubv_out=np.asarray(bsubv_out),
+        bsubu_diag=np.asarray(bsubu_diag),
+        bsubv_diag=np.asarray(bsubv_diag),
+    )
+
+
 def prepare_minimal_wout_nyquist_fields(
     *,
     state: Any,
@@ -1672,89 +1793,30 @@ def prepare_minimal_wout_nyquist_fields(
         bsubs_full_mesh_for_wrout_func=bsubs_full_mesh_for_wrout_func,
         dump_bsub_sources_func=dump_bsub_sources_func,
     )
-    bsupu_out = np.asarray(sources.bsupu_out)
-    bsupv_out = np.asarray(sources.bsupv_out)
-    bsubu_out = np.asarray(sources.bsubu_out)
-    bsubv_out = np.asarray(sources.bsubv_out)
-    bsubu_diag = np.asarray(sources.bsubu_diag)
-    bsubv_diag = np.asarray(sources.bsubv_diag)
-    bsubv_lasym_asym_source = sources.bsubv_lasym_asym_source
-    bsubv_lasym_asym_filter_u = None
-
-    skip_bsub_filter = field_options.skip_bsub_filter
-    if bool(lasym):
-        use_lasym_loop = field_options.use_lasym_loop
-        if (not skip_bsub_filter) and field_options.lasym_filter:
-            use_parity_channels = field_options.lasym_filter_use_parity_channels
-            bsubu_even_filter = getattr(bc, "bsubu_parity_even", None) if use_parity_channels else None
-            bsubu_odd_filter = getattr(bc, "bsubu_parity_odd", None) if use_parity_channels else None
-            bsubv_even_filter = getattr(bc, "bsubv_parity_even", None) if use_parity_channels else None
-            bsubv_odd_filter = getattr(bc, "bsubv_parity_odd", None) if use_parity_channels else None
-            if bsubv_lasym_asym_source is not None:
-                bsubv_lasym_asym_filter_u = np.asarray(bsubu_out, dtype=float).copy()
-            bsubu_out, bsubv_out = filter_lasym_loop_func(
-                bsubu=np.asarray(bsubu_out, dtype=float),
-                bsubv=np.asarray(bsubv_out, dtype=float),
-                trig=trig,
-                mmax_force=max(int(mpol) - 1, 0),
-                nmax_force=int(ntor),
-                s=np.asarray(s, dtype=float),
-                bsubu_even=None if bsubu_even_filter is None else np.asarray(bsubu_even_filter, dtype=float),
-                bsubu_odd=None if bsubu_odd_filter is None else np.asarray(bsubu_odd_filter, dtype=float),
-                bsubv_even=None if bsubv_even_filter is None else np.asarray(bsubv_even_filter, dtype=float),
-                bsubv_odd=None if bsubv_odd_filter is None else np.asarray(bsubv_odd_filter, dtype=float),
-            )
-            if bsubv_lasym_asym_source is not None:
-                _, bsubv_lasym_asym_source = filter_lasym_loop_func(
-                    bsubu=np.asarray(bsubv_lasym_asym_filter_u, dtype=float),
-                    bsubv=np.asarray(bsubv_lasym_asym_source, dtype=float),
-                    trig=trig,
-                    mmax_force=max(int(mpol) - 1, 0),
-                    nmax_force=int(ntor),
-                    s=np.asarray(s, dtype=float),
-                    bsubu_even=None,
-                    bsubu_odd=None,
-                    bsubv_even=None,
-                    bsubv_odd=None,
-                )
-            bsubu_diag = np.asarray(bsubu_out, dtype=float)
-            bsubv_diag = np.asarray(bsubv_out, dtype=float)
-        dump_bsub_pre_sym_func(
-            trig=trig,
-            bsubu=bsubu_out,
-            bsubv=bsubv_out,
-            bsupu=bsupu_out,
-            bsupv=bsupv_out,
-            bsubs=sources.bsubs_full,
-        )
-        nyq = lasym_nyquist_coefficients_func(
-            bc=bc,
-            bsubu_out=np.asarray(bsubu_out, dtype=float),
-            bsubv_out=np.asarray(bsubv_out, dtype=float),
-            bsupu_out=np.asarray(bsupu_out, dtype=float),
-            bsupv_out=np.asarray(bsupv_out, dtype=float),
-            bsubs_full=np.asarray(sources.bsubs_full, dtype=float),
-            bsubv_asym_source=bsubv_lasym_asym_source,
-            pres=np.asarray(pres, dtype=float),
-            ns=int(ns),
-            mpol=int(mpol),
-            ntor=int(ntor),
-            modes=nyq_modes,
-            trig=trig,
-            use_loop=bool(use_lasym_loop),
-        )
-    else:
-        nyq = symmetric_nyquist_coefficients_func(
-            bc=bc,
-            bsubu_out=np.asarray(bsubu_out, dtype=float),
-            bsubv_out=np.asarray(bsubv_out, dtype=float),
-            bsubs_full=np.asarray(sources.bsubs_full, dtype=float),
-            pres=np.asarray(pres, dtype=float),
-            ns=int(ns),
-            modes=nyq_modes,
-            trig=trig,
-            use_loop=bool(field_options.symmetric_wrout_loop),
-        )
+    selected = _select_nyquist_coefficients(
+        sources=sources,
+        bc=bc,
+        k_force=k_force,
+        field_options=field_options,
+        trig=trig,
+        nyq_modes=nyq_modes,
+        pres=pres,
+        s=s,
+        mpol=int(mpol),
+        ntor=int(ntor),
+        ns=int(ns),
+        lasym=bool(lasym),
+        force_sym_func=force_sym_func,
+        filter_lasym_loop_func=filter_lasym_loop_func,
+        lasym_nyquist_coefficients_func=lasym_nyquist_coefficients_func,
+        symmetric_nyquist_coefficients_func=symmetric_nyquist_coefficients_func,
+        dump_bsub_pre_sym_func=dump_bsub_pre_sym_func,
+    )
+    nyq = selected.nyq
+    bsubu_out = np.asarray(selected.bsubu_out)
+    bsubv_out = np.asarray(selected.bsubv_out)
+    bsubu_diag = np.asarray(selected.bsubu_diag)
+    bsubv_diag = np.asarray(selected.bsubv_diag)
     if t0 is not None:
         timing["nyquist_coeffs_s"] = time.perf_counter() - t0
 
@@ -1773,7 +1835,7 @@ def prepare_minimal_wout_nyquist_fields(
         bsubv_phys = np.asarray(eval_fourier_func(bsubvmnc, bsubvmns, basis_nyq))
 
     t_bsub_filter = time.perf_counter() if timing_enabled else None
-    if (not bool(lasym)) and (not skip_bsub_filter):
+    if (not bool(lasym)) and (not field_options.skip_bsub_filter):
         bsubu_diag, bsubv_diag = filter_symmetric_bsubuv_diagnostics_for_wout(
             bsubu_diag=bsubu_diag,
             bsubv_diag=bsubv_diag,
