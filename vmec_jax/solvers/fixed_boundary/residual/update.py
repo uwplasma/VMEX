@@ -25,6 +25,42 @@ class ResidualVelocityBlocks(NamedTuple):
     lss: Any
 
 
+VELOCITY_RESUME_KEYS = {
+    "vRcc": "rcc",
+    "vRss": "rss",
+    "vZsc": "zsc",
+    "vZcs": "zcs",
+    "vLsc": "lsc",
+    "vLcs": "lcs",
+    "vRsc": "rsc",
+    "vRcs": "rcs",
+    "vZcc": "zcc",
+    "vZss": "zss",
+    "vLcc": "lcc",
+    "vLss": "lss",
+}
+
+
+def velocity_blocks_from_resume_state(
+    resume_state: dict[str, Any],
+    defaults: ResidualVelocityBlocks,
+    *,
+    as_velocity,
+) -> ResidualVelocityBlocks:
+    """Restore residual-loop velocity memory from legacy resume-state keys."""
+
+    return ResidualVelocityBlocks(
+        *(as_velocity(resume_state.get(resume_key, getattr(defaults, attr_name)))
+          for resume_key, attr_name in VELOCITY_RESUME_KEYS.items())
+    )
+
+
+def velocity_blocks_legacy_payload(blocks: ResidualVelocityBlocks) -> dict[str, Any]:
+    """Return legacy ``vRcc``-style fields for resume diagnostics and traces."""
+
+    return {resume_key: getattr(blocks, attr_name) for resume_key, attr_name in VELOCITY_RESUME_KEYS.items()}
+
+
 class HostMomentumUpdate(NamedTuple):
     velocities: ResidualVelocityBlocks
     update_rms: Any
