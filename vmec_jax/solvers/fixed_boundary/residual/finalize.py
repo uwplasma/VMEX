@@ -362,15 +362,16 @@ def finalize_residual_iter_from_namespace(
         ns,
         resume_state_mode=str(ns["resume_state_mode"]),
     )
+    history = ns.get("history_lists", ns).__getitem__
     return finalize_residual_iter_result(
         result_type=result_type,
         state=ns["state"],
-        w_history=ns["w_history"],
-        fsqr2_history=ns["fsqr2_history"],
-        fsqz2_history=ns["fsqz2_history"],
-        fsql2_history=ns["fsql2_history"],
-        grad_rms_history=ns["grad_rms_history"],
-        step_history=ns["step_history"],
+        w_history=history("w_history"),
+        fsqr2_history=history("fsqr2_history"),
+        fsqz2_history=history("fsqz2_history"),
+        fsql2_history=history("fsql2_history"),
+        grad_rms_history=history("grad_rms_history"),
+        step_history=history("step_history"),
         diagnostics=diag,
         attach_free_boundary_diagnostics=attach_free_boundary_diagnostics,
         return_final_force_payload=bool(return_final_force_payload),

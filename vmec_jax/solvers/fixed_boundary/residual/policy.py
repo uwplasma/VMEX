@@ -105,6 +105,8 @@ class ResidualIterHistoryRecord(NamedTuple):
     freeb_full_update: int | None
 
 
+ResidualFsqSample = tuple[float, float, float, float]
+
 _RESIDUAL_ITER_HISTORY_RECORD_KEYS = (
     "step_history dt_eff_history update_rms_history w_curr_history w_try_history w_try_ratio_history "
     "restart_path_history step_status_history restart_reason_history pre_restart_reason_history "
@@ -219,6 +221,16 @@ class ResidualIterationHistories:
             self.lists["min_tau_history"].append(float(min_tau))
             self.lists["max_tau_history"].append(float(max_tau))
             self.lists["bad_jacobian_history"].append(int(bool(bad_flag)))
+
+    def append_physical_sample(self, *, track_history: bool, fsq: ResidualFsqSample, vmec_scalars: Any) -> None:
+        for key, value in zip(("w_history", "fsqr2_history", "fsqz2_history", "fsql2_history"), fsq, strict=True):
+            self.lists[key].append(float(value))
+        if bool(track_history):
+            vmec_values = (vmec_scalars.r00, vmec_scalars.z00, vmec_scalars.wb, vmec_scalars.wp, vmec_scalars.w_vmec)
+            for key, value in zip(
+                ("r00_history", "z00_history", "wb_history", "wp_history", "w_vmec_history"), vmec_values, strict=True
+            ):
+                self.lists[key].append(float(value))
 
     def append_preconditioned(
         self,
