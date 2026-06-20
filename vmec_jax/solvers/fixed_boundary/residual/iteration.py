@@ -172,6 +172,7 @@ from vmec_jax.solvers.fixed_boundary.residual.payload_blocks import (
     radial_preconditioner_output_blocks_jax as _radial_preconditioner_output_blocks_jax,
 )
 from vmec_jax.solvers.fixed_boundary.residual.force_norms import (
+    force_blocks_from_update_order as _force_blocks_from_update_order,
     lambda_preconditioned_full_norm as _lambda_preconditioned_full_norm,
     mode_weight_force_blocks_jax as _mode_weight_force_blocks_jax,
     mode_weight_force_blocks_np as _mode_weight_force_blocks_np,
@@ -2969,20 +2970,7 @@ def solve_fixed_boundary_residual_iter(
                 dt_eff = _safe_dt_from_force_blocks(
                     dt_nominal=time_step,
                     max_coeff_delta_rms=max_coeff_delta_rms,
-                    blocks=_ForceBlocks(
-                        frcc_u,
-                        frss_u,
-                        fzsc_u,
-                        fzcs_u,
-                        flsc_u,
-                        flcs_u,
-                        frsc_u,
-                        frcs_u,
-                        fzcc_u,
-                        fzss_u,
-                        flcc_u,
-                        flss_u,
-                    ),
+                    blocks=_force_blocks_from_update_order(force_blocks),
                 )
 
             # Momentum semantics: v <- fac*(b1*v + dt*F), x <- x + dt*v.
