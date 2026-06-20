@@ -241,9 +241,9 @@ class FixedBoundaryExactOptimizer:
         else:
             self._trial_ftol = float(self._inner_ftol)
 
-        # Single-entry caches: keep the heavy adjoint tape only while the
-        # current accepted-point Jacobian needs it, but retain the much smaller
-        # solved state so final metrics/wout writing do not rerun VMEC.
+        self._initialize_run_caches(state0)
+
+    def _initialize_run_caches(self, state0: VMECState) -> None:
         for cache_attr in self._DICT_CACHE_ATTRS:
             setattr(self, cache_attr, {})
         self._scan_exact_path = self._select_exact_path()
@@ -262,12 +262,10 @@ class FixedBoundaryExactOptimizer:
         self._callback_trace: list[dict] = []
         self._callback_point_ids: dict[bytes, int] = {}
         self._callback_previous_key: bytes | None = None
-
-        # History collected during optimisation.
         self._history: list[dict] = []
         self._wall_t0: float = 0.0
         self._last_jacobian_key: list = [None]
-        self._iota_fn = None  # set by run() when iota tracking is requested
+        self._iota_fn = None
         self._best_exact_params: np.ndarray | None = None
         self._best_exact_state: VMECState | None = None
         self._best_exact_residual: np.ndarray | None = None
@@ -438,11 +436,9 @@ class FixedBoundaryExactOptimizer:
         environment-controlled default for CPU/default backends.
         """
 
-        forced = os.getenv("VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE", "").strip().lower()
-        if forced in ("1", "true", "yes", "on"):
-            return True
-        if forced in ("0", "false", "no", "off"):
-            return False
+        forced = self._env_bool_override("VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE")
+        if forced is not None:
+            return forced
         backend = self._exact_tape_backend_name()
         if backend not in ("gpu", "cuda", "tpu", "rocm"):
             return None
@@ -1746,17 +1742,9 @@ class FixedBoundaryExactOptimizer:
         if state is None:
             if params is None:
                 raise ValueError("save_wout requires either params or state")
-            state = self._cached_exact_state(params)
-            if state is None:
-                state = self._solve_forward(params, trial=False)
-                self._remember_exact_state(self._exact_cache_key(params), state)
+            state = self._cached_or_solve_exact_state(params)
         elif params is not None and not self._state_matches_params(state, params):
-            cached_state = self._cached_exact_state(params)
-            if cached_state is not None:
-                state = cached_state
-            else:
-                state = self._solve_forward(params, trial=False)
-                self._remember_exact_state(self._exact_cache_key(params), state)
+            state = self._cached_or_solve_exact_state(params)
         run = FixedBoundaryRun(
             cfg=self._static.cfg,
             indata=self._indata,
@@ -1770,6 +1758,13 @@ class FixedBoundaryExactOptimizer:
         write_wout_from_fixed_boundary_run(str(path), run, include_fsq=False, fast_bcovar=True)
         self._profile_add("write_wout", time.perf_counter() - t0)
         print(f"  Wrote {path}")
+
+    def _cached_or_solve_exact_state(self, params):
+        state = self._cached_exact_state(params)
+        if state is None:
+            state = self._solve_forward(params, trial=False)
+            self._remember_exact_state(self._exact_cache_key(params), state)
+        return state
 
     def save_input(self, path, params) -> None:
         """Write a VMEC ``input.*`` namelist for the boundary at ``params``."""

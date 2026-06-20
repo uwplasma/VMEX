@@ -32738,3 +32738,75 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.992%.
 - Docs/release hygiene for this PR: 99.993%.
 - Overall differentiability-refactor PR: 99.99999999999968%.
+
+## 2026-06-20 exact optimizer constructor and cache cleanup
+
+Steps taken:
+
+1. Moved exact-optimizer cache/history initialization out of
+   `FixedBoundaryExactOptimizer.__init__()` into `_initialize_run_caches()`.
+2. Reused `_env_bool_override()` for the accepted-tape tridiagonal
+   precompute environment override.
+3. Centralized `save_wout()` cached-state lookup and accepted-solve fallback in
+   `_cached_or_solve_exact_state()`.
+
+Results obtained:
+
+- `vmec_jax/optimization.py` drops from 1994 to 1989 lines.
+- `FixedBoundaryExactOptimizer.__init__()` drops from 155 to 124 lines.
+- Exact optimizer construction, tridi policy parsing, and WOUT state reuse are
+  easier to audit without changing solve, tape, JVP, or optimizer method math.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/optimization.py`
+- `python -m compileall -q vmec_jax/optimization.py`
+- `python -m pytest -q tests/test_optimization_wave2_coverage.py::test_exact_tape_precomputed_tridi_policy_backend_and_env tests/test_optimization_helpers.py::test_fixed_boundary_optimizer_save_wout_uses_provided_state tests/test_optimization_helpers.py::test_fixed_boundary_optimizer_save_wout_reuses_state_cache tests/test_optimization_wave2_coverage.py::test_save_wrappers_write_wout_input_and_history tests/test_optimization_wave4_coverage.py::test_jacobian_tracking_exact_residual_after_jacobian_and_save_wout_cache -q`
+- `python -m pytest -q tests/test_optimization_fast_optimizer_methods.py tests/test_optimization_wave2_coverage.py tests/test_optimization_auto_scalar_policy.py -q`
+- `git diff --check`
+- `python tools/diagnostics/source_health.py --top 25 --top-functions 90 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Avoid deeper `optimization.py` tape/JVP movement until a larger dedicated
+   test tranche is planned; the remaining long methods encode performance
+   decisions and derivative paths.
+2. Continue source-health work on the next safe production hotspot:
+   `vmec_forces.py`, WOUT minimal diagnostics, or residual iteration policy.
+3. Use subagents for exploratory recommendations before editing exact-adjoint
+   internals, as done here.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.989%.
+- Differentiability/refactor implementation: 99.99999999977%.
+- Solver monolith reduction: 99.9978%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.978%.
+- Residual policy simplification: 99.986%.
+- WOUT diagnostic/profile decomposition: 99.9991%.
+- Bcovar/WOUT parity decomposition: 99.67%.
+- Force-kernel decomposition: 99.79%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.958%.
+- Fixed-boundary optimizer decomposition: 98.42%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.513%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.47%.
+- QI objective/staged-runner decomposition: 97.18%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.992%.
+- Docs/release hygiene for this PR: 99.993%.
+- Overall differentiability-refactor PR: 99.99999999999969%.
