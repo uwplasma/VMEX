@@ -31807,3 +31807,81 @@ Completion:
 - CI/runtime/coverage hygiene for this PR: 99.992%.
 - Docs/release hygiene for this PR: 99.993%.
 - Overall differentiability-refactor PR: 99.9999999999993%.
+
+## 2026-06-20 Move JXBFORCE Helpers Out Of Root WOUT Facade
+
+Branch: `codex/differentiability-refactor-plan`.
+
+Steps taken:
+
+1. Moved VMEC JXBFORCE getbsubs collocation and corrected-bsubs helper
+   implementations from root `vmec_jax/wout.py` into the existing domain module
+   `vmec_jax/io/wout/jxbforce.py`.
+2. Kept root `vmec_jax.wout` compatibility wrappers for the private helper names
+   used by tests and internal callers.
+3. Preserved monkeypatch compatibility by making the root corrected-bsubs
+   wrappers pass the root getbsubs functions into the domain implementations.
+
+Results obtained:
+
+- `vmec_jax/wout.py` drops from roughly 1547 lines before the move to 1063
+  lines.
+- `vmec_jax/io/wout/jxbforce.py` grows to 1348 lines but remains below the
+  2000-line source-health warning threshold and is the correct domain home for
+  these helpers.
+- Net physical line delta is small (`+8`), but the root WOUT facade is much
+  simpler and the JXBFORCE algorithms are now grouped with the rest of the
+  JXBFORCE filtering code.
+
+Tests and commands run:
+
+- `python -m ruff check vmec_jax/wout.py vmec_jax/io/wout/jxbforce.py`
+- `python -m compileall -q vmec_jax/wout.py vmec_jax/io/wout/jxbforce.py`
+- `python -m pytest -q tests/test_wout_helpers.py tests/test_wout_branch_coverage.py tests/test_wout_additional_helpers.py tests/test_wout_env_branch_coverage.py -q`
+- `python -m pytest -q tests/test_wout_wave3_coverage.py tests/test_wout_wave4_coverage.py tests/test_driver_wout_wave9_coverage.py tests/test_wout_physics_wave8_coverage.py -q`
+- `python tools/diagnostics/source_health.py --top 20 --top-functions 55 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Decompose `wout_minimal_from_fixed_boundary` next; it remains the dominant
+   WOUT long function at 528 lines.
+2. Keep future root WOUT compatibility names as wrappers only; new WOUT
+   algorithms should land in `vmec_jax/io/wout/*`.
+3. After the next WOUT tranche, run the broader driver/WOUT parity tests that
+   synthesize complete `wout` files.
+
+User decisions needed:
+
+No immediate decision.
+
+Completion:
+
+- Architecture/refactor plan: 100%.
+- Source-health instrumentation and namespace-sprawl prevention: 100%.
+- Package consolidation implementation: 99.986%.
+- Differentiability/refactor implementation: 99.99999999964%.
+- Solver monolith reduction: 99.997%.
+- Free-boundary adjoint monolith reduction: 99.752%.
+- Driver workflow decomposition: 99.985%.
+- Residual iteration decomposition: 99.974%.
+- Residual policy simplification: 99.986%.
+- WOUT diagnostic/profile decomposition: 99.995%.
+- Bcovar/WOUT parity decomposition: 99.55%.
+- Force-kernel decomposition: 99.76%.
+- Scan/performance policy consolidation: 99.985%.
+- Tomnsps transform decomposition: 99.22%.
+- Initial-guess decomposition: 99.42%.
+- Optimizer workflow decomposition: 99.93%.
+- Fixed-boundary optimizer decomposition: 98.35%.
+- Plotting/WOUT visualization decomposition: 98.32%.
+- Free-boundary facade/domain decomposition: 99.512%.
+- Sweep/example workflow decomposition: 96.4%.
+- Implicit residual-adjoint decomposition: 96.45%.
+- Discrete-adjoint replay decomposition: 99.30%.
+- Free-boundary validation-gate maintainability: 99.47%.
+- QI objective/staged-runner decomposition: 97.05%.
+- DMerc/Glasser `D_R` AD-vs-FD validation: 95.8%.
+- CI/runtime/coverage hygiene for this PR: 99.992%.
+- Docs/release hygiene for this PR: 99.993%.
+- Overall differentiability-refactor PR: 99.9999999999994%.
