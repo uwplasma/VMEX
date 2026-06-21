@@ -34,6 +34,37 @@ VMEC2000 is a pre-compiled Fortran binary with no JIT overhead — it is always
 effectively "cold".  When benchmarking, compare ``vmec_jax`` warm runtime
 against VMEC2000 runtime.
 
+Single-grid VMEC2000 / VMEC++ / vmec_jax snapshot
+-------------------------------------------------
+
+The README-facing single-grid runtime and memory panel uses two small,
+converged fixed-boundary inputs with the input-deck iteration budgets:
+``input.circular_tokamak`` and ``input.nfp4_QH_warm_start``.  It compares
+VMEC2000, VMEC++, and ``vmec_jax`` with and without JIT:
+
+.. image:: _static/figures/readme_runtime_memory_single_grid.png
+   :width: 100%
+   :align: center
+   :alt: VMEC2000, VMEC++, and vmec_jax single-grid runtime and memory comparison
+
+This plot should be read as a one-off executable/runtime sanity check.  On the
+local CPU host used for the checked-in artifact, VMEC2000 and VMEC++ are faster
+and lighter for these small single solves.  Warm JIT ``vmec_jax`` reduces the
+first-call cost substantially, but still carries Python/JAX/XLA memory and
+dispatch overhead.  No-JIT ``vmec_jax`` is retained as a diagnostic path and is
+much slower; it is not the production optimization path.
+
+The figure rows and provenance are available as:
+
+- :download:`readme_runtime_memory_single_grid.csv <_static/figures/readme_runtime_memory_single_grid.csv>`
+- :download:`readme_runtime_memory_single_grid.json <_static/figures/readme_runtime_memory_single_grid.json>`
+
+Regenerate the panel with:
+
+.. code-block:: bash
+
+   python tools/diagnostics/readme_vmecpp_runtime_two_cases.py
+
 2026-05-25 rerun snapshot
 -------------------------
 

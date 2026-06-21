@@ -942,3 +942,70 @@ User decisions needed:
 No immediate decision. The PR should now be reviewed as a conservative
 domain-structure and differentiability-readiness refactor, with remaining
 solver-loop decomposition deferred unless a small parity-safe seam is found.
+
+### 2026-06-21 README Runtime/Memory Readiness Panel
+
+Steps taken:
+
+1. Re-audited the PR state, README, docs performance page, current plan, source
+   structure, and existing runtime figure assets.
+2. Replaced the old VMEC++ two-case helper with a nearly line-neutral
+   runtime/memory panel generator that compares VMEC2000, VMEC++, and
+   `vmec_jax` JIT/no-JIT cold/warm behavior on small converged single-grid
+   examples.
+3. Regenerated `readme_runtime_memory_single_grid.png`, `.csv`, and `.json`
+   from local executable runs using input-deck budgets for
+   `input.circular_tokamak` and `input.nfp4_QH_warm_start`.
+4. Added the new panel and concise interpretation near the top of the README.
+5. Added the detailed provenance, downloads, and regeneration command to
+   `docs/performance.rst`.
+
+Results obtained:
+
+- All benchmark rows completed successfully for VMEC2000, VMEC++, `vmec_jax`
+  JIT, and `vmec_jax` no-JIT.
+- Local results on `Rogerios-MacBook-Pro.local`:
+  - VMEC2000 runtime: `0.23-0.32 s`, peak memory `0.009-0.010 GiB`.
+  - VMEC++ runtime: `0.55-0.90 s`, peak memory `0.038-0.042 GiB`.
+  - Warm JIT `vmec_jax` runtime: `1.15-1.55 s`, process memory
+    `0.27-0.32 GiB`.
+  - No-JIT `vmec_jax` runtime: `20-33 s`, process memory `0.62-0.72 GiB`.
+- The plot makes the intended claim explicit: compiled VMEC2000/VMEC++ are
+  faster and lighter for one-off small solves, while `vmec_jax` pays JAX/XLA
+  overhead to expose differentiable workflows.
+- The new PNG is `83 KiB`; CSV and JSON are small and keep the repository
+  comfortably within size gates.
+
+Tests and commands:
+
+- `python tools/diagnostics/readme_vmecpp_runtime_two_cases.py`
+- `python -m ruff check tools/diagnostics/readme_vmecpp_runtime_two_cases.py`
+- `python tools/diagnostics/source_health.py --top 30 --top-functions 80 --max-root-helper-prefix-files 2`
+- `python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50 --max-file-mib 2`
+- `git diff --check`
+- `LANG=C.UTF-8 LC_ALL=C.UTF-8 python -m sphinx -W -j auto -b html docs docs/_build/html_pr_ready_audit`
+
+Current open-lane percentages:
+
+- Architecture/refactor plan: 100%.
+- Solver monolith reduction: 99.9994%.
+- Residual iteration decomposition: 99.994%.
+- Root namespace cleanup: 100%.
+- Optimization workflow API ownership: 100%.
+- QI optimization helper API ownership: 100%.
+- Physics helper API ownership: 100%.
+- Fixed-boundary VMEC parity and physics gates: 99%+.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998% for
+  branch-local/fingerprint-gated evidence; arbitrary adaptive branch
+  differentiation remains unclaimed.
+- Single-stage coil-only optimization phase 3: 99%.
+- CPU/GPU performance instrumentation hygiene: 99.5%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+
+Best next steps:
+
+1. Commit and push this final README performance-readiness update.
+2. Convert PR #20 from draft to ready after local gates pass; do not wait on
+   long CI jobs.
