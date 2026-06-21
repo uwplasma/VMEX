@@ -84,8 +84,9 @@ Use this map before adding files or changing public behavior:
   arbitrary adaptive host-controller branch changes unless a fingerprint-gated
   complete-solve AD-vs-FD test promotes that exact scope.
 - Optimization science terms: add differentiable objectives in
-  ``vmec_jax/optimization_workflow.py`` or the focused modules under
-  ``vmec_jax/optimizers/fixed_boundary/``.  Keep example scripts
+  the focused modules under ``vmec_jax/optimizers/fixed_boundary/`` and
+  re-export them through ``vmec_jax/optimization_workflow.py`` only when they
+  are part of the documented example workflow.  Keep example scripts
   SIMSOPT-like: editable top-level parameters, visible objective tuples, then
   a solve call and explicit result inspection/plotting.
 - WOUT, Mercier, JXB, and profile diagnostics: use ``vmec_jax/io/wout/`` and

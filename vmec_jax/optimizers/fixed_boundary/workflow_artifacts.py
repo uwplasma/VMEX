@@ -219,3 +219,10 @@ def save_optimization_result(
     result.final_optimizer.save_history(paths.history, result.final_result)
     return paths
 
+
+__all__ = [
+    "FixedBoundaryOptimizationResult",
+    "OptimizationOutputPaths",
+    "optimization_output_paths",
+    "save_optimization_result",
+]
