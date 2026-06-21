@@ -14,6 +14,24 @@ workflows, with free-boundary support, VMEC2000-compatible `mgrid` workflows,
 and direct-coil research paths. Full adaptive free-boundary solve adjoints
 remain in development.
 
+## Runtime Snapshot
+
+![Single-grid runtime and memory comparison](docs/_static/figures/readme_runtime_memory_single_grid.png)
+
+On the same local CPU host, small converged single-grid runs show the expected
+tradeoff: VMEC2000 and VMEC++ are faster and lighter for one-off executable
+solves, while `vmec_jax` pays Python/JAX/XLA overhead but exposes the run to
+JAX transformations. For `input.circular_tokamak` and
+`input.nfp4_QH_warm_start`, VMEC2000 took `0.23-0.32 s`, VMEC++ took
+`0.55-0.90 s`, warm JIT `vmec_jax` took `1.15-1.55 s`, and no-JIT `vmec_jax`
+took `20-33 s`. Peak process memory was `0.009-0.010 GiB` for VMEC2000,
+`0.038-0.042 GiB` for VMEC++, and `0.27-0.72 GiB` for `vmec_jax` depending on
+JIT policy. Reproduce the panel with:
+
+```bash
+python tools/diagnostics/readme_vmecpp_runtime_two_cases.py
+```
+
 ## Install
 
 ```bash
