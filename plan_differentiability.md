@@ -1,6 +1,11 @@
 # Research-Grade Differentiable VMEC Plan
 
-Status: active umbrella plan and single source of truth for PR #20.
+Status: historical umbrella log for PR #20.
+
+Authoritative current plan: `plan_research_grade_performance_differentiability.md`.
+Use that file for remaining performance, memory, differentiability, and
+refactor milestones.  This file is retained as a compact record of the PR #20
+context and earlier evidence.
 
 This file is intentionally concise.  It records the current target architecture,
 promotion gates, open lanes, and recent review evidence.  Detailed historical
