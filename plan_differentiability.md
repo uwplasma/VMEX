@@ -269,6 +269,44 @@ Best next steps:
    `tools/diagnostics/repo_size_audit.py` as the review gates for code
    simplification and repository-size hygiene.
 
+### 2026-06-20 Ignored Artifact Audit Gate
+
+Steps taken:
+
+1. Extended `tools/diagnostics/repo_size_audit.py` with
+   `--include-ignored`.
+2. Kept tracked-size failure behavior unchanged; ignored artifacts are
+   informational because they are local analysis/build outputs, not clone-size
+   payload.
+3. Added a docs-release hygiene test covering the new report mode and updated
+   `docs/release_checklist.rst`.
+
+Results obtained:
+
+- The tracked repository remains `26.45 MiB`.
+- The local ignored artifact report found `655.24 MiB` in this working copy,
+  dominated by `docs/_build`, fetched/generated WOUT/BOOZ/mgrid files, and
+  optimization/result directories.
+- Release prep now has one command that separates clone-size regressions from
+  local ignored-output accumulation:
+  `python tools/diagnostics/repo_size_audit.py --top 40 --include-ignored`.
+
+Tests and commands:
+
+- `python -m ruff check tools/diagnostics/repo_size_audit.py tests/test_docs_release_hygiene.py`
+- `python tools/diagnostics/repo_size_audit.py --top 8 --max-total-mib 50 --max-file-mib 2 --include-ignored`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_docs_release_hygiene.py --tb=short`
+  (`8 passed`)
+- `git diff --check`
+
+Best next steps:
+
+1. Keep the default CI/release tracked-size gate unchanged.
+2. Use `--include-ignored` before release or when diagnosing a large local
+   checkout.
+3. Remove ignored outputs only as an explicit cleanup step after confirming no
+   local analysis artifact is needed.
+
 ### 2026-06-20 Driver Staged-Followup Wrapper Cleanup
 
 Steps taken:
