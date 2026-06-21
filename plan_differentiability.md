@@ -77,10 +77,11 @@ Latest local branch state:
 
 - Branch: `codex/differentiability-refactor-plan`.
 - Recent pushed commits:
+  - `1b4765e8 Derive QI optimization exports`.
+  - `8bb81ae5 Compose optimization workflow exports`.
+  - `7d458d5c Audit controller facade exports`.
+  - `9fcd11da Derive public API exports`.
   - `3e447feb Derive root package exports`.
-  - `949d9129 Report ignored local repository artifacts`.
-  - `4df8de95 Record final plan source-map audit`.
-  - `bbe8b657 Trim fixed-boundary staged followup wrapper`.
 - The working tree should be checked with `git status --short --branch` before
   each tranche; avoid relying on stale plan text for branch state.
 
@@ -108,7 +109,7 @@ Latest source-health snapshot:
 - Public API facade:
   `vmec_jax/api.py` derives its 148 stable exports from the documented facade
   imports instead of maintaining a second duplicate list.
-- Tracked repository size after plan compaction: `26.45 MiB`, no tracked file
+- Tracked repository size after final audit: `26.46 MiB`, no tracked file
   above `2 MiB`.
 - The only tracked generated-looking example data assets are the two
   intentionally tiny `mgrid_cth_like_lasym_small.nc` fixtures (`48 KiB` each)
@@ -855,3 +856,89 @@ Best next steps:
 2. Commit and push the export-ownership cleanup.
 3. Reassess remaining manual export lists only if exact parity can be proven
    mechanically.
+
+### 2026-06-21 Physics Helper Export and Final Plan Audit
+
+Steps taken:
+
+1. Re-audited the branch state, active plan files, docs source map, README
+   quickstart/optimization sections, source tree shape, package dependencies,
+   source-health output, and repository size.
+2. Confirmed the repository still has one active plan: this file.
+   `plan_freeb.md`, `plan.md`, and `discrete_adjoint_2506_plan.md` remain
+   compact historical/evidence pointers.
+3. Cleaned up three remaining hand-maintained physics-helper export lists in
+   `quasi_isodynamic.py`, `qi_diagnostics.py`, and `bootstrap_current.py`.
+4. Moved the QI diagnostics derived export list to the true end of the module
+   after an exact parity check caught that `qi_diagnostics_from_state` was
+   otherwise omitted.
+5. Updated `docs/code_structure.rst` to state the implementation-module export
+   ownership rule and require exact parity checks before using derived exports.
+
+Results obtained:
+
+- Export parity is exact:
+  - `vmec_jax.quasi_isodynamic`: `11` expected, `11` actual, zero missing,
+    zero extra.
+  - `vmec_jax.qi_diagnostics`: `9` expected, `9` actual, zero missing, zero
+    extra.
+  - `vmec_jax.bootstrap_current`: `14` expected, `14` actual, zero missing,
+    zero extra.
+- The tranche is net-negative in source: `29` insertions and `42` deletions
+  across the three source modules before docs/plan notes.
+- The single active plan and docs source map are consistent with the current
+  file structure.
+- Source-health still identifies the same finite hotspots:
+  `solvers/fixed_boundary/residual/iteration.py`, long validation tests, and a
+  small set of root compatibility or legacy implementation modules. No new
+  root implementation module was added.
+- Repository size remains within gate: `871` tracked files, `26.46 MiB`, and
+  no tracked file above `2 MiB`.
+- Package dependencies remain intentionally unpinned except for the Python
+  support floor and the `tomli` Python-version marker.
+
+Tests and commands:
+
+- `python -m ruff check vmec_jax/quasi_isodynamic.py vmec_jax/qi_diagnostics.py vmec_jax/bootstrap_current.py`
+- Exact `__all__` parity script for `quasi_isodynamic`, `qi_diagnostics`, and
+  `bootstrap_current`.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_quasi_isodynamic.py tests/test_qi_diagnostics.py tests/test_bootstrap_current_fixed_point.py tests/test_bootstrap_current_example.py --tb=short`
+  (`61 passed`).
+- `python tools/diagnostics/source_health.py --top 30 --top-functions 80 --max-root-helper-prefix-files 2`
+- `python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50 --max-file-mib 2`
+- `git diff --check`
+- `LANG=C.UTF-8 LC_ALL=C.UTF-8 python -m sphinx -W -j auto -b html docs docs/_build/html_final_audit`
+
+Current open-lane percentages:
+
+- Architecture/refactor plan: 100%.
+- Solver monolith reduction: 99.9994%.
+- Residual iteration decomposition: 99.994%.
+- Root namespace cleanup: 100%.
+- Optimization workflow API ownership: 100%.
+- QI optimization helper API ownership: 100%.
+- Physics helper API ownership: 100%.
+- Fixed-boundary VMEC parity and physics gates: 99%+.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998% for
+  branch-local/fingerprint-gated evidence; arbitrary adaptive branch
+  differentiation remains unclaimed.
+- Single-stage coil-only optimization phase 3: 99%.
+- CPU/GPU performance instrumentation hygiene: 99.46%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+
+Best next steps:
+
+1. Commit and push this final audit tranche.
+2. Stop broad API/export churn. The only remaining code-refactor target worth
+   considering before review is a demonstrably net-negative seam in the
+   fixed-boundary residual iteration monolith or oversized validation setup.
+3. Keep adaptive free-boundary differentiability claims conservative until a
+   true fingerprint-gated full adaptive AD-vs-central-FD gate exists.
+
+User decisions needed:
+
+No immediate decision. The PR should now be reviewed as a conservative
+domain-structure and differentiability-readiness refactor, with remaining
+solver-loop decomposition deferred unless a small parity-safe seam is found.
