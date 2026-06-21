@@ -217,6 +217,46 @@ The PR is review-ready when all of the following are true:
 
 ## Recent Log
 
+### 2026-06-20 Historical Plan Pointer Compaction
+
+Steps taken:
+
+1. Re-audited the two remaining historical plan files:
+   `plan.md` and `discrete_adjoint_2506_plan.md`.
+2. Confirmed both were stale snapshots from earlier roadmap/discrete-adjoint
+   work and were already marked as historical references in this active plan
+   and in `docs/code_structure.rst`.
+3. Replaced both files with concise historical summaries that point to the
+   active plan, current docs, and git history for full transcript details.
+
+Results obtained:
+
+- The repository now has one active plan and three short historical/evidence
+  pointer files.
+- Historical plan artifacts no longer dominate line count or present stale
+  acceptance criteria as current work.
+- The current differentiability and refactor gates remain centralized here.
+- The four plan/evidence files now total `560` lines, down from `3,736` lines
+  after the previous compaction and over `63,000` lines before the full
+  planning cleanup.
+- The tracked repository size is now `26.45 MiB`.
+
+Tests and commands:
+
+- `git status --short --branch`
+- `wc -l plan_differentiability.md plan_freeb.md plan.md discrete_adjoint_2506_plan.md`
+- `rg` audits over README, docs, tests, source, and plan files for references
+  to the historical plan files.
+- `python tools/diagnostics/repo_size_audit.py --top 10 --max-total-mib 50 --max-file-mib 2`
+- `python tools/diagnostics/source_health.py --top 8 --top-functions 16 --max-root-helper-prefix-files 2`
+- `git diff --check`
+
+Best next steps:
+
+1. Keep future status updates in this active plan only.
+2. If more implementation work is needed, target only the finite residual seams
+   listed above.
+
 ### 2026-06-20 Free-Boundary Evidence Log Compaction
 
 Steps taken:

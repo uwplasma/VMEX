@@ -1,6 +1,6 @@
 # Free-Boundary Coil-Aware Single-Stage Optimization Evidence Summary
 
-Status: closed evidence summary, not an active work plan.
+Status: closed evidence summary, not an active plan.
 
 The active umbrella plan is `plan_differentiability.md`.  Historical
 free-boundary progress logs were intentionally compacted on 2026-06-20 to keep
