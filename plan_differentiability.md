@@ -1093,6 +1093,76 @@ Definition of done before PR #20 can return to ready:
    - no claim of arbitrary adaptive free-boundary branch differentiation until
      a true fingerprint-gated full adaptive AD-vs-FD gate exists.
 
+### 2026-06-21 PR Readiness Gate Results
+
+Steps taken:
+
+- Regenerated the full historical bundled fixed-boundary runtime/memory matrix
+  on the PR branch:
+  `outputs/pr20_full_matrix_current_cpu/summary.json`.
+- Regenerated the same matrix from a clean detached `origin/main` worktree:
+  `/Users/rogeriojorge/local/tests/vmec_jax_main_perf/outputs/pr20_full_matrix_main_cpu/summary.json`.
+- Added `tools/diagnostics/compare_runtime_memory_matrix.py` and wrote
+  current-vs-main provenance to
+  `docs/_static/figures/readme_runtime_compare_current_vs_main.csv/.json`.
+- Rendered the public README benchmark with one combined runtime + memory
+  figure:
+  `docs/_static/figures/readme_runtime_compare.png/.csv/.json`.
+- Removed the superseded two-case `readme_runtime_memory_single_grid.*`
+  artifacts from docs so the public benchmark is unambiguous.
+- Added `tools/diagnostics/readme_ad_fd_evidence.py` and rendered
+  `docs/_static/figures/readme_ad_fd_evidence.png/.csv/.json`.
+- Generated branch-local free-boundary evidence with
+  `examples/optimization/free_boundary_QS_coil_optimization.py --smoke
+  --provider circle --write-same-branch-report`.
+- Extended `tools/diagnostics/converged_wout_parity_benchmark.py` with
+  `nfp4_QH_warm_start`, `solovev`, and `ITERModel`, then ran the required
+  four-row WOUT parity gate against the local VMEC2000 executable.
+
+Results obtained:
+
+- Full matrix rows: 16 cases x 3 backends.  VMEC2000 and `vmec_jax` converged
+  on all rows.  VMEC++ converged on 7 rows and is explicitly omitted from the
+  plot on 9 unsupported/non-converged rows.
+- Current-vs-main regression check: no repeatable `vmec_jax` runtime
+  regression.  The full matrix flagged one `LandremanPaul2021_QA_lowres`
+  peak-memory outlier (`1.28x`), but a focused same-row rerun wrote
+  `docs/_static/figures/readme_runtime_compare_lpqa_rerun.csv/.json` and
+  classified it as non-repeatable (`1.03x` memory, `0.93x` warm runtime).
+- WOUT parity: `LandremanPaul2021_QA_lowres`, `nfp4_QH_warm_start`,
+  `solovev`, and `ITERModel` all passed.  Worst reported relative-RMS channel
+  was `bsubvmnc` on `solovev` at `4.37e-5`; core geometry/profile/field rows
+  were at roundoff to about `1e-11`.
+- AD-vs-FD evidence: 10 rows passed: aspect ratio, iota profile, QS residual,
+  smooth QI residual, `DMerc`, `D_R`, and branch-local direct-coil
+  free-boundary `aspect`, `qs_total`, `mean_iota`, and
+  `lcfs_boundary_moment`.
+
+Best next steps:
+
+1. Run the final local hygiene gates (`ruff`, `pytest` targets, repo size,
+   source health, `git diff --check`, and Sphinx).
+2. Keep PR #20 draft until those gates pass.
+3. If local gates pass, mark PR #20 ready; if a gate fails, fix or explicitly
+   defer it here with rationale.
+
+Open lane completion:
+
+- README full benchmark restoration: 100%.
+- Full benchmark rerun and main-branch regression check: 100%.
+- WOUT parity on benchmark rows: 100%.
+- Differentiation AD-vs-FD evidence panel: 100%.
+- `DMerc`/`D_R` derivative validation: 100%.
+- Performance profiling and fix lane: 95% for PR readiness; the one material
+  flag was rerun and classified as non-repeatable, while broad single-solve
+  performance remains a future optimization lane.
+- Differentiation architecture planning: 95%; architecture and conservative
+  derivative contracts are documented, but arbitrary adaptive branch
+  differentiation remains a deferred research lane.
+- Docs/README consistency: 95%; final Sphinx/hygiene gates still pending.
+- PR review readiness: 85%; awaiting final local gates before converting from
+  draft to ready.
+
 Tracked open lanes:
 
 - README full benchmark restoration: 20%.

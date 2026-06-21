@@ -913,6 +913,14 @@ finite-difference branch fingerprint is not same-branch compatible, the example
 records the incompatibility and skips branch-local AD instead of reporting an
 invalid derivative.
 
+The README differentiation evidence panel uses this same branch-local report
+contract.  It compares direct-coil free-boundary scalar JVPs against
+complete-solve central finite differences for ``aspect``, ``qs_total``,
+``mean_iota``, and ``lcfs_boundary_moment`` under an unchanged accepted-branch
+fingerprint.  Treat those rows as validated proposal/replay derivatives for a
+fixed accepted branch, not as a claim that the full adaptive controller is
+differentiable through arbitrary accept/reject/reset branch changes.
+
 Run the dependency-light direct-coil forward example from the repository root.
 This path constructs a synthetic circular ``CoilFieldParams`` object directly in
 ``vmec_jax`` and writes ``wout_direct_coils.nc`` plus ``summary.json`` without

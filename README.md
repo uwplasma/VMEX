@@ -18,23 +18,36 @@ remain in development.
 
 ![Bundled single-grid runtime comparison](docs/_static/figures/readme_runtime_compare.png)
 
-This single-grid benchmark compares bundled VMEC inputs such as `solovev`,
-`ITERModel`, `nfp4_QH_warm_start`, `LandremanPaul2021_QA_lowres`, QH reactor
-scale, tokamak, and asymmetric examples. VMEC2000 remains faster for most
-one-off executable solves; `vmec_jax` reports both cold first-call time
-(Python/JAX/XLA setup included) and warm same-process time, which is the
-relevant comparison inside differentiable optimization loops. The benchmark
-data and memory columns are documented in the performance guide. Reproduce the
-panel after a fixed-boundary runtime sweep with:
+This single-grid benchmark compares the bundled historical fixed-boundary
+matrix, including `solovev`, `ITERModel`, `nfp4_QH_warm_start`,
+`LandremanPaul2021_QA_lowres`, QH reactor-scale, tokamak, and asymmetric
+examples. VMEC2000 remains faster for most one-off executable solves;
+`vmec_jax` reports both cold first-call time (Python/JAX/XLA setup included)
+and warm same-process time, which is the relevant comparison inside
+differentiable optimization loops. VMEC++ is plotted only on rows where the
+local VMEC++ executable supports the input and converges cleanly; unavailable
+rows are documented in the performance guide rather than treated as failures.
+Reproduce the panel after a fixed-boundary runtime sweep with:
 
 ```bash
 python tools/diagnostics/readme_runtime_compare.py \
-  --cpu-summary outputs/fixed_runtime_accel_cpu_bundle_20260406_r2/summary.json \
-  --figure-kind fixed --plot-mode runtime \
+  --cpu-summary outputs/pr20_full_matrix_current_cpu/summary.json \
+  --figure-kind fixed --plot-mode runtime_memory \
   --figure-out docs/_static/figures/readme_runtime_compare.png \
   --csv-out docs/_static/figures/readme_runtime_compare.csv \
   --json-out docs/_static/figures/readme_runtime_compare.json
 ```
+
+## Differentiation Evidence
+
+![AD vs central finite differences](docs/_static/figures/readme_ad_fd_evidence.png)
+
+The current differentiable diagnostics agree with central finite differences
+for fixed-boundary geometry/profile scalars, QS/QI residuals, `DMerc`, `D_R`,
+and branch-local direct-coil free-boundary scalars. The free-boundary rows are
+same-branch/fingerprint-gated evidence only; arbitrary adaptive branch changes
+are still an explicit research lane. Detailed commands and tolerances are in
+the validation guide.
 
 ## Install
 
@@ -113,54 +126,20 @@ boozmn = vj.run_booz_xform(wout_path, mbooz=32, nbooz=32)
 vj.plot_boozmn(boozmn, outdir="figures/")
 ```
 
-VMEC pressure, iota, and current profiles can be polynomial coefficients or
-tabulated splines. The bundled spline deck uses `PMASS_TYPE`/`PIOTA_TYPE =
-"cubic_spline"` with `*_AUX_S/F`; finite-beta decks use `PCURR_TYPE =
-"cubic_spline_ip"` with `AC_AUX_S/F`. The same syntax supports `akima_spline`
-and `line_segment`:
-
-```bash
-python examples/profile_input_examples.py
-vmec examples/data/input.profile_splines --plot
-vmec examples/data/input.nfp4_QH_finite_beta
-```
-
-`examples/profile_input_examples.py` writes editable polynomial and spline decks
-under `examples/outputs/profile_inputs/` and prints the matching `vmec` commands.
-
-For the bundled small free-boundary example, download both the input deck and
-its magnetic grid into the same folder:
-
-```bash
-curl -L -O https://raw.githubusercontent.com/uwplasma/vmec_jax/main/examples/data/input.cth_like_free_bdy_lasym_small
-curl -L -O https://raw.githubusercontent.com/uwplasma/vmec_jax/main/examples/data/mgrid_cth_like_lasym_small.nc
-vmec input.cth_like_free_bdy_lasym_small
-```
+Profile-polynomial, spline, finite-beta, and free-boundary examples are in
+`examples/` and documented in the performance, validation, and free-boundary
+guides.
 
 ### Direct-Coil Free-Boundary Research Lane
 
 The direct-coil free-boundary lane samples differentiable Biot-Savart coils
 directly while keeping the existing `mgrid` path for VMEC2000 compatibility.
-The finalized single-stage optimization lane recomputes a complete direct-coil
-free-boundary solve for each accepted objective point. Current coil-only
-examples validate cheap VMEC-state QS/aspect/iota proxies and same-branch,
-fingerprint-gated branch-local derivatives; complete solves remain the
-acceptance authority. They do not claim production differentiation through
-adaptive accepted/rejected host-controller branch changes or full
-coil-to-Boozer adjoints.
-
-```bash
-python examples/free_boundary_direct_coils_forward.py \
-  --max-iter 4 \
-  --outdir results/free_boundary_direct_coils_forward
-```
+Current coil-only examples validate complete-solve acceptance plus
+same-branch, fingerprint-gated branch-local derivatives; arbitrary adaptive
+host-controller branch differentiation remains a research lane.
 
 ESSOS direct-coil, generated-mgrid, finite-beta scan, and coil-only QS
 optimization commands are documented in `docs/free_boundary_coil_optimization.rst`.
-
-![DIII-D finite-beta mgrid free-boundary scan](docs/_static/figures/freeb_diiid_mgrid_beta_ns101_panel.png)
-
-![LP-QA direct-coil finite-beta free-boundary scan](docs/_static/figures/freeb_lpqa_direct_coil_beta_ns101_panel.png)
 
 ## Backend Selection
 

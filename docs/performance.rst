@@ -32,40 +32,10 @@ Set ``VMEC_JAX_COMPILATION_CACHE=1`` to opt in for CPU runs, or
 
 VMEC2000 is a pre-compiled Fortran binary with no JIT overhead — it is always
 effectively "cold".  When benchmarking, compare ``vmec_jax`` warm runtime
-against VMEC2000 runtime.
-
-Two-case VMEC2000 / VMEC++ / vmec_jax sanity snapshot
------------------------------------------------------
-
-This narrow runtime and memory sanity plot uses two small, converged
-fixed-boundary inputs with the input-deck iteration budgets:
-``input.circular_tokamak`` and ``input.nfp4_QH_warm_start``.  It compares
-VMEC2000, VMEC++, and ``vmec_jax`` with and without JIT.  The broader README
-benchmark is the full vertical bundled matrix in
-``readme_runtime_compare.png`` below.
-
-.. image:: _static/figures/readme_runtime_memory_single_grid.png
-   :width: 100%
-   :align: center
-   :alt: VMEC2000, VMEC++, and vmec_jax single-grid runtime and memory comparison
-
-This plot should be read as a one-off executable/runtime sanity check.  On the
-local CPU host used for the checked-in artifact, VMEC2000 and VMEC++ are faster
-and lighter for these small single solves.  Warm JIT ``vmec_jax`` reduces the
-first-call cost substantially, but still carries Python/JAX/XLA memory and
-dispatch overhead.  No-JIT ``vmec_jax`` is retained as a diagnostic path and is
-much slower; it is not the production optimization path.
-
-The figure rows and provenance are available as:
-
-- :download:`readme_runtime_memory_single_grid.csv <_static/figures/readme_runtime_memory_single_grid.csv>`
-- :download:`readme_runtime_memory_single_grid.json <_static/figures/readme_runtime_memory_single_grid.json>`
-
-Regenerate this sanity panel with:
-
-.. code-block:: bash
-
-   python tools/diagnostics/readme_vmecpp_runtime_two_cases.py
+against VMEC2000 runtime.  The public README benchmark is the full bundled
+fixed-boundary matrix in ``readme_runtime_compare.png`` below; the older
+two-case VMEC++ sanity plot has been retired from the public docs so it is not
+confused with the release benchmark.
 
 2026-05-25 rerun snapshot
 -------------------------
@@ -2212,12 +2182,24 @@ The README-facing fixed-boundary CPU matrix is generated from
    :align: center
    :alt: VMEC2000 versus vmec_jax fixed-boundary runtime comparison
 
-The current data should be read as a performance reality check, not as a broad
-single-solve speedup claim.  On the current local matrix, warm ``vmec_jax``
-beats VMEC2000 on 1 of 16 bundled fixed-boundary rows
-(``circular_tokamak_aspect_100``, about ``1.33x`` faster).  The median warm
-single-solve row is still about ``4.4x`` slower than VMEC2000 on this host.
-Cold runs are slower because they include XLA compilation and runtime setup.
+The current PR #20 readiness matrix should be read as a performance reality
+check, not as a broad single-solve speedup claim.  It was regenerated on the
+local CPU host from 16 historical bundled fixed-boundary rows using
+``example_runtime_memory_matrix.py --backend all --warm-runs 1``.  VMEC2000 and
+``vmec_jax`` converged on all 16 rows.  VMEC++ converged on 7 rows
+(``ITERModel``, ``circular_tokamak``, ``circular_tokamak_aspect_100``,
+``nfp4_QH_warm_start``, ``purely_toroidal_field``,
+``shaped_tokamak_pressure``, and ``solovev``) and is omitted on the other 9
+unsupported or non-converged rows.
+
+On this run, warm ``vmec_jax`` did not beat VMEC2000 on any row.  The median
+warm single-solve row is ``4.31x`` slower than VMEC2000, and the median cold
+row is ``8.82x`` slower because cold time includes Python/JAX/XLA setup.  The
+current-vs-``origin/main`` comparison recorded no repeatable vmec_jax runtime
+regression.  The full matrix initially flagged one peak-memory outlier on
+``LandremanPaul2021_QA_lowres`` (``1.28x`` current/main), but a focused same-row
+rerun reduced that to ``1.03x`` peak memory and ``0.93x`` warm runtime, so it is
+classified as non-repeatable run noise rather than a PR-blocking regression.
 
 A broader 2026-05-24 internal policy matrix compared the default fixed-boundary
 policy against the explicit ``accelerated`` policy on all 35 bundled
@@ -2442,18 +2424,23 @@ and the solver stage about ``2.4 s``.  The largest steady solver terms were
 therefore uses the host path for low-work CPU stages and the fused strict-update
 path only above the ``VMEC_JAX_HOST_UPDATE_CPU_WORK_LIMIT`` threshold.
 
-The figure rows and provenance are available as:
+The figure rows, current-vs-main comparison, and focused regression rerun
+provenance are available as:
 
 - :download:`readme_runtime_compare.csv <_static/figures/readme_runtime_compare.csv>`
 - :download:`readme_runtime_compare.json <_static/figures/readme_runtime_compare.json>`
+- :download:`readme_runtime_compare_current_vs_main.csv <_static/figures/readme_runtime_compare_current_vs_main.csv>`
+- :download:`readme_runtime_compare_current_vs_main.json <_static/figures/readme_runtime_compare_current_vs_main.json>`
+- :download:`readme_runtime_compare_lpqa_rerun.csv <_static/figures/readme_runtime_compare_lpqa_rerun.csv>`
+- :download:`readme_runtime_compare_lpqa_rerun.json <_static/figures/readme_runtime_compare_lpqa_rerun.json>`
 
 Regenerate the current fixed-boundary plot after a runtime sweep with:
 
 .. code-block:: bash
 
    python tools/diagnostics/readme_runtime_compare.py \
-     --cpu-summary outputs/fixed_runtime_accel_cpu_bundle_20260406_r2/summary.json \
-     --figure-kind fixed --plot-mode runtime \
+     --cpu-summary outputs/pr20_full_matrix_current_cpu/summary.json \
+     --figure-kind fixed --plot-mode runtime_memory \
      --figure-out docs/_static/figures/readme_runtime_compare.png \
      --csv-out docs/_static/figures/readme_runtime_compare.csv \
      --json-out docs/_static/figures/readme_runtime_compare.json

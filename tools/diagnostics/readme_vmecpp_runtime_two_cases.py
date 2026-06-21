@@ -120,15 +120,25 @@ def _write_input(input_path: Path, workdir: Path, updates: dict[str, str]) -> Pa
 
 
 def _updates(args: argparse.Namespace) -> dict[str, str]:
+    return _runtime_updates(ns=args.ns, niter=args.niter, ftol=args.ftol, nstep=args.nstep)
+
+
+def _runtime_updates(
+    *,
+    ns: int | None,
+    niter: int | None,
+    ftol: float | None,
+    nstep: int | None,
+) -> dict[str, str]:
     out: dict[str, str] = {}
-    if args.ns is not None:
-        out["NS_ARRAY"] = str(args.ns)
-    if args.niter is not None:
-        out["NITER_ARRAY"] = str(args.niter)
-    if args.ftol is not None:
-        out["FTOL_ARRAY"] = f"{float(args.ftol):.3e}"
-    if args.nstep is not None:
-        out["NSTEP"] = str(args.nstep)
+    if ns is not None:
+        out["NS_ARRAY"] = str(ns)
+    if niter is not None:
+        out["NITER_ARRAY"] = str(niter)
+    if ftol is not None:
+        out["FTOL_ARRAY"] = f"{float(ftol):.3e}"
+    if nstep is not None:
+        out["NSTEP"] = str(nstep)
     return out
 
 
