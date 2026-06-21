@@ -746,3 +746,60 @@ User decisions needed:
 No immediate decision. The PR is now in a review-oriented state; the remaining
 large solver hotspot should be handled only if another focused, net-negative
 seam is identified.
+
+### 2026-06-20 Optimization Workflow Export Ownership
+
+Steps taken:
+
+1. Audited the next largest user-facing optimization facade,
+   `vmec_jax/optimization_workflow.py`.
+2. Found its 74-name public export list duplicated names owned by focused
+   modules under `vmec_jax/optimizers/fixed_boundary/`.
+3. Added small owner-side `__all__` lists to objective-term, seed-input, and
+   workflow-artifact modules that previously had no explicit public surface.
+4. Replaced the long workflow export list with a composed export list derived
+   from local workflow helpers and the focused modules' public surfaces.
+5. Updated `docs/code_structure.rst` to make objective modules the preferred
+   owner for new differentiable optimization terms.
+
+Results obtained:
+
+- `vmec_jax.optimization_workflow.__all__` still exports exactly 74 names:
+  zero missing and zero extra compared with the previous public surface.
+- The tranche is net-negative: `59` insertions and `96` deletions across
+  affected source files before the short docs/plan note.
+- The example-facing optimization API remains stable, while ownership of
+  imported objective/seed/artifact names now lives in the focused modules.
+
+Tests and commands:
+
+- `python -m ruff check vmec_jax/optimization_workflow.py vmec_jax/optimizers/fixed_boundary/objective_terms.py vmec_jax/optimizers/fixed_boundary/seed_inputs.py vmec_jax/optimizers/fixed_boundary/workflow_artifacts.py`
+- Exact `optimization_workflow.__all__` parity script.
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_workflow_unit.py tests/test_finite_beta_helpers_unit.py --tb=short`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_optimization_examples.py::test_primary_examples_use_direct_plotting_apis_not_generic_helpers tests/test_optimization_examples.py::test_qi_objective_factories_apply_weights_and_slice_shared_fields tests/test_optimization_examples.py::test_finite_beta_examples_plot_explicitly_after_solve --tb=short`
+- `python -m pytest -q tests/test_docs_release_hygiene.py --tb=short`
+- `git diff --check`
+
+Current open-lane percentages:
+
+- Architecture/refactor plan: 100%.
+- Solver monolith reduction: 99.9994%.
+- Residual iteration decomposition: 99.994%.
+- Root namespace cleanup: 100%.
+- Optimization workflow API ownership: 100%.
+- Fixed-boundary VMEC parity and physics gates: 99%+.
+- Direct-coil/free-boundary phase 1: 100%.
+- Full nonlinear free-boundary adjoint phase 2: 99.999998% for
+  branch-local/fingerprint-gated evidence; arbitrary adaptive branch
+  differentiation remains unclaimed.
+- Single-stage coil-only optimization phase 3: 99%.
+- CPU/GPU performance instrumentation hygiene: 99.46%.
+- CI/runtime/coverage hygiene: 100%.
+- Docs/release hygiene: 100%.
+
+Best next steps:
+
+1. Run source-health, repo-size, and docs warning gates for this tranche.
+2. Commit and push if those gates remain clean.
+3. Avoid broad solver-loop edits unless a clear net-negative residual seam is
+   identified.

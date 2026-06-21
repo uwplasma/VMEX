@@ -173,3 +173,12 @@ def attach_packed_state_autodiff_hooks(residuals_from_state: Callable) -> Callab
         state_objective_value_and_cotangent_from_packed
     )
     return residuals_from_state
+
+
+__all__ = [
+    "FixedBoundaryObjectiveStage",
+    "ObjectiveTerm",
+    "QIObjectiveTerm",
+    "StageContext",
+    "residuals_from_objectives",
+]
