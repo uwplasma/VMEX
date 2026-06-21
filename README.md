@@ -16,20 +16,24 @@ remain in development.
 
 ## Runtime Snapshot
 
-![Single-grid runtime and memory comparison](docs/_static/figures/readme_runtime_memory_single_grid.png)
+![Bundled single-grid runtime comparison](docs/_static/figures/readme_runtime_compare.png)
 
-On the same local CPU host, small converged single-grid runs show the expected
-tradeoff: VMEC2000 and VMEC++ are faster and lighter for one-off executable
-solves, while `vmec_jax` pays Python/JAX/XLA overhead but exposes the run to
-JAX transformations. For `input.circular_tokamak` and
-`input.nfp4_QH_warm_start`, VMEC2000 took `0.23-0.32 s`, VMEC++ took
-`0.55-0.90 s`, warm JIT `vmec_jax` took `1.15-1.55 s`, and no-JIT `vmec_jax`
-took `20-33 s`. Peak process memory was `0.009-0.010 GiB` for VMEC2000,
-`0.038-0.042 GiB` for VMEC++, and `0.27-0.72 GiB` for `vmec_jax` depending on
-JIT policy. Reproduce the panel with:
+This single-grid benchmark compares bundled VMEC inputs such as `solovev`,
+`ITERModel`, `nfp4_QH_warm_start`, `LandremanPaul2021_QA_lowres`, QH reactor
+scale, tokamak, and asymmetric examples. VMEC2000 remains faster for most
+one-off executable solves; `vmec_jax` reports both cold first-call time
+(Python/JAX/XLA setup included) and warm same-process time, which is the
+relevant comparison inside differentiable optimization loops. The benchmark
+data and memory columns are documented in the performance guide. Reproduce the
+panel after a fixed-boundary runtime sweep with:
 
 ```bash
-python tools/diagnostics/readme_vmecpp_runtime_two_cases.py
+python tools/diagnostics/readme_runtime_compare.py \
+  --cpu-summary outputs/fixed_runtime_accel_cpu_bundle_20260406_r2/summary.json \
+  --figure-kind fixed --plot-mode runtime \
+  --figure-out docs/_static/figures/readme_runtime_compare.png \
+  --csv-out docs/_static/figures/readme_runtime_compare.csv \
+  --json-out docs/_static/figures/readme_runtime_compare.json
 ```
 
 ## Install
