@@ -1009,3 +1009,139 @@ Best next steps:
 1. Commit and push this final README performance-readiness update.
 2. Convert PR #20 from draft to ready after local gates pass; do not wait on
    long CI jobs.
+
+### 2026-06-21 PR Readiness Reset: Full Benchmark, Differentiation Evidence, and Performance Gates
+
+Status correction:
+
+- PR #20 was converted back to draft. The two-case runtime/memory panel is
+  useful as a VMEC++ sanity/provenance artifact, but it is not the historical
+  README benchmark and is not sufficient for review readiness.
+- The README headline benchmark must use the full vertical bundled
+  fixed-boundary single-grid matrix, currently tracked as
+  `docs/_static/figures/readme_runtime_compare.png/.csv/.json`.
+- The reduced two-case artifact can remain in the performance docs only if it
+  is clearly labeled as a narrow VMEC++ sanity check, not the public benchmark.
+
+Literature and implementation anchors:
+
+- Skene and Burns, "Fast automated adjoints for spectral PDE solvers"
+  (`https://arxiv.org/abs/2506.14792`) motivates sparse/spectral adjoint
+  construction that keeps memory proportional to solver state rather than
+  retaining full unrolled tapes.
+- JAX custom derivative rules
+  (`https://docs.jax.dev/en/latest/notebooks/Custom_derivative_rules_for_Python_code.html`)
+  define the safe API surface for custom JVP/VJP seams around solver loops.
+- JAXopt implicit differentiation
+  (`https://jaxopt.github.io/stable/implicit_diff.html`) and
+  `jaxopt.implicit_diff.custom_fixed_point`
+  (`https://jaxopt.github.io/stable/_autosummary/jaxopt.implicit_diff.custom_fixed_point.html`)
+  are the reference model for fixed-point / optimality-condition
+  differentiation without differentiating every nonlinear iteration.
+- Equinox filtered transformations
+  (`https://docs.kidger.site/equinox/api/transformations/`) remain a possible
+  future ergonomics layer for mixed static/dynamic pytrees, but the current PR
+  should not add a dependency unless it removes more complexity than it adds.
+
+Definition of done before PR #20 can return to ready:
+
+1. README benchmark restored:
+   - top README panel uses the full vertical `readme_runtime_compare.png`,
+     not the two-case `readme_runtime_memory_single_grid.png`;
+   - caption explicitly names the matrix scope: `solovev`, `ITERModel`,
+     `nfp2/nfp4`, Landreman-Paul QA/QH/QI-style examples where available,
+     tokamak/asymmetric rows, VMEC2000, VMEC++, and cold/warm `vmec_jax`;
+   - regeneration command points to `tools/diagnostics/readme_runtime_compare.py`
+     and the fixed-boundary runtime summary inputs.
+2. Full benchmark refreshed or explicitly justified:
+   - either regenerate the full single-grid matrix on current branch and main,
+     or document why the checked-in matrix remains the release artifact;
+   - any row where current branch is materially slower than main is profiled
+     before PR readiness;
+   - `nfp4_QH_warm_start` cold/warm runtime is specifically checked because it
+     is a low-mode case that should not regress.
+3. WOUT parity gate:
+   - current branch WOUTs for the refreshed benchmark rows match VMEC2000 in
+     the existing parity bands;
+   - at minimum include `input.nfp4_QH_warm_start`, `solovev`,
+     `ITERModel`, and one Landreman-Paul QA row before promoting the figure.
+4. Differentiation evidence figures:
+   - add a README/docs figure panel showing AD-vs-central-FD agreement for
+     differentiable diagnostics and solver seams;
+   - required rows: fixed-boundary objective scalar, `iota`, aspect ratio,
+     quasisymmetry/QP residual scalar, QI smooth metric if stable, `DMerc`,
+     `D_R`, and branch-local free-boundary direct-coil scalar;
+   - each row reports AD value, FD value, relative error, problem size, and
+     whether the evidence is full-solve, implicit, branch-local, or
+     same-branch/fingerprint-gated.
+5. Performance diagnosis:
+   - compare current branch vs `origin/main` on representative cold and warm
+     fixed-boundary runs with the same Python/JAX executable path;
+   - profile slow rows using existing VMEC timing buckets, `cProfile`, JAX
+     trace/XLA compile information, and optional GPU traces on `office`;
+   - separate cold startup/import/XLA compile cost from steady per-iteration
+     solver cost and WOUT writing.
+6. Differentiation performance path:
+   - document which derivative paths follow unrolled AD, implicit/custom-VJP,
+     matrix-free JVP/VJP, discrete adjoint, or branch-local replay;
+   - prioritize matrix-free/spectral-adjoint construction for high-mode
+     optimization, in the spirit of sparse spectral adjoint methods, before
+     claiming optimization performance improvements.
+7. Documentation consistency:
+   - performance docs, validation docs, README, and this plan all state the
+     same benchmark scope and differentiability contract;
+   - no claim of arbitrary adaptive free-boundary branch differentiation until
+     a true fingerprint-gated full adaptive AD-vs-FD gate exists.
+
+Tracked open lanes:
+
+- README full benchmark restoration: 20%.
+  Completion metric: full vertical panel is the README headline again, with
+  matching data/provenance and no reduced two-case substitution.
+- Full benchmark rerun and main-branch regression check: 0%.
+  Completion metric: current-vs-main runtime table for the benchmark rows,
+  with regressions classified as startup, compile, steady solve, WOUT, or
+  profiler noise.
+- WOUT parity on benchmark rows: 0%.
+  Completion metric: benchmark rows have VMEC2000-vs-`vmec_jax` parity
+  summaries in accepted tolerance bands.
+- Differentiation AD-vs-FD evidence panel: 0%.
+  Completion metric: figure plus CSV/JSON provenance covering fixed-boundary,
+  stability, QS/QI, and branch-local free-boundary scalar derivatives.
+- DMerc/D_R derivative validation: 0%.
+  Completion metric: AD vs central FD agrees to the documented tolerance on at
+  least one finite-beta QA fixture and one lower-work finite-beta smoke.
+- Performance profiling and fix lane: 10%.
+  Completion metric: `nfp4_QH_warm_start` and at least one finite-beta case
+  have current-vs-main profiles; any introduced PR regression is fixed or
+  explicitly reverted.
+- Differentiation architecture planning: 80%.
+  Completion metric: derivative-path table maps every public differentiable
+  feature to unrolled AD, implicit/custom-VJP, matrix-free JVP/VJP, discrete
+  adjoint, or branch-local replay, with validation gates.
+- Docs/README consistency: 40%.
+  Completion metric: README, `docs/performance.rst`, `docs/validation.rst`,
+  and `docs/free_boundary_coil_optimization.rst` use the same claims.
+- PR review readiness: 0%.
+  Completion metric: all lanes above are either complete or intentionally
+  deferred with explicit issue/plan text; PR is then marked ready again.
+
+Best next steps:
+
+1. Commit the README correction and this reset plan.
+2. Restore or regenerate the full runtime panel and remove the reduced
+   two-case panel from the README path.
+3. Run the smallest current-vs-main benchmark first:
+   `input.nfp4_QH_warm_start`, `input.circular_tokamak`, `input.solovev`, and
+   `input.LandremanPaul2021_QA_lowres`.
+4. If current branch is slower than main, profile before adding more figures.
+5. Build the AD-vs-FD evidence data generator and figure once the runtime
+   regression question is understood.
+
+User decisions needed:
+
+- Decide whether VMEC++ must be present for every full-matrix benchmark row or
+  whether VMEC++ can remain a partial/sanity column where the executable
+  converges cleanly.
+- Decide whether the README should show one combined runtime+memory panel or
+  keep runtime in README and detailed memory tables in docs.

@@ -34,13 +34,15 @@ VMEC2000 is a pre-compiled Fortran binary with no JIT overhead — it is always
 effectively "cold".  When benchmarking, compare ``vmec_jax`` warm runtime
 against VMEC2000 runtime.
 
-Single-grid VMEC2000 / VMEC++ / vmec_jax snapshot
--------------------------------------------------
+Two-case VMEC2000 / VMEC++ / vmec_jax sanity snapshot
+-----------------------------------------------------
 
-The README-facing single-grid runtime and memory panel uses two small,
-converged fixed-boundary inputs with the input-deck iteration budgets:
+This narrow runtime and memory sanity plot uses two small, converged
+fixed-boundary inputs with the input-deck iteration budgets:
 ``input.circular_tokamak`` and ``input.nfp4_QH_warm_start``.  It compares
-VMEC2000, VMEC++, and ``vmec_jax`` with and without JIT:
+VMEC2000, VMEC++, and ``vmec_jax`` with and without JIT.  The broader README
+benchmark is the full vertical bundled matrix in
+``readme_runtime_compare.png`` below.
 
 .. image:: _static/figures/readme_runtime_memory_single_grid.png
    :width: 100%
@@ -59,7 +61,7 @@ The figure rows and provenance are available as:
 - :download:`readme_runtime_memory_single_grid.csv <_static/figures/readme_runtime_memory_single_grid.csv>`
 - :download:`readme_runtime_memory_single_grid.json <_static/figures/readme_runtime_memory_single_grid.json>`
 
-Regenerate the panel with:
+Regenerate this sanity panel with:
 
 .. code-block:: bash
 
