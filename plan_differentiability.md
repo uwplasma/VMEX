@@ -77,10 +77,10 @@ Latest local branch state:
 
 - Branch: `codex/differentiability-refactor-plan`.
 - Recent pushed commits:
+  - `5c881525 Deduplicate fixed-boundary API dependencies`.
   - `3c86df09 Record final plan and fixture audit`.
   - `485a29df Compact historical plan pointers`.
   - `90714d32 Compact free-boundary evidence log`.
-  - `2d300c5e Compact differentiability plan for review`.
 - The working tree should be checked with `git status --short --branch` before
   each tranche; avoid relying on stale plan text for branch state.
 
@@ -226,6 +226,43 @@ The PR is review-ready when all of the following are true:
    documented compatibility facade.
 
 ## Recent Log
+
+### 2026-06-20 Driver Staged-Followup Wrapper Cleanup
+
+Steps taken:
+
+1. Audited `run_fixed_boundary` after the API wrapper cleanup, focusing on
+   duplicated driver plumbing rather than solver control flow.
+2. Found that the nested `_run_cli_explicit_staged_followup` function only
+   forwarded keyword arguments to `drivers.staging.run_cli_explicit_staged_followup`.
+3. Replaced the full explicit forwarding wrapper with a narrow `**kwargs`
+   closure that still injects the current stage-runner context.
+4. Kept the finish-policy call sites and staged-solve implementation unchanged.
+
+Results obtained:
+
+- `run_fixed_boundary` decreased from `545` to `522` lines.
+- The staged-followup helper remains the single owner of stage-loop behavior.
+- Source-health guardrails remain unchanged: `67` root Python files and `2`
+  root helper-prefix compatibility files.
+- No solver, parity, or differentiability behavior changed.
+
+Tests and commands:
+
+- `python -m ruff check vmec_jax/driver.py vmec_jax/drivers/finish.py vmec_jax/drivers/staging.py`
+- `JAX_ENABLE_X64=1 python -m pytest -q tests/test_driver_api.py tests/test_driver_policy_helpers.py tests/test_solve_driver_control_fast.py --tb=short`
+  (`156 passed`, `1 skipped`)
+- `python tools/diagnostics/source_health.py --top 16 --top-functions 24 --max-root-helper-prefix-files 2`
+
+Best next steps:
+
+1. Continue with driver cleanup only if another forwarding-only seam is found.
+2. Otherwise return to residual trace/finalization cleanup only when a change is
+   provably net-negative and covered by focused tests.
+
+User decisions needed:
+
+No immediate decision.
 
 ### 2026-06-20 Fixed-Boundary API Wrapper Deduplication
 
