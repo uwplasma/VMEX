@@ -19,6 +19,8 @@ def test_root_readme_stays_concise_and_defers_extended_claims() -> None:
     assert "docs/performance.rst" in readme
     assert "docs/release_checklist.rst" in readme
     assert "Latest repository release tag:" in readme
+    assert "readme_runtime_compare.png" in readme
+    assert "readme_ad_fd_evidence.png" in readme
     assert "readme_best_optimization_qa.png" in readme
     assert "readme_best_optimization_qh.png" in readme
     assert "readme_best_optimization_qp.png" in readme
@@ -27,7 +29,7 @@ def test_root_readme_stays_concise_and_defers_extended_claims() -> None:
     forbidden_fragments = (
         "## Optimization from Different Initial Conditions",
         "## VMEC++ notes",
-        "readme_runtime_compare.png",
+        "readme_runtime_memory_single_grid.png",
         "case-timeout-s 1200",
         "generate_qs_ess_sweep.py --backend-label",
         "VMEC_JAX_QI_OUTPUT_DIR",
