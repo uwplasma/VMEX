@@ -1734,6 +1734,11 @@ Results obtained:
   LP-QA lowres1 `8.86 s -> 7.17 s` (-19.1%),
   LP-QA reactor scale `13.16 s -> 10.66 s` (-19.0%), and
   LP-QH reactor scale `15.29 s -> 12.91 s` (-15.6%).
+- The post-policy matrix also compares cleanly against `origin/main`:
+  `python tools/diagnostics/compare_runtime_memory_matrix.py --current
+  outputs/pr20_readme_matrix_current_cpu_post_precond/summary.json --baseline
+  /Users/rogeriojorge/local/tests/vmec_jax_main_perf/outputs/pr20_readme_matrix_main_cpu/summary.json`
+  reports `rows=32 regressions=0`.
 - The post-policy README matrix now shows the large 3D rows at about
   `1.18x--1.21x` VMEC2000 for the reactor-scale rows. Tiny rows remain
   startup/setup dominated, and LASYM/memory-heavy rows remain separate open
@@ -1752,6 +1757,10 @@ Results obtained:
   `preconditioner_s=0.3593`, final residual unchanged at
   `4.64e-13`. This is a smaller but real improvement over the post-policy
   profile (`solve_total_s=4.1482`, `compute_forces_s=3.0413`).
+- Forcing the TOMNSP FFT path on CPU is a regression for this row:
+  `VMEC_JAX_TOMNSPS_FFT=1` gives final-stage `solve_total_s=5.9379` and
+  `compute_forces_s=4.8115`. The CPU default should remain the DFT/GEMM path;
+  future transform work should target separable DFT buffers rather than CPU FFT.
 - Explorer conclusions reinforce the next larger tranche:
   VMEC2000 and vmec++ use separable Fourier transforms, long-lived work arrays,
   radial streaming/scan structure, periodic preconditioner updates, and
