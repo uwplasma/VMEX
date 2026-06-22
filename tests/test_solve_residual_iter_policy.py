@@ -425,14 +425,14 @@ def test_host_update_assembly_policy_matches_cpu_non_scan_defaults():
     assert not accelerator_explicit.auto_enabled
 
 
-def test_numpy_preconditioner_apply_policy_uses_short_or_spectral_cpu_host_path():
+def test_numpy_preconditioner_apply_policy_uses_short_cpu_host_path_by_default():
     short_small = numpy_preconditioner_apply_policy(
         host_update_assembly=True,
         max_iter=120,
         mpol=2,
         ntor=2,
         max_iter_env="240",
-        min_mode_count_env="16",
+        min_mode_count_env="0",
     )
     assert short_small.enabled
     assert short_small.mode_count == 6
@@ -443,10 +443,33 @@ def test_numpy_preconditioner_apply_policy_uses_short_or_spectral_cpu_host_path(
         mpol=2,
         ntor=2,
         max_iter_env="240",
-        min_mode_count_env="16",
+        min_mode_count_env="0",
     )
     assert not long_small.enabled
 
+    long_spectral = numpy_preconditioner_apply_policy(
+        host_update_assembly=True,
+        max_iter=3000,
+        mpol=5,
+        ntor=5,
+        max_iter_env="240",
+        min_mode_count_env="0",
+    )
+    assert not long_spectral.enabled
+    assert long_spectral.mode_count == 30
+
+    disabled_without_host_update = numpy_preconditioner_apply_policy(
+        host_update_assembly=False,
+        max_iter=120,
+        mpol=5,
+        ntor=5,
+        max_iter_env="240",
+        min_mode_count_env="0",
+    )
+    assert not disabled_without_host_update.enabled
+
+
+def test_numpy_preconditioner_apply_policy_can_opt_into_spectral_host_path():
     long_spectral = numpy_preconditioner_apply_policy(
         host_update_assembly=True,
         max_iter=3000,
@@ -457,16 +480,6 @@ def test_numpy_preconditioner_apply_policy_uses_short_or_spectral_cpu_host_path(
     )
     assert long_spectral.enabled
     assert long_spectral.mode_count == 30
-
-    disabled_without_host_update = numpy_preconditioner_apply_policy(
-        host_update_assembly=False,
-        max_iter=120,
-        mpol=5,
-        ntor=5,
-        max_iter_env="240",
-        min_mode_count_env="16",
-    )
-    assert not disabled_without_host_update.enabled
 
     disabled_by_env = numpy_preconditioner_apply_policy(
         host_update_assembly=True,

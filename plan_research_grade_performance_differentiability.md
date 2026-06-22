@@ -1646,3 +1646,64 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 96%.
 - Docs/release hygiene: 96%.
 - Overall: 89%.
+
+### 2026-06-22: Disable long spectral NumPy preconditioner apply by default
+
+Steps taken:
+
+- Profiled the historical README matrix representative
+  `input.LandremanPaul2021_QA_lowres` after the current/main matrix comparison
+  showed no PR regression but a persistent absolute gap to VMEC2000.
+- Compared the default CPU host-update path with the NumPy R/Z preconditioner
+  apply enabled against the compiled JAX preconditioner apply path by setting
+  `VMEC_JAX_NUMPY_PRECOND_MAX_ITER=0` and
+  `VMEC_JAX_NUMPY_PRECOND_MIN_MODES=999999`.
+- Repeated the same controlled comparison on `input.nfp4_QH_finite_beta`, the
+  finite-beta row that motivated the recent host-update policy work.
+- Changed the default `VMEC_JAX_NUMPY_PRECOND_MIN_MODES` from `16` to `0`.
+  The pure-NumPy preconditioner apply path remains available for short solves
+  through `VMEC_JAX_NUMPY_PRECOND_MAX_ITER=240`, and advanced users can still
+  opt into the spectral NumPy path by setting
+  `VMEC_JAX_NUMPY_PRECOND_MIN_MODES` explicitly.
+- Updated the policy tests and `docs/performance.rst` so they describe the new
+  default as a short-solve policy, not a long-spectral policy.
+
+Results obtained:
+
+- `input.LandremanPaul2021_QA_lowres` final-stage controlled profile:
+  default-before-change `solve_total_s=5.1146`, `preconditioner_s=1.3453`,
+  `precond_apply_rz_s=1.1600`; compiled JAX preconditioner path
+  `solve_total_s=4.1692`, `preconditioner_s=0.3640`,
+  `precond_apply_rz_s=0.1783`.
+- `input.nfp4_QH_finite_beta` final-stage controlled profile:
+  default-before-change `solve_total_s=7.4904`, `preconditioner_s=2.2866`,
+  `precond_apply_rz_s=1.9783`; compiled JAX preconditioner path
+  `solve_total_s=5.6115`, `preconditioner_s=0.5649`,
+  `precond_apply_rz_s=0.2599`.
+- After the default change, the normal production profile uses the faster path:
+  LP-QA final-stage `solve_total_s=4.1482` and finite-beta QH final-stage
+  `solve_total_s=6.0958`. The convergence scalars are unchanged to the
+  printed tolerance.
+
+Best next steps:
+
+1. Rerun the full README current CPU matrix with the new default and compare to
+   the previous current matrix to quantify row-by-row wall-time improvements.
+2. Continue the absolute-performance lane by profiling `compute_forces_s`,
+   which is now the dominant per-iteration cost on LP-QA and finite-beta QH.
+   The VMEC2000/vmec++ source audit points to reusable Fourier/geometry buffers
+   and in-place force assembly as the next architectural target.
+3. Keep the README benchmark artifact deferred until the presentation policy is
+   finalized, but keep benchmark JSON/CSV provenance under ignored `outputs/`.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 90%.
+- Free-boundary production differentiability: 87%.
+- Single-stage coil optimization: 86%.
+- CPU/GPU runtime and memory footprint: 91%.
+- Refactor/API/examples: 47%.
+- VMEC2000/VMEC++ parity and physics gates: 96%.
+- Docs/release hygiene: 96%.
+- Overall: 90%.
