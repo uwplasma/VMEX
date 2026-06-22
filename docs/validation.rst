@@ -95,8 +95,9 @@ Regenerate the panel from a same-branch direct-coil report with:
      --same-branch-report-ad-mode direct \
      --same-branch-report-direction current-only \
      --same-branch-report-vector-keys aspect,qs_total,mean_iota,lcfs_boundary_moment \
-     --max-evals 1 --max-iter 1 --vmec-max-iter 3 \
-     --same-branch-report-max-iter 3
+     --same-branch-report-rejected-slot-gate \
+     --same-branch-derivative-proposal \
+     --max-evals 1 --max-iter 1 --vmec-max-iter 2
 
    JAX_ENABLE_X64=1 python tools/diagnostics/readme_ad_fd_evidence.py \
      --branch-local-report outputs/pr20_ad_fd/qs_same_branch/same_branch_complete_solve_report.json \
