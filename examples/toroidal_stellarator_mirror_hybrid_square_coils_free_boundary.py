@@ -159,14 +159,22 @@ class SolvedBetaCase:
     row: dict[str, Any]
 
 
-def _json_default(value: Any) -> Any:
+def _json_sanitize(value: Any) -> Any:
+    """Convert arrays and non-finite numbers into strict JSON values."""
+
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, np.ndarray):
-        return value.tolist()
+        return _json_sanitize(value.tolist())
     if isinstance(value, np.generic):
-        return value.item()
-    return str(value)
+        return _json_sanitize(value.item())
+    if isinstance(value, float):
+        return value if np.isfinite(value) else None
+    if isinstance(value, dict):
+        return {str(key): _json_sanitize(val) for key, val in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_sanitize(val) for val in value]
+    return value
 
 
 def _finite_history(values: Any) -> np.ndarray:
@@ -633,7 +641,7 @@ def _write_coils_json(path: Path, coils: SquareCoilSet, config: ExampleConfig) -
         "base_curve_dofs": np.asarray(coils.params.base_curve_dofs),
         "n_segments": int(coils.params.n_segments),
     }
-    path.write_text(json.dumps(payload, indent=2, default=_json_default) + "\n")
+    path.write_text(json.dumps(_json_sanitize(payload), indent=2, allow_nan=False) + "\n")
     return path
 
 
@@ -907,7 +915,7 @@ def run_example(config: ExampleConfig = ExampleConfig()) -> Path:
         "figures": figures,
     }
     metrics_path = outdir / "square_coil_hybrid_free_boundary_solve_metrics.json"
-    metrics_path.write_text(json.dumps(metrics, indent=2, default=_json_default) + "\n")
+    metrics_path.write_text(json.dumps(_json_sanitize(metrics), indent=2, allow_nan=False) + "\n")
     return metrics_path
 
 
