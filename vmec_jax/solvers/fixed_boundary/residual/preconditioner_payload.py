@@ -139,6 +139,18 @@ def residual_preconditioner_operators(
 
     def lambda_preconditioner(bc, *, return_faclam: bool = False, return_debug: bool = False):
         lam_r0scale = float(getattr(trig, "r0scale", 1.0)) if trig is not None else 1.0
+        if bool(use_numpy_preconditioner_apply) and not tree_has_tracer_func(bc):
+            from vmec_jax.preconditioner_1d import lambda_preconditioner as build_lambda_np
+
+            return build_lambda_np(
+                bc=bc,
+                trig=trig,
+                s=s,
+                cfg=cfg,
+                return_faclam=return_faclam,
+                return_debug=return_debug,
+                r0scale=lam_r0scale,
+            )
         from vmec_jax.preconditioner_1d_jax import lambda_preconditioner_cached
 
         return lambda_preconditioner_cached(

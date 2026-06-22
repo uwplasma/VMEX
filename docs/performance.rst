@@ -373,8 +373,9 @@ read as a mixed result rather than a broad VMEC2000 speedup claim:
   ``VMEC_JAX_HOST_UPDATE_CPU_WORK_LIMIT`` to tune the threshold.
 
 **23. CPU host solves use a short-solve NumPy preconditioner apply**
-  The non-scan CPU host-update path uses the pure-NumPy R/Z preconditioner
-  apply for short solves (default threshold
+  The non-scan CPU host-update path uses the pure-NumPy lambda
+  preconditioner seed for concrete, non-traced host solves, and uses the
+  pure-NumPy R/Z preconditioner apply for short solves (default threshold
   ``VMEC_JAX_NUMPY_PRECOND_MAX_ITER=240``).  Long spectral production solves
   use the compiled JAX preconditioner apply by default because current
   Landreman-Paul QA and finite-beta QH profiles show the R/Z apply stage is
@@ -382,6 +383,8 @@ read as a mixed result rather than a broad VMEC2000 speedup claim:
   NumPy path with ``VMEC_JAX_NUMPY_PRECOND_MIN_MODES=<mode-count>`` where the
   mode count is ``mpol * (ntor + 1)``.  Set
   ``VMEC_JAX_NUMPY_PRECOND_MAX_ITER=0`` to disable the short-solve NumPy path.
+  The lambda-seed dispatch stays on the JAX implementation for traced,
+  differentiable, and accelerator paths.
 
 **24. Fixed-boundary startup avoids free-boundary imports**
   Ordinary fixed-boundary CLI/API runs no longer import or validate the
@@ -2237,6 +2240,21 @@ builder reduced the same diagnostic row to ``0.232 s`` of preconditioner seed
 setup and ``0.155 s`` of R/Z matrix construction, while preserving the same
 short-trace residual.  Set ``VMEC_JAX_RZ_MATRIX_FULL_JIT=0`` only when
 diagnosing the older eager coefficient path.
+
+The 2026-06-22 CPU host follow-up moved concrete host-update lambda seeding to
+the pure-NumPy implementation.  On bounded three-iteration cold probes this
+reduced `solovev` solve-body time from about ``0.189 s`` to ``0.112 s`` and
+`nfp4_QH_warm_start` solve-body time from about ``0.346 s`` to ``0.274 s``;
+the short-trace residuals were unchanged.  The remaining seed target on those
+probes is R/Z matrix construction, not lambda preconditioning.
+
+A compact 16-row bundled single-grid ``vmec_jax`` refresh after this change
+showed aggregate improvement against the previous current-branch compact
+matrix: median cold runtime ``0.899x``, median warm runtime ``0.864x``, and
+median peak memory ``0.993x``.  One LASYM axisymmetric row had a small
+``1.104x`` warm-runtime outlier while its cold runtime still improved, so this
+was classified as row-level timing noise rather than a correctness or policy
+regression.
 
 A broader 2026-05-24 internal policy matrix compared the default fixed-boundary
 policy against the explicit ``accelerated`` policy on all 35 bundled

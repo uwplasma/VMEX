@@ -2457,3 +2457,125 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 97%.
 - Docs/release hygiene: 97.6%.
 - Overall: 93.8%.
+
+### 2026-06-22: Profile cold setup and reject no-win profile fast path
+
+Steps taken:
+
+- Re-ran a bounded cold setup probe on `examples_single_grid/data/input.solovev`
+  with three single-grid parity iterations, timing detail enabled, and no finish
+  policy.
+- Inspected the residual profile setup, force payload, strict-update, and scan
+  payload seams to identify whether optional channel materialization or
+  profile setup offered a safe small memory/runtime win.
+- Temporarily tested two small code changes locally:
+  - a narrow zero-profile WOUT-like setup fast path for vacuum/default-APHI
+    inputs,
+  - skipping the NumPy-force patch import in profile setup when only
+    `host_update_assembly` was true.
+- Reverted both experimental changes before committing because the measured
+  results did not justify carrying extra complexity.
+
+Results obtained:
+
+- Current `solovev` cold three-iteration probe is already much faster than the
+  older pre-cleanup profile: `solve_total_s ~= 0.189 s`, with the largest
+  buckets now `precond_refresh_seed_lambda_s ~= 0.076 s`,
+  `setup_axis_reset_s ~= 0.045 s`, and `setup_boundary_profiles_s ~= 0.039 s`.
+- `solovev` cannot use a vacuum-profile shortcut because it has nonzero
+  pressure and iota coefficients (`AM = 0.125 -0.125`, `AI = 1`).
+- The QH vacuum row showed the profile wrapper is already cheap when the
+  NumPy-force patch is active (`setup_profile_data_s ~= 0.00027 s`). Removing
+  the patch import was a regression: `setup_profile_data_s` increased to about
+  `0.123 s` and total setup increased to about `0.211 s`.
+- Optional asymmetric-channel zero materialization is real in the JAX
+  preconditioner/scan payloads, but the current scan payload carries a fixed
+  12-channel tuple and helper tests explicitly encode dense-zero behavior for
+  absent optional channels. Changing this safely requires a larger optional
+  channel pytree refactor, not a narrow patch.
+
+Best next steps:
+
+1. Do not pursue the rejected profile fast path or patch-import removal again
+   unless a new profile shows a different target.
+2. Target preconditioner seed cost next, especially lambda preconditioner setup
+   and R/Z matrix setup reuse for short cold runs.
+3. Treat optional-channel memory reduction as a deliberate refactor: introduce
+   optional-channel payload types, update scan restart masking and strict-update
+   call sites, and gate with LASYM/finite-beta/WOUT parity tests before
+   promotion.
+4. Continue fixed-boundary production differentiability and free-boundary
+   branch-local derivative integration in parallel with runtime work.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 92%.
+- Free-boundary production differentiability: 91%.
+- Single-stage coil optimization: 87.5%.
+- CPU/GPU runtime and memory footprint: 94.4%.
+- Refactor/API/examples: 52.5%.
+- VMEC2000/VMEC++ parity and physics gates: 97%.
+- Docs/release hygiene: 97.6%.
+- Overall: 93.9%.
+
+### 2026-06-22: Promote CPU host NumPy lambda preconditioner seed
+
+Steps taken:
+
+- Added a concrete-host dispatch in the residual preconditioner operator
+  binding so non-traced CPU host-update stages use the existing pure-NumPy
+  lambda preconditioner implementation.
+- Kept traced/differentiable, JAX, and accelerator paths on
+  `lambda_preconditioner_cached`, preserving autodiff and accelerator behavior.
+- Added a focused dispatch-policy unit test that monkeypatches the NumPy and
+  JAX implementations to verify the host path selects the NumPy implementation.
+- Re-ran preconditioner parity/unit tests and fast physics gates.
+
+Results obtained:
+
+- Preconditioner tests passed:
+  `tests/test_preconditioner_1d_fast_helpers.py`,
+  `tests/test_preconditioner_1d_jax_fast_helpers.py`,
+  `tests/test_tcon_precondn_diag.py`, and
+  `tests/test_solve_preconditioner_payload_helpers.py`.
+- Fast physics/parity gates passed:
+  `tests/test_vmec_parity_physics_fast_gates.py`,
+  `tests/test_wout_physics_gates.py`, and
+  `tests/test_vmec2000_fixed_boundary_physics_gates.py`.
+- Bounded three-iteration cold probes improved without changing the short-trace
+  residuals:
+  - `input.solovev`: solve-body time dropped from about `0.189 s` to
+    `0.112 s`; lambda seed dropped from about `0.076 s` to `0.0012 s`.
+  - `input.nfp4_QH_warm_start`: solve-body time dropped from about `0.346 s`
+    to `0.274 s`; lambda seed dropped from about `0.079 s` to `0.0014 s`.
+- The remaining cold preconditioner seed cost is now R/Z matrix construction,
+  not lambda preconditioning.
+- A compact 16-row bundled single-grid `vmec_jax` matrix after this change
+  completed successfully.  Compared with the previous compact current-branch
+  matrix, median cold runtime was `0.899x`, median warm runtime was `0.864x`,
+  and median peak memory was `0.993x`.  One LASYM axisymmetric row had a small
+  `1.104x` warm-runtime outlier while cold runtime improved, so it is tracked as
+  noise unless repeated profiles reproduce it.
+
+Best next steps:
+
+1. Continue R/Z matrix construction profiling; keep differentiable paths on JAX
+   and only use host NumPy paths for concrete non-traced CPU solves.
+2. Keep optional-channel memory reduction as a separate structural refactor,
+   not a speculative patch.
+3. Move to fixed-boundary production differentiability operator cleanup and
+   branch-local free-boundary derivative-proposal integration after this
+   performance tranche is committed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 92%.
+- Free-boundary production differentiability: 91%.
+- Single-stage coil optimization: 87.5%.
+- CPU/GPU runtime and memory footprint: 95.4%.
+- Refactor/API/examples: 53%.
+- VMEC2000/VMEC++ parity and physics gates: 97.2%.
+- Docs/release hygiene: 97.9%.
+- Overall: 94.6%.
