@@ -92,6 +92,12 @@ def _trace(name: str):
     return _optional_jax_context(lambda: jax.profiler.TraceAnnotation(name))
 
 
+def _force_trace(name: str):
+    """Name a VMEC force subphase for JAX profiler/Perfetto traces."""
+
+    return _trace(f"vmec_forces/{name}")
+
+
 def _vmec_force_profile_enabled() -> bool:
     value = os.environ.get("VMEC_JAX_PROFILE_FORCE", "")
     return value.strip().lower() not in ("", "0", "false", "no")
@@ -886,20 +892,25 @@ def _finish_vmec_rz_force_kernels(
     if indata is not None and constraint_tcon0 is None:
         constraint_tcon0 = float(indata.get_float("TCON0", 1.0))
     constraint_start = time.perf_counter() if bool(profile_constraint) else None
-    con = _constraint_kernels_from_state(
-        state=state,
-        static=static,
-        wout=wout,
-        bc=bc,
-        pru_0=pru_0,
-        pru_1=pru_1,
-        pzu_0=pzu_0,
-        pzu_1=pzu_1,
-        constraint_tcon0=constraint_tcon0,
-        **options,
-    )
+    with _force_trace("constraint_finish"):
+        con = _constraint_kernels_from_state(
+            state=state,
+            static=static,
+            wout=wout,
+            bc=bc,
+            pru_0=pru_0,
+            pru_1=pru_1,
+            pzu_0=pzu_0,
+            pzu_1=pzu_1,
+            constraint_tcon0=constraint_tcon0,
+            **options,
+        )
     if constraint_start is not None:
-        _vmec_force_profile_log("constraint_done", constraint_start)
+        _vmec_force_profile_log(
+            "constraint_finish_done",
+            constraint_start,
+            phase="constraint_finish",
+        )
 
     return VmecRZForceKernels(
         armn_e=armn_e,
@@ -1189,19 +1200,21 @@ def vmec_forces_rz_from_wout(
     phips = wout_eff.phips
     # This conversion is needed both by bcovar and by the constraint kernels.
     # Compute it once per force evaluation and pass it through to bcovar.
-    geom_start = time.perf_counter()
-    Rcos_int, Zsin_int, Rsin_int, Zcos_int = vmec_m1_internal_to_physical_signed(
-        Rcos=state.Rcos,
-        Zsin=state.Zsin,
-        Rsin=state.Rsin,
-        Zcos=state.Zcos,
-        modes=static.modes,
-        lthreed=bool(getattr(static.cfg, "lthreed", True)),
-        lasym=bool(getattr(static.cfg, "lasym", False)),
-        lconm1=bool(getattr(static.cfg, "lconm1", True)),
-    )
+    m1_start = time.perf_counter()
+    with _force_trace("m1_physical"):
+        Rcos_int, Zsin_int, Rsin_int, Zcos_int = vmec_m1_internal_to_physical_signed(
+            Rcos=state.Rcos,
+            Zsin=state.Zsin,
+            Rsin=state.Rsin,
+            Zcos=state.Zcos,
+            modes=static.modes,
+            lthreed=bool(getattr(static.cfg, "lthreed", True)),
+            lasym=bool(getattr(static.cfg, "lasym", False)),
+            lconm1=bool(getattr(static.cfg, "lconm1", True)),
+        )
+    _vmec_force_profile_log("m1_physical_done", m1_start, phase="m1_physical")
     bcovar_start = time.perf_counter()
-    with _trace("bcovar"):
+    with _force_trace("bcovar"):
         bcovar_kwargs = dict(
             state=state,
             static=static,
@@ -1220,7 +1233,7 @@ def vmec_forces_rz_from_wout(
         if _looks_like_force_kernel_payload(bcovar_result) or not _bcovar_matches_radial_grid(bcovar_result, s):
             bcovar_result = _production_bcovar_half_mesh_from_wout(expected_s=s, **bcovar_kwargs)
         bc, bc_parity = _bcovar_with_parity_aux(bcovar_result)
-    _vmec_force_profile_log("bcovar_done", bcovar_start)
+    _vmec_force_profile_log("bcovar_done", bcovar_start, phase="bcovar")
 
     # VMEC stores internal coefficients; undo the m=1 internal constraint for
     # R/Z before real-space synthesis.
@@ -1233,22 +1246,27 @@ def vmec_forces_rz_from_wout(
         Lsin=jnp.asarray(state.Lsin),
     )
 
-    pr1_0 = jnp.asarray(bc_parity.pr1_even)
-    pr1_1 = jnp.asarray(bc_parity.pr1_odd)
-    pz1_0 = jnp.asarray(bc_parity.pz1_even)
-    pz1_1 = jnp.asarray(bc_parity.pz1_odd)
-    pru_0 = jnp.asarray(bc_parity.pru_even)
-    pru_1 = jnp.asarray(bc_parity.pru_odd)
-    pzu_0 = jnp.asarray(bc_parity.pzu_even)
-    pzu_1 = jnp.asarray(bc_parity.pzu_odd)
-    prv_0 = jnp.asarray(bc_parity.prv_even)
-    prv_1 = jnp.asarray(bc_parity.prv_odd)
-    pzv_0 = jnp.asarray(bc_parity.pzv_even)
-    pzv_1 = jnp.asarray(bc_parity.pzv_odd)
-    Lu1 = jnp.asarray(bc_parity.lu_odd)
-    Lv1 = jnp.asarray(bc_parity.lv_odd)
-
-    _vmec_force_profile_log("geometry_done", geom_start)
+    parity_start = time.perf_counter()
+    with _force_trace("parity_extract"):
+        pr1_0 = jnp.asarray(bc_parity.pr1_even)
+        pr1_1 = jnp.asarray(bc_parity.pr1_odd)
+        pz1_0 = jnp.asarray(bc_parity.pz1_even)
+        pz1_1 = jnp.asarray(bc_parity.pz1_odd)
+        pru_0 = jnp.asarray(bc_parity.pru_even)
+        pru_1 = jnp.asarray(bc_parity.pru_odd)
+        pzu_0 = jnp.asarray(bc_parity.pzu_even)
+        pzu_1 = jnp.asarray(bc_parity.pzu_odd)
+        prv_0 = jnp.asarray(bc_parity.prv_even)
+        prv_1 = jnp.asarray(bc_parity.prv_odd)
+        pzv_0 = jnp.asarray(bc_parity.pzv_even)
+        pzv_1 = jnp.asarray(bc_parity.pzv_odd)
+        Lu1 = jnp.asarray(bc_parity.lu_odd)
+        Lv1 = jnp.asarray(bc_parity.lv_odd)
+    _vmec_force_profile_log(
+        "parity_extract_done",
+        parity_start,
+        phase="parity_extract",
+    )
 
     # Half-mesh sqrt(s) and full-mesh sqrt(s).
     pshalf = _pshalf_from_s(s)[:, None, None]
@@ -1268,39 +1286,45 @@ def vmec_forces_rz_from_wout(
 
     assembly_start = time.perf_counter()
     lthreed = bool(np.any(np.asarray(static.modes.n) != 0))
-    radial = _assemble_vmec_rz_radial_forces(
-        s=s,
-        ohs=ohs,
-        dshalfds=dshalfds,
-        pshalf=pshalf,
-        psqrts=psqrts,
-        phips=phips,
-        lu_e=lu_e,
-        lv_e=lv_e,
-        guu=guu,
-        guv=guv,
-        gvv=gvv,
-        jac=bc.jac,
-        pr1_0=pr1_0,
-        pr1_1=pr1_1,
-        pz1_1=pz1_1,
-        pru_0=pru_0,
-        pru_1=pru_1,
-        pzu_0=pzu_0,
-        pzu_1=pzu_1,
-        prv_0=prv_0,
-        prv_1=prv_1,
-        pzv_0=pzv_0,
-        pzv_1=pzv_1,
-        Lv1=Lv1,
-        lthreed=bool(lthreed),
-    )
+    with _force_trace("radial_force_assembly"):
+        radial = _assemble_vmec_rz_radial_forces(
+            s=s,
+            ohs=ohs,
+            dshalfds=dshalfds,
+            pshalf=pshalf,
+            psqrts=psqrts,
+            phips=phips,
+            lu_e=lu_e,
+            lv_e=lv_e,
+            guu=guu,
+            guv=guv,
+            gvv=gvv,
+            jac=bc.jac,
+            pr1_0=pr1_0,
+            pr1_1=pr1_1,
+            pz1_1=pz1_1,
+            pru_0=pru_0,
+            pru_1=pru_1,
+            pzu_0=pzu_0,
+            pzu_1=pzu_1,
+            prv_0=prv_0,
+            prv_1=prv_1,
+            pzv_0=pzv_0,
+            pzv_1=pzv_1,
+            Lv1=Lv1,
+            lthreed=bool(lthreed),
+        )
     (
         armn_e, armn_o, brmn_e, brmn_o, crmn_e, crmn_o,
         azmn_e, azmn_o, bzmn_e, bzmn_o, czmn_e, czmn_o,
     ) = radial
 
-    _vmec_force_profile_log("assembly_done", assembly_start)
+    _vmec_force_profile_log(
+        "radial_force_assembly_done",
+        assembly_start,
+        phase="radial_force_assembly",
+        lthreed=bool(lthreed),
+    )
 
     armn_e, armn_o, azmn_e, azmn_o = _apply_freeb_edge_forcing(locals())
 
@@ -1333,7 +1357,7 @@ def vmec_forces_rz_from_wout(
         profile_constraint=True,
         include_constraint_offsets=True,
     )
-    _vmec_force_profile_log("force_done", force_start)
+    _vmec_force_profile_log("force_total_done", force_start, phase="force_total")
     return result
 
 

@@ -1847,3 +1847,55 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 96%.
 - Docs/release hygiene: 96.5%.
 - Overall: 90.7%.
+
+### 2026-06-22: Split force-kernel profile phases into VMEC-comparable buckets
+
+Steps taken:
+
+- Replaced the ambiguous overlapping force profile stages with non-overlapping
+  buckets: `m1_physical`, `bcovar`, `parity_extract`,
+  `radial_force_assembly`, `constraint_finish`, and `force_total`.
+- Added JAX profiler/Perfetto trace annotations with the same phase names so
+  CPU/GPU traces can be matched to the printed VMEC-style timing summaries.
+- Added a focused synthetic-force regression test that enables
+  `VMEC_JAX_PROFILE_FORCE=1` and checks that the new phase names are emitted
+  while the old overlapping names are not.
+
+Results obtained:
+
+- Focused validation passed:
+  `python -m ruff check vmec_jax/vmec_forces.py
+  tests/test_vmec_forces_synthetic_helpers.py`;
+  `JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_vmec_forces_synthetic_helpers.py::test_force_profile_phases_are_vmec_comparable
+  tests/test_vmec_forces_synthetic_helpers.py::test_force_profile_log_respects_env
+  tests/test_solve_residual_iter_force_payload_helpers.py -q`.
+- A short QH single-grid profile smoke passed:
+  `input.nfp4_QH_warm_start`, `--iters 20`, no warmup, no multigrid,
+  `solve_total_s=0.198 s`, `compute_forces_s=0.014 s`,
+  `final_w=7.30e-6` as expected for a deliberately under-converged
+  20-iteration smoke.
+- This tranche is an observability/refactor improvement. It does not change the
+  force algebra and should not be counted as a runtime win by itself.
+
+Best next steps:
+
+1. Use the new non-overlapping force phases in CPU/GPU profiles to decide
+   whether the next production speedup should target TOMNSP/Fourier synthesis,
+   bcovar geometry, or constraint finish.
+2. Prototype the separable TOMNSP/Fourier workspace path behind an opt-in flag,
+   with WOUT parity and AD-vs-FD gates before changing the default math path.
+3. Keep compact force aux opt-in until the staged force-kernel refactor makes
+   the memory-saving path speed-neutral.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 90%.
+- Free-boundary production differentiability: 87%.
+- Single-stage coil optimization: 86%.
+- CPU/GPU runtime and memory footprint: 91.6%.
+- Refactor/API/examples: 49.5%.
+- VMEC2000/VMEC++ parity and physics gates: 96%.
+- Docs/release hygiene: 96.5%.
+- Overall: 90.8%.
