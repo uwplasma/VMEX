@@ -644,3 +644,31 @@ def test_prepare_matplotlib_3d_replaces_broken_user_toolkit(tmp_path, monkeypatc
         assert any((Path(path) / "mplot3d" / "axes3d.py").exists() for path in prepared_paths)
     finally:
         _restore_mpl_toolkits_modules(snapshot)
+
+
+def test_prepare_matplotlib_3d_prefers_matplotlib_install_over_user_site(tmp_path, monkeypatch):
+    snapshot = _snapshot_mpl_toolkits_modules()
+    try:
+        user_site = tmp_path / "user_site"
+        user_toolkit = user_site / "mpl_toolkits"
+        (user_toolkit / "mplot3d").mkdir(parents=True)
+        (user_toolkit / "__init__.py").write_text("")
+        (user_toolkit / "mplot3d" / "__init__.py").write_text("from .axes3d import Axes3D\n")
+        (user_toolkit / "mplot3d" / "axes3d.py").write_text("class Axes3D:\n    name = '3d'\n")
+        monkeypatch.setattr(site, "getusersitepackages", lambda: str(user_site))
+
+        imported = ModuleType("mpl_toolkits")
+        imported.__file__ = str(user_toolkit / "__init__.py")
+        imported.__path__ = [str(user_toolkit)]
+        monkeypatch.setitem(sys.modules, "mpl_toolkits", imported)
+
+        prepare_matplotlib_3d()
+
+        import matplotlib
+
+        matplotlib_site = str(Path(matplotlib.__file__).resolve().parent.parent)
+        prepared = sys.modules["mpl_toolkits"]
+        assert str(user_toolkit) not in list(prepared.__path__)
+        assert all(str(Path(path).resolve()).startswith(matplotlib_site) for path in prepared.__path__)
+    finally:
+        _restore_mpl_toolkits_modules(snapshot)

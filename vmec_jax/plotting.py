@@ -80,13 +80,11 @@ def fix_matplotlib_3d(ax):
 def prepare_matplotlib_3d() -> None:
     """Prefer the Matplotlib-matched ``mpl_toolkits`` namespace before plotting.
 
-    Some Linux installations preload ``mpl_toolkits`` from the system
-    ``dist-packages`` while importing a newer pip-installed ``matplotlib`` from
-    user site-packages.  That mixed state makes ``projection="3d"`` fail with
-    errors such as ``cannot import name 'docstring' from 'matplotlib'``.  If we
-    detect that state and a user/site ``mpl_toolkits.mplot3d`` is available,
-    replace the preloaded namespace before ``pyplot`` imports Matplotlib
-    projections.
+    Some installations preload ``mpl_toolkits`` from a system or user
+    site-packages while importing ``matplotlib`` from a virtual environment.
+    That mixed state makes ``projection="3d"`` fail with version-mismatch
+    errors.  Prefer the ``mpl_toolkits`` directory that lives next to the
+    imported ``matplotlib`` package, then fall back to the normal site paths.
     """
 
     def _register_projection() -> bool:
@@ -102,18 +100,26 @@ def prepare_matplotlib_3d() -> None:
             pass
         return True
 
+    try:
+        matplotlib = importlib.import_module("matplotlib")
+        matplotlib_site = str(Path(matplotlib.__file__).resolve().parent.parent)
+    except Exception:
+        matplotlib_site = ""
+
     loaded = sys.modules.get("mpl_toolkits")
     loaded_file = str(getattr(loaded, "__file__", "")) if loaded is not None else ""
     loaded_paths = [str(path) for path in getattr(loaded, "__path__", [])] if loaded is not None else []
-    loaded_from_system_dist = "/usr/lib/python3/dist-packages" in loaded_file or any(
-        "/usr/lib/python3/dist-packages" in path for path in loaded_paths
+    loaded_matches_matplotlib = bool(matplotlib_site) and all(
+        str(Path(path).resolve()).startswith(matplotlib_site) for path in loaded_paths
     )
     loaded_has_mplot3d = any((Path(path) / "mplot3d" / "axes3d.py").exists() for path in loaded_paths)
-    if loaded is not None and loaded_has_mplot3d and not loaded_from_system_dist and _register_projection():
+    if loaded is not None and loaded_has_mplot3d and loaded_matches_matplotlib and _register_projection():
         return
 
     candidate_bases: list[str] = []
-    for getter in (site.getusersitepackages, site.getsitepackages):
+    if matplotlib_site:
+        candidate_bases.append(matplotlib_site)
+    for getter in (site.getsitepackages, site.getusersitepackages):
         try:
             value = getter()
         except Exception:
