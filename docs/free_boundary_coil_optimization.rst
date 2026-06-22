@@ -1434,6 +1434,12 @@ trial is then evaluated by the ordinary complete free-boundary solve, and only
 that complete-solve objective can accept it.  This keeps the branch-local
 derivative path as a proposal mechanism while the production solve remains the
 acceptance authority.
+Requesting ``--same-branch-derivative-proposal`` automatically enables
+``--write-same-branch-report`` so the command has one explicit derivative
+proposal switch; explicit report options such as
+``--same-branch-report-vector-keys`` and
+``--same-branch-report-rejected-slot-gate`` still control the generated
+evidence.
 The proposal path is deliberately strict: it requires an unchanged complete
 solve branch fingerprint, production-forward scalar values, ``direct``
 ``directional_jvp`` replay, a fixed accepted-branch derivative claim, and
@@ -1466,7 +1472,6 @@ final-point derivative evidence for a reviewer-facing artifact.
      --vmec-max-iter 2 \
      --helicity-m 1 \
      --helicity-n 0 \
-     --write-same-branch-report \
      --same-branch-report-mode vector \
      --same-branch-report-direction current-only \
      --same-branch-report-vector-keys aspect,qs_total \

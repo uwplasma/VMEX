@@ -24,9 +24,11 @@ Run a minimal smoke from the repository root:
     python examples/optimization/free_boundary_QS_coil_optimization.py --smoke --provider circle
 
 Add a same-branch derivative artifact using the validated branch-local vector
-JVP report:
+JVP report, or ask that report to propose one conservative coil step that is
+still accepted/rejected by a normal complete free-boundary solve:
 
     python examples/optimization/free_boundary_QS_coil_optimization.py --smoke --provider circle --write-same-branch-report
+    python examples/optimization/free_boundary_QS_coil_optimization.py --smoke --provider circle --same-branch-derivative-proposal
 
 Preview the generated input, selected coil variables, objective weights, and
 baseline coil diagnostics without running VMEC:
@@ -1798,8 +1800,9 @@ def add_same_branch_proposal_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "Opt-in only: after Powell, use the same-branch vector/JVP report "
             "to propose one directional coil step, then evaluate that trial "
-            "with the normal complete-solve objective. This does not "
-            "differentiate adaptive host branch selection."
+            "with the normal complete-solve objective. This implies "
+            "--write-same-branch-report. This does not differentiate adaptive "
+            "host branch selection."
         ),
     )
     parser.add_argument(
@@ -1881,9 +1884,20 @@ def apply_smoke_defaults(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
+def normalize_same_branch_options(args: argparse.Namespace) -> argparse.Namespace:
+    """Keep the branch-local proposal path a single explicit user action."""
+
+    # The derivative proposal consumes the validated same-branch vector/JVP
+    # report, so requesting a proposal without the report only creates stale
+    # metadata.  Normalize early, before summary configuration is assembled.
+    if bool(args.same_branch_derivative_proposal):
+        args.write_same_branch_report = True
+    return args
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = apply_smoke_defaults(parser.parse_args(argv))
+    args = normalize_same_branch_options(apply_smoke_defaults(parser.parse_args(argv)))
     try:
         optimize_coils(args)
     except SkipExample as exc:

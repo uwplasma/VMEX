@@ -2579,3 +2579,54 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 97.2%.
 - Docs/release hygiene: 97.9%.
 - Overall: 94.6%.
+
+### 2026-06-22: Make branch-local coil proposal a single explicit example switch
+
+Steps taken:
+
+- Audited the direct-coil QS optimization example and confirmed the validated
+  branch-local vector/JVP proposal path already uses production-forward values,
+  fixed accepted-branch replay derivatives, and complete free-boundary solves
+  as the only trial acceptance authority.
+- Normalized the CLI so ``--same-branch-derivative-proposal`` automatically
+  enables ``--write-same-branch-report`` before summary metadata is assembled.
+- Kept the promoted report defaults unchanged: vector mode, direct JVP replay,
+  and current-only auto-selection when a current variable is available.
+- Updated the example docstring, free-boundary docs, and mocked smoke coverage
+  so users can request the derivative proposal with one switch while still
+  seeing the conservative same-branch/fingerprint-gated contract.
+
+Results obtained:
+
+- Same-branch proposal smoke subset passed:
+  ``tests/test_free_boundary_qs_coil_optimization_smoke.py -k 'same_branch_derivative_proposal or derivative_proposal_summary or dry_run'``
+  (`10 passed, 23 deselected`).
+- The finite-beta direct-coil wrapper smoke still passed:
+  ``tests/test_free_boundary_qa_finite_beta_coil_optimization_smoke.py``
+  (`2 passed`).
+- Ruff passed on the modified example and test.
+- The single-switch example now reports ``same_branch_report_config.enabled =
+  True`` and ``same_branch_derivative_proposal_config.enabled = True`` in
+  ``summary.json``.
+
+Best next steps:
+
+1. Continue R/Z matrix seed profiling and cache/reuse work after the NumPy
+   lambda preconditioner speedup.
+2. Keep free-boundary derivative claims conservative until arbitrary adaptive
+   branch differentiation is implemented under the research-grade
+   differentiability plan.
+3. Extend the single-stage coil optimization example only with changes that
+   preserve complete-solve acceptance authority.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 92%.
+- Free-boundary production differentiability: 91.5%.
+- Single-stage coil optimization: 88%.
+- CPU/GPU runtime and memory footprint: 95.4%.
+- Refactor/API/examples: 54%.
+- VMEC2000/VMEC++ parity and physics gates: 97.2%.
+- Docs/release hygiene: 98%.
+- Overall: 94.9%.
