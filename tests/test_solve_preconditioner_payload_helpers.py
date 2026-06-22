@@ -158,6 +158,42 @@ def test_jax_preconditioned_residual_scalar_channels_uses_cached_norm_and_safe_s
     assert float(out.fsq1) == 7.5
 
 
+def test_residual_preconditioner_operators_use_numpy_lambda_for_host_path(monkeypatch) -> None:
+    import vmec_jax.preconditioner_1d as p1d
+    import vmec_jax.preconditioner_1d_jax as p1d_jax
+
+    calls = []
+
+    def fake_lambda_preconditioner(**kwargs):
+        calls.append(kwargs)
+        return ("numpy-lambda", kwargs["return_faclam"], kwargs["return_debug"])
+
+    monkeypatch.setattr(p1d, "lambda_preconditioner", fake_lambda_preconditioner)
+    monkeypatch.setattr(
+        p1d_jax,
+        "lambda_preconditioner_cached",
+        lambda **_kwargs: pytest.fail("host path should not call JAX lambda preconditioner"),
+    )
+
+    ops = payload_mod.residual_preconditioner_operators(
+        trig=SimpleNamespace(r0scale=1.25),
+        s=np.linspace(0.0, 1.0, 3),
+        cfg=SimpleNamespace(mpol=2, ntor=1, ntheta=4, nzeta=2, nfp=1, lasym=False, lthreed=True),
+        use_numpy_preconditioner_apply=True,
+        tree_has_tracer_func=lambda _value: False,
+        radial_tridi_smooth_dirichlet_func=lambda a, **_kwargs: a,
+        jnp_module=np,
+    )
+
+    got = ops.lambda_preconditioner("bc", return_faclam=True, return_debug=True)
+
+    assert got == ("numpy-lambda", True, True)
+    assert calls[0]["bc"] == "bc"
+    assert calls[0]["r0scale"] == pytest.approx(1.25)
+    assert calls[0]["return_faclam"] is True
+    assert calls[0]["return_debug"] is True
+
+
 def test_seed_preconditioner_cache_from_bcovar_update_builds_vmec2000_seed() -> None:
     stats = {
         "precond_refresh_seed": 0.0,
