@@ -2637,7 +2637,6 @@ def test_derivative_proposal_summary_marks_report_stale_when_trial_is_accepted(t
             "1",
             "--qs-weight",
             "4.0",
-            "--write-same-branch-report",
             "--same-branch-derivative-proposal",
             "--same-branch-proposal-step",
             "1.0",
@@ -2652,6 +2651,8 @@ def test_derivative_proposal_summary_marks_report_stale_when_trial_is_accepted(t
     assert calls[1]["current"] == pytest.approx(1.96)
 
     summary = json.loads((tmp_path / "summary.json").read_text())
+    assert summary["same_branch_report_config"]["enabled"] is True
+    assert summary["same_branch_derivative_proposal_config"]["enabled"] is True
     proposal = summary["same_branch_derivative_proposal"]
     assert proposal["available"] is True
     assert proposal["accepted_by_complete_solve"] is True
