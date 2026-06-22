@@ -627,3 +627,52 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 90%.
 - Docs/release hygiene: 89%.
 - Overall: 73%.
+
+### 2026-06-21: Strict README AD-vs-FD evidence gate
+
+Steps taken:
+
+- Re-ran the same-branch direct-coil free-boundary smoke report:
+  `JAX_ENABLE_X64=1 python examples/optimization/free_boundary_QS_coil_optimization.py --smoke --provider circle --outdir outputs/pr20_ad_fd/qs_same_branch --write-same-branch-report --same-branch-report-mode vector --same-branch-report-ad-mode direct --same-branch-report-direction current-only --same-branch-report-vector-keys aspect,qs_total,mean_iota,lcfs_boundary_moment --max-evals 1 --max-iter 1 --vmec-max-iter 3 --same-branch-report-max-iter 3`.
+- Regenerated `docs/_static/figures/readme_ad_fd_evidence.{png,csv,json}` from that report.
+- Tightened the evidence renderer so all checked-in rows use a `1e-9`
+  relative slope-error tolerance, including the branch-local direct-coil
+  free-boundary rows.
+
+Results obtained:
+
+- The evidence panel now has ten rows:
+  fixed-boundary aspect, iota, QS residual, smooth QI residual, `DMerc`,
+  `D_R`, and four same-branch direct-coil free-boundary scalars (`aspect`,
+  `qs_total`, `mean_iota`, `lcfs_boundary_moment`).
+- All rows pass the stricter `1e-9` gate. The largest relative error is the
+  branch-local free-boundary `qs_total` row at `2.57e-10`; `DMerc` is
+  `3.55e-13` and `D_R` is `2.32e-12`.
+- Focused tests passed:
+  `tests/test_glasser_resistive_interchange.py::test_public_dmerc_and_glasser_objective_gradients_match_central_finite_difference`,
+  `tests/test_glasser_resistive_interchange.py::test_profile_integral_mercier_and_glasser_gradients_match_central_finite_difference`,
+  `tests/test_free_boundary_qs_coil_optimization_smoke.py::test_branch_local_scalar_report_adapter_records_gate_evidence`, and
+  `tests/test_free_boundary_qs_coil_optimization_smoke.py::test_branch_local_scalar_report_adapter_records_failure_modes`.
+
+Best next steps:
+
+1. Promote the full benchmark/parity gate next: current branch vs `origin/main`
+   full single-grid matrix, VMEC2000 rows, VMEC++ rows where converged, and WOUT
+   parity on the selected cases.
+2. Keep the adaptive free-boundary wording conservative: this evidence remains
+   same-branch/fingerprint-gated, not arbitrary adaptive branch
+   differentiation.
+3. Continue the 3D preconditioner seed optimization after the full benchmark
+   identifies whether the same QH bottleneck appears across the matrix.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 82%.
+- Fixed-boundary production differentiability: 86%.
+- Free-boundary production differentiability: 82%.
+- Single-stage coil optimization: 86%.
+- CPU/GPU runtime and memory footprint: 72%.
+- Refactor/API/examples: 41%.
+- VMEC2000/VMEC++ parity and physics gates: 91%.
+- Docs/release hygiene: 90%.
+- Overall: 75%.

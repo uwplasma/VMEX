@@ -20,6 +20,7 @@ import numpy as np
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+STRICT_DETERMINISTIC_TOL = 1.0e-9
 
 
 @dataclass(frozen=True)
@@ -109,7 +110,7 @@ def _aspect_row() -> EvidenceRow:
         method="unrolled JAX AD",
         objective=objective,
         alpha0=0.2,
-        tolerance=2.0e-6,
+        tolerance=STRICT_DETERMINISTIC_TOL,
         note="equilibrium_aspect_ratio_from_state on a tiny stellarator-symmetric state",
     )
 
@@ -131,7 +132,7 @@ def _iota_profile_row() -> EvidenceRow:
         method="JAX profile AD",
         objective=objective,
         alpha0=0.4,
-        tolerance=1.0e-8,
+        tolerance=STRICT_DETERMINISTIC_TOL,
         note="ProfilePolynomial iota-like radial profile",
     )
 
@@ -176,7 +177,7 @@ def _qs_row() -> EvidenceRow:
         method="JAX residual AD",
         objective=objective,
         alpha0=0.08,
-        tolerance=1.0e-7,
+        tolerance=STRICT_DETERMINISTIC_TOL,
         note="quasisymmetry_ratio_residual_from_wout",
     )
 
@@ -214,7 +215,7 @@ def _qi_row() -> EvidenceRow:
         method="smooth JAX AD",
         objective=objective,
         alpha0=0.12,
-        tolerance=3.0e-6,
+        tolerance=STRICT_DETERMINISTIC_TOL,
         note="quasi_isodynamic_residual_from_boozer_output",
     )
 
@@ -254,7 +255,7 @@ def _mercier_profile_row(field: str) -> EvidenceRow:
         method="JAX profile-integral AD",
         objective=objective,
         alpha0=0.10,
-        tolerance=5.0e-8,
+        tolerance=STRICT_DETERMINISTIC_TOL,
         note="mercier_terms_from_profile_integrals",
     )
 
@@ -285,8 +286,8 @@ def _branch_local_rows(report_path: Path | None) -> list[EvidenceRow]:
                 fd_slope=fd,
                 abs_error=float(scalar.get("abs_error", abs(ad - fd))),
                 rel_error=rel,
-                tolerance=1.0e-4,
-                passed=bool(scalar.get("passed", False)),
+                tolerance=STRICT_DETERMINISTIC_TOL,
+                passed=bool(scalar.get("passed", False)) and rel <= STRICT_DETERMINISTIC_TOL,
                 note="same-branch/fingerprint-gated; not arbitrary adaptive branch differentiation",
             )
         )

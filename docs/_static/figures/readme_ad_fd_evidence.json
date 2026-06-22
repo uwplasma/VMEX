@@ -14,7 +14,7 @@
       "rel_error": 4.3997183674093776e-10,
       "scalar": "aspect ratio",
       "scope": "fixed-boundary geometry",
-      "tolerance": 2e-06
+      "tolerance": 1e-09
     },
     {
       "abs_error": 4.313303186842532e-13,
@@ -26,7 +26,7 @@
       "rel_error": 4.313303186842532e-13,
       "scalar": "iota profile",
       "scope": "fixed-boundary radial profile",
-      "tolerance": 1e-08
+      "tolerance": 1e-09
     },
     {
       "abs_error": 2.8953449609635945e-16,
@@ -38,7 +38,7 @@
       "rel_error": 2.8953449609635945e-16,
       "scalar": "QS residual",
       "scope": "fixed-boundary Boozer/VMEC diagnostic",
-      "tolerance": 1e-07
+      "tolerance": 1e-09
     },
     {
       "abs_error": 1.1398555710417924e-12,
@@ -50,7 +50,7 @@
       "rel_error": 1.1398555710417924e-12,
       "scalar": "smooth QI residual",
       "scope": "Boozer-space omnigenity diagnostic",
-      "tolerance": 3e-06
+      "tolerance": 1e-09
     },
     {
       "abs_error": 3.5454148297753285e-13,
@@ -62,7 +62,7 @@
       "rel_error": 3.5454148297753285e-13,
       "scalar": "DMerc",
       "scope": "finite-beta profile stability",
-      "tolerance": 5e-08
+      "tolerance": 1e-09
     },
     {
       "abs_error": 2.3171230559282385e-12,
@@ -74,7 +74,7 @@
       "rel_error": 2.3171230559282385e-12,
       "scalar": "D_R",
       "scope": "finite-beta profile stability",
-      "tolerance": 5e-08
+      "tolerance": 1e-09
     },
     {
       "abs_error": 2.912763730510614e-11,
@@ -86,7 +86,7 @@
       "rel_error": 2.912763730510614e-11,
       "scalar": "free-boundary aspect",
       "scope": "direct-coil free-boundary",
-      "tolerance": 0.0001
+      "tolerance": 1e-09
     },
     {
       "abs_error": 2.5706008076291616e-10,
@@ -98,7 +98,7 @@
       "rel_error": 2.5706008076291616e-10,
       "scalar": "free-boundary qs_total",
       "scope": "direct-coil free-boundary",
-      "tolerance": 0.0001
+      "tolerance": 1e-09
     },
     {
       "abs_error": 1.3297991507804756e-12,
@@ -110,7 +110,7 @@
       "rel_error": 1.3297991507804756e-12,
       "scalar": "free-boundary mean_iota",
       "scope": "direct-coil free-boundary",
-      "tolerance": 0.0001
+      "tolerance": 1e-09
     },
     {
       "abs_error": 2.6962821494977244e-13,
@@ -122,7 +122,7 @@
       "rel_error": 2.6962821494977244e-13,
       "scalar": "free-boundary lcfs_boundary_moment",
       "scope": "direct-coil free-boundary",
-      "tolerance": 0.0001
+      "tolerance": 1e-09
     }
   ]
 }
