@@ -10795,6 +10795,9 @@ def solve_fixed_boundary_residual_iter(
     best_scored_full_boundary_count = 0
     best_scored_fresh_boundary_count = 0
     freeb_convergence_blocked_count = 0
+    freeb_fresh_convergence_recheck_count = 0
+    freeb_fresh_convergence_reject_count = 0
+    freeb_fresh_convergence_failed_count = 0
     returned_best_scored_state = False
 
     def _snapshot_best_scored_state(state_current: VMECState) -> VMECState:
@@ -11206,6 +11209,8 @@ def solve_fixed_boundary_residual_iter(
     _env_freeb_include_edge = os.getenv("VMEC_JAX_FREEB_INCLUDE_EDGE", "0").strip().lower()
     _env_force_edge_residual = os.getenv("VMEC_JAX_FORCE_EDGE_RESIDUAL", "").strip().lower()
     _env_freeb_raise = os.getenv("VMEC_JAX_FREEB_RAISE", "").strip().lower()
+    _env_freeb_fresh_convergence = os.getenv("VMEC_JAX_FREEB_FRESH_CONVERGENCE_GATE", "1").strip().lower()
+    freeb_fresh_convergence_gate = _env_freeb_fresh_convergence not in ("", "0", "false", "no", "off")
     _env_debug_iter = os.getenv("VMEC_JAX_DEBUG_ITER", "").strip()
     _env_dump_lam = os.getenv("VMEC_JAX_DUMP_LAM", "")
     _env_dump_lamcal = os.getenv("VMEC_JAX_DUMP_LAMCAL", "")
@@ -11861,6 +11866,97 @@ def solve_fixed_boundary_residual_iter(
             if bool(residual_converged_physical) and not bool(freeb_convergence_ready):
                 freeb_convergence_blocked_count += 1
             converged_physical = bool(residual_converged_physical) and bool(freeb_convergence_ready)
+            if (
+                bool(converged_physical)
+                and bool(freeb_fresh_convergence_gate)
+                and bool(free_boundary_enabled)
+                and bool(direct_free_boundary_provider)
+                and bool(freeb_couple_edge)
+            ):
+                freeb_fresh_convergence_recheck_count += 1
+                try:
+                    nestor_check, _runtime_check = nestor_external_only_step(
+                        state=state,
+                        static=static,
+                        ivac=1,
+                        ivacskip=0,
+                        iter_idx=int(iter2),
+                        runtime=freeb_nestor_runtime,
+                        extcur=tuple(getattr(static, "free_boundary_extcur", ()) or ()),
+                        plascur=float(freeb_plascur),
+                        external_field_provider_kind=external_field_provider_kind,
+                        external_field_provider_static=external_field_provider_static,
+                        external_field_provider_params=external_field_provider_params,
+                    )
+                    diag_check = getattr(nestor_check, "diagnostics", None)
+                    if isinstance(diag_check, dict):
+                        freeb_last_diagnostics = dict(diag_check)
+                    freeb_last_model = str(getattr(nestor_check, "model", freeb_last_model))
+                    bsqvac_edge_check = np.asarray(nestor_check.vac_total.bsqvac, dtype=float)
+                    if (
+                        bsqvac_edge_check.ndim == 2
+                        and int(bsqvac_edge_check.shape[1]) == 1
+                        and int(getattr(static.cfg, "nzeta", 1)) > 1
+                    ):
+                        bsqvac_edge_check = np.repeat(bsqvac_edge_check, int(static.cfg.nzeta), axis=1)
+                    freeb_bsqvac_half_current = bsqvac_edge_check
+                    _, _, gcr2_check, gcz2_check, gcl2_check, _, _, norms_check = _compute_forces_iter(
+                        state,
+                        include_edge=bool(include_edge),
+                        include_edge_residual=bool(include_edge_residual),
+                        zero_m1=zero_m1,
+                        freeb_bsqvac_half=freeb_bsqvac_half_current,
+                        constraint_rcon0=constraint_rcon0_current,
+                        constraint_zcon0=constraint_zcon0_current,
+                        constraint_precond_diag=constraint_precond_diag,
+                        constraint_tcon=constraint_tcon_override,
+                        constraint_precond_active=constraint_precond_active,
+                        constraint_tcon_active=constraint_tcon_active,
+                        iter2=iter2,
+                    )
+                    fsqr_check, fsqz_check, fsql_check = _fsq_from_norms(
+                        norms_check,
+                        gcr2_in=gcr2_check,
+                        gcz2_in=gcz2_check,
+                        gcl2_in=gcl2_check,
+                    )
+                    fsqr_f, fsqz_f, fsql_f = _device_get_floats(fsqr_check, fsqz_check, fsql_check)
+                    fsq0_curr = fsqr_f + fsqz_f + fsql_f
+                    if w_history:
+                        w_history[-1] = fsq0_curr
+                    if fsqr2_history:
+                        fsqr2_history[-1] = fsqr_f
+                    if fsqz2_history:
+                        fsqz2_history[-1] = fsqz_f
+                    if fsql2_history:
+                        fsql2_history[-1] = fsql_f
+                    if int(best_scored_iter) == int(iter2):
+                        best_scored_fsq = float(fsq0_curr)
+                        best_scored_fsqr = float(fsqr_f)
+                        best_scored_fsqz = float(fsqz_f)
+                        best_scored_fsql = float(fsql_f)
+                        best_scored_plascur = float(freeb_plascur)
+                    prev_rz_fsq = _free_boundary_prev_rz_fsq_next(
+                        prev_fsq_before=prev_rz_fsq_before,
+                        fsq_rz_curr=fsqr_f + fsqz_f,
+                        turnon_restart=bool(free_boundary_enabled)
+                        and bool(freeb_turnon_iter)
+                        and bool(freeb_turnon_applied),
+                        preserve_turnon_restart=bool(free_boundary_enabled) and bool(cfg.lthreed),
+                    )
+                    residual_converged_physical = _converged_residuals_host(
+                        fsqr=fsqr_f,
+                        fsqz=fsqz_f,
+                        fsql=fsql_f,
+                    )
+                    converged_physical = bool(residual_converged_physical)
+                    if not bool(converged_physical):
+                        freeb_fresh_convergence_reject_count += 1
+                except Exception:
+                    freeb_fresh_convergence_failed_count += 1
+                    if _env_freeb_raise not in ("", "0", "false", "no"):
+                        raise
+                    converged_physical = False
             accepted_control_ptau_payload: tuple[Any, Any, Any] | None = None
             fuse_accepted_control_ptau = (
                 bool(free_boundary_enabled)
@@ -14975,6 +15071,10 @@ def solve_fixed_boundary_residual_iter(
         "best_scored_full_boundary_count": int(best_scored_full_boundary_count),
         "best_scored_fresh_boundary_count": int(best_scored_fresh_boundary_count),
         "free_boundary_convergence_blocked_count": int(freeb_convergence_blocked_count),
+        "free_boundary_fresh_convergence_gate": bool(freeb_fresh_convergence_gate),
+        "free_boundary_fresh_convergence_recheck_count": int(freeb_fresh_convergence_recheck_count),
+        "free_boundary_fresh_convergence_reject_count": int(freeb_fresh_convergence_reject_count),
+        "free_boundary_fresh_convergence_failed_count": int(freeb_fresh_convergence_failed_count),
         "final_iter2_for_recompute": int(final_iter2_for_recompute),
         "converged": bool(converged),
         "converged_strict": bool(converged_strict_final),

@@ -491,6 +491,18 @@ def _run_one_beta(
         "free_boundary_convergence_blocked_count": (
             diag.get("free_boundary_convergence_blocked_count") if isinstance(diag, dict) else None
         ),
+        "free_boundary_fresh_convergence_gate": (
+            diag.get("free_boundary_fresh_convergence_gate") if isinstance(diag, dict) else None
+        ),
+        "free_boundary_fresh_convergence_recheck_count": (
+            diag.get("free_boundary_fresh_convergence_recheck_count") if isinstance(diag, dict) else None
+        ),
+        "free_boundary_fresh_convergence_reject_count": (
+            diag.get("free_boundary_fresh_convergence_reject_count") if isinstance(diag, dict) else None
+        ),
+        "free_boundary_fresh_convergence_failed_count": (
+            diag.get("free_boundary_fresh_convergence_failed_count") if isinstance(diag, dict) else None
+        ),
         "final_iter2_for_recompute": diag.get("final_iter2_for_recompute") if isinstance(diag, dict) else None,
         "free_boundary_current_residual_norms": (
             diag.get("free_boundary_current_residual_norms") if isinstance(diag, dict) else None
@@ -572,6 +584,10 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "best_scored_full_boundary_count",
         "best_scored_fresh_boundary_count",
         "free_boundary_convergence_blocked_count",
+        "free_boundary_fresh_convergence_gate",
+        "free_boundary_fresh_convergence_recheck_count",
+        "free_boundary_fresh_convergence_reject_count",
+        "free_boundary_fresh_convergence_failed_count",
         "final_iter2_for_recompute",
         "free_boundary_current_residual_norms",
         "free_boundary_bnormal_rms",
