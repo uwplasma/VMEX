@@ -540,9 +540,16 @@ def seed_preconditioner_cache_from_bcovar_update(
     seed_time_in_residual_metrics = 0.0
     if not bool(cfg.lasym):
         t_precond_refresh_seed_start = perf_counter() if timing_enabled else None
+        t_seed_lambda_start = perf_counter() if timing_enabled else None
         cache.prec_lam_prec = lambda_preconditioner_func(k.bc)
+        if timing_enabled and t_seed_lambda_start is not None:
+            lambda_dt = perf_counter() - float(t_seed_lambda_start)
+            timing_stats["precond_refresh_seed_lambda"] = (
+                float(timing_stats.get("precond_refresh_seed_lambda", 0.0)) + lambda_dt
+            )
         cache.prec_faclam = None
         cache.prec_lam_debug = None
+        t_seed_rz_start = perf_counter() if timing_enabled else None
         mats, _jmin, jmax = rz_preconditioner_matrices_func(
             bc=k.bc,
             k=k,
@@ -550,6 +557,11 @@ def seed_preconditioner_cache_from_bcovar_update(
             use_precomputed=preconditioner_use_precomputed_tridi,
             use_lax_tridi=preconditioner_use_lax_tridi,
         )
+        if timing_enabled and t_seed_rz_start is not None:
+            rz_dt = perf_counter() - float(t_seed_rz_start)
+            timing_stats["precond_refresh_seed_rz_matrices"] = (
+                float(timing_stats.get("precond_refresh_seed_rz_matrices", 0.0)) + rz_dt
+            )
         cache.prec_rz_mats = mats
         cache.prec_rz_jmax = None if tree_has_tracer(k) else int(jmax)
         seeded_from_bcovar_update = cache.prec_rz_jmax is not None

@@ -652,6 +652,8 @@ _RESIDUAL_ITER_TIMING_DEFAULTS: dict[str, float | int] = {
     "precond_apply": 0.0,
     "precond_mode_scale": 0.0,
     "precond_refresh_seed": 0.0,
+    "precond_refresh_seed_lambda": 0.0,
+    "precond_refresh_seed_rz_matrices": 0.0,
     "precond_refresh_calls": 0,
     "precond_reassemble_calls": 0,
     "precond_cache_hit_count": 0,
@@ -827,6 +829,8 @@ def _build_residual_iter_timing_report(
         "iteration_control_unattributed_s": float(iteration_control_unattributed),
         "precond_refresh_s": float(timing_stats["precond_refresh"]),
         "precond_refresh_seed_s": float(timing_stats.get("precond_refresh_seed", 0.0)),
+        "precond_refresh_seed_lambda_s": float(timing_stats.get("precond_refresh_seed_lambda", 0.0)),
+        "precond_refresh_seed_rz_matrices_s": float(timing_stats.get("precond_refresh_seed_rz_matrices", 0.0)),
         "precond_refresh_calls": int(timing_stats.get("precond_refresh_calls", 0)),
         "precond_reassemble_calls": int(timing_stats.get("precond_reassemble_calls", 0)),
         "precond_cache_hit_count": int(timing_stats.get("precond_cache_hit_count", 0)),
@@ -918,6 +922,12 @@ def _build_residual_iter_timing_report(
                 "precond_apply_per_iter_s": float(timing_stats["precond_apply"]) / iters,
                 "precond_mode_scale_per_iter_s": float(timing_stats["precond_mode_scale"]) / iters,
                 "precond_refresh_seed_per_iter_s": float(timing_stats.get("precond_refresh_seed", 0.0)) / iters,
+                "precond_refresh_seed_lambda_per_iter_s": float(timing_stats.get("precond_refresh_seed_lambda", 0.0))
+                / iters,
+                "precond_refresh_seed_rz_matrices_per_iter_s": float(
+                    timing_stats.get("precond_refresh_seed_rz_matrices", 0.0)
+                )
+                / iters,
             }
         )
     return timing_report
@@ -934,6 +944,8 @@ def _format_residual_iter_timing_message(
             f"force_main={float(timing_report['compute_forces_main_s']):.3e}s "
             f"force_extra={float(timing_report['force_eval_extra_s']):.3e}s "
             f"precond_seed={float(timing_report['precond_refresh_seed_s']):.3e}s "
+            f"precond_seed_lam={float(timing_report['precond_refresh_seed_lambda_s']):.3e}s "
+            f"precond_seed_rz={float(timing_report['precond_refresh_seed_rz_matrices_s']):.3e}s "
             f"precond_apply={float(timing_report['precond_apply_s']):.3e}s "
             f"precond_mode={float(timing_report['precond_mode_scale_s']):.3e}s "
             f"control={float(timing_report['iteration_control_s']):.3e}s "
