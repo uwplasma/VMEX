@@ -95,7 +95,7 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   Examples and branch-local derivative proposal paths exist; complete solves
   still need to remain the acceptance authority until the full adaptive seam is
   validated.
-- CPU/GPU runtime and memory footprint: 85%.
+- CPU/GPU runtime and memory footprint: 86%.
   The single-grid matrix shows no PR regression against `origin/main`, and warm
   CPU `vmec_jax` beats VMEC2000 on 7 of 16 rows. The 3D preconditioner R/Z
   matrix hotspot has been reduced by the default full-JIT builder, and ordinary
@@ -103,10 +103,13 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   beta setup profiling now splits profile-data construction from trig-table
   setup. Concrete finite-beta/current-profile CPU runs automatically use the
   host profile setup path, reducing profile-data setup from about `0.39 s` to
-  about `0.001 s` on the promoted QH finite-beta probe. Memory remains
+  about `0.001 s` on the promoted QH finite-beta probe. Fixed-boundary
+  iteration can now reuse the setup-time axis force probe on strict no-reset
+  iteration-1 branches, reducing the promoted bounded finite-beta wall time
+  from `6.36 s` to `5.78 s` without changing residual scalars. Memory remains
   materially higher than VMEC2000, with LASYM finite-beta layouts and
-  cold-axis/preconditioner setup still the main targets.
-- Refactor/API/examples: 43%.
+  preconditioner apply/seed costs still the main targets.
+- Refactor/API/examples: 44%.
   Public examples are better, but core source files and tests are still too
   large and too entangled. The fixed-boundary residual timing/setup seam is now
   slightly cleaner, but the main residual loop still needs a larger split.
@@ -118,7 +121,7 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   README is concise, runtime/memory detail lives in docs, and benchmark plus
   AD-FD provenance are refreshed. Remaining work is Sphinx gating and pruning
   historical performance prose after review.
-- Overall completion: 88%.
+- Overall completion: 89%.
   PR #20 readiness gates for benchmark, current-vs-main regression,
   differentiation evidence, and selected WOUT parity are now substantially
   complete; the long-term research-grade performance/refactor work remains
@@ -1185,3 +1188,60 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 96%.
 - Docs/release hygiene: 96%.
 - Overall: 88%.
+
+### 2026-06-22: Reuse setup axis force probe on strict no-reset branches
+
+Steps taken:
+
+- Surfaced setup-time axis reset branch provenance in solver diagnostics:
+  `setup_axis_reset_applied`, `setup_axis_reset_done`,
+  `setup_axis_force_probe_available`, and
+  `setup_axis_force_probe_reused`.
+- Extended the fixed-boundary profiler compact JSON and terminal timing output
+  with the same branch evidence and `compute_forces_main_reuse_count`.
+- Kept the VMEC-style setup axis force probe when no axis reset is applied.
+- Reused that force payload for the first fixed-boundary iteration only under a
+  strict predicate: iteration 1, no actual axis reset, fixed-boundary only, no
+  edge residual, no free-boundary vacuum payload, no cached constraint
+  preconditioner/tcon, `zero_m1=1`, and no debug dump index.
+- Added helper/finalizer/profiler/timing-report tests for the new provenance and
+  reuse counter.
+
+Results obtained:
+
+- Focused validation passed:
+  `python -m ruff check vmec_jax/solvers/fixed_boundary/diagnostics/axis_reset.py vmec_jax/solvers/fixed_boundary/residual/iteration.py vmec_jax/solvers/fixed_boundary/residual/finalize.py vmec_jax/solvers/fixed_boundary/residual/runtime.py tools/diagnostics/profile_fixed_boundary.py tests/test_solve_axis_helpers_more_coverage.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_gpu_cpu_performance_profile.py tests/test_solve_performance_instrumentation.py tests/test_solve_residual_iter_runtime_helpers.py`;
+  `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_axis_helpers_more_coverage.py tests/test_solve_residual_iter_finalize_helpers.py tests/test_gpu_cpu_performance_profile.py tests/test_solve_performance_instrumentation.py tests/test_solve_residual_iter_runtime_helpers.py -q`.
+- Bounded QH finite-beta profile with the same command as the previous entry now
+  reports `setup_axis_force_probe_reused=True`,
+  `compute_forces_main_reuse_count=1`, and `compute_forces_s=0` for the final
+  one-iteration stage.
+- The same diagnostic retained identical residual scalars:
+  `final_fsqr=0.07575699495805738`,
+  `final_fsqz=0.04928241321537203`, and
+  `final_fsql=0.04329198826597721`.
+- Bounded finite-beta total wall time improved from `6.36 s` to `5.78 s`; final
+  stage `solve_total_s` improved from `5.70 s` to `5.11 s`.
+
+Best next steps:
+
+1. Continue M3 with the now-dominant finite-beta costs:
+   `precond_apply_s`, `precond_refresh_seed_rz_matrices_s`, and
+   `update_state_s`.
+2. Add a small parity/profile gate comparing first-iteration residual histories
+   with and without setup-probe reuse if a debug opt-out flag is introduced.
+3. Continue M7 by extracting a domain-named force-evaluation/reuse seam from
+   the large residual loop, instead of leaving the predicate embedded in the
+   2600-line controller.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 98%.
+- Fixed-boundary production differentiability: 90%.
+- Free-boundary production differentiability: 87%.
+- Single-stage coil optimization: 86%.
+- CPU/GPU runtime and memory footprint: 86%.
+- Refactor/API/examples: 44%.
+- VMEC2000/VMEC++ parity and physics gates: 96%.
+- Docs/release hygiene: 96%.
+- Overall: 89%.
