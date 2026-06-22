@@ -141,13 +141,14 @@ Editable optimization examples live in `examples/optimization/`. Start with
 `examples/optimization/README.md`, then use `docs/optimization.rst`,
 `docs/optimization_sweep_results.rst`, and `docs/piecewise_omnigenous_plan.rst`.
 
-The compact panels show QA/QH/QP common-minimal-seed runs and the QI NFP1/2/3/4
-minimal-seed policy. For QI, the raw input is always a circular-torus-like
-`input.minimal_seed_nfp*` deck; optimization-time helicity hints and same-NFP
-reference-family stages are recorded as artifacts, not hidden seed edits. Full
-numeric tables, caveats, LASYM panels, artifact-promotion rules live in the docs,
-with historical `readme_best_optimization_qa.png`, `readme_best_optimization_qh.png`,
-`readme_best_optimization_qp.png`, and `readme_best_optimization_qi.png` archived there.
+The compact panels show QA/QH/QP common-minimal-seed runs and QI NFP1/2/3/4
+minimal-seed examples. For QI, the public per-NFP scripts start from the same
+circular-torus-like `input.minimal_seed_nfp*` decks, first build a QP basin, and
+then switch the objective to QI. Full numeric tables, caveats, LASYM panels, and
+artifact-promotion rules live in the docs, with historical
+`readme_best_optimization_qa.png`, `readme_best_optimization_qh.png`,
+`readme_best_optimization_qp.png`, and `readme_best_optimization_qi.png`
+archived there.
 
 ![Common minimal-seed QA/QH/QP states](docs/_static/figures/minimal_seed_showcase_state_panel.png)
 
@@ -168,10 +169,10 @@ PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
 
 Run individual editable examples with `python examples/optimization/QA_optimization.py`,
 `QH_optimization.py`, `QP_optimization.py`, or `QI_optimization.py`. The public
-QI presets are `QI_optimization_nfp1.py` through `QI_optimization_nfp4.py`;
-they start from `input.minimal_seed_nfp*` and use policy modes rather than
-forcing every QI row to `max_mode=5`. The NFP=2 row uses
-`minimal_nfp2_qi_balanced_mirror035`. The seed-3127 preset is retained as a diagnostic stress case, not a README promotion row.
+simple QI examples are `QI_optimization_nfp1.py` through
+`QI_optimization_nfp4.py`; each file exposes the seed, objective tuples, QP
+stage, QI stage, saved outputs, and plots directly. The seed-3127 preset is
+retained as a diagnostic stress case, not a README promotion row.
 Full provenance and artifact-promotion rules live in `docs/optimization.rst`
 and `docs/optimization_sweep_results.rst`.
 
