@@ -31,7 +31,8 @@ Performance profiling:
   from VMEC2000/VMEC++ algorithm buckets to vmec_jax modules and profiler keys.
   This is the main M1/M2 performance-roadmap entrypoint for separating
   import/backend setup, JAX trace/compile, steady solve, VMEC2000 baseline, and
-  process peak RSS.
+  process peak RSS. Add `--cprofile` to write Python call-stack profiles for
+  the timed cold/warm vmec_jax runs.
 - `profile_exact_optimizer.py --callback jacobian --perturb-scale ...`
   measures accepted-point optimizer callback phases for QA/QH/QP fixed-boundary
   quasisymmetry objectives, optimizer/global cache growth, RSS growth, and JSON

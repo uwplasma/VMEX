@@ -171,7 +171,21 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--solver-mode", default="auto", choices=("auto", "default", "parity", "accelerated"))
     parser.add_argument("--solver-device", default="auto", choices=("auto", "default", "cpu", "gpu"))
     parser.add_argument("--use-input-niter", action="store_true", help="Use NITER from the input deck.")
+    parser.set_defaults(auto_cli_policy=True)
+    parser.add_argument(
+        "--auto-cli-policy",
+        dest="auto_cli_policy",
+        action="store_true",
+        help="Allow run_fixed_boundary to apply the public CLI-style finish policy (default).",
+    )
+    parser.add_argument(
+        "--no-auto-cli-policy",
+        dest="auto_cli_policy",
+        action="store_false",
+        help="Benchmark the raw requested solver path without the public CLI-style finish policy.",
+    )
     parser.add_argument("--skip-runs", action="store_true", help="Only write the static algorithm map.")
+    parser.add_argument("--cprofile", action="store_true", help="Collect cProfile stats for timed vmec_jax child runs.")
     parser.add_argument("--skip-vmec2000", action="store_true", help="Do not run VMEC2000.")
     parser.add_argument("--vmec2000-exec", default=None, help="Optional xvmec2000 executable.")
     parser.add_argument("--skip-vmecpp", action="store_true", help="Do not run VMEC++.")
@@ -225,6 +239,17 @@ def _run_child_profile(
         cmd.append("--no-warmup")
     if args.use_input_niter:
         cmd.append("--use-input-niter")
+    if not bool(args.auto_cli_policy):
+        cmd.append("--no-auto-cli-policy")
+    if args.cprofile:
+        cmd.extend(
+            [
+                "--cprofile-out",
+                str(outdir / f"vmec_jax_{label}.prof"),
+                "--cprofile-text-out",
+                str(outdir / f"vmec_jax_{label}_cprofile.txt"),
+            ]
+        )
 
     started = time.perf_counter()
     completed = subprocess.run(
@@ -365,8 +390,111 @@ def _profile_value(run: dict[str, Any], key: str) -> Any:
     return None
 
 
+def _float_or_none(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _vmec_jax_phase_breakdown(run: dict[str, Any]) -> dict[str, float | None]:
+    """Return comparable host/solver timing buckets from a profiler run."""
+    profile = run.get("profile")
+    if not isinstance(profile, dict):
+        return {}
+    phase = profile.get("phase_timing")
+    if not isinstance(phase, dict):
+        phase = {}
+    diagnostics = profile.get("diagnostics")
+    timing = diagnostics.get("timing") if isinstance(diagnostics, dict) else None
+    if not isinstance(timing, dict):
+        timing = {}
+
+    child_elapsed_s = _float_or_none(run.get("elapsed_wall_s"))
+    run_wall_s = _float_or_none(phase.get("run_wall_s"))
+    solve_total_s = _float_or_none(timing.get("solve_total_s"))
+    setup_total_s = _float_or_none(timing.get("setup_total_s"))
+    iteration_loop_s = _float_or_none(timing.get("iteration_loop_s"))
+    compute_forces_s = _float_or_none(timing.get("compute_forces_s"))
+    preconditioner_s = _float_or_none(timing.get("preconditioner_s"))
+    update_s = _float_or_none(timing.get("update_s"))
+
+    run_minus_solve_s = None
+    if run_wall_s is not None and solve_total_s is not None:
+        run_minus_solve_s = max(0.0, run_wall_s - solve_total_s)
+    child_minus_run_s = None
+    if child_elapsed_s is not None and run_wall_s is not None:
+        child_minus_run_s = max(0.0, child_elapsed_s - run_wall_s)
+    warmup_wall_s = _float_or_none(phase.get("warmup_wall_s"))
+    child_minus_run_and_warmup_s = None
+    if child_elapsed_s is not None and run_wall_s is not None and warmup_wall_s is not None:
+        child_minus_run_and_warmup_s = max(0.0, child_elapsed_s - run_wall_s - warmup_wall_s)
+
+    return {
+        "child_elapsed_s": child_elapsed_s,
+        "process_to_main_s": _float_or_none(phase.get("process_to_main_s")),
+        "vmec_jax_import_s": _float_or_none(phase.get("vmec_jax_import_s")),
+        "jax_devices_pre_run_s": _float_or_none(phase.get("jax_devices_pre_run_s")),
+        "warmup_wall_s": warmup_wall_s,
+        "profiled_run_wall_s": run_wall_s,
+        "solver_setup_total_s": setup_total_s,
+        "solver_iteration_loop_s": iteration_loop_s,
+        "solver_solve_total_s": solve_total_s,
+        "solver_compute_forces_s": compute_forces_s,
+        "solver_preconditioner_s": preconditioner_s,
+        "solver_update_s": update_s,
+        "profiled_run_minus_solver_s": run_minus_solve_s,
+        "child_elapsed_minus_profiled_run_s": child_minus_run_s,
+        "child_elapsed_minus_profiled_run_and_warmup_s": child_minus_run_and_warmup_s,
+        "process_peak_rss_mib": _float_or_none(profile.get("process_peak_rss_mib")),
+    }
+
+
+def _build_analysis(runs: dict[str, Any]) -> dict[str, Any]:
+    analysis: dict[str, Any] = {
+        "vmec_jax_phase_breakdown": {},
+        "runtime_ratios": {},
+    }
+    for label in ("vmec_jax_cold", "vmec_jax_warm"):
+        run = runs.get(label)
+        if isinstance(run, dict):
+            analysis["vmec_jax_phase_breakdown"][label] = _vmec_jax_phase_breakdown(run)
+
+    cold = analysis["vmec_jax_phase_breakdown"].get("vmec_jax_cold", {})
+    warm = analysis["vmec_jax_phase_breakdown"].get("vmec_jax_warm", {})
+    cold_run = _float_or_none(cold.get("profiled_run_wall_s"))
+    warm_run = _float_or_none(warm.get("profiled_run_wall_s"))
+    if cold_run is not None and warm_run not in (None, 0.0):
+        analysis["runtime_ratios"]["vmec_jax_cold_to_warm_profiled_run"] = cold_run / warm_run
+    vmec2000 = runs.get("vmec2000", {})
+    vmec2000_runtime = _float_or_none(vmec2000.get("runtime_s")) if isinstance(vmec2000, dict) else None
+    if vmec2000_runtime not in (None, 0.0):
+        if cold_run is not None:
+            analysis["runtime_ratios"]["vmec_jax_cold_to_vmec2000"] = cold_run / vmec2000_runtime
+        if warm_run is not None:
+            analysis["runtime_ratios"]["vmec_jax_warm_to_vmec2000"] = warm_run / vmec2000_runtime
+    vmecpp = runs.get("vmecpp", {})
+    vmecpp_runtime = _float_or_none(vmecpp.get("runtime_s")) if isinstance(vmecpp, dict) else None
+    if vmecpp_runtime not in (None, 0.0):
+        if cold_run is not None:
+            analysis["runtime_ratios"]["vmec_jax_cold_to_vmecpp"] = cold_run / vmecpp_runtime
+        if warm_run is not None:
+            analysis["runtime_ratios"]["vmec_jax_warm_to_vmecpp"] = warm_run / vmecpp_runtime
+    return analysis
+
+
+def _format_float(value: Any, digits: int = 4) -> str:
+    number = _float_or_none(value)
+    if number is None:
+        return ""
+    return f"{number:.{digits}g}"
+
+
 def _write_markdown(report: dict[str, Any], path: Path) -> None:
     runs = report.get("runs", {})
+    analysis = report.get("analysis", {})
     lines = [
         "# Fixed-Boundary Performance Decomposition",
         "",
@@ -401,6 +529,51 @@ def _write_markdown(report: dict[str, Any], path: Path) -> None:
         + f"{vmecpp.get('status')} | {vmecpp.get('runtime_s', '')} |  | "
         + f"wouts={vmecpp.get('wout_count', '')} |"
     )
+    phase_breakdown = analysis.get("vmec_jax_phase_breakdown", {}) if isinstance(analysis, dict) else {}
+    if phase_breakdown:
+        lines += [
+            "",
+            "## vmec_jax Phase Decomposition",
+            "",
+            "| Phase | Cold | Warm |",
+            "| --- | ---: | ---: |",
+        ]
+        phase_labels = [
+            ("child_elapsed_s", "Child process elapsed"),
+            ("process_to_main_s", "Process start to profiler main"),
+            ("vmec_jax_import_s", "vmec_jax import"),
+            ("jax_devices_pre_run_s", "JAX device discovery before run"),
+            ("warmup_wall_s", "Warmup run wall"),
+            ("profiled_run_wall_s", "Profiled run wall"),
+            ("solver_solve_total_s", "Solver total"),
+            ("solver_setup_total_s", "Solver setup"),
+            ("solver_iteration_loop_s", "Solver iteration loop"),
+            ("solver_compute_forces_s", "Force evaluation"),
+            ("solver_preconditioner_s", "Preconditioner"),
+            ("solver_update_s", "State update"),
+            ("profiled_run_minus_solver_s", "Profiled run minus solver"),
+            ("child_elapsed_minus_profiled_run_s", "Child elapsed minus profiled run"),
+            ("child_elapsed_minus_profiled_run_and_warmup_s", "Child elapsed minus profiled run and warmup"),
+            ("process_peak_rss_mib", "Process peak RSS MiB"),
+        ]
+        cold = phase_breakdown.get("vmec_jax_cold", {})
+        warm = phase_breakdown.get("vmec_jax_warm", {})
+        for key, label in phase_labels:
+            lines.append(
+                "| "
+                + f"{label} | {_format_float(cold.get(key))} | {_format_float(warm.get(key))} |"
+            )
+    ratios = analysis.get("runtime_ratios", {}) if isinstance(analysis, dict) else {}
+    if ratios:
+        lines += [
+            "",
+            "## Runtime Ratios",
+            "",
+            "| Ratio | Value |",
+            "| --- | ---: |",
+        ]
+        for key, value in sorted(ratios.items()):
+            lines.append(f"| `{key}` | {_format_float(value)} |")
     lines += [
         "",
         "## Algorithm Map",
@@ -428,7 +601,7 @@ def _write_markdown(report: dict[str, Any], path: Path) -> None:
         "## Immediate Interpretation",
         "",
         "- Cold vmec_jax includes Python import, JAX backend discovery, JAX tracing, and XLA compilation.",
-        "- Warm vmec_jax excludes the same-process warmup and is the relevant optimization-loop baseline.",
+        "- Warm vmec_jax reports warmup separately and uses the post-warmup timed run as the optimization-loop baseline.",
         "- VMEC2000 remains the executable latency baseline; parity is still required before any performance claim.",
         "- This report is a diagnostic artifact, not a release benchmark.",
         "",
@@ -473,6 +646,7 @@ def main() -> int:
         "algorithm_map": ALGORITHM_MAP,
         "runs": _json_safe(runs),
     }
+    report["analysis"] = _json_safe(_build_analysis(runs))
     json_out = outdir / "performance_decomposition.json"
     md_out = outdir / "performance_decomposition.md"
     json_out.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")

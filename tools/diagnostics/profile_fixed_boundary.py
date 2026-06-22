@@ -8,10 +8,12 @@ Example:
 from __future__ import annotations
 
 import argparse
+import cProfile
 from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
+import pstats
 import resource
 import sys
 from typing import Any
@@ -41,6 +43,13 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--no-warmup", action="store_true", help="Disable warmup run")
     p.add_argument("--simple-profile", action="store_true", help="Use a timing-only profiler (no TensorBoard trace)")
     p.add_argument("--json-out", type=str, default=None, help="Write a compact JSON timing/solver diagnostic summary.")
+    p.add_argument("--cprofile-out", type=str, default=None, help="Write cProfile stats for the timed profiled run.")
+    p.add_argument(
+        "--cprofile-text-out",
+        type=str,
+        default=None,
+        help="Write a text cProfile summary for the timed profiled run.",
+    )
     p.add_argument(
         "--vmec-timing",
         action="store_true",
@@ -412,6 +421,32 @@ def _print_run_summary(summary: dict[str, Any]) -> None:
             print("[profile_fixed_boundary] timing " + " ".join(timing_bits), flush=True)
 
 
+def _run_with_optional_cprofile(args: argparse.Namespace, func):
+    if not args.cprofile_out:
+        return func()
+    profiler = cProfile.Profile()
+    try:
+        profiler.enable()
+        return func()
+    finally:
+        profiler.disable()
+        cprofile_path = Path(args.cprofile_out).expanduser().resolve()
+        cprofile_path.parent.mkdir(parents=True, exist_ok=True)
+        profiler.dump_stats(str(cprofile_path))
+        phase_timing = getattr(args, "phase_timing", None)
+        if isinstance(phase_timing, dict):
+            phase_timing["cprofile_out"] = str(cprofile_path)
+        text_out = args.cprofile_text_out
+        if text_out:
+            text_path = Path(text_out).expanduser().resolve()
+            text_path.parent.mkdir(parents=True, exist_ok=True)
+            with text_path.open("w", encoding="utf-8") as stream:
+                stats = pstats.Stats(profiler, stream=stream).sort_stats("cumtime")
+                stats.print_stats(80)
+            if isinstance(phase_timing, dict):
+                phase_timing["cprofile_text_out"] = str(text_path)
+
+
 def _dump_tomnsps_hlo(input_path: str, outdir: Path) -> None:
     try:
         import jax
@@ -566,6 +601,7 @@ def main() -> int:
 
     with _temporary_env(env_updates):
         if not args.no_warmup:
+            t_warmup = time.perf_counter()
             warm = _run_profile_once()
             try:
                 res = warm.result
@@ -573,6 +609,9 @@ def main() -> int:
                     _ = float(np.asarray(res.fsqr2_history)[-1])
             except Exception:
                 pass
+            phase_timing["warmup_wall_s"] = float(time.perf_counter() - t_warmup)
+        else:
+            phase_timing["warmup_wall_s"] = 0.0
 
         use_simple = bool(args.simple_profile)
         if not use_simple:
@@ -586,7 +625,7 @@ def main() -> int:
         wall_time = None
         if use_simple:
             t0 = time.perf_counter()
-            run = _run_profile_once()
+            run = _run_with_optional_cprofile(args, _run_profile_once)
             res = run.result
             if res is not None and hasattr(res, "fsqr2_history"):
                 _ = float(np.asarray(res.fsqr2_history)[-1])
@@ -596,7 +635,7 @@ def main() -> int:
         else:
             t0 = time.perf_counter()
             try:
-                run = _run_profile_once()
+                run = _run_with_optional_cprofile(args, _run_profile_once)
                 res = run.result
                 if res is not None and hasattr(res, "fsqr2_history"):
                     _ = float(np.asarray(res.fsqr2_history)[-1])

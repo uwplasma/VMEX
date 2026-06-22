@@ -76,7 +76,7 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
 
 ## Open Lanes and Current Completion
 
-- Performance benchmark and profiling harness: 72%.
+- Performance benchmark and profiling harness: 76%.
   Full README benchmark data exists, but the next gate is deeper decomposition
   into import/startup, XLA trace, XLA compile, steady solve, WOUT write, and
   optimizer callback costs.
@@ -92,7 +92,7 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   Examples and branch-local derivative proposal paths exist; complete solves
   still need to remain the acceptance authority until the full adaptive seam is
   validated.
-- CPU/GPU runtime and memory footprint: 64%.
+- CPU/GPU runtime and memory footprint: 68%.
   Warm replay improved, but cold exact tape/forward-force cost and GPU-native
   derivative paths still dominate.
 - Refactor/API/examples: 40%.
@@ -105,7 +105,7 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   Docs are broad but still mirror historical work too much. They need a clearer
   "what is differentiable now" table and performance caveats separated from the
   README.
-- Overall completion: 69%.
+- Overall completion: 71%.
   PR #20 can be reviewed as a major milestone, but this plan defines the next
   phase before claiming final research-grade status.
 
@@ -198,7 +198,7 @@ Gates:
 - Each material regression is assigned to startup, compile, steady solve,
   output, branch controller, or optimizer callback.
 
-Status: 28%.
+Status: 35%.
 
 ### M3: Fast Fixed-Boundary Solve Path
 
@@ -444,3 +444,81 @@ Best next steps:
 3. Start the first refactor tranche by separating the giant fixed-boundary
    iteration function into setup, residual step, controller policy, and output
    collection seams.
+
+### 2026-06-21: Explicit cold/warm phase buckets
+
+Steps taken:
+
+- Extended `profile_fixed_boundary.py` to time warmup explicitly.
+- Extended `fixed_boundary_performance_decomposition.py` to derive phase
+  buckets and runtime ratios from profiler JSON:
+  child process elapsed, import, JAX device discovery, warmup wall, profiled
+  run wall, solver setup, solver iteration loop, force evaluation,
+  preconditioner, state update, run-minus-solver overhead, and peak RSS.
+- Reran the all-backend QH 3-iteration smoke:
+  `JAX_ENABLE_X64=1 python tools/diagnostics/fixed_boundary_performance_decomposition.py --input examples/data/input.nfp4_QH_warm_start --iters 3 --outdir outputs/performance_decomposition_qh_phase_smoke2 --vmec2000-exec ~/bin/xvmec2000`.
+
+Results obtained:
+
+- `vmec_jax` cold profiled run: `5.160 s`; solver body: `0.0499 s`;
+  run-minus-solver overhead: `5.110 s`; child elapsed: `6.375 s`; peak RSS:
+  `586 MiB`.
+- Warmup run in the warm child process: `5.178 s`; post-warmup profiled run:
+  `0.128 s`; solver body: `0.0465 s`; run-minus-solver overhead: `0.0812 s`;
+  peak RSS: `592 MiB`.
+- VMEC2000: `0.204 s`; VMEC++: `1.233 s`.
+- Runtime ratios for this tiny probe:
+  `vmec_jax_cold/vmec2000 = 25.25`, `vmec_jax_warm/vmec2000 = 0.625`,
+  `vmec_jax_cold/vmec_jax_warm = 40.4`.
+
+Best next steps:
+
+1. Decompose the `5.11 s` cold run-minus-solver bucket into input/config load,
+   static setup, JAX trace, XLA compile, first device-ready execution, and
+   output materialization.
+2. Decompose the `0.081 s` warm run-minus-solver bucket so optimization-loop
+   overhead can be reduced after compile/cache warmup.
+3. Run the same phase report on at least one larger finite-beta/multigrid row
+   before deciding whether the fast CLI path should bypass richer diagnostics
+   or change default solver policy.
+
+### 2026-06-21: cProfile evidence for the fast CLI policy split
+
+Steps taken:
+
+- Added optional `--cprofile-out` and `--cprofile-text-out` to
+  `profile_fixed_boundary.py`.
+- Added `--cprofile` and `--no-auto-cli-policy` to
+  `fixed_boundary_performance_decomposition.py`.
+- Ran the short QH probe with the public CLI finish policy and with the raw
+  requested solver path:
+  `JAX_ENABLE_X64=1 python tools/diagnostics/fixed_boundary_performance_decomposition.py --input examples/data/input.nfp4_QH_warm_start --iters 2 --skip-vmec2000 --skip-vmecpp --cprofile --outdir outputs/performance_decomposition_qh_cprofile_smoke`
+  and
+  `JAX_ENABLE_X64=1 python tools/diagnostics/fixed_boundary_performance_decomposition.py --input examples/data/input.nfp4_QH_warm_start --iters 2 --skip-vmec2000 --skip-vmecpp --no-auto-cli-policy --cprofile --outdir outputs/performance_decomposition_qh_raw_cprofile_smoke`.
+
+Results obtained:
+
+- With the CLI finisher enabled, the cold profile spends most cumulative time in
+  `_maybe_finish_cli_fixed_boundary_run`, which performs additional finish
+  attempts and triggers many JAX compilations. In the 2-iteration diagnostic
+  run, the profiled cold wall was about `6.10 s`, peak RSS about `596 MiB`, and
+  the profile showed about `219` compile/cache events.
+- With the raw requested path (`--no-auto-cli-policy`), cold profiled wall fell
+  to about `1.57 s`, peak RSS to about `338 MiB`, and compile/cache events fell
+  to about `81`.
+- The raw path is intentionally less converged because it respects the small
+  requested iteration budget exactly. This is not a replacement for normal
+  converged CLI runs; it is evidence that the fast non-differentiable CLI path
+  must make finish policy explicit and budget-aware rather than adding
+  compile-heavy finish attempts unconditionally.
+
+Best next steps:
+
+1. Add a public CLI/API fast-path option that clearly separates "run exactly
+   the requested budget" from "finish to convergence", without weakening the
+   default converged CLI behavior.
+2. Teach the profiler to compare all three policies on the same case:
+   raw requested path, current CLI finisher, and a future cheap-budget finisher.
+3. Inspect the preconditioner cold compile path, since the raw cold run is now
+   dominated by `seed_preconditioner_cache_from_bcovar_update` and
+   `rz_preconditioner_matrices`.
