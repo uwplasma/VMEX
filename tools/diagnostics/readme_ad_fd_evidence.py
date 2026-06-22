@@ -21,6 +21,7 @@ import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 STRICT_DETERMINISTIC_TOL = 1.0e-9
+REQUIRED_BRANCH_LOCAL_SCALARS = ("aspect", "qs_total", "mean_iota", "lcfs_boundary_moment")
 
 
 @dataclass(frozen=True)
@@ -273,6 +274,15 @@ def _branch_local_rows(report_path: Path | None) -> list[EvidenceRow]:
         or {}
     )
     scalars = gate.get("scalars", {}) if isinstance(gate, dict) else {}
+    if not isinstance(gate, dict) or not scalars:
+        raise ValueError(f"{report_path} does not contain a branch-local physical scalar gate")
+    if not bool(gate.get("passed", False)):
+        raise ValueError(f"{report_path} branch-local physical scalar gate did not pass")
+    missing = [key for key in REQUIRED_BRANCH_LOCAL_SCALARS if key not in scalars]
+    if missing:
+        raise ValueError(
+            f"{report_path} is missing required branch-local scalar(s): {', '.join(missing)}"
+        )
     for key, scalar in scalars.items():
         ad = float(scalar.get("exact_directional", np.nan))
         fd = float(scalar.get("complete_fd_directional", np.nan))

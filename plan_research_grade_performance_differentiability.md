@@ -2016,3 +2016,58 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 96.2%.
 - Docs/release hygiene: 96.5%.
 - Overall: 91.1%.
+
+### 2026-06-22: Harden README free-boundary AD-vs-FD evidence artifact contract
+
+Steps taken:
+
+- Audited the README AD-vs-FD evidence renderer and the same-branch
+  direct-coil free-boundary report path.
+- Tightened `tools/diagnostics/readme_ad_fd_evidence.py` so a supplied
+  branch-local report must contain a passing physical-scalar gate with the
+  promoted scalar set: `aspect`, `qs_total`, `mean_iota`, and
+  `lcfs_boundary_moment`.
+- Added fast synthetic tests that reject incomplete or failed branch-local
+  evidence reports before they can be used to regenerate the public README
+  differentiation panel.
+
+Results obtained:
+
+- Focused validation passed:
+  `python -m ruff check tools/diagnostics/readme_ad_fd_evidence.py
+  tests/test_readme_ad_fd_evidence.py`;
+  `PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  -p no:cacheprovider tests/test_readme_ad_fd_evidence.py -q`.
+- The stricter renderer accepted the current checked-in provenance report:
+  `JAX_ENABLE_X64=1 python tools/diagnostics/readme_ad_fd_evidence.py
+  --branch-local-report
+  outputs/pr20_ad_fd/qs_same_branch/same_branch_complete_solve_report.json
+  --figure-out outputs/pr20_ad_fd_contract/readme_ad_fd_evidence.png
+  --csv-out outputs/pr20_ad_fd_contract/readme_ad_fd_evidence.csv
+  --json-out outputs/pr20_ad_fd_contract/readme_ad_fd_evidence.json`,
+  producing 10 passing rows.
+- README/docs hygiene checks for concise README content and compact checked-in
+  figures passed.
+
+Best next steps:
+
+1. Continue free-boundary phase-2 work with a narrow same-branch gate that
+   includes an explicit accepted/rejected controller-slot fingerprint when the
+   branch remains unchanged.
+2. Keep public wording conservative: this gate protects branch-local,
+   fingerprint-gated evidence and still does not claim arbitrary adaptive
+   branch differentiation.
+3. Return to CPU/GPU runtime work at the measured `bcovar` metric/field
+   assembly hotspot once the next free-boundary gate is promoted.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 91.5%.
+- Free-boundary production differentiability: 88%.
+- Single-stage coil optimization: 86%.
+- CPU/GPU runtime and memory footprint: 91.8%.
+- Refactor/API/examples: 50%.
+- VMEC2000/VMEC++ parity and physics gates: 96.2%.
+- Docs/release hygiene: 96.7%.
+- Overall: 91.3%.
