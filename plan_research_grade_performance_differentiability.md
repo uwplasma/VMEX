@@ -93,11 +93,11 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   Examples and branch-local derivative proposal paths exist; complete solves
   still need to remain the acceptance authority until the full adaptive seam is
   validated.
-- CPU/GPU runtime and memory footprint: 74%.
+- CPU/GPU runtime and memory footprint: 76%.
   The single-grid matrix shows no PR regression against `origin/main`, and warm
   CPU `vmec_jax` beats VMEC2000 on 7 of 16 rows. Memory remains materially
-  higher than VMEC2000, and 3D preconditioner seed construction is the next
-  CPU hotspot.
+  higher than VMEC2000, and the 3D preconditioner seed hotspot is now isolated
+  to R/Z matrix construction.
 - Refactor/API/examples: 40%.
   Public examples are better, but core source files and tests are still too
   large and too entangled.
@@ -109,7 +109,7 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   README is concise, runtime/memory detail lives in docs, and benchmark plus
   AD-FD provenance are refreshed. Remaining work is Sphinx gating and pruning
   historical performance prose after review.
-- Overall completion: 82%.
+- Overall completion: 83%.
   PR #20 readiness gates for benchmark, current-vs-main regression,
   differentiation evidence, and selected WOUT parity are now substantially
   complete; the long-term research-grade performance/refactor work remains
@@ -747,3 +747,50 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 96%.
 - Docs/release hygiene: 95%.
 - Overall: 82%.
+
+### 2026-06-21: 3D preconditioner seed sub-bucket instrumentation
+
+Steps taken:
+
+- Added residual-timing buckets for
+  `precond_refresh_seed_lambda_s` and
+  `precond_refresh_seed_rz_matrices_s`.
+- Wired those buckets through `profile_fixed_boundary.py` and
+  `fixed_boundary_performance_decomposition.py`.
+- Added unit coverage for the new timing schema and deterministic seed
+  sub-bucket accumulation.
+- Ran the QH warm-start bounded no-scan profile:
+  `JAX_ENABLE_X64=1 JAX_PLATFORMS=cpu python tools/diagnostics/profile_fixed_boundary.py --input examples/data/input.nfp4_QH_warm_start --iters 2 --solver-mode default --solver-device cpu --finish-policy none --no-use-scan --require-no-scan --no-warmup --simple-profile --vmec-timing --vmec-timing-detail --outdir outputs/precond_seed_subbucket_trace --json-out outputs/precond_seed_subbucket.json`.
+
+Results obtained:
+
+- QH profile wall time: `1.224 s`; solver total: `1.010 s`.
+- Preconditioner total: `0.924 s`.
+- Preconditioner seed: `0.922 s`.
+- Lambda seed: `0.077 s`.
+- R/Z matrix seed: `0.845 s`.
+- Therefore the cold 3D preconditioner bottleneck is R/Z matrix construction,
+  not lambda setup or preconditioner apply.
+
+Best next steps:
+
+1. Target `vmec_jax/preconditioner_1d_jax.py` R/Z matrix construction:
+   identify coefficient construction versus matrix assembly costs inside
+   `rz_preconditioner_matrices`.
+2. Prototype a shape-keyed cached/JIT-fused R/Z coefficient-plus-assembly path
+   that preserves tracer/JAX differentiability.
+3. Keep the axisymmetric NumPy shortcut isolated; do not extend it to 3D until
+   output-equivalence tests prove the representation matches the JAX
+   independent-toroidal-block path.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 96%.
+- Fixed-boundary production differentiability: 90%.
+- Free-boundary production differentiability: 86%.
+- Single-stage coil optimization: 86%.
+- CPU/GPU runtime and memory footprint: 76%.
+- Refactor/API/examples: 41%.
+- VMEC2000/VMEC++ parity and physics gates: 96%.
+- Docs/release hygiene: 95%.
+- Overall: 83%.

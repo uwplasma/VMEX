@@ -432,6 +432,8 @@ def _vmec_jax_phase_breakdown(run: dict[str, Any]) -> dict[str, float | None]:
     preconditioner_s = _float_or_none(timing.get("preconditioner_s"))
     precond_refresh_s = _float_or_none(timing.get("precond_refresh_s"))
     precond_refresh_seed_s = _float_or_none(timing.get("precond_refresh_seed_s"))
+    precond_refresh_seed_lambda_s = _float_or_none(timing.get("precond_refresh_seed_lambda_s"))
+    precond_refresh_seed_rz_matrices_s = _float_or_none(timing.get("precond_refresh_seed_rz_matrices_s"))
     precond_apply_s = _float_or_none(timing.get("precond_apply_s"))
     update_s = _float_or_none(timing.get("update_s"))
 
@@ -466,6 +468,8 @@ def _vmec_jax_phase_breakdown(run: dict[str, Any]) -> dict[str, float | None]:
         "solver_preconditioner_s": preconditioner_s,
         "solver_precond_refresh_s": precond_refresh_s,
         "solver_precond_refresh_seed_s": precond_refresh_seed_s,
+        "solver_precond_refresh_seed_lambda_s": precond_refresh_seed_lambda_s,
+        "solver_precond_refresh_seed_rz_matrices_s": precond_refresh_seed_rz_matrices_s,
         "solver_precond_apply_s": precond_apply_s,
         "solver_update_s": update_s,
         "profiled_run_minus_solver_s": run_minus_solve_s,
@@ -581,6 +585,8 @@ def _write_markdown(report: dict[str, Any], path: Path) -> None:
             ("solver_preconditioner_s", "Preconditioner"),
             ("solver_precond_refresh_s", "Preconditioner refresh"),
             ("solver_precond_refresh_seed_s", "Preconditioner seed"),
+            ("solver_precond_refresh_seed_lambda_s", "Preconditioner seed: lambda"),
+            ("solver_precond_refresh_seed_rz_matrices_s", "Preconditioner seed: R/Z matrices"),
             ("solver_precond_apply_s", "Preconditioner apply"),
             ("solver_update_s", "State update"),
             ("profiled_run_minus_solver_s", "Profiled run minus solver"),

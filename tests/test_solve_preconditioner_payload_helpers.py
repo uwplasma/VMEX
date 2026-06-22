@@ -183,7 +183,7 @@ def test_seed_preconditioner_cache_from_bcovar_update_builds_vmec2000_seed() -> 
         host_update_assembly=True,
         timing_enabled=True,
         timing_stats=stats,
-        perf_counter=iter([10.0, 10.25]).__next__,
+        perf_counter=iter([10.0, 10.05, 10.15, 10.20, 10.35, 10.50]).__next__,
         tree_has_tracer=lambda _value: False,
         rz_norm_np=lambda _state: 4.0,
         rz_norm_func=lambda _state: pytest.fail("host path should use rz_norm_np"),
@@ -197,7 +197,7 @@ def test_seed_preconditioner_cache_from_bcovar_update_builds_vmec2000_seed() -> 
 
     assert out.cache_update_trace is True
     assert out.seeded_from_bcovar_update is True
-    assert out.seed_time_in_residual_metrics == pytest.approx(0.25)
+    assert out.seed_time_in_residual_metrics == pytest.approx(0.50)
     assert cache.valid is True
     assert cache.precond_diag is None
     np.testing.assert_allclose(cache.tcon, np.zeros(3))
@@ -211,6 +211,9 @@ def test_seed_preconditioner_cache_from_bcovar_update_builds_vmec2000_seed() -> 
     assert cache.prec_rz_jmax == 2
     assert matrix_calls[0]["use_precomputed"] is True
     assert matrix_calls[0]["use_lax_tridi"] is False
+    assert stats["precond_refresh_seed"] == pytest.approx(0.50)
+    assert stats["precond_refresh_seed_lambda"] == pytest.approx(0.10)
+    assert stats["precond_refresh_seed_rz_matrices"] == pytest.approx(0.15)
     assert stats["precond_refresh_calls"] == 1
 
 

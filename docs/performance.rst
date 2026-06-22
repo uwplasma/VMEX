@@ -2202,6 +2202,13 @@ the non-stellarator-symmetric finite-beta row.  The
 current-vs-``origin/main`` comparison recorded zero material regressions under
 the configured ``1.10x`` runtime and ``1.15x`` peak-memory thresholds.
 
+The current fixed-boundary cold-path hotspot is first-call 3D preconditioner
+seed construction.  A bounded QH no-scan profile with detailed VMEC timing
+reported ``0.922 s`` in preconditioner seed setup, split into ``0.077 s`` for
+lambda preconditioning and ``0.845 s`` for R/Z matrix construction.  The next
+optimization target is therefore the shape-keyed JAX R/Z matrix builder, not
+force assembly, WOUT writing, or lambda setup.
+
 A broader 2026-05-24 internal policy matrix compared the default fixed-boundary
 policy against the explicit ``accelerated`` policy on all 35 bundled
 fixed-boundary input decks.  On the local CPU host, 34 rows completed within the

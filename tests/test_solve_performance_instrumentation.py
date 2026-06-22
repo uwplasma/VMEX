@@ -57,6 +57,8 @@ def test_residual_iter_timing_report_exposes_force_eval_aliases() -> None:
         "precond_apply": 0.08,
         "precond_mode_scale": 0.01,
         "precond_refresh_seed": 0.015,
+        "precond_refresh_seed_lambda": 0.004,
+        "precond_refresh_seed_rz_matrices": 0.009,
         "precond_refresh_calls": 3,
         "precond_reassemble_calls": 1,
         "precond_cache_hit_count": 5,
@@ -105,6 +107,10 @@ def test_residual_iter_timing_report_exposes_force_eval_aliases() -> None:
     assert report["finalize_diag_build_s"] == pytest.approx(0.008)
     assert report["finalize_unattributed_s"] == pytest.approx(0.006)
     assert report["precond_refresh_seed_s"] == pytest.approx(0.015)
+    assert report["precond_refresh_seed_lambda_s"] == pytest.approx(0.004)
+    assert report["precond_refresh_seed_rz_matrices_s"] == pytest.approx(0.009)
+    assert report["precond_refresh_seed_lambda_per_iter_s"] == pytest.approx(0.002)
+    assert report["precond_refresh_seed_rz_matrices_per_iter_s"] == pytest.approx(0.0045)
     assert report["precond_refresh_calls"] == 3
     assert report["precond_reassemble_calls"] == 1
     assert report["precond_cache_hit_count"] == 5

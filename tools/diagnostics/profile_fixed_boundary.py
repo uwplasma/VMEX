@@ -407,6 +407,8 @@ def _print_run_summary(summary: dict[str, Any]) -> None:
             "preconditioner_s",
             "precond_refresh_s",
             "precond_refresh_seed_s",
+            "precond_refresh_seed_lambda_s",
+            "precond_refresh_seed_rz_matrices_s",
             "precond_apply_s",
             "precond_mode_scale_s",
             "update_s",
