@@ -1025,10 +1025,9 @@ def numpy_preconditioner_apply_policy(
     """Resolve when the CPU host loop should use NumPy R/Z preconditioner apply.
 
     Short CPU solves avoid repeated JAX dispatch by using the NumPy apply path.
-    Larger spectral problems also benefit from this path even when the stage
-    iteration budget is large; small spectral problems are faster with the JAX
-    apply path after compilation. The defaults preserve the short-solve behavior
-    and enable NumPy apply for moderate/high mode counts.
+    Larger spectral stages are faster with the compiled JAX apply path in the
+    production profiles. Advanced benchmarks can still opt into the mode-count
+    rule by setting ``VMEC_JAX_NUMPY_PRECOND_MIN_MODES`` to a positive value.
     """
 
     try:

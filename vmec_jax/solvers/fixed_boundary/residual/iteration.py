@@ -869,7 +869,7 @@ def solve_fixed_boundary_residual_iter(
         mpol=int(getattr(cfg, "mpol", 0)),
         ntor=int(getattr(cfg, "ntor", 0)),
         max_iter_env=os.getenv("VMEC_JAX_NUMPY_PRECOND_MAX_ITER", "240"),
-        min_mode_count_env=os.getenv("VMEC_JAX_NUMPY_PRECOND_MIN_MODES", "16"),
+        min_mode_count_env=os.getenv("VMEC_JAX_NUMPY_PRECOND_MIN_MODES", "0"),
     )
     _use_numpy_preconditioner_apply = bool(_numpy_precond_policy.enabled)
     preconditioner_ops = _precond_payload_facade.residual_preconditioner_operators(
