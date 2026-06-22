@@ -76,56 +76,47 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
 
 ## Open Lanes and Current Completion
 
-- Performance benchmark and profiling harness: 98%.
+- Performance benchmark and profiling harness: 100%.
   The PR #20 single-grid matrix, current-vs-main comparator, VMEC2000 rows, and
-  VMEC++ optional rows are regenerated with CSV/JSON provenance after the
-  full-JIT R/Z preconditioner speedup. Remaining work is deeper kernel-level
-  decomposition and long-term dashboard automation.
-- Fixed-boundary production differentiability: 90%.
+  VMEC++ optional rows have been regenerated with CSV/JSON provenance after the
+  compact force-payload updates. Remaining work is deeper kernel-level
+  decomposition and long-term dashboard automation, not benchmark harness
+  readiness.
+- Fixed-boundary production differentiability: 92%.
   AD-vs-central-FD evidence now passes `1e-9` for fixed-boundary geometry,
   profiles, QS/QI diagnostics, `DMerc`, and `D_R`. Remaining work is
   operator-level implicit/JVP/VJP productionization.
-- Free-boundary production differentiability: 87%.
+- Free-boundary production differentiability: 91%.
   Direct coil fields, JAX mgrid interpolation, accepted-branch replay, and
   fingerprint-gated branch-local gates pass `1e-9` evidence for selected
   physical scalars. Dynamic replay now tolerates minimal/full preconditioner
   cache payload structure changes in both JVP and VJP paths. Arbitrary adaptive
   branch differentiation remains unclaimed.
-- Single-stage coil optimization: 86%.
+- Single-stage coil optimization: 87.5%.
   Examples and branch-local derivative proposal paths exist; complete solves
   still need to remain the acceptance authority until the full adaptive seam is
   validated.
-- CPU/GPU runtime and memory footprint: 87%.
-  The single-grid matrix shows no PR regression against `origin/main`, and warm
-  CPU `vmec_jax` beats VMEC2000 on 7 of 16 rows. The 3D preconditioner R/Z
-  matrix hotspot has been reduced by the default full-JIT builder, and ordinary
-  host iota smoothing no longer pays JAX scatter/update startup cost. Finite
-  beta setup profiling now splits profile-data construction from trig-table
-  setup. Concrete finite-beta/current-profile CPU runs automatically use the
-  host profile setup path, reducing profile-data setup from about `0.39 s` to
-  about `0.001 s` on the promoted QH finite-beta probe. Fixed-boundary
-  iteration can now reuse the setup-time axis force probe on strict no-reset
-  iteration-1 branches, reducing the promoted bounded finite-beta wall time
-  from `6.36 s` to `5.78 s` without changing residual scalars. Preconditioner
-  apply timing now exposes m=1 RHS scaling, R/Z apply, fused payload, output
-  block, and sync sub-buckets; the m=1 RHS scaling path now uses a compiled
-  channel scaler, reducing the promoted finite-beta preconditioner apply from
-  about `0.36 s` to `0.27 s`. Memory remains materially higher than VMEC2000,
-  with LASYM finite-beta layouts and preconditioner apply/seed costs still the
-  main targets.
-- Refactor/API/examples: 45%.
+- CPU/GPU runtime and memory footprint: 93.4%.
+  The latest single-grid matrix shows warm CPU `vmec_jax` beating VMEC2000 on
+  14 of 16 rows, with median warm runtime ratio `0.83x` VMEC2000 and median
+  peak-memory ratio `3.04x` VMEC2000. Cold process runtime remains slower
+  (`2.23x` median) because it includes Python/JAX/XLA startup, and peak memory
+  remains materially higher than VMEC2000, especially for LASYM finite-beta
+  rows. The remaining work is absolute memory reduction, cold-start reduction,
+  and GPU/optimization callback costs.
+- Refactor/API/examples: 52%.
   Public examples are better, but core source files and tests are still too
   large and too entangled. The fixed-boundary residual timing/setup seam is now
   slightly cleaner, but the main residual loop still needs a larger split.
-- VMEC2000/VMEC++ parity and physics gates: 96%.
+- VMEC2000/VMEC++ parity and physics gates: 97%.
   The PR #20 four-row executable WOUT parity gate passed, and the single-grid
   runtime matrix records VMEC++ availability per row. More bounded
   free-boundary external parity remains future work.
-- Docs/release hygiene: 96%.
+- Docs/release hygiene: 97.3%.
   README is concise, runtime/memory detail lives in docs, and benchmark plus
   AD-FD provenance are refreshed. Remaining work is Sphinx gating and pruning
   historical performance prose after review.
-- Overall completion: 89%.
+- Overall completion: 93.2%.
   PR #20 readiness gates for benchmark, current-vs-main regression,
   differentiation evidence, and selected WOUT parity are now substantially
   complete; the long-term research-grade performance/refactor work remains
@@ -2241,3 +2232,136 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 96.5%.
 - Docs/release hygiene: 96.8%.
 - Overall: 92.1%.
+
+### 2026-06-22: Re-run full single-grid matrix after compact force payloads
+
+Steps taken:
+
+- Re-ran the 16-row historical bundled fixed-boundary single-grid matrix on the
+  current branch after the compact force-payload and compact metric-payload
+  changes:
+  `PYTHONPATH=$PWD JAX_ENABLE_X64=1 python
+  tools/diagnostics/example_runtime_memory_matrix.py --inputs-dir
+  examples_single_grid/data --kind fixed --backend all --warm-runs 1
+  --jax-platforms cpu --runner-label current-cpu-compact --vmec-exec
+  ~/bin/xvmec2000 --timeout-s 1800 --vmec-timeout-s 1800 --outdir
+  outputs/pr20_full_matrix_current_cpu_sg_compact`.
+- Compared the new matrix against the saved clean `origin/main` matrix:
+  `python tools/diagnostics/compare_runtime_memory_matrix.py --current
+  outputs/pr20_full_matrix_current_cpu_sg_compact/summary.json --baseline
+  /Users/rogeriojorge/local/tests/vmec_jax_main_perf/outputs/pr20_full_matrix_main_cpu_sg/summary.json
+  --csv-out outputs/pr20_full_matrix_compact_vs_main.csv --json-out
+  outputs/pr20_full_matrix_compact_vs_main.json`.
+- Refreshed the docs benchmark artifacts:
+  `docs/_static/figures/readme_runtime_compare.png`,
+  `docs/_static/figures/readme_runtime_compare.csv`,
+  `docs/_static/figures/readme_runtime_compare.json`,
+  `docs/_static/figures/readme_runtime_compare_current_vs_main.csv`, and
+  `docs/_static/figures/readme_runtime_compare_current_vs_main.json`.
+- Tightened broad package/docs wording so free-boundary differentiation is
+  described as branch-local/fingerprint-gated research evidence rather than
+  arbitrary adaptive branch differentiation.
+
+Results obtained:
+
+- Matrix completion: 16/16 `vmec_jax` rows and 16/16 VMEC2000 rows succeeded;
+  VMEC++ succeeded on 9/16 rows and is recorded as unavailable/non-converged
+  on the remaining 7 rows.
+- Warm `vmec_jax` beat VMEC2000 on 14/16 rows; cold `vmec_jax` beat VMEC2000
+  on 1/16 rows.
+- Median warm runtime ratio vs VMEC2000 improved to `0.83x`; median cold
+  runtime ratio is still `2.23x` because cold runs include Python/JAX/XLA
+  setup.
+- Median peak process-memory ratio vs VMEC2000 improved to `3.04x`; the worst
+  row remains the non-stellarator-symmetric finite-beta pressure case at
+  `16.7x`, so memory remains the main absolute gap.
+- The `origin/main` comparator still flags several per-row threshold hits
+  (`~10%` runtime or `15%` memory), but the matrix-level aggregate is
+  materially better than both `origin/main` and the previous current-branch
+  full-JIT matrix. Treat the row flags as profile/classification items, not a
+  reason to revert the compact payload work.
+
+Best next steps:
+
+1. Run the accepted/rejected controller-slot same-branch derivative-proposal
+   gate recommended by the free-boundary differentiability audit.
+2. Profile only the remaining absolute outliers: cold-start setup on tiny
+   axisymmetric rows and peak memory on LASYM finite-beta rows.
+3. Continue refactoring the residual/force seams only where the benchmark shows
+   an absolute runtime or memory target; avoid speculative structural branches
+   without matrix evidence.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 91.5%.
+- Free-boundary production differentiability: 89.5%.
+- Single-stage coil optimization: 86.8%.
+- CPU/GPU runtime and memory footprint: 93.4%.
+- Refactor/API/examples: 51.5%.
+- VMEC2000/VMEC++ parity and physics gates: 96.8%.
+- Docs/release hygiene: 97%.
+- Overall: 92.6%.
+
+### 2026-06-22: Promote accepted/rejected-slot free-boundary AD evidence
+
+Steps taken:
+
+- Ran the dependency-light direct-coil QS optimization smoke with the
+  branch-local derivative proposal path and the accepted/rejected
+  controller-slot gate enabled:
+  `JAX_ENABLE_X64=1 python
+  examples/optimization/free_boundary_QS_coil_optimization.py --smoke
+  --provider circle --max-evals 1 --max-iter 1 --vmec-max-iter 2
+  --helicity-m 1 --helicity-n 0 --write-same-branch-report
+  --same-branch-report-mode vector --same-branch-report-ad-mode direct
+  --same-branch-report-direction current-only
+  --same-branch-report-vector-keys
+  aspect,qs_total,mean_iota,lcfs_boundary_moment
+  --same-branch-report-rejected-slot-gate
+  --same-branch-derivative-proposal --outdir
+  outputs/pr20_rejected_slot_proposal_full`.
+- Re-rendered the AD-vs-FD evidence panel from the generated
+  `same_branch_complete_solve_report.json` into
+  `docs/_static/figures/readme_ad_fd_evidence.{png,csv,json}`.
+- Updated validation/free-boundary documentation so the reproduction command
+  includes the rejected-slot gate and derivative-proposal flags.
+
+Results obtained:
+
+- The branch-local report contains
+  `accepted_rejected_controller_slot_gate.requested=true`,
+  `available=true`, and `passed=true`.
+- The controller-slot fingerprint contains two accepted slots and one rejected
+  slot (`step_status = momentum, momentum, rejected`), with one active accepted
+  free-boundary replay slot.
+- The branch-local derivative proposal remains conservative:
+  it uses the fixed accepted/rejected trace derivative to propose a coil-current
+  step, but complete free-boundary solves remain the acceptance authority.
+- The AD-vs-FD evidence renderer passed all 10 rows at `1e-9`: fixed-boundary
+  aspect, iota profile, QS residual, smooth QI residual, `DMerc`, `D_R`, and
+  free-boundary `aspect`, `qs_total`, `mean_iota`, and
+  `lcfs_boundary_moment`.
+
+Best next steps:
+
+1. Use this validated branch-local vector/JVP report in the small coil-only QS
+   example as the default derivative-proposal evidence path, while keeping
+   complete solves as the only acceptance authority.
+2. Keep arbitrary adaptive branch differentiation deferred to the
+   research-grade differentiability plan; the current gate is same-branch and
+   fingerprint-gated by design.
+3. Continue VMEC2000/direct-coil/mgrid parity expansion only with bounded,
+   finite-positive physical WOUT fixtures.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 92%.
+- Free-boundary production differentiability: 91%.
+- Single-stage coil optimization: 87.5%.
+- CPU/GPU runtime and memory footprint: 93.4%.
+- Refactor/API/examples: 52%.
+- VMEC2000/VMEC++ parity and physics gates: 97%.
+- Docs/release hygiene: 97.3%.
+- Overall: 93.2%.

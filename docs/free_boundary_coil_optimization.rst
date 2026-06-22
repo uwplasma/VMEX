@@ -917,9 +917,12 @@ The README differentiation evidence panel uses this same branch-local report
 contract.  It compares direct-coil free-boundary scalar JVPs against
 complete-solve central finite differences for ``aspect``, ``qs_total``,
 ``mean_iota``, and ``lcfs_boundary_moment`` under an unchanged accepted-branch
-fingerprint.  Treat those rows as validated proposal/replay derivatives for a
-fixed accepted branch, not as a claim that the full adaptive controller is
-differentiable through arbitrary accept/reject/reset branch changes.
+fingerprint.  The promoted PR #20 artifact also requests the
+accepted/rejected-controller-slot gate; its fingerprint includes two accepted
+slots and one fixed rejected slot.  Treat those rows as validated
+proposal/replay derivatives for a fixed accepted/rejected controller trace, not
+as a claim that the full adaptive controller is differentiable through
+arbitrary accept/reject/reset branch changes.
 
 Run the dependency-light direct-coil forward example from the repository root.
 This path constructs a synthetic circular ``CoilFieldParams`` object directly in

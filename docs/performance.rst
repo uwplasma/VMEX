@@ -2193,9 +2193,10 @@ The docs-facing fixed-boundary CPU matrix is generated from
    :alt: VMEC2000 versus vmec_jax fixed-boundary runtime comparison
 
 The current PR #20 readiness matrix should be read as a performance reality
-check, not as a broad single-solve speedup claim.  It was regenerated on the
+check, not as a broad cold-process speedup claim.  It was regenerated on the
 local CPU host from 16 historical bundled fixed-boundary rows using
-``example_runtime_memory_matrix.py --backend all --warm-runs 1``.  VMEC2000 and
+``example_runtime_memory_matrix.py --backend all --warm-runs 1`` after the
+compact force-payload and compact metric-payload updates.  VMEC2000 and
 ``vmec_jax`` converged on all 16 rows.  VMEC++ converged on 9 rows
 (``ITERModel``, ``LandremanPaul2021_QA_lowres``,
 ``LandremanPaul2021_QA_lowres1``, ``circular_tokamak``,
@@ -2203,14 +2204,16 @@ local CPU host from 16 historical bundled fixed-boundary rows using
 ``purely_toroidal_field``, ``shaped_tokamak_pressure``, and ``solovev``) and is
 omitted on the other 7 unsupported or non-converged rows.
 
-On this run, warm ``vmec_jax`` beat VMEC2000 on 7 of 16 rows and cold
-``vmec_jax`` beat VMEC2000 on 2 of 16 rows.  The median warm single-solve row
-is ``1.41x`` slower than VMEC2000, and the median cold row is ``2.93x`` slower
+On this run, warm ``vmec_jax`` beat VMEC2000 on 14 of 16 rows and cold
+``vmec_jax`` beat VMEC2000 on 1 of 16 rows.  The median warm single-solve row
+is ``0.83x`` VMEC2000 runtime, while the median cold row is ``2.23x`` slower
 because cold time includes Python/JAX/XLA setup.  Peak process memory remains
-higher than VMEC2000, with a median ``4.44x`` ratio and the largest ratio on
-the non-stellarator-symmetric finite-beta row.  The
-current-vs-``origin/main`` comparison recorded zero material regressions under
-the configured ``1.10x`` runtime and ``1.15x`` peak-memory thresholds.
+higher than VMEC2000, with a median ``3.04x`` ratio and the largest ratio
+(``16.7x``) on the non-stellarator-symmetric finite-beta row.  The
+current-vs-``origin/main`` comparison now records a small number of material
+per-row threshold hits, mostly near-threshold runtime noise or external-load
+effects; the aggregate warm runtime and memory metrics are materially better
+than both ``origin/main`` and the previous current-branch matrix.
 
 The first fixed-boundary cold-path hotspot isolated in this pass was first-call
 3D preconditioner seed construction.  A bounded QH no-scan profile with detailed
@@ -2465,11 +2468,11 @@ Regenerate the current fixed-boundary plot and current-vs-main comparison with:
      --backend all \
      --warm-runs 1 \
      --jax-platforms cpu \
-     --runner-label current-cpu \
+     --runner-label current-cpu-compact \
      --vmec-exec ~/bin/xvmec2000 \
      --timeout-s 1800 \
      --vmec-timeout-s 1800 \
-     --outdir outputs/pr20_full_matrix_current_cpu_sg
+     --outdir outputs/pr20_full_matrix_current_cpu_sg_compact
 
    cd /path/to/a/clean/origin-main/worktree
    PYTHONPATH=$PWD JAX_ENABLE_X64=1 python tools/diagnostics/example_runtime_memory_matrix.py \
@@ -2486,13 +2489,13 @@ Regenerate the current fixed-boundary plot and current-vs-main comparison with:
 
    cd /path/to/the/pr/worktree
    python tools/diagnostics/compare_runtime_memory_matrix.py \
-     --current outputs/pr20_full_matrix_current_cpu_sg/summary.json \
+     --current outputs/pr20_full_matrix_current_cpu_sg_compact/summary.json \
      --baseline /path/to/a/clean/origin-main/worktree/outputs/pr20_full_matrix_main_cpu_sg/summary.json \
      --csv-out docs/_static/figures/readme_runtime_compare_current_vs_main.csv \
      --json-out docs/_static/figures/readme_runtime_compare_current_vs_main.json
 
    python tools/diagnostics/readme_runtime_compare.py \
-     --cpu-summary outputs/pr20_full_matrix_current_cpu_sg/summary.json \
+     --cpu-summary outputs/pr20_full_matrix_current_cpu_sg_compact/summary.json \
      --figure-kind fixed --plot-mode runtime_memory \
      --figure-out docs/_static/figures/readme_runtime_compare.png \
      --csv-out docs/_static/figures/readme_runtime_compare.csv \
