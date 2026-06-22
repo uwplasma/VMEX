@@ -95,15 +95,17 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   Examples and branch-local derivative proposal paths exist; complete solves
   still need to remain the acceptance authority until the full adaptive seam is
   validated.
-- CPU/GPU runtime and memory footprint: 84%.
+- CPU/GPU runtime and memory footprint: 85%.
   The single-grid matrix shows no PR regression against `origin/main`, and warm
   CPU `vmec_jax` beats VMEC2000 on 7 of 16 rows. The 3D preconditioner R/Z
   matrix hotspot has been reduced by the default full-JIT builder, and ordinary
   host iota smoothing no longer pays JAX scatter/update startup cost. Finite
   beta setup profiling now splits profile-data construction from trig-table
-  setup, showing profile-data construction and axis-reset setup are the next
-  CPU targets. Memory remains materially higher than VMEC2000, with LASYM
-  finite-beta layouts and cold setup still the main targets.
+  setup. Concrete finite-beta/current-profile CPU runs automatically use the
+  host profile setup path, reducing profile-data setup from about `0.39 s` to
+  about `0.001 s` on the promoted QH finite-beta probe. Memory remains
+  materially higher than VMEC2000, with LASYM finite-beta layouts and
+  cold-axis/preconditioner setup still the main targets.
 - Refactor/API/examples: 43%.
   Public examples are better, but core source files and tests are still too
   large and too entangled. The fixed-boundary residual timing/setup seam is now
@@ -116,7 +118,7 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   README is concise, runtime/memory detail lives in docs, and benchmark plus
   AD-FD provenance are refreshed. Remaining work is Sphinx gating and pruning
   historical performance prose after review.
-- Overall completion: 87%.
+- Overall completion: 88%.
   PR #20 readiness gates for benchmark, current-vs-main regression,
   differentiation evidence, and selected WOUT parity are now substantially
   complete; the long-term research-grade performance/refactor work remains
@@ -235,7 +237,7 @@ Gates:
 - No WOUT parity regression.
 - No AD-vs-FD regression.
 
-Status: 16%.
+Status: 18%.
 
 ### M4: Operator-Level Differentiability
 
@@ -1129,3 +1131,57 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 96%.
 - Docs/release hygiene: 96%.
 - Overall: 87%.
+
+### 2026-06-22: Enable host profile setup automatically for profile-heavy CPU decks
+
+Steps taken:
+
+- Used cProfile on the bounded QH finite-beta probe to inspect
+  `build_wout_like_profiles_from_indata` internals.
+- Found that the `setup_profile_data_s` cost came mostly from small JAX
+  operations in mass/current profile setup, not from input parsing or trig
+  tables.
+- Verified the existing `VMEC_JAX_HOST_PROFILE_SETUP=1` path on the same
+  finite-beta row and on the low-mode QH warm-start row.
+- Added a pure config helper, `indata_has_profile_setup_work`, that detects
+  finite-beta pressure profiles, current-driven profiles, explicit iota
+  profiles, RFP mode, and non-default toroidal-flux profiles.
+- Changed `resolve_host_profile_setup(..., profile_setup_env="auto")` so CPU
+  solves keep the old default for simple decks but automatically use host
+  profile setup for profile-heavy concrete decks. Traced/autodiff inputs still
+  disable the NumPy patch inside `build_residual_profile_setup`.
+- Added unit coverage for the new policy and profile-work detection.
+
+Results obtained:
+
+- With no env override, the bounded QH finite-beta profile now reports
+  `setup_profile_data_s=0.00112` and `setup_boundary_profiles_s=0.01777`.
+  Before the policy change, the same probe reported approximately
+  `setup_profile_data_s=0.392` and `setup_boundary_profiles_s=0.409`.
+- The low-mode QH warm-start row remains on the cheap default CPU path and
+  still reports sub-millisecond `setup_profile_data_s`, with no useful benefit
+  from forcing host profile setup.
+- Focused validation passed:
+  `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/config.py vmec_jax/solvers/fixed_boundary/residual/iteration.py tests/test_solve_residual_iter_config.py`;
+  `JAX_ENABLE_X64=1 python -m pytest -q tests/test_solve_residual_iter_config.py tests/test_solve_performance_instrumentation.py tests/test_solve_residual_iter_setup_helpers.py -q`.
+
+Best next steps:
+
+1. Attack `setup_axis_reset_s` on finite-beta rows. It remains about `0.94 s`
+   and includes a force evaluation; this is now the largest setup bucket.
+2. Continue reducing preconditioner seed/apply costs, especially
+   `precond_refresh_seed_rz_matrices_s` and `precond_apply_s`.
+3. Promote this profile-heavy CPU policy into the docs performance caveats only
+   after one more full matrix confirms no broad regression.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 98%.
+- Fixed-boundary production differentiability: 90%.
+- Free-boundary production differentiability: 87%.
+- Single-stage coil optimization: 86%.
+- CPU/GPU runtime and memory footprint: 85%.
+- Refactor/API/examples: 43%.
+- VMEC2000/VMEC++ parity and physics gates: 96%.
+- Docs/release hygiene: 96%.
+- Overall: 88%.
