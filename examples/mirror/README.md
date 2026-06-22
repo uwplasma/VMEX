@@ -22,6 +22,7 @@ python examples/mirror_implicit_sensitivity.py --outdir results/mirror/implicit_
 python examples/mirror_implicit_solve_benchmark.py --outdir results/mirror/implicit_solve_benchmark
 python examples/toroidal_stellarator_mirror_hybrid.py --outdir results/toroidal_stellarator_mirror_hybrid
 python examples/toroidal_stellarator_mirror_hybrid_convergence.py --outdir results/toroidal_stellarator_mirror_hybrid_convergence
+python examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py --outdir results/toroidal_stellarator_mirror_hybrid_square_coils
 python examples/mirror_solver_comparison.py --outdir results/mirror/solver_comparison
 python examples/mirror_residual_newton_convergence_grid.py --outdir results/mirror/residual_newton_convergence_grid
 ```
@@ -142,6 +143,18 @@ existing convergence JSON files to merge chunked rows, de-duplicate by case,
 write a compact aggregate CSV/JSON report with strict-component blocker
 counts, and optionally regenerate the residual/history plots without rerunning
 VMEC/JAX or VMEC2000.
+
+The root-level
+``examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py``
+script builds a closed square array with ``N`` circular coils per side
+(``N=4`` by default, so 16 total coils), samples the direct Biot-Savart vacuum
+field on a square-torus hybrid boundary, and scans beta from 0% to 10% by
+applying a bounded pressure-balance-inspired LCFS response. It writes the coil
+geometry JSON, beta-scan CSV, compact metrics JSON, and plots for 3-D coils,
+LCFS, and vacuum field lines, top-view boundary response, side/corner cross
+sections, boundary ``|B|``, and beta-scan summary metrics. This is a reduced
+free-boundary planning fixture for the toroidal stellarator-mirror lane; it is
+not yet a promoted full VMEC free-boundary equilibrium solve.
 
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
 free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct

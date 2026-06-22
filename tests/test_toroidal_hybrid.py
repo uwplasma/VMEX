@@ -286,6 +286,98 @@ def test_toroidal_hybrid_example_writes_nonblank_plots(tmp_path: Path):
         _assert_nonblank_image(path, image)
 
 
+def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: Path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py",
+            "--outdir",
+            str(tmp_path / "square_coils"),
+            "--n-per-side",
+            "2",
+            "--betas",
+            "0,5,10",
+            "--ntheta",
+            "16",
+            "--nalpha",
+            "24",
+            "--n-segments",
+            "32",
+            "--no-plots",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    metrics_path = Path(completed.stdout.strip())
+    metrics = json.loads(metrics_path.read_text())
+    rows = metrics["rows"]
+    assert metrics["metrics_schema"] == "toroidal_stellarator_mirror_hybrid_square_coils_free_boundary_beta_scan"
+    assert metrics["workflow_status"] == "reduced_free_boundary_beta_scan"
+    assert metrics["free_boundary_solve_status"] == "reduced_pressure_balance_proxy_not_vmec_solve"
+    assert metrics["production_free_boundary_claim"] is False
+    assert metrics["hybrid_fixture_kind"] == "toroidal_stellarator_mirror_hybrid_square_coils"
+    assert metrics["coil_count"] == 8
+    assert metrics["n_per_side"] == 2
+    assert metrics["betas_percent"] == [0.0, 5.0, 10.0]
+    assert metrics["figures"] == {}
+    assert Path(metrics["coils_json"]).exists()
+    assert Path(metrics["summary_csv"]).exists()
+    assert len(rows) == 3
+    assert [row["beta_percent"] for row in rows] == [0.0, 5.0, 10.0]
+    assert rows[0]["boundary_scale_mean"] == pytest.approx(1.0)
+    assert rows[-1]["boundary_scale_mean"] > rows[0]["boundary_scale_mean"]
+    assert rows[-1]["boundary_scale_max"] < 1.6
+    assert all(0.0 < row["response_min"] <= row["response_mean"] <= row["response_max"] for row in rows)
+    with Path(metrics["summary_csv"]).open(newline="") as file_obj:
+        csv_rows = list(csv.DictReader(file_obj))
+    assert len(csv_rows) == len(rows)
+    assert csv_rows[-1]["beta_percent"] == "10.0"
+
+
+def test_square_coil_hybrid_free_boundary_example_writes_nonblank_plots(tmp_path: Path):
+    image = pytest.importorskip("matplotlib.image")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py",
+            "--outdir",
+            str(tmp_path / "square_coils_plots"),
+            "--n-per-side",
+            "2",
+            "--betas",
+            "0,10",
+            "--ntheta",
+            "16",
+            "--nalpha",
+            "24",
+            "--n-segments",
+            "32",
+            "--field-line-count",
+            "4",
+            "--field-line-steps",
+            "24",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    metrics = json.loads(Path(completed.stdout.strip()).read_text())
+    assert set(metrics["figures"]) == {
+        "geometry_3d",
+        "top_view",
+        "cross_sections",
+        "boundary_bmag",
+        "beta_scan_summary",
+    }
+    assert metrics["field_line_count"] == 4
+    assert metrics["field_line_steps"] == 24
+    for path in metrics["figures"].values():
+        _assert_nonblank_image(path, image)
+
+
 def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
     completed = subprocess.run(
         [
