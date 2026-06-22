@@ -181,6 +181,12 @@ read as a mixed result rather than a broad VMEC2000 speedup claim:
   evaluations (``post_jacobian_callback``) releases accumulated caches without
   paying the cost of recompilation on the next call.
 
+  The same host-vs-JAX rule is applied to post-solve flux/profile
+  reconciliation: ordinary NumPy arrays use a host ``add_fluxes`` iota-smoothing
+  path, while traced arrays keep the differentiable JAX implementation.  This
+  avoids launching small XLA scatter/update kernels during non-traced CLI
+  startup without changing autodiff behavior.
+
 **5. Strict-update + no backtracking**
   The VMEC iteration algorithm uses ``strict_update=True, backtracking=False``
   to match the VMEC2000 step-accept path.  Using backtracking causes the

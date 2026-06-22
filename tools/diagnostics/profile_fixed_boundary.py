@@ -268,6 +268,10 @@ def _summarize_run(*, args: argparse.Namespace, run: Any, wall_time: float | Non
     effective_jit_forces = getattr(args, "effective_jit_forces", None)
     if effective_jit_forces is None:
         effective_jit_forces = _effective_jit_forces(args)
+    effective_finish_policy = getattr(args, "effective_finish_policy", None)
+    if effective_finish_policy is None:
+        finish_policy = getattr(args, "finish_policy", None)
+        effective_finish_policy = finish_policy if finish_policy is not None else ("auto" if bool(args.auto_cli_policy) else "none")
     w_hist = np.asarray(getattr(res, "w_history", np.zeros((0,), dtype=float)), dtype=float)
     fsqr_hist = np.asarray(getattr(res, "fsqr2_history", np.zeros((0,), dtype=float)), dtype=float)
     fsqz_hist = np.asarray(getattr(res, "fsqz2_history", np.zeros((0,), dtype=float)), dtype=float)
@@ -309,7 +313,7 @@ def _summarize_run(*, args: argparse.Namespace, run: Any, wall_time: float | Non
             "jit_forces": bool(effective_jit_forces),
             "no_jit_forces": bool(args.no_jit_forces),
             "auto_cli_policy": bool(args.auto_cli_policy),
-            "finish_policy": str(args.effective_finish_policy),
+            "finish_policy": str(effective_finish_policy),
             "dynamic_scan": bool(args.dynamic_scan),
         },
         "result": {

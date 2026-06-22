@@ -76,40 +76,44 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
 
 ## Open Lanes and Current Completion
 
-- Performance benchmark and profiling harness: 95%.
+- Performance benchmark and profiling harness: 98%.
   The PR #20 single-grid matrix, current-vs-main comparator, VMEC2000 rows, and
-  VMEC++ optional rows are regenerated with CSV/JSON provenance. Remaining work
-  is deeper kernel-level decomposition and long-term dashboard automation.
+  VMEC++ optional rows are regenerated with CSV/JSON provenance after the
+  full-JIT R/Z preconditioner speedup. Remaining work is deeper kernel-level
+  decomposition and long-term dashboard automation.
 - Fixed-boundary production differentiability: 90%.
   AD-vs-central-FD evidence now passes `1e-9` for fixed-boundary geometry,
   profiles, QS/QI diagnostics, `DMerc`, and `D_R`. Remaining work is
   operator-level implicit/JVP/VJP productionization.
-- Free-boundary production differentiability: 86%.
+- Free-boundary production differentiability: 87%.
   Direct coil fields, JAX mgrid interpolation, accepted-branch replay, and
   fingerprint-gated branch-local gates pass `1e-9` evidence for selected
-  physical scalars. Arbitrary adaptive branch differentiation remains
-  unclaimed.
+  physical scalars. Dynamic replay now tolerates minimal/full preconditioner
+  cache payload structure changes in both JVP and VJP paths. Arbitrary adaptive
+  branch differentiation remains unclaimed.
 - Single-stage coil optimization: 86%.
   Examples and branch-local derivative proposal paths exist; complete solves
   still need to remain the acceptance authority until the full adaptive seam is
   validated.
-- CPU/GPU runtime and memory footprint: 76%.
+- CPU/GPU runtime and memory footprint: 83%.
   The single-grid matrix shows no PR regression against `origin/main`, and warm
-  CPU `vmec_jax` beats VMEC2000 on 7 of 16 rows. Memory remains materially
-  higher than VMEC2000, and the 3D preconditioner seed hotspot is now isolated
-  to R/Z matrix construction.
-- Refactor/API/examples: 40%.
+  CPU `vmec_jax` beats VMEC2000 on 7 of 16 rows. The 3D preconditioner R/Z
+  matrix hotspot has been reduced by the default full-JIT builder, and ordinary
+  host iota smoothing no longer pays JAX scatter/update startup cost. Memory
+  remains materially higher than VMEC2000, with LASYM finite-beta layouts and
+  cold setup still the main targets.
+- Refactor/API/examples: 42%.
   Public examples are better, but core source files and tests are still too
   large and too entangled.
 - VMEC2000/VMEC++ parity and physics gates: 96%.
   The PR #20 four-row executable WOUT parity gate passed, and the single-grid
   runtime matrix records VMEC++ availability per row. More bounded
   free-boundary external parity remains future work.
-- Docs/release hygiene: 95%.
+- Docs/release hygiene: 96%.
   README is concise, runtime/memory detail lives in docs, and benchmark plus
   AD-FD provenance are refreshed. Remaining work is Sphinx gating and pruning
   historical performance prose after review.
-- Overall completion: 83%.
+- Overall completion: 87%.
   PR #20 readiness gates for benchmark, current-vs-main regression,
   differentiation evidence, and selected WOUT parity are now substantially
   complete; the long-term research-grade performance/refactor work remains
@@ -382,17 +386,21 @@ Status: 70%.
 
 ## Immediate Next Steps
 
-1. Finish M0 by committing this plan and the README benchmark removal.
-2. Create the M1 VMEC2000/VMEC++ algorithm-to-kernel map using local source
-   inspection and one profiled fixed-boundary row.
-3. Add M2 profiling decomposition hooks around cold/warm `vmec_jax` runs without
-   changing default user output.
-4. Run the historical single-grid matrix once with the new decomposition and
-   classify the largest runtime/memory gaps.
-5. Start M7 by splitting `iteration.py` at stable seams while keeping
+1. Continue M2/M3 with the next measured fixed-boundary performance bottlenecks:
+   cold setup (`setup_axis_reset_s`, boundary/profile setup) and LASYM
+   finite-beta memory layout. The R/Z preconditioner matrix hotspot is no
+   longer the first target.
+2. Start M7 in a larger tranche by splitting
+   `solvers/fixed_boundary/residual/iteration.py` at stable seams while keeping
    compatibility wrappers and tests.
-6. Promote M4 derivative evidence tolerance to `1e-9` where current artifacts
-   show it is numerically stable; document exceptions.
+3. Continue M4/M5 by moving validated derivative paths from evidence-only
+   helpers toward production APIs: fixed-boundary implicit/operator derivatives
+   first, branch-local free-boundary derivative proposals second.
+4. Keep README performance-light. Runtime/memory matrix evidence stays in
+   `docs/performance.rst`; README should only summarize differentiability and
+   user-facing capabilities.
+5. Check PR #20 CI periodically, not continuously. If it fails, fix the failed
+   shard locally before pushing another tranche.
 
 ## User Decisions Needed
 
@@ -406,6 +414,10 @@ Status: 70%.
 - Whether VMEC++ parity should be a release gate or a documented optional
   comparison. Recommendation: optional per-row comparison, because VMEC++ input
   support/convergence coverage is not identical to VMEC2000.
+- Whether PR #20 should be moved back to draft while the long-term refactor
+  tranches continue. Current GitHub state is `isDraft=false`; the PR-readiness
+  evidence gates are complete locally, but the broader research-grade
+  performance/refactor plan is intentionally not complete.
 
 ## Progress Log
 
@@ -899,3 +911,164 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 96%.
 - Docs/release hygiene: 95%.
 - Overall: 86%.
+
+### 2026-06-22: PR #20 audit after benchmark/readiness refresh
+
+Steps taken:
+
+- Rechecked branch state after the regenerated full single-grid matrix,
+  preconditioner speedup, WOUT parity evidence, and AD-vs-FD evidence pushes.
+- Confirmed the working tree was clean before this plan update and that the
+  active branch is `codex/differentiability-refactor-plan`.
+- Queried PR #20 status with `gh pr view 20 --json ...`.
+- Reran `tools/diagnostics/source_health.py --top 20 --top-functions 40` to
+  identify the next maintainability blockers.
+- Verified the README does not reference the runtime/memory benchmark figure;
+  the full matrix remains docs-facing in `docs/performance.rst`.
+
+Results obtained:
+
+- PR #20 is currently `isDraft=false`; early CI shards passed and longer
+  py3.11 coverage/physics shards were still running at the audit time.
+- The largest production source-health blocker remains
+  `vmec_jax/solvers/fixed_boundary/residual/iteration.py` (`3120` lines) and
+  its `solve_fixed_boundary_residual_iter` function (`2645` lines).
+- Other large production files remain below the immediate 2000-line warning
+  threshold or are close enough to require later tranches:
+  `optimization.py`, `preconditioner_1d_jax.py`, `vmec_forces.py`,
+  `plotting.py`, `free_boundary.py`, `qi_optimization.py`, and
+  `io/wout/minimal.py`.
+- Oversized exact/free-boundary test files are also real maintainability debt,
+  but the next production refactor should address the fixed-boundary iteration
+  seam first because it controls runtime, differentiability, and API clarity.
+
+Best next steps:
+
+1. Profile the post-full-JIT QH warm-start path one level deeper around cold
+   setup and axis/boundary/profile setup, then target the largest remaining
+   measured setup bucket.
+2. Start the fixed-boundary iteration refactor by extracting input/static
+   setup, convergence policy, and history/output assembly from the giant
+   residual iteration function before changing numerical kernels.
+3. Keep PR #20 ready only if the user wants the evidence gates reviewed now;
+   otherwise convert it back to draft before the larger refactor tranches.
+4. Continue CI checks later and only react to concrete failed shards.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 98%.
+- Fixed-boundary production differentiability: 90%.
+- Free-boundary production differentiability: 86%.
+- Single-stage coil optimization: 86%.
+- CPU/GPU runtime and memory footprint: 82%.
+- Refactor/API/examples: 41%.
+- VMEC2000/VMEC++ parity and physics gates: 96%.
+- Docs/release hygiene: 95%.
+- Overall: 86%.
+
+### 2026-06-22: Reduce host flux-reconciliation startup cost
+
+Steps taken:
+
+- Profiled the post-full-JIT QH warm-start path with cProfile and VMEC timing:
+  `JAX_ENABLE_X64=1 JAX_PLATFORMS=cpu python tools/diagnostics/profile_fixed_boundary.py --input examples/data/input.nfp4_QH_warm_start --iters 2 --solver-mode default --solver-device cpu --finish-policy none --no-use-scan --require-no-scan --no-warmup --simple-profile --vmec-timing --vmec-timing-detail --cprofile-out outputs/post_fulljit_qh_cold_setup_profile.prof --cprofile-text-out outputs/post_fulljit_qh_cold_setup_profile.txt --outdir outputs/post_fulljit_qh_cold_setup_trace --json-out outputs/post_fulljit_qh_cold_setup.json`.
+- Added a NumPy host implementation of VMEC `add_fluxes` iota smoothing in
+  `_iotaf_from_iotas`, while keeping the JAX implementation for traced/autodiff
+  inputs.
+- Added a regression test proving traced inputs still use a differentiable JAX
+  path.
+- Reran the same fixed-boundary profile after the host fast path.
+
+Results obtained:
+
+- Before the host fast path, the short QH profile took `0.806 s` wall time;
+  after the change it took `0.654 s`, with unchanged `final_w`.
+- The solve body remained about `0.45 s`; the improvement is in host-side
+  startup/post-solve reconciliation rather than force kernels.
+- cProfile showed `finalize_flux_profiles_for_run` dropped from about
+  `0.298 s` to about `0.150 s`.
+- JAX compilation count in the cProfile table dropped from `30` to `19` calls,
+  because host iota smoothing no longer uses JAX scatter/update for ordinary
+  NumPy arrays.
+- Validation passed:
+  `python -m ruff check vmec_jax/energy.py tests/test_energy_fast_helpers.py`;
+  `JAX_ENABLE_X64=1 python -m pytest -q tests/test_energy_fast_helpers.py tests/test_fast_physics_kernels.py tests/test_driver_fast_reconstruction.py -q`;
+  `git diff --check`;
+  `python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50 --max-file-mib 2`;
+  `LANG=C.UTF-8 LC_ALL=C.UTF-8 python -m sphinx -W -j auto -b html docs docs/_build/html_pr20_iotaf_fastpath`.
+- A finite-beta short profile:
+  `JAX_ENABLE_X64=1 JAX_PLATFORMS=cpu python tools/diagnostics/profile_fixed_boundary.py --input examples/data/input.nfp4_QH_finite_beta --iters 2 --solver-mode default --solver-device cpu --finish-policy none --no-use-scan --require-no-scan --no-warmup --simple-profile --vmec-timing --vmec-timing-detail --outdir outputs/post_iotaf_numpy_finite_beta_trace --json-out outputs/post_iotaf_numpy_finite_beta.json`
+  reported `6.83 s` wall time with `3.83 s` setup and `2.49 s` iteration
+  loop. The dominant setup buckets were axis reset (`0.95 s`), index constants
+  (`0.42 s`), and boundary profiles (`0.37 s`).
+
+Best next steps:
+
+1. Continue host startup profiling in `final_flux_profiles_from_state`; the
+   next exposed cost is `vmec_pwint_from_trig`/quadrature table construction in
+   the current-driven post-solve recomputation path.
+2. Prioritize finite-beta setup staging and index-constant reuse before tuning
+   tiny low-mode rows further; the finite-beta profile shows setup can exceed
+   the iteration loop for short runs.
+3. Keep traced/JAX paths covered whenever host NumPy shortcuts are added.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 98%.
+- Fixed-boundary production differentiability: 90%.
+- Free-boundary production differentiability: 86%.
+- Single-stage coil optimization: 86%.
+- CPU/GPU runtime and memory footprint: 83%.
+- Refactor/API/examples: 41%.
+- VMEC2000/VMEC++ parity and physics gates: 96%.
+- Docs/release hygiene: 95%.
+- Overall: 86%.
+
+### 2026-06-22: Fix PR #20 CI failures after readiness refresh
+
+Steps taken:
+
+- Pulled failed CI logs for `Fast Tests (py3.11 core coverage: rest)` and
+  `Fast Tests (py3.11 exact coverage: remaining)`.
+- Updated the README hygiene test to enforce the new product decision: the
+  runtime/memory figure must be absent from the README and remain docs-facing.
+- Made `tools/diagnostics/profile_fixed_boundary.py` robust when unit tests
+  call `_summarize_run()` directly without first attaching
+  `effective_finish_policy` in `main()`.
+- Fixed dynamic replay JVP/VJP structure handling when a refreshed
+  preconditioner matrix payload has the full matrix-key set while the cached
+  trace carry has a minimal matrix-key set.
+- Added cotangent padding for auxiliary replay cache dictionaries so VJP calls
+  receive a cotangent pytree matching the differentiated step output.
+
+Results obtained:
+
+- The local reproduction of the failed core-rest shard now passes:
+  `658 passed, 1 skipped`.
+- The local reproduction of the failed exact-remaining shard now passes:
+  `29 passed`.
+- The direct failing tests now pass:
+  `tests/test_docs_release_hygiene.py::test_root_readme_stays_concise_and_defers_extended_claims`,
+  the four profiler summary tests in
+  `tests/test_gpu_cpu_performance_profile.py`, and the two exact replay tests
+  in `tests/test_discrete_adjoint_qh.py` / `tests/test_boundary_field.py`.
+
+Best next steps:
+
+1. Push these fixes and let CI rerun.
+2. If CI is green, PR #20 can be reviewed as a readiness/refactor umbrella with
+   the runtime plot intentionally absent from README.
+3. Continue the next performance tranche on finite-beta setup staging and
+   LASYM memory only after CI is green.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 98%.
+- Fixed-boundary production differentiability: 90%.
+- Free-boundary production differentiability: 87%.
+- Single-stage coil optimization: 86%.
+- CPU/GPU runtime and memory footprint: 83%.
+- Refactor/API/examples: 42%.
+- VMEC2000/VMEC++ parity and physics gates: 96%.
+- Docs/release hygiene: 96%.
+- Overall: 87%.
