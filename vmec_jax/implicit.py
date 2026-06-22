@@ -1520,20 +1520,26 @@ def solve_fixed_boundary_state_implicit(
         )
         dphipf, dchipf, dpressure, dlamscale, dRcos, dRsin, dZcos, dZsin = vjp_fun(v)
         # Direct dependence of the output state on boundary parameters.
+        #
+        # The implicit-function contribution has the usual minus sign,
+        # ``-F_p^T H^{-1} ct``. The direct edge-row projection is not part of
+        # that stationarity residual, so it must be added after applying the
+        # implicit sign. Keeping this split explicit prevents the direct
+        # boundary sensitivity from being sign-flipped.
         ct_edge_Rcos = jnp.asarray(ct_state_full.Rcos)[-1, :]
         ct_edge_Rsin = jnp.asarray(ct_state_full.Rsin)[-1, :]
         ct_edge_Zcos = jnp.asarray(ct_state_full.Zcos)[-1, :]
         ct_edge_Zsin = jnp.asarray(ct_state_full.Zsin)[-1, :]
-        dRcos = dRcos + ct_edge_Rcos
-        dRsin = dRsin + ct_edge_Rsin
-        dZcos = dZcos + ct_edge_Zcos
-        dZsin = dZsin + ct_edge_Zsin
+        dRcos = -dRcos + ct_edge_Rcos
+        dRsin = -dRsin + ct_edge_Rsin
+        dZcos = -dZcos + ct_edge_Zcos
+        dZsin = -dZsin + ct_edge_Zsin
         if not bool(edge_active):
             dRcos = jnp.zeros_like(dRcos)
             dRsin = jnp.zeros_like(dRsin)
             dZcos = jnp.zeros_like(dZcos)
             dZsin = jnp.zeros_like(dZsin)
-        return (-dphipf, -dchipf, -dpressure, -dlamscale, -dRcos, -dRsin, -dZcos, -dZsin)
+        return (-dphipf, -dchipf, -dpressure, -dlamscale, dRcos, dRsin, dZcos, dZsin)
 
     _solve_cust.defvjp(fwd, bwd)
 

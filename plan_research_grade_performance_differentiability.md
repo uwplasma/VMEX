@@ -1946,3 +1946,73 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 96%.
 - Docs/release hygiene: 96.5%.
 - Overall: 90.9%.
+
+### 2026-06-22: Fix fixed-boundary implicit edge-gradient sign and log force/bcovar phase evidence
+
+Steps taken:
+
+- Used the new force phase labels on `input.LandremanPaul2021_QA_lowres`.
+  The bounded local profile completed under `outputs/pr20_force_phase_lpqa/`
+  with `solve_total_s=11.753 s` and `compute_forces_s=4.235 s`.
+- Enabled the existing `VMEC_JAX_PROFILE_BCOVAR=1` subphase logger on the same
+  row. The profile completed under `outputs/pr20_bcovar_phase_lpqa/` with
+  `solve_total_s=11.454 s` and `compute_forces_s=4.111 s`.
+- Aggregated the phase logs. Force-phase means:
+  `bcovar_done=0.0478 s`, `constraint_finish_done=0.0222 s`,
+  `radial_force_assembly_done=0.0122 s`, `m1_physical_done=0.0094 s`.
+  Bcovar-subphase means:
+  `metric_done=0.0139 s`, `field_done=0.0098 s`,
+  `odd_channels_done=0.0049 s`, `lambda_done=0.0029 s`,
+  `parity_done=0.0028 s`.
+- Added a fast fixed-boundary implicit scalar AD-vs-central-FD gate that
+  exercises the energy implicit custom VJP direct boundary-parameter path.
+- The new gate exposed a real sign bug: the implicit VJP added direct edge-row
+  output cotangents before the final implicit-function negation, flipping the
+  direct boundary sensitivity.
+- Fixed `solve_fixed_boundary_state_implicit` so only the implicit
+  `F_p^T H^{-1} ct` contribution receives the minus sign, while the direct
+  edge-row projection is added with its physical sign.
+
+Results obtained:
+
+- Before the fix, the new scalar gate produced `AD=-2.4375` and
+  `FD=+2.4375`.
+- After the fix, focused validation passed:
+  `python -m ruff check vmec_jax/implicit.py
+  tests/test_implicit_differentiation_fast.py
+  tests/test_glasser_resistive_interchange.py
+  tests/test_finite_beta_helpers_unit.py`;
+  `PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  -p no:cacheprovider
+  tests/test_implicit_differentiation_fast.py::test_fixed_boundary_implicit_scalar_grad_matches_central_fd
+  tests/test_implicit_differentiation_fast.py::test_fixed_boundary_backward_runs_hvp_and_direct_edge_cotangent
+  tests/test_implicit_differentiation_fast.py::test_fixed_boundary_backward_zeros_inactive_edge_cotangents
+  tests/test_glasser_resistive_interchange.py::test_glasser_d_r_gradient_matches_central_finite_difference
+  tests/test_finite_beta_helpers_unit.py::test_mercier_terms_from_state_dmerc_and_d_r_ad_match_central_fd
+  tests/test_finite_beta_helpers_unit.py::test_mercier_objective_wrappers_ad_match_central_fd -q`.
+- The full fast implicit differentiation file passed:
+  `PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  -p no:cacheprovider tests/test_implicit_differentiation_fast.py -q`.
+- Existing `DMerc`/`D_R` derivative tests still pass after the sign fix.
+
+Best next steps:
+
+1. Promote the fixed-boundary evidence panel to include this direct boundary
+   AD-vs-FD row, then keep the stricter `1e-9` threshold for rows where the
+   scalar is smooth and synthetic enough to support it.
+2. Target the next performance implementation at `bcovar` metric/field assembly
+   and odd-channel synthesis rather than TOMNSP FFT flipping.
+3. Add a similarly narrow free-boundary branch-local physical-scalar evidence
+   gate using the existing same-branch report machinery.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 91.5%.
+- Free-boundary production differentiability: 87%.
+- Single-stage coil optimization: 86%.
+- CPU/GPU runtime and memory footprint: 91.8%.
+- Refactor/API/examples: 50%.
+- VMEC2000/VMEC++ parity and physics gates: 96.2%.
+- Docs/release hygiene: 96.5%.
+- Overall: 91.1%.
