@@ -1307,3 +1307,81 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 96%.
 - Docs/release hygiene: 96%.
 - Overall: 89%.
+
+### 2026-06-22: Replace per-NFP QI wrappers with direct QP-to-QI examples
+
+Steps taken:
+
+- Replaced `examples/optimization/QI_optimization_nfp1.py` through
+  `QI_optimization_nfp4.py` with self-contained scripts that follow the
+  `QP_optimization.py` workflow:
+  circular/minimal seed, deterministic `input.simple_seed`, visible QP
+  objective tuple list, QP solve, visible QI objective tuple list, QI solve,
+  result saving, and raw-seed-to-final plots.
+- Removed the now-unused `examples/optimization/qi_minimal_seed_example_common.py`
+  subprocess/JSON wrapper helper. The public per-NFP scripts no longer delegate
+  to `QI_optimization.py`, use reference-family preconditioners, or expose
+  environment/CLI overrides.
+- Updated `README.md`, `examples/optimization/README.md`, and
+  `docs/optimization.rst` so the documented public QI path is the simple
+  QP-to-QI path, while the staged QI driver remains documented as a lower-level
+  stress/robustness path.
+- Updated `tests/test_optimization_examples.py` to validate the new scripts
+  statically rather than importing them and accidentally launching full
+  optimizations.
+- Revisited VMEC2000 and vmec++ source code for the performance lane:
+  VMEC2000 `eqsolve/evolve` calls `funct3d` in a tight in-place loop, turns on
+  2D preconditioning only after a residual threshold, and stores timing at
+  routine granularity; vmec++ organizes equivalent work into reusable Fourier
+  basis, geometry, radial-profile, force, NESTOR, and flow-control objects with
+  explicit partial-update flags.
+
+Results obtained:
+
+- Fast validation passed:
+  `python -m py_compile examples/optimization/QI_optimization_nfp1.py
+  examples/optimization/QI_optimization_nfp2.py
+  examples/optimization/QI_optimization_nfp3.py
+  examples/optimization/QI_optimization_nfp4.py`;
+  `python -m ruff check tests/test_optimization_examples.py
+  examples/optimization/QI_optimization_nfp1.py
+  examples/optimization/QI_optimization_nfp2.py
+  examples/optimization/QI_optimization_nfp3.py
+  examples/optimization/QI_optimization_nfp4.py`;
+  `python -m pytest -q tests/test_optimization_examples.py -q`;
+  `SPHINX_FAST=1 LANG=C.UTF-8 LC_ALL=C.UTF-8 python -m sphinx -W -b html docs
+  docs/_build/html_qi_examples_fast`;
+  `LANG=C.UTF-8 LC_ALL=C.UTF-8 python -m sphinx -W -j auto -b html docs
+  docs/_build/html_qi_examples_full`.
+- The new per-NFP defaults preserve the reviewed direct-mode budgets used by
+  the minimal-seed lane: NFP1 uses `max_mode=3`, NFP2 uses `max_mode=5`, NFP3
+  uses `max_mode=4`, and NFP4 uses `max_mode=3`.
+- The source audit reinforces the next runtime target: move more hot-path
+  mechanics into reusable, domain-named seams with shape-stable buffers and
+  partial-update flags, matching VMEC2000/vmec++ locality while retaining the
+  differentiable Python API.
+
+Best next steps:
+
+1. Run at least one low-budget per-NFP QI script on CPU/GPU after the next
+   optimization window to verify the simple QP-to-QI path still reaches the
+   documented basin without relying on deleted wrapper preconditioners.
+2. Continue M3/M7 by extracting a `forces`/`state_update` seam from the large
+   fixed-boundary residual controller, using VMEC2000 `evolve` and vmec++
+   `fourier_geometry`/`fourier_forces` as the source-structure reference.
+3. Continue performance profiling on `precond_refresh_seed_rz_matrices_s`,
+   `update_state_s`, and cold trace/setup cost, because those are now the
+   dominant bounded finite-beta costs after the setup-force and m=1 RHS scaling
+   wins.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 98%.
+- Fixed-boundary production differentiability: 90%.
+- Free-boundary production differentiability: 87%.
+- Single-stage coil optimization: 86%.
+- CPU/GPU runtime and memory footprint: 87%.
+- Refactor/API/examples: 47%.
+- VMEC2000/VMEC++ parity and physics gates: 96%.
+- Docs/release hygiene: 96%.
+- Overall: 89%.

@@ -377,82 +377,56 @@ def test_qi_seed3127_example_exposes_reviewed_readme_preset(tmp_path: Path) -> N
     assert "--make-plots" in command
 
 
-def test_qi_minimal_seed_nfp_examples_expose_public_presets(tmp_path: Path) -> None:
-    expected_policy = {
-        1: "minimal_nfp1_qi",
-        2: "minimal_nfp2_qi_balanced_mirror035",
-        3: "minimal_nfp3_qi",
-        4: "minimal_nfp4_qi",
-    }
-    expected_reference = {
-        1: "input.nfp1_QI",
-        2: "input.nfp2_QI",
-        3: "input.nfp3_QI_fixed_resolution_final",
-        4: "input.nfp4_QI_finite_beta",
-    }
-
+def test_qi_minimal_seed_nfp_examples_are_direct_qp_then_qi_workflows() -> None:
+    expected_max_mode = {1: 3, 2: 5, 3: 4, 4: 3}
     for nfp, script in QI_MINIMAL_NFP_SCRIPTS.items():
-        spec = importlib.util.spec_from_file_location(f"qi_optimization_nfp{nfp}_for_test", script)
-        assert spec is not None
-        module = importlib.util.module_from_spec(spec)
-        assert spec.loader is not None
-        spec.loader.exec_module(module)
+        text = script.read_text()
+        solve_keyword_sets = _least_squares_solve_keyword_names(script)
 
-        example = module.EXAMPLE
-        boundary_path = tmp_path / f"boundary_nfp{nfp}.json"
-        stages_path = tmp_path / f"stages_nfp{nfp}.json"
-        command = module.build_qi_optimization_command(example, boundary_path, stages_path)
-        command_text = " ".join(command)
+        assert f'INPUT_FILE = DATA_DIR / "input.minimal_seed_nfp{nfp}"' in text
+        assert f'OUTPUT_DIR = Path("results/qi_opt/simple_qp_then_qi/nfp{nfp}")' in text
+        assert f"MAX_MODE = {expected_max_mode[nfp]}" in text
+        assert "TARGET_ASPECT = 6.0" in text
+        assert "TARGET_ABS_IOTA_MIN = 0.41" in text
+        assert "MAX_MIRROR_RATIO = 0.35" in text
+        assert "MAX_ELONGATION = 10.0" in text
+        assert "prepare_simple_omnigenity_seed_input(" in text
+        assert "Stage 1: make a quasi-poloidally symmetric basin" in text
+        assert "Stage 2: replace the QP residual with a QI residual" in text
+        assert "QuasisymmetryRatioResidual(" in text
+        assert "QuasiIsodynamicResidual(" in text
+        assert "qi_mirror = vj.MirrorRatio(" in text
+        assert "qp_objective_tuples = [" in text
+        assert "qi_objective_tuples = [" in text
+        assert "qp_paths.final_input" in text
+        assert "plot_boozer_lcfs_bmag_comparison(" in text
+        assert "plot_objective_history(" in text
+        assert "subprocess" not in text
+        assert "argparse" not in text
+        assert "os.environ" not in text
+        assert "USE_REFERENCE_FAMILY_SEED" not in text
+        assert "USE_TARGET_HELICITY_SEED" not in text
+        assert "build_qi_optimization_command" not in text
+        assert len(solve_keyword_sets) == 2
+        for keywords in solve_keyword_sets:
+            assert "stage_modes" in keywords
+            assert "use_mode_continuation" in keywords
+            assert not (keywords & FORBIDDEN_SOLVE_PHYSICS_KWARGS)
 
-        assert module.INPUT_FILE.name == f"input.minimal_seed_nfp{nfp}"
-        assert module.REFERENCE_INPUT_FILE.name == expected_reference[nfp]
-        assert module.POLICY_CASE == expected_policy[nfp]
-        assert example.target_aspect == pytest.approx(6.0)
-        assert example.max_mirror_ratio == pytest.approx(0.35)
-        assert example.max_elongation == pytest.approx(10.0)
-        assert example.max_nfev == 70
-        assert example.inner_max_iter == 550
-        assert example.trial_max_iter == 550
-        assert "--use-simple-seed" in command
-        assert "--use-target-helicity-seed" in command
-        assert "--use-reference-family-seed" in command
-        assert "--accept-boundary-reference-baseline" in command
-        assert f"--input-file examples/data/input.minimal_seed_nfp{nfp}" in command_text
-        assert f"--reference-input examples/data/{expected_reference[nfp]}" in command_text
-        assert "--max-mode 5" in command_text
-        assert "--target-aspect 6" in command_text
 
-
-def test_qi_minimal_seed_nfp_examples_help_and_dry_run_do_not_solve(tmp_path: Path) -> None:
-    for nfp, script in QI_MINIMAL_NFP_SCRIPTS.items():
-        help_run = subprocess.run(
-            [sys.executable, str(script), "--help"],
+def test_qi_minimal_seed_nfp_examples_compile_without_running() -> None:
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "py_compile",
+            *(str(script) for script in QI_MINIMAL_NFP_SCRIPTS.values()),
+        ],
             cwd=ROOT,
             check=True,
             text=True,
             capture_output=True,
-        )
-        assert f"NFP={nfp} minimal-seed QI example" in help_run.stdout
-        assert "Running NFP=" not in help_run.stdout
-
-        dry_run = subprocess.run(
-            [
-                sys.executable,
-                str(script),
-                "--dry-run",
-                "--no-make-plots",
-                "--output-dir",
-                str(tmp_path / f"nfp{nfp}"),
-            ],
-            cwd=ROOT,
-            check=True,
-            text=True,
-            capture_output=True,
-        )
-        assert f"Running NFP={nfp} minimal-seed QI optimization." in dry_run.stdout
-        assert "--no-make-plots" in dry_run.stdout
-        assert "PROCESSING INPUT" not in dry_run.stdout
-        assert not (tmp_path / f"nfp{nfp}" / "wout_final.nc").exists()
+    )
 
 
 def test_qi_case_resolver_respects_editable_default_and_env(monkeypatch) -> None:
