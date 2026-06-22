@@ -7,9 +7,13 @@ import numpy as np
 from vmec_jax.solvers.fixed_boundary.residual.force_payload import (
     ResidualForceMetricPayload,
     ResidualForcePayloadResult,
+    ResidualForceEvaluationResult,
+    ResidualForceKernelAux,
     force_z_channel_square_sums,
+    make_residual_force_evaluator,
     maybe_debug_force_z_channel_square_sums,
     metric_force_payload_after_edge_policy,
+    residual_force_kernel_aux,
     residual_force_payload_after_m1_scalxc_with_scan_debug,
     residual_force_payload_from_kernels,
     residual_force_gcx2_after_edge_policy,
@@ -43,6 +47,38 @@ def _frzl(*, edge_z_nan: bool = False) -> TomnspsRZL:
         flcc=block(100.0),
         flss=block(110.0),
     )
+
+
+def _kernel_payload(ns: int = 3) -> SimpleNamespace:
+    shape = (ns, 2, 1)
+    field = np.arange(np.prod(shape), dtype=float).reshape(shape)
+    return SimpleNamespace(
+        armn_e=field + 100.0,
+        bc=SimpleNamespace(name="bc"),
+        tcon=np.arange(ns, dtype=float),
+        pru_even=field + 1.0,
+        pru_odd=field + 2.0,
+        pzu_even=field + 3.0,
+        pzu_odd=field + 4.0,
+        pr1_even=field + 5.0,
+        pr1_odd=field + 6.0,
+        pz1_even=field + 7.0,
+        pz1_odd=field + 8.0,
+        constraint_rcon0=field + 9.0,
+        constraint_zcon0=field + 10.0,
+    )
+
+
+def test_residual_force_kernel_aux_keeps_only_production_fields() -> None:
+    kernels = _kernel_payload()
+
+    got = residual_force_kernel_aux(kernels)
+
+    assert isinstance(got, ResidualForceKernelAux)
+    assert got.bc is kernels.bc
+    np.testing.assert_allclose(got.pru_even, kernels.pru_even)
+    np.testing.assert_allclose(got.constraint_zcon0, kernels.constraint_zcon0)
+    assert not hasattr(got, "armn_e")
 
 
 def test_force_z_channel_square_sums_handles_asymmetric_and_symmetric_only_payloads() -> None:
@@ -373,3 +409,131 @@ def test_residual_force_payload_from_kernels_skips_optional_callbacks() -> None:
     assert residual_calls[0][0] == "kernels"
     assert residual_calls[0][1]["include_edge"] is True
     assert residual_calls[0][1]["masks"] is None
+
+
+def test_make_residual_force_evaluator_returns_full_kernel_aux_by_default() -> None:
+    frzl = _frzl()
+    kernels = _kernel_payload()
+
+    def evaluate_force_func(**_kwargs):
+        return ResidualForceEvaluationResult(
+            kernels=kernels,
+            frzl_full=frzl,
+            gcr2=1.0,
+            gcz2=2.0,
+            gcl2=3.0,
+            rz_scale=np.asarray([4.0]),
+            l_scale=np.asarray([5.0]),
+            norms=SimpleNamespace(wb=6.0, wp=7.0),
+        )
+
+    compute = make_residual_force_evaluator(
+        static=SimpleNamespace(),
+        wout_like=None,
+        trig=None,
+        s=np.asarray([0.0, 0.5, 1.0]),
+        signgs=1,
+        constraint_tcon0=None,
+        freeb_pres_scale=None,
+        apply_lforbal=False,
+        apply_m1_constraints=False,
+        runtime_env_enabled=lambda _value: False,
+        getenv=lambda _name, default="": default,
+        maybe_dump_hlo_kernel=lambda **_kwargs: None,
+        dump_hooks={},
+        evaluate_force_func=evaluate_force_func,
+    )
+
+    got_kernels, got_frzl, gcr2, gcz2, gcl2, rz_scale, l_scale, norms = compute(
+        "state",
+        include_edge=False,
+        zero_m1=False,
+    )
+
+    assert got_kernels is kernels
+    assert hasattr(got_kernels, "armn_e")
+    assert got_frzl is frzl
+    assert (gcr2, gcz2, gcl2) == (1.0, 2.0, 3.0)
+    np.testing.assert_allclose(rz_scale, [4.0])
+    np.testing.assert_allclose(l_scale, [5.0])
+    assert norms.wb == 6.0
+
+
+def test_make_residual_force_evaluator_can_return_compact_kernel_aux() -> None:
+    frzl = _frzl()
+    kernels = _kernel_payload()
+
+    def evaluate_force_func(**_kwargs):
+        return ResidualForceEvaluationResult(
+            kernels=kernels,
+            frzl_full=frzl,
+            gcr2=1.0,
+            gcz2=2.0,
+            gcl2=3.0,
+            rz_scale=np.asarray([4.0]),
+            l_scale=np.asarray([5.0]),
+            norms=SimpleNamespace(wb=6.0),
+        )
+
+    compute = make_residual_force_evaluator(
+        static=SimpleNamespace(),
+        wout_like=None,
+        trig=None,
+        s=np.asarray([0.0, 0.5, 1.0]),
+        signgs=1,
+        constraint_tcon0=None,
+        freeb_pres_scale=None,
+        apply_lforbal=False,
+        apply_m1_constraints=False,
+        runtime_env_enabled=lambda _value: False,
+        getenv=lambda _name, default="": default,
+        maybe_dump_hlo_kernel=lambda **_kwargs: None,
+        dump_hooks={},
+        evaluate_force_func=evaluate_force_func,
+        compact_kernel_aux=True,
+    )
+
+    got_kernels, *_rest = compute("state", include_edge=False, zero_m1=False)
+
+    assert isinstance(got_kernels, ResidualForceKernelAux)
+    assert not hasattr(got_kernels, "armn_e")
+    np.testing.assert_allclose(got_kernels.pr1_even, kernels.pr1_even)
+
+
+def test_make_residual_force_evaluator_compact_kernel_aux_env_opt_in() -> None:
+    frzl = _frzl()
+    kernels = _kernel_payload()
+
+    def evaluate_force_func(**_kwargs):
+        return ResidualForceEvaluationResult(
+            kernels=kernels,
+            frzl_full=frzl,
+            gcr2=1.0,
+            gcz2=2.0,
+            gcl2=3.0,
+            rz_scale=np.asarray([4.0]),
+            l_scale=np.asarray([5.0]),
+            norms=SimpleNamespace(wb=6.0),
+        )
+
+    compute = make_residual_force_evaluator(
+        static=SimpleNamespace(),
+        wout_like=None,
+        trig=None,
+        s=np.asarray([0.0, 0.5, 1.0]),
+        signgs=1,
+        constraint_tcon0=None,
+        freeb_pres_scale=None,
+        apply_lforbal=False,
+        apply_m1_constraints=False,
+        runtime_env_enabled=lambda value: str(value).strip() == "1",
+        getenv=lambda name, default="": "1" if name == "VMEC_JAX_COMPACT_FORCE_AUX" else default,
+        maybe_dump_hlo_kernel=lambda **_kwargs: None,
+        dump_hooks={},
+        evaluate_force_func=evaluate_force_func,
+    )
+
+    got_kernels, *_rest = compute("state", include_edge=False, zero_m1=False)
+
+    assert isinstance(got_kernels, ResidualForceKernelAux)
+    assert not hasattr(got_kernels, "armn_e")

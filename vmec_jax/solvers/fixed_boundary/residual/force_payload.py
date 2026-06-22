@@ -17,6 +17,7 @@ from ....vmec_residue import vmec_gcx2_from_tomnsps
 from ....vmec_tomnsp import TomnspsRZL
 
 __all__ = [
+    "ResidualForceKernelAux",
     "ResidualForceMetricPayload",
     "ResidualForcePayloadResult",
     "ResidualForceEvaluationResult",
@@ -31,12 +32,30 @@ __all__ = [
     "residual_force_gcx2_after_edge_policy",
     "residual_force_z_nan_guard",
     "resolve_residual_force_mask_pack",
+    "residual_force_kernel_aux",
     "make_residual_force_evaluator",
 ]
 
 _TRACE_VELOCITY_NAMES = ("Rcc", "Rss", "Zsc", "Zcs", "Lsc", "Lcs", "Rsc", "Rcs", "Zcc", "Zss", "Lcc", "Lss")
 _TRACE_TOMNSP_NAMES = ("frcc", "frss", "fzsc", "fzcs", "flsc", "flcs", "frsc", "frcs", "fzcc", "fzss", "flcc", "flss")
 _TRACE_UPDATE_FORCE_NAMES = tuple(f"{name}_u" for name in _TRACE_TOMNSP_NAMES)
+
+
+class ResidualForceKernelAux(NamedTuple):
+    """Compact force-kernel payload returned by production residual solves."""
+
+    bc: Any
+    tcon: Any | None
+    pru_even: Any
+    pru_odd: Any
+    pzu_even: Any
+    pzu_odd: Any
+    pr1_even: Any
+    pr1_odd: Any
+    pz1_even: Any
+    pz1_odd: Any
+    constraint_rcon0: Any | None = None
+    constraint_zcon0: Any | None = None
 
 
 class ResidualForceMetricPayload(NamedTuple):
@@ -69,6 +88,25 @@ class ResidualForceEvaluationResult(NamedTuple):
     rz_scale: Any
     l_scale: Any
     norms: Any
+
+
+def residual_force_kernel_aux(kernels: Any) -> ResidualForceKernelAux:
+    """Return only the force-kernel fields needed after TOMNSP postprocessing."""
+
+    return ResidualForceKernelAux(
+        bc=kernels.bc,
+        tcon=getattr(kernels, "tcon", None),
+        pru_even=kernels.pru_even,
+        pru_odd=kernels.pru_odd,
+        pzu_even=kernels.pzu_even,
+        pzu_odd=kernels.pzu_odd,
+        pr1_even=kernels.pr1_even,
+        pr1_odd=kernels.pr1_odd,
+        pz1_even=kernels.pz1_even,
+        pz1_odd=kernels.pz1_odd,
+        constraint_rcon0=getattr(kernels, "constraint_rcon0", None),
+        constraint_zcon0=getattr(kernels, "constraint_zcon0", None),
+    )
 
 
 def _materialize_trace(value: Any, *, materialize_func: Callable[..., Any], mode: str) -> Any:
@@ -666,6 +704,7 @@ def make_residual_force_evaluator(
     maybe_dump_hlo_kernel: Callable[..., None],
     dump_hooks: Mapping[str, Callable[..., None]],
     evaluate_force_func: Callable[..., ResidualForceEvaluationResult] = evaluate_residual_force_from_state,
+    compact_kernel_aux: bool | None = None,
 ) -> Callable[..., tuple[Any, Any, Any, Any, Any, Any, Any, Any]]:
     """Build the solver's compact ``state -> force tuple`` evaluator.
 
@@ -674,6 +713,12 @@ def make_residual_force_evaluator(
     wrapper here makes the force path reusable while the caller still owns the
     concrete dump hooks and HLO policy.
     """
+
+    compact_kernel_aux_resolved = (
+        runtime_env_enabled(getenv("VMEC_JAX_COMPACT_FORCE_AUX", ""))
+        if compact_kernel_aux is None
+        else bool(compact_kernel_aux)
+    )
 
     def _compute_forces(
         state,
@@ -731,8 +776,9 @@ def make_residual_force_evaluator(
             hlo_dump_func=_dump_force_tomnsps_hlo,
             dump_hooks=dump_hooks,
         )
+        kernels_out = residual_force_kernel_aux(force_eval.kernels) if bool(compact_kernel_aux_resolved) else force_eval.kernels
         return (
-            force_eval.kernels,
+            kernels_out,
             force_eval.frzl_full,
             force_eval.gcr2,
             force_eval.gcz2,

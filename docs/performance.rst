@@ -413,6 +413,16 @@ read as a mixed result rather than a broad VMEC2000 speedup claim:
   the VMEC iteration loop plus shape-stable reuse, not WOUT output or
   driver-side staging overhead.
 
+**27. Experimental compact residual force aux**
+  ``VMEC_JAX_COMPACT_FORCE_AUX=1`` makes non-scan residual force evaluations
+  return a compact post-TOMNSP auxiliary payload instead of the full diagnostic
+  force-kernel object.  The compact payload keeps only ``bcovar``, ``tcon``,
+  PTAU geometry fields, and constraint baselines, so it can reduce process
+  memory pressure on large profiles.  It is not the default because the current
+  LP-QA CPU profile showed lower peak memory but worse wall time.  Treat it as
+  an experimental memory diagnostic until the staged force-kernel refactor makes
+  compact payloads speed-neutral.
+
 May 2026 policy validation snapshot
 -----------------------------------
 

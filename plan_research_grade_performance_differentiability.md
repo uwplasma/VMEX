@@ -1791,3 +1791,59 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 96%.
 - Docs/release hygiene: 96%.
 - Overall: 90.5%.
+
+### 2026-06-22: Add opt-in compact residual force aux seam
+
+Steps taken:
+
+- Audited post-TOMNSP `VmecRZForceKernels` consumers in the residual loop,
+  preconditioner refresh path, PTAU bad-Jacobian checks, free-boundary coupling,
+  and diagnostics.
+- Added `ResidualForceKernelAux`, a compact production-style payload containing
+  only `bcovar`, `tcon`, PTAU geometry fields, and constraint baselines.
+- Kept direct `evaluate_residual_force_from_state` diagnostics unchanged so
+  full force-kernel fields remain available for parity/debug callers.
+- Wired `make_residual_force_evaluator` so the compact aux can be selected with
+  `compact_kernel_aux=True` or `VMEC_JAX_COMPACT_FORCE_AUX=1`, but left the
+  default as the full payload because the first timing probe was not a wall-time
+  win.
+- Added unit coverage for compact field selection, default full-payload
+  behavior, explicit compact opt-in, and env opt-in.
+
+Results obtained:
+
+- Focused validation passed:
+  `python -m ruff check vmec_jax/solvers/fixed_boundary/residual/force_payload.py
+  tests/test_solve_residual_iter_force_payload_helpers.py`;
+  `JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_solve_residual_iter_force_payload_helpers.py
+  tests/test_solve_scan_math_helpers.py::test_ptau_minmax_jax_matches_host_and_returns_nan_for_missing_or_short_kernel -q`.
+- Compact aux profile on LP-QA reduced peak RSS from about `908 MiB` to
+  `847 MiB`, but worsened the final-stage wall time (`4.11 s -> 4.59 s` in the
+  first compact run). Therefore it is an experimental memory diagnostic, not a
+  production default.
+- With compact aux default-off, residuals remain unchanged, but single-run
+  timing remained noisy/slower than the earlier best fused profile. This tranche
+  should be treated as a refactor/API seam, not a claimed runtime win.
+
+Best next steps:
+
+1. Do not promote compact aux by default until a staged force-kernel refactor
+   makes it speed-neutral.
+2. Move next to the larger force kernel architecture: separable DFT/TOMNSP
+   buffers and staged JIT kernels with donation/remat options, validated against
+   VMEC2000 parity.
+3. Keep measuring memory separately from wall time so memory-saving knobs do not
+   accidentally regress the public fast path.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 90%.
+- Free-boundary production differentiability: 87%.
+- Single-stage coil optimization: 86%.
+- CPU/GPU runtime and memory footprint: 91.5%.
+- Refactor/API/examples: 49%.
+- VMEC2000/VMEC++ parity and physics gates: 96%.
+- Docs/release hygiene: 96.5%.
+- Overall: 90.7%.
