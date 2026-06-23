@@ -153,6 +153,7 @@ class SolvedBetaCase:
     R: np.ndarray
     Z: np.ndarray
     Bmag: np.ndarray
+    Bmag_near_axis: np.ndarray
     bsupu: np.ndarray
     bsupv: np.ndarray
     field_lines: tuple[FieldLine, ...]
@@ -360,6 +361,7 @@ def _solved_surface_and_field(run: Any, config: ExampleConfig) -> tuple[np.ndarr
         flux_is_internal=True,
     )
     bmag = np.sqrt(np.asarray(b2_from_bsup(geom, bsupu, bsupv), dtype=float))
+    near_axis_idx = 1 if int(bmag.shape[0]) > 1 else 0
     theta = np.asarray(run.static.grid.theta, dtype=float)
     zeta = np.asarray(run.static.grid.zeta, dtype=float)
     return (
@@ -368,6 +370,7 @@ def _solved_surface_and_field(run: Any, config: ExampleConfig) -> tuple[np.ndarr
         np.asarray(geom.R[-1], dtype=float),
         np.asarray(geom.Z[-1], dtype=float),
         bmag[-1],
+        bmag[near_axis_idx],
         np.asarray(bsupu[-1], dtype=float),
         np.asarray(bsupv[-1], dtype=float),
     )
@@ -438,7 +441,7 @@ def _run_one_beta(
     )
     wall_s = time.perf_counter() - t0
     write_wout_from_fixed_boundary_run(wout_path, run, include_fsq=True)
-    theta, zeta, R, Z, Bmag, bsupu, bsupv = _solved_surface_and_field(run, config)
+    theta, zeta, R, Z, Bmag, Bmag_near_axis, bsupu, bsupv = _solved_surface_and_field(run, config)
     field_lines = _trace_solved_field_lines(R=R, Z=Z, bsupu=bsupu, bsupv=bsupv, Bmag=Bmag, config=config)
 
     diag = run.result.diagnostics if run.result is not None else {}
@@ -528,6 +531,11 @@ def _run_one_beta(
         "bmag_min": float(np.nanmin(Bmag)),
         "bmag_mean": float(np.nanmean(Bmag)),
         "bmag_max": float(np.nanmax(Bmag)),
+        "bmag_mirror_ratio": float(np.nanmax(Bmag) / np.nanmin(Bmag)),
+        "near_axis_bmag_min": float(np.nanmin(Bmag_near_axis)),
+        "near_axis_bmag_mean": float(np.nanmean(Bmag_near_axis)),
+        "near_axis_bmag_max": float(np.nanmax(Bmag_near_axis)),
+        "near_axis_mirror_ratio": float(np.nanmax(Bmag_near_axis) / np.nanmin(Bmag_near_axis)),
         "aspect": aspect,
         "mean_iota": mean_iota,
     }
@@ -552,6 +560,7 @@ def _run_one_beta(
         R=R,
         Z=Z,
         Bmag=Bmag,
+        Bmag_near_axis=Bmag_near_axis,
         bsupu=bsupu,
         bsupv=bsupv,
         field_lines=field_lines,
@@ -609,6 +618,11 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "bmag_min",
         "bmag_mean",
         "bmag_max",
+        "bmag_mirror_ratio",
+        "near_axis_bmag_min",
+        "near_axis_bmag_mean",
+        "near_axis_bmag_max",
+        "near_axis_mirror_ratio",
         "aspect",
         "mean_iota",
         "final_fsq_component_sum_over_history_w_min",
@@ -767,6 +781,40 @@ def _write_bmag_plot(outdir: Path, cases: list[SolvedBetaCase]) -> Path:
     return path
 
 
+def _write_beta_response_plot(outdir: Path, cases: list[SolvedBetaCase]) -> Path:
+    plt, _Normalize, _ScalarMappable = _import_matplotlib()
+    outdir.mkdir(parents=True, exist_ok=True)
+    beta = np.asarray([case.beta_percent for case in cases], dtype=float)
+    near_min = np.asarray([case.row.get("near_axis_bmag_min") for case in cases], dtype=float)
+    near_mean = np.asarray([case.row.get("near_axis_bmag_mean") for case in cases], dtype=float)
+    near_max = np.asarray([case.row.get("near_axis_bmag_max") for case in cases], dtype=float)
+    near_ratio = np.asarray([case.row.get("near_axis_mirror_ratio") for case in cases], dtype=float)
+    boundary_ratio = np.asarray([case.row.get("bmag_mirror_ratio") for case in cases], dtype=float)
+    beta_frac = np.clip(beta / 100.0, 0.0, 0.95)
+    expected_ratio = near_ratio[0] / np.sqrt(1.0 - beta_frac) if near_ratio.size else beta_frac
+
+    fig, axes = plt.subplots(1, 2, figsize=(9.4, 3.8), constrained_layout=True)
+    axes[0].plot(beta, near_min, "o-", label="near-axis min")
+    axes[0].plot(beta, near_mean, "o-", label="near-axis mean")
+    axes[0].plot(beta, near_max, "o-", label="near-axis max")
+    axes[0].set_xlabel("beta [%]")
+    axes[0].set_ylabel("|B|")
+    axes[0].set_title("near-axis field response")
+    axes[0].legend(fontsize="small")
+
+    axes[1].plot(beta, near_ratio, "o-", label="near-axis")
+    axes[1].plot(beta, boundary_ratio, "s-", label="LCFS")
+    axes[1].plot(beta, expected_ratio, "--", color="0.35", label=r"$R_m(0)/\sqrt{1-\beta}$")
+    axes[1].set_xlabel("beta [%]")
+    axes[1].set_ylabel("mirror ratio")
+    axes[1].set_title("mirror-ratio trend")
+    axes[1].legend(fontsize="small")
+    path = outdir / "square_coil_hybrid_solved_beta_response.png"
+    fig.savefig(path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
 def _write_convergence_plot(outdir: Path, cases: list[SolvedBetaCase]) -> Path:
     plt, _Normalize, _ScalarMappable = _import_matplotlib()
     outdir.mkdir(parents=True, exist_ok=True)
@@ -872,6 +920,7 @@ def _write_plots(outdir: Path, coils: SquareCoilSet, cases: list[SolvedBetaCase]
         "top_view": str(_write_top_view_plot(figure_dir, coils, cases, config)),
         "cross_sections": str(_write_cross_sections_plot(figure_dir, cases)),
         "boundary_bmag": str(_write_bmag_plot(figure_dir, cases)),
+        "beta_response": str(_write_beta_response_plot(figure_dir, cases)),
         "convergence_iota": str(_write_convergence_plot(figure_dir, cases)),
     }
 

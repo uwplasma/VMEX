@@ -390,6 +390,7 @@ def test_square_coil_hybrid_free_boundary_example_writes_nonblank_plots(tmp_path
         "top_view",
         "cross_sections",
         "boundary_bmag",
+        "beta_response",
         "convergence_iota",
     }
     assert len(metrics["rows"]) == 2

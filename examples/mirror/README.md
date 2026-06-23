@@ -169,12 +169,22 @@ claims; coil-only ``B.n`` is a vacuum check.
 The default activation threshold is intentionally tight
 (``FREE_BOUNDARY_ACTIVATE_FSQ = 1e-8``), and the solver now blocks
 ``LFREEB`` convergence until the free-boundary vacuum/edge coupling has
-actually turned on. With the current coarse review resolution
-(``NS=9, MPOL=5, NTOR=12``), beta ``0%``, ``1%``, and ``3%`` reach strict
-``FTOL=1e-8`` active free-boundary convergence in the default scan. The
-``10%`` case is retained in the scan as a high-beta diagnostic: it reaches an
-active coupled residual floor of order ``1e-7`` to ``1e-8`` at this resolution
-but is not promoted as strict ``1e-8`` converged yet.
+actually turned on. Direct-coil free-boundary convergence candidates are also
+rechecked with a fresh external-field sample and the current plasma-current
+normalization before the solve is allowed to exit; rejected candidates are
+reported through the ``free_boundary_fresh_convergence_*`` metrics. With the
+current coarse review resolution
+(``NS=9, MPOL=5, NTOR=12``), beta ``0%``, ``1%``, ``3%``, and ``5%`` reach
+strict ``FTOL=1e-8`` active free-boundary convergence in the default scan. A
+5000-iteration office run with the fresh direct-coil gate makes beta ``7%`` the
+first high-beta stall in this configuration: its final fresh ``fsqr`` remains
+just above tolerance, while beta ``8%`` through ``10%`` have larger
+restart-limited ``fsqr`` floors. These rows remain diagnostics rather than
+strict production equilibria. The plot bundle includes
+near-axis ``|B|`` and mirror-ratio trends so finite-beta scans can be compared
+against the expected diamagnetic field-reduction / mirror-ratio-increase trend
+from linear-trap mirror literature, instead of relying only on LCFS-averaged
+``|B|``.
 
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
 free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct

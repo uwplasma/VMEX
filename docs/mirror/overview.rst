@@ -181,5 +181,12 @@ convergence-diagnostic path until fresh final force residuals meet the requested
 ``FTOL``. Finite-beta promotion should be based on VMEC force residuals,
 total-pressure balance, and plasma-field/virtual-casing diagnostics rather than
 coil-only ``B.n``. The current coarse square-coil scan has strict active
-free-boundary convergence evidence through beta ``3%``; beta ``10%`` remains a
-documented high-beta convergence target.
+free-boundary convergence evidence through beta ``5%``. A 5000-iteration
+office run with the fresh direct-coil gate identifies beta ``7%`` as the first
+high-beta stall for this coarse configuration, with beta ``8%`` through
+``10%`` showing larger restart-limited radial-force residual floors. Direct-coil
+convergence candidates are gated by a fresh residual recompute using the current
+plasma-current normalization, and the square-coil example records near-axis
+``|B|`` and mirror-ratio response plots for comparison with the expected
+finite-beta diamagnetic field-depression and effective mirror-ratio increase in
+linear mirror traps.
