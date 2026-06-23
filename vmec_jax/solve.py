@@ -5746,9 +5746,15 @@ def solve_fixed_boundary_residual_iter(
     )
     return_best_scored_env = os.getenv("VMEC_JAX_RETURN_BEST_SCORED_STATE", "auto").strip().lower()
     if return_best_scored_env == "auto":
-        return_best_scored_state = bool(free_boundary_enabled)
+        # The most useful unconverged free-boundary result is the last accepted
+        # coupled state. Returning an earlier low-residual checkpoint can hide
+        # the actual LCFS/coil response in diagnostics and optimization smokes.
+        # The checkpoint is still tracked below; callers can opt in explicitly
+        # when they want best-scored fallback output.
+        return_best_scored_state = False
     else:
         return_best_scored_state = return_best_scored_env not in ("", "0", "false", "no", "off")
+    track_best_scored_state = bool(free_boundary_enabled)
     jit_strict_update_env = os.getenv("VMEC_JAX_JIT_STRICT_UPDATE", "auto").strip().lower()
     jit_strict_update_enabled = jit_strict_update_env not in ("", "0", "false", "no", "off")
     if jit_strict_update_env == "auto":
@@ -11773,7 +11779,7 @@ def solve_fixed_boundary_residual_iter(
             if bool(scored_fresh_boundary):
                 best_scored_fresh_boundary_count += 1
             if (
-                bool(return_best_scored_state)
+                bool(track_best_scored_state)
                 and bool(scored_fresh_boundary)
                 and np.isfinite(fsq0_curr)
                 and (float(fsq0_curr) < float(best_scored_fsq))

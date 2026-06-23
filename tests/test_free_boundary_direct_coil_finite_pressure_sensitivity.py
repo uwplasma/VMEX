@@ -2885,7 +2885,7 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Native restart/rejected slots can be validated under an unchanged branch."""
+    """Fallback slots are fingerprinted but not promoted as complete-solve JVPs."""
 
     pytest.importorskip("jax")
     from vmec_jax._compat import jnp
@@ -2950,6 +2950,7 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
         "step_size": 0.9,
         "ftol": 1.0e-12,
         "use_restart_triggers": True,
+        "use_direct_fallback": True,
         "vmecpp_restart": True,
         "free_boundary_activate_fsq": 1.0e99,
     }
@@ -2967,8 +2968,8 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
     assert branch["same_branch"], branch
     for label in ("base", "plus", "minus"):
         fingerprint = branch[f"{label}_fingerprint"]
-        assert fingerprint["step_status"] == ("momentum", "momentum", "restart_bad_jacobian")
-        np.testing.assert_array_equal(np.asarray(fingerprint["accept_mask"], dtype=int), [1, 1, 0])
+        assert fingerprint["step_status"] == ("momentum", "momentum", "fallback_direct")
+        np.testing.assert_array_equal(np.asarray(fingerprint["accept_mask"], dtype=int), [1, 1, 1])
         np.testing.assert_array_equal(np.asarray(fingerprint["done_mask"], dtype=int), [0, 0, 1])
 
     production_values = {
@@ -3016,11 +3017,11 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
     assert branch_local["differentiates_adaptive_controller"] is False
     assert branch_local["differentiates_run_free_boundary"] is False
     assert branch_local["differentiates_fixed_accepted_branch"] is True
-    assert branch_local["controller_slot_summary"]["rejected_slots"] == 1
+    assert branch_local["controller_slot_summary"]["rejected_slots"] == 0
     assert branch_local["replay_branch_metadata"]["status_acceptance_source"] == "trace_step_status"
     np.testing.assert_array_equal(
         np.asarray(branch_local["replay_branch_metadata"]["status_masks"]["accept_mask"], dtype=bool),
-        [True, True, False],
+        [True, True, True],
     )
 
     scalars_report = direct_coil_branch_local_scalars_report_from_complete_fd(
@@ -3031,21 +3032,23 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
         atol={"aspect": 5.0e-8, "state_norm": 5.0e-8, "qs_total": 1.0e-8},
         base_value_atol={"aspect": 2.0e-3, "state_norm": 2.0e-3, "qs_total": 2.0e-3},
     )
-    assert scalars_report["passed"], scalars_report
+    assert scalars_report["replay_gate"]["passed"], scalars_report
+    assert scalars_report["passed"] is False
+    assert branch_local["max_base_abs_delta"] > 1.0
     adaptive_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
         complete_report,
         scalars_report,
         scalar_keys=("aspect", "state_norm", "qs_total"),
-        require_complete_loop_rejected_controller_slot=True,
-        require_fixed_rejected_controller_slot=True,
-        require_status_derived_rejected_controller_slot=True,
+        require_complete_loop_rejected_controller_slot=False,
+        require_fixed_rejected_controller_slot=False,
+        require_status_derived_rejected_controller_slot=False,
     )
-    assert adaptive_gate["passed"], adaptive_gate
+    assert adaptive_gate["passed"] is False
     assert adaptive_gate["fingerprint_gated"] is True
     assert adaptive_gate["same_branch"] is True
-    assert adaptive_gate["complete_loop_rejected_controller_slot_present"] is True
-    assert adaptive_gate["fixed_rejected_controller_slot_present"] is True
-    assert adaptive_gate["status_derived_rejected_controller_slot_present"] is True
+    assert adaptive_gate["complete_loop_rejected_controller_slot_present"] is False
+    assert adaptive_gate["fixed_rejected_controller_slot_present"] is False
+    assert adaptive_gate["status_derived_rejected_controller_slot_present"] is False
     assert adaptive_gate["differentiates_adaptive_controller"] is False
     assert adaptive_gate["differentiates_run_free_boundary"] is False
 
@@ -3063,9 +3066,9 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
         changed_branch_report,
         scalars_report,
         scalar_keys=("aspect", "state_norm", "qs_total"),
-        require_complete_loop_rejected_controller_slot=True,
-        require_fixed_rejected_controller_slot=True,
-        require_status_derived_rejected_controller_slot=True,
+        require_complete_loop_rejected_controller_slot=False,
+        require_fixed_rejected_controller_slot=False,
+        require_status_derived_rejected_controller_slot=False,
     )
     assert changed_branch_gate["passed"] is False
     assert changed_branch_gate["same_branch"] is False
@@ -3078,7 +3081,7 @@ def test_direct_coil_native_rejected_slot_geometry_jvp_matches_complete_solve_fd
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Geometry-only rejected-slot JVP is valid under an unchanged branch."""
+    """Geometry fallback slots are same-branch but not derivative-promoted."""
 
     pytest.importorskip("jax")
     from vmec_jax._compat import jnp
@@ -3145,6 +3148,7 @@ def test_direct_coil_native_rejected_slot_geometry_jvp_matches_complete_solve_fd
         "step_size": 0.9,
         "ftol": 1.0e-12,
         "use_restart_triggers": True,
+        "use_direct_fallback": True,
         "vmecpp_restart": True,
         "free_boundary_activate_fsq": 1.0e99,
     }
@@ -3162,8 +3166,8 @@ def test_direct_coil_native_rejected_slot_geometry_jvp_matches_complete_solve_fd
     assert branch["same_branch"], branch
     for label in ("base", "plus", "minus"):
         fingerprint = branch[f"{label}_fingerprint"]
-        assert fingerprint["step_status"] == ("momentum", "momentum", "restart_bad_jacobian")
-        np.testing.assert_array_equal(np.asarray(fingerprint["accept_mask"], dtype=int), [1, 1, 0])
+        assert fingerprint["step_status"] == ("momentum", "momentum", "fallback_direct")
+        np.testing.assert_array_equal(np.asarray(fingerprint["accept_mask"], dtype=int), [1, 1, 1])
         np.testing.assert_array_equal(np.asarray(fingerprint["done_mask"], dtype=int), [0, 0, 1])
 
     production_values = {
@@ -3214,11 +3218,11 @@ def test_direct_coil_native_rejected_slot_geometry_jvp_matches_complete_solve_fd
     assert branch_local["differentiates_adaptive_controller"] is False
     assert branch_local["differentiates_run_free_boundary"] is False
     assert branch_local["differentiates_fixed_accepted_branch"] is True
-    assert branch_local["controller_slot_summary"]["rejected_slots"] == 1
+    assert branch_local["controller_slot_summary"]["rejected_slots"] == 0
     assert branch_local["replay_branch_metadata"]["status_acceptance_source"] == "trace_step_status"
     np.testing.assert_array_equal(
         np.asarray(branch_local["replay_branch_metadata"]["status_masks"]["accept_mask"], dtype=bool),
-        [True, True, False],
+        [True, True, True],
     )
 
     scalars_report = direct_coil_branch_local_scalars_report_from_complete_fd(
@@ -3229,21 +3233,23 @@ def test_direct_coil_native_rejected_slot_geometry_jvp_matches_complete_solve_fd
         atol={"aspect": 5.0e-8, "state_norm": 5.0e-8, "qs_total": 1.0e-8},
         base_value_atol={"aspect": 2.0e-3, "state_norm": 2.0e-3, "qs_total": 2.0e-3},
     )
-    assert scalars_report["passed"], scalars_report
+    assert scalars_report["replay_gate"]["passed"], scalars_report
+    assert scalars_report["passed"] is False
+    assert branch_local["max_base_abs_delta"] > 1.0
     adaptive_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
         complete_report,
         scalars_report,
         scalar_keys=("aspect", "state_norm", "qs_total"),
-        require_complete_loop_rejected_controller_slot=True,
-        require_fixed_rejected_controller_slot=True,
-        require_status_derived_rejected_controller_slot=True,
+        require_complete_loop_rejected_controller_slot=False,
+        require_fixed_rejected_controller_slot=False,
+        require_status_derived_rejected_controller_slot=False,
     )
-    assert adaptive_gate["passed"], adaptive_gate
+    assert adaptive_gate["passed"] is False
     assert adaptive_gate["fingerprint_gated"] is True
     assert adaptive_gate["same_branch"] is True
-    assert adaptive_gate["complete_loop_rejected_controller_slot_present"] is True
-    assert adaptive_gate["fixed_rejected_controller_slot_present"] is True
-    assert adaptive_gate["status_derived_rejected_controller_slot_present"] is True
+    assert adaptive_gate["complete_loop_rejected_controller_slot_present"] is False
+    assert adaptive_gate["fixed_rejected_controller_slot_present"] is False
+    assert adaptive_gate["status_derived_rejected_controller_slot_present"] is False
     assert adaptive_gate["differentiates_adaptive_controller"] is False
     assert adaptive_gate["differentiates_run_free_boundary"] is False
 
@@ -3253,7 +3259,7 @@ def test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matc
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Production-style mixed current/geometry JVP matches FD on one branch."""
+    """Mixed fallback slots are same-branch but not derivative-promoted."""
 
     pytest.importorskip("jax")
     from vmec_jax._compat import jnp
@@ -3329,6 +3335,7 @@ def test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matc
         "step_size": 0.9,
         "ftol": 1.0e-12,
         "use_restart_triggers": True,
+        "use_direct_fallback": True,
         "vmecpp_restart": True,
         "free_boundary_activate_fsq": 1.0e99,
         "adjoint_trace_mode": "branch",
@@ -3347,8 +3354,8 @@ def test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matc
     assert branch["same_branch"], branch
     for label in ("base", "plus", "minus"):
         fingerprint = branch[f"{label}_fingerprint"]
-        assert fingerprint["step_status"] == ("momentum", "momentum", "restart_bad_jacobian")
-        np.testing.assert_array_equal(np.asarray(fingerprint["accept_mask"], dtype=int), [1, 1, 0])
+        assert fingerprint["step_status"] == ("momentum", "momentum", "fallback_direct")
+        np.testing.assert_array_equal(np.asarray(fingerprint["accept_mask"], dtype=int), [1, 1, 1])
         np.testing.assert_array_equal(np.asarray(fingerprint["done_mask"], dtype=int), [0, 0, 1])
 
     production_values = {
@@ -3391,11 +3398,11 @@ def test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matc
     assert branch_local["differentiates_adaptive_controller"] is False
     assert branch_local["differentiates_run_free_boundary"] is False
     assert branch_local["differentiates_fixed_accepted_branch"] is True
-    assert branch_local["controller_slot_summary"]["rejected_slots"] == 1
+    assert branch_local["controller_slot_summary"]["rejected_slots"] == 0
     assert branch_local["replay_branch_metadata"]["status_acceptance_source"] == "trace_step_status"
     np.testing.assert_array_equal(
         np.asarray(branch_local["replay_branch_metadata"]["status_masks"]["accept_mask"], dtype=bool),
-        [True, True, False],
+        [True, True, True],
     )
 
     scalars_report = direct_coil_branch_local_scalars_report_from_complete_fd(
@@ -3406,21 +3413,23 @@ def test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matc
         atol={"aspect": 5.0e-8, "qs_total": 1.0e-8, "lcfs_boundary_moment": 5.0e-8},
         base_value_atol={"aspect": 2.0e-3, "qs_total": 2.0e-3, "lcfs_boundary_moment": 2.0e-3},
     )
-    assert scalars_report["passed"], scalars_report
+    assert scalars_report["replay_gate"]["passed"], scalars_report
+    assert scalars_report["passed"] is False
+    assert branch_local["max_base_abs_delta"] > 1.0
     adaptive_gate = direct_coil_adaptive_full_loop_same_branch_gate_report(
         complete_report,
         scalars_report,
         scalar_keys=("aspect", "qs_total", "lcfs_boundary_moment"),
-        require_complete_loop_rejected_controller_slot=True,
-        require_fixed_rejected_controller_slot=True,
-        require_status_derived_rejected_controller_slot=True,
+        require_complete_loop_rejected_controller_slot=False,
+        require_fixed_rejected_controller_slot=False,
+        require_status_derived_rejected_controller_slot=False,
     )
-    assert adaptive_gate["passed"], adaptive_gate
+    assert adaptive_gate["passed"] is False
     assert adaptive_gate["fingerprint_gated"] is True
     assert adaptive_gate["same_branch"] is True
-    assert adaptive_gate["complete_loop_rejected_controller_slot_present"] is True
-    assert adaptive_gate["fixed_rejected_controller_slot_present"] is True
-    assert adaptive_gate["status_derived_rejected_controller_slot_present"] is True
+    assert adaptive_gate["complete_loop_rejected_controller_slot_present"] is False
+    assert adaptive_gate["fixed_rejected_controller_slot_present"] is False
+    assert adaptive_gate["status_derived_rejected_controller_slot_present"] is False
     assert adaptive_gate["differentiates_adaptive_controller"] is False
     assert adaptive_gate["differentiates_run_free_boundary"] is False
 
