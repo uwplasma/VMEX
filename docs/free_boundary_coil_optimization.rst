@@ -1423,6 +1423,11 @@ same fingerprint.  In the resulting
 how many controller slots were accepted or rejected in the replayed branch.
 The vector blocks also report ``directional_jvp_fast_path`` so current-only
 profiling runs can confirm that fixed coil geometry was reused.
+The rejected-slot gate builds a separate padded trace plan because the
+controller branch is intentionally different from the all-accepted replay, but
+it reuses any static boundary replay contexts from the main vector report; the
+JSON field ``accepted_rejected_controller_slot_gate.reused_boundary_replay_contexts``
+records whether that reuse occurred.
 
 An additional opt-in bridge toward derivative-assisted coil optimization is
 available with ``--same-branch-derivative-proposal``.  This mode still does

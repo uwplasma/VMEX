@@ -1098,6 +1098,7 @@ def write_same_branch_validation_report(
         vector_uses_state_only_replay=vector_uses_state_only_replay,
         run_branch_local_vector=run_branch_local_vector,
         summarize_vector_result=summarize_vector_result,
+        main_vector_replay_plan=main_vector_replay_plan,
     )
     if rejected_slot_wall_s is not None:
         timings["branch_local_rejected_slot_wall_s"] = rejected_slot_wall_s

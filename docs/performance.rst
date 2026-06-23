@@ -3947,6 +3947,23 @@ JAX-friendly for future JIT staging. Control this with:
 - ``VMEC_JAX_INIT_GUESS_JAX=1`` (default): use JAX boundary flip path.
 - ``VMEC_JAX_INIT_GUESS_JAX=0``: fall back to NumPy/Python boundary flips.
 
+Branch-local free-boundary replay context reuse
+-----------------------------------------------
+
+The direct-coil same-branch report builds static boundary replay contexts for
+each active NESTOR grid shape.  The accepted/rejected controller-slot gate must
+use a separate padded trace plan, since it deliberately inserts a rejected
+controller slot, but it can still reuse the main vector report's static
+boundary contexts.  The report records this as
+``accepted_rejected_controller_slot_gate.reused_boundary_replay_contexts``.
+
+In the tiny direct-coil smoke report used for PR #20 validation, this reduced
+the rejected-slot replay wall time from about ``8.06 s`` to about ``7.34 s``
+while keeping the same current-only JVP fast path and complete-solve
+acceptance authority.  The main branch-local vector JVP remains the dominant
+cost at about ``9.2 s`` and is the next target for replay graph construction
+work.
+
 Implementation map (performance-critical paths)
 ------------------------------------------------
 

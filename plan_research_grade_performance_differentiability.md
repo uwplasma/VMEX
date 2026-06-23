@@ -2831,3 +2831,132 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 97.5%.
 - Docs/release hygiene: 98.3%.
 - Overall: 95.9%.
+
+### 2026-06-23: Refresh branch-local free-boundary AD evidence and phase-3 proposal provenance
+
+Steps taken:
+
+- Re-ran the real direct-coil same-branch report/proposal smoke in a scratch
+  output directory using the promoted accepted/rejected controller-slot gate:
+  ``examples/optimization/free_boundary_QS_coil_optimization.py --smoke
+  --provider circle --write-same-branch-report --same-branch-report-mode
+  vector --same-branch-report-ad-mode direct
+  --same-branch-report-direction current-only
+  --same-branch-report-vector-keys
+  aspect,qs_total,mean_iota,lcfs_boundary_moment
+  --same-branch-report-rejected-slot-gate
+  --same-branch-derivative-proposal --same-branch-proposal-steps 0.05,0.1
+  --same-branch-proposal-max-trials 2 --max-evals 1 --max-iter 1
+  --vmec-max-iter 2``.
+- Regenerated the AD-vs-central-FD evidence panel from that fresh report into
+  scratch outputs and compared the regenerated CSV with the checked-in
+  ``docs/_static/figures/readme_ad_fd_evidence.csv``.
+- Audited the phase-3 coil-only example tests and confirmed the accepted and
+  rejected derivative-proposal summaries both require complete-solve acceptance
+  authority, fixed accepted-branch derivatives, a passed physical-scalar vector
+  gate, and the accepted/rejected controller-slot gate.
+
+Results obtained:
+
+- The fresh report stayed same-branch and passed the branch-local vector gate
+  and accepted/rejected controller-slot gate.
+- The derivative proposal used the current-only directional JVP fast path with
+  cached coil geometry, then evaluated the proposed trial with a normal
+  complete free-boundary solve.  The summary recorded
+  ``complete_solve_acceptance_authority=True`` and did not claim
+  ``run_free_boundary`` or adaptive-controller differentiation.
+- Regenerated AD-vs-FD evidence still has 10 passing rows at the
+  ``1e-9`` tolerance: fixed-boundary aspect, iota profile, QS residual, smooth
+  QI residual, finite-beta ``DMerc``, finite-beta ``D_R``, and four
+  branch-local direct-coil free-boundary scalars.  The regenerated CSV matched
+  the checked-in scalar rows, so no artifact rewrite was needed.
+- The real report exposed the next performance target in this lane:
+  branch-local vector JVP wall time was about ``9.18 s`` and rejected-slot replay
+  wall time about ``8.06 s`` for the tiny smoke case.  This is a performance
+  issue, not a correctness blocker for the conservative branch-local claim.
+
+Best next steps:
+
+1. Keep the free-boundary derivative scope conservative: the current promoted
+   evidence is same-branch/fingerprint-gated and branch-local, not arbitrary
+   adaptive branch differentiation.
+2. Target branch-local vector/JVP replay graph construction and rejected-slot
+   replay cost before adding broader phase-3 production examples.
+3. Continue VMEC2000/mgrid/direct-coil parity expansion only with bounded,
+   finite-positive physical WOUT fixtures.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 92.5%.
+- Free-boundary production differentiability: 92.3%.
+- Single-stage coil optimization: 88.6%.
+- CPU/GPU runtime and memory footprint: 97.2%.
+- Refactor/API/examples: 55.2%.
+- VMEC2000/VMEC++ parity and physics gates: 97.5%.
+- Docs/release hygiene: 98.4%.
+- Overall: 96.1%.
+
+### 2026-06-23: Reuse static boundary contexts in rejected-slot same-branch replay
+
+Steps taken:
+
+- Added an optional ``boundary_replay_contexts_by_shape`` input to
+  ``direct_coil_accepted_trace_controller_replay_plan``.  The replay-plan
+  builder now preserves inherited contexts by shape and only constructs missing
+  shape/static NESTOR tables.
+- Threaded existing replay-plan contexts through controller fallback rebuilds
+  so internal segment-policy plan changes do not discard already-built boundary
+  replay contexts.
+- Updated the accepted/rejected controller-slot gate to build a distinct
+  padded trace plan for the synthetic rejected slot while inheriting the main
+  vector report's static boundary contexts.  This keeps branch controls
+  separate but avoids repeated static context construction.
+- Added focused coverage for inherited replay contexts and updated the
+  derivative-proposal smoke expectation so the rejected-slot replay receives a
+  precomputed plan.
+- Documented the new
+  ``accepted_rejected_controller_slot_gate.reused_boundary_replay_contexts``
+  provenance field in the free-boundary optimization docs and the measured
+  timing in the performance page.
+
+Results obtained:
+
+- Focused tests passed:
+  ``tests/test_free_boundary_adjoint_helpers_unit.py::test_accepted_trace_control_metadata_and_stack_contracts``,
+  ``tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_writer_records_branch_local_vector_jacobian``,
+  ``tests/test_free_boundary_qs_coil_optimization_smoke.py::test_derivative_proposal_summary_marks_report_stale_when_trial_is_accepted``, and
+  ``tests/test_free_boundary_qs_coil_optimization_smoke.py::test_derivative_proposal_summary_records_rejected_trial_as_complete_solve_rejection``.
+- Broader same-branch proposal smoke subset passed
+  (``8 passed, 25 deselected``), and Ruff passed on the modified files.
+- A fresh real direct-coil same-branch report/proposal run stayed
+  same-branch, passed the branch-local vector gate, and passed the
+  accepted/rejected controller-slot gate.
+- The rejected-slot gate now reports
+  ``reused_boundary_replay_contexts=True``.  On the tiny smoke report,
+  rejected-slot replay wall time dropped from about ``8.06 s`` to about
+  ``7.34 s``.  Main branch-local vector JVP wall time remained about
+  ``9.2 s`` and is still the dominant replay cost.
+
+Best next steps:
+
+1. Target branch-local vector/JVP graph construction itself; static context
+   reuse trims rejected-slot overhead but does not address the main JVP
+   dispatch cost.
+2. Keep the accepted/rejected controller-slot gate branch-local and
+   fingerprint-gated.  This patch does not promote arbitrary adaptive
+   branch-selection differentiation.
+3. Continue phase-3 coil-only optimization only with complete solves as
+   acceptance authority.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 92.5%.
+- Free-boundary production differentiability: 92.6%.
+- Single-stage coil optimization: 88.8%.
+- CPU/GPU runtime and memory footprint: 97.4%.
+- Refactor/API/examples: 55.4%.
+- VMEC2000/VMEC++ parity and physics gates: 97.5%.
+- Docs/release hygiene: 98.5%.
+- Overall: 96.3%.

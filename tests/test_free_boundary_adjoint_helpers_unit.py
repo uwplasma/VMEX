@@ -865,3 +865,11 @@ def test_accepted_trace_control_metadata_and_stack_contracts() -> None:
     )
     assert plan["segment_source"] == "preconditioner_policy"
     assert plan["preconditioner_controls_stacked"]
+    inherited_context = {"sentinel": object()}
+    inherited_plan = fba.direct_coil_accepted_trace_controller_replay_plan(
+        traces,
+        static=SimpleNamespace(),
+        use_preconditioner_policy_segments=True,
+        boundary_replay_contexts_by_shape={(2, 2): inherited_context},
+    )
+    assert inherited_plan["boundary_replay_contexts_by_shape"][(2, 2)] is inherited_context

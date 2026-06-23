@@ -595,6 +595,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
                 max_steps=None,
                 use_stacked_step_controls=True,
                 use_accepted_only_fast_path=bool(use_accepted_only_fast_path),
+                boundary_replay_contexts_by_shape=context_cache,
             )
             controls = replay_plan["controls"]
             preconditioner_controls = replay_plan["preconditioner_controls"]
@@ -644,6 +645,7 @@ def direct_coil_accepted_trace_controller_replay_objective_jax(
                 use_preconditioner_policy_segments=True,
                 use_segment_preconditioner_controls=bool(use_segment_preconditioner_controls),
                 use_accepted_only_fast_path=bool(use_accepted_only_fast_path),
+                boundary_replay_contexts_by_shape=context_cache,
             )
             controls = replay_plan["controls"]
             preconditioner_controls = replay_plan["preconditioner_controls"]
