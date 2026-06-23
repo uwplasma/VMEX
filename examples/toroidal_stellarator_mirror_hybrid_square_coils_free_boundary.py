@@ -78,6 +78,7 @@ LIMIT_UPDATE_RMS = False
 BACKTRACKING = False
 USE_DIRECT_FALLBACK = False
 BETA_CONTINUATION_RESTART = True
+CHECKPOINT_EACH_BETA = True
 JIT_FORCES: bool | str = "auto"
 
 FIELD_LINE_COUNT = 3
@@ -123,6 +124,7 @@ class ExampleConfig:
     backtracking: bool = BACKTRACKING
     use_direct_fallback: bool = USE_DIRECT_FALLBACK
     beta_continuation_restart: bool = BETA_CONTINUATION_RESTART
+    checkpoint_each_beta: bool = CHECKPOINT_EACH_BETA
     jit_forces: bool | str = JIT_FORCES
     field_line_count: int = FIELD_LINE_COUNT
     field_line_steps: int = FIELD_LINE_STEPS
@@ -925,37 +927,32 @@ def _write_plots(outdir: Path, coils: SquareCoilSet, cases: list[SolvedBetaCase]
     }
 
 
-def run_example(config: ExampleConfig = ExampleConfig()) -> Path:
-    enable_x64(True)
-    outdir = Path(config.outdir)
-    outdir.mkdir(parents=True, exist_ok=True)
-    coils = build_square_coils(config)
-    coils_json = _write_coils_json(outdir / "square_mirror_hybrid_coils.json", coils, config)
-    cases = []
-    restart_state = None
-    for beta in config.betas_percent:
-        case = _run_one_beta(
-            config,
-            coils,
-            beta_percent=float(beta),
-            restart_state=restart_state if bool(config.beta_continuation_restart) else None,
-        )
-        cases.append(case)
-        if bool(config.beta_continuation_restart):
-            restart_state = case.run.state
-    rows = [case.row for case in cases]
-    summary_csv = _write_csv(outdir / "square_coil_hybrid_free_boundary_solve_summary.csv", rows)
-    figures = _write_plots(outdir, coils, cases, config) if bool(config.write_plots) else {}
-    all_converged = all(bool(row.get("converged")) for row in rows)
-    metrics = {
+def _metrics_payload(
+    *,
+    config: ExampleConfig,
+    coils: SquareCoilSet,
+    coils_json: Path,
+    summary_csv: Path,
+    rows: list[dict[str, Any]],
+    figures: dict[str, str],
+    complete: bool,
+) -> dict[str, Any]:
+    all_converged = bool(complete) and all(bool(row.get("converged")) for row in rows)
+    completed = [float(row.get("beta_percent")) for row in rows]
+    remaining = [float(beta) for beta in config.betas_percent if float(beta) not in completed]
+    return {
         "metrics_schema": SCHEMA,
         "metrics_schema_version": SCHEMA_VERSION,
         "workflow_status": "actual_vmec_jax_free_boundary_beta_scan",
-        "free_boundary_solve_status": "converged" if all_converged else "not_converged_or_max_iter",
+        "free_boundary_solve_status": (
+            "converged" if all_converged else "not_converged_or_max_iter" if complete else "partial_running"
+        ),
         "hybrid_fixture_kind": "square_axis_toroidal_stellarator_mirror_hybrid",
         "actual_free_boundary_solve": True,
         "production_free_boundary_claim": False,
         "betas_percent": [float(beta) for beta in config.betas_percent],
+        "completed_betas_percent": completed,
+        "remaining_betas_percent": remaining,
         "coil_count": int(coils.centers.shape[0]),
         "n_coils_per_side": int(config.n_coils_per_side),
         "plasma_axis_half_width": float(config.plasma_axis_half_width),
@@ -974,12 +971,59 @@ def run_example(config: ExampleConfig = ExampleConfig()) -> Path:
         "backtracking": bool(config.backtracking),
         "use_direct_fallback": bool(config.use_direct_fallback),
         "beta_continuation_restart": bool(config.beta_continuation_restart),
+        "checkpoint_each_beta": bool(config.checkpoint_each_beta),
         "coils_json": str(coils_json),
         "summary_csv": str(summary_csv),
         "rows": rows,
         "figures": figures,
     }
+
+
+def run_example(config: ExampleConfig = ExampleConfig()) -> Path:
+    enable_x64(True)
+    outdir = Path(config.outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    coils = build_square_coils(config)
+    coils_json = _write_coils_json(outdir / "square_mirror_hybrid_coils.json", coils, config)
+    cases = []
+    summary_csv = outdir / "square_coil_hybrid_free_boundary_solve_summary.csv"
     metrics_path = outdir / "square_coil_hybrid_free_boundary_solve_metrics.json"
+    restart_state = None
+    for beta in config.betas_percent:
+        case = _run_one_beta(
+            config,
+            coils,
+            beta_percent=float(beta),
+            restart_state=restart_state if bool(config.beta_continuation_restart) else None,
+        )
+        cases.append(case)
+        if bool(config.beta_continuation_restart):
+            restart_state = case.run.state
+        if bool(config.checkpoint_each_beta):
+            rows = [solved.row for solved in cases]
+            _write_csv(summary_csv, rows)
+            metrics = _metrics_payload(
+                config=config,
+                coils=coils,
+                coils_json=coils_json,
+                summary_csv=summary_csv,
+                rows=rows,
+                figures={},
+                complete=False,
+            )
+            metrics_path.write_text(json.dumps(_json_sanitize(metrics), indent=2, allow_nan=False) + "\n")
+    rows = [case.row for case in cases]
+    _write_csv(summary_csv, rows)
+    figures = _write_plots(outdir, coils, cases, config) if bool(config.write_plots) else {}
+    metrics = _metrics_payload(
+        config=config,
+        coils=coils,
+        coils_json=coils_json,
+        summary_csv=summary_csv,
+        rows=rows,
+        figures=figures,
+        complete=True,
+    )
     metrics_path.write_text(json.dumps(_json_sanitize(metrics), indent=2, allow_nan=False) + "\n")
     return metrics_path
 

@@ -164,7 +164,10 @@ presented as a production equilibrium. For finite-beta cases, coil-only
 ``B.n`` is not the physical free-boundary target because the plasma field also
 contributes at the interface. Use the final VMEC force residuals, total-pressure
 balance, and eventually a virtual-casing plasma-field diagnostic for promotion
-claims; coil-only ``B.n`` is a vacuum check.
+claims; coil-only ``B.n`` is a vacuum check. Long beta scans checkpoint the
+summary CSV and metrics JSON after each beta by default, so a later
+high-beta stall or interrupted SSH session still leaves the completed lower-beta
+evidence on disk.
 
 The default activation threshold is intentionally tight
 (``FREE_BOUNDARY_ACTIVATE_FSQ = 1e-8``), and the solver now blocks
