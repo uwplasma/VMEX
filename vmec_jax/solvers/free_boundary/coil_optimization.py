@@ -903,6 +903,7 @@ def same_branch_rejected_slot_gate_from_vector_replay(
     vector_uses_state_only_replay: bool,
     run_branch_local_vector: Any,
     summarize_vector_result: Any,
+    main_vector_replay_plan: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], float | None]:
     """Return the fixed accepted/rejected controller-slot gate artifact.
 
@@ -937,6 +938,33 @@ def same_branch_rejected_slot_gate_from_vector_replay(
     rejected_trace["step_status"] = "rejected"
     padded_traces = base_traces + (rejected_trace,)
     t0 = time.perf_counter()
+    rejected_replay_plan = None
+    try:
+        from vmec_jax.free_boundary_adjoint import direct_coil_accepted_trace_controller_replay_plan
+
+        inherited_contexts = (
+            {}
+            if main_vector_replay_plan is None
+            else dict(main_vector_replay_plan.get("boundary_replay_contexts_by_shape", {}))
+        )
+        rejected_replay_plan = direct_coil_accepted_trace_controller_replay_plan(
+            padded_traces,
+            static=report["base"]["init"].static,
+            use_preconditioner_policy_segments=bool(
+                replay_kwargs.get("use_preconditioner_policy_segments", False)
+            ),
+            use_segment_preconditioner_controls=bool(
+                replay_kwargs.get("use_segment_preconditioner_controls", False)
+            ),
+            use_stacked_step_controls=bool(replay_kwargs.get("use_stacked_step_controls", False)),
+            use_accepted_only_fast_path=False,
+            boundary_replay_contexts_by_shape=inherited_contexts,
+        )
+    except Exception:
+        # The replay call below can still build its own plan.  Keep this gate
+        # diagnostic non-fatal so examples do not fail solely due to plan
+        # precomputation metadata.
+        rejected_replay_plan = None
     rejected_vector = run_branch_local_vector(
         vector_keys,
         {
@@ -946,6 +974,7 @@ def same_branch_rejected_slot_gate_from_vector_replay(
             "use_accepted_only_fast_path": False,
         },
         include_replay_graph_metadata=False,
+        replay_plan_for_call=rejected_replay_plan,
     )
     wall_s = float(time.perf_counter() - t0)
     rejected_summary = summarize_vector_result(rejected_vector, vector_keys)
@@ -1015,6 +1044,14 @@ def same_branch_rejected_slot_gate_from_vector_replay(
         ),
         "controller_slot_summary": rejected_controller_slot_summary,
         "replay_option_flags": rejected_summary["replay_option_flags"],
+        "reused_boundary_replay_contexts": bool(
+            rejected_replay_plan is not None
+            and main_vector_replay_plan is not None
+            and rejected_replay_plan.get("boundary_replay_contexts_by_shape")
+            is not main_vector_replay_plan.get("boundary_replay_contexts_by_shape")
+            and set(rejected_replay_plan.get("boundary_replay_contexts_by_shape", {}))
+            >= set(main_vector_replay_plan.get("boundary_replay_contexts_by_shape", {}))
+        ),
         "replay_branch_metadata": rejected_metadata,
         "max_base_abs_delta": float(rejected_summary["max_base_abs_delta"]),
         "scalars": rejected_summary["scalars"],

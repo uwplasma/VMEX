@@ -1966,7 +1966,7 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
     assert calls[0]["_replay_plan"] is replay_plan_sentinel
     assert calls[0]["_current_only_coil_geometry"] is not None
     assert calls[1]["use_accepted_only_fast_path"] is False
-    assert calls[1]["_replay_plan"] is None
+    assert calls[1]["_replay_plan"] is replay_plan_sentinel
     assert calls[1]["_current_only_coil_geometry"] is not None
     assert "accept_mask" not in calls[1]
     assert [item.get("step_status", "accepted") for item in calls[1]["traces"]] == ["accepted", "rejected"]
@@ -1997,6 +1997,7 @@ def test_same_branch_report_profiles_nestor_and_rejected_slot(tmp_path, monkeypa
     assert slot_fingerprint["summary"]["rejected_slots"] == 1
     assert rejected_gate["directional_jvp_fast_path"] == "current_only"
     assert rejected_gate["directional_uses_fixed_coil_geometry"] is True
+    assert rejected_gate["reused_boundary_replay_contexts"] is False
     assert rejected_gate["controller_slot_summary"]["accepted_slots"] == 1
     assert rejected_gate["controller_slot_summary"]["rejected_slots"] == 1
     assert rejected_gate["replay_option_flags"]["use_accepted_only_fast_path"] is False

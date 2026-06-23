@@ -191,6 +191,7 @@ def direct_coil_accepted_trace_controller_replay_plan(
     use_segment_preconditioner_controls: bool = False,
     use_stacked_step_controls: bool = False,
     use_accepted_only_fast_path: bool = True,
+    boundary_replay_contexts_by_shape: Mapping[tuple[int, int], Any] | None = None,
 ) -> dict[str, Any]:
     """Build fixed accepted-branch replay controls outside AD transforms."""
 
@@ -311,6 +312,17 @@ def direct_coil_accepted_trace_controller_replay_plan(
             and accepted_trace_segment_is_unconditionally_accepted(effective_masks, start=0, stop=len(trace_seq)),
         )
 
+    context_cache = dict(boundary_replay_contexts_by_shape or {})
+    for trace in trace_seq:
+        shape = direct_coil_trace_boundary_shape(trace)
+        if shape is None or shape in context_cache:
+            continue
+        context_cache[shape] = direct_coil_boundary_replay_context_for_shape(
+            static,
+            ntheta=shape[0],
+            nzeta=shape[1],
+        )
+
     return {
         "contract": "fixed accepted-branch controller replay plan",
         "differentiates_adaptive_controller": False,
@@ -331,7 +343,7 @@ def direct_coil_accepted_trace_controller_replay_plan(
         "segment_source": segment_source,
         "preconditioner_controls_segment_stacked": segment_preconditioner_controls_stacked,
         "accepted_only_fast_path_segments": accepted_only_fast_path_segments,
-        "boundary_replay_contexts_by_shape": direct_coil_boundary_replay_contexts_by_shape(static, trace_seq),
+        "boundary_replay_contexts_by_shape": context_cache,
         "options": {
             "max_steps": None if max_steps is None else int(max_steps),
             "use_preconditioner_policy_segments": bool(use_preconditioner_policy_segments),
