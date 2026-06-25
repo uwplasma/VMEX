@@ -28,13 +28,15 @@ from examples.toroidal_stellarator_mirror_hybrid_square_coils_free_boundary impo
     make_free_boundary_indata,
 )
 from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_run
-from vmec_jax.external_fields import write_mgrid_from_coils
+from vmec_jax.external_fields import build_coil_field_geometry, write_mgrid_from_coils
+from vmec_jax.free_boundary import _sample_external_boundary_arrays
 from vmec_jax.namelist import write_indata
 from vmec_jax.toroidal_hybrid import evaluate_toroidal_hybrid_indata_boundary, recommended_square_axis_nzeta
 from vmec_jax.vmec2000_exec import _parse_vmec2000_threed1, find_vmec2000_exec, run_xvmec2000
 
 
 DEFAULT_OUTDIR = REPO_ROOT / "results" / "square_coil_freeb_backend_profile"
+TINY = 1.0e-300
 
 
 def _json_ready(value: Any) -> Any:
@@ -94,6 +96,11 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--vmec2000-exec", type=Path, default=None)
     p.add_argument("--vmec2000-timeout", type=float, default=600.0)
     p.add_argument("--jit-forces", action="store_true")
+    p.add_argument(
+        "--skip-provider-parity",
+        action="store_true",
+        help="Skip the initial-boundary direct-coil/generated-mgrid field parity diagnostic.",
+    )
     p.add_argument(
         "--return-best-scored-state",
         action="store_true",
@@ -399,6 +406,179 @@ def _run_jax_backend(
     }
 
 
+def _rms(value: np.ndarray) -> float | None:
+    arr = np.asarray(value, dtype=float).reshape(-1)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return None
+    return float(np.sqrt(np.mean(arr * arr)))
+
+
+def _max_abs(value: np.ndarray) -> float | None:
+    arr = np.asarray(value, dtype=float).reshape(-1)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return None
+    return float(np.max(np.abs(arr)))
+
+
+def _difference_stats(candidate: Any, reference: Any) -> dict[str, float | None]:
+    cand = np.asarray(candidate, dtype=float)
+    ref = np.asarray(reference, dtype=float)
+    if cand.shape != ref.shape:
+        raise ValueError(f"shape mismatch in provider parity comparison: {cand.shape} != {ref.shape}")
+    diff = cand - ref
+    ref_rms = _rms(ref)
+    ref_max = _max_abs(ref)
+    diff_rms = _rms(diff)
+    diff_max = _max_abs(diff)
+    return {
+        "reference_rms": ref_rms,
+        "reference_max_abs": ref_max,
+        "candidate_rms": _rms(cand),
+        "candidate_max_abs": _max_abs(cand),
+        "diff_rms": diff_rms,
+        "diff_max_abs": diff_max,
+        "diff_rms_rel": None if diff_rms is None or ref_rms is None else float(diff_rms / max(ref_rms, TINY)),
+        "diff_max_rel": None if diff_max is None or ref_max is None else float(diff_max / max(ref_max, TINY)),
+    }
+
+
+def _vector_difference_stats(
+    candidate_components: tuple[Any, ...],
+    reference_components: tuple[Any, ...],
+) -> dict[str, float | None]:
+    cand = [np.asarray(component, dtype=float) for component in candidate_components]
+    ref = [np.asarray(component, dtype=float) for component in reference_components]
+    if len(cand) != len(ref):
+        raise ValueError("candidate/reference component counts differ")
+    for c_arr, r_arr in zip(cand, ref, strict=True):
+        if c_arr.shape != r_arr.shape:
+            raise ValueError(f"shape mismatch in vector parity comparison: {c_arr.shape} != {r_arr.shape}")
+    cand_mag = np.sqrt(sum(c_arr * c_arr for c_arr in cand))
+    ref_mag = np.sqrt(sum(r_arr * r_arr for r_arr in ref))
+    diff_mag = np.sqrt(sum((c_arr - r_arr) ** 2 for c_arr, r_arr in zip(cand, ref, strict=True)))
+    ref_rms = _rms(ref_mag)
+    ref_max = _max_abs(ref_mag)
+    diff_rms = _rms(diff_mag)
+    diff_max = _max_abs(diff_mag)
+    return {
+        "reference_rms": ref_rms,
+        "reference_max_abs": ref_max,
+        "candidate_rms": _rms(cand_mag),
+        "candidate_max_abs": _max_abs(cand_mag),
+        "diff_rms": diff_rms,
+        "diff_max_abs": diff_max,
+        "diff_rms_rel": None if diff_rms is None or ref_rms is None else float(diff_rms / max(ref_rms, TINY)),
+        "diff_max_rel": None if diff_max is None or ref_max is None else float(diff_max / max(ref_max, TINY)),
+    }
+
+
+def _mgrid_domain_payload(sample: Any, bounds: dict[str, float]) -> dict[str, Any]:
+    R = np.asarray(sample.R, dtype=float)
+    Z = np.asarray(sample.Z, dtype=float)
+    margins = {
+        "rmin_margin": float(np.nanmin(R) - float(bounds["rmin"])),
+        "rmax_margin": float(float(bounds["rmax"]) - np.nanmax(R)),
+        "zmin_margin": float(np.nanmin(Z) - float(bounds["zmin"])),
+        "zmax_margin": float(float(bounds["zmax"]) - np.nanmax(Z)),
+    }
+    return {
+        "boundary_rmin": float(np.nanmin(R)),
+        "boundary_rmax": float(np.nanmax(R)),
+        "boundary_zmin": float(np.nanmin(Z)),
+        "boundary_zmax": float(np.nanmax(Z)),
+        **margins,
+        "contained": bool(all(value >= 0.0 for value in margins.values())),
+    }
+
+
+def _provider_parity_payload(
+    *,
+    mgrid_input: Path,
+    coil_params: Any,
+    config: ExampleConfig,
+    bounds: dict[str, float],
+    mgrid_nphi: int,
+) -> dict[str, Any]:
+    """Compare generated-mgrid and direct-coil fields on the initial VMEC boundary."""
+
+    t0 = time.perf_counter()
+    try:
+        run = run_free_boundary(
+            mgrid_input,
+            use_initial_guess=True,
+            verbose=False,
+            jit_forces=False,
+            solver_mode="parity",
+        )
+        direct_static = {
+            "coil_geometry": build_coil_field_geometry(coil_params),
+            "regularization_epsilon": getattr(coil_params, "regularization_epsilon", 0.0),
+            "chunk_size": getattr(coil_params, "chunk_size", None),
+            "cache_scope": "square_coil_profile_provider_parity",
+            "jit_sampler": False,
+        }
+        mgrid_sample = _sample_external_boundary_arrays(
+            state=run.state,
+            static=run.static,
+            plascur=0.0,
+        )
+        direct_sample = _sample_external_boundary_arrays(
+            state=run.state,
+            static=run.static,
+            plascur=0.0,
+            external_field_provider_kind="direct_coils",
+            external_field_provider_static=direct_static,
+            external_field_provider_params=coil_params,
+        )
+        component_stats = {
+            name: _difference_stats(
+                getattr(mgrid_sample, name),
+                getattr(direct_sample, name),
+            )
+            for name in ("br_mgrid", "bp_mgrid", "bz_mgrid")
+        }
+        vacuum_stats = {
+            name: _difference_stats(
+                getattr(mgrid_sample.vac_ext, name),
+                getattr(direct_sample.vac_ext, name),
+            )
+            for name in ("bnormal", "bnormal_unit", "bu", "bv", "bsqvac")
+        }
+        field_vector = _vector_difference_stats(
+            (mgrid_sample.br_mgrid, mgrid_sample.bp_mgrid, mgrid_sample.bz_mgrid),
+            (direct_sample.br_mgrid, direct_sample.bp_mgrid, direct_sample.bz_mgrid),
+        )
+        bnormal_rel = vacuum_stats["bnormal"]["diff_rms_rel"]
+        field_rel = field_vector["diff_rms_rel"]
+        return {
+            "status": "completed",
+            "reference_provider": "direct_coils",
+            "candidate_provider": "generated_mgrid",
+            "sample": "initial_boundary_coil_field_only",
+            "wall_s": float(time.perf_counter() - t0),
+            "ntheta": int(np.asarray(mgrid_sample.R).shape[0]),
+            "nzeta": int(np.asarray(mgrid_sample.R).shape[1]),
+            "mgrid_nphi": int(mgrid_nphi),
+            "mgrid_kp_divisible_by_nzeta": bool(int(mgrid_nphi) % max(1, int(config.nzeta)) == 0),
+            "domain": _mgrid_domain_payload(mgrid_sample, bounds),
+            "field_vector": field_vector,
+            "components": component_stats,
+            "vacuum_channels": vacuum_stats,
+            "field_rms_rel_lt_5pct": bool(field_rel is not None and float(field_rel) < 5.0e-2),
+            "bnormal_rms_rel_lt_10pct": bool(bnormal_rel is not None and float(bnormal_rel) < 1.0e-1),
+        }
+    except Exception as exc:
+        return {
+            "status": "failed",
+            "error": repr(exc),
+            "wall_s": float(time.perf_counter() - t0),
+            "mgrid_nphi": int(mgrid_nphi),
+            "mgrid_kp_divisible_by_nzeta": bool(int(mgrid_nphi) % max(1, int(config.nzeta)) == 0),
+        }
+
+
 def _vmec2000_row_payload(row: Any) -> dict[str, Any]:
     total = float(row.fsqr) + float(row.fsqz) + float(row.fsql)
     return {
@@ -431,6 +611,11 @@ def main(argv: list[str] | None = None) -> int:
     outdir = args.outdir
     outdir.mkdir(parents=True, exist_ok=True)
     mgrid_nphi = int(args.nzeta if args.mgrid_nphi is None else args.mgrid_nphi)
+    if mgrid_nphi % max(1, int(args.nzeta)) != 0:
+        raise ValueError(
+            f"--mgrid-nphi={mgrid_nphi} is incompatible with --nzeta={int(args.nzeta)} for VMEC-plane "
+            "mgrid sampling; omit --mgrid-nphi or use a multiple of --nzeta."
+        )
     ns_array, niter_array, ftol_array = _resolve_schedule(args)
     recommended_nzeta = recommended_square_axis_nzeta(int(args.ntor))
     if bool(args.enforce_recommended_nzeta) and int(args.nzeta) < recommended_nzeta:
@@ -527,8 +712,17 @@ def main(argv: list[str] | None = None) -> int:
             "nphi": int(mgrid_nphi),
             **bounds,
         },
+        "provider_parity": None,
         "backends": {},
     }
+    if not bool(args.skip_provider_parity):
+        payload["provider_parity"] = _provider_parity_payload(
+            mgrid_input=mgrid_input,
+            coil_params=coils.params,
+            config=config,
+            bounds=bounds,
+            mgrid_nphi=mgrid_nphi,
+        )
     if not args.skip_direct:
         payload["backends"]["vmec_jax_direct"] = _run_jax_backend(
             input_path=direct_input,

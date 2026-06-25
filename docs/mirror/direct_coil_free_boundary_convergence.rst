@@ -95,7 +95,18 @@ iterations, ``vmec_jax`` generated-mgrid recomputes to total residual about
 ``~7e-8`` VMEC2000 result used the narrower ``DELT=0.05`` mgrid deck; it is
 useful as an optimistic low-resolution reference, but it is not the right
 target for radial-resolution studies because the corresponding ``NS=17`` run
-can move outside the vacuum grid.
+can move outside the vacuum grid. The profiler now also records an
+initial-boundary provider-parity block before running any force iterations.
+On the widened ``48 x 40 x 32`` square-coil deck, generated-mgrid sampling and
+the exact direct Biot-Savart provider agree on the initial boundary to about
+``3.2e-4`` RMS relative field-vector error and ``1.5e-3`` RMS relative
+coil-only ``B.n`` error. That rules out a simple toroidal-angle, current-scale,
+or interpolation-convention mismatch as the cause of the direct-coil stall.
+With the same provider-parity-checked setup, a 1000-iteration direct-coil
+``vmec_jax`` run at ``FTOL=1e-12`` remains monotone near the tail but only
+reaches total residual about ``4.1e-4`` and boundary ``B.n`` RMS about
+``6.4e-3``. The direct path therefore still needs solve-control work before it
+can be compared to the mgrid/VMEC2000 residual floor.
 
 The same profiling identified an ``NZETA`` robustness rule. ``MPOL=5,
 NTOR=12, NZETA=16`` fails in VMEC2000 after the initial Jacobian changes sign,
@@ -105,6 +116,9 @@ total residual about ``6.58e-6`` after 1000 iterations. The branch now exposes
 to ``NZETA=64`` for ``NTOR=23``. Production-style example runs fail early if
 ``NZETA`` is below the recommendation; diagnostic profiling can still run
 underresolved grids and records ``nzeta_underrecommended`` in the JSON report.
+The profiler also rejects generated-mgrid plane counts that are not multiples
+of ``NZETA`` because the VMEC-plane mgrid sampler intentionally uses the
+discrete VMEC zeta planes without toroidal interpolation.
 The rounded-square ``axis_kind="spline"`` option is now the default because it
 reduces low-mode projection error relative to the superellipse axis. It is
 still projected to VMEC Fourier coefficients, so large straight sections plus
@@ -198,7 +212,9 @@ The remaining work is deliberately narrow:
    convergence evidence; larger ``NVACSKIP`` values are speed experiments, not
    strict residual evidence. For radial-resolution ladders, use a widened mgrid
    envelope and record ``vacuum_grid_exceeded_count`` before interpreting the
-   residual floor.
+   residual floor. Keep the provider-parity block enabled unless the run is a
+   pure solver-speed benchmark; it verifies that direct-coil and generated-mgrid
+   boundary fields still match after resolution or coil changes.
 2. Re-run the square-coil beta ladder with per-beta checkpointing and the
    best-scored diagnostic fallback using the staged ``FTOL_ARRAY`` ending at ``1e-12``. Keep
    ``DELT=0.05``, ``NVACSKIP=1``, ``solver_mode="parity"``, and the VMEC-like
@@ -209,7 +225,7 @@ The remaining work is deliberately narrow:
    The next numerical knob is not a smaller global step size; ``DELT=0.01`` is
    too slow for the current schedule. Since the JAX mgrid path reproduces the
    VMEC2000 widened-mgrid ``DELT=0.02`` floor, the next solve-side work is
-   direct-coil provider convergence/cost on the same deck, followed by
+   nonlinear direct-coil convergence/cost on the same deck, followed by
    mode/mgrid refinement or a staged step-size schedule. A larger ``NS`` ladder
    should not be interpreted unless ``vacuum_grid_exceeded_count`` remains zero.
 4. Keep the optional virtual-casing postsolve diagnostic

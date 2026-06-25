@@ -183,11 +183,15 @@ convergence-diagnostic path until fresh final force residuals meet the requested
 negative ``PHIEDGE`` for the default positive-current square-coil orientation.
 Sign-corrected generated-``mgrid`` profiling shows VMEC2000 is currently the
 more robust backend, but the present square-coil setup still remains well above
-``1e-12`` after 1000-5000 iterations. The same profiling shows that underresolved
-``NZETA`` can fail before useful force iterations; the square-coil path now
-records ``recommended_nzeta`` and guards production-style example runs against
-known-underresolved toroidal grids. Finite-beta promotion should be based on
-VMEC force residuals, total-pressure balance, and
+``1e-12`` after 1000-5000 iterations. Initial-boundary provider parity is good
+on the widened deck: generated mgrid and exact direct Biot-Savart sampling
+agree to about ``3.2e-4`` RMS relative field-vector error and ``1.5e-3`` RMS
+relative coil-only ``B.n`` error, so the direct-coil blocker is nonlinear solve
+closure rather than a simple field-convention mismatch. The same profiling
+shows that underresolved ``NZETA`` can fail before useful force iterations; the
+square-coil path now records ``recommended_nzeta`` and guards production-style
+example runs against known-underresolved toroidal grids. Finite-beta promotion
+should be based on VMEC force residuals, total-pressure balance, and
 plasma-field/virtual-casing diagnostics rather than coil-only ``B.n``. Older
 coarse square-coil scans have strict active free-boundary convergence evidence
 through beta ``5%`` at ``FTOL=1e-8``; beta ``7%`` is the first high-beta stall

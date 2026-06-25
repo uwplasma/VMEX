@@ -86,3 +86,82 @@ def test_square_coil_profile_partial_vmec2000_payload_reads_timeout_rows(tmp_pat
     assert payload["last_row"]["total"] == pytest.approx(7.0e-6)
     assert payload["min_total"] == pytest.approx(7.0e-6)
     assert payload["vacuum_grid_exceeded_count"] == 1
+
+
+def test_square_coil_profile_provider_parity_payload_reports_field_and_bnormal_error(monkeypatch, tmp_path: Path):
+    vac_direct = SimpleNamespace(
+        bnormal=np.array([[2.0, 4.0], [6.0, 8.0]]),
+        bnormal_unit=np.array([[0.2, 0.4], [0.6, 0.8]]),
+        bu=np.array([[1.0, 2.0], [3.0, 4.0]]),
+        bv=np.array([[1.5, 2.5], [3.5, 4.5]]),
+        bsqvac=np.array([[10.0, 11.0], [12.0, 13.0]]),
+    )
+    vac_mgrid = SimpleNamespace(
+        bnormal=vac_direct.bnormal + 0.5,
+        bnormal_unit=vac_direct.bnormal_unit + 0.05,
+        bu=vac_direct.bu + 0.1,
+        bv=vac_direct.bv + 0.1,
+        bsqvac=vac_direct.bsqvac + 0.2,
+    )
+    direct_sample = SimpleNamespace(
+        R=np.array([[1.0, 1.1], [1.2, 1.3]]),
+        Z=np.array([[-0.1, 0.0], [0.1, 0.2]]),
+        br_mgrid=np.ones((2, 2)),
+        bp_mgrid=2.0 * np.ones((2, 2)),
+        bz_mgrid=3.0 * np.ones((2, 2)),
+        vac_ext=vac_direct,
+    )
+    mgrid_sample = SimpleNamespace(
+        R=direct_sample.R,
+        Z=direct_sample.Z,
+        br_mgrid=direct_sample.br_mgrid + 0.01,
+        bp_mgrid=direct_sample.bp_mgrid + 0.02,
+        bz_mgrid=direct_sample.bz_mgrid + 0.03,
+        vac_ext=vac_mgrid,
+    )
+
+    monkeypatch.setattr(
+        profile,
+        "run_free_boundary",
+        lambda *args, **kwargs: SimpleNamespace(state=object(), static=object()),
+    )
+    monkeypatch.setattr(profile, "build_coil_field_geometry", lambda _params: "geometry")
+
+    def fake_sample(**kwargs):
+        return direct_sample if kwargs.get("external_field_provider_kind") == "direct_coils" else mgrid_sample
+
+    monkeypatch.setattr(profile, "_sample_external_boundary_arrays", fake_sample)
+    config = SimpleNamespace(nzeta=2)
+    coil_params = SimpleNamespace(regularization_epsilon=0.0, chunk_size=None)
+
+    payload = profile._provider_parity_payload(
+        mgrid_input=tmp_path / "input.square_mgrid",
+        coil_params=coil_params,
+        config=config,
+        bounds={"rmin": 0.8, "rmax": 1.5, "zmin": -0.3, "zmax": 0.4},
+        mgrid_nphi=4,
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["mgrid_kp_divisible_by_nzeta"] is True
+    assert payload["domain"]["contained"] is True
+    assert payload["components"]["br_mgrid"]["diff_rms"] == pytest.approx(0.01)
+    assert payload["field_vector"]["diff_rms"] == pytest.approx(np.sqrt(0.01**2 + 0.02**2 + 0.03**2))
+    assert payload["vacuum_channels"]["bnormal"]["diff_rms"] == pytest.approx(0.5)
+
+
+def test_square_coil_profile_rejects_mgrid_nphi_not_multiple_of_nzeta(tmp_path: Path):
+    with pytest.raises(ValueError, match="mgrid-nphi=.*incompatible.*nzeta"):
+        profile.main(
+            [
+                "--outdir",
+                str(tmp_path / "profile"),
+                "--nzeta",
+                "4",
+                "--mgrid-nphi",
+                "6",
+                "--skip-direct",
+                "--skip-mgrid",
+                "--skip-provider-parity",
+            ]
+        )
