@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -66,6 +67,26 @@ def _load_qi_readme_cases_module():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def test_readme_renderer_scripts_help_exits_without_rendering() -> None:
+    root = Path(__file__).resolve().parents[1]
+    scripts = (
+        root / "examples" / "optimization" / "render_qi_constrained_sweep.py",
+        root / "examples" / "optimization" / "render_readme_best_optimizations.py",
+    )
+    for script in scripts:
+        result = subprocess.run(
+            [sys.executable, str(script), "--help"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        assert "usage:" in result.stdout
+        assert "--summary-only" in result.stdout
+        assert "Wrote" not in result.stdout
+        assert result.stderr == ""
 
 
 def test_qs_ess_sweep_worker_jax_platform_policy():
