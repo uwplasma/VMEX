@@ -4206,6 +4206,46 @@ Updated lane percentages:
 - Docs/release hygiene: 99.9%.
 - Overall: 98.8%.
 
+### 2026-06-25: Fix current-JVP cache unit-test contract
+
+Steps taken:
+
+- Inspected the cancelled CI run for ``55a1beff`` and found that the
+  ``freeb-external`` shard had failed before cancellation.
+- The failure was a stale unit-test unpacking contract for
+  ``_get_current_only_directional_jvp_executable`` after the helper started
+  returning executable metadata.
+- Updated the helper-unit test factory to return ``(executable, metadata)`` and
+  asserted miss/hit metadata, including ``compiled_on_this_call``.
+
+Results obtained:
+
+- The exact failed test now passes locally.
+- The full local ``freeb-external`` core bucket now passes with ``284`` passed,
+  ``41`` skipped, and ``1`` expected xfail in about ``31 s``.
+
+Best next steps:
+
+1. Commit and push this CI-fix tranche.
+2. Let the superseding CI run finish; if it fails, inspect only the failed job
+   log rather than polling all jobs repeatedly.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.2%.
+- Free-boundary production differentiability: 96.0%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 60.0%.
+- VMEC2000/VMEC++ parity and physics gates: 98.4%.
+- Docs/release hygiene: 99.9%.
+- Overall: 98.8%.
+
 ### 2026-06-25: Split current-only branch-local JVP compile and execution timing
 
 Steps taken:
