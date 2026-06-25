@@ -74,6 +74,12 @@ def test_directional_jvp_signature_digest_tracks_replay_program_options() -> Non
         directional_fast_path="current_only",
         current_jvp=current_jvp,
         replay_plan={"n_steps": 2, "n_free_boundary_replay_steps": 1},
+        replay_branch_metadata={
+            "n_steps": 2,
+            "n_free_boundary_replay_steps": 1,
+            "fingerprint": {"step_status": ["accepted", "accepted"], "dt_eff": [0.9, 0.8]},
+            "accepted_mask": [True, True],
+        },
         ad_mode="direct",
     )
 
@@ -101,11 +107,31 @@ def test_directional_jvp_signature_digest_tracks_replay_program_options() -> Non
         },
         **common,
     )
+    changed_branch = facade_helpers._branch_local_directional_jvp_signature(
+        replay_options={
+            "state_only_replay": True,
+            "use_stacked_step_controls": True,
+            "unroll_accepted_only_segments_below": 8,
+        },
+        **{
+            **common,
+            "replay_branch_metadata": {
+                "n_steps": 2,
+                "n_free_boundary_replay_steps": 1,
+                "fingerprint": {"step_status": ["accepted", "rejected"], "dt_eff": [0.9, 0.8]},
+                "accepted_mask": [True, False],
+            },
+        },
+    )
 
     assert first["cache_key_schema"] == "directional-jvp-signature-v1"
     assert len(first["cache_key_digest"]) == 64
+    assert len(first["replay_branch_metadata_digest"]) == 64
+    assert first["replay_branch_n_steps"] == 2
     assert first["cache_key_digest"] == repeat["cache_key_digest"]
     assert first["cache_key_digest"] != changed["cache_key_digest"]
+    assert first["replay_branch_metadata_digest"] != changed_branch["replay_branch_metadata_digest"]
+    assert first["cache_key_digest"] != changed_branch["cache_key_digest"]
     assert first["jit_cache_candidate"] is True
     assert first["unroll_accepted_only_segments_below"] == 8
 
