@@ -3884,3 +3884,22 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 98.1%.
 - Docs/release hygiene: 99.7%.
 - Overall: 98.3%.
+
+Follow-up probe:
+
+- Tried three bounded variants to separate proposal machinery from QS-scalar
+  conditioning:
+  a lower-angular-resolution QS gate, an ESSOS-backed current-only gate, and an
+  aspect-only proposal sanity case.
+- The lower-resolution QS and ESSOS-backed cases still blocked proposals
+  because ``qs_total`` failed the branch-local physical-scalar gate.  The
+  cache probe still hit and the accepted/rejected slot gate passed.
+- The aspect-only sanity case passed the branch-local vector and
+  physical-scalar gates, recorded a cache-probe hit, formed a proposal, and the
+  ordinary complete solve accepted the trial.  This proves the proposal
+  plumbing can reach complete-solve authority when the chosen scalar evidence
+  is valid, but it is not a QS promotion artifact.
+- The remaining phase-3 blocker is therefore not proposal dispatch or cache
+  provenance; it is finding or constructing a physically better-conditioned
+  direct-coil QS fixture where ``qs_total`` is not enormous and the same-branch
+  QS scalar derivative passes AD-vs-FD.
