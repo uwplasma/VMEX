@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import importlib.util
 from pathlib import Path
+import subprocess
 import sys
 
 import numpy as np
@@ -32,6 +33,20 @@ def _load_cases_module():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def test_qi_readme_renderer_help_exits_without_rendering() -> None:
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "--help"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "usage:" in result.stdout
+    assert "--summary-only" in result.stdout
+    assert "Wrote" not in result.stdout
+    assert result.stderr == ""
 
 
 def _write_synthetic_input(path: Path, *, nfp: int) -> None:

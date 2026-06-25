@@ -5923,3 +5923,58 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 99.1%.
 - Docs/release hygiene: 100%.
 - Overall: 99.4%.
+
+### 2026-06-25: Make the QI README renderer a proper CLI
+
+Steps taken:
+
+- Fixed ``examples/optimization/render_qi_readme_cases.py`` so ``--help``
+  exits through ``argparse`` instead of accidentally rendering the full QI
+  panel.
+- Added ``--summary-only``, ``--figure-out``, and ``--csv-out`` so users can
+  run provenance checks or review renders without overwriting tracked docs
+  artifacts.
+- Added a subprocess regression test proving ``--help`` exits without printing
+  renderer ``Wrote ...`` messages.
+- Documented the new summary-only/output override workflow in
+  ``examples/optimization/README.md`` and ``docs/optimization_sweep_results.rst``.
+
+Results obtained:
+
+- ``python -m ruff check examples/optimization/render_qi_readme_cases.py
+  tests/test_qi_readme_cases.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_qi_readme_cases.py tests/test_qs_ess_render_smoke.py
+  tests/test_docs_release_hygiene.py -q`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python
+  examples/optimization/render_qi_readme_cases.py --summary-only --csv-out
+  outputs/render_qi_readme_cases_summary_only_check.csv`` passed against the
+  promoted NFP1/2/3/4 QI artifacts.
+- Strict docs build passed:
+  ``LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONDONTWRITEBYTECODE=1 python -m sphinx -W
+  -j auto -b html docs docs/_build/html_qi_renderer_cli``.
+- Repo-size gate passed again with tracked size ``28.29 MiB``.
+
+Best next steps:
+
+1. Let the queued main CI finish and inspect only if the new commit fails.
+2. Continue prioritizing user-facing renderer/example/CLI fixes where they
+   avoid accidental heavy reruns or make review copies safer.
+3. Defer expensive optimization matrix refreshes unless solver behavior or
+   promotion criteria change.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 95.9%.
+- Free-boundary production differentiability: 96.4%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 67.6%.
+- VMEC2000/VMEC++ parity and physics gates: 99.1%.
+- Docs/release hygiene: 100%.
+- Overall: 99.4%.
