@@ -30,6 +30,7 @@ from vmec_jax.profiles import MU0, eval_profiles, profiles_from_indata
 from vmec_jax.residuals import _rms, _sum_squares_state, force_residuals_from_state
 from vmec_jax.state import StateLayout, VMECState
 from vmec_jax.vmec2000_exec import (
+    _decode_process_output,
     _find_threed1_file,
     _infer_case_name,
     _parse_vmec2000_threed1,
@@ -466,7 +467,7 @@ def test_vmec2000_exec_discovery_and_fake_run(monkeypatch, tmp_path: Path) -> No
     def fake_run(cmd, *, cwd, capture_output, text, timeout, check):
         assert cmd == [str(default_exec), "input.case"]
         assert capture_output is True
-        assert text is True
+        assert text is False
         assert timeout == 12.0
         assert check is False
         (Path(cwd) / "threed1.case").write_text(
@@ -478,7 +479,7 @@ def test_vmec2000_exec_discovery_and_fake_run(monkeypatch, tmp_path: Path) -> No
                 ]
             )
         )
-        return SimpleNamespace(stdout="ok", stderr="")
+        return SimpleNamespace(stdout=b"ok\xff", stderr=b"")
 
     times = iter([10.0, 12.5])
     monkeypatch.setattr(vx.time, "perf_counter", lambda: next(times))
@@ -496,9 +497,15 @@ def test_vmec2000_exec_discovery_and_fake_run(monkeypatch, tmp_path: Path) -> No
     assert result.workdir == workdir
     assert result.input_path == workdir / "input.case"
     assert "NITER = 2" in result.input_path.read_text()
-    assert result.stdout == "ok"
+    assert result.stdout == "ok\ufffd"
     assert result.stderr == ""
     assert result.runtime_s == pytest.approx(2.5)
     assert result.threed1_path == workdir / "threed1.case"
     assert len(result.stages) == 1
     assert threed1_fsq_total(flatten_threed1(result.stages))[0] == pytest.approx(0.06)
+
+
+def test_vmec2000_exec_decodes_external_solver_output_lossily() -> None:
+    assert _decode_process_output(None) == ""
+    assert _decode_process_output("already decoded") == "already decoded"
+    assert _decode_process_output(b"vmec\xffstdout") == "vmec\ufffdstdout"

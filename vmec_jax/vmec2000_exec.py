@@ -272,6 +272,15 @@ def _find_threed1_file(workdir: Path, *, case: str) -> Path | None:
     return matches[0] if matches else None
 
 
+def _decode_process_output(data: bytes | str | None) -> str:
+    """Decode external solver output without hiding parseable run artifacts."""
+    if data is None:
+        return ""
+    if isinstance(data, str):
+        return data
+    return data.decode("utf-8", errors="replace")
+
+
 def _relative_mgrid_file(text: str) -> str | None:
     """Return a relative VMEC ``MGRID_FILE`` reference from a namelist, if present."""
     match = _RE_MGRID_FILE.search(text)
@@ -330,7 +339,7 @@ def run_xvmec2000(
             cmd,
             cwd=workdir_path,
             capture_output=True,
-            text=True,
+            text=False,
             timeout=float(timeout_s),
             check=False,
         )
@@ -345,8 +354,8 @@ def run_xvmec2000(
             workdir=workdir_path,
             input_path=dest,
             returncode=int(getattr(proc, "returncode", 0)),
-            stdout=proc.stdout,
-            stderr=proc.stderr,
+            stdout=_decode_process_output(getattr(proc, "stdout", None)),
+            stderr=_decode_process_output(getattr(proc, "stderr", None)),
             runtime_s=float(runtime_s),
             threed1_path=threed1_path,
             stages=stages,

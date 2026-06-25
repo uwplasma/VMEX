@@ -296,7 +296,7 @@ def test_run_xvmec2000_copies_relative_mgrid_and_cleans_temp(monkeypatch, tmp_pa
             " ITER FSQR FSQZ FSQL fsqr1 fsqz1 fsql1 DELT0R\n"
             "  1 1.0E-1 2.0E-1 3.0E-1 4.0E-1 5.0E-1 6.0E-1 7.0E-1\n"
         )
-        return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout=b"ok", stderr=b"")
 
     monkeypatch.setattr("vmec_jax.vmec2000_exec.subprocess.run", fake_run)
 
@@ -314,4 +314,5 @@ def test_run_xvmec2000_copies_relative_mgrid_and_cleans_temp(monkeypatch, tmp_pa
     assert len(result.stages) == 1
     assert seen["cmd"] == [str(exec_path), "input.case"]
     assert seen["timeout"] == pytest.approx(12.5)
+    assert seen["text"] is False
     assert not Path(result.workdir).exists()
