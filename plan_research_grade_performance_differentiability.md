@@ -4672,6 +4672,58 @@ Updated lane percentages:
 - Docs/release hygiene: 100%.
 - Overall: 99.25%.
 
+### 2026-06-25: Add artifact-level AD-vs-FD evidence regression gate
+
+Steps taken:
+
+- Added a regression test for the checked-in public AD-vs-FD evidence JSON.
+- The new gate requires exactly the promoted public rows: aspect, iota, QS,
+  smooth QI, ``DMerc``, ``D_R``, and the four branch-local direct-coil
+  free-boundary physical scalars.
+- The gate requires every row to pass, every row tolerance to stay at or below
+  ``1e-9``, the maximum relative error to stay below ``1e-9``, and
+  free-boundary notes/metadata to keep the conservative
+  same-branch/fingerprint-gated wording.
+
+Results obtained:
+
+- ``python -m pytest -q tests/test_readme_ad_fd_evidence.py -q`` passed.
+- ``python -m ruff check tests/test_readme_ad_fd_evidence.py
+  tools/diagnostics/readme_ad_fd_evidence.py`` passed.
+- The checked-in evidence artifact has 10 rows, maximum relative error
+  ``4.3997183674093776e-10``, and points to
+  ``outputs/final_tranche_adfd_evidence/same_branch_complete_solve_report.json``.
+- ``python tools/diagnostics/source_health.py --top 20 --top-functions 50
+  --max-root-helper-prefix-files 2`` passed the configured source-health gate.
+- ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
+  --max-file-mib 2`` passed with 28.26 MiB tracked.
+- ``git diff --check`` passed.
+
+Best next steps:
+
+1. Commit and push the artifact-level AD-vs-FD evidence regression gate.
+2. Let the latest CI finish; inspect logs only if it fails.
+3. For the next tranche, prefer either a real validation/parity gate or the
+   larger residual-controller API object. Do not loosen the public derivative
+   evidence threshold unless a numerically justified row requires a separate
+   documented tolerance.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 95.1%.
+- Free-boundary production differentiability: 96.4%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 65.1%.
+- VMEC2000/VMEC++ parity and physics gates: 98.9%.
+- Docs/release hygiene: 100%.
+- Overall: 99.3%.
+
 ### 2026-06-25: Package VMEC2000 time-control restart branch side effects
 
 Steps taken:
