@@ -3903,3 +3903,77 @@ Follow-up probe:
   provenance; it is finding or constructing a physically better-conditioned
   direct-coil QS fixture where ``qs_total`` is not enormous and the same-branch
   QS scalar derivative passes AD-vs-FD.
+
+### 2026-06-25: Add relative branch-local replay-drift evidence
+
+Steps taken:
+
+- Added ``base_rel_delta`` and ``max_base_rel_delta`` to production-forward
+  branch-local scalar/vector replay reports, scalar-only accepted-trace reports,
+  physical-scalar gate summaries, derivative-proposal contributions, and compact
+  proposal ``gate_evidence``.
+- Kept proposal promotion conservative: no pass/fail threshold was relaxed, and
+  ``--same-branch-proposal-max-base-delta`` remains the absolute stale-replay
+  safety cap.
+- Updated the free-boundary coil optimization docs and smoke tests so relative
+  replay drift is a stable artifact field rather than an ad hoc debug value.
+
+Results obtained:
+
+- Focused ruff checks passed for the touched free-boundary optimization and
+  adjoint modules.
+- Focused free-boundary QS coil optimization smoke tests passed:
+  ``34 passed, 1 xfailed``.
+- The new evidence fields make the current QS proposal blocker easier to
+  classify: failed QS physical-scalar gates can now be inspected for both
+  derivative mismatch and scale-aware base replay drift without weakening the
+  promotion gate.
+
+Best next steps:
+
+1. Re-run the non-smoke direct-coil proposal artifact to record the new
+   relative-drift diagnostics for the failing QS scalar.
+2. Use those diagnostics to decide whether the next fixture should be a better
+   conditioned physical QS coil case or a targeted improvement in the
+   branch-local QS replay scalar path.
+3. Keep the complete free-boundary solve as the only proposal acceptance
+   authority until the physical-scalar gate passes for QS-relevant terms.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.2%.
+- Free-boundary production differentiability: 95.2%.
+- Single-stage coil optimization: 91.5%.
+- CPU/GPU runtime and memory footprint: 98.9%.
+- Refactor/API/examples: 59.5%.
+- VMEC2000/VMEC++ parity and physics gates: 98.1%.
+- Docs/release hygiene: 99.7%.
+- Overall: 98.35%.
+
+Follow-up result:
+
+- Re-ran the non-smoke direct-coil proposal artifact after adding relative
+  replay-drift diagnostics:
+  ``outputs/final_tranche_coil_qs_proposal_rel_delta``.
+- The proposal remains unavailable with
+  ``reason='branch-local vector gate did not pass'``.
+- The new diagnostics show ``max_base_abs_delta = 1.07460608e8`` but
+  ``max_base_rel_delta = 3.43e-10``.  For ``qs_total``, the base relative drift
+  is ``1.04e-11`` even though the absolute drift is large because the scalar is
+  ``~1.03e19``.
+- The failed gate is therefore derivative/conditioning, not stale replay-base
+  disagreement: ``qs_total`` exact directional ``9.22e8`` vs complete-solve FD
+  ``-1.16e13`` (relative error near one), while ``aspect`` passes and
+  ``mean_iota`` also fails in this crude synthetic-circle fixture.
+
+Best next steps refinement:
+
+1. Do not relax the stale-base cap for QS based on this artifact; relative
+   base drift is already small and the derivative itself is wrong for this
+   fixture.
+2. Build a better-conditioned direct-coil QS fixture before promoting the
+   coil-only QS derivative-proposal example, or improve the branch-local QS
+   replay scalar if the same derivative mismatch appears on a physical fixture.
+3. Keep the aspect-only proposal sanity as plumbing evidence, not as QS
+   optimization evidence.

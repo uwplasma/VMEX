@@ -939,6 +939,13 @@ acceptance authority.
 Unavailable proposals keep the same compact ``gate_evidence`` payload, so a
 failed vector gate, stale replay base point, or failed accepted/rejected slot
 gate can be diagnosed without reopening the full report.
+The branch-local scalar and vector reports include both absolute replay base
+drift (``base_abs_delta`` / ``max_base_abs_delta``) and scale-aware relative
+drift (``base_rel_delta`` / ``max_base_rel_delta``).  The strict promotion gate
+still uses the absolute cap by default; the relative fields are diagnostic
+evidence for large scalar objectives such as QS residuals, where a huge
+absolute number can otherwise hide whether the branch-local replay is actually
+scale-consistent.
 The report also writes ``same_branch_report_config`` in ``summary.json`` so the
 artifact remains self-describing.  Its derivative contract is fixed
 recorded-branch replay only; it does not differentiate changes in adaptive host
@@ -1510,7 +1517,9 @@ point.  The proposal's ``gate_evidence`` also carries the
 the accepted/rejected proposal artifact is self-contained.  When the
 current-only cache probe was requested, the same evidence includes
 ``current_jvp_cache_probe_available``, ``current_jvp_cache_probe_hit``, and the
-probe wall time.  After the trial solve, the same block records
+probe wall time, along with ``branch_local_vector_max_base_rel_delta`` and
+``branch_local_scalar_base_rel_delta`` for stale-branch diagnostics.  After the
+trial solve, the same block records
 ``acceptance_decision_source = 'complete_solve_objective'`` together with
 ``accepted_by_complete_solve`` and ``rejected_by_complete_solve`` so the JSON
 artifact makes clear that branch-local derivatives only propose a step.
