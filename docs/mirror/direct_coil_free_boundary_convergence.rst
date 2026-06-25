@@ -110,10 +110,12 @@ With the same provider-parity-checked setup, a 1000-iteration direct-coil
 reaches total residual about ``4.1e-4`` and boundary ``B.n`` RMS about
 ``6.4e-3``. Extending the direct run to 3000 iterations improves the total
 residual to about ``4.7e-6`` and boundary ``B.n`` RMS to about ``4.4e-3`` with
-fresh full updates every iteration, but the force residual tail begins to
-flatten and remains far above ``1e-12``. The direct path is therefore slower
-than VMEC2000 on this deck and still needs solve-control work before it can
-close the strict residual gap.
+fresh full updates every iteration. At 5000 iterations, direct-coil
+``vmec_jax`` reaches about ``1.35e-6``, essentially the same floor as
+generated-mgrid ``vmec_jax`` at the same iteration budget. The direct path is
+therefore slower than VMEC2000 on this deck but no longer looks like a separate
+provider-convention blocker; the strict residual gap is now a shared VMEC/JAX
+solve-control problem.
 
 The same profiling identified an ``NZETA`` robustness rule. ``MPOL=5,
 NTOR=12, NZETA=16`` fails in VMEC2000 after the initial Jacobian changes sign,
@@ -232,7 +234,7 @@ The remaining work is deliberately narrow:
    The next numerical knob is not a smaller global step size; ``DELT=0.01`` is
    too slow for the current schedule. Since the JAX mgrid path reproduces the
    VMEC2000 widened-mgrid ``DELT=0.02`` floor, the next solve-side work is
-   nonlinear direct-coil convergence/cost on the same deck, followed by
+   JAX/VMEC2000 solve-control parity beyond 5000 iterations, followed by
    mode/mgrid refinement or a staged step-size schedule. A larger ``NS`` ladder
    should not be interpreted unless ``vacuum_grid_exceeded_count`` remains zero.
 4. Keep the optional virtual-casing postsolve diagnostic

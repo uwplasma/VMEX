@@ -189,8 +189,9 @@ agree to about ``3.2e-4`` RMS relative field-vector error and ``1.5e-3`` RMS
 relative coil-only ``B.n`` error, so the direct-coil blocker is nonlinear solve
 closure rather than a simple field-convention mismatch. A matching direct-coil
 run improves from about ``4.1e-4`` residual at 1000 iterations to ``4.7e-6`` at
-3000 iterations, but still does not close the strict tolerance gap. The same profiling
-shows that underresolved ``NZETA`` can fail before useful force iterations; the
+3000 iterations and ``1.35e-6`` at 5000 iterations, essentially matching the
+generated-mgrid JAX floor at the same budget. The same profiling shows that
+underresolved ``NZETA`` can fail before useful force iterations; the
 square-coil path now records ``recommended_nzeta`` and guards production-style
 example runs against known-underresolved toroidal grids. Finite-beta promotion
 should be based on VMEC force residuals, total-pressure balance, and
