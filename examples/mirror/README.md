@@ -223,7 +223,11 @@ Fourier deck. For ``NS`` ladders above the initial surface, use a widened mgrid
 envelope and check the reported ``vacuum_grid_exceeded_count`` before
 interpreting the residual floor, for example::
 
-  --mgrid-nr 48 --mgrid-nz 40 --mgrid-padding-fraction 1.2 --mgrid-min-padding 0.5
+  --delt 0.02 --mgrid-nr 48 --mgrid-nz 40 --mgrid-padding-fraction 1.2 --mgrid-min-padding 0.5
+
+The current ``NS=9 -> 17`` VMEC2000 reference is not yet a ``1e-12`` solve, but
+with that widened mgrid and ``DELT=0.02`` it reaches a monotone final total
+residual of about ``1.4e-7`` after 3000 final-stage iterations.
 
 Summarize one or more reports with::
 
