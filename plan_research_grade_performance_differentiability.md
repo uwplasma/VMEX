@@ -4561,6 +4561,66 @@ Updated lane percentages:
 - Docs/release hygiene: 100%.
 - Overall: 99.1%.
 
+### 2026-06-25: Final artifact refresh and stale public-benchmark cleanup
+
+Steps taken:
+
+- Re-rendered the docs-facing fixed-boundary runtime/memory figure and CSV/JSON
+  provenance from ``outputs/pr20_full_matrix_current_cpu_sg_fulljit``.
+- Rebuilt the current-vs-``origin/main`` runtime/memory comparison from the
+  checked current and clean-main benchmark summaries.
+- Re-rendered the README AD-vs-central-FD evidence panel from the existing
+  branch-local direct-coil report.
+- Removed the stale two-case VMEC++ runtime PNG from tracked docs assets.  It
+  was not referenced by README or source docs and was superseded by the full
+  16-case runtime matrix in the performance docs.
+
+Results obtained:
+
+- Runtime comparison regeneration reported ``48`` current-vs-main rows and
+  ``0`` material regressions.
+- The public runtime matrix still contains ``16`` historical bundled
+  fixed-boundary cases.
+- The AD-vs-FD panel regenerated with ``10`` rows and ``0`` failures at the
+  documented ``1e-9`` tolerance.  Maximum absolute error was
+  ``4.40e-10``.
+- Focused validation passed:
+  ``python -m ruff check`` on the refreshed diagnostics/tests,
+  ``tests/test_readme_ad_fd_evidence.py``,
+  ``tests/test_runtime_diagnostics.py``,
+  ``tests/test_converged_wout_parity_benchmark.py``,
+  ``tests/test_wout_comprehensive_parity.py``, and
+  ``tests/test_glasser_resistive_interchange.py``.
+- Full Sphinx ``-W`` docs build over ``80`` source files passed.
+- Full local pytest passed: ``3102 passed, 140 skipped, 2 xfailed`` in
+  ``760.18 s``.
+
+Best next steps:
+
+1. Record the full local pytest result, then run repository-size,
+   source-health, and diff whitespace gates.
+2. Commit and push the refreshed provenance/stale-artifact cleanup if the full
+   suite passes.
+3. Check the latest CI run once after pushing.  If CI is green, this tranche is
+   ready for PR review/merge discussion; if CI fails, fix only concrete
+   failures rather than adding new scope.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 94.0%.
+- Free-boundary production differentiability: 96.2%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 63.4%.
+- VMEC2000/VMEC++ parity and physics gates: 98.8%.
+- Docs/release hygiene: 100%.
+- Overall: 99.1%.
+
 ### 2026-06-25: Add residual controller-state snapshot seam
 
 Steps taken:
