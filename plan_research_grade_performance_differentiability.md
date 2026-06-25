@@ -3637,3 +3637,58 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 97.9%.
 - Docs/release hygiene: 99.5%.
 - Overall: 97.7%.
+
+### 2026-06-25: Stabilize replay scalar callables for cache hits
+
+Steps taken:
+
+- Replaced the per-call replay-scalar lambda tuple in the branch-local vector
+  facade with stable ``_ReplayScalarCallable`` wrappers cached by scalar key,
+  underlying scalar-function identity, and replay-payload identity.
+- Kept cache keys conservative: the current-only executable cache still binds
+  to the accepted replay objects, replay-plan object, static digest, and scalar
+  wrapper identities.
+- Added helper coverage proving identical ``(key, scalar function, payload)``
+  inputs reuse the same scalar wrapper and therefore produce a stable
+  executable-cache key when the same replay plan is reused.
+- Updated free-boundary coil optimization docs to state the exact hit
+  condition: same process, same accepted replay payload, same replay plan, and
+  same scalar registry.
+
+Results obtained:
+
+- ``python -m ruff check
+  vmec_jax/solvers/free_boundary/adjoint/facade.py
+  tests/test_free_boundary_adjoint_helpers_unit.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_free_boundary_adjoint_helpers_unit.py -q`` passed with
+  ``12 passed``.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_free_boundary_qs_coil_optimization_smoke.py -q`` passed with
+  ``34 passed, 1 xfailed``.
+- This is a cache-hit-enabling tranche, not a default runtime-policy change:
+  default reports still run without the executable cache unless the user opts
+  in, and complete solves remain the acceptance authority.
+
+Best next steps:
+
+1. Add a focused repeated-report timing diagnostic that calls the branch-local
+   vector facade twice with the same complete payload and replay plan, then
+   records miss-vs-hit dispatch and ready timings.
+2. If hit-path timings are materially better, thread the repeated-report cache
+   through the derivative-proposal loop where the same complete-solve payload is
+   reused.
+3. Keep public claims conservative until the timing diagnostic demonstrates a
+   real win beyond unit-level cache-key stability.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.0%.
+- Free-boundary production differentiability: 94.4%.
+- Single-stage coil optimization: 90.3%.
+- CPU/GPU runtime and memory footprint: 98.5%.
+- Refactor/API/examples: 58.4%.
+- VMEC2000/VMEC++ parity and physics gates: 97.9%.
+- Docs/release hygiene: 99.5%.
+- Overall: 97.8%.

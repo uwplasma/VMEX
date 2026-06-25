@@ -921,7 +921,11 @@ The example also exposes
 profiling/proposal reports.  That cache is deliberately closure-bound: its
 private key includes the static digest plus identities of the accepted replay
 objects and scalar callables, so it cannot be reused across stale traces or
-different user objective callbacks.
+different user objective callbacks.  Repeated reports can hit the cache only
+when they reuse the same accepted replay payload, replay plan, and scalar
+registry inside one Python process.  The facade therefore reuses stable replay
+scalar wrappers for identical ``(scalar key, payload, scalar function)``
+triples instead of rebuilding per-call lambdas.
 The report also writes ``same_branch_report_config`` in ``summary.json`` so the
 artifact remains self-describing.  Its derivative contract is fixed
 recorded-branch replay only; it does not differentiate changes in adaptive host
