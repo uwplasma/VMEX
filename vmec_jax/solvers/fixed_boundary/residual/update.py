@@ -512,6 +512,13 @@ class DirectForceFallbackTrial(NamedTuple):
     residual: float
 
 
+class DirectForceFallbackAcceptanceDecision(NamedTuple):
+    """Host decision for accepting a no-momentum direct-force fallback step."""
+
+    accepted: bool
+    accept_ratio: float
+
+
 class StrictMomentumProposal(NamedTuple):
     """Non-JIT strict momentum proposal and its host bookkeeping scalars."""
 
@@ -1418,10 +1425,26 @@ def direct_force_fallback_trial(
     )
 
 
+def direct_force_fallback_acceptance_decision(
+    *,
+    residual: float,
+    current_residual: float,
+    accept_ratio: float = 1.5,
+) -> DirectForceFallbackAcceptanceDecision:
+    """Decide whether the strict-step direct-force fallback is acceptable."""
+
+    accepted = bool(
+        np.isfinite(residual)
+        and (float(residual) <= float(accept_ratio) * max(float(current_residual), 1.0e-30))
+    )
+    return DirectForceFallbackAcceptanceDecision(accepted=accepted, accept_ratio=float(accept_ratio))
+
+
 _ResidualVelocityBlocks = ResidualVelocityBlocks
 _HostCatastrophicRestartUpdate = HostCatastrophicRestartUpdate
 _HostPreRestartTriggerUpdate = HostPreRestartTriggerUpdate
 _DirectForceFallbackTrial = DirectForceFallbackTrial
+_DirectForceFallbackAcceptanceDecision = DirectForceFallbackAcceptanceDecision
 _StrictMomentumProposal = StrictMomentumProposal
 _StrictTrialEvaluation = StrictTrialEvaluation
 _zero_velocity_blocks_like = zero_velocity_blocks_like
@@ -1438,3 +1461,4 @@ _strict_trial_evaluation = strict_trial_evaluation
 _host_catastrophic_restart_update = host_catastrophic_restart_update
 _host_pre_restart_trigger_update = host_pre_restart_trigger_update
 _direct_force_fallback_trial = direct_force_fallback_trial
+_direct_force_fallback_acceptance_decision = direct_force_fallback_acceptance_decision
