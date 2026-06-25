@@ -3135,6 +3135,55 @@ Updated lane percentages:
 - Docs/release hygiene: 99.1%.
 - Overall: 96.9%.
 
+### 2026-06-25: Extract derivative-proposal evidence helpers
+
+Steps taken:
+
+- Split ``same_branch_derivative_proposals_from_report`` into smaller pure-data
+  helpers:
+  ``_same_branch_derivative_vector_evidence`` validates branch-local report and
+  gate preconditions, ``_validated_branch_local_scalar`` validates one scalar
+  contribution, and ``_same_branch_proposal_directional_terms`` assembles the
+  weighted proposal direction.
+- Kept the public proposal payload and all failure reasons stable.
+- Ran the proposal-heavy free-boundary optimization smoke tests and source
+  health diagnostics.
+
+Results obtained:
+
+- ``tests/test_free_boundary_qs_coil_optimization_smoke.py`` passed with
+  ``33 passed, 1 xfailed``.
+- Ruff passed on the modified source and test file.
+- The source-health report no longer lists
+  ``same_branch_derivative_proposals_from_report`` as a function-length
+  hotspot.  Remaining large-function warnings are now dominated by the fixed
+  residual iteration loop, the direct-coil/free-boundary tests, and broad
+  driver/example functions.
+- This is a maintainability/refactor tranche only; it does not change the
+  free-boundary derivative contract or runtime behavior.
+
+Best next steps:
+
+1. Continue source simplification by extracting the 300-line
+   ``write_same_branch_validation_report`` and ``optimize_coils`` example
+   orchestration into smaller source helpers with stable public example code.
+2. Start the performance design for reusable/top-level branch-local
+   current-only JVP kernels; helper extraction alone will not reduce the
+   measured 8.9 s cold replay/JVP dispatch.
+3. Keep bounded parity and AD/FD artifact tests green after each extraction.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.0%.
+- Free-boundary production differentiability: 93.3%.
+- Single-stage coil optimization: 89.8%.
+- CPU/GPU runtime and memory footprint: 97.7%.
+- Refactor/API/examples: 56.6%.
+- VMEC2000/VMEC++ parity and physics gates: 97.8%.
+- Docs/release hygiene: 99.1%.
+- Overall: 97.0%.
+
 ### 2026-06-25: Measure narrowed derivative-proposal smoke timing
 
 Steps taken:
