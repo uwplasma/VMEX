@@ -124,7 +124,9 @@ def sample_square_axis_stellarator_mirror_hybrid_boundary(
     ntheta: int = 64,
     nzeta: int = 128,
     axis_half_width: float = 1.5,
+    axis_kind: str = "superellipse",
     axis_square_power: float = 5.0,
+    axis_spline_corner_radius_factor: float = np.sqrt(2.0),
     minor_radius: float = 0.10,
     side_minor_modulation: float = 0.08,
     side_elongation: float = 0.25,
@@ -137,11 +139,14 @@ def sample_square_axis_stellarator_mirror_hybrid_boundary(
 ) -> ToroidalHybridBoundarySamples:
     """Sample a toroidal stellarator-mirror LCFS around a square-like axis.
 
-    The magnetic axis is represented by a smooth polar superellipse.  It has
-    nearly straight mirror-like side arcs and rounded corner arcs that carry
-    localized rotating-ellipse shaping.  The surface is still stored in normal
-    VMEC cylindrical coordinates, so the final equilibrium can use the ordinary
-    toroidal fixed/free-boundary solver path.
+    The magnetic axis is represented in polar form. ``axis_kind="superellipse"``
+    keeps the original smooth polar superellipse. ``axis_kind="spline"`` uses a
+    lower-bandwidth rounded-square envelope through side and corner radii; this
+    is often easier to project to a compact VMEC Fourier boundary when the
+    straight mirror-side intuition matters more than a sharp mathematical
+    square. The surface is still stored in normal VMEC cylindrical coordinates,
+    so the final equilibrium can use the ordinary toroidal fixed/free-boundary
+    solver path.
     """
 
     ntheta = int(ntheta)
@@ -150,8 +155,14 @@ def sample_square_axis_stellarator_mirror_hybrid_boundary(
         raise ValueError("ntheta must be >= 8 and nzeta must be >= 16")
     if axis_half_width <= 0.0:
         raise ValueError("axis_half_width must be positive")
-    if axis_square_power <= 2.0:
+    axis_kind = str(axis_kind).strip().lower()
+    if axis_kind not in {"superellipse", "spline", "spline_rounded_square", "rounded_square_spline"}:
+        raise ValueError("axis_kind must be 'superellipse' or 'spline'")
+    if axis_kind == "superellipse" and axis_square_power <= 2.0:
         raise ValueError("axis_square_power must exceed 2 for a square-like axis")
+    axis_spline_corner_radius_factor = float(axis_spline_corner_radius_factor)
+    if not np.isfinite(axis_spline_corner_radius_factor) or axis_spline_corner_radius_factor <= 1.0:
+        raise ValueError("axis_spline_corner_radius_factor must be finite and greater than one")
     if minor_radius <= 0.0:
         raise ValueError("minor_radius must be positive")
     if int(corner_helicity) < 0:
@@ -161,12 +172,21 @@ def sample_square_axis_stellarator_mirror_hybrid_boundary(
     zeta = np.linspace(0.0, 2.0 * np.pi, nzeta, endpoint=False)
     theta2, zeta2 = np.meshgrid(theta, zeta, indexing="ij")
 
-    c = np.cos(zeta)
-    s = np.sin(zeta)
-    axis_r = float(axis_half_width) / np.maximum(
-        np.abs(c) ** float(axis_square_power) + np.abs(s) ** float(axis_square_power),
-        np.finfo(float).tiny,
-    ) ** (1.0 / float(axis_square_power))
+    if axis_kind == "superellipse":
+        c = np.cos(zeta)
+        s = np.sin(zeta)
+        axis_r = float(axis_half_width) / np.maximum(
+            np.abs(c) ** float(axis_square_power) + np.abs(s) ** float(axis_square_power),
+            np.finfo(float).tiny,
+        ) ** (1.0 / float(axis_square_power))
+    else:
+        side_radius = float(axis_half_width)
+        corner_boost = axis_spline_corner_radius_factor - 1.0
+        # A single smooth fourfold envelope reaches its maximum on the rounded
+        # corners and its minimum at side centers.  It deliberately avoids the
+        # absolute-value cusp and high-mode tail of a sharp polar square.
+        corner_profile = np.sin(2.0 * zeta) ** 2
+        axis_r = side_radius * (1.0 + corner_boost * corner_profile)
 
     side_seed = 0.5 * (1.0 + np.cos(4.0 * zeta))
     side_weight_1d = np.clip(side_seed, 0.0, 1.0) ** float(side_power)

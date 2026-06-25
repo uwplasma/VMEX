@@ -178,14 +178,21 @@ The current ESSOS-compatible circular-coil beta scan remains diagnostic/pilot
 evidence. The toroidal square-coil stellarator-mirror hybrid lane now runs real
 direct-coil VMEC free-boundary solves and plots solved states, but remains a
 convergence-diagnostic path until fresh final force residuals meet the requested
-``FTOL``. Finite-beta promotion should be based on VMEC force residuals,
-total-pressure balance, and plasma-field/virtual-casing diagnostics rather than
-coil-only ``B.n``. The current coarse square-coil scan has strict active
-free-boundary convergence evidence through beta ``5%``. A 5000-iteration
-office run with the fresh direct-coil gate identifies beta ``7%`` as the first
-high-beta stall for this coarse configuration, with beta ``8%`` through
-``10%`` showing larger restart-limited radial-force residual floors. Direct-coil
-convergence candidates are gated by a fresh residual recompute using the current
+``FTOL``. The current target is ``FTOL=1e-12`` with explicit staged
+``NS_ARRAY``/``NITER_ARRAY``/``FTOL_ARRAY`` controls and VMEC-compatible
+negative ``PHIEDGE`` for the default positive-current square-coil orientation.
+Sign-corrected generated-``mgrid`` profiling shows VMEC2000 is currently the
+more robust backend, but the present square-coil setup still remains well above
+``1e-12`` after 1000-5000 iterations. Finite-beta promotion should be based on
+VMEC force residuals, total-pressure balance, and
+plasma-field/virtual-casing diagnostics rather than coil-only ``B.n``. Older
+coarse square-coil scans have strict active free-boundary convergence evidence
+through beta ``5%`` at ``FTOL=1e-8``; beta ``7%`` is the first high-beta stall
+for that coarse configuration. The square-coil lane now also has a native
+direct-coil-to-``mgrid`` writer, a direct/mgrid/VMEC2000 backend profiler, and a
+low-bandwidth rounded ``axis_kind="spline"`` square-axis option to reduce
+``NTOR`` sensitivity before VMEC Fourier projection. Direct-coil convergence
+candidates are gated by a fresh residual recompute using the current
 plasma-current normalization, and the square-coil example records near-axis
 ``|B|`` and mirror-ratio response plots for comparison with the expected
 finite-beta diamagnetic field-depression and effective mirror-ratio increase in

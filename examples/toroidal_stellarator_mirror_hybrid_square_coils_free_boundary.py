@@ -59,7 +59,9 @@ COIL_CURRENT = 8.0e5
 COIL_SEGMENTS = 96
 
 PLASMA_AXIS_HALF_WIDTH = 0.5 * COIL_SQUARE_SIDE_LENGTH
+PLASMA_AXIS_KIND = "spline"
 PLASMA_AXIS_SQUARE_POWER = 3.0
+PLASMA_AXIS_SPLINE_CORNER_RADIUS_FACTOR = 1.14
 PLASMA_MINOR_RADIUS = 0.03
 SIDE_ELONGATION = 0.08
 SIDE_MINOR_MODULATION = 0.08
@@ -69,16 +71,20 @@ CORNER_ROTATION = 0.30
 CORNER_HELICITY = 1
 
 NFP = 1
-MPOL = 5
-NTOR = 12
-NS = 9
+MPOL = 6
+NTOR = 23
+NS_ARRAY = (9, 13, 17)
+NS = NS_ARRAY[-1]
 NZETA = 32
-MAX_ITER = 1000
-FTOL = 1.0e-8
-PHIEDGE = 0.04
+NITER_ARRAY = (2500, 5000, 10000)
+FTOL_ARRAY = (1.0e-8, 1.0e-10, 1.0e-12)
+USE_MULTIGRID_SCHEDULE = True
+MAX_ITER = NITER_ARRAY[-1]
+FTOL = 1.0e-12
+PHIEDGE = -0.04 * PLASMA_MINOR_RADIUS**2 / 0.03**2
 TOROIDAL_CURRENT = 3.0e3
-DELT: float | None = None
-FREE_BOUNDARY_ACTIVATE_FSQ: float | None = 1.0e-8
+DELT: float | None = 0.05
+FREE_BOUNDARY_ACTIVATE_FSQ: float | None = 1.0e-3
 LIMIT_UPDATE_RMS = False
 BACKTRACKING = False
 USE_DIRECT_FALLBACK = False
@@ -106,7 +112,9 @@ class ExampleConfig:
     coil_current: float = COIL_CURRENT
     coil_segments: int = COIL_SEGMENTS
     plasma_axis_half_width: float = PLASMA_AXIS_HALF_WIDTH
+    plasma_axis_kind: str = PLASMA_AXIS_KIND
     plasma_axis_square_power: float = PLASMA_AXIS_SQUARE_POWER
+    plasma_axis_spline_corner_radius_factor: float = PLASMA_AXIS_SPLINE_CORNER_RADIUS_FACTOR
     plasma_minor_radius: float = PLASMA_MINOR_RADIUS
     side_elongation: float = SIDE_ELONGATION
     side_minor_modulation: float = SIDE_MINOR_MODULATION
@@ -118,9 +126,13 @@ class ExampleConfig:
     mpol: int = MPOL
     ntor: int = NTOR
     ns: int = NS
+    ns_array: tuple[int, ...] = NS_ARRAY
     nzeta: int = NZETA
     max_iter: int = MAX_ITER
     ftol: float = FTOL
+    niter_array: tuple[int, ...] = NITER_ARRAY
+    ftol_array: tuple[float, ...] = FTOL_ARRAY
+    use_multigrid_schedule: bool = USE_MULTIGRID_SCHEDULE
     phiedge: float = PHIEDGE
     toroidal_current: float = TOROIDAL_CURRENT
     delt: float | None = DELT
@@ -301,21 +313,49 @@ def _pressure_terms(beta_percent: float) -> tuple[list[float], float]:
     return [float(x) for x in am], float(pres_scale)
 
 
+def _stage_values(config: ExampleConfig) -> tuple[list[int] | int, list[int] | int, list[float] | float]:
+    if not bool(config.use_multigrid_schedule):
+        return int(config.ns), int(config.max_iter), float(config.ftol)
+    ns_values = [int(value) for value in config.ns_array]
+    niter_values = [int(value) for value in config.niter_array]
+    ftol_values = [float(value) for value in config.ftol_array]
+    if not (len(ns_values) == len(niter_values) == len(ftol_values)):
+        raise ValueError("ns_array, niter_array, and ftol_array must have matching lengths")
+    if not ns_values:
+        raise ValueError("multigrid schedule must contain at least one stage")
+    if any(value < 3 for value in ns_values):
+        raise ValueError("all NS_ARRAY values must be at least 3")
+    if any(value <= 0 for value in niter_values):
+        raise ValueError("all NITER_ARRAY values must be positive")
+    if any((not np.isfinite(value)) or value <= 0.0 for value in ftol_values):
+        raise ValueError("all FTOL_ARRAY values must be finite and positive")
+    return ns_values, niter_values, ftol_values
+
+
+def _run_budget(config: ExampleConfig, *, restart_state: Any | None) -> int:
+    if bool(config.use_multigrid_schedule) and restart_state is None:
+        return int(sum(int(value) for value in config.niter_array))
+    return int(config.max_iter)
+
+
 def make_free_boundary_indata(config: ExampleConfig, *, beta_percent: float) -> InData:
     """Return the free-boundary input deck for one beta case."""
 
+    ns_values, niter_values, ftol_values = _stage_values(config)
     indata = square_axis_stellarator_mirror_hybrid_indata(
         nfp=int(config.nfp),
         mpol=int(config.mpol),
         ntor=int(config.ntor),
         ntheta_fit=max(64, 4 * int(config.mpol)),
         nzeta_fit=max(128, 8 * int(config.ntor)),
-        ns_array=int(config.ns),
-        niter_array=int(config.max_iter),
-        ftol_array=float(config.ftol),
+        ns_array=ns_values,
+        niter_array=niter_values,
+        ftol_array=ftol_values,
         phiedge=float(config.phiedge),
         axis_half_width=float(config.plasma_axis_half_width),
+        axis_kind=str(config.plasma_axis_kind),
         axis_square_power=float(config.plasma_axis_square_power),
+        axis_spline_corner_radius_factor=float(config.plasma_axis_spline_corner_radius_factor),
         minor_radius=float(config.plasma_minor_radius),
         side_elongation=float(config.side_elongation),
         side_minor_modulation=float(config.side_minor_modulation),
@@ -330,9 +370,9 @@ def make_free_boundary_indata(config: ExampleConfig, *, beta_percent: float) -> 
             "LFREEB": True,
             "MGRID_FILE": "DIRECT_COILS",
             "EXTCUR": [1.0],
-            "NS_ARRAY": [int(config.ns)],
-            "NITER_ARRAY": [int(config.max_iter)],
-            "FTOL_ARRAY": [float(config.ftol)],
+            "NS_ARRAY": ns_values,
+            "NITER_ARRAY": niter_values,
+            "FTOL_ARRAY": ftol_values,
             "NITER": int(config.max_iter),
             "FTOL": float(config.ftol),
             "NZETA": int(config.nzeta),
@@ -510,11 +550,14 @@ def _run_one_beta(
     write_indata(input_path, indata)
 
     t0 = time.perf_counter()
+    run_budget = _run_budget(config, restart_state=restart_state)
+    use_multigrid = bool(config.use_multigrid_schedule and restart_state is None)
     run = run_free_boundary(
         input_path,
-        max_iter=int(config.max_iter),
-        multigrid=False,
-        verbose=False,
+        max_iter=int(run_budget),
+        multigrid=use_multigrid,
+        multigrid_use_input_niter=True,
+        verbose=True,
         jit_forces=config.jit_forces,
         free_boundary_activate_fsq=(
             None if config.free_boundary_activate_fsq is None else float(config.free_boundary_activate_fsq)
@@ -557,6 +600,8 @@ def _run_one_beta(
         "wout": str(wout_path),
         "wall_s": float(wall_s),
         "n_iter": None if run.result is None else int(getattr(run.result, "n_iter", -1)),
+        "run_budget": int(run_budget),
+        "used_multigrid_schedule": bool(use_multigrid),
         "converged": None
         if run.result is None
         else bool(diag.get("converged", getattr(run.result, "converged", False))),
@@ -665,6 +710,8 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "wout",
         "wall_s",
         "n_iter",
+        "run_budget",
+        "used_multigrid_schedule",
         "converged",
         "converged_strict",
         "requested_ftol",
@@ -1049,14 +1096,20 @@ def _metrics_payload(
         "coil_count": int(coils.centers.shape[0]),
         "n_coils_per_side": int(config.n_coils_per_side),
         "plasma_axis_half_width": float(config.plasma_axis_half_width),
+        "plasma_axis_kind": str(config.plasma_axis_kind),
+        "plasma_axis_spline_corner_radius_factor": float(config.plasma_axis_spline_corner_radius_factor),
         "coil_square_side_length": float(config.coil_square_side_length),
         "toroidal_current": float(config.toroidal_current),
         "delt": None if config.delt is None else float(config.delt),
         "ns": int(config.ns),
+        "ns_array": [int(value) for value in config.ns_array],
         "mpol": int(config.mpol),
         "ntor": int(config.ntor),
         "max_iter": int(config.max_iter),
         "ftol": float(config.ftol),
+        "niter_array": [int(value) for value in config.niter_array],
+        "ftol_array": [float(value) for value in config.ftol_array],
+        "use_multigrid_schedule": bool(config.use_multigrid_schedule),
         "free_boundary_activate_fsq": (
             None if config.free_boundary_activate_fsq is None else float(config.free_boundary_activate_fsq)
         ),

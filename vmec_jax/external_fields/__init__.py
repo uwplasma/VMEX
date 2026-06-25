@@ -29,7 +29,13 @@ from .coils_jax import (
     sample_coil_field_xyz_from_geometry,
 )
 from .essos_adapter import from_essos_coils
-from .mgrid_jax import MGridFieldParams, interpolate_mgrid_bfield_jax, sample_mgrid_field_cylindrical
+from .mgrid_jax import (
+    MGridFieldParams,
+    interpolate_mgrid_bfield_jax,
+    mgrid_field_params_from_coils,
+    sample_mgrid_field_cylindrical,
+    write_mgrid_from_coils,
+)
 
 __all__ = [
     "CoilFieldParams",
@@ -54,10 +60,12 @@ __all__ = [
     "from_essos_coils",
     "interpolate_mgrid_bfield_jax",
     "length_penalty",
+    "mgrid_field_params_from_coils",
     "sample_coil_field_cylindrical",
     "sample_coil_field_cylindrical_from_geometry",
     "sample_coil_field_cylindrical_from_geometry_jit",
     "sample_coil_field_xyz_from_geometry",
     "sample_external_field_cylindrical",
     "sample_mgrid_field_cylindrical",
+    "write_mgrid_from_coils",
 ]

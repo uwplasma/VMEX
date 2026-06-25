@@ -150,9 +150,14 @@ script keeps all user inputs in a top-of-file parameter block. It builds a
 closed square array with ``N`` circular or elliptical coils per side (``N=4`` by
 default, so 16 total coils), writes one direct-coil free-boundary VMEC input per
 beta value, runs ``vmec_jax.run_free_boundary`` with nonzero toroidal current
-and a 1000-iteration default cap, and writes one ``wout_*.nc`` per beta. The
-plots use the solved VMEC states: 3-D coils plus solved LCFS and field-line
-traces, top-view solved boundaries, side/corner cross sections,
+and a staged ``NS_ARRAY``/``NITER_ARRAY``/``FTOL_ARRAY`` schedule ending at
+``FTOL=1e-12``, and writes one ``wout_*.nc`` per beta. The default
+``PHIEDGE`` sign is negative for the positive-current square-coil orientation,
+matching the raw VMEC2000 generated-``mgrid`` vacuum sign check. The default
+square axis uses the low-bandwidth rounded ``axis_kind="spline"`` profile before VMEC
+Fourier projection, which is less sensitive to ``NTOR`` than the sharper polar
+superellipse. The plots use the solved VMEC states: 3-D coils plus solved LCFS
+and field-line traces, top-view solved boundaries, side/corner cross sections,
 solved-boundary ``|B|``, and residual/iota diagnostics. The metrics JSON records
 convergence status, force components, free-boundary ``B.n`` diagnostics, WOUT
 paths, beta scan rows, solver objective-history extrema, bad-Jacobian/reset
@@ -176,14 +181,13 @@ state has fresh active free-boundary coupling, every final force component
 meets the requested ``FTOL``, the LCFS changes with beta, and a total-field
 pressure-balance diagnostic agrees. Coil-only ``B.n`` remains a vacuum check.
 
-The default activation threshold is intentionally tight
-(``FREE_BOUNDARY_ACTIVATE_FSQ = 1e-8``), and the solver now blocks
-``LFREEB`` convergence until the free-boundary vacuum/edge coupling has
-actually turned on. Direct-coil free-boundary convergence candidates are also
-rechecked with a fresh external-field sample and the current plasma-current
-normalization before the solve is allowed to exit; rejected candidates are
-reported through the ``free_boundary_fresh_convergence_*`` metrics. With the
-current coarse review resolution
+The default activation threshold is now VMEC-like
+(``FREE_BOUNDARY_ACTIVATE_FSQ = 1e-3``), and the solver now blocks ``LFREEB``
+convergence until the free-boundary vacuum/edge coupling has actually turned
+on. Direct-coil free-boundary convergence candidates are also rechecked with a
+fresh external-field sample and the current plasma-current normalization before
+the solve is allowed to exit; rejected candidates are reported through the
+``free_boundary_fresh_convergence_*`` metrics. Older coarse review evidence at
 (``NS=9, MPOL=5, NTOR=12``), beta ``0%``, ``1%``, ``3%``, and ``5%`` reach
 strict ``FTOL=1e-8`` active free-boundary convergence in the default scan. A
 5000-iteration office run with the fresh direct-coil gate makes beta ``7%`` the
@@ -195,6 +199,19 @@ near-axis ``|B|`` and mirror-ratio trends so finite-beta scans can be compared
 against the expected diamagnetic field-reduction / mirror-ratio-increase trend
 from linear-trap mirror literature, instead of relying only on LCFS-averaged
 ``|B|``.
+
+For direct-provider versus mgrid/VMEC2000 profiling, use::
+
+  python tools/diagnostics/profile_square_coil_free_boundary.py \
+    --ftol 1e-12 --max-iter 10000 --phiedge -0.04 \
+    --mpol 6 --ntor 23 --nzeta 32 \
+    --run-vmec2000
+
+The report stays under ignored ``results/`` paths and records ``vmec_jax``
+direct-coil, ``vmec_jax`` generated-mgrid, and optional raw VMEC2000
+generated-mgrid residuals for the same square-coil field. To profile a staged
+VMEC-style ladder without editing the example, add for example
+``--ns-array 9,13,17 --niter-array 2500,5000,10000 --ftol-array 1e-8,1e-10,1e-12``.
 
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
 free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct

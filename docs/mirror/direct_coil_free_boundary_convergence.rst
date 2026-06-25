@@ -27,6 +27,31 @@ floors. Older resolution and step-size probes show that increasing resolution
 and increasing ``DELT`` from the default reduce the ``10%`` radial-force floor,
 but do not yet prove strict convergence.
 
+The current production target for this lane is stricter than that evidence:
+``FTOL=1e-12`` for each final force component. The square-coil example now
+therefore defaults to a VMEC-style staged solve, with explicit
+``NS_ARRAY``, ``NITER_ARRAY``, and ``FTOL_ARRAY`` ending at ``1e-12``. It also
+uses negative ``PHIEDGE`` for the default positive toroidal current and
+square-coil field orientation. VMEC2000 rejects the opposite sign in the vacuum
+subroutine for this generated-``mgrid`` deck. The default step size is
+``DELT=0.05`` and the default free-boundary activation threshold is VMEC-like
+``1e-3`` so the vacuum/edge coupling has enough final-grid iterations to
+converge. Beta continuation still uses the previous final-grid state after the
+initial staged solve; the driver disables multigrid when a live ``restart_state``
+is supplied.
+
+Latest backend profiling changes the immediate conclusion. With positive
+``PHIEDGE``, raw VMEC2000 stops with ``PHIEDGE HAS WRONG SIGN IN VACUUM
+SUBROUTINE`` before a useful convergence comparison. With negative ``PHIEDGE``,
+VMEC2000 completes the generated-``mgrid`` square-coil cases, but the current
+geometry still does not reach ``1e-12``: a low-mode ``NS=5, MPOL=3, NTOR=4``
+case drops to total physical residual about ``5.95e-4`` after 5000 VMEC2000
+iterations, and the higher-mode ``NS=9, MPOL=6, NTOR=23`` case remains around
+``4.94e-3`` after 1000 VMEC2000 iterations. ``vmec_jax`` generated-``mgrid``
+also activates the dense VMEC-like NESTOR branch on the sign-corrected deck but
+is still underconverged. The current square-coil setup is therefore a
+diagnostic/stability target, not yet a converged production equilibrium.
+
 Physics And Algorithm Findings
 ------------------------------
 
@@ -53,6 +78,24 @@ on-surface external/internal field functionals, normal-field JVP columns, and
 high-order singular quadrature. The direct-coil convergence lane should use it
 as an optional diagnostic dependency rather than copying DESC's singular
 integral implementation into ``vmec_jax``.
+
+VMEC2000 remains the robustness baseline for ``mgrid`` free-boundary solves.
+The branch now includes a native
+``vmec_jax.external_fields.write_mgrid_from_coils`` helper and a square-coil
+backend profile diagnostic,
+``tools/diagnostics/profile_square_coil_free_boundary.py``. That diagnostic
+writes the same square-coil field to a VMEC-compatible ``mgrid.nc`` and can run
+``vmec_jax`` through both direct-coil and generated-mgrid paths, plus optional
+raw ``xvmec2000`` on the generated mgrid. This is the required comparison when
+judging whether a stall is caused by the direct provider, mgrid interpolation,
+or the VMEC-style nonlinear solve itself.
+
+The square-axis stellarator-mirror hybrid geometry now has a lower-bandwidth
+``axis_kind="spline"`` option. It is still projected into VMEC Fourier boundary
+coefficients, but it replaces the sharp polar-square/superellipse content with
+a smooth rounded-square envelope before projection. This is the practical
+near-term way to reduce ``NTOR`` sensitivity; a true spline basis inside the
+VMEC solve would be a larger solver reparameterization.
 
 Promotion Gates
 ---------------
@@ -81,23 +124,27 @@ Execution Plan
 
 The remaining work is deliberately narrow:
 
-1. Re-run the square-coil beta ladder with the live-state default and per-beta
-   checkpointing at higher resolution. The first queued office run uses
-   ``NS=13, MPOL=6, NTOR=14, NZETA=40, DELT=0.05, FTOL=1e-8`` and a gradual beta
-   continuation from ``0%`` to ``10%``.
-2. If the transition remains near ``7%`` beta, run local continuation probes
-   around that transition with ``DELT`` and ``FREE_BOUNDARY_ACTIVATE_FSQ`` scans,
-   using the same final fresh-residual gate.
-3. Run a higher-resolution closure attempt for ``10%`` beta starting from
-   ``NS=17, MPOL=7, NTOR=16, NZETA=48`` and compare LCFS, near-axis field,
-   mirror ratio, mean iota, and residual histories against the ``NS=13`` ladder.
-4. Attach the optional virtual-casing postsolve diagnostic
+1. Run the square-coil backend profile at small and moderate grids with
+   VMEC-compatible negative ``PHIEDGE``: direct-coil ``vmec_jax``,
+   generated-mgrid ``vmec_jax``, and generated-mgrid VMEC2000. First use
+   ``FTOL=1e-8`` to identify provider/parity issues, then repeat the
+   best-performing setup at ``FTOL=1e-12``. The profiler accepts explicit
+   ``--ns-array``, ``--niter-array``, and ``--ftol-array`` arguments for staged
+   VMEC-style runs.
+2. Re-run the square-coil beta ladder with the live-state default and per-beta
+   checkpointing using the staged ``FTOL_ARRAY`` ending at ``1e-12``. Keep
+   ``DELT=0.05`` and the VMEC-like ``FREE_BOUNDARY_ACTIVATE_FSQ=1e-3`` unless a
+   benchmark shows a better value.
+3. Run resolution closure around the first transition beta and at ``10%`` beta,
+   comparing ``NS``, ``MPOL``, ``NTOR``, ``NZETA``, generated-mgrid resolution,
+   LCFS shape, near-axis field, mirror ratio, mean iota, and residual histories.
+4. Keep the optional virtual-casing postsolve diagnostic
    ``vmec_jax.free_boundary_validation.virtual_casing_finite_beta_boundary_diagnostics``
-   to the square-coil example outputs. The helper accepts a solved surface,
-   total surface field, and direct-coil field, then reports the required
-   external-field normal mismatch and finite-beta magnetic-pressure jump. It is
-   optional at import time and should be skipped when ``virtual_casing_jax`` is
-   not installed.
+   attached to the square-coil example outputs. The helper accepts a solved
+   surface, total surface field, and direct-coil field, then reports the
+   required external-field normal mismatch and finite-beta magnetic-pressure
+   jump. It is optional at import time and should be skipped when
+   ``virtual_casing_jax`` is not installed.
 5. Promote only rows that pass the force-residual and postsolve boundary
    diagnostics. Keep unconverged rows in the example output as explicit stall
    evidence with ``production_free_boundary_claim = false``.
@@ -124,6 +171,9 @@ Reviewed External Anchors
   https://princetonuniversity.github.io/STELLOPT/VMEC.html
 - SIMSOPT VMEC free-boundary interface notes:
   https://simsopt.readthedocs.io/v1.10.2/example_vmec.html
+- VMEC++ free-boundary numerics and active free-boundary PRs:
+  https://arxiv.org/abs/2502.04374 and
+  https://github.com/proximafusion/vmecpp/pulls?q=free+boundary
 - WHAM finite-beta mirror physics basis:
   https://www.osti.gov/biblio/2001162
 - VMEC/DESC/SPEC free-boundary Shafranov-shift verification:

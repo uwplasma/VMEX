@@ -92,6 +92,40 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
     assert public_api.square_axis_stellarator_mirror_hybrid_indata is square_axis_stellarator_mirror_hybrid_indata
 
 
+def test_square_axis_spline_option_reduces_low_mode_projection_error():
+    kwargs = {
+        "ntheta": 64,
+        "nzeta": 128,
+        "axis_square_power": 3.0,
+        "axis_spline_corner_radius_factor": 1.14,
+        "minor_radius": 0.03,
+        "side_elongation": 0.08,
+        "side_minor_modulation": 0.08,
+        "corner_ellipticity": 0.04,
+        "corner_amplitude": 0.004,
+        "corner_rotation": 0.30,
+    }
+    errors = {}
+    for axis_kind in ("superellipse", "spline"):
+        samples = sample_square_axis_stellarator_mirror_hybrid_boundary(axis_kind=axis_kind, **kwargs)
+        indata = square_axis_stellarator_mirror_hybrid_indata(
+            mpol=6,
+            ntor=12,
+            ntheta_fit=64,
+            nzeta_fit=128,
+            axis_kind=axis_kind,
+            **{key: value for key, value in kwargs.items() if key not in {"ntheta", "nzeta"}},
+        )
+        reconstructed = evaluate_toroidal_hybrid_indata_boundary(indata, ntheta=64, nzeta=128)
+        errors[axis_kind] = max(
+            float(np.max(np.abs(reconstructed.R - samples.R))),
+            float(np.max(np.abs(reconstructed.Z - samples.Z))),
+        )
+
+    assert errors["spline"] < errors["superellipse"]
+    assert errors["spline"] < 2.0e-4
+
+
 def test_toroidal_hybrid_localization_powers_sharpen_side_and_corner_regions():
     base = sample_toroidal_stellarator_mirror_hybrid_boundary(ntheta=32, nzeta=32)
     sharp = sample_toroidal_stellarator_mirror_hybrid_boundary(
@@ -323,9 +357,13 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
             mpol=3,
             ntor=4,
             ns=5,
+            ns_array=(5,),
             nzeta=8,
             max_iter=2,
             ftol=1.0e-6,
+            niter_array=(2,),
+            ftol_array=(1.0e-6,),
+            use_multigrid_schedule=False,
             field_line_count=1,
             field_line_steps=20,
             field_line_turns=0.2,
@@ -377,9 +415,13 @@ def test_square_coil_hybrid_free_boundary_example_writes_nonblank_plots(tmp_path
             mpol=3,
             ntor=4,
             ns=5,
+            ns_array=(5,),
             nzeta=8,
             max_iter=1,
             ftol=1.0e-6,
+            niter_array=(1,),
+            ftol_array=(1.0e-6,),
+            use_multigrid_schedule=False,
             field_line_count=1,
             field_line_steps=24,
             field_line_turns=0.25,

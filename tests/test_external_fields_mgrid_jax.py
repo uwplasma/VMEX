@@ -8,15 +8,18 @@ from vmec_jax.external_fields import (
     CoilFieldParams,
     MGridFieldParams,
     interpolate_mgrid_bfield_jax,
+    mgrid_field_params_from_coils,
     sample_coil_field_cylindrical,
     sample_external_field_cylindrical,
     sample_mgrid_field_cylindrical,
+    write_mgrid_from_coils,
 )
 from vmec_jax.external_fields.base import broadcast_cylindrical_coordinates
 from vmec_jax.free_boundary import (
     MGridData,
     MGridMetadata,
     interpolate_mgrid_bfield,
+    load_mgrid,
     sample_free_boundary_external_field,
     vacuum_boundary_fields_from_cylindrical,
 )
@@ -286,6 +289,47 @@ def test_mgrid_jax_generated_from_direct_coils_matches_biot_savart_at_grid_nodes
     for got, got_wrapped, want in zip(from_mgrid, from_wrapped_mgrid, direct, strict=True):
         np.testing.assert_allclose(np.asarray(got), np.asarray(want), rtol=2.0e-11, atol=2.0e-14)
         np.testing.assert_allclose(np.asarray(got_wrapped), np.asarray(want), rtol=2.0e-11, atol=2.0e-14)
+
+
+def test_write_mgrid_from_coils_roundtrips_through_loader(tmp_path):
+    pytest.importorskip("jax")
+    pytest.importorskip("netCDF4")
+    enable_x64(True)
+    coil_params = _off_axis_coil_params()
+    mgrid_path = write_mgrid_from_coils(
+        tmp_path / "mgrid_from_direct.nc",
+        coil_params,
+        rmin=0.72,
+        rmax=1.18,
+        zmin=-0.24,
+        zmax=0.24,
+        nr=6,
+        nz=5,
+        nphi=7,
+    )
+    data = load_mgrid(mgrid_path)
+    assert data.metadata.nextcur == 1
+    assert data.metadata.mgrid_mode == "S"
+    assert data.br.shape == (1, 7, 5, 6)
+
+    params, r_grid, z_grid, phi_grid = mgrid_field_params_from_coils(
+        coil_params,
+        rmin=0.72,
+        rmax=1.18,
+        zmin=-0.24,
+        zmax=0.24,
+        nr=6,
+        nz=5,
+        nphi=7,
+    )
+    np.testing.assert_allclose(data.br, np.asarray(params.br), rtol=0.0, atol=0.0)
+    R = np.asarray([[r_grid[1], r_grid[4]]])
+    Z = np.asarray([[z_grid[2], z_grid[3]]])
+    phi = np.asarray([[phi_grid[0], phi_grid[5]]])
+    direct = sample_coil_field_cylindrical(coil_params, R, Z, phi)
+    loaded = interpolate_mgrid_bfield(data, r=R, z=Z, phi=phi, extcur=(1.0,))
+    for got, want in zip(loaded, direct, strict=True):
+        np.testing.assert_allclose(np.asarray(got), np.asarray(want), rtol=2.0e-11, atol=2.0e-14)
 
 
 def test_mgrid_jax_extcur_scales_generated_direct_coil_field_linearly():
