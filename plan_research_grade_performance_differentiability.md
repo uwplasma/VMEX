@@ -6314,3 +6314,63 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 99.1%.
 - Docs/release hygiene: 100%.
 - Overall: 99.5%.
+
+### 2026-06-25: Package bad-Jacobian tau-selection seam
+
+Steps taken:
+
+- Added ``BadJacobianTauSelection`` and
+  ``resolve_bad_jacobian_tau_selection`` to
+  ``solvers/fixed_boundary/residual/ptau.py``.
+- Moved the bad-Jacobian ptau/state tau selection, optional state probe, and
+  timing hooks out of ``solve_fixed_boundary_residual_iter`` while leaving
+  history appends, debug-file writes, prints, axis reset, and restart side
+  effects in the residual loop.
+- Kept the helper callback-injected so the branch fingerprint remains explicit
+  and direct unit tests do not need to construct a full VMEC state.
+- Added ``tests/test_residual_ptau.py`` for the accepted-ptau fast path and the
+  state-authoritative branch path.
+
+Results obtained:
+
+- ``python -m ruff check
+  vmec_jax/solvers/fixed_boundary/residual/ptau.py
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py
+  tests/test_residual_ptau.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_residual_ptau.py tests/test_solve_residual_iter_policy.py
+  tests/test_solve_residual_iter_config.py`` passed with ``44 passed``.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_residual_ptau.py tests/test_residual_iteration_preconditioner.py
+  tests/test_solve_residual_iter_update_helpers.py
+  tests/test_solve_additional_helpers.py tests/test_driver_api.py
+  tests/test_free_boundary_wp0.py`` passed with ``234 passed, 2 skipped``.
+- ``git diff --check`` and ``repo_size_audit.py`` passed; tracked size stayed
+  at ``28.36 MiB``.
+- Source-health reports the residual loop at ``2917`` lines and
+  ``solve_fixed_boundary_residual_iter`` at ``2527`` lines after this tranche.
+
+Best next steps:
+
+1. Extract the initial-axis-reset branch into a residual axis-control helper,
+   preserving VMEC2000 print/history side effects as caller-owned behavior.
+2. Continue shrinking free-boundary validation tests into shared assertion
+   helpers after the next production-loop extraction.
+3. Re-run the full docs/readme artifact refresh and optional VMEC2000/VMEC++
+   matrix only after the residual-loop extraction tranche stabilizes in CI.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 96.7%.
+- Free-boundary production differentiability: 97.0%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 71.8%.
+- VMEC2000/VMEC++ parity and physics gates: 99.1%.
+- Docs/release hygiene: 100%.
+- Overall: 99.5%.
