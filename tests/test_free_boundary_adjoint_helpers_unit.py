@@ -59,6 +59,57 @@ def test_current_only_coil_geometry_helper_expands_currents_without_resampling_c
     np.testing.assert_allclose(np.asarray(expanded_currents), np.asarray(expected))
 
 
+def test_directional_jvp_signature_digest_tracks_replay_program_options() -> None:
+    current_jvp = SimpleNamespace(
+        active=True,
+        base_leaf=jnp.asarray([1.0, 2.0]),
+        direction_leaf=jnp.asarray([0.1, 0.2]),
+        fixed_gamma=jnp.ones((2, 3, 4)),
+        fixed_gamma_dash=jnp.ones((2, 3, 4)),
+        geometry_source="cached",
+    )
+    common = dict(
+        keys=("aspect", "qs_total"),
+        derivative_mode="directional_jvp",
+        directional_fast_path="current_only",
+        current_jvp=current_jvp,
+        replay_plan={"n_steps": 2, "n_free_boundary_replay_steps": 1},
+        ad_mode="direct",
+    )
+
+    first = facade_helpers._branch_local_directional_jvp_signature(
+        replay_options={
+            "state_only_replay": True,
+            "use_stacked_step_controls": True,
+            "unroll_accepted_only_segments_below": 8,
+        },
+        **common,
+    )
+    repeat = facade_helpers._branch_local_directional_jvp_signature(
+        replay_options={
+            "state_only_replay": True,
+            "use_stacked_step_controls": True,
+            "unroll_accepted_only_segments_below": 8,
+        },
+        **common,
+    )
+    changed = facade_helpers._branch_local_directional_jvp_signature(
+        replay_options={
+            "state_only_replay": True,
+            "use_stacked_step_controls": True,
+            "unroll_accepted_only_segments_below": 0,
+        },
+        **common,
+    )
+
+    assert first["cache_key_schema"] == "directional-jvp-signature-v1"
+    assert len(first["cache_key_digest"]) == 64
+    assert first["cache_key_digest"] == repeat["cache_key_digest"]
+    assert first["cache_key_digest"] != changed["cache_key_digest"]
+    assert first["jit_cache_candidate"] is True
+    assert first["unroll_accepted_only_segments_below"] == 8
+
+
 def test_free_boundary_adjoint_runtime_helpers_sync_and_scope_fallbacks() -> None:
     assert runtime_helpers.block_until_ready_for_timing(
         {"value": 1.0},

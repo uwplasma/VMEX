@@ -3135,6 +3135,51 @@ Updated lane percentages:
 - Docs/release hygiene: 99.1%.
 - Overall: 96.9%.
 
+### 2026-06-25: Add stable directional-JVP signature digest
+
+Steps taken:
+
+- Added a stable ``cache_key_schema`` and SHA-256 ``cache_key_digest`` to the
+  branch-local directional JVP signature.  The digest is computed from the
+  JSON-stable static signature and is intended as the exact compatibility key
+  for a future compiled current-only replay/JVP executable cache.
+- Added unit coverage proving the digest is deterministic for identical scalar
+  keys, replay options, replay plan metadata, and current-only geometry shapes,
+  and changes when a replay-program option such as
+  ``unroll_accepted_only_segments_below`` changes.
+
+Results obtained:
+
+- Ruff passed on the modified free-boundary facade and helper tests.
+- Focused tests passed:
+  ``tests/test_free_boundary_adjoint_helpers_unit.py`` plus the two
+  same-branch vector/proposal smoke tests that assert the exported
+  directional-JVP signature.
+- This is a safe cache-contract tranche, not an executable cache yet.  It does
+  not change solve numerics or free-boundary derivative claims.
+
+Best next steps:
+
+1. Use ``cache_key_digest`` as the key for an opt-in, per-process current-only
+   replay/JVP executable cache, but only after the cache value also stores or
+   otherwise binds the accepted replay data it closes over.
+2. Benchmark repeated same-signature reports before enabling any cache by
+   default; reject the cache if it only moves first-call cost.
+3. Keep arbitrary adaptive-branch differentiation deferred until a
+   fingerprint-gated adaptive AD-vs-FD gate exists.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.0%.
+- Free-boundary production differentiability: 93.9%.
+- Single-stage coil optimization: 90.0%.
+- CPU/GPU runtime and memory footprint: 98.1%.
+- Refactor/API/examples: 57.9%.
+- VMEC2000/VMEC++ parity and physics gates: 97.9%.
+- Docs/release hygiene: 99.4%.
+- Overall: 97.5%.
+
 ### 2026-06-25: Final PR-readiness artifact refresh and JVP signature hardening
 
 Steps taken:
