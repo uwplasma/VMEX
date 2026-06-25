@@ -187,7 +187,11 @@ without adding result files to the repository. New profiler rows also include
 compact convergence-control statistics for long histories, including time-step
 extrema, full-vacuum-update counts, bad-Jacobian counts, and tail boundary
 ``B.n`` diagnostics, so future long runs can be audited without storing bulky
-full history arrays in the repository.
+full history arrays in the repository. The profile JSON also records a compact
+geometric residual-tail projection for the summed VMEC force residual. The
+summary table exposes the tail decay factor and the estimated additional
+iterations to ``1e-12``; this is a diagnostic estimate, not a convergence
+claim, but it separates monotone under-budget runs from true residual floors.
 
 The square-axis stellarator-mirror hybrid geometry now has a lower-bandwidth
 ``axis_kind="spline"`` option. It is still projected into VMEC Fourier boundary
@@ -235,7 +239,10 @@ The remaining work is deliberately narrow:
    envelope and record ``vacuum_grid_exceeded_count`` before interpreting the
    residual floor. Keep the provider-parity block enabled unless the run is a
    pure solver-speed benchmark; it verifies that direct-coil and generated-mgrid
-   boundary fields still match after resolution or coil changes.
+   boundary fields still match after resolution or coil changes. Use the
+   tail-projection columns in the summary table to choose between extending the
+   iteration budget and changing the resolution/schedule; do not interpret the
+   projection as proof of convergence.
 2. Re-run the square-coil beta ladder with per-beta checkpointing and the
    best-scored diagnostic fallback using the staged ``FTOL_ARRAY`` ending at ``1e-12``. Keep
    ``DELT=0.05``, ``NVACSKIP=1``, ``solver_mode="parity"``, and the VMEC-like

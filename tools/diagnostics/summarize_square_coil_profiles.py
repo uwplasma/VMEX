@@ -88,6 +88,21 @@ def _stat(backend: dict[str, Any], history_key: str, stat_key: str) -> float | N
     return _finite_float(stats.get(stat_key))
 
 
+def _tail_projection(backend: dict[str, Any], key: str, *, target: float | None = None) -> float | None:
+    history = backend.get("history")
+    if not isinstance(history, dict):
+        return None
+    projection = history.get("fsq_component_sum_tail_projection")
+    if not isinstance(projection, dict):
+        return None
+    if target is None:
+        return _finite_float(projection.get(key))
+    estimates = projection.get("estimated_additional_iterations_to_target")
+    if not isinstance(estimates, dict):
+        return None
+    return _finite_float(estimates.get(f"{float(target):.0e}"))
+
+
 def rows_from_profile(path: Path) -> list[dict[str, Any]]:
     data = json.loads(path.read_text())
     cfg = data.get("configuration", {})
@@ -121,6 +136,8 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                 "bad_jacobian_count": _stat(backend, "bad_jacobian_stats", "sum"),
                 "bnormal_rms_last": _stat(backend, "freeb_nestor_bnormal_rms_stats", "last"),
                 "bnormal_rms_min": _stat(backend, "freeb_nestor_bnormal_rms_stats", "min"),
+                "tail_decay_factor": _tail_projection(backend, "per_iter_factor"),
+                "iters_to_1e-12_est": _tail_projection(backend, "", target=1.0e-12),
                 "wall_s": _finite_float(backend.get("wall_s")),
                 "vacuum_grid_exceeded_count": backend.get("vacuum_grid_exceeded_count"),
             }
@@ -182,6 +199,8 @@ def main(argv: list[str] | None = None) -> int:
         "bad_jacobian_count",
         "bnormal_rms_last",
         "bnormal_rms_min",
+        "tail_decay_factor",
+        "iters_to_1e-12_est",
         "wall_s",
         "vacuum_grid_exceeded_count",
     ]

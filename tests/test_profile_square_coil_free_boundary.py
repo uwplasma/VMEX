@@ -63,12 +63,28 @@ def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tail
     assert payload["final_fsq_component_sum"] == pytest.approx(3.3e-5)
     assert payload["history"]["fsq_component_sum_tail"] == pytest.approx([0.0033, 0.00033, 3.3e-5])
     assert payload["history"]["fsq_component_sum_stats"]["min"] == pytest.approx(3.3e-5)
+    assert payload["history"]["fsq_component_sum_tail_projection"]["per_iter_factor"] == pytest.approx(0.1)
+    assert payload["history"]["fsq_component_sum_tail_projection"][
+        "estimated_additional_iterations_to_target"
+    ]["1e-12"] == 8
     assert payload["history"]["freeb_full_update_stats"]["sum"] == pytest.approx(2.0)
     assert payload["history"]["bad_jacobian_stats"]["nonzero_count"] == 0
     assert payload["history"]["time_step_stats"]["last"] == pytest.approx(0.04)
     assert payload["history"]["update_rms_stats"]["max"] == pytest.approx(1.0e-2)
     assert payload["history"]["freeb_ivac_tail"] == [1, 2, 3]
     assert payload["history"]["include_edge_tail"] == [0, 1, 1]
+
+
+def test_square_coil_profile_tail_decay_projection_estimates_remaining_iterations():
+    values = np.asarray([1.0e-6, 3.0e-7, 9.0e-8, 2.7e-8])
+
+    projection = profile._tail_decay_projection(values, length=4, targets=(1.0e-8, 1.0e-12))
+
+    assert projection["window"] == 4
+    assert projection["monotone_decrease_fraction"] == pytest.approx(1.0)
+    assert projection["per_iter_factor"] == pytest.approx(0.3)
+    assert projection["estimated_additional_iterations_to_target"]["1e-08"] == 1
+    assert projection["estimated_additional_iterations_to_target"]["1e-12"] == 9
 
 
 def test_square_coil_profile_partial_vmec2000_payload_reads_timeout_rows(tmp_path: Path):

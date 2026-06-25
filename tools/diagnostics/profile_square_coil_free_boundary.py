@@ -238,6 +238,78 @@ def _history_stats(values: Any, *, dtype: type = float) -> dict[str, Any]:
     return out
 
 
+def _tail_decay_projection(
+    values: Any,
+    *,
+    length: int = 128,
+    targets: tuple[float, ...] = (1.0e-8, 1.0e-10, 1.0e-12),
+) -> dict[str, Any]:
+    """Estimate residual-tail decay without storing a long solver history."""
+
+    try:
+        arr = np.asarray(values, dtype=float).reshape(-1)
+    except Exception:
+        return {"count": 0, "finite_positive_count": 0}
+    finite_positive = arr[np.isfinite(arr) & (arr > 0.0)]
+    out: dict[str, Any] = {
+        "count": int(arr.size),
+        "finite_positive_count": int(finite_positive.size),
+        "window": int(min(max(0, int(length)), finite_positive.size)),
+    }
+    if finite_positive.size == 0:
+        return out
+    tail = finite_positive[-out["window"] :] if out["window"] else finite_positive
+    last = float(tail[-1])
+    out.update(
+        {
+            "first": float(tail[0]),
+            "last": last,
+            "min": float(np.nanmin(tail)),
+            "max": float(np.nanmax(tail)),
+        }
+    )
+    if tail.size < 2:
+        out["estimated_additional_iterations_to_target"] = {
+            f"{target:.0e}": 0 if last <= float(target) else None for target in targets
+        }
+        return out
+
+    previous = tail[:-1]
+    current = tail[1:]
+    valid = np.isfinite(previous) & np.isfinite(current) & (previous > 0.0) & (current > 0.0)
+    ratios = current[valid] / previous[valid]
+    ratios = ratios[np.isfinite(ratios) & (ratios > 0.0)]
+    out["ratio_count"] = int(ratios.size)
+    out["monotone_decrease_fraction"] = float(np.mean(current[valid] < previous[valid])) if np.any(valid) else None
+    if ratios.size == 0:
+        out["estimated_additional_iterations_to_target"] = {
+            f"{target:.0e}": 0 if last <= float(target) else None for target in targets
+        }
+        return out
+
+    log_slope = float(np.nanmean(np.log(ratios)))
+    factor = float(np.exp(log_slope))
+    out.update(
+        {
+            "per_iter_factor": factor,
+            "log_slope_per_iter": log_slope,
+            "ratio_min": float(np.nanmin(ratios)),
+            "ratio_max": float(np.nanmax(ratios)),
+        }
+    )
+    estimates: dict[str, int | None] = {}
+    for target in targets:
+        target_f = float(target)
+        if last <= target_f:
+            estimates[f"{target_f:.0e}"] = 0
+        elif log_slope < 0.0:
+            estimates[f"{target_f:.0e}"] = int(np.ceil(np.log(target_f / last) / log_slope))
+        else:
+            estimates[f"{target_f:.0e}"] = None
+    out["estimated_additional_iterations_to_target"] = estimates
+    return out
+
+
 def _component_sum_history(run: Any) -> np.ndarray:
     result = None if run is None else getattr(run, "result", None)
     if result is None:
@@ -268,6 +340,7 @@ def _jax_history_payload(run: Any, diag: dict[str, Any], *, length: int = 12) ->
         "fsql_tail": _history_tail([] if result is None else getattr(result, "fsql2_history", []), length=length),
         "fsq_component_sum_tail": _history_tail(component_sum, length=length),
         "fsq_component_sum_stats": _history_stats(component_sum),
+        "fsq_component_sum_tail_projection": _tail_decay_projection(component_sum),
         "freeb_ivac_tail": _history_tail(diag.get("freeb_ivac_history"), length=length, dtype=int),
         "freeb_ivacskip_tail": _history_tail(diag.get("freeb_ivacskip_history"), length=length, dtype=int),
         "freeb_full_update_tail": _history_tail(diag.get("freeb_full_update_history"), length=length, dtype=int),

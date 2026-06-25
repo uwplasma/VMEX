@@ -36,6 +36,10 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                             "freeb_full_update_stats": {"sum": 997.0},
                             "bad_jacobian_stats": {"sum": 1.0},
                             "freeb_nestor_bnormal_rms_stats": {"last": 4.0e-3, "min": 3.0e-3},
+                            "fsq_component_sum_tail_projection": {
+                                "per_iter_factor": 0.98,
+                                "estimated_additional_iterations_to_target": {"1e-12": 1234},
+                            },
                         },
                         "wall_s": 3.5,
                     },
@@ -71,4 +75,6 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["bad_jacobian_count"] == pytest.approx(1.0)
     assert rows[1]["bnormal_rms_last"] == pytest.approx(4.0e-3)
     assert rows[1]["bnormal_rms_min"] == pytest.approx(3.0e-3)
+    assert rows[1]["tail_decay_factor"] == pytest.approx(0.98)
+    assert rows[1]["iters_to_1e-12_est"] == pytest.approx(1234)
     assert rows[0]["vacuum_grid_exceeded_count"] == 2
