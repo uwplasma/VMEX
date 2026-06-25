@@ -130,6 +130,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     jit_strict_momentum_update_proposal as _jit_strict_momentum_update_proposal,
     residual_evolve_coefficients as _residual_evolve_coefficients,
     strict_momentum_update_proposal as _strict_momentum_update_proposal,
+    strict_step_acceptance_decision as _strict_step_acceptance_decision,
     strict_trial_evaluation as _strict_trial_evaluation,
     velocity_blocks_from_force_blocks as _velocity_blocks_from_force_blocks,
     velocity_blocks_from_resume_state as _velocity_blocks_from_resume_state,
@@ -2824,11 +2825,14 @@ def solve_fixed_boundary_residual_iter(
                 w_try = w_curr
                 w_try_ratio = 1.0
 
-            accept_ratio = 1.001 if backtracking else float("inf")
-
             # Require (near) monotone improvement; otherwise fall back to the
             # restart/timestep control path.
-            if np.isfinite(w_try) and (w_try <= accept_ratio * max(w_curr, 1e-30)):
+            step_acceptance = _strict_step_acceptance_decision(
+                w_try=float(w_try),
+                w_curr=float(w_curr),
+                backtracking=bool(backtracking),
+            )
+            if step_acceptance.accepted:
                 state = state_try
                 step_status = "momentum"
                 restart_reason = "none"

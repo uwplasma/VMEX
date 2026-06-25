@@ -537,6 +537,13 @@ class StrictTrialEvaluation(NamedTuple):
     alpha: float
 
 
+class StrictStepAcceptanceDecision(NamedTuple):
+    """Host decision for accepting or rejecting one strict trial update."""
+
+    accepted: bool
+    accept_ratio: float
+
+
 class InitialResidualVelocityState(NamedTuple):
     """Initial residual-loop velocity memory and conservative update caps."""
 
@@ -1228,6 +1235,24 @@ def host_pre_restart_trigger_update(
         inv_tau=[0.15 / float(time_step_next)] * int(k_ndamp),
         huge_force_restart_count=int(huge_force_restart_count_next),
     )
+
+
+def strict_step_acceptance_decision(
+    *,
+    w_try: float,
+    w_curr: float,
+    backtracking: bool,
+) -> StrictStepAcceptanceDecision:
+    """Decide whether a strict trial residual step is acceptable.
+
+    This is intentionally a host-side branch object: the production VMEC loop
+    still uses Python control flow for accept/reject decisions, while tests and
+    future fingerprint gates can reason about the branch decision explicitly.
+    """
+
+    accept_ratio = 1.001 if bool(backtracking) else float("inf")
+    accepted = bool(np.isfinite(w_try) and (float(w_try) <= accept_ratio * max(float(w_curr), 1.0e-30)))
+    return StrictStepAcceptanceDecision(accepted=accepted, accept_ratio=float(accept_ratio))
 
 
 def backtracking_momentum_search(

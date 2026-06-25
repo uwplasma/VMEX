@@ -31,6 +31,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     momentum_update_jax,
     residual_evolve_coefficients,
     scale_velocity_blocks,
+    strict_step_acceptance_decision,
     strict_momentum_update_proposal,
     strict_trial_evaluation,
     velocity_blocks_from_force_blocks,
@@ -289,6 +290,20 @@ def test_free_boundary_turnon_restart_update_can_preserve_restart_marker() -> No
     assert update.iter1 == 4
     assert update.ijacob == 3
     np.testing.assert_allclose(update.inv_tau, [0.15 / 1.0e-12] * 2)
+
+
+def test_strict_step_acceptance_decision_covers_accept_reject_and_nonfinite_paths() -> None:
+    accepted = strict_step_acceptance_decision(w_try=1.0005, w_curr=1.0, backtracking=True)
+    rejected = strict_step_acceptance_decision(w_try=1.01, w_curr=1.0, backtracking=True)
+    nonfinite = strict_step_acceptance_decision(w_try=np.nan, w_curr=1.0, backtracking=False)
+    no_backtracking = strict_step_acceptance_decision(w_try=10.0, w_curr=1.0, backtracking=False)
+
+    assert accepted.accepted
+    assert accepted.accept_ratio == pytest.approx(1.001)
+    assert not rejected.accepted
+    assert not nonfinite.accepted
+    assert no_backtracking.accepted
+    assert np.isinf(no_backtracking.accept_ratio)
 
 
 def test_initial_residual_controller_state_matches_vmec_defaults() -> None:
