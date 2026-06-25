@@ -201,6 +201,12 @@ class _BranchLocalScalarDerivativeResult(NamedTuple):
     directional_uses_fixed_coil_geometry: bool
     current_only_geometry_source: str
     directional_jvp_signature: dict[str, Any]
+    directional_jvp_cache_info: dict[str, Any]
+
+
+_CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE_MAX_SIZE = 8
+_CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE: dict[tuple[Any, ...], Any] = {}
+_CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE_ORDER: list[tuple[Any, ...]] = []
 
 
 __all__ = """
@@ -860,6 +866,96 @@ def _branch_local_directional_jvp_signature(
     return signature
 
 
+def _callable_cache_fingerprint(fn: Any) -> tuple[Any, ...]:
+    """Return a conservative identity fingerprint for a replay scalar callable."""
+
+    return (
+        id(fn),
+        getattr(fn, "__module__", None),
+        getattr(fn, "__qualname__", getattr(fn, "__name__", None)),
+    )
+
+
+def _current_only_directional_jvp_executable_cache_key(
+    *,
+    signature: Mapping[str, Any],
+    params: Any,
+    current_jvp: _CurrentOnlyDirectionalJVPConfig,
+    replay_traces: tuple[Any, ...],
+    replay_plan: Mapping[str, Any] | None,
+    replay_options: Mapping[str, Any],
+    scalar_fn_seq: tuple[Any, ...],
+) -> tuple[tuple[Any, ...] | None, dict[str, Any]]:
+    """Return a safe cache key for closure-bound current-only JVP executables.
+
+    The compiled callable closes over accepted replay objects and scalar
+    callables.  The public ``cache_key_digest`` captures the static replay
+    signature; this private key additionally binds object identities for the
+    closure values so reuse cannot cross into stale traces or user callables.
+    """
+
+    enabled = bool(replay_options.get("enable_current_only_jvp_cache", False))
+    if not enabled:
+        return None, {
+            "enabled": False,
+            "hit": False,
+            "reason": "enable_current_only_jvp_cache=False",
+        }
+    if not bool(signature.get("jit_cache_candidate", False)):
+        return None, {
+            "enabled": True,
+            "hit": False,
+            "reason": "directional_jvp_signature is not a JIT cache candidate",
+        }
+    digest = signature.get("cache_key_digest")
+    if not digest:
+        return None, {
+            "enabled": True,
+            "hit": False,
+            "reason": "directional_jvp_signature has no cache_key_digest",
+        }
+    state_pre = replay_traces[0].get("state_pre") if replay_traces else None
+    key = (
+        "current-only-directional-jvp-v1",
+        str(digest),
+        id(params),
+        id(current_jvp.fixed_gamma),
+        id(current_jvp.fixed_gamma_dash),
+        id(state_pre),
+        id(replay_plan),
+        id(replay_options.get("static")),
+        tuple(id(trace) for trace in replay_options.get("traces", ())),
+        tuple(_callable_cache_fingerprint(fn) for fn in scalar_fn_seq),
+    )
+    return key, {
+        "enabled": True,
+        "hit": False,
+        "reason": "cache key available",
+        "cache_key_digest": str(digest),
+        "closure_bound": True,
+    }
+
+
+def _get_current_only_directional_jvp_executable(
+    cache_key: tuple[Any, ...],
+    factory: Any,
+) -> tuple[Any, bool]:
+    """Return a cached current-only directional JVP executable."""
+
+    cached = _CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached, True
+    executable = factory()
+    if len(_CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE_ORDER) >= (
+        _CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE_MAX_SIZE
+    ):
+        oldest = _CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE_ORDER.pop(0)
+        _CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE.pop(oldest, None)
+    _CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE[cache_key] = executable
+    _CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE_ORDER.append(cache_key)
+    return executable, False
+
+
 def _current_only_coil_geometry_for_base_currents(
     params: Any,
     *,
@@ -877,6 +973,16 @@ def _current_only_coil_geometry_for_base_currents(
         stellsym=params.stellsym,
     )
     return fixed_gamma, fixed_gamma_dash, expanded_currents
+
+
+def _controller_replay_options(replay_options: Mapping[str, Any]) -> dict[str, Any]:
+    """Return replay options accepted by the low-level replay controller."""
+
+    return {
+        key: value
+        for key, value in replay_options.items()
+        if key not in {"enable_current_only_jvp_cache"}
+    }
 
 
 def _current_only_branch_local_replay_scalars(
@@ -902,7 +1008,7 @@ def _current_only_branch_local_replay_scalars(
             fixed_gamma_dash=fixed_gamma_dash,
             base_currents=base_currents,
         ),
-        **replay_options,
+        **_controller_replay_options(replay_options),
     )
     return jnp.asarray([fn(replay) for fn in scalar_fn_seq])
 
@@ -932,6 +1038,11 @@ def _branch_local_scalar_derivatives(
     directional_uses_fixed_coil_geometry = False
     current_only_geometry_source = "none"
     directional_jvp_signature = {"available": False, "reason": "not a directional JVP report"}
+    directional_jvp_cache_info = {
+        "enabled": False,
+        "hit": False,
+        "reason": "not a current-only directional JVP path",
+    }
 
     if direction_params is not None:
         derivative_mode = "directional_jvp"
@@ -977,7 +1088,36 @@ def _branch_local_scalar_derivatives(
         )
 
         t0 = time.perf_counter()
-        replay_values, directional_values = jax.jvp(jvp_fn, jvp_primal, jvp_tangent)
+        cache_key = None
+        if current_jvp.active:
+            cache_key, directional_jvp_cache_info = _current_only_directional_jvp_executable_cache_key(
+                signature=directional_jvp_signature,
+                params=params,
+                current_jvp=current_jvp,
+                replay_traces=replay_traces,
+                replay_plan=replay_plan,
+                replay_options=replay_options,
+                scalar_fn_seq=scalar_fn_seq,
+            )
+        timings["current_only_jvp_cache_lookup_s"] = float(time.perf_counter() - t0)
+        if cache_key is not None:
+            t0 = time.perf_counter()
+
+            def _factory():
+                def _compiled_current_only_jvp(base_currents, direction_currents):
+                    return jax.jvp(_replay_scalars_current_only, (base_currents,), (direction_currents,))
+
+                return jax.jit(_compiled_current_only_jvp)
+
+            cached_jvp_fn, cache_hit = _get_current_only_directional_jvp_executable(cache_key, _factory)
+            directional_jvp_cache_info = {**directional_jvp_cache_info, "hit": bool(cache_hit)}
+            timings["current_only_jvp_cache_get_s"] = float(time.perf_counter() - t0)
+            t0 = time.perf_counter()
+            replay_values, directional_values = cached_jvp_fn(current_jvp.base_leaf, current_jvp.direction_leaf)
+        else:
+            timings["current_only_jvp_cache_get_s"] = 0.0
+            t0 = time.perf_counter()
+            replay_values, directional_values = jax.jvp(jvp_fn, jvp_primal, jvp_tangent)
         timings["replay_jvp_dispatch_s"] = float(time.perf_counter() - t0)
         t0 = time.perf_counter()
         replay_values, directional_values = _block_until_ready_for_timing((replay_values, directional_values))
@@ -1021,6 +1161,7 @@ def _branch_local_scalar_derivatives(
         directional_uses_fixed_coil_geometry=directional_uses_fixed_coil_geometry,
         current_only_geometry_source=current_only_geometry_source,
         directional_jvp_signature=directional_jvp_signature,
+        directional_jvp_cache_info=directional_jvp_cache_info,
     )
 
 
@@ -1094,6 +1235,7 @@ def _branch_local_scalar_report(
         "replay_branch_metadata": replay_branch_metadata,
         "controller_slot_summary": controller_slot_summary,
         "directional_jvp_signature": derivative_result.directional_jvp_signature,
+        "directional_jvp_cache_info": derivative_result.directional_jvp_cache_info,
         "replay_option_flags": _branch_local_replay_option_flags(
             replay_options,
             replay_plan=replay_plan,
@@ -1103,6 +1245,7 @@ def _branch_local_scalar_report(
                 "directional_uses_fixed_coil_geometry": derivative_result.directional_uses_fixed_coil_geometry,
                 "current_only_coil_geometry_source": derivative_result.current_only_geometry_source,
                 "directional_jvp_signature": derivative_result.directional_jvp_signature,
+                "directional_jvp_cache_info": derivative_result.directional_jvp_cache_info,
             },
         ),
     }
@@ -1206,7 +1349,7 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             coil_params,
             replay_traces_for_scalars[0]["state_pre"],
             replay_plan=replay_plan_for_scalars,
-            **replay_options,
+            **_controller_replay_options(replay_options),
         )
         return jnp.asarray([fn(replay) for fn in scalar_fn_seq])
 
@@ -1216,7 +1359,7 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
             replay_traces_for_scalars[0]["state_pre"],
             scalar_fns=scalar_fn_seq,
             replay_plan=replay_plan_for_scalars,
-            **replay_options,
+            **_controller_replay_options(replay_options),
         )
 
     _replay_scalars = _replay_scalars_direct if ad_mode == "direct" else _replay_scalars_custom_vjp

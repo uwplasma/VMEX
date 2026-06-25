@@ -364,6 +364,9 @@ def same_branch_replay_options_from_args(args: Any) -> dict[str, Any]:
             "nestor_operator_atol": float(getattr(args, "same_branch_report_nestor_operator_atol", 1.0e-13)),
             "nestor_operator_maxiter": getattr(args, "same_branch_report_nestor_operator_maxiter", None),
             "nestor_operator_restart": getattr(args, "same_branch_report_nestor_operator_restart", None),
+            "enable_current_only_jvp_cache": bool(
+                getattr(args, "same_branch_report_enable_current_jvp_cache", False)
+            ),
             "freeze_vacuum_field": bool(getattr(args, "same_branch_report_freeze_vacuum_field", False)),
             "freeze_freeb_bsqvac": bool(getattr(args, "same_branch_report_freeze_bsqvac", False))}
 
@@ -695,6 +698,13 @@ def _branch_replay_common_summary(result: dict[str, Any], *, state_only_replay: 
         summary["replay_option_flags"].get("directional_jvp_signature"), dict
     ):
         summary["directional_jvp_signature"] = summary["replay_option_flags"]["directional_jvp_signature"]
+    cache_info = result.get("directional_jvp_cache_info")
+    if isinstance(cache_info, dict):
+        summary["directional_jvp_cache_info"] = cache_info
+    elif isinstance(summary["replay_option_flags"], dict) and isinstance(
+        summary["replay_option_flags"].get("directional_jvp_cache_info"), dict
+    ):
+        summary["directional_jvp_cache_info"] = summary["replay_option_flags"]["directional_jvp_cache_info"]
     return summary
 
 
