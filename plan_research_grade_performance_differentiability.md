@@ -4615,6 +4615,63 @@ Updated lane percentages:
 - Docs/release hygiene: 100%.
 - Overall: 99.2%.
 
+### 2026-06-25: Refresh AD-vs-FD evidence from final branch-local report
+
+Steps taken:
+
+- Re-rendered ``docs/_static/figures/readme_ad_fd_evidence.png``,
+  ``readme_ad_fd_evidence.csv``, and ``readme_ad_fd_evidence.json`` using the
+  newer ``outputs/final_tranche_adfd_evidence/same_branch_complete_solve_report.json``
+  branch-local free-boundary report.
+- Kept the public evidence contract unchanged: deterministic rows use
+  AD-vs-central-FD at tolerance ``1e-9``, and free-boundary rows remain
+  same-branch/fingerprint-gated only.
+- Verified that the refreshed artifact still includes 10 rows: aspect, iota,
+  QS, smooth QI, ``DMerc``, ``D_R``, and four free-boundary physical scalars.
+
+Results obtained:
+
+- ``python tools/diagnostics/readme_ad_fd_evidence.py --branch-local-report
+  outputs/final_tranche_adfd_evidence/same_branch_complete_solve_report.json
+  --figure-out docs/_static/figures/readme_ad_fd_evidence.png --csv-out
+  docs/_static/figures/readme_ad_fd_evidence.csv --json-out
+  docs/_static/figures/readme_ad_fd_evidence.json`` passed with 10 rows.
+- The maximum absolute and relative slope errors remain
+  ``4.3997183674093776e-10``, below the strict ``1e-9`` threshold.
+- The free-boundary ``qs_total`` branch-local relative error improved from
+  ``2.5706008076291616e-10`` to ``2.4699782640598176e-11``.
+- ``python -m pytest -q tests/test_readme_ad_fd_evidence.py -q`` passed.
+- ``python -m pytest -q`` for the targeted Mercier/Glasser helper and
+  AD-vs-FD tests passed with 5 tests.
+- ``LANG=C.UTF-8 LC_ALL=C.UTF-8 python -m sphinx -W -j auto -b html docs
+  docs/_build/html_adfd_refresh`` passed.
+- ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
+  --max-file-mib 2`` passed with 28.25 MiB tracked.
+
+Best next steps:
+
+1. Commit and push the refreshed AD-vs-FD evidence artifacts.
+2. Let the latest CI run finish; inspect logs only if it fails.
+3. Use the refreshed evidence as the current README/docs derivative baseline
+   while keeping free-boundary wording conservative until arbitrary adaptive
+   branch differentiation is explicitly validated.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 95.0%.
+- Free-boundary production differentiability: 96.3%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 65.0%.
+- VMEC2000/VMEC++ parity and physics gates: 98.9%.
+- Docs/release hygiene: 100%.
+- Overall: 99.25%.
+
 ### 2026-06-25: Package VMEC2000 time-control restart branch side effects
 
 Steps taken:
