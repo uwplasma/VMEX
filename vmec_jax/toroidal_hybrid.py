@@ -426,6 +426,12 @@ def square_axis_stellarator_mirror_hybrid_projection_error(
     boundary before any equilibrium solve is attempted.
     """
 
+    if "ntheta" in sample_kwargs or "nzeta" in sample_kwargs:
+        raise ValueError(
+            "Use ntheta_fit/nzeta_fit for projection sampling and "
+            "ntheta_eval/nzeta_eval for error evaluation; ntheta/nzeta are "
+            "reserved by the underlying boundary sampler."
+        )
     ntheta_eval = int(ntheta_fit if ntheta_eval is None else ntheta_eval)
     nzeta_eval = int(nzeta_fit if nzeta_eval is None else nzeta_eval)
     target = sample_square_axis_stellarator_mirror_hybrid_boundary(

@@ -137,6 +137,32 @@ final summed residual about ``1.37e-7``, and best sampled summed residual about
 ``9.88e-8`` after about 843 seconds. VMEC2000 is therefore faster on this local
 CPU benchmark, but not more robust in the sense of reaching the requested
 ``FTOL=1e-12`` on this low/mid-mode square-coil deck.
+Increasing the square-axis representation from ``NTOR=12`` to ``NTOR=16`` while
+keeping the spline envelope materially improves the diagnostic deck. The
+configured production-shape boundary projection error drops to max component
+error about ``4.76e-5``. At ``NS=9, MPOL=5, NTOR=16, NZETA=40``, direct-coil
+``vmec_jax`` decreases from summed residual about ``4.55e-4`` at 1000
+iterations to about ``4.04e-8`` at 5000 iterations, with the final 128 stored
+residuals monotone and no bad-Jacobian events in the compact history. The
+matching VMEC2000 generated-``mgrid`` run reaches summed residual about
+``1.38e-8`` after 8000 iterations, with best sampled summed residual about
+``1.25e-8`` and no vacuum-grid overflow. This is the first clear evidence that
+``NTOR`` refinement, not just more iterations at ``NTOR=12``, lowers the
+current residual floor. Extending the direct-coil run to 12000 iterations
+continues improving the solved state but still does not prove
+``FTOL=1e-12`` convergence: the best stored summed residual is about
+``5.45e-9`` near iteration 11269, while the fresh recompute on the returned
+best-scored state is about ``8.24e-9``. The tail projection slows from the
+5000-iteration estimate, the final tail is no longer strictly monotone, and the
+boundary ``B.n`` RMS rises from its earlier minimum. The next evidence should
+therefore change resolution, staging, or representation rather than simply
+extending this same ``NS=9, MPOL=5, NTOR=16`` deck locally.
+A first local 16000-iteration VMEC2000 generated-``mgrid`` extension was not
+usable as convergence evidence: when run concurrently with the direct-coil
+profile, it timed out at 900 seconds with parsed force rows only through
+iteration 1600 and summed residual about ``1.18e-5``. Since the previous
+same-deck 8000-iteration VMEC2000 run finished in about 203 seconds, this row
+is recorded as a runtime/profiling anomaly rather than a new residual floor.
 
 The same profiling identified an ``NZETA`` robustness rule. ``MPOL=5,
 NTOR=12, NZETA=16`` fails in VMEC2000 after the initial Jacobian changes sign,
@@ -283,10 +309,10 @@ The remaining work is deliberately narrow:
    boundary fields still match after resolution or coil changes. Use the
    tail-projection columns in the summary table to choose between extending the
    iteration budget and changing the resolution/schedule; do not interpret the
-   projection as proof of convergence. Since both direct-coil ``vmec_jax`` and
-   VMEC2000 generated-``mgrid`` 25000-iteration runs stayed near ``1e-7``, do
-   not spend more local CPU on longer runs at this same ``NS=9, MPOL=5,
-   NTOR=12`` deck before changing resolution, schedule, or geometry
+   projection as proof of convergence. Since the ``NTOR=12`` deck floors near
+   ``1e-7`` and the improved ``NTOR=16`` deck slows near ``1e-8`` by 12000
+   direct-coil iterations, do not spend more local CPU on longer single-stage
+   runs at either same deck before changing resolution, schedule, or geometry
    representation.
 2. Re-run the square-coil beta ladder with per-beta checkpointing and the
    best-scored diagnostic fallback using the staged ``FTOL_ARRAY`` ending at ``1e-12``. Keep

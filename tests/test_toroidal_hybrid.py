@@ -178,6 +178,13 @@ def test_square_axis_spline_option_reduces_low_mode_projection_error():
     assert errors["spline"] < 2.0e-4
 
 
+def test_square_axis_projection_error_rejects_sampler_grid_aliases():
+    with pytest.raises(ValueError, match="ntheta_fit/nzeta_fit"):
+        square_axis_stellarator_mirror_hybrid_projection_error(ntheta=32)
+    with pytest.raises(ValueError, match="ntheta_fit/nzeta_fit"):
+        square_axis_stellarator_mirror_hybrid_projection_error(nzeta=64)
+
+
 def test_toroidal_hybrid_localization_powers_sharpen_side_and_corner_regions():
     base = sample_toroidal_stellarator_mirror_hybrid_boundary(ntheta=32, nzeta=32)
     sharp = sample_toroidal_stellarator_mirror_hybrid_boundary(

@@ -199,8 +199,15 @@ fresh recompute was about ``4.18e-7``. This points to low-resolution nonlinear
 cycling rather than a plain iteration-budget miss. The matching VMEC2000
 generated-``mgrid`` 25000-iteration run was faster locally, about 843 seconds,
 but also stayed near the same floor with final summed residual about
-``1.37e-7`` and best sampled residual about ``9.88e-8``. The same profiling
-shows that
+``1.37e-7`` and best sampled residual about ``9.88e-8``. Increasing the
+square-axis representation to ``NTOR=16`` lowers the floor on the spline deck:
+direct-coil ``vmec_jax`` reaches about ``4.04e-8`` summed residual at 5000
+iterations, and VMEC2000 generated-``mgrid`` reaches about ``1.38e-8`` at 8000
+iterations. Extending the direct-coil run to 12000 iterations gives best stored
+summed residual about ``5.45e-9`` and a fresh final recompute about ``8.24e-9``;
+this is still above ``FTOL=1e-12`` and the tail has slowed, but it is well below
+the ``NTOR=12`` floor.
+The same profiling shows that
 underresolved ``NZETA`` can fail before useful force iterations; the
 square-coil path now records ``recommended_nzeta`` and guards production-style
 example runs against known-underresolved toroidal grids. Finite-beta promotion
