@@ -4504,6 +4504,54 @@ Updated lane percentages:
 - Docs/release hygiene: 100%.
 - Overall: 99.0%.
 
+### 2026-06-25: Confirm final CI after readiness artifact refresh
+
+Steps taken:
+
+- Monitored the CI run for ``8ad6f81a`` after the performance-doc artifact path
+  correction.
+- Verified the residual-iteration top-level helper seams before choosing not to
+  perform another extraction: the remaining small wrappers are compatibility
+  seams used by tests, while the larger nested helpers require the planned
+  controller-state API rather than piecemeal movement.
+
+Results obtained:
+
+- GitHub Actions run ``28194613304`` completed successfully.
+- The successful run included docs, build, console smoke, py3.10, py3.12,
+  physics smoke, slow physics coverage, all py3.11 core/exact coverage shards,
+  parity manifest smoke, and the combined coverage gate.
+- The local worktree remained clean and synchronized with ``origin/main``.
+- Source-health still identifies ``solve_fixed_boundary_residual_iter`` as the
+  remaining high-value refactor target; no additional low-risk helper extraction
+  was justified in this tranche.
+
+Best next steps:
+
+1. Treat the current ``main`` state as green for review/readiness purposes.
+2. Keep PR #21 draft unless explicitly reviewing the separate mirror-geometry
+   branch; it is not the same scope as the current performance/differentiability
+   readiness work on ``main``.
+3. If continuing implementation, start the broader residual-loop
+   controller-state API refactor as a deliberate tranche with dedicated tests,
+   rather than extracting closure-heavy nested helpers opportunistically.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.2%.
+- Free-boundary production differentiability: 96.0%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 61.4%.
+- VMEC2000/VMEC++ parity and physics gates: 98.6%.
+- Docs/release hygiene: 100%.
+- Overall: 99.0%.
+
 ### 2026-06-25: Align performance-doc regeneration commands with refreshed artifacts
 
 Steps taken:
