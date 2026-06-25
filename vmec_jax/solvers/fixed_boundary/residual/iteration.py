@@ -114,6 +114,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     controller_state_after_catastrophic_restart_update as _controller_state_after_catastrophic_restart_update,
     controller_state_after_free_boundary_turnon_restart_update as _controller_state_after_free_boundary_turnon_restart_update,
     controller_state_after_host_restart_decision_sample as _controller_state_after_host_restart_decision_sample,
+    controller_state_after_initial_axis_setup_result as _controller_state_after_initial_axis_setup_result,
     controller_state_after_initial_axis_reset_update as _controller_after_axis_reset,
     controller_state_after_pre_restart_update as _controller_state_after_pre_restart_update,
     controller_state_after_vmec2000_time_control_sample as _controller_state_after_vmec2000_time_control_sample,
@@ -1374,8 +1375,6 @@ def solve_fixed_boundary_residual_iter(
     )
     state = axis_setup.state
     axis_reset_done = bool(axis_setup.axis_reset_done)
-    ijacob = int(axis_setup.ijacob)
-    state_checkpoint = axis_setup.state_checkpoint
     velocity_blocks = velocity_blocks._replace(
         rcc=axis_setup.velocities[0],
         rss=axis_setup.velocities[1],
@@ -1384,9 +1383,9 @@ def solve_fixed_boundary_residual_iter(
         lsc=axis_setup.velocities[4],
         lcs=axis_setup.velocities[5],
     )
-    res0 = float(axis_setup.res0)
-    res1 = float(axis_setup.res1)
-    prev_rz_fsq = float(axis_setup.prev_rz_fsq)
+    _set_controller_state(
+        _controller_state_after_initial_axis_setup_result(_current_controller_state(), axis_setup)
+    )
     setup_axis_reset_applied = bool(axis_setup.reset_applied)
     setup_axis_force_probe = axis_setup.force_probe
     setup_axis_force_probe_reused = False
