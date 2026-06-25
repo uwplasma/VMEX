@@ -233,6 +233,11 @@ interpreting the residual floor, for example::
 
   --delt 0.02 --mgrid-nr 72 --mgrid-nz 56 --mgrid-nphi 64 --mgrid-padding-fraction 1.2 --mgrid-min-padding 0.5
 
+For direct-coil GPU profiling, add ``--jit-forces --coil-chunk-size 0``. The
+default chunk size of ``512`` is the conservative host-forward path; chunk size
+``0`` uses the cached full-geometry JIT direct-coil sampler and is the intended
+mode for direct-provider GPU comparisons.
+
 The best completed VMEC2000 reference so far uses ``MPOL=6, NTOR=23,
 NZETA=64`` with the spline square-axis projection. A staged
 ``NS=9 -> 13 -> 17`` run on a widened generated ``mgrid`` reaches best sampled

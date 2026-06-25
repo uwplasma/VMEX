@@ -222,3 +222,33 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     assert projection["mpol"] == 3
     assert projection["ntor"] == 4
     assert np.isfinite(float(projection["max_abs_error"]))
+
+
+def test_square_coil_profile_records_direct_coil_chunk_size(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(profile, "write_mgrid_from_coils", lambda *args, **kwargs: None)
+
+    outdir = tmp_path / "profile_jit_sampler"
+    profile.main(
+        [
+            "--outdir",
+            str(outdir),
+            "--mpol",
+            "3",
+            "--ntor",
+            "4",
+            "--ns",
+            "5",
+            "--nzeta",
+            "16",
+            "--max-iter",
+            "2",
+            "--coil-chunk-size",
+            "0",
+            "--skip-direct",
+            "--skip-mgrid",
+            "--skip-provider-parity",
+        ]
+    )
+
+    data = json.loads((outdir / "square_coil_free_boundary_backend_profile.json").read_text())
+    assert data["configuration"]["coil_chunk_size"] is None

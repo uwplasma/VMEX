@@ -62,6 +62,7 @@ COIL_MAJOR_RADIUS = 0.50
 COIL_MINOR_RADIUS = 0.50
 COIL_CURRENT = 8.0e5
 COIL_SEGMENTS = 96
+COIL_CHUNK_SIZE: int | None = 512
 
 PLASMA_AXIS_HALF_WIDTH = 0.5 * COIL_SQUARE_SIDE_LENGTH
 PLASMA_AXIS_KIND = "spline"
@@ -120,6 +121,7 @@ class ExampleConfig:
     coil_minor_radius: float = COIL_MINOR_RADIUS
     coil_current: float = COIL_CURRENT
     coil_segments: int = COIL_SEGMENTS
+    coil_chunk_size: int | None = COIL_CHUNK_SIZE
     plasma_axis_half_width: float = PLASMA_AXIS_HALF_WIDTH
     plasma_axis_kind: str = PLASMA_AXIS_KIND
     plasma_axis_square_power: float = PLASMA_AXIS_SQUARE_POWER
@@ -290,6 +292,9 @@ def build_square_coils(config: ExampleConfig) -> SquareCoilSet:
     normals_arr = np.asarray(normals, dtype=float)
     major_axes_arr = np.asarray(major_axes, dtype=float)
     currents = np.full((centers_arr.shape[0],), float(config.coil_current), dtype=float)
+    chunk_size = None if config.coil_chunk_size is None else int(config.coil_chunk_size)
+    if chunk_size is not None and chunk_size <= 0:
+        chunk_size = None
     params = ellipse_coil_field_params(
         centers=centers_arr,
         normals=normals_arr,
@@ -301,7 +306,7 @@ def build_square_coils(config: ExampleConfig) -> SquareCoilSet:
         nfp=1,
         stellsym=False,
         regularization_epsilon=1.0e-6 * min(config.coil_major_radius, config.coil_minor_radius),
-        chunk_size=512,
+        chunk_size=chunk_size,
     )
     return SquareCoilSet(
         params=params,

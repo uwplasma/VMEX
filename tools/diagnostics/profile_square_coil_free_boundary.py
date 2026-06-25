@@ -89,6 +89,12 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--enforce-recommended-nzeta", action="store_true")
     p.add_argument("--n-coils-per-side", type=int, default=4)
     p.add_argument("--coil-segments", type=int, default=96)
+    p.add_argument(
+        "--coil-chunk-size",
+        type=_parse_optional_positive_int,
+        default=512,
+        help="Direct-coil sampling batch size. Use 0 or 'none' for the full cached JIT sampler.",
+    )
     p.add_argument("--mgrid-nr", type=int, default=36)
     p.add_argument("--mgrid-nz", type=int, default=28)
     p.add_argument("--mgrid-nphi", type=int, default=None)
@@ -129,6 +135,16 @@ def _parse_float_list(raw: str | None, *, name: str) -> tuple[float, ...] | None
     if not values:
         raise ValueError(f"{name} must contain at least one value")
     return values
+
+
+def _parse_optional_positive_int(raw: str) -> int | None:
+    value = str(raw).strip().lower()
+    if value in {"", "0", "none", "null", "false", "no"}:
+        return None
+    parsed = int(value)
+    if parsed <= 0:
+        return None
+    return parsed
 
 
 def _resolve_schedule(args: argparse.Namespace) -> tuple[tuple[int, ...], tuple[int, ...], tuple[float, ...]]:
@@ -779,6 +795,7 @@ def main(argv: list[str] | None = None) -> int:
         betas_percent=(float(args.beta_percent),),
         n_coils_per_side=int(args.n_coils_per_side),
         coil_segments=int(args.coil_segments),
+        coil_chunk_size=args.coil_chunk_size,
         plasma_axis_kind=str(args.axis_kind),
         plasma_axis_spline_corner_radius_factor=float(args.axis_corner_factor),
         mpol=int(args.mpol),
@@ -852,6 +869,7 @@ def main(argv: list[str] | None = None) -> int:
             "nvacskip": int(config.nvacskip),
             "axis_kind": str(args.axis_kind),
             "axis_corner_factor": float(args.axis_corner_factor),
+            "coil_chunk_size": None if args.coil_chunk_size is None else int(args.coil_chunk_size),
             "use_multigrid_schedule": bool(len(ns_array) > 1),
             "ns_array": ns_values,
             "niter_array": niter_values,
