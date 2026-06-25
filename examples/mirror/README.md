@@ -229,7 +229,10 @@ The current ``NS=9 -> 17`` VMEC2000 reference is not yet a ``1e-12`` solve, but
 with that widened mgrid and ``DELT=0.02`` it reaches a monotone final total
 residual of about ``1.4e-7`` after 3000 final-stage iterations and about
 ``1.0e-7`` after 5000 final-stage iterations. ``DELT=0.01`` is worse for the
-same schedule because the coarse stage underconverges.
+same schedule because the coarse stage underconverges. On the exact same
+widened ``NS=9`` mgrid with ``DELT=0.02``, vmec_jax and VMEC2000 agree at the
+``1e-6`` level after 5000 iterations; the next comparison target is therefore
+the direct-coil provider on this same robust deck.
 
 Summarize one or more reports with::
 

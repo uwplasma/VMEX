@@ -88,6 +88,14 @@ remains near ``1e-5``. The current square-coil setup is therefore a
 diagnostic/stability target, not yet a converged ``FTOL=1e-12`` production
 equilibrium, but the evidence now points to widened mgrid envelopes plus
 moderate damping around ``DELT=0.02`` as the productive continuation path.
+The exact widened-mgrid, ``DELT=0.02``, ``NS=9`` comparison shows that
+``vmec_jax`` and VMEC2000 now agree on the robust mgrid deck: after 5000
+iterations, ``vmec_jax`` generated-mgrid recomputes to total residual about
+``1.40e-6`` and VMEC2000 reaches about ``1.50e-6`` on the same mgrid. The older
+``~7e-8`` VMEC2000 result used the narrower ``DELT=0.05`` mgrid deck; it is
+useful as an optimistic low-resolution reference, but it is not the right
+target for radial-resolution studies because the corresponding ``NS=17`` run
+can move outside the vacuum grid.
 
 The same profiling identified an ``NZETA`` robustness rule. ``MPOL=5,
 NTOR=12, NZETA=16`` fails in VMEC2000 after the initial Jacobian changes sign,
@@ -199,11 +207,11 @@ The remaining work is deliberately narrow:
    comparing ``NS``, ``MPOL``, ``NTOR``, ``NZETA``, generated-mgrid resolution,
    LCFS shape, near-axis field, mirror ratio, mean iota, and residual histories.
    The next numerical knob is not a smaller global step size; ``DELT=0.01`` is
-   too slow for the current schedule. Instead, compare vmec_jax against the
-   VMEC2000 ``DELT=0.02`` reference floor, then test mode/mgrid refinement or a
-   staged step-size schedule only if the JAX mgrid path can reproduce the
-   VMEC2000 ``~1e-7`` floor. A larger ``NS`` ladder should not be interpreted
-   unless ``vacuum_grid_exceeded_count`` remains zero.
+   too slow for the current schedule. Since the JAX mgrid path reproduces the
+   VMEC2000 widened-mgrid ``DELT=0.02`` floor, the next solve-side work is
+   direct-coil provider convergence/cost on the same deck, followed by
+   mode/mgrid refinement or a staged step-size schedule. A larger ``NS`` ladder
+   should not be interpreted unless ``vacuum_grid_exceeded_count`` remains zero.
 4. Keep the optional virtual-casing postsolve diagnostic
    ``vmec_jax.free_boundary_validation.virtual_casing_finite_beta_boundary_diagnostics``
    attached to the square-coil example outputs. The helper accepts a solved
