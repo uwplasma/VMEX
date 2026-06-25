@@ -4345,3 +4345,56 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 98.3%.
 - Docs/release hygiene: 99.9%.
 - Overall: 98.7%.
+
+### 2026-06-25: Extract residual force-dispatch helpers from the main solver loop
+
+Steps taken:
+
+- Moved the standalone residual force-dispatch helpers from
+  ``solvers/fixed_boundary/residual/iteration.py`` into the existing
+  ``solvers/fixed_boundary/residual/force_payload.py`` module.
+- Kept private compatibility aliases in ``iteration.py`` so tests and internal
+  call sites that reference the helper names continue to work.
+- Avoided adding a new module: this uses the existing force-payload domain file
+  and keeps the package structure from sprawling.
+- Inspected the larger nested helper seams in ``solve_fixed_boundary_residual_iter``.
+  Those helpers close over substantial mutable loop state, so they are not a
+  safe extraction target without a broader controller-state API refactor.
+
+Results obtained:
+
+- ``iteration.py`` dropped from about ``3170`` lines to ``3063`` lines.
+- Focused helper coverage passed:
+  ``tests/test_solve_residual_iter_helpers_wave8_coverage.py``,
+  ``tests/test_solve_more_coverage.py``, and ``tests/test_solve_wave4_coverage.py``
+  passed with ``34`` tests.
+- The full local ``driver-solve-discrete`` CI bucket passed with ``1094``
+  passed and ``30`` skipped in about ``38 s``.
+- ``ruff`` passed for the touched solver modules.
+- Source-health and repo-size gates still pass; tracked repo size remains about
+  ``28.20 MiB``.
+
+Best next steps:
+
+1. Commit and push this behavior-preserving refactor.
+2. Continue the refactor/API/examples lane with the same rule: move cohesive
+   seams into existing domain modules, not one-off helper files.
+3. The next high-value refactor target is a controller-state API around the
+   residual iteration loop; that would make extraction of the nested restart,
+   preconditioner-refresh, and rollback helpers safe.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.2%.
+- Free-boundary production differentiability: 96.0%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 61.0%.
+- VMEC2000/VMEC++ parity and physics gates: 98.4%.
+- Docs/release hygiene: 99.9%.
+- Overall: 98.9%.

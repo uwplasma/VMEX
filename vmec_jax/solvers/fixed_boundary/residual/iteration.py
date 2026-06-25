@@ -96,9 +96,13 @@ from vmec_jax.solvers.fixed_boundary.residual.force_cache import (
 )
 from vmec_jax.solvers.fixed_boundary.residual.force_payload import (
     build_strict_update_adjoint_trace_entry as _build_strict_update_adjoint_trace_entry,
+    compute_forces_iter_runtime as _compute_forces_iter_runtime,
+    compute_forces_without_iter_dump as _compute_forces_without_iter_dump,
     evaluate_residual_force_from_state as _evaluate_residual_force_from_state,  # noqa: F401 - compatibility alias for tests/internal users.
     finalize_strict_update_adjoint_trace_entry as _finalize_strict_update_adjoint_trace_entry,
     make_residual_force_evaluator as _make_residual_force_evaluator,
+    residual_iter_dump_index as _residual_iter_dump_index,
+    tomnsps_to_numpy_host as _tomnsps_to_numpy_host,
 )
 from vmec_jax.solvers.fixed_boundary.residual.update import (
     ResidualControllerState as _ResidualControllerState,
@@ -293,7 +297,6 @@ from vmec_jax.solvers.fixed_boundary.scan.runtime import (
     get_or_build_scan_runner as _get_or_build_scan_runner,
 )
 from vmec_jax.state import VMECState
-from vmec_jax.vmec_tomnsp import TomnspsRZL
 
 
 _SCAN_RUNNER_CACHE: OrderedDict[tuple, Any] = OrderedDict()
@@ -358,116 +361,6 @@ def _scan_chunk_settings(
         backend_name=_scan_backend_name(),
         chunk_size_env=os.getenv("VMEC_JAX_SCAN_CHUNK_SIZE", ""),
         spectral_mode_count=spectral_mode_count,
-    )
-
-
-def _compute_forces_without_iter_dump(
-    state: VMECState,
-    *,
-    compute_forces_impl,
-    include_edge: bool,
-    include_edge_residual: bool | None = None,
-    zero_m1: Any,
-    freeb_bsqvac_half: Any | None = None,
-    constraint_rcon0: Any | None = None,
-    constraint_zcon0: Any | None = None,
-    constraint_precond_diag: tuple[Any, Any] | None = None,
-    constraint_tcon: Any | None = None,
-    constraint_precond_active: Any | None = None,
-    constraint_tcon_active: Any | None = None,
-    iter_idx: int | None = None,
-):
-    """Force kernel wrapper used for JIT paths where debug dumps are disabled."""
-
-    del iter_idx
-    return compute_forces_impl(
-        state,
-        include_edge=include_edge,
-        include_edge_residual=include_edge_residual,
-        zero_m1=zero_m1,
-        freeb_bsqvac_half=freeb_bsqvac_half,
-        constraint_rcon0=constraint_rcon0,
-        constraint_zcon0=constraint_zcon0,
-        constraint_precond_diag=constraint_precond_diag,
-        constraint_tcon=constraint_tcon,
-        constraint_precond_active=constraint_precond_active,
-        constraint_tcon_active=constraint_tcon_active,
-        iter_idx=None,
-    )
-
-
-def _residual_iter_dump_index(it: int | None, *, jit_forces: bool) -> int | None:
-    return None if bool(jit_forces) else it
-
-
-def _compute_forces_iter_runtime(
-    state: VMECState,
-    *,
-    compute_forces_impl,
-    compute_forces,
-    compute_forces_np,
-    warmup_iters: int,
-    include_edge: bool,
-    include_edge_residual: bool | None = None,
-    zero_m1: Any,
-    freeb_bsqvac_half: Any | None = None,
-    constraint_rcon0: Any | None = None,
-    constraint_zcon0: Any | None = None,
-    constraint_precond_diag: tuple[Any, Any] | None = None,
-    constraint_tcon: Any | None = None,
-    constraint_precond_active: Any | None = None,
-    constraint_tcon_active: Any | None = None,
-    iter_idx: int | None = None,
-    iter2: int | None = None,
-):
-    """Dispatch one residual force evaluation for the host/JIT/NumPy paths."""
-
-    force_kwargs = {
-        "include_edge": include_edge,
-        "include_edge_residual": include_edge_residual,
-        "zero_m1": zero_m1,
-        "freeb_bsqvac_half": freeb_bsqvac_half,
-        "constraint_rcon0": constraint_rcon0,
-        "constraint_zcon0": constraint_zcon0,
-        "constraint_precond_diag": constraint_precond_diag,
-        "constraint_tcon": constraint_tcon,
-        "constraint_precond_active": constraint_precond_active,
-        "constraint_tcon_active": constraint_tcon_active,
-        "iter_idx": iter_idx,
-    }
-    if int(warmup_iters) > 0 and (iter2 is not None) and (int(iter2) <= int(warmup_iters)):
-        if has_jax():
-            with jax.disable_jit():
-                return compute_forces_impl(state, **force_kwargs)
-        return compute_forces_impl(state, **force_kwargs)
-    if compute_forces_np is not None:
-        return compute_forces_np(state, **force_kwargs)
-    if freeb_bsqvac_half is None:
-        force_kwargs = {key: value for key, value in force_kwargs.items() if key != "freeb_bsqvac_half"}
-    return compute_forces(state, **force_kwargs)
-
-
-def _tomnsps_to_numpy_host(frzl: Any) -> TomnspsRZL:
-    """Materialize a force block on the host for tiny scalar reductions."""
-
-    def _host_array(value):
-        if value is None:
-            return None
-        return np.asarray(jax.device_get(value))
-
-    return TomnspsRZL(
-        frcc=_host_array(frzl.frcc),
-        frss=_host_array(frzl.frss),
-        fzsc=_host_array(frzl.fzsc),
-        fzcs=_host_array(frzl.fzcs),
-        flsc=_host_array(frzl.flsc),
-        flcs=_host_array(frzl.flcs),
-        frsc=_host_array(getattr(frzl, "frsc", None)),
-        frcs=_host_array(getattr(frzl, "frcs", None)),
-        fzcc=_host_array(getattr(frzl, "fzcc", None)),
-        fzss=_host_array(getattr(frzl, "fzss", None)),
-        flcc=_host_array(getattr(frzl, "flcc", None)),
-        flss=_host_array(getattr(frzl, "flss", None)),
     )
 
 
