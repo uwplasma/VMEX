@@ -3195,6 +3195,53 @@ Updated lane percentages:
 - Docs/release hygiene: 99.2%.
 - Overall: 97.2%.
 
+### 2026-06-25: Factor current-only replay scalar seam for future JVP cache
+
+Steps taken:
+
+- Moved the current-only branch-local replay scalar construction out of the
+  nested directional-JVP closure into private helper seams:
+  ``_current_only_coil_geometry_for_base_currents`` and
+  ``_current_only_branch_local_replay_scalars``.
+- Added a focused helper test proving the current-only geometry seam reuses the
+  fixed coil curves and only expands the differentiated base currents through
+  stellarator symmetry and ``current_scale``.
+
+Results obtained:
+
+- Ruff passed on the modified adjoint facade and helper test.
+- Focused helper/proposal tests passed:
+  ``tests/test_free_boundary_adjoint_helpers_unit.py`` and the same-branch
+  proposal/report subset selected by ``current_only or branch_local_vector_jacobian
+  or derivative_proposal``.
+- This remains a refactor/performance-readiness change: no public derivative
+  contract, complete-solve acceptance rule, or same-branch gate tolerance
+  changed.  The next cache implementation now has a named scalar replay helper
+  to wrap, time, and eventually compile behind the existing
+  ``directional_jvp_signature`` key.
+
+Best next steps:
+
+1. Prototype the real current-only replay/JVP executable cache around
+   ``_current_only_branch_local_replay_scalars`` and key it with
+   ``directional_jvp_signature``.
+2. Benchmark repeated same-signature reports before promoting the cache; reject
+   the cache if first-call overhead merely moves elsewhere.
+3. Keep bounded VMEC2000/VMEC++ parity, AD-vs-FD evidence, docs, source-health,
+   and repo-size gates green.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.0%.
+- Free-boundary production differentiability: 93.7%.
+- Single-stage coil optimization: 90.0%.
+- CPU/GPU runtime and memory footprint: 97.9%.
+- Refactor/API/examples: 57.7%.
+- VMEC2000/VMEC++ parity and physics gates: 97.8%.
+- Docs/release hygiene: 99.2%.
+- Overall: 97.3%.
+
 ### 2026-06-25: Extract derivative-proposal evidence helpers
 
 Steps taken:
