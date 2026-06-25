@@ -3134,3 +3134,54 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 97.8%.
 - Docs/release hygiene: 99.1%.
 - Overall: 96.9%.
+
+### 2026-06-25: Measure narrowed derivative-proposal smoke timing
+
+Steps taken:
+
+- Ran the real direct-coil smoke proposal path after narrowing the default
+  derivative-proposal vector keys:
+  ``JAX_ENABLE_X64=1 examples/optimization/free_boundary_QS_coil_optimization.py
+  --smoke --provider circle --max-evals 1 --max-iter 1
+  --same-branch-derivative-proposal --same-branch-proposal-steps 0.05
+  --same-branch-proposal-max-trials 1
+  --same-branch-report-rejected-slot-gate
+  --same-branch-report-replay-max-mode-count 0``.
+- Confirmed the summary used ``vector_keys=['aspect', 'qs_total',
+  'mean_iota']`` and the current-only direction policy.
+
+Results obtained:
+
+- The complete-solve objective evaluations stayed cheap for the tiny case:
+  about ``0.59 s`` for the first solve and ``0.03 s`` for the proposed trial.
+- The report/proposal overhead remains dominated by cold branch-local replay
+  graph construction:
+  ``complete_solve_fd_wall_s=6.02 s``,
+  ``branch_local_vector_replay_jvp_dispatch_s=8.93 s``,
+  ``branch_local_vector_total_wall_s=8.94 s``, and
+  ``branch_local_rejected_slot_wall_s=6.74 s``.
+- Production scalar evaluation, payload copying, graph metadata, and trace
+  diagnostics were all negligible compared with JAX replay/JVP dispatch.
+
+Best next steps:
+
+1. The next performance tranche should design a reusable/top-level compiled
+   branch-local current-only replay/JVP kernel for the common objective-term
+   scalar set, instead of creating a fresh closure for each report.
+2. Keep the broader promoted evidence path available, but make the production
+   derivative-proposal path reuse compiled kernels whenever the fingerprint,
+   shape, scalar-key set, and replay options are unchanged.
+3. Do not spend more effort trimming JSON payloads until the replay/JVP dispatch
+   cost is reduced.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.0%.
+- Free-boundary production differentiability: 93.3%.
+- Single-stage coil optimization: 89.7%.
+- CPU/GPU runtime and memory footprint: 97.7%.
+- Refactor/API/examples: 56.2%.
+- VMEC2000/VMEC++ parity and physics gates: 97.8%.
+- Docs/release hygiene: 99.1%.
+- Overall: 96.9%.
