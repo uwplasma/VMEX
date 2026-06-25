@@ -16,6 +16,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     controller_state_from_resume_state,
     controller_state_from_runtime_scalars,
     controller_state_legacy_payload,
+    controller_state_legacy_values,
     direct_force_fallback_acceptance_decision,
     direct_force_fallback_trial,
     force_update_rms,
@@ -226,6 +227,46 @@ def test_controller_state_from_runtime_scalars_normalizes_legacy_slots() -> None
     assert state.bad_growth_streak == 9
     assert state.huge_force_restart_count == 10
     assert state.state_checkpoint is checkpoint
+
+
+def test_controller_state_legacy_values_follow_explicit_resume_key_order() -> None:
+    checkpoint = object()
+    state = ResidualControllerState(
+        time_step=0.1,
+        inv_tau=[1.0, 2.0],
+        fsq_prev=3.0,
+        fsq0_prev=4.0,
+        flip_sign=-1.0,
+        iter1=5,
+        ijacob=6,
+        bad_resets=7,
+        res0=8.0,
+        res1=9.0,
+        prev_rz_fsq=10.0,
+        bad_growth_streak=11,
+        huge_force_restart_count=12,
+        state_checkpoint=checkpoint,
+    )
+
+    values = controller_state_legacy_values(state)
+
+    assert values == (
+        state.time_step,
+        state.inv_tau,
+        state.fsq_prev,
+        state.fsq0_prev,
+        state.flip_sign,
+        state.iter1,
+        state.ijacob,
+        state.bad_resets,
+        state.res0,
+        state.res1,
+        state.prev_rz_fsq,
+        state.bad_growth_streak,
+        state.huge_force_restart_count,
+        checkpoint,
+    )
+    assert dict(zip(controller_state_legacy_payload(state), values)) == controller_state_legacy_payload(state)
 
 
 def test_apply_controller_state_update_delegates_to_pure_update() -> None:

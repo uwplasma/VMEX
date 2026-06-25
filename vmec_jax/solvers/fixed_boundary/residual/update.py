@@ -146,6 +146,12 @@ def controller_state_legacy_payload(state: ResidualControllerState) -> dict[str,
     return {key: getattr(state, key) for key in CONTROLLER_RESUME_KEYS}
 
 
+def controller_state_legacy_values(state: ResidualControllerState) -> tuple[Any, ...]:
+    """Return controller values in the explicit legacy scalar-slot order."""
+
+    return tuple(getattr(state, key) for key in CONTROLLER_RESUME_KEYS)
+
+
 def controller_state_from_runtime_scalars(
     *,
     time_step: float,
