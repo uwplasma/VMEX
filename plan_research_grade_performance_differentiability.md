@@ -5830,8 +5830,8 @@ Results obtained:
   tests/test_cli_helpers.py::test_cli_test_mode_copies_packaged_input_solves_and_plots
   -q`` passed.
 - ``repo_size_audit.py``, ``source_health.py``, and ``git diff --check`` passed.
-  The residual iteration module dropped to 3112 lines and the main residual
-  loop to 2733 lines.
+  The residual iteration module dropped to 3114 lines and the main residual
+  loop to 2735 lines.
 
 Best next steps:
 
@@ -5855,5 +5855,71 @@ Updated lane percentages:
 - CPU/GPU runtime and memory footprint: 99.2%.
 - Refactor/API/examples: 67.1%.
 - VMEC2000/VMEC++ parity and physics gates: 99.0%.
+- Docs/release hygiene: 100%.
+- Overall: 99.4%.
+
+### 2026-06-25: Final low-ROI gate rerun after PR #20 merge
+
+Steps taken:
+
+- Confirmed PR #20 is already merged and that the active work is now
+  post-merge hardening on ``main``.
+- Regenerated the public AD-vs-central-FD evidence panel with the promoted
+  branch-local free-boundary report:
+  ``outputs/final_tranche_adfd_evidence/same_branch_complete_solve_report.json``.
+- Reran the docs benchmark renderer from the existing full 16-row
+  single-grid matrix summaries and restored timestamp-only metadata so no
+  meaningless artifact diff is committed.
+- Reran the QI README panel renderer from existing promoted minimal-seed
+  results; the tracked panel and CSV were byte-identical.
+- Reran the VMEC2000 executable WOUT parity gate for
+  ``LandremanPaul2021_QA_lowres``, ``nfp4_QH_warm_start``, ``solovev``, and
+  ``ITERModel`` under ``outputs/final_tranche_wout_parity_20260625``.
+
+Results obtained:
+
+- Current ``main`` CI run ``28202544010`` passed.
+- AD-vs-FD public evidence rerender produced 10 rows and no tracked diffs;
+  ``tests/test_readme_ad_fd_evidence.py`` passed.
+- Strict docs build passed:
+  ``LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONDONTWRITEBYTECODE=1 python -m sphinx -W
+  -j auto -b html docs docs/_build/html_final_low_roi``.
+- Fast release/parity harness checks passed:
+  ``tests/test_converged_wout_parity_benchmark.py``,
+  ``tests/test_docs_release_hygiene.py``, and the ``vmec --test`` CLI helper
+  smoke.
+- Repo-size gate passed with tracked size ``28.29 MiB`` and no tracked file
+  over ``2 MiB``.
+- Fresh VMEC2000 WOUT parity rerun passed all four promoted rows.  Worst
+  relative RMS by row:
+  ``LandremanPaul2021_QA_lowres`` ``bsubvmnc=6.17e-6``,
+  ``nfp4_QH_warm_start`` ``bsubvmnc=2.11e-5``,
+  ``solovev`` ``bsubvmnc=4.37e-5``, and
+  ``ITERModel`` ``bsubvmnc=2.97e-5``.
+
+Best next steps:
+
+1. Do not rerun the full 16-row benchmark matrix again unless a solver-path
+   change lands; the same-day current-vs-main matrix and rerendered artifacts
+   are already reproducible.
+2. Resume larger refactor/API work only in tranches that reduce the residual
+   loop or simplify public examples; reject seams that only increase line
+   count without behavioral or API payoff.
+3. Keep free-boundary adaptive differentiation claims conservative until a
+   true adaptive-branch AD-vs-FD gate is promoted.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 95.9%.
+- Free-boundary production differentiability: 96.4%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 67.1%.
+- VMEC2000/VMEC++ parity and physics gates: 99.1%.
 - Docs/release hygiene: 100%.
 - Overall: 99.4%.
