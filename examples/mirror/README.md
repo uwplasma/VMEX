@@ -154,6 +154,10 @@ and a staged ``NS_ARRAY``/``NITER_ARRAY``/``FTOL_ARRAY`` schedule ending at
 ``FTOL=1e-12``, and writes one ``wout_*.nc`` per beta. The default
 ``PHIEDGE`` sign is negative for the positive-current square-coil orientation,
 matching the raw VMEC2000 generated-``mgrid`` vacuum sign check. The default
+iteration ladder is ``NS_ARRAY = 9, 13, 17``,
+``NITER_ARRAY = 4000, 8000, 12000``, and
+``FTOL_ARRAY = 1e-8, 1e-10, 1e-12``, with ``DELT = 0.02`` and
+``NVACSKIP = 1``. The default
 square axis uses the low-bandwidth rounded ``axis_kind="spline"`` profile before
 VMEC Fourier projection, which is less sensitive to ``NTOR`` than the sharper
 polar superellipse. The default ``NZETA`` follows
@@ -207,32 +211,37 @@ from linear-trap mirror literature, instead of relying only on LCFS-averaged
 For direct-provider versus mgrid/VMEC2000 profiling, use::
 
   python tools/diagnostics/profile_square_coil_free_boundary.py \
-    --ftol 1e-12 --max-iter 10000 --phiedge -0.04 \
-    --solver-mode parity --nvacskip 1 --return-best-scored-state \
-    --mpol 6 --ntor 23 --nzeta 64 \
+    --ftol 1e-12 --max-iter 12000 --phiedge -0.04 \
+    --solver-mode parity --nvacskip 1 --delt 0.02 \
+    --mpol 6 --ntor 23 --nzeta 64 --axis-kind spline \
+    --ns-array 9,13,17 --niter-array 4000,8000,12000 \
+    --ftol-array 1e-8,1e-10,1e-12 \
+    --mgrid-nr 72 --mgrid-nz 56 --mgrid-nphi 64 \
+    --mgrid-padding-fraction 1.2 --mgrid-min-padding 0.5 \
     --run-vmec2000
 
 The report stays under ignored ``results/`` paths and records ``vmec_jax``
 direct-coil, ``vmec_jax`` generated-mgrid, and optional raw VMEC2000
 generated-mgrid residuals for the same square-coil field. To profile a staged
 VMEC-style ladder without editing the example, add for example
-``--ns-array 9,13,17 --niter-array 2500,5000,10000 --ftol-array 1e-8,1e-10,1e-12``.
+``--ns-array 9,13,17 --niter-array 4000,8000,12000 --ftol-array 1e-8,1e-10,1e-12``.
 Use larger ``--nvacskip`` only as a speed experiment; for convergence review,
 ``--nvacskip 1`` avoids stale free-boundary residuals on this square-hybrid
 Fourier deck. For ``NS`` ladders above the initial surface, use a widened mgrid
 envelope and check the reported ``vacuum_grid_exceeded_count`` before
 interpreting the residual floor, for example::
 
-  --delt 0.02 --mgrid-nr 48 --mgrid-nz 40 --mgrid-padding-fraction 1.2 --mgrid-min-padding 0.5
+  --delt 0.02 --mgrid-nr 72 --mgrid-nz 56 --mgrid-nphi 64 --mgrid-padding-fraction 1.2 --mgrid-min-padding 0.5
 
-The current ``NS=9 -> 17`` VMEC2000 reference is not yet a ``1e-12`` solve, but
-with that widened mgrid and ``DELT=0.02`` it reaches a monotone final total
-residual of about ``1.4e-7`` after 3000 final-stage iterations and about
-``1.0e-7`` after 5000 final-stage iterations. ``DELT=0.01`` is worse for the
-same schedule because the coarse stage underconverges. On the exact same
-widened ``NS=9`` mgrid with ``DELT=0.02``, vmec_jax and VMEC2000 agree at the
-``1e-6`` level after 5000 iterations; the next comparison target is therefore
-the direct-coil provider on this same robust deck.
+The best completed VMEC2000 reference so far uses ``MPOL=6, NTOR=23,
+NZETA=64`` with the spline square-axis projection. A staged
+``NS=9 -> 13 -> 17`` run on a widened generated ``mgrid`` reaches best sampled
+summed residual about ``2.28e-11`` and final summed residual about ``3.17e-11``
+with no vacuum-grid overflow. This is still not a per-component ``1e-12``
+production solve, but it is several orders below the older ``NTOR=16`` staged
+floor. ``DELT=0.01`` was worse on the lower-mode schedule because the coarse
+stage underconverged; the next comparison target is the direct-coil provider on
+the same high-mode staged deck.
 
 Summarize one or more reports with::
 

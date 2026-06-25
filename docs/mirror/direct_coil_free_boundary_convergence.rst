@@ -38,10 +38,11 @@ therefore defaults to a VMEC-style staged solve, with explicit
 ``NS_ARRAY``, ``NITER_ARRAY``, and ``FTOL_ARRAY`` ending at ``1e-12``. It also
 uses negative ``PHIEDGE`` for the default positive toroidal current and
 square-coil field orientation. VMEC2000 rejects the opposite sign in the vacuum
-subroutine for this generated-``mgrid`` deck. The default step size is
-``DELT=0.05`` and the default free-boundary activation threshold is VMEC-like
-``1e-3`` so the vacuum/edge coupling has enough final-grid iterations to
-converge. The square-coil example now sets ``NVACSKIP=1`` by default. This is
+subroutine for this generated-``mgrid`` deck. The default free-boundary
+activation threshold is VMEC-like ``1e-3`` so the vacuum/edge coupling has
+enough final-grid iterations to converge. The square-coil example now sets
+``NVACSKIP=1`` by default and uses ``DELT=0.02`` with staged
+``NITER_ARRAY = 4000, 8000, 12000``. This is
 intentionally conservative: the VMEC-style adaptive vacuum cadence cannot go
 below the input ``NVACSKIP`` floor, so the earlier ``NVACSKIP=NZETA`` default
 allowed long stale vacuum-source reuse windows just when this new geometry
@@ -163,6 +164,33 @@ profile, it timed out at 900 seconds with parsed force rows only through
 iteration 1600 and summed residual about ``1.18e-5``. Since the previous
 same-deck 8000-iteration VMEC2000 run finished in about 203 seconds, this row
 is recorded as a runtime/profiling anomaly rather than a new residual floor.
+A clean same-deck VMEC2000 extension later confirmed the cycling: at
+``NS=9, MPOL=5, NTOR=16, NZETA=40`` it reached a best sampled summed residual
+about ``1.15e-8`` but worsened to about ``4.96e-7`` by 16000 iterations. A
+staged ``NS=9 -> 13`` version on a widened generated ``mgrid`` improved the
+best sampled residual to about ``5.04e-9`` but still cycled upward to about
+``7.16e-8`` by the end of the ``NS=13`` stage. This confirms that simply
+continuing the ``NTOR=16`` deck is not a credible path to ``FTOL=1e-12``.
+
+The next successful robustness step is the higher-mode spline deck. For the
+current production-shape square axis, ``MPOL=6, NTOR=23`` with
+``NZETA=64`` lowers the Fourier boundary projection max component error to
+about ``1.44e-5``. A single-stage VMEC2000 generated-``mgrid`` run at
+``NS=9`` reached summed residual about ``2.05e-8`` after 4000 iterations with
+no vacuum-grid overflow. A staged ``NS=9 -> 13`` VMEC2000 generated-``mgrid``
+run reached summed residual about ``2.11e-10`` at ``NS=13``. Extending the
+ladder to ``NS=17`` on a wider ``72 x 56 x 64`` generated ``mgrid`` reached a
+best sampled summed residual about ``2.28e-11`` and final summed residual about
+``3.17e-11`` after the 12000-iteration final stage, again with no vacuum-grid
+overflow. The final components were about ``1.14e-11`` radial, ``1.72e-11``
+vertical, and ``3.05e-12`` lambda. This is still above a per-component
+``1e-12`` production claim, but it is several orders of magnitude better than
+the ``NTOR=16`` staged floor and shows that the practical route is high-mode
+spline projection plus staged radial resolution, not longer low/mid-mode local
+runs. VMEC2000 is therefore the best robustness reference and is much faster
+than the current direct-coil JAX path for these mgrid benchmarks, but even
+VMEC2000 still needs additional algorithmic or resolution work before this
+deck can be promoted at ``FTOL=1e-12``.
 
 The same profiling identified an ``NZETA`` robustness rule. ``MPOL=5,
 NTOR=12, NZETA=16`` fails in VMEC2000 after the initial Jacobian changes sign,
@@ -315,9 +343,13 @@ The remaining work is deliberately narrow:
    runs at either same deck before changing resolution, schedule, or geometry
    representation.
 2. Re-run the square-coil beta ladder with per-beta checkpointing and the
-   best-scored diagnostic fallback using the staged ``FTOL_ARRAY`` ending at ``1e-12``. Keep
-   ``DELT=0.02``, ``NVACSKIP=1``, ``solver_mode="parity"``, and the VMEC-like
+   best-scored diagnostic fallback using the staged ``FTOL_ARRAY`` ending at
+   ``1e-12``. Keep ``DELT=0.02``, ``NVACSKIP=1``,
+   ``solver_mode="parity"``, and the VMEC-like
    ``FREE_BOUNDARY_ACTIVATE_FSQ=1e-3`` unless a benchmark shows a better value.
+   The current robust default ladder is ``NS_ARRAY = 9, 13, 17`` with
+   ``NITER_ARRAY = 4000, 8000, 12000`` and
+   ``FTOL_ARRAY = 1e-8, 1e-10, 1e-12``.
 3. Run resolution closure around the first transition beta and at ``10%`` beta,
    comparing ``NS``, ``MPOL``, ``NTOR``, ``NZETA``, generated-mgrid resolution,
    LCFS shape, near-axis field, mirror ratio, mean iota, and residual histories.

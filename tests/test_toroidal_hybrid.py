@@ -124,6 +124,8 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert module.ExampleConfig().solver_mode == "parity"
     assert module.ExampleConfig().nvacskip == 1
     assert module.ExampleConfig().return_best_scored_state is True
+    assert module.ExampleConfig().delt == pytest.approx(0.02)
+    assert module.ExampleConfig().niter_array == (4000, 8000, 12000)
     assert module.make_free_boundary_indata(module.ExampleConfig(), beta_percent=0.0).get_int("NVACSKIP") == 1
     with pytest.raises(ValueError, match="solver_mode must be one of"):
         module.run_example(
