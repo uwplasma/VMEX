@@ -139,6 +139,8 @@ def test_directional_jvp_signature_digest_tracks_replay_program_options() -> Non
 def test_current_only_jvp_executable_cache_is_opt_in_and_closure_bound() -> None:
     facade_helpers._CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE.clear()
     facade_helpers._CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE_ORDER.clear()
+    facade_helpers._REPLAY_SCALAR_CALLABLE_CACHE.clear()
+    facade_helpers._REPLAY_SCALAR_CALLABLE_CACHE_ORDER.clear()
 
     current_jvp = SimpleNamespace(
         active=True,
@@ -191,6 +193,49 @@ def test_current_only_jvp_executable_cache_is_opt_in_and_closure_bound() -> None
     assert enabled_info["enabled"] is True
     assert enabled_info["closure_bound"] is True
 
+    payload = {"offset": 3.0}
+
+    def scalar_fn(replay, replay_payload):
+        return replay["value"] + replay_payload["offset"]
+
+    scalar_callables = facade_helpers._branch_local_replay_scalar_callables(
+        keys=("aspect",),
+        replay_scalar_fns={"aspect": scalar_fn},
+        replay_payload=payload,
+    )
+    repeated_scalar_callables = facade_helpers._branch_local_replay_scalar_callables(
+        keys=("aspect",),
+        replay_scalar_fns={"aspect": scalar_fn},
+        replay_payload=payload,
+    )
+    assert scalar_callables[0] is repeated_scalar_callables[0]
+    assert scalar_callables[0]({"value": 2.0}) == pytest.approx(5.0)
+
+    replay_plan = {"n_steps": 1}
+    repeated_key, repeated_info = facade_helpers._current_only_directional_jvp_executable_cache_key(
+        signature=signature,
+        params=params,
+        current_jvp=current_jvp,
+        replay_traces=(replay_trace,),
+        replay_plan=replay_plan,
+        replay_options={"enable_current_only_jvp_cache": True, "traces": (replay_trace,)},
+        scalar_fn_seq=repeated_scalar_callables,
+    )
+    assert repeated_info["enabled"] is True
+    assert repeated_key is not None
+    assert repeated_key != enabled_key
+
+    same_key_again, _same_info_again = facade_helpers._current_only_directional_jvp_executable_cache_key(
+        signature=signature,
+        params=params,
+        current_jvp=current_jvp,
+        replay_traces=(replay_trace,),
+        replay_plan=replay_plan,
+        replay_options={"enable_current_only_jvp_cache": True, "traces": (replay_trace,)},
+        scalar_fn_seq=repeated_scalar_callables,
+    )
+    assert same_key_again == repeated_key
+
     factory_calls = 0
 
     def factory():
@@ -208,6 +253,8 @@ def test_current_only_jvp_executable_cache_is_opt_in_and_closure_bound() -> None
 
     facade_helpers._CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE.clear()
     facade_helpers._CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE_ORDER.clear()
+    facade_helpers._REPLAY_SCALAR_CALLABLE_CACHE.clear()
+    facade_helpers._REPLAY_SCALAR_CALLABLE_CACHE_ORDER.clear()
 
 
 def test_free_boundary_adjoint_runtime_helpers_sync_and_scope_fallbacks() -> None:

@@ -207,6 +207,21 @@ class _BranchLocalScalarDerivativeResult(NamedTuple):
 _CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE_MAX_SIZE = 8
 _CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE: dict[tuple[Any, ...], Any] = {}
 _CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE_ORDER: list[tuple[Any, ...]] = []
+_REPLAY_SCALAR_CALLABLE_CACHE_MAX_SIZE = 64
+_REPLAY_SCALAR_CALLABLE_CACHE: dict[tuple[Any, ...], Any] = {}
+_REPLAY_SCALAR_CALLABLE_CACHE_ORDER: list[tuple[Any, ...]] = []
+
+
+class _ReplayScalarCallable:
+    """Stable callable wrapper for one replay scalar and one replay payload."""
+
+    def __init__(self, key: str, fn: Any, payload: Any) -> None:
+        self.key = str(key)
+        self.fn = fn
+        self.payload = payload
+
+    def __call__(self, replay: Any) -> Any:
+        return self.fn(replay, self.payload)
 
 
 __all__ = """
@@ -876,6 +891,30 @@ def _callable_cache_fingerprint(fn: Any) -> tuple[Any, ...]:
     )
 
 
+def _branch_local_replay_scalar_callables(
+    *,
+    keys: tuple[str, ...],
+    replay_scalar_fns: Mapping[str, Any],
+    replay_payload: Any,
+) -> tuple[Any, ...]:
+    """Return stable replay scalar callables for repeated same-payload reports."""
+
+    scalar_callables = []
+    for key in keys:
+        fn = replay_scalar_fns[key]
+        cache_key = ("replay-scalar-callable-v1", str(key), id(fn), id(replay_payload))
+        cached = _REPLAY_SCALAR_CALLABLE_CACHE.get(cache_key)
+        if cached is None:
+            cached = _ReplayScalarCallable(str(key), fn, replay_payload)
+            if len(_REPLAY_SCALAR_CALLABLE_CACHE_ORDER) >= _REPLAY_SCALAR_CALLABLE_CACHE_MAX_SIZE:
+                oldest = _REPLAY_SCALAR_CALLABLE_CACHE_ORDER.pop(0)
+                _REPLAY_SCALAR_CALLABLE_CACHE.pop(oldest, None)
+            _REPLAY_SCALAR_CALLABLE_CACHE[cache_key] = cached
+            _REPLAY_SCALAR_CALLABLE_CACHE_ORDER.append(cache_key)
+        scalar_callables.append(cached)
+    return tuple(scalar_callables)
+
+
 def _current_only_directional_jvp_executable_cache_key(
     *,
     signature: Mapping[str, Any],
@@ -1340,8 +1379,10 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
     controller_slot_summary = replay_setup.controller_slot_summary
     graph_metadata = replay_setup.graph_metadata
 
-    scalar_fn_seq = tuple(
-        (lambda replay, key=key: replay_scalar_fns[key](replay, replay_payload_for_scalars)) for key in keys
+    scalar_fn_seq = _branch_local_replay_scalar_callables(
+        keys=keys,
+        replay_scalar_fns=replay_scalar_fns,
+        replay_payload=replay_payload_for_scalars,
     )
 
     def _replay_scalars_direct(coil_params):
