@@ -15,7 +15,7 @@ implementation uses gradient descent with a simple backtracking line search.
 from __future__ import annotations
 
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from contextlib import nullcontext
 import time
 import os
@@ -5685,6 +5685,7 @@ def solve_fixed_boundary_residual_iter(
     from .vmec_jacobian import vmec_half_mesh_jacobian_from_state
     from .vmec_tomnsp import TomnspsRZL, vmec_angle_grid, vmec_trig_tables
     from .free_boundary import NestorRuntimeState, nestor_external_only_step
+    from .free_boundary_acceleration import AndersonPressureHistory, anderson1_vacuum_pressure_update
 
     # VMEC2000 evaluates the force kernels on VMEC's internal
     # angle grid. In particular, when `lasym=False`, VMEC uses a reduced theta
@@ -5744,6 +5745,18 @@ def solve_fixed_boundary_residual_iter(
     freeb_current_residual_norms = bool(free_boundary_enabled) and (
         freeb_current_norms_env not in ("", "0", "false", "no", "off")
     )
+    freeb_anderson_env = os.getenv("VMEC_JAX_FREEB_ANDERSON_PRESSURE", "0").strip().lower()
+    freeb_anderson_pressure = bool(free_boundary_enabled and freeb_couple_edge) and (
+        freeb_anderson_env not in ("", "0", "false", "no", "off")
+    )
+    try:
+        freeb_anderson_rtol = float(os.getenv("VMEC_JAX_FREEB_ANDERSON_RTOL", "1e-9"))
+    except Exception:
+        freeb_anderson_rtol = 1.0e-9
+    try:
+        freeb_anderson_theta_max = float(os.getenv("VMEC_JAX_FREEB_ANDERSON_THETA_MAX", "2.0"))
+    except Exception:
+        freeb_anderson_theta_max = 2.0
     return_best_scored_env = os.getenv("VMEC_JAX_RETURN_BEST_SCORED_STATE", "auto").strip().lower()
     if return_best_scored_env == "auto":
         # The most useful unconverged free-boundary result is the last accepted
@@ -10531,6 +10544,12 @@ def solve_fixed_boundary_residual_iter(
     freeb_nestor_trial_solve_time_history: list[float] = []
     freeb_nestor_trial_sample_time_history: list[float] = []
     freeb_nestor_trial_failed_history: list[int] = []
+    freeb_anderson_pressure_enabled_history: list[int] = []
+    freeb_anderson_pressure_applied_history: list[int] = []
+    freeb_anderson_pressure_reset_history: list[int] = []
+    freeb_anderson_pressure_theta_history: list[float] = []
+    freeb_anderson_pressure_residual_norm_history: list[float] = []
+    freeb_anderson_pressure_reason_history: list[str] = []
     dt_eff_history: list[float] = []
     update_rms_history: list[float] = []
     w_curr_history: list[float] = []
@@ -10593,6 +10612,8 @@ def solve_fixed_boundary_residual_iter(
     freeb_nestor_trace_current = None
     freeb_last_model = "none"
     freeb_last_diagnostics: dict[str, Any] = {}
+    freeb_anderson_pressure_history = AndersonPressureHistory()
+    freeb_anderson_applied_bsqvac = None
     freeb_plascur = 0.0
     try:
         icurv_arr = np.asarray(getattr(wout_like, "icurv", np.asarray([0.0], dtype=float)), dtype=float)
@@ -11432,6 +11453,93 @@ def solve_fixed_boundary_residual_iter(
                             and int(getattr(static.cfg, "nzeta", 1)) > 1
                         ):
                             bsqvac_edge = np.repeat(bsqvac_edge, int(static.cfg.nzeta), axis=1)
+                        anderson_result = None
+                        if bool(freeb_anderson_pressure) and (not bool(freeb_reused)):
+                            if bool(freeb_turnon_iter):
+                                freeb_anderson_pressure_history = AndersonPressureHistory()
+                                freeb_anderson_applied_bsqvac = None
+                            anderson_result = anderson1_vacuum_pressure_update(
+                                old_pressure=freeb_anderson_applied_bsqvac,
+                                raw_pressure=bsqvac_edge,
+                                history=freeb_anderson_pressure_history,
+                                residual_rtol=float(freeb_anderson_rtol),
+                                theta_min=0.0,
+                                theta_max=float(freeb_anderson_theta_max),
+                            )
+                            raw_bsqvac_edge = bsqvac_edge
+                            bsqvac_edge = np.asarray(anderson_result.pressure, dtype=float)
+                            freeb_anderson_pressure_history = anderson_result.history
+                            if freeb_nestor_runtime is not None:
+                                freeb_nestor_runtime = replace(
+                                    freeb_nestor_runtime,
+                                    bsqvac=np.asarray(bsqvac_edge, dtype=float),
+                                )
+                            if isinstance(diag_nestor, dict):
+                                diag_nestor = dict(diag_nestor)
+                                raw_rms = float(np.sqrt(np.mean(np.asarray(raw_bsqvac_edge, dtype=float) ** 2)))
+                                mixed_rms = float(np.sqrt(np.mean(np.asarray(bsqvac_edge, dtype=float) ** 2)))
+                                diag_nestor.update(
+                                    {
+                                        "anderson_pressure_enabled": True,
+                                        "anderson_pressure_applied": bool(anderson_result.applied),
+                                        "anderson_pressure_reset": bool(anderson_result.reset),
+                                        "anderson_pressure_reason": str(anderson_result.reason),
+                                        "anderson_pressure_theta": anderson_result.theta,
+                                        "anderson_pressure_theta_unclamped": anderson_result.theta_unclamped,
+                                        "anderson_pressure_residual_norm": float(
+                                            anderson_result.residual_norm
+                                        ),
+                                        "anderson_pressure_delta_residual_norm": (
+                                            None
+                                            if anderson_result.delta_residual_norm is None
+                                            else float(anderson_result.delta_residual_norm)
+                                        ),
+                                        "bsqvac_rms_raw": raw_rms,
+                                        "bsqvac_rms": mixed_rms,
+                                    }
+                                )
+                                freeb_last_diagnostics = dict(diag_nestor)
+                                if freeb_nestor_bsqvac_rms_history:
+                                    freeb_nestor_bsqvac_rms_history[-1] = mixed_rms
+                            trace_arrays = getattr(nestor_res, "trace_arrays", None)
+                            if isinstance(trace_arrays, dict):
+                                trace_arrays = dict(trace_arrays)
+                                if "bsqvac" in trace_arrays:
+                                    trace_arrays["bsqvac_raw"] = np.asarray(trace_arrays["bsqvac"], dtype=float)
+                                trace_arrays["bsqvac"] = np.asarray(bsqvac_edge, dtype=float)
+                                vac_total_mixed = replace(
+                                    nestor_res.vac_total,
+                                    bsqvac=np.asarray(bsqvac_edge, dtype=float),
+                                )
+                                nestor_res = replace(
+                                    nestor_res,
+                                    vac_total=vac_total_mixed,
+                                    diagnostics=diag_nestor,
+                                    trace_arrays=trace_arrays,
+                                )
+                                freeb_nestor_trace_current = trace_arrays
+                        if bool(freeb_anderson_pressure):
+                            freeb_anderson_applied_bsqvac = np.asarray(bsqvac_edge, dtype=float)
+                            freeb_anderson_pressure_enabled_history.append(1)
+                            freeb_anderson_pressure_applied_history.append(
+                                1 if (anderson_result is not None and bool(anderson_result.applied)) else 0
+                            )
+                            freeb_anderson_pressure_reset_history.append(
+                                1 if (anderson_result is not None and bool(anderson_result.reset)) else 0
+                            )
+                            freeb_anderson_pressure_theta_history.append(
+                                float("nan")
+                                if anderson_result is None or anderson_result.theta is None
+                                else float(anderson_result.theta)
+                            )
+                            freeb_anderson_pressure_residual_norm_history.append(
+                                float("nan")
+                                if anderson_result is None
+                                else float(anderson_result.residual_norm)
+                            )
+                            freeb_anderson_pressure_reason_history.append(
+                                "reuse" if anderson_result is None else str(anderson_result.reason)
+                            )
                         # Only the edge slice is consumed by the force kernels.
                         # Keep this as a 2D edge field so the GPU path does not
                         # re-transfer a mostly-zero `(ns, ntheta, nzeta)` array
@@ -15176,6 +15284,9 @@ def solve_fixed_boundary_residual_iter(
             "ivac": int(freeb_ivac),
             "ivacskip": int(freeb_ivacskip),
             "couple_edge": bool(freeb_couple_edge),
+            "anderson_pressure_enabled": bool(freeb_anderson_pressure),
+            "anderson_pressure_rtol": float(freeb_anderson_rtol),
+            "anderson_pressure_theta_max": float(freeb_anderson_theta_max),
             "nestor_model": str(final_nestor_model),
             "vacuum_stub": bool(final_vacuum_stub),
             "activate_fsq": None if free_boundary_activate_fsq is None else float(free_boundary_activate_fsq),
@@ -15203,6 +15314,20 @@ def solve_fixed_boundary_residual_iter(
         "freeb_nestor_trial_solve_time_history": np.asarray(freeb_nestor_trial_solve_time_history, dtype=float),
         "freeb_nestor_trial_sample_time_history": np.asarray(freeb_nestor_trial_sample_time_history, dtype=float),
         "freeb_nestor_trial_failed_history": np.asarray(freeb_nestor_trial_failed_history, dtype=int),
+        "freeb_anderson_pressure_enabled_history": np.asarray(
+            freeb_anderson_pressure_enabled_history, dtype=int
+        ),
+        "freeb_anderson_pressure_applied_history": np.asarray(
+            freeb_anderson_pressure_applied_history, dtype=int
+        ),
+        "freeb_anderson_pressure_reset_history": np.asarray(freeb_anderson_pressure_reset_history, dtype=int),
+        "freeb_anderson_pressure_theta_history": np.asarray(freeb_anderson_pressure_theta_history, dtype=float),
+        "freeb_anderson_pressure_residual_norm_history": np.asarray(
+            freeb_anderson_pressure_residual_norm_history, dtype=float
+        ),
+        "freeb_anderson_pressure_reason_history": np.asarray(
+            freeb_anderson_pressure_reason_history, dtype=object
+        ),
     }
     if timing_enabled:
         if t_finalize_diag_build_start is not None:

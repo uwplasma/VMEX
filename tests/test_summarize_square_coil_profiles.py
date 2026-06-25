@@ -38,10 +38,13 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                         "final_fsql": 4.0e-7,
                         "final_fsq_component_sum": 9.0e-7,
                         "best_scored_fsq": 8.0e-7,
+                        "free_boundary_anderson_pressure_enabled": True,
+                        "free_boundary_anderson_pressure_last_theta": 0.25,
                         "history": {
                             "dt_eff_stats": {"last": 0.02, "min": 0.01},
                             "time_step_stats": {"last": 0.019},
                             "freeb_full_update_stats": {"sum": 997.0},
+                            "freeb_anderson_pressure_applied_stats": {"sum": 12.0},
                             "bad_jacobian_stats": {"sum": 1.0},
                             "freeb_nestor_bnormal_rms_stats": {"last": 4.0e-3, "min": 3.0e-3},
                             "fsq_component_sum_tail_projection": {
@@ -87,6 +90,9 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["dt_eff_min"] == pytest.approx(0.01)
     assert rows[1]["time_step_last"] == pytest.approx(0.019)
     assert rows[1]["freeb_full_update_count"] == pytest.approx(997.0)
+    assert rows[1]["anderson_pressure_enabled"] is True
+    assert rows[1]["anderson_pressure_applied_count"] == pytest.approx(12.0)
+    assert rows[1]["anderson_pressure_last_theta"] == pytest.approx(0.25)
     assert rows[1]["bad_jacobian_count"] == pytest.approx(1.0)
     assert rows[1]["bnormal_rms_last"] == pytest.approx(4.0e-3)
     assert rows[1]["bnormal_rms_min"] == pytest.approx(3.0e-3)

@@ -30,6 +30,7 @@ def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tail
             "ivac": 3,
             "ivacskip": 0,
             "nvacskip": 2,
+            "anderson_pressure_enabled": True,
             "last_nestor_diagnostics": {
                 "bnormal_rms": 4.0e-4,
                 "bsqvac_rms": 1.5e-2,
@@ -40,6 +41,9 @@ def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tail
         "freeb_full_update_history": np.array([1, 0, 1]),
         "freeb_nestor_reused_history": np.array([0, 1, 0]),
         "freeb_nestor_bnormal_rms_history": np.array([1.0e-3, 7.0e-4, 4.0e-4]),
+        "freeb_anderson_pressure_applied_history": np.array([0, 0, 1]),
+        "freeb_anderson_pressure_theta_history": np.array([np.nan, np.nan, 0.4]),
+        "freeb_anderson_pressure_residual_norm_history": np.array([1.0, 0.8, 0.6]),
         "include_edge_history": np.array([0, 1, 1]),
         "bad_jacobian_history": np.array([0, 0, 0]),
         "time_step_history": np.array([0.05, 0.05, 0.04]),
@@ -61,6 +65,9 @@ def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tail
     assert payload["solver_mode"] == "parity"
     assert payload["use_scan"] is True
     assert payload["free_boundary_active"] is True
+    assert payload["free_boundary_anderson_pressure_enabled"] is True
+    assert payload["free_boundary_anderson_pressure_last_applied"] == pytest.approx(1.0)
+    assert payload["free_boundary_anderson_pressure_last_theta"] == pytest.approx(0.4)
     assert payload["final_fsq_component_sum"] == pytest.approx(3.3e-5)
     assert payload["history"]["fsq_component_sum_tail"] == pytest.approx([0.0033, 0.00033, 3.3e-5])
     assert payload["history"]["fsq_component_sum_stats"]["min"] == pytest.approx(3.3e-5)
@@ -69,6 +76,8 @@ def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tail
         "estimated_additional_iterations_to_target"
     ]["1e-12"] == 8
     assert payload["history"]["freeb_full_update_stats"]["sum"] == pytest.approx(2.0)
+    assert payload["history"]["freeb_anderson_pressure_applied_stats"]["sum"] == pytest.approx(1.0)
+    assert payload["history"]["freeb_anderson_pressure_theta_tail"][-1] == pytest.approx(0.4)
     assert payload["history"]["bad_jacobian_stats"]["nonzero_count"] == 0
     assert payload["history"]["time_step_stats"]["last"] == pytest.approx(0.04)
     assert payload["history"]["update_rms_stats"]["max"] == pytest.approx(1.0e-2)

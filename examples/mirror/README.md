@@ -247,6 +247,10 @@ conservative host-forward path; chunk size ``0`` uses the cached full-geometry
 JIT direct-coil sampler and is the intended mode for direct-provider GPU
 comparisons. Backend-comparison profiles that still need a generated mgrid keep
 the mgrid write chunked even when the direct sampler uses chunk size ``0``.
+To test the opt-in VMEC++-style Anderson(1) vacuum-pressure mixer for a
+direct-coil run, add ``--freeb-anderson-pressure`` to the same profile command
+and compare the final component residuals, tail projection, and
+``free_boundary_anderson_pressure_last_theta`` against the non-mixed run.
 
 The best completed VMEC2000 reference so far uses ``MPOL=6, NTOR=23,
 NZETA=64`` with the spline square-axis projection. A staged
@@ -269,6 +273,9 @@ The summary table reports both ``final_total`` and ``final_max_component``.
 Use ``final_max_component <= requested_ftol`` / ``strict_components_met`` for
 the production convergence gate; ``final_total`` is useful for trend
 comparison but is not sufficient for a per-component ``FTOL=1e-12`` claim.
+For Anderson A/B runs, the same table includes
+``anderson_pressure_enabled``, ``anderson_pressure_applied_count``, and
+``anderson_pressure_last_theta``.
 
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
 free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct

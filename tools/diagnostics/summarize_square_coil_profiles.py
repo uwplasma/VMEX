@@ -166,6 +166,13 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                 "dt_eff_min": _stat(backend, "dt_eff_stats", "min"),
                 "time_step_last": _stat(backend, "time_step_stats", "last"),
                 "freeb_full_update_count": _stat(backend, "freeb_full_update_stats", "sum"),
+                "anderson_pressure_enabled": backend.get("free_boundary_anderson_pressure_enabled"),
+                "anderson_pressure_applied_count": _stat(
+                    backend, "freeb_anderson_pressure_applied_stats", "sum"
+                ),
+                "anderson_pressure_last_theta": _finite_float(
+                    backend.get("free_boundary_anderson_pressure_last_theta")
+                ),
                 "bad_jacobian_count": _stat(backend, "bad_jacobian_stats", "sum"),
                 "bnormal_rms_last": _stat(backend, "freeb_nestor_bnormal_rms_stats", "last"),
                 "bnormal_rms_min": _stat(backend, "freeb_nestor_bnormal_rms_stats", "min"),
@@ -234,6 +241,9 @@ def main(argv: list[str] | None = None) -> int:
         "dt_eff_min",
         "time_step_last",
         "freeb_full_update_count",
+        "anderson_pressure_enabled",
+        "anderson_pressure_applied_count",
+        "anderson_pressure_last_theta",
         "bad_jacobian_count",
         "bnormal_rms_last",
         "bnormal_rms_min",

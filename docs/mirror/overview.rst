@@ -155,6 +155,11 @@ Current solver status:
   fixed-iteration trajectories.  They also record target and fitted side/corner
   orientation spans, covariance anisotropy ranges, and valid-axis fractions so
   low-mode boundary fits can be audited before interpreting residual trends.
+  The direct free-boundary profile path also has an opt-in
+  ``VMEC_JAX_FREEB_ANDERSON_PRESSURE=1`` / ``--freeb-anderson-pressure``
+  vacuum-pressure mixer for testing VMEC++-style Anderson(1) acceleration
+  against the stored non-mixed and VMEC2000 references; it is diagnostic until
+  it proves the strict component gate.
   ``--resolution-preset target`` writes the current target
   ladder, ``ns = 7,9,15`` and ``mpol:ntor = 5:20,6:24``.  Office GPU runs of
   that ladder first reached total-``fsq`` convergence at ``ftol=1e-8`` for all

@@ -120,6 +120,11 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Return the lowest fresh free-boundary residual state if max_iter is exhausted.",
     )
+    p.add_argument(
+        "--freeb-anderson-pressure",
+        action="store_true",
+        help="Enable opt-in Anderson(1) mixing for free-boundary vacuum pressure in vmec_jax backends.",
+    )
     return p
 
 
@@ -396,6 +401,18 @@ def _jax_history_payload(run: Any, diag: dict[str, Any], *, length: int = 12) ->
             diag.get("freeb_nestor_bsqvac_rms_history"), length=length
         ),
         "freeb_nestor_bsqvac_rms_stats": _history_stats(diag.get("freeb_nestor_bsqvac_rms_history")),
+        "freeb_anderson_pressure_applied_tail": _history_tail(
+            diag.get("freeb_anderson_pressure_applied_history"), length=length, dtype=int
+        ),
+        "freeb_anderson_pressure_applied_stats": _history_stats(
+            diag.get("freeb_anderson_pressure_applied_history"), dtype=int
+        ),
+        "freeb_anderson_pressure_theta_tail": _history_tail(
+            diag.get("freeb_anderson_pressure_theta_history"), length=length
+        ),
+        "freeb_anderson_pressure_residual_norm_tail": _history_tail(
+            diag.get("freeb_anderson_pressure_residual_norm_history"), length=length
+        ),
         "include_edge_tail": _history_tail(diag.get("include_edge_history"), length=length, dtype=int),
         "include_edge_stats": _history_stats(diag.get("include_edge_history"), dtype=int),
         "bcovar_update_tail": _history_tail(diag.get("bcovar_update_history"), length=length, dtype=int),
@@ -439,7 +456,11 @@ def _final_residuals(run: Any) -> dict[str, Any]:
     fsql = diag.get("final_fsql")
     values = [v for v in (fsqr, fsqz, fsql) if v is not None and np.isfinite(float(v))]
     freeb = diag.get("free_boundary", {}) if isinstance(diag.get("free_boundary", {}), dict) else {}
-    nestor = freeb.get("last_nestor_diagnostics", {}) if isinstance(freeb.get("last_nestor_diagnostics", {}), dict) else {}
+    nestor = (
+        freeb.get("last_nestor_diagnostics", {})
+        if isinstance(freeb.get("last_nestor_diagnostics", {}), dict)
+        else {}
+    )
     model = str(freeb.get("nestor_model", "none"))
     out = {
         "n_iter": None if run.result is None else int(getattr(run.result, "n_iter", -1)),
@@ -479,6 +500,13 @@ def _final_residuals(run: Any) -> dict[str, Any]:
         "free_boundary_bnormal_rms": nestor.get("bnormal_rms"),
         "free_boundary_bsqvac_rms": nestor.get("bsqvac_rms"),
         "free_boundary_couple_edge": freeb.get("couple_edge"),
+        "free_boundary_anderson_pressure_enabled": freeb.get("anderson_pressure_enabled"),
+        "free_boundary_anderson_pressure_last_applied": _last_finite(
+            diag.get("freeb_anderson_pressure_applied_history")
+        ),
+        "free_boundary_anderson_pressure_last_theta": _last_finite(
+            diag.get("freeb_anderson_pressure_theta_history")
+        ),
         "free_boundary_activate_fsq": freeb.get("activate_fsq"),
         "free_boundary_last_ivac": freeb.get("ivac"),
         "free_boundary_last_ivacskip": freeb.get("ivacskip"),
@@ -519,6 +547,7 @@ def _run_jax_backend(
     direct_params: Any | None,
     solver_mode: str | None,
     return_best_scored_state: bool,
+    freeb_anderson_pressure: bool = False,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {}
     if direct_params is not None:
@@ -528,7 +557,10 @@ def _run_jax_backend(
         }
     t0 = time.perf_counter()
     previous_return_best = os.environ.get("VMEC_JAX_RETURN_BEST_SCORED_STATE")
+    previous_anderson = os.environ.get("VMEC_JAX_FREEB_ANDERSON_PRESSURE")
     os.environ["VMEC_JAX_RETURN_BEST_SCORED_STATE"] = "1" if bool(return_best_scored_state) else "0"
+    if bool(freeb_anderson_pressure):
+        os.environ["VMEC_JAX_FREEB_ANDERSON_PRESSURE"] = "1"
     try:
         run = run_free_boundary(
             input_path,
@@ -548,6 +580,11 @@ def _run_jax_backend(
             os.environ.pop("VMEC_JAX_RETURN_BEST_SCORED_STATE", None)
         else:
             os.environ["VMEC_JAX_RETURN_BEST_SCORED_STATE"] = previous_return_best
+        if bool(freeb_anderson_pressure):
+            if previous_anderson is None:
+                os.environ.pop("VMEC_JAX_FREEB_ANDERSON_PRESSURE", None)
+            else:
+                os.environ["VMEC_JAX_FREEB_ANDERSON_PRESSURE"] = previous_anderson
     wall_s = time.perf_counter() - t0
     write_wout_from_fixed_boundary_run(wout_path, run, include_fsq=True)
     return {
@@ -910,6 +947,7 @@ def main(argv: list[str] | None = None) -> int:
             "ftol": float(ftol_array[-1]),
             "solver_mode": None if solver_mode is None else str(solver_mode),
             "return_best_scored_state": bool(args.return_best_scored_state),
+            "freeb_anderson_pressure": bool(args.freeb_anderson_pressure),
             "phiedge": float(config.phiedge),
             "delt": float(args.delt),
             "activate_fsq": float(args.activate_fsq),
@@ -955,6 +993,7 @@ def main(argv: list[str] | None = None) -> int:
             direct_params=coils.params,
             solver_mode=solver_mode,
             return_best_scored_state=bool(args.return_best_scored_state),
+            freeb_anderson_pressure=bool(args.freeb_anderson_pressure),
         )
     if not args.skip_mgrid:
         _log_step("running vmec_jax generated-mgrid backend")
@@ -965,6 +1004,7 @@ def main(argv: list[str] | None = None) -> int:
             direct_params=None,
             solver_mode=solver_mode,
             return_best_scored_state=bool(args.return_best_scored_state),
+            freeb_anderson_pressure=bool(args.freeb_anderson_pressure),
         )
     if bool(args.run_vmec2000):
         exe = args.vmec2000_exec or find_vmec2000_exec()

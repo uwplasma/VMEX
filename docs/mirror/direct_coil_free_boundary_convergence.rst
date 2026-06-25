@@ -258,6 +258,17 @@ These are solver-control and numerical-kernel changes, not geometry changes;
 they should be tested against the existing VMEC2000 generated-mgrid reports
 before being trusted for direct-coil production claims.
 
+The Anderson(1) pressure lane is now implemented as an opt-in diagnostic path
+for ``vmec_jax``. Set ``VMEC_JAX_FREEB_ANDERSON_PRESSURE=1`` or pass
+``--freeb-anderson-pressure`` to
+``tools/diagnostics/profile_square_coil_free_boundary.py``. The mixer operates
+only on full NESTOR updates, stores the mixed ``bsqvac`` back into the NESTOR
+runtime so ``ivacskip`` reuse sees the same pressure, and records
+``freeb_anderson_pressure_*`` histories plus the last applied theta in the
+profile JSON. This is not enabled by default and is not yet promotion evidence;
+it is the next controlled A/B profile against the already stored VMEC2000 and
+non-Anderson direct-coil rows.
+
 DESC separates the postsolve finite-beta boundary condition from the VMEC-style
 iterative solve. Its finite-beta ``BoundaryError`` objective uses the virtual
 casing principle to compute the plasma contribution to the exterior magnetic
@@ -385,6 +396,12 @@ The remaining work is deliberately narrow:
    the run does not spend memory generating an unused mgrid. When a backend
    comparison still needs a generated mgrid, keep the mgrid write chunked even
    if the direct sampler is using the full-geometry JIT path.
+   For the first pressure-mixing A/B run, keep the same staged deck and add
+   ``--freeb-anderson-pressure`` only to the direct-coil backend run; compare
+   ``free_boundary_anderson_pressure_last_theta``,
+   ``freeb_anderson_pressure_applied_stats``, final component residuals, and
+   the tail projection against the non-Anderson profile before changing any
+   other solver knob.
 2. Re-run the square-coil beta ladder with per-beta checkpointing and the
    best-scored diagnostic fallback using the staged ``FTOL_ARRAY`` ending at
    ``1e-12``. Keep ``DELT=0.02``, ``NVACSKIP=1``,
