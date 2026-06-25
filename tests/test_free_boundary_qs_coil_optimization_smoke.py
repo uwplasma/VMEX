@@ -793,6 +793,12 @@ def test_same_branch_derivative_proposal_uses_gated_directional_report():
                 "directional_uses_fixed_coil_geometry": True,
                 "current_only_coil_geometry_source": "cached",
             },
+            "directional_jvp_cache_info": {
+                "enabled": True,
+                "hit": False,
+                "closure_bound": True,
+                "cache_key_static_digest": "abc123",
+            },
             "directional_jvp_signature": {
                 "available": True,
                 "fast_path": "current_only",
@@ -818,6 +824,17 @@ def test_same_branch_derivative_proposal_uses_gated_directional_report():
                     "exact_directional": -1.0,
                     "base_abs_delta": 0.0,
                 },
+            },
+        },
+        "branch_local_vector_current_jvp_cache_probe": {
+            "available": True,
+            "cache_hit": True,
+            "wall_s": 0.006,
+            "directional_jvp_cache_info": {
+                "enabled": True,
+                "hit": True,
+                "closure_bound": True,
+                "cache_key_static_digest": "abc123",
             },
         },
     }
@@ -860,6 +877,14 @@ def test_same_branch_derivative_proposal_uses_gated_directional_report():
     assert proposal["gate_evidence"]["current_only_coil_geometry_cache_available"] is True
     assert proposal["gate_evidence"]["current_only_coil_geometry_source"] == "cached"
     assert proposal["gate_evidence"]["directional_jvp_cache_candidate"] is True
+    assert proposal["gate_evidence"]["directional_jvp_cache_enabled"] is True
+    assert proposal["gate_evidence"]["directional_jvp_cache_hit"] is False
+    assert proposal["gate_evidence"]["directional_jvp_cache_closure_bound"] is True
+    assert proposal["gate_evidence"]["directional_jvp_cache_info"]["cache_key_static_digest"] == "abc123"
+    assert proposal["gate_evidence"]["current_jvp_cache_probe_available"] is True
+    assert proposal["gate_evidence"]["current_jvp_cache_probe_hit"] is True
+    assert proposal["gate_evidence"]["current_jvp_cache_probe_wall_s"] == pytest.approx(0.006)
+    assert proposal["gate_evidence"]["current_jvp_cache_probe_info"]["hit"] is True
     assert proposal["gate_evidence"]["directional_jvp_signature"]["fast_path"] == "current_only"
     assert proposal["gate_evidence"]["directional_jvp_signature"]["unroll_accepted_only_segments_below"] == 8
     assert proposal["gate_evidence"]["directional_jvp_signature"]["scalar_keys"] == [
@@ -2749,10 +2774,27 @@ def test_derivative_proposal_summary_marks_report_stale_when_trial_is_accepted(t
                             "directional_uses_fixed_coil_geometry": True,
                             "current_only_coil_geometry_source": "cached",
                         },
+                        "directional_jvp_cache_info": {
+                            "enabled": True,
+                            "hit": False,
+                            "closure_bound": True,
+                            "cache_key_static_digest": "accepted-summary",
+                        },
                         "max_base_abs_delta": 0.0,
                         "scalars": {
                             "qs_total": {"value": 0.25, "exact_directional": 1.0, "base_abs_delta": 0.0},
                             "aspect": {"value": 6.0, "exact_directional": 0.0, "base_abs_delta": 0.0},
+                        },
+                    },
+                    "branch_local_vector_current_jvp_cache_probe": {
+                        "available": True,
+                        "cache_hit": True,
+                        "wall_s": 0.004,
+                        "directional_jvp_cache_info": {
+                            "enabled": True,
+                            "hit": True,
+                            "closure_bound": True,
+                            "cache_key_static_digest": "accepted-summary",
                         },
                     },
                 }
@@ -2808,6 +2850,12 @@ def test_derivative_proposal_summary_marks_report_stale_when_trial_is_accepted(t
     assert gate_evidence["directional_uses_fixed_coil_geometry"] is True
     assert gate_evidence["current_only_coil_geometry_cache_available"] is True
     assert gate_evidence["current_only_coil_geometry_source"] == "cached"
+    assert gate_evidence["directional_jvp_cache_enabled"] is True
+    assert gate_evidence["directional_jvp_cache_hit"] is False
+    assert gate_evidence["directional_jvp_cache_closure_bound"] is True
+    assert gate_evidence["current_jvp_cache_probe_available"] is True
+    assert gate_evidence["current_jvp_cache_probe_hit"] is True
+    assert gate_evidence["current_jvp_cache_probe_wall_s"] == pytest.approx(0.004)
     assert gate_evidence["accepted_rejected_controller_slot_gate_requested"] is True
     assert gate_evidence["accepted_rejected_controller_slot_gate_passed"] is True
     assert gate_evidence["fixed_rejected_controller_slots"] == 1
