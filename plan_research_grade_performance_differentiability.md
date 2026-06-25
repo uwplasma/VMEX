@@ -6440,3 +6440,75 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 99.1%.
 - Docs/release hygiene: 100%.
 - Overall: 99.5%.
+
+### 2026-06-25: Package VMEC2000 time-control runtime seam
+
+Steps taken:
+
+- Added ``Vmec2000TimeControlCallbacks``,
+  ``Vmec2000TimeControlRuntimeResult``, and
+  ``run_vmec2000_time_control_runtime`` to
+  ``solvers/fixed_boundary/residual/host_diagnostics.py``.
+- Moved the VMEC2000 time-control sampling, controller-sample payload, and
+  restart-branch payload/application callbacks out of
+  ``solve_fixed_boundary_residual_iter`` while keeping the caller-owned timing
+  closure and loop ``continue`` behavior explicit.
+- Preserved the existing guard around VMEC2000 time control so non-VMEC2000 and
+  skip-time-control paths do not accidentally overwrite ``fsq``/``fsq0``.
+- Added focused tests for the disabled path, non-restart sample path, and
+  restart branch path.
+
+Results obtained:
+
+- ``python -m ruff check
+  vmec_jax/solvers/fixed_boundary/residual/host_diagnostics.py
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py
+  tests/test_solve_residual_iter_setup_helpers.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_solve_residual_iter_setup_helpers.py -q`` passed with
+  ``23 passed``.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_solve_axis_helpers_more_coverage.py tests/test_residual_ptau.py
+  tests/test_residual_iteration_preconditioner.py
+  tests/test_solve_residual_iter_setup_helpers.py
+  tests/test_solve_residual_iter_update_helpers.py
+  tests/test_solve_additional_helpers.py tests/test_driver_api.py
+  tests/test_free_boundary_wp0.py`` passed with ``280 passed, 2 skipped``.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_free_boundary_vacuum_adjoint.py
+  tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -q``
+  passed.
+- ``git diff --check`` and ``repo_size_audit.py`` passed; tracked size is
+  ``28.39 MiB`` with no tracked file above ``2 MiB``.
+- ``source_health.py`` reports the residual module at ``2911`` lines and
+  ``solve_fixed_boundary_residual_iter`` at ``2519`` lines.  The prior tranche
+  reported ``2917`` and ``2526``, so this extraction removed another
+  controller branch from the main residual loop and kept shrinking the largest
+  fixed-boundary seam.
+
+Best next steps:
+
+1. Extract the pre-restart trigger/free-boundary retry branch next; it is the
+   remaining large controller branch before the loop body can be split into
+   smaller phase runners.
+2. Re-run the current/main benchmark and WOUT parity matrix only after the next
+   math-path or performance-path tranche; this change is controller packaging
+   and is covered by smoke, x64 derivative, and CI gates.
+3. Keep the README/docs figure refresh reserved for the final PR-readiness
+   pass after the residual-loop refactor stabilizes.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 96.9%.
+- Free-boundary production differentiability: 97.2%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 72.8%.
+- VMEC2000/VMEC++ parity and physics gates: 99.1%.
+- Docs/release hygiene: 100%.
+- Overall: 99.5%.
