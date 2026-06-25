@@ -6249,3 +6249,68 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 99.1%.
 - Docs/release hygiene: 100%.
 - Overall: 99.5%.
+
+### 2026-06-25: Package preconditioned residual scalar-channel seam
+
+Steps taken:
+
+- Added ``PreconditionedResidualScalarResult`` and
+  ``resolve_preconditioned_residual_scalars`` in
+  ``residual/iteration_preconditioner.py``.
+- Moved the host/device preconditioned ``fsq1`` scalar path, safe scalar
+  materialization, accepted-control payload materialization, lambda residual
+  dump callback, and timing buckets out of the central
+  ``solve_fixed_boundary_residual_iter`` loop.
+- Preserved the local names consumed by convergence history, convergence
+  printing, bad-Jacobian checks, fallback logic, and branch-local accepted
+  replay.
+- Added direct unit coverage for the host scalar-norm path and the device path
+  that materializes accepted-control payloads.
+
+Results obtained:
+
+- ``python -m ruff check
+  vmec_jax/solvers/fixed_boundary/residual/iteration_preconditioner.py
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py
+  tests/test_residual_iteration_preconditioner.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_residual_iteration_preconditioner.py`` passed with ``4 passed``.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_residual_iteration_preconditioner.py
+  tests/test_solve_residual_iter_update_helpers.py
+  tests/test_solve_additional_helpers.py tests/test_driver_api.py
+  tests/test_free_boundary_wp0.py`` passed with ``232 passed, 2 skipped``.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_free_boundary_vacuum_adjoint.py
+  tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py``
+  passed with ``97 passed, 1 skipped`` in ``410.90 s``.
+- ``git diff --check`` and ``repo_size_audit.py`` passed; tracked size stayed
+  at ``28.36 MiB`` with no tracked file above ``2 MiB``.
+- Source-health reports the residual loop at ``2955`` lines and
+  ``solve_fixed_boundary_residual_iter`` at ``2563`` lines after this tranche.
+
+Best next steps:
+
+1. Extract the bad-Jacobian tau decision/state-probe branch or the next
+   preconditioned diagnostics/printing seam from the residual loop.
+2. Factor the largest free-boundary validation tests into shared assertion
+   helpers after one more production-loop extraction, preserving the current
+   physics and derivative gates.
+3. Keep adaptive full-loop differentiation claims conservative until a true
+   fingerprint-gated full adaptive AD-vs-FD gate exists.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 96.5%.
+- Free-boundary production differentiability: 96.9%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 71.2%.
+- VMEC2000/VMEC++ parity and physics gates: 99.1%.
+- Docs/release hygiene: 100%.
+- Overall: 99.5%.
