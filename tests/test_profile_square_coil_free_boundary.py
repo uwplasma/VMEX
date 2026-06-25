@@ -41,6 +41,9 @@ def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tail
         "freeb_nestor_bnormal_rms_history": np.array([1.0e-3, 7.0e-4, 4.0e-4]),
         "include_edge_history": np.array([0, 1, 1]),
         "bad_jacobian_history": np.array([0, 0, 0]),
+        "time_step_history": np.array([0.05, 0.05, 0.04]),
+        "dt_eff_history": np.array([0.05, 0.05, 0.04]),
+        "update_rms_history": np.array([1.0e-2, 4.0e-3, 2.0e-3]),
     }
     result = SimpleNamespace(
         n_iter=3,
@@ -59,6 +62,11 @@ def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tail
     assert payload["free_boundary_active"] is True
     assert payload["final_fsq_component_sum"] == pytest.approx(3.3e-5)
     assert payload["history"]["fsq_component_sum_tail"] == pytest.approx([0.0033, 0.00033, 3.3e-5])
+    assert payload["history"]["fsq_component_sum_stats"]["min"] == pytest.approx(3.3e-5)
+    assert payload["history"]["freeb_full_update_stats"]["sum"] == pytest.approx(2.0)
+    assert payload["history"]["bad_jacobian_stats"]["nonzero_count"] == 0
+    assert payload["history"]["time_step_stats"]["last"] == pytest.approx(0.04)
+    assert payload["history"]["update_rms_stats"]["max"] == pytest.approx(1.0e-2)
     assert payload["history"]["freeb_ivac_tail"] == [1, 2, 3]
     assert payload["history"]["include_edge_tail"] == [0, 1, 1]
 

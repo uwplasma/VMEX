@@ -181,16 +181,19 @@ convergence-diagnostic path until fresh final force residuals meet the requested
 ``FTOL``. The current target is ``FTOL=1e-12`` with explicit staged
 ``NS_ARRAY``/``NITER_ARRAY``/``FTOL_ARRAY`` controls and VMEC-compatible
 negative ``PHIEDGE`` for the default positive-current square-coil orientation.
-Sign-corrected generated-``mgrid`` profiling shows VMEC2000 is currently the
-more robust backend, but the present square-coil setup still remains well above
-``1e-12`` after 1000-10000 iterations. Initial-boundary provider parity is good
+Sign-corrected generated-``mgrid`` profiling now shows ``vmec_jax`` and VMEC2000
+agree on the widened ``DELT=0.02`` deck through 10000 iterations: ``vmec_jax``
+reaches about ``1.30e-7`` total residual and VMEC2000 reaches about ``1.11e-7``.
+Both remain well above ``1e-12`` on the present square-coil setup.
+Initial-boundary provider parity is good
 on the widened deck: generated mgrid and exact direct Biot-Savart sampling
 agree to about ``3.2e-4`` RMS relative field-vector error and ``1.5e-3`` RMS
 relative coil-only ``B.n`` error, so the direct-coil blocker is nonlinear solve
 closure rather than a simple field-convention mismatch. A matching direct-coil
 run improves from about ``4.1e-4`` residual at 1000 iterations to ``4.7e-6`` at
 3000 iterations and ``1.35e-6`` at 5000 iterations, essentially matching the
-generated-mgrid JAX floor at the same budget. The same profiling shows that
+generated-mgrid JAX floor at the same budget. The direct-coil path still needs
+its own 10000-iteration parity row. The same profiling shows that
 underresolved ``NZETA`` can fail before useful force iterations; the
 square-coil path now records ``recommended_nzeta`` and guards production-style
 example runs against known-underresolved toroidal grids. Finite-beta promotion

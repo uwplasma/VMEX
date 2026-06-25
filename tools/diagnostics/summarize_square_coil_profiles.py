@@ -78,6 +78,16 @@ def _jax_total(backend: dict[str, Any]) -> tuple[float | None, float | None, int
     return last_total, best_total, last_iter
 
 
+def _stat(backend: dict[str, Any], history_key: str, stat_key: str) -> float | None:
+    history = backend.get("history")
+    if not isinstance(history, dict):
+        return None
+    stats = history.get(history_key)
+    if not isinstance(stats, dict):
+        return None
+    return _finite_float(stats.get(stat_key))
+
+
 def rows_from_profile(path: Path) -> list[dict[str, Any]]:
     data = json.loads(path.read_text())
     cfg = data.get("configuration", {})
@@ -104,6 +114,13 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                 "final_iter": final_iter,
                 "final_total": final_total,
                 "best_total": best_total,
+                "dt_eff_last": _stat(backend, "dt_eff_stats", "last"),
+                "dt_eff_min": _stat(backend, "dt_eff_stats", "min"),
+                "time_step_last": _stat(backend, "time_step_stats", "last"),
+                "freeb_full_update_count": _stat(backend, "freeb_full_update_stats", "sum"),
+                "bad_jacobian_count": _stat(backend, "bad_jacobian_stats", "sum"),
+                "bnormal_rms_last": _stat(backend, "freeb_nestor_bnormal_rms_stats", "last"),
+                "bnormal_rms_min": _stat(backend, "freeb_nestor_bnormal_rms_stats", "min"),
                 "wall_s": _finite_float(backend.get("wall_s")),
                 "vacuum_grid_exceeded_count": backend.get("vacuum_grid_exceeded_count"),
             }
@@ -158,6 +175,13 @@ def main(argv: list[str] | None = None) -> int:
         "final_iter",
         "final_total",
         "best_total",
+        "dt_eff_last",
+        "dt_eff_min",
+        "time_step_last",
+        "freeb_full_update_count",
+        "bad_jacobian_count",
+        "bnormal_rms_last",
+        "bnormal_rms_min",
         "wall_s",
         "vacuum_grid_exceeded_count",
     ]

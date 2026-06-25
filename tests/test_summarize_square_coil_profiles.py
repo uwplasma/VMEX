@@ -30,6 +30,13 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                         "n_iter": 999,
                         "final_fsq_component_sum": 1.2e-5,
                         "best_scored_fsq": 1.0e-5,
+                        "history": {
+                            "dt_eff_stats": {"last": 0.02, "min": 0.01},
+                            "time_step_stats": {"last": 0.019},
+                            "freeb_full_update_stats": {"sum": 997.0},
+                            "bad_jacobian_stats": {"sum": 1.0},
+                            "freeb_nestor_bnormal_rms_stats": {"last": 4.0e-3, "min": 3.0e-3},
+                        },
                         "wall_s": 3.5,
                     },
                     "vmec2000_mgrid": {
@@ -57,4 +64,11 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["final_total"] == pytest.approx(1.2e-5)
     assert rows[1]["best_total"] == pytest.approx(1.0e-5)
     assert rows[1]["solver_mode"] == "parity"
+    assert rows[1]["dt_eff_last"] == pytest.approx(0.02)
+    assert rows[1]["dt_eff_min"] == pytest.approx(0.01)
+    assert rows[1]["time_step_last"] == pytest.approx(0.019)
+    assert rows[1]["freeb_full_update_count"] == pytest.approx(997.0)
+    assert rows[1]["bad_jacobian_count"] == pytest.approx(1.0)
+    assert rows[1]["bnormal_rms_last"] == pytest.approx(4.0e-3)
+    assert rows[1]["bnormal_rms_min"] == pytest.approx(3.0e-3)
     assert rows[0]["vacuum_grid_exceeded_count"] == 2

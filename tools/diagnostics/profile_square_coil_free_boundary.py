@@ -205,56 +205,104 @@ def _history_tail(values: Any, *, length: int = 12, dtype: type = float) -> list
     return out
 
 
-def _component_sum_tail(run: Any, *, length: int = 12) -> list[float | None]:
+def _history_stats(values: Any, *, dtype: type = float) -> dict[str, Any]:
+    """Compact numeric summary for long solver histories."""
+
+    try:
+        arr = np.asarray(values, dtype=dtype).reshape(-1)
+    except Exception:
+        return {"count": 0, "finite_count": 0}
+    if arr.size == 0:
+        return {"count": 0, "finite_count": 0}
+    arr_f = np.asarray(arr, dtype=float)
+    finite = arr_f[np.isfinite(arr_f)]
+    out: dict[str, Any] = {
+        "count": int(arr_f.size),
+        "finite_count": int(finite.size),
+        "nonzero_count": int(np.count_nonzero(arr_f[np.isfinite(arr_f)])),
+    }
+    if finite.size == 0:
+        return out
+    first = arr_f[0]
+    last = arr_f[-1]
+    out.update(
+        {
+            "first": float(first) if np.isfinite(first) else None,
+            "last": float(last) if np.isfinite(last) else None,
+            "min": float(np.nanmin(finite)),
+            "max": float(np.nanmax(finite)),
+            "mean": float(np.nanmean(finite)),
+            "sum": float(np.nansum(finite)),
+        }
+    )
+    return out
+
+
+def _component_sum_history(run: Any) -> np.ndarray:
     result = None if run is None else getattr(run, "result", None)
     if result is None:
-        return []
+        return np.asarray([], dtype=float)
     histories = []
     for attr in ("fsqr2_history", "fsqz2_history", "fsql2_history"):
         try:
             arr = np.asarray(getattr(result, attr), dtype=float).reshape(-1)
         except Exception:
-            return []
+            return np.asarray([], dtype=float)
         if arr.size == 0:
-            return []
+            return np.asarray([], dtype=float)
         histories.append(arr)
     n = min(arr.size for arr in histories)
     if n == 0:
-        return []
-    total = histories[0][-n:] + histories[1][-n:] + histories[2][-n:]
-    return [float(value) if np.isfinite(float(value)) else None for value in total[-int(length) :]]
+        return np.asarray([], dtype=float)
+    return histories[0][-n:] + histories[1][-n:] + histories[2][-n:]
 
 
 def _jax_history_payload(run: Any, diag: dict[str, Any], *, length: int = 12) -> dict[str, Any]:
     result = None if run is None else getattr(run, "result", None)
+    component_sum = _component_sum_history(run)
     return {
         "length": None if result is None else int(getattr(result, "n_iter", -1)),
         "w_tail": _history_tail([] if result is None else getattr(result, "w_history", []), length=length),
         "fsqr_tail": _history_tail([] if result is None else getattr(result, "fsqr2_history", []), length=length),
         "fsqz_tail": _history_tail([] if result is None else getattr(result, "fsqz2_history", []), length=length),
         "fsql_tail": _history_tail([] if result is None else getattr(result, "fsql2_history", []), length=length),
-        "fsq_component_sum_tail": _component_sum_tail(run, length=length),
+        "fsq_component_sum_tail": _history_tail(component_sum, length=length),
+        "fsq_component_sum_stats": _history_stats(component_sum),
         "freeb_ivac_tail": _history_tail(diag.get("freeb_ivac_history"), length=length, dtype=int),
         "freeb_ivacskip_tail": _history_tail(diag.get("freeb_ivacskip_history"), length=length, dtype=int),
         "freeb_full_update_tail": _history_tail(diag.get("freeb_full_update_history"), length=length, dtype=int),
+        "freeb_full_update_stats": _history_stats(diag.get("freeb_full_update_history"), dtype=int),
         "freeb_nestor_reused_tail": _history_tail(diag.get("freeb_nestor_reused_history"), length=length, dtype=int),
+        "freeb_nestor_reused_stats": _history_stats(diag.get("freeb_nestor_reused_history"), dtype=int),
         "freeb_nestor_source_reused_tail": _history_tail(
             diag.get("freeb_nestor_source_reused_history"), length=length, dtype=int
         ),
         "freeb_nestor_trial_failed_tail": _history_tail(
             diag.get("freeb_nestor_trial_failed_history"), length=length, dtype=int
         ),
+        "freeb_nestor_trial_failed_stats": _history_stats(
+            diag.get("freeb_nestor_trial_failed_history"), dtype=int
+        ),
         "freeb_nestor_bnormal_rms_tail": _history_tail(
             diag.get("freeb_nestor_bnormal_rms_history"), length=length
         ),
+        "freeb_nestor_bnormal_rms_stats": _history_stats(diag.get("freeb_nestor_bnormal_rms_history")),
         "freeb_nestor_bsqvac_rms_tail": _history_tail(
             diag.get("freeb_nestor_bsqvac_rms_history"), length=length
         ),
+        "freeb_nestor_bsqvac_rms_stats": _history_stats(diag.get("freeb_nestor_bsqvac_rms_history")),
         "include_edge_tail": _history_tail(diag.get("include_edge_history"), length=length, dtype=int),
+        "include_edge_stats": _history_stats(diag.get("include_edge_history"), dtype=int),
         "bcovar_update_tail": _history_tail(diag.get("bcovar_update_history"), length=length, dtype=int),
+        "bcovar_update_stats": _history_stats(diag.get("bcovar_update_history"), dtype=int),
         "bad_jacobian_tail": _history_tail(diag.get("bad_jacobian_history"), length=length, dtype=int),
+        "bad_jacobian_stats": _history_stats(diag.get("bad_jacobian_history"), dtype=int),
+        "time_step_tail": _history_tail(diag.get("time_step_history"), length=length),
+        "time_step_stats": _history_stats(diag.get("time_step_history")),
         "dt_eff_tail": _history_tail(diag.get("dt_eff_history"), length=length),
+        "dt_eff_stats": _history_stats(diag.get("dt_eff_history")),
         "update_rms_tail": _history_tail(diag.get("update_rms_history"), length=length),
+        "update_rms_stats": _history_stats(diag.get("update_rms_history")),
     }
 
 

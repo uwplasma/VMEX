@@ -92,9 +92,13 @@ The exact widened-mgrid, ``DELT=0.02``, ``NS=9`` comparison shows that
 ``vmec_jax`` and VMEC2000 now agree on the robust mgrid deck: after 5000
 iterations, ``vmec_jax`` generated-mgrid recomputes to total residual about
 ``1.40e-6`` and VMEC2000 reaches about ``1.50e-6`` on the same mgrid. Extending
-the same VMEC2000 run to 10000 iterations continues improving to about
-``1.11e-7`` with no vacuum-grid warnings, but still misses the requested
-``FTOL=1e-12`` by several orders of magnitude. The older ``~7e-8`` VMEC2000
+the same deck to 10000 iterations keeps that agreement: ``vmec_jax`` reaches
+about ``1.30e-7`` and VMEC2000 reaches about ``1.11e-7`` with no vacuum-grid
+warnings. Both still miss the requested ``FTOL=1e-12`` by several orders of
+magnitude. The 10000-iteration ``vmec_jax`` run used fresh free-boundary updates
+on every tail iteration, ended with the same effective step size as the VMEC2000
+row (about ``0.0194``), and had only one restart over the run. The older
+``~7e-8`` VMEC2000
 result used the narrower ``DELT=0.05`` mgrid deck; it is useful as an
 optimistic low-resolution reference, but it is not the right target for
 radial-resolution studies because the corresponding ``NS=17`` run can move
@@ -112,10 +116,13 @@ reaches total residual about ``4.1e-4`` and boundary ``B.n`` RMS about
 residual to about ``4.7e-6`` and boundary ``B.n`` RMS to about ``4.4e-3`` with
 fresh full updates every iteration. At 5000 iterations, direct-coil
 ``vmec_jax`` reaches about ``1.35e-6``, essentially the same floor as
-generated-mgrid ``vmec_jax`` at the same iteration budget. The direct path is
-therefore slower than VMEC2000 on this deck but no longer looks like a separate
-provider-convention blocker; the strict residual gap is now a shared VMEC/JAX
-solve-control problem.
+generated-mgrid ``vmec_jax`` at the same iteration budget. The generated-mgrid
+``vmec_jax`` path then tracks VMEC2000 through 10000 iterations, so the strict
+residual gap is no longer evidence for a JAX-specific solve-control mismatch at
+this resolution. The direct path still needs its own 10000-iteration parity row,
+but the current evidence points to the square-coil Fourier representation,
+resolution closure, and long-budget free-boundary nonlinear convergence rather
+than a simple direct-provider convention error.
 
 The same profiling identified an ``NZETA`` robustness rule. ``MPOL=5,
 NTOR=12, NZETA=16`` fails in VMEC2000 after the initial Jacobian changes sign,
@@ -175,7 +182,11 @@ or the VMEC-style nonlinear solve itself.
 Profile reports can be compared with
 ``tools/diagnostics/summarize_square_coil_profiles.py``; the summarizer reads
 ignored JSON artifacts and prints the final and best-scored residual totals
-without adding result files to the repository.
+without adding result files to the repository. New profiler rows also include
+compact convergence-control statistics for long histories, including time-step
+extrema, full-vacuum-update counts, bad-Jacobian counts, and tail boundary
+``B.n`` diagnostics, so future long runs can be audited without storing bulky
+full history arrays in the repository.
 
 The square-axis stellarator-mirror hybrid geometry now has a lower-bandwidth
 ``axis_kind="spline"`` option. It is still projected into VMEC Fourier boundary
@@ -233,9 +244,9 @@ The remaining work is deliberately narrow:
    LCFS shape, near-axis field, mirror ratio, mean iota, and residual histories.
    The next numerical knob is not a smaller global step size; ``DELT=0.01`` is
    too slow for the current schedule. Since the JAX mgrid path reproduces the
-   VMEC2000 widened-mgrid ``DELT=0.02`` floor, the next solve-side work is
-   JAX/VMEC2000 solve-control parity beyond 5000 iterations, followed by
-   mode/mgrid refinement or a staged step-size schedule. A larger ``NS`` ladder
+   VMEC2000 widened-mgrid ``DELT=0.02`` floor through 10000 iterations, the next
+   solve-side work is a direct-coil 10000-iteration parity row, a staged
+   iteration/runtime schedule, and mode/mgrid refinement. A larger ``NS`` ladder
    should not be interpreted unless ``vacuum_grid_exceeded_count`` remains zero.
 4. Keep the optional virtual-casing postsolve diagnostic
    ``vmec_jax.free_boundary_validation.virtual_casing_finite_beta_boundary_diagnostics``
