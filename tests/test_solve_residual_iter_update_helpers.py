@@ -16,6 +16,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     controller_state_from_resume_state,
     controller_state_from_runtime_scalars,
     controller_state_legacy_payload,
+    direct_force_fallback_acceptance_decision,
     direct_force_fallback_trial,
     force_update_rms,
     host_catastrophic_restart_update,
@@ -360,6 +361,20 @@ def test_strict_step_branch_result_packages_rejected_restart_status() -> None:
     assert non_vmec.huge_force_restart_count == 7
     assert non_vmec.update_rms is None
     assert not vmec.clear_cache_after_catastrophic
+
+
+def test_direct_force_fallback_acceptance_decision_uses_vmec_trial_threshold() -> None:
+    accepted = direct_force_fallback_acceptance_decision(residual=1.49, current_residual=1.0)
+    rejected = direct_force_fallback_acceptance_decision(residual=1.51, current_residual=1.0)
+    nonfinite = direct_force_fallback_acceptance_decision(residual=np.inf, current_residual=1.0)
+    custom = direct_force_fallback_acceptance_decision(residual=1.9, current_residual=1.0, accept_ratio=2.0)
+
+    assert accepted.accepted
+    assert accepted.accept_ratio == pytest.approx(1.5)
+    assert not rejected.accepted
+    assert not nonfinite.accepted
+    assert custom.accepted
+    assert custom.accept_ratio == pytest.approx(2.0)
 
 
 def test_initial_residual_controller_state_matches_vmec_defaults() -> None:

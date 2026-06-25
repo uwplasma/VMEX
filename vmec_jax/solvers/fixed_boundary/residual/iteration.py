@@ -119,6 +119,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     controller_state_from_runtime_scalars as _controller_state_from_runtime_scalars,
     controller_state_from_resume_state as _controller_state_from_resume_state,
     delta_tuple_from_blocks as _delta_tuple_from_blocks_helper,
+    direct_force_fallback_acceptance_decision as _direct_force_fallback_acceptance_decision,
     direct_force_fallback_trial as _direct_force_fallback_trial,
     host_catastrophic_restart_update as _host_catastrophic_restart_update,
     host_free_boundary_turnon_restart_update as _host_free_boundary_turnon_restart_update,
@@ -2872,7 +2873,11 @@ def solve_fixed_boundary_residual_iter(
                     dt_direct = fallback_trial.dt_eff
                     state_dir = fallback_trial.state
                     w_dir = fallback_trial.residual
-                    if np.isfinite(w_dir) and (w_dir <= 1.5 * max(w_curr, 1e-30)):
+                    fallback_acceptance = _direct_force_fallback_acceptance_decision(
+                        residual=float(w_dir),
+                        current_residual=float(w_curr),
+                    )
+                    if fallback_acceptance.accepted:
                         state = state_dir
                         _zero_all_velocity_blocks()
                         step_status = "fallback_direct"
