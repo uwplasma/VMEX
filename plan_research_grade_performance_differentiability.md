@@ -5978,3 +5978,67 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 99.1%.
 - Docs/release hygiene: 100%.
 - Overall: 99.4%.
+
+### 2026-06-25: Finish optimization renderer CLI-safety sweep
+
+Steps taken:
+
+- Audited the remaining optimization renderers after the QI README renderer fix
+  and found two scripts where ``--help`` still entered heavy render paths:
+  ``render_qi_constrained_sweep.py`` and
+  ``render_readme_best_optimizations.py``.
+- Added ``argparse`` entry points and ``--summary-only`` modes to both scripts,
+  so help is side-effect free and summary/provenance refreshes can run without
+  re-rendering Matplotlib figures.
+- Added subprocess smoke coverage that verifies both renderers expose
+  ``--summary-only`` and do not print ``Wrote ...`` messages on ``--help``.
+- Updated the optimization examples README to document the lighter summary-only
+  workflows.
+
+Results obtained:
+
+- ``python -m ruff check examples/optimization/render_qi_readme_cases.py
+  examples/optimization/render_qi_constrained_sweep.py
+  examples/optimization/render_readme_best_optimizations.py
+  tests/test_qi_readme_cases.py tests/test_qs_ess_render_smoke.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_qi_readme_cases.py tests/test_qs_ess_render_smoke.py
+  tests/test_docs_release_hygiene.py -q`` passed with 63 tests.
+- ``python examples/optimization/render_qi_constrained_sweep.py --help`` and
+  ``python examples/optimization/render_readme_best_optimizations.py --help``
+  both exited cleanly and showed ``--summary-only`` without writing artifacts.
+- ``PYTHONDONTWRITEBYTECODE=1 python
+  examples/optimization/render_readme_best_optimizations.py --summary-only``
+  refreshed only the existing CSV selector and did not modify tracked docs
+  artifacts.
+- ``git diff --check`` passed.
+- Repo-size gate passed with tracked size ``28.30 MiB`` and no tracked file
+  above ``2 MiB``.
+- Source-health gate still reports the expected long-term refactor hotspots,
+  especially ``solve_fixed_boundary_residual_iter`` and large validation tests;
+  no new helper-prefix or repo-size issue was introduced.
+
+Best next steps:
+
+1. Inspect the next main CI result only if it fails; do not burn time polling.
+2. Keep the next PR-readiness tranche focused on high-ROI source-health
+   reductions: split the fixed-boundary residual iteration loop or factor the
+   largest free-boundary validation fixtures into reusable helpers.
+3. Leave expensive optimization-matrix and benchmark rerenders alone unless
+   solver behavior, artifact provenance, or promotion criteria change.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 95.9%.
+- Free-boundary production differentiability: 96.4%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 68.2%.
+- VMEC2000/VMEC++ parity and physics gates: 99.1%.
+- Docs/release hygiene: 100%.
+- Overall: 99.4%.
