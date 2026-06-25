@@ -1040,6 +1040,7 @@ def write_same_branch_validation_report(
         run_branch_local_vector=run_branch_local_vector,
         summarize_vector_result=summarize_vector_result,
         main_vector_replay_plan=main_vector_replay_plan,
+        gate_mode=str(getattr(args, "same_branch_report_rejected_slot_mode", "replay")),
     )
     if rejected_slot_wall_s is not None:
         timings["branch_local_rejected_slot_wall_s"] = rejected_slot_wall_s
@@ -1800,6 +1801,17 @@ def add_same_branch_profile_options(parser: argparse.ArgumentParser) -> None:
             "Also replay a fixed accepted/rejected controller-slot mask using the same branch. "
             "This is a fingerprint/provenance gate and still does not differentiate adaptive "
             "host branch selection."
+        ),
+    )
+    parser.add_argument(
+        "--same-branch-report-rejected-slot-mode",
+        choices=("replay", "fingerprint"),
+        default="replay",
+        help=(
+            "Validation mode for --same-branch-report-rejected-slot-gate. "
+            "'replay' runs the strict padded-trace replay/JVP gate; 'fingerprint' "
+            "records the accepted/rejected slot provenance without compiling an "
+            "additional replay graph."
         ),
     )
 

@@ -135,6 +135,7 @@ lets the complete solve accept or reject the derivative-assisted current step:
      --same-branch-report-enable-current-jvp-cache \
      --same-branch-report-current-jvp-cache-probe \
      --same-branch-report-rejected-slot-gate \
+     --same-branch-report-rejected-slot-mode fingerprint \
      --same-branch-report-nestor-solve-mode matrix_free \
      --same-branch-report-nestor-operator-solver bicgstab \
      --same-branch-report-replay-max-mode-count 0 \
@@ -146,7 +147,7 @@ On the 2026-06-25 local check, this fixture had ``qs_total = 1.019`` at the
 same-branch report point, ``max_base_rel_delta = 2.2e-15``, passed the
 branch-local physical-scalar gate for all three requested scalars, hit the
 repeat current-JVP cache probe in about ``10 ms``, passed the fixed
-accepted/rejected controller-slot gate, formed two derivative-assisted
+accepted/rejected controller-slot fingerprint gate, formed two derivative-assisted
 proposals, and rejected both with complete-solve authority because neither
 improved the complete objective.  This is the current QS-relevant phase-3
 proposal fixture; the older LP-QA/circle smoke remains useful for fast wiring
@@ -894,15 +895,17 @@ profile loop has a matching ``--same-branch-report-profile-max-mode-count
 220`` guard: larger replay/JVP graphs can terminate from graph-construction
 resource pressure on small machines.  Set those options to ``0`` only on a
 larger-memory profiling machine when deliberately exploring higher mode
-counts.  Use
-``--same-branch-report-rejected-slot-gate`` to add a fixed
-accepted/rejected controller-slot replay artifact.  The example synthesizes a
-diagnostic trace with ``step_status='rejected'`` and lets the replay code
-derive the rejected slot from trace status, matching the production-status
-path.  This proves the stacked controller replay can carry a rejected slot
-under the same branch fingerprint; it still does not differentiate the
-adaptive host policy that decides which steps are accepted or rejected.  The
-scalar, vector, and rejected-slot JSON blocks expose a compact
+counts.  Use ``--same-branch-report-rejected-slot-gate`` with
+``--same-branch-report-rejected-slot-mode replay`` to add a strict fixed
+accepted/rejected controller-slot replay artifact, or with
+``--same-branch-report-rejected-slot-mode fingerprint`` to record only the
+slot provenance at lower cost.  Both modes synthesize a diagnostic trace with
+``step_status='rejected'`` and derive the rejected slot from trace status,
+matching the production-status path.  Replay mode additionally proves the
+stacked controller replay can carry a rejected slot under the same branch
+fingerprint; neither mode differentiates the adaptive host policy that decides
+which steps are accepted or rejected.  The scalar, vector, and rejected-slot
+JSON blocks expose a compact
 ``controller_slot_summary`` with ``accepted_slots``, ``rejected_slots``,
 ``done_markers``, and
 ``accepted_free_boundary_slots``.  Use this top-level summary when reviewing
@@ -1500,6 +1503,7 @@ accepted/rejected controller-slot gate on a larger low-resolution report, run:
      --same-branch-report-profile-nestor dense-vs-matrix-free \
      --same-branch-report-profile-max-mode-count 220 \
      --same-branch-report-rejected-slot-gate \
+     --same-branch-report-rejected-slot-mode replay \
      --outdir results/free_boundary_QS_coil_optimization_circle_nestor_profile
 
 The profile is intentionally branch-local: complete solves provide the
@@ -1512,17 +1516,26 @@ same fingerprint.  In the resulting
 how many controller slots were accepted or rejected in the replayed branch.
 The vector blocks also report ``directional_jvp_fast_path`` so current-only
 profiling runs can confirm that fixed coil geometry was reused.
-The rejected-slot gate builds a separate padded trace plan because the
-controller branch is intentionally different from the all-accepted replay, but
-it reuses any static boundary replay contexts from the main vector report; the
-JSON field ``accepted_rejected_controller_slot_gate.reused_boundary_replay_contexts``
-records whether that reuse occurred.  The slot gate intentionally replays only
+``--same-branch-report-rejected-slot-mode replay`` builds a separate padded
+trace plan because the controller branch is intentionally different from the
+all-accepted replay, but it reuses any static boundary replay contexts from the
+main vector report; the JSON field
+``accepted_rejected_controller_slot_gate.reused_boundary_replay_contexts``
+records whether that reuse occurred.  Replay mode intentionally replays only
 the cheapest available physical scalar, usually ``aspect``, because its job is
 to prove that the accepted/rejected controller-slot fingerprint and directional
 JVP path are still valid.  The main vector report remains the authority for the
 full requested scalar set.  For review, the slot gate writes both
 ``scalar_keys`` and ``full_report_scalar_keys`` so the narrow replay payload is
 explicit rather than hidden.
+
+``--same-branch-report-rejected-slot-mode fingerprint`` is a lower-overhead
+provenance mode for examples and long sweeps: it derives the accepted/rejected
+slot fingerprint from the complete-solve trace statuses and does not compile an
+additional replay/JVP graph.  This mode is useful when the promoted evidence is
+the main same-branch vector/JVP report and the controller-slot check is only
+recording that a fixed rejected slot would be part of the branch-local payload.
+It is weaker than replay mode and is labelled ``fingerprint_only`` in JSON.
 
 An additional opt-in bridge toward derivative-assisted coil optimization is
 available with ``--same-branch-derivative-proposal``.  This mode still does
@@ -1598,13 +1611,15 @@ final-point derivative evidence for a reviewer-facing artifact.
      --same-branch-report-direction current-only \
      --same-branch-report-vector-keys aspect,qs_total \
      --same-branch-report-rejected-slot-gate \
+     --same-branch-report-rejected-slot-mode fingerprint \
      --same-branch-derivative-proposal \
      --outdir results/free_boundary_QS_coil_optimization_circle_same_branch_proposal
 
 This is the compact production-style proposal smoke: the branch-local report is
-the promoted vector/JVP artifact, the accepted/rejected slot gate is checked
-before a proposal is formed, and the ordinary complete free-boundary solve is
-still the only authority for accepting or rejecting the proposed coil point.
+the promoted vector/JVP artifact, the accepted/rejected slot fingerprint is
+checked before a proposal is formed, and the ordinary complete free-boundary
+solve is still the only authority for accepting or rejecting the proposed coil
+point.
 
 QA finite-beta direct-coil wrapper
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1649,6 +1664,7 @@ to form a safe derivative proposal.
      --same-branch-report-mode vector \
      --same-branch-report-direction current-only \
      --same-branch-report-rejected-slot-gate \
+     --same-branch-report-rejected-slot-mode fingerprint \
      --same-branch-derivative-proposal \
      --outdir results/free_boundary_QA_finite_beta_coil_optimization_report
 

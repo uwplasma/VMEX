@@ -4087,3 +4087,79 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 98.2%.
 - Docs/release hygiene: 99.8%.
 - Overall: 98.6%.
+
+### 2026-06-25: Final tranche low-overhead rejected-slot fingerprint mode and gates
+
+Steps taken:
+
+- Added ``--same-branch-report-rejected-slot-mode`` with ``replay`` and
+  ``fingerprint`` choices to the direct-coil QS optimization example.
+- Kept ``replay`` as the strict default, preserving the reviewer-grade padded
+  trace replay/JVP gate.
+- Added a lower-overhead ``fingerprint`` mode that derives the fixed
+  accepted/rejected controller-slot provenance from complete-solve trace
+  statuses without compiling a second rejected-slot replay graph.
+- Documented the difference between replay and fingerprint modes in the
+  free-boundary coil optimization guide and updated promoted example commands
+  to use fingerprint mode where the main same-branch vector/JVP report is the
+  derivative evidence authority.
+- Added focused unit coverage proving fingerprint mode does not call the replay
+  function.
+- Regenerated ``readme_ad_fd_evidence`` and ``readme_runtime_compare`` artifacts
+  from the checked local reports/summaries, and refreshed the current-vs-main
+  benchmark comparison JSON.
+
+Results obtained:
+
+- The QH warm-start direct-coil same-branch QS fixture still passed the
+  branch-local physical-scalar gate for ``aspect``, ``qs_total``, and
+  ``mean_iota``.
+- The same fixture with fingerprint mode reported a rejected-slot gate wall
+  time of about ``6.0e-5 s`` instead of the previous strict rejected-slot replay
+  wall time of about ``23.9 s``.  The strict replay mode remains available.
+- The main branch-local vector/JVP wall time remains about ``15.9 s``; this
+  confirms the remaining low-level performance lane is first-call replay/JVP
+  graph construction, not the optional controller-slot provenance check.
+- The repeated current-JVP cache probe still hit, with replay-JVP time about
+  ``5.1 ms`` and roughly ``3.1e3`` speedup over the cold first JVP.
+- The AD-vs-FD evidence panel regenerated with ``10`` passing rows at the
+  documented ``1e-9`` tolerance.
+- The current-vs-main benchmark comparison regenerated ``48`` records and
+  reported ``0`` runtime/memory regressions.
+- Local validation passed:
+  ``python -m ruff check`` on changed modules/tools,
+  ``tests/test_free_boundary_qs_coil_optimization_smoke.py``,
+  compact docs/runtime/parity shards,
+  full Sphinx ``-W`` build, ``git diff --check``, repository-size audit, source
+  health, and the full test suite:
+  ``3088 passed, 140 skipped, 2 xfailed`` in ``665.51 s``.
+- CI for the previous pushed commit, ``perf: expose same-branch replay timing
+  evidence``, is green.
+
+Best next steps:
+
+1. Commit and push this final tranche.
+2. If another performance tranche is needed, target cold branch-local vector/JVP
+   graph construction directly; optional rejected-slot provenance is no longer
+   the promoted-command bottleneck.
+3. Keep the strict ``replay`` rejected-slot mode for reviewer-grade validation
+   artifacts and use ``fingerprint`` mode for lower-overhead example/proposal
+   runs.
+4. Treat arbitrary adaptive host-controller differentiation as unclaimed until
+   a true fingerprint-gated adaptive AD-vs-FD gate exists.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.2%.
+- Free-boundary production differentiability: 95.8%.
+- Single-stage coil optimization: 92.8%.
+- CPU/GPU runtime and memory footprint: 99.1%.
+- Refactor/API/examples: 60.0%.
+- VMEC2000/VMEC++ parity and physics gates: 98.3%.
+- Docs/release hygiene: 99.9%.
+- Overall: 98.7%.

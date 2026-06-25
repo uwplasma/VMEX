@@ -2,7 +2,7 @@
   "metadata": {
     "baseline_summary": "/Users/rogeriojorge/local/tests/vmec_jax_main_perf/outputs/pr20_full_matrix_main_cpu_sg/summary.json",
     "current_summary": "outputs/pr20_full_matrix_current_cpu_sg/summary.json",
-    "generated_at": "2026-06-25T15:35:36.555242+00:00",
+    "generated_at": "2026-06-25T18:13:43.955052+00:00",
     "memory_regression_ratio": 1.15,
     "residual_note": "example_runtime_memory_matrix.py does not record final residuals; use WOUT parity gates.",
     "runtime_regression_ratio": 1.1
