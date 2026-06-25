@@ -219,7 +219,16 @@ VMEC-style ladder without editing the example, add for example
 ``--ns-array 9,13,17 --niter-array 2500,5000,10000 --ftol-array 1e-8,1e-10,1e-12``.
 Use larger ``--nvacskip`` only as a speed experiment; for convergence review,
 ``--nvacskip 1`` avoids stale free-boundary residuals on this square-hybrid
-Fourier deck.
+Fourier deck. For ``NS`` ladders above the initial surface, use a widened mgrid
+envelope and check the reported ``vacuum_grid_exceeded_count`` before
+interpreting the residual floor, for example::
+
+  --mgrid-nr 48 --mgrid-nz 40 --mgrid-padding-fraction 1.2 --mgrid-min-padding 0.5
+
+Summarize one or more reports with::
+
+  python tools/diagnostics/summarize_square_coil_profiles.py \
+    results/square_coil_freeb_backend_profile_* --markdown
 
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
 free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct

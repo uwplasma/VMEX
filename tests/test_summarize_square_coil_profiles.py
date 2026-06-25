@@ -1,0 +1,60 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from tools.diagnostics import summarize_square_coil_profiles as summary
+
+
+def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path):
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_case_a"
+    case_dir.mkdir()
+    report = case_dir / "square_coil_free_boundary_backend_profile.json"
+    report.write_text(
+        json.dumps(
+            {
+                "configuration": {
+                    "mpol": 5,
+                    "ntor": 12,
+                    "ns": 9,
+                    "nzeta": 32,
+                    "nvacskip": 1,
+                    "solver_mode": "parity",
+                    "max_iter": 1000,
+                },
+                "backends": {
+                    "vmec_jax_mgrid": {
+                        "status": "completed",
+                        "n_iter": 999,
+                        "final_fsq_component_sum": 1.2e-5,
+                        "best_scored_fsq": 1.0e-5,
+                        "wall_s": 3.5,
+                    },
+                    "vmec2000_mgrid": {
+                        "status": "completed",
+                        "last_row": {
+                            "it": 1000,
+                            "fsqr": 2.0e-6,
+                            "fsqz": 3.0e-6,
+                            "fsql": 4.0e-7,
+                        },
+                        "min_total": 5.0e-6,
+                        "vacuum_grid_exceeded_count": 2,
+                        "wall_s": 2.0,
+                    },
+                },
+            }
+        )
+    )
+
+    rows = summary.rows_from_profile(report)
+
+    assert [row["backend"] for row in rows] == ["vmec2000_mgrid", "vmec_jax_mgrid"]
+    assert rows[0]["final_total"] == pytest.approx(5.4e-6)
+    assert rows[0]["best_total"] == pytest.approx(5.0e-6)
+    assert rows[1]["final_total"] == pytest.approx(1.2e-5)
+    assert rows[1]["best_total"] == pytest.approx(1.0e-5)
+    assert rows[1]["solver_mode"] == "parity"
+    assert rows[0]["vacuum_grid_exceeded_count"] == 2

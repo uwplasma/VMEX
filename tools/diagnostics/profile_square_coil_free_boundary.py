@@ -31,7 +31,7 @@ from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_ru
 from vmec_jax.external_fields import write_mgrid_from_coils
 from vmec_jax.namelist import write_indata
 from vmec_jax.toroidal_hybrid import evaluate_toroidal_hybrid_indata_boundary, recommended_square_axis_nzeta
-from vmec_jax.vmec2000_exec import find_vmec2000_exec, run_xvmec2000
+from vmec_jax.vmec2000_exec import _parse_vmec2000_threed1, find_vmec2000_exec, run_xvmec2000
 
 
 DEFAULT_OUTDIR = REPO_ROOT / "results" / "square_coil_freeb_backend_profile"
@@ -86,8 +86,8 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--mgrid-nr", type=int, default=36)
     p.add_argument("--mgrid-nz", type=int, default=28)
     p.add_argument("--mgrid-nphi", type=int, default=None)
-    p.add_argument("--mgrid-padding-fraction", type=float, default=0.35)
-    p.add_argument("--mgrid-min-padding", type=float, default=0.15)
+    p.add_argument("--mgrid-padding-fraction", type=float, default=0.75)
+    p.add_argument("--mgrid-min-padding", type=float, default=0.35)
     p.add_argument("--skip-direct", action="store_true")
     p.add_argument("--skip-mgrid", action="store_true")
     p.add_argument("--run-vmec2000", action="store_true")
@@ -138,6 +138,38 @@ def _tail_lines(path: Path | None, *, lines: int = 60) -> list[str]:
     if path is None or not Path(path).exists():
         return []
     return Path(path).read_text(errors="replace").splitlines()[-int(lines) :]
+
+
+def _vacuum_grid_exceeded_count(path: Path | None) -> int:
+    if path is None or not Path(path).exists():
+        return 0
+    return sum(
+        1
+        for line in Path(path).read_text(errors="replace").splitlines()
+        if "Plasma Boundary exceeded Vacuum Grid Size" in line
+    )
+
+
+def _partial_vmec2000_payload(workdir: Path) -> dict[str, Any]:
+    matches = sorted(Path(workdir).glob("threed1*"))
+    threed1 = matches[0] if matches else None
+    rows = []
+    if threed1 is not None and threed1.exists():
+        try:
+            rows = [row for stage in _parse_vmec2000_threed1(threed1) for row in stage.rows]
+        except Exception:
+            rows = []
+    totals = [float(row.fsqr) + float(row.fsqz) + float(row.fsql) for row in rows]
+    return {
+        "workdir": workdir,
+        "threed1": threed1,
+        "threed1_tail": _tail_lines(threed1, lines=80),
+        "iteration_row_count": len(rows),
+        "tail_rows": [_vmec2000_row_payload(row) for row in rows[-12:]],
+        "last_row": None if not rows else _vmec2000_row_payload(rows[-1]),
+        "min_total": None if not totals else float(np.nanmin(np.asarray(totals, dtype=float))),
+        "vacuum_grid_exceeded_count": _vacuum_grid_exceeded_count(threed1),
+    }
 
 
 def _last_finite(values: Any) -> float | None:
@@ -381,6 +413,19 @@ def _vmec2000_row_payload(row: Any) -> dict[str, Any]:
     }
 
 
+def _vmec2000_stage_payload(stage: Any) -> dict[str, Any]:
+    rows = list(getattr(stage, "rows", []) or [])
+    totals = [float(row.fsqr) + float(row.fsqz) + float(row.fsql) for row in rows]
+    return {
+        "ns": int(getattr(stage, "ns", -1)),
+        "niter": int(getattr(stage, "niter", -1)),
+        "ftolv": float(getattr(stage, "ftolv", float("nan"))),
+        "iteration_row_count": len(rows),
+        "min_total": None if not totals else float(np.nanmin(np.asarray(totals, dtype=float))),
+        "last_row": None if not rows else _vmec2000_row_payload(rows[-1]),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     outdir = args.outdir
@@ -529,6 +574,8 @@ def main(argv: list[str] | None = None) -> int:
                     "stdout_tail": run.stdout.splitlines()[-40:],
                     "stderr_tail": run.stderr.splitlines()[-40:],
                     "threed1_tail": _tail_lines(run.threed1_path, lines=80),
+                    "vacuum_grid_exceeded_count": _vacuum_grid_exceeded_count(run.threed1_path),
+                    "stage_summaries": [_vmec2000_stage_payload(stage) for stage in run.stages],
                     "iteration_row_count": len(rows),
                     "first_rows": [_vmec2000_row_payload(row) for row in rows[:8]],
                     "tail_rows": [_vmec2000_row_payload(row) for row in rows[-12:]],
@@ -536,7 +583,12 @@ def main(argv: list[str] | None = None) -> int:
                     "min_total": None if not totals else float(np.nanmin(np.asarray(totals, dtype=float))),
                 }
             except Exception as exc:
-                payload["backends"]["vmec2000_mgrid"] = {"status": "failed", "error": repr(exc)}
+                workdir = outdir / "vmec2000_mgrid"
+                payload["backends"]["vmec2000_mgrid"] = {
+                    "status": "failed",
+                    "error": repr(exc),
+                    **_partial_vmec2000_payload(workdir),
+                }
 
     report = outdir / "square_coil_free_boundary_backend_profile.json"
     report.write_text(json.dumps(_json_ready(payload), indent=2, sort_keys=True, allow_nan=False) + "\n")

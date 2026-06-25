@@ -71,9 +71,16 @@ fix, the 1000-iteration ``NS=9, MPOL=5, NTOR=12, NZETA=32, NVACSKIP=1`` JAX
 generated-mgrid best-scored residual recomputes to about ``1.02e-5``. The
 matching VMEC2000 generated-mgrid case reaches about ``1.46e-5`` at 1000
 iterations and about ``7.0e-8`` by 4200--5000 iterations, then oscillates. A
-10000-iteration full-update VMEC2000 profile exceeded the local timeout. The
-current square-coil setup is therefore a diagnostic/stability target, not yet a
-converged ``FTOL=1e-12`` production equilibrium.
+10000-iteration full-update VMEC2000 profile exceeded the local timeout. A
+staged ``NS=9 -> 17`` full-update run exposed a separate vacuum-grid envelope
+issue: with the older narrow generated mgrid, VMEC2000 repeatedly printed
+``Plasma Boundary exceeded Vacuum Grid Size`` in the ``NS=17`` stage. A wider
+``48 x 40 x 32`` mgrid with ``1.2`` fractional padding and ``0.5`` absolute
+padding removed that warning, but the ``NS=17`` stage still oscillated, with
+best sampled total residual about ``3.45e-7`` and final row about ``9.77e-6``
+after 3000 iterations. The current square-coil setup is therefore a
+diagnostic/stability target, not yet a converged ``FTOL=1e-12`` production
+equilibrium.
 
 The same profiling identified an ``NZETA`` robustness rule. ``MPOL=5,
 NTOR=12, NZETA=16`` fails in VMEC2000 after the initial Jacobian changes sign,
@@ -127,6 +134,10 @@ writes the same square-coil field to a VMEC-compatible ``mgrid.nc`` and can run
 raw ``xvmec2000`` on the generated mgrid. This is the required comparison when
 judging whether a stall is caused by the direct provider, mgrid interpolation,
 or the VMEC-style nonlinear solve itself.
+Profile reports can be compared with
+``tools/diagnostics/summarize_square_coil_profiles.py``; the summarizer reads
+ignored JSON artifacts and prints the final and best-scored residual totals
+without adding result files to the repository.
 
 The square-axis stellarator-mirror hybrid geometry now has a lower-bandwidth
 ``axis_kind="spline"`` option. It is still projected into VMEC Fourier boundary
@@ -170,7 +181,9 @@ The remaining work is deliberately narrow:
    ``--ns-array``, ``--niter-array``, and ``--ftol-array`` arguments for staged
    VMEC-style runs. Use ``--solver-mode parity`` and ``--nvacskip 1`` for
    convergence evidence; larger ``NVACSKIP`` values are speed experiments, not
-   strict residual evidence.
+   strict residual evidence. For radial-resolution ladders, use a widened mgrid
+   envelope and record ``vacuum_grid_exceeded_count`` before interpreting the
+   residual floor.
 2. Re-run the square-coil beta ladder with per-beta checkpointing and the
    best-scored diagnostic fallback using the staged ``FTOL_ARRAY`` ending at ``1e-12``. Keep
    ``DELT=0.05``, ``NVACSKIP=1``, ``solver_mode="parity"``, and the VMEC-like
@@ -178,6 +191,9 @@ The remaining work is deliberately narrow:
 3. Run resolution closure around the first transition beta and at ``10%`` beta,
    comparing ``NS``, ``MPOL``, ``NTOR``, ``NZETA``, generated-mgrid resolution,
    LCFS shape, near-axis field, mirror ratio, mean iota, and residual histories.
+   The next numerical knob to test is damping/step control on the widened
+   ``NS=17`` mgrid, since VMEC2000 currently shows residual oscillations rather
+   than monotonic convergence there.
 4. Keep the optional virtual-casing postsolve diagnostic
    ``vmec_jax.free_boundary_validation.virtual_casing_finite_beta_boundary_diagnostics``
    attached to the square-coil example outputs. The helper accepts a solved

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -60,3 +61,28 @@ def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tail
     assert payload["history"]["fsq_component_sum_tail"] == pytest.approx([0.0033, 0.00033, 3.3e-5])
     assert payload["history"]["freeb_ivac_tail"] == [1, 2, 3]
     assert payload["history"]["include_edge_tail"] == [0, 1, 1]
+
+
+def test_square_coil_profile_partial_vmec2000_payload_reads_timeout_rows(tmp_path: Path):
+    workdir = tmp_path / "vmec2000_mgrid"
+    workdir.mkdir()
+    (workdir / "threed1.case").write_text(
+        "\n".join(
+            [
+                " NS =    9 NO. FOURIER MODES =  113 FTOLV =  1.000E-08 NITER =   5000",
+                " ITER    FSQR      FSQZ      FSQL      fsqr      fsqz      fsql      DELT    RAX(v=0)      WMHD      BETA      <M>   DEL-BSQ   FEDGE",
+                "    1   4.00E-03  2.00E-03  1.00E-03  1.00E-04  2.00E-04  3.00E-04  5.00E-02  1.50E+00  3.00E-01  0.000E+00  1.0 1.00E-02 2.00E-03",
+                " 'Plasma Boundary exceeded Vacuum Grid Size         '",
+                "  200   4.00E-06  2.00E-06  1.00E-06  1.00E-08  2.00E-08  3.00E-08  5.00E-02  1.50E+00  3.00E-01  0.000E+00  1.0 1.00E-02 2.00E-06",
+            ]
+        )
+        + "\n"
+    )
+
+    payload = profile._partial_vmec2000_payload(workdir)
+
+    assert payload["iteration_row_count"] == 2
+    assert payload["last_row"]["it"] == 200
+    assert payload["last_row"]["total"] == pytest.approx(7.0e-6)
+    assert payload["min_total"] == pytest.approx(7.0e-6)
+    assert payload["vacuum_grid_exceeded_count"] == 1
